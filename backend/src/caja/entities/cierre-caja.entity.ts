@@ -1,0 +1,81 @@
+import {
+  Entity, PrimaryGeneratedColumn, Column,
+  CreateDateColumn, UpdateDateColumn, Unique,
+} from 'typeorm';
+
+export enum EstadoCierre {
+  ABIERTA  = 'abierta',
+  CERRADA  = 'cerrada',
+  REVISADA = 'revisada',
+}
+
+@Entity('cierres_caja')
+@Unique('UQ_caja_fecha_vendedor', ['fecha', 'vendedorId'])
+export class CierreCaja {
+  @PrimaryGeneratedColumn()
+  id!: number;
+
+  @Column({ type: 'date' })
+  fecha!: Date;
+
+  @Column({ type: 'int', nullable: true })
+  vendedorId?: number;
+
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  vendedorNombre?: string;
+
+  @Column({ type: 'enum', enum: EstadoCierre, default: EstadoCierre.ABIERTA })
+  estado!: EstadoCierre;
+
+  // Apertura
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  saldoApertura!: number;
+
+  // Ingresos del día
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  ventasEfectivo!: number;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  ventasTarjeta!: number;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  ventasTransferencia!: number;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  cobrosRecibidos!: number;
+
+  // Egresos
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  gastosEfectivo!: number;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  retiros!: number;
+
+  // Cierre
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  saldoCierre!: number;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  saldoFisico!: number;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  diferencia!: number;
+
+  @Column({ type: 'int', default: 0 })
+  cantidadTransacciones!: number;
+
+  @Column({ type: 'text', nullable: true })
+  notas?: string;
+
+  @Column()
+  userId!: number;
+
+  @Column({ nullable: true })
+  empresaId?: number;
+
+  @CreateDateColumn()
+  createdAt!: Date;
+
+  @UpdateDateColumn()
+  updatedAt!: Date;
+}

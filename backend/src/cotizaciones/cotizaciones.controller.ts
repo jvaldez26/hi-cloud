@@ -1,0 +1,84 @@
+import {
+  Controller, Get, Post, Patch, Delete, Body,
+  Param, Query, ParseIntPipe, HttpCode, HttpStatus, UseGuards,
+} from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { IsEnum } from 'class-validator';
+import { CotizacionesService } from './cotizaciones.service';
+import { CreateCotizacionDto } from './dto/create-cotizacion.dto';
+import { CotizacionEstado } from './entities/cotizacion.entity';
+import { PaginationDto } from '../common/dto/pagination.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { GetUser } from '../auth/decorators/get-user.decorator';
+import { UserRole } from '../users/enums/user-role.enum';
+import { User } from '../users/users.entity';
+
+class CambiarEstadoDto {
+  @IsEnum(CotizacionEstado)
+  estado: CotizacionEstado;
+}
+
+@ApiTags('Cotizaciones')
+@ApiBearerAuth('access-token')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Controller('cotizaciones')
+export class CotizacionesController {
+  constructor(private cotizacionesService: CotizacionesService) {}
+
+  @Get('resumen')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Resumen de cotizaciones por estado' })
+  getResumen() {
+    return this.cotizacionesService.getResumen();
+  }
+
+  @Post()
+  @HttpCode(HttpStatus.CREATED)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Crear nueva cotización con detalles' })
+  create(@Body() dto: CreateCotizacionDto, @GetUser() usuario: User) {
+    return this.cotizacionesService.create(dto, usuario);
+  }
+
+  @Get()
+  @ApiOperation({ summary: 'Listar cotizaciones con paginación' })
+  findAll(@Query() pagination: PaginationDto) {
+    return this.cotizacionesService.findAll(pagination);
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Detalle completo de una cotización' })
+  findById(@Param('id', ParseIntPipe) id: number) {
+    return this.cotizacionesService.findById(id);
+  }
+
+  @Patch(':id/estado')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Cambiar estado (borrador→enviada→aceptada/rechazada)' })
+  cambiarEstado(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CambiarEstadoDto,
+  ) {
+    return this.cotizacionesService.cambiarEstado(id, dto.estado);
+  }
+
+  @Post(':id/convertir')
+  @HttpCode(HttpStatus.CREATED)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: '🔄 Convertir cotización ACEPTADA a Factura (borrador)' })
+  convertirAFactura(
+    @Param('id', ParseIntPipe) id: number,
+    @GetUser() usuario: User,
+  ) {
+    return this.cotizacionesService.convertirAFactura(id, usuario);
+  }
+
+  @Delete(':id')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Eliminar cotización en borrador' })
+  remove(@Param('id', ParseIntPipe) id: number) {
+    return this.cotizacionesService.remove(id);
+  }
+}

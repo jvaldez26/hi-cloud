@@ -1,0 +1,63 @@
+import {
+  Controller, Post, Get, UploadedFile,
+  UseInterceptors, Res, UseGuards, HttpCode, HttpStatus,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
+import type { Response } from 'express';
+import { ImportacionService } from './importacion.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { UserRole } from '../users/enums/user-role.enum';
+
+@ApiTags('Importación Masiva')
+@ApiBearerAuth('access-token')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.ADMIN, UserRole.CONTADOR)
+@Controller('importacion')
+export class ImportacionController {
+  constructor(private importacionService: ImportacionService) {}
+
+  // ── Plantillas ──────────────────────────────────────────────────────────────
+
+  @Get('plantilla/clientes')
+  @ApiOperation({ summary: 'Descargar plantilla CSV para importar clientes' })
+  descargarPlantillaClientes(@Res() res: Response) {
+    const csv = this.importacionService.getPlantillaClientes();
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="plantilla-clientes.csv"');
+    res.send('﻿' + csv); // BOM para compatibilidad con Excel
+  }
+
+  @Get('plantilla/productos')
+  @ApiOperation({ summary: 'Descargar plantilla CSV para importar productos' })
+  descargarPlantillaProductos(@Res() res: Response) {
+    const csv = this.importacionService.getPlantillaProductos();
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="plantilla-productos.csv"');
+    res.send('﻿' + csv);
+  }
+
+  // ── Importaciones ───────────────────────────────────────────────────────────
+
+  @Post('clientes')
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Importar clientes desde archivo CSV (máx 5MB)' })
+  importarClientes(@UploadedFile() file: { buffer: Buffer; originalname: string }) {
+    if (!file) throw new Error('No se recibió ningún archivo');
+    return this.importacionService.importarClientes(file.buffer);
+  }
+
+  @Post('productos')
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Importar productos desde archivo CSV (máx 5MB)' })
+  importarProductos(@UploadedFile() file: { buffer: Buffer; originalname: string }) {
+    if (!file) throw new Error('No se recibió ningún archivo');
+    return this.importacionService.importarProductos(file.buffer);
+  }
+}

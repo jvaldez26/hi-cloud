@@ -1,0 +1,21 @@
+import { Module } from '@nestjs/common';
+import { JwtModule } from '@nestjs/jwt';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { SuperAdminController } from './super-admin.controller';
+import { SuperAdminService }    from './super-admin.service';
+import { SuperAdminGuard }      from './super-admin.guard';
+
+@Module({
+  imports: [
+    ConfigModule,
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject:  [ConfigService],
+      useFactory: (cfg: ConfigService) => ({ secret: cfg.get<string>('JWT_SECRET') }),
+    }),
+  ],
+  controllers: [SuperAdminController],
+  providers:   [SuperAdminService, SuperAdminGuard],
+  exports:     [SuperAdminGuard],
+})
+export class SuperAdminModule {}
