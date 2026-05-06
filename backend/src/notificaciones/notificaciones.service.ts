@@ -366,9 +366,10 @@ export class NotificacionesService {
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <title>Factura ${r.folio}</title>
 </head>
-<body style="margin:0;padding:0;background:#f4f6f9;font-family:Arial,Helvetica,sans-serif">
+<body style="margin:0;padding:0;background:#f4f6f9;font-family:'Inter',Arial,Helvetica,sans-serif">
   <div style="max-width:620px;margin:24px auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.1)">
 
     <!-- HEADER -->

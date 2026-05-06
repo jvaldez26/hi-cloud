@@ -201,7 +201,8 @@ export class AuthService {
     const resetUrl = `${process.env['FRONTEND_URL'] ?? 'http://localhost:5173'}/restablecer/${token}`;
 
     const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
-    <style>body{font-family:Arial,sans-serif;background:#f5f5f5;margin:0;padding:20px}
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>body{font-family:'Inter',Arial,sans-serif;background:#f5f5f5;margin:0;padding:20px}
     .card{background:#fff;max-width:520px;margin:0 auto;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.1)}
     .header{background:linear-gradient(135deg,#1a56db,#0ea5e9);padding:28px;color:#fff;text-align:center}
     .body{padding:28px}.btn{display:inline-block;background:linear-gradient(135deg,#1a56db,#0ea5e9);color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:16px}

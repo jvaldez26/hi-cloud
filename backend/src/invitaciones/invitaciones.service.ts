@@ -84,8 +84,9 @@ export class InvitacionesService {
 
     const html = `
 <!DOCTYPE html><html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
-  body { font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:#f8fafc; margin:0; padding:0; }
+  body { font-family:'Inter',-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:#f8fafc; margin:0; padding:0; }
   .wrap { max-width:520px; margin:40px auto; background:#fff; border-radius:16px; overflow:hidden; box-shadow:0 4px 24px rgba(0,0,0,.08); }
   .header { background:linear-gradient(135deg,#1a56db,#0ea5e9); padding:32px 40px; text-align:center; }
   .logo { width:40px; height:40px; background:rgba(255,255,255,.25); border-radius:12px; display:inline-flex; align-items:center; justify-content:center; font-size:20px; font-weight:800; color:#fff; margin-bottom:12px; }

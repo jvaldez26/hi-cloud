@@ -99,7 +99,7 @@ export function generarHTMLFactura(d: FacturaPDFData): string {
 
   const logoHtml = d.empresaLogo
     ? `<img src="${d.empresaLogo}" style="height:60px;max-width:200px;object-fit:contain;border-radius:4px;" onerror="this.style.display='none'">`
-    : `<div style="width:60px;height:60px;background:${COLOR};border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:900;color:#fff;font-family:'Segoe UI',sans-serif;">${iniciales}</div>`;
+    : `<div style="width:60px;height:60px;background:${COLOR};border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:900;color:#fff;font-family:'Inter','Segoe UI',sans-serif;">${iniciales}</div>`;
 
   // Badge tipo cliente
   const badgeCliente = d.tipoCliente === 'RNC'
@@ -146,10 +146,12 @@ export function generarHTMLFactura(d: FacturaPDFData): string {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <title>Factura ${esc(d.numero)} — HiCloud ERP</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Segoe UI', -apple-system, Arial, sans-serif; background: #fff; color: ${TEXT}; font-size: 12px; }
+  body { font-family: 'Inter', 'Segoe UI', -apple-system, Arial, sans-serif; background: #fff; color: ${TEXT}; font-size: 12px; }
   @page { size: A4; margin: 0; }
   @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
   .page { width: 794px; min-height: 1123px; background: #fff; position: relative; display: flex; flex-direction: column; }

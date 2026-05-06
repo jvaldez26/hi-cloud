@@ -1,7 +1,9 @@
 const base = (titulo: string, cuerpo: string) => `<!DOCTYPE html>
 <html lang="es">
-<head><meta charset="UTF-8"><style>
-  body{font-family:Arial,sans-serif;background:#f5f5f5;margin:0;padding:20px}
+<head><meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  body{font-family:'Inter',Arial,sans-serif;background:#f5f5f5;margin:0;padding:20px}
   .card{background:#fff;max-width:600px;margin:0 auto;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.12)}
   .header{background:#1a56db;color:#fff;padding:20px 24px}
   .header h1{margin:0;font-size:18px}
@@ -147,7 +149,8 @@ export const Templates = {
       asunto: `Estado de Cuenta — ${data.clienteNombre} — ${data.empresaNombre}`,
       html: `<!DOCTYPE html>
 <html lang="es"><head><meta charset="UTF-8"/>
-<style>body{margin:0;padding:0;background:#f4f6f9;font-family:Arial,Helvetica,sans-serif}</style>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>body{margin:0;padding:0;background:#f4f6f9;font-family:'Inter',Arial,Helvetica,sans-serif}</style>
 </head><body>
 <div style="max-width:680px;margin:24px auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.1)">
   <div style="background:linear-gradient(135deg,#1a56db 0%,#0ea5e9 100%);padding:28px 32px">
