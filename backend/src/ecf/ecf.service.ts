@@ -631,7 +631,7 @@ export class ECFService implements OnModuleInit {
   async actualizarEstadoDGII(numero: string, dto: UpdateEstadoECFDto): Promise<ECF> {
     const ecf = await this.getECFByNumero(numero);
 
-    const update: Partial<ECF> = { estadoDGII: dto.estadoDGII };
+    const update: Record<string, unknown> = { estadoDGII: dto.estadoDGII };
     if (dto.xmlRespuesta)       update.xmlRespuesta = dto.xmlRespuesta;
     if (dto.firmaDigital)       update.firmaDigital = dto.firmaDigital;
     if (dto.proveedorReferencia) update.proveedorReferencia = dto.proveedorReferencia;

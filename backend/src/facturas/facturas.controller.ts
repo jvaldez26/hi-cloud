@@ -33,6 +33,11 @@ class CambiarEstadoDto {
   estado: FacturaEstado;
 }
 
+class EmitirDesdePos {
+  @IsEnum(FacturaEstado)
+  estado: FacturaEstado;
+}
+
 @ApiTags('Facturas')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -77,7 +82,24 @@ export class FacturasController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CambiarEstadoDto,
   ) {
-    return this.facturasService.cambiarEstado(id, dto.estado);
+    return this.facturasService.cambiarEstado(id, dto.estado, false);
+  }
+
+  /**
+   * Emite la factura desde el POS — usa modo síncrono (8s timeout).
+   * Si MSeller no responde, la venta se completa igual con e-CF en PENDIENTE_ENVIO.
+   */
+  @Patch(':id/emitir-pos')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.VENDEDOR)
+  @ApiOperation({
+    summary: 'Emitir factura desde POS (síncrono 8s — venta no se bloquea si MSeller falla)',
+  })
+  emitirDesdePos(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: EmitirDesdePos,
+  ) {
+    return this.facturasService.cambiarEstado(id, dto.estado, true);
   }
 
   @Delete(':id')

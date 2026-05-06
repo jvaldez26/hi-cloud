@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -19,23 +20,28 @@ import { TenantService } from '../tenant/tenant.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { User } from '../users/users.entity';
 import { LimitesService } from '../suscripciones/limites.service';
+import { EmitirECFUseCase } from '../ecf/use-cases/emitir-ecf.use-case';
+import { DocumentoOrigenTipo } from '../ecf/entities/ecf.entity';
 
 @Injectable()
 export class FacturasService {
+  private readonly logger = new Logger(FacturasService.name);
+
   constructor(
     @InjectRepository(Factura)
     private facturaRepository: Repository<Factura>,
     @InjectRepository(FacturaDetalle)
     private detalleRepository: Repository<FacturaDetalle>,
-    private clientesService: ClientesService,
-    private productosService: ProductosService,
+    private clientesService:  ClientesService,
+    private productosService:  ProductosService,
     private inventarioService: InventarioService,
-    private ecfService: ECFService,
-    private cxcService: CxCService,
-    private asientosService: AsientosAutomaticosService,
-    private tenantService: TenantService,
-    private realtimeService: RealtimeService,
-    private limitesService: LimitesService,
+    private ecfService:        ECFService,
+    private cxcService:        CxCService,
+    private asientosService:   AsientosAutomaticosService,
+    private tenantService:     TenantService,
+    private realtimeService:   RealtimeService,
+    private limitesService:    LimitesService,
+    private emitirECFUseCase:  EmitirECFUseCase,
   ) {}
 
   private async generarFolio(): Promise<string> {
@@ -170,7 +176,11 @@ export class FacturasService {
     return /efectivo|tarjeta|transferencia|cheque|pos\s*·/.test(n);
   }
 
-  async cambiarEstado(id: number, estado: FacturaEstado) {
+  /**
+   * @param modoSincrono  true = POS (timeout 8s, fallo no bloquea);
+   *                      false = regular (async, 30s)
+   */
+  async cambiarEstado(id: number, estado: FacturaEstado, modoSincrono = false) {
     const factura = await this.findOne(id);
 
     const transiciones: Record<FacturaEstado, FacturaEstado[]> = {
@@ -189,8 +199,25 @@ export class FacturasService {
     if (estado === FacturaEstado.EMITIDA) {
       const pagoInmediato = this.esPagoInmediato(factura.notas);
 
-      // 1. Generar e-CF (fallo no bloquea emisión)
-      await this.ecfService.generarECF(factura, factura.usuarioId);
+      // 1. Emitir e-CF con MSeller (fallo nunca bloquea la emisión de la factura)
+      const tipoEcfNum = parseInt(
+        (factura.tipoNcf ?? 'E32').replace('E', ''),
+        10,
+      );
+      this.emitirECFUseCase
+        .execute({
+          empresaId:           factura.empresaId,
+          documentoOrigenTipo: DocumentoOrigenTipo.FACTURA,
+          documentoOrigenId:   factura.id,
+          tipoEcf:             tipoEcfNum,
+          modoSincrono,
+        })
+        .catch(err =>
+          this.logger.warn(
+            `e-CF no procesado para factura ${factura.folio} [${err?.code ?? err?.message}]. ` +
+            `El comprobante quedará en PENDIENTE_ENVIO para reintento automático.`,
+          ),
+        );
 
       // 2. Salida de inventario
       for (const detalle of factura.detalles) {
