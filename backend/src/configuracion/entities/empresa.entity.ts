@@ -96,4 +96,25 @@ export class Empresa extends BaseEntity {
 
   @Column({ length: 50, nullable: true, default: 'America/Santo_Domingo' })
   zonaHoraria?: string;
+
+  // ── Campos extendidos (migración 2026-05) ──────────────────────────────────
+
+  @Column({ length: 50, nullable: true })
+  tipoSociedad?: string;
+
+  @Column({ length: 13, nullable: true })
+  cedulaRepresentante?: string;
+
+  @Column({ length: 200, nullable: true })
+  direccion2?: string;
+
+  @Column({ length: 20, nullable: true })
+  telefonoSecundario?: string;
+
+  @Column({ type: 'text', nullable: true })
+  favicon?: string;
+
+  /** JSONB libre para branding, facturación, POS, notificaciones, seguridad */
+  @Column({ type: 'jsonb', nullable: true, default: {} })
+  configuracion?: Record<string, unknown>;
 }

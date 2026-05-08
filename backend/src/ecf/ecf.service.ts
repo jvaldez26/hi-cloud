@@ -624,8 +624,36 @@ export class ECFService implements OnModuleInit {
 
   async getXML(numero: string): Promise<string> {
     const ecf = await this.getECFByNumero(numero);
-    if (!ecf.xml) throw new NotFoundException(`XML del e-CF ${numero} aún no generado`);
-    return ecf.xml;
+
+    // El nuevo flujo (EmitirECFUseCase / MSeller JSON) no genera XML local.
+    // Si hay XML guardado, devolverlo.
+    if (ecf.xml) return ecf.xml;
+
+    // Si fue rechazado por MSeller, devolver el JSON enviado como texto
+    // para que el usuario pueda inspeccionarlo.
+    if (ecf.estadoDGII === EstadoDGII.RECHAZADO && ecf.jsonEnviado) {
+      const jsonStr = typeof ecf.jsonEnviado === 'string'
+        ? ecf.jsonEnviado
+        : JSON.stringify(ecf.jsonEnviado, null, 2);
+
+      const motivo = (ecf.respuestaMSeller as any)?.detalle ?? 'Sin detalle de rechazo';
+      return `<!-- e-CF RECHAZADO — No se generó XML firmado
+     Motivo: ${motivo}
+     Estado: ${ecf.estadoDGII}
+     Error: ${ecf.errorEnvio ?? 'N/A'}
+     Fecha último intento: ${ecf.ultimoIntentoEnvio?.toISOString() ?? 'N/A'}
+-->
+
+<!-- JSON enviado a MSeller (para diagnóstico): -->
+${jsonStr}`;
+    }
+
+    // Pendiente de envío / en proceso
+    throw new NotFoundException(
+      `XML del e-CF ${numero} no disponible. ` +
+      `Estado: ${ecf.estadoDGII}. ` +
+      (ecf.errorEnvio ? `Error: ${ecf.errorEnvio}` : 'El documento está pendiente de envío.'),
+    );
   }
 
   async actualizarEstadoDGII(numero: string, dto: UpdateEstadoECFDto): Promise<ECF> {

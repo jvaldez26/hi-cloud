@@ -177,9 +177,9 @@ export class InventarioService {
   // Consultas
   // ──────────────────────────────────────────────────────────
 
-  async getMovimientos(pagination: PaginationDto) {
+  async getMovimientos(pagination: PaginationDto & { tipo?: string; desde?: string; hasta?: string }) {
     const empresaId = this.tenantService.getEmpresaId();
-    const { limit = 10, page = 1, search } = pagination;
+    const { limit = 10, page = 1, search, tipo, desde, hasta } = pagination;
 
     const qb = this.movimientoRepository
       .createQueryBuilder('m')
@@ -194,11 +194,14 @@ export class InventarioService {
         { s: `%${search}%` },
       );
     }
+    if (tipo)  qb.andWhere('m.tipo = :tipo', { tipo });
+    if (desde) qb.andWhere('m.createdAt >= :desde', { desde });
+    if (hasta) qb.andWhere('m.createdAt <= :hasta', { hasta: `${hasta} 23:59:59` });
 
     const [data, total] = await qb
       .orderBy('m.createdAt', 'DESC')
       .skip((page - 1) * limit)
-      .take(limit)
+      .take(Math.min(limit, 100))
       .getManyAndCount();
 
     return {

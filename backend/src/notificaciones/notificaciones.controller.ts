@@ -47,10 +47,16 @@ export class NotificacionesController {
   @Post('disparar/:tipo')
   @HttpCode(HttpStatus.OK)
   @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Disparar notificación manualmente (cxc | cxp | stock | ecf | resumen)' })
-  @ApiParam({ name: 'tipo', enum: ['cxc', 'cxp', 'stock', 'ecf', 'resumen'] })
-  disparar(@Param('tipo') tipo: 'cxc' | 'cxp' | 'stock' | 'ecf' | 'resumen') {
-    return this.notificacionesService.disparar(tipo);
+  @ApiOperation({ summary: 'Disparar notificación manualmente (cxc | cxp | stock | ecf | resumen | recordatorios-clientes)' })
+  @ApiParam({ name: 'tipo', enum: ['cxc', 'cxp', 'stock', 'ecf', 'resumen', 'recordatorios-clientes'] })
+  disparar(@Param('tipo') tipo: 'cxc' | 'cxp' | 'stock' | 'ecf' | 'resumen' | 'recordatorios-clientes' | 'resumen-empresas') {
+    if (tipo === 'recordatorios-clientes') {
+      return this.notificacionesService.cronRecordatoriosClientesCxC().then(v => ({ enviados: v ?? 0 }));
+    }
+    if (tipo === 'resumen-empresas') {
+      return this.notificacionesService.cronResumenSemanalPorEmpresa().then(() => ({ ok: true }));
+    }
+    return this.notificacionesService.disparar(tipo as any);
   }
 
   @Post('factura/:id/enviar')
@@ -84,5 +90,71 @@ export class NotificacionesController {
     @Body() body: { email: string },
   ) {
     return this.notificacionesService.enviarEstadoCuenta(id, body.email);
+  }
+
+  @Post('cotizacion/:id/enviar')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Enviar cotización por email al cliente' })
+  enviarCotizacion(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { email: string; asunto?: string },
+  ) {
+    return this.notificacionesService.enviarCotizacionAlCliente(id, body.email, body.asunto);
+  }
+
+  @Post('recibo/:id/enviar')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Enviar recibo de cobro por email al cliente' })
+  enviarRecibo(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { email: string },
+  ) {
+    return this.notificacionesService.enviarReciboAlCliente(id, body.email);
+  }
+
+  @Post('compra/:id/enviar')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Enviar orden de compra por email al proveedor' })
+  enviarCompra(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { email: string },
+  ) {
+    return this.notificacionesService.enviarCompraAlProveedor(id, body.email);
+  }
+
+  @Post('nota-credito/:id/enviar')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Enviar nota de crédito por email al cliente' })
+  enviarNotaCredito(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { email: string },
+  ) {
+    return this.notificacionesService.enviarNotaCreditoAlCliente(id, body.email);
+  }
+
+  @Post('nota-debito/:id/enviar')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Enviar nota de débito por email al cliente' })
+  enviarNotaDebito(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { email: string },
+  ) {
+    return this.notificacionesService.enviarNotaDebitoAlCliente(id, body.email);
+  }
+
+  @Post('pre-factura/:id/enviar')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Enviar pre-factura (proforma) por email al cliente' })
+  enviarPreFactura(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { email: string },
+  ) {
+    return this.notificacionesService.enviarPreFacturaAlCliente(id, body.email);
   }
 }

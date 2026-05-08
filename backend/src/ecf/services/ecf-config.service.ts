@@ -54,7 +54,24 @@ export class EcfConfigService {
 
   async crear(dto: CreateEmpresaEcfConfigDto): Promise<EmpresaEcfConfig> {
     const exists = await this.configRepo.findOne({ where: { empresaId: dto.empresaId } });
-    if (exists) throw new ConflictException(`La empresa #${dto.empresaId} ya tiene configuración e-CF`);
+    // Upsert: si ya existe la config, actualizar en lugar de lanzar 409
+    if (exists) {
+      this.logger.log(`Empresa #${dto.empresaId} ya tiene config e-CF — haciendo upsert`);
+      const updateDto: UpdateEmpresaEcfConfigDto = {
+        msellerEmail:      dto.msellerEmail,
+        msellerPassword:   dto.msellerPassword,
+        msellerApiKey:     dto.msellerApiKey,
+        msellerUrlBase:    dto.msellerUrlBase,
+        modo:              dto.modo,
+        rncEmisor:         dto.rncEmisor,
+        razonSocialEmisor: dto.razonSocialEmisor,
+        nombreComercial:   dto.nombreComercial,
+        direccionEmisor:   dto.direccionEmisor,
+        municipio:         dto.municipio,
+        provincia:         dto.provincia,
+      };
+      return this.actualizar(dto.empresaId, updateDto);
+    }
 
     this.validarRangoFechaVencimiento(dto.msellerPassword);   // placeholder — reusamos el helper abajo
 

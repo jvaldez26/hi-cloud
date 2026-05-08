@@ -13,7 +13,9 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { NominaService } from './nomina.service';
 import { NominaCalculosService } from './services/nomina-calculos.service';
@@ -171,6 +173,20 @@ export class NominaController {
     @Param('empleadoId', ParseIntPipe) empleadoId: number,
   ) {
     return this.nominaService.getReciboEmpleado(periodoId, empleadoId);
+  }
+
+  @Get('periodos/:periodoId/recibo/:empleadoId/pdf')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Descargar Recibo de Sueldo en PDF (Puppeteer)' })
+  async getReciboPdf(
+    @Param('periodoId',  ParseIntPipe) periodoId:  number,
+    @Param('empleadoId', ParseIntPipe) empleadoId: number,
+    @Res() res: Response,
+  ) {
+    const data  = await this.nominaService.getReciboEmpleado(periodoId, empleadoId);
+    const { buffer, filename } = await this.nominaService.generarReciboPdf(data);
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${filename}"` });
+    res.send(buffer);
   }
 
   @Patch('periodos/:id/procesar')

@@ -1,9 +1,13 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 
 @Entity('sesiones_capacitacion')
 export class SesionCapacitacion {
   @PrimaryGeneratedColumn()
   id: number;
+
+  @Index()
+  @Column({ nullable: true })
+  empresaId?: number;
 
   @Column()
   cursoId: number;

@@ -23,6 +23,8 @@ import { EcfEncryptionService } from './ecf-encryption.service';
 import { EcfConfigService } from './ecf-config.service';
 import { ECFBuilderService } from './ecf-builder.service';
 import { ModoEcf } from '../entities/empresa-ecf-config.entity';
+import { EcfValidacionError } from '../errors/ecf.errors';
+import { of, throwError } from 'rxjs';
 
 const {
   MSELLER_TEST_EMAIL,
@@ -253,7 +255,7 @@ describe('MSellerClientService — unitarios', () => {
   });
 
   it('autentica y cachea el token', async () => {
-    const { of } = await import('rxjs');
+    
     (httpService.post as jest.Mock).mockReturnValueOnce(
       of({ data: { idToken: 'token-test', accessToken: 'at', refreshToken: 'rt' } }),
     );
@@ -268,7 +270,7 @@ describe('MSellerClientService — unitarios', () => {
   });
 
   it('invalida el token correctamente', async () => {
-    const { of } = await import('rxjs');
+    
     (httpService.post as jest.Mock).mockReturnValue(
       of({ data: { idToken: 'token-nuevo', accessToken: 'at', refreshToken: 'rt' } }),
     );
@@ -281,23 +283,20 @@ describe('MSellerClientService — unitarios', () => {
   });
 
   it('EcfValidacionError en respuesta 4xx (no reintentable)', async () => {
-    const { EcfValidacionError } = await import('../errors/ecf.errors');
-    const { throwError, of } = await import('rxjs');
 
-    // Auth mock
-    (httpService.post as jest.Mock).mockReturnValueOnce(
-      of({ data: { idToken: 'tok', accessToken: 'at', refreshToken: 'rt' } }),
-    );
-    // Envío → 400
-    (httpService.post as jest.Mock).mockReturnValueOnce(
-      throwError(() => ({
-        response: { status: 400, data: { message: 'TipoeCF inválido', code: 'ECF_VALIDATION_FAILED' } },
-      })),
-    );
+    // Auth → éxito; todas las llamadas siguientes → 400 (no reintentable)
+    (httpService.post as jest.Mock)
+      .mockReturnValueOnce(of({ data: { idToken: 'tok', accessToken: 'at', refreshToken: 'rt' } }))
+      .mockReturnValue(
+        throwError(() => ({
+          response: { status: 400, data: { message: 'TipoeCF inválido', code: 'ECF_VALIDATION_FAILED' } },
+        })),
+      );
 
-    const payload = {} as any;
+    // Payload mínimo válido para que el logger no falle antes de llegar al HTTP call
+    const payload = { ECF: { Encabezado: { IdDoc: { eNCF: 'E320000000001' } } } } as any;
     await expect(service.enviarDocumento(payload, 1)).rejects.toThrow(EcfValidacionError);
     // Solo 2 llamadas HTTP (auth + envío), sin reintentos
     expect(httpService.post).toHaveBeenCalledTimes(2);
-  });
+  }, 15_000);
 });

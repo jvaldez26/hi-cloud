@@ -33,8 +33,12 @@ export enum EstadoDGII {
 
 /** Tipo de documento origen que generó este e-CF. */
 export enum DocumentoOrigenTipo {
-  FACTURA   = 'FACTURA',
-  VENTA_POS = 'VENTA_POS',
+  FACTURA      = 'FACTURA',
+  VENTA_POS    = 'VENTA_POS',
+  NOTA_DEBITO  = 'NOTA_DEBITO',   // E33
+  NOTA_CREDITO = 'NOTA_CREDITO',  // E34
+  COMPRA       = 'COMPRA',        // E41
+  GASTO        = 'GASTO',         // E43
 }
 
 @Entity('ecf')
@@ -174,4 +178,38 @@ export class ECF extends BaseEntity {
 
   @Column({ type: 'decimal', precision: 18, scale: 2, nullable: true })
   montoTotal?: number;
+
+  // ── Campos para E33/E34 (notas de débito/crédito) ─────────────────────────
+
+  /** eNCF del comprobante original que se modifica (E33, E34). */
+  @Column({ length: 13, nullable: true })
+  ncfModificado?: string;
+
+  /** Código de modificación: 1=Anulación, 2=Corrección, 3=Descuento, 4=Devolución (E34). E33 siempre 1. */
+  @Column({ type: 'int', nullable: true })
+  codigoModificacion?: number;
+
+  // ── Campos para E46/E47 (exportaciones y pagos al exterior) ───────────────
+
+  /** Tipo de exportación: 1=Bienes, 2=Servicios (E46). */
+  @Column({ length: 5, nullable: true })
+  tipoExportacion?: string;
+
+  /** Código de moneda extranjera: USD, EUR, etc. (E46, E47). */
+  @Column({ length: 3, nullable: true })
+  monedaExtranjera?: string;
+
+  /** Tipo de cambio aplicado al momento de emisión (E46, E47). */
+  @Column({ type: 'decimal', precision: 12, scale: 4, nullable: true })
+  tipoCambio?: number;
+
+  // ── Campos para retenciones ───────────────────────────────────────────────
+
+  /** Monto retenido de ISR (E47: 27% sobre pagos al exterior). */
+  @Column({ type: 'decimal', precision: 18, scale: 2, nullable: true })
+  montoRetencionIsr?: number;
+
+  /** Monto retenido de ITBIS (E41: 30% del ITBIS en compras con retención). */
+  @Column({ type: 'decimal', precision: 18, scale: 2, nullable: true })
+  montoRetencionItbis?: number;
 }

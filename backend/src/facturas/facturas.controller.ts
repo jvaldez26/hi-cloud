@@ -26,16 +26,54 @@ import { GetUser } from '../auth/decorators/get-user.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
 import { User } from '../users/users.entity';
 import { FacturaEstado } from './entities/factura.entity';
-import { IsEnum } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsInt, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+
+class FacturasFilterDto extends PaginationDto {
+  @IsOptional() @IsString()
+  estado?: string;
+
+  @IsOptional() @IsString()
+  desde?: string;
+
+  @IsOptional() @IsString()
+  hasta?: string;
+
+  @IsOptional() @IsInt() @Type(() => Number)
+  clienteId?: number;
+}
 
 class CambiarEstadoDto {
   @IsEnum(FacturaEstado)
   estado: FacturaEstado;
 }
 
+class DatosCompradorPosDto {
+  @IsOptional() @IsString()
+  rnc?: string;
+
+  @IsOptional() @IsString()
+  cedula?: string;
+
+  @IsOptional() @IsString()
+  razonSocial?: string;
+
+  @IsOptional() @IsString()
+  direccion?: string;
+
+  @IsOptional() @IsString()
+  numeroOrdenCompra?: string;
+}
+
 class EmitirDesdePos {
   @IsEnum(FacturaEstado)
   estado: FacturaEstado;
+
+  @IsOptional() @IsInt() @Type(() => Number)
+  tipoEcf?: number;
+
+  @IsOptional() @ValidateNested() @Type(() => DatosCompradorPosDto)
+  datosComprador?: DatosCompradorPosDto;
 }
 
 @ApiTags('Facturas')
@@ -57,8 +95,8 @@ export class FacturasController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Listar facturas con paginación' })
-  findAll(@Query() pagination: PaginationDto) {
+  @ApiOperation({ summary: 'Listar facturas con paginación y filtros' })
+  findAll(@Query() pagination: FacturasFilterDto) {
     return this.facturasService.findAll(pagination);
   }
 
@@ -99,7 +137,13 @@ export class FacturasController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: EmitirDesdePos,
   ) {
-    return this.facturasService.cambiarEstado(id, dto.estado, true);
+    return this.facturasService.cambiarEstado(
+      id,
+      dto.estado,
+      true,
+      dto.tipoEcf,
+      dto.datosComprador,
+    );
   }
 
   @Delete(':id')

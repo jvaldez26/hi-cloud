@@ -29,36 +29,39 @@ export class DatafonoService {
     private tenantService: TenantService,
   ) {}
 
+  private get eid(): number { return this.tenantService.getEmpresaId(); }
+
   // ─── Terminales ─────────────────────────────────────────────────────────────
 
   listarTerminales() {
-    return this.terminalRepo.find({ where: { activo: true }, order: { banco: 'ASC' } });
+    return this.terminalRepo.find({ where: { empresaId: this.eid, activo: true }, order: { banco: 'ASC' } });
   }
 
   crearTerminal(dto: CreateTerminalDto) {
-    return this.terminalRepo.save(this.terminalRepo.create(dto));
+    return this.terminalRepo.save(this.terminalRepo.create({ ...dto, empresaId: this.eid }));
   }
 
   async actualizarTerminal(id: number, dto: Partial<CreateTerminalDto>) {
-    await this.terminalRepo.update(id, dto);
-    return this.terminalRepo.findOneByOrFail({ id });
+    await this.terminalRepo.update({ id, empresaId: this.eid }, dto);
+    return this.terminalRepo.findOneByOrFail({ id, empresaId: this.eid });
   }
 
   async eliminarTerminal(id: number) {
-    await this.terminalRepo.update(id, { activo: false });
+    await this.terminalRepo.update({ id, empresaId: this.eid }, { activo: false });
   }
 
   // ─── Transacciones ───────────────────────────────────────────────────────────
 
   listarTransacciones(terminalId?: number, desde?: string, hasta?: string) {
-    const where: any = {};
+    const where: any = { empresaId: this.eid };
     if (terminalId) where.terminalId = terminalId;
     if (desde && hasta) where.fecha = Between(desde, hasta);
     return this.transaccionRepo.find({ where, order: { fecha: 'DESC', createdAt: 'DESC' } });
   }
 
   async crearTransaccion(dto: CreateTransaccionDto) {
-    const terminal = await this.terminalRepo.findOneBy({ id: dto.terminalId });
+    const eid      = this.eid;
+    const terminal = await this.terminalRepo.findOneBy({ id: dto.terminalId, empresaId: eid });
     if (!terminal) throw new NotFoundException('Terminal no encontrada');
 
     const monto    = Number(dto.monto);
@@ -66,20 +69,22 @@ export class DatafonoService {
     const neto     = +(monto - comision).toFixed(2);
 
     return this.transaccionRepo.save(
-      this.transaccionRepo.create({ ...dto, comision, neto }),
+      this.transaccionRepo.create({ ...dto, comision, neto, empresaId: eid }),
     );
   }
 
   // ─── Conciliaciones ──────────────────────────────────────────────────────────
 
   listarConciliaciones() {
-    return this.conciliacionRepo.find({ order: { fechaDesde: 'DESC' } });
+    return this.conciliacionRepo.find({ where: { empresaId: this.eid }, order: { fechaDesde: 'DESC' } });
   }
 
   async crearConciliacion(dto: CreateConciliacionDto) {
+    const eid           = this.eid;
     const transacciones = await this.transaccionRepo.find({
       where: {
         terminalId: dto.terminalId,
+        empresaId:  eid,
         fecha:      Between(dto.fechaDesde, dto.fechaHasta) as any,
         estado:     EstadoTransaccion.PENDIENTE,
       },
@@ -92,6 +97,7 @@ export class DatafonoService {
     const conc = await this.conciliacionRepo.save(
       this.conciliacionRepo.create({
         ...dto,
+        empresaId:             eid,
         totalBruto:            +totalBruto.toFixed(2),
         totalComisiones:       +totalComisiones.toFixed(2),
         totalNeto:             +totalNeto.toFixed(2),

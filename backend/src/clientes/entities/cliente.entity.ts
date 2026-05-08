@@ -2,10 +2,12 @@ import { Entity, Column, Index } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 
 export enum TipoClienteECF {
-  PERSONA_JURIDICA = 'persona_juridica',
-  PERSONA_FISICA   = 'persona_fisica',
-  CONSUMIDOR_FINAL = 'consumidor_final',
-  EXTRANJERO       = 'extranjero',
+  PERSONA_JURIDICA  = 'persona_juridica',   // E31
+  PERSONA_FISICA    = 'persona_fisica',     // E31 (con RNC/cédula)
+  CONSUMIDOR_FINAL  = 'consumidor_final',   // E32
+  EXTRANJERO        = 'extranjero',         // E46
+  REGIMEN_ESPECIAL  = 'regimen_especial',   // E44 (zonas francas)
+  GUBERNAMENTAL     = 'gubernamental',      // E45 (entidades gobierno)
 }
 
 @Entity('clientes')

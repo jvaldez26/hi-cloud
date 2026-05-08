@@ -7,9 +7,13 @@ import { EcfEvento, TipoEcfEvento } from '../entities/ecf-evento.entity';
 import { SecuenciaECF } from '../entities/secuencia-ecf.entity';
 import { EmpresaEcfConfig } from '../entities/empresa-ecf-config.entity';
 import { Factura } from '../../facturas/entities/factura.entity';
+import { NotaDebito } from '../../notas-debito/entities/nota-debito.entity';
+import { NotaCredito } from '../../notas-credito/entities/nota-credito.entity';
+import { Compra } from '../../compras/entities/compra.entity';
+import { Gasto } from '../../gastos/entities/gasto.entity';
 
 import { ENCFGeneratorService } from '../services/encf-generator.service';
-import { ECFBuilderService, ECFBuildInput } from '../services/ecf-builder.service';
+import { ECFBuilderService, ECFBuildInput, MSellerInfoReferencia, MSellerOtraMoneda, MSellerPayload } from '../services/ecf-builder.service';
 import { MSellerClientService } from '../services/mseller-client.service';
 import { EcfConfigService } from '../services/ecf-config.service';
 
@@ -19,17 +23,42 @@ import {
   EcfRncRequeridoError,
   EcfComunicacionError,
   EcfValidacionError,
+  EcfNcfReferenciadoError,
+  EcfMontoAnulacionError,
 } from '../errors/ecf.errors';
 
 const TIMEOUT_POS      = 8_000;
 const TIMEOUT_REGULAR  = 30_000;
 
+function fmtFechaEcf(d: Date | string | undefined): string {
+  if (!d) return '';
+  const dt = d instanceof Date ? d : new Date(d);
+  const dd = String(dt.getDate()).padStart(2, '0');
+  const mm = String(dt.getMonth() + 1).padStart(2, '0');
+  return `${dd}-${mm}-${dt.getFullYear()}`;
+}
+
+export interface DatosCompradorECF {
+  rnc?:               string;
+  cedula?:            string;
+  razonSocial?:       string;
+  direccion?:         string;
+  numeroOrdenCompra?: string;
+}
+
 export interface EmitirECFInput {
   empresaId:           number;
   documentoOrigenTipo: DocumentoOrigenTipo;
   documentoOrigenId:   number;
-  tipoEcf:             number;   // 31 | 32 | …
+  tipoEcf:             number;   // 31 | 32 | 33 | 34 | 41 | 43 | 44 | 45 | 46 | 47
   modoSincrono?:       boolean;  // true = POS (timeout 8s)
+  datosComprador?:     DatosCompradorECF;   // POS: datos capturados en el momento de la venta
+  // Campos requeridos/opcionales según el tipo de e-CF
+  infoReferencia?:  MSellerInfoReferencia;  // E33/E34: puede ser auto-resuelto si no se provee
+  otraMoneda?:      MSellerOtraMoneda;      // E46, E47
+  retencionISR?:    number;                  // E47: % ISR (default 27)
+  tipoVenta?:       number;                  // E46
+  tipoExportacion?: number;                  // E46
 }
 
 export interface EmitirECFResult {
@@ -76,6 +105,18 @@ export class EmitirECFUseCase {
     @InjectRepository(Factura)
     private readonly facturaRepo: Repository<Factura>,
 
+    @InjectRepository(NotaDebito)
+    private readonly notaDebitoRepo: Repository<NotaDebito>,
+
+    @InjectRepository(NotaCredito)
+    private readonly notaCreditoRepo: Repository<NotaCredito>,
+
+    @InjectRepository(Compra)
+    private readonly compraRepo: Repository<Compra>,
+
+    @InjectRepository(Gasto)
+    private readonly gastoRepo: Repository<Gasto>,
+
     private readonly generator:  ENCFGeneratorService,
     private readonly builder:    ECFBuilderService,
     private readonly mseller:    MSellerClientService,
@@ -84,7 +125,11 @@ export class EmitirECFUseCase {
   ) {}
 
   async execute(input: EmitirECFInput): Promise<EmitirECFResult> {
-    const { empresaId, documentoOrigenTipo, documentoOrigenId, tipoEcf, modoSincrono } = input;
+    const {
+      empresaId, documentoOrigenTipo, documentoOrigenId, tipoEcf, modoSincrono,
+      datosComprador,
+      infoReferencia: infoRefInput, otraMoneda, retencionISR, tipoVenta, tipoExportacion,
+    } = input;
     const timeout = modoSincrono ? TIMEOUT_POS : TIMEOUT_REGULAR;
 
     this.logger.log(
@@ -124,6 +169,18 @@ export class EmitirECFUseCase {
       }),
     ]);
 
+    // Merge datos del comprador capturados en POS (sobrescriben al cliente guardado)
+    if (datosComprador) {
+      const f = factura as any;
+      f.cliente = {
+        ...(f.cliente ?? {}),
+        ...(datosComprador.rnc         ? { rncReceptor: datosComprador.rnc }          : {}),
+        ...(datosComprador.razonSocial ? { nombre:      datosComprador.razonSocial }   : {}),
+        ...(datosComprador.direccion   ? { direccion:   datosComprador.direccion }     : {}),
+        ...(datosComprador.numeroOrdenCompra ? { numeroOrdenCompra: datosComprador.numeroOrdenCompra } : {}),
+      };
+    }
+
     if (!config) throw new EcfConfigFaltanteError(empresaId);
     if (!config.rncEmisor || !config.razonSocialEmisor) {
       throw new BadRequestException(
@@ -149,14 +206,58 @@ export class EmitirECFUseCase {
     const encf = await this.generator.generateNext(empresaId, tipoEcf);
     this.logger.log(`eNCF generado: ${encf}`);
 
-    // ── 4. CONSTRUIR PAYLOAD JSON ─────────────────────────────────────────────
-    let payload: ReturnType<typeof this.builder.build>;
+    // ── 4. RESOLVER infoReferencia para E33/E34 ──────────────────────────────
+    let infoReferencia = infoRefInput;
+    if ((tipoEcf === 33 || tipoEcf === 34) && !infoReferencia) {
+      // Auto-resolver desde la nota: busca el ECF aceptado de la factura original
+      const nota = factura as unknown as (NotaDebito | NotaCredito);
+      const facturaOrigId = (nota as any).facturaOriginalId as number | undefined;
+      if (!facturaOrigId) {
+        throw new BadRequestException(
+          `La nota #${documentoOrigenId} no tiene factura original asociada. ` +
+          `Proporcione infoReferencia manualmente.`,
+        );
+      }
+      const ecfOriginal = await this.ecfRepo.findOne({
+        where: { facturaId: facturaOrigId, estadoDGII: EstadoDGII.ACEPTADO, empresaId },
+        order: { createdAt: 'DESC' },
+      });
+      if (!ecfOriginal) throw new EcfNcfReferenciadoError(facturaOrigId);
+
+      const facturaOrig = await this.facturaRepo.findOne({ where: { id: facturaOrigId, empresaId } });
+
+      // Validación E34 código 1 (anulación total): monto debe coincidir
+      if (tipoEcf === 34 && (infoRefInput?.CodigoModificacion === '1' || !infoRefInput)) {
+        const montoNota = Number((nota as any).total);
+        const montoOrig = Number(facturaOrig?.total ?? ecfOriginal.montoTotal ?? 0);
+        if (montoNota > montoOrig) {
+          throw new BadRequestException(
+            `El monto de la nota de crédito (${montoNota}) no puede superar el monto original (${montoOrig}).`,
+          );
+        }
+      }
+
+      infoReferencia = {
+        NCFModificado:      ecfOriginal.numero,
+        FechaNCFModificado: fmtFechaEcf(ecfOriginal.fechaUso ?? ecfOriginal.createdAt),
+        // E33: "3" = corrección de montos (debit note). E34: "3" por defecto; caller puede overridear vía infoRefInput
+        CodigoModificacion: '3',
+      };
+    }
+
+    // ── 5. CONSTRUIR PAYLOAD JSON ─────────────────────────────────────────────
+    let payload: MSellerPayload;
     try {
       const buildInput: ECFBuildInput = {
         encf,
-        factura: factura as Factura,
+        factura:          factura as Factura,
         config,
         fechaVencSec,
+        infoReferencia,
+        otraMoneda,
+        retencionISR,
+        tipoVenta,
+        tipoExportacion,
       };
       payload = this.builder.build(tipoEcf, buildInput);
     } catch (err) {
@@ -192,9 +293,14 @@ export class EmitirECFUseCase {
       montoTotal,
       jsonEnviado:         payload as unknown as Record<string, unknown>,
       intentosEnvio:       0,
-    });
+      // Campos específicos por tipo
+      ...(infoReferencia ? {
+        ncfModificado:      infoReferencia.NCFModificado,
+        codigoModificacion: infoReferencia.CodigoModificacion,
+      } : {}),
+    } as any);
 
-    const ecfSaved = await this.ecfRepo.save(ecfRecord);
+    const ecfSaved = await this.ecfRepo.save(ecfRecord) as unknown as ECF;
     await this.registrarEvento(ecfSaved.id, TipoEcfEvento.CREADO, {
       encf, tipoEcf, documentoOrigenTipo, documentoOrigenId,
     });
@@ -233,13 +339,24 @@ export class EmitirECFUseCase {
     } catch (err) {
       // ── Errores de validación MSeller (4xx) → RECHAZADO ──────────────────
       if (err instanceof EcfValidacionError) {
+        // Guardamos el JSON enviado en el campo `xml` para diagnóstico.
+        // Cuando MSeller rechaza en 4xx nunca genera XML firmado, así que
+        // usamos este campo para mostrar información útil en "Ver XML".
+        const xmlDiag = `<!-- e-CF RECHAZADO POR MSELLER [${(err as any).statusCode}]
+   Motivo: ${(err as any).detalle}
+   Fecha: ${new Date().toISOString()}
+-->
+<!-- JSON enviado a MSeller (para diagnóstico): -->
+${JSON.stringify(payload, null, 2)}`;
+
         await this.ecfRepo.update(ecfSaved.id, {
           estadoDGII:    EstadoDGII.RECHAZADO,
           errorEnvio:    err.message,
+          xml:           xmlDiag,
           intentosEnvio: 1,
           ultimoIntentoEnvio: new Date(),
-          respuestaMSeller: { status: err.statusCode, detalle: err.detalle, errores: err.erroresValidacion } as any,
-        });
+          respuestaMSeller: { status: (err as any).statusCode, detalle: (err as any).detalle, errores: (err as any).erroresValidacion } as any,
+        } as any);
         await this.registrarEvento(ecfSaved.id, TipoEcfEvento.ERROR, {
           tipo: 'VALIDACION', statusCode: err.statusCode, detalle: err.detalle,
         }, err.message);
@@ -293,7 +410,89 @@ export class EmitirECFUseCase {
       if (!f) throw new NotFoundException(`Factura #${id} no encontrada para empresa #${empresaId}`);
       return f;
     }
-    // VENTA_POS — placeholder; se poblará en Fase 5 con los datos del ticket POS
+
+    if (tipo === DocumentoOrigenTipo.NOTA_DEBITO) {
+      const nota = await this.notaDebitoRepo.findOne({
+        where: { id, empresaId },
+        relations: ['cliente', 'detalles'],
+      });
+      if (!nota) throw new NotFoundException(`Nota de Débito #${id} no encontrada para empresa #${empresaId}`);
+      // Adaptar NotaDebito → forma compatible con Factura (iva→importeIva ya lo maneja buildItemsFromDetalles)
+      return {
+        ...nota,
+        // Exponer iva como campo estándar
+        iva: nota.iva,
+      } as unknown as Factura;
+    }
+
+    if (tipo === DocumentoOrigenTipo.NOTA_CREDITO) {
+      const nota = await this.notaCreditoRepo.findOne({
+        where: { id, empresaId },
+        relations: ['cliente', 'detalles'],
+      });
+      if (!nota) throw new NotFoundException(`Nota de Crédito #${id} no encontrada para empresa #${empresaId}`);
+      return {
+        ...nota,
+        iva: nota.iva,
+      } as unknown as Factura;
+    }
+
+    if (tipo === DocumentoOrigenTipo.COMPRA) {
+      const compra = await this.compraRepo.findOne({
+        where: { id, empresaId },
+        relations: ['proveedor', 'detalles'],
+      });
+      if (!compra) throw new NotFoundException(`Compra #${id} no encontrada para empresa #${empresaId}`);
+
+      // Adaptar Compra → forma compatible con Factura
+      // Proveedor → posición de "cliente" para que el builder lo use como Comprador
+      // porcentajeItbis/importeItbis → porcentajeIva/importeIva
+      return {
+        ...compra,
+        cliente: {
+          id:          compra.proveedor?.id,
+          nombre:      compra.proveedor?.nombre,
+          rncReceptor: compra.proveedor?.rnc,   // Proveedor.rnc → rncReceptor
+          direccion:   compra.proveedor?.direccion,
+        },
+        detalles: (compra.detalles ?? []).map(d => ({
+          ...d,
+          porcentajeIva: (d as any).porcentajeItbis,
+          importeIva:    (d as any).importeItbis,
+        })),
+        iva:      compra.itbis,
+        subtotal: compra.subtotal,
+        total:    compra.total,
+        fecha:    compra.fecha,
+      } as unknown as Factura;
+    }
+
+    if (tipo === DocumentoOrigenTipo.GASTO) {
+      const gasto = await this.gastoRepo.findOne({ where: { id, empresaId } });
+      if (!gasto) throw new NotFoundException(`Gasto #${id} no encontrado para empresa #${empresaId}`);
+
+      // Gastos menores: sin array de detalles → crear ítem sintético exento
+      return {
+        fecha:    gasto.fecha,
+        cliente: {
+          rncReceptor: gasto.rncProveedor ?? undefined,
+          nombre:      gasto.proveedor ?? 'Proveedor Informal',
+        },
+        detalles: [{
+          descripcion:    gasto.descripcion,
+          cantidad:       1,
+          precioUnitario: Number(gasto.monto),
+          porcentajeIva:  0,   // gastos menores: exento
+          importeIva:     0,
+          subtotal:       Number(gasto.monto),
+        }],
+        iva:      gasto.itbis ?? 0,
+        subtotal: gasto.monto,
+        total:    gasto.total,
+      } as unknown as Factura;
+    }
+
+    // VENTA_POS — placeholder; se poblará con los datos del ticket POS
     return {
       id,
       total: 0,

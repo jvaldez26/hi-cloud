@@ -20,8 +20,9 @@ import { TenantService } from '../tenant/tenant.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { User } from '../users/users.entity';
 import { LimitesService } from '../suscripciones/limites.service';
-import { EmitirECFUseCase } from '../ecf/use-cases/emitir-ecf.use-case';
+import { EmitirECFUseCase, DatosCompradorECF } from '../ecf/use-cases/emitir-ecf.use-case';
 import { DocumentoOrigenTipo } from '../ecf/entities/ecf.entity';
+import { TipoClienteECF } from '../clientes/entities/cliente.entity';
 
 @Injectable()
 export class FacturasService {
@@ -131,10 +132,15 @@ export class FacturasService {
     return this.findOne(savedFactura.id);
   }
 
-  async findAll(pagination: PaginationDto) {
+  async findAll(pagination: PaginationDto & {
+    estado?: string; desde?: string; hasta?: string; clienteId?: number;
+  }) {
     const empresaId = this.tenantService.getEmpresaId();
-    const { limit = 10, page = 1, search } = pagination;
+    const { limit = 10, page = 1, search, estado, desde, hasta, clienteId } = pagination;
 
+    // La entidad Factura solo tiene `ecfId` como columna plana — sin @ManyToOne.
+    // Cargamos las facturas primero, luego enriquecemos con datos ECF en una
+    // sola consulta adicional (evita el N+1).
     const qb = this.facturaRepository
       .createQueryBuilder('f')
       .leftJoinAndSelect('f.cliente', 'cliente')
@@ -147,15 +153,37 @@ export class FacturasService {
         { s: `%${search}%` },
       );
     }
+    if (estado)    qb.andWhere('f.estado = :estado', { estado });
+    if (clienteId) qb.andWhere('f.clienteId = :clienteId', { clienteId });
+    if (desde)     qb.andWhere('f.fecha >= :desde', { desde });
+    if (hasta)     qb.andWhere('f.fecha <= :hasta', { hasta });
 
     const [data, total] = await qb
-      .orderBy('f.createdAt', 'DESC')
+      .orderBy('f.fecha', 'DESC')
+      .addOrderBy('f.createdAt', 'DESC')
       .skip((page - 1) * limit)
-      .take(limit)
+      .take(Math.min(limit, 100))
       .getManyAndCount();
 
+    // Carga ECF en una sola query usando los IDs conocidos
+    const ecfIds = [...new Set(data.map((f: any) => f.ecfId).filter(Boolean))];
+    let ecfMap: Record<number, any> = {};
+    if (ecfIds.length > 0) {
+      const ecfRows: any[] = await this.facturaRepository.manager.query(
+        `SELECT id, numero, "estadoDGII", "codigoSeguridad"
+         FROM ecf WHERE id = ANY($1)`,
+        [ecfIds],
+      );
+      ecfMap = Object.fromEntries(ecfRows.map(e => [e.id, e]));
+    }
+
+    const enriched = data.map((f: any) => ({
+      ...f,
+      ecf: f.ecfId ? (ecfMap[f.ecfId] ?? null) : null,
+    }));
+
     return {
-      data,
+      data: enriched,
       meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
   }
@@ -177,10 +205,34 @@ export class FacturasService {
   }
 
   /**
-   * @param modoSincrono  true = POS (timeout 8s, fallo no bloquea);
-   *                      false = regular (async, 30s)
+   * Sugiere el tipo de e-CF basado en el tipo de cliente.
+   * Usado en creación de facturas para pre-seleccionar tipoNcf correcto.
    */
-  async cambiarEstado(id: number, estado: FacturaEstado, modoSincrono = false) {
+  static determinarTipoEcf(tipoCliente: TipoClienteECF | string | undefined): string {
+    switch (tipoCliente) {
+      case TipoClienteECF.PERSONA_JURIDICA:  return 'E31';
+      case TipoClienteECF.PERSONA_FISICA:    return 'E31';
+      case TipoClienteECF.CONSUMIDOR_FINAL:  return 'E32';
+      case TipoClienteECF.EXTRANJERO:        return 'E46';
+      case TipoClienteECF.REGIMEN_ESPECIAL:  return 'E44';
+      case TipoClienteECF.GUBERNAMENTAL:     return 'E45';
+      default:                               return 'E32';
+    }
+  }
+
+  /**
+   * @param modoSincrono     true = POS (timeout 8s, fallo devuelve PENDIENTE no lanza);
+   *                         false = regular (async fire-and-forget, 30s)
+   * @param tipoEcfOverride  tipo de e-CF seleccionado en POS (sobreescribe el tipoNcf de la factura)
+   * @param datosComprador   datos del comprador capturados en POS (RNC, razón social, etc.)
+   */
+  async cambiarEstado(
+    id: number,
+    estado: FacturaEstado,
+    modoSincrono = false,
+    tipoEcfOverride?: number,
+    datosComprador?: DatosCompradorECF,
+  ) {
     const factura = await this.findOne(id);
 
     const transiciones: Record<FacturaEstado, FacturaEstado[]> = {
@@ -199,27 +251,31 @@ export class FacturasService {
     if (estado === FacturaEstado.EMITIDA) {
       const pagoInmediato = this.esPagoInmediato(factura.notas);
 
-      // 1. Emitir e-CF con MSeller (fallo nunca bloquea la emisión de la factura)
-      const tipoEcfNum = parseInt(
+      const tipoEcfNum = tipoEcfOverride ?? parseInt(
         (factura.tipoNcf ?? 'E32').replace('E', ''),
         10,
       );
-      this.emitirECFUseCase
-        .execute({
-          empresaId:           factura.empresaId,
-          documentoOrigenTipo: DocumentoOrigenTipo.FACTURA,
-          documentoOrigenId:   factura.id,
-          tipoEcf:             tipoEcfNum,
-          modoSincrono,
-        })
-        .catch(err =>
-          this.logger.warn(
-            `e-CF no procesado para factura ${factura.folio} [${err?.code ?? err?.message}]. ` +
-            `El comprobante quedará en PENDIENTE_ENVIO para reintento automático.`,
-          ),
-        );
 
-      // 2. Salida de inventario
+      // E46 (exportaciones): si la factura está en moneda extranjera, pasar OtraMoneda
+      const otraMoneda = tipoEcfNum === 46 && factura.moneda && factura.moneda !== 'DOP'
+        ? {
+            Moneda:     factura.moneda,
+            TipoCambio: Number(factura.tipoCambio ?? 1),
+            MontoTotal: Number(factura.totalOriginal ?? factura.total),
+          }
+        : undefined;
+
+      const ecfInput = {
+        empresaId:           factura.empresaId,
+        documentoOrigenTipo: DocumentoOrigenTipo.FACTURA,
+        documentoOrigenId:   factura.id,
+        tipoEcf:             tipoEcfNum,
+        modoSincrono,
+        otraMoneda:          otraMoneda as any,
+        datosComprador,
+      };
+
+      // 1. Salida de inventario
       for (const detalle of factura.detalles) {
         await this.inventarioService.registrarSalida(
           detalle.productoId,
@@ -230,13 +286,12 @@ export class FacturasService {
         );
       }
 
-      // 3. CxC — solo si el pago NO es inmediato (efectivo/tarjeta/transferencia/cheque)
-      //    Los pagos inmediatos no generan cuenta por cobrar
+      // 2. CxC — solo si el pago NO es inmediato (efectivo/tarjeta/transferencia/cheque)
       if (!pagoInmediato) {
         await this.cxcService.crear(factura.id, factura.usuarioId);
       }
 
-      // 4. Asiento contable
+      // 3. Asiento contable
       await this.asientosService.asientoFacturaEmitida(
         factura.id,
         Number(factura.total),
@@ -246,12 +301,29 @@ export class FacturasService {
         factura.usuarioId,
       );
 
-      // 5. Si el pago es inmediato → marcar directamente como PAGADA
-      if (pagoInmediato) {
-        await this.facturaRepository.update(id, { estado: FacturaEstado.PAGADA });
-        this.realtimeService.notify(factura.empresaId, 'factura', 'updated', id);
-        return this.findOne(id);
+      // 4. Actualizar estado de la factura
+      const estadoFinal = pagoInmediato ? FacturaEstado.PAGADA : FacturaEstado.EMITIDA;
+      await this.facturaRepository.update(id, { estado: estadoFinal });
+      this.realtimeService.notify(factura.empresaId, 'factura', 'updated', id);
+
+      // 5. Emitir e-CF
+      if (modoSincrono) {
+        // POS: awaitar el e-CF (timeout 8s ya manejado en el use case, nunca lanza)
+        return this.emitirECFUseCase.execute(ecfInput).catch(err => {
+          this.logger.warn(`e-CF POS fallido para ${factura.folio}: ${err?.message}`);
+          return null;
+        });
       }
+
+      // Non-POS: fire-and-forget
+      this.emitirECFUseCase.execute(ecfInput).catch(err =>
+        this.logger.warn(
+          `e-CF no procesado para factura ${factura.folio} [${err?.code ?? err?.message}]. ` +
+          `El comprobante quedará en PENDIENTE_ENVIO para reintento automático.`,
+        ),
+      );
+
+      return this.findOne(id);
     }
 
     if (estado === FacturaEstado.CANCELADA && factura.estado === FacturaEstado.EMITIDA) {

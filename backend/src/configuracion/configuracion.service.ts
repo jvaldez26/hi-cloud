@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
   Logger,
   OnModuleInit,
 } from '@nestjs/common';
@@ -136,12 +137,30 @@ export class ConfiguracionService implements OnModuleInit {
   async updateEmpresa(dto: UpdateEmpresaDto): Promise<Empresa> {
     const empresa = await this.getEmpresa();
 
-    // Solo actualizar columnas que existen en el schema actual de la BD
+    // ── Validación especial para cambio de RNC ─────────────────────────────
+    if (dto.rnc !== undefined && dto.rnc !== empresa.rnc) {
+      // Verificar que el nuevo RNC no esté en uso por otra empresa
+      const rncExistente = await this.empresaRepository.findOne({
+        where: { rnc: dto.rnc, isActive: true },
+      });
+      if (rncExistente && rncExistente.id !== empresa.id) {
+        throw new ConflictException(
+          `El RNC ${dto.rnc} ya está registrado para la empresa "${rncExistente.nombre}". ` +
+          `Cada empresa debe tener un RNC único.`,
+        );
+      }
+      this.logger.warn(
+        `CAMBIO DE RNC | empresa #${empresa.id} "${empresa.nombre}" | ` +
+        `${empresa.rnc} → ${dto.rnc}`,
+      );
+    }
+
     const allowed: (keyof Empresa)[] = [
-      'rnc', 'nombre', 'nombreComercial', 'direccion', 'ciudad',
-      'provincia', 'telefono', 'email', 'sitioWeb', 'logo',
-      'regimenFiscal', 'representanteLegal', 'fechaConstitucion',
-      'actividadEconomica', 'codigoPostal', 'moneda', 'zonaHoraria',
+      'rnc', 'nombre', 'nombreComercial', 'direccion', 'direccion2', 'ciudad',
+      'provincia', 'codigoPostal', 'telefono', 'telefonoSecundario', 'email',
+      'sitioWeb', 'logo', 'favicon', 'sector', 'regimenFiscal', 'tipoSociedad',
+      'representanteLegal', 'cedulaRepresentante', 'fechaConstitucion',
+      'actividadEconomica', 'moneda', 'zonaHoraria',
     ];
 
     const updateData: Partial<Empresa> = {};
@@ -150,11 +169,62 @@ export class ConfiguracionService implements OnModuleInit {
       if (val !== undefined) (updateData as any)[field] = val;
     }
 
+    if (dto.configuracion !== undefined) {
+      updateData.configuracion = {
+        ...(empresa.configuracion ?? {}),
+        ...dto.configuracion,
+      };
+    }
+
     if (Object.keys(updateData).length > 0) {
-      await this.empresaRepository.update(empresa.id, updateData);
+      await this.empresaRepository.update(empresa.id, updateData as any);
     }
 
     return this.getEmpresa();
+  }
+
+  /**
+   * Verifica si un RNC ya existe en otra empresa.
+   * Usado por el frontend antes de mostrar el modal de confirmación.
+   */
+  async verificarRNC(rnc: string): Promise<{
+    disponible: boolean;
+    empresa?: { id: number; nombre: string };
+    tieneEcfConfig?: boolean;
+  }> {
+    const empresaActual = await this.getEmpresa().catch(() => null);
+
+    const existente = await this.empresaRepository.findOne({
+      where: { rnc, isActive: true },
+    });
+
+    if (existente && existente.id !== empresaActual?.id) {
+      return { disponible: false, empresa: { id: existente.id, nombre: existente.nombre } };
+    }
+
+    // Verificar si la empresa actual tiene config e-CF (para advertencia)
+    let tieneEcfConfig = false;
+    if (empresaActual) {
+      const ecfCount = await this.empresaRepository.manager.count(
+        'empresa_ecf_config' as any,
+        { where: { empresaId: empresaActual.id, activo: true } } as any,
+      ).catch(() => 0);
+      tieneEcfConfig = ecfCount > 0;
+    }
+
+    return { disponible: true, tieneEcfConfig };
+  }
+
+  async uploadLogo(empresaId: number, fileBuffer: Buffer, mimetype: string): Promise<string> {
+    const dataUri = `data:${mimetype};base64,${fileBuffer.toString('base64')}`;
+    await this.empresaRepository.update(empresaId, { logo: dataUri });
+    return dataUri;
+  }
+
+  async uploadFavicon(empresaId: number, fileBuffer: Buffer, mimetype: string): Promise<string> {
+    const dataUri = `data:${mimetype};base64,${fileBuffer.toString('base64')}`;
+    await this.empresaRepository.update(empresaId, { favicon: dataUri });
+    return dataUri;
   }
 
   // ──────────────────────────────────────────────────────────────────

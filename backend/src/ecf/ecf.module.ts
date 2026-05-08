@@ -14,6 +14,10 @@ import { EmpresaEcfConfig } from './entities/empresa-ecf-config.entity';
 import { EcfEvento }        from './entities/ecf-evento.entity';
 import { Factura }          from '../facturas/entities/factura.entity';
 import { Cliente }          from '../clientes/entities/cliente.entity';
+import { NotaDebito }       from '../notas-debito/entities/nota-debito.entity';
+import { NotaCredito }      from '../notas-credito/entities/nota-credito.entity';
+import { Compra }           from '../compras/entities/compra.entity';
+import { Gasto }            from '../gastos/entities/gasto.entity';
 
 // Controladores
 import { ECFController }        from './ecf.controller';
@@ -44,6 +48,7 @@ import { SuperAdminGuard } from '../super-admin/super-admin.guard';
     TypeOrmModule.forFeature([
       ECF, TipoECF, SecuenciaECF, ProveedorECF,
       EmpresaEcfConfig, EcfEvento, Factura, Cliente,
+      NotaDebito, NotaCredito, Compra, Gasto,
     ]),
     HttpModule.register({ timeout: 30_000, maxRedirects: 3 }),
     ConfigModule,

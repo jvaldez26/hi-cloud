@@ -10,7 +10,11 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { ConfiguracionService } from './configuracion.service';
 import { UpdateEmpresaDto } from './dto/update-empresa.dto';
@@ -20,6 +24,11 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
+
+const IMAGE_FILTER = (_: any, file: { buffer: Buffer; mimetype: string; originalname: string; size: number }, cb: any) => {
+  if (/^image\/(jpeg|png|svg\+xml|gif|webp|x-icon)$/.test(file.mimetype)) cb(null, true);
+  else cb(new BadRequestException('Solo imágenes: JPG, PNG, SVG, GIF, WEBP, ICO'), false);
+};
 
 @ApiTags('Configuración del Sistema')
 @Controller('configuracion')
@@ -55,6 +64,15 @@ export class ConfiguracionController {
     return this.configuracionService.getEmpresa();
   }
 
+  @Get('empresa/verificar-rnc/:rnc')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Verifica si un RNC está disponible y si tiene advertencias e-CF' })
+  verificarRNC(@Param('rnc') rnc: string) {
+    return this.configuracionService.verificarRNC(rnc);
+  }
+
   @Patch('empresa')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
@@ -62,6 +80,34 @@ export class ConfiguracionController {
   @ApiOperation({ summary: 'Actualizar datos de la empresa (solo ADMIN)' })
   updateEmpresa(@Body() dto: UpdateEmpresaDto) {
     return this.configuracionService.updateEmpresa(dto);
+  }
+
+  @Post('empresa/upload-logo')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Subir logo de la empresa (máx 2MB)' })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 2 * 1024 * 1024 }, fileFilter: IMAGE_FILTER }))
+  async uploadLogo(@UploadedFile() file: { buffer: Buffer; mimetype: string; originalname: string; size: number }) {
+    if (!file) throw new BadRequestException('Archivo requerido');
+    const empresaId = (await this.configuracionService.getEmpresa()).id;
+    const url = await this.configuracionService.uploadLogo(empresaId, file.buffer, file.mimetype);
+    return { url };
+  }
+
+  @Post('empresa/upload-favicon')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Subir favicon de la empresa (máx 512KB)' })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 512 * 1024 }, fileFilter: IMAGE_FILTER }))
+  async uploadFavicon(@UploadedFile() file: { buffer: Buffer; mimetype: string; originalname: string; size: number }) {
+    if (!file) throw new BadRequestException('Archivo requerido');
+    const empresaId = (await this.configuracionService.getEmpresa()).id;
+    const url = await this.configuracionService.uploadFavicon(empresaId, file.buffer, file.mimetype);
+    return { url };
   }
 
   // ── Configuraciones del sistema ────────────────────────────────────────────

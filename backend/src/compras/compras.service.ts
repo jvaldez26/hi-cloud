@@ -99,9 +99,11 @@ export class ComprasService {
     return this.findOne(savedCompra.id);
   }
 
-  async findAll(pagination: PaginationDto) {
+  async findAll(pagination: PaginationDto & {
+    estado?: string; desde?: string; hasta?: string; proveedorId?: number;
+  }) {
     const empresaId = this.tenantService.getEmpresaId();
-    const { limit = 10, page = 1, search } = pagination;
+    const { limit = 10, page = 1, search, estado, desde, hasta, proveedorId } = pagination;
 
     const qb = this.compraRepository
       .createQueryBuilder('c')
@@ -115,9 +117,14 @@ export class ComprasService {
         { s: `%${search}%` },
       );
     }
+    if (estado)      qb.andWhere('c.estado = :estado',           { estado });
+    if (proveedorId) qb.andWhere('c.proveedorId = :proveedorId', { proveedorId });
+    if (desde)       qb.andWhere('c.fecha >= :desde',            { desde });
+    if (hasta)       qb.andWhere('c.fecha <= :hasta',            { hasta });
 
     const [data, total] = await qb
-      .orderBy('c.createdAt', 'DESC')
+      .orderBy('c.fecha', 'DESC')
+      .addOrderBy('c.createdAt', 'DESC')
       .skip((page - 1) * limit)
       .take(Math.min(limit, 100))
       .getManyAndCount();

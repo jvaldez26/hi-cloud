@@ -84,9 +84,35 @@ export class EcfConfigFaltanteError extends EcfError {
 /** E31 sin RNC del comprador, o E32 >= 250K sin identificación. */
 export class EcfRncRequeridoError extends EcfError {
   constructor(tipoEcf: number, monto: number) {
-    const motivo = tipoEcf === 31
-      ? 'Las Facturas de Crédito Fiscal (E31) requieren el RNC del comprador.'
-      : `Las Facturas de Consumo (E32) con monto ≥ RD$250,000 (monto: ${monto.toLocaleString('es-DO')}) requieren el RNC o cédula del comprador.`;
+    const motivos: Record<number, string> = {
+      31: 'Las Facturas de Crédito Fiscal (E31) requieren el RNC del comprador.',
+      41: 'Los Comprobantes de Compras (E41) requieren el RNC del proveedor.',
+      44: 'Los Comprobantes de Regímenes Especiales (E44) requieren el RNC del comprador.',
+      45: 'Los Comprobantes Gubernamentales (E45) requieren el RNC de la entidad.',
+    };
+    const motivo = motivos[tipoEcf]
+      ?? `Las Facturas de Consumo (E32) con monto ≥ RD$250,000 (monto: ${monto.toLocaleString('es-DO')}) requieren el RNC o cédula del comprador.`;
     super(motivo, 'ECF_RNC_REQUERIDO');
+  }
+}
+
+/** El e-NCF referenciado en una nota de débito/crédito no existe o no está ACEPTADO. */
+export class EcfNcfReferenciadoError extends EcfError {
+  constructor(facturaOrigenId: number) {
+    super(
+      `No se encontró un e-CF ACEPTADO para el documento origen #${facturaOrigenId}. ` +
+      `Solo se puede emitir nota sobre comprobantes previamente aceptados por la DGII.`,
+      'ECF_NCF_REFERENCIADO_NO_ENCONTRADO',
+    );
+  }
+}
+
+/** E34 con código 1 (anulación total) pero el monto no coincide con el original. */
+export class EcfMontoAnulacionError extends EcfError {
+  constructor(montoNota: number, montoOriginal: number) {
+    super(
+      `Anulación total (E34 código 1): el monto de la nota (${montoNota}) debe ser igual al del comprobante original (${montoOriginal}).`,
+      'ECF_MONTO_ANULACION_INVALIDO',
+    );
   }
 }

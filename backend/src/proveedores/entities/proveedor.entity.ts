@@ -22,6 +22,18 @@ export class Proveedor extends TenantBaseEntity {
   @Column({ length: 100, nullable: true })
   contacto?: string;
 
+  @Column({ length: 100, nullable: true })
+  categoria?: string;
+
+  @Column({ type: 'int', nullable: true })
+  diasPago?: number;
+
+  @Column({ length: 100, nullable: true })
+  banco?: string;
+
+  @Column({ length: 30, nullable: true })
+  cuentaBancaria?: string;
+
   @Column({ type: 'text', nullable: true })
   notas?: string;
 }

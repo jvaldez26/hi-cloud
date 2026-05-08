@@ -32,15 +32,20 @@ export class PDFService {
     }
   }
 
-  // ── Descarga imagen a base64 ────────────────────────────────────────
-  private async urlToBase64(url: string): Promise<string> {
-    if (!url || !url.startsWith('http')) return '';
+  // ── Resuelve logo a una src usable en HTML (data URI o descarga HTTP) ──
+  private async resolverLogoSrc(url: string): Promise<string> {
+    if (!url) return '';
+    // data URI guardada directamente (upload via base64) — se usa tal cual
+    if (url.startsWith('data:')) return url;
+    // URL HTTP — descarga y convierte
+    if (!url.startsWith('http')) return '';
     return new Promise((resolve) => {
       const lib = url.startsWith('https') ? https : http;
       lib.get(url, (res) => {
+        const ct = res.headers['content-type'] ?? 'image/jpeg';
         const chunks: Buffer[] = [];
         res.on('data',  c  => chunks.push(c));
-        res.on('end',   () => resolve(Buffer.concat(chunks).toString('base64')));
+        res.on('end',   () => resolve(`data:${ct};base64,${Buffer.concat(chunks).toString('base64')}`));
         res.on('error', () => resolve(''));
       }).on('error', () => resolve(''));
     });
@@ -109,9 +114,8 @@ export class PDFService {
       qrBase64 = await this.generarQR(urlQR);
     }
 
-    // Logo empresa base64
-    const logoBase64 = empresa.logo ? await this.urlToBase64(empresa.logo) : '';
-    const logoSrc = logoBase64 ? `data:image/jpeg;base64,${logoBase64}` : '';
+    // Logo empresa (data URI propio o URL externa)
+    const logoSrc = await this.resolverLogoSrc(empresa.logo ?? '');
 
     // Items
     const items: FacturaPDFItem[] = (factura.detalles || []).map((d, i) => {
@@ -164,6 +168,8 @@ export class PDFService {
       empresaSitioWeb:    empresa.sitioWeb,
       empresaLogo:        logoSrc,
       empresaColorPrimario: colorPrimario,
+      empresaPieFactura:    empresa.configuracion?.pieFactura as string | undefined,
+      empresaTerminos:      empresa.configuracion?.terminosCondiciones as string | undefined,
       vendedorNombre:     factura.nombreVendedor,
       sucursalNombre:     undefined,
       clienteNombre:      factura.cliente?.nombre || 'Consumidor Final',

@@ -1,8 +1,9 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Cliente } from '../clientes/entities/cliente.entity';
-import { Producto } from '../productos/entities/producto.entity';
+import { Cliente }   from '../clientes/entities/cliente.entity';
+import { Producto }  from '../productos/entities/producto.entity';
+import { Proveedor } from '../proveedores/entities/proveedor.entity';
 import { TenantService } from '../tenant/tenant.service';
 
 export interface ImportResult {
@@ -17,10 +18,9 @@ export class ImportacionService {
   private readonly logger = new Logger(ImportacionService.name);
 
   constructor(
-    @InjectRepository(Cliente)
-    private clienteRepository: Repository<Cliente>,
-    @InjectRepository(Producto)
-    private productoRepository: Repository<Producto>,
+    @InjectRepository(Cliente)   private clienteRepository:   Repository<Cliente>,
+    @InjectRepository(Producto)  private productoRepository:  Repository<Producto>,
+    @InjectRepository(Proveedor) private proveedorRepository: Repository<Proveedor>,
     private tenantService: TenantService,
   ) {}
 
@@ -187,6 +187,83 @@ export class ImportacionService {
     }
 
     this.logger.log(`Importación productos: ${result.exitosos} ok, ${result.errores} errores`);
+    return result;
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Plantilla y Importar Proveedores
+  // ──────────────────────────────────────────────────────────────────
+
+  getPlantillaProveedores(): string {
+    return [
+      'nombre,rnc,telefono,email,direccion,contacto,categoria,diasPago',
+      'Proveedor Ejemplo S.R.L.,101234567,809-555-0000,proveedor@email.com,Av. Principal #1,Juan Pérez,Materia prima,30',
+      'Servicios Generales,00112345678,829-555-0001,info@servicios.com,Calle 2 #5,María López,Servicios,15',
+    ].join('\n');
+  }
+
+  async importarProveedores(buffer: Buffer): Promise<ImportResult> {
+    const filas  = this.parsearCSV(buffer);
+    const result: ImportResult = { total: 0, exitosos: 0, errores: 0, detalles: [] };
+    const empresaId = this.tenantService.getEmpresaId();
+
+    if (filas.length < 2) {
+      throw new BadRequestException('El archivo debe tener encabezado y al menos una fila de datos');
+    }
+
+    const headers  = filas[0].map(h => h.toLowerCase().replace(/\s/g, ''));
+    const required = ['nombre', 'rnc'];
+    const missing  = required.filter(r => !headers.includes(r));
+    if (missing.length) {
+      throw new BadRequestException(`Columnas requeridas faltantes: ${missing.join(', ')}`);
+    }
+
+    const idx = (name: string) => headers.indexOf(name.toLowerCase());
+
+    for (let i = 1; i < filas.length; i++) {
+      result.total++;
+      const fila = filas[i];
+      const fNum = i + 1;
+
+      try {
+        const nombre = fila[idx('nombre')]?.trim();
+        const rnc    = fila[idx('rnc')]?.replace(/\D/g, '');
+
+        if (!nombre) throw new Error('nombre es obligatorio');
+        if (!rnc || (rnc.length !== 9 && rnc.length !== 11)) throw new Error('RNC debe tener 9 u 11 dígitos');
+
+        const existe = await this.proveedorRepository.findOne({ where: { rnc, empresaId } });
+        if (existe) {
+          result.errores++;
+          result.detalles.push({ fila: fNum, error: `RNC ${rnc} ya existe`, estado: 'error' });
+          continue;
+        }
+
+        const diasPago = idx('diaspago') >= 0 ? parseInt(fila[idx('diaspago')]) : undefined;
+
+        await this.proveedorRepository.save(
+          this.proveedorRepository.create({
+            empresaId,
+            nombre,
+            rnc,
+            telefono:  fila[idx('telefono')]  || undefined,
+            email:     fila[idx('email')]     || undefined,
+            direccion: fila[idx('direccion')] || undefined,
+            contacto:  fila[idx('contacto')]  || undefined,
+            categoria: fila[idx('categoria')] || undefined,
+            diasPago:  !isNaN(diasPago!) ? diasPago : undefined,
+          }),
+        );
+
+        result.exitosos++;
+        result.detalles.push({ fila: fNum, estado: 'ok' });
+      } catch (err) {
+        result.errores++;
+        result.detalles.push({ fila: fNum, error: (err as Error).message, estado: 'error' });
+      }
+    }
+
+    this.logger.log(`Importación proveedores: ${result.exitosos} ok, ${result.errores} errores`);
     return result;
   }
 }

@@ -16,7 +16,14 @@ import { RegistrarEntradaDto } from './dto/registrar-entrada.dto';
 import { RegistrarSalidaDto } from './dto/registrar-salida.dto';
 import { RegistrarAjusteDto } from './dto/registrar-ajuste.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
+import { IsOptional, IsString } from 'class-validator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+
+class MovimientosFilterDto extends PaginationDto {
+  @IsOptional() @IsString() tipo?: string;
+  @IsOptional() @IsString() desde?: string;
+  @IsOptional() @IsString() hasta?: string;
+}
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
@@ -64,8 +71,8 @@ export class InventarioController {
   }
 
   @Get('movimientos')
-  @ApiOperation({ summary: 'Historial de movimientos con paginación y búsqueda' })
-  getMovimientos(@Query() pagination: PaginationDto) {
+  @ApiOperation({ summary: 'Historial de movimientos con filtros: search, tipo, desde, hasta' })
+  getMovimientos(@Query() pagination: MovimientosFilterDto) {
     return this.inventarioService.getMovimientos(pagination);
   }
 

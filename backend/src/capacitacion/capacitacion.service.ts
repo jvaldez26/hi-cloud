@@ -29,66 +29,70 @@ export class CapacitacionService {
     private tenantService: TenantService,
   ) {}
 
+  private get eid(): number { return this.tenantService.getEmpresaId(); }
+
   // ─── Cursos ──────────────────────────────────────────────────────────────────
 
   listarCursos() {
-    return this.cursoRepo.find({ where: { activo: true }, order: { nombre: 'ASC' } });
+    return this.cursoRepo.find({ where: { empresaId: this.eid, activo: true }, order: { nombre: 'ASC' } });
   }
 
   crearCurso(dto: CreateCursoDto) {
-    return this.cursoRepo.save(this.cursoRepo.create(dto));
+    return this.cursoRepo.save(this.cursoRepo.create({ ...dto, empresaId: this.eid }));
   }
 
   async actualizarCurso(id: number, dto: Partial<CreateCursoDto>) {
-    await this.cursoRepo.update(id, dto);
-    return this.cursoRepo.findOneByOrFail({ id });
+    await this.cursoRepo.update({ id, empresaId: this.eid }, dto);
+    return this.cursoRepo.findOneByOrFail({ id, empresaId: this.eid });
   }
 
   async eliminarCurso(id: number) {
-    await this.cursoRepo.update(id, { activo: false });
+    await this.cursoRepo.update({ id, empresaId: this.eid }, { activo: false });
   }
 
   // ─── Sesiones ────────────────────────────────────────────────────────────────
 
   async listarSesiones() {
-    const sesiones = await this.sesionRepo.find({ order: { fecha: 'DESC' } });
+    const sesiones = await this.sesionRepo.find({ where: { empresaId: this.eid }, order: { fecha: 'DESC' } });
     if (sesiones.length === 0) return [];
 
     const cursoIds = [...new Set(sesiones.map(s => s.cursoId))];
-    const cursos   = await this.cursoRepo.find({ where: { id: In(cursoIds) } });
+    const cursos   = await this.cursoRepo.find({ where: { id: In(cursoIds), empresaId: this.eid } });
     const cursoMap = new Map(cursos.map(c => [c.id, c]));
 
     return sesiones.map(s => ({ ...s, curso: cursoMap.get(s.cursoId) }));
   }
 
   async crearSesion(dto: CreateSesionDto) {
-    const curso = await this.cursoRepo.findOneBy({ id: dto.cursoId });
+    const eid   = this.eid;
+    const curso = await this.cursoRepo.findOneBy({ id: dto.cursoId, empresaId: eid });
     if (!curso) throw new NotFoundException('Curso no encontrado');
-    return this.sesionRepo.save(this.sesionRepo.create(dto));
+    return this.sesionRepo.save(this.sesionRepo.create({ ...dto, empresaId: eid }));
   }
 
   async actualizarSesion(id: number, dto: Partial<CreateSesionDto> & { estado?: string }) {
-    await this.sesionRepo.update(id, dto);
-    return this.sesionRepo.findOneByOrFail({ id });
+    await this.sesionRepo.update({ id, empresaId: this.eid }, dto);
+    return this.sesionRepo.findOneByOrFail({ id, empresaId: this.eid });
   }
 
   // ─── Registros de Asistencia ─────────────────────────────────────────────────
 
   listarRegistros(sesionId: number) {
-    return this.registroRepo.find({ where: { sesionId }, order: { createdAt: 'ASC' } });
+    return this.registroRepo.find({ where: { sesionId, empresaId: this.eid }, order: { createdAt: 'ASC' } });
   }
 
   async registrarAsistencia(sesionId: number, registros: RegistroAsistenciaItem[]) {
+    const eid = this.eid;
     const results: RegistroCapacitacion[] = [];
     for (const r of registros) {
       const aprobado = r.calificacion != null ? r.calificacion >= 70 : false;
-      const existing = await this.registroRepo.findOneBy({ sesionId, empleadoId: r.empleadoId });
+      const existing = await this.registroRepo.findOneBy({ sesionId, empleadoId: r.empleadoId, empresaId: eid });
       if (existing) {
         await this.registroRepo.update(existing.id, { ...r, aprobado });
         results.push({ ...existing, ...r, aprobado } as RegistroCapacitacion);
       } else {
         const saved = await this.registroRepo.save(
-          this.registroRepo.create({ sesionId, ...r, aprobado }),
+          this.registroRepo.create({ sesionId, ...r, aprobado, empresaId: eid }),
         );
         results.push(saved);
       }

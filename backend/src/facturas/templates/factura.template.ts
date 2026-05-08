@@ -34,7 +34,9 @@ export interface FacturaPDFData {
   empresaEmail?: string;
   empresaSitioWeb?: string;
   empresaLogo?: string;          // URL o base64
-  empresaColorPrimario?: string; // hex personalizado
+  empresaColorPrimario?: string;
+  empresaPieFactura?: string;
+  empresaTerminos?: string;
   // Usuario / Sucursal
   vendedorNombre?: string;
   sucursalNombre?: string;
@@ -285,7 +287,8 @@ export function generarHTMLFactura(d: FacturaPDFData): string {
     <!-- Notas -->
     <div style="flex:1;background:#FFFBEB;border:1px solid ${YELLOW};border-radius:8px;padding:14px 16px;min-height:80px;">
       <div style="font-size:10px;font-weight:800;color:#92400E;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">📝 Notas</div>
-      <div style="font-size:11px;color:#78350F;line-height:1.6;">${esc(d.notas || 'Gracias por su preferencia. Documento emitido en cumplimiento con la Ley 32-23 y normativas DGII.')}</div>
+      <div style="font-size:11px;color:#78350F;line-height:1.6;">${esc(d.notas || d.empresaPieFactura || 'Gracias por su preferencia. Documento emitido en cumplimiento con la Ley 32-23 y normativas DGII.')}</div>
+      ${d.empresaTerminos ? `<div style="margin-top:8px;font-size:10px;color:#92400E;line-height:1.5;border-top:1px dashed #FCD34D;padding-top:6px;">${esc(d.empresaTerminos)}</div>` : ''}
     </div>
 
     <!-- Verificación DGII -->

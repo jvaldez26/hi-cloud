@@ -11,7 +11,9 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { ClientesService } from './clientes.service';
 import { CreateClienteDto } from './dto/create-cliente.dto';
@@ -57,6 +59,20 @@ export class ClientesController {
     @Query('fechaHasta') fechaHasta?: string,
   ) {
     return this.clientesService.getEstadoCuenta(id, fechaDesde, fechaHasta);
+  }
+
+  @Get(':id/estado-cuenta/pdf')
+  @ApiOperation({ summary: 'Descargar Estado de Cuenta del cliente en PDF' })
+  async getEstadoCuentaPdf(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('fechaDesde') fechaDesde: string,
+    @Query('fechaHasta') fechaHasta: string,
+    @Res() res: Response,
+  ) {
+    const data    = await this.clientesService.getEstadoCuenta(id, fechaDesde, fechaHasta);
+    const { buffer, filename } = await this.clientesService.generarEstadoCuentaPdf(data);
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${filename}"` });
+    res.send(buffer);
   }
 
   @Get('rfc/:rfc')

@@ -260,7 +260,192 @@ export class NotificacionesService {
     await this.notificarCxPPorVencer();
   }
 
+  /**
+   * Recordatorios automáticos de CxC POR EMPRESA → directamente al cliente.
+   * Corre a las 9:00 am todos los días.
+   * Solo actúa para empresas con configuracion.notifVencCxC = true.
+   */
+  @Cron('0 9 * * *')
+  async cronRecordatoriosClientesCxC() {
+    if (!this.notifActiva) return;
+    this.logger.log('⏰ Cron: recordatorios de CxC a clientes');
+
+    // Traer cuentas vencidas o por vencer en 3 días, junto con datos de empresa/cliente
+    const rows = await this.dataSource.query<any[]>(`
+      SELECT
+        cxc.id, cxc."montoPendiente"::text, cxc."fechaVencimiento"::text,
+        f.folio   AS "facturaFolio",
+        c.nombre  AS "clienteNombre", c.email AS "clienteEmail",
+        e.id      AS "empresaId", e.nombre AS "empresaNombre",
+        e.telefono AS "empresaTelefono", e.email AS "empresaEmail",
+        e."nombreComercial" AS "empresaComercial",
+        e.configuracion,
+        (CURRENT_DATE - cxc."fechaVencimiento"::date) AS "diasVencida"
+      FROM cuentas_por_cobrar cxc
+      JOIN facturas f ON f.id  = cxc."facturaId"
+      JOIN clientes c ON c.id  = cxc."clienteId"
+      JOIN empresa  e ON e.id  = cxc."empresaId"
+      WHERE cxc."isActive" = true
+        AND e."isActive"   = true
+        AND cxc.estado IN ('vencida', 'pendiente', 'pagada_parcial')
+        AND cxc."fechaVencimiento"::date <= CURRENT_DATE + 3
+        AND c.email IS NOT NULL AND c.email <> ''
+      ORDER BY e.id, "diasVencida" DESC
+      LIMIT 500
+    `);
+
+    let enviados = 0;
+
+    for (const r of rows) {
+      // Verificar que la empresa tiene el flag activado
+      const cfg = r.configuracion ?? {};
+      if (cfg.notifVencCxC === false) continue;
+
+      const diasVencida  = Number(r.diasVencida);
+      const pendiente    = Number(r.montoPendiente);
+      const fmtMoney     = (v: number) =>
+        `RD$ ${v.toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
+      const fmtDate      = (d: string) =>
+        d ? new Date(d).toLocaleDateString('es-DO', { day: '2-digit', month: 'long', year: 'numeric' }) : '—';
+
+      const esVencida   = diasVencida > 0;
+      const color       = esVencida ? '#dc2626' : '#d97706';
+      const gradient    = esVencida
+        ? 'linear-gradient(135deg,#dc2626,#ef4444)'
+        : 'linear-gradient(135deg,#d97706,#f59e0b)';
+      const asunto = esVencida
+        ? `⚠️ Cuenta vencida hace ${diasVencida} día(s) — ${r.facturaFolio}`
+        : `🔔 Recordatorio de pago — ${r.facturaFolio} vence pronto`;
+
+      const nombreEmpresa = r.empresaComercial || r.empresaNombre;
+
+      const html = `<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet"/>
+</head>
+<body style="margin:0;padding:0;background:#f4f6f9;font-family:'Inter',Arial,sans-serif">
+<div style="max-width:560px;margin:24px auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.1)">
+  <div style="background:${gradient};padding:24px 28px">
+    <div style="font-size:11px;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">
+      ${esVencida ? '⚠️ CUENTA VENCIDA' : '🔔 RECORDATORIO DE PAGO'}
+    </div>
+    <div style="font-size:20px;font-weight:800;color:#fff">${r.facturaFolio}</div>
+  </div>
+  <div style="padding:24px 28px">
+    <p style="margin:0 0 16px;font-size:14px;color:#374151">Estimado/a <strong>${r.clienteNombre}</strong>,</p>
+    <p style="margin:0 0 20px;font-size:13px;color:#6b7280">
+      ${esVencida
+        ? `Le informamos que la factura <strong>${r.facturaFolio}</strong> se encuentra vencida hace <strong>${diasVencida} día(s)</strong>. Le solicitamos ponerse al día a la brevedad posible.`
+        : `Le recordamos que la factura <strong>${r.facturaFolio}</strong> vence en los próximos días. Por favor realice su pago a tiempo.`}
+    </p>
+    <div style="background:#f9fafb;border-radius:10px;padding:20px;margin-bottom:20px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:13px">
+        <span style="color:#6b7280">Factura</span>
+        <strong>${r.facturaFolio}</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:13px">
+        <span style="color:#6b7280">Fecha de vencimiento</span>
+        <strong style="color:${color}">${fmtDate(r.fechaVencimiento)}</strong>
+      </div>
+      <div style="border-top:2px solid ${color};padding-top:12px;margin-top:4px;display:flex;justify-content:space-between">
+        <strong style="font-size:14px">Saldo pendiente</strong>
+        <strong style="font-size:20px;color:${color}">${fmtMoney(pendiente)}</strong>
+      </div>
+    </div>
+    <p style="font-size:12px;color:#9ca3af">Para regularizar su cuenta, comuníquese con nosotros:</p>
+    ${r.empresaTelefono ? `<p style="font-size:13px;color:#374151;margin:4px 0">📞 ${r.empresaTelefono}</p>` : ''}
+    ${r.empresaEmail    ? `<p style="font-size:13px;color:#374151;margin:4px 0">✉️ ${r.empresaEmail}</p>` : ''}
+  </div>
+  <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:12px 28px;text-align:center;font-size:11px;color:#9ca3af">
+    <strong>${nombreEmpresa}</strong> · Generado por <strong style="color:${color}">HiCloud ERP</strong>
+  </div>
+</div>
+</body></html>`;
+
+      const { exitoso } = await this.emailService.enviar({
+        to:      r.clienteEmail,
+        subject: asunto,
+        html,
+      });
+
+      if (exitoso) {
+        enviados++;
+        await this.registrar(
+          TipoNotificacion.CXC_VENCIDA, CanalNotificacion.EMAIL,
+          r.clienteEmail, asunto, `Recordatorio CxC ${r.facturaFolio}`, true, r.facturaFolio,
+        );
+      }
+    }
+
+    if (enviados > 0) {
+      this.logger.log(`✅ Recordatorios CxC enviados a clientes: ${enviados}/${rows.length}`);
+    }
+  }
+
   // ──────────────────────────────────────────────────────────────────
+  /**
+   * Resumen semanal financiero por empresa → email de la empresa.
+   * Lunes 07:30. Incluye CxC vencidas, CxP próximas y stock bajo.
+   */
+  @Cron('30 7 * * 1')
+  async cronResumenSemanalPorEmpresa() {
+    if (!this.notifActiva) return;
+    this.logger.log('⏰ Cron: resumen semanal financiero por empresa');
+
+    const empresas = await this.dataSource.query<any[]>(`
+      SELECT e.id, e.nombre, e.email, e.configuracion,
+        (SELECT COUNT(*) FROM cuentas_por_cobrar cxc
+         WHERE cxc."empresaId" = e.id AND cxc.estado = 'vencida' AND cxc."isActive" = true
+        )::int AS "cxcVencidas",
+        (SELECT COALESCE(SUM(cxc."montoPendiente"),0)
+         FROM cuentas_por_cobrar cxc
+         WHERE cxc."empresaId" = e.id AND cxc.estado = 'vencida' AND cxc."isActive" = true
+        )::numeric AS "montoCxCVencido",
+        (SELECT COUNT(*) FROM cuentas_por_pagar cxp
+         WHERE cxp."empresaId" = e.id
+           AND cxp."fechaVencimiento"::date <= CURRENT_DATE + 7
+           AND cxp.estado IN ('pendiente','pagada_parcial') AND cxp."isActive" = true
+        )::int AS "cxpProximas"
+      FROM empresa e
+      WHERE e."isActive" = true AND e.email IS NOT NULL AND e.email <> ''
+    `);
+
+    let enviados = 0;
+    for (const emp of empresas) {
+      const cfg = emp.configuracion ?? {};
+      if (cfg.notifEmail === false) continue;
+
+      const cxcVencidas = Number(emp.cxcVencidas ?? 0);
+      const montoCxC    = Number(emp.montoCxCVencido ?? 0);
+      const cxpProximas = Number(emp.cxpProximas ?? 0);
+      if (cxcVencidas === 0 && cxpProximas === 0) continue;
+
+      const fmtM = (v: number) =>
+        `RD$ ${v.toLocaleString('es-DO', { minimumFractionDigits: 0 })}`;
+
+      const html = `<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"/>
+<style>body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#374151;background:#f9fafb;margin:0}
+.c{background:#fff;border-radius:8px;padding:14px 16px;margin:8px 0;border-left:4px solid}</style></head>
+<body><div style="max-width:500px;margin:0 auto;padding:20px">
+<h2 style="color:#1a56db;margin-bottom:2px">📊 Resumen Semanal HiCloud ERP</h2>
+<p style="color:#6b7280;margin:0 0 16px;font-size:12px">${emp.nombre} · ${new Date().toLocaleDateString('es-DO',{day:'2-digit',month:'long',year:'numeric'})}</p>
+${cxcVencidas > 0 ? `<div class="c" style="border-color:#dc2626">🔴 <strong>${cxcVencidas} cuenta(s) por cobrar vencida(s)</strong><br/>Monto: <strong>${fmtM(montoCxC)}</strong><br/><small style="color:#9ca3af">Requiere gestión de cobro</small></div>` : ''}
+${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${cxpProximas} pago(s) de CxP</strong> vencen esta semana<br/><small style="color:#9ca3af">Revise disponibilidad de caja</small></div>` : ''}
+<p style="margin-top:20px;font-size:11px;color:#9ca3af;border-top:1px solid #e5e7eb;padding-top:12px">HiCloud ERP · Resumen automático semanal</p>
+</div></body></html>`;
+
+      const { exitoso } = await this.emailService.enviar({
+        to:      emp.email,
+        subject: `📊 Resumen semanal: ${cxcVencidas} CxC vencidas · ${cxpProximas} CxP próximas — ${emp.nombre}`,
+        html,
+      });
+      if (exitoso) enviados++;
+    }
+
+    this.logger.log(`Resúmenes semanales enviados: ${enviados}/${empresas.length}`);
+  }
+
   // Consultas y envío manual
   // ──────────────────────────────────────────────────────────────────
 
@@ -587,6 +772,516 @@ export class NotificacionesService {
       throw new Error(error ?? 'Error al enviar WhatsApp');
     }
     return { mensaje: `Factura ${r.folio} enviada por WhatsApp a ${telefono}` };
+  }
+
+  // ── Enviar pre-factura (proforma) al cliente por email ────────────────────────
+  async enviarPreFacturaAlCliente(preFacturaId: number, emailCliente: string) {
+    const rows = await this.dataSource.query<any[]>(
+      `SELECT pf.folio, pf.fecha::text, pf."fechaValidez"::text,
+              pf.subtotal::text, pf.iva::text, pf.total::text, pf.estado,
+              COALESCE(pf.notas,'') AS notas, pf.condicionPago,
+              c.nombre AS "clienteNombre",
+              e.nombre AS "empresaNombre", e.rnc AS "empresaRNC",
+              e.telefono AS "empresaTelefono", e.email AS "empresaEmail"
+       FROM pre_facturas pf
+       JOIN clientes c ON c.id = pf."clienteId"
+       JOIN empresa  e ON e.id = pf."empresaId"
+       WHERE pf.id = $1`,
+      [preFacturaId],
+    );
+    if (!rows[0]) throw new Error(`Pre-factura #${preFacturaId} no encontrada`);
+    const r = rows[0];
+
+    const detRows = await this.dataSource.query<any[]>(
+      `SELECT descripcion, cantidad::text, "precioUnitario"::text, total::text, "porcentajeIva"::text
+       FROM pre_factura_detalles
+       WHERE "preFacturaId" = $1 AND "isActive" = true
+       ORDER BY id`,
+      [preFacturaId],
+    );
+
+    const fmtMoney = (v: string | number) =>
+      `RD$ ${Number(v).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
+    const fmtDate = (d: string) =>
+      d ? new Date(d).toLocaleDateString('es-DO', { day: '2-digit', month: 'long', year: 'numeric' }) : '—';
+
+    const itemsHtml = detRows.map(d =>
+      `<tr>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;font-size:13px">${d.descripcion}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:13px">${Number(d.cantidad).toLocaleString('es-DO')}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px">${fmtMoney(d.precioUnitario)}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:13px;color:#6b7280">${Number(d.porcentajeIva)}%</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px;font-weight:700">${fmtMoney(d.total)}</td>
+      </tr>`,
+    ).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<title>Pre-Factura ${r.folio}</title></head>
+<body style="margin:0;padding:0;background:#f4f6f9;font-family:'Inter',Arial,sans-serif">
+<div style="max-width:620px;margin:24px auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.1)">
+  <div style="background:linear-gradient(135deg,#7c3aed,#a78bfa);padding:28px 32px">
+    <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px">Pre-Factura / Proforma</div>
+    <div style="font-size:26px;font-weight:800;color:#fff;letter-spacing:-.3px">${r.folio}</div>
+    <div style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap">
+      <span style="background:rgba(255,255,255,.15);border-radius:20px;padding:4px 12px;font-size:12px;color:#fff">📅 Fecha: ${fmtDate(r.fecha)}</span>
+      ${r.fechaValidez ? `<span style="background:rgba(255,255,255,.15);border-radius:20px;padding:4px 12px;font-size:12px;color:#fff">⏳ Válida hasta: ${fmtDate(r.fechaValidez)}</span>` : ''}
+    </div>
+  </div>
+  <div style="padding:24px 32px">
+    <p style="margin:0 0 16px;font-size:14px;color:#374151">
+      Estimado/a <strong>${r.clienteNombre}</strong>,<br/>
+      Adjuntamos la pre-factura solicitada. Este documento es una propuesta previa a la factura definitiva.
+    </p>
+    ${r.condicionPago ? `<p style="margin:0 0 20px;font-size:13px;color:#6b7280">Condición de pago: <strong>${r.condicionPago}</strong></p>` : ''}
+    <table style="width:100%;border-collapse:collapse;border-radius:8px;overflow:hidden;border:1px solid #e5e7eb">
+      <thead>
+        <tr style="background:#f9fafb">
+          <th style="padding:10px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;border-bottom:1px solid #e5e7eb">Descripción</th>
+          <th style="padding:10px 12px;text-align:center;font-size:12px;color:#6b7280;font-weight:600;border-bottom:1px solid #e5e7eb">Cant.</th>
+          <th style="padding:10px 12px;text-align:right;font-size:12px;color:#6b7280;font-weight:600;border-bottom:1px solid #e5e7eb">Precio Unit.</th>
+          <th style="padding:10px 12px;text-align:center;font-size:12px;color:#6b7280;font-weight:600;border-bottom:1px solid #e5e7eb">ITBIS</th>
+          <th style="padding:10px 12px;text-align:right;font-size:12px;color:#6b7280;font-weight:600;border-bottom:1px solid #e5e7eb">Total</th>
+        </tr>
+      </thead>
+      <tbody>${itemsHtml}</tbody>
+    </table>
+    <div style="margin-top:16px;display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+      <div style="display:flex;justify-content:space-between;width:240px;font-size:13px;color:#374151">
+        <span>Subtotal:</span><span>${fmtMoney(r.subtotal)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;width:240px;font-size:13px;color:#374151">
+        <span>ITBIS (18%):</span><span>${fmtMoney(r.iva)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;width:240px;font-size:16px;font-weight:800;color:#7c3aed;border-top:2px solid #7c3aed;padding-top:8px;margin-top:4px">
+        <span>TOTAL:</span><span>${fmtMoney(r.total)}</span>
+      </div>
+    </div>
+    ${r.notas ? `<div style="margin-top:20px;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;padding:14px;font-size:13px;color:#5b21b6"><strong>📝 Notas:</strong><br/>${r.notas}</div>` : ''}
+    <div style="margin-top:20px;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:12px;font-size:12px;color:#78350f">
+      ⚠️ <strong>Documento preliminar</strong> — Esta pre-factura no tiene validez fiscal. La factura oficial se emitirá al confirmar el pedido.
+    </div>
+    <div style="margin-top:16px;text-align:center">
+      ${r.empresaTelefono ? `<p style="font-size:13px;color:#374151;margin:4px 0">📞 ${r.empresaTelefono}</p>` : ''}
+      ${r.empresaEmail    ? `<p style="font-size:13px;color:#374151;margin:4px 0">✉️ ${r.empresaEmail}</p>`    : ''}
+    </div>
+  </div>
+  <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:14px 32px;text-align:center;font-size:11px;color:#9ca3af">
+    <strong>${r.empresaNombre}</strong>${r.empresaRNC ? ` · RNC ${r.empresaRNC}` : ''} · <strong style="color:#7c3aed">HiCloud ERP</strong>
+  </div>
+</div>
+</body></html>`;
+
+    const { exitoso, error } = await this.emailService.enviar({
+      to: emailCliente,
+      subject: `Pre-Factura ${r.folio} — ${r.empresaNombre}`,
+      html,
+    });
+    if (!exitoso) throw new Error(`Error enviando pre-factura: ${error}`);
+    return { mensaje: `Pre-factura ${r.folio} enviada a ${emailCliente}` };
+  }
+
+  // ── Helper genérico para notas de crédito/débito ─────────────────────────────
+  private async buildNotaHtml(
+    tabla: string, campos: string, detTabla: string, detCampos: string,
+    id: number, tipo: 'credito' | 'debito',
+  ) {
+    const rows = await this.dataSource.query<any[]>(
+      `SELECT ${campos}, e.nombre AS "empresaNombre", e.rnc AS "empresaRNC",
+              e.telefono AS "empresaTelefono", e.email AS "empresaEmail"
+       FROM ${tabla} n
+       JOIN empresa e ON e.id = n."empresaId"
+       WHERE n.id = $1`,
+      [id],
+    );
+    if (!rows[0]) throw new Error(`Nota #${id} no encontrada`);
+    const r = rows[0];
+
+    const detRows = await this.dataSource.query<any[]>(
+      `SELECT ${detCampos} FROM ${detTabla} WHERE "${tabla === 'notas_credito' ? 'notaCreditoId' : 'notaDebitoId'}" = $1 AND "isActive" = true ORDER BY id`,
+      [id],
+    );
+
+    const fmtM = (v: string | number) => `RD$ ${Number(v).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
+    const fmtD = (d: string) => d ? new Date(d).toLocaleDateString('es-DO', { day: '2-digit', month: 'long', year: 'numeric' }) : '—';
+
+    const color   = tipo === 'credito' ? '#059669' : '#dc2626';
+    const gradient= tipo === 'credito' ? 'linear-gradient(135deg,#059669,#10b981)' : 'linear-gradient(135deg,#dc2626,#ef4444)';
+    const titulo  = tipo === 'credito' ? 'Nota de Crédito' : 'Nota de Débito';
+
+    const itemsHtml = detRows.map(d =>
+      `<tr>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;font-size:13px">${d.descripcion ?? ''}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:13px">${Number(d.cantidad || 1).toLocaleString('es-DO')}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px">${fmtM(d.precioUnitario || d.monto || 0)}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px;font-weight:700">${fmtM(d.total || 0)}</td>
+      </tr>`,
+    ).join('') || `<tr><td colspan="4" style="padding:12px;text-align:center;color:#9ca3af">Sin detalle de líneas</td></tr>`;
+
+    return { r, fmtM, fmtD, color, gradient, titulo, itemsHtml };
+  }
+
+  async enviarNotaCreditoAlCliente(notaId: number, emailCliente: string) {
+    const { r, fmtM, fmtD, color, gradient, titulo, itemsHtml } =
+      await this.buildNotaHtml(
+        'notas_credito',
+        'n.numero, n.fecha::text, n.total::text, n.subtotal::text, n.iva::text, n.motivo, COALESCE(n.notas,\'\') AS notas, n."facturaOriginalFolio", c.nombre AS "clienteNombre"',
+        'nota_credito_detalles',
+        'descripcion, cantidad::text, "precioUnitario"::text, total::text',
+        notaId, 'credito',
+      );
+
+    const html = this.buildNotaEmailHtml({ r, fmtM, fmtD, color, gradient, titulo, itemsHtml });
+    const { exitoso, error } = await this.emailService.enviar({ to: emailCliente, subject: `${titulo} ${r.numero} — ${r.empresaNombre}`, html });
+    if (!exitoso) throw new Error(error ?? 'Error enviando email');
+    return { mensaje: `${titulo} ${r.numero} enviada a ${emailCliente}` };
+  }
+
+  async enviarNotaDebitoAlCliente(notaId: number, emailCliente: string) {
+    const { r, fmtM, fmtD, color, gradient, titulo, itemsHtml } =
+      await this.buildNotaHtml(
+        'notas_debito',
+        'n.numero, n.fecha::text, n.total::text, n.subtotal::text, n.iva::text, n.motivo, COALESCE(n.notas,\'\') AS notas, n."facturaOriginalFolio", c.nombre AS "clienteNombre"',
+        'nota_debito_detalles',
+        'descripcion, cantidad::text, "precioUnitario"::text, total::text',
+        notaId, 'debito',
+      );
+
+    const html = this.buildNotaEmailHtml({ r, fmtM, fmtD, color, gradient, titulo, itemsHtml });
+    const { exitoso, error } = await this.emailService.enviar({ to: emailCliente, subject: `${titulo} ${r.numero} — ${r.empresaNombre}`, html });
+    if (!exitoso) throw new Error(error ?? 'Error enviando email');
+    return { mensaje: `${titulo} ${r.numero} enviada a ${emailCliente}` };
+  }
+
+  private buildNotaEmailHtml({ r, fmtM, fmtD, color, gradient, titulo, itemsHtml }: any): string {
+    return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<title>${titulo} ${r.numero}</title></head>
+<body style="margin:0;padding:0;background:#f4f6f9;font-family:'Inter',Arial,sans-serif">
+<div style="max-width:620px;margin:24px auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.1)">
+  <div style="background:${gradient};padding:28px 32px">
+    <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px">${titulo}</div>
+    <div style="font-size:26px;font-weight:800;color:#fff;letter-spacing:-.3px">${r.numero}</div>
+    <div style="margin-top:8px;font-size:12px;color:rgba(255,255,255,.8)">📅 ${fmtD(r.fecha)}</div>
+  </div>
+  <div style="padding:28px 32px">
+    <p style="margin:0 0 16px;font-size:14px;color:#374151">Estimado/a <strong>${r.clienteNombre}</strong>,</p>
+    ${r.facturaOriginalFolio ? `<p style="margin:0 0 16px;font-size:13px;color:#6b7280">Referida a la factura: <strong>${r.facturaOriginalFolio}</strong></p>` : ''}
+    ${r.motivo ? `<p style="margin:0 0 20px;font-size:13px;color:#6b7280">Motivo: <strong>${r.motivo.replace(/_/g,' ')}</strong></p>` : ''}
+    <table style="width:100%;border-collapse:collapse;border-radius:8px;overflow:hidden;border:1px solid #e5e7eb">
+      <thead><tr style="background:#f9fafb">
+        <th style="padding:10px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;border-bottom:1px solid #e5e7eb">Descripción</th>
+        <th style="padding:10px 12px;text-align:center;font-size:12px;color:#6b7280;font-weight:600;border-bottom:1px solid #e5e7eb">Cant.</th>
+        <th style="padding:10px 12px;text-align:right;font-size:12px;color:#6b7280;font-weight:600;border-bottom:1px solid #e5e7eb">Precio</th>
+        <th style="padding:10px 12px;text-align:right;font-size:12px;color:#6b7280;font-weight:600;border-bottom:1px solid #e5e7eb">Total</th>
+      </tr></thead>
+      <tbody>${itemsHtml}</tbody>
+    </table>
+    <div style="margin-top:16px;display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+      <div style="display:flex;justify-content:space-between;width:220px;font-size:16px;font-weight:800;color:${color};border-top:2px solid ${color};padding-top:8px;margin-top:4px">
+        <span>TOTAL:</span><span>${fmtM(r.total)}</span>
+      </div>
+    </div>
+    ${r.notas ? `<div style="margin-top:16px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:12px;font-size:13px;color:#374151"><strong>Notas:</strong> ${r.notas}</div>` : ''}
+  </div>
+  <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:14px 32px;text-align:center;font-size:11px;color:#9ca3af">
+    <strong>${r.empresaNombre}</strong>${r.empresaRNC ? ` · RNC ${r.empresaRNC}` : ''} · <strong style="color:${color}">HiCloud ERP</strong>
+  </div>
+</div></body></html>`;
+  }
+
+  // ── Enviar orden de compra al proveedor por email ────────────────────────────
+  async enviarCompraAlProveedor(compraId: number, emailProveedor: string) {
+    const rows = await this.dataSource.query<any[]>(
+      `SELECT c.folio, c.fecha::text, c.subtotal::text, c.itbis::text, c.total::text,
+              COALESCE(c.notas,'') AS notas, c.estado,
+              p.nombre AS "proveedorNombre",
+              e.nombre AS "empresaNombre", e.rnc AS "empresaRNC",
+              e.telefono AS "empresaTelefono", e.email AS "empresaEmail"
+       FROM compras c
+       JOIN proveedores p ON p.id = c."proveedorId"
+       JOIN empresa e ON e.id = c."empresaId"
+       WHERE c.id = $1`,
+      [compraId],
+    );
+    if (!rows[0]) throw new Error(`Compra #${compraId} no encontrada`);
+    const r = rows[0];
+
+    const detRows = await this.dataSource.query<any[]>(
+      `SELECT descripcion, cantidad::text, "precioUnitario"::text, total::text, "porcentajeIva"::text
+       FROM compra_detalles
+       WHERE "compraId" = $1 AND "isActive" = true
+       ORDER BY id`,
+      [compraId],
+    );
+
+    const fmtMoney = (v: string | number) =>
+      `RD$ ${Number(v).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
+    const fmtDate  = (d: string) =>
+      d ? new Date(d).toLocaleDateString('es-DO', { day: '2-digit', month: 'long', year: 'numeric' }) : '—';
+
+    const itemsHtml = detRows.map(d =>
+      `<tr>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;font-size:13px">${d.descripcion}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:13px">${Number(d.cantidad).toLocaleString('es-DO')}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px">${fmtMoney(d.precioUnitario)}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:13px;color:#6b7280">${Number(d.porcentajeIva)}%</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px;font-weight:700">${fmtMoney(d.total)}</td>
+      </tr>`,
+    ).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<title>Orden de Compra ${r.folio}</title></head>
+<body style="margin:0;padding:0;background:#f4f6f9;font-family:'Inter',Arial,sans-serif">
+<div style="max-width:620px;margin:24px auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.1)">
+  <div style="background:linear-gradient(135deg,#7c3aed,#a78bfa);padding:28px 32px">
+    <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px">Orden de Compra</div>
+    <div style="font-size:26px;font-weight:800;color:#fff;letter-spacing:-.3px">${r.folio}</div>
+    <div style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap">
+      <span style="background:rgba(255,255,255,.15);border-radius:20px;padding:4px 12px;font-size:12px;color:#fff">📅 ${fmtDate(r.fecha)}</span>
+    </div>
+  </div>
+  <div style="padding:24px 32px">
+    <p style="margin:0 0 20px;font-size:14px;color:#374151">
+      Estimado/a <strong>${r.proveedorNombre}</strong>,<br/>
+      Por medio de la presente, les hacemos llegar la siguiente orden de compra. Les solicitamos confirmar disponibilidad y fecha de entrega.
+    </p>
+    <table style="width:100%;border-collapse:collapse;border-radius:8px;overflow:hidden;border:1px solid #e5e7eb">
+      <thead>
+        <tr style="background:#f9fafb">
+          <th style="padding:10px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;border-bottom:1px solid #e5e7eb">Descripción</th>
+          <th style="padding:10px 12px;text-align:center;font-size:12px;color:#6b7280;font-weight:600;border-bottom:1px solid #e5e7eb">Cant.</th>
+          <th style="padding:10px 12px;text-align:right;font-size:12px;color:#6b7280;font-weight:600;border-bottom:1px solid #e5e7eb">Precio Unit.</th>
+          <th style="padding:10px 12px;text-align:center;font-size:12px;color:#6b7280;font-weight:600;border-bottom:1px solid #e5e7eb">ITBIS</th>
+          <th style="padding:10px 12px;text-align:right;font-size:12px;color:#6b7280;font-weight:600;border-bottom:1px solid #e5e7eb">Total</th>
+        </tr>
+      </thead>
+      <tbody>${itemsHtml}</tbody>
+    </table>
+    <div style="margin-top:16px;display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+      <div style="display:flex;justify-content:space-between;width:240px;font-size:13px;color:#374151">
+        <span>Subtotal:</span><span>${fmtMoney(r.subtotal)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;width:240px;font-size:13px;color:#374151">
+        <span>ITBIS:</span><span>${fmtMoney(r.itbis)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;width:240px;font-size:16px;font-weight:800;color:#7c3aed;border-top:2px solid #7c3aed;padding-top:8px;margin-top:4px">
+        <span>TOTAL:</span><span>${fmtMoney(r.total)}</span>
+      </div>
+    </div>
+    ${r.notas ? `<div style="margin-top:20px;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;padding:14px;font-size:13px;color:#5b21b6"><strong>📝 Notas:</strong><br/>${r.notas}</div>` : ''}
+    <div style="margin-top:24px;text-align:center">
+      <p style="font-size:12px;color:#9ca3af">Para confirmar esta orden, contáctenos:</p>
+      ${r.empresaTelefono ? `<p style="font-size:13px;color:#374151;margin:4px 0">📞 ${r.empresaTelefono}</p>` : ''}
+      ${r.empresaEmail    ? `<p style="font-size:13px;color:#374151;margin:4px 0">✉️ ${r.empresaEmail}</p>` : ''}
+    </div>
+  </div>
+  <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:14px 32px;text-align:center;font-size:11px;color:#9ca3af">
+    <strong>${r.empresaNombre}</strong>${r.empresaRNC ? ` · RNC ${r.empresaRNC}` : ''} · <strong style="color:#7c3aed">HiCloud ERP</strong>
+  </div>
+</div>
+</body></html>`;
+
+    const { exitoso, error } = await this.emailService.enviar({
+      to: emailProveedor,
+      subject: `Orden de Compra ${r.folio} — ${r.empresaNombre}`,
+      html,
+    });
+    if (!exitoso) throw new Error(`Error enviando orden de compra: ${error}`);
+    return { mensaje: `Orden ${r.folio} enviada a ${emailProveedor}` };
+  }
+
+  // ── Enviar recibo de cobro al cliente por email ───────────────────────────────
+  async enviarReciboAlCliente(reciboId: number, emailCliente: string) {
+    const rows = await this.dataSource.query<any[]>(
+      `SELECT rc.numero, rc.fecha::text, rc.monto::text, rc."metodoPago",
+              rc."clienteNombre", rc.concepto, rc.referencia,
+              COALESCE(rc."facturaFolio",'') AS "facturaFolio",
+              rc."nombreUsuario",
+              e.nombre AS "empresaNombre", e.telefono AS "empresaTelefono",
+              e.email AS "empresaEmail", e.rnc AS "empresaRNC"
+       FROM recibos_cobro rc
+       JOIN empresa e ON e.id = rc."empresaId"
+       WHERE rc.id = $1`,
+      [reciboId],
+    );
+    if (!rows[0]) throw new Error(`Recibo #${reciboId} no encontrado`);
+    const r = rows[0];
+
+    const fmtMoney = (v: string | number) =>
+      `RD$ ${Number(v).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
+    const fmtDate = (d: string) =>
+      d ? new Date(d).toLocaleDateString('es-DO', { day: '2-digit', month: 'long', year: 'numeric' }) : '—';
+
+    const metodoLabel: Record<string, string> = {
+      efectivo: 'Efectivo', transferencia: 'Transferencia bancaria',
+      cheque: 'Cheque', tarjeta: 'Tarjeta', deposito: 'Depósito', otro: 'Otro',
+    };
+
+    const html = `<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<title>Recibo ${r.numero}</title></head>
+<body style="margin:0;padding:0;background:#f4f6f9;font-family:'Inter',Arial,sans-serif">
+<div style="max-width:560px;margin:24px auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.1)">
+  <div style="background:linear-gradient(135deg,#059669,#10b981);padding:28px 32px">
+    <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px">Recibo de Cobro</div>
+    <div style="font-size:26px;font-weight:800;color:#fff;letter-spacing:-.3px">${r.numero}</div>
+    <div style="margin-top:8px;font-size:12px;color:rgba(255,255,255,.8)">📅 ${fmtDate(r.fecha)}</div>
+  </div>
+  <div style="padding:28px 32px">
+    <p style="margin:0 0 20px;font-size:14px;color:#374151">Estimado/a <strong>${r.clienteNombre}</strong>,</p>
+    <p style="margin:0 0 24px;font-size:13px;color:#6b7280">Confirmamos la recepción del siguiente pago:</p>
+    <div style="background:#f9fafb;border-radius:10px;padding:20px;margin-bottom:20px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:13px">
+        <span style="color:#6b7280">Concepto</span>
+        <span style="font-weight:600;color:#374151">${r.concepto}</span>
+      </div>
+      ${r.facturaFolio ? `<div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:13px">
+        <span style="color:#6b7280">Factura referenciada</span>
+        <span style="font-weight:600;color:#374151">${r.facturaFolio}</span>
+      </div>` : ''}
+      ${r.referencia ? `<div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:13px">
+        <span style="color:#6b7280">Referencia</span>
+        <span style="font-weight:600;color:#374151">${r.referencia}</span>
+      </div>` : ''}
+      <div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:13px">
+        <span style="color:#6b7280">Forma de pago</span>
+        <span style="font-weight:600;color:#374151">${metodoLabel[r.metodoPago] ?? r.metodoPago}</span>
+      </div>
+      <div style="border-top:2px solid #e5e7eb;margin-top:12px;padding-top:14px;display:flex;justify-content:space-between">
+        <span style="font-size:15px;font-weight:700;color:#374151">MONTO RECIBIDO</span>
+        <span style="font-size:22px;font-weight:900;color:#059669">${fmtMoney(r.monto)}</span>
+      </div>
+    </div>
+    <p style="font-size:12px;color:#9ca3af;text-align:center">Recibido por: <strong>${r.nombreUsuario ?? 'Sistema'}</strong></p>
+    <div style="text-align:center;margin-top:8px">
+      ${r.empresaTelefono ? `<p style="font-size:13px;color:#374151;margin:4px 0">📞 ${r.empresaTelefono}</p>` : ''}
+      ${r.empresaEmail    ? `<p style="font-size:13px;color:#374151;margin:4px 0">✉️ ${r.empresaEmail}</p>` : ''}
+    </div>
+  </div>
+  <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:14px 32px;text-align:center;font-size:11px;color:#9ca3af">
+    <strong>${r.empresaNombre}</strong>${r.empresaRNC ? ` · RNC ${r.empresaRNC}` : ''} · <strong style="color:#059669">HiCloud ERP</strong>
+  </div>
+</div>
+</body></html>`;
+
+    const { exitoso, error } = await this.emailService.enviar({
+      to: emailCliente,
+      subject: `Recibo de pago ${r.numero} — ${r.empresaNombre}`,
+      html,
+    });
+    if (!exitoso) throw new Error(`Error enviando recibo: ${error}`);
+    return { mensaje: `Recibo ${r.numero} enviado a ${emailCliente}` };
+  }
+
+  // ── Enviar cotización al cliente por email ────────────────────────────────────
+  async enviarCotizacionAlCliente(cotizacionId: number, emailCliente: string, asunto?: string) {
+    const rows = await this.dataSource.query<any[]>(
+      `SELECT co.numero, co.fecha::text, co."fechaValidez"::text,
+              co.subtotal::text, co.iva::text, co.total::text,
+              COALESCE(co.notas,'') AS notas,
+              c.nombre AS "clienteNombre", c.email AS "clienteEmail",
+              e.nombre AS "empresaNombre", e.telefono AS "empresaTelefono",
+              e.email  AS "empresaEmail",  e."sitioWeb" AS "empresaWeb"
+       FROM cotizaciones co
+       JOIN clientes c  ON c.id  = co."clienteId"
+       JOIN empresa  e  ON e.id  = co."empresaId"
+       WHERE co.id = $1`,
+      [cotizacionId],
+    );
+    if (!rows[0]) throw new Error(`Cotización #${cotizacionId} no encontrada`);
+    const r = rows[0];
+
+    const detRows = await this.dataSource.query<any[]>(
+      `SELECT descripcion, cantidad::text, "precioUnitario"::text, total::text, "porcentajeIva"::text
+       FROM cotizacion_detalles
+       WHERE "cotizacionId" = $1 AND "isActive" = true
+       ORDER BY id`,
+      [cotizacionId],
+    );
+
+    const fmtMoney = (v: string | number) =>
+      `RD$ ${Number(v).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
+    const fmtDate  = (d: string) => d ? new Date(d).toLocaleDateString('es-DO', { day:'2-digit', month:'long', year:'numeric' }) : '—';
+
+    const itemsHtml = detRows.map(d =>
+      `<tr>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;font-size:13px">${d.descripcion}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:13px">${Number(d.cantidad).toLocaleString('es-DO')}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px">${fmtMoney(d.precioUnitario)}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:13px;color:#6b7280">${Number(d.porcentajeIva)}%</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px;font-weight:700">${fmtMoney(d.total)}</td>
+      </tr>`,
+    ).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"/><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet"><title>Cotización ${r.numero}</title></head>
+<body style="margin:0;padding:0;background:#f4f6f9;font-family:'Inter',Arial,sans-serif">
+<div style="max-width:620px;margin:24px auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.1)">
+  <div style="background:linear-gradient(135deg,#1a56db,#0ea5e9);padding:28px 32px">
+    <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px">Cotización</div>
+    <div style="font-size:26px;font-weight:800;color:#fff;letter-spacing:-.3px">${r.numero}</div>
+    <div style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap">
+      <span style="background:rgba(255,255,255,.15);border-radius:20px;padding:4px 12px;font-size:12px;color:#fff">📅 Emitida: ${fmtDate(r.fecha)}</span>
+      <span style="background:rgba(255,255,255,.15);border-radius:20px;padding:4px 12px;font-size:12px;color:#fff">⏳ Válida hasta: ${fmtDate(r.fechaValidez)}</span>
+    </div>
+  </div>
+
+  <div style="padding:24px 32px">
+    <p style="margin:0 0 20px;font-size:14px;color:#374151;line-height:1.6">
+      Estimado/a <strong>${r.clienteNombre}</strong>,<br/>
+      Adjuntamos la cotización solicitada. Por favor revise los detalles a continuación.
+    </p>
+
+    <table style="width:100%;border-collapse:collapse;border-radius:8px;overflow:hidden;border:1px solid #e5e7eb">
+      <thead>
+        <tr style="background:#f9fafb">
+          <th style="padding:10px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;border-bottom:1px solid #e5e7eb">Descripción</th>
+          <th style="padding:10px 12px;text-align:center;font-size:12px;color:#6b7280;font-weight:600;border-bottom:1px solid #e5e7eb">Cant.</th>
+          <th style="padding:10px 12px;text-align:right;font-size:12px;color:#6b7280;font-weight:600;border-bottom:1px solid #e5e7eb">Precio Unit.</th>
+          <th style="padding:10px 12px;text-align:center;font-size:12px;color:#6b7280;font-weight:600;border-bottom:1px solid #e5e7eb">ITBIS</th>
+          <th style="padding:10px 12px;text-align:right;font-size:12px;color:#6b7280;font-weight:600;border-bottom:1px solid #e5e7eb">Total</th>
+        </tr>
+      </thead>
+      <tbody>${itemsHtml}</tbody>
+    </table>
+
+    <div style="margin-top:16px;display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+      <div style="display:flex;justify-content:space-between;width:240px;font-size:13px;color:#374151">
+        <span>Subtotal:</span><span>${fmtMoney(r.subtotal)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;width:240px;font-size:13px;color:#374151">
+        <span>ITBIS (18%):</span><span>${fmtMoney(r.iva)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;width:240px;font-size:16px;font-weight:800;color:#1a56db;border-top:2px solid #1a56db;padding-top:8px;margin-top:4px">
+        <span>TOTAL:</span><span>${fmtMoney(r.total)}</span>
+      </div>
+    </div>
+
+    ${r.notas ? `<div style="margin-top:20px;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:14px;font-size:13px;color:#78350f"><strong>📝 Notas:</strong><br/>${r.notas}</div>` : ''}
+
+    <div style="margin-top:24px;text-align:center">
+      <p style="font-size:12px;color:#9ca3af">Para aceptar o consultar esta cotización, contáctenos:</p>
+      ${r.empresaTelefono ? `<p style="font-size:13px;color:#374151;margin:4px 0">📞 ${r.empresaTelefono}</p>` : ''}
+      ${r.empresaEmail    ? `<p style="font-size:13px;color:#374151;margin:4px 0">✉️ ${r.empresaEmail}</p>`    : ''}
+      ${r.empresaWeb      ? `<p style="font-size:13px;color:#374151;margin:4px 0">🌐 ${r.empresaWeb}</p>`     : ''}
+    </div>
+  </div>
+
+  <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:16px 32px;text-align:center;font-size:11px;color:#9ca3af">
+    <strong>${r.empresaNombre}</strong> · Generado por <strong style="color:#1a56db">HiCloud ERP</strong>
+  </div>
+</div>
+</body></html>`;
+
+    const subjectFinal = asunto ?? `Cotización ${r.numero} — ${r.empresaNombre}`;
+    const { exitoso, error } = await this.emailService.enviar({ to: emailCliente, subject: subjectFinal, html });
+    if (!exitoso) throw new Error(`Error enviando cotización: ${error}`);
+    return { mensaje: `Cotización ${r.numero} enviada a ${emailCliente}` };
   }
 
   async disparar(tipo: 'cxc' | 'cxp' | 'stock' | 'ecf' | 'resumen') {

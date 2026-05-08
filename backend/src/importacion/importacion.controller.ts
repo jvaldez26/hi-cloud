@@ -60,4 +60,23 @@ export class ImportacionController {
     if (!file) throw new Error('No se recibió ningún archivo');
     return this.importacionService.importarProductos(file.buffer);
   }
+
+  @Get('plantilla/proveedores')
+  @ApiOperation({ summary: 'Descargar plantilla CSV para importar proveedores' })
+  descargarPlantillaProveedores(@Res() res: Response) {
+    const csv = this.importacionService.getPlantillaProveedores();
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="plantilla-proveedores.csv"');
+    res.send('﻿' + csv);
+  }
+
+  @Post('proveedores')
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Importar proveedores desde archivo CSV (máx 5MB)' })
+  importarProveedores(@UploadedFile() file: { buffer: Buffer; originalname: string }) {
+    if (!file) throw new Error('No se recibió ningún archivo');
+    return this.importacionService.importarProveedores(file.buffer);
+  }
 }

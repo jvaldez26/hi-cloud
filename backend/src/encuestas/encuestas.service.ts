@@ -25,44 +25,52 @@ export class EncuestasService {
     private tenantService: TenantService,
   ) {}
 
+  private get eid(): number { return this.tenantService.getEmpresaId(); }
+
   listar() {
-    return this.encuestaRepo.find({ order: { createdAt: 'DESC' } });
+    return this.encuestaRepo.find({ where: { empresaId: this.eid }, order: { createdAt: 'DESC' } });
   }
 
   crear(dto: CreateEncuestaDto) {
     const tokenPublico = randomBytes(16).toString('hex');
-    return this.encuestaRepo.save(this.encuestaRepo.create({ ...dto, tokenPublico }));
+    return this.encuestaRepo.save(
+      this.encuestaRepo.create({ ...dto, empresaId: this.eid, tokenPublico }),
+    );
   }
 
   async actualizar(id: number, dto: Partial<CreateEncuestaDto> & { activa?: boolean }) {
-    await this.encuestaRepo.update(id, dto);
-    return this.encuestaRepo.findOneByOrFail({ id });
+    await this.encuestaRepo.update({ id, empresaId: this.eid }, dto);
+    return this.encuestaRepo.findOneByOrFail({ id, empresaId: this.eid });
   }
 
   async eliminar(id: number) {
-    await this.encuestaRepo.update(id, { activa: false });
+    await this.encuestaRepo.update({ id, empresaId: this.eid }, { activa: false });
   }
 
   listarRespuestas(encuestaId: number) {
-    return this.respuestaRepo.find({ where: { encuestaId }, order: { createdAt: 'DESC' } });
+    return this.respuestaRepo.find({
+      where: { encuestaId, empresaId: this.eid },
+      order: { createdAt: 'DESC' },
+    });
   }
 
   async registrarRespuesta(dto: RegistrarRespuestaDto) {
+    // Las respuestas de encuestas públicas (tokenPublico) van al empresaId de la encuesta
     const encuesta = dto.tokenPublico
       ? await this.encuestaRepo.findOneBy({ tokenPublico: dto.tokenPublico })
-      : await this.encuestaRepo.findOneBy({ id: dto.encuestaId! });
+      : await this.encuestaRepo.findOneBy({ id: dto.encuestaId!, empresaId: this.eid });
 
-    if (!encuesta)       throw new NotFoundException('Encuesta no encontrada');
+    if (!encuesta)        throw new NotFoundException('Encuesta no encontrada');
     if (!encuesta.activa) throw new NotFoundException('Encuesta inactiva');
 
     return this.respuestaRepo.save(
-      this.respuestaRepo.create({ ...dto, encuestaId: encuesta.id }),
+      this.respuestaRepo.create({ ...dto, encuestaId: encuesta.id, empresaId: encuesta.empresaId }),
     );
   }
 
   async metricas(id: number) {
-    const encuesta = await this.encuestaRepo.findOneByOrFail({ id });
-    const respuestas = await this.respuestaRepo.find({ where: { encuestaId: id } });
+    const encuesta   = await this.encuestaRepo.findOneByOrFail({ id, empresaId: this.eid });
+    const respuestas = await this.respuestaRepo.find({ where: { encuestaId: id, empresaId: this.eid } });
     const total = respuestas.length;
 
     if (total === 0) return { total: 0, npsScore: null, csatPromedio: null, distribucion: {} };

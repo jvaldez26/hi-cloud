@@ -329,6 +329,65 @@ export class NominaService {
     };
   }
 
+  async generarReciboPdf(data: any): Promise<{ buffer: Buffer; filename: string }> {
+    const fmtM = (v: number) => `RD$ ${Number(v ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
+    const fmtD = (d: any) => d ? new Date(d).toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
+    const C = '#1a56db', G = '#059669', R = '#dc2626', GR = '#6b7280';
+    const fila = (l: string, v: number, c = '#111') =>
+      `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0f0f0;font-size:12px"><span style="color:${GR}">${l}</span><span style="font-weight:600;color:${c}">${fmtM(v)}</span></div>`;
+
+    const emp = data.empleado ?? {}, per = data.periodo ?? {}, ing = data.ingresos ?? {}, ded = data.deducciones ?? {}, emp2 = data.empresa ?? {};
+    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet"/>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Inter',Arial,sans-serif;font-size:12px;color:#111;background:#fff}@page{margin:10mm 12mm;size:Letter}</style>
+</head><body>
+<div style="background:linear-gradient(135deg,${C},#3b82f6);padding:20px 24px;margin-bottom:18px;color:#fff">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start">
+    <div><div style="font-size:9px;opacity:.7;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Recibo de Sueldo</div><div style="font-size:20px;font-weight:800">${emp2.nombre ?? 'HiCloud ERP'}</div>${emp2.rnc ? `<div style="font-size:11px;opacity:.8">RNC: ${emp2.rnc}</div>` : ''}</div>
+    <div style="text-align:right"><div style="font-size:9px;opacity:.7;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">Período</div><div style="font-size:14px;font-weight:700">${per.periodo ?? ''}</div><div style="font-size:11px;opacity:.8">${fmtD(per.fechaInicio)} — ${fmtD(per.fechaFin)}</div><div style="font-size:11px;opacity:.8">Fecha de pago: ${fmtD(per.fechaPago)}</div></div>
+  </div>
+</div>
+<div style="background:#f8fafc;border-radius:8px;padding:14px 16px;margin-bottom:16px;border-left:4px solid ${C}">
+  <div style="font-size:9px;color:${C};font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Datos del Empleado</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11px">
+    <div><span style="color:${GR}">Nombre: </span><strong>${emp.nombre ?? ''}</strong></div>
+    <div><span style="color:${GR}">Cédula: </span><strong>${emp.cedula ?? ''}</strong></div>
+    <div><span style="color:${GR}">Cargo: </span><span>${emp.cargo ?? '—'}</span></div>
+    <div><span style="color:${GR}">Departamento: </span><span>${emp.departamento ?? '—'}</span></div>
+    <div><span style="color:${GR}">Banco: </span><span>${emp.banco ?? '—'}</span></div>
+    <div><span style="color:${GR}">Cuenta: </span><span>${emp.cuentaBancaria ?? '—'}</span></div>
+    <div><span style="color:${GR}">Días trabajados: </span><strong>${per.diasTrabajados ?? 30}</strong></div>
+  </div>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+  <div><div style="font-size:9px;color:${G};font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;border-left:3px solid ${G};padding-left:6px">Ingresos</div>${fila('Salario Base', ing.salarioBase)}${fila('Salario Bruto', ing.salarioBruto, C)}</div>
+  <div><div style="font-size:9px;color:${R};font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;border-left:3px solid ${R};padding-left:6px">Deducciones</div>${fila('TSS — SFS', ded.tssSFS)}${fila('TSS — AFP', ded.tssAFP)}${fila('ISR', ded.isr)}${ded.otras > 0 ? fila('Otras', ded.otras) : ''}${fila('Total deducciones', ded.total, R)}</div>
+</div>
+<div style="background:${C};border-radius:8px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+  <div style="font-size:10px;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:1px">SALARIO NETO A COBRAR</div>
+  <div style="font-size:24px;font-weight:900;color:#fff">${fmtM(data.salarioNeto ?? 0)}</div>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:10px">
+  <div style="text-align:center"><div style="border-top:1px solid #374151;padding-top:6px;margin-top:32px;font-size:11px;color:${GR}">Firma del Empleado</div><div style="font-size:11px;font-weight:600;color:#111;margin-top:3px">${emp.nombre ?? ''}</div></div>
+  <div style="text-align:center"><div style="border-top:1px solid #374151;padding-top:6px;margin-top:32px;font-size:11px;color:${GR}">Recursos Humanos</div><div style="font-size:11px;font-weight:600;color:#111;margin-top:3px">${emp2.nombre ?? ''}</div></div>
+</div>
+<div style="margin-top:16px;padding-top:8px;border-top:1px solid #f0f0f0;display:flex;justify-content:space-between;font-size:10px;color:#9ca3af">
+  <span>HiCloud ERP · Recibo generado automáticamente</span>
+  <span>${new Date().toLocaleString('es-DO')}</span>
+</div>
+</body></html>`;
+
+    const puppeteer = await import('puppeteer');
+    const browser   = await puppeteer.default.launch({ headless: true, args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-gpu'] });
+    try {
+      const page = await browser.newPage();
+      await page.setContent(html, { waitUntil: 'networkidle0', timeout: 15_000 });
+      const buf = await page.pdf({ format: 'Letter', printBackground: true });
+      const nombre = `${emp.nombre ?? 'Empleado'}`.replace(/\s+/g, '-');
+      return { buffer: Buffer.from(buf), filename: `Recibo-${nombre}-${per.periodo ?? ''}.pdf` };
+    } finally { await browser.close(); }
+  }
+
   // ──────────────────────────────────────────────────────────────────
   // Resumen general
   // ──────────────────────────────────────────────────────────────────
