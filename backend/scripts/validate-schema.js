@@ -144,7 +144,7 @@ async function main() {
   await client.end();
 
   if (issues.length === 0) {
-    console.log(`  ✅ Schema OK — ${checked.size} columnas validadas`);
+    console.log(`  ✅ Schema OK — ${checkedCols.size} columnas validadas`);
     console.log('');
     process.exit(0);
   }
