@@ -132,4 +132,18 @@ CREATE INDEX IF NOT EXISTS idx_ecf_eventos_comprobante
 CREATE INDEX IF NOT EXISTS idx_ecf_eventos_created
   ON ecf_eventos ("createdAt" DESC);
 
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 5. COLUMNAS ADICIONALES EN TABLA ecf — E33/E34/E46/E47
+-- (Aplicar si aún no existen — diagnóstico: error 42703 en TypeORM)
+-- ─────────────────────────────────────────────────────────────────────────────
+
+ALTER TABLE ecf
+  ADD COLUMN IF NOT EXISTS "ncfModificado"      VARCHAR(13),
+  ADD COLUMN IF NOT EXISTS "codigoModificacion"  INTEGER,
+  ADD COLUMN IF NOT EXISTS "tipoExportacion"     VARCHAR(5),
+  ADD COLUMN IF NOT EXISTS "monedaExtranjera"    VARCHAR(3),
+  ADD COLUMN IF NOT EXISTS "tipoCambio"          DECIMAL(12,4),
+  ADD COLUMN IF NOT EXISTS "montoRetencionIsr"   DECIMAL(18,2),
+  ADD COLUMN IF NOT EXISTS "montoRetencionItbis" DECIMAL(18,2);
+
 COMMIT;
