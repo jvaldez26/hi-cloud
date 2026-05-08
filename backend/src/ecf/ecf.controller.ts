@@ -16,6 +16,7 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { ECFService } from './ecf.service';
+import { ReintentoECFJob } from './jobs/reintento-ecf.job';
 import { CreateSecuenciaECFDto } from './dto/create-secuencia-ecf.dto';
 import { UpdateEstadoECFDto } from './dto/update-estado-ecf.dto';
 import { FiltroECFDto } from './dto/filtro-ecf.dto';
@@ -42,8 +43,9 @@ import { RequiereModulo } from '../suscripciones/decorators/requiere-modulo.deco
 @Controller('ecf')
 export class ECFController {
   constructor(
-    private ecfService: ECFService,
-    private emitirUseCase: EmitirECFUseCase,
+    private ecfService:     ECFService,
+    private emitirUseCase:  EmitirECFUseCase,
+    private reintentoJob:   ReintentoECFJob,
   ) {}
 
   // ── Tipos ──────────────────────────────────────────────────────────
@@ -321,9 +323,18 @@ export class ECFController {
   @Post(':numero/reenviar')
   @HttpCode(HttpStatus.OK)
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)
-  @ApiOperation({ summary: 'Reintentar envío al proveedor (máx 3 intentos)' })
+  @ApiOperation({ summary: 'Reintentar envío a MSeller para un e-CF pendiente o rechazado' })
   reenviar(@Param('numero') numero: string) {
     return this.ecfService.reintentarEnvio(numero);
+  }
+
+  @Post('ejecutar-reintentos')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Ejecutar inmediatamente el job de reintentos MSeller (PENDIENTE_ENVIO)' })
+  async ejecutarReintentos() {
+    await this.reintentoJob.run();
+    return { message: 'Job de reintentos ejecutado. Revisa el estado de los e-CFs en /ecf/pendientes.' };
   }
 
   // ── Proveedor e-CF ─────────────────────────────────────────────────
