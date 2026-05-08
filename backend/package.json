@@ -12,6 +12,7 @@
     "db:migrate": "ts-node -r tsconfig-paths/register src/seeds/migrate.ts",
     "db:sync": "ts-node -r tsconfig-paths/register src/seeds/sync.ts",
     "db:validate": "node scripts/validate-schema.js",
+    "db:sync-full": "ts-node -r tsconfig-paths/register src/seeds/sync-full.ts",
     "db:migration-help": "node scripts/generate-migration.js",
     "start": "nest start",
     "start:dev": "nest start --watch",

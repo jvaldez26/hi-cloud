@@ -103,12 +103,14 @@ import { LibroVentasModule } from './libro-ventas/libro-ventas.module';
 import { PortalEmpleadoModule } from './portal-empleado/portal-empleado.module';
 import { AsistenteModule }      from './asistente/asistente.module';
 import { SuperAdminModule }     from './super-admin/super-admin.module';
+import { DatabaseModule }       from './database/database.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
+    DatabaseModule,
     RealtimeModule,
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],

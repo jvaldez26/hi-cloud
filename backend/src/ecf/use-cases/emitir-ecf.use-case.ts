@@ -384,7 +384,11 @@ ${JSON.stringify(payload, null, 2)}`;
         throw err;
       }
 
-      // Error inesperado
+      // Error inesperado — loggear siempre como ERROR (nunca silencioso)
+      this.logger.error(
+        `[ECF] Error inesperado para ${encf} [${(err as any)?.constructor?.name}]: ${(err as Error).message}`,
+        (err as Error).stack,
+      );
       await this.ecfRepo.update(ecfSaved.id, {
         estadoDGII: EstadoDGII.PENDIENTE_ENVIO,
         errorEnvio: (err as Error).message,

@@ -321,19 +321,37 @@ export class FacturasService {
         });
       }
 
-      // Non-POS: fire-and-forget — actualizar factura.ecfId si tiene éxito
+      // Non-POS: fire-and-forget — actualizar factura.ecfId si tiene éxito o falla
       this.emitirECFUseCase.execute(ecfInput)
         .then(result => {
           if (result?.ecf?.id) {
             return this.facturaRepository.update(id, { ecfId: result.ecf.id });
           }
         })
-        .catch(err =>
-          this.logger.warn(
-            `e-CF no procesado para factura ${factura.folio} [${err?.code ?? err?.message}]. ` +
-            `El comprobante quedará en PENDIENTE_ENVIO para reintento automático.`,
-          ),
-        );
+        .catch(async (err) => {
+          // SIEMPRE loggear como ERROR para que sea visible (nunca silencioso)
+          this.logger.error(
+            `[ECF] Fallo al emitir e-CF para ${factura.folio} ` +
+            `[${err?.code ?? err?.constructor?.name ?? 'Error'}]: ${err?.message}`,
+          );
+          // Intentar linkear el ECF si fue creado antes del fallo de MSeller
+          try {
+            const ecfCreado = await this.facturaRepository.manager
+              .createQueryBuilder()
+              .select(['e.id'])
+              .from('ecf', 'e')
+              .where('e."facturaId" = :id AND e."documentoOrigenTipo" = :tipo', {
+                id,
+                tipo: 'FACTURA',
+              })
+              .orderBy('e."createdAt"', 'DESC')
+              .limit(1)
+              .getRawOne();
+            if (ecfCreado?.e_id) {
+              await this.facturaRepository.update(id, { ecfId: ecfCreado.e_id });
+            }
+          } catch { /* no bloquear la respuesta si esta query falla */ }
+        });
 
       return this.findOne(id);
     }
