@@ -39,29 +39,33 @@ export class ConsultarEstadoECFJob {
   ) {}
 
   @Cron('*/5 * * * *', { name: 'consultar-estado-ecf' })
-  async run(): Promise<void> {
+  async run(force = false): Promise<void> {
     if (this.running) return;
     this.running = true;
     try {
-      await this.consultarPendientes();
+      await this.consultarPendientes(force);
     } finally {
       this.running = false;
     }
   }
 
-  private async consultarPendientes(): Promise<void> {
+  private async consultarPendientes(force = false): Promise<void> {
     const corte = new Date(Date.now() - MINUTOS_SIN_RESPUESTA * 60_000);
 
-    // Comprobantes ENVIADO con trackId, sin respuesta DGII en > 10 min
-    const enviados = await this.ecfRepo
+    // force=true → consulta TODOS los enviados sin importar antigüedad (admin manual)
+    const qb = this.ecfRepo
       .createQueryBuilder('ecf')
       .where('ecf.estadoDGII = :estado', { estado: EstadoDGII.ENVIADO })
       .andWhere('ecf.trackId IS NOT NULL')
       .andWhere('ecf.respuestaDgii IS NULL')
-      .andWhere('ecf.updatedAt < :corte', { corte })
-      .andWhere('ecf.isActive = true')
-      .take(30)
-      .getMany();
+      .andWhere('ecf.isActive = true');
+
+    if (!force) {
+      // Automático: solo consultar comprobantes con > 10 min sin respuesta
+      qb.andWhere('ecf.updatedAt < :corte', { corte });
+    }
+
+    const enviados = await qb.take(50).getMany();
 
     if (enviados.length === 0) return;
 

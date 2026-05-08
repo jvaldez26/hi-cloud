@@ -17,6 +17,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { ECFService } from './ecf.service';
 import { ReintentoECFJob } from './jobs/reintento-ecf.job';
+import { ConsultarEstadoECFJob } from './jobs/consultar-estado-ecf.job';
 import { CreateSecuenciaECFDto } from './dto/create-secuencia-ecf.dto';
 import { UpdateEstadoECFDto } from './dto/update-estado-ecf.dto';
 import { FiltroECFDto } from './dto/filtro-ecf.dto';
@@ -43,9 +44,10 @@ import { RequiereModulo } from '../suscripciones/decorators/requiere-modulo.deco
 @Controller('ecf')
 export class ECFController {
   constructor(
-    private ecfService:     ECFService,
-    private emitirUseCase:  EmitirECFUseCase,
-    private reintentoJob:   ReintentoECFJob,
+    private ecfService:      ECFService,
+    private emitirUseCase:   EmitirECFUseCase,
+    private reintentoJob:    ReintentoECFJob,
+    private consultarJob:    ConsultarEstadoECFJob,
   ) {}
 
   // ── Tipos ──────────────────────────────────────────────────────────
@@ -335,6 +337,17 @@ export class ECFController {
   async ejecutarReintentos() {
     await this.reintentoJob.run();
     return { message: 'Job de reintentos ejecutado. Revisa el estado de los e-CFs en /ecf/pendientes.' };
+  }
+
+  @Post('consultar-estados')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({
+    summary: 'Consultar estado DGII de comprobantes ENVIADOS — fuerza polling inmediato sin esperar 10 min',
+  })
+  async consultarEstados() {
+    await this.consultarJob.run(true); // force=true: consultar todos sin esperar 10 min
+    return { message: 'Consulta de estados ejecutada. Los comprobantes aceptados por DGII pasarán a estado "aceptado".' };
   }
 
   // ── Proveedor e-CF ─────────────────────────────────────────────────
