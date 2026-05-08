@@ -75,7 +75,9 @@ export class ComprasService {
 
     const folio = await this.generarFolio();
 
+    const empresaId = this.tenantService.getEmpresaId();
     const compra = this.compraRepository.create({
+      empresaId,
       folio,
       fecha: new Date(dto.fecha),
       proveedorId: dto.proveedorId,
