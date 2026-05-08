@@ -225,16 +225,28 @@ function cleanObj(e: Record<string, unknown>): Record<string, unknown> {
   );
 }
 
+/**
+ * Construye el objeto Emisor con el orden exacto exigido por el schema XSD de MSeller/DGII.
+ *
+ * CRÍTICO: El schema XSD valida el orden de los elementos.
+ * FechaEmision SIEMPRE debe ser el último campo del Emisor.
+ * Usamos asignación explícita (no objeto literal) para garantizar el orden
+ * incluso cuando los campos opcionales son null/undefined.
+ *
+ * Orden correcto:
+ *   RNCEmisor → RazonSocialEmisor → [NombreComercial] → [Sucursal] →
+ *   [DireccionEmisor] → [Municipio] → [Provincia] → FechaEmision
+ */
 function buildEmisor(config: EmpresaEcfConfig, fecha: Date | string): MSellerEmisor {
-  return {
-    RNCEmisor:         config.rncEmisor!,
-    RazonSocialEmisor: config.razonSocialEmisor!,
-    NombreComercial:   config.nombreComercial,
-    DireccionEmisor:   config.direccionEmisor,
-    Municipio:         config.municipio,
-    Provincia:         config.provincia,
-    FechaEmision:      fmtFecha(fecha ?? new Date()),
-  };
+  const e: Record<string, unknown> = {};
+  e['RNCEmisor']         = config.rncEmisor!;
+  e['RazonSocialEmisor'] = config.razonSocialEmisor!;
+  if (config.nombreComercial) e['NombreComercial'] = config.nombreComercial;
+  if (config.direccionEmisor) e['DireccionEmisor'] = config.direccionEmisor;
+  if (config.municipio)       e['Municipio']       = config.municipio;
+  if (config.provincia)       e['Provincia']       = config.provincia;
+  e['FechaEmision'] = fmtFecha(fecha ?? new Date()); // siempre al final
+  return e as unknown as MSellerEmisor;
 }
 
 /**
@@ -365,15 +377,7 @@ class ECFBuilder31 implements IECFBuilder {
     const rncComprador = cliente?.rncReceptor ?? cliente?.rfc;
     if (!rncComprador) throw new EcfRncRequeridoError(31, Number(factura.total));
 
-    const emisor: MSellerEmisor = {
-      RNCEmisor:         config.rncEmisor!,
-      RazonSocialEmisor: config.razonSocialEmisor!,
-      NombreComercial:   config.nombreComercial,
-      DireccionEmisor:   config.direccionEmisor,
-      Municipio:         config.municipio,
-      Provincia:         config.provincia,
-      FechaEmision:      fmtFecha(factura.fecha ?? new Date()),
-    };
+    const emisor = buildEmisor(config, factura.fecha ?? new Date());
 
     const comprador: MSellerComprador = {
       RNCComprador:         rncComprador,
@@ -393,7 +397,7 @@ class ECFBuilder31 implements IECFBuilder {
             TipoIngresos:              '01',
             TipoPago:                  1,
           },
-          Emisor:    cleanObj(emisor as any) as unknown as MSellerEmisor,
+          Emisor:    emisor,
           Comprador: comprador,
           Totales:   buildTotales(factura),
         },
@@ -419,15 +423,7 @@ class ECFBuilder32 implements IECFBuilder {
       throw new EcfRncRequeridoError(32, total);
     }
 
-    const emisor: MSellerEmisor = {
-      RNCEmisor:         config.rncEmisor!,
-      RazonSocialEmisor: config.razonSocialEmisor!,
-      NombreComercial:   config.nombreComercial,
-      DireccionEmisor:   config.direccionEmisor,
-      Municipio:         config.municipio,
-      Provincia:         config.provincia,
-      FechaEmision:      fmtFecha(factura.fecha ?? new Date()),
-    };
+    const emisor = buildEmisor(config, factura.fecha ?? new Date());
 
     const comprador: MSellerComprador = {
       RNCComprador:         rncComprador ?? '00000000000',
@@ -450,7 +446,7 @@ class ECFBuilder32 implements IECFBuilder {
             TipoIngresos:              '01',
             TipoPago:                  1,
           },
-          Emisor:    cleanObj(emisor as any) as unknown as MSellerEmisor,
+          Emisor:    emisor,
           Comprador: comprador,
           Totales:   totales,
         },
@@ -497,7 +493,7 @@ class ECFBuilder33 implements IECFBuilder {
               FormaDePago: [{ FormaPago: 1, MontoPago: montoTotal.toFixed(2) }],
             },
           },
-          Emisor:    cleanObj(emisor as any) as unknown as MSellerEmisor,
+          Emisor:    emisor,
           Comprador: comprador,
           Totales:   totalesE33 as unknown as MSellerTotales,
         },
@@ -547,7 +543,7 @@ class ECFBuilder34 implements IECFBuilder {
             TipoIngresos:              '01',
             TipoPago:                  2,
           },
-          Emisor:    cleanObj(emisor as any) as unknown as MSellerEmisor,
+          Emisor:    emisor,
           Comprador: comprador,
           Totales:   totales,
         },
@@ -604,7 +600,7 @@ class ECFBuilder41 implements IECFBuilder {
             IndicadorMontoGravado:     (totalesBase.MontoGravadoTotal ?? 0) > 0 ? 1 : 0,
             TipoPago:                  2,
           },
-          Emisor:    cleanObj(emisor as any) as unknown as MSellerEmisor,
+          Emisor:    emisor,
           Comprador: comprador,
           Totales:   totales,
         },
@@ -634,7 +630,7 @@ class ECFBuilder43 implements IECFBuilder {
             FechaVencimientoSecuencia: fmtFecha(fechaVencSec),
             // E43 no tiene TipoIngresos, TipoPago, IndicadorEnvioDiferido, IndicadorMontoGravado
           },
-          Emisor: cleanObj(emisor as any) as unknown as MSellerEmisor,
+          Emisor: emisor,
           // E43 no tiene Comprador
           Totales: { MontoExento: montoTotal, MontoTotal: montoTotal },
         },
@@ -688,7 +684,7 @@ class ECFBuilder44 implements IECFBuilder {
             TipoIngresos:              '01',
             TipoPago:                  1,
           },
-          Emisor:    cleanObj(emisor as any) as unknown as MSellerEmisor,
+          Emisor:    emisor,
           Comprador: comprador,
           Totales:   { MontoExento: montoExento, MontoTotal: montoExento },
         },
@@ -730,7 +726,7 @@ class ECFBuilder45 implements IECFBuilder {
             TipoIngresos:              '01',
             TipoPago:                  1,
           },
-          Emisor:    cleanObj(emisor as any) as unknown as MSellerEmisor,
+          Emisor:    emisor,
           Comprador: comprador,
           Totales:   totales,
         },
@@ -779,7 +775,7 @@ class ECFBuilder46 implements IECFBuilder {
             TipoIngresos:              '01',
             TipoPago:                  1,
           },
-          Emisor:    cleanObj(emisor as any) as unknown as MSellerEmisor,
+          Emisor:    emisor,
           Comprador: comprador,
           Totales:   totalesE46 as unknown as MSellerTotales,
         },
@@ -858,7 +854,7 @@ class ECFBuilder47 implements IECFBuilder {
             FechaVencimientoSecuencia: fmtFecha(fechaVencSec),
             // E47 no tiene TipoIngresos, IndicadorEnvioDiferido, TipoPago
           },
-          Emisor:    cleanObj(emisor as any) as unknown as MSellerEmisor,
+          Emisor:    emisor,
           Comprador: comprador,
           Totales:   totalesE47 as unknown as MSellerTotales,
         },

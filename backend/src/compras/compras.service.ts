@@ -96,7 +96,6 @@ export class ComprasService {
     );
     await this.detalleRepository.save(detalles);
 
-    const empresaId = this.tenantService.getEmpresaId();
     this.realtimeService.notify(empresaId, 'compra', 'created', savedCompra.id);
     return this.findOne(savedCompra.id);
   }

@@ -171,10 +171,24 @@ export class MSellerClientService {
           }),
         );
 
-        const ms = Date.now() - t0;
+        const ms   = Date.now() - t0;
+        const data = resp.data as any;
+
+        // Validar que MSeller devolvió un trackId real (UUID).
+        // Si internalTrackId es null/undefined la respuesta tiene un error
+        // aunque el HTTP status sea 200.
+        if (!data.internalTrackId) {
+          const errMsg = data.error ?? data.message ?? data.mensaje
+            ?? 'MSeller no devolvió internalTrackId — el documento no fue recibido';
+          this.logger.error(
+            `MSeller devolvió HTTP 200 pero sin trackId para eNCF=${payload.ECF.Encabezado.IdDoc.eNCF}: ${errMsg}`,
+          );
+          throw new EcfValidacionError(200, errMsg, data.details ?? data.errores);
+        }
+
         this.logger.log(
-          `MSeller OK [${ms}ms] trackId=${resp.data.internalTrackId} ` +
-          `secCode=${resp.data.securityCode}`,
+          `MSeller OK [${ms}ms] trackId=${data.internalTrackId} ` +
+          `secCode=${data.securityCode}`,
         );
         return resp.data;
       },
