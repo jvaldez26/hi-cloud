@@ -165,21 +165,27 @@ export class FacturasService {
       .take(Math.min(limit, 100))
       .getManyAndCount();
 
-    // Carga ECF en una sola query usando los IDs conocidos
-    const ecfIds = [...new Set(data.map((f: any) => f.ecfId).filter(Boolean))];
-    let ecfMap: Record<number, any> = {};
-    if (ecfIds.length > 0) {
+    // Carga ECF directamente por facturaId (no depende de factura.ecfId)
+    const facturaIds = data.map((f: any) => f.id);
+    let ecfByFacturaId: Record<number, any> = {};
+    if (facturaIds.length > 0) {
       const ecfRows: any[] = await this.facturaRepository.manager.query(
-        `SELECT id, numero, "estadoDGII", "codigoSeguridad"
-         FROM ecf WHERE id = ANY($1)`,
-        [ecfIds],
+        `SELECT DISTINCT ON ("facturaId")
+           "facturaId", id, numero, "estadoDGII", "codigoSeguridad", "qrUrl", "trackId"
+         FROM ecf
+         WHERE "facturaId" = ANY($1)
+           AND "documentoOrigenTipo" = 'FACTURA'
+         ORDER BY "facturaId", "createdAt" DESC`,
+        [facturaIds],
       );
-      ecfMap = Object.fromEntries(ecfRows.map(e => [e.id, e]));
+      for (const e of ecfRows) {
+        ecfByFacturaId[e.facturaId] = e;
+      }
     }
 
     const enriched = data.map((f: any) => ({
       ...f,
-      ecf: f.ecfId ? (ecfMap[f.ecfId] ?? null) : null,
+      ecf: ecfByFacturaId[f.id] ?? null,
     }));
 
     return {
@@ -315,13 +321,19 @@ export class FacturasService {
         });
       }
 
-      // Non-POS: fire-and-forget
-      this.emitirECFUseCase.execute(ecfInput).catch(err =>
-        this.logger.warn(
-          `e-CF no procesado para factura ${factura.folio} [${err?.code ?? err?.message}]. ` +
-          `El comprobante quedará en PENDIENTE_ENVIO para reintento automático.`,
-        ),
-      );
+      // Non-POS: fire-and-forget — actualizar factura.ecfId si tiene éxito
+      this.emitirECFUseCase.execute(ecfInput)
+        .then(result => {
+          if (result?.ecf?.id) {
+            return this.facturaRepository.update(id, { ecfId: result.ecf.id });
+          }
+        })
+        .catch(err =>
+          this.logger.warn(
+            `e-CF no procesado para factura ${factura.folio} [${err?.code ?? err?.message}]. ` +
+            `El comprobante quedará en PENDIENTE_ENVIO para reintento automático.`,
+          ),
+        );
 
       return this.findOne(id);
     }
@@ -350,6 +362,105 @@ export class FacturasService {
     }
     await this.facturaRepository.update(id, { isActive: false });
     return { message: `Factura ${factura.folio} eliminada` };
+  }
+
+  /**
+   * Busca facturas emitidas/pagadas sin e-CF asociado y los emite uno a uno.
+   * Útil para recuperar facturas creadas antes de configurar MSeller.
+   */
+  async recuperarEcfFacturasSinComprobante(usuario: any) {
+    const empresaId = this.tenantService.getEmpresaId();
+
+    // Facturas activas en estado emitida/pagada sin ECF creado (JOIN LEFT + IS NULL)
+    const facturasSinEcf: Factura[] = await this.facturaRepository
+      .createQueryBuilder('f')
+      .leftJoin(
+        'ecf', 'e',
+        'e."facturaId" = f.id AND e."documentoOrigenTipo" = \'FACTURA\'',
+      )
+      .where('f.empresaId = :empresaId', { empresaId })
+      .andWhere('f.estado IN (:...estados)', { estados: ['emitida', 'pagada'] })
+      .andWhere('f.isActive = :active', { active: true })
+      .andWhere('e.id IS NULL')
+      .select(['f.id', 'f.folio', 'f.tipoNcf', 'f.empresaId'])
+      .getMany();
+
+    this.logger.log(
+      `Recuperación e-CF: ${facturasSinEcf.length} factura(s) sin comprobante ` +
+      `en empresa #${empresaId}`,
+    );
+
+    const resultados: Array<{
+      facturaId: number; folio: string; estado: string; encf?: string; error?: string;
+    }> = [];
+
+    for (const factura of facturasSinEcf) {
+      try {
+        const tipoEcfNum = parseInt((factura.tipoNcf ?? 'E32').replace('E', ''), 10);
+        const result = await this.emitirECFUseCase.execute({
+          empresaId:           factura.empresaId ?? empresaId,
+          documentoOrigenTipo: DocumentoOrigenTipo.FACTURA,
+          documentoOrigenId:   factura.id,
+          tipoEcf:             tipoEcfNum,
+          modoSincrono:        false,
+        });
+        if (result?.ecf?.id) {
+          await this.facturaRepository.update(factura.id, { ecfId: result.ecf.id });
+        }
+        resultados.push({ facturaId: factura.id, folio: factura.folio, estado: 'OK', encf: result.encf });
+        this.logger.log(`Recuperado: ${factura.folio} → ${result.encf} (${result.estado})`);
+      } catch (err: any) {
+        resultados.push({
+          facturaId: factura.id,
+          folio:     factura.folio,
+          estado:    'ERROR',
+          error:     err?.message ?? 'Error desconocido',
+        });
+        this.logger.warn(`No se pudo emitir e-CF para ${factura.folio}: ${err?.message}`);
+      }
+      // Rate limiting para no saturar MSeller
+      await new Promise<void>(r => setTimeout(r, 600));
+    }
+
+    return {
+      empresaId,
+      totalEncontradas: facturasSinEcf.length,
+      procesadas:       resultados.length,
+      exitosas:         resultados.filter(r => r.estado === 'OK').length,
+      errores:          resultados.filter(r => r.estado === 'ERROR').length,
+      resultados,
+    };
+  }
+
+  /**
+   * Emite e-CF para una sola factura que ya está EMITIDA o PAGADA pero no
+   * tiene comprobante. Llamado por el botón "Emitir e-CF" en la UI.
+   */
+  async emitirEcfIndividual(id: number, usuario: any) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const factura   = await this.findOne(id);
+
+    if (!['emitida', 'pagada'].includes(factura.estado)) {
+      throw new BadRequestException(
+        `Solo se puede emitir e-CF para facturas EMITIDAS o PAGADAS. Estado actual: ${factura.estado}`,
+      );
+    }
+
+    const tipoEcfNum = parseInt((factura.tipoNcf ?? 'E32').replace('E', ''), 10);
+
+    const result = await this.emitirECFUseCase.execute({
+      empresaId:           factura.empresaId ?? empresaId,
+      documentoOrigenTipo: DocumentoOrigenTipo.FACTURA,
+      documentoOrigenId:   factura.id,
+      tipoEcf:             tipoEcfNum,
+      modoSincrono:        false,
+    });
+
+    if (result?.ecf?.id) {
+      await this.facturaRepository.update(id, { ecfId: result.ecf.id });
+    }
+
+    return result;
   }
 
   async resumenPorEstado() {

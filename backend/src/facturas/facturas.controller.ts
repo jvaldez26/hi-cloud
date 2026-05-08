@@ -153,6 +153,41 @@ export class FacturasController {
     return this.facturasService.remove(id);
   }
 
+  /**
+   * Reemite e-CF para todas las facturas emitidas/pagadas que no tienen
+   * comprobante asociado. Útil para recuperar facturas creadas antes de
+   * configurar MSeller, o cuando el e-CF falló silenciosamente.
+   */
+  @Post('recuperar-ecf')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({
+    summary: 'Recuperar e-CF de facturas sin comprobante — lote (solo ADMIN)',
+    description:
+      'Busca facturas emitidas/pagadas sin e-CF y los emite. ' +
+      'Respeta un delay de 600ms entre envíos para no saturar MSeller.',
+  })
+  recuperarEcf(@GetUser() usuario: User) {
+    return this.facturasService.recuperarEcfFacturasSinComprobante(usuario);
+  }
+
+  /**
+   * Emite e-CF para una factura individual que ya está EMITIDA o PAGADA
+   * pero no tiene comprobante. No cambia el estado de la factura.
+   */
+  @Post(':id/emitir-ecf')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({
+    summary: 'Emitir e-CF para una factura EMITIDA/PAGADA sin comprobante',
+  })
+  emitirEcfIndividual(
+    @Param('id', ParseIntPipe) id: number,
+    @GetUser() usuario: User,
+  ) {
+    return this.facturasService.emitirEcfIndividual(id, usuario);
+  }
+
   // ── PDF ────────────────────────────────────────────────────────────
 
   @Get(':id/pdf')
