@@ -237,14 +237,31 @@ function cleanObj(e: Record<string, unknown>): Record<string, unknown> {
  *   RNCEmisor → RazonSocialEmisor → [NombreComercial] → [Sucursal] →
  *   [DireccionEmisor] → [Municipio] → [Provincia] → FechaEmision
  */
+/**
+ * Construye el objeto Emisor con el orden exacto exigido por el schema XSD de MSeller/DGII.
+ *
+ * CRÍTICO: El schema XSD valida el orden de los elementos.
+ * FechaEmision SIEMPRE debe ser el último campo del Emisor.
+ * Usamos asignación explícita (no objeto literal) para garantizar el orden
+ * incluso cuando los campos opcionales son null/undefined.
+ *
+ * Orden correcto:
+ *   RNCEmisor → RazonSocialEmisor → [NombreComercial] → [Sucursal] →
+ *   DireccionEmisor → [Municipio] → [Provincia] → FechaEmision
+ *
+ * Nota: DireccionEmisor se incluye siempre (con fallback) porque el XSD
+ * requiere al menos un elemento de ubicación antes de FechaEmision.
+ */
 function buildEmisor(config: EmpresaEcfConfig, fecha: Date | string): MSellerEmisor {
   const e: Record<string, unknown> = {};
   e['RNCEmisor']         = config.rncEmisor!;
   e['RazonSocialEmisor'] = config.razonSocialEmisor!;
   if (config.nombreComercial) e['NombreComercial'] = config.nombreComercial;
-  if (config.direccionEmisor) e['DireccionEmisor'] = config.direccionEmisor;
-  if (config.municipio)       e['Municipio']       = config.municipio;
-  if (config.provincia)       e['Provincia']       = config.provincia;
+  // DireccionEmisor: siempre presente — el XSD requiere al menos un campo
+  // de ubicación entre RazonSocialEmisor y FechaEmision
+  e['DireccionEmisor'] = config.direccionEmisor ?? config.razonSocialEmisor!;
+  if (config.municipio) e['Municipio'] = config.municipio;
+  if (config.provincia) e['Provincia'] = config.provincia;
   e['FechaEmision'] = fmtFecha(fecha ?? new Date()); // siempre al final
   return e as unknown as MSellerEmisor;
 }
