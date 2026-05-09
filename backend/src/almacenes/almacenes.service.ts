@@ -135,7 +135,7 @@ export class AlmacenesService {
       .leftJoinAndSelect('t.almacenOrigen',  'ao')
       .leftJoinAndSelect('t.almacenDestino', 'ad')
       .leftJoinAndSelect('t.producto',       'p')
-      .where('t.isActive = :a', { a: true });
+      .where('t.isActive = :a AND t.empresaId = :eid', { a: true, eid: this.tenantService.getEmpresaId() });
 
     if (almacenId) {
       qb.andWhere('(t.almacenOrigenId = :id OR t.almacenDestinoId = :id)', { id: almacenId });
