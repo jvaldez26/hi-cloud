@@ -115,8 +115,11 @@ export class ClientesService {
     const empresaId = this.tenantService.getEmpresaId();
     const cliente   = await this.findOne(id);
 
-    const whereDesde = fechaDesde ? `AND f.fecha >= '${fechaDesde}'` : '';
-    const whereHasta = fechaHasta ? `AND f.fecha <= '${fechaHasta}'` : '';
+    // Usar parámetros posicionales para evitar SQL injection
+    const facturasParams: unknown[] = [id, empresaId];
+    let fechaWhere = '';
+    if (fechaDesde) { fechaWhere += ` AND f.fecha >= $${facturasParams.push(fechaDesde)}`; }
+    if (fechaHasta) { fechaWhere += ` AND f.fecha <= $${facturasParams.push(fechaHasta)}`; }
 
     const facturas = await this.dataSource.query<{
       folio: string; fecha: string; estado: string;
@@ -129,9 +132,9 @@ export class ClientesService {
        FROM facturas f
        LEFT JOIN cuentas_por_cobrar cxc ON cxc."facturaId" = f.id
        WHERE f."clienteId" = $1 AND f."empresaId" = $2 AND f."isActive" = true
-         AND f.estado NOT IN ('borrador','cancelada') ${whereDesde} ${whereHasta}
+         AND f.estado NOT IN ('borrador','cancelada')${fechaWhere}
        ORDER BY f.fecha DESC`,
-      [id, empresaId],
+      facturasParams,
     );
 
     const cobros = await this.dataSource.query<{
