@@ -213,7 +213,7 @@ export class VacacionesService {
     const { limit = 10, page = 1 } = pagination;
     const qb = this.ausenciaRepo.createQueryBuilder('a')
       .leftJoinAndSelect('a.empleado', 'e')
-      .where('a.isActive = :ac', { ac: true });
+      .where('a.isActive = :ac AND a.empresaId = :eid', { ac: true, eid: this.tenantService.getEmpresaId() });
 
     if (empleadoId) qb.andWhere('a.empleadoId = :eid', { eid: empleadoId });
     if (mes && anio) {

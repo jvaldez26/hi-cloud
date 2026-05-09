@@ -21,11 +21,11 @@ export class AlmacenesService {
   // ── Almacenes ─────────────────────────────────────────────────────────────
 
   async crear(dto: any) {
-    return this.almRepo.save(this.almRepo.create(dto));
+    return this.almRepo.save(this.almRepo.create({ ...dto, empresaId: this.tenantService.getEmpresaId() }));
   }
 
   async listar() {
-    return this.almRepo.find({ where: { isActive: true, activo: true }, order: { nombre: 'ASC' } });
+    return this.almRepo.find({ where: { isActive: true, activo: true, empresaId: this.tenantService.getEmpresaId() }, order: { nombre: 'ASC' } });
   }
 
   async findById(id: number): Promise<Almacen> {

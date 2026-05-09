@@ -48,7 +48,7 @@ export class MantenimientoService {
     const { limit = 15, page = 1 } = pagination;
     const qb = this.ordenRepo.createQueryBuilder('o')
       .leftJoinAndSelect('o.activo', 'a')
-      .where('o.isActive = :ac', { ac: true });
+      .where('o.isActive = :ac AND o.empresaId = :eid', { ac: true, eid: this.tenantService.getEmpresaId() });
 
     if (estado)   qb.andWhere('o.estado = :e', { e: estado });
     if (activoId) qb.andWhere('o.activoId = :aid', { aid: activoId });
@@ -105,7 +105,7 @@ export class MantenimientoService {
 
   async listarProgramas() {
     return this.progRepo.find({
-      where: { isActive: true, habilitado: true },
+      where: { isActive: true, habilitado: true, empresaId: this.tenantService.getEmpresaId() },
       relations: ['activo'],
       order: { proximoMantenimiento: 'ASC' },
     });

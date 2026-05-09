@@ -51,7 +51,7 @@ export class ProyectosService {
     const { limit = 10, page = 1, search } = pagination;
     const qb = this.proyRepo.createQueryBuilder('p')
       .leftJoinAndSelect('p.responsable', 'r')
-      .where('p.isActive = :a', { a: true });
+      .where('p.isActive = :a AND p.empresaId = :eid', { a: true, eid: this.tenantService.getEmpresaId() });
 
     if (estado)   qb.andWhere('p.estado = :e',    { e: estado });
     if (clienteId)qb.andWhere('p.clienteId = :c', { c: clienteId });

@@ -40,7 +40,7 @@ export class EvaluacionesService {
     const qb = this.evalRepo.createQueryBuilder('e')
       .leftJoinAndSelect('e.empleado',  'emp')
       .leftJoinAndSelect('e.evaluador', 'ev')
-      .where('e.isActive = :a', { a: true });
+      .where('e.isActive = :a AND e.empresaId = :eid', { a: true, eid: this.tenantService.getEmpresaId() });
 
     if (anio)       qb.andWhere('e.anio = :y',          { y: anio });
     if (periodo)    qb.andWhere('e.periodo = :p',        { p: periodo });

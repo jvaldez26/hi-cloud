@@ -98,7 +98,7 @@ export class ContratosService {
     const { limit = 10, page = 1, search } = pagination;
     const qb = this.repo.createQueryBuilder('c')
       .leftJoinAndSelect('c.cliente', 'cliente')
-      .where('c.isActive = :a', { a: true });
+      .where('c.isActive = :a AND c.empresaId = :eid', { a: true, eid: this.tenantService.getEmpresaId() });
 
     if (estado)  qb.andWhere('c.estado = :e',   { e: estado });
     if (search)  qb.andWhere('(c.nombre ILIKE :s OR cliente.nombre ILIKE :s)', { s: `%${search}%` });

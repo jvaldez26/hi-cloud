@@ -49,7 +49,7 @@ export class CRMService {
     const { limit = 10, page = 1, search } = pagination;
     const qb = this.leadRepo.createQueryBuilder('l')
       .leftJoinAndSelect('l.responsable', 'r')
-      .where('l.isActive = :a', { a: true });
+      .where('l.isActive = :a AND l.empresaId = :eid', { a: true, eid: this.tenantService.getEmpresaId() });
 
     if (estado)  qb.andWhere('l.estado = :e', { e: estado });
     if (fuente)  qb.andWhere('l.fuente = :f', { f: fuente });

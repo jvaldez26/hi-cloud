@@ -92,7 +92,7 @@ export class ChequesService {
     const { limit = 15, page = 1 } = pagination;
     const qb = this.chequeRepo.createQueryBuilder('c')
       .leftJoinAndSelect('c.chequera', 'ch')
-      .where('c.isActive = true');
+      .where('c.isActive = true AND c.empresaId = :eid', { eid: this.tenantService.getEmpresaId() });
 
     if (estado)     qb.andWhere('c.estado = :e',      { e: estado });
     if (tipo)       qb.andWhere('c.tipo = :t',         { t: tipo });

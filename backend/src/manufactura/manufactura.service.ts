@@ -113,7 +113,7 @@ export class ManufacturaService {
     const { limit = 10, page = 1 } = pagination;
     const qb = this.ordenRepo.createQueryBuilder('o')
       .leftJoinAndSelect('o.lista', 'l')
-      .where('o.isActive = true');
+      .where('o.isActive = true AND o.empresaId = :eid', { eid: this.tenantService.getEmpresaId() });
 
     if (estado) qb.andWhere('o.estado = :e', { e: estado });
 
