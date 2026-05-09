@@ -25,12 +25,12 @@ export class Factura extends TenantBaseEntity {
   @Column({ type: 'enum', enum: FacturaEstado, default: FacturaEstado.BORRADOR })
   estado!: FacturaEstado;
 
-  @ManyToOne(() => Cliente, { eager: true })
+  @ManyToOne(() => Cliente, { eager: true, nullable: true })
   @JoinColumn({ name: 'clienteId' })
-  cliente!: Cliente;
+  cliente?: Cliente;
 
-  @Column()
-  clienteId!: number;
+  @Column({ nullable: true })
+  clienteId?: number;
 
   @ManyToOne(() => User)
   @JoinColumn({ name: 'usuarioId' })

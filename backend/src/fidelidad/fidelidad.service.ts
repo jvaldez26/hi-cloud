@@ -21,7 +21,15 @@ export class FidelidadService {
     const empresaId = this.tenantSvc.getEmpresaId();
     let prog = await this.progRepo.findOne({ where: { empresaId, isActive: true } });
     if (!prog) {
-      prog = await this.progRepo.save(this.progRepo.create({ empresaId }));
+      prog = await this.progRepo.save(this.progRepo.create({
+        empresaId,
+        nombre:            'Programa de Puntos',
+        puntosPorDOP:      1,
+        minimoCanjePoints: 100,
+        valorPorPunto:     1,
+        diasVencimiento:   365,
+        activo:            true,
+      }));
     }
     return prog;
   }

@@ -66,15 +66,17 @@ export class FacturasService {
   async create(dto: CreateFacturaDto, usuario: User) {
     const empresaId = this.tenantService.getEmpresaId();
     await this.limitesService.verificarLimiteFacturas(empresaId);
-    await this.clientesService.findOne(dto.clienteId);
+    if (dto.clienteId) await this.clientesService.findOne(dto.clienteId);
 
     const detalles: Partial<FacturaDetalle>[] = [];
     let subtotalFactura = 0;
     let ivaFactura = 0;
 
     for (const item of dto.detalles) {
-      const producto = await this.productosService.findOne(item.productoId);
-      const porcentajeIva = item.porcentajeIva ?? Number(producto.porcentajeIva);
+      const producto = item.productoId
+        ? await this.productosService.findOne(item.productoId)
+        : null;
+      const porcentajeIva = item.porcentajeIva ?? (producto ? Number(producto.porcentajeIva) : 18);
       const subtotal = Number(item.precioUnitario) * item.cantidad;
       const importeIva = subtotal * (porcentajeIva / 100);
       const total = subtotal + importeIva;
@@ -84,7 +86,7 @@ export class FacturasService {
 
       detalles.push({
         productoId: item.productoId,
-        descripcion: item.descripcion || producto.nombre,
+        descripcion: item.descripcion || producto?.nombre || 'Servicio',
         precioUnitario: item.precioUnitario,
         cantidad: item.cantidad,
         porcentajeIva,
@@ -283,6 +285,7 @@ export class FacturasService {
 
       // 1. Salida de inventario
       for (const detalle of factura.detalles) {
+        if (!detalle.productoId) continue;  // líneas de servicio sin producto no afectan inventario
         await this.inventarioService.registrarSalida(
           detalle.productoId,
           Number(detalle.cantidad),
@@ -358,6 +361,7 @@ export class FacturasService {
 
     if (estado === FacturaEstado.CANCELADA && factura.estado === FacturaEstado.EMITIDA) {
       for (const detalle of factura.detalles) {
+        if (!detalle.productoId) continue;
         await this.inventarioService.registrarDevolucion(
           detalle.productoId,
           Number(detalle.cantidad),

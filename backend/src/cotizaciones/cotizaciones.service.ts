@@ -1,6 +1,11 @@
 import {
   Injectable, NotFoundException, BadRequestException, Logger,
+  StreamableFile,
 } from '@nestjs/common';
+import { generarHTMLCotizacion, CotizacionPDFData, CotizacionPDFItem } from './templates/cotizacion.template';
+import * as https from 'https';
+import * as http  from 'http';
+import * as qrcode from 'qrcode';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThan, In } from 'typeorm';
 import { Cron } from '@nestjs/schedule';
@@ -242,6 +247,98 @@ export class CotizacionesService {
       cantidad:   Number(r.cantidad),
       montoTotal: Number(r.montoTotal),
     }));
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // PDF
+  // ──────────────────────────────────────────────────────────────────
+
+  async generarPDF(id: number): Promise<{ buffer: Buffer; filename: string }> {
+    const cot = await this.findById(id);
+
+    // Empresa desde BD
+    const empresa = await this.cotizacionRepository.manager
+      .query('SELECT * FROM empresa WHERE id = $1 LIMIT 1', [cot.empresaId])
+      .then((r: any[]) => r[0] || {});
+
+    // Logo como data URI
+    const logoSrc = await this.resolverLogo(empresa.logo ?? '');
+
+    const items: CotizacionPDFItem[] = (cot.detalles || []).map((d, i) => ({
+      numero:        i + 1,
+      codigo:        (d as any).producto?.codigo,
+      descripcion:   d.descripcion,
+      cantidad:      Number(d.cantidad),
+      unidadMedida:  (d as any).producto?.unidadMedida ?? 'UN',
+      precioUnitario: Number(d.precioUnitario),
+      itbisPct:      Number(d.porcentajeIva),
+      subtotal:      Number(d.subtotal),
+      total:         Number(d.total),
+    }));
+
+    const data: CotizacionPDFData = {
+      numero:           cot.numero,
+      fecha:            String(cot.fecha),
+      fechaVencimiento: String(cot.fechaVencimiento),
+      validezDias:      cot.validezDias,
+      condicionesPago:  cot.condicionesPago,
+      notas:            cot.notas,
+      empresaNombre:    empresa.razonSocial || empresa.nombre || 'Mi Empresa',
+      empresaRNC:       empresa.rnc || '',
+      empresaDireccion: empresa.direccion || '',
+      empresaCiudad:    empresa.ciudad,
+      empresaTelefono:  empresa.telefono,
+      empresaEmail:     empresa.email,
+      empresaLogo:      logoSrc,
+      empresaColor:     empresa.configuracion?.colorPrimario,
+      vendedorNombre:   cot.nombreVendedor,
+      clienteNombre:    cot.cliente?.nombre || 'Sin cliente',
+      clienteRNC:       cot.cliente?.rncReceptor || cot.cliente?.rfc,
+      clienteDireccion: cot.cliente?.direccion,
+      clienteCiudad:    cot.cliente?.ciudad,
+      clienteTelefono:  cot.cliente?.telefono,
+      clienteEmail:     cot.cliente?.email,
+      items,
+      subtotal: Number(cot.subtotal),
+      iva:      Number(cot.iva),
+      total:    Number(cot.total),
+    };
+
+    const html   = generarHTMLCotizacion(data);
+    const buffer = await this.htmlToPDF(html);
+    return { buffer, filename: `${cot.numero}.pdf` };
+  }
+
+  private async resolverLogo(url: string): Promise<string> {
+    if (!url) return '';
+    if (url.startsWith('data:')) return url;
+    if (!url.startsWith('http')) return '';
+    return new Promise(resolve => {
+      const lib = url.startsWith('https') ? https : http;
+      lib.get(url, res => {
+        const ct = res.headers['content-type'] ?? 'image/jpeg';
+        const chunks: Buffer[] = [];
+        res.on('data',  c => chunks.push(c));
+        res.on('end',   () => resolve(`data:${ct};base64,${Buffer.concat(chunks).toString('base64')}`));
+        res.on('error', () => resolve(''));
+      }).on('error', () => resolve(''));
+    });
+  }
+
+  private async htmlToPDF(html: string): Promise<Buffer> {
+    const puppeteer = await import('puppeteer');
+    const browser = await puppeteer.default.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
+    });
+    try {
+      const page = await browser.newPage();
+      await page.setContent(html, { waitUntil: 'networkidle0', timeout: 30_000 });
+      const pdf = await page.pdf({ format: 'A4', printBackground: true, margin: { top: '0', bottom: '0', left: '0', right: '0' } });
+      return Buffer.from(pdf);
+    } finally {
+      await browser.close();
+    }
   }
 
   // ──────────────────────────────────────────────────────────────────

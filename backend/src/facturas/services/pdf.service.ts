@@ -110,7 +110,9 @@ export class PDFService {
     // QR DGII
     let qrBase64 = '';
     if (ecf?.numero && empresa.rnc) {
-      const urlQR = `https://ecf.dgii.gov.do/consulta?ncf=${ecf.numero}&rnc=${empresa.rnc}${ecf.codigoSeguridad ? '&codseg=' + ecf.codigoSeguridad : ''}`;
+      // Usar qrUrl de MSeller si está disponible (URL oficial DGII), si no construirla
+      const urlQR = ecf.qrUrl
+        ?? `https://ecf.dgii.gov.do/consulta?encf=${ecf.numero}&rnc=${empresa.rnc}${ecf.codigoSeguridad ? '&codseg=' + ecf.codigoSeguridad : ''}`;
       qrBase64 = await this.generarQR(urlQR);
     }
 
@@ -124,8 +126,10 @@ export class PDFService {
       const impIva    = subtotal * (itbisPct / 100);
       return {
         numero:         i + 1,
+        codigo:         (d as any).producto?.codigo,
         descripcion:    d.descripcion,
         cantidad:       Number(d.cantidad),
+        unidadMedida:   (d as any).producto?.unidadMedida ?? 'UN',
         precioUnitario: Number(d.precioUnitario),
         descuentoPct:   0,
         subtotal,
@@ -147,13 +151,26 @@ export class PDFService {
       factura.cliente?.rncReceptor ? 'RNC' :
       factura.cliente?.rfc?.length === 11 ? 'CEDULA' : 'CONSUMIDOR';
 
+    const diasCredito = factura.cliente?.diasCredito;
+    const esCreditoPorDias = diasCredito && diasCredito > 0;
+    const fechaVencimiento = esCreditoPorDias
+      ? (() => {
+          const d = new Date(factura.fecha);
+          d.setDate(d.getDate() + diasCredito!);
+          return d.toISOString();
+        })()
+      : undefined;
+
     return {
       numero:             factura.folio,
       fechaEmision:       String(factura.fecha),
-      tipo:               'CONTADO',
-      condicionPago:      'Al Contado',
+      fechaVencimiento,
+      tipo:               esCreditoPorDias ? 'CRÉDITO' : 'CONTADO',
+      condicionPago:      esCreditoPorDias ? 'Crédito' : 'Al Contado',
+      diasCredito:        diasCredito ?? undefined,
       notas:              factura.notas || '',
       moneda:             factura.moneda || 'DOP',
+      esOriginal:         true,
       ecfNumero:          ecf?.numero,
       ecfTipo:            ecf?.codigo,
       ecfTipoDescripcion: ecf?.descripcion,
@@ -175,6 +192,7 @@ export class PDFService {
       clienteNombre:      factura.cliente?.nombre || 'Consumidor Final',
       clienteRNC:         factura.cliente?.rncReceptor || factura.cliente?.rfc,
       clienteDireccion:   factura.cliente?.direccion,
+      clienteCiudad:      factura.cliente?.ciudad,
       clienteTelefono:    factura.cliente?.telefono,
       clienteEmail:       factura.cliente?.email,
       tipoCliente,
@@ -238,7 +256,7 @@ export class PDFService {
 
     let qrBase64 = '';
     if (ecf?.numero && empresa.rnc) {
-      qrBase64 = await this.generarQR(`https://ecf.dgii.gov.do/consulta?ncf=${ecf.numero}&rnc=${empresa.rnc}`);
+      qrBase64 = await this.generarQR(`https://ecf.dgii.gov.do/consulta?encf=${ecf.numero}&rnc=${empresa.rnc}`);
     }
 
     const now = new Date();

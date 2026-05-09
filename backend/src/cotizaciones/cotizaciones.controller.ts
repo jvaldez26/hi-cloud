@@ -1,7 +1,8 @@
 import {
   Controller, Get, Post, Patch, Delete, Body,
-  Param, Query, ParseIntPipe, HttpCode, HttpStatus, UseGuards,
+  Param, Query, ParseIntPipe, HttpCode, HttpStatus, UseGuards, Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { IsEnum } from 'class-validator';
 import { CotizacionesService } from './cotizaciones.service';
@@ -73,6 +74,18 @@ export class CotizacionesController {
     @GetUser() usuario: User,
   ) {
     return this.cotizacionesService.convertirAFactura(id, usuario);
+  }
+
+  @Get(':id/pdf')
+  @ApiOperation({ summary: 'Generar PDF de cotización' })
+  async getPDF(
+    @Param('id', ParseIntPipe) id: number,
+    @Res() res: Response,
+  ) {
+    const { buffer, filename } = await this.cotizacionesService.generarPDF(id);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
   }
 
   @Delete(':id')

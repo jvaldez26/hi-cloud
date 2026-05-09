@@ -15,9 +15,10 @@ import {
 import { Type } from 'class-transformer';
 
 export class CreateFacturaDetalleDto {
+  @IsOptional()
   @IsInt()
   @IsPositive()
-  productoId: number;
+  productoId?: number;
 
   @IsOptional()
   @IsString()
@@ -40,9 +41,10 @@ export class CreateFacturaDetalleDto {
 }
 
 export class CreateFacturaDto {
+  @IsOptional()
   @IsInt()
   @IsPositive()
-  clienteId: number;
+  clienteId?: number;
 
   @IsDateString()
   fecha: string;

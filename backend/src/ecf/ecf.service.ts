@@ -210,7 +210,7 @@ export class ECFService implements OnModuleInit {
     // Si la factura tiene tipoNcf explícito → usarlo.  Fallback: determinar por cliente.
     const codigotipo = factura.tipoNcf && /^E\d{2}$/.test(factura.tipoNcf)
       ? factura.tipoNcf
-      : this.determinarTipoECF(factura.cliente);
+      : this.determinarTipoECF(factura.cliente ?? null as any);
 
     this.logger.log(`generarECF: factura=${factura.id} tipoNcf=${factura.tipoNcf} → usando tipo=${codigotipo}`);
 
