@@ -53,7 +53,6 @@ export class AuthController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Registrar nuevo usuario' })
   register(@Body() dto: RegisterDto) {
-    console.log('[REGISTER] nombre="' + dto.nombre + '" len=' + dto.nombre?.length + ' email=' + dto.email);
     return this.authService.register(dto);
   }
 
