@@ -1,6 +1,6 @@
 import {
-  IsString, IsNotEmpty, IsOptional, IsEmail,
-  Matches, MaxLength, Length,
+  IsString, IsNotEmpty, IsOptional, IsEmail, IsInt, IsNumber,
+  Matches, MaxLength, Length, Min, Max,
 } from 'class-validator';
 
 export class CreateClienteDto {
@@ -76,4 +76,20 @@ export class CreateClienteDto {
   @IsString({ message: 'El RNC receptor debe ser texto' })
   @Length(9, 11, { message: 'El RNC receptor debe tener 9 u 11 dígitos' })
   rncReceptor?: string;
+
+  @IsOptional()
+  @IsString({ message: 'El sector debe ser texto' })
+  @MaxLength(64, { message: 'El sector no puede superar 64 caracteres' })
+  sector?: string;
+
+  @IsOptional()
+  @IsInt({ message: 'Los días de crédito deben ser un número entero' })
+  @Min(0,   { message: 'Los días de crédito no pueden ser negativos' })
+  @Max(365, { message: 'Los días de crédito no pueden superar 365' })
+  diasCredito?: number;
+
+  @IsOptional()
+  @IsNumber({}, { message: 'El límite de crédito debe ser un número' })
+  @Min(0, { message: 'El límite de crédito no puede ser negativo' })
+  limiteCredito?: number;
 }

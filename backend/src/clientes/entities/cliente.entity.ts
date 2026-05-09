@@ -58,6 +58,15 @@ export class Cliente extends TenantBaseEntity {
   @Column({ type: 'text', nullable: true })
   notas?: string;
 
+  @Column({ length: 64, nullable: true })
+  sector?: string;
+
+  @Column({ type: 'int', default: 30 })
+  diasCredito!: number;
+
+  @Column({ type: 'decimal', precision: 14, scale: 2, default: 0 })
+  limiteCredito!: number;
+
   @Column({ length: 64, nullable: true, unique: true })
   portalToken?: string;
 

@@ -1,22 +1,5 @@
-import { IsString, IsNumber, IsOptional, ValidateNested, Min } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsString, IsNumber, IsOptional, Min } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-
-export class OtraMonedaDto {
-  @ApiProperty({ description: 'Código de moneda ISO 4217', example: 'USD' })
-  @IsString()
-  Moneda!: string;
-
-  @ApiProperty({ description: 'Tipo de cambio DOP por unidad de moneda extranjera', example: 58.5 })
-  @IsNumber()
-  @Min(0.0001)
-  TipoCambio!: number;
-
-  @ApiProperty({ description: 'Monto total en la moneda extranjera', example: 1000 })
-  @IsNumber()
-  @Min(0)
-  MontoTotal!: number;
-}
 
 /** DTO para emitir e-CF E41 (Comprobante de Compras). No requiere campos extra. */
 export class EmitirEcfCompraDto {}
@@ -26,48 +9,34 @@ export class EmitirEcfGastoDto {}
 
 /** DTO para emitir e-CF E47 (Pago al Exterior). */
 export class EmitirEcfPagoExteriorDto {
-  @ApiPropertyOptional({
-    description: 'Datos de la moneda extranjera del pago.',
+  @ApiProperty({
+    description: 'Nombre del beneficiario extranjero.',
+    example: 'Acme Corp',
   })
-  @ValidateNested()
-  @Type(() => OtraMonedaDto)
-  @IsOptional()
-  otraMoneda?: OtraMonedaDto;
+  @IsString()
+  nombreExtranjero!: string;
 
-  @ApiPropertyOptional({
-    description: 'Porcentaje de retención ISR. Por defecto 27% (estándar DGII para pagos al exterior).',
-    example: 27,
+  @ApiProperty({
+    description: 'País del beneficiario — código ISO 2 letras.',
+    example: 'US',
   })
-  @IsNumber()
-  @IsOptional()
-  retencionISR?: number;
+  @IsString()
+  paisExtranjero!: string;
 }
 
-/** DTO para emitir e-CF E46 (Exportaciones) desde una factura existente. */
+/** DTO para emitir e-CF E46 (Exportaciones). */
 export class EmitirEcfExportacionDto {
-  @ApiPropertyOptional({
-    description: 'Datos de la moneda extranjera.',
+  @ApiProperty({
+    description: 'Nombre del cliente extranjero.',
+    example: 'Global Imports Ltd',
   })
-  @ValidateNested()
-  @Type(() => OtraMonedaDto)
-  @IsOptional()
-  otraMoneda?: OtraMonedaDto;
+  @IsString()
+  nombreExtranjero!: string;
 
-  @ApiPropertyOptional({
-    description: 'Tipo de venta: 1=Directa, 2=Consignación, 3=Otra.',
-    enum: [1, 2, 3],
-    example: 1,
+  @ApiProperty({
+    description: 'País del cliente — código ISO 2 letras.',
+    example: 'MX',
   })
-  @IsNumber()
-  @IsOptional()
-  tipoVenta?: number;
-
-  @ApiPropertyOptional({
-    description: 'Tipo de exportación: 1=Bienes, 2=Servicios.',
-    enum: [1, 2],
-    example: 2,
-  })
-  @IsNumber()
-  @IsOptional()
-  tipoExportacion?: number;
+  @IsString()
+  paisExtranjero!: string;
 }

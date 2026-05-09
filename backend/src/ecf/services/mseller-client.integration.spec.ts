@@ -25,6 +25,7 @@ import { ECFBuilderService } from './ecf-builder.service';
 import { ModoEcf } from '../entities/empresa-ecf-config.entity';
 import { EcfValidacionError } from '../errors/ecf.errors';
 import { of, throwError } from 'rxjs';
+import { assertEmisorOrder } from '../builders/sections/emisor.section';
 
 const {
   MSELLER_TEST_EMAIL,
@@ -146,6 +147,90 @@ async function autenticar(): Promise<{ idToken: string }> {
       expect(typeof idToken).toBe('string');
       expect(idToken.length).toBeGreaterThan(20);
     });
+
+    it('construye y envía E31 a CERTIFICACION con el nuevo ECFBuilderService', async () => {
+      const builderService = new ECFBuilderService();
+
+      // eNCF único por timestamp para evitar duplicados en CERT
+      const ts   = Date.now().toString().slice(-6);
+      const encf = `E31${ts.padStart(13, '0')}`;
+
+      const hoy          = new Date();
+      const fechaVencSec = new Date(hoy.getFullYear() + 1, 11, 31);
+
+      const mockConfig: any = {
+        rncEmisor:         MSELLER_TEST_RNC!,
+        razonSocialEmisor: MSELLER_TEST_RAZON,
+        direccionEmisor:   'Av. 27 de Febrero #123, Santo Domingo',
+        municipio:         undefined,
+        provincia:         undefined,
+        nombreComercial:   undefined,
+        modo:              ModoEcf.CERTIFICACION,
+        activo:            true,
+      };
+
+      const mockFactura: any = {
+        fecha:    hoy,
+        subtotal: 100,
+        iva:      18,
+        total:    118,
+        cliente: {
+          nombre:      MSELLER_TEST_RAZON,
+          rncReceptor: MSELLER_TEST_RNC!,
+          rfc:         null,
+          direccion:   'Av. 27 de Febrero #123, Santo Domingo',
+        },
+        detalles: [{
+          descripcion:    'Servicio de prueba E31 — ECFBuilderService',
+          cantidad:       1,
+          precioUnitario: 100,
+          porcentajeIva:  18,
+          importeIva:     18,
+          subtotal:       100,
+        }],
+      };
+
+      const payload = builderService.build(31, {
+        encf,
+        factura:      mockFactura,
+        config:       mockConfig,
+        fechaVencSec,
+      });
+
+      // ── Log del JSON completo ─────────────────────────────────────────────
+      console.log('\n=== JSON E31 A ENVIAR A MSELLER ===');
+      console.log(JSON.stringify(payload, null, 2));
+      console.log('=== FIN JSON E31 ===\n');
+
+      // ── Verificar orden del Emisor ────────────────────────────────────────
+      const emisorKeys = Object.keys(payload.ECF.Encabezado.Emisor as Record<string, unknown>);
+      console.log('Orden Emisor:', emisorKeys.join(' → '));
+      assertEmisorOrder(payload.ECF.Encabezado.Emisor as object);
+      expect(emisorKeys[emisorKeys.length - 1]).toBe('FechaEmision');
+
+      // ── Enviar a MSeller CERTIFICACION ────────────────────────────────────
+      const resp = await axios.post(
+        `${BASE_URL}/${ENV_PATH}/documentos-ecf`,
+        payload,
+        {
+          timeout: 30_000,
+          headers: {
+            'Content-Type':  'application/json',
+            'Authorization': `Bearer ${idToken}`,
+            'X-API-KEY':     MSELLER_TEST_API_KEY!,
+          },
+        },
+      );
+
+      console.log('\n=== RESPUESTA MSELLER E31 ===');
+      console.log(JSON.stringify(resp.data, null, 2));
+      console.log('=== FIN RESPUESTA ===\n');
+
+      // ── Verificar respuesta ───────────────────────────────────────────────
+      expect(resp.status).toBe(200);
+      expect(resp.data.internalTrackId).toBeTruthy();
+      expect(resp.data.securityCode).toBeTruthy();
+    }, 35_000);
 
     it('valida un documento E32 sin consumir secuencia (validate=true)', async () => {
       const encf = 'E320000000001'; // eNCF de prueba
@@ -293,8 +378,15 @@ describe('MSellerClientService — unitarios', () => {
         })),
       );
 
-    // Payload mínimo válido para que el logger no falle antes de llegar al HTTP call
-    const payload = { ECF: { Encabezado: { IdDoc: { eNCF: 'E320000000001' } } } } as any;
+    // Payload mínimo con Emisor válido (guard verifica FechaEmision al final)
+    const payload = {
+      ECF: {
+        Encabezado: {
+          IdDoc: { eNCF: 'E320000000001' },
+          Emisor: { RNCEmisor: '132269551', RazonSocialEmisor: 'Test SRL', DireccionEmisor: 'Av. Test', FechaEmision: '08-05-2026' },
+        },
+      },
+    } as any;
     await expect(service.enviarDocumento(payload, 1)).rejects.toThrow(EcfValidacionError);
     // Solo 2 llamadas HTTP (auth + envío), sin reintentos
     expect(httpService.post).toHaveBeenCalledTimes(2);

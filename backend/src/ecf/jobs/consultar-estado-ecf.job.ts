@@ -6,7 +6,7 @@ import { ECF, EstadoDGII } from '../entities/ecf.entity';
 import { EcfEvento, TipoEcfEvento } from '../entities/ecf-evento.entity';
 import { MSellerClientService } from '../services/mseller-client.service';
 
-const MINUTOS_SIN_RESPUESTA = 10;
+const MINUTOS_SIN_RESPUESTA = 2;
 
 /** Mapeo de estados MSeller → EstadoDGII interno. */
 const MSELLER_ESTADO_MAP: Record<string, EstadoDGII> = {
@@ -38,7 +38,7 @@ export class ConsultarEstadoECFJob {
     private readonly mseller: MSellerClientService,
   ) {}
 
-  @Cron('*/5 * * * *', { name: 'consultar-estado-ecf' })
+  @Cron('*/1 * * * *', { name: 'consultar-estado-ecf' })
   async run(force = false): Promise<void> {
     if (this.running) return;
     this.running = true;

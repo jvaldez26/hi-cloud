@@ -63,22 +63,22 @@ function makeFactura(overrides: Partial<any> = {}): any {
 }
 
 function makeInput(opts: {
-  tipoEcf?:         number;
-  facturaOverrides?: any;
-  configOverrides?:  any;
-  infoReferencia?:   any;
-  otraMoneda?:       any;
-  retencionISR?:     number;
+  tipoEcf?:          number;
+  facturaOverrides?:  any;
+  configOverrides?:   any;
+  infoReferencia?:    any;
+  nombreExtranjero?:  string;
+  paisExtranjero?:    string;
 } = {}): ECFBuildInput {
   const vence = new Date(2027, 11, 31, 12, 0, 0);
   return {
-    encf:          `E${String(opts.tipoEcf ?? 32).padStart(2, '0')}0000000001`,
-    factura:       makeFactura(opts.facturaOverrides),
-    config:        makeConfig(opts.configOverrides),
-    fechaVencSec:  vence,
-    infoReferencia: opts.infoReferencia,
-    otraMoneda:    opts.otraMoneda,
-    retencionISR:  opts.retencionISR,
+    encf:             `E${String(opts.tipoEcf ?? 32).padStart(2, '0')}0000000001`,
+    factura:          makeFactura(opts.facturaOverrides),
+    config:           makeConfig(opts.configOverrides),
+    fechaVencSec:     vence,
+    infoReferencia:   opts.infoReferencia,
+    nombreExtranjero: opts.nombreExtranjero,
+    paisExtranjero:   opts.paisExtranjero,
   };
 }
 
@@ -159,11 +159,11 @@ describe('ECFBuilderService', () => {
       expect(p.ECF.Encabezado.Comprador!.RNCComprador).toBe('101234567');
     });
 
-    it('IdDoc contiene campos obligatorios E32', () => {
+    it('IdDoc contiene campos obligatorios E32 (sin FechaVencimientoSecuencia — spec nueva)', () => {
       const idDoc = service.build(32, makeInput({ tipoEcf: 32 })).ECF.Encabezado.IdDoc;
       expect(idDoc.TipoeCF).toBe(32);
       expect(idDoc.eNCF).toBe('E320000000001');
-      expect(idDoc.FechaVencimientoSecuencia).toBe('31-12-2027');
+      expect((idDoc as any).FechaVencimientoSecuencia).toBeUndefined(); // removido en spec nueva
       expect(idDoc.TipoIngresos).toBe('01');
       expect(idDoc.TipoPago).toBe(1);
       expect(idDoc.IndicadorMontoGravado).toBeDefined();
@@ -325,18 +325,19 @@ describe('ECFBuilderService', () => {
       expect(p.ECF.Encabezado.Comprador!.RNCComprador).toBe('101234567');
     });
 
-    it('E41 tiene TotalITBISRetenido y TotalISRRetencion en Totales', () => {
+    it('E41 Totales NO tiene TotalITBISRetenido ni TotalISRRetencion (spec nueva)', () => {
       const totales = service.build(41, makeInput({ tipoEcf: 41, facturaOverrides: { cliente: CLIENTE_CON_RNC } })).ECF.Encabezado.Totales;
-      expect(totales.TotalITBISRetenido).toBe('0.00');
-      expect(totales.TotalISRRetencion).toBe('0.00');
+      expect((totales as any).TotalITBISRetenido).toBeUndefined();
+      expect((totales as any).TotalISRRetencion).toBeUndefined();
+      expect(totales.MontoTotal).toBeGreaterThan(0);
     });
 
-    it('E41 items tienen sección Retencion con MontoITBISRetenido', () => {
+    it('E41 items tienen TablaImpuesto (no Retencion — spec nueva)', () => {
       const p = service.build(41, makeInput({ tipoEcf: 41, facturaOverrides: { cliente: CLIENTE_CON_RNC } }));
-      const item = p.ECF.DetallesItems.Item[0];
-      expect(item.Retencion).toBeDefined();
-      expect(item.Retencion!.MontoITBISRetenido).toBe(0);
-      expect(item.Retencion!.IndicadorAgenteRetencionoPercepcion).toBe(1);
+      const item = p.ECF.DetallesItems.Item[0] as any;
+      expect(item.Retencion).toBeUndefined();
+      expect(item.TablaImpuesto).toBeDefined();
+      expect(Array.isArray(item.TablaImpuesto.Impuesto)).toBe(true);
     });
 
     it('E41 NO tiene IndicadorEnvioDiferido ni TipoIngresos', () => {
@@ -344,29 +345,38 @@ describe('ECFBuilderService', () => {
       expect((idDoc as any).IndicadorEnvioDiferido).toBeUndefined();
       expect((idDoc as any).TipoIngresos).toBeUndefined();
     });
+
+    it('E41 tiene TipoPago=2 y FechaLimitePago', () => {
+      const idDoc = service.build(41, makeInput({ tipoEcf: 41, facturaOverrides: { cliente: CLIENTE_CON_RNC } })).ECF.Encabezado.IdDoc;
+      expect((idDoc as any).TipoPago).toBe(2);
+      expect((idDoc as any).FechaLimitePago).toMatch(/^\d{2}-\d{2}-\d{4}$/);
+    });
   });
 
   // ── E43 — Gastos Menores ──────────────────────────────────────────────────
 
   describe('E43 — Gastos Menores', () => {
-    it('construye payload E43 sin Comprador', () => {
+    it('construye payload E43 con Comprador genérico (131880657 — spec nueva)', () => {
       const p = service.build(43, makeInput({ tipoEcf: 43 }));
       expect(p.ECF.Encabezado.IdDoc.TipoeCF).toBe(43);
-      expect(p.ECF.Encabezado.Comprador).toBeUndefined();
+      expect(p.ECF.Encabezado.Comprador).toBeDefined();
+      expect(p.ECF.Encabezado.Comprador!.RNCComprador).toBe('131880657');
+      expect(p.ECF.Encabezado.Comprador!.RazonSocialComprador).toBe('CLIENTES DE LA ADMINISTRACION');
     });
 
     it('E43 Totales solo tiene MontoExento y MontoTotal', () => {
       const totales = service.build(43, makeInput({ tipoEcf: 43 })).ECF.Encabezado.Totales;
       expect(totales.MontoTotal).toBeGreaterThan(0);
       expect(totales.MontoExento).toBeGreaterThan(0);
-      expect(totales.TotalITBIS).toBeUndefined();
-      expect(totales.MontoGravadoTotal).toBeUndefined();
+      expect((totales as any).TotalITBIS).toBeUndefined();
+      expect((totales as any).MontoGravadoTotal).toBeUndefined();
     });
 
-    it('E43 NO tiene TipoIngresos, TipoPago ni IndicadorEnvioDiferido', () => {
+    it('E43 tiene IndicadorMontoGravado=0 y TipoPago (spec nueva)', () => {
       const idDoc = service.build(43, makeInput({ tipoEcf: 43 })).ECF.Encabezado.IdDoc;
+      expect((idDoc as any).IndicadorMontoGravado).toBe(0);
+      expect((idDoc as any).TipoPago).toBeDefined();
       expect((idDoc as any).TipoIngresos).toBeUndefined();
-      expect((idDoc as any).TipoPago).toBeUndefined();
       expect((idDoc as any).IndicadorEnvioDiferido).toBeUndefined();
     });
   });
@@ -412,10 +422,11 @@ describe('ECFBuilderService', () => {
       });
     });
 
-    it('E44 tiene IndicadorEnvioDiferido=1, TipoIngresos="01"', () => {
+    it('E44 tiene TipoIngresos="01" y IndicadorMontoGravado=0 (sin IndicadorEnvioDiferido — spec nueva)', () => {
       const idDoc = service.build(44, makeInput({ tipoEcf: 44, facturaOverrides: { cliente: CLIENTE_CON_RNC } })).ECF.Encabezado.IdDoc;
-      expect(idDoc.IndicadorEnvioDiferido).toBe(1);
-      expect(idDoc.TipoIngresos).toBe('01');
+      expect((idDoc as any).IndicadorEnvioDiferido).toBeUndefined();
+      expect((idDoc as any).TipoIngresos).toBe('01');
+      expect((idDoc as any).IndicadorMontoGravado).toBe(0);
     });
   });
 
@@ -442,114 +453,86 @@ describe('ECFBuilderService', () => {
       expect((p.ECF.Encabezado.Comprador as any).NumeroOrdenCompra).toBe('OC-2026-001');
     });
 
-    it('E45 tiene IndicadorEnvioDiferido=1 y TipoIngresos="01"', () => {
+    it('E45 tiene TipoIngresos="01" y IndicadorMontoGravado (sin IndicadorEnvioDiferido — spec nueva)', () => {
       const idDoc = service.build(45, makeInput({ tipoEcf: 45, facturaOverrides: { cliente: CLIENTE_CON_RNC } })).ECF.Encabezado.IdDoc;
-      expect(idDoc.IndicadorEnvioDiferido).toBe(1);
-      expect(idDoc.TipoIngresos).toBe('01');
+      expect((idDoc as any).IndicadorEnvioDiferido).toBeUndefined();
+      expect((idDoc as any).TipoIngresos).toBe('01');
+      expect((idDoc as any).IndicadorMontoGravado).toBeDefined();
     });
   });
 
   // ── E46 — Exportaciones ───────────────────────────────────────────────────
 
   describe('E46 — Exportaciones', () => {
-    it('construye payload E46 con totales I3 (tasa 0%)', () => {
+    it('usa NombreExtranjero + PaisCompradorExtranjero como Comprador (spec nueva)', () => {
       const p = service.build(46, makeInput({
-        tipoEcf: 46,
-        facturaOverrides: { cliente: CLIENTE_CON_RNC },
+        tipoEcf:          46,
+        nombreExtranjero: 'Global Imports Ltd',
+        paisExtranjero:   'MX',
       }));
       expect(p.ECF.Encabezado.IdDoc.TipoeCF).toBe(46);
-      const totales = p.ECF.Encabezado.Totales as any;
-      expect(totales.MontoGravadoI3).toBeDefined();
-      expect(totales.ITBIS3).toBe(0);
-      expect(totales.TotalITBIS).toBe('0.00');
-      expect(totales.TotalITBIS3).toBe('0.00');
+      expect(p.ECF.Encabezado.Comprador!.NombreExtranjero).toBe('Global Imports Ltd');
+      expect(p.ECF.Encabezado.Comprador!.PaisCompradorExtranjero).toBe('MX');
+      expect(p.ECF.Encabezado.Comprador!.RNCComprador).toBeUndefined();
     });
 
-    it('E46 totales son strings (MontoGravadoI3 es string)', () => {
-      const totales = service.build(46, makeInput({
-        tipoEcf: 46,
-        facturaOverrides: { cliente: CLIENTE_CON_RNC },
-      })).ECF.Encabezado.Totales as any;
-      expect(typeof totales.MontoGravadoI3).toBe('string');
-      expect(typeof totales.MontoTotal).toBe('string');
+    it('E46 Totales son MontoExento + MontoTotal (exento — spec nueva)', () => {
+      const totales = service.build(46, makeInput({ tipoEcf: 46 })).ECF.Encabezado.Totales as any;
+      expect(totales.MontoExento).toBeGreaterThan(0);
+      expect(totales.MontoTotal).toBeGreaterThan(0);
+      expect(totales.MontoGravadoI3).toBeUndefined();
+      expect((p => p.ECF.OtraMoneda)(service.build(46, makeInput({ tipoEcf: 46 })) as any)).toBeUndefined();
     });
 
-    it('E46 agrega OtraMoneda si se proporciona', () => {
-      const otraMoneda = { TipoMoneda: 'USD', TipoCambio: '60.0000', MontoTotalOtraMoneda: '100.00' };
-      const p = service.build(46, makeInput({
-        tipoEcf:      46,
-        facturaOverrides: { cliente: CLIENTE_CON_RNC },
-        otraMoneda,
-      }));
-      expect(p.ECF.OtraMoneda).toEqual(otraMoneda);
+    it('E46 usa país por defecto "US" si no se provee paisExtranjero', () => {
+      const comprador = service.build(46, makeInput({ tipoEcf: 46 })).ECF.Encabezado.Comprador!;
+      expect(comprador.PaisCompradorExtranjero).toBe('US');
     });
 
-    it('E46 tiene IndicadorEnvioDiferido=1', () => {
-      const idDoc = service.build(46, makeInput({ tipoEcf: 46, facturaOverrides: { cliente: CLIENTE_CON_RNC } })).ECF.Encabezado.IdDoc;
-      expect(idDoc.IndicadorEnvioDiferido).toBe(1);
+    it('E46 tiene TipoIngresos="01" y TipoPago=1', () => {
+      const idDoc = service.build(46, makeInput({ tipoEcf: 46 })).ECF.Encabezado.IdDoc;
+      expect((idDoc as any).TipoIngresos).toBe('01');
+      expect((idDoc as any).TipoPago).toBe(1);
     });
   });
 
   // ── E47 — Pagos al Exterior ───────────────────────────────────────────────
 
   describe('E47 — Pagos al Exterior', () => {
-    it('construye payload E47 con IdentificadorExtranjero', () => {
+    it('usa NombreExtranjero + PaisCompradorExtranjero como Comprador (spec nueva)', () => {
       const p = service.build(47, makeInput({
-        tipoEcf: 47,
-        facturaOverrides: { cliente: { id: 3, nombre: 'Beneficiario USA', rncReceptor: '12345678', rfc: null } },
+        tipoEcf:          47,
+        nombreExtranjero: 'Acme Corp',
+        paisExtranjero:   'US',
       }));
       expect(p.ECF.Encabezado.IdDoc.TipoeCF).toBe(47);
-      expect(p.ECF.Encabezado.Comprador!.IdentificadorExtranjero).toBe('12345678');
-      expect(p.ECF.Encabezado.Comprador!.RNCComprador).toBeUndefined();
+      expect(p.ECF.Encabezado.Comprador!.NombreExtranjero).toBe('Acme Corp');
+      expect(p.ECF.Encabezado.Comprador!.PaisCompradorExtranjero).toBe('US');
+      expect(p.ECF.Encabezado.Comprador!.IdentificadorExtranjero).toBeUndefined();
     });
 
-    it('E47 tiene Subtotales (obligatorio per spec)', () => {
-      const p = service.build(47, makeInput({
-        tipoEcf: 47,
-        facturaOverrides: { cliente: { id: 3, nombre: 'Beneficiario', rncReceptor: '12345678', rfc: null } },
-      }));
-      expect(p.ECF.Subtotales).toBeDefined();
-      expect(Array.isArray(p.ECF.Subtotales!.Subtotal)).toBe(true);
+    it('E47 Totales son MontoExento + MontoTotal (sin ISR — spec nueva)', () => {
+      const totales = service.build(47, makeInput({ tipoEcf: 47 })).ECF.Encabezado.Totales as any;
+      expect(totales.MontoExento).toBeGreaterThan(0);
+      expect(totales.MontoTotal).toBeGreaterThan(0);
+      expect(totales.TotalISRRetencion).toBeUndefined();
     });
 
-    it('E47 calcula ISR retención al 27% por defecto', () => {
-      const factura = makeFactura({
-        total:    1000,
-        subtotal: 1000,
-        iva:      0,
-        cliente:  { id: 3, nombre: 'Beneficiario', rncReceptor: '12345678', rfc: null },
-      });
-      const p = service.build(47, {
-        encf:         'E470000000001',
-        factura,
-        config:       makeConfig(),
-        fechaVencSec: new Date(2027, 11, 31),
-        retencionISR: 27,
-      });
-      const totales = p.ECF.Encabezado.Totales as any;
-      // 27% de 1000 = 270
-      expect(totales.TotalISRRetencion).toBe('270.00');
+    it('E47 NO tiene Subtotales ni OtraMoneda (spec nueva)', () => {
+      const p = service.build(47, makeInput({ tipoEcf: 47 })) as any;
+      expect(p.ECF.Subtotales).toBeUndefined();
+      expect(p.ECF.OtraMoneda).toBeUndefined();
     });
 
-    it('E47 items tienen Retencion con MontoISRRetenido (STRING)', () => {
-      const p = service.build(47, makeInput({
-        tipoEcf: 47,
-        facturaOverrides: { cliente: { id: 3, nombre: 'Beneficiario', rncReceptor: '12345678', rfc: null } },
-        retencionISR: 27,
-      }));
-      const item = p.ECF.DetallesItems.Item[0];
-      expect(item.Retencion).toBeDefined();
-      expect(typeof item.Retencion!.MontoISRRetenido).toBe('string');
-      expect(item.Retencion!.IndicadorAgenteRetencionoPercepcion).toBe('1'); // string en E47
+    it('E47 items NO tienen Retencion (spec nueva)', () => {
+      const item = service.build(47, makeInput({ tipoEcf: 47 })).ECF.DetallesItems.Item[0] as any;
+      expect(item.Retencion).toBeUndefined();
     });
 
-    it('E47 NO tiene IndicadorEnvioDiferido ni TipoIngresos', () => {
-      const idDoc = service.build(47, makeInput({
-        tipoEcf: 47,
-        facturaOverrides: { cliente: { id: 3, nombre: 'Beneficiario', rncReceptor: '12345678', rfc: null } },
-      })).ECF.Encabezado.IdDoc;
-      expect((idDoc as any).IndicadorEnvioDiferido).toBeUndefined();
+    it('E47 NO tiene TipoIngresos', () => {
+      const idDoc = service.build(47, makeInput({ tipoEcf: 47 })).ECF.Encabezado.IdDoc;
       expect((idDoc as any).TipoIngresos).toBeUndefined();
+      expect((idDoc as any).IndicadorEnvioDiferido).toBeUndefined();
     });
   });
 
@@ -610,5 +593,46 @@ describe('ECFBuilderService', () => {
     expect(emisor.RNCEmisor).toBe('132414691');
     expect(emisor.RazonSocialEmisor).toBe('Empresa Demo S.R.L.');
     expect(emisor.FechaEmision).toMatch(/^\d{2}-\d{2}-\d{4}$/);
+  });
+
+  describe('Orden de campos del Emisor (XSD DGII)', () => {
+    const TIPOS_ECF = [31, 32, 33, 34, 41, 43, 44, 45, 46, 47];
+
+    const inputPorTipo = (tipo: number) => {
+      const base = { tipoEcf: tipo, facturaOverrides: { cliente: CLIENTE_CON_RNC } };
+      if (tipo === 33) return makeInput({ ...base, infoReferencia: INFO_REF_E33 });
+      if (tipo === 34) return makeInput({ ...base, infoReferencia: INFO_REF_E34 });
+      if (tipo === 47) return makeInput({ ...base, facturaOverrides: { cliente: { id: 3, nombre: 'Benef', rncReceptor: '12345678', rfc: null } } });
+      return makeInput(base);
+    };
+
+    it.each(TIPOS_ECF)('E%i: FechaEmision es siempre el último campo del Emisor', (tipo) => {
+      const emisor = service.build(tipo, inputPorTipo(tipo)).ECF.Encabezado.Emisor;
+      const keys   = Object.keys(emisor as Record<string, unknown>);
+      expect(keys[keys.length - 1]).toBe('FechaEmision');
+    });
+
+    it('Emisor: orden exacto con config completa', () => {
+      const emisor = service.build(32, makeInput({ tipoEcf: 32 })).ECF.Encabezado.Emisor;
+      const keys   = Object.keys(emisor as Record<string, unknown>);
+      expect(keys).toEqual([
+        'RNCEmisor',
+        'RazonSocialEmisor',
+        'NombreComercial',
+        'DireccionEmisor',
+        'Municipio',
+        'Provincia',
+        'FechaEmision',
+      ]);
+    });
+
+    it('Emisor: orden correcto sin campos opcionales', () => {
+      const emisor = service.build(32, makeInput({
+        tipoEcf: 32,
+        configOverrides: { nombreComercial: undefined, municipio: undefined, provincia: undefined },
+      })).ECF.Encabezado.Emisor;
+      const keys = Object.keys(emisor as Record<string, unknown>);
+      expect(keys).toEqual(['RNCEmisor', 'RazonSocialEmisor', 'DireccionEmisor', 'FechaEmision']);
+    });
   });
 });

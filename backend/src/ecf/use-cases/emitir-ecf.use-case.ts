@@ -13,7 +13,7 @@ import { Compra } from '../../compras/entities/compra.entity';
 import { Gasto } from '../../gastos/entities/gasto.entity';
 
 import { ENCFGeneratorService } from '../services/encf-generator.service';
-import { ECFBuilderService, ECFBuildInput, MSellerInfoReferencia, MSellerOtraMoneda, MSellerPayload } from '../services/ecf-builder.service';
+import { ECFBuilderService, ECFBuildInput, MSellerInfoReferencia, MSellerPayload } from '../services/ecf-builder.service';
 import { MSellerClientService } from '../services/mseller-client.service';
 import { EcfConfigService } from '../services/ecf-config.service';
 
@@ -53,12 +53,9 @@ export interface EmitirECFInput {
   tipoEcf:             number;   // 31 | 32 | 33 | 34 | 41 | 43 | 44 | 45 | 46 | 47
   modoSincrono?:       boolean;  // true = POS (timeout 8s)
   datosComprador?:     DatosCompradorECF;   // POS: datos capturados en el momento de la venta
-  // Campos requeridos/opcionales según el tipo de e-CF
-  infoReferencia?:  MSellerInfoReferencia;  // E33/E34: puede ser auto-resuelto si no se provee
-  otraMoneda?:      MSellerOtraMoneda;      // E46, E47
-  retencionISR?:    number;                  // E47: % ISR (default 27)
-  tipoVenta?:       number;                  // E46
-  tipoExportacion?: number;                  // E46
+  infoReferencia?:     MSellerInfoReferencia;  // E33/E34
+  nombreExtranjero?:   string;                 // E46/E47
+  paisExtranjero?:     string;                 // E46/E47 — ISO 2 letras
 }
 
 export interface EmitirECFResult {
@@ -128,7 +125,7 @@ export class EmitirECFUseCase {
     const {
       empresaId, documentoOrigenTipo, documentoOrigenId, tipoEcf, modoSincrono,
       datosComprador,
-      infoReferencia: infoRefInput, otraMoneda, retencionISR, tipoVenta, tipoExportacion,
+      infoReferencia: infoRefInput, nombreExtranjero, paisExtranjero,
     } = input;
     const timeout = modoSincrono ? TIMEOUT_POS : TIMEOUT_REGULAR;
 
@@ -250,14 +247,12 @@ export class EmitirECFUseCase {
     try {
       const buildInput: ECFBuildInput = {
         encf,
-        factura:          factura as Factura,
+        factura:           factura as Factura,
         config,
         fechaVencSec,
         infoReferencia,
-        otraMoneda,
-        retencionISR,
-        tipoVenta,
-        tipoExportacion,
+        nombreExtranjero,
+        paisExtranjero,
       };
       payload = this.builder.build(tipoEcf, buildInput);
     } catch (err) {
@@ -328,12 +323,36 @@ export class EmitirECFUseCase {
         securityCode: respuesta.securityCode,
       });
 
-      // En TesteCF MSeller acepta sincrónicamente → marcar como ACEPTADO
-      const estadoFinal = EstadoDGII.ENVIADO; // el job de polling actualizará a ACEPTADO
-      await this.ecfRepo.update(ecfSaved.id, { estadoDGII: estadoFinal });
+      // ── Poll inmediato: MSeller suele confirmar en segundos ───────────────
+      // En lugar de esperar al cron job (5 min + 10 min = hasta 15 min),
+      // consultamos el estado justo después de enviar.
+      let estadoFinal: EstadoDGII = EstadoDGII.ENVIADO;
+      try {
+        const estadoResp = await this.mseller.consultarEstado(
+          respuesta.internalTrackId,
+          empresaId,
+        );
+        const ESTADO_MAP: Record<string, EstadoDGII> = {
+          ACEPTADO:   EstadoDGII.ACEPTADO,
+          RECHAZADO:  EstadoDGII.RECHAZADO,
+          OBSERVADO:  EstadoDGII.OBSERVADO,
+          PROCESANDO: EstadoDGII.ENVIADO,
+          RECIBIDO:   EstadoDGII.ENVIADO,
+        };
+        estadoFinal = ESTADO_MAP[estadoResp.status?.toUpperCase()] ?? EstadoDGII.ENVIADO;
+        this.logger.log(`Poll inmediato ${encf}: MSeller → ${estadoResp.status} → ${estadoFinal}`);
+      } catch (pollErr) {
+        // Si el poll falla no es crítico — el cron job lo recogerá
+        this.logger.warn(`Poll inmediato falló para ${encf}: ${(pollErr as Error).message}`);
+      }
+
+      await this.ecfRepo.update(ecfSaved.id, {
+        estadoDGII: estadoFinal,
+        ...(estadoFinal === EstadoDGII.ACEPTADO ? { fechaUso: new Date() } : {}),
+      });
 
       const ecfFinal = await this.ecfRepo.findOne({ where: { id: ecfSaved.id }, relations: ['tipoECF'] });
-      this.logger.log(`EmitirECF OK | ${encf} | trackId=${respuesta.internalTrackId}`);
+      this.logger.log(`EmitirECF OK | ${encf} | trackId=${respuesta.internalTrackId} | estado=${estadoFinal}`);
       return this.toResult(ecfFinal!, false);
 
     } catch (err) {

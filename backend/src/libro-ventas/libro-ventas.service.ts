@@ -26,6 +26,8 @@ export class LibroVentasService {
         f.fecha::text,
         f.folio,
         COALESCE(f."tipoNcf", 'E32')              AS "tipoNcf",
+        e.numero                                   AS "encf",
+        e."estadoDGII"                             AS "encfEstado",
         COALESCE(c.nombre, 'Consumidor Final')     AS "clienteNombre",
         COALESCE(c."rncReceptor", c.rfc, '')       AS "rncCliente",
         f.subtotal::text,
@@ -35,6 +37,13 @@ export class LibroVentasService {
         f."nombreVendedor"
       FROM facturas f
       LEFT JOIN clientes c ON c.id = f."clienteId"
+      LEFT JOIN LATERAL (
+        SELECT numero, "estadoDGII"
+        FROM ecf
+        WHERE "facturaId" = f.id AND "isActive" = true
+        ORDER BY "createdAt" DESC
+        LIMIT 1
+      ) e ON TRUE
       WHERE f."isActive" = true
         AND f."empresaId" = $3
         AND f.estado IN ('emitida','pagada')
@@ -49,6 +58,7 @@ export class LibroVentasService {
 
     const rows = await this.ds.query<{
       fecha: string; folio: string; tipoNcf: string;
+      encf: string | null; encfEstado: string | null;
       clienteNombre: string; rncCliente: string;
       subtotal: string; iva: string; total: string;
       estado: string; nombreVendedor: string;
@@ -58,6 +68,8 @@ export class LibroVentasService {
       fecha:          r.fecha,
       folio:          r.folio,
       tipoNcf:        r.tipoNcf,
+      encf:           r.encf ?? null,
+      encfEstado:     r.encfEstado ?? null,
       clienteNombre:  r.clienteNombre,
       rncCliente:     r.rncCliente,
       subtotal:       +r.subtotal,
@@ -107,6 +119,7 @@ export class LibroVentasService {
       fecha: string; folio: string;
       proveedorNombre: string; rncProveedor: string;
       subtotal: string; iva: string; total: string; estado: string;
+      encf: string | null; encfEstado: string | null;
     }[]>(`
       SELECT
         c.fecha::text,
@@ -116,9 +129,20 @@ export class LibroVentasService {
         c.subtotal::text,
         c.itbis::text                   AS iva,
         c.total::text,
-        c.estado
+        c.estado,
+        e.numero                        AS "encf",
+        e."estadoDGII"                  AS "encfEstado"
       FROM compras c
       LEFT JOIN proveedores p ON p.id = c."proveedorId"
+      LEFT JOIN LATERAL (
+        SELECT numero, "estadoDGII"
+        FROM ecf
+        WHERE "documentoOrigenId" = c.id
+          AND "documentoOrigenTipo" = 'COMPRA'
+          AND "isActive" = true
+        ORDER BY "createdAt" DESC
+        LIMIT 1
+      ) e ON TRUE
       WHERE c."isActive" = true
         AND c."empresaId" = $3
         AND c.estado IN ('recibida','pagada')
@@ -131,6 +155,8 @@ export class LibroVentasService {
       folio:           r.folio,
       proveedorNombre: r.proveedorNombre,
       rncProveedor:    r.rncProveedor,
+      encf:            r.encf ?? null,
+      encfEstado:      r.encfEstado ?? null,
       subtotal:        +r.subtotal,
       iva:             +r.iva,
       total:           +r.total,

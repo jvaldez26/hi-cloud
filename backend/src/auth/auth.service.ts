@@ -134,7 +134,8 @@ export class AuthService {
       if (!acceso) throw new ForbiddenException(`Sin acceso a empresa #${empresaId}`);
     }
 
-    const user = await this.userRepository.findOneByOrFail({ id: userId });
+    const user = await this.userRepository.findOneBy({ id: userId });
+    if (!user) throw new UnauthorizedException('Usuario no encontrado');
     const accessToken = this.buildToken(user, empresaId);
 
     return {
@@ -240,11 +241,42 @@ export class AuthService {
     const hashed = await bcrypt.hash(newPassword, 12);
     await this.userRepository.update(user.id, {
       password:             hashed,
-      resetPasswordToken:   undefined,
-      resetPasswordExpires: undefined,
+      resetPasswordToken:   null as any,
+      resetPasswordExpires: null as any,
     });
 
     this.logger.log(`Contraseña restablecida para usuario #${user.id}`);
     return { message: 'Contraseña restablecida exitosamente. Ya puedes iniciar sesión.' };
+  }
+
+  // ─── Cambio de contraseña autenticado ────────────────────────────────────────
+
+  async changePassword(userId: number, currentPassword: string, newPassword: string) {
+    const user = await this.userRepository
+      .createQueryBuilder('u')
+      .select(['u.id', 'u.isActive'])
+      .addSelect('u.password')          // select:false requiere addSelect
+      .where('u.id = :id', { id: userId })
+      .getOne();
+
+    if (!user || !user.isActive) throw new UnauthorizedException('Usuario no encontrado');
+
+    const isValid = await bcrypt.compare(currentPassword, user.password);
+    if (!isValid) throw new BadRequestException('La contraseña actual es incorrecta');
+
+    if (currentPassword === newPassword) {
+      throw new BadRequestException('La nueva contraseña debe ser diferente a la actual');
+    }
+
+    const hashed = await bcrypt.hash(newPassword, 12);
+    await this.userRepository
+      .createQueryBuilder()
+      .update()
+      .set({ password: hashed })
+      .where('id = :id', { id: userId })
+      .execute();
+
+    this.logger.log(`Contraseña cambiada por usuario #${userId}`);
+    return { message: 'Contraseña actualizada exitosamente' };
   }
 }

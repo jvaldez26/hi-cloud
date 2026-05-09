@@ -89,9 +89,11 @@ export class ReportesService {
 
   private async countECFsPendientes(): Promise<number> {
     const r = await this.dataSource.query<{ c: string }[]>(
-      `SELECT COUNT(*) AS c FROM ecf e
-       JOIN facturas f ON f.id = e."facturaId"
-       WHERE e."isActive" = true AND f."empresaId" = $1 AND e."estadoDGII" = 'pendiente'`,
+      `SELECT COUNT(*) AS c
+       FROM ecf
+       WHERE "isActive" = true
+         AND "empresaId" = $1
+         AND "estadoDGII" IN ('pendiente', 'pendiente_envio', 'enviado')`,
       [this.eid],
     );
     return Number(r[0].c);

@@ -3,7 +3,7 @@ import {
   HttpCode, HttpStatus, UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
-import { IsEmail, IsString, MinLength, Matches, IsInt, IsPositive } from 'class-validator';
+import { IsEmail, IsString, MinLength, MaxLength, Matches, IsInt, IsPositive } from 'class-validator';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
@@ -29,6 +29,19 @@ class ResetPasswordDto {
     message: 'Debe tener mayúscula, minúscula y número',
   })
   password: string;
+}
+
+class ChangePasswordDto {
+  @IsString({ message: 'La contraseña actual debe ser texto' })
+  currentPassword: string;
+
+  @IsString({ message: 'La nueva contraseña debe ser texto' })
+  @MinLength(8, { message: 'La nueva contraseña debe tener al menos 8 caracteres' })
+  @MaxLength(100, { message: 'La nueva contraseña no puede superar 100 caracteres' })
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
+    message: 'La nueva contraseña debe tener al menos una mayúscula, una minúscula y un número',
+  })
+  newPassword: string;
 }
 
 @ApiTags('Auth')
@@ -95,5 +108,18 @@ export class AuthController {
     @Body() dto: ResetPasswordDto,
   ) {
     return this.authService.resetPassword(token, dto.password);
+  }
+
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @Throttle({ default: { limit: 10, ttl: 3600000 } }) // 10 cambios por hora
+  @ApiOperation({ summary: 'Cambiar contraseña desde sesión activa (requiere contraseña actual)' })
+  changePassword(
+    @GetUser() user: User,
+    @Body() dto: ChangePasswordDto,
+  ) {
+    return this.authService.changePassword(user.id, dto.currentPassword, dto.newPassword);
   }
 }

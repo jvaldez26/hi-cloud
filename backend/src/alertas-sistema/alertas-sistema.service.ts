@@ -35,6 +35,9 @@ export class AlertasSistemaService {
       this.alertasCreditoExcedido(alertas, eid),
       this.alertasPeriodoSinCerrar(alertas, eid),
       this.alertasRecurrentesPendientes(alertas, eid),
+      this.alertasECFRechazados(alertas, eid),
+      this.alertasECFAtascados(alertas, eid),
+      this.alertasSecuenciasECF(alertas, eid),
     ]);
 
     return {
@@ -212,6 +215,71 @@ export class AlertasSistemaService {
         titulo: 'Facturas recurrentes pendientes',
         descripcion: `${n} factura(s) recurrente(s) no se generaron en la fecha programada`,
         cantidad: n, ruta: '/facturas-recurrentes', emoji: '🔄',
+      });
+    } catch {}
+  }
+
+  private async alertasECFRechazados(out: Alerta[], eid: number) {
+    try {
+      const res = await this.ds.query<{ cantidad: string }[]>(`
+        SELECT COUNT(id)::text AS cantidad
+        FROM ecf
+        WHERE "empresaId" = $1 AND "isActive" = true
+          AND "estadoDGII" IN ('rechazado', 'contingencia')
+      `, [eid]);
+      const n = Number(res[0]?.cantidad ?? 0);
+      if (n > 0) out.push({
+        id: 'ecf-rechazados', tipo: 'ecf', severidad: 'alta',
+        titulo: 'Comprobantes rechazados por DGII',
+        descripcion: `${n} e-CF(s) fueron rechazados o están en contingencia. Requieren acción inmediata.`,
+        cantidad: n, ruta: '/ecf', emoji: '❌',
+      });
+    } catch {}
+  }
+
+  private async alertasECFAtascados(out: Alerta[], eid: number) {
+    try {
+      // ECFs en pendiente_envio con más de 10 minutos sin actualización
+      const res = await this.ds.query<{ cantidad: string }[]>(`
+        SELECT COUNT(id)::text AS cantidad
+        FROM ecf
+        WHERE "empresaId" = $1 AND "isActive" = true
+          AND "estadoDGII" = 'pendiente_envio'
+          AND "updatedAt" < NOW() - INTERVAL '10 minutes'
+      `, [eid]);
+      const n = Number(res[0]?.cantidad ?? 0);
+      if (n > 0) out.push({
+        id: 'ecf-atascados', tipo: 'ecf', severidad: 'media',
+        titulo: 'Comprobantes sin enviar a DGII',
+        descripcion: `${n} e-CF(s) llevan más de 10 minutos sin confirmación de MSeller.`,
+        cantidad: n, ruta: '/ecf', emoji: '⏳',
+      });
+    } catch {}
+  }
+
+  private async alertasSecuenciasECF(out: Alerta[], eid: number) {
+    try {
+      const limite = new Date();
+      limite.setDate(limite.getDate() + 30);
+      const res = await this.ds.query<{ cantidad: string }[]>(`
+        SELECT COUNT(s.id)::text AS cantidad
+        FROM secuencias_ecf s
+        WHERE s."empresaId" = $1 AND s."isActive" = true
+          AND s."isActiva" = true AND s."isAgotada" = false
+          AND (
+            s."fechaVencimiento" <= $2
+            OR (
+              (s."secuenciaActual" - s."secuenciaInicial") * 100.0
+              / NULLIF(s."secuenciaFinal" - s."secuenciaInicial" + 1, 0)
+            ) >= 85
+          )
+      `, [eid, limite]);
+      const n = Number(res[0]?.cantidad ?? 0);
+      if (n > 0) out.push({
+        id: 'secuencias-ecf-vencen', tipo: 'ecf', severidad: 'alta',
+        titulo: 'Secuencias e-CF próximas a agotarse',
+        descripcion: `${n} secuencia(s) vencen en ≤30 días o tienen ≥85% de uso. Solicita autorización a la DGII.`,
+        cantidad: n, ruta: '/ecf', emoji: '🔢',
       });
     } catch {}
   }

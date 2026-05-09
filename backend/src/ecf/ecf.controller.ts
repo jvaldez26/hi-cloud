@@ -24,7 +24,7 @@ import { FiltroECFDto } from './dto/filtro-ecf.dto';
 import { CreateProveedorECFDto } from './dto/create-proveedor-ecf.dto';
 import { UpdateProveedorECFDto } from './dto/update-proveedor-ecf.dto';
 import { EmitirEcfNotaDebitoDto, EmitirEcfNotaCreditoDto } from './dto/emitir-nota-ecf.dto';
-import { EmitirEcfCompraDto, EmitirEcfGastoDto, EmitirEcfPagoExteriorDto } from './dto/emitir-compra-ecf.dto';
+import { EmitirEcfCompraDto, EmitirEcfGastoDto, EmitirEcfPagoExteriorDto, EmitirEcfExportacionDto } from './dto/emitir-compra-ecf.dto';
 import { EmitirECFUseCase } from './use-cases/emitir-ecf.use-case';
 import { DocumentoOrigenTipo } from './entities/ecf.entity';
 import { PaginationDto } from '../common/dto/pagination.dto';
@@ -92,9 +92,19 @@ export class ECFController {
     return this.ecfService.getSecuenciasProximasVencer();
   }
 
+  @Patch('secuencias/:id')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Actualizar secuencia sin usar — solo si no se ha emitido ningún e-CF de ella (solo ADMIN)' })
+  updateSecuencia(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: import('./dto/update-secuencia-ecf.dto').UpdateSecuenciaECFDto,
+  ) {
+    return this.ecfService.updateSecuencia(id, dto);
+  }
+
   @Patch('secuencias/:id/desactivar')
   @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Desactivar una secuencia (solo ADMIN)' })
+  @ApiOperation({ summary: 'Inactivar una secuencia sin usar (solo ADMIN)' })
   desactivarSecuencia(
     @Param('id', ParseIntPipe) id: number,
     @GetUser() usuario: User,
@@ -273,12 +283,35 @@ export class ECFController {
 
   // ── E47: Pagos al Exterior ─────────────────────────────────────────────────
 
+  @Post('factura/:id/emitir-exportacion')
+  @HttpCode(HttpStatus.CREATED)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({
+    summary: 'Emitir e-CF E46 (Exportaciones) para una factura a cliente extranjero',
+    description: 'Genera e-CF E46. Requiere nombre y país ISO-2 del cliente extranjero.',
+  })
+  async emitirEcfExportacion(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: EmitirEcfExportacionDto,
+    @GetUser() usuario: User,
+  ) {
+    const empresaId = (usuario as any).empresaId ?? 0;
+    return this.emitirUseCase.execute({
+      empresaId,
+      documentoOrigenTipo: DocumentoOrigenTipo.FACTURA,
+      documentoOrigenId:   id,
+      tipoEcf:             46,
+      nombreExtranjero:    dto.nombreExtranjero,
+      paisExtranjero:      dto.paisExtranjero,
+    });
+  }
+
   @Post('compra/:id/emitir-pago-exterior')
   @HttpCode(HttpStatus.CREATED)
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({
     summary: 'Emitir e-CF E47 (Pago al Exterior) para una compra a proveedor extranjero',
-    description: 'Genera e-CF E47 con retención ISR (27% por defecto). Requiere datos de moneda extranjera.',
+    description: 'Genera e-CF E47. Requiere nombre y país ISO-2 del beneficiario extranjero.',
   })
   async emitirEcfPagoExterior(
     @Param('id', ParseIntPipe) id: number,
@@ -291,8 +324,8 @@ export class ECFController {
       documentoOrigenTipo: DocumentoOrigenTipo.COMPRA,
       documentoOrigenId:   id,
       tipoEcf:             47,
-      otraMoneda: dto.otraMoneda as any,
-      retencionISR: dto.retencionISR ?? 27,
+      nombreExtranjero:    dto.nombreExtranjero,
+      paisExtranjero:      dto.paisExtranjero,
     });
   }
 

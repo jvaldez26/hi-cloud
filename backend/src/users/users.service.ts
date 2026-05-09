@@ -46,7 +46,7 @@ export class UsersService implements OnModuleInit {
   }
 
   createFull(data: { nombre: string; email: string; password: string; role?: UserRole }) {
-    const user = this.userRepository.create({ ...data, role: data.role ?? UserRole.ADMIN });
+    const user = this.userRepository.create({ ...data, role: data.role ?? UserRole.VIEWER });
     return this.userRepository.save(user);
   }
 

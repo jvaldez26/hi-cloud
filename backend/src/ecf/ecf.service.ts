@@ -485,11 +485,36 @@ export class ECFService implements OnModuleInit {
     }));
   }
 
+  async updateSecuencia(id: number, dto: import('./dto/update-secuencia-ecf.dto').UpdateSecuenciaECFDto): Promise<SecuenciaECF> {
+    const empresaId = this.tenantService.getEmpresaId();
+    const sec = await this.secuenciaRepository.findOne({ where: { id, empresaId, isActive: true } });
+    if (!sec) throw new NotFoundException(`Secuencia #${id} no encontrada`);
+
+    const usados = sec.secuenciaActual - sec.secuenciaInicial;
+    if (usados > 0) {
+      throw new BadRequestException(
+        `La secuencia ya tiene ${usados} número(s) emitido(s) y no puede modificarse.`,
+      );
+    }
+
+    const nuevoInicial = dto.secuenciaInicial ?? sec.secuenciaInicial;
+    const nuevoFinal   = dto.secuenciaFinal   ?? sec.secuenciaFinal;
+
+    if (nuevoFinal <= nuevoInicial) {
+      throw new BadRequestException('secuenciaFinal debe ser mayor que secuenciaInicial');
+    }
+
+    await this.secuenciaRepository.update(id, {
+      ...(dto.secuenciaInicial !== undefined ? { secuenciaInicial: dto.secuenciaInicial, secuenciaActual: dto.secuenciaInicial } : {}),
+      ...(dto.secuenciaFinal   !== undefined ? { secuenciaFinal: dto.secuenciaFinal }   : {}),
+      ...(dto.fechaVencimiento !== undefined ? { fechaVencimiento: new Date(dto.fechaVencimiento) as any } : {}),
+    });
+    return this.secuenciaRepository.findOne({ where: { id }, relations: ['tipoECF'] }) as Promise<SecuenciaECF>;
+  }
+
   async desactivarSecuencia(id: number, userId: number): Promise<SecuenciaECF> {
     const empresaId = this.tenantService.getEmpresaId();
-    const sec = await this.secuenciaRepository.findOne({
-      where: { id, empresaId, isActive: true },
-    });
+    const sec = await this.secuenciaRepository.findOne({ where: { id, empresaId, isActive: true } });
     if (!sec) throw new NotFoundException(`Secuencia #${id} no encontrada`);
     await this.secuenciaRepository.update(id, { isActiva: false });
     return this.secuenciaRepository.findOne({ where: { id }, relations: ['tipoECF'] }) as Promise<SecuenciaECF>;
@@ -567,7 +592,8 @@ export class ECFService implements OnModuleInit {
   // ──────────────────────────────────────────────────────────────────
 
   async getECFs(filtro: FiltroECFDto) {
-    const { limit = 10, page = 1, search, estado, tipo, fecha } = filtro;
+    const { limit = 10, page = 1, search, estado, tipo, fecha, facturaId, documentoOrigenId } = filtro;
+    const empresaId = this.tenantService.getEmpresaId();
 
     const qb = this.ecfRepository
       .createQueryBuilder('ecf')
@@ -575,9 +601,12 @@ export class ECFService implements OnModuleInit {
       .leftJoinAndSelect('ecf.factura', 'factura')
       .where('ecf.isActive = :active', { active: true });
 
-    if (estado) qb.andWhere('ecf.estadoDGII = :estado', { estado });
-    if (tipo)   qb.andWhere('tipo.codigo = :tipo', { tipo });
-    if (fecha)  qb.andWhere("TO_CHAR(ecf.createdAt, 'YYYY-MM') = :fecha", { fecha });
+    if (empresaId)       qb.andWhere('ecf.empresaId = :empresaId', { empresaId });
+    if (estado)          qb.andWhere('ecf.estadoDGII = :estado', { estado });
+    if (tipo)            qb.andWhere('tipo.codigo = :tipo', { tipo });
+    if (fecha)           qb.andWhere("TO_CHAR(ecf.createdAt, 'YYYY-MM') = :fecha", { fecha });
+    if (facturaId)       qb.andWhere('ecf.facturaId = :facturaId', { facturaId });
+    if (documentoOrigenId) qb.andWhere('ecf.documentoOrigenId = :docId', { docId: documentoOrigenId });
     if (search) {
       qb.andWhere(
         '(ecf.numero ILIKE :s OR ecf.proveedorReferencia ILIKE :s)',
@@ -607,16 +636,26 @@ export class ECFService implements OnModuleInit {
   }
 
   async getECFsPendientes() {
+    const empresaId = this.tenantService.getEmpresaId();
     return this.ecfRepository.find({
-      where: { estadoDGII: EstadoDGII.PENDIENTE, isActive: true },
+      where: [
+        { estadoDGII: EstadoDGII.PENDIENTE_ENVIO, empresaId, isActive: true },
+        { estadoDGII: EstadoDGII.ENVIADO,         empresaId, isActive: true },
+        { estadoDGII: EstadoDGII.PENDIENTE,        empresaId, isActive: true }, // backward compat
+      ],
       relations: ['tipoECF'],
       order: { createdAt: 'ASC' },
+      take: 100,
     });
   }
 
   async getECFsRechazados() {
+    const empresaId = this.tenantService.getEmpresaId();
     return this.ecfRepository.find({
-      where: { estadoDGII: EstadoDGII.RECHAZADO, isActive: true },
+      where: [
+        { estadoDGII: EstadoDGII.RECHAZADO,    empresaId, isActive: true },
+        { estadoDGII: EstadoDGII.CONTINGENCIA, empresaId, isActive: true },
+      ],
       relations: ['tipoECF'],
       order: { ultimoIntentoEnvio: 'DESC' },
     });

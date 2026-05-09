@@ -13,9 +13,9 @@ const MAX_INTENTOS = 5;
 
 /**
  * Minutos de espera mínima antes de reintentar según el intento anterior.
- * intento 1 → 5 min | 2 → 15 min | 3 → 30 min | 4 → 60 min | 5+ → 180 min
+ * intento 1 → 2 min | 2 → 5 min | 3 → 15 min | 4 → 30 min | 5+ → 60 min
  */
-const BACKOFF_MIN = [5, 15, 30, 60, 180];
+const BACKOFF_MIN = [2, 5, 15, 30, 60];
 
 /**
  * Procesa comprobantes en estado PENDIENTE_ENVIO.
@@ -39,7 +39,7 @@ export class ReintentoECFJob {
     private readonly configSvc:  EcfConfigService,
   ) {}
 
-  @Cron('*/5 * * * *', { name: 'reintento-ecf' })
+  @Cron('*/2 * * * *', { name: 'reintento-ecf' })
   async run(): Promise<void> {
     if (this.running) {
       this.logger.debug('ReintentoECFJob ya en ejecución, saltando...');
@@ -115,8 +115,24 @@ export class ReintentoECFJob {
         30_000,
       );
 
+      // Poll inmediato tras el reenvío exitoso
+      let estadoTrasReintento: EstadoDGII = EstadoDGII.ENVIADO;
+      try {
+        const estadoResp = await this.mseller.consultarEstado(respuesta.internalTrackId, empresaId!);
+        const ESTADO_MAP: Record<string, EstadoDGII> = {
+          ACEPTADO:   EstadoDGII.ACEPTADO,
+          RECHAZADO:  EstadoDGII.RECHAZADO,
+          OBSERVADO:  EstadoDGII.OBSERVADO,
+          PROCESANDO: EstadoDGII.ENVIADO,
+          RECIBIDO:   EstadoDGII.ENVIADO,
+        };
+        estadoTrasReintento = ESTADO_MAP[estadoResp.status?.toUpperCase()] ?? EstadoDGII.ENVIADO;
+      } catch {
+        // Si el poll falla, el job de consultar-estado lo recogerá
+      }
+
       await this.ecfRepo.update(id, {
-        estadoDGII:         EstadoDGII.ENVIADO,
+        estadoDGII:         estadoTrasReintento,
         trackId:            respuesta.internalTrackId,
         qrUrl:              respuesta.qr_url,
         codigoSeguridad:    respuesta.securityCode,
@@ -124,14 +140,16 @@ export class ReintentoECFJob {
         intentosEnvio:      intentosEnvio + 1,
         ultimoIntentoEnvio: new Date(),
         errorEnvio:         undefined,
+        ...(estadoTrasReintento === EstadoDGII.ACEPTADO ? { fechaUso: new Date() } : {}),
       });
 
       await this.logEvento(id, TipoEcfEvento.ENVIADO, {
         trackId:      respuesta.internalTrackId,
         intento:      intentosEnvio + 1,
+        estadoInmediato: estadoTrasReintento,
       });
 
-      this.logger.log(`e-CF ${numero} → ENVIADO (reintento #${intentosEnvio + 1})`);
+      this.logger.log(`e-CF ${numero} → ${estadoTrasReintento} (reintento #${intentosEnvio + 1})`);
 
     } catch (err) {
       const msg    = (err as Error).message;

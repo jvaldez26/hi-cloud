@@ -14,6 +14,7 @@
     "db:validate": "node scripts/validate-schema.js",
     "db:create-tables": "ts-node -r tsconfig-paths/register src/seeds/create-missing-tables.ts",
     "db:migration-help": "node scripts/generate-migration.js",
+    "recover": "node scripts/recover-access.js",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",

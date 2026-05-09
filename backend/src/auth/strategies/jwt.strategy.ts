@@ -25,11 +25,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload) {
-    const user = await this.usersService.findById(payload.sub);
+    let user: Awaited<ReturnType<typeof this.usersService.findById>> | null = null;
+    try {
+      user = await this.usersService.findById(payload.sub);
+    } catch {
+      throw new UnauthorizedException('Token inválido o usuario inactivo');
+    }
     if (!user || !user.isActive) {
       throw new UnauthorizedException('Token inválido o usuario inactivo');
     }
-    // Attach empresaId from token to user object so controllers can access it
     (user as any).empresaId = payload.empresaId ?? null;
     return user;
   }

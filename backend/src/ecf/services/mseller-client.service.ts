@@ -2,7 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { EcfConfigService } from './ecf-config.service';
-import { MSellerPayload } from './ecf-builder.service';
+import type { MSellerPayload } from './ecf-builder.service';
+import { assertEmisorOrder } from '../builders/sections/emisor.section';
 import {
   EcfComunicacionError,
   EcfValidacionError,
@@ -151,6 +152,14 @@ export class MSellerClientService {
   ): Promise<MSellerEnvioResponse> {
     const { idToken, apiKey, baseUrl, envPath } = await this.getIdToken(empresaId);
     const url = `${baseUrl}/${envPath}/documentos-ecf`;
+
+    // ── Guard: verifica FechaEmision al final (assertEmisorOrder lanza si falla) ─
+    assertEmisorOrder(payload.ECF.Encabezado.Emisor as object);
+
+    const jsonString = JSON.stringify(payload, null, 2);
+    this.logger.log('=== JSON A ENVIAR A MSELLER ===');
+    this.logger.log(jsonString);
+    this.logger.log('=== FIN JSON ===');
 
     return this.withRetry(
       async () => {
