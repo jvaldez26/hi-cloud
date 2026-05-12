@@ -377,4 +377,62 @@ export class AuthService {
     await this.sendVerificationEmail(user.id, user.email, user.nombre).catch(() => null);
     return response;
   }
+
+  // ─── Google OAuth ─────────────────────────────────────────────────────────────
+
+  /** Busca o crea un usuario a partir del perfil de Google */
+  async findOrCreateFromGoogle(data: {
+    email: string; googleId: string; nombre: string;
+  }): Promise<User> {
+    // 1. Buscar por googleId primero
+    let user = await this.userRepository.findOne({
+      where: { googleId: data.googleId } as any,
+    });
+    if (user) return user;
+
+    // 2. Buscar por email (cuenta local existente → vincular)
+    user = await this.userRepository.findOne({ where: { email: data.email } });
+    if (user) {
+      await this.userRepository.update(user.id, {
+        googleId: data.googleId,
+        provider: 'GOOGLE',
+      } as any);
+      return { ...user, googleId: data.googleId } as User;
+    }
+
+    // 3. Crear cuenta nueva (sin contraseña usable)
+    const pw = await bcrypt.hash(randomBytes(32).toString('hex'), 12);
+    const newUser = this.userRepository.create({
+      nombre:         data.nombre,
+      email:          data.email,
+      password:       pw,
+      googleId:       data.googleId,
+      provider:       'GOOGLE',
+      emailVerifiedAt: new Date(),  // Google ya verificó el email
+    } as any);
+    return this.userRepository.save(newUser) as unknown as User;
+  }
+
+  /** Genera la respuesta de login completa (token + empresas) para un User */
+  async buildLoginResponse(user: User) {
+    const empresaId   = await this.getEmpresaPrincipal(user.id);
+    const accessToken = this.buildToken(user, empresaId);
+    const empresas    = await this.ueRepository.find({
+      where: { userId: user.id, isActive: true },
+      relations: ['empresa'],
+      order: { isPrincipal: 'DESC' },
+    });
+    return {
+      accessToken,
+      empresaActual: empresaId ?? null,
+      empresas: empresas.map(e => ({
+        empresaId:   e.empresaId,
+        nombre:      e.empresa?.nombre,
+        rnc:         e.empresa?.rnc,
+        rol:         e.rol,
+        isPrincipal: e.isPrincipal,
+      })),
+      user: { id: user.id, nombre: user.nombre, email: user.email, role: user.role },
+    };
+  }
 }

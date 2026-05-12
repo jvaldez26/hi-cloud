@@ -10,6 +10,7 @@ import { TwoFactorController } from './two-factor.controller';
 import { UsersModule } from '../users/users.module';
 import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { GoogleStrategy } from './strategies/google.strategy';
 import { User } from '../users/users.entity';
 import { UsuarioEmpresa } from '../multi-empresa/entities/usuario-empresa.entity';
 import { Empresa } from '../configuracion/entities/empresa.entity';
@@ -34,7 +35,7 @@ import { Empresa } from '../configuracion/entities/empresa.entity';
     }),
   ],
   controllers: [AuthController, TwoFactorController],
-  providers: [AuthService, JwtStrategy, TwoFactorService],
+  providers: [AuthService, JwtStrategy, GoogleStrategy, TwoFactorService],
   exports: [JwtModule, PassportModule],
 })
 export class AuthModule {}

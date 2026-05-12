@@ -1,10 +1,12 @@
 import {
   Controller, Post, Get, Body, Param,
-  HttpCode, HttpStatus, UseGuards,
+  HttpCode, HttpStatus, UseGuards, Req, Res,
 } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { IsEmail, IsString, MinLength, MaxLength, Matches, IsInt, IsPositive } from 'class-validator';
 import { Throttle } from '@nestjs/throttler';
+import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -141,5 +143,34 @@ export class AuthController {
   resendVerification(@Body('email') email: string) {
     if (!email) throw new (require('@nestjs/common').BadRequestException)('Email requerido');
     return this.authService.resendVerificationEmail(email);
+  }
+
+  // ── Google OAuth ──────────────────────────────────────────────────────────
+
+  @Get('google')
+  @UseGuards(AuthGuard('google'))
+  @ApiOperation({ summary: 'Iniciar flujo OAuth con Google' })
+  async googleAuth() {
+    // Passport redirige automáticamente a Google
+  }
+
+  @Get('google/callback')
+  @UseGuards(AuthGuard('google'))
+  @ApiOperation({ summary: 'Callback de Google OAuth — genera JWT y redirige al frontend' })
+  async googleCallback(@Req() req: Request, @Res() res: Response) {
+    const frontendUrl = process.env.FRONTEND_URL ?? 'https://hicloudrd.com';
+    try {
+      const loginData = await this.authService.buildLoginResponse(req.user as User);
+      const params = new URLSearchParams({
+        token:        loginData.accessToken,
+        empresaId:    String(loginData.empresaActual ?? ''),
+        nombre:       loginData.user.nombre,
+        email:        loginData.user.email,
+        role:         loginData.user.role,
+      });
+      return (res as any).redirect(`${frontendUrl}/auth/callback?${params.toString()}`);
+    } catch {
+      return (res as any).redirect(`${frontendUrl}/login?error=google_failed`);
+    }
   }
 }
