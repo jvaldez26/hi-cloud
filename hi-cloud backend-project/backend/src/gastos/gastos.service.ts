@@ -173,7 +173,7 @@ export class GastosService {
       .createQueryBuilder('g')
       .select('g.periodo', 'periodo')
       .addSelect('COALESCE(SUM(g.total), 0)', 'total')
-      .where('g.empresaId = :eid AND g.isActive = true AND EXTRACT(YEAR FROM g.fecha) = :y', { y: anio })
+      .where('g.empresaId = :eid AND g.isActive = true AND EXTRACT(YEAR FROM g.fecha) = :y', { eid: this.tenantService.getEmpresaId(), y: anio })
       .groupBy('g.periodo')
       .orderBy('g.periodo', 'ASC')
       .getRawMany();
