@@ -1,0 +1,80 @@
+import { Entity, Column, ManyToOne, OneToMany, JoinColumn, Index } from 'typeorm';
+import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
+import { Cliente } from '../../clientes/entities/cliente.entity';
+import { NotaCreditoDetalle } from './nota-credito-detalle.entity';
+
+export enum EstadoNotaCredito {
+  BORRADOR = 'borrador',
+  EMITIDA  = 'emitida',
+  ANULADA  = 'anulada',
+}
+
+export enum MotivoNotaCredito {
+  DEVOLUCION          = 'devolucion',
+  DESCUENTO_OTORGADO  = 'descuento_otorgado',
+  ERROR_PRECIO        = 'error_precio',
+  ERROR_CANTIDAD      = 'error_cantidad',
+  ANULACION_FACTURA   = 'anulacion_factura',
+  OTRO                = 'otro',
+}
+
+@Entity('notas_credito')
+@Index(['empresaId', 'isActive'])
+@Index(['empresaId', 'estado'])
+@Index(['empresaId', 'clienteId'])
+export class NotaCredito extends TenantBaseEntity {
+  @Column({ length: 20 })
+  numero!: string;
+
+  @Column({ type: 'date' })
+  fecha!: Date;
+
+  @Column({ length: 10, default: 'E34' })
+  tipoNcf!: string;
+
+  @Column({ nullable: true })
+  facturaOriginalId?: number;
+
+  @Column({ length: 20, nullable: true })
+  facturaOriginalFolio?: string;
+
+  @ManyToOne(() => Cliente, { eager: true })
+  @JoinColumn({ name: 'clienteId' })
+  cliente!: Cliente;
+
+  @Column()
+  clienteId!: number;
+
+  @Column()
+  usuarioId!: number;
+
+  @Column({ type: 'enum', enum: MotivoNotaCredito, default: MotivoNotaCredito.DEVOLUCION })
+  motivo!: MotivoNotaCredito;
+
+  @Column({ type: 'text', nullable: true })
+  descripcionMotivo?: string;
+
+  @OneToMany(() => NotaCreditoDetalle, d => d.notaCredito, { cascade: true, eager: true })
+  detalles!: NotaCreditoDetalle[];
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  subtotal!: number;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  iva!: number;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  total!: number;
+
+  @Column({ type: 'enum', enum: EstadoNotaCredito, default: EstadoNotaCredito.BORRADOR })
+  estado!: EstadoNotaCredito;
+
+  @Column({ nullable: true })
+  vendedorId?: number;
+
+  @Column({ length: 150, nullable: true })
+  nombreVendedor?: string;
+
+  @Column({ type: 'text', nullable: true })
+  notas?: string;
+}

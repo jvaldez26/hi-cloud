@@ -1,0 +1,58 @@
+import api from './client';
+
+export interface CotizacionDetallePayload {
+  productoId?: number;
+  descripcion: string;
+  cantidad: number;
+  precioUnitario: number;
+  porcentajeIva?: number;
+}
+
+export interface CotizacionPayload {
+  clienteId:       number;
+  fecha:           string;
+  validezDias?:    number;
+  detalles:        CotizacionDetallePayload[];
+  condicionesPago?: string;
+  notas?:          string;
+  vendedorId?:     number;
+  nombreVendedor?: string;
+}
+
+export const cotizacionesApi = {
+  list: (p = 1, limit = 10, search = '') =>
+    api.get(`/cotizaciones?page=${p}&limit=${limit}&search=${search}`).then(r => r.data.data),
+
+  getOne: (id: number) =>
+    api.get(`/cotizaciones/${id}`).then(r => r.data.data),
+
+  create: (body: CotizacionPayload) =>
+    api.post('/cotizaciones', body).then(r => r.data.data),
+
+  cambiarEstado: (id: number, estado: string) =>
+    api.patch(`/cotizaciones/${id}/estado`, { estado }).then(r => r.data.data),
+
+  convertir: (id: number) =>
+    api.post(`/cotizaciones/${id}/convertir`).then(r => r.data.data),
+
+  remove: (id: number) =>
+    api.delete(`/cotizaciones/${id}`).then(r => r.data),
+
+  resumen: () =>
+    api.get('/cotizaciones/resumen').then(r => r.data.data),
+
+  pdf: async (id: number, numero: string) => {
+    const tk  = localStorage.getItem('access_token');
+    const eid = localStorage.getItem('empresaId');
+    const res = await fetch(`/api/v1/cotizaciones/${id}/pdf`, {
+      headers: { Authorization: `Bearer ${tk}`, 'X-Empresa-ID': eid || '' },
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const blob = await res.blob();
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `${numero}.pdf`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  },
+};

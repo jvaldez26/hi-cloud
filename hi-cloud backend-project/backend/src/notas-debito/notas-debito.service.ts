@@ -1,0 +1,166 @@
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { NotaDebito, EstadoNotaDebito } from './entities/nota-debito.entity';
+import { NotaDebitoDetalle } from './entities/nota-debito-detalle.entity';
+import { TenantService } from '../tenant/tenant.service';
+import { PaginationDto } from '../common/dto/pagination.dto';
+
+interface DetalleDto {
+  productoId?:    number;
+  descripcion:    string;
+  unidadMedida?:  string;
+  cantidad:       number;
+  precioUnitario: number;
+  porcentajeIva?: number;
+}
+
+interface CreateNDDto {
+  clienteId:            number;
+  fecha:                string;
+  facturaOriginalId?:   number;
+  facturaOriginalFolio?: string;
+  motivo:               string;
+  descripcionMotivo?:   string;
+  notas?:               string;
+  vendedorId?:          number;
+  nombreVendedor?:      string;
+  detalles:             DetalleDto[];
+}
+
+@Injectable()
+export class NotasDebitoService {
+  constructor(
+    @InjectRepository(NotaDebito)        private ndRepo:  Repository<NotaDebito>,
+    @InjectRepository(NotaDebitoDetalle) private detRepo: Repository<NotaDebitoDetalle>,
+    private tenantSvc: TenantService,
+  ) {}
+
+  // ─── Folio ────────────────────────────────────────────────────────────────────
+
+  private async generarNumero(): Promise<string> {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const d   = new Date();
+    const pre = `ND-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}-`;
+    const res = await this.ndRepo
+      .createQueryBuilder('nd')
+      .select(`MAX(CAST(SPLIT_PART(nd.numero, '-', 3) AS INTEGER))`, 'maxNum')
+      .where('nd.numero LIKE :p',       { p: `${pre}%` })
+      .andWhere('nd.empresaId = :eid', { eid: empresaId })
+      .getRawOne<{ maxNum: number | null }>();
+    return `${pre}${String((res?.maxNum ?? 0) + 1).padStart(4, '0')}`;
+  }
+
+  // ─── CRUD ─────────────────────────────────────────────────────────────────────
+
+  async crear(dto: CreateNDDto, usuarioId: number) {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const numero    = await this.generarNumero();
+
+    const detalles = dto.detalles.map(d => {
+      const pctIva   = d.porcentajeIva ?? 18;
+      const subtotal = +(d.cantidad * d.precioUnitario).toFixed(2);
+      const iva      = +(subtotal * pctIva / 100).toFixed(2);
+      return { ...d, unidadMedida: d.unidadMedida ?? 'PZA', porcentajeIva: pctIva, subtotal, iva, total: +(subtotal + iva).toFixed(2) };
+    });
+
+    const subtotal = detalles.reduce((s, d) => s + d.subtotal, 0);
+    const iva      = detalles.reduce((s, d) => s + d.iva, 0);
+
+    const nd = this.ndRepo.create({
+      empresaId,
+      numero,
+      fecha:                dto.fecha as unknown as Date,
+      tipoNcf:              'E33',
+      facturaOriginalId:    dto.facturaOriginalId,
+      facturaOriginalFolio: dto.facturaOriginalFolio,
+      clienteId:            dto.clienteId,
+      usuarioId,
+      motivo:               dto.motivo as any,
+      descripcionMotivo:    dto.descripcionMotivo,
+      notas:                dto.notas,
+      vendedorId:           dto.vendedorId,
+      nombreVendedor:       dto.nombreVendedor,
+      subtotal:             +subtotal.toFixed(2),
+      iva:                  +iva.toFixed(2),
+      total:                +(subtotal + iva).toFixed(2),
+      detalles:             detalles as unknown as NotaDebitoDetalle[],
+    });
+
+    return this.ndRepo.save(nd);
+  }
+
+  async listar(pagination: PaginationDto) {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const { limit = 10, page = 1, search } = pagination;
+
+    const qb = this.ndRepo
+      .createQueryBuilder('nd')
+      .leftJoinAndSelect('nd.cliente',  'c')
+      .leftJoinAndSelect('nd.detalles', 'd')
+      .where('nd.empresaId = :eid', { eid: empresaId })
+      .andWhere('nd.isActive = :a',  { a: true });
+
+    if (search) qb.andWhere('(nd.numero ILIKE :s OR c.nombre ILIKE :s)', { s: `%${search}%` });
+
+    const [data, total] = await qb
+      .orderBy('nd.createdAt', 'DESC')
+      .addOrderBy('d.id', 'ASC')
+      .skip((page - 1) * limit)
+      .take(Math.min(limit, 100))
+      .getManyAndCount();
+
+    return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+  }
+
+  async findOne(id: number) {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const nd = await this.ndRepo.findOne({
+      where:     { id, empresaId, isActive: true },
+      relations: ['cliente', 'detalles'],
+    });
+    if (!nd) throw new NotFoundException(`Nota de Débito #${id} no encontrada`);
+    return nd;
+  }
+
+  async emitir(id: number) {
+    const nd = await this.findOne(id);
+    if (nd.estado !== EstadoNotaDebito.BORRADOR) {
+      throw new BadRequestException('Solo se puede emitir notas en BORRADOR');
+    }
+    await this.ndRepo.update(id, { estado: EstadoNotaDebito.EMITIDA });
+    return this.findOne(id);
+  }
+
+  async anular(id: number) {
+    const nd = await this.findOne(id);
+    if (nd.estado === EstadoNotaDebito.ANULADA) {
+      throw new BadRequestException('La nota ya está anulada');
+    }
+    await this.ndRepo.update(id, { estado: EstadoNotaDebito.ANULADA });
+    return this.findOne(id);
+  }
+
+  async eliminar(id: number) {
+    const nd = await this.findOne(id);
+    if (nd.estado !== EstadoNotaDebito.BORRADOR) {
+      throw new BadRequestException('Solo se pueden eliminar notas en BORRADOR');
+    }
+    await this.ndRepo.update(id, { isActive: false });
+    return { ok: true };
+  }
+
+  async resumen() {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const raw = await this.ndRepo
+      .createQueryBuilder('nd')
+      .select('nd.estado', 'estado')
+      .addSelect('COUNT(nd.id)', 'cantidad')
+      .addSelect('COALESCE(SUM(nd.total), 0)', 'total')
+      .where('nd.empresaId = :eid', { eid: empresaId })
+      .andWhere('nd.isActive = :a', { a: true })
+      .groupBy('nd.estado')
+      .getRawMany<{ estado: string; cantidad: string; total: string }>();
+    return raw.map(r => ({ estado: r.estado, cantidad: Number(r.cantidad), total: Number(r.total) }));
+  }
+}

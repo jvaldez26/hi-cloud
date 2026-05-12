@@ -1,0 +1,261 @@
+import { useState, useCallback } from 'react';
+import {
+  Table, Button, Tag, Space, Modal, Form, InputNumber, Select, Input,
+  Typography, message, Card, Row, Col, Statistic, DatePicker, theme, Tooltip,
+} from 'antd';
+import {
+  DollarOutlined, SearchOutlined, FileExcelOutlined,
+  FilterOutlined, WhatsAppOutlined,
+} from '@ant-design/icons';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import dayjs from 'dayjs';
+import type { Dayjs } from 'dayjs';
+import { cxpApi } from '../../api/cxp.api';
+import { exportarExcel } from '../../utils/exportExcel';
+import type { CuentaPorPagar, MetodoPago } from '../../types';
+import { fmt, estadoColor } from '../../utils/formatters';
+
+const { Title, Text } = Typography;
+const { RangePicker } = DatePicker;
+const { Option } = Select;
+
+const ESTADOS_CXP = ['pendiente', 'pagada_parcial', 'pagada', 'vencida', 'anulada'];
+
+export default function CxPPage() {
+  const { token } = theme.useToken();
+  const [estado,  setEstado]  = useState<string | undefined>();
+  const [search,  setSearch]  = useState('');
+  const [rango,   setRango]   = useState<[Dayjs, Dayjs] | null>(null);
+  const [page,    setPage]    = useState(1);
+  const [pagoId,  setPagoId]  = useState<number | null>(null);
+  const [form]                = Form.useForm();
+  const qc = useQueryClient();
+
+  const hayFiltros = !!(search || estado || rango);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['cxp', page, estado, search, rango],
+    queryFn:  () => cxpApi.list(page, 15, {
+      estado,
+      fechaDesde: rango?.[0].format('YYYY-MM-DD'),
+      fechaHasta: rango?.[1].format('YYYY-MM-DD'),
+    }),
+  });
+
+  const { data: resumen } = useQuery({
+    queryKey: ['cxp-resumen'],
+    queryFn:  cxpApi.resumen,
+  });
+
+  const pagoMut = useMutation({
+    mutationFn: ({ id, monto, metodoPago, ref }: { id: number; monto: number; metodoPago: MetodoPago; ref?: string }) =>
+      cxpApi.registrarPago(id, monto, metodoPago, ref),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cxp'] });
+      qc.invalidateQueries({ queryKey: ['cxp-resumen'] });
+      setPagoId(null); form.resetFields();
+      message.success('Pago registrado');
+    },
+    onError: (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error al registrar pago'),
+  });
+
+  const handleExcel = useCallback(async () => {
+    const all = await cxpApi.list(1, 5000, { estado });
+    const filas = (all?.data ?? []).map((c: CuentaPorPagar) => ({
+      'Compra':      (c as any).compra?.folio ?? '',
+      'Proveedor':   (c as any).proveedor?.nombre ?? '',
+      'Total':       Number(c.montoOriginal ?? 0),
+      'Pagado':      Number(c.montoPagado ?? 0),
+      'Pendiente':   Number(c.montoPendiente ?? 0),
+      'Vencimiento': c.fechaVencimiento ? dayjs(c.fechaVencimiento).format('DD/MM/YYYY') : '',
+      'Estado':      c.estado,
+    }));
+    exportarExcel(filas, `CxP-${dayjs().format('YYYY-MM-DD')}`);
+    message.success(`${filas.length} cuentas exportadas`);
+  }, [estado]);
+
+  // Filtro local de búsqueda (backend no tiene search en CxP)
+  const rows = (data?.data ?? []).filter((c: CuentaPorPagar) => {
+    if (!search) return true;
+    const s = search.toLowerCase();
+    return (
+      (c as any).compra?.folio?.toLowerCase().includes(s) ||
+      (c as any).proveedor?.nombre?.toLowerCase().includes(s) ||
+      (c as any).proveedor?.rnc?.includes(search)
+    );
+  });
+
+  const columns = [
+    {
+      title: 'Compra', dataIndex: ['compra', 'folio'], width: 160,
+      render: (v: string) => <Text strong style={{ fontFamily: 'monospace', fontSize: 12 }}>{v ?? '—'}</Text>,
+    },
+    {
+      title: 'Proveedor', dataIndex: ['proveedor', 'nombre'], ellipsis: true,
+      render: (v: string) => <Text style={{ fontSize: 13 }}>{v ?? '—'}</Text>,
+    },
+    {
+      title: 'Total', dataIndex: 'montoOriginal', width: 120, align: 'right' as const,
+      render: (v: number) => fmt.money(v),
+    },
+    {
+      title: 'Pagado', dataIndex: 'montoPagado', width: 110, align: 'right' as const,
+      render: (v: number) => <Text style={{ color: '#059669' }}>{fmt.money(v)}</Text>,
+    },
+    {
+      title: 'Pendiente', dataIndex: 'montoPendiente', width: 120, align: 'right' as const,
+      render: (v: number) => (
+        <Text strong style={{ color: v > 0 ? '#dc2626' : '#059669' }}>{fmt.money(v)}</Text>
+      ),
+    },
+    {
+      title: 'Vencimiento', dataIndex: 'fechaVencimiento', width: 112,
+      render: (v: string) => {
+        if (!v) return '—';
+        const dias = dayjs(v).diff(dayjs(), 'day');
+        const color = dias < 0 ? '#dc2626' : dias <= 7 ? '#d97706' : token.colorText;
+        return <Text style={{ fontSize: 12, color }}>{fmt.date(v)}</Text>;
+      },
+    },
+    {
+      title: 'Estado', dataIndex: 'estado', width: 120,
+      render: (v: string) => (
+        <Tag color={estadoColor[v] ?? 'default'} style={{ fontSize: 11, fontWeight: 600, margin: 0 }}>
+          {v.replace('_', ' ').toUpperCase()}
+        </Tag>
+      ),
+    },
+    {
+      title: '', key: 'actions', width: 80, align: 'right' as const,
+      render: (_: unknown, r: CuentaPorPagar) =>
+        r.estado !== 'pagada' && r.estado !== 'anulada' ? (
+          <Tooltip title="Registrar pago">
+            <Button size="small" type="primary" icon={<DollarOutlined />}
+              onClick={() => {
+                setPagoId(r.id);
+                form.setFieldsValue({ monto: Number(r.montoPendiente) });
+              }}
+            />
+          </Tooltip>
+        ) : null,
+    },
+  ];
+
+  return (
+    <div>
+      {/* KPI Cards */}
+      <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+        {[
+          { title: 'Por Pagar',          value: resumen?.totalPorPagar,    color: token.colorPrimary },
+          { title: 'Vencido',            value: resumen?.totalVencido,     color: '#dc2626' },
+          { title: 'Por Vencer (30 días)',value: resumen?.totalPorVencer30, color: '#d97706' },
+          { title: 'Pagado este mes',    value: resumen?.pagadoEsteMes,    color: '#059669' },
+        ].map(k => (
+          <Col xs={12} lg={6} key={k.title}>
+            <Card size="small">
+              <Statistic
+                title={<Text style={{ fontSize: 12 }}>{k.title}</Text>}
+                value={k.value ?? 0}
+                formatter={v => fmt.money(Number(v))}
+                valueStyle={{ color: k.color, fontSize: 18, fontWeight: 700 }}
+              />
+            </Card>
+          </Col>
+        ))}
+      </Row>
+
+      <Card>
+        <Row justify="space-between" align="middle" style={{ marginBottom: 12 }}>
+          <Col>
+            <Title level={4} style={{ margin: 0 }}>Cuentas por Pagar</Title>
+            {data?.meta && (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {data.meta.total.toLocaleString('es-DO')} cuentas{hayFiltros ? ' (filtradas)' : ''}
+              </Text>
+            )}
+          </Col>
+          <Col>
+            <Button icon={<FileExcelOutlined />} onClick={handleExcel}>Excel</Button>
+          </Col>
+        </Row>
+
+        <Row gutter={[8, 8]} style={{ marginBottom: 16 }} align="middle">
+          <Col xs={24} sm={10} md={8}>
+            <Input
+              placeholder="Buscar proveedor o compra..."
+              prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(1); }}
+              allowClear
+            />
+          </Col>
+          <Col xs={24} sm={6} md={5}>
+            <Select placeholder="Estado" value={estado}
+              onChange={v => { setEstado(v); setPage(1); }} allowClear style={{ width: '100%' }}>
+              {ESTADOS_CXP.map(e => (
+                <Option key={e} value={e}>
+                  <Tag color={estadoColor[e] ?? 'default'} style={{ margin: 0, fontSize: 11 }}>
+                    {e.replace('_', ' ').toUpperCase()}
+                  </Tag>
+                </Option>
+              ))}
+            </Select>
+          </Col>
+          <Col xs={24} sm={8} md={8}>
+            <RangePicker value={rango} onChange={v => { setRango(v as [Dayjs, Dayjs] | null); setPage(1); }}
+              format="DD/MM/YYYY" style={{ width: '100%' }} placeholder={['Vence desde', 'Vence hasta']} />
+          </Col>
+          {hayFiltros && (
+            <Col>
+              <Button type="text" size="small" icon={<FilterOutlined />}
+                onClick={() => { setSearch(''); setEstado(undefined); setRango(null); setPage(1); }}>
+                Limpiar
+              </Button>
+            </Col>
+          )}
+        </Row>
+
+        <Table
+          columns={columns} dataSource={rows} rowKey="id"
+          loading={isLoading} size="small"
+          pagination={{
+            total: search ? rows.length : data?.meta.total,
+            pageSize: 15, current: page,
+            onChange: setPage,
+            showTotal: t => `${t.toLocaleString('es-DO')} cuentas`,
+            showSizeChanger: false, size: 'small',
+          }}
+        />
+      </Card>
+
+      {/* Modal pago */}
+      <Modal title="Registrar Pago" open={!!pagoId}
+        onCancel={() => { setPagoId(null); form.resetFields(); }} footer={null} destroyOnClose>
+        <Form form={form} layout="vertical"
+          onFinish={v => pagoId && pagoMut.mutate({ id: pagoId, monto: v.monto, metodoPago: v.metodoPago, ref: v.referencia })}>
+          <Form.Item name="monto" label="Monto a pagar" rules={[{ required: true }]}>
+            <InputNumber style={{ width: '100%' }} min={0.01} precision={2} prefix="RD$" size="large" />
+          </Form.Item>
+          <Form.Item name="metodoPago" label="Método de pago" rules={[{ required: true }]}>
+            <Select>
+              {['efectivo','transferencia','cheque','tarjeta','otro'].map(v => (
+                <Option key={v} value={v}>{v.charAt(0).toUpperCase() + v.slice(1)}</Option>
+              ))}
+            </Select>
+          </Form.Item>
+          <Form.Item name="referencia" label="Referencia (N° cheque, transferencia...)">
+            <Input placeholder="Ej: CHQ-0012345 o código de transferencia" />
+          </Form.Item>
+          <Row justify="end" gutter={8}>
+            <Col><Button onClick={() => { setPagoId(null); form.resetFields(); }}>Cancelar</Button></Col>
+            <Col>
+              <Button type="primary" htmlType="submit" loading={pagoMut.isPending}>
+                Registrar pago
+              </Button>
+            </Col>
+          </Row>
+        </Form>
+      </Modal>
+    </div>
+  );
+}

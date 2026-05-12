@@ -1,0 +1,3719 @@
+import { useState, useCallback, useEffect, useRef, createContext, useContext } from 'react';
+import QRCode from 'qrcode';
+import { Select, Modal, Badge, Empty, Spin, Tooltip, message, Avatar, Popover } from 'antd';
+import { SearchOutlined, ShoppingCartOutlined, CheckCircleOutlined, DisconnectOutlined, LogoutOutlined, PrinterOutlined } from '@ant-design/icons';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
+import { productosApi } from '../../api/productos.api';
+import api from '../../api/client';
+import { clientesApi } from '../../api/clientes.api';
+import { configuracionApi } from '../../api/configuracion.api';
+import { useQueryClient } from '@tanstack/react-query';
+import { facturasApi } from '../../api/facturas.api';
+import { fmt } from '../../utils/formatters';
+import { imprimirElemento } from '../../utils/printUtils';
+import { useThemeStore } from '../../store/theme.store';
+import { useOfflineQueue } from '../../hooks/useOfflineQueue';
+import type { Producto, Cliente } from '../../types';
+import dayjs from 'dayjs';
+
+// ── Alias type ────────────────────────────────────────────────────────────────
+type Prod = Producto;
+
+// ── Dual palettes ─────────────────────────────────────────────────────────────
+const darkC = {
+  bg:         '#080E1A',
+  topbar:     '#0C1220',
+  sidebar:    '#0F1929',
+  sidebarHov: '#1A2640',
+  card:       '#1A2234',
+  imgBg:      '#0d1526',
+  inputBg:    'rgba(255,255,255,.05)',
+  totalsBg:   'rgba(0,0,0,.30)',
+  border:     'rgba(255,255,255,0.07)',
+  border2:    'rgba(255,255,255,0.13)',
+  text:       '#F1F5F9',
+  textMuted:  '#475569',
+  textSub:    '#94A3B8',
+  blue:       '#3B82F6',
+  green:      '#10B981',
+  orange:     '#F59E0B',
+  red:        '#EF4444',
+};
+
+const lightC = {
+  bg:         '#F1F5F9',
+  topbar:     '#1854D8',   // azul corporativo — igual que la barra lateral del ERP en modo claro
+  sidebar:    '#FFFFFF',
+  sidebarHov: '#F1F5F9',
+  card:       '#FFFFFF',
+  imgBg:      '#EEF2F7',
+  inputBg:    'rgba(0,0,0,.04)',
+  totalsBg:   '#F8FAFC',
+  border:     'rgba(0,0,0,0.07)',
+  border2:    'rgba(0,0,0,0.13)',
+  text:       '#0F172A',
+  textMuted:  '#CBD5E1',
+  textSub:    '#64748B',
+  blue:       '#2563EB',
+  green:      '#059669',
+  orange:     '#D97706',
+  red:        '#DC2626',
+};
+
+type Palette = typeof darkC;
+const ThemeCtx = createContext<Palette>(darkC);
+const useC = () => useContext(ThemeCtx);
+
+// ── Interfaces ────────────────────────────────────────────────────────────────
+interface CartItem {
+  produto:   Prod;
+  cantidad:  number;
+  precio:    number;
+  descuento: number;
+}
+
+interface ParkedSale {
+  id:        string;
+  items:     CartItem[];
+  clienteId?: number;
+  label:     string;
+}
+
+interface Sale {
+  folio:                   string;
+  total:                   number;
+  cambio:                  number;
+  metodo:                  string;
+  items:                   CartItem[];
+  cliente?:                string;
+  iva:                     number;
+  subtotal:                number;
+  facturaId?:              number;
+  // e-CF
+  tipoNcf?:                string;
+  encf?:                   string;
+  ecfPendiente?:           boolean;
+  ecfFecha?:               string;
+  rncComprador?:           string;
+  razonSocial?:            string;
+  securityCode?:           string;
+  qrUrl?:                  string;
+  // Emisor
+  cajero?:                 string;
+  empresaNombreComercial?: string;
+  empresaRnc?:             string;
+  empresaDireccion?:       string;
+  empresaTelefono?:        string;
+}
+
+type MetodoPago = 'efectivo' | 'tarjeta' | 'transferencia';
+
+type ModoFacturacion = 'factura' | 'valor-fiscal' | 'pro-forma' | 'pre-factura' | 'conduce' | 'cotizacion';
+
+const MODOS_FACTURACION: Array<{ id: ModoFacturacion; label: string; icon: string; desc: string }> = [
+  { id: 'factura',      label: 'Factura',       icon: '📄', desc: 'Factura electrónica con NCF' },
+  { id: 'valor-fiscal', label: 'Valor Fiscal',  icon: '🏛️', desc: 'Factura para uso interno fiscal' },
+  { id: 'pro-forma',    label: 'Pro Forma',     icon: '📋', desc: 'Cotización formal no fiscal' },
+  { id: 'pre-factura',  label: 'Pre-Factura',   icon: '📝', desc: 'Documento previo a factura' },
+  { id: 'conduce',      label: 'Conduce',       icon: '🚚', desc: 'Nota de entrega / remisión' },
+  { id: 'cotizacion',   label: 'Cotización',    icon: '💬', desc: 'Presupuesto al cliente' },
+];
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+const METODOS: { key: MetodoPago; label: string; icon: string }[] = [
+  { key: 'efectivo',      label: 'Efectivo',     icon: '💵' },
+  { key: 'tarjeta',       label: 'Tarjeta',       icon: '💳' },
+  { key: 'transferencia', label: 'Transferencia', icon: '🏦' },
+];
+
+const NCF_OPTS = [
+  { code: 'E32', label: 'Consumo',          color: '#6B7280' },
+  { code: 'E31', label: 'Crédito Fiscal',   color: '#3B82F6' },
+  { code: 'E44', label: 'Zona Franca',      color: '#10B981' },
+  { code: 'E45', label: 'Gubernamental',    color: '#F59E0B' },
+];
+
+const RECEIPT_ID = 'hc-pos-receipt';
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function avatarBg(name: string) {
+  const colors = ['#3B82F6','#10B981','#F59E0B','#8B5CF6','#EF4444','#0891B2'];
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h + name.charCodeAt(i)) % colors.length;
+  return colors[h];
+}
+
+// ── Live clock ────────────────────────────────────────────────────────────────
+function LiveClock() {
+  const [t, setT] = useState(new Date());
+  useEffect(() => {
+    const id = setInterval(() => setT(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+      {t.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+    </span>
+  );
+}
+
+// ── Numpad ────────────────────────────────────────────────────────────────────
+function Numpad({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const press = (k: string) => {
+    const s = value === 0 ? '' : String(value);
+    if (k === '⌫') { const n = s.slice(0, -1); onChange(n === '' ? 0 : Number(n)); return; }
+    if (k === '.') { if (!s.includes('.')) onChange(Number(s + '.') as any); return; }
+    onChange(Number(s + k));
+  };
+  const keys = ['7','8','9','4','5','6','1','2','3','.','0','⌫'];
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 5 }}>
+      {keys.map(k => (
+        <button key={k} onClick={() => press(k)} style={{
+          height: 40, borderRadius: 8, cursor: 'pointer', outline: 'none', fontSize: 15, fontWeight: 600,
+          border: k === '⌫' ? '1px solid #FECACA' : '1px solid #E2E8F0',
+          background: k === '⌫' ? '#FEF2F2' : '#F8FAFC',
+          color: k === '⌫' ? '#EF4444' : '#1E293B',
+          transition: 'background 0.1s',
+        }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = k === '⌫' ? '#FEE2E2' : '#EFF6FF'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = k === '⌫' ? '#FEF2F2' : '#F8FAFC'; }}
+        >{k}</button>
+      ))}
+    </div>
+  );
+}
+
+// ── Product card — diseño moderno ─────────────────────────────────────────────
+
+/** Genera color de tarjeta consistente basado en categoría o nombre */
+function cardColor(seed: string, dark: boolean): { bg: string; accent: string; icon: string } {
+  const palettes = [
+    { bg: dark?'#0e2218':'#E6F7EE', accent:'#22C55E', icon:'🪣' },  // verde
+    { bg: dark?'#241500':'#FFF3E0', accent:'#F97316', icon:'🔧' },  // naranja
+    { bg: dark?'#0a1929':'#EFF6FF', accent:'#3B82F6', icon:'⚡' },  // azul
+    { bg: dark?'#1e0a29':'#F3E8FF', accent:'#A855F7', icon:'📦' },  // violeta
+    { bg: dark?'#290a0a':'#FEE2E2', accent:'#EF4444', icon:'🔑' },  // rojo
+    { bg: dark?'#0f1f29':'#E0F2FE', accent:'#0EA5E9', icon:'🚿' },  // celeste
+    { bg: dark?'#29200a':'#FEF3C7', accent:'#EAB308', icon:'🔩' },  // amarillo
+    { bg: dark?'#0a2420':'#CCFBF1', accent:'#14B8A6', icon:'🪚' },  // teal
+  ];
+  let h = 0; for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return palettes[h % palettes.length];
+}
+
+/** Ícono por categoría */
+function categoryIcon(cat?: string): string {
+  if (!cat) return '📦';
+  const c = cat.toLowerCase();
+  if (c.includes('electr')) return '⚡';
+  if (c.includes('ferret') || c.includes('herram')) return '🔧';
+  if (c.includes('pintur')) return '🪣';
+  if (c.includes('plomer') || c.includes('agua')) return '🚿';
+  if (c.includes('cemento') || c.includes('constr')) return '🏗️';
+  if (c.includes('madera') || c.includes('mueble')) return '🪵';
+  if (c.includes('tubo') || c.includes('pvc')) return '⬛';
+  if (c.includes('cerraj') || c.includes('candado')) return '🔒';
+  if (c.includes('serv')) return '⚙️';
+  if (c.includes('aliment') || c.includes('comida')) return '🍔';
+  if (c.includes('bebida')) return '🥤';
+  if (c.includes('ropa') || c.includes('textil')) return '👔';
+  return '📦';
+}
+
+function ProductCard({ produto, onAdd }: { produto: Prod; onAdd: (p: Prod) => void }) {
+  const C        = useC();
+  const isDark   = C === darkC;
+  const sinStock = Number(produto.stock) <= 0;
+  const stockBajo= !sinStock && Number(produto.stock) <= Number((produto as any).stockMinimo ?? 3);
+  const stock    = Number(produto.stock);
+
+  const cat   = (produto as any).categoria as string | undefined;
+  const color = cardColor(cat ?? produto.nombre, isDark);
+  const icon  = categoryIcon(cat);
+
+  const stockColor = sinStock ? C.red : stockBajo ? C.orange : C.green;
+  const stockBg    = sinStock ? C.red+'22' : stockBajo ? C.orange+'22' : C.green+'22';
+  const unidad     = (produto as any).unidadMedida ?? 'unidad';
+
+  return (
+    <motion.div
+      whileHover={!sinStock ? { y: -2, boxShadow: `0 8px 24px ${color.accent}33` } : {}}
+      whileTap={!sinStock ? { scale: 0.96 } : {}}
+      onClick={() => !sinStock && onAdd(produto)}
+      style={{
+        cursor:       sinStock ? 'not-allowed' : 'pointer',
+        borderRadius: 14,
+        background:   color.bg,
+        border:       `1px solid ${color.accent}30`,
+        overflow:     'hidden',
+        opacity:      sinStock ? 0.6 : 1,
+        position:     'relative',
+        display:      'flex', flexDirection: 'column',
+        height:       148,
+        transition:   'box-shadow 0.18s',
+        userSelect:   'none',
+      }}
+    >
+      {/* Badge de stock (top right) */}
+      <div style={{
+        position: 'absolute', top: 8, right: 8, zIndex: 2,
+        background: stockBg, color: stockColor,
+        fontSize: 10, fontWeight: 800, borderRadius: 10,
+        padding: '2px 7px', border: `1px solid ${stockColor}44`,
+        fontVariantNumeric: 'tabular-nums',
+      }}>
+        {sinStock ? '0' : stock}
+      </div>
+
+      {/* Área del ícono */}
+      <div style={{
+        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '8px 6px 4px',
+      }}>
+        {(produto as any).imagenUrl ? (
+          <img src={(produto as any).imagenUrl} alt={produto.nombre}
+            style={{ width: 72, height: 72, objectFit: 'contain', borderRadius: 8 }}
+            onError={(e) => { (e.target as HTMLImageElement).style.display='none'; }} />
+        ) : (
+          <span style={{ fontSize: 36, lineHeight: 1, filter: sinStock ? 'grayscale(1)' : 'none' }}>
+            {icon}
+          </span>
+        )}
+      </div>
+
+      {/* Info inferior */}
+      <div style={{ padding: '0 8px 7px', flexShrink: 0 }}>
+        {/* Nombre */}
+        <div style={{
+          fontSize: 11, fontWeight: 700, color: isDark ? '#F1F5F9' : '#1E293B',
+          lineHeight: 1.25, marginBottom: 1,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {produto.nombre}
+        </div>
+        {/* SKU */}
+        <div style={{ fontSize: 9, color: isDark ? '#475569' : '#94A3B8', marginBottom: 3 }}>
+          {produto.codigo}
+        </div>
+        {/* Precio + botón + */}
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: color.accent, lineHeight: 1 }}>
+              {fmt.money(Number(produto.precio))}
+            </div>
+            <div style={{ fontSize: 9, color: isDark ? '#475569' : '#94A3B8', marginTop: 1 }}>
+              por {unidad}
+            </div>
+          </div>
+          {/* Botón + */}
+          <button
+            onClick={e => { e.stopPropagation(); !sinStock && onAdd(produto); }}
+            disabled={sinStock}
+            style={{
+              width: 24, height: 24, borderRadius: '50%', border: 'none',
+              background: sinStock ? (isDark ? '#1E293B' : '#E2E8F0')
+                        : stockBajo ? C.orange
+                        : color.accent,
+              color: '#fff',
+              fontSize: 16, fontWeight: 700, cursor: sinStock ? 'not-allowed' : 'pointer',
+              outline: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            {sinStock ? '↓' : '+'}
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+// ── Cart row ──────────────────────────────────────────────────────────────────
+function CartRow({ item, onQty, onRemove, onDescuento }: {
+  item: CartItem; onQty: (d: number) => void; onRemove: () => void; onDescuento: (p: number) => void;
+}) {
+  const C = useC();
+  const [descFocus, setDescFocus] = useState(false);
+  const sub = item.precio * item.cantidad * (1 - item.descuento / 100);
+  const showDesc = descFocus || item.descuento > 0;
+
+  return (
+    <motion.div layout initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, height: 0, overflow: 'hidden' }} transition={{ duration: 0.15 }}>
+      <div style={{ padding: '10px 0', borderBottom: `1px solid ${C.border}` }}>
+        {/* Fila 1: nombre + total */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 5 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: C.text, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {item.produto.nombre}
+            </span>
+            <span style={{ fontSize: 11, color: C.textSub }}>
+              {fmt.money(item.precio)} × PZA
+              {item.descuento > 0 && <span style={{ marginLeft: 5, color: C.orange, fontWeight: 700 }}>−{item.descuento}%</span>}
+            </span>
+          </div>
+          <span style={{ color: C.blue, fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap' }}>{fmt.money(sub)}</span>
+        </div>
+
+        {/* Fila 2: controles */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {/* Cantidad */}
+          <button onClick={() => onQty(-1)} disabled={item.cantidad <= 1}
+            style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${C.border2}`, background: 'transparent',
+              color: item.cantidad <= 1 ? C.textMuted : C.text,
+              cursor: item.cantidad <= 1 ? 'not-allowed' : 'pointer',
+              fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', outline: 'none' }}>−</button>
+          <span style={{ width: 30, textAlign: 'center', fontSize: 13, fontWeight: 700, color: C.text }}>{item.cantidad}</span>
+          <button onClick={() => onQty(1)} disabled={item.cantidad >= Number(item.produto.stock)}
+            style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${C.border2}`, background: 'transparent',
+              color: item.cantidad >= Number(item.produto.stock) ? C.textMuted : C.text,
+              cursor: item.cantidad >= Number(item.produto.stock) ? 'not-allowed' : 'pointer',
+              fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', outline: 'none' }}>+</button>
+
+          <div style={{ flex: 1 }} />
+
+          {/* Descuento — aparece solo si >0 o en foco */}
+          {showDesc ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <input type="number" value={item.descuento} min={0} max={100}
+                onChange={e => onDescuento(Math.min(100, Math.max(0, Number(e.target.value))))}
+                onFocus={() => setDescFocus(true)}
+                onBlur={() => setDescFocus(false)}
+                autoFocus={descFocus && item.descuento === 0}
+                style={{ width: 44, height: 24, borderRadius: 6,
+                  border: `1px solid ${item.descuento > 0 ? C.orange : C.border2}`,
+                  background: item.descuento > 0 ? C.orange + '11' : 'rgba(255,255,255,.05)',
+                  color: item.descuento > 0 ? C.orange : C.text,
+                  textAlign: 'center', fontSize: 11, fontWeight: 700, outline: 'none', padding: '0 2px' }} />
+              <span style={{ fontSize: 10, color: item.descuento > 0 ? C.orange : C.textMuted, fontWeight: 600 }}>%</span>
+            </div>
+          ) : (
+            <Tooltip title="Aplicar descuento">
+              <button onClick={() => setDescFocus(true)}
+                style={{ height: 24, padding: '0 7px', borderRadius: 6,
+                  border: `1px solid ${C.border2}`, background: 'transparent',
+                  color: C.textMuted, cursor: 'pointer', fontSize: 10, fontWeight: 500,
+                  outline: 'none', display: 'flex', alignItems: 'center', gap: 3 }}>
+                <span style={{ fontSize: 12 }}>%</span>
+              </button>
+            </Tooltip>
+          )}
+
+          {/* Eliminar */}
+          <button onClick={onRemove}
+            style={{ width: 26, height: 26, borderRadius: 6, border: 'none',
+              background: 'rgba(239,68,68,.12)', color: C.red, cursor: 'pointer',
+              fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', outline: 'none' }}>✕</button>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+// ── Thermal receipt for print ─────────────────────────────────────────────────
+const NCF_LABEL: Record<string, { linea1: string; linea2: string }> = {
+  E32: { linea1: 'FACTURA DE CONSUMO',          linea2: 'ELECTRÓNICA (E32)' },
+  E31: { linea1: 'FACTURA CRÉDITO FISCAL',       linea2: 'ELECTRÓNICA (E31)' },
+  E44: { linea1: 'FACTURA RÉGIMEN ESPECIAL',     linea2: 'ZONA FRANCA (E44)' },
+  E45: { linea1: 'FACTURA GUBERNAMENTAL',        linea2: 'ELECTRÓNICA (E45)' },
+};
+
+const RNC_GENERICOS_TICKET = new Set(['000000000', '00000000000', '']);
+
+// Helpers de presentación (definidos fuera del componente — sin hooks)
+const R: React.CSSProperties = { fontFamily: '"Courier New",Courier,monospace', fontSize: 11, color: '#000', background: '#fff', lineHeight: 1.45 };
+const HR = ({ dbl }: { dbl?: boolean }) => (
+  <div style={{ borderTop: dbl ? '2px solid #000' : '1px dashed #888', margin: '5px 0' }} />
+);
+function RRow({ label, value, bold, large }: { label: string; value: string; bold?: boolean; large?: boolean }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 4, marginBottom: 2, fontSize: large ? 13 : 11 }}>
+      <span>{label}</span>
+      <span style={{ fontWeight: bold || large ? 700 : undefined, textAlign: 'right' }}>{value}</span>
+    </div>
+  );
+}
+
+function ThermalReceipt({ sale }: { sale: Sale }) {
+  const tipoCode = sale.tipoNcf ?? 'E32';
+  const ncf      = NCF_LABEL[tipoCode] ?? { linea1: 'FACTURA ELECTRÓNICA', linea2: `(${tipoCode})` };
+  const esExento = tipoCode === 'E44';
+  const ahora    = dayjs();
+
+  // Generar QR code como data URL desde qrUrl de MSeller/DGII
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!sale.qrUrl || sale.ecfPendiente) { setQrDataUrl(null); return; }
+    QRCode.toDataURL(sale.qrUrl, { width: 140, margin: 1, color: { dark: '#000000', light: '#ffffff' } })
+      .then(setQrDataUrl)
+      .catch(() => setQrDataUrl(null));
+  }, [sale.qrUrl, sale.ecfPendiente]);
+
+  // Mostrar sección COMPRADOR solo cuando hay RNC real (no 000000000)
+  const mostrarComprador = !!(sale.rncComprador && !RNC_GENERICOS_TICKET.has(sale.rncComprador));
+
+  const moneda = (n: number) => `RD$${n.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  return (
+    <div style={{ ...R, width: '100%', maxWidth: 320, padding: '8px 6px' }}>
+
+      {/* ── ENCABEZADO EMPRESA ─────────────────────────────────────── */}
+      <div style={{ textAlign: 'center', marginBottom: 4 }}>
+        <div style={{ fontSize: 15, fontWeight: 900, letterSpacing: 1 }}>
+          {sale.empresaNombreComercial || 'NOMBRE EMPRESA'}
+        </div>
+        <div style={{ fontSize: 9 }}>República Dominicana</div>
+      </div>
+      {sale.empresaRnc && (
+        <div style={{ fontSize: 10 }}>RNC Emisor: {sale.empresaRnc}</div>
+      )}
+      {sale.empresaDireccion && (
+        <div style={{ fontSize: 10, wordBreak: 'break-word' }}>{sale.empresaDireccion}</div>
+      )}
+      {sale.empresaTelefono && (
+        <div style={{ fontSize: 10 }}>Tel: {sale.empresaTelefono}</div>
+      )}
+
+      <HR dbl />
+
+      {/* ── TIPO DE COMPROBANTE ────────────────────────────────────── */}
+      <div style={{ textAlign: 'center', marginBottom: 4 }}>
+        <div style={{ fontSize: 12, fontWeight: 900 }}>{ncf.linea1}</div>
+        <div style={{ fontSize: 11, fontWeight: 700 }}>{ncf.linea2}</div>
+      </div>
+
+      <HR />
+
+      {/* ── META DE LA VENTA ──────────────────────────────────────── */}
+      <RRow label="Fecha:"   value={ahora.format('DD/MM/YYYY')} />
+      <RRow label="Hora:"    value={ahora.format('HH:mm:ss')} />
+      <RRow label="Factura:" value={sale.folio} bold />
+      {sale.cajero && <RRow label="Cajero:" value={sale.cajero} />}
+
+      {/* ── DATOS DEL COMPRADOR (solo E31/E44/E45 o E32 ≥250K con RNC) ── */}
+      {mostrarComprador && (
+        <>
+          <HR />
+          <div style={{ fontSize: 10, fontWeight: 900 }}>COMPRADOR:</div>
+          <div style={{ fontSize: 10 }}>RNC: <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{sale.rncComprador}</span></div>
+          {sale.razonSocial && <div style={{ fontSize: 10 }}>{sale.razonSocial}</div>}
+        </>
+      )}
+
+      <HR />
+
+      {/* ── ITEMS ────────────────────────────────────────────────── */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, fontWeight: 700, marginBottom: 3 }}>
+        <span style={{ flex: 1 }}>DESCRIPCIÓN</span>
+        <span style={{ width: 28, textAlign: 'right' }}>CANT</span>
+        <span style={{ width: 60, textAlign: 'right' }}>TOTAL</span>
+      </div>
+      <HR />
+      {sale.items.map((item, i) => {
+        const sub = item.precio * item.cantidad * (1 - item.descuento / 100);
+        const nom = item.produto.nombre.length > 20
+          ? item.produto.nombre.substring(0, 19) + '…'
+          : item.produto.nombre;
+        return (
+          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, marginBottom: 3 }}>
+            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nom}</span>
+            <span style={{ width: 28, textAlign: 'right' }}>{item.cantidad}</span>
+            <span style={{ width: 60, textAlign: 'right', fontWeight: 600 }}>
+              {sub.toFixed(2)}
+            </span>
+          </div>
+        );
+      })}
+      <HR />
+
+      {/* ── TOTALES ───────────────────────────────────────────────── */}
+      <RRow label="Subtotal:" value={moneda(sale.subtotal)} />
+      <RRow label={esExento ? 'ITBIS (Exento ZF):' : 'ITBIS (18%):'} value={esExento ? 'RD$0.00' : moneda(sale.iva)} />
+      {esExento && (
+        <div style={{ fontSize: 9, color: '#555', marginBottom: 3, paddingLeft: 4 }}>
+          (Exento de ITBIS - Zona Franca)
+        </div>
+      )}
+      <HR dbl />
+      <RRow label="TOTAL:" value={moneda(sale.total)} bold large />
+      <HR />
+
+      {/* ── FORMA DE PAGO ─────────────────────────────────────────── */}
+      <RRow
+        label={`${METODOS.find(m => m.key === sale.metodo)?.label ?? 'Pago'}:`}
+        value={sale.metodo === 'efectivo' && sale.cambio > 0 ? moneda(sale.total + sale.cambio) : moneda(sale.total)}
+      />
+      {sale.metodo === 'efectivo' && sale.cambio > 0 && (
+        <RRow label="Cambio:" value={moneda(sale.cambio)} bold />
+      )}
+      <HR />
+
+      {/* ── e-CF ──────────────────────────────────────────────────── */}
+      {sale.encf ? (
+        <>
+          <RRow label="e-NCF:" value={sale.encf} bold />
+          <RRow label="Fecha:" value={sale.ecfFecha ?? ahora.format('DD-MM-YYYY HH:mm:ss')} />
+          {sale.securityCode && <RRow label="Cód.Seg.:" value={sale.securityCode} bold />}
+          <HR />
+
+          {/* QR Code — genera imagen desde qrUrl de MSeller/DGII */}
+          {qrDataUrl && !sale.ecfPendiente ? (
+            <>
+              <div style={{ textAlign: 'center', margin: '4px 0' }}>
+                <img
+                  src={qrDataUrl}
+                  alt="QR DGII"
+                  style={{ width: 130, height: 130, display: 'block', margin: '0 auto' }}
+                />
+              </div>
+              <div style={{ textAlign: 'center', fontSize: 9, color: '#444', marginBottom: 2 }}>
+                Escanea para verificar en DGII
+              </div>
+            </>
+          ) : (
+            <div style={{ textAlign: 'center', fontSize: 9, color: '#444' }}>
+              Verifica en: dgii.gov.do
+            </div>
+          )}
+
+          {/* Aviso pendiente de confirmación DGII */}
+          {sale.ecfPendiente && (
+            <>
+              <HR />
+              <div style={{ textAlign: 'center', fontSize: 10, border: '1px dashed #888', padding: '4px 2px', borderRadius: 3 }}>
+                <div style={{ fontWeight: 700 }}>⚠ COMPROBANTE EN PROCESO</div>
+                <div>DE VALIDACIÓN DGII</div>
+                <div style={{ fontSize: 9, marginTop: 2, color: '#555' }}>
+                  Su comprobante electrónico será<br />
+                  enviado cuando sea procesado.
+                </div>
+              </div>
+            </>
+          )}
+        </>
+      ) : (
+        <div style={{ textAlign: 'center', fontSize: 10, border: '1px dashed #888', padding: '4px 2px', borderRadius: 3 }}>
+          <div style={{ fontWeight: 700 }}>⚠ COMPROBANTE EN PROCESO</div>
+          <div>DE VALIDACIÓN DGII</div>
+        </div>
+      )}
+
+      <HR dbl />
+      <div style={{ textAlign: 'center', fontSize: 10, marginTop: 2 }}>
+        ¡Gracias por su preferencia!
+      </div>
+    </div>
+  );
+}
+
+const ECF_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  E32: { bg: 'rgba(107,114,128,.2)',  text: '#D1D5DB', border: 'rgba(107,114,128,.4)' },
+  E31: { bg: 'rgba(59,130,246,.2)',   text: '#93C5FD', border: 'rgba(59,130,246,.4)'  },
+  E44: { bg: 'rgba(16,185,129,.2)',   text: '#6EE7B7', border: 'rgba(16,185,129,.4)'  },
+  E45: { bg: 'rgba(245,158,11,.2)',   text: '#FCD34D', border: 'rgba(245,158,11,.4)'  },
+};
+
+const ATAJOS_POS = [
+  { tecla: 'F2',  accion: 'Buscar producto'  },
+  { tecla: 'F4',  accion: 'Limpiar carrito'  },
+  { tecla: 'F9',  accion: 'Cobrar'           },
+  { tecla: 'Esc', accion: 'Cancelar búsqueda'},
+];
+
+// ── Top bar ───────────────────────────────────────────────────────────────────
+function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit,
+  modoFacturacion, onModoChange, tipoNcf, onTipoNcfChange, ecfOnline }: {
+  empresaNombre: string; cajeroNombre: string; isOffline: boolean; onExit: () => void;
+  modoFacturacion: ModoFacturacion; onModoChange: (m: ModoFacturacion) => void;
+  tipoNcf: string; onTipoNcfChange: (t: string) => void;
+  ecfOnline: boolean | null;
+}) {
+  const C = useC();
+  const [showModoMenu, setShowModoMenu]   = useState(false);
+  const [showNcfMenu,  setShowNcfMenu]    = useState(false);
+  const [showAtalhos,  setShowAtalhos]    = useState(false);
+  const modoActual = MODOS_FACTURACION.find(m => m.id === modoFacturacion)!;
+  const ecfColors  = ECF_COLORS[tipoNcf] ?? ECF_COLORS.E32;
+  const esFactura  = modoFacturacion === 'factura' || modoFacturacion === 'valor-fiscal';
+
+  return (
+    <div style={{
+      height: 52, flexShrink: 0,
+      background: C.topbar, borderBottom: `1px solid ${C.border}`,
+      display: 'flex', alignItems: 'center', padding: '0 16px', gap: 10,
+    }}>
+      {/* Logo + empresa */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+        <div style={{ width: 34, height: 34, background: 'rgba(255,255,255,0.18)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>🏪</div>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#F1F5F9', lineHeight: 1, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Punto de Venta</div>
+          <div style={{ fontSize: 10, color: '#94A3B8', lineHeight: 1, marginTop: 2 }}>{empresaNombre}</div>
+        </div>
+      </div>
+
+      {/* ── Selector modo de facturación ── */}
+      <div style={{ position: 'relative', flexShrink: 0 }}>
+        <button onClick={() => { setShowModoMenu(v => !v); setShowNcfMenu(false); }} style={{
+          height: 32, padding: '0 10px', borderRadius: 8,
+          border: '1px solid rgba(255,255,255,.22)',
+          background: showModoMenu ? 'rgba(255,255,255,.18)' : 'rgba(255,255,255,.08)',
+          color: '#fff', cursor: 'pointer', outline: 'none',
+          display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600,
+        }}>
+          <span style={{ fontSize: 15 }}>{modoActual.icon}</span>
+          <span>{modoActual.label}</span>
+          <span style={{ fontSize: 9, opacity: 0.6 }}>▼</span>
+        </button>
+        {showModoMenu && (
+          <>
+            <div onClick={() => setShowModoMenu(false)} style={{ position: 'fixed', inset: 0, zIndex: 500 }} />
+            <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 501,
+              background: '#fff', border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden',
+              minWidth: 210, boxShadow: '0 8px 24px rgba(0,0,0,.18)' }}>
+              {MODOS_FACTURACION.map((modo, i) => (
+                <button key={modo.id} onClick={() => { onModoChange(modo.id); setShowModoMenu(false); }}
+                  style={{ width: '100%', padding: '10px 14px', border: 'none',
+                    borderBottom: i < MODOS_FACTURACION.length - 1 ? '1px solid #F1F5F9' : 'none',
+                    background: modoFacturacion === modo.id ? '#EFF6FF' : '#fff',
+                    color: modoFacturacion === modo.id ? '#2563EB' : '#1E293B',
+                    cursor: 'pointer', outline: 'none', textAlign: 'left',
+                    display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 18, width: 24, textAlign: 'center' }}>{modo.icon}</span>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{modo.label}</div>
+                    <div style={{ fontSize: 11, color: '#94A3B8' }}>{modo.desc}</div>
+                  </div>
+                  {modoFacturacion === modo.id && <span style={{ marginLeft: 'auto', color: '#2563EB' }}>✓</span>}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* ── Badge e-CF (solo cuando es factura) ── */}
+      {esFactura && (
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          <button onClick={() => { setShowNcfMenu(v => !v); setShowModoMenu(false); }}
+            style={{ height: 30, padding: '0 10px', borderRadius: 8, cursor: 'pointer', outline: 'none',
+              background: ecfColors.bg, border: `1px solid ${ecfColors.border}`,
+              display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 11, fontWeight: 800, color: ecfColors.text, fontFamily: 'monospace', letterSpacing: '0.5px' }}>{tipoNcf}</span>
+            <span style={{ fontSize: 10, color: ecfColors.text, opacity: 0.8 }}>
+              {NCF_OPTS.find(o => o.code === tipoNcf)?.label}
+            </span>
+            <span style={{ fontSize: 8, color: ecfColors.text, opacity: 0.6 }}>▼</span>
+          </button>
+          {showNcfMenu && (
+            <>
+              <div onClick={() => setShowNcfMenu(false)} style={{ position: 'fixed', inset: 0, zIndex: 500 }} />
+              <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 501,
+                background: '#1E293B', border: '1px solid #334155', borderRadius: 10, overflow: 'hidden',
+                minWidth: 190, boxShadow: '0 8px 24px rgba(0,0,0,.4)' }}>
+                {NCF_OPTS.map((opt, i) => {
+                  const oc = ECF_COLORS[opt.code];
+                  return (
+                    <button key={opt.code} onClick={() => { onTipoNcfChange(opt.code); setShowNcfMenu(false); }}
+                      style={{ width: '100%', padding: '10px 14px', border: 'none',
+                        borderBottom: i < NCF_OPTS.length - 1 ? '1px solid #334155' : 'none',
+                        background: tipoNcf === opt.code ? 'rgba(255,255,255,.06)' : 'transparent',
+                        cursor: 'pointer', outline: 'none', textAlign: 'left',
+                        display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ fontSize: 12, fontWeight: 800, fontFamily: 'monospace',
+                        background: oc.bg, color: oc.text, border: `1px solid ${oc.border}`,
+                        borderRadius: 5, padding: '2px 7px', letterSpacing: '0.5px' }}>{opt.code}</span>
+                      <span style={{ fontSize: 12, color: '#F1F5F9', fontWeight: tipoNcf === opt.code ? 700 : 400 }}>{opt.label}</span>
+                      {tipoNcf === opt.code && <span style={{ marginLeft: 'auto', color: oc.text }}>✓</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      <div style={{ flex: 1 }} />
+
+      {/* ── Indicador MSeller / DGII ── */}
+      <Tooltip title={
+        isOffline ? 'Sin conexión a internet' :
+        ecfOnline === false ? 'MSeller no responde — modo contingencia activo' :
+        'DGII / MSeller en línea'
+      }>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0,
+          background: isOffline || ecfOnline === false ? 'rgba(239,68,68,.15)' : 'rgba(16,185,129,.12)',
+          borderRadius: 6, padding: '3px 8px',
+          border: `1px solid ${isOffline || ecfOnline === false ? 'rgba(239,68,68,.35)' : 'rgba(16,185,129,.3)'}` }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+            background: isOffline || ecfOnline === false ? '#EF4444' : ecfOnline === null ? '#F59E0B' : '#10B981',
+            boxShadow: isOffline || ecfOnline === false ? '0 0 4px #EF4444' : ecfOnline === null ? '0 0 4px #F59E0B' : '0 0 5px #10B981',
+            display: 'inline-block' }} />
+          <span style={{ fontSize: 10, fontWeight: 600,
+            color: isOffline || ecfOnline === false ? '#FCA5A5' : ecfOnline === null ? '#FDE68A' : '#6EE7B7' }}>
+            {isOffline ? 'Offline' : ecfOnline === false ? 'Contingencia' : 'DGII Online'}
+          </span>
+        </div>
+      </Tooltip>
+
+      {/* ── Atajos de teclado ── */}
+      <div style={{ position: 'relative', flexShrink: 0 }}>
+        <Tooltip title="Atajos de teclado">
+          <button onClick={() => setShowAtalhos(v => !v)} style={{
+            width: 30, height: 30, borderRadius: 6, border: '1px solid rgba(255,255,255,.15)',
+            background: showAtalhos ? 'rgba(255,255,255,.18)' : 'rgba(255,255,255,.06)',
+            color: '#94A3B8', cursor: 'pointer', outline: 'none', fontSize: 14,
+            display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/>
+            </svg>
+          </button>
+        </Tooltip>
+        {showAtalhos && (
+          <>
+            <div onClick={() => setShowAtalhos(false)} style={{ position: 'fixed', inset: 0, zIndex: 500 }} />
+            <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, zIndex: 501,
+              background: '#1E293B', border: '1px solid #334155', borderRadius: 10,
+              padding: '12px 0', minWidth: 200, boxShadow: '0 8px 24px rgba(0,0,0,.4)' }}>
+              <div style={{ fontSize: 10, color: '#64748B', fontWeight: 700, textTransform: 'uppercase',
+                letterSpacing: '0.8px', padding: '0 14px 8px' }}>Atajos de teclado</div>
+              {ATAJOS_POS.map(a => (
+                <div key={a.tecla} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '6px 14px', gap: 16 }}>
+                  <kbd style={{ background: '#0F172A', border: '1px solid #475569', borderRadius: 5,
+                    padding: '2px 8px', fontSize: 11, fontFamily: 'monospace', color: '#F1F5F9',
+                    fontWeight: 700, boxShadow: '0 1px 0 #475569' }}>{a.tecla}</kbd>
+                  <span style={{ fontSize: 12, color: '#94A3B8' }}>{a.accion}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* ── Clock ── */}
+      <div style={{ fontSize: 13, fontWeight: 600, color: '#F1F5F9', fontVariantNumeric: 'tabular-nums',
+        background: 'rgba(255,255,255,.07)', borderRadius: 6, padding: '4px 10px', flexShrink: 0 }}>
+        <LiveClock />
+      </div>
+      {/* Cajero */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0,
+        background: 'rgba(255,255,255,.06)', borderRadius: 8, padding: '4px 10px 4px 6px',
+        border: '1px solid rgba(255,255,255,.1)' }}>
+        <Avatar size={26} style={{ background: avatarBg(cajeroNombre), fontSize: 11, flexShrink: 0 }}>
+          {cajeroNombre.charAt(0).toUpperCase()}
+        </Avatar>
+        <div>
+          <div style={{ fontSize: 9, color: '#94A3B8', lineHeight: 1, textTransform: 'uppercase',
+            letterSpacing: '0.5px', marginBottom: 1 }}>Cajero</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#F1F5F9', lineHeight: 1,
+            maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {cajeroNombre}
+          </div>
+        </div>
+      </div>
+      <Tooltip title="Cerrar turno y salir">
+        <button onClick={onExit} style={{ height: 30, padding: '0 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,.15)', background: 'rgba(255,255,255,.05)', color: '#94A3B8', cursor: 'pointer', fontSize: 12, outline: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
+          <LogoutOutlined style={{ fontSize: 12 }} /> Salir
+        </button>
+      </Tooltip>
+    </div>
+  );
+}
+
+// ── Categories sidebar ────────────────────────────────────────────────────────
+function CategoriasSidebar({ categorias, selected, onSelect }: {
+  categorias: string[]; selected: string; onSelect: (c: string) => void;
+}) {
+  const C = useC();
+  const icons: Record<string, string> = { '__all__': '🏪', Bebidas: '🥤', Comida: '🍔', Electrónica: '📱', Ropa: '👔', Servicios: '⚙️' };
+  return (
+    <div style={{ width: 220, flexShrink: 0, background: C.sidebar, borderRight: `1px solid ${C.border}`, overflowY: 'auto', padding: '10px 8px', scrollbarWidth: 'thin', scrollbarColor: C.border + ' transparent' }}>
+      <div style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 8, paddingLeft: 8 }}>Categorías</div>
+      {categorias.map(cat => {
+        const isSel = selected === cat;
+        return (
+          <button key={cat} onClick={() => onSelect(cat)} style={{
+            width: '100%', height: 36, borderRadius: 8, border: 'none',
+            background: isSel ? C.blue : 'transparent',
+            color: isSel ? '#fff' : C.textSub,
+            cursor: 'pointer', outline: 'none', marginBottom: 2,
+            display: 'flex', alignItems: 'center', gap: 8, padding: '0 10px',
+            fontSize: 13, fontWeight: isSel ? 600 : 400, textAlign: 'left',
+            transition: 'background 0.15s',
+          }}
+            onMouseEnter={(e) => { if (!isSel) (e.currentTarget as HTMLButtonElement).style.background = C.sidebarHov; }}
+            onMouseLeave={(e) => { if (!isSel) (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+          >
+            <span style={{ fontSize: 14 }}>{icons[cat] ?? '📦'}</span>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cat === '__all__' ? 'Todos' : cat}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Apertura de turno ─────────────────────────────────────────────────────────
+function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar }: {
+  open: boolean;
+  vendedores: any[];
+  sucursales: any[];
+  onAbrir: (monto: number, vendedorId?: number, sucursalId?: number) => void;
+  onCancelar: () => void;
+}) {
+  const C = useC();
+  const [monto,       setMonto]      = useState(0);
+  const [vendedorId,  setVendedorId] = useState<number | undefined>();
+  const [sucursalSel, setSucursalSel] = useState<number | undefined>();
+  const [t,           setT]          = useState(new Date());
+  const [abriendo,    setAbriendo]   = useState(false);
+
+  // Estado de la caja diaria — distingue entre sin apertura y ya cerrada
+  const [cajaStatus, setCajaStatus] = useState<'loading' | 'sin_apertura' | 'abierta' | 'cerrada_hoy'>('loading');
+  const [cajaInfo,   setCajaInfo]   = useState<{ id?: number; saldoApertura?: number } | null>(null);
+
+  // Reloj
+  useEffect(() => {
+    const id = setInterval(() => setT(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Consultar caja del día para este vendedor — se re-ejecuta al cambiar vendedorId
+  useEffect(() => {
+    if (!open) return;
+    if (!vendedorId) { setCajaStatus('sin_apertura'); return; }
+    setCajaStatus('loading');
+    api.get(`/caja/hoy?vendedorId=${vendedorId}`)
+      .then((res: any) => {
+        const payload = res.data?.data ?? res.data;
+        const caja    = payload?.cajas ? payload.cajas[0] : payload;
+        if (!caja || caja.estado === 'sin_apertura') {
+          setCajaStatus('sin_apertura');
+          setCajaInfo(null);
+        } else if (caja.estado === 'abierta') {
+          setCajaStatus('abierta');
+          setCajaInfo({ id: caja.id, saldoApertura: Number(caja.saldoApertura ?? 0) });
+          if (caja.saldoApertura) setMonto(Number(caja.saldoApertura));
+        } else {
+          // estado === 'cerrada' o 'revisada' → turno ya terminado hoy
+          setCajaStatus('cerrada_hoy');
+          setCajaInfo(null);
+        }
+      })
+      .catch(() => { setCajaStatus('sin_apertura'); setCajaInfo(null); });
+  }, [open, vendedorId]);
+
+  const sinVendedores     = vendedores.length === 0;
+  const vendedorRequerido = !vendedorId;          // siempre obligatorio
+  const turnoYaCerrado    = cajaStatus === 'cerrada_hoy';
+  const bloqueado         = vendedorRequerido || turnoYaCerrado;
+  const cargando          = cajaStatus === 'loading' || abriendo;
+
+  const handleAbrir = async () => {
+    if (bloqueado || cargando) return;
+    setAbriendo(true);
+    const vendedorSeleccionado = vendedores.find((v: any) => v.id === vendedorId);
+    const nombreVendedor       = vendedorSeleccionado?.nombre ?? undefined;
+    try {
+      if (cajaStatus === 'sin_apertura') {
+        await api.post('/caja/abrir', {
+          saldoApertura:  monto,
+          vendedorId,
+          vendedorNombre: nombreVendedor,
+        });
+      }
+      onAbrir(monto, vendedorId, sucursalSel);
+    } catch (e: any) {
+      const httpStatus = (e as any)?.response?.status;
+      const errMsg: string = (e as any)?.response?.data?.errors?.[0] ?? '';
+
+      if (httpStatus === 400 && (errMsg.includes('cerrada') || errMsg.includes('ya existe') || errMsg.includes('ya abierta'))) {
+        // La caja ya fue cerrada hoy para este vendedor — bloquear
+        setCajaStatus('cerrada_hoy');
+        setAbriendo(false);
+        return;
+      }
+      // Cualquier otro error → abrir turno de todos modos
+      if (httpStatus !== 400) {
+        message.warning('El turno se abrió pero no se pudo registrar la caja diaria.');
+      }
+      onAbrir(monto, vendedorId, sucursalSel);
+    } finally {
+      setAbriendo(false);
+    }
+  };
+
+  return (
+    <Modal open={open} footer={null} closable={false} centered width={400}
+      styles={{ content: { background: C.card, borderRadius: 20, padding: 0, overflow: 'hidden' }, body: { padding: 0 } }}>
+      <div style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+        {/* Header */}
+        <div style={{ position: 'relative', textAlign: 'center' }}>
+          <Tooltip title="Salir del Punto de Venta">
+            <button onClick={onCancelar} style={{
+              position: 'absolute', top: 0, right: 0,
+              width: 30, height: 30, borderRadius: 8,
+              border: `1px solid ${C.border2}`, background: C.inputBg,
+              color: C.textSub, cursor: 'pointer', fontSize: 14, fontWeight: 600,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', outline: 'none',
+              transition: 'background 0.15s, color 0.15s',
+            }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(239,68,68,.15)'; (e.currentTarget as HTMLButtonElement).style.color = '#EF4444'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(239,68,68,.4)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = C.inputBg; (e.currentTarget as HTMLButtonElement).style.color = C.textSub; (e.currentTarget as HTMLButtonElement).style.borderColor = C.border2; }}
+            >✕</button>
+          </Tooltip>
+          <div style={{ fontSize: 44, marginBottom: 8 }}>🏪</div>
+          <span style={{ fontSize: 18, fontWeight: 700, color: C.text, display: 'block' }}>Apertura de Turno</span>
+          <span style={{ fontSize: 12, color: C.textSub, display: 'block', marginTop: 4 }}>
+            {t.toLocaleDateString('es-DO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+          </span>
+          <span style={{ fontSize: 22, fontWeight: 700, color: C.blue, display: 'block', marginTop: 4, fontVariantNumeric: 'tabular-nums' }}>
+            {t.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        </div>
+
+        {/* Estado de la caja diaria */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          borderRadius: 10, padding: '10px 14px',
+          background: cajaStatus === 'abierta' ? C.green+'18' : cajaStatus === 'cerrada_hoy' ? C.red+'18' : cajaStatus === 'sin_apertura' ? C.orange+'18' : 'rgba(255,255,255,.04)',
+          border: `1px solid ${cajaStatus === 'abierta' ? C.green+'44' : cajaStatus === 'cerrada_hoy' ? C.red+'44' : cajaStatus === 'sin_apertura' ? C.orange+'44' : C.border}`,
+        }}>
+          <span style={{ fontSize: 18 }}>
+            {cajaStatus === 'loading' ? '⏳' : cajaStatus === 'abierta' ? '✅' : cajaStatus === 'cerrada_hoy' ? '🔒' : '💰'}
+          </span>
+          <div>
+            <span style={{
+              fontSize: 12, fontWeight: 700, display: 'block',
+              color: cajaStatus === 'abierta'     ? C.green  :
+                     cajaStatus === 'cerrada_hoy' ? C.red    :
+                     cajaStatus === 'sin_apertura'? C.orange : C.textSub,
+            }}>
+              {cajaStatus === 'loading'      ? 'Verificando caja diaria...'                  :
+               cajaStatus === 'abierta'      ? 'Caja diaria ya abierta hoy'                  :
+               cajaStatus === 'cerrada_hoy'  ? 'Este cajero ya cerró su turno hoy'           :
+               sinVendedores                 ? 'No hay vendedores — configúralos primero'    :
+               vendedorId                    ? 'La caja diaria se abrirá junto con el turno' :
+                                               'Selecciona el cajero para verificar su caja'}
+            </span>
+            {cajaStatus === 'abierta' && cajaInfo?.saldoApertura != null && (
+              <span style={{ fontSize: 11, color: C.textSub }}>
+                Apertura: RD$ {cajaInfo.saldoApertura.toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+              </span>
+            )}
+            {cajaStatus === 'sin_apertura' && vendedorId && (
+              <span style={{ fontSize: 11, color: C.textSub }}>
+                El monto inicial se usará como saldo de apertura
+              </span>
+            )}
+            {cajaStatus === 'cerrada_hoy' && (
+              <span style={{ fontSize: 11, color: C.textSub }}>
+                Un cajero solo puede tener un turno por día. Contacta al administrador si necesitas reapertura.
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Cajero / vendedor */}
+        {vendedores.length > 0 && (
+          <div>
+            <span style={{ fontSize: 12, color: C.textSub, marginBottom: 8, display: 'block' }}>Cajero responsable</span>
+            <Select
+              showSearch allowClear
+              placeholder="Selecciona el cajero"
+              style={{ width: '100%' }}
+              value={vendedorId}
+              onChange={(v) => setVendedorId(v)}
+              optionFilterProp="label"
+              options={vendedores.map((v: any) => ({ value: v.id, label: `${v.codigo ? v.codigo + ' — ' : ''}${v.nombre}` }))}
+              styles={{ popup: { root: { zIndex: 9999 } } }}
+            />
+          </div>
+        )}
+
+        {/* Sucursal */}
+        {sucursales.length > 1 && (
+          <div>
+            <span style={{ fontSize: 12, color: C.textSub, marginBottom: 8, display: 'block' }}>Sucursal</span>
+            <Select
+              showSearch allowClear
+              placeholder="Selecciona la sucursal"
+              style={{ width: '100%' }}
+              value={sucursalSel}
+              onChange={(v) => setSucursalSel(v)}
+              optionFilterProp="label"
+              options={sucursales.map((s: any) => ({ value: s.id, label: s.nombre }))}
+              styles={{ popup: { root: { zIndex: 9999 } } }}
+            />
+          </div>
+        )}
+
+        {/* Monto inicial — solo editable si la caja está cerrada */}
+        <div>
+          <span style={{ fontSize: 12, color: C.textSub, marginBottom: 8, display: 'block' }}>
+            Monto inicial en caja (RD$)
+            {cajaStatus === 'abierta' && (
+              <span style={{ marginLeft: 6, fontSize: 10, color: C.green, fontWeight: 600 }}>— ya registrado en caja</span>
+            )}
+          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: C.inputBg, borderRadius: 10, padding: '8px 14px', border: `1px solid ${cajaStatus === 'abierta' ? C.green+'44' : C.border2}`, opacity: (cajaStatus === 'abierta' || turnoYaCerrado) ? 0.6 : 1 }}>
+            <span style={{ color: C.textSub, fontSize: 14 }}>RD$</span>
+            <input type="number" value={monto || ''} onChange={(e) => setMonto(Number(e.target.value))}
+              placeholder="0.00" readOnly={cajaStatus === 'abierta' || turnoYaCerrado}
+              style={{ flex: 1, background: 'transparent', border: 'none', color: C.text, fontSize: 20, fontWeight: 600, outline: 'none', textAlign: 'right' }} />
+          </div>
+          {cajaStatus === 'sin_apertura' && (
+            <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+              {[500, 1000, 2000, 5000].map(a => (
+                <button key={a} onClick={() => setMonto(a)} style={{ flex: 1, height: 28, borderRadius: 6, border: `1px solid ${C.border2}`, background: 'rgba(255,255,255,.05)', color: C.textSub, fontSize: 11, fontWeight: 600, cursor: 'pointer', outline: 'none' }}>
+                  {a >= 1000 ? `${a/1000}K` : a}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Advertencias */}
+        {sinVendedores && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: C.red+'18', border: `1px solid ${C.red}44`, borderRadius: 8, padding: '8px 12px' }}>
+            <span style={{ fontSize: 13 }}>🚫</span>
+            <span style={{ fontSize: 12, color: C.red, fontWeight: 500 }}>
+              No hay vendedores configurados. Ve a <strong>Configuración → Vendedores</strong> para agregar uno antes de abrir el turno.
+            </span>
+          </div>
+        )}
+        {!sinVendedores && vendedorRequerido && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: C.orange+'18', border: `1px solid ${C.orange}44`, borderRadius: 8, padding: '8px 12px' }}>
+            <span style={{ fontSize: 13 }}>⚠️</span>
+            <span style={{ fontSize: 12, color: C.orange, fontWeight: 500 }}>Debes seleccionar el cajero responsable para abrir el turno.</span>
+          </div>
+        )}
+        {turnoYaCerrado && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: C.red+'18', border: `1px solid ${C.red}44`, borderRadius: 8, padding: '8px 12px' }}>
+            <span style={{ fontSize: 13 }}>🔒</span>
+            <span style={{ fontSize: 12, color: C.red, fontWeight: 500 }}>Este cajero ya completó su turno hoy. Solo puede abrirse un turno por vendedor por día.</span>
+          </div>
+        )}
+
+        <button onClick={handleAbrir}
+          disabled={bloqueado || cargando}
+          style={{
+            height: 48, borderRadius: 12, border: 'none',
+            background: (bloqueado || cargando) ? '#4B5563' : 'linear-gradient(135deg,#059669,#10B981)',
+            color: (bloqueado || cargando) ? '#9CA3AF' : '#fff',
+            fontSize: 15, fontWeight: 700,
+            cursor: (bloqueado || cargando) ? 'not-allowed' : 'pointer',
+            outline: 'none',
+            boxShadow: (bloqueado || cargando) ? 'none' : '0 4px 16px rgba(16,185,129,.35)',
+            transition: 'all 0.2s',
+          }}>
+          {abriendo ? '⏳ Abriendo...' : turnoYaCerrado ? '🔒 Turno cerrado' : '🏪 Abrir Turno'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Recibo térmico genérico (cotizaciones, pre-facturas, conduces, etc.) ─────
+
+interface GenericDocData {
+  tipo:        string;          // "COTIZACIÓN", "PRE-FACTURA", "CONDUCE", etc.
+  numero:      string;
+  fecha:       string;
+  empresa?:    { nombre?: string; rnc?: string; direccion?: string; telefono?: string };
+  cliente?:    string;
+  rncCliente?: string;
+  items:       Array<{ desc: string; cant?: number; precio?: number; total?: number }>;
+  subtotal?:   number;
+  itbis?:      number;
+  total?:      number;
+  nota1?:      string;         // línea extra (ej: "Factura ref: FAC-XXX")
+  nota2?:      string;
+  notas?:      string;
+}
+
+function GenericThermalDoc({ doc }: { doc: GenericDocData }) {
+  const moneda = (v?: number) => v !== undefined ? `RD$${Number(v).toLocaleString('es-DO',{minimumFractionDigits:2,maximumFractionDigits:2})}` : '';
+  const e = doc.empresa ?? {};
+  return (
+    <div style={{ fontFamily:'monospace', fontSize:12, color:'#000', background:'#fff', width:'100%', maxWidth:300, padding:'6px 4px', lineHeight:1.5 }}>
+      {/* Encabezado empresa */}
+      {e.nombre && <div style={{ textAlign:'center', fontWeight:900, fontSize:14, letterSpacing:1 }}>{e.nombre}</div>}
+      {e.rnc     && <div style={{ textAlign:'center', fontSize:11 }}>RNC: {e.rnc}</div>}
+      {e.direccion&&<div style={{ textAlign:'center', fontSize:10, wordBreak:'break-word' }}>{e.direccion}</div>}
+      {e.telefono && <div style={{ textAlign:'center', fontSize:10 }}>Tel: {e.telefono}</div>}
+
+      <div style={{ borderTop:'1px dashed #000', margin:'5px 0' }} />
+
+      {/* Tipo y número */}
+      <div style={{ textAlign:'center', fontWeight:900, fontSize:13 }}>{doc.tipo}</div>
+      <div style={{ textAlign:'center', fontWeight:700, fontSize:11 }}>N°: {doc.numero}</div>
+      <div style={{ fontSize:11 }}>Fecha: {doc.fecha}</div>
+      {doc.cliente    && <div style={{ fontSize:11 }}>Cliente: {doc.cliente}</div>}
+      {doc.rncCliente && <div style={{ fontSize:10 }}>RNC: {doc.rncCliente}</div>}
+      {doc.nota1      && <div style={{ fontSize:10 }}>{doc.nota1}</div>}
+
+      <div style={{ borderTop:'1px dashed #000', margin:'5px 0' }} />
+
+      {/* Encabezado columnas */}
+      <div style={{ display:'flex', justifyContent:'space-between', fontWeight:700, fontSize:10 }}>
+        <span style={{ flex:2 }}>DESCRIPCIÓN</span>
+        {doc.items.some(i=>i.cant!==undefined)   && <span style={{ width:30, textAlign:'right' }}>CANT</span>}
+        {doc.items.some(i=>i.total!==undefined)  && <span style={{ width:65, textAlign:'right' }}>TOTAL</span>}
+      </div>
+      <div style={{ borderTop:'1px solid #000', marginBottom:2 }} />
+
+      {/* Ítems */}
+      {doc.items.map((it, i) => (
+        <div key={i} style={{ marginBottom:2 }}>
+          <div style={{ fontSize:11, fontWeight:600, wordBreak:'break-word' }}>{it.desc}</div>
+          {(it.cant !== undefined || it.precio !== undefined) && (
+            <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, color:'#444', paddingLeft:6 }}>
+              {it.cant  !== undefined && <span>{it.cant} × {moneda(it.precio)}</span>}
+              {it.total !== undefined && <span style={{ fontWeight:700, color:'#000' }}>{moneda(it.total)}</span>}
+            </div>
+          )}
+        </div>
+      ))}
+
+      <div style={{ borderTop:'1px dashed #000', margin:'5px 0' }} />
+
+      {/* Totales */}
+      {doc.subtotal !== undefined && (
+        <div style={{ display:'flex', justifyContent:'space-between', fontSize:11 }}>
+          <span>Subtotal</span><span>{moneda(doc.subtotal)}</span>
+        </div>
+      )}
+      {doc.itbis !== undefined && doc.itbis > 0 && (
+        <div style={{ display:'flex', justifyContent:'space-between', fontSize:11 }}>
+          <span>ITBIS (18%)</span><span>{moneda(doc.itbis)}</span>
+        </div>
+      )}
+      {doc.total !== undefined && (
+        <div style={{ display:'flex', justifyContent:'space-between', fontWeight:900, fontSize:14, marginTop:3 }}>
+          <span>TOTAL</span><span>{moneda(doc.total)}</span>
+        </div>
+      )}
+
+      {/* Notas */}
+      {doc.nota2 && (
+        <>
+          <div style={{ borderTop:'1px dashed #000', margin:'5px 0' }} />
+          <div style={{ fontSize:10, textAlign:'center' }}>{doc.nota2}</div>
+        </>
+      )}
+      {doc.notas && (
+        <div style={{ fontSize:10, marginTop:4, borderTop:'1px dashed #000', paddingTop:4 }}>
+          Nota: {doc.notas}
+        </div>
+      )}
+
+      <div style={{ textAlign:'center', fontSize:9, marginTop:8, color:'#555' }}>
+        Generado por HiCloud ERP · hicloud.app
+      </div>
+    </div>
+  );
+}
+
+// ── Modal éxito post-venta ────────────────────────────────────────────────────
+function ModalExito({ sale, onNueva }: { sale: Sale | null; onNueva: () => void }) {
+  const C = useC();
+  const [countdown, setCountdown] = useState(15);
+  const intervalRef  = useRef<ReturnType<typeof setInterval>  | null>(null);
+  const printTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelarContador = useCallback(() => {
+    if (printTimerRef.current) { clearTimeout(printTimerRef.current);  printTimerRef.current  = null; }
+    if (intervalRef.current)   { clearInterval(intervalRef.current);   intervalRef.current    = null; }
+  }, []);
+
+  useEffect(() => {
+    if (!sale) return;
+    setCountdown(15);
+
+    intervalRef.current = setInterval(() => setCountdown(c => {
+      if (c <= 1) {
+        if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+        onNueva();
+        return 0;
+      }
+      return c - 1;
+    }), 1000);
+
+    return cancelarContador;
+  }, [sale]);
+
+  const handlePrint = () => {
+    cancelarContador();
+    imprimirElemento(RECEIPT_ID, '80mm auto');
+    // afterprint se dispara al cerrar el diálogo (imprima o cancele)
+    window.addEventListener('afterprint', onNueva, { once: true });
+  };
+
+
+  if (!sale) return null;
+
+  return (
+    <Modal open={!!sale} footer={null} closable={false} centered width={400}
+      styles={{ content: { background: C.card, borderRadius: 20, padding: 0, overflow: 'hidden' }, body: { padding: 0 } }}>
+      <div>
+        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}
+          style={{ background: 'linear-gradient(135deg,#059669,#10B981)', padding: '28px 24px', textAlign: 'center' }}>
+          <motion.div animate={{ scale: [0.5, 1.2, 1] }} transition={{ duration: 0.5 }}>
+            <CheckCircleOutlined style={{ fontSize: 52, color: '#fff', display: 'block', margin: '0 auto' }} />
+          </motion.div>
+          <span style={{ color: '#fff', fontSize: 20, fontWeight: 700, display: 'block', marginTop: 10 }}>¡Venta completada!</span>
+          <span style={{ color: 'rgba(255,255,255,.8)', fontSize: 13 }}>{sale.folio}</span>
+        </motion.div>
+        <div style={{ padding: '16px 20px' }}>
+          {sale.cliente && (
+            <div style={{ marginBottom: 10, padding: '6px 10px', background: 'rgba(255,255,255,.05)', borderRadius: 8 }}>
+              <span style={{ fontSize: 12, color: C.textSub }}>Cliente: </span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{sale.cliente}</span>
+            </div>
+          )}
+          <div style={{ borderTop: `1px dashed ${C.border2}`, borderBottom: `1px dashed ${C.border2}`, padding: '8px 0', margin: '8px 0' }}>
+            {sale.items.map((item, idx) => (
+              <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
+                <span style={{ color: C.text }}>{item.produto.nombre.substring(0, 22)} ×{item.cantidad}</span>
+                <span style={{ fontWeight: 600, color: C.text }}>{fmt.money(item.precio * item.cantidad * (1 - item.descuento / 100))}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+            <span style={{ fontSize: 11, color: C.textSub }}>Subtotal</span>
+            <span style={{ fontSize: 11, color: C.text }}>{fmt.money(sale.subtotal)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+            <span style={{ fontSize: 11, color: C.textSub }}>ITBIS</span>
+            <span style={{ fontSize: 11, color: C.text }}>{fmt.money(sale.iva)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: `2px solid ${C.border2}`, paddingTop: 8, marginBottom: 10 }}>
+            <span style={{ fontSize: 16, fontWeight: 700, color: C.text }}>TOTAL</span>
+            <span style={{ fontSize: 22, fontWeight: 800, color: C.green }}>{fmt.money(sale.total)}</span>
+          </div>
+          <div style={{ background: 'rgba(16,185,129,.1)', borderRadius: 8, padding: '8px 12px', marginBottom: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: 12, color: C.textSub }}>Método</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{METODOS.find(m => m.key === sale.metodo)?.icon} {METODOS.find(m => m.key === sale.metodo)?.label}</span>
+            </div>
+            {sale.metodo === 'efectivo' && sale.cambio > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+                <span style={{ fontSize: 13, color: C.green, fontWeight: 600 }}>Cambio</span>
+                <span style={{ fontSize: 17, color: C.green, fontWeight: 700 }}>{fmt.money(sale.cambio)}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Estado del e-CF */}
+          {sale.encf ? (
+            <div style={{
+              borderRadius: 8, padding: '7px 12px', marginBottom: 10,
+              background: sale.ecfPendiente ? 'rgba(251,191,36,.1)' : 'rgba(16,185,129,.08)',
+              border: `1px solid ${sale.ecfPendiente ? '#FCD34D55' : '#6EE7B755'}`,
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 10, color: C.textSub, fontWeight: 600, textTransform: 'uppercase' }}>
+                  {sale.ecfPendiente ? '⏳ e-CF En Proceso' : '✓ e-CF'}
+                </span>
+                <span style={{ fontSize: 11, fontFamily: 'monospace', fontWeight: 700, color: sale.ecfPendiente ? '#D97706' : C.green }}>
+                  {sale.encf}
+                </span>
+              </div>
+              {sale.ecfPendiente && (
+                <div style={{ fontSize: 10, color: '#D97706', marginTop: 2 }}>
+                  Se validará con DGII automáticamente
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ borderRadius: 8, padding: '6px 12px', marginBottom: 10, background: 'rgba(107,114,128,.1)', border: '1px solid rgba(107,114,128,.2)' }}>
+              <span style={{ fontSize: 11, color: C.textSub }}>⏳ Comprobante en proceso de emisión</span>
+            </div>
+          )}
+          <button onClick={handlePrint} style={{
+            width: '100%', height: 38, borderRadius: 10, border: `1px solid ${C.border2}`,
+            background: 'rgba(255,255,255,.07)', color: C.text,
+            fontSize: 13, fontWeight: 700, cursor: 'pointer', outline: 'none',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            marginBottom: 8,
+          }}>
+            <PrinterOutlined style={{ fontSize: 16 }} /> Imprimir recibo térmico
+          </button>
+          <button onClick={onNueva} style={{ width: '100%', height: 46, borderRadius: 12, border: 'none', background: 'linear-gradient(135deg,#059669,#10B981)', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', outline: 'none', boxShadow: '0 4px 16px rgba(16,185,129,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            ✚ Nueva Venta
+            <span style={{ fontSize: 11, opacity: 0.8, background: 'rgba(0,0,0,.25)', borderRadius: 4, padding: '1px 7px' }}>{countdown}s</span>
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ── POS Bottom Navigation Bar ─────────────────────────────────────────────────
+
+// ── Modal Nota de Crédito POS ────────────────────────────────────────────────
+
+function POSNotaCreditoModal({ open, onClose, palette }: {
+  open: boolean; onClose: () => void; palette: Palette;
+}) {
+  const C  = palette;
+  const qc = useQueryClient();
+  const [tipo,       setTipo]       = useState<'descuento'|'devolucion'>('devolucion');
+  const [clienteId,  setClienteId]  = useState<number|null>(null);
+  const [facturaRef, setFacturaRef] = useState('');
+  const [facturaData,setFacturaData]= useState<any>(null);
+  const [monto,      setMonto]      = useState('');
+  const [porcentaje, setPorcentaje] = useState('');
+  const [notas,      setNotas]      = useState('');
+  const [inclIVA,    setInclIVA]    = useState(true);
+  const [esEfectivo, setEsEfectivo] = useState(false);
+  const [aplicarFac, setAplicarFac] = useState(true);
+  const [buscando,   setBuscando]   = useState(false);
+  const [devolver,   setDevolver]   = useState<Record<number,number>>({});
+
+  const { data: clientes } = useQuery<any>({
+    queryKey: ['pos-clientes-nc'],
+    queryFn: () => api.get('/clientes?limit=50').then(r => { const d = r.data?.data ?? r.data; return d?.data ?? d ?? []; }),
+    staleTime: 60_000,
+    enabled: open,
+  });
+
+  const buscarFactura = async () => {
+    if (!facturaRef.trim()) return;
+    setBuscando(true);
+    try {
+      const r = await api.get(`/facturas?search=${encodeURIComponent(facturaRef.trim())}&limit=1`);
+      const d = r.data?.data ?? r.data;
+      const rows = d?.data ?? d ?? [];
+      if (rows.length > 0) {
+        // Cargar la factura completa con detalles
+        const full = await api.get(`/facturas/${rows[0].id}`);
+        const f = full.data?.data ?? full.data;
+        setFacturaData(f);
+        if (f.clienteId) setClienteId(f.clienteId);
+        // Inicializar devolución con cantidad máxima
+        const devInit: Record<number,number> = {};
+        (f.detalles ?? []).forEach((d: any) => { devInit[d.id] = Number(d.cantidad); });
+        setDevolver(devInit);
+      } else {
+        message.warning('Factura no encontrada');
+      }
+    } catch { message.error('Error al buscar factura'); }
+    finally { setBuscando(false); }
+  };
+
+  const guardarMut = useMutation({
+    mutationFn: async () => {
+      const montoFinal = monto ? Number(monto) :
+        facturaData ? Number(facturaData.total) * (Number(porcentaje||100) / 100) : 0;
+
+      const detalles = tipo === 'devolucion' && facturaData?.detalles
+        ? facturaData.detalles
+            .filter((d: any) => (devolver[d.id] ?? 0) > 0)
+            .map((d: any) => ({
+              productoId: d.productoId, descripcion: d.descripcion,
+              cantidad: devolver[d.id] ?? 0,
+              precioUnitario: Number(d.precioUnitario),
+            }))
+        : [{ descripcion: tipo === 'descuento' ? 'Descuento posterior' : 'Devolución',
+             cantidad: 1, precioUnitario: montoFinal }];
+
+      return api.post('/notas-credito', {
+        clienteId: clienteId ?? undefined,
+        fecha: dayjs().format('YYYY-MM-DD'),
+        tipoNcf: 'E34',
+        facturaOriginalId: facturaData?.id,
+        facturaOriginalFolio: facturaData?.folio,
+        codigoModificacion: tipo === 'descuento' ? '2' : '3',
+        descripcionMotivo: notas || (tipo === 'descuento' ? 'Descuento posterior otorgado' : 'Devolución de mercancía'),
+        detalles,
+      });
+    },
+    onSuccess: () => {
+      message.success('Nota de Crédito emitida');
+      qc.invalidateQueries({ queryKey: ['pos-panel', 'notas-credito'] }); qc.refetchQueries({ queryKey: ['pos-panel', 'notas-credito'] });
+      onClose();
+      setFacturaData(null); setFacturaRef(''); setMonto(''); setPorcentaje('');
+      setNotas(''); setClienteId(null); setDevolver({});
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al emitir NC'),
+  });
+
+  const ToggleBtn = ({ active, onClick, label }: { active:boolean; onClick:()=>void; label:string }) => (
+    <button onClick={onClick} style={{
+      padding: '6px 12px', borderRadius: 20, border: `1px solid ${active ? '#F59E0B' : '#E2E8F0'}`,
+      background: active ? '#FFF7ED' : '#fff', color: active ? '#D97706' : '#64748B',
+      fontSize: 12, fontWeight: active ? 700 : 500, cursor: 'pointer', outline: 'none',
+    }}>{active ? '✓ ' : ''}{label}</button>
+  );
+
+  if (!open) return null;
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.4)' }} />
+      <div style={{
+        position: 'relative', background: '#fff', borderRadius: 16, width: 520,
+        maxHeight: '90vh', display: 'flex', flexDirection: 'column',
+        boxShadow: '0 20px 60px rgba(0,0,0,.3)', overflow: 'hidden',
+      }}>
+        {/* Header */}
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid #F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: 17, fontWeight: 700, color: '#1E293B' }}>Nota de Crédito</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#94A3B8', outline: 'none' }}>✕</button>
+        </div>
+
+        {/* Scrollable content */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
+          {/* Tipo tabs */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+            {(['descuento','devolucion'] as const).map(t => (
+              <button key={t} onClick={() => setTipo(t)} style={{
+                padding: '8px 0', borderRadius: 20, border: `1px solid ${tipo===t?'#F59E0B':'#E2E8F0'}`,
+                background: tipo===t?'#FFF7ED':'#fff', color: tipo===t?'#D97706':'#64748B',
+                fontSize: 13, fontWeight: tipo===t?700:500, cursor: 'pointer', outline: 'none', textTransform: 'capitalize',
+              }}>{t === 'descuento' ? 'Descuento' : 'Devolución'}</button>
+            ))}
+          </div>
+
+          {/* Cliente */}
+          <select value={clienteId??''} onChange={e=>setClienteId(e.target.value?Number(e.target.value):null)}
+            style={{ width:'100%', height:40, padding:'0 12px', borderRadius:8, border:'1px solid #E2E8F0', fontSize:13, marginBottom:10, outline:'none', background:'#fff', color: clienteId?'#1E293B':'#94A3B8' }}>
+            <option value="">Buscar Cliente</option>
+            {(clientes??[]).map((c:any)=><option key={c.id} value={c.id}>{c.nombre}</option>)}
+          </select>
+
+          {/* Factura search */}
+          <div style={{ display:'flex', gap:6, marginBottom:10 }}>
+            <input value={facturaRef} onChange={e=>setFacturaRef(e.target.value)}
+              onKeyDown={e=>e.key==='Enter'&&buscarFactura()}
+              placeholder="Factura" style={{ flex:1, height:40, padding:'0 12px', borderRadius:8, border:'1px solid #E2E8F0', fontSize:13, outline:'none' }} />
+            <button onClick={buscarFactura} disabled={buscando} style={{
+              width:40, height:40, borderRadius:8, border:'1px solid #2563EB', background:'#EFF6FF',
+              color:'#2563EB', cursor:'pointer', outline:'none', fontSize:18 }}>
+              {buscando ? '⏳' : '🔍'}
+            </button>
+          </div>
+
+          {/* Monto + porcentaje */}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:10 }}>
+            <input type="number" value={monto} onChange={e=>setMonto(e.target.value)}
+              placeholder="Monto" style={{ height:40, padding:'0 12px 0 40px', borderRadius:8, border:'1px solid #E2E8F0', fontSize:13, outline:'none', textAlign:'right', background:'#F8FAFC' }} />
+            <input type="number" min="0" max="100" value={porcentaje} onChange={e=>setPorcentaje(e.target.value)}
+              placeholder="%" style={{ height:40, padding:'0 12px', borderRadius:8, border:'1px solid #E2E8F0', fontSize:13, outline:'none', textAlign:'right' }} />
+          </div>
+
+          {/* Toggles */}
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:12 }}>
+            <ToggleBtn active={inclIVA}    onClick={()=>setInclIVA(v=>!v)}    label="Incluir Impuestos" />
+            <ToggleBtn active={esEfectivo} onClick={()=>setEsEfectivo(v=>!v)} label="Es Efectivo" />
+            <ToggleBtn active={aplicarFac} onClick={()=>setAplicarFac(v=>!v)} label="Aplicar a Factura" />
+          </div>
+
+          {/* Notas */}
+          <textarea value={notas} onChange={e=>setNotas(e.target.value)} placeholder="Notas" rows={3}
+            style={{ width:'100%', padding:'8px 12px', borderRadius:8, border:'1px solid #E2E8F0', fontSize:13, resize:'vertical', outline:'none', boxSizing:'border-box', marginBottom:12 }} />
+
+          {/* Detalles de la factura */}
+          {facturaData?.detalles?.length > 0 && tipo === 'devolucion' && (
+            <div>
+              <div style={{ fontSize:13, fontWeight:700, color:'#1E293B', marginBottom:8 }}>Detalles de la Factura</div>
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                <thead><tr style={{ background:'#F8FAFC' }}>
+                  {['Id','Item','Cantidad','Precio Total','Devolver'].map(h=>(
+                    <th key={h} style={{ padding:'7px 10px', textAlign:'left', color:'#64748B', fontWeight:600, fontSize:11, borderBottom:'1px solid #E2E8F0' }}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>{facturaData.detalles.map((det:any)=>(
+                  <tr key={det.id} style={{ borderBottom:'1px solid #F1F5F9' }}>
+                    <td style={{ padding:'7px 10px', color:'#94A3B8', fontSize:11 }}>{det.id}</td>
+                    <td style={{ padding:'7px 10px', fontWeight:500 }}>{det.descripcion}</td>
+                    <td style={{ padding:'7px 10px', textAlign:'center' }}>{Number(det.cantidad).toFixed(0)}</td>
+                    <td style={{ padding:'7px 10px', textAlign:'right', color:'#059669', fontWeight:600 }}>{fmt.money(det.precioUnitario*det.cantidad)}</td>
+                    <td style={{ padding:'7px 10px' }}>
+                      <input type="number" min="0" max={det.cantidad} value={devolver[det.id]??0}
+                        onChange={e=>setDevolver(p=>({...p,[det.id]:Number(e.target.value)}))}
+                        style={{ width:60, height:28, textAlign:'center', borderRadius:6, border:'1px solid #E2E8F0', fontSize:12, outline:'none' }} />
+                    </td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding:'12px 20px', borderTop:'1px solid #F1F5F9' }}>
+          <button onClick={()=>guardarMut.mutate()} disabled={guardarMut.isPending}
+            style={{ width:'100%', height:46, borderRadius:10, border:'none',
+              background: guardarMut.isPending ? '#94A3B8' : '#059669',
+              color:'#fff', fontWeight:700, fontSize:15, cursor: guardarMut.isPending?'not-allowed':'pointer' }}>
+            {guardarMut.isPending ? 'Emitiendo NC...' : 'Grabar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type PanelId = 'items' | 'inventario' | 'facturas' | 'pre-facturas' | 'cotizaciones' | 'conduce'
+             | 'despacho' | 'clientes' | 'recibos-cobro' | 'anticipos'
+             | 'notas-credito' | 'gastos' | 'cierre-caja';
+
+// ── Helpers de panel ─────────────────────────────────────────────────────────
+
+function PanelHeader({ title, icon, C, onVolver, onNuevo, labelNuevo }:
+  { title: string; icon: string; C: Palette; onVolver: () => void; onNuevo?: () => void; labelNuevo?: string }) {
+  return (
+    <div style={{ padding: '10px 14px', flexShrink: 0, borderBottom: `1px solid ${C.border}`,
+      display: 'flex', alignItems: 'center', gap: 10 }}>
+      <button onClick={onVolver} style={{ background: 'none', border: 'none', color: C.blue,
+        cursor: 'pointer', fontSize: 20, lineHeight: 1, padding: 0 }}>←</button>
+      <span style={{ fontSize: 16 }}>{icon}</span>
+      <span style={{ fontWeight: 700, color: C.text, fontSize: 15, flex: 1 }}>{title}</span>
+      {onNuevo && (
+        <button onClick={onNuevo} style={{ background: C.green, border: 'none', borderRadius: 8,
+          color: '#fff', cursor: 'pointer', padding: '6px 14px', fontSize: 12, fontWeight: 700 }}>
+          + {labelNuevo ?? 'Nuevo'}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function PanelInput({ label, ...props }: { label?: string } & React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      {label && <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: 'inherit' }}>{label}</div>}
+      <input {...props} style={{ width: '100%', height: 38, padding: '0 12px', borderRadius: 8,
+        border: '1px solid #ddd', fontSize: 13, boxSizing: 'border-box',
+        background: '#fff', outline: 'none', ...props.style }} />
+    </div>
+  );
+}
+
+function PanelSelect({ label, children, ...props }: { label?: string } & React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      {label && <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>{label}</div>}
+      <select {...props} style={{ width: '100%', height: 38, padding: '0 12px', borderRadius: 8,
+        border: '1px solid #ddd', fontSize: 13, background: '#fff', cursor: 'pointer',
+        boxSizing: 'border-box', outline: 'none', ...props.style }}>
+        {children}
+      </select>
+    </div>
+  );
+}
+
+// ── Panel Inventario — catálogo de productos ──────────────────────────────────
+function POSInventarioPanel({ C, onVolver }: { C: Palette; onVolver: () => void }) {
+  const [busq, setBusq] = useState('');
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ['pos-productos', busq],
+    queryFn: () => api.get(`/productos?limit=50${busq ? '&search='+encodeURIComponent(busq) : ''}`)
+      .then(r => { const d = r.data?.data ?? r.data; return d?.data ?? d ?? []; }),
+    staleTime: 30_000,
+  });
+  const productos = data ?? [];
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <PanelHeader title="Inventario" icon="📦" C={C} onVolver={onVolver} />
+      <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}` }}>
+        <div style={{ position: 'relative' }}>
+          <SearchOutlined style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: C.textSub, fontSize: 13 }} />
+          <input value={busq} onChange={e => setBusq(e.target.value)} placeholder="Buscar por código, nombre o categoría..."
+            style={{ width: '100%', height: 36, paddingLeft: 30, background: C.card, border: `1px solid ${C.border}`,
+              borderRadius: 8, color: C.text, fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
+        </div>
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto', scrollbarWidth: 'thin' }}>
+        {isLoading ? <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div> :
+         productos.length === 0 ? <Empty style={{ marginTop: 40 }} description={<span style={{ color: C.textSub }}>Sin productos</span>} /> : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead><tr style={{ background: C.card, position: 'sticky', top: 0 }}>
+              {['Código','Nombre','Precio','ITBIS%','Stock','Mín.','Categoría'].map(h => (
+                <th key={h} style={{ padding: '8px 12px', textAlign: 'left', color: C.textSub,
+                  fontWeight: 600, fontSize: 11, borderBottom: `1px solid ${C.border}` }}>{h}</th>
+              ))}
+            </tr></thead>
+            <tbody>{productos.map((p: any, i: number) => (
+              <tr key={p.id} style={{ borderBottom: `1px solid ${C.border}`, background: i%2===0?'transparent':C.card }}
+                onMouseEnter={e=>(e.currentTarget.style.background=C.sidebarHov)}
+                onMouseLeave={e=>(e.currentTarget.style.background=i%2===0?'transparent':C.card)}>
+                <td style={{ padding: '8px 12px', color: C.textSub, fontFamily: 'monospace', fontSize: 11 }}>{p.codigo}</td>
+                <td style={{ padding: '8px 12px', color: C.text, fontWeight: 600 }}>{p.nombre}</td>
+                <td style={{ padding: '8px 12px', color: C.green, fontWeight: 700 }}>{fmt.money(p.precio)}</td>
+                <td style={{ padding: '8px 12px', color: C.textSub }}>{p.porcentajeIva ?? 18}%</td>
+                <td style={{ padding: '8px 12px', color: Number(p.stock) <= Number(p.stockMinimo||0) ? C.red : C.text, fontWeight: 700 }}>{p.stock}</td>
+                <td style={{ padding: '8px 12px', color: C.textSub }}>{p.stockMinimo ?? '—'}</td>
+                <td style={{ padding: '8px 12px', color: C.textSub, fontSize: 11 }}>{p.categoria ?? '—'}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Panel Clientes ────────────────────────────────────────────────────────────
+function POSClientesPanel({ C, onVolver }: { C: Palette; onVolver: () => void }) {
+  const qc = useQueryClient();
+  const [form, setForm] = useState(false);
+  const [f, setF] = useState({ nombre:'', telefono:'', email:'', rnc:'', empresa:'' });
+  const [busq, setBusq] = useState('');
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ['pos-clientes', busq],
+    queryFn: () => api.get(`/clientes?limit=40${busq?'&search='+encodeURIComponent(busq):''}`)
+      .then(r=>{ const d=r.data?.data??r.data; return d?.data??d??[]; }),
+    staleTime: 30_000,
+  });
+  const crearMut = useMutation({
+    mutationFn: () => api.post('/clientes', { nombre: f.nombre.trim(), telefono: f.telefono, email: f.email, rncReceptor: f.rnc, empresa: f.empresa }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['pos-clientes'] }); setForm(false); setF({ nombre:'',telefono:'',email:'',rnc:'',empresa:'' }); message.success('Cliente registrado'); },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al guardar'),
+  });
+  const inp = (key: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF(p => ({ ...p, [key]: e.target.value }));
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <PanelHeader title="Clientes" icon="👤" C={C} onVolver={onVolver}
+        onNuevo={() => setForm(v => !v)} labelNuevo={form ? 'Ver lista' : 'Nuevo'} />
+      {form ? (
+        <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+          <div style={{ maxWidth: 480, color: C.text }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 0 }}>
+              <PanelInput label="Nombre *" placeholder="Nombre del cliente" value={f.nombre} onChange={inp('nombre')} />
+              <PanelInput label="Teléfono" placeholder="Teléfono" value={f.telefono} onChange={inp('telefono')} />
+              <PanelInput label="Correo electrónico" placeholder="correo@email.com" value={f.email} onChange={inp('email')} />
+              <PanelInput label="RNC / Cédula" placeholder="RNC o Cédula" value={f.rnc} onChange={inp('rnc')} />
+            </div>
+            <PanelInput label="Empresa / Compañía" placeholder="Nombre de la empresa" value={f.empresa} onChange={inp('empresa')} />
+            <button onClick={() => crearMut.mutate()} disabled={crearMut.isPending || !f.nombre.trim()}
+              style={{ width: '100%', height: 44, borderRadius: 10, border: 'none',
+                background: !f.nombre.trim() ? '#ccc' : '#059669', color: '#fff',
+                fontWeight: 700, fontSize: 15, cursor: !f.nombre.trim() ? 'not-allowed' : 'pointer' }}>
+              {crearMut.isPending ? 'Guardando...' : 'Grabar'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}` }}>
+            <input value={busq} onChange={e=>setBusq(e.target.value)} placeholder="Buscar cliente..."
+              style={{ width:'100%', height:34, padding:'0 12px', background:C.card,
+                border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontSize:12, outline:'none', boxSizing:'border-box' }} />
+          </div>
+          <div style={{ flex:1, overflowY:'auto', scrollbarWidth:'thin' }}>
+            {isLoading ? <div style={{textAlign:'center',padding:40}}><Spin/></div> :
+             (data??[]).length===0 ? <Empty style={{marginTop:40}} description={<span style={{color:C.textSub}}>Sin clientes</span>}/> : (
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                <thead><tr style={{background:C.card,position:'sticky',top:0}}>
+                  {['Nombre','RNC/Cédula','Teléfono','Email'].map(h=>(
+                    <th key={h} style={{padding:'8px 12px',textAlign:'left',color:C.textSub,fontWeight:600,fontSize:11,borderBottom:`1px solid ${C.border}`}}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>{(data??[]).map((c:any,i:number)=>(
+                  <tr key={c.id} style={{borderBottom:`1px solid ${C.border}`,background:i%2===0?'transparent':C.card}}>
+                    <td style={{padding:'8px 12px',color:C.text,fontWeight:600}}>{c.nombre}</td>
+                    <td style={{padding:'8px 12px',color:C.textSub,fontFamily:'monospace',fontSize:11}}>{c.rncReceptor||c.rfc||'—'}</td>
+                    <td style={{padding:'8px 12px',color:C.textSub}}>{c.telefono||'—'}</td>
+                    <td style={{padding:'8px 12px',color:C.textSub,fontSize:11}}>{c.email||'—'}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Panel Recibo / Anticipo (formulario + lista) ───────────────────────────────
+function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'anticipos'; C: Palette; onVolver: () => void }) {
+  const qc = useQueryClient();
+  const esAnticipo = tipo === 'anticipos';
+  const METODOS_PAGO = ['Efectivo','Tarjeta','Cheque','Transferencia','Depósito'];
+  const [form, setForm] = useState(false);
+  const [busqCliente, setBusqCliente] = useState('');
+  const [clienteId, setClienteId] = useState<number|null>(null);
+  const [monto, setMonto]         = useState('');
+  const [metodo, setMetodo]       = useState('Efectivo');
+  const [referencia, setRef]      = useState('');
+  const [descripcion, setDesc]    = useState('');
+  const { data: clientes } = useQuery<any>({
+    queryKey: ['pos-cli-sel', busqCliente],
+    queryFn: () => api.get(`/clientes?limit=20${busqCliente?'&search='+encodeURIComponent(busqCliente):''}`)
+      .then(r=>{ const d=r.data?.data??r.data; return d?.data??d??[]; }),
+    staleTime: 30_000,
+  });
+  const { data: lista, isLoading } = useQuery<any>({
+    queryKey: ['pos-panel', tipo],
+    queryFn: () => api.get(`/${tipo}?limit=20`)
+      .then(r=>{ const d=r.data?.data??r.data; return d?.data??d??[]; }),
+    staleTime: 30_000,
+    enabled: !form,
+  });
+  const guardarMut = useMutation({
+    mutationFn: () => {
+      const body: any = { monto: Number(monto), metodoPago: metodo.toLowerCase(), descripcion };
+      if (clienteId) body.clienteId = clienteId;
+      if (referencia) body.referencia = referencia;
+      if (esAnticipo) body.concepto = descripcion || 'Anticipo';
+      return api.post(`/${tipo}`, body);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pos-panel', tipo] }); qc.refetchQueries({ queryKey: ['pos-panel', tipo] });
+      setForm(false); setMonto(''); setMetodo('Efectivo'); setRef(''); setDesc(''); setClienteId(null); setBusqCliente('');
+      message.success(esAnticipo ? 'Anticipo registrado' : 'Recibo registrado');
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al guardar'),
+  });
+  const title = esAnticipo ? 'Anticipos' : 'Recibos de Cobro';
+  const icon  = esAnticipo ? '💰' : '🧾';
+  return (
+    <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+      <PanelHeader title={title} icon={icon} C={C} onVolver={onVolver}
+        onNuevo={() => setForm(v=>!v)} labelNuevo={form ? 'Ver lista' : 'Nuevo'} />
+      {form ? (
+        <div style={{ flex:1, overflowY:'auto', padding:20 }}>
+          <div style={{ maxWidth:440, color:C.text }}>
+            <div style={{ marginBottom:12 }}>
+              <div style={{ fontSize:12, fontWeight:600, marginBottom:4 }}>Buscar Cliente</div>
+              <select value={clienteId??''} onChange={e=>setClienteId(e.target.value?Number(e.target.value):null)}
+                style={{ width:'100%', height:38, padding:'0 12px', borderRadius:8,
+                  border:'1px solid #ddd', fontSize:13, background:'#fff', cursor:'pointer', outline:'none', boxSizing:'border-box' }}>
+                <option value="">Buscar Cliente</option>
+                {(clientes??[]).map((c:any)=>(<option key={c.id} value={c.id}>{c.nombre}</option>))}
+              </select>
+              <input value={busqCliente} onChange={e=>setBusqCliente(e.target.value)} placeholder="Escribir para buscar..."
+                style={{ width:'100%', height:32, padding:'0 12px', marginTop:4, borderRadius:8, border:'1px solid #eee', fontSize:12, outline:'none', boxSizing:'border-box' }} />
+            </div>
+            <PanelInput label="Monto" type="number" placeholder="Monto" value={monto} onChange={e=>setMonto(e.target.value)} />
+            <PanelSelect label="Tipo de Pago" value={metodo} onChange={e=>setMetodo(e.target.value)}>
+              {METODOS_PAGO.map(m=><option key={m} value={m}>{m}</option>)}
+            </PanelSelect>
+            {metodo === 'Cheque' && (
+              <PanelInput label="Número de Cheque" placeholder="Número de Cheque" value={referencia} onChange={e=>setRef(e.target.value)} />
+            )}
+            <div style={{ marginBottom:12 }}>
+              <div style={{ fontSize:12, fontWeight:600, marginBottom:4 }}>Descripción</div>
+              <textarea value={descripcion} onChange={e=>setDesc(e.target.value)} placeholder="Descripción"
+                rows={3} style={{ width:'100%', padding:'8px 12px', borderRadius:8, border:'1px solid #ddd',
+                  fontSize:13, resize:'vertical', outline:'none', boxSizing:'border-box' }} />
+            </div>
+            <button onClick={() => guardarMut.mutate()} disabled={guardarMut.isPending || !monto}
+              style={{ width:'100%', height:44, borderRadius:10, border:'none',
+                background: !monto?'#ccc':'#059669', color:'#fff',
+                fontWeight:700, fontSize:15, cursor:!monto?'not-allowed':'pointer' }}>
+              {guardarMut.isPending ? 'Guardando...' : 'Grabar'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ flex:1, overflowY:'auto', scrollbarWidth:'thin' }}>
+          {isLoading ? <div style={{textAlign:'center',padding:40}}><Spin/></div> :
+           (lista??[]).length===0 ? <Empty style={{marginTop:40}} description={<span style={{color:C.textSub}}>Sin registros</span>}/> : (
+            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+              <thead><tr style={{background:C.card,position:'sticky',top:0}}>
+                {['Número','Cliente','Monto','Método'].map(h=>(
+                  <th key={h} style={{padding:'8px 12px',textAlign:'left',color:C.textSub,fontWeight:600,fontSize:11,borderBottom:`1px solid ${C.border}`}}>{h}</th>
+                ))}
+              </tr></thead>
+              <tbody>{(lista??[]).map((r:any,i:number)=>(
+                <tr key={r.id} style={{borderBottom:`1px solid ${C.border}`,background:i%2===0?'transparent':C.card}}>
+                  <td style={{padding:'8px 12px',color:C.blue,fontFamily:'monospace',fontSize:11}}>{r.numero||r.id}</td>
+                  <td style={{padding:'8px 12px',color:C.text}}>{r.clienteNombre||r.cliente?.nombre||'—'}</td>
+                  <td style={{padding:'8px 12px',color:C.green,fontWeight:700}}>{fmt.money(r.monto??r.total??0)}</td>
+                  <td style={{padding:'8px 12px',color:C.textSub,fontSize:11}}>{r.metodoPago||'—'}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Panel Cierre de Caja ──────────────────────────────────────────────────────
+const BILLETES_RD = [2000, 1000, 500, 200, 100, 50, 25, 20, 10, 5, 1];
+
+type DesglosePago = {
+  efectivo: string; tarjetaCredito: string; tarjetaDebito: string;
+  cheque: string; transferencia: string; otro: string;
+  deposito: string; documentos: string;
+};
+
+function CierreField({ label, value, editable, onChange, highlight }:
+  { label: string; value: string; editable?: boolean; onChange?: (v:string)=>void; highlight?: boolean }) {
+  const color = highlight ? '#059669' : 'inherit';
+  return (
+    <div>
+      <div style={{ fontSize:10, color:'#94A3B8', marginBottom:2 }}>{label}</div>
+      {editable ? (
+        <input type="number" value={value} onChange={e=>onChange?.(e.target.value)}
+          style={{ width:'100%', height:36, textAlign:'right', padding:'0 8px',
+            borderRadius:6, border:'1px solid #ddd', fontSize:13, outline:'none',
+            boxSizing:'border-box', fontWeight:600, color }} />
+      ) : (
+        <div style={{ height:36, display:'flex', alignItems:'center', justifyContent:'flex-end',
+          padding:'0 8px', background:'#F8FAFC', borderRadius:6, border:'1px solid #E2E8F0',
+          fontSize:13, fontWeight:600, color }}>
+          {value}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void }) {
+  const qc = useQueryClient();
+  const [nota,     setNota]     = useState('');
+  const [billetes, setBilletes] = useState<Record<number,number>>({});
+  const [pago, setPago] = useState<DesglosePago>({
+    efectivo:'', tarjetaCredito:'', tarjetaDebito:'',
+    cheque:'', transferencia:'', otro:'', deposito:'', documentos:'',
+  });
+
+  const totalBilletes   = BILLETES_RD.reduce((s,b) => s + (billetes[b]??0)*b, 0);
+  const totalDesglosePago = Object.values(pago).reduce((s,v) => s + (Number(v)||0), 0);
+  const totalFisico     = totalBilletes || totalDesglosePago;
+
+  const { data: cajaHoy, isLoading } = useQuery<any>({
+    queryKey: ['pos-caja-hoy'],
+    queryFn:  () => api.get('/caja/hoy').then(r => {
+      const d = r.data?.data ?? r.data;
+      // Si es array, tomar la abierta
+      return Array.isArray(d) ? d.find((c:any) => c.estado === 'abierta') ?? d[0] : d;
+    }),
+  });
+
+  // Auto-llenar efectivo del desglose con ventas en efectivo
+  useEffect(() => {
+    if (cajaHoy?.ventasEfectivo) {
+      const ef = Number(cajaHoy.ventasEfectivo) + Number(cajaHoy.saldoApertura ?? 0);
+      setPago(p => ({ ...p, efectivo: ef.toFixed(2) }));
+    }
+  }, [cajaHoy?.id]);
+
+  const cerrarMut = useMutation({
+    mutationFn: () => {
+      const id = cajaHoy?.id;
+      if (!id) throw new Error('No hay caja abierta');
+      return api.patch(`/caja/${id}/cerrar`, {
+        saldoFisico:       totalFisico,
+        nota,
+        desgloseBilletes:  billetes,
+        desglosePago:      pago,
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pos-caja-hoy'] });
+      message.success('¡Caja cerrada exitosamente!');
+      onVolver();
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al cerrar caja'),
+  });
+
+  const m = (v: any) => fmt.money(Number(v ?? 0));
+  const setBillete = (b: number, val: string) => setBilletes(p => ({ ...p, [b]: Number(val)||0 }));
+  const setPagoKey = (k: keyof DesglosePago) => (v: string) => setPago(p => ({ ...p, [k]: v }));
+
+  // Operaciones calculadas
+  const vendidoContado  = Number(cajaHoy?.ventasEfectivo ?? 0);
+  const vendidoCredito  = Number(cajaHoy?.ventasTarjeta ?? 0) + Number(cajaHoy?.ventasTransferencia ?? 0);
+  const totalVendido    = vendidoContado + vendidoCredito;
+  const totalRecibos    = Number(cajaHoy?.cobrosRecibidos ?? 0);
+  const efectivoInicial = Number(cajaHoy?.saldoApertura ?? 0);
+  const efectivoEnCaja  = efectivoInicial + vendidoContado + totalRecibos;
+
+  const grid3: React.CSSProperties = { display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:10 };
+
+  return (
+    <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+      <PanelHeader title="Cierre de Caja" icon="🏧" C={C} onVolver={onVolver} />
+      <div style={{ flex:1, overflowY:'auto', padding:'16px 20px' }}>
+        {isLoading ? <div style={{textAlign:'center',padding:40}}><Spin/></div> :
+        !cajaHoy || cajaHoy.estado !== 'abierta' ? (
+          <div style={{ textAlign:'center', padding:40, color:C.textSub }}>
+            No hay caja abierta hoy
+          </div>
+        ) : (
+        <div style={{ maxWidth:560, color:C.text }}>
+
+          {/* ID de caja + billetes */}
+          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14 }}>
+            <div style={{ background:C.card, border:`1px solid ${C.border2}`, borderRadius:8,
+              padding:'6px 14px', fontSize:13, fontWeight:700 }}>
+              {cajaHoy.numero ?? `Caja #${cajaHoy.id}`}
+            </div>
+            {BILLETES_RD.slice(0,5).map(b => (
+              <input key={b} type="number" min="0" value={billetes[b]??''}
+                onChange={e=>setBillete(b,e.target.value)}
+                title={`Billetes de ${b}`}
+                style={{ width:50, height:32, textAlign:'center', borderRadius:6,
+                  border:'1px solid #ddd', fontSize:12, outline:'none' }} />
+            ))}
+          </div>
+
+          {/* Desglose de Operaciones */}
+          <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:'14px 16px', marginBottom:14 }}>
+            <div style={{ fontSize:13, fontWeight:800, marginBottom:12 }}>Desglose de Operaciones</div>
+            <div style={grid3}>
+              <CierreField label="Efectivo Inicial"  value={m(efectivoInicial)} />
+              <CierreField label="Vendido Contado"   value={m(vendidoContado)} />
+              <CierreField label="Vendido Crédito"   value={m(vendidoCredito)} />
+            </div>
+            <div style={grid3}>
+              <CierreField label="Total Vendido"     value={m(totalVendido)} highlight />
+              <CierreField label="Total Recibos"     value={m(totalRecibos)} />
+              <CierreField label="Total Anticipos"   value={m(cajaHoy.totalAnticipos ?? 0)} />
+            </div>
+            <div style={grid3}>
+              <CierreField label="Total Dev. y Des"  value={m(cajaHoy.gastosEfectivo ?? 0)} />
+              <CierreField label="Total NC. Aplicadas" value="0.00" />
+              <CierreField label="Efectivo en Caja"  value={m(efectivoEnCaja)} highlight />
+            </div>
+          </div>
+
+          {/* Desglose de Billetes */}
+          <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:'14px 16px', marginBottom:14 }}>
+            <div style={{ fontSize:13, fontWeight:800, marginBottom:10 }}>Desglose de Billetes</div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:8, marginBottom:8 }}>
+              {BILLETES_RD.slice(0,6).map(b => (
+                <div key={b} style={{ textAlign:'center' }}>
+                  <div style={{ fontSize:10, color:C.textSub, marginBottom:3 }}>{b.toLocaleString()}</div>
+                  <input type="number" min="0" value={billetes[b]??''}
+                    onChange={e=>setBillete(b,e.target.value)}
+                    style={{ width:'100%', height:34, textAlign:'center', borderRadius:6,
+                      border:'1px solid #ddd', fontSize:12, outline:'none', boxSizing:'border-box' }} />
+                </div>
+              ))}
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:8 }}>
+              {BILLETES_RD.slice(6).map(b => (
+                <div key={b} style={{ textAlign:'center' }}>
+                  <div style={{ fontSize:10, color:C.textSub, marginBottom:3 }}>{b}</div>
+                  <input type="number" min="0" value={billetes[b]??''}
+                    onChange={e=>setBillete(b,e.target.value)}
+                    style={{ width:'100%', height:34, textAlign:'center', borderRadius:6,
+                      border:'1px solid #ddd', fontSize:12, outline:'none', boxSizing:'border-box' }} />
+                </div>
+              ))}
+            </div>
+            {totalBilletes > 0 && (
+              <div style={{ textAlign:'right', marginTop:8, fontSize:12, color:C.green, fontWeight:700 }}>
+                Total billetes: {fmt.money(totalBilletes)}
+              </div>
+            )}
+          </div>
+
+          {/* Desglose de Pago */}
+          <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:'14px 16px', marginBottom:14 }}>
+            <div style={{ fontSize:13, fontWeight:800, marginBottom:12 }}>Desglose de Pago</div>
+            <div style={grid3}>
+              <CierreField label="Efectivo"        value={pago.efectivo}        editable onChange={setPagoKey('efectivo')} />
+              <CierreField label="Tarjeta Crédito" value={pago.tarjetaCredito}  editable onChange={setPagoKey('tarjetaCredito')} />
+              <CierreField label="Tarjeta Débito"  value={pago.tarjetaDebito}   editable onChange={setPagoKey('tarjetaDebito')} />
+            </div>
+            <div style={grid3}>
+              <CierreField label="Cheque"          value={pago.cheque}          editable onChange={setPagoKey('cheque')} />
+              <CierreField label="Transferencia"   value={pago.transferencia}   editable onChange={setPagoKey('transferencia')} />
+              <CierreField label="Otro"            value={pago.otro}            editable onChange={setPagoKey('otro')} />
+            </div>
+            <div style={grid3}>
+              <CierreField label="Depósito"        value={pago.deposito}        editable onChange={setPagoKey('deposito')} />
+              <CierreField label="Documentos"      value={pago.documentos}      editable onChange={setPagoKey('documentos')} />
+              <CierreField label="Efectivo en Sistema" value={m(totalDesglosePago)} highlight />
+            </div>
+          </div>
+
+          {/* Nota */}
+          <div style={{ marginBottom:14 }}>
+            <div style={{ fontSize:12, fontWeight:600, marginBottom:4 }}>Nota de cierre</div>
+            <textarea value={nota} onChange={e=>setNota(e.target.value)} placeholder="Nota de cierre..."
+              rows={2} style={{ width:'100%', padding:'8px 12px', borderRadius:8, border:'1px solid #ddd',
+                fontSize:13, resize:'vertical', outline:'none', boxSizing:'border-box', background:'#fff' }} />
+          </div>
+
+          <button onClick={() => cerrarMut.mutate()} disabled={cerrarMut.isPending}
+            style={{ width:'100%', height:46, borderRadius:10, border:'none',
+              background:'#059669', color:'#fff', fontWeight:700, fontSize:15, cursor:'pointer' }}>
+            {cerrarMut.isPending ? 'Cerrando...' : 'Grabar'}
+          </button>
+        </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Paneles inline del POS ────────────────────────────────────────────────────
+
+const PANEL_TITLES: Record<PanelId, { label: string; icon: string }> = {
+  'items':          { label: 'Ítems',            icon: '🛒' },
+  'inventario':     { label: 'Inventario',        icon: '📦' },
+  'facturas':       { label: 'Facturas',          icon: '📄' },
+  'pre-facturas':   { label: 'Pre-Facturas',      icon: '📋' },
+  'cotizaciones':   { label: 'Cotizaciones',      icon: '💬' },
+  'conduce':        { label: 'Conduces',          icon: '🚚' },
+  'despacho':       { label: 'Despacho',          icon: '📦' },
+  'clientes':       { label: 'Clientes',          icon: '👤' },
+  'recibos-cobro':  { label: 'Recibos de Cobro',  icon: '🧾' },
+  'anticipos':      { label: 'Anticipos',          icon: '💰' },
+  'notas-credito':  { label: 'Notas de Crédito',  icon: '📝' },
+  'gastos':         { label: 'Gastos',            icon: '💸' },
+  'cierre-caja':    { label: 'Cierre de Caja',    icon: '🏧' },
+};
+
+function POSPanel({ panel, palette, onVolver }: {
+  panel:    PanelId;
+  palette:  Palette;
+  onVolver: () => void;
+}) {
+  const C  = palette;
+  const qc = useQueryClient();
+  const [busq,          setBusq]          = useState('');
+  const [anulando,      setAnulando]      = useState<number | null>(null);
+  const [imprimiendo,   setImprimiendo]   = useState<number | null>(null);
+  const [saleTermico,    setSaleTermico]    = useState<Sale | null>(null);
+  const [genericDoc,     setGenericDoc]     = useState<GenericDocData | null>(null);
+  const PANEL_RECEIPT_ID  = 'hc-pos-panel-receipt';
+  const PANEL_GENERIC_ID  = 'hc-pos-panel-generic';
+
+  // Imprimir recibo de factura (Sale)
+  useEffect(() => {
+    if (!saleTermico) return;
+    const t = setTimeout(() => {
+      imprimirElemento(PANEL_RECEIPT_ID, '80mm auto');
+      setTimeout(() => setSaleTermico(null), 2000);
+    }, 150);
+    return () => clearTimeout(t);
+  }, [saleTermico]);
+
+  // Imprimir documento genérico (cotización, conduce, etc.)
+  useEffect(() => {
+    if (!genericDoc) return;
+    const t = setTimeout(() => {
+      imprimirElemento(PANEL_GENERIC_ID, '80mm auto');
+      setTimeout(() => setGenericDoc(null), 2000);
+    }, 150);
+    return () => clearTimeout(t);
+  }, [genericDoc]);
+
+  // ── Endpoints de anulación por módulo ──────────────────────────────
+  const anularMutation = useMutation({
+    mutationFn: async ({ id, mod }: { id: number; mod: string }) => {
+      if (mod === 'facturas')        return api.patch(`/facturas/${id}/estado`, { estado: 'anulada' });
+      if (mod === 'cotizaciones')    return api.patch(`/cotizaciones/${id}/estado`, { estado: 'rechazada' });
+      if (mod === 'pre-facturas')    return api.patch(`/pre-facturas/${id}/rechazar`);
+      if (mod === 'conduce' || mod === 'despacho') return api.delete(`/conduces/${id}`);
+      if (mod === 'notas-credito')   return api.patch(`/notas-credito/${id}/anular`);
+      if (mod === 'gastos')          return api.delete(`/gastos/${id}`);
+      throw new Error('Módulo no soporta anulación');
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pos-panel', panel] }); qc.refetchQueries({ queryKey: ['pos-panel', panel] });
+      message.success('Registro anulado');
+      setAnulando(null);
+    },
+    onError: (e: any) => {
+      message.error(e?.response?.data?.message ?? 'No se pudo anular');
+      setAnulando(null);
+    },
+  });
+
+  // ── Impresión térmica para TODOS los módulos ───────────────────────
+  const handleImprimir = async (id: number, folio: string) => {
+    setImprimiendo(id);
+    try {
+      const empresa = await api.get('/configuracion/empresa')
+        .then(x => x.data?.data ?? x.data).catch(() => ({}));
+      const empInfo = {
+        nombre:    empresa.razonSocial ?? empresa.nombre,
+        rnc:       empresa.rnc,
+        direccion: empresa.direccion,
+        telefono:  empresa.telefono,
+      };
+
+      // ── Facturas → recibo estándar del POS (con e-CF y QR) ──────────
+      if (panel === 'facturas') {
+        const f = await api.get(`/facturas/${id}`).then(r => r.data?.data ?? r.data);
+        const sale: Sale = {
+          folio:       f.folio, total: Number(f.total??0), cambio: 0,
+          metodo:      f.notas?.includes('Tarjeta') ? 'tarjeta' : f.notas?.includes('Transferencia') ? 'transferencia' : 'efectivo',
+          items:       (f.detalles??[]).map((d: any) => ({
+            produto:   { id: d.productoId, nombre: d.descripcion, precio: Number(d.precioUnitario),
+                         stock: 999, porcentajeIva: Number(d.porcentajeIva??18), codigo:'', categoria:'', unidadMedida:'' } as any,
+            cantidad: Number(d.cantidad), precio: Number(d.precioUnitario), descuento: 0,
+          })),
+          cliente:   f.cliente?.nombre, iva: Number(f.iva??0), subtotal: Number(f.subtotal??0),
+          facturaId: f.id, tipoNcf: f.tipoNcf ?? 'E32',
+          encf:      f.ecf?.numero, ecfPendiente: !f.ecf?.numero,
+          securityCode: f.ecf?.codigoSeguridad, qrUrl: f.ecf?.qrUrl,
+          rncComprador: f.cliente?.rncReceptor || f.cliente?.rfc,
+          razonSocial:  f.cliente?.nombre,
+          cajero: f.usuario?.nombre ?? f.nombreVendedor,
+          empresaNombreComercial: empInfo.nombre, empresaRnc: empInfo.rnc,
+          empresaDireccion: empInfo.direccion, empresaTelefono: empInfo.telefono,
+        };
+        setSaleTermico(sale); return;
+      }
+
+      // ── Para todos los demás: construir GenericThermalDoc ──────────
+      const apiMap: Record<string, string> = {
+        cotizaciones:    `/cotizaciones/${id}`,
+        'pre-facturas':  `/pre-facturas/${id}`,
+        conduce:         `/conduces/${id}`,
+        despacho:        `/conduces/${id}`,
+        'recibos-cobro': `/recibos-cobro/${id}`,
+        'notas-credito': `/notas-credito/${id}`,
+        gastos:          `/gastos/${id}`,
+        'notas-debito':  `/notas-debito/${id}`,
+      };
+      const ep = apiMap[panel];
+      if (!ep) { message.info('Impresión no disponible para este módulo'); return; }
+      const doc = await api.get(ep).then(r => r.data?.data ?? r.data);
+
+      let gd: GenericDocData;
+
+      if (panel === 'recibos-cobro') {
+        gd = {
+          tipo: 'RECIBO DE COBRO', numero: doc.numero ?? String(doc.id),
+          fecha: String(doc.fecha ?? '').substring(0,10),
+          empresa: empInfo,
+          cliente: doc.clienteNombre ?? doc.cliente?.nombre,
+          items: [{ desc: doc.concepto ?? 'Cobro recibido', total: Number(doc.monto??0) }],
+          total: Number(doc.monto??0),
+          nota1: `Método: ${doc.metodoPago ?? '—'}`,
+        };
+      } else if (panel === 'gastos') {
+        gd = {
+          tipo: 'COMPROBANTE DE GASTO', numero: `GAS-${String(doc.id).padStart(5,'0')}`,
+          fecha: String(doc.fecha ?? '').substring(0,10),
+          empresa: empInfo,
+          items: [{ desc: doc.descripcion, total: Number(doc.monto??0) }],
+          subtotal: Number(doc.monto??0), itbis: Number(doc.itbis??0), total: Number(doc.total??0),
+          nota1: `Categoría: ${doc.categoria?.replace(/_/g,' ')}`,
+          nota2: doc.proveedor ? `Proveedor: ${doc.proveedor}` : undefined,
+        };
+      } else if (panel === 'conduce' || panel === 'despacho') {
+        gd = {
+          tipo: 'CONDUCE', numero: doc.numero ?? String(doc.id),
+          fecha: String(doc.fecha ?? '').substring(0,10),
+          empresa: empInfo,
+          cliente: doc.cliente?.nombre,
+          items: (doc.detalles ?? []).map((d: any) => ({
+            desc: d.descripcion, cant: Number(d.cantidad),
+          })),
+          nota1: `Entrega: ${doc.direccionEntrega ?? '—'}`,
+          nota2: doc.contactoEntrega ? `Contacto: ${doc.contactoEntrega}` : undefined,
+          notas: doc.notas,
+        };
+      } else if (panel === 'notas-credito') {
+        gd = {
+          tipo: 'NOTA DE CRÉDITO (E34)', numero: doc.numero ?? String(doc.id),
+          fecha: String(doc.fecha ?? '').substring(0,10),
+          empresa: empInfo,
+          cliente: doc.cliente?.nombre, rncCliente: doc.cliente?.rncReceptor,
+          items: (doc.detalles ?? []).map((d: any) => ({
+            desc: d.descripcion, cant: Number(d.cantidad),
+            precio: Number(d.precioUnitario), total: Number(d.total??0),
+          })),
+          subtotal: Number(doc.subtotal??0), itbis: Number(doc.iva??0), total: Number(doc.total??0),
+          nota1: doc.facturaOriginalFolio ? `Ref. factura: ${doc.facturaOriginalFolio}` : undefined,
+        };
+      } else {
+        // cotizaciones, pre-facturas
+        const tipoLabel = panel === 'cotizaciones' ? 'COTIZACIÓN' : 'PRE-FACTURA';
+        gd = {
+          tipo: tipoLabel, numero: doc.numero ?? doc.folio ?? String(doc.id),
+          fecha: String(doc.fecha ?? '').substring(0,10),
+          empresa: empInfo,
+          cliente: doc.cliente?.nombre, rncCliente: doc.cliente?.rncReceptor,
+          items: (doc.detalles ?? []).map((d: any) => ({
+            desc: d.descripcion, cant: Number(d.cantidad),
+            precio: Number(d.precioUnitario), total: Number(d.total??0),
+          })),
+          subtotal: Number(doc.subtotal??0), itbis: Number(doc.iva??0), total: Number(doc.total??0),
+          notas: doc.notas,
+        };
+      }
+
+      setGenericDoc(gd);
+    } catch (e: any) {
+      message.error('Error al imprimir: ' + (e.message ?? ''));
+    } finally {
+      setImprimiendo(null);
+    }
+  };
+
+  // ── ¿Puede anularse este registro? ────────────────────────────────
+  const puedeAnular = (row: any): boolean => {
+    const estado = row.estado ?? '';
+    if (panel === 'facturas')       return estado === 'emitida';
+    if (panel === 'pre-facturas')   return !['convertida', 'anulada', 'rechazada'].includes(estado);
+    if (panel === 'cotizaciones')   return !['convertida', 'rechazada', 'anulada'].includes(estado);
+    if ((panel as string) === 'conduce' || (panel as string) === 'despacho') return estado === 'generado';
+    if ((panel as string) === 'notas-credito') return estado === 'emitida';
+    if ((panel as string) === 'gastos')        return true;
+    return false;
+  };
+
+  const { data: rows, isLoading } = useQuery<any>({
+    queryKey: ['pos-panel', panel, busq],
+    queryFn: async () => {
+      const s = busq ? `&search=${encodeURIComponent(busq)}` : '';
+      const endpoints: Record<string, string> = {
+        inventario:       `/inventario/movimientos?limit=40${s}`,
+        facturas:         `/facturas?limit=30${s}`,
+        'pre-facturas':   `/pre-facturas?limit=30${s}`,
+        cotizaciones:     `/cotizaciones?limit=30${s}`,
+        conduce:          `/conduces?limit=30${s}`,
+        despacho:         `/conduces?limit=30${s}`,
+        clientes:         `/clientes?limit=40${s}`,
+        'recibos-cobro':  `/recibos-cobro?limit=30${s}`,
+        'notas-credito':  `/notas-credito?limit=30${s}`,
+        gastos:           `/gastos?limit=30${s}`,
+        'cierre-caja':    `/caja/cierres?limit=20${s}`,
+      };
+      const url = endpoints[panel];
+      if (!url) return [];
+      const r = await api.get(url);
+      const d = r.data?.data ?? r.data;
+      return d?.data ?? d ?? [];
+    },
+    staleTime:       0,
+    gcTime:          0,
+    refetchOnMount: 'always',
+    enabled: panel !== 'items',
+  });
+
+  const colsConfig: Record<string, Array<{ label: string; key: string; render?: (v: any, row: any) => React.ReactNode }>> = {
+    inventario: [
+      { label: 'Producto',  key: 'producto',  render: (_,r) => r.producto?.nombre ?? r.descripcion ?? '—' },
+      { label: 'Tipo',      key: 'tipo',      render: (v) => <span style={{ color: v === 'entrada' ? C.green : C.orange, fontWeight: 600, fontSize: 11 }}>{v?.toUpperCase()}</span> },
+      { label: 'Cant.',     key: 'cantidad',  render: (v) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{v}</span> },
+      { label: 'Fecha',     key: 'fecha',     render: (v) => v?.substring(0,10) ?? '—' },
+    ],
+    facturas: [
+      { label: 'Folio',    key: 'folio',    render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue }}>{v}</span> },
+      { label: 'Cliente',  key: 'cliente',  render: (_,r) => r.cliente?.nombre ?? '—' },
+      { label: 'Total',    key: 'total',    render: (v) => <span style={{ fontWeight: 700, color: C.green }}>{fmt.money(v)}</span> },
+      { label: 'Estado',   key: 'estado',   render: (v) => <span style={{ fontSize: 10, fontWeight: 700, color: v==='pagada'?C.green:v==='emitida'?C.blue:C.textSub }}>{v?.toUpperCase()}</span> },
+    ],
+    'pre-facturas': [
+      { label: 'Folio',    key: 'folio',    render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue }}>{v}</span> },
+      { label: 'Cliente',  key: 'cliente',  render: (_,r) => r.cliente?.nombre ?? '—' },
+      { label: 'Total',    key: 'total',    render: (v) => <span style={{ fontWeight: 700, color: C.orange }}>{fmt.money(v)}</span> },
+      { label: 'Estado',   key: 'estado',   render: (v) => <span style={{ fontSize: 10, fontWeight: 700, color: v==='aprobada'?C.green:v==='enviada'?C.blue:C.textSub }}>{v?.toUpperCase()}</span> },
+    ],
+    cotizaciones: [
+      { label: 'Número',   key: 'numero',   render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue }}>{v}</span> },
+      { label: 'Cliente',  key: 'cliente',  render: (_,r) => r.cliente?.nombre ?? '—' },
+      { label: 'Total',    key: 'total',    render: (v) => <span style={{ fontWeight: 700, color: C.orange }}>{fmt.money(v)}</span> },
+      { label: 'Estado',   key: 'estado',   render: (v) => <span style={{ fontSize: 10, fontWeight: 700 }}>{v?.toUpperCase()}</span> },
+    ],
+    conduce: [
+      { label: 'Número',    key: 'numero',          render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue }}>{v}</span> },
+      { label: 'Cliente',   key: 'cliente',          render: (_,r) => r.cliente?.nombre ?? '—' },
+      { label: 'Dirección', key: 'direccionEntrega', render: (v) => <span style={{ fontSize: 11 }}>{v ?? '—'}</span> },
+      { label: 'Estado',    key: 'estado',           render: (v) => <span style={{ fontSize: 10, fontWeight: 700, color: v==='entregado'?C.green:v==='en_transito'?C.blue:C.orange }}>{v?.replace('_',' ')?.toUpperCase()}</span> },
+    ],
+    despacho: [
+      { label: 'Número',    key: 'numero',          render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue }}>{v}</span> },
+      { label: 'Cliente',   key: 'cliente',          render: (_,r) => r.cliente?.nombre ?? '—' },
+      { label: 'Dirección', key: 'direccionEntrega', render: (v) => <span style={{ fontSize: 11 }}>{v ?? '—'}</span> },
+      { label: 'Estado',    key: 'estado',           render: (v) => <span style={{ fontSize: 10, fontWeight: 700, color: v==='entregado'?C.green:v==='en_transito'?C.blue:C.orange }}>{v?.replace('_',' ')?.toUpperCase()}</span> },
+    ],
+    clientes: [
+      { label: 'Nombre',  key: 'nombre',      render: (v) => <span style={{ fontWeight: 600 }}>{v}</span> },
+      { label: 'RNC/Céd', key: 'rncReceptor', render: (v,r) => <span style={{ fontFamily: 'monospace', fontSize: 11 }}>{v || r.rfc || '—'}</span> },
+      { label: 'Teléfono',key: 'telefono',    render: (v) => v ?? '—' },
+      { label: 'Email',   key: 'email',       render: (v) => <span style={{ fontSize: 11 }}>{v ?? '—'}</span> },
+    ],
+    'recibos-cobro': [
+      { label: 'Número',  key: 'numero',      render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue }}>{v}</span> },
+      { label: 'Cliente', key: 'clienteNombre', render: (v) => v ?? '—' },
+      { label: 'Monto',   key: 'monto',       render: (v) => <span style={{ fontWeight: 700, color: C.green }}>{fmt.money(v)}</span> },
+      { label: 'Método',  key: 'metodoPago',  render: (v) => <span style={{ fontSize: 10, fontWeight: 700 }}>{v?.toUpperCase()}</span> },
+    ],
+    'notas-credito': [
+      { label: 'Número',  key: 'numero',      render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue }}>{v}</span> },
+      { label: 'Cliente', key: 'cliente',     render: (_,r) => r.cliente?.nombre ?? '—' },
+      { label: 'Total',   key: 'total',       render: (v) => <span style={{ fontWeight: 700, color: C.orange }}>{fmt.money(v)}</span> },
+      { label: 'Estado',  key: 'estado',      render: (v) => <span style={{ fontSize: 10, fontWeight: 700, color: v==='emitida'?C.blue:v==='anulada'?C.red:C.textSub }}>{v?.toUpperCase()}</span> },
+    ],
+    gastos: [
+      { label: 'Descripción', key: 'descripcion', render: (v) => <span style={{ fontSize: 12 }}>{v}</span> },
+      { label: 'Categoría',   key: 'categoria',   render: (v) => <span style={{ fontSize: 11 }}>{v?.replace(/_/g,' ')}</span> },
+      { label: 'Total',       key: 'total',       render: (v) => <span style={{ fontWeight: 700, color: C.red }}>{fmt.money(v)}</span> },
+      { label: 'Fecha',       key: 'fecha',       render: (v) => v?.substring(0,10) ?? '—' },
+    ],
+    'cierre-caja': [
+      { label: 'Fecha',     key: 'fecha',       render: (v) => v?.substring(0,10) ?? '—' },
+      { label: 'Apertura',  key: 'montoApertura', render: (v) => fmt.money(v ?? 0) },
+      { label: 'Ventas',    key: 'totalVentas',   render: (v) => <span style={{ fontWeight: 700, color: C.green }}>{fmt.money(v ?? 0)}</span> },
+      { label: 'Cierre',    key: 'montoCierre',   render: (v) => fmt.money(v ?? 0) },
+    ],
+  };
+
+  // Despachar a componentes especializados — DESPUÉS de todos los hooks
+  if (panel === 'inventario')   return <POSInventarioPanel C={C} onVolver={onVolver} />;
+  if (panel === 'clientes')     return <POSClientesPanel   C={C} onVolver={onVolver} />;
+  if (panel === 'cierre-caja')  return <POSCierreCajaPanel C={C} onVolver={onVolver} />;
+  if (panel === 'recibos-cobro' || panel === 'anticipos')
+    return <POSReciboAnticipoPanel tipo={panel as 'recibos-cobro'|'anticipos'} C={C} onVolver={onVolver} />;
+
+  const cols  = (colsConfig as any)[panel] ?? [];
+  const title = PANEL_TITLES[panel];
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* Header del panel */}
+      <div style={{ padding: '10px 14px', flexShrink: 0, borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+        <button onClick={onVolver} style={{ background: 'none', border: 'none', color: C.blue, cursor: 'pointer', fontSize: 20, lineHeight: 1, padding: 0 }}>←</button>
+        <span style={{ fontSize: 16 }}>{title.icon}</span>
+        <span style={{ fontWeight: 700, color: C.text, fontSize: 15, flex: 1 }}>{title.label}</span>
+        <div style={{ position: 'relative', width: 220 }}>
+          <SearchOutlined style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: C.textSub, fontSize: 13 }} />
+          <input value={busq} onChange={e => setBusq(e.target.value)}
+            placeholder="Buscar..."
+            style={{ width: '100%', height: 34, paddingLeft: 30, paddingRight: 10, background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
+        </div>
+      </div>
+
+      {/* Tabla de contenido */}
+      <div style={{ flex: 1, overflowY: 'auto', scrollbarWidth: 'thin', scrollbarColor: C.border + ' transparent' }}>
+        {isLoading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 120 }}>
+            <Spin />
+          </div>
+        ) : (rows ?? []).length === 0 ? (
+          <Empty description={<span style={{ color: C.textSub, fontSize: 13 }}>Sin registros</span>} style={{ marginTop: 40 }} />
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr style={{ background: C.card, position: 'sticky', top: 0, zIndex: 2 }}>
+                {cols.map((c: any) => (
+                  <th key={c.key} style={{ padding: '8px 14px', textAlign: 'left', color: C.textSub, fontWeight: 600, fontSize: 11, borderBottom: `1px solid ${C.border}`, whiteSpace: 'nowrap' }}>
+                    {c.label}
+                  </th>
+                ))}
+                {true && (
+                  <th style={{ padding: '8px 14px', textAlign: 'right', color: C.textSub, fontWeight: 600, fontSize: 11, borderBottom: `1px solid ${C.border}`, whiteSpace: 'nowrap', width: 100 }}>
+                    Acciones
+                  </th>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {(rows ?? []).map((row: any, i: number) => {
+                const folio = row.folio ?? row.numero ?? row.id;
+                const yaAnulado = ['anulada','cancelada','rechazada'].includes(row.estado ?? '');
+                return (
+                  <tr key={row.id ?? i}
+                    style={{ borderBottom: `1px solid ${C.border}`, background: i % 2 === 0 ? 'transparent' : C.card }}
+                    onMouseEnter={e => (e.currentTarget.style.background = C.sidebarHov)}
+                    onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 0 ? 'transparent' : C.card)}
+                  >
+                    {cols.map((c: any) => (
+                      <td key={c.key} style={{ padding: '9px 14px', color: C.text, verticalAlign: 'middle', opacity: yaAnulado ? 0.5 : 1 }}>
+                        {c.render ? c.render(row[c.key], row) : (row[c.key] ?? '—')}
+                      </td>
+                    ))}
+                    {true && (
+                      <td style={{ padding: '6px 14px', verticalAlign: 'middle', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        {/* Imprimir */}
+                        <button
+                          onClick={() => handleImprimir(row.id, folio)}
+                          disabled={imprimiendo === row.id}
+                          title="Imprimir / Descargar PDF"
+                          style={{
+                            background: 'none', border: `1px solid ${C.border2}`, borderRadius: 6,
+                            color: C.blue, cursor: 'pointer', padding: '4px 8px', fontSize: 14,
+                            marginRight: 6, opacity: imprimiendo === row.id ? 0.5 : 1,
+                          }}
+                        >
+                          {imprimiendo === row.id ? '⏳' : '🖨️'}
+                        </button>
+                        {/* Anular */}
+                        {!yaAnulado && puedeAnular(row) && (
+                          anulando === row.id ? (
+                            <span style={{ fontSize: 11, color: C.textSub }}>
+                              <button onClick={() => { anularMutation.mutate({ id: row.id, mod: panel }); }}
+                                style={{ background: C.red, border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', padding: '4px 8px', fontSize: 11, marginRight: 4, fontWeight: 700 }}>
+                                ✓ Confirmar
+                              </button>
+                              <button onClick={() => setAnulando(null)}
+                                style={{ background: 'none', border: `1px solid ${C.border2}`, borderRadius: 6, color: C.textSub, cursor: 'pointer', padding: '4px 8px', fontSize: 11 }}>
+                                ✕
+                              </button>
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => setAnulando(row.id)}
+                              title="Anular"
+                              style={{ background: 'none', border: `1px solid ${C.border2}`, borderRadius: 6, color: C.red, cursor: 'pointer', padding: '4px 8px', fontSize: 14 }}
+                            >
+                              🚫
+                            </button>
+                          )
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Recibo térmico oculto — facturas */}
+      <div id={PANEL_RECEIPT_ID} style={{ display: 'none' }}>
+        {saleTermico && <ThermalReceipt sale={saleTermico} />}
+      </div>
+      {/* Recibo térmico genérico — cotizaciones, conduce, recibos, etc. */}
+      <div id={PANEL_GENERIC_ID} style={{ display: 'none' }}>
+        {genericDoc && <GenericThermalDoc doc={genericDoc} />}
+      </div>
+    </div>
+  );
+}
+
+const NAV_ITEMS: Array<{ id: PanelId | 'menu'; label: string; icon: string }> = [
+  { id: 'items',        label: 'Ítems',      icon: '🛒' },
+  { id: 'inventario',   label: 'Inventario', icon: '📦' },
+  { id: 'facturas',     label: 'Facturas',   icon: '📄' },
+  { id: 'pre-facturas', label: 'Pre-Fact.',  icon: '📋' },
+  { id: 'cotizaciones', label: 'Cotizac.',   icon: '💬' },
+  { id: 'conduce',      label: 'Conduce',    icon: '🚚' },
+  { id: 'menu',         label: 'Menú',       icon: '⋮'  },
+];
+
+const MENU_EXTRAS: Array<{ label: string; icon: string; panel: PanelId }> = [
+  { label: 'Despacho',         icon: '📦', panel: 'despacho' },
+  { label: 'Clientes',         icon: '👤', panel: 'clientes' },
+  { label: 'Recibos de Cobro', icon: '🧾', panel: 'recibos-cobro' },
+  { label: 'Anticipos',        icon: '💰', panel: 'anticipos' },
+  { label: 'Notas de Crédito', icon: '📝', panel: 'notas-credito' },
+  { label: 'Nueva NC',         icon: '➕', panel: 'nueva-nc' as any },
+  { label: 'Gastos',           icon: '💸', panel: 'gastos' },
+  { label: 'Cierre de Caja',   icon: '🏧', panel: 'cierre-caja' },
+];
+
+function POSBottomNav({
+  palette, menuAbierto, panelActivo, onMenuToggle, onPanelChange, onNavigate,
+}: {
+  palette:        Palette;
+  menuAbierto:    boolean;
+  panelActivo:    PanelId;
+  onMenuToggle:   () => void;
+  onPanelChange:  (panel: PanelId) => void;
+  onNavigate:     (ruta: string) => void;
+}) {
+  const C = palette;
+  const isDarkMode = C === darkC;
+
+  // Topbar siempre es azul (light) u oscuro (dark) — texto siempre blanco semi-transparente
+  const navTextInactive = 'rgba(255,255,255,0.65)';
+  const navTextActive   = '#ffffff';
+  const navHoverBg      = isDarkMode ? C.sidebarHov : 'rgba(255,255,255,0.12)';
+  const navActiveBg     = isDarkMode ? 'rgba(59,130,246,.15)' : 'rgba(255,255,255,0.20)';
+
+  const btnBase: React.CSSProperties = {
+    flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+    justifyContent: 'center', gap: 3, height: '100%', border: 'none',
+    background: 'transparent', color: navTextInactive, fontSize: 10, fontWeight: 600,
+    cursor: 'pointer', outline: 'none', padding: '0 2px',
+    transition: 'background 0.12s, color 0.12s',
+    letterSpacing: '0.2px', userSelect: 'none',
+  };
+
+  return (
+    <>
+      {/* Overlay — cierra el menú al tocar fuera */}
+      {menuAbierto && (
+        <div
+          onClick={onMenuToggle}
+          style={{ position: 'fixed', inset: 0, zIndex: 199, background: 'transparent' }}
+        />
+      )}
+
+      {/* Panel de menú adicional */}
+      {menuAbierto && (
+        <div style={{
+          position: 'fixed', bottom: 57, left: 'calc(100vw - 590px)', zIndex: 200,
+          width: 210, background: C.card,
+          border: `1px solid ${C.border2}`,
+          borderRadius: '10px 0 0 0',
+          boxShadow: isDarkMode
+            ? '-4px -4px 20px rgba(0,0,0,.5)'
+            : '-2px -4px 12px rgba(0,0,0,.12)',
+          overflow: 'hidden',
+        }}>
+          {MENU_EXTRAS.map((item, i) => (
+            <button
+              key={item.label}
+              onClick={() => { onMenuToggle(); onPanelChange(item.panel); }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 12,
+                width: '100%', padding: '11px 16px',
+                border: 'none', borderBottom: i < MENU_EXTRAS.length - 1 ? `1px solid ${C.border}` : 'none',
+                background: 'transparent', color: C.text, fontSize: 13,
+                cursor: 'pointer', outline: 'none', textAlign: 'left',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = C.sidebarHov)}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            >
+              <span style={{ fontSize: 18, width: 24, textAlign: 'center' }}>{item.icon}</span>
+              <span style={{ fontWeight: 500 }}>{item.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Barra inferior — flujo normal, se queda en la columna izquierda */}
+      <nav style={{
+        flexShrink: 0,
+        height: 56, display: 'flex', alignItems: 'stretch',
+        background: C.topbar,
+        borderTop: `1px solid ${C.border2}`,
+        zIndex: 100,
+      }}>
+        {NAV_ITEMS.map(item => {
+          const isMenu   = item.id === 'menu';
+          const isActive = !isMenu && panelActivo === item.id;
+          const showActive = isActive || (isMenu && menuAbierto);
+          return (
+            <button
+              key={item.id}
+              style={{
+                ...btnBase,
+                color:     showActive ? navTextActive : navTextInactive,
+                borderTop: showActive ? '2px solid rgba(255,255,255,0.9)' : '2px solid transparent',
+                background: showActive ? navActiveBg : 'transparent',
+              }}
+              onClick={() => {
+                if (isMenu) { onMenuToggle(); }
+                else { onPanelChange(item.id as PanelId); }
+              }}
+              onMouseEnter={e => {
+                if (!showActive) e.currentTarget.style.background = navHoverBg;
+              }}
+              onMouseLeave={e => {
+                if (!showActive) e.currentTarget.style.background = 'transparent';
+              }}
+              title={item.label}
+            >
+              <span style={{ fontSize: isMenu ? 20 : 18, lineHeight: 1 }}>
+                {item.icon}
+              </span>
+              <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.1px' }}>
+                {item.label}
+              </span>
+            </button>
+          );
+        })}
+      </nav>
+    </>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+export default function POSPage() {
+  const navigate     = useNavigate();
+  const { isDark }   = useThemeStore();
+  const palette      = isDark ? darkC : lightC;
+  const C            = palette;
+  const qc           = useQueryClient();
+
+  const [turnoAbierto,  setTurnoAbierto]  = useState(() => Boolean(sessionStorage.getItem('pos_turno')));
+  const [search,        setSearch]        = useState('');
+  const [categoriaTab,  setCategoriaTab]  = useState<string>('__all__');
+  const [cart,          setCart]          = useState<CartItem[]>(() => {
+    try {
+      const guardado = localStorage.getItem('pos-carrito-activo');
+      return guardado ? JSON.parse(guardado) : [];
+    } catch { return []; }
+  });
+  const [menuNavAbierto, setMenuNavAbierto] = useState(false);
+  const [panelActivo,    setPanelActivo]    = useState<PanelId>('items');
+  const [clienteId,     setClienteId]     = useState<number | undefined>();
+  // Persistir vendedorId y sucursalId en localStorage para sobrevivir recargas
+  const [vendedorId,    setVendedorId]    = useState<number | undefined>(() => {
+    const v = localStorage.getItem('pos_vendedor_id');
+    return v ? Number(v) : undefined;
+  });
+  const [sucursalId,    setSucursalId]    = useState<number | undefined>(() => {
+    const v = localStorage.getItem('pos_sucursal_id');
+    return v ? Number(v) : undefined;
+  });
+  const [modoFacturacion,    setModoFacturacion]    = useState<ModoFacturacion>('factura');
+  const [showNotaCredito,    setShowNotaCredito]    = useState(false);
+  // Barra superior — controles
+  const [modoBarcode,        setModoBarcode]        = useState(false);
+  const [barcodeInput,       setBarcodeInput]       = useState('');
+  const [showFiltros,        setShowFiltros]        = useState(false);
+  const [filtroStock,        setFiltroStock]        = useState<'todos'|'con-stock'|'sin-stock'|'bajo'>('todos');
+  const [showOrden,          setShowOrden]          = useState(false);
+  const [orden,              setOrden]              = useState<'nombre-az'|'nombre-za'|'precio-asc'|'precio-desc'|'stock-asc'|'stock-desc'>('nombre-az');
+  const barcodeRef = useRef<HTMLInputElement>(null);
+  const [showPago,           setShowPago]           = useState(false);
+  const [metodoPago,         setMetodoPago]         = useState<MetodoPago>('efectivo');
+  const [montoRecibido,      setMontoRecibido]      = useState(0);
+  const [sale,               setSale]               = useState<Sale | null>(null);
+  const [tipoNcf,            setTipoNcf]            = useState('E32');
+  const [ventasEnEspera,     setVentasEnEspera]     = useState<ParkedSale[]>([]);
+  const [isOffline,          setIsOffline]          = useState(!navigator.onLine);
+  // e-CF: datos del comprador y estado del loader
+  const [rncComprador,       setRncComprador]       = useState('');
+  const [razonSocialComp,    setRazonSocialComp]    = useState('');
+  const [numeroOrdenCompra,  setNumeroOrdenCompra]  = useState('');
+  const [guardarRncPerfil,   setGuardarRncPerfil]   = useState(false);
+  const [ecfStatus,          setEcfStatus]          = useState<'idle'|'loading'|'ok'|'pendiente'>('idle');
+  const [ecfEncf,            setEcfEncf]            = useState<string>('');
+  const searchRef = useRef<any>(null);
+  const { pendingCount, isSyncing, enqueue, sync } = useOfflineQueue();
+
+  // Offline detection
+  useEffect(() => {
+    const on  = () => setIsOffline(false);
+    const off = () => setIsOffline(true);
+    window.addEventListener('online',  on);
+    window.addEventListener('offline', off);
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
+  }, []);
+
+  // Al cargar, si hay un vendedorId guardado, verificar si su caja sigue abierta
+  // para omitir el modal de apertura automáticamente
+  useEffect(() => {
+    if (!vendedorId || turnoAbierto) return;
+    api.get(`/caja/hoy?vendedorId=${vendedorId}`)
+      .then((res: any) => {
+        const payload = res.data?.data ?? res.data;
+        const caja    = payload?.cajas ? payload.cajas[0] : payload;
+        if (caja?.estado === 'abierta') {
+          setTurnoAbierto(true);
+          sessionStorage.setItem('pos_turno', '1');
+        }
+      })
+      .catch(() => {});
+  }, []);   // solo al montar
+
+  // Queries
+  const { data: produtos, isLoading } = useQuery({
+    queryKey: ['pos-products', search],
+    queryFn:  () => productosApi.list(1, 120, search),
+  });
+  const { data: clientes } = useQuery({
+    queryKey: ['clientes-pos'],
+    queryFn:  () => clientesApi.list(1, 100),
+  });
+  const { data: vendedores = [] } = useQuery<any[]>({
+    queryKey: ['vendedores-sel'],
+    queryFn:  () => api.get('/vendedores').then((r: any) => r.data?.data ?? r.data),
+  });
+  const { data: sucursales = [] } = useQuery<any[]>({
+    queryKey: ['sucursales-pos'],
+    queryFn:  () => api.get('/sucursales').then((r: any) => r.data?.data ?? r.data ?? []),
+  });
+  const { data: empresa } = useQuery<any>({
+    queryKey: ['empresa-config-pos'],
+    queryFn:  () => configuracionApi.getEmpresa(),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // MSeller health — null=checking, true=online, false=offline
+  const { data: ecfOnline } = useQuery<boolean>({
+    queryKey: ['pos-ecf-health'],
+    queryFn: async () => {
+      try { await api.get('/ecf/secuencias?limit=1'); return true; }
+      catch { return false; }
+    },
+    staleTime: 0, refetchInterval: 30_000,
+  });
+
+  // Derived
+  const categorias = ['__all__', ...new Set((produtos?.data ?? [])
+    .map((p: any) => p.categoria).filter(Boolean) as string[])];
+  const productosFiltrados = (() => {
+    let list = (produtos?.data ?? []) as any[];
+    // Filtro categoría
+    if (categoriaTab !== '__all__') list = list.filter(p => p.categoria === categoriaTab);
+    // Filtro stock
+    if (filtroStock === 'con-stock')  list = list.filter(p => Number(p.stock) > 0);
+    if (filtroStock === 'sin-stock')  list = list.filter(p => Number(p.stock) <= 0);
+    if (filtroStock === 'bajo')       list = list.filter(p => Number(p.stock) > 0 && Number(p.stock) <= Number(p.stockMinimo ?? 3));
+    // Ordenar
+    list = [...list].sort((a, b) => {
+      if (orden === 'nombre-az')    return a.nombre.localeCompare(b.nombre);
+      if (orden === 'nombre-za')    return b.nombre.localeCompare(a.nombre);
+      if (orden === 'precio-asc')   return Number(a.precio) - Number(b.precio);
+      if (orden === 'precio-desc')  return Number(b.precio) - Number(a.precio);
+      if (orden === 'stock-asc')    return Number(a.stock) - Number(b.stock);
+      if (orden === 'stock-desc')   return Number(b.stock) - Number(a.stock);
+      return 0;
+    });
+    return list;
+  })();
+
+  // Obtiene el id del consumidor final de la lista de clientes
+  const consumidorFinalId = clientes?.data?.find((c: Cliente) =>
+    c.nombre?.toLowerCase().includes('consumidor') ||
+    c.rfc === '000000000' || c.rfc === '00000000000' ||
+    c.rncReceptor === '000000000' || c.rncReceptor === '00000000000'
+  )?.id as number | undefined;
+
+  // Helper: restablecer al consumidor final (en lugar de undefined)
+  const resetCliente = () => setClienteId(consumidorFinalId);
+
+  // Auto-seleccionar "Consumidor Final" como cliente por defecto al cargar
+  useEffect(() => {
+    if (!consumidorFinalId) return;
+    setClienteId(prev => prev === undefined ? consumidorFinalId : prev);
+  }, [consumidorFinalId]);
+
+  // Cliente seleccionado — RNC desde rncReceptor o rfc
+  const clienteSeleccionado = clientes?.data.find((c: Cliente) => c.id === clienteId);
+  const rncCliente = String(clienteSeleccionado?.rncReceptor ?? clienteSeleccionado?.rfc ?? '').trim();
+  const RNC_GENERICOS = new Set(['000000000', '00000000000', '']);
+  const clienteTieneRNC = /^\d{9}$/.test(rncCliente) && !RNC_GENERICOS.has(rncCliente);
+  const esClienteGenerico = !clienteId
+    || !clienteSeleccionado
+    || clienteSeleccionado.nombre?.toLowerCase().includes('consumidor')
+    || ['00000000000', '000000000', ''].includes(rncCliente);
+
+  // Totals
+  const subtotal   = cart.reduce((s, i) => s + i.precio * i.cantidad * (1 - i.descuento / 100), 0);
+  const iva        = cart.reduce((s, i) => { const sub = i.precio * i.cantidad * (1 - i.descuento / 100); return s + sub * (Number((i.produto as any).porcentajeIva) / 100); }, 0);
+  const total      = subtotal + iva;
+  // E44 (Zona Franca): ITBIS = 0 — Opción B: precio base sin ITBIS
+  const ivaEfectivo   = tipoNcf === 'E44' ? 0 : iva;
+  const totalEfectivo = tipoNcf === 'E44' ? subtotal : total;
+  const cambio        = metodoPago === 'efectivo' ? Math.max(0, montoRecibido - totalEfectivo) : 0;
+  const totalItems    = cart.reduce((s, i) => s + i.cantidad, 0);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'F2') { e.preventDefault(); searchRef.current?.focus(); }
+      if (e.key === 'F9' && cart.length > 0) {
+        e.preventDefault();
+        if (modoFacturacion === 'factura' || modoFacturacion === 'valor-fiscal') {
+          setMontoRecibido(totalEfectivo); setShowPago(true);
+        } else {
+          modoAltMut.mutate();
+        }
+      }
+      if (e.key === 'F4') { e.preventDefault(); setCart([]); }
+      if (e.key === 'Escape') setSearch('');
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [cart, total, totalEfectivo]);
+
+  // Persistir carrito en localStorage para sobrevivir navegación fuera del POS
+  useEffect(() => {
+    try { localStorage.setItem('pos-carrito-activo', JSON.stringify(cart)); }
+    catch { /* quota exceeded — ignorar */ }
+  }, [cart]);
+
+  // NCF auto-select + reset campos comprador al cambiar cliente
+  const onClienteChange = (id: number | undefined) => {
+    setClienteId(id);
+    setRncComprador(''); setRazonSocialComp(''); setNumeroOrdenCompra(''); setGuardarRncPerfil(false);
+    if (!id) { setTipoNcf('E32'); return; }
+    const cli = clientes?.data.find((c: Cliente) => c.id === id);
+    const rnc = String(cli?.rncReceptor ?? cli?.rfc ?? '').trim();
+    setTipoNcf(/^\d{9}$/.test(rnc) ? 'E31' : 'E32');
+  };
+
+  // Pre-llenar razón social con el nombre del cliente cuando no tiene RNC registrado
+  useEffect(() => {
+    if (tipoNcf === 'E32' || clienteTieneRNC) return;
+    if (razonSocialComp === '' && clienteSeleccionado?.nombre) {
+      setRazonSocialComp(clienteSeleccionado.nombre);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tipoNcf, clienteId]);
+
+  // Special price
+  // Cache de precios especiales por cliente — evita llamadas repetidas
+  const precioCache = useRef<Map<string, number | null>>(new Map());
+  useEffect(() => { precioCache.current.clear(); }, [clienteId]);
+
+  // Add to cart — agrega inmediatamente al precio base, luego actualiza en background
+  const addToCart = useCallback((produto: Prod) => {
+    const precioBase = Number(produto.precio);
+
+    // 1. Agregar al carrito de forma inmediata (sin esperar API)
+    setCart(prev => {
+      const idx = prev.findIndex(i => i.produto.id === produto.id);
+      if (idx >= 0) {
+        const u = [...prev];
+        if (u[idx].cantidad < Number(produto.stock)) u[idx].cantidad++;
+        return u;
+      }
+      return [{ produto, cantidad: 1, precio: precioBase, descuento: 0 }, ...prev];
+    });
+
+    // 2. Si hay cliente, consultar precio especial en background y actualizar
+    if (!clienteId) return;
+    const cacheKey = `${produto.id}-${clienteId}`;
+    if (precioCache.current.has(cacheKey)) {
+      const precioEsp = precioCache.current.get(cacheKey);
+      if (precioEsp !== null && precioEsp !== undefined) {
+        const descPct = Math.round(((precioBase - precioEsp) / precioBase) * 100);
+        setCart(prev => prev.map(i =>
+          i.produto.id === produto.id ? { ...i, precio: precioEsp, descuento: descPct } : i
+        ));
+      }
+      return;
+    }
+    api.get(`/precios/calcular?productoId=${produto.id}&clienteId=${clienteId}`)
+      .then(r => {
+        const d = r.data?.data ?? r.data;
+        const precioEsp = d?.origen !== 'precio_base' ? Number(d?.precioFinal) : null;
+        precioCache.current.set(cacheKey, precioEsp);
+        if (precioEsp) {
+          const descPct = Math.round(((precioBase - precioEsp) / precioBase) * 100);
+          setCart(prev => prev.map(i =>
+            i.produto.id === produto.id ? { ...i, precio: precioEsp, descuento: descPct } : i
+          ));
+        }
+      })
+      .catch(() => { precioCache.current.set(cacheKey, null); });
+  }, [clienteId]);
+
+  const updateQty    = (idx: number, delta: number) => setCart(prev => { const u=[...prev]; u[idx].cantidad = Math.min(Number(u[idx].produto.stock), Math.max(1, u[idx].cantidad + delta)); return u; });
+  const removeItem   = (idx: number) => setCart(p => p.filter((_, i) => i !== idx));
+  const setDescuento = (idx: number, pct: number) => setCart(p => { const u=[...p]; u[idx].descuento = pct; return u; });
+
+  // Búsqueda por código de barras → agrega al carrito directamente
+  const handleBarcode = useCallback(async (code: string) => {
+    const trimmed = code.trim();
+    if (!trimmed) return;
+    const found = (produtos?.data ?? []).find((p: any) =>
+      p.codigo?.toLowerCase() === trimmed.toLowerCase() || String(p.id) === trimmed
+    );
+    if (found) {
+      await addToCart(found as Prod);
+      setBarcodeInput('');
+      message.success(`${(found as any).nombre} agregado`, 1);
+    } else {
+      message.warning(`Código "${trimmed}" no encontrado`, 2);
+      setBarcodeInput('');
+    }
+  }, [produtos, addToCart]);
+
+  // Hold sales
+  const parkSale = () => {
+    if (!cart.length) return;
+    setVentasEnEspera(prev => [...prev, { id: Date.now().toString(), items: [...cart], clienteId, label: `Venta ${prev.length + 1} — ${fmt.money(total)}` }]);
+    setCart([]); resetCliente();
+    message.info('Venta guardada en espera');
+  };
+  const restoreSale = (id: string) => {
+    const v = ventasEnEspera.find(x => x.id === id);
+    if (!v) return;
+    setCart(v.items); setClienteId(v.clienteId);
+    setVentasEnEspera(prev => prev.filter(x => x.id !== id));
+  };
+
+  // Sale mutation — con soporte offline
+  const ventaMut = useMutation({
+    mutationFn: async () => {
+      const vendedor = vendedores.find((v: any) => v.id === vendedorId);
+      const tipoEcfNum = Number(tipoNcf.replace('E', ''));
+      const payload = {
+        clienteId: clienteId ?? (
+          clientes?.data?.find((c: Cliente) =>
+            c.nombre?.toLowerCase().includes('consumidor') ||
+            c.rfc === '00000000000' || c.rfc === '000000000'
+          )?.id ?? clientes?.data?.[0]?.id ?? 1
+        ),
+        fecha:          dayjs().format('YYYY-MM-DD'),
+        tipoNcf,
+        notas:          `POS · ${METODOS.find(m => m.key === metodoPago)?.label}`,
+        vendedorId,
+        nombreVendedor: vendedor?.nombre,
+        sucursalId,
+        detalles: cart.map(i => ({
+          productoId:     i.produto.id,
+          cantidad:       i.cantidad,
+          precioUnitario: i.precio * (1 - i.descuento / 100),
+          descripcion:    i.produto.nombre,
+          // E44 (Zona Franca): ITBIS = 0 en todos los ítems
+          ...(tipoNcf === 'E44' ? { porcentajeIva: 0 } : {}),
+        })),
+      };
+
+      // Si offline → encolar localmente
+      if (!navigator.onLine) {
+        const offlineId = await enqueue(payload);
+        return {
+          id:    -1,
+          folio: `POS-OFFLINE-${offlineId.slice(-6).toUpperCase()}`,
+          _offline: true,
+        } as any;
+      }
+
+      const factura = await facturasApi.create(payload);
+
+      // Emitir desde POS (síncrono 8s — la venta no se bloquea si MSeller falla)
+      setEcfStatus('loading');
+
+      // Guardar RNC en el perfil del cliente si el cajero marcó el checkbox
+      if (guardarRncPerfil && clienteId && rncComprador && !clienteTieneRNC) {
+        clientesApi.update(clienteId, { rfc: rncComprador }).then(() => {
+          qc.invalidateQueries({ queryKey: ['clientes-pos'] });
+        }).catch(() => {});
+      }
+
+      // Construir datosComprador: desde el cliente si tiene RNC, o desde el formulario
+      const datosComprador = clienteTieneRNC
+        ? {
+            rnc:         rncCliente,
+            razonSocial: clienteSeleccionado?.nombre,
+            direccion:   clienteSeleccionado?.direccion,
+          }
+        : {
+            ...(rncComprador    ? { rnc:              rncComprador }    : {}),
+            ...(razonSocialComp ? { razonSocial:       razonSocialComp } : {}),
+            ...(tipoNcf === 'E45' && numeroOrdenCompra ? { numeroOrdenCompra } : {}),
+          };
+
+      try {
+        const emitResult = await facturasApi.emitirPos(factura.id, {
+          tipoEcf:        tipoEcfNum,
+          datosComprador: Object.keys(datosComprador).length ? datosComprador : undefined,
+        }) as any;
+        const encf  = emitResult?.encf ?? emitResult?.numero ?? '';
+        const estado = emitResult?.estado ?? emitResult?.estadoDGII ?? '';
+        setEcfEncf(encf);
+        setEcfStatus(['pendiente_envio', 'pendiente', 'contingencia'].includes(estado) ? 'pendiente' : 'ok');
+        return { factura, ecfResult: emitResult };
+      } catch {
+        setEcfStatus('pendiente');
+        return { factura, ecfResult: null };
+      }
+    },
+    onSuccess: (result) => {
+      const factura = (result as any)?.factura ?? result;
+      const ecfResult = (result as any)?.ecfResult;
+      if ((factura as any)._offline) {
+        message.warning(`Venta guardada offline (${factura.folio}). Se sincronizará al reconectarse.`, 5);
+      }
+      const encfFinal    = ecfResult?.encf ?? (ecfEncf || undefined);
+      const securityCode = ecfResult?.securityCode ?? undefined;
+      const qrUrl        = ecfResult?.qrUrl ?? undefined;
+      const estadoEcf    = ecfResult?.estado ?? ecfResult?.estadoDGII ?? '';
+      const ecfFecha     = ecfResult?.ecf?.ultimoIntentoEnvio
+        ? dayjs(ecfResult.ecf.ultimoIntentoEnvio).format('DD-MM-YYYY HH:mm:ss')
+        : dayjs().format('DD-MM-YYYY HH:mm:ss');
+      setSale({
+        folio:                   factura.folio,
+        total:                   totalEfectivo,
+        cambio,
+        metodo:                  metodoPago,
+        items:                   [...cart],
+        cliente:                 clientes?.data.find((c: Cliente) => c.id === clienteId)?.nombre,
+        iva:                     ivaEfectivo,
+        subtotal,
+        facturaId:               factura.id > 0 ? factura.id : undefined,
+        tipoNcf,
+        encf:                    encfFinal,
+        ecfPendiente:            ['pendiente_envio', 'pendiente', 'contingencia'].includes(estadoEcf),
+        ecfFecha,
+        rncComprador:            clienteTieneRNC ? rncCliente : (rncComprador || undefined),
+        razonSocial:             clienteTieneRNC ? clienteSeleccionado?.nombre : (razonSocialComp || undefined),
+        securityCode,
+        qrUrl,
+        cajero:                  cajeroNombre,
+        empresaNombreComercial:  empresa?.nombre ?? empresaNombre,
+        empresaRnc:              empresa?.rnc ?? undefined,
+        empresaDireccion:        empresa?.direccion ?? undefined,
+        empresaTelefono:         empresa?.telefono ?? undefined,
+      });
+      setShowPago(false);
+      setRncComprador(''); setRazonSocialComp(''); setNumeroOrdenCompra(''); setGuardarRncPerfil(false);
+      setCart([]); resetCliente(); setVendedorId(undefined); setMontoRecibido(0);
+      qc.invalidateQueries({ queryKey: ['pos-panel', 'facturas'] });
+      qc.refetchQueries({    queryKey: ['pos-panel', 'facturas'] });
+    },
+    onError: (e: any) => { setEcfStatus('idle'); message.error(e?.response?.data?.errors?.[0] ?? 'Error al procesar la venta'); },
+  });
+
+  // ── Mutación para modos alternativos (sin cobro) ────────────────────────────
+  const modoAltMut = useMutation({
+    mutationFn: async () => {
+      const detalles = cart.map(i => ({
+        productoId:     i.produto.id,
+        descripcion:    i.produto.nombre,
+        cantidad:       i.cantidad,
+        precioUnitario: i.precio * (1 - i.descuento / 100),
+        porcentajeIva:  Number((i.produto as any).porcentajeIva ?? 18),
+      }));
+      const base = {
+        clienteId: clienteId ?? undefined,
+        fecha:     dayjs().format('YYYY-MM-DD'),
+        detalles,
+        vendedorId, nombreVendedor: vendedores.find((v: any) => v.id === vendedorId)?.nombre,
+        sucursalId,
+        notas: `POS · ${MODOS_FACTURACION.find(m => m.id === modoFacturacion)?.label}`,
+      };
+
+      if (modoFacturacion === 'cotizacion' || modoFacturacion === 'pro-forma') {
+        return api.post('/cotizaciones', { ...base, validezDias: 30 });
+      }
+      if (modoFacturacion === 'pre-factura') {
+        return api.post('/pre-facturas', { ...base, tipoNcf: tipoNcf });
+      }
+      if (modoFacturacion === 'conduce') {
+        const cliente = clientes?.data.find((c: Cliente) => c.id === clienteId);
+        return api.post('/conduces', {
+          ...base,
+          direccionEntrega: cliente?.direccion ?? 'Por definir',
+          contactoEntrega:  cliente?.nombre,
+        });
+      }
+      // valor-fiscal → factura normal
+      return facturasApi.create({ ...base, tipoNcf, clienteId: base.clienteId ?? 1 });
+    },
+    onSuccess: () => {
+      const modo = MODOS_FACTURACION.find(m => m.id === modoFacturacion);
+      message.success(`${modo?.icon} ${modo?.label} creada exitosamente`);
+      // Invalidar el panel correspondiente para que se actualice automáticamente
+      const panelMap: Record<string, string> = {
+        'cotizacion':   'cotizaciones',
+        'pro-forma':    'cotizaciones',
+        'pre-factura':  'pre-facturas',
+        'conduce':      'conduce',
+        'valor-fiscal': 'facturas',
+      };
+      const panelKey = panelMap[modoFacturacion];
+      if (panelKey) {
+        // invalidate (marca stale) + refetch (fuerza actualización inmediata si está montado)
+        qc.invalidateQueries({ queryKey: ['pos-panel', panelKey] });
+        qc.refetchQueries({ queryKey: ['pos-panel', panelKey] });
+        // Navegar al panel recién creado para que el usuario vea el resultado
+        setPanelActivo(panelKey as PanelId);
+      }
+      setCart([]); resetCliente(); setVendedorId(undefined);
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error al crear documento'),
+  });
+
+  // User info
+  const empresaNombre = localStorage.getItem('empresa_nombre') || localStorage.getItem('empresaNombre') || 'HiCloud ERP';
+  const cajeroNombre  = vendedores.find((v: any) => v.id === vendedorId)?.nombre
+                        || localStorage.getItem('user_name') || localStorage.getItem('nombre') || 'Cajero';
+
+  // necesitaRnc: el tipo lo exige Y el cliente no lo aporta automáticamente
+  const tipoExigeRnc = tipoNcf === 'E31' || tipoNcf === 'E44' || tipoNcf === 'E45' || totalEfectivo >= 250_000;
+  const necesitaRnc  = tipoExigeRnc && !clienteTieneRNC;
+  const rncValido    = clienteTieneRNC || /^\d{9}$|^\d{11}$/.test(rncComprador);
+  const canPay       = metodoPago !== 'efectivo' || montoRecibido >= totalEfectivo;
+  const canCheckout  = canPay && (!tipoExigeRnc || rncValido);
+
+  return (
+    <ThemeCtx.Provider value={palette}>
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 50,
+      display: 'flex', flexDirection: 'column',
+      background: palette.bg, fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
+      color: palette.text, overflow: 'hidden',
+    }}>
+      {/* Hidden receipt for printing */}
+      <div id={RECEIPT_ID} style={{ display: 'none' }}>
+        {sale && <ThermalReceipt sale={sale} />}
+      </div>
+
+      <ModalAperturaTurno open={!turnoAbierto} vendedores={vendedores} sucursales={sucursales}
+        onAbrir={(m, vid, sid) => {
+          setTurnoAbierto(true);
+          sessionStorage.setItem('pos_turno', '1');
+          if (vid) {
+            setVendedorId(vid);
+            localStorage.setItem('pos_vendedor_id', String(vid));
+          }
+          if (sid) {
+            setSucursalId(sid);
+            localStorage.setItem('pos_sucursal_id', String(sid));
+          }
+        }}
+        onCancelar={() => navigate('/dashboard')} />
+      <ModalExito sale={sale} onNueva={() => setSale(null)} />
+      <POSNotaCreditoModal open={showNotaCredito} onClose={() => setShowNotaCredito(false)} palette={palette} />
+
+      {/* Indicador de ventas offline pendientes */}
+      {pendingCount > 0 && (
+        <div style={{ position:'fixed', bottom:16, right:16, zIndex:300,
+          background: isSyncing ? '#2563EB' : '#D97706', color:'#fff',
+          borderRadius:12, padding:'10px 16px', boxShadow:'0 4px 16px rgba(0,0,0,.3)',
+          display:'flex', alignItems:'center', gap:10, fontSize:13, fontWeight:600 }}>
+          {isSyncing ? '⏳ Sincronizando...' : `📶 ${pendingCount} venta(s) offline`}
+          {!isSyncing && navigator.onLine && (
+            <button onClick={sync} style={{ background:'rgba(255,255,255,.2)', border:'none',
+              borderRadius:6, color:'#fff', cursor:'pointer', padding:'3px 8px', fontSize:12 }}>
+              Sincronizar
+            </button>
+          )}
+        </div>
+      )}
+
+      <TopBar empresaNombre={empresaNombre} cajeroNombre={cajeroNombre} isOffline={isOffline}
+        modoFacturacion={modoFacturacion} onModoChange={setModoFacturacion}
+        tipoNcf={tipoNcf} onTipoNcfChange={setTipoNcf}
+        ecfOnline={ecfOnline ?? null}
+        onExit={() => {
+          sessionStorage.removeItem('pos_turno');
+          localStorage.removeItem('pos_vendedor_id');
+          navigate('/dashboard');
+        }} />
+
+      {/* Layout principal: columna izquierda (productos + nav) y columna derecha (carrito) */}
+      <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }}>
+
+        {/* Columna izquierda: productos + barra nav inferior */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+        {/* Center: productos o panel activo */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: C.bg }}>
+        {panelActivo !== 'items' && (
+          <POSPanel
+            panel={panelActivo}
+            palette={palette}
+            onVolver={() => setPanelActivo('items')}
+          />
+        )}
+        {panelActivo === 'items' && (<>
+
+          {/* ── Barra superior modernizada ─────────────────────────────── */}
+          <div style={{ padding: '10px 14px 0', flexShrink: 0, borderBottom: `1px solid ${C.border}` }}>
+            {/* Fila 1: búsqueda + acciones */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+              {/* Search */}
+              <div style={{ flex: 1, position: 'relative' }}>
+                <SearchOutlined style={{ position:'absolute', left:11, top:'50%', transform:'translateY(-50%)', color: C.textSub, fontSize:14, zIndex:1 }} />
+                <input ref={searchRef} value={search} onChange={e=>setSearch(e.target.value)}
+                  placeholder="Buscar producto... (F2)"
+                  style={{ width:'100%', height:38, paddingLeft:34, paddingRight:search?30:12,
+                    background: C.card, border:`1px solid ${C.border}`,
+                    borderRadius:10, color:C.text, fontSize:13, outline:'none', boxSizing:'border-box' }} />
+                {search && (
+                  <button onClick={()=>setSearch('')} style={{ position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',
+                    background:'none',border:'none',color:C.textSub,cursor:'pointer',fontSize:14,outline:'none' }}>✕</button>
+                )}
+              </div>
+              {/* ── Botón FILTRAR ── */}
+              <div style={{ position:'relative' }}>
+                <button
+                  onClick={() => { setShowFiltros(v=>!v); setShowOrden(false); }}
+                  style={{
+                    height:38, padding:'0 14px', borderRadius:10,
+                    border:`1px solid ${filtroStock!=='todos'||showFiltros ? C.blue : C.border2}`,
+                    background: filtroStock!=='todos'||showFiltros ? (C===darkC?'rgba(59,130,246,.2)':'#EFF6FF') : C.card,
+                    color: filtroStock!=='todos'||showFiltros ? C.blue : C.text,
+                    fontSize:12, fontWeight:600, cursor:'pointer', outline:'none',
+                    display:'flex', alignItems:'center', gap:6, whiteSpace:'nowrap',
+                  }}>
+                  <span style={{fontSize:14}}>⊟</span> Filtrar
+                  {filtroStock!=='todos' && <span style={{ background:C.blue, color:'#fff', borderRadius:10, padding:'0 5px', fontSize:10 }}>1</span>}
+                </button>
+                {showFiltros && (
+                  <>
+                    <div onClick={()=>setShowFiltros(false)} style={{position:'fixed',inset:0,zIndex:200}}/>
+                    <div style={{ position:'absolute', top:'100%', left:0, marginTop:4, zIndex:201,
+                      background:C.card, border:`1px solid ${C.border2}`, borderRadius:10,
+                      overflow:'hidden', minWidth:180, boxShadow:'0 8px 24px rgba(0,0,0,.15)' }}>
+                      {[
+                        { id:'todos',      label:'Todos los productos', icon:'📦' },
+                        { id:'con-stock',  label:'Con stock disponible',icon:'✅' },
+                        { id:'sin-stock',  label:'Sin stock',           icon:'❌' },
+                        { id:'bajo',       label:'Stock bajo mínimo',   icon:'⚠️' },
+                      ].map((f,i) => (
+                        <button key={f.id}
+                          onClick={()=>{ setFiltroStock(f.id as any); setShowFiltros(false); }}
+                          style={{
+                            width:'100%', padding:'10px 14px', border:'none',
+                            borderBottom:i<3?`1px solid ${C.border}`:'none',
+                            background:filtroStock===f.id?(C===darkC?'rgba(59,130,246,.15)':'#EFF6FF'):'transparent',
+                            color:filtroStock===f.id?C.blue:C.text,
+                            cursor:'pointer', outline:'none', textAlign:'left',
+                            display:'flex', alignItems:'center', gap:10, fontSize:13,
+                          }}>
+                          <span style={{fontSize:16}}>{f.icon}</span>
+                          <span style={{fontWeight:filtroStock===f.id?700:400}}>{f.label}</span>
+                          {filtroStock===f.id && <span style={{marginLeft:'auto',color:C.blue}}>✓</span>}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* ── Botón ORDENAR ── */}
+              <div style={{ position:'relative' }}>
+                <button
+                  onClick={() => { setShowOrden(v=>!v); setShowFiltros(false); }}
+                  style={{
+                    height:38, padding:'0 14px', borderRadius:10,
+                    border:`1px solid ${orden!=='nombre-az'||showOrden ? C.blue : C.border2}`,
+                    background: orden!=='nombre-az'||showOrden ? (C===darkC?'rgba(59,130,246,.2)':'#EFF6FF') : C.card,
+                    color: orden!=='nombre-az'||showOrden ? C.blue : C.text,
+                    fontSize:12, fontWeight:600, cursor:'pointer', outline:'none',
+                    display:'flex', alignItems:'center', gap:6, whiteSpace:'nowrap',
+                  }}>
+                  <span style={{fontSize:14}}>⇅</span> Ordenar
+                </button>
+                {showOrden && (
+                  <>
+                    <div onClick={()=>setShowOrden(false)} style={{position:'fixed',inset:0,zIndex:200}}/>
+                    <div style={{ position:'absolute', top:'100%', right:0, marginTop:4, zIndex:201,
+                      background:C.card, border:`1px solid ${C.border2}`, borderRadius:10,
+                      overflow:'hidden', minWidth:200, boxShadow:'0 8px 24px rgba(0,0,0,.15)' }}>
+                      {[
+                        { id:'nombre-az',   label:'Nombre A → Z',       icon:'🔤' },
+                        { id:'nombre-za',   label:'Nombre Z → A',       icon:'🔤' },
+                        { id:'precio-asc',  label:'Precio: menor a mayor', icon:'💲' },
+                        { id:'precio-desc', label:'Precio: mayor a menor', icon:'💲' },
+                        { id:'stock-desc',  label:'Mayor stock primero', icon:'📦' },
+                        { id:'stock-asc',   label:'Menor stock primero', icon:'📦' },
+                      ].map((o,i) => (
+                        <button key={o.id}
+                          onClick={()=>{ setOrden(o.id as any); setShowOrden(false); }}
+                          style={{
+                            width:'100%', padding:'9px 14px', border:'none',
+                            borderBottom:i<5?`1px solid ${C.border}`:'none',
+                            background:orden===o.id?(C===darkC?'rgba(59,130,246,.15)':'#EFF6FF'):'transparent',
+                            color:orden===o.id?C.blue:C.text,
+                            cursor:'pointer', outline:'none', textAlign:'left',
+                            display:'flex', alignItems:'center', gap:10, fontSize:12,
+                          }}>
+                          <span style={{fontSize:15}}>{o.icon}</span>
+                          <span style={{fontWeight:orden===o.id?700:400}}>{o.label}</span>
+                          {orden===o.id && <span style={{marginLeft:'auto',color:C.blue}}>✓</span>}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Fila 2: conteo + categorías */}
+            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
+              <span style={{ fontSize:12, color:C.textSub, whiteSpace:'nowrap', flexShrink:0 }}>
+                <b style={{color:C.text}}>{productosFiltrados.length}</b> productos
+                {categoriaTab !== '__all__' && <> · <span style={{color:C.blue}}>{categoriaTab}</span></>}
+                {categoriaTab === '__all__' && <> · Todos</>}
+              </span>
+              {/* Categorías scroll */}
+              <div style={{ flex:1, display:'flex', gap:6, overflowX:'auto', paddingBottom:2, scrollbarWidth:'none' }}>
+                {categorias.map(cat => {
+                  const active = categoriaTab === cat;
+                  return (
+                    <button key={cat} onClick={()=>setCategoriaTab(cat)} style={{
+                      flexShrink:0, height:28, padding:'0 12px', borderRadius:20,
+                      border: active ? 'none' : `1px solid ${C.border2}`,
+                      background: active ? C.blue : 'transparent',
+                      color: active ? '#fff' : C.textSub,
+                      fontSize:11, fontWeight: active?700:500,
+                      cursor:'pointer', outline:'none', whiteSpace:'nowrap',
+                      transition:'all 0.12s',
+                    }}>
+                      {cat === '__all__' ? 'Todos' : cat}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* ── Grid de productos modernizado ─────────────────────────── */}
+          <div style={{ flex:1, overflowY:'auto', padding:'14px 14px', scrollbarWidth:'thin', scrollbarColor: C.border+' transparent' }}>
+            {isLoading ? (
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:200 }}>
+                <Spin size="large" />
+              </div>
+            ) : productosFiltrados.length === 0 ? (
+              <Empty description={<span style={{color:C.textSub}}>Sin productos</span>} style={{marginTop:60}} />
+            ) : (
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))', gap:10 }}>
+                {productosFiltrados.map((p: any) => (
+                  <ProductCard key={p.id} produto={p} onAdd={addToCart} />
+                ))}
+              </div>
+            )}
+          </div>
+        </>)}
+        </div>{/* /center productos */}
+
+        {/* Barra nav — solo bajo la columna izquierda */}
+        <POSBottomNav
+          palette={palette}
+          menuAbierto={menuNavAbierto}
+          panelActivo={panelActivo}
+          onMenuToggle={() => setMenuNavAbierto(v => !v)}
+          onPanelChange={(p) => {
+            if ((p as string) === 'nueva-nc') { setShowNotaCredito(true); setMenuNavAbierto(false); }
+            else { setPanelActivo(p); setMenuNavAbierto(false); }
+          }}
+          onNavigate={(ruta) => { setMenuNavAbierto(false); navigate(ruta); }}
+        />
+
+        </div>{/* /columna izquierda */}
+
+        {/* Right: carrito — altura completa de pantalla, Cobrar pegado al fondo */}
+        <div style={{ width: 380, flexShrink: 0, background: C.sidebar, borderLeft: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {/* Cart header */}
+          <div style={{ padding: '12px 14px', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+            {/* Customer */}
+            <Select showSearch allowClear placeholder="Cliente (opcional)" style={{ width: '100%', marginBottom: 8 }}
+              value={clienteId} onChange={onClienteChange}
+              filterOption={(i, o) => String(o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
+              options={clientes?.data.map((c: Cliente) => ({ value: c.id, label: c.nombre }))} />
+            {/* Title row */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <ShoppingCartOutlined style={{ color: C.blue, fontSize: 16 }} />
+                <span style={{ fontWeight: 600, color: C.text, fontSize: 14 }}>Carrito</span>
+                {totalItems > 0 && <Badge count={totalItems} style={{ background: C.blue }} />}
+              </div>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {cart.length > 0 && (
+                  <Tooltip title="Apartar venta">
+                    <button onClick={parkSale} style={{ height: 26, padding: '0 8px', borderRadius: 6, border: `1px solid ${C.border2}`, background: 'transparent', color: C.textSub, cursor: 'pointer', fontSize: 11, outline: 'none' }}>⏸</button>
+                  </Tooltip>
+                )}
+                {ventasEnEspera.length > 0 && (
+                  <Popover placement="bottomRight" title="Ventas en espera"
+                    content={
+                      <div style={{ minWidth: 220 }}>
+                        {ventasEnEspera.map(v => (
+                          <div key={v.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #f0f0f0' }}>
+                            <span style={{ fontSize: 12 }}>{v.label}</span>
+                            <button onClick={() => restoreSale(v.id)} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, border: 'none', background: C.blue, color: '#fff', cursor: 'pointer', outline: 'none' }}>Recuperar</button>
+                          </div>
+                        ))}
+                      </div>
+                    } trigger="click">
+                    <button style={{ height: 26, padding: '0 8px', borderRadius: 6, border: `1px solid ${C.orange}55`, background: C.orange+'11', color: C.orange, cursor: 'pointer', fontSize: 11, fontWeight: 600, outline: 'none' }}>
+                      ⏭ {ventasEnEspera.length}
+                    </button>
+                  </Popover>
+                )}
+                {cart.length > 0 && (
+                  <Tooltip title="Vaciar (F4)">
+                    <button onClick={() => setCart([])} style={{ height: 26, width: 26, borderRadius: 6, border: `1px solid ${C.red}33`, background: C.red+'11', color: C.red, cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', outline: 'none' }}>✕</button>
+                  </Tooltip>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Items */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '0 14px', scrollbarWidth: 'thin', scrollbarColor: C.border + ' transparent' }}>
+            {cart.length === 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 10, opacity: 0.3 }}>
+                <ShoppingCartOutlined style={{ fontSize: 48, color: C.textMuted }} />
+                <span style={{ color: C.textSub, fontSize: 13 }}>Selecciona productos</span>
+                <span style={{ color: C.textMuted, fontSize: 11 }}>F2 buscar · F9 cobrar · F4 limpiar</span>
+              </div>
+            ) : (
+              <AnimatePresence>
+                {cart.map((item, idx) => (
+                  <CartRow key={item.produto.id} item={item}
+                    onQty={d => updateQty(idx, d)}
+                    onRemove={() => removeItem(idx)}
+                    onDescuento={p => setDescuento(idx, p)} />
+                ))}
+              </AnimatePresence>
+            )}
+          </div>
+
+          {/* Totals + checkout — siempre visible al fondo, contenido condicional */}
+          <div style={{ padding: cart.length > 0 ? '14px' : '10px 14px', borderTop: `1px solid ${C.border}`, flexShrink: 0, background: C.totalsBg }}>
+          {cart.length > 0 && (<>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                <span style={{ fontSize: 12, color: C.textSub }}>Subtotal</span>
+                <span style={{ fontSize: 12, color: C.text }}>{fmt.money(subtotal)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                <span style={{ fontSize: 12, color: C.textSub }}>
+                  {tipoNcf === 'E44' ? 'ITBIS (Exento)' : 'ITBIS (18%)'}
+                </span>
+                <span style={{ fontSize: 12, color: tipoNcf === 'E44' ? C.green : C.text }}>
+                  {tipoNcf === 'E44' ? 'RD$ 0.00' : fmt.money(iva)}
+                </span>
+              </div>
+              {tipoNcf === 'E44' && (
+                <div style={{ fontSize: 10, color: C.green, marginBottom: 3, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ background: C.green+'22', border: `1px solid ${C.green}44`, borderRadius: 4, padding: '1px 6px', fontWeight: 700 }}>EXENTO DE ITBIS</span>
+                  <span>−{fmt.money(iva)}</span>
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${C.border}`, paddingTop: 10, marginBottom: 8 }}>
+                <span style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Total</span>
+                <span style={{ fontSize: 24, fontWeight: 800, color: C.blue, fontVariantNumeric: 'tabular-nums' }}>{fmt.money(totalEfectivo)}</span>
+              </div>
+
+
+              {/* Botón de acción principal */}
+              {modoFacturacion === 'factura' || modoFacturacion === 'valor-fiscal' ? (
+                <motion.button whileTap={{ scale: 0.97 }}
+                  onClick={() => { setMontoRecibido(totalEfectivo); setShowPago(true); }}
+                  style={{ width: '100%', height: 52, borderRadius: 12, border: 'none',
+                    background: 'linear-gradient(135deg,#059669,#10B981)', color: '#fff',
+                    fontSize: 16, fontWeight: 700, cursor: 'pointer', outline: 'none',
+                    boxShadow: '0 4px 16px rgba(16,185,129,.4)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  ⚡ Cobrar {fmt.money(totalEfectivo)}
+                  <span style={{ fontSize: 10, opacity: 0.7, background: 'rgba(0,0,0,.25)', borderRadius: 4, padding: '1px 6px' }}>F9</span>
+                </motion.button>
+              ) : (
+                <motion.button whileTap={{ scale: 0.97 }}
+                  onClick={() => modoAltMut.mutate()}
+                  disabled={modoAltMut.isPending}
+                  style={{ width: '100%', height: 52, borderRadius: 12, border: 'none',
+                    background: modoAltMut.isPending ? '#94A3B8' : 'linear-gradient(135deg,#2563EB,#3B82F6)',
+                    color: '#fff', fontSize: 15, fontWeight: 700,
+                    cursor: modoAltMut.isPending ? 'not-allowed' : 'pointer',
+                    outline: 'none', boxShadow: modoAltMut.isPending ? 'none' : '0 4px 16px rgba(37,99,235,.4)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  {modoAltMut.isPending ? '⏳ Creando...' : (
+                    <>
+                      {MODOS_FACTURACION.find(m => m.id === modoFacturacion)?.icon}{' '}
+                      Crear {MODOS_FACTURACION.find(m => m.id === modoFacturacion)?.label}
+                      {' · '}{fmt.money(totalEfectivo)}
+                    </>
+                  )}
+                </motion.button>
+              )}
+            </>)}
+            {cart.length === 0 && (
+              <motion.button disabled
+                style={{ width: '100%', height: 52, borderRadius: 12, border: 'none',
+                  background: C.border2, color: C.textMuted,
+                  fontSize: 15, fontWeight: 700, cursor: 'not-allowed', outline: 'none',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: 0.45 }}>
+                ⚡ Cobrar
+                <span style={{ fontSize: 10, background: 'rgba(0,0,0,.12)', borderRadius: 4, padding: '1px 6px' }}>F9</span>
+              </motion.button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Payment modal ─────────────────────────────────────────────────────── */}
+      <Modal open={showPago} onCancel={() => setShowPago(false)} footer={null} width={420} centered closable={false} destroyOnClose
+        styles={{ body: { padding: 0 }, content: { borderRadius: 20, overflow: 'hidden', padding: 0, background: C.card } }}>
+        <div style={{ display: 'flex', flexDirection: 'column', height: 'min(90vh,590px)', overflow: 'hidden', fontFamily: "'Inter',sans-serif" }}>
+
+          {/* Header */}
+          <div style={{ flexShrink: 0, background: 'linear-gradient(135deg,#0F172A,#1E40AF)', padding: '10px 16px', borderRadius: '20px 20px 0 0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+              <span style={{ fontSize: 10, color: 'rgba(255,255,255,.55)', textTransform: 'uppercase', letterSpacing: '0.8px', fontWeight: 600 }}>
+                COBRO · {cart.length} ítem{cart.length !== 1 ? 's' : ''}
+              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 11, color: 'rgba(255,255,255,.65)', fontVariantNumeric: 'tabular-nums' }}><LiveClock /></span>
+                <button onClick={() => setShowPago(false)} style={{ width: 24, height: 24, borderRadius: 6, border: 'none', background: 'rgba(255,255,255,.12)', color: '#fff', cursor: 'pointer', outline: 'none', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+              </div>
+            </div>
+            <div style={{ fontSize: 28, fontWeight: 800, color: '#fff', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{fmt.money(totalEfectivo)}</div>
+            {tipoNcf === 'E44' && iva > 0 && (
+              <div style={{ fontSize: 11, color: '#6EE7B7', marginTop: 2 }}>
+                EXENTO DE ITBIS · ahorro {fmt.money(iva)}
+              </div>
+            )}
+          </div>
+
+          {/* Método de pago */}
+          <div style={{ flexShrink: 0, padding: '10px 16px 8px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+            <div style={{ fontSize: 9, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 5 }}>Método de pago</div>
+            <div style={{ display: 'flex', gap: 5 }}>
+              {([
+                { key: 'efectivo', icon: '💵', label: 'Efectivo', color: '#15803D', bg: '#F0FDF4', border: '#86EFAC' },
+                { key: 'tarjeta', icon: '💳', label: 'Tarjeta', color: '#1D4ED8', bg: '#EFF6FF', border: '#93C5FD' },
+                { key: 'transferencia', icon: '🏦', label: 'Transfer.', color: '#6D28D9', bg: '#F5F3FF', border: '#C4B5FD' },
+              ] as const).map(m => {
+                const act = metodoPago === m.key;
+                return (
+                  <button key={m.key} onClick={() => setMetodoPago(m.key as MetodoPago)} style={{ flex: 1, height: 34, borderRadius: 7, border: act ? `1.5px solid ${m.border}` : '1.5px solid #E2E8F0', background: act ? m.bg : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, outline: 'none', transition: 'all 0.12s' }}>
+                    <span style={{ fontSize: 12 }}>{m.icon}</span>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: act ? m.color : '#475569' }}>{m.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ── Sección datos del comprador — dinámica según escenario ───── */}
+          {tipoExigeRnc && (
+            <div style={{ flexShrink: 0, padding: '8px 16px', background: '#FAFBFF', borderBottom: '1px solid #E2E8F0' }}>
+
+              {/* Badge de tipo (siempre visible cuando aplica) */}
+              {tipoNcf === 'E44' && (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#ECFDF5', border: '1px solid #6EE7B7', borderRadius: 6, padding: '2px 8px', marginBottom: 6, fontSize: 10, fontWeight: 700, color: '#059669' }}>
+                  ✓ EXENTO DE ITBIS — Zona Franca
+                </div>
+              )}
+              {tipoNcf === 'E45' && (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 6, padding: '2px 8px', marginBottom: 6, fontSize: 10, fontWeight: 700, color: '#D97706' }}>
+                  ⚑ ENTIDAD GUBERNAMENTAL
+                </div>
+              )}
+
+              {/* ── ESCENARIO 1: cliente seleccionado CON RNC → bloque informativo ── */}
+              {clienteTieneRNC ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#F0FDF4', border: '1px solid #86EFAC', borderRadius: 8, padding: '8px 12px' }}>
+                  <span style={{ fontSize: 18, flexShrink: 0 }}>✅</span>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: '#15803D', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 1 }}>
+                      {NCF_OPTS.find(o => o.code === tipoNcf)?.label ?? tipoNcf} a nombre de:
+                    </div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#065F46', fontFamily: 'monospace' }}>RNC: {rncCliente}</div>
+                    <div style={{ fontSize: 11, color: '#047857', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {clienteSeleccionado?.nombre}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* ── ESCENARIO 2 y 3: sin RNC → formulario de captura ── */
+                <>
+                  <div style={{ fontSize: 9, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 5 }}>
+                    {tipoNcf === 'E32' ? 'Identificación del comprador (obligatorio ≥ RD$250K)' : 'Datos del comprador *'}
+                  </div>
+
+                  {/* RNC */}
+                  <input
+                    placeholder={tipoNcf === 'E32' ? 'RNC o Cédula (9 u 11 dígitos) *' : 'RNC del comprador (9 dígitos) *'}
+                    value={rncComprador}
+                    onChange={e => setRncComprador(e.target.value.replace(/\D/g, ''))}
+                    maxLength={11}
+                    autoFocus={tipoNcf !== 'E32'}
+                    style={{ width: '100%', padding: '6px 10px', borderRadius: 7, border: `1.5px solid ${necesitaRnc && rncComprador.length > 0 && !rncValido ? '#FCA5A5' : '#E2E8F0'}`, fontSize: 13, fontFamily: 'monospace', outline: 'none', letterSpacing: 2, marginBottom: 5, boxSizing: 'border-box', background: '#fff' }}
+                  />
+
+                  {/* Razón Social — E31/E44/E45 */}
+                  {tipoNcf !== 'E32' && (
+                    <input
+                      placeholder="Razón Social / Nombre de la empresa *"
+                      value={razonSocialComp}
+                      onChange={e => setRazonSocialComp(e.target.value)}
+                      style={{ width: '100%', padding: '6px 10px', borderRadius: 7, border: '1.5px solid #E2E8F0', fontSize: 12, outline: 'none', marginBottom: 5, boxSizing: 'border-box', background: '#fff' }}
+                    />
+                  )}
+
+                  {/* Orden de Compra — E45 */}
+                  {tipoNcf === 'E45' && (
+                    <input
+                      placeholder="Número de Orden de Compra (opcional)"
+                      value={numeroOrdenCompra}
+                      onChange={e => setNumeroOrdenCompra(e.target.value)}
+                      style={{ width: '100%', padding: '6px 10px', borderRadius: 7, border: '1.5px solid #E2E8F0', fontSize: 12, outline: 'none', marginBottom: 5, boxSizing: 'border-box', background: '#fff' }}
+                    />
+                  )}
+
+                  {/* Guardar RNC en perfil — solo si hay cliente seleccionado que no es genérico */}
+                  {clienteId && !esClienteGenerico && tipoNcf !== 'E32' && (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 10, color: '#475569' }}>
+                      <input
+                        type="checkbox"
+                        checked={guardarRncPerfil}
+                        onChange={e => setGuardarRncPerfil(e.target.checked)}
+                        style={{ width: 13, height: 13, cursor: 'pointer' }}
+                      />
+                      Guardar RNC en el perfil de {clienteSeleccionado?.nombre}
+                    </label>
+                  )}
+
+                  {/* Validación */}
+                  {necesitaRnc && rncComprador.length > 0 && !rncValido && (
+                    <div style={{ fontSize: 10, color: '#EF4444', marginTop: 3 }}>
+                      Ingresa un RNC válido (9 dígitos) o cédula (11 dígitos)
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Numpad / card confirm */}
+          <div style={{ flex: 1, padding: '10px 16px 0', background: '#fff', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            {metodoPago === 'efectivo' ? (
+              <>
+                <div style={{ flexShrink: 0, display: 'flex', alignItems: 'baseline', gap: 4, borderBottom: '2px solid #3B82F6', paddingBottom: 4, marginBottom: 5 }}>
+                  <span style={{ fontSize: 12, color: '#94A3B8', fontWeight: 500 }}>RD$</span>
+                  <span style={{ flex: 1, textAlign: 'right', fontSize: 22, fontWeight: 700, color: '#0F172A', fontVariantNumeric: 'tabular-nums' }}>
+                    {montoRecibido > 0 ? montoRecibido.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : <span style={{ color: '#CBD5E1', fontWeight: 400, fontSize: 16 }}>0.00</span>}
+                  </span>
+                </div>
+                <div style={{ flexShrink: 0, display: 'flex', gap: 4, marginBottom: 5 }}>
+                  {[200, 500, 1000, 2000].map(a => (
+                    <button key={a} onClick={() => setMontoRecibido(a)} style={{ flex: 1, height: 26, borderRadius: 6, border: '1px solid #E2E8F0', background: '#F1F5F9', fontSize: 11, fontWeight: 700, color: '#475569', cursor: 'pointer', outline: 'none' }}>{a >= 1000 ? `${a/1000}K` : a}</button>
+                  ))}
+                  <button onClick={() => setMontoRecibido(totalEfectivo)} style={{ flex: 1, height: 26, borderRadius: 6, border: '1px solid #86EFAC', background: '#F0FDF4', fontSize: 11, fontWeight: 700, color: '#15803D', cursor: 'pointer', outline: 'none' }}>Exacto</button>
+                </div>
+                <div style={{ flexShrink: 0, height: 168 }}>
+                  <Numpad value={montoRecibido} onChange={setMontoRecibido} />
+                </div>
+              </>
+            ) : (
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ fontSize: 40, marginBottom: 10 }}>{metodoPago === 'tarjeta' ? '💳' : '🏦'}</div>
+                <div style={{ fontSize: 13, color: '#475569', marginBottom: 4 }}>Confirma el pago de</div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: '#0F172A', fontVariantNumeric: 'tabular-nums' }}>{fmt.money(totalEfectivo)}</div>
+                <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 4 }}>vía {metodoPago === 'tarjeta' ? 'tarjeta de crédito/débito' : 'transferencia bancaria'}</div>
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div style={{ flexShrink: 0, padding: '6px 16px 14px', background: '#fff', borderTop: '1px solid #F1F5F9' }}>
+            <AnimatePresence>
+              {metodoPago === 'efectivo' && montoRecibido >= totalEfectivo && cambio > 0 && (
+                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} style={{ overflow: 'hidden', marginBottom: 5 }}>
+                  <div style={{ background: '#F0FDF4', border: '1px solid #86EFAC', borderRadius: 7, padding: '5px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: '#15803D', textTransform: 'uppercase' }}>Cambio · recibido {fmt.money(montoRecibido)}</span>
+                    <span style={{ fontSize: 15, fontWeight: 800, color: '#15803D', fontVariantNumeric: 'tabular-nums' }}>{fmt.money(cambio)}</span>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <Tooltip
+              title={necesitaRnc && !rncValido ? 'Ingresa el RNC del comprador para continuar' : ''}
+            >
+              <motion.button whileTap={{ scale: canCheckout ? 0.97 : 1 }}
+                onClick={() => { if (canCheckout) ventaMut.mutate(); }}
+                disabled={ventaMut.isPending || !canCheckout}
+                style={{ width: '100%', height: 46, borderRadius: 11, border: 'none', background: !canCheckout ? '#D1D5DB' : 'linear-gradient(135deg,#059669,#10B981)', color: !canCheckout ? '#9CA3AF' : '#fff', fontSize: 14, fontWeight: 700, cursor: !canCheckout ? 'not-allowed' : 'pointer', boxShadow: !canCheckout ? 'none' : '0 4px 14px rgba(16,185,129,.35)', outline: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, letterSpacing: '0.2px' }}>
+                {ventaMut.isPending
+                  ? (<><span style={{ fontSize: 16 }}>⏳</span>
+                      {ecfStatus === 'loading'
+                        ? 'Enviando comprobante a DGII...'
+                        : 'Procesando venta...'}
+                     </>)
+                  : (<><span style={{ fontSize: 16 }}>✓</span> Confirmar cobro · {fmt.money(totalEfectivo)}</>)}
+              </motion.button>
+            </Tooltip>
+          </div>
+        </div>
+      </Modal>
+
+    </div>
+    </ThemeCtx.Provider>
+  );
+}
+

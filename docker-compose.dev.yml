@@ -1,0 +1,21 @@
+version: '3.9'
+
+# ── Desarrollo local: solo base de datos en Docker ──────────────────────────
+# Backend y frontend corren con npm run start:dev y npm run dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hicloud_db_dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       hicloud
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: Higlobal4691
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_dev_data:

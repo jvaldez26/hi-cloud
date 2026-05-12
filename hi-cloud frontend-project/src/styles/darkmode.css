@@ -1,0 +1,233 @@
+/**
+ * HiCloud ERP — Correcciones globales de modo oscuro
+ * Este archivo corrige los patrones más comunes de colores hardcodeados.
+ * Gracias a cssVar:true en ConfigProvider, --ant-color-* está disponible.
+ */
+
+/* ── Variables base ───────────────────────────────────────────────────────── */
+:root {
+  --hc-bg-page:      #f8fafc;
+  --hc-bg-card:      #ffffff;
+  --hc-bg-hover:     #f1f5f9;
+  --hc-text:         #1e293b;
+  --hc-text-2:       #64748b;
+  --hc-text-3:       #94a3b8;
+  --hc-border:       #e2e8f0;
+  --hc-border-light: #f1f5f9;
+  --hc-shadow:       rgba(0,0,0,0.06);
+  --hc-overlay:      rgba(0,0,0,0.45);
+}
+
+[data-theme="dark"] {
+  --hc-bg-page:      #0d1117;
+  --hc-bg-card:      #161b22;
+  --hc-bg-hover:     #1c2128;
+  --hc-text:         #e6edf3;
+  --hc-text-2:       #8b949e;
+  --hc-text-3:       #6e7681;
+  --hc-border:       #30363d;
+  --hc-border-light: #21262d;
+  --hc-shadow:       rgba(0,0,0,0.3);
+  --hc-overlay:      rgba(0,0,0,0.7);
+}
+
+/* ── Reset de fondo del body ──────────────────────────────────────────────── */
+body {
+  background-color: var(--hc-bg-page) !important;
+  color: var(--hc-text);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* ── Corregir fondos blancos en tablas ────────────────────────────────────── */
+[data-theme="dark"] .ant-table-wrapper .ant-table {
+  background: var(--hc-bg-card);
+}
+
+[data-theme="dark"] .ant-table-thead > tr > th,
+[data-theme="dark"] .ant-table-thead > tr > td {
+  background: var(--hc-bg-hover) !important;
+  border-bottom-color: var(--hc-border) !important;
+}
+
+[data-theme="dark"] .ant-table-tbody > tr:hover > td {
+  background: var(--hc-bg-hover) !important;
+}
+
+[data-theme="dark"] .ant-table-tbody > tr > td {
+  border-bottom-color: var(--hc-border-light) !important;
+}
+
+/* ── Inputs y formularios ─────────────────────────────────────────────────── */
+[data-theme="dark"] .ant-input,
+[data-theme="dark"] .ant-input-affix-wrapper,
+[data-theme="dark"] .ant-select-selector,
+[data-theme="dark"] .ant-picker {
+  background: var(--hc-bg-hover) !important;
+  border-color: var(--hc-border) !important;
+  color: var(--hc-text) !important;
+}
+
+[data-theme="dark"] .ant-input-number,
+[data-theme="dark"] .ant-input-number-input {
+  background: var(--hc-bg-hover) !important;
+  color: var(--hc-text) !important;
+}
+
+/* ── Cards ────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .ant-card {
+  background: var(--hc-bg-card);
+  border-color: var(--hc-border) !important;
+}
+
+[data-theme="dark"] .ant-card-head {
+  background: transparent;
+  border-bottom-color: var(--hc-border) !important;
+}
+
+/* ── Modal ────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .ant-modal-content {
+  background: var(--hc-bg-card) !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5) !important;
+}
+
+[data-theme="dark"] .ant-modal-header {
+  background: var(--hc-bg-card) !important;
+  border-bottom-color: var(--hc-border) !important;
+}
+
+/* ── Dropdown y Select ────────────────────────────────────────────────────── */
+[data-theme="dark"] .ant-dropdown-menu,
+[data-theme="dark"] .ant-select-dropdown,
+[data-theme="dark"] .ant-picker-dropdown {
+  background: var(--hc-bg-elevated, #1c2128) !important;
+  border: 1px solid var(--hc-border) !important;
+}
+
+[data-theme="dark"] .ant-dropdown-menu-item:hover,
+[data-theme="dark"] .ant-select-item-option-active {
+  background: var(--hc-bg-hover) !important;
+}
+
+/* ── Dividers ─────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .ant-divider {
+  border-color: var(--hc-border) !important;
+}
+
+/* ── Tabs ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .ant-tabs-nav::before {
+  border-bottom-color: var(--hc-border) !important;
+}
+
+/* ── Steps ────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .ant-steps-item-wait .ant-steps-item-icon {
+  border-color: var(--hc-border) !important;
+  background: transparent !important;
+}
+
+/* ── Estadísticas ─────────────────────────────────────────────────────────── */
+[data-theme="dark"] .ant-statistic-title {
+  color: var(--hc-text-2) !important;
+}
+
+/* ── Alert ────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .ant-alert-info {
+  background: rgba(26, 86, 219, 0.1) !important;
+  border-color: rgba(26, 86, 219, 0.3) !important;
+}
+
+[data-theme="dark"] .ant-alert-warning {
+  background: rgba(217, 119, 6, 0.1) !important;
+  border-color: rgba(217, 119, 6, 0.3) !important;
+}
+
+[data-theme="dark"] .ant-alert-error {
+  background: rgba(220, 38, 38, 0.1) !important;
+  border-color: rgba(220, 38, 38, 0.3) !important;
+}
+
+[data-theme="dark"] .ant-alert-success {
+  background: rgba(5, 150, 105, 0.1) !important;
+  border-color: rgba(5, 150, 105, 0.3) !important;
+}
+
+/* ── Progress ─────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .ant-progress-inner {
+  background: var(--hc-bg-hover) !important;
+}
+
+/* ── Scrollbars globales ──────────────────────────────────────────────────── */
+[data-theme="dark"] ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: var(--hc-border);
+  border-radius: 3px;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: var(--hc-text-3);
+}
+
+/* ── Corrección de textos sobre fondos coloreados ─────────────────────────── */
+/* Las KPI cards con gradients mantienen texto blanco siempre */
+.gradient-card-text {
+  color: #ffffff !important;
+}
+
+/* ── Recharts en modo oscuro ──────────────────────────────────────────────── */
+[data-theme="dark"] .recharts-cartesian-grid-horizontal line,
+[data-theme="dark"] .recharts-cartesian-grid-vertical line {
+  stroke: var(--hc-border) !important;
+}
+
+[data-theme="dark"] .recharts-text {
+  fill: var(--hc-text-2) !important;
+}
+
+[data-theme="dark"] .recharts-tooltip-wrapper .recharts-default-tooltip {
+  background: var(--hc-bg-card) !important;
+  border-color: var(--hc-border) !important;
+  color: var(--hc-text) !important;
+}
+
+/* ── Ant Design Tree ──────────────────────────────────────────────────────── */
+[data-theme="dark"] .ant-tree {
+  background: transparent !important;
+}
+
+[data-theme="dark"] .ant-tree .ant-tree-node-content-wrapper:hover {
+  background: var(--hc-bg-hover) !important;
+}
+
+/* ── QR Code ─────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .ant-qrcode {
+  background: #ffffff !important;
+}
+
+/* ── Upload ───────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .ant-upload.ant-upload-drag {
+  background: var(--hc-bg-hover) !important;
+  border-color: var(--hc-border) !important;
+}
+
+/* ── Badge ────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .ant-badge-count {
+  box-shadow: 0 0 0 1px var(--hc-bg-card) !important;
+}
+
+/* ── Tabla de contenido de reporte financiero ────────────────────────────── */
+[data-theme="dark"] table.financial-table tr {
+  background: var(--hc-bg-card) !important;
+  color: var(--hc-text) !important;
+  border-bottom-color: var(--hc-border-light) !important;
+}
+
+[data-theme="dark"] table.financial-table tr:hover {
+  background: var(--hc-bg-hover) !important;
+}

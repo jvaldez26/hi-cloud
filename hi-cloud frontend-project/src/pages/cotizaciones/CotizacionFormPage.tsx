@@ -1,0 +1,199 @@
+import { useState } from 'react';
+import { Form, Input, Button, Card, Row, Col, Typography, Select,
+         DatePicker, Table, InputNumber, Space, Divider, message, Tag } from 'antd';
+import { PlusOutlined, DeleteOutlined, ArrowLeftOutlined } from '@ant-design/icons';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
+import { cotizacionesApi, type CotizacionDetallePayload } from '../../api/cotizaciones.api';
+import { clientesApi } from '../../api/clientes.api';
+import { productosApi } from '../../api/productos.api';
+import { fmt } from '../../utils/formatters';
+import api from '../../api/client';
+import dayjs from 'dayjs';
+
+const { Title } = Typography;
+
+interface Linea {
+  key: string; productoId?: number; descripcion?: string;
+  cantidad: number; precioUnitario: number; porcentajeIva: number;
+}
+
+export default function CotizacionFormPage() {
+  const [form]   = Form.useForm();
+  const [lineas, setLineas] = useState<Linea[]>([
+    { key: '1', cantidad: 1, precioUnitario: 0, porcentajeIva: 18 },
+  ]);
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+
+  const { data: clientes  } = useQuery({ queryKey: ['clientes-sel'],  queryFn: () => clientesApi.list(1, 100) });
+  const { data: productos } = useQuery({ queryKey: ['productos-sel'], queryFn: () => productosApi.list(1, 200) });
+  const { data: vendedores = [] } = useQuery<any[]>({ queryKey: ['vendedores-sel'], queryFn: () => api.get('/vendedores').then((r: any) => r.data?.data?.data ?? r.data?.data ?? []) });
+
+  const createMut = useMutation({
+    mutationFn: cotizacionesApi.create,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cotizaciones'] });
+      message.success('Cotización creada exitosamente');
+      navigate('/cotizaciones');
+    },
+    onError: (e: any) => message.error(e?.response?.data?.errors?.[0] ?? 'Error al crear'),
+  });
+
+  const subtotal = lineas.reduce((s, l) => s + l.precioUnitario * l.cantidad, 0);
+  const iva      = lineas.reduce((s, l) => s + l.precioUnitario * l.cantidad * (l.porcentajeIva / 100), 0);
+  const total    = subtotal + iva;
+
+  const onProductoChange = (productoId: number, idx: number) => {
+    const prod = productos?.data.find(p => p.id === productoId);
+    if (!prod) return;
+    const u = [...lineas];
+    u[idx] = { ...u[idx], productoId, descripcion: prod.nombre, precioUnitario: Number(prod.precio), porcentajeIva: Number(prod.porcentajeIva) };
+    setLineas(u);
+  };
+
+  const handleSubmit = (values: any) => {
+    const vendedor = vendedores.find((v: any) => v.id === values.vendedorId);
+    const detalles: CotizacionDetallePayload[] = lineas.map(l => ({
+      productoId: l.productoId, descripcion: l.descripcion!,
+      cantidad: l.cantidad, precioUnitario: l.precioUnitario, porcentajeIva: l.porcentajeIva,
+    }));
+    createMut.mutate({
+      clienteId:       values.clienteId,
+      fecha:           values.fecha.format('YYYY-MM-DD'),
+      validezDias:     values.validezDias ?? 30,
+      condicionesPago: values.condicionesPago,
+      notas:           values.notas,
+      vendedorId:      values.vendedorId,
+      nombreVendedor:  vendedor?.nombre,
+      detalles,
+    });
+  };
+
+  const lineaCols = [
+    { title: 'Producto', key: 'prod', width: 200,
+      render: (_: any, _r: Linea, idx: number) => (
+        <Select style={{ width: '100%' }} showSearch placeholder="Buscar..."
+          filterOption={(i, o) => String(o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
+          options={productos?.data.map(p => ({ value: p.id, label: `${p.codigo} — ${p.nombre}` }))}
+          onChange={v => onProductoChange(v, idx)} />
+      )},
+    { title: 'Descripción', key: 'desc', width: 180,
+      render: (_: any, r: Linea, idx: number) => (
+        <Input value={r.descripcion}
+          onChange={e => { const u=[...lineas]; u[idx].descripcion=e.target.value; setLineas(u); }} />
+      )},
+    { title: 'Cant.', key: 'qty', width: 80,
+      render: (_: any, r: Linea, idx: number) => (
+        <InputNumber min={1} precision={0} value={r.cantidad} style={{ width:'100%' }}
+          onChange={v => { const u=[...lineas]; u[idx].cantidad=v??1; setLineas(u); }} />
+      )},
+    { title: 'Precio (RD$)', key: 'price', width: 120,
+      render: (_: any, r: Linea, idx: number) => (
+        <InputNumber min={0} precision={2} value={r.precioUnitario} style={{ width:'100%' }}
+          onChange={v => { const u=[...lineas]; u[idx].precioUnitario=v??0; setLineas(u); }} />
+      )},
+    { title: 'ITBIS %', key: 'iva', width: 80,
+      render: (_: any, r: Linea, idx: number) => (
+        <InputNumber min={0} max={100} value={r.porcentajeIva} style={{ width:'100%' }}
+          onChange={v => { const u=[...lineas]; u[idx].porcentajeIva=v??18; setLineas(u); }} />
+      )},
+    { title: 'Subtotal', key: 'sub', width: 110,
+      render: (_: any, r: Linea) => fmt.money(r.precioUnitario * r.cantidad) },
+    { title: '', key: 'del', width: 40,
+      render: (_: any, _r: Linea, idx: number) => (
+        <Button type="text" danger size="small" icon={<DeleteOutlined />}
+          onClick={() => setLineas(lineas.filter((_, i) => i !== idx))} />
+      )},
+  ];
+
+  return (
+    <div>
+      <Row align="middle" style={{ marginBottom: 16 }}>
+        <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/cotizaciones')}>
+          Volver
+        </Button>
+        <Title level={4} style={{ margin: '0 0 0 8px' }}>Nueva Cotización</Title>
+        <Tag color="blue" style={{ marginLeft: 8 }}>Válida por 30 días por defecto</Tag>
+      </Row>
+
+      <Form form={form} layout="vertical" onFinish={handleSubmit}
+        initialValues={{ fecha: dayjs(), validezDias: 30, condicionesPago: 'Al contado' }}>
+        <Card style={{ marginBottom: 16 }}>
+          <Row gutter={16}>
+            <Col span={10}>
+              <Form.Item name="clienteId" label="Cliente" rules={[{ required: true }]}>
+                <Select showSearch filterOption={(i, o) => String(o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
+                  options={clientes?.data.map(c => ({ value: c.id, label: `${c.rfc} — ${c.nombre}` }))} />
+              </Form.Item>
+            </Col>
+            <Col span={4}>
+              <Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}>
+                <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+              </Form.Item>
+            </Col>
+            <Col span={4}>
+              <Form.Item name="validezDias" label="Validez (días)">
+                <InputNumber style={{ width: '100%' }} min={1} />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item name="condicionesPago" label="Condiciones de Pago">
+                <Select options={['Al contado','30 días','60 días','90 días','Contra entrega']
+                  .map(v => ({ value: v, label: v }))} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="vendedorId" label="Vendedor">
+                <Select
+                  allowClear
+                  showSearch
+                  placeholder="Sin vendedor asignado"
+                  optionFilterProp="label"
+                  options={vendedores.map((v: any) => ({
+                    value: v.id,
+                    label: `${v.codigo} — ${v.nombre}`,
+                  }))}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="notas" label="Notas / Términos y condiciones">
+                <Input.TextArea rows={1} placeholder="Precios sujetos a variación. Oferta válida hasta la fecha indicada." />
+              </Form.Item>
+            </Col>
+          </Row>
+        </Card>
+
+        <Card title="Ítems cotizados" style={{ marginBottom: 16 }}
+          extra={
+            <Button icon={<PlusOutlined />}
+              onClick={() => setLineas([...lineas, { key: Date.now().toString(), cantidad: 1, precioUnitario: 0, porcentajeIva: 18 }])}>
+              Agregar ítem
+            </Button>
+          }>
+          <Table columns={lineaCols as any} dataSource={lineas} rowKey="key" pagination={false} size="small" />
+        </Card>
+
+        <Card>
+          <Row justify="end">
+            <Col xs={24} sm={10}>
+              <Space direction="vertical" style={{ width: '100%' }}>
+                <Row justify="space-between"><span>Subtotal:</span><strong>{fmt.money(subtotal)}</strong></Row>
+                <Row justify="space-between"><span>ITBIS (18%):</span><strong>{fmt.money(iva)}</strong></Row>
+                <Divider style={{ margin: '8px 0' }} />
+                <Row justify="space-between">
+                  <span style={{ fontSize: 16 }}>Total cotización:</span>
+                  <strong style={{ fontSize: 18, color: '#1677ff' }}>{fmt.money(total)}</strong>
+                </Row>
+                <Button type="primary" htmlType="submit" block size="large" loading={createMut.isPending}>
+                  Crear Cotización
+                </Button>
+              </Space>
+            </Col>
+          </Row>
+        </Card>
+      </Form>
+    </div>
+  );
+}

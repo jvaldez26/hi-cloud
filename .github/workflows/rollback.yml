@@ -1,0 +1,72 @@
+name: Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'SHA o tag a restaurar (ej: abc1234)'
+        required: true
+      service:
+        description: 'Servicio a revertir'
+        required: true
+        type: choice
+        options: [backend, frontend, all]
+
+env:
+  AWS_REGION:     ${{ vars.AWS_REGION || 'us-east-1' }}
+  ECR_REGISTRY:   ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ vars.AWS_REGION || 'us-east-1' }}.amazonaws.com
+  ECS_CLUSTER:    hicloud-cluster
+
+jobs:
+  rollback:
+    name: Rollback ${{ inputs.service }}
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Rollback backend
+        if: inputs.service == 'backend' || inputs.service == 'all'
+        run: |
+          IMAGE="${{ env.ECR_REGISTRY }}/hicloud-backend:${{ inputs.image_tag }}"
+          TASK=$(aws ecs describe-task-definition --task-definition hicloud-backend --query taskDefinition)
+          NEW_TASK=$(echo "$TASK" | python3 -c "
+          import sys, json
+          t = json.load(sys.stdin)
+          for c in t['containerDefinitions']:
+              if c['name'] == 'hicloud-backend':
+                  c['image'] = '$IMAGE'
+          keys = ['taskDefinitionArn','revision','status','requiresAttributes','compatibilities','registeredAt','registeredBy']
+          [t.pop(k, None) for k in keys]
+          print(json.dumps(t))
+          ")
+          NEW_ARN=$(echo "$NEW_TASK" | xargs -I{} aws ecs register-task-definition --cli-input-json '{}' --query 'taskDefinition.taskDefinitionArn' --output text)
+          aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service hicloud-backend-svc --task-definition "$NEW_ARN"
+          echo "✅ Backend revertido a: $IMAGE"
+
+      - name: Rollback frontend
+        if: inputs.service == 'frontend' || inputs.service == 'all'
+        run: |
+          IMAGE="${{ env.ECR_REGISTRY }}/hicloud-frontend:${{ inputs.image_tag }}"
+          TASK=$(aws ecs describe-task-definition --task-definition hicloud-frontend --query taskDefinition)
+          NEW_TASK=$(echo "$TASK" | python3 -c "
+          import sys, json
+          t = json.load(sys.stdin)
+          for c in t['containerDefinitions']:
+              if c['name'] == 'hicloud-frontend':
+                  c['image'] = '$IMAGE'
+          keys = ['taskDefinitionArn','revision','status','requiresAttributes','compatibilities','registeredAt','registeredBy']
+          [t.pop(k, None) for k in keys]
+          print(json.dumps(t))
+          ")
+          NEW_ARN=$(echo "$NEW_TASK" | xargs -I{} aws ecs register-task-definition --cli-input-json '{}' --query 'taskDefinition.taskDefinitionArn' --output text)
+          aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service hicloud-frontend-svc --task-definition "$NEW_ARN"
+          echo "✅ Frontend revertido a: $IMAGE"

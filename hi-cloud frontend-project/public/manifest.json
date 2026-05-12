@@ -1,0 +1,78 @@
+{
+  "name": "HiCloud ERP",
+  "short_name": "HiCloud",
+  "description": "Sistema ERP para República Dominicana — Facturación e-CF, Contabilidad, Nómina y más",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0F172A",
+  "theme_color": "#1854D8",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "finance", "productivity"],
+  "lang": "es-DO",
+  "dir": "ltr",
+  "prefer_related_applications": false,
+  "screenshots": [
+    {
+      "label": "Dashboard HiCloud ERP",
+      "form_factor": "wide"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Punto de Venta",
+      "short_name": "POS",
+      "url": "/pos",
+      "description": "Abrir punto de venta",
+      "icons": [{ "src": "/icons/icon.svg", "sizes": "any" }]
+    },
+    {
+      "name": "Nueva Factura",
+      "short_name": "Facturar",
+      "url": "/facturas/nueva",
+      "description": "Crear nueva factura e-CF",
+      "icons": [{ "src": "/icons/icon.svg", "sizes": "any" }]
+    },
+    {
+      "name": "Dashboard",
+      "short_name": "Dashboard",
+      "url": "/dashboard",
+      "description": "Ver métricas del día",
+      "icons": [{ "src": "/icons/icon.svg", "sizes": "any" }]
+    },
+    {
+      "name": "Caja Diaria",
+      "short_name": "Caja",
+      "url": "/caja",
+      "description": "Gestionar caja del día",
+      "icons": [{ "src": "/icons/icon.svg", "sizes": "any" }]
+    }
+  ],
+  "related_applications": [],
+  "file_handlers": [
+    {
+      "action": "/facturas",
+      "accept": { "application/pdf": [".pdf"] }
+    }
+  ]
+}

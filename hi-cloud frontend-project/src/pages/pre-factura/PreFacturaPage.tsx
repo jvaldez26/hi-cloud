@@ -1,0 +1,685 @@
+import { useState } from 'react';
+import {
+  Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
+  DatePicker, InputNumber, Space, Typography, Popconfirm,
+  message, Divider, Tooltip, theme,
+} from 'antd';
+import {
+  FileTextOutlined, PlusOutlined, SendOutlined, CheckCircleOutlined,
+  CloseCircleOutlined, RetweetOutlined, DeleteOutlined, EyeOutlined,
+  MailOutlined, FilePdfOutlined, LoadingOutlined,
+} from '@ant-design/icons';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import dayjs from 'dayjs';
+import api from '../../api/client';
+
+const { Title, Text } = Typography;
+const { Option } = Select;
+
+const fmt = (v: number) =>
+  new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'DOP', minimumFractionDigits: 0 }).format(v ?? 0);
+
+const ESTADO_CONFIG: Record<string, { color: string; label: string }> = {
+  borrador:   { color: 'default', label: 'Borrador'   },
+  enviada:    { color: 'blue',    label: 'Enviada'    },
+  aprobada:   { color: 'green',   label: 'Aprobada'   },
+  rechazada:  { color: 'red',     label: 'Rechazada'  },
+  convertida: { color: 'purple',  label: 'Convertida' },
+  vencida:    { color: 'orange',  label: 'Vencida'    },
+};
+
+// Mapea estado → tokens semánticos de Ant Design (funcionan en claro y oscuro)
+const ESTADO_TOKEN: Record<string, { bg: string; border: string }> = {
+  borrador:   { bg: 'colorFillAlter',   border: 'colorBorderSecondary' },
+  enviada:    { bg: 'colorInfoBg',      border: 'colorInfoBorder'      },
+  aprobada:   { bg: 'colorSuccessBg',   border: 'colorSuccessBorder'   },
+  rechazada:  { bg: 'colorErrorBg',     border: 'colorErrorBorder'     },
+  convertida: { bg: 'colorFillSecondary', border: 'colorBorder'        },
+};
+
+export default function PreFacturaPage() {
+  const qc = useQueryClient();
+  const { token } = theme.useToken();
+
+  const [modalCrear,    setModalCrear]    = useState(false);
+  const [modalDetalle,  setModalDetalle]  = useState<any>(null);
+  const [modalRechazar, setModalRechazar] = useState<any>(null);
+  const [emailPF,       setEmailPF]       = useState<any>(null);
+  const [emailDest,     setEmailDest]     = useState('');
+  const [pdfPending,    setPdfPending]    = useState<number | null>(null);
+  const [formCrear]    = Form.useForm();
+  const [formRechazar] = Form.useForm();
+
+  // ─── Queries ─────────────────────────────────────────────────────────────────
+
+  const { data: clientes = [] } = useQuery<any[]>({
+    queryKey: ['clientes-select'],
+    queryFn:  () => api.get('/clientes?limit=200').then((r: any) => r.data?.data ?? r.data),
+  });
+
+  const { data: vendedores = [] } = useQuery<any[]>({
+    queryKey: ['vendedores-sel'],
+    queryFn:  () => api.get('/vendedores').then((r: any) => r.data?.data?.data ?? r.data?.data ?? []),
+  });
+
+  const { data: productos = [] } = useQuery<any[]>({
+    queryKey: ['productos-select'],
+    queryFn:  () => api.get('/productos?limit=200').then((r: any) => r.data?.data ?? r.data),
+  });
+
+  const { data: resumen = [] } = useQuery<any[]>({
+    queryKey: ['pre-facturas-resumen'],
+    queryFn:  () => api.get('/pre-facturas/resumen').then((r: any) => r.data?.data ?? r.data),
+  });
+
+  const { data: preFacturas, isLoading } = useQuery<any>({
+    queryKey: ['pre-facturas'],
+    queryFn:  () => api.get('/pre-facturas?limit=50').then((r: any) => r.data?.data ?? r.data),
+  });
+
+  // ─── Mutations ────────────────────────────────────────────────────────────────
+
+  const invalidar = () => {
+    qc.invalidateQueries({ queryKey: ['pre-facturas'] });
+    qc.invalidateQueries({ queryKey: ['pre-facturas-resumen'] });
+  };
+
+  const onErr = (e: any, fallback: string) => message.error((e as any)?.friendlyMessage ?? fallback);
+
+  const crear = useMutation({
+    mutationFn: (dto: any) => api.post('/pre-facturas', dto),
+    onSuccess:  () => { invalidar(); setModalCrear(false); formCrear.resetFields(); message.success('Pre-factura creada'); },
+    onError:    (e: any) => onErr(e, 'Error al crear pre-factura'),
+  });
+
+  const enviar = useMutation({
+    mutationFn: (id: number) => api.patch(`/pre-facturas/${id}/enviar`, {}),
+    onSuccess:  () => { invalidar(); message.success('Pre-factura enviada'); },
+    onError:    (e: any) => onErr(e, 'Error al enviar pre-factura'),
+  });
+
+  const emailMut = useMutation({
+    mutationFn: ({ id, email }: { id: number; email: string }) =>
+      api.post(`/notificaciones/pre-factura/${id}/enviar`, { email }).then(r => r.data?.data ?? r.data),
+    onSuccess: (_, v) => { setEmailPF(null); setEmailDest(''); message.success(`Pre-factura enviada a ${v.email}`); },
+    onError:   (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error al enviar email'),
+  });
+
+  const aprobar = useMutation({
+    mutationFn: (id: number) => api.patch(`/pre-facturas/${id}/aprobar`, {}),
+    onSuccess:  () => { invalidar(); message.success('Pre-factura aprobada'); },
+    onError:    (e: any) => onErr(e, 'Error al aprobar pre-factura'),
+  });
+
+  const rechazar = useMutation({
+    mutationFn: ({ id, motivo }: { id: number; motivo: string }) =>
+      api.patch(`/pre-facturas/${id}/rechazar`, { motivo }),
+    onSuccess:  () => { invalidar(); setModalRechazar(null); formRechazar.resetFields(); message.success('Pre-factura rechazada'); },
+    onError:    (e: any) => onErr(e, 'Error al rechazar pre-factura'),
+  });
+
+  const convertir = useMutation({
+    mutationFn: (id: number) => api.patch(`/pre-facturas/${id}/convertir`, {}),
+    onSuccess:  () => { invalidar(); message.success('¡Factura generada exitosamente!'); },
+    onError:    (e: any) => onErr(e, 'No se pudo convertir en factura'),
+  });
+
+  const eliminar = useMutation({
+    mutationFn: (id: number) => api.delete(`/pre-facturas/${id}`),
+    onSuccess:  () => { invalidar(); message.success('Pre-factura eliminada'); },
+    onError:    (e: any) => onErr(e, 'Error al eliminar pre-factura'),
+  });
+
+  // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+  const handleCrear = (values: any) => {
+    const vendedor = vendedores.find((v: any) => v.id === values.vendedorId);
+    crear.mutate({
+      ...values,
+      fecha:            values.fecha?.format('YYYY-MM-DD'),
+      fechaVencimiento: values.fechaVencimiento?.format('YYYY-MM-DD'),
+      nombreVendedor:   vendedor?.nombre,
+      detalles: (values.detalles ?? []).map((d: any) => ({
+        ...d,
+        cantidad:       Number(d.cantidad),
+        precioUnitario: Number(d.precioUnitario),
+      })),
+    });
+  };
+
+  const descargarPDF = async (item: any) => {
+    setPdfPending(item.id);
+    try {
+      const token = localStorage.getItem('access_token') ?? '';
+      const eid   = localStorage.getItem('empresaId') ?? '';
+      const res   = await fetch(`/api/v1/pre-facturas/${item.id}/pdf`, {
+        headers: { Authorization: `Bearer ${token}`, 'X-Empresa-ID': eid },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        message.error(`Error PDF: ${err?.message ?? res.status}`); return;
+      }
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `${item.folio ?? item.id}.pdf`;
+      a.click(); URL.revokeObjectURL(a.href);
+    } catch (e: any) { message.error(`No se pudo generar el PDF: ${e?.message ?? ''}`); }
+    finally { setPdfPending(null); }
+  };
+
+  // ─── Render ───────────────────────────────────────────────────────────────────
+
+  return (
+    <div style={{ padding: '24px' }}>
+
+      {/* ── Cabecera ─────────────────────────────────────────────────────── */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <FileTextOutlined style={{ fontSize: 28, color: token.colorPrimary }} />
+          <div>
+            <Title level={3} style={{ margin: 0 }}>Pre-Facturas</Title>
+            <Text type="secondary">Facturas proforma · Aprobación → Conversión a factura oficial</Text>
+          </div>
+        </div>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalCrear(true)}>
+          Nueva Pre-Factura
+        </Button>
+      </div>
+
+      {/* ── KPI Cards ────────────────────────────────────────────────────── */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+        {(['borrador','enviada','aprobada','rechazada','convertida'] as const).map(estado => {
+          const r    = resumen.find((x: any) => x.estado === estado);
+          const conf = ESTADO_CONFIG[estado];
+          const tk   = ESTADO_TOKEN[estado];
+          const bg   = token[tk.bg as keyof typeof token] as string;
+          const brd  = token[tk.border as keyof typeof token] as string;
+
+          return (
+            <Col xs={12} sm={24 / 5} key={estado}>
+              <Card
+                bordered={false}
+                style={{
+                  borderRadius: 10,
+                  background:   bg,
+                  border:       `1px solid ${brd}`,
+                  textAlign:    'center',
+                }}
+              >
+                <div style={{ fontSize: 24, fontWeight: 800, color: token.colorText }}>
+                  {r?.cantidad ?? 0}
+                </div>
+                <Tag color={conf.color} style={{ marginTop: 4 }}>{conf.label}</Tag>
+                {r?.totalMonto > 0 && (
+                  <div style={{ fontSize: 11, color: token.colorTextSecondary, marginTop: 4 }}>
+                    {fmt(r.totalMonto)}
+                  </div>
+                )}
+              </Card>
+            </Col>
+          );
+        })}
+      </Row>
+
+      {/* ── Tabla ────────────────────────────────────────────────────────── */}
+      <Card bordered={false} style={{ borderRadius: 12 }}>
+        <Table
+          dataSource={preFacturas?.data ?? []}
+          rowKey="id"
+          loading={isLoading}
+          size="middle"
+          pagination={{ pageSize: 15, total: preFacturas?.meta?.total }}
+          columns={[
+            {
+              title: 'Folio', dataIndex: 'folio', key: 'folio',
+              render: v => <Text strong style={{ fontFamily: 'monospace' }}>{v}</Text>,
+            },
+            { title: 'Fecha', dataIndex: 'fecha', key: 'fecha' },
+            {
+              title: 'Cliente', key: 'cliente',
+              render: (_, r: any) => (
+                <div>
+                  <Text strong style={{ fontSize: 13 }}>{r.cliente?.nombre}</Text>
+                  {r.cliente?.rncReceptor && (
+                    <div>
+                      <Text type="secondary" style={{ fontSize: 11 }}>
+                        RNC: {r.cliente.rncReceptor}
+                      </Text>
+                    </div>
+                  )}
+                </div>
+              ),
+            },
+            {
+              title: 'Total', dataIndex: 'total', key: 'total', align: 'right',
+              render: v => (
+                <Text strong style={{ color: token.colorPrimary }}>{fmt(v)}</Text>
+              ),
+            },
+            {
+              title: 'Estado', dataIndex: 'estado', key: 'estado',
+              render: v => <Tag color={ESTADO_CONFIG[v]?.color}>{ESTADO_CONFIG[v]?.label}</Tag>,
+            },
+            {
+              title: 'Vence', dataIndex: 'fechaVencimiento', key: 'fv',
+              render: v => v ?? <Text type="secondary">—</Text>,
+            },
+            {
+              title: '', key: 'acc', width: 210,
+              render: (_, r: any) => (
+                <Space size={4}>
+                  <Tooltip title="Ver detalle">
+                    <Button size="small" icon={<EyeOutlined />} onClick={() => setModalDetalle(r)} />
+                  </Tooltip>
+                  <Button size="small" type="text"
+                    icon={pdfPending === r.id ? <LoadingOutlined /> : <FilePdfOutlined />}
+                    disabled={pdfPending === r.id}
+                    onClick={() => descargarPDF(r)}
+                    title="Descargar PDF"
+                  />
+                  {r.estado === 'borrador' && (
+                    <Tooltip title="Enviar al cliente">
+                      <Button
+                        size="small" type="primary" ghost
+                        icon={<SendOutlined />}
+                        onClick={() => enviar.mutate(r.id)}
+                        loading={enviar.isPending}
+                      />
+                    </Tooltip>
+                  )}
+                  <Tooltip title="Enviar por email">
+                    <Button
+                      size="small" type="text"
+                      icon={<MailOutlined />}
+                      onClick={() => {
+                        setEmailPF(r);
+                        setEmailDest(r.cliente?.email ?? '');
+                      }}
+                    />
+                  </Tooltip>
+                  {['enviada', 'borrador'].includes(r.estado) && (
+                    <Tooltip title="Aprobar">
+                      <Button
+                        size="small"
+                        icon={<CheckCircleOutlined />}
+                        style={{ color: token.colorSuccess, borderColor: token.colorSuccess }}
+                        onClick={() => aprobar.mutate(r.id)}
+                        loading={aprobar.isPending}
+                      />
+                    </Tooltip>
+                  )}
+                  {['enviada', 'borrador', 'aprobada'].includes(r.estado) && (
+                    <Tooltip title="Rechazar">
+                      <Button
+                        size="small" danger
+                        icon={<CloseCircleOutlined />}
+                        onClick={() => setModalRechazar(r)}
+                      />
+                    </Tooltip>
+                  )}
+                  {r.estado === 'aprobada' && (
+                    <Tooltip title="Convertir a Factura oficial">
+                      <Button
+                        size="small" type="primary"
+                        icon={<RetweetOutlined />}
+                        onClick={() => convertir.mutate(r.id)}
+                        loading={convertir.isPending}
+                      />
+                    </Tooltip>
+                  )}
+                  {r.estado !== 'convertida' && (
+                    <Popconfirm title="¿Eliminar pre-factura?" onConfirm={() => eliminar.mutate(r.id)}>
+                      <Button size="small" danger type="text" icon={<DeleteOutlined />} />
+                    </Popconfirm>
+                  )}
+                </Space>
+              ),
+            },
+          ]}
+        />
+      </Card>
+
+      {/* ── Modal Crear ──────────────────────────────────────────────────── */}
+      <Modal
+        title="Nueva Pre-Factura"
+        open={modalCrear}
+        onCancel={() => { setModalCrear(false); formCrear.resetFields(); }}
+        onOk={() => formCrear.submit()}
+        confirmLoading={crear.isPending}
+        okText="Crear"
+        width={700}
+        destroyOnClose
+      >
+        <Form
+          form={formCrear}
+          layout="vertical"
+          onFinish={handleCrear}
+          initialValues={{ fecha: dayjs(), tipoNcf: 'E32', detalles: [{}] }}
+        >
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item name="clienteId" label="Cliente" rules={[{ required: true }]}>
+                <Select showSearch optionFilterProp="children" placeholder="Seleccionar cliente">
+                  {clientes.map((c: any) => <Option key={c.id} value={c.id}>{c.nombre}</Option>)}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}>
+                <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item name="fechaVencimiento" label="Vence">
+                <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={12}>
+            <Col span={6}>
+              <Form.Item name="tipoNcf" label="Tipo NCF">
+                <Select>
+                  <Option value="E31">E31 - Crédito Fiscal</Option>
+                  <Option value="E32">E32 - Consumidor Final</Option>
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={10}>
+              <Form.Item name="vendedorId" label="Vendedor">
+                <Select
+                  allowClear
+                  showSearch
+                  placeholder="Sin vendedor asignado"
+                  optionFilterProp="label"
+                  options={vendedores.map((v: any) => ({
+                    value: v.id,
+                    label: `${v.codigo} — ${v.nombre}`,
+                  }))}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="notas" label="Notas / Condiciones">
+                <Input placeholder="Condiciones de pago, validez de la oferta..." />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Divider orientation="left" style={{ fontSize: 13 }}>Detalles del servicio / producto</Divider>
+
+          <Form.List name="detalles">
+            {(fields, { add, remove }) => (
+              <>
+                {fields.map(({ key, name }) => (
+                  <Row gutter={8} key={key} align="middle" style={{ marginBottom: 8 }}>
+                    <Col span={8}>
+                      <Form.Item name={[name, 'productoId']} noStyle>
+                        <Select
+                          showSearch
+                          optionFilterProp="children"
+                          placeholder="Producto (opcional)"
+                          style={{ width: '100%' }}
+                          allowClear
+                          onChange={pid => {
+                            const prod = productos.find((p: any) => p.id === pid);
+                            if (prod) {
+                              const ds = formCrear.getFieldValue('detalles');
+                              ds[name] = {
+                                ...ds[name],
+                                descripcion:    prod.nombre,
+                                precioUnitario: prod.precio,
+                              };
+                              formCrear.setFieldsValue({ detalles: ds });
+                            }
+                          }}
+                        >
+                          {productos.map((p: any) => (
+                            <Option key={p.id} value={p.id}>{p.nombre}</Option>
+                          ))}
+                        </Select>
+                      </Form.Item>
+                    </Col>
+                    <Col span={7}>
+                      <Form.Item name={[name, 'descripcion']} noStyle rules={[{ required: true, message: '' }]}>
+                        <Input placeholder="Descripción *" />
+                      </Form.Item>
+                    </Col>
+                    <Col span={4}>
+                      <Form.Item name={[name, 'cantidad']} noStyle rules={[{ required: true }]}>
+                        <InputNumber min={0.01} placeholder="Cant." style={{ width: '100%' }} />
+                      </Form.Item>
+                    </Col>
+                    <Col span={4}>
+                      <Form.Item name={[name, 'precioUnitario']} noStyle rules={[{ required: true }]}>
+                        <InputNumber min={0} placeholder="Precio" style={{ width: '100%' }} />
+                      </Form.Item>
+                    </Col>
+                    <Col span={1}>
+                      {fields.length > 1 && (
+                        <Button
+                          type="link" danger size="small"
+                          icon={<DeleteOutlined />}
+                          onClick={() => remove(name)}
+                        />
+                      )}
+                    </Col>
+                  </Row>
+                ))}
+                <Button type="dashed" onClick={() => add()} icon={<PlusOutlined />} block>
+                  Agregar línea
+                </Button>
+              </>
+            )}
+          </Form.List>
+        </Form>
+      </Modal>
+
+      {/* ── Modal Detalle ─────────────────────────────────────────────────── */}
+      <Modal
+        title={
+          <Space>
+            <FileTextOutlined />
+            Pre-Factura {modalDetalle?.folio}
+            {modalDetalle && (
+              <Tag color={ESTADO_CONFIG[modalDetalle.estado]?.color}>
+                {ESTADO_CONFIG[modalDetalle.estado]?.label}
+              </Tag>
+            )}
+          </Space>
+        }
+        open={!!modalDetalle}
+        onCancel={() => setModalDetalle(null)}
+        footer={null}
+        width={620}
+        destroyOnClose
+      >
+        {modalDetalle && (
+          <>
+            <Row gutter={16} style={{ marginBottom: 16 }}>
+              <Col span={12}>
+                <Text type="secondary" style={{ fontSize: 12 }}>Cliente</Text>
+                <div><Text strong>{modalDetalle.cliente?.nombre}</Text></div>
+                {modalDetalle.cliente?.rncReceptor && (
+                  <Text type="secondary" style={{ fontSize: 11 }}>
+                    RNC: {modalDetalle.cliente.rncReceptor}
+                  </Text>
+                )}
+              </Col>
+              <Col span={6}>
+                <Text type="secondary" style={{ fontSize: 12 }}>NCF</Text>
+                <div><Tag>{modalDetalle.tipoNcf}</Tag></div>
+              </Col>
+              <Col span={6}>
+                <Text type="secondary" style={{ fontSize: 12 }}>Vence</Text>
+                <div>
+                  <Text>{modalDetalle.fechaVencimiento ?? <Text type="secondary">—</Text>}</Text>
+                </div>
+              </Col>
+            </Row>
+
+            {modalDetalle.notas && (
+              <div
+                style={{
+                  background:   token.colorFillAlter,
+                  border:       `1px solid ${token.colorBorderSecondary}`,
+                  borderRadius: 6,
+                  padding:      '8px 12px',
+                  marginBottom: 12,
+                  fontSize:     12,
+                  color:        token.colorTextSecondary,
+                }}
+              >
+                <Text type="secondary" style={{ fontSize: 11 }}>Notas: </Text>{modalDetalle.notas}
+              </div>
+            )}
+
+            <Table
+              size="small"
+              dataSource={modalDetalle.detalles}
+              rowKey="id"
+              pagination={false}
+              style={{ marginBottom: 12 }}
+              columns={[
+                { title: 'Descripción', dataIndex: 'descripcion', key: 'd' },
+                { title: 'Cant.',       dataIndex: 'cantidad',     key: 'c', align: 'right' },
+                { title: 'Precio',      dataIndex: 'precioUnitario', key: 'p', align: 'right', render: v => fmt(v) },
+                { title: 'ITBIS',       dataIndex: 'iva',          key: 'i', align: 'right', render: v => fmt(v) },
+                {
+                  title: 'Total', dataIndex: 'total', key: 't', align: 'right',
+                  render: v => <Text strong>{fmt(v)}</Text>,
+                },
+              ]}
+            />
+
+            <Divider style={{ margin: '8px 0' }} />
+
+            <Row justify="end" gutter={24}>
+              <Col>
+                <Text type="secondary" style={{ fontSize: 12 }}>Subtotal</Text>
+                <div><Text>{fmt(modalDetalle.subtotal)}</Text></div>
+              </Col>
+              <Col>
+                <Text type="secondary" style={{ fontSize: 12 }}>ITBIS</Text>
+                <div><Text>{fmt(modalDetalle.iva)}</Text></div>
+              </Col>
+              <Col>
+                <Text type="secondary" style={{ fontSize: 12 }}>Total</Text>
+                <div>
+                  <Text strong style={{ fontSize: 18, color: token.colorPrimary }}>
+                    {fmt(modalDetalle.total)}
+                  </Text>
+                </div>
+              </Col>
+            </Row>
+
+            {modalDetalle.facturaId && (
+              <div style={{ marginTop: 12 }}>
+                <Tag color="purple" icon={<CheckCircleOutlined />}>
+                  Convertida → Factura #{modalDetalle.facturaId}
+                </Tag>
+              </div>
+            )}
+
+            {modalDetalle.motivoRechazo && (
+              <div
+                style={{
+                  marginTop:    12,
+                  background:   token.colorErrorBg,
+                  border:       `1px solid ${token.colorErrorBorder}`,
+                  borderRadius: 6,
+                  padding:      '8px 12px',
+                  fontSize:     12,
+                  color:        token.colorError,
+                }}
+              >
+                <Text style={{ color: token.colorError, fontSize: 11 }}>Motivo rechazo: </Text>
+                {modalDetalle.motivoRechazo}
+              </div>
+            )}
+          </>
+        )}
+      </Modal>
+
+      {/* ── Modal Rechazar ────────────────────────────────────────────────── */}
+      <Modal
+        title={
+          <Space>
+            <CloseCircleOutlined style={{ color: token.colorError }} />
+            Rechazar Pre-Factura
+          </Space>
+        }
+        open={!!modalRechazar}
+        onCancel={() => { setModalRechazar(null); formRechazar.resetFields(); }}
+        onOk={() => formRechazar.submit()}
+        okText="Confirmar Rechazo"
+        okButtonProps={{ danger: true, loading: rechazar.isPending }}
+        destroyOnClose
+      >
+        {modalRechazar && (
+          <div
+            style={{
+              background:   token.colorFillAlter,
+              border:       `1px solid ${token.colorBorderSecondary}`,
+              borderRadius: 6,
+              padding:      '8px 12px',
+              marginBottom: 16,
+              fontSize:     13,
+            }}
+          >
+            Pre-Factura <Text strong>{modalRechazar.folio}</Text> ·{' '}
+            <Text type="secondary">{modalRechazar.cliente?.nombre}</Text> ·{' '}
+            <Text strong style={{ color: token.colorError }}>{fmt(modalRechazar.total)}</Text>
+          </div>
+        )}
+        <Form
+          form={formRechazar}
+          layout="vertical"
+          onFinish={v =>
+            rechazar.mutate({ id: modalRechazar?.id, motivo: v.motivo })
+          }
+        >
+          <Form.Item
+            name="motivo"
+            label="Motivo del rechazo"
+            rules={[{ required: true, message: 'Indica el motivo' }]}
+          >
+            <Input.TextArea rows={3} placeholder="Ej. Precio fuera de presupuesto, ajustar descuento..." />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Modal email pre-factura */}
+      <Modal
+        title={<><MailOutlined style={{ color: '#7c3aed', marginRight: 8 }} />Enviar Pre-Factura por Email</>}
+        open={!!emailPF}
+        onCancel={() => { setEmailPF(null); setEmailDest(''); }}
+        onOk={() => emailPF && emailMut.mutate({ id: emailPF.id, email: emailDest })}
+        confirmLoading={emailMut.isPending}
+        okText="Enviar"
+        destroyOnClose
+        width={420}
+      >
+        {emailPF && (
+          <div>
+            <p style={{ margin: '0 0 12px', color: '#6b7280', fontSize: 13 }}>
+              Pre-factura <strong>{emailPF.folio}</strong> · Cliente: <strong>{emailPF.cliente?.nombre ?? '—'}</strong>
+            </p>
+            <Input
+              prefix={<MailOutlined />}
+              placeholder="correo@cliente.com"
+              value={emailDest}
+              onChange={e => setEmailDest(e.target.value)}
+              size="large"
+            />
+            <p style={{ margin: '8px 0 0', fontSize: 11, color: '#9ca3af' }}>
+              Se enviará el detalle completo como proforma. El cliente podrá revisar y confirmar.
+            </p>
+          </div>
+        )}
+      </Modal>
+
+    </div>
+  );
+}
