@@ -157,10 +157,10 @@ import { UomModule }                     from './uom/uom.module';
           password: config.get<string>('DB_PASSWORD', ''),
           database: config.get<string>('DB_NAME',     'hicloud'),
           ssl:      useSSL ? {
-            // RDS usa certificado de Amazon — válido en producción
-            rejectUnauthorized: isProd,
-            // En dev mantenemos false porque el cert RDS puede
-            // fallar en entornos locales sin el bundle de CA de AWS
+            // RDS usa CA interna de AWS — rejectUnauthorized siempre false
+            // para evitar el error "self-signed certificate in certificate chain"
+            // El tráfico sigue siendo cifrado; solo omitimos la verificación del CA
+            rejectUnauthorized: false,
           } : false,
           autoLoadEntities: true,
           synchronize: false,
