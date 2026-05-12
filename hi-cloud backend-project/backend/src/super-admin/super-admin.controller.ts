@@ -38,10 +38,6 @@ class EnviarMensajeDto {
   mensaje!: string;
 }
 
-@ApiTags('Super Admin')
-@ApiBearerAuth('access-token')
-@UseGuards(SuperAdminGuard)
-@Controller('admin')
 class BackupAlertDto {
   @IsString() @IsNotEmpty() mensaje!: string;
   @IsOptional() @IsString() tipo?: string;
@@ -53,6 +49,10 @@ class BackupSuccessDto {
   @IsOptional() @IsString()       checksum?: string;
 }
 
+@ApiTags('Super Admin')
+@ApiBearerAuth('access-token')
+@UseGuards(SuperAdminGuard)
+@Controller('admin')
 export class SuperAdminController {
   constructor(
     private svc:         SuperAdminService,
