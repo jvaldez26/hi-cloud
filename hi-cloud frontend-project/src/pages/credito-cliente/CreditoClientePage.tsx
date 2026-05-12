@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Card, Row, Col, Button, Table, Modal, Form, Input, Select,
   InputNumber, Space, Typography, Statistic, message, theme,
@@ -38,7 +38,7 @@ export default function CreditoClientePage() {
 
   const { data: clientes = [] } = useQuery<any[]>({
     queryKey: ['clientes-select'],
-    queryFn: () => api.get('/clientes?limit=200').then((r: any) => r.data?.data ?? r.data),
+    queryFn: () => api.get('/clientes?limit=200').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
   });
 
   const setCredito = useMutation({

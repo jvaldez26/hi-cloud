@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, createContext, useContext } from 'react';
+﻿import { useState, useCallback, useEffect, useRef, createContext, useContext } from 'react';
 import QRCode from 'qrcode';
 import { Select, Modal, Badge, Empty, Spin, Tooltip, message, Avatar, Popover } from 'antd';
 import { SearchOutlined, ShoppingCartOutlined, CheckCircleOutlined, DisconnectOutlined, LogoutOutlined, PrinterOutlined } from '@ant-design/icons';
@@ -2720,7 +2720,7 @@ export default function POSPage() {
   });
   const { data: vendedores = [] } = useQuery<any[]>({
     queryKey: ['vendedores-sel'],
-    queryFn:  () => api.get('/vendedores').then((r: any) => r.data?.data ?? r.data),
+    queryFn:  () => api.get('/vendedores').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
   });
   const { data: sucursales = [] } = useQuery<any[]>({
     queryKey: ['sucursales-pos'],

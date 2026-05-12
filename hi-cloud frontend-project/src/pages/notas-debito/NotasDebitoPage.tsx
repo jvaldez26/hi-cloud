@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   DatePicker, InputNumber, Space, Typography, Statistic, Popconfirm,
@@ -143,7 +143,7 @@ export default function NotasDebitoPage() {
 
   const { data: productos = [] } = useQuery<any[]>({
     queryKey: ['productos-select'],
-    queryFn: () => api.get('/productos?limit=200').then((r: any) => r.data?.data ?? r.data),
+    queryFn: () => api.get('/productos?limit=200').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
   });
 
   const { data: resumen = [] } = useQuery<any[]>({

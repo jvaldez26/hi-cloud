@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input,
   Space, Typography, Popconfirm, message, Avatar, Tooltip,
@@ -25,7 +25,7 @@ export default function SucursalesPage() {
 
   const { data: sucursales = [], isLoading } = useQuery<any[]>({
     queryKey: ['sucursales'],
-    queryFn:  () => api.get('/sucursales').then((r: any) => r.data?.data ?? r.data),
+    queryFn:  () => api.get('/sucursales').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
   });
 
   const onErr = (e: any, fallback: string) =>

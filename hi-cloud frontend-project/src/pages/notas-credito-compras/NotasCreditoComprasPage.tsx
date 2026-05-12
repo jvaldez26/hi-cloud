@@ -42,17 +42,17 @@ export default function NotasCreditoComprasPage() {
 
   const { data: proveedores = [] } = useQuery<any[]>({
     queryKey: ['proveedores-select'],
-    queryFn:  () => api.get('/proveedores?limit=200').then((r: any) => r.data?.data ?? r.data),
+    queryFn:  () => api.get('/proveedores?limit=200').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
   });
 
   const { data: productos = [] } = useQuery<any[]>({
     queryKey: ['productos-select'],
-    queryFn:  () => api.get('/productos?limit=200').then((r: any) => r.data?.data ?? r.data),
+    queryFn:  () => api.get('/productos?limit=200').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
   });
 
   const { data: resumen = [] } = useQuery<any[]>({
     queryKey: ['ncc-resumen'],
-    queryFn:  () => api.get('/notas-credito-compras/resumen').then((r: any) => r.data?.data ?? r.data),
+    queryFn:  () => api.get('/notas-credito-compras/resumen').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
   });
 
   const { data: notas, isLoading } = useQuery<any>({

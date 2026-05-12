@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   DatePicker, InputNumber, Space, Typography, Statistic, Popconfirm,
@@ -57,7 +57,7 @@ export default function CuotasPage() {
 
   const { data: clientes = [] } = useQuery<any[]>({
     queryKey: ['clientes-select'],
-    queryFn:  () => api.get('/clientes?limit=200').then((r: any) => r.data?.data ?? r.data),
+    queryFn:  () => api.get('/clientes?limit=200').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
   });
 
   const crear = useMutation({
