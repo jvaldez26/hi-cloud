@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, createContext, useContext } from 'react';
+﻿import { useState, useEffect, useMemo, useCallback, createContext, useContext } from 'react';
 import {
   Table, Tag, Button, Modal, Select, InputNumber, message,
   Avatar, Tooltip, Input, Popconfirm, Form, Tabs, Badge,
@@ -183,7 +183,7 @@ function EcfConfigTab({
       const existing = await ecfConfigApi.obtener(empresaId).catch(() => null);
       if (existing) {
         // Ya existe → modo EDICIÓN
-        form.setFieldsValue({ ...existing, msellerPassword: '', msellerApiKey: '' });
+        form.setFieldsValue({ ...existing, proveedorPassword: '', proveedorApiKey: '' });
         setFormModal(existing);
       } else {
         // No existe → modo CREACIÓN con empresaId pre-llenado
@@ -217,7 +217,7 @@ function EcfConfigTab({
       const existing = await ecfConfigApi.obtener(id).catch(() => null);
       if (existing) {
         message.info(`La empresa #${id} ya tiene configuración. Abriendo en modo edición.`);
-        form.setFieldsValue({ ...existing, msellerPassword: '', msellerApiKey: '' });
+        form.setFieldsValue({ ...existing, proveedorPassword: '', proveedorApiKey: '' });
         setFormModal(existing);
       }
     } finally {
@@ -321,7 +321,7 @@ function EcfConfigTab({
                   <div style={{ color: C.txt2, fontSize: 11 }}>{r.rncEmisor}</div>
                 </div>
               )},
-              { title: 'Email MSeller', dataIndex: 'msellerEmail', render: (v: string) => <span style={{ color: C.txt2, fontSize: 12 }}>{v}</span> },
+              { title: 'Email tu proveedor e-CF', dataIndex: 'proveedorEmail', render: (v: string) => <span style={{ color: C.txt2, fontSize: 12 }}>{v}</span> },
               { title: 'Modo', dataIndex: 'modo', render: (v: string) => (
                 <Tag color={v === 'PRODUCCION' ? 'green' : v === 'CERTIFICACION' ? 'blue' : 'orange'}>{v}</Tag>
               )},
@@ -335,7 +335,7 @@ function EcfConfigTab({
               )},
               { title: 'Acciones', key: 'acc', render: (_: any, r: any) => (
                 <Space size={4}>
-                  <Button size="small" onClick={() => { form.setFieldsValue({ ...r, msellerPassword: '', msellerApiKey: '' }); setFormModal(r); }}>
+                  <Button size="small" onClick={() => { form.setFieldsValue({ ...r, proveedorPassword: '', proveedorApiKey: '' }); setFormModal(r); }}>
                     Editar
                   </Button>
                   <Button size="small" loading={testingId === r.empresaId} onClick={() => testConexion(r.empresaId)}>
@@ -390,13 +390,13 @@ function EcfConfigTab({
               />
             </Form.Item>
           )}
-          <Form.Item name="msellerEmail" label="Email MSeller" rules={[{ required: true, type: 'email' }]}>
+          <Form.Item name="proveedorEmail" label="Email tu proveedor e-CF" rules={[{ required: true, type: 'email' }]}>
             <Input placeholder="usuario@empresa.com" />
           </Form.Item>
-          <Form.Item name="msellerPassword" label={formModal?.id ? 'Contraseña MSeller (dejar vacío para no cambiar)' : 'Contraseña MSeller'} rules={[{ required: !formModal?.id }]}>
+          <Form.Item name="proveedorPassword" label={formModal?.id ? 'Contraseña tu proveedor e-CF (dejar vacío para no cambiar)' : 'Contraseña tu proveedor e-CF'} rules={[{ required: !formModal?.id }]}>
             <Input.Password />
           </Form.Item>
-          <Form.Item name="msellerApiKey" label={formModal?.id ? 'API Key MSeller (dejar vacío para no cambiar)' : 'API Key MSeller'} rules={[{ required: !formModal?.id }]}>
+          <Form.Item name="proveedorApiKey" label={formModal?.id ? 'API Key tu proveedor e-CF (dejar vacío para no cambiar)' : 'API Key tu proveedor e-CF'} rules={[{ required: !formModal?.id }]}>
             <Input.Password />
           </Form.Item>
           <Form.Item name="modo" label="Modo" initialValue="TEST">

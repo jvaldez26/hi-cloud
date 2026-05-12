@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { usePlanGuard } from '../../hooks/usePlan';
 import ModuloBloqueado from '../../components/ui/ModuloBloqueado';
 import {
@@ -94,7 +94,7 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
             <Button size="small" icon={<DownloadOutlined />} onClick={() => handleVerXML(r.numero)} />
           </Tooltip>
           {['pendiente_envio', 'rechazado'].includes(r.estadoDGII) && r.intentosEnvio < 5 && (
-            <Tooltip title="Reenviar a MSeller">
+            <Tooltip title="Reenviar a tu proveedor e-CF">
               <Button size="small" type="primary" icon={<SendOutlined />}
                 loading={reenviarMut.isPending}
                 onClick={() => reenviarMut.mutate(r.numero)} />
@@ -157,7 +157,7 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
             </Descriptions.Item>
             <Descriptions.Item label="Documento asociado">{detail.factura?.folio ?? 'Sin documento'}</Descriptions.Item>
             <Descriptions.Item label="Código de seguridad"><Text code>{detail.codigoSeguridad}</Text></Descriptions.Item>
-            <Descriptions.Item label="Track ID MSeller">
+            <Descriptions.Item label="Track ID tu proveedor e-CF">
               <Text code style={{ fontSize: 11 }}>{detail.trackId ?? '—'}</Text>
             </Descriptions.Item>
             <Descriptions.Item label="Intentos de envío">{detail.intentosEnvio}</Descriptions.Item>

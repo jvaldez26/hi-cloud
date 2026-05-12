@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback } from 'react';
 import {
   Form, Input, Button, Card, Row, Col, Typography, message, Tag, Table,
   Select, InputNumber, Switch, Divider, Avatar, Modal, Space, Badge,
@@ -410,8 +410,8 @@ function SeccionDatos({ empresa, onSaved }: { empresa: any; onSaved: () => void 
             <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '10px 14px', marginTop: 8 }}>
               <strong style={{ color: '#dc2626' }}>🔴 Advertencia e-CF:</strong>
               <p style={{ margin: '4px 0 0', fontSize: 13, color: '#7f1d1d' }}>
-                Esta empresa tiene configuración e-CF activa en MSeller. Después de cambiar el RNC,
-                deberás actualizar manualmente las credenciales en MSeller para que coincida con el nuevo RNC.
+                Esta empresa tiene configuración e-CF activa en tu proveedor e-CF. Después de cambiar el RNC,
+                deberás actualizar manualmente las credenciales en tu proveedor e-CF para que coincida con el nuevo RNC.
                 Los comprobantes electrónicos serán rechazados hasta que se actualice.
               </p>
             </div>
@@ -924,7 +924,7 @@ function SeccionECF({ empresaId }: { empresaId: number }) {
           <Row gutter={16}>
             <Col xs={24} sm={8}>
               <Text type="secondary">Proveedor</Text>
-              <div><Text strong>{config.proveedor ?? 'MSeller'}</Text></div>
+              <div><Text strong>{config.proveedor ?? 'tu proveedor e-CF'}</Text></div>
             </Col>
             <Col xs={24} sm={8}>
               <Text type="secondary">Modo</Text>

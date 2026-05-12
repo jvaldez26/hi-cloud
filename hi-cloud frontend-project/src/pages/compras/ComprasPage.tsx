@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+﻿import { useState, useCallback } from 'react';
 import {
   Table, Button, Tag, Space, Typography, Card, Row, Col,
   Popconfirm, message, Dropdown, Input, Select, DatePicker, Statistic, theme,
@@ -220,7 +220,7 @@ export default function ComprasPage() {
             {(r.estado === 'recibida' || r.estado === 'pagada') && !(r as any).ecfNumero && (
               <Popconfirm
                 title="¿Emitir e-CF E41 (Comprobante de Compras)?"
-                description="Se enviará a la DGII vía MSeller. El proveedor debe tener RNC registrado."
+                description="Se enviará a la DGII vía tu proveedor e-CF. El proveedor debe tener RNC registrado."
                 onConfirm={() => emitirEcfE41.mutate(r.id)}
                 okText="Emitir E41"
                 cancelText="Cancelar"

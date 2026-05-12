@@ -291,7 +291,7 @@ export default function NotasDebitoPage() {
                   {r.estado === 'emitida' && <Button size="small" type="text" icon={<MailOutlined />} onClick={() => { setEmailNota(r); setEmailDest(r.cliente?.email ?? ''); }} />}
                   {r.estado === 'borrador' && <Button size="small" icon={<CheckCircleOutlined />} style={{ color: '#d97706', borderColor: '#d97706' }} onClick={() => emitir.mutate(r.id)}>Emitir</Button>}
                   {r.estado === 'emitida' && !r.ecfNumero && (
-                    <Popconfirm title="¿Emitir e-CF E33?" description="Se enviará a la DGII vía MSeller." onConfirm={() => emitirEcfMut.mutate(r.id)} okText="Sí" cancelText="No">
+                    <Popconfirm title="¿Emitir e-CF E33?" description="Se enviará a la DGII vía tu proveedor e-CF." onConfirm={() => emitirEcfMut.mutate(r.id)} okText="Sí" cancelText="No">
                       <Button size="small" icon={<AuditOutlined />} loading={emitirEcfMut.isPending} style={{ color: '#7c3aed', borderColor: '#7c3aed' }}>e-CF E33</Button>
                     </Popconfirm>
                   )}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+﻿import { useEffect, useRef, useState } from 'react';
 import { Card, Row, Col, Descriptions, Tag, Button, Space, Alert, Spin, Tooltip, Typography } from 'antd';
 import { ReloadOutlined, CheckCircleFilled, SyncOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -106,7 +106,7 @@ export default function EcfSeccion({ facturaId, documentoOrigenId, queryKeyBase 
             <Text type="secondary" style={{ fontSize: 11 }}>Verificando con DGII…</Text>
           )}
           {puedeReenviar && (
-            <Tooltip title="Reenviar a MSeller">
+            <Tooltip title="Reenviar a tu proveedor e-CF">
               <Button size="small" icon={<ReloadOutlined />}
                 loading={reenviarMut.isPending}
                 onClick={() => reenviarMut.mutate()}>
@@ -121,7 +121,7 @@ export default function EcfSeccion({ facturaId, documentoOrigenId, queryKeyBase 
         <Alert type="info" showIcon icon={<Spin size="small" />}
           style={{ marginBottom: 10 }}
           message="Enviado — esperando respuesta de la DGII"
-          description="El comprobante fue enviado a MSeller. Se actualizará automáticamente cuando la DGII responda." />
+          description="El comprobante fue enviado a tu proveedor e-CF. Se actualizará automáticamente cuando la DGII responda." />
       )}
       {esAceptado && (
         <Alert type="success" showIcon icon={<CheckCircleFilled />}

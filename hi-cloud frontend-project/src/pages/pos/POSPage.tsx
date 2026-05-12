@@ -443,7 +443,7 @@ function ThermalReceipt({ sale }: { sale: Sale }) {
   const esExento = tipoCode === 'E44';
   const ahora    = dayjs();
 
-  // Generar QR code como data URL desde qrUrl de MSeller/DGII
+  // Generar QR code como data URL desde qrUrl de tu proveedor e-CF/DGII
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   useEffect(() => {
     if (!sale.qrUrl || sale.ecfPendiente) { setQrDataUrl(null); return; }
@@ -559,7 +559,7 @@ function ThermalReceipt({ sale }: { sale: Sale }) {
           {sale.securityCode && <RRow label="Cód.Seg.:" value={sale.securityCode} bold />}
           <HR />
 
-          {/* QR Code — genera imagen desde qrUrl de MSeller/DGII */}
+          {/* QR Code — genera imagen desde qrUrl de tu proveedor e-CF/DGII */}
           {qrDataUrl && !sale.ecfPendiente ? (
             <>
               <div style={{ textAlign: 'center', margin: '4px 0' }}>
@@ -738,11 +738,11 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit,
 
       <div style={{ flex: 1 }} />
 
-      {/* ── Indicador MSeller / DGII ── */}
+      {/* ── Indicador tu proveedor e-CF / DGII ── */}
       <Tooltip title={
         isOffline ? 'Sin conexión a internet' :
-        ecfOnline === false ? 'MSeller no responde — modo contingencia activo' :
-        'DGII / MSeller en línea'
+        ecfOnline === false ? 'tu proveedor e-CF no responde — modo contingencia activo' :
+        'DGII / tu proveedor e-CF en línea'
       }>
         <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0,
           background: isOffline || ecfOnline === false ? 'rgba(239,68,68,.15)' : 'rgba(16,185,129,.12)',
@@ -2732,7 +2732,7 @@ export default function POSPage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // MSeller health — null=checking, true=online, false=offline
+  // tu proveedor e-CF health — null=checking, true=online, false=offline
   const { data: ecfOnline } = useQuery<boolean>({
     queryKey: ['pos-ecf-health'],
     queryFn: async () => {
@@ -2969,7 +2969,7 @@ export default function POSPage() {
 
       const factura = await facturasApi.create(payload);
 
-      // Emitir desde POS (síncrono 8s — la venta no se bloquea si MSeller falla)
+      // Emitir desde POS (síncrono 8s — la venta no se bloquea si tu proveedor e-CF falla)
       setEcfStatus('loading');
 
       // Guardar RNC en el perfil del cliente si el cajero marcó el checkbox

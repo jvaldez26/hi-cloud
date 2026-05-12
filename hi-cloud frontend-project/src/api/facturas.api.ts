@@ -1,4 +1,4 @@
-import api from './client';
+﻿import api from './client';
 import type { ApiResponse, PaginatedData, Factura, FacturaEstado } from '../types';
 
 export interface FacturaDetallePayload {
@@ -48,7 +48,7 @@ export const facturasApi = {
   cambiarEstado: (id: number, estado: FacturaEstado) =>
     api.patch(`/facturas/${id}/estado`, { estado }).then(r => r.data.data ?? r.data),
 
-  /** Emite desde POS con timeout de 8s en el backend — la venta no se bloquea si MSeller falla */
+  /** Emite desde POS con timeout de 8s en el backend — la venta no se bloquea si tu proveedor e-CF falla */
   emitirPos: (id: number, body?: EmitirPosBody) =>
     api.patch(`/facturas/${id}/emitir-pos`, { estado: 'emitida', ...body }).then(r => r.data.data ?? r.data),
 

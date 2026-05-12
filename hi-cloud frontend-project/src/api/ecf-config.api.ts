@@ -4,10 +4,10 @@ const BASE = '/admin/ecf-config';
 
 export interface EmpresaEcfConfigPayload {
   empresaId:          number;
-  msellerEmail:       string;
-  msellerPassword:    string;
-  msellerApiKey:      string;
-  msellerUrlBase?:    string;
+  proveedorEmail:     string;
+  proveedorPassword:  string;
+  proveedorApiKey:    string;
+  proveedorUrlBase?:  string;
   modo?:              'TEST' | 'CERTIFICACION' | 'PRODUCCION';
   rncEmisor:          string;
   razonSocialEmisor:  string;
