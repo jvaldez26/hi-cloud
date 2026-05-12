@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef, createContext, useContext, Suspense } from 'react';
+import { useMobile } from '../../hooks/useMediaQuery';
 import {
   Layout, Avatar, Dropdown, Typography, Badge, Space,
   Button, Tooltip, theme, Select, Tag, Modal,
@@ -1093,9 +1094,12 @@ export default function AppLayout() {
   }, [closePanel]);
 
   // Navegar y cerrar panel
+  const isMobile = useMobile();
+
   const handleNavigate = useCallback((path: string) => {
     navigate(path);
     closePanel();
+    setMobileOpen(false); // cierra drawer mobile al navegar
   }, [navigate, closePanel]);
 
   // Prefetch del chunk de una ruta en hover para que el clic sea instantáneo
@@ -1371,22 +1375,55 @@ export default function AppLayout() {
         {/* ══ SIDEBAR + FLYOUT — envueltos en el proveedor de tema ══ */}
         <SidebarCtx.Provider value={C}>
 
-        {/* ══ SIDEBAR DESKTOP ════════════════════════════════════════ */}
-        <div
-          ref={sidebarRef}
-          style={{
-            width:       collapsed ? 64 : 260,
-            minWidth:    collapsed ? 64 : 260,
-            height:      '100%',
-            flexShrink:  0,
-            transition:  'width 0.25s ease, min-width 0.25s ease',
-            boxShadow:   '1px 0 0 rgba(148,163,184,0.06)',
-            zIndex:      100,
-            overflowY:   'hidden',
-          }}
-        >
-          {SidebarContent}
-        </div>
+        {/* ══ SIDEBAR DESKTOP (oculto en mobile) ═══════════════════ */}
+        {!isMobile && (
+          <div
+            ref={sidebarRef}
+            style={{
+              width:       collapsed ? 64 : 260,
+              minWidth:    collapsed ? 64 : 260,
+              height:      '100%',
+              flexShrink:  0,
+              transition:  'width 0.25s ease, min-width 0.25s ease',
+              boxShadow:   '1px 0 0 rgba(148,163,184,0.06)',
+              zIndex:      100,
+              overflowY:   'hidden',
+            }}
+          >
+            {SidebarContent}
+          </div>
+        )}
+
+        {/* ══ SIDEBAR MOBILE — drawer overlay ════════════════════════ */}
+        {isMobile && (
+          <>
+            {/* Overlay oscuro */}
+            {mobileOpen && (
+              <div
+                className="mobile-drawer-overlay"
+                onClick={() => setMobileOpen(false)}
+              />
+            )}
+            {/* Drawer */}
+            <div
+              ref={sidebarRef}
+              style={{
+                position:   'fixed',
+                top:        0,
+                left:       0,
+                height:     '100%',
+                width:      260,
+                zIndex:     200,
+                transform:  mobileOpen ? 'translateX(0)' : 'translateX(-260px)',
+                transition: 'transform 0.25s ease',
+                overflowY:  'hidden',
+                boxShadow:  mobileOpen ? '4px 0 20px rgba(0,0,0,0.3)' : 'none',
+              }}
+            >
+              {SidebarContent}
+            </div>
+          </>
+        )}
 
         {/* ══ FLYOUT PANEL ═══════════════════════════════════════════ */}
         <AnimatePresence>
@@ -1427,7 +1464,21 @@ export default function AppLayout() {
           }}>
             {/* Izquierda */}
             <Space size={8}>
-              {collapsed && (
+              {/* Hamburguesa mobile */}
+              {isMobile && (
+                <button
+                  onClick={() => setMobileOpen(v => !v)}
+                  style={{
+                    background: 'transparent', border: 'none', cursor: 'pointer',
+                    color: token.colorTextSecondary, display: 'flex',
+                    padding: 4, borderRadius: 6,
+                  }}
+                >
+                  <Menu size={20} strokeWidth={2} />
+                </button>
+              )}
+              {/* Botón expandir sidebar (solo desktop colapsado) */}
+              {!isMobile && collapsed && (
                 <button
                   onClick={() => setCollapsed(false)}
                   style={{
@@ -1439,12 +1490,13 @@ export default function AppLayout() {
                   <Menu size={18} strokeWidth={2} />
                 </button>
               )}
-              <Greeting nombre={user?.nombre ?? 'Usuario'} />
+              {!isMobile && <Greeting nombre={user?.nombre ?? 'Usuario'} />}
             </Space>
 
             {/* Derecha */}
             <Space size={4}>
-              {Array.isArray(misEmpresas) && misEmpresas.length >= 1 && (
+              {/* Selector empresa — oculto en mobile si solo hay 1 */}
+              {Array.isArray(misEmpresas) && misEmpresas.length >= 1 && !isMobile && (
                 <Select
                   value={empresaActiva}
                   onChange={cambiarEmpresa}
@@ -1467,33 +1519,39 @@ export default function AppLayout() {
                 />
               )}
 
-              <PlanIndicadorHeader />
-              <LiveClock />
+              {!isMobile && <PlanIndicadorHeader />}
+              {!isMobile && <LiveClock />}
               <RealtimeDot />
 
+              {/* Búsqueda — solo ícono en mobile */}
               <Tooltip title="Búsqueda global (Ctrl+K)">
                 <Button type="text" size="small" icon={<SearchOutlined />}
                   onClick={() => setCmdOpen(true)}>
-                  <Text type="secondary" style={{ fontSize: 11 }}>Ctrl+K</Text>
+                  {!isMobile && <Text type="secondary" style={{ fontSize: 11 }}>Ctrl+K</Text>}
                 </Button>
               </Tooltip>
 
-              <Tooltip title={isDark ? 'Modo claro' : 'Modo oscuro'}>
-                <motion.div whileTap={{ rotate: 180 }} transition={{ duration: .3 }}>
-                  <Button type="text" size="small"
-                    icon={isDark
-                      ? <MoonOutlined style={{ color: '#facc15' }} />
-                      : <SunOutlined />}
-                    onClick={toggleTheme} />
-                </motion.div>
-              </Tooltip>
+              {/* Modo oscuro — oculto en mobile (disponible en perfil) */}
+              {!isMobile && (
+                <Tooltip title={isDark ? 'Modo claro' : 'Modo oscuro'}>
+                  <motion.div whileTap={{ rotate: 180 }} transition={{ duration: .3 }}>
+                    <Button type="text" size="small"
+                      icon={isDark
+                        ? <MoonOutlined style={{ color: '#facc15' }} />
+                        : <SunOutlined />}
+                      onClick={toggleTheme} />
+                  </motion.div>
+                </Tooltip>
+              )}
 
-              <Tooltip title="Centro de ayuda (F1)">
-                <Button type="text" size="small" onClick={() => setHelpOpen(true)}
-                  style={{ fontWeight: 700, color: 'rgba(120,120,120,.7)', fontSize: 14 }}>
-                  ?
-                </Button>
-              </Tooltip>
+              {!isMobile && (
+                <Tooltip title="Centro de ayuda (F1)">
+                  <Button type="text" size="small" onClick={() => setHelpOpen(true)}
+                    style={{ fontWeight: 700, color: 'rgba(120,120,120,.7)', fontSize: 14 }}>
+                    ?
+                  </Button>
+                </Tooltip>
+              )}
 
               <Badge
                 count={totalAlertas}
