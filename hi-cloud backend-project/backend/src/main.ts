@@ -30,11 +30,10 @@ async function loadSecretsIfProd(): Promise<void> {
       bootLogger.log(`${Object.keys(secrets).length} secretos cargados desde ${secretName}`);
     }
   } catch (e: any) {
-    // No bloquear arranque — en dev AWS_SECRET_NAME no está configurado
-    if (process.env.NODE_ENV === 'production') {
-      bootLogger.error(`ERROR cargando secretos de AWS: ${e.message}`);
-      process.exit(1); // En producción es crítico
-    }
+    bootLogger.warn(
+      `Secrets Manager no disponible (${e.message}) — usando variables del .env`,
+    );
+    // No fatal: si las variables están en .env el sistema funciona igual
   }
 }
 
