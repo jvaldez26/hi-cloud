@@ -102,8 +102,11 @@ export class AuthService {
     const isValid = await bcrypt.compare(dto.password, user.password);
     if (!isValid) throw new UnauthorizedException('Credenciales inválidas');
 
-    // Verificar que el correo esté confirmado
-    if (!user.emailVerifiedAt) {
+    // Bloquear solo usuarios registrados DESPUÉS de implementar la verificación
+    // Usuarios anteriores a 2026-05-12 son válidos aunque no tengan emailVerifiedAt
+    const FECHA_IMPL_VERIFICACION = new Date('2026-05-12T00:00:00Z');
+    const esNuevo = user.createdAt > FECHA_IMPL_VERIFICACION;
+    if (esNuevo && !(user as any).emailVerifiedAt) {
       throw new UnauthorizedException('CORREO_NO_VERIFICADO');
     }
 
