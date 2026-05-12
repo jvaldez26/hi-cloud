@@ -40,6 +40,15 @@ async function loadSecretsIfProd(): Promise<void> {
 async function bootstrap() {
   await loadSecretsIfProd();
 
+  // Advertencia si FRONTEND_URL apunta a localhost en producción
+  const frontendUrl = process.env.FRONTEND_URL ?? '';
+  if (process.env.NODE_ENV === 'production' && (!frontendUrl || frontendUrl.includes('localhost'))) {
+    bootLogger.warn(
+      `⚠️  FRONTEND_URL="${frontendUrl || '(vacío)'}" — los emails generarán links a localhost. ` +
+      `Establece FRONTEND_URL=https://tudominio.com en el .env de producción.`,
+    );
+  }
+
   const app = await NestFactory.create(AppModule);
 
   const isDev = process.env.NODE_ENV !== 'production';
