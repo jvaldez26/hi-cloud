@@ -1,0 +1,37 @@
+import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
+import { BaseEntity } from '../../common/entities/base.entity';
+import { MetodoPago } from '../../common/enums/metodo-pago.enum';
+import { CuentaPorCobrar } from './cuenta-por-cobrar.entity';
+import { User } from '../../users/users.entity';
+
+@Entity('pagos_cobrados')
+export class PagoCobrado extends BaseEntity {
+  @ManyToOne(() => CuentaPorCobrar, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'cuentaPorCobrarId' })
+  cuentaPorCobrar!: CuentaPorCobrar;
+
+  @Column()
+  cuentaPorCobrarId!: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  monto!: number;
+
+  @Column({ type: 'date' })
+  fecha!: Date;
+
+  @Column({ type: 'enum', enum: MetodoPago })
+  metodoPago!: MetodoPago;
+
+  @Column({ length: 100, nullable: true })
+  referencia?: string;
+
+  @Column({ type: 'text', nullable: true })
+  notas?: string;
+
+  @ManyToOne(() => User)
+  @JoinColumn({ name: 'userId' })
+  user!: User;
+
+  @Column()
+  userId!: number;
+}

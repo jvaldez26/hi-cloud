@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "WebFetch(domain:docs.ecf.mseller.app)"
+    ]
+  }
+}

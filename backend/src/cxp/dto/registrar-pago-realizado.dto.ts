@@ -1,0 +1,27 @@
+import {
+  IsNumber,
+  IsPositive,
+  IsEnum,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
+import { MetodoPago } from '../../common/enums/metodo-pago.enum';
+
+export class RegistrarPagoRealizadoDto {
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsPositive()
+  monto: number;
+
+  @IsEnum(MetodoPago)
+  metodoPago: MetodoPago;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  referencia?: string;
+
+  @IsOptional()
+  @IsString()
+  notas?: string;
+}
