@@ -2,6 +2,8 @@ import { Entity, Column } from 'typeorm';
 import { BaseEntity } from '../common/entities/base.entity';
 import { UserRole } from './enums/user-role.enum';
 
+export type AuthProvider = 'LOCAL' | 'GOOGLE';
+
 @Entity('users')
 export class User extends BaseEntity {
   @Column({ length: 200 })
@@ -16,12 +18,34 @@ export class User extends BaseEntity {
   @Column({ type: 'enum', enum: UserRole, default: UserRole.VIEWER })
   role!: UserRole;
 
+  // ── Password reset ────────────────────────────────────────────────────────
   @Column({ length: 100, nullable: true, select: false })
   resetPasswordToken?: string;
 
   @Column({ type: 'timestamp', nullable: true, select: false })
   resetPasswordExpires?: Date;
 
+  // ── Email verification ────────────────────────────────────────────────────
+  @Column({ type: 'timestamptz', nullable: true })
+  emailVerifiedAt?: Date;
+
+  @Column({ length: 255, nullable: true, select: false })
+  emailVerificationToken?: string;
+
+  @Column({ type: 'timestamptz', nullable: true, select: false })
+  emailVerificationExpires?: Date;
+
+  // ── Auth provider ─────────────────────────────────────────────────────────
+  @Column({ length: 20, default: 'LOCAL' })
+  provider!: AuthProvider;
+
+  @Column({ length: 100, nullable: true, select: false })
+  googleId?: string;
+
+  @Column({ type: 'text', nullable: true, select: false })
+  googleAccessToken?: string;
+
+  // ── 2FA ──────────────────────────────────────────────────────────────────
   @Column({ default: false })
   twoFactorEnabled!: boolean;
 

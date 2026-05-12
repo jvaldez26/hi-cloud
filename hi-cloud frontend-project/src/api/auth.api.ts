@@ -27,6 +27,16 @@ export const authApi = {
     return res.data?.data ?? res.data;
   },
 
+  verifyEmail: async (token: string) => {
+    const res = await api.post('/auth/verify-email', { token });
+    return res.data?.data ?? res.data;
+  },
+
+  resendVerification: async (email: string) => {
+    const res = await api.post('/auth/resend-verification', { email });
+    return res.data?.data ?? res.data;
+  },
+
   cambiarEmpresa: async (empresaId: number) => {
     const res = await api.post('/auth/cambiar-empresa', { empresaId });
     return res.data?.data ?? res.data;

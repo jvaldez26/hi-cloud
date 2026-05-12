@@ -123,4 +123,23 @@ export class AuthController {
   ) {
     return this.authService.changePassword(user.id, dto.currentPassword, dto.newPassword);
   }
+
+  // ── Email verification ────────────────────────────────────────────────────
+
+  @Post('verify-email')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Verificar correo con token (desde el enlace del email)' })
+  verifyEmail(@Body('token') token: string) {
+    if (!token) throw new (require('@nestjs/common').BadRequestException)('Token requerido');
+    return this.authService.verifyEmail(token);
+  }
+
+  @Post('resend-verification')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 3, ttl: 3_600_000 } }) // 3 reenvíos por hora
+  @ApiOperation({ summary: 'Reenviar correo de verificación' })
+  resendVerification(@Body('email') email: string) {
+    if (!email) throw new (require('@nestjs/common').BadRequestException)('Email requerido');
+    return this.authService.resendVerificationEmail(email);
+  }
 }

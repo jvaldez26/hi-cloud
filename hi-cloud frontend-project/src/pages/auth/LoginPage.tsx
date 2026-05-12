@@ -10,8 +10,12 @@ import DemoModal from './DemoModal';
 const { Title, Text } = Typography;
 
 export default function LoginPage() {
-  const [loading,  setLoading]  = useState(false);
-  const [demoOpen, setDemoOpen] = useState(false);
+  const [loading,       setLoading]       = useState(false);
+  const [demoOpen,      setDemoOpen]      = useState(false);
+  const [correoNoVerif, setCorreoNoVerif] = useState(false);
+  const [emailIngresado,setEmailIngresado]= useState('');
+  const [reenviando,    setReenviando]    = useState(false);
+  const [reenviado,     setReenviado]     = useState(false);
   const { login } = useAuthStore();
   const navigate  = useNavigate();
 
@@ -20,9 +24,20 @@ export default function LoginPage() {
   const [error, setError] = useState(mensajeSuspension);
   if (mensajeSuspension) sessionStorage.removeItem('login_error');
 
+  const reenviarVerificacion = async () => {
+    setReenviando(true);
+    try {
+      await authApi.resendVerification(emailIngresado);
+    } catch { /* respuesta neutra */ }
+    finally { setReenviando(false); setReenviado(true); }
+  };
+
   const onFinish = async (values: { email: string; password: string }) => {
     setLoading(true);
     setError('');
+    setCorreoNoVerif(false);
+    setReenviado(false);
+    setEmailIngresado(values.email);
     try {
       const data = await authApi.login(values.email, values.password);
       login(data.accessToken, data.user, data.empresaActual, data.empresas ?? []);
@@ -33,10 +48,12 @@ export default function LoginPage() {
         navigate('/dashboard');
       }
     } catch (e: unknown) {
-      setError(
-        (e as { response?: { data?: { errors?: string[] } } })
-          ?.response?.data?.errors?.[0] ?? 'Credenciales inválidas',
-      );
+      const msg = (e as any)?.response?.data?.errors?.[0] ?? 'Credenciales inválidas';
+      if (msg === 'CORREO_NO_VERIFICADO') {
+        setCorreoNoVerif(true);
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -104,6 +121,25 @@ export default function LoginPage() {
           {error && (
             <Alert message={error} type="error" showIcon
               style={{ marginBottom: 16, borderRadius: 8 }} />
+          )}
+
+          {correoNoVerif && (
+            <Alert type="warning" showIcon style={{ marginBottom: 16, borderRadius: 8 }}
+              message="Correo no verificado"
+              description={
+                reenviado ? (
+                  <span>✅ Correo enviado. Revisa tu bandeja de entrada.</span>
+                ) : (
+                  <span>
+                    Debes verificar tu correo antes de iniciar sesión.{' '}
+                    <button onClick={reenviarVerificacion} disabled={reenviando}
+                      style={{ background: 'none', border: 'none', color: '#d97706', fontWeight: 600, cursor: reenviando ? 'wait' : 'pointer', padding: 0, textDecoration: 'underline' }}>
+                      {reenviando ? 'Enviando…' : 'Reenviar correo'}
+                    </button>
+                  </span>
+                )
+              }
+            />
           )}
 
           <Form layout="vertical" onFinish={onFinish} size="large">

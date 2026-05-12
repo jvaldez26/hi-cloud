@@ -52,6 +52,7 @@ const RegisterPage        = lazy(() => import('./pages/auth/RegisterPage'));
 // SuperAdminPage definida más abajo
 const ForgotPasswordPage        = lazy(() => import('./pages/auth/ForgotPasswordPage'));
 const ResetPasswordPage         = lazy(() => import('./pages/auth/ResetPasswordPage'));
+const VerificarCorreoPage       = lazy(() => import('./pages/auth/VerificarCorreoPage'));
 const FacturasRecurrentesPage   = lazy(() => import('./pages/facturas/FacturasRecurrentesPage'));
 const RetencionesPage           = lazy(() => import('./pages/retenciones/RetencionesPage'));
 const ClientPortalPage          = lazy(() => import('./pages/portal/ClientPortalPage'));
@@ -247,6 +248,7 @@ export default function App() {
                   <Route path="/precios"                 element={<PricingPage />} />
                   <Route path="/recuperar-contrasena"    element={<ForgotPasswordPage />} />
                   <Route path="/restablecer/:token"      element={<ResetPasswordPage />} />
+                  <Route path="/verificar-correo"        element={<VerificarCorreoPage />} />
                   {/* Portal del cliente — PÚBLICO */}
                   <Route path="/portal/:token"           element={<ClientPortalPage />} />
                   {/* Aceptar invitación — PÚBLICO */}

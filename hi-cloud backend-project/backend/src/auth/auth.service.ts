@@ -10,7 +10,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { randomUUID } from 'crypto';
+import { randomUUID, randomBytes } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import { UsersService } from '../users/users.service';
 import { EmailService } from '../notificaciones/services/email.service';
@@ -79,8 +79,13 @@ export class AuthService {
         password: hashed,
       });
 
+      // Enviar correo de verificación en background (no bloquea la respuesta)
+      this.sendVerificationEmail(user.id, user.email, user.nombre).catch(err =>
+        this.logger.warn(`No se pudo enviar verificación a ${user.email}: ${err?.message}`),
+      );
+
       return {
-        message: 'Usuario registrado exitosamente',
+        message: 'Usuario registrado. Revisa tu correo para verificar tu cuenta.',
         user: { id: user.id, nombre: user.nombre, email: user.email, role: user.role },
       };
     } catch {
@@ -96,6 +101,11 @@ export class AuthService {
 
     const isValid = await bcrypt.compare(dto.password, user.password);
     if (!isValid) throw new UnauthorizedException('Credenciales inválidas');
+
+    // Verificar que el correo esté confirmado
+    if (!user.emailVerifiedAt) {
+      throw new UnauthorizedException('CORREO_NO_VERIFICADO');
+    }
 
     const empresaId    = await this.getEmpresaPrincipal(user.id);
     const accessToken  = this.buildToken(user, empresaId);
@@ -278,5 +288,93 @@ export class AuthService {
 
     this.logger.log(`Contraseña cambiada por usuario #${userId}`);
     return { message: 'Contraseña actualizada exitosamente' };
+  }
+
+  // ─── Email verification ───────────────────────────────────────────────────────
+
+  async sendVerificationEmail(userId: number, email: string, nombre: string): Promise<void> {
+    const token   = randomBytes(32).toString('hex');
+    const expires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
+
+    await this.userRepository.update(userId, {
+      emailVerificationToken:   token,
+      emailVerificationExpires: expires,
+    } as any);
+
+    const frontendUrl = process.env['FRONTEND_URL'] ?? 'http://localhost:5173';
+    const link = `${frontendUrl}/verificar-correo?token=${token}`;
+
+    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>body{font-family:'Inter',Arial,sans-serif;background:#f5f5f5;margin:0;padding:20px}
+.card{background:#fff;max-width:520px;margin:0 auto;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.1)}
+.header{background:linear-gradient(135deg,#059669,#10b981);padding:28px;color:#fff;text-align:center}
+.body{padding:28px}.btn{display:inline-block;background:linear-gradient(135deg,#059669,#10b981);color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:16px}
+.footer{padding:16px;text-align:center;font-size:12px;color:#9ca3af}</style></head>
+<body><div class="card">
+  <div class="header"><h2 style="margin:0">✅ Verifica tu correo</h2></div>
+  <div class="body">
+    <p>Hola <strong>${nombre}</strong>,</p>
+    <p>Gracias por registrarte en HiCloud ERP. Haz clic en el botón para verificar tu cuenta:</p>
+    <p style="text-align:center;margin:28px 0"><a href="${link}" class="btn">Verificar mi correo</a></p>
+    <p style="color:#6b7280;font-size:13px">Este enlace expira en <strong>24 horas</strong>.</p>
+    <p style="color:#9ca3af;font-size:12px">O copia este enlace:<br/>${link}</p>
+  </div>
+  <div class="footer">© 2026 HiCloud ERP · República Dominicana</div>
+</div></body></html>`;
+
+    await this.emailService.enviar({
+      to:      email,
+      subject: 'Verifica tu correo — HiCloud ERP',
+      html,
+    });
+    this.logger.log(`Correo de verificación enviado a: ${email}`);
+  }
+
+  async verifyEmail(token: string): Promise<{ message: string }> {
+    const user = await this.userRepository.findOne({
+      where: { emailVerificationToken: token } as any,
+      select: ['id', 'emailVerifiedAt', 'emailVerificationExpires', 'isActive'] as any,
+    });
+
+    if (!user) throw new BadRequestException('Token inválido o expirado');
+
+    if ((user as any).emailVerifiedAt) {
+      return { message: 'Tu correo ya fue verificado. Ya puedes iniciar sesión.' };
+    }
+
+    const expires: Date | undefined = (user as any).emailVerificationExpires;
+    if (expires && expires < new Date()) {
+      throw new BadRequestException('El enlace ha expirado. Solicita un nuevo correo de verificación.');
+    }
+
+    await this.userRepository.update(user.id, {
+      emailVerifiedAt:          new Date(),
+      emailVerificationToken:   null,
+      emailVerificationExpires: null,
+    } as any);
+
+    this.logger.log(`Email verificado para usuario #${user.id}`);
+    return { message: '¡Correo verificado exitosamente! Ya puedes iniciar sesión.' };
+  }
+
+  async resendVerificationEmail(email: string): Promise<{ message: string }> {
+    const user = await this.userRepository.findOne({
+      where: { email, isActive: true },
+      select: ['id', 'nombre', 'email', 'emailVerifiedAt'] as any,
+    });
+
+    // Respuesta neutra — no revelar si el email existe
+    const response = { message: 'Si el correo existe y no está verificado, recibirás un nuevo enlace.' };
+
+    if (!user || (user as any).emailVerifiedAt) return response;
+
+    // Rate limit: no reenviar si el token vigente tiene menos de 5 min
+    const existingExpires: Date | undefined = (user as any).emailVerificationExpires;
+    const tokenReciente = existingExpires && existingExpires > new Date(Date.now() - 5 * 60_000);
+    if (tokenReciente) return response;
+
+    await this.sendVerificationEmail(user.id, user.email, user.nombre).catch(() => null);
+    return response;
   }
 }
