@@ -98,6 +98,14 @@ export class ComprasController {
     return this.comprasService.remove(id);
   }
 
+  @Post(':id/duplicar')
+  @HttpCode(HttpStatus.CREATED)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Duplicar compra — crea nueva en borrador con mismo proveedor e ítems' })
+  duplicar(@Param('id', ParseIntPipe) id: number, @GetUser() usuario: User) {
+    return this.comprasService.duplicar(id, usuario.id);
+  }
+
   @Get(':id/pdf')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Descargar Orden de Compra en PDF' })

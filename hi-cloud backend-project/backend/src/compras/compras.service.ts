@@ -220,6 +220,59 @@ export class ComprasService {
       .getRawMany();
   }
 
+  async duplicar(id: number, userId: number) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const original  = await this.compraRepository.findOne({
+      where: { id, empresaId, isActive: true },
+      relations: ['detalles'],
+    });
+    if (!original) throw new NotFoundException(`Compra #${id} no encontrada`);
+
+    const folio = await this.generarFolio();
+
+    const nueva = await this.compraRepository.save(
+      this.compraRepository.create({
+        empresaId,
+        folio,
+        fecha:       new Date(),
+        estado:      CompraEstado.BORRADOR,
+        proveedorId: original.proveedorId,
+        moneda:      original.moneda,
+        tipoCambio:  original.tipoCambio,
+        subtotal:    original.subtotal,
+        itbis:       original.itbis,
+        total:       original.total,
+        descuento:   original.descuento,
+        notas:       original.notas,
+        userId,
+      }),
+    );
+
+    if (original.detalles?.length) {
+      await this.detalleRepository.save(
+        original.detalles.map(d => this.detalleRepository.create({
+          compraId:       nueva.id,
+          productoId:     d.productoId,
+          descripcion:    d.descripcion,
+          cantidad:       d.cantidad,
+          precioUnitario: d.precioUnitario,
+          porcentajeItbis:d.porcentajeItbis,
+          itbis:          d.itbis,
+          subtotal:       d.subtotal,
+          total:          d.total,
+        })),
+      );
+    }
+
+    this.logger.log(`Compra #${id} duplicada → nueva #${nueva.id} (${folio})`);
+    this.realtimeService.notify(empresaId, 'compra', 'created', nueva.id);
+
+    return this.compraRepository.findOne({
+      where: { id: nueva.id },
+      relations: ['proveedor', 'detalles'],
+    });
+  }
+
   async remove(id: number) {
     const compra = await this.findOne(id);
     if (compra.estado !== CompraEstado.BORRADOR) {

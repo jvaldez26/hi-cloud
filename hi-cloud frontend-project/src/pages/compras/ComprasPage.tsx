@@ -7,7 +7,7 @@ import {
 import {
   PlusOutlined, EyeOutlined, DownOutlined, SearchOutlined,
   FileExcelOutlined, FilterOutlined, MailOutlined, FilePdfOutlined,
-  LoadingOutlined, AuditOutlined,
+  LoadingOutlined, AuditOutlined, CopyOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -100,6 +100,15 @@ export default function ComprasPage() {
     mutationFn: comprasApi.remove,
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['compras'] }); message.success('Compra eliminada'); },
     onError:   (e: any) => message.error((e as any)?.friendlyMessage ?? 'No se puede eliminar'),
+  });
+
+  const duplicarMut = useMutation({
+    mutationFn: (id: number) => api.post(`/compras/${id}/duplicar`).then(r => r.data?.data ?? r.data),
+    onSuccess: (nueva: any) => {
+      qc.invalidateQueries({ queryKey: ['compras'] });
+      message.success(`Compra duplicada → ${nueva?.folio ?? 'borrador'}`);
+    },
+    onError: () => message.error('Error al duplicar'),
   });
 
   const emitirEcfE41 = useMutation({
@@ -203,6 +212,11 @@ export default function ComprasPage() {
                 disabled={pdfPending === r.id}
                 onClick={() => descargarPDF(r)}
               />
+            </Tooltip>
+            <Tooltip title="Duplicar compra">
+              <Button size="small" type="text" icon={<CopyOutlined />}
+                loading={duplicarMut.isPending}
+                onClick={() => duplicarMut.mutate(r.id)} />
             </Tooltip>
             <Tooltip title="Enviar por email al proveedor">
               <Button size="small" type="text" icon={<MailOutlined />}
