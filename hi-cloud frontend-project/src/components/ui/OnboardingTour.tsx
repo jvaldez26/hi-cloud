@@ -60,14 +60,25 @@ export default function OnboardingTour() {
 
   useEffect(() => {
     if (!user) return;
-    // Ya completó en BD → no mostrar
-    if (user.tourCompletado) return;
-    // Fallback localStorage (misma sesión, antes de sincronizar con BD)
-    const lsKey = `hicloud_tour_v2_${user.id}`;
-    if (localStorage.getItem(lsKey)) return;
 
+    const lsKey = `hicloud_tour_v2_${user.id}`;
+
+    // 1. BD dice que ya completó → sincronizar localStorage y no mostrar
+    if (user.tourCompletado) {
+      localStorage.setItem(lsKey, '1');
+      return;
+    }
+
+    // 2. localStorage dice que ya completó, pero BD no está actualizada
+    //    → intentar sincronizar BD silenciosamente y no mostrar
+    if (localStorage.getItem(lsKey)) {
+      api.patch('/auth/tour-completado').catch(() => {});
+      return;
+    }
+
+    // 3. Ni BD ni localStorage → primer login real, mostrar tour
     setTimeout(() => setOpen(true), 800);
-  }, [user]);
+  }, [user?.id, user?.tourCompletado]); // solo re-ejecutar si cambia el usuario o su estado
 
   const completar = async () => {
     setOpen(false);
