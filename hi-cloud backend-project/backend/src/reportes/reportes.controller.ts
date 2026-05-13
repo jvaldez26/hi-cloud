@@ -49,7 +49,7 @@ export class ReportesController {
   }
 
   @Get('ventas/por-cliente')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Ranking de clientes por ventas en el período' })
   getVentasPorCliente(@Query() dto: FiltroFechaDto) {
     return this.reportesService.getVentasPorCliente(dto);

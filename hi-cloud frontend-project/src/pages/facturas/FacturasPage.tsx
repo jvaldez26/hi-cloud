@@ -17,6 +17,7 @@ import type { Dayjs } from 'dayjs';
 import { facturasApi } from '../../api/facturas.api';
 import { clientesApi } from '../../api/clientes.api';
 import api from '../../api/client';
+import { useCanDo } from '../../hooks/useCanDo';
 import { exportarExcel } from '../../utils/exportExcel';
 import type { Factura, FacturaEstado } from '../../types';
 import { fmt, estadoColor } from '../../utils/formatters';
@@ -74,6 +75,12 @@ export default function FacturasPage() {
   const { token } = theme.useToken();
   const navigate  = useNavigate();
   const qc        = useQueryClient();
+
+  // Permisos del rol activo
+  const puedeCrear    = useCanDo('facturas:crear');
+  const puedePDF      = useCanDo('facturas:pdf');
+  const puedeDuplicar = useCanDo('facturas:duplicar');
+  const puedeEliminar = useCanDo('facturas:eliminar');
 
   const [page, setPage]             = useState(1);
   const [search, setSearch]         = useState('');
@@ -318,17 +325,17 @@ export default function FacturasPage() {
             key: 'detalle', icon: <EyeOutlined />, label: 'Ver detalle',
             onClick: () => navigate(`/facturas/${r.id}`),
           },
-          {
+          ...(puedePDF ? [{
             key: 'pdf', icon: pdfPending === r.id ? <LoadingOutlined /> : <FilePdfOutlined />,
             label: 'Descargar PDF',
             disabled: pdfPending === r.id,
             onClick: () => descargarPDF(r, setPdfPending),
-          },
-          {
+          }] : []),
+          ...(puedeDuplicar ? [{
             key: 'duplicar', icon: <CopyOutlined />, label: 'Duplicar factura',
             onClick: () => duplicarMut.mutate(r.id),
-          },
-          { type: 'divider' as const },
+          }] : []),
+          ...(siguientes.length > 0 ? [{ type: 'divider' as const }] : []),
           ...siguientes.map(s => ({
             key: s,
             icon: ESTADO_ICON[s],
@@ -336,7 +343,7 @@ export default function FacturasPage() {
             danger: s === 'cancelada',
             onClick: () => estadoMut.mutate({ id: r.id, estado: s }),
           })),
-          ...(r.estado === 'borrador' ? [
+          ...(r.estado === 'borrador' && puedeEliminar ? [
             { type: 'divider' as const },
             {
               key: 'eliminar', icon: <DeleteOutlined />, label: 'Eliminar', danger: true,
@@ -379,9 +386,11 @@ export default function FacturasPage() {
             <Button icon={<FileExcelOutlined />} onClick={handleExportExcel}>
               Excel
             </Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/facturas/nueva')}>
-              Nueva factura
-            </Button>
+            {puedeCrear && (
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/facturas/nueva')}>
+                Nueva factura
+              </Button>
+            )}
           </Space>
         </Col>
       </Row>

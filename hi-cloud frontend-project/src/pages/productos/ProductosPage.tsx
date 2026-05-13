@@ -12,6 +12,7 @@ import dayjs from 'dayjs';
 import { productosApi, type ProductoPayload } from '../../api/productos.api';
 import { atributosApi } from '../../api/atributos.api';
 import api from '../../api/client';
+import { useCanDo } from '../../hooks/useCanDo';
 import { exportarInventario } from '../../utils/exportExcel';
 import type { Producto } from '../../types';
 import { fmt } from '../../utils/formatters';
@@ -402,6 +403,10 @@ function ProductosCatalogo() {
   const [form]                      = Form.useForm<ProductoPayload>();
   const qc = useQueryClient();
 
+  const puedeCrear    = useCanDo('productos:crear');
+  const puedeEditar   = useCanDo('productos:editar');
+  const puedeEliminar = useCanDo('productos:eliminar');
+
   const { data, isLoading } = useQuery({
     queryKey: ['productos', page, search, categoria],
     queryFn:  () => productosApi.list(page, 15, search),
@@ -456,10 +461,14 @@ function ProductosCatalogo() {
     { title: '', key: 'actions', width: 90,
       render: (_: unknown, r: Producto) => (
         <Space size="small">
-          <Button type="text" icon={<EditOutlined />} onClick={() => openEdit(r)} />
-          <Popconfirm title="¿Eliminar producto?" onConfirm={() => deleteMut.mutate(r.id)}>
-            <Button type="text" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
+          {puedeEditar && (
+            <Button type="text" icon={<EditOutlined />} onClick={() => openEdit(r)} />
+          )}
+          {puedeEliminar && (
+            <Popconfirm title="¿Eliminar producto?" onConfirm={() => deleteMut.mutate(r.id)}>
+              <Button type="text" danger icon={<DeleteOutlined />} />
+            </Popconfirm>
+          )}
         </Space>
       ) },
   ];
@@ -488,9 +497,11 @@ function ProductosCatalogo() {
             }}>
               Excel
             </Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-              Nuevo producto
-            </Button>
+            {puedeCrear && (
+              <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+                Nuevo producto
+              </Button>
+            )}
           </Space>
         </Col>
       </Row>

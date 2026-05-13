@@ -11,6 +11,7 @@ import {
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { useCanDo } from '../../hooks/useCanDo';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import { comprasApi } from '../../api/compras.api';
@@ -45,6 +46,9 @@ export default function ComprasPage() {
   const { token } = theme.useToken();
   const navigate  = useNavigate();
   const qc        = useQueryClient();
+
+  const puedeCrear    = useCanDo('compras:crear');
+  const puedeEliminar = useCanDo('compras:eliminar');
 
   const [page, setPage]         = useState(1);
   const [search, setSearch]     = useState('');
@@ -249,7 +253,7 @@ export default function ComprasPage() {
                 </Tooltip>
               </Popconfirm>
             )}
-            {r.estado === 'borrador' && (
+            {r.estado === 'borrador' && puedeEliminar && (
               <Popconfirm title="¿Eliminar compra?" onConfirm={() => deleteMut.mutate(r.id)}
                 okText="Eliminar" okButtonProps={{ danger: true }}>
                 <Button size="small" type="text" danger>✕</Button>
@@ -275,9 +279,11 @@ export default function ComprasPage() {
         <Col>
           <Space>
             <Button icon={<FileExcelOutlined />} onClick={handleExcel}>Excel</Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/compras/nueva')}>
-              Nueva compra
-            </Button>
+            {puedeCrear && (
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/compras/nueva')}>
+                Nueva compra
+              </Button>
+            )}
           </Space>
         </Col>
       </Row>

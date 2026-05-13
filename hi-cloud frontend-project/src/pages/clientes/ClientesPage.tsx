@@ -15,6 +15,7 @@ import { clientesApi, type ClientePayload } from '../../api/clientes.api';
 import { exportarExcel } from '../../utils/exportExcel';
 import type { Cliente } from '../../types';
 import { fmt } from '../../utils/formatters';
+import { useCanDo } from '../../hooks/useCanDo';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -24,6 +25,10 @@ const SECTORES = ['Comercio', 'Servicios', 'Manufactura', 'Construcción', 'Salu
 export default function ClientesPage() {
   const navigate    = useNavigate();
   const { token }   = theme.useToken();
+
+  const puedeCrear        = useCanDo('clientes:crear');
+  const puedeEliminar     = useCanDo('clientes:eliminar');
+  const puedeEstadoCuenta = useCanDo('clientes:estado_cuenta');
   const [search,  setSearch]  = useState('');
   const [page,    setPage]    = useState(1);
   const [open,    setOpen]    = useState(false);
@@ -121,15 +126,19 @@ export default function ClientesPage() {
       title: '', key: 'actions', width: 90, align: 'right' as const,
       render: (_: unknown, r: Cliente) => (
         <Space size={4}>
-          <Tooltip title="Ver estado de cuenta">
-            <Button type="text" size="small" icon={<EyeOutlined />}
-              onClick={() => navigate(`/clientes/${r.id}/estado-cuenta`)} />
-          </Tooltip>
+          {puedeEstadoCuenta && (
+            <Tooltip title="Ver estado de cuenta">
+              <Button type="text" size="small" icon={<EyeOutlined />}
+                onClick={() => navigate(`/clientes/${r.id}/estado-cuenta`)} />
+            </Tooltip>
+          )}
           <Button type="text" size="small" icon={<EditOutlined />} onClick={() => openEdit(r)} />
-          <Popconfirm title="¿Eliminar cliente?" onConfirm={() => deleteMut.mutate(r.id)}
-            okText="Eliminar" okButtonProps={{ danger: true }}>
-            <Button type="text" danger size="small" icon={<DeleteOutlined />} />
-          </Popconfirm>
+          {puedeEliminar && (
+            <Popconfirm title="¿Eliminar cliente?" onConfirm={() => deleteMut.mutate(r.id)}
+              okText="Eliminar" okButtonProps={{ danger: true }}>
+              <Button type="text" danger size="small" icon={<DeleteOutlined />} />
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -156,7 +165,9 @@ export default function ClientesPage() {
               allowClear style={{ width: 260 }}
             />
             <Button icon={<FileExcelOutlined />} onClick={handleExcel}>Excel</Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Nuevo cliente</Button>
+            {puedeCrear && (
+              <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Nuevo cliente</Button>
+            )}
           </Space>
         </Col>
       </Row>
