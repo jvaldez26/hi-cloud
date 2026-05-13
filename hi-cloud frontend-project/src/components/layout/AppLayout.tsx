@@ -127,7 +127,7 @@ const MENU_CATEGORIES: MenuCategory[] = [
 
   // ─── VENTAS ────────────────────────────────────────────────────────────────
   {
-    id: 'ventas', label: 'Ventas', Icon: TrendingUp, sectionLabel: 'VENTAS', direct: true,
+    id: 'ventas', label: 'Ventas', Icon: TrendingUp,
     items: [
       { path: '/facturas',             label: 'Facturas' },
       { path: '/cotizaciones',         label: 'Cotizaciones' },
@@ -153,7 +153,7 @@ const MENU_CATEGORIES: MenuCategory[] = [
 
   // ─── COMPRAS ────────────────────────────────────────────────────────────────
   {
-    id: 'compras', label: 'Compras', Icon: ClipboardList, sectionLabel: 'COMPRAS', direct: true,
+    id: 'compras', label: 'Compras', Icon: ClipboardList, sectionLabel: 'COMPRAS',
     items: [
       { path: '/compras',               label: 'Órdenes de Compra' },
       { path: '/solicitudes-compra',    label: 'Solicitudes de Compra' },
@@ -177,7 +177,7 @@ const MENU_CATEGORIES: MenuCategory[] = [
 
   // ─── INVENTARIO ─────────────────────────────────────────────────────────────
   {
-    id: 'inventario', label: 'Inventario', Icon: Boxes, sectionLabel: 'INVENTARIO', direct: true,
+    id: 'inventario', label: 'Inventario', Icon: Boxes, sectionLabel: 'INVENTARIO',
     items: [
       { path: '/productos',         label: 'Productos' },
       { path: '/inventario',        label: 'Movimientos de Stock' },
