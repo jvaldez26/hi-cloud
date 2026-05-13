@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Card, Row, Col, Typography, Statistic, Select, DatePicker, Button,
-         Table, Tabs, Spin, Tag, Progress, message } from 'antd';
+         Table, Tabs, Spin, Tag, Progress, message, Alert, Badge, Tooltip } from 'antd';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip,
-         LineChart, Line, ResponsiveContainer, Cell } from 'recharts';
-import { DownloadOutlined, FileExcelOutlined } from '@ant-design/icons';
+         ResponsiveContainer, Cell } from 'recharts';
+import { DownloadOutlined, FileExcelOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { reportesApi } from '../../api/reportes.api';
 import { exportarExcel, exportarITBIS, exportarInventario } from '../../utils/exportExcel';
@@ -33,6 +33,8 @@ export default function ReportesPage() {
   const { data: topClientes }  = useQuery({ queryKey: ['top-cli', desde, hasta], queryFn: () => reportesApi.topClientes(desde, hasta, 10) });
   const { data: topProductos } = useQuery({ queryKey: ['top-prod', desde, hasta], queryFn: () => reportesApi.topProductos(desde, hasta, 10) });
   const { data: pendientes }   = useQuery({ queryKey: ['fact-pend'],          queryFn: reportesApi.facturasPendientes });
+  const { data: r606, isFetching: loading606 } = useQuery({ queryKey: ['606', mes, anio], queryFn: () => reportesApi.reporte606(mes, anio) });
+  const { data: r607, isFetching: loading607 } = useQuery({ queryKey: ['607', mes, anio], queryFn: () => reportesApi.reporte607(mes, anio) });
 
   const chartVentas = (ventasDia?.detalle ?? []).map((d: any) => ({
     dia: `D${d.dia}`, ventas: d.total,
@@ -294,6 +296,200 @@ export default function ReportesPage() {
                   ]}
                   size="small" rowKey="codigo" pagination={false}
                   locale={{ emptyText: '✅ Todo el inventario está en orden' }}
+                />
+              </Card>
+            </div>
+          ),
+        },
+        /* ── DGII 606 / 607 ── */
+        {
+          key: 'dgii', label: '🏛️ DGII 606/607',
+          children: (
+            <div>
+              {/* Selector mes/año compartido */}
+              <Row gutter={[8, 8]} align="middle" style={{ marginBottom: 16 }}>
+                <Col><Select value={mes} onChange={setMes} style={{ width: 130 }} options={MESES_OPT} /></Col>
+                <Col><Select value={anio} onChange={setAnio} style={{ width: 100 }} options={ANIOS_OPT} /></Col>
+              </Row>
+
+              <Alert
+                type="info"
+                showIcon
+                icon={<InfoCircleOutlined />}
+                message="Uso informativo"
+                description="Este reporte es para verificación interna. Para someter la declaración oficial debes cargar el archivo TXT en la Oficina Virtual DGII (dgii.gov.do). Consulta con tu contador antes de declarar."
+                style={{ marginBottom: 20 }}
+              />
+
+              {/* ── Formulario 606 ── */}
+              <Card
+                title={
+                  <Row justify="space-between" align="middle">
+                    <Col>
+                      <span style={{ fontWeight: 700 }}>Formulario 606 — Compras del mes</span>
+                      {r606 && (
+                        <Tag color="blue" style={{ marginLeft: 8 }}>
+                          {r606.totales?.compras ?? 0} compras · {fmt.money(r606.totales?.montoTotal ?? 0)}
+                        </Tag>
+                      )}
+                    </Col>
+                    <Col>
+                      <Button
+                        size="small"
+                        icon={<FileExcelOutlined />}
+                        loading={loading606}
+                        disabled={!r606?.detalle?.length}
+                        onClick={() => {
+                          const filas = (r606?.detalle ?? []).map((r: any) => ({
+                            'Fecha':              r.fecha?.split('T')[0] ?? r.fecha,
+                            'RNC Proveedor':      r.rncProveedor ?? '',
+                            'Nombre Proveedor':   r.nombreProveedor,
+                            'N° CF Proveedor':    r.numCFProveedor ?? '',
+                            'Monto Gravado':      Number(r.montoGravado),
+                            'ITBIS':              Number(r.itbis),
+                            'Total':              Number(r.total),
+                          }));
+                          exportarExcel(filas, `606-${anio}-${String(mes).padStart(2, '0')}`);
+                          message.success('Exportado 606');
+                        }}
+                      >
+                        Excel 606
+                      </Button>
+                    </Col>
+                  </Row>
+                }
+                style={{ marginBottom: 20 }}
+              >
+                <Table
+                  loading={loading606}
+                  size="small"
+                  dataSource={r606?.detalle ?? []}
+                  rowKey={(r: any) => `${r.folio}-${r.fecha}`}
+                  pagination={{ pageSize: 20, showSizeChanger: false, size: 'small' }}
+                  locale={{ emptyText: 'Sin compras registradas para este mes' }}
+                  summary={() => r606?.totales ? (
+                    <Table.Summary.Row style={{ fontWeight: 700, background: '#f0f5ff' }}>
+                      <Table.Summary.Cell index={0} colSpan={4}>Totales</Table.Summary.Cell>
+                      <Table.Summary.Cell index={4} align="right">
+                        {fmt.money(r606.detalle?.reduce((a: number, r: any) => a + Number(r.montoGravado), 0) ?? 0)}
+                      </Table.Summary.Cell>
+                      <Table.Summary.Cell index={5} align="right">
+                        <Tag color="orange">{fmt.money(r606.totales.itbisPagado)}</Tag>
+                      </Table.Summary.Cell>
+                      <Table.Summary.Cell index={6} align="right">
+                        <strong>{fmt.money(r606.totales.montoTotal)}</strong>
+                      </Table.Summary.Cell>
+                    </Table.Summary.Row>
+                  ) : null}
+                  columns={[
+                    {
+                      title: 'Fecha', dataIndex: 'fecha', width: 100,
+                      render: (v: string) => v?.split('T')[0] ?? v,
+                    },
+                    {
+                      title: 'RNC Proveedor', dataIndex: 'rncProveedor', width: 120,
+                      render: (v: string) => <Text style={{ fontFamily: 'monospace', fontSize: 12 }}>{v || '—'}</Text>,
+                    },
+                    {
+                      title: 'Proveedor', dataIndex: 'nombreProveedor', ellipsis: true,
+                    },
+                    {
+                      title: 'N° CF', dataIndex: 'numCFProveedor', width: 130,
+                      render: (v: string) => <Text style={{ fontFamily: 'monospace', fontSize: 11 }}>{v || '—'}</Text>,
+                    },
+                    {
+                      title: 'Monto Gravado', dataIndex: 'montoGravado', width: 130, align: 'right' as const,
+                      render: (v: number) => fmt.money(v),
+                    },
+                    {
+                      title: 'ITBIS', dataIndex: 'itbis', width: 110, align: 'right' as const,
+                      render: (v: number) => <Text style={{ color: '#d97706' }}>{fmt.money(v)}</Text>,
+                    },
+                    {
+                      title: 'Total', dataIndex: 'total', width: 120, align: 'right' as const,
+                      render: (v: number) => <Text strong>{fmt.money(v)}</Text>,
+                    },
+                  ]}
+                />
+              </Card>
+
+              {/* ── Formulario 607 ── */}
+              <Card
+                title={
+                  <Row justify="space-between" align="middle">
+                    <Col>
+                      <span style={{ fontWeight: 700 }}>Formulario 607 — Comprobantes Anulados</span>
+                      {r607 && (
+                        <Tag color="red" style={{ marginLeft: 8 }}>
+                          {r607.totales?.comprobantesAnulados ?? 0} anulados
+                        </Tag>
+                      )}
+                    </Col>
+                    <Col>
+                      <Button
+                        size="small"
+                        icon={<FileExcelOutlined />}
+                        loading={loading607}
+                        disabled={!r607?.detalle?.length}
+                        onClick={() => {
+                          const filas = (r607?.detalle ?? []).map((r: any) => ({
+                            'NCF':              r.ncf,
+                            'Fecha Emisión':    r.fecha?.split('T')[0] ?? r.fecha,
+                            'Fecha Anulación':  r.fechaAnulacion?.split('T')[0] ?? '',
+                            'RNC Receptor':     r.rncReceptor ?? '',
+                            'Receptor':         r.nombreReceptor,
+                            'Monto Anulado':    Number(r.montoAnulado),
+                          }));
+                          exportarExcel(filas, `607-${anio}-${String(mes).padStart(2, '0')}`);
+                          message.success('Exportado 607');
+                        }}
+                      >
+                        Excel 607
+                      </Button>
+                    </Col>
+                  </Row>
+                }
+              >
+                <Table
+                  loading={loading607}
+                  size="small"
+                  dataSource={r607?.detalle ?? []}
+                  rowKey={(r: any) => `${r.folio}-${r.fecha}`}
+                  pagination={{ pageSize: 20, showSizeChanger: false, size: 'small' }}
+                  locale={{ emptyText: '✅ Sin comprobantes anulados en este mes' }}
+                  summary={() => r607?.totales?.comprobantesAnulados > 0 ? (
+                    <Table.Summary.Row style={{ fontWeight: 700, background: '#fff2f0' }}>
+                      <Table.Summary.Cell index={0} colSpan={5}>Total anulado</Table.Summary.Cell>
+                      <Table.Summary.Cell index={5} align="right">
+                        <Text strong style={{ color: '#dc2626' }}>{fmt.money(r607.totales.montoAnulado ?? 0)}</Text>
+                      </Table.Summary.Cell>
+                    </Table.Summary.Row>
+                  ) : null}
+                  columns={[
+                    {
+                      title: 'NCF', dataIndex: 'ncf', width: 160,
+                      render: (v: string) => <Text style={{ fontFamily: 'monospace', fontSize: 12 }}>{v || '—'}</Text>,
+                    },
+                    {
+                      title: 'Fecha Emisión', dataIndex: 'fecha', width: 110,
+                      render: (v: string) => v?.split('T')[0] ?? v,
+                    },
+                    {
+                      title: 'Fecha Anulación', dataIndex: 'fechaAnulacion', width: 130,
+                      render: (v: string) => v?.split('T')[0] ?? '—',
+                    },
+                    {
+                      title: 'RNC Receptor', dataIndex: 'rncReceptor', width: 120,
+                      render: (v: string) => <Text style={{ fontFamily: 'monospace', fontSize: 12 }}>{v || '—'}</Text>,
+                    },
+                    {
+                      title: 'Receptor', dataIndex: 'nombreReceptor', ellipsis: true,
+                    },
+                    {
+                      title: 'Monto Anulado', dataIndex: 'montoAnulado', width: 130, align: 'right' as const,
+                      render: (v: number) => <Text strong style={{ color: '#dc2626' }}>{fmt.money(v)}</Text>,
+                    },
+                  ]}
                 />
               </Card>
             </div>

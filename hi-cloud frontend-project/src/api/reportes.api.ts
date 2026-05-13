@@ -33,4 +33,13 @@ export const reportesApi = {
 
   valorInventario: () =>
     api.get('/reportes/inventario/valor').then(r => r.data.data),
+
+  reporte606: (mes: number, anio: number) =>
+    api.get(`/reportes/fiscal/606?mes=${mes}&anio=${anio}`).then(r => r.data.data),
+
+  reporte607: (mes: number, anio: number) =>
+    api.get(`/reportes/fiscal/607?mes=${mes}&anio=${anio}`).then(r => r.data.data),
+
+  ecfPorEstado: (mes: number, anio: number) =>
+    api.get(`/reportes/fiscal/ecf?mes=${mes}&anio=${anio}`).then(r => r.data.data),
 };
