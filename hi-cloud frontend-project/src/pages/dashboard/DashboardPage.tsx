@@ -120,7 +120,7 @@ export default function DashboardPage() {
   });
   const { data: stockBajo } = useQuery<any>({
     queryKey: ['stock-bajo-dash'],
-    queryFn:  () => api.get('/inventario/alertas-stock').then((r: any) => r.data?.data ?? r.data),
+    queryFn:  () => api.get('/inventario/stock-bajo').then((r: any) => r.data?.data ?? r.data),
     staleTime: 120_000,
   });
   const { data: comprasRecientes } = useQuery<any>({
