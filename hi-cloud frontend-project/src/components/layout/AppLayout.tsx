@@ -21,7 +21,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { usePlan, type PlanTipo } from '../../hooks/usePlan';
-import { Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore }  from '../../store/auth.store';
 import { useThemeStore } from '../../store/theme.store';
@@ -114,7 +114,6 @@ interface MenuCategory {
   Icon:         LucideIcon;
   items:        SubItem[];
   sectionLabel?: string; // si está presente → renderizar separador de sección ANTES de esta categoría
-  direct?:       boolean;  // si true → items visibles directamente sin cabecera acordeón (modo expandido)
 }
 
 const QUICK_ITEMS: QuickItem[] = [
@@ -127,7 +126,7 @@ const MENU_CATEGORIES: MenuCategory[] = [
 
   // ─── VENTAS ────────────────────────────────────────────────────────────────
   {
-    id: 'ventas', label: 'Ventas', Icon: TrendingUp,
+    id: 'ventas', label: 'Ventas', Icon: TrendingUp, sectionLabel: 'VENTAS',
     items: [
       { path: '/facturas',             label: 'Facturas' },
       { path: '/cotizaciones',         label: 'Cotizaciones' },
@@ -393,6 +392,109 @@ function esRutaBloqueada(path: string, planActual: PlanTipo): boolean {
   const minPlan = PATH_MIN_PLAN[path];
   if (!minPlan) return false;
   return PLAN_TIER[planActual] < PLAN_TIER[minPlan];
+}
+
+// ── Control de acceso por rol ─────────────────────────────────────────────────
+// Define qué roles pueden VER cada ruta en el sidebar y navegar a ella.
+// Las rutas sin entrada son accesibles por todos los roles autenticados.
+
+const ADMIN             = ['admin'];
+const ADMIN_CONT        = ['admin', 'contador'];
+const ADMIN_CONT_VEND   = ['admin', 'contador', 'vendedor'];
+
+const PATH_ROLES: Record<string, string[]> = {
+  // ── Solo Admin ────────────────────────────────────────────────────────────
+  '/configuracion':      ADMIN,
+  '/equipo':             ADMIN,
+  '/sucursales':         ADMIN,
+  '/aprobaciones':       ADMIN,
+  '/importacion':        ADMIN,
+  '/auditoria':          ADMIN,
+
+  // ── Admin + Contador ──────────────────────────────────────────────────────
+  '/compras':               ADMIN_CONT,
+  '/solicitudes-compra':    ADMIN_CONT,
+  '/proveedores':           ADMIN_CONT,
+  '/cxp':                   ADMIN_CONT,
+  '/gastos':                ADMIN_CONT,
+  '/caja-chica':            ADMIN_CONT,
+  '/notas-credito-compras': ADMIN_CONT,
+  '/bancos':                ADMIN_CONT,
+  '/depositos':             ADMIN_CONT,
+  '/cheques':               ADMIN_CONT,
+  '/datafono':              ADMIN_CONT,
+  '/divisas':               ADMIN_CONT,
+  '/contabilidad':          ADMIN_CONT,
+  '/libro-mayor':           ADMIN_CONT,
+  '/periodo-contable':      ADMIN_CONT,
+  '/balance-comprobacion':  ADMIN_CONT,
+  '/libro-ventas':          ADMIN_CONT,
+  '/reportes-financieros':  ADMIN_CONT,
+  '/presupuestos':          ADMIN_CONT,
+  '/activos-fijos':         ADMIN_CONT,
+  '/centro-costos':         ADMIN_CONT,
+  '/flujo-caja':            ADMIN_CONT,
+  '/distribucion-costos':   ADMIN_CONT,
+  '/ecf':                   ADMIN_CONT,
+  '/retenciones':           ADMIN_CONT,
+  '/declaraciones':         ADMIN_CONT,
+  '/reportes':              ADMIN_CONT,
+  '/analytics':             ADMIN_CONT,
+  '/kpi':                   ADMIN_CONT,
+  '/generador-reportes':    ADMIN_CONT,
+  '/calendario':            ADMIN_CONT,
+  '/asistente':             ADMIN_CONT,
+  '/nomina':                ADMIN_CONT,
+  '/portal-empleado':       ADMIN_CONT,
+  '/vacaciones':            ADMIN_CONT,
+  '/tss':                   ADMIN_CONT,
+  '/isr':                   ADMIN_CONT,
+  '/evaluaciones':          ADMIN_CONT,
+  '/capacitacion':          ADMIN_CONT,
+  '/proyectos':             ADMIN_CONT,
+  '/contratos':             ADMIN_CONT,
+  '/objetivos':             ADMIN_CONT,
+  '/licitaciones':          ADMIN_CONT,
+  '/encuestas':             ADMIN_CONT,
+  '/crm':                   ADMIN_CONT,
+  '/comisiones':            ADMIN_CONT,
+  '/vendedores':            ADMIN_CONT,
+  '/almacenes':             ADMIN_CONT,
+  '/wms':                   ADMIN_CONT,
+  '/manufactura':           ADMIN_CONT,
+  '/planeacion-demanda':    ADMIN_CONT,
+  '/flota':                 ADMIN_CONT,
+  '/mantenimiento':         ADMIN_CONT,
+
+  // ── Admin + Contador + Vendedor ───────────────────────────────────────────
+  '/facturas':              ADMIN_CONT_VEND,
+  '/cotizaciones':          ADMIN_CONT_VEND,
+  '/pre-facturas':          ADMIN_CONT_VEND,
+  '/notas-credito':         ADMIN_CONT_VEND,
+  '/notas-debito':          ADMIN_CONT_VEND,
+  '/devoluciones':          ADMIN_CONT_VEND,
+  '/facturas-recurrentes':  ADMIN_CONT_VEND,
+  '/clientes':              ADMIN_CONT_VEND,
+  '/cxc':                   ADMIN_CONT_VEND,
+  '/recibos-cobro':         ADMIN_CONT_VEND,
+  '/conduces':              ADMIN_CONT_VEND,
+  '/fidelidad':             ADMIN_CONT_VEND,
+  '/cuotas':                ADMIN_CONT_VEND,
+  '/credito-cliente':       ADMIN_CONT_VEND,
+  '/productos':             ADMIN_CONT_VEND,
+  '/inventario':            ADMIN_CONT_VEND,
+  '/conteo-inventario':     ADMIN_CONT_VEND,
+  '/etiquetas':             ADMIN_CONT_VEND,
+  '/uom':                   ADMIN_CONT_VEND,
+  '/valoracion-stock':      ADMIN_CONT_VEND,
+  '/caja':                  ADMIN_CONT_VEND,
+  '/servicios':             ADMIN_CONT_VEND,
+};
+
+function rolPuedeVerRuta(path: string, role: string): boolean {
+  const allowed = PATH_ROLES[path];
+  if (!allowed) return true; // sin restricción = todos los roles
+  return allowed.includes(role);
 }
 
 // ── Skeleton de carga de módulo (solo ocupa el área de contenido) ─────────────
@@ -753,57 +855,6 @@ function AccordionSubItem({
   );
 }
 
-// ── Sub-ítem directo (modo expandido, sin acordeón padre) ────────────────────
-function DirectSubItem({
-  item, active, onClick, locked, planMinimo, onHover,
-}: {
-  item: SubItem; active: boolean; onClick: () => void;
-  locked?: boolean; planMinimo?: PlanTipo; onHover?: () => void;
-}) {
-  const C = useC();
-  const [hover, setHover] = useState(false);
-  return (
-    <Tooltip
-      title={locked ? `Disponible en plan ${PLAN_NOMBRE[planMinimo!] ?? ''}` : undefined}
-      placement="right"
-    >
-      <button
-        onClick={onClick}
-        onMouseEnter={() => { setHover(true); onHover?.(); }}
-        onMouseLeave={() => setHover(false)}
-        style={{
-          width: 'calc(100% - 16px)', margin: '1px 8px',
-          display: 'flex', alignItems: 'center', gap: 8,
-          padding: '7px 12px',
-          height: 32, border: 'none',
-          cursor: locked ? 'not-allowed' : 'pointer',
-          borderRadius: 6,
-          background: active ? C.bgActive : hover ? C.bgHover : 'transparent',
-          transition: 'all 0.12s ease', textAlign: 'left',
-          opacity: locked ? 0.7 : 1,
-          position: 'relative',
-        }}
-      >
-        {active && (
-          <span style={{
-            position: 'absolute', left: 0, top: 5, bottom: 5,
-            width: 3, borderRadius: '0 3px 3px 0', background: C.accent,
-          }} />
-        )}
-        <span style={{
-          flex: 1, fontSize: 12.5, fontWeight: active ? 500 : 400,
-          color: locked ? C.accent : active ? C.textActive : hover ? C.textSubHover : C.textSub,
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          transition: 'color 0.12s',
-        }}>
-          {item.label}
-        </span>
-        {locked && <Lock size={10} color={C.accent} style={{ flexShrink: 0 }} />}
-      </button>
-    </Tooltip>
-  );
-}
-
 // ── MODO COLAPSADO: Botón de categoría solo ícono ─────────────────────────────
 function CategoryBtnCollapsed({
   category, activePath, isActive, onClick,
@@ -1063,6 +1114,13 @@ export default function AppLayout() {
   const { total: totalAlertas, criticas: alertasCriticas, alertas } = useAlertas();
   const { status: pushStatus, subscribe: pushSubscribe, unsubscribe: pushUnsub } = usePushNotifications();
   const { user, logout }                = useAuthStore();
+
+  // ── Guard de ruta por rol ──────────────────────────────────────────────────
+  // Si el usuario navega directamente a una URL restringida, redirigir al dashboard
+  const currentUserRole = user?.role ?? 'viewer';
+  if (user && !rolPuedeVerRuta(activePath, currentUserRole)) {
+    return <Navigate to="/dashboard" replace />;
+  }
   const { isDark, toggle: toggleTheme } = useThemeStore();
   const { token }                       = theme.useToken();
   const navigate                        = useNavigate();
@@ -1070,11 +1128,15 @@ export default function AppLayout() {
   // Solo el super_admin ve la entrada /super-admin en el sidebar
   const esSuperAdmin = user?.role === 'super_admin';
 
+  const userRole = user?.role ?? 'viewer';
+
   // Categorías filtradas: oculta /super-admin para usuarios normales
+  // y oculta rutas que el rol del usuario no puede ver
   const categoriasFiltradas = MENU_CATEGORIES.map(cat => ({
     ...cat,
     items: cat.items.filter(item =>
-      item.path !== '/super-admin' || esSuperAdmin
+      (item.path !== '/super-admin' || esSuperAdmin) &&
+      rolPuedeVerRuta(item.path, userRole)
     ),
   })).filter(cat => cat.items.length > 0);
 
@@ -1357,26 +1419,6 @@ export default function AppLayout() {
                 isActive={activePanel === cat.id}
                 onClick={() => togglePanel(cat.id)}
               />
-            ) : cat.direct ? (
-              /* Items directos — sin cabecera de acordeón */
-              <div style={{ paddingBottom: 2 }}>
-                {cat.items.map(item => {
-                  const isActive = activePath.startsWith(item.path);
-                  const minPlan  = PATH_MIN_PLAN[item.path] as PlanTipo | undefined;
-                  const isLocked = !!minPlan && esRutaBloqueada(item.path, planActual);
-                  return (
-                    <DirectSubItem
-                      key={item.path}
-                      item={item}
-                      active={isActive}
-                      locked={isLocked}
-                      planMinimo={minPlan}
-                      onClick={() => isLocked ? handleLocked(item, minPlan!) : handleNavigate(item.path)}
-                      onHover={() => prefetchRoute(item.path)}
-                    />
-                  );
-                })}
-              </div>
             ) : (
               <CategoryAccordion
                 category={cat}
