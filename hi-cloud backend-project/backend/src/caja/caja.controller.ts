@@ -3,7 +3,7 @@ import {
   ParseIntPipe, Query, HttpCode, HttpStatus, UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
-import { IsOptional, IsNumber, IsString, Min } from 'class-validator';
+import { IsOptional, IsNumber, IsString, Min, MaxLength } from 'class-validator';
 import { CajaService } from './caja.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -32,6 +32,11 @@ class CerrarCajaDto {
 
   @IsOptional() @IsString()
   notas?: string;
+}
+
+class AnularCierreDto {
+  @IsString() @MaxLength(300)
+  motivo: string;
 }
 
 @ApiTags('Caja')
@@ -70,6 +75,18 @@ export class CajaController {
     @Body() dto: CerrarCajaDto,
   ) {
     return this.cajaService.cerrarCaja(id, dto.saldoFisico, dto.notas);
+  }
+
+  @Patch(':id/anular')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Anular cierre de caja — regresa a estado abierta para seguir facturando' })
+  anularCierre(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: AnularCierreDto,
+    @GetUser() usuario: User,
+  ) {
+    return this.cajaService.anularCierre(id, dto.motivo, usuario.id);
   }
 
   @Get('historial')

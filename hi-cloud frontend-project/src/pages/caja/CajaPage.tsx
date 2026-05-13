@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { Card, Row, Col, Typography, Statistic, Button, InputNumber,
-         Table, Tag, Modal, Form, Input, Space, Alert, Spin, message, Avatar } from 'antd';
+         Table, Tag, Modal, Form, Input, Space, Alert, Spin, message, Avatar,
+         Popconfirm, Tooltip } from 'antd';
 import { UnlockOutlined, LockOutlined, ReloadOutlined, HistoryOutlined,
-         UserOutlined } from '@ant-design/icons';
+         UserOutlined, RollbackOutlined, WarningOutlined } from '@ant-design/icons';
+import { useAuthStore } from '../../store/auth.store';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import api from '../../api/client';
@@ -12,10 +14,11 @@ import dayjs from 'dayjs';
 const { Title, Text } = Typography;
 
 const cajaApi = {
-  hoy:       ()                        => api.get('/caja/hoy').then(r => r.data?.data ?? r.data),
-  abrir:     (body: any)               => api.post('/caja/abrir', body).then(r => r.data?.data),
-  cerrar:    (id: number, body: any)   => api.patch(`/caja/${id}/cerrar`, body).then(r => r.data?.data),
-  historial: (p = 1)                   => api.get(`/caja/historial?page=${p}`).then(r => r.data?.data),
+  hoy:       ()                          => api.get('/caja/hoy').then(r => r.data?.data ?? r.data),
+  abrir:     (body: any)                 => api.post('/caja/abrir', body).then(r => r.data?.data),
+  cerrar:    (id: number, body: any)     => api.patch(`/caja/${id}/cerrar`, body).then(r => r.data?.data),
+  anular:    (id: number, motivo: string) => api.patch(`/caja/${id}/anular`, { motivo }).then(r => r.data?.data),
+  historial: (p = 1)                     => api.get(`/caja/historial?page=${p}`).then(r => r.data?.data),
   resumen:   (mes: number, anio: number) => api.get(`/caja/resumen?mes=${mes}&anio=${anio}`).then(r => r.data?.data),
 };
 
@@ -32,9 +35,13 @@ function avatarColor(name: string) {
 
 export default function CajaPage() {
   const [cerrarTarget, setCerrarTarget] = useState<{ id: number; nombre: string; saldoEsperado: number } | null>(null);
+  const [anularTarget, setAnularTarget] = useState<{ id: number; nombre: string; fecha: string } | null>(null);
   const [openAbrir,    setOpenAbrir]    = useState(false);
-  const [form] = Form.useForm();
+  const [form]       = Form.useForm();
+  const [formAnular] = Form.useForm();
   const qc = useQueryClient();
+  const user = useAuthStore(s => s.user);
+  const puedeAnular = user?.role === 'admin' || user?.role === 'contador' || user?.role === 'super_admin';
 
   const { data: cajaData, isLoading } = useQuery({
     queryKey: ['caja-hoy'],
@@ -73,6 +80,17 @@ export default function CajaPage() {
       message.success('Caja cerrada');
     },
     onError: (e: any) => message.error(e?.response?.data?.errors?.[0] ?? 'Error'),
+  });
+
+  const anularMut = useMutation({
+    mutationFn: ({ id, motivo }: { id: number; motivo: string }) => cajaApi.anular(id, motivo),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['caja-hoy'] });
+      qc.invalidateQueries({ queryKey: ['caja-hist'] });
+      setAnularTarget(null); formAnular.resetFields();
+      message.success('Cierre anulado — la caja está abierta nuevamente');
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al anular'),
   });
 
   // Normalizar respuesta: puede ser array de cajas o "sin apertura"
@@ -213,6 +231,27 @@ export default function CajaPage() {
             { title: 'Diferencia', dataIndex: 'diferencia', width: 100,
               render: (v: number) => <Text style={{ color: v === 0 ? '#10b981' : v > 0 ? '#1677ff' : '#ef4444' }} strong>{fmt.money(v)}</Text> },
             { title: 'Transacc.', dataIndex: 'cantidadTransacciones', width: 80 },
+            ...(puedeAnular ? [{
+              title: '', key: 'acciones', width: 80, align: 'center' as const,
+              render: (_: any, r: any) => r.estado === 'cerrada' ? (
+                <Tooltip title="Anular cierre — permite seguir facturando ese día">
+                  <Button
+                    size="small"
+                    icon={<RollbackOutlined />}
+                    onClick={() => {
+                      setAnularTarget({
+                        id: r.id,
+                        nombre: r.vendedorNombre ?? 'Administrador',
+                        fecha: r.fecha,
+                      });
+                      formAnular.resetFields();
+                    }}
+                  >
+                    Anular
+                  </Button>
+                </Tooltip>
+              ) : null,
+            }] : []),
           ]} />
       </Card>
 
@@ -254,6 +293,71 @@ export default function CajaPage() {
             <Col>
               <Button type="primary" danger htmlType="submit" icon={<LockOutlined />} loading={cerrarMut.isPending}>
                 Cerrar caja
+              </Button>
+            </Col>
+          </Row>
+        </Form>
+      </Modal>
+      {/* Modal anular cierre */}
+      <Modal
+        title={
+          <Space>
+            <RollbackOutlined style={{ color: '#d97706' }} />
+            <span>Anular cierre — {anularTarget?.nombre}</span>
+          </Space>
+        }
+        open={!!anularTarget}
+        onCancel={() => { setAnularTarget(null); formAnular.resetFields(); }}
+        footer={null}
+        width={460}
+        destroyOnClose
+      >
+        <Alert
+          type="warning"
+          showIcon
+          icon={<WarningOutlined />}
+          message="¿Estás seguro de anular este cierre?"
+          description={
+            <span>
+              La caja del <strong>{anularTarget?.fecha ? new Date(anularTarget.fecha + 'T00:00:00').toLocaleDateString('es-DO') : ''}</strong> de{' '}
+              <strong>{anularTarget?.nombre}</strong> volverá a estado <strong>ABIERTA</strong>.
+              El cajero podrá seguir registrando ventas ese día.
+            </span>
+          }
+          style={{ marginBottom: 16 }}
+        />
+        <Form
+          form={formAnular}
+          layout="vertical"
+          onFinish={v => anularTarget && anularMut.mutate({ id: anularTarget.id, motivo: v.motivo })}
+        >
+          <Form.Item
+            name="motivo"
+            label="Motivo de la anulación"
+            rules={[{ required: true, message: 'El motivo es obligatorio para el registro de auditoría' }]}
+          >
+            <Input.TextArea
+              rows={3}
+              maxLength={300}
+              placeholder="Ej: El cajero olvidó registrar ventas del turno de la tarde..."
+              showCount
+            />
+          </Form.Item>
+          <Row justify="end" gutter={8}>
+            <Col>
+              <Button onClick={() => { setAnularTarget(null); formAnular.resetFields(); }}>
+                Cancelar
+              </Button>
+            </Col>
+            <Col>
+              <Button
+                type="primary"
+                htmlType="submit"
+                icon={<RollbackOutlined />}
+                loading={anularMut.isPending}
+                style={{ background: '#d97706', borderColor: '#d97706' }}
+              >
+                Confirmar anulación
               </Button>
             </Col>
           </Row>

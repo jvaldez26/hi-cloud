@@ -153,6 +153,39 @@ export class CajaService {
     return this.repo.findOne({ where: { id } });
   }
 
+  // ── Anular cierre de caja ─────────────────────────────────────────────────
+
+  async anularCierre(id: number, motivo: string, userId: number) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const caja = await this.repo.findOne({ where: { id, empresaId } });
+    if (!caja) throw new NotFoundException(`Caja #${id} no encontrada`);
+
+    if (caja.estado === EstadoCierre.ABIERTA) {
+      throw new BadRequestException('Esta caja ya está abierta, no hay cierre que anular');
+    }
+    if (caja.estado === EstadoCierre.REVISADA) {
+      throw new BadRequestException('No se puede anular un cierre revisado. Contacta al administrador.');
+    }
+
+    const notaAnulacion = `[CIERRE ANULADO por usuario #${userId} — ${new Date().toLocaleString('es-DO')}] Motivo: ${motivo}`;
+    const notasActualizadas = caja.notas
+      ? `${caja.notas}\n${notaAnulacion}`
+      : notaAnulacion;
+
+    await this.repo.update(id, {
+      estado:      EstadoCierre.ABIERTA,
+      saldoCierre: 0,
+      saldoFisico: 0,
+      diferencia:  0,
+      notas:       notasActualizadas,
+    });
+
+    const quien = caja.vendedorNombre ? ` [${caja.vendedorNombre}]` : '';
+    this.logger.warn(`Cierre de caja #${id}${quien} ANULADO por usuario #${userId}. Motivo: ${motivo}`);
+    this.realtimeService.notify(empresaId, 'caja', 'updated', id);
+    return this.repo.findOne({ where: { id } });
+  }
+
   // ── Recalcular ventas del día por vendedor ────────────────────────────────
 
   private async recalcularDesdeBD(cajaId: number, fecha: string, vendedorId?: number, empresaId?: number) {
