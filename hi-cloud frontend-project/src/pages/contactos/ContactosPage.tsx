@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Card, Row, Col, Input, Select, Table, Tag, Typography,
   Statistic, Space, Button, Avatar, Tooltip, theme,
@@ -31,7 +31,7 @@ export default function ContactosPage() {
 
   const { data: resumen } = useQuery<any>({
     queryKey: ['contactos-resumen'],
-    queryFn: () => api.get('/contactos/resumen').then((r: any) => r.data?.data ?? r.data),
+    queryFn: () => api.get('/contactos/resumen').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
   });
 
   const { data: contactos = [], isLoading } = useQuery<any[]>({
@@ -40,7 +40,7 @@ export default function ContactosPage() {
       const params = new URLSearchParams();
       if (tipoFiltro) params.set('tipo', tipoFiltro);
       if (busqueda.length >= 2) params.set('q', busqueda);
-      return api.get(`/contactos?${params}`).then((r: any) => r.data?.data ?? r.data);
+      return api.get(`/contactos?${params}`).then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); });
     },
     staleTime: 30_000,
   });

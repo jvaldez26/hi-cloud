@@ -70,7 +70,7 @@ export default function ServiciosPage() {
   });
   const { data: clientes }  = useQuery({ queryKey: ['cli-srv'],   queryFn: () => clientesApi.list(1, 100) });
   const { data: productos } = useQuery({ queryKey: ['prod-srv'],  queryFn: () => productosApi.list(1, 200) });
-  const { data: empleados } = useQuery<any[]>({ queryKey: ['emp-srv'], queryFn: () => api.get('/nomina/empleados?limit=100').then((r: any) => r.data?.data ?? r.data).catch(() => []) });
+  const { data: empleados = [] } = useQuery<any[]>({ queryKey: ['emp-srv'], queryFn: () => api.get('/nomina/empleados?limit=100').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }).catch(() => []) });
 
   const crearMut   = useMutation({ mutationFn: serviciosApi.crear,    onSuccess: () => { qc.invalidateQueries({ queryKey: ['servicios'] }); setOpenCreate(false); formCreate.resetFields(); message.success('Orden creada'); }, onError: (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error al crear orden') });
   const estadoMut  = useMutation({ mutationFn: ({ id, body }: any) => serviciosApi.estado(id, body),  onSuccess: () => { qc.invalidateQueries({ queryKey: ['servicios'] }); message.success('Estado actualizado'); setDetail(null); }, onError: (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error al actualizar estado') });
