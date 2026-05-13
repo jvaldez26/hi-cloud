@@ -90,8 +90,14 @@ async function bootstrap() {
     ? process.env.CORS_ORIGIN.split(',').map(o => o.trim()).filter(o => o && o !== '*')
     : [];
 
+  const PROD_ORIGINS = [
+    'https://hicloudrd.com',
+    'https://www.hicloudrd.com',
+  ];
+
   const allowedOrigins = [
     ...(isDev ? DEV_ORIGINS : []),
+    ...PROD_ORIGINS,
     ...envOrigins,
   ];
 
