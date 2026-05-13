@@ -367,36 +367,31 @@ export class CotizacionesService {
         fechaVencimiento,
         estado:          CotizacionEstado.BORRADOR,
         clienteId:       original.clienteId,
-        moneda:          original.moneda,
-        tipoCambio:      original.tipoCambio,
         subtotal:        original.subtotal,
         iva:             original.iva,
         total:           original.total,
-        descuento:       original.descuento,
         notas:           original.notas,
-        condicionPago:   original.condicionPago,
+        condicionesPago: original.condicionesPago,
         userId,
-      }),
-    );
+      } as any) as any,
+    ) as unknown as Cotizacion;
 
     if (original.detalles?.length) {
       await this.detalleRepository.save(
-        original.detalles.map(d => this.detalleRepository.create({
-          cotizacionId:    nueva.id,
-          productoId:      d.productoId,
-          descripcion:     d.descripcion,
-          cantidad:        d.cantidad,
-          precioUnitario:  d.precioUnitario,
-          porcentajeIva:   d.porcentajeIva,
-          importeIva:      d.importeIva,
-          descuento:       d.descuento,
-          subtotal:        d.subtotal,
-          total:           d.total,
-        })),
+        original.detalles.map(d => ({
+          cotizacionId:  nueva.id,
+          productoId:    d.productoId,
+          descripcion:   d.descripcion,
+          cantidad:      d.cantidad,
+          precioUnitario:d.precioUnitario,
+          porcentajeIva: d.porcentajeIva,
+          importeIva:    d.importeIva,
+          subtotal:      d.subtotal,
+          total:         d.total,
+        })) as any,
       );
     }
 
-    this.logger.log(`Cotización #${id} duplicada → nueva #${nueva.id} (${numero})`);
     this.realtimeService.notify(empresaId, 'cotizacion', 'created', nueva.id);
 
     return this.cotizacionRepository.findOne({

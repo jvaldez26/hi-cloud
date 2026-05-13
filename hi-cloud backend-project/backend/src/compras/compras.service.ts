@@ -237,34 +237,30 @@ export class ComprasService {
         fecha:       new Date(),
         estado:      CompraEstado.BORRADOR,
         proveedorId: original.proveedorId,
-        moneda:      original.moneda,
-        tipoCambio:  original.tipoCambio,
+        usuarioId:   userId,
         subtotal:    original.subtotal,
         itbis:       original.itbis,
         total:       original.total,
-        descuento:   original.descuento,
         notas:       original.notas,
-        userId,
-      }),
-    );
+      } as any) as any,
+    ) as unknown as Compra;
 
     if (original.detalles?.length) {
       await this.detalleRepository.save(
-        original.detalles.map(d => this.detalleRepository.create({
-          compraId:       nueva.id,
-          productoId:     d.productoId,
-          descripcion:    d.descripcion,
-          cantidad:       d.cantidad,
-          precioUnitario: d.precioUnitario,
-          porcentajeItbis:d.porcentajeItbis,
-          itbis:          d.itbis,
-          subtotal:       d.subtotal,
-          total:          d.total,
-        })),
+        original.detalles.map(d => ({
+          compraId:        nueva.id,
+          productoId:      d.productoId,
+          descripcion:     d.descripcion,
+          cantidad:        d.cantidad,
+          precioUnitario:  d.precioUnitario,
+          porcentajeItbis: d.porcentajeItbis,
+          importeItbis:    d.importeItbis,
+          subtotal:        d.subtotal,
+          total:           d.total,
+        })) as any,
       );
     }
 
-    this.logger.log(`Compra #${id} duplicada → nueva #${nueva.id} (${folio})`);
     this.realtimeService.notify(empresaId, 'compra', 'created', nueva.id);
 
     return this.compraRepository.findOne({

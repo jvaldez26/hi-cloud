@@ -588,41 +588,40 @@ export class FacturasService {
 
     const folio = await this.generarFolio();
 
-    const nueva = this.facturaRepository.create({
-      empresaId,
-      folio,
-      fecha:         new Date(),
-      estado:        FacturaEstado.BORRADOR,
-      clienteId:     original.clienteId,
-      moneda:        original.moneda,
-      tipoCambio:    original.tipoCambio,
-      tipoNcf:       original.tipoNcf,
-      tipoPago:      original.tipoPago,
-      diasCredito:   original.diasCredito,
-      subtotal:      original.subtotal,
-      iva:           original.iva,
-      total:         original.total,
-      descuento:     original.descuento,
-      notas:         original.notas,
-      userId,
-    });
-
-    const nuevaGuardada = await this.facturaRepository.save(nueva);
+    const nuevaGuardada = await this.facturaRepository.save(
+      this.facturaRepository.create({
+        empresaId,
+        folio,
+        fecha:       new Date(),
+        estado:      FacturaEstado.BORRADOR,
+        clienteId:   original.clienteId,
+        moneda:      original.moneda,
+        tipoCambio:  original.tipoCambio,
+        tipoNcf:     original.tipoNcf,
+        tipoPago:    original.tipoPago,
+        diasCredito: original.diasCredito,
+        subtotal:    original.subtotal,
+        iva:         original.iva,
+        total:       original.total,
+        notas:       original.notas,
+        userId,
+      } as any) as any,
+    ) as unknown as Factura;
 
     if (original.detalles?.length) {
-      const detalles = original.detalles.map(d => this.detalleRepository.create({
-        facturaId:    nuevaGuardada.id,
-        productoId:   d.productoId,
-        descripcion:  d.descripcion,
-        cantidad:     d.cantidad,
-        precioUnitario: d.precioUnitario,
-        porcentajeIva:  d.porcentajeIva,
-        importeIva:   d.importeIva,
-        descuento:    d.descuento,
-        subtotal:     d.subtotal,
-        total:        d.total,
-      }));
-      await this.detalleRepository.save(detalles);
+      await this.detalleRepository.save(
+        original.detalles.map(d => ({
+          facturaId:      nuevaGuardada.id,
+          productoId:     d.productoId,
+          descripcion:    d.descripcion,
+          cantidad:       d.cantidad,
+          precioUnitario: d.precioUnitario,
+          porcentajeIva:  d.porcentajeIva,
+          importeIva:     d.importeIva,
+          subtotal:       d.subtotal,
+          total:          d.total,
+        })) as any,
+      );
     }
 
     this.logger.log(`Factura #${id} duplicada → nueva factura #${nuevaGuardada.id} (${folio})`);
