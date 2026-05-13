@@ -1288,6 +1288,7 @@ export default function SuperAdminPage() {
                 loading={loadUsu}
                 rowKey="id"
                 size="small"
+                scroll={{ x: 720 }}
                 pagination={{ pageSize: 15, showTotal: t => `${t} usuarios`, showSizeChanger: true }}
               />
             )}
