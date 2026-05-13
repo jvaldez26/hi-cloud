@@ -777,9 +777,9 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
   // ── Enviar pre-factura (proforma) al cliente por email ────────────────────────
   async enviarPreFacturaAlCliente(preFacturaId: number, emailCliente: string) {
     const rows = await this.dataSource.query<any[]>(
-      `SELECT pf.folio, pf.fecha::text, pf."fechaValidez"::text,
+      `SELECT pf.folio, pf.fecha::text, pf."fechaVencimiento"::text AS "fechaValidez",
               pf.subtotal::text, pf.iva::text, pf.total::text, pf.estado,
-              COALESCE(pf.notas,'') AS notas, pf.condicionPago,
+              COALESCE(pf.notas,'') AS notas, pf."condicionesPago" AS "condicionPago",
               c.nombre AS "clienteNombre",
               e.nombre AS "empresaNombre", e.rnc AS "empresaRNC",
               e.telefono AS "empresaTelefono", e.email AS "empresaEmail"
