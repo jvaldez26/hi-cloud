@@ -212,6 +212,21 @@ export default function FacturasPage() {
         <Text strong style={{ fontSize: 13, color: token.colorPrimary }}>{fmt.money(v)}</Text>
       ),
     },
+    // ── Pago ───────────────────────────────────────────────────────────────────
+    {
+      title: 'Pago', key: 'tipoPago', width: 80,
+      render: (_: unknown, r: any) => {
+        const es = r.tipoPago === 'CREDITO';
+        return (
+          <Tooltip title={es ? `Crédito ${r.diasCredito ?? 0} días` : 'Contado'}>
+            <Tag style={{ fontSize: 10, fontWeight: 700, margin: 0, cursor: 'default' }}
+              color={es ? 'orange' : 'default'}>
+              {es ? `${r.diasCredito ?? 0}d` : 'CON'}
+            </Tag>
+          </Tooltip>
+        );
+      },
+    },
     // ── Estado ─────────────────────────────────────────────────────────────────
     {
       title: 'Estado', dataIndex: 'estado', width: 90,
