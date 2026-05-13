@@ -114,6 +114,7 @@ interface MenuCategory {
   Icon:         LucideIcon;
   items:        SubItem[];
   sectionLabel?: string; // si está presente → renderizar separador de sección ANTES de esta categoría
+  direct?:       boolean;  // si true → items visibles directamente sin cabecera acordeón (modo expandido)
 }
 
 const QUICK_ITEMS: QuickItem[] = [
@@ -126,7 +127,7 @@ const MENU_CATEGORIES: MenuCategory[] = [
 
   // ─── VENTAS ────────────────────────────────────────────────────────────────
   {
-    id: 'ventas', label: 'Ventas', Icon: TrendingUp, sectionLabel: 'VENTAS',
+    id: 'ventas', label: 'Ventas', Icon: TrendingUp, sectionLabel: 'VENTAS', direct: true,
     items: [
       { path: '/facturas',             label: 'Facturas' },
       { path: '/cotizaciones',         label: 'Cotizaciones' },
@@ -152,7 +153,7 @@ const MENU_CATEGORIES: MenuCategory[] = [
 
   // ─── COMPRAS ────────────────────────────────────────────────────────────────
   {
-    id: 'compras', label: 'Compras', Icon: ClipboardList, sectionLabel: 'COMPRAS',
+    id: 'compras', label: 'Compras', Icon: ClipboardList, sectionLabel: 'COMPRAS', direct: true,
     items: [
       { path: '/compras',               label: 'Órdenes de Compra' },
       { path: '/solicitudes-compra',    label: 'Solicitudes de Compra' },
@@ -176,7 +177,7 @@ const MENU_CATEGORIES: MenuCategory[] = [
 
   // ─── INVENTARIO ─────────────────────────────────────────────────────────────
   {
-    id: 'inventario', label: 'Inventario', Icon: Boxes, sectionLabel: 'INVENTARIO',
+    id: 'inventario', label: 'Inventario', Icon: Boxes, sectionLabel: 'INVENTARIO', direct: true,
     items: [
       { path: '/productos',         label: 'Productos' },
       { path: '/inventario',        label: 'Movimientos de Stock' },
@@ -752,6 +753,57 @@ function AccordionSubItem({
   );
 }
 
+// ── Sub-ítem directo (modo expandido, sin acordeón padre) ────────────────────
+function DirectSubItem({
+  item, active, onClick, locked, planMinimo, onHover,
+}: {
+  item: SubItem; active: boolean; onClick: () => void;
+  locked?: boolean; planMinimo?: PlanTipo; onHover?: () => void;
+}) {
+  const C = useC();
+  const [hover, setHover] = useState(false);
+  return (
+    <Tooltip
+      title={locked ? `Disponible en plan ${PLAN_NOMBRE[planMinimo!] ?? ''}` : undefined}
+      placement="right"
+    >
+      <button
+        onClick={onClick}
+        onMouseEnter={() => { setHover(true); onHover?.(); }}
+        onMouseLeave={() => setHover(false)}
+        style={{
+          width: 'calc(100% - 16px)', margin: '1px 8px',
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '7px 12px',
+          height: 32, border: 'none',
+          cursor: locked ? 'not-allowed' : 'pointer',
+          borderRadius: 6,
+          background: active ? C.bgActive : hover ? C.bgHover : 'transparent',
+          transition: 'all 0.12s ease', textAlign: 'left',
+          opacity: locked ? 0.7 : 1,
+          position: 'relative',
+        }}
+      >
+        {active && (
+          <span style={{
+            position: 'absolute', left: 0, top: 5, bottom: 5,
+            width: 3, borderRadius: '0 3px 3px 0', background: C.accent,
+          }} />
+        )}
+        <span style={{
+          flex: 1, fontSize: 12.5, fontWeight: active ? 500 : 400,
+          color: locked ? C.accent : active ? C.textActive : hover ? C.textSubHover : C.textSub,
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          transition: 'color 0.12s',
+        }}>
+          {item.label}
+        </span>
+        {locked && <Lock size={10} color={C.accent} style={{ flexShrink: 0 }} />}
+      </button>
+    </Tooltip>
+  );
+}
+
 // ── MODO COLAPSADO: Botón de categoría solo ícono ─────────────────────────────
 function CategoryBtnCollapsed({
   category, activePath, isActive, onClick,
@@ -1305,6 +1357,26 @@ export default function AppLayout() {
                 isActive={activePanel === cat.id}
                 onClick={() => togglePanel(cat.id)}
               />
+            ) : cat.direct ? (
+              /* Items directos — sin cabecera de acordeón */
+              <div style={{ paddingBottom: 2 }}>
+                {cat.items.map(item => {
+                  const isActive = activePath.startsWith(item.path);
+                  const minPlan  = PATH_MIN_PLAN[item.path] as PlanTipo | undefined;
+                  const isLocked = !!minPlan && esRutaBloqueada(item.path, planActual);
+                  return (
+                    <DirectSubItem
+                      key={item.path}
+                      item={item}
+                      active={isActive}
+                      locked={isLocked}
+                      planMinimo={minPlan}
+                      onClick={() => isLocked ? handleLocked(item, minPlan!) : handleNavigate(item.path)}
+                      onHover={() => prefetchRoute(item.path)}
+                    />
+                  );
+                })}
+              </div>
             ) : (
               <CategoryAccordion
                 category={cat}
