@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { Form, Input, Button, Typography, Alert } from 'antd';
 import { UserOutlined, LockOutlined, RocketOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import { Link, useNavigate } from 'react-router-dom';
@@ -92,7 +92,7 @@ export default function LoginPage() {
         {/* Logo + título */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <motion.img
-            src="/logo-hicloud.svg"
+            src="/logo-hicloud.png"
             alt="HiCloud ERP"
             whileHover={{ scale: 1.04 }}
             style={{ height: 72, width: 'auto', margin: '0 auto 12px', display: 'block',

@@ -1206,7 +1206,7 @@ export default function AppLayout() {
           {/* Logo — ícono nube cuando colapsado, logo completo cuando expandido */}
           {collapsed ? (
             <img
-              src="/logo-hicloud.svg"
+              src="/logo-hicloud.png"
               alt="HiCloud"
               style={{ width: 38, height: 38, objectFit: 'contain', filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.3))' }}
             />
@@ -1220,7 +1220,7 @@ export default function AppLayout() {
               style={{ display: 'flex', alignItems: 'center', gap: 8 }}
             >
               <img
-                src="/logo-hicloud.svg"
+                src="/logo-hicloud.png"
                 alt="HiCloud ERP"
                 style={{ height: 40, width: 'auto', objectFit: 'contain', filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.25))' }}
               />

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import { message } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { motion, useInView, AnimatePresence } from 'framer-motion';
@@ -84,7 +84,7 @@ function Navbar({ onDemo }: { onDemo: () => void }) {
       {/* Logo */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
         onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-        <img src="/logo-hicloud.svg" alt="HiCloud ERP"
+        <img src="/logo-hicloud.png" alt="HiCloud ERP"
           style={{ height: 44, width: 'auto', objectFit: 'contain',
             filter: 'drop-shadow(0 2px 8px rgba(0,170,255,0.35))' }} />
         <span style={{ background: '#00BFA5', color: '#fff', fontSize: 9, fontWeight: 700,
@@ -668,7 +668,7 @@ export default function LandingPage() {
             {/* Logo + tagline */}
             <div>
               <div style={{ marginBottom: 12 }}>
-                <img src="/logo-hicloud.svg" alt="HiCloud ERP"
+                <img src="/logo-hicloud.png" alt="HiCloud ERP"
                   style={{ height: 48, width: 'auto', objectFit: 'contain',
                     filter: 'drop-shadow(0 2px 6px rgba(0,170,255,0.3))' }} />
               </div>
