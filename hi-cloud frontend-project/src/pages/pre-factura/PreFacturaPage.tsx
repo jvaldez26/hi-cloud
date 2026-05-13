@@ -187,40 +187,54 @@ export default function PreFacturaPage() {
         </Button>
       </div>
 
-      {/* ── KPI Cards ────────────────────────────────────────────────────── */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        {(['borrador','enviada','aprobada','rechazada','convertida'] as const).map(estado => {
-          const r    = resumen.find((x: any) => x.estado === estado);
-          const conf = ESTADO_CONFIG[estado];
-          const tk   = ESTADO_TOKEN[estado];
-          const bg   = token[tk.bg as keyof typeof token] as string;
-          const brd  = token[tk.border as keyof typeof token] as string;
-
-          return (
-            <Col xs={12} sm={24 / 5} key={estado}>
-              <Card
-                bordered={false}
-                style={{
-                  borderRadius: 10,
-                  background:   bg,
-                  border:       `1px solid ${brd}`,
-                  textAlign:    'center',
-                }}
-              >
-                <div style={{ fontSize: 24, fontWeight: 800, color: token.colorText }}>
+      {/* ── KPI Stats ────────────────────────────────────────────────────── */}
+      <div style={{ overflowX: 'auto', marginBottom: 20 }}>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(5, minmax(100px, 1fr))',
+          minWidth: 500,
+          gap: 1,
+          background: token.colorBorderSecondary,
+          border: `1px solid ${token.colorBorderSecondary}`,
+          borderRadius: 6,
+          overflow: 'hidden',
+        }}>
+          {([
+            { key: 'borrador',   label: 'Borrador',   color: '#616161' },
+            { key: 'enviada',    label: 'Enviada',    color: '#1565C0' },
+            { key: 'aprobada',   label: 'Aprobada',   color: '#2E7D32' },
+            { key: 'rechazada',  label: 'Rechazada',  color: '#C62828' },
+            { key: 'convertida', label: 'Convertida', color: '#6A1B9A' },
+          ] as const).map(item => {
+            const r = resumen.find((x: any) => x.estado === item.key);
+            return (
+              <div key={item.key} style={{
+                background: token.colorBgContainer,
+                padding: '14px 16px',
+                display: 'flex', flexDirection: 'column', gap: 3,
+              }}>
+                <span style={{
+                  fontSize: 22, fontWeight: 600, color: token.colorText,
+                  fontVariantNumeric: 'tabular-nums', lineHeight: 1,
+                }}>
                   {r?.cantidad ?? 0}
-                </div>
-                <Tag color={conf.color} style={{ marginTop: 4 }}>{conf.label}</Tag>
+                </span>
+                <span style={{
+                  fontSize: 10, fontWeight: 600, color: item.color,
+                  textTransform: 'uppercase', letterSpacing: '0.06em',
+                }}>
+                  {item.label}
+                </span>
                 {r?.totalMonto > 0 && (
-                  <div style={{ fontSize: 11, color: token.colorTextSecondary, marginTop: 4 }}>
+                  <span style={{ fontSize: 10, color: token.colorTextSecondary }}>
                     {fmt(r.totalMonto)}
-                  </div>
+                  </span>
                 )}
-              </Card>
-            </Col>
-          );
-        })}
-      </Row>
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
       {/* ── Tabla ────────────────────────────────────────────────────────── */}
       <Card bordered={false} style={{ borderRadius: 12 }}>
