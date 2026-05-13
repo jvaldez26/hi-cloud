@@ -795,7 +795,7 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
     const detRows = await this.dataSource.query<any[]>(
       `SELECT descripcion, cantidad::text, "precioUnitario"::text, total::text, "porcentajeIva"::text
        FROM pre_factura_detalles
-       WHERE "preFacturaId" = $1 AND "isActive" = true
+       WHERE "preFacturaId" = $1
        ORDER BY id`,
       [preFacturaId],
     );
