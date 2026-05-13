@@ -2,10 +2,11 @@ import { useState, useCallback } from 'react';
 import {
   Table, Button, Tag, Space, Modal, Form, InputNumber, Select, Input,
   Typography, message, Card, Row, Col, Statistic, DatePicker, theme, Tooltip,
+  Drawer, Divider,
 } from 'antd';
 import {
   DollarOutlined, SearchOutlined, FileExcelOutlined,
-  WhatsAppOutlined, FilterOutlined,
+  WhatsAppOutlined, FilterOutlined, HistoryOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -28,12 +29,22 @@ export default function CxCPage() {
   const [search,  setSearch]  = useState('');
   const [rango,   setRango]   = useState<[Dayjs, Dayjs] | null>(null);
   const [page,    setPage]    = useState(1);
-  const [pagoId,  setPagoId]  = useState<number | null>(null);
-  const [pagoRow, setPagoRow] = useState<CuentaPorCobrar | null>(null);
+  const [pagoId,   setPagoId]  = useState<number | null>(null);
+  const [pagoRow,  setPagoRow] = useState<CuentaPorCobrar | null>(null);
+  const [histId,   setHistId]  = useState<number | null>(null);
   const [form]                = Form.useForm();
   const qc = useQueryClient();
 
   const hayFiltros = !!(search || estado || rango);
+
+  const { data: histPagos = [], isFetching: loadingHist } = useQuery<any[]>({
+    queryKey: ['cxc-pagos', histId],
+    queryFn:  () => api.get(`/cxc/${histId}/pagos`).then((r: any) => {
+      const d = r.data?.data ?? r.data;
+      return Array.isArray(d) ? d : (d?.data ?? []);
+    }),
+    enabled: !!histId,
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ['cxc', page, estado, search, rango],
@@ -136,6 +147,10 @@ export default function CxCPage() {
               />
             </Tooltip>
           )}
+          <Tooltip title="Historial de cobros">
+            <Button size="small" type="text" icon={<HistoryOutlined />}
+              onClick={() => setHistId(r.id)} />
+          </Tooltip>
           <Tooltip title="Recordatorio WhatsApp">
             <Button size="small" type="text"
               icon={<WhatsAppOutlined style={{ color: '#25D366' }} />}
@@ -230,6 +245,41 @@ export default function CxCPage() {
           }}
         />
       </Card>
+
+      {/* Drawer historial de cobros */}
+      <Drawer
+        title={<Space><HistoryOutlined />Historial de cobros</Space>}
+        open={!!histId}
+        onClose={() => setHistId(null)}
+        width={480}
+        loading={loadingHist}
+      >
+        {histPagos.length === 0 && !loadingHist ? (
+          <Text type="secondary">Sin cobros registrados aún</Text>
+        ) : (
+          <Table
+            size="small"
+            dataSource={histPagos}
+            rowKey="id"
+            pagination={false}
+            columns={[
+              { title: 'Fecha',  dataIndex: 'fecha', width: 100, render: (v: string) => dayjs(v).format('DD/MM/YYYY') },
+              { title: 'Monto',  dataIndex: 'monto', width: 120, align: 'right' as const, render: (v: number) => <Text strong style={{ color: '#059669' }}>{fmt.money(v)}</Text> },
+              { title: 'Método', dataIndex: 'metodoPago', width: 110, render: (v: string) => <Tag>{v}</Tag> },
+              { title: 'Ref.',   dataIndex: 'referencia', ellipsis: true, render: (v: string) => v ?? '—' },
+            ]}
+            summary={() => histPagos.length > 1 ? (
+              <Table.Summary.Row style={{ fontWeight: 700 }}>
+                <Table.Summary.Cell index={0}>Total</Table.Summary.Cell>
+                <Table.Summary.Cell index={1} align="right">
+                  <Text strong style={{ color: '#059669' }}>{fmt.money(histPagos.reduce((a, p) => a + Number(p.monto), 0))}</Text>
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={2} colSpan={2} />
+              </Table.Summary.Row>
+            ) : null}
+          />
+        )}
+      </Drawer>
 
       {/* Modal cobro */}
       <Modal

@@ -2,12 +2,13 @@ import { useState, useCallback } from 'react';
 import {
   Table, Button, Tag, Space, Modal, Form, InputNumber, Select, Input,
   Typography, message, Card, Row, Col, Statistic, DatePicker, theme, Tooltip,
-  Divider,
+  Divider, Drawer,
 } from 'antd';
 import {
   DollarOutlined, SearchOutlined, FileExcelOutlined,
-  FilterOutlined,
+  FilterOutlined, HistoryOutlined,
 } from '@ant-design/icons';
+import api from '../../api/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
@@ -30,10 +31,20 @@ export default function CxPPage() {
   const [page,    setPage]    = useState(1);
   const [pagoId,  setPagoId]  = useState<number | null>(null);
   const [pagoRow, setPagoRow] = useState<CuentaPorPagar | null>(null);
+  const [histId,  setHistId]  = useState<number | null>(null);
   const [form]                = Form.useForm();
   const qc = useQueryClient();
 
   const hayFiltros = !!(search || estado || rango);
+
+  const { data: histPagos = [], isFetching: loadingHist } = useQuery<any[]>({
+    queryKey: ['cxp-pagos', histId],
+    queryFn:  () => api.get(`/cxp/${histId}/pagos`).then((r: any) => {
+      const d = r.data?.data ?? r.data;
+      return Array.isArray(d) ? d : (d?.data ?? []);
+    }),
+    enabled: !!histId,
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ['cxp', page, estado, search, rango],
@@ -128,19 +139,26 @@ export default function CxPPage() {
       ),
     },
     {
-      title: '', key: 'actions', width: 80, align: 'right' as const,
-      render: (_: unknown, r: CuentaPorPagar) =>
-        r.estado !== 'pagada' && r.estado !== 'anulada' ? (
-          <Tooltip title="Registrar pago">
-            <Button size="small" type="primary" icon={<DollarOutlined />}
-              onClick={() => {
-                setPagoId(r.id);
-                setPagoRow(r);
-                form.setFieldsValue({ monto: Number(r.montoPendiente), fechaPago: dayjs() });
-              }}
-            />
+      title: '', key: 'actions', width: 90, align: 'right' as const,
+      render: (_: unknown, r: CuentaPorPagar) => (
+        <Space size={4}>
+          {r.estado !== 'pagada' && r.estado !== 'anulada' && (
+            <Tooltip title="Registrar pago">
+              <Button size="small" type="primary" icon={<DollarOutlined />}
+                onClick={() => {
+                  setPagoId(r.id);
+                  setPagoRow(r);
+                  form.setFieldsValue({ monto: Number(r.montoPendiente), fechaPago: dayjs() });
+                }}
+              />
+            </Tooltip>
+          )}
+          <Tooltip title="Historial de pagos">
+            <Button size="small" type="text" icon={<HistoryOutlined />}
+              onClick={() => setHistId(r.id)} />
           </Tooltip>
-        ) : null,
+        </Space>
+      ),
     },
   ];
 
@@ -230,6 +248,41 @@ export default function CxPPage() {
           }}
         />
       </Card>
+
+      {/* Drawer historial de pagos */}
+      <Drawer
+        title={<Space><HistoryOutlined />Historial de pagos</Space>}
+        open={!!histId}
+        onClose={() => setHistId(null)}
+        width={480}
+        loading={loadingHist}
+      >
+        {histPagos.length === 0 && !loadingHist ? (
+          <Text type="secondary">Sin pagos registrados aún</Text>
+        ) : (
+          <Table
+            size="small"
+            dataSource={histPagos}
+            rowKey="id"
+            pagination={false}
+            columns={[
+              { title: 'Fecha',  dataIndex: 'fecha', width: 100, render: (v: string) => dayjs(v).format('DD/MM/YYYY') },
+              { title: 'Monto',  dataIndex: 'monto', width: 120, align: 'right' as const, render: (v: number) => <Text strong style={{ color: '#dc2626' }}>{fmt.money(v)}</Text> },
+              { title: 'Método', dataIndex: 'metodoPago', width: 110, render: (v: string) => <Tag>{v}</Tag> },
+              { title: 'Ref.',   dataIndex: 'referencia', ellipsis: true, render: (v: string) => v ?? '—' },
+            ]}
+            summary={() => histPagos.length > 1 ? (
+              <Table.Summary.Row style={{ fontWeight: 700 }}>
+                <Table.Summary.Cell index={0}>Total pagado</Table.Summary.Cell>
+                <Table.Summary.Cell index={1} align="right">
+                  <Text strong style={{ color: '#dc2626' }}>{fmt.money(histPagos.reduce((a, p) => a + Number(p.monto), 0))}</Text>
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={2} colSpan={2} />
+              </Table.Summary.Row>
+            ) : null}
+          />
+        )}
+      </Drawer>
 
       {/* Modal pago */}
       <Modal
