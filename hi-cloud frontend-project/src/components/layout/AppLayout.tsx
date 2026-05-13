@@ -1375,9 +1375,9 @@ export default function AppLayout() {
         scrollbarGutter: 'stable',
       }}>
 
-        {/* Items rápidos (sin categoría) */}
+        {/* Items rápidos (sin categoría) — filtrados por rol */}
         <div style={{ marginBottom: 6 }}>
-          {QUICK_ITEMS.map(item => (
+          {QUICK_ITEMS.filter(item => rolPuedeVerRuta(item.path, userRole)).map(item => (
             <QuickItemComp
               key={item.path}
               item={item}
