@@ -110,7 +110,7 @@ export default function OnboardingTour() {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -16 }}
           transition={{ duration: 0.22 }}
-          style={{ padding: 28 }}
+          style={{ padding: 28, overflow: 'hidden' }}
         >
           {/* Ícono */}
           <motion.div
@@ -132,7 +132,9 @@ export default function OnboardingTour() {
           </Title>
 
           <Text style={{ display: 'block', textAlign: 'center', color: '#6b7280',
-                          lineHeight: 1.7, marginBottom: 24 }}>
+                          lineHeight: 1.7, marginBottom: 24,
+                          wordBreak: 'break-word', overflowWrap: 'break-word',
+                          maxWidth: '100%' }}>
             {pasoActual.descripcion}
           </Text>
 
