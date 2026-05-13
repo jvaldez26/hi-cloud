@@ -185,36 +185,32 @@ const ECF_TYPES = [
   { code: 'E47', name: 'Pagos al Exterior',      color: '#9333EA' },
 ];
 
-const PLANES = [
-  {
-    name: 'Básico',
-    price: '$49',
-    period: '/mes',
-    color: L.primary,
-    features: ['1 empresa', '5 usuarios', 'Todos los módulos', 'e-CF incluido', 'Backups S3', 'Soporte por email'],
-    cta: 'Solicitar Demo',
-    highlight: false,
-  },
-  {
-    name: 'Profesional',
-    price: '$99',
-    period: '/mes',
-    color: '#00BFA5',
-    features: ['3 empresas', '15 usuarios', 'Todos los módulos', 'e-CF incluido', 'Reportes DGII avanzados', 'Soporte WhatsApp'],
-    cta: 'Empezar',
-    highlight: true,
-    badge: 'MÁS POPULAR',
-  },
-  {
-    name: 'Empresarial',
-    price: '$199',
-    period: '/mes',
-    color: '#7C3AED',
-    features: ['Empresas ilimitadas', 'Usuarios ilimitados', 'Todos los módulos', 'e-CF incluido', 'API access', 'SLA 99.9% · Soporte priority'],
-    cta: 'Contactar',
-    highlight: false,
-  },
-];
+// Colores y configuración visual por clave de plan
+const PLAN_VISUAL: Record<string, { color: string; highlight: boolean; badge?: string; cta: string }> = {
+  basico:      { color: L.primary,  highlight: false, cta: 'Solicitar Demo' },
+  profesional: { color: '#00BFA5',  highlight: true,  badge: 'MÁS POPULAR', cta: 'Empezar' },
+  empresarial: { color: '#7C3AED',  highlight: false, cta: 'Contactar' },
+};
+
+// Convierte los datos de la API al formato de la landing
+function mapPlanApi(p: any) {
+  const v = PLAN_VISUAL[p.clave] ?? { color: L.primary, highlight: false, cta: 'Solicitar Demo' };
+  const usuarios = p.maxUsuarios === -1 ? 'Usuarios ilimitados' : `${p.maxUsuarios} usuarios`;
+  const facturas = p.maxFacturasMes === -1 ? 'Facturas ilimitadas' : `${p.maxFacturasMes} facturas/mes`;
+  const features = [
+    usuarios,
+    facturas,
+    'Todos los módulos',
+    'e-CF E31-E47 incluido',
+    'Backups S3 automáticos',
+    p.soporte ? `Soporte: ${p.soporte}` : 'Soporte incluido',
+  ];
+  const precio = Number(p.precio);
+  const precioFmt = precio === 0 ? 'Gratis'
+    : `RD$${precio.toLocaleString('es-DO')}`;
+
+  return { ...v, clave: p.clave, name: p.nombre, price: precioFmt, period: precio > 0 ? '/mes' : '', features };
+}
 
 const FAQ_DATA = [
   { q: '¿HiCloud me certifica ante la DGII?', a: 'HiCloud se conecta con tu proveedor e-CF (MSeller u otro) ya certificado ante la DGII. El proceso de certificación lo realizas con tu proveedor e-CF en 4 pasos sencillos.' },
@@ -357,6 +353,32 @@ function DemoForm() {
 export default function LandingPage() {
   const [showForm, setShowForm] = useState(false);
   const navigate = useNavigate();
+
+  // Planes dinámicos desde la BD
+  const [planesDB, setPlanesDB] = useState<any[]>([]);
+  useEffect(() => {
+    fetch('/api/v1/public/planes')
+      .then(r => r.json())
+      .then(data => {
+        const arr = Array.isArray(data) ? data : (data?.data ?? []);
+        // Mostrar solo basico, profesional, empresarial (excluir trial y enterprise)
+        const visibles = arr.filter((p: any) => ['basico','profesional','empresarial'].includes(p.clave));
+        setPlanesDB(visibles);
+      })
+      .catch(() => { /* usa fallback */ });
+  }, []);
+
+  // Si el fetch falla o todavía carga, usar datos de respaldo
+  const planesRender = planesDB.length > 0
+    ? planesDB.map(mapPlanApi)
+    : [
+        { clave:'basico',      name:'Básico',      price:'RD$1,500', period:'/mes', color:L.primary, highlight:false, cta:'Solicitar Demo',
+          features:['3 usuarios','50 facturas/mes','Todos los módulos','e-CF incluido','Backups S3','Soporte: Documentación'] },
+        { clave:'profesional', name:'Profesional',  price:'RD$3,500', period:'/mes', color:'#00BFA5', highlight:true,  cta:'Empezar',        badge:'MÁS POPULAR',
+          features:['10 usuarios','1000 facturas/mes','Todos los módulos','e-CF incluido','Backups S3','Soporte: Email + Chat'] },
+        { clave:'empresarial', name:'Empresarial',  price:'RD$7,000', period:'/mes', color:'#7C3AED', highlight:false, cta:'Contactar',
+          features:['25 usuarios','5000 facturas/mes','Todos los módulos','e-CF incluido','API access','Soporte: Teléfono'] },
+      ];
 
   const scrollToForm = () => {
     document.getElementById('demo-form')?.scrollIntoView({ behavior: 'smooth' });
@@ -589,8 +611,8 @@ export default function LandingPage() {
             </div>
           </FadeIn>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 24, alignItems: 'start' }}>
-            {PLANES.map((p, i) => (
-              <FadeIn key={p.name} delay={i * 0.1}>
+            {planesRender.map((p, i) => (
+              <FadeIn key={p.clave ?? p.name} delay={i * 0.1}>
                 <div style={{ background: p.highlight ? L.dark : L.white,
                   border: `2px solid ${p.highlight ? p.color : L.border}`,
                   borderRadius: 18, padding: 32, position: 'relative',
