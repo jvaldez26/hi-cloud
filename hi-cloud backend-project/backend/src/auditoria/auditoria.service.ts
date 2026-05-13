@@ -73,80 +73,90 @@ export class AuditoriaService {
     return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
   }
 
-  async getLogsByUser(userId: number, filtro: FiltroAuditoriaDto) {
-    return this.getLogs({ ...filtro, userId });
+  async getLogsByUser(userId: number, filtro: FiltroAuditoriaDto, empresaId?: number) {
+    return this.getLogs({ ...filtro, userId }, empresaId);
   }
 
-  async getLogsByModulo(modulo: string, filtro: FiltroAuditoriaDto) {
-    return this.getLogs({ ...filtro, modulo });
+  async getLogsByModulo(modulo: string, filtro: FiltroAuditoriaDto, empresaId?: number) {
+    return this.getLogs({ ...filtro, modulo }, empresaId);
   }
 
-  async getResumen() {
+  async getResumen(empresaId?: number) {
     const hoy = new Date();
     const inicio24h  = new Date(hoy.getTime() - 24 * 60 * 60 * 1000);
     const inicioSem  = new Date(hoy.getTime() - 7  * 24 * 60 * 60 * 1000);
     const inicioMes  = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
 
+    // Helper para aplicar el filtro de empresa a cualquier query builder
+    const withEmpresa = (qb: ReturnType<typeof this.logRepository.createQueryBuilder>) => {
+      if (empresaId) qb.andWhere('(l.empresaId = :eid OR l.empresaId IS NULL)', { eid: empresaId });
+      return qb;
+    };
+
     const [
       totalHoy, totalSemana, totalMes,
       erroresHoy, porAccion, porModulo, topUsuarios,
     ] = await Promise.all([
-      // Eventos últimas 24h
-      this.logRepository.count({ where: [] })
-        .then(() =>
-          this.logRepository
-            .createQueryBuilder('l')
-            .where('l.createdAt >= :desde', { desde: inicio24h })
-            .getCount(),
-        ),
+      // Eventos últimas 24h — filtrado por empresa
+      withEmpresa(
+        this.logRepository
+          .createQueryBuilder('l')
+          .where('l.createdAt >= :desde', { desde: inicio24h }),
+      ).getCount(),
 
-      // Eventos última semana
-      this.logRepository
-        .createQueryBuilder('l')
-        .where('l.createdAt >= :desde', { desde: inicioSem })
-        .getCount(),
+      // Eventos última semana — filtrado por empresa
+      withEmpresa(
+        this.logRepository
+          .createQueryBuilder('l')
+          .where('l.createdAt >= :desde', { desde: inicioSem }),
+      ).getCount(),
 
-      // Eventos este mes
-      this.logRepository
-        .createQueryBuilder('l')
-        .where('l.createdAt >= :desde', { desde: inicioMes })
-        .getCount(),
+      // Eventos este mes — filtrado por empresa
+      withEmpresa(
+        this.logRepository
+          .createQueryBuilder('l')
+          .where('l.createdAt >= :desde', { desde: inicioMes }),
+      ).getCount(),
 
-      // Errores últimas 24h
-      this.logRepository
-        .createQueryBuilder('l')
-        .where('l.createdAt >= :desde AND l.exitoso = false', { desde: inicio24h })
-        .getCount(),
+      // Errores últimas 24h — filtrado por empresa
+      withEmpresa(
+        this.logRepository
+          .createQueryBuilder('l')
+          .where('l.createdAt >= :desde AND l.exitoso = false', { desde: inicio24h }),
+      ).getCount(),
 
-      // Distribución por acción (este mes)
-      this.logRepository
-        .createQueryBuilder('l')
-        .select('l.accion', 'accion')
-        .addSelect('COUNT(l.id)', 'cantidad')
-        .where('l.createdAt >= :desde', { desde: inicioMes })
-        .groupBy('l.accion')
+      // Distribución por acción (este mes) — filtrado por empresa
+      withEmpresa(
+        this.logRepository
+          .createQueryBuilder('l')
+          .select('l.accion', 'accion')
+          .addSelect('COUNT(l.id)', 'cantidad')
+          .where('l.createdAt >= :desde', { desde: inicioMes }),
+      ).groupBy('l.accion')
         .orderBy('cantidad', 'DESC')
         .getRawMany<{ accion: string; cantidad: string }>(),
 
-      // Distribución por módulo (este mes)
-      this.logRepository
-        .createQueryBuilder('l')
-        .select('l.modulo', 'modulo')
-        .addSelect('COUNT(l.id)', 'cantidad')
-        .where('l.createdAt >= :desde', { desde: inicioMes })
-        .groupBy('l.modulo')
+      // Distribución por módulo (este mes) — filtrado por empresa
+      withEmpresa(
+        this.logRepository
+          .createQueryBuilder('l')
+          .select('l.modulo', 'modulo')
+          .addSelect('COUNT(l.id)', 'cantidad')
+          .where('l.createdAt >= :desde', { desde: inicioMes }),
+      ).groupBy('l.modulo')
         .orderBy('cantidad', 'DESC')
         .limit(10)
         .getRawMany<{ modulo: string; cantidad: string }>(),
 
-      // Top 5 usuarios más activos (este mes)
-      this.logRepository
-        .createQueryBuilder('l')
-        .select('l.userId', 'userId')
-        .addSelect('l.userName', 'userName')
-        .addSelect('COUNT(l.id)', 'acciones')
-        .where('l.createdAt >= :desde AND l.userId IS NOT NULL', { desde: inicioMes })
-        .groupBy('l.userId, l.userName')
+      // Top 5 usuarios más activos (este mes) — filtrado por empresa
+      withEmpresa(
+        this.logRepository
+          .createQueryBuilder('l')
+          .select('l.userId', 'userId')
+          .addSelect('l.userName', 'userName')
+          .addSelect('COUNT(l.id)', 'acciones')
+          .where('l.createdAt >= :desde AND l.userId IS NOT NULL', { desde: inicioMes }),
+      ).groupBy('l.userId, l.userName')
         .orderBy('acciones', 'DESC')
         .limit(5)
         .getRawMany<{ userId: number; userName: string; acciones: string }>(),
@@ -172,11 +182,17 @@ export class AuditoriaService {
     };
   }
 
-  async getUltimosErrores(limite = 10) {
-    return this.logRepository.find({
-      where: { exitoso: false },
-      order: { createdAt: 'DESC' },
-      take: limite,
-    });
+  async getUltimosErrores(limite = 10, empresaId?: number) {
+    const qb = this.logRepository
+      .createQueryBuilder('l')
+      .where('l.exitoso = false')
+      .orderBy('l.createdAt', 'DESC')
+      .take(limite);
+
+    if (empresaId) {
+      qb.andWhere('(l.empresaId = :eid OR l.empresaId IS NULL)', { eid: empresaId });
+    }
+
+    return qb.getMany();
   }
 }

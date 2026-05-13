@@ -13,8 +13,11 @@ import { FiltroAuditoriaDto } from './dto/filtro-auditoria.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { GetUser } from '../auth/decorators/get-user.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
+import { User } from '../users/users.entity';
 import { RequiereModulo } from '../suscripciones/decorators/requiere-modulo.decorator';
+import { TenantService } from '../tenant/tenant.service';
 
 @ApiTags('Auditoría y Logs')
 @ApiBearerAuth('access-token')
@@ -24,25 +27,31 @@ import { RequiereModulo } from '../suscripciones/decorators/requiere-modulo.deco
 @RequiereModulo('auditoria')
 @Controller('auditoria')
 export class AuditoriaController {
-  constructor(private auditoriaService: AuditoriaService) {}
+  constructor(
+    private auditoriaService: AuditoriaService,
+    private tenantService:    TenantService,
+  ) {}
 
   @Get('resumen')
   @ApiOperation({ summary: 'Resumen: eventos por período, por módulo, por usuario y errores' })
   getResumen() {
-    return this.auditoriaService.getResumen();
+    const empresaId = this.tenantService.getEmpresaId();
+    return this.auditoriaService.getResumen(empresaId);
   }
 
   @Get('errores')
   @ApiOperation({ summary: 'Últimos errores del sistema (últimas 10 operaciones fallidas)' })
   @ApiQuery({ name: 'limite', required: false, example: 10 })
   getUltimosErrores(@Query('limite') limite?: number) {
-    return this.auditoriaService.getUltimosErrores(Number(limite ?? 10));
+    const empresaId = this.tenantService.getEmpresaId();
+    return this.auditoriaService.getUltimosErrores(Number(limite ?? 10), empresaId);
   }
 
   @Get()
   @ApiOperation({ summary: 'Historial completo de auditoría con filtros' })
   getLogs(@Query() filtro: FiltroAuditoriaDto) {
-    return this.auditoriaService.getLogs(filtro);
+    const empresaId = this.tenantService.getEmpresaId();
+    return this.auditoriaService.getLogs(filtro, empresaId);
   }
 
   @Get('usuario/:userId')
@@ -51,7 +60,8 @@ export class AuditoriaController {
     @Param('userId', ParseIntPipe) userId: number,
     @Query() filtro: FiltroAuditoriaDto,
   ) {
-    return this.auditoriaService.getLogsByUser(userId, filtro);
+    const empresaId = this.tenantService.getEmpresaId();
+    return this.auditoriaService.getLogsByUser(userId, filtro, empresaId);
   }
 
   @Get('modulo/:modulo')
@@ -60,6 +70,7 @@ export class AuditoriaController {
     @Param('modulo') modulo: string,
     @Query() filtro: FiltroAuditoriaDto,
   ) {
-    return this.auditoriaService.getLogsByModulo(modulo, filtro);
+    const empresaId = this.tenantService.getEmpresaId();
+    return this.auditoriaService.getLogsByModulo(modulo, filtro, empresaId);
   }
 }

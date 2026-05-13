@@ -4,9 +4,10 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuditoriaService } from './auditoria.service';
 import { AuditoriaController } from './auditoria.controller';
 import { AuditLog } from './entities/audit-log.entity';
+import { TenantModule } from '../tenant/tenant.module';
 
 @Module({
-  imports: [SuscripcionesModule, TypeOrmModule.forFeature([AuditLog])],
+  imports: [SuscripcionesModule, TenantModule, TypeOrmModule.forFeature([AuditLog])],
   controllers: [AuditoriaController],
   providers: [AuditoriaService],
   exports: [AuditoriaService],
