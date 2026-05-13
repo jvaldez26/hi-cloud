@@ -215,7 +215,7 @@ export class FacturasController {
   // ── PDF ────────────────────────────────────────────────────────────
 
   @Get(':id/pdf')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Descargar factura en PDF (A4 profesional)' })
   async descargarPDF(
     @Param('id', ParseIntPipe) id: number,
@@ -229,7 +229,7 @@ export class FacturasController {
   }
 
   @Get(':id/preview')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Vista previa HTML de la factura en navegador' })
   async previewHTML(
     @Param('id', ParseIntPipe) id: number,
@@ -252,7 +252,7 @@ export class FacturasController {
   }
 
   @Get(':id/recibo-pdf')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Recibo térmico POS 80mm en PDF' })
   async reciboPDF(
     @Param('id', ParseIntPipe) id: number,

@@ -45,7 +45,7 @@ export class ProductosController {
   }
 
   @Get('stock-bajo')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Productos con stock bajo o agotado' })
   findStockBajo() {
     return this.productosService.findStockBajo();
