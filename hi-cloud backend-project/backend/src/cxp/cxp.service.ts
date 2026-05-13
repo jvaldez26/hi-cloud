@@ -94,7 +94,7 @@ export class CxPService {
     const pago = this.pagoRepository.create({
       cuentaPorPagarId: id,
       monto:       dto.monto,
-      fecha:       new Date(),
+      fecha:       dto.fechaPago ? new Date(dto.fechaPago) : new Date(),
       metodoPago:  dto.metodoPago,
       referencia:  dto.referencia,
       notas:       dto.notas,
