@@ -1,4 +1,4 @@
-import {
+﻿import {
   Injectable,
   UnauthorizedException,
   ConflictException,
@@ -86,7 +86,7 @@ export class AuthService {
 
       return {
         message: 'Usuario registrado. Revisa tu correo para verificar tu cuenta.',
-        user: { id: user.id, nombre: user.nombre, email: user.email, role: user.role },
+        user: { id: user.id, nombre: user.nombre, email: user.email, role: user.role, tourCompletado: (user as any).tourCompletado ?? false },
       };
     } catch {
       throw new InternalServerErrorException('Error al crear el usuario');
@@ -131,7 +131,7 @@ export class AuthService {
         rol:         e.rol,
         isPrincipal: e.isPrincipal,
       })),
-      user: { id: user.id, nombre: user.nombre, email: user.email, role: user.role },
+      user: { id: user.id, nombre: user.nombre, email: user.email, role: user.role, tourCompletado: (user as any).tourCompletado ?? false },
     };
   }
 
@@ -416,6 +416,10 @@ export class AuthService {
     return this.userRepository.save(newUser) as unknown as User;
   }
 
+  async marcarTourCompletado(userId: number): Promise<void> {
+    await this.userRepository.update(userId, { tourCompletado: true } as any);
+  }
+
   /** Genera la respuesta de login completa (token + empresas) para un User */
   async buildLoginResponse(user: User) {
     const empresaId   = await this.getEmpresaPrincipal(user.id);
@@ -435,7 +439,7 @@ export class AuthService {
         rol:         e.rol,
         isPrincipal: e.isPrincipal,
       })),
-      user: { id: user.id, nombre: user.nombre, email: user.email, role: user.role },
+      user: { id: user.id, nombre: user.nombre, email: user.email, role: user.role, tourCompletado: (user as any).tourCompletado ?? false },
     };
   }
 }

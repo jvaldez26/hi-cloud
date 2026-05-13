@@ -1,5 +1,5 @@
 import {
-  Controller, Post, Get, Body, Param,
+  Controller, Post, Get, Patch, Body, Param,
   HttpCode, HttpStatus, UseGuards, Req, Res,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
@@ -143,6 +143,18 @@ export class AuthController {
   resendVerification(@Body('email') email: string) {
     if (!email) throw new (require('@nestjs/common').BadRequestException)('Email requerido');
     return this.authService.resendVerificationEmail(email);
+  }
+
+  // ── Tour onboarding ───────────────────────────────────────────────────────
+
+  @Patch('tour-completado')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Marcar el tour de bienvenida como completado' })
+  async marcarTourCompletado(@GetUser() user: User) {
+    await this.authService.marcarTourCompletado(user.id);
+    return { ok: true };
   }
 
   // ── Google OAuth ──────────────────────────────────────────────────────────

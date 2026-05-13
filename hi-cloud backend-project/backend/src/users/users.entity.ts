@@ -47,6 +47,9 @@ export class User extends BaseEntity {
 
   // ── 2FA ──────────────────────────────────────────────────────────────────
   @Column({ default: false })
+  tourCompletado!: boolean;
+
+  @Column({ default: false })
   twoFactorEnabled!: boolean;
 
   @Column({ length: 100, nullable: true, select: false })

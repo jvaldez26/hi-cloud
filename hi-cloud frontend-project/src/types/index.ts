@@ -2,10 +2,11 @@
 export type UserRole = 'super_admin' | 'admin' | 'contador' | 'vendedor' | 'viewer';
 
 export interface AuthUser {
-  id:     number;
-  nombre: string;
-  email:  string;
-  role:   UserRole;
+  id:              number;
+  nombre:          string;
+  email:           string;
+  role:            UserRole;
+  tourCompletado?: boolean;
 }
 
 export interface EmpresaItem {
