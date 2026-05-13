@@ -107,6 +107,7 @@ export class FacturasController {
   }
 
   @Get()
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Listar facturas con paginación y filtros' })
   findAll(@Query() pagination: FacturasFilterDto) {
     return this.facturasService.findAll(pagination);
@@ -120,6 +121,7 @@ export class FacturasController {
   }
 
   @Get('buscar-para-nota')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({
     summary: 'Buscar facturas con e-CF ACEPTADO para usar como referencia en E33 o E34',
     description: 'Devuelve facturas cuyo e-CF está ACEPTADO por DGII. Búsqueda por folio o eNCF.',
@@ -129,6 +131,7 @@ export class FacturasController {
   }
 
   @Get(':id')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Obtener factura por ID con detalles' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.facturasService.findOne(id);
@@ -212,6 +215,7 @@ export class FacturasController {
   // ── PDF ────────────────────────────────────────────────────────────
 
   @Get(':id/pdf')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Descargar factura en PDF (A4 profesional)' })
   async descargarPDF(
     @Param('id', ParseIntPipe) id: number,
@@ -225,6 +229,7 @@ export class FacturasController {
   }
 
   @Get(':id/preview')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Vista previa HTML de la factura en navegador' })
   async previewHTML(
     @Param('id', ParseIntPipe) id: number,
@@ -247,6 +252,7 @@ export class FacturasController {
   }
 
   @Get(':id/recibo-pdf')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Recibo térmico POS 80mm en PDF' })
   async reciboPDF(
     @Param('id', ParseIntPipe) id: number,

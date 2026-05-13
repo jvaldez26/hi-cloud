@@ -40,18 +40,21 @@ export class ClientesController {
   }
 
   @Get()
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Listar clientes con paginación' })
   findAll(@Query() pagination: PaginationDto) {
     return this.clientesService.findAll(pagination);
   }
 
   @Get(':id')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Obtener cliente por ID' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.clientesService.findOne(id);
   }
 
   @Get(':id/estado-cuenta')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Estado de cuenta: facturas, cobros y saldo del cliente' })
   getEstadoCuenta(
     @Param('id', ParseIntPipe) id: number,
@@ -62,6 +65,7 @@ export class ClientesController {
   }
 
   @Get(':id/estado-cuenta/pdf')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Descargar Estado de Cuenta del cliente en PDF' })
   async getEstadoCuentaPdf(
     @Param('id', ParseIntPipe) id: number,
@@ -76,6 +80,7 @@ export class ClientesController {
   }
 
   @Get('rfc/:rfc')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Buscar cliente por RFC' })
   findByRfc(@Param('rfc') rfc: string) {
     return this.clientesService.findByRfc(rfc);

@@ -38,24 +38,28 @@ export class ProductosController {
   }
 
   @Get()
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Listar productos con paginación' })
   findAll(@Query() pagination: PaginationDto) {
     return this.productosService.findAll(pagination);
   }
 
   @Get('stock-bajo')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Productos con stock bajo o agotado' })
   findStockBajo() {
     return this.productosService.findStockBajo();
   }
 
   @Get(':id')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Obtener producto por ID' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.productosService.findOne(id);
   }
 
   @Get('codigo/:codigo')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Buscar producto por código' })
   findByCodigo(@Param('codigo') codigo: string) {
     return this.productosService.findByCodigo(codigo);
