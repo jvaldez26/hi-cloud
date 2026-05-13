@@ -29,6 +29,7 @@ export default function CxCPage() {
   const [rango,   setRango]   = useState<[Dayjs, Dayjs] | null>(null);
   const [page,    setPage]    = useState(1);
   const [pagoId,  setPagoId]  = useState<number | null>(null);
+  const [pagoRow, setPagoRow] = useState<CuentaPorCobrar | null>(null);
   const [form]                = Form.useForm();
   const qc = useQueryClient();
 
@@ -49,12 +50,12 @@ export default function CxCPage() {
   });
 
   const pagoMut = useMutation({
-    mutationFn: ({ id, monto, metodoPago, ref }: { id: number; monto: number; metodoPago: MetodoPago; ref?: string }) =>
-      cxcApi.registrarPago(id, monto, metodoPago, ref),
+    mutationFn: ({ id, monto, metodoPago, ref, fechaPago }: { id: number; monto: number; metodoPago: MetodoPago; ref?: string; fechaPago?: string }) =>
+      cxcApi.registrarPago(id, monto, metodoPago, ref, fechaPago),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['cxc'] });
       qc.invalidateQueries({ queryKey: ['cxc-resumen'] });
-      setPagoId(null); form.resetFields();
+      setPagoId(null); setPagoRow(null); form.resetFields();
       message.success('Cobro registrado');
     },
     onError: () => message.error('Error al registrar cobro'),
@@ -131,7 +132,7 @@ export default function CxCPage() {
           {r.estado !== 'pagada' && r.estado !== 'anulada' && (
             <Tooltip title="Registrar cobro">
               <Button size="small" type="primary" icon={<DollarOutlined />}
-                onClick={() => { setPagoId(r.id); form.setFieldsValue({ monto: Number(r.montoPendiente) }); }}
+                onClick={() => { setPagoId(r.id); setPagoRow(r); form.setFieldsValue({ monto: Number(r.montoPendiente), fechaPago: dayjs() }); }}
               />
             </Tooltip>
           )}
@@ -231,28 +232,104 @@ export default function CxCPage() {
       </Card>
 
       {/* Modal cobro */}
-      <Modal title="Registrar Cobro" open={!!pagoId}
-        onCancel={() => { setPagoId(null); form.resetFields(); }} footer={null} destroyOnClose>
-        <Form form={form} layout="vertical"
-          onFinish={v => pagoId && pagoMut.mutate({ id: pagoId, monto: v.monto, metodoPago: v.metodoPago, ref: v.referencia })}>
-          <Form.Item name="monto" label="Monto a cobrar" rules={[{ required: true }]}>
-            <InputNumber style={{ width: '100%' }} min={0.01} precision={2} prefix="RD$" size="large" />
-          </Form.Item>
-          <Form.Item name="metodoPago" label="Método de pago" rules={[{ required: true }]}>
-            <Select>
-              {['efectivo','transferencia','cheque','tarjeta','otro'].map(v => (
-                <Option key={v} value={v}>{v.charAt(0).toUpperCase() + v.slice(1)}</Option>
-              ))}
+      <Modal
+        title={
+          <Space>
+            <DollarOutlined style={{ color: '#059669' }} />
+            <span>Registrar Cobro</span>
+          </Space>
+        }
+        open={!!pagoId}
+        onCancel={() => { setPagoId(null); setPagoRow(null); form.resetFields(); }}
+        footer={null}
+        destroyOnClose
+        width={480}
+      >
+        {pagoRow && (
+          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '12px 16px', marginBottom: 16 }}>
+            <Text strong style={{ fontSize: 14 }}>
+              {(pagoRow as any).cliente?.nombre ?? 'Consumidor Final'}
+            </Text>
+            <br />
+            <Text type="secondary" style={{ fontSize: 12, fontFamily: 'monospace' }}>
+              {(pagoRow as any).factura?.folio ?? '—'}
+            </Text>
+            <Row gutter={8} style={{ marginTop: 10 }}>
+              <Col span={8}>
+                <Text type="secondary" style={{ fontSize: 11 }}>Total</Text>
+                <div><Text style={{ fontSize: 13 }}>{fmt.money(pagoRow.montoOriginal)}</Text></div>
+              </Col>
+              <Col span={8}>
+                <Text type="secondary" style={{ fontSize: 11 }}>Cobrado</Text>
+                <div><Text style={{ fontSize: 13, color: '#059669' }}>{fmt.money(pagoRow.montoPagado)}</Text></div>
+              </Col>
+              <Col span={8}>
+                <Text type="secondary" style={{ fontSize: 11 }}>Pendiente</Text>
+                <div><Text strong style={{ fontSize: 13, color: '#dc2626' }}>{fmt.money(pagoRow.montoPendiente)}</Text></div>
+              </Col>
+            </Row>
+            {pagoRow.fechaVencimiento && (
+              <div style={{ marginTop: 8 }}>
+                <Text type="secondary" style={{ fontSize: 11 }}>
+                  Vencimiento: {fmt.date(pagoRow.fechaVencimiento)}
+                  {dayjs(pagoRow.fechaVencimiento).isBefore(dayjs()) && (
+                    <Tag color="error" style={{ marginLeft: 6, fontSize: 10 }}>VENCIDA</Tag>
+                  )}
+                </Text>
+              </div>
+            )}
+          </div>
+        )}
+
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={v => pagoId && pagoMut.mutate({ id: pagoId, monto: v.monto, metodoPago: v.metodoPago, ref: v.referencia, fechaPago: v.fechaPago?.format('YYYY-MM-DD') })}
+        >
+          <Row gutter={12}>
+            <Col xs={24} sm={12}>
+              <Form.Item name="monto" label="Monto a cobrar" rules={[{ required: true, message: 'Ingresa un monto' }]}>
+                <InputNumber
+                  style={{ width: '100%' }}
+                  min={0.01}
+                  max={pagoRow ? Number(pagoRow.montoPendiente) : undefined}
+                  precision={2}
+                  addonBefore="RD$"
+                  formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                  parser={(v: any) => v?.replace(/,/g, '')}
+                  size="large"
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="fechaPago" label="Fecha de cobro" rules={[{ required: true }]}>
+                <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" size="large" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name="metodoPago" label="Método de pago" rules={[{ required: true, message: 'Selecciona un método' }]}>
+            <Select size="large">
+              {[
+                { v: 'efectivo',      l: 'Efectivo' },
+                { v: 'transferencia', l: 'Transferencia bancaria' },
+                { v: 'tarjeta',       l: 'Tarjeta de crédito/débito' },
+                { v: 'cheque',        l: 'Cheque' },
+                { v: 'otro',          l: 'Otro' },
+              ].map(({ v, l }) => <Option key={v} value={v}>{l}</Option>)}
             </Select>
           </Form.Item>
           <Form.Item name="referencia" label="Referencia (opcional)">
-            <Input placeholder="N° cheque, código de transferencia..." />
+            <Input placeholder="N° cheque, código de transferencia, confirmación..." />
           </Form.Item>
           <Row justify="end" gutter={8}>
-            <Col><Button onClick={() => { setPagoId(null); form.resetFields(); }}>Cancelar</Button></Col>
             <Col>
-              <Button type="primary" htmlType="submit" loading={pagoMut.isPending}>
-                Registrar cobro
+              <Button onClick={() => { setPagoId(null); setPagoRow(null); form.resetFields(); }}>
+                Cancelar
+              </Button>
+            </Col>
+            <Col>
+              <Button type="primary" htmlType="submit" loading={pagoMut.isPending} icon={<DollarOutlined />}>
+                Confirmar cobro
               </Button>
             </Col>
           </Row>

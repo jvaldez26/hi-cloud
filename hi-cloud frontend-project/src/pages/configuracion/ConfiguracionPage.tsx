@@ -673,22 +673,30 @@ function SeccionFacturacion({ empresa, onSaved }: { empresa: any; onSaved: () =>
 
   useEffect(() => {
     form.setFieldsValue({
-      moneda:              empresa?.moneda ?? 'DOP',
-      diasCreditoDefecto:  conf.diasCreditoDefecto ?? 30,
-      pieFactura:          conf.pieFactura ?? '',
-      terminosCondiciones: conf.terminosCondiciones ?? '',
-      factMostrarLogo:     conf.factMostrarLogo ?? true,
-      factMostrarTelefono: conf.factMostrarTelefono ?? true,
-      factMostrarEmail:    conf.factMostrarEmail ?? true,
-      factMostrarWeb:      conf.factMostrarWeb ?? false,
-      factMostrarOC:       conf.factMostrarOC ?? false,
+      moneda:                empresa?.moneda ?? 'DOP',
+      diasCreditoDefecto:    conf.diasCreditoDefecto ?? empresa?.diasCreditoDefault ?? 30,
+      limiteCreditoDefault:  empresa?.limiteCreditoDefault ?? 0,
+      creditoHabilitado:     empresa?.creditoHabilitado ?? true,
+      pieFactura:            conf.pieFactura ?? '',
+      terminosCondiciones:   conf.terminosCondiciones ?? '',
+      factMostrarLogo:       conf.factMostrarLogo ?? true,
+      factMostrarTelefono:   conf.factMostrarTelefono ?? true,
+      factMostrarEmail:      conf.factMostrarEmail ?? true,
+      factMostrarWeb:        conf.factMostrarWeb ?? false,
+      factMostrarOC:         conf.factMostrarOC ?? false,
     });
   }, [empresa]);
 
   const mut = useMutation({
     mutationFn: (v: any) => {
-      const { moneda, ...rest } = v;
-      return configuracionApi.updateEmpresa({ moneda, configuracion: rest });
+      const { moneda, diasCreditoDefecto, limiteCreditoDefault, creditoHabilitado, ...rest } = v;
+      return configuracionApi.updateEmpresa({
+        moneda,
+        diasCreditoDefault:  diasCreditoDefecto,
+        limiteCreditoDefault,
+        creditoHabilitado,
+        configuracion: { ...rest, diasCreditoDefecto },
+      });
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['empresa'] }); message.success('Facturación guardada'); onSaved(); },
     onError: (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error'),
@@ -711,6 +719,36 @@ function SeccionFacturacion({ empresa, onSaved }: { empresa: any; onSaved: () =>
         <Col xs={24} sm={8}>
           <Form.Item name="diasCreditoDefecto" label="Días de crédito por defecto">
             <InputNumber style={{ width: '100%' }} min={0} max={365} addonAfter="días" />
+          </Form.Item>
+        </Col>
+        <Col xs={24} sm={8}>
+          <Form.Item name="limiteCreditoDefault" label="Límite de crédito por defecto">
+            <InputNumber
+              style={{ width: '100%' }}
+              min={0}
+              step={1000}
+              addonBefore="RD$"
+              formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+              parser={(v: any) => v?.replace(/,/g, '')}
+              placeholder="0 = sin límite"
+            />
+          </Form.Item>
+        </Col>
+      </Row>
+
+      <Row gutter={16} style={{ marginBottom: 8 }}>
+        <Col xs={24}>
+          <Form.Item name="creditoHabilitado" valuePropName="checked" style={{ marginBottom: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <Switch />
+              <div>
+                <Text strong>Ventas a crédito habilitadas</Text>
+                <br />
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  Permite seleccionar "Crédito" como forma de pago en facturas. Genera cuenta por cobrar automáticamente.
+                </Text>
+              </div>
+            </div>
           </Form.Item>
         </Col>
       </Row>
