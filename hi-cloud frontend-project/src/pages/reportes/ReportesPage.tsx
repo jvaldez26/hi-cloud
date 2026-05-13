@@ -35,6 +35,7 @@ export default function ReportesPage() {
   const { data: pendientes }   = useQuery({ queryKey: ['fact-pend'],          queryFn: reportesApi.facturasPendientes });
   const { data: r606, isFetching: loading606 } = useQuery({ queryKey: ['606', mes, anio], queryFn: () => reportesApi.reporte606(mes, anio) });
   const { data: r607, isFetching: loading607 } = useQuery({ queryKey: ['607', mes, anio], queryFn: () => reportesApi.reporte607(mes, anio) });
+  const { data: ecfEstado }                     = useQuery({ queryKey: ['ecf-estado', mes, anio], queryFn: () => reportesApi.ecfPorEstado(mes, anio) });
 
   const chartVentas = (ventasDia?.detalle ?? []).map((d: any) => ({
     dia: `D${d.dia}`, ventas: d.total,
@@ -320,6 +321,152 @@ export default function ReportesPage() {
                 description="Este reporte es para verificación interna. Para someter la declaración oficial debes cargar el archivo TXT en la Oficina Virtual DGII (dgii.gov.do). Consulta con tu contador antes de declarar."
                 style={{ marginBottom: 20 }}
               />
+
+              {/* ── IT-1 (ITBIS) ── */}
+              <Card
+                title={<span style={{ fontWeight: 700 }}>IT-1 — Declaración ITBIS del mes</span>}
+                style={{ marginBottom: 20 }}
+                extra={
+                  <Button
+                    size="small"
+                    icon={<FileExcelOutlined />}
+                    disabled={!itbis}
+                    onClick={() => itbis && exportarITBIS(itbis, mes, anio)}
+                  >
+                    Excel IT-1
+                  </Button>
+                }
+              >
+                {itbis ? (
+                  <Row gutter={[16, 16]}>
+                    {/* Columna Ventas */}
+                    <Col xs={24} md={8}>
+                      <Card size="small" title="A — Ventas" type="inner" headStyle={{ background: '#e6f4ff', fontWeight: 700 }}>
+                        <Row justify="space-between" style={{ marginBottom: 6 }}>
+                          <Text type="secondary" style={{ fontSize: 12 }}>Monto gravado</Text>
+                          <Text strong>{fmt.money(itbis.ventas?.montoGravado ?? 0)}</Text>
+                        </Row>
+                        <Row justify="space-between" style={{ marginBottom: 6 }}>
+                          <Text type="secondary" style={{ fontSize: 12 }}>ITBIS cobrado (18%)</Text>
+                          <Text strong style={{ color: '#1677ff' }}>{fmt.money(itbis.ventas?.itbisCobrado ?? 0)}</Text>
+                        </Row>
+                        <Row justify="space-between">
+                          <Text type="secondary" style={{ fontSize: 12 }}>Total facturado</Text>
+                          <Text strong>{fmt.money(itbis.ventas?.totalFacturado ?? 0)}</Text>
+                        </Row>
+                        <div style={{ marginTop: 8, borderTop: '1px solid #e2e8f0', paddingTop: 6 }}>
+                          <Text type="secondary" style={{ fontSize: 11 }}>{itbis.ventas?.facturas ?? 0} facturas emitidas</Text>
+                        </div>
+                      </Card>
+                    </Col>
+                    {/* Columna Compras */}
+                    <Col xs={24} md={8}>
+                      <Card size="small" title="B — Compras (crédito)" type="inner" headStyle={{ background: '#f0fdf4', fontWeight: 700 }}>
+                        <Row justify="space-between" style={{ marginBottom: 6 }}>
+                          <Text type="secondary" style={{ fontSize: 12 }}>Monto gravado</Text>
+                          <Text strong>{fmt.money(itbis.compras?.montoGravado ?? 0)}</Text>
+                        </Row>
+                        <Row justify="space-between" style={{ marginBottom: 6 }}>
+                          <Text type="secondary" style={{ fontSize: 12 }}>ITBIS crédito (18%)</Text>
+                          <Text strong style={{ color: '#059669' }}>{fmt.money(itbis.compras?.itbisPagado ?? 0)}</Text>
+                        </Row>
+                        <Row justify="space-between">
+                          <Text type="secondary" style={{ fontSize: 12 }}>Total comprado</Text>
+                          <Text strong>{fmt.money(itbis.compras?.totalComprado ?? 0)}</Text>
+                        </Row>
+                        <div style={{ marginTop: 8, borderTop: '1px solid #e2e8f0', paddingTop: 6 }}>
+                          <Text type="secondary" style={{ fontSize: 11 }}>{itbis.compras?.ordenes ?? 0} órdenes de compra</Text>
+                        </div>
+                      </Card>
+                    </Col>
+                    {/* Columna Balance */}
+                    <Col xs={24} md={8}>
+                      <Card
+                        size="small"
+                        title="C — Balance a pagar DGII"
+                        type="inner"
+                        headStyle={{
+                          background: (itbis.resumenITBIS?.balance ?? 0) > 0 ? '#fff2f0' : '#f0fdf4',
+                          fontWeight: 700,
+                        }}
+                      >
+                        <Row justify="space-between" style={{ marginBottom: 6 }}>
+                          <Text type="secondary" style={{ fontSize: 12 }}>ITBIS cobrado</Text>
+                          <Text>{fmt.money(itbis.resumenITBIS?.cobrado ?? 0)}</Text>
+                        </Row>
+                        <Row justify="space-between" style={{ marginBottom: 6 }}>
+                          <Text type="secondary" style={{ fontSize: 12 }}>(-) Crédito compras</Text>
+                          <Text style={{ color: '#059669' }}>-{fmt.money(itbis.resumenITBIS?.pagado ?? 0)}</Text>
+                        </Row>
+                        <Row justify="space-between" style={{ marginTop: 8, borderTop: '1px solid #e2e8f0', paddingTop: 8 }}>
+                          <Text strong style={{ fontSize: 14 }}>ITBIS a pagar</Text>
+                          <Text strong style={{
+                            fontSize: 16,
+                            color: (itbis.resumenITBIS?.balance ?? 0) > 0 ? '#dc2626' : '#059669',
+                          }}>
+                            {fmt.money(Math.abs(itbis.resumenITBIS?.balance ?? 0))}
+                          </Text>
+                        </Row>
+                        <div style={{ marginTop: 8 }}>
+                          <Tag color={(itbis.resumenITBIS?.balance ?? 0) > 0 ? 'red' : 'green'} style={{ fontWeight: 700 }}>
+                            {itbis.resumenITBIS?.situacion ?? '—'}
+                          </Tag>
+                        </div>
+                      </Card>
+                    </Col>
+                  </Row>
+                ) : <Spin />}
+              </Card>
+
+              {/* ── e-CF por estado ── */}
+              {ecfEstado && (
+                <Card
+                  title={<span style={{ fontWeight: 700 }}>e-CF del mes — Estado DGII</span>}
+                  style={{ marginBottom: 20 }}
+                >
+                  <Row gutter={[12, 12]}>
+                    {[
+                      { key: 'aceptado',         label: 'Aceptados',         color: '#059669', bg: '#f0fdf4' },
+                      { key: 'pendiente',         label: 'Pendientes',        color: '#d97706', bg: '#fffbeb' },
+                      { key: 'rechazado',         label: 'Rechazados',        color: '#dc2626', bg: '#fff2f0' },
+                      { key: 'aceptado_condicion',label: 'Cond. Aceptados',  color: '#7c3aed', bg: '#f5f3ff' },
+                    ].map(({ key, label, color, bg }) => {
+                      const val = ecfEstado.resumenPorEstado?.[key] ?? 0;
+                      return (
+                        <Col xs={12} sm={6} key={key}>
+                          <div style={{ background: bg, borderRadius: 8, padding: '12px 16px', border: `1px solid ${color}30` }}>
+                            <div style={{ fontSize: 24, fontWeight: 700, color }}>{val}</div>
+                            <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{label}</div>
+                          </div>
+                        </Col>
+                      );
+                    })}
+                  </Row>
+                  {(ecfEstado.detallePorTipo ?? []).length > 0 && (
+                    <Table
+                      size="small"
+                      dataSource={ecfEstado.detallePorTipo}
+                      rowKey={(r: any) => `${r.estado}-${r.tipo}`}
+                      pagination={false}
+                      style={{ marginTop: 16 }}
+                      columns={[
+                        { title: 'Tipo e-CF', dataIndex: 'tipo', width: 100 },
+                        {
+                          title: 'Estado DGII', dataIndex: 'estado', width: 160,
+                          render: (v: string) => {
+                            const c: Record<string, string> = {
+                              aceptado: 'success', rechazado: 'error',
+                              pendiente: 'warning', aceptado_condicion: 'processing',
+                            };
+                            return <Badge status={(c[v] ?? 'default') as any} text={v} />;
+                          },
+                        },
+                        { title: 'Cantidad', dataIndex: 'cantidad', width: 100, align: 'right' as const },
+                      ]}
+                    />
+                  )}
+                </Card>
+              )}
 
               {/* ── Formulario 606 ── */}
               <Card
