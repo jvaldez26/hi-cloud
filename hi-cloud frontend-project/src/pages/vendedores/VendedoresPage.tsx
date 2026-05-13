@@ -45,7 +45,7 @@ export default function VendedoresPage() {
 
   const { data: resumen } = useQuery<any>({
     queryKey: ['vendedores-resumen'],
-    queryFn: () => api.get('/vendedores/resumen').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
+    queryFn: () => api.get('/vendedores/resumen').then((r: any) => r.data?.data ?? r.data),
   });
 
   const { data: vendedores = [], isLoading } = useQuery<any[]>({
@@ -153,7 +153,7 @@ export default function VendedoresPage() {
         <Col xs={12} sm={6}>
           <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#1a56db,#3b82f6)' }}>
             <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Vendedores Activos</span>}
-              value={resumen?.vendedores ?? 0} prefix={<TeamOutlined />} valueStyle={{ color: '#fff', fontSize: 28 }} />
+              value={Array.isArray(resumen?.vendedores) ? resumen.vendedores.length : (resumen?.vendedores ?? 0)} prefix={<TeamOutlined />} valueStyle={{ color: '#fff', fontSize: 28 }} />
           </Card>
         </Col>
         <Col xs={12} sm={6}>

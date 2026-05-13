@@ -20,20 +20,20 @@ export default function PortalEmpleadoPage() {
 
   const { data: resumen, isLoading, error } = useQuery<any>({
     queryKey: ['portal-empleado-resumen'],
-    queryFn:  () => api.get('/portal-empleado/mi-resumen').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
+    queryFn:  () => api.get('/portal-empleado/mi-resumen').then((r: any) => r.data?.data ?? r.data),
     retry: false,
   });
 
   const { data: nominas } = useQuery<any>({
     queryKey: ['portal-empleado-nominas'],
-    queryFn:  () => api.get('/portal-empleado/mis-nominas').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
+    queryFn:  () => api.get('/portal-empleado/mis-nominas').then((r: any) => r.data?.data ?? r.data),
     enabled:  !error,
     retry: false,
   });
 
   const { data: vacaciones } = useQuery<any>({
     queryKey: ['portal-empleado-vacaciones'],
-    queryFn:  () => api.get('/portal-empleado/mis-vacaciones').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
+    queryFn:  () => api.get('/portal-empleado/mis-vacaciones').then((r: any) => r.data?.data ?? r.data),
     enabled:  !error,
     retry: false,
   });
