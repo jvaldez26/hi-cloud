@@ -345,6 +345,66 @@ export class CotizacionesService {
   // Cron: marcar cotizaciones vencidas diariamente
   // ──────────────────────────────────────────────────────────────────
 
+  // ── Duplicar cotización ───────────────────────────────────────────────────────
+
+  async duplicar(id: number, userId: number) {
+    const empresaId  = this.tenantService.getEmpresaId();
+    const original   = await this.cotizacionRepository.findOne({
+      where: { id, empresaId, isActive: true },
+      relations: ['detalles'],
+    });
+    if (!original) throw new NotFoundException(`Cotización #${id} no encontrada`);
+
+    const numero = await this.generarNumero();
+    const fechaVencimiento = new Date();
+    fechaVencimiento.setDate(fechaVencimiento.getDate() + 30);
+
+    const nueva = await this.cotizacionRepository.save(
+      this.cotizacionRepository.create({
+        empresaId,
+        numero,
+        fecha:           new Date(),
+        fechaVencimiento,
+        estado:          CotizacionEstado.BORRADOR,
+        clienteId:       original.clienteId,
+        moneda:          original.moneda,
+        tipoCambio:      original.tipoCambio,
+        subtotal:        original.subtotal,
+        iva:             original.iva,
+        total:           original.total,
+        descuento:       original.descuento,
+        notas:           original.notas,
+        condicionPago:   original.condicionPago,
+        userId,
+      }),
+    );
+
+    if (original.detalles?.length) {
+      await this.detalleRepository.save(
+        original.detalles.map(d => this.detalleRepository.create({
+          cotizacionId:    nueva.id,
+          productoId:      d.productoId,
+          descripcion:     d.descripcion,
+          cantidad:        d.cantidad,
+          precioUnitario:  d.precioUnitario,
+          porcentajeIva:   d.porcentajeIva,
+          importeIva:      d.importeIva,
+          descuento:       d.descuento,
+          subtotal:        d.subtotal,
+          total:           d.total,
+        })),
+      );
+    }
+
+    this.logger.log(`Cotización #${id} duplicada → nueva #${nueva.id} (${numero})`);
+    this.realtimeService.notify(empresaId, 'cotizacion', 'created', nueva.id);
+
+    return this.cotizacionRepository.findOne({
+      where: { id: nueva.id },
+      relations: ['cliente', 'detalles'],
+    });
+  }
+
   @Cron('5 0 * * *')
   async marcarVencidas() {
     const res = await this.cotizacionRepository.update(

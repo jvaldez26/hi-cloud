@@ -3,7 +3,7 @@ import { Table, Button, Tag, Card, Row, Col, Typography, Statistic,
          Space, Popconfirm, message, Dropdown, Drawer, Descriptions,
          Modal, Input, Form, Tooltip } from 'antd';
 import { PlusOutlined, EyeOutlined, DownOutlined,
-         SwapOutlined, WarningOutlined, MailOutlined, FileExcelOutlined, FilePdfOutlined } from '@ant-design/icons';
+         SwapOutlined, WarningOutlined, MailOutlined, FileExcelOutlined, FilePdfOutlined, CopyOutlined } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import api from '../../api/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -101,6 +101,15 @@ export default function CotizacionesPage() {
     onError: (e: any) => message.error(e?.response?.data?.errors?.[0] ?? 'Error'),
   });
 
+  const duplicarMut = useMutation({
+    mutationFn: (id: number) => cotizacionesApi.duplicar(id),
+    onSuccess: (nueva: any) => {
+      qc.invalidateQueries({ queryKey: ['cotizaciones'] });
+      message.success(`Cotización duplicada → ${nueva?.numero ?? 'borrador'}`);
+    },
+    onError: () => message.error('Error al duplicar'),
+  });
+
   const deleteMut = useMutation({
     mutationFn: cotizacionesApi.remove,
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['cotizaciones'] }); message.success('Eliminada'); },
@@ -174,6 +183,12 @@ export default function CotizacionesPage() {
                 </Button>
               </Popconfirm>
             )}
+
+            <Tooltip title="Duplicar cotización">
+              <Button size="small" type="text" icon={<CopyOutlined />}
+                loading={duplicarMut.isPending}
+                onClick={() => duplicarMut.mutate(r.id)} />
+            </Tooltip>
 
             {estado === 'borrador' && (
               <Popconfirm title="¿Eliminar?" onConfirm={() => deleteMut.mutate(r.id)}>

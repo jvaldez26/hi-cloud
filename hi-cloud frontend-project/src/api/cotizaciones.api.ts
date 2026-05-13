@@ -35,6 +35,9 @@ export const cotizacionesApi = {
   convertir: (id: number) =>
     api.post(`/cotizaciones/${id}/convertir`).then(r => r.data.data),
 
+  duplicar: (id: number) =>
+    api.post(`/cotizaciones/${id}/duplicar`).then(r => r.data.data ?? r.data),
+
   remove: (id: number) =>
     api.delete(`/cotizaciones/${id}`).then(r => r.data),
 

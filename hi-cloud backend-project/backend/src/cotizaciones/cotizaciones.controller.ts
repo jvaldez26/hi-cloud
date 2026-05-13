@@ -88,6 +88,14 @@ export class CotizacionesController {
     res.send(buffer);
   }
 
+  @Post(':id/duplicar')
+  @HttpCode(HttpStatus.CREATED)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Duplicar cotización — crea nueva en borrador con mismos ítems' })
+  duplicar(@Param('id', ParseIntPipe) id: number, @GetUser() usuario: User) {
+    return this.cotizacionesService.duplicar(id, usuario.id);
+  }
+
   @Delete(':id')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Eliminar cotización en borrador' })
