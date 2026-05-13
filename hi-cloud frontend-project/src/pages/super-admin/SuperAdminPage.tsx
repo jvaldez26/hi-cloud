@@ -838,13 +838,45 @@ export default function SuperAdminPage() {
         </div>
       ),
     },
-    { title: 'Rol', dataIndex: 'role', key: 'role', width: 110,
-      render: (v: string) => (
-        <span style={{
-          color: v === 'super_admin' ? C.gold : v === 'admin' ? C.blue : C.txt2,
-          fontWeight: 600, fontSize: 12, textTransform: 'uppercase',
-        }}>{v === 'super_admin' ? '★ SUPER ADMIN' : v}</span>
-      ),
+    {
+      title: 'Rol', dataIndex: 'role', key: 'role', width: 170,
+      render: (v: string, r: any) => {
+        const isSelf = r.id === /* no self-change */ undefined; // backend already blocks it
+        return (
+          <Select
+            size="small"
+            value={v}
+            style={{ width: 160 }}
+            loading={cambiarRolMut.isPending && rolModal?.id === r.id}
+            onChange={(nuevoRol: string) => {
+              if (nuevoRol === v) return;
+              if (nuevoRol === 'super_admin') {
+                Modal.confirm({
+                  title: '⚠️ Asignar Super Admin',
+                  content: `¿Confirmas asignar Super Admin a ${r.nombre}? Tendrá acceso total al sistema.`,
+                  okText: 'Sí, asignar',
+                  okButtonProps: { danger: true },
+                  cancelText: 'Cancelar',
+                  onOk: () => {
+                    setRolModal(r);
+                    cambiarRolMut.mutate({ id: r.id, rol: nuevoRol });
+                  },
+                });
+              } else {
+                setRolModal(r);
+                cambiarRolMut.mutate({ id: r.id, rol: nuevoRol });
+              }
+            }}
+            options={[
+              { value: 'viewer',      label: 'Viewer' },
+              { value: 'vendedor',    label: 'Vendedor' },
+              { value: 'contador',    label: 'Contador' },
+              { value: 'admin',       label: 'Admin' },
+              { value: 'super_admin', label: '★ Super Admin' },
+            ]}
+          />
+        );
+      },
     },
     { title: 'Empresas', dataIndex: 'empresas', key: 'empresas', width: 80, align: 'center' as const,
       render: (v: number) => <span style={{ color: C.txt }}>{v}</span>,
@@ -854,15 +886,6 @@ export default function SuperAdminPage() {
     },
     { title: 'Registro', dataIndex: 'registro', key: 'reg', width: 110,
       render: (v: string) => <span style={{ color: C.txt2, fontSize: 12 }}>{fmtFecha(v)}</span>,
-    },
-    {
-      title: '', key: 'acciones', width: 80, align: 'center' as const,
-      render: (_: any, r: any) => (
-        <Button size="small" icon={<span>⚙</span>}
-          onClick={() => { setRolModal(r); setNuevoRol(r.role ?? ''); }}>
-          Rol
-        </Button>
-      ),
     },
   ];
 
