@@ -91,20 +91,13 @@ export default function LoginPage() {
       >
         {/* Logo + título */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <motion.div
-            whileHover={{ scale: 1.05 }}
-            style={{
-              width: 52, height: 52, borderRadius: 14, margin: '0 auto 16px',
-              background: 'linear-gradient(135deg,#1a56db,#0ea5e9)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 22, fontWeight: 700, color: '#fff',
-              boxShadow: '0 8px 24px rgba(26,86,219,.4)',
-            }}
-          >H</motion.div>
-
-          <Title level={3} style={{ color: '#fff', margin: 0 }}>
-            HiCloud ERP
-          </Title>
+          <motion.img
+            src="/logo-hicloud.svg"
+            alt="HiCloud ERP"
+            whileHover={{ scale: 1.04 }}
+            style={{ height: 72, width: 'auto', margin: '0 auto 12px', display: 'block',
+              filter: 'drop-shadow(0 4px 16px rgba(0,170,255,0.4))' }}
+          />
           <Text style={{ color: 'rgba(255,255,255,.45)', display: 'block', marginTop: 4, fontSize: 13 }}>
             Inicia sesión en tu cuenta
           </Text>

@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { message } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { motion, useInView, AnimatePresence } from 'framer-motion';
@@ -84,11 +84,9 @@ function Navbar({ onDemo }: { onDemo: () => void }) {
       {/* Logo */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
         onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-        <div style={{ width: 36, height: 36, borderRadius: 10,
-          background: 'linear-gradient(135deg,#1565C0,#42A5F5)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 16, fontWeight: 900, color: '#fff', boxShadow: '0 4px 12px rgba(21,101,192,.4)' }}>H</div>
-        <span style={{ color: '#fff', fontSize: 18, fontWeight: 700, letterSpacing: '-0.3px' }}>HiCloud ERP</span>
+        <img src="/logo-hicloud.svg" alt="HiCloud ERP"
+          style={{ height: 44, width: 'auto', objectFit: 'contain',
+            filter: 'drop-shadow(0 2px 8px rgba(0,170,255,0.35))' }} />
         <span style={{ background: '#00BFA5', color: '#fff', fontSize: 9, fontWeight: 700,
           padding: '1px 6px', borderRadius: 4, letterSpacing: '0.5px' }}>BETA</span>
       </div>
@@ -219,8 +217,8 @@ const PLANES = [
 ];
 
 const FAQ_DATA = [
-  { q: '¿HiCloud me certifica ante la DGII?', a: 'HiCloud se conecta con tu proveedor e-CF (tu proveedor e-CF u otro) ya certificado ante la DGII. El proceso de certificación lo realizas con tu proveedor e-CF en 4 pasos sencillos.' },
-  { q: '¿Necesito una cuenta en tu proveedor e-CF?', a: 'Sí. HiCloud se integra con tu proveedor e-CF y otros proveedores certificados DGII. tu proveedor e-CF ofrece 200 documentos gratis al mes para empezar.' },
+  { q: '¿HiCloud me certifica ante la DGII?', a: 'HiCloud se conecta con tu proveedor e-CF (MSeller u otro) ya certificado ante la DGII. El proceso de certificación lo realizas con tu proveedor e-CF en 4 pasos sencillos.' },
+  { q: '¿Necesito una cuenta en MSeller?', a: 'Sí. HiCloud se integra con MSeller y otros proveedores certificados DGII. MSeller ofrece 200 documentos gratis al mes para empezar.' },
   { q: '¿Qué pasa con mis datos si cancelo?', a: 'Tus datos son tuyos. Puedes exportar toda tu información en cualquier momento. Realizamos backups diarios en AWS S3 en la región us-east-2.' },
   { q: '¿Puedo migrar desde mi sistema actual?', a: 'Sí. Ofrecemos importación masiva de clientes, productos y proveedores desde Excel/CSV. El equipo de soporte te acompaña durante la migración.' },
   { q: '¿Funciona en móvil?', a: 'Sí. HiCloud es 100% responsive. El POS funciona perfectamente en tablet y móvil, incluyendo modo offline para ventas sin conexión.' },
@@ -522,9 +520,9 @@ export default function LandingPage() {
           </FadeIn>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 24 }}>
             {[
-              { n: '01', title: 'Configura tu empresa', desc: 'Agrega tu RNC, conecta tus credenciales de tu proveedor e-CF y carga tus secuencias DGII. Todo en minutos.', color: '#42A5F5' },
+              { n: '01', title: 'Configura tu empresa', desc: 'Agrega tu RNC, conecta tus credenciales de MSeller y carga tus secuencias DGII. Todo en minutos.', color: '#42A5F5' },
               { n: '02', title: 'Emite desde cualquier módulo', desc: 'Facturas, POS, compras — todos generan el e-CF automáticamente al confirmar la operación.', color: '#00BFA5' },
-              { n: '03', title: 'DGII confirma en segundos', desc: 'El comprobante llega a la DGII vía tu proveedor e-CF. Recibes el eNCF con código QR de validación.', color: '#A78BFA' },
+              { n: '03', title: 'DGII confirma en segundos', desc: 'El comprobante llega a la DGII vía MSeller. Recibes el eNCF con código QR de validación.', color: '#A78BFA' },
             ].map((s, i) => (
               <FadeIn key={s.n} delay={i * 0.12}>
                 <div style={{ background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 16, padding: 28, position: 'relative' }}>
@@ -587,7 +585,7 @@ export default function LandingPage() {
           <FadeIn>
             <div style={{ textAlign: 'center', marginBottom: 52 }}>
               <h2 style={{ fontSize: 'clamp(24px,4vw,38px)', fontWeight: 800, marginBottom: 12, letterSpacing: '-0.02em' }}>Planes simples y transparentes</h2>
-              <p style={{ color: L.muted, fontSize: 15 }}>* Los precios no incluyen el costo del proveedor e-CF (tu proveedor e-CF). Puedes usar tu cuenta tu proveedor e-CF existente.</p>
+              <p style={{ color: L.muted, fontSize: 15 }}>* Los precios no incluyen el costo del proveedor e-CF (MSeller). Puedes usar tu cuenta MSeller existente.</p>
             </div>
           </FadeIn>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 24, alignItems: 'start' }}>
@@ -669,12 +667,10 @@ export default function LandingPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 40, marginBottom: 48 }}>
             {/* Logo + tagline */}
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                <div style={{ width: 36, height: 36, borderRadius: 10,
-                  background: 'linear-gradient(135deg,#1565C0,#42A5F5)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 16, fontWeight: 900, color: '#fff' }}>H</div>
-                <span style={{ color: '#fff', fontSize: 17, fontWeight: 700 }}>HiCloud ERP</span>
+              <div style={{ marginBottom: 12 }}>
+                <img src="/logo-hicloud.svg" alt="HiCloud ERP"
+                  style={{ height: 48, width: 'auto', objectFit: 'contain',
+                    filter: 'drop-shadow(0 2px 6px rgba(0,170,255,0.3))' }} />
               </div>
               <p style={{ fontSize: 13, lineHeight: 1.6, margin: 0 }}>El ERP para PYMEs dominicanas. Facturación electrónica nativa con la DGII.</p>
               <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>

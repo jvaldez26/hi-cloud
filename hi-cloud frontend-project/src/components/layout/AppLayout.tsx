@@ -1202,38 +1202,28 @@ export default function AppLayout() {
         borderBottom:   `1px solid ${C.separator}`,
         flexShrink:     0,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {/* Logo pill */}
-          <div style={{
-            width:          36, height: 36,
-            borderRadius:   10,
-            background:     'linear-gradient(135deg, #1E40AF 0%, #3B82F6 100%)',
-            display:        'flex',
-            alignItems:     'center',
-            justifyContent: 'center',
-            fontSize:       16, fontWeight: 900, color: '#fff',
-            flexShrink:     0,
-            boxShadow:      '0 4px 12px rgba(59,130,246,0.35)',
-            letterSpacing:  '-0.5px',
-          }}>
-            H
-          </div>
-
-          {/* Empresa */}
-          {!collapsed && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: collapsed ? 0 : 8 }}>
+          {/* Logo — ícono nube cuando colapsado, logo completo cuando expandido */}
+          {collapsed ? (
+            <img
+              src="/logo-hicloud.svg"
+              alt="HiCloud"
+              style={{ width: 38, height: 38, objectFit: 'contain', filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.3))' }}
+            />
+          ) : (
             <motion.div
-              key="logo-text"
+              key="logo-full"
               initial={{ opacity: 0, x: -8 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -8 }}
               transition={{ duration: 0.18 }}
+              style={{ display: 'flex', alignItems: 'center', gap: 8 }}
             >
-              <div style={{ color: '#FFFFFF', fontSize: 15, fontWeight: 700, lineHeight: 1.2, letterSpacing: '-0.3px' }}>
-                HiCloud ERP
-              </div>
-              <div style={{ color: '#94A3B8', fontSize: 11, marginTop: 1 }}>
-                República Dominicana
-              </div>
+              <img
+                src="/logo-hicloud.svg"
+                alt="HiCloud ERP"
+                style={{ height: 40, width: 'auto', objectFit: 'contain', filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.25))' }}
+              />
             </motion.div>
           )}
         </div>

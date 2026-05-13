@@ -1,13 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
   <defs>
     <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#1E40AF"/>
-      <stop offset="100%" style="stop-color:#3B82F6"/>
+      <stop offset="0%" stop-color="#00AAFF"/>
+      <stop offset="60%" stop-color="#1565C0"/>
+      <stop offset="100%" stop-color="#003A9B"/>
+    </linearGradient>
+    <linearGradient id="hi" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#29C6FF"/>
+      <stop offset="100%" stop-color="#1565C0"/>
     </linearGradient>
   </defs>
-  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
-  <text x="256" y="310" font-family="Arial,sans-serif" font-size="220" font-weight="900"
-        fill="white" text-anchor="middle" letter-spacing="-8">H</text>
-  <rect x="100" y="370" width="312" height="18" rx="9" fill="rgba(255,255,255,0.35)"/>
-  <rect x="140" y="400" width="232" height="14" rx="7" fill="rgba(255,255,255,0.2)"/>
+  <!-- Cloud shape -->
+  <path d="M 80 370 Q 20 370 20 290 Q 20 215 100 205 Q 110 130 185 120 Q 235 112 272 148 Q 295 100 355 95 Q 450 88 478 175 Q 510 172 510 230 Q 512 295 460 310 Q 490 340 490 370 Z" fill="url(#bg)"/>
+  <!-- White inner -->
+  <path d="M 90 355 Q 45 355 45 292 Q 45 232 116 224 Q 128 156 196 147 Q 243 140 277 172 Q 302 128 358 123 Q 441 118 462 196 Q 490 194 492 245 Q 494 300 450 314 Q 480 338 478 355 Z" fill="white"/>
+  <!-- Hi text -->
+  <text x="148" y="305" font-family="Arial Black, Arial, sans-serif" font-size="148" font-weight="900" fill="url(#hi)" letter-spacing="-4">Hi</text>
 </svg>
