@@ -31,7 +31,7 @@ export default function ContactosPage() {
 
   const { data: resumen } = useQuery<any>({
     queryKey: ['contactos-resumen'],
-    queryFn: () => api.get('/contactos/resumen').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
+    queryFn: () => api.get('/contactos/resumen').then((r: any) => r.data?.data ?? r.data),
   });
 
   const { data: contactos = [], isLoading } = useQuery<any[]>({

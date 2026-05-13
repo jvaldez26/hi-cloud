@@ -29,12 +29,12 @@ export default function IsrPage() {
 
   const { data: plantilla, isLoading } = useQuery<any>({
     queryKey: ['isr-plantilla'],
-    queryFn: () => api.get('/isr/plantilla').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
+    queryFn: () => api.get('/isr/plantilla').then((r: any) => r.data?.data ?? r.data),
   });
 
   const { data: simulacion } = useQuery<any>({
     queryKey: ['isr-simular', salarioSim],
-    queryFn: () => api.get(`/isr/simular?salario=${salarioSim}`).then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
+    queryFn: () => api.get(`/isr/simular?salario=${salarioSim}`).then((r: any) => r.data?.data ?? r.data),
     enabled: salarioSim > 0,
     staleTime: 1000,
   });
