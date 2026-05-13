@@ -252,12 +252,10 @@ export default function EquipoPage() {
       title: '', key: 'actions', width: 80,
       render: (_: any, r: any) => r.estado === 'pendiente' ? (
         <Space size={4}>
-          <Tooltip title="Reenviar (cancelar y crear nueva)">
+          <Tooltip title="Reenviar invitación (genera nuevo enlace de 48h)">
             <Button size="small" icon={<ReloadOutlined />}
-              onClick={() => {
-                cancelarInvMut.mutate(r.id);
-                invitarMut.mutate({ email: r.email, rol: r.rol });
-              }} />
+              loading={invitarMut.isPending}
+              onClick={() => invitarMut.mutate({ email: r.email, rol: r.rol })} />
           </Tooltip>
           <Popconfirm title="¿Cancelar invitación?" onConfirm={() => cancelarInvMut.mutate(r.id)}>
             <Button size="small" danger icon={<CloseCircleOutlined />} />

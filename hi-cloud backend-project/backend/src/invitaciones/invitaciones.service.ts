@@ -64,12 +64,15 @@ export class InvitacionesService {
       nombreInvitador:  invitador.nombre,
     }));
 
-    const appUrl = this.configService.get('APP_URL', `${process.env.FRONTEND_URL ?? 'http://localhost:5173'}`);
+    const appUrl = this.configService.get(
+      'APP_URL',
+      process.env.FRONTEND_URL ?? 'https://hicloudrd.com',
+    );
     const enlace = `${appUrl}/invitacion/${token}`;
 
     let emailEnviado = false;
     try {
-      await this.enviarEmailInvitacion(inv, empresa.nombre, invitador.nombre);
+      await this.enviarEmailInvitacion(inv, empresa.nombre, invitador.nombre, appUrl);
       emailEnviado = true;
     } catch (err) {
       this.logger.warn(`Email no enviado para invitación ${inv.id}: ${(err as Error).message}`);
@@ -80,9 +83,12 @@ export class InvitacionesService {
 
   // ── Email de invitación ───────────────────────────────────────────────────
 
-  private async enviarEmailInvitacion(inv: Invitacion, nombreEmpresa: string, nombreInvitador: string) {
-    const appUrl  = this.configService.get('APP_URL', 'https://app.hicloud.com.do');
-    const enlace  = `${appUrl}/invitacion/${inv.token}`;
+  private async enviarEmailInvitacion(
+    inv: Invitacion, nombreEmpresa: string, nombreInvitador: string,
+    appUrl?: string,
+  ) {
+    const url    = appUrl ?? this.configService.get('APP_URL', 'https://hicloudrd.com');
+    const enlace = `${url}/invitacion/${inv.token}`;
     const rolLabel: Record<string, string> = {
       admin: 'Administrador', contador: 'Contador', vendedor: 'Vendedor', viewer: 'Solo lectura',
     };
@@ -192,10 +198,22 @@ export class InvitacionesService {
       // Crear nuevo usuario
       if (!nombre || nombre.trim().length < 2) throw new BadRequestException('Nombre completo requerido (mínimo 2 caracteres)');
       if (!password || password.length < 6)    throw new BadRequestException('Contraseña requerida (mínimo 6 caracteres)');
-      const hash = await bcrypt.hash(password, 12); // 12 rounds — resistente a fuerza bruta
+      const hash = await bcrypt.hash(password, 12);
       user = await this.userRepo.save(this.userRepo.create({
         nombre, email: inv.email, password: hash, role: inv.rol,
       }));
+    } else {
+      // Actualizar rol global del usuario si el nuevo rol tiene más o igual permisos
+      // Orden de jerarquía: super_admin > admin > contador > vendedor > viewer
+      const jerarquia: Record<string, number> = {
+        super_admin: 5, admin: 4, contador: 3, vendedor: 2, viewer: 1,
+      };
+      const rolActual  = jerarquia[user.role]  ?? 0;
+      const rolInvitado = jerarquia[inv.rol]   ?? 0;
+      if (rolInvitado > rolActual) {
+        await this.userRepo.update(user.id, { role: inv.rol as UserRole });
+        user.role = inv.rol as UserRole;
+      }
     }
 
     // Asignar a la empresa

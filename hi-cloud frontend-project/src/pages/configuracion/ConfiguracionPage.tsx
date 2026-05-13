@@ -1152,15 +1152,30 @@ function SeccionUsuarios({ empresaId }: { empresaId: number }) {
                 render: (v: string) => <Tag color={ROL_INFO[v]?.color}>{ROL_INFO[v]?.label ?? v}</Tag>,
               },
               {
-                title: 'Enviada', dataIndex: 'createdAt', width: 120,
-                render: (v: string) => new Date(v).toLocaleDateString('es-DO'),
+                title: 'Expira', dataIndex: 'expiresAt', width: 140,
+                render: (v: string) => {
+                  if (!v) return '—';
+                  const vencida = new Date(v) < new Date();
+                  return (
+                    <Text type={vencida ? 'danger' : 'secondary'} style={{ fontSize: 12 }}>
+                      {new Date(v).toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  );
+                },
               },
               {
-                title: '', width: 80, align: 'center' as const,
+                title: '', width: 100, align: 'center' as const,
                 render: (_: any, r: any) => (
-                  <Popconfirm title="¿Cancelar invitación?" onConfirm={() => cancelarInv.mutate(r.id)}>
-                    <Button type="text" danger icon={<DeleteOutlined />} size="small" />
-                  </Popconfirm>
+                  <Space size={4}>
+                    <Tooltip title="Reenviar (genera nuevo enlace)">
+                      <Button type="text" size="small" icon={<ReloadOutlined />}
+                        loading={invitar.isPending}
+                        onClick={() => invitar.mutate({ email: r.email, rol: r.rol })} />
+                    </Tooltip>
+                    <Popconfirm title="¿Cancelar invitación?" onConfirm={() => cancelarInv.mutate(r.id)}>
+                      <Button type="text" danger icon={<DeleteOutlined />} size="small" />
+                    </Popconfirm>
+                  </Space>
                 ),
               },
             ]}
