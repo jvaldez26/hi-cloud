@@ -217,15 +217,14 @@ export class PreFacturaService {
       notas:     pf.notas,
       sucursalId: pf.sucursalId,
       detalles:  pf.detalles.map(det => ({
-        productoId:    det.productoId,
-        descripcion:   det.descripcion,
-        unidadMedida:  det.unidadMedida,
-        cantidad:      det.cantidad,
+        productoId:     det.productoId,
+        descripcion:    det.descripcion,
+        cantidad:       det.cantidad,
         precioUnitario: det.precioUnitario,
-        porcentajeIva: det.porcentajeIva,
-        subtotal:      det.subtotal,
-        iva:           det.iva,
-        total:         det.total,
+        porcentajeIva:  det.porcentajeIva,
+        subtotal:       det.subtotal,
+        importeIva:     det.iva,        // PreFacturaDetalle.iva → FacturaDetalle.importeIva
+        total:          det.total,
       })) as any,
     });
 
