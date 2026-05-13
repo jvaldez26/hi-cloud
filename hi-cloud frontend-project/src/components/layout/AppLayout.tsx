@@ -1166,14 +1166,26 @@ export default function AppLayout() {
     }
   }, [misEmpresas, cambiarEmpresa]);
 
-  // Si la query ya cargó, no hay empresas vinculadas y no hay empresaId en localStorage → redirigir a crear empresa
+  // Si la query ya cargó, no hay empresas vinculadas y no hay empresaId en localStorage
   useEffect(() => {
-    if (empresasLoaded && misEmpresas.length === 0 && !localStorage.getItem('empresaId')) {
+    if (!empresasLoaded || misEmpresas.length > 0 || localStorage.getItem('empresaId')) return;
+
+    const rol = user?.role ?? 'viewer';
+    const puedeCrearEmpresa = ['admin', 'super_admin'].includes(rol);
+
+    if (puedeCrearEmpresa) {
+      // Admin → puede crear su primera empresa
       if (!window.location.pathname.startsWith('/mis-empresas')) {
         navigate('/mis-empresas');
       }
+    } else {
+      // Viewer/vendedor/contador → fueron invitados, no crean empresas.
+      // Redirigir a página de espera en lugar de la de creación.
+      if (!window.location.pathname.startsWith('/sin-empresa')) {
+        navigate('/sin-empresa');
+      }
     }
-  }, [empresasLoaded, misEmpresas.length, navigate]);
+  }, [empresasLoaded, misEmpresas.length, navigate, user?.role]);
 
   // ── Accordion (expandido) ────────────────────────────────────────────────────
   const toggleCategory = useCallback((id: string) => {

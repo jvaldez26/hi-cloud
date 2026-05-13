@@ -88,6 +88,7 @@ const DatafonoPage              = lazy(() => import('./pages/datafono/DatafonoPa
 const EncuestasPage             = lazy(() => import('./pages/encuestas/EncuestasPage'));
 const CapacitacionPage          = lazy(() => import('./pages/capacitacion/CapacitacionPage'));
 const EmpresasPage              = lazy(() => import('./pages/empresas/EmpresasPage'));
+const SinEmpresaPage            = lazy(() => import('./pages/sin-empresa/SinEmpresaPage'));
 const PlanesPage                = lazy(() => import('./pages/suscripcion/PlanesPage'));
 const PeriodoContablePage         = lazy(() => import('./pages/periodo-contable/PeriodoContablePage'));
 const ReportesFinancierosPage     = lazy(() => import('./pages/reportes-financieros/ReportesFinancierosPage'));
@@ -335,6 +336,7 @@ export default function App() {
                     <Route path="/encuestas"           element={<EncuestasPage />} />
                     <Route path="/capacitacion"        element={<CapacitacionPage />} />
                     <Route path="/mis-empresas"        element={<EmpresasPage />} />
+                    <Route path="/sin-empresa"         element={<SinEmpresaPage />} />
                     <Route path="/suscripcion/planes"  element={<PlanesPage />} />
                     <Route path="/periodo-contable"        element={<PeriodoContablePage />} />
                     <Route path="/reportes-financieros"    element={<ReportesFinancierosPage />} />
