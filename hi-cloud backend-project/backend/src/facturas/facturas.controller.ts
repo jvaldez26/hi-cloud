@@ -41,6 +41,18 @@ class FacturasFilterDto extends PaginationDto {
 
   @IsOptional() @IsInt() @Type(() => Number)
   clienteId?: number;
+
+  @IsOptional() @IsString()
+  tipoPago?: string;       // CONTADO | CREDITO
+
+  @IsOptional() @IsString()
+  tipoNcf?: string;        // E31 | E32 | E41 ...
+
+  @IsOptional() @Type(() => Number)
+  montoMin?: number;
+
+  @IsOptional() @Type(() => Number)
+  montoMax?: number;
 }
 
 class CambiarEstadoDto {

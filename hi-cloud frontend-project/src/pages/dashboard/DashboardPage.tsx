@@ -144,6 +144,33 @@ export default function DashboardPage() {
     staleTime: 120_000,
   });
 
+  // ── Mes anterior para calcular trends reales ─────────────────────────────
+  const periodoAnt = periodo.subtract(1, 'month');
+  const mesAnt  = periodoAnt.month() + 1;
+  const anioAnt = periodoAnt.year();
+  const { data: kpisAnt } = useQuery<any>({
+    queryKey: ['kpis-ant', mesAnt, anioAnt],
+    queryFn:  () => reportesApi.ventasPorPeriodo(
+      periodoAnt.startOf('month').format('YYYY-MM-DD'),
+      periodoAnt.endOf('month').format('YYYY-MM-DD'),
+    ),
+    staleTime: 5 * 60_000,
+  });
+
+  // ── Top clientes y productos del mes ─────────────────────────────────────
+  const desdeM = periodo.startOf('month').format('YYYY-MM-DD');
+  const hastaM = periodo.endOf('month').format('YYYY-MM-DD');
+  const { data: topClientesMes } = useQuery<any[]>({
+    queryKey: ['top-cli-dash', mes, anio],
+    queryFn:  () => reportesApi.topClientes(desdeM, hastaM, 5),
+    staleTime: 120_000,
+  });
+  const { data: topProductosMes } = useQuery<any[]>({
+    queryKey: ['top-prod-dash', mes, anio],
+    queryFn:  () => reportesApi.topProductos(desdeM, hastaM, 5),
+    staleTime: 120_000,
+  });
+
   if (isLoading) return (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}>
       <motion.div
@@ -158,6 +185,15 @@ export default function DashboardPage() {
   const ventas  = kpis?.ventas  ?? {};
   const balance = kpis?.balanceMes ?? {};
   const alertas = kpis?.alertas   ?? {};
+
+  // Trends reales vs mes anterior
+  const ventasMesAnt  = Number(kpisAnt?.resumen?.total ?? 0);
+  const ventasMesAct  = Number(ventas.mes ?? 0);
+  const trendVentas   = ventasMesAnt > 0 ? Math.round(((ventasMesAct - ventasMesAnt) / ventasMesAnt) * 100) : null;
+
+  // Margen bruto del mes
+  const margenBruto   = ventasMesAct - Number(kpis?.compras?.mes ?? 0);
+  const margenPct     = ventasMesAct > 0 ? Math.round((margenBruto / ventasMesAct) * 100) : 0;
 
   const grafica = (chartData?.detalle ?? []).map((d: any) => ({
     dia: `D${d.dia}`, ventas: d.total,
@@ -178,10 +214,63 @@ export default function DashboardPage() {
   }));
 
   const kpiCards = [
-    { title: 'Ventas hoy',      value: ventas.hoy  ?? 0, gradient: CARD_GRADIENTS[0], icon: <DollarOutlined />,       formatter: fmt.money, trend: { value: 12, label: 'vs ayer' } },
-    { title: 'Ventas del mes',  value: ventas.mes  ?? 0, gradient: CARD_GRADIENTS[1], icon: <RiseOutlined />,          formatter: fmt.money, trend: { value: 8,  label: 'vs mes ant.' } },
-    { title: 'Compras del mes', value: kpis?.compras?.mes ?? 0, gradient: CARD_GRADIENTS[2], icon: <ShoppingCartOutlined />, formatter: fmt.money },
-    { title: 'Balance del mes', value: balance.balance ?? 0, gradient: CARD_GRADIENTS[3], icon: <ArrowUpOutlined />,    formatter: fmt.money },
+    {
+      title: 'Ventas hoy',
+      value: ventas.hoy ?? 0,
+      gradient: CARD_GRADIENTS[0], icon: <DollarOutlined />, formatter: fmt.money,
+    },
+    {
+      title: 'Ventas del mes',
+      value: ventas.mes ?? 0,
+      gradient: CARD_GRADIENTS[1], icon: <RiseOutlined />, formatter: fmt.money,
+      trend: trendVentas !== null ? { value: trendVentas, label: 'vs mes ant.' } : undefined,
+    },
+    {
+      title: 'Compras del mes',
+      value: kpis?.compras?.mes ?? 0,
+      gradient: CARD_GRADIENTS[2], icon: <ShoppingCartOutlined />, formatter: fmt.money,
+    },
+    {
+      title: 'Balance del mes',
+      value: balance.balance ?? 0,
+      gradient: CARD_GRADIENTS[3], icon: <ArrowUpOutlined />, formatter: fmt.money,
+    },
+  ];
+
+  // Segunda fila de KPIs — CxC, CxP, Margen, ECF
+  const kpiCards2 = [
+    {
+      label: 'Por cobrar (CxC)',
+      value: cxcResumen?.totalPorCobrar ?? 0,
+      vencido: cxcResumen?.totalVencido ?? 0,
+      color: '#1677ff',
+      icon: '💰',
+      ruta: '/cxc',
+    },
+    {
+      label: 'Por pagar (CxP)',
+      value: cxpResumen?.totalPorPagar ?? 0,
+      vencido: cxpResumen?.totalVencido ?? 0,
+      color: '#7c3aed',
+      icon: '💳',
+      ruta: '/cxp',
+    },
+    {
+      label: 'Margen bruto',
+      value: margenBruto,
+      extra: `${margenPct}% del total facturado`,
+      color: margenBruto >= 0 ? '#059669' : '#dc2626',
+      icon: '📊',
+      ruta: '/reportes',
+    },
+    {
+      label: 'e-CFs este mes',
+      value: ecfResumen?.total ?? 0,
+      extra: `${ecfResumen?.aceptados ?? 0} aceptados · ${ecfResumen?.rechazados ?? 0} rechazados`,
+      color: (ecfResumen?.rechazados ?? 0) > 0 ? '#dc2626' : '#059669',
+      icon: '🧾',
+      ruta: '/ecf',
+    },
   ];
 
   return (
@@ -231,11 +320,47 @@ export default function DashboardPage() {
           PÁGINA 1 — KPIs + Ventas + Clientes + Productos
           ════════════════════════════════════════════════════════════════ */}
 
-      {/* ── KPI Cards ── */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
+      {/* ── KPI Cards (Fila 1) ── */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 12 }}>
         {kpiCards.map((k, i) => (
           <Col xs={24} sm={12} xl={6} key={k.title}>
             <AnimatedStatCard {...k} delay={i * 0.08} />
+          </Col>
+        ))}
+      </Row>
+
+      {/* ── KPI Cards (Fila 2 — CxC, CxP, Margen, ECF) ── */}
+      <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
+        {kpiCards2.map((k, i) => (
+          <Col xs={24} sm={12} xl={6} key={k.label}>
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 + i * 0.06 }}>
+              <Card
+                size="small"
+                hoverable
+                onClick={() => navigate(k.ruta)}
+                style={{ borderRadius: 10, cursor: 'pointer', borderLeft: `3px solid ${k.color}` }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 22 }}>{k.icon}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 11, color: token.colorTextSecondary, marginBottom: 2 }}>{k.label}</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: k.color, lineHeight: 1.1 }}>
+                      {fmt.money(k.value)}
+                    </div>
+                    {k.vencido != null && k.vencido > 0 && (
+                      <div style={{ fontSize: 11, color: '#dc2626' }}>
+                        ⚠️ {fmt.money(k.vencido)} vencido
+                      </div>
+                    )}
+                    {k.extra && (
+                      <div style={{ fontSize: 11, color: token.colorTextSecondary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {k.extra}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            </motion.div>
           </Col>
         ))}
       </Row>
@@ -268,27 +393,31 @@ export default function DashboardPage() {
 
         <Col xs={24} lg={9}>
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .4, delay: .4 }}>
-            <Card title="🏆 Top Clientes del mes" style={{ borderRadius: 12, height: '100%' }}>
-              {(kpis?.topClientes ?? []).slice(0, 5).map((c: any, i: number) => {
-                const max = kpis?.topClientes?.[0]?.value ?? 1;
-                const pct = Math.round((c.value / max) * 100);
-                return (
-                  <motion.div key={c.label} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: .45 + i * 0.07 }} style={{ marginBottom: 12 }}>
-                    <Row justify="space-between" style={{ marginBottom: 3 }}>
-                      <Text style={{ fontSize: 12 }} ellipsis={{ tooltip: c.label }}>
-                        <span style={{ marginRight: 6 }}>{i < 3 ? ['🥇','🥈','🥉'][i] : `${i+1}.`}</span>
-                        {c.label}
-                      </Text>
-                      <Text style={{ fontSize: 12 }} strong>{fmt.money(c.value)}</Text>
-                    </Row>
-                    <div style={{ background: token.colorFillSecondary, borderRadius: 4, height: 4, overflow: 'hidden' }}>
-                      <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: .7, delay: .5 + i * .07 }}
-                        style={{ height: '100%', background: `linear-gradient(90deg,${COLOR_VENTAS},#0ea5e9)`, borderRadius: 4 }} />
-                    </div>
-                  </motion.div>
-                );
-              })}
-              {!kpis?.topClientes?.length && <Text type="secondary">Sin datos este mes</Text>}
+            <Card title="🏆 Top Clientes del mes" style={{ borderRadius: 12, height: '100%' }}
+              extra={<Button type="link" size="small" onClick={() => navigate('/reportes')}>Ver más →</Button>}>
+              {(() => {
+                const lista = (topClientesMes ?? kpis?.topClientes ?? []).slice(0, 5);
+                const max   = Number((lista[0] as any)?.value ?? (lista[0] as any)?.total ?? 1);
+                return lista.length ? lista.map((c: any, i: number) => {
+                  const val = Number(c.value ?? c.total ?? 0);
+                  const pct = Math.round((val / max) * 100);
+                  return (
+                    <motion.div key={c.label ?? c.nombre ?? i} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: .45 + i * 0.07 }} style={{ marginBottom: 12 }}>
+                      <Row justify="space-between" style={{ marginBottom: 3 }}>
+                        <Text style={{ fontSize: 12 }} ellipsis={{ tooltip: c.label ?? c.nombre }}>
+                          <span style={{ marginRight: 6 }}>{i < 3 ? ['🥇','🥈','🥉'][i] : `${i+1}.`}</span>
+                          {c.label ?? c.nombre}
+                        </Text>
+                        <Text style={{ fontSize: 12 }} strong>{fmt.money(val)}</Text>
+                      </Row>
+                      <div style={{ background: token.colorFillSecondary, borderRadius: 4, height: 4, overflow: 'hidden' }}>
+                        <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: .7, delay: .5 + i * .07 }}
+                          style={{ height: '100%', background: `linear-gradient(90deg,${COLOR_VENTAS},#0ea5e9)`, borderRadius: 4 }} />
+                      </div>
+                    </motion.div>
+                  );
+                }) : <Text type="secondary">Sin datos este mes</Text>;
+              })()}
             </Card>
           </motion.div>
         </Col>

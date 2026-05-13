@@ -2,19 +2,21 @@ import { useState, useCallback } from 'react';
 import {
   Table, Button, Tag, Space, Typography, Card, Row, Col,
   message, Dropdown, Tooltip, Modal, Input, Select, DatePicker,
-  Statistic, theme,
+  Statistic, theme, InputNumber, Collapse, Badge,
 } from 'antd';
 import {
   PlusOutlined, EyeOutlined, DownOutlined, SendOutlined,
   CheckCircleOutlined, CloseCircleOutlined, DeleteOutlined,
   FilePdfOutlined, LoadingOutlined, ReloadOutlined, SearchOutlined,
-  FileExcelOutlined, FilterOutlined, CopyOutlined,
+  FileExcelOutlined, FilterOutlined, CopyOutlined, ControlOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import { facturasApi } from '../../api/facturas.api';
+import { clientesApi } from '../../api/clientes.api';
+import api from '../../api/client';
 import { exportarExcel } from '../../utils/exportExcel';
 import type { Factura, FacturaEstado } from '../../types';
 import { fmt, estadoColor } from '../../utils/formatters';
@@ -78,13 +80,34 @@ export default function FacturasPage() {
   const [estado, setEstado]         = useState<string | undefined>();
   const [rango, setRango]           = useState<[Dayjs, Dayjs] | null>(null);
   const [pdfPending, setPdfPending] = useState<number | null>(null);
+  // Filtros avanzados
+  const [clienteId,  setClienteId]  = useState<number | undefined>();
+  const [tipoPago,   setTipoPago]   = useState<string | undefined>();
+  const [tipoNcf,    setTipoNcf]    = useState<string | undefined>();
+  const [montoMin,   setMontoMin]   = useState<number | undefined>();
+  const [montoMax,   setMontoMax]   = useState<number | undefined>();
 
   const filters = {
-    search: search || undefined,
+    search:    search || undefined,
     estado,
-    desde: rango?.[0].format('YYYY-MM-DD'),
-    hasta: rango?.[1].format('YYYY-MM-DD'),
+    desde:     rango?.[0].format('YYYY-MM-DD'),
+    hasta:     rango?.[1].format('YYYY-MM-DD'),
+    clienteId,
+    tipoPago,
+    tipoNcf,
+    montoMin,
+    montoMax,
   };
+
+  const filtrosAvanzadosActivos = [clienteId, tipoPago, tipoNcf, montoMin, montoMax].filter(Boolean).length;
+
+  // Clientes para el selector de filtro avanzado
+  const { data: clientesData } = useQuery({
+    queryKey: ['clientes-filter'],
+    queryFn:  () => clientesApi.list(1, 200),
+    staleTime: 5 * 60_000,
+  });
+  const clientesOpts = (clientesData?.data ?? []).map((c: any) => ({ value: c.id, label: c.nombre }));
 
   const { data, isLoading } = useQuery({
     queryKey:        ['facturas', page, filters],
@@ -174,13 +197,13 @@ export default function FacturasPage() {
   }, [filters]);
 
   const limpiarFiltros = () => {
-    setSearch('');
-    setEstado(undefined);
-    setRango(null);
+    setSearch(''); setEstado(undefined); setRango(null);
+    setClienteId(undefined); setTipoPago(undefined); setTipoNcf(undefined);
+    setMontoMin(undefined); setMontoMax(undefined);
     setPage(1);
   };
 
-  const hayFiltros = !!(search || estado || rango);
+  const hayFiltros = !!(search || estado || rango || clienteId || tipoPago || tipoNcf || montoMin || montoMax);
 
   const columns = [
     // ── Folio ──────────────────────────────────────────────────────────────────
@@ -363,50 +386,133 @@ export default function FacturasPage() {
         </Col>
       </Row>
 
-      {/* ── Filtros ── */}
-      <Row gutter={[8, 8]} style={{ marginBottom: 16 }} align="middle">
-        <Col xs={24} sm={10} md={8}>
-          <Input
-            placeholder="Buscar folio, cliente, RNC..."
-            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
-            value={search}
-            onChange={e => { setSearch(e.target.value); setPage(1); }}
-            allowClear
-          />
-        </Col>
-        <Col xs={24} sm={6} md={4}>
-          <Select
-            placeholder="Estado"
-            value={estado}
-            onChange={v => { setEstado(v); setPage(1); }}
-            allowClear
-            style={{ width: '100%' }}
-          >
-            {ESTADOS.map(e => (
-              <Option key={e} value={e}>
-                <Tag color={estadoColor[e]} style={{ margin: 0, fontSize: 11 }}>{e.toUpperCase()}</Tag>
-              </Option>
-            ))}
-          </Select>
-        </Col>
-        <Col xs={24} sm={8} md={8}>
-          <RangePicker
-            value={rango}
-            onChange={v => { setRango(v as [Dayjs, Dayjs] | null); setPage(1); }}
-            format="DD/MM/YYYY"
-            style={{ width: '100%' }}
-            placeholder={['Desde', 'Hasta']}
-          />
-        </Col>
-        {hayFiltros && (
-          <Col>
-            <Button type="text" size="small" onClick={limpiarFiltros}
-              icon={<FilterOutlined />}>
-              Limpiar
-            </Button>
+      {/* ── Búsqueda avanzada ── */}
+      <div style={{ marginBottom: 16 }}>
+        {/* Fila principal — siempre visible */}
+        <Row gutter={[8, 8]} align="middle" style={{ marginBottom: 8 }}>
+          <Col xs={24} sm={12} md={9}>
+            <Input
+              placeholder="Buscar folio, cliente, RNC..."
+              prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(1); }}
+              allowClear
+            />
           </Col>
-        )}
-      </Row>
+          <Col xs={12} sm={6} md={4}>
+            <Select placeholder="Estado" value={estado}
+              onChange={v => { setEstado(v); setPage(1); }} allowClear style={{ width: '100%' }}>
+              {ESTADOS.map(e => (
+                <Option key={e} value={e}>
+                  <Tag color={estadoColor[e]} style={{ margin: 0, fontSize: 11 }}>{e.toUpperCase()}</Tag>
+                </Option>
+              ))}
+            </Select>
+          </Col>
+          <Col xs={12} sm={6} md={7}>
+            <RangePicker value={rango}
+              onChange={v => { setRango(v as [Dayjs, Dayjs] | null); setPage(1); }}
+              format="DD/MM/YYYY" style={{ width: '100%' }} placeholder={['Desde', 'Hasta']} />
+          </Col>
+          <Col xs={24} sm={24} md={4} style={{ display: 'flex', gap: 6 }}>
+            <Badge count={filtrosAvanzadosActivos} size="small">
+              <Button
+                icon={<ControlOutlined />}
+                type={filtrosAvanzadosActivos > 0 ? 'primary' : 'default'}
+                ghost={filtrosAvanzadosActivos > 0}
+                onClick={() => {/* toggle handled by Collapse below */}}
+                style={{ pointerEvents: 'none' }}
+              >
+                Avanzado
+              </Button>
+            </Badge>
+            {hayFiltros && (
+              <Button type="text" size="small" icon={<FilterOutlined />} onClick={limpiarFiltros}>
+                Limpiar
+              </Button>
+            )}
+          </Col>
+        </Row>
+
+        {/* Panel avanzado — siempre expandido cuando hay filtros avanzados activos */}
+        <Collapse
+          ghost
+          size="small"
+          defaultActiveKey={filtrosAvanzadosActivos > 0 ? ['adv'] : []}
+          items={[{
+            key: 'adv',
+            label: (
+              <Space size={4}>
+                <ControlOutlined />
+                <span style={{ fontSize: 13 }}>Filtros avanzados</span>
+                {filtrosAvanzadosActivos > 0 && (
+                  <Badge count={filtrosAvanzadosActivos} style={{ background: token.colorPrimary }} />
+                )}
+              </Space>
+            ),
+            children: (
+              <Row gutter={[12, 12]} style={{ paddingBottom: 8 }}>
+                <Col xs={24} sm={12} md={8}>
+                  <div style={{ fontSize: 12, color: token.colorTextSecondary, marginBottom: 4 }}>Cliente</div>
+                  <Select
+                    showSearch
+                    allowClear
+                    placeholder="Todos los clientes"
+                    style={{ width: '100%' }}
+                    value={clienteId}
+                    onChange={v => { setClienteId(v); setPage(1); }}
+                    filterOption={(input, opt) =>
+                      String(opt?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                    }
+                    options={clientesOpts}
+                  />
+                </Col>
+                <Col xs={12} sm={6} md={4}>
+                  <div style={{ fontSize: 12, color: token.colorTextSecondary, marginBottom: 4 }}>Tipo de pago</div>
+                  <Select allowClear placeholder="Todos" style={{ width: '100%' }}
+                    value={tipoPago} onChange={v => { setTipoPago(v); setPage(1); }}>
+                    <Option value="CONTADO">Contado</Option>
+                    <Option value="CREDITO">Crédito</Option>
+                  </Select>
+                </Col>
+                <Col xs={12} sm={6} md={4}>
+                  <div style={{ fontSize: 12, color: token.colorTextSecondary, marginBottom: 4 }}>Tipo NCF</div>
+                  <Select allowClear placeholder="Todos" style={{ width: '100%' }}
+                    value={tipoNcf} onChange={v => { setTipoNcf(v); setPage(1); }}>
+                    {['E31','E32','E33','E34','E41','E43','E44','E45','E46','E47'].map(t => (
+                      <Option key={t} value={t}>{t}</Option>
+                    ))}
+                  </Select>
+                </Col>
+                <Col xs={12} sm={6} md={4}>
+                  <div style={{ fontSize: 12, color: token.colorTextSecondary, marginBottom: 4 }}>Monto mínimo (RD$)</div>
+                  <InputNumber
+                    placeholder="0"
+                    style={{ width: '100%' }}
+                    min={0}
+                    value={montoMin}
+                    onChange={v => { setMontoMin(v ?? undefined); setPage(1); }}
+                    formatter={v => v ? `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''}
+                    parser={(v: any) => v?.replace(/,/g, '')}
+                  />
+                </Col>
+                <Col xs={12} sm={6} md={4}>
+                  <div style={{ fontSize: 12, color: token.colorTextSecondary, marginBottom: 4 }}>Monto máximo (RD$)</div>
+                  <InputNumber
+                    placeholder="Sin límite"
+                    style={{ width: '100%' }}
+                    min={0}
+                    value={montoMax}
+                    onChange={v => { setMontoMax(v ?? undefined); setPage(1); }}
+                    formatter={v => v ? `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''}
+                    parser={(v: any) => v?.replace(/,/g, '')}
+                  />
+                </Col>
+              </Row>
+            ),
+          }]}
+        />
+      </div>
 
       {/* ── Totales rápidos de la página ── */}
       {resumen.length > 0 && (

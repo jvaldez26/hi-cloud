@@ -30,12 +30,21 @@ export interface FacturaPayload {
 }
 
 export const facturasApi = {
-  list: (p = 1, limit = 10, filters: { search?: string; estado?: string; desde?: string; hasta?: string } = {}) => {
+  list: (p = 1, limit = 10, filters: {
+    search?: string; estado?: string; desde?: string; hasta?: string;
+    clienteId?: number; tipoPago?: string; tipoNcf?: string;
+    montoMin?: number; montoMax?: number;
+  } = {}) => {
     const params = new URLSearchParams({ page: String(p), limit: String(limit) });
-    if (filters.search) params.set('search', filters.search);
-    if (filters.estado) params.set('estado', filters.estado);
-    if (filters.desde)  params.set('desde', filters.desde);
-    if (filters.hasta)  params.set('hasta', filters.hasta);
+    if (filters.search)    params.set('search',    filters.search);
+    if (filters.estado)    params.set('estado',    filters.estado);
+    if (filters.desde)     params.set('desde',     filters.desde);
+    if (filters.hasta)     params.set('hasta',     filters.hasta);
+    if (filters.clienteId) params.set('clienteId', String(filters.clienteId));
+    if (filters.tipoPago)  params.set('tipoPago',  filters.tipoPago);
+    if (filters.tipoNcf)   params.set('tipoNcf',   filters.tipoNcf);
+    if (filters.montoMin != null) params.set('montoMin', String(filters.montoMin));
+    if (filters.montoMax != null) params.set('montoMax', String(filters.montoMax));
     return api.get<ApiResponse<PaginatedData<Factura>>>(`/facturas?${params}`).then(r => r.data.data);
   },
 

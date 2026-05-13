@@ -147,7 +147,8 @@ export class FacturasService {
     estado?: string; desde?: string; hasta?: string; clienteId?: number;
   }) {
     const empresaId = this.tenantService.getEmpresaId();
-    const { limit = 10, page = 1, search, estado, desde, hasta, clienteId } = pagination;
+    const { limit = 10, page = 1, search, estado, desde, hasta, clienteId,
+            tipoPago, tipoNcf, montoMin, montoMax } = pagination as any;
 
     // La entidad Factura solo tiene `ecfId` como columna plana — sin @ManyToOne.
     // Cargamos las facturas primero, luego enriquecemos con datos ECF en una
@@ -168,6 +169,10 @@ export class FacturasService {
     if (clienteId) qb.andWhere('f.clienteId = :clienteId', { clienteId });
     if (desde)     qb.andWhere('f.fecha >= :desde', { desde });
     if (hasta)     qb.andWhere('f.fecha <= :hasta', { hasta });
+    if (tipoPago)  qb.andWhere('f."tipoPago" = :tipoPago', { tipoPago });
+    if (tipoNcf)   qb.andWhere('f."tipoNcf" = :tipoNcf', { tipoNcf });
+    if (montoMin != null) qb.andWhere('f.total >= :montoMin', { montoMin });
+    if (montoMax != null) qb.andWhere('f.total <= :montoMax', { montoMax });
 
     const [data, total] = await qb
       .orderBy('f.fecha', 'DESC')
