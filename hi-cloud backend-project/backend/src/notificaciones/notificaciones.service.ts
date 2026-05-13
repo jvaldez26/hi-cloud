@@ -899,7 +899,7 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
     const r = rows[0];
 
     const detRows = await this.dataSource.query<any[]>(
-      `SELECT ${detCampos} FROM ${detTabla} WHERE "${tabla === 'notas_credito' ? 'notaCreditoId' : 'notaDebitoId'}" = $1 AND "isActive" = true ORDER BY id`,
+      `SELECT ${detCampos} FROM ${detTabla} WHERE "${tabla === 'notas_credito' ? 'notaCreditoId' : 'notaDebitoId'}" = $1 ORDER BY id`,
       [id],
     );
 
@@ -1181,7 +1181,7 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
   // ── Enviar cotización al cliente por email ────────────────────────────────────
   async enviarCotizacionAlCliente(cotizacionId: number, emailCliente: string, asunto?: string) {
     const rows = await this.dataSource.query<any[]>(
-      `SELECT co.numero, co.fecha::text, co."fechaValidez"::text,
+      `SELECT co.numero, co.fecha::text, co."fechaVencimiento"::text AS "fechaValidez",
               co.subtotal::text, co.iva::text, co.total::text,
               COALESCE(co.notas,'') AS notas,
               c.nombre AS "clienteNombre", c.email AS "clienteEmail",
