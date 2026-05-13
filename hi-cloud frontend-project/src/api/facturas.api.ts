@@ -76,4 +76,8 @@ export const facturasApi = {
   /** Reintenta el envío de un e-CF rechazado o en contingencia */
   reenviarEcf: (numero: string) =>
     api.post(`/ecf/${numero}/reenviar`).then(r => r.data.data ?? r.data),
+
+  /** Duplica una factura — crea nueva en borrador con mismo cliente e ítems */
+  duplicar: (id: number) =>
+    api.post(`/facturas/${id}/duplicar`).then(r => r.data.data ?? r.data),
 };

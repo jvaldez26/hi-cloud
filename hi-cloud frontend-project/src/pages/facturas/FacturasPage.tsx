@@ -8,7 +8,7 @@ import {
   PlusOutlined, EyeOutlined, DownOutlined, SendOutlined,
   CheckCircleOutlined, CloseCircleOutlined, DeleteOutlined,
   FilePdfOutlined, LoadingOutlined, ReloadOutlined, SearchOutlined,
-  FileExcelOutlined, FilterOutlined,
+  FileExcelOutlined, FilterOutlined, CopyOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -134,6 +134,15 @@ export default function FacturasPage() {
     mutationFn: facturasApi.remove,
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['facturas'] }); message.success('Factura eliminada'); },
     onError:   (e: any) => message.error((e as any)?.friendlyMessage ?? 'No se puede eliminar esta factura'),
+  });
+
+  const duplicarMut = useMutation({
+    mutationFn: (id: number) => facturasApi.duplicar(id),
+    onSuccess: (nueva: any) => {
+      qc.invalidateQueries({ queryKey: ['facturas'] });
+      message.success(`Factura duplicada → ${nueva?.folio ?? 'borrador'}`);
+    },
+    onError: () => message.error('Error al duplicar'),
   });
 
   const confirmarEliminar = (r: Factura) =>
@@ -291,6 +300,10 @@ export default function FacturasPage() {
             label: 'Descargar PDF',
             disabled: pdfPending === r.id,
             onClick: () => descargarPDF(r, setPdfPending),
+          },
+          {
+            key: 'duplicar', icon: <CopyOutlined />, label: 'Duplicar factura',
+            onClick: () => duplicarMut.mutate(r.id),
           },
           { type: 'divider' as const },
           ...siguientes.map(s => ({

@@ -223,6 +223,17 @@ export class FacturasController {
     res.end(html);
   }
 
+  @Post(':id/duplicar')
+  @HttpCode(HttpStatus.CREATED)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Duplicar factura — crea nueva en borrador con mismo cliente e ítems' })
+  duplicar(
+    @Param('id', ParseIntPipe) id: number,
+    @GetUser() usuario: User,
+  ) {
+    return this.facturasService.duplicar(id, usuario.id);
+  }
+
   @Get(':id/recibo-pdf')
   @ApiOperation({ summary: 'Recibo térmico POS 80mm en PDF' })
   async reciboPDF(

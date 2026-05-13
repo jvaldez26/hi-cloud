@@ -571,6 +571,64 @@ export class FacturasService {
     return result;
   }
 
+  // ── Duplicar factura ─────────────────────────────────────────────────────────
+
+  async duplicar(id: number, userId: number) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const original  = await this.facturaRepository.findOne({
+      where: { id, empresaId, isActive: true },
+      relations: ['detalles'],
+    });
+    if (!original) throw new NotFoundException(`Factura #${id} no encontrada`);
+
+    const folio = await this.generarFolio();
+
+    const nueva = this.facturaRepository.create({
+      empresaId,
+      folio,
+      fecha:         new Date(),
+      estado:        FacturaEstado.BORRADOR,
+      clienteId:     original.clienteId,
+      moneda:        original.moneda,
+      tipoCambio:    original.tipoCambio,
+      tipoNcf:       original.tipoNcf,
+      tipoPago:      original.tipoPago,
+      diasCredito:   original.diasCredito,
+      subtotal:      original.subtotal,
+      iva:           original.iva,
+      total:         original.total,
+      descuento:     original.descuento,
+      notas:         original.notas,
+      userId,
+    });
+
+    const nuevaGuardada = await this.facturaRepository.save(nueva);
+
+    if (original.detalles?.length) {
+      const detalles = original.detalles.map(d => this.detalleRepository.create({
+        facturaId:    nuevaGuardada.id,
+        productoId:   d.productoId,
+        descripcion:  d.descripcion,
+        cantidad:     d.cantidad,
+        precioUnitario: d.precioUnitario,
+        porcentajeIva:  d.porcentajeIva,
+        importeIva:   d.importeIva,
+        descuento:    d.descuento,
+        subtotal:     d.subtotal,
+        total:        d.total,
+      }));
+      await this.detalleRepository.save(detalles);
+    }
+
+    this.logger.log(`Factura #${id} duplicada → nueva factura #${nuevaGuardada.id} (${folio})`);
+    this.realtimeService.notify(empresaId, 'factura', 'created', nuevaGuardada.id);
+
+    return this.facturaRepository.findOne({
+      where: { id: nuevaGuardada.id },
+      relations: ['cliente', 'detalles'],
+    });
+  }
+
   async resumenPorEstado() {
     const empresaId = this.tenantService.getEmpresaId();
     return this.facturaRepository
