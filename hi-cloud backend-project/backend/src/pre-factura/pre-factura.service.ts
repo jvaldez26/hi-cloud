@@ -219,12 +219,12 @@ export class PreFacturaService {
       detalles:  pf.detalles.map(det => ({
         productoId:     det.productoId,
         descripcion:    det.descripcion,
-        cantidad:       det.cantidad,
-        precioUnitario: det.precioUnitario,
-        porcentajeIva:  det.porcentajeIva,
-        subtotal:       det.subtotal,
-        importeIva:     det.iva,        // PreFacturaDetalle.iva → FacturaDetalle.importeIva
-        total:          det.total,
+        cantidad:       Math.round(Number(det.cantidad)),   // INT en FacturaDetalle
+        precioUnitario: Number(det.precioUnitario),
+        porcentajeIva:  Number(det.porcentajeIva),
+        subtotal:       Number(det.subtotal),
+        importeIva:     Number(det.iva),
+        total:          Number(det.total),
       })) as any,
     });
 
