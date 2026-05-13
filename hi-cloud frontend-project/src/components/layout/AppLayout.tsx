@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, createContext, useContext, Suspense } from 'react';
+﻿import { useEffect, useState, useCallback, useRef, createContext, useContext, Suspense } from 'react';
 import { useMobile } from '../../hooks/useMediaQuery';
 import {
   Layout, Avatar, Dropdown, Typography, Badge, Space,
@@ -109,10 +109,11 @@ interface SubItem {
 }
 
 interface MenuCategory {
-  id:    string;
-  label: string;
-  Icon:  LucideIcon;
-  items: SubItem[];
+  id:           string;
+  label:        string;
+  Icon:         LucideIcon;
+  items:        SubItem[];
+  sectionLabel?: string; // si está presente → renderizar separador de sección ANTES de esta categoría
 }
 
 const QUICK_ITEMS: QuickItem[] = [
@@ -122,162 +123,169 @@ const QUICK_ITEMS: QuickItem[] = [
 ];
 
 const MENU_CATEGORIES: MenuCategory[] = [
-  // ── 1. VENTAS ──────────────────────────────────────────────────────────────
+
+  // ─── VENTAS ────────────────────────────────────────────────────────────────
   {
-    id: 'ventas', label: 'Ventas', Icon: TrendingUp,
+    id: 'ventas', label: 'Ventas', Icon: TrendingUp, sectionLabel: 'VENTAS',
     items: [
-      { path: '/clientes',             label: 'Clientes' },
+      { path: '/facturas',             label: 'Facturas' },
       { path: '/cotizaciones',         label: 'Cotizaciones' },
       { path: '/pre-facturas',         label: 'Pre-Facturas' },
-      { path: '/facturas',             label: 'Facturas (e-CF)' },
-      { path: '/notas-debito',         label: 'Notas de Débito (E33)' },
-      { path: '/notas-credito',        label: 'Notas de Crédito (E34)' },
+      { path: '/notas-credito',        label: 'Notas de Crédito' },
+      { path: '/notas-debito',         label: 'Notas de Débito' },
       { path: '/devoluciones',         label: 'Devoluciones' },
-      { path: '/conduces',             label: 'Conduces / Entregas' },
       { path: '/facturas-recurrentes', label: 'Facturación Recurrente' },
-      { path: '/precios-especiales',   label: 'Precios Especiales' },
-      { path: '/descuentos',           label: 'Descuentos Automáticos' },
-      { path: '/fidelidad',            label: 'Fidelidad & Puntos' },
-      { path: '/cuotas',               label: 'Cuotas / Planes de Pago' },
-      { path: '/credito-cliente',      label: 'Crédito al Cliente' },
     ],
   },
-
-  // ── 2. CRM & COMERCIAL ─────────────────────────────────────────────────────
   {
-    id: 'crm', label: 'CRM & Comercial', Icon: Target,
+    id: 'clientes', label: 'Clientes', Icon: Users,
     items: [
-      { path: '/crm',          label: 'CRM — Leads & Oportunidades' },
-      { path: '/vendedores',   label: 'Vendedores' },
-      { path: '/comisiones',   label: 'Comisiones de Ventas' },
-      { path: '/licitaciones', label: 'Licitaciones' },
-      { path: '/encuestas',    label: 'Encuestas NPS/CSAT' },
+      { path: '/clientes',      label: 'Lista de Clientes' },
+      { path: '/cxc',           label: 'Cuentas por Cobrar' },
+      { path: '/recibos-cobro', label: 'Recibos de Cobro' },
+      { path: '/conduces',      label: 'Conduces / Entregas' },
+      { path: '/credito-cliente', label: 'Crédito al Cliente' },
+      { path: '/cuotas',        label: 'Cuotas / Pagos' },
+      { path: '/fidelidad',     label: 'Fidelidad & Puntos' },
     ],
   },
 
-  // ── 3. COMPRAS ─────────────────────────────────────────────────────────────
+  // ─── COMPRAS ────────────────────────────────────────────────────────────────
   {
-    id: 'compras', label: 'Compras', Icon: ClipboardList,
+    id: 'compras', label: 'Compras', Icon: ClipboardList, sectionLabel: 'COMPRAS',
     items: [
       { path: '/compras',               label: 'Órdenes de Compra' },
       { path: '/solicitudes-compra',    label: 'Solicitudes de Compra' },
       { path: '/proveedores',           label: 'Proveedores' },
-      { path: '/notas-credito-compras', label: 'NC de Compras' },
+      { path: '/cxp',                   label: 'Cuentas por Pagar' },
       { path: '/gastos',                label: 'Gastos Operativos' },
+      { path: '/notas-credito-compras', label: 'NC de Compras' },
       { path: '/caja-chica',            label: 'Caja Chica' },
     ],
   },
-
-  // ── 4. COBROS & PAGOS ──────────────────────────────────────────────────────
   {
-    id: 'cobrospagos', label: 'Cobros & Pagos', Icon: CreditCard,
+    id: 'tesoreria', label: 'Tesorería & Pagos', Icon: CreditCard,
     items: [
-      { path: '/cxc',           label: 'Cuentas por Cobrar' },
-      { path: '/recibos-cobro', label: 'Recibos de Cobro' },
-      { path: '/datafono',      label: 'DataFono / Tarjetas' },
-      { path: '/cxp',           label: 'Cuentas por Pagar' },
-      { path: '/bancos',        label: 'Bancos / Tesorería' },
-      { path: '/depositos',     label: 'Depósitos Bancarios' },
-      { path: '/cheques',       label: 'Cheques y Pagos' },
-      { path: '/divisas',       label: 'Divisas & Tasas de Cambio' },
+      { path: '/bancos',    label: 'Bancos / Tesorería' },
+      { path: '/depositos', label: 'Depósitos Bancarios' },
+      { path: '/cheques',   label: 'Cheques y Pagos' },
+      { path: '/datafono',  label: 'DataFono / Tarjetas' },
+      { path: '/divisas',   label: 'Divisas & Cambio' },
     ],
   },
 
-  // ── 5. INVENTARIO & PRODUCCIÓN ─────────────────────────────────────────────
+  // ─── INVENTARIO ─────────────────────────────────────────────────────────────
   {
-    id: 'inventario', label: 'Inventario & Producción', Icon: Boxes,
+    id: 'inventario', label: 'Inventario', Icon: Boxes, sectionLabel: 'INVENTARIO',
     items: [
-      { path: '/productos',          label: 'Productos' },
-      { path: '/grupos',             label: 'Grupos & Segmentos' },
-      { path: '/inventario',         label: 'Movimientos de Stock' },
-      { path: '/conteo-inventario',  label: 'Conteo Físico' },
-      { path: '/valoracion-stock',   label: 'Valoración AVCO' },
-      { path: '/almacenes',          label: 'Almacenes / Bodegas' },
-      { path: '/wms',                label: 'WMS — Gestión de Almacén' },
-      { path: '/manufactura',        label: 'Manufactura & Producción' },
-      { path: '/planeacion-demanda', label: 'Planeación de la Demanda' },
-      { path: '/uom',                label: 'Unidades de Medida' },
-      { path: '/etiquetas',          label: 'Etiquetas QR' },
+      { path: '/productos',         label: 'Productos' },
+      { path: '/inventario',        label: 'Movimientos de Stock' },
+      { path: '/almacenes',         label: 'Almacenes / Bodegas' },
+      { path: '/conteo-inventario', label: 'Conteo Físico' },
+      { path: '/valoracion-stock',  label: 'Valoración AVCO' },
+      { path: '/etiquetas',         label: 'Etiquetas QR' },
+      { path: '/uom',               label: 'Unidades de Medida' },
+    ],
+  },
+  {
+    id: 'produccion', label: 'Producción & Logística', Icon: Briefcase,
+    items: [
+      { path: '/manufactura',        label: 'Manufactura' },
+      { path: '/wms',                label: 'WMS — Almacén' },
+      { path: '/planeacion-demanda', label: 'Planeación de Demanda' },
+      { path: '/flota',              label: 'Flota de Vehículos' },
     ],
   },
 
-  // ── 6. PROYECTOS & SERVICIOS ───────────────────────────────────────────────
+  // ─── PROYECTOS ──────────────────────────────────────────────────────────────
   {
-    id: 'proyectos', label: 'Proyectos & Servicios', Icon: Briefcase,
+    id: 'proyectos', label: 'Proyectos & Servicios', Icon: Target, sectionLabel: 'PROYECTOS',
     items: [
-      { path: '/proyectos',    label: 'Proyectos' },
-      { path: '/contratos',    label: 'Contratos' },
-      { path: '/servicios',    label: 'Órdenes de Servicio' },
-      { path: '/mantenimiento', label: 'Mantenimiento de Equipos' },
-      { path: '/flota',        label: 'Flota de Vehículos' },
-      { path: '/objetivos',    label: 'Objetivos OKR' },
+      { path: '/proyectos',     label: 'Proyectos' },
+      { path: '/contratos',     label: 'Contratos' },
+      { path: '/servicios',     label: 'Órdenes de Servicio' },
+      { path: '/mantenimiento', label: 'Mantenimiento' },
+      { path: '/objetivos',     label: 'Objetivos OKR' },
+    ],
+  },
+  {
+    id: 'crm', label: 'CRM & Comercial', Icon: TrendingUp,
+    items: [
+      { path: '/crm',        label: 'Leads & Oportunidades' },
+      { path: '/vendedores', label: 'Vendedores' },
+      { path: '/comisiones', label: 'Comisiones' },
+      { path: '/licitaciones', label: 'Licitaciones' },
+      { path: '/encuestas',  label: 'Encuestas NPS/CSAT' },
     ],
   },
 
-  // ── 7. RECURSOS HUMANOS ────────────────────────────────────────────────────
+  // ─── FISCAL ─────────────────────────────────────────────────────────────────
   {
-    id: 'rrhh', label: 'Recursos Humanos', Icon: Users,
+    id: 'ecf', label: 'Comprobantes e-CF', Icon: Receipt, sectionLabel: 'FISCAL',
+    items: [
+      { path: '/ecf',          label: 'e-CF — Panel DGII' },
+      { path: '/declaraciones', label: 'Declaraciones 606/607' },
+      { path: '/retenciones',  label: 'Retenciones ISR' },
+    ],
+  },
+  {
+    id: 'contabilidad', label: 'Contabilidad', Icon: BookOpen,
+    items: [
+      { path: '/contabilidad',         label: 'Asientos Contables' },
+      { path: '/libro-mayor',          label: 'Libro Mayor' },
+      { path: '/balance-comprobacion', label: 'Balance de Comprobación' },
+      { path: '/reportes-financieros', label: 'Estados Financieros' },
+      { path: '/libro-ventas',         label: 'Libro de Ventas' },
+      { path: '/periodo-contable',     label: 'Períodos Contables' },
+      { path: '/presupuestos',         label: 'Presupuestos' },
+      { path: '/activos-fijos',        label: 'Activos Fijos' },
+      { path: '/centro-costos',        label: 'Centro de Costos' },
+      { path: '/flujo-caja',           label: 'Flujo de Caja' },
+      { path: '/distribucion-costos',  label: 'Distribución de Costos' },
+    ],
+  },
+
+  // ─── RRHH ───────────────────────────────────────────────────────────────────
+  {
+    id: 'rrhh', label: 'Recursos Humanos', Icon: Users, sectionLabel: 'RRHH',
     items: [
       { path: '/nomina',          label: 'Nómina' },
       { path: '/portal-empleado', label: 'Portal Empleados' },
       { path: '/vacaciones',      label: 'Vacaciones y Permisos' },
       { path: '/tss',             label: 'TSS / Seguridad Social' },
       { path: '/isr',             label: 'ISR Empleados' },
-      { path: '/evaluaciones',    label: 'Evaluaciones de Desempeño' },
+      { path: '/evaluaciones',    label: 'Evaluaciones' },
       { path: '/capacitacion',    label: 'Capacitación' },
     ],
   },
 
-  // ── 8. CONTABILIDAD & FISCAL ───────────────────────────────────────────────
+  // ─── REPORTES ───────────────────────────────────────────────────────────────
   {
-    id: 'contabilidad', label: 'Contabilidad & Fiscal', Icon: BookOpen,
+    id: 'analisis', label: 'Análisis & Reportes', Icon: BarChart3, sectionLabel: 'REPORTES',
     items: [
-      { path: '/contabilidad',         label: 'Asientos Contables' },
-      { path: '/libro-mayor',          label: 'Libro Mayor' },
-      { path: '/balance-comprobacion', label: 'Balance de Comprobación' },
-      { path: '/reportes-financieros', label: 'Estados Financieros' },
-      { path: '/libro-ventas',         label: 'Libro de Ventas & Compras' },
-      { path: '/periodo-contable',     label: 'Períodos Contables' },
-      { path: '/presupuestos',         label: 'Presupuestos' },
-      { path: '/activos-fijos',        label: 'Activos Fijos' },
-      { path: '/centro-costos',        label: 'Centro de Costos' },
-      { path: '/flujo-caja',           label: 'Flujo de Caja' },
-      { path: '/cuentas-estadisticas', label: 'Cuentas Estadísticas' },
-      { path: '/distribucion-costos',  label: 'Distribución de Costos' },
-      { path: '/ecf',                  label: 'e-CF — Panel DGII' },
-      { path: '/declaraciones',        label: 'Declaraciones DGII' },
-      { path: '/retenciones',          label: 'Retenciones ISR' },
-    ],
-  },
-
-  // ── 9. ANÁLISIS & REPORTES ─────────────────────────────────────────────────
-  {
-    id: 'analisis', label: 'Análisis & Reportes', Icon: BarChart3,
-    items: [
-      { path: '/asistente',          label: '🤖 Asistente IA' },
+      { path: '/reportes',           label: 'Reportes' },
       { path: '/analytics',          label: 'Business Intelligence' },
       { path: '/kpi',                label: 'KPI Ejecutivo' },
       { path: '/generador-reportes', label: 'Generador de Reportes' },
-      { path: '/reportes',           label: 'Reportes' },
-      { path: '/calendario',         label: 'Calendario de Obligaciones' },
+      { path: '/asistente',          label: '🤖 Asistente IA' },
+      { path: '/calendario',         label: 'Calendario DGII' },
     ],
   },
 
-  // ── 10. SISTEMA ────────────────────────────────────────────────────────────
+  // ─── SISTEMA ────────────────────────────────────────────────────────────────
   {
-    id: 'sistema', label: 'Sistema', Icon: Settings,
+    id: 'sistema', label: 'Sistema', Icon: Settings, sectionLabel: 'SISTEMA',
     items: [
-      { path: '/configuracion',  label: 'Configuración' },
-      { path: '/sucursales',     label: 'Sucursales' },
-      { path: '/equipo',         label: 'Usuarios y Roles' },
-      { path: '/mis-empresas',   label: 'Empresas' },
-      { path: '/aprobaciones',   label: 'Aprobaciones & Workflow' },
-      { path: '/documentos',     label: 'Documentos' },
-      { path: '/comunicaciones', label: 'WhatsApp & Mensajería' },
-      { path: '/importacion',    label: 'Importación CSV' },
-      { path: '/auditoria',      label: 'Auditoría' },
-      { path: '/contactos',      label: 'Directorio de Contactos' },
-      { path: '/super-admin',    label: 'Super Admin' },
+      { path: '/configuracion', label: 'Configuración' },
+      { path: '/sucursales',    label: 'Sucursales' },
+      { path: '/equipo',        label: 'Usuarios y Roles' },
+      { path: '/mis-empresas',  label: 'Empresas' },
+      { path: '/auditoria',     label: 'Auditoría' },
+      { path: '/aprobaciones',  label: 'Aprobaciones' },
+      { path: '/importacion',   label: 'Importación CSV' },
+      { path: '/documentos',    label: 'Documentos' },
+      { path: '/contactos',     label: 'Directorio' },
+      { path: '/super-admin',   label: 'Super Admin' },
     ],
   },
 ];
@@ -1285,10 +1293,21 @@ export default function AppLayout() {
         }} />
 
         {/* Categorías:
-            – Expandido → accordion inline
+            – Expandido → accordion inline con separadores de sección
             – Colapsado → ícono que abre panel flyout              */}
         {categoriasFiltradas.map(cat => (
           <div key={cat.id} style={{ marginBottom: 2 }}>
+            {/* Separador de sección */}
+            {!collapsed && cat.sectionLabel && (
+              <div style={{
+                fontSize: 10, fontWeight: 700, color: C.textCategory,
+                textTransform: 'uppercase', letterSpacing: '0.09em',
+                padding: '14px 16px 4px', opacity: 0.7,
+                userSelect: 'none',
+              }}>
+                {cat.sectionLabel}
+              </div>
+            )}
             {collapsed ? (
               <CategoryBtnCollapsed
                 category={cat}

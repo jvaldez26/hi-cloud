@@ -239,6 +239,7 @@ export default function CotizacionesPage() {
       <Card>
         <Table columns={cols} dataSource={data?.data ?? []} rowKey="id"
           loading={isLoading} size="small"
+          scroll={{ x: 900 }}
           rowClassName={(r: any) => r.estado === 'vencida' ? 'ant-table-row-warn' : ''}
           pagination={{ total: data?.meta?.total, pageSize: 10, current: page,
                         onChange: setPage, showTotal: t => `${t} cotizaciones`, showSizeChanger: false }} />
