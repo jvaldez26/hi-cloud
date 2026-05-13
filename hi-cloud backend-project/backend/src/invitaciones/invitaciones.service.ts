@@ -203,14 +203,9 @@ export class InvitacionesService {
         nombre, email: inv.email, password: hash, role: inv.rol,
       }));
     } else {
-      // Actualizar rol global del usuario si el nuevo rol tiene más o igual permisos
-      // Orden de jerarquía: super_admin > admin > contador > vendedor > viewer
-      const jerarquia: Record<string, number> = {
-        super_admin: 5, admin: 4, contador: 3, vendedor: 2, viewer: 1,
-      };
-      const rolActual  = jerarquia[user.role]  ?? 0;
-      const rolInvitado = jerarquia[inv.rol]   ?? 0;
-      if (rolInvitado > rolActual) {
+      // El rol de la invitación es autoritativo — actualizar User.role siempre,
+      // excepto si ya es super_admin (no se degrada al super admin nunca)
+      if (user.role !== UserRole.SUPER_ADMIN) {
         await this.userRepo.update(user.id, { role: inv.rol as UserRole });
         user.role = inv.rol as UserRole;
       }
