@@ -112,6 +112,13 @@ export class ECFController {
     return this.ecfService.desactivarSecuencia(id, usuario.id);
   }
 
+  @Get('resumen')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Resumen de e-CFs del mes actual — totales por estado para el dashboard' })
+  getResumen() {
+    return this.ecfService.getResumenEstados();
+  }
+
   @Get('estadisticas')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Estadísticas de e-CFs por tipo (opcional: ?mes=5&anio=2026)' })

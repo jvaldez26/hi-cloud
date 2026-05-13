@@ -566,6 +566,40 @@ export class ECFService implements OnModuleInit {
     return resultado;
   }
 
+  async getResumenEstados() {
+    const empresaId = this.tenantService.getEmpresaId();
+    const ahora = new Date();
+    const mesActual  = ahora.getMonth() + 1;
+    const anioActual = ahora.getFullYear();
+
+    const [row] = await this.ecfRepository
+      .createQueryBuilder('ecf')
+      .select(`
+        SUM(CASE WHEN ecf."estadoDGII" = 'aceptado'          THEN 1 ELSE 0 END)::int AS aceptados,
+        SUM(CASE WHEN ecf."estadoDGII" = 'aceptado_condicion' THEN 1 ELSE 0 END)::int AS "aceptadosCondicion",
+        SUM(CASE WHEN ecf."estadoDGII" IN ('enviado','pendiente_envio') THEN 1 ELSE 0 END)::int AS enviados,
+        SUM(CASE WHEN ecf."estadoDGII" = 'rechazado'         THEN 1 ELSE 0 END)::int AS rechazados,
+        SUM(CASE WHEN ecf."estadoDGII" = 'pendiente'         THEN 1 ELSE 0 END)::int AS pendientes,
+        COUNT(ecf.id)::int AS total
+      `)
+      .where('ecf.empresaId = :eid', { eid: empresaId })
+      .andWhere('ecf.isActive = true')
+      .andWhere('EXTRACT(MONTH FROM ecf.createdAt) = :mes', { mes: mesActual })
+      .andWhere('EXTRACT(YEAR  FROM ecf.createdAt) = :anio', { anio: anioActual })
+      .getRawMany();
+
+    return {
+      mes:               mesActual,
+      anio:              anioActual,
+      aceptados:         Number(row?.aceptados          ?? 0),
+      aceptadosCondicion:Number(row?.aceptadosCondicion ?? 0),
+      enviados:          Number(row?.enviados            ?? 0),
+      rechazados:        Number(row?.rechazados          ?? 0),
+      pendientes:        Number(row?.pendientes          ?? 0),
+      total:             Number(row?.total               ?? 0),
+    };
+  }
+
   async getEstadisticasPorTipo(mes?: number, anio?: number): Promise<any[]> {
     const empresaId = this.tenantService.getEmpresaId();
     const qb = this.ecfRepository
