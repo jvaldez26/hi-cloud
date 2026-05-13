@@ -38,6 +38,11 @@ class EnviarMensajeDto {
   mensaje!: string;
 }
 
+class CambiarRolDto {
+  @IsEnum(['admin','contador','vendedor','viewer','super_admin'])
+  rol!: string;
+}
+
 class BackupAlertDto {
   @IsString() @IsNotEmpty() mensaje!: string;
   @IsOptional() @IsString() tipo?: string;
@@ -104,6 +109,17 @@ export class SuperAdminController {
   @Get('usuarios')
   @ApiOperation({ summary: 'Listar todos los usuarios del sistema' })
   listarUsuarios() { return this.svc.listarUsuarios(); }
+
+  @Patch('usuarios/:id/rol')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Cambiar rol global de un usuario' })
+  cambiarRolUsuario(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CambiarRolDto,
+    @GetUser() solicitante: User,
+  ) {
+    return this.svc.cambiarRolUsuario(id, dto.rol, solicitante.id);
+  }
 
   @Get('suscripciones')
   @ApiOperation({ summary: 'Gestión de suscripciones y planes' })

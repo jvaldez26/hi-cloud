@@ -158,6 +158,21 @@ export class SuperAdminService {
     return { ok: true, mensaje: 'Mensaje registrado correctamente' };
   }
 
+  async cambiarRolUsuario(userId: number, nuevoRol: string, solicitanteId: number) {
+    const rows = await this.ds.query<any[]>('SELECT id, nombre, role FROM users WHERE id = $1', [userId]);
+    if (!rows[0]) throw new NotFoundException(`Usuario #${userId} no encontrado`);
+    if (userId === solicitanteId) throw new Error('No puedes cambiar tu propio rol');
+
+    const rolPrev = rows[0].role;
+    await this.ds.query('UPDATE users SET role = $1, "updatedAt" = NOW() WHERE id = $2', [nuevoRol, userId]);
+
+    return {
+      ok: true,
+      mensaje: `Rol de ${rows[0].nombre} cambiado: ${rolPrev} → ${nuevoRol}`,
+      usuario: { id: userId, nombre: rows[0].nombre, rolAnterior: rolPrev, rolNuevo: nuevoRol },
+    };
+  }
+
   async eliminarEmpresa(id: number) {
     await this.ds.query(`UPDATE empresa SET "isActive" = false WHERE id = $1`, [id]);
     await this.ds.query(`UPDATE suscripciones SET estado = 'cancelada' WHERE "empresaId" = $1`, [id]);

@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useMemo, useCallback, createContext, useContext } from 'react';
+import { useState, useEffect, useMemo, useCallback, createContext, useContext } from 'react';
 import {
   Table, Tag, Button, Modal, Select, InputNumber, message,
   Avatar, Tooltip, Input, Popconfirm, Form, Tabs, Badge,
@@ -183,7 +183,7 @@ function EcfConfigTab({
       const existing = await ecfConfigApi.obtener(empresaId).catch(() => null);
       if (existing) {
         // Ya existe → modo EDICIÓN
-        form.setFieldsValue({ ...existing, proveedorPassword: '', proveedorApiKey: '' });
+        form.setFieldsValue({ ...existing, msellerPassword: '', msellerApiKey: '' });
         setFormModal(existing);
       } else {
         // No existe → modo CREACIÓN con empresaId pre-llenado
@@ -217,7 +217,7 @@ function EcfConfigTab({
       const existing = await ecfConfigApi.obtener(id).catch(() => null);
       if (existing) {
         message.info(`La empresa #${id} ya tiene configuración. Abriendo en modo edición.`);
-        form.setFieldsValue({ ...existing, proveedorPassword: '', proveedorApiKey: '' });
+        form.setFieldsValue({ ...existing, msellerPassword: '', msellerApiKey: '' });
         setFormModal(existing);
       }
     } finally {
@@ -321,7 +321,7 @@ function EcfConfigTab({
                   <div style={{ color: C.txt2, fontSize: 11 }}>{r.rncEmisor}</div>
                 </div>
               )},
-              { title: 'Email tu proveedor e-CF', dataIndex: 'proveedorEmail', render: (v: string) => <span style={{ color: C.txt2, fontSize: 12 }}>{v}</span> },
+              { title: 'Email MSeller', dataIndex: 'msellerEmail', render: (v: string) => <span style={{ color: C.txt2, fontSize: 12 }}>{v}</span> },
               { title: 'Modo', dataIndex: 'modo', render: (v: string) => (
                 <Tag color={v === 'PRODUCCION' ? 'green' : v === 'CERTIFICACION' ? 'blue' : 'orange'}>{v}</Tag>
               )},
@@ -335,7 +335,7 @@ function EcfConfigTab({
               )},
               { title: 'Acciones', key: 'acc', render: (_: any, r: any) => (
                 <Space size={4}>
-                  <Button size="small" onClick={() => { form.setFieldsValue({ ...r, proveedorPassword: '', proveedorApiKey: '' }); setFormModal(r); }}>
+                  <Button size="small" onClick={() => { form.setFieldsValue({ ...r, msellerPassword: '', msellerApiKey: '' }); setFormModal(r); }}>
                     Editar
                   </Button>
                   <Button size="small" loading={testingId === r.empresaId} onClick={() => testConexion(r.empresaId)}>
@@ -390,13 +390,13 @@ function EcfConfigTab({
               />
             </Form.Item>
           )}
-          <Form.Item name="proveedorEmail" label="Email tu proveedor e-CF" rules={[{ required: true, type: 'email' }]}>
+          <Form.Item name="msellerEmail" label="Email MSeller" rules={[{ required: true, type: 'email' }]}>
             <Input placeholder="usuario@empresa.com" />
           </Form.Item>
-          <Form.Item name="proveedorPassword" label={formModal?.id ? 'Contraseña tu proveedor e-CF (dejar vacío para no cambiar)' : 'Contraseña tu proveedor e-CF'} rules={[{ required: !formModal?.id }]}>
+          <Form.Item name="msellerPassword" label={formModal?.id ? 'Contraseña MSeller (dejar vacío para no cambiar)' : 'Contraseña MSeller'} rules={[{ required: !formModal?.id }]}>
             <Input.Password />
           </Form.Item>
-          <Form.Item name="proveedorApiKey" label={formModal?.id ? 'API Key tu proveedor e-CF (dejar vacío para no cambiar)' : 'API Key tu proveedor e-CF'} rules={[{ required: !formModal?.id }]}>
+          <Form.Item name="msellerApiKey" label={formModal?.id ? 'API Key MSeller (dejar vacío para no cambiar)' : 'API Key MSeller'} rules={[{ required: !formModal?.id }]}>
             <Input.Password />
           </Form.Item>
           <Form.Item name="modo" label="Modo" initialValue="TEST">
@@ -604,6 +604,20 @@ export default function SuperAdminPage() {
     queryKey: ['sa-usuarios'],
     queryFn:  () => api.get('/admin/usuarios').then(xd),
     staleTime: 30_000,
+  });
+
+  // ── Cambiar rol de usuario ────────────────────────────────────────────────
+  const [rolModal,    setRolModal]    = useState<any>(null);
+  const [nuevoRol,    setNuevoRol]    = useState('');
+  const cambiarRolMut = useMutation({
+    mutationFn: ({ id, rol }: { id: number; rol: string }) =>
+      api.patch(`/admin/usuarios/${id}/rol`, { rol }).then(xd),
+    onSuccess: (res: any) => {
+      qc.invalidateQueries({ queryKey: ['sa-usuarios'] });
+      message.success(res?.mensaje ?? 'Rol actualizado');
+      setRolModal(null);
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al cambiar rol'),
   });
 
   // Configs e-CF — misma key que EcfConfigTab → cache compartida, sin doble request
@@ -840,6 +854,15 @@ export default function SuperAdminPage() {
     },
     { title: 'Registro', dataIndex: 'registro', key: 'reg', width: 110,
       render: (v: string) => <span style={{ color: C.txt2, fontSize: 12 }}>{fmtFecha(v)}</span>,
+    },
+    {
+      title: '', key: 'acciones', width: 80, align: 'center' as const,
+      render: (_: any, r: any) => (
+        <Button size="small" icon={<span>⚙</span>}
+          onClick={() => { setRolModal(r); setNuevoRol(r.role ?? ''); }}>
+          Rol
+        </Button>
+      ),
     },
   ];
 
@@ -1581,6 +1604,51 @@ export default function SuperAdminPage() {
             <Input.TextArea rows={4} placeholder="Escribe el mensaje para esta empresa..." />
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* ── Modal cambiar rol ─────────────────────────────────────────────── */}
+      <Modal
+        open={!!rolModal}
+        title={`⚙ Cambiar rol — ${rolModal?.nombre ?? ''}`}
+        onCancel={() => setRolModal(null)}
+        onOk={() => rolModal && cambiarRolMut.mutate({ id: rolModal.id, rol: nuevoRol })}
+        okText="Guardar cambio"
+        okButtonProps={{ loading: cambiarRolMut.isPending, disabled: nuevoRol === rolModal?.role }}
+        cancelText="Cancelar"
+      >
+        {rolModal && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '8px 0' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ color: '#6b7280', fontSize: 13 }}>Rol actual:</span>
+              <span style={{
+                background: rolModal.role === 'super_admin' ? '#fef3c7' : '#eff6ff',
+                color:      rolModal.role === 'super_admin' ? '#d97706' : '#1d4ed8',
+                border:     `1px solid ${rolModal.role === 'super_admin' ? '#fde68a' : '#bfdbfe'}`,
+                borderRadius: 6, padding: '2px 10px', fontSize: 12, fontWeight: 700,
+                textTransform: 'uppercase',
+              }}>
+                {rolModal.role === 'super_admin' ? '★ SUPER ADMIN' : rolModal.role}
+              </span>
+            </div>
+            <div>
+              <div style={{ fontSize: 13, color: '#374151', marginBottom: 6, fontWeight: 500 }}>Nuevo rol *</div>
+              <Select value={nuevoRol} onChange={setNuevoRol} style={{ width: '100%' }}
+                options={[
+                  { value: 'viewer',      label: 'Viewer — Solo lectura' },
+                  { value: 'vendedor',    label: 'Vendedor — POS y ventas' },
+                  { value: 'contador',    label: 'Contador — Contabilidad y reportes' },
+                  { value: 'admin',       label: 'Admin — Administrador completo' },
+                  { value: 'super_admin', label: '★ Super Admin — Control total' },
+                ]}
+              />
+            </div>
+            {nuevoRol === 'super_admin' && (
+              <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#92400e' }}>
+                ⚠️ Super Admin tiene acceso total al sistema y a todas las empresas.
+              </div>
+            )}
+          </div>
+        )}
       </Modal>
 
     </div>
