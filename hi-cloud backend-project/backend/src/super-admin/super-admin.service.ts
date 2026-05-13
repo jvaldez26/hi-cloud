@@ -1,8 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable, NotFoundException, BadRequestException,
+  ForbiddenException, Logger,
+} from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
 @Injectable()
 export class SuperAdminService {
+  private readonly logger = new Logger(SuperAdminService.name);
   constructor(private ds: DataSource) {}
 
   // ── Empresas ──────────────────────────────────────────────────────────────
@@ -156,6 +160,47 @@ export class SuperAdminService {
       // Si la tabla no tiene esa estructura, solo logueamos
     });
     return { ok: true, mensaje: 'Mensaje registrado correctamente' };
+  }
+
+  async eliminarUsuario(userId: number, superAdminId: number) {
+    if (userId === superAdminId) {
+      throw new BadRequestException('No puedes eliminar tu propia cuenta');
+    }
+
+    const rows = await this.ds.query<any[]>(
+      'SELECT id, nombre, email, role, "isActive" FROM users WHERE id = $1',
+      [userId],
+    );
+    if (!rows[0]) throw new NotFoundException(`Usuario #${userId} no encontrado`);
+
+    const u = rows[0];
+    if (u.role === 'super_admin') {
+      throw new ForbiddenException('No puedes eliminar a otro Super Admin');
+    }
+    if (!u.isActive) {
+      throw new BadRequestException('El usuario ya está desactivado');
+    }
+
+    // Soft delete: desactivar + liberar email (único en BD)
+    const emailLiberado = `deleted_${Date.now()}_${u.email}`;
+    await this.ds.query(
+      `UPDATE users
+         SET "isActive" = false,
+             email       = $1,
+             "updatedAt" = NOW()
+       WHERE id = $2`,
+      [emailLiberado, userId],
+    );
+
+    this.logger.warn(
+      `Usuario #${userId} (${u.email}) eliminado por super_admin #${superAdminId}`,
+    );
+
+    return {
+      ok:      true,
+      mensaje: `Usuario ${u.nombre} (${u.email}) eliminado correctamente`,
+      usuario: { id: userId, nombre: u.nombre, email: u.email },
+    };
   }
 
   async cambiarRolUsuario(userId: number, nuevoRol: string, solicitanteId: number) {

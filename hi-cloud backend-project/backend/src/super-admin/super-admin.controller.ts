@@ -121,6 +121,16 @@ export class SuperAdminController {
     return this.svc.cambiarRolUsuario(id, dto.rol, solicitante.id);
   }
 
+  @Delete('usuarios/:id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Eliminar usuario (soft delete — desactiva e-mail liberado)' })
+  eliminarUsuario(
+    @Param('id', ParseIntPipe) id: number,
+    @GetUser() superAdmin: User,
+  ) {
+    return this.svc.eliminarUsuario(id, superAdmin.id);
+  }
+
   @Get('suscripciones')
   @ApiOperation({ summary: 'Gestión de suscripciones y planes' })
   listarSuscripciones() { return this.svc.listarSuscripciones(); }

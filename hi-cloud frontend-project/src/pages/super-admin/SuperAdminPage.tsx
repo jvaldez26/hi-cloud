@@ -606,6 +606,18 @@ export default function SuperAdminPage() {
     staleTime: 30_000,
   });
 
+  // ── Eliminar usuario ─────────────────────────────────────────────────────
+  const [eliminarModal,    setEliminarModal]    = useState<any>(null);
+  const eliminarUsuarioMut = useMutation({
+    mutationFn: (id: number) => api.delete(`/admin/usuarios/${id}`).then(xd),
+    onSuccess: (res: any) => {
+      qc.invalidateQueries({ queryKey: ['sa-usuarios'] });
+      message.success(res?.mensaje ?? 'Usuario eliminado');
+      setEliminarModal(null);
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al eliminar usuario'),
+  });
+
   // ── Cambiar rol de usuario ────────────────────────────────────────────────
   const [rolModal,    setRolModal]    = useState<any>(null);
   const [nuevoRol,    setNuevoRol]    = useState('');
@@ -886,6 +898,39 @@ export default function SuperAdminPage() {
     },
     { title: 'Registro', dataIndex: 'registro', key: 'reg', width: 110,
       render: (v: string) => <span style={{ color: C.txt2, fontSize: 12 }}>{fmtFecha(v)}</span>,
+    },
+    {
+      title: '', key: 'eliminar', width: 50, align: 'center' as const,
+      render: (_: any, r: any) => {
+        const esSuperAdmin  = r.role === 'super_admin';
+        const esPropiaCtaId = r.id === user?.id;
+        const deshabilitado = esSuperAdmin || esPropiaCtaId;
+
+        return (
+          <button
+            title={
+              esSuperAdmin  ? 'No se puede eliminar a otro Super Admin' :
+              esPropiaCtaId ? 'No puedes eliminar tu propia cuenta'     :
+              'Eliminar usuario'
+            }
+            disabled={deshabilitado}
+            onClick={() => !deshabilitado && setEliminarModal(r)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: deshabilitado ? 'not-allowed' : 'pointer',
+              color: C.red,
+              opacity: deshabilitado ? 0.25 : 1,
+              padding: '4px 6px',
+              borderRadius: 6,
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
+            <Trash2 size={14} strokeWidth={2} />
+          </button>
+        );
+      },
     },
   ];
 
@@ -1670,6 +1715,47 @@ export default function SuperAdminPage() {
                 ⚠️ Super Admin tiene acceso total al sistema y a todas las empresas.
               </div>
             )}
+          </div>
+        )}
+      </Modal>
+
+      {/* ── Modal eliminar usuario ────────────────────────────────────────── */}
+      <Modal
+        title={<span style={{ color: '#EF4444' }}>⚠️ Eliminar usuario</span>}
+        open={!!eliminarModal}
+        onCancel={() => setEliminarModal(null)}
+        onOk={() => eliminarModal && eliminarUsuarioMut.mutate(eliminarModal.id)}
+        okText="Sí, eliminar"
+        okButtonProps={{ danger: true, loading: eliminarUsuarioMut.isPending }}
+        cancelText="Cancelar"
+        width={460}
+      >
+        {eliminarModal && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '8px 0' }}>
+            <div style={{
+              background: 'rgba(239,68,68,.08)',
+              border: '1px solid rgba(239,68,68,.3)',
+              borderRadius: 8,
+              padding: '10px 14px',
+              fontSize: 13,
+              color: '#EF4444',
+              fontWeight: 600,
+            }}>
+              Esta acción no se puede deshacer
+            </div>
+            <div style={{ fontSize: 13, color: '#94A3B8' }}>
+              ¿Estás seguro que deseas eliminar al usuario:
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#F8FAFC' }}>
+              {eliminarModal.nombre}
+              <span style={{ fontWeight: 400, color: '#94A3B8', marginLeft: 6 }}>
+                ({eliminarModal.email})
+              </span>
+            </div>
+            <div style={{ fontSize: 12, color: '#64748B' }}>
+              El usuario perderá acceso inmediatamente. Sus datos, facturas
+              y registros históricos se mantendrán en el sistema.
+            </div>
           </div>
         )}
       </Modal>
