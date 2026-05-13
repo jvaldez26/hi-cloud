@@ -104,6 +104,12 @@ export class FacturasService {
     // Si es moneda extranjera, totalOriginal = monto en esa moneda; total = DOP
     const totalOriginal = moneda !== 'DOP' ? +(totalDOP / tipoCambio).toFixed(2) : undefined;
 
+    const tipoPago   = dto.tipoPago?.toUpperCase() === 'CREDITO' ? 'CREDITO' : 'CONTADO';
+    const diasCred   = tipoPago === 'CREDITO' ? (dto.diasCredito ?? 30) : 0;
+    const fechaVenc  = tipoPago === 'CREDITO'
+      ? (() => { const d = new Date(); d.setDate(d.getDate() + diasCred); return d; })()
+      : undefined;
+
     const factura = this.facturaRepository.create({
       folio,
       fecha: new Date(dto.fecha),
@@ -121,9 +127,12 @@ export class FacturasService {
       subtotal: subtotalFactura,
       iva:      ivaFactura,
       total:    totalDOP,
+      tipoPago,
+      diasCredito:     diasCred,
+      fechaVencimiento: fechaVenc,
     });
 
-    const savedFactura = await this.facturaRepository.save(factura);
+    const savedFactura = await this.facturaRepository.save(factura as any) as Factura;
 
     const savedDetalles = this.detalleRepository.create(
       detalles.map((d) => ({ ...d, facturaId: savedFactura.id })),
@@ -363,9 +372,18 @@ export class FacturasService {
         );
       }
 
-      // 2. CxC — solo si el pago NO es inmediato (efectivo/tarjeta/transferencia/cheque)
-      if (!pagoInmediato) {
-        await this.cxcService.crear(factura.id, factura.usuarioId);
+      // 2. CxC — solo si es crédito explícito O si es pago NO inmediato (compatibilidad)
+      const esCredito = (factura as any).tipoPago === 'CREDITO';
+      const diasCred  = Number((factura as any).diasCredito ?? 0);
+      if (esCredito || (!pagoInmediato && !esCredito)) {
+        const dias = esCredito && diasCred > 0 ? diasCred : 30;
+        await this.cxcService.crear(factura.id, factura.usuarioId, dias);
+        // Guardar fechaVencimiento en la factura si es crédito explícito
+        if (esCredito && diasCred > 0) {
+          const fv = new Date();
+          fv.setDate(fv.getDate() + dias);
+          await this.facturaRepository.update(factura.id, { fechaVencimiento: fv } as any);
+        }
       }
 
       // 3. Asiento contable

@@ -88,4 +88,13 @@ export class CreateFacturaDto {
   @IsOptional()
   @IsNumber()
   totalOriginal?: number;
+
+  @IsOptional()
+  @IsString()
+  tipoPago?: string;     // 'CONTADO' | 'CREDITO'
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  diasCredito?: number;
 }

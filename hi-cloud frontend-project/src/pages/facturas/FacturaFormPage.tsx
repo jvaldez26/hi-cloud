@@ -36,7 +36,9 @@ export default function FacturaFormPage() {
   const [lineas,   setLineas]   = useState<LineaForm[]>([
     { key: '1', cantidad: 1, precioUnitario: 0, porcentajeIva: 18 },
   ]);
-  const [tipoNcf,  setTipoNcf]  = useState('E32');
+  const [tipoNcf,     setTipoNcf]     = useState('E32');
+  const [tipoPago,    setTipoPago]    = useState<'CONTADO' | 'CREDITO'>('CONTADO');
+  const [diasCredito, setDiasCredito] = useState(30);
   const [clienteSeleccionado, setClienteSeleccionado] = useState<Cliente | null>(null);
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -77,6 +79,8 @@ export default function FacturaFormPage() {
   const onClienteChange = (clienteId: number) => {
     const cli = clientes?.data.find((c: Cliente) => c.id === clienteId) ?? null;
     setClienteSeleccionado(cli);
+    // Auto-poblar días de crédito desde el cliente (si tiene) o default empresa
+    if ((cli as any)?.diasCredito > 0) setDiasCredito((cli as any).diasCredito);
 
     const tipoMapa: Record<string, string> = {
       persona_juridica: 'E31',
@@ -129,7 +133,9 @@ export default function FacturaFormPage() {
       nombreVendedor:  vendedor?.nombre,
       moneda:          values.moneda ?? 'DOP',
       tipoCambio:      values.tipoCambio ?? 1,
-    });
+      tipoPago,
+      diasCredito:     tipoPago === 'CREDITO' ? diasCredito : 0,
+    } as any);
   };
 
   const tipoInfo = TIPOS_NCF.find(t => t.codigo === tipoNcf);
@@ -319,6 +325,43 @@ export default function FacturaFormPage() {
               </Form.Item>
             </Col>
           </Row>
+          {/* ── Forma de pago ─────────────────────────────────────────── */}
+          <Row gutter={16} style={{ marginBottom: 4 }}>
+            <Col span={8}>
+              <Form.Item label="Forma de pago">
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {(['CONTADO', 'CREDITO'] as const).map(tp => (
+                    <button key={tp} type="button" onClick={() => setTipoPago(tp)}
+                      style={{
+                        flex: 1, height: 32, borderRadius: 6, cursor: 'pointer',
+                        border: tipoPago === tp ? '1.5px solid #1677ff' : '1px solid #d9d9d9',
+                        background: tipoPago === tp ? '#e6f4ff' : '#fff',
+                        color: tipoPago === tp ? '#1677ff' : '#555',
+                        fontWeight: tipoPago === tp ? 700 : 400, fontSize: 13,
+                      }}>
+                      {tp === 'CONTADO' ? '💵 Contado' : '📋 Crédito'}
+                    </button>
+                  ))}
+                </div>
+              </Form.Item>
+            </Col>
+            {tipoPago === 'CREDITO' && (
+              <Col span={8}>
+                <Form.Item label="Días de crédito">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <InputNumber min={1} max={365} value={diasCredito}
+                      onChange={v => setDiasCredito(Number(v ?? 30))}
+                      style={{ width: 90 }} />
+                    <Text type="secondary" style={{ fontSize: 12 }}>días</Text>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      · Vence: {dayjs().add(diasCredito, 'day').format('DD/MM/YYYY')}
+                    </Text>
+                  </div>
+                </Form.Item>
+              </Col>
+            )}
+          </Row>
+
           <Row gutter={16}>
             <Col span={8}>
               <Form.Item name="moneda" label="Moneda" initialValue="DOP">

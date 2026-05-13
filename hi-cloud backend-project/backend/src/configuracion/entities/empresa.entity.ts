@@ -117,4 +117,14 @@ export class Empresa extends BaseEntity {
   /** JSONB libre para branding, facturación, POS, notificaciones, seguridad */
   @Column({ type: 'jsonb', nullable: true, default: {} })
   configuracion?: Record<string, unknown>;
+
+  // ── Crédito ───────────────────────────────────────────────────────────────
+  @Column({ type: 'int', default: 30 })
+  diasCreditoDefault!: number;
+
+  @Column({ type: 'decimal', precision: 14, scale: 2, default: 0 })
+  limiteCreditoDefault!: number;
+
+  @Column({ default: true })
+  creditoHabilitado!: boolean;
 }

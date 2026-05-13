@@ -78,4 +78,14 @@ export class Factura extends TenantBaseEntity {
 
   @Column({ type: 'text', nullable: true })
   notas?: string;
+
+  // ── Crédito ───────────────────────────────────────────────────────────────
+  @Column({ length: 10, default: 'CONTADO' })
+  tipoPago!: string;             // 'CONTADO' | 'CREDITO'
+
+  @Column({ type: 'int', default: 0 })
+  diasCredito!: number;
+
+  @Column({ type: 'date', nullable: true })
+  fechaVencimiento?: Date;
 }
