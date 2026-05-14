@@ -268,8 +268,9 @@ export default function App() {
                     <Route path="/productos"                    element={<ProductosPage />} />
 
                     {/* ── Ventas ── */}
-                    <Route path="/cotizaciones"       element={<CotizacionesPage />} />
-                    <Route path="/cotizaciones/nueva" element={<CotizacionFormPage />} />
+                    <Route path="/cotizaciones"              element={<CotizacionesPage />} />
+                    <Route path="/cotizaciones/nueva"        element={<CotizacionFormPage />} />
+                    <Route path="/cotizaciones/:id/editar"   element={<CotizacionFormPage />} />
                     <Route path="/facturas"                    element={<FacturasPage />} />
                     <Route path="/facturas/nueva"            element={<FacturaFormPage />} />
                     <Route path="/facturas/:id"              element={<FacturaDetailPage />} />

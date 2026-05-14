@@ -400,6 +400,58 @@ export class CotizacionesService {
     });
   }
 
+  async actualizar(id: number, dto: Partial<CreateCotizacionDto>, usuario: User) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const cot = await this.cotizacionRepository.findOne({
+      where: { id, empresaId, isActive: true },
+      relations: ['detalles'],
+    });
+    if (!cot) throw new NotFoundException(`Cotización #${id} no encontrada`);
+    if (cot.estado !== CotizacionEstado.BORRADOR) {
+      throw new BadRequestException('Solo se pueden editar cotizaciones en BORRADOR');
+    }
+
+    // Recalcular totales si vienen detalles nuevos
+    if (dto.detalles?.length) {
+      let subtotal = 0, iva = 0;
+      const detallesNuevos: Partial<CotizacionDetalle>[] = dto.detalles.map(item => {
+        const pIva   = item.porcentajeIva ?? 18;
+        const sub    = Number(item.precioUnitario) * item.cantidad;
+        const impIva = Number((sub * pIva / 100).toFixed(2));
+        subtotal += sub; iva += impIva;
+        return { productoId: item.productoId, descripcion: item.descripcion,
+          precioUnitario: item.precioUnitario, cantidad: item.cantidad,
+          porcentajeIva: pIva, subtotal: sub, importeIva: impIva, total: sub + impIva };
+      });
+
+      await this.detalleRepository.delete({ cotizacionId: id });
+      await this.detalleRepository.save(
+        detallesNuevos.map(d => ({ ...d, cotizacionId: id })) as any,
+      );
+      await this.cotizacionRepository.update(id, {
+        clienteId:    dto.clienteId    ?? cot.clienteId,
+        subtotal:     Number(subtotal.toFixed(2)),
+        iva:          Number(iva.toFixed(2)),
+        total:        Number((subtotal + iva).toFixed(2)),
+        notas:        dto.notas        ?? cot.notas,
+        condicionesPago: dto.condicionesPago ?? cot.condicionesPago,
+        ...(dto.fecha ? { fecha: new Date(dto.fecha), fechaVencimiento: (() => {
+          const d = new Date(dto.fecha); d.setDate(d.getDate() + (dto.validezDias ?? 30)); return d;
+        })() } : {}),
+      } as any);
+    } else {
+      await this.cotizacionRepository.update(id, {
+        clienteId:    dto.clienteId    ?? cot.clienteId,
+        notas:        dto.notas        ?? cot.notas,
+        condicionesPago: dto.condicionesPago ?? cot.condicionesPago,
+        ...(dto.fecha ? { fecha: new Date(dto.fecha) } : {}),
+      } as any);
+    }
+
+    this.realtimeService.notify(empresaId, 'cotizacion', 'updated', id);
+    return this.cotizacionRepository.findOne({ where: { id }, relations: ['cliente', 'detalles'] });
+  }
+
   @Cron('5 0 * * *')
   async marcarVencidas() {
     const res = await this.cotizacionRepository.update(

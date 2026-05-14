@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Form, Input, Button, Card, Row, Col, Typography, Select,
-         DatePicker, Table, InputNumber, Space, Divider, message, Tag } from 'antd';
+         DatePicker, Table, InputNumber, Space, Divider, message, Tag, Spin } from 'antd';
 import { PlusOutlined, DeleteOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { cotizacionesApi, type CotizacionDetallePayload } from '../../api/cotizaciones.api';
 import { clientesApi } from '../../api/clientes.api';
 import { productosApi } from '../../api/productos.api';
@@ -19,6 +19,8 @@ interface Linea {
 }
 
 export default function CotizacionFormPage() {
+  const { id }   = useParams<{ id?: string }>();
+  const esEditar = !!id;
   const [form]   = Form.useForm();
   const [lineas, setLineas] = useState<Linea[]>([
     { key: '1', cantidad: 1, precioUnitario: 0, porcentajeIva: 18 },
@@ -30,6 +32,33 @@ export default function CotizacionFormPage() {
   const { data: productos } = useQuery({ queryKey: ['productos-sel'], queryFn: () => productosApi.list(1, 200) });
   const { data: vendedores = [] } = useQuery<any[]>({ queryKey: ['vendedores-sel'], queryFn: () => api.get('/vendedores').then((r: any) => r.data?.data?.data ?? r.data?.data ?? []) });
 
+  // Cargar datos existentes al editar
+  const { data: cotExistente, isLoading: loadingCot } = useQuery({
+    queryKey: ['cotizacion-edit', id],
+    queryFn:  () => cotizacionesApi.getOne(Number(id)),
+    enabled:  esEditar,
+  });
+
+  useEffect(() => {
+    if (cotExistente && esEditar) {
+      form.setFieldsValue({
+        clienteId:       cotExistente.clienteId,
+        fecha:           dayjs(cotExistente.fecha),
+        validezDias:     cotExistente.validezDias ?? 30,
+        condicionesPago: cotExistente.condicionesPago,
+        notas:           cotExistente.notas,
+        vendedorId:      cotExistente.vendedorId,
+      });
+      if (cotExistente.detalles?.length) {
+        setLineas(cotExistente.detalles.map((d: any, i: number) => ({
+          key: String(i + 1), productoId: d.productoId, descripcion: d.descripcion,
+          cantidad: Number(d.cantidad), precioUnitario: Number(d.precioUnitario),
+          porcentajeIva: Number(d.porcentajeIva),
+        })));
+      }
+    }
+  }, [cotExistente, esEditar, form]);
+
   const createMut = useMutation({
     mutationFn: cotizacionesApi.create,
     onSuccess: () => {
@@ -38,6 +67,17 @@ export default function CotizacionFormPage() {
       navigate('/cotizaciones');
     },
     onError: (e: any) => message.error(e?.response?.data?.errors?.[0] ?? 'Error al crear'),
+  });
+
+  const updateMut = useMutation({
+    mutationFn: (dto: any) => api.patch(`/cotizaciones/${id}`, dto).then((r: any) => r.data?.data ?? r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cotizaciones'] });
+      qc.invalidateQueries({ queryKey: ['cotizacion-edit', id] });
+      message.success('Cotización actualizada');
+      navigate('/cotizaciones');
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error al actualizar'),
   });
 
   const subtotal = lineas.reduce((s, l) => s + l.precioUnitario * l.cantidad, 0);
@@ -58,7 +98,7 @@ export default function CotizacionFormPage() {
       productoId: l.productoId, descripcion: l.descripcion!,
       cantidad: l.cantidad, precioUnitario: l.precioUnitario, porcentajeIva: l.porcentajeIva,
     }));
-    createMut.mutate({
+    const payload = {
       clienteId:       values.clienteId,
       fecha:           values.fecha.format('YYYY-MM-DD'),
       validezDias:     values.validezDias ?? 30,
@@ -67,8 +107,15 @@ export default function CotizacionFormPage() {
       vendedorId:      values.vendedorId,
       nombreVendedor:  vendedor?.nombre,
       detalles,
-    });
+    };
+    if (esEditar) {
+      updateMut.mutate(payload);
+    } else {
+      createMut.mutate(payload);
+    }
   };
+
+  if (esEditar && loadingCot) return <Spin style={{ display: 'block', margin: '80px auto' }} />;
 
   const lineaCols = [
     { title: 'Producto', key: 'prod', width: 200,
@@ -113,7 +160,7 @@ export default function CotizacionFormPage() {
         <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/cotizaciones')}>
           Volver
         </Button>
-        <Title level={4} style={{ margin: '0 0 0 8px' }}>Nueva Cotización</Title>
+        <Title level={4} style={{ margin: '0 0 0 8px' }}>{esEditar ? 'Editar Cotización' : 'Nueva Cotización'}</Title>
         <Tag color="blue" style={{ marginLeft: 8 }}>Válida por 30 días por defecto</Tag>
       </Row>
 
@@ -186,8 +233,9 @@ export default function CotizacionFormPage() {
                   <span style={{ fontSize: 16 }}>Total cotización:</span>
                   <strong style={{ fontSize: 18, color: '#1677ff' }}>{fmt.money(total)}</strong>
                 </Row>
-                <Button type="primary" htmlType="submit" block size="large" loading={createMut.isPending}>
-                  Crear Cotización
+                <Button type="primary" htmlType="submit" block size="large"
+                  loading={createMut.isPending || updateMut.isPending}>
+                  {esEditar ? 'Guardar cambios' : 'Crear Cotización'}
                 </Button>
               </Space>
             </Col>

@@ -3,7 +3,8 @@ import { Table, Button, Tag, Card, Row, Col, Typography, Statistic,
          Space, Popconfirm, message, Dropdown, Drawer, Descriptions,
          Modal, Input, Form, Tooltip } from 'antd';
 import { PlusOutlined, EyeOutlined, DownOutlined,
-         SwapOutlined, WarningOutlined, MailOutlined, FileExcelOutlined, FilePdfOutlined, CopyOutlined } from '@ant-design/icons';
+         SwapOutlined, WarningOutlined, MailOutlined, FileExcelOutlined, FilePdfOutlined, CopyOutlined,
+         EditOutlined } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import api from '../../api/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -143,6 +144,12 @@ export default function CotizacionesPage() {
         return (
           <Space size={4}>
             <Button size="small" icon={<EyeOutlined />} onClick={() => { setDetail(r); setDetailId(r.id); }}>Ver</Button>
+            {estado === 'borrador' && (
+              <Tooltip title="Editar cotización">
+                <Button size="small" icon={<EditOutlined />}
+                  onClick={() => navigate(`/cotizaciones/${r.id}/editar`)} />
+              </Tooltip>
+            )}
             <Tooltip title="Descargar PDF">
               <Button size="small" icon={<FilePdfOutlined />}
                 onClick={() => cotizacionesApi.pdf(r.id, r.numero).catch((e: any) => message.error('Error al generar PDF: ' + e.message))}

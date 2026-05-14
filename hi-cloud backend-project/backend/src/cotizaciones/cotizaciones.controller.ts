@@ -55,6 +55,18 @@ export class CotizacionesController {
     return this.cotizacionesService.findById(id);
   }
 
+  @Patch(':id')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Editar cotización en BORRADOR (cliente, detalles, notas, fecha)' })
+  actualizar(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: Partial<CreateCotizacionDto>,
+    @GetUser() usuario: User,
+  ) {
+    return this.cotizacionesService.actualizar(id, dto, usuario);
+  }
+
   @Patch(':id/estado')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Cambiar estado (borrador→enviada→aceptada/rechazada)' })
