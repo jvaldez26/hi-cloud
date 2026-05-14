@@ -294,3 +294,40 @@ h1, h2, h3, h4, h5, h6,
     max-width: 100%;
   }
 }
+
+/* ── Prevenir scroll horizontal global ────────────────────────────────────────── */
+html, body, #root {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+/* ── Padding de contenido reducido en mobile ──────────────────────────────────── */
+@media (max-width: 768px) {
+  #main-content {
+    padding: 12px !important;
+  }
+}
+
+/* ── Cards AntD — ancho completo en mobile ────────────────────────────────────── */
+@media (max-width: 768px) {
+  .ant-card {
+    border-radius: 8px !important;
+  }
+  /* Tabs: scroll horizontal cuando hay muchas pestañas */
+  .ant-tabs-nav {
+    overflow-x: auto;
+  }
+  .ant-tabs-nav-list {
+    flex-wrap: nowrap;
+  }
+}
+
+/* ── Estadísticas AntD: texto más pequeño en mobile ──────────────────────────── */
+@media (max-width: 480px) {
+  .ant-statistic-content-value {
+    font-size: 18px !important;
+  }
+  .ant-statistic-title {
+    font-size: 11px !important;
+  }
+}

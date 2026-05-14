@@ -16,5 +16,6 @@ export function useMediaQuery(query: string): boolean {
   return matches;
 }
 
-export const useMobile  = () => useMediaQuery('(max-width: 768px)');
-export const useTablet  = () => useMediaQuery('(max-width: 1024px)');
+export const useMobile    = () => useMediaQuery('(max-width: 768px)');
+export const useTablet    = () => useMediaQuery('(max-width: 1024px)');
+export const useIsDesktop = () => useMediaQuery('(min-width: 1025px)');
