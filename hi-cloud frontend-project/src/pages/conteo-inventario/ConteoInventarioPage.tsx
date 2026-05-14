@@ -287,8 +287,8 @@ export default function ConteoInventarioPage() {
             <Input placeholder="Conteo mensual Mayo 2026" />
           </Form.Item>
           <Row gutter={12}>
-            <Col span={12}><Form.Item name="fecha" label="Fecha del Conteo" rules={[{ required: true }]}><Input type="date" /></Form.Item></Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}><Form.Item name="fecha" label="Fecha del Conteo" rules={[{ required: true }]}><Input type="date" /></Form.Item></Col>
+            <Col xs={24} sm={12}>
               <Form.Item name="categoria" label="Filtrar por Categoría (opcional)">
                 <Input placeholder="Ej. Electrónica" />
               </Form.Item>

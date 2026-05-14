@@ -200,12 +200,12 @@ export default function AprobacionesPage() {
             </Select>
           </Form.Item>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="entidadId" label="ID del documento" rules={[{ required: true }]}>
                 <Input type="number" placeholder="Ej. 42" />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="entidadRef" label="Referencia / Folio">
                 <Input placeholder="Ej. COT-2026-0001" />
               </Form.Item>

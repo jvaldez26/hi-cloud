@@ -383,14 +383,14 @@ export default function CRMPage() {
       <Modal title="Nuevo Lead" open={leadModal} onCancel={() => setLeadModal(false)} footer={null} width={560}>
         <Form form={formLead} layout="vertical" onFinish={v => crearLeadMut.mutate(v)}>
           <Row gutter={12}>
-            <Col span={12}><Form.Item name="nombre"  label="Nombre" rules={[{ required: true }]}><Input /></Form.Item></Col>
-            <Col span={12}><Form.Item name="empresa" label="Empresa"><Input /></Form.Item></Col>
-            <Col span={12}><Form.Item name="email"   label="Email"><Input /></Form.Item></Col>
-            <Col span={12}><Form.Item name="telefono" label="Teléfono"><Input /></Form.Item></Col>
-            <Col span={12}><Form.Item name="fuente"  label="Fuente">
+            <Col xs={24} sm={12}><Form.Item name="nombre"  label="Nombre" rules={[{ required: true }]}><Input /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="empresa" label="Empresa"><Input /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="email"   label="Email"><Input /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="telefono" label="Teléfono"><Input /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="fuente"  label="Fuente">
               <Select options={FUENTES} defaultValue="web" />
             </Form.Item></Col>
-            <Col span={12}><Form.Item name="valorEstimado" label="Valor estimado (RD$)">
+            <Col xs={24} sm={12}><Form.Item name="valorEstimado" label="Valor estimado (RD$)">
               <InputNumber style={{ width: '100%' }} min={0} precision={2} />
             </Form.Item></Col>
             <Col span={24}><Form.Item name="notas" label="Notas"><Input.TextArea rows={2} /></Form.Item></Col>
@@ -412,18 +412,18 @@ export default function CRMPage() {
           })}>
           <Row gutter={12}>
             <Col span={24}><Form.Item name="titulo"  label="Título" rules={[{ required: true }]}><Input /></Form.Item></Col>
-            <Col span={12}><Form.Item name="empresa" label="Empresa"><Input /></Form.Item></Col>
-            <Col span={12}><Form.Item name="etapa"   label="Etapa">
+            <Col xs={24} sm={12}><Form.Item name="empresa" label="Empresa"><Input /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="etapa"   label="Etapa">
               <Select options={ETAPAS.filter(e => !['ganado','perdido'].includes(e.value))
                 .map(e => ({ value: e.value, label: e.label }))} />
             </Form.Item></Col>
-            <Col span={10}><Form.Item name="valor" label="Valor (RD$)">
+            <Col xs={24} sm={10}><Form.Item name="valor" label="Valor (RD$)">
               <InputNumber style={{ width: '100%' }} min={0} precision={2} />
             </Form.Item></Col>
-            <Col span={7}><Form.Item name="probabilidad" label="Prob. (%)">
+            <Col xs={24} sm={7}><Form.Item name="probabilidad" label="Prob. (%)">
               <InputNumber style={{ width: '100%' }} min={0} max={100} />
             </Form.Item></Col>
-            <Col span={7}><Form.Item name="fechaCierre" label="Cierre estimado">
+            <Col xs={24} sm={7}><Form.Item name="fechaCierre" label="Cierre estimado">
               <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
             </Form.Item></Col>
             <Col span={24}><Form.Item name="descripcion" label="Descripción">
@@ -488,14 +488,14 @@ export default function CRMPage() {
             onFinish={v => actLeadMut.mutate({ id: editLead.id, data: v })}>
             <Row gutter={12}>
               <Col span={24}><Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input /></Form.Item></Col>
-              <Col span={12}><Form.Item name="empresa" label="Empresa"><Input /></Form.Item></Col>
-              <Col span={12}><Form.Item name="estado" label="Estado">
+              <Col xs={24} sm={12}><Form.Item name="empresa" label="Empresa"><Input /></Form.Item></Col>
+              <Col xs={24} sm={12}><Form.Item name="estado" label="Estado">
                 <Select options={ESTADOS_LEAD.map(e => ({ value: e.value, label: e.label }))} />
               </Form.Item></Col>
-              <Col span={12}><Form.Item name="email" label="Email"><Input /></Form.Item></Col>
-              <Col span={12}><Form.Item name="telefono" label="Teléfono"><Input /></Form.Item></Col>
-              <Col span={12}><Form.Item name="fuente" label="Fuente"><Select options={FUENTES} /></Form.Item></Col>
-              <Col span={12}><Form.Item name="valorEstimado" label="Valor (RD$)">
+              <Col xs={24} sm={12}><Form.Item name="email" label="Email"><Input /></Form.Item></Col>
+              <Col xs={24} sm={12}><Form.Item name="telefono" label="Teléfono"><Input /></Form.Item></Col>
+              <Col xs={24} sm={12}><Form.Item name="fuente" label="Fuente"><Select options={FUENTES} /></Form.Item></Col>
+              <Col xs={24} sm={12}><Form.Item name="valorEstimado" label="Valor (RD$)">
                 <InputNumber style={{ width: '100%' }} min={0} precision={2} />
               </Form.Item></Col>
               <Col span={24}><Form.Item name="notas" label="Notas"><Input.TextArea rows={2} /></Form.Item></Col>
@@ -519,8 +519,8 @@ export default function CRMPage() {
             oportunidadId: actModal?.oportId,
           })}>
           <Row gutter={8}>
-            <Col span={10}><Form.Item name="tipo" label="Tipo"><Select options={TIPO_ACT} /></Form.Item></Col>
-            <Col span={14}><Form.Item name="fecha" label="Fecha">
+            <Col xs={24} sm={10}><Form.Item name="tipo" label="Tipo"><Select options={TIPO_ACT} /></Form.Item></Col>
+            <Col xs={24} sm={14}><Form.Item name="fecha" label="Fecha">
               <DatePicker showTime style={{ width: '100%' }} format="DD/MM/YYYY HH:mm" />
             </Form.Item></Col>
             <Col span={24}><Form.Item name="descripcion" label="Descripción" rules={[{ required: true }]}>

@@ -319,15 +319,15 @@ export default function CxCPage() {
               {(pagoRow as any).factura?.folio ?? '—'}
             </Text>
             <Row gutter={8} style={{ marginTop: 10 }}>
-              <Col span={8}>
+              <Col xs={24} sm={8}>
                 <Text type="secondary" style={{ fontSize: 11 }}>Total</Text>
                 <div><Text style={{ fontSize: 13 }}>{fmt.money(pagoRow.montoOriginal)}</Text></div>
               </Col>
-              <Col span={8}>
+              <Col xs={24} sm={8}>
                 <Text type="secondary" style={{ fontSize: 11 }}>Cobrado</Text>
                 <div><Text style={{ fontSize: 13, color: '#059669' }}>{fmt.money(pagoRow.montoPagado)}</Text></div>
               </Col>
-              <Col span={8}>
+              <Col xs={24} sm={8}>
                 <Text type="secondary" style={{ fontSize: 11 }}>Pendiente</Text>
                 <div><Text strong style={{ fontSize: 13, color: '#dc2626' }}>{fmt.money(pagoRow.montoPendiente)}</Text></div>
               </Col>

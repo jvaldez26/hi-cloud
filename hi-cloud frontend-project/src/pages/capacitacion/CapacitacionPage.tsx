@@ -312,14 +312,14 @@ export default function CapacitacionPage() {
             <Input placeholder="Ej. Inducción de Nuevos Empleados" />
           </Form.Item>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="categoria" label="Categoría">
                 <Select placeholder="Categoría" allowClear>
                   {CATEGORIAS.map(c => <Option key={c} value={c}>{c}</Option>)}
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="modalidad" label="Modalidad" initialValue="presencial">
                 <Select>
                   <Option value="presencial">Presencial</Option>
@@ -330,12 +330,12 @@ export default function CapacitacionPage() {
             </Col>
           </Row>
           <Row gutter={12}>
-            <Col span={14}>
+            <Col xs={24} sm={14}>
               <Form.Item name="instructor" label="Instructor">
                 <Input placeholder="Nombre del instructor" />
               </Form.Item>
             </Col>
-            <Col span={10}>
+            <Col xs={24} sm={10}>
               <Form.Item name="duracionHoras" label="Duración (horas)" initialValue={1}>
                 <InputNumber min={1} style={{ width: '100%' }} addonAfter="h" />
               </Form.Item>
@@ -368,12 +368,12 @@ export default function CapacitacionPage() {
             </Select>
           </Form.Item>
           <Row gutter={12}>
-            <Col span={14}>
+            <Col xs={24} sm={14}>
               <Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}>
                 <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
               </Form.Item>
             </Col>
-            <Col span={10}>
+            <Col xs={24} sm={10}>
               <Form.Item name="hora" label="Hora">
                 <Input placeholder="08:00 AM" />
               </Form.Item>
@@ -383,7 +383,7 @@ export default function CapacitacionPage() {
             <Input placeholder="Sala de conferencias / https://meet.google.com/..." />
           </Form.Item>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="modalidad" label="Modalidad" initialValue="presencial">
                 <Select>
                   <Option value="presencial">Presencial</Option>
@@ -392,7 +392,7 @@ export default function CapacitacionPage() {
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="capacidadMaxima" label="Capacidad Máxima">
                 <InputNumber min={1} style={{ width: '100%' }} placeholder="Sin límite" />
               </Form.Item>

@@ -130,13 +130,13 @@ function UnidadesTab() {
       <Modal title="Nueva Unidad de Medida" open={open} onCancel={() => { setOpen(false); form.resetFields(); }} footer={null} width={460}>
         <Form form={form} layout="vertical" onFinish={(v) => crearMut.mutate(v)}>
           <Row gutter={12}>
-            <Col span={8}><Form.Item name="codigo" label="Código" rules={[{ required: true }]}><Input placeholder="KG" style={{ textTransform: 'uppercase' }} /></Form.Item></Col>
-            <Col span={16}><Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input placeholder="Kilogramo" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="simbolo" label="Símbolo"><Input placeholder="kg" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="tipo" label="Tipo" rules={[{ required: true }]}>
+            <Col xs={24} sm={8}><Form.Item name="codigo" label="Código" rules={[{ required: true }]}><Input placeholder="KG" style={{ textTransform: 'uppercase' }} /></Form.Item></Col>
+            <Col xs={24} sm={16}><Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input placeholder="Kilogramo" /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="simbolo" label="Símbolo"><Input placeholder="kg" /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="tipo" label="Tipo" rules={[{ required: true }]}>
               <Select options={Object.entries(TIPO_LABEL).map(([k, v]) => ({ value: k, label: v }))} />
             </Form.Item></Col>
-            <Col span={8}><Form.Item name="esBase" label="¿Es unidad base?" valuePropName="checked" initialValue={false}>
+            <Col xs={24} sm={8}><Form.Item name="esBase" label="¿Es unidad base?" valuePropName="checked" initialValue={false}>
               <Select options={[{ value: false, label: 'No' }, { value: true, label: 'Sí (base del tipo)' }]} />
             </Form.Item></Col>
           </Row>
@@ -256,15 +256,15 @@ function CalculadoraTab() {
               <InputNumber style={{ width: '100%' }} min={0} precision={4} placeholder="Ej: 5.5" onChange={() => setResultado(null)} />
             </Form.Item>
             <Row gutter={12} align="middle">
-              <Col span={10}>
+              <Col xs={24} sm={10}>
                 <Form.Item name="desdeId" label="Unidad de origen" rules={[{ required: true }]}>
                   <Select showSearch optionFilterProp="label" options={unidadOpts} onChange={() => setResultado(null)} />
                 </Form.Item>
               </Col>
-              <Col span={4} style={{ textAlign: 'center', paddingTop: 28 }}>
-                <SwapOutlined style={{ fontSize: 20, color: '#9E9E9E' }} />
+              <Col xs={12} sm={4} style={{ textAlign: 'center', paddingTop: 28 }}>
+                <SwapOutlined style={{ fontSize: 20, color: '#9E9E9E' }}  />
               </Col>
-              <Col span={10}>
+              <Col xs={24} sm={10}>
                 <Form.Item name="hastaId" label="Unidad de destino" rules={[{ required: true }]}>
                   <Select showSearch optionFilterProp="label" options={unidadOpts} onChange={() => setResultado(null)} />
                 </Form.Item>

@@ -222,33 +222,33 @@ export default function NotasCreditoComprasPage() {
         <Form form={formCrear} layout="vertical" onFinish={handleCrear}
           initialValues={{ fecha: dayjs(), detalles: [{}] }}>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="proveedorId" label="Proveedor" rules={[{ required: true }]}>
                 <Select showSearch optionFilterProp="children">
                   {proveedores.map((p: any) => <Option key={p.id} value={p.id}>{p.nombre}</Option>)}
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={6}>
+            <Col xs={12} sm={6}>
               <Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}>
                 <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
               </Form.Item>
             </Col>
-            <Col span={6}>
+            <Col xs={12} sm={6}>
               <Form.Item name="compraOriginalFolio" label="OC Original">
                 <Input placeholder="COM-202505-0001" />
               </Form.Item>
             </Col>
           </Row>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="motivo" label="Motivo" rules={[{ required: true }]}>
                 <Select>
                   {MOTIVOS.map(m => <Option key={m.value} value={m.value}>{m.label}</Option>)}
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="descripcionMotivo" label="Descripción"><Input /></Form.Item>
             </Col>
           </Row>
@@ -258,7 +258,7 @@ export default function NotasCreditoComprasPage() {
               <>
                 {fields.map(({ key, name }) => (
                   <Row gutter={8} key={key} align="middle" style={{ marginBottom: 8 }}>
-                    <Col span={8}>
+                    <Col xs={24} sm={8}>
                       <Form.Item name={[name, 'productoId']} noStyle>
                         <Select showSearch optionFilterProp="children" placeholder="Producto" allowClear style={{ width: '100%' }}
                           onChange={pid => {
@@ -269,10 +269,10 @@ export default function NotasCreditoComprasPage() {
                         </Select>
                       </Form.Item>
                     </Col>
-                    <Col span={7}><Form.Item name={[name, 'descripcion']} noStyle rules={[{ required: true }]}><Input placeholder="Descripción *" /></Form.Item></Col>
-                    <Col span={4}><Form.Item name={[name, 'cantidad']} noStyle><InputNumber min={0.01} placeholder="Cant." style={{ width: '100%' }} /></Form.Item></Col>
-                    <Col span={4}><Form.Item name={[name, 'precioUnitario']} noStyle><InputNumber min={0} placeholder="Precio" style={{ width: '100%' }} /></Form.Item></Col>
-                    <Col span={1}>{fields.length > 1 && <Button type="link" danger size="small" icon={<DeleteOutlined />} onClick={() => remove(name)} />}</Col>
+                    <Col xs={24} sm={7}><Form.Item name={[name, 'descripcion']} noStyle rules={[{ required: true }]}><Input placeholder="Descripción *" /></Form.Item></Col>
+                    <Col xs={12} sm={4}><Form.Item name={[name, 'cantidad']} noStyle><InputNumber min={0.01} placeholder="Cant." style={{ width: '100%' }} /></Form.Item></Col>
+                    <Col xs={12} sm={4}><Form.Item name={[name, 'precioUnitario']} noStyle><InputNumber min={0} placeholder="Precio" style={{ width: '100%' }} /></Form.Item></Col>
+                    <Col xs={12} sm={1}>{fields.length > 1 && <Button type="link" danger size="small" icon={<DeleteOutlined />} onClick={() => remove(name)} />}</Col>
                   </Row>
                 ))}
                 <Button type="dashed" onClick={() => add()} icon={<PlusOutlined />} block>Agregar ítem</Button>
@@ -287,8 +287,8 @@ export default function NotasCreditoComprasPage() {
         {modalDetalle && (
           <>
             <Row gutter={16} style={{ marginBottom: 12 }}>
-              <Col span={12}><Text type="secondary" style={{ fontSize: 11 }}>Proveedor</Text><div><Text strong>{modalDetalle.proveedor?.nombre}</Text></div></Col>
-              <Col span={6}><Text type="secondary" style={{ fontSize: 11 }}>Estado</Text><div><Tag color={ESTADO_CONFIG[modalDetalle.estado]?.color}>{ESTADO_CONFIG[modalDetalle.estado]?.label}</Tag></div></Col>
+              <Col xs={24} sm={12}><Text type="secondary" style={{ fontSize: 11 }}>Proveedor</Text><div><Text strong>{modalDetalle.proveedor?.nombre}</Text></div></Col>
+              <Col xs={12} sm={6}><Text type="secondary" style={{ fontSize: 11 }}>Estado</Text><div><Tag color={ESTADO_CONFIG[modalDetalle.estado]?.color}>{ESTADO_CONFIG[modalDetalle.estado]?.label}</Tag></div></Col>
             </Row>
             <Table size="small"
         scroll={{ x: 'max-content' }} dataSource={modalDetalle.detalles} rowKey="id" pagination={false}

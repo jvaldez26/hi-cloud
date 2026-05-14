@@ -416,19 +416,19 @@ export default function PreFacturaPage() {
           initialValues={{ fecha: dayjs(), tipoNcf: 'E32', detalles: [{}] }}
         >
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="clienteId" label="Cliente" rules={[{ required: true }]}>
                 <Select showSearch optionFilterProp="children" placeholder="Seleccionar cliente">
                   {clientes.map((c: any) => <Option key={c.id} value={c.id}>{c.nombre}</Option>)}
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={6}>
+            <Col xs={12} sm={6}>
               <Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}>
                 <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
               </Form.Item>
             </Col>
-            <Col span={6}>
+            <Col xs={12} sm={6}>
               <Form.Item name="fechaVencimiento" label="Vence">
                 <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
               </Form.Item>
@@ -436,7 +436,7 @@ export default function PreFacturaPage() {
           </Row>
 
           <Row gutter={12}>
-            <Col span={6}>
+            <Col xs={12} sm={6}>
               <Form.Item name="tipoNcf" label="Tipo NCF">
                 <Select>
                   <Option value="E31">E31 - Crédito Fiscal</Option>
@@ -444,7 +444,7 @@ export default function PreFacturaPage() {
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={10}>
+            <Col xs={24} sm={10}>
               <Form.Item name="vendedorId" label="Vendedor">
                 <Select
                   allowClear
@@ -458,7 +458,7 @@ export default function PreFacturaPage() {
                 />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="notas" label="Notas / Condiciones">
                 <Input placeholder="Condiciones de pago, validez de la oferta..." />
               </Form.Item>
@@ -472,7 +472,7 @@ export default function PreFacturaPage() {
               <>
                 {fields.map(({ key, name }) => (
                   <Row gutter={8} key={key} align="middle" style={{ marginBottom: 8 }}>
-                    <Col span={8}>
+                    <Col xs={24} sm={8}>
                       <Form.Item name={[name, 'productoId']} noStyle>
                         <Select
                           showSearch
@@ -499,22 +499,22 @@ export default function PreFacturaPage() {
                         </Select>
                       </Form.Item>
                     </Col>
-                    <Col span={7}>
+                    <Col xs={24} sm={7}>
                       <Form.Item name={[name, 'descripcion']} noStyle rules={[{ required: true, message: '' }]}>
                         <Input placeholder="Descripción *" />
                       </Form.Item>
                     </Col>
-                    <Col span={4}>
+                    <Col xs={12} sm={4}>
                       <Form.Item name={[name, 'cantidad']} noStyle rules={[{ required: true }]}>
                         <InputNumber min={0.01} placeholder="Cant." style={{ width: '100%' }} />
                       </Form.Item>
                     </Col>
-                    <Col span={4}>
+                    <Col xs={12} sm={4}>
                       <Form.Item name={[name, 'precioUnitario']} noStyle rules={[{ required: true }]}>
                         <InputNumber min={0} placeholder="Precio" style={{ width: '100%' }} />
                       </Form.Item>
                     </Col>
-                    <Col span={1}>
+                    <Col xs={12} sm={1}>
                       {fields.length > 1 && (
                         <Button
                           type="link" danger size="small"
@@ -556,7 +556,7 @@ export default function PreFacturaPage() {
         {modalDetalle && (
           <>
             <Row gutter={16} style={{ marginBottom: 16 }}>
-              <Col span={12}>
+              <Col xs={24} sm={12}>
                 <Text type="secondary" style={{ fontSize: 12 }}>Cliente</Text>
                 <div><Text strong>{modalDetalle.cliente?.nombre}</Text></div>
                 {modalDetalle.cliente?.rncReceptor && (
@@ -565,11 +565,11 @@ export default function PreFacturaPage() {
                   </Text>
                 )}
               </Col>
-              <Col span={6}>
+              <Col xs={12} sm={6}>
                 <Text type="secondary" style={{ fontSize: 12 }}>NCF</Text>
                 <div><Tag>{modalDetalle.tipoNcf}</Tag></div>
               </Col>
-              <Col span={6}>
+              <Col xs={12} sm={6}>
                 <Text type="secondary" style={{ fontSize: 12 }}>Vence</Text>
                 <div>
                   <Text>{modalDetalle.fechaVencimiento ?? <Text type="secondary">—</Text>}</Text>

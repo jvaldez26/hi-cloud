@@ -110,17 +110,17 @@ export default function ActivosFijosPage() {
       <Modal title="Registrar Activo Fijo" open={open} onCancel={() => setOpen(false)} footer={null} width={680}>
         <Form form={form} layout="vertical" onFinish={v => createMut.mutate(v)}>
           <Row gutter={12}>
-            <Col span={8}><Form.Item name="codigo" label="Código" rules={[{ required: true }]}><Input /></Form.Item></Col>
-            <Col span={16}><Form.Item name="descripcion" label="Descripción" rules={[{ required: true }]}><Input /></Form.Item></Col>
-            <Col span={12}><Form.Item name="categoriaId" label="Categoría DGII" rules={[{ required: true }]}>
+            <Col xs={24} sm={8}><Form.Item name="codigo" label="Código" rules={[{ required: true }]}><Input /></Form.Item></Col>
+            <Col xs={24} sm={16}><Form.Item name="descripcion" label="Descripción" rules={[{ required: true }]}><Input /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="categoriaId" label="Categoría DGII" rules={[{ required: true }]}>
               <Select options={categorias?.map((c: any) => ({ value: c.id, label: `${c.nombre} (${c.tasaAnual}% — ${c.metodo.replace('_', ' ')})` }))} />
             </Form.Item></Col>
-            <Col span={12}><Form.Item name="fechaAdquisicion" label="Fecha Adquisición" rules={[{ required: true }]}><Input type="date" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="costoAdquisicion" label="Costo (RD$)" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
-            <Col span={8}><Form.Item name="valorResidual" label="Valor Residual"><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
-            <Col span={8}><Form.Item name="vidaUtilAnios" label="Vida Útil (años)"><InputNumber style={{ width: '100%' }} min={1} /></Form.Item></Col>
-            <Col span={12}><Form.Item name="ubicacion" label="Ubicación"><Input /></Form.Item></Col>
-            <Col span={12}><Form.Item name="proveedor" label="Proveedor"><Input /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="fechaAdquisicion" label="Fecha Adquisición" rules={[{ required: true }]}><Input type="date" /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="costoAdquisicion" label="Costo (RD$)" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="valorResidual" label="Valor Residual"><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="vidaUtilAnios" label="Vida Útil (años)"><InputNumber style={{ width: '100%' }} min={1} /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="ubicacion" label="Ubicación"><Input /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="proveedor" label="Proveedor"><Input /></Form.Item></Col>
           </Row>
           <Row justify="end" gutter={8}>
             <Col><Button onClick={() => setOpen(false)}>Cancelar</Button></Col>

@@ -318,12 +318,12 @@ export default function RecibosCobrosPage() {
             </Select>
           </Form.Item>
           <Row gutter={12}>
-            <Col span={10}>
+            <Col xs={24} sm={10}>
               <Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}>
                 <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
               </Form.Item>
             </Col>
-            <Col span={14}>
+            <Col xs={24} sm={14}>
               <Form.Item name="metodoPago" label="Método de Pago" rules={[{ required: true }]}>
                 <Select>
                   {METODOS.map(m => <Option key={m.value} value={m.value}>{m.label}</Option>)}
@@ -338,12 +338,12 @@ export default function RecibosCobrosPage() {
             <Input placeholder="Pago de factura, abono, cuota #1, etc." />
           </Form.Item>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="facturaFolio" label="Factura de referencia">
                 <Input placeholder="FAC-202505-0001" />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="referencia" label="Referencia / Cheque #">
                 <Input placeholder="Banco, número de cheque..." />
               </Form.Item>

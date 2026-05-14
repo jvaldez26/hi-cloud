@@ -172,9 +172,9 @@ export default function CuotasPage() {
                   style={{ marginBottom: 12 }} />
               )}
               <Row gutter={12} style={{ marginBottom: 12 }}>
-                <Col span={8}><Text type="secondary" style={{ fontSize: 11 }}>Cliente</Text><div><Text strong>{planDetalle.clienteNombre}</Text></div></Col>
-                <Col span={8}><Text type="secondary" style={{ fontSize: 11 }}>Monto Total</Text><div><Text strong>{fmt(planDetalle.montoTotal)}</Text></div></Col>
-                <Col span={8}><Text type="secondary" style={{ fontSize: 11 }}>Tasa Mensual</Text><div><Text strong>{planDetalle.tasaInteresMensual}%</Text></div></Col>
+                <Col xs={24} sm={8}><Text type="secondary" style={{ fontSize: 11 }}>Cliente</Text><div><Text strong>{planDetalle.clienteNombre}</Text></div></Col>
+                <Col xs={24} sm={8}><Text type="secondary" style={{ fontSize: 11 }}>Monto Total</Text><div><Text strong>{fmt(planDetalle.montoTotal)}</Text></div></Col>
+                <Col xs={24} sm={8}><Text type="secondary" style={{ fontSize: 11 }}>Tasa Mensual</Text><div><Text strong>{planDetalle.tasaInteresMensual}%</Text></div></Col>
               </Row>
               <Table dataSource={planDetalle.cuotas} rowKey="id" size="small" pagination={false}
                 scroll={{ y: 320 }}
@@ -208,22 +208,22 @@ export default function CuotasPage() {
         <Col xs={24} lg={planSel ? 24 : 10}>
           <Card bordered={false} style={{ borderRadius: 12 }} title={<Space><CalculatorOutlined />Simulador de Cuotas</Space>}>
             <Row gutter={8} align="bottom">
-              <Col span={7}>
+              <Col xs={24} sm={7}>
                 <Text style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Capital (RD$)</Text>
                 <InputNumber style={{ width: '100%' }} value={simular.capital} min={1}
                   onChange={v => setSimular(p => ({ ...p, capital: Number(v), resultado: null }))} />
               </Col>
-              <Col span={7}>
+              <Col xs={24} sm={7}>
                 <Text style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Tasa mensual (%)</Text>
                 <InputNumber style={{ width: '100%' }} value={simular.tasa} min={0} step={0.5} precision={2}
                   onChange={v => setSimular(p => ({ ...p, tasa: Number(v), resultado: null }))} />
               </Col>
-              <Col span={6}>
+              <Col xs={12} sm={6}>
                 <Text style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Cuotas</Text>
                 <InputNumber style={{ width: '100%' }} value={simular.cuotas} min={1} max={120}
                   onChange={v => setSimular(p => ({ ...p, cuotas: Number(v), resultado: null }))} />
               </Col>
-              <Col span={4}>
+              <Col xs={12} sm={4}>
                 <Button type="primary" block onClick={handleSimular}>Simular</Button>
               </Col>
             </Row>
@@ -261,13 +261,13 @@ export default function CuotasPage() {
             </Select>
           </Form.Item>
           <Row gutter={12}>
-            <Col span={12}><Form.Item name="montoTotal" label="Monto Total (RD$)" rules={[{ required: true }]}><InputNumber min={0.01} style={{ width: '100%' }} prefix="RD$" size="large" /></Form.Item></Col>
-            <Col span={12}><Form.Item name="montoInicial" label="Cuota Inicial (RD$, opcional)"><InputNumber min={0} style={{ width: '100%' }} prefix="RD$" /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="montoTotal" label="Monto Total (RD$)" rules={[{ required: true }]}><InputNumber min={0.01} style={{ width: '100%' }} prefix="RD$" size="large" /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="montoInicial" label="Cuota Inicial (RD$, opcional)"><InputNumber min={0} style={{ width: '100%' }} prefix="RD$" /></Form.Item></Col>
           </Row>
           <Row gutter={12}>
-            <Col span={8}><Form.Item name="numeroCuotas" label="N° Cuotas"><InputNumber min={1} max={120} style={{ width: '100%' }} /></Form.Item></Col>
-            <Col span={8}><Form.Item name="tasaInteresMensual" label="Tasa Mensual (%)"><InputNumber min={0} step={0.5} precision={2} style={{ width: '100%' }} addonAfter="%" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="fechaInicio" label="1ra Cuota en"><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="numeroCuotas" label="N° Cuotas"><InputNumber min={1} max={120} style={{ width: '100%' }} /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="tasaInteresMensual" label="Tasa Mensual (%)"><InputNumber min={0} step={0.5} precision={2} style={{ width: '100%' }} addonAfter="%" /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="fechaInicio" label="1ra Cuota en"><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item></Col>
           </Row>
           <Form.Item name="facturaFolio" label="Factura de referencia (opcional)"><Input placeholder="FAC-202505-0001" /></Form.Item>
           <Form.Item name="notas" label="Notas"><Input.TextArea rows={2} /></Form.Item>

@@ -242,7 +242,7 @@ export default function EncuestasPage() {
         {metricas && (
           <div>
             <Row gutter={16} style={{ marginBottom: 24 }}>
-              <Col span={8}>
+              <Col xs={24} sm={8}>
                 <Card size="small" style={{ textAlign: 'center', borderRadius: 8 }}>
                   <div style={{ fontSize: 32, fontWeight: 800, color: '#1a56db' }}>{metricas.total}</div>
                   <Text type="secondary">Respuestas</Text>
@@ -250,13 +250,13 @@ export default function EncuestasPage() {
               </Col>
               {metricas.npsScore !== undefined && metricas.npsScore !== null && (
                 <>
-                  <Col span={8}>
+                  <Col xs={24} sm={8}>
                     <Card size="small" style={{ textAlign: 'center', borderRadius: 8 }}>
                       <NpsGauge score={metricas.npsScore} />
                       <Text type="secondary" style={{ fontSize: 11 }}>NPS Score</Text>
                     </Card>
                   </Col>
-                  <Col span={8}>
+                  <Col xs={24} sm={8}>
                     <Card size="small" style={{ borderRadius: 8 }}>
                       <div style={{ fontSize: 12, marginBottom: 4 }}>
                         <Tag color="green">Promotores: {metricas.promotores}</Tag>
@@ -272,7 +272,7 @@ export default function EncuestasPage() {
                 </>
               )}
               {metricas.csatPromedio !== undefined && (
-                <Col span={16}>
+                <Col xs={24} sm={16}>
                   <Card size="small" style={{ textAlign: 'center', borderRadius: 8 }}>
                     <Rate disabled defaultValue={metricas.csatPromedio} allowHalf />
                     <div style={{ fontSize: 24, fontWeight: 800, color: '#faad14' }}>{metricas.csatPromedio}/5</div>

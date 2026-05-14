@@ -91,13 +91,13 @@ function CentrosTrabajoTab() {
         onCancel={() => { setOpen(false); setEditing(null); form.resetFields(); }} footer={null} width={560}>
         <Form form={form} layout="vertical" onFinish={(v) => crearMut.mutate(v)}>
           <Row gutter={12}>
-            <Col span={16}><Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input /></Form.Item></Col>
-            <Col span={8}><Form.Item name="tipo" label="Tipo" rules={[{ required: true }]}>
+            <Col xs={24} sm={16}><Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="tipo" label="Tipo" rules={[{ required: true }]}>
               <Select options={[{ value: 'manual', label: 'Manual' }, { value: 'maquina', label: 'Máquina' }, { value: 'subcontratado', label: 'Subcontratado' }]} />
             </Form.Item></Col>
-            <Col span={8}><Form.Item name="capacidadHorasDia" label="Horas/día" initialValue={8}><InputNumber style={{ width: '100%' }} min={0} precision={1} /></Form.Item></Col>
-            <Col span={8}><Form.Item name="costoHora" label="Costo/hora (RD$)" initialValue={0}><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
-            <Col span={8}><Form.Item name="responsable" label="Responsable"><Input /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="capacidadHorasDia" label="Horas/día" initialValue={8}><InputNumber style={{ width: '100%' }} min={0} precision={1} /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="costoHora" label="Costo/hora (RD$)" initialValue={0}><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="responsable" label="Responsable"><Input /></Form.Item></Col>
             <Col span={24}><Form.Item name="ubicacion" label="Ubicación"><Input /></Form.Item></Col>
             <Col span={24}><Form.Item name="descripcion" label="Descripción"><Input.TextArea rows={2} /></Form.Item></Col>
           </Row>
@@ -172,8 +172,8 @@ function RutasTab({ lms }: { lms: any[] }) {
       <Modal title="Nueva Ruta de Producción" open={open} onCancel={() => { setOpen(false); formRuta.resetFields(); }} footer={null} width={480}>
         <Form form={formRuta} layout="vertical" onFinish={(v) => crearMut.mutate(v)}>
           <Row gutter={12}>
-            <Col span={8}><Form.Item name="codigo" label="Código" rules={[{ required: true }]}><Input /></Form.Item></Col>
-            <Col span={16}><Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="codigo" label="Código" rules={[{ required: true }]}><Input /></Form.Item></Col>
+            <Col xs={24} sm={16}><Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input /></Form.Item></Col>
             <Col span={24}><Form.Item name="listaId" label="BOM asociada (opcional)"><Select options={lmOpts} allowClear placeholder="Sin BOM" /></Form.Item></Col>
             <Col span={24}><Form.Item name="descripcion" label="Descripción"><Input.TextArea rows={2} /></Form.Item></Col>
           </Row>
@@ -191,14 +191,14 @@ function RutasTab({ lms }: { lms: any[] }) {
             <Typography.Title level={5}>Agregar etapa</Typography.Title>
             <Form form={formEtapa} layout="vertical" onFinish={(v) => agregarEtapaMut.mutate({ rutaId: detalle.id, body: v })}>
               <Row gutter={12}>
-                <Col span={4}><Form.Item name="orden" label="Orden" rules={[{ required: true }]} initialValue={(detalle.etapas?.length ?? 0) + 1}><InputNumber style={{ width: '100%' }} min={1} /></Form.Item></Col>
-                <Col span={12}><Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input /></Form.Item></Col>
-                <Col span={8}><Form.Item name="centroTrabajoId" label="Centro de trabajo"><Select options={centroOpts} allowClear /></Form.Item></Col>
-                <Col span={6}><Form.Item name="tiempoSetupMin" label="Setup (min)" initialValue={0}><InputNumber style={{ width: '100%' }} min={0} /></Form.Item></Col>
-                <Col span={6}><Form.Item name="tiempoOperacionMinPorUnidad" label="Oper./unidad" initialValue={0}><InputNumber style={{ width: '100%' }} min={0} /></Form.Item></Col>
-                <Col span={6}><Form.Item name="esControl" label="¿Control QC?" valuePropName="checked" initialValue={false}><Switch /></Form.Item></Col>
-                <Col span={6} style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 24 }}>
-                  <Button type="primary" htmlType="submit" loading={agregarEtapaMut.isPending} icon={<PlusOutlined />} block>Agregar</Button>
+                <Col xs={12} sm={4}><Form.Item name="orden" label="Orden" rules={[{ required: true }]} initialValue={(detalle.etapas?.length ?? 0) + 1}><InputNumber style={{ width: '100%' }} min={1} /></Form.Item></Col>
+                <Col xs={24} sm={12}><Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input /></Form.Item></Col>
+                <Col xs={24} sm={8}><Form.Item name="centroTrabajoId" label="Centro de trabajo"><Select options={centroOpts} allowClear /></Form.Item></Col>
+                <Col xs={12} sm={6}><Form.Item name="tiempoSetupMin" label="Setup (min)" initialValue={0}><InputNumber style={{ width: '100%' }} min={0} /></Form.Item></Col>
+                <Col xs={12} sm={6}><Form.Item name="tiempoOperacionMinPorUnidad" label="Oper./unidad" initialValue={0}><InputNumber style={{ width: '100%' }} min={0} /></Form.Item></Col>
+                <Col xs={12} sm={6}><Form.Item name="esControl" label="¿Control QC?" valuePropName="checked" initialValue={false}><Switch /></Form.Item></Col>
+                <Col xs={12} sm={6} style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 24 }}>
+                  <Button type="primary" htmlType="submit" loading={agregarEtapaMut.isPending} icon={<PlusOutlined  />} block>Agregar</Button>
                 </Col>
               </Row>
             </Form>
@@ -270,9 +270,9 @@ function WIPTab() {
         {wipDetalle && (
           <>
             <Row gutter={12} style={{ marginBottom: 12 }}>
-              <Col span={8}><Statistic title="Progreso" value={wipDetalle.progreso} suffix="%" /></Col>
-              <Col span={8}><Statistic title="Etapas" value={`${wipDetalle.completadas}/${wipDetalle.totalEtapas}`} /></Col>
-              <Col span={8}><Statistic title="Etapa actual" value={wipDetalle.etapaActual} /></Col>
+              <Col xs={24} sm={8}><Statistic title="Progreso" value={wipDetalle.progreso} suffix="%" /></Col>
+              <Col xs={24} sm={8}><Statistic title="Etapas" value={`${wipDetalle.completadas}/${wipDetalle.totalEtapas}`} /></Col>
+              <Col xs={24} sm={8}><Statistic title="Etapa actual" value={wipDetalle.etapaActual} /></Col>
             </Row>
             <Table size="small"
         scroll={{ x: 'max-content' }} pagination={false}
@@ -673,13 +673,13 @@ export default function ManufacturaPage() {
           initialValues={{ rendimiento: 1, unidadRendimiento: 'PZA' }}
           onFinish={v => crearLMMut.mutate(v)}>
           <Row gutter={12}>
-            <Col span={8}><Form.Item name="codigo" label="Código" rules={[{ required: true }]}><Input placeholder="BOM-001" /></Form.Item></Col>
-            <Col span={16}><Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="codigo" label="Código" rules={[{ required: true }]}><Input placeholder="BOM-001" /></Form.Item></Col>
+            <Col xs={24} sm={16}><Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input /></Form.Item></Col>
             <Col span={24}><Form.Item name="productoFinalId" label="Producto que se fabrica" rules={[{ required: true }]}>
               <Select showSearch filterOption={(i, o) => String(o?.label ?? '').toLowerCase().includes(i.toLowerCase())} options={prodOpts} />
             </Form.Item></Col>
-            <Col span={10}><Form.Item name="rendimiento" label="Rendimiento"><InputNumber style={{ width: '100%' }} min={0.001} step={0.5} /></Form.Item></Col>
-            <Col span={14}><Form.Item name="unidadRendimiento" label="Unidad producida"><Input placeholder="PZA, KG, LT..." /></Form.Item></Col>
+            <Col xs={24} sm={10}><Form.Item name="rendimiento" label="Rendimiento"><InputNumber style={{ width: '100%' }} min={0.001} step={0.5} /></Form.Item></Col>
+            <Col xs={24} sm={14}><Form.Item name="unidadRendimiento" label="Unidad producida"><Input placeholder="PZA, KG, LT..." /></Form.Item></Col>
             <Col span={24}><Form.Item name="descripcion" label="Descripción"><Input.TextArea rows={2} /></Form.Item></Col>
           </Row>
           <Row justify="end" gutter={8}>
@@ -699,10 +699,10 @@ export default function ManufacturaPage() {
             <Select options={(lms ?? []).map((l: any) => ({ value: l.id, label: `${l.codigo} — ${l.nombre}` }))} />
           </Form.Item>
           <Row gutter={12}>
-            <Col span={10}><Form.Item name="cantidadPlanificada" label="Cantidad a producir" rules={[{ required: true }]}>
+            <Col xs={24} sm={10}><Form.Item name="cantidadPlanificada" label="Cantidad a producir" rules={[{ required: true }]}>
               <InputNumber style={{ width: '100%' }} min={0.001} step={1} />
             </Form.Item></Col>
-            <Col span={14}><Form.Item name="fechaInicio" label="Fecha inicio" rules={[{ required: true }]}>
+            <Col xs={24} sm={14}><Form.Item name="fechaInicio" label="Fecha inicio" rules={[{ required: true }]}>
               <Input type="date" />
             </Form.Item></Col>
             <Col span={24}><Form.Item name="fechaFinPlanificada" label="Fecha fin planificada">

@@ -258,12 +258,12 @@ export default function SucursalesPage() {
       >
         <Form form={form} layout="vertical" onFinish={v => crearActualizar.mutate(v)}>
           <Row gutter={12}>
-            <Col span={10}>
+            <Col xs={24} sm={10}>
               <Form.Item name="codigo" label="Código" rules={[{ required: true }]}>
                 <Input placeholder="SUC-001" style={{ textTransform: 'uppercase' }} />
               </Form.Item>
             </Col>
-            <Col span={14}>
+            <Col xs={24} sm={14}>
               <Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}>
                 <Input placeholder="Sucursal Santo Domingo Centro" />
               </Form.Item>
@@ -273,12 +273,12 @@ export default function SucursalesPage() {
             <Input placeholder="Av. Winston Churchill #101" />
           </Form.Item>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="ciudad" label="Ciudad">
                 <Input placeholder="Santo Domingo" />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="telefono" label="Teléfono">
                 <Input placeholder="809-000-0000" />
               </Form.Item>

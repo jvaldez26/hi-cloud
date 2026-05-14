@@ -125,27 +125,27 @@ export default function DemoModal({ open, onClose }: Props) {
 
               {step === 0 && (
                 <Row gutter={12}>
-                  <Col span={12}>
+                  <Col xs={24} sm={12}>
                     <Form.Item name="nombre" label="Nombre completo" rules={[{ required: true }]}>
                       <Input placeholder="Juan Pérez" />
                     </Form.Item>
                   </Col>
-                  <Col span={12}>
+                  <Col xs={24} sm={12}>
                     <Form.Item name="empresa" label="Nombre de la empresa" rules={[{ required: true }]}>
                       <Input placeholder="Mi Empresa S.R.L." />
                     </Form.Item>
                   </Col>
-                  <Col span={12}>
+                  <Col xs={24} sm={12}>
                     <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email' }]}>
                       <Input placeholder="juan@empresa.com" />
                     </Form.Item>
                   </Col>
-                  <Col span={12}>
+                  <Col xs={24} sm={12}>
                     <Form.Item name="telefono" label="Teléfono / WhatsApp" rules={[{ required: true }]}>
                       <Input placeholder="809-555-0000" />
                     </Form.Item>
                   </Col>
-                  <Col span={12}>
+                  <Col xs={24} sm={12}>
                     <Form.Item name="pais" label="País">
                       <Select options={PAISES.map(p => ({ value: p, label: p }))} />
                     </Form.Item>

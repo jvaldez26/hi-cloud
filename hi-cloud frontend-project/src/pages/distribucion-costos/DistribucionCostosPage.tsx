@@ -74,12 +74,12 @@ function CrearReglaModal({ open, onClose, onSuccess }: {
       <Form form={form} layout="vertical" onFinish={handleSubmit}
         initialValues={{ periodicidad: 'manual', lineas: [{ porcentaje: 100 }] }}>
         <Row gutter={12}>
-          <Col span={16}>
+          <Col xs={24} sm={16}>
             <Form.Item name="nombre" label="Nombre de la regla" rules={[{ required: true }]}>
               <Input placeholder="ej. Distribución costos administrativos" />
             </Form.Item>
           </Col>
-          <Col span={8}>
+          <Col xs={24} sm={8}>
             <Form.Item name="periodicidad" label="Periodicidad">
               <Select options={[
                 { value: 'manual',     label: 'Manual' },
@@ -106,22 +106,22 @@ function CrearReglaModal({ open, onClose, onSuccess }: {
             <>
               {fields.map(({ key, name }) => (
                 <Row key={key} gutter={8} align="middle" style={{ marginBottom: 8 }}>
-                  <Col span={12}>
+                  <Col xs={24} sm={12}>
                     <Form.Item name={[name, 'cuentaDestinoId']} rules={[{ required: true }]} style={{ margin: 0 }}>
                       <Select showSearch optionFilterProp="label" options={cuentaOpts} placeholder="Cuenta destino" />
                     </Form.Item>
                   </Col>
-                  <Col span={5}>
+                  <Col xs={12} sm={5}>
                     <Form.Item name={[name, 'porcentaje']} rules={[{ required: true }]} style={{ margin: 0 }}>
                       <InputNumber min={0.01} max={100} precision={2} addonAfter="%" style={{ width: '100%' }} placeholder="%" />
                     </Form.Item>
                   </Col>
-                  <Col span={6}>
+                  <Col xs={12} sm={6}>
                     <Form.Item name={[name, 'descripcion']} style={{ margin: 0 }}>
                       <Input placeholder="Descripción" />
                     </Form.Item>
                   </Col>
-                  <Col span={1}>
+                  <Col xs={12} sm={1}>
                     <Button type="text" danger size="small" icon={<CloseOutlined />} onClick={() => remove(name)} />
                   </Col>
                 </Row>
@@ -173,12 +173,12 @@ function EjecutarModal({ regla, open, onClose, onSuccess }: {
         initialValues={{ fecha: dayjs().format('YYYY-MM-DD') }}
         onFinish={(v) => ejecutarMut.mutate(v)}>
         <Row gutter={12}>
-          <Col span={12}>
+          <Col xs={24} sm={12}>
             <Form.Item name="monto" label="Monto a distribuir (RD$)" rules={[{ required: true }]}>
               <InputNumber style={{ width: '100%' }} min={0.01} precision={2} onChange={() => setPreview(null)} />
             </Form.Item>
           </Col>
-          <Col span={12}>
+          <Col xs={24} sm={12}>
             <Form.Item name="fecha" label="Fecha del asiento" rules={[{ required: true }]}>
               <Input type="date" />
             </Form.Item>

@@ -186,17 +186,17 @@ function TareasKanban({ proyectoId, onUpdate }: { proyectoId: number; onUpdate: 
           <Form.Item name="proyectoId" hidden><Input /></Form.Item>
           <Form.Item name="titulo" label="Título" rules={[{ required: true }]}><Input /></Form.Item>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="prioridad" label="Prioridad">
                 <Select options={PRIORIDAD} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="fechaVencimiento" label="Vencimiento">
                 <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="horasEstimadas" label="Horas estimadas">
                 <InputNumber style={{ width: '100%' }} min={0} step={0.5} precision={1} />
               </Form.Item>
@@ -440,8 +440,8 @@ function PresupuestoTab({ proyectoId, presupuestoBase }: { proyectoId: number; p
           </Form.Item>
           <Form.Item name="descripcion" label="Descripción" rules={[{ required: true }]}><Input /></Form.Item>
           <Row gutter={12}>
-            <Col span={12}><Form.Item name="monto" label="Monto presupuestado (RD$)" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
-            <Col span={12}><Form.Item name="montoReal" label="Monto real ejecutado (RD$)"><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="monto" label="Monto presupuestado (RD$)" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="montoReal" label="Monto real ejecutado (RD$)"><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
           </Row>
           <Form.Item name="notas" label="Notas"><Input.TextArea rows={2} /></Form.Item>
           <Row justify="end" gutter={8}><Col><Button onClick={() => { setOpen(false); form.resetFields(); }}>Cancelar</Button></Col>
@@ -697,10 +697,10 @@ export default function ProyectosPage() {
         {detalle && !editando && (
           <>
             <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-              <Col span={12}>
+              <Col xs={24} sm={12}>
                 <Progress type="circle" percent={detalle.avance} width={80} />
               </Col>
-              <Col span={12}>
+              <Col xs={24} sm={12}>
                 <div><Text type="secondary">Presupuesto:</Text> <Text strong>{fmt.money(detalle.presupuesto)}</Text></div>
                 <div><Text type="secondary">Costo real:</Text> <Text strong style={{ color: detalle.costReal > detalle.presupuesto ? '#ef4444' : '#10b981' }}>{fmt.money(detalle.costReal ?? 0)}</Text></div>
                 <div><Text type="secondary">Horas estimadas:</Text> <Text strong>{detalle.horasEstimadas}h</Text></div>
@@ -735,18 +735,18 @@ export default function ProyectosPage() {
             })}>
             <Row gutter={12}>
               <Col span={24}><Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input /></Form.Item></Col>
-              <Col span={12}><Form.Item name="estado" label="Estado">
+              <Col xs={24} sm={12}><Form.Item name="estado" label="Estado">
                 <Select options={ESTADO_PROY.map(e => ({ value: e.value, label: e.label }))} />
               </Form.Item></Col>
-              <Col span={12}><Form.Item name="tipoFacturacion" label="Facturación">
+              <Col xs={24} sm={12}><Form.Item name="tipoFacturacion" label="Facturación">
                 <Select options={TIPO_FACT} />
               </Form.Item></Col>
-              <Col span={12}><Form.Item name="fechaInicio" label="Inicio"><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item></Col>
-              <Col span={12}><Form.Item name="fechaFin"    label="Fin"><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item></Col>
-              <Col span={12}><Form.Item name="presupuesto" label="Presupuesto (RD$)"><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
-              <Col span={12}><Form.Item name="horasEstimadas" label="Horas estimadas"><InputNumber style={{ width: '100%' }} min={0} step={0.5} /></Form.Item></Col>
-              <Col span={12}><Form.Item name="tarifaHora" label="Tarifa/hora (RD$)"><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
-              <Col span={12}><Form.Item name="porcentajeAvance" label="Avance (%)"><InputNumber style={{ width: '100%' }} min={0} max={100} /></Form.Item></Col>
+              <Col xs={24} sm={12}><Form.Item name="fechaInicio" label="Inicio"><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item></Col>
+              <Col xs={24} sm={12}><Form.Item name="fechaFin"    label="Fin"><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item></Col>
+              <Col xs={24} sm={12}><Form.Item name="presupuesto" label="Presupuesto (RD$)"><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
+              <Col xs={24} sm={12}><Form.Item name="horasEstimadas" label="Horas estimadas"><InputNumber style={{ width: '100%' }} min={0} step={0.5} /></Form.Item></Col>
+              <Col xs={24} sm={12}><Form.Item name="tarifaHora" label="Tarifa/hora (RD$)"><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
+              <Col xs={24} sm={12}><Form.Item name="porcentajeAvance" label="Avance (%)"><InputNumber style={{ width: '100%' }} min={0} max={100} /></Form.Item></Col>
               <Col span={24}><Form.Item name="descripcion" label="Descripción"><Input.TextArea rows={2} /></Form.Item></Col>
             </Row>
             <Row justify="end" gutter={8}>
@@ -768,17 +768,17 @@ export default function ProyectosPage() {
           })}>
           <Row gutter={12}>
             <Col span={24}><Form.Item name="nombre" label="Nombre del proyecto" rules={[{ required: true }]}><Input /></Form.Item></Col>
-            <Col span={12}><Form.Item name="estado" label="Estado">
+            <Col xs={24} sm={12}><Form.Item name="estado" label="Estado">
               <Select options={ESTADO_PROY.map(e => ({ value: e.value, label: e.label }))} />
             </Form.Item></Col>
-            <Col span={12}><Form.Item name="tipoFacturacion" label="Tipo de facturación">
+            <Col xs={24} sm={12}><Form.Item name="tipoFacturacion" label="Tipo de facturación">
               <Select options={TIPO_FACT} />
             </Form.Item></Col>
-            <Col span={12}><Form.Item name="fechaInicio" label="Inicio" rules={[{ required: true }]}><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item></Col>
-            <Col span={12}><Form.Item name="fechaFin"    label="Fin estimado"><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item></Col>
-            <Col span={12}><Form.Item name="presupuesto" label="Presupuesto (RD$)"><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
-            <Col span={12}><Form.Item name="horasEstimadas" label="Horas estimadas"><InputNumber style={{ width: '100%' }} min={0} step={0.5} /></Form.Item></Col>
-            <Col span={12}><Form.Item name="tarifaHora" label="Tarifa/hora"><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="fechaInicio" label="Inicio" rules={[{ required: true }]}><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="fechaFin"    label="Fin estimado"><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="presupuesto" label="Presupuesto (RD$)"><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="horasEstimadas" label="Horas estimadas"><InputNumber style={{ width: '100%' }} min={0} step={0.5} /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="tarifaHora" label="Tarifa/hora"><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
             <Col span={24}><Form.Item name="descripcion" label="Descripción"><Input.TextArea rows={2} /></Form.Item></Col>
           </Row>
           <Row justify="end" gutter={8}>

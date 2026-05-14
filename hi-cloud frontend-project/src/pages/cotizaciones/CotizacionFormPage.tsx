@@ -168,29 +168,29 @@ export default function CotizacionFormPage() {
         initialValues={{ fecha: dayjs(), validezDias: 30, condicionesPago: 'Al contado' }}>
         <Card style={{ marginBottom: 16 }}>
           <Row gutter={16}>
-            <Col span={10}>
+            <Col xs={24} sm={10}>
               <Form.Item name="clienteId" label="Cliente" rules={[{ required: true }]}>
                 <Select showSearch filterOption={(i, o) => String(o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
                   options={clientes?.data.map(c => ({ value: c.id, label: `${c.rfc} — ${c.nombre}` }))} />
               </Form.Item>
             </Col>
-            <Col span={4}>
+            <Col xs={12} sm={4}>
               <Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}>
                 <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
               </Form.Item>
             </Col>
-            <Col span={4}>
+            <Col xs={12} sm={4}>
               <Form.Item name="validezDias" label="Validez (días)">
                 <InputNumber style={{ width: '100%' }} min={1} />
               </Form.Item>
             </Col>
-            <Col span={6}>
+            <Col xs={12} sm={6}>
               <Form.Item name="condicionesPago" label="Condiciones de Pago">
                 <Select options={['Al contado','30 días','60 días','90 días','Contra entrega']
                   .map(v => ({ value: v, label: v }))} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="vendedorId" label="Vendedor">
                 <Select
                   allowClear
@@ -204,7 +204,7 @@ export default function CotizacionFormPage() {
                 />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="notas" label="Notas / Términos y condiciones">
                 <Input.TextArea rows={1} placeholder="Precios sujetos a variación. Oferta válida hasta la fecha indicada." />
               </Form.Item>

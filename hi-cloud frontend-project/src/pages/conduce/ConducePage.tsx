@@ -229,19 +229,19 @@ export default function ConducePage() {
             detalles: (v.detalles ?? []).map((d: any) => ({ ...d, cantidad: Number(d.cantidad) })),
           })}>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="clienteId" label="Cliente" rules={[{ required: true }]}>
                 <Select showSearch optionFilterProp="children" placeholder="Seleccionar cliente">
                   {clientes.map((c: any) => <Option key={c.id} value={c.id}>{c.nombre}</Option>)}
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={6}>
+            <Col xs={12} sm={6}>
               <Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}>
                 <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
               </Form.Item>
             </Col>
-            <Col span={6}>
+            <Col xs={12} sm={6}>
               <Form.Item name="fechaEntregaProgramada" label="Entrega Progr.">
                 <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
               </Form.Item>
@@ -251,13 +251,13 @@ export default function ConducePage() {
             <Input placeholder="Av. Principal #100, Santo Domingo" />
           </Form.Item>
           <Row gutter={12}>
-            <Col span={8}><Form.Item name="ciudad" label="Ciudad"><Input placeholder="Santo Domingo" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="contactoEntrega" label="Contacto"><Input placeholder="Juan García" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="telefonoContacto" label="Tel. Contacto"><Input placeholder="809-000-0000" /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="ciudad" label="Ciudad"><Input placeholder="Santo Domingo" /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="contactoEntrega" label="Contacto"><Input placeholder="Juan García" /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="telefonoContacto" label="Tel. Contacto"><Input placeholder="809-000-0000" /></Form.Item></Col>
           </Row>
           <Row gutter={12}>
-            <Col span={12}><Form.Item name="conductor" label="Conductor"><Input placeholder="Nombre del conductor" /></Form.Item></Col>
-            <Col span={12}><Form.Item name="vehiculo" label="Vehículo / Placa"><Input placeholder="Ej. E-123456" /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="conductor" label="Conductor"><Input placeholder="Nombre del conductor" /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="vehiculo" label="Vehículo / Placa"><Input placeholder="Ej. E-123456" /></Form.Item></Col>
           </Row>
 
           <Divider orientation="left">Mercancía a Despachar</Divider>
@@ -267,7 +267,7 @@ export default function ConducePage() {
               <>
                 {fields.map(({ key, name }) => (
                   <Row gutter={8} key={key} align="middle" style={{ marginBottom: 8 }}>
-                    <Col span={8}>
+                    <Col xs={24} sm={8}>
                       <Form.Item name={[name, 'productoId']} noStyle>
                         <Select showSearch optionFilterProp="children" placeholder="Producto" style={{ width: '100%' }}
                           onChange={(pid) => {
@@ -278,10 +278,10 @@ export default function ConducePage() {
                         </Select>
                       </Form.Item>
                     </Col>
-                    <Col span={8}><Form.Item name={[name, 'descripcion']} noStyle rules={[{ required: true, message: '' }]}><Input placeholder="Descripción*" /></Form.Item></Col>
-                    <Col span={3}><Form.Item name={[name, 'cantidad']} noStyle rules={[{ required: true }]}><InputNumber min={0.01} placeholder="Cant." style={{ width: '100%' }} /></Form.Item></Col>
-                    <Col span={3}><Form.Item name={[name, 'unidadMedida']} noStyle><Input placeholder="PZA" /></Form.Item></Col>
-                    <Col span={2}>{fields.length > 1 && <Button type="link" danger onClick={() => remove(name)} icon={<DeleteOutlined />} />}</Col>
+                    <Col xs={24} sm={8}><Form.Item name={[name, 'descripcion']} noStyle rules={[{ required: true, message: '' }]}><Input placeholder="Descripción*" /></Form.Item></Col>
+                    <Col xs={12} sm={3}><Form.Item name={[name, 'cantidad']} noStyle rules={[{ required: true }]}><InputNumber min={0.01} placeholder="Cant." style={{ width: '100%' }} /></Form.Item></Col>
+                    <Col xs={12} sm={3}><Form.Item name={[name, 'unidadMedida']} noStyle><Input placeholder="PZA" /></Form.Item></Col>
+                    <Col xs={12} sm={2}>{fields.length > 1 && <Button type="link" danger onClick={() => remove(name)} icon={<DeleteOutlined />} />}</Col>
                   </Row>
                 ))}
                 <Button type="dashed" onClick={() => add()} icon={<PlusOutlined />} block>Agregar ítem</Button>
@@ -299,13 +299,13 @@ export default function ConducePage() {
         {modalDetalle && (
           <>
             <Row gutter={16} style={{ marginBottom: 16 }}>
-              <Col span={12}><Text type="secondary">Cliente:</Text><div><Text strong>{modalDetalle.cliente?.nombre}</Text></div></Col>
-              <Col span={12}><Text type="secondary">Destino:</Text><div><Text style={{ fontSize: 12 }}>{modalDetalle.direccionEntrega}</Text></div></Col>
+              <Col xs={24} sm={12}><Text type="secondary">Cliente:</Text><div><Text strong>{modalDetalle.cliente?.nombre}</Text></div></Col>
+              <Col xs={24} sm={12}><Text type="secondary">Destino:</Text><div><Text style={{ fontSize: 12 }}>{modalDetalle.direccionEntrega}</Text></div></Col>
             </Row>
             {(modalDetalle.conductor || modalDetalle.vehiculo) && (
               <Row gutter={16} style={{ marginBottom: 16 }}>
-                {modalDetalle.conductor && <Col span={12}><Text type="secondary">Conductor:</Text><div><Text>{modalDetalle.conductor}</Text></div></Col>}
-                {modalDetalle.vehiculo && <Col span={12}><Text type="secondary">Vehículo:</Text><div><Text>{modalDetalle.vehiculo}</Text></div></Col>}
+                {modalDetalle.conductor && <Col xs={24} sm={12}><Text type="secondary">Conductor:</Text><div><Text>{modalDetalle.conductor}</Text></div></Col>}
+                {modalDetalle.vehiculo && <Col xs={24} sm={12}><Text type="secondary">Vehículo:</Text><div><Text>{modalDetalle.vehiculo}</Text></div></Col>}
               </Row>
             )}
             <Table size="small"

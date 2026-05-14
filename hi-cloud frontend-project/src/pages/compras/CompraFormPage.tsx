@@ -91,23 +91,23 @@ export default function CompraFormPage() {
       <Form form={form} layout="vertical" onFinish={handleSubmit} initialValues={{ fecha: dayjs() }}>
         <Card style={{ marginBottom: 16 }}>
           <Row gutter={16}>
-            <Col span={10}>
+            <Col xs={24} sm={10}>
               <Form.Item name="proveedorId" label="Proveedor" rules={[{ required: true }]}>
                 <Select showSearch filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
                   options={proveedores?.data.map(p => ({ value: p.id, label: `${p.rnc} — ${p.nombre}` }))} />
               </Form.Item>
             </Col>
-            <Col span={5}>
+            <Col xs={12} sm={5}>
               <Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}>
                 <DatePicker style={{ width:'100%' }} format="DD/MM/YYYY" />
               </Form.Item>
             </Col>
-            <Col span={5}>
+            <Col xs={12} sm={5}>
               <Form.Item name="numeroFacturaProveedor" label="No. Factura Proveedor">
                 <Input placeholder="B01-00000001" />
               </Form.Item>
             </Col>
-            <Col span={4}>
+            <Col xs={12} sm={4}>
               <Form.Item name="notas" label="Notas"><Input.TextArea rows={1} /></Form.Item>
             </Col>
           </Row>

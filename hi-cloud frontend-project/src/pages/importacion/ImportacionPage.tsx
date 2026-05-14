@@ -91,9 +91,9 @@ function ImportCard({ tipo, title, campos }: { tipo: TipoImport; title: string; 
       {resultado && (
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
           <Row gutter={[16, 16]} style={{ marginBottom: 12 }}>
-            <Col span={8}><Card size="small"><Text>Total: <strong>{resultado.total}</strong></Text></Card></Col>
-            <Col span={8}><Card size="small" style={{ borderColor: '#86efac' }}><Text style={{ color: '#059669' }}>✓ Exitosos: <strong>{resultado.exitosos}</strong></Text></Card></Col>
-            <Col span={8}><Card size="small" style={{ borderColor: resultado.errores > 0 ? '#fca5a5' : undefined }}><Text style={{ color: resultado.errores > 0 ? '#dc2626' : undefined }}>✗ Errores: <strong>{resultado.errores}</strong></Text></Card></Col>
+            <Col xs={24} sm={8}><Card size="small"><Text>Total: <strong>{resultado.total}</strong></Text></Card></Col>
+            <Col xs={24} sm={8}><Card size="small" style={{ borderColor: '#86efac' }}><Text style={{ color: '#059669' }}>✓ Exitosos: <strong>{resultado.exitosos}</strong></Text></Card></Col>
+            <Col xs={24} sm={8}><Card size="small" style={{ borderColor: resultado.errores > 0 ? '#fca5a5' : undefined }}><Text style={{ color: resultado.errores > 0 ? '#dc2626' : undefined }}>✗ Errores: <strong>{resultado.errores}</strong></Text></Card></Col>
           </Row>
 
           {resultado.errores > 0 && (

@@ -338,12 +338,12 @@ export default function NotasDebitoPage() {
                 <Text strong style={{ color: token.colorSuccess, fontSize: 13 }}>Factura original cargada correctamente</Text>
               </div>
               <Row gutter={16}>
-                <Col span={12}>
+                <Col xs={24} sm={12}>
                   <Text type="secondary" style={{ fontSize: 11 }}>Cliente</Text>
                   <div><Text strong>{facturaOrigen.clienteNombre}</Text></div>
                   {facturaOrigen.clienteRNC && <Text type="secondary" style={{ fontSize: 11 }}>RNC: {facturaOrigen.clienteRNC}</Text>}
                 </Col>
-                <Col span={12}>
+                <Col xs={24} sm={12}>
                   <Text type="secondary" style={{ fontSize: 11 }}>eNCF Original (referencia para DGII)</Text>
                   <div><Text strong style={{ fontFamily: 'monospace', color: token.colorPrimary }}>{facturaOrigen.encf}</Text></div>
                   <Text type="secondary" style={{ fontSize: 11 }}>Fecha: {facturaOrigen.fecha}</Text>
@@ -369,9 +369,9 @@ export default function NotasDebitoPage() {
 
           {/* ── PASO 2: Datos del cargo ── */}
           <Row gutter={12}>
-            <Col span={8}><Form.Item name="fecha" label="Fecha del cargo" rules={[{ required: true }]}><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="motivo" label="Motivo *" rules={[{ required: true }]}><Select placeholder="Seleccionar motivo">{MOTIVOS.map(m => <Option key={m.value} value={m.value}>{m.label}</Option>)}</Select></Form.Item></Col>
-            <Col span={8}><Form.Item name="descripcionMotivo" label="Descripción"><Input placeholder="Detalle del cargo..." /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="fecha" label="Fecha del cargo" rules={[{ required: true }]}><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="motivo" label="Motivo *" rules={[{ required: true }]}><Select placeholder="Seleccionar motivo">{MOTIVOS.map(m => <Option key={m.value} value={m.value}>{m.label}</Option>)}</Select></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="descripcionMotivo" label="Descripción"><Input placeholder="Detalle del cargo..." /></Form.Item></Col>
           </Row>
 
           <Divider orientation="left" style={{ fontSize: 13 }}>Cargos adicionales a facturar</Divider>
@@ -381,11 +381,11 @@ export default function NotasDebitoPage() {
               <>
                 {fields.map(({ key, name }) => (
                   <Row gutter={8} key={key} align="middle" style={{ marginBottom: 8 }}>
-                    <Col span={7}><Form.Item name={[name, 'productoId']} noStyle><Select showSearch optionFilterProp="children" placeholder="Producto/servicio" allowClear style={{ width: '100%' }} onChange={pid => { const p = (productos as any[]).find((x: any) => x.id === pid); if (p) { const ds = formCrear.getFieldValue('detalles'); ds[name] = { ...ds[name], descripcion: p.nombre, precioUnitario: p.precio }; formCrear.setFieldsValue({ detalles: ds }); }}}>{(productos as any[]).map((p: any) => <Option key={p.id} value={p.id}>{p.nombre}</Option>)}</Select></Form.Item></Col>
-                    <Col span={7}><Form.Item name={[name, 'descripcion']} noStyle rules={[{ required: true, message: '' }]}><Input placeholder="Descripción del cargo *" /></Form.Item></Col>
-                    <Col span={4}><Form.Item name={[name, 'cantidad']} noStyle rules={[{ required: true }]}><InputNumber min={0.01} placeholder="Cant." style={{ width: '100%' }} /></Form.Item></Col>
-                    <Col span={5}><Form.Item name={[name, 'precioUnitario']} noStyle rules={[{ required: true }]}><InputNumber min={0} placeholder="Precio unit." style={{ width: '100%' }} /></Form.Item></Col>
-                    <Col span={1}>{fields.length > 1 && <Button type="link" danger size="small" icon={<DeleteOutlined />} onClick={() => remove(name)} />}</Col>
+                    <Col xs={24} sm={7}><Form.Item name={[name, 'productoId']} noStyle><Select showSearch optionFilterProp="children" placeholder="Producto/servicio" allowClear style={{ width: '100%' }} onChange={pid => { const p = (productos as any[]).find((x: any) => x.id === pid); if (p) { const ds = formCrear.getFieldValue('detalles'); ds[name] = { ...ds[name], descripcion: p.nombre, precioUnitario: p.precio }; formCrear.setFieldsValue({ detalles: ds }); }}}>{(productos as any[]).map((p: any) => <Option key={p.id} value={p.id}>{p.nombre}</Option>)}</Select></Form.Item></Col>
+                    <Col xs={24} sm={7}><Form.Item name={[name, 'descripcion']} noStyle rules={[{ required: true, message: '' }]}><Input placeholder="Descripción del cargo *" /></Form.Item></Col>
+                    <Col xs={12} sm={4}><Form.Item name={[name, 'cantidad']} noStyle rules={[{ required: true }]}><InputNumber min={0.01} placeholder="Cant." style={{ width: '100%' }} /></Form.Item></Col>
+                    <Col xs={12} sm={5}><Form.Item name={[name, 'precioUnitario']} noStyle rules={[{ required: true }]}><InputNumber min={0} placeholder="Precio unit." style={{ width: '100%' }} /></Form.Item></Col>
+                    <Col xs={12} sm={1}>{fields.length > 1 && <Button type="link" danger size="small" icon={<DeleteOutlined />} onClick={() => remove(name)} />}</Col>
                   </Row>
                 ))}
                 <Button type="dashed" onClick={() => add()} icon={<PlusOutlined />} block>Agregar cargo</Button>
@@ -418,9 +418,9 @@ export default function NotasDebitoPage() {
         {modalDetalle && (
           <>
             <Row gutter={16} style={{ marginBottom: 12 }}>
-              <Col span={12}><Text type="secondary" style={{ fontSize: 11 }}>Cliente</Text><div><Text strong>{modalDetalle.cliente?.nombre}</Text></div></Col>
-              <Col span={6}><Text type="secondary" style={{ fontSize: 11 }}>NCF</Text><div><Tag color="orange">{modalDetalle.tipoNcf}</Tag></div></Col>
-              <Col span={6}><Text type="secondary" style={{ fontSize: 11 }}>Fecha</Text><div><Text>{modalDetalle.fecha}</Text></div></Col>
+              <Col xs={24} sm={12}><Text type="secondary" style={{ fontSize: 11 }}>Cliente</Text><div><Text strong>{modalDetalle.cliente?.nombre}</Text></div></Col>
+              <Col xs={12} sm={6}><Text type="secondary" style={{ fontSize: 11 }}>NCF</Text><div><Tag color="orange">{modalDetalle.tipoNcf}</Tag></div></Col>
+              <Col xs={12} sm={6}><Text type="secondary" style={{ fontSize: 11 }}>Fecha</Text><div><Text>{modalDetalle.fecha}</Text></div></Col>
             </Row>
             {modalDetalle.facturaOriginalFolio && (
               <div style={{ marginBottom: 8 }}>

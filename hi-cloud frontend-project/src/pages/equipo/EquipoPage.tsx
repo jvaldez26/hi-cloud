@@ -380,9 +380,9 @@ export default function EquipoPage() {
           <Form.Item label="Rol en la empresa" required>
             <Row gutter={[8, 8]}>
               {Object.keys(ROL_INFO).map(rol => (
-                <Col span={12} key={rol}>
+                <Col xs={24} sm={12} key={rol}>
                   <RolCard rol={rol} selected={rolSeleccionado === rol}
-                    onSelect={() => setRol(rol)} />
+                    onSelect={() => setRol(rol)}  />
                 </Col>
               ))}
             </Row>
@@ -413,9 +413,9 @@ export default function EquipoPage() {
           <Form.Item label="Nuevo rol">
             <Row gutter={[8, 8]}>
               {Object.keys(ROL_INFO).map(rol => (
-                <Col span={12} key={rol}>
+                <Col xs={24} sm={12} key={rol}>
                   <RolCard rol={rol} selected={rolSeleccionado === rol}
-                    onSelect={() => setRol(rol)} />
+                    onSelect={() => setRol(rol)}  />
                 </Col>
               ))}
             </Row>

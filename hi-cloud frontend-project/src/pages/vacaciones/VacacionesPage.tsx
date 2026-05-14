@@ -353,22 +353,22 @@ export default function VacacionesPage() {
                   options={empleados?.map((e: any) => ({ value: e.id, label: `${e.nombre} ${e.apellido ?? ''}`.trim() }))} />
               </Form.Item>
             </Col>
-            <Col span={10}>
+            <Col xs={24} sm={10}>
               <Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}>
                 <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
               </Form.Item>
             </Col>
-            <Col span={14}>
+            <Col xs={24} sm={14}>
               <Form.Item name="tipo" label="Tipo" rules={[{ required: true }]}>
                 <Select options={TIPO_AUSENCIA} />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="dias" label="Días">
                 <Select options={[{ value: 1, label: 'Día completo' }, { value: 0.5, label: 'Medio día' }]} />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="justificada" label="Justificada">
                 <Select options={[{ value: true, label: '✅ Sí' }, { value: false, label: '❌ No' }]} />
               </Form.Item>

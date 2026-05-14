@@ -251,7 +251,7 @@ function TicketsSoporte({ token, clienteNombre }: { token: string; clienteNombre
             <Input placeholder="Describe brevemente tu consulta" />
           </Form.Item>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="categoria" label="Categoría" initialValue="consulta">
                 <Select options={[
                   { value: 'soporte_tecnico', label: '🔧 Soporte Técnico' },
@@ -262,7 +262,7 @@ function TicketsSoporte({ token, clienteNombre }: { token: string; clienteNombre
                 ]} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="prioridad" label="Prioridad" initialValue="media">
                 <Select options={[
                   { value: 'baja',  label: '🟢 Baja' },

@@ -193,8 +193,8 @@ export default function TesoreriaPage() {
           <Form.Item name="banco" label="Banco" rules={[{ required: true }]}><Input placeholder="Banco Popular, BHD, etc." /></Form.Item>
           <Form.Item name="numeroCuenta" label="Número de cuenta" rules={[{ required: true }]}><Input /></Form.Item>
           <Row gutter={12}>
-            <Col span={12}><Form.Item name="tipoCuenta" label="Tipo"><Select options={[{ value: 'corriente', label: 'Corriente' }, { value: 'ahorros', label: 'Ahorros' }]} /></Form.Item></Col>
-            <Col span={12}><Form.Item name="moneda" label="Moneda"><Select options={[{ value: 'DOP', label: 'DOP (Pesos)' }, { value: 'USD', label: 'USD (Dólares)' }]} /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="tipoCuenta" label="Tipo"><Select options={[{ value: 'corriente', label: 'Corriente' }, { value: 'ahorros', label: 'Ahorros' }]} /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="moneda" label="Moneda"><Select options={[{ value: 'DOP', label: 'DOP (Pesos)' }, { value: 'USD', label: 'USD (Dólares)' }]} /></Form.Item></Col>
           </Row>
           <Form.Item name="saldoInicial" label="Saldo inicial (RD$)"><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item>
           <Row justify="end" gutter={8}>

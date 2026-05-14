@@ -315,13 +315,13 @@ export default function ChequesPage() {
         <Form form={formCh} layout="vertical"
           onFinish={v => crearChequeraMut.mutate(v)}>
           <Row gutter={12}>
-            <Col span={14}><Form.Item name="banco" label="Banco" rules={[{ required: true }]}><Input placeholder="Banco Popular, Banreservas..." /></Form.Item></Col>
-            <Col span={10}><Form.Item name="numeroCuenta" label="N° Cuenta" rules={[{ required: true }]}><Input /></Form.Item></Col>
+            <Col xs={24} sm={14}><Form.Item name="banco" label="Banco" rules={[{ required: true }]}><Input placeholder="Banco Popular, Banreservas..." /></Form.Item></Col>
+            <Col xs={24} sm={10}><Form.Item name="numeroCuenta" label="N° Cuenta" rules={[{ required: true }]}><Input /></Form.Item></Col>
             <Col span={24}><Form.Item name="nombreCuenta" label="Nombre en la cuenta"><Input /></Form.Item></Col>
-            <Col span={12}><Form.Item name="serieDesde" label="Primer número" rules={[{ required: true }]}>
+            <Col xs={24} sm={12}><Form.Item name="serieDesde" label="Primer número" rules={[{ required: true }]}>
               <InputNumber style={{ width: '100%' }} min={1} />
             </Form.Item></Col>
-            <Col span={12}><Form.Item name="serieHasta" label="Último número" rules={[{ required: true }]}>
+            <Col xs={24} sm={12}><Form.Item name="serieHasta" label="Último número" rules={[{ required: true }]}>
               <InputNumber style={{ width: '100%' }} min={1} />
             </Form.Item></Col>
           </Row>
@@ -339,18 +339,18 @@ export default function ChequesPage() {
           initialValues={{ tipo: 'emitido', fecha: dayjs().format('YYYY-MM-DD') }}
           onFinish={v => emitirMut.mutate(v)}>
           <Row gutter={12}>
-            <Col span={12}><Form.Item name="chequeraId" label="Chequera" rules={[{ required: true }]}>
+            <Col xs={24} sm={12}><Form.Item name="chequeraId" label="Chequera" rules={[{ required: true }]}>
               <Select options={(chequeras ?? []).map((c: any) => ({
                 value: c.id, label: `${c.banco} · ${c.numeroCuenta}`,
               }))} />
             </Form.Item></Col>
-            <Col span={12}><Form.Item name="tipo" label="Tipo">
+            <Col xs={24} sm={12}><Form.Item name="tipo" label="Tipo">
               <Select options={[{ value: 'emitido', label: '↑ Emitido (pago)' }, { value: 'recibido', label: '↓ Recibido (cobro)' }]} />
             </Form.Item></Col>
-            <Col span={10}><Form.Item name="numero" label="N° Cheque (vacío = auto)"><Input placeholder="Auto" /></Form.Item></Col>
-            <Col span={14}><Form.Item name="beneficiario" label="Beneficiario / Emisor" rules={[{ required: true }]}><Input /></Form.Item></Col>
-            <Col span={10}><Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}><Input type="date" /></Form.Item></Col>
-            <Col span={14}><Form.Item name="monto" label="Monto (RD$)" rules={[{ required: true }]}>
+            <Col xs={24} sm={10}><Form.Item name="numero" label="N° Cheque (vacío = auto)"><Input placeholder="Auto" /></Form.Item></Col>
+            <Col xs={24} sm={14}><Form.Item name="beneficiario" label="Beneficiario / Emisor" rules={[{ required: true }]}><Input /></Form.Item></Col>
+            <Col xs={24} sm={10}><Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}><Input type="date" /></Form.Item></Col>
+            <Col xs={24} sm={14}><Form.Item name="monto" label="Monto (RD$)" rules={[{ required: true }]}>
               <InputNumber style={{ width: '100%' }} min={0} precision={2} />
             </Form.Item></Col>
             <Col span={24}><Form.Item name="concepto" label="Concepto"><Input.TextArea rows={2} /></Form.Item></Col>

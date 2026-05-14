@@ -240,17 +240,17 @@ export default function FlotaPage() {
       <Modal title="Agregar Vehículo" open={crearModal} onCancel={() => setCrearModal(false)} footer={null} width={560}>
         <Form form={formVeh} layout="vertical" onFinish={v => crearMut.mutate(v)}>
           <Row gutter={12}>
-            <Col span={8}><Form.Item name="placa" label="Placa" rules={[{ required: true }]}><Input placeholder="A123456" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="marca" label="Marca" rules={[{ required: true }]}><Input /></Form.Item></Col>
-            <Col span={8}><Form.Item name="modelo" label="Modelo" rules={[{ required: true }]}><Input /></Form.Item></Col>
-            <Col span={6}><Form.Item name="anio" label="Año" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} min={1990} max={2030} /></Form.Item></Col>
-            <Col span={10}><Form.Item name="color" label="Color"><Input /></Form.Item></Col>
-            <Col span={8}><Form.Item name="tipoVehiculo" label="Tipo"><Input placeholder="Sedan, Pickup..." /></Form.Item></Col>
-            <Col span={12}><Form.Item name="conductor" label="Conductor asignado"><Input /></Form.Item></Col>
-            <Col span={12}><Form.Item name="kilometraje" label="Km inicial"><InputNumber style={{ width: '100%' }} min={0} /></Form.Item></Col>
-            <Col span={8}><Form.Item name="vencimientoItbis" label="Marbete vence"><Input type="date" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="vencimientoSeguro" label="Seguro vence"><Input type="date" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="vencimientoInspeccion" label="Insp. vence"><Input type="date" /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="placa" label="Placa" rules={[{ required: true }]}><Input placeholder="A123456" /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="marca" label="Marca" rules={[{ required: true }]}><Input /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="modelo" label="Modelo" rules={[{ required: true }]}><Input /></Form.Item></Col>
+            <Col xs={12} sm={6}><Form.Item name="anio" label="Año" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} min={1990} max={2030} /></Form.Item></Col>
+            <Col xs={24} sm={10}><Form.Item name="color" label="Color"><Input /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="tipoVehiculo" label="Tipo"><Input placeholder="Sedan, Pickup..." /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="conductor" label="Conductor asignado"><Input /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="kilometraje" label="Km inicial"><InputNumber style={{ width: '100%' }} min={0} /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="vencimientoItbis" label="Marbete vence"><Input type="date" /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="vencimientoSeguro" label="Seguro vence"><Input type="date" /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="vencimientoInspeccion" label="Insp. vence"><Input type="date" /></Form.Item></Col>
           </Row>
           <Row justify="end" gutter={8}>
             <Col><Button onClick={() => setCrearModal(false)}>Cancelar</Button></Col>
@@ -264,12 +264,12 @@ export default function FlotaPage() {
         <Form form={formReg} layout="vertical" onFinish={v => regMut.mutate(v)}>
           <Form.Item name="vehiculoId" hidden><Input /></Form.Item>
           <Row gutter={12}>
-            <Col span={12}><Form.Item name="tipo" label="Tipo" rules={[{ required: true }]}><Select options={TIPO_REG} /></Form.Item></Col>
-            <Col span={12}><Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}><Input type="date" /></Form.Item></Col>
-            <Col span={12}><Form.Item name="monto" label="Monto (RD$)" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
-            <Col span={12}><Form.Item name="kilometraje" label="Kilometraje"><InputNumber style={{ width: '100%' }} min={0} /></Form.Item></Col>
-            <Col span={12}><Form.Item name="litros" label="Litros (combustible)"><InputNumber style={{ width: '100%' }} min={0} step={0.5} /></Form.Item></Col>
-            <Col span={12}><Form.Item name="proveedor" label="Proveedor"><Input /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="tipo" label="Tipo" rules={[{ required: true }]}><Select options={TIPO_REG} /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}><Input type="date" /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="monto" label="Monto (RD$)" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="kilometraje" label="Kilometraje"><InputNumber style={{ width: '100%' }} min={0} /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="litros" label="Litros (combustible)"><InputNumber style={{ width: '100%' }} min={0} step={0.5} /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="proveedor" label="Proveedor"><Input /></Form.Item></Col>
             <Col span={24}><Form.Item name="descripcion" label="Descripción"><Input.TextArea rows={2} /></Form.Item></Col>
           </Row>
           <Row justify="end" gutter={8}>

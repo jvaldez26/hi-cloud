@@ -396,25 +396,25 @@ export default function VendedoresPage() {
         <Form form={formCrear} layout="vertical"
           onFinish={v => crearActualizar.mutate({ ...v, fechaIngreso: v.fechaIngreso?.format('YYYY-MM-DD') })}>
           <Row gutter={12}>
-            <Col span={16}><Form.Item name="nombre" label="Nombre Completo" rules={[{ required: true }]}><Input placeholder="Juan García" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="cedula" label="Cédula"><Input placeholder="00100000000" maxLength={11} /></Form.Item></Col>
+            <Col xs={24} sm={16}><Form.Item name="nombre" label="Nombre Completo" rules={[{ required: true }]}><Input placeholder="Juan García" /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="cedula" label="Cédula"><Input placeholder="00100000000" maxLength={11} /></Form.Item></Col>
           </Row>
           <Row gutter={12}>
-            <Col span={12}><Form.Item name="email" label="Email"><Input placeholder="vendedor@empresa.com" /></Form.Item></Col>
-            <Col span={12}><Form.Item name="telefono" label="Teléfono"><Input placeholder="809-000-0000" /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="email" label="Email"><Input placeholder="vendedor@empresa.com" /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="telefono" label="Teléfono"><Input placeholder="809-000-0000" /></Form.Item></Col>
           </Row>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="cargo" label="Cargo" initialValue="Vendedor">
                 <Select>{CARGOS.map(c => <Option key={c} value={c}>{c}</Option>)}</Select>
               </Form.Item>
             </Col>
-            <Col span={12}><Form.Item name="zona" label="Zona / Territorio"><Input placeholder="Ej. Zona Norte, SDO" /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="zona" label="Zona / Territorio"><Input placeholder="Ej. Zona Norte, SDO" /></Form.Item></Col>
           </Row>
           <Row gutter={12}>
-            <Col span={8}><Form.Item name="comisionPct" label="Comisión (%)" initialValue={5}><InputNumber min={0} max={100} style={{ width: '100%' }} addonAfter="%" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="metaMensual" label="Meta Mensual (RD$)"><InputNumber min={0} style={{ width: '100%' }} prefix="RD$" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="fechaIngreso" label="Fecha Ingreso"><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="comisionPct" label="Comisión (%)" initialValue={5}><InputNumber min={0} max={100} style={{ width: '100%' }} addonAfter="%" /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="metaMensual" label="Meta Mensual (RD$)"><InputNumber min={0} style={{ width: '100%' }} prefix="RD$" /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="fechaIngreso" label="Fecha Ingreso"><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item></Col>
           </Row>
           <Form.Item name="usuarioId" label="Usuario del Sistema (opcional)">
             <InputNumber style={{ width: '100%' }} placeholder="ID del usuario para vincular ventas" />

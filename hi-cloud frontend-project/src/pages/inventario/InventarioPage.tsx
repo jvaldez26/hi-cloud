@@ -348,43 +348,43 @@ function LotesTab() {
       <Modal title="Registrar lote / batch" open={open} onCancel={() => { setOpen(false); form.resetFields(); }} footer={null} width={620}>
         <Form form={form} layout="vertical" onFinish={(v) => crearMut.mutate(v)}>
           <Row gutter={12}>
-            <Col span={16}>
+            <Col xs={24} sm={16}>
               <Form.Item name="productoId" label="Producto" rules={[{ required: true }]}>
                 <Select showSearch optionFilterProp="label" placeholder="Seleccionar producto"
                   options={(productosData?.data ?? []).map((p: any) => ({ value: p.id, label: `${p.codigo} — ${p.nombre}` }))} />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="numeroLote" label="N° de Lote" rules={[{ required: true }]}>
                 <Input placeholder="Ej. L2026-001" />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="cantidad" label="Cantidad" rules={[{ required: true }]}>
                 <InputNumber style={{ width: '100%' }} min={0.0001} precision={4} />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="costoUnitario" label="Costo unit. (RD$)">
                 <InputNumber style={{ width: '100%' }} min={0} precision={2} />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="fechaFabricacion" label="Fecha fabricación">
                 <Input type="date" />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="fechaVencimiento" label="Fecha vencimiento">
                 <Input type="date" />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="proveedor" label="Proveedor">
                 <Input />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="referencia" label="Referencia / OC">
                 <Input />
               </Form.Item>
@@ -536,12 +536,12 @@ function SerialesTab() {
               placeholder={'SN-001\nSN-002\nSN-003'} />
           </Form.Item>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="costoUnitario" label="Costo unit. (RD$)">
                 <InputNumber style={{ width: '100%' }} min={0} precision={2} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="fechaVencimientoGarantia" label="Garantía hasta">
                 <Input type="date" />
               </Form.Item>

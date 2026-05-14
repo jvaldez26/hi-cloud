@@ -409,9 +409,9 @@ export default function EtiquetasPage() {
             <Card bordered={false} style={{ borderRadius: 12, marginBottom: 16, background: token.colorFillAlter }}>
               <Text strong style={{ display: 'block', marginBottom: 12 }}>Configuración de campos</Text>
               <Row gutter={[12, 8]}>
-                <Col span={8}><Switch checked={config.mostrarPrecio}    onChange={v => updConf('mostrarPrecio', v)} /> <Text style={{ fontSize: 12 }}> Precio</Text></Col>
-                <Col span={8}><Switch checked={config.mostrarCodigo}    onChange={v => updConf('mostrarCodigo', v)} /> <Text style={{ fontSize: 12 }}> Código</Text></Col>
-                <Col span={8}>
+                <Col xs={24} sm={8}><Switch checked={config.mostrarPrecio}    onChange={v => updConf('mostrarPrecio', v)} /> <Text style={{ fontSize: 12 }}> Precio</Text></Col>
+                <Col xs={24} sm={8}><Switch checked={config.mostrarCodigo}    onChange={v => updConf('mostrarCodigo', v)} /> <Text style={{ fontSize: 12 }}> Código</Text></Col>
+                <Col xs={24} sm={8}>
                   <Switch checked={config.mostrarQR} onChange={v => updConf('mostrarQR', v)} />
                   <Text style={{ fontSize: 12 }}> Código</Text>
                   {config.mostrarQR && (
@@ -427,21 +427,21 @@ export default function EtiquetasPage() {
                     />
                   )}
                 </Col>
-                <Col span={8}><Switch checked={config.mostrarEmpresa}   onChange={v => updConf('mostrarEmpresa', v)} /> <Text style={{ fontSize: 12 }}> Empresa</Text></Col>
-                <Col span={8}><Switch checked={config.mostrarCategoria} onChange={v => updConf('mostrarCategoria', v)} /> <Text style={{ fontSize: 12 }}> Categoría</Text></Col>
-                <Col span={8}><Switch checked={config.precioConIva}    onChange={v => updConf('precioConIva', v)} />  <Text style={{ fontSize: 12 }}> Precio + ITBIS</Text></Col>
+                <Col xs={24} sm={8}><Switch checked={config.mostrarEmpresa}   onChange={v => updConf('mostrarEmpresa', v)} /> <Text style={{ fontSize: 12 }}> Empresa</Text></Col>
+                <Col xs={24} sm={8}><Switch checked={config.mostrarCategoria} onChange={v => updConf('mostrarCategoria', v)} /> <Text style={{ fontSize: 12 }}> Categoría</Text></Col>
+                <Col xs={24} sm={8}><Switch checked={config.precioConIva}    onChange={v => updConf('precioConIva', v)} />  <Text style={{ fontSize: 12 }}> Precio + ITBIS</Text></Col>
               </Row>
               <Row gutter={12} style={{ marginTop: 12 }}>
-                <Col span={12}>
+                <Col xs={24} sm={12}>
                   <Text style={{ fontSize: 12 }}>Nombre empresa:</Text>
                   <Input size="small" value={config.nombreEmpresa} onChange={e => updConf('nombreEmpresa', e.target.value)} style={{ marginTop: 4 }} />
                 </Col>
-                <Col span={6}>
+                <Col xs={12} sm={6}>
                   <Text style={{ fontSize: 12 }}>Fondo:</Text>
                   <input type="color" value={config.colorFondo} onChange={e => updConf('colorFondo', e.target.value)}
                     style={{ width: '100%', height: 30, marginTop: 4, border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer' }} />
                 </Col>
-                <Col span={6}>
+                <Col xs={12} sm={6}>
                   <Text style={{ fontSize: 12 }}>Texto:</Text>
                   <input type="color" value={config.colorTexto} onChange={e => updConf('colorTexto', e.target.value)}
                     style={{ width: '100%', height: 30, marginTop: 4, border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer' }} />

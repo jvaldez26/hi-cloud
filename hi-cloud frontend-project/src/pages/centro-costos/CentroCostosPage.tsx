@@ -273,10 +273,10 @@ export default function CentroCostosPage() {
             ? actualizarMut.mutate({ id: editando.id, data: v })
             : crearMut.mutate(v)}>
           <Row gutter={12}>
-            <Col span={8}><Form.Item name="codigo" label="Código" rules={[{ required: true }]}><Input placeholder="CC-01" /></Form.Item></Col>
-            <Col span={16}><Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input placeholder="Ventas, Administración, Producción..." /></Form.Item></Col>
-            <Col span={12}><Form.Item name="tipo" label="Tipo"><Select options={TIPOS} /></Form.Item></Col>
-            <Col span={12}><Form.Item name="presupuesto" label="Presupuesto anual (RD$)">
+            <Col xs={24} sm={8}><Form.Item name="codigo" label="Código" rules={[{ required: true }]}><Input placeholder="CC-01" /></Form.Item></Col>
+            <Col xs={24} sm={16}><Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input placeholder="Ventas, Administración, Producción..." /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="tipo" label="Tipo"><Select options={TIPOS} /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="presupuesto" label="Presupuesto anual (RD$)">
               <InputNumber style={{ width: '100%' }} min={0} precision={2} />
             </Form.Item></Col>
             <Col span={24}><Form.Item name="descripcion" label="Descripción"><Input.TextArea rows={2} /></Form.Item></Col>
@@ -305,16 +305,16 @@ export default function CentroCostosPage() {
             ]} />
           </Form.Item>
           <Row gutter={12}>
-            <Col span={12}><Form.Item name="documentoId" label="ID del documento" rules={[{ required: true }]}>
+            <Col xs={24} sm={12}><Form.Item name="documentoId" label="ID del documento" rules={[{ required: true }]}>
               <InputNumber style={{ width: '100%' }} min={1} />
             </Form.Item></Col>
-            <Col span={12}><Form.Item name="monto" label="Monto (RD$)" rules={[{ required: true }]}>
+            <Col xs={24} sm={12}><Form.Item name="monto" label="Monto (RD$)" rules={[{ required: true }]}>
               <InputNumber style={{ width: '100%' }} min={0} precision={2} />
             </Form.Item></Col>
-            <Col span={8}><Form.Item name="porcentaje" label="% asignado">
+            <Col xs={24} sm={8}><Form.Item name="porcentaje" label="% asignado">
               <InputNumber style={{ width: '100%' }} min={1} max={100} />
             </Form.Item></Col>
-            <Col span={16}><Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}>
+            <Col xs={24} sm={16}><Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}>
               <Input type="date" />
             </Form.Item></Col>
             <Col span={24}><Form.Item name="nota" label="Nota (opcional)"><Input /></Form.Item></Col>

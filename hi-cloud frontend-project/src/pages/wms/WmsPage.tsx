@@ -147,17 +147,17 @@ function UbicacionesTab() {
       <Modal title="Nueva ubicación" open={open} onCancel={() => { setOpen(false); form.resetFields(); }} footer={null} width={560}>
         <Form form={form} layout="vertical" onFinish={(v) => crearMut.mutate(v)}>
           <Row gutter={12}>
-            <Col span={8}><Form.Item name="almacenId" label="Almacén ID" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} min={1} /></Form.Item></Col>
-            <Col span={8}><Form.Item name="codigo" label="Código" rules={[{ required: true }]}><Input placeholder="A-01-03-02" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="tipo" label="Tipo" initialValue="picking">
+            <Col xs={24} sm={8}><Form.Item name="almacenId" label="Almacén ID" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} min={1} /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="codigo" label="Código" rules={[{ required: true }]}><Input placeholder="A-01-03-02" /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="tipo" label="Tipo" initialValue="picking">
               <Select options={Object.entries(TIPO_LABEL).map(([k, v]) => ({ value: k, label: v }))} />
             </Form.Item></Col>
-            <Col span={6}><Form.Item name="pasillo"  label="Pasillo"><Input /></Form.Item></Col>
-            <Col span={6}><Form.Item name="estante"  label="Estante"><Input /></Form.Item></Col>
-            <Col span={6}><Form.Item name="nivel"    label="Nivel"><Input /></Form.Item></Col>
-            <Col span={6}><Form.Item name="posicion" label="Posición"><Input /></Form.Item></Col>
-            <Col span={12}><Form.Item name="capacidadKg" label="Cap. Kg (opcional)"><InputNumber style={{ width: '100%' }} min={0} /></Form.Item></Col>
-            <Col span={12}><Form.Item name="notas" label="Notas"><Input /></Form.Item></Col>
+            <Col xs={12} sm={6}><Form.Item name="pasillo"  label="Pasillo"><Input /></Form.Item></Col>
+            <Col xs={12} sm={6}><Form.Item name="estante"  label="Estante"><Input /></Form.Item></Col>
+            <Col xs={12} sm={6}><Form.Item name="nivel"    label="Nivel"><Input /></Form.Item></Col>
+            <Col xs={12} sm={6}><Form.Item name="posicion" label="Posición"><Input /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="capacidadKg" label="Cap. Kg (opcional)"><InputNumber style={{ width: '100%' }} min={0} /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="notas" label="Notas"><Input /></Form.Item></Col>
           </Row>
           <Row justify="end" gutter={8}><Col><Button onClick={() => { setOpen(false); form.resetFields(); }}>Cancelar</Button></Col>
             <Col><Button type="primary" htmlType="submit" loading={crearMut.isPending}>Crear</Button></Col></Row>
@@ -246,8 +246,8 @@ function OrdenesPickingTab() {
           crearMut.mutate({ ...v, lineas });
         }}>
           <Row gutter={12}>
-            <Col span={8}><Form.Item name="almacenId" label="Almacén ID" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} min={1} /></Form.Item></Col>
-            <Col span={8}><Form.Item name="tipo" label="Tipo" initialValue="salida_venta">
+            <Col xs={24} sm={8}><Form.Item name="almacenId" label="Almacén ID" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} min={1} /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="tipo" label="Tipo" initialValue="salida_venta">
               <Select options={[
                 { value: 'salida_venta',  label: '🛒 Salida Venta' },
                 { value: 'transferencia', label: '🔄 Transferencia' },
@@ -255,20 +255,20 @@ function OrdenesPickingTab() {
                 { value: 'ajuste',        label: '⚖️ Ajuste' },
               ]} />
             </Form.Item></Col>
-            <Col span={8}><Form.Item name="prioridad" label="Prioridad" initialValue={2}>
+            <Col xs={24} sm={8}><Form.Item name="prioridad" label="Prioridad" initialValue={2}>
               <Select options={[{ value: 1, label: '🔴 Urgente' }, { value: 2, label: '🟡 Normal' }, { value: 3, label: '🟢 Baja' }]} />
             </Form.Item></Col>
-            <Col span={12}><Form.Item name="destinatario" label="Destinatario"><Input /></Form.Item></Col>
-            <Col span={12}><Form.Item name="facturaId" label="Factura ID (opcional)"><InputNumber style={{ width: '100%' }} min={1} /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="destinatario" label="Destinatario"><Input /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="facturaId" label="Factura ID (opcional)"><InputNumber style={{ width: '100%' }} min={1} /></Form.Item></Col>
           </Row>
           <Text strong>Productos a pickear:</Text>
           <Form.List name="lineas" initialValue={[{}]}>
             {(fields, { add, remove }) => (<>
               {fields.map(({ key, name }) => (
                 <Row key={key} gutter={8} align="middle" style={{ marginBottom: 8, marginTop: 8 }}>
-                  <Col span={8}><Form.Item name={[name, 'productoId']} rules={[{ required: true }]} style={{ margin: 0 }}><InputNumber placeholder="Producto ID" style={{ width: '100%' }} min={1} /></Form.Item></Col>
-                  <Col span={6}><Form.Item name={[name, 'cantidad']} rules={[{ required: true }]} style={{ margin: 0 }}><InputNumber placeholder="Cantidad" min={0.001} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
-                  <Col span={1}><Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => remove(name)} /></Col>
+                  <Col xs={24} sm={8}><Form.Item name={[name, 'productoId']} rules={[{ required: true }]} style={{ margin: 0 }}><InputNumber placeholder="Producto ID" style={{ width: '100%' }} min={1} /></Form.Item></Col>
+                  <Col xs={12} sm={6}><Form.Item name={[name, 'cantidad']} rules={[{ required: true }]} style={{ margin: 0 }}><InputNumber placeholder="Cantidad" min={0.001} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+                  <Col xs={12} sm={1}><Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => remove(name)} /></Col>
                 </Row>
               ))}
               <Button type="dashed" onClick={() => add({})} block icon={<PlusOutlined />} style={{ marginTop: 8 }}>Agregar producto</Button>

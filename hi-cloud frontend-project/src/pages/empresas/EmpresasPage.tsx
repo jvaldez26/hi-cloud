@@ -349,12 +349,12 @@ export default function EmpresasPage() {
             <Input placeholder="Mi Empresa S.R.L." />
           </Form.Item>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="nombreComercial" label="Nombre Comercial">
                 <Input placeholder="Nombre que se muestra en facturas" />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="sector" label="Sector" initialValue="COMERCIO">
                 <Select>
                   {SECTORES.map(s => <Option key={s} value={s}>{s}</Option>)}
@@ -363,12 +363,12 @@ export default function EmpresasPage() {
             </Col>
           </Row>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="telefono" label="Teléfono">
                 <Input placeholder="809-000-0000" />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="email" label="Email">
                 <Input placeholder="info@empresa.com" />
               </Form.Item>

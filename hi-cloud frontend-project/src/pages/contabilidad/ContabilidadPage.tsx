@@ -165,8 +165,8 @@ function Asientos() {
         <Form form={form} layout="vertical" onFinish={handleSubmit}
           initialValues={{ fecha: dayjs() }}>
           <Row gutter={12}>
-            <Col span={8}><Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item></Col>
-            <Col span={16}><Form.Item name="descripcion" label="Descripción" rules={[{ required: true }]}><Input /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item></Col>
+            <Col xs={24} sm={16}><Form.Item name="descripcion" label="Descripción" rules={[{ required: true }]}><Input /></Form.Item></Col>
           </Row>
           <Table size="small"
         scroll={{ x: 'max-content' }} pagination={false}
@@ -262,7 +262,7 @@ function EstadosFinancieros() {
           {balance && (
             <>
               <Row gutter={[16, 8]}>
-                <Col span={12}>
+                <Col xs={24} sm={12}>
                   <Title level={5} style={{ color: '#1677ff' }}>ACTIVOS</Title>
                   {balance.activos?.detalle?.slice(0, 8).map((c: any) => (
                     <Row justify="space-between" key={c.codigo} style={{ padding: '2px 0' }}>
@@ -275,7 +275,7 @@ function EstadosFinancieros() {
                     <Text strong style={{ color: '#1677ff' }}>{fmt.money(balance.activos?.total ?? 0)}</Text>
                   </Row>
                 </Col>
-                <Col span={12}>
+                <Col xs={24} sm={12}>
                   <Title level={5} style={{ color: '#fa8c16' }}>PASIVOS</Title>
                   {balance.pasivos?.detalle?.slice(0, 5).map((c: any) => (
                     <Row justify="space-between" key={c.codigo} style={{ padding: '2px 0' }}>
@@ -325,10 +325,10 @@ function EstadosFinancieros() {
           {resultados && (
             <>
               <Row gutter={[8, 8]}>
-                <Col span={12}><Statistic title="Ingresos" value={resultados.ingresos?.total ?? 0} formatter={v => fmt.money(Number(v))} valueStyle={{ color: '#52c41a' }} /></Col>
-                <Col span={12}><Statistic title="Costos" value={resultados.costos?.total ?? 0} formatter={v => fmt.money(Number(v))} valueStyle={{ color: '#ff7a45' }} /></Col>
-                <Col span={12}><Statistic title="Utilidad Bruta" value={resultados.utilidadBruta ?? 0} formatter={v => fmt.money(Number(v))} /></Col>
-                <Col span={12}><Statistic title="Gastos Operacionales" value={resultados.totalGastos ?? 0} formatter={v => fmt.money(Number(v))} valueStyle={{ color: '#ff4d4f' }} /></Col>
+                <Col xs={24} sm={12}><Statistic title="Ingresos" value={resultados.ingresos?.total ?? 0} formatter={v => fmt.money(Number(v))} valueStyle={{ color: '#52c41a' }} /></Col>
+                <Col xs={24} sm={12}><Statistic title="Costos" value={resultados.costos?.total ?? 0} formatter={v => fmt.money(Number(v))} valueStyle={{ color: '#ff7a45' }} /></Col>
+                <Col xs={24} sm={12}><Statistic title="Utilidad Bruta" value={resultados.utilidadBruta ?? 0} formatter={v => fmt.money(Number(v))} /></Col>
+                <Col xs={24} sm={12}><Statistic title="Gastos Operacionales" value={resultados.totalGastos ?? 0} formatter={v => fmt.money(Number(v))} valueStyle={{ color: '#ff4d4f' }} /></Col>
                 <Col span={24}>
                   <Card size="small" style={{
                     background:  (resultados.utilidadNeta ?? 0) >= 0 ? token.colorSuccessBg  : token.colorErrorBg,
@@ -473,9 +473,9 @@ function LibroMayor() {
 
       {mayor && (
         <Row gutter={[16, 8]} style={{ marginBottom: 12 }}>
-          <Col span={10}><Statistic title="Cuenta" value={`${mayor.cuenta?.codigo} — ${mayor.cuenta?.nombre}`} valueStyle={{ fontSize: 13 }} /></Col>
-          <Col span={6}><Statistic title="Tipo" value={(mayor.cuenta?.tipo ?? '').toUpperCase()} /></Col>
-          <Col span={8}>
+          <Col xs={24} sm={10}><Statistic title="Cuenta" value={`${mayor.cuenta?.codigo} — ${mayor.cuenta?.nombre}`} valueStyle={{ fontSize: 13 }} /></Col>
+          <Col xs={12} sm={6}><Statistic title="Tipo" value={(mayor.cuenta?.tipo ?? '').toUpperCase()} /></Col>
+          <Col xs={24} sm={8}>
             <Statistic title="Saldo Final" value={mayor.saldoFinal ?? 0} formatter={v => fmt.money(Number(v))}
               valueStyle={{ color: (mayor.saldoFinal ?? 0) >= 0 ? '#52c41a' : '#ff4d4f' }} />
           </Col>

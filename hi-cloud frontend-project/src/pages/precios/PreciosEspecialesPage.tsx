@@ -157,22 +157,22 @@ export default function PreciosEspecialesPage() {
               </Col>
             )}
 
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="precioFijo" label="Precio fijo (RD$)" tooltip="Deja vacío si usas % descuento">
                 <InputNumber style={{ width: '100%' }} min={0} precision={2} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="descuentoPorcentaje" label="O descuento (%)" tooltip="Se aplica sobre el precio base">
                 <InputNumber style={{ width: '100%' }} min={0} max={100} precision={2}
                   formatter={v => `${v}%`} parser={v => Number(String(v ?? '').replace('%','')) as 0 | 100} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="nombre" label="Nombre de la regla"><Input placeholder="Precio mayorista..." /></Form.Item>
             </Col>
-            <Col span={12}><Form.Item name="vigenciaDesde" label="Vigente desde"><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item></Col>
-            <Col span={12}><Form.Item name="vigenciaHasta" label="Vigente hasta"><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="vigenciaDesde" label="Vigente desde"><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="vigenciaHasta" label="Vigente hasta"><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item></Col>
           </Row>
           <Row justify="end" gutter={8}>
             <Col><Button onClick={() => setOpen(false)}>Cancelar</Button></Col>

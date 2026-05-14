@@ -210,24 +210,24 @@ export default function FidelidadPage() {
         <Form form={formConfig} layout="vertical" onFinish={v => actualizarPrograma.mutate(v)}>
           <Form.Item name="nombre" label="Nombre del Programa"><Input /></Form.Item>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="puntosPorDOP" label="Puntos por cada RD$ 1 gastado">
                 <InputNumber min={0.01} precision={4} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="minimoCanjePoints" label="Mínimo para canjear (pts)">
                 <InputNumber min={1} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
           </Row>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="valorPorPunto" label="Valor de 1 punto (RD$)">
                 <InputNumber min={0.01} precision={4} style={{ width: '100%' }} prefix="RD$" />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="diasVencimiento" label="Vencimiento (días, 0=nunca)">
                 <InputNumber min={0} style={{ width: '100%' }} />
               </Form.Item>

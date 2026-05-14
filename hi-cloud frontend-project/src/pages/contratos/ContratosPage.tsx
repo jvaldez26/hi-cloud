@@ -149,17 +149,17 @@ export default function ContratosPage() {
               <Select showSearch filterOption={(i, o) => String(o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
                 options={clientes?.data.map((c: any) => ({ value: c.id, label: c.nombre }))} />
             </Form.Item></Col>
-            <Col span={16}><Form.Item name="nombre" label="Nombre del contrato" rules={[{ required: true }]}><Input placeholder="Mantenimiento mensual, Servicio de limpieza..." /></Form.Item></Col>
-            <Col span={8}><Form.Item name="diaFacturacion" label="Día facturación"><InputNumber style={{ width: '100%' }} min={1} max={28} /></Form.Item></Col>
+            <Col xs={24} sm={16}><Form.Item name="nombre" label="Nombre del contrato" rules={[{ required: true }]}><Input placeholder="Mantenimiento mensual, Servicio de limpieza..." /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="diaFacturacion" label="Día facturación"><InputNumber style={{ width: '100%' }} min={1} max={28} /></Form.Item></Col>
             <Col span={24}><Form.Item name="descripcionServicio" label="Descripción del servicio" rules={[{ required: true }]}><Input.TextArea rows={2} /></Form.Item></Col>
-            <Col span={8}><Form.Item name="montoBase" label="Monto base (RD$)" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
-            <Col span={8}><Form.Item name="porcentajeIva" label="ITBIS %"><InputNumber style={{ width: '100%' }} min={0} max={100} /></Form.Item></Col>
-            <Col span={8}><Form.Item name="periodoFacturacion" label="Frecuencia">
+            <Col xs={24} sm={8}><Form.Item name="montoBase" label="Monto base (RD$)" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="porcentajeIva" label="ITBIS %"><InputNumber style={{ width: '100%' }} min={0} max={100} /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="periodoFacturacion" label="Frecuencia">
               <Select options={PERIODOS} />
             </Form.Item></Col>
-            <Col span={8}><Form.Item name="fechaInicio" label="Inicio" rules={[{ required: true }]}><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="fechaFin" label="Fin (opcional)"><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="facturaAutomatica" label="Factura automática">
+            <Col xs={24} sm={8}><Form.Item name="fechaInicio" label="Inicio" rules={[{ required: true }]}><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="fechaFin" label="Fin (opcional)"><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="facturaAutomatica" label="Factura automática">
               <Select options={[{ value: true, label: '✅ Sí (cron diario)' }, { value: false, label: '⬜ No (manual)' }]} />
             </Form.Item></Col>
             <Col span={24}><Form.Item name="terminos" label="Términos y condiciones"><Input.TextArea rows={2} /></Form.Item></Col>

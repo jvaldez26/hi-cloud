@@ -289,12 +289,12 @@ export default function GastosPage() {
         >
           {/* Fila 1: Fecha + Categoría */}
           <Row gutter={12}>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}>
                 <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
               </Form.Item>
             </Col>
-            <Col span={16}>
+            <Col xs={24} sm={16}>
               <Form.Item name="categoria" label="Categoría" rules={[{ required: true }]}>
                 <Select
                   placeholder="Seleccionar categoría"
@@ -335,14 +335,14 @@ export default function GastosPage() {
               </Form.Item>
             </Col>
             {!generaE43 && (
-              <Col span={7}>
+              <Col xs={24} sm={7}>
                 <Form.Item name="itbis" label="ITBIS (RD$)" tooltip="Si aplica crédito fiscal">
                   <InputNumber style={{ width: '100%' }} min={0} precision={2} />
                 </Form.Item>
               </Col>
             )}
             {generaE43 && (
-              <Col span={12}>
+              <Col xs={24} sm={12}>
                 <Form.Item label="ITBIS">
                   <InputNumber style={{ width: '100%' }} value={0} disabled
                     placeholder="0.00 (exento — E43 no aplica ITBIS)" />
@@ -353,7 +353,7 @@ export default function GastosPage() {
 
           {/* Campos según tipo */}
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item
                 name="proveedor"
                 label={generaE43 ? 'Proveedor (opcional)' : 'Proveedor'}
@@ -362,7 +362,7 @@ export default function GastosPage() {
                 <Input placeholder={generaE43 ? 'Nombre del vendedor informal' : 'Nombre del proveedor'} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               {generaE43 ? (
                 <Form.Item name="comprobante" label="Referencia (opcional)">
                   <Input placeholder="Descripción o referencia interna" />
@@ -374,7 +374,7 @@ export default function GastosPage() {
               )}
             </Col>
             {!generaE43 && (
-              <Col span={12}>
+              <Col xs={24} sm={12}>
                 <Form.Item name="comprobante" label="No. Comprobante (NCF recibido)">
                   <Input placeholder="E310000000001 o referencia" />
                 </Form.Item>

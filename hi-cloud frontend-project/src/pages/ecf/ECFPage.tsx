@@ -331,12 +331,12 @@ function SecuenciasTab({ onRefresh }: { onRefresh: () => void }) {
             <Select options={tipos?.map((t: any) => ({ value: t.id, label: `${t.codigo} — ${t.descripcion}` }))} />
           </Form.Item>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="secuenciaInicial" label="Secuencia Inicial" rules={[{ required: true }]}>
                 <InputNumber style={{ width: '100%' }} min={1} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="secuenciaFinal" label="Secuencia Final" rules={[{ required: true }]}>
                 <InputNumber style={{ width: '100%' }} min={1} />
               </Form.Item>
@@ -375,12 +375,12 @@ function SecuenciasTab({ onRefresh }: { onRefresh: () => void }) {
         <Form form={editForm} layout="vertical"
           onFinish={v => updateMut.mutate({ id: editTarget.id, body: v })}>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="secuenciaInicial" label="Secuencia Inicial" rules={[{ required: true }]}>
                 <InputNumber style={{ width: '100%' }} min={1} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="secuenciaFinal" label="Secuencia Final" rules={[{ required: true }]}>
                 <InputNumber style={{ width: '100%' }} min={1} />
               </Form.Item>

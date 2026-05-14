@@ -117,23 +117,23 @@ function EmpleadosTab() {
         <Form form={form} layout="vertical"
           onFinish={(v) => editing ? updateMut.mutate({ id: editing.id, body: v }) : createMut.mutate(v)}>
           <Row gutter={12}>
-            <Col span={8}><Form.Item name="cedula" label="Cédula (11 dígitos)" rules={[{ required: true, pattern: /^\d{11}$/, message: '11 dígitos' }]}><Input /></Form.Item></Col>
-            <Col span={8}><Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input /></Form.Item></Col>
-            <Col span={8}><Form.Item name="apellido" label="Apellido" rules={[{ required: true }]}><Input /></Form.Item></Col>
-            <Col span={8}><Form.Item name="fechaNacimiento" label="Fecha Nacimiento" rules={[{ required: true }]}><Input type="date" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="fechaIngreso" label="Fecha Ingreso" rules={[{ required: true }]}><Input type="date" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="cargo" label="Cargo" rules={[{ required: true }]}><Input /></Form.Item></Col>
-            <Col span={8}><Form.Item name="departamento" label="Departamento"><Input /></Form.Item></Col>
-            <Col span={8}><Form.Item name="salarioBase" label="Salario Base (RD$)" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
-            <Col span={8}><Form.Item name="tipoPago" label="Tipo Pago" rules={[{ required: true }]}>
+            <Col xs={24} sm={8}><Form.Item name="cedula" label="Cédula (11 dígitos)" rules={[{ required: true, pattern: /^\d{11}$/, message: '11 dígitos' }]}><Input /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="apellido" label="Apellido" rules={[{ required: true }]}><Input /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="fechaNacimiento" label="Fecha Nacimiento" rules={[{ required: true }]}><Input type="date" /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="fechaIngreso" label="Fecha Ingreso" rules={[{ required: true }]}><Input type="date" /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="cargo" label="Cargo" rules={[{ required: true }]}><Input /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="departamento" label="Departamento"><Input /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="salarioBase" label="Salario Base (RD$)" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="tipoPago" label="Tipo Pago" rules={[{ required: true }]}>
               <Select options={[{ value: 'mensual', label: 'Mensual' }, { value: 'quincenal', label: 'Quincenal' }]} /></Form.Item></Col>
-            <Col span={8}><Form.Item name="tipoContrato" label="Contrato" rules={[{ required: true }]}>
+            <Col xs={24} sm={8}><Form.Item name="tipoContrato" label="Contrato" rules={[{ required: true }]}>
               <Select options={[{ value: 'indefinido', label: 'Indefinido' }, { value: 'fijo', label: 'Fijo' }, { value: 'temporal', label: 'Temporal' }]} /></Form.Item></Col>
-            <Col span={8}><Form.Item name="email" label="Email"><Input /></Form.Item></Col>
-            <Col span={8}><Form.Item name="telefono" label="Teléfono"><Input /></Form.Item></Col>
-            <Col span={8}><Form.Item name="banco" label="Banco"><Input /></Form.Item></Col>
-            <Col span={8}><Form.Item name="cuentaBancaria" label="No. Cuenta"><Input /></Form.Item></Col>
-            <Col span={8}><Form.Item name="otrasDeduccionesFixed" label="Otras Ded. Fijas (RD$)"><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="email" label="Email"><Input /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="telefono" label="Teléfono"><Input /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="banco" label="Banco"><Input /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="cuentaBancaria" label="No. Cuenta"><Input /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="otrasDeduccionesFixed" label="Otras Ded. Fijas (RD$)"><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
           </Row>
           <Row justify="end" gutter={8}>
             <Col><Button onClick={closeModal}>Cancelar</Button></Col>
@@ -225,7 +225,7 @@ function NovedadesTab() {
             <Select showSearch optionFilterProp="label" options={empOptions} placeholder="Seleccionar empleado" />
           </Form.Item>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="tipo" label="Tipo" rules={[{ required: true }]}>
                 <Select options={[
                   { value: 'bono',         label: '💰 Bono adicional' },
@@ -236,7 +236,7 @@ function NovedadesTab() {
                 ]} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               {watchTipo === 'horas_extras' ? (
                 <Form.Item name="horasExtras" label="Cantidad de horas" rules={[{ required: true }]}>
                   <InputNumber style={{ width: '100%' }} min={1} max={240} addonAfter="h"
@@ -331,15 +331,15 @@ function ContratosTab() {
       <Modal title="Nuevo contrato laboral" open={open} onCancel={() => { setOpen(false); form.resetFields(); }} footer={null} width={680}>
         <Form form={form} layout="vertical" onFinish={(v) => createMut.mutate(v)}>
           <Row gutter={12}>
-            <Col span={16}>
+            <Col xs={24} sm={16}>
               <Form.Item name="empleadoId" label="Empleado" rules={[{ required: true }]}>
                 <Select showSearch optionFilterProp="label" options={empOptions} />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="numero" label="N° Contrato (opcional)"><Input placeholder="Auto" /></Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="tipo" label="Tipo de contrato" rules={[{ required: true }]}>
                 <Select options={[
                   { value: 'indefinido', label: 'Indefinido' },
@@ -348,29 +348,29 @@ function ContratosTab() {
                 ]} />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="fechaInicio" label="Fecha inicio" rules={[{ required: true }]}>
                 <Input type="date" />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="fechaFin" label="Fecha vencimiento"
                 rules={[{ required: watchTipo !== 'indefinido', message: 'Requerido para contratos con plazo' }]}>
                 <Input type="date" disabled={watchTipo === 'indefinido'} />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="salario" label="Salario (RD$)" rules={[{ required: true }]}>
                 <InputNumber style={{ width: '100%' }} min={0} precision={2} />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="cargo" label="Cargo" rules={[{ required: true }]}><Input /></Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="departamento" label="Departamento"><Input /></Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="horasSemana" label="Horas/semana">
                 <InputNumber style={{ width: '100%' }} min={1} max={48} />
               </Form.Item>
@@ -532,10 +532,10 @@ function PeriodosTab() {
           message="Se aplicarán automáticamente todas las novedades pendientes (bonos, horas extras, ausencias, descuentos)." />
         <Form form={form} layout="vertical" onFinish={(v) => createMut.mutate({ ...v, diasPeriodo: 30 })}>
           <Row gutter={12}>
-            <Col span={12}><Form.Item name="periodo" label="Período (YYYY-MM)" rules={[{ required: true, pattern: /^\d{4}-\d{2}$/ }]}><Input placeholder="2026-05" /></Form.Item></Col>
-            <Col span={12}><Form.Item name="fechaPago" label="Fecha de Pago" rules={[{ required: true }]}><Input type="date" /></Form.Item></Col>
-            <Col span={12}><Form.Item name="fechaInicio" label="Fecha Inicio" rules={[{ required: true }]}><Input type="date" /></Form.Item></Col>
-            <Col span={12}><Form.Item name="fechaFin" label="Fecha Fin" rules={[{ required: true }]}><Input type="date" /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="periodo" label="Período (YYYY-MM)" rules={[{ required: true, pattern: /^\d{4}-\d{2}$/ }]}><Input placeholder="2026-05" /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="fechaPago" label="Fecha de Pago" rules={[{ required: true }]}><Input type="date" /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="fechaInicio" label="Fecha Inicio" rules={[{ required: true }]}><Input type="date" /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="fechaFin" label="Fecha Fin" rules={[{ required: true }]}><Input type="date" /></Form.Item></Col>
           </Row>
           <Row justify="end" gutter={8}>
             <Col><Button onClick={() => setOpenCreate(false)}>Cancelar</Button></Col>

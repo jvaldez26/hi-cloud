@@ -244,22 +244,22 @@ export default function LicitacionesPage() {
           })}>
           <Row gutter={12}>
             <Col span={24}><Form.Item name="titulo" label="Título" rules={[{ required: true }]}><Input /></Form.Item></Col>
-            <Col span={16}><Form.Item name="entidadConvocante" label="Entidad convocante" rules={[{ required: true }]}><Input /></Form.Item></Col>
-            <Col span={8}><Form.Item name="rncEntidad" label="RNC entidad"><Input /></Form.Item></Col>
-            <Col span={12}><Form.Item name="tipo" label="Tipo"><Select options={TIPO_LIC} /></Form.Item></Col>
-            <Col span={12}><Form.Item name="fechaPublicacion" label="Fecha publicación" rules={[{ required: true }]}>
+            <Col xs={24} sm={16}><Form.Item name="entidadConvocante" label="Entidad convocante" rules={[{ required: true }]}><Input /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="rncEntidad" label="RNC entidad"><Input /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="tipo" label="Tipo"><Select options={TIPO_LIC} /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="fechaPublicacion" label="Fecha publicación" rules={[{ required: true }]}>
               <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
             </Form.Item></Col>
-            <Col span={12}><Form.Item name="fechaLimiteOfertas" label="Límite ofertas">
+            <Col xs={24} sm={12}><Form.Item name="fechaLimiteOfertas" label="Límite ofertas">
               <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
             </Form.Item></Col>
-            <Col span={12}><Form.Item name="fechaApertura" label="Fecha apertura">
+            <Col xs={24} sm={12}><Form.Item name="fechaApertura" label="Fecha apertura">
               <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
             </Form.Item></Col>
-            <Col span={12}><Form.Item name="montoEstimado" label="Monto estimado (RD$)">
+            <Col xs={24} sm={12}><Form.Item name="montoEstimado" label="Monto estimado (RD$)">
               <InputNumber style={{ width: '100%' }} min={0} precision={2} />
             </Form.Item></Col>
-            <Col span={12}><Form.Item name="montoOfertado" label="Monto ofertado (RD$)">
+            <Col xs={24} sm={12}><Form.Item name="montoOfertado" label="Monto ofertado (RD$)">
               <InputNumber style={{ width: '100%' }} min={0} precision={2} />
             </Form.Item></Col>
             <Col span={24}><Form.Item name="enlacePortal" label="Enlace portal (DGCP / SNCC)"><Input prefix={<LinkOutlined />} /></Form.Item></Col>

@@ -407,7 +407,7 @@ export default function PeriodoContablePage() {
           onFinish={v => crearPeriodo.mutate(v)}
         >
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="anio" label="Año" rules={[{ required: true }]}>
                 <Select>
                   {[anioActual + 1, anioActual, anioActual - 1, anioActual - 2].map(y => (
@@ -416,7 +416,7 @@ export default function PeriodoContablePage() {
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="mes" label="Mes" rules={[{ required: true }]}>
                 <Select>
                   {MESES.map((m, i) => (

@@ -211,8 +211,8 @@ export default function GruposPage() {
       >
         <Form form={formG} layout="vertical" onFinish={v => mutGrupo.mutate(v)}>
           <Row gutter={12}>
-            <Col span={8}><Form.Item name="codigo" label="Código" rules={[{ required: true }]}><Input placeholder="EL" /></Form.Item></Col>
-            <Col span={16}><Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input placeholder="Electrónica" /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="codigo" label="Código" rules={[{ required: true }]}><Input placeholder="EL" /></Form.Item></Col>
+            <Col xs={24} sm={16}><Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input placeholder="Electrónica" /></Form.Item></Col>
           </Row>
           <Form.Item name="parentId" label="Grupo Padre (opcional)">
             <Select allowClear placeholder="Sin padre = categoría raíz">
@@ -236,12 +236,12 @@ export default function GruposPage() {
           initialValues={{ descuentoPct: 0, diasCreditoDefault: 30 }}
           onFinish={v => mutSegmento.mutate(v)}>
           <Row gutter={12}>
-            <Col span={8}><Form.Item name="codigo" label="Código" rules={[{ required: true }]}><Input placeholder="VIP" /></Form.Item></Col>
-            <Col span={16}><Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input placeholder="Cliente VIP" /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="codigo" label="Código" rules={[{ required: true }]}><Input placeholder="VIP" /></Form.Item></Col>
+            <Col xs={24} sm={16}><Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input placeholder="Cliente VIP" /></Form.Item></Col>
           </Row>
           <Row gutter={12}>
-            <Col span={12}><Form.Item name="descuentoPct" label="Descuento Automático (%)"><InputNumber min={0} max={100} style={{ width: '100%' }} addonAfter="%" /></Form.Item></Col>
-            <Col span={12}><Form.Item name="diasCreditoDefault" label="Días de Crédito"><InputNumber min={0} style={{ width: '100%' }} addonAfter="días" /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="descuentoPct" label="Descuento Automático (%)"><InputNumber min={0} max={100} style={{ width: '100%' }} addonAfter="%" /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="diasCreditoDefault" label="Días de Crédito"><InputNumber min={0} style={{ width: '100%' }} addonAfter="días" /></Form.Item></Col>
           </Row>
           <Form.Item name="descripcion" label="Descripción"><Input.TextArea rows={2} /></Form.Item>
         </Form>

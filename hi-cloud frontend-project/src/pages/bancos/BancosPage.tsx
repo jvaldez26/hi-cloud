@@ -288,20 +288,20 @@ export default function BancosPage() {
           initialValues={{ tipo: 'corriente', moneda: 'DOP', saldoInicial: 0 }}
           onFinish={v => crearCuentaMut.mutate(v)}>
           <Row gutter={12}>
-            <Col span={14}><Form.Item name="nombre" label="Nombre de la cuenta" rules={[{ required: true }]}><Input /></Form.Item></Col>
-            <Col span={10}><Form.Item name="banco" label="Banco" rules={[{ required: true }]}><Input /></Form.Item></Col>
-            <Col span={12}><Form.Item name="numeroCuenta" label="Número de cuenta" rules={[{ required: true }]}><Input /></Form.Item></Col>
-            <Col span={12}><Form.Item name="tipo" label="Tipo">
+            <Col xs={24} sm={14}><Form.Item name="nombre" label="Nombre de la cuenta" rules={[{ required: true }]}><Input /></Form.Item></Col>
+            <Col xs={24} sm={10}><Form.Item name="banco" label="Banco" rules={[{ required: true }]}><Input /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="numeroCuenta" label="Número de cuenta" rules={[{ required: true }]}><Input /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="tipo" label="Tipo">
               <Select options={[
                 { value: 'corriente', label: 'Corriente' },
                 { value: 'ahorros',   label: 'Ahorros' },
                 { value: 'empresarial', label: 'Empresarial' },
               ]} />
             </Form.Item></Col>
-            <Col span={12}><Form.Item name="saldoInicial" label="Saldo inicial (RD$)">
+            <Col xs={24} sm={12}><Form.Item name="saldoInicial" label="Saldo inicial (RD$)">
               <InputNumber style={{ width: '100%' }} min={0} precision={2} />
             </Form.Item></Col>
-            <Col span={12}><Form.Item name="moneda" label="Moneda">
+            <Col xs={24} sm={12}><Form.Item name="moneda" label="Moneda">
               <Select options={[{ value: 'DOP', label: '🇩🇴 Pesos (DOP)' }, { value: 'USD', label: '🇺🇸 Dólares (USD)' }]} />
             </Form.Item></Col>
           </Row>
@@ -319,15 +319,15 @@ export default function BancosPage() {
           initialValues={{ tipo: 'credito', fecha: dayjs().format('YYYY-MM-DD') }}
           onFinish={v => agregarMovMut.mutate({ ...v, cuentaId })}>
           <Row gutter={12}>
-            <Col span={12}><Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}>
+            <Col xs={24} sm={12}><Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}>
               <Input type="date" />
             </Form.Item></Col>
-            <Col span={12}><Form.Item name="tipo" label="Tipo">
+            <Col xs={24} sm={12}><Form.Item name="tipo" label="Tipo">
               <Select options={[{ value: 'credito', label: '↑ Crédito (depósito)' }, { value: 'debito', label: '↓ Débito (retiro)' }]} />
             </Form.Item></Col>
             <Col span={24}><Form.Item name="descripcion" label="Descripción" rules={[{ required: true }]}><Input /></Form.Item></Col>
-            <Col span={12}><Form.Item name="referencia" label="Referencia / Cheque #"><Input /></Form.Item></Col>
-            <Col span={12}><Form.Item name="monto" label="Monto (RD$)" rules={[{ required: true }]}>
+            <Col xs={24} sm={12}><Form.Item name="referencia" label="Referencia / Cheque #"><Input /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="monto" label="Monto (RD$)" rules={[{ required: true }]}>
               <InputNumber style={{ width: '100%' }} min={0} precision={2} />
             </Form.Item></Col>
           </Row>

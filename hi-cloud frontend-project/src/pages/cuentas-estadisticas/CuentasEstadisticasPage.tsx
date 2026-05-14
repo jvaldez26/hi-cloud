@@ -126,13 +126,13 @@ function CuentasTab() {
       <Modal title="Nueva cuenta estadística" open={open} onCancel={() => { setOpen(false); form.resetFields(); }} footer={null} width={520}>
         <Form form={form} layout="vertical" onFinish={(v) => crearMut.mutate(v)}>
           <Row gutter={12}>
-            <Col span={8}><Form.Item name="codigo" label="Código" rules={[{ required: true }]}><Input placeholder="EST-001" /></Form.Item></Col>
-            <Col span={16}><Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input /></Form.Item></Col>
-            <Col span={8}><Form.Item name="tipo" label="Tipo" initialValue="acumulador">
+            <Col xs={24} sm={8}><Form.Item name="codigo" label="Código" rules={[{ required: true }]}><Input placeholder="EST-001" /></Form.Item></Col>
+            <Col xs={24} sm={16}><Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="tipo" label="Tipo" initialValue="acumulador">
               <Select options={Object.entries(TIPO_LABEL).map(([k, v]) => ({ value: k, label: v }))} />
             </Form.Item></Col>
-            <Col span={8}><Form.Item name="unidad" label="Unidad" initialValue="unidades"><Input /></Form.Item></Col>
-            <Col span={8}><Form.Item name="categoria" label="Categoría"><Input /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="unidad" label="Unidad" initialValue="unidades"><Input /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="categoria" label="Categoría"><Input /></Form.Item></Col>
             <Col span={24}><Form.Item name="descripcion" label="Descripción"><Input.TextArea rows={2} /></Form.Item></Col>
           </Row>
           <Row justify="end" gutter={8}><Col><Button onClick={() => { setOpen(false); form.resetFields(); }}>Cancelar</Button></Col>
@@ -146,8 +146,8 @@ function CuentasTab() {
         <Form form={formReg} layout="vertical" onFinish={(v) => regMut.mutate(v)}>
           <Form.Item name="cuentaId" hidden><Input /></Form.Item>
           <Row gutter={12}>
-            <Col span={12}><Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}><Input type="date" /></Form.Item></Col>
-            <Col span={12}><Form.Item name="valor" label={`Valor (${regOpen?.unidad ?? 'unidades'})`} rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}><Input type="date" /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="valor" label={`Valor (${regOpen?.unidad ?? 'unidades'})`} rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} /></Form.Item></Col>
           </Row>
           <Form.Item name="descripcion" label="Descripción"><Input /></Form.Item>
           <Form.Item name="referencia" label="Referencia"><Input /></Form.Item>
@@ -162,9 +162,9 @@ function CuentasTab() {
         {detalle && (
           <>
             <Row gutter={12} style={{ marginBottom: 12 }}>
-              <Col span={8}><Statistic title="Tipo" value={TIPO_LABEL[detalle.tipo] ?? detalle.tipo} /></Col>
-              <Col span={8}><Statistic title="Unidad" value={detalle.unidad} /></Col>
-              <Col span={8}>
+              <Col xs={24} sm={8}><Statistic title="Tipo" value={TIPO_LABEL[detalle.tipo] ?? detalle.tipo} /></Col>
+              <Col xs={24} sm={8}><Statistic title="Unidad" value={detalle.unidad} /></Col>
+              <Col xs={24} sm={8}>
                 <div>
                   <Text type="secondary" style={{ fontSize: 12 }}>Año visualizado</Text><br />
                   <Select value={anio} onChange={setAnio} style={{ width: 100 }}

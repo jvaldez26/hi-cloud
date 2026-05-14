@@ -284,9 +284,9 @@ function AnalisisTab() {
                 <Text type="secondary" style={{ fontSize: 12 }}>Proyección próximos 3 meses:</Text>
                 <Row gutter={8} style={{ marginTop: 6 }}>
                   {[data.proyeccion?.mes1, data.proyeccion?.mes2, data.proyeccion?.mes3].map((v, i) => (
-                    <Col span={8} key={i}>
+                    <Col xs={24} sm={8} key={i}>
                       <Statistic title={`Mes ${i+1}`} value={v ?? 0} precision={1}
-                        valueStyle={{ fontSize: 14, color: '#1677ff' }} />
+                        valueStyle={{ fontSize: 14, color: '#1677ff' }}  />
                     </Col>
                   ))}
                 </Row>

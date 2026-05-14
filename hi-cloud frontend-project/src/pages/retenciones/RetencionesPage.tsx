@@ -123,22 +123,22 @@ function ListadoTab() {
         <Form form={form} layout="vertical" onFinish={v => createMut.mutate(v)}
           initialValues={{ periodo: dayjs().format('YYYY-MM'), porcentajeRetencion: 10 }}>
           <Row gutter={12}>
-            <Col span={8}><Form.Item name="periodo" label="Período" rules={[{ required: true }]}><Input placeholder="2026-05" /></Form.Item></Col>
-            <Col span={16}><Form.Item name="nombreProveedor" label="Nombre del proveedor" rules={[{ required: true }]}><Input /></Form.Item></Col>
-            <Col span={8}><Form.Item name="rncProveedor" label="RNC del proveedor"><Input /></Form.Item></Col>
-            <Col span={16}><Form.Item name="tipoServicio" label="Tipo de servicio" rules={[{ required: true }]}>
+            <Col xs={24} sm={8}><Form.Item name="periodo" label="Período" rules={[{ required: true }]}><Input placeholder="2026-05" /></Form.Item></Col>
+            <Col xs={24} sm={16}><Form.Item name="nombreProveedor" label="Nombre del proveedor" rules={[{ required: true }]}><Input /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="rncProveedor" label="RNC del proveedor"><Input /></Form.Item></Col>
+            <Col xs={24} sm={16}><Form.Item name="tipoServicio" label="Tipo de servicio" rules={[{ required: true }]}>
               <Select options={TIPOS_RETENCION} onChange={handleTipoChange} />
             </Form.Item></Col>
             <Col span={24}><Form.Item name="descripcionServicio" label="Descripción" rules={[{ required: true }]}><Input /></Form.Item></Col>
-            <Col span={10}><Form.Item name="montoBruto" label="Monto Bruto (RD$)" rules={[{ required: true }]}>
+            <Col xs={24} sm={10}><Form.Item name="montoBruto" label="Monto Bruto (RD$)" rules={[{ required: true }]}>
               <InputNumber style={{ width: '100%' }} min={0} precision={2} onChange={v => {
                 const retenido = Number(((v ?? 0) * tasa / 100).toFixed(2));
                 form.setFieldsValue({ montoRetenido: retenido, montoNeto: Number(((v ?? 0) - retenido).toFixed(2)) });
               }} />
             </Form.Item></Col>
-            <Col span={4}><Form.Item name="porcentajeRetencion" label="% Ret."><Input readOnly value={tasa} /></Form.Item></Col>
-            <Col span={5}><Form.Item name="montoRetenido" label="Monto Retenido"><InputNumber style={{ width: '100%' }} readOnly /></Form.Item></Col>
-            <Col span={5}><Form.Item name="montoNeto" label="Monto Neto"><InputNumber style={{ width: '100%' }} readOnly /></Form.Item></Col>
+            <Col xs={12} sm={4}><Form.Item name="porcentajeRetencion" label="% Ret."><Input readOnly value={tasa} /></Form.Item></Col>
+            <Col xs={12} sm={5}><Form.Item name="montoRetenido" label="Monto Retenido"><InputNumber style={{ width: '100%' }} readOnly /></Form.Item></Col>
+            <Col xs={12} sm={5}><Form.Item name="montoNeto" label="Monto Neto"><InputNumber style={{ width: '100%' }} readOnly /></Form.Item></Col>
           </Row>
           <Row justify="end" gutter={8}>
             <Col><Button onClick={() => setOpen(false)}>Cancelar</Button></Col>

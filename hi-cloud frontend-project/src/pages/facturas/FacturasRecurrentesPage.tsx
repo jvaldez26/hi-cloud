@@ -106,25 +106,25 @@ export default function FacturasRecurrentesPage() {
         <Form form={form} layout="vertical" onFinish={handleSubmit}
           initialValues={{ frecuencia: 'mensual', diaEjecucion: 1, fechaInicio: dayjs().format('YYYY-MM-DD') }}>
           <Row gutter={12}>
-            <Col span={16}><Form.Item name="nombre" label="Nombre descriptivo" rules={[{ required: true }]}><Input placeholder="Servicio mensual de contabilidad" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="clienteId" label="Cliente" rules={[{ required: true }]}>
+            <Col xs={24} sm={16}><Form.Item name="nombre" label="Nombre descriptivo" rules={[{ required: true }]}><Input placeholder="Servicio mensual de contabilidad" /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="clienteId" label="Cliente" rules={[{ required: true }]}>
               <Select showSearch filterOption={(i, o) => String(o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
                 options={clientes?.data.map((c: any) => ({ value: c.id, label: c.nombre }))} />
             </Form.Item></Col>
-            <Col span={8}><Form.Item name="frecuencia" label="Frecuencia"><Select options={Object.keys(frecuenciaLabel).map(k => ({ value: k, label: frecuenciaLabel[k] }))} /></Form.Item></Col>
-            <Col span={8}><Form.Item name="diaEjecucion" label="Día del mes"><InputNumber style={{ width: '100%' }} min={1} max={28} /></Form.Item></Col>
-            <Col span={8}><Form.Item name="fechaInicio" label="Primera ejecución"><Input type="date" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="fechaFin" label="Fecha fin (opcional)"><Input type="date" /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="frecuencia" label="Frecuencia"><Select options={Object.keys(frecuenciaLabel).map(k => ({ value: k, label: frecuenciaLabel[k] }))} /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="diaEjecucion" label="Día del mes"><InputNumber style={{ width: '100%' }} min={1} max={28} /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="fechaInicio" label="Primera ejecución"><Input type="date" /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="fechaFin" label="Fecha fin (opcional)"><Input type="date" /></Form.Item></Col>
           </Row>
 
           <Title level={5}>Ítems de la factura</Title>
           {lineas.map((l, i) => (
             <Row key={i} gutter={8} style={{ marginBottom: 8 }}>
-              <Col span={10}><Input placeholder="Descripción" value={l.descripcion} onChange={e => { const u=[...lineas]; u[i].descripcion=e.target.value; setLineas(u); }} /></Col>
-              <Col span={3}><InputNumber placeholder="Cant." min={1} value={l.cantidad} style={{ width:'100%' }} onChange={v => { const u=[...lineas]; u[i].cantidad=v??1; setLineas(u); }} /></Col>
-              <Col span={5}><InputNumber placeholder="Precio" min={0} precision={2} value={l.precioUnitario} style={{ width:'100%' }} onChange={v => { const u=[...lineas]; u[i].precioUnitario=v??0; setLineas(u); }} /></Col>
-              <Col span={4}><InputNumber placeholder="ITBIS%" min={0} max={100} value={l.porcentajeIva} style={{ width:'100%' }} onChange={v => { const u=[...lineas]; u[i].porcentajeIva=v??18; setLineas(u); }} /></Col>
-              <Col span={2}><Button danger size="small" onClick={() => setLineas(lineas.filter((_, j) => j !== i))}>×</Button></Col>
+              <Col xs={24} sm={10}><Input placeholder="Descripción" value={l.descripcion} onChange={e => { const u=[...lineas]; u[i].descripcion=e.target.value; setLineas(u); }} /></Col>
+              <Col xs={12} sm={3}><InputNumber placeholder="Cant." min={1} value={l.cantidad} style={{ width:'100%' }} onChange={v => { const u=[...lineas]; u[i].cantidad=v??1; setLineas(u); }} /></Col>
+              <Col xs={12} sm={5}><InputNumber placeholder="Precio" min={0} precision={2} value={l.precioUnitario} style={{ width:'100%' }} onChange={v => { const u=[...lineas]; u[i].precioUnitario=v??0; setLineas(u); }} /></Col>
+              <Col xs={12} sm={4}><InputNumber placeholder="ITBIS%" min={0} max={100} value={l.porcentajeIva} style={{ width:'100%' }} onChange={v => { const u=[...lineas]; u[i].porcentajeIva=v??18; setLineas(u); }} /></Col>
+              <Col xs={12} sm={2}><Button danger size="small" onClick={() => setLineas(lineas.filter((_, j) => j !== i))}>×</Button></Col>
             </Row>
           ))}
           <Button size="small" onClick={() => setLineas([...lineas, { descripcion: '', cantidad: 1, precioUnitario: 0, porcentajeIva: 18 }])}>

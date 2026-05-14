@@ -293,7 +293,7 @@ export default function RegisterPage() {
                       style={{ background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.12)', color: '#fff', borderRadius: 8 }} />
                   </Form.Item>
                   <Row gutter={12}>
-                    <Col span={14}>
+                    <Col xs={24} sm={14}>
                       <Form.Item name="rnc" label={<Text style={{ color: 'rgba(255,255,255,.7)', fontSize: 13 }}>RNC</Text>}
                         rules={[
                           { required: true, message: 'El RNC es requerido' },
@@ -303,7 +303,7 @@ export default function RegisterPage() {
                           style={{ background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.12)', color: '#fff', borderRadius: 8 }} />
                       </Form.Item>
                     </Col>
-                    <Col span={10}>
+                    <Col xs={24} sm={10}>
                       <Form.Item name="pais" label={<Text style={{ color: 'rgba(255,255,255,.7)', fontSize: 13 }}>País</Text>}
                         initialValue="República Dominicana">
                         <Select size="large" options={PAISES.map(p => ({ value: p, label: p }))}
@@ -312,11 +312,11 @@ export default function RegisterPage() {
                     </Col>
                   </Row>
                   <Row gutter={8}>
-                    <Col span={10}><Button block size="large" onClick={handleStep0}
+                    <Col xs={24} sm={10}><Button block size="large" onClick={handleStep0}
                       style={{ height: 48, background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.15)', color: '#fff', borderRadius: 10 }}>
                       ← Atrás
                     </Button></Col>
-                    <Col span={14}>
+                    <Col xs={24} sm={14}>
                       <Button type="primary" block size="large" loading={registerMut.isPending} onClick={handleSubmit}
                         icon={<RocketOutlined />}
                         style={{ height: 48, background: 'linear-gradient(135deg,#059669,#10b981)', border: 'none', borderRadius: 10, fontWeight: 600 }}>

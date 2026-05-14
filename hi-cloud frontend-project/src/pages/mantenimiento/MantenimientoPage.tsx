@@ -283,15 +283,15 @@ export default function MantenimientoPage() {
             <Col span={24}><Form.Item name="activoId" label="Activo / Equipo" rules={[{ required: true }]}>
               <Select showSearch filterOption={(i, o) => String(o?.label ?? '').toLowerCase().includes(i.toLowerCase())} options={activosOpts} />
             </Form.Item></Col>
-            <Col span={12}><Form.Item name="tipo" label="Tipo"><Select options={TIPO_MNT} /></Form.Item></Col>
-            <Col span={12}><Form.Item name="prioridad" label="Prioridad">
+            <Col xs={24} sm={12}><Form.Item name="tipo" label="Tipo"><Select options={TIPO_MNT} /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="prioridad" label="Prioridad">
               <Select options={PRIORIDAD.map(p => ({ value: p.value, label: p.label }))} />
             </Form.Item></Col>
             <Col span={24}><Form.Item name="descripcion" label="Descripción" rules={[{ required: true }]}><Input.TextArea rows={2} /></Form.Item></Col>
-            <Col span={12}><Form.Item name="fechaProgramada" label="Fecha programada" rules={[{ required: true }]}>
+            <Col xs={24} sm={12}><Form.Item name="fechaProgramada" label="Fecha programada" rules={[{ required: true }]}>
               <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
             </Form.Item></Col>
-            <Col span={12}><Form.Item name="costoEstimado" label="Costo estimado (RD$)">
+            <Col xs={24} sm={12}><Form.Item name="costoEstimado" label="Costo estimado (RD$)">
               <InputNumber style={{ width: '100%' }} min={0} precision={2} />
             </Form.Item></Col>
             <Col span={24}><Form.Item name="tecnico" label="Técnico responsable"><Input /></Form.Item></Col>
@@ -333,8 +333,8 @@ export default function MantenimientoPage() {
             <Select showSearch filterOption={(i, o) => String(o?.label ?? '').toLowerCase().includes(i.toLowerCase())} options={activosOpts} />
           </Form.Item>
           <Row gutter={12}>
-            <Col span={12}><Form.Item name="tipo" label="Tipo"><Select options={TIPO_MNT} /></Form.Item></Col>
-            <Col span={12}><Form.Item name="frecuenciaDias" label="Cada (días)" rules={[{ required: true }]}>
+            <Col xs={24} sm={12}><Form.Item name="tipo" label="Tipo"><Select options={TIPO_MNT} /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="frecuenciaDias" label="Cada (días)" rules={[{ required: true }]}>
               <InputNumber style={{ width: '100%' }} min={1} />
             </Form.Item></Col>
           </Row>

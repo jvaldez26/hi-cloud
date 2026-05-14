@@ -323,14 +323,14 @@ export default function EvaluacionesPage() {
               <Select showSearch filterOption={(i, o) => String(o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
                 options={(empleados ?? []).map((e: any) => ({ value: e.id, label: `${e.nombre} ${e.apellido ?? ''}`.trim() }))} />
             </Form.Item></Col>
-            <Col span={12}><Form.Item name="periodo" label="Período">
+            <Col xs={24} sm={12}><Form.Item name="periodo" label="Período">
               <Select options={[
                 { value: 'trimestral', label: 'Trimestral' },
                 { value: 'semestral',  label: 'Semestral'  },
                 { value: 'anual',      label: 'Anual'      },
               ]} />
             </Form.Item></Col>
-            <Col span={12}><Form.Item name="semestre" label="Semestre / Trimestre">
+            <Col xs={24} sm={12}><Form.Item name="semestre" label="Semestre / Trimestre">
               <InputNumber style={{ width: '100%' }} min={1} max={4} />
             </Form.Item></Col>
           </Row>

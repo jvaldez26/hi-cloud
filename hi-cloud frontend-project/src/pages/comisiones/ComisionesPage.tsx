@@ -233,17 +233,17 @@ function ReglasTab() {
       <Modal title="Nueva regla de comisión" open={open} onCancel={() => { setOpen(false); form.resetFields(); }} footer={null} width={540}>
         <Form form={form} layout="vertical" onFinish={(v) => crearMut.mutate(v)}>
           <Row gutter={12}>
-            <Col span={16}><Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input /></Form.Item></Col>
-            <Col span={8}><Form.Item name="prioridad" label="Prioridad" initialValue={100}><InputNumber style={{ width: '100%' }} min={1} /></Form.Item></Col>
-            <Col span={12}><Form.Item name="tipo" label="Tipo" rules={[{ required: true }]}>
+            <Col xs={24} sm={16}><Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="prioridad" label="Prioridad" initialValue={100}><InputNumber style={{ width: '100%' }} min={1} /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="tipo" label="Tipo" rules={[{ required: true }]}>
               <Select options={Object.entries(TIPO_LABEL).map(([k, v]) => ({ value: k, label: v }))} />
             </Form.Item></Col>
-            <Col span={12}><Form.Item name="porcentaje" label="% Comisión" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} min={0} max={100} precision={2} addonAfter="%" /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="porcentaje" label="% Comisión" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} min={0} max={100} precision={2} addonAfter="%" /></Form.Item></Col>
             {watchTipo === 'por_vendedor'   && <Col span={24}><Form.Item name="vendedorId" label="ID del vendedor"><InputNumber style={{ width: '100%' }} min={1} /></Form.Item></Col>}
             {watchTipo === 'por_categoria'  && <Col span={24}><Form.Item name="categoria"  label="Categoría del producto"><Input /></Form.Item></Col>}
             {watchTipo === 'por_monto'      && <>
-              <Col span={12}><Form.Item name="montoDesde" label="Monto desde (RD$)"><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
-              <Col span={12}><Form.Item name="montoHasta" label="Monto hasta (RD$)"><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
+              <Col xs={24} sm={12}><Form.Item name="montoDesde" label="Monto desde (RD$)"><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
+              <Col xs={24} sm={12}><Form.Item name="montoHasta" label="Monto hasta (RD$)"><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
             </>}
             {watchTipo === 'por_antiguedad' && <Col span={24}><Form.Item name="diasMaximoCobro" label="Cobrado en máximo (días)"><InputNumber style={{ width: '100%' }} min={0} /></Form.Item></Col>}
             <Col span={24}><Form.Item name="descripcion" label="Descripción"><Input.TextArea rows={2} /></Form.Item></Col>
@@ -260,18 +260,18 @@ function ReglasTab() {
         }}>
           <Form.Item name="monto" label="Monto de venta (RD$)" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item>
           <Row gutter={12}>
-            <Col span={12}><Form.Item name="categoria" label="Categoría producto"><Input /></Form.Item></Col>
-            <Col span={12}><Form.Item name="diasPago" label="Días para cobro"><InputNumber style={{ width: '100%' }} min={0} /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="categoria" label="Categoría producto"><Input /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="diasPago" label="Días para cobro"><InputNumber style={{ width: '100%' }} min={0} /></Form.Item></Col>
           </Row>
           <Button type="primary" htmlType="submit" block icon={<ThunderboltOutlined />}>Calcular</Button>
         </Form>
         {simResult && (
           <Card style={{ marginTop: 16 }} size="small">
             <Row gutter={12}>
-              <Col span={12}><Statistic title="Regla aplicada" value={simResult.reglaAplicada} valueStyle={{ fontSize: 13 }} /></Col>
-              <Col span={12}><Statistic title="% Comisión" value={simResult.porcentaje} suffix="%" valueStyle={{ color: '#1677ff' }} /></Col>
-              <Col span={12}><Statistic title="Monto venta" formatter={v => fmt.money(Number(v))} value={simResult.monto} /></Col>
-              <Col span={12}><Statistic title="Comisión" formatter={v => fmt.money(Number(v))} value={simResult.comision} valueStyle={{ color: '#52c41a', fontWeight: 700 }} /></Col>
+              <Col xs={24} sm={12}><Statistic title="Regla aplicada" value={simResult.reglaAplicada} valueStyle={{ fontSize: 13 }} /></Col>
+              <Col xs={24} sm={12}><Statistic title="% Comisión" value={simResult.porcentaje} suffix="%" valueStyle={{ color: '#1677ff' }} /></Col>
+              <Col xs={24} sm={12}><Statistic title="Monto venta" formatter={v => fmt.money(Number(v))} value={simResult.monto} /></Col>
+              <Col xs={24} sm={12}><Statistic title="Comisión" formatter={v => fmt.money(Number(v))} value={simResult.comision} valueStyle={{ color: '#52c41a', fontWeight: 700 }} /></Col>
             </Row>
           </Card>
         )}

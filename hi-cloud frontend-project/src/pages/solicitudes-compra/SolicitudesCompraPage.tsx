@@ -151,12 +151,12 @@ function SolicitudesTab() {
       <Modal title="Nueva Solicitud de Compra" open={open} onCancel={() => { setOpen(false); form.resetFields(); }} footer={null} width={780}>
         <Form form={form} layout="vertical" onFinish={(v) => crearMut.mutate(v)}>
           <Row gutter={12}>
-            <Col span={16}>
+            <Col xs={24} sm={16}>
               <Form.Item name="justificacion" label="Justificación" rules={[{ required: true }]}>
                 <Input.TextArea rows={3} placeholder="Describe el motivo de la compra..." />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="prioridad" label="Prioridad" rules={[{ required: true }]}>
                 <Select options={[
                   { value: 'baja', label: '🟢 Baja' }, { value: 'media', label: '🔵 Media' },
@@ -164,9 +164,9 @@ function SolicitudesTab() {
                 ]} />
               </Form.Item>
             </Col>
-            <Col span={8}><Form.Item name="departamento" label="Departamento"><Input /></Form.Item></Col>
-            <Col span={8}><Form.Item name="fechaNecesidad" label="Fecha necesidad"><Input type="date" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="presupuestoEstimado" label="Presupuesto est. (RD$)"><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="departamento" label="Departamento"><Input /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="fechaNecesidad" label="Fecha necesidad"><Input type="date" /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="presupuestoEstimado" label="Presupuesto est. (RD$)"><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
           </Row>
 
           <Divider>Ítems solicitados</Divider>
@@ -175,12 +175,12 @@ function SolicitudesTab() {
               <>
                 {fields.map(({ key, name }) => (
                   <Row key={key} gutter={8} align="middle" style={{ marginBottom: 8 }}>
-                    <Col span={9}><Form.Item name={[name, 'descripcion']} rules={[{ required: true }]} style={{ margin: 0 }}><Input placeholder="Descripción del ítem" /></Form.Item></Col>
-                    <Col span={3}><Form.Item name={[name, 'cantidad']} rules={[{ required: true }]} style={{ margin: 0 }}><InputNumber placeholder="Cant." min={0.001} style={{ width: '100%' }} precision={2} /></Form.Item></Col>
-                    <Col span={3}><Form.Item name={[name, 'unidad']} style={{ margin: 0 }}><Input placeholder="UND" /></Form.Item></Col>
-                    <Col span={4}><Form.Item name={[name, 'presupuestoUnitario']} style={{ margin: 0 }}><InputNumber placeholder="Precio est." min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
-                    <Col span={4}><Form.Item name={[name, 'especificaciones']} style={{ margin: 0 }}><Input placeholder="Especif." /></Form.Item></Col>
-                    <Col span={1}><Button type="text" danger size="small" onClick={() => remove(name)} icon={<CloseOutlined />} /></Col>
+                    <Col xs={24} sm={9}><Form.Item name={[name, 'descripcion']} rules={[{ required: true }]} style={{ margin: 0 }}><Input placeholder="Descripción del ítem" /></Form.Item></Col>
+                    <Col xs={12} sm={3}><Form.Item name={[name, 'cantidad']} rules={[{ required: true }]} style={{ margin: 0 }}><InputNumber placeholder="Cant." min={0.001} style={{ width: '100%' }} precision={2} /></Form.Item></Col>
+                    <Col xs={12} sm={3}><Form.Item name={[name, 'unidad']} style={{ margin: 0 }}><Input placeholder="UND" /></Form.Item></Col>
+                    <Col xs={12} sm={4}><Form.Item name={[name, 'presupuestoUnitario']} style={{ margin: 0 }}><InputNumber placeholder="Precio est." min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+                    <Col xs={12} sm={4}><Form.Item name={[name, 'especificaciones']} style={{ margin: 0 }}><Input placeholder="Especif." /></Form.Item></Col>
+                    <Col xs={12} sm={1}><Button type="text" danger size="small" onClick={() => remove(name)} icon={<CloseOutlined />} /></Col>
                   </Row>
                 ))}
                 <Button type="dashed" onClick={() => add({})} block icon={<PlusOutlined />}>Agregar ítem</Button>
@@ -243,12 +243,12 @@ function SolicitudesTab() {
         <Form form={formCot} layout="vertical"
           onFinish={(v) => cotMut.mutate({ ...v, solicitudId: cotModal?.id })}>
           <Row gutter={12}>
-            <Col span={12}><Form.Item name="proveedorId" label="Proveedor" rules={[{ required: true }]}>
+            <Col xs={24} sm={12}><Form.Item name="proveedorId" label="Proveedor" rules={[{ required: true }]}>
               <Select showSearch optionFilterProp="label" options={provOpts} />
             </Form.Item></Col>
-            <Col span={6}><Form.Item name="fechaValidez" label="Válida hasta"><Input type="date" /></Form.Item></Col>
-            <Col span={6}><Form.Item name="tiempoEntregaDias" label="Días entrega"><InputNumber style={{ width: '100%' }} min={0} /></Form.Item></Col>
-            <Col span={12}><Form.Item name="condicionesPago" label="Condiciones de pago"><Input placeholder="Ej. 30 días, contado..." /></Form.Item></Col>
+            <Col xs={12} sm={6}><Form.Item name="fechaValidez" label="Válida hasta"><Input type="date" /></Form.Item></Col>
+            <Col xs={12} sm={6}><Form.Item name="tiempoEntregaDias" label="Días entrega"><InputNumber style={{ width: '100%' }} min={0} /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="condicionesPago" label="Condiciones de pago"><Input placeholder="Ej. 30 días, contado..." /></Form.Item></Col>
           </Row>
           <Divider>Ítems a cotizar</Divider>
           <Form.List name="lineas" initialValue={(cotModal?.lineas ?? []).map((l: any) => ({ descripcion: l.descripcion, cantidad: l.cantidad, unidad: l.unidad, precioUnitario: 0, porcentajeItbis: 18 }))}>
@@ -256,12 +256,12 @@ function SolicitudesTab() {
               <>
                 {fields.map(({ key, name }) => (
                   <Row key={key} gutter={8} align="middle" style={{ marginBottom: 8 }}>
-                    <Col span={8}><Form.Item name={[name, 'descripcion']} rules={[{ required: true }]} style={{ margin: 0 }}><Input placeholder="Descripción" /></Form.Item></Col>
-                    <Col span={3}><Form.Item name={[name, 'cantidad']} rules={[{ required: true }]} style={{ margin: 0 }}><InputNumber placeholder="Cant." min={0.001} style={{ width: '100%' }} precision={2} /></Form.Item></Col>
-                    <Col span={2}><Form.Item name={[name, 'unidad']} style={{ margin: 0 }}><Input placeholder="UND" /></Form.Item></Col>
-                    <Col span={4}><Form.Item name={[name, 'precioUnitario']} rules={[{ required: true }]} style={{ margin: 0 }}><InputNumber placeholder="Precio" min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
-                    <Col span={3}><Form.Item name={[name, 'porcentajeItbis']} style={{ margin: 0 }}><InputNumber placeholder="ITBIS%" min={0} max={100} style={{ width: '100%' }} /></Form.Item></Col>
-                    <Col span={1}><Button type="text" danger size="small" icon={<CloseOutlined />} onClick={() => remove(name)} /></Col>
+                    <Col xs={24} sm={8}><Form.Item name={[name, 'descripcion']} rules={[{ required: true }]} style={{ margin: 0 }}><Input placeholder="Descripción" /></Form.Item></Col>
+                    <Col xs={12} sm={3}><Form.Item name={[name, 'cantidad']} rules={[{ required: true }]} style={{ margin: 0 }}><InputNumber placeholder="Cant." min={0.001} style={{ width: '100%' }} precision={2} /></Form.Item></Col>
+                    <Col xs={12} sm={2}><Form.Item name={[name, 'unidad']} style={{ margin: 0 }}><Input placeholder="UND" /></Form.Item></Col>
+                    <Col xs={12} sm={4}><Form.Item name={[name, 'precioUnitario']} rules={[{ required: true }]} style={{ margin: 0 }}><InputNumber placeholder="Precio" min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+                    <Col xs={12} sm={3}><Form.Item name={[name, 'porcentajeItbis']} style={{ margin: 0 }}><InputNumber placeholder="ITBIS%" min={0} max={100} style={{ width: '100%' }} /></Form.Item></Col>
+                    <Col xs={12} sm={1}><Button type="text" danger size="small" icon={<CloseOutlined />} onClick={() => remove(name)} /></Col>
                   </Row>
                 ))}
                 <Button type="dashed" block icon={<PlusOutlined />} onClick={() => add({ porcentajeItbis: 18 })}>Agregar ítem</Button>
@@ -300,8 +300,8 @@ function SolicitudesTab() {
                       </Popconfirm>
                     )}>
                     <Row gutter={8}>
-                      <Col span={12}><Statistic title="Total" value={c.total} formatter={v => fmt.money(Number(v))} valueStyle={{ fontSize: 13, color: '#1677ff' }} /></Col>
-                      <Col span={12}><Statistic title="Entrega" value={c.tiempoEntregaDias} suffix="días" valueStyle={{ fontSize: 13 }} /></Col>
+                      <Col xs={24} sm={12}><Statistic title="Total" value={c.total} formatter={v => fmt.money(Number(v))} valueStyle={{ fontSize: 13, color: '#1677ff' }} /></Col>
+                      <Col xs={24} sm={12}><Statistic title="Entrega" value={c.tiempoEntregaDias} suffix="días" valueStyle={{ fontSize: 13 }} /></Col>
                     </Row>
                     {c.condicionesPago && <Text type="secondary" style={{ fontSize: 11 }}>{c.condicionesPago}</Text>}
                   </Card>
@@ -411,19 +411,19 @@ function CotizacionesTab() {
         onCancel={() => { setRespModal(null); formResp.resetFields(); }} footer={null} width={700}>
         <Form form={formResp} layout="vertical" onFinish={(v) => respMut.mutate({ id: respModal.id, body: v })}>
           <Row gutter={12}>
-            <Col span={8}><Form.Item name="fechaRespuesta" label="Fecha respuesta"><Input type="date" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="tiempoEntregaDias" label="Días entrega"><InputNumber style={{ width: '100%' }} min={0} /></Form.Item></Col>
-            <Col span={8}><Form.Item name="condicionesPago" label="Condiciones"><Input /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="fechaRespuesta" label="Fecha respuesta"><Input type="date" /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="tiempoEntregaDias" label="Días entrega"><InputNumber style={{ width: '100%' }} min={0} /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="condicionesPago" label="Condiciones"><Input /></Form.Item></Col>
           </Row>
           <Divider>Precios ofrecidos</Divider>
           <Form.List name="lineas" initialValue={respModal?.lineas?.map((l: any) => ({ descripcion: l.descripcion, cantidad: l.cantidad, unidad: l.unidad, precioUnitario: 0, porcentajeItbis: 18 })) ?? []}>
             {(fields) => fields.map(({ key, name }) => (
               <Row key={key} gutter={8} style={{ marginBottom: 8 }}>
-                <Col span={8}><Form.Item name={[name, 'descripcion']} style={{ margin: 0 }}><Input readOnly /></Form.Item></Col>
-                <Col span={3}><Form.Item name={[name, 'cantidad']} style={{ margin: 0 }}><InputNumber min={0.001} style={{ width: '100%' }} precision={2} /></Form.Item></Col>
-                <Col span={2}><Form.Item name={[name, 'unidad']} style={{ margin: 0 }}><Input /></Form.Item></Col>
-                <Col span={5}><Form.Item name={[name, 'precioUnitario']} rules={[{ required: true }]} style={{ margin: 0 }}><InputNumber placeholder="Precio unit." min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
-                <Col span={4}><Form.Item name={[name, 'porcentajeItbis']} style={{ margin: 0 }}><InputNumber placeholder="ITBIS%" min={0} max={100} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col xs={24} sm={8}><Form.Item name={[name, 'descripcion']} style={{ margin: 0 }}><Input readOnly /></Form.Item></Col>
+                <Col xs={12} sm={3}><Form.Item name={[name, 'cantidad']} style={{ margin: 0 }}><InputNumber min={0.001} style={{ width: '100%' }} precision={2} /></Form.Item></Col>
+                <Col xs={12} sm={2}><Form.Item name={[name, 'unidad']} style={{ margin: 0 }}><Input /></Form.Item></Col>
+                <Col xs={12} sm={5}><Form.Item name={[name, 'precioUnitario']} rules={[{ required: true }]} style={{ margin: 0 }}><InputNumber placeholder="Precio unit." min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col xs={12} sm={4}><Form.Item name={[name, 'porcentajeItbis']} style={{ margin: 0 }}><InputNumber placeholder="ITBIS%" min={0} max={100} style={{ width: '100%' }} /></Form.Item></Col>
               </Row>
             ))}
           </Form.List>

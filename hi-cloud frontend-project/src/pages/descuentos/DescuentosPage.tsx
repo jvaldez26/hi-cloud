@@ -243,7 +243,7 @@ export default function DescuentosPage() {
           </Form.Item>
 
           <Row gutter={12}>
-            <Col span={10}>
+            <Col xs={24} sm={10}>
               <Form.Item name="tipo" label="Tipo de Descuento" rules={[{ required: true }]}>
                 <Select>
                   <Option value="porcentaje">Porcentaje (%)</Option>
@@ -251,12 +251,12 @@ export default function DescuentosPage() {
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={7}>
+            <Col xs={24} sm={7}>
               <Form.Item name="valor" label="Valor" rules={[{ required: true }]}>
                 <InputNumber min={0} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
-            <Col span={7}>
+            <Col xs={24} sm={7}>
               <Form.Item name="prioridad" label="Prioridad">
                 <InputNumber min={1} max={99} style={{ width: '100%' }} />
               </Form.Item>

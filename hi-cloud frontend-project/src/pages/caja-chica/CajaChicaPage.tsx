@@ -176,19 +176,19 @@ export default function CajaChicaPage() {
 
                   {caja.estado === 'activa' && (
                     <Row gutter={6} style={{ marginTop: 10 }} onClick={e => e.stopPropagation()}>
-                      <Col span={8}>
+                      <Col xs={24} sm={8}>
                         <Button size="small" icon={<MinusCircleOutlined />} danger block
                           onClick={() => { setCajaSeleccionada(caja); setModalEgreso(true); }}>
                           Egreso
                         </Button>
                       </Col>
-                      <Col span={8}>
+                      <Col xs={24} sm={8}>
                         <Button size="small" icon={<PlusCircleOutlined />} style={{ color: '#059669', borderColor: '#059669' }} block
                           onClick={() => { setCajaSeleccionada(caja); setModalReponer(true); }}>
                           Reponer
                         </Button>
                       </Col>
-                      <Col span={8}>
+                      <Col xs={24} sm={8}>
                         <Popconfirm title="¿Cerrar esta caja?" onConfirm={() => cerrar.mutate(caja.id)}>
                           <Button size="small" icon={<LockOutlined />} block>Cerrar</Button>
                         </Popconfirm>
@@ -260,24 +260,24 @@ export default function CajaChicaPage() {
             <Input placeholder="Caja Chica Oficina Principal" />
           </Form.Item>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="montoInicial" label="Monto Inicial (RD$)" rules={[{ required: true }]}>
                 <InputNumber min={100} style={{ width: '100%' }} prefix="RD$" />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="montoMaximoEgreso" label="Máx. por Egreso (RD$)">
                 <InputNumber min={0} style={{ width: '100%' }} prefix="RD$" placeholder="Sin límite" />
               </Form.Item>
             </Col>
           </Row>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="pctAlerta" label="Alerta cuando saldo baje de (%)" initialValue={20}>
                 <InputNumber min={5} max={50} style={{ width: '100%' }} addonAfter="%" />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="nombreResponsable" label="Responsable">
                 <Input placeholder="Nombre del responsable" />
               </Form.Item>
@@ -302,18 +302,18 @@ export default function CajaChicaPage() {
           initialValues={{ fecha: dayjs() }}
           onFinish={v => registrarEgreso.mutate({ ...v, fecha: v.fecha?.format('YYYY-MM-DD'), monto: Number(v.monto) })}>
           <Row gutter={12}>
-            <Col span={10}><Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item></Col>
-            <Col span={14}><Form.Item name="categoria" label="Categoría"><Select placeholder="Categoría (opcional)">{CATEGORIAS.map(c => <Option key={c.value} value={c.value}>{c.label}</Option>)}</Select></Form.Item></Col>
+            <Col xs={24} sm={10}><Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item></Col>
+            <Col xs={24} sm={14}><Form.Item name="categoria" label="Categoría"><Select placeholder="Categoría (opcional)">{CATEGORIAS.map(c => <Option key={c.value} value={c.value}>{c.label}</Option>)}</Select></Form.Item></Col>
           </Row>
           <Form.Item name="descripcion" label="Descripción" rules={[{ required: true }]}>
             <Input placeholder="Ej. Compra de papel para impresora" />
           </Form.Item>
           <Row gutter={12}>
-            <Col span={10}><Form.Item name="monto" label="Monto (RD$)" rules={[{ required: true }]}><InputNumber min={0.01} style={{ width: '100%' }} prefix="RD$" /></Form.Item></Col>
-            <Col span={14}><Form.Item name="beneficiario" label="Beneficiario"><Input placeholder="Nombre de quien recibe" /></Form.Item></Col>
+            <Col xs={24} sm={10}><Form.Item name="monto" label="Monto (RD$)" rules={[{ required: true }]}><InputNumber min={0.01} style={{ width: '100%' }} prefix="RD$" /></Form.Item></Col>
+            <Col xs={24} sm={14}><Form.Item name="beneficiario" label="Beneficiario"><Input placeholder="Nombre de quien recibe" /></Form.Item></Col>
           </Row>
           <Row gutter={12}>
-            <Col span={12}><Form.Item name="comprobante" label="No. Comprobante"><Input placeholder="Factura o recibo #" /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="comprobante" label="No. Comprobante"><Input placeholder="Factura o recibo #" /></Form.Item></Col>
           </Row>
         </Form>
       </Modal>

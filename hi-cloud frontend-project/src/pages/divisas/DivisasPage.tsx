@@ -252,22 +252,22 @@ export default function DivisasPage() {
             </Select>
           </Form.Item>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="tasaVenta" label="Tasa Venta (RD$)" rules={[{ required: true }]}>
                 <InputNumber min={0.0001} precision={4} style={{ width: '100%' }} placeholder="60.50" />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="tasaCompra" label="Tasa Compra (RD$)" rules={[{ required: true }]}>
                 <InputNumber min={0.0001} precision={4} style={{ width: '100%' }} placeholder="60.10" />
               </Form.Item>
             </Col>
           </Row>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="fecha" label="Fecha"><Input type="date" /></Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="fuente" label="Fuente">
                 <Select>
                   {['Banco Central RD','Banreservas','Popular','BHD León','Manual'].map(f => <Option key={f} value={f}>{f}</Option>)}

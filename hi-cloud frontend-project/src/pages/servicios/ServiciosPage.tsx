@@ -152,13 +152,13 @@ export default function ServiciosPage() {
       <Modal title="Nueva Orden de Servicio" open={openCreate} onCancel={() => setOpenCreate(false)} footer={null} width={640}>
         <Form form={formCreate} layout="vertical" onFinish={v => crearMut.mutate(v)}>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="clienteId" label="Cliente" rules={[{ required: true }]}>
                 <Select showSearch filterOption={(i, o) => String(o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
                   options={clientes?.data.map((c: any) => ({ value: c.id, label: `${c.nombre}` }))} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="tecnicoId" label="Técnico asignado">
                 <Select
                   placeholder="Sin asignar"
@@ -172,12 +172,12 @@ export default function ServiciosPage() {
                 />
               </Form.Item>
             </Col>
-            <Col span={16}>
+            <Col xs={24} sm={16}>
               <Form.Item name="descripcionEquipo" label="Equipo / Artículo" rules={[{ required: true }]}>
                 <Input placeholder="iPhone 15, Laptop Dell, Nevera Samsung..." />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="fechaPromesa" label="Fecha promesa">
                 <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
               </Form.Item>
@@ -187,7 +187,7 @@ export default function ServiciosPage() {
                 <Input.TextArea rows={3} placeholder="Pantalla rota, no enciende, falla de batería..." />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="presupuesto" label="Presupuesto estimado (RD$)">
                 <InputNumber style={{ width: '100%' }} min={0} precision={2} />
               </Form.Item>
@@ -314,12 +314,12 @@ export default function ServiciosPage() {
           onFinish={v => detalleMut.mutate({ id: detail?.id, body: v })}
           initialValues={{ tipo: 'pieza', cantidad: 1 }}>
           <Row gutter={12}>
-            <Col span={10}>
+            <Col xs={24} sm={10}>
               <Form.Item name="tipo" label="Tipo">
                 <Select options={[{ value: 'pieza', label: '🔩 Pieza/Repuesto' }, { value: 'mano_obra', label: '👨‍🔧 Mano de Obra' }, { value: 'otro', label: '📋 Otro' }]} />
               </Form.Item>
             </Col>
-            <Col span={14}>
+            <Col xs={24} sm={14}>
               <Form.Item name="productoId" label="Producto (opcional)">
                 <Select showSearch allowClear
                   filterOption={(i, o) => String(o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
@@ -331,8 +331,8 @@ export default function ServiciosPage() {
               </Form.Item>
             </Col>
             <Col span={24}><Form.Item name="descripcion" label="Descripción" rules={[{ required: true }]}><Input /></Form.Item></Col>
-            <Col span={12}><Form.Item name="cantidad" label="Cantidad" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} min={0.01} precision={2} /></Form.Item></Col>
-            <Col span={12}><Form.Item name="precioUnitario" label="Precio (RD$)" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="cantidad" label="Cantidad" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} min={0.01} precision={2} /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="precioUnitario" label="Precio (RD$)" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
           </Row>
           <Row justify="end" gutter={8}>
             <Col><Button onClick={() => setOpenDetalle(false)}>Cancelar</Button></Col>

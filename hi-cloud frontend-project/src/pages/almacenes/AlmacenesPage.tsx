@@ -196,10 +196,10 @@ export default function AlmacenesPage() {
                   )}
                 </div>
                 <Row gutter={8} style={{ marginTop: 12 }}>
-                  <Col span={12}>
+                  <Col xs={24} sm={12}>
                     <Statistic title="Productos" value={alm.totalProductos} valueStyle={{ fontSize: 20 }} />
                   </Col>
-                  <Col span={12}>
+                  <Col xs={24} sm={12}>
                     <Statistic title="Valor estimado" value={fmt.money(alm.valorTotal)}
                       valueStyle={{ fontSize: 14, color: '#06b6d4' }} />
                   </Col>
@@ -244,10 +244,10 @@ export default function AlmacenesPage() {
         <Form form={formAlm} layout="vertical" onFinish={v => crearMut.mutate(v)}>
           <Row gutter={12}>
             <Col span={24}><Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input /></Form.Item></Col>
-            <Col span={14}><Form.Item name="direccion" label="Dirección"><Input /></Form.Item></Col>
-            <Col span={10}><Form.Item name="ciudad" label="Ciudad"><Input /></Form.Item></Col>
-            <Col span={12}><Form.Item name="responsable" label="Responsable"><Input /></Form.Item></Col>
-            <Col span={12}><Form.Item name="telefono" label="Teléfono"><Input /></Form.Item></Col>
+            <Col xs={24} sm={14}><Form.Item name="direccion" label="Dirección"><Input /></Form.Item></Col>
+            <Col xs={24} sm={10}><Form.Item name="ciudad" label="Ciudad"><Input /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="responsable" label="Responsable"><Input /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="telefono" label="Teléfono"><Input /></Form.Item></Col>
             <Col span={24}><Form.Item name="descripcion" label="Descripción"><Input.TextArea rows={2} /></Form.Item></Col>
           </Row>
           <Row justify="end" gutter={8}>
@@ -263,17 +263,17 @@ export default function AlmacenesPage() {
         <Form form={formTransf} layout="vertical"
           onFinish={v => transfMut.mutate({ ...v, fecha: new Date().toISOString().slice(0,10) })}>
           <Row gutter={12}>
-            <Col span={12}><Form.Item name="almacenOrigenId" label="Almacén origen" rules={[{ required: true }]}>
+            <Col xs={24} sm={12}><Form.Item name="almacenOrigenId" label="Almacén origen" rules={[{ required: true }]}>
               <Select options={(almacenes ?? []).map((a: any) => ({ value: a.id, label: a.nombre }))} />
             </Form.Item></Col>
-            <Col span={12}><Form.Item name="almacenDestinoId" label="Almacén destino" rules={[{ required: true }]}>
+            <Col xs={24} sm={12}><Form.Item name="almacenDestinoId" label="Almacén destino" rules={[{ required: true }]}>
               <Select options={(almacenes ?? []).map((a: any) => ({ value: a.id, label: a.nombre }))} />
             </Form.Item></Col>
             <Col span={24}><Form.Item name="productoId" label="Producto" rules={[{ required: true }]}>
               <Select showSearch filterOption={(i, o) => String(o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
                 options={(productos ?? []).map((p: any) => ({ value: p.id, label: `${p.codigo} — ${p.nombre}` }))} />
             </Form.Item></Col>
-            <Col span={12}><Form.Item name="cantidad" label="Cantidad" rules={[{ required: true }]}>
+            <Col xs={24} sm={12}><Form.Item name="cantidad" label="Cantidad" rules={[{ required: true }]}>
               <InputNumber style={{ width: '100%' }} min={0.001} step={1} />
             </Form.Item></Col>
             <Col span={24}><Form.Item name="notas" label="Notas"><Input.TextArea rows={2} /></Form.Item></Col>

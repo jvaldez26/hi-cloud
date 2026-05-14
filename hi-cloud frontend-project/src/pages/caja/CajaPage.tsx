@@ -167,10 +167,10 @@ export default function CajaPage() {
                           { title: 'Tarjeta',        value: caja.ventasTarjeta,   color: '#1677ff' },
                           { title: 'Saldo esperado', value: saldoEsperado,        color: '#7c3aed' },
                         ].map(k => (
-                          <Col span={6} key={k.title}>
+                          <Col xs={12} sm={6} key={k.title}>
                             <Statistic title={k.title} value={k.value ?? 0}
                               formatter={v => fmt.money(Number(v))}
-                              valueStyle={{ color: k.color, fontSize: 13 }} />
+                              valueStyle={{ color: k.color, fontSize: 13 }}  />
                           </Col>
                         ))}
                       </Row>
@@ -193,10 +193,10 @@ export default function CajaPage() {
           {resumenMes && (
             <Card title={`Resumen ${dayjs().format('MMMM YYYY')}`} size="small" style={{ marginBottom: 16 }}>
               <Row gutter={[16, 0]}>
-                <Col span={6}><Statistic title="Total Ventas"        value={resumenMes.totalVentas}       formatter={v => fmt.money(Number(v))} /></Col>
-                <Col span={6}><Statistic title="Total Cobros"        value={resumenMes.totalCobros}       formatter={v => fmt.money(Number(v))} /></Col>
-                <Col span={6}><Statistic title="Diferencia Acum."    value={resumenMes.diferenciaTotal}   formatter={v => fmt.money(Number(v))} valueStyle={{ color: Number(resumenMes.diferenciaTotal) < 0 ? '#ef4444' : '#10b981' }} /></Col>
-                <Col span={6}><Statistic title="Días con diferencia" value={resumenMes.diasConDiferencia} /></Col>
+                <Col xs={12} sm={6}><Statistic title="Total Ventas"        value={resumenMes.totalVentas}       formatter={v => fmt.money(Number(v))} /></Col>
+                <Col xs={12} sm={6}><Statistic title="Total Cobros"        value={resumenMes.totalCobros}       formatter={v => fmt.money(Number(v))} /></Col>
+                <Col xs={12} sm={6}><Statistic title="Diferencia Acum."    value={resumenMes.diferenciaTotal}   formatter={v => fmt.money(Number(v))} valueStyle={{ color: Number(resumenMes.diferenciaTotal) < 0 ? '#ef4444' : '#10b981' }} /></Col>
+                <Col xs={12} sm={6}><Statistic title="Días con diferencia" value={resumenMes.diasConDiferencia} /></Col>
               </Row>
             </Card>
           )}

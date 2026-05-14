@@ -257,7 +257,7 @@ export default function DocumentosPage() {
             <Input placeholder="Ej. Factura_ENE_2026.pdf" />
           </Form.Item>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="tipoEntidad" label="Tipo de entidad" initialValue="general" rules={[{ required: true }]}>
                 <Select>
                   {TIPOS_ENTIDAD.map(t => (
@@ -268,7 +268,7 @@ export default function DocumentosPage() {
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="entidadId" label="ID del registro (opcional)">
                 <Input type="number" placeholder="Ej. 123" />
               </Form.Item>
@@ -278,7 +278,7 @@ export default function DocumentosPage() {
             <Input placeholder="https://drive.google.com/... o https://storage.hicloud.com/..." />
           </Form.Item>
           <Row gutter={12}>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="extension" label="Extensión">
                 <Select placeholder="pdf">
                   {['pdf','jpg','png','xlsx','xls','doc','docx','csv','zip'].map(e => (
@@ -287,12 +287,12 @@ export default function DocumentosPage() {
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="tipoMime" label="Tipo MIME">
                 <Input placeholder="application/pdf" />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="tamanioKb" label="Tamaño (KB)">
                 <Input type="number" placeholder="0" />
               </Form.Item>

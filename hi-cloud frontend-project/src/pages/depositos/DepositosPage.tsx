@@ -225,12 +225,12 @@ export default function DepositosPage() {
             </Select>
           </Form.Item>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="fecha" label="Fecha del depósito" rules={[{ required: true }]}>
                 <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="tipo" label="Tipo de depósito" rules={[{ required: true }]}>
                 <Select>
                   {TIPOS.map(t => <Option key={t.value} value={t.value}>{t.label}</Option>)}
@@ -242,12 +242,12 @@ export default function DepositosPage() {
             <InputNumber min={0.01} precision={2} style={{ width: '100%' }} prefix="RD$" size="large" />
           </Form.Item>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="referencia" label="Referencia / Número">
                 <Input placeholder="CHQ-001, TRF-2026..." />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="nombreDepositante" label="Depositante">
                 <Input placeholder="Nombre del cliente o empresa" />
               </Form.Item>

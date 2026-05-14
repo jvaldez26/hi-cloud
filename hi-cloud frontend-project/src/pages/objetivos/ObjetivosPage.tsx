@@ -155,15 +155,15 @@ function ObjetivoCard({ obj, onUpdate }: { obj: any; onUpdate: () => void }) {
           onFinish={v => crearKrMut.mutate(v)}>
           <Form.Item name="descripcion" label="Descripción" rules={[{ required: true }]}><Input /></Form.Item>
           <Row gutter={12}>
-            <Col span={8}><Form.Item name="tipo" label="Tipo">
+            <Col xs={24} sm={8}><Form.Item name="tipo" label="Tipo">
               <Select options={[
                 { value: 'numero',     label: '🔢 Número' },
                 { value: 'porcentaje', label: '📊 Porcentaje' },
                 { value: 'booleano',   label: '✅ Sí/No' },
               ]} />
             </Form.Item></Col>
-            <Col span={8}><Form.Item name="valorInicio" label="Valor inicial"><InputNumber style={{ width: '100%' }} /></Form.Item></Col>
-            <Col span={8}><Form.Item name="valorMeta" label="Meta" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="valorInicio" label="Valor inicial"><InputNumber style={{ width: '100%' }} /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="valorMeta" label="Meta" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} /></Form.Item></Col>
             <Col span={24}><Form.Item name="unidad" label="Unidad (clientes, %, RD$...)"><Input placeholder="ej: clientes, %, RD$" /></Form.Item></Col>
           </Row>
           <Row justify="end" gutter={8}>
@@ -318,17 +318,17 @@ export default function ObjetivosPage() {
             <Input placeholder="Incrementar ventas un 30%, Lanzar nuevo producto..." />
           </Form.Item>
           <Row gutter={12}>
-            <Col span={8}><Form.Item name="nivel" label="Nivel">
+            <Col xs={24} sm={8}><Form.Item name="nivel" label="Nivel">
               <Select options={[
                 { value: 'empresa',      label: '🏢 Empresa' },
                 { value: 'departamento', label: '👥 Departamento' },
                 { value: 'individual',   label: '👤 Individual' },
               ]} />
             </Form.Item></Col>
-            <Col span={8}><Form.Item name="periodo" label="Período">
+            <Col xs={24} sm={8}><Form.Item name="periodo" label="Período">
               <Select options={Object.entries(PERIODO_LABEL).map(([v, l]) => ({ value: v, label: l }))} />
             </Form.Item></Col>
-            <Col span={8}><Form.Item name="anio" label="Año">
+            <Col xs={24} sm={8}><Form.Item name="anio" label="Año">
               <InputNumber style={{ width: '100%' }} min={2024} max={2030} />
             </Form.Item></Col>
             <Col span={24}><Form.Item name="propietario" label="Responsable"><Input /></Form.Item></Col>

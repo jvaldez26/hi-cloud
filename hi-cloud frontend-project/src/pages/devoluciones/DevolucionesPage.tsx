@@ -185,7 +185,7 @@ export default function DevolucionesPage() {
         <Form form={form} layout="vertical" onFinish={handleSubmit}
           initialValues={{ fecha: dayjs(), tipo: 'total' }}>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="facturaId" label="Factura original" rules={[{ required: true }]}>
                 <Select showSearch filterOption={false} placeholder="Buscar por folio o cliente..."
                   onSearch={async (v) => { if (v.length < 2) return; }}
@@ -206,10 +206,10 @@ export default function DevolucionesPage() {
                 }} enterButton="Cargar" />
               </Form.Item>
             </Col>
-            <Col span={6}>
+            <Col xs={12} sm={6}>
               <Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}><DatePicker style={{ width:'100%' }} format="DD/MM/YYYY" /></Form.Item>
             </Col>
-            <Col span={6}>
+            <Col xs={12} sm={6}>
               <Form.Item name="tipo" label="Tipo">
                 <Select options={[{ value: 'total', label: 'Total' }, { value: 'parcial', label: 'Parcial' }]} />
               </Form.Item>
@@ -266,9 +266,9 @@ export default function DevolucionesPage() {
                 { title: 'Total',    dataIndex: 'total', render: (v: number) => <strong>{fmt.money(v)}</strong> },
               ]} />
             <Row gutter={16} style={{ marginTop: 16 }}>
-              <Col span={8}><Statistic title="Subtotal" value={detail.subtotal} formatter={v => fmt.money(Number(v))} /></Col>
-              <Col span={8}><Statistic title="ITBIS" value={detail.iva} formatter={v => fmt.money(Number(v))} /></Col>
-              <Col span={8}><Statistic title="Total devuelto" value={detail.total} formatter={v => fmt.money(Number(v))} valueStyle={{ color: '#dc2626' }} /></Col>
+              <Col xs={24} sm={8}><Statistic title="Subtotal" value={detail.subtotal} formatter={v => fmt.money(Number(v))} /></Col>
+              <Col xs={24} sm={8}><Statistic title="ITBIS" value={detail.iva} formatter={v => fmt.money(Number(v))} /></Col>
+              <Col xs={24} sm={8}><Statistic title="Total devuelto" value={detail.total} formatter={v => fmt.money(Number(v))} valueStyle={{ color: '#dc2626' }} /></Col>
             </Row>
           </>
         )}

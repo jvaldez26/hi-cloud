@@ -90,8 +90,8 @@ export default function PresupuestosPage() {
                   <Col xs={24} sm={8} key={t.tipo}>
                     <Card title={<><Tag color={t.alerta ? 'red' : 'blue'}>{tipoLabel[t.tipo]}</Tag></>}>
                       <Row gutter={8}>
-                        <Col span={12}><Statistic title="Presupuestado" value={t.presupuestado} formatter={v => fmt.money(Number(v))} /></Col>
-                        <Col span={12}><Statistic title="Real" value={t.real} formatter={v => fmt.money(Number(v))} valueStyle={{ color: t.alerta ? '#ff4d4f' : '#52c41a' }} /></Col>
+                        <Col xs={24} sm={12}><Statistic title="Presupuestado" value={t.presupuestado} formatter={v => fmt.money(Number(v))} /></Col>
+                        <Col xs={24} sm={12}><Statistic title="Real" value={t.real} formatter={v => fmt.money(Number(v))} valueStyle={{ color: t.alerta ? '#ff4d4f' : '#52c41a' }} /></Col>
                       </Row>
                       <Progress percent={t.porcentajeEjec ?? 0} status={t.alerta ? 'exception' : t.porcentajeEjec >= 90 ? 'success' : 'normal'} style={{ marginTop: 8 }} />
                       <small>{t.porcentajeEjec?.toFixed(1)}% ejecutado | {t.variacion >= 0 ? '+' : ''}{fmt.money(t.variacion)} variación</small>
@@ -193,9 +193,9 @@ export default function PresupuestosPage() {
         {variacion && (
           <>
             <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-              <Col span={8}><Statistic title="Presupuestado" value={variacion.totales?.presupuestado} formatter={v => fmt.money(Number(v))} /></Col>
-              <Col span={8}><Statistic title="Real" value={variacion.totales?.real} formatter={v => fmt.money(Number(v))} valueStyle={{ color: '#1677ff' }} /></Col>
-              <Col span={8}><Statistic title="% Ejecución" value={variacion.totales?.porcentajeEjec ?? 0} suffix="%" valueStyle={{ color: (variacion.totales?.porcentajeEjec ?? 0) > 90 ? '#52c41a' : '#fa8c16' }} /></Col>
+              <Col xs={24} sm={8}><Statistic title="Presupuestado" value={variacion.totales?.presupuestado} formatter={v => fmt.money(Number(v))} /></Col>
+              <Col xs={24} sm={8}><Statistic title="Real" value={variacion.totales?.real} formatter={v => fmt.money(Number(v))} valueStyle={{ color: '#1677ff' }} /></Col>
+              <Col xs={24} sm={8}><Statistic title="% Ejecución" value={variacion.totales?.porcentajeEjec ?? 0} suffix="%" valueStyle={{ color: (variacion.totales?.porcentajeEjec ?? 0) > 90 ? '#52c41a' : '#fa8c16' }} /></Col>
             </Row>
             <ResponsiveContainer width="100%" height={220} style={{ marginBottom: 16 }}>
               <BarChart data={varChart}>

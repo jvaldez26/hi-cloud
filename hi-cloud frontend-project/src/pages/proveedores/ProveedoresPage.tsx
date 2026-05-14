@@ -164,50 +164,50 @@ export default function ProveedoresPage() {
       >
         <Form form={form} layout="vertical" onFinish={handleSubmit}>
           <Row gutter={16}>
-            <Col span={16}>
+            <Col xs={24} sm={16}>
               <Form.Item name="nombre" label="Nombre / Razón Social" rules={[{ required: true }]}>
                 <Input />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="rnc" label="RNC"
                 rules={[{ required: true }, { pattern: /^\d{9}$|^\d{11}$/, message: '9 u 11 dígitos' }]}>
                 <Input placeholder="130000001" maxLength={11} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="telefono" label="Teléfono">
                 <Input placeholder="(809) 000-0000" />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="email" label="Email" rules={[{ type: 'email' }]}>
                 <Input />
               </Form.Item>
             </Col>
-            <Col span={14}>
+            <Col xs={24} sm={14}>
               <Form.Item name="direccion" label="Dirección">
                 <Input />
               </Form.Item>
             </Col>
-            <Col span={10}>
+            <Col xs={24} sm={10}>
               <Form.Item name="contacto" label="Persona de Contacto">
                 <Input />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="categoria" label="Categoría">
                 <Select allowClear>
                   {CATEGORIAS.map(c => <Option key={c} value={c}>{c}</Option>)}
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="diasPago" label="Días de pago">
                 <InputNumber style={{ width: '100%' }} min={0} max={365} addonAfter="días" placeholder="30" />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="banco" label="Banco">
                 <Select allowClear>
                   {['Banreservas','BHD León','Popular','ScotiaBank','APAP','BancoSanta Cruz','Asociación Cibao','Otro']
@@ -215,7 +215,7 @@ export default function ProveedoresPage() {
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="cuentaBancaria" label="Número de cuenta">
                 <Input placeholder="000-0000000-0" />
               </Form.Item>

@@ -128,8 +128,8 @@ function AtributosTab() {
       <Modal title="Nuevo atributo" open={open} onCancel={() => { setOpen(false); form.resetFields(); }} footer={null} width={480}>
         <Form form={form} layout="vertical" onFinish={(v) => crearMut.mutate(v)}>
           <Row gutter={12}>
-            <Col span={14}><Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input placeholder="Talla, Color, Material..." /></Form.Item></Col>
-            <Col span={10}><Form.Item name="tipo" label="Tipo" initialValue="otro">
+            <Col xs={24} sm={14}><Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input placeholder="Talla, Color, Material..." /></Form.Item></Col>
+            <Col xs={24} sm={10}><Form.Item name="tipo" label="Tipo" initialValue="otro">
               <Select options={[
                 { value: 'dimension', label: '📐 Dimensión/Talla' },
                 { value: 'color',    label: '🎨 Color' },
@@ -138,7 +138,7 @@ function AtributosTab() {
                 { value: 'otro',     label: '📋 Otro' },
               ]} />
             </Form.Item></Col>
-            <Col span={12}><Form.Item name="unidad" label="Unidad (opcional)"><Input placeholder="kg, cm, ml..." /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="unidad" label="Unidad (opcional)"><Input placeholder="kg, cm, ml..." /></Form.Item></Col>
           </Row>
           <Form.Item label="Valores iniciales (opcionales — uno por línea)">
             <Input.TextArea rows={4} placeholder={'XS\nS\nM\nL\nXL\nXXL'} id="valores-init" />
@@ -289,8 +289,8 @@ function VariantesTab() {
           ))}
 
           <Row gutter={12}>
-            <Col span={12}><Form.Item name="stock" label="Stock inicial" initialValue={0}><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
-            <Col span={12}><Form.Item name="precioOverride" label="Precio especial (opcional)"><InputNumber style={{ width: '100%' }} min={0} precision={2} placeholder="Del producto" /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="stock" label="Stock inicial" initialValue={0}><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="precioOverride" label="Precio especial (opcional)"><InputNumber style={{ width: '100%' }} min={0} precision={2} placeholder="Del producto" /></Form.Item></Col>
           </Row>
 
           <Alert type="info" showIcon style={{ marginBottom: 12, fontSize: 12 }}
@@ -520,38 +520,38 @@ function ProductosCatalogo() {
           initialValues={{ unidadMedida: 'PZA', porcentajeIva: 18, stock: 0, stockMinimo: 0 }}>
           <UomMedidaSelector />
           <Row gutter={16}>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="codigo" label="Código" rules={[{ required: true }]}><Input /></Form.Item>
             </Col>
-            <Col span={16}>
+            <Col xs={24} sm={16}>
               <Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input /></Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="precio" label="Precio (RD$)" rules={[{ required: true }]}>
                 <InputNumber style={{ width: '100%' }} min={0.01} precision={2} />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="porcentajeIva" label="ITBIS %">
                 <InputNumber style={{ width: '100%' }} min={0} max={100} />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="unidadMedida" label="Unidad de Medida">
                 <UomSelect />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="stock" label="Stock">
                 <InputNumber style={{ width: '100%' }} min={0} precision={0} />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="stockMinimo" label="Stock mínimo">
                 <InputNumber style={{ width: '100%' }} min={0} precision={0} />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="categoria" label="Categoría"><Input /></Form.Item>
             </Col>
 

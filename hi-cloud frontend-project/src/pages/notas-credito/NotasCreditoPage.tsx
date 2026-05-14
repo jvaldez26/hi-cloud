@@ -429,12 +429,12 @@ export default function NotasCreditoPage() {
                 <Typography.Text strong style={{ color: token.colorSuccess, fontSize: 13 }}>Factura original cargada correctamente</Typography.Text>
               </div>
               <Row gutter={16}>
-                <Col span={12}>
+                <Col xs={24} sm={12}>
                   <Typography.Text type="secondary" style={{ fontSize: 11 }}>Cliente</Typography.Text>
                   <div><Typography.Text strong>{facturaOrigen.clienteNombre}</Typography.Text></div>
                   {facturaOrigen.clienteRNC && <Typography.Text type="secondary" style={{ fontSize: 11 }}>RNC: {facturaOrigen.clienteRNC}</Typography.Text>}
                 </Col>
-                <Col span={12}>
+                <Col xs={24} sm={12}>
                   <Typography.Text type="secondary" style={{ fontSize: 11 }}>eNCF Original (referencia DGII)</Typography.Text>
                   <div><Typography.Text strong style={{ fontFamily: 'monospace', color: token.colorPrimary }}>{facturaOrigen.encf}</Typography.Text></div>
                   <Typography.Text type="secondary" style={{ fontSize: 11 }}>Fecha: {facturaOrigen.fecha}</Typography.Text>
@@ -460,7 +460,7 @@ export default function NotasCreditoPage() {
 
           {/* ── PASO 2: Tipo de nota (CodigoModificacion DGII) ── */}
           <Row gutter={12} style={{ marginBottom: 4 }}>
-            <Col span={14}>
+            <Col xs={24} sm={14}>
               <Form.Item
                 label={<Typography.Text strong>Código de Modificación DGII *</Typography.Text>}
                 style={{ marginBottom: 8 }}
@@ -501,8 +501,8 @@ export default function NotasCreditoPage() {
 
           {/* ── PASO 3: Datos adicionales ── */}
           <Row gutter={12}>
-            <Col span={12}><Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item></Col>
-            <Col span={12}><Form.Item name="descripcionMotivo" label="Descripción / Notas"><Input placeholder="Detalle adicional..." /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="descripcionMotivo" label="Descripción / Notas"><Input placeholder="Detalle adicional..." /></Form.Item></Col>
           </Row>
 
           {/* Ítems — ocultos para anulación total (se genera automáticamente) */}
@@ -514,11 +514,11 @@ export default function NotasCreditoPage() {
                   <>
                     {fields.map(({ key, name }) => (
                       <Row gutter={8} key={key} align="middle" style={{ marginBottom: 8 }}>
-                        <Col span={7}><Form.Item name={[name, 'productoId']} noStyle><Select showSearch optionFilterProp="children" placeholder="Producto" style={{ width: '100%' }} allowClear onChange={pid => { const p = productos.find((x: any) => x.id === pid); if (p) { const ds = formCrear.getFieldValue('detalles'); ds[name] = { ...ds[name], descripcion: p.nombre, precioUnitario: p.precio }; formCrear.setFieldsValue({ detalles: ds }); }}}>{productos.map((p: any) => <Option key={p.id} value={p.id}>{p.nombre}</Option>)}</Select></Form.Item></Col>
-                        <Col span={7}><Form.Item name={[name, 'descripcion']} noStyle rules={[{ required: true, message: '' }]}><Input placeholder="Descripción *" /></Form.Item></Col>
-                        <Col span={4}><Form.Item name={[name, 'cantidad']} noStyle rules={[{ required: true }]}><InputNumber min={0.01} placeholder="Cant." style={{ width: '100%' }} /></Form.Item></Col>
-                        <Col span={5}><Form.Item name={[name, 'precioUnitario']} noStyle rules={[{ required: true }]}><InputNumber min={0} placeholder="Precio unit." style={{ width: '100%' }} /></Form.Item></Col>
-                        <Col span={1}>{fields.length > 1 && <Button type="link" danger size="small" icon={<DeleteOutlined />} onClick={() => remove(name)} />}</Col>
+                        <Col xs={24} sm={7}><Form.Item name={[name, 'productoId']} noStyle><Select showSearch optionFilterProp="children" placeholder="Producto" style={{ width: '100%' }} allowClear onChange={pid => { const p = productos.find((x: any) => x.id === pid); if (p) { const ds = formCrear.getFieldValue('detalles'); ds[name] = { ...ds[name], descripcion: p.nombre, precioUnitario: p.precio }; formCrear.setFieldsValue({ detalles: ds }); }}}>{productos.map((p: any) => <Option key={p.id} value={p.id}>{p.nombre}</Option>)}</Select></Form.Item></Col>
+                        <Col xs={24} sm={7}><Form.Item name={[name, 'descripcion']} noStyle rules={[{ required: true, message: '' }]}><Input placeholder="Descripción *" /></Form.Item></Col>
+                        <Col xs={12} sm={4}><Form.Item name={[name, 'cantidad']} noStyle rules={[{ required: true }]}><InputNumber min={0.01} placeholder="Cant." style={{ width: '100%' }} /></Form.Item></Col>
+                        <Col xs={12} sm={5}><Form.Item name={[name, 'precioUnitario']} noStyle rules={[{ required: true }]}><InputNumber min={0} placeholder="Precio unit." style={{ width: '100%' }} /></Form.Item></Col>
+                        <Col xs={12} sm={1}>{fields.length > 1 && <Button type="link" danger size="small" icon={<DeleteOutlined />} onClick={() => remove(name)} />}</Col>
                       </Row>
                     ))}
                     <Button type="dashed" onClick={() => add()} icon={<PlusOutlined />} block>Agregar línea</Button>
@@ -570,9 +570,9 @@ export default function NotasCreditoPage() {
         {modalDetalle && (
           <>
             <Row gutter={16} style={{ marginBottom: 12 }}>
-              <Col span={12}><Text type="secondary" style={{ fontSize: 11 }}>Cliente</Text><div><Text strong>{modalDetalle.cliente?.nombre}</Text></div></Col>
-              <Col span={6}><Text type="secondary" style={{ fontSize: 11 }}>Tipo NCF</Text><div><Tag color="blue">{modalDetalle.tipoNcf}</Tag></div></Col>
-              <Col span={6}><Text type="secondary" style={{ fontSize: 11 }}>Fecha</Text><div><Text>{modalDetalle.fecha}</Text></div></Col>
+              <Col xs={24} sm={12}><Text type="secondary" style={{ fontSize: 11 }}>Cliente</Text><div><Text strong>{modalDetalle.cliente?.nombre}</Text></div></Col>
+              <Col xs={12} sm={6}><Text type="secondary" style={{ fontSize: 11 }}>Tipo NCF</Text><div><Tag color="blue">{modalDetalle.tipoNcf}</Tag></div></Col>
+              <Col xs={12} sm={6}><Text type="secondary" style={{ fontSize: 11 }}>Fecha</Text><div><Text>{modalDetalle.fecha}</Text></div></Col>
             </Row>
             {modalDetalle.facturaOriginalFolio && (
               <div style={{ marginBottom: 8 }}>
