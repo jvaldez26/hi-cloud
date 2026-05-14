@@ -60,28 +60,48 @@ export default function NotasCreditoComprasPage() {
     queryFn:  () => api.get('/notas-credito-compras?limit=50').then((r: any) => r.data?.data ?? r.data),
   });
 
+  const errMsg = (e: any) =>
+    e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado';
+
   const crear = useMutation({
     mutationFn: (dto: any) => api.post('/notas-credito-compras', dto),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['notas-credito-compras'] });
-      qc.invalidateQueries({ queryKey: ['ncc-resumen'] }); setModalCrear(false); formCrear.resetFields(); message.success('Nota creada'); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['notas-credito-compras'] });
+      qc.invalidateQueries({ queryKey: ['ncc-resumen'] });
+      setModalCrear(false); formCrear.resetFields();
+      message.success('Nota de crédito creada');
+    },
+    onError: (e: any) => message.error(`Error al crear NC: ${errMsg(e)}`, 6),
   });
 
   const recibir = useMutation({
     mutationFn: (id: number) => api.patch(`/notas-credito-compras/${id}/recibir`),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['notas-credito-compras'] });
-      qc.invalidateQueries({ queryKey: ['ncc-resumen'] }); message.success('NC confirmada — inventario actualizado'); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['notas-credito-compras'] });
+      qc.invalidateQueries({ queryKey: ['ncc-resumen'] });
+      message.success('NC confirmada — inventario actualizado');
+    },
+    onError: (e: any) => message.error(`Error al confirmar NC: ${errMsg(e)}`, 6),
   });
 
   const anular = useMutation({
     mutationFn: (id: number) => api.patch(`/notas-credito-compras/${id}/anular`),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['notas-credito-compras'] });
-      qc.invalidateQueries({ queryKey: ['ncc-resumen'] }); message.success('NC anulada'); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['notas-credito-compras'] });
+      qc.invalidateQueries({ queryKey: ['ncc-resumen'] });
+      message.success('NC anulada');
+    },
+    onError: (e: any) => message.error(`Error al anular NC: ${errMsg(e)}`, 6),
   });
 
   const eliminar = useMutation({
     mutationFn: (id: number) => api.delete(`/notas-credito-compras/${id}`),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['notas-credito-compras'] });
-      qc.invalidateQueries({ queryKey: ['ncc-resumen'] }); message.success('NC eliminada'); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['notas-credito-compras'] });
+      qc.invalidateQueries({ queryKey: ['ncc-resumen'] });
+      message.success('NC eliminada');
+    },
+    onError: (e: any) => message.error(`Error al eliminar NC: ${errMsg(e)}`, 6),
   });
 
   const handleCrear = (values: any) => {

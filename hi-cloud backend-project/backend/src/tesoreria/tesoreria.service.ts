@@ -273,7 +273,13 @@ export class TesoreriaService {
         origenId,
       );
     } catch (err) {
-      this.logger.error(`Error movimiento automático: ${(err as Error).message}`);
+      // Logueamos pero NO re-lanzamos: el movimiento bancario automático es un efecto secundario.
+      // Si falla, la operación principal (cobro CxC, pago CxP, etc.) ya se completó.
+      // El administrador puede registrar el movimiento manualmente desde Bancos.
+      this.logger.error(
+        `[TesoreriaService] Movimiento automático falló — origen=${origen} origenId=${origenId} ` +
+        `monto=${monto} cuenta=${cuenta.id}: ${(err as Error).message}`,
+      );
     }
   }
 
