@@ -30,7 +30,7 @@ export class CxCController {
   constructor(private cxcService: CxCService) {}
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Listar cuentas por cobrar con filtros (?estado=&fechaDesde=&fechaHasta=)' })
   getCuentas(@Query() filtro: FiltroCuentasDto) {
     return this.cxcService.getCuentas(filtro);
@@ -44,14 +44,14 @@ export class CxCController {
   }
 
   @Get('vencidas')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Cuentas con fecha de vencimiento superada y aún pendientes' })
   getVencidas() {
     return this.cxcService.getCuentasVencidas();
   }
 
   @Get('cliente/:clienteId')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Todas las cuentas por cobrar de un cliente específico' })
   getCuentasPorCliente(
     @Param('clienteId', ParseIntPipe) clienteId: number,
@@ -61,14 +61,14 @@ export class CxCController {
   }
 
   @Get(':id')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Detalle de una cuenta por cobrar' })
   findById(@Param('id', ParseIntPipe) id: number) {
     return this.cxcService.findById(id);
   }
 
   @Get(':id/pagos')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Historial de cobros de una cuenta' })
   getPagos(@Param('id', ParseIntPipe) id: number) {
     return this.cxcService.getPagos(id);
@@ -76,7 +76,7 @@ export class CxCController {
 
   @Post(':id/pago')
   @HttpCode(HttpStatus.CREATED)
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Registrar un cobro (parcial o total) a una cuenta por cobrar' })
   registrarPago(
     @Param('id', ParseIntPipe) id: number,

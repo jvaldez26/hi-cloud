@@ -40,7 +40,7 @@ export class ReportesController {
   // ── Ventas ─────────────────────────────────────────────────────────────────
 
   @Get('ventas')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Ventas del período con totales y desglose por estado' })
   @ApiQuery({ name: 'fechaDesde', required: true, example: '2026-01-01' })
   @ApiQuery({ name: 'fechaHasta', required: true, example: '2026-12-31' })
@@ -49,21 +49,21 @@ export class ReportesController {
   }
 
   @Get('ventas/por-cliente')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Ranking de clientes por ventas en el período' })
   getVentasPorCliente(@Query() dto: FiltroFechaDto) {
     return this.reportesService.getVentasPorCliente(dto);
   }
 
   @Get('ventas/por-producto')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Ranking de productos más vendidos en el período' })
   getVentasPorProducto(@Query() dto: FiltroFechaDto) {
     return this.reportesService.getVentasPorProducto(dto);
   }
 
   @Get('ventas/por-dia')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Ventas diarias del mes (datos para gráfica de barras)' })
   @ApiQuery({ name: 'mes',  required: true, example: 5 })
   @ApiQuery({ name: 'anio', required: true, example: 2026 })
@@ -72,7 +72,7 @@ export class ReportesController {
   }
 
   @Get('facturas-pendientes')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Facturas emitidas pendientes de cobro con días transcurridos' })
   getFacturasPendientes() {
     return this.reportesService.getFacturasPendientes();

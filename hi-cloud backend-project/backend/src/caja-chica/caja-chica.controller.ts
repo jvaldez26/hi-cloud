@@ -53,17 +53,17 @@ export class CajaChicaController {
   constructor(private readonly svc: CajaChicaService) {}
 
   @Get('resumen')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Resumen de todas las cajas chicas con alertas' })
   resumen() { return this.svc.resumen(); }
 
   @Get('cajas')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Listar todas las cajas chicas' })
   listarCajas() { return this.svc.listarCajas(); }
 
   @Get('cajas/:id')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Detalle de una caja chica' })
   findOne(@Param('id', ParseIntPipe) id: number) { return this.svc.findOne(id); }
 
@@ -84,14 +84,14 @@ export class CajaChicaController {
   // ─── Movimientos ─────────────────────────────────────────────────────────────
 
   @Get('cajas/:id/movimientos')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Historial de movimientos de una caja chica' })
   listarMovimientos(@Param('id', ParseIntPipe) id: number) {
     return this.svc.listarMovimientos(id);
   }
 
   @Post('cajas/:id/egreso')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Registrar egreso/gasto de la caja chica' })
   egreso(
     @Param('id', ParseIntPipe) id: number,

@@ -45,7 +45,7 @@ class CreateNDDto {
 @ApiBearerAuth('access-token')
 @ApiHeader({ name: 'X-Empresa-ID', required: true })
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+@Roles(UserRole.ADMIN, UserRole.CONTADOR)
 @Controller('notas-debito')
 export class NotasDebitoController {
   constructor(
@@ -59,12 +59,12 @@ export class NotasDebitoController {
   resumen() { return this.svc.resumen(); }
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Listar notas de débito con paginación' })
   listar(@Query() pagination: PaginationDto) { return this.svc.listar(pagination); }
 
   @Get(':id/pdf')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Generar PDF de nota de débito E33' })
   async pdf(@Param('id', ParseIntPipe) id: number, @Res() res: Response) {
     try {
@@ -80,7 +80,7 @@ export class NotasDebitoController {
   }
 
   @Get(':id')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
   findOne(@Param('id', ParseIntPipe) id: number) { return this.svc.findOne(id); }
 
   @Post()

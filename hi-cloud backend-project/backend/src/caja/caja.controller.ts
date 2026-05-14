@@ -55,7 +55,7 @@ export class CajaController {
 
   @Post('abrir')
   @HttpCode(HttpStatus.CREATED)
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Abrir caja del día (por vendedor)' })
   abrirCaja(@Body() dto: AbrirCajaDto, @GetUser() usuario: User) {
     return this.cajaService.abrirCaja(
@@ -68,7 +68,7 @@ export class CajaController {
   }
 
   @Patch(':id/cerrar')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Cerrar caja por ID — calcula diferencia vs efectivo físico' })
   cerrarCaja(
     @Param('id', ParseIntPipe) id: number,

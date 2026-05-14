@@ -37,14 +37,14 @@ export class CreditoClienteController {
   listar() { return this.svc.listarCreditos(); }
 
   @Get(':clienteId')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Estado de crédito de un cliente específico' })
   getCredito(@Param('clienteId', ParseIntPipe) id: number) {
     return this.svc.getCredito(id);
   }
 
   @Get(':clienteId/validar')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Validar si el cliente puede recibir una nueva venta a crédito' })
   validar(
     @Param('clienteId', ParseIntPipe) id: number,

@@ -40,19 +40,19 @@ export class EncuestasController {
 
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @Get()
   listar() { return this.svc.listar(); }
 
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @Post()
   crear(@Body() dto: CreateEncuestaDto) { return this.svc.crear(dto); }
 
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @Patch(':id')
   actualizar(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateEncuestaDto) {
     return this.svc.actualizar(id, dto);
@@ -66,7 +66,7 @@ export class EncuestasController {
 
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @Get(':id/respuestas')
   listarRespuestas(@Param('id', ParseIntPipe) id: number) {
     return this.svc.listarRespuestas(id);
@@ -74,7 +74,7 @@ export class EncuestasController {
 
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @Get(':id/metricas')
   metricas(@Param('id', ParseIntPipe) id: number) { return this.svc.metricas(id); }
 

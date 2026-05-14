@@ -64,7 +64,7 @@ export class ConteoInventarioController {
   iniciar(@Param('id', ParseIntPipe) id: number) { return this.svc.iniciar(id); }
 
   @Patch(':id/linea')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Registrar cantidad física contada de un producto' })
   actualizarLinea(@Param('id', ParseIntPipe) id: number, @Body() dto: ActualizarLineaDto) {
     return this.svc.actualizarLinea(id, dto);

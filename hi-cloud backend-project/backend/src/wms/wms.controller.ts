@@ -108,7 +108,7 @@ export class WmsController {
 
   @Post('ordenes')
   @HttpCode(HttpStatus.CREATED)
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Crear orden de picking' })
   crearOrden(@Body() dto: CreateOrdenDto, @GetUser() user: User) {
     return this.svc.crearOrden({ ...dto, creadoPorId: user.id });
@@ -150,7 +150,7 @@ export class WmsController {
   iniciarPicking(@Param('id', ParseIntPipe) id: number) { return this.svc.iniciarPicking(id); }
 
   @Patch('ordenes/:id/despachar')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Despachar orden empacada (EMPACADA → DESPACHADA)' })
   despachar(@Param('id', ParseIntPipe) id: number, @Body() dto: DespacharDto) {
     return this.svc.despacharOrden(id, dto);

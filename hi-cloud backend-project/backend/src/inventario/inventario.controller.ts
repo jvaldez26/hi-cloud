@@ -82,7 +82,7 @@ export class InventarioController {
 
   @Post('salida')
   @HttpCode(HttpStatus.CREATED)
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Registrar salida de mercancía del inventario' })
   registrarSalida(@Body() dto: RegistrarSalidaDto, @GetUser() usuario: User) {
     return this.inventarioService.registrarSalidaDesdeDto(dto, usuario.id);
@@ -198,7 +198,7 @@ export class InventarioController {
   }
 
   @Patch('seriales/:id/estado')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Cambiar estado de un serial (vendido, devuelto, defectuoso...)' })
   actualizarEstadoSerial(
     @Param('id', ParseIntPipe) id: number,

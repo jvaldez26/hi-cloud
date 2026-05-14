@@ -46,7 +46,7 @@ class CreateNCDto {
 @ApiBearerAuth('access-token')
 @ApiHeader({ name: 'X-Empresa-ID', required: true })
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+@Roles(UserRole.ADMIN, UserRole.CONTADOR)
 @Controller('notas-credito')
 export class NotasCreditoController {
   constructor(
@@ -60,19 +60,19 @@ export class NotasCreditoController {
   resumen() { return this.svc.resumen(); }
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Listar notas de crédito con paginación' })
   listar(@Query() pagination: PaginationDto) { return this.svc.listar(pagination); }
 
   @Get('por-factura/:facturaId')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Notas de crédito asociadas a una factura específica' })
   porFactura(@Param('facturaId', ParseIntPipe) facturaId: number) {
     return this.svc.porFactura(facturaId);
   }
 
   @Get(':id/pdf')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Generar PDF de nota de crédito E34' })
   async pdf(@Param('id', ParseIntPipe) id: number, @Res() res: Response) {
     try {
@@ -88,7 +88,7 @@ export class NotasCreditoController {
   }
 
   @Get(':id')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
   findOne(@Param('id', ParseIntPipe) id: number) { return this.svc.findOne(id); }
 
   @Post()

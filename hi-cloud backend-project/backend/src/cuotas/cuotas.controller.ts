@@ -48,7 +48,7 @@ export class CuotasController {
   resumen() { return this.svc.resumen(); }
 
   @Get('simular')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Simular tabla de cuotas sin crear el plan' })
   simular(
     @Query('capital') capital: string,
@@ -67,13 +67,13 @@ export class CuotasController {
   }
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
   listar(@Query('clienteId') clienteId?: string) {
     return this.svc.listar(clienteId ? Number(clienteId) : undefined);
   }
 
   @Get(':id')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
   findOne(@Param('id', ParseIntPipe) id: number) { return this.svc.findOne(id); }
 
   @Post()
@@ -84,7 +84,7 @@ export class CuotasController {
   }
 
   @Patch('cuota/:id/pagar')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Registrar pago de una cuota específica' })
   pagar(
     @Param('id', ParseIntPipe) id: number,

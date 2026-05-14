@@ -21,7 +21,7 @@ export class DevolucionesController {
   constructor(private devService: DevolucionesService) {}
 
   @Get('resumen')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Resumen de devoluciones por estado' })
   getResumen() {
     return this.devService.getResumen();
@@ -29,7 +29,7 @@ export class DevolucionesController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Registrar devolución total o parcial de una factura' })
   create(@Body() dto: CreateDevolucionDto, @GetUser() usuario: User) {
     return this.devService.create(dto, usuario);

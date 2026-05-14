@@ -69,7 +69,7 @@ export class ServiciosController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Crear nueva orden de servicio' })
   crear(@Body() dto: CreateOrdenDto, @GetUser() usuario: User) {
     return this.svc.crear(dto, usuario);
@@ -91,7 +91,7 @@ export class ServiciosController {
   }
 
   @Patch(':id/estado')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Cambiar estado de la orden (sigue el flujo predefinido)' })
   cambiarEstado(
     @Param('id', ParseIntPipe) id: number,
@@ -101,7 +101,7 @@ export class ServiciosController {
   }
 
   @Patch(':id/diagnostico')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Registrar diagnóstico y presupuesto' })
   diagnostico(
     @Param('id', ParseIntPipe) id: number,
@@ -112,7 +112,7 @@ export class ServiciosController {
 
   @Post(':id/detalles')
   @HttpCode(HttpStatus.CREATED)
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Agregar pieza o mano de obra a la orden' })
   agregarDetalle(
     @Param('id', ParseIntPipe) id: number,
@@ -123,7 +123,7 @@ export class ServiciosController {
 
   @Post(':id/facturar')
   @HttpCode(HttpStatus.CREATED)
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: '🔄 Convertir orden a factura (BORRADOR) — piezas + mano de obra' })
   facturar(
     @Param('id', ParseIntPipe) id: number,

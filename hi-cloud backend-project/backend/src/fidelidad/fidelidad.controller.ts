@@ -43,11 +43,11 @@ export class FidelidadController {
   constructor(private readonly svc: FidelidadService) {}
 
   @Get('resumen')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
   resumen() { return this.svc.resumen(); }
 
   @Get('programa')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Configuración del programa de puntos' })
   getPrograma() { return this.svc.getPrograma(); }
 
@@ -59,21 +59,21 @@ export class FidelidadController {
   }
 
   @Get('ranking')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Clientes con más puntos acumulados' })
   ranking(@Query('limit') limit?: string) {
     return this.svc.ranking(limit ? Number(limit) : 20);
   }
 
   @Get('cliente/:clienteId')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Saldo e historial de puntos de un cliente' })
   historial(@Param('clienteId', ParseIntPipe) id: number) {
     return this.svc.historial(id);
   }
 
   @Post('cliente/:clienteId/acumular')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Acumular puntos al pagar una factura' })
   acumular(
     @Param('clienteId', ParseIntPipe) id: number,
@@ -83,7 +83,7 @@ export class FidelidadController {
   }
 
   @Post('cliente/:clienteId/canjear')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Canjear puntos por descuento en la próxima compra' })
   canjear(
     @Param('clienteId', ParseIntPipe) id: number,

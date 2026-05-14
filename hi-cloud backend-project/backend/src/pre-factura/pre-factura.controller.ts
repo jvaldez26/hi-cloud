@@ -52,7 +52,7 @@ class ConvertirDto {
 @ApiBearerAuth('access-token')
 @ApiHeader({ name: 'X-Empresa-ID', description: 'ID de la empresa activa', required: true })
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+@Roles(UserRole.ADMIN, UserRole.CONTADOR)
 @Controller('pre-facturas')
 export class PreFacturaController {
   constructor(
@@ -66,7 +66,7 @@ export class PreFacturaController {
   resumen() { return this.svc.resumen(); }
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Listar pre-facturas con paginación y filtro por estado' })
   listar(
     @Query() pagination: PaginationDto,
@@ -76,7 +76,7 @@ export class PreFacturaController {
   }
 
   @Get(':id/pdf')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
   async pdf(@Param('id', ParseIntPipe) id: number, @Res() res: Response) {
     try {
       const { buffer, filename } = await this.pdfSvc.generarPDF(id);
@@ -91,7 +91,7 @@ export class PreFacturaController {
   }
 
   @Get(':id')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Detalle completo de una pre-factura' })
   findOne(@Param('id', ParseIntPipe) id: number) { return this.svc.findOne(id); }
 

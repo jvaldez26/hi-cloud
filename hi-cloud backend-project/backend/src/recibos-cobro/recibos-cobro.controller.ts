@@ -36,7 +36,7 @@ class CreateReciboDto {
 @ApiBearerAuth('access-token')
 @ApiHeader({ name: 'X-Empresa-ID', required: true })
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+@Roles(UserRole.ADMIN, UserRole.CONTADOR)
 @Controller('recibos-cobro')
 export class RecibosCobrosController {
   constructor(
@@ -50,7 +50,7 @@ export class RecibosCobrosController {
   resumen() { return this.svc.resumen(); }
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
   listar(
     @Query() pagination: PaginationDto,
     @Query('clienteId') clienteId?: string,
@@ -59,7 +59,7 @@ export class RecibosCobrosController {
   }
 
   @Get(':id/pdf')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
   async pdf(@Param('id', ParseIntPipe) id: number, @Res() res: Response) {
     try {
       const { buffer, filename } = await this.pdfSvc.generarPDF(id);
@@ -74,7 +74,7 @@ export class RecibosCobrosController {
   }
 
   @Get(':id')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
   findOne(@Param('id', ParseIntPipe) id: number) { return this.svc.findOne(id); }
 
   @Post()

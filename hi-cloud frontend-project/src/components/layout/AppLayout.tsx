@@ -438,7 +438,7 @@ const PATH_ROLES: Record<string, string[]> = {
   '/ecf':                   ADMIN_CONT,
   '/retenciones':           ADMIN_CONT,
   '/declaraciones':         ADMIN_CONT,
-  '/reportes':              ADMIN_CONT_VEND,   // vendedor puede ver sus reportes de ventas
+  '/reportes':              ADMIN_CONT,
   '/analytics':             ADMIN_CONT,
   '/kpi':                   ADMIN_CONT,
   '/generador-reportes':    ADMIN_CONT,
@@ -466,32 +466,34 @@ const PATH_ROLES: Record<string, string[]> = {
   '/flota':                 ADMIN_CONT,
   '/mantenimiento':         ADMIN_CONT,
 
-  // ── Admin + Contador + Vendedor ───────────────────────────────────────────
+  // ── Admin + Contador + Vendedor — SOLO estos 4 módulos ──────────────────────
   '/facturas':              ADMIN_CONT_VEND,
   '/cotizaciones':          ADMIN_CONT_VEND,
-  '/pre-facturas':          ADMIN_CONT_VEND,
-  '/notas-credito':         ADMIN_CONT_VEND,
-  '/notas-debito':          ADMIN_CONT_VEND,
-  '/devoluciones':          ADMIN_CONT_VEND,
-  '/facturas-recurrentes':  ADMIN_CONT_VEND,
   '/clientes':              ADMIN_CONT_VEND,
-  '/cxc':                   ADMIN_CONT_VEND,
-  '/recibos-cobro':         ADMIN_CONT_VEND,
-  '/conduces':              ADMIN_CONT_VEND,
-  '/fidelidad':             ADMIN_CONT_VEND,
-  '/cuotas':                ADMIN_CONT_VEND,
-  '/credito-cliente':       ADMIN_CONT_VEND,
-  '/productos':             ADMIN_CONT_VEND,
-  '/inventario':            ADMIN_CONT_VEND,
-  '/conteo-inventario':     ADMIN_CONT_VEND,
-  '/etiquetas':             ADMIN_CONT_VEND,
-  '/uom':                   ADMIN_CONT_VEND,
-  '/valoracion-stock':      ADMIN_CONT_VEND,
-  '/caja':                  ADMIN_CONT_VEND,
-  '/servicios':             ADMIN_CONT_VEND,
 
-  // ── QUICK_ITEMS también filtrados ───────────────────────────────────────────
-  '/pos':                   ADMIN_CONT_VEND,   // viewer no debe ver el POS
+  // ── Admin + Contador (vendedor ya NO tiene acceso) ────────────────────────
+  '/pre-facturas':          ADMIN_CONT,
+  '/notas-credito':         ADMIN_CONT,
+  '/notas-debito':          ADMIN_CONT,
+  '/devoluciones':          ADMIN_CONT,
+  '/facturas-recurrentes':  ADMIN_CONT,
+  '/cxc':                   ADMIN_CONT,
+  '/recibos-cobro':         ADMIN_CONT,
+  '/conduces':              ADMIN_CONT,
+  '/fidelidad':             ADMIN_CONT,
+  '/cuotas':                ADMIN_CONT,
+  '/credito-cliente':       ADMIN_CONT,
+  '/productos':             ADMIN_CONT,
+  '/inventario':            ADMIN_CONT,
+  '/conteo-inventario':     ADMIN_CONT,
+  '/etiquetas':             ADMIN_CONT,
+  '/uom':                   ADMIN_CONT,
+  '/valoracion-stock':      ADMIN_CONT,
+  '/caja':                  ADMIN_CONT,
+  '/servicios':             ADMIN_CONT,
+
+  // ── QUICK_ITEMS filtrados ─────────────────────────────────────────────────
+  '/pos':                   ADMIN_CONT_VEND,   // POS permitido para vendedor
 };
 
 function rolPuedeVerRuta(path: string, role: string): boolean {
