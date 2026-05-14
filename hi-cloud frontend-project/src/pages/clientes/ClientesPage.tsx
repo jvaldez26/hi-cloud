@@ -190,24 +190,24 @@ export default function ClientesPage() {
       >
         <Form form={form} layout="vertical" onFinish={handleSubmit}>
           <Row gutter={16}>
-            <Col span={16}>
+            <Col xs={24} sm={16}>
               <Form.Item name="nombre" label="Nombre / Razón Social" rules={[{ required: true }]}>
                 <Input />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="rfc" label="RFC / RNC / Cédula"
                 rules={[{ required: true }, { min: 7, max: 13, message: 'Entre 7 y 13 caracteres' }]}>
                 <Input placeholder="RNC: 130000001 | Cédula: 00112345678" />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="rncReceptor" label="RNC Receptor (e-CF)"
                 rules={[{ pattern: /^\d{9}$|^\d{11}$/, message: '9 u 11 dígitos' }]}>
                 <Input placeholder="9 u 11 dígitos" maxLength={11} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="regimenFiscal" label="Régimen Fiscal">
                 <Select allowClear>
                   <Option value="ORDINARIO">Ordinario</Option>
@@ -217,39 +217,39 @@ export default function ClientesPage() {
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="email" label="Email" rules={[{ type: 'email' }]}>
                 <Input />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="telefono" label="Teléfono">
                 <Input placeholder="(809) 000-0000" />
               </Form.Item>
             </Col>
-            <Col span={14}>
+            <Col xs={24} sm={14}>
               <Form.Item name="direccion" label="Dirección">
                 <Input />
               </Form.Item>
             </Col>
-            <Col span={10}>
+            <Col xs={24} sm={10}>
               <Form.Item name="ciudad" label="Ciudad">
                 <Input />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="sector" label="Sector Económico">
                 <Select allowClear>
                   {SECTORES.map(s => <Option key={s} value={s}>{s}</Option>)}
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={12} sm={8}>
               <Form.Item name="diasCredito" label="Días de crédito">
                 <InputNumber style={{ width: '100%' }} min={0} max={365} addonAfter="días" placeholder="30" />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={12} sm={8}>
               <Form.Item name="limiteCredito" label="Límite de crédito (DOP)">
                 <InputNumber style={{ width: '100%' }} min={0} step={5000}
                   formatter={(v: any) => v ? `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''}

@@ -297,7 +297,7 @@ export default function FacturaFormPage() {
         {/* ── Datos generales ─────────────────────────────────────────── */}
         <Card style={{ marginBottom: 16 }}>
           <Row gutter={16}>
-            <Col span={10}>
+            <Col xs={24} sm={10}>
               <Form.Item name="clienteId" label="Cliente" rules={[{ required: true }]}>
                 <Select showSearch placeholder="Buscar cliente..."
                   filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
@@ -305,12 +305,12 @@ export default function FacturaFormPage() {
                   onChange={onClienteChange} />
               </Form.Item>
             </Col>
-            <Col span={6}>
+            <Col xs={12} sm={6}>
               <Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}>
                 <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={12} sm={8}>
               <Form.Item name="vendedorId" label="Vendedor">
                 <Select
                   allowClear
@@ -327,7 +327,7 @@ export default function FacturaFormPage() {
           </Row>
           {/* ── Forma de pago ─────────────────────────────────────────── */}
           <Row gutter={16} style={{ marginBottom: 4 }}>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item label="Forma de pago">
                 <div style={{ display: 'flex', gap: 8 }}>
                   {(['CONTADO', 'CREDITO'] as const).map(tp => (
@@ -346,7 +346,7 @@ export default function FacturaFormPage() {
               </Form.Item>
             </Col>
             {tipoPago === 'CREDITO' && (
-              <Col span={8}>
+              <Col xs={24} sm={8}>
                 <Form.Item label="Días de crédito">
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <InputNumber min={1} max={365} value={diasCredito}
@@ -363,7 +363,7 @@ export default function FacturaFormPage() {
           </Row>
 
           <Row gutter={16}>
-            <Col span={8}>
+            <Col xs={12} sm={8}>
               <Form.Item name="moneda" label="Moneda" initialValue="DOP">
                 <Select>
                   <Select.Option value="DOP">🇩🇴 DOP — Peso Dominicano</Select.Option>
@@ -374,14 +374,14 @@ export default function FacturaFormPage() {
             </Col>
             <Form.Item noStyle dependencies={['moneda']}>
               {({ getFieldValue }) => getFieldValue('moneda') !== 'DOP' && (
-                <Col span={8}>
+                <Col xs={12} sm={8}>
                   <Form.Item name="tipoCambio" label="Tasa de Cambio (RD$)" rules={[{ required: true }]}>
                     <InputNumber min={0.01} precision={4} style={{ width: '100%' }} placeholder="Ej: 58.50" />
                   </Form.Item>
                 </Col>
               )}
             </Form.Item>
-            <Col span={16}>
+            <Col xs={24} sm={16}>
               <Form.Item name="notas" label="Notas">
                 <Input.TextArea rows={1} placeholder="Referencia, orden de compra, etc." />
               </Form.Item>

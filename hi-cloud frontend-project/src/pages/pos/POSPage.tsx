@@ -5,6 +5,7 @@ import { SearchOutlined, ShoppingCartOutlined, CheckCircleOutlined, DisconnectOu
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import { useMobile } from '../../hooks/useMediaQuery';
 import { productosApi } from '../../api/productos.api';
 import api from '../../api/client';
 import { clientesApi } from '../../api/clientes.api';
@@ -2647,6 +2648,8 @@ export default function POSPage() {
   });
   const [menuNavAbierto, setMenuNavAbierto] = useState(false);
   const [panelActivo,    setPanelActivo]    = useState<PanelId>('items');
+  const isMobile                           = useMobile();
+  const [mobileTab, setMobileTab]          = useState<'productos' | 'carrito'>('productos');
   const [clienteId,     setClienteId]     = useState<number | undefined>();
   // Persistir vendedorId y sucursalId en localStorage para sobrevivir recargas
   const [vendedorId,    setVendedorId]    = useState<number | undefined>(() => {
@@ -3181,11 +3184,31 @@ export default function POSPage() {
           navigate('/dashboard');
         }} />
 
+      {/* Tab bar mobile — cambia entre productos y carrito */}
+      {isMobile && (
+        <div style={{ display: 'flex', flexShrink: 0, borderBottom: `1px solid ${C.border}`, background: C.topbar }}>
+          {(['productos', 'carrito'] as const).map(tab => (
+            <button key={tab} onClick={() => setMobileTab(tab)} style={{
+              flex: 1, padding: '10px 0', border: 'none', cursor: 'pointer',
+              background: 'transparent',
+              color: mobileTab === tab ? C.blue : C.textSub,
+              fontSize: 13, fontWeight: mobileTab === tab ? 700 : 500,
+              borderBottom: mobileTab === tab ? `2px solid ${C.blue}` : '2px solid transparent',
+              outline: 'none',
+            }}>
+              {tab === 'productos'
+                ? '🛍️ Productos'
+                : `🛒 Carrito${totalItems > 0 ? ` (${totalItems})` : ''}`}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Layout principal: columna izquierda (productos + nav) y columna derecha (carrito) */}
       <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }}>
 
         {/* Columna izquierda: productos + barra nav inferior */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ flex: 1, display: isMobile && mobileTab === 'carrito' ? 'none' : 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
         {/* Center: productos o panel activo */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: C.bg }}>
@@ -3375,7 +3398,7 @@ export default function POSPage() {
         </div>{/* /columna izquierda */}
 
         {/* Right: carrito — altura completa de pantalla, Cobrar pegado al fondo */}
-        <div style={{ width: 380, flexShrink: 0, background: C.sidebar, borderLeft: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ width: isMobile ? '100%' : 380, flexShrink: 0, background: C.sidebar, borderLeft: isMobile ? 'none' : `1px solid ${C.border}`, display: isMobile && mobileTab === 'productos' ? 'none' : 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {/* Cart header */}
           <div style={{ padding: '12px 14px', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
             {/* Customer */}
