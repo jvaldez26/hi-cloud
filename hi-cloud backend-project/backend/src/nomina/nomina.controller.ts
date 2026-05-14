@@ -87,6 +87,7 @@ export class NominaController {
   // ── Utilidades de cálculo ──────────────────────────────────────────────────
 
   @Get('tasas-tss')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Tasas TSS vigentes (Ley 87-01), ISR (DGII), horas extras (Art. 147 CT-RD)' })
   getTasas() {
     return this.calculos.getTasas();

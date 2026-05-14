@@ -438,7 +438,7 @@ const PATH_ROLES: Record<string, string[]> = {
   '/ecf':                   ADMIN_CONT,
   '/retenciones':           ADMIN_CONT,
   '/declaraciones':         ADMIN_CONT,
-  '/reportes':              ADMIN_CONT,
+  '/reportes':              ADMIN_CONT_VEND,   // vendedor puede ver sus reportes de ventas
   '/analytics':             ADMIN_CONT,
   '/kpi':                   ADMIN_CONT,
   '/generador-reportes':    ADMIN_CONT,
@@ -489,6 +489,9 @@ const PATH_ROLES: Record<string, string[]> = {
   '/valoracion-stock':      ADMIN_CONT_VEND,
   '/caja':                  ADMIN_CONT_VEND,
   '/servicios':             ADMIN_CONT_VEND,
+
+  // ── QUICK_ITEMS también filtrados ───────────────────────────────────────────
+  '/pos':                   ADMIN_CONT_VEND,   // viewer no debe ver el POS
 };
 
 function rolPuedeVerRuta(path: string, role: string): boolean {

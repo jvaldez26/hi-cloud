@@ -39,6 +39,7 @@ export class ContabilidadController {
   // ── Plan de Cuentas ────────────────────────────────────────────────────────
 
   @Get('cuentas')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Plan de Cuentas dominicano completo' })
   @ApiQuery({ name: 'soloMovimientos', required: false, type: Boolean })
   getCuentas(@Query('soloMovimientos') soloMovimientos?: boolean) {
@@ -54,6 +55,7 @@ export class ContabilidadController {
   }
 
   @Get('cuentas/:id')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Obtener cuenta contable por ID' })
   findCuenta(@Param('id', ParseIntPipe) id: number) {
     return this.contabilidadService.findCuentaById(id);
