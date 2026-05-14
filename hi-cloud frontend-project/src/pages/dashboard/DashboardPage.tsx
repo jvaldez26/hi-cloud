@@ -1,4 +1,4 @@
-import { Row, Col, Card, Table, Typography, Spin, Alert, Tag, Space, Button, theme, Divider, Progress, Badge, DatePicker } from 'antd';
+import { Row, Col, Card, Table, Typography, Spin, Alert, Tag, Space, Button, theme, Divider, Progress, Badge, DatePicker, Statistic } from 'antd';
 import {
   ArrowUpOutlined, DollarOutlined, ClockCircleOutlined,
   WarningOutlined, ShoppingCartOutlined, RiseOutlined,
@@ -21,6 +21,7 @@ import AnimatedStatCard from '../../components/ui/AnimatedStatCard';
 import { fmt } from '../../utils/formatters';
 import dayjs from 'dayjs';
 import api from '../../api/client';
+import { useAuthStore } from '../../store/auth.store';
 
 const { Title, Text } = Typography;
 
@@ -73,7 +74,122 @@ function SectionHeader({ icon, title, subtitle, action }: { icon: React.ReactNod
   );
 }
 
+// ── Dashboard simplificado para vendedores ────────────────────────────────────
+function DashboardVendedor() {
+  const [periodo, setPeriodo] = useState(dayjs());
+  const mes  = periodo.month() + 1;
+  const anio = periodo.year();
+  const navigate  = useNavigate();
+  const { token } = theme.useToken();
+
+  const { data: misFacturas, isLoading: loadFact } = useQuery<any>({
+    queryKey: ['mis-facturas-dash', mes, anio],
+    queryFn:  () => api.get(`/facturas?limit=8&mes=${mes}&anio=${anio}`).then((r: any) => r.data?.data ?? r.data),
+    staleTime: 60_000,
+  });
+  const { data: misCotizaciones, isLoading: loadCot } = useQuery<any>({
+    queryKey: ['mis-cot-dash', mes, anio],
+    queryFn:  () => api.get(`/cotizaciones?limit=8`).then((r: any) => r.data?.data ?? r.data),
+    staleTime: 60_000,
+  });
+
+  const factData = Array.isArray(misFacturas?.data) ? misFacturas.data : (Array.isArray(misFacturas) ? misFacturas : []);
+  const cotData  = Array.isArray(misCotizaciones?.data) ? misCotizaciones.data : (Array.isArray(misCotizaciones) ? misCotizaciones : []);
+
+  const totalFacturado = factData.reduce((s: number, f: any) => s + Number(f.total ?? 0), 0);
+  const totalCotizado  = cotData.reduce((s: number, c: any) => s + Number(c.total ?? 0), 0);
+  const cotAceptadas   = cotData.filter((c: any) => c.estado === 'aceptada').length;
+
+  return (
+    <div>
+      <Row justify="space-between" align="middle" style={{ marginBottom: 20 }}>
+        <Title level={4} style={{ margin: 0 }}>Mi Panel</Title>
+        <DatePicker.MonthPicker value={periodo} onChange={v => v && setPeriodo(v)} format="MMMM YYYY" allowClear={false} />
+      </Row>
+
+      {/* KPIs del vendedor */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+        <Col xs={24} sm={8}>
+          <Card style={{ background: 'linear-gradient(135deg,#1a56db,#0ea5e9)', border: 'none', borderRadius: 12 }}>
+            <Statistic
+              title={<span style={{ color: 'rgba(255,255,255,.75)', fontSize: 12 }}>Facturado este mes</span>}
+              value={totalFacturado}
+              formatter={v => fmt.money(Number(v))}
+              valueStyle={{ color: '#fff', fontSize: 22, fontWeight: 700 }}
+              prefix={<DollarOutlined />}
+            />
+            <Button size="small" type="link" style={{ color: 'rgba(255,255,255,.7)', padding: 0, marginTop: 8 }}
+              onClick={() => navigate('/facturas')}>Ver facturas →</Button>
+          </Card>
+        </Col>
+        <Col xs={24} sm={8}>
+          <Card style={{ background: 'linear-gradient(135deg,#059669,#10b981)', border: 'none', borderRadius: 12 }}>
+            <Statistic
+              title={<span style={{ color: 'rgba(255,255,255,.75)', fontSize: 12 }}>Cotizaciones activas</span>}
+              value={cotData.filter((c: any) => ['borrador','enviada'].includes(c.estado)).length}
+              valueStyle={{ color: '#fff', fontSize: 22, fontWeight: 700 }}
+              suffix={<span style={{ fontSize: 13, color: 'rgba(255,255,255,.65)' }}> cotizaciones</span>}
+            />
+            <Button size="small" type="link" style={{ color: 'rgba(255,255,255,.7)', padding: 0, marginTop: 8 }}
+              onClick={() => navigate('/cotizaciones')}>Ver cotizaciones →</Button>
+          </Card>
+        </Col>
+        <Col xs={24} sm={8}>
+          <Card style={{ background: 'linear-gradient(135deg,#d97706,#f59e0b)', border: 'none', borderRadius: 12 }}>
+            <Statistic
+              title={<span style={{ color: 'rgba(255,255,255,.75)', fontSize: 12 }}>Cotizaciones aceptadas</span>}
+              value={cotAceptadas}
+              valueStyle={{ color: '#fff', fontSize: 22, fontWeight: 700 }}
+              suffix={<span style={{ fontSize: 13, color: 'rgba(255,255,255,.65)' }}>/ {cotData.length}</span>}
+            />
+            <div style={{ color: 'rgba(255,255,255,.7)', fontSize: 11, marginTop: 8 }}>
+              Total cotizado: {fmt.money(totalCotizado)}
+            </div>
+          </Card>
+        </Col>
+      </Row>
+
+      {/* Mis últimas facturas */}
+      <Row gutter={[16, 16]}>
+        <Col xs={24} lg={12}>
+          <Card title="Mis últimas facturas" extra={<Button size="small" onClick={() => navigate('/facturas')}>Ver todas</Button>}>
+            <Table
+              dataSource={factData.slice(0, 6)} rowKey="id" size="small"
+              loading={loadFact} pagination={false}
+              scroll={{ x: 'max-content' }}
+              columns={[
+                { title: 'Folio',    dataIndex: 'folio',   width: 100, render: (v: string) => <Text code style={{ fontSize: 11 }}>{v}</Text> },
+                { title: 'Cliente',  key: 'cli',           ellipsis: true, render: (_: any, r: any) => r.cliente?.nombre ?? '—' },
+                { title: 'Total',    dataIndex: 'total',   width: 110, align: 'right' as const, render: (v: number) => fmt.money(v) },
+                { title: 'Estado',   dataIndex: 'estado',  width: 90,
+                  render: (v: string) => <Tag color={v === 'pagada' ? 'green' : v === 'emitida' ? 'blue' : 'default'} style={{ fontSize: 10 }}>{v?.toUpperCase()}</Tag> },
+              ]} />
+          </Card>
+        </Col>
+        <Col xs={24} lg={12}>
+          <Card title="Mis últimas cotizaciones" extra={<Button size="small" onClick={() => navigate('/cotizaciones')}>Ver todas</Button>}>
+            <Table
+              dataSource={cotData.slice(0, 6)} rowKey="id" size="small"
+              loading={loadCot} pagination={false}
+              scroll={{ x: 'max-content' }}
+              columns={[
+                { title: 'Número',  dataIndex: 'numero',  width: 100, render: (v: string) => <Text code style={{ fontSize: 11 }}>{v}</Text> },
+                { title: 'Cliente', key: 'cli',           ellipsis: true, render: (_: any, r: any) => r.cliente?.nombre ?? '—' },
+                { title: 'Total',   dataIndex: 'total',   width: 110, align: 'right' as const, render: (v: number) => fmt.money(v) },
+                { title: 'Estado',  dataIndex: 'estado',  width: 90,
+                  render: (v: string) => <Tag color={{ aceptada: 'green', enviada: 'blue', borrador: 'default', rechazada: 'red', vencida: 'orange' }[v] ?? 'default'} style={{ fontSize: 10 }}>{v?.toUpperCase()}</Tag> },
+              ]} />
+          </Card>
+        </Col>
+      </Row>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
+  const { user } = useAuthStore();
+  if (user?.role === 'vendedor') return <DashboardVendedor />;
+
   const [periodo, setPeriodo] = useState(dayjs());
   const mes  = periodo.month() + 1;
   const anio = periodo.year();
