@@ -46,21 +46,17 @@ export class FacturasService {
   ) {}
 
   private async generarFolio(): Promise<string> {
-    const now    = new Date();
-    const year   = now.getFullYear();
-    const month  = String(now.getMonth() + 1).padStart(2, '0');
-    const prefix = `FAC-${year}${month}-`;
-
-    // MAX del número actual del período evita duplicados bajo carga concurrente
-    // El constraint UNIQUE en la columna folio actúa como red de seguridad final
+    const empresaId = this.tenantService.getEmpresaId();
     const result = await this.facturaRepository
       .createQueryBuilder('f')
-      .select(`MAX(CAST(SPLIT_PART(f.folio, '-', 3) AS INTEGER))`, 'maxNum')
-      .where('f.folio LIKE :p', { p: `${prefix}%` })
+      .select(`MAX(CASE WHEN f.folio ~ '^FAC-[0-9]+$'
+                        THEN CAST(SUBSTRING(f.folio FROM 5) AS INTEGER)
+                        ELSE 100 END)`, 'maxNum')
+      .where('f.empresaId = :eid', { eid: empresaId })
+      .andWhere('f.isActive = :a', { a: true })
       .getRawOne<{ maxNum: number | null }>();
-
-    const next = (result?.maxNum ?? 0) + 1;
-    return `${prefix}${String(next).padStart(4, '0')}`;
+    const next = Math.max(101, (result?.maxNum ?? 100) + 1);
+    return `FAC-${next}`;
   }
 
   async create(dto: CreateFacturaDto, usuario: User) {

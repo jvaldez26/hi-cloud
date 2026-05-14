@@ -37,11 +37,17 @@ export class ComprasService {
   ) {}
 
   private async generarFolio(): Promise<string> {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const count = await this.compraRepository.count();
-    return `COM-${year}${month}-${String(count + 1).padStart(4, '0')}`;
+    const empresaId = this.tenantService.getEmpresaId();
+    const result = await this.compraRepository
+      .createQueryBuilder('c')
+      .select(`MAX(CASE WHEN c.folio ~ '^COM-[0-9]+$'
+                        THEN CAST(SUBSTRING(c.folio FROM 5) AS INTEGER)
+                        ELSE 100 END)`, 'maxNum')
+      .where('c.empresaId = :eid', { eid: empresaId })
+      .andWhere('c.isActive = :a', { a: true })
+      .getRawOne<{ maxNum: number | null }>();
+    const next = Math.max(101, (result?.maxNum ?? 100) + 1);
+    return `COM-${next}`;
   }
 
   async create(dto: CreateCompraDto, usuario: User) {

@@ -40,15 +40,15 @@ export class NotasDebitoService {
 
   private async generarNumero(): Promise<string> {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const d   = new Date();
-    const pre = `ND-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}-`;
     const res = await this.ndRepo
       .createQueryBuilder('nd')
-      .select(`MAX(CAST(SPLIT_PART(nd.numero, '-', 3) AS INTEGER))`, 'maxNum')
-      .where('nd.numero LIKE :p',       { p: `${pre}%` })
-      .andWhere('nd.empresaId = :eid', { eid: empresaId })
+      .select(`MAX(CASE WHEN nd.numero ~ '^ND-[0-9]+$'
+                        THEN CAST(SUBSTRING(nd.numero FROM 4) AS INTEGER)
+                        ELSE 100 END)`, 'maxNum')
+      .where('nd.empresaId = :eid', { eid: empresaId })
+      .andWhere('nd.isActive = :a', { a: true })
       .getRawOne<{ maxNum: number | null }>();
-    return `${pre}${String((res?.maxNum ?? 0) + 1).padStart(4, '0')}`;
+    return `ND-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
   }
 
   // ─── CRUD ─────────────────────────────────────────────────────────────────────

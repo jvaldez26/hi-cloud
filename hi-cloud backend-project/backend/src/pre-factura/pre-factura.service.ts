@@ -41,15 +41,15 @@ export class PreFacturaService {
 
   private async generarFolio(): Promise<string> {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const d   = new Date();
-    const pre = `PRE-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}-`;
     const res = await this.pfRepo
       .createQueryBuilder('pf')
-      .select(`MAX(CAST(SPLIT_PART(pf.folio, '-', 3) AS INTEGER))`, 'maxNum')
-      .where('pf.folio LIKE :p',       { p: `${pre}%` })
-      .andWhere('pf.empresaId = :eid', { eid: empresaId })
+      .select(`MAX(CASE WHEN pf.folio ~ '^PRE-[0-9]+$'
+                        THEN CAST(SUBSTRING(pf.folio FROM 5) AS INTEGER)
+                        ELSE 100 END)`, 'maxNum')
+      .where('pf.empresaId = :eid', { eid: empresaId })
+      .andWhere('pf.isActive = :a', { a: true })
       .getRawOne<{ maxNum: number | null }>();
-    return `${pre}${String((res?.maxNum ?? 0) + 1).padStart(4, '0')}`;
+    return `PRE-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
   }
 
   // ─── Calcular totales ─────────────────────────────────────────────────────────

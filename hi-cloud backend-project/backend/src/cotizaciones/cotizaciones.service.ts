@@ -41,11 +41,17 @@ export class CotizacionesService {
   // ──────────────────────────────────────────────────────────────────
 
   private async generarNumero(): Promise<string> {
-    const now   = new Date();
-    const y     = now.getFullYear();
-    const m     = String(now.getMonth() + 1).padStart(2, '0');
-    const count = await this.cotizacionRepository.count();
-    return `COT-${y}${m}-${String(count + 1).padStart(4, '0')}`;
+    const empresaId = this.tenantService.getEmpresaId();
+    const result = await this.cotizacionRepository
+      .createQueryBuilder('c')
+      .select(`MAX(CASE WHEN c.numero ~ '^COT-[0-9]+$'
+                        THEN CAST(SUBSTRING(c.numero FROM 5) AS INTEGER)
+                        ELSE 100 END)`, 'maxNum')
+      .where('c.empresaId = :eid', { eid: empresaId })
+      .andWhere('c.isActive = :a', { a: true })
+      .getRawOne<{ maxNum: number | null }>();
+    const next = Math.max(101, (result?.maxNum ?? 100) + 1);
+    return `COT-${next}`;
   }
 
   // ──────────────────────────────────────────────────────────────────
