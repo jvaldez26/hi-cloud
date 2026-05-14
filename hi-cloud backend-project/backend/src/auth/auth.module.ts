@@ -14,12 +14,15 @@ import { GoogleStrategy } from './strategies/google.strategy';
 import { User } from '../users/users.entity';
 import { UsuarioEmpresa } from '../multi-empresa/entities/usuario-empresa.entity';
 import { Empresa } from '../configuracion/entities/empresa.entity';
+import { Sucursal } from '../configuracion/entities/sucursal.entity';
+import { ContabilidadModule } from '../contabilidad/contabilidad.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, UsuarioEmpresa, Empresa]),
+    TypeOrmModule.forFeature([User, UsuarioEmpresa, Empresa, Sucursal]),
     UsersModule,
     NotificacionesModule,
+    ContabilidadModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],

@@ -17,6 +17,8 @@ import { EmailService } from '../notificaciones/services/email.service';
 import { User } from '../users/users.entity';
 import { UsuarioEmpresa } from '../multi-empresa/entities/usuario-empresa.entity';
 import { Empresa } from '../configuracion/entities/empresa.entity';
+import { Sucursal } from '../configuracion/entities/sucursal.entity';
+import { ContabilidadService } from '../contabilidad/services/contabilidad.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { UserRole } from '../users/enums/user-role.enum';
@@ -35,6 +37,9 @@ export class AuthService {
     private ueRepository: Repository<UsuarioEmpresa>,
     @InjectRepository(Empresa)
     private empresaRepository: Repository<Empresa>,
+    @InjectRepository(Sucursal)
+    private sucursalRepository: Repository<Sucursal>,
+    private contabilidadService: ContabilidadService,
   ) {}
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -65,10 +70,15 @@ export class AuthService {
   // ─── Register ────────────────────────────────────────────────────────────────
 
   async register(dto: RegisterDto) {
-    this.logger.log(`[REGISTER] nombre="${dto.nombre}" (${dto.nombre?.length ?? 0} chars) | email="${dto.email}"`);
+    this.logger.log(`[REGISTER] nombre="${dto.nombre}" | email="${dto.email}" | empresa="${dto.empresaNombre ?? 'N/A'}"`);
 
     const existing = await this.usersService.findByEmail(dto.email);
     if (existing) throw new ConflictException('El email ya está registrado');
+
+    if (dto.empresaRnc) {
+      const rncExiste = await this.empresaRepository.findOne({ where: { rnc: dto.empresaRnc } });
+      if (rncExiste) throw new ConflictException(`El RNC ${dto.empresaRnc} ya está registrado`);
+    }
 
     const hashed = await bcrypt.hash(dto.password, 12);
 
@@ -77,36 +87,76 @@ export class AuthService {
         nombre:   dto.nombre,
         email:    dto.email,
         password: hashed,
+        role:     UserRole.ADMIN,
       });
 
-      // Enviar correo de verificación en background (no bloquea la respuesta)
+      // Si se proveen datos de empresa, crearla atómicamente y vincular al usuario
+      if (dto.empresaNombre && dto.empresaRnc) {
+        const empresa = await this.empresaRepository.save(
+          this.empresaRepository.create({
+            nombre:      dto.empresaNombre,
+            rnc:         dto.empresaRnc,
+            moneda:      'DOP',
+            zonaHoraria: 'America/Santo_Domingo',
+          }),
+        );
+
+        const acceso = this.ueRepository.create({
+          userId:      user.id,
+          empresaId:   empresa.id,
+          rol:         UserRole.ADMIN,
+          isPrincipal: true,
+        });
+        await this.ueRepository.save(acceso);
+
+        await this.sucursalRepository.save(
+          this.sucursalRepository.create({
+            empresaId:   empresa.id,
+            codigo:      'PRIN',
+            nombre:      'Sucursal Principal',
+            ciudad:      'Santo Domingo',
+            esPrincipal: true,
+          }),
+        );
+
+        // Sembrar plan de cuentas en background — no bloquear si falla
+        this.contabilidadService.seedPlanCuentas(empresa.id).catch(err =>
+          this.logger.warn(`seedPlanCuentas empresa ${empresa.id}: ${err?.message}`),
+        );
+
+        this.logger.log(`Empresa "${empresa.nombre}" (id=${empresa.id}) creada para usuario #${user.id}`);
+      }
+
+      // Correo de verificación — no bloquea la respuesta
       this.sendVerificationEmail(user.id, user.email, user.nombre).catch(err =>
         this.logger.warn(`No se pudo enviar verificación a ${user.email}: ${err?.message}`),
       );
 
       return {
-        message: 'Usuario registrado. Revisa tu correo para verificar tu cuenta.',
-        user: { id: user.id, nombre: user.nombre, email: user.email, role: user.role, tourCompletado: (user as any).tourCompletado ?? false },
+        message: 'Cuenta creada. Revisa tu correo para verificar tu cuenta antes de iniciar sesión.',
+        user: { id: user.id, nombre: user.nombre, email: user.email },
       };
-    } catch {
-      throw new InternalServerErrorException('Error al crear el usuario');
+    } catch (e: any) {
+      // Re-throw Conflict/Validation errors tal cual
+      if (e instanceof ConflictException || e instanceof BadRequestException) throw e;
+      this.logger.error(`[REGISTER] Error: ${e?.message}`);
+      throw new InternalServerErrorException('Error al crear la cuenta. Inténtalo de nuevo.');
     }
   }
 
   // ─── Login ───────────────────────────────────────────────────────────────────
 
   async login(dto: LoginDto) {
-    const user = await this.usersService.findByEmail(dto.email);
+    const user = await this.usersService.findByEmailForAuth(dto.email);
     if (!user || !user.isActive) throw new UnauthorizedException('Credenciales inválidas');
 
     const isValid = await bcrypt.compare(dto.password, user.password);
     if (!isValid) throw new UnauthorizedException('Credenciales inválidas');
 
-    // Bloquear solo usuarios registrados DESPUÉS de implementar la verificación
-    // Usuarios anteriores a 2026-05-12 son válidos aunque no tengan emailVerifiedAt
-    const FECHA_IMPL_VERIFICACION = new Date('2026-05-12T00:00:00Z');
-    const esNuevo = user.createdAt > FECHA_IMPL_VERIFICACION;
-    if (esNuevo && !(user as any).emailVerifiedAt) {
+    // Todos los usuarios activos deben tener emailVerifiedAt (la migración inicial
+    // los marcó como verificados). Los nuevos registros solo pasan después de
+    // hacer click en el link de verificación.
+    if (!user.emailVerifiedAt) {
       throw new UnauthorizedException('CORREO_NO_VERIFICADO');
     }
 

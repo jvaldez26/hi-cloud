@@ -32,11 +32,20 @@ export class UsersService implements OnModuleInit {
     }
   }
 
+  /** Sin select explícito — TypeORM respeta `select: false` en la entidad
+   *  (password, tokens, googleId, etc. NO se cargan). Incluye createdAt y
+   *  emailVerifiedAt necesarios para la lógica de login/verificación. */
   findByEmail(email: string) {
-    return this.userRepository.findOne({
-      where: { email },
-      select: ['id', 'nombre', 'email', 'password', 'role', 'isActive'],
-    });
+    return this.userRepository.findOne({ where: { email } });
+  }
+
+  /** Igual que findByEmail pero incluye el hash de contraseña para bcrypt. */
+  findByEmailForAuth(email: string) {
+    return this.userRepository
+      .createQueryBuilder('u')
+      .addSelect('u.password')
+      .where('u.email = :email', { email })
+      .getOne();
   }
 
   async findById(id: number) {
@@ -45,8 +54,9 @@ export class UsersService implements OnModuleInit {
     return user;
   }
 
-  createFull(data: { nombre: string; email: string; password: string; role?: UserRole }) {
-    const user = this.userRepository.create({ ...data, role: data.role ?? UserRole.VIEWER });
+  /** role es REQUERIDO — cada caller decide explícitamente. */
+  createFull(data: { nombre: string; email: string; password: string; role: UserRole }) {
+    const user = this.userRepository.create({ ...data });
     return this.userRepository.save(user);
   }
 

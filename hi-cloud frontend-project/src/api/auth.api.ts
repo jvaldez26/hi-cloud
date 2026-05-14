@@ -12,8 +12,15 @@ export const authApi = {
     return res.data.data.user;
   },
 
-  register: async (nombre: string, email: string, password: string) => {
-    const res = await api.post('/auth/register', { nombre, email, password });
+  register: async (
+    nombre: string, email: string, password: string,
+    empresaNombre?: string, empresaRnc?: string,
+  ) => {
+    const res = await api.post('/auth/register', {
+      nombre, email, password,
+      ...(empresaNombre && { empresaNombre }),
+      ...(empresaRnc    && { empresaRnc }),
+    });
     return res.data;
   },
 

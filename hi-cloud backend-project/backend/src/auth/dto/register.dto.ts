@@ -1,4 +1,4 @@
-import { IsEmail, IsString, MinLength, MaxLength, Matches, IsDefined } from 'class-validator';
+import { IsEmail, IsString, MinLength, MaxLength, Matches, IsDefined, IsOptional, Matches as RncMatches } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class RegisterDto {
@@ -23,4 +23,16 @@ export class RegisterDto {
     message: 'La contraseña debe tener al menos una mayúscula, una minúscula y un número',
   })
   password: string;
+
+  // ── Empresa (opcional — se crea atómicamente si se proveen) ──────────────
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  empresaNombre?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{9}$|^\d{11}$/, { message: 'El RNC debe tener 9 u 11 dígitos' })
+  empresaRnc?: string;
 }

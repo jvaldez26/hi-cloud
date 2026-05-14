@@ -5,11 +5,7 @@ import { UserOutlined, LockOutlined, BuildOutlined, RocketOutlined } from '@ant-
 import { useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMutation } from '@tanstack/react-query';
-import axios from 'axios';
 import { authApi } from '../../api/auth.api';
-import { useAuthStore } from '../../store/auth.store';
-
-const API_BASE = import.meta.env.VITE_API_URL ?? '/api/v1';
 
 const { Title, Text } = Typography;
 
@@ -19,88 +15,46 @@ export default function RegisterPage() {
   const [step,  setStep]  = useState(0);
   const [form1] = Form.useForm();
   const [form2] = Form.useForm();
+  const [emailRegistrado, setEmailRegistrado] = useState('');
   // Guardar valores del paso 1 en state React para que no se pierdan
   // cuando AnimatePresence desmonta el Form al cambiar de step
   const [valoresPaso1, setValoresPaso1] = useState<{ nombre: string; email: string; password: string } | null>(null);
   const navigate = useNavigate();
-  const { login } = useAuthStore();
 
   const registerMut = useMutation({
     mutationFn: async (values: {
       nombre: string; email: string; password: string;
-      empresa: string; rnc: string; pais: string;
+      empresa: string; rnc: string;
     }) => {
-      // 1. Registrar usuario (se crea con rol ADMIN)
-      try {
-        await authApi.register(values.nombre, values.email, values.password);
-      } catch (e: any) {
-        const msg: string = e?.response?.data?.errors?.[0] ?? (e as any)?.friendlyMessage ?? '';
-        // Solo redirigir al paso 1 si el error es claramente de ese paso
-        // Mensajes sobre campos del DTO de registro: nombre, email, contraseña/password
-        // Detectar errores de los campos del paso 1 (nombre, email, contraseña)
-        const esErrorNombre = msg.toLowerCase().includes('nombre') &&
-          !msg.toLowerCase().includes('empresa') &&
-          !msg.toLowerCase().includes('comercial');
-        const esErrorPaso1 = (
-          msg.includes('correo') ||
-          msg.includes('email') ||
-          (msg.includes('contraseña') || msg.includes('password')) ||
-          msg.includes('mayúscula') ||
-          msg.includes('minúscula') ||
-          msg.includes('debe ser texto') ||
-          msg.includes('al menos 2') ||
-          esErrorNombre
-        );
-
-        if (esErrorPaso1) {
-          setStep(0);
-          setTimeout(() => {
-            if (msg.includes('nombre')) {
-              form1.setFields([{ name: 'nombre', errors: [msg] }]);
-            } else if (msg.includes('email') || msg.includes('correo')) {
-              form1.setFields([{ name: 'email', errors: [msg] }]);
-            } else if (msg.includes('contraseña') || msg.includes('password') || msg.includes('mayúscula')) {
-              form1.setFields([{ name: 'password', errors: [msg] }]);
-            }
-          }, 50);
-        }
-        throw e;
-      }
-
-      // 2. Login inmediato
-      const loginRes = await authApi.login(values.email, values.password);
-
-      // Limpiar empresa de sesiones anteriores ANTES de continuar
-      localStorage.removeItem('empresaId');
-      localStorage.removeItem('mis_empresas');
-
-      login(loginRes.accessToken, loginRes.user);
-
-      // 3. Crear empresa usando axios directo (sin interceptores que agreguen X-Empresa-ID)
-      //    El nuevo usuario no tiene empresa aún — el header causaría un 403 innecesario
-      const empresaRes = await axios.post(
-        `${API_BASE}/multi-empresa`,
-        { rnc: values.rnc, nombre: values.empresa },
-        { headers: { Authorization: `Bearer ${loginRes.accessToken}`, 'Content-Type': 'application/json' } },
+      // Registro atómico: crea usuario + empresa + envía verificación en un solo call.
+      // El backend crea user(ADMIN) + empresa + usuario_empresa + sucursal + plan de cuentas.
+      // NO intentamos login aquí — el usuario debe verificar su email primero.
+      await authApi.register(
+        values.nombre, values.email, values.password,
+        values.empresa, values.rnc,
       );
-      const empresa = empresaRes.data?.data ?? empresaRes.data;
-
-      // 4. Activar empresa en sesión (guarda empresaId en localStorage)
-      if (empresa?.id) {
-        login(loginRes.accessToken, loginRes.user, empresa.id, [{
-          empresaId:   empresa.id,
-          nombre:      empresa.nombre ?? values.empresa,
-          rnc:         empresa.rnc    ?? values.rnc,
-          rol:         'admin',
-          isPrincipal: true,
-          plan:        'TRIAL',
-        }]);
-      }
-
-      return loginRes;
+      return values.email;
     },
-    onSuccess: () => navigate('/dashboard'),
-    onError: (e: any) => message.error(e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? e?.message ?? 'Error al crear la cuenta'),
+    onSuccess: (email) => {
+      setEmailRegistrado(email);
+      setStep(2); // Pantalla "Verifica tu correo"
+    },
+    onError: (e: any) => {
+      const msg: string = e?.response?.data?.errors?.[0]
+        ?? e?.response?.data?.message
+        ?? e?.friendlyMessage
+        ?? e?.message
+        ?? 'Error al crear la cuenta';
+      console.error('[Register] error:', e?.response?.data ?? e?.message);
+
+      // Redirigir al paso correcto según el tipo de error
+      const esPaso1 = /nombre|email|correo|contraseña|password|mayúscula|minúscula/i.test(msg);
+      const esPaso2 = /rnc|empresa|RNC/i.test(msg);
+      if (esPaso1) setStep(0);
+      else if (esPaso2) setStep(1);
+
+      message.error(msg, 6);
+    },
   });
 
   const handleStep1 = async () => {
@@ -197,9 +151,13 @@ export default function RegisterPage() {
             <Link to="/login" style={{ color: '#60a5fa' }}>Iniciar sesión</Link>
           </Text>
 
-          <Steps current={step} size="small" style={{ marginBottom: 28 }}
-            items={[{ title: <Text style={{ color: '#fff', fontSize: 12 }}>Tu cuenta</Text> },
-                    { title: <Text style={{ color: '#fff', fontSize: 12 }}>Tu empresa</Text> }]} />
+          {step < 2 && (
+            <Steps current={step} size="small" style={{ marginBottom: 28 }}
+              items={[
+                { title: <Text style={{ color: '#fff', fontSize: 12 }}>Tu cuenta</Text> },
+                { title: <Text style={{ color: '#fff', fontSize: 12 }}>Tu empresa</Text> },
+              ]} />
+          )}
 
           {registerMut.isError && (
             <Alert type="error"
@@ -237,7 +195,40 @@ export default function RegisterPage() {
           )}
 
           <AnimatePresence mode="wait">
-            {step === 0 ? (
+            {step === 2 ? (
+              /* ── Paso 3: Verificación de correo ─────────────────────── */
+              <motion.div key="step2"
+                initial={{ opacity: 0, scale: .95 }} animate={{ opacity: 1, scale: 1 }}
+                style={{ textAlign: 'center', padding: '16px 0' }}>
+                <div style={{
+                  width: 64, height: 64, borderRadius: '50%',
+                  background: 'rgba(16,185,129,.2)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  margin: '0 auto 20px', fontSize: 28,
+                }}>✉️</div>
+                <Title level={4} style={{ color: '#fff', marginBottom: 8 }}>
+                  ¡Revisa tu correo!
+                </Title>
+                <Text style={{ color: 'rgba(255,255,255,.6)', display: 'block', marginBottom: 4 }}>
+                  Enviamos un enlace de verificación a:
+                </Text>
+                <Text strong style={{ color: '#60a5fa', display: 'block', marginBottom: 20 }}>
+                  {emailRegistrado}
+                </Text>
+                <Text style={{ color: 'rgba(255,255,255,.45)', fontSize: 13, display: 'block', marginBottom: 28 }}>
+                  Haz clic en el enlace del correo para activar tu cuenta y acceder a HiCloud ERP.
+                  El enlace expira en 24 horas.
+                </Text>
+                <Button type="primary" block size="large"
+                  onClick={() => navigate('/login')}
+                  style={{ height: 48, background: 'linear-gradient(135deg,#1a56db,#0ea5e9)', border: 'none', borderRadius: 10, fontWeight: 600, marginBottom: 12 }}>
+                  Ir a iniciar sesión
+                </Button>
+                <Text style={{ color: 'rgba(255,255,255,.3)', fontSize: 12 }}>
+                  ¿No recibiste el correo? Revisa la carpeta de spam.
+                </Text>
+              </motion.div>
+            ) : step === 0 ? (
               <motion.div key="step0" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}>
                 <Form form={form1} layout="vertical">
                   <Form.Item name="nombre" label={<Text style={{ color: 'rgba(255,255,255,.7)', fontSize: 13 }}>Nombre completo</Text>}
