@@ -16,6 +16,7 @@ import { exportarExcel } from '../../utils/exportExcel';
 import type { CuentaPorCobrar, MetodoPago } from '../../types';
 import { fmt, estadoColor } from '../../utils/formatters';
 import api from '../../api/client';
+import { useCanDo } from '../../hooks/useCanDo';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -24,7 +25,8 @@ const { Option } = Select;
 const ESTADOS_CXC = ['pendiente', 'pagada_parcial', 'pagada', 'vencida', 'anulada'];
 
 export default function CxCPage() {
-  const { token } = theme.useToken();
+  const { token }        = theme.useToken();
+  const puedeCobrar      = useCanDo('cxc:cobrar');   // admin, contador, vendedor
   const [estado,  setEstado]  = useState<string | undefined>();
   const [search,  setSearch]  = useState('');
   const [rango,   setRango]   = useState<[Dayjs, Dayjs] | null>(null);
@@ -69,7 +71,17 @@ export default function CxCPage() {
       setPagoId(null); setPagoRow(null); form.resetFields();
       message.success('Cobro registrado');
     },
-    onError: () => message.error('Error al registrar cobro'),
+    onError: (e: any) => {
+      const msg = e?.response?.data?.message
+        ?? e?.response?.data?.errors?.[0]
+        ?? 'Error al registrar cobro';
+      const status = e?.response?.status;
+      if (status === 403) {
+        message.error('No tienes permiso para registrar cobros. Contacta al administrador.');
+      } else {
+        message.error(msg, 5);
+      }
+    },
   });
 
   const handleExcel = useCallback(async () => {
@@ -140,7 +152,7 @@ export default function CxCPage() {
       title: '', key: 'actions', width: 100, align: 'right' as const,
       render: (_: unknown, r: CuentaPorCobrar) => (
         <Space size={4}>
-          {r.estado !== 'pagada' && r.estado !== 'anulada' && (
+          {r.estado !== 'pagada' && r.estado !== 'anulada' && puedeCobrar && (
             <Tooltip title="Registrar cobro">
               <Button size="small" type="primary" icon={<DollarOutlined />}
                 onClick={() => { setPagoId(r.id); setPagoRow(r); form.setFieldsValue({ monto: Number(r.montoPendiente), fechaPago: dayjs() }); }}

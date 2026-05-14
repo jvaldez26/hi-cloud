@@ -76,7 +76,7 @@ export class CxCController {
 
   @Post(':id/pago')
   @HttpCode(HttpStatus.CREATED)
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Registrar un cobro (parcial o total) a una cuenta por cobrar' })
   registrarPago(
     @Param('id', ParseIntPipe) id: number,
