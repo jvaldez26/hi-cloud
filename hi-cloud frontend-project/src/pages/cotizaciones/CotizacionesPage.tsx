@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { Table, Button, Tag, Card, Row, Col, Typography, Statistic,
          Space, Popconfirm, message, Dropdown, Drawer, Descriptions,
          Modal, Input, Form, Tooltip } from 'antd';
-import { PlusOutlined, EyeOutlined, DownOutlined,
-         SwapOutlined, WarningOutlined, MailOutlined, FileExcelOutlined, FilePdfOutlined, CopyOutlined,
+import { PlusOutlined, EyeOutlined, MoreOutlined,
+         MailOutlined, FileExcelOutlined, FilePdfOutlined, CopyOutlined,
          EditOutlined } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import api from '../../api/client';
@@ -12,7 +12,6 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { cotizacionesApi } from '../../api/cotizaciones.api';
 import { fmt } from '../../utils/formatters';
-import WhatsAppButton from '../../components/ui/WhatsAppButton';
 
 const { Title, Text } = Typography;
 
@@ -122,86 +121,107 @@ export default function CotizacionesPage() {
   };
 
   const cols = [
-    { title: 'Número',  dataIndex: 'numero',          width: 170,
-      render: (v: string) => <Text code>{v}</Text> },
-    { title: 'Fecha',   dataIndex: 'fecha',            width: 100, render: (v: string) => fmt.date(v) },
-    { title: 'Vence',   dataIndex: 'fechaVencimiento', width: 100, render: (v: string) => fmt.date(v) },
-    { title: 'Cliente', key: 'cli',                    ellipsis: true,
-      render: (_: any, r: any) => r.cliente?.nombre },
-    { title: 'Total',   dataIndex: 'total',             width: 130,
+    { title: 'Número',  dataIndex: 'numero',          width: '13%',
+      render: (v: string) => <Text code style={{ fontSize: 11 }}>{v}</Text> },
+    { title: 'Fecha',   dataIndex: 'fecha',            width: '9%',
+      render: (v: string) => fmt.date(v) },
+    { title: 'Vence',   dataIndex: 'fechaVencimiento', width: '9%',
+      render: (v: string) => fmt.date(v) },
+    { title: 'Cliente', key: 'cli',
+      render: (_: any, r: any) => (
+        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {r.cliente?.nombre}
+        </div>
+      )},
+    { title: 'Total',   dataIndex: 'total',    width: '12%',
       render: (v: number) => <strong>{fmt.money(v)}</strong> },
-    { title: 'Estado',  dataIndex: 'estado',            width: 120,
+    { title: 'Estado',  dataIndex: 'estado',   width: '11%',
       render: (v: CotEstado) => (
-        <Tag color={estadoColor[v]}>
-          {estadoEmoji[v]} {v.toUpperCase()}
-        </Tag>
+        <Tag color={estadoColor[v]}>{estadoEmoji[v]} {v.toUpperCase()}</Tag>
       )},
     {
-      title: '', key: 'actions', width: 160,
+      title: '', key: 'actions', width: '7%',
       render: (_: any, r: any) => {
         const estado = r.estado as CotEstado;
         const sigs   = TRANSICIONES[estado];
+
+        const menuItems: any[] = [
+          ...(estado === 'borrador' ? [{
+            key: 'editar',
+            label: <><EditOutlined style={{ marginRight: 6 }} />Editar</>,
+            onClick: () => navigate(`/cotizaciones/${r.id}/editar`),
+          }] : []),
+          {
+            key: 'pdf',
+            label: <><FilePdfOutlined style={{ marginRight: 6 }} />Descargar PDF</>,
+            onClick: () => cotizacionesApi.pdf(r.id, r.numero)
+              .catch((e: any) => message.error('Error al generar PDF: ' + e.message)),
+          },
+          {
+            key: 'email',
+            label: <><MailOutlined style={{ marginRight: 6 }} />Enviar por email</>,
+            onClick: () => { setEmailCot(r); emailForm.setFieldsValue({ email: r.cliente?.email ?? '' }); },
+          },
+          {
+            key: 'whatsapp',
+            label: <>💬 Enviar por WhatsApp</>,
+            onClick: () => {
+              const texto = `Cotización ${r.numero} · Total: ${fmt.money(r.total)}`;
+              window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`, '_blank');
+            },
+          },
+          ...(sigs.length > 0 ? [
+            { type: 'divider' as const },
+            ...sigs.map(s => ({
+              key: `estado-${s}`,
+              label: s === 'enviada' ? '📤 Marcar enviada' : s === 'aceptada' ? '✅ Aceptar' : '❌ Rechazar',
+              onClick: () => estadoMut.mutate({ id: r.id, estado: s }),
+            })),
+          ] : []),
+          ...(estado === 'aceptada' ? [
+            { type: 'divider' as const },
+            {
+              key: 'convertir',
+              label: '🔄 Convertir a Factura',
+              onClick: () => Modal.confirm({
+                title: '¿Convertir a Factura?',
+                content: 'Se creará una factura en estado BORRADOR con los mismos datos.',
+                okText: 'Sí, convertir',
+                onOk: () => convertirMut.mutate(r.id),
+              }),
+            },
+          ] : []),
+          { type: 'divider' as const },
+          {
+            key: 'duplicar',
+            label: <><CopyOutlined style={{ marginRight: 6 }} />Duplicar</>,
+            onClick: () => duplicarMut.mutate(r.id),
+          },
+          ...(estado === 'borrador' ? [{
+            key: 'eliminar',
+            label: '🗑️ Eliminar',
+            danger: true,
+            onClick: () => Modal.confirm({
+              title: '¿Eliminar esta cotización?',
+              okText: 'Eliminar',
+              okType: 'danger',
+              onOk: () => deleteMut.mutate(r.id),
+            }),
+          }] : []),
+        ];
+
         return (
           <Space size={4}>
-            <Button size="small" icon={<EyeOutlined />} onClick={() => { setDetail(r); setDetailId(r.id); }}>Ver</Button>
-            {estado === 'borrador' && (
-              <Tooltip title="Editar cotización">
-                <Button size="small" icon={<EditOutlined />}
-                  onClick={() => navigate(`/cotizaciones/${r.id}/editar`)} />
-              </Tooltip>
-            )}
-            <Tooltip title="Descargar PDF">
-              <Button size="small" icon={<FilePdfOutlined />}
-                onClick={() => cotizacionesApi.pdf(r.id, r.numero).catch((e: any) => message.error('Error al generar PDF: ' + e.message))}
+            <Tooltip title="Ver detalle">
+              <Button
+                size="small"
+                icon={<EyeOutlined />}
+                onClick={() => { setDetail(r); setDetailId(r.id); }}
               />
             </Tooltip>
-            <Tooltip title="Enviar por email">
-              <Button size="small" type="text" icon={<MailOutlined />}
-                onClick={() => {
-                  setEmailCot(r);
-                  emailForm.setFieldsValue({ email: r.cliente?.email ?? '' });
-                }}
-              />
-            </Tooltip>
-            <WhatsAppButton tipo="cotizacion" id={r.id} size="small" onlyIcon />
-
-            {sigs.length > 0 && (
-              <Dropdown trigger={['click']} menu={{
-                items: sigs.map(s => ({
-                  key: s,
-                  label: s === 'enviada' ? '📤 Enviar' : s === 'aceptada' ? '✅ Aceptar' : '❌ Rechazar',
-                  onClick: () => estadoMut.mutate({ id: r.id, estado: s }),
-                })),
-              }}>
-                <Button size="small" icon={<DownOutlined />} />
-              </Dropdown>
-            )}
-
-            {estado === 'aceptada' && (
-              <Popconfirm
-                title="¿Convertir a Factura?"
-                description="Se creará una factura en estado BORRADOR con los mismos datos."
-                onConfirm={() => convertirMut.mutate(r.id)}
-                okText="Sí, convertir"
-              >
-                <Button size="small" type="primary" icon={<SwapOutlined />}
-                  loading={convertirMut.isPending}>
-                  → Factura
-                </Button>
-              </Popconfirm>
-            )}
-
-            <Tooltip title="Duplicar cotización">
-              <Button size="small" type="text" icon={<CopyOutlined />}
-                loading={duplicarMut.isPending}
-                onClick={() => duplicarMut.mutate(r.id)} />
-            </Tooltip>
-
-            {estado === 'borrador' && (
-              <Popconfirm title="¿Eliminar?" onConfirm={() => deleteMut.mutate(r.id)}>
-                <Button size="small" danger>✕</Button>
-              </Popconfirm>
-            )}
+            <Dropdown trigger={['click']} menu={{ items: menuItems }}>
+              <Button size="small" icon={<MoreOutlined />} />
+            </Dropdown>
           </Space>
         );
       },
@@ -266,7 +286,7 @@ export default function CotizacionesPage() {
       <Card>
         <Table columns={cols} dataSource={data?.data ?? []} rowKey="id"
           loading={isLoading} size="small"
-          scroll={{ x: 900 }}
+          tableLayout="fixed"
           rowClassName={(r: any) => r.estado === 'vencida' ? 'ant-table-row-warn' : ''}
           pagination={{ total: data?.meta?.total, pageSize: 10, current: page,
                         onChange: setPage, showTotal: t => `${t} cotizaciones`, showSizeChanger: false }} />
