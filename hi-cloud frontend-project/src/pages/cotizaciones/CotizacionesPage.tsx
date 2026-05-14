@@ -121,23 +121,25 @@ export default function CotizacionesPage() {
   };
 
   const cols = [
-    { title: 'Número',  dataIndex: 'numero',          width: '13%',
-      render: (v: string) => <Text code style={{ fontSize: 11 }}>{v}</Text> },
-    { title: 'Fecha',   dataIndex: 'fecha',            width: '9%',
-      render: (v: string) => fmt.date(v) },
-    { title: 'Vence',   dataIndex: 'fechaVencimiento', width: '9%',
-      render: (v: string) => fmt.date(v) },
+    { title: 'Número',  dataIndex: 'numero',          width: '10%',
+      render: (v: string) => <Text code style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{v}</Text> },
+    { title: 'Fecha',   dataIndex: 'fecha',            width: '11%',
+      render: (v: string) => <span style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{fmt.date(v)}</span> },
+    { title: 'Vence',   dataIndex: 'fechaVencimiento', width: '11%',
+      render: (v: string) => <span style={{ whiteSpace: 'nowrap', fontSize: 12, color: '#8c8c8c' }}>{fmt.date(v)}</span> },
     { title: 'Cliente', key: 'cli',
       render: (_: any, r: any) => (
-        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {r.cliente?.nombre}
+        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13 }}>
+          {r.cliente?.nombre ?? '—'}
         </div>
       )},
-    { title: 'Total',   dataIndex: 'total',    width: '12%',
-      render: (v: number) => <strong>{fmt.money(v)}</strong> },
-    { title: 'Estado',  dataIndex: 'estado',   width: '11%',
+    { title: 'Total',   dataIndex: 'total',    width: '12%', align: 'right' as const,
+      render: (v: number) => <strong style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{fmt.money(v)}</strong> },
+    { title: 'Estado',  dataIndex: 'estado',   width: '12%',
       render: (v: CotEstado) => (
-        <Tag color={estadoColor[v]}>{estadoEmoji[v]} {v.toUpperCase()}</Tag>
+        <Tag color={estadoColor[v]} style={{ whiteSpace: 'nowrap', margin: 0 }}>
+          {estadoEmoji[v]} {v.toUpperCase()}
+        </Tag>
       )},
     {
       title: '', key: 'actions', width: '7%',
