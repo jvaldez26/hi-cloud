@@ -76,20 +76,25 @@ export default function ChequesPage() {
     onError: (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error'),
   });
 
+  const errMsg = (e: any) =>
+    e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado';
+
   const emitirMut = useMutation({
     mutationFn: chequesApi.emitir,
     onSuccess: () => { inv(); setChequeModal(false); formCheq.resetFields(); message.success('Cheque registrado'); },
-    onError: (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error'),
+    onError: (e: any) => message.error(`Error al registrar cheque: ${errMsg(e)}`, 6),
   });
 
   const estadoMut = useMutation({
     mutationFn: ({ id, estado, fecha }: any) => chequesApi.cambiarEstado(id, estado, fecha),
     onSuccess: () => { inv(); setCobrarModal(null); message.success('Estado actualizado'); },
+    onError: (e: any) => message.error(`Error al cambiar estado: ${errMsg(e)}`, 6),
   });
 
   const eliminarMut = useMutation({
     mutationFn: chequesApi.eliminar,
     onSuccess: () => { inv(); message.success('Eliminado'); },
+    onError: (e: any) => message.error(`Error al eliminar: ${errMsg(e)}`, 6),
   });
 
   const cols = [

@@ -73,7 +73,8 @@ export class ChequesService {
     hoy.setHours(0, 0, 0, 0);
     const esFuturo   = fecha > hoy;
 
-    return this.chequeRepo.save(this.chequeRepo.create({
+    const cheque = this.chequeRepo.create({
+      empresaId:    this.tenantService.getEmpresaId(),
       chequeraId:   dto.chequeraId,
       numero,
       tipo:         dto.tipo ?? TipoCheque.EMITIDO,
@@ -85,7 +86,8 @@ export class ChequesService {
       facturaId:    dto.facturaId,
       compraId:     dto.compraId,
       referencia:   dto.referencia,
-    }));
+    } as any);
+    return this.chequeRepo.save(cheque as any) as unknown as Cheque;
   }
 
   async listarCheques(pagination: PaginationDto, estado?: EstadoCheque, tipo?: TipoCheque, chequeraId?: number) {

@@ -1,5 +1,5 @@
-import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
-import { BaseEntity } from '../../common/entities/base.entity';
+import { Entity, Column, ManyToOne, JoinColumn, Index } from 'typeorm';
+import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { Chequera } from './chequera.entity';
 
 export enum EstadoCheque {
@@ -17,7 +17,8 @@ export enum TipoCheque {
 }
 
 @Entity('cheques')
-export class Cheque extends BaseEntity {
+@Index(['empresaId', 'isActive'])
+export class Cheque extends TenantBaseEntity {
   @Column()
   chequeraId!: number;
 
