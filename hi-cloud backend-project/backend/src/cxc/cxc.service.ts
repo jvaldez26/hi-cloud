@@ -227,8 +227,6 @@ export class CxCService {
     const hoy = new Date();
     const en30 = new Date(hoy); en30.setDate(hoy.getDate() + 30);
     const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
-    let eid: number | undefined;
-    try { eid = this.tenantService.getEmpresaId(); } catch { eid = undefined; }
 
     const [porCobrar, vencido, porVencer, cobradoMes] = await Promise.all([
       this.cxcRepository.createQueryBuilder('c')
@@ -236,13 +234,11 @@ export class CxCService {
         .where('c.isActive = true AND c.estado NOT IN (:...exc)', {
           exc: [EstadoCuenta.PAGADA, EstadoCuenta.ANULADA],
         })
-        .andWhere(eid ? 'c.empresaId = :eid' : '1=1', { eid })
         .getRawOne<{ total: string }>(),
 
       this.cxcRepository.createQueryBuilder('c')
         .select('COALESCE(SUM(c.montoPendiente), 0)', 'total')
         .where('c.isActive = true AND c.estado = :e', { e: EstadoCuenta.VENCIDA })
-        .andWhere(eid ? 'c.empresaId = :eid' : '1=1', { eid })
         .getRawOne<{ total: string }>(),
 
       this.cxcRepository.createQueryBuilder('c')
@@ -251,18 +247,17 @@ export class CxCService {
           ests: [EstadoCuenta.PENDIENTE, EstadoCuenta.PAGADA_PARCIAL],
         })
         .andWhere('c.fechaVencimiento BETWEEN :hoy AND :en30', { hoy, en30 })
-        .andWhere(eid ? 'c.empresaId = :eid' : '1=1', { eid })
         .getRawOne<{ total: string }>(),
 
       this.pagoRepository.createQueryBuilder('p')
         .select('COALESCE(SUM(p.monto), 0)', 'total')
         .where('p.isActive = true AND p.fecha >= :inicio', { inicio: inicioMes })
-        .andWhere(eid ? 'p.empresaId = :eid' : '1=1', { eid })
         .getRawOne<{ total: string }>(),
     ]);
 
+    const eidForCount = this.tenantService.getEmpresaIdOrNull();
     const cuenta = await this.cxcRepository.count({
-      where: { isActive: true, ...(eid ? { empresaId: eid } : {}) } as any,
+      where: { isActive: true, ...(eidForCount ? { empresaId: eidForCount } : {}) } as any,
     });
 
     return {

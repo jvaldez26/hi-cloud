@@ -6,6 +6,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TenantService } from './tenant.service';
 import { TenantMiddleware } from './tenant.middleware';
 import { TenantGuard } from './tenant.guard';
+import { TenantSubscriber } from './tenant.subscriber';
 import { UsuarioEmpresa } from '../multi-empresa/entities/usuario-empresa.entity';
 import { Empresa } from '../configuracion/entities/empresa.entity';
 
@@ -25,7 +26,7 @@ import { Empresa } from '../configuracion/entities/empresa.entity';
       }),
     }),
   ],
-  providers: [TenantService, TenantMiddleware, TenantGuard],
-  exports:   [TenantService, TenantGuard, ClsModule, TypeOrmModule],
+  providers: [TenantService, TenantMiddleware, TenantGuard, TenantSubscriber],
+  exports:   [TenantService, TenantGuard, TenantSubscriber, ClsModule, TypeOrmModule],
 })
 export class TenantModule {}
