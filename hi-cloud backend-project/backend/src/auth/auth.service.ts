@@ -212,7 +212,7 @@ export class AuthService {
       resetPasswordExpires: expiry,
     });
 
-    const resetUrl = `${process.env['FRONTEND_URL'] ?? 'http://localhost:5173'}/restablecer/${token}`;
+    const resetUrl = `${process.env['FRONTEND_URL'] ?? 'https://hicloudrd.com'}/restablecer/${token}`;
 
     const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
@@ -304,7 +304,7 @@ export class AuthService {
       emailVerificationExpires: expires,
     } as any);
 
-    const frontendUrl = process.env['FRONTEND_URL'] ?? 'http://localhost:5173';
+    const frontendUrl = process.env['FRONTEND_URL'] ?? 'https://hicloudrd.com';
     const link = `${frontendUrl}/verificar-correo?token=${token}`;
 
     const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">

@@ -65,7 +65,7 @@ export class PortalController {
       cliente.portalTokenExpiry = expiry;
     }
 
-    const baseUrl = process.env['FRONTEND_URL'] ?? 'http://localhost:5173';
+    const baseUrl = process.env['FRONTEND_URL'] ?? 'https://hicloudrd.com';
     return {
       token:     cliente.portalToken,
       portalUrl: `${baseUrl}/portal/${cliente.portalToken}`,

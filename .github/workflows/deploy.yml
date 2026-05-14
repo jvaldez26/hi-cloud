@@ -91,17 +91,37 @@ jobs:
             set -e
             cd /home/ubuntu/hicloud
 
-            echo "━━━ [1/3] Git pull ━━━"
+            echo "━━━ [1/4] Git pull ━━━"
             git pull origin main
 
-            echo "━━━ [2/3] Build + restart backend ━━━"
+            echo "━━━ [2/4] Corregir variables de entorno críticas ━━━"
+            ENV_FILE="hi-cloud backend-project/backend/.env"
+
+            # APP_URL — URL del frontend para links en emails (invitaciones, reset password)
+            if grep -q '^APP_URL=' "$ENV_FILE" 2>/dev/null; then
+              sed -i 's|^APP_URL=.*|APP_URL=https://hicloudrd.com|' "$ENV_FILE"
+            else
+              echo 'APP_URL=https://hicloudrd.com' >> "$ENV_FILE"
+            fi
+
+            # FRONTEND_URL — mismo propósito, usado en auth.service.ts
+            if grep -q '^FRONTEND_URL=' "$ENV_FILE" 2>/dev/null; then
+              sed -i 's|^FRONTEND_URL=.*|FRONTEND_URL=https://hicloudrd.com|' "$ENV_FILE"
+            else
+              echo 'FRONTEND_URL=https://hicloudrd.com' >> "$ENV_FILE"
+            fi
+
+            echo "  ✅ APP_URL=$(grep '^APP_URL=' $ENV_FILE)"
+            echo "  ✅ FRONTEND_URL=$(grep '^FRONTEND_URL=' $ENV_FILE)"
+
+            echo "━━━ [3/4] Build + restart backend ━━━"
             cd "hi-cloud backend-project/backend"
             NODE_OPTIONS='--max-old-space-size=1500' npm run build
             pm2 restart hicloud-backend --update-env
             pm2 save
             sleep 10
 
-            echo "━━━ [3/3] Health check ━━━"
+            echo "━━━ [4/4] Health check ━━━"
             STATUS=$(curl -sk https://hicloudrd.com/api/v1/health | \
               python3 -c "import sys,json; print(json.load(sys.stdin)['data']['status'])" 2>/dev/null || echo "error")
             echo "Health: $STATUS"
