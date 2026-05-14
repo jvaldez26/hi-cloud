@@ -29,15 +29,13 @@ export class DepositosService {
 
   private async generarNumero(): Promise<string> {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const d   = new Date();
-    const pre = `DEP-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}-`;
     const res = await this.depoRepo
       .createQueryBuilder('d')
-      .select(`MAX(CAST(SPLIT_PART(d.numero, '-', 3) AS INTEGER))`, 'maxNum')
-      .where('d.numero LIKE :p',      { p: `${pre}%` })
-      .andWhere('d.empresaId = :eid', { eid: empresaId })
+      .select(`MAX(CASE WHEN d.numero ~ '^DEP-[0-9]+$' THEN CAST(SUBSTRING(d.numero FROM 5) AS INTEGER) ELSE 100 END)`, 'maxNum')
+      .where('d.empresaId = :eid', { eid: empresaId })
+      .andWhere('d.isActive = :a', { a: true })
       .getRawOne<{ maxNum: number | null }>();
-    return `${pre}${String((res?.maxNum ?? 0) + 1).padStart(4, '0')}`;
+    return `DEP-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
   }
 
   async crear(dto: CreateDepositoDto, usuarioId: number) {

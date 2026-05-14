@@ -21,15 +21,14 @@ export class MantenimientoService {
   ) {}
 
   private async generarNumero(): Promise<string> {
-    const n    = new Date();
-    const yymm = `${n.getFullYear()}${String(n.getMonth() + 1).padStart(2, '0')}`;
-    const prefix = `MNT-${yymm}-`;
+    const empresaId = this.tenantService.getEmpresaId();
     const res = await this.ordenRepo
       .createQueryBuilder('o')
-      .select(`MAX(CAST(SPLIT_PART(o.numero, '-', 3) AS INTEGER))`, 'maxNum')
-      .where('o.numero LIKE :p', { p: `${prefix}%` })
+      .select(`MAX(CASE WHEN o.numero ~ '^MNT-[0-9]+$' THEN CAST(SUBSTRING(o.numero FROM 5) AS INTEGER) ELSE 100 END)`, 'maxNum')
+      .where('o.empresaId = :eid', { eid: empresaId })
+      .andWhere('o.isActive = :a', { a: true })
       .getRawOne<{ maxNum: number | null }>();
-    return `${prefix}${String((res?.maxNum ?? 0) + 1).padStart(4, '0')}`;
+    return `MNT-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
   }
 
   // ── Órdenes de mantenimiento ──────────────────────────────────────────────

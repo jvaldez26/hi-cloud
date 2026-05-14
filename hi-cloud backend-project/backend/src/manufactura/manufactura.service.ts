@@ -22,9 +22,14 @@ export class ManufacturaService {
   ) {}
 
   private async generarNumeroOrden(): Promise<string> {
-    const n = new Date();
-    const count = await this.ordenRepo.count();
-    return `OP-${n.getFullYear()}${String(n.getMonth() + 1).padStart(2,'0')}-${String(count + 1).padStart(4,'0')}`;
+    const empresaId = this.tenantService.getEmpresaId();
+    const res = await this.ordenRepo
+      .createQueryBuilder('o')
+      .select(`MAX(CASE WHEN o.numero ~ '^OP-[0-9]+$' THEN CAST(SUBSTRING(o.numero FROM 4) AS INTEGER) ELSE 100 END)`, 'maxNum')
+      .where('o.empresaId = :eid', { eid: empresaId })
+      .andWhere('o.isActive = :a', { a: true })
+      .getRawOne<{ maxNum: number | null }>();
+    return `OP-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
   }
 
   // ── Listas de Materiales (BOM) ────────────────────────────────────────────

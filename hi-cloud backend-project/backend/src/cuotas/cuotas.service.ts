@@ -29,15 +29,13 @@ export class CuotasService {
 
   private async generarNumero(): Promise<string> {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const d   = new Date();
-    const pre = `PP-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}-`;
     const res = await this.planRepo
       .createQueryBuilder('p')
-      .select(`MAX(CAST(SPLIT_PART(p.numero, '-', 3) AS INTEGER))`, 'maxNum')
-      .where('p.numero LIKE :p',       { p: `${pre}%` })
-      .andWhere('p.empresaId = :eid', { eid: empresaId })
+      .select(`MAX(CASE WHEN p.numero ~ '^PP-[0-9]+$' THEN CAST(SUBSTRING(p.numero FROM 4) AS INTEGER) ELSE 100 END)`, 'maxNum')
+      .where('p.empresaId = :eid', { eid: empresaId })
+      .andWhere('p.isActive = :a', { a: true })
       .getRawOne<{ maxNum: number | null }>();
-    return `${pre}${String((res?.maxNum ?? 0) + 1).padStart(4, '0')}`;
+    return `PP-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
   }
 
   // ─── Calcular cuota mensual (fórmula de amortización francesa) ───────────────

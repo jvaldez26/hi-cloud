@@ -36,22 +36,25 @@ export class DevolucionesService {
   // ─── Folios ───────────────────────────────────────────────────────────────────
 
   private async generarNumero(): Promise<string> {
-    const now   = new Date();
-    const y     = now.getFullYear();
-    const m     = String(now.getMonth() + 1).padStart(2, '0');
-    const count = await this.devRepository.count();
-    return `DEV-${y}${m}-${String(count + 1).padStart(4, '0')}`;
+    const empresaId = this.tenantService.getEmpresaId();
+    const res = await this.devRepository
+      .createQueryBuilder('d')
+      .select(`MAX(CASE WHEN d.numero ~ '^DEV-[0-9]+$' THEN CAST(SUBSTRING(d.numero FROM 5) AS INTEGER) ELSE 100 END)`, 'maxNum')
+      .where('d.empresaId = :eid', { eid: empresaId })
+      .andWhere('d.isActive = :a', { a: true })
+      .getRawOne<{ maxNum: number | null }>();
+    return `DEV-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
   }
 
   private async generarNumeroNC(): Promise<string> {
-    const d   = new Date();
-    const pre = `NC-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}-`;
+    const empresaId = this.tenantService.getEmpresaId();
     const res = await this.ncRepository
       .createQueryBuilder('nc')
-      .select(`MAX(CAST(SPLIT_PART(nc.numero, '-', 3) AS INTEGER))`, 'maxNum')
-      .where('nc.numero LIKE :p', { p: `${pre}%` })
+      .select(`MAX(CASE WHEN nc.numero ~ '^NC-[0-9]+$' THEN CAST(SUBSTRING(nc.numero FROM 4) AS INTEGER) ELSE 100 END)`, 'maxNum')
+      .where('nc.empresaId = :eid', { eid: empresaId })
+      .andWhere('nc.isActive = :a', { a: true })
       .getRawOne<{ maxNum: number | null }>();
-    return `${pre}${String((res?.maxNum ?? 0) + 1).padStart(4, '0')}`;
+    return `NC-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
   }
 
   // ─── Crear devolución ─────────────────────────────────────────────────────────

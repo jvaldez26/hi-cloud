@@ -28,8 +28,18 @@ export default function PresupuestosPage() {
   const { data: lista, isLoading } = useQuery({ queryKey: ['presupuestos', page, anio], queryFn: () => presupuestosApi.list(page, 10, anio) });
   const { data: variacion } = useQuery({ queryKey: ['variacion', openVar?.id], queryFn: () => presupuestosApi.variacion(openVar.id), enabled: !!openVar });
 
-  const createMut  = useMutation({ mutationFn: presupuestosApi.create, onSuccess: () => { qc.invalidateQueries({ queryKey: ['presupuestos'] }); setOpen(false); form.resetFields(); message.success('Presupuesto creado'); } });
-  const aprobarMut = useMutation({ mutationFn: presupuestosApi.aprobar, onSuccess: () => { qc.invalidateQueries({ queryKey: ['presupuestos'] }); message.success('Presupuesto aprobado'); } });
+  const errMsg = (e: any) => e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado';
+
+  const createMut  = useMutation({
+    mutationFn: presupuestosApi.create,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['presupuestos'] }); setOpen(false); form.resetFields(); message.success('Presupuesto creado'); },
+    onError:   (e: any) => message.error(errMsg(e), 5),
+  });
+  const aprobarMut = useMutation({
+    mutationFn: presupuestosApi.aprobar,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['presupuestos'] }); message.success('Presupuesto aprobado'); },
+    onError:   (e: any) => message.error(errMsg(e), 5),
+  });
 
   const descargarPDF = async (item: any) => {
     setPdfPending(item.id);

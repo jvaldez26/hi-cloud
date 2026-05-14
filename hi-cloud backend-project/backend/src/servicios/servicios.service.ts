@@ -55,11 +55,14 @@ export class ServiciosService {
   ) {}
 
   private async generarNumero(): Promise<string> {
-    const now   = new Date();
-    const y     = now.getFullYear();
-    const m     = String(now.getMonth() + 1).padStart(2, '0');
-    const count = await this.ordenRepo.count();
-    return `SRV-${y}${m}-${String(count + 1).padStart(4, '0')}`;
+    const empresaId = this.tenantService.getEmpresaId();
+    const res = await this.ordenRepo
+      .createQueryBuilder('o')
+      .select(`MAX(CASE WHEN o.numero ~ '^SRV-[0-9]+$' THEN CAST(SUBSTRING(o.numero FROM 5) AS INTEGER) ELSE 100 END)`, 'maxNum')
+      .where('o.empresaId = :eid', { eid: empresaId })
+      .andWhere('o.isActive = :a', { a: true })
+      .getRawOne<{ maxNum: number | null }>();
+    return `SRV-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
   }
 
   async crear(dto: CreateOrdenDto, usuario: User): Promise<OrdenServicio> {

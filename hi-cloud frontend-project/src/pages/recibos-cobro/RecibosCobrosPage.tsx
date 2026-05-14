@@ -103,6 +103,8 @@ export default function RecibosCobrosPage() {
     queryFn:  () => api.get('/recibos-cobro?limit=50').then((r: any) => r.data?.data ?? r.data),
   });
 
+  const errMsg = (e: any) => e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado';
+
   const crear = useMutation({
     mutationFn: (dto: any) => api.post('/recibos-cobro', dto),
     onSuccess: (res: any) => {
@@ -113,12 +115,14 @@ export default function RecibosCobrosPage() {
       message.success(`Recibo ${res.data?.numero ?? ''} generado`);
       setReciboImprimir(res.data);
     },
+    onError: (e: any) => message.error(errMsg(e), 5),
   });
 
   const eliminar = useMutation({
     mutationFn: (id: number) => api.delete(`/recibos-cobro/${id}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['recibos-cobro'] });
       qc.invalidateQueries({ queryKey: ['recibos-resumen'] }); message.success('Recibo eliminado'); },
+    onError: (e: any) => message.error(errMsg(e), 5),
   });
 
   const handleImprimir = (recibo: any) => {

@@ -13,14 +13,14 @@ export class LicitacionesService {
   ) {}
 
   private async generarNumero(): Promise<string> {
-    const y = new Date().getFullYear();
-    const prefix = `LIC-${y}-`;
+    const empresaId = this.tenantService.getEmpresaId();
     const res = await this.repo
       .createQueryBuilder('l')
-      .select(`MAX(CAST(SPLIT_PART(l.numero, '-', 3) AS INTEGER))`, 'maxNum')
-      .where('l.numero LIKE :p', { p: `${prefix}%` })
+      .select(`MAX(CASE WHEN l.numero ~ '^LIC-[0-9]+$' THEN CAST(SUBSTRING(l.numero FROM 5) AS INTEGER) ELSE 100 END)`, 'maxNum')
+      .where('l.empresaId = :eid', { eid: empresaId })
+      .andWhere('l.isActive = :a', { a: true })
       .getRawOne<{ maxNum: number | null }>();
-    return `${prefix}${String((res?.maxNum ?? 0) + 1).padStart(4, '0')}`;
+    return `LIC-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
   }
 
   async crear(dto: any) {
