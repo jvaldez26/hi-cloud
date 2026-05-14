@@ -7,7 +7,7 @@ import {
 import {
   FileTextOutlined, PlusOutlined, SendOutlined, CheckCircleOutlined,
   CloseCircleOutlined, RetweetOutlined, DeleteOutlined, EyeOutlined,
-  MailOutlined, FilePdfOutlined, LoadingOutlined,
+  MailOutlined, FilePdfOutlined, LoadingOutlined, EditOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -42,6 +42,7 @@ export default function PreFacturaPage() {
   const { token } = theme.useToken();
 
   const [modalCrear,    setModalCrear]    = useState(false);
+  const [editandoPF,    setEditandoPF]    = useState<any>(null); // pre-factura siendo editada
   const [modalDetalle,  setModalDetalle]  = useState<any>(null);
   const [modalRechazar, setModalRechazar] = useState<any>(null);
   const [emailPF,       setEmailPF]       = useState<any>(null);
@@ -92,6 +93,16 @@ export default function PreFacturaPage() {
     onError:    (e: any) => onErr(e, 'Error al crear pre-factura'),
   });
 
+  const actualizar = useMutation({
+    mutationFn: ({ id, dto }: { id: number; dto: any }) => api.patch(`/pre-facturas/${id}`, dto),
+    onSuccess:  () => {
+      invalidar();
+      setModalCrear(false); setEditandoPF(null); formCrear.resetFields();
+      message.success('Pre-factura actualizada');
+    },
+    onError:    (e: any) => onErr(e, 'Error al actualizar pre-factura'),
+  });
+
   const enviar = useMutation({
     mutationFn: (id: number) => api.patch(`/pre-facturas/${id}/enviar`, {}),
     onSuccess:  () => { invalidar(); message.success('Pre-factura enviada'); },
@@ -134,7 +145,7 @@ export default function PreFacturaPage() {
 
   const handleCrear = (values: any) => {
     const vendedor = vendedores.find((v: any) => v.id === values.vendedorId);
-    crear.mutate({
+    const payload = {
       ...values,
       fecha:            values.fecha?.format('YYYY-MM-DD'),
       fechaVencimiento: values.fechaVencimiento?.format('YYYY-MM-DD'),
@@ -144,7 +155,34 @@ export default function PreFacturaPage() {
         cantidad:       Number(d.cantidad),
         precioUnitario: Number(d.precioUnitario),
       })),
-    });
+    };
+    if (editandoPF) {
+      actualizar.mutate({ id: editandoPF.id, dto: payload });
+    } else {
+      crear.mutate(payload);
+    }
+  };
+
+  const abrirEditar = (pf: any) => {
+    setEditandoPF(pf);
+    setModalCrear(true);
+    // Pre-cargar el form después de que el modal se monte
+    setTimeout(() => {
+      formCrear.setFieldsValue({
+        clienteId:        pf.clienteId,
+        fecha:            pf.fecha ? require('dayjs')(pf.fecha) : null,
+        fechaVencimiento: pf.fechaVencimiento ? require('dayjs')(pf.fechaVencimiento) : null,
+        notas:            pf.notas,
+        vendedorId:       pf.vendedorId,
+        detalles:         (pf.detalles ?? []).map((d: any) => ({
+          productoId:     d.productoId,
+          descripcion:    d.descripcion,
+          cantidad:       Number(d.cantidad),
+          precioUnitario: Number(d.precioUnitario),
+          porcentajeIva:  Number(d.porcentajeIva ?? 18),
+        })),
+      });
+    }, 50);
   };
 
   const descargarPDF = async (item: any) => {
@@ -293,6 +331,12 @@ export default function PreFacturaPage() {
                     title="Descargar PDF"
                   />
                   {r.estado === 'borrador' && (
+                    <Tooltip title="Editar pre-factura">
+                      <Button size="small" type="text" icon={<EditOutlined />}
+                        onClick={() => abrirEditar(r)} />
+                    </Tooltip>
+                  )}
+                  {r.estado === 'borrador' && (
                     <Tooltip title="Enviar al cliente">
                       <Button
                         size="small" type="primary" ghost
@@ -356,12 +400,12 @@ export default function PreFacturaPage() {
 
       {/* ── Modal Crear ──────────────────────────────────────────────────── */}
       <Modal
-        title="Nueva Pre-Factura"
+        title={editandoPF ? `Editar Pre-Factura ${editandoPF.numero}` : 'Nueva Pre-Factura'}
         open={modalCrear}
-        onCancel={() => { setModalCrear(false); formCrear.resetFields(); }}
+        onCancel={() => { setModalCrear(false); setEditandoPF(null); formCrear.resetFields(); }}
         onOk={() => formCrear.submit()}
-        confirmLoading={crear.isPending}
-        okText="Crear"
+        confirmLoading={crear.isPending || actualizar.isPending}
+        okText={editandoPF ? 'Guardar cambios' : 'Crear'}
         width={700}
         destroyOnClose
       >

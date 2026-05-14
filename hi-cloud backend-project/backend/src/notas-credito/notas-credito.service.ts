@@ -113,7 +113,32 @@ export class NotasCreditoService {
       .take(Math.min(limit, 100))
       .getManyAndCount();
 
-    return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+    // Enriquecer con datos ECF (número y estado) para que el frontend
+    // pueda ocultar el botón "e-CF E34" cuando ya fue emitido
+    const ids = data.map(n => n.id);
+    let ecfByNotaId: Record<number, { numero: string; estadoDGII: string }> = {};
+    if (ids.length > 0) {
+      const ecfRows = await this.ncRepo.manager.query<any[]>(
+        `SELECT DISTINCT ON ("documentoOrigenId")
+           "documentoOrigenId" AS "notaId", numero, "estadoDGII"
+         FROM ecf
+         WHERE "documentoOrigenId" = ANY($1)
+           AND "documentoOrigenTipo" = 'NOTA_CREDITO'
+         ORDER BY "documentoOrigenId", "createdAt" DESC`,
+        [ids],
+      );
+      for (const e of ecfRows) {
+        ecfByNotaId[e.notaId] = { numero: e.numero, estadoDGII: e.estadoDGII };
+      }
+    }
+
+    const enriched = data.map(n => ({
+      ...n,
+      ecfNumero: ecfByNotaId[n.id]?.numero ?? null,
+      ecf:       ecfByNotaId[n.id] ?? null,
+    }));
+
+    return { data: enriched, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
   }
 
   async findOne(id: number) {

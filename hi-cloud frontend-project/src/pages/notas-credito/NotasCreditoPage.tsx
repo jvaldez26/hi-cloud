@@ -285,28 +285,39 @@ export default function NotasCreditoPage() {
         </Space>
       </div>
 
-      {/* KPIs */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+      {/* KPIs — 4 cards en fila */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(4, 1fr)',
+        gap: '1px',
+        background: token.colorBorderSecondary,
+        border: `1px solid ${token.colorBorderSecondary}`,
+        borderRadius: 8,
+        overflow: 'hidden',
+        marginBottom: 24,
+      }}>
         {[
-          { label: 'Borrador',  bg: `linear-gradient(135deg,${token.colorFillSecondary},${token.colorFill})`, estado: 'borrador' },
-          { label: 'Emitidas',  bg: 'linear-gradient(135deg,#1a56db,#3b82f6)',                              estado: 'emitida'  },
-          { label: 'Anuladas',  bg: 'linear-gradient(135deg,#dc2626,#ef4444)',                              estado: 'anulada'  },
-        ].map(({ label, bg, estado }) => {
+          { label: 'Borrador',  estado: 'borrador', color: token.colorTextSecondary },
+          { label: 'Emitida',   estado: 'emitida',  color: '#1565C0' },
+          { label: 'Aceptada',  estado: 'aceptada', color: '#2E7D32' },
+          { label: 'Anulada',   estado: 'anulada',  color: '#C62828' },
+        ].map(({ label, estado, color }) => {
           const r = resumen.find((x: any) => x.estado === estado);
           return (
-            <Col xs={12} sm={8} key={estado}>
-              <Card bordered={false} style={{ borderRadius: 12, background: bg }}>
-                <Statistic
-                  title={<span style={{ color: 'rgba(255,255,255,.8)', fontSize: 12 }}>{label}</span>}
-                  value={r?.cantidad ?? 0}
-                  suffix={r?.total > 0 ? <Text style={{ color: 'rgba(255,255,255,.6)', fontSize: 11 }}> · {fmt(r.total)}</Text> : ''}
-                  valueStyle={{ color: '#fff', fontSize: 28 }}
-                />
-              </Card>
-            </Col>
+            <div key={estado} style={{ background: token.colorBgContainer, padding: '16px 20px' }}>
+              <div style={{ fontSize: 24, fontWeight: 600, fontFamily: 'monospace', lineHeight: 1.2 }}>
+                {r?.cantidad ?? 0}
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 500, color, textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: 4 }}>
+                {label}
+              </div>
+              {r?.total > 0 && (
+                <div style={{ fontSize: 11, color: token.colorTextQuaternary, marginTop: 2 }}>{fmt(r.total)}</div>
+              )}
+            </div>
           );
         })}
-      </Row>
+      </div>
 
       <Card bordered={false} style={{ borderRadius: 12 }}>
         <Table
@@ -355,11 +366,13 @@ export default function NotasCreditoPage() {
                       style={{ color: token.colorSuccess, borderColor: token.colorSuccess }}
                       onClick={() => emitir.mutate(r.id)}>Emitir</Button>
                   )}
-                  {r.estado === 'emitida' && !r.ecfNumero && (
+                  {r.estado === 'emitida' && !r.ecfNumero &&
+                    !['aceptado', 'enviado', 'pendiente_envio', 'aceptado_condicion'].includes(r.ecf?.estadoDGII) && (
                     <Button
                       size="small"
                       icon={<AuditOutlined />}
                       style={{ color: '#7c3aed', borderColor: '#7c3aed' }}
+                      loading={emitirEcfMut.isPending && ecfModal?.id === r.id}
                       onClick={() => { setEcfModal(r); setEcfCodigo('3'); }}
                     >
                       e-CF E34

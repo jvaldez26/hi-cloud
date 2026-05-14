@@ -271,14 +271,16 @@ export default function NotasDebitoPage() {
         <Table dataSource={notas?.data ?? []} rowKey="id" loading={isLoading} size="middle"
           pagination={{ pageSize: 15 }}
           columns={[
-            { title: 'Número', dataIndex: 'numero', key: 'n', render: (v: string) => <Text strong style={{ fontFamily: 'monospace', color: '#d97706' }}>{v}</Text> },
-            { title: 'Fecha', dataIndex: 'fecha', key: 'f' },
-            { title: 'Cliente', key: 'c', render: (_: any, r: any) => <Text strong>{r.cliente?.nombre}</Text> },
-            { title: 'Motivo', dataIndex: 'motivo', key: 'm', render: (v: string) => <Tag color="orange">{MOTIVOS.find(x => x.value === v)?.label ?? v}</Tag> },
-            { title: 'Fact. Original', dataIndex: 'facturaOriginalFolio', key: 'fof', render: (v: string) => v ? <Tag color="blue">{v}</Tag> : <Text type="secondary">—</Text> },
-            { title: 'Total (adicional)', dataIndex: 'total', key: 't', align: 'right' as const, render: (v: number) => <Text strong style={{ color: '#d97706' }}>+{fmt(v)}</Text> },
-            { title: 'Estado', dataIndex: 'estado', key: 'e', render: (v: string) => <Tag color={ESTADO_CONFIG[v]?.color}>{ESTADO_CONFIG[v]?.label}</Tag> },
-            { title: '', key: 'acc', width: 200,
+            { title: 'Número', dataIndex: 'numero', key: 'n', width: 150, render: (v: string) => <Text strong style={{ fontFamily: 'monospace', fontSize: 12, color: '#d97706' }}>{v}</Text> },
+            { title: 'Fecha', dataIndex: 'fecha', key: 'f', width: 100, render: (v: string) => <Text style={{ fontSize: 12 }}>{v}</Text> },
+            { title: 'Cliente', key: 'c', ellipsis: true, render: (_: any, r: any) => <Text strong style={{ fontSize: 13 }}>{r.cliente?.nombre ?? '—'}</Text> },
+            { title: 'Fact. Original', dataIndex: 'facturaOriginalFolio', key: 'fof', width: 130, render: (v: string) => v ? <Text style={{ fontFamily: 'monospace', fontSize: 12 }}>{v}</Text> : <Text type="secondary">—</Text> },
+            { title: 'Total', dataIndex: 'total', key: 't', width: 120, align: 'right' as const, render: (v: number) => <Text strong style={{ color: '#d97706' }}>+{fmt(v)}</Text> },
+            { title: 'Estado', dataIndex: 'estado', key: 'e', width: 100, render: (v: string) => <Tag color={ESTADO_CONFIG[v]?.color} style={{ margin: 0, fontSize: 11 }}>{ESTADO_CONFIG[v]?.label}</Tag> },
+            { title: 'e-CF', key: 'ecf', width: 120, render: (_: any, r: any) => r.ecfNumero
+                ? <Text style={{ fontFamily: 'monospace', fontSize: 11, color: '#059669' }}>{r.ecfNumero}</Text>
+                : <Text type="secondary" style={{ fontSize: 11 }}>—</Text> },
+            { title: '', key: 'acc', width: 220,
               render: (_: any, r: any) => (
                 <Space>
                   <Button size="small" icon={<EyeOutlined />} onClick={() => setModalDetalle(r)} />
@@ -290,7 +292,8 @@ export default function NotasDebitoPage() {
                   />
                   {r.estado === 'emitida' && <Button size="small" type="text" icon={<MailOutlined />} onClick={() => { setEmailNota(r); setEmailDest(r.cliente?.email ?? ''); }} />}
                   {r.estado === 'borrador' && <Button size="small" icon={<CheckCircleOutlined />} style={{ color: '#d97706', borderColor: '#d97706' }} onClick={() => emitir.mutate(r.id)}>Emitir</Button>}
-                  {r.estado === 'emitida' && !r.ecfNumero && (
+                  {r.estado === 'emitida' && !r.ecfNumero &&
+                    !['aceptado', 'enviado', 'pendiente_envio', 'aceptado_condicion'].includes(r.ecf?.estadoDGII) && (
                     <Popconfirm title="¿Emitir e-CF E33?" description="Se enviará a la DGII vía tu proveedor e-CF." onConfirm={() => emitirEcfMut.mutate(r.id)} okText="Sí" cancelText="No">
                       <Button size="small" icon={<AuditOutlined />} loading={emitirEcfMut.isPending} style={{ color: '#7c3aed', borderColor: '#7c3aed' }}>e-CF E33</Button>
                     </Popconfirm>
