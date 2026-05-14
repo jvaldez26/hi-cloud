@@ -241,14 +241,11 @@ h1, h2, h3, h4, h5, h6,
   }
 }
 
-/* ── Tables: horizontal scroll en mobile (aplica a todas las tablas ANT) ─────── */
+/* ── Tables: contenedor con scroll (NO forzar min-width — cada tabla usa scroll={{ x:'max-content' }}) */
 @media (max-width: 768px) {
   .ant-table-wrapper {
     overflow-x: auto !important;
     -webkit-overflow-scrolling: touch;
-  }
-  .ant-table {
-    min-width: 600px;
   }
   /* Reducir padding de celdas en mobile para mostrar más datos */
   .ant-table-thead > tr > th,

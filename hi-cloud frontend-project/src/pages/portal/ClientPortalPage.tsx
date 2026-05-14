@@ -240,7 +240,8 @@ function TicketsSoporte({ token, clienteNombre }: { token: string; clienteNombre
       {(tickets ?? []).length === 0 && !isLoading ? (
         <Empty description="No tienes tickets abiertos. Si necesitas ayuda, crea uno." />
       ) : (
-        <Table columns={cols} dataSource={tickets ?? []} rowKey="id" size="small" loading={isLoading} pagination={{ pageSize: 5 }} />
+        <Table columns={cols} dataSource={tickets ?? []} rowKey="id" size="small" loading={isLoading} pagination={{ pageSize: 5 }} 
+        scroll={{ x: 'max-content' }} />
       )}
 
       <Modal title="Nuevo ticket de soporte" open={openForm}

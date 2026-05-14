@@ -119,7 +119,8 @@ export default function SuperAdminPage() {
       <Card>
         <Table columns={cols} dataSource={suscripciones ?? []} rowKey="id"
           loading={isLoading} size="small"
-          pagination={{ pageSize: 20, showSizeChanger: false }} />
+          pagination={{ pageSize: 20, showSizeChanger: false }} 
+        scroll={{ x: 'max-content' }} />
       </Card>
 
       {/* Modal activar plan */}

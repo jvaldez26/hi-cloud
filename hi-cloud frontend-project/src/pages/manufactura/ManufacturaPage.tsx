@@ -261,7 +261,8 @@ function WIPTab() {
       {(wipResumen?.ordenesEnProceso ?? []).length === 0 && !isLoading && (
         <Alert type="info" showIcon message="No hay órdenes en proceso actualmente." style={{ marginBottom: 12 }} />
       )}
-      <Table columns={cols} dataSource={wipResumen?.ordenesEnProceso ?? []} rowKey={r => r.orden?.id} loading={isLoading} size="small" pagination={{ pageSize: 10 }} />
+      <Table columns={cols} dataSource={wipResumen?.ordenesEnProceso ?? []} rowKey={r => r.orden?.id} loading={isLoading} size="small" pagination={{ pageSize: 10 }} 
+        scroll={{ x: 'max-content' }} />
 
       {/* Modal WIP detalle */}
       <Modal title={`WIP — Orden ${wipOrden?.numero}`} open={!!wipOrden} onCancel={() => setWipOrden(null)} footer={null} width={780}>

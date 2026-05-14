@@ -112,7 +112,8 @@ export default function DemoRequestsPage() {
           loading={isLoading} size="small"
           pagination={{ total: data?.meta?.total, pageSize: 20, current: page,
                         onChange: setPage, showSizeChanger: false,
-                        showTotal: t => `${t} solicitudes` }} />
+                        showTotal: t => `${t} solicitudes` }} 
+        scroll={{ x: 'max-content' }} />
       </Card>
 
       {/* Drawer de gestión */}

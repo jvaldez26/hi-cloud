@@ -1320,7 +1320,8 @@ export default function SuperAdminPage() {
                   rowKey="id"
                   size="small"
                   pagination={{ pageSize: 15, showTotal: t => `${t} suscripciones` }}
-                />
+                
+        scroll={{ x: 'max-content' }} />
               </>
             )}
 

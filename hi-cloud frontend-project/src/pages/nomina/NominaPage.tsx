@@ -110,7 +110,8 @@ function EmpleadosTab() {
         </Col>
       </Row>
       <Table columns={cols} dataSource={data?.data ?? []} rowKey="id" loading={isLoading} size="small"
-        pagination={{ total: data?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }} />
+        pagination={{ total: data?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }} 
+        scroll={{ x: 'max-content' }} />
 
       <Modal title={editing ? 'Editar empleado' : 'Nuevo empleado'} open={open} onCancel={closeModal} footer={null} width={780}>
         <Form form={form} layout="vertical"
@@ -215,7 +216,8 @@ function NovedadesTab() {
           </Button>
         </Col>
       </Row>
-      <Table columns={cols} dataSource={novedades ?? []} rowKey="id" loading={isLoading} size="small" pagination={{ pageSize: 15 }} />
+      <Table columns={cols} dataSource={novedades ?? []} rowKey="id" loading={isLoading} size="small" pagination={{ pageSize: 15 }} 
+        scroll={{ x: 'max-content' }} />
 
       <Modal title="Registrar novedad" open={open} onCancel={() => { setOpen(false); form.resetFields(); }} footer={null} width={520}>
         <Form form={form} layout="vertical" onFinish={(v) => createMut.mutate(v)}>
@@ -323,7 +325,8 @@ function ContratosTab() {
           </Button>
         </Col>
       </Row>
-      <Table columns={cols} dataSource={contratos ?? []} rowKey="id" loading={isLoading} size="small" pagination={{ pageSize: 15 }} />
+      <Table columns={cols} dataSource={contratos ?? []} rowKey="id" loading={isLoading} size="small" pagination={{ pageSize: 15 }} 
+        scroll={{ x: 'max-content' }} />
 
       <Modal title="Nuevo contrato laboral" open={open} onCancel={() => { setOpen(false); form.resetFields(); }} footer={null} width={680}>
         <Form form={form} layout="vertical" onFinish={(v) => createMut.mutate(v)}>
@@ -521,7 +524,8 @@ function PeriodosTab() {
         </Col>
       </Row>
       <Table columns={cols} dataSource={data?.data ?? []} rowKey="id" loading={isLoading} size="small"
-        pagination={{ total: data?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }} />
+        pagination={{ total: data?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }} 
+        scroll={{ x: 'max-content' }} />
 
       <Modal title="Generar período de nómina" open={openCreate} onCancel={() => setOpenCreate(false)} footer={null} width={520}>
         <Alert type="info" showIcon style={{ marginBottom: 16, fontSize: 12 }}

@@ -144,7 +144,8 @@ function SolicitudesTab() {
       </Row>
 
       <Table columns={cols} dataSource={data?.data ?? []} rowKey="id" loading={isLoading} size="small"
-        pagination={{ total: data?.meta?.total, pageSize: 15, current: page, onChange: setPage, showSizeChanger: false }} />
+        pagination={{ total: data?.meta?.total, pageSize: 15, current: page, onChange: setPage, showSizeChanger: false }} 
+        scroll={{ x: 'max-content' }} />
 
       {/* Modal crear solicitud */}
       <Modal title="Nueva Solicitud de Compra" open={open} onCancel={() => { setOpen(false); form.resetFields(); }} footer={null} width={780}>
@@ -217,7 +218,8 @@ function SolicitudesTab() {
               { title: 'Cant.', dataIndex: 'cantidad', width: 70, render: (v: number) => fmt.number(v) },
               { title: 'Unidad', dataIndex: 'unidad', width: 70 },
               { title: 'Pres. unit.', dataIndex: 'presupuestoUnitario', width: 110, render: (v: number) => v > 0 ? fmt.money(v) : '—' },
-            ]} />
+            ]} 
+        scroll={{ x: 'max-content' }} />
 
             <Divider />
             {detalle.estado === 'enviada' && (
@@ -379,7 +381,8 @@ function CotizacionesTab() {
 
   return (
     <>
-      <Table columns={cols} dataSource={data?.data ?? []} rowKey="id" loading={isLoading} size="small" pagination={{ pageSize: 15 }} />
+      <Table columns={cols} dataSource={data?.data ?? []} rowKey="id" loading={isLoading} size="small" pagination={{ pageSize: 15 }} 
+        scroll={{ x: 'max-content' }} />
 
       <Drawer title={`Cotización ${detalle?.numero}`} open={!!detalle} onClose={() => setDetalle(null)} width={560}>
         {detalle && (
@@ -398,7 +401,8 @@ function CotizacionesTab() {
               { title: 'Cant.', dataIndex: 'cantidad', width: 70 },
               { title: 'Precio unit.', dataIndex: 'precioUnitario', width: 110, render: (v: number) => fmt.money(v) },
               { title: 'Total', dataIndex: 'total', width: 110, render: (v: number) => fmt.money(v) },
-            ]} />
+            ]} 
+        scroll={{ x: 'max-content' }} />
           </>
         )}
       </Drawer>

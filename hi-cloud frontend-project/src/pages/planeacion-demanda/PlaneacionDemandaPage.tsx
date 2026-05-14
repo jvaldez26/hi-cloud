@@ -109,7 +109,8 @@ function PlanesTab() {
         </Col>
       </Row>
 
-      <Table columns={colsPlanes} dataSource={data?.data ?? []} rowKey="id" loading={isLoading} size="small" pagination={{ pageSize: 10 }} />
+      <Table columns={colsPlanes} dataSource={data?.data ?? []} rowKey="id" loading={isLoading} size="small" pagination={{ pageSize: 10 }} 
+        scroll={{ x: 'max-content' }} />
 
       {/* Modal generar */}
       <Modal title="Generar Plan de Demanda" open={openGen} onCancel={() => { setOpenGen(false); form.resetFields(); }} footer={null} width={480}>
@@ -220,7 +221,8 @@ function SugerenciasTab() {
       <Table columns={cols} dataSource={sugerencias} rowKey="productoId" loading={isLoading}
         size="small" pagination={{ pageSize: 20 }}
         rowClassName={(r: any) => r.urgencia === 'critica' ? 'ant-table-row-selected' : ''}
-      />
+      
+        scroll={{ x: 'max-content' }} />
     </>
   );
 }

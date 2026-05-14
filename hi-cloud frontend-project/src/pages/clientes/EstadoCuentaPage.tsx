@@ -205,7 +205,8 @@ export default function EstadoCuentaPage() {
                         </Text>
                       </Table.Summary.Cell>
                     </Table.Summary.Row>
-                  )} />
+                  )} 
+        scroll={{ x: 'max-content' }} />
             }
           </Card>
         </>

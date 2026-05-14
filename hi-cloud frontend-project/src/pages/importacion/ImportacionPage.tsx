@@ -100,7 +100,8 @@ function ImportCard({ tipo, title, campos }: { tipo: TipoImport; title: string; 
             <Table columns={cols}
               dataSource={resultado.detalles.filter(d => d.estado === 'error')}
               rowKey="fila" size="small" pagination={{ pageSize: 10 }}
-              title={() => <Text type="danger">Filas con error:</Text>} />
+              title={() => <Text type="danger">Filas con error:</Text>} 
+        scroll={{ x: 'max-content' }} />
           )}
 
           {resultado.exitosos > 0 && (
