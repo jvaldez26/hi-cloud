@@ -161,6 +161,7 @@ export default function ValoracionStockPage() {
               rowKey="productoId"
               loading={isLoading}
               size="small"
+        scroll={{ x: 'max-content' }}
               pagination={{ pageSize: 15 }}
               columns={[
                 {

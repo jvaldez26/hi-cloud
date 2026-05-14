@@ -114,7 +114,8 @@ export default function CompraFormPage() {
         </Card>
         <Card title="Ítems" style={{ marginBottom: 16 }}
           extra={<Button icon={<PlusOutlined />} onClick={() => setLineas([...lineas, { key: Date.now().toString(), cantidad: 1, precioUnitario: 0, porcentajeItbis: 18 }])}>Agregar</Button>}>
-          <Table columns={lineaCols as any} dataSource={lineas} rowKey="key" pagination={false} size="small" />
+          <Table columns={lineaCols as any} dataSource={lineas} rowKey="key" pagination={false} size="small"
+        scroll={{ x: 'max-content' }} />
         </Card>
         <Card>
           <Row justify="end">

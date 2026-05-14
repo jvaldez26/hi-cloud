@@ -145,6 +145,7 @@ export default function PresupuestosPage() {
                 </Col>
               </Row>
               <Table dataSource={lista?.data ?? []} rowKey="id" loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }}
                 pagination={{ total: lista?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }}
                 columns={[
                   { title: 'Año',     dataIndex: 'anio',         width: 70 },
@@ -207,7 +208,8 @@ export default function PresupuestosPage() {
                 <Bar dataKey="real"          name="Real"          fill="#1677ff" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
-            <Table dataSource={variacion.meses ?? []} rowKey="mes" size="small" pagination={false}
+            <Table dataSource={variacion.meses ?? []} rowKey="mes" size="small"
+        scroll={{ x: 'max-content' }} pagination={false}
               columns={[
                 { title: 'Mes',          dataIndex: 'etiqueta',       width: 60 },
                 { title: 'Presupuestado',dataIndex: 'presupuestado',  render: (v: number) => fmt.money(v) },

@@ -112,6 +112,7 @@ export default function IsrPage() {
                         rowKey="empleadoId"
                         loading={isLoading}
                         size="small"
+        scroll={{ x: 'max-content' }}
                         pagination={{ pageSize: 12 }}
                         columns={[
                           { title: 'Empleado', dataIndex: 'nombre', key: 'n', render: v => <Text strong style={{ fontSize: 12 }}>{v}</Text> },
@@ -238,6 +239,7 @@ export default function IsrPage() {
                       dataSource={TABLA_2024}
                       rowKey="tramo"
                       size="small"
+        scroll={{ x: 'max-content' }}
                       pagination={false}
                       columns={[
                         { title: 'Tramo', dataIndex: 'tramo', key: 't', width: 60, render: v => <Tag color="blue">#{v}</Tag> },

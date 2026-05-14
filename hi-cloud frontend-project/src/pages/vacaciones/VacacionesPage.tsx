@@ -252,6 +252,7 @@ export default function VacacionesPage() {
             }>
               <Table columns={colsSol} dataSource={solicitudes?.data ?? []} rowKey="id"
                 loading={loadingSol} size="small"
+        scroll={{ x: 'max-content' }}
                 pagination={{ total: solicitudes?.meta?.total, pageSize: 10, current: pageSol,
                               onChange: setPageSol, showSizeChanger: false }} />
             </Card>
@@ -268,6 +269,7 @@ export default function VacacionesPage() {
             }>
               <Table columns={colsAus} dataSource={ausencias?.data ?? []} rowKey="id"
                 loading={loadingAus} size="small"
+        scroll={{ x: 'max-content' }}
                 pagination={{ total: ausencias?.meta?.total, pageSize: 10, current: pageAus,
                               onChange: setPageAus, showSizeChanger: false }} />
             </Card>
@@ -279,7 +281,8 @@ export default function VacacionesPage() {
           children: (
             <Card title={`Balance de vacaciones ${anio}`}>
               <Table columns={colsBalance} dataSource={balance ?? []} rowKey="empleadoId"
-                size="small" pagination={false} />
+                size="small"
+        scroll={{ x: 'max-content' }} pagination={false} />
             </Card>
           ),
         },

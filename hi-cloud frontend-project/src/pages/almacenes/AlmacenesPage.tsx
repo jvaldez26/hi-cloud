@@ -219,7 +219,8 @@ export default function AlmacenesPage() {
             children: (
               <Card title={`Stock en ${almSeleccionado.nombre}`}>
                 <Table columns={colsStock} dataSource={stock ?? []} rowKey="id"
-                  loading={loadStock} size="small" pagination={false} />
+                  loading={loadStock} size="small"
+        scroll={{ x: 'max-content' }} pagination={false} />
               </Card>
             ),
           },
@@ -229,7 +230,8 @@ export default function AlmacenesPage() {
             children: (
               <Card title={`Transferencias — ${almSeleccionado.nombre}`}>
                 <Table columns={colsTransf} dataSource={Array.isArray(transferencias) ? transferencias : (transferencias?.data ?? [])} rowKey="id"
-                  size="small" pagination={false} />
+                  size="small"
+        scroll={{ x: 'max-content' }} pagination={false} />
               </Card>
             ),
           },

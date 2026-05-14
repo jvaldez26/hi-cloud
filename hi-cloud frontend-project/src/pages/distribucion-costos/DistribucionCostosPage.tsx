@@ -197,7 +197,8 @@ function EjecutarModal({ regla, open, onClose, onSuccess }: {
         {preview && (
           <Card size="small" style={{ marginBottom: 12, background: '#f0f4f8' }}>
             <Text strong style={{ fontSize: 12 }}>Vista previa — distribución de {fmt.money(preview.monto)}</Text>
-            <Table size="small" pagination={false} style={{ marginTop: 8 }}
+            <Table size="small"
+        scroll={{ x: 'max-content' }} pagination={false} style={{ marginTop: 8 }}
               dataSource={preview.lineasDistribuidas}
               rowKey="cuentaDestino"
               columns={[
@@ -282,6 +283,7 @@ export default function DistribucionCostosPage() {
         <Table
           columns={cols} dataSource={reglas ?? []} rowKey="id"
           loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }}
           expandable={{
             expandedRowRender: (r) => (
               <div style={{ padding: '8px 16px' }}>

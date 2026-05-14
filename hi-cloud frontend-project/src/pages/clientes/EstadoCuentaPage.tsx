@@ -165,7 +165,8 @@ export default function EstadoCuentaPage() {
             {data.facturas.length === 0
               ? <Empty description="Sin facturas en el período" />
               : <Table columns={facturaCols} dataSource={data.facturas} rowKey="folio"
-                  size="small" pagination={{ pageSize: 10, showSizeChanger: false }}
+                  size="small"
+        scroll={{ x: 'max-content' }} pagination={{ pageSize: 10, showSizeChanger: false }}
                   summary={() => (
                     <Table.Summary>
                       <Table.Summary.Row>

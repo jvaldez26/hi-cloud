@@ -347,6 +347,7 @@ export default function CRMPage() {
             }>
               <Table columns={colsLeads} dataSource={leads?.data ?? []} rowKey="id"
                 loading={loadingLeads} size="small"
+        scroll={{ x: 'max-content' }}
                 pagination={{ total: leads?.meta?.total, pageSize: 10, current: pageLead,
                               onChange: setPageLead, showSizeChanger: false }} />
             </Card>

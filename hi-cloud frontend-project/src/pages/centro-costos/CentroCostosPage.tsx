@@ -144,7 +144,8 @@ export default function CentroCostosPage() {
           children: (
             <Card>
               <Table columns={cols} dataSource={centros ?? []} rowKey="id"
-                loading={isLoading} size="small" pagination={false} />
+                loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }} pagination={false} />
             </Card>
           ),
         },

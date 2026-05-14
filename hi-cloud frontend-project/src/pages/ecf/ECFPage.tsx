@@ -140,6 +140,7 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
       </Row>
 
       <Table columns={cols} dataSource={data?.data ?? []} rowKey="id" loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }}
         pagination={{ total: data?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }} />
 
       {/* Detalle e-CF */}
@@ -319,7 +320,8 @@ function SecuenciasTab({ onRefresh }: { onRefresh: () => void }) {
       </Row>
 
       <Table columns={cols} dataSource={secuencias?.data ?? []} rowKey="id"
-        loading={isLoading} size="small" pagination={false} />
+        loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }} pagination={false} />
 
       {/* Modal: registrar nueva secuencia */}
       <Modal title="Registrar nueva secuencia autorizada" open={openCreate}
@@ -430,7 +432,8 @@ function ResumenTab({ onRefresh }: { onRefresh: () => void }) {
             extra={pendientes?.length > 0 && <Tag color="orange">Requieren atención</Tag>}>
             {pendientes?.length === 0
               ? <Text type="secondary">Sin e-CFs pendientes ✓</Text>
-              : <Table dataSource={pendientes ?? []} rowKey="id" size="small" pagination={{ pageSize: 5 }}
+              : <Table dataSource={pendientes ?? []} rowKey="id" size="small"
+        scroll={{ x: 'max-content' }} pagination={{ pageSize: 5 }}
                   columns={[
                     { title: 'Número', dataIndex: 'numero', render: (v: string) => <Text code style={{ fontSize: 11 }}>{v}</Text> },
                     { title: 'Tipo', key: 'tipo', render: (_: any, r: any) => <Tag>{r.tipoECF?.codigo}</Tag> },
@@ -444,7 +447,8 @@ function ResumenTab({ onRefresh }: { onRefresh: () => void }) {
             extra={rechazados?.length > 0 && <Tag color="red">Acción requerida</Tag>}>
             {rechazados?.length === 0
               ? <Text type="secondary">Sin e-CFs rechazados ✓</Text>
-              : <Table dataSource={rechazados ?? []} rowKey="id" size="small" pagination={{ pageSize: 5 }}
+              : <Table dataSource={rechazados ?? []} rowKey="id" size="small"
+        scroll={{ x: 'max-content' }} pagination={{ pageSize: 5 }}
                   columns={[
                     { title: 'Número', dataIndex: 'numero', render: (v: string) => <Text code style={{ fontSize: 11 }}>{v}</Text> },
                     { title: 'Error', dataIndex: 'errorEnvio', ellipsis: true },

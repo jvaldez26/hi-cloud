@@ -98,6 +98,7 @@ export default function FacturasRecurrentesPage() {
       }>
         <Table columns={cols} dataSource={data?.data ?? []} rowKey="id"
           loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }}
           pagination={{ total: data?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }} />
       </Card>
 

@@ -82,7 +82,8 @@ function DashboardTab() {
       </Row>
 
       <Title level={5}>Cola por Operador</Title>
-      <Table size="small" pagination={false}
+      <Table size="small"
+        scroll={{ x: 'max-content' }} pagination={false}
         dataSource={data?.colaOperadores ?? []} rowKey="operadorId"
         columns={[
           { title: 'Operador', dataIndex: 'nombre', ellipsis: true },
@@ -140,7 +141,8 @@ function UbicacionesTab() {
         <Col><InputNumber placeholder="Filtrar por almacén ID" value={almacenFiltro} onChange={v => setAlmacenFiltro(v ?? undefined)} style={{ width: 200 }} /></Col>
         <Col><Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setOpen(true); }}>Nueva ubicación</Button></Col>
       </Row>
-      <Table columns={cols} dataSource={ubics ?? []} rowKey="id" loading={isLoading} size="small" pagination={{ pageSize: 20 }} />
+      <Table columns={cols} dataSource={ubics ?? []} rowKey="id" loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }} pagination={{ pageSize: 20 }} />
 
       <Modal title="Nueva ubicación" open={open} onCancel={() => { setOpen(false); form.resetFields(); }} footer={null} width={560}>
         <Form form={form} layout="vertical" onFinish={(v) => crearMut.mutate(v)}>
@@ -234,6 +236,7 @@ function OrdenesPickingTab() {
       </Row>
 
       <Table columns={cols} dataSource={data?.data ?? []} rowKey="id" loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }}
         pagination={{ total: data?.meta?.total, pageSize: 20, current: page, onChange: setPage, showSizeChanger: false }} />
 
       {/* Modal crear orden */}
@@ -320,7 +323,8 @@ function OrdenesPickingTab() {
             })()}
 
             {/* Tabla de líneas con botón pickear */}
-            <Table size="small" pagination={false}
+            <Table size="small"
+        scroll={{ x: 'max-content' }} pagination={false}
               dataSource={detalleData.lineas ?? []} rowKey="id"
               columns={[
                 { title: '#', dataIndex: 'orden_linea', width: 40 },

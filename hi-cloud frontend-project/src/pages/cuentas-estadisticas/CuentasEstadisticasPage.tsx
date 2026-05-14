@@ -119,7 +119,8 @@ function CuentasTab() {
       <Row justify="end" style={{ marginBottom: 12 }}>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setOpen(true); }}>Nueva cuenta</Button>
       </Row>
-      <Table columns={cols} dataSource={cuentas ?? []} rowKey="id" loading={isLoading} size="small" pagination={false} />
+      <Table columns={cols} dataSource={cuentas ?? []} rowKey="id" loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }} pagination={false} />
 
       {/* Modal crear cuenta */}
       <Modal title="Nueva cuenta estadística" open={open} onCancel={() => { setOpen(false); form.resetFields(); }} footer={null} width={520}>
@@ -188,7 +189,8 @@ function CuentasTab() {
                 Registrar valor
               </Button>
             </Row>
-            <Table columns={movCols} dataSource={movs ?? []} rowKey="id" size="small" pagination={{ pageSize: 10 }} />
+            <Table columns={movCols} dataSource={movs ?? []} rowKey="id" size="small"
+        scroll={{ x: 'max-content' }} pagination={{ pageSize: 10 }} />
           </>
         )}
       </Modal>

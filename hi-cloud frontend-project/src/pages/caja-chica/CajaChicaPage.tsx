@@ -214,6 +214,7 @@ export default function CajaChicaPage() {
                 dataSource={movimientos}
                 rowKey="id"
                 size="small"
+        scroll={{ x: 'max-content' }}
                 pagination={{ pageSize: 20 }}
                 columns={[
                   { title: 'Fecha', dataIndex: 'fecha', key: 'fecha', width: 100 },

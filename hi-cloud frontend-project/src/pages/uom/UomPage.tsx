@@ -124,7 +124,8 @@ function UnidadesTab() {
       </Row>
 
       <Table columns={cols} dataSource={unidades ?? []} rowKey="id" loading={isLoading}
-        size="small" pagination={{ pageSize: 20 }} />
+        size="small"
+        scroll={{ x: 'max-content' }} pagination={{ pageSize: 20 }} />
 
       <Modal title="Nueva Unidad de Medida" open={open} onCancel={() => { setOpen(false); form.resetFields(); }} footer={null} width={460}>
         <Form form={form} layout="vertical" onFinish={(v) => crearMut.mutate(v)}>
@@ -200,7 +201,8 @@ function ConversionesTab() {
       </Row>
 
       <Table columns={cols} dataSource={conversiones ?? []} rowKey="id" loading={isLoading}
-        size="small" pagination={{ pageSize: 30 }} />
+        size="small"
+        scroll={{ x: 'max-content' }} pagination={{ pageSize: 30 }} />
 
       <Modal title="Nueva Conversión" open={open} onCancel={() => { setOpen(false); form.resetFields(); }} footer={null} width={440}>
         <Alert type="info" showIcon style={{ marginBottom: 12, fontSize: 12 }}

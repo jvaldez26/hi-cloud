@@ -125,6 +125,7 @@ export default function TesoreriaPage() {
               </Row>
               <Table
                 dataSource={movims?.data ?? []} rowKey="id" loading={movLoading} size="small"
+        scroll={{ x: 'max-content' }}
                 pagination={{ total: movims?.meta?.total, pageSize: 15, current: page, onChange: setPage, showSizeChanger: false }}
                 columns={[
                   { title: 'Fecha',       dataIndex: 'fecha',       width: 100, render: (v: string) => fmt.date(v) },
@@ -146,6 +147,7 @@ export default function TesoreriaPage() {
                 <Button type="primary" icon={<PlusOutlined />} onClick={() => { setOpenCuenta(true); formCuenta.resetFields(); }}>Nueva cuenta</Button>
               </Row>
               <Table dataSource={cuentas ?? []} rowKey="id" size="small"
+        scroll={{ x: 'max-content' }}
                 columns={[
                   { title: 'Banco',   dataIndex: 'banco',        ellipsis: true },
                   { title: 'Número',  dataIndex: 'numeroCuenta', width: 160 },

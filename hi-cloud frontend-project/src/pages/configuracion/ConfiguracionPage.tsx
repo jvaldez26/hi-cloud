@@ -984,6 +984,7 @@ function SeccionECF({ empresaId }: { empresaId: number }) {
 
       <Table
         size="small"
+        scroll={{ x: 'max-content' }}
         dataSource={secuencias}
         rowKey="id"
         pagination={false}
@@ -1083,6 +1084,7 @@ function SeccionUsuarios({ empresaId }: { empresaId: number }) {
 
       <Table
         size="small"
+        scroll={{ x: 'max-content' }}
         loading={loadMiembros}
         dataSource={miembros}
         rowKey={(r: any) => r.userId ?? r.user?.id}
@@ -1142,6 +1144,7 @@ function SeccionUsuarios({ empresaId }: { empresaId: number }) {
           </Divider>
           <Table
             size="small"
+        scroll={{ x: 'max-content' }}
             dataSource={pendientes}
             rowKey="id"
             pagination={false}
@@ -1462,6 +1465,7 @@ function SeccionAuditoria() {
       />
       <Table
         size="small"
+        scroll={{ x: 'max-content' }}
         loading={isLoading}
         dataSource={logs}
         rowKey="id"

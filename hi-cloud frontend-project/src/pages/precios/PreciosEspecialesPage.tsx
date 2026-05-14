@@ -109,6 +109,7 @@ export default function PreciosEspecialesPage() {
       }>
         <Table columns={cols} dataSource={lista ?? []} rowKey="id"
           loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }}
           pagination={{ pageSize: 15, showSizeChanger: false }} />
       </Card>
 

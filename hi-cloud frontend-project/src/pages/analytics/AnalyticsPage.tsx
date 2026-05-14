@@ -294,6 +294,7 @@ export default function AnalyticsPage() {
                       dataSource={topClientes}
                       rowKey="clienteId"
                       size="small"
+        scroll={{ x: 'max-content' }}
                       pagination={false}
                       columns={[
                         {
@@ -333,6 +334,7 @@ export default function AnalyticsPage() {
                       dataSource={topProductos}
                       rowKey="productoId"
                       size="small"
+        scroll={{ x: 'max-content' }}
                       pagination={false}
                       columns={[
                         {

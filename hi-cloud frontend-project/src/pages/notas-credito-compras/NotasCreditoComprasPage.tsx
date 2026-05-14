@@ -290,7 +290,8 @@ export default function NotasCreditoComprasPage() {
               <Col span={12}><Text type="secondary" style={{ fontSize: 11 }}>Proveedor</Text><div><Text strong>{modalDetalle.proveedor?.nombre}</Text></div></Col>
               <Col span={6}><Text type="secondary" style={{ fontSize: 11 }}>Estado</Text><div><Tag color={ESTADO_CONFIG[modalDetalle.estado]?.color}>{ESTADO_CONFIG[modalDetalle.estado]?.label}</Tag></div></Col>
             </Row>
-            <Table size="small" dataSource={modalDetalle.detalles} rowKey="id" pagination={false}
+            <Table size="small"
+        scroll={{ x: 'max-content' }} dataSource={modalDetalle.detalles} rowKey="id" pagination={false}
               columns={[
                 { title: 'Descripción', dataIndex: 'descripcion', key: 'd' },
                 { title: 'Cant.', dataIndex: 'cantidad', key: 'c', align: 'right' },

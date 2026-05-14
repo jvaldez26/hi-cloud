@@ -445,6 +445,7 @@ export default function ReportesPage() {
                   {(ecfEstado.detallePorTipo ?? []).length > 0 && (
                     <Table
                       size="small"
+        scroll={{ x: 'max-content' }}
                       dataSource={ecfEstado.detallePorTipo}
                       rowKey={(r: any) => `${r.estado}-${r.tipo}`}
                       pagination={false}
@@ -510,6 +511,7 @@ export default function ReportesPage() {
                 <Table
                   loading={loading606}
                   size="small"
+        scroll={{ x: 'max-content' }}
                   dataSource={r606?.detalle ?? []}
                   rowKey={(r: any) => `${r.folio}-${r.fecha}`}
                   pagination={{ pageSize: 20, showSizeChanger: false, size: 'small' }}
@@ -600,6 +602,7 @@ export default function ReportesPage() {
                 <Table
                   loading={loading607}
                   size="small"
+        scroll={{ x: 'max-content' }}
                   dataSource={r607?.detalle ?? []}
                   rowKey={(r: any) => `${r.folio}-${r.fecha}`}
                   pagination={{ pageSize: 20, showSizeChanger: false, size: 'small' }}

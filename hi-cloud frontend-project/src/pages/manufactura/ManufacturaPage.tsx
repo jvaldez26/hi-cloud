@@ -85,7 +85,8 @@ function CentrosTrabajoTab() {
       <Row justify="end" style={{ marginBottom: 12 }}>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditing(null); form.resetFields(); setOpen(true); }}>Nuevo centro</Button>
       </Row>
-      <Table columns={cols} dataSource={centros ?? []} rowKey="id" loading={isLoading} size="small" pagination={{ pageSize: 15 }} />
+      <Table columns={cols} dataSource={centros ?? []} rowKey="id" loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }} pagination={{ pageSize: 15 }} />
       <Modal title={editing ? 'Editar centro de trabajo' : 'Nuevo centro de trabajo'} open={open}
         onCancel={() => { setOpen(false); setEditing(null); form.resetFields(); }} footer={null} width={560}>
         <Form form={form} layout="vertical" onFinish={(v) => crearMut.mutate(v)}>
@@ -165,7 +166,8 @@ function RutasTab({ lms }: { lms: any[] }) {
       <Row justify="end" style={{ marginBottom: 12 }}>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => { formRuta.resetFields(); setOpen(true); }}>Nueva ruta</Button>
       </Row>
-      <Table columns={cols} dataSource={rutas ?? []} rowKey="id" loading={isLoading} size="small" pagination={{ pageSize: 10 }} />
+      <Table columns={cols} dataSource={rutas ?? []} rowKey="id" loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }} pagination={{ pageSize: 10 }} />
 
       <Modal title="Nueva Ruta de Producción" open={open} onCancel={() => { setOpen(false); formRuta.resetFields(); }} footer={null} width={480}>
         <Form form={formRuta} layout="vertical" onFinish={(v) => crearMut.mutate(v)}>
@@ -183,7 +185,8 @@ function RutasTab({ lms }: { lms: any[] }) {
       <Drawer title={`Ruta: ${detalle?.nombre}`} open={!!detalle} onClose={() => setDetalle(null)} width={700}>
         {detalle && (
           <>
-            <Table size="small" dataSource={[...(detalle.etapas ?? [])].sort((a: any, b: any) => a.orden - b.orden)}
+            <Table size="small"
+        scroll={{ x: 'max-content' }} dataSource={[...(detalle.etapas ?? [])].sort((a: any, b: any) => a.orden - b.orden)}
               rowKey="id" columns={etapaCols} pagination={false} style={{ marginBottom: 16 }} />
             <Typography.Title level={5}>Agregar etapa</Typography.Title>
             <Form form={formEtapa} layout="vertical" onFinish={(v) => agregarEtapaMut.mutate({ rutaId: detalle.id, body: v })}>
@@ -270,7 +273,8 @@ function WIPTab() {
               <Col span={8}><Statistic title="Etapas" value={`${wipDetalle.completadas}/${wipDetalle.totalEtapas}`} /></Col>
               <Col span={8}><Statistic title="Etapa actual" value={wipDetalle.etapaActual} /></Col>
             </Row>
-            <Table size="small" pagination={false}
+            <Table size="small"
+        scroll={{ x: 'max-content' }} pagination={false}
               dataSource={wipDetalle.registros ?? []} rowKey="id"
               columns={[
                 { title: 'Ord.', dataIndex: 'ordenEtapa', width: 50 },
@@ -502,7 +506,8 @@ export default function ManufacturaPage() {
           children: (
             <Card>
               <Table columns={colsLM} dataSource={lms ?? []} rowKey="id"
-                size="small" pagination={false} />
+                size="small"
+        scroll={{ x: 'max-content' }} pagination={false} />
             </Card>
           ),
         },
@@ -519,6 +524,7 @@ export default function ManufacturaPage() {
             }>
               <Table columns={colsOP} dataSource={ordenes?.data ?? []} rowKey="id"
                 loading={loadOP} size="small"
+        scroll={{ x: 'max-content' }}
                 pagination={{ total: ordenes?.meta?.total, pageSize: 10, current: pageOP,
                               onChange: setPageOP, showSizeChanger: false }} />
             </Card>
@@ -564,6 +570,7 @@ export default function ManufacturaPage() {
 
             <Table
               size="small"
+        scroll={{ x: 'max-content' }}
               dataSource={lmDetalle.componentes ?? []}
               rowKey="id"
               pagination={false}

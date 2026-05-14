@@ -151,6 +151,7 @@ export default function FidelidadPage() {
           dataSource={ranking}
           rowKey="id"
           size="small"
+        scroll={{ x: 'max-content' }}
           pagination={{ pageSize: 15 }}
           columns={[
             {

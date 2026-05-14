@@ -160,6 +160,7 @@ export default function LicitacionesPage() {
       }>
         <Table columns={cols} dataSource={lista?.data ?? []} rowKey="id"
           loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }}
           pagination={{ total: lista?.meta?.total, pageSize: 10, current: page,
                         onChange: setPage, showSizeChanger: false }} />
       </Card>

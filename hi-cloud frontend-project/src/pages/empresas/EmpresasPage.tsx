@@ -237,6 +237,7 @@ export default function EmpresasPage() {
                       dataSource={usuarios}
                       rowKey="id"
                       size="small"
+        scroll={{ x: 'max-content' }}
                       pagination={false}
                       columns={[
                         {
@@ -283,6 +284,7 @@ export default function EmpresasPage() {
                       dataSource={invitaciones}
                       rowKey="id"
                       size="small"
+        scroll={{ x: 'max-content' }}
                       pagination={false}
                       columns={[
                         { title: 'Email', dataIndex: 'email', key: 'email' },

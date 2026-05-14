@@ -102,6 +102,7 @@ export default function ActivosFijosPage() {
         </Space>
       }>
         <Table columns={cols} dataSource={activos?.data ?? []} rowKey="id" loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }}
           pagination={{ total: activos?.meta?.total, pageSize: 12, current: page, onChange: setPage, showSizeChanger: false }} />
       </Card>
 
@@ -157,7 +158,8 @@ export default function ActivosFijosPage() {
 
       {/* Historial depreciación */}
       <Drawer title={`Historial — ${openHist?.descripcion}`} open={!!openHist} onClose={() => setOpenHist(null)} width={650}>
-        <Table dataSource={historial ?? []} rowKey="id" size="small" pagination={false}
+        <Table dataSource={historial ?? []} rowKey="id" size="small"
+        scroll={{ x: 'max-content' }} pagination={false}
           columns={[
             { title: 'Período',     dataIndex: 'periodo',            width: 90 },
             { title: 'Método',      dataIndex: 'metodo',             width: 120, render: (v: string) => v.replace('_', ' ') },

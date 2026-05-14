@@ -308,7 +308,8 @@ export default function ConducePage() {
                 {modalDetalle.vehiculo && <Col span={12}><Text type="secondary">Vehículo:</Text><div><Text>{modalDetalle.vehiculo}</Text></div></Col>}
               </Row>
             )}
-            <Table size="small" dataSource={modalDetalle.detalles} rowKey="id" pagination={false}
+            <Table size="small"
+        scroll={{ x: 'max-content' }} dataSource={modalDetalle.detalles} rowKey="id" pagination={false}
               columns={[
                 { title: 'Descripción', dataIndex: 'descripcion', key: 'd' },
                 { title: 'Cantidad', dataIndex: 'cantidad', key: 'c', align: 'right' },

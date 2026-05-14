@@ -398,7 +398,8 @@ export default function FacturaFormPage() {
             </Button>
           }>
           <Table columns={lineaCols as any} dataSource={lineas} rowKey="key"
-            pagination={false} size="small" />
+            pagination={false} size="small"
+        scroll={{ x: 'max-content' }} />
         </Card>
 
         {/* ── Totales ──────────────────────────────────────────────────── */}

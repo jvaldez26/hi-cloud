@@ -56,7 +56,8 @@ function MiResumenTab() {
         ))}
       </Row>
 
-      <Table size="small" loading={isLoading}
+      <Table size="small"
+        scroll={{ x: 'max-content' }} loading={isLoading}
         dataSource={data?.historico ?? []} rowKey={(r: any, i?: number) => `${r.periodo}-${r.estado}-${i}`}
         columns={[
           { title: 'Período', dataIndex: 'periodo',      width: 90 },
@@ -137,7 +138,8 @@ function AdminTab() {
         </Col>
       </Row>
 
-      <Table size="small" loading={isLoading}
+      <Table size="small"
+        scroll={{ x: 'max-content' }} loading={isLoading}
         dataSource={lista ?? []} rowKey="id"
         columns={[
           { title: 'Vendedor', key: 'vend', ellipsis: true,
@@ -225,7 +227,8 @@ function ReglasTab() {
           <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setOpen(true); }}>Nueva regla</Button>
         </Col>
       </Row>
-      <Table columns={cols} dataSource={reglas ?? []} rowKey="id" loading={isLoading} size="small" pagination={false} />
+      <Table columns={cols} dataSource={reglas ?? []} rowKey="id" loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }} pagination={false} />
 
       <Modal title="Nueva regla de comisión" open={open} onCancel={() => { setOpen(false); form.resetFields(); }} footer={null} width={540}>
         <Form form={form} layout="vertical" onFinish={(v) => crearMut.mutate(v)}>

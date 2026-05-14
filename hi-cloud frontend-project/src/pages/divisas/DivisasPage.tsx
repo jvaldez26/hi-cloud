@@ -169,6 +169,7 @@ export default function DivisasPage() {
               dataSource={historial.slice(0, 10)}
               rowKey="id"
               size="small"
+        scroll={{ x: 'max-content' }}
               pagination={false}
               style={{ marginTop: 12 }}
               columns={[

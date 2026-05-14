@@ -204,6 +204,7 @@ export default function MantenimientoPage() {
             }>
               <Table columns={cols} dataSource={ordenes?.data ?? []} rowKey="id"
                 loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }}
                 pagination={{ total: ordenes?.meta?.total, pageSize: 15, current: pageOrd,
                               onChange: setPageOrd, showSizeChanger: false }} />
             </Card>
@@ -216,6 +217,7 @@ export default function MantenimientoPage() {
             <Card>
               <Table
                 size="small"
+        scroll={{ x: 'max-content' }}
                 dataSource={programas ?? []}
                 rowKey="id"
                 pagination={false}

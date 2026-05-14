@@ -554,7 +554,8 @@ export default function DashboardPage() {
           <Card title={<><FileTextOutlined style={{ color: token.colorPrimary, marginRight: 6 }} />Facturas recientes</>}
             style={{ borderRadius: 12 }} extra={<Button size="small" type="link" onClick={() => navigate('/facturas')}>Ver todas →</Button>}>
             <Table
-              size="small" pagination={false}
+              size="small"
+        scroll={{ x: 'max-content' }} pagination={false}
               dataSource={(facturasRecientes?.data ?? facturasRecientes ?? []).slice(0, 6)}
               rowKey="id"
               columns={[
@@ -613,7 +614,8 @@ export default function DashboardPage() {
                 <div style={{ marginTop: 8 }}><Text type="secondary">Todo el inventario está en niveles correctos</Text></div>
               </div>
             ) : (
-              <Table size="small" pagination={false}
+              <Table size="small"
+        scroll={{ x: 'max-content' }} pagination={false}
                 dataSource={(stockBajo?.items ?? stockBajo ?? []).slice(0, 8)} rowKey="id"
                 columns={[
                   { title: 'Producto', key: 'nom', ellipsis: true, render: (_: any, r: any) => <Text style={{ fontSize: 12 }}>{r.producto?.nombre ?? r.nombre}</Text> },
@@ -663,7 +665,8 @@ export default function DashboardPage() {
       <Row gutter={[16, 16]} style={{ marginBottom: 0 }}>
         <Col xs={24} lg={14}>
           <Card bordered={false} style={{ borderRadius: 12 }}>
-            <Table size="small" pagination={false}
+            <Table size="small"
+        scroll={{ x: 'max-content' }} pagination={false}
               dataSource={(comprasRecientes?.data ?? comprasRecientes ?? []).slice(0, 5)} rowKey="id"
               columns={[
                 { title: 'Folio',      dataIndex: 'folio',    width: 130, render: (v: string) => <Text code style={{ fontSize: 11 }}>{v}</Text> },

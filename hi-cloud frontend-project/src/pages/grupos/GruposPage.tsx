@@ -137,6 +137,7 @@ export default function GruposPage() {
                       dataSource={allGrupos}
                       rowKey="id"
                       size="small"
+        scroll={{ x: 'max-content' }}
                       pagination={{ pageSize: 15 }}
                       columns={[
                         { title: 'Código', dataIndex: 'codigo', key: 'c', render: v => <Tag style={{ fontFamily: 'mono' }}>{v}</Tag> },

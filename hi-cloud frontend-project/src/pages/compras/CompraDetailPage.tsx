@@ -178,6 +178,7 @@ export default function CompraDetailPage() {
               dataSource={(compra as any).detalles ?? []}
               rowKey="id"
               size="small"
+        scroll={{ x: 'max-content' }}
               pagination={false}
               summary={() => (
                 <Table.Summary fixed>

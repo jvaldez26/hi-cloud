@@ -190,7 +190,8 @@ export default function FlotaPage() {
                   Registrar
                 </Button>
               }>
-                <Table size="small" pagination={false}
+                <Table size="small"
+        scroll={{ x: 'max-content' }} pagination={false}
                   dataSource={registros?.data ?? []} rowKey="id"
                   columns={[
                     { title: 'Fecha',  dataIndex: 'fecha', width: 100, render: (v: string) => fmt.date(v) },

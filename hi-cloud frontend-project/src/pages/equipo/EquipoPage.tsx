@@ -319,7 +319,8 @@ export default function EquipoPage() {
       <Card title={<Space><TeamOutlined /><span>Miembros del equipo</span></Space>}
         style={{ marginBottom: 16 }}>
         <Table columns={colsMiembros} dataSource={miembrosData}
-          rowKey="userId" loading={loadM} size="small" pagination={false} />
+          rowKey="userId" loading={loadM} size="small"
+        scroll={{ x: 'max-content' }} pagination={false} />
       </Card>
 
       {/* Invitaciones pendientes */}
@@ -332,7 +333,8 @@ export default function EquipoPage() {
           </Space>
         }>
           <Table columns={colsInvs} dataSource={invsData}
-            rowKey="id" loading={loadI} size="small" pagination={false} />
+            rowKey="id" loading={loadI} size="small"
+        scroll={{ x: 'max-content' }} pagination={false} />
         </Card>
       )}
 
