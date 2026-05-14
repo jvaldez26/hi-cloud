@@ -45,7 +45,11 @@ function fmtRelativa(v: string | null | undefined): { texto: string; color: stri
 }
 
 function fmtMoney(n: number, decimals = 0) {
-  return `RD$${Number(n).toLocaleString('es-DO', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
+  // LEGACY — use fmtUsd for subscription amounts
+  return `RD${Number(n).toLocaleString('es-DO', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
+}
+function fmtUsd(n: number) {
+  return `${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 // ── Temas del Super Admin (independiente del ERP principal) ──────────────────
@@ -87,15 +91,21 @@ const useSaTheme = () => useContext(SaThemeCtx);
 const STORAGE_KEY = 'superadmin-theme';
 
 const PLANES = [
-  { value: 'trial',       label: 'Trial',        color: '#64748B', mrr: 0 },
-  { value: 'basico',      label: 'Básico',        color: '#3B82F6', mrr: 1500 },
-  { value: 'profesional', label: 'Profesional',   color: '#8B5CF6', mrr: 3500 },
-  { value: 'empresarial', label: 'Empresarial',   color: '#F59E0B', mrr: 7000 },
-  { value: 'enterprise',  label: 'Enterprise',    color: '#EF4444', mrr: 15000 },
+  { value: 'trial',       label: 'Trial',        color: '#64748B', mrr: 0,   mrrUsd: 0   },
+  { value: 'emprendedor', label: 'Emprendedor',   color: '#3B82F6', mrr: 0,   mrrUsd: 29  },
+  { value: 'pyme',        label: 'Pyme',          color: '#059669', mrr: 0,   mrrUsd: 59  },
+  { value: 'pro',         label: 'Pro',           color: '#0d9488', mrr: 0,   mrrUsd: 89  },
+  { value: 'plus',        label: 'Plus',          color: '#7C3AED', mrr: 0,   mrrUsd: 129 },
+  { value: 'enterprise',  label: 'Enterprise',    color: '#EF4444', mrr: 0,   mrrUsd: 0   }, // precio custom
+  // Legado (mostrar pero no activar)
+  { value: 'basico',      label: 'Básico',        color: '#6B7280', mrr: 0,   mrrUsd: 0   },
+  { value: 'profesional', label: 'Profesional',   color: '#6B7280', mrr: 0,   mrrUsd: 0   },
+  { value: 'empresarial', label: 'Empresarial',   color: '#6B7280', mrr: 0,   mrrUsd: 0   },
 ];
 
 const PLAN_COLOR: Record<string, string> = Object.fromEntries(PLANES.map(p => [p.value, p.color]));
 const PLAN_MRR:   Record<string, number> = Object.fromEntries(PLANES.map(p => [p.value, p.mrr]));
+const PLAN_MRR_USD: Record<string, number> = Object.fromEntries(PLANES.map(p => [p.value, p.mrrUsd]));
 
 // ── Sub-componentes ───────────────────────────────────────────────────────────
 
@@ -754,7 +764,7 @@ export default function SuperAdminPage() {
     { title: 'RD$/mes', key: 'mrr', width: 100, align: 'right' as const,
       render: (_: any, r: any) => (
         <span style={{ color: C.gold, fontWeight: 600 }}>
-          {r.plan && r.plan !== 'trial' ? fmtMoney(PLAN_MRR[r.plan] ?? 0) : <span style={{ color: C.txt2 }}>—</span>}
+          {PLAN_MRR_USD[r.plan] > 0 ? fmtUsd(PLAN_MRR_USD[r.plan]) : <span style={{ color: C.txt2 }}>—</span>}
         </span>
       ),
     },
@@ -1154,7 +1164,7 @@ export default function SuperAdminPage() {
             <KpiCard
               icon={<DollarSign size={20} />}
               label="Ingresos RD$"
-              value={fmtMoney(metricas?.ingresosRD ?? metricas?.ingresosUSD ?? 0)}
+              value={fmtUsd(metricas?.mrrUsd ?? (metricas?.ingresosRD ? metricas.ingresosRD / 58.5 : 0))}
               sub="RD$ · suscripciones activas"
               subColor={C.gold}
               accent={C.gold}
@@ -1307,7 +1317,7 @@ export default function SuperAdminPage() {
                       }}>
                         <div style={{ color: p.color, fontWeight: 700, fontSize: 11, textTransform: 'uppercase' }}>{p.label}</div>
                         <div style={{ color: C.txt, fontWeight: 800, fontSize: 20 }}>{cnt}</div>
-                        {p.mrr > 0 && <div style={{ color: C.gold, fontSize: 11 }}>{fmtMoney(cnt * p.mrr)}/mes</div>}
+                        {p.mrrUsd > 0 && <div style={{ color: C.gold, fontSize: 11 }}>{fmtUsd(p.mrrUsd)}/mes</div>}
                       </div>
                     ) : null;
                   })}
@@ -1542,7 +1552,7 @@ export default function SuperAdminPage() {
                       { label: 'RNC', value: detalleEmpresa.rnc },
                       { label: 'Usuarios', value: detalleEmpresa.usuarios ?? 0 },
                       { label: 'Facturas este mes', value: detalleEmpresa.facturasMes ?? 0 },
-                      { label: 'Suscripción/mes', value: detalleEmpresa.plan !== 'trial' ? fmtMoney(PLAN_MRR[detalleEmpresa.plan] ?? 0) : 'Gratis' },
+                      { label: 'Suscripción/mes', value: PLAN_MRR_USD[detalleEmpresa.plan] > 0 ? fmtUsd(PLAN_MRR_USD[detalleEmpresa.plan]) : 'Gratis (Trial)' },
                       { label: 'Fecha registro', value: fmtFecha(detalleEmpresa.fechaRegistro) },
                       { label: 'Estado suscripción', value: detalleEmpresa.estadoSuscripcion?.toUpperCase() ?? '—' },
                     ].map(f => (
@@ -1610,7 +1620,7 @@ export default function SuperAdminPage() {
                 label: (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <span style={{ color: p.color, fontWeight: 700 }}>{p.label}</span>
-                    <span style={{ color: p.mrr > 0 ? C.gold : C.txt2 }}>{p.mrr > 0 ? `${fmtMoney(p.mrr)}/mes` : 'Gratis'}</span>
+                    <span style={{ color: p.mrr > 0 ? C.gold : C.txt2 }}>{p.mrrUsd > 0 ? `${fmtUsd(p.mrrUsd)}/mes` : 'Gratis'}</span>
                   </div>
                 ),
               }))}
@@ -1633,10 +1643,10 @@ export default function SuperAdminPage() {
               border: `1px solid ${C.gold}33`, borderRadius: 8, padding: '12px 14px',
             }}>
               <div style={{ color: C.gold, fontWeight: 700, fontSize: 13 }}>
-                Total: {fmtMoney((PLAN_MRR[planSel] ?? 0) * meses)}
+                Total: {fmtUsd((PLAN_MRR_USD[planSel] ?? 0) * meses)} USD
               </div>
               <div style={{ color: C.txt2, fontSize: 12 }}>
-                {meses} mes{meses > 1 ? 'es' : ''} × {fmtMoney(PLAN_MRR[planSel] ?? 0)}/mes
+                {meses} mes{meses > 1 ? 'es' : ''} × {fmtUsd(PLAN_MRR_USD[planSel] ?? 0)}/mes
               </div>
             </div>
           )}

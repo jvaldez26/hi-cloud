@@ -7,12 +7,14 @@ import { LimitesService } from './limites.service';
 import { PlanGuard } from './guards/plan.guard';
 import { Suscripcion } from './entities/suscripcion.entity';
 import { PlanConfiguracion } from './entities/plan-configuracion.entity';
+import { SolicitudCambioPlan } from './entities/solicitud-cambio-plan.entity';
+import { SuscripcionAuditoria } from './entities/suscripcion-auditoria.entity';
 import { TenantModule } from '../tenant/tenant.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Suscripcion, PlanConfiguracion]), TenantModule],
+  imports: [TypeOrmModule.forFeature([Suscripcion, PlanConfiguracion, SolicitudCambioPlan, SuscripcionAuditoria]), TenantModule],
   controllers: [SuscripcionesController, PlanesPublicosController],
   providers: [SuscripcionesService, LimitesService, PlanGuard],
-  exports: [SuscripcionesService, LimitesService, PlanGuard],
+  exports: [SuscripcionesService, LimitesService, PlanGuard, TypeOrmModule],
 })
 export class SuscripcionesModule {}

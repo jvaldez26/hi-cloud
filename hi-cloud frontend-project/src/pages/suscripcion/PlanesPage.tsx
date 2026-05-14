@@ -1,9 +1,8 @@
 import { useState } from 'react';
-import { Button, Modal, message, Progress, Tag, Divider } from 'antd';
+import { Button, Modal, message, Progress, Tag, Divider, Input } from 'antd';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Check, ChevronDown, ChevronUp } from 'lucide-react';
-import { suscripcionesApi } from '../../api/suscripciones.api';
 import { usePlan } from '../../hooks/usePlan';
 import { useAuthStore } from '../../store/auth.store';
 import api from '../../api/client';
@@ -110,6 +109,7 @@ export default function PlanesPage() {
   const [anual, setAnual]           = useState(false);
   const [expandirTabla, setExpandir] = useState(false);
   const [modalPlan, setModalPlan]    = useState<typeof PLANES[0] | null>(null);
+  const [comentario, setComentario]  = useState('');
 
   // Limites actuales
   const { data: limites } = useQuery({
@@ -118,17 +118,24 @@ export default function PlanesPage() {
     staleTime: 30_000,
   });
 
-  const activarMut = useMutation({
-    mutationFn: ({ plan, meses }: { plan: string; meses: number }) =>
-      suscripcionesApi.activar(empresaActual!, plan, meses),
+  // Solicitud pendiente
+  const { data: solicitudActual } = useQuery({
+    queryKey: ['mi-solicitud', empresaActual],
+    queryFn:  () => api.get('/suscripciones/mi-solicitud').then(r => r.data?.data ?? r.data),
+    staleTime: 60_000,
+  });
+
+  // Solicitar cambio (NO activa directamente — va al super admin para aprobación)
+  const solicitarMut = useMutation({
+    mutationFn: ({ planSolicitado, modalidad, comentario }: any) =>
+      api.post('/suscripciones/solicitar-cambio', { planSolicitado, modalidad, comentario }).then(r => r.data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['mi-plan'] });
-      qc.invalidateQueries({ queryKey: ['mis-limites'] });
+      qc.invalidateQueries({ queryKey: ['mi-solicitud'] });
       setModalPlan(null);
-      message.success('¡Plan actualizado! Los cambios aplican de inmediato.');
-      navigate('/dashboard');
+      setComentario('');
+      message.success('¡Solicitud enviada! Un asesor te contactará en menos de 24 horas para coordinar el pago y activación.', 6);
     },
-    onError: (e: any) => message.error(e?.friendlyMessage ?? 'Error al cambiar plan'),
+    onError: (e: any) => message.error(e?.response?.data?.message ?? e?.friendlyMessage ?? 'Error al enviar solicitud'),
   });
 
   const meses = anual ? 12 : 1;
@@ -269,27 +276,26 @@ export default function PlanesPage() {
                     </div>
                   </div>
 
-                  {/* Botón CTA */}
+                  {/* Estado de solicitud pendiente */}
+                  {solicitudActual?.estado === 'pendiente' && solicitudActual?.planSolicitado === plan.clave && (
+                    <Tag color="orange" style={{ marginBottom: 8, display: 'block', textAlign: 'center' }}>
+                      ⏳ Solicitud pendiente de aprobación
+                    </Tag>
+                  )}
+
+                  {/* Botón CTA — solicitar, no activar directamente */}
                   <Button
                     type={plan.destacado ? 'primary' : 'default'}
-                    block
-                    size="large"
-                    disabled={esActual}
+                    block size="large"
+                    disabled={esActual || solicitudActual?.estado === 'pendiente'}
                     onClick={() => setModalPlan(plan)}
                     style={
-                      esActual ? {
-                        background: '#f3f4f6', border: '1px solid #d1d5db',
-                        color: '#9ca3af', cursor: 'default',
-                      } : plan.destacado ? {
-                        background: plan.color, borderColor: plan.color,
-                        fontWeight: 700, height: 44,
-                      } : {
-                        borderColor: '#d1d5db', color: '#374151',
-                        fontWeight: 600, height: 44,
-                      }
+                      esActual ? { background: '#f3f4f6', border: '1px solid #d1d5db', color: '#9ca3af', cursor: 'default' }
+                      : plan.destacado ? { background: plan.color, borderColor: plan.color, fontWeight: 700, height: 44 }
+                      : { borderColor: '#d1d5db', color: '#374151', fontWeight: 600, height: 44 }
                     }
                   >
-                    {esActual ? '✓ Plan actual' : 'Prueba gratis'}
+                    {esActual ? '✓ Plan actual' : 'Solicitar upgrade'}
                   </Button>
 
                   <Divider style={{ margin: '16px 0' }} />
@@ -375,23 +381,20 @@ export default function PlanesPage() {
       </div>
 
       {/* Modal confirmar */}
+      {/* Modal solicitar upgrade */}
       <Modal
         open={!!modalPlan}
-        onCancel={() => setModalPlan(null)}
-        onOk={() => modalPlan && activarMut.mutate({ plan: modalPlan.clave, meses })}
-        confirmLoading={activarMut.isPending}
-        title="Confirmar cambio de plan"
-        okText="Confirmar y activar"
+        onCancel={() => { setModalPlan(null); setComentario(''); }}
+        onOk={() => modalPlan && solicitarMut.mutate({ planSolicitado: modalPlan.clave, modalidad: anual ? 'anual' : 'mensual', comentario })}
+        confirmLoading={solicitarMut.isPending}
+        title="Solicitar actualización de plan"
+        okText="Enviar solicitud"
         cancelText="Cancelar"
         centered
       >
         {modalPlan && (
           <div style={{ paddingTop: 8 }}>
-            <div style={{
-              background: `${modalPlan.color}11`,
-              border: `2px solid ${modalPlan.color}44`,
-              borderRadius: 10, padding: '16px', marginBottom: 16, textAlign: 'center',
-            }}>
+            <div style={{ background: `${modalPlan.color}11`, border: `2px solid ${modalPlan.color}44`, borderRadius: 10, padding: '16px', marginBottom: 16, textAlign: 'center' }}>
               <div style={{ fontSize: 20, fontWeight: 900, color: modalPlan.color }}>{modalPlan.nombre}</div>
               <div style={{ fontSize: 16, fontWeight: 700, color: '#111827', marginTop: 4 }}>
                 {fmtUsd(anual ? modalPlan.precioAnual : modalPlan.precioMensual)}/mes
@@ -401,9 +404,22 @@ export default function PlanesPage() {
                 Límite de ingresos: {fmtDop(modalPlan.limiteDop)}/mes · {modalPlan.usuarios} usuario{modalPlan.usuarios > 1 ? 's' : ''}
               </div>
             </div>
-            <p style={{ color: '#6b7280', fontSize: 13 }}>
-              El plan se activará inmediatamente. Si ya tienes datos del mes, el nuevo límite aplica desde hoy.
-            </p>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 6, color: '#374151' }}>
+                Comentario (opcional):
+              </label>
+              <Input.TextArea
+                rows={2} placeholder="¿Alguna consulta o requerimiento especial?"
+                value={comentario} onChange={e => setComentario(e.target.value)}
+              />
+            </div>
+            <div style={{ background: '#fef9c3', border: '1px solid #fde047', borderRadius: 8, padding: '10px 14px' }}>
+              <p style={{ margin: 0, fontSize: 13, color: '#92400e' }}>
+                <strong>¿Cómo funciona?</strong> Tu solicitud será revisada por un asesor de HiCloud.
+                Te contactaremos en <strong>menos de 24 horas</strong> para coordinar el pago y activar el nuevo plan.
+                El cambio NO es inmediato.
+              </p>
+            </div>
           </div>
         )}
       </Modal>

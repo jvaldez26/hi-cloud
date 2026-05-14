@@ -2,6 +2,7 @@ import {
   Controller, Get, Patch, Post, Delete, Body, Param, ParseIntPipe,
   UseGuards, HttpCode, HttpStatus, Query, Res, Headers,
 } from '@nestjs/common';
+
 import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { IsEnum, IsInt, IsPositive, IsString, IsNotEmpty, IsOptional, IsNumber, Min } from 'class-validator';
@@ -14,11 +15,46 @@ import { GetUser } from '../auth/decorators/get-user.decorator';
 import type { User } from '../users/users.entity';
 
 class CambiarPlanDto {
-  @IsEnum(['trial','basico','profesional','empresarial','enterprise'])
+  @IsEnum(['trial','emprendedor','pyme','pro','plus','basico','profesional','empresarial','enterprise'])
   plan!: string;
 
   @IsInt() @IsPositive()
   meses!: number;
+
+  @IsOptional() @IsString()
+  motivo?: string;
+
+  @IsOptional() @IsInt()
+  solicitudId?: number;
+}
+
+class ExtenderTrialDto {
+  @IsInt() @IsPositive()
+  dias!: number;
+
+  @IsString() @IsNotEmpty()
+  motivo!: string;
+}
+
+class SuspenderDto {
+  @IsString() @IsNotEmpty()
+  motivo!: string;
+}
+
+class DescuentoDto {
+  @IsNumber() @Min(1)
+  pct!: number;
+
+  @IsOptional() @IsString()
+  hasta?: string;
+
+  @IsString() @IsNotEmpty()
+  motivo!: string;
+}
+
+class RechazarSolicitudDto {
+  @IsString() @IsNotEmpty()
+  motivo!: string;
 }
 
 class UpdatePlanDto {
@@ -90,8 +126,74 @@ export class SuperAdminController {
   @Patch('empresas/:id/plan')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Cambiar plan de suscripción de una empresa' })
-  cambiarPlan(@Param('id', ParseIntPipe) id: number, @Body() dto: CambiarPlanDto) {
-    return this.svc.cambiarPlan(id, dto.plan, dto.meses);
+  cambiarPlan(@Param('id', ParseIntPipe) id: number, @Body() dto: CambiarPlanDto, @GetUser() admin: User) {
+    return this.svc.cambiarPlanConAuditoria(id, dto.plan, dto.meses, admin.id, dto.solicitudId ?? null, dto.motivo ?? 'Cambio manual');
+  }
+
+  // ── Gestión avanzada de suscripciones ──────────────────────────────────────
+
+  @Post('empresas/:id/extender-trial')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Extender período de trial' })
+  extenderTrial(@Param('id', ParseIntPipe) id: number, @Body() dto: ExtenderTrialDto, @GetUser() admin: User) {
+    return this.svc.extenderTrial(id, dto.dias, admin.id, dto.motivo);
+  }
+
+  @Patch('empresas/:id/suspender-suscripcion')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Suspender suscripción de una empresa' })
+  suspenderSuscripcion(@Param('id', ParseIntPipe) id: number, @Body() dto: SuspenderDto, @GetUser() admin: User) {
+    return this.svc.suspenderSuscripcion(id, admin.id, dto.motivo);
+  }
+
+  @Patch('empresas/:id/reactivar-suscripcion')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reactivar suscripción suspendida' })
+  reactivarSuscripcion(@Param('id', ParseIntPipe) id: number, @Body() dto: SuspenderDto, @GetUser() admin: User) {
+    return this.svc.reactivarSuscripcion(id, admin.id, dto.motivo);
+  }
+
+  @Post('empresas/:id/descuento')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Aplicar descuento porcentual a suscripción' })
+  aplicarDescuento(@Param('id', ParseIntPipe) id: number, @Body() dto: DescuentoDto, @GetUser() admin: User) {
+    return this.svc.aplicarDescuento(id, dto.pct, dto.hasta ?? null, admin.id, dto.motivo);
+  }
+
+  @Get('empresas/:id/auditoria')
+  @ApiOperation({ summary: 'Historial de cambios de suscripción de una empresa' })
+  getAuditoria(@Param('id', ParseIntPipe) id: number) {
+    return this.svc.getAuditoria(id);
+  }
+
+  // ── Solicitudes de cambio de plan ─────────────────────────────────────────
+
+  @Get('suscripciones/solicitudes')
+  @ApiOperation({ summary: 'Listar solicitudes de cambio de plan pendientes' })
+  listarSolicitudes(@Query('estado') estado?: string) {
+    return this.svc.listarSolicitudes(estado);
+  }
+
+  @Post('suscripciones/solicitudes/:id/aprobar')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Aprobar solicitud de cambio de plan' })
+  aprobarSolicitud(@Param('id', ParseIntPipe) id: number, @Body() dto: CambiarPlanDto, @GetUser() admin: User) {
+    return this.svc.cambiarPlanConAuditoria(0, dto.plan, dto.meses, admin.id, id, dto.motivo ?? 'Solicitud aprobada');
+  }
+
+  @Post('suscripciones/solicitudes/:id/rechazar')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Rechazar solicitud de cambio de plan' })
+  rechazarSolicitud(@Param('id', ParseIntPipe) id: number, @Body() dto: RechazarSolicitudDto, @GetUser() admin: User) {
+    return this.svc.rechazarSolicitud(id, admin.id, dto.motivo);
+  }
+
+  // ── Reportes MRR/ARR en USD ───────────────────────────────────────────────
+
+  @Get('suscripciones/mrr')
+  @ApiOperation({ summary: 'MRR y ARR en USD con distribución por plan' })
+  getMrrArr() {
+    return this.svc.getMrrArr();
   }
 
   @Post('empresas/:id/mensaje')
