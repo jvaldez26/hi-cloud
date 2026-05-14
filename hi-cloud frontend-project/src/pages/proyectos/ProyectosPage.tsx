@@ -278,6 +278,7 @@ function RegistroTiempoPanel({ proyectoId }: { proyectoId: number }) {
 
       <Table
         dataSource={data?.data ?? []} rowKey="id" size="small"
+        scroll={{ x: 'max-content' }}
         pagination={{ total: data?.meta?.total, pageSize: 20, showSizeChanger: false }}
         columns={[
           { title: 'Fecha',       dataIndex: 'fecha',       width: 100, render: (v: string) => fmt.date(v) },
@@ -429,7 +430,8 @@ function PresupuestoTab({ proyectoId, presupuestoBase }: { proyectoId: number; p
       <Row justify="end" style={{ marginBottom: 12 }}>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setOpen(true); }}>Agregar línea</Button>
       </Row>
-      <Table columns={cols} dataSource={data?.lineas ?? []} rowKey="id" loading={isLoading} size="small" pagination={false} />
+      <Table columns={cols} dataSource={data?.lineas ?? []} rowKey="id" loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }} pagination={false} />
 
       <Modal title="Nueva línea de presupuesto" open={open} onCancel={() => { setOpen(false); form.resetFields(); }} footer={null} width={480}>
         <Form form={form} layout="vertical" onFinish={(v) => addMut.mutate(v)}>
@@ -661,6 +663,7 @@ export default function ProyectosPage() {
       }>
         <Table columns={cols} dataSource={proyectos?.data ?? []} rowKey="id"
           loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }}
           pagination={{ total: proyectos?.meta?.total, pageSize: 10, current: page,
                         onChange: setPage, showSizeChanger: false }} />
       </Card>

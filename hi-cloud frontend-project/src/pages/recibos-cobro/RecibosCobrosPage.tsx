@@ -239,7 +239,8 @@ export default function RecibosCobrosPage() {
               title: '', key: 'acc',
               render: (_: any, r: any) => (
                 <Space size={4}>
-                  <Button size="small" icon={<PrinterOutlined />} onClick={() => handleImprimir(r)}>
+                  <Button size="small"
+                    icon={<PrinterOutlined />} onClick={() => handleImprimir(r)}>
                     Imprimir
                   </Button>
                   <Button size="small" type="text"

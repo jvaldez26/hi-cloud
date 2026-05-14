@@ -585,7 +585,8 @@ export default function NotasCreditoPage() {
                 <Text type="secondary" style={{ fontSize: 11 }}>{modalDetalle.descripcionMotivo}</Text>
               </div>
             )}
-            <Table size="small" dataSource={modalDetalle.detalles} rowKey="id" pagination={false}
+            <Table size="small"
+        scroll={{ x: 'max-content' }} dataSource={modalDetalle.detalles} rowKey="id" pagination={false}
               columns={[
                 { title: 'Descripción', dataIndex: 'descripcion', key: 'd' },
                 { title: 'Cant.',       dataIndex: 'cantidad',    key: 'c', align: 'right' },

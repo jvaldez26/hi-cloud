@@ -192,6 +192,7 @@ function MovimientosTab() {
       </Row>
 
       <Table columns={columns} dataSource={rows} rowKey="id" loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }}
         pagination={{ total: data?.meta?.total, pageSize: 15, current: page, onChange: setPage, showSizeChanger: false, size: 'small' }} />
 
       <Modal title={modal === 'entrada' ? '📦 Registrar Entrada' : '📤 Registrar Salida'}
@@ -341,7 +342,8 @@ function LotesTab() {
         </Col>
       </Row>
 
-      <Table columns={cols} dataSource={rows} rowKey="id" loading={isLoading} size="small" pagination={{ pageSize: 15 }} />
+      <Table columns={cols} dataSource={rows} rowKey="id" loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }} pagination={{ pageSize: 15 }} />
 
       <Modal title="Registrar lote / batch" open={open} onCancel={() => { setOpen(false); form.resetFields(); }} footer={null} width={620}>
         <Form form={form} layout="vertical" onFinish={(v) => crearMut.mutate(v)}>
@@ -519,7 +521,8 @@ function SerialesTab() {
         </Col>
       </Row>
 
-      <Table columns={cols} dataSource={seriales ?? []} rowKey="id" loading={isLoading} size="small" pagination={{ pageSize: 20 }} />
+      <Table columns={cols} dataSource={seriales ?? []} rowKey="id" loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }} pagination={{ pageSize: 20 }} />
 
       {/* Modal registrar seriales */}
       <Modal title="Registrar números de serie" open={open} onCancel={() => { setOpen(false); form.resetFields(); setNumerosTexto(''); }} footer={null} width={560}>

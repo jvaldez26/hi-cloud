@@ -176,6 +176,7 @@ export default function DevolucionesPage() {
         </Space>
       }>
         <Table columns={cols} dataSource={data?.data ?? []} rowKey="id" loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }}
           pagination={{ total: data?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }} />
       </Card>
 
@@ -221,7 +222,8 @@ export default function DevolucionesPage() {
           </Row>
 
           {lineas.length > 0 && (
-            <Table size="small" pagination={false}
+            <Table size="small"
+        scroll={{ x: 'max-content' }} pagination={false}
               dataSource={lineas.map((l, i) => ({ ...l, key: i }))}
               columns={[
                 { title: 'Producto',  dataIndex: 'descripcion',    ellipsis: true },
@@ -255,7 +257,8 @@ export default function DevolucionesPage() {
               <Descriptions.Item label="Factura original">{detail.factura?.folio}</Descriptions.Item>
               <Descriptions.Item label="Motivo" span={2}>{detail.motivo}</Descriptions.Item>
             </Descriptions>
-            <Table size="small" pagination={false} dataSource={detail.detalles ?? []} rowKey="id"
+            <Table size="small"
+        scroll={{ x: 'max-content' }} pagination={false} dataSource={detail.detalles ?? []} rowKey="id"
               columns={[
                 { title: 'Producto', dataIndex: 'descripcion', ellipsis: true },
                 { title: 'Cant.',    dataIndex: 'cantidad',    width: 60 },

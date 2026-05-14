@@ -434,7 +434,8 @@ export default function NotasDebitoPage() {
               <Text>{MOTIVOS.find(m => m.value === modalDetalle.motivo)?.label ?? modalDetalle.motivo}</Text>
               {modalDetalle.descripcionMotivo && <div><Text type="secondary" style={{ fontSize: 11 }}>{modalDetalle.descripcionMotivo}</Text></div>}
             </div>
-            <Table size="small" dataSource={modalDetalle.detalles} rowKey="id" pagination={false}
+            <Table size="small"
+        scroll={{ x: 'max-content' }} dataSource={modalDetalle.detalles} rowKey="id" pagination={false}
               columns={[
                 { title: 'Descripción', dataIndex: 'descripcion', key: 'd' },
                 { title: 'Cant.', dataIndex: 'cantidad', key: 'c', align: 'right' as const },

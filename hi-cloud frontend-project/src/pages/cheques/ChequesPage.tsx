@@ -244,6 +244,7 @@ export default function ChequesPage() {
             }>
               <Table columns={cols} dataSource={cheques?.data ?? []} rowKey="id"
                 loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }}
                 pagination={{ total: cheques?.meta?.total, pageSize: 15, current: pageCheq,
                               onChange: setPageCheq, showSizeChanger: false }} />
             </Card>
@@ -265,6 +266,7 @@ export default function ChequesPage() {
               ) : (
                 <Table
                   size="small"
+        scroll={{ x: 'max-content' }}
                   dataSource={resumen ?? []}
                   rowKey={(r: any) => `${r.tipo}-${r.estado}`}
                   pagination={false}
@@ -286,6 +288,7 @@ export default function ChequesPage() {
             <Card>
               <Table
                 size="small"
+        scroll={{ x: 'max-content' }}
                 dataSource={chequeras ?? []}
                 rowKey="id"
                 pagination={false}

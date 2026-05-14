@@ -206,6 +206,7 @@ export default function CajaPage() {
       {/* Historial */}
       <Card title={<><HistoryOutlined /> Historial de Cierres</>}>
         <Table size="small"
+        scroll={{ x: 'max-content' }}
           dataSource={historial?.data ?? []} rowKey="id"
           pagination={{ pageSize: 10, showSizeChanger: false }}
           columns={[

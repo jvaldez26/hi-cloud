@@ -114,6 +114,7 @@ function ListadoTab() {
       </Row>
       <Table columns={cols} dataSource={data?.data ?? []} rowKey="id"
         loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }}
         pagination={{ total: data?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }} />
 
       <Modal title="Registrar Retención ISR" open={open} onCancel={() => setOpen(false)} footer={null} width={580}>
@@ -210,7 +211,8 @@ function IR17Tab() {
             ))}
           </Row>
 
-          <Table size="small" pagination={false}
+          <Table size="small"
+        scroll={{ x: 'max-content' }} pagination={false}
             dataSource={data.retenciones ?? []} rowKey="id"
             columns={[
               { title: 'Proveedor',     dataIndex: 'nombreProveedor',    ellipsis: true },

@@ -45,7 +45,8 @@ function PlanCuentas() {
 
   return (
     <Table columns={cols} dataSource={cuentas ?? []} rowKey="id" loading={isLoading}
-      size="small" pagination={{ pageSize: 50, showSizeChanger: false }}
+      size="small"
+        scroll={{ x: 'max-content' }} pagination={{ pageSize: 50, showSizeChanger: false }}
       rowClassName={(r: any) => r.nivel <= 2 ? 'ant-table-row-level-header' : ''} />
   );
 }
@@ -155,6 +156,7 @@ function Asientos() {
           return a.numero?.toLowerCase().includes(s) || a.descripcion?.toLowerCase().includes(s);
         })}
         rowKey="id" loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }}
         pagination={{ total: asientos?.meta?.total, pageSize: 15, current: page, onChange: setPage, showSizeChanger: false }} />
 
       {/* Crear asiento */}
@@ -165,7 +167,8 @@ function Asientos() {
             <Col span={8}><Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item></Col>
             <Col span={16}><Form.Item name="descripcion" label="Descripción" rules={[{ required: true }]}><Input /></Form.Item></Col>
           </Row>
-          <Table size="small" pagination={false}
+          <Table size="small"
+        scroll={{ x: 'max-content' }} pagination={false}
             dataSource={lineas.map((l, i) => ({ ...l, key: i }))}
             columns={[
               { title: 'Cuenta', key: 'cuenta', width: 220,
@@ -219,7 +222,8 @@ function Asientos() {
               <Descriptions.Item label="Total Debe">{fmt.money(detail.totalDebe)}</Descriptions.Item>
               <Descriptions.Item label="Total Haber">{fmt.money(detail.totalHaber)}</Descriptions.Item>
             </Descriptions>
-            <Table size="small" pagination={false}
+            <Table size="small"
+        scroll={{ x: 'max-content' }} pagination={false}
               dataSource={detail.lineas ?? []} rowKey="id"
               columns={[
                 { title: 'Cuenta', key: 'cta', ellipsis: true, render: (_: any, r: any) => `${r.cuentaContable?.codigo} — ${r.cuentaContable?.nombre}` },

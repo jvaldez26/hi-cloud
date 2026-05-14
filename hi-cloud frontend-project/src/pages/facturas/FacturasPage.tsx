@@ -215,14 +215,14 @@ export default function FacturasPage() {
   const columns = [
     // ── Folio ──────────────────────────────────────────────────────────────────
     {
-      title: 'Folio', dataIndex: 'folio', width: 130, fixed: 'left' as const,
+      title: 'Folio', dataIndex: 'folio', width: 95, fixed: 'left' as const,
       render: (v: string) => (
-        <Text strong style={{ fontFamily: 'monospace', fontSize: 12, letterSpacing: 0.2 }}>{v}</Text>
+        <Text strong style={{ fontFamily: 'monospace', fontSize: 12 }}>{v}</Text>
       ),
     },
     // ── Fecha ──────────────────────────────────────────────────────────────────
     {
-      title: 'Fecha', dataIndex: 'fecha', width: 88,
+      title: 'Fecha', dataIndex: 'fecha', width: 85,
       render: (v: string) => <Text style={{ fontSize: 12 }}>{fmt.date(v)}</Text>,
     },
     // ── Cliente ────────────────────────────────────────────────────────────────
@@ -543,13 +543,14 @@ export default function FacturasPage() {
         </Row>
       )}
 
-      {/* ── Tabla — scroll horizontal con columnas fijas ── */}
+      {/* ── Tabla — scroll interno para que la página no desborde ── */}
       <Table
         columns={columns}
         dataSource={resumen}
         rowKey="id"
         loading={isLoading}
         size="small"
+        scroll={{ x: 'max-content' }}
         onRow={r => ({
           style: { cursor: 'pointer' },
           onDoubleClick: () => navigate(`/facturas/${r.id}`),

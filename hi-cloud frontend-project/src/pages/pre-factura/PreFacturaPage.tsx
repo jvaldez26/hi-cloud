@@ -595,6 +595,7 @@ export default function PreFacturaPage() {
 
             <Table
               size="small"
+        scroll={{ x: 'max-content' }}
               dataSource={modalDetalle.detalles}
               rowKey="id"
               pagination={false}

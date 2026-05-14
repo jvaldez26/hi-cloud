@@ -250,6 +250,7 @@ export default function CxCPage() {
         <Table
           columns={columns} dataSource={rows} rowKey="id"
           loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }}
           pagination={{
             total: data?.meta.total, pageSize: 15, current: page,
             onChange: setPage, showTotal: t => `${t.toLocaleString('es-DO')} cuentas`,
@@ -271,6 +272,7 @@ export default function CxCPage() {
         ) : (
           <Table
             size="small"
+        scroll={{ x: 'max-content' }}
             dataSource={histPagos}
             rowKey="id"
             pagination={false}

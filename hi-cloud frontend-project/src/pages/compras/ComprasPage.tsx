@@ -154,7 +154,7 @@ export default function ComprasPage() {
 
   const columns = [
     {
-      title: 'Folio', dataIndex: 'folio', width: 140, fixed: 'left' as const,
+      title: 'Folio', dataIndex: 'folio', width: 95, fixed: 'left' as const,
       render: (v: string) => <Text strong style={{ fontFamily: 'monospace', fontSize: 12 }}>{v}</Text>,
     },
     {
@@ -343,6 +343,7 @@ export default function ComprasPage() {
       <Table
         columns={columns} dataSource={rows} rowKey="id"
         loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }}
         onRow={r => ({ style: { cursor: 'pointer' }, onDoubleClick: () => navigate(`/compras/${r.id}`) })}
         pagination={{
           total: data?.meta.total, pageSize: 15, current: page,

@@ -362,6 +362,7 @@ export default function VendedoresPage() {
                     dataSource={clientesVendedor}
                     rowKey="id"
                     size="small"
+        scroll={{ x: 'max-content' }}
                     pagination={{ pageSize: 15 }}
                     columns={[
                       { title: 'Cliente', dataIndex: 'nombre', key: 'n', render: v => <Text strong>{v}</Text> },

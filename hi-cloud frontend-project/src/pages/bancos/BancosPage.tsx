@@ -273,6 +273,7 @@ export default function BancosPage() {
           >
             <Table columns={colsMov} dataSource={movs?.data ?? []} rowKey="id"
               loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }}
               rowClassName={(r: any) => r.conciliado ? '' : 'ant-table-row-warning'}
               pagination={{ total: movs?.meta?.total, pageSize: 20, current: pageMov,
                             onChange: setPageMov, showSizeChanger: false }} />

@@ -135,6 +135,7 @@ export default function ContratosPage() {
             return c.cliente?.nombre?.toLowerCase().includes(s) || c.nombre?.toLowerCase().includes(s) || c.numero?.toLowerCase().includes(s);
           })} rowKey="id"
           loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }}
           pagination={{ total: data?.meta?.total, pageSize: 10, current: page,
                         onChange: setPage, showSizeChanger: false }} />
       </Card>

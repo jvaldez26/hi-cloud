@@ -239,6 +239,7 @@ export default function CxPPage() {
         <Table
           columns={columns} dataSource={rows} rowKey="id"
           loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }}
           pagination={{
             total: search ? rows.length : data?.meta.total,
             pageSize: 15, current: page,
@@ -262,6 +263,7 @@ export default function CxPPage() {
         ) : (
           <Table
             size="small"
+        scroll={{ x: 'max-content' }}
             dataSource={histPagos}
             rowKey="id"
             pagination={false}

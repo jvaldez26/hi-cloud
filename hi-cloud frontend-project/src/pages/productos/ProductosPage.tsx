@@ -247,6 +247,7 @@ function VariantesTab() {
 
       {productoId && (
         <Table columns={cols} dataSource={variantes ?? []} rowKey="id" loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }}
           pagination={{ pageSize: 20 }}
           title={() => <Text type="secondary" style={{ fontSize: 12 }}>{productoSeleccionado?.nombre} — {(variantes ?? []).length} variante(s)</Text>}
         />
@@ -508,6 +509,7 @@ function ProductosCatalogo() {
 
       <Table columns={columns} dataSource={rows} rowKey="id"
         loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }}
         rowClassName={(r: Producto) => r.stock <= r.stockMinimo ? 'ant-table-row-danger' : ''}
         pagination={{ total: data?.meta.total, pageSize: 10, current: page,
                       onChange: setPage, showTotal: t => `${t} productos`, showSizeChanger: false }} />
