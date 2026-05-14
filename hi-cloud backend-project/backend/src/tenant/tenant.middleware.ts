@@ -23,6 +23,8 @@ const RUTAS_SIN_TENANT = [
   '/datafono',
   '/encuestas',
   '/capacitacion',
+  '/demo/',           // Solicitud de demo — endpoint público de la landing page
+  '/demo',
 ];
 
 @Injectable()

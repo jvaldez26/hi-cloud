@@ -29,7 +29,18 @@ export default function DemoModal({ open, onClose }: Props) {
   const demoMut = useMutation({
     mutationFn: demoApi.solicitar,
     onSuccess: () => setStep(2),
-    onError: (e: any) => message.error(e?.response?.data?.message ?? e?.message ?? 'Error al enviar la solicitud de demo'),
+    onError: (e: any) => {
+      const data = e?.response?.data;
+      const msg: string =
+        // class-validator devuelve errors[] — mostrar el primero en español si es posible
+        (Array.isArray(data?.errors) && data.errors.length > 0 ? data.errors[0] : null) ??
+        (typeof data?.message === 'string' ? data.message : null) ??
+        e?.friendlyMessage ??
+        e?.message ??
+        'No pudimos enviar tu solicitud. Por favor revisa los datos e intenta de nuevo.';
+      console.error('[DemoModal] Error al solicitar demo:', data ?? e?.message);
+      message.error(msg, 5);
+    },
   });
 
   const handleNext = async () => {
@@ -44,8 +55,13 @@ export default function DemoModal({ open, onClose }: Props) {
 
   const handleSubmit = async () => {
     try {
-      const values = await form.validateFields();
-      demoMut.mutate(values);
+      // Valida solo los campos visibles del paso 1 (tamanoEmpresa es required)
+      await form.validateFields();
+      // getFieldsValue(true) devuelve TODO el store del formulario, incluyendo
+      // los campos del paso 0 que están desmontados pero con valores preservados.
+      // validateFields() solo devuelve campos montados — de ahí el 400 anterior.
+      const allValues = form.getFieldsValue(true) as DemoPayload;
+      demoMut.mutate(allValues);
     } catch { /* antd handles */ }
   };
 
