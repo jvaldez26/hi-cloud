@@ -79,6 +79,7 @@ function Asientos() {
   const contabilizarMut = useMutation({
     mutationFn: contabilidadApi.contabilizar,
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['asientos'] }); message.success('Asiento contabilizado'); },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al contabilizar'),
   });
 
   const estadoColor: Record<string, string> = { borrador: 'default', contabilizado: 'green', anulado: 'red' };
@@ -241,10 +242,12 @@ function Asientos() {
 // ── Estados Financieros ────────────────────────────────────────────────────────
 function EstadosFinancieros() {
   const { token } = theme.useToken();
-  const [hasta, setHasta] = useState(dayjs().format('YYYY-MM-DD'));
+  const [hasta,  setHasta]  = useState(dayjs().format('YYYY-MM-DD'));
+  const [rDesde, setRDesde] = useState(dayjs().startOf('year').format('YYYY-MM-DD'));
+  const [rHasta, setRHasta] = useState(dayjs().format('YYYY-MM-DD'));
 
-  const { data: balance }   = useQuery({ queryKey: ['balance', hasta],   queryFn: () => contabilidadApi.balanceGeneral(hasta) });
-  const { data: resultados } = useQuery({ queryKey: ['resultados'],        queryFn: () => contabilidadApi.estadoResultados() });
+  const { data: balance }    = useQuery({ queryKey: ['balance', hasta],              queryFn: () => contabilidadApi.balanceGeneral(hasta) });
+  const { data: resultados } = useQuery({ queryKey: ['resultados', rDesde, rHasta], queryFn: () => contabilidadApi.estadoResultados(rDesde, rHasta) });
 
   const chartData = resultados ? [
     { name: 'Ingresos', value: resultados.ingresos?.total ?? 0, fill: '#52c41a' },
@@ -311,7 +314,14 @@ function EstadosFinancieros() {
         </Card>
       </Col>
       <Col xs={24} lg={10}>
-        <Card title="Estado de Resultados">
+        <Card title="Estado de Resultados"
+          extra={
+            <Space size={4}>
+              <Input type="date" value={rDesde} onChange={e => setRDesde(e.target.value)} style={{ width: 130 }} />
+              <span>→</span>
+              <Input type="date" value={rHasta} onChange={e => setRHasta(e.target.value)} style={{ width: 130 }} />
+            </Space>
+          }>
           {resultados && (
             <>
               <Row gutter={[8, 8]}>
@@ -350,6 +360,137 @@ function EstadosFinancieros() {
   );
 }
 
+// ── Balance de Comprobación ────────────────────────────────────────────────────
+function BalanceComprobacion() {
+  const [desde, setDesde] = useState(dayjs().startOf('year').format('YYYY-MM-DD'));
+  const [hasta, setHasta] = useState(dayjs().format('YYYY-MM-DD'));
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['balance-comp', desde, hasta],
+    queryFn:  () => contabilidadApi.balanceComprobacion(desde, hasta),
+  });
+
+  const totalDebe  = data?.totales?.debe  ?? 0;
+  const totalHaber = data?.totales?.haber ?? 0;
+  const cuadra = Math.abs(totalDebe - totalHaber) < 0.01;
+
+  const cols = [
+    { title: 'Código',  dataIndex: 'codigo',     width: 120 },
+    { title: 'Nombre',  dataIndex: 'nombre',      ellipsis: true,
+      render: (v: string, r: any) => <span style={{ paddingLeft: (r.nivel - 1) * 12 }}>{v}</span> },
+    { title: 'Tipo',    dataIndex: 'tipo',         width: 100,
+      render: (v: string) => <Tag color={tipoColor[v] ?? 'default'} style={{ textTransform: 'capitalize' }}>{v}</Tag> },
+    { title: 'Debe',    dataIndex: 'totalDebe',    width: 130, align: 'right' as const,
+      render: (v: number) => v > 0 ? fmt.money(v) : '' },
+    { title: 'Haber',   dataIndex: 'totalHaber',   width: 130, align: 'right' as const,
+      render: (v: number) => v > 0 ? fmt.money(v) : '' },
+    { title: 'Saldo',   dataIndex: 'saldo',        width: 130, align: 'right' as const,
+      render: (v: number) => <span style={{ color: v < 0 ? '#ff4d4f' : undefined, fontWeight: 500 }}>{fmt.money(v)}</span> },
+  ];
+
+  return (
+    <>
+      <Row justify="space-between" align="middle" style={{ marginBottom: 12 }}>
+        <Space size={4}>
+          <Input type="date" value={desde} onChange={e => setDesde(e.target.value)} style={{ width: 145 }} />
+          <span>→</span>
+          <Input type="date" value={hasta} onChange={e => setHasta(e.target.value)} style={{ width: 145 }} />
+        </Space>
+        <Space size={4}>
+          {data && (
+            <>
+              <Tag>Debe: {fmt.money(totalDebe)}</Tag>
+              <Tag color={cuadra ? 'green' : 'red'}>{cuadra ? '✓ Cuadra' : '✗ No cuadra'}</Tag>
+              <Tag>Haber: {fmt.money(totalHaber)}</Tag>
+            </>
+          )}
+          <Button icon={<FileExcelOutlined />} onClick={() => {
+            const filas = (data?.cuentas ?? []).map((c: any) => ({
+              'Código': c.codigo, 'Nombre': c.nombre, 'Tipo': c.tipo,
+              'Debe': Number(c.totalDebe ?? 0), 'Haber': Number(c.totalHaber ?? 0), 'Saldo': Number(c.saldo ?? 0),
+            }));
+            exportarExcel(filas, `BalanceComprobacion-${hasta}`);
+            message.success(`${filas.length} cuentas exportadas`);
+          }}>Excel</Button>
+        </Space>
+      </Row>
+      <Table columns={cols} dataSource={data?.cuentas ?? []} rowKey="codigo"
+        loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }}
+        pagination={{ pageSize: 50, showSizeChanger: false }}
+        summary={() => data ? (
+          <Table.Summary.Row>
+            <Table.Summary.Cell index={0} colSpan={3}><Text strong>TOTALES</Text></Table.Summary.Cell>
+            <Table.Summary.Cell index={3} align="right"><Text strong>{fmt.money(totalDebe)}</Text></Table.Summary.Cell>
+            <Table.Summary.Cell index={4} align="right"><Text strong>{fmt.money(totalHaber)}</Text></Table.Summary.Cell>
+            <Table.Summary.Cell index={5} />
+          </Table.Summary.Row>
+        ) : undefined} />
+    </>
+  );
+}
+
+// ── Libro Mayor ────────────────────────────────────────────────────────────────
+function LibroMayor() {
+  const [cuentaId, setCuentaId] = useState<number | null>(null);
+  const [desde, setDesde] = useState(dayjs().startOf('year').format('YYYY-MM-DD'));
+  const [hasta, setHasta] = useState(dayjs().format('YYYY-MM-DD'));
+
+  const { data: cuentas } = useQuery({ queryKey: ['cuentas-sel'], queryFn: () => contabilidadApi.cuentas(true) });
+  const { data: mayor, isLoading } = useQuery({
+    queryKey: ['libro-mayor', cuentaId, desde, hasta],
+    queryFn:  () => contabilidadApi.libroMayor(cuentaId!, desde, hasta),
+    enabled:  !!cuentaId,
+  });
+
+  const cols = [
+    { title: 'Descripción', dataIndex: 'descripcion', ellipsis: true },
+    { title: 'Debe',  dataIndex: 'debe',  width: 130, align: 'right' as const,
+      render: (v: number) => v > 0 ? fmt.money(v) : '' },
+    { title: 'Haber', dataIndex: 'haber', width: 130, align: 'right' as const,
+      render: (v: number) => v > 0 ? fmt.money(v) : '' },
+    { title: 'Saldo', dataIndex: 'saldo', width: 140, align: 'right' as const,
+      render: (v: number) => <span style={{ color: v >= 0 ? '#52c41a' : '#ff4d4f', fontWeight: 600 }}>{fmt.money(v)}</span> },
+  ];
+
+  return (
+    <>
+      <Row gutter={[12, 12]} align="middle" style={{ marginBottom: 12 }}>
+        <Col xs={24} sm={10}>
+          <Select style={{ width: '100%' }} showSearch allowClear placeholder="Seleccionar cuenta..."
+            filterOption={(i, o) => String(o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
+            options={cuentas?.map((c: any) => ({ value: c.id, label: `${c.codigo} — ${c.nombre}` }))}
+            onChange={(v) => setCuentaId(v ?? null)} />
+        </Col>
+        <Col>
+          <Input type="date" value={desde} onChange={e => setDesde(e.target.value)} style={{ width: 145 }} />
+        </Col>
+        <Col><Text type="secondary">→</Text></Col>
+        <Col>
+          <Input type="date" value={hasta} onChange={e => setHasta(e.target.value)} style={{ width: 145 }} />
+        </Col>
+      </Row>
+
+      {mayor && (
+        <Row gutter={[16, 8]} style={{ marginBottom: 12 }}>
+          <Col span={10}><Statistic title="Cuenta" value={`${mayor.cuenta?.codigo} — ${mayor.cuenta?.nombre}`} valueStyle={{ fontSize: 13 }} /></Col>
+          <Col span={6}><Statistic title="Tipo" value={(mayor.cuenta?.tipo ?? '').toUpperCase()} /></Col>
+          <Col span={8}>
+            <Statistic title="Saldo Final" value={mayor.saldoFinal ?? 0} formatter={v => fmt.money(Number(v))}
+              valueStyle={{ color: (mayor.saldoFinal ?? 0) >= 0 ? '#52c41a' : '#ff4d4f' }} />
+          </Col>
+        </Row>
+      )}
+
+      <Table columns={cols} dataSource={mayor?.movimientos ?? []} rowKey={(_, i) => String(i)}
+        loading={isLoading} size="small"
+        scroll={{ x: 'max-content' }}
+        pagination={{ pageSize: 20, showSizeChanger: false }}
+        locale={{ emptyText: cuentaId ? 'Sin movimientos en el período' : 'Selecciona una cuenta para ver su libro mayor' }} />
+    </>
+  );
+}
+
 export default function ContabilidadPage() {
   const { bloqueado, config, plan } = usePlanGuard();
   if (bloqueado && config) return <ModuloBloqueado modulo="Contabilidad General" planMinimo={config.planMinimo} planActual={plan} />;
@@ -359,9 +500,11 @@ export default function ContabilidadPage() {
       <Title level={4} style={{ marginBottom: 16 }}>Contabilidad General</Title>
       <Card>
         <Tabs defaultActiveKey="estados" items={[
-          { key: 'estados',  label: '📊 Estados Financieros', children: <EstadosFinancieros /> },
-          { key: 'asientos', label: '📋 Asientos Contables',  children: <Asientos /> },
-          { key: 'cuentas',  label: '📒 Plan de Cuentas',     children: <PlanCuentas /> },
+          { key: 'estados',      label: '📊 Estados Financieros',    children: <EstadosFinancieros /> },
+          { key: 'comprobacion', label: '⚖️ Balance Comprobación',  children: <BalanceComprobacion /> },
+          { key: 'mayor',        label: '📓 Libro Mayor',             children: <LibroMayor /> },
+          { key: 'asientos',     label: '📋 Asientos Contables',      children: <Asientos /> },
+          { key: 'cuentas',      label: '📒 Plan de Cuentas',         children: <PlanCuentas /> },
         ]} />
       </Card>
     </div>

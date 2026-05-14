@@ -46,16 +46,19 @@ export class AsientosAutomaticosService {
   // Helpers privados
   // ──────────────────────────────────────────────────────────────────
 
-  private async getCuenta(codigo: string): Promise<CuentaContable | null> {
-    return this.cuentaRepository.findOne({ where: { codigo, isActive: true } });
+  private async getCuenta(codigo: string, empresaId?: number): Promise<CuentaContable | null> {
+    const where: any = { codigo, isActive: true };
+    if (empresaId) where.empresaId = empresaId;
+    return this.cuentaRepository.findOne({ where });
   }
 
-  private async generarNumero(): Promise<string> {
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, '0');
-    const count = await this.asientoRepository.count();
-    return `AST-${y}${m}-${String(count + 1).padStart(4, '0')}`;
+  private async generarNumero(empresaId?: number): Promise<string> {
+    const qb = this.asientoRepository.createQueryBuilder('a')
+      .select(`MAX(CASE WHEN a.numero ~ '^ASI-[0-9]+$' THEN CAST(SUBSTRING(a.numero FROM 5) AS INTEGER) ELSE 100 END)`, 'maxNum')
+      .where('a.isActive = :active', { active: true });
+    if (empresaId) qb.andWhere('a.empresaId = :eid', { eid: empresaId });
+    const res = await qb.getRawOne<{ maxNum: number | null }>();
+    return `ASI-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
   }
 
   private async crearAsientoContabilizado(params: {
@@ -69,7 +72,7 @@ export class AsientosAutomaticosService {
     const lineasResueltas: { cuenta: CuentaContable; descripcion: string; debe: number; haber: number }[] = [];
 
     for (const l of params.lineas) {
-      const cuenta = await this.getCuenta(l.codigo);
+      const cuenta = await this.getCuenta(l.codigo, this.eid);
       if (!cuenta) {
         this.logger.warn(`Cuenta ${l.codigo} no encontrada — asiento omitido`);
         return null;
@@ -80,7 +83,7 @@ export class AsientosAutomaticosService {
     const totalDebe  = lineasResueltas.reduce((s, l) => s + l.debe,  0);
     const totalHaber = lineasResueltas.reduce((s, l) => s + l.haber, 0);
 
-    const numero  = await this.generarNumero();
+    const numero  = await this.generarNumero(this.eid);
     const asiento = await this.asientoRepository.save(
       this.asientoRepository.create({
         ...(this.eid ? { empresaId: this.eid } : {}),

@@ -230,12 +230,13 @@ export class ContabilidadService implements OnModuleInit {
   // Asientos — CRUD
   // ──────────────────────────────────────────────────────────────────
 
-  private async generarNumero(): Promise<string> {
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, '0');
-    const count = await this.asientoRepository.count();
-    return `AST-${y}${m}-${String(count + 1).padStart(4, '0')}`;
+  private async generarNumero(empresaId?: number): Promise<string> {
+    const qb = this.asientoRepository.createQueryBuilder('a')
+      .select(`MAX(CASE WHEN a.numero ~ '^ASI-[0-9]+$' THEN CAST(SUBSTRING(a.numero FROM 5) AS INTEGER) ELSE 100 END)`, 'maxNum')
+      .where('a.isActive = :active', { active: true });
+    if (empresaId) qb.andWhere('a.empresaId = :eid', { eid: empresaId });
+    const res = await qb.getRawOne<{ maxNum: number | null }>();
+    return `ASI-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
   }
 
   async createAsiento(dto: CreateAsientoDto, userId: number) {
@@ -258,7 +259,7 @@ export class ContabilidadService implements OnModuleInit {
       }
     }
 
-    const numero  = await this.generarNumero();
+    const numero  = await this.generarNumero(this.eid);
     const asiento = this.asientoRepository.create({
       numero,
       fecha:         new Date(dto.fecha),
@@ -287,6 +288,8 @@ export class ContabilidadService implements OnModuleInit {
       .createQueryBuilder('a')
       .where('a.isActive = :active', { active: true });
 
+    const eid = this.eid;
+    if (eid) qb.andWhere('a.empresaId = :eid', { eid });
     if (fechaDesde) qb.andWhere('a.fecha >= :desde', { desde: new Date(fechaDesde) });
     if (fechaHasta) qb.andWhere('a.fecha <= :hasta', { hasta: new Date(fechaHasta) });
     if (tipoOrigen) qb.andWhere('a.tipoOrigen = :tipo', { tipo: tipoOrigen });
