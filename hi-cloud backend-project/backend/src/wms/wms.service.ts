@@ -25,8 +25,12 @@ export class WmsService {
   // ─────────────────────────────────────────────────────────────────────────
   private async nextNumero(): Promise<string> {
     const empresaId = this.tenantService.getEmpresaId();
-    const total = await this.ordenRepo.count({ where: { empresaId } });
-    return `OP-${new Date().getFullYear()}-${String(total + 1).padStart(5, '0')}`;
+    const res = await this.ordenRepo
+      .createQueryBuilder('o')
+      .select(`MAX(CASE WHEN o.numero ~ '^OP-[0-9]+$' THEN CAST(SUBSTRING(o.numero FROM 4) AS INTEGER) ELSE 100 END)`, 'maxNum')
+      .where('o.empresaId = :eid', { eid: empresaId })
+      .getRawOne<{ maxNum: number | null }>();
+    return `OP-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
   }
 
   // ─────────────────────────────────────────────────────────────────────────

@@ -192,16 +192,14 @@ export class PreFacturaService {
       throw new BadRequestException('Solo se pueden convertir pre-facturas aprobadas');
     }
 
-    // Generar folio de factura (MAX + 1)
-    const d   = new Date();
-    const pre = `FAC-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}-`;
-    const res = await this.facturaRepo
+    // Generar folio de factura — mismo patrón que facturas.service.ts
+    const fRes = await this.facturaRepo
       .createQueryBuilder('f')
-      .select(`MAX(CAST(SPLIT_PART(f.folio, '-', 3) AS INTEGER))`, 'maxNum')
-      .where('f.folio LIKE :p',       { p: `${pre}%` })
-      .andWhere('f.empresaId = :eid', { eid: empresaId })
+      .select(`MAX(CASE WHEN f.folio ~ '^FAC-[0-9]+$' THEN CAST(SUBSTRING(f.folio FROM 5) AS INTEGER) ELSE 100 END)`, 'maxNum')
+      .where('f.empresaId = :eid', { eid: empresaId })
+      .andWhere('f.isActive = :a', { a: true })
       .getRawOne<{ maxNum: number | null }>();
-    const folio = `${pre}${String((res?.maxNum ?? 0) + 1).padStart(4, '0')}`;
+    const folio = `FAC-${Math.max(101, (fRes?.maxNum ?? 100) + 1)}`;
 
     const factura = this.facturaRepo.create({
       empresaId,

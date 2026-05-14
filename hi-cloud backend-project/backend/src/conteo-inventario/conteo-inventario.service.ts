@@ -32,15 +32,13 @@ export class ConteoInventarioService {
 
   private async generarNumero(): Promise<string> {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const d   = new Date();
-    const pre = `CNT-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}-`;
     const res = await this.conteoRepo
       .createQueryBuilder('c')
-      .select(`MAX(CAST(SPLIT_PART(c.numero, '-', 3) AS INTEGER))`, 'maxNum')
-      .where('c.numero LIKE :p',       { p: `${pre}%` })
-      .andWhere('c.empresaId = :eid', { eid: empresaId })
+      .select(`MAX(CASE WHEN c.numero ~ '^CNT-[0-9]+$' THEN CAST(SUBSTRING(c.numero FROM 5) AS INTEGER) ELSE 100 END)`, 'maxNum')
+      .where('c.empresaId = :eid', { eid: empresaId })
+      .andWhere('c.isActive = :a', { a: true })
       .getRawOne<{ maxNum: number | null }>();
-    return `${pre}${String((res?.maxNum ?? 0) + 1).padStart(4, '0')}`;
+    return `CNT-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
   }
 
   async crear(dto: CreateConteoDto, usuarioId: number) {

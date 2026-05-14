@@ -22,8 +22,12 @@ export class PlaneacionDemandaService {
   // ── Numeración ──────────────────────────────────────────────────────────────
   private async nextNumero(): Promise<string> {
     const empresaId = this.tenantService.getEmpresaId();
-    const total = await this.planRepo.count({ where: { empresaId } });
-    return `PD-${new Date().getFullYear()}-${String(total + 1).padStart(3, '0')}`;
+    const res = await this.planRepo
+      .createQueryBuilder('p')
+      .select(`MAX(CASE WHEN p.numero ~ '^PD-[0-9]+$' THEN CAST(SUBSTRING(p.numero FROM 4) AS INTEGER) ELSE 100 END)`, 'maxNum')
+      .where('p.empresaId = :eid', { eid: empresaId })
+      .getRawOne<{ maxNum: number | null }>();
+    return `PD-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
   }
 
   // ── Análisis estadístico mensual desde facturas ────────────────────────────
