@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Form, Input, Button, Typography, Alert, Result } from 'antd';
+import { Form, Input, Button, Typography, Alert, Result, message } from 'antd';
 import { LockOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -17,6 +17,7 @@ export default function ResetPasswordPage() {
     mutationFn: (password: string) =>
       api.post(`/auth/reset-password/${token}`, { password }).then(r => r.data?.data ?? r.data),
     onSuccess: () => setDone(true),
+    onError: (e: any) => message.error(e?.response?.data?.errors?.[0] ?? e?.response?.data?.message ?? e?.message ?? 'Error al restablecer la contraseña'),
   });
 
   return (

@@ -49,6 +49,7 @@ export default function DemoRequestsPage() {
       setDetail(null);
       message.success('Solicitud actualizada');
     },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? e?.message ?? 'Error al actualizar la solicitud'),
   });
 
   const cols = [

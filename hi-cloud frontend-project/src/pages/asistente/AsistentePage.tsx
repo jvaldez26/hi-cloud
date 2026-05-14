@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   Card, Input, Button, Typography, Space, Spin, Tag, Divider, Alert,
-  theme, Avatar,
+  theme, Avatar, message,
 } from 'antd';
 import { SendOutlined, RobotOutlined, UserOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -87,6 +87,7 @@ export default function AsistentePage() {
         ts: Date.now(),
       }]);
     },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? e?.message ?? 'Error al procesar tu mensaje. Intenta de nuevo.'),
   });
 
   const { mutate: sendMsg, isPending: chatLoading } = useMutation({
@@ -103,6 +104,7 @@ export default function AsistentePage() {
       ]);
       setInput('');
     },
+    onError: () => message.error('Error al procesar tu mensaje. Intenta de nuevo.'),
   });
 
   const handleSend = () => {

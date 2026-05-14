@@ -37,11 +37,13 @@ export default function SuperAdminPage() {
     mutationFn: ({ id, plan, meses, notas }: any) =>
       suscripcionesApi.activar(id, plan, meses, notas),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['todas-suscripciones'] }); setOpenActivar(null); message.success('Plan actualizado'); },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? e?.message ?? 'Error al activar el plan'),
   });
 
   const suspenderMut = useMutation({
     mutationFn: suscripcionesApi.suspender,
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['todas-suscripciones'] }); message.success('Suscripción suspendida'); },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? e?.message ?? 'Error al suspender el plan'),
   });
 
   const planColor = (plan: string) => PLAN_CONFIG[plan]?.color ?? 'default';

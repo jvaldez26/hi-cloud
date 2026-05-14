@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Modal, Form, Input, Select, Checkbox, Button, Steps,
-         Result, Typography, Row, Col, Tag } from 'antd';
+         Result, Typography, Row, Col, Tag, message } from 'antd';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMutation } from '@tanstack/react-query';
 import { demoApi, type DemoPayload } from '../../api/demo.api';
@@ -29,6 +29,7 @@ export default function DemoModal({ open, onClose }: Props) {
   const demoMut = useMutation({
     mutationFn: demoApi.solicitar,
     onSuccess: () => setStep(2),
+    onError: (e: any) => message.error(e?.response?.data?.message ?? e?.message ?? 'Error al enviar la solicitud de demo'),
   });
 
   const handleNext = async () => {

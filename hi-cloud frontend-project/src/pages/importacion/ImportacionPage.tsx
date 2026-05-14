@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Card, Row, Col, Typography, Button, Upload, Table, Tag, Alert,
-         Space, Steps, Tabs, Divider } from 'antd';
+         Space, Steps, Tabs, Divider, message } from 'antd';
 import { UploadOutlined, DownloadOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import api from '../../api/client';
 
@@ -30,11 +30,20 @@ const importApi = {
 
 function ImportCard({ tipo, title, campos }: { tipo: TipoImport; title: string; campos: string[] }) {
   const [resultado, setResultado] = useState<ImportResult | null>(null);
+  const qc = useQueryClient();
 
   const importMut = useMutation({
     mutationFn: (file: File) => importApi.importar(tipo, file),
-    onSuccess: (data) => setResultado(data),
-    onError: () => setResultado(null),
+    onSuccess: (data) => {
+      setResultado(data);
+      qc.invalidateQueries({ queryKey: [tipo] });
+      qc.invalidateQueries({ queryKey: [`${tipo}-sel`] });
+      if (data.exitosos > 0) message.success(`${data.exitosos} registros importados correctamente`);
+    },
+    onError: (e: any) => {
+      setResultado(null);
+      message.error(e?.response?.data?.message ?? e?.message ?? 'Error durante la importación');
+    },
   });
 
   const cols = [

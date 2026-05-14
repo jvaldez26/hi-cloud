@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Form, Input, Button, Typography, Alert, Result } from 'antd';
+import { Form, Input, Button, Typography, Alert, Result, message } from 'antd';
 import { MailOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -15,6 +15,7 @@ export default function ForgotPasswordPage() {
     mutationFn: (email: string) =>
       api.post('/auth/forgot-password', { email }).then(r => r.data?.data ?? r.data),
     onSuccess: () => setSent(true),
+    onError: (e: any) => message.error(e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? e?.message ?? 'Error al enviar el correo'),
   });
 
   return (
