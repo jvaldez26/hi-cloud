@@ -177,6 +177,8 @@ export class ConfiguracionService implements OnModuleInit {
       'sitioWeb', 'logo', 'favicon', 'sector', 'regimenFiscal', 'tipoSociedad',
       'representanteLegal', 'cedulaRepresentante', 'fechaConstitucion',
       'actividadEconomica', 'moneda', 'zonaHoraria',
+      // campos de crédito (agregados en versiones posteriores)
+      'diasCreditoDefault', 'limiteCreditoDefault', 'creditoHabilitado',
     ];
 
     const updateData: Partial<Empresa> = {};
