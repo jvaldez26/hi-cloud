@@ -232,11 +232,13 @@ export class ServiciosService {
   }
 
   async getResumen() {
+    const empresaId = this.tenantService.getEmpresaId();
     const rows = await this.ordenRepo
       .createQueryBuilder('o')
       .select('o.estado', 'estado')
       .addSelect('COUNT(o.id)', 'cantidad')
       .where('o.isActive = true')
+      .andWhere('o.empresaId = :eid', { eid: empresaId })
       .groupBy('o.estado')
       .getRawMany();
 
@@ -245,6 +247,7 @@ export class ServiciosService {
       .where('o.isActive = true AND o.estado NOT IN (:...excl) AND o."fechaPromesa" < CURRENT_DATE', {
         excl: [EstadoOrden.COBRADO, EstadoOrden.CANCELADO, EstadoOrden.ENTREGADO],
       })
+      .andWhere('o.empresaId = :eid', { eid: empresaId })
       .getCount();
 
     return { porEstado: rows, ordenesVencidas: vencidas };

@@ -447,6 +447,7 @@ export class TesoreriaService {
       .select('m.tipo', 'tipo')
       .addSelect('COALESCE(SUM(m.monto), 0)', 'total')
       .where('m.isActive = true AND DATE(m.fecha) = CURRENT_DATE')
+      .andWhere(this.eid ? 'm.empresaId = :eid' : '1=1', { eid: this.eid })
       .groupBy('m.tipo')
       .getRawMany<{ tipo: string; total: string }>();
 
@@ -478,6 +479,7 @@ export class TesoreriaService {
         desde: new Date(fechaDesde),
         hasta: new Date(fechaHasta),
       })
+      .andWhere(this.eid ? 'm.empresaId = :eid' : '1=1', { eid: this.eid })
       .groupBy('m.origen, m.tipo')
       .getRawMany<{ origen: string; tipo: string; total: string; cantidad: string }>();
 
@@ -499,6 +501,7 @@ export class TesoreriaService {
       .createQueryBuilder('m')
       .select('COALESCE(SUM(CASE WHEN m.tipo IN (\'deposito\',\'transferencia_entrada\',\'nota_credito\',\'interes\') THEN m.monto ELSE -m.monto END), 0)', 'neto')
       .where('m.isActive = true AND m.fecha < :desde', { desde: new Date(fechaDesde) })
+      .andWhere(this.eid ? 'm.empresaId = :eid' : '1=1', { eid: this.eid })
       .getRawOne<{ neto: string }>();
 
     const saldoInicialNum = Number(saldoInicial?.neto ?? 0);
@@ -531,6 +534,7 @@ export class TesoreriaService {
       .where('m.isActive = true')
       .andWhere('EXTRACT(MONTH FROM m.fecha) = :mes', { mes })
       .andWhere('EXTRACT(YEAR FROM m.fecha) = :anio', { anio })
+      .andWhere(this.eid ? 'm.empresaId = :eid' : '1=1', { eid: this.eid })
       .groupBy('EXTRACT(DAY FROM m.fecha)')
       .orderBy('dia', 'ASC')
       .getRawMany<{ dia: number; entradas: string; salidas: string }>();

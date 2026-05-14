@@ -20,7 +20,10 @@ export class ObjetivosService {
   }
 
   async listar(anio?: number, periodo?: PeriodoObjetivo) {
-    const qb = this.objRepo.createQueryBuilder('o').where('o.isActive = true');
+    const eid = this.tenantService.getEmpresaId();
+    const qb = this.objRepo.createQueryBuilder('o')
+      .where('o.isActive = true')
+      .andWhere('o.empresaId = :eid', { eid });
     if (anio)    qb.andWhere('o.anio = :y',    { y: anio });
     if (periodo) qb.andWhere('o.periodo = :p', { p: periodo });
     const objetivos = await qb.orderBy('o.createdAt', 'DESC').getMany();

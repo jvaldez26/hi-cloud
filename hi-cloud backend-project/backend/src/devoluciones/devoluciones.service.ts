@@ -241,12 +241,14 @@ export class DevolucionesService {
   // ─── Resumen ─────────────────────────────────────────────────────────────────
 
   async getResumen() {
+    const empresaId = this.tenantService.getEmpresaId();
     return this.devRepository
       .createQueryBuilder('d')
       .select('d.estado', 'estado')
       .addSelect('COUNT(d.id)', 'cantidad')
       .addSelect('COALESCE(SUM(d.total), 0)', 'montoTotal')
       .where('d.isActive = true')
+      .andWhere('d.empresaId = :eid', { eid: empresaId })
       .groupBy('d.estado')
       .getRawMany();
   }

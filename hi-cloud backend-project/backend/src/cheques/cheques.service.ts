@@ -131,13 +131,14 @@ export class ChequesService {
   async getDashboard() {
     const hoy = new Date();
     hoy.setHours(0, 0, 0, 0);
+    const eid = this.tenantService.getEmpresaId();
 
     const [enCartera, entregados, cobrados, anulados, posfechados] = await Promise.all([
-      this.chequeRepo.count({ where: { isActive: true, estado: EstadoCheque.EN_CARTERA } }),
-      this.chequeRepo.count({ where: { isActive: true, estado: EstadoCheque.ENTREGADO } }),
-      this.chequeRepo.count({ where: { isActive: true, estado: EstadoCheque.COBRADO } }),
-      this.chequeRepo.count({ where: { isActive: true, estado: EstadoCheque.ANULADO } }),
-      this.chequeRepo.count({ where: { isActive: true, estado: EstadoCheque.POSFECHADO } }),
+      this.chequeRepo.count({ where: { isActive: true, estado: EstadoCheque.EN_CARTERA, empresaId: eid } as any }),
+      this.chequeRepo.count({ where: { isActive: true, estado: EstadoCheque.ENTREGADO, empresaId: eid } as any }),
+      this.chequeRepo.count({ where: { isActive: true, estado: EstadoCheque.COBRADO, empresaId: eid } as any }),
+      this.chequeRepo.count({ where: { isActive: true, estado: EstadoCheque.ANULADO, empresaId: eid } as any }),
+      this.chequeRepo.count({ where: { isActive: true, estado: EstadoCheque.POSFECHADO, empresaId: eid } as any }),
     ]);
 
     // Valor total en cartera (emitidos no cobrados)
@@ -146,6 +147,7 @@ export class ChequesService {
       .select('COALESCE(SUM(c.monto), 0)', 'total')
       .where("c.estado IN ('en_cartera','entregado','posfechado')")
       .andWhere('c.isActive = true')
+      .andWhere('c.empresaId = :eid', { eid })
       .getRawOne();
 
     // Cheques posfechados que vencen esta semana
@@ -156,6 +158,7 @@ export class ChequesService {
       .where('c.estado = :e', { e: EstadoCheque.POSFECHADO })
       .andWhere('c.fecha <= :proxima', { proxima: enUnaSemana })
       .andWhere('c.isActive = true')
+      .andWhere('c.empresaId = :eid', { eid })
       .getMany();
 
     return {
@@ -170,6 +173,7 @@ export class ChequesService {
   async getResumenPeriodo(mes: number, anio: number) {
     const desde = new Date(anio, mes - 1, 1);
     const hasta  = new Date(anio, mes, 0, 23, 59, 59);
+    const eid = this.tenantService.getEmpresaId();
 
     return this.chequeRepo
       .createQueryBuilder('c')
@@ -181,6 +185,7 @@ export class ChequesService {
       ])
       .where('c.fecha BETWEEN :d AND :h', { d: desde, h: hasta })
       .andWhere('c.isActive = true')
+      .andWhere('c.empresaId = :eid', { eid })
       .groupBy('c.tipo, c.estado')
       .getRawMany();
   }

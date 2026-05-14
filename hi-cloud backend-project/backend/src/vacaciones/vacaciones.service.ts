@@ -242,12 +242,14 @@ export class VacacionesService {
   async getResumenMes(mes: number, anio: number) {
     const desde = new Date(anio, mes - 1, 1);
     const hasta = new Date(anio, mes, 0);
+    const eid = this.tenantService.getEmpresaId();
 
     const ausencias = await this.ausenciaRepo
       .createQueryBuilder('a')
       .select(['a.tipo', 'COUNT(*) AS cantidad', 'SUM(a.dias) AS dias'])
       .where('a.fecha BETWEEN :d AND :h', { d: desde, h: hasta })
       .andWhere('a.isActive = :ac', { ac: true })
+      .andWhere('a.empresaId = :eid', { eid })
       .groupBy('a.tipo')
       .getRawMany();
 
@@ -257,10 +259,11 @@ export class VacacionesService {
       .where('s.estado = :e', { e: EstadoSolicitud.APROBADA })
       .andWhere('s.fechaInicio <= :h', { h: hasta })
       .andWhere('s.fechaFin >= :d', { d: desde })
+      .andWhere('s.empresaId = :eid', { eid })
       .getMany();
 
     const pendientes = await this.solicitudRepo.count({
-      where: { estado: EstadoSolicitud.PENDIENTE, isActive: true },
+      where: { estado: EstadoSolicitud.PENDIENTE, isActive: true, empresaId: eid } as any,
     });
 
     return {
