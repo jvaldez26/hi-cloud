@@ -61,7 +61,7 @@ export class FacturasService {
 
   async create(dto: CreateFacturaDto, usuario: User) {
     const empresaId = this.tenantService.getEmpresaId();
-    await this.limitesService.verificarLimiteFacturas(empresaId);
+    // La verificación de ingresos se hace en confirmar() cuando el total ya está calculado
     if (dto.clienteId) await this.clientesService.findOne(dto.clienteId);
 
     const detalles: Partial<FacturaDetalle>[] = [];
@@ -335,6 +335,12 @@ export class FacturasService {
     }
 
     if (estado === FacturaEstado.EMITIDA) {
+      // Verificar límite de ingresos ANTES de emitir
+      const aviso = await this.limitesService.verificarLimiteIngresos(
+        factura.empresaId,
+        Number(factura.total),
+      ).catch(err => { throw err; }); // deja pasar ForbiddenException con código 402
+
       const pagoInmediato = this.esPagoInmediato(factura.notas);
 
       const tipoEcfNum = tipoEcfOverride ?? parseInt(
@@ -401,6 +407,9 @@ export class FacturasService {
       const estadoFinal = pagoInmediato ? FacturaEstado.PAGADA : FacturaEstado.EMITIDA;
       await this.facturaRepository.update(id, { estado: estadoFinal });
       this.realtimeService.notify(factura.empresaId, 'factura', 'updated', id);
+
+      // 4b. Actualizar cache de ingresos del mes en suscripción
+      this.limitesService.actualizarCacheIngresos(factura.empresaId).catch(() => null);
 
       // 5. Emitir e-CF
       if (modoSincrono) {

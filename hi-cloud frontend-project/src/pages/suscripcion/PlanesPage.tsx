@@ -1,198 +1,122 @@
 import { useState } from 'react';
-import { Button, Modal, InputNumber, message, Spin } from 'antd';
+import { Button, Modal, message, Progress, Tag, Divider } from 'antd';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Crown, Check, X, Zap, ArrowLeft } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp } from 'lucide-react';
 import { suscripcionesApi } from '../../api/suscripciones.api';
 import { usePlan } from '../../hooks/usePlan';
 import { useAuthStore } from '../../store/auth.store';
 import api from '../../api/client';
 
-// ── Datos base de planes — nombre/precio se SOBREESCRIBE con datos del backend ──
+// ── Planes en USD ─────────────────────────────────────────────────────────────
 
-const PLANES_BASE = [
+const PLANES = [
   {
-    clave:    'trial',
-    nombre:   'Trial',
-    precio:   0,
-    precioPeriodo: '30 días gratis',
-    badge:    null,
-    color:    '#94A3B8',
-    maxUsuarios:    2,
-    maxFacturasMes: 50,
-    maxProductos:   20,
-    maxClientes:    20,
-    soporte:  'Documentación',
-    incluidos: [
-      'Dashboard básico',
-      'Punto de Venta (POS)',
-      'Facturación básica',
-      'Clientes (máx. 20)',
-      'Productos (máx. 20)',
-      'Inventario básico',
-      'Caja Diaria',
-    ],
-    excluidos: [
-      'e-CF Electrónico DGII',
-      'Compras y Proveedores',
-      'Contabilidad',
-      'Recursos Humanos / Nómina',
-      'Multi-sucursal',
-      'Reportes avanzados',
+    clave: 'emprendedor',
+    nombre: 'EMPRENDEDOR',
+    precioMensual: 29,
+    precioAnual: 26.10,      // 29 * 0.90
+    limiteDop: 125_000,
+    usuarios: 1,
+    destacado: false,
+    color: '#374151',
+    features: [
+      'Factura electrónica e-CF DGII gratuita',
+      'Ingresos hasta RD$125,000.00 / MES',
+      '1 Usuario con acceso',
+      'Soporte 24/7 gratis',
     ],
   },
   {
-    clave:    'basico',
-    nombre:   'Básico',
-    precio:   1500,
-    precioPeriodo: '/mes',
-    badge:    null,
-    color:    '#3B82F6',
-    maxUsuarios:    3,
-    maxFacturasMes: 200,
-    maxProductos:   100,
-    maxClientes:    100,
-    soporte:  'Email',
-    incluidos: [
-      'Todo lo del Trial',
-      'e-CF E31 y E32 (DGII)',
-      'Compras básicas',
-      'Proveedores',
-      'Caja Diaria',
-      'Reportes básicos (ventas/compras)',
-      '1 sucursal',
-    ],
-    excluidos: [
-      'Contabilidad General',
-      'CxC / CxP avanzado',
-      'Recursos Humanos / Nómina',
-      'Multi-sucursal',
-      'Reportes DGII avanzados',
+    clave: 'pyme',
+    nombre: 'PYME',
+    precioMensual: 59,
+    precioAnual: 53.10,      // 59 * 0.90
+    limiteDop: 500_000,
+    usuarios: 2,
+    destacado: false,
+    color: '#047857',
+    features: [
+      'Factura electrónica e-CF DGII gratuita',
+      'Ingresos hasta RD$500,000.00 / MES',
+      '2 Usuarios con acceso',
+      'Soporte 24/7 gratis',
     ],
   },
   {
-    clave:    'profesional',
-    nombre:   'Profesional',
-    precio:   3500,
-    precioPeriodo: '/mes',
-    badge:    '⭐ MÁS POPULAR',
-    color:    '#8B5CF6',
-    maxUsuarios:    10,
-    maxFacturasMes: 1000,
-    maxProductos:   500,
-    maxClientes:    500,
-    soporte:  'Email + Chat',
-    incluidos: [
-      'Todo lo del Básico',
-      'Todos los tipos e-CF (E31–E47)',
-      'Contabilidad General',
-      'CxC y CxP',
-      'Reportes DGII (606/607/ITBIS)',
-      'Multi-sucursal (hasta 3)',
-      'Activos Fijos',
-      'Presupuestos',
-      'Período Contable',
-    ],
-    excluidos: [
-      'Recursos Humanos / Nómina',
-      'CRM / Leads',
-      'Proyectos y Servicios',
+    clave: 'pro',
+    nombre: 'PRO',
+    precioMensual: 89,
+    precioAnual: 80.10,      // 89 * 0.90
+    limiteDop: 1_250_000,
+    usuarios: 3,
+    destacado: true,
+    color: '#0d9488',
+    features: [
+      'Factura electrónica e-CF DGII gratuita',
+      'Ingresos hasta RD$1,250,000.00 / MES',
+      '3 Usuarios con acceso',
+      'Soporte 24/7 gratis',
     ],
   },
   {
-    clave:    'empresarial',
-    nombre:   'Empresarial',
-    precio:   7000,
-    precioPeriodo: '/mes',
-    badge:    '💎 MEJOR VALOR',
-    color:    '#F59E0B',
-    maxUsuarios:    25,
-    maxFacturasMes: 5000,
-    maxProductos:   2000,
-    maxClientes:    -1,
-    soporte:  'Email + Chat + Teléfono',
-    incluidos: [
-      'Todo lo del Profesional',
-      'Recursos Humanos completo',
-      'Nómina con TSS e ISR',
-      'Multi-sucursal ilimitadas',
-      'CRM / Leads',
-      'Proyectos y Servicios',
-      'Reportes avanzados con gráficas',
-      'Auditoría completa',
-      'KPI y Analytics',
+    clave: 'plus',
+    nombre: 'PLUS',
+    precioMensual: 129,
+    precioAnual: 116.10,     // 129 * 0.90
+    limiteDop: 6_250_000,
+    usuarios: 8,
+    destacado: false,
+    color: '#374151',
+    features: [
+      'Factura electrónica e-CF DGII gratuita',
+      'Ingresos hasta RD$6,250,000.00 / MES',
+      '8 Usuarios con acceso',
+      'Soporte 24/7 gratis',
     ],
-    excluidos: [
-      'API Access externo',
-      'WhatsApp Business',
-    ],
-  },
-  {
-    clave:    'enterprise',
-    nombre:   'Enterprise',
-    precio:   15000,
-    precioPeriodo: '/mes',
-    badge:    '🚀 TODO INCLUIDO',
-    color:    '#EF4444',
-    maxUsuarios:    -1,
-    maxFacturasMes: -1,
-    maxProductos:   -1,
-    maxClientes:    -1,
-    soporte:  'Dedicado 24/7',
-    incluidos: [
-      'TODOS los módulos sin excepción',
-      'Usuarios ilimitados',
-      'Facturas ilimitadas',
-      'API Access completo',
-      'WhatsApp Business',
-      'Multi-empresa en una cuenta',
-      'Onboarding personalizado',
-      'Capacitación incluida',
-      'SLA 99.9% garantizado',
-    ],
-    excluidos: [],
   },
 ];
 
-const fmt = (n: number) => n === -1 ? 'Ilimitado' : n.toLocaleString('es-DO');
+const fmtDop = (n: number) => `RD$${n.toLocaleString('es-DO')}`;
+const fmtUsd = (n: number) => `US$ ${n.toFixed(2)}`;
 
-/** Jerarquía de planes — debe coincidir con el backend */
-const PLAN_TIER: Record<string, number> = {
-  trial: 0, basico: 1, profesional: 2, empresarial: 3, enterprise: 4,
-};
+// ── Tabla comparativa ─────────────────────────────────────────────────────────
 
-/** true si el plan destino es inferior al plan actual */
-const esDowngrade = (actual: string, destino: string) =>
-  (PLAN_TIER[destino] ?? 0) < (PLAN_TIER[actual] ?? 0);
+const TABLA_COMPARATIVA = [
+  { feature: 'Factura electrónica e-CF',       emprendedor: '✓', pyme: '✓', pro: '✓', plus: '✓' },
+  { feature: 'Ingresos máx/mes',                emprendedor: 'RD$125K', pyme: 'RD$500K', pro: 'RD$1.25M', plus: 'RD$6.25M' },
+  { feature: 'Usuarios incluidos',              emprendedor: '1', pyme: '2', pro: '3', plus: '8' },
+  { feature: 'Cotizaciones',                    emprendedor: '✓', pyme: '✓', pro: '✓', plus: '✓' },
+  { feature: 'Compras y proveedores',           emprendedor: '✓', pyme: '✓', pro: '✓', plus: '✓' },
+  { feature: 'Inventario completo',             emprendedor: '✓', pyme: '✓', pro: '✓', plus: '✓' },
+  { feature: 'Contabilidad General',            emprendedor: '✓', pyme: '✓', pro: '✓', plus: '✓' },
+  { feature: 'CxC / CxP',                      emprendedor: '✓', pyme: '✓', pro: '✓', plus: '✓' },
+  { feature: 'Nómina y RRHH',                   emprendedor: '✓', pyme: '✓', pro: '✓', plus: '✓' },
+  { feature: 'CRM / Proyectos',                 emprendedor: '✓', pyme: '✓', pro: '✓', plus: '✓' },
+  { feature: 'Reportes DGII (606/607)',         emprendedor: '✓', pyme: '✓', pro: '✓', plus: '✓' },
+  { feature: 'Multi-sucursal',                  emprendedor: '✓', pyme: '✓', pro: '✓', plus: '✓' },
+  { feature: 'Soporte 24/7',                    emprendedor: '✓', pyme: '✓', pro: '✓', plus: '✓' },
+  { feature: 'Asistente IA',                    emprendedor: '—', pyme: '—', pro: '—', plus: '✓' },
+];
 
-// ── Componente ────────────────────────────────────────────────────────────────
+// ── Componente principal ──────────────────────────────────────────────────────
 
 export default function PlanesPage() {
-  const navigate  = useNavigate();
-  const qc        = useQueryClient();
+  const navigate = useNavigate();
+  const qc = useQueryClient();
   const { plan: planActual, suscripcion } = usePlan();
   const { empresaActual } = useAuthStore();
 
-  // Cargar precios actualizados desde el backend (refleja cambios del super admin)
-  const { data: planesApi } = useQuery({
-    queryKey: ['planes-catalogo'],
-    queryFn:  () => api.get('/suscripciones/planes').then(r => r.data?.data ?? r.data ?? []),
-    staleTime: 60_000,
-  });
+  const [anual, setAnual]           = useState(false);
+  const [expandirTabla, setExpandir] = useState(false);
+  const [modalPlan, setModalPlan]    = useState<typeof PLANES[0] | null>(null);
 
-  // Fusionar base (UI/logos/features) con precios del backend
-  const PLANES = PLANES_BASE.map(p => {
-    const apiPlan = (planesApi ?? []).find((a: any) => a.clave === p.clave);
-    return {
-      ...p,
-      nombre:        apiPlan?.nombre ?? p.nombre,
-      precio:        apiPlan?.precio ?? p.precio,
-      precioPeriodo: (apiPlan?.precio ?? p.precio) === 0 ? '30 días gratis' : '/mes',
-    };
+  // Limites actuales
+  const { data: limites } = useQuery({
+    queryKey: ['mis-limites', empresaActual],
+    queryFn:  () => api.get('/suscripciones/mis-limites').then(r => r.data?.data ?? r.data),
+    staleTime: 30_000,
   });
-
-  const [modalPlan, setModalPlan] = useState<typeof PLANES_BASE[0] | null>(null);
-  const [meses, setMeses]         = useState(1);
 
   const activarMut = useMutation({
     mutationFn: ({ plan, meses }: { plan: string; meses: number }) =>
@@ -201,289 +125,284 @@ export default function PlanesPage() {
       qc.invalidateQueries({ queryKey: ['mi-plan'] });
       qc.invalidateQueries({ queryKey: ['mis-limites'] });
       setModalPlan(null);
-      message.success('¡Plan actualizado exitosamente!');
+      message.success('¡Plan actualizado! Los cambios aplican de inmediato.');
       navigate('/dashboard');
     },
-    onError: (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error al cambiar plan'),
+    onError: (e: any) => message.error(e?.friendlyMessage ?? 'Error al cambiar plan'),
   });
 
-  const esActual = (clave: string) => planActual === clave;
+  const meses = anual ? 12 : 1;
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)',
-      padding: '32px 24px',
-      fontFamily: 'Inter, sans-serif',
-    }}>
-      {/* Header */}
-      <div style={{ maxWidth: 1300, margin: '0 auto' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 48 }}>
-          <button
-            onClick={() => navigate(-1)}
-            style={{
-              background: '#1E293B', border: '1px solid #334155',
-              borderRadius: 8, padding: '8px 14px', cursor: 'pointer',
-              color: '#94A3B8', display: 'flex', alignItems: 'center', gap: 6, fontSize: 13,
-            }}>
-            <ArrowLeft size={15} /> Volver
-          </button>
-          <div>
-            <h1 style={{ color: '#F8FAFC', fontWeight: 900, fontSize: 28, margin: 0 }}>
-              Planes de HiCloud ERP
-            </h1>
-            <p style={{ color: '#94A3B8', margin: '6px 0 0', fontSize: 14 }}>
-              Elige el plan que mejor se adapte a tu negocio en República Dominicana
-            </p>
+    <div style={{ background: '#f8fafc', minHeight: '100vh', padding: '32px 20px', fontFamily: 'Inter, sans-serif' }}>
+      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+
+        {/* Header */}
+        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+          <h1 style={{ fontSize: 30, fontWeight: 900, color: '#111827', margin: '0 0 10px' }}>
+            Impulsa tu pyme con tu plan de{' '}
+            <span style={{ color: '#0d9488' }}>HiCloud ERP</span>
+            {' '}desde USD $29/mes
+          </h1>
+          <p style={{ color: '#6b7280', fontSize: 15, margin: '0 0 24px' }}>
+            Gestiona tu contabilidad cumpliendo con DGII desde USD $29/mes.
+            Prueba gratis 15 días, sin tarjeta de crédito ni contratos.
+          </p>
+
+          {/* Toggle mensual / anual */}
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 12,
+            background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '8px 16px',
+          }}>
+            <button
+              onClick={() => setAnual(false)}
+              style={{
+                background: !anual ? '#111827' : 'transparent',
+                color: !anual ? '#fff' : '#6b7280',
+                border: 'none', borderRadius: 7, padding: '6px 16px',
+                fontWeight: 600, fontSize: 13, cursor: 'pointer',
+              }}>
+              Paga mensualmente
+            </button>
+            <button
+              onClick={() => setAnual(true)}
+              style={{
+                background: anual ? '#111827' : 'transparent',
+                color: anual ? '#fff' : '#6b7280',
+                border: 'none', borderRadius: 7, padding: '6px 16px',
+                fontWeight: 600, fontSize: 13, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 8,
+              }}>
+              Paga anualmente
+              <span style={{
+                background: '#374151', color: '#fff',
+                fontSize: 11, fontWeight: 800, padding: '2px 7px', borderRadius: 5,
+              }}>10% OFF</span>
+            </button>
           </div>
         </div>
 
-        {/* Plan actual info */}
-        {suscripcion && (
+        {/* Uso actual de ingresos (si hay suscripción activa) */}
+        {limites?.ingresos && limites.ingresos.limite !== -1 && (
           <div style={{
-            background: '#1E293B', border: '1px solid #334155', borderRadius: 12,
-            padding: '16px 24px', marginBottom: 36,
-            display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
+            background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10,
+            padding: '16px 24px', marginBottom: 24,
+            display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap',
           }}>
-            <Crown size={20} color="#F59E0B" />
-            <div>
-              <span style={{ color: '#94A3B8', fontSize: 13 }}>Plan actual: </span>
-              <span style={{ color: '#F8FAFC', fontWeight: 700, fontSize: 15 }}>
-                {suscripcion.info?.nombre ?? planActual.toUpperCase()}
-              </span>
-            </div>
-            {suscripcion.diasRestantes > 0 && (
-              <div style={{
-                background: suscripcion.diasRestantes <= 7 ? '#EF444422' : '#10B98122',
-                border: `1px solid ${suscripcion.diasRestantes <= 7 ? '#EF4444' : '#10B981'}44`,
-                borderRadius: 6, padding: '2px 10px',
-                color: suscripcion.diasRestantes <= 7 ? '#EF4444' : '#10B981',
-                fontSize: 12, fontWeight: 600,
-              }}>
-                {suscripcion.diasRestantes} días restantes
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 6 }}>
+                Ingresos del mes actual — Plan{' '}
+                <strong style={{ color: '#111827', textTransform: 'capitalize' }}>
+                  {limites.ingresos.planNombre}
+                </strong>
+                {limites.ingresos.enPeriodoGracia && (
+                  <Tag color="orange" style={{ marginLeft: 8, fontSize: 11 }}>Período de gracia</Tag>
+                )}
               </div>
-            )}
+              <Progress
+                percent={limites.ingresos.porcentaje}
+                strokeColor={
+                  limites.ingresos.alerta95 ? '#ef4444' :
+                  limites.ingresos.alerta80 ? '#f59e0b' : '#0d9488'
+                }
+                trailColor="#e5e7eb"
+                showInfo={false}
+                style={{ marginBottom: 4 }}
+              />
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#6b7280' }}>
+                <span>
+                  {fmtDop(limites.ingresos.ingresosMes)} facturado
+                  {limites.ingresos.alerta80 && (
+                    <span style={{ color: limites.ingresos.alerta95 ? '#ef4444' : '#f59e0b', marginLeft: 8, fontWeight: 600 }}>
+                      {limites.ingresos.alerta95 ? '¡Casi al límite!' : 'Cerca del límite'}
+                    </span>
+                  )}
+                </span>
+                <span>{fmtDop(limites.ingresos.limite)} límite</span>
+              </div>
+            </div>
           </div>
         )}
 
-        {/* Grid de planes */}
+        {/* Cards de planes */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-          gap: 20,
-          alignItems: 'start',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: 16,
+          marginBottom: 32,
         }}>
           {PLANES.map(plan => {
-            const actual    = esActual(plan.clave);
-            const inferior  = !!planActual && esDowngrade(planActual, plan.clave);
-            const color     = plan.color;
+            const esActual  = planActual === plan.clave;
+            const precio    = anual ? plan.precioAnual : plan.precioMensual;
 
             return (
               <div key={plan.clave} style={{
-                background: actual ? `${color}0A` : inferior ? '#141A26' : '#1E293B',
-                border: `2px solid ${actual ? color : inferior ? '#1E293B' : '#334155'}`,
-                borderRadius: 16,
+                background: '#fff',
+                border: plan.destacado ? `2px solid ${plan.color}` : '2px solid #e5e7eb',
+                borderRadius: 12,
                 overflow: 'hidden',
-                transition: 'all .2s',
-                position: 'relative',
-                opacity: inferior ? 0.55 : 1,
+                boxShadow: plan.destacado ? `0 0 0 4px ${plan.color}22` : 'none',
+                display: 'flex', flexDirection: 'column',
               }}>
-                {/* Badge */}
-                {plan.badge && (
+                {/* Nombre del plan */}
+                <div style={{
+                  background: plan.destacado ? plan.color : '#fff',
+                  padding: '16px 20px',
+                  textAlign: 'center',
+                }}>
                   <div style={{
-                    background: color, color: '#fff',
-                    fontSize: 11, fontWeight: 800, letterSpacing: '0.05em',
-                    textAlign: 'center', padding: '6px 0',
+                    fontSize: 16, fontWeight: 800, letterSpacing: '0.04em',
+                    color: plan.destacado ? '#fff' : '#374151',
                   }}>
-                    {plan.badge}
+                    {plan.nombre}
                   </div>
-                )}
+                </div>
 
-                {/* Plan actual badge */}
-                {actual && (
-                  <div style={{
-                    background: `${color}33`, color,
-                    fontSize: 11, fontWeight: 800, letterSpacing: '0.05em',
-                    textAlign: 'center', padding: '6px 0',
-                  }}>
-                    ✓ PLAN ACTUAL
-                  </div>
-                )}
-
-                <div style={{ padding: '24px 22px' }}>
-                  {/* Nombre y precio */}
-                  <div style={{ marginBottom: 20 }}>
-                    <div style={{
-                      width: 40, height: 40, borderRadius: 10,
-                      background: `${color}22`, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      marginBottom: 12,
-                    }}>
-                      <Zap size={20} color={color} />
+                <div style={{ padding: '20px 20px 24px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+                  {/* Precio */}
+                  <div style={{ textAlign: 'center', marginBottom: 20 }}>
+                    <div style={{ fontSize: 28, fontWeight: 900, color: '#111827' }}>
+                      {fmtUsd(precio)}
                     </div>
-                    <h3 style={{ color: '#F8FAFC', fontWeight: 800, fontSize: 18, margin: '0 0 8px' }}>
-                      {plan.nombre}
-                    </h3>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                      <span style={{ color, fontWeight: 900, fontSize: 32 }}>
-                        {plan.precio === 0 ? 'Gratis' : `RD$${plan.precio.toLocaleString('es-DO')}`}
-                      </span>
-                      {plan.precio > 0 && (
-                        <span style={{ color: '#64748B', fontSize: 14 }}>{plan.precioPeriodo}</span>
-                      )}
-                    </div>
-                    {plan.precio === 0 && (
-                      <span style={{ color: '#64748B', fontSize: 12 }}>30 días de prueba</span>
-                    )}
-                  </div>
-
-                  {/* Límites */}
-                  <div style={{
-                    background: '#0F172A', borderRadius: 10, padding: '12px 14px', marginBottom: 20,
-                  }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                      {[
-                        { label: 'Usuarios', value: fmt(plan.maxUsuarios) },
-                        { label: 'Facturas/mes', value: fmt(plan.maxFacturasMes) },
-                        { label: 'Productos', value: fmt(plan.maxProductos) },
-                        { label: 'Clientes', value: fmt(plan.maxClientes) },
-                      ].map(l => (
-                        <div key={l.label}>
-                          <div style={{ color: '#64748B', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                            {l.label}
-                          </div>
-                          <div style={{ color: color === '#94A3B8' ? '#94A3B8' : color, fontWeight: 700, fontSize: 13 }}>
-                            {l.value}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div style={{ borderTop: '1px solid #1E293B', marginTop: 10, paddingTop: 10 }}>
-                      <span style={{ color: '#64748B', fontSize: 10, fontWeight: 600, textTransform: 'uppercase' }}>
-                        Soporte
-                      </span>
-                      <div style={{ color: '#94A3B8', fontSize: 12, marginTop: 2 }}>{plan.soporte}</div>
+                    <div style={{ fontSize: 13, color: '#9ca3af' }}>
+                      {anual ? 'Mensual (pago anual)' : 'Mensual'}
                     </div>
                   </div>
 
-                  {/* Módulos incluidos */}
-                  <div style={{ marginBottom: 16 }}>
-                    <p style={{ color: '#64748B', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 8px' }}>
-                      Incluye
-                    </p>
-                    {plan.incluidos.map(m => (
-                      <div key={m} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
-                        <Check size={14} color="#10B981" style={{ flexShrink: 0, marginTop: 2 }} />
-                        <span style={{ color: '#CBD5E1', fontSize: 13 }}>{m}</span>
-                      </div>
-                    ))}
-                    {plan.excluidos.map(m => (
-                      <div key={m} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
-                        <X size={14} color="#475569" style={{ flexShrink: 0, marginTop: 2 }} />
-                        <span style={{ color: '#475569', fontSize: 13 }}>{m}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Botón */}
+                  {/* Botón CTA */}
                   <Button
-                    type={actual ? 'default' : 'primary'}
+                    type={plan.destacado ? 'primary' : 'default'}
                     block
-                    disabled={actual || plan.clave === 'trial' || inferior}
-                    onClick={() => { setModalPlan(plan); setMeses(1); }}
-                    style={actual ? {
-                      background: '#1E293B', borderColor: color, color,
-                      fontWeight: 700, height: 42,
-                    } : inferior ? {
-                      background: '#0F172A', borderColor: '#1E293B', color: '#334155',
-                      height: 42, cursor: 'not-allowed',
-                    } : plan.clave === 'trial' ? {
-                      background: '#1E293B', borderColor: '#334155', color: '#475569',
-                      height: 42,
-                    } : {
-                      background: color, border: 'none',
-                      fontWeight: 700, height: 42,
-                    }}>
-                    {actual
-                      ? '✓ Plan actual'
-                      : inferior
-                        ? 'Solo el administrador puede bajar de plan'
-                        : plan.clave === 'trial'
-                          ? 'Solo al registrarse'
-                          : `Actualizar a ${plan.nombre}`}
+                    size="large"
+                    disabled={esActual}
+                    onClick={() => setModalPlan(plan)}
+                    style={
+                      esActual ? {
+                        background: '#f3f4f6', border: '1px solid #d1d5db',
+                        color: '#9ca3af', cursor: 'default',
+                      } : plan.destacado ? {
+                        background: plan.color, borderColor: plan.color,
+                        fontWeight: 700, height: 44,
+                      } : {
+                        borderColor: '#d1d5db', color: '#374151',
+                        fontWeight: 600, height: 44,
+                      }
+                    }
+                  >
+                    {esActual ? '✓ Plan actual' : 'Prueba gratis'}
                   </Button>
 
-                  {/* Nota de downgrade */}
-                  {inferior && (
-                    <p style={{ color: '#475569', fontSize: 11, textAlign: 'center', margin: '8px 0 0' }}>
-                      Para bajar al plan {plan.nombre}, contacta al administrador de HiCloud.
-                    </p>
-                  )}
+                  <Divider style={{ margin: '16px 0' }} />
+
+                  {/* Features */}
+                  <div style={{ flex: 1 }}>
+                    {plan.features.map(f => (
+                      <div key={f} style={{
+                        display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 10,
+                      }}>
+                        <Check size={16} color="#0d9488" style={{ flexShrink: 0, marginTop: 1 }} />
+                        <span style={{ fontSize: 13, color: '#374151', lineHeight: 1.4 }}>{f}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             );
           })}
         </div>
 
-        {/* Nota al pie */}
-        <div style={{ textAlign: 'center', marginTop: 40, color: '#475569', fontSize: 13 }}>
-          💡 Todos los precios en pesos dominicanos (RD$) · ITBIS incluido · Cancela cuando quieras
-          <br />
-          Para soporte Enterprise, contáctanos: <span style={{ color: '#3B82F6' }}>soporte@hicloud.do</span>
+        {/* Botón compara planes */}
+        <div style={{ textAlign: 'center', marginBottom: 24 }}>
+          <Button
+            size="large"
+            onClick={() => setExpandir(!expandirTabla)}
+            style={{
+              background: '#0d9488', color: '#fff', border: 'none',
+              fontWeight: 700, borderRadius: 8, padding: '0 32px', height: 46,
+            }}
+            icon={expandirTabla ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          >
+            Compara nuestros planes
+          </Button>
         </div>
+
+        {/* Tabla comparativa */}
+        {expandirTabla && (
+          <div style={{
+            background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12,
+            overflow: 'hidden', marginBottom: 32,
+          }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: '#f9fafb' }}>
+                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 13, color: '#6b7280', fontWeight: 600 }}>
+                    Característica
+                  </th>
+                  {PLANES.map(p => (
+                    <th key={p.clave} style={{
+                      padding: '12px 16px', textAlign: 'center', fontSize: 13,
+                      color: p.destacado ? p.color : '#374151', fontWeight: 800,
+                    }}>
+                      {p.nombre}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {TABLA_COMPARATIVA.map((row, i) => (
+                  <tr key={row.feature} style={{ borderTop: '1px solid #f3f4f6', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
+                    <td style={{ padding: '11px 16px', fontSize: 13, color: '#374151' }}>{row.feature}</td>
+                    {['emprendedor', 'pyme', 'pro', 'plus'].map(p => (
+                      <td key={p} style={{
+                        padding: '11px 16px', textAlign: 'center', fontSize: 13,
+                        color: (row as any)[p] === '✓' ? '#0d9488' : (row as any)[p] === '—' ? '#d1d5db' : '#374151',
+                        fontWeight: (row as any)[p] === '✓' ? 700 : 400,
+                      }}>
+                        {(row as any)[p]}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Nota al pie */}
+        <p style={{ textAlign: 'center', color: '#9ca3af', fontSize: 12 }}>
+          Todos los precios en USD · ITBIS no incluido · Cancela cuando quieras · Sin contratos de permanencia
+        </p>
       </div>
 
-      {/* Modal confirmar plan */}
+      {/* Modal confirmar */}
       <Modal
         open={!!modalPlan}
         onCancel={() => setModalPlan(null)}
         onOk={() => modalPlan && activarMut.mutate({ plan: modalPlan.clave, meses })}
         confirmLoading={activarMut.isPending}
-        title={<span style={{ fontSize: 16, fontWeight: 700 }}>Confirmar cambio de plan</span>}
+        title="Confirmar cambio de plan"
         okText="Confirmar y activar"
         cancelText="Cancelar"
         centered
       >
         {modalPlan && (
-          <div style={{ paddingTop: 12 }}>
+          <div style={{ paddingTop: 8 }}>
             <div style={{
-              background: '#F8FAFC', borderRadius: 10, padding: '16px 20px', marginBottom: 20,
+              background: `${modalPlan.color}11`,
               border: `2px solid ${modalPlan.color}44`,
+              borderRadius: 10, padding: '16px', marginBottom: 16, textAlign: 'center',
             }}>
-              <div style={{ fontSize: 22, fontWeight: 900, color: modalPlan.color }}>
-                Plan {modalPlan.nombre}
+              <div style={{ fontSize: 20, fontWeight: 900, color: modalPlan.color }}>{modalPlan.nombre}</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#111827', marginTop: 4 }}>
+                {fmtUsd(anual ? modalPlan.precioAnual : modalPlan.precioMensual)}/mes
+                {anual && <span style={{ color: '#0d9488', fontSize: 12, marginLeft: 8 }}>(pago anual, 10% OFF)</span>}
               </div>
-              <div style={{ fontSize: 15, color: '#374151', marginTop: 4 }}>
-                {modalPlan.precio === 0
-                  ? 'Gratis por 30 días'
-                  : `RD$${modalPlan.precio.toLocaleString('es-DO')}/mes`}
+              <div style={{ color: '#6b7280', fontSize: 13, marginTop: 4 }}>
+                Límite de ingresos: {fmtDop(modalPlan.limiteDop)}/mes · {modalPlan.usuarios} usuario{modalPlan.usuarios > 1 ? 's' : ''}
               </div>
             </div>
-
-            {modalPlan.precio > 0 && (
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 6 }}>
-                  Meses a activar:
-                </label>
-                <InputNumber
-                  min={1} max={24} value={meses}
-                  onChange={v => setMeses(v ?? 1)}
-                  style={{ width: '100%' }}
-                  addonAfter="meses"
-                />
-                <div style={{
-                  marginTop: 12, padding: '10px 14px',
-                  background: '#FEF9EC', border: '1px solid #FDE68A', borderRadius: 8,
-                  color: '#92400E', fontSize: 13, fontWeight: 600,
-                }}>
-                  Total: RD${(modalPlan.precio * meses).toLocaleString('es-DO')}
-                  ({meses} mes{meses > 1 ? 'es' : ''})
-                </div>
-              </div>
-            )}
-
-            <p style={{ color: '#6B7280', fontSize: 13, margin: 0 }}>
-              El plan se activará de forma inmediata. Si tienes un plan activo,
-              el cambio se aplicará en este momento.
+            <p style={{ color: '#6b7280', fontSize: 13 }}>
+              El plan se activará inmediatamente. Si ya tienes datos del mes, el nuevo límite aplica desde hoy.
             </p>
           </div>
         )}

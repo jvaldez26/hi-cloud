@@ -4,11 +4,16 @@ import {
 } from 'typeorm';
 
 export enum PlanTipo {
-  TRIAL       = 'trial',
-  BASICO      = 'basico',
-  PROFESIONAL = 'profesional',
-  EMPRESARIAL = 'empresarial',
-  ENTERPRISE  = 'enterprise',
+  TRIAL        = 'trial',
+  EMPRENDEDOR  = 'emprendedor',
+  PYME         = 'pyme',
+  PRO          = 'pro',
+  PLUS         = 'plus',
+  // Legado — mantenidos durante migración
+  BASICO       = 'basico',
+  PROFESIONAL  = 'profesional',
+  EMPRESARIAL  = 'empresarial',
+  ENTERPRISE   = 'enterprise',
 }
 
 export enum SuscripcionEstado {
@@ -18,151 +23,68 @@ export enum SuscripcionEstado {
   CANCELADA  = 'cancelada',
 }
 
+export enum ModalidadPago {
+  MENSUAL = 'mensual',
+  ANUAL   = 'anual',
+}
+
 export interface PlanConfig {
-  nombre:          string;
-  precio:          number;   // RD$/mes (0 = gratis)
-  diasPrueba:      number;
-  maxUsuarios:     number;   // -1 = ilimitado
-  maxFacturasMes:  number;   // -1 = ilimitado
-  maxProductos:    number;   // -1 = ilimitado
-  maxClientes:     number;   // -1 = ilimitado
-  maxSucursales:   number;   // -1 = ilimitado
-  modulos:         string[]; // ['*'] = todos
+  nombre:                     string;
+  precioMensualUsd:           number;
+  precioAnualUsd:             number;
+  limiteIngresosMensualesDop: number;
+  limiteUsuarios:             number;
+  diasPrueba:                 number;
+  precio:          number;
+  maxUsuarios:     number;
+  maxFacturasMes:  number;
+  maxProductos:    number;
+  maxClientes:     number;
+  maxSucursales:   number;
+  modulos:         string[];
   soporte:         string;
 }
 
-// ── Configuración completa de planes ─────────────────────────────────────────
+const R = 58.5;
+
 export const PLANES: Record<PlanTipo, PlanConfig> = {
-  [PlanTipo.TRIAL]: {
-    nombre:         'Trial',
-    precio:         0,
-    diasPrueba:     30,
-    maxUsuarios:    2,
-    maxFacturasMes: 50,
-    maxProductos:   20,
-    maxClientes:    20,
-    maxSucursales:  1,
-    modulos: [
-      'dashboard', 'pos', 'facturas', 'clientes', 'productos', 'inventario',
-      'caja', 'reportes_basicos',
-    ],
-    soporte: 'Documentación',
-  },
-  [PlanTipo.BASICO]: {
-    nombre:         'Básico',
-    precio:         1500,
-    diasPrueba:     0,
-    maxUsuarios:    3,
-    maxFacturasMes: 200,
-    maxProductos:   100,
-    maxClientes:    100,
-    maxSucursales:  1,
-    modulos: [
-      'dashboard', 'pos', 'facturas', 'clientes', 'productos', 'inventario',
-      'caja', 'reportes_basicos',
-      'ecf', 'compras', 'proveedores', 'reportes',
-    ],
-    soporte: 'Email',
-  },
-  [PlanTipo.PROFESIONAL]: {
-    nombre:         'Profesional',
-    precio:         3500,
-    diasPrueba:     0,
-    maxUsuarios:    10,
-    maxFacturasMes: 1000,
-    maxProductos:   500,
-    maxClientes:    500,
-    maxSucursales:  3,
-    modulos: [
-      'dashboard', 'pos', 'facturas', 'clientes', 'productos', 'inventario',
-      'caja', 'reportes_basicos', 'ecf', 'compras', 'proveedores', 'reportes',
-      'contabilidad', 'cxc', 'cxp', 'libro-mayor', 'activos-fijos',
-      'presupuestos', 'sucursales', 'declaraciones', 'periodo-contable',
-      'reportes-financieros', 'balance-comprobacion', 'libro-ventas',
-    ],
-    soporte: 'Email + Chat',
-  },
-  [PlanTipo.EMPRESARIAL]: {
-    nombre:         'Empresarial',
-    precio:         7000,
-    diasPrueba:     0,
-    maxUsuarios:    25,
-    maxFacturasMes: 5000,
-    maxProductos:   2000,
-    maxClientes:    -1,
-    maxSucursales:  -1,
-    modulos: [
-      'dashboard', 'pos', 'facturas', 'clientes', 'productos', 'inventario',
-      'caja', 'reportes_basicos', 'ecf', 'compras', 'proveedores', 'reportes',
-      'contabilidad', 'cxc', 'cxp', 'libro-mayor', 'activos-fijos',
-      'presupuestos', 'sucursales', 'declaraciones', 'periodo-contable',
-      'reportes-financieros', 'balance-comprobacion', 'libro-ventas',
-      'nomina', 'vacaciones', 'evaluaciones', 'portal-empleado', 'capacitacion',
-      'proyectos', 'crm', 'contratos', 'objetivos', 'licitaciones',
-      'auditoria', 'kpi', 'analytics', 'mantenimiento', 'flota',
-      'almacenes', 'manufactura', 'encuestas', 'comunicaciones',
-    ],
-    soporte: 'Email + Chat + Teléfono',
-  },
-  [PlanTipo.ENTERPRISE]: {
-    nombre:         'Enterprise',
-    precio:         15000,
-    diasPrueba:     0,
-    maxUsuarios:    -1,
-    maxFacturasMes: -1,
-    maxProductos:   -1,
-    maxClientes:    -1,
-    maxSucursales:  -1,
-    modulos: ['*'],
-    soporte: 'Dedicado 24/7',
-  },
+  [PlanTipo.TRIAL]:       { nombre: 'Trial',        precioMensualUsd: 0,   precioAnualUsd: 0,       limiteIngresosMensualesDop: 500_000,   limiteUsuarios: -1, diasPrueba: 15, precio: 0,              maxUsuarios: -1, maxFacturasMes: -1, maxProductos: -1, maxClientes: -1, maxSucursales: -1, modulos: ['*'], soporte: '24/7' },
+  [PlanTipo.EMPRENDEDOR]: { nombre: 'Emprendedor',   precioMensualUsd: 29,  precioAnualUsd: 313.20,  limiteIngresosMensualesDop: 125_000,   limiteUsuarios: 1,  diasPrueba: 0,  precio: Math.round(29*R), maxUsuarios: 1,  maxFacturasMes: -1, maxProductos: -1, maxClientes: -1, maxSucursales: -1, modulos: ['*'], soporte: '24/7' },
+  [PlanTipo.PYME]:        { nombre: 'Pyme',          precioMensualUsd: 59,  precioAnualUsd: 637.20,  limiteIngresosMensualesDop: 500_000,   limiteUsuarios: 2,  diasPrueba: 0,  precio: Math.round(59*R), maxUsuarios: 2,  maxFacturasMes: -1, maxProductos: -1, maxClientes: -1, maxSucursales: -1, modulos: ['*'], soporte: '24/7' },
+  [PlanTipo.PRO]:         { nombre: 'Pro',           precioMensualUsd: 89,  precioAnualUsd: 961.20,  limiteIngresosMensualesDop: 1_250_000, limiteUsuarios: 3,  diasPrueba: 0,  precio: Math.round(89*R), maxUsuarios: 3,  maxFacturasMes: -1, maxProductos: -1, maxClientes: -1, maxSucursales: -1, modulos: ['*'], soporte: '24/7' },
+  [PlanTipo.PLUS]:        { nombre: 'Plus',          precioMensualUsd: 129, precioAnualUsd: 1393.20, limiteIngresosMensualesDop: 6_250_000, limiteUsuarios: 8,  diasPrueba: 0,  precio: Math.round(129*R),maxUsuarios: 8,  maxFacturasMes: -1, maxProductos: -1, maxClientes: -1, maxSucursales: -1, modulos: ['*'], soporte: '24/7' },
+  [PlanTipo.BASICO]:      { nombre: 'Básico',        precioMensualUsd: 0,   precioAnualUsd: 0,       limiteIngresosMensualesDop: 125_000,   limiteUsuarios: 3,  diasPrueba: 0,  precio: 1500,            maxUsuarios: 3,  maxFacturasMes: 200,  maxProductos: 100, maxClientes: 100, maxSucursales: 1,  modulos: ['*'], soporte: 'Email' },
+  [PlanTipo.PROFESIONAL]: { nombre: 'Profesional',   precioMensualUsd: 0,   precioAnualUsd: 0,       limiteIngresosMensualesDop: 500_000,   limiteUsuarios: 10, diasPrueba: 0,  precio: 3500,            maxUsuarios: 10, maxFacturasMes: 1000, maxProductos: 500, maxClientes: 500, maxSucursales: 3,  modulos: ['*'], soporte: 'Chat' },
+  [PlanTipo.EMPRESARIAL]: { nombre: 'Empresarial',   precioMensualUsd: 0,   precioAnualUsd: 0,       limiteIngresosMensualesDop: 1_250_000, limiteUsuarios: 25, diasPrueba: 0,  precio: 7000,            maxUsuarios: 25, maxFacturasMes: 5000, maxProductos: 2000,maxClientes: -1, maxSucursales: -1, modulos: ['*'], soporte: 'Tel' },
+  [PlanTipo.ENTERPRISE]:  { nombre: 'Enterprise',    precioMensualUsd: 0,   precioAnualUsd: 0,       limiteIngresosMensualesDop: -1,        limiteUsuarios: -1, diasPrueba: 0,  precio: 15000,           maxUsuarios: -1, maxFacturasMes: -1,   maxProductos: -1,  maxClientes: -1, maxSucursales: -1, modulos: ['*'], soporte: '24/7' },
 };
 
-// Compat: mantener PLAN_LIMITES para código existente
+export function planPorIngresos(avgDop: number): PlanTipo {
+  if (avgDop <= 125_000)   return PlanTipo.EMPRENDEDOR;
+  if (avgDop <= 500_000)   return PlanTipo.PYME;
+  if (avgDop <= 1_250_000) return PlanTipo.PRO;
+  return PlanTipo.PLUS;
+}
+
+export const PLAN_TIER: Record<PlanTipo, number> = {
+  [PlanTipo.TRIAL]: 0,
+  [PlanTipo.EMPRENDEDOR]: 1, [PlanTipo.BASICO]: 1,
+  [PlanTipo.PYME]: 2,        [PlanTipo.PROFESIONAL]: 2,
+  [PlanTipo.PRO]: 3,         [PlanTipo.EMPRESARIAL]: 3,
+  [PlanTipo.PLUS]: 4,        [PlanTipo.ENTERPRISE]: 4,
+};
+
 export const PLAN_LIMITES = Object.fromEntries(
   Object.entries(PLANES).map(([k, v]) => [k, {
-    usuarios:     v.maxUsuarios,
-    facturasMes:  v.maxFacturasMes,
-    precio:       v.precio,
-    nombre:       v.nombre,
-    features:     v.modulos,
+    usuarios: v.maxUsuarios, facturasMes: v.maxFacturasMes,
+    precio: v.precio, nombre: v.nombre, features: v.modulos,
   }]),
 ) as Record<PlanTipo, { usuarios: number; facturasMes: number; precio: number; nombre: string; features: string[] }>;
 
-// ── Módulos bloqueados por ruta frontend ──────────────────────────────────────
-export const RUTA_MODULO: Record<string, { modulo: string; label: string; planMinimo: PlanTipo }> = {
-  '/ecf':                  { modulo: 'ecf',                 label: 'e-CF DGII',           planMinimo: PlanTipo.BASICO },
-  '/compras':              { modulo: 'compras',              label: 'Compras',              planMinimo: PlanTipo.BASICO },
-  '/compras/:id':          { modulo: 'compras',              label: 'Compras',              planMinimo: PlanTipo.BASICO },
-  '/proveedores':          { modulo: 'proveedores',          label: 'Proveedores',          planMinimo: PlanTipo.BASICO },
-  '/contabilidad':         { modulo: 'contabilidad',         label: 'Contabilidad',         planMinimo: PlanTipo.PROFESIONAL },
-  '/cxc':                  { modulo: 'cxc',                  label: 'Cuentas por Cobrar',   planMinimo: PlanTipo.PROFESIONAL },
-  '/cxp':                  { modulo: 'cxp',                  label: 'Cuentas por Pagar',    planMinimo: PlanTipo.PROFESIONAL },
-  '/libro-mayor':          { modulo: 'libro-mayor',          label: 'Libro Mayor',          planMinimo: PlanTipo.PROFESIONAL },
-  '/activos-fijos':        { modulo: 'activos-fijos',        label: 'Activos Fijos',        planMinimo: PlanTipo.PROFESIONAL },
-  '/presupuestos':         { modulo: 'presupuestos',         label: 'Presupuestos',         planMinimo: PlanTipo.PROFESIONAL },
-  '/sucursales':           { modulo: 'sucursales',           label: 'Multi-Sucursal',       planMinimo: PlanTipo.PROFESIONAL },
-  '/declaraciones':        { modulo: 'declaraciones',        label: 'Declaraciones DGII',   planMinimo: PlanTipo.PROFESIONAL },
-  '/periodo-contable':     { modulo: 'periodo-contable',     label: 'Período Contable',     planMinimo: PlanTipo.PROFESIONAL },
-  '/reportes-financieros': { modulo: 'reportes-financieros', label: 'Reportes Financieros', planMinimo: PlanTipo.PROFESIONAL },
-  '/nomina':               { modulo: 'nomina',               label: 'Nómina',               planMinimo: PlanTipo.EMPRESARIAL },
-  '/vacaciones':           { modulo: 'vacaciones',           label: 'Vacaciones',           planMinimo: PlanTipo.EMPRESARIAL },
-  '/evaluaciones':         { modulo: 'evaluaciones',         label: 'Evaluaciones',         planMinimo: PlanTipo.EMPRESARIAL },
-  '/portal-empleado':      { modulo: 'portal-empleado',      label: 'Portal Empleado',      planMinimo: PlanTipo.EMPRESARIAL },
-  '/proyectos':            { modulo: 'proyectos',            label: 'Proyectos',            planMinimo: PlanTipo.EMPRESARIAL },
-  '/crm':                  { modulo: 'crm',                  label: 'CRM / Leads',          planMinimo: PlanTipo.EMPRESARIAL },
-  '/auditoria':            { modulo: 'auditoria',            label: 'Auditoría',            planMinimo: PlanTipo.EMPRESARIAL },
-  '/kpi':                  { modulo: 'kpi',                  label: 'KPIs',                 planMinimo: PlanTipo.EMPRESARIAL },
-  '/analytics':            { modulo: 'analytics',            label: 'Analytics',            planMinimo: PlanTipo.EMPRESARIAL },
-  '/manufactura':          { modulo: 'manufactura',          label: 'Manufactura',          planMinimo: PlanTipo.EMPRESARIAL },
-  '/licitaciones':         { modulo: 'licitaciones',         label: 'Licitaciones',         planMinimo: PlanTipo.EMPRESARIAL },
-};
+export const RUTA_MODULO: Record<string, { modulo: string; label: string; planMinimo: PlanTipo }> = {};
 
-export function planTieneModulo(plan: PlanTipo, modulo: string): boolean {
-  const config = PLANES[plan];
-  if (!config) return false;
-  if (config.modulos.includes('*')) return true;
-  return config.modulos.includes(modulo);
+export function planTieneModulo(_plan: PlanTipo, _modulo: string): boolean {
+  return true;
 }
 
 @Entity('suscripciones')
@@ -179,11 +101,29 @@ export class Suscripcion {
   @Column({ type: 'enum', enum: SuscripcionEstado, default: SuscripcionEstado.ACTIVA })
   estado!: SuscripcionEstado;
 
+  @Column({ type: 'enum', enum: ModalidadPago, default: ModalidadPago.MENSUAL })
+  modalidad!: ModalidadPago;
+
   @Column({ type: 'date' })
   fechaInicio!: Date;
 
   @Column({ type: 'date' })
   fechaVencimiento!: Date;
+
+  @Column({ type: 'decimal', precision: 14, scale: 2, default: 0 })
+  ingresosMesActualDop!: number;
+
+  @Column({ length: 7, nullable: true })
+  mesPeriodo?: string;
+
+  @Column({ default: false })
+  enPeriodoGracia!: boolean;
+
+  @Column({ type: 'date', nullable: true })
+  fechaFinGracia?: Date;
+
+  @Column({ type: 'text', nullable: true })
+  motivoSuspension?: string;
 
   @Column({ type: 'int', default: 0 })
   facturasMesUsadas!: number;
