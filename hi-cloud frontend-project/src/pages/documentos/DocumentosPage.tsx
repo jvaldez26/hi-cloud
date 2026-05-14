@@ -65,6 +65,8 @@ export default function DocumentosPage() {
       form.resetFields();
       message.success('Documento registrado');
     },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const eliminarDoc = useMutation({
@@ -74,6 +76,8 @@ export default function DocumentosPage() {
       qc.invalidateQueries({ queryKey: ['documentos-resumen'] });
       message.success('Documento eliminado');
     },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const totalKb = (resumen?.porTipo ?? []).reduce((s: number, t: any) => s + Number(t.totalKb), 0);

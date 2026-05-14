@@ -58,6 +58,8 @@ export default function CajaChicaPage() {
   const crearCaja = useMutation({
     mutationFn: (dto: any) => api.post('/caja-chica/cajas', dto),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['caja-chica-resumen'] }); setModalCajaCrear(false); formCaja.resetFields(); message.success('Caja chica creada'); },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const registrarEgreso = useMutation({
@@ -74,17 +76,23 @@ export default function CajaChicaPage() {
         message.success('Egreso registrado');
       }
     },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const reponer = useMutation({
     mutationFn: (dto: any) => api.post(`/caja-chica/cajas/${cajaSeleccionada?.id}/reponer`, dto),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['caja-chica-resumen'] });
       qc.invalidateQueries({ queryKey: ['caja-movimientos'] }); setModalReponer(false); formReponer.resetFields(); message.success('Fondos repuestos'); },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const cerrar = useMutation({
     mutationFn: (id: number) => api.patch(`/caja-chica/cajas/${id}/cerrar`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['caja-chica-resumen'] }); message.success('Caja cerrada'); },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   return (

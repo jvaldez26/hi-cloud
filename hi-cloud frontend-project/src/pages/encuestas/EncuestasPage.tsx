@@ -52,12 +52,16 @@ export default function EncuestasPage() {
       formCrear.resetFields();
       message.success('Encuesta creada');
     },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const activarToggle = useMutation({
     mutationFn: ({ id, activa }: { id: number; activa: boolean }) =>
       api.patch(`/encuestas/${id}`, { activa }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['encuestas'] }),
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const linkEncuesta = (token: string) => {

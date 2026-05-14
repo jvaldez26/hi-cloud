@@ -58,6 +58,8 @@ export default function DivisasPage() {
       formNueva.resetFields();
       message.success('Tasa registrada');
     },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const convertir = async () => {

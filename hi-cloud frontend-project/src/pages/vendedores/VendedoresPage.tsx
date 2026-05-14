@@ -88,17 +88,23 @@ export default function VendedoresPage() {
       formCrear.resetFields();
       message.success(editando ? 'Vendedor actualizado' : 'Vendedor creado');
     },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const eliminar = useMutation({
     mutationFn: (id: number) => api.delete(`/vendedores/${id}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['vendedores'] }); message.success('Vendedor eliminado'); },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const desasignarCliente = useMutation({
     mutationFn: ({ vendId, cliId }: { vendId: number; cliId: number }) =>
       api.delete(`/vendedores/${vendId}/clientes/${cliId}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['vendedor-clientes'] }); message.success('Cliente desasignado'); },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const abrirEditar = (v: any) => {

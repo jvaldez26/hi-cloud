@@ -51,6 +51,8 @@ export default function CreditoClientePage() {
       form.resetFields();
       message.success('Límite de crédito actualizado');
     },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const abrirConfiguracion = (credito?: any) => {

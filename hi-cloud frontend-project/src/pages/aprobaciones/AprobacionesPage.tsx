@@ -57,6 +57,8 @@ export default function AprobacionesPage() {
     mutationFn: (dto: any) => api.post('/aprobaciones', dto),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['aprobaciones'] });
       qc.invalidateQueries({ queryKey: ['aprobaciones-resumen'] }); setModalSolicitud(false); formSol.resetFields(); message.success('Solicitud enviada'); },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const resolver = useMutation({
@@ -64,6 +66,8 @@ export default function AprobacionesPage() {
       api.patch(`/aprobaciones/${id}/${accion}`, { comentario }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['aprobaciones'] });
       qc.invalidateQueries({ queryKey: ['aprobaciones-resumen'] }); setModalResolver(null); formRes.resetFields(); message.success('Resolución guardada'); },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const items = aprobaciones?.data ?? [];

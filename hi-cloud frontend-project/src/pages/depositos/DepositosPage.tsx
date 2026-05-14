@@ -58,6 +58,8 @@ export default function DepositosPage() {
       form.resetFields();
       message.success('Depósito registrado y saldo actualizado');
     },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const eliminar = useMutation({
@@ -68,6 +70,8 @@ export default function DepositosPage() {
       qc.invalidateQueries({ queryKey: ['cuentas-bancarias'] });
       message.success('Depósito eliminado y saldo revertido');
     },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   return (

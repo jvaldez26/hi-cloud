@@ -39,15 +39,15 @@ export class NotasCreditoComprasService {
 
   private async generarNumero(): Promise<string> {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const d   = new Date();
-    const pre = `NCC-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}-`;
     const res = await this.nccRepo
       .createQueryBuilder('n')
-      .select(`MAX(CAST(SPLIT_PART(n.numero, '-', 3) AS INTEGER))`, 'maxNum')
-      .where('n.numero LIKE :p',      { p: `${pre}%` })
-      .andWhere('n.empresaId = :eid', { eid: empresaId })
+      .select(`MAX(CASE WHEN n.numero ~ '^NCC-[0-9]+$'
+                        THEN CAST(SUBSTRING(n.numero FROM 5) AS INTEGER)
+                        ELSE 100 END)`, 'maxNum')
+      .where('n.empresaId = :eid', { eid: empresaId })
+      .andWhere('n.isActive = :a', { a: true })
       .getRawOne<{ maxNum: number | null }>();
-    return `${pre}${String((res?.maxNum ?? 0) + 1).padStart(4, '0')}`;
+    return `NCC-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
   }
 
   async crear(dto: CreateNCCDto, usuarioId: number) {

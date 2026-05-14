@@ -55,12 +55,16 @@ export default function DatafonoPage() {
   const crearTerminal = useMutation({
     mutationFn: (data: any) => api.post('/datafono/terminales', data),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['terminales'] }); setModalTerminal(false); formTerminal.resetFields(); message.success('Terminal registrada'); },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const crearTransaccion = useMutation({
     mutationFn: (data: any) => api.post('/datafono/transacciones', data),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['transacciones-tarjeta'] });
       qc.invalidateQueries({ queryKey: ['datafono-resumen'] }); setModalTransaccion(false); formTransaccion.resetFields(); message.success('Transacción registrada'); },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const crearConciliacion = useMutation({
@@ -68,11 +72,15 @@ export default function DatafonoPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['conciliaciones-datafono'] });
       qc.invalidateQueries({ queryKey: ['transacciones-tarjeta'] });
       qc.invalidateQueries({ queryKey: ['datafono-resumen'] }); setModalConciliacion(false); formConciliacion.resetFields(); message.success('Conciliación creada'); },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const confirmarConc = useMutation({
     mutationFn: (id: number) => api.patch(`/datafono/conciliaciones/${id}/confirmar`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['conciliaciones-datafono'] }); message.success('Conciliación confirmada'); },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const estadoColor: Record<string, string> = {

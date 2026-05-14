@@ -61,17 +61,23 @@ export default function DescuentosPage() {
       form.resetFields();
       message.success(editando ? 'Regla actualizada' : 'Regla de descuento creada');
     },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const eliminar = useMutation({
     mutationFn: (id: number) => api.delete(`/descuentos/${id}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['descuentos'] });
       qc.invalidateQueries({ queryKey: ['descuentos-resumen'] }); message.success('Regla eliminada'); },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const toggleActivo = useMutation({
     mutationFn: ({ id, activo }: { id: number; activo: boolean }) => api.patch(`/descuentos/${id}`, { activo }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['descuentos'] }),
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const abrirEditar = (r: any) => {

@@ -58,6 +58,8 @@ export default function GruposPage() {
       ? api.patch(`/grupos/productos/${editando.id}`, dto)
       : api.post('/grupos/productos', dto),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['grupos-productos'] }); setModalVisible(false); formG.resetFields(); message.success('Guardado'); },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const mutSegmento = useMutation({
@@ -65,6 +67,8 @@ export default function GruposPage() {
       ? api.patch(`/grupos/clientes/${editando.id}`, dto)
       : api.post('/grupos/clientes', dto),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['segmentos-clientes'] }); setModalVisible(false); formS.resetFields(); message.success('Guardado'); },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const delGrupo   = useMutation({ mutationFn: (id: number) => api.delete(`/grupos/productos/${id}`), onSuccess: () => qc.invalidateQueries({ queryKey: ['grupos-productos'] }) });

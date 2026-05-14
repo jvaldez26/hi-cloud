@@ -55,12 +55,16 @@ export default function ConteoInventarioPage() {
     mutationFn: (dto: any) => api.post('/conteo-inventario', dto),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['conteos'] });
       qc.invalidateQueries({ queryKey: ['conteo-resumen'] }); setModalCrear(false); formCrear.resetFields(); message.success('Hoja de conteo creada'); },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const iniciar = useMutation({
     mutationFn: (id: number) => api.patch(`/conteo-inventario/${id}/iniciar`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['conteos'] });
       qc.invalidateQueries({ queryKey: ['conteo-detalle'] }); message.success('Conteo iniciado'); },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const confirmar = useMutation({
@@ -72,12 +76,16 @@ export default function ConteoInventarioPage() {
       message.success('¡Conteo confirmado! Stock actualizado en el inventario.');
       setConteoActivo(null);
     },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const cancelar = useMutation({
     mutationFn: (id: number) => api.patch(`/conteo-inventario/${id}/cancelar`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['conteos'] });
       qc.invalidateQueries({ queryKey: ['conteo-resumen'] }); message.success('Conteo cancelado'); setConteoActivo(null); },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const actualizarLinea = useMutation({
@@ -88,6 +96,8 @@ export default function ConteoInventarioPage() {
       setEditandoLinea(null);
       message.success('Cantidad actualizada');
     },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const lineas     = conteoDetalle?.lineas ?? [];

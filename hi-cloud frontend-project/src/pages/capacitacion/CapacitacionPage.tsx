@@ -64,6 +64,8 @@ export default function CapacitacionPage() {
       formCurso.resetFields();
       message.success('Curso creado');
     },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const crearSesion = useMutation({
@@ -75,12 +77,16 @@ export default function CapacitacionPage() {
       formSesion.resetFields();
       message.success('Sesión programada');
     },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const cambiarEstadoSesion = useMutation({
     mutationFn: ({ id, estado }: { id: number; estado: string }) =>
       api.patch(`/capacitacion/sesiones/${id}`, { estado }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sesiones-capacitacion'] }),
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const emitirCertificado = useMutation({
@@ -90,6 +96,8 @@ export default function CapacitacionPage() {
       qc.invalidateQueries({ queryKey: ['capacitacion-resumen'] });
       message.success('Certificado emitido');
     },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   return (

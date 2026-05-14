@@ -68,6 +68,8 @@ export default function PeriodoContablePage() {
       qc.invalidateQueries({ queryKey: ['periodos-resumen'] });
       message.success(res.data?.mensaje ?? 'Períodos generados');
     },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const crearPeriodo = useMutation({
@@ -78,6 +80,8 @@ export default function PeriodoContablePage() {
       formCrear.resetFields();
       message.success('Período creado');
     },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const cerrarPeriodo = useMutation({
@@ -89,6 +93,8 @@ export default function PeriodoContablePage() {
       formCerrar.resetFields();
       message.success('Período cerrado correctamente');
     },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const reabrirPeriodo = useMutation({
@@ -97,6 +103,8 @@ export default function PeriodoContablePage() {
       qc.invalidateQueries({ queryKey: ['periodos-resumen'] });
       message.success('Período reabierto');
     },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const bloquearPeriodo = useMutation({
@@ -105,6 +113,8 @@ export default function PeriodoContablePage() {
       qc.invalidateQueries({ queryKey: ['periodos-resumen'] });
       message.success('Período bloqueado permanentemente');
     },
+  onError: (e: any) => message.error(
+      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const mesActual = new Date().getMonth() + 1;
