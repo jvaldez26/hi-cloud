@@ -1,6 +1,7 @@
 import { Entity, Column, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { User } from '../../users/users.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum EstadoPeriodo {
   ABIERTO   = 'abierto',
@@ -13,6 +14,7 @@ export const MESES_ES = [
   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
 ];
 
+@TenantScoped()
 @Entity('periodos_contables')
 @Index(['empresaId', 'anio', 'mes'], { unique: true })
 @Index(['empresaId', 'estado'])

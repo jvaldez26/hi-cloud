@@ -1,5 +1,6 @@
 import { Entity, Column, Index } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum TipoCentroTrabajo {
   MAQUINA       = 'maquina',
@@ -7,6 +8,7 @@ export enum TipoCentroTrabajo {
   SUBCONTRATADO = 'subcontratado',
 }
 
+@TenantScoped()
 @Entity('centros_trabajo')
 @Index(['empresaId', 'isActive'])
 export class CentroTrabajo extends TenantBaseEntity {

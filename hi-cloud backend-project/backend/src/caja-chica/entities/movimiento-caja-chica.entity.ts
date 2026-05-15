@@ -1,5 +1,6 @@
 import { Entity, Column, Index } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum TipoMovCajaChica {
   APERTURA    = 'apertura',
@@ -21,6 +22,7 @@ export const CATEGORIAS_CAJA: Record<string, { label: string; emoji: string }> =
   otros:         { label: 'Otros',                   emoji: '📋' },
 };
 
+@TenantScoped()
 @Entity('movimientos_caja_chica')
 @Index(['empresaId', 'cajaChicaId'])
 @Index(['empresaId', 'createdAt'])

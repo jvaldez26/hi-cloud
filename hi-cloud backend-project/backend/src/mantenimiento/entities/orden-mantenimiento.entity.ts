@@ -1,6 +1,7 @@
 import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
 import { ActivoFijo } from '../../activos-fijos/entities/activo-fijo.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum TipoMantenimiento {
   PREVENTIVO  = 'preventivo',
@@ -23,6 +24,7 @@ export enum EstadoMantenimiento {
   VENCIDO     = 'vencido',
 }
 
+@TenantScoped()
 @Entity('ordenes_mantenimiento')
 export class OrdenMantenimiento extends BaseEntity {
   @Column({ nullable: true })

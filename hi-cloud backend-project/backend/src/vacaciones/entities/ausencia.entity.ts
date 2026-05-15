@@ -1,6 +1,7 @@
 import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
 import { Empleado } from '../../nomina/entities/empleado.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum TipoAusencia {
   ENFERMEDAD       = 'enfermedad',
@@ -13,6 +14,7 @@ export enum TipoAusencia {
   LICENCIA_ESPECIAL= 'licencia_especial',
 }
 
+@TenantScoped()
 @Entity('ausencias')
 export class Ausencia extends BaseEntity {
   @Column({ nullable: true })

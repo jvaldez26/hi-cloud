@@ -1,6 +1,8 @@
 import { Entity, Column, OneToMany } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
+@TenantScoped()
 @Entity('listas_materiales')
 export class ListaMateriales extends BaseEntity {
   @Column({ nullable: true })

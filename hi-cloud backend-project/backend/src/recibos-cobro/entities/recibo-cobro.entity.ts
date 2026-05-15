@@ -1,5 +1,6 @@
 import { Entity, Column, Index } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum MetodoPagoRecibo {
   EFECTIVO      = 'efectivo',
@@ -10,6 +11,7 @@ export enum MetodoPagoRecibo {
   OTRO          = 'otro',
 }
 
+@TenantScoped()
 @Entity('recibos_cobro')
 @Index(['empresaId', 'isActive'])
 @Index(['empresaId', 'clienteId'])

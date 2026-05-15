@@ -1,7 +1,9 @@
 import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { AtributoProducto } from './atributo-producto.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
+@TenantScoped()
 @Entity('valores_atributo')
 export class ValorAtributo extends TenantBaseEntity {
   @ManyToOne(() => AtributoProducto, (a) => a.valores, { onDelete: 'CASCADE' })

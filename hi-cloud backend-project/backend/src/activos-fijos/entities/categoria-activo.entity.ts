@@ -1,11 +1,13 @@
 import { Entity, Column } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum MetodoDepreciacion {
   LINEA_RECTA        = 'linea_recta',
   SALDO_DECRECIENTE  = 'saldo_decreciente',
 }
 
+@TenantScoped()
 @Entity('categorias_activos')
 export class CategoriaActivo extends TenantBaseEntity {
   @Column({ length: 10 })

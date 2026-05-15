@@ -1,6 +1,7 @@
 import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
 import { ListaMateriales } from './lista-materiales.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum EstadoOrdenProduccion {
   BORRADOR   = 'borrador',
@@ -10,6 +11,7 @@ export enum EstadoOrdenProduccion {
   CANCELADA  = 'cancelada',
 }
 
+@TenantScoped()
 @Entity('ordenes_produccion')
 export class OrdenProduccion extends BaseEntity {
   @Column({ nullable: true })

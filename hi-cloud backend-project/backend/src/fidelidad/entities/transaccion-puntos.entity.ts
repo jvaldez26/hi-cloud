@@ -1,5 +1,6 @@
 import { Entity, Column, Index } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum TipoTransaccionPuntos {
   ACUMULACION = 'acumulacion',
@@ -8,6 +9,7 @@ export enum TipoTransaccionPuntos {
   AJUSTE      = 'ajuste',
 }
 
+@TenantScoped()
 @Entity('transacciones_puntos')
 @Index(['empresaId', 'clienteId'])
 export class TransaccionPuntos extends TenantBaseEntity {

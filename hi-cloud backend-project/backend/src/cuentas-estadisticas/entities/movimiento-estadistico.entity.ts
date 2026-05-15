@@ -1,7 +1,9 @@
 import { Entity, Column, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { CuentaEstadistica } from './cuenta-estadistica.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
+@TenantScoped()
 @Entity('movimientos_estadisticos')
 @Index(['empresaId', 'cuentaId', 'fecha'])
 export class MovimientoEstadistico extends TenantBaseEntity {

@@ -1,7 +1,9 @@
 import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { ReglaDistribucion } from './regla-distribucion.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
+@TenantScoped()
 @Entity('regla_distribucion_lineas')
 export class ReglaDistribucionLinea extends TenantBaseEntity {
   @ManyToOne(() => ReglaDistribucion, (r) => r.lineas, { onDelete: 'CASCADE' })

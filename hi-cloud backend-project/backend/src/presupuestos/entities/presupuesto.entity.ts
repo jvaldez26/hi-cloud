@@ -2,6 +2,7 @@ import { Entity, Column, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { User } from '../../users/users.entity';
 import { PresupuestoLinea } from './presupuesto-linea.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum TipoPresupuesto {
   VENTAS   = 'ventas',
@@ -17,6 +18,7 @@ export enum EstadoPresupuesto {
   CERRADO  = 'cerrado',
 }
 
+@TenantScoped()
 @Entity('presupuestos')
 export class Presupuesto extends TenantBaseEntity {
   @Column({ type: 'int' })

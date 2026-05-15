@@ -1,5 +1,6 @@
 import { Entity, Column, OneToMany } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum EstadoLicitacion {
   IDENTIFICADA = 'identificada',
@@ -17,6 +18,7 @@ export enum TipoLicitacion {
   EMERGENCIA   = 'emergencia',
 }
 
+@TenantScoped()
 @Entity('licitaciones')
 export class Licitacion extends TenantBaseEntity {
   @Column({ length: 30 })

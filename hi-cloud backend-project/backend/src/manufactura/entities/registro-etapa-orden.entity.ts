@@ -2,6 +2,7 @@ import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { OrdenProduccion } from './orden-produccion.entity';
 import { EtapaRuta } from './etapa-ruta.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum EstadoEtapaOrden {
   PENDIENTE   = 'pendiente',
@@ -11,6 +12,7 @@ export enum EstadoEtapaOrden {
   RECHAZADA   = 'rechazada',   // falló control de calidad
 }
 
+@TenantScoped()
 @Entity('registro_etapas_orden')
 export class RegistroEtapaOrden extends TenantBaseEntity {
   @ManyToOne(() => OrdenProduccion, { onDelete: 'CASCADE' })

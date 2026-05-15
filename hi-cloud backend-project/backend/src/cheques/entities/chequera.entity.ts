@@ -1,5 +1,6 @@
 import { Entity, Column } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum EstadoChequera {
   ACTIVA    = 'activa',
@@ -7,6 +8,7 @@ export enum EstadoChequera {
   ANULADA   = 'anulada',
 }
 
+@TenantScoped()
 @Entity('chequeras')
 export class Chequera extends BaseEntity {
   @Column({ nullable: true })

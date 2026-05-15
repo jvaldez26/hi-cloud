@@ -1,6 +1,8 @@
 import { Entity, Column, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
+@TenantScoped()
 @Entity('grupos_producto')
 @Index(['empresaId', 'isActive'])
 export class GrupoProducto extends TenantBaseEntity {

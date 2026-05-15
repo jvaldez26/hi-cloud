@@ -1,6 +1,7 @@
 import { Entity, Column, OneToMany, Index } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { ValorAtributo } from './valor-atributo.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum TipoAtributo {
   DIMENSION  = 'dimension',   // Talla, Peso, Volumen
@@ -10,6 +11,7 @@ export enum TipoAtributo {
   OTRO       = 'otro',
 }
 
+@TenantScoped()
 @Entity('atributos_producto')
 @Index(['empresaId', 'isActive'])
 export class AtributoProducto extends TenantBaseEntity {

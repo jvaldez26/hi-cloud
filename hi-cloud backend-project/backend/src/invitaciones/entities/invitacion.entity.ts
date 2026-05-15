@@ -1,6 +1,7 @@
 import { Entity, Column } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
 import { UserRole } from '../../users/enums/user-role.enum';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum EstadoInvitacion {
   PENDIENTE = 'pendiente',
@@ -9,6 +10,7 @@ export enum EstadoInvitacion {
   CANCELADA = 'cancelada',
 }
 
+@TenantScoped()
 @Entity('invitaciones')
 export class Invitacion extends BaseEntity {
   @Column({ length: 100 })

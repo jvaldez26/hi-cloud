@@ -3,6 +3,7 @@ import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { Proveedor } from '../../proveedores/entities/proveedor.entity';
 import { CompraDetalle } from './compra-detalle.entity';
 import { User } from '../../users/users.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum CompraEstado {
   BORRADOR  = 'borrador',
@@ -11,6 +12,7 @@ export enum CompraEstado {
   CANCELADA = 'cancelada',
 }
 
+@TenantScoped()
 @Entity('compras')
 @Index(['empresaId', 'isActive'])
 @Index(['empresaId', 'estado'])

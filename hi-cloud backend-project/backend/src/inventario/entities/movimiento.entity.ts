@@ -2,6 +2,7 @@ import { Entity, Column, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { Producto } from '../../productos/entities/producto.entity';
 import { User } from '../../users/users.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum TipoMovimiento {
   ENTRADA    = 'entrada',
@@ -10,6 +11,7 @@ export enum TipoMovimiento {
   DEVOLUCION = 'devolucion',
 }
 
+@TenantScoped()
 @Entity('movimientos_inventario')
 @Index(['empresaId', 'productoId'])
 @Index(['empresaId', 'createdAt'])

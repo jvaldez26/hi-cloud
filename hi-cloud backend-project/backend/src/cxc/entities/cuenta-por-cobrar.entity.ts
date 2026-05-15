@@ -4,7 +4,9 @@ import { EstadoCuenta } from '../../common/enums/estado-cuenta.enum';
 import { Factura } from '../../facturas/entities/factura.entity';
 import { Cliente } from '../../clientes/entities/cliente.entity';
 import { User } from '../../users/users.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
+@TenantScoped()
 @Entity('cuentas_por_cobrar')
 @Index(['empresaId', 'estado'])
 @Index(['empresaId', 'fechaVencimiento'])

@@ -1,5 +1,6 @@
 import { Entity, Column, OneToMany } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum NivelObjetivo {
   EMPRESA      = 'empresa',
@@ -19,6 +20,7 @@ export enum PeriodoObjetivo {
   ANUAL = 'anual',
 }
 
+@TenantScoped()
 @Entity('objetivos')
 export class Objetivo extends TenantBaseEntity {
   @Column({ length: 300 })

@@ -2,6 +2,7 @@ import {
   Entity, PrimaryGeneratedColumn, Column,
   CreateDateColumn, UpdateDateColumn,
 } from 'typeorm';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum EstadoComision {
   PENDIENTE = 'pendiente',
@@ -10,6 +11,7 @@ export enum EstadoComision {
   ANULADA   = 'anulada',
 }
 
+@TenantScoped()
 @Entity('comisiones')
 export class Comision {
   @PrimaryGeneratedColumn()

@@ -4,6 +4,7 @@ import { Cliente } from '../../clientes/entities/cliente.entity';
 import { User } from '../../users/users.entity';
 import { CotizacionDetalle } from './cotizacion-detalle.entity';
 import { Factura } from '../../facturas/entities/factura.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum CotizacionEstado {
   BORRADOR   = 'borrador',
@@ -14,6 +15,7 @@ export enum CotizacionEstado {
   CONVERTIDA = 'convertida',
 }
 
+@TenantScoped()
 @Entity('cotizaciones')
 @Index(['empresaId', 'isActive'])
 @Index(['empresaId', 'estado'])

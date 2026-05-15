@@ -1,7 +1,9 @@
 import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { Proyecto } from './proyecto.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
+@TenantScoped()
 @Entity('hitos_proyecto')
 export class HitoProyecto extends TenantBaseEntity {
   @ManyToOne(() => Proyecto, { onDelete: 'CASCADE' })

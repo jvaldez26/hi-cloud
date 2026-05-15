@@ -3,6 +3,7 @@ import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { Cliente } from '../../clientes/entities/cliente.entity';
 import { FacturaDetalle } from './factura-detalle.entity';
 import { User } from '../../users/users.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum FacturaEstado {
   BORRADOR  = 'borrador',
@@ -11,6 +12,7 @@ export enum FacturaEstado {
   CANCELADA = 'cancelada',
 }
 
+@TenantScoped()
 @Entity('facturas')
 @Index(['empresaId', 'isActive'])
 @Index(['empresaId', 'estado'])

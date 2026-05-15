@@ -1,4 +1,5 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum TipoServicioRetencion {
   PROFESIONAL           = 'profesional',          // 10%
@@ -18,6 +19,7 @@ export const TASAS_RETENCION: Record<TipoServicioRetencion, number> = {
   [TipoServicioRetencion.INTERESES]:          10,
 };
 
+@TenantScoped()
 @Entity('retenciones_isr')
 export class RetencionISR {
   @PrimaryGeneratedColumn()

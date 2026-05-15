@@ -2,7 +2,9 @@ import { Entity, Column, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
 import { TipoECF } from './tipo-ecf.entity';
 import { User } from '../../users/users.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
+@TenantScoped()
 @Entity('secuencias_ecf')
 @Index(['empresaId', 'tipoECFId', 'isActiva'])
 export class SecuenciaECF extends BaseEntity {

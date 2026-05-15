@@ -1,5 +1,6 @@
 import { Entity, Column, Index } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum TipoCuenta {
   CORRIENTE   = 'corriente',
@@ -7,6 +8,7 @@ export enum TipoCuenta {
   EMPRESARIAL = 'empresarial',
 }
 
+@TenantScoped()
 @Entity('cuentas_bancarias')
 @Index(['empresaId', 'isActive'])
 export class CuentaBancaria extends TenantBaseEntity {

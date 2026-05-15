@@ -1,5 +1,6 @@
 import { Entity, Column, Index } from 'typeorm';
 import { TenantBaseEntity } from '../common/entities/tenant-base.entity';
+import { TenantScoped } from '../tenant/decorators/tenant-scoped.decorator';
 
 export enum EstadoTicket {
   ABIERTO    = 'abierto',
@@ -22,6 +23,7 @@ export enum CategoriaTicket {
   OTRO            = 'otro',
 }
 
+@TenantScoped()
 @Entity('tickets_soporte')
 @Index(['empresaId', 'estado'])
 @Index(['empresaId', 'clienteId'])

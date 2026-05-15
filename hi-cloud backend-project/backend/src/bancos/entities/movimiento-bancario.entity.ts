@@ -1,12 +1,14 @@
 import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
 import { CuentaBancaria } from './cuenta-bancaria.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum TipoMovimientoBanco {
   DEBITO  = 'debito',
   CREDITO = 'credito',
 }
 
+@TenantScoped()
 @Entity('movimientos_bancarios')
 export class MovimientoBancario extends BaseEntity {
   @Column({ nullable: true })

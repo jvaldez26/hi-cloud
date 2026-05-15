@@ -1,7 +1,9 @@
 import { Entity, Column, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { UnidadMedida } from './unidad-medida.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
+@TenantScoped()
 @Entity('conversiones_uom')
 @Index(['empresaId', 'unidadDesdeId', 'unidadHastaId'])
 export class ConversionUom extends TenantBaseEntity {

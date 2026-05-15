@@ -1,6 +1,8 @@
 import { Entity, Column, Index } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
+@TenantScoped()
 @Entity('programa_fidelidad')
 @Index(['empresaId'])   // único por empresa a nivel de negocio, no DB unique (evita hash collision)
 export class ProgramaFidelidad extends TenantBaseEntity {

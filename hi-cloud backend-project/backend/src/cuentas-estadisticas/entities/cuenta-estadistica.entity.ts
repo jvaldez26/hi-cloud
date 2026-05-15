@@ -1,6 +1,7 @@
 import { Entity, Column, OneToMany, Index } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { MovimientoEstadistico } from './movimiento-estadistico.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum TipoCuentaEstadistica {
   ACUMULADOR = 'acumulador',  // suma los valores del período
@@ -9,6 +10,7 @@ export enum TipoCuentaEstadistica {
   CONTEO     = 'conteo',      // número de registros
 }
 
+@TenantScoped()
 @Entity('cuentas_estadisticas')
 @Index(['empresaId', 'isActive'])
 export class CuentaEstadistica extends TenantBaseEntity {

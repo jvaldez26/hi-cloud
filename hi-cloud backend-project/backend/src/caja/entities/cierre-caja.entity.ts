@@ -2,6 +2,7 @@ import {
   Entity, PrimaryGeneratedColumn, Column,
   CreateDateColumn, UpdateDateColumn, Unique,
 } from 'typeorm';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum EstadoCierre {
   ABIERTA  = 'abierta',
@@ -9,6 +10,7 @@ export enum EstadoCierre {
   REVISADA = 'revisada',
 }
 
+@TenantScoped()
 @Entity('cierres_caja')
 @Unique('UQ_caja_fecha_vendedor', ['fecha', 'vendedorId'])
 export class CierreCaja {

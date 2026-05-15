@@ -1,5 +1,6 @@
 import { Entity, Column, Index } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum EstadoEmpleado {
   ACTIVO     = 'activo',
@@ -23,6 +24,7 @@ export enum Sexo {
   F = 'F',
 }
 
+@TenantScoped()
 @Entity('empleados')
 @Index(['empresaId', 'isActive'])
 @Index(['empresaId', 'cedula'])

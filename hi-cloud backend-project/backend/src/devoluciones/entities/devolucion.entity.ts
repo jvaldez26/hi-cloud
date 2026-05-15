@@ -4,6 +4,7 @@ import { Factura } from '../../facturas/entities/factura.entity';
 import { Cliente } from '../../clientes/entities/cliente.entity';
 import { User } from '../../users/users.entity';
 import { DevolucionDetalle } from './devolucion-detalle.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum TipoDevolucion {
   TOTAL   = 'total',
@@ -16,6 +17,7 @@ export enum EstadoDevolucion {
   ANULADA   = 'anulada',
 }
 
+@TenantScoped()
 @Entity('devoluciones')
 export class Devolucion extends BaseEntity {
   @Column({ nullable: true })

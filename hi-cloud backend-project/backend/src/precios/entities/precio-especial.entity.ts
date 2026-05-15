@@ -2,6 +2,7 @@ import {
   Entity, PrimaryGeneratedColumn, Column,
   CreateDateColumn, UpdateDateColumn, Index,
 } from 'typeorm';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum TierPrecio {
   MAYORISTA   = 'mayorista',
@@ -11,6 +12,7 @@ export enum TierPrecio {
   DISTRIBUIDOR= 'distribuidor',
 }
 
+@TenantScoped()
 @Entity('precios_especiales')
 export class PrecioEspecial {
   @PrimaryGeneratedColumn()

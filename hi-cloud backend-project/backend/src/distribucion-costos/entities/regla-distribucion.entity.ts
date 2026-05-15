@@ -1,6 +1,7 @@
 import { Entity, Column, OneToMany, Index } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { ReglaDistribucionLinea } from './regla-distribucion-linea.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum PeriodicitadRegla {
   MANUAL    = 'manual',
@@ -9,6 +10,7 @@ export enum PeriodicitadRegla {
   ANUAL     = 'anual',
 }
 
+@TenantScoped()
 @Entity('reglas_distribucion')
 @Index(['empresaId', 'isActive'])
 export class ReglaDistribucion extends TenantBaseEntity {

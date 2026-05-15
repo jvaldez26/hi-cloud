@@ -2,6 +2,7 @@ import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { CategoriaActivo } from './categoria-activo.entity';
 import { User } from '../../users/users.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum EstadoActivo {
   ACTIVO                  = 'activo',
@@ -10,6 +11,7 @@ export enum EstadoActivo {
   TOTALMENTE_DEPRECIADO   = 'totalmente_depreciado',
 }
 
+@TenantScoped()
 @Entity('activos_fijos')
 export class ActivoFijo extends TenantBaseEntity {
   @Column({ length: 30 })

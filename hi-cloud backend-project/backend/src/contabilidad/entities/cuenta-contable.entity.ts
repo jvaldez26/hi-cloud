@@ -1,5 +1,6 @@
 import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum TipoCuenta {
   ACTIVO     = 'activo',
@@ -15,6 +16,7 @@ export enum NaturalezaCuenta {
   ACREEDORA = 'acreedora', // pasivos, patrimonio, ingresos
 }
 
+@TenantScoped()
 @Entity('cuentas_contables')
 export class CuentaContable extends TenantBaseEntity {
   @Column({ length: 20 })

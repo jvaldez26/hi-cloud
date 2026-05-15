@@ -2,6 +2,7 @@ import { Entity, Column, ManyToOne, OneToMany, JoinColumn, Index } from 'typeorm
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { Cliente } from '../../clientes/entities/cliente.entity';
 import { PreFacturaDetalle } from './pre-factura-detalle.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum EstadoPreFactura {
   BORRADOR    = 'borrador',
@@ -12,6 +13,7 @@ export enum EstadoPreFactura {
   VENCIDA     = 'vencida',
 }
 
+@TenantScoped()
 @Entity('pre_facturas')
 @Index(['empresaId', 'isActive'])
 @Index(['empresaId', 'estado'])

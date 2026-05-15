@@ -1,6 +1,7 @@
 import { Entity, Column, OneToMany, Index } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { LineaConteo } from './linea-conteo.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum EstadoConteo {
   BORRADOR     = 'borrador',
@@ -9,6 +10,7 @@ export enum EstadoConteo {
   CANCELADO    = 'cancelado',
 }
 
+@TenantScoped()
 @Entity('conteos_inventario')
 @Index(['empresaId', 'isActive'])
 @Index(['empresaId', 'estado'])

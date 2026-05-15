@@ -2,7 +2,9 @@ import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
 import { ActivoFijo } from '../../activos-fijos/entities/activo-fijo.entity';
 import { TipoMantenimiento } from './orden-mantenimiento.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
+@TenantScoped()
 @Entity('programas_mantenimiento')
 export class ProgramaMantenimiento extends BaseEntity {
   @Column({ nullable: true })

@@ -1,5 +1,6 @@
 import { Entity, Column } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum TipoCuentaBancaria {
   CORRIENTE = 'corriente',
@@ -13,6 +14,7 @@ export enum Moneda {
   EUR = 'EUR',
 }
 
+@TenantScoped()
 @Entity('cuentas_bancarias')
 export class CuentaBancaria extends TenantBaseEntity {
   @Column({ length: 100 })

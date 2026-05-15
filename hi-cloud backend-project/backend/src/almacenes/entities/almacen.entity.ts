@@ -1,6 +1,8 @@
 import { Entity, Column } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
+@TenantScoped()
 @Entity('almacenes')
 export class Almacen extends BaseEntity {
   @Column({ nullable: true })

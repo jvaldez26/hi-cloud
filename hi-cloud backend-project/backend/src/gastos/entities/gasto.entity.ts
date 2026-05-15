@@ -1,5 +1,6 @@
 import { Entity, Column, Index } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum CategoriaGasto {
   ALQUILER        = 'alquiler',
@@ -33,6 +34,7 @@ export const CATEGORIA_LABELS: Record<CategoriaGasto, { label: string; cuenta: s
   [CategoriaGasto.OTROS]:           { label: 'Otros gastos',                 cuenta: '6.1.2.09', emoji: '📦' },
 };
 
+@TenantScoped()
 @Entity('gastos')
 @Index(['empresaId', 'isActive'])
 @Index(['empresaId', 'periodo'])

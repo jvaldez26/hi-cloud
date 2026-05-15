@@ -1,6 +1,8 @@
 import { Entity, Column, Index } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
+@TenantScoped()
 @Entity('proveedores')
 @Index(['empresaId', 'isActive'])
 export class Proveedor extends TenantBaseEntity {

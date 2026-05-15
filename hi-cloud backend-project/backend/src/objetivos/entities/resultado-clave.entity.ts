@@ -1,6 +1,7 @@
 import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { Objetivo } from './objetivo.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum TipoResultado {
   NUMERO     = 'numero',    // Meta numérica (ej: 100 clientes)
@@ -8,6 +9,7 @@ export enum TipoResultado {
   BOOLEANO   = 'booleano',  // Sí/No (ej: lanzar producto)
 }
 
+@TenantScoped()
 @Entity('resultados_clave')
 export class ResultadoClave extends TenantBaseEntity {
   @Column()

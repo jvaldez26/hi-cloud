@@ -2,7 +2,9 @@ import { Entity, Column, ManyToOne, JoinColumn, Unique } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
 import { Almacen } from './almacen.entity';
 import { Producto } from '../../productos/entities/producto.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
+@TenantScoped()
 @Entity('stock_almacen')
 @Unique(['almacenId', 'productoId'])
 export class StockAlmacen extends BaseEntity {

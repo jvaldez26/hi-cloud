@@ -2,6 +2,7 @@ import { Entity, Column, ManyToOne, OneToMany, JoinColumn, Index } from 'typeorm
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { Cliente } from '../../clientes/entities/cliente.entity';
 import { NotaDebitoDetalle } from './nota-debito-detalle.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum EstadoNotaDebito {
   BORRADOR = 'borrador',
@@ -18,6 +19,7 @@ export enum MotivoNotaDebito {
   OTRO              = 'otro',
 }
 
+@TenantScoped()
 @Entity('notas_debito')
 @Index(['empresaId', 'isActive'])
 @Index(['empresaId', 'estado'])

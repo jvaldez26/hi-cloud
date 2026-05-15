@@ -3,6 +3,7 @@ import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { Almacen } from '../../almacenes/entities/almacen.entity';
 import { User } from '../../users/users.entity';
 import { OrdenPickingLinea } from './orden-picking-linea.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum TipoOrdenPicking {
   SALIDA_VENTA   = 'salida_venta',
@@ -20,6 +21,7 @@ export enum EstadoPicking {
   CANCELADA   = 'cancelada',
 }
 
+@TenantScoped()
 @Entity('wms_ordenes_picking')
 @Index(['empresaId', 'estado'])
 @Index(['empresaId', 'operadorId'])

@@ -1,7 +1,9 @@
 import { Entity, Column, OneToMany, Index } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { EtapaRuta } from './etapa-ruta.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
+@TenantScoped()
 @Entity('rutas_produccion')
 @Index(['empresaId', 'isActive'])
 export class RutaProduccion extends TenantBaseEntity {

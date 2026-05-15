@@ -1,5 +1,6 @@
 import { Entity, Column, Index } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum TipoUnidad {
   PESO     = 'peso',      // kg, g, lb, oz, ton
@@ -11,6 +12,7 @@ export enum TipoUnidad {
   OTRO     = 'otro',
 }
 
+@TenantScoped()
 @Entity('unidades_medida')
 @Index(['empresaId', 'isActive'])
 export class UnidadMedida extends TenantBaseEntity {

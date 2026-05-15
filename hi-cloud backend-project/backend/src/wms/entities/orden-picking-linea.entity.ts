@@ -2,6 +2,7 @@ import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { OrdenPicking } from './orden-picking.entity';
 import { Producto } from '../../productos/entities/producto.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum EstadoLineaPicking {
   PENDIENTE  = 'pendiente',
@@ -10,6 +11,7 @@ export enum EstadoLineaPicking {
   PARCIAL    = 'parcial',     // se pickeó menos de lo solicitado
 }
 
+@TenantScoped()
 @Entity('wms_lineas_picking')
 export class OrdenPickingLinea extends TenantBaseEntity {
   @ManyToOne(() => OrdenPicking, (o) => o.lineas, { onDelete: 'CASCADE' })

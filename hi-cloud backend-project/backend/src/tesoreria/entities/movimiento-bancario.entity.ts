@@ -2,6 +2,7 @@ import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { CuentaBancaria } from './cuenta-bancaria.entity';
 import { User } from '../../users/users.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum TipoMovimientoBancario {
   DEPOSITO              = 'deposito',
@@ -31,6 +32,7 @@ export const TIPOS_ENTRADA = [
   TipoMovimientoBancario.INTERES,
 ];
 
+@TenantScoped()
 @Entity('movimientos_bancarios')
 export class MovimientoBancario extends TenantBaseEntity {
   @ManyToOne(() => CuentaBancaria, { eager: true })

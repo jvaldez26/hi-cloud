@@ -1,5 +1,6 @@
 import { Entity, Column, Index } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum TipoClienteECF {
   PERSONA_JURIDICA  = 'persona_juridica',   // E31
@@ -10,6 +11,7 @@ export enum TipoClienteECF {
   GUBERNAMENTAL     = 'gubernamental',      // E45 (entidades gobierno)
 }
 
+@TenantScoped()
 @Entity('clientes')
 @Index(['empresaId', 'isActive'])
 export class Cliente extends TenantBaseEntity {

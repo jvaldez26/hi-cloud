@@ -2,6 +2,7 @@ import { Entity, Column, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
 import { User } from '../../users/users.entity';
 import { NominaLinea } from './nomina-linea.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum EstadoNomina {
   BORRADOR  = 'borrador',
@@ -10,6 +11,7 @@ export enum EstadoNomina {
   ANULADA   = 'anulada',
 }
 
+@TenantScoped()
 @Entity('nomina_periodos')
 export class NominaPeriodo extends BaseEntity {
   @Column({ nullable: true })

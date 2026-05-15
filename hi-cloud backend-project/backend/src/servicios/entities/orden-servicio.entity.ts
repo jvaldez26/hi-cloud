@@ -2,6 +2,7 @@ import { Entity, Column, ManyToOne, OneToMany, JoinColumn, PrimaryGeneratedColum
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { Cliente } from '../../clientes/entities/cliente.entity';
 import { User } from '../../users/users.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum PrioridadOrden {
   BAJA    = 'baja',
@@ -21,6 +22,7 @@ export enum EstadoOrden {
   CANCELADO        = 'cancelado',
 }
 
+@TenantScoped()
 @Entity('ordenes_servicio')
 export class OrdenServicio extends TenantBaseEntity {
   @Column({ length: 20 })

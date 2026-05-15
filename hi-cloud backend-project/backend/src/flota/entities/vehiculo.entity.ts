@@ -1,5 +1,6 @@
 import { Entity, Column } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum EstadoVehiculo {
   ACTIVO    = 'activo',
@@ -8,6 +9,7 @@ export enum EstadoVehiculo {
   DADO_BAJA = 'dado_baja',
 }
 
+@TenantScoped()
 @Entity('vehiculos')
 export class Vehiculo extends TenantBaseEntity {
   @Column({ length: 20 })

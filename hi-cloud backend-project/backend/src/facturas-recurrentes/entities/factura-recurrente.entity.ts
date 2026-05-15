@@ -2,6 +2,7 @@ import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
 import { Cliente } from '../../clientes/entities/cliente.entity';
 import { User } from '../../users/users.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum Frecuencia {
   DIARIA   = 'diaria',
@@ -10,6 +11,7 @@ export enum Frecuencia {
   ANUAL    = 'anual',
 }
 
+@TenantScoped()
 @Entity('facturas_recurrentes')
 export class FacturaRecurrente extends BaseEntity {
   @Column({ nullable: true })

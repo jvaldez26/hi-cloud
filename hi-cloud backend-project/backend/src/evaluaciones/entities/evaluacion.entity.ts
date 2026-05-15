@@ -2,6 +2,7 @@ import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
 import { Empleado } from '../../nomina/entities/empleado.entity';
 import { User } from '../../users/users.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum EstadoEvaluacion {
   BORRADOR    = 'borrador',
@@ -15,6 +16,7 @@ export enum PeriodoEvaluacion {
   ANUAL      = 'anual',
 }
 
+@TenantScoped()
 @Entity('evaluaciones_empleado')
 export class EvaluacionEmpleado extends BaseEntity {
   @Column({ nullable: true })

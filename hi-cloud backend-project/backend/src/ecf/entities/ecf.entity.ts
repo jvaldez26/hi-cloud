@@ -10,6 +10,7 @@ import { BaseEntity } from '../../common/entities/base.entity';
 import { TipoECF } from './tipo-ecf.entity';
 import { SecuenciaECF } from './secuencia-ecf.entity';
 import { Factura } from '../../facturas/entities/factura.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum EstadoDGII {
   // ── Estados originales (backward-compatible) ─────────────────────────────
@@ -41,6 +42,7 @@ export enum DocumentoOrigenTipo {
   GASTO        = 'GASTO',         // E43
 }
 
+@TenantScoped()
 @Entity('ecf')
 @Index(['documentoOrigenTipo', 'documentoOrigenId'])
 export class ECF extends BaseEntity {

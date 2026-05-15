@@ -2,7 +2,9 @@ import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { RutaProduccion } from './ruta-produccion.entity';
 import { CentroTrabajo } from './centro-trabajo.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
+@TenantScoped()
 @Entity('etapas_ruta')
 export class EtapaRuta extends TenantBaseEntity {
   @ManyToOne(() => RutaProduccion, (r) => r.etapas, { onDelete: 'CASCADE' })

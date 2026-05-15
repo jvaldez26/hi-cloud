@@ -1,6 +1,7 @@
 import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { Vehiculo } from './vehiculo.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum TipoRegistroFlota {
   COMBUSTIBLE  = 'combustible',
@@ -11,6 +12,7 @@ export enum TipoRegistroFlota {
   OTRO         = 'otro',
 }
 
+@TenantScoped()
 @Entity('registros_flota')
 export class RegistroFlota extends TenantBaseEntity {
   @Column()

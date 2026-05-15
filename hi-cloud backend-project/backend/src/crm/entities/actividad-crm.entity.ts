@@ -1,6 +1,7 @@
 import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
 import { User } from '../../users/users.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum TipoActividad {
   LLAMADA  = 'llamada',
@@ -11,6 +12,7 @@ export enum TipoActividad {
   DEMO     = 'demo',
 }
 
+@TenantScoped()
 @Entity('crm_actividades')
 export class ActividadCRM extends BaseEntity {
   @Column({ nullable: true })

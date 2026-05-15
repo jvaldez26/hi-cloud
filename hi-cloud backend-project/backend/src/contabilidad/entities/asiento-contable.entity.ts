@@ -2,6 +2,7 @@ import { Entity, Column, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { AsientoLinea } from './asiento-linea.entity';
 import { User } from '../../users/users.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum TipoOrigenAsiento {
   MANUAL   = 'manual',
@@ -18,6 +19,7 @@ export enum EstadoAsiento {
   ANULADO        = 'anulado',
 }
 
+@TenantScoped()
 @Entity('asientos_contables')
 export class AsientoContable extends TenantBaseEntity {
   @Column({ length: 20 })

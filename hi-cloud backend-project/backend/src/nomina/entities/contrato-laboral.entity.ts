@@ -2,6 +2,7 @@ import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { Empleado } from './empleado.entity';
 import { TipoContrato } from './empleado.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum EstadoContrato {
   ACTIVO   = 'activo',
@@ -9,6 +10,7 @@ export enum EstadoContrato {
   RESCINDIDO = 'rescindido',
 }
 
+@TenantScoped()
 @Entity('contratos_laborales')
 export class ContratoLaboral extends TenantBaseEntity {
   @ManyToOne(() => Empleado, { eager: true })

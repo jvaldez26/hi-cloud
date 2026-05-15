@@ -1,4 +1,5 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum TipoTransaccion {
   VENTA      = 'venta',
@@ -12,6 +13,7 @@ export enum EstadoTransaccion {
   DISCREPANCIA = 'discrepancia',
 }
 
+@TenantScoped()
 @Entity('transacciones_tarjeta')
 export class TransaccionTarjeta {
   @PrimaryGeneratedColumn()

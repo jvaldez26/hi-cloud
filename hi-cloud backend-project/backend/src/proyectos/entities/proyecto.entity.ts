@@ -1,6 +1,7 @@
 import { Entity, Column, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { User } from '../../users/users.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum EstadoProyecto {
   PLANIFICACION = 'planificacion',
@@ -16,6 +17,7 @@ export enum TipoFacturacion {
   SIN_COBRO   = 'sin_cobro',
 }
 
+@TenantScoped()
 @Entity('proyectos')
 @Index(['empresaId', 'isActive'])
 @Index(['empresaId', 'estado'])

@@ -1,4 +1,5 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum EstadoConciliacion {
   BORRADOR   = 'borrador',
@@ -6,6 +7,7 @@ export enum EstadoConciliacion {
   CERRADA    = 'cerrada',
 }
 
+@TenantScoped()
 @Entity('conciliaciones_datafono')
 export class ConciliacionDatafono {
   @PrimaryGeneratedColumn()

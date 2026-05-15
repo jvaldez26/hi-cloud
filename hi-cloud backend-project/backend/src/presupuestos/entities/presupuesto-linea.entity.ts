@@ -1,7 +1,9 @@
 import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { Presupuesto } from './presupuesto.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
+@TenantScoped()
 @Entity('presupuesto_lineas')
 export class PresupuestoLinea extends TenantBaseEntity {
   @ManyToOne(() => Presupuesto, (p) => p.lineas, { onDelete: 'CASCADE' })

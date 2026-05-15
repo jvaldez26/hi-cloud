@@ -1,11 +1,13 @@
 import { Entity, Column, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { Producto } from '../../productos/entities/producto.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 /**
  * Variante de un producto — combinación de atributos con stock propio.
  * Ejemplo: "Camisa Polo" → variante "Talla: XL / Color: Azul"
  */
+@TenantScoped()
 @Entity('producto_variantes')
 @Index(['empresaId', 'productoId'])
 @Index(['empresaId', 'sku'])

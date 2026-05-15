@@ -3,7 +3,9 @@ import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { ActivoFijo } from './activo-fijo.entity';
 import { MetodoDepreciacion } from './categoria-activo.entity';
 import { User } from '../../users/users.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
+@TenantScoped()
 @Entity('depreciaciones_activos')
 export class DepreciacionActivo extends TenantBaseEntity {
   @ManyToOne(() => ActivoFijo, { eager: true })

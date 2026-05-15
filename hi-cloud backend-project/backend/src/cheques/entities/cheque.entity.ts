@@ -1,6 +1,7 @@
 import { Entity, Column, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { Chequera } from './chequera.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum EstadoCheque {
   EN_CARTERA  = 'en_cartera',
@@ -16,6 +17,7 @@ export enum TipoCheque {
   RECIBIDO = 'recibido',  // cheque que nos dieron (cobramos)
 }
 
+@TenantScoped()
 @Entity('cheques')
 @Index(['empresaId', 'isActive'])
 export class Cheque extends TenantBaseEntity {

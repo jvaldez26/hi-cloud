@@ -1,6 +1,7 @@
 import { Entity, Column, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { Almacen } from '../../almacenes/entities/almacen.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum TipoUbicacion {
   PICKING    = 'picking',    // ubicación de picking diario
@@ -10,6 +11,7 @@ export enum TipoUbicacion {
   CUARENTENA = 'cuarentena', // productos en espera de aprobación
 }
 
+@TenantScoped()
 @Entity('wms_ubicaciones')
 @Index(['empresaId', 'almacenId'])
 @Index(['empresaId', 'codigo'])

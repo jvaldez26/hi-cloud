@@ -1,5 +1,6 @@
 import { Entity, Column, Index } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum TipoReglaComision {
   GLOBAL         = 'global',          // aplica a todos
@@ -9,6 +10,7 @@ export enum TipoReglaComision {
   POR_ANTIGUEDAD = 'por_antiguedad',  // antigüedad del cobro (días desde factura)
 }
 
+@TenantScoped()
 @Entity('reglas_comision')
 @Index(['empresaId', 'isActive'])
 export class ReglaComision extends TenantBaseEntity {

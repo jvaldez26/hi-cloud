@@ -1,7 +1,9 @@
 import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
 import { ListaMateriales } from './lista-materiales.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
+@TenantScoped()
 @Entity('componentes_lm')
 export class ComponenteLM extends BaseEntity {
   @Column({ nullable: true })

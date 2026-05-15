@@ -2,6 +2,7 @@ import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { CuentaBancaria } from './cuenta-bancaria.entity';
 import { User } from '../../users/users.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum EstadoConciliacion {
   BORRADOR    = 'borrador',
@@ -9,6 +10,7 @@ export enum EstadoConciliacion {
   CERRADA     = 'cerrada',
 }
 
+@TenantScoped()
 @Entity('conciliaciones_bancarias')
 export class ConciliacionBancaria extends TenantBaseEntity {
   @ManyToOne(() => CuentaBancaria, { eager: true })

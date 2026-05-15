@@ -1,5 +1,6 @@
 import { Entity, Column, Index } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
+import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum TipoDescuento {
   PORCENTAJE = 'porcentaje',
@@ -15,6 +16,7 @@ export enum CondicionDescuento {
   FECHA         = 'fecha',
 }
 
+@TenantScoped()
 @Entity('reglas_descuento')
 @Index(['empresaId', 'isActive'])
 @Index(['empresaId', 'activo'])
