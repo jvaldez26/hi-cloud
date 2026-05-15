@@ -2,6 +2,7 @@ import {
   Controller, Get, Post, Patch, Body, Param, ParseIntPipe,
   HttpCode, HttpStatus, UseGuards, ForbiddenException, Query,
 } from '@nestjs/common';
+import { PlanTipo, ModalidadPago } from './entities/suscripcion.entity';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { SuscripcionesService } from './suscripciones.service';
 import { LimitesService } from './limites.service';
@@ -177,7 +178,6 @@ export class SuscripcionesController {
     @Param('empresaId', ParseIntPipe) empresaId: number,
     @Body() body: { plan: string; meses?: number; notas?: string; modalidad?: string },
   ) {
-    const { PlanTipo, ModalidadPago } = require('./entities/suscripcion.entity');
     return this.svc.activarPlan(
       empresaId,
       body.plan as any,

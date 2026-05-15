@@ -114,7 +114,7 @@ export class SuscripcionesService implements OnModuleInit {
       await this.repo.update(s.id, {
         plan, estado: SuscripcionEstado.ACTIVA, modalidad,
         fechaInicio: inicio, fechaVencimiento: fin,
-        notasAdmin: notas, motivoSuspension: undefined,
+        notasAdmin: notas,
       });
     } else {
       await this.repo.save(this.repo.create({
@@ -212,30 +212,28 @@ export class SuscripcionesService implements OnModuleInit {
     const en5Dias = new Date(hoy); en5Dias.setDate(en5Dias.getDate() + 5);
     const en1Dia  = new Date(hoy); en1Dia.setDate(en1Dia.getDate() + 1);
 
-    // Recordatorio 5 días
-    const por5d = await this.repo.find({
-      where: {
-        estado: SuscripcionEstado.PRUEBA,
-        fechaFinPrueba: en5Dias as any,
-        recordatorio5dEnviado: false,
-      },
-    });
-    for (const s of por5d) {
-      await this.enviarRecordatorio(s, 5);
-      await this.repo.update(s.id, { recordatorio5dEnviado: true });
+    // Recordatorio 5 días — buscar por SQL para evitar problemas de tipo con Date
+    const por5d = await this.ds.query<{ id: number }[]>(`
+      SELECT id FROM suscripciones
+       WHERE estado = 'prueba'
+         AND "fechaFinPrueba"::date = $1::date
+         AND "recordatorio5dEnviado" = false
+    `, [en5Dias.toISOString().slice(0, 10)]);
+    for (const row of por5d) {
+      const s = await this.repo.findOne({ where: { id: row.id } });
+      if (s) { await this.enviarRecordatorio(s, 5); await this.repo.update(s.id, { recordatorio5dEnviado: true }); }
     }
 
     // Recordatorio 1 día
-    const por1d = await this.repo.find({
-      where: {
-        estado: SuscripcionEstado.PRUEBA,
-        fechaFinPrueba: en1Dia as any,
-        recordatorio1dEnviado: false,
-      },
-    });
-    for (const s of por1d) {
-      await this.enviarRecordatorio(s, 1);
-      await this.repo.update(s.id, { recordatorio1dEnviado: true });
+    const por1d = await this.ds.query<{ id: number }[]>(`
+      SELECT id FROM suscripciones
+       WHERE estado = 'prueba'
+         AND "fechaFinPrueba"::date = $1::date
+         AND "recordatorio1dEnviado" = false
+    `, [en1Dia.toISOString().slice(0, 10)]);
+    for (const row of por1d) {
+      const s = await this.repo.findOne({ where: { id: (row as any).id } });
+      if (s) { await this.enviarRecordatorio(s, 1); await this.repo.update(s.id, { recordatorio1dEnviado: true }); }
     }
 
     if (por5d.length + por1d.length > 0)
@@ -316,7 +314,7 @@ export class SuscripcionesService implements OnModuleInit {
     });
 
     // Enriquecer con datos de empresa
-    const empresaIds = [...new Set(solicitudes.map(s => s.empresaId))];
+    const empresaIds = Array.from(new Set(solicitudes.map(s => s.empresaId)));
     const empresas   = empresaIds.length > 0
       ? await this.ds.query<{ id: number; nombre: string; rnc: string }[]>(
           `SELECT id, nombre, rnc FROM empresas WHERE id = ANY($1)`, [empresaIds],
@@ -324,9 +322,9 @@ export class SuscripcionesService implements OnModuleInit {
       : [];
     const empresaMap = Object.fromEntries(empresas.map(e => [e.id, e]));
 
-    const suscripciones = await this.repo.find({
-      where: { empresaId: empresaIds.length > 0 ? In(empresaIds) : [] },
-    });
+    const suscripciones = empresaIds.length > 0
+      ? await this.repo.find({ where: { empresaId: In(empresaIds) } })
+      : [];
     const suscMap = Object.fromEntries(suscripciones.map(s => [s.empresaId, s]));
 
     return solicitudes.map(s => ({
@@ -454,10 +452,9 @@ export class SuscripcionesService implements OnModuleInit {
     nuevaFecha.setDate(nuevaFecha.getDate() + diasExtension);
 
     await this.repo.update(s.id, {
-      fechaFinPrueba:  nuevaFecha,
-      estado:          SuscripcionEstado.PRUEBA,
-      motivoSuspension: undefined,
-    });
+      fechaFinPrueba: nuevaFecha,
+      estado:         SuscripcionEstado.PRUEBA,
+    } as any);
 
     await this.auditoriaRepo.save(this.auditoriaRepo.create({
       suscripcionId: s.id,
