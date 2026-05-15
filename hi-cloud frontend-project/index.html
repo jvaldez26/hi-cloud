@@ -2,6 +2,16 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
+    <!-- Anti-FOUC: aplicar data-theme ANTES de que React hidrate -->
+    <script>
+      (function() {
+        try {
+          var s = localStorage.getItem('hicloud-theme');
+          var dark = s ? JSON.parse(s).state.isDark : window.matchMedia('(prefers-color-scheme: dark)').matches;
+          if (dark) document.documentElement.setAttribute('data-theme', 'dark');
+        } catch(e) {}
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
     <link rel="manifest" href="/manifest.json" />

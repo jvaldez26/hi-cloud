@@ -3,20 +3,27 @@ import { message } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { motion, useInView, AnimatePresence } from 'framer-motion';
 import api from '../../api/client';
+import { useThemeStore } from '../../store/theme.store';
 
-// ── Paleta ──────────────────────────────────────────────────────────────────────
-const L = {
-  dark:    '#0A1628',
-  darkAlt: '#0d1f3c',
-  primary: '#1565C0',
-  accent:  '#00BFA5',
-  accentD: '#009688',
-  text:    '#1A1A1A',
-  muted:   '#64748B',
-  gray:    '#F5F7FA',
-  border:  '#E2E8F0',
-  white:   '#FFFFFF',
-};
+// ── Paleta dinámica (light/dark) ─────────────────────────────────────────────
+function buildPalette(isDark: boolean) {
+  return {
+    dark:    '#0A1628',   // hero/footer — siempre oscuro (diseño intencional)
+    darkAlt: '#0d1f3c',
+    primary: '#1565C0',
+    accent:  '#00BFA5',
+    accentD: '#009688',
+    text:    isDark ? '#E6EDF3' : '#1A1A1A',
+    muted:   isDark ? '#8B949E' : '#64748B',
+    gray:    isDark ? '#0D1117' : '#F5F7FA',
+    border:  isDark ? '#30363D' : '#E2E8F0',
+    white:   isDark ? '#161B22' : '#FFFFFF',
+  };
+}
+
+// Alias estático para subcomponentes que no necesitan reactividad al tema
+// (Navbar siempre es dark por diseño; FAQ, eCF sections son sobre fondos oscuros)
+const L = buildPalette(false);
 
 // ── Fade in al scroll ────────────────────────────────────────────────────────────
 function FadeIn({ children, delay = 0, y = 24 }: { children: React.ReactNode; delay?: number; y?: number }) {
@@ -49,6 +56,28 @@ function CountUp({ to, suffix = '' }: { to: number; suffix?: string }) {
 }
 
 // ── Navbar ───────────────────────────────────────────────────────────────────────
+function ThemeToggleBtn() {
+  const { isDark, toggle } = useThemeStore();
+  return (
+    <button
+      onClick={toggle}
+      aria-label={isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+      title={isDark ? 'Modo claro' : 'Modo oscuro'}
+      style={{
+        background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.18)',
+        borderRadius: 8, padding: '7px 10px', cursor: 'pointer',
+        color: '#fff', display: 'flex', alignItems: 'center', transition: 'all .15s',
+      }}
+      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,.2)')}
+      onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,.1)')}>
+      {isDark
+        ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      }
+    </button>
+  );
+}
+
 function Navbar({ onDemo }: { onDemo: () => void }) {
   const [scrolled, setScrolled] = useState(false);
   const [mopen,    setMopen]    = useState(false);
@@ -107,6 +136,7 @@ function Navbar({ onDemo }: { onDemo: () => void }) {
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <ThemeToggleBtn />
         <button onClick={() => navigate('/login')}
           style={{ background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.2)',
             color: '#fff', fontSize: 13, fontWeight: 600, padding: '7px 16px', borderRadius: 8,
@@ -226,14 +256,16 @@ const FAQ_DATA = [
 // ── Sección FAQ ──────────────────────────────────────────────────────────────────
 function FAQItem({ q, a }: { q: string; a: string }) {
   const [open, setOpen] = useState(false);
+  const { isDark } = useThemeStore();
+  const P = buildPalette(isDark);
   return (
-    <div style={{ borderBottom: `1px solid ${L.border}`, padding: '0' }}>
+    <div style={{ borderBottom: `1px solid ${P.border}`, padding: '0' }}>
       <button onClick={() => setOpen(v => !v)} style={{
         width: '100%', background: 'none', border: 'none', textAlign: 'left',
         padding: '18px 0', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16,
       }}>
-        <span style={{ fontSize: 15, fontWeight: 600, color: L.text }}>{q}</span>
-        <span style={{ fontSize: 18, color: L.primary, flexShrink: 0, transition: 'transform .2s',
+        <span style={{ fontSize: 15, fontWeight: 600, color: P.text }}>{q}</span>
+        <span style={{ fontSize: 18, color: P.primary, flexShrink: 0, transition: 'transform .2s',
           transform: open ? 'rotate(45deg)' : 'none' }}>+</span>
       </button>
       <AnimatePresence>
@@ -241,7 +273,7 @@ function FAQItem({ q, a }: { q: string; a: string }) {
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22 }}
             style={{ overflow: 'hidden' }}>
-            <p style={{ margin: '0 0 18px', color: L.muted, fontSize: 14, lineHeight: 1.7 }}>{a}</p>
+            <p style={{ margin: '0 0 18px', color: P.muted, fontSize: 14, lineHeight: 1.7 }}>{a}</p>
           </motion.div>
         )}
       </AnimatePresence>
@@ -254,6 +286,8 @@ function DemoForm() {
   const [form, setForm]       = useState({ nombre: '', empresa: '', rnc: '', email: '', telefono: '', usuarios: '1-5', mensaje: '' });
   const [loading, setLoading] = useState(false);
   const [sent,    setSent]    = useState(false);
+  const { isDark } = useThemeStore();
+  const P = buildPalette(isDark);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -274,16 +308,16 @@ function DemoForm() {
 
   const inputStyle: React.CSSProperties = {
     width: '100%', padding: '11px 14px', borderRadius: 8,
-    border: `1px solid ${L.border}`, fontSize: 14, outline: 'none',
-    background: '#fff', color: L.text, boxSizing: 'border-box',
+    border: `1px solid ${P.border}`, fontSize: 14, outline: 'none',
+    background: P.white, color: P.text, boxSizing: 'border-box',
     transition: 'border-color .15s',
   };
 
   if (sent) return (
     <div style={{ textAlign: 'center', padding: '40px 20px' }}>
       <div style={{ fontSize: 52, marginBottom: 16 }}>✅</div>
-      <h3 style={{ color: L.text, marginBottom: 8 }}>¡Solicitud recibida!</h3>
-      <p style={{ color: L.muted }}>Nuestro equipo se contactará contigo en menos de 24 horas.</p>
+      <h3 style={{ color: P.text, marginBottom: 8 }}>¡Solicitud recibida!</h3>
+      <p style={{ color: P.muted }}>Nuestro equipo se contactará contigo en menos de 24 horas.</p>
     </div>
   );
 
@@ -291,37 +325,37 @@ function DemoForm() {
     <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
         <div>
-          <label style={{ fontSize: 12, fontWeight: 600, color: L.muted, display: 'block', marginBottom: 5 }}>Nombre completo *</label>
+          <label style={{ fontSize: 12, fontWeight: 600, color: P.muted, display: 'block', marginBottom: 5 }}>Nombre completo *</label>
           <input style={inputStyle} value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
             placeholder="Juan Pérez" required
-            onFocus={e => (e.target.style.borderColor = L.primary)} onBlur={e => (e.target.style.borderColor = L.border)} />
+            onFocus={e => (e.target.style.borderColor = P.primary)} onBlur={e => (e.target.style.borderColor = P.border)} />
         </div>
         <div>
-          <label style={{ fontSize: 12, fontWeight: 600, color: L.muted, display: 'block', marginBottom: 5 }}>Empresa *</label>
+          <label style={{ fontSize: 12, fontWeight: 600, color: P.muted, display: 'block', marginBottom: 5 }}>Empresa *</label>
           <input style={inputStyle} value={form.empresa} onChange={e => setForm(f => ({ ...f, empresa: e.target.value }))}
             placeholder="Mi Empresa S.R.L." required
-            onFocus={e => (e.target.style.borderColor = L.primary)} onBlur={e => (e.target.style.borderColor = L.border)} />
+            onFocus={e => (e.target.style.borderColor = P.primary)} onBlur={e => (e.target.style.borderColor = P.border)} />
         </div>
         <div>
-          <label style={{ fontSize: 12, fontWeight: 600, color: L.muted, display: 'block', marginBottom: 5 }}>Correo electrónico *</label>
+          <label style={{ fontSize: 12, fontWeight: 600, color: P.muted, display: 'block', marginBottom: 5 }}>Correo electrónico *</label>
           <input style={inputStyle} type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
             placeholder="juan@empresa.com" required
-            onFocus={e => (e.target.style.borderColor = L.primary)} onBlur={e => (e.target.style.borderColor = L.border)} />
+            onFocus={e => (e.target.style.borderColor = P.primary)} onBlur={e => (e.target.style.borderColor = P.border)} />
         </div>
         <div>
-          <label style={{ fontSize: 12, fontWeight: 600, color: L.muted, display: 'block', marginBottom: 5 }}>Teléfono / WhatsApp *</label>
+          <label style={{ fontSize: 12, fontWeight: 600, color: P.muted, display: 'block', marginBottom: 5 }}>Teléfono / WhatsApp *</label>
           <input style={inputStyle} value={form.telefono} onChange={e => setForm(f => ({ ...f, telefono: e.target.value }))}
             placeholder="809-555-0000" required
-            onFocus={e => (e.target.style.borderColor = L.primary)} onBlur={e => (e.target.style.borderColor = L.border)} />
+            onFocus={e => (e.target.style.borderColor = P.primary)} onBlur={e => (e.target.style.borderColor = P.border)} />
         </div>
         <div>
-          <label style={{ fontSize: 12, fontWeight: 600, color: L.muted, display: 'block', marginBottom: 5 }}>RNC (opcional)</label>
+          <label style={{ fontSize: 12, fontWeight: 600, color: P.muted, display: 'block', marginBottom: 5 }}>RNC (opcional)</label>
           <input style={inputStyle} value={form.rnc} onChange={e => setForm(f => ({ ...f, rnc: e.target.value }))}
             placeholder="132xxxxxx"
-            onFocus={e => (e.target.style.borderColor = L.primary)} onBlur={e => (e.target.style.borderColor = L.border)} />
+            onFocus={e => (e.target.style.borderColor = P.primary)} onBlur={e => (e.target.style.borderColor = P.border)} />
         </div>
         <div>
-          <label style={{ fontSize: 12, fontWeight: 600, color: L.muted, display: 'block', marginBottom: 5 }}>Número de usuarios</label>
+          <label style={{ fontSize: 12, fontWeight: 600, color: P.muted, display: 'block', marginBottom: 5 }}>Número de usuarios</label>
           <select style={inputStyle} value={form.usuarios} onChange={e => setForm(f => ({ ...f, usuarios: e.target.value }))}>
             <option value="1-5">1-5 usuarios</option>
             <option value="6-15">6-15 usuarios</option>
@@ -331,11 +365,11 @@ function DemoForm() {
         </div>
       </div>
       <div>
-        <label style={{ fontSize: 12, fontWeight: 600, color: L.muted, display: 'block', marginBottom: 5 }}>¿Qué necesitas? (opcional)</label>
+        <label style={{ fontSize: 12, fontWeight: 600, color: P.muted, display: 'block', marginBottom: 5 }}>¿Qué necesitas? (opcional)</label>
         <textarea style={{ ...inputStyle, height: 80, resize: 'vertical' as const }}
           value={form.mensaje} onChange={e => setForm(f => ({ ...f, mensaje: e.target.value }))}
           placeholder="Cuéntanos un poco sobre tu negocio y qué módulos necesitas..."
-          onFocus={e => (e.target.style.borderColor = L.primary)} onBlur={e => (e.target.style.borderColor = L.border)} />
+          onFocus={e => (e.target.style.borderColor = P.primary)} onBlur={e => (e.target.style.borderColor = P.border)} />
       </div>
       <button type="submit" disabled={loading}
         style={{ background: loading ? '#94A3B8' : 'linear-gradient(135deg,#00BFA5,#009688)',
@@ -344,7 +378,7 @@ function DemoForm() {
           boxShadow: loading ? 'none' : '0 4px 16px rgba(0,191,165,.4)', transition: 'all .2s' }}>
         {loading ? 'Enviando…' : 'Solicitar Demo Gratis →'}
       </button>
-      <p style={{ margin: 0, color: L.muted, fontSize: 12, textAlign: 'center' }}>Sin compromiso · Sin tarjeta de crédito · Respuesta en 24h</p>
+      <p style={{ margin: 0, color: P.muted, fontSize: 12, textAlign: 'center' }}>Sin compromiso · Sin tarjeta de crédito · Respuesta en 24h</p>
     </form>
   );
 }
@@ -394,30 +428,32 @@ const TABLA_COMPARATIVA = [
 function PreciosSection({ navigate }: { navigate: (to: string) => void }) {
   const [anual,     setAnual]     = useState(false);
   const [tablaBien, setTablaBien] = useState(false);
+  const { isDark }  = useThemeStore();
+  const P           = buildPalette(isDark);
 
   return (
-    <section id="precios" style={{ padding: 'clamp(60px,8vw,96px) clamp(16px,5vw,80px)', background: L.gray }}>
+    <section id="precios" style={{ padding: 'clamp(60px,8vw,96px) clamp(16px,5vw,80px)', background: P.gray }}>
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
         <FadeIn>
           <div style={{ textAlign: 'center', marginBottom: 48 }}>
-            <span style={{ display: 'inline-block', background: 'rgba(21,101,192,.1)', color: L.primary, fontSize: 12, fontWeight: 700, padding: '4px 14px', borderRadius: 20, marginBottom: 16, letterSpacing: '0.5px' }}>
+            <span style={{ display: 'inline-block', background: 'rgba(21,101,192,.1)', color: P.primary, fontSize: 12, fontWeight: 700, padding: '4px 14px', borderRadius: 20, marginBottom: 16, letterSpacing: '0.5px' }}>
               PLANES Y PRECIOS
             </span>
-            <h2 style={{ fontSize: 'clamp(24px,4vw,40px)', fontWeight: 800, marginBottom: 12, letterSpacing: '-0.02em' }}>
-              Impulsa tu pyme desde <span style={{ color: L.primary }}>USD $29/mes</span>
+            <h2 style={{ fontSize: 'clamp(24px,4vw,40px)', fontWeight: 800, marginBottom: 12, letterSpacing: '-0.02em', color: P.text }}>
+              Impulsa tu pyme desde <span style={{ color: P.primary }}>USD $29/mes</span>
             </h2>
-            <p style={{ color: L.muted, fontSize: 16, maxWidth: 560, margin: '0 auto 24px' }}>
+            <p style={{ color: P.muted, fontSize: 16, maxWidth: 560, margin: '0 auto 24px' }}>
               Prueba cualquier plan gratis 15 días, sin tarjeta de crédito. Todos incluyen todos los módulos.
             </p>
             {/* Toggle mensual / anual */}
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 12, background: L.white, border: `1px solid ${L.border}`, borderRadius: 30, padding: '6px 8px' }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 12, background: P.white, border: `1px solid ${P.border}`, borderRadius: 30, padding: '6px 8px' }}>
               <button onClick={() => setAnual(false)} style={{
                 padding: '7px 20px', borderRadius: 24, border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, transition: 'all .2s',
-                background: !anual ? L.primary : 'transparent', color: !anual ? '#fff' : L.muted,
+                background: !anual ? P.primary : 'transparent', color: !anual ? '#fff' : P.muted,
               }}>Mensual</button>
               <button onClick={() => setAnual(true)} style={{
                 padding: '7px 20px', borderRadius: 24, border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, transition: 'all .2s',
-                background: anual ? L.primary : 'transparent', color: anual ? '#fff' : L.muted,
+                background: anual ? P.primary : 'transparent', color: anual ? '#fff' : P.muted,
                 display: 'flex', alignItems: 'center', gap: 6,
               }}>
                 Anual
@@ -434,8 +470,8 @@ function PreciosSection({ navigate }: { navigate: (to: string) => void }) {
             return (
               <FadeIn key={p.clave} delay={i * 0.08}>
                 <div style={{
-                  background: p.popular ? L.dark : L.white,
-                  border: `2px solid ${p.popular ? p.border : L.border}`,
+                  background: p.popular ? P.dark : P.white,
+                  border: `2px solid ${p.popular ? p.border : P.border}`,
                   borderRadius: 18, padding: '28px 24px', position: 'relative',
                   boxShadow: p.popular ? '0 20px 48px rgba(0,0,0,.18)' : '0 2px 12px rgba(0,0,0,.06)',
                   transform: p.popular ? 'scale(1.04)' : 'none',
@@ -445,19 +481,19 @@ function PreciosSection({ navigate }: { navigate: (to: string) => void }) {
                       MÁS POPULAR
                     </div>
                   )}
-                  <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 800, color: p.popular ? '#fff' : L.text, letterSpacing: '0.03em' }}>{p.nombre}</h3>
+                  <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 800, color: p.popular ? '#fff' : P.text, letterSpacing: '0.03em' }}>{p.nombre}</h3>
                   <div style={{ marginBottom: 4 }}>
                     <span style={{ fontSize: 40, fontWeight: 900, color: p.color }}>US${precio.toFixed(2)}</span>
-                    <span style={{ color: p.popular ? 'rgba(255,255,255,.5)' : L.muted, fontSize: 13 }}>/mes</span>
+                    <span style={{ color: p.popular ? 'rgba(255,255,255,.5)' : P.muted, fontSize: 13 }}>/mes</span>
                   </div>
                   {anual && (
                     <div style={{ marginBottom: 8 }}>
                       <span style={{ background: '#10B981', color: '#fff', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 8 }}>Pago anual</span>
                     </div>
                   )}
-                  <div style={{ marginBottom: 16, padding: '8px 0', borderTop: `1px solid ${p.popular ? 'rgba(255,255,255,.1)' : L.border}` }}>
+                  <div style={{ marginBottom: 16, padding: '8px 0', borderTop: `1px solid ${p.popular ? 'rgba(255,255,255,.1)' : P.border}` }}>
                     {p.features.map(f => (
-                      <p key={f} style={{ margin: '0 0 8px', display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, color: p.popular ? 'rgba(255,255,255,.8)' : L.text }}>
+                      <p key={f} style={{ margin: '0 0 8px', display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, color: p.popular ? 'rgba(255,255,255,.8)' : P.text }}>
                         <span style={{ color: p.color, fontWeight: 700, flexShrink: 0, fontSize: 14 }}>✓</span>{f}
                       </p>
                     ))}
@@ -486,9 +522,9 @@ function PreciosSection({ navigate }: { navigate: (to: string) => void }) {
           <div style={{ textAlign: 'center', marginBottom: tablaBien ? 24 : 0 }}>
             <button
               onClick={() => setTablaBien(!tablaBien)}
-              style={{ background: 'transparent', border: `1px solid ${L.border}`, color: L.muted, fontSize: 14, padding: '9px 20px', borderRadius: 8, cursor: 'pointer', transition: 'all .15s' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = L.primary; (e.currentTarget as HTMLButtonElement).style.color = L.primary; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = L.border; (e.currentTarget as HTMLButtonElement).style.color = L.muted; }}>
+              style={{ background: 'transparent', border: `1px solid ${P.border}`, color: P.muted, fontSize: 14, padding: '9px 20px', borderRadius: 8, cursor: 'pointer', transition: 'all .15s' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = P.primary; (e.currentTarget as HTMLButtonElement).style.color = P.primary; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = P.border; (e.currentTarget as HTMLButtonElement).style.color = P.muted; }}>
               {tablaBien ? '▲ Ocultar' : '▼ Compara nuestros planes'}
             </button>
           </div>
@@ -497,9 +533,9 @@ function PreciosSection({ navigate }: { navigate: (to: string) => void }) {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                 <thead>
                   <tr>
-                    <th style={{ textAlign: 'left', padding: '12px 16px', color: L.muted, fontWeight: 600, borderBottom: `2px solid ${L.border}` }}>Característica</th>
+                    <th style={{ textAlign: 'left', padding: '12px 16px', color: P.muted, fontWeight: 600, borderBottom: `2px solid ${P.border}` }}>Característica</th>
                     {PLANES_LANDING.map(p => (
-                      <th key={p.clave} style={{ textAlign: 'center', padding: '12px 16px', color: p.popular ? p.color : L.text, fontWeight: 800, borderBottom: `2px solid ${L.border}` }}>
+                      <th key={p.clave} style={{ textAlign: 'center', padding: '12px 16px', color: p.popular ? p.color : P.text, fontWeight: 800, borderBottom: `2px solid ${P.border}` }}>
                         {p.nombre}
                       </th>
                     ))}
@@ -507,12 +543,12 @@ function PreciosSection({ navigate }: { navigate: (to: string) => void }) {
                 </thead>
                 <tbody>
                   {TABLA_COMPARATIVA.map((row, i) => (
-                    <tr key={row.feature} style={{ background: i % 2 === 0 ? L.gray : L.white }}>
-                      <td style={{ padding: '10px 16px', color: L.text, fontWeight: 500 }}>{row.feature}</td>
+                    <tr key={row.feature} style={{ background: i % 2 === 0 ? P.gray : P.white }}>
+                      <td style={{ padding: '10px 16px', color: P.text, fontWeight: 500 }}>{row.feature}</td>
                       {row.vals.map((v, j) => (
-                        <td key={j} style={{ textAlign: 'center', padding: '10px 16px', color: L.text }}>
+                        <td key={j} style={{ textAlign: 'center', padding: '10px 16px', color: P.text }}>
                           {typeof v === 'boolean'
-                            ? (v ? <span style={{ color: '#10B981', fontWeight: 700 }}>✓</span> : <span style={{ color: '#D1D5DB' }}>—</span>)
+                            ? (v ? <span style={{ color: '#10B981', fontWeight: 700 }}>✓</span> : <span style={{ color: isDark ? '#4B5563' : '#D1D5DB' }}>—</span>)
                             : <span style={{ fontWeight: 600 }}>{v}</span>
                           }
                         </td>
@@ -521,7 +557,7 @@ function PreciosSection({ navigate }: { navigate: (to: string) => void }) {
                   ))}
                 </tbody>
               </table>
-              <p style={{ textAlign: 'center', color: L.muted, fontSize: 12, marginTop: 16 }}>
+              <p style={{ textAlign: 'center', color: P.muted, fontSize: 12, marginTop: 16 }}>
                 Todos los precios en USD · ITBIS no incluido · Cancela cuando quieras · Sin contratos de permanencia
               </p>
             </div>
@@ -536,6 +572,8 @@ function PreciosSection({ navigate }: { navigate: (to: string) => void }) {
 export default function LandingPage() {
   const [showForm, setShowForm] = useState(false);
   const navigate = useNavigate();
+  const { isDark } = useThemeStore();
+  const P = buildPalette(isDark); // paleta reactiva al tema
 
   // Planes dinámicos desde la BD
   const [planesDB, setPlanesDB] = useState<any[]>([]);
@@ -568,7 +606,7 @@ export default function LandingPage() {
   };
 
   return (
-    <div style={{ fontFamily: "'Inter', -apple-system, sans-serif", color: L.text, overflowX: 'hidden' }}>
+    <div style={{ fontFamily: "'Inter', -apple-system, sans-serif", color: P.text, overflowX: 'hidden', background: P.gray }}>
       <Navbar onDemo={scrollToForm} />
 
       {/* ─── HERO ─────────────────────────────────────────────────────────────── */}
@@ -648,10 +686,10 @@ export default function LandingPage() {
       </section>
 
       {/* ─── PROBLEMA → SOLUCIÓN ─────────────────────────────────────────────── */}
-      <section style={{ padding: 'clamp(60px,8vw,96px) clamp(16px,5vw,80px)', background: L.gray }}>
+      <section style={{ padding: 'clamp(60px,8vw,96px) clamp(16px,5vw,80px)', background: P.gray }}>
         <div style={{ maxWidth: 1080, margin: '0 auto' }}>
           <FadeIn>
-            <h2 style={{ textAlign: 'center', fontSize: 'clamp(24px,4vw,38px)', fontWeight: 800, marginBottom: 48, letterSpacing: '-0.02em' }}>
+            <h2 style={{ textAlign: 'center', fontSize: 'clamp(24px,4vw,38px)', fontWeight: 800, marginBottom: 48, letterSpacing: '-0.02em', color: P.text }}>
               ¿Sigues usando <span style={{ color: '#DC2626' }}>Excel para facturar</span>?
             </h2>
           </FadeIn>
@@ -681,14 +719,14 @@ export default function LandingPage() {
       </section>
 
       {/* ─── CARACTERÍSTICAS ─────────────────────────────────────────────────── */}
-      <section id="caracteristicas" style={{ padding: 'clamp(60px,8vw,96px) clamp(16px,5vw,80px)', background: L.white }}>
+      <section id="caracteristicas" style={{ padding: 'clamp(60px,8vw,96px) clamp(16px,5vw,80px)', background: P.white }}>
         <div style={{ maxWidth: 1080, margin: '0 auto' }}>
           <FadeIn>
             <div style={{ textAlign: 'center', marginBottom: 56 }}>
-              <h2 style={{ fontSize: 'clamp(24px,4vw,38px)', fontWeight: 800, marginBottom: 12, letterSpacing: '-0.02em' }}>
+              <h2 style={{ fontSize: 'clamp(24px,4vw,38px)', fontWeight: 800, marginBottom: 12, letterSpacing: '-0.02em', color: P.text }}>
                 Todo lo que necesita tu PYME
               </h2>
-              <p style={{ color: L.muted, fontSize: 17, maxWidth: 540, margin: '0 auto' }}>
+              <p style={{ color: P.muted, fontSize: 17, maxWidth: 540, margin: '0 auto' }}>
                 Módulos integrados que trabajan juntos. Sin plugins, sin integraciones rotas.
               </p>
             </div>
@@ -696,13 +734,13 @@ export default function LandingPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 20 }}>
             {FEATURES.map((f, i) => (
               <FadeIn key={f.title} delay={i * 0.06}>
-                <div style={{ background: L.gray, border: `1px solid ${L.border}`, borderRadius: 14, padding: '22px 24px',
+                <div style={{ background: P.gray, border: `1px solid ${P.border}`, borderRadius: 14, padding: '22px 24px',
                   transition: 'all .2s', cursor: 'default' }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-3px)'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 24px rgba(0,0,0,.08)'; (e.currentTarget as HTMLDivElement).style.borderColor = L.primary; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = ''; (e.currentTarget as HTMLDivElement).style.boxShadow = ''; (e.currentTarget as HTMLDivElement).style.borderColor = L.border; }}>
+                  onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-3px)'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 24px rgba(0,0,0,.08)'; (e.currentTarget as HTMLDivElement).style.borderColor = P.primary; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = ''; (e.currentTarget as HTMLDivElement).style.boxShadow = ''; (e.currentTarget as HTMLDivElement).style.borderColor = P.border; }}>
                   <div style={{ fontSize: 28, marginBottom: 12 }}>{f.icon}</div>
                   <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 700 }}>{f.title}</h3>
-                  <p style={{ margin: 0, color: L.muted, fontSize: 14, lineHeight: 1.6 }}>{f.desc}</p>
+                  <p style={{ margin: 0, color: P.muted, fontSize: 14, lineHeight: 1.6 }}>{f.desc}</p>
                 </div>
               </FadeIn>
             ))}
@@ -788,10 +826,10 @@ export default function LandingPage() {
       <PreciosSection navigate={navigate} />
 
       {/* ─── FAQ ─────────────────────────────────────────────────────────────── */}
-      <section id="faq" style={{ padding: 'clamp(60px,8vw,96px) clamp(16px,5vw,80px)', background: L.white }}>
+      <section id="faq" style={{ padding: 'clamp(60px,8vw,96px) clamp(16px,5vw,80px)', background: P.white }}>
         <div style={{ maxWidth: 720, margin: '0 auto' }}>
           <FadeIn>
-            <h2 style={{ textAlign: 'center', fontSize: 'clamp(24px,4vw,36px)', fontWeight: 800, marginBottom: 44, letterSpacing: '-0.02em' }}>
+            <h2 style={{ textAlign: 'center', fontSize: 'clamp(24px,4vw,36px)', fontWeight: 800, marginBottom: 44, letterSpacing: '-0.02em', color: P.text }}>
               Preguntas frecuentes
             </h2>
           </FadeIn>
@@ -813,7 +851,7 @@ export default function LandingPage() {
             </div>
           </FadeIn>
           <FadeIn delay={0.15}>
-            <div style={{ background: L.white, borderRadius: 20, padding: 'clamp(24px,4vw,40px)', boxShadow: '0 24px 64px rgba(0,0,0,.3)' }}>
+            <div style={{ background: P.white, borderRadius: 20, padding: 'clamp(24px,4vw,40px)', boxShadow: '0 24px 64px rgba(0,0,0,.3)' }}>
               <DemoForm />
             </div>
           </FadeIn>
