@@ -425,9 +425,11 @@ export class AuthService {
       throw new BadRequestException('El enlace ha expirado. Solicita un nuevo correo de verificación.');
     }
 
+    // No anulamos emailVerificationToken — si el endpoint se llama dos veces
+    // (StrictMode, SW reload), la segunda llamada encontrará al usuario,
+    // verá emailVerifiedAt ya establecido y devolverá éxito silencioso.
     await this.userRepository.update(user.id, {
       emailVerifiedAt:          new Date(),
-      emailVerificationToken:   null,
       emailVerificationExpires: null,
     } as any);
 

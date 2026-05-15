@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Button, Spin, Result } from 'antd';
 import { CheckCircleOutlined, CloseCircleOutlined, MailOutlined } from '@ant-design/icons';
@@ -14,8 +14,12 @@ export default function VerificarCorreoPage() {
   const [email, setEmail]     = useState('');
   const [reenviando, setReenviando] = useState(false);
   const [reenviado,  setReenviado]  = useState(false);
+  const called = useRef(false);
 
   useEffect(() => {
+    if (called.current) return;  // StrictMode / SW-reload guard
+    called.current = true;
+
     const token = params.get('token');
     if (!token) { setEstado('error'); setMensaje('Enlace inválido'); return; }
 
