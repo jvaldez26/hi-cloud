@@ -6,7 +6,7 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "build": "nest build --tsc-config tsconfig.prod.json",
+    "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "seed": "ts-node -r tsconfig-paths/register src/seeds/seed.ts",
     "db:migrate": "ts-node -r tsconfig-paths/register src/seeds/migrate.ts",

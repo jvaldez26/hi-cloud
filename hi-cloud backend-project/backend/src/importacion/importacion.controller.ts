@@ -41,7 +41,7 @@ export class ImportacionController {
 
   // ── Importaciones ───────────────────────────────────────────────────────────
 
-  private static readonly CSV_FILTER = (_: any, file: Express.Multer.File, cb: any) => {
+  private static readonly CSV_FILTER = (_: any, file: { mimetype: string }, cb: any) => {
     const MIME_PERMITIDOS = ['text/csv', 'application/vnd.ms-excel', 'text/plain'];
     if (!MIME_PERMITIDOS.includes(file.mimetype)) {
       return cb(new BadRequestException('Solo se permiten archivos CSV'), false);
@@ -57,7 +57,7 @@ export class ImportacionController {
   }))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Importar clientes desde archivo CSV (máx 5MB)' })
-  importarClientes(@UploadedFile() file: Express.Multer.File) {
+  importarClientes(@UploadedFile() file: { buffer: Buffer; originalname: string; mimetype: string }) {
     if (!file) throw new BadRequestException('No se recibió ningún archivo');
     return this.importacionService.importarClientes(file.buffer);
   }
@@ -70,7 +70,7 @@ export class ImportacionController {
   }))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Importar productos desde archivo CSV (máx 5MB)' })
-  importarProductos(@UploadedFile() file: Express.Multer.File) {
+  importarProductos(@UploadedFile() file: { buffer: Buffer; originalname: string; mimetype: string }) {
     if (!file) throw new BadRequestException('No se recibió ningún archivo');
     return this.importacionService.importarProductos(file.buffer);
   }
