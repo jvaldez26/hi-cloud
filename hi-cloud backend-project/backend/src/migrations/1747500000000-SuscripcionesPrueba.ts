@@ -11,6 +11,13 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  */
 export class SuscripcionesPrueba1747500000000 implements MigrationInterface {
   name = 'SuscripcionesPrueba1747500000000';
+  /**
+   * PostgreSQL no permite usar un enum value recién añadido en la misma
+   * transacción que el ALTER TYPE ADD VALUE. Con transaction=false la migración
+   * corre sin tx envolvente: el ADD VALUE se commitea de inmediato y el UPDATE
+   * siguiente puede usarlo sin el error "unsafe use of new value".
+   */
+  transaction = false;
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     // ── 1. Añadir 'prueba' al enum de estado ──────────────────────────────────
