@@ -165,6 +165,261 @@ function LiveClock() {
   );
 }
 
+// ── Tab Solicitudes de activación ────────────────────────────────────────────
+
+function SolicitudesTab({ C, solicitudes, isLoading, onRefresh }:
+  { C: typeof SA_DARK; solicitudes: any[]; isLoading: boolean; onRefresh: () => void }) {
+  const [drawerSolicitud, setDrawerSolicitud] = useState<any>(null);
+  const [notaInterna, setNotaInterna] = useState('');
+  const [motivoRechazo, setMotivoRechazo] = useState('');
+  const qc = useQueryClient();
+
+  const aprobarMut = useMutation({
+    mutationFn: ({ id, nota }: { id: number; nota?: string }) =>
+      api.post(`/suscripciones/admin/solicitudes/${id}/aprobar`, { notaInterna: nota }),
+    onSuccess: () => {
+      message.success('Plan activado y solicitud aprobada');
+      setDrawerSolicitud(null);
+      qc.invalidateQueries({ queryKey: ['sa-solicitudes'] });
+      qc.invalidateQueries({ queryKey: ['sa-suscripciones'] });
+      onRefresh();
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al aprobar'),
+  });
+
+  const rechazarMut = useMutation({
+    mutationFn: ({ id, motivo }: { id: number; motivo: string }) =>
+      api.post(`/suscripciones/admin/solicitudes/${id}/rechazar`, { motivoRechazo: motivo }),
+    onSuccess: () => {
+      message.success('Solicitud rechazada');
+      setDrawerSolicitud(null);
+      onRefresh();
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al rechazar'),
+  });
+
+  const ESTADO_COLOR: Record<string, string> = {
+    pendiente: '#F59E0B', aprobada: '#10B981', rechazada: '#EF4444',
+  };
+
+  const columns = [
+    { title: 'Empresa', dataIndex: ['empresa', 'nombre'], key: 'empresa', render: (v: string, r: any) => (
+      <div>
+        <div style={{ color: C.txt, fontWeight: 600, fontSize: 13 }}>{v ?? `Empresa #${r.empresaId}`}</div>
+        <div style={{ color: C.txt2, fontSize: 11 }}>{r.empresa?.rnc ?? '—'}</div>
+      </div>
+    )},
+    { title: 'Plan solicitado', dataIndex: 'planSolicitado', key: 'plan', render: (v: string) => <PlanBadge plan={v} /> },
+    { title: 'Modalidad', dataIndex: 'modalidad', key: 'modalidad', render: (v: string) => <span style={{ color: C.txt2, fontSize: 12 }}>{v}</span> },
+    { title: 'Fecha', dataIndex: 'createdAt', key: 'fecha', render: (v: string) => <span style={{ color: C.txt2, fontSize: 12 }}>{fmtFecha(v)}</span> },
+    { title: 'Estado', dataIndex: 'estado', key: 'estado', render: (v: string) => (
+      <span style={{ background: `${ESTADO_COLOR[v] ?? C.border}22`, color: ESTADO_COLOR[v] ?? C.txt2, border: `1px solid ${ESTADO_COLOR[v] ?? C.border}55`, borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase' as const }}>{v}</span>
+    )},
+    { title: '', key: 'actions', render: (_: any, r: any) => r.estado === 'pendiente' && (
+      <Button size="small" onClick={() => { setDrawerSolicitud(r); setNotaInterna(''); setMotivoRechazo(''); }}
+        style={{ background: C.gold, border: 'none', color: '#0F172A', fontWeight: 700 }}>
+        Gestionar
+      </Button>
+    )},
+  ];
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <h3 style={{ color: C.txt, margin: 0, fontWeight: 700 }}>
+          Solicitudes de activación
+          {solicitudes.filter(s => s.estado === 'pendiente').length > 0 && (
+            <span style={{ marginLeft: 10, background: C.gold, color: '#0F172A', borderRadius: 10, padding: '1px 10px', fontSize: 12, fontWeight: 800 }}>
+              {solicitudes.filter(s => s.estado === 'pendiente').length} pendientes
+            </span>
+          )}
+        </h3>
+        <Button size="small" onClick={onRefresh}>Actualizar</Button>
+      </div>
+      <Table
+        loading={isLoading}
+        dataSource={solicitudes}
+        columns={columns}
+        rowKey="id"
+        size="small"
+        style={{ fontSize: 13 }}
+        pagination={{ pageSize: 20 }}
+      />
+
+      {/* Drawer de detalle / acciones */}
+      <Modal
+        open={!!drawerSolicitud}
+        onCancel={() => setDrawerSolicitud(null)}
+        footer={null}
+        width={520}
+        title={<span style={{ color: C.txt }}>Gestionar solicitud #{drawerSolicitud?.id}</span>}
+        styles={{ content: { background: C.card, border: `1px solid ${C.border}` }, header: { background: C.card, borderBottom: `1px solid ${C.border}` } }}>
+        {drawerSolicitud && (
+          <div>
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ color: C.txt2, fontSize: 12, marginBottom: 4 }}>Empresa</div>
+              <div style={{ color: C.txt, fontWeight: 600 }}>{drawerSolicitud.empresa?.nombre ?? `Empresa #${drawerSolicitud.empresaId}`}</div>
+              <div style={{ color: C.txt2, fontSize: 12 }}>RNC: {drawerSolicitud.empresa?.rnc ?? '—'}</div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+              <div style={{ background: C.bg, borderRadius: 8, padding: '12px', border: `1px solid ${C.border}` }}>
+                <div style={{ color: C.txt2, fontSize: 11 }}>Plan solicitado</div>
+                <div style={{ color: C.txt, fontWeight: 700 }}>{drawerSolicitud.planSolicitado?.toUpperCase()}</div>
+              </div>
+              <div style={{ background: C.bg, borderRadius: 8, padding: '12px', border: `1px solid ${C.border}` }}>
+                <div style={{ color: C.txt2, fontSize: 11 }}>Modalidad</div>
+                <div style={{ color: C.txt, fontWeight: 700 }}>{drawerSolicitud.modalidad}</div>
+              </div>
+            </div>
+            {drawerSolicitud.comentario && (
+              <div style={{ marginBottom: 16, background: C.bg, borderRadius: 8, padding: 12, border: `1px solid ${C.border}` }}>
+                <div style={{ color: C.txt2, fontSize: 11, marginBottom: 4 }}>Comentario del cliente</div>
+                <div style={{ color: C.txt, fontSize: 13 }}>{drawerSolicitud.comentario}</div>
+              </div>
+            )}
+
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ color: C.txt2, fontSize: 12, marginBottom: 6 }}>Nota interna (opcional)</div>
+              <Input.TextArea
+                value={notaInterna}
+                onChange={e => setNotaInterna(e.target.value)}
+                placeholder="Ej: Pago recibido por transferencia..."
+                rows={2}
+                style={{ background: C.bg, color: C.txt, borderColor: C.border }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+              <Button
+                type="primary" block
+                loading={aprobarMut.isPending}
+                onClick={() => aprobarMut.mutate({ id: drawerSolicitud.id, nota: notaInterna })}
+                style={{ background: '#10B981', border: 'none', fontWeight: 700 }}>
+                Aprobar y activar plan
+              </Button>
+            </div>
+
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ color: C.txt2, fontSize: 12, marginBottom: 6 }}>Motivo de rechazo</div>
+              <Input
+                value={motivoRechazo}
+                onChange={e => setMotivoRechazo(e.target.value)}
+                placeholder="Ej: Pago no confirmado..."
+                style={{ background: C.bg, color: C.txt, borderColor: C.border }}
+              />
+            </div>
+            <Button
+              danger block
+              loading={rechazarMut.isPending}
+              disabled={!motivoRechazo.trim()}
+              onClick={() => rechazarMut.mutate({ id: drawerSolicitud.id, motivo: motivoRechazo })}>
+              Rechazar solicitud
+            </Button>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
+// ── Tab Empresas en Prueba ────────────────────────────────────────────────────
+
+function PruebasTab({ C, pruebas, isLoading, onRefresh }:
+  { C: typeof SA_DARK; pruebas: any[]; isLoading: boolean; onRefresh: () => void }) {
+  const qc = useQueryClient();
+  const [extModal, setExtModal] = useState<any>(null);
+  const [diasExt, setDiasExt] = useState(7);
+
+  const extenderMut = useMutation({
+    mutationFn: ({ id, dias }: { id: number; dias: number }) =>
+      api.patch(`/suscripciones/admin/${id}/extender-prueba`, { dias }),
+    onSuccess: () => {
+      message.success('Prueba extendida');
+      setExtModal(null);
+      qc.invalidateQueries({ queryKey: ['sa-pruebas'] });
+      onRefresh();
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al extender'),
+  });
+
+  const activarDirectoMut = useMutation({
+    mutationFn: ({ id, plan }: { id: number; plan: string }) =>
+      api.patch(`/suscripciones/admin/${id}/activar`, { plan, meses: 1 }),
+    onSuccess: () => {
+      message.success('Plan activado');
+      qc.invalidateQueries({ queryKey: ['sa-pruebas'] });
+      qc.invalidateQueries({ queryKey: ['sa-suscripciones'] });
+      onRefresh();
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al activar'),
+  });
+
+  const columns = [
+    { title: 'Empresa', key: 'empresa', render: (_: any, r: any) => (
+      <div>
+        <div style={{ color: C.txt, fontWeight: 600, fontSize: 13 }}>{r.empresa?.nombre ?? `Empresa #${r.empresaId}`}</div>
+        <div style={{ color: C.txt2, fontSize: 11 }}>{r.empresa?.rnc ?? '—'}</div>
+      </div>
+    )},
+    { title: 'Plan', dataIndex: 'plan', key: 'plan', render: (v: string) => <PlanBadge plan={v} /> },
+    { title: 'Vence', dataIndex: 'fechaFinPrueba', key: 'fin', render: (v: string) => {
+      const { texto, color } = fmtRelativa(v);
+      return <span style={{ color, fontWeight: 600, fontSize: 12 }}>{texto}</span>;
+    }},
+    { title: 'Días restantes', dataIndex: 'diasRestantes', key: 'dias', render: (v: number) => (
+      <div style={{ minWidth: 100 }}>
+        <div style={{ background: C.border, borderRadius: 4, height: 6, overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${Math.max(0, Math.min(100, (v / 15) * 100))}%`, background: v <= 3 ? '#EF4444' : v <= 7 ? '#F59E0B' : '#10B981', borderRadius: 4 }} />
+        </div>
+        <div style={{ color: C.txt2, fontSize: 11, marginTop: 2 }}>{v} días restantes</div>
+      </div>
+    )},
+    { title: '', key: 'actions', render: (_: any, r: any) => (
+      <Space>
+        <Button size="small" onClick={() => { setExtModal(r); setDiasExt(7); }}
+          style={{ background: C.gold, border: 'none', color: '#0F172A', fontSize: 11 }}>
+          Extender
+        </Button>
+        <Popconfirm
+          title={`Activar plan ${r.plan} para ${r.empresa?.nombre ?? `empresa #${r.empresaId}`}?`}
+          onConfirm={() => activarDirectoMut.mutate({ id: r.empresaId, plan: r.plan })}>
+          <Button size="small" type="primary" style={{ fontSize: 11 }}>Activar ya</Button>
+        </Popconfirm>
+      </Space>
+    )},
+  ];
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <h3 style={{ color: C.txt, margin: 0, fontWeight: 700 }}>Empresas en período de prueba ({pruebas.length})</h3>
+        <Button size="small" onClick={onRefresh}>Actualizar</Button>
+      </div>
+      <Table
+        loading={isLoading}
+        dataSource={pruebas}
+        columns={columns}
+        rowKey="empresaId"
+        size="small"
+        pagination={{ pageSize: 20 }}
+        style={{ fontSize: 13 }}
+      />
+      <Modal
+        open={!!extModal}
+        onCancel={() => setExtModal(null)}
+        title={<span style={{ color: C.txt }}>Extender prueba — {extModal?.empresa?.nombre}</span>}
+        onOk={() => extenderMut.mutate({ id: extModal.empresaId, dias: diasExt })}
+        confirmLoading={extenderMut.isPending}
+        styles={{ content: { background: C.card }, header: { background: C.card, borderBottom: `1px solid ${C.border}` } }}>
+        <div style={{ padding: '8px 0' }}>
+          <div style={{ color: C.txt2, marginBottom: 12 }}>¿Cuántos días extender la prueba?</div>
+          <InputNumber min={1} max={90} value={diasExt} onChange={v => setDiasExt(v ?? 7)} style={{ width: '100%' }} />
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
 // ── Página principal ──────────────────────────────────────────────────────────
 
 // ── Tab e-CF Config (Super Admin) ────────────────────────────────────────────
@@ -650,7 +905,20 @@ export default function SuperAdminPage() {
 
   const { data: suscripciones = [], isLoading: loadSus } = useQuery({
     queryKey: ['sa-suscripciones'],
-    queryFn:  () => api.get('/admin/suscripciones').then(xd),
+    queryFn:  () => api.get('/suscripciones').then(xd),
+    staleTime: 30_000,
+  });
+
+  const { data: solicitudes = [], isLoading: loadSolicitudes } = useQuery({
+    queryKey: ['sa-solicitudes'],
+    queryFn:  () => api.get('/suscripciones/admin/solicitudes').then(xd),
+    staleTime: 15_000,
+  });
+  const solicitudesPendientes: number = (solicitudes as any[]).filter((s: any) => s.estado === 'pendiente').length;
+
+  const { data: pruebas = [], isLoading: loadPruebas } = useQuery({
+    queryKey: ['sa-pruebas'],
+    queryFn:  () => api.get('/suscripciones/admin/pruebas').then(xd),
     staleTime: 30_000,
   });
 
@@ -1214,6 +1482,8 @@ export default function SuperAdminPage() {
               { key: 'empresas',      icon: <Building2 size={15} />,  label: 'Empresas',          count: (empresas as any[]).length },
               { key: 'usuarios',      icon: <Users size={15} />,      label: 'Usuarios',          count: (usuarios as any[]).length },
               { key: 'suscripciones', icon: <Crown size={15} />,      label: 'Suscripciones',     count: (suscripciones as any[]).length },
+              { key: 'solicitudes',   icon: <Send size={15} />,       label: 'Solicitudes',       count: solicitudesPendientes ?? 0 },
+              { key: 'pruebas',       icon: <ClockIcon size={15} />,  label: 'En Prueba',         count: null },
               { key: 'metricas',      icon: <BarChart2 size={15} />,  label: 'Métricas',          count: null },
               { key: 'ecf',           icon: <FileText size={15} />,   label: 'e-CF Config',       count: null },
               { key: 'config',        icon: <Settings size={15} />,   label: 'Configuración',     count: null },
@@ -1429,6 +1699,26 @@ export default function SuperAdminPage() {
                 C={C}
                 targetEmpresaId={ecfTargetId}
                 onClearTarget={() => setEcfTargetId(null)}
+              />
+            )}
+
+            {/* ── TAB SOLICITUDES ───────────────────────────────────────────── */}
+            {tab === 'solicitudes' && (
+              <SolicitudesTab
+                C={C}
+                solicitudes={solicitudes as any[]}
+                isLoading={loadSolicitudes}
+                onRefresh={() => qc.invalidateQueries({ queryKey: ['sa-solicitudes'] })}
+              />
+            )}
+
+            {/* ── TAB EMPRESAS EN PRUEBA ────────────────────────────────────── */}
+            {tab === 'pruebas' && (
+              <PruebasTab
+                C={C}
+                pruebas={pruebas as any[]}
+                isLoading={loadPruebas}
+                onRefresh={() => qc.invalidateQueries({ queryKey: ['sa-pruebas'] })}
               />
             )}
 

@@ -21,6 +21,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { usePlan, type PlanTipo } from '../../hooks/usePlan';
+import SuspensionScreen from '../ui/SuspensionScreen';
 import { Outlet, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore }  from '../../store/auth.store';
@@ -1078,7 +1079,18 @@ export default function AppLayout() {
   // Modal de upgrade cuando se hace click en módulo bloqueado
   const [upgradeModal, setUpgradeModal] = useState<{ label: string; planMinimo: PlanTipo } | null>(null);
 
-  const { plan: planActual } = usePlan();
+  const { plan: planActual, suspendida, suscripcion } = usePlan();
+
+  // Mostrar pantalla de suspensión cuando la empresa está suspendida
+  if (suspendida) {
+    return (
+      <SuspensionScreen
+        planActual={suscripcion?.plan}
+        fechaVencimiento={suscripcion?.fechaFinPrueba ?? suscripcion?.fechaVencimiento}
+      />
+    );
+  }
+
   const handleLocked = (item: SubItem, planMinimo: PlanTipo) => {
     setUpgradeModal({ label: item.label, planMinimo });
   };

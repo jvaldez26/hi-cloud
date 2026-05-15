@@ -27,11 +27,13 @@ export const authApi = {
   register: async (
     nombre: string, email: string, password: string,
     empresaNombre?: string, empresaRnc?: string,
+    planElegido?: string,
   ) => {
     const res = await api.post('/auth/register', {
       nombre, email, password,
       ...(empresaNombre && { empresaNombre }),
       ...(empresaRnc    && { empresaRnc }),
+      ...(planElegido   && { planElegido }),
     });
     return res.data;
   },

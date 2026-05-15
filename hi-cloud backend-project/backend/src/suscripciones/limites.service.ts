@@ -56,13 +56,14 @@ export class LimitesService {
     let s = await this.repo.findOne({ where: { empresaId } });
     if (!s) {
       const hoy = new Date();
-      const fin = new Date(); fin.setDate(fin.getDate() + 15); // 15 días de trial
+      const fin = new Date(); fin.setDate(fin.getDate() + 15);
       s = await this.repo.save(this.repo.create({
-        empresaId, plan: PlanTipo.TRIAL,
-        estado: SuscripcionEstado.ACTIVA,
+        empresaId, plan: PlanTipo.EMPRENDEDOR,
+        estado: SuscripcionEstado.PRUEBA,
         fechaInicio: hoy, fechaVencimiento: fin,
+        fechaFinPrueba: fin,
         mesPeriodo: this.mesActual(),
-      }));
+      } as any));
     }
 
     // Reset automático si cambió de mes
@@ -298,9 +299,11 @@ export class LimitesService {
     if (cfg.limiteUsuarios === -1) return;
     const usado = await this.contarUsuarios(empresaId);
     if (usado >= cfg.limiteUsuarios) {
+      const planesStr = { emprendedor: 'PYME', pyme: 'PRO', pro: 'PLUS', plus: 'PLUS' };
+      const siguiente = planesStr[sus.plan as keyof typeof planesStr] ?? 'un plan superior';
       throw new ForbiddenException({
         code: 'LIMITE_USUARIOS',
-        mensaje: `Has alcanzado el límite de ${cfg.limiteUsuarios} usuario(s) del plan ${cfg.nombre}. Actualiza para agregar más.`,
+        mensaje: `Has alcanzado el límite de ${cfg.limiteUsuarios} usuario(s) de tu plan ${cfg.nombre}. Para añadir más usuarios, actualiza al plan ${siguiente}.`,
         usado, limite: cfg.limiteUsuarios, planActual: sus.plan, upgrade: true,
       });
     }

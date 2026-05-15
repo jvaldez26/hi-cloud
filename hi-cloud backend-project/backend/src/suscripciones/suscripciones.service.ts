@@ -1,20 +1,31 @@
-import { Injectable, Logger, OnModuleInit, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThan, DataSource } from 'typeorm';
+import { Repository, LessThan, DataSource, In } from 'typeorm';
 import { Cron } from '@nestjs/schedule';
 import {
-  Suscripcion, PlanTipo, SuscripcionEstado, PLAN_LIMITES, PLANES,
+  Suscripcion, PlanTipo, SuscripcionEstado, ModalidadPago,
+  PLAN_LIMITES, PLANES, PLANES_ACTIVOS,
 } from './entities/suscripcion.entity';
 import { PlanConfiguracion } from './entities/plan-configuracion.entity';
+import { SolicitudCambioPlan, EstadoSolicitud } from './entities/solicitud-cambio-plan.entity';
+import { SuscripcionAuditoria, AccionAuditoria } from './entities/suscripcion-auditoria.entity';
 
-/** Jerarquía de planes — mayor número = plan superior */
+/** Jerarquía de planes activos — mayor número = plan superior */
 const PLAN_TIER: Record<string, number> = {
-  trial:       0,
-  basico:      1,
-  profesional: 2,
-  empresarial: 3,
-  enterprise:  4,
+  emprendedor: 1, pyme: 2, pro: 3, plus: 4,
+  // legado
+  trial: 0, basico: 0, profesional: 2, empresarial: 3, enterprise: 4,
 };
+
+/** Precio USD por modalidad */
+function precioUsd(plan: PlanTipo, modalidad: string): string {
+  const cfg = PLANES[plan];
+  if (!cfg) return 'N/A';
+  const base = cfg.precioMensualUsd;
+  const anual = cfg.precioAnualUsd;
+  if (modalidad === 'anual') return `US$${(anual / 12).toFixed(2)}/mes (anual)`;
+  return `US$${base}/mes`;
+}
 
 @Injectable()
 export class SuscripcionesService implements OnModuleInit {
@@ -25,99 +36,105 @@ export class SuscripcionesService implements OnModuleInit {
     private repo: Repository<Suscripcion>,
     @InjectRepository(PlanConfiguracion)
     private planConfigRepo: Repository<PlanConfiguracion>,
+    @InjectRepository(SolicitudCambioPlan)
+    private solicitudRepo: Repository<SolicitudCambioPlan>,
+    @InjectRepository(SuscripcionAuditoria)
+    private auditoriaRepo: Repository<SuscripcionAuditoria>,
     private ds: DataSource,
   ) {}
 
   async onModuleInit() {
-    // Agregar valor 'enterprise' al enum si no existe
-    try {
+    // Agregar enum values nuevos si no existen (idempotente)
+    const enumsNuevos = ['emprendedor', 'pyme', 'pro', 'plus', 'prueba'];
+    for (const val of enumsNuevos) {
       await this.ds.query(`
         DO $$ BEGIN
           IF NOT EXISTS (
-            SELECT 1 FROM pg_enum e
-            JOIN pg_type t ON t.oid = e.enumtypid
-            WHERE t.typname = 'suscripciones_plan_enum' AND e.enumlabel = 'enterprise'
-          ) THEN
-            ALTER TYPE suscripciones_plan_enum ADD VALUE 'enterprise';
-          END IF;
+            SELECT 1 FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
+            WHERE t.typname = 'suscripciones_plan_enum' AND e.enumlabel = '${val}'
+          ) THEN ALTER TYPE suscripciones_plan_enum ADD VALUE '${val}'; END IF;
         END $$;
-      `);
-    } catch (e) {
-      this.logger.warn('No se pudo migrar enum enterprise: ' + (e as Error).message);
+      `).catch(() => null);
+      await this.ds.query(`
+        DO $$ BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
+            WHERE t.typname = 'suscripciones_estado_enum' AND e.enumlabel = '${val}'
+          ) THEN ALTER TYPE suscripciones_estado_enum ADD VALUE '${val}'; END IF;
+        END $$;
+      `).catch(() => null);
     }
 
-    // Crear suscripción trial para empresa 1 si no existe
-    const exists = await this.repo.findOne({ where: { empresaId: 1 } });
-    if (!exists) {
-      const hoy = new Date();
-      const fin = new Date(); fin.setDate(fin.getDate() + 7);
-      await this.repo.save(this.repo.create({
-        empresaId: 1,
-        plan:      PlanTipo.TRIAL,
-        estado:    SuscripcionEstado.ACTIVA,
-        fechaInicio:      hoy,
-        fechaVencimiento: fin,
-      }));
-    }
+    await this.seedPlanConfiguracion();
   }
+
+  // ── Obtener suscripción ───────────────────────────────────────────────────
 
   async getSuscripcion(empresaId = 1): Promise<Suscripcion & { info: typeof PLAN_LIMITES[PlanTipo]; diasRestantes: number }> {
     let s = await this.repo.findOne({ where: { empresaId } });
     if (!s) {
       const hoy = new Date();
-      const fin = new Date(); fin.setDate(fin.getDate() + 7);
+      const fin = new Date(); fin.setDate(fin.getDate() + 15);
       s = await this.repo.save(this.repo.create({
         empresaId,
-        plan:  PlanTipo.TRIAL,
-        estado: SuscripcionEstado.ACTIVA,
-        fechaInicio: hoy,
+        plan:            PlanTipo.EMPRENDEDOR,
+        estado:          SuscripcionEstado.PRUEBA,
+        fechaInicio:     hoy,
         fechaVencimiento: fin,
+        fechaFinPrueba:  fin,
       }));
     }
     const hoy = new Date();
-    const venc = new Date(s.fechaVencimiento);
-    const diasRestantes = Math.max(0, Math.ceil((venc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)));
-    return { ...s, info: PLAN_LIMITES[s.plan], diasRestantes };
+    const fechaRef = s.fechaFinPrueba
+      ? new Date(s.fechaFinPrueba)
+      : new Date(s.fechaVencimiento);
+    const diasRestantes = Math.max(0, Math.ceil((fechaRef.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)));
+    return { ...s, info: PLAN_LIMITES[s.plan] ?? PLAN_LIMITES[PlanTipo.EMPRENDEDOR], diasRestantes };
   }
 
-  async activarPlan(empresaId: number, plan: PlanTipo, meses: number, notas?: string) {
+  // ── Activar plan (por super admin) ────────────────────────────────────────
+
+  async activarPlan(
+    empresaId: number,
+    plan: PlanTipo,
+    meses: number,
+    notas?: string,
+    modalidad: ModalidadPago = ModalidadPago.MENSUAL,
+  ) {
     const s = await this.repo.findOne({ where: { empresaId } });
     const inicio = new Date();
-    const fin    = new Date(); fin.setMonth(fin.getMonth() + meses);
-
-    // ── Validar: solo se permite subir de plan, no bajar ──────────────────────
-    // El downgrade lo realiza exclusivamente el Super Admin desde su panel.
-    if (s && s.plan !== plan) {
-      const tierActual = PLAN_TIER[s.plan] ?? 0;
-      const tierNuevo  = PLAN_TIER[plan]   ?? 0;
-      if (tierNuevo < tierActual) {
-        throw new BadRequestException(
-          `No es posible cambiar a un plan inferior (${s.plan} → ${plan}). ` +
-          `Para hacer un downgrade contacte al administrador de la plataforma HiCloud.`,
-        );
-      }
+    const fin    = new Date();
+    if (modalidad === ModalidadPago.ANUAL) {
+      fin.setFullYear(fin.getFullYear() + 1);
+    } else {
+      fin.setMonth(fin.getMonth() + meses);
     }
 
     if (s) {
       await this.repo.update(s.id, {
-        plan, estado: SuscripcionEstado.ACTIVA,
+        plan, estado: SuscripcionEstado.ACTIVA, modalidad,
         fechaInicio: inicio, fechaVencimiento: fin,
-        notasAdmin: notas,
+        notasAdmin: notas, motivoSuspension: undefined,
       });
     } else {
       await this.repo.save(this.repo.create({
-        empresaId, plan, estado: SuscripcionEstado.ACTIVA,
+        empresaId, plan, estado: SuscripcionEstado.ACTIVA, modalidad,
         fechaInicio: inicio, fechaVencimiento: fin,
         notasAdmin: notas,
       }));
     }
-    this.logger.log(`Plan ${plan} activado para empresa #${empresaId} por ${meses} meses`);
+    this.logger.log(`Plan ${plan} activado para empresa #${empresaId}`);
     return this.getSuscripcion(empresaId);
   }
 
-  async suspender(empresaId: number) {
+  async suspender(empresaId: number, motivo?: string) {
     const s = await this.repo.findOne({ where: { empresaId } });
-    if (s) await this.repo.update(s.id, { estado: SuscripcionEstado.SUSPENDIDA });
+    if (s) {
+      await this.repo.update(s.id, {
+        estado: SuscripcionEstado.SUSPENDIDA,
+        motivoSuspension: motivo ?? 'SUSPENSION_MANUAL',
+      });
+    }
     return this.getSuscripcion(empresaId);
   }
 
@@ -126,9 +143,9 @@ export class SuscripcionesService implements OnModuleInit {
     const hoy  = new Date();
     return rows.map(s => ({
       ...s,
-      info: PLAN_LIMITES[s.plan],
+      info: PLAN_LIMITES[s.plan] ?? PLAN_LIMITES[PlanTipo.EMPRENDEDOR],
       diasRestantes: Math.max(0,
-        Math.ceil((new Date(s.fechaVencimiento).getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24))
+        Math.ceil((new Date(s.fechaFinPrueba ?? s.fechaVencimiento).getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24))
       ),
     }));
   }
@@ -144,45 +161,375 @@ export class SuscripcionesService implements OnModuleInit {
 
     const totales = await this.repo.count();
     const activas = await this.repo.count({ where: { estado: SuscripcionEstado.ACTIVA } });
+    const enPrueba = await this.repo.count({ where: { estado: SuscripcionEstado.PRUEBA } });
 
-    return { totales, activas, porPlan: rows };
+    // MRR USD estimado
+    const suscActivas = await this.repo.find({ where: { estado: SuscripcionEstado.ACTIVA } });
+    const mrr = suscActivas.reduce((acc, s) => {
+      const precio = PLANES[s.plan]?.precioMensualUsd ?? 0;
+      return acc + (s.modalidad === ModalidadPago.ANUAL ? precio * 0.9 : precio);
+    }, 0);
+
+    return { totales, activas, enPrueba, mrr, porPlan: rows };
   }
 
-  // Cron: marcar vencidas diariamente
+  // ── Cron: procesar vencimientos de prueba (diario 00:10 UTC) ─────────────
+
   @Cron('10 0 * * *')
-  async marcarVencidas() {
-    const res = await this.repo.update(
-      { estado: SuscripcionEstado.ACTIVA, fechaVencimiento: LessThan(new Date()) },
+  async procesarVencimientosPrueba() {
+    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+
+    // Suscripciones en PRUEBA cuya fechaFinPrueba ya pasó
+    const vencidas = await this.repo.find({
+      where: { estado: SuscripcionEstado.PRUEBA, fechaFinPrueba: LessThan(hoy) },
+    });
+
+    for (const s of vencidas) {
+      await this.repo.update(s.id, {
+        estado: SuscripcionEstado.SUSPENDIDA,
+        motivoSuspension: 'PRUEBA_VENCIDA',
+      });
+      // Notificar al admin de la empresa por email (lazy import para evitar dep circular)
+      this.notificarVencimientoPrueba(s.empresaId, s.plan).catch(() => null);
+    }
+
+    // También marcar ACTIVAS vencidas como VENCIDA (legado)
+    await this.repo.update(
+      { estado: SuscripcionEstado.ACTIVA, fechaVencimiento: LessThan(hoy) },
       { estado: SuscripcionEstado.VENCIDA },
     );
-    if ((res.affected ?? 0) > 0)
-      this.logger.warn(`${res.affected} suscripciones marcadas como vencidas`);
+
+    if (vencidas.length > 0)
+      this.logger.warn(`${vencidas.length} pruebas vencidas → SUSPENDIDA`);
   }
 
-  // ── Catálogo de planes — lee desde BD, fusiona con límites en código ───────
+  // ── Cron: recordatorios de vencimiento (8 AM hora RD = 12:00 UTC) ─────────
+
+  @Cron('0 12 * * *')
+  async enviarRecordatoriosPrueba() {
+    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+
+    const en5Dias = new Date(hoy); en5Dias.setDate(en5Dias.getDate() + 5);
+    const en1Dia  = new Date(hoy); en1Dia.setDate(en1Dia.getDate() + 1);
+
+    // Recordatorio 5 días
+    const por5d = await this.repo.find({
+      where: {
+        estado: SuscripcionEstado.PRUEBA,
+        fechaFinPrueba: en5Dias as any,
+        recordatorio5dEnviado: false,
+      },
+    });
+    for (const s of por5d) {
+      await this.enviarRecordatorio(s, 5);
+      await this.repo.update(s.id, { recordatorio5dEnviado: true });
+    }
+
+    // Recordatorio 1 día
+    const por1d = await this.repo.find({
+      where: {
+        estado: SuscripcionEstado.PRUEBA,
+        fechaFinPrueba: en1Dia as any,
+        recordatorio1dEnviado: false,
+      },
+    });
+    for (const s of por1d) {
+      await this.enviarRecordatorio(s, 1);
+      await this.repo.update(s.id, { recordatorio1dEnviado: true });
+    }
+
+    if (por5d.length + por1d.length > 0)
+      this.logger.log(`Recordatorios enviados: ${por5d.length} (5d) + ${por1d.length} (1d)`);
+  }
+
+  private async enviarRecordatorio(s: Suscripcion, dias: number): Promise<void> {
+    try {
+      const admin = await this.ds.query<{ email: string; nombre: string }[]>(`
+        SELECT u.email, u.nombre FROM users u
+        JOIN usuario_empresa ue ON ue."userId" = u.id
+        WHERE ue."empresaId" = $1 AND ue."isActive" = true AND ue."isPrincipal" = true
+        LIMIT 1
+      `, [s.empresaId]);
+      if (!admin.length) return;
+
+      const planNombre = PLANES[s.plan]?.nombre ?? s.plan;
+      const fechaFin   = new Date(s.fechaFinPrueba!).toLocaleDateString('es-DO', { day: '2-digit', month: 'long', year: 'numeric' });
+      const urgente    = dias === 1;
+
+      // Importar EmailService dinámicamente para evitar dep circular en el módulo
+      const emailSvc: any = (this as any)._emailService;
+      if (!emailSvc) return;
+
+      await emailSvc.enviar({
+        to: admin[0].email,
+        subject: urgente
+          ? `⚠️ Tu prueba de HiCloud ERP vence MAÑANA`
+          : `Tu período de prueba de HiCloud ERP vence en ${dias} días`,
+        html: `
+          <p>Hola ${admin[0].nombre},</p>
+          <p>Tu período de prueba del plan <strong>${planNombre}</strong> vence el <strong>${fechaFin}</strong>.</p>
+          <p>Para continuar usando HiCloud ERP sin interrupciones, solicita la activación de tu licencia antes de esa fecha.</p>
+          <p>Una vez venza el período, tu cuenta quedará suspendida hasta que un asesor de HiCloud confirme el pago y active tu plan.</p>
+          <p>¿Tienes dudas? Escríbenos a <a href="mailto:soporte@hicloudrd.com">soporte@hicloudrd.com</a></p>
+        `,
+      });
+    } catch (err) {
+      this.logger.warn(`No se pudo enviar recordatorio empresa #${s.empresaId}: ${(err as Error).message}`);
+    }
+  }
+
+  private async notificarVencimientoPrueba(empresaId: number, plan: PlanTipo): Promise<void> {
+    try {
+      const admin = await this.ds.query<{ email: string; nombre: string }[]>(`
+        SELECT u.email, u.nombre FROM users u
+        JOIN usuario_empresa ue ON ue."userId" = u.id
+        WHERE ue."empresaId" = $1 AND ue."isActive" = true AND ue."isPrincipal" = true
+        LIMIT 1
+      `, [empresaId]);
+      if (!admin.length) return;
+
+      const planNombre = PLANES[plan]?.nombre ?? plan;
+      const emailSvc: any = (this as any)._emailService;
+      if (!emailSvc) return;
+
+      await emailSvc.enviar({
+        to: admin[0].email,
+        subject: 'Tu período de prueba ha vencido — Activa tu licencia',
+        html: `
+          <p>Hola ${admin[0].nombre},</p>
+          <p>Tu período de prueba del plan <strong>${planNombre}</strong> ha vencido.</p>
+          <p>Tu cuenta está actualmente suspendida. Para reactivarla, solicita la activación de tu licencia a través del sistema.</p>
+          <p>Un asesor te contactará en menos de 24 horas. Tus datos están seguros y conservados.</p>
+          <p>¿Tienes urgencia? Escríbenos a <a href="mailto:soporte@hicloudrd.com">soporte@hicloudrd.com</a></p>
+        `,
+      });
+    } catch { /* silencioso */ }
+  }
+
+  // ── Gestión de solicitudes (Super Admin) ──────────────────────────────────
+
+  async listarSolicitudes(estado?: EstadoSolicitud) {
+    const where = estado ? { estado } : {};
+    const solicitudes = await this.solicitudRepo.find({
+      where,
+      order: { createdAt: 'DESC' },
+    });
+
+    // Enriquecer con datos de empresa
+    const empresaIds = [...new Set(solicitudes.map(s => s.empresaId))];
+    const empresas   = empresaIds.length > 0
+      ? await this.ds.query<{ id: number; nombre: string; rnc: string }[]>(
+          `SELECT id, nombre, rnc FROM empresas WHERE id = ANY($1)`, [empresaIds],
+        )
+      : [];
+    const empresaMap = Object.fromEntries(empresas.map(e => [e.id, e]));
+
+    const suscripciones = await this.repo.find({
+      where: { empresaId: empresaIds.length > 0 ? In(empresaIds) : [] },
+    });
+    const suscMap = Object.fromEntries(suscripciones.map(s => [s.empresaId, s]));
+
+    return solicitudes.map(s => ({
+      ...s,
+      empresa:     empresaMap[s.empresaId] ?? null,
+      suscripcion: suscMap[s.empresaId] ?? null,
+    }));
+  }
+
+  async contarSolicitudesPendientes(): Promise<number> {
+    return this.solicitudRepo.count({ where: { estado: EstadoSolicitud.PENDIENTE } });
+  }
+
+  async aprobarSolicitud(
+    solicitudId: number,
+    superAdminId: number,
+    notaInterna?: string,
+  ) {
+    const solicitud = await this.solicitudRepo.findOne({ where: { id: solicitudId } });
+    if (!solicitud) throw new NotFoundException(`Solicitud #${solicitudId} no encontrada`);
+    if (solicitud.estado !== EstadoSolicitud.PENDIENTE) {
+      throw new BadRequestException('Esta solicitud ya fue procesada');
+    }
+
+    const plan      = solicitud.planSolicitado as PlanTipo;
+    const modalidad = solicitud.modalidad === 'anual'
+      ? ModalidadPago.ANUAL : ModalidadPago.MENSUAL;
+
+    // Activar el plan
+    await this.activarPlan(solicitud.empresaId, plan, 1, notaInterna, modalidad);
+
+    // Actualizar solicitud
+    await this.solicitudRepo.update(solicitudId, {
+      estado:      EstadoSolicitud.APROBADA,
+      superAdminId,
+    });
+
+    // Auditoría
+    const s = await this.repo.findOne({ where: { empresaId: solicitud.empresaId } });
+    if (s) {
+      await this.auditoriaRepo.save(this.auditoriaRepo.create({
+        suscripcionId: s.id,
+        empresaId:     solicitud.empresaId,
+        accion:        AccionAuditoria.SOLICITUD_APROBADA,
+        superAdminId,
+        motivo:        notaInterna,
+        valorNuevo:    { plan, modalidad },
+      }));
+    }
+
+    // Email al cliente
+    this.notificarActivacionPlan(solicitud.empresaId, plan, modalidad).catch(() => null);
+
+    // Email al super admin con confirmación
+    this.logger.log(`Solicitud #${solicitudId} aprobada por super admin #${superAdminId}`);
+    return { message: `Plan ${plan} activado para empresa #${solicitud.empresaId}` };
+  }
+
+  async rechazarSolicitud(
+    solicitudId: number,
+    superAdminId: number,
+    motivoRechazo: string,
+  ) {
+    const solicitud = await this.solicitudRepo.findOne({ where: { id: solicitudId } });
+    if (!solicitud) throw new NotFoundException(`Solicitud #${solicitudId} no encontrada`);
+    if (solicitud.estado !== EstadoSolicitud.PENDIENTE) {
+      throw new BadRequestException('Esta solicitud ya fue procesada');
+    }
+
+    await this.solicitudRepo.update(solicitudId, {
+      estado: EstadoSolicitud.RECHAZADA,
+      superAdminId,
+      motivoRechazo,
+    });
+
+    const s = await this.repo.findOne({ where: { empresaId: solicitud.empresaId } });
+    if (s) {
+      await this.auditoriaRepo.save(this.auditoriaRepo.create({
+        suscripcionId: s.id,
+        empresaId:     solicitud.empresaId,
+        accion:        AccionAuditoria.SOLICITUD_RECHAZADA,
+        superAdminId,
+        motivo:        motivoRechazo,
+      }));
+    }
+
+    this.logger.log(`Solicitud #${solicitudId} rechazada por super admin #${superAdminId}`);
+    return { message: 'Solicitud rechazada' };
+  }
+
+  async listarEmpresasEnPrueba() {
+    const pruebas = await this.repo.find({
+      where: { estado: SuscripcionEstado.PRUEBA },
+      order: { fechaFinPrueba: 'ASC' },
+    });
+
+    const empresaIds = pruebas.map(s => s.empresaId);
+    const empresas   = empresaIds.length > 0
+      ? await this.ds.query<{ id: number; nombre: string; rnc: string }[]>(
+          `SELECT id, nombre, rnc FROM empresas WHERE id = ANY($1)`, [empresaIds],
+        )
+      : [];
+    const empresaMap = Object.fromEntries(empresas.map(e => [e.id, e]));
+
+    const hoy = new Date();
+    return pruebas.map(s => {
+      const finPrueba   = s.fechaFinPrueba ? new Date(s.fechaFinPrueba) : new Date(s.fechaVencimiento);
+      const diasRestantes = Math.max(0, Math.ceil((finPrueba.getTime() - hoy.getTime()) / 86_400_000));
+      return {
+        ...s,
+        empresa:      empresaMap[s.empresaId] ?? null,
+        diasRestantes,
+        planNombre:   PLANES[s.plan]?.nombre ?? s.plan,
+      };
+    });
+  }
+
+  async extenderPrueba(empresaId: number, diasExtension: number, superAdminId: number) {
+    const s = await this.repo.findOne({ where: { empresaId } });
+    if (!s) throw new NotFoundException(`Empresa #${empresaId} no tiene suscripción`);
+
+    const fechaBase = s.fechaFinPrueba
+      ? new Date(s.fechaFinPrueba) : new Date(s.fechaVencimiento);
+    const nuevaFecha = new Date(fechaBase);
+    nuevaFecha.setDate(nuevaFecha.getDate() + diasExtension);
+
+    await this.repo.update(s.id, {
+      fechaFinPrueba:  nuevaFecha,
+      estado:          SuscripcionEstado.PRUEBA,
+      motivoSuspension: undefined,
+    });
+
+    await this.auditoriaRepo.save(this.auditoriaRepo.create({
+      suscripcionId: s.id,
+      empresaId,
+      accion:        AccionAuditoria.EXTENSION_TRIAL,
+      superAdminId,
+      motivo:        `Extensión de ${diasExtension} días`,
+      valorNuevo:    { nuevaFecha, diasExtension },
+    }));
+
+    this.logger.log(`Prueba empresa #${empresaId} extendida ${diasExtension}d por SA#${superAdminId}`);
+    return this.getSuscripcion(empresaId);
+  }
+
+  // ── Notificar activación al cliente ───────────────────────────────────────
+
+  private async notificarActivacionPlan(
+    empresaId: number,
+    plan: PlanTipo,
+    modalidad: ModalidadPago,
+  ): Promise<void> {
+    try {
+      const admin = await this.ds.query<{ email: string; nombre: string }[]>(`
+        SELECT u.email, u.nombre FROM users u
+        JOIN usuario_empresa ue ON ue."userId" = u.id
+        WHERE ue."empresaId" = $1 AND ue."isActive" = true AND ue."isPrincipal" = true
+        LIMIT 1
+      `, [empresaId]);
+      if (!admin.length) return;
+
+      const planNombre = PLANES[plan]?.nombre ?? plan;
+      const precio     = precioUsd(plan, modalidad);
+      const emailSvc: any = (this as any)._emailService;
+      if (!emailSvc) return;
+
+      await emailSvc.enviar({
+        to: admin[0].email,
+        subject: `¡Tu plan ${planNombre} ha sido activado! — HiCloud ERP`,
+        html: `
+          <p>Hola ${admin[0].nombre},</p>
+          <p>¡Excelentes noticias! Tu plan <strong>${planNombre}</strong> (${precio}) ha sido activado en HiCloud ERP.</p>
+          <p>Ya puedes continuar usando todos los módulos sin interrupciones.</p>
+          <p>Gracias por confiar en HiCloud ERP para tu negocio.</p>
+        `,
+      });
+    } catch { /* silencioso */ }
+  }
+
+  // ── Catálogo de planes ────────────────────────────────────────────────────
 
   async getPlanesCatalogo() {
-    // Asegurar que la tabla tenga datos para todos los planes
     await this.seedPlanConfiguracion();
 
-    const configs = await this.planConfigRepo.find({ order: { createdAt: 'ASC' } });
+    const configs = await this.planConfigRepo.find({
+      where: { activo: true },
+      order: { createdAt: 'ASC' },
+    });
     const configMap = Object.fromEntries(configs.map(c => [c.clave, c]));
 
-    return Object.entries(PLANES).map(([clave, def]) => {
+    return PLANES_ACTIVOS.map((clave) => {
+      const def = PLANES[clave];
       const cfg = configMap[clave];
       return {
         clave,
-        nombre:         cfg?.nombre   ?? def.nombre,
-        precio:         cfg ? Number(cfg.precio) : def.precio,
-        descripcion:    cfg?.descripcion,
-        diasPrueba:     def.diasPrueba,
-        maxUsuarios:    def.maxUsuarios,
-        maxFacturasMes: def.maxFacturasMes,
-        maxProductos:   def.maxProductos,
-        maxClientes:    def.maxClientes,
-        maxSucursales:  def.maxSucursales,
-        modulos:        def.modulos,
-        soporte:        def.soporte,
+        nombre:              cfg?.nombre   ?? def.nombre,
+        precioMensualUsd:    def.precioMensualUsd,
+        precioAnualUsd:      def.precioAnualUsd,
+        limiteIngresosDop:   def.limiteIngresosMensualesDop,
+        limiteUsuarios:      def.limiteUsuarios,
+        diasPrueba:          15,
+        modulos:             def.modulos,
+        soporte:             def.soporte,
       };
     });
   }
@@ -206,15 +553,18 @@ export class SuscripcionesService implements OnModuleInit {
   }
 
   private async seedPlanConfiguracion() {
-    const count = await this.planConfigRepo.count();
-    if (count >= 5) return; // ya inicializado
+    const count = await this.planConfigRepo.count({ where: { activo: true } });
+    if (count >= 4) return;
 
-    for (const [clave, def] of Object.entries(PLANES)) {
+    for (const clave of PLANES_ACTIVOS) {
+      const def    = PLANES[clave];
       const existe = await this.planConfigRepo.findOne({ where: { clave } });
       if (!existe) {
         await this.planConfigRepo.save(
           this.planConfigRepo.create({ clave, nombre: def.nombre, precio: def.precio, activo: true }),
         );
+      } else if (!existe.activo) {
+        await this.planConfigRepo.update({ clave }, { activo: true });
       }
     }
   }

@@ -349,6 +349,189 @@ function DemoForm() {
   );
 }
 
+// ── Sección de precios ────────────────────────────────────────────────────────────
+
+const PLANES_LANDING = [
+  {
+    clave: 'emprendedor', nombre: 'EMPRENDEDOR', precio: 29, precioAnual: 26.10,
+    limite: 'RD$125,000', usuarios: 2, color: '#374151', border: '#6B7280', popular: false,
+    features: ['Factura electrónica e-CF DGII', 'Ingresos hasta RD$125,000/mes', '2 usuarios incluidos', 'Todos los módulos', 'Soporte 24/7 gratis'],
+  },
+  {
+    clave: 'pyme', nombre: 'PYME', precio: 59, precioAnual: 53.10,
+    limite: 'RD$500,000', usuarios: 3, color: '#047857', border: '#10B981', popular: false,
+    features: ['Factura electrónica e-CF DGII', 'Ingresos hasta RD$500,000/mes', '3 usuarios incluidos', 'Todos los módulos', 'Soporte 24/7 gratis'],
+  },
+  {
+    clave: 'pro', nombre: 'PRO', precio: 89, precioAnual: 80.10,
+    limite: 'RD$1,250,000', usuarios: 4, color: '#0d9488', border: '#14B8A6', popular: true,
+    features: ['Factura electrónica e-CF DGII', 'Ingresos hasta RD$1,250,000/mes', '4 usuarios incluidos', 'Todos los módulos', 'Soporte 24/7 gratis'],
+  },
+  {
+    clave: 'plus', nombre: 'PLUS', precio: 129, precioAnual: 116.10,
+    limite: 'RD$6,250,000', usuarios: 10, color: '#4F46E5', border: '#818CF8', popular: false,
+    features: ['Factura electrónica e-CF DGII', 'Ingresos hasta RD$6,250,000/mes', '10 usuarios incluidos', 'Todos los módulos', 'Soporte 24/7 + Asistente IA'],
+  },
+];
+
+const TABLA_COMPARATIVA = [
+  { feature: 'Factura electrónica e-CF DGII', vals: [true, true, true, true] },
+  { feature: 'Ingresos máx/mes',              vals: ['RD$125K', 'RD$500K', 'RD$1.25M', 'RD$6.25M'] },
+  { feature: 'Usuarios incluidos',            vals: [2, 3, 4, 10] },
+  { feature: 'Cotizaciones y órdenes',        vals: [true, true, true, true] },
+  { feature: 'Compras y proveedores',         vals: [true, true, true, true] },
+  { feature: 'Inventario completo',           vals: [true, true, true, true] },
+  { feature: 'Contabilidad general',          vals: [true, true, true, true] },
+  { feature: 'CxC / CxP',                     vals: [true, true, true, true] },
+  { feature: 'Nómina y RRHH',                 vals: [true, true, true, true] },
+  { feature: 'CRM / Proyectos',               vals: [true, true, true, true] },
+  { feature: 'Reportes DGII 606/607',         vals: [true, true, true, true] },
+  { feature: 'Multi-sucursal',                vals: [true, true, true, true] },
+  { feature: 'Soporte 24/7',                  vals: [true, true, true, true] },
+  { feature: 'Asistente IA',                  vals: [false, false, false, true] },
+];
+
+function PreciosSection({ navigate }: { navigate: (to: string) => void }) {
+  const [anual,     setAnual]     = useState(false);
+  const [tablaBien, setTablaBien] = useState(false);
+
+  return (
+    <section id="precios" style={{ padding: 'clamp(60px,8vw,96px) clamp(16px,5vw,80px)', background: L.gray }}>
+      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+        <FadeIn>
+          <div style={{ textAlign: 'center', marginBottom: 48 }}>
+            <span style={{ display: 'inline-block', background: 'rgba(21,101,192,.1)', color: L.primary, fontSize: 12, fontWeight: 700, padding: '4px 14px', borderRadius: 20, marginBottom: 16, letterSpacing: '0.5px' }}>
+              PLANES Y PRECIOS
+            </span>
+            <h2 style={{ fontSize: 'clamp(24px,4vw,40px)', fontWeight: 800, marginBottom: 12, letterSpacing: '-0.02em' }}>
+              Impulsa tu pyme desde <span style={{ color: L.primary }}>USD $29/mes</span>
+            </h2>
+            <p style={{ color: L.muted, fontSize: 16, maxWidth: 560, margin: '0 auto 24px' }}>
+              Prueba cualquier plan gratis 15 días, sin tarjeta de crédito. Todos incluyen todos los módulos.
+            </p>
+            {/* Toggle mensual / anual */}
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 12, background: L.white, border: `1px solid ${L.border}`, borderRadius: 30, padding: '6px 8px' }}>
+              <button onClick={() => setAnual(false)} style={{
+                padding: '7px 20px', borderRadius: 24, border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, transition: 'all .2s',
+                background: !anual ? L.primary : 'transparent', color: !anual ? '#fff' : L.muted,
+              }}>Mensual</button>
+              <button onClick={() => setAnual(true)} style={{
+                padding: '7px 20px', borderRadius: 24, border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, transition: 'all .2s',
+                background: anual ? L.primary : 'transparent', color: anual ? '#fff' : L.muted,
+                display: 'flex', alignItems: 'center', gap: 6,
+              }}>
+                Anual
+                <span style={{ background: '#10B981', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 10 }}>-10%</span>
+              </button>
+            </div>
+          </div>
+        </FadeIn>
+
+        {/* 4 tarjetas */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 20, alignItems: 'end', marginBottom: 40 }}>
+          {PLANES_LANDING.map((p, i) => {
+            const precio = anual ? p.precioAnual : p.precio;
+            return (
+              <FadeIn key={p.clave} delay={i * 0.08}>
+                <div style={{
+                  background: p.popular ? L.dark : L.white,
+                  border: `2px solid ${p.popular ? p.border : L.border}`,
+                  borderRadius: 18, padding: '28px 24px', position: 'relative',
+                  boxShadow: p.popular ? '0 20px 48px rgba(0,0,0,.18)' : '0 2px 12px rgba(0,0,0,.06)',
+                  transform: p.popular ? 'scale(1.04)' : 'none',
+                }}>
+                  {p.popular && (
+                    <div style={{ position: 'absolute', top: -14, left: '50%', transform: 'translateX(-50%)', background: p.color, color: '#fff', fontSize: 11, fontWeight: 800, padding: '4px 16px', borderRadius: 20, whiteSpace: 'nowrap' }}>
+                      MÁS POPULAR
+                    </div>
+                  )}
+                  <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 800, color: p.popular ? '#fff' : L.text, letterSpacing: '0.03em' }}>{p.nombre}</h3>
+                  <div style={{ marginBottom: 4 }}>
+                    <span style={{ fontSize: 40, fontWeight: 900, color: p.color }}>US${precio.toFixed(2)}</span>
+                    <span style={{ color: p.popular ? 'rgba(255,255,255,.5)' : L.muted, fontSize: 13 }}>/mes</span>
+                  </div>
+                  {anual && (
+                    <div style={{ marginBottom: 8 }}>
+                      <span style={{ background: '#10B981', color: '#fff', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 8 }}>Pago anual</span>
+                    </div>
+                  )}
+                  <div style={{ marginBottom: 16, padding: '8px 0', borderTop: `1px solid ${p.popular ? 'rgba(255,255,255,.1)' : L.border}` }}>
+                    {p.features.map(f => (
+                      <p key={f} style={{ margin: '0 0 8px', display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, color: p.popular ? 'rgba(255,255,255,.8)' : L.text }}>
+                        <span style={{ color: p.color, fontWeight: 700, flexShrink: 0, fontSize: 14 }}>✓</span>{f}
+                      </p>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => navigate(`/registrar?plan=${p.clave}`)}
+                    style={{
+                      width: '100%',
+                      background: p.popular ? p.color : 'transparent',
+                      border: `2px solid ${p.color}`,
+                      color: p.popular ? '#fff' : p.color,
+                      fontSize: 14, fontWeight: 700, padding: '11px', borderRadius: 10, cursor: 'pointer', transition: 'all .15s',
+                    }}
+                    onMouseEnter={e => { if (!p.popular) { e.currentTarget.style.background = p.color; e.currentTarget.style.color = '#fff'; }}}
+                    onMouseLeave={e => { if (!p.popular) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = p.color; }}}>
+                    Probar gratis 15 días
+                  </button>
+                </div>
+              </FadeIn>
+            );
+          })}
+        </div>
+
+        {/* Tabla comparativa expandible */}
+        <FadeIn>
+          <div style={{ textAlign: 'center', marginBottom: tablaBien ? 24 : 0 }}>
+            <button
+              onClick={() => setTablaBien(!tablaBien)}
+              style={{ background: 'transparent', border: `1px solid ${L.border}`, color: L.muted, fontSize: 14, padding: '9px 20px', borderRadius: 8, cursor: 'pointer', transition: 'all .15s' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = L.primary; (e.currentTarget as HTMLButtonElement).style.color = L.primary; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = L.border; (e.currentTarget as HTMLButtonElement).style.color = L.muted; }}>
+              {tablaBien ? '▲ Ocultar' : '▼ Compara nuestros planes'}
+            </button>
+          </div>
+          {tablaBien && (
+            <div style={{ overflowX: 'auto', marginTop: 16 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: 'left', padding: '12px 16px', color: L.muted, fontWeight: 600, borderBottom: `2px solid ${L.border}` }}>Característica</th>
+                    {PLANES_LANDING.map(p => (
+                      <th key={p.clave} style={{ textAlign: 'center', padding: '12px 16px', color: p.popular ? p.color : L.text, fontWeight: 800, borderBottom: `2px solid ${L.border}` }}>
+                        {p.nombre}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {TABLA_COMPARATIVA.map((row, i) => (
+                    <tr key={row.feature} style={{ background: i % 2 === 0 ? L.gray : L.white }}>
+                      <td style={{ padding: '10px 16px', color: L.text, fontWeight: 500 }}>{row.feature}</td>
+                      {row.vals.map((v, j) => (
+                        <td key={j} style={{ textAlign: 'center', padding: '10px 16px', color: L.text }}>
+                          {typeof v === 'boolean'
+                            ? (v ? <span style={{ color: '#10B981', fontWeight: 700 }}>✓</span> : <span style={{ color: '#D1D5DB' }}>—</span>)
+                            : <span style={{ fontWeight: 600 }}>{v}</span>
+                          }
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p style={{ textAlign: 'center', color: L.muted, fontSize: 12, marginTop: 16 }}>
+                Todos los precios en USD · ITBIS no incluido · Cancela cuando quieras · Sin contratos de permanencia
+              </p>
+            </div>
+          )}
+        </FadeIn>
+      </div>
+    </section>
+  );
+}
+
 // ── Landing principal ─────────────────────────────────────────────────────────────
 export default function LandingPage() {
   const [showForm, setShowForm] = useState(false);
@@ -602,53 +785,7 @@ export default function LandingPage() {
       </section>
 
       {/* ─── PLANES ──────────────────────────────────────────────────────────── */}
-      <section id="precios" style={{ padding: 'clamp(60px,8vw,96px) clamp(16px,5vw,80px)', background: L.gray }}>
-        <div style={{ maxWidth: 1080, margin: '0 auto' }}>
-          <FadeIn>
-            <div style={{ textAlign: 'center', marginBottom: 52 }}>
-              <h2 style={{ fontSize: 'clamp(24px,4vw,38px)', fontWeight: 800, marginBottom: 12, letterSpacing: '-0.02em' }}>Planes simples y transparentes</h2>
-              <p style={{ color: L.muted, fontSize: 15 }}>* Los precios no incluyen el costo del proveedor e-CF (MSeller). Puedes usar tu cuenta MSeller existente.</p>
-            </div>
-          </FadeIn>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 24, alignItems: 'start' }}>
-            {planesRender.map((p, i) => (
-              <FadeIn key={p.clave ?? p.name} delay={i * 0.1}>
-                <div style={{ background: p.highlight ? L.dark : L.white,
-                  border: `2px solid ${p.highlight ? p.color : L.border}`,
-                  borderRadius: 18, padding: 32, position: 'relative',
-                  boxShadow: p.highlight ? '0 16px 48px rgba(0,0,0,.18)' : 'none',
-                  transform: p.highlight ? 'scale(1.03)' : 'none',
-                }}>
-                  {p.badge && (
-                    <span style={{ position: 'absolute', top: -14, left: '50%', transform: 'translateX(-50%)',
-                      background: p.color, color: '#fff', fontSize: 11, fontWeight: 800, padding: '4px 14px', borderRadius: 20, letterSpacing: '0.5px' }}>
-                      {p.badge}
-                    </span>
-                  )}
-                  <h3 style={{ margin: '0 0 8px', fontSize: 20, fontWeight: 700, color: p.highlight ? '#fff' : L.text }}>{p.name}</h3>
-                  <div style={{ marginBottom: 24 }}>
-                    <span style={{ fontSize: 44, fontWeight: 900, color: p.color }}>{p.price}</span>
-                    <span style={{ color: p.highlight ? 'rgba(255,255,255,.5)' : L.muted, fontSize: 14 }}>{p.period}</span>
-                  </div>
-                  {p.features.map(f => (
-                    <p key={f} style={{ margin: '0 0 10px', display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 14, color: p.highlight ? 'rgba(255,255,255,.8)' : L.text }}>
-                      <span style={{ color: p.color, fontWeight: 700, flexShrink: 0 }}>✓</span>{f}
-                    </p>
-                  ))}
-                  <button onClick={scrollToForm}
-                    style={{ marginTop: 24, width: '100%', background: p.highlight ? p.color : 'transparent',
-                      border: `2px solid ${p.color}`, color: p.highlight ? '#fff' : p.color,
-                      fontSize: 14, fontWeight: 700, padding: '12px', borderRadius: 10, cursor: 'pointer', transition: 'all .15s' }}
-                    onMouseEnter={e => { if (!p.highlight) { e.currentTarget.style.background = p.color; e.currentTarget.style.color = '#fff'; }}}
-                    onMouseLeave={e => { if (!p.highlight) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = p.color; }}}>
-                    {p.cta}
-                  </button>
-                </div>
-              </FadeIn>
-            ))}
-          </div>
-        </div>
-      </section>
+      <PreciosSection navigate={navigate} />
 
       {/* ─── FAQ ─────────────────────────────────────────────────────────────── */}
       <section id="faq" style={{ padding: 'clamp(60px,8vw,96px) clamp(16px,5vw,80px)', background: L.white }}>

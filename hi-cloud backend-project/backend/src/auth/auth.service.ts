@@ -130,8 +130,19 @@ export class AuthService {
           }),
         );
 
+        // Crear suscripción PRUEBA con el plan elegido — el reloj de 15 días empieza aquí
+        const planElegido = dto.planElegido ?? 'emprendedor';
+        const fechaFinPrueba = new Date(); fechaFinPrueba.setDate(fechaFinPrueba.getDate() + 15);
+        await qr.manager.query(
+          `INSERT INTO suscripciones
+             ("empresaId", plan, estado, "fechaInicio", "fechaVencimiento",
+              "fechaFinPrueba", "planElegidoEnRegistro", "modalidad")
+           VALUES ($1, $2, 'prueba', NOW(), $3, $3, $2, 'mensual')`,
+          [empresa.id, planElegido, fechaFinPrueba.toISOString()],
+        );
+
         await qr.commitTransaction();
-        this.logger.log(`Empresa "${empresa.nombre}" (id=${empresa.id}) creada para usuario #${user.id}`);
+        this.logger.log(`Empresa "${empresa.nombre}" (id=${empresa.id}) creada para usuario #${user.id} | plan=${planElegido}`);
 
         // Tareas post-commit: no forman parte de la transacción atómica
         this.contabilidadService.seedPlanCuentas(empresa.id).catch(err =>
@@ -433,7 +444,8 @@ export class AuthService {
       emailVerificationExpires: null,
     } as any);
 
-    // Crear trial solo al verificar email — el reloj de 7 días empieza aquí
+    // La suscripción PRUEBA se crea durante el registro (no aquí).
+    // Si por alguna razón no existe, crearla como fallback.
     const ueRow = await this.ueRepository.findOne({
       where: { userId: user.id, isActive: true, isPrincipal: true },
     });
@@ -443,13 +455,15 @@ export class AuthService {
         [ueRow.empresaId],
       );
       if (!yaExiste.length) {
-        const fin = new Date(); fin.setDate(fin.getDate() + 7);
+        const fin = new Date(); fin.setDate(fin.getDate() + 15);
         await this.dataSource.query(
-          `INSERT INTO suscripciones ("empresaId", plan, estado, "fechaInicio", "fechaVencimiento")
-           VALUES ($1, 'trial', 'activa', NOW(), $2)`,
+          `INSERT INTO suscripciones
+             ("empresaId", plan, estado, "fechaInicio", "fechaVencimiento",
+              "fechaFinPrueba", "planElegidoEnRegistro", "modalidad")
+           VALUES ($1, 'emprendedor', 'prueba', NOW(), $2, $2, 'emprendedor', 'mensual')`,
           [ueRow.empresaId, fin.toISOString()],
         );
-        this.logger.log(`Trial de 7 días creado para empresa #${ueRow.empresaId}`);
+        this.logger.log(`Suscripción PRUEBA fallback creada para empresa #${ueRow.empresaId}`);
       }
     }
 

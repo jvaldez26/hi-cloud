@@ -16,13 +16,13 @@ const PLANES = [
     precioMensual: 29,
     precioAnual: 26.10,      // 29 * 0.90
     limiteDop: 125_000,
-    usuarios: 1,
+    usuarios: 2,
     destacado: false,
     color: '#374151',
     features: [
       'Factura electrónica e-CF DGII gratuita',
       'Ingresos hasta RD$125,000.00 / MES',
-      '1 Usuario con acceso',
+      '2 Usuarios con acceso',
       'Soporte 24/7 gratis',
     ],
   },
@@ -32,13 +32,13 @@ const PLANES = [
     precioMensual: 59,
     precioAnual: 53.10,      // 59 * 0.90
     limiteDop: 500_000,
-    usuarios: 2,
+    usuarios: 3,
     destacado: false,
     color: '#047857',
     features: [
       'Factura electrónica e-CF DGII gratuita',
       'Ingresos hasta RD$500,000.00 / MES',
-      '2 Usuarios con acceso',
+      '3 Usuarios con acceso',
       'Soporte 24/7 gratis',
     ],
   },
@@ -48,13 +48,13 @@ const PLANES = [
     precioMensual: 89,
     precioAnual: 80.10,      // 89 * 0.90
     limiteDop: 1_250_000,
-    usuarios: 3,
+    usuarios: 4,
     destacado: true,
     color: '#0d9488',
     features: [
       'Factura electrónica e-CF DGII gratuita',
       'Ingresos hasta RD$1,250,000.00 / MES',
-      '3 Usuarios con acceso',
+      '4 Usuarios con acceso',
       'Soporte 24/7 gratis',
     ],
   },
@@ -64,13 +64,13 @@ const PLANES = [
     precioMensual: 129,
     precioAnual: 116.10,     // 129 * 0.90
     limiteDop: 6_250_000,
-    usuarios: 8,
+    usuarios: 10,
     destacado: false,
     color: '#374151',
     features: [
       'Factura electrónica e-CF DGII gratuita',
       'Ingresos hasta RD$6,250,000.00 / MES',
-      '8 Usuarios con acceso',
+      '10 Usuarios con acceso',
       'Soporte 24/7 gratis',
     ],
   },

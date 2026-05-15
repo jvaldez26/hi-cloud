@@ -37,4 +37,10 @@ export class RegisterDto {
   @IsString()
   @IsValidRNC({ message: 'El RNC debe tener 9 dígitos (empresa, empieza con 1/4/5) u 11 dígitos (cédula)' })
   empresaRnc?: string;
+
+  /** Plan elegido durante el registro — determina los límites de la prueba de 15 días */
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  planElegido?: string;
 }

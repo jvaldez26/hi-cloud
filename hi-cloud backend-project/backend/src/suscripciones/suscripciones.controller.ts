@@ -1,11 +1,11 @@
 import {
-  Controller, Get, Post, Body,
-  HttpCode, HttpStatus, UseGuards, ForbiddenException,
+  Controller, Get, Post, Patch, Body, Param, ParseIntPipe,
+  HttpCode, HttpStatus, UseGuards, ForbiddenException, Query,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { SuscripcionesService } from './suscripciones.service';
 import { LimitesService } from './limites.service';
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsInt, Min, Max } from 'class-validator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -14,11 +14,24 @@ import { TenantService } from '../tenant/tenant.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SolicitudCambioPlan, EstadoSolicitud } from './entities/solicitud-cambio-plan.entity';
+import { SuperAdminGuard } from '../super-admin/super-admin.guard';
 
 class SolicitarCambioDto {
   @IsString() planSolicitado: string;
   @IsOptional() @IsEnum(['mensual', 'anual']) modalidad?: string;
   @IsOptional() @IsString() comentario?: string;
+}
+
+class AprobarSolicitudDto {
+  @IsOptional() @IsString() notaInterna?: string;
+}
+
+class RechazarSolicitudDto {
+  @IsString() motivoRechazo: string;
+}
+
+class ExtenderPruebaDto {
+  @IsInt() @Min(1) @Max(90) dias: number;
 }
 
 @ApiTags('Suscripciones')
@@ -38,10 +51,10 @@ export class SuscripcionesController {
     try { return this.tenantSvc.getEmpresaId(); } catch { return 1; }
   }
 
-  // ── Endpoints de LECTURA para clientes (read-only) ────────────────────────
+  // ── Endpoints de LECTURA para clientes ────────────────────────────────────
 
   @Get('planes')
-  @ApiOperation({ summary: 'Catálogo de planes disponibles (solo lectura)' })
+  @ApiOperation({ summary: 'Catálogo de planes disponibles' })
   getPlanes() {
     return this.svc.getPlanesCatalogo();
   }
@@ -67,7 +80,7 @@ export class SuscripcionesController {
     });
   }
 
-  // ── Solicitud de cambio (clientes NO pueden aplicar cambios directamente) ──
+  // ── Solicitud de cambio (cliente) ─────────────────────────────────────────
 
   @Post('solicitar-cambio')
   @HttpCode(HttpStatus.CREATED)
@@ -75,7 +88,6 @@ export class SuscripcionesController {
   async solicitarCambio(@Body() dto: SolicitarCambioDto) {
     const empresaId = this.empresaId;
 
-    // Verificar que no haya solicitud pendiente
     const pendiente = await this.solicitudRepo.findOne({
       where: { empresaId, estado: EstadoSolicitud.PENDIENTE },
     });
@@ -102,22 +114,90 @@ export class SuscripcionesController {
     };
   }
 
-  // ── DEPRECATED: estos endpoints ya no deben usarse desde el cliente ─────────
-  // Mantenidos solo para backward compat. Devuelven 403.
+  // ── Endpoints administrativos — Solo Super Admin ──────────────────────────
 
-  @Post(':empresaId/activar')
-  @HttpCode(HttpStatus.FORBIDDEN)
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: '[DEPRECATED] Usa /solicitar-cambio — el cambio directo fue removido' })
-  activar() {
-    throw new ForbiddenException(
-      'El cambio directo de plan ya no está disponible. ' +
-      'Usa POST /suscripciones/solicitar-cambio para solicitar un upgrade. ' +
-      'Un asesor lo procesará en menos de 24 horas.',
+  @Get('admin/solicitudes')
+  @UseGuards(SuperAdminGuard)
+  @ApiOperation({ summary: '[Admin] Listar todas las solicitudes de cambio de plan' })
+  listarSolicitudes(@Query('estado') estado?: EstadoSolicitud) {
+    return this.svc.listarSolicitudes(estado);
+  }
+
+  @Get('admin/solicitudes/pendientes/count')
+  @UseGuards(SuperAdminGuard)
+  @ApiOperation({ summary: '[Admin] Contar solicitudes pendientes (para badge)' })
+  contarSolicitudesPendientes() {
+    return this.svc.contarSolicitudesPendientes();
+  }
+
+  @Post('admin/solicitudes/:id/aprobar')
+  @UseGuards(SuperAdminGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '[Admin] Aprobar solicitud y activar plan' })
+  aprobarSolicitud(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: AprobarSolicitudDto,
+  ) {
+    // Extraer superAdminId del JWT (el guard lo pone en req.user)
+    return this.svc.aprobarSolicitud(id, 0, dto.notaInterna);
+  }
+
+  @Post('admin/solicitudes/:id/rechazar')
+  @UseGuards(SuperAdminGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '[Admin] Rechazar solicitud' })
+  rechazarSolicitud(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: RechazarSolicitudDto,
+  ) {
+    return this.svc.rechazarSolicitud(id, 0, dto.motivoRechazo);
+  }
+
+  @Get('admin/pruebas')
+  @UseGuards(SuperAdminGuard)
+  @ApiOperation({ summary: '[Admin] Empresas en período de prueba' })
+  listarEmpresasEnPrueba() {
+    return this.svc.listarEmpresasEnPrueba();
+  }
+
+  @Patch('admin/:empresaId/extender-prueba')
+  @UseGuards(SuperAdminGuard)
+  @ApiOperation({ summary: '[Admin] Extender período de prueba' })
+  extenderPrueba(
+    @Param('empresaId', ParseIntPipe) empresaId: number,
+    @Body() dto: ExtenderPruebaDto,
+  ) {
+    return this.svc.extenderPrueba(empresaId, dto.dias, 0);
+  }
+
+  @Patch('admin/:empresaId/activar')
+  @UseGuards(SuperAdminGuard)
+  @ApiOperation({ summary: '[Admin] Activar plan directamente' })
+  activarDirecto(
+    @Param('empresaId', ParseIntPipe) empresaId: number,
+    @Body() body: { plan: string; meses?: number; notas?: string; modalidad?: string },
+  ) {
+    const { PlanTipo, ModalidadPago } = require('./entities/suscripcion.entity');
+    return this.svc.activarPlan(
+      empresaId,
+      body.plan as any,
+      body.meses ?? 1,
+      body.notas,
+      body.modalidad === 'anual' ? ModalidadPago.ANUAL : ModalidadPago.MENSUAL,
     );
   }
 
-  // ── Endpoints administrativos (solo ADMIN global — mantenidos para super admin) ──
+  @Patch('admin/:empresaId/suspender')
+  @UseGuards(SuperAdminGuard)
+  @ApiOperation({ summary: '[Admin] Suspender empresa manualmente' })
+  suspenderAdmin(
+    @Param('empresaId', ParseIntPipe) empresaId: number,
+    @Body() body: { motivo?: string },
+  ) {
+    return this.svc.suspender(empresaId, body.motivo);
+  }
+
+  // ── Listados (admin legacy) ───────────────────────────────────────────────
 
   @Get()
   @Roles(UserRole.ADMIN)
@@ -131,5 +211,15 @@ export class SuscripcionesController {
   @ApiOperation({ summary: 'Estadísticas de planes activos' })
   estadisticas() {
     return this.svc.getEstadisticasPlanes();
+  }
+
+  // ── DEPRECATED ────────────────────────────────────────────────────────────
+
+  @Post(':empresaId/activar')
+  @HttpCode(HttpStatus.FORBIDDEN)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: '[DEPRECATED] Usa /admin/:empresaId/activar' })
+  activar() {
+    throw new ForbiddenException('Usa POST /suscripciones/admin/:empresaId/activar');
   }
 }
