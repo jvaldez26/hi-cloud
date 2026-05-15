@@ -882,16 +882,22 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
     return { mensaje: `Pre-factura ${r.folio} enviada a ${emailCliente}` };
   }
 
-  // ── Helper genérico para notas de crédito/débito ─────────────────────────────
-  private async buildNotaHtml(
-    tabla: string, campos: string, detTabla: string, detCampos: string,
-    id: number, tipo: 'credito' | 'debito',
-  ) {
+  // ── Helper para notas de crédito/débito ──────────────────────────────────────
+  private async buildNotaHtml(id: number, tipo: 'credito' | 'debito') {
+    // Tabla y columnas hardcodeadas por tipo — sin parámetros dinámicos de SQL
+    const tabla    = tipo === 'credito' ? 'notas_credito'         : 'notas_debito';
+    const detTabla = tipo === 'credito' ? 'nota_credito_detalles' : 'nota_debito_detalles';
+    const fkCol    = tipo === 'credito' ? 'notaCreditoId'          : 'notaDebitoId';
+
     const rows = await this.dataSource.query<any[]>(
-      `SELECT ${campos}, e.nombre AS "empresaNombre", e.rnc AS "empresaRNC",
+      `SELECT n.numero, n.fecha::text, n.total::text, n.subtotal::text, n.iva::text,
+              n.motivo, COALESCE(n.notas,'') AS notas, n."facturaOriginalFolio",
+              c.nombre AS "clienteNombre",
+              e.nombre AS "empresaNombre", e.rnc AS "empresaRNC",
               e.telefono AS "empresaTelefono", e.email AS "empresaEmail"
        FROM ${tabla} n
        JOIN empresa e ON e.id = n."empresaId"
+       LEFT JOIN clientes c ON c.id = n."clienteId"
        WHERE n.id = $1`,
       [id],
     );
@@ -899,7 +905,8 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
     const r = rows[0];
 
     const detRows = await this.dataSource.query<any[]>(
-      `SELECT ${detCampos} FROM ${detTabla} WHERE "${tabla === 'notas_credito' ? 'notaCreditoId' : 'notaDebitoId'}" = $1 ORDER BY id`,
+      `SELECT descripcion, cantidad::text, "precioUnitario"::text, total::text
+       FROM ${detTabla} WHERE "${fkCol}" = $1 ORDER BY id`,
       [id],
     );
 
@@ -924,13 +931,7 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
 
   async enviarNotaCreditoAlCliente(notaId: number, emailCliente: string) {
     const { r, fmtM, fmtD, color, gradient, titulo, itemsHtml } =
-      await this.buildNotaHtml(
-        'notas_credito',
-        'n.numero, n.fecha::text, n.total::text, n.subtotal::text, n.iva::text, n.motivo, COALESCE(n.notas,\'\') AS notas, n."facturaOriginalFolio", c.nombre AS "clienteNombre"',
-        'nota_credito_detalles',
-        'descripcion, cantidad::text, "precioUnitario"::text, total::text',
-        notaId, 'credito',
-      );
+      await this.buildNotaHtml(notaId, 'credito');
 
     const html = this.buildNotaEmailHtml({ r, fmtM, fmtD, color, gradient, titulo, itemsHtml });
     const { exitoso, error } = await this.emailService.enviar({ to: emailCliente, subject: `${titulo} ${r.numero} — ${r.empresaNombre}`, html });
@@ -940,13 +941,7 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
 
   async enviarNotaDebitoAlCliente(notaId: number, emailCliente: string) {
     const { r, fmtM, fmtD, color, gradient, titulo, itemsHtml } =
-      await this.buildNotaHtml(
-        'notas_debito',
-        'n.numero, n.fecha::text, n.total::text, n.subtotal::text, n.iva::text, n.motivo, COALESCE(n.notas,\'\') AS notas, n."facturaOriginalFolio", c.nombre AS "clienteNombre"',
-        'nota_debito_detalles',
-        'descripcion, cantidad::text, "precioUnitario"::text, total::text',
-        notaId, 'debito',
-      );
+      await this.buildNotaHtml(notaId, 'debito');
 
     const html = this.buildNotaEmailHtml({ r, fmtM, fmtD, color, gradient, titulo, itemsHtml });
     const { exitoso, error } = await this.emailService.enviar({ to: emailCliente, subject: `${titulo} ${r.numero} — ${r.empresaNombre}`, html });

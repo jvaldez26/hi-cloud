@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
@@ -84,7 +84,10 @@ export class UsersService implements OnModuleInit {
     };
   }
 
-  async update(id: number, dto: UpdateUserDto) {
+  async update(id: number, dto: UpdateUserDto, requesterId?: number) {
+    if (requesterId !== undefined && id === requesterId) {
+      throw new ForbiddenException('No puedes modificar tu propio perfil desde este endpoint');
+    }
     await this.findById(id);
     await this.userRepository.update(id, dto);
     return this.findById(id);

@@ -1,5 +1,4 @@
-import { IsEnum, IsOptional, IsString, MinLength, MaxLength } from 'class-validator';
-import { UserRole } from '../enums/user-role.enum';
+import { IsOptional, IsString, MinLength, MaxLength } from 'class-validator';
 
 export class UpdateUserDto {
   @IsOptional()
@@ -13,8 +12,5 @@ export class UpdateUserDto {
   @MinLength(8,   { message: 'La contraseña debe tener al menos 8 caracteres' })
   @MaxLength(100, { message: 'La contraseña no puede superar 100 caracteres' })
   password?: string;
-
-  @IsOptional()
-  @IsEnum(UserRole, { message: 'Rol inválido' })
-  role?: UserRole;
+  // role eliminado intencionalmente — cambio de rol solo vía SuperAdmin (/admin/usuarios/:id/rol)
 }

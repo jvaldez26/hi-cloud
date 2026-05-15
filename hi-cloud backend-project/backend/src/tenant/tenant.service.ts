@@ -3,6 +3,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, Repository, SelectQueryBuilder, ObjectLiteral } from 'typeorm';
 import { ClsService } from 'nestjs-cls';
 import { SKIP_TENANT_KEY, SKIP_TENANT_CALLER } from './tenant.subscriber';
+import { TenantAwareRepository } from './tenant-aware.repository';
 
 const TENANT_KEY = 'empresaId';
 const USER_KEY   = 'userId';
@@ -22,7 +23,7 @@ export class TenantService {
   /** Retorna el empresaId del request actual. Lanza 403 si no está establecido. */
   getEmpresaId(): number {
     const id = this.cls.get<number>(TENANT_KEY);
-    if (!id) throw new ForbiddenException('Se requiere contexto de empresa. Incluye el header X-Empresa-ID.');
+    if (!id) throw new ForbiddenException('Se requiere contexto de empresa. Realiza login o cambia de empresa activa.');
     return id;
   }
 
@@ -96,4 +97,49 @@ export class TenantService {
       this.cls.set(SKIP_TENANT_CALLER, undefined);
     }
   }
+
+  // ── runAs: actuar como una empresa específica ─────────────────────────────
+
+  /**
+   * Ejecuta `fn` con el contexto de empresa forzado a `empresaId`.
+   * Usar cuando super admin quiere ver datos de una empresa específica.
+   *
+   * A diferencia de withoutTenantScope, el filtro SIGUE activo — solo cambia
+   * a qué empresa apunta. Esto previene leaks a otras empresas.
+   *
+   * USO:
+   *   await this.tenantService.runAs(empresaIdCliente, () =>
+   *     this.cxcService.getResumen()
+   *   );
+   */
+  async runAs<T>(empresaId: number, fn: () => Promise<T>): Promise<T> {
+    const prevEid = this.cls.get<number>(TENANT_KEY);
+    this.logger.warn(`[TenantScope] runAs(${empresaId}) desde empresa ${prevEid ?? 'null'}`);
+    this.cls.set(TENANT_KEY, empresaId);
+    try {
+      return await fn();
+    } finally {
+      this.cls.set(TENANT_KEY, prevEid ?? undefined);
+    }
+  }
+
+  // ── TenantAwareRepository factory ─────────────────────────────────────────
+
+  /**
+   * Envuelve un Repository<T> en un TenantAwareRepository<T> que inyecta
+   * automáticamente WHERE empresaId en todas las queries sobre @TenantScoped.
+   *
+   * USO en servicios:
+   *   private tenantRepo: TenantAwareRepository<CuentaPorCobrar>;
+   *
+   *   constructor(@InjectRepository(CuentaPorCobrar) repo, tenant: TenantService) {
+   *     this.tenantRepo = tenant.wrap(repo);
+   *   }
+   */
+  wrap<T extends ObjectLiteral>(repo: Repository<T>): TenantAwareRepository<T> {
+    return new TenantAwareRepository(repo, this.cls, this.dataSource);
+  }
+
+  /** Expone ClsService para TenantAwareRepository (solo uso interno del módulo). */
+  get clsService(): ClsService { return this.cls; }
 }

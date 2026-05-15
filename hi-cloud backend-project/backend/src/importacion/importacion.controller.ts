@@ -1,5 +1,5 @@
 import {
-  Controller, Post, Get, UploadedFile,
+  Controller, Post, Get, UploadedFile, BadRequestException,
   UseInterceptors, Res, UseGuards, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -41,23 +41,37 @@ export class ImportacionController {
 
   // ── Importaciones ───────────────────────────────────────────────────────────
 
+  private static readonly CSV_FILTER = (_: any, file: Express.Multer.File, cb: any) => {
+    const MIME_PERMITIDOS = ['text/csv', 'application/vnd.ms-excel', 'text/plain'];
+    if (!MIME_PERMITIDOS.includes(file.mimetype)) {
+      return cb(new BadRequestException('Solo se permiten archivos CSV'), false);
+    }
+    cb(null, true);
+  };
+
   @Post('clientes')
   @HttpCode(HttpStatus.OK)
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file', {
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: ImportacionController.CSV_FILTER,
+  }))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Importar clientes desde archivo CSV (máx 5MB)' })
-  importarClientes(@UploadedFile() file: { buffer: Buffer; originalname: string }) {
-    if (!file) throw new Error('No se recibió ningún archivo');
+  importarClientes(@UploadedFile() file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('No se recibió ningún archivo');
     return this.importacionService.importarClientes(file.buffer);
   }
 
   @Post('productos')
   @HttpCode(HttpStatus.OK)
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file', {
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: ImportacionController.CSV_FILTER,
+  }))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Importar productos desde archivo CSV (máx 5MB)' })
-  importarProductos(@UploadedFile() file: { buffer: Buffer; originalname: string }) {
-    if (!file) throw new Error('No se recibió ningún archivo');
+  importarProductos(@UploadedFile() file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('No se recibió ningún archivo');
     return this.importacionService.importarProductos(file.buffer);
   }
 

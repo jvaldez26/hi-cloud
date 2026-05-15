@@ -38,11 +38,10 @@ export async function verPDFDesdeURL(apiPath: string): Promise<void> {
 // ── Imprimir HTML en ventana nueva ────────────────────────────────────────────
 
 export function imprimirHtml(html: string): void {
-  const pw = window.open('', '_blank', 'width=900,height=700,scrollbars=yes');
-  if (!pw) { window.print(); return; }
-  pw.document.open();
-  pw.document.write(html);
-  pw.document.close();
+  const blob = new Blob([html], { type: 'text/html' });
+  const url  = URL.createObjectURL(blob);
+  const pw   = window.open(url, '_blank', 'width=900,height=700,scrollbars=yes');
+  if (!pw) { window.print(); URL.revokeObjectURL(url); return; }
 
   let printed = false;
   const doPrint = () => {
@@ -50,8 +49,8 @@ export function imprimirHtml(html: string): void {
     printed = true;
     pw.focus();
     pw.print();
-    pw.addEventListener('afterprint', () => pw.close());
-    setTimeout(() => { try { pw.close(); } catch { /* noop */ } }, 60_000);
+    pw.addEventListener('afterprint', () => { pw.close(); URL.revokeObjectURL(url); });
+    setTimeout(() => { try { pw.close(); URL.revokeObjectURL(url); } catch { /* noop */ } }, 60_000);
   };
 
   pw.onload = doPrint;
@@ -66,16 +65,15 @@ export function imprimirElemento(elementId: string, pageSize = '80mm auto'): voi
   const content = el.innerHTML;
   if (!content.trim()) { console.warn(`[imprimirElemento] #${elementId} está vacío`); return; }
 
-  const pw = window.open('', '_blank', 'width=420,height=700,scrollbars=yes');
-  if (!pw) { _imprimirConCSS(elementId, pageSize); return; }
-
-  pw.document.open();
-  pw.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Recibo</title>
+  const receiptHtml = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Recibo</title>
 <style>*{margin:0;padding:0;box-sizing:border-box}body{background:#fff}
 @page{margin:3mm;size:${pageSize}}
 @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>
-</head><body>${content}</body></html>`);
-  pw.document.close();
+</head><body>${content}</body></html>`;
+  const blob2 = new Blob([receiptHtml], { type: 'text/html' });
+  const url2  = URL.createObjectURL(blob2);
+  const pw    = window.open(url2, '_blank', 'width=420,height=700,scrollbars=yes');
+  if (!pw) { _imprimirConCSS(elementId, pageSize); URL.revokeObjectURL(url2); return; }
 
   // Flag para evitar doble impresión: onload + setTimeout se pueden disparar juntos
   let printed = false;

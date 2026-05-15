@@ -67,7 +67,9 @@ export class HealthController {
     for (const table of tables) {
       try {
         const t0 = Date.now();
-        await this.ds.query(`SELECT COUNT(*) FROM "${table}" LIMIT 1`);
+        // Escape de comillas para evitar inyección si la lista cambia en el futuro
+        const safeTable = table.replace(/"/g, '""');
+        await this.ds.query(`SELECT COUNT(*) FROM "${safeTable}" LIMIT 1`);
         modules.push({ module: `table:${table}`, status: 'OK', ms: Date.now() - t0 });
       } catch (e: any) {
         modules.push({ module: `table:${table}`, status: 'ERROR', detail: e.message });

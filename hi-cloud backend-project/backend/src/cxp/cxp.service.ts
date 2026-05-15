@@ -166,8 +166,9 @@ export class CxPService {
   }
 
   async findById(id: number) {
+    const empresaId = this.tenantService.getEmpresaId();
     const cuenta = await this.cxpRepository.findOne({
-      where: { id, empresaId: (this as any).tenantService?.getEmpresaId(), isActive: true },
+      where: { id, empresaId, isActive: true },
       relations: ['proveedor', 'compra', 'user'],
     });
     if (!cuenta) throw new NotFoundException(`CxP #${id} no encontrada`);
@@ -184,8 +185,10 @@ export class CxPService {
   }
 
   async getCuentasVencidas() {
+    const empresaId = this.tenantService.getEmpresaId();
     return this.cxpRepository.find({
       where: {
+        empresaId,
         estado: In([EstadoCuenta.PENDIENTE, EstadoCuenta.PAGADA_PARCIAL]),
         fechaVencimiento: LessThan(new Date()),
         isActive: true,
@@ -197,11 +200,12 @@ export class CxPService {
 
   async getCuentasPorProveedor(proveedorId: number, filtro: FiltroCuentasDto) {
     const { limit = 20, page = 1, estado } = filtro;
+    const empresaId = this.tenantService.getEmpresaId();
 
     const qb = this.cxpRepository
       .createQueryBuilder('c')
       .leftJoinAndSelect('c.compra', 'compra')
-      .where('c.proveedorId = :proveedorId AND c.isActive = true', { proveedorId });
+      .where('c.proveedorId = :proveedorId AND c.empresaId = :eid AND c.isActive = true', { proveedorId, eid: empresaId });
 
     if (estado) qb.andWhere('c.estado = :estado', { estado });
 
@@ -215,6 +219,7 @@ export class CxPService {
   }
 
   async getResumenPagos() {
+    const empresaId = this.tenantService.getEmpresaId();
     const hoy = new Date();
     const en30 = new Date(hoy); en30.setDate(hoy.getDate() + 30);
     const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
@@ -222,33 +227,33 @@ export class CxPService {
     const [porPagar, vencido, porVencer, pagadoMes] = await Promise.all([
       this.cxpRepository.createQueryBuilder('c')
         .select('COALESCE(SUM(c.montoPendiente), 0)', 'total')
-        .where('c.isActive = true AND c.estado NOT IN (:...exc)', {
-          exc: [EstadoCuenta.PAGADA, EstadoCuenta.ANULADA],
+        .where('c.isActive = true AND c.empresaId = :eid AND c.estado NOT IN (:...exc)', {
+          eid: empresaId, exc: [EstadoCuenta.PAGADA, EstadoCuenta.ANULADA],
         })
         .getRawOne<{ total: string }>(),
 
       this.cxpRepository.createQueryBuilder('c')
         .select('COALESCE(SUM(c.montoPendiente), 0)', 'total')
-        .where('c.isActive = true AND c.estado = :e', { e: EstadoCuenta.VENCIDA })
+        .where('c.isActive = true AND c.empresaId = :eid AND c.estado = :e', { eid: empresaId, e: EstadoCuenta.VENCIDA })
         .getRawOne<{ total: string }>(),
 
       this.cxpRepository.createQueryBuilder('c')
         .select('COALESCE(SUM(c.montoPendiente), 0)', 'total')
-        .where('c.isActive = true AND c.estado IN (:...ests)', {
-          ests: [EstadoCuenta.PENDIENTE, EstadoCuenta.PAGADA_PARCIAL],
+        .where('c.isActive = true AND c.empresaId = :eid AND c.estado IN (:...ests)', {
+          eid: empresaId, ests: [EstadoCuenta.PENDIENTE, EstadoCuenta.PAGADA_PARCIAL],
         })
         .andWhere('c.fechaVencimiento BETWEEN :hoy AND :en30', { hoy, en30 })
         .getRawOne<{ total: string }>(),
 
       this.pagoRepository.createQueryBuilder('p')
+        .innerJoin('p.cuentaPorPagar', 'cxp')
         .select('COALESCE(SUM(p.monto), 0)', 'total')
-        .where('p.isActive = true AND p.fecha >= :inicio', { inicio: inicioMes })
+        .where('p.isActive = true AND cxp.empresaId = :eid AND p.fecha >= :inicio', { eid: empresaId, inicio: inicioMes })
         .getRawOne<{ total: string }>(),
     ]);
 
-    const eidForCount = this.tenantService.getEmpresaIdOrNull();
     const cuenta = await this.cxpRepository.count({
-      where: { isActive: true, ...(eidForCount ? { empresaId: eidForCount } : {}) } as any,
+      where: { isActive: true, empresaId } as any,
     });
 
     return {

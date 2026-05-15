@@ -63,9 +63,8 @@ export class TenantMiddleware implements NestMiddleware {
       const userId   = payload.sub;
       const userRole = payload.role;
 
-      // Read empresa from header (takes priority) or from JWT
-      const headerVal = req.headers['x-empresa-id'] as string | undefined;
-      const empresaId = headerVal ? Number(headerVal) : (payload.empresaId ?? null);
+      // empresaId comes ONLY from the JWT payload — never from headers
+      const empresaId = payload.empresaId ?? null;
 
       if (!empresaId || isNaN(empresaId)) {
         // No empresaId — let the guard handle enforcement per-route

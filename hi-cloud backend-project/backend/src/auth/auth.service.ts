@@ -8,8 +8,8 @@
   Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { randomUUID, randomBytes } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import { UsersService } from '../users/users.service';
@@ -40,6 +40,7 @@ export class AuthService {
     @InjectRepository(Sucursal)
     private sucursalRepository: Repository<Sucursal>,
     private contabilidadService: ContabilidadService,
+    @InjectDataSource() private dataSource: DataSource,
   ) {}
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -70,7 +71,7 @@ export class AuthService {
   // ─── Register ────────────────────────────────────────────────────────────────
 
   async register(dto: RegisterDto) {
-    this.logger.log(`[REGISTER] nombre="${dto.nombre}" | email="${dto.email}" | empresa="${dto.empresaNombre ?? 'N/A'}"`);
+    this.logger.log(`[REGISTER] nombre="${dto.nombre}" | empresa="${dto.empresaNombre ?? 'N/A'}"`);
 
     const existing = await this.usersService.findByEmail(dto.email);
     if (existing) throw new ConflictException('El email ya está registrado');
@@ -81,19 +82,24 @@ export class AuthService {
     }
 
     const hashed = await bcrypt.hash(dto.password, 12);
+    const qr = this.dataSource.createQueryRunner();
+    await qr.connect();
+    await qr.startTransaction();
 
     try {
-      const user = await this.usersService.createFull({
-        nombre:   dto.nombre,
-        email:    dto.email,
-        password: hashed,
-        role:     UserRole.ADMIN,
-      });
+      const user = await qr.manager.save(
+        qr.manager.create(User, {
+          nombre:   dto.nombre,
+          email:    dto.email,
+          password: hashed,
+          role:     UserRole.ADMIN,
+          isActive: true,
+        }),
+      );
 
-      // Si se proveen datos de empresa, crearla atómicamente y vincular al usuario
       if (dto.empresaNombre && dto.empresaRnc) {
-        const empresa = await this.empresaRepository.save(
-          this.empresaRepository.create({
+        const empresa = await qr.manager.save(
+          qr.manager.create(Empresa, {
             nombre:      dto.empresaNombre,
             rnc:         dto.empresaRnc,
             moneda:      'DOP',
@@ -101,16 +107,17 @@ export class AuthService {
           }),
         );
 
-        const acceso = this.ueRepository.create({
-          userId:      user.id,
-          empresaId:   empresa.id,
-          rol:         UserRole.ADMIN,
-          isPrincipal: true,
-        });
-        await this.ueRepository.save(acceso);
+        await qr.manager.save(
+          qr.manager.create(UsuarioEmpresa, {
+            userId:      user.id,
+            empresaId:   empresa.id,
+            rol:         UserRole.ADMIN,
+            isPrincipal: true,
+          }),
+        );
 
-        await this.sucursalRepository.save(
-          this.sucursalRepository.create({
+        await qr.manager.save(
+          qr.manager.create(Sucursal, {
             empresaId:   empresa.id,
             codigo:      'PRIN',
             nombre:      'Sucursal Principal',
@@ -119,17 +126,20 @@ export class AuthService {
           }),
         );
 
-        // Sembrar plan de cuentas en background — no bloquear si falla
+        await qr.commitTransaction();
+        this.logger.log(`Empresa "${empresa.nombre}" (id=${empresa.id}) creada para usuario #${user.id}`);
+
+        // Tareas post-commit: no forman parte de la transacción atómica
         this.contabilidadService.seedPlanCuentas(empresa.id).catch(err =>
           this.logger.warn(`seedPlanCuentas empresa ${empresa.id}: ${err?.message}`),
         );
-
-        this.logger.log(`Empresa "${empresa.nombre}" (id=${empresa.id}) creada para usuario #${user.id}`);
+      } else {
+        await qr.commitTransaction();
       }
 
-      // Correo de verificación — no bloquea la respuesta
+      // Correo de verificación — post-commit, no revertir la TX si falla
       this.sendVerificationEmail(user.id, user.email, user.nombre).catch(err =>
-        this.logger.warn(`No se pudo enviar verificación a ${user.email}: ${err?.message}`),
+        this.logger.warn(`No se pudo enviar verificación: ${err?.message}`),
       );
 
       return {
@@ -137,10 +147,12 @@ export class AuthService {
         user: { id: user.id, nombre: user.nombre, email: user.email },
       };
     } catch (e: any) {
-      // Re-throw Conflict/Validation errors tal cual
+      await qr.rollbackTransaction();
       if (e instanceof ConflictException || e instanceof BadRequestException) throw e;
       this.logger.error(`[REGISTER] Error: ${e?.message}`);
       throw new InternalServerErrorException('Error al crear la cuenta. Inténtalo de nuevo.');
+    } finally {
+      await qr.release();
     }
   }
 
@@ -188,8 +200,8 @@ export class AuthService {
   // ─── Cambiar empresa activa ───────────────────────────────────────────────────
 
   async cambiarEmpresa(userId: number, userRole: string, empresaId: number) {
-    // Admin global puede cambiar a cualquier empresa
-    if (userRole !== UserRole.ADMIN) {
+    // Solo SUPER_ADMIN puede cambiar a cualquier empresa sin tener membresía
+    if (userRole !== UserRole.SUPER_ADMIN) {
       const acceso = await this.ueRepository.findOne({
         where: { userId, empresaId, isActive: true },
         relations: ['empresa'],
@@ -406,6 +418,26 @@ export class AuthService {
       emailVerificationToken:   null,
       emailVerificationExpires: null,
     } as any);
+
+    // Crear trial solo al verificar email — el reloj de 7 días empieza aquí
+    const ueRow = await this.ueRepository.findOne({
+      where: { userId: user.id, isActive: true, isPrincipal: true },
+    });
+    if (ueRow) {
+      const yaExiste = await this.dataSource.query<any[]>(
+        `SELECT id FROM suscripciones WHERE "empresaId" = $1 LIMIT 1`,
+        [ueRow.empresaId],
+      );
+      if (!yaExiste.length) {
+        const fin = new Date(); fin.setDate(fin.getDate() + 7);
+        await this.dataSource.query(
+          `INSERT INTO suscripciones ("empresaId", plan, estado, "fechaInicio", "fechaVencimiento")
+           VALUES ($1, 'trial', 'activa', NOW(), $2)`,
+          [ueRow.empresaId, fin.toISOString()],
+        );
+        this.logger.log(`Trial de 7 días creado para empresa #${ueRow.empresaId}`);
+      }
+    }
 
     this.logger.log(`Email verificado para usuario #${user.id}`);
     return { message: '¡Correo verificado exitosamente! Ya puedes iniciar sesión.' };

@@ -7,7 +7,12 @@ import { JwtService } from '@nestjs/jwt';
 import { Logger } from '@nestjs/common';
 
 @WebSocketGateway({
-  cors: { origin: '*', credentials: true },
+  cors: {
+    origin: process.env.NODE_ENV === 'production'
+      ? ['https://hicloudrd.com', 'https://www.hicloudrd.com']
+      : ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3000'],
+    credentials: true,
+  },
   namespace: '/realtime',
   transports: ['websocket', 'polling'],
 })

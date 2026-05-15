@@ -17,6 +17,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from './enums/user-role.enum';
+import { GetUser } from '../auth/decorators/get-user.decorator';
+import type { User } from './users.entity';
 
 @ApiTags('Usuarios')
 @ApiBearerAuth('access-token')
@@ -39,9 +41,9 @@ export class UsersController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Actualizar nombre o rol de usuario' })
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateUserDto) {
-    return this.usersService.update(id, dto);
+  @ApiOperation({ summary: 'Actualizar nombre de usuario (solo ADMIN)' })
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateUserDto, @GetUser() requester: User) {
+    return this.usersService.update(id, dto, requester.id);
   }
 
   @Delete(':id')

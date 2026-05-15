@@ -179,25 +179,27 @@ async function bootstrap() {
     )
     .build();
 
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-
-  SwaggerModule.setup('api', app, document, {
-    customSiteTitle: 'HiCloud ERP — API Docs',
-    swaggerOptions: {
-      persistAuthorization: true,
-      displayRequestDuration: true,
-      filter:                 true,
-      showExtensions:         true,
-      tagsSorter:             'alpha',
-      operationsSorter:       'alpha',
-      docExpansion:           'none',
-      defaultModelsExpandDepth: -1,
-    },
-  });
+  // Swagger solo en desarrollo — en producción la ruta /api no existe
+  if (isDev) {
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('api', app, document, {
+      customSiteTitle: 'HiCloud ERP — API Docs',
+      swaggerOptions: {
+        persistAuthorization: true,
+        displayRequestDuration: true,
+        filter:                 true,
+        showExtensions:         true,
+        tagsSorter:             'alpha',
+        operationsSorter:       'alpha',
+        docExpansion:           'none',
+        defaultModelsExpandDepth: -1,
+      },
+    });
+    bootLogger.log(`Swagger en http://localhost:${port}/api`);
+  }
 
   await app.listen(port);
 
   bootLogger.log(`API lista en http://localhost:${port}/api/v1`);
-  if (isDev) bootLogger.log(`Swagger en http://localhost:${port}/api`);
 }
 bootstrap();

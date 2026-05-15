@@ -144,8 +144,10 @@ export default function FacturaDetailPage() {
                 })
                   .then(r => r.text())
                   .then(html => {
-                    const win = window.open('', '_blank');
-                    if (win) { win.document.write(html); win.document.close(); }
+                    const blob = new Blob([html], { type: 'text/html' });
+                    const url = URL.createObjectURL(blob);
+                    const win = window.open(url, '_blank');
+                    win?.addEventListener('load', () => URL.revokeObjectURL(url));
                   })
                   .catch(() => message.error('Error al cargar preview'));
               }}

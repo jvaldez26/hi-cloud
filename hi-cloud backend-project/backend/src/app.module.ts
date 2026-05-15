@@ -156,11 +156,14 @@ import { UomModule }                     from './uom/uom.module';
           username: config.get<string>('DB_USERNAME', 'postgres'),
           password: config.get<string>('DB_PASSWORD', ''),
           database: config.get<string>('DB_NAME',     'hicloud'),
-          ssl:      useSSL ? {
-            // RDS usa CA interna de AWS — rejectUnauthorized siempre false
-            // para evitar el error "self-signed certificate in certificate chain"
-            // El tráfico sigue siendo cifrado; solo omitimos la verificación del CA
-            rejectUnauthorized: false,
+          ssl: useSSL ? {
+            rejectUnauthorized: true,
+            // DB_CA_CERT: contenido PEM del certificado CA de AWS RDS en base64
+            // Descargar de: https://truststore.pki.rds.amazonaws.com/us-east-2/us-east-2-bundle.pem
+            // Guardar como: DB_CA_CERT=$(base64 -w0 us-east-2-bundle.pem)
+            ...(process.env.DB_CA_CERT
+              ? { ca: Buffer.from(process.env.DB_CA_CERT, 'base64').toString('utf-8') }
+              : {}),
           } : false,
           autoLoadEntities: true,
           synchronize: false,

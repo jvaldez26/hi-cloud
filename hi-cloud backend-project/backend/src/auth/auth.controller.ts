@@ -130,6 +130,7 @@ export class AuthController {
 
   @Post('verify-email')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 3_600_000 } }) // 10 intentos por hora por IP
   @ApiOperation({ summary: 'Verificar correo con token (desde el enlace del email)' })
   verifyEmail(@Body('token') token: string) {
     if (!token) throw new (require('@nestjs/common').BadRequestException)('Token requerido');

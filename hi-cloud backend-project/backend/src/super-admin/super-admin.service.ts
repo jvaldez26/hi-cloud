@@ -292,14 +292,23 @@ export class SuperAdminService {
   }
 
   async listarSolicitudes(estado?: string) {
-    const w = estado ? `WHERE sc.estado = '${estado}'` : '';
+    if (estado) {
+      return this.ds.query<any[]>(`
+        SELECT sc.*, e.nombre AS empresa, e.rnc,
+               s.plan AS "planActual", s."ingresosMesActualDop"
+        FROM solicitud_cambio_plan sc
+        JOIN empresa e ON e.id = sc."empresaId"
+        LEFT JOIN suscripciones s ON s."empresaId" = sc."empresaId"
+        WHERE sc.estado = $1
+        ORDER BY sc."createdAt" DESC
+      `, [estado]);
+    }
     return this.ds.query<any[]>(`
       SELECT sc.*, e.nombre AS empresa, e.rnc,
              s.plan AS "planActual", s."ingresosMesActualDop"
       FROM solicitud_cambio_plan sc
       JOIN empresa e ON e.id = sc."empresaId"
       LEFT JOIN suscripciones s ON s."empresaId" = sc."empresaId"
-      ${w}
       ORDER BY sc."createdAt" DESC
     `);
   }

@@ -42,8 +42,8 @@ export class TesoreriaService {
     private tenantService:           TenantService,
   ) {}
 
-  private get eid() {
-    try { return this.tenantService.getEmpresaId(); } catch { return undefined; }
+  private get eid(): number {
+    return this.tenantService.getEmpresaId();
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -142,17 +142,17 @@ export class TesoreriaService {
   }
 
   async getCuentas() {
-    const eid = this.eid;
+    const empresaId = this.eid;
     return this.cuentaRepository.find({
-      where: { isActive: true, ...(eid ? { empresaId: eid } : {}) } as any,
+      where: { isActive: true, empresaId } as any,
       order: { moneda: 'ASC', banco: 'ASC' },
     });
   }
 
   async findCuentaById(id: number) {
-    const eid = this.eid;
+    const empresaId = this.eid;
     const c = await this.cuentaRepository.findOne({
-      where: { id, isActive: true, ...(eid ? { empresaId: eid } : {}) } as any,
+      where: { id, isActive: true, empresaId } as any,
     });
     if (!c) throw new NotFoundException(`Cuenta #${id} no encontrada`);
     return c;
@@ -250,9 +250,9 @@ export class TesoreriaService {
     userId: number,
     moneda: Moneda = Moneda.DOP,
   ): Promise<void> {
-    const eid = this.eid;
+    const empresaId = this.eid;
     const cuenta = await this.cuentaRepository.findOne({
-      where: { moneda, isActive: true, isActiva: true, ...(eid ? { empresaId: eid } : {}) } as any,
+      where: { moneda, isActive: true, isActiva: true, empresaId } as any,
       order: { createdAt: 'ASC' },
     });
 
@@ -290,10 +290,11 @@ export class TesoreriaService {
   async getMovimientos(filtro: FiltroMovimientoDto) {
     const { limit = 10, page = 1, cuentaBancariaId, tipo, origen, fechaDesde, fechaHasta } = filtro;
 
+    const empresaId = this.eid;
     const qb = this.movimientoRepository
       .createQueryBuilder('m')
       .leftJoinAndSelect('m.cuentaBancaria', 'cuenta')
-      .where('m.isActive = :active', { active: true });
+      .where('m.isActive = :active AND cuenta.empresaId = :eid', { active: true, eid: empresaId });
 
     if (cuentaBancariaId) qb.andWhere('m.cuentaBancariaId = :cid', { cid: cuentaBancariaId });
     if (tipo)             qb.andWhere('m.tipo = :tipo', { tipo });
