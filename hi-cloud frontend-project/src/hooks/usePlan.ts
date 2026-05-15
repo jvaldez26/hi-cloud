@@ -74,8 +74,19 @@ export function usePlan() {
 
 // ── Hook de guard de módulo (siempre permitido — todos los módulos en todos los planes) ────
 
+export interface PlanGuardConfig {
+  modulo:     string;
+  label:      string;
+  planMinimo: PlanTipo;
+}
+
 export function usePlanGuard() {
   const { plan, isLoading } = usePlan();
-  // Todos los módulos están disponibles en todos los planes
-  return { bloqueado: false, config: null, plan, isLoading };
+  // Todos los módulos están disponibles en todos los planes — nunca bloqueado
+  return {
+    bloqueado: false,
+    config: null as PlanGuardConfig | null,
+    plan,
+    isLoading,
+  };
 }

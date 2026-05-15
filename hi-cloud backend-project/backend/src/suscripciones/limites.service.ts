@@ -57,13 +57,14 @@ export class LimitesService {
     if (!s) {
       const hoy = new Date();
       const fin = new Date(); fin.setDate(fin.getDate() + 15);
-      s = await this.repo.save(this.repo.create({
+      const entity = this.repo.create({
         empresaId, plan: PlanTipo.EMPRENDEDOR,
         estado: SuscripcionEstado.PRUEBA,
         fechaInicio: hoy, fechaVencimiento: fin,
-        fechaFinPrueba: fin,
         mesPeriodo: this.mesActual(),
-      } as any));
+      });
+      (entity as any).fechaFinPrueba = fin;
+      s = await this.repo.save(entity);
     }
 
     // Reset automático si cambió de mes

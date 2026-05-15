@@ -293,9 +293,13 @@ const MENU_CATEGORIES: MenuCategory[] = [
 
 // ── Orden de jerarquía de planes ─────────────────────────────────────────────
 const PLAN_TIER: Record<PlanTipo, number> = {
+  emprendedor: 1, pyme: 2, pro: 3, plus: 4,
+  // Legado
   trial: 0, basico: 1, profesional: 2, empresarial: 3, enterprise: 4,
 };
 const PLAN_NOMBRE: Record<PlanTipo, string> = {
+  emprendedor: 'Emprendedor', pyme: 'Pyme', pro: 'Pro', plus: 'Plus',
+  // Legado
   trial: 'Trial', basico: 'Básico', profesional: 'Profesional',
   empresarial: 'Empresarial', enterprise: 'Enterprise',
 };
