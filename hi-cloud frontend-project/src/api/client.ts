@@ -73,9 +73,10 @@ apiClient.interceptors.response.use(
       const original = err.config as any;
 
       // No reintentar en refresh/login para evitar loops infinitos
+      // NOTA: /auth/me NO está excluido — si el access token expira durante la
+      // hidratación de App.tsx, el interceptor debe renovarlo transparentemente.
       const isAuthEndpoint = original?.url?.includes('/auth/refresh') ||
-                             original?.url?.includes('/auth/login')   ||
-                             original?.url?.includes('/auth/me');
+                             original?.url?.includes('/auth/login');
 
       if (!isAuthEndpoint && !original?._retry) {
         // Si ya está refrescando, encolar este request
