@@ -8,8 +8,9 @@ import { useThemeStore } from '../../store/theme.store';
 // ── Paleta dinámica (light/dark) ─────────────────────────────────────────────
 function buildPalette(isDark: boolean) {
   return {
-    dark:    '#0A1628',   // hero/footer — siempre oscuro (diseño intencional)
-    darkAlt: '#0d1f3c',
+    // En modo oscuro: navy profundo. En modo claro: azul corporativo (hero sigue siendo de color).
+    dark:    isDark ? '#0A1628'  : '#1565C0',
+    darkAlt: isDark ? '#0d1f3c'  : '#1854D8',
     primary: '#1565C0',
     accent:  '#00BFA5',
     accentD: '#009688',
@@ -18,6 +19,10 @@ function buildPalette(isDark: boolean) {
     gray:    isDark ? '#0D1117' : '#F5F7FA',
     border:  isDark ? '#30363D' : '#E2E8F0',
     white:   isDark ? '#161B22' : '#FFFFFF',
+    // Fondo absoluto de página (para el <div> raíz)
+    pageBg:  isDark ? '#0D1117' : '#FFFFFF',
+    // Footer: oscuro siempre, pero más suave en light
+    footer:  isDark ? '#060E1A' : '#0A1628',
   };
 }
 
@@ -606,12 +611,12 @@ export default function LandingPage() {
   };
 
   return (
-    <div style={{ fontFamily: "'Inter', -apple-system, sans-serif", color: P.text, overflowX: 'hidden', background: P.gray }}>
+    <div style={{ fontFamily: "'Inter', -apple-system, sans-serif", color: P.text, overflowX: 'hidden', background: P.pageBg }}>
       <Navbar onDemo={scrollToForm} />
 
       {/* ─── HERO ─────────────────────────────────────────────────────────────── */}
       <section style={{
-        minHeight: '100vh', background: L.dark,
+        minHeight: '100vh', background: P.dark,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: 'clamp(100px,12vw,140px) clamp(16px,5vw,80px) 80px',
         textAlign: 'center',
@@ -749,7 +754,7 @@ export default function LandingPage() {
       </section>
 
       {/* ─── CÓMO FUNCIONA EL e-CF ───────────────────────────────────────────── */}
-      <section id="ecf" style={{ padding: 'clamp(60px,8vw,96px) clamp(16px,5vw,80px)', background: L.dark, color: '#fff' }}>
+      <section id="ecf" style={{ padding: 'clamp(60px,8vw,96px) clamp(16px,5vw,80px)', background: P.dark, color: '#fff' }}>
         <div style={{ maxWidth: 1080, margin: '0 auto' }}>
           <FadeIn>
             <div style={{ textAlign: 'center', marginBottom: 56 }}>
@@ -838,7 +843,7 @@ export default function LandingPage() {
       </section>
 
       {/* ─── CTA FINAL + FORMULARIO ──────────────────────────────────────────── */}
-      <section id="demo-form" style={{ padding: 'clamp(60px,8vw,96px) clamp(16px,5vw,80px)', background: L.dark }}>
+      <section id="demo-form" style={{ padding: 'clamp(60px,8vw,96px) clamp(16px,5vw,80px)', background: P.dark }}>
         <div style={{ maxWidth: 760, margin: '0 auto' }}>
           <FadeIn>
             <div style={{ textAlign: 'center', marginBottom: 48 }}>
@@ -859,7 +864,7 @@ export default function LandingPage() {
       </section>
 
       {/* ─── FOOTER ──────────────────────────────────────────────────────────── */}
-      <footer style={{ background: '#060E1A', padding: 'clamp(40px,6vw,64px) clamp(16px,5vw,80px) 24px', color: 'rgba(255,255,255,.55)' }}>
+      <footer style={{ background: P.footer, padding: 'clamp(40px,6vw,64px) clamp(16px,5vw,80px) 24px', color: 'rgba(255,255,255,.55)' }}>
         <div style={{ maxWidth: 1080, margin: '0 auto' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 40, marginBottom: 48 }}>
             {/* Logo + tagline */}
