@@ -24,6 +24,10 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   handleConnection(client: Socket) {
     try {
+      // WebSocket: no usa extractJwtFromRequest (es contexto HTTP),
+      // Lee del auth explícito del cliente Socket.IO o del header de handshake.
+      // Las cookies httpOnly no se envían en handshakes WS — el cliente
+      // debe pasar el token en client.handshake.auth.token.
       const token =
         (client.handshake.auth as any)?.token ??
         client.handshake.headers.authorization?.replace('Bearer ', '');

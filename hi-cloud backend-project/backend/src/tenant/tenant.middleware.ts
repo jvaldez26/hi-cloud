@@ -8,6 +8,7 @@ import { TenantService } from './tenant.service';
 import { UsuarioEmpresa } from '../multi-empresa/entities/usuario-empresa.entity';
 import { Empresa } from '../configuracion/entities/empresa.entity';
 import { UserRole } from '../users/enums/user-role.enum';
+import { extractJwtFromRequest } from '../auth/utils/extract-jwt.util';
 
 /** Rutas que NO requieren X-Empresa-ID */
 const RUTAS_SIN_TENANT = [
@@ -49,13 +50,8 @@ export class TenantMiddleware implements NestMiddleware {
       return next();
     }
 
-    // S-23: leer JWT desde cookie httpOnly O desde Authorization Bearer header
-    // El JwtStrategy también lee ambas fuentes — el middleware debe ser consistente.
-    const cookieToken  = (req as any).cookies?.access_token as string | undefined;
-    const authHeader   = req.headers.authorization;
-    const bearerToken  = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-    const token        = cookieToken ?? bearerToken;
-
+    // Usa el util centralizado — misma lógica que JwtStrategy y SuperAdminGuard
+    const token = extractJwtFromRequest(req as Request);
     if (!token) return next();
 
     try {

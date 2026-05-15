@@ -2,6 +2,7 @@ import { Injectable, CanActivate, ExecutionContext, ForbiddenException, Unauthor
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { UserRole } from '../users/enums/user-role.enum';
+import { extractJwtFromRequest } from '../auth/utils/extract-jwt.util';
 
 @Injectable()
 export class SuperAdminGuard implements CanActivate {
@@ -11,12 +12,12 @@ export class SuperAdminGuard implements CanActivate {
   ) {}
 
   canActivate(ctx: ExecutionContext): boolean {
-    const req = ctx.switchToHttp().getRequest();
-    const auth = req.headers.authorization;
-    if (!auth?.startsWith('Bearer ')) throw new UnauthorizedException('Token requerido');
+    const req   = ctx.switchToHttp().getRequest();
+    const token = extractJwtFromRequest(req);
+    if (!token) throw new UnauthorizedException('Token requerido');
 
     try {
-      const payload = this.jwtService.verify(auth.slice(7), {
+      const payload = this.jwtService.verify(token, {
         secret: this.configService.get<string>('JWT_SECRET'),
       });
       if (payload.role !== UserRole.SUPER_ADMIN) {

@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { UsersService } from '../../users/users.service';
 import { TokenBlacklistService } from '../token-blacklist.service';
 import type { Request } from 'express';
+import { extractJwtFromRequest } from '../utils/extract-jwt.util';
 
 export interface JwtPayload {
   sub:          number;
@@ -31,10 +32,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new Error('JWT_SECRET es requerido para iniciar el servidor');
     }
     super({
-      // Prioridad: cookie httpOnly → Authorization Bearer (compat API/Swagger)
+      // Usa el util centralizado para extraer el JWT — misma lógica que TenantMiddleware
       jwtFromRequest: ExtractJwt.fromExtractors([
-        (req: Request) => (req?.cookies as Record<string, string>)?.access_token ?? null,
-        ExtractJwt.fromAuthHeaderAsBearerToken(),
+        (req: Request) => extractJwtFromRequest(req),
       ]),
       ignoreExpiration: false,
       secretOrKey:      secret,
