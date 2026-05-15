@@ -35,7 +35,6 @@ export class RegisterDto {
 
   @IsOptional()
   @IsString()
-  @Matches(/^\d{9}$|^\d{11}$/, { message: 'El RNC debe tener 9 dígitos (empresa) u 11 (cédula)' })
-  @IsValidRNC({ message: 'El RNC/Cédula no tiene un dígito verificador válido (DGII)' })  // S-53
+  @IsValidRNC({ message: 'El RNC debe tener 9 dígitos (empresa, empieza con 1/4/5) u 11 dígitos (cédula)' })
   empresaRnc?: string;
 }

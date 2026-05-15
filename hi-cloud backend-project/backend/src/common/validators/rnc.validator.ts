@@ -1,27 +1,25 @@
 import { ValidatorConstraint, ValidatorConstraintInterface, ValidationArguments, registerDecorator, ValidationOptions } from 'class-validator';
 
-/** Valida el dígito verificador de RNC/Cédula dominicana (Módulo 11). */
+/**
+ * Valida formato de RNC/Cédula dominicana.
+ *
+ * No se valida dígito verificador: la DGII no publica el algoritmo oficial
+ * y existen inconsistencias entre RNCs de distintas épocas. El único validador
+ * 100% confiable es consultar directamente la API de DGII.
+ *
+ * Reglas de formato:
+ *   - RNC jurídico (9 dígitos): primer dígito debe ser 1, 4 o 5
+ *   - Cédula personal (11 dígitos): no puede ser todo ceros
+ */
 export function validarRNC(rnc: string): boolean {
   const digits = rnc.replace(/\D/g, '');
 
   if (digits.length === 9) {
-    // RNC jurídico — pesos: 7,9,8,6,7,5,4,3,2
-    const pesos = [7, 9, 8, 6, 7, 5, 4, 3, 2];
-    const suma  = digits.slice(0, 8).split('').reduce((acc, d, i) => acc + parseInt(d) * pesos[i], 0);
-    const mod   = suma % 11;
-    const verif = mod < 2 ? mod : 11 - mod;
-    return verif === parseInt(digits[8]);
+    return ['1', '4', '5'].includes(digits[0]);
   }
 
   if (digits.length === 11) {
-    // Cédula personal — Luhn mod 10 estilo dominicano
-    const pesos = [1, 2, 1, 2, 1, 2, 1, 2, 1, 2];
-    const suma  = digits.slice(0, 10).split('').reduce((acc, d, i) => {
-      const prod = parseInt(d) * pesos[i];
-      return acc + (prod > 9 ? prod - 9 : prod);
-    }, 0);
-    const verif = (10 - (suma % 10)) % 10;
-    return verif === parseInt(digits[10]);
+    return digits !== '00000000000';
   }
 
   return false;
@@ -34,7 +32,7 @@ export class IsValidRNCConstraint implements ValidatorConstraintInterface {
     return validarRNC(value);
   }
   defaultMessage(_args: ValidationArguments): string {
-    return 'El RNC/Cédula no tiene un dígito verificador válido';
+    return 'El RNC debe tener 9 dígitos (empresa) u 11 dígitos (cédula)';
   }
 }
 
