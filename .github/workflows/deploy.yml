@@ -118,9 +118,13 @@ jobs:
             echo "  ✅ FRONTEND_URL=$(grep '^FRONTEND_URL=' $ENV_FILE)"
 
             echo "━━━ [3/4] Build + migraciones + restart backend ━━━"
-            cd "hi-cloud backend-project/backend"
+            BACKEND_DIR="/home/ubuntu/hicloud/hi-cloud backend-project/backend"
+            cd "$BACKEND_DIR"
             npm ci --production=false 2>&1 | tail -3
             NODE_OPTIONS='--max-old-space-size=1500' npm run build
+
+            # Mantener symlink sin espacios para PM2
+            ln -sfn "$BACKEND_DIR" /home/ubuntu/hicloud/backend-current
 
             echo "  → Corriendo migraciones pendientes..."
             node -e "
@@ -135,9 +139,17 @@ jobs:
                 .catch(err => { console.error('  ❌ Migración falló:', err.message); process.exit(1); });
             " || { echo '❌ Migraciones fallaron — deploy abortado'; exit 1; }
 
-            pm2 restart hicloud-backend --update-env
+            # Asegurar que PM2 usa el symlink (sin espacios) — crea si no existe
+            if ! pm2 list | grep -q hicloud-backend; then
+              pm2 start /home/ubuntu/hicloud/backend-current/dist/main.js \
+                --name hicloud-backend \
+                --cwd /home/ubuntu/hicloud/backend-current \
+                --interpreter node
+            else
+              pm2 restart hicloud-backend --update-env
+            fi
             pm2 save
-            sleep 10
+            sleep 12
 
             echo "━━━ [4/4] Health check ━━━"
             STATUS=$(curl -sk https://hicloudrd.com/api/v1/health | \
