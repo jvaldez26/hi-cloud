@@ -14,6 +14,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { GetUser } from './decorators/get-user.decorator';
 import { User } from '../users/users.entity';
 import { TokenBlacklistService } from './token-blacklist.service';
+import { RefreshTokenService } from './refresh-token.service';
 
 class CambiarEmpresaDto {
   @IsInt() @IsPositive()
@@ -51,8 +52,9 @@ class ChangePasswordDto {
 @Controller('auth')
 export class AuthController {
   constructor(
-    private authService:    AuthService,
-    private blacklistSvc:   TokenBlacklistService,
+    private authService:       AuthService,
+    private blacklistSvc:      TokenBlacklistService,
+    private refreshTokenSvc:   RefreshTokenService,
   ) {}
 
   @Post('register')
@@ -66,29 +68,76 @@ export class AuthController {
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 10, ttl: 60_000 } }) // 10 intentos por minuto por IP
-  @ApiOperation({ summary: 'Iniciar sesión — setea cookie httpOnly access_token' })
-  async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
+  @ApiOperation({ summary: 'Iniciar sesión — setea cookies httpOnly access_token + refresh_token' })
+  async login(@Body() dto: LoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const data = await this.authService.login(dto);
     this.setAuthCookie(res, data.accessToken);
-    // El token NO va en el body — solo user info para UI
+
+    // S-28: refresh token de 30 días en cookie httpOnly restringida a /auth/refresh
+    const refreshValue = await this.refreshTokenSvc.crear(
+      data.user.id,
+      req.headers['user-agent'],
+      req.ip,
+    );
+    this.setRefreshCookie(res, refreshValue);
+
     const { accessToken: _tok, ...safe } = data;
     return safe;
+  }
+
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } }) // 30 refresh por minuto por IP
+  @ApiOperation({ summary: 'S-28: Renovar access token usando refresh token (cookie httpOnly)' })
+  async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const refreshValue = (req.cookies as Record<string, string>)?.refresh_token;
+    if (!refreshValue) {
+      throw new (require('@nestjs/common').UnauthorizedException)('Sin refresh token');
+    }
+
+    const { userId, newRefreshValue } = await this.refreshTokenSvc.rotar(
+      refreshValue,
+      req.headers['user-agent'],
+      req.ip,
+    );
+
+    // Generar nuevo access token
+    const newAccess = await this.authService.buildAccessTokenForUser(userId);
+    this.setAuthCookie(res, newAccess);
+    this.setRefreshCookie(res, newRefreshValue);
+    return { ok: true };
   }
 
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
-  @ApiOperation({ summary: 'Cerrar sesión — revoca token (blacklist) y elimina cookie' })
-  async logout(@GetUser() user: User, @Res({ passthrough: true }) res: Response) {
-    // S-27: revocar el token actual en la blacklist
+  @ApiOperation({ summary: 'Cerrar sesión — revoca access+refresh tokens y limpia cookies' })
+  async logout(@GetUser() user: User, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    // S-27: revocar access token en blacklist
     const jti = (user as any).jti;
     const exp = (user as any).exp;
-    if (jti && exp) {
-      await this.blacklistSvc.blacklist(jti, exp);
-    }
+    if (jti && exp) await this.blacklistSvc.blacklist(jti, exp);
+
+    // S-28: revocar refresh token
+    const refreshValue = (req.cookies as Record<string, string>)?.refresh_token;
+    if (refreshValue) await this.refreshTokenSvc.revocarUno(refreshValue);
+
     res.clearCookie('access_token', this.cookieOptions());
+    res.clearCookie('refresh_token', { ...this.cookieOptions(), path: '/api/v1/auth/refresh' });
     return { message: 'Sesión cerrada correctamente' };
+  }
+
+  @Post('logout-all')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Cerrar sesión en todos los dispositivos' })
+  async logoutAll(@GetUser() user: User, @Res({ passthrough: true }) res: Response) {
+    await this.refreshTokenSvc.revocarTodos(user.id);
+    res.clearCookie('access_token', this.cookieOptions());
+    res.clearCookie('refresh_token', { ...this.cookieOptions(), path: '/api/v1/auth/refresh' });
+    return { message: 'Sesión cerrada en todos los dispositivos' };
   }
 
   @Get('me')
@@ -244,5 +293,13 @@ export class AuthController {
 
   private setAuthCookie(res: Response, token: string): void {
     (res as any).cookie('access_token', token, this.cookieOptions());
+  }
+
+  private setRefreshCookie(res: Response, value: string): void {
+    (res as any).cookie('refresh_token', value, {
+      ...this.cookieOptions(),
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 días
+      path:   '/api/v1/auth/refresh',    // Solo se envía al endpoint de refresh
+    });
   }
 }

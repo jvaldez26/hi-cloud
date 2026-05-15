@@ -1,4 +1,5 @@
-import { IsEmail, IsString, MinLength, MaxLength, Matches, IsDefined, IsOptional, Matches as RncMatches } from 'class-validator';
+import { IsEmail, IsString, MinLength, MaxLength, Matches, IsDefined, IsOptional } from 'class-validator';
+import { IsValidRNC } from '../../common/validators/rnc.validator';
 import { Transform } from 'class-transformer';
 
 export class RegisterDto {
@@ -19,8 +20,9 @@ export class RegisterDto {
   @IsString({ message: 'La contraseña debe ser texto' })
   @MinLength(8,   { message: 'La contraseña debe tener al menos 8 caracteres' })
   @MaxLength(100, { message: 'La contraseña no puede superar 100 caracteres' })
-  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
-    message: 'La contraseña debe tener al menos una mayúscula, una minúscula y un número',
+  // S-48: requiere símbolo además de mayúscula, minúscula y número
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&._\-#^()])/, {
+    message: 'La contraseña debe tener al menos una mayúscula, minúscula, número y símbolo (@$!%*?&._-#)',
   })
   password: string;
 
@@ -33,6 +35,7 @@ export class RegisterDto {
 
   @IsOptional()
   @IsString()
-  @Matches(/^\d{9}$|^\d{11}$/, { message: 'El RNC debe tener 9 u 11 dígitos' })
+  @Matches(/^\d{9}$|^\d{11}$/, { message: 'El RNC debe tener 9 dígitos (empresa) u 11 (cédula)' })
+  @IsValidRNC({ message: 'El RNC/Cédula no tiene un dígito verificador válido (DGII)' })  // S-53
   empresaRnc?: string;
 }

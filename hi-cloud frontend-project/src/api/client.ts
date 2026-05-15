@@ -48,6 +48,15 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
+// ─── S-28: Cola de requests pendientes durante el refresh ──────────────────
+let _isRefreshing   = false;
+let _refreshQueue: Array<{ resolve: () => void; reject: (e: unknown) => void }> = [];
+
+function processRefreshQueue(error: unknown) {
+  _refreshQueue.forEach(p => error ? p.reject(error) : p.resolve());
+  _refreshQueue = [];
+}
+
 // ─── RESPONSE interceptor ────────────────────────────────────────────
 let _recuperandoEmpresa = false;
 
@@ -59,9 +68,40 @@ apiClient.interceptors.response.use(
     const data    = err.response?.data as any;
     const message = extractBackendMessage(err);
 
-    // ── 401: sesión expirada ─────────────────────────────────────
+    // ── 401: access token expirado → intentar refresh automático (S-28) ─────
     if (status === 401) {
-      // S-23: solo limpiamos la info de UI — el token (httpOnly) lo borra el servidor
+      const original = err.config as any;
+
+      // No reintentar en refresh/login para evitar loops infinitos
+      const isAuthEndpoint = original?.url?.includes('/auth/refresh') ||
+                             original?.url?.includes('/auth/login')   ||
+                             original?.url?.includes('/auth/me');
+
+      if (!isAuthEndpoint && !original?._retry) {
+        // Si ya está refrescando, encolar este request
+        if (_isRefreshing) {
+          return new Promise<void>((resolve, reject) => {
+            _refreshQueue.push({ resolve, reject });
+          }).then(() => apiClient(original))
+            .catch(e => Promise.reject(e));
+        }
+
+        original._retry   = true;
+        _isRefreshing     = true;
+
+        try {
+          await apiClient.post('/auth/refresh');
+          processRefreshQueue(null);
+          return apiClient(original);  // reintentar el request original
+        } catch (refreshErr) {
+          processRefreshQueue(refreshErr);
+          // Refresh falló → sesión expirada definitivamente
+        } finally {
+          _isRefreshing = false;
+        }
+      }
+
+      // Limpiar UI y redirigir a login
       localStorage.removeItem('auth_user');
       localStorage.removeItem('empresaId');
       localStorage.removeItem('mis_empresas');

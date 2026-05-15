@@ -6,6 +6,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { TokenBlacklistService } from './token-blacklist.service';
+import { RefreshTokenService } from './refresh-token.service';
+import { RefreshToken } from './entities/refresh-token.entity';
 import { RolesGuard } from './guards/roles.guard';
 import { TwoFactorService } from './two-factor.service';
 import { TwoFactorController } from './two-factor.controller';
@@ -21,7 +23,7 @@ import { ContabilidadModule } from '../contabilidad/contabilidad.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, UsuarioEmpresa, Empresa, Sucursal]),
+    TypeOrmModule.forFeature([User, UsuarioEmpresa, Empresa, Sucursal, RefreshToken]),
     UsersModule,
     NotificacionesModule,
     ContabilidadModule,
@@ -34,13 +36,18 @@ import { ContabilidadModule } from '../contabilidad/contabilidad.module';
         if (!secret) throw new Error('JWT_SECRET no está configurado. Define esta variable de entorno antes de iniciar.');
         return {
           secret,
-          signOptions: { expiresIn: (config.get<string>('JWT_EXPIRES_IN', '1d')) as any },
+          // S-28: access token de corta duración — refresh token renueva la sesión
+          signOptions: {
+            expiresIn:  (config.get<string>('JWT_EXPIRES_IN', '15m')) as any,
+            algorithm:  'HS256',   // S-46: algoritmo explícito — previene alg confusion
+          },
+          verifyOptions: { algorithms: ['HS256'] },
         };
       },
     }),
   ],
   controllers: [AuthController, TwoFactorController],
-  providers: [AuthService, JwtStrategy, GoogleStrategy, TwoFactorService, TokenBlacklistService, RolesGuard],
-  exports: [JwtModule, PassportModule, TokenBlacklistService, RolesGuard],
+  providers: [AuthService, JwtStrategy, GoogleStrategy, TwoFactorService, TokenBlacklistService, RefreshTokenService, RolesGuard],
+  exports: [JwtModule, PassportModule, TokenBlacklistService, RefreshTokenService, RolesGuard],
 })
 export class AuthModule {}

@@ -1,10 +1,10 @@
-import { IsDateString, IsNotEmpty, IsString, IsOptional, IsNumber, Min } from 'class-validator';
+import { IsDateString, IsNotEmpty, IsString, IsOptional, IsNumber, Min, MaxLength } from 'class-validator';
 
 export class DarDeBajaDto {
   @IsDateString()
   fecha: string;
 
-  @IsString() @IsNotEmpty()
+  @IsString() @MaxLength(2000) @IsNotEmpty()
   motivo: string;
 
   @IsOptional()

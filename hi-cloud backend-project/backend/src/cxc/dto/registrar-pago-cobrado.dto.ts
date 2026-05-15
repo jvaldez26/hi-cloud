@@ -23,7 +23,7 @@ export class RegistrarPagoCobradoDto {
   referencia?: string;
 
   @IsOptional()
-  @IsString()
+  @IsString() @MaxLength(2000)
   notas?: string;
 
   @IsOptional()

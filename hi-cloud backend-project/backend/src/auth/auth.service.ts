@@ -153,6 +153,13 @@ export class AuthService {
     } catch (e: any) {
       await qr.rollbackTransaction();
       if (e instanceof ConflictException || e instanceof BadRequestException) throw e;
+      // S-52: race condition en RNC — dos registros simultáneos del mismo RNC
+      if (e?.code === '23505' && e?.detail?.includes('rnc')) {
+        throw new ConflictException(`El RNC ${dto.empresaRnc ?? ''} ya está registrado`);
+      }
+      if (e?.code === '23505' && e?.detail?.includes('email')) {
+        throw new ConflictException('El email ya está registrado');
+      }
       this.logger.error(`[REGISTER] Error: ${e?.message}`);
       throw new InternalServerErrorException('Error al crear la cuenta. Inténtalo de nuevo.');
     } finally {
@@ -169,11 +176,12 @@ export class AuthService {
     const isValid = await bcrypt.compare(dto.password, user.password);
     if (!isValid) throw new UnauthorizedException('Credenciales inválidas');
 
-    // Todos los usuarios activos deben tener emailVerifiedAt (la migración inicial
-    // los marcó como verificados). Los nuevos registros solo pasan después de
-    // hacer click en el link de verificación.
+    // S-40: No revelar si el usuario existe — mensaje genérico en ambos casos.
+    // Si el correo no está verificado, reenviar email en background (UX amigable)
+    // y devolver el mismo error que credenciales inválidas.
     if (!user.emailVerifiedAt) {
-      throw new UnauthorizedException('CORREO_NO_VERIFICADO');
+      this.sendVerificationEmail(user.id, user.email, user.nombre).catch(() => null);
+      throw new UnauthorizedException('Credenciales inválidas');
     }
 
     const empresaId    = await this.getEmpresaPrincipal(user.id);
@@ -504,6 +512,13 @@ export class AuthService {
 
   async marcarTourCompletado(userId: number): Promise<void> {
     await this.userRepository.update(userId, { tourCompletado: true } as any);
+  }
+
+  /** S-28: Genera un access token para un userId (usado en /auth/refresh) */
+  async buildAccessTokenForUser(userId: number): Promise<string> {
+    const user = await this.usersService.findById(userId);
+    const empresaId = await this.getEmpresaPrincipal(userId);
+    return this.buildToken(user, empresaId);
   }
 
   /** Genera la respuesta de login completa (token + empresas) para un User */

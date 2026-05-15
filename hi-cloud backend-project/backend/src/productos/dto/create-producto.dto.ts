@@ -21,7 +21,7 @@ export class CreateProductoDto {
   nombre: string;
 
   @IsOptional()
-  @IsString()
+  @IsString() @MaxLength(2000)
   descripcion?: string;
 
   @IsOptional()

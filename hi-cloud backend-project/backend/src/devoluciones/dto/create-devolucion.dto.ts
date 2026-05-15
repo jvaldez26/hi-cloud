@@ -2,6 +2,7 @@ import {
   IsInt, IsPositive, IsString, IsNotEmpty, IsEnum,
   IsArray, ValidateNested, ArrayMinSize,
   IsNumber, IsOptional, IsDateString,
+  MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { TipoDevolucion } from '../entities/devolucion.entity';
@@ -10,7 +11,7 @@ export class CreateDevolucionDetalleDto {
   @IsOptional() @IsInt() @IsPositive()
   productoId?: number;
 
-  @IsString() @IsNotEmpty()
+  @IsString() @MaxLength(2000) @IsNotEmpty()
   descripcion: string;
 
   @IsInt() @IsPositive()
@@ -34,7 +35,7 @@ export class CreateDevolucionDto {
   @IsEnum(TipoDevolucion)
   tipo: TipoDevolucion;
 
-  @IsString() @IsNotEmpty()
+  @IsString() @MaxLength(2000) @IsNotEmpty()
   motivo: string;
 
   @IsArray()

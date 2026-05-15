@@ -60,6 +60,6 @@ export class CreateCompraDto {
   detalles: CreateCompraDetalleDto[];
 
   @IsOptional()
-  @IsString()
+  @IsString() @MaxLength(2000)
   notas?: string;
 }

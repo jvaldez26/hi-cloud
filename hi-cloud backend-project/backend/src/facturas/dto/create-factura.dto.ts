@@ -11,6 +11,7 @@ import {
   Min,
   Max,
   ArrayMinSize,
+  MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -21,7 +22,7 @@ export class CreateFacturaDetalleDto {
   productoId?: number;
 
   @IsOptional()
-  @IsString()
+  @IsString() @MaxLength(2000)
   descripcion?: string;
 
   @IsInt()
@@ -60,7 +61,7 @@ export class CreateFacturaDto {
   tipoNcf?: string;
 
   @IsOptional()
-  @IsString()
+  @IsString() @MaxLength(2000)
   notas?: string;
 
   @IsOptional()
