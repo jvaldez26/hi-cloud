@@ -117,10 +117,24 @@ jobs:
             echo "  ✅ APP_URL=$(grep '^APP_URL=' $ENV_FILE)"
             echo "  ✅ FRONTEND_URL=$(grep '^FRONTEND_URL=' $ENV_FILE)"
 
-            echo "━━━ [3/4] Build + restart backend ━━━"
+            echo "━━━ [3/4] Build + migraciones + restart backend ━━━"
             cd "hi-cloud backend-project/backend"
             npm ci --production=false 2>&1 | tail -3
             NODE_OPTIONS='--max-old-space-size=1500' npm run build
+
+            echo "  → Corriendo migraciones pendientes..."
+            node -e "
+              const { AppDataSource } = require('./dist/data-source');
+              AppDataSource.initialize()
+                .then(ds => ds.runMigrations({ transaction: 'each' }))
+                .then(migs => {
+                  if (migs.length === 0) { console.log('  ✅ Sin migraciones pendientes'); }
+                  else { console.log('  ✅ Migraciones aplicadas:', migs.map(m=>m.name).join(', ')); }
+                  process.exit(0);
+                })
+                .catch(err => { console.error('  ❌ Migración falló:', err.message); process.exit(1); });
+            " || { echo '❌ Migraciones fallaron — deploy abortado'; exit 1; }
+
             pm2 restart hicloud-backend --update-env
             pm2 save
             sleep 10
