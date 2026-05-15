@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "audit:currency": "node scripts/audit-currency.mjs"
   },
   "dependencies": {
     "@ant-design/cssinjs": "^1.21.0",

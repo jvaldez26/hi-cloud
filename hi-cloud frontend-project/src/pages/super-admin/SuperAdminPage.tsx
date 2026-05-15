@@ -44,12 +44,11 @@ function fmtRelativa(v: string | null | undefined): { texto: string; color: stri
   return { texto: `Vence en ${dias}d`, color: '#10B981' };
 }
 
-function fmtMoney(n: number, decimals = 0) {
-  // LEGACY — use fmtUsd for subscription amounts
-  return `RD${Number(n).toLocaleString('es-DO', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
-}
 function fmtUsd(n: number) {
-  return `${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `US$ ${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+function fmtDop(n: number, decimals = 0) {
+  return `RD$ ${Number(n).toLocaleString('es-DO', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
 }
 
 // ── Temas del Super Admin (independiente del ERP principal) ──────────────────
@@ -507,7 +506,7 @@ function PlanesEditor({ C }: { C: typeof SA_DARK }) {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ color: p.precio > 0 ? C.gold : C.txt2, fontWeight: 700, fontFamily: 'monospace' }}>
-              {p.precio > 0 ? `RD$${Number(p.precio).toLocaleString('es-DO')}/mes` : 'Gratis'}
+              {p.precio > 0 ? `${fmtUsd(Number(p.precio))}/mes` : 'Gratis'}
             </span>
             <Button
               size="small"
@@ -538,12 +537,12 @@ function PlanesEditor({ C }: { C: typeof SA_DARK }) {
           <Form.Item name="nombre" label="Nombre del plan" rules={[{ required: true }]}>
             <Input placeholder="ej. Básico" />
           </Form.Item>
-          <Form.Item name="precio" label="Precio mensual (RD$)" rules={[{ required: true }]}>
+          <Form.Item name="precio" label="Precio mensual (US$)" rules={[{ required: true }]}>
             <InputNumber
               style={{ width: '100%' }}
               min={0}
               precision={2}
-              addonBefore="RD$"
+              addonBefore="US$"
               addonAfter="/mes"
               placeholder="0 = Gratis"
             />
@@ -723,9 +722,9 @@ export default function SuperAdminPage() {
     color: PLAN_COLOR[p.plan] ?? '#64748B',
   }));
 
-  const barrasIngresos = PLANES.filter(p => p.mrr > 0).map(p => {
+  const barrasIngresos = PLANES.filter(p => p.mrrUsd > 0).map(p => {
     const cnt = (metricas?.distribucionPlanes ?? []).find((x: any) => x.plan === p.value)?.cantidad ?? 0;
-    return { plan: p.label, mrr: +(cnt * p.mrr).toFixed(2) };
+    return { plan: p.label, mrrUsd: +(cnt * p.mrrUsd).toFixed(2) };
   });
 
   // Top empresas por facturas del mes
@@ -761,7 +760,7 @@ export default function SuperAdminPage() {
     { title: 'Facturas/mes', dataIndex: 'facturasMes', key: 'facturasMes', width: 100, align: 'center' as const,
       render: (v: number) => <span style={{ color: C.txt }}>{v ?? 0}</span>,
     },
-    { title: 'RD$/mes', key: 'mrr', width: 100, align: 'right' as const,
+    { title: 'US$/mes', key: 'mrr', width: 110, align: 'right' as const,
       render: (_: any, r: any) => (
         <span style={{ color: C.gold, fontWeight: 600 }}>
           {PLAN_MRR_USD[r.plan] > 0 ? fmtUsd(PLAN_MRR_USD[r.plan]) : <span style={{ color: C.txt2 }}>—</span>}
@@ -954,10 +953,10 @@ export default function SuperAdminPage() {
     { title: 'Plan', dataIndex: 'plan', key: 'plan', width: 110,
       render: (v: string) => <PlanBadge plan={v} />,
     },
-    { title: 'RD$/mes', key: 'mrr', width: 100, align: 'right' as const,
+    { title: 'US$/mes', key: 'mrr', width: 110, align: 'right' as const,
       render: (_: any, r: any) => (
         <span style={{ color: C.gold, fontWeight: 600 }}>
-          {r.plan !== 'trial' ? fmtMoney(PLAN_MRR[r.plan] ?? 0) : <span style={{ color: C.txt2 }}>—</span>}
+          {r.plan !== 'trial' && PLAN_MRR_USD[r.plan] > 0 ? fmtUsd(PLAN_MRR_USD[r.plan]) : <span style={{ color: C.txt2 }}>—</span>}
         </span>
       ),
     },
@@ -1163,9 +1162,9 @@ export default function SuperAdminPage() {
             />
             <KpiCard
               icon={<DollarSign size={20} />}
-              label="Ingresos RD$"
-              value={fmtUsd(metricas?.mrrUsd ?? (metricas?.ingresosRD ? metricas.ingresosRD / 58.5 : 0))}
-              sub="RD$ · suscripciones activas"
+              label="MRR Suscripciones"
+              value={fmtUsd(metricas?.mrrUsd ?? 0)}
+              sub="USD · ingresos propios del SaaS"
               subColor={C.gold}
               accent={C.gold}
             />
@@ -1362,18 +1361,18 @@ export default function SuperAdminPage() {
 
                   {/* Ingresos por plan */}
                   <div style={{ background: C.bg, borderRadius: 12, border: `1px solid ${C.border}`, padding: 20 }}>
-                    <h3 style={{ color: C.txt, fontWeight: 700, fontSize: 15, margin: '0 0 16px' }}>Ingresos por Plan (RD$)</h3>
+                    <h3 style={{ color: C.txt, fontWeight: 700, fontSize: 15, margin: '0 0 16px' }}>Ingresos por Plan (USD)</h3>
                     <ResponsiveContainer width="100%" height={220}>
                       <BarChart data={barrasIngresos} margin={{ left: -10 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
                         <XAxis dataKey="plan" tick={{ fill: C.txt2, fontSize: 12 }} axisLine={false} tickLine={false} />
                         <YAxis tick={{ fill: C.txt2, fontSize: 11 }} axisLine={false} tickLine={false}
-                          tickFormatter={v => `$${v}`} />
+                          tickFormatter={v => `US$${v}`} />
                         <RTooltip
                           contentStyle={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, color: C.txt }}
-                          formatter={(v: any) => [`RD$${Number(v).toLocaleString('es-DO')}`, 'RD$/mes']}
+                          formatter={(v: any) => [fmtUsd(Number(v)), 'US$/mes']}
                         />
-                        <Bar dataKey="mrr" fill={C.gold} radius={[6, 6, 0, 0]} />
+                        <Bar dataKey="mrrUsd" fill={C.gold} radius={[6, 6, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -1643,7 +1642,7 @@ export default function SuperAdminPage() {
               border: `1px solid ${C.gold}33`, borderRadius: 8, padding: '12px 14px',
             }}>
               <div style={{ color: C.gold, fontWeight: 700, fontSize: 13 }}>
-                Total: {fmtUsd((PLAN_MRR_USD[planSel] ?? 0) * meses)} USD
+                Total: {fmtUsd((PLAN_MRR_USD[planSel] ?? 0) * meses)}
               </div>
               <div style={{ color: C.txt2, fontSize: 12 }}>
                 {meses} mes{meses > 1 ? 'es' : ''} × {fmtUsd(PLAN_MRR_USD[planSel] ?? 0)}/mes

@@ -73,7 +73,12 @@ export class SuperAdminService {
   // ── Métricas globales ────────────────────────────────────────────────────
 
   async getMetricas() {
-    const [base, subs, facturasHoy, facturasMes, porPlan, trials, vencidas, ecfHoy, montoMes] = await Promise.all([
+    const USD_PRICES: Record<string, number> = {
+      trial: 0, emprendedor: 29, pyme: 59, pro: 89, plus: 129,
+      basico: 0, profesional: 0, empresarial: 0, enterprise: 0,
+    };
+
+    const [base, facturasHoy, facturasMes, porPlan, trials, vencidas, ecfHoy, montoMes] = await Promise.all([
       this.ds.query<any[]>(`
         SELECT
           COUNT(DISTINCT e.id)                                  AS "totalEmpresas",
@@ -83,20 +88,6 @@ export class SuperAdminService {
         FROM empresa e
         CROSS JOIN users u
         WHERE u.role != 'super_admin'
-      `),
-      this.ds.query<any[]>(`
-        SELECT COALESCE(SUM(
-          COALESCE(
-            (SELECT pc.precio::numeric FROM plan_configuracion pc WHERE pc.clave = s.plan::text LIMIT 1),
-            CASE s.plan::text
-              WHEN 'basico'       THEN 1500
-              WHEN 'profesional'  THEN 3500
-              WHEN 'empresarial'  THEN 7000
-              WHEN 'enterprise'   THEN 15000
-              ELSE 0 END
-          )
-        ),0)::numeric AS "ingresosRD"
-        FROM suscripciones s WHERE s.estado = 'activa' AND s.plan::text != 'trial'
       `),
       this.ds.query<any[]>(`
         SELECT COUNT(*)::int AS total FROM facturas
@@ -134,20 +125,24 @@ export class SuperAdminService {
       `),
     ]);
 
+    const mrrUsd = (porPlan as any[]).reduce((acc: number, r: any) => {
+      return acc + (USD_PRICES[r.plan as string] ?? 0) * Number(r.cantidad);
+    }, 0);
+
     return {
-      totalEmpresas:      Number(base[0]?.totalEmpresas   ?? 0),
-      empresasActivas:    Number(base[0]?.empresasActivas ?? 0),
-      totalUsuarios:      Number(base[0]?.totalUsuarios   ?? 0),
-      nuevosHoy:          Number(base[0]?.nuevosHoy       ?? 0),
-      ingresosRD:         Number(subs[0]?.ingresosRD      ?? 0),
-      facturasHoy:        Number(facturasHoy[0]?.total    ?? 0),
-      facturasMes:        Number(facturasMes[0]?.total    ?? 0),
-      montoFacturasMes:   Number(montoMes[0]?.montoMes    ?? 0),
-      empresasEnTrial:    Number(trials[0]?.cnt           ?? 0),
+      totalEmpresas:        Number(base[0]?.totalEmpresas   ?? 0),
+      empresasActivas:      Number(base[0]?.empresasActivas ?? 0),
+      totalUsuarios:        Number(base[0]?.totalUsuarios   ?? 0),
+      nuevosHoy:            Number(base[0]?.nuevosHoy       ?? 0),
+      mrrUsd:               Math.round(mrrUsd * 100) / 100,
+      facturasHoy:          Number(facturasHoy[0]?.total    ?? 0),
+      facturasMes:          Number(facturasMes[0]?.total    ?? 0),
+      montoFacturasMes:     Number(montoMes[0]?.montoMes    ?? 0),
+      empresasEnTrial:      Number(trials[0]?.cnt           ?? 0),
       trialsProximosVencer: Number(trials[0]?.proximasVencer ?? 0),
-      suscripcionesVencidas: Number(vencidas[0]?.cnt      ?? 0),
-      ecfHoy:             Number(ecfHoy[0]?.cnt           ?? 0),
-      distribucionPlanes: porPlan,
+      suscripcionesVencidas: Number(vencidas[0]?.cnt        ?? 0),
+      ecfHoy:               Number(ecfHoy[0]?.cnt           ?? 0),
+      distribucionPlanes:   porPlan,
     };
   }
 
