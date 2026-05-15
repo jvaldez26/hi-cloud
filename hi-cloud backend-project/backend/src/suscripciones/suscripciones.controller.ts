@@ -15,7 +15,6 @@ import { TenantService } from '../tenant/tenant.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SolicitudCambioPlan, EstadoSolicitud } from './entities/solicitud-cambio-plan.entity';
-import { SuperAdminGuard } from '../super-admin/super-admin.guard';
 
 class SolicitarCambioDto {
   @IsString() planSolicitado: string;
@@ -118,21 +117,21 @@ export class SuscripcionesController {
   // ── Endpoints administrativos — Solo Super Admin ──────────────────────────
 
   @Get('admin/solicitudes')
-  @UseGuards(SuperAdminGuard)
+  @Roles(UserRole.SUPER_ADMIN)
   @ApiOperation({ summary: '[Admin] Listar todas las solicitudes de cambio de plan' })
   listarSolicitudes(@Query('estado') estado?: EstadoSolicitud) {
     return this.svc.listarSolicitudes(estado);
   }
 
   @Get('admin/solicitudes/pendientes/count')
-  @UseGuards(SuperAdminGuard)
+  @Roles(UserRole.SUPER_ADMIN)
   @ApiOperation({ summary: '[Admin] Contar solicitudes pendientes (para badge)' })
   contarSolicitudesPendientes() {
     return this.svc.contarSolicitudesPendientes();
   }
 
   @Post('admin/solicitudes/:id/aprobar')
-  @UseGuards(SuperAdminGuard)
+  @Roles(UserRole.SUPER_ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '[Admin] Aprobar solicitud y activar plan' })
   aprobarSolicitud(
@@ -144,7 +143,7 @@ export class SuscripcionesController {
   }
 
   @Post('admin/solicitudes/:id/rechazar')
-  @UseGuards(SuperAdminGuard)
+  @Roles(UserRole.SUPER_ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '[Admin] Rechazar solicitud' })
   rechazarSolicitud(
@@ -155,14 +154,14 @@ export class SuscripcionesController {
   }
 
   @Get('admin/pruebas')
-  @UseGuards(SuperAdminGuard)
+  @Roles(UserRole.SUPER_ADMIN)
   @ApiOperation({ summary: '[Admin] Empresas en período de prueba' })
   listarEmpresasEnPrueba() {
     return this.svc.listarEmpresasEnPrueba();
   }
 
   @Patch('admin/:empresaId/extender-prueba')
-  @UseGuards(SuperAdminGuard)
+  @Roles(UserRole.SUPER_ADMIN)
   @ApiOperation({ summary: '[Admin] Extender período de prueba' })
   extenderPrueba(
     @Param('empresaId', ParseIntPipe) empresaId: number,
@@ -172,7 +171,7 @@ export class SuscripcionesController {
   }
 
   @Patch('admin/:empresaId/activar')
-  @UseGuards(SuperAdminGuard)
+  @Roles(UserRole.SUPER_ADMIN)
   @ApiOperation({ summary: '[Admin] Activar plan directamente' })
   activarDirecto(
     @Param('empresaId', ParseIntPipe) empresaId: number,
@@ -188,7 +187,7 @@ export class SuscripcionesController {
   }
 
   @Patch('admin/:empresaId/suspender')
-  @UseGuards(SuperAdminGuard)
+  @Roles(UserRole.SUPER_ADMIN)
   @ApiOperation({ summary: '[Admin] Suspender empresa manualmente' })
   suspenderAdmin(
     @Param('empresaId', ParseIntPipe) empresaId: number,
