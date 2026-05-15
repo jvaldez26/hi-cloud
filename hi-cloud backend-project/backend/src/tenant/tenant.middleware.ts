@@ -41,7 +41,7 @@ export class TenantMiddleware implements NestMiddleware {
     private readonly empresaRepo: Repository<Empresa>,
   ) {}
 
-  async use(req: Request & { empresaId?: number }, _res: Response, next: NextFunction) {
+  async use(req: Request & { empresaId?: number; cookies?: Record<string, string> }, _res: Response, next: NextFunction) {
     const path = req.path;
 
     // Skip tenant validation for public/system routes
@@ -49,11 +49,16 @@ export class TenantMiddleware implements NestMiddleware {
       return next();
     }
 
-    const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) return next();
+    // S-23: leer JWT desde cookie httpOnly O desde Authorization Bearer header
+    // El JwtStrategy también lee ambas fuentes — el middleware debe ser consistente.
+    const cookieToken  = (req as any).cookies?.access_token as string | undefined;
+    const authHeader   = req.headers.authorization;
+    const bearerToken  = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    const token        = cookieToken ?? bearerToken;
+
+    if (!token) return next();
 
     try {
-      const token   = authHeader.slice(7);
       const secret  = this.config.get<string>('JWT_SECRET');
       const payload = this.jwtSvc.verify<{ sub: number; role: string; empresaId?: number }>(
         token,
