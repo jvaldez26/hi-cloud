@@ -92,6 +92,9 @@ jobs:
             cd /home/ubuntu/hicloud
 
             echo "━━━ [1/4] Git pull ━━━"
+            # Descartar cambios locales en package-lock.json que bloquean el pull
+            git checkout -- "hi-cloud backend-project/backend/package-lock.json" 2>/dev/null || true
+            git checkout -- "hi-cloud frontend-project/package-lock.json" 2>/dev/null || true
             git pull origin main
 
             echo "━━━ [2/4] Corregir variables de entorno críticas ━━━"
@@ -116,6 +119,7 @@ jobs:
 
             echo "━━━ [3/4] Build + restart backend ━━━"
             cd "hi-cloud backend-project/backend"
+            npm ci --production=false 2>&1 | tail -3
             NODE_OPTIONS='--max-old-space-size=1500' npm run build
             pm2 restart hicloud-backend --update-env
             pm2 save
