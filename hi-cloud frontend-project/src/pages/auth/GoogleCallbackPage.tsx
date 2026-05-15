@@ -16,13 +16,13 @@ export default function GoogleCallbackPage() {
     const email     = params.get('email')  ?? '';
     const role      = params.get('role')   ?? 'viewer';
 
-    if (error || !token) {
+    if (error) {
       navigate('/login?error=google_failed', { replace: true });
       return;
     }
 
+    // S-23: token está en cookie httpOnly — solo guardamos info de UI
     login(
-      token,
       { id: 0, nombre, email, role: role as any },
       empresaId ? Number(empresaId) : null,
       [],

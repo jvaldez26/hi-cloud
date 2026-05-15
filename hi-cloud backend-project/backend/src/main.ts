@@ -5,6 +5,8 @@ import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import helmet from 'helmet';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const cookieParser = require('cookie-parser');
 
 const bootLogger = new Logger('Bootstrap');
 
@@ -50,6 +52,9 @@ async function bootstrap() {
   }
 
   const app = await NestFactory.create(AppModule);
+
+  // ── Cookie parser — necesario para leer access_token de cookie httpOnly ──
+  app.use(cookieParser());
 
   const isDev = process.env.NODE_ENV !== 'production';
 

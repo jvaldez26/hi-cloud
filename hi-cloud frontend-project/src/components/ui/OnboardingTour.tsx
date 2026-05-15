@@ -93,7 +93,6 @@ export default function OnboardingTour() {
       // Actualizar el store para que user.tourCompletado === true
       const st = useAuthStore.getState();
       login(
-        st.token ?? '',
         { ...user, tourCompletado: true },
         st.empresaActual,
         st.empresas,

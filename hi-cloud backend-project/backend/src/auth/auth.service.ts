@@ -60,11 +60,15 @@ export class AuthService {
   }
 
   private buildToken(user: User, empresaId?: number): string {
+    // S-27: jti único por token — permite revocación individual en blacklist
+    // S-31: roleVersion en JWT para detectar cambios de rol sin ir a BD en cada request
     return this.jwtService.sign({
-      sub:       user.id,
-      email:     user.email,
-      role:      user.role,
-      empresaId: empresaId ?? null,
+      sub:         user.id,
+      email:       user.email,
+      role:        user.role,
+      empresaId:   empresaId ?? null,
+      jti:         randomUUID(),
+      roleVersion: (user as any).roleVersion ?? 1,
     });
   }
 

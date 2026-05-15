@@ -3,9 +3,10 @@ import axios, { AxiosError } from 'axios';
 const API_URL = import.meta.env.VITE_API_URL ?? '/api/v1';
 
 export const apiClient = axios.create({
-  baseURL: API_URL,
-  timeout: 15000,
-  headers: { 'Content-Type': 'application/json' },
+  baseURL:          API_URL,
+  timeout:          15000,
+  headers:          { 'Content-Type': 'application/json' },
+  withCredentials:  true,   // S-23: enviar cookie httpOnly access_token automáticamente
 });
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -39,22 +40,11 @@ function extractBackendMessage(err: AxiosError): string {
 }
 
 // ─── REQUEST interceptor ────────────────────────────────────────────
-// Inyecta JWT + empresa activa. Si falta empresaId, lo extrae del JWT.
+// S-23: el token JWT está en cookie httpOnly — el navegador lo envía automáticamente.
+// Solo inyectamos X-Empresa-ID (no es secreto, es routing de multi-tenant).
 apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem('access_token');
-  let empresaId = localStorage.getItem('empresaId');
-
-  if (token && !empresaId) {
-    const payload = jwtPayload(token);
-    if (payload?.empresaId && payload.empresaId !== null) {
-      empresaId = String(payload.empresaId);
-      localStorage.setItem('empresaId', empresaId);
-    }
-  }
-
-  if (token)     config.headers.Authorization  = `Bearer ${token}`;
+  const empresaId = localStorage.getItem('empresaId');
   if (empresaId) config.headers['X-Empresa-ID'] = empresaId;
-
   return config;
 });
 
@@ -71,12 +61,10 @@ apiClient.interceptors.response.use(
 
     // ── 401: sesión expirada ─────────────────────────────────────
     if (status === 401) {
-      // Limpiar todo antes de redirigir — evita flash de UI autenticada
-      localStorage.removeItem('access_token');
+      // S-23: solo limpiamos la info de UI — el token (httpOnly) lo borra el servidor
       localStorage.removeItem('auth_user');
       localStorage.removeItem('empresaId');
       localStorage.removeItem('mis_empresas');
-      // Solo redirigir si no estamos ya en /login (evita loop infinito)
       if (!window.location.pathname.startsWith('/login')) {
         window.location.replace('/login');
       }
@@ -85,8 +73,6 @@ apiClient.interceptors.response.use(
 
     // ── 403 por empresa SUSPENDIDA → mostrar error y desconectar ────
     if (status === 403 && message.toLowerCase().includes('suspendida')) {
-      // Limpiar sesión y mostrar mensaje en la pantalla de login
-      localStorage.removeItem('access_token');
       localStorage.removeItem('auth_user');
       localStorage.removeItem('empresaId');
       localStorage.removeItem('mis_empresas');
@@ -109,9 +95,9 @@ apiClient.interceptors.response.use(
     ) {
       _recuperandoEmpresa = true;
       try {
-        const token = localStorage.getItem('access_token');
-        const resp  = await axios.get(`${API_URL}/multi-empresa/mis-empresas`, {
-          headers: { Authorization: token ? `Bearer ${token}` : '' },
+        // S-23: withCredentials envía la cookie automáticamente
+        const resp = await axios.get(`${API_URL}/multi-empresa/mis-empresas`, {
+          withCredentials: true,
         });
         const empresas: any[] = resp.data?.data ?? resp.data ?? [];
         const primera = Array.isArray(empresas) ? empresas[0] : null;

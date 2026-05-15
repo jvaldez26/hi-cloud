@@ -186,12 +186,33 @@ function SuperAdminRoute({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   const { isDark } = useThemeStore();
+  const { login, logout, hydrated, setHydrated } = useAuthStore();
 
   // Registra la limpieza de React Query cache al hacer logout.
-  // Se ejecuta una sola vez al montar la app.
   useEffect(() => {
     registerLogoutCallback(() => qc.clear());
   }, []);
+
+  // S-23: Hidratar sesión al cargar — verificar cookie httpOnly via GET /auth/me
+  // Si hay cookie válida → restaurar estado. Si no → limpiar.
+  useEffect(() => {
+    if (hydrated) return;
+    import('./api/client').then(({ default: api }) => {
+      api.get('/auth/me')
+        .then((r) => {
+          const user = r.data?.data?.user ?? r.data?.user ?? r.data;
+          const empresaId   = localStorage.getItem('empresaId');
+          const empresasRaw = localStorage.getItem('mis_empresas');
+          const empresas    = empresasRaw ? JSON.parse(empresasRaw) : [];
+          login(user, empresaId ? Number(empresaId) : null, empresas);
+        })
+        .catch(() => {
+          // Cookie inválida o expirada — limpiar estado
+          logout();
+        })
+        .finally(() => setHydrated(true));
+    });
+  }, [hydrated, login, logout, setHydrated]);
 
   // Sincroniza el atributo data-theme para que el CSS global pueda reaccionar
   useEffect(() => {

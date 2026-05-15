@@ -29,7 +29,7 @@ import { TesoreriaModule } from './tesoreria/tesoreria.module';
 import { ActivosFijosModule } from './activos-fijos/activos-fijos.module';
 import { AuditoriaModule } from './auditoria/auditoria.module';
 import { AuditInterceptor } from './auditoria/interceptors/audit.interceptor';
-import { PlanGuard } from './suscripciones/guards/plan.guard';
+
 import { ConfiguracionModule } from './configuracion/configuracion.module';
 import { PresupuestosModule } from './presupuestos/presupuestos.module';
 import { NotificacionesModule } from './notificaciones/notificaciones.module';
@@ -156,18 +156,19 @@ import { UomModule }                     from './uom/uom.module';
           username: config.get<string>('DB_USERNAME', 'postgres'),
           password: config.get<string>('DB_PASSWORD', ''),
           database: config.get<string>('DB_NAME',     'hicloud'),
-          ssl: useSSL ? {
-            // Solo verificar certificado cuando se provee el CA cert explícito.
-            // Sin DB_CA_CERT: conexión cifrada pero sin verificación del cert del servidor
-            // (comportamiento estándar para RDS sin bundle configurado).
-            rejectUnauthorized: !!process.env.DB_CA_CERT,
-            // DB_CA_CERT: contenido PEM del certificado CA de AWS RDS en base64
-            // Descargar de: https://truststore.pki.rds.amazonaws.com/us-east-2/us-east-2-bundle.pem
-            // Guardar como: DB_CA_CERT=$(base64 -w0 us-east-2-bundle.pem)
-            ...(process.env.DB_CA_CERT
-              ? { ca: Buffer.from(process.env.DB_CA_CERT, 'base64').toString('utf-8') }
-              : {}),
-          } : false,
+          ssl: useSSL ? (() => {
+            const certVal = process.env.DB_CA_CERT;
+            if (!certVal) {
+              // Sin cert: cifrado sin verificación (aceptable en desarrollo)
+              return { rejectUnauthorized: false };
+            }
+            // S-25: soporta ruta de archivo (/path/to/cert.pem) o contenido base64
+            const { existsSync, readFileSync } = require('fs');
+            const caContent = existsSync(certVal)
+              ? readFileSync(certVal, 'utf-8')
+              : Buffer.from(certVal, 'base64').toString('utf-8');
+            return { rejectUnauthorized: true, ca: caContent };
+          })() : false,
           autoLoadEntities: true,
           synchronize: false,
           // ── Connection Pool ────────────────────────────────────────────

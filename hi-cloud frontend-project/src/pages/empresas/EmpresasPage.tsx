@@ -94,9 +94,9 @@ export default function EmpresasPage() {
 
   const handleCambiarEmpresa = async (empresaId: number) => {
     try {
-      const res = await api.post('/auth/cambiar-empresa', { empresaId });
-      const newToken = (res as any).data?.data?.accessToken ?? (res as any).data?.accessToken;
-      cambiarEmpresa(empresaId, newToken);
+      // S-23: backend setea nueva cookie httpOnly con empresaId actualizado
+      await api.post('/auth/cambiar-empresa', { empresaId });
+      cambiarEmpresa(empresaId);   // solo actualiza UI store
       window.location.reload();
     } catch {
       message.error('No tienes acceso a esa empresa');

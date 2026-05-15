@@ -204,7 +204,11 @@ export class SuperAdminService {
     if (userId === solicitanteId) throw new Error('No puedes cambiar tu propio rol');
 
     const rolPrev = rows[0].role;
-    await this.ds.query('UPDATE users SET role = $1, "updatedAt" = NOW() WHERE id = $2', [nuevoRol, userId]);
+    // S-31: incrementar roleVersion para invalidar JWTs con rol anterior (efecto en máx 30s)
+    await this.ds.query(
+      'UPDATE users SET role = $1, "roleVersion" = COALESCE("roleVersion", 1) + 1, "updatedAt" = NOW() WHERE id = $2',
+      [nuevoRol, userId],
+    );
 
     return {
       ok: true,

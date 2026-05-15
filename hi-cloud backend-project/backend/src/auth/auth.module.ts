@@ -5,6 +5,8 @@ import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
+import { TokenBlacklistService } from './token-blacklist.service';
+import { RolesGuard } from './guards/roles.guard';
 import { TwoFactorService } from './two-factor.service';
 import { TwoFactorController } from './two-factor.controller';
 import { UsersModule } from '../users/users.module';
@@ -38,7 +40,7 @@ import { ContabilidadModule } from '../contabilidad/contabilidad.module';
     }),
   ],
   controllers: [AuthController, TwoFactorController],
-  providers: [AuthService, JwtStrategy, GoogleStrategy, TwoFactorService],
-  exports: [JwtModule, PassportModule],
+  providers: [AuthService, JwtStrategy, GoogleStrategy, TwoFactorService, TokenBlacklistService, RolesGuard],
+  exports: [JwtModule, PassportModule, TokenBlacklistService, RolesGuard],
 })
 export class AuthModule {}

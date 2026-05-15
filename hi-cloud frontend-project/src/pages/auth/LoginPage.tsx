@@ -40,7 +40,7 @@ export default function LoginPage() {
     setEmailIngresado(values.email);
     try {
       const data = await authApi.login(values.email, values.password);
-      login(data.accessToken, data.user, data.empresaActual, data.empresas ?? []);
+      login(data.user, data.empresaActual, data.empresas ?? []);
       // Super Admin tiene su propio panel — no necesita empresa
       if (data.user?.role === 'super_admin') {
         navigate('/super-admin');

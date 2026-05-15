@@ -3,8 +3,20 @@ import type { LoginResponse, ApiResponse } from '../types';
 
 export const authApi = {
   login: async (email: string, password: string) => {
+    // S-23: backend setea cookie httpOnly — response solo contiene user info
     const res = await api.post<ApiResponse<LoginResponse>>('/auth/login', { email, password });
     return res.data.data;
+  },
+
+  logout: async () => {
+    // S-23: backend limpia la cookie httpOnly access_token
+    await api.post('/auth/logout');
+  },
+
+  me: async () => {
+    // S-23: verifica cookie y retorna info del usuario
+    const res = await api.get('/auth/me');
+    return res.data?.data?.user ?? res.data?.user ?? res.data;
   },
 
   profile: async () => {

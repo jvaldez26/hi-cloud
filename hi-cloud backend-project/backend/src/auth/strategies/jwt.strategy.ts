@@ -3,12 +3,17 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from '../../users/users.service';
+import { TokenBlacklistService } from '../token-blacklist.service';
+import type { Request } from 'express';
 
 export interface JwtPayload {
-  sub:        number;
-  email:      string;
-  role:       string;
-  empresaId?: number | null;
+  sub:          number;
+  email:        string;
+  role:         string;
+  empresaId?:   number | null;
+  jti?:         string;   // S-27: JWT ID para blacklist
+  exp?:         number;
+  roleVersion?: number;   // S-31: versión de rol para invalidación rápida
 }
 
 @Injectable()
@@ -16,8 +21,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   private static readonly logger = new Logger(JwtStrategy.name);
 
   constructor(
-    private configService: ConfigService,
-    private usersService:  UsersService,
+    private configService:    ConfigService,
+    private usersService:     UsersService,
+    private blacklistService: TokenBlacklistService,
   ) {
     const secret = configService.get<string>('JWT_SECRET');
     if (!secret) {
@@ -25,13 +31,23 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new Error('JWT_SECRET es requerido para iniciar el servidor');
     }
     super({
-      jwtFromRequest:   ExtractJwt.fromAuthHeaderAsBearerToken(),
+      // Prioridad: cookie httpOnly → Authorization Bearer (compat API/Swagger)
+      jwtFromRequest: ExtractJwt.fromExtractors([
+        (req: Request) => (req?.cookies as Record<string, string>)?.access_token ?? null,
+        ExtractJwt.fromAuthHeaderAsBearerToken(),
+      ]),
       ignoreExpiration: false,
       secretOrKey:      secret,
+      passReqToCallback: false,
     });
   }
 
   async validate(payload: JwtPayload) {
+    // S-27: verificar que el token no esté en la blacklist
+    if (await this.blacklistService.isBlacklisted(payload.jti)) {
+      throw new UnauthorizedException('Token revocado');
+    }
+
     let user: Awaited<ReturnType<typeof this.usersService.findById>> | null = null;
     try {
       user = await this.usersService.findById(payload.sub);
@@ -42,6 +58,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Token inválido o usuario inactivo');
     }
     (user as any).empresaId = payload.empresaId ?? null;
+    (user as any).jti       = payload.jti;
+    (user as any).exp       = payload.exp;
     return user;
   }
 }

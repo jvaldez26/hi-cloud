@@ -46,6 +46,11 @@ export class User extends BaseEntity {
   googleAccessToken?: string;
 
   // ── 2FA ──────────────────────────────────────────────────────────────────
+  // ── Role versioning (S-31) ────────────────────────────────────────────────
+  // Se incrementa cuando el rol cambia → invalida JWTs con versión anterior
+  @Column({ type: 'int', default: 1 })
+  roleVersion!: number;
+
   @Column({ default: false })
   tourCompletado!: boolean;
 

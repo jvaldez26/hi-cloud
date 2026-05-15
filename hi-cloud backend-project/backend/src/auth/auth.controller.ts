@@ -13,6 +13,7 @@ import { LoginDto } from './dto/login.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { GetUser } from './decorators/get-user.decorator';
 import { User } from '../users/users.entity';
+import { TokenBlacklistService } from './token-blacklist.service';
 
 class CambiarEmpresaDto {
   @IsInt() @IsPositive()
@@ -49,7 +50,10 @@ class ChangePasswordDto {
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private authService: AuthService) {}
+  constructor(
+    private authService:    AuthService,
+    private blacklistSvc:   TokenBlacklistService,
+  ) {}
 
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
@@ -62,9 +66,39 @@ export class AuthController {
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 10, ttl: 60_000 } }) // 10 intentos por minuto por IP
-  @ApiOperation({ summary: 'Iniciar sesión y obtener JWT' })
-  login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
+  @ApiOperation({ summary: 'Iniciar sesión — setea cookie httpOnly access_token' })
+  async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
+    const data = await this.authService.login(dto);
+    this.setAuthCookie(res, data.accessToken);
+    // El token NO va en el body — solo user info para UI
+    const { accessToken: _tok, ...safe } = data;
+    return safe;
+  }
+
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Cerrar sesión — revoca token (blacklist) y elimina cookie' })
+  async logout(@GetUser() user: User, @Res({ passthrough: true }) res: Response) {
+    // S-27: revocar el token actual en la blacklist
+    const jti = (user as any).jti;
+    const exp = (user as any).exp;
+    if (jti && exp) {
+      await this.blacklistSvc.blacklist(jti, exp);
+    }
+    res.clearCookie('access_token', this.cookieOptions());
+    return { message: 'Sesión cerrada correctamente' };
+  }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Verificar sesión activa y obtener datos del usuario' })
+  async getMe(@GetUser() user: User) {
+    // Usado por el frontend al recargar la página para hidratar el store
+    const { password: _pw, ...profile } = user as User & { password?: string };
+    return { user: profile };
   }
 
   @Get('profile')
@@ -81,9 +115,16 @@ export class AuthController {
   @Post('cambiar-empresa')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
-  @ApiOperation({ summary: 'Cambiar empresa activa — retorna nuevo JWT con empresaId actualizado' })
-  cambiarEmpresa(@GetUser() user: User, @Body() dto: CambiarEmpresaDto) {
-    return this.authService.cambiarEmpresa(user.id, user.role, dto.empresaId);
+  @ApiOperation({ summary: 'Cambiar empresa activa — setea nueva cookie con empresaId actualizado' })
+  async cambiarEmpresa(
+    @GetUser() user: User,
+    @Body() dto: CambiarEmpresaDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const data = await this.authService.cambiarEmpresa(user.id, user.role, dto.empresaId);
+    this.setAuthCookie(res, data.accessToken);
+    const { accessToken: _tok, ...safe } = data;
+    return safe;
   }
 
   @Get('mis-empresas')
@@ -169,21 +210,39 @@ export class AuthController {
 
   @Get('google/callback')
   @UseGuards(AuthGuard('google'))
-  @ApiOperation({ summary: 'Callback de Google OAuth — genera JWT y redirige al frontend' })
+  @ApiOperation({ summary: 'Callback de Google OAuth — setea cookie httpOnly y redirige' })
   async googleCallback(@Req() req: Request, @Res() res: Response) {
     const frontendUrl = process.env.FRONTEND_URL ?? 'https://hicloudrd.com';
     try {
       const loginData = await this.authService.buildLoginResponse(req.user as User);
+      // S-41: token en cookie httpOnly, NO en la URL
+      this.setAuthCookie(res as any, loginData.accessToken);
       const params = new URLSearchParams({
-        token:        loginData.accessToken,
-        empresaId:    String(loginData.empresaActual ?? ''),
-        nombre:       loginData.user.nombre,
-        email:        loginData.user.email,
-        role:         loginData.user.role,
+        empresaId: String(loginData.empresaActual ?? ''),
+        nombre:    loginData.user.nombre,
+        email:     loginData.user.email,
+        role:      loginData.user.role,
       });
       return (res as any).redirect(`${frontendUrl}/auth/callback?${params.toString()}`);
     } catch {
       return (res as any).redirect(`${frontendUrl}/login?error=google_failed`);
     }
+  }
+
+  // ── Helpers privados ──────────────────────────────────────────────────────
+
+  private cookieOptions() {
+    const isProd = process.env.NODE_ENV === 'production';
+    return {
+      httpOnly:  true,
+      secure:    isProd,           // HTTPS solo en producción
+      sameSite:  'strict' as const,
+      maxAge:    24 * 60 * 60 * 1000,  // 24h (igual que la expiración del JWT)
+      path:      '/',
+    };
+  }
+
+  private setAuthCookie(res: Response, token: string): void {
+    (res as any).cookie('access_token', token, this.cookieOptions());
   }
 }
