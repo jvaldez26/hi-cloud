@@ -157,7 +157,10 @@ import { UomModule }                     from './uom/uom.module';
           password: config.get<string>('DB_PASSWORD', ''),
           database: config.get<string>('DB_NAME',     'hicloud'),
           ssl: useSSL ? {
-            rejectUnauthorized: true,
+            // Solo verificar certificado cuando se provee el CA cert explícito.
+            // Sin DB_CA_CERT: conexión cifrada pero sin verificación del cert del servidor
+            // (comportamiento estándar para RDS sin bundle configurado).
+            rejectUnauthorized: !!process.env.DB_CA_CERT,
             // DB_CA_CERT: contenido PEM del certificado CA de AWS RDS en base64
             // Descargar de: https://truststore.pki.rds.amazonaws.com/us-east-2/us-east-2-bundle.pem
             // Guardar como: DB_CA_CERT=$(base64 -w0 us-east-2-bundle.pem)
