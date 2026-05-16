@@ -1567,8 +1567,6 @@ export default function AppLayout() {
               )}
 
               {!isMobile && <PlanIndicadorHeader />}
-              {/* Reloj — solo en desktop amplio para no comprimir el topbar */}
-              {!isMobile && !isTablet && <LiveClock />}
               <RealtimeDot />
 
               {/* Búsqueda — solo ícono en mobile */}
