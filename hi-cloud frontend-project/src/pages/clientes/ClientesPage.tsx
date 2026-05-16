@@ -1,10 +1,11 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Table, Button, Input, Space, Tag, Modal, Form, Row, Col,
+  Button, Input, Space, Tag, Modal, Form, Row, Col,
   Typography, Popconfirm, message, Card, Select, InputNumber,
   Avatar, Tooltip, theme,
 } from 'antd';
+import SmartTable from '../../components/ui/SmartTable';
 import {
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
   FileExcelOutlined, PhoneOutlined, MailOutlined, EyeOutlined,
@@ -85,7 +86,7 @@ export default function ClientesPage() {
 
   const columns = [
     {
-      title: 'Cliente', key: 'nombre', ellipsis: true,
+      title: 'Cliente', key: 'nombre', ellipsis: true, mobileTitle: true,
       render: (_: unknown, r: Cliente) => (
         <Space>
           <Avatar size={30} style={{ background: token.colorPrimary, flexShrink: 0, fontSize: 12 }}>
@@ -113,17 +114,17 @@ export default function ClientesPage() {
         </Space>
       ),
     },
-    { title: 'Ciudad', dataIndex: 'ciudad', width: 110, render: (v: string) => v ?? '—' },
+    { title: 'Ciudad', dataIndex: 'ciudad', width: 110, mobileHide: true, render: (v: string) => v ?? '—' },
     {
-      title: 'Estado', dataIndex: 'isActive', width: 80,
+      title: 'Estado', dataIndex: 'isActive', width: 80, isStatus: true,
       render: (v: boolean) => <Tag color={v ? 'green' : 'red'}>{v ? 'Activo' : 'Inactivo'}</Tag>,
     },
     {
-      title: 'Registro', dataIndex: 'createdAt', width: 100,
+      title: 'Registro', dataIndex: 'createdAt', width: 100, mobileHide: true,
       render: (v: string) => <Text style={{ fontSize: 12 }}>{fmt.date(v)}</Text>,
     },
     {
-      title: '', key: 'actions', width: 90, align: 'right' as const,
+      title: '', key: 'actions', width: 90, align: 'right' as const, isActions: true,
       render: (_: unknown, r: Cliente) => (
         <Space size={4}>
           {puedeEstadoCuenta && (
@@ -172,10 +173,10 @@ export default function ClientesPage() {
         </Col>
       </Row>
 
-      <Table
-        columns={columns} dataSource={data?.data ?? []} rowKey="id"
+      <SmartTable
+        columns={columns as any} dataSource={data?.data ?? []} rowKey="id"
         loading={isLoading} size="small"
-        scroll={{ x: 'max-content' }}
+        emptyDescription="No hay clientes registrados. Agrega tu primer cliente con el botón +"
         pagination={{
           total: data?.meta.total, pageSize: 15, current: page,
           onChange: setPage, showTotal: t => `${t.toLocaleString('es-DO')} clientes`,

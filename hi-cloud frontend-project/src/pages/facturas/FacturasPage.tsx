@@ -1,9 +1,10 @@
 import { useState, useCallback } from 'react';
 import {
-  Table, Button, Tag, Space, Typography, Card, Row, Col,
+  Button, Tag, Space, Typography, Card, Row, Col,
   message, Dropdown, Tooltip, Modal, Input, Select, DatePicker,
   Statistic, theme, InputNumber, Collapse, Badge,
 } from 'antd';
+import SmartTable from '../../components/ui/SmartTable';
 import {
   PlusOutlined, EyeOutlined, DownOutlined, SendOutlined,
   CheckCircleOutlined, CloseCircleOutlined, DeleteOutlined,
@@ -216,6 +217,7 @@ export default function FacturasPage() {
     // ── Folio ──────────────────────────────────────────────────────────────────
     {
       title: 'Folio', dataIndex: 'folio', width: 95, fixed: 'left' as const,
+      mobileTitle: true,
       render: (v: string) => (
         <Text strong style={{ fontFamily: 'monospace', fontSize: 12 }}>{v}</Text>
       ),
@@ -223,6 +225,7 @@ export default function FacturasPage() {
     // ── Fecha ──────────────────────────────────────────────────────────────────
     {
       title: 'Fecha', dataIndex: 'fecha', width: 85,
+      mobileSub: true,
       render: (v: string) => <Text style={{ fontSize: 12 }}>{fmt.date(v)}</Text>,
     },
     // ── Cliente ────────────────────────────────────────────────────────────────
@@ -232,28 +235,29 @@ export default function FacturasPage() {
         ? <Text style={{ fontSize: 13 }}>{v}</Text>
         : <Text type="secondary" style={{ fontSize: 12 }}>Consumidor Final</Text>,
     },
-    // ── Subtotal — se oculta en pantallas < lg ─────────────────────────────────
+    // ── Subtotal ───────────────────────────────────────────────────────────────
     {
       title: 'Subtotal', dataIndex: 'subtotal', width: 105, align: 'right' as const,
-      responsive: ['lg'] as any,
+      isAmount: true, mobileHide: true,
       render: (v: number) => <Text style={{ fontSize: 12 }}>{fmt.money(v)}</Text>,
     },
-    // ── ITBIS — se oculta en pantallas < xl ───────────────────────────────────
+    // ── ITBIS ─────────────────────────────────────────────────────────────────
     {
       title: 'ITBIS', dataIndex: 'iva', width: 90, align: 'right' as const,
-      responsive: ['xl'] as any,
+      isAmount: true, mobileHide: true,
       render: (v: number) => <Text style={{ fontSize: 12 }}>{fmt.money(v)}</Text>,
     },
     // ── Total ──────────────────────────────────────────────────────────────────
     {
       title: 'Total', dataIndex: 'total', width: 110, align: 'right' as const,
+      isAmount: true, mobileLabel: 'Total',
       render: (v: number) => (
         <Text strong style={{ fontSize: 13, color: token.colorPrimary }}>{fmt.money(v)}</Text>
       ),
     },
     // ── Pago ───────────────────────────────────────────────────────────────────
     {
-      title: 'Pago', key: 'tipoPago', width: 80,
+      title: 'Pago', key: 'tipoPago', width: 80, mobileHide: true,
       render: (_: unknown, r: any) => {
         const es = r.tipoPago === 'CREDITO';
         return (
@@ -268,7 +272,7 @@ export default function FacturasPage() {
     },
     // ── Estado ─────────────────────────────────────────────────────────────────
     {
-      title: 'Estado', dataIndex: 'estado', width: 90,
+      title: 'Estado', dataIndex: 'estado', width: 90, isStatus: true,
       render: (v: FacturaEstado) => (
         <Tag color={estadoColor[v]} style={{ fontSize: 11, fontWeight: 600, margin: 0 }}>
           {v.toUpperCase()}
@@ -277,7 +281,7 @@ export default function FacturasPage() {
     },
     // ── e-CF — badge compacto + botón emitir/reenviar ─────────────────────────
     {
-      title: 'e-CF', key: 'ecf', width: 130,
+      title: 'e-CF', key: 'ecf', width: 130, mobileHide: true,
       render: (_: unknown, r: Factura) => {
         const ecf = (r as any).ecf;
         if (r.estado === 'borrador') return null;
@@ -317,6 +321,7 @@ export default function FacturasPage() {
     // ── Acciones — ojo fijo + menú 3 puntos con todo lo demás ─────────────────
     {
       title: '', key: 'acciones', width: 72, align: 'right' as const, fixed: 'right' as const,
+      isActions: true,
       render: (_: unknown, r: Factura) => {
         const siguientes = TRANSICIONES[r.estado];
 
@@ -543,14 +548,14 @@ export default function FacturasPage() {
         </Row>
       )}
 
-      {/* ── Tabla — scroll interno para que la página no desborde ── */}
-      <Table
-        columns={columns}
+      {/* ── Tabla responsive — cards en mobile, tabla en desktop ── */}
+      <SmartTable
+        columns={columns as any}
         dataSource={resumen}
         rowKey="id"
         loading={isLoading}
         size="small"
-        scroll={{ x: 'max-content' }}
+        emptyDescription="No hay facturas. Crea tu primera factura con el botón +"
         onRow={r => ({
           style: { cursor: 'pointer' },
           onDoubleClick: () => navigate(`/facturas/${r.id}`),

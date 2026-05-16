@@ -1,9 +1,10 @@
 import { useState, useCallback } from 'react';
 import {
-  Table, Button, Input, Space, Modal, Form, Row, Col,
+  Button, Input, Space, Modal, Form, Row, Col,
   Typography, Popconfirm, message, Card, Select, InputNumber,
   Avatar, Tag, Tooltip, theme,
 } from 'antd';
+import SmartTable from '../../components/ui/SmartTable';
 import {
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
   FileExcelOutlined, PhoneOutlined, MailOutlined,
@@ -71,7 +72,7 @@ export default function ProveedoresPage() {
 
   const columns = [
     {
-      title: 'Proveedor', key: 'nombre', ellipsis: true,
+      title: 'Proveedor', key: 'nombre', ellipsis: true, mobileTitle: true,
       render: (_: unknown, r: Proveedor) => (
         <Space>
           <Avatar size={30} style={{ background: '#7c3aed', flexShrink: 0, fontSize: 12 }}>
@@ -104,11 +105,11 @@ export default function ProveedoresPage() {
       render: (v: string) => v ? <Text style={{ fontSize: 12 }}>{v}</Text> : <Text type="secondary">—</Text>,
     },
     {
-      title: 'Estado', dataIndex: 'isActive', width: 80,
+      title: 'Estado', dataIndex: 'isActive', width: 80, isStatus: true,
       render: (v: boolean) => <Tag color={v !== false ? 'green' : 'red'}>{v !== false ? 'Activo' : 'Inactivo'}</Tag>,
     },
     {
-      title: '', key: 'actions', width: 80, align: 'right' as const,
+      title: '', key: 'actions', width: 80, align: 'right' as const, isActions: true,
       render: (_: unknown, r: Proveedor) => (
         <Space size={4}>
           <Button type="text" size="small" icon={<EditOutlined />} onClick={() => openEdit(r)} />
@@ -147,10 +148,10 @@ export default function ProveedoresPage() {
         </Col>
       </Row>
 
-      <Table
-        columns={columns} dataSource={data?.data ?? []} rowKey="id"
+      <SmartTable
+        columns={columns as any} dataSource={data?.data ?? []} rowKey="id"
         loading={isLoading} size="small"
-        scroll={{ x: 'max-content' }}
+        emptyDescription="No hay proveedores. Añade tu primer proveedor con el botón +"
         pagination={{
           total: data?.meta.total, pageSize: 15, current: page,
           onChange: setPage, showTotal: t => `${t.toLocaleString('es-DO')} proveedores`,

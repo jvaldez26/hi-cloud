@@ -1,9 +1,10 @@
 ﻿import { useState, useCallback } from 'react';
 import {
-  Table, Button, Tag, Space, Typography, Card, Row, Col,
+  Button, Tag, Space, Typography, Card, Row, Col,
   Popconfirm, message, Dropdown, Input, Select, DatePicker, Statistic, theme,
   Modal, Tooltip,
 } from 'antd';
+import SmartTable from '../../components/ui/SmartTable';
 import {
   PlusOutlined, EyeOutlined, DownOutlined, SearchOutlined,
   FileExcelOutlined, FilterOutlined, MailOutlined, FilePdfOutlined,
@@ -154,11 +155,11 @@ export default function ComprasPage() {
 
   const columns = [
     {
-      title: 'Folio', dataIndex: 'folio', width: 95, fixed: 'left' as const,
+      title: 'Folio', dataIndex: 'folio', width: 95, fixed: 'left' as const, mobileTitle: true,
       render: (v: string) => <Text strong style={{ fontFamily: 'monospace', fontSize: 12 }}>{v}</Text>,
     },
     {
-      title: 'Fecha', dataIndex: 'fecha', width: 88,
+      title: 'Fecha', dataIndex: 'fecha', width: 88, mobileSub: true,
       render: (v: string) => <Text style={{ fontSize: 12 }}>{fmt.date(v)}</Text>,
     },
     {
@@ -167,20 +168,20 @@ export default function ComprasPage() {
     },
     {
       title: 'Subtotal', dataIndex: 'subtotal', width: 105, align: 'right' as const,
-      responsive: ['lg'] as any,
+      isAmount: true, mobileHide: true,
       render: (v: number) => <Text style={{ fontSize: 12 }}>{fmt.money(v)}</Text>,
     },
     {
       title: 'ITBIS', dataIndex: 'itbis', width: 90, align: 'right' as const,
-      responsive: ['xl'] as any,
+      isAmount: true, mobileHide: true,
       render: (v: number) => <Text style={{ fontSize: 12 }}>{fmt.money(v)}</Text>,
     },
     {
-      title: 'Total', dataIndex: 'total', width: 110, align: 'right' as const,
+      title: 'Total', dataIndex: 'total', width: 110, align: 'right' as const, isAmount: true,
       render: (v: number) => <Text strong style={{ color: token.colorPrimary }}>{fmt.money(v)}</Text>,
     },
     {
-      title: 'Estado', dataIndex: 'estado', width: 90,
+      title: 'Estado', dataIndex: 'estado', width: 90, isStatus: true,
       render: (v: CompraEstado) => (
         <Tag color={estadoColor[v]} style={{ fontSize: 11, fontWeight: 600, margin: 0 }}>
           {v.toUpperCase()}
@@ -188,7 +189,7 @@ export default function ComprasPage() {
       ),
     },
     {
-      title: 'e-CF', key: 'ecf', width: 120,
+      title: 'e-CF', key: 'ecf', width: 120, mobileHide: true,
       render: (_: unknown, r: Compra) => {
         const ecfNum   = (r as any).ecfNumero;
         const ecfEst   = (r as any).ecfEstado;
@@ -197,7 +198,7 @@ export default function ComprasPage() {
       },
     },
     {
-      title: '', key: 'actions', width: 110, align: 'right' as const,
+      title: '', key: 'actions', width: 110, align: 'right' as const, isActions: true,
       render: (_: unknown, r: Compra) => {
         const sigs = TRANSICIONES[r.estado];
         const items = sigs.map(s => ({
@@ -340,10 +341,10 @@ export default function ComprasPage() {
         </Row>
       )}
 
-      <Table
-        columns={columns} dataSource={rows} rowKey="id"
+      <SmartTable
+        columns={columns as any} dataSource={rows} rowKey="id"
         loading={isLoading} size="small"
-        scroll={{ x: 'max-content' }}
+        emptyDescription="No hay órdenes de compra. Crea tu primera compra con el botón +"
         onRow={r => ({ style: { cursor: 'pointer' }, onDoubleClick: () => navigate(`/compras/${r.id}`) })}
         pagination={{
           total: data?.meta.total, pageSize: 15, current: page,

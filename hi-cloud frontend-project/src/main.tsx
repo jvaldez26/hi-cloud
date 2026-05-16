@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import './styles/typography.css';
 import './styles/darkmode.css';
+import './styles/tables.css';
 import dayjs from 'dayjs';
 import 'dayjs/locale/es-do';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
