@@ -53,7 +53,7 @@ type SidebarPalette = {
 const sidebarLight: SidebarPalette = {
   bg:           '#1E3A8A',                       // azul Cashflow
   bgHover:      'rgba(255,255,255,0.08)',
-  bgActive:     'rgba(255,255,255,0.12)',
+  bgActive:     'rgba(255,255,255,0.08)',
   border:       'rgba(255,255,255,0.12)',
   separator:    'transparent',                   // sin separadores visibles
   text:         'rgba(255,255,255,0.90)',
@@ -72,7 +72,7 @@ const sidebarLight: SidebarPalette = {
 const sidebarDark: SidebarPalette = {
   bg:           '#172554',                       // azul más oscuro en dark
   bgHover:      'rgba(255,255,255,0.08)',
-  bgActive:     'rgba(255,255,255,0.12)',
+  bgActive:     'rgba(255,255,255,0.08)',
   border:       'rgba(255,255,255,0.10)',
   separator:    'transparent',
   text:         'rgba(255,255,255,0.85)',
@@ -548,22 +548,15 @@ function QuickItemComp({
         display:        'flex',
         alignItems:     'center',
         gap:            10,
-        padding:        collapsed ? '10px 0' : '10px 14px',
-        height:         40,
+        padding:        collapsed ? '7px 0' : '7px 14px',
+        height:         36,
         border:         'none',
         cursor:         'pointer',
-        borderRadius:   8,
+        borderRadius:   6,
         justifyContent: collapsed ? 'center' : 'flex-start',
         position:       'relative',
-        background:     active
-          ? C.bgActive
-          : hover
-            ? C.bgHover
-            : 'transparent',
-        boxShadow:      active
-          ? '0 0 0 1px rgba(59,130,246,0.3)'
-          : 'none',
-        transition:     'all 0.2s ease',
+        background:     active ? C.bgActive : hover ? C.bgHover : 'transparent',
+        transition:     'all 0.15s ease',
         margin:         '0 8px',
       }}
     >
@@ -646,32 +639,32 @@ function CategoryAccordion({
           display:        'flex',
           alignItems:     'center',
           gap:            10,
-          padding:        '9px 12px',
-          height:         38,
+          padding:        '7px 12px',
+          height:         34,
           border:         'none',
           cursor:         'pointer',
-          borderRadius:   7,
+          borderRadius:   6,
           position:       'relative',
-          background:     hasActiveSub ? C.bgActive : hover ? C.bgHover : 'transparent',
+          background:     hover ? C.bgHover : 'transparent',
           margin:         '0 8px',
           transition:     'background 0.15s',
         }}
       >
+        {/* Borde dorado izquierdo cuando hay sub-item activo */}
         {hasActiveSub && (
           <span style={{
-            position: 'absolute', left: 0, top: 7, bottom: 7,
+            position: 'absolute', left: 0, top: 6, bottom: 6,
             width: 3, borderRadius: '0 3px 3px 0', background: C.accent,
           }} />
         )}
         <category.Icon
-          size={15}
-          strokeWidth={hasActiveSub ? 2.5 : 2}
-          style={{ color: hasActiveSub ? C.accent : hover ? C.text : C.textSub, flexShrink: 0 }}
+          size={16}
+          strokeWidth={2}
+          style={{ color: C.textSub, flexShrink: 0 }}
         />
         <span style={{
-          flex: 1, fontSize: 12.5, fontWeight: hasActiveSub ? 600 : 500,
-          // FIX: era '#E2E8F0' cuando hasActiveSub → invisible en sidebar blanco
-          color: hasActiveSub ? C.textActive : hover ? C.text : C.text,
+          flex: 1, fontSize: 12.5, fontWeight: 500,
+          color: C.text,
           textAlign: 'left', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
         }}>
           {category.label}
@@ -752,7 +745,7 @@ function AccordionSubItem({
       >
         <span style={{
           fontSize: 11, flexShrink: 0, lineHeight: 1,
-          color: active ? C.accent : hover ? C.textSub : C.textCategory,
+          color: active ? C.accent : 'rgba(255,255,255,0.35)',
           transition: 'color 0.12s',
         }}>↳</span>
         <span style={{
@@ -1381,7 +1374,7 @@ export default function AppLayout() {
 
       {/* ── Footer ──────────────────────────────────────────────────── */}
       <div style={{
-        borderTop:  `1px solid ${C.separator}`,
+        borderTop:  `1px solid ${C.border}`,
         padding:    collapsed ? '10px 0' : '10px 16px',
         flexShrink: 0,
         background: C.bg,
