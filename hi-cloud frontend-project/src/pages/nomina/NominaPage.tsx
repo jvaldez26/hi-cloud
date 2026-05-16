@@ -85,17 +85,17 @@ function EmpleadosTab() {
 
   return (
     <>
-      <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
-        <Col>
-          <Space>
+      <Row justify="space-between" align="middle" gutter={[0, 8]} style={{ marginBottom: 16 }}>
+        <Col xs={24} sm="auto">
+          <Space wrap>
             <Input placeholder="Buscar nombre, cédula, cargo..." prefix={<SearchOutlined />}
               value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
-              allowClear style={{ width: 280 }} />
+              allowClear style={{ width: '100%', maxWidth: 280 }} />
             <Text type="secondary" style={{ fontSize: 12 }}>{data?.meta?.total ?? 0} empleados</Text>
           </Space>
         </Col>
-        <Col>
-          <Space>
+        <Col xs={24} sm="auto">
+          <Space wrap>
             <Button icon={<FileExcelOutlined />} onClick={() => {
               const filas = (data?.data ?? []).map((e: any) => ({
                 'Cédula': e.cedula, 'Nombre': `${e.nombre} ${e.apellido}`,

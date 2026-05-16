@@ -121,18 +121,18 @@ function Asientos() {
 
   return (
     <>
-      <Row justify="space-between" align="middle" style={{ marginBottom: 12 }}>
-        <Col>
+      <Row justify="space-between" align="middle" gutter={[0, 8]} style={{ marginBottom: 12 }}>
+        <Col xs={24} sm="auto">
           <Input
             placeholder="Buscar por número o descripción..."
             prefix={<SearchOutlined />}
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(1); }}
-            allowClear style={{ width: 280 }}
+            allowClear style={{ width: '100%', maxWidth: 280 }}
           />
         </Col>
-        <Col>
-          <Space>
+        <Col xs={24} sm="auto">
+          <Space wrap>
             <Button icon={<FileExcelOutlined />} onClick={() => {
               const filas = (asientos?.data ?? []).map((a: any) => ({
                 'Número':      a.numero ?? '',

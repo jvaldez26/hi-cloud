@@ -78,7 +78,7 @@ export default function TSSPage() {
 
   return (
     <div>
-      <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
+      <Row justify="space-between" align="middle" gutter={[0, 8]} style={{ marginBottom: 16 }}>
         <Col>
           <Title level={4} style={{ margin: 0 }}>
             <SafetyCertificateOutlined style={{ marginRight: 8, color: '#7c3aed' }} />
@@ -86,8 +86,8 @@ export default function TSSPage() {
           </Title>
           <Text type="secondary" style={{ fontSize: 13 }}>Ley 87-01 · SFS · AFP · SRL</Text>
         </Col>
-        <Col>
-          <Space>
+        <Col xs={24} sm="auto">
+          <Space wrap>
             <Select value={mes} onChange={setMes} style={{ width: 130 }} options={MESES} />
             <Select value={anio} onChange={setAnio} style={{ width: 90 }}
               options={[2024, 2025, 2026].map(y => ({ value: y, label: y }))} />

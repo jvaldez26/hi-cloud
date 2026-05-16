@@ -314,18 +314,18 @@ function LotesTab() {
         </Row>
       )}
 
-      <Row justify="space-between" align="middle" style={{ marginBottom: 12 }}>
-        <Col>
-          <Space>
+      <Row justify="space-between" align="middle" gutter={[0, 8]} style={{ marginBottom: 12 }}>
+        <Col xs={24} sm="auto">
+          <Space wrap>
             <Input placeholder="Buscar lote o producto..." prefix={<SearchOutlined />}
-              value={search} onChange={e => setSearch(e.target.value)} allowClear style={{ width: 250 }} />
+              value={search} onChange={e => setSearch(e.target.value)} allowClear style={{ width: '100%', maxWidth: 250 }} />
             <Select placeholder="Estado" value={estadoFiltro} onChange={setEstadoFiltro} allowClear style={{ width: 130 }}>
               {['activo', 'agotado', 'vencido', 'cuarentena'].map(e => <Option key={e} value={e}>{e.toUpperCase()}</Option>)}
             </Select>
           </Space>
         </Col>
-        <Col>
-          <Space>
+        <Col xs={24} sm="auto">
+          <Space wrap>
             <Button icon={<FileExcelOutlined />} onClick={() => {
               exportarExcel((lotes ?? []).map((l: any) => ({
                 'N° Lote': l.numeroLote, 'Producto': l.producto?.nombre,

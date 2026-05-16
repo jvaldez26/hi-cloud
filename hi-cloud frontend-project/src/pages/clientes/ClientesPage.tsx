@@ -144,7 +144,7 @@ export default function ClientesPage() {
 
   return (
     <Card>
-      <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
+      <Row justify="space-between" align="middle" gutter={[0, 8]} style={{ marginBottom: 16 }}>
         <Col>
           <Title level={4} style={{ margin: 0 }}>Clientes</Title>
           {data?.meta && (
@@ -153,14 +153,14 @@ export default function ClientesPage() {
             </Text>
           )}
         </Col>
-        <Col>
-          <Space>
+        <Col xs={24} sm="auto">
+          <Space wrap>
             <Input
               placeholder="Buscar por nombre o RFC..."
               prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
               value={search}
               onChange={e => { setSearch(e.target.value); setPage(1); }}
-              allowClear style={{ width: 260 }}
+              allowClear style={{ width: '100%', maxWidth: 260 }}
             />
             <Button icon={<FileExcelOutlined />} onClick={handleExcel}>Excel</Button>
             {puedeCrear && (

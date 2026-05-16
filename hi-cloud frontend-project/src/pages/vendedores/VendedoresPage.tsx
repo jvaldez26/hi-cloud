@@ -114,7 +114,7 @@ export default function VendedoresPage() {
   };
 
   const PERIODO_SELECTOR = (
-    <Space>
+    <Space wrap>
       <Select value={mes} onChange={setMes} style={{ width: 110 }}>
         {['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
           .map((m, i) => <Option key={i+1} value={i+1}>{m}</Option>)}

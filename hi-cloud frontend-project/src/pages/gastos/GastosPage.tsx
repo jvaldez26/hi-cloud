@@ -163,10 +163,10 @@ export default function GastosPage() {
 
   return (
     <div>
-      <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
+      <Row justify="space-between" align="middle" gutter={[0, 8]} style={{ marginBottom: 16 }}>
         <Col><Title level={4} style={{ margin: 0 }}>Gastos Operativos</Title></Col>
-        <Col>
-          <Space>
+        <Col xs={24} sm="auto">
+          <Space wrap>
             <Select value={mes} onChange={setMes} style={{ width: 130 }} options={MESES} />
             <Select value={anio} onChange={setAnio} style={{ width: 100 }}
               options={[2024, 2025, 2026].map(y => ({ value: y, label: y }))} />

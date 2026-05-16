@@ -3,7 +3,6 @@ import { exportarExcel } from '../../utils/exportExcel';
 import { Card, Row, Col, Table, Button, Tag, Typography, Statistic,
          Modal, Form, Input, InputNumber, Select, Tabs, message,
          Space, DatePicker } from 'antd';
-import SmartTable from '../../components/ui/SmartTable';
 import { PlusOutlined, UploadOutlined, DownloadOutlined, SwapOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
@@ -124,19 +123,19 @@ export default function TesoreriaPage() {
                   </Space>
                 </Col>
               </Row>
-              <SmartTable
+              <Table
                 dataSource={movims?.data ?? []} rowKey="id" loading={movLoading} size="small"
-                emptyDescription="Sin movimientos en este período"
+        scroll={{ x: 'max-content' }}
                 pagination={{ total: movims?.meta?.total, pageSize: 15, current: page, onChange: setPage, showSizeChanger: false }}
                 columns={[
-                  { title: 'Fecha',       dataIndex: 'fecha',       width: 100, mobileTitle: true, render: (v: string) => fmt.date(v) },
-                  { title: 'Tipo',        dataIndex: 'tipo',        width: 140, isStatus: true, render: (v: string) => <Tag color={tipoMovColor[v]}>{v.replace('_',' ').toUpperCase()}</Tag> },
+                  { title: 'Fecha',       dataIndex: 'fecha',       width: 100, render: (v: string) => fmt.date(v) },
+                  { title: 'Tipo',        dataIndex: 'tipo',        width: 140, render: (v: string) => <Tag color={tipoMovColor[v]}>{v.replace('_',' ').toUpperCase()}</Tag> },
                   { title: 'Descripción', dataIndex: 'descripcion', ellipsis: true },
-                  { title: 'Referencia',  dataIndex: 'referencia',  width: 120, mobileHide: true },
-                  { title: 'Monto',       dataIndex: 'monto',       width: 130, isAmount: true, render: (v: number, r: any) => <span style={{ color: ['deposito','transferencia_entrada','nota_credito','interes'].includes(r.tipo) ? '#52c41a' : '#ff4d4f' }}>{fmt.money(v)}</span> },
-                  { title: 'Saldo',       dataIndex: 'saldoNuevo',  width: 130, isAmount: true, mobileHide: true, render: (v: number) => <strong>{fmt.money(v)}</strong> },
-                  { title: 'Cuenta',      key: 'cta',               width: 140, mobileHide: true, render: (_: any, r: any) => r.cuentaBancaria?.banco },
-                ] as any} />
+                  { title: 'Referencia',  dataIndex: 'referencia',  width: 120 },
+                  { title: 'Monto',       dataIndex: 'monto',       width: 130, render: (v: number, r: any) => <span style={{ color: ['deposito','transferencia_entrada','nota_credito','interes'].includes(r.tipo) ? '#52c41a' : '#ff4d4f' }}>{fmt.money(v)}</span> },
+                  { title: 'Saldo',       dataIndex: 'saldoNuevo',  width: 130, render: (v: number) => <strong>{fmt.money(v)}</strong> },
+                  { title: 'Cuenta',      key: 'cta',               width: 140, render: (_: any, r: any) => r.cuentaBancaria?.banco },
+                ]} />
             </>
           ),
         },
