@@ -1,11 +1,11 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Button, Input, Space, Tag, Modal, Form, Row, Col,
+  Table, Button, Input, Space, Tag, Modal, Form, Row, Col,
   Typography, Popconfirm, message, Card, Select, InputNumber,
   Avatar, Tooltip, theme,
 } from 'antd';
-import SmartTable from '../../components/ui/SmartTable';
+import { TableActions } from '../../components/ui/TableActions';
 import {
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
   FileExcelOutlined, PhoneOutlined, MailOutlined, EyeOutlined,
@@ -86,7 +86,7 @@ export default function ClientesPage() {
 
   const columns = [
     {
-      title: 'Cliente', key: 'nombre', ellipsis: true, mobileTitle: true,
+      title: 'Cliente', key: 'nombre', ellipsis: true,
       render: (_: unknown, r: Cliente) => (
         <Space>
           <Avatar size={30} style={{ background: token.colorPrimary, flexShrink: 0, fontSize: 12 }}>
@@ -114,33 +114,30 @@ export default function ClientesPage() {
         </Space>
       ),
     },
-    { title: 'Ciudad', dataIndex: 'ciudad', width: 110, mobileHide: true, render: (v: string) => v ?? '—' },
+    { title: 'Ciudad', dataIndex: 'ciudad', width: 110, render: (v: string) => v ?? '—' },
     {
-      title: 'Estado', dataIndex: 'isActive', width: 80, isStatus: true,
+      title: 'Estado', dataIndex: 'isActive', width: 80,
       render: (v: boolean) => <Tag color={v ? 'green' : 'red'}>{v ? 'Activo' : 'Inactivo'}</Tag>,
     },
     {
-      title: 'Registro', dataIndex: 'createdAt', width: 100, mobileHide: true,
+      title: 'Registro', dataIndex: 'createdAt', width: 100,
       render: (v: string) => <Text style={{ fontSize: 12 }}>{fmt.date(v)}</Text>,
     },
     {
-      title: '', key: 'actions', width: 90, align: 'right' as const, isActions: true,
+      title: '', key: 'actions', width: 80, align: 'right' as const, isActions: true,
       render: (_: unknown, r: Cliente) => (
-        <Space size={4}>
-          {puedeEstadoCuenta && (
-            <Tooltip title="Ver estado de cuenta">
-              <Button type="text" size="small" icon={<EyeOutlined />}
-                onClick={() => navigate(`/clientes/${r.id}/estado-cuenta`)} />
-            </Tooltip>
-          )}
-          <Button type="text" size="small" icon={<EditOutlined />} onClick={() => openEdit(r)} />
-          {puedeEliminar && (
-            <Popconfirm title="¿Eliminar cliente?" onConfirm={() => deleteMut.mutate(r.id)}
-              okText="Eliminar" okButtonProps={{ danger: true }}>
-              <Button type="text" danger size="small" icon={<DeleteOutlined />} />
-            </Popconfirm>
-          )}
-        </Space>
+        <TableActions
+          onView={() => navigate(`/clientes/${r.id}/estado-cuenta`)}
+          viewLabel="Ver estado de cuenta"
+          items={[
+            { key: 'editar', label: 'Editar', icon: <EditOutlined />, onClick: () => openEdit(r) },
+            ...(puedeEstadoCuenta ? [{ key: 'estado', label: 'Estado de cuenta', icon: <EyeOutlined />, onClick: () => navigate(`/clientes/${r.id}/estado-cuenta`) }] : []),
+            ...(puedeEliminar ? [
+              { type: 'divider' as const },
+              { key: 'eliminar', label: 'Eliminar', danger: true, icon: <DeleteOutlined />, onClick: () => deleteMut.mutate(r.id) },
+            ] : []),
+          ]}
+        />
       ),
     },
   ];
@@ -173,10 +170,10 @@ export default function ClientesPage() {
         </Col>
       </Row>
 
-      <SmartTable
-        columns={columns as any} dataSource={data?.data ?? []} rowKey="id"
+      <Table
+        columns={columns} dataSource={data?.data ?? []} rowKey="id"
         loading={isLoading} size="small"
-        emptyDescription="No hay clientes registrados. Agrega tu primer cliente con el botón +"
+        scroll={{ x: 'max-content' }}
         pagination={{
           total: data?.meta.total, pageSize: 15, current: page,
           onChange: setPage, showTotal: t => `${t.toLocaleString('es-DO')} clientes`,

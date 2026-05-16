@@ -1,10 +1,9 @@
 ﻿import { useState, useCallback } from 'react';
 import {
-  Button, Tag, Space, Typography, Card, Row, Col,
+  Table, Button, Tag, Space, Typography, Card, Row, Col,
   Popconfirm, message, Dropdown, Input, Select, DatePicker, Statistic, theme,
   Modal, Tooltip,
 } from 'antd';
-import SmartTable from '../../components/ui/SmartTable';
 import {
   PlusOutlined, EyeOutlined, DownOutlined, SearchOutlined,
   FileExcelOutlined, FilterOutlined, MailOutlined, FilePdfOutlined,
@@ -13,6 +12,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useCanDo } from '../../hooks/useCanDo';
+import { TableActions } from '../../components/ui/TableActions';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import { comprasApi } from '../../api/compras.api';
@@ -155,11 +155,11 @@ export default function ComprasPage() {
 
   const columns = [
     {
-      title: 'Folio', dataIndex: 'folio', width: 95, fixed: 'left' as const, mobileTitle: true,
+      title: 'Folio', dataIndex: 'folio', width: 95, fixed: 'left' as const,
       render: (v: string) => <Text strong style={{ fontFamily: 'monospace', fontSize: 12 }}>{v}</Text>,
     },
     {
-      title: 'Fecha', dataIndex: 'fecha', width: 88, mobileSub: true,
+      title: 'Fecha', dataIndex: 'fecha', width: 88,
       render: (v: string) => <Text style={{ fontSize: 12 }}>{fmt.date(v)}</Text>,
     },
     {
@@ -168,20 +168,20 @@ export default function ComprasPage() {
     },
     {
       title: 'Subtotal', dataIndex: 'subtotal', width: 105, align: 'right' as const,
-      isAmount: true, mobileHide: true,
+      responsive: ['lg'] as any,
       render: (v: number) => <Text style={{ fontSize: 12 }}>{fmt.money(v)}</Text>,
     },
     {
       title: 'ITBIS', dataIndex: 'itbis', width: 90, align: 'right' as const,
-      isAmount: true, mobileHide: true,
+      responsive: ['xl'] as any,
       render: (v: number) => <Text style={{ fontSize: 12 }}>{fmt.money(v)}</Text>,
     },
     {
-      title: 'Total', dataIndex: 'total', width: 110, align: 'right' as const, isAmount: true,
+      title: 'Total', dataIndex: 'total', width: 110, align: 'right' as const,
       render: (v: number) => <Text strong style={{ color: token.colorPrimary }}>{fmt.money(v)}</Text>,
     },
     {
-      title: 'Estado', dataIndex: 'estado', width: 90, isStatus: true,
+      title: 'Estado', dataIndex: 'estado', width: 90,
       render: (v: CompraEstado) => (
         <Tag color={estadoColor[v]} style={{ fontSize: 11, fontWeight: 600, margin: 0 }}>
           {v.toUpperCase()}
@@ -189,7 +189,7 @@ export default function ComprasPage() {
       ),
     },
     {
-      title: 'e-CF', key: 'ecf', width: 120, mobileHide: true,
+      title: 'e-CF', key: 'ecf', width: 120,
       render: (_: unknown, r: Compra) => {
         const ecfNum   = (r as any).ecfNumero;
         const ecfEst   = (r as any).ecfEstado;
@@ -198,7 +198,7 @@ export default function ComprasPage() {
       },
     },
     {
-      title: '', key: 'actions', width: 110, align: 'right' as const, isActions: true,
+      title: '', key: 'actions', width: 110, align: 'right' as const,
       render: (_: unknown, r: Compra) => {
         const sigs = TRANSICIONES[r.estado];
         const items = sigs.map(s => ({
@@ -207,60 +207,26 @@ export default function ComprasPage() {
           danger: s === 'cancelada',
           onClick: () => estadoMut.mutate({ id: r.id, estado: s }),
         }));
+        const menuItems2 = [
+          { key: 'pdf', label: 'Descargar PDF', icon: <FilePdfOutlined />, onClick: () => descargarPDF(r) },
+          { key: 'email', label: 'Enviar email al proveedor', icon: <MailOutlined />, onClick: () => { setEmailCompra(r); setEmailDest((r as any).proveedor?.email ?? ''); } },
+          { key: 'duplicar', label: 'Duplicar compra', icon: <CopyOutlined />, onClick: () => duplicarMut.mutate(r.id) },
+          ...items,
+          ...((r.estado === 'recibida' || r.estado === 'pagada') && !(r as any).ecfNumero ? [
+            { type: 'divider' as const },
+            { key: 'e41', label: 'Emitir Comprobante E41', icon: <AuditOutlined />, onClick: () => emitirEcfE41.mutate(r.id) },
+          ] : []),
+          ...(r.estado === 'borrador' && puedeEliminar ? [
+            { type: 'divider' as const },
+            { key: 'eliminar', label: 'Eliminar', danger: true, onClick: () => deleteMut.mutate(r.id) },
+          ] : []),
+        ];
         return (
-          <Space size={4}>
-            <Button size="small" type="text" icon={<EyeOutlined />}
-              onClick={() => navigate(`/compras/${r.id}`)} />
-            <Tooltip title="Descargar PDF">
-              <Button size="small" type="text"
-                icon={pdfPending === r.id ? <LoadingOutlined /> : <FilePdfOutlined />}
-                disabled={pdfPending === r.id}
-                onClick={() => descargarPDF(r)}
-              />
-            </Tooltip>
-            <Tooltip title="Duplicar compra">
-              <Button size="small" type="text" icon={<CopyOutlined />}
-                loading={duplicarMut.isPending}
-                onClick={() => duplicarMut.mutate(r.id)} />
-            </Tooltip>
-            <Tooltip title="Enviar por email al proveedor">
-              <Button size="small" type="text" icon={<MailOutlined />}
-                onClick={() => {
-                  setEmailCompra(r);
-                  setEmailDest((r as any).proveedor?.email ?? '');
-                }}
-              />
-            </Tooltip>
-            {items.length > 0 && (
-              <Dropdown menu={{ items }} trigger={['click']} placement="bottomRight">
-                <Button size="small" icon={<DownOutlined style={{ fontSize: 10 }} />} />
-              </Dropdown>
-            )}
-            {(r.estado === 'recibida' || r.estado === 'pagada') && !(r as any).ecfNumero && (
-              <Popconfirm
-                title="¿Emitir e-CF E41 (Comprobante de Compras)?"
-                description="Se enviará a la DGII vía tu proveedor e-CF. El proveedor debe tener RNC registrado."
-                onConfirm={() => emitirEcfE41.mutate(r.id)}
-                okText="Emitir E41"
-                cancelText="Cancelar"
-              >
-                <Tooltip title="Emitir Comprobante de Compras E41">
-                  <Button
-                    size="small"
-                    icon={<AuditOutlined />}
-                    loading={emitirEcfE41.isPending}
-                    style={{ color: '#7c3aed', borderColor: '#7c3aed' }}
-                  />
-                </Tooltip>
-              </Popconfirm>
-            )}
-            {r.estado === 'borrador' && puedeEliminar && (
-              <Popconfirm title="¿Eliminar compra?" onConfirm={() => deleteMut.mutate(r.id)}
-                okText="Eliminar" okButtonProps={{ danger: true }}>
-                <Button size="small" type="text" danger>✕</Button>
-              </Popconfirm>
-            )}
-          </Space>
+          <TableActions
+            onView={() => navigate(`/compras/${r.id}`)}
+            viewLabel="Ver detalle de compra"
+            items={menuItems2}
+          />
         );
       },
     },
@@ -341,10 +307,10 @@ export default function ComprasPage() {
         </Row>
       )}
 
-      <SmartTable
-        columns={columns as any} dataSource={rows} rowKey="id"
+      <Table
+        columns={columns} dataSource={rows} rowKey="id"
         loading={isLoading} size="small"
-        emptyDescription="No hay órdenes de compra. Crea tu primera compra con el botón +"
+        scroll={{ x: 'max-content' }}
         onRow={r => ({ style: { cursor: 'pointer' }, onDoubleClick: () => navigate(`/compras/${r.id}`) })}
         pagination={{
           total: data?.meta.total, pageSize: 15, current: page,

@@ -1,14 +1,14 @@
 import { useState, useCallback } from 'react';
 import {
-  Button, Input, Space, Modal, Form, Row, Col,
+  Table, Button, Input, Space, Modal, Form, Row, Col,
   Typography, Popconfirm, message, Card, Select, InputNumber,
   Avatar, Tag, Tooltip, theme,
 } from 'antd';
-import SmartTable from '../../components/ui/SmartTable';
 import {
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
   FileExcelOutlined, PhoneOutlined, MailOutlined,
 } from '@ant-design/icons';
+import { TableActions } from '../../components/ui/TableActions';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { proveedoresApi, type ProveedorPayload } from '../../api/proveedores.api';
@@ -72,7 +72,7 @@ export default function ProveedoresPage() {
 
   const columns = [
     {
-      title: 'Proveedor', key: 'nombre', ellipsis: true, mobileTitle: true,
+      title: 'Proveedor', key: 'nombre', ellipsis: true,
       render: (_: unknown, r: Proveedor) => (
         <Space>
           <Avatar size={30} style={{ background: '#7c3aed', flexShrink: 0, fontSize: 12 }}>
@@ -105,19 +105,21 @@ export default function ProveedoresPage() {
       render: (v: string) => v ? <Text style={{ fontSize: 12 }}>{v}</Text> : <Text type="secondary">—</Text>,
     },
     {
-      title: 'Estado', dataIndex: 'isActive', width: 80, isStatus: true,
+      title: 'Estado', dataIndex: 'isActive', width: 80,
       render: (v: boolean) => <Tag color={v !== false ? 'green' : 'red'}>{v !== false ? 'Activo' : 'Inactivo'}</Tag>,
     },
     {
-      title: '', key: 'actions', width: 80, align: 'right' as const, isActions: true,
+      title: '', key: 'actions', width: 80, align: 'right' as const,
       render: (_: unknown, r: Proveedor) => (
-        <Space size={4}>
-          <Button type="text" size="small" icon={<EditOutlined />} onClick={() => openEdit(r)} />
-          <Popconfirm title="¿Eliminar proveedor?" onConfirm={() => deleteMut.mutate(r.id)}
-            okText="Eliminar" okButtonProps={{ danger: true }}>
-            <Button type="text" danger size="small" icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
+        <TableActions
+          onView={() => openEdit(r)}
+          viewLabel="Editar proveedor"
+          items={[
+            { key: 'editar', label: 'Editar', icon: <EditOutlined />, onClick: () => openEdit(r) },
+            { type: 'divider' as const },
+            { key: 'eliminar', label: 'Eliminar', danger: true, icon: <DeleteOutlined />, onClick: () => deleteMut.mutate(r.id) },
+          ]}
+        />
       ),
     },
   ];
@@ -148,10 +150,10 @@ export default function ProveedoresPage() {
         </Col>
       </Row>
 
-      <SmartTable
-        columns={columns as any} dataSource={data?.data ?? []} rowKey="id"
+      <Table
+        columns={columns} dataSource={data?.data ?? []} rowKey="id"
         loading={isLoading} size="small"
-        emptyDescription="No hay proveedores. Añade tu primer proveedor con el botón +"
+        scroll={{ x: 'max-content' }}
         pagination={{
           total: data?.meta.total, pageSize: 15, current: page,
           onChange: setPage, showTotal: t => `${t.toLocaleString('es-DO')} proveedores`,

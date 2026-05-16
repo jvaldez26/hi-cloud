@@ -1,10 +1,9 @@
 import { useState, useCallback } from 'react';
 import {
-  Button, Tag, Space, Typography, Card, Row, Col,
+  Table, Button, Tag, Space, Typography, Card, Row, Col,
   message, Dropdown, Tooltip, Modal, Input, Select, DatePicker,
   Statistic, theme, InputNumber, Collapse, Badge,
 } from 'antd';
-import SmartTable from '../../components/ui/SmartTable';
 import {
   PlusOutlined, EyeOutlined, DownOutlined, SendOutlined,
   CheckCircleOutlined, CloseCircleOutlined, DeleteOutlined,
@@ -13,6 +12,7 @@ import {
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { TableActions } from '../../components/ui/TableActions';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import { facturasApi } from '../../api/facturas.api';
@@ -217,7 +217,6 @@ export default function FacturasPage() {
     // ── Folio ──────────────────────────────────────────────────────────────────
     {
       title: 'Folio', dataIndex: 'folio', width: 95, fixed: 'left' as const,
-      mobileTitle: true,
       render: (v: string) => (
         <Text strong style={{ fontFamily: 'monospace', fontSize: 12 }}>{v}</Text>
       ),
@@ -225,7 +224,6 @@ export default function FacturasPage() {
     // ── Fecha ──────────────────────────────────────────────────────────────────
     {
       title: 'Fecha', dataIndex: 'fecha', width: 85,
-      mobileSub: true,
       render: (v: string) => <Text style={{ fontSize: 12 }}>{fmt.date(v)}</Text>,
     },
     // ── Cliente ────────────────────────────────────────────────────────────────
@@ -235,29 +233,28 @@ export default function FacturasPage() {
         ? <Text style={{ fontSize: 13 }}>{v}</Text>
         : <Text type="secondary" style={{ fontSize: 12 }}>Consumidor Final</Text>,
     },
-    // ── Subtotal ───────────────────────────────────────────────────────────────
+    // ── Subtotal — se oculta en pantallas < lg ─────────────────────────────────
     {
       title: 'Subtotal', dataIndex: 'subtotal', width: 105, align: 'right' as const,
-      isAmount: true, mobileHide: true,
+      responsive: ['lg'] as any,
       render: (v: number) => <Text style={{ fontSize: 12 }}>{fmt.money(v)}</Text>,
     },
-    // ── ITBIS ─────────────────────────────────────────────────────────────────
+    // ── ITBIS — se oculta en pantallas < xl ───────────────────────────────────
     {
       title: 'ITBIS', dataIndex: 'iva', width: 90, align: 'right' as const,
-      isAmount: true, mobileHide: true,
+      responsive: ['xl'] as any,
       render: (v: number) => <Text style={{ fontSize: 12 }}>{fmt.money(v)}</Text>,
     },
     // ── Total ──────────────────────────────────────────────────────────────────
     {
       title: 'Total', dataIndex: 'total', width: 110, align: 'right' as const,
-      isAmount: true, mobileLabel: 'Total',
       render: (v: number) => (
         <Text strong style={{ fontSize: 13, color: token.colorPrimary }}>{fmt.money(v)}</Text>
       ),
     },
     // ── Pago ───────────────────────────────────────────────────────────────────
     {
-      title: 'Pago', key: 'tipoPago', width: 80, mobileHide: true,
+      title: 'Pago', key: 'tipoPago', width: 80,
       render: (_: unknown, r: any) => {
         const es = r.tipoPago === 'CREDITO';
         return (
@@ -272,7 +269,7 @@ export default function FacturasPage() {
     },
     // ── Estado ─────────────────────────────────────────────────────────────────
     {
-      title: 'Estado', dataIndex: 'estado', width: 90, isStatus: true,
+      title: 'Estado', dataIndex: 'estado', width: 90,
       render: (v: FacturaEstado) => (
         <Tag color={estadoColor[v]} style={{ fontSize: 11, fontWeight: 600, margin: 0 }}>
           {v.toUpperCase()}
@@ -281,7 +278,7 @@ export default function FacturasPage() {
     },
     // ── e-CF — badge compacto + botón emitir/reenviar ─────────────────────────
     {
-      title: 'e-CF', key: 'ecf', width: 130, mobileHide: true,
+      title: 'e-CF', key: 'ecf', width: 130,
       render: (_: unknown, r: Factura) => {
         const ecf = (r as any).ecf;
         if (r.estado === 'borrador') return null;
@@ -321,7 +318,6 @@ export default function FacturasPage() {
     // ── Acciones — ojo fijo + menú 3 puntos con todo lo demás ─────────────────
     {
       title: '', key: 'acciones', width: 72, align: 'right' as const, fixed: 'right' as const,
-      isActions: true,
       render: (_: unknown, r: Factura) => {
         const siguientes = TRANSICIONES[r.estado];
 
@@ -358,16 +354,11 @@ export default function FacturasPage() {
         ];
 
         return (
-          <Space size={2} onClick={e => e.stopPropagation()}>
-            <Tooltip title="Ver detalle">
-              <Button size="small" type="text" icon={<EyeOutlined />}
-                onClick={() => navigate(`/facturas/${r.id}`)} />
-            </Tooltip>
-            <Dropdown menu={{ items: menuItems }} trigger={['click']} placement="bottomRight">
-              <Button size="small" type="text"
-                icon={<DownOutlined style={{ fontSize: 10 }} />} />
-            </Dropdown>
-          </Space>
+          <TableActions
+            onView={() => navigate(`/facturas/${r.id}`)}
+            items={menuItems}
+            viewLabel="Ver factura"
+          />
         );
       },
     },
@@ -548,14 +539,14 @@ export default function FacturasPage() {
         </Row>
       )}
 
-      {/* ── Tabla responsive — cards en mobile, tabla en desktop ── */}
-      <SmartTable
-        columns={columns as any}
+      {/* ── Tabla — scroll interno para que la página no desborde ── */}
+      <Table
+        columns={columns}
         dataSource={resumen}
         rowKey="id"
         loading={isLoading}
         size="small"
-        emptyDescription="No hay facturas. Crea tu primera factura con el botón +"
+        scroll={{ x: 'max-content' }}
         onRow={r => ({
           style: { cursor: 'pointer' },
           onDoubleClick: () => navigate(`/facturas/${r.id}`),

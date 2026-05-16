@@ -3,11 +3,11 @@ import { Table, Button, Input, Space, Tag, Modal, Form, Row, Col,
          Typography, Popconfirm, message, Card, InputNumber,
          Image, Avatar, Tooltip, Upload, Select, Tabs, Divider,
          Badge, InputNumber as AntInputNumber, Alert, Switch } from 'antd';
-import SmartTable from '../../components/ui/SmartTable';
 import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
          WarningOutlined, PictureOutlined, UploadOutlined, LinkOutlined,
          FileExcelOutlined, BarcodeOutlined, AppstoreOutlined,
          CloseOutlined } from '@ant-design/icons';
+import { TableActions } from '../../components/ui/TableActions';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { productosApi, type ProductoPayload } from '../../api/productos.api';
@@ -445,33 +445,34 @@ function ProductosCatalogo() {
   };
 
   const columns = [
-    { title: '', key: 'img', width: 50, mobileHide: true,
+    { title: '', key: 'img', width: 50,
       render: (_: any, r: Producto) => r.imagenUrl
         ? <Image src={r.imagenUrl} width={36} height={36} style={{ objectFit: 'cover', borderRadius: 6 }} />
         : <Avatar size={36} style={{ background: avatarColor(r.nombre), fontSize: 14, borderRadius: 6 }} shape="square">{r.nombre.charAt(0).toUpperCase()}</Avatar> },
-    { title: 'Código',    dataIndex: 'codigo',        width: 100, mobileSub: true },
-    { title: 'Nombre',    dataIndex: 'nombre',        ellipsis: true, mobileTitle: true },
-    { title: 'Precio',    dataIndex: 'precio',        width: 120, isAmount: true, render: (v: number) => fmt.money(v) },
-    { title: 'ITBIS %',   dataIndex: 'porcentajeIva', width: 80, mobileHide: true, render: (v: number) => `${v}%` },
+    { title: 'Código',    dataIndex: 'codigo',        width: 100 },
+    { title: 'Nombre',    dataIndex: 'nombre',        ellipsis: true },
+    { title: 'Precio',    dataIndex: 'precio',        width: 120, render: (v: number) => fmt.money(v) },
+    { title: 'ITBIS %',   dataIndex: 'porcentajeIva', width: 80,  render: (v: number) => `${v}%` },
     { title: 'Stock', dataIndex: 'stock', width: 100,
       render: (v: number, r: Producto) => {
         const bajo = v <= r.stockMinimo;
         return <Space size={4}>{bajo && <Tooltip title="Stock bajo"><WarningOutlined style={{ color: '#ff4d4f' }} /></Tooltip>}<Text style={{ color: bajo ? '#ff4d4f' : undefined }}>{fmt.number(v)}</Text></Space>;
       } },
-    { title: 'Mín.',      dataIndex: 'stockMinimo',   width: 65, mobileHide: true },
-    { title: 'Categoría', dataIndex: 'categoria',     ellipsis: true, mobileHide: true, render: (v: string) => v ? <Tag>{v}</Tag> : '—' },
-    { title: '', key: 'actions', width: 90, isActions: true,
+    { title: 'Mín.',      dataIndex: 'stockMinimo',   width: 65 },
+    { title: 'Categoría', dataIndex: 'categoria',     ellipsis: true, render: (v: string) => v ? <Tag>{v}</Tag> : '—' },
+    { title: '', key: 'actions', width: 80, isActions: true,
       render: (_: unknown, r: Producto) => (
-        <Space size="small">
-          {puedeEditar && (
-            <Button type="text" icon={<EditOutlined />} onClick={() => openEdit(r)} />
-          )}
-          {puedeEliminar && (
-            <Popconfirm title="¿Eliminar producto?" onConfirm={() => deleteMut.mutate(r.id)}>
-              <Button type="text" danger icon={<DeleteOutlined />} />
-            </Popconfirm>
-          )}
-        </Space>
+        <TableActions
+          onView={() => openEdit(r)}
+          viewLabel="Editar producto"
+          items={[
+            ...(puedeEditar ? [{ key: 'editar', label: 'Editar', icon: <EditOutlined />, onClick: () => openEdit(r) }] : []),
+            ...(puedeEliminar ? [
+              { type: 'divider' as const },
+              { key: 'eliminar', label: 'Eliminar', danger: true, icon: <DeleteOutlined />, onClick: () => deleteMut.mutate(r.id) },
+            ] : []),
+          ]}
+        />
       ) },
   ];
 
@@ -508,9 +509,9 @@ function ProductosCatalogo() {
         </Col>
       </Row>
 
-      <SmartTable columns={columns as any} dataSource={rows} rowKey="id"
+      <Table columns={columns} dataSource={rows} rowKey="id"
         loading={isLoading} size="small"
-        emptyDescription="No hay productos. Agrega tu primer producto con el botón +"
+        scroll={{ x: 'max-content' }}
         rowClassName={(r: Producto) => r.stock <= r.stockMinimo ? 'ant-table-row-danger' : ''}
         pagination={{ total: data?.meta.total, pageSize: 10, current: page,
                       onChange: setPage, showTotal: t => `${t} productos`, showSizeChanger: false }} />

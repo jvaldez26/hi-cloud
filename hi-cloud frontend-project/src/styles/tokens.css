@@ -173,6 +173,24 @@ body {
 .hc-badge-info    { background: var(--hc-info-bg);     color: var(--hc-info);    }
 .hc-badge-neutral { background: var(--hc-bg-subtle);   color: var(--hc-text-2);  }
 
+/* ── Acciones de tabla: ocultar hasta hover ──────────────────────────────── */
+.hc-table-actions {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+/* Mostrar en hover de fila */
+.ant-table-tbody > tr:hover .hc-table-actions {
+  opacity: 1;
+}
+/* Siempre visibles en touch/mobile y cuando el dropdown está abierto */
+@media (max-width: 1024px) {
+  .hc-table-actions { opacity: 1; }
+}
+.ant-dropdown-open .hc-table-actions,
+.ant-table-tbody > tr.ant-table-row-selected .hc-table-actions {
+  opacity: 1;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    OVERRIDE GLOBAL: quitar gradient backgrounds de metric cards (Alegra style)
    Cubre los ~36 módulos que aún tienen linear-gradient en Cards de KPI.

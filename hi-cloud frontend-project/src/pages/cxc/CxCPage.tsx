@@ -4,11 +4,11 @@ import {
   Typography, message, Card, Row, Col, Statistic, DatePicker, theme, Tooltip,
   Drawer, Divider,
 } from 'antd';
-import SmartTable from '../../components/ui/SmartTable';
 import {
   DollarOutlined, SearchOutlined, FileExcelOutlined,
   WhatsAppOutlined, FilterOutlined, HistoryOutlined,
 } from '@ant-design/icons';
+import { TableActions } from '../../components/ui/TableActions';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
@@ -111,7 +111,7 @@ export default function CxCPage() {
 
   const columns = [
     {
-      title: 'Factura', dataIndex: ['factura', 'folio'], width: 150, mobileTitle: true,
+      title: 'Factura', dataIndex: ['factura', 'folio'], width: 150,
       render: (v: string) => <Text strong style={{ fontFamily: 'monospace', fontSize: 12 }}>{v ?? '—'}</Text>,
     },
     {
@@ -119,21 +119,21 @@ export default function CxCPage() {
       render: (v: string) => <Text style={{ fontSize: 13 }}>{v ?? 'Consumidor Final'}</Text>,
     },
     {
-      title: 'Total', dataIndex: 'montoOriginal', width: 120, align: 'right' as const, isAmount: true, mobileHide: true,
+      title: 'Total', dataIndex: 'montoOriginal', width: 120, align: 'right' as const,
       render: (v: number) => fmt.money(v),
     },
     {
-      title: 'Cobrado', dataIndex: 'montoPagado', width: 110, align: 'right' as const, isAmount: true, mobileHide: true,
+      title: 'Cobrado', dataIndex: 'montoPagado', width: 110, align: 'right' as const,
       render: (v: number) => <Text style={{ color: '#059669' }}>{fmt.money(v)}</Text>,
     },
     {
-      title: 'Pendiente', dataIndex: 'montoPendiente', width: 120, align: 'right' as const, isAmount: true,
+      title: 'Pendiente', dataIndex: 'montoPendiente', width: 120, align: 'right' as const,
       render: (v: number) => (
         <Text strong style={{ color: v > 0 ? '#dc2626' : '#059669' }}>{fmt.money(v)}</Text>
       ),
     },
     {
-      title: 'Vencimiento', dataIndex: 'fechaVencimiento', width: 110, mobileSub: true,
+      title: 'Vencimiento', dataIndex: 'fechaVencimiento', width: 110,
       render: (v: string) => {
         if (!v) return '—';
         const dias = dayjs(v).diff(dayjs(), 'day');
@@ -142,7 +142,7 @@ export default function CxCPage() {
       },
     },
     {
-      title: 'Estado', dataIndex: 'estado', width: 120, isStatus: true,
+      title: 'Estado', dataIndex: 'estado', width: 120,
       render: (v: string) => (
         <Tag color={estadoColor[v] ?? 'default'} style={{ fontSize: 11, fontWeight: 600, margin: 0 }}>
           {v.replace('_', ' ').toUpperCase()}
@@ -150,27 +150,20 @@ export default function CxCPage() {
       ),
     },
     {
-      title: '', key: 'actions', width: 100, align: 'right' as const, isActions: true,
+      title: '', key: 'actions', width: 100, align: 'right' as const,
       render: (_: unknown, r: CuentaPorCobrar) => (
-        <Space size={4}>
-          {r.estado !== 'pagada' && r.estado !== 'anulada' && puedeCobrar && (
-            <Tooltip title="Registrar cobro">
-              <Button size="small" type="primary" icon={<DollarOutlined />}
-                onClick={() => { setPagoId(r.id); setPagoRow(r); form.setFieldsValue({ monto: Number(r.montoPendiente), fechaPago: dayjs() }); }}
-              />
-            </Tooltip>
-          )}
-          <Tooltip title="Historial de cobros">
-            <Button size="small" type="text" icon={<HistoryOutlined />}
-              onClick={() => setHistId(r.id)} />
-          </Tooltip>
-          <Tooltip title="Recordatorio WhatsApp">
-            <Button size="small" type="text"
-              icon={<WhatsAppOutlined style={{ color: '#25D366' }} />}
-              onClick={() => abrirWhatsApp(r)}
-            />
-          </Tooltip>
-        </Space>
+        <TableActions
+          onView={() => setHistId(r.id)}
+          viewLabel="Historial de cobros"
+          items={[
+            ...(r.estado !== 'pagada' && r.estado !== 'anulada' && puedeCobrar ? [{
+              key: 'cobro', label: 'Registrar cobro', icon: <DollarOutlined />,
+              onClick: () => { setPagoId(r.id); setPagoRow(r); form.setFieldsValue({ monto: Number(r.montoPendiente), fechaPago: dayjs() }); },
+            }] : []),
+            { key: 'historial', label: 'Ver historial', icon: <HistoryOutlined />, onClick: () => setHistId(r.id) },
+            { key: 'whatsapp', label: 'Recordatorio WhatsApp', icon: <WhatsAppOutlined />, onClick: () => abrirWhatsApp(r) },
+          ]}
+        />
       ),
     },
   ];
@@ -248,10 +241,10 @@ export default function CxCPage() {
           )}
         </Row>
 
-        <SmartTable
-          columns={columns as any} dataSource={rows} rowKey="id"
+        <Table
+          columns={columns} dataSource={rows} rowKey="id"
           loading={isLoading} size="small"
-          emptyDescription="No hay cuentas por cobrar pendientes"
+        scroll={{ x: 'max-content' }}
           pagination={{
             total: data?.meta.total, pageSize: 15, current: page,
             onChange: setPage, showTotal: t => `${t.toLocaleString('es-DO')} cuentas`,

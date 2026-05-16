@@ -4,7 +4,7 @@ import {
   Form, Input, Select, Popconfirm, message, Row, Col, Statistic,
   Tooltip, Badge, Divider, Alert,
 } from 'antd';
-import SmartTable from '../../components/ui/SmartTable';
+import { TableActions } from '../../components/ui/TableActions';
 import {
   UserAddOutlined, MailOutlined, DeleteOutlined, CrownOutlined,
   TeamOutlined, ClockCircleOutlined, CheckCircleOutlined,
@@ -166,7 +166,7 @@ export default function EquipoPage() {
 
   const colsMiembros = [
     {
-      title: 'Usuario', key: 'user', mobileTitle: true,
+      title: 'Usuario', key: 'user',
       render: (_: any, r: any) => (
         <Space>
           <Avatar size={34} style={{ background: ROL_INFO[r.rol]?.color ?? '#1677ff', fontSize: 13 }}>
@@ -181,7 +181,7 @@ export default function EquipoPage() {
       ),
     },
     {
-      title: 'Rol', dataIndex: 'rol', width: 160, isStatus: true,
+      title: 'Rol', dataIndex: 'rol', width: 160,
       render: (v: string) => {
         const info = ROL_INFO[v];
         return info ? (
@@ -192,27 +192,27 @@ export default function EquipoPage() {
       },
     },
     {
-      title: 'Estado', key: 'estado', width: 100, mobileHide: true,
+      title: 'Estado', key: 'estado', width: 100,
       render: (_: any, r: any) => r.user?.isActive !== false
         ? <Badge status="success" text="Activo" />
         : <Badge status="default" text="Inactivo" />,
     },
     {
-      title: 'Empresa principal', dataIndex: 'isPrincipal', width: 140, mobileHide: true,
+      title: 'Empresa principal', dataIndex: 'isPrincipal', width: 140,
       render: (v: boolean) => v ? <Tag color="blue">Principal</Tag> : <Tag>Adicional</Tag>,
     },
     {
-      title: '', key: 'actions', width: 100, isActions: true,
+      title: '', key: 'actions', width: 100,
       render: (_: any, r: any) => (
-        <Space size={4}>
-          <Tooltip title="Cambiar rol">
-            <Button size="small" icon={<CrownOutlined />}
-              onClick={() => { setRolModal({ userId: r.userId, rolActual: r.rol }); setRol(r.rol); }} />
-          </Tooltip>
-          <Popconfirm title="¿Remover acceso de este usuario?" onConfirm={() => removerMut.mutate(r.userId)}>
-            <Button size="small" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
+        <TableActions
+          onView={() => { setRolModal({ userId: r.userId, rolActual: r.rol }); setRol(r.rol); }}
+          viewLabel="Cambiar rol"
+          items={[
+            { key: 'rol', label: 'Cambiar rol', icon: <CrownOutlined />, onClick: () => { setRolModal({ userId: r.userId, rolActual: r.rol }); setRol(r.rol); } },
+            { type: 'divider' as const },
+            { key: 'remover', label: 'Remover del equipo', danger: true, icon: <DeleteOutlined />, onClick: () => removerMut.mutate(r.userId) },
+          ]}
+        />
       ),
     },
   ];
@@ -319,10 +319,9 @@ export default function EquipoPage() {
       {/* Miembros activos */}
       <Card title={<Space><TeamOutlined /><span>Miembros del equipo</span></Space>}
         style={{ marginBottom: 16 }}>
-        <SmartTable columns={colsMiembros as any} dataSource={miembrosData}
+        <Table columns={colsMiembros} dataSource={miembrosData}
           rowKey="userId" loading={loadM} size="small"
-          emptyDescription="No hay miembros en el equipo. Invita a un usuario con el botón +"
-          pagination={false} />
+        scroll={{ x: 'max-content' }} pagination={false} />
       </Card>
 
       {/* Invitaciones pendientes */}

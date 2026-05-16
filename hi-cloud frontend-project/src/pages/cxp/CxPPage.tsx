@@ -4,11 +4,11 @@ import {
   Typography, message, Card, Row, Col, Statistic, DatePicker, theme, Tooltip,
   Divider, Drawer,
 } from 'antd';
-import SmartTable from '../../components/ui/SmartTable';
 import {
   DollarOutlined, SearchOutlined, FileExcelOutlined,
   FilterOutlined, HistoryOutlined,
 } from '@ant-design/icons';
+import { TableActions } from '../../components/ui/TableActions';
 import api from '../../api/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -101,7 +101,7 @@ export default function CxPPage() {
 
   const columns = [
     {
-      title: 'Compra', dataIndex: ['compra', 'folio'], width: 160, mobileTitle: true,
+      title: 'Compra', dataIndex: ['compra', 'folio'], width: 160,
       render: (v: string) => <Text strong style={{ fontFamily: 'monospace', fontSize: 12 }}>{v ?? '—'}</Text>,
     },
     {
@@ -109,21 +109,21 @@ export default function CxPPage() {
       render: (v: string) => <Text style={{ fontSize: 13 }}>{v ?? '—'}</Text>,
     },
     {
-      title: 'Total', dataIndex: 'montoOriginal', width: 120, align: 'right' as const, isAmount: true, mobileHide: true,
+      title: 'Total', dataIndex: 'montoOriginal', width: 120, align: 'right' as const,
       render: (v: number) => fmt.money(v),
     },
     {
-      title: 'Pagado', dataIndex: 'montoPagado', width: 110, align: 'right' as const, isAmount: true, mobileHide: true,
+      title: 'Pagado', dataIndex: 'montoPagado', width: 110, align: 'right' as const,
       render: (v: number) => <Text style={{ color: '#059669' }}>{fmt.money(v)}</Text>,
     },
     {
-      title: 'Pendiente', dataIndex: 'montoPendiente', width: 120, align: 'right' as const, isAmount: true,
+      title: 'Pendiente', dataIndex: 'montoPendiente', width: 120, align: 'right' as const,
       render: (v: number) => (
         <Text strong style={{ color: v > 0 ? '#dc2626' : '#059669' }}>{fmt.money(v)}</Text>
       ),
     },
     {
-      title: 'Vencimiento', dataIndex: 'fechaVencimiento', width: 112, mobileSub: true,
+      title: 'Vencimiento', dataIndex: 'fechaVencimiento', width: 112,
       render: (v: string) => {
         if (!v) return '—';
         const dias = dayjs(v).diff(dayjs(), 'day');
@@ -132,7 +132,7 @@ export default function CxPPage() {
       },
     },
     {
-      title: 'Estado', dataIndex: 'estado', width: 120, isStatus: true,
+      title: 'Estado', dataIndex: 'estado', width: 120,
       render: (v: string) => (
         <Tag color={estadoColor[v] ?? 'default'} style={{ fontSize: 11, fontWeight: 600, margin: 0 }}>
           {v.replace('_', ' ').toUpperCase()}
@@ -140,25 +140,19 @@ export default function CxPPage() {
       ),
     },
     {
-      title: '', key: 'actions', width: 90, align: 'right' as const, isActions: true,
+      title: '', key: 'actions', width: 90, align: 'right' as const,
       render: (_: unknown, r: CuentaPorPagar) => (
-        <Space size={4}>
-          {r.estado !== 'pagada' && r.estado !== 'anulada' && (
-            <Tooltip title="Registrar pago">
-              <Button size="small" type="primary" icon={<DollarOutlined />}
-                onClick={() => {
-                  setPagoId(r.id);
-                  setPagoRow(r);
-                  form.setFieldsValue({ monto: Number(r.montoPendiente), fechaPago: dayjs() });
-                }}
-              />
-            </Tooltip>
-          )}
-          <Tooltip title="Historial de pagos">
-            <Button size="small" type="text" icon={<HistoryOutlined />}
-              onClick={() => setHistId(r.id)} />
-          </Tooltip>
-        </Space>
+        <TableActions
+          onView={() => setHistId(r.id)}
+          viewLabel="Historial de pagos"
+          items={[
+            ...(r.estado !== 'pagada' && r.estado !== 'anulada' ? [{
+              key: 'pago', label: 'Registrar pago', icon: <DollarOutlined />,
+              onClick: () => { setPagoId(r.id); setPagoRow(r); form.setFieldsValue({ monto: Number(r.montoPendiente), fechaPago: dayjs() }); },
+            }] : []),
+            { key: 'historial', label: 'Ver historial', icon: <HistoryOutlined />, onClick: () => setHistId(r.id) },
+          ]}
+        />
       ),
     },
   ];
@@ -237,10 +231,10 @@ export default function CxPPage() {
           )}
         </Row>
 
-        <SmartTable
-          columns={columns as any} dataSource={rows} rowKey="id"
+        <Table
+          columns={columns} dataSource={rows} rowKey="id"
           loading={isLoading} size="small"
-          emptyDescription="No hay cuentas por pagar pendientes"
+        scroll={{ x: 'max-content' }}
           pagination={{
             total: search ? rows.length : data?.meta.total,
             pageSize: 15, current: page,

@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { usePlanGuard } from '../../hooks/usePlan';
 import ModuloBloqueado from '../../components/ui/ModuloBloqueado';
+import { TableActions } from '../../components/ui/TableActions';
 import {
   Tabs, Table, Button, Tag, Space, Modal, Form, Input, InputNumber,
   Select, Row, Col, Typography, Card, Statistic, Popconfirm,
   message, Descriptions, Drawer, Tooltip, Alert, Badge,
 } from 'antd';
-import SmartTable from '../../components/ui/SmartTable';
 import {
   PlusOutlined, EyeOutlined, CheckOutlined, DollarOutlined,
   UserOutlined, FileExcelOutlined, SearchOutlined, FilePdfOutlined,
@@ -69,15 +69,18 @@ function EmpleadosTab() {
   const closeModal = () => { setOpen(false); setEditing(null); form.resetFields(); };
 
   const cols = [
-    { title: 'Cédula',   dataIndex: 'cedula',       width: 120, mobileSub: true },
-    { title: 'Nombre',   key: 'nombre', ellipsis: true, mobileTitle: true, render: (_: any, r: any) => `${r.nombre} ${r.apellido}` },
+    { title: 'Cédula',   dataIndex: 'cedula',       width: 120 },
+    { title: 'Nombre',   key: 'nombre', ellipsis: true, render: (_: any, r: any) => `${r.nombre} ${r.apellido}` },
     { title: 'Cargo',    dataIndex: 'cargo',        ellipsis: true },
-    { title: 'Depto.',   dataIndex: 'departamento', width: 120, mobileHide: true },
-    { title: 'Salario',  dataIndex: 'salarioBase',  width: 130, isAmount: true, render: (v: number) => fmt.money(v) },
-    { title: 'Estado',   dataIndex: 'estado',       width: 90, isStatus: true,
+    { title: 'Depto.',   dataIndex: 'departamento', width: 120 },
+    { title: 'Salario',  dataIndex: 'salarioBase',  width: 130, render: (v: number) => fmt.money(v) },
+    { title: 'Estado',   dataIndex: 'estado',       width: 90,
       render: (v: string) => <Tag color={v === 'activo' ? 'green' : 'red'}>{v?.toUpperCase()}</Tag> },
     { title: '', key: 'actions', width: 70, isActions: true,
-      render: (_: any, r: any) => <Button type="text" icon={<EyeOutlined />} onClick={() => openEdit(r)} /> },
+      render: (_: any, r: any) => (
+        <TableActions onView={() => openEdit(r)} viewLabel="Ver empleado"
+          items={[{ key: 'editar', label: 'Editar empleado', icon: <EyeOutlined />, onClick: () => openEdit(r) }]} />
+      )},
   ];
 
   return (
@@ -110,9 +113,9 @@ function EmpleadosTab() {
           </Space>
         </Col>
       </Row>
-      <SmartTable columns={cols as any} dataSource={data?.data ?? []} rowKey="id" loading={isLoading} size="small"
-        emptyDescription="No hay empleados. Agrega tu primer empleado con el botón +"
-        pagination={{ total: data?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }} />
+      <Table columns={cols} dataSource={data?.data ?? []} rowKey="id" loading={isLoading} size="small"
+        pagination={{ total: data?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }} 
+        scroll={{ x: 'max-content' }} />
 
       <Modal title={editing ? 'Editar empleado' : 'Nuevo empleado'} open={open} onCancel={closeModal} footer={null} width={780}>
         <Form form={form} layout="vertical"
