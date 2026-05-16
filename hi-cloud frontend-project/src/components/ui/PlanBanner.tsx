@@ -1,11 +1,13 @@
 import { Button, Progress } from 'antd';
-import { AlertTriangle, Zap, Crown, ChevronRight } from 'lucide-react';
+import { AlertTriangle, Zap, Crown, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { useState } from 'react';
 import { suscripcionesApi } from '../../api/suscripciones.api';
 
 export default function PlanBanner() {
-  const navigate = useNavigate();
+  const navigate  = useNavigate();
+  const [cerrado, setCerrado] = useState(false);
 
   const { data: suscripcion } = useQuery({
     queryKey: ['mi-plan'],
@@ -22,7 +24,7 @@ export default function PlanBanner() {
     retry: false,
   });
 
-  if (!suscripcion) return null;
+  if (!suscripcion || cerrado) return null;
 
   const plan   = suscripcion.plan as string;
   const dias   = suscripcion.diasRestantes as number;
@@ -63,8 +65,6 @@ export default function PlanBanner() {
   }
 
   if (bloqueos.length > 0) {
-    // Límite de USUARIOS: solo ámbar (el sistema sigue funcionando, solo no puede invitar más)
-    // Límite de INGRESOS: rojo (impacto operativo real)
     const soloUsuarios = bloqueos.every(b => b.includes('usuarios'));
     return (
       <div style={{
@@ -80,6 +80,7 @@ export default function PlanBanner() {
             {soloUsuarios ? '⚠️' : '🚫'} Límite alcanzado: <strong>{bloqueos.join(', ')}</strong>. Actualiza tu plan.
           </span>
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <Button
           size="small"
           onClick={() => navigate('/suscripcion/planes')}
@@ -89,6 +90,14 @@ export default function PlanBanner() {
           }>
           Ver planes
         </Button>
+        <button
+          onClick={() => setCerrado(true)}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center', color: soloUsuarios ? '#92400E' : '#991B1B', opacity: 0.6 }}
+          title="Cerrar"
+        >
+          <X size={14} />
+        </button>
+        </div>
       </div>
     );
   }
