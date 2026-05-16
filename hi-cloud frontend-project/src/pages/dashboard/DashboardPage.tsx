@@ -25,12 +25,8 @@ import { useAuthStore } from '../../store/auth.store';
 
 const { Title, Text } = Typography;
 
-const CARD_GRADIENTS = [
-  'linear-gradient(135deg, #1a56db 0%, #0ea5e9 100%)',
-  'linear-gradient(135deg, #059669 0%, #10b981 100%)',
-  'linear-gradient(135deg, #d97706 0%, #f59e0b 100%)',
-  'linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%)',
-];
+// Colores semánticos (reemplaza gradientes)
+const CARD_ACCENTS = ['#0EA5E9', '#10B981', '#F59E0B', '#7C3AED'];
 
 // ── Colores semánticos para gráficas ─────────────────────────────────────────
 const COLOR_VENTAS    = '#1677ff';
@@ -110,39 +106,39 @@ function DashboardVendedor() {
       {/* KPIs del vendedor */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} sm={8}>
-          <Card style={{ background: 'linear-gradient(135deg,#1a56db,#0ea5e9)', border: 'none', borderRadius: 12 }}>
+          <Card style={{ borderRadius: 12, borderLeft: '3px solid #0EA5E9' }}>
             <Statistic
-              title={<span style={{ color: 'rgba(255,255,255,.75)', fontSize: 12 }}>Facturado este mes</span>}
+              title={<span style={{ fontSize: 12, color: token.colorTextTertiary }}>Facturado este mes</span>}
               value={totalFacturado}
               formatter={v => fmt.money(Number(v))}
-              valueStyle={{ color: '#fff', fontSize: 22, fontWeight: 700 }}
-              prefix={<DollarOutlined />}
+              valueStyle={{ fontSize: 22, fontWeight: 700 }}
+              prefix={<DollarOutlined style={{ color: '#0EA5E9', marginRight: 4 }} />}
             />
-            <Button size="small" type="link" style={{ color: 'rgba(255,255,255,.7)', padding: 0, marginTop: 8 }}
+            <Button size="small" type="link" style={{ padding: 0, marginTop: 6 }}
               onClick={() => navigate('/facturas')}>Ver facturas →</Button>
           </Card>
         </Col>
         <Col xs={24} sm={8}>
-          <Card style={{ background: 'linear-gradient(135deg,#059669,#10b981)', border: 'none', borderRadius: 12 }}>
+          <Card style={{ borderRadius: 12, borderLeft: '3px solid #10B981' }}>
             <Statistic
-              title={<span style={{ color: 'rgba(255,255,255,.75)', fontSize: 12 }}>Cotizaciones activas</span>}
+              title={<span style={{ fontSize: 12, color: token.colorTextTertiary }}>Cotizaciones activas</span>}
               value={cotData.filter((c: any) => ['borrador','enviada'].includes(c.estado)).length}
-              valueStyle={{ color: '#fff', fontSize: 22, fontWeight: 700 }}
-              suffix={<span style={{ fontSize: 13, color: 'rgba(255,255,255,.65)' }}> cotizaciones</span>}
+              valueStyle={{ fontSize: 22, fontWeight: 700 }}
+              suffix={<span style={{ fontSize: 13, color: token.colorTextTertiary }}> cotizaciones</span>}
             />
-            <Button size="small" type="link" style={{ color: 'rgba(255,255,255,.7)', padding: 0, marginTop: 8 }}
+            <Button size="small" type="link" style={{ padding: 0, marginTop: 6 }}
               onClick={() => navigate('/cotizaciones')}>Ver cotizaciones →</Button>
           </Card>
         </Col>
         <Col xs={24} sm={8}>
-          <Card style={{ background: 'linear-gradient(135deg,#d97706,#f59e0b)', border: 'none', borderRadius: 12 }}>
+          <Card style={{ borderRadius: 12, borderLeft: '3px solid #F59E0B' }}>
             <Statistic
-              title={<span style={{ color: 'rgba(255,255,255,.75)', fontSize: 12 }}>Cotizaciones aceptadas</span>}
+              title={<span style={{ fontSize: 12, color: token.colorTextTertiary }}>Cotizaciones aceptadas</span>}
               value={cotAceptadas}
-              valueStyle={{ color: '#fff', fontSize: 22, fontWeight: 700 }}
-              suffix={<span style={{ fontSize: 13, color: 'rgba(255,255,255,.65)' }}>/ {cotData.length}</span>}
+              valueStyle={{ fontSize: 22, fontWeight: 700, color: '#F59E0B' }}
+              suffix={<span style={{ fontSize: 13, color: token.colorTextTertiary }}>/ {cotData.length}</span>}
             />
-            <div style={{ color: 'rgba(255,255,255,.7)', fontSize: 11, marginTop: 8 }}>
+            <div style={{ color: token.colorTextTertiary, fontSize: 11, marginTop: 6 }}>
               Total cotizado: {fmt.money(totalCotizado)}
             </div>
           </Card>
@@ -333,23 +329,23 @@ export default function DashboardPage() {
     {
       title: 'Ventas hoy',
       value: ventas.hoy ?? 0,
-      gradient: CARD_GRADIENTS[0], icon: <DollarOutlined />, formatter: fmt.money,
+      accent: CARD_ACCENTS[0], icon: <DollarOutlined />, formatter: fmt.money,
     },
     {
       title: 'Ventas del mes',
       value: ventas.mes ?? 0,
-      gradient: CARD_GRADIENTS[1], icon: <RiseOutlined />, formatter: fmt.money,
+      accent: CARD_ACCENTS[1], icon: <RiseOutlined />, formatter: fmt.money,
       trend: trendVentas !== null ? { value: trendVentas, label: 'vs mes ant.' } : undefined,
     },
     {
       title: 'Compras del mes',
       value: kpis?.compras?.mes ?? 0,
-      gradient: CARD_GRADIENTS[2], icon: <ShoppingCartOutlined />, formatter: fmt.money,
+      accent: CARD_ACCENTS[2], icon: <ShoppingCartOutlined />, formatter: fmt.money,
     },
     {
       title: 'Balance del mes',
       value: balance.balance ?? 0,
-      gradient: CARD_GRADIENTS[3], icon: <ArrowUpOutlined />, formatter: fmt.money,
+      accent: CARD_ACCENTS[3], icon: <ArrowUpOutlined />, formatter: fmt.money,
     },
   ];
 
@@ -528,7 +524,7 @@ export default function DashboardPage() {
                       </Row>
                       <div style={{ background: token.colorFillSecondary, borderRadius: 4, height: 4, overflow: 'hidden' }}>
                         <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: .7, delay: .5 + i * .07 }}
-                          style={{ height: '100%', background: `linear-gradient(90deg,${COLOR_VENTAS},#0ea5e9)`, borderRadius: 4 }} />
+                          style={{ height: '100%', background: COLOR_VENTAS, borderRadius: 4 }} />
                       </div>
                     </motion.div>
                   );

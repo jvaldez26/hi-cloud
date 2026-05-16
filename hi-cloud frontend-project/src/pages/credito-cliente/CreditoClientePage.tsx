@@ -6,7 +6,7 @@ import {
 } from 'antd';
 import {
   CreditCardOutlined, PlusOutlined, WarningOutlined, CheckCircleOutlined,
-  CloseCircleOutlined, FileExcelOutlined,
+  CloseCircleOutlined, FileExcelOutlined, BankOutlined,
 } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import dayjs from 'dayjs';
@@ -96,27 +96,34 @@ export default function CreditoClientePage() {
       {/* KPIs */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={12} sm={6}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#1a56db,#3b82f6)' }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Total Límite</span>}
-              value={resumen?.totalLimite ?? 0} formatter={v => fmt(Number(v))} valueStyle={{ color: '#fff', fontSize: 18 }} />
+          <Card bordered={false} style={{ borderRadius: 12, borderLeft: '3px solid #0EA5E9' }}>
+            <Statistic title={<span style={{ fontSize: 12, color: token.colorTextTertiary }}>Total Límite</span>}
+              value={resumen?.totalLimite ?? 0} formatter={v => fmt(Number(v))}
+              valueStyle={{ fontSize: 18, fontWeight: 700 }}
+              prefix={<BankOutlined style={{ color: '#0EA5E9', marginRight: 4 }} />} />
           </Card>
         </Col>
         <Col xs={12} sm={6}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#7c3aed,#a78bfa)' }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Utilizado</span>}
-              value={resumen?.totalUtilizado ?? 0} formatter={v => fmt(Number(v))} valueStyle={{ color: '#fff', fontSize: 18 }} />
+          <Card bordered={false} style={{ borderRadius: 12, borderLeft: '3px solid #7C3AED' }}>
+            <Statistic title={<span style={{ fontSize: 12, color: token.colorTextTertiary }}>Utilizado</span>}
+              value={resumen?.totalUtilizado ?? 0} formatter={v => fmt(Number(v))}
+              valueStyle={{ fontSize: 18, fontWeight: 700, color: '#7C3AED' }} />
           </Card>
         </Col>
         <Col xs={12} sm={6}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#d97706,#f59e0b)' }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>En Riesgo (≥90%)</span>}
-              value={resumen?.enRiesgo ?? 0} prefix={<WarningOutlined />} valueStyle={{ color: '#fff', fontSize: 28 }} />
+          <Card bordered={false} style={{ borderRadius: 12, borderLeft: '3px solid #F59E0B' }}>
+            <Statistic title={<span style={{ fontSize: 12, color: token.colorTextTertiary }}>En Riesgo (≥90%)</span>}
+              value={resumen?.enRiesgo ?? 0}
+              prefix={<WarningOutlined style={{ color: '#F59E0B', marginRight: 4 }} />}
+              valueStyle={{ fontSize: 24, fontWeight: 700, color: '#F59E0B' }} />
           </Card>
         </Col>
         <Col xs={12} sm={6}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#dc2626,#ef4444)' }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Excedidos</span>}
-              value={resumen?.excedidos ?? 0} prefix={<CloseCircleOutlined />} valueStyle={{ color: '#fff', fontSize: 28 }} />
+          <Card bordered={false} style={{ borderRadius: 12, borderLeft: '3px solid #EF4444' }}>
+            <Statistic title={<span style={{ fontSize: 12, color: token.colorTextTertiary }}>Excedidos</span>}
+              value={resumen?.excedidos ?? 0}
+              prefix={<CloseCircleOutlined style={{ color: '#EF4444', marginRight: 4 }} />}
+              valueStyle={{ fontSize: 24, fontWeight: 700, color: '#EF4444' }} />
           </Card>
         </Col>
       </Row>

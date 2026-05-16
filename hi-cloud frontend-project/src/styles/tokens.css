@@ -173,6 +173,39 @@ body {
 .hc-badge-info    { background: var(--hc-info-bg);     color: var(--hc-info);    }
 .hc-badge-neutral { background: var(--hc-bg-subtle);   color: var(--hc-text-2);  }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   OVERRIDE GLOBAL: quitar gradient backgrounds de metric cards (Alegra style)
+   Cubre los ~36 módulos que aún tienen linear-gradient en Cards de KPI.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.ant-card[style*="linear-gradient"],
+.ant-card[style*="linear-gradient"] .ant-card-body {
+  background: var(--hc-bg-card, #ffffff) !important;
+  border-color: var(--hc-border, #E2E8F0) !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
+}
+.ant-card[style*="linear-gradient"] .ant-statistic-title,
+.ant-card[style*="linear-gradient"] .ant-statistic-title span,
+.ant-card[style*="linear-gradient"] .ant-statistic-title * {
+  color: var(--hc-text-2, #64748B) !important;
+}
+.ant-card[style*="linear-gradient"] .ant-statistic-content-value,
+.ant-card[style*="linear-gradient"] .ant-statistic-content {
+  color: var(--hc-text, #0F172A) !important;
+}
+.ant-card[style*="linear-gradient"] .ant-btn-link {
+  color: var(--hc-brand, #0EA5E9) !important;
+}
+[data-theme="dark"] .ant-card[style*="linear-gradient"],
+[data-theme="dark"] .ant-card[style*="linear-gradient"] .ant-card-body {
+  background: var(--hc-bg-card, #161B22) !important;
+  border-color: var(--hc-border, #30363D) !important;
+}
+[data-theme="dark"] .ant-card[style*="linear-gradient"] .ant-statistic-content-value,
+[data-theme="dark"] .ant-card[style*="linear-gradient"] .ant-statistic-content {
+  color: var(--hc-text, #E6EDF3) !important;
+}
+
 /* Transición suave de tema en componentes antd */
 .ant-layout,
 .ant-layout-sider,

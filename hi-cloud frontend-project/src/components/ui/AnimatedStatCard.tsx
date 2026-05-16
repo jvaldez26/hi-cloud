@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Card, Typography } from 'antd';
-
-const { Text, Title } = Typography;
 
 interface Props {
   title:      string;
   value:      number;
   prefix?:    string;
   suffix?:    string;
-  gradient:   string;
+  /** Color semántico — solo para ícono y valor. El fondo es siempre blanco/oscuro. */
+  accent?:    string;
+  /** @deprecated Usar accent en su lugar */
+  gradient?:  string;
   icon:       React.ReactNode;
   trend?:     { value: number; label: string };
   formatter?: (n: number) => string;
@@ -36,64 +36,83 @@ function useCountUp(target: number, duration = 1.2) {
   return count;
 }
 
+// Extrae el primer color de un gradient legacy o devuelve el accent directo
+function resolveAccent(accent?: string, gradient?: string): string {
+  if (accent) return accent;
+  if (gradient) {
+    const m = gradient.match(/#[0-9a-fA-F]{3,6}/);
+    return m ? m[0] : '#0EA5E9';
+  }
+  return '#0EA5E9';
+}
+
 export default function AnimatedStatCard({ title, value, prefix = '', suffix = '',
-  gradient, icon, trend, formatter, delay = 0 }: Props) {
+  accent, gradient, icon, trend, formatter, delay = 0 }: Props) {
   const animated = useCountUp(value, 1.4);
   const display  = formatter ? formatter(animated) : `${prefix}${animated.toLocaleString('es-DO')}${suffix}`;
+  const color    = resolveAccent(accent, gradient);
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 24, scale: 0.96 }}
-      animate={{ opacity: 1, y: 0,  scale: 1 }}
-      transition={{ duration: 0.45, delay, ease: [0.4, 0, 0.2, 1] }}
-      whileHover={{ y: -4, scale: 1.025, transition: { duration: 0.2 } }}
-      style={{ cursor: 'default' }}
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, delay, ease: [0.4, 0, 0.2, 1] }}
+      whileHover={{ y: -2, transition: { duration: 0.15 } }}
+      style={{ cursor: 'default', height: '100%' }}
     >
       <div style={{
-        background:   gradient,
-        borderRadius: 14,
-        padding:      '20px 24px',
-        boxShadow:    '0 8px 32px rgba(0,0,0,.14)',
-        display:      'flex',
+        background:    'var(--hc-bg-card, #fff)',
+        border:        '1px solid var(--hc-border, #E2E8F0)',
+        borderRadius:  12,
+        padding:       '18px 20px',
+        boxShadow:     '0 1px 3px rgba(0,0,0,0.05)',
+        display:       'flex',
         flexDirection: 'column',
-        gap:           8,
-        color:         '#fff',
-        position:     'relative',
-        overflow:     'hidden',
+        gap:            6,
+        height:        '100%',
+        position:      'relative',
       }}>
-        {/* Círculo decorativo de fondo */}
+        {/* Franja de acento izquierda */}
         <div style={{
           position:     'absolute',
-          right:        -20,
-          top:          -20,
-          width:         90,
-          height:        90,
-          borderRadius: '50%',
-          background:   'rgba(255,255,255,.12)',
-          pointerEvents:'none',
-        }} />
-        <div style={{
-          position:     'absolute',
-          right:         10,
-          bottom:       -30,
-          width:         70,
-          height:        70,
-          borderRadius: '50%',
-          background:   'rgba(255,255,255,.08)',
-          pointerEvents:'none',
+          left:          0, top: 16, bottom: 16,
+          width:         3, borderRadius: '0 3px 3px 0',
+          background:    color,
+          opacity:       0.7,
         }} />
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <Text style={{ color: 'rgba(255,255,255,.85)', fontSize: 13, fontWeight: 500 }}>{title}</Text>
-          <div style={{ fontSize: 22, opacity: .9 }}>{icon}</div>
+        {/* Label + ícono */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{
+            fontSize:      12,
+            fontWeight:    500,
+            color:         'var(--hc-text-2, #64748B)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.04em',
+          }}>
+            {title}
+          </span>
+          <span style={{ fontSize: 18, color, opacity: 0.85 }}>{icon}</span>
         </div>
 
-        <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: -0.5 }}>
+        {/* Valor */}
+        <div style={{
+          fontSize:       26,
+          fontWeight:     700,
+          letterSpacing:  -0.5,
+          color:          'var(--hc-text, #0F172A)',
+          lineHeight:     1.1,
+        }}>
           {display}
         </div>
 
+        {/* Tendencia */}
         {trend && (
-          <div style={{ fontSize: 12, color: 'rgba(255,255,255,.8)', display: 'flex', alignItems: 'center', gap: 4 }}>
+          <div style={{
+            fontSize: 12,
+            color:    trend.value >= 0 ? '#10B981' : '#EF4444',
+            display:  'flex', alignItems: 'center', gap: 3,
+          }}>
             <span>{trend.value >= 0 ? '↑' : '↓'}</span>
             <span>{Math.abs(trend.value)}% {trend.label}</span>
           </div>
