@@ -422,7 +422,8 @@ export class AuthService {
   async verifyEmail(token: string): Promise<{ message: string }> {
     const user = await this.userRepository.findOne({
       where: { emailVerificationToken: token } as any,
-      select: ['id', 'emailVerifiedAt', 'emailVerificationExpires', 'isActive'] as any,
+      // email y nombre incluidos — necesarios para el email de bienvenida
+      select: ['id', 'nombre', 'email', 'emailVerifiedAt', 'emailVerificationExpires', 'isActive'] as any,
     });
 
     if (!user) throw new BadRequestException('Token inválido o expirado');

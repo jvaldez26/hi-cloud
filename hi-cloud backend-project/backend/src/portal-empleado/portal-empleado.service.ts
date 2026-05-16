@@ -15,16 +15,29 @@ export class PortalEmpleadoService {
   ) {}
 
   // ─── Perfil del empleado vinculado al usuario logueado ───────────────────────
+  // Vinculación por email: el email del usuario debe coincidir con el del empleado.
 
   async getMiPerfil(usuarioId: number) {
     const empresaId = this.tenantSvc.getEmpresaId();
+
+    // Obtener el email del usuario para buscar el empleado vinculado
+    const [userRow] = await this.dataSource.query<{ email: string }[]>(
+      `SELECT email FROM users WHERE id = $1 LIMIT 1`,
+      [usuarioId],
+    );
+    if (!userRow) throw new NotFoundException('Usuario no encontrado');
+
     const emp = await this.empRepo
       .createQueryBuilder('e')
-      .where('e.empresaId = :eid', { eid: empresaId })
-      .andWhere('e."usuarioId" = :uid', { uid: usuarioId })
-      .andWhere('e.isActive = :a', { a: true })
+      .where('e."empresaId" = :eid',             { eid: empresaId })
+      .andWhere('LOWER(e.email) = LOWER(:email)', { email: userRow.email })
+      .andWhere('e."isActive" = :a',              { a: true })
       .getOne();
-    if (!emp) throw new NotFoundException('No hay un empleado vinculado a tu usuario en esta empresa');
+
+    if (!emp) throw new NotFoundException(
+      'No hay un empleado vinculado a tu usuario en esta empresa. ' +
+      'Pide al administrador que registre tu empleado con el correo: ' + userRow.email,
+    );
     return emp;
   }
 
