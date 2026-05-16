@@ -111,18 +111,25 @@ export class SuscripcionesService implements OnModuleInit {
       fin.setMonth(fin.getMonth() + meses);
     }
 
+    // Raw SQL para evitar cualquier cast de enum de TypeORM
     if (s) {
-      await this.repo.update(s.id, {
-        plan, estado: SuscripcionEstado.ACTIVA, modalidad,
-        fechaInicio: inicio, fechaVencimiento: fin,
-        notasAdmin: notas,
-      });
+      await this.ds.query(
+        `UPDATE suscripciones
+         SET plan = $1, estado = 'activa', modalidad = $2,
+             "fechaInicio" = $3, "fechaVencimiento" = $4, "notasAdmin" = $5,
+             "updatedAt" = NOW()
+         WHERE id = $6`,
+        [plan, modalidad, inicio.toISOString(), fin.toISOString(), notas ?? null, s.id],
+      );
     } else {
-      await this.repo.save(this.repo.create({
-        empresaId, plan, estado: SuscripcionEstado.ACTIVA, modalidad,
-        fechaInicio: inicio, fechaVencimiento: fin,
-        notasAdmin: notas,
-      }));
+      await this.ds.query(
+        `INSERT INTO suscripciones
+           ("empresaId", plan, estado, modalidad, "fechaInicio", "fechaVencimiento",
+            "notasAdmin", "fechaFinPrueba", "recordatorio5dEnviado", "recordatorio1dEnviado",
+            "facturasMesUsadas", "facturasMesReset", "enPeriodoGracia", "createdAt", "updatedAt")
+         VALUES ($1,$2,'activa',$3,$4,$5,$6,NULL,false,false,0,0,false,NOW(),NOW())`,
+        [empresaId, plan, modalidad, inicio.toISOString(), fin.toISOString(), notas ?? null],
+      );
     }
     this.logger.log(`Plan ${plan} activado para empresa #${empresaId}`);
     return this.getSuscripcion(empresaId);

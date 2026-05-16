@@ -190,7 +190,13 @@ function SolicitudesTab({ C, solicitudes, isLoading, onRefresh }:
       qc.invalidateQueries({ queryKey: ['sa-suscripciones'] });
       onRefresh();
     },
-    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al aprobar'),
+    onError: (e: any) => {
+      const data = e?.response?.data;
+      const detail = data?.message ?? data?.errors?.[0] ?? data?.error ?? e?.message ?? 'Sin detalle';
+      const status = e?.response?.status ?? 'red';
+      message.error(`Error al aprobar (${status}): ${detail}`, 8);
+      console.error('[aprobar solicitud] error completo:', JSON.stringify(data));
+    },
   });
 
   const rechazarMut = useMutation({
