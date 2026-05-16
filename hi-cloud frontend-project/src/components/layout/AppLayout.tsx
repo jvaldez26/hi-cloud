@@ -680,7 +680,7 @@ function QuickItemComp({
       <item.Icon
         size={16}
         strokeWidth={active ? 2.5 : 2}
-        style={{ color: active ? '#fff' : hover ? '#fff' : C.text, flexShrink: 0 }}
+        style={{ color: active ? C.accent : hover ? C.text : C.textSub, flexShrink: 0 }}
       />
 
       {!collapsed && (
@@ -689,7 +689,7 @@ function QuickItemComp({
             flex:         1,
             fontSize:     13,
             fontWeight:   active ? 600 : 500,
-            color:        active ? '#fff' : hover ? '#fff' : C.text,
+            color:        active ? C.textActive : hover ? C.text : C.text,
             textAlign:    'left',
             whiteSpace:   'nowrap',
             overflow:     'hidden',
@@ -701,7 +701,7 @@ function QuickItemComp({
           {item.badge && (
             <span style={{
               fontSize:     9, fontWeight: 700, padding: '2px 7px',
-              borderRadius: 6, background: active ? 'rgba(255,255,255,0.25)' : C.accent,
+              borderRadius: 6, background: active ? C.accent : C.accent,
               color:        '#fff', letterSpacing: 0.5, textTransform: 'uppercase',
             }}>
               {item.badge}
