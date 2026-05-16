@@ -114,8 +114,16 @@ jobs:
               echo 'FRONTEND_URL=https://hicloudrd.com' >> "$ENV_FILE"
             fi
 
+            # DB_CA_CERT — SSL cert para RDS con verificación (S-25)
+            if grep -q '^DB_CA_CERT=' "$ENV_FILE" 2>/dev/null; then
+              sed -i 's|^DB_CA_CERT=.*|DB_CA_CERT=/etc/ssl/certs/rds-ca-us-east-2.pem|' "$ENV_FILE"
+            else
+              echo 'DB_CA_CERT=/etc/ssl/certs/rds-ca-us-east-2.pem' >> "$ENV_FILE"
+            fi
+
             echo "  ✅ APP_URL=$(grep '^APP_URL=' $ENV_FILE)"
             echo "  ✅ FRONTEND_URL=$(grep '^FRONTEND_URL=' $ENV_FILE)"
+            echo "  ✅ DB_CA_CERT=$(grep '^DB_CA_CERT=' $ENV_FILE)"
 
             echo "━━━ [3/4] Build + migraciones + restart backend ━━━"
             BACKEND_DIR="/home/ubuntu/hicloud/hi-cloud backend-project/backend"
