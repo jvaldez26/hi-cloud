@@ -125,130 +125,112 @@ const QUICK_ITEMS: QuickItem[] = [
 
 const MENU_CATEGORIES: MenuCategory[] = [
 
-  // ─── VENTAS ────────────────────────────────────────────────────────────────
+  // ─── VENTAS & CLIENTES ─────────────────────────────────────────────────────
   {
-    id: 'ventas', label: 'Ventas', Icon: TrendingUp, sectionLabel: 'VENTAS',
+    id: 'ventas', label: 'Ventas & Clientes', Icon: TrendingUp, sectionLabel: 'VENTAS',
     items: [
       { path: '/facturas',             label: 'Facturas' },
       { path: '/cotizaciones',         label: 'Cotizaciones' },
       { path: '/pre-facturas',         label: 'Pre-Facturas' },
+      { path: '/facturas-recurrentes', label: 'Facturación Recurrente' },
       { path: '/notas-credito',        label: 'Notas de Crédito' },
       { path: '/notas-debito',         label: 'Notas de Débito' },
       { path: '/devoluciones',         label: 'Devoluciones' },
-      { path: '/facturas-recurrentes', label: 'Facturación Recurrente' },
-    ],
-  },
-  {
-    id: 'clientes', label: 'Clientes', Icon: Users,
-    items: [
-      { path: '/clientes',      label: 'Lista de Clientes' },
-      { path: '/cxc',           label: 'Cuentas por Cobrar' },
-      { path: '/recibos-cobro', label: 'Recibos de Cobro' },
-      { path: '/conduces',      label: 'Conduces / Entregas' },
-      { path: '/credito-cliente', label: 'Crédito al Cliente' },
-      { path: '/cuotas',        label: 'Cuotas / Pagos' },
-      { path: '/fidelidad',     label: 'Fidelidad & Puntos' },
+      { path: '/clientes',             label: 'Lista de Clientes' },
+      { path: '/credito-cliente',      label: 'Crédito al Cliente' },
+      { path: '/cxc',                  label: 'Cuentas por Cobrar' },
+      { path: '/cuotas',               label: 'Cuotas / Pagos' },
+      { path: '/recibos-cobro',        label: 'Recibos de Cobro' },
+      { path: '/fidelidad',            label: 'Fidelidad & Puntos' },
+      { path: '/conduces',             label: 'Conduces / Entregas' },
     ],
   },
 
-  // ─── COMPRAS ────────────────────────────────────────────────────────────────
+  // ─── COMPRAS & GASTOS ──────────────────────────────────────────────────────
   {
-    id: 'compras', label: 'Compras', Icon: ClipboardList, sectionLabel: 'COMPRAS',
+    id: 'compras', label: 'Compras & Gastos', Icon: ClipboardList, sectionLabel: 'COMPRAS',
     items: [
-      { path: '/compras',               label: 'Órdenes de Compra' },
       { path: '/solicitudes-compra',    label: 'Solicitudes de Compra' },
+      { path: '/compras',               label: 'Órdenes de Compra' },
       { path: '/proveedores',           label: 'Proveedores' },
       { path: '/cxp',                   label: 'Cuentas por Pagar' },
-      { path: '/gastos',                label: 'Gastos Operativos' },
       { path: '/notas-credito-compras', label: 'NC de Compras' },
+      { path: '/gastos',                label: 'Gastos Operativos' },
       { path: '/caja-chica',            label: 'Caja Chica' },
     ],
   },
-  {
-    id: 'tesoreria', label: 'Tesorería & Pagos', Icon: CreditCard,
-    items: [
-      { path: '/bancos',    label: 'Bancos / Tesorería' },
-      { path: '/depositos', label: 'Depósitos Bancarios' },
-      { path: '/cheques',   label: 'Cheques y Pagos' },
-      { path: '/datafono',  label: 'DataFono / Tarjetas' },
-      { path: '/divisas',   label: 'Divisas & Cambio' },
-    ],
-  },
 
-  // ─── INVENTARIO ─────────────────────────────────────────────────────────────
+  // ─── INVENTARIO & LOGÍSTICA ────────────────────────────────────────────────
   {
-    id: 'inventario', label: 'Inventario', Icon: Boxes, sectionLabel: 'INVENTARIO',
+    id: 'inventario', label: 'Inventario & Logística', Icon: Boxes, sectionLabel: 'INVENTARIO',
     items: [
-      { path: '/productos',         label: 'Productos' },
-      { path: '/inventario',        label: 'Movimientos de Stock' },
-      { path: '/almacenes',         label: 'Almacenes / Bodegas' },
-      { path: '/conteo-inventario', label: 'Conteo Físico' },
-      { path: '/valoracion-stock',  label: 'Valoración AVCO' },
-      { path: '/etiquetas',         label: 'Etiquetas QR' },
-      { path: '/uom',               label: 'Unidades de Medida' },
-    ],
-  },
-  {
-    id: 'produccion', label: 'Producción & Logística', Icon: Briefcase,
-    items: [
-      { path: '/manufactura',        label: 'Manufactura' },
+      { path: '/productos',          label: 'Productos' },
+      { path: '/almacenes',          label: 'Almacenes / Bodegas' },
+      { path: '/inventario',         label: 'Movimientos de Stock' },
+      { path: '/conteo-inventario',  label: 'Conteo Físico' },
+      { path: '/uom',                label: 'Unidades de Medida' },
+      { path: '/valoracion-stock',   label: 'Valoración AVCO' },
+      { path: '/etiquetas',          label: 'Etiquetas QR' },
       { path: '/wms',                label: 'WMS — Almacén' },
+      { path: '/manufactura',        label: 'Manufactura' },
       { path: '/planeacion-demanda', label: 'Planeación de Demanda' },
       { path: '/flota',              label: 'Flota de Vehículos' },
     ],
   },
 
-  // ─── PROYECTOS ──────────────────────────────────────────────────────────────
+  // ─── FINANZAS & CONTABILIDAD ───────────────────────────────────────────────
   {
-    id: 'proyectos', label: 'Proyectos & Servicios', Icon: Target, sectionLabel: 'PROYECTOS',
+    id: 'finanzas', label: 'Finanzas & Contabilidad', Icon: Banknote, sectionLabel: 'FINANZAS',
     items: [
-      { path: '/proyectos',     label: 'Proyectos' },
-      { path: '/contratos',     label: 'Contratos' },
-      { path: '/servicios',     label: 'Órdenes de Servicio' },
-      { path: '/mantenimiento', label: 'Mantenimiento' },
-      { path: '/objetivos',     label: 'Objetivos OKR' },
-    ],
-  },
-  {
-    id: 'crm', label: 'CRM & Comercial', Icon: TrendingUp,
-    items: [
-      { path: '/crm',        label: 'Leads & Oportunidades' },
-      { path: '/vendedores', label: 'Vendedores' },
-      { path: '/comisiones', label: 'Comisiones' },
-      { path: '/licitaciones', label: 'Licitaciones' },
-      { path: '/encuestas',  label: 'Encuestas NPS/CSAT' },
+      { path: '/bancos',                label: 'Bancos / Tesorería' },
+      { path: '/depositos',             label: 'Depósitos Bancarios' },
+      { path: '/cheques',               label: 'Cheques y Pagos' },
+      { path: '/datafono',              label: 'DataFono / Tarjetas' },
+      { path: '/divisas',               label: 'Divisas & Cambio' },
+      { path: '/contabilidad',          label: 'Asientos Contables' },
+      { path: '/libro-mayor',           label: 'Libro Mayor' },
+      { path: '/balance-comprobacion',  label: 'Balance de Comprobación' },
+      { path: '/reportes-financieros',  label: 'Estados Financieros' },
+      { path: '/libro-ventas',          label: 'Libro de Ventas' },
+      { path: '/periodo-contable',      label: 'Períodos Contables' },
+      { path: '/presupuestos',          label: 'Presupuestos' },
+      { path: '/activos-fijos',         label: 'Activos Fijos' },
+      { path: '/centro-costos',         label: 'Centro de Costos' },
+      { path: '/flujo-caja',            label: 'Flujo de Caja' },
+      { path: '/distribucion-costos',   label: 'Distribución de Costos' },
     ],
   },
 
-  // ─── FISCAL ─────────────────────────────────────────────────────────────────
+  // ─── FISCAL (DGII) ─────────────────────────────────────────────────────────
   {
-    id: 'ecf', label: 'Comprobantes e-CF', Icon: Receipt, sectionLabel: 'FISCAL',
+    id: 'fiscal', label: 'Fiscal (DGII)', Icon: Receipt, sectionLabel: 'FISCAL',
     items: [
-      { path: '/ecf',          label: 'e-CF — Panel DGII' },
+      { path: '/ecf',           label: 'e-CF — Panel DGII' },
       { path: '/declaraciones', label: 'Declaraciones 606/607' },
-      { path: '/retenciones',  label: 'Retenciones ISR' },
-    ],
-  },
-  {
-    id: 'contabilidad', label: 'Contabilidad', Icon: BookOpen,
-    items: [
-      { path: '/contabilidad',         label: 'Asientos Contables' },
-      { path: '/libro-mayor',          label: 'Libro Mayor' },
-      { path: '/balance-comprobacion', label: 'Balance de Comprobación' },
-      { path: '/reportes-financieros', label: 'Estados Financieros' },
-      { path: '/libro-ventas',         label: 'Libro de Ventas' },
-      { path: '/periodo-contable',     label: 'Períodos Contables' },
-      { path: '/presupuestos',         label: 'Presupuestos' },
-      { path: '/activos-fijos',        label: 'Activos Fijos' },
-      { path: '/centro-costos',        label: 'Centro de Costos' },
-      { path: '/flujo-caja',           label: 'Flujo de Caja' },
-      { path: '/distribucion-costos',  label: 'Distribución de Costos' },
+      { path: '/retenciones',   label: 'Retenciones ISR' },
     ],
   },
 
-  // ─── RRHH ───────────────────────────────────────────────────────────────────
+  // ─── COMERCIAL & SERVICIOS ─────────────────────────────────────────────────
   {
-    id: 'rrhh', label: 'Recursos Humanos', Icon: Users, sectionLabel: 'RRHH',
+    id: 'comercial', label: 'Comercial & Servicios', Icon: Briefcase, sectionLabel: 'COMERCIAL',
+    items: [
+      { path: '/crm',          label: 'Leads & Oportunidades' },
+      { path: '/vendedores',   label: 'Vendedores' },
+      { path: '/comisiones',   label: 'Comisiones' },
+      { path: '/licitaciones', label: 'Licitaciones' },
+      { path: '/encuestas',    label: 'Encuestas NPS/CSAT' },
+      { path: '/proyectos',    label: 'Proyectos' },
+      { path: '/contratos',    label: 'Contratos' },
+      { path: '/servicios',    label: 'Órdenes de Servicio' },
+      { path: '/mantenimiento', label: 'Mantenimiento' },
+      { path: '/objetivos',    label: 'Objetivos OKR' },
+    ],
+  },
+
+  // ─── RECURSOS HUMANOS ──────────────────────────────────────────────────────
+  {
+    id: 'rrhh', label: 'Recursos Humanos', Icon: UserCheck, sectionLabel: 'RRHH',
     items: [
       { path: '/nomina',          label: 'Nómina' },
       { path: '/portal-empleado', label: 'Portal Empleados' },
@@ -260,9 +242,9 @@ const MENU_CATEGORIES: MenuCategory[] = [
     ],
   },
 
-  // ─── REPORTES ───────────────────────────────────────────────────────────────
+  // ─── REPORTES & ANÁLISIS ────────────────────────────────────────────────────
   {
-    id: 'analisis', label: 'Análisis & Reportes', Icon: BarChart3, sectionLabel: 'REPORTES',
+    id: 'reportes', label: 'Reportes & Análisis', Icon: BarChart3, sectionLabel: 'REPORTES',
     items: [
       { path: '/reportes',           label: 'Reportes' },
       { path: '/analytics',          label: 'Business Intelligence' },
@@ -278,15 +260,14 @@ const MENU_CATEGORIES: MenuCategory[] = [
     id: 'sistema', label: 'Sistema', Icon: Settings, sectionLabel: 'SISTEMA',
     items: [
       { path: '/configuracion', label: 'Configuración' },
+      { path: '/mis-empresas',  label: 'Empresas' },
       { path: '/sucursales',    label: 'Sucursales' },
       { path: '/equipo',        label: 'Usuarios y Roles' },
-      { path: '/mis-empresas',  label: 'Empresas' },
       { path: '/auditoria',     label: 'Auditoría' },
       { path: '/aprobaciones',  label: 'Aprobaciones' },
       { path: '/importacion',   label: 'Importación CSV' },
       { path: '/documentos',    label: 'Documentos' },
       { path: '/contactos',     label: 'Directorio' },
-      { path: '/super-admin',   label: 'Super Admin' },
     ],
   },
 ];
