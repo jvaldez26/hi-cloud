@@ -119,13 +119,10 @@ export default function CxCPage() {
       render: (v: string) => <Text style={{ fontSize: 13 }}>{v ?? 'Consumidor Final'}</Text>,
     },
     {
-      title: 'Total', dataIndex: 'montoOriginal', width: 120, align: 'right' as const,
+      title: 'Total', dataIndex: 'montoOriginal', width: 120, align: 'right' as const, isAmount: true,
       render: (v: number) => fmt.money(v),
     },
-    {
-      title: 'Cobrado', dataIndex: 'montoPagado', width: 110, align: 'right' as const,
-      render: (v: number) => <Text style={{ color: '#059669' }}>{fmt.money(v)}</Text>,
-    },
+    // Cobrado omitido — disponible en historial de cobros (ojo)
     {
       title: 'Pendiente', dataIndex: 'montoPendiente', width: 120, align: 'right' as const,
       render: (v: number) => (

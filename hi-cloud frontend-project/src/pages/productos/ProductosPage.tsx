@@ -445,21 +445,22 @@ function ProductosCatalogo() {
   };
 
   const columns = [
-    { title: '', key: 'img', width: 50,
-      render: (_: any, r: Producto) => r.imagenUrl
-        ? <Image src={r.imagenUrl} width={36} height={36} style={{ objectFit: 'cover', borderRadius: 6 }} />
-        : <Avatar size={36} style={{ background: avatarColor(r.nombre), fontSize: 14, borderRadius: 6 }} shape="square">{r.nombre.charAt(0).toUpperCase()}</Avatar> },
-    { title: 'Código',    dataIndex: 'codigo',        width: 100 },
-    { title: 'Nombre',    dataIndex: 'nombre',        ellipsis: true },
-    { title: 'Precio',    dataIndex: 'precio',        width: 120, render: (v: number) => fmt.money(v) },
-    { title: 'ITBIS %',   dataIndex: 'porcentajeIva', width: 80,  render: (v: number) => `${v}%` },
-    { title: 'Stock', dataIndex: 'stock', width: 100,
+    { title: 'Código',    dataIndex: 'codigo',   width: 100, mobileHide: true },
+    { title: 'Nombre',    dataIndex: 'nombre',   ellipsis: true, mobileTitle: true,
+      render: (v: string, r: Producto) => (
+        <Space>
+          <Avatar size={28} style={{ background: avatarColor(r.nombre), fontSize: 12, borderRadius: 4, flexShrink: 0 }} shape="square">{v.charAt(0).toUpperCase()}</Avatar>
+          <Text style={{ fontSize: 13 }}>{v}</Text>
+        </Space>
+      )},
+    { title: 'Precio',    dataIndex: 'precio',   width: 115, isAmount: true, render: (v: number) => fmt.money(v) },
+    { title: 'Stock', dataIndex: 'stock', width: 90,
       render: (v: number, r: Producto) => {
         const bajo = v <= r.stockMinimo;
         return <Space size={4}>{bajo && <Tooltip title="Stock bajo"><WarningOutlined style={{ color: '#ff4d4f' }} /></Tooltip>}<Text style={{ color: bajo ? '#ff4d4f' : undefined }}>{fmt.number(v)}</Text></Space>;
       } },
-    { title: 'Mín.',      dataIndex: 'stockMinimo',   width: 65 },
-    { title: 'Categoría', dataIndex: 'categoria',     ellipsis: true, render: (v: string) => v ? <Tag>{v}</Tag> : '—' },
+    { title: 'Categoría', dataIndex: 'categoria', ellipsis: true, mobileHide: true, render: (v: string) => v ? <Tag>{v}</Tag> : '—' },
+    // ITBIS% y Mín. omitidos — disponibles al editar el producto
     { title: '', key: 'actions', width: 80, isActions: true,
       render: (_: unknown, r: Producto) => (
         <TableActions

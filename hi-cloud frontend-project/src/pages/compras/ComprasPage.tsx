@@ -166,16 +166,7 @@ export default function ComprasPage() {
       title: 'Proveedor', dataIndex: ['proveedor', 'nombre'], ellipsis: true, minWidth: 120,
       render: (v: string) => <Text style={{ fontSize: 13 }}>{v ?? '—'}</Text>,
     },
-    {
-      title: 'Subtotal', dataIndex: 'subtotal', width: 105, align: 'right' as const,
-      responsive: ['lg'] as any,
-      render: (v: number) => <Text style={{ fontSize: 12 }}>{fmt.money(v)}</Text>,
-    },
-    {
-      title: 'ITBIS', dataIndex: 'itbis', width: 90, align: 'right' as const,
-      responsive: ['xl'] as any,
-      render: (v: number) => <Text style={{ fontSize: 12 }}>{fmt.money(v)}</Text>,
-    },
+    // Subtotal e ITBIS omitidos — disponibles en el detalle de la compra
     {
       title: 'Total', dataIndex: 'total', width: 110, align: 'right' as const,
       render: (v: number) => <Text strong style={{ color: token.colorPrimary }}>{fmt.money(v)}</Text>,

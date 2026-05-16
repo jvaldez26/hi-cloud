@@ -233,18 +233,7 @@ export default function FacturasPage() {
         ? <Text style={{ fontSize: 13 }}>{v}</Text>
         : <Text type="secondary" style={{ fontSize: 12 }}>Consumidor Final</Text>,
     },
-    // ── Subtotal — se oculta en pantallas < lg ─────────────────────────────────
-    {
-      title: 'Subtotal', dataIndex: 'subtotal', width: 105, align: 'right' as const,
-      responsive: ['lg'] as any,
-      render: (v: number) => <Text style={{ fontSize: 12 }}>{fmt.money(v)}</Text>,
-    },
-    // ── ITBIS — se oculta en pantallas < xl ───────────────────────────────────
-    {
-      title: 'ITBIS', dataIndex: 'iva', width: 90, align: 'right' as const,
-      responsive: ['xl'] as any,
-      render: (v: number) => <Text style={{ fontSize: 12 }}>{fmt.money(v)}</Text>,
-    },
+    // Subtotal e ITBIS omitidos — disponibles en el detalle de la factura
     // ── Total ──────────────────────────────────────────────────────────────────
     {
       title: 'Total', dataIndex: 'total', width: 110, align: 'right' as const,
@@ -252,21 +241,7 @@ export default function FacturasPage() {
         <Text strong style={{ fontSize: 13, color: token.colorPrimary }}>{fmt.money(v)}</Text>
       ),
     },
-    // ── Pago ───────────────────────────────────────────────────────────────────
-    {
-      title: 'Pago', key: 'tipoPago', width: 80,
-      render: (_: unknown, r: any) => {
-        const es = r.tipoPago === 'CREDITO';
-        return (
-          <Tooltip title={es ? `Crédito ${r.diasCredito ?? 0} días` : 'Contado'}>
-            <Tag style={{ fontSize: 10, fontWeight: 700, margin: 0, cursor: 'default' }}
-              color={es ? 'orange' : 'default'}>
-              {es ? `${r.diasCredito ?? 0}d` : 'CON'}
-            </Tag>
-          </Tooltip>
-        );
-      },
-    },
+    // Pago (contado/crédito) omitido — disponible en detalle
     // ── Estado ─────────────────────────────────────────────────────────────────
     {
       title: 'Estado', dataIndex: 'estado', width: 90,

@@ -109,13 +109,10 @@ export default function CxPPage() {
       render: (v: string) => <Text style={{ fontSize: 13 }}>{v ?? '—'}</Text>,
     },
     {
-      title: 'Total', dataIndex: 'montoOriginal', width: 120, align: 'right' as const,
+      title: 'Total', dataIndex: 'montoOriginal', width: 120, align: 'right' as const, isAmount: true,
       render: (v: number) => fmt.money(v),
     },
-    {
-      title: 'Pagado', dataIndex: 'montoPagado', width: 110, align: 'right' as const,
-      render: (v: number) => <Text style={{ color: '#059669' }}>{fmt.money(v)}</Text>,
-    },
+    // Pagado omitido — disponible en historial de pagos (ojo)
     {
       title: 'Pendiente', dataIndex: 'montoPendiente', width: 120, align: 'right' as const,
       render: (v: number) => (
