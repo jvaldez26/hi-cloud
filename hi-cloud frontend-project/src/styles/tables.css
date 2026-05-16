@@ -236,6 +236,38 @@
   user-select: text;
 }
 
+/* ── Safety net mobile: sin scroll horizontal en ningún breakpoint ───────── */
+/* Tablas sin SmartTable aún: el contenido se recorta en vez de desbordar.  */
+@media (max-width: 767px) {
+  .ant-table-wrapper {
+    overflow-x: hidden !important;
+  }
+  .ant-table-content,
+  .ant-table-body {
+    overflow-x: hidden !important;
+  }
+  /* Asegurar que las celdas no expandan el viewport */
+  .ant-table-cell {
+    max-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  /* Excepciones: celdas con contenido que debe verse completo */
+  .ant-table-cell.hc-cell-wrap {
+    max-width: none !important;
+    white-space: normal !important;
+  }
+}
+
+/* ── Tablet: limitar columnas sin SmartTable ─────────────────────────────── */
+@media (max-width: 1023px) {
+  .ant-table-wrapper .ant-table-content,
+  .ant-table-wrapper .ant-table-body {
+    overflow-x: auto !important;
+  }
+}
+
 /* ── Transición suave de modo oscuro en tablas ───────────────────────────── */
 .ant-table,
 .ant-table-thead > tr > th,

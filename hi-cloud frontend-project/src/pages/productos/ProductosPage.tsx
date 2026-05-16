@@ -3,6 +3,7 @@ import { Table, Button, Input, Space, Tag, Modal, Form, Row, Col,
          Typography, Popconfirm, message, Card, InputNumber,
          Image, Avatar, Tooltip, Upload, Select, Tabs, Divider,
          Badge, InputNumber as AntInputNumber, Alert, Switch } from 'antd';
+import SmartTable from '../../components/ui/SmartTable';
 import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
          WarningOutlined, PictureOutlined, UploadOutlined, LinkOutlined,
          FileExcelOutlined, BarcodeOutlined, AppstoreOutlined,
@@ -444,22 +445,22 @@ function ProductosCatalogo() {
   };
 
   const columns = [
-    { title: '', key: 'img', width: 50,
+    { title: '', key: 'img', width: 50, mobileHide: true,
       render: (_: any, r: Producto) => r.imagenUrl
         ? <Image src={r.imagenUrl} width={36} height={36} style={{ objectFit: 'cover', borderRadius: 6 }} />
         : <Avatar size={36} style={{ background: avatarColor(r.nombre), fontSize: 14, borderRadius: 6 }} shape="square">{r.nombre.charAt(0).toUpperCase()}</Avatar> },
-    { title: 'Código',    dataIndex: 'codigo',        width: 100 },
-    { title: 'Nombre',    dataIndex: 'nombre',        ellipsis: true },
-    { title: 'Precio',    dataIndex: 'precio',        width: 120, render: (v: number) => fmt.money(v) },
-    { title: 'ITBIS %',   dataIndex: 'porcentajeIva', width: 80,  render: (v: number) => `${v}%` },
+    { title: 'Código',    dataIndex: 'codigo',        width: 100, mobileSub: true },
+    { title: 'Nombre',    dataIndex: 'nombre',        ellipsis: true, mobileTitle: true },
+    { title: 'Precio',    dataIndex: 'precio',        width: 120, isAmount: true, render: (v: number) => fmt.money(v) },
+    { title: 'ITBIS %',   dataIndex: 'porcentajeIva', width: 80, mobileHide: true, render: (v: number) => `${v}%` },
     { title: 'Stock', dataIndex: 'stock', width: 100,
       render: (v: number, r: Producto) => {
         const bajo = v <= r.stockMinimo;
         return <Space size={4}>{bajo && <Tooltip title="Stock bajo"><WarningOutlined style={{ color: '#ff4d4f' }} /></Tooltip>}<Text style={{ color: bajo ? '#ff4d4f' : undefined }}>{fmt.number(v)}</Text></Space>;
       } },
-    { title: 'Mín.',      dataIndex: 'stockMinimo',   width: 65 },
-    { title: 'Categoría', dataIndex: 'categoria',     ellipsis: true, render: (v: string) => v ? <Tag>{v}</Tag> : '—' },
-    { title: '', key: 'actions', width: 90,
+    { title: 'Mín.',      dataIndex: 'stockMinimo',   width: 65, mobileHide: true },
+    { title: 'Categoría', dataIndex: 'categoria',     ellipsis: true, mobileHide: true, render: (v: string) => v ? <Tag>{v}</Tag> : '—' },
+    { title: '', key: 'actions', width: 90, isActions: true,
       render: (_: unknown, r: Producto) => (
         <Space size="small">
           {puedeEditar && (
@@ -507,9 +508,9 @@ function ProductosCatalogo() {
         </Col>
       </Row>
 
-      <Table columns={columns} dataSource={rows} rowKey="id"
+      <SmartTable columns={columns as any} dataSource={rows} rowKey="id"
         loading={isLoading} size="small"
-        scroll={{ x: 'max-content' }}
+        emptyDescription="No hay productos. Agrega tu primer producto con el botón +"
         rowClassName={(r: Producto) => r.stock <= r.stockMinimo ? 'ant-table-row-danger' : ''}
         pagination={{ total: data?.meta.total, pageSize: 10, current: page,
                       onChange: setPage, showTotal: t => `${t} productos`, showSizeChanger: false }} />

@@ -4,6 +4,7 @@ import {
   Typography, message, Card, Row, Col, Statistic, DatePicker, theme, Tooltip,
   Drawer, Divider,
 } from 'antd';
+import SmartTable from '../../components/ui/SmartTable';
 import {
   DollarOutlined, SearchOutlined, FileExcelOutlined,
   WhatsAppOutlined, FilterOutlined, HistoryOutlined,
@@ -110,7 +111,7 @@ export default function CxCPage() {
 
   const columns = [
     {
-      title: 'Factura', dataIndex: ['factura', 'folio'], width: 150,
+      title: 'Factura', dataIndex: ['factura', 'folio'], width: 150, mobileTitle: true,
       render: (v: string) => <Text strong style={{ fontFamily: 'monospace', fontSize: 12 }}>{v ?? '—'}</Text>,
     },
     {
@@ -118,21 +119,21 @@ export default function CxCPage() {
       render: (v: string) => <Text style={{ fontSize: 13 }}>{v ?? 'Consumidor Final'}</Text>,
     },
     {
-      title: 'Total', dataIndex: 'montoOriginal', width: 120, align: 'right' as const,
+      title: 'Total', dataIndex: 'montoOriginal', width: 120, align: 'right' as const, isAmount: true, mobileHide: true,
       render: (v: number) => fmt.money(v),
     },
     {
-      title: 'Cobrado', dataIndex: 'montoPagado', width: 110, align: 'right' as const,
+      title: 'Cobrado', dataIndex: 'montoPagado', width: 110, align: 'right' as const, isAmount: true, mobileHide: true,
       render: (v: number) => <Text style={{ color: '#059669' }}>{fmt.money(v)}</Text>,
     },
     {
-      title: 'Pendiente', dataIndex: 'montoPendiente', width: 120, align: 'right' as const,
+      title: 'Pendiente', dataIndex: 'montoPendiente', width: 120, align: 'right' as const, isAmount: true,
       render: (v: number) => (
         <Text strong style={{ color: v > 0 ? '#dc2626' : '#059669' }}>{fmt.money(v)}</Text>
       ),
     },
     {
-      title: 'Vencimiento', dataIndex: 'fechaVencimiento', width: 110,
+      title: 'Vencimiento', dataIndex: 'fechaVencimiento', width: 110, mobileSub: true,
       render: (v: string) => {
         if (!v) return '—';
         const dias = dayjs(v).diff(dayjs(), 'day');
@@ -141,7 +142,7 @@ export default function CxCPage() {
       },
     },
     {
-      title: 'Estado', dataIndex: 'estado', width: 120,
+      title: 'Estado', dataIndex: 'estado', width: 120, isStatus: true,
       render: (v: string) => (
         <Tag color={estadoColor[v] ?? 'default'} style={{ fontSize: 11, fontWeight: 600, margin: 0 }}>
           {v.replace('_', ' ').toUpperCase()}
@@ -149,7 +150,7 @@ export default function CxCPage() {
       ),
     },
     {
-      title: '', key: 'actions', width: 100, align: 'right' as const,
+      title: '', key: 'actions', width: 100, align: 'right' as const, isActions: true,
       render: (_: unknown, r: CuentaPorCobrar) => (
         <Space size={4}>
           {r.estado !== 'pagada' && r.estado !== 'anulada' && puedeCobrar && (
@@ -247,10 +248,10 @@ export default function CxCPage() {
           )}
         </Row>
 
-        <Table
-          columns={columns} dataSource={rows} rowKey="id"
+        <SmartTable
+          columns={columns as any} dataSource={rows} rowKey="id"
           loading={isLoading} size="small"
-        scroll={{ x: 'max-content' }}
+          emptyDescription="No hay cuentas por cobrar pendientes"
           pagination={{
             total: data?.meta.total, pageSize: 15, current: page,
             onChange: setPage, showTotal: t => `${t.toLocaleString('es-DO')} cuentas`,

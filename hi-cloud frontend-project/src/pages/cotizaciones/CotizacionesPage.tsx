@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Table, Button, Tag, Card, Row, Col, Typography, Statistic,
          Space, Popconfirm, message, Dropdown, Drawer, Descriptions,
          Modal, Input, Form, Tooltip } from 'antd';
+import SmartTable from '../../components/ui/SmartTable';
 import { PlusOutlined, EyeOutlined, MoreOutlined,
          MailOutlined, FileExcelOutlined, FilePdfOutlined, CopyOutlined,
          EditOutlined } from '@ant-design/icons';
@@ -121,11 +122,11 @@ export default function CotizacionesPage() {
   };
 
   const cols = [
-    { title: 'Número',  dataIndex: 'numero',          width: '10%',
+    { title: 'Número',  dataIndex: 'numero',          width: '10%', mobileTitle: true,
       render: (v: string) => <Text code style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{v}</Text> },
-    { title: 'Fecha',   dataIndex: 'fecha',            width: '11%',
+    { title: 'Fecha',   dataIndex: 'fecha',            width: '11%', mobileSub: true,
       render: (v: string) => <span style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{fmt.date(v)}</span> },
-    { title: 'Vence',   dataIndex: 'fechaVencimiento', width: '11%',
+    { title: 'Vence',   dataIndex: 'fechaVencimiento', width: '11%', mobileHide: true,
       render: (v: string) => <span style={{ whiteSpace: 'nowrap', fontSize: 12, color: '#8c8c8c' }}>{fmt.date(v)}</span> },
     { title: 'Cliente', key: 'cli',
       render: (_: any, r: any) => (
@@ -133,16 +134,16 @@ export default function CotizacionesPage() {
           {r.cliente?.nombre ?? '—'}
         </div>
       )},
-    { title: 'Total',   dataIndex: 'total',    width: '12%', align: 'right' as const,
+    { title: 'Total',   dataIndex: 'total',    width: '12%', align: 'right' as const, isAmount: true,
       render: (v: number) => <strong style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{fmt.money(v)}</strong> },
-    { title: 'Estado',  dataIndex: 'estado',   width: '12%',
+    { title: 'Estado',  dataIndex: 'estado',   width: '12%', isStatus: true,
       render: (v: CotEstado) => (
         <Tag color={estadoColor[v]} style={{ whiteSpace: 'nowrap', margin: 0 }}>
           {estadoEmoji[v]} {v.toUpperCase()}
         </Tag>
       )},
     {
-      title: '', key: 'actions', width: '7%',
+      title: '', key: 'actions', width: '7%', isActions: true,
       render: (_: any, r: any) => {
         const estado = r.estado as CotEstado;
         const sigs   = TRANSICIONES[estado];
@@ -286,9 +287,9 @@ export default function CotizacionesPage() {
       </div>
 
       <Card>
-        <Table columns={cols} dataSource={data?.data ?? []} rowKey="id"
+        <SmartTable columns={cols as any} dataSource={data?.data ?? []} rowKey="id"
           loading={isLoading} size="small"
-          tableLayout="fixed"
+          emptyDescription="No hay cotizaciones. Crea tu primera cotización con el botón +"
           rowClassName={(r: any) => r.estado === 'vencida' ? 'ant-table-row-warn' : ''}
           pagination={{ total: data?.meta?.total, pageSize: 10, current: page,
                         onChange: setPage, showTotal: t => `${t} cotizaciones`, showSizeChanger: false }} />
