@@ -72,13 +72,13 @@ export default function AnimatedStatCard({ title, value, prefix = '', suffix = '
         height:        '100%',
         position:      'relative',
       }}>
-        {/* Franja de acento izquierda */}
+        {/* Franja de acento izquierda (2px, sutil) */}
         <div style={{
           position:     'absolute',
           left:          0, top: 16, bottom: 16,
-          width:         3, borderRadius: '0 3px 3px 0',
+          width:         2, borderRadius: '0 2px 2px 0',
           background:    color,
-          opacity:       0.7,
+          opacity:       0.65,
         }} />
 
         {/* Label + ícono */}

@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState, useCallback, useRef, createContext, useContext, Suspense } from 'react';
-import { useMobile } from '../../hooks/useMediaQuery';
+import { useMobile, useTablet } from '../../hooks/useMediaQuery';
 import {
   Layout, Avatar, Dropdown, Typography, Badge, Space,
   Button, Tooltip, theme, Select, Tag, Modal,
@@ -431,9 +431,11 @@ function LiveClock() {
     const id = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(id);
   }, []);
+  // Sin segundos y con whiteSpace:nowrap para evitar el corte "p. m."
+  const hora = time.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit', hour12: true });
   return (
-    <Text type="secondary" style={{ fontSize: 12, fontFeatureSettings: '"tnum"', letterSpacing: .3 }}>
-      {time.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+    <Text type="secondary" style={{ fontSize: 12, fontFeatureSettings: '"tnum"', letterSpacing: .3, whiteSpace: 'nowrap', flexShrink: 0 }}>
+      {hora}
     </Text>
   );
 }
@@ -492,10 +494,12 @@ function PlanIndicadorHeader() {
   const plan   = suscripcion.plan as string;
   const dias   = suscripcion.diasRestantes as number;
   const COLOR: Record<string, string> = {
+    emprendedor: '#0EA5E9', pyme: '#10B981', pro: '#0d9488', plus: '#4F46E5',
     trial: '#94A3B8', basico: '#3B82F6',
     profesional: '#8B5CF6', empresarial: '#F59E0B', enterprise: '#EF4444',
   };
   const LABEL: Record<string, string> = {
+    emprendedor: 'EMPRENDEDOR', pyme: 'PYME', pro: 'PRO', plus: 'PLUS',
     trial: 'TRIAL', basico: 'BÁSICO', profesional: 'PRO',
     empresarial: 'EMPR.', enterprise: 'ENT.',
   };
@@ -733,8 +737,8 @@ function AccordionSubItem({
         style={{
           width: 'calc(100% - 16px)', margin: '1px 8px',
           display: 'flex', alignItems: 'center', gap: 6,
-          padding: '7px 12px 7px 28px',
-          height: 32, border: 'none',
+          padding: '8px 12px 8px 28px',
+          height: 'auto', minHeight: 34, border: 'none',
           cursor: locked ? 'not-allowed' : 'pointer',
           borderRadius: 6,
           background: active ? C.bgActive : hover ? C.bgHover : 'transparent',
@@ -1137,7 +1141,8 @@ export default function AppLayout() {
   }, [closePanel]);
 
   // Navegar y cerrar panel
-  const isMobile = useMobile();
+  const isMobile  = useMobile();
+  const isTablet  = useTablet();
 
   const handleNavigate = useCallback((path: string) => {
     navigate(path);
@@ -1562,7 +1567,8 @@ export default function AppLayout() {
               )}
 
               {!isMobile && <PlanIndicadorHeader />}
-              {!isMobile && <LiveClock />}
+              {/* Reloj — solo en desktop amplio para no comprimir el topbar */}
+              {!isMobile && !isTablet && <LiveClock />}
               <RealtimeDot />
 
               {/* Búsqueda — solo ícono en mobile */}
@@ -1675,19 +1681,19 @@ export default function AppLayout() {
               </Badge>
 
               <Dropdown menu={userMenu} placement="bottomRight" trigger={['click']}>
-                <Space style={{ cursor: 'pointer', padding: '4px 8px', borderRadius: 8 }}>
-                  <Avatar size={28} style={{ background: '#1677ff', fontSize: 12 }}>
+                <div style={{ cursor: 'pointer', padding: '4px 8px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, whiteSpace: 'nowrap' }}>
+                  <Avatar size={28} style={{ background: token.colorPrimary, fontSize: 12, flexShrink: 0 }}>
                     {user?.nombre?.charAt(0).toUpperCase()}
                   </Avatar>
-                  <div style={{ lineHeight: 1.3 }}>
-                    <Text style={{ fontSize: 12, fontWeight: 600, display: 'block' }}>
+                  <div style={{ lineHeight: 1.3, minWidth: 0 }}>
+                    <Text style={{ fontSize: 12, fontWeight: 600, display: 'block', whiteSpace: 'nowrap' }}>
                       {user?.nombre?.split(' ')[0]}
                     </Text>
-                    <Text type="secondary" style={{ fontSize: 10, textTransform: 'capitalize' }}>
-                      {user?.role}
+                    <Text type="secondary" style={{ fontSize: 10, textTransform: 'capitalize', whiteSpace: 'nowrap' }}>
+                      {user?.role === 'super_admin' ? 'Super Admin' : user?.role}
                     </Text>
                   </div>
-                </Space>
+                </div>
               </Dropdown>
             </Space>
           </div>

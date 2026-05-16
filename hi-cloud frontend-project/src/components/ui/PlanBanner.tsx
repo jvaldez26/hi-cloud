@@ -63,19 +63,30 @@ export default function PlanBanner() {
   }
 
   if (bloqueos.length > 0) {
+    // Límite de USUARIOS: solo ámbar (el sistema sigue funcionando, solo no puede invitar más)
+    // Límite de INGRESOS: rojo (impacto operativo real)
+    const soloUsuarios = bloqueos.every(b => b.includes('usuarios'));
     return (
       <div style={{
-        background: '#FEF2F2', borderBottom: '2px solid #EF4444',
-        padding: '10px 20px',
+        background: soloUsuarios ? '#FFFBEB' : '#FEF2F2',
+        borderBottom: `1px solid ${soloUsuarios ? '#FDE68A' : '#FCA5A5'}`,
+        borderLeft: `3px solid ${soloUsuarios ? '#F59E0B' : '#EF4444'}`,
+        padding: '8px 20px',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <AlertTriangle size={16} color="#EF4444" />
-          <span style={{ color: '#991B1B', fontWeight: 600, fontSize: 13 }}>
-            🚫 Límite alcanzado: <strong>{bloqueos.join(', ')}</strong>. Actualiza tu plan.
+          <AlertTriangle size={15} color={soloUsuarios ? '#D97706' : '#EF4444'} />
+          <span style={{ color: soloUsuarios ? '#92400E' : '#991B1B', fontWeight: 600, fontSize: 13 }}>
+            {soloUsuarios ? '⚠️' : '🚫'} Límite alcanzado: <strong>{bloqueos.join(', ')}</strong>. Actualiza tu plan.
           </span>
         </div>
-        <Button danger size="small" onClick={() => navigate('/suscripcion/planes')}>
+        <Button
+          size="small"
+          onClick={() => navigate('/suscripcion/planes')}
+          style={soloUsuarios
+            ? { borderColor: '#D97706', color: '#92400E' }
+            : { background: '#EF4444', border: 'none', color: '#fff' }
+          }>
           Ver planes
         </Button>
       </div>
