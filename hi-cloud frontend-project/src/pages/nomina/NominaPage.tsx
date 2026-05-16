@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { usePlanGuard } from '../../hooks/usePlan';
 import ModuloBloqueado from '../../components/ui/ModuloBloqueado';
 import { TableActions } from '../../components/ui/TableActions';
@@ -68,13 +70,23 @@ function EmpleadosTab() {
   };
   const closeModal = () => { setOpen(false); setEditing(null); form.resetFields(); };
 
+  const COLS_DEF = [
+    { key: 'cedula',       label: 'Cédula',      defaultVisible: false },
+    { key: 'nombre',       label: 'Nombre',      defaultVisible: true  },
+    { key: 'cargo',        label: 'Cargo',       defaultVisible: true  },
+    { key: 'departamento', label: 'Depto.',      defaultVisible: true  },
+    { key: 'salarioBase',  label: 'Salario',     defaultVisible: true  },
+    { key: 'estado',       label: 'Estado',      defaultVisible: true  },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns: fcNom } = useColumnVisibility('nomina-empleados', COLS_DEF);
+
   const cols = [
-    { title: 'Cédula',   dataIndex: 'cedula',       width: 120 },
+    { title: 'Cédula',   key: 'cedula',       dataIndex: 'cedula',       width: 120 },
     { title: 'Nombre',   key: 'nombre', ellipsis: true, render: (_: any, r: any) => `${r.nombre} ${r.apellido}` },
-    { title: 'Cargo',    dataIndex: 'cargo',        ellipsis: true },
-    { title: 'Depto.',   dataIndex: 'departamento', width: 120 },
-    { title: 'Salario',  dataIndex: 'salarioBase',  width: 130, render: (v: number) => fmt.money(v) },
-    { title: 'Estado',   dataIndex: 'estado',       width: 90,
+    { title: 'Cargo',    key: 'cargo',        dataIndex: 'cargo',        ellipsis: true },
+    { title: 'Depto.',   key: 'departamento', dataIndex: 'departamento', width: 120 },
+    { title: 'Salario',  key: 'salarioBase',  dataIndex: 'salarioBase',  width: 130, render: (v: number) => fmt.money(v) },
+    { title: 'Estado',   key: 'estado',       dataIndex: 'estado',       width: 90,
       render: (v: string) => <Tag color={v === 'activo' ? 'green' : 'red'}>{v?.toUpperCase()}</Tag> },
     { title: '', key: 'actions', width: 70, isActions: true,
       render: (_: any, r: any) => (
@@ -106,6 +118,7 @@ function EmpleadosTab() {
               }));
               exportarExcel(filas, `Empleados-${dayjs().format('YYYY-MM-DD')}`);
             }}>Excel</Button>
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <Button type="primary" icon={<PlusOutlined />}
               onClick={() => { setEditing(null); form.resetFields(); setOpen(true); }}>
               Nuevo empleado
@@ -113,8 +126,8 @@ function EmpleadosTab() {
           </Space>
         </Col>
       </Row>
-      <Table columns={cols} dataSource={data?.data ?? []} rowKey="id" loading={isLoading} size="small"
-        pagination={{ total: data?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }} 
+      <Table columns={fcNom(cols as any)} dataSource={data?.data ?? []} rowKey="id" loading={isLoading} size="small"
+        pagination={{ total: data?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }}
         scroll={{ x: 'max-content' }} />
 
       <Modal title={editing ? 'Editar empleado' : 'Nuevo empleado'} open={open} onCancel={closeModal} footer={null} width={780}>

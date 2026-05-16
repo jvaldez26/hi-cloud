@@ -1,5 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Table, Button, Input, Space, Tag, Modal, Form, Row, Col,
   Typography, Popconfirm, message, Card, Select, InputNumber,
@@ -84,6 +86,15 @@ export default function ClientesPage() {
     message.success(`${filas.length} clientes exportados`);
   }, [search]);
 
+  const COLS_DEF = [
+    { key: 'nombre',   label: 'Cliente',  defaultVisible: true  },
+    { key: 'contacto', label: 'Contacto', defaultVisible: true  },
+    { key: 'ciudad',   label: 'Ciudad',   defaultVisible: false },
+    { key: 'isActive', label: 'Estado',   defaultVisible: true  },
+    { key: 'createdAt',label: 'Registro', defaultVisible: false },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('clientes', COLS_DEF);
+
   const columns = [
     {
       title: 'Cliente', key: 'nombre', ellipsis: true,
@@ -163,6 +174,7 @@ export default function ClientesPage() {
               allowClear style={{ width: '100%', maxWidth: 260 }}
             />
             <Button icon={<FileExcelOutlined />} onClick={handleExcel}>Excel</Button>
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             {puedeCrear && (
               <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Nuevo cliente</Button>
             )}
@@ -171,7 +183,7 @@ export default function ClientesPage() {
       </Row>
 
       <Table
-        columns={columns} dataSource={data?.data ?? []} rowKey="id"
+        columns={filterColumns(columns)} dataSource={data?.data ?? []} rowKey="id"
         loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
         pagination={{

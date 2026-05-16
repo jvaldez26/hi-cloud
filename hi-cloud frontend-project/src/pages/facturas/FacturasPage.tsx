@@ -1,4 +1,6 @@
 import { useState, useCallback } from 'react';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Table, Button, Tag, Space, Typography, Card, Row, Col,
   message, Dropdown, Tooltip, Modal, Input, Select, DatePicker,
@@ -213,22 +215,32 @@ export default function FacturasPage() {
 
   const hayFiltros = !!(search || estado || rango || clienteId || tipoPago || tipoNcf || montoMin || montoMax);
 
+  const COLS_DEF = [
+    { key: 'folio',   label: 'Folio',   defaultVisible: true  },
+    { key: 'fecha',   label: 'Fecha',   defaultVisible: true  },
+    { key: 'cliente', label: 'Cliente', defaultVisible: true  },
+    { key: 'total',   label: 'Total',   defaultVisible: true  },
+    { key: 'estado',  label: 'Estado',  defaultVisible: true  },
+    { key: 'ecf',     label: 'e-CF',    defaultVisible: true  },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('facturas', COLS_DEF);
+
   const columns = [
     // ── Folio ──────────────────────────────────────────────────────────────────
     {
-      title: 'Folio', dataIndex: 'folio', width: 95, fixed: 'left' as const,
+      title: 'Folio', key: 'folio', dataIndex: 'folio', width: 95, fixed: 'left' as const,
       render: (v: string) => (
         <Text strong style={{ fontFamily: 'monospace', fontSize: 12 }}>{v}</Text>
       ),
     },
     // ── Fecha ──────────────────────────────────────────────────────────────────
     {
-      title: 'Fecha', dataIndex: 'fecha', width: 85,
+      title: 'Fecha', key: 'fecha', dataIndex: 'fecha', width: 85,
       render: (v: string) => <Text style={{ fontSize: 12 }}>{fmt.date(v)}</Text>,
     },
     // ── Cliente ────────────────────────────────────────────────────────────────
     {
-      title: 'Cliente', dataIndex: ['cliente', 'nombre'], ellipsis: true, minWidth: 120,
+      title: 'Cliente', key: 'cliente', dataIndex: ['cliente', 'nombre'], ellipsis: true, minWidth: 120,
       render: (v: string) => v
         ? <Text style={{ fontSize: 13 }}>{v}</Text>
         : <Text type="secondary" style={{ fontSize: 12 }}>Consumidor Final</Text>,
@@ -236,7 +248,7 @@ export default function FacturasPage() {
     // Subtotal e ITBIS omitidos — disponibles en el detalle de la factura
     // ── Total ──────────────────────────────────────────────────────────────────
     {
-      title: 'Total', dataIndex: 'total', width: 110, align: 'right' as const,
+      title: 'Total', key: 'total', dataIndex: 'total', width: 110, align: 'right' as const,
       render: (v: number) => (
         <Text strong style={{ fontSize: 13, color: token.colorPrimary }}>{fmt.money(v)}</Text>
       ),
@@ -244,7 +256,7 @@ export default function FacturasPage() {
     // Pago (contado/crédito) omitido — disponible en detalle
     // ── Estado ─────────────────────────────────────────────────────────────────
     {
-      title: 'Estado', dataIndex: 'estado', width: 90,
+      title: 'Estado', key: 'estado', dataIndex: 'estado', width: 90,
       render: (v: FacturaEstado) => (
         <Tag color={estadoColor[v]} style={{ fontSize: 11, fontWeight: 600, margin: 0 }}>
           {v.toUpperCase()}
@@ -354,9 +366,8 @@ export default function FacturasPage() {
         </Col>
         <Col>
           <Space>
-            <Button icon={<FileExcelOutlined />} onClick={handleExportExcel}>
-              Excel
-            </Button>
+            <Button icon={<FileExcelOutlined />} onClick={handleExportExcel}>Excel</Button>
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             {puedeCrear && (
               <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/facturas/nueva')}>
                 Nueva factura
@@ -516,7 +527,7 @@ export default function FacturasPage() {
 
       {/* ── Tabla — scroll interno para que la página no desborde ── */}
       <Table
-        columns={columns}
+        columns={filterColumns(columns)}
         dataSource={resumen}
         rowKey="id"
         loading={isLoading}

@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Table, Button, Tag, Card, Row, Col, Typography, Statistic,
          Space, Popconfirm, message, Dropdown, Drawer, Descriptions,
          Modal, Input, Form, Tooltip } from 'antd';
@@ -121,12 +123,22 @@ export default function CotizacionesPage() {
     rechazada: '#dc2626', vencida: '#d97706', convertida: '#0891b2',
   };
 
+  const COLS_DEF = [
+    { key: 'numero',           label: 'Número',      defaultVisible: true  },
+    { key: 'fecha',            label: 'Fecha',       defaultVisible: true  },
+    { key: 'fechaVencimiento', label: 'Vencimiento', defaultVisible: false },
+    { key: 'cli',              label: 'Cliente',     defaultVisible: true  },
+    { key: 'total',            label: 'Total',       defaultVisible: true  },
+    { key: 'estado',           label: 'Estado',      defaultVisible: true  },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns: fcCot } = useColumnVisibility('cotizaciones', COLS_DEF);
+
   const cols = [
-    { title: 'Número',  dataIndex: 'numero',          width: '10%',
+    { title: 'Número',  key: 'numero',           dataIndex: 'numero',          width: '10%',
       render: (v: string) => <Text code style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{v}</Text> },
-    { title: 'Fecha',   dataIndex: 'fecha',            width: '11%',
+    { title: 'Fecha',   key: 'fecha',            dataIndex: 'fecha',            width: '11%',
       render: (v: string) => <span style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{fmt.date(v)}</span> },
-    { title: 'Vence',   dataIndex: 'fechaVencimiento', width: '11%',
+    { title: 'Vence',   key: 'fechaVencimiento', dataIndex: 'fechaVencimiento', width: '11%',
       render: (v: string) => <span style={{ whiteSpace: 'nowrap', fontSize: 12, color: '#8c8c8c' }}>{fmt.date(v)}</span> },
     { title: 'Cliente', key: 'cli',
       render: (_: any, r: any) => (
@@ -134,9 +146,9 @@ export default function CotizacionesPage() {
           {r.cliente?.nombre ?? '—'}
         </div>
       )},
-    { title: 'Total',   dataIndex: 'total',    width: '12%', align: 'right' as const,
+    { title: 'Total',   key: 'total',  dataIndex: 'total',    width: '12%', align: 'right' as const,
       render: (v: number) => <strong style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{fmt.money(v)}</strong> },
-    { title: 'Estado',  dataIndex: 'estado',   width: '12%',
+    { title: 'Estado',  key: 'estado', dataIndex: 'estado',   width: '12%',
       render: (v: CotEstado) => (
         <Tag color={estadoColor[v]} style={{ whiteSpace: 'nowrap', margin: 0 }}>
           {estadoEmoji[v]} {v.toUpperCase()}
@@ -244,6 +256,7 @@ export default function CotizacionesPage() {
             }}>
               Excel
             </Button>
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/cotizaciones/nueva')}>
               Nueva cotización
             </Button>
@@ -280,7 +293,7 @@ export default function CotizacionesPage() {
       </div>
 
       <Card>
-        <Table columns={cols} dataSource={data?.data ?? []} rowKey="id"
+        <Table columns={fcCot(cols as any)} dataSource={data?.data ?? []} rowKey="id"
           loading={isLoading} size="small"
           tableLayout="fixed"
           rowClassName={(r: any) => r.estado === 'vencida' ? 'ant-table-row-warn' : ''}

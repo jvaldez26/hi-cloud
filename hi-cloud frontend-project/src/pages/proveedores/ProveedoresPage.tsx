@@ -1,4 +1,6 @@
 import { useState, useCallback } from 'react';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Table, Button, Input, Space, Modal, Form, Row, Col,
   Typography, Popconfirm, message, Card, Select, InputNumber,
@@ -69,6 +71,13 @@ export default function ProveedoresPage() {
     exportarExcel(filas, `Proveedores-${dayjs().format('YYYY-MM-DD')}`);
     message.success(`${filas.length} proveedores exportados`);
   }, [search]);
+
+  const COLS_DEF = [
+    { key: 'nombre',   label: 'Proveedor', defaultVisible: true  },
+    { key: 'contacto', label: 'Contacto',  defaultVisible: true  },
+    { key: 'isActive', label: 'Estado',    defaultVisible: true  },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('proveedores', COLS_DEF);
 
   const columns = [
     {
@@ -145,13 +154,14 @@ export default function ProveedoresPage() {
               allowClear style={{ width: '100%', maxWidth: 240 }}
             />
             <Button icon={<FileExcelOutlined />} onClick={handleExcel}>Excel</Button>
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Nuevo proveedor</Button>
           </Space>
         </Col>
       </Row>
 
       <Table
-        columns={columns} dataSource={data?.data ?? []} rowKey="id"
+        columns={filterColumns(columns)} dataSource={data?.data ?? []} rowKey="id"
         loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
         pagination={{

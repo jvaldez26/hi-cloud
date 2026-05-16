@@ -1,4 +1,6 @@
 ﻿import { useState, useCallback } from 'react';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Table, Button, Tag, Space, Typography, Card, Row, Col,
   Popconfirm, message, Dropdown, Input, Select, DatePicker, Statistic, theme,
@@ -153,26 +155,36 @@ export default function ComprasPage() {
   const limpiar = () => { setSearch(''); setEstado(undefined); setRango(null); setPage(1); };
   const hayFiltros = !!(search || estado || rango);
 
+  const COLS_DEF = [
+    { key: 'folio',    label: 'Folio',     defaultVisible: true  },
+    { key: 'fecha',    label: 'Fecha',     defaultVisible: true  },
+    { key: 'proveedor',label: 'Proveedor', defaultVisible: true  },
+    { key: 'total',    label: 'Total',     defaultVisible: true  },
+    { key: 'estado',   label: 'Estado',    defaultVisible: true  },
+    { key: 'ecf',      label: 'e-CF',      defaultVisible: false },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('compras', COLS_DEF);
+
   const columns = [
     {
-      title: 'Folio', dataIndex: 'folio', width: 95, fixed: 'left' as const,
+      title: 'Folio', key: 'folio', dataIndex: 'folio', width: 95, fixed: 'left' as const,
       render: (v: string) => <Text strong style={{ fontFamily: 'monospace', fontSize: 12 }}>{v}</Text>,
     },
     {
-      title: 'Fecha', dataIndex: 'fecha', width: 88,
+      title: 'Fecha', key: 'fecha', dataIndex: 'fecha', width: 88,
       render: (v: string) => <Text style={{ fontSize: 12 }}>{fmt.date(v)}</Text>,
     },
     {
-      title: 'Proveedor', dataIndex: ['proveedor', 'nombre'], ellipsis: true, minWidth: 120,
+      title: 'Proveedor', key: 'proveedor', dataIndex: ['proveedor', 'nombre'], ellipsis: true, minWidth: 120,
       render: (v: string) => <Text style={{ fontSize: 13 }}>{v ?? '—'}</Text>,
     },
     // Subtotal e ITBIS omitidos — disponibles en el detalle de la compra
     {
-      title: 'Total', dataIndex: 'total', width: 110, align: 'right' as const,
+      title: 'Total', key: 'total', dataIndex: 'total', width: 110, align: 'right' as const,
       render: (v: number) => <Text strong style={{ color: token.colorPrimary }}>{fmt.money(v)}</Text>,
     },
     {
-      title: 'Estado', dataIndex: 'estado', width: 90,
+      title: 'Estado', key: 'estado', dataIndex: 'estado', width: 90,
       render: (v: CompraEstado) => (
         <Tag color={estadoColor[v]} style={{ fontSize: 11, fontWeight: 600, margin: 0 }}>
           {v.toUpperCase()}
@@ -237,6 +249,7 @@ export default function ComprasPage() {
         <Col>
           <Space>
             <Button icon={<FileExcelOutlined />} onClick={handleExcel}>Excel</Button>
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             {puedeCrear && (
               <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/compras/nueva')}>
                 Nueva compra
@@ -299,7 +312,7 @@ export default function ComprasPage() {
       )}
 
       <Table
-        columns={columns} dataSource={rows} rowKey="id"
+        columns={filterColumns(columns)} dataSource={rows} rowKey="id"
         loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
         onRow={r => ({ style: { cursor: 'pointer' }, onDoubleClick: () => navigate(`/compras/${r.id}`) })}

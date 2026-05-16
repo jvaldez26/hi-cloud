@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Table, Button, Input, Space, Tag, Modal, Form, Row, Col,
          Typography, Popconfirm, message, Card, InputNumber,
          Image, Avatar, Tooltip, Upload, Select, Tabs, Divider,
@@ -444,22 +446,31 @@ function ProductosCatalogo() {
     else         createMut.mutate(values);
   };
 
+  const COLS_DEF = [
+    { key: 'codigo',    label: 'Código',    defaultVisible: false },
+    { key: 'nombre',    label: 'Nombre',    defaultVisible: true  },
+    { key: 'precio',    label: 'Precio',    defaultVisible: true  },
+    { key: 'stock',     label: 'Stock',     defaultVisible: true  },
+    { key: 'categoria', label: 'Categoría', defaultVisible: true  },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('productos', COLS_DEF);
+
   const columns = [
-    { title: 'Código',    dataIndex: 'codigo',   width: 100, mobileHide: true },
-    { title: 'Nombre',    dataIndex: 'nombre',   ellipsis: true, mobileTitle: true,
+    { title: 'Código',    key: 'codigo', dataIndex: 'codigo',   width: 100, mobileHide: true },
+    { title: 'Nombre',    key: 'nombre', dataIndex: 'nombre',   ellipsis: true, mobileTitle: true,
       render: (v: string, r: Producto) => (
         <Space>
           <Avatar size={28} style={{ background: avatarColor(r.nombre), fontSize: 12, borderRadius: 4, flexShrink: 0 }} shape="square">{v.charAt(0).toUpperCase()}</Avatar>
           <Text style={{ fontSize: 13 }}>{v}</Text>
         </Space>
       )},
-    { title: 'Precio',    dataIndex: 'precio',   width: 115, isAmount: true, render: (v: number) => fmt.money(v) },
-    { title: 'Stock', dataIndex: 'stock', width: 90,
+    { title: 'Precio',    key: 'precio', dataIndex: 'precio',   width: 115, isAmount: true, render: (v: number) => fmt.money(v) },
+    { title: 'Stock', key: 'stock', dataIndex: 'stock', width: 90,
       render: (v: number, r: Producto) => {
         const bajo = v <= r.stockMinimo;
         return <Space size={4}>{bajo && <Tooltip title="Stock bajo"><WarningOutlined style={{ color: '#ff4d4f' }} /></Tooltip>}<Text style={{ color: bajo ? '#ff4d4f' : undefined }}>{fmt.number(v)}</Text></Space>;
       } },
-    { title: 'Categoría', dataIndex: 'categoria', ellipsis: true, mobileHide: true, render: (v: string) => v ? <Tag>{v}</Tag> : '—' },
+    { title: 'Categoría', key: 'categoria', dataIndex: 'categoria', ellipsis: true, mobileHide: true, render: (v: string) => v ? <Tag>{v}</Tag> : '—' },
     // ITBIS% y Mín. omitidos — disponibles al editar el producto
     { title: '', key: 'actions', width: 80, isActions: true,
       render: (_: unknown, r: Producto) => (
@@ -501,6 +512,7 @@ function ProductosCatalogo() {
             }}>
               Excel
             </Button>
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             {puedeCrear && (
               <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
                 Nuevo producto
@@ -510,7 +522,7 @@ function ProductosCatalogo() {
         </Col>
       </Row>
 
-      <Table columns={columns} dataSource={rows} rowKey="id"
+      <Table columns={filterColumns(columns)} dataSource={rows} rowKey="id"
         loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
         rowClassName={(r: Producto) => r.stock <= r.stockMinimo ? 'ant-table-row-danger' : ''}
