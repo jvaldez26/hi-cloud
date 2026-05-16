@@ -1223,7 +1223,7 @@ export default function AppLayout() {
 
   const SidebarContent = (
     <div style={{
-      width:         collapsed ? 64 : 260,
+      width:         collapsed ? 64 : 220,
       height:        '100%',
       display:       'flex',
       flexDirection: 'column',
@@ -1427,8 +1427,8 @@ export default function AppLayout() {
           <div
             ref={sidebarRef}
             style={{
-              width:       collapsed ? 64 : 260,
-              minWidth:    collapsed ? 64 : 260,
+              width:       collapsed ? 64 : 220,
+              minWidth:    collapsed ? 64 : 220,
               height:      '100%',
               flexShrink:  0,
               transition:  'width 0.25s ease, min-width 0.25s ease',
@@ -1459,9 +1459,9 @@ export default function AppLayout() {
                 top:        0,
                 left:       0,
                 height:     '100%',
-                width:      260,
+                width:      220,
                 zIndex:     200,
-                transform:  mobileOpen ? 'translateX(0)' : 'translateX(-260px)',
+                transform:  mobileOpen ? 'translateX(0)' : 'translateX(-220px)',
                 transition: 'transform 0.25s ease',
                 overflowY:  'hidden',
                 boxShadow:  mobileOpen ? '4px 0 20px rgba(0,0,0,0.3)' : 'none',
@@ -1482,7 +1482,7 @@ export default function AppLayout() {
                 key={activePanel}
                 category={cat}
                 activePath={activePath}
-                sidebarWidth={collapsed ? 64 : 260}
+                sidebarWidth={collapsed ? 64 : 220}
                 onNavigate={handleNavigate}
                 onClose={closePanel}
                 planActual={planActual}
