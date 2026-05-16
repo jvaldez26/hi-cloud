@@ -1,6 +1,6 @@
 import {
   IsString, IsOptional, IsEmail, IsUrl, IsObject,
-  MaxLength, Matches, IsDateString,
+  MaxLength, Matches, IsDateString, IsNumber, IsBoolean, Min,
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 
@@ -99,6 +99,15 @@ export class UpdateEmpresaDto {
 
   @IsOptional() @IsString() @MaxLength(50)
   zonaHoraria?: string;
+
+  @IsOptional() @IsNumber() @Min(0)
+  diasCreditoDefault?: number;
+
+  @IsOptional() @IsNumber() @Min(0)
+  limiteCreditoDefault?: number;
+
+  @IsOptional() @IsBoolean()
+  creditoHabilitado?: boolean;
 
   // ── JSONB de configuración flexible ─────────────────────────────────────────
 
