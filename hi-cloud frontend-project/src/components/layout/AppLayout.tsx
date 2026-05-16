@@ -304,99 +304,13 @@ const PLAN_NOMBRE: Record<PlanTipo, string> = {
   empresarial: 'Empresarial', enterprise: 'Enterprise',
 };
 
-// Mapa ruta → plan mínimo requerido (rutas sin entrada son accesibles en trial)
-const PATH_MIN_PLAN: Record<string, PlanTipo> = {
-  // ── Básico+ ──────────────────────────────────────────────────────────────
-  '/ecf':                   'basico',
-  '/compras':               'basico',
-  '/notas-credito':         'basico',
-  '/notas-credito-compras': 'basico',
-  '/proveedores':           'basico',
-  '/gastos':                'basico',
-  '/caja-chica':            'basico',
-  '/conteo-inventario':     'basico',
-  '/etiquetas':             'basico',
-  '/retenciones':           'basico',
-  '/bancos':                'basico',
-  '/depositos':             'basico',
-  '/cheques':               'basico',
-  '/datafono':              'basico',
-  '/importacion':           'basico',
-  '/reportes':              'basico',
-  '/calendario':            'basico',
-  '/fidelidad':             'basico',
-  '/cuotas':                'basico',
-  '/credito-cliente':       'basico',
-  '/cotizaciones':          'basico',
-  '/pre-facturas':          'basico',
-  '/notas-debito':          'basico',
-  '/conduces':              'basico',
-  '/devoluciones':          'basico',
-  '/facturas-recurrentes':  'basico',
-  '/precios-especiales':    'basico',
-  '/descuentos':            'basico',
-  '/comisiones':            'basico',
-  '/vendedores':            'basico',
-  '/contactos':             'basico',
-  '/documentos':            'basico',
-  '/equipo':                'basico',
-  // ── Profesional+ ─────────────────────────────────────────────────────────
-  '/cxc':                   'profesional',
-  '/recibos-cobro':         'profesional',
-  '/cxp':                   'profesional',
-  '/centro-costos':         'profesional',
-  '/flujo-caja':            'profesional',
-  '/activos-fijos':         'profesional',
-  '/divisas':               'profesional',
-  '/contabilidad':          'profesional',
-  '/libro-mayor':           'profesional',
-  '/periodo-contable':      'profesional',
-  '/reportes-financieros':  'profesional',
-  '/balance-comprobacion':  'profesional',
-  '/libro-ventas':          'profesional',
-  '/declaraciones':         'profesional',
-  '/presupuestos':          'profesional',
-  '/sucursales':            'profesional',
-  '/generador-reportes':    'profesional',
-  '/valoracion-stock':      'profesional',
-  '/solicitudes-compra':    'profesional',
-  '/cuentas-estadisticas':  'profesional',
-  '/distribucion-costos':   'profesional',
-  '/uom':                   'basico',
-  // ── Empresarial+ ─────────────────────────────────────────────────────────
-  '/proyectos':             'empresarial',
-  '/contratos':             'empresarial',
-  '/servicios':             'empresarial',
-  '/objetivos':             'empresarial',
-  '/crm':                   'empresarial',
-  '/licitaciones':          'empresarial',
-  '/encuestas':             'empresarial',
-  '/almacenes':             'empresarial',
-  '/wms':                   'empresarial',
-  '/manufactura':           'empresarial',
-  '/planeacion-demanda':    'empresarial',
-  '/nomina':                'empresarial',
-  '/portal-empleado':       'empresarial',
-  '/isr':                   'empresarial',
-  '/tss':                   'empresarial',
-  '/vacaciones':            'empresarial',
-  '/evaluaciones':          'empresarial',
-  '/capacitacion':          'empresarial',
-  '/flota':                 'empresarial',
-  '/mantenimiento':         'empresarial',
-  '/analytics':             'empresarial',
-  '/kpi':                   'empresarial',
-  '/aprobaciones':          'empresarial',
-  '/auditoria':             'empresarial',
-  // ── Enterprise ───────────────────────────────────────────────────────────
-  '/asistente':             'enterprise',
-  '/comunicaciones':        'enterprise',
-};
+// Todos los módulos están disponibles en todos los planes (Emprendedor, PYME, PRO, PLUS).
+// La única restricción es: ingresos mensuales y número de usuarios — NO módulos.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const PATH_MIN_PLAN: Record<string, PlanTipo> = {};
 
-function esRutaBloqueada(path: string, planActual: PlanTipo): boolean {
-  const minPlan = PATH_MIN_PLAN[path];
-  if (!minPlan) return false;
-  return PLAN_TIER[planActual] < PLAN_TIER[minPlan];
+function esRutaBloqueada(_path: string, _planActual: PlanTipo): boolean {
+  return false; // sin restricción de módulos por plan
 }
 
 // ── Control de acceso por rol ─────────────────────────────────────────────────
