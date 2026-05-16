@@ -326,27 +326,30 @@ export default function NotasCreditoPage() {
           loading={isLoading}
           size="middle"
           pagination={{ pageSize: 15 }}
+          scroll={{ x: 'max-content' }}
           columns={[
-            { title: 'Número', dataIndex: 'numero', key: 'n', render: v => <Text strong style={{ fontFamily: 'monospace' }}>{v}</Text> },
-            { title: 'Fecha',  dataIndex: 'fecha',  key: 'f' },
+            { title: 'Número', dataIndex: 'numero', key: 'n', width: 100,
+              render: v => <Text strong style={{ fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{v}</Text> },
+            { title: 'Fecha',  dataIndex: 'fecha',  key: 'f', width: 90,
+              render: v => <span style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{v ? String(v).slice(0, 10) : '—'}</span> },
             {
-              title: 'Cliente', key: 'c',
-              render: (_, r: any) => <Text strong>{r.cliente?.nombre}</Text>,
+              title: 'Cliente', key: 'c', ellipsis: true, minWidth: 120,
+              render: (_: any, r: any) => <Text strong ellipsis style={{ maxWidth: 160 }}>{r.cliente?.nombre ?? 'Consumidor Final'}</Text>,
             },
             {
-              title: 'Total', dataIndex: 'total', key: 't', align: 'right',
-              render: v => <Text strong style={{ color: token.colorError }}>{fmt(v)}</Text>,
+              title: 'Total', dataIndex: 'total', key: 't', align: 'right' as const, width: 110,
+              render: (v: any) => <Text strong style={{ color: token.colorError, whiteSpace: 'nowrap' }}>{fmt(v)}</Text>,
             },
             {
-              title: 'Factura orig.', dataIndex: 'facturaOriginalFolio', key: 'fof',
-              render: v => v ? <Tag color="orange">{v}</Tag> : <Text type="secondary">—</Text>,
+              title: 'Factura orig.', dataIndex: 'facturaOriginalFolio', key: 'fof', width: 160,
+              render: (v: any) => v ? <Tag color="orange" style={{ whiteSpace: 'nowrap' }}>{v}</Tag> : <Text type="secondary">—</Text>,
             },
             {
-              title: 'Estado', dataIndex: 'estado', key: 'e',
-              render: v => <Tag color={ESTADO_CONFIG[v]?.color}>{ESTADO_CONFIG[v]?.label}</Tag>,
+              title: 'Estado', dataIndex: 'estado', key: 'e', width: 100,
+              render: (v: any) => <Tag color={ESTADO_CONFIG[v]?.color}>{ESTADO_CONFIG[v]?.label}</Tag>,
             },
             {
-              title: '', key: 'acc', width: 180,
+              title: '', key: 'acc', width: 220, fixed: 'right' as const,
               render: (_, r: any) => (
                 <Space>
                   <Button size="small" icon={<EyeOutlined />} onClick={() => setModalDetalle(r)} />
