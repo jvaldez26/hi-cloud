@@ -18,7 +18,7 @@ import {
   FileText, BookOpen, PieChart, Database, Truck,
   UserCheck, Calculator, Shield, Bell, Globe,
   Factory, Target, Banknote, ClipboardList, Tags,
-  X, Lock,
+  X, Lock, ChevronLeft, ChevronRight, MoreHorizontal,
   type LucideIcon,
 } from 'lucide-react';
 import { usePlan, type PlanTipo } from '../../hooks/usePlan';
@@ -49,47 +49,42 @@ type SidebarPalette = {
   panelBg: string; panelBorder: string;
 };
 
-// Modo claro — estilo Alegra: sidebar blanco con acento azul
-// Ratios de contraste verificados (WCAG AA ≥ 4.5:1):
-//   #374151 sobre #FFFFFF → 7.3:1  ✅  (texto categoría)
-//   #4B5563 sobre #FFFFFF → 5.9:1  ✅  (texto sub-item)
-//   #0369A1 sobre #EFF6FF → 4.6:1  ✅  (activo: texto azul oscuro sobre fondo azul muy claro)
-//   #9CA3AF sobre #FFFFFF → 2.9:1  ℹ️  (labels de sección — decorativo, aceptable)
+// Modo claro — estilo Cashflow: sidebar azul sólido con acento dorado
 const sidebarLight: SidebarPalette = {
-  bg:           '#FFFFFF',
-  bgHover:      '#F8FAFC',
-  bgActive:     '#EFF6FF',              // fondo item activo
-  border:       '#E2E8F0',
-  separator:    '#E2E8F0',
-  text:         '#374151',              // 7.3:1 ✅  texto categoría legible
-  textActive:   '#0369A1',              // 4.6:1 ✅  azul oscuro (no claro) sobre EFF6FF
-  textCategory: '#9CA3AF',             // decorativo — labels sección uppercase
-  textSub:      '#4B5563',             // 5.9:1 ✅  texto sub-items legible
-  textSubHover: '#111827',             // hover: casi negro
-  accent:       '#0369A1',             // ícono activo
-  footerText:   '#6B7280',
-  scrollbar:    '#E2E8F0',
-  panelBg:      '#F8FAFC',
-  panelBorder:  '#E2E8F0',
+  bg:           '#1E3A8A',                       // azul Cashflow
+  bgHover:      'rgba(255,255,255,0.08)',
+  bgActive:     'rgba(255,255,255,0.12)',
+  border:       'rgba(255,255,255,0.12)',
+  separator:    'transparent',                   // sin separadores visibles
+  text:         'rgba(255,255,255,0.90)',
+  textActive:   '#FFFFFF',
+  textCategory: 'rgba(255,255,255,0.55)',
+  textSub:      'rgba(255,255,255,0.72)',
+  textSubHover: '#FFFFFF',
+  accent:       '#FCD34D',                       // dorado Cashflow
+  footerText:   'rgba(255,255,255,0.50)',
+  scrollbar:    'rgba(255,255,255,0.12)',
+  panelBg:      '#1a3380',
+  panelBorder:  'rgba(255,255,255,0.12)',
 };
 
-// Modo oscuro — consistente con tokens.css [data-theme="dark"]
+// Modo oscuro — azul más profundo para contraste oscuro
 const sidebarDark: SidebarPalette = {
-  bg:           '#0D1117',
-  bgHover:      '#1E293B',
-  bgActive:     'rgba(14,165,233,0.12)',
-  border:       '#1E293B',
-  separator:    'rgba(48,54,61,0.8)',
-  text:         '#8B949E',
-  textActive:   '#38BDF8',
-  textCategory: '#6E7681',
-  textSub:      '#6E7681',
-  textSubHover: '#E6EDF3',
-  accent:       '#38BDF8',
-  footerText:   '#6E7681',
-  scrollbar:    '#1E293B',
-  panelBg:      '#161B22',
-  panelBorder:  '#30363D',
+  bg:           '#172554',                       // azul más oscuro en dark
+  bgHover:      'rgba(255,255,255,0.08)',
+  bgActive:     'rgba(255,255,255,0.12)',
+  border:       'rgba(255,255,255,0.10)',
+  separator:    'transparent',
+  text:         'rgba(255,255,255,0.85)',
+  textActive:   '#FFFFFF',
+  textCategory: 'rgba(255,255,255,0.50)',
+  textSub:      'rgba(255,255,255,0.65)',
+  textSubHover: '#FFFFFF',
+  accent:       '#FCD34D',
+  footerText:   'rgba(255,255,255,0.45)',
+  scrollbar:    'rgba(255,255,255,0.10)',
+  panelBg:      '#162050',
+  panelBorder:  'rgba(255,255,255,0.10)',
 };
 
 // Contexto de tema del sidebar — inyectado una vez en AppLayout
@@ -742,22 +737,24 @@ function AccordionSubItem({
         onMouseEnter={() => { setHover(true); onHover?.(); }}
         onMouseLeave={() => setHover(false)}
         style={{
-          width: 'calc(100% - 16px)', margin: '1px 8px',
+          width: 'calc(100% - 8px)', margin: '1px 4px',
           display: 'flex', alignItems: 'center', gap: 6,
-          padding: '8px 12px 8px 28px',
-          height: 'auto', minHeight: 34, border: 'none',
+          padding: '7px 12px 7px 20px',
+          height: 'auto', minHeight: 32,
+          borderLeft: `3px solid ${active ? C.accent : 'transparent'}`,
+          borderTop: 'none', borderRight: 'none', borderBottom: 'none',
           cursor: locked ? 'not-allowed' : 'pointer',
-          borderRadius: 6,
+          borderRadius: '0 6px 6px 0',
           background: active ? C.bgActive : hover ? C.bgHover : 'transparent',
           transition: 'all 0.12s ease', textAlign: 'left',
           opacity: locked ? 0.7 : 1,
         }}
       >
         <span style={{
-          width: 5, height: 5, borderRadius: '50%', flexShrink: 0,
-          background: active ? C.accent : hover ? C.text : C.textCategory,
-          transition: 'background 0.12s', marginLeft: 2,
-        }} />
+          fontSize: 11, flexShrink: 0, lineHeight: 1,
+          color: active ? C.accent : hover ? C.textSub : C.textCategory,
+          transition: 'color 0.12s',
+        }}>↳</span>
         <span style={{
           flex: 1, fontSize: 12, fontWeight: active ? 500 : 400,
           color: locked ? C.accent : active ? C.textActive : hover ? C.textSubHover : C.textSub,
@@ -794,7 +791,7 @@ function CategoryBtnCollapsed({
         style={{
           width: 40, height: 38, display: 'flex', alignItems: 'center', justifyContent: 'center',
           border: 'none', cursor: 'pointer', borderRadius: 7, position: 'relative',
-          background: isActive ? '#1E293B' : hover ? 'rgba(30,41,59,0.8)' : 'transparent',
+          background: isActive ? C.bgActive : hover ? C.bgHover : 'transparent',
           margin: '2px auto', transition: 'background 0.15s',
         }}
       >
@@ -807,7 +804,7 @@ function CategoryBtnCollapsed({
         <category.Icon
           size={16}
           strokeWidth={(isActive || hasActiveSub) ? 2.5 : 2}
-          style={{ color: isActive ? '#FFFFFF' : hasActiveSub ? C.accent : hover ? '#CBD5E1' : C.textCategory }}
+          style={{ color: (isActive || hasActiveSub) ? C.textActive : hover ? C.text : C.textCategory }}
         />
       </button>
     </Tooltip>
@@ -961,10 +958,9 @@ function FlyoutItem({
         }}
       >
         <span style={{
-          width: 5, height: 5, borderRadius: '50%', flexShrink: 0,
-          background: active ? C.accent : hover ? C.text : C.textCategory,
-          transition: 'background 0.12s', marginLeft: 2,
-        }} />
+          fontSize: 11, flexShrink: 0, lineHeight: 1,
+          color: active ? C.accent : C.textCategory, transition: 'color 0.12s',
+        }}>↳</span>
         <span style={{
           flex: 1, fontSize: 12, fontWeight: active ? 600 : 400,
           color: locked ? C.accent : active ? C.textActive : hover ? C.textSubHover : C.textSub,
@@ -983,11 +979,10 @@ function FlyoutItem({
 export default function AppLayout() {
   useRealtime();   // ← conexión WebSocket para actualizaciones en vivo
 
-  const [collapsed,      setCollapsed]      = useState(false);
-  const [cmdOpen,        setCmdOpen]        = useState(false);
-  const [helpOpen,       setHelpOpen]       = useState(false);
-  const [mobileOpen,     setMobileOpen]     = useState(false);
-  const [sidebarHovered, setSidebarHovered] = useState(false);
+  const [collapsed,  setCollapsed]  = useState(false);
+  const [cmdOpen,    setCmdOpen]    = useState(false);
+  const [helpOpen,   setHelpOpen]   = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   // Modal de upgrade cuando se hace click en módulo bloqueado
   const [upgradeModal, setUpgradeModal] = useState<{ label: string; planMinimo: PlanTipo } | null>(null);
 
@@ -1240,41 +1235,76 @@ export default function AppLayout() {
       overflowX:     'hidden',
     }}>
 
-      {/* ── Header / Logo ────────────────────────────────────────────── */}
+      {/* ── Header: nombre de empresa (solo expandido) ──────────────── */}
+      {!collapsed && (
+        <div style={{
+          padding:        '10px 16px 8px',
+          display:        'flex',
+          alignItems:     'center',
+          justifyContent: 'space-between',
+          flexShrink:     0,
+        }}>
+          <span style={{
+            fontSize: 11, fontWeight: 700,
+            color: C.textCategory,
+            textTransform: 'uppercase', letterSpacing: '0.06em',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            maxWidth: 155,
+          }}>
+            {(misEmpresas as any[]).find((e: any) => e.empresaId === empresaActiva)?.nombre
+              ?? user?.nombre?.split(' ')[0]
+              ?? 'HiCloud'}
+          </span>
+          <MoreHorizontal size={14} style={{ color: C.textCategory, flexShrink: 0 }} />
+        </div>
+      )}
+
+      {/* ── Header: logo + botón colapsar (estilo Cashflow) ─────────── */}
       <div style={{
-        height:         64,
+        height:         collapsed ? 64 : 48,
         display:        'flex',
         alignItems:     'center',
-        justifyContent: 'center',
-        padding:        collapsed ? '0 12px' : '0 16px',
-        borderBottom:   `1px solid ${C.separator}`,
+        justifyContent: collapsed ? 'center' : 'space-between',
+        padding:        collapsed ? '0 12px' : '0 14px 0 16px',
+        borderBottom:   `1px solid ${C.border}`,
         flexShrink:     0,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: collapsed ? 0 : 8 }}>
-          {/* Logo — ícono nube cuando colapsado, logo completo cuando expandido */}
-          {collapsed ? (
+        {collapsed ? (
+          <img
+            src="/logo-hicloud.png"
+            alt="HiCloud"
+            style={{ width: 36, height: 36, objectFit: 'contain' }}
+          />
+        ) : (
+          <motion.div
+            key="logo-full"
+            initial={{ opacity: 0, x: -8 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.18 }}
+          >
             <img
               src="/logo-hicloud.png"
-              alt="HiCloud"
-              style={{ width: 38, height: 38, objectFit: 'contain', filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.3))' }}
+              alt="HiCloud ERP"
+              style={{ height: 34, width: 'auto', objectFit: 'contain' }}
             />
-          ) : (
-            <motion.div
-              key="logo-full"
-              initial={{ opacity: 0, x: -8 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -8 }}
-              transition={{ duration: 0.18 }}
-              style={{ display: 'flex', alignItems: 'center', gap: 8 }}
-            >
-              <img
-                src="/logo-hicloud.png"
-                alt="HiCloud ERP"
-                style={{ height: 40, width: 'auto', objectFit: 'contain', filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.25))' }}
-              />
-            </motion.div>
-          )}
-        </div>
+          </motion.div>
+        )}
+        <button
+          onClick={() => setCollapsed(v => !v)}
+          title={collapsed ? 'Expandir menú' : 'Colapsar menú'}
+          style={{
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            color: C.textCategory, display: 'flex', alignItems: 'center',
+            padding: 4, borderRadius: 6, transition: 'color 0.15s', flexShrink: 0,
+          }}
+          onMouseEnter={e => (e.currentTarget.style.color = C.text)}
+          onMouseLeave={e => (e.currentTarget.style.color = C.textCategory)}
+        >
+          {collapsed
+            ? <ChevronRight size={15} strokeWidth={2} />
+            : <ChevronLeft  size={15} strokeWidth={2} />
+          }
+        </button>
       </div>
 
       {/* ── Navegación ──────────────────────────────────────────────── */}
@@ -1416,62 +1446,18 @@ export default function AppLayout() {
         {!isMobile && (
           <div
             ref={sidebarRef}
-            onMouseEnter={() => setSidebarHovered(true)}
-            onMouseLeave={() => setSidebarHovered(false)}
             style={{
               width:       collapsed ? 64 : 220,
               minWidth:    collapsed ? 64 : 220,
               height:      '100%',
               flexShrink:  0,
               transition:  'width 0.25s ease, min-width 0.25s ease',
-              boxShadow:   '1px 0 0 rgba(148,163,184,0.06)',
+              boxShadow:   '2px 0 8px rgba(0,0,0,0.18)',
               zIndex:      100,
-              position:    'relative',
-              overflow:    'visible',
+              overflow:    'hidden',
             }}
           >
             {SidebarContent}
-
-            {/* ── Toggle flotante Notion/Linear style ─────────────── */}
-            <button
-              onClick={() => setCollapsed(v => !v)}
-              title={collapsed ? 'Expandir menú' : 'Colapsar menú'}
-              style={{
-                position:       'absolute',
-                top:            20,
-                right:          -12,
-                width:          24,
-                height:         24,
-                borderRadius:   '50%',
-                background:     C.bg,
-                border:         `1.5px solid ${C.border}`,
-                boxShadow:      isDark
-                  ? '0 2px 8px rgba(0,0,0,0.5)'
-                  : '0 2px 8px rgba(0,0,0,0.14)',
-                display:        'flex',
-                alignItems:     'center',
-                justifyContent: 'center',
-                cursor:         'pointer',
-                color:          C.textSub,
-                opacity:        sidebarHovered ? 1 : 0,
-                pointerEvents:  sidebarHovered ? 'auto' : 'none',
-                transition:     'opacity 0.18s ease, color 0.15s, background 0.15s',
-                zIndex:         101,
-              }}
-              onMouseEnter={e => {
-                e.currentTarget.style.color      = C.text;
-                e.currentTarget.style.background = isDark ? '#1E293B' : '#F1F5F9';
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.color      = C.textSub;
-                e.currentTarget.style.background = C.bg;
-              }}
-            >
-              {collapsed
-                ? <MenuUnfoldOutlined style={{ fontSize: 11 }} />
-                : <MenuFoldOutlined   style={{ fontSize: 11 }} />
-              }
-            </button>
           </div>
         )}
 
