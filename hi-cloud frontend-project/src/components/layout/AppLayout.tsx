@@ -2,14 +2,14 @@
 import { useMobile, useTablet } from '../../hooks/useMediaQuery';
 import {
   Layout, Avatar, Dropdown, Typography, Badge, Space,
-  Button, Tooltip, theme, Select, Tag, Modal,
+  Button, Tooltip, theme, Select, Tag, Modal, Input, Divider,
 } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../api/client';
 import {
   LogoutOutlined, UserOutlined, BellOutlined,
   MoonOutlined, SunOutlined, SearchOutlined,
-  MenuFoldOutlined, MenuUnfoldOutlined,
+  MenuFoldOutlined, MenuUnfoldOutlined, PlusCircleOutlined,
 } from '@ant-design/icons';
 import {
   LayoutDashboard, ShoppingCart, Wallet, TrendingUp, Package,
@@ -968,14 +968,22 @@ function FlyoutItem({
   );
 }
 
+// ── Color determinista para avatar de empresa ────────────────────────────────
+function getEmpresaColor(nombre: string): string {
+  const PALETTE = ['#10B981', '#0EA5E9', '#8B5CF6', '#F59E0B', '#EF4444', '#EC4899', '#06B6D4', '#F97316'];
+  return PALETTE[(nombre.charCodeAt(0) || 72) % PALETTE.length];
+}
+
 // ── AppLayout principal ───────────────────────────────────────────────────────
 export default function AppLayout() {
   useRealtime();   // ← conexión WebSocket para actualizaciones en vivo
 
-  const [collapsed,  setCollapsed]  = useState(false);
-  const [cmdOpen,    setCmdOpen]    = useState(false);
-  const [helpOpen,   setHelpOpen]   = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const [collapsed,       setCollapsed]       = useState(false);
+  const [cmdOpen,         setCmdOpen]         = useState(false);
+  const [helpOpen,        setHelpOpen]        = useState(false);
+  const [mobileOpen,      setMobileOpen]      = useState(false);
+  const [modalEmpresa,    setModalEmpresa]    = useState(false);
+  const [busquedaEmpresa, setBusquedaEmpresa] = useState('');
   // Modal de upgrade cuando se hace click en módulo bloqueado
   const [upgradeModal, setUpgradeModal] = useState<{ label: string; planMinimo: PlanTipo } | null>(null);
 
@@ -1217,6 +1225,11 @@ export default function AppLayout() {
 
   // ── Sidebar interno ─────────────────────────────────────────────────────────
 
+  const empresaNombre = (misEmpresas as any[]).find((e: any) => e.empresaId === empresaActiva)?.nombre ?? '';
+  const empresasFiltradas = (misEmpresas as any[]).filter((e: any) =>
+    e.nombre?.toLowerCase().includes(busquedaEmpresa.toLowerCase())
+  );
+
   const SidebarContent = (
     <div style={{
       width:         collapsed ? 64 : 220,
@@ -1228,45 +1241,19 @@ export default function AppLayout() {
       overflowX:     'hidden',
     }}>
 
-      {/* ── Header: nombre de empresa (solo expandido) ──────────────── */}
-      {!collapsed && (
-        <div style={{
-          padding:        '10px 16px 8px',
-          display:        'flex',
-          alignItems:     'center',
-          justifyContent: 'space-between',
-          flexShrink:     0,
-        }}>
-          <span style={{
-            fontSize: 11, fontWeight: 700,
-            color: C.textCategory,
-            textTransform: 'uppercase', letterSpacing: '0.06em',
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-            maxWidth: 155,
-          }}>
-            {(misEmpresas as any[]).find((e: any) => e.empresaId === empresaActiva)?.nombre
-              ?? user?.nombre?.split(' ')[0]
-              ?? 'HiCloud'}
-          </span>
-          <MoreHorizontal size={14} style={{ color: C.textCategory, flexShrink: 0 }} />
-        </div>
-      )}
-
-      {/* ── Header: logo + botón colapsar (estilo Cashflow) ─────────── */}
+      {/* ── Header Fila 1: Logo + botón colapsar ────────────────────── */}
       <div style={{
-        height:         collapsed ? 64 : 48,
         display:        'flex',
         alignItems:     'center',
         justifyContent: collapsed ? 'center' : 'space-between',
-        padding:        collapsed ? '0 12px' : '0 14px 0 16px',
-        borderBottom:   `1px solid ${C.border}`,
+        padding:        collapsed ? '16px 12px 10px' : '14px 16px 10px',
         flexShrink:     0,
       }}>
         {collapsed ? (
           <img
             src="/logo-hicloud.png"
             alt="HiCloud"
-            style={{ width: 36, height: 36, objectFit: 'contain' }}
+            style={{ width: 32, height: 32, objectFit: 'contain' }}
           />
         ) : (
           <motion.div
@@ -1278,26 +1265,75 @@ export default function AppLayout() {
             <img
               src="/logo-hicloud.png"
               alt="HiCloud ERP"
-              style={{ height: 34, width: 'auto', objectFit: 'contain' }}
+              style={{ height: 28, width: 'auto', objectFit: 'contain' }}
             />
           </motion.div>
         )}
-        <button
-          onClick={() => setCollapsed(v => !v)}
-          title={collapsed ? 'Expandir menú' : 'Colapsar menú'}
-          style={{
-            background: 'transparent', border: 'none', cursor: 'pointer',
-            color: C.textCategory, display: 'flex', alignItems: 'center',
-            padding: 4, borderRadius: 6, transition: 'color 0.15s', flexShrink: 0,
-          }}
-          onMouseEnter={e => (e.currentTarget.style.color = C.text)}
-          onMouseLeave={e => (e.currentTarget.style.color = C.textCategory)}
-        >
-          {collapsed
-            ? <ChevronRight size={15} strokeWidth={2} />
-            : <ChevronLeft  size={15} strokeWidth={2} />
-          }
-        </button>
+        {!collapsed && (
+          <button
+            onClick={() => setCollapsed(v => !v)}
+            title="Colapsar menú"
+            style={{
+              background: 'rgba(255,255,255,0.10)', border: 'none', cursor: 'pointer',
+              color: C.text, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 28, height: 28, borderRadius: 6, flexShrink: 0, transition: 'background 0.15s',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.18)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.10)')}
+          >
+            <ChevronLeft size={14} strokeWidth={2.5} />
+          </button>
+        )}
+      </div>
+
+      {/* ── Header Fila 2: Avatar empresa + nombre + "⋯" ───────────── */}
+      <div style={{
+        display:        'flex',
+        alignItems:     'center',
+        justifyContent: collapsed ? 'center' : 'space-between',
+        padding:        collapsed ? '2px 12px 14px' : '2px 12px 14px 16px',
+        borderBottom:   `1px solid ${C.border}`,
+        flexShrink:     0,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: collapsed ? undefined : 1 }}>
+          {/* Avatar con iniciales */}
+          <div
+            onClick={collapsed ? () => setCollapsed(false) : undefined}
+            title={collapsed ? (empresaNombre || 'Mi Empresa') : undefined}
+            style={{
+              width: 28, height: 28, borderRadius: 6, flexShrink: 0,
+              background: getEmpresaColor(empresaNombre || 'H'),
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 11, fontWeight: 700, color: '#FFFFFF',
+              cursor: collapsed ? 'pointer' : 'default',
+              userSelect: 'none',
+            }}
+          >
+            {(empresaNombre || 'HI').slice(0, 2).toUpperCase()}
+          </div>
+          {!collapsed && (
+            <span style={{
+              fontSize: 12.5, fontWeight: 500, color: C.text,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {empresaNombre || 'Mi Empresa'}
+            </span>
+          )}
+        </div>
+        {!collapsed && (
+          <button
+            onClick={() => setModalEmpresa(true)}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: C.textCategory, padding: '2px 4px', borderRadius: 4,
+              display: 'flex', alignItems: 'center', flexShrink: 0, transition: 'color 0.15s',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.color = C.text)}
+            onMouseLeave={e => (e.currentTarget.style.color = C.textCategory)}
+          >
+            <MoreHorizontal size={15} />
+          </button>
+        )}
       </div>
 
       {/* ── Navegación ──────────────────────────────────────────────── */}
@@ -1727,6 +1763,117 @@ export default function AppLayout() {
 
       <OnboardingTour />
       <HelpCenter open={helpOpen} onClose={() => setHelpOpen(false)} />
+
+      {/* ── Modal Cambiar Empresa ─────────────────────────────────── */}
+      <Modal
+        title="Cambiar Empresa"
+        open={modalEmpresa}
+        onCancel={() => { setModalEmpresa(false); setBusquedaEmpresa(''); }}
+        footer={null}
+        width={420}
+        centered
+      >
+        <Input
+          prefix={<SearchOutlined style={{ color: '#9CA3AF' }} />}
+          placeholder="Buscar una empresa..."
+          value={busquedaEmpresa}
+          onChange={e => setBusquedaEmpresa(e.target.value)}
+          style={{ marginBottom: 12 }}
+          autoFocus
+        />
+
+        <div style={{ maxHeight: 280, overflowY: 'auto' }}>
+          {empresasFiltradas.map((emp: any) => {
+            const esActiva = emp.empresaId === empresaActiva;
+            return (
+              <div
+                key={emp.empresaId}
+                onClick={() => {
+                  cambiarEmpresa(emp.empresaId);
+                  setModalEmpresa(false);
+                  setBusquedaEmpresa('');
+                }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
+                  background: esActiva ? '#EFF6FF' : 'transparent',
+                  marginBottom: 4, transition: 'background 0.15s',
+                }}
+                onMouseEnter={e => { if (!esActiva) (e.currentTarget as HTMLElement).style.background = '#F8FAFC'; }}
+                onMouseLeave={e => { if (!esActiva) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+              >
+                {/* Avatar empresa */}
+                <div style={{
+                  width: 36, height: 36, borderRadius: 8, flexShrink: 0,
+                  background: getEmpresaColor(emp.nombre || ''),
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 13, fontWeight: 700, color: '#FFFFFF',
+                  userSelect: 'none',
+                }}>
+                  {(emp.nombre || 'HI').slice(0, 2).toUpperCase()}
+                </div>
+                {/* Nombre */}
+                <span style={{
+                  flex: 1, fontSize: 14,
+                  fontWeight: esActiva ? 500 : 400,
+                  color: '#111827',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {emp.nombre}
+                </span>
+                {/* Radio indicator */}
+                <div style={{
+                  width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
+                  border: `2px solid ${esActiva ? '#0EA5E9' : '#D1D5DB'}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {esActiva && (
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#0EA5E9' }} />
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {empresasFiltradas.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '20px 0', color: '#9CA3AF', fontSize: 13 }}>
+              Sin resultados
+            </div>
+          )}
+        </div>
+
+        <Divider style={{ margin: '10px 0' }} />
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <button
+            onClick={() => { setModalEmpresa(false); navigate('/mis-empresas'); }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '8px 12px', background: 'none', border: 'none',
+              cursor: 'pointer', borderRadius: 6, color: '#374151',
+              fontSize: 14, width: '100%', textAlign: 'left',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = '#F9FAFB')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+          >
+            <PlusCircleOutlined style={{ color: '#6B7280' }} />
+            Crear nueva empresa
+          </button>
+          <button
+            onClick={() => { logout(); navigate('/login'); }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '8px 12px', background: 'none', border: 'none',
+              cursor: 'pointer', borderRadius: 6, color: '#374151',
+              fontSize: 14, width: '100%', textAlign: 'left',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = '#F9FAFB')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+          >
+            <LogoutOutlined style={{ color: '#6B7280' }} />
+            Salir
+          </button>
+        </div>
+      </Modal>
 
       {/* ── Modal upgrade de plan ─────────────────────────────────── */}
       <Modal
