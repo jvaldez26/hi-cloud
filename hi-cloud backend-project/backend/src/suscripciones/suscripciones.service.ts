@@ -317,7 +317,7 @@ export class SuscripcionesService implements OnModuleInit {
     const empresaIds = Array.from(new Set(solicitudes.map(s => s.empresaId)));
     const empresas   = empresaIds.length > 0
       ? await this.ds.query<{ id: number; nombre: string; rnc: string }[]>(
-          `SELECT id, nombre, rnc FROM empresas WHERE id = ANY($1)`, [empresaIds],
+          `SELECT id, nombre, rnc FROM empresa WHERE id = ANY($1)`, [empresaIds],
         )
       : [];
     const empresaMap = Object.fromEntries(empresas.map(e => [e.id, e]));
@@ -424,7 +424,7 @@ export class SuscripcionesService implements OnModuleInit {
     const empresaIds = pruebas.map(s => s.empresaId);
     const empresas   = empresaIds.length > 0
       ? await this.ds.query<{ id: number; nombre: string; rnc: string }[]>(
-          `SELECT id, nombre, rnc FROM empresas WHERE id = ANY($1)`, [empresaIds],
+          `SELECT id, nombre, rnc FROM empresa WHERE id = ANY($1)`, [empresaIds],
         )
       : [];
     const empresaMap = Object.fromEntries(empresas.map(e => [e.id, e]));

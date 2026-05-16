@@ -911,7 +911,7 @@ export default function SuperAdminPage() {
 
   const { data: suscripciones = [], isLoading: loadSus } = useQuery({
     queryKey: ['sa-suscripciones'],
-    queryFn:  () => api.get('/suscripciones').then(xd),
+    queryFn:  () => api.get('/admin/suscripciones').then(xd),
     staleTime: 30_000,
   });
 

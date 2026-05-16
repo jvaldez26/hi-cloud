@@ -43,6 +43,8 @@ export class RolesGuard implements CanActivate {
     }
 
     // Usar el rol de BD (fuente de verdad), no el del JWT
+    // super_admin tiene acceso irrestricto — pasa cualquier @Roles()
+    if (dbRole === UserRole.SUPER_ADMIN) return true;
     return requiredRoles.some((role) => dbRole === role);
   }
 
