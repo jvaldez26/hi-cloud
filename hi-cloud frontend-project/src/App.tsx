@@ -235,20 +235,96 @@ export default function App() {
         hashed:    false,
         algorithm: isDark ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
         token: {
-          colorPrimary: '#1a56db',
-          borderRadius: 8,
-          fontFamily:   'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-          ...(isDark && {
-            colorBgBase:      '#0d1117',
-            colorBgContainer: '#161b22',
-            colorBgLayout:    '#0d1117',
-            colorBgElevated:  '#1c2128',
+          /* ── Tipografía ── */
+          fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+          fontSize:   14,
+          lineHeight: 1.5,
+
+          /* ── Colores de marca ── */
+          colorPrimary: '#0EA5E9',
+          colorSuccess: '#10B981',
+          colorWarning: '#F59E0B',
+          colorError:   '#EF4444',
+          colorInfo:    '#0EA5E9',
+
+          /* ── Bordes ── */
+          borderRadius:   8,
+          borderRadiusLG: 12,
+          borderRadiusSM: 6,
+          colorBorder:    '#E2E8F0',
+          colorBorderSecondary: '#F1F5F9',
+
+          /* ── Textos ── */
+          colorText:          '#0F172A',
+          colorTextSecondary: '#475569',
+          colorTextTertiary:  '#94A3B8',
+          colorTextDisabled:  '#CBD5E1',
+
+          /* ── Fondos (light) ── */
+          ...(!isDark && {
+            colorBgBase:      '#FFFFFF',
+            colorBgContainer: '#FFFFFF',
+            colorBgLayout:    '#F8FAFC',
+            colorBgElevated:  '#FFFFFF',
+            colorBgSpotlight: '#F1F5F9',
           }),
+
+          /* ── Fondos (dark) ── */
+          ...(isDark && {
+            colorBgBase:      '#0D1117',
+            colorBgContainer: '#161B22',
+            colorBgLayout:    '#0D1117',
+            colorBgElevated:  '#1C2128',
+          }),
+
+          /* ── Sombras ── */
+          boxShadow:          '0 1px 2px rgba(0,0,0,0.05)',
+          boxShadowSecondary: '0 4px 6px -1px rgba(0,0,0,0.07)',
+
+          /* ── Spacing ── */
+          padding:   16,
+          paddingLG: 24,
+          paddingSM: 12,
+          paddingXS: 8,
         },
         components: {
-          Card:   { borderRadius: 12 },
-          Table:  { borderRadius: 10 },
-          Modal:  { borderRadius: 12 },
+          Table: {
+            borderRadius:    0,
+            headerBg:        isDark ? '#1C2128' : '#F8FAFC',
+            headerColor:     isDark ? '#6E7681' : '#94A3B8',
+            rowHoverBg:      isDark ? '#1C2128' : '#F8FAFC',
+            borderColor:     isDark ? '#30363D' : '#E2E8F0',
+            cellPaddingBlock: 11,
+            cellPaddingInline: 14,
+          },
+          Card: {
+            borderRadius: 12,
+            paddingLG:    24,
+            boxShadow:    '0 1px 2px rgba(0,0,0,0.05)',
+          },
+          Button: {
+            borderRadius:  8,
+            fontWeight:    500,
+            paddingInline: 16,
+          },
+          Input: {
+            borderRadius:  8,
+            paddingBlock:  8,
+            paddingInline: 12,
+          },
+          Select:  { borderRadius: 8 },
+          DatePicker: { borderRadius: 8 },
+          InputNumber: { borderRadius: 8 },
+          Modal:   { borderRadius: 16 },
+          Drawer:  { borderRadius: 0 },
+          Tag: {
+            borderRadius: 20,
+            fontSize:     12,
+          },
+          Statistic: {
+            titleFontSize:   13,
+            contentFontSize: 26,
+          },
         },
       }}
     >

@@ -48,47 +48,42 @@ type SidebarPalette = {
   panelBg: string; panelBorder: string;
 };
 
-// Modo claro — azul corporativo (referencia Cashflow)
-// Contraste verificado sobre bg #1854D8:
-//   #FFFFFF       → 6.4:1 ✅  (texto principal)
-//   #E2E8F0       → 5.2:1 ✅  (subítems)
-//   #BFDBFE       → 4.5:1 ✅  (categorías / footer)
-//   #93C5FD       → 4.8:1 ✅  (acento / íconos activos)
+// Modo claro — estilo Alegra: sidebar blanco con acento azul
 const sidebarLight: SidebarPalette = {
-  bg:           '#1854D8',
-  bgHover:      'rgba(255,255,255,0.13)', // hover blanco suave sobre azul
-  bgActive:     '#1D4ED8',                // azul más oscuro — contraste claro
-  border:       'rgba(255,255,255,0.15)',
-  separator:    'rgba(255,255,255,0.15)',
-  text:         '#FFFFFF',                // 6.4:1 ✅
-  textActive:   '#FFFFFF',
-  textCategory: '#BFDBFE',               // azul-200 → 4.5:1 ✅ (era 0.55 opacity ~3.1:1)
-  textSub:      '#E2E8F0',               // slate-200 → 5.2:1 ✅ (era 0.65 opacity ~3.7:1)
-  textSubHover: '#FFFFFF',
-  accent:       '#93C5FD',               // blue-300 → 4.8:1 ✅
-  footerText:   '#BFDBFE',               // 4.5:1 ✅ (era 0.35 opacity ~2.4:1)
-  scrollbar:    'rgba(255,255,255,0.20)',
-  panelBg:      '#1648C2',
-  panelBorder:  'rgba(255,255,255,0.15)',
+  bg:           '#FFFFFF',
+  bgHover:      '#F8FAFC',
+  bgActive:     '#EFF6FF',              // fondo item activo (azul muy claro)
+  border:       '#E2E8F0',
+  separator:    '#E2E8F0',
+  text:         '#475569',              // texto items normal
+  textActive:   '#0EA5E9',              // texto item activo (azul)
+  textCategory: '#94A3B8',             // labels de sección
+  textSub:      '#64748B',             // subítems
+  textSubHover: '#0F172A',
+  accent:       '#0EA5E9',             // ícono activo
+  footerText:   '#64748B',
+  scrollbar:    '#E2E8F0',
+  panelBg:      '#F8FAFC',
+  panelBorder:  '#E2E8F0',
 };
 
-// Modo oscuro — navy profundo con acentos azules
+// Modo oscuro — consistente con tokens.css [data-theme="dark"]
 const sidebarDark: SidebarPalette = {
-  bg:           '#0F172A',
+  bg:           '#0D1117',
   bgHover:      '#1E293B',
-  bgActive:     'rgba(30,64,175,0.35)',
+  bgActive:     'rgba(14,165,233,0.12)',
   border:       '#1E293B',
-  separator:    'rgba(148,163,184,0.08)',
-  text:         '#CBD5E1',
-  textActive:   '#FFFFFF',
-  textCategory: '#64748B',
-  textSub:      '#94A3B8',
-  textSubHover: '#F1F5F9',
-  accent:       '#3B82F6',
-  footerText:   '#475569',
+  separator:    'rgba(48,54,61,0.8)',
+  text:         '#8B949E',
+  textActive:   '#38BDF8',
+  textCategory: '#6E7681',
+  textSub:      '#6E7681',
+  textSubHover: '#E6EDF3',
+  accent:       '#38BDF8',
+  footerText:   '#6E7681',
   scrollbar:    '#1E293B',
-  panelBg:      '#1E293B',
-  panelBorder:  '#334155',
+  panelBg:      '#161B22',
+  panelBorder:  '#30363D',
 };
 
 // Contexto de tema del sidebar — inyectado una vez en AppLayout

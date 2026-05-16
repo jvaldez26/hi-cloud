@@ -1,0 +1,186 @@
+/**
+ * HiCloud ERP — Sistema de tokens de diseño (estilo Alegra)
+ * Modo claro por defecto, oscuro via [data-theme="dark"]
+ */
+
+:root {
+  /* ── MARCA ─────────────────────────────────────────────────────────────────── */
+  --hc-brand:        #0EA5E9;   /* Azul HiCloud */
+  --hc-brand-dark:   #0284C7;
+  --hc-brand-light:  #E0F2FE;
+  --hc-brand-50:     #F0F9FF;
+
+  /* ── FONDOS ────────────────────────────────────────────────────────────────── */
+  --hc-bg:           #FFFFFF;   /* Fondo contenedor principal */
+  --hc-bg-page:      #F8FAFC;   /* Fondo de página */
+  --hc-bg-subtle:    #F1F5F9;   /* Fondo terciario */
+  --hc-bg-hover:     #F8FAFC;   /* Hover de filas / items */
+
+  /* ── BORDES ────────────────────────────────────────────────────────────────── */
+  --hc-border:       #E2E8F0;
+  --hc-border-strong:#CBD5E1;
+
+  /* ── TEXTOS ────────────────────────────────────────────────────────────────── */
+  --hc-text:         #0F172A;   /* Texto principal */
+  --hc-text-2:       #475569;   /* Texto secundario */
+  --hc-text-3:       #94A3B8;   /* Texto terciario / placeholder */
+  --hc-text-inv:     #FFFFFF;   /* Texto sobre fondos oscuros */
+
+  /* ── SIDEBAR ───────────────────────────────────────────────────────────────── */
+  --sb-bg:           #FFFFFF;
+  --sb-border:       #E2E8F0;
+  --sb-width:        240px;
+  --sb-hover:        #F8FAFC;
+  --sb-active-bg:    #EFF6FF;   /* Fondo item activo */
+  --sb-active-text:  #0EA5E9;   /* Texto item activo */
+  --sb-text:         #475569;
+  --sb-text-cat:     #94A3B8;   /* Labels de categoría */
+  --sb-icon:         #94A3B8;
+  --sb-icon-active:  #0EA5E9;
+
+  /* ── SEMÁNTICOS ────────────────────────────────────────────────────────────── */
+  --hc-success:      #10B981;
+  --hc-success-bg:   #ECFDF5;
+  --hc-warning:      #F59E0B;
+  --hc-warning-bg:   #FFFBEB;
+  --hc-error:        #EF4444;
+  --hc-error-bg:     #FEF2F2;
+  --hc-info:         #0EA5E9;
+  --hc-info-bg:      #EFF6FF;
+
+  /* ── RADIO Y SOMBRAS ───────────────────────────────────────────────────────── */
+  --hc-r-sm:   6px;
+  --hc-r-md:   8px;
+  --hc-r-lg:   12px;
+  --hc-r-xl:   16px;
+
+  --hc-shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+  --hc-shadow-md: 0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -2px rgba(0,0,0,0.05);
+  --hc-shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -4px rgba(0,0,0,0.05);
+
+  /* ── TIPOGRAFÍA ────────────────────────────────────────────────────────────── */
+  --hc-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* ── MODO OSCURO ──────────────────────────────────────────────────────────── */
+[data-theme="dark"] {
+  --hc-bg:           #161B22;
+  --hc-bg-page:      #0D1117;
+  --hc-bg-subtle:    #1C2128;
+  --hc-bg-hover:     #1C2128;
+
+  --hc-border:       #30363D;
+  --hc-border-strong:#484F58;
+
+  --hc-text:         #E6EDF3;
+  --hc-text-2:       #8B949E;
+  --hc-text-3:       #6E7681;
+
+  --sb-bg:           #0D1117;
+  --sb-border:       #1E293B;
+  --sb-hover:        #1E293B;
+  --sb-active-bg:    rgba(14,165,233,0.12);
+  --sb-active-text:  #38BDF8;
+  --sb-text:         #8B949E;
+  --sb-text-cat:     #6E7681;
+  --sb-icon:         #6E7681;
+  --sb-icon-active:  #38BDF8;
+
+  --hc-success-bg:   rgba(16,185,129,0.12);
+  --hc-warning-bg:   rgba(245,158,11,0.12);
+  --hc-error-bg:     rgba(239,68,68,0.12);
+  --hc-info-bg:      rgba(14,165,233,0.12);
+}
+
+/* ── RESET BASE ────────────────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--hc-font);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: var(--hc-bg-page);
+  color: var(--hc-text);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* ── UTILIDADES GLOBALES ───────────────────────────────────────────────────── */
+
+/* Página base */
+.hc-page {
+  padding: 24px;
+  max-width: 100%;
+}
+
+/* Card estándar */
+.hc-card {
+  background: var(--hc-bg);
+  border: 1px solid var(--hc-border);
+  border-radius: var(--hc-r-lg);
+  box-shadow: var(--hc-shadow-sm);
+}
+
+/* Header de página */
+.hc-page-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--hc-text);
+  letter-spacing: -0.01em;
+}
+
+/* Métricas del dashboard */
+.hc-metric-card {
+  background: var(--hc-bg);
+  border: 1px solid var(--hc-border);
+  border-radius: var(--hc-r-lg);
+  padding: 20px;
+  box-shadow: var(--hc-shadow-sm);
+}
+
+.hc-metric-label {
+  font-size: 13px;
+  color: var(--hc-text-3);
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+
+.hc-metric-value {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--hc-text);
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+/* Badges semánticos */
+.hc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.hc-badge-success { background: var(--hc-success-bg); color: var(--hc-success); }
+.hc-badge-warning { background: var(--hc-warning-bg); color: var(--hc-warning); }
+.hc-badge-error   { background: var(--hc-error-bg);   color: var(--hc-error);   }
+.hc-badge-info    { background: var(--hc-info-bg);     color: var(--hc-info);    }
+.hc-badge-neutral { background: var(--hc-bg-subtle);   color: var(--hc-text-2);  }
+
+/* Transición suave de tema en componentes antd */
+.ant-layout,
+.ant-layout-sider,
+.ant-card,
+.ant-table,
+.ant-input,
+.ant-select-selector,
+.ant-modal-content,
+.ant-drawer-content {
+  transition: background-color 0.2s ease, border-color 0.2s ease !important;
+}
