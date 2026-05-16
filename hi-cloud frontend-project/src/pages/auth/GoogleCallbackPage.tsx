@@ -1,34 +1,44 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Spin } from 'antd';
 import { useAuthStore } from '../../store/auth.store';
+import api from '../../api/client';
 
 export default function GoogleCallbackPage() {
-  const [params]  = useSearchParams();
-  const navigate  = useNavigate();
-  const { login } = useAuthStore();
+  const [params]              = useSearchParams();
+  const navigate              = useNavigate();
+  const { login, setHydrated } = useAuthStore();
+  const called                = useRef(false);
 
   useEffect(() => {
-    const token     = params.get('token');
-    const error     = params.get('error');
-    const empresaId = params.get('empresaId');
-    const nombre    = params.get('nombre') ?? '';
-    const email     = params.get('email')  ?? '';
-    const role      = params.get('role')   ?? 'viewer';
+    if (called.current) return;
+    called.current = true;
 
+    const error = params.get('error');
     if (error) {
       navigate('/login?error=google_failed', { replace: true });
       return;
     }
 
-    // S-23: token está en cookie httpOnly — solo guardamos info de UI
-    login(
-      { id: 0, nombre, email, role: role as any },
-      empresaId ? Number(empresaId) : null,
-      [],
-    );
+    // S-23: el backend seteó la cookie httpOnly — llamamos /auth/me
+    // para obtener los datos reales del usuario (id correcto, empresas, etc.)
+    const empresaId = params.get('empresaId');
 
-    navigate('/dashboard', { replace: true });
+    api.get('/auth/me')
+      .then(r => {
+        const user = r.data?.data?.user ?? r.data?.user ?? r.data;
+        if (!user?.id) throw new Error('Sin usuario');
+
+        const empresasRaw = localStorage.getItem('mis_empresas');
+        const empresas    = empresasRaw ? JSON.parse(empresasRaw) : [];
+        login(user, empresaId ? Number(empresaId) : null, empresas);
+
+        navigate(user.role === 'super_admin' ? '/super-admin' : '/dashboard', { replace: true });
+      })
+      .catch(() => {
+        setHydrated(true);
+        navigate('/login?error=google_failed', { replace: true });
+      });
   }, []);
 
   return (
