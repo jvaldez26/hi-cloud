@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo, useCallback, createContext, useContext } from 'react';
 import {
   Table, Tag, Button, Modal, Select, InputNumber, message,
-  Avatar, Tooltip, Input, Popconfirm, Form, Tabs, Badge,
+  Avatar, Tooltip, Input, Popconfirm, Form, Tabs, Badge, Dropdown,
   Spin, Empty, Space, Alert, ConfigProvider, theme as antTheme,
 } from 'antd';
+import type { MenuProps } from 'antd';
 import { ecfConfigApi } from '../../api/ecf-config.api';
 import EcfBadge, { type EstadoEcf } from '../../components/ui/EcfBadge';
 import {
@@ -16,7 +17,7 @@ import {
   XCircle, BarChart2, Globe, LogOut, RefreshCw, Search,
   Eye, Edit2, MessageSquare, PauseCircle, PlayCircle, Trash2,
   Crown, Settings, Moon, Sun,
-  CheckCircle, Send, Shield, Bell,
+  CheckCircle, Send, Shield, Bell, MoreHorizontal,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
@@ -135,6 +136,7 @@ function PlanBadge({ plan }: { plan: string }) {
       background: `${color}22`, color, border: `1px solid ${color}55`,
       borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700,
       textTransform: 'uppercase', letterSpacing: '0.05em',
+      whiteSpace: 'nowrap', display: 'inline-block',
     }}>{plan ?? 'sin plan'}</span>
   );
 }
@@ -1003,106 +1005,119 @@ export default function SuperAdminPage() {
   // ── Columnas tablas ──────────────────────────────────────────────────────────
 
   const colsEmpresas = [
+    // ── EMPRESA (nombre + RNC) ────────────────────────────────────────────────
     {
-      title: 'Empresa', key: 'empresa', width: 220,
+      title: 'Empresa', key: 'empresa',
       render: (_: any, r: any) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{
-            width: 36, height: 36, borderRadius: 8, flexShrink: 0,
+            width: 34, height: 34, borderRadius: 8, flexShrink: 0,
             background: r.isActive ? `${C.blue}33` : `${C.border}`,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: r.isActive ? C.blue : C.txt2, fontWeight: 800, fontSize: 14,
-          }}>{r.nombre?.charAt(0) ?? '?'}</div>
-          <div>
-            <div style={{ color: C.txt, fontWeight: 600, fontSize: 13 }}>{r.nombre}</div>
-            <div style={{ color: C.txt2, fontSize: 11 }}>RNC: {r.rnc}</div>
+            color: r.isActive ? C.blue : C.txt2, fontWeight: 800, fontSize: 13,
+          }}>{r.nombre?.charAt(0)?.toUpperCase() ?? '?'}</div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ color: C.txt, fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.nombre}</div>
+            <div style={{ color: C.txt2, fontSize: 11 }}>RNC: {r.rnc ?? '—'}</div>
           </div>
         </div>
       ),
     },
-    { title: 'Plan', key: 'plan', width: 110, render: (_: any, r: any) => <PlanBadge plan={r.plan} /> },
-    { title: 'Estado', key: 'estado', width: 110, render: (_: any, r: any) => <EstadoBadge activa={r.isActive} /> },
-    { title: 'Usuarios', dataIndex: 'usuarios', key: 'usuarios', width: 80, align: 'center' as const,
-      render: (v: number) => <span style={{ color: C.txt }}>{v ?? 0}</span>,
+    // ── PLAN ─────────────────────────────────────────────────────────────────
+    { title: 'Plan', key: 'plan', width: 120,
+      render: (_: any, r: any) => <PlanBadge plan={r.plan} />,
     },
-    { title: 'Facturas/mes', dataIndex: 'facturasMes', key: 'facturasMes', width: 100, align: 'center' as const,
-      render: (v: number) => <span style={{ color: C.txt }}>{v ?? 0}</span>,
+    // ── ESTADO ───────────────────────────────────────────────────────────────
+    { title: 'Estado', key: 'estado', width: 110,
+      render: (_: any, r: any) => <EstadoBadge activa={r.isActive} />,
     },
-    { title: 'US$/mes', key: 'mrr', width: 110, align: 'right' as const,
-      render: (_: any, r: any) => (
-        <span style={{ color: C.gold, fontWeight: 600 }}>
-          {PLAN_MRR_USD[r.plan] > 0 ? fmtUsd(PLAN_MRR_USD[r.plan]) : <span style={{ color: C.txt2 }}>—</span>}
-        </span>
-      ),
-    },
-    { title: 'Registro', dataIndex: 'fechaRegistro', key: 'reg', width: 100,
-      render: (v: string) => <span style={{ color: C.txt2, fontSize: 12 }}>{fmtFecha(v)}</span>,
-    },
+    // ── VENCIMIENTO con urgencia ──────────────────────────────────────────────
     { title: 'Vencimiento', dataIndex: 'venceSuscripcion', key: 'vence', width: 130,
-      render: (v: string) => {
-        if (!v) return <span style={{ color: C.txt2 }}>—</span>;
-        const { texto, color } = fmtRelativa(v);
+      render: (v: string, r: any) => {
+        if (!v) return <span style={{ color: C.txt2, fontSize: 12 }}>—</span>;
+        const dias = Math.ceil((new Date(v).getTime() - Date.now()) / 86_400_000);
+        const urgente  = dias < 0;
+        const critico  = dias >= 0 && dias < 3;
+        const advertencia = dias >= 3 && dias < 7;
+        const color = urgente || critico ? C.red : advertencia ? C.gold : C.txt2;
+        const icon  = urgente ? '🚨' : critico || advertencia ? '⚠️' : '';
+        const label = urgente
+          ? `Venció hace ${Math.abs(dias)}d`
+          : dias === 0 ? 'Vence hoy'
+          : `Vence en ${dias}d`;
         return (
-          <span style={{ color, fontSize: 12, fontWeight: 600 }}>
-            {fmtFecha(v)}<br/>
-            <span style={{ fontSize: 11, opacity: 0.8 }}>{texto}</span>
-          </span>
+          <div style={{ lineHeight: 1.3 }}>
+            <div style={{ color: C.txt, fontSize: 12 }}>{fmtFecha(v)}</div>
+            <div style={{ color, fontSize: 11, fontWeight: urgente || critico ? 700 : 500 }}>
+              {icon} {label}
+            </div>
+          </div>
         );
       },
     },
+    // ── ACCIONES: Eye + Dropdown ───────────────────────────────────────────────
     {
-      title: 'Acciones', key: 'acc', width: 210, fixed: 'right' as const,
+      title: '', key: 'acc', width: 80, fixed: 'right' as const,
       render: (_: any, r: any) => {
         const tieneEcf = (ecfConfigs as any[]).some((c: any) => c.empresaId === r.id);
+        const menuItems: MenuProps['items'] = [
+          {
+            key: 'plan', icon: <Edit2 size={13} />, label: 'Cambiar plan',
+            onClick: () => { setModalPlan(r); setPlanSel(r.plan ?? 'emprendedor'); setMeses(1); },
+          },
+          {
+            key: 'msg', icon: <MessageSquare size={13} />, label: 'Enviar mensaje',
+            onClick: () => setModalMsg(r),
+          },
+          {
+            key: 'ecf', icon: <FileText size={13} />,
+            label: tieneEcf ? 'Editar config e-CF' : 'Nueva config e-CF',
+            onClick: () => { setTab('ecf'); setEcfTargetId(r.id); },
+          },
+          { type: 'divider' },
+          r.isActive
+            ? {
+                key: 'suspend', icon: <PauseCircle size={13} />, label: 'Suspender',
+                danger: true,
+                onClick: () => {
+                  Modal.confirm({
+                    title: '¿Suspender esta empresa?',
+                    okText: 'Suspender', okButtonProps: { danger: true }, cancelText: 'Cancelar',
+                    onOk: () => suspenderMut.mutate(r.id),
+                  });
+                },
+              }
+            : {
+                key: 'activate', icon: <PlayCircle size={13} />, label: 'Activar',
+                onClick: () => activarMut.mutate(r.id),
+              },
+          { type: 'divider' },
+          {
+            key: 'delete', icon: <Trash2 size={13} />, label: 'Eliminar empresa',
+            danger: true,
+            onClick: () => {
+              Modal.confirm({
+                title: '¿Eliminar empresa?',
+                content: 'Esta acción desactivará la empresa y cancelará su suscripción.',
+                okText: 'Eliminar', okButtonProps: { danger: true }, cancelText: 'Cancelar',
+                onOk: () => eliminarMut.mutate(r.id),
+              });
+            },
+          },
+        ];
+
         return (
-          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
             <Tooltip title="Ver detalle">
               <button onClick={() => setDetalleEmpresa(r)} style={btnStyle('#3B82F6')}>
                 <Eye size={13} />
               </button>
             </Tooltip>
-            <Tooltip title="Cambiar plan">
-              <button onClick={() => { setModalPlan(r); setPlanSel(r.plan ?? 'profesional'); setMeses(1); }}
-                style={btnStyle('#8B5CF6')}>
-                <Edit2 size={13} />
+            <Dropdown menu={{ items: menuItems }} trigger={['click']} placement="bottomRight">
+              <button style={btnStyle(C.txt2, false, false)}>
+                <MoreHorizontal size={14} />
               </button>
-            </Tooltip>
-            <Tooltip title="Enviar mensaje">
-              <button onClick={() => setModalMsg(r)} style={btnStyle('#F59E0B')}>
-                <MessageSquare size={13} />
-              </button>
-            </Tooltip>
-            <Tooltip title={tieneEcf ? 'Editar configuración e-CF' : 'Nueva configuración e-CF'}>
-              <button
-                onClick={() => { setTab('ecf'); setEcfTargetId(r.id); }}
-                style={btnStyle(tieneEcf ? '#10B981' : '#0891B2')}
-                title=""
-              >
-                <FileText size={13} />
-              </button>
-            </Tooltip>
-            {r.isActive
-              ? <Tooltip title="Suspender">
-                  <Popconfirm title="¿Suspender esta empresa?" okText="Sí" cancelText="No"
-                    onConfirm={() => suspenderMut.mutate(r.id)}>
-                    <button style={btnStyle('#EF4444')}><PauseCircle size={13} /></button>
-                  </Popconfirm>
-                </Tooltip>
-              : <Tooltip title="Activar">
-                  <button onClick={() => activarMut.mutate(r.id)} style={btnStyle('#10B981')}>
-                    <PlayCircle size={13} />
-                  </button>
-                </Tooltip>
-            }
-            <Tooltip title="Eliminar">
-              <Popconfirm
-                title="¿Eliminar empresa?"
-                description="Esta acción desactivará la empresa y cancelará su suscripción."
-                okText="Eliminar" okButtonProps={{ danger: true }} cancelText="Cancelar"
-                onConfirm={() => eliminarMut.mutate(r.id)}>
-                <button style={btnStyle('#EF4444', true)}><Trash2 size={13} /></button>
-              </Popconfirm>
-            </Tooltip>
+            </Dropdown>
           </div>
         );
       },
@@ -1551,7 +1566,8 @@ export default function SuperAdminPage() {
                   loading={loadEmp}
                   rowKey="id"
                   size="small"
-                  scroll={{ x: 1200 }}
+                  scroll={{ x: 'max-content' }}
+                  onRow={r => ({ onClick: () => setDetalleEmpresa(r), style: { cursor: 'pointer' } })}
                   pagination={{ pageSize: 15, showTotal: t => `${t} empresas`, showSizeChanger: true }}
                   rowClassName={() => 'sa-row'}
                   style={{ '--sa-row-bg': C.bg, '--sa-row-hover': '#1a2535' } as any}
