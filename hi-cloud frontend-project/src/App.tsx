@@ -214,17 +214,15 @@ export default function App() {
     });
   }, [hydrated, login, logout, setHydrated]);
 
-  // Sincroniza el atributo data-theme para que el CSS global pueda reaccionar
+  // Sincroniza data-theme en html+body y clase dark en html
+  // Los popups de Ant Design (Select, Dropdown) son portales en body
+  // → ponemos data-theme en ambos para que todos los selectores CSS funcionen
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
-    document.body.setAttribute('data-theme', isDark ? 'dark' : 'light');
-    if (isDark) {
-      document.body.classList.add('dark');
-      document.body.classList.remove('light');
-    } else {
-      document.body.classList.add('light');
-      document.body.classList.remove('dark');
-    }
+    const theme = isDark ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', theme);
+    document.body.setAttribute('data-theme', theme);
+    document.documentElement.classList.toggle('dark', isDark);
+    document.body.classList.toggle('dark', isDark);
   }, [isDark]);
 
   return (
@@ -235,72 +233,69 @@ export default function App() {
         hashed:    false,
         algorithm: isDark ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
         token: {
-          /* ── Tipografía ── */
+          /* ── Tipografía (igual en ambos modos) ── */
           fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
           fontSize:   14,
           lineHeight: 1.5,
 
-          /* ── Colores de marca ── */
+          /* ── Marca (igual en ambos modos) ── */
           colorPrimary: '#0EA5E9',
           colorSuccess: '#10B981',
           colorWarning: '#F59E0B',
           colorError:   '#EF4444',
           colorInfo:    '#0EA5E9',
 
-          /* ── Bordes ── */
+          /* ── Geometría (igual en ambos modos) ── */
           borderRadius:   8,
           borderRadiusLG: 12,
           borderRadiusSM: 6,
-          colorBorder:    '#E2E8F0',
-          colorBorderSecondary: '#F1F5F9',
 
-          /* ── Textos ── */
-          colorText:          '#0F172A',
-          colorTextSecondary: '#475569',
-          colorTextTertiary:  '#94A3B8',
-          colorTextDisabled:  '#CBD5E1',
-
-          /* ── Fondos (light) ── */
-          ...(!isDark && {
-            colorBgBase:      '#FFFFFF',
-            colorBgContainer: '#FFFFFF',
-            colorBgLayout:    '#F8FAFC',
-            colorBgElevated:  '#FFFFFF',
-            colorBgSpotlight: '#F1F5F9',
-          }),
-
-          /* ── Fondos (dark) ── */
-          ...(isDark && {
-            colorBgBase:      '#0D1117',
-            colorBgContainer: '#161B22',
-            colorBgLayout:    '#0D1117',
-            colorBgElevated:  '#1C2128',
-          }),
-
-          /* ── Sombras ── */
-          boxShadow:          '0 1px 2px rgba(0,0,0,0.05)',
-          boxShadowSecondary: '0 4px 6px -1px rgba(0,0,0,0.07)',
-
-          /* ── Spacing ── */
+          /* ── Spacing (igual en ambos modos) ── */
           padding:   16,
           paddingLG: 24,
           paddingSM: 12,
           paddingXS: 8,
+
+          /* ── Colores de texto — condicionales para no sobreescribir darkAlgorithm ── */
+          ...(isDark ? {
+            colorText:          '#E6EDF3',
+            colorTextSecondary: '#8B949E',
+            colorTextTertiary:  '#6E7681',
+            colorTextDisabled:  '#484F58',
+            colorBorder:        '#30363D',
+            colorBorderSecondary: '#21262D',
+            colorBgBase:        '#0D1117',
+            colorBgContainer:   '#161B22',
+            colorBgLayout:      '#0D1117',
+            colorBgElevated:    '#1C2128',
+          } : {
+            colorText:          '#0F172A',
+            colorTextSecondary: '#475569',
+            colorTextTertiary:  '#94A3B8',
+            colorTextDisabled:  '#CBD5E1',
+            colorBorder:        '#E2E8F0',
+            colorBorderSecondary: '#F1F5F9',
+            colorBgBase:        '#FFFFFF',
+            colorBgContainer:   '#FFFFFF',
+            colorBgLayout:      '#F8FAFC',
+            colorBgElevated:    '#FFFFFF',
+            colorBgSpotlight:   '#F1F5F9',
+          }),
         },
         components: {
           Table: {
-            borderRadius:    0,
-            headerBg:        isDark ? '#1C2128' : '#F8FAFC',
-            headerColor:     isDark ? '#6E7681' : '#94A3B8',
-            rowHoverBg:      isDark ? '#1C2128' : '#F8FAFC',
-            borderColor:     isDark ? '#30363D' : '#E2E8F0',
-            cellPaddingBlock: 11,
+            borderRadius:      0,
+            headerBg:          isDark ? '#1C2128' : '#F8FAFC',
+            headerColor:       isDark ? '#6E7681' : '#94A3B8',
+            rowHoverBg:        isDark ? '#1C2128' : '#F8FAFC',
+            borderColor:       isDark ? '#30363D' : '#E2E8F0',
+            cellPaddingBlock:  11,
             cellPaddingInline: 14,
           },
           Card: {
             borderRadius: 12,
             paddingLG:    24,
-            boxShadow:    '0 1px 2px rgba(0,0,0,0.05)',
+            boxShadow:    isDark ? 'none' : '0 1px 2px rgba(0,0,0,0.05)',
           },
           Button: {
             borderRadius:  8,
@@ -311,12 +306,31 @@ export default function App() {
             borderRadius:  8,
             paddingBlock:  8,
             paddingInline: 12,
+            colorBgContainer: isDark ? '#1C2128' : '#FFFFFF',
           },
-          Select:  { borderRadius: 8 },
-          DatePicker: { borderRadius: 8 },
-          InputNumber: { borderRadius: 8 },
-          Modal:   { borderRadius: 16 },
-          Drawer:  { borderRadius: 0 },
+          Select: {
+            borderRadius:     8,
+            colorBgContainer: isDark ? '#1C2128' : '#FFFFFF',
+            colorBgElevated:  isDark ? '#161B22' : '#FFFFFF',
+          },
+          DatePicker: {
+            borderRadius:     8,
+            colorBgContainer: isDark ? '#1C2128' : '#FFFFFF',
+            colorBgElevated:  isDark ? '#161B22' : '#FFFFFF',
+          },
+          InputNumber: {
+            borderRadius:     8,
+            colorBgContainer: isDark ? '#1C2128' : '#FFFFFF',
+          },
+          Modal: {
+            borderRadius:  16,
+            contentBg:     isDark ? '#1C2128' : '#FFFFFF',
+            headerBg:      isDark ? '#1C2128' : '#FFFFFF',
+          },
+          Drawer: {
+            borderRadius:     0,
+            colorBgElevated:  isDark ? '#1C2128' : '#FFFFFF',
+          },
           Tag: {
             borderRadius: 20,
             fontSize:     12,
@@ -324,6 +338,18 @@ export default function App() {
           Statistic: {
             titleFontSize:   13,
             contentFontSize: 26,
+          },
+          Menu: {
+            colorBgContainer: isDark ? '#0D1117' : '#FFFFFF',
+          },
+          Dropdown: {
+            colorBgElevated: isDark ? '#161B22' : '#FFFFFF',
+          },
+          Tooltip: {
+            colorBgSpotlight: isDark ? '#2D333B' : '#1C2128',
+          },
+          Notification: {
+            colorBgElevated: isDark ? '#1C2128' : '#FFFFFF',
           },
         },
       }}
