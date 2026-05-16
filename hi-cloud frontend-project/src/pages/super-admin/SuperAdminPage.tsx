@@ -739,9 +739,13 @@ function PlanesEditor({ C }: { C: typeof SA_DARK }) {
   });
 
   const PLAN_COLORS: Record<string, string> = {
-    trial: '#64748B', basico: '#3B82F6', profesional: '#8B5CF6',
-    empresarial: '#F59E0B', enterprise: '#EF4444',
+    emprendedor: '#3B82F6', pyme: '#059669', pro: '#0d9488', plus: '#4F46E5',
+    trial: '#64748B', basico: '#6B7280', profesional: '#6B7280', empresarial: '#6B7280', enterprise: '#EF4444',
   };
+
+  // Usar precioMensualUsd del nuevo getPlanesCatalogo()
+  const getPrecioUsd = (p: any): number =>
+    p.precioMensualUsd ?? p.precio ?? 0;
 
   return (
     <div style={{ background: C.bg, borderRadius: 12, border: `1px solid ${C.border}`, padding: 20 }}>
@@ -752,33 +756,36 @@ function PlanesEditor({ C }: { C: typeof SA_DARK }) {
         Los cambios se propagan automáticamente a toda la app.
       </p>
 
-      {isLoading ? <Spin size="small" /> : (planes ?? []).map((p: any) => (
-        <div key={p.clave} style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '10px 0', borderBottom: `1px solid ${C.border}`,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 10, height: 10, borderRadius: '50%', background: PLAN_COLORS[p.clave] ?? '#94A3B8', flexShrink: 0 }} />
-            <span style={{ color: C.txt, fontWeight: 600 }}>{p.nombre}</span>
+      {isLoading ? <Spin size="small" /> : (planes ?? []).map((p: any) => {
+        const precioUsd = getPrecioUsd(p);
+        return (
+          <div key={p.clave} style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '10px 0', borderBottom: `1px solid ${C.border}`,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 10, height: 10, borderRadius: '50%', background: PLAN_COLORS[p.clave] ?? '#94A3B8', flexShrink: 0 }} />
+              <span style={{ color: C.txt, fontWeight: 600 }}>{p.nombre?.toUpperCase()}</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ color: precioUsd > 0 ? C.gold : C.txt2, fontWeight: 700, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                {precioUsd > 0 ? `US$${precioUsd}/mes` : 'N/A'}
+              </span>
+              <Button
+                size="small"
+                icon={<Edit2 size={12} />}
+                onClick={() => {
+                  setEditando(p);
+                  form.setFieldsValue({ nombre: p.nombre, precio: precioUsd });
+                }}
+                style={{ color: C.txt2, background: 'transparent', border: `1px solid ${C.border}` }}
+              >
+                Editar
+              </Button>
+            </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ color: p.precio > 0 ? C.gold : C.txt2, fontWeight: 700, fontFamily: 'monospace' }}>
-              {p.precio > 0 ? `${fmtUsd(Number(p.precio))}/mes` : 'Gratis'}
-            </span>
-            <Button
-              size="small"
-              icon={<Edit2 size={12} />}
-              onClick={() => {
-                setEditando(p);
-                form.setFieldsValue({ nombre: p.nombre, precio: Number(p.precio) });
-              }}
-              style={{ color: C.txt2, background: 'transparent', border: `1px solid ${C.border}` }}
-            >
-              Editar
-            </Button>
-          </div>
-        </div>
-      ))}
+        );
+      })}
 
       {/* Modal editar plan */}
       <Modal
@@ -792,24 +799,21 @@ function PlanesEditor({ C }: { C: typeof SA_DARK }) {
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item name="nombre" label="Nombre del plan" rules={[{ required: true }]}>
-            <Input placeholder="ej. Básico" />
+            <Input placeholder="ej. Emprendedor" />
           </Form.Item>
-          <Form.Item name="precio" label="Precio mensual (US$)" rules={[{ required: true }]}>
+          <Form.Item name="precio" label="Precio mensual (US$)">
             <InputNumber
               style={{ width: '100%' }}
-              min={0}
-              precision={2}
-              addonBefore="US$"
-              addonAfter="/mes"
-              placeholder="0 = Gratis"
+              min={0} precision={2}
+              placeholder="29"
             />
           </Form.Item>
           <Form.Item name="descripcion" label="Descripción corta (opcional)">
             <Input placeholder="Descripción breve del plan..." />
           </Form.Item>
           <Alert
-            type="warning" showIcon
-            message="Este cambio actualizará el precio visible en la página de planes de TODOS los clientes."
+            type="info" showIcon
+            message="Nota: los precios en USD y límites de ingresos están definidos en el código del backend. Aquí solo puedes editar el nombre y descripción visibles."
             style={{ fontSize: 12 }}
           />
         </Form>
@@ -1485,45 +1489,99 @@ export default function SuperAdminPage() {
           </div>
         )}
 
-        {/* ── TABS ──────────────────────────────────────────────────────────── */}
-        <div style={{ background: C.card, borderRadius: 14, border: `1px solid ${C.border}` }}>
+        {/* ── LAYOUT: SIDEBAR + CONTENIDO ──────────────────────────────────── */}
+        <div style={{ display: 'flex', gap: 0, background: C.card, borderRadius: 14, border: `1px solid ${C.border}`, overflow: 'hidden', minHeight: 560 }}>
 
-          {/* Tab bar */}
-          <div style={{
-            display: 'flex', borderBottom: `1px solid ${C.border}`,
-            padding: '0 20px', gap: 4,
+          {/* ── SIDEBAR VERTICAL IZQUIERDO ──────────────────────────────────── */}
+          <nav style={{
+            width: 220, flexShrink: 0,
+            background: C.bg, borderRight: `1px solid ${C.border}`,
+            display: 'flex', flexDirection: 'column', padding: '12px 0',
           }}>
+            {/* Grupo GESTIÓN */}
+            <div style={{ padding: '4px 16px 6px', color: C.txt2, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', marginTop: 4 }}>
+              Gestión
+            </div>
             {[
-              { key: 'empresas',      icon: <Building2 size={15} />,  label: 'Empresas',          count: (empresas as any[]).length },
-              { key: 'usuarios',      icon: <Users size={15} />,      label: 'Usuarios',          count: (usuarios as any[]).length },
-              { key: 'suscripciones', icon: <Crown size={15} />,      label: 'Suscripciones',     count: (suscripciones as any[]).length },
-              { key: 'solicitudes',   icon: <Send size={15} />,       label: 'Solicitudes',       count: solicitudesPendientes ?? 0 },
-              { key: 'pruebas',       icon: <ClockIcon size={15} />,  label: 'En Prueba',         count: null },
-              { key: 'metricas',      icon: <BarChart2 size={15} />,  label: 'Métricas',          count: null },
-              { key: 'ecf',           icon: <FileText size={15} />,   label: 'e-CF Config',       count: null },
-              { key: 'config',        icon: <Settings size={15} />,   label: 'Configuración',     count: null },
-            ].map(t => (
-              <button key={t.key} onClick={() => setTab(t.key)} style={{
-                background: 'none', border: 'none', cursor: 'pointer',
-                padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 6,
-                borderBottom: `2px solid ${tab === t.key ? C.gold : 'transparent'}`,
-                color: tab === t.key ? C.gold : C.txt2,
-                fontWeight: tab === t.key ? 700 : 500, fontSize: 13,
-                transition: 'all .15s',
-              }}>
-                {t.icon} {t.label}
-                {t.count !== null && (
-                  <span style={{
-                    background: tab === t.key ? `${C.gold}33` : `${C.border}`,
-                    color: tab === t.key ? C.gold : C.txt2,
-                    borderRadius: 10, padding: '0 7px', fontSize: 11, fontWeight: 700,
-                  }}>{t.count}</span>
-                )}
-              </button>
-            ))}
-          </div>
+              { key: 'empresas',      icon: <Building2 size={15} />,  label: 'Empresas',      count: (empresas as any[]).length, countColor: C.blue },
+              { key: 'usuarios',      icon: <Users size={15} />,      label: 'Usuarios',      count: (usuarios as any[]).length, countColor: C.blue },
+              { key: 'suscripciones', icon: <Crown size={15} />,      label: 'Suscripciones', count: (suscripciones as any[]).length, countColor: C.blue },
+              { key: 'solicitudes',   icon: <Send size={15} />,       label: 'Solicitudes',   count: solicitudesPendientes ?? 0, countColor: C.red, badge: true },
+              { key: 'pruebas',       icon: <ClockIcon size={15} />,  label: 'En Prueba',     count: (pruebas as any[]).length, countColor: C.gold },
+            ].map(t => {
+              const activo = tab === t.key;
+              return (
+                <button key={t.key} onClick={() => setTab(t.key)} style={{
+                  width: '100%', border: 'none', cursor: 'pointer',
+                  padding: '9px 16px 9px 14px',
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  borderLeft: `3px solid ${activo ? C.gold : 'transparent'}`,
+                  background: activo ? `${C.gold}18` : 'none',
+                  color: activo ? C.gold : C.txt2,
+                  fontWeight: activo ? 700 : 500, fontSize: 13,
+                  transition: 'all .15s', textAlign: 'left',
+                }}
+                  onMouseEnter={e => { if (!activo) e.currentTarget.style.background = `${C.border}66`; }}
+                  onMouseLeave={e => { if (!activo) e.currentTarget.style.background = 'none'; }}>
+                  <span style={{ flexShrink: 0, color: activo ? C.gold : C.txt2 }}>{t.icon}</span>
+                  <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.label}</span>
+                  {t.count > 0 && (
+                    <span style={{
+                      background: t.badge ? C.red : activo ? `${C.gold}33` : C.border,
+                      color: t.badge ? '#fff' : activo ? C.gold : C.txt2,
+                      borderRadius: 10, padding: '1px 7px', fontSize: 10, fontWeight: 700, flexShrink: 0,
+                    }}>{t.count}</span>
+                  )}
+                </button>
+              );
+            })}
 
-          <div style={{ padding: 24 }}>
+            {/* Grupo SISTEMA */}
+            <div style={{ padding: '12px 16px 6px', color: C.txt2, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', marginTop: 8 }}>
+              Sistema
+            </div>
+            {[
+              { key: 'metricas', icon: <BarChart2 size={15} />,  label: 'Métricas MRR' },
+              { key: 'ecf',      icon: <FileText size={15} />,   label: 'e-CF Config' },
+              { key: 'config',   icon: <Settings size={15} />,   label: 'Configuración' },
+            ].map(t => {
+              const activo = tab === t.key;
+              return (
+                <button key={t.key} onClick={() => setTab(t.key)} style={{
+                  width: '100%', border: 'none', cursor: 'pointer',
+                  padding: '9px 16px 9px 14px',
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  borderLeft: `3px solid ${activo ? C.gold : 'transparent'}`,
+                  background: activo ? `${C.gold}18` : 'none',
+                  color: activo ? C.gold : C.txt2,
+                  fontWeight: activo ? 700 : 500, fontSize: 13,
+                  transition: 'all .15s', textAlign: 'left',
+                }}
+                  onMouseEnter={e => { if (!activo) e.currentTarget.style.background = `${C.border}66`; }}
+                  onMouseLeave={e => { if (!activo) e.currentTarget.style.background = 'none'; }}>
+                  <span style={{ flexShrink: 0, color: activo ? C.gold : C.txt2 }}>{t.icon}</span>
+                  <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.label}</span>
+                </button>
+              );
+            })}
+
+            {/* Separador + Refresh */}
+            <div style={{ marginTop: 'auto', borderTop: `1px solid ${C.border}`, padding: '12px 12px 4px' }}>
+              <button
+                onClick={() => qc.invalidateQueries()}
+                style={{
+                  width: '100%', background: 'none', border: `1px solid ${C.border}`,
+                  cursor: 'pointer', padding: '7px 12px', borderRadius: 6,
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  color: C.txt2, fontSize: 12, fontWeight: 500,
+                }}>
+                <RefreshCw size={13} /> Actualizar datos
+              </button>
+            </div>
+          </nav>
+
+          {/* ── CONTENT AREA ────────────────────────────────────────────────── */}
+          <div style={{ flex: 1, minWidth: 0, padding: 24, overflow: 'auto' }}>
 
             {/* ── TAB EMPRESAS ──────────────────────────────────────────────── */}
             {tab === 'empresas' && (
