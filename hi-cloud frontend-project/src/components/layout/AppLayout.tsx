@@ -1408,39 +1408,131 @@ export default function AppLayout() {
         ))}
       </div>
 
-      {/* ── Footer ──────────────────────────────────────────────────── */}
+      {/* ── Footer: usuario + acciones ──────────────────────────── */}
       <div style={{
         borderTop:  `1px solid ${C.border}`,
-        padding:    collapsed ? '10px 0' : '10px 16px',
+        padding:    collapsed ? '10px 0' : '10px 12px',
         flexShrink: 0,
         background: C.bg,
       }}>
         {collapsed ? (
-          <Tooltip title="Expandir menú" placement="right">
-            <button
-              onClick={() => setCollapsed(false)}
-              style={{
-                background: 'transparent', border: 'none', cursor: 'pointer',
-                color: C.textCategory, width: '100%', display: 'flex',
-                justifyContent: 'center', padding: '4px 0',
-              }}
-            >
-              <Menu size={18} strokeWidth={2} />
-            </button>
-          </Tooltip>
+          /* Colapsado: avatar usuario + expand */
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+            <Tooltip title={user?.nombre ?? 'Perfil'} placement="right">
+              <button onClick={() => navigate('/profile')}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 2 }}>
+                <Avatar size={28} style={{ background: '#FCD34D', color: '#1E3A8A', fontSize: 12 }}>
+                  {user?.nombre?.charAt(0).toUpperCase()}
+                </Avatar>
+              </button>
+            </Tooltip>
+            <Tooltip title="Notificaciones" placement="right">
+              <Badge count={totalAlertas} size="small" offset={[-4, 4]}
+                style={{ background: alertasCriticas > 0 ? '#dc2626' : '#d97706' }}>
+                <button onClick={() => setCollapsed(false)}
+                  style={{ background: 'transparent', border: 'none', cursor: 'pointer',
+                    color: C.footerText, display: 'flex', padding: 2 }}>
+                  <Bell size={14} />
+                </button>
+              </Badge>
+            </Tooltip>
+          </div>
         ) : (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 10, color: C.footerText }}>
-              v1.0.0 · DGII RD 2026
-            </span>
-            <button
-              onClick={() => setHelpOpen(true)}
-              style={{
-                background: 'transparent', border: 'none', cursor: 'pointer',
-                color: C.footerText, display: 'flex', padding: 2,
-              }}
-            >
-              <HelpCircle size={14} strokeWidth={2} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {/* Avatar + nombre + rol */}
+            <button onClick={() => navigate('/profile')}
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 8,
+                flex: 1, minWidth: 0, padding: '2px 0', textAlign: 'left' }}>
+              <Avatar size={28} style={{ background: '#FCD34D', color: '#1E3A8A', fontSize: 12, flexShrink: 0 }}>
+                {user?.nombre?.charAt(0).toUpperCase()}
+              </Avatar>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 500, color: C.text,
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {user?.nombre?.split(' ')[0]}
+                </div>
+                <div style={{ fontSize: 10, color: C.footerText, textTransform: 'capitalize' }}>
+                  {user?.role === 'super_admin' ? 'Super Admin' : user?.role}
+                </div>
+              </div>
+            </button>
+
+            {/* Notificaciones */}
+            <Badge count={totalAlertas} size="small" offset={[-3, 3]}
+              style={{ background: alertasCriticas > 0 ? '#dc2626' : '#d97706' }}>
+              <Dropdown trigger={['click']} menu={{ items: [] }}
+                dropdownRender={() => (
+                  <div style={{
+                    background: token.colorBgElevated,
+                    border: `1px solid ${token.colorBorderSecondary}`,
+                    borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.18)',
+                    width: 320, padding: 8,
+                  }}>
+                    <div style={{ padding: '6px 8px 10px',
+                      borderBottom: `1px solid ${token.colorBorderSecondary}`, marginBottom: 6 }}>
+                      <Text strong style={{ fontSize: 13 }}>Alertas</Text>
+                      {totalAlertas > 0 && <Tag color="orange" style={{ marginLeft: 6, fontSize: 10 }}>{totalAlertas}</Tag>}
+                    </div>
+                    {alertas.length === 0 ? (
+                      <div style={{ padding: '12px 8px', textAlign: 'center' }}>
+                        <Text type="secondary" style={{ fontSize: 12 }}>✅ Sin alertas</Text>
+                      </div>
+                    ) : alertas.slice(0, 5).map((a: any) => (
+                      <div key={a.id} onClick={() => navigate(a.ruta)}
+                        style={{ display: 'flex', gap: 8, padding: '8px',
+                          borderRadius: 6, cursor: 'pointer', marginBottom: 3,
+                          background: a.severidad === 'alta' ? token.colorErrorBg
+                            : a.severidad === 'media' ? token.colorWarningBg : token.colorFillAlter }}>
+                        <span style={{ fontSize: 16 }}>{a.emoji}</span>
+                        <div style={{ flex: 1 }}>
+                          <Text strong style={{ fontSize: 11, display: 'block' }}>{a.titulo}</Text>
+                          <Text type="secondary" style={{ fontSize: 10 }}>{a.descripcion}</Text>
+                        </div>
+                      </div>
+                    ))}
+                    {alertas.length > 0 && (
+                      <div style={{ textAlign: 'center', paddingTop: 6,
+                        borderTop: `1px solid ${token.colorBorderSecondary}`, marginTop: 4 }}>
+                        <Button type="link" size="small" onClick={() => navigate('/reportes')}>
+                          Ver todas →
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}>
+                <button style={{ background: 'transparent', border: 'none', cursor: 'pointer',
+                  color: C.footerText, display: 'flex', padding: 4, borderRadius: 6,
+                  transition: 'color 0.15s' }}
+                  onMouseEnter={e => (e.currentTarget.style.color = C.text)}
+                  onMouseLeave={e => (e.currentTarget.style.color = C.footerText)}>
+                  <Bell size={14} />
+                </button>
+              </Dropdown>
+            </Badge>
+
+            {/* Toggle tema */}
+            <button onClick={toggleTheme}
+              title={isDark ? 'Modo claro' : 'Modo oscuro'}
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer',
+                color: C.footerText, display: 'flex', padding: 4, borderRadius: 6,
+                transition: 'color 0.15s' }}
+              onMouseEnter={e => (e.currentTarget.style.color = C.text)}
+              onMouseLeave={e => (e.currentTarget.style.color = C.footerText)}>
+              {isDark
+                ? <SunOutlined style={{ fontSize: 13, color: '#facc15' }} />
+                : <MoonOutlined style={{ fontSize: 13 }} />
+              }
+            </button>
+
+            {/* Ayuda */}
+            <button onClick={() => setHelpOpen(true)} title="Ayuda (F1)"
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer',
+                color: C.footerText, display: 'flex', padding: 4, borderRadius: 6,
+                transition: 'color 0.15s' }}
+              onMouseEnter={e => (e.currentTarget.style.color = C.text)}
+              onMouseLeave={e => (e.currentTarget.style.color = C.footerText)}>
+              <HelpCircle size={13} />
             </button>
           </div>
         )}
@@ -1546,204 +1638,33 @@ export default function AppLayout() {
         {/* ══ CONTENIDO PRINCIPAL ════════════════════════════════════ */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
 
-          {/* ── Header — fijo naturalmente dentro del flex column ──── */}
-          <div style={{
-            background:     token.colorBgContainer,
-            padding:        '0 20px',
-            display:        'flex',
-            alignItems:     'center',
-            justifyContent: 'space-between',
-            flexShrink:     0,
-            height:          52,
-            borderBottom:   `1px solid ${token.colorBorderSecondary}`,
-            boxShadow:      isDark ? 'none' : '0 1px 3px rgba(0,0,0,0.06)',
-          }}>
-            {/* Izquierda */}
-            <Space size={8}>
-              {/* Hamburguesa mobile */}
-              {isMobile && (
-                <button
-                  onClick={() => setMobileOpen(v => !v)}
-                  style={{
-                    background: 'transparent', border: 'none', cursor: 'pointer',
-                    color: token.colorTextSecondary, display: 'flex',
-                    padding: 4, borderRadius: 6,
-                  }}
-                >
-                  <Menu size={20} strokeWidth={2} />
+          {/* ── Mini-topbar mobile (solo en pantallas pequeñas) ──────── */}
+          {isMobile && (
+            <div style={{
+              background:  '#1E3A8A',
+              padding:     '0 16px',
+              height:       52,
+              display:     'flex',
+              alignItems:  'center',
+              justifyContent: 'space-between',
+              flexShrink:  0,
+            }}>
+              <button onClick={() => setMobileOpen(v => !v)}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer',
+                  color: '#fff', display: 'flex', padding: 4 }}>
+                <Menu size={22} strokeWidth={2} />
+              </button>
+              <img src="/logo-hicloud.png" alt="HiCloud" style={{ height: 26, objectFit: 'contain' }} />
+              <Badge count={totalAlertas} size="small"
+                style={{ background: alertasCriticas > 0 ? '#dc2626' : '#d97706' }}>
+                <button onClick={() => setCmdOpen(true)}
+                  style={{ background: 'transparent', border: 'none', cursor: 'pointer',
+                    color: 'rgba(255,255,255,0.8)', display: 'flex', padding: 4 }}>
+                  <SearchOutlined style={{ fontSize: 18 }} />
                 </button>
-              )}
-              {/* Botón expandir sidebar (solo desktop colapsado) */}
-              {!isMobile && collapsed && (
-                <button
-                  onClick={() => setCollapsed(false)}
-                  style={{
-                    background: 'transparent', border: 'none', cursor: 'pointer',
-                    color: token.colorTextSecondary, display: 'flex',
-                    padding: 4, borderRadius: 6,
-                  }}
-                >
-                  <Menu size={18} strokeWidth={2} />
-                </button>
-              )}
-              {!isMobile && <Greeting nombre={user?.nombre ?? 'Usuario'} />}
-            </Space>
-
-            {/* Derecha */}
-            <Space size={4}>
-              {/* Selector empresa — oculto en mobile si solo hay 1 */}
-              {Array.isArray(misEmpresas) && misEmpresas.length >= 1 && !isMobile && (
-                <Select
-                  value={empresaActiva}
-                  onChange={cambiarEmpresa}
-                  size="small"
-                  style={{ width: 200, marginRight: 4 }}
-                  optionLabelProp="label"
-                  options={misEmpresas.map((e: any) => ({
-                    value: e.empresaId,
-                    label: e.nombre,
-                    rol:   e.rol,
-                  }))}
-                  optionRender={(opt: any) => (
-                    <Space size={6}>
-                      <span style={{ fontSize: 13 }}>{opt.data.label}</span>
-                      <Tag style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px' }}>
-                        {opt.data.rol}
-                      </Tag>
-                    </Space>
-                  )}
-                />
-              )}
-
-              {!isMobile && <PlanIndicadorHeader />}
-              <RealtimeDot />
-
-              {/* Búsqueda — solo ícono en mobile */}
-              <Tooltip title="Búsqueda global (Ctrl+K)">
-                <Button type="text" size="small" icon={<SearchOutlined />}
-                  onClick={() => setCmdOpen(true)}>
-                  {!isMobile && <Text type="secondary" style={{ fontSize: 11 }}>Ctrl+K</Text>}
-                </Button>
-              </Tooltip>
-
-              {/* Modo oscuro — oculto en mobile (disponible en perfil) */}
-              {!isMobile && (
-                <Tooltip title={isDark ? 'Modo claro' : 'Modo oscuro'}>
-                  <motion.div whileTap={{ rotate: 180 }} transition={{ duration: .3 }}>
-                    <Button type="text" size="small"
-                      icon={isDark
-                        ? <MoonOutlined style={{ color: '#facc15' }} />
-                        : <SunOutlined />}
-                      onClick={toggleTheme} />
-                  </motion.div>
-                </Tooltip>
-              )}
-
-              {!isMobile && (
-                <Tooltip title="Centro de ayuda (F1)">
-                  <Button type="text" size="small" onClick={() => setHelpOpen(true)}
-                    style={{ fontWeight: 700, color: 'rgba(120,120,120,.7)', fontSize: 14 }}>
-                    ?
-                  </Button>
-                </Tooltip>
-              )}
-
-              <Badge
-                count={totalAlertas}
-                size="small"
-                offset={[-2, 2]}
-                style={{ background: alertasCriticas > 0 ? '#dc2626' : '#d97706' }}
-              >
-                <Dropdown
-                  trigger={['click']}
-                  menu={{ items: [] }}
-                  dropdownRender={() => (
-                    <div style={{
-                      background: token.colorBgElevated,
-                      border: `1px solid ${token.colorBorderSecondary}`,
-                      borderRadius: 10,
-                      boxShadow: '0 8px 24px rgba(0,0,0,.15)',
-                      width: 340,
-                      padding: 8,
-                    }}>
-                      <div style={{ padding: '6px 8px 10px', borderBottom: `1px solid ${token.colorBorderSecondary}`, marginBottom: 6 }}>
-                        <Text strong style={{ fontSize: 13 }}>Centro de Alertas</Text>
-                        {totalAlertas > 0 && <Tag color="orange" style={{ marginLeft: 6, fontSize: 10 }}>{totalAlertas} activa(s)</Tag>}
-                      </div>
-                      {alertas.length === 0 ? (
-                        <div style={{ padding: '12px 8px', textAlign: 'center' }}>
-                          <Text type="secondary" style={{ fontSize: 12 }}>✅ Sin alertas — todo en orden</Text>
-                        </div>
-                      ) : (
-                        alertas.slice(0, 6).map((a: any) => (
-                          <div
-                            key={a.id}
-                            onClick={() => navigate(a.ruta)}
-                            style={{
-                              display: 'flex', gap: 10, padding: '8px',
-                              borderRadius: 6, cursor: 'pointer',
-                              background: a.severidad === 'alta' ? token.colorErrorBg : a.severidad === 'media' ? token.colorWarningBg : token.colorFillAlter,
-                              marginBottom: 4,
-                            }}
-                          >
-                            <span style={{ fontSize: 18 }}>{a.emoji}</span>
-                            <div style={{ flex: 1 }}>
-                              <Text strong style={{ fontSize: 12, display: 'block' }}>{a.titulo}</Text>
-                              <Text type="secondary" style={{ fontSize: 11 }}>{a.descripcion}</Text>
-                            </div>
-                            <Tag
-                              color={a.severidad === 'alta' ? 'red' : a.severidad === 'media' ? 'orange' : 'default'}
-                              style={{ fontSize: 9, alignSelf: 'flex-start' }}
-                            >
-                              {a.severidad}
-                            </Tag>
-                          </div>
-                        ))
-                      )}
-                      {alertas.length > 0 && (
-                        <div style={{ padding: '6px 4px 2px', borderTop: `1px solid ${token.colorBorderSecondary}`, marginTop: 4, textAlign: 'center' }}>
-                          <Button type="link" size="small" onClick={() => navigate('/reportes')}>
-                            Ver todas las alertas →
-                          </Button>
-                        </div>
-                      )}
-                      <div style={{ padding: '6px 4px 2px', borderTop: `1px solid ${token.colorBorderSecondary}`, marginTop: 4, textAlign: 'center' }}>
-                        {pushStatus === 'subscribed' ? (
-                          <Button type="text" size="small" danger onClick={pushUnsub} style={{ fontSize: 11 }}>
-                            🔕 Desactivar notificaciones push
-                          </Button>
-                        ) : pushStatus === 'unsubscribed' ? (
-                          <Button type="text" size="small" onClick={pushSubscribe} style={{ fontSize: 11, color: token.colorPrimary }}>
-                            🔔 Activar notificaciones push
-                          </Button>
-                        ) : pushStatus === 'denied' ? (
-                          <Text type="secondary" style={{ fontSize: 10 }}>🚫 Notificaciones bloqueadas por el navegador</Text>
-                        ) : null}
-                      </div>
-                    </div>
-                  )}
-                >
-                  <Button type="text" size="small" icon={<BellOutlined style={{ fontSize: 16 }} />} />
-                </Dropdown>
               </Badge>
-
-              <Dropdown menu={userMenu} placement="bottomRight" trigger={['click']}>
-                <div style={{ cursor: 'pointer', padding: '4px 8px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, whiteSpace: 'nowrap' }}>
-                  <Avatar size={28} style={{ background: token.colorPrimary, fontSize: 12, flexShrink: 0 }}>
-                    {user?.nombre?.charAt(0).toUpperCase()}
-                  </Avatar>
-                  <div style={{ lineHeight: 1.3, minWidth: 0 }}>
-                    <Text style={{ fontSize: 12, fontWeight: 600, display: 'block', whiteSpace: 'nowrap' }}>
-                      {user?.nombre?.split(' ')[0]}
-                    </Text>
-                    <Text type="secondary" style={{ fontSize: 10, textTransform: 'capitalize', whiteSpace: 'nowrap' }}>
-                      {user?.role === 'super_admin' ? 'Super Admin' : user?.role}
-                    </Text>
-                  </div>
-                </div>
-              </Dropdown>
-            </Space>
-          </div>
+            </div>
+          )}
 
           <PlanBanner />
 
