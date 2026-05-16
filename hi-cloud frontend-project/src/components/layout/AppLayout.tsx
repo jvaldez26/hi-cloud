@@ -1427,16 +1427,14 @@ export default function AppLayout() {
             – Colapsado → ícono que abre panel flyout              */}
         {categoriasFiltradas.map(cat => (
           <div key={cat.id} style={{ marginBottom: 2 }}>
-            {/* Separador de sección */}
-            {!collapsed && cat.sectionLabel && (
+            {/* Divider sutil entre grupos (sin label) */}
+            {cat.sectionLabel && (
               <div style={{
-                fontSize: 10, fontWeight: 700, color: C.textCategory,
-                textTransform: 'uppercase', letterSpacing: '0.09em',
-                padding: '14px 16px 4px', opacity: 0.7,
-                userSelect: 'none',
-              }}>
-                {cat.sectionLabel}
-              </div>
+                height: 1,
+                background: C.separator,
+                margin: '6px 12px',
+                opacity: 0.6,
+              }} />
             )}
             {collapsed ? (
               <CategoryBtnCollapsed
