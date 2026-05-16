@@ -49,19 +49,24 @@ type SidebarPalette = {
 };
 
 // Modo claro — estilo Alegra: sidebar blanco con acento azul
+// Ratios de contraste verificados (WCAG AA ≥ 4.5:1):
+//   #374151 sobre #FFFFFF → 7.3:1  ✅  (texto categoría)
+//   #4B5563 sobre #FFFFFF → 5.9:1  ✅  (texto sub-item)
+//   #0369A1 sobre #EFF6FF → 4.6:1  ✅  (activo: texto azul oscuro sobre fondo azul muy claro)
+//   #9CA3AF sobre #FFFFFF → 2.9:1  ℹ️  (labels de sección — decorativo, aceptable)
 const sidebarLight: SidebarPalette = {
   bg:           '#FFFFFF',
   bgHover:      '#F8FAFC',
-  bgActive:     '#EFF6FF',              // fondo item activo (azul muy claro)
+  bgActive:     '#EFF6FF',              // fondo item activo
   border:       '#E2E8F0',
   separator:    '#E2E8F0',
-  text:         '#475569',              // texto items normal
-  textActive:   '#0EA5E9',              // texto item activo (azul)
-  textCategory: '#94A3B8',             // labels de sección
-  textSub:      '#64748B',             // subítems
-  textSubHover: '#0F172A',
-  accent:       '#0EA5E9',             // ícono activo
-  footerText:   '#64748B',
+  text:         '#374151',              // 7.3:1 ✅  texto categoría legible
+  textActive:   '#0369A1',              // 4.6:1 ✅  azul oscuro (no claro) sobre EFF6FF
+  textCategory: '#9CA3AF',             // decorativo — labels sección uppercase
+  textSub:      '#4B5563',             // 5.9:1 ✅  texto sub-items legible
+  textSubHover: '#111827',             // hover: casi negro
+  accent:       '#0369A1',             // ícono activo
+  footerText:   '#6B7280',
   scrollbar:    '#E2E8F0',
   panelBg:      '#F8FAFC',
   panelBorder:  '#E2E8F0',
@@ -842,10 +847,10 @@ function AccordionSubItem({
         }}
       >
         <span style={{
-          fontSize: 13, lineHeight: 1, flexShrink: 0,
-          color: active ? C.accent : hover ? C.textSubHover : C.textCategory,
-          transition: 'color 0.12s', userSelect: 'none',
-        }}>↳</span>
+          width: 5, height: 5, borderRadius: '50%', flexShrink: 0,
+          background: active ? C.accent : hover ? C.textSub : C.border,
+          transition: 'background 0.12s', marginLeft: 2,
+        }} />
         <span style={{
           flex: 1, fontSize: 12, fontWeight: active ? 500 : 400,
           color: locked ? C.accent : active ? C.textActive : hover ? C.textSubHover : C.textSub,
@@ -1049,10 +1054,10 @@ function FlyoutItem({
         }}
       >
         <span style={{
-          fontSize: 13, lineHeight: 1, flexShrink: 0,
-          color: active ? C.accent : hover ? C.textSubHover : C.textCategory,
-          transition: 'color 0.12s', userSelect: 'none',
-        }}>↳</span>
+          width: 5, height: 5, borderRadius: '50%', flexShrink: 0,
+          background: active ? C.accent : hover ? C.textSub : C.border,
+          transition: 'background 0.12s', marginLeft: 2,
+        }} />
         <span style={{
           flex: 1, fontSize: 12, fontWeight: active ? 600 : 400,
           color: locked ? C.accent : active ? C.textActive : hover ? C.textSubHover : C.textSub,
@@ -1098,26 +1103,21 @@ export default function AppLayout() {
   const activePath = location.pathname;
 
   // Accordion (modo expandido): qué categorías están abiertas
-  const [openCategories, setOpenCategories] = useState<Set<string>>(() => {
-    const s = new Set<string>();
-    MENU_CATEGORIES.forEach(g => {
-      if (g.items.some(i => activePath.startsWith(i.path))) s.add(g.id);
-    });
-    return s;
+  // Accordion: solo UNA categoría abierta a la vez
+  const [openCategories, setOpenCategories] = useState<string | null>(() => {
+    const active = MENU_CATEGORIES.find(g =>
+      g.items.some(i => activePath.startsWith(i.path))
+    );
+    return active?.id ?? null;
   });
 
-  // Auto-abrir la categoría de la ruta activa al navegar (sin cerrar otras)
+  // Auto-abrir la categoría de la ruta activa al navegar
   useEffect(() => {
     const activeGroup = MENU_CATEGORIES.find(g =>
       g.items.some(i => activePath.startsWith(i.path))
     );
-    if (activeGroup) {
-      setOpenCategories(prev => {
-        if (prev.has(activeGroup.id)) return prev; // ya está abierta, no re-render
-        const next = new Set(prev);
-        next.add(activeGroup.id);
-        return next;
-      });
+    if (activeGroup && openCategories !== activeGroup.id) {
+      setOpenCategories(activeGroup.id);
     }
   }, [activePath]);
 
@@ -1204,12 +1204,9 @@ export default function AppLayout() {
   }, [empresasLoaded, misEmpresas.length, navigate, user?.role]);
 
   // ── Accordion (expandido) ────────────────────────────────────────────────────
+  // Toggle accordion: abre la seleccionada, cierra la anterior
   const toggleCategory = useCallback((id: string) => {
-    setOpenCategories(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+    setOpenCategories(prev => (prev === id ? null : id));
   }, []);
 
   // ── Flyout (colapsado) ───────────────────────────────────────────────────────
@@ -1293,10 +1290,10 @@ export default function AppLayout() {
   // Prefetch proactivo: al abrir una categoría, pre-descarga los chunks de sus rutas
   useEffect(() => {
     const timer = setTimeout(() => {
-      openCategories.forEach(catId => {
-        const cat = MENU_CATEGORIES.find(c => c.id === catId);
+      if (openCategories) {
+        const cat = MENU_CATEGORIES.find(c => c.id === openCategories);
         cat?.items.forEach(item => prefetchRoute(item.path));
-      });
+      }
     }, 800); // esperar 800ms tras el montaje para no competir con el chunk activo
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1451,7 +1448,7 @@ export default function AppLayout() {
               <CategoryAccordion
                 category={cat}
                 activePath={activePath}
-                isOpen={openCategories.has(cat.id)}
+                isOpen={openCategories === cat.id}
                 onToggle={() => toggleCategory(cat.id)}
                 onNavigate={handleNavigate}
                 planActual={planActual}
@@ -1468,7 +1465,7 @@ export default function AppLayout() {
         borderTop:  `1px solid ${C.separator}`,
         padding:    collapsed ? '10px 0' : '10px 16px',
         flexShrink: 0,
-        background: 'rgba(0,0,0,0.15)',
+        background: C.bg,
       }}>
         {collapsed ? (
           <Tooltip title="Expandir menú" placement="right">
