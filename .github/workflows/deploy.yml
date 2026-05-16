@@ -121,9 +121,17 @@ jobs:
               echo 'DB_CA_CERT=/etc/ssl/certs/rds-ca-us-east-2.pem' >> "$ENV_FILE"
             fi
 
+            # GOOGLE_CALLBACK_URL — debe incluir /api/v1/ para que nginx lo enrute al backend
+            if grep -q '^GOOGLE_CALLBACK_URL=' "$ENV_FILE" 2>/dev/null; then
+              sed -i 's|^GOOGLE_CALLBACK_URL=.*|GOOGLE_CALLBACK_URL=https://hicloudrd.com/api/v1/auth/google/callback|' "$ENV_FILE"
+            else
+              echo 'GOOGLE_CALLBACK_URL=https://hicloudrd.com/api/v1/auth/google/callback' >> "$ENV_FILE"
+            fi
+
             echo "  ✅ APP_URL=$(grep '^APP_URL=' $ENV_FILE)"
             echo "  ✅ FRONTEND_URL=$(grep '^FRONTEND_URL=' $ENV_FILE)"
             echo "  ✅ DB_CA_CERT=$(grep '^DB_CA_CERT=' $ENV_FILE)"
+            echo "  ✅ GOOGLE_CALLBACK_URL=$(grep '^GOOGLE_CALLBACK_URL=' $ENV_FILE)"
 
             echo "━━━ [3/4] Build + migraciones + restart backend ━━━"
             BACKEND_DIR="/home/ubuntu/hicloud/hi-cloud backend-project/backend"
