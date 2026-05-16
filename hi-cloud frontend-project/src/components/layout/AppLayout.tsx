@@ -503,24 +503,30 @@ function PlanIndicadorHeader() {
     trial: 'TRIAL', basico: 'BÁSICO', profesional: 'PRO',
     empresarial: 'EMPR.', enterprise: 'ENT.',
   };
-  const color = COLOR[plan] ?? '#64748B';
-  const label = LABEL[plan] ?? plan.toUpperCase();
-  const urgente = plan === 'trial' && dias <= 5;
+  const color   = COLOR[plan] ?? '#64748B';
+  const label   = LABEL[plan] ?? plan.toUpperCase();
+  const estado  = suscripcion.estado as string;
+  const enPrueba = estado === 'prueba';
+  const urgente  = enPrueba && dias <= 5;
 
   return (
-    <Tooltip title={`Plan ${suscripcion.info?.nombre ?? plan}${dias > 0 ? ` · ${dias} días restantes` : ''} — Click para ver planes`}>
+    <Tooltip title={`Plan ${suscripcion.info?.nombre ?? label}${enPrueba ? ` · Prueba gratis — ${dias} días restantes` : dias > 0 ? ` · vence en ${dias} días` : ''} — Click para ver planes`}>
       <button
         onClick={() => navigate('/suscripcion/planes')}
         style={{
-          background: `${color}18`,
-          border: `1px solid ${color}55`,
+          background: urgente ? '#FEF2F222' : `${color}18`,
+          border: `1px solid ${urgente ? '#EF444455' : `${color}55`}`,
           borderRadius: 6, padding: '3px 9px', cursor: 'pointer',
           display: 'flex', alignItems: 'center', gap: 5,
           animation: urgente ? 'pulse 2s infinite' : 'none',
         }}>
-        <span style={{ color, fontWeight: 800, fontSize: 11, letterSpacing: '0.04em' }}>{label}</span>
-        {plan === 'trial' && dias > 0 && (
-          <span style={{ color: dias <= 5 ? '#EF4444' : '#94A3B8', fontSize: 10 }}>{dias}d</span>
+        <span style={{ color: urgente ? '#EF4444' : color, fontWeight: 800, fontSize: 11, letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
+          {label}
+        </span>
+        {enPrueba && dias > 0 && (
+          <span style={{ color: urgente ? '#EF4444' : '#94A3B8', fontSize: 10, whiteSpace: 'nowrap' }}>
+            {dias}d prueba
+          </span>
         )}
       </button>
     </Tooltip>

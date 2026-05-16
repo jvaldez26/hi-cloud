@@ -170,14 +170,22 @@ export default function NotasCreditoComprasPage() {
           loading={isLoading}
           size="middle"
           pagination={{ pageSize: 15 }}
+          scroll={{ x: 'max-content' }}
           columns={[
-            { title: 'Número', dataIndex: 'numero', key: 'n', render: v => <Text strong style={{ fontFamily: 'monospace' }}>{v}</Text> },
-            { title: 'Fecha',  dataIndex: 'fecha',  key: 'f', render: v => String(v).split('T')[0] },
-            { title: 'Proveedor', key: 'p', render: (_, r: any) => <Text strong>{r.proveedor?.nombre}</Text> },
-            { title: 'Motivo', dataIndex: 'motivo', key: 'm', render: v => <Tag>{MOTIVOS.find(x => x.value === v)?.label ?? v}</Tag> },
-            { title: 'Compra ref.', dataIndex: 'compraOriginalFolio', key: 'cof', render: v => v ? <Tag color="blue">{v}</Tag> : '—' },
-            { title: 'Total', dataIndex: 'total', key: 't', align: 'right', render: v => <Text strong style={{ color: token.colorWarning }}>{fmt(v)}</Text> },
-            { title: 'Estado', dataIndex: 'estado', key: 'e', render: v => <Tag color={ESTADO_CONFIG[v]?.color}>{ESTADO_CONFIG[v]?.label}</Tag> },
+            { title: 'Número',    dataIndex: 'numero', key: 'n', width: 110,
+              render: (v: any) => <Text strong style={{ fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{v}</Text> },
+            { title: 'Fecha',     dataIndex: 'fecha',  key: 'f', width: 90,
+              render: (v: any) => <span style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{String(v).split('T')[0]}</span> },
+            { title: 'Proveedor', key: 'p', ellipsis: true, minWidth: 130,
+              render: (_: any, r: any) => <Text strong ellipsis>{r.proveedor?.nombre}</Text> },
+            { title: 'Motivo',    dataIndex: 'motivo', key: 'm', width: 130,
+              render: (v: any) => <Tag style={{ whiteSpace: 'nowrap' }}>{MOTIVOS.find((x: any) => x.value === v)?.label ?? v}</Tag> },
+            { title: 'Compra ref.', dataIndex: 'compraOriginalFolio', key: 'cof', width: 150,
+              render: (v: any) => v ? <Tag color="blue" style={{ whiteSpace: 'nowrap' }}>{v}</Tag> : '—' },
+            { title: 'Total',  dataIndex: 'total', key: 't', align: 'right' as const, width: 110,
+              render: (v: any) => <Text strong style={{ color: token.colorWarning, whiteSpace: 'nowrap' }}>{fmt(v)}</Text> },
+            { title: 'Estado', dataIndex: 'estado', key: 'e', width: 100,
+              render: (v: any) => <Tag color={ESTADO_CONFIG[v]?.color}>{ESTADO_CONFIG[v]?.label}</Tag> },
             {
               title: '', key: 'acc', width: 200,
               render: (_, r: any) => (

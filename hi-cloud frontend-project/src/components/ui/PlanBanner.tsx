@@ -7,7 +7,19 @@ import { suscripcionesApi } from '../../api/suscripciones.api';
 
 export default function PlanBanner() {
   const navigate  = useNavigate();
-  const [cerrado, setCerrado] = useState(false);
+  const [cerrado, setCerrado] = useState<boolean>(() => {
+    try {
+      const ts = localStorage.getItem('plan-banner-cerrado');
+      if (!ts) return false;
+      // Vuelve a mostrarse cada 24h
+      return Date.now() - Number(ts) < 24 * 60 * 60 * 1000;
+    } catch { return false; }
+  });
+
+  const cerrarBanner = () => {
+    localStorage.setItem('plan-banner-cerrado', String(Date.now()));
+    setCerrado(true);
+  };
 
   const { data: suscripcion } = useQuery({
     queryKey: ['mi-plan'],
@@ -91,7 +103,7 @@ export default function PlanBanner() {
           Ver planes
         </Button>
         <button
-          onClick={() => setCerrado(true)}
+          onClick={() => cerrarBanner()}
           style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center', color: soloUsuarios ? '#92400E' : '#991B1B', opacity: 0.6 }}
           title="Cerrar"
         >
