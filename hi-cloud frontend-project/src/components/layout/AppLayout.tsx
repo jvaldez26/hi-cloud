@@ -9,6 +9,7 @@ import api from '../../api/client';
 import {
   LogoutOutlined, UserOutlined, BellOutlined,
   MoonOutlined, SunOutlined, SearchOutlined,
+  MenuFoldOutlined, MenuUnfoldOutlined,
 } from '@ant-design/icons';
 import {
   LayoutDashboard, ShoppingCart, Wallet, TrendingUp, Package,
@@ -982,10 +983,11 @@ function FlyoutItem({
 export default function AppLayout() {
   useRealtime();   // ← conexión WebSocket para actualizaciones en vivo
 
-  const [collapsed,   setCollapsed]   = useState(false);
-  const [cmdOpen,     setCmdOpen]     = useState(false);
-  const [helpOpen,    setHelpOpen]    = useState(false);
-  const [mobileOpen,  setMobileOpen]  = useState(false);
+  const [collapsed,      setCollapsed]      = useState(false);
+  const [cmdOpen,        setCmdOpen]        = useState(false);
+  const [helpOpen,       setHelpOpen]       = useState(false);
+  const [mobileOpen,     setMobileOpen]     = useState(false);
+  const [sidebarHovered, setSidebarHovered] = useState(false);
   // Modal de upgrade cuando se hace click en módulo bloqueado
   const [upgradeModal, setUpgradeModal] = useState<{ label: string; planMinimo: PlanTipo } | null>(null);
 
@@ -1243,7 +1245,7 @@ export default function AppLayout() {
         height:         64,
         display:        'flex',
         alignItems:     'center',
-        justifyContent: collapsed ? 'center' : 'space-between',
+        justifyContent: 'center',
         padding:        collapsed ? '0 12px' : '0 16px',
         borderBottom:   `1px solid ${C.separator}`,
         flexShrink:     0,
@@ -1273,24 +1275,6 @@ export default function AppLayout() {
             </motion.div>
           )}
         </div>
-
-        {!collapsed && (
-          <button
-            onClick={() => setCollapsed(true)}
-            style={{
-              background:  'transparent',
-              border:      'none',
-              cursor:      'pointer',
-              color:       C.textCategory,
-              padding:     4,
-              borderRadius: 6,
-              display:     'flex',
-              transition:  'color 0.15s',
-            }}
-          >
-            <X size={16} strokeWidth={2} />
-          </button>
-        )}
       </div>
 
       {/* ── Navegación ──────────────────────────────────────────────── */}
@@ -1432,6 +1416,8 @@ export default function AppLayout() {
         {!isMobile && (
           <div
             ref={sidebarRef}
+            onMouseEnter={() => setSidebarHovered(true)}
+            onMouseLeave={() => setSidebarHovered(false)}
             style={{
               width:       collapsed ? 64 : 220,
               minWidth:    collapsed ? 64 : 220,
@@ -1440,10 +1426,52 @@ export default function AppLayout() {
               transition:  'width 0.25s ease, min-width 0.25s ease',
               boxShadow:   '1px 0 0 rgba(148,163,184,0.06)',
               zIndex:      100,
-              overflowY:   'hidden',
+              position:    'relative',
+              overflow:    'visible',
             }}
           >
             {SidebarContent}
+
+            {/* ── Toggle flotante Notion/Linear style ─────────────── */}
+            <button
+              onClick={() => setCollapsed(v => !v)}
+              title={collapsed ? 'Expandir menú' : 'Colapsar menú'}
+              style={{
+                position:       'absolute',
+                top:            20,
+                right:          -12,
+                width:          24,
+                height:         24,
+                borderRadius:   '50%',
+                background:     C.bg,
+                border:         `1.5px solid ${C.border}`,
+                boxShadow:      isDark
+                  ? '0 2px 8px rgba(0,0,0,0.5)'
+                  : '0 2px 8px rgba(0,0,0,0.14)',
+                display:        'flex',
+                alignItems:     'center',
+                justifyContent: 'center',
+                cursor:         'pointer',
+                color:          C.textSub,
+                opacity:        sidebarHovered ? 1 : 0,
+                pointerEvents:  sidebarHovered ? 'auto' : 'none',
+                transition:     'opacity 0.18s ease, color 0.15s, background 0.15s',
+                zIndex:         101,
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.color      = C.text;
+                e.currentTarget.style.background = isDark ? '#1E293B' : '#F1F5F9';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.color      = C.textSub;
+                e.currentTarget.style.background = C.bg;
+              }}
+            >
+              {collapsed
+                ? <MenuUnfoldOutlined style={{ fontSize: 11 }} />
+                : <MenuFoldOutlined   style={{ fontSize: 11 }} />
+              }
+            </button>
           </div>
         )}
 
