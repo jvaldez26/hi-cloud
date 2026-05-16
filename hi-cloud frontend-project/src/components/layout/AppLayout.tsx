@@ -765,11 +765,12 @@ function CategoryAccordion({
         <category.Icon
           size={15}
           strokeWidth={hasActiveSub ? 2.5 : 2}
-          style={{ color: hasActiveSub ? C.accent : hover ? C.text : C.textCategory, flexShrink: 0 }}
+          style={{ color: hasActiveSub ? C.accent : hover ? C.text : C.textSub, flexShrink: 0 }}
         />
         <span style={{
           flex: 1, fontSize: 12.5, fontWeight: hasActiveSub ? 600 : 500,
-          color: hasActiveSub ? '#E2E8F0' : hover ? C.text : C.textCategory,
+          // FIX: era '#E2E8F0' cuando hasActiveSub → invisible en sidebar blanco
+          color: hasActiveSub ? C.textActive : hover ? C.text : C.text,
           textAlign: 'left', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
         }}>
           {category.label}
@@ -777,7 +778,7 @@ function CategoryAccordion({
         <ChevronDown
           size={13} strokeWidth={2}
           style={{
-            color: C.textCategory, flexShrink: 0,
+            color: C.textSub, flexShrink: 0,
             transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)',
             transition: 'transform 0.22s ease',
           }}
@@ -848,7 +849,7 @@ function AccordionSubItem({
       >
         <span style={{
           width: 5, height: 5, borderRadius: '50%', flexShrink: 0,
-          background: active ? C.accent : hover ? C.textSub : C.border,
+          background: active ? C.accent : hover ? C.text : C.textCategory,
           transition: 'background 0.12s', marginLeft: 2,
         }} />
         <span style={{
@@ -1055,7 +1056,7 @@ function FlyoutItem({
       >
         <span style={{
           width: 5, height: 5, borderRadius: '50%', flexShrink: 0,
-          background: active ? C.accent : hover ? C.textSub : C.border,
+          background: active ? C.accent : hover ? C.text : C.textCategory,
           transition: 'background 0.12s', marginLeft: 2,
         }} />
         <span style={{
