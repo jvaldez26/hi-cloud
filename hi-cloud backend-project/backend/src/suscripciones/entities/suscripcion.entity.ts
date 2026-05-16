@@ -163,7 +163,8 @@ export class Suscripcion {
   @Column({ type: 'enum', enum: SuscripcionEstado, default: SuscripcionEstado.PRUEBA })
   estado!: SuscripcionEstado;
 
-  @Column({ type: 'enum', enum: ModalidadPago, default: ModalidadPago.MENSUAL })
+  // varchar — la BD no tiene suscripciones_modalidad_enum, es character varying
+  @Column({ length: 10, default: ModalidadPago.MENSUAL })
   modalidad!: ModalidadPago;
 
   @Column({ type: 'date' })

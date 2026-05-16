@@ -44,9 +44,9 @@ export class SuscripcionesService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    // Agregar enum values nuevos si no existen (idempotente)
-    const enumsNuevos = ['emprendedor', 'pyme', 'pro', 'plus', 'prueba'];
-    for (const val of enumsNuevos) {
+    // Planes nuevos al enum de PLAN (solo valores de plan, no de estado)
+    const nuevosPlanes = ['emprendedor', 'pyme', 'pro', 'plus'];
+    for (const val of nuevosPlanes) {
       await this.ds.query(`
         DO $$ BEGIN
           IF NOT EXISTS (
@@ -55,15 +55,16 @@ export class SuscripcionesService implements OnModuleInit {
           ) THEN ALTER TYPE suscripciones_plan_enum ADD VALUE '${val}'; END IF;
         END $$;
       `).catch(() => null);
-      await this.ds.query(`
-        DO $$ BEGIN
-          IF NOT EXISTS (
-            SELECT 1 FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
-            WHERE t.typname = 'suscripciones_estado_enum' AND e.enumlabel = '${val}'
-          ) THEN ALTER TYPE suscripciones_estado_enum ADD VALUE '${val}'; END IF;
-        END $$;
-      `).catch(() => null);
     }
+    // Estado 'prueba' al enum de ESTADO (solo)
+    await this.ds.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
+          WHERE t.typname = 'suscripciones_estado_enum' AND e.enumlabel = 'prueba'
+        ) THEN ALTER TYPE suscripciones_estado_enum ADD VALUE 'prueba'; END IF;
+      END $$;
+    `).catch(() => null);
 
     await this.seedPlanConfiguracion();
   }
@@ -362,17 +363,17 @@ export class SuscripcionesService implements OnModuleInit {
       superAdminId,
     });
 
-    // Auditoría
-    const s = await this.repo.findOne({ where: { empresaId: solicitud.empresaId } });
-    if (s) {
-      await this.auditoriaRepo.save(this.auditoriaRepo.create({
-        suscripcionId: s.id,
+    // Auditoría (no-fatal — un fallo aquí no debe revertir la aprobación)
+    const s2 = await this.repo.findOne({ where: { empresaId: solicitud.empresaId } });
+    if (s2) {
+      this.auditoriaRepo.save(this.auditoriaRepo.create({
+        suscripcionId: s2.id,
         empresaId:     solicitud.empresaId,
         accion:        AccionAuditoria.SOLICITUD_APROBADA,
         superAdminId,
         motivo:        notaInterna,
         valorNuevo:    { plan, modalidad },
-      }));
+      })).catch(e => this.logger.warn(`Auditoría aprobar #${solicitudId}: ${(e as Error).message}`));
     }
 
     // Email al cliente
@@ -400,15 +401,15 @@ export class SuscripcionesService implements OnModuleInit {
       motivoRechazo,
     });
 
-    const s = await this.repo.findOne({ where: { empresaId: solicitud.empresaId } });
-    if (s) {
-      await this.auditoriaRepo.save(this.auditoriaRepo.create({
-        suscripcionId: s.id,
+    const s3 = await this.repo.findOne({ where: { empresaId: solicitud.empresaId } });
+    if (s3) {
+      this.auditoriaRepo.save(this.auditoriaRepo.create({
+        suscripcionId: s3.id,
         empresaId:     solicitud.empresaId,
         accion:        AccionAuditoria.SOLICITUD_RECHAZADA,
         superAdminId,
         motivo:        motivoRechazo,
-      }));
+      })).catch(e => this.logger.warn(`Auditoría rechazar #${solicitudId}: ${(e as Error).message}`));
     }
 
     this.logger.log(`Solicitud #${solicitudId} rechazada por super admin #${superAdminId}`);
@@ -456,14 +457,15 @@ export class SuscripcionesService implements OnModuleInit {
       estado:         SuscripcionEstado.PRUEBA,
     } as any);
 
-    await this.auditoriaRepo.save(this.auditoriaRepo.create({
+    // Auditoría (no-fatal)
+    this.auditoriaRepo.save(this.auditoriaRepo.create({
       suscripcionId: s.id,
       empresaId,
       accion:        AccionAuditoria.EXTENSION_TRIAL,
       superAdminId,
       motivo:        `Extensión de ${diasExtension} días`,
       valorNuevo:    { nuevaFecha, diasExtension },
-    }));
+    })).catch(e => this.logger.warn(`Auditoría extender empresa #${empresaId}: ${(e as Error).message}`));
 
     this.logger.log(`Prueba empresa #${empresaId} extendida ${diasExtension}d por SA#${superAdminId}`);
     return this.getSuscripcion(empresaId);

@@ -90,18 +90,22 @@ const useSaTheme = () => useContext(SaThemeCtx);
 
 const STORAGE_KEY = 'superadmin-theme';
 
+// Solo los 4 planes activos — los legados (trial, basico, etc.) no se ofrecen en la UI
 const PLANES = [
-  { value: 'trial',       label: 'Trial',        color: '#64748B', mrr: 0,   mrrUsd: 0   },
-  { value: 'emprendedor', label: 'Emprendedor',   color: '#3B82F6', mrr: 0,   mrrUsd: 29  },
-  { value: 'pyme',        label: 'Pyme',          color: '#059669', mrr: 0,   mrrUsd: 59  },
-  { value: 'pro',         label: 'Pro',           color: '#0d9488', mrr: 0,   mrrUsd: 89  },
-  { value: 'plus',        label: 'Plus',          color: '#7C3AED', mrr: 0,   mrrUsd: 129 },
-  { value: 'enterprise',  label: 'Enterprise',    color: '#EF4444', mrr: 0,   mrrUsd: 0   }, // precio custom
-  // Legado (mostrar pero no activar)
-  { value: 'basico',      label: 'Básico',        color: '#6B7280', mrr: 0,   mrrUsd: 0   },
-  { value: 'profesional', label: 'Profesional',   color: '#6B7280', mrr: 0,   mrrUsd: 0   },
-  { value: 'empresarial', label: 'Empresarial',   color: '#6B7280', mrr: 0,   mrrUsd: 0   },
+  { value: 'emprendedor', label: 'Emprendedor',   color: '#3B82F6', mrr: 0, mrrUsd: 29  },
+  { value: 'pyme',        label: 'Pyme',          color: '#059669', mrr: 0, mrrUsd: 59  },
+  { value: 'pro',         label: 'Pro',           color: '#0d9488', mrr: 0, mrrUsd: 89  },
+  { value: 'plus',        label: 'Plus',          color: '#7C3AED', mrr: 0, mrrUsd: 129 },
+  // Legado — solo para lookup de color/precio, no se muestran en selectores
+  { value: 'trial',       label: 'Trial',         color: '#64748B', mrr: 0, mrrUsd: 0   },
+  { value: 'enterprise',  label: 'Enterprise',    color: '#EF4444', mrr: 0, mrrUsd: 0   },
+  { value: 'basico',      label: 'Básico',        color: '#6B7280', mrr: 0, mrrUsd: 0   },
+  { value: 'profesional', label: 'Profesional',   color: '#6B7280', mrr: 0, mrrUsd: 0   },
+  { value: 'empresarial', label: 'Empresarial',   color: '#6B7280', mrr: 0, mrrUsd: 0   },
 ];
+
+// Solo los 4 planes activos para selectores de la UI
+const PLANES_ACTIVOS = PLANES.filter(p => p.mrrUsd > 0);
 
 const PLAN_COLOR: Record<string, string> = Object.fromEntries(PLANES.map(p => [p.value, p.color]));
 const PLAN_MRR:   Record<string, number> = Object.fromEntries(PLANES.map(p => [p.value, p.mrr]));
@@ -1599,9 +1603,7 @@ export default function SuperAdminPage() {
                     placeholder="Filtrar por plan"
                     value={filtroPlan || undefined} onChange={v => setFiltroPlan(v ?? '')}
                     allowClear style={{ width: 180 }}
-                    options={[
-                      ...PLANES.map(p => ({ value: p.value, label: p.label })),
-                    ]}
+                    options={PLANES_ACTIVOS.map(p => ({ value: p.value, label: p.label }))}
                   />
                   <Select
                     placeholder="Filtrar por estado"
@@ -1978,12 +1980,12 @@ export default function SuperAdminPage() {
             <Select
               value={planSel} onChange={setPlanSel}
               style={{ width: '100%' }}
-              options={PLANES.map(p => ({
+              options={PLANES_ACTIVOS.map(p => ({
                 value: p.value,
                 label: (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <span style={{ color: p.color, fontWeight: 700 }}>{p.label}</span>
-                    <span style={{ color: p.mrr > 0 ? C.gold : C.txt2 }}>{p.mrrUsd > 0 ? `${fmtUsd(p.mrrUsd)}/mes` : 'Gratis'}</span>
+                    <span style={{ color: C.gold, fontWeight: 700 }}>US${p.mrrUsd}/mes</span>
                   </div>
                 ),
               }))}
