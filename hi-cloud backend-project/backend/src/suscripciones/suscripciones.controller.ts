@@ -1,7 +1,8 @@
 import {
   Controller, Get, Post, Patch, Body, Param, ParseIntPipe,
-  HttpCode, HttpStatus, UseGuards, ForbiddenException, Query,
+  HttpCode, HttpStatus, UseGuards, ForbiddenException, Query, Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { PlanTipo, ModalidadPago } from './entities/suscripcion.entity';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { SuscripcionesService } from './suscripciones.service';
@@ -137,9 +138,10 @@ export class SuscripcionesController {
   aprobarSolicitud(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: AprobarSolicitudDto,
+    @Req() req: Request,
   ) {
-    // Extraer superAdminId del JWT (el guard lo pone en req.user)
-    return this.svc.aprobarSolicitud(id, 0, dto.notaInterna);
+    const superAdminId = (req.user as any)?.id ?? null;
+    return this.svc.aprobarSolicitud(id, superAdminId, dto.notaInterna);
   }
 
   @Post('admin/solicitudes/:id/rechazar')
@@ -149,8 +151,10 @@ export class SuscripcionesController {
   rechazarSolicitud(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: RechazarSolicitudDto,
+    @Req() req: Request,
   ) {
-    return this.svc.rechazarSolicitud(id, 0, dto.motivoRechazo);
+    const superAdminId = (req.user as any)?.id ?? null;
+    return this.svc.rechazarSolicitud(id, superAdminId, dto.motivoRechazo);
   }
 
   @Get('admin/pruebas')

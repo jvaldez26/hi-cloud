@@ -364,11 +364,13 @@ export class SuscripcionesService implements OnModuleInit {
     // Activar el plan
     await this.activarPlan(solicitud.empresaId, plan, 1, notaInterna, modalidad);
 
-    // Actualizar solicitud
-    await this.solicitudRepo.update(solicitudId, {
-      estado:      EstadoSolicitud.APROBADA,
-      superAdminId,
-    });
+    // Actualizar solicitud — SQL raw para evitar FK con superAdminId=0
+    await this.ds.query(
+      `UPDATE solicitud_cambio_plan
+       SET estado = 'aprobada', "superAdminId" = $1, "updatedAt" = NOW()
+       WHERE id = $2`,
+      [superAdminId ?? null, solicitudId],
+    );
 
     // Auditoría (no-fatal — un fallo aquí no debe revertir la aprobación)
     const s2 = await this.repo.findOne({ where: { empresaId: solicitud.empresaId } });
@@ -402,11 +404,12 @@ export class SuscripcionesService implements OnModuleInit {
       throw new BadRequestException('Esta solicitud ya fue procesada');
     }
 
-    await this.solicitudRepo.update(solicitudId, {
-      estado: EstadoSolicitud.RECHAZADA,
-      superAdminId,
-      motivoRechazo,
-    });
+    await this.ds.query(
+      `UPDATE solicitud_cambio_plan
+       SET estado = 'rechazada', "superAdminId" = $1, "motivoRechazo" = $2, "updatedAt" = NOW()
+       WHERE id = $3`,
+      [superAdminId ?? null, motivoRechazo, solicitudId],
+    );
 
     const s3 = await this.repo.findOne({ where: { empresaId: solicitud.empresaId } });
     if (s3) {
