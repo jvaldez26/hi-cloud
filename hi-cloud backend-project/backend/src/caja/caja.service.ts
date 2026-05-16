@@ -205,10 +205,23 @@ export class CajaService {
          COUNT(f.id)::text AS cantidad
        FROM facturas f
        WHERE DATE(f.fecha) = $1
-         AND f.estado = 'emitida'
+         AND f.estado IN ('emitida', 'pagada')
          AND f."isActive" = true
          ${vendedorFilter}
          ${empresaFilter}`,
+      [fecha],
+    );
+
+    // Cobros del día desde tabla recibos_cobro (independiente de las ventas)
+    const recibosFilter = empresaId ? `AND r."empresaId" = ${Number(empresaId)}` : '';
+    const [cobros] = await this.dataSource.query<{ total: string; cantidad: string }[]>(
+      `SELECT
+         COALESCE(SUM(r.monto), 0)::text AS total,
+         COUNT(r.id)::text               AS cantidad
+       FROM recibos_cobro r
+       WHERE DATE(r.fecha) = $1
+         AND r."isActive" = true
+         ${recibosFilter}`,
       [fecha],
     );
 
@@ -216,7 +229,7 @@ export class CajaService {
       ventasEfectivo:        Number(ventas?.efectivo      ?? 0),
       ventasTarjeta:         Number(ventas?.tarjeta       ?? 0),
       ventasTransferencia:   Number(ventas?.transferencia ?? 0),
-      cobrosRecibidos:       Number(ventas?.efectivo ?? 0) + Number(ventas?.tarjeta ?? 0) + Number(ventas?.transferencia ?? 0),
+      cobrosRecibidos:       Number(cobros?.total         ?? 0),
       cantidadTransacciones: Number(ventas?.cantidad      ?? 0),
     });
   }

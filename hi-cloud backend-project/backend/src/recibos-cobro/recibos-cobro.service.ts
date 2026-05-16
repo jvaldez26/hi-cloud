@@ -6,9 +6,9 @@ import { TenantService } from '../tenant/tenant.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
 
 interface CreateReciboDto {
-  clienteId:    number;
+  clienteId?:   number;        // opcional — puede ser recibo sin cliente nombrado
   clienteNombre?: string;
-  fecha:        string;
+  fecha?:       string;        // si no se envía, el controller provee la fecha del día
   monto:        number;
   metodoPago:   MetodoPagoRecibo;
   concepto:     string;

@@ -1588,23 +1588,25 @@ function PanelHeader({ title, icon, C, onVolver, onNuevo, labelNuevo }:
   );
 }
 
-function PanelInput({ label, ...props }: { label?: string } & React.InputHTMLAttributes<HTMLInputElement>) {
+function PanelInput({ label, C: _C, ...props }: { label?: string; C?: Palette } & React.InputHTMLAttributes<HTMLInputElement>) {
+  const C = _C ?? darkC;
   return (
     <div style={{ marginBottom: 12 }}>
-      {label && <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: 'inherit' }}>{label}</div>}
+      {label && <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: C.text }}>{label}</div>}
       <input {...props} style={{ width: '100%', height: 38, padding: '0 12px', borderRadius: 8,
-        border: '1px solid #ddd', fontSize: 13, boxSizing: 'border-box',
-        background: '#fff', outline: 'none', ...props.style }} />
+        border: `1px solid ${C.border2}`, fontSize: 13, boxSizing: 'border-box',
+        background: C.inputBg, color: C.text, outline: 'none', ...props.style }} />
     </div>
   );
 }
 
-function PanelSelect({ label, children, ...props }: { label?: string } & React.SelectHTMLAttributes<HTMLSelectElement>) {
+function PanelSelect({ label, children, C: _C, ...props }: { label?: string; C?: Palette } & React.SelectHTMLAttributes<HTMLSelectElement>) {
+  const C = _C ?? darkC;
   return (
     <div style={{ marginBottom: 12 }}>
-      {label && <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>{label}</div>}
+      {label && <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: C.text }}>{label}</div>}
       <select {...props} style={{ width: '100%', height: 38, padding: '0 12px', borderRadius: 8,
-        border: '1px solid #ddd', fontSize: 13, background: '#fff', cursor: 'pointer',
+        border: `1px solid ${C.border2}`, fontSize: 13, background: C.inputBg, color: C.text, cursor: 'pointer',
         boxSizing: 'border-box', outline: 'none', ...props.style }}>
         {children}
       </select>
@@ -1741,13 +1743,14 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
   const qc = useQueryClient();
   const esAnticipo = tipo === 'anticipos';
   const METODOS_PAGO = ['Efectivo','Tarjeta','Cheque','Transferencia','Depósito'];
-  const [form, setForm] = useState(false);
+  const [form, setForm]           = useState(false);
   const [busqCliente, setBusqCliente] = useState('');
   const [clienteId, setClienteId] = useState<number|null>(null);
   const [monto, setMonto]         = useState('');
   const [metodo, setMetodo]       = useState('Efectivo');
   const [referencia, setRef]      = useState('');
   const [descripcion, setDesc]    = useState('');
+  const [facturaFolio, setFacturaFolio] = useState('');  // FIX 7: factura de referencia
   const { data: clientes } = useQuery<any>({
     queryKey: ['pos-cli-sel', busqCliente],
     queryFn: () => api.get(`/clientes?limit=20${busqCliente?'&search='+encodeURIComponent(busqCliente):''}`)
@@ -1763,15 +1766,23 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
   });
   const guardarMut = useMutation({
     mutationFn: () => {
-      const body: any = { monto: Number(monto), metodoPago: metodo.toLowerCase(), descripcion };
+      // FIX 6: normalizar método (quitar tilde de Depósito), agregar fecha y concepto
+      const metodoPagoNorm = metodo.toLowerCase()
+        .normalize('NFD').replace(/[̀-ͯ]/g, ''); // elimina acentos: depósito → deposito
+      const body: any = {
+        monto:      Number(monto),
+        metodoPago: metodoPagoNorm,
+        concepto:   descripcion || (esAnticipo ? 'Anticipo' : 'Recibo de cobro'),
+        fecha:      new Date().toISOString().split('T')[0],
+      };
       if (clienteId) body.clienteId = clienteId;
       if (referencia) body.referencia = referencia;
-      if (esAnticipo) body.concepto = descripcion || 'Anticipo';
+      if (facturaFolio) body.facturaFolio = facturaFolio;  // FIX 7
       return api.post(`/${tipo}`, body);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['pos-panel', tipo] }); qc.refetchQueries({ queryKey: ['pos-panel', tipo] });
-      setForm(false); setMonto(''); setMetodo('Efectivo'); setRef(''); setDesc(''); setClienteId(null); setBusqCliente('');
+      setForm(false); setMonto(''); setMetodo('Efectivo'); setRef(''); setDesc(''); setClienteId(null); setBusqCliente(''); setFacturaFolio('');
       message.success(esAnticipo ? 'Anticipo registrado' : 'Recibo registrado');
     },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al guardar'),
@@ -1789,25 +1800,29 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
               <div style={{ fontSize:12, fontWeight:600, marginBottom:4 }}>Buscar Cliente</div>
               <select value={clienteId??''} onChange={e=>setClienteId(e.target.value?Number(e.target.value):null)}
                 style={{ width:'100%', height:38, padding:'0 12px', borderRadius:8,
-                  border:'1px solid #ddd', fontSize:13, background:'#fff', cursor:'pointer', outline:'none', boxSizing:'border-box' }}>
-                <option value="">Buscar Cliente</option>
+                  border:`1px solid ${C.border2}`, fontSize:13, background:C.inputBg, color:C.text, cursor:'pointer', outline:'none', boxSizing:'border-box' }}>
+                <option value="">Sin cliente específico</option>
                 {(clientes??[]).map((c:any)=>(<option key={c.id} value={c.id}>{c.nombre}</option>))}
               </select>
               <input value={busqCliente} onChange={e=>setBusqCliente(e.target.value)} placeholder="Escribir para buscar..."
-                style={{ width:'100%', height:32, padding:'0 12px', marginTop:4, borderRadius:8, border:'1px solid #eee', fontSize:12, outline:'none', boxSizing:'border-box' }} />
+                style={{ width:'100%', height:32, padding:'0 12px', marginTop:4, borderRadius:8, border:`1px solid ${C.border}`, fontSize:12, outline:'none', boxSizing:'border-box', background:C.inputBg, color:C.text }} />
             </div>
-            <PanelInput label="Monto" type="number" placeholder="Monto" value={monto} onChange={e=>setMonto(e.target.value)} />
-            <PanelSelect label="Tipo de Pago" value={metodo} onChange={e=>setMetodo(e.target.value)}>
+            <PanelInput C={C} label="Monto" type="number" placeholder="Monto" value={monto} onChange={e=>setMonto(e.target.value)} />
+            {!esAnticipo && (
+              <PanelInput C={C} label="N° Factura de referencia (opcional)" placeholder="Ej: FAC-2025-0001"
+                value={facturaFolio} onChange={e=>setFacturaFolio(e.target.value)} />
+            )}
+            <PanelSelect C={C} label="Tipo de Pago" value={metodo} onChange={e=>setMetodo(e.target.value)}>
               {METODOS_PAGO.map(m=><option key={m} value={m}>{m}</option>)}
             </PanelSelect>
             {metodo === 'Cheque' && (
-              <PanelInput label="Número de Cheque" placeholder="Número de Cheque" value={referencia} onChange={e=>setRef(e.target.value)} />
+              <PanelInput C={C} label="Número de Cheque" placeholder="Número de Cheque" value={referencia} onChange={e=>setRef(e.target.value)} />
             )}
             <div style={{ marginBottom:12 }}>
               <div style={{ fontSize:12, fontWeight:600, marginBottom:4 }}>Descripción</div>
-              <textarea value={descripcion} onChange={e=>setDesc(e.target.value)} placeholder="Descripción"
-                rows={3} style={{ width:'100%', padding:'8px 12px', borderRadius:8, border:'1px solid #ddd',
-                  fontSize:13, resize:'vertical', outline:'none', boxSizing:'border-box' }} />
+              <textarea value={descripcion} onChange={e=>setDesc(e.target.value)} placeholder="Descripción / Concepto"
+                rows={3} style={{ width:'100%', padding:'8px 12px', borderRadius:8, border:`1px solid ${C.border2}`,
+                  fontSize:13, resize:'vertical', outline:'none', boxSizing:'border-box', background:C.inputBg, color:C.text }} />
             </div>
             <button onClick={() => guardarMut.mutate()} disabled={guardarMut.isPending || !monto}
               style={{ width:'100%', height:44, borderRadius:10, border:'none',
@@ -2084,6 +2099,7 @@ function POSPanel({ panel, palette, onVolver }: {
   const [busq,          setBusq]          = useState('');
   const [anulando,      setAnulando]      = useState<number | null>(null);
   const [imprimiendo,   setImprimiendo]   = useState<number | null>(null);
+  const [cambEstado,    setCambEstado]    = useState<number | null>(null);
   const [saleTermico,    setSaleTermico]    = useState<Sale | null>(null);
   const [genericDoc,     setGenericDoc]     = useState<GenericDocData | null>(null);
   const PANEL_RECEIPT_ID  = 'hc-pos-panel-receipt';
@@ -2112,7 +2128,8 @@ function POSPanel({ panel, palette, onVolver }: {
   // ── Endpoints de anulación por módulo ──────────────────────────────
   const anularMutation = useMutation({
     mutationFn: async ({ id, mod }: { id: number; mod: string }) => {
-      if (mod === 'facturas')        return api.patch(`/facturas/${id}/estado`, { estado: 'anulada' });
+      // FIX 2: usar 'cancelada' (valor correcto del enum FacturaEstado)
+      if (mod === 'facturas')        return api.patch(`/facturas/${id}/estado`, { estado: 'cancelada' });
       if (mod === 'cotizaciones')    return api.patch(`/cotizaciones/${id}/estado`, { estado: 'rechazada' });
       if (mod === 'pre-facturas')    return api.patch(`/pre-facturas/${id}/rechazar`);
       if (mod === 'conduce' || mod === 'despacho') return api.delete(`/conduces/${id}`);
@@ -2129,6 +2146,25 @@ function POSPanel({ panel, palette, onVolver }: {
       message.error(e?.response?.data?.message ?? 'No se pudo anular');
       setAnulando(null);
     },
+  });
+
+  // FIX 3: Cambiar estado de conduce desde el POS
+  const cambiarEstadoConduce = useMutation({
+    mutationFn: async ({ id, nuevoEstado }: { id: number; nuevoEstado: string }) => {
+      const endpoint: Record<string, string> = {
+        en_transito: `/conduces/${id}/en-transito`,
+        entregado:   `/conduces/${id}/entregado`,
+        devuelto:    `/conduces/${id}/devuelto`,
+      };
+      return api.patch(endpoint[nuevoEstado], {});
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pos-panel', panel] });
+      qc.refetchQueries({ queryKey: ['pos-panel', panel] });
+      message.success('Estado actualizado');
+      setCambEstado(null);
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'No se pudo cambiar el estado'),
   });
 
   // ── Impresión térmica para TODOS los módulos ───────────────────────
@@ -2259,10 +2295,12 @@ function POSPanel({ panel, palette, onVolver }: {
   // ── ¿Puede anularse este registro? ────────────────────────────────
   const puedeAnular = (row: any): boolean => {
     const estado = row.estado ?? '';
-    if (panel === 'facturas')       return estado === 'emitida';
+    // FIX 2: permitir anular facturas emitidas Y pagadas
+    if (panel === 'facturas')       return estado === 'emitida' || estado === 'pagada';
     if (panel === 'pre-facturas')   return !['convertida', 'anulada', 'rechazada'].includes(estado);
     if (panel === 'cotizaciones')   return !['convertida', 'rechazada', 'anulada'].includes(estado);
-    if ((panel as string) === 'conduce' || (panel as string) === 'despacho') return estado === 'generado';
+    // FIX 3: conduces — permitir cambio de estado en cualquier estado no final
+    if ((panel as string) === 'conduce' || (panel as string) === 'despacho') return estado !== 'entregado' && estado !== 'devuelto';
     if ((panel as string) === 'notas-credito') return estado === 'emitida';
     if ((panel as string) === 'gastos')        return true;
     return false;
@@ -2445,8 +2483,40 @@ function POSPanel({ panel, palette, onVolver }: {
                         >
                           {imprimiendo === row.id ? '⏳' : '🖨️'}
                         </button>
+                        {/* FIX 3: Botones de estado para conduces */}
+                        {(panel === 'conduce' || panel === 'despacho') && row.estado !== 'entregado' && row.estado !== 'devuelto' && (
+                          cambEstado === row.id ? (
+                            <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>
+                              {row.estado === 'generado' && (
+                                <button onClick={() => cambiarEstadoConduce.mutate({ id: row.id, nuevoEstado: 'en_transito' })}
+                                  style={{ background: C.blue, border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', padding: '4px 8px', fontSize: 10, fontWeight: 700 }}>
+                                  🚚 En Ruta
+                                </button>
+                              )}
+                              {row.estado === 'en_transito' && (<>
+                                <button onClick={() => cambiarEstadoConduce.mutate({ id: row.id, nuevoEstado: 'entregado' })}
+                                  style={{ background: C.green, border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', padding: '4px 8px', fontSize: 10, fontWeight: 700 }}>
+                                  ✅ Entregado
+                                </button>
+                                <button onClick={() => cambiarEstadoConduce.mutate({ id: row.id, nuevoEstado: 'devuelto' })}
+                                  style={{ background: C.orange, border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', padding: '4px 8px', fontSize: 10, fontWeight: 700 }}>
+                                  ↩ Devuelto
+                                </button>
+                              </>)}
+                              <button onClick={() => setCambEstado(null)}
+                                style={{ background: 'none', border: `1px solid ${C.border2}`, borderRadius: 6, color: C.textSub, cursor: 'pointer', padding: '4px 8px', fontSize: 11 }}>
+                                ✕
+                              </button>
+                            </span>
+                          ) : (
+                            <button onClick={() => setCambEstado(row.id)} title="Cambiar estado"
+                              style={{ background: 'none', border: `1px solid ${C.border2}`, borderRadius: 6, color: C.blue, cursor: 'pointer', padding: '4px 8px', fontSize: 13, marginRight: 4 }}>
+                              🔄
+                            </button>
+                          )
+                        )}
                         {/* Anular */}
-                        {!yaAnulado && puedeAnular(row) && (
+                        {!yaAnulado && puedeAnular(row) && panel !== 'conduce' && panel !== 'despacho' && (
                           anulando === row.id ? (
                             <span style={{ fontSize: 11, color: C.textSub }}>
                               <button onClick={() => { anularMutation.mutate({ id: row.id, mod: panel }); }}
@@ -2713,10 +2783,19 @@ export default function POSPage() {
   }, []);   // solo al montar
 
   // Queries
-  const { data: produtos, isLoading } = useQuery({
+  const { data: produtos, isLoading, refetch: refetchProductos } = useQuery({
     queryKey: ['pos-products', search],
     queryFn:  () => productosApi.list(1, 120, search),
+    refetchInterval: 30_000,   // FIX 1: refrescar catálogo cada 30s
+    staleTime: 20_000,
   });
+
+  // FIX 1: también refrescar al recuperar el foco (el cajero vuelve de otra pestaña)
+  useEffect(() => {
+    const onFocus = () => { refetchProductos(); };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [refetchProductos]);
   const { data: clientes } = useQuery({
     queryKey: ['clientes-pos'],
     queryFn:  () => clientesApi.list(1, 100),

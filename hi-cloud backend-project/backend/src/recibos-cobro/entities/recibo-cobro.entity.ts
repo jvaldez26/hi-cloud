@@ -22,8 +22,8 @@ export class ReciboCobro extends TenantBaseEntity {
   @Column({ type: 'date' })
   fecha!: string;
 
-  @Column()
-  clienteId!: number;
+  @Column({ nullable: true })
+  clienteId?: number;
 
   @Column({ length: 200, nullable: true })
   clienteNombre?: string;

@@ -19,17 +19,17 @@ import { ReciboPDFService } from './recibo-pdf.service';
 import { MetodoPagoRecibo } from './entities/recibo-cobro.entity';
 
 class CreateReciboDto {
-  @IsInt() @IsPositive() @Type(() => Number)     clienteId!: number;
-  @IsOptional() @IsString()                       clienteNombre?: string;
-  @IsDateString()                                 fecha!: string;
-  @IsNumber() @Min(0.01) @Type(() => Number)      monto!: number;
-  @IsEnum(MetodoPagoRecibo)                        metodoPago!: MetodoPagoRecibo;
-  @IsString()                                     concepto!: string;
-  @IsOptional() @IsInt() @Type(() => Number)      facturaId?: number;
-  @IsOptional() @IsString()                       facturaFolio?: string;
-  @IsOptional() @IsInt() @Type(() => Number)      cxcId?: number;
-  @IsOptional() @IsString()                       referencia?: string;
-  @IsOptional() @IsString()                       notas?: string;
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number)  clienteId?: number;
+  @IsOptional() @IsString()                                  clienteNombre?: string;
+  @IsOptional() @IsDateString()                              fecha?: string;
+  @IsNumber() @Min(0.01) @Type(() => Number)                 monto!: number;
+  @IsEnum(MetodoPagoRecibo)                                  metodoPago!: MetodoPagoRecibo;
+  @IsString()                                                concepto!: string;
+  @IsOptional() @IsInt() @Type(() => Number)                 facturaId?: number;
+  @IsOptional() @IsString()                                  facturaFolio?: string;
+  @IsOptional() @IsInt() @Type(() => Number)                 cxcId?: number;
+  @IsOptional() @IsString()                                  referencia?: string;
+  @IsOptional() @IsString()                                  notas?: string;
 }
 
 @ApiTags('Recibos de Cobro')
@@ -79,9 +79,11 @@ export class RecibosCobrosController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Emitir recibo de cobro' })
   crear(@Body() dto: CreateReciboDto, @GetUser() user: User) {
-    return this.svc.crear({ ...dto, nombreUsuario: user.nombre }, user.id);
+    const hoy = new Date().toISOString().split('T')[0];
+    return this.svc.crear({ ...dto, fecha: dto.fecha ?? hoy, nombreUsuario: user.nombre }, user.id);
   }
 
   @Delete(':id')

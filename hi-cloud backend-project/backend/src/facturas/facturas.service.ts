@@ -324,7 +324,7 @@ export class FacturasService {
     const transiciones: Record<FacturaEstado, FacturaEstado[]> = {
       [FacturaEstado.BORRADOR]:  [FacturaEstado.EMITIDA,  FacturaEstado.CANCELADA],
       [FacturaEstado.EMITIDA]:   [FacturaEstado.PAGADA,   FacturaEstado.CANCELADA],
-      [FacturaEstado.PAGADA]:    [],
+      [FacturaEstado.PAGADA]:    [FacturaEstado.CANCELADA],  // permitir anular facturas pagadas
       [FacturaEstado.CANCELADA]: [],
     };
 
