@@ -1339,7 +1339,7 @@ export default function SuperAdminPage() {
         },
       }}
     >
-    <div style={{ minHeight: '100vh', background: C.bg, fontFamily: '"IBM Plex Sans", sans-serif', color: C.txt, transition: 'all 300ms ease' }}>
+    <div className={`sa-scope${isDark ? '' : ' sa-light'}`} style={{ minHeight: '100vh', background: C.bg, fontFamily: '"IBM Plex Sans", sans-serif', color: C.txt, transition: 'all 300ms ease' }}>
 
       {/* ── BARRA DORADA TOP ───────────────────────────────────────────────── */}
       <div style={{ height: 4, background: `linear-gradient(90deg, ${C.gold}, #FCD34D, ${C.gold})` }} />

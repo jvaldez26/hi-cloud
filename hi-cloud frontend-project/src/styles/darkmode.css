@@ -38,30 +38,31 @@ body {
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-/* ── Corregir fondos blancos en tablas ────────────────────────────────────── */
-[data-theme="dark"] .ant-table-wrapper .ant-table {
+/* ── Corregir fondos blancos en tablas (excluye .sa-scope que tiene su propio tema) */
+[data-theme="dark"] :not(.sa-scope) > .ant-table-wrapper .ant-table,
+[data-theme="dark"] .ant-table-wrapper:not(.sa-scope .ant-table-wrapper) .ant-table {
   background: var(--hc-bg-card);
 }
 
-[data-theme="dark"] .ant-table-thead > tr > th,
-[data-theme="dark"] .ant-table-thead > tr > td {
+[data-theme="dark"] :not(.sa-scope) .ant-table-thead > tr > th,
+[data-theme="dark"] :not(.sa-scope) .ant-table-thead > tr > td {
   background: var(--hc-bg-hover) !important;
   border-bottom-color: var(--hc-border) !important;
 }
 
-[data-theme="dark"] .ant-table-tbody > tr:hover > td {
+[data-theme="dark"] :not(.sa-scope) .ant-table-tbody > tr:hover > td {
   background: var(--hc-bg-hover) !important;
 }
 
-[data-theme="dark"] .ant-table-tbody > tr > td {
+[data-theme="dark"] :not(.sa-scope) .ant-table-tbody > tr > td {
   border-bottom-color: var(--hc-border-light) !important;
 }
 
-/* ── Inputs y formularios ─────────────────────────────────────────────────── */
-[data-theme="dark"] .ant-input,
-[data-theme="dark"] .ant-input-affix-wrapper,
-[data-theme="dark"] .ant-select-selector,
-[data-theme="dark"] .ant-picker {
+/* ── Inputs y formularios (excluye sa-scope) ──────────────────────────────── */
+[data-theme="dark"] :not(.sa-scope) .ant-input,
+[data-theme="dark"] :not(.sa-scope) .ant-input-affix-wrapper,
+[data-theme="dark"] :not(.sa-scope) .ant-select-selector,
+[data-theme="dark"] :not(.sa-scope) .ant-picker {
   background: var(--hc-bg-hover) !important;
   border-color: var(--hc-border) !important;
   color: var(--hc-text) !important;

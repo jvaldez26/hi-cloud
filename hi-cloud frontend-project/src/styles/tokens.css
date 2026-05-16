@@ -224,6 +224,57 @@ body {
   color: var(--hc-text, #E6EDF3) !important;
 }
 
+/* ── Super Admin: exemptarlo de overrides globales, dejar que su propio
+   ConfigProvider maneje el tema (SA_DARK/SA_LIGHT paleta propia) ─────────── */
+
+/* SA no recibe el override de gradient-cards del ERP */
+.sa-scope .ant-card[style*="linear-gradient"],
+.sa-scope .ant-card[style*="linear-gradient"] .ant-card-body {
+  all: unset;
+  display: block;
+}
+
+/* SA tabla: usar los colores del ConfigProvider propio, no los de darkmode.css */
+/* Modo oscuro del SA (slate, no negro puro) */
+.sa-scope .ant-table-thead > tr > th,
+.sa-scope .ant-table-thead > tr > td {
+  background: #1E293B !important;
+  border-bottom-color: #334155 !important;
+  color: #94A3B8 !important;
+}
+.sa-scope .ant-table-tbody > tr > td {
+  border-bottom-color: #1E293B !important;
+}
+.sa-scope .ant-table-tbody > tr:hover > td {
+  background: #1a2535 !important;
+}
+.sa-scope .ant-input,
+.sa-scope .ant-input-affix-wrapper,
+.sa-scope .ant-select-selector,
+.sa-scope .ant-picker {
+  background: #1E293B !important;
+  border-color: #334155 !important;
+  color: #F8FAFC !important;
+}
+
+/* SA modo claro: usar paleta SA_LIGHT */
+.sa-scope.sa-light .ant-table-thead > tr > th,
+.sa-scope.sa-light .ant-table-thead > tr > td {
+  background: #F8FAFC !important;
+  border-bottom-color: #E2E8F0 !important;
+  color: #475569 !important;
+}
+.sa-scope.sa-light .ant-table-tbody > tr:hover > td {
+  background: #F0F4F8 !important;
+}
+.sa-scope.sa-light .ant-input,
+.sa-scope.sa-light .ant-input-affix-wrapper,
+.sa-scope.sa-light .ant-select-selector {
+  background: #FFFFFF !important;
+  border-color: #E2E8F0 !important;
+  color: #0F172A !important;
+}
+
 /* Transición suave de tema en componentes antd */
 .ant-layout,
 .ant-layout-sider,
