@@ -272,6 +272,10 @@ export class AuthController {
         email:     loginData.user.email,
         role:      loginData.user.role,
       });
+      // Si el usuario no tiene empresa → informar al frontend para redirigir al setup
+      if (!loginData.empresaActual) {
+        params.set('sinEmpresa', 'true');
+      }
       return (res as any).redirect(`${frontendUrl}/auth/callback?${params.toString()}`);
     } catch {
       return (res as any).redirect(`${frontendUrl}/login?error=google_failed`);

@@ -22,7 +22,8 @@ export default function GoogleCallbackPage() {
 
     // S-23: el backend seteó la cookie httpOnly — llamamos /auth/me
     // para obtener los datos reales del usuario (id correcto, empresas, etc.)
-    const empresaId = params.get('empresaId');
+    const empresaId  = params.get('empresaId');
+    const sinEmpresa = params.get('sinEmpresa') === 'true' || !empresaId;
 
     api.get('/auth/me')
       .then(r => {
@@ -33,7 +34,14 @@ export default function GoogleCallbackPage() {
         const empresas    = empresasRaw ? JSON.parse(empresasRaw) : [];
         login(user, empresaId ? Number(empresaId) : null, empresas);
 
-        navigate(user.role === 'super_admin' ? '/super-admin' : '/dashboard', { replace: true });
+        if (user.role === 'super_admin') {
+          navigate('/super-admin', { replace: true });
+        } else if (sinEmpresa) {
+          // Usuario nuevo con Google o sin empresa → ir directo a crear empresa
+          navigate('/mis-empresas', { replace: true });
+        } else {
+          navigate('/dashboard', { replace: true });
+        }
       })
       .catch(() => {
         setHydrated(true);

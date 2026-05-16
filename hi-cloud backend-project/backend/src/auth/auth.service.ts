@@ -514,22 +514,29 @@ export class AuthService {
     // 2. Buscar por email (cuenta local existente → vincular)
     user = await this.userRepository.findOne({ where: { email: data.email } });
     if (user) {
-      await this.userRepository.update(user.id, {
-        googleId: data.googleId,
-        provider: 'GOOGLE',
-      } as any);
-      return { ...user, googleId: data.googleId } as User;
+      const updates: Record<string, any> = { googleId: data.googleId, provider: 'GOOGLE' };
+      // Si el usuario quedó como VIEWER sin empresa (registro Google incompleto),
+      // promoverlo a ADMIN para que pueda completar la creación de su empresa.
+      if ((user as any).role === UserRole.VIEWER || (user as any).role === 'viewer') {
+        const sinEmpresa = await this.ueRepository.count({
+          where: { userId: user.id, isActive: true },
+        });
+        if (sinEmpresa === 0) updates.role = UserRole.ADMIN;
+      }
+      await this.userRepository.update(user.id, updates as any);
+      return { ...user, ...updates } as User;
     }
 
-    // 3. Crear cuenta nueva (sin contraseña usable)
+    // 3. Crear cuenta nueva — el registro con Google es siempre auto-registro (admin de su empresa)
     const pw = await bcrypt.hash(randomBytes(32).toString('hex'), 12);
     const newUser = this.userRepository.create({
-      nombre:         data.nombre,
-      email:          data.email,
-      password:       pw,
-      googleId:       data.googleId,
-      provider:       'GOOGLE',
-      emailVerifiedAt: new Date(),  // Google ya verificó el email
+      nombre:          data.nombre,
+      email:           data.email,
+      password:        pw,
+      googleId:        data.googleId,
+      provider:        'GOOGLE',
+      role:            UserRole.ADMIN,  // auto-registro = admin de su empresa
+      emailVerifiedAt: new Date(),      // Google ya verificó el email
     } as any);
     return this.userRepository.save(newUser) as unknown as User;
   }
