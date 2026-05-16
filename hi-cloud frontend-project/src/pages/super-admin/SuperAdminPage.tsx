@@ -524,9 +524,9 @@ function EcfConfigTab({
   });
 
   const eliminarEcfMut = useMutation({
-    mutationFn: (empresaId: number) => import('../../api/client').then(m => m.default.delete(`/ecf/config/empresas/${empresaId}`)),
+    mutationFn: (empresaId: number) => ecfConfigApi.eliminar(empresaId),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['ecf-configs'] }); message.success('Configuración e-CF eliminada'); },
-    onError: (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error al eliminar'),
+    onError: (e: any) => message.error((e as any)?.friendlyMessage ?? (e as any)?.response?.data?.errors?.[0] ?? 'Error al eliminar'),
   });
 
   const seqMut = useMutation({
