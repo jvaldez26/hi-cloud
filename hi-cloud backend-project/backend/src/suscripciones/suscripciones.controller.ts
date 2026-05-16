@@ -109,6 +109,10 @@ export class SuscripcionesController {
       }),
     );
 
+    // Notificar al super admin (non-fatal)
+    this.svc.notificarSuperAdminNuevaSolicitud(solicitud.id, empresaId, dto.planSolicitado, dto.comentario)
+      .catch(() => null);
+
     return {
       message: 'Tu solicitud fue recibida. Un asesor te contactará en menos de 24 horas para coordinar el pago y activación.',
       solicitudId: solicitud.id,

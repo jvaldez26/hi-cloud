@@ -468,6 +468,13 @@ export class AuthService {
     }
 
     this.logger.log(`Email verificado para usuario #${user.id}`);
+
+    // Email de bienvenida con info del plan elegido (non-fatal)
+    if (ueRow) {
+      this.enviarEmailBienvenida(user.id, (user as any).nombre, (user as any).email ?? '', ueRow.empresaId)
+        .catch(() => null);
+    }
+
     return { message: '¡Correo verificado exitosamente! Ya puedes iniciar sesión.' };
   }
 
@@ -528,6 +535,52 @@ export class AuthService {
 
   async marcarTourCompletado(userId: number): Promise<void> {
     await this.userRepository.update(userId, { tourCompletado: true } as any);
+  }
+
+  private async enviarEmailBienvenida(userId: number, nombre: string, email: string, empresaId: number): Promise<void> {
+    try {
+      // Leer la suscripción para saber plan y fecha de vencimiento
+      const [sus] = await this.dataSource.query<any[]>(
+        `SELECT plan, estado, "fechaFinPrueba" FROM suscripciones WHERE "empresaId" = $1 LIMIT 1`,
+        [empresaId],
+      );
+      if (!sus) return;
+
+      const PLAN_NOMBRE: Record<string, string> = {
+        emprendedor: 'Emprendedor', pyme: 'Pyme', pro: 'Pro', plus: 'Plus',
+      };
+      const PLAN_PRECIO: Record<string, number> = {
+        emprendedor: 29, pyme: 59, pro: 89, plus: 129,
+      };
+      const planNombre = PLAN_NOMBRE[sus.plan] ?? sus.plan;
+      const precioMes  = PLAN_PRECIO[sus.plan] ?? 0;
+      const fechaFin   = sus.fechaFinPrueba
+        ? new Date(sus.fechaFinPrueba).toLocaleDateString('es-DO', { day: '2-digit', month: 'long', year: 'numeric' })
+        : '15 días desde hoy';
+      const frontendUrl = process.env['FRONTEND_URL'] ?? 'https://hicloudrd.com';
+
+      await this.emailService.enviar({
+        to: email,
+        subject: `¡Bienvenido a HiCloud ERP! Tu prueba ${planNombre} empieza ahora`,
+        html: `
+          <p>Hola <strong>${nombre}</strong>,</p>
+          <p>¡Tu cuenta en HiCloud ERP está activa! 🎉</p>
+          <p>Tienes acceso completo al plan <strong>${planNombre}</strong> (US$${precioMes}/mes) de forma gratuita hasta el <strong>${fechaFin}</strong>.</p>
+          <p>Todos los módulos están habilitados desde el primer día:</p>
+          <ul>
+            <li>✅ Factura electrónica e-CF DGII</li>
+            <li>✅ Contabilidad, inventario y CxC/CxP</li>
+            <li>✅ Nómina, compras y reportes 606/607</li>
+            <li>✅ Soporte 24/7 incluido</li>
+          </ul>
+          <p>Al vencer la prueba, un asesor te contactará para coordinar el pago y continuar sin interrupciones.</p>
+          <p><a href="${frontendUrl}/dashboard" style="background:#1565C0;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:700">Entrar al sistema →</a></p>
+          <p style="color:#6b7280;font-size:12px">¿Tienes dudas? Escríbenos a soporte@hicloudrd.com</p>
+        `,
+      });
+    } catch (e) {
+      this.logger.warn(`Email bienvenida usuario #${userId}: ${(e as Error).message}`);
+    }
   }
 
   /** S-28: Genera un access token para un userId (usado en /auth/refresh) */

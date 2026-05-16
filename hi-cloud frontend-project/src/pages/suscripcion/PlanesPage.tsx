@@ -84,7 +84,7 @@ const fmtUsd = (n: number) => `US$ ${n.toFixed(2)}`;
 const TABLA_COMPARATIVA = [
   { feature: 'Factura electrónica e-CF',       emprendedor: '✓', pyme: '✓', pro: '✓', plus: '✓' },
   { feature: 'Ingresos máx/mes',                emprendedor: 'RD$125K', pyme: 'RD$500K', pro: 'RD$1.25M', plus: 'RD$6.25M' },
-  { feature: 'Usuarios incluidos',              emprendedor: '1', pyme: '2', pro: '3', plus: '8' },
+  { feature: 'Usuarios incluidos',              emprendedor: '2', pyme: '3', pro: '4', plus: '10' },
   { feature: 'Cotizaciones',                    emprendedor: '✓', pyme: '✓', pro: '✓', plus: '✓' },
   { feature: 'Compras y proveedores',           emprendedor: '✓', pyme: '✓', pro: '✓', plus: '✓' },
   { feature: 'Inventario completo',             emprendedor: '✓', pyme: '✓', pro: '✓', plus: '✓' },
@@ -189,44 +189,82 @@ export default function PlanesPage() {
           </div>
         </div>
 
-        {/* Uso actual de ingresos (si hay suscripción activa) */}
-        {limites?.ingresos && limites.ingresos.limite !== -1 && (
+        {/* ── Panel "Mi Plan" — uso actual ─────────────────────────────────── */}
+        {(limites?.ingresos || limites?.usuarios || suscripcion) && (
           <div style={{
-            background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10,
-            padding: '16px 24px', marginBottom: 24,
-            display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap',
+            background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12,
+            padding: '20px 24px', marginBottom: 28,
           }}>
-            <div style={{ flex: 1, minWidth: 200 }}>
-              <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 6 }}>
-                Ingresos del mes actual — Plan{' '}
-                <strong style={{ color: '#111827', textTransform: 'capitalize' }}>
-                  {limites.ingresos.planNombre}
-                </strong>
-                {limites.ingresos.enPeriodoGracia && (
-                  <Tag color="orange" style={{ marginLeft: 8, fontSize: 11 }}>Período de gracia</Tag>
+            {/* Cabecera */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 8 }}>
+              <div>
+                <span style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>
+                  Mi Plan Actual
+                </span>
+                {limites?.planNombre && (
+                  <Tag color="teal" style={{ marginLeft: 10, fontWeight: 700, letterSpacing: '0.03em' }}>
+                    {(limites.planNombre as string).toUpperCase()}
+                  </Tag>
+                )}
+                {suscripcion?.diasRestantes !== undefined && suscripcion.diasRestantes <= 30 && (
+                  <Tag color={suscripcion.diasRestantes <= 7 ? 'red' : 'orange'} style={{ marginLeft: 6, fontSize: 11 }}>
+                    Vence en {suscripcion.diasRestantes}d
+                  </Tag>
                 )}
               </div>
-              <Progress
-                percent={limites.ingresos.porcentaje}
-                strokeColor={
-                  limites.ingresos.alerta95 ? '#ef4444' :
-                  limites.ingresos.alerta80 ? '#f59e0b' : '#0d9488'
-                }
-                trailColor="#e5e7eb"
-                showInfo={false}
-                style={{ marginBottom: 4 }}
-              />
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#6b7280' }}>
-                <span>
-                  {fmtDop(limites.ingresos.ingresosMes)} facturado
-                  {limites.ingresos.alerta80 && (
-                    <span style={{ color: limites.ingresos.alerta95 ? '#ef4444' : '#f59e0b', marginLeft: 8, fontWeight: 600 }}>
-                      {limites.ingresos.alerta95 ? '¡Casi al límite!' : 'Cerca del límite'}
-                    </span>
-                  )}
-                </span>
-                <span>{fmtDop(limites.ingresos.limite)} límite</span>
-              </div>
+              <Button size="small" onClick={() => navigate('/suscripcion/planes')}>
+                Ver planes disponibles
+              </Button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 20 }}>
+              {/* Barra de ingresos */}
+              {limites?.ingresos && limites.ingresos.limite !== -1 && (
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#6b7280', marginBottom: 5 }}>
+                    <span style={{ fontWeight: 600 }}>Ingresos este mes</span>
+                    {limites.ingresos.alerta80 && (
+                      <span style={{ color: limites.ingresos.alerta95 ? '#ef4444' : '#f59e0b', fontWeight: 700 }}>
+                        {limites.ingresos.alerta95 ? '⚠️ Casi al límite' : '⚡ Cerca del límite'}
+                      </span>
+                    )}
+                  </div>
+                  <Progress
+                    percent={Math.min(limites.ingresos.porcentaje ?? 0, 100)}
+                    strokeColor={limites.ingresos.alerta95 ? '#ef4444' : limites.ingresos.alerta80 ? '#f59e0b' : '#0d9488'}
+                    trailColor="#e5e7eb" showInfo={false}
+                    style={{ marginBottom: 4 }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#9ca3af' }}>
+                    <span>{fmtDop(limites.ingresos.ingresosMes ?? 0)} facturado</span>
+                    <span>{fmtDop(limites.ingresos.limite)} límite</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Barra de usuarios */}
+              {limites?.usuarios && limites.usuarios.limite !== -1 && (
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#6b7280', marginBottom: 5 }}>
+                    <span style={{ fontWeight: 600 }}>Usuarios activos</span>
+                    {limites.usuarios.usado >= limites.usuarios.limite && (
+                      <span style={{ color: '#ef4444', fontWeight: 700 }}>⚠️ Límite alcanzado</span>
+                    )}
+                  </div>
+                  <Progress
+                    percent={Math.min(Math.round(((limites.usuarios.usado ?? 0) / Math.max(1, limites.usuarios.limite)) * 100), 100)}
+                    strokeColor={limites.usuarios.usado >= limites.usuarios.limite ? '#ef4444' : '#3b82f6'}
+                    trailColor="#e5e7eb" showInfo={false}
+                    style={{ marginBottom: 4 }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#9ca3af' }}>
+                    <span>{limites.usuarios.usado ?? 0} de {limites.usuarios.limite} usuarios</span>
+                    {limites.usuarios.usado >= limites.usuarios.limite && (
+                      <span style={{ color: '#6b7280', fontSize: 11 }}>Invita a tu equipo con un plan superior</span>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

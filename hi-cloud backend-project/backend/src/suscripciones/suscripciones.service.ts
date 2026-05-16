@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThan, DataSource, In } from 'typeorm';
+import { EmailService } from '../notificaciones/services/email.service';
 import { Cron } from '@nestjs/schedule';
 import {
   Suscripcion, PlanTipo, SuscripcionEstado, ModalidadPago,
@@ -41,6 +42,7 @@ export class SuscripcionesService implements OnModuleInit {
     @InjectRepository(SuscripcionAuditoria)
     private auditoriaRepo: Repository<SuscripcionAuditoria>,
     private ds: DataSource,
+    private emailSvc: EmailService,
   ) {}
 
   async onModuleInit() {
@@ -262,11 +264,7 @@ export class SuscripcionesService implements OnModuleInit {
       const fechaFin   = new Date(s.fechaFinPrueba!).toLocaleDateString('es-DO', { day: '2-digit', month: 'long', year: 'numeric' });
       const urgente    = dias === 1;
 
-      // Importar EmailService dinámicamente para evitar dep circular en el módulo
-      const emailSvc: any = (this as any)._emailService;
-      if (!emailSvc) return;
-
-      await emailSvc.enviar({
+      await this.emailSvc.enviar({
         to: admin[0].email,
         subject: urgente
           ? `⚠️ Tu prueba de HiCloud ERP vence MAÑANA`
@@ -295,10 +293,7 @@ export class SuscripcionesService implements OnModuleInit {
       if (!admin.length) return;
 
       const planNombre = PLANES[plan]?.nombre ?? plan;
-      const emailSvc: any = (this as any)._emailService;
-      if (!emailSvc) return;
-
-      await emailSvc.enviar({
+      await this.emailSvc.enviar({
         to: admin[0].email,
         subject: 'Tu período de prueba ha vencido — Activa tu licencia',
         html: `
@@ -499,10 +494,7 @@ export class SuscripcionesService implements OnModuleInit {
 
       const planNombre = PLANES[plan]?.nombre ?? plan;
       const precio     = precioUsd(plan, modalidad);
-      const emailSvc: any = (this as any)._emailService;
-      if (!emailSvc) return;
-
-      await emailSvc.enviar({
+      await this.emailSvc.enviar({
         to: admin[0].email,
         subject: `¡Tu plan ${planNombre} ha sido activado! — HiCloud ERP`,
         html: `
@@ -510,6 +502,46 @@ export class SuscripcionesService implements OnModuleInit {
           <p>¡Excelentes noticias! Tu plan <strong>${planNombre}</strong> (${precio}) ha sido activado en HiCloud ERP.</p>
           <p>Ya puedes continuar usando todos los módulos sin interrupciones.</p>
           <p>Gracias por confiar en HiCloud ERP para tu negocio.</p>
+        `,
+      });
+    } catch { /* silencioso */ }
+  }
+
+  // ── Notificar al super admin sobre nueva solicitud ────────────────────────
+
+  async notificarSuperAdminNuevaSolicitud(
+    solicitudId: number,
+    empresaId: number,
+    planSolicitado: string,
+    comentario?: string,
+  ): Promise<void> {
+    try {
+      // Datos de la empresa
+      const [empresa] = await this.ds.query<{ nombre: string; rnc: string }[]>(
+        `SELECT nombre, rnc FROM empresa WHERE id = $1`, [empresaId],
+      );
+      // Email del super admin
+      const [sa] = await this.ds.query<{ email: string }[]>(
+        `SELECT email FROM users WHERE role = 'super_admin' AND "isActive" = true LIMIT 1`,
+      );
+      if (!sa) return;
+
+      const planNombre = PLANES[planSolicitado as PlanTipo]?.nombre ?? planSolicitado;
+      const precioMes  = PLANES[planSolicitado as PlanTipo]?.precioMensualUsd ?? 0;
+      const frontendUrl = process.env['FRONTEND_URL'] ?? 'https://hicloudrd.com';
+
+      await this.emailSvc.enviar({
+        to: sa.email,
+        subject: `Nueva solicitud de activación — ${empresa?.nombre ?? `Empresa #${empresaId}`}`,
+        html: `
+          <p>Una empresa ha solicitado la activación de su licencia:</p>
+          <ul>
+            <li><strong>Empresa:</strong> ${empresa?.nombre ?? `#${empresaId}`}</li>
+            <li><strong>RNC:</strong> ${empresa?.rnc ?? '—'}</li>
+            <li><strong>Plan solicitado:</strong> ${planNombre} (US$${precioMes}/mes)</li>
+            ${comentario ? `<li><strong>Comentario:</strong> ${comentario}</li>` : ''}
+          </ul>
+          <p><a href="${frontendUrl}/super-admin">Ver solicitud en el panel →</a></p>
         `,
       });
     } catch { /* silencioso */ }

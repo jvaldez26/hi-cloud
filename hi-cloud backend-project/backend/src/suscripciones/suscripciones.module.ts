@@ -10,9 +10,14 @@ import { PlanConfiguracion } from './entities/plan-configuracion.entity';
 import { SolicitudCambioPlan } from './entities/solicitud-cambio-plan.entity';
 import { SuscripcionAuditoria } from './entities/suscripcion-auditoria.entity';
 import { TenantModule } from '../tenant/tenant.module';
+import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Suscripcion, PlanConfiguracion, SolicitudCambioPlan, SuscripcionAuditoria]), TenantModule],
+  imports: [
+    TypeOrmModule.forFeature([Suscripcion, PlanConfiguracion, SolicitudCambioPlan, SuscripcionAuditoria]),
+    TenantModule,
+    NotificacionesModule,
+  ],
   controllers: [SuscripcionesController, PlanesPublicosController],
   providers: [SuscripcionesService, LimitesService, PlanGuard],
   exports: [SuscripcionesService, LimitesService, PlanGuard, TypeOrmModule],
