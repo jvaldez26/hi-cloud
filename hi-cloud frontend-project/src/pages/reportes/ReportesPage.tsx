@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { Card, Row, Col, Typography, Statistic, Select, DatePicker, Button,
-         Table, Tabs, Spin, Tag, Progress, message, Alert, Badge, Tooltip } from 'antd';
+         Table, Tabs, Spin, Tag, Progress, message, Alert, Badge, Tooltip, theme } from 'antd';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip,
          ResponsiveContainer, Cell } from 'recharts';
 import { DownloadOutlined, FileExcelOutlined, InfoCircleOutlined } from '@ant-design/icons';
@@ -17,6 +17,7 @@ const { RangePicker } = DatePicker;
 const COLORES = ['#1677ff','#10b981','#f59e0b','#7c3aed','#ef4444','#0891b2','#db2777','#65a30d'];
 
 export default function ReportesPage() {
+  const { token } = theme.useToken();
   const [mes,   setMes]   = useState(dayjs().month() + 1);
   const [anio,  setAnio]  = useState(dayjs().year());
   const [rango, setRango] = useState<[dayjs.Dayjs, dayjs.Dayjs]>([
@@ -348,40 +349,42 @@ export default function ReportesPage() {
                   <Row gutter={[16, 16]}>
                     {/* Columna Ventas */}
                     <Col xs={24} md={8}>
-                      <Card size="small" title="A — Ventas" type="inner" headStyle={{ background: '#e6f4ff', fontWeight: 700 }}>
+                      <Card size="small" title="A — Ventas" type="inner"
+                        headStyle={{ background: token.colorInfoBg, fontWeight: 700 }}>
                         <Row justify="space-between" style={{ marginBottom: 6 }}>
                           <Text type="secondary" style={{ fontSize: 12 }}>Monto gravado</Text>
                           <Text strong>{fmt.money(itbis.ventas?.montoGravado ?? 0)}</Text>
                         </Row>
                         <Row justify="space-between" style={{ marginBottom: 6 }}>
                           <Text type="secondary" style={{ fontSize: 12 }}>ITBIS cobrado (18%)</Text>
-                          <Text strong style={{ color: '#1677ff' }}>{fmt.money(itbis.ventas?.itbisCobrado ?? 0)}</Text>
+                          <Text strong style={{ color: token.colorPrimary }}>{fmt.money(itbis.ventas?.itbisCobrado ?? 0)}</Text>
                         </Row>
                         <Row justify="space-between">
                           <Text type="secondary" style={{ fontSize: 12 }}>Total facturado</Text>
                           <Text strong>{fmt.money(itbis.ventas?.totalFacturado ?? 0)}</Text>
                         </Row>
-                        <div style={{ marginTop: 8, borderTop: '1px solid #e2e8f0', paddingTop: 6 }}>
+                        <div style={{ marginTop: 8, borderTop: `1px solid ${token.colorBorderSecondary}`, paddingTop: 6 }}>
                           <Text type="secondary" style={{ fontSize: 11 }}>{itbis.ventas?.facturas ?? 0} facturas emitidas</Text>
                         </div>
                       </Card>
                     </Col>
                     {/* Columna Compras */}
                     <Col xs={24} md={8}>
-                      <Card size="small" title="B — Compras (crédito)" type="inner" headStyle={{ background: '#f0fdf4', fontWeight: 700 }}>
+                      <Card size="small" title="B — Compras (crédito)" type="inner"
+                        headStyle={{ background: token.colorSuccessBg, fontWeight: 700 }}>
                         <Row justify="space-between" style={{ marginBottom: 6 }}>
                           <Text type="secondary" style={{ fontSize: 12 }}>Monto gravado</Text>
                           <Text strong>{fmt.money(itbis.compras?.montoGravado ?? 0)}</Text>
                         </Row>
                         <Row justify="space-between" style={{ marginBottom: 6 }}>
                           <Text type="secondary" style={{ fontSize: 12 }}>ITBIS crédito (18%)</Text>
-                          <Text strong style={{ color: '#059669' }}>{fmt.money(itbis.compras?.itbisPagado ?? 0)}</Text>
+                          <Text strong style={{ color: token.colorSuccess }}>{fmt.money(itbis.compras?.itbisPagado ?? 0)}</Text>
                         </Row>
                         <Row justify="space-between">
                           <Text type="secondary" style={{ fontSize: 12 }}>Total comprado</Text>
                           <Text strong>{fmt.money(itbis.compras?.totalComprado ?? 0)}</Text>
                         </Row>
-                        <div style={{ marginTop: 8, borderTop: '1px solid #e2e8f0', paddingTop: 6 }}>
+                        <div style={{ marginTop: 8, borderTop: `1px solid ${token.colorBorderSecondary}`, paddingTop: 6 }}>
                           <Text type="secondary" style={{ fontSize: 11 }}>{itbis.compras?.ordenes ?? 0} órdenes de compra</Text>
                         </div>
                       </Card>
@@ -393,7 +396,7 @@ export default function ReportesPage() {
                         title="C — Balance a pagar DGII"
                         type="inner"
                         headStyle={{
-                          background: (itbis.resumenITBIS?.balance ?? 0) > 0 ? '#fff2f0' : '#f0fdf4',
+                          background: (itbis.resumenITBIS?.balance ?? 0) > 0 ? token.colorErrorBg : token.colorSuccessBg,
                           fontWeight: 700,
                         }}
                       >
@@ -403,13 +406,13 @@ export default function ReportesPage() {
                         </Row>
                         <Row justify="space-between" style={{ marginBottom: 6 }}>
                           <Text type="secondary" style={{ fontSize: 12 }}>(-) Crédito compras</Text>
-                          <Text style={{ color: '#059669' }}>-{fmt.money(itbis.resumenITBIS?.pagado ?? 0)}</Text>
+                          <Text style={{ color: token.colorSuccess }}>-{fmt.money(itbis.resumenITBIS?.pagado ?? 0)}</Text>
                         </Row>
-                        <Row justify="space-between" style={{ marginTop: 8, borderTop: '1px solid #e2e8f0', paddingTop: 8 }}>
+                        <Row justify="space-between" style={{ marginTop: 8, borderTop: `1px solid ${token.colorBorderSecondary}`, paddingTop: 8 }}>
                           <Text strong style={{ fontSize: 14 }}>ITBIS a pagar</Text>
                           <Text strong style={{
                             fontSize: 16,
-                            color: (itbis.resumenITBIS?.balance ?? 0) > 0 ? '#dc2626' : '#059669',
+                            color: (itbis.resumenITBIS?.balance ?? 0) > 0 ? token.colorError : token.colorSuccess,
                           }}>
                             {fmt.money(Math.abs(itbis.resumenITBIS?.balance ?? 0))}
                           </Text>
@@ -433,17 +436,18 @@ export default function ReportesPage() {
                 >
                   <Row gutter={[12, 12]}>
                     {[
-                      { key: 'aceptado',         label: 'Aceptados',         color: '#059669', bg: '#f0fdf4' },
-                      { key: 'pendiente',         label: 'Pendientes',        color: '#d97706', bg: '#fffbeb' },
-                      { key: 'rechazado',         label: 'Rechazados',        color: '#dc2626', bg: '#fff2f0' },
-                      { key: 'aceptado_condicion',label: 'Cond. Aceptados',  color: '#7c3aed', bg: '#f5f3ff' },
+                      { key: 'aceptado',         label: 'Aceptados',         color: token.colorSuccess,  bg: token.colorSuccessBg },
+                      { key: 'pendiente',         label: 'Pendientes',        color: token.colorWarning,  bg: token.colorWarningBg },
+                      { key: 'rechazado',         label: 'Rechazados',        color: token.colorError,    bg: token.colorErrorBg   },
+                      { key: 'aceptado_condicion',label: 'Cond. Aceptados',  color: '#7c3aed',           bg: token.colorFillAlter  },
                     ].map(({ key, label, color, bg }) => {
                       const val = ecfEstado.resumenPorEstado?.[key] ?? 0;
                       return (
                         <Col xs={12} sm={6} key={key}>
-                          <div style={{ background: bg, borderRadius: 8, padding: '12px 16px', border: `1px solid ${color}30` }}>
+                          <div style={{ background: bg, borderRadius: 8, padding: '12px 16px',
+                            border: `1px solid ${token.colorBorderSecondary}` }}>
                             <div style={{ fontSize: 24, fontWeight: 700, color }}>{val}</div>
-                            <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{label}</div>
+                            <div style={{ fontSize: 12, color: token.colorTextSecondary, marginTop: 2 }}>{label}</div>
                           </div>
                         </Col>
                       );
@@ -524,7 +528,7 @@ export default function ReportesPage() {
                   pagination={{ pageSize: 20, showSizeChanger: false, size: 'small' }}
                   locale={{ emptyText: 'Sin compras registradas para este mes' }}
                   summary={() => r606?.totales ? (
-                    <Table.Summary.Row style={{ fontWeight: 700, background: '#f0f5ff' }}>
+                    <Table.Summary.Row style={{ fontWeight: 700, background: token.colorFillAlter }}>
                       <Table.Summary.Cell index={0} colSpan={4}>Totales</Table.Summary.Cell>
                       <Table.Summary.Cell index={4} align="right">
                         {fmt.money(r606.detalle?.reduce((a: number, r: any) => a + Number(r.montoGravado), 0) ?? 0)}
@@ -615,7 +619,7 @@ export default function ReportesPage() {
                   pagination={{ pageSize: 20, showSizeChanger: false, size: 'small' }}
                   locale={{ emptyText: '✅ Sin comprobantes anulados en este mes' }}
                   summary={() => r607?.totales?.comprobantesAnulados > 0 ? (
-                    <Table.Summary.Row style={{ fontWeight: 700, background: '#fff2f0' }}>
+                    <Table.Summary.Row style={{ fontWeight: 700, background: token.colorErrorBg }}>
                       <Table.Summary.Cell index={0} colSpan={5}>Total anulado</Table.Summary.Cell>
                       <Table.Summary.Cell index={5} align="right">
                         <Text strong style={{ color: '#dc2626' }}>{fmt.money(r607.totales.montoAnulado ?? 0)}</Text>
