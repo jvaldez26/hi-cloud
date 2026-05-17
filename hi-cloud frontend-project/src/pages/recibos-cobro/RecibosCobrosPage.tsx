@@ -1,5 +1,7 @@
 ﻿import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   DatePicker, InputNumber, Space, Typography, Statistic, Popconfirm,
@@ -75,6 +77,16 @@ const RECIBO_PRINT_ID = 'hc-recibo-cobro-print';
 export default function RecibosCobrosPage() {
   const qc = useQueryClient();
   const { token } = theme.useToken();
+
+  const COLS_DEF = [
+    { key: 'n',   label: 'Número',   defaultVisible: true  },
+    { key: 'f',   label: 'Fecha',    defaultVisible: true  },
+    { key: 'c',   label: 'Cliente',  defaultVisible: true  },
+    { key: 'm',   label: 'Método',   defaultVisible: true  },
+    { key: 'co',  label: 'Concepto', defaultVisible: false },
+    { key: 'mo',  label: 'Monto',    defaultVisible: true  },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('recibos-cobro', COLS_DEF);
   const [modalCrear,       setModalCrear]       = useState(false);
   const [reciboImprimir,   setReciboImprimir]   = useState<any>(null);
   const [emailRecibo,      setEmailRecibo]       = useState<any>(null);
@@ -181,6 +193,7 @@ export default function RecibosCobrosPage() {
             exportarExcel(filas, `Recibos-${dayjs().format('YYYY-MM-DD')}`);
             message.success(`${filas.length} recibos exportados`);
           }}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
           <RefreshByKeyButton queryKey={['recibos-cobro']} />
           <VideoTutorialButton />
           <Button type="primary" icon={<PlusOutlined />}
@@ -225,18 +238,18 @@ export default function RecibosCobrosPage() {
           loading={isLoading}
           size="middle"
           pagination={{ pageSize: 15 }}
-          columns={[
-            { title: 'Número', dataIndex: 'numero', key: 'n', render: v => <Text strong style={{ fontFamily: 'monospace', color: token.colorSuccess }}>{v}</Text> },
+          columns={filterColumns([
+            { title: 'Número', dataIndex: 'numero', key: 'n', render: (v: any) => <Text strong style={{ fontFamily: 'monospace', color: token.colorSuccess }}>{v}</Text> },
             { title: 'Fecha', dataIndex: 'fecha', key: 'f' },
-            { title: 'Cliente', dataIndex: 'clienteNombre', key: 'c', render: v => <Text strong>{v}</Text> },
+            { title: 'Cliente', dataIndex: 'clienteNombre', key: 'c', render: (v: any) => <Text strong>{v}</Text> },
             {
               title: 'Método', dataIndex: 'metodoPago', key: 'm',
-              render: v => <Tag>{METODOS.find(x => x.value === v)?.label ?? v}</Tag>,
+              render: (v: any) => <Tag>{METODOS.find(x => x.value === v)?.label ?? v}</Tag>,
             },
             { title: 'Concepto', dataIndex: 'concepto', key: 'co', ellipsis: true },
             {
-              title: 'Monto', dataIndex: 'monto', key: 'mo', align: 'right',
-              render: v => <Text strong style={{ color: token.colorSuccess, fontSize: 14 }}>{fmt(v)}</Text>,
+              title: 'Monto', dataIndex: 'monto', key: 'mo', align: 'right' as const,
+              render: (v: any) => <Text strong style={{ color: token.colorSuccess, fontSize: 14 }}>{fmt(v)}</Text>,
             },
             {
               title: '', key: 'acc',
@@ -264,7 +277,7 @@ export default function RecibosCobrosPage() {
                 </Space>
               ),
             },
-          ]}
+          ] as any)}
         />
       </Card>
 
