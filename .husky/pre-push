@@ -1,0 +1,28 @@
+#!/bin/sh
+set -e
+
+echo ""
+echo "🔨 Pre-push: verificando build de producción..."
+echo "─────────────────────────────────────────────────"
+echo "   (Este check tarda ~25s — nunca omitirlo)"
+echo ""
+
+# ── Frontend build (el más crítico — es lo que ve el usuario) ─────
+cd "hi-cloud frontend-project"
+if ! npm run build 2>&1; then
+  echo ""
+  echo "❌ BUILD DE PRODUCCIÓN FALLÓ"
+  echo "   El push ha sido rechazado."
+  echo ""
+  echo "   NUNCA hagas push de código que no compila en producción."
+  echo "   Corrige el error y vuelve a intentarlo."
+  echo ""
+  echo "   Si el sistema está caído, ejecuta rollback:"
+  echo "   git revert HEAD --no-edit && git push origin main"
+  exit 1
+fi
+
+echo ""
+echo "─────────────────────────────────────────────────"
+echo "✅ Build de producción OK — push permitido"
+echo ""

@@ -1,0 +1,32 @@
+#!/bin/sh
+set -e
+
+echo ""
+echo "🔍 Pre-commit: verificando TypeScript..."
+echo "─────────────────────────────────────────"
+
+# ── Backend TypeScript check ──────────────────────────────────────
+echo "📦 Backend..."
+cd "hi-cloud backend-project/backend"
+if ! npx tsc --noEmit 2>&1; then
+  echo ""
+  echo "❌ ERROR DE TYPESCRIPT EN BACKEND"
+  echo "   Corrige los errores antes de hacer commit."
+  exit 1
+fi
+echo "   ✅ Backend OK"
+
+# ── Frontend TypeScript check ─────────────────────────────────────
+echo "🌐 Frontend..."
+cd "../../hi-cloud frontend-project"
+if ! npx tsc --noEmit 2>&1; then
+  echo ""
+  echo "❌ ERROR DE TYPESCRIPT EN FRONTEND"
+  echo "   Corrige los errores antes de hacer commit."
+  exit 1
+fi
+echo "   ✅ Frontend OK"
+
+echo "─────────────────────────────────────────"
+echo "✅ TypeScript OK — commit permitido"
+echo ""
