@@ -63,7 +63,7 @@ export class CajaService {
     return this.dataSource.query(`
       SELECT u.id, u.nombre, u.email, u.role
       FROM users u
-      JOIN usuario_empresas ue ON ue."userId" = u.id
+      JOIN usuario_empresa ue ON ue."userId" = u.id
       WHERE ue."empresaId" = $1
         AND ue."isActive"  = true
         AND u."isActive"   = true
