@@ -298,40 +298,6 @@ export default function NotasCreditoPage() {
         </Space>
       </div>
 
-      {/* KPIs — 4 cards en fila */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(4, 1fr)',
-        gap: '1px',
-        background: token.colorBorderSecondary,
-        border: `1px solid ${token.colorBorderSecondary}`,
-        borderRadius: 8,
-        overflow: 'hidden',
-        marginBottom: 24,
-      }}>
-        {[
-          { label: 'Borrador',  estado: 'borrador', color: token.colorTextSecondary },
-          { label: 'Emitida',   estado: 'emitida',  color: '#1565C0' },
-          { label: 'Aceptada',  estado: 'aceptada', color: '#2E7D32' },
-          { label: 'Anulada',   estado: 'anulada',  color: '#C62828' },
-        ].map(({ label, estado, color }) => {
-          const r = resumen.find((x: any) => x.estado === estado);
-          return (
-            <div key={estado} style={{ background: token.colorBgContainer, padding: '16px 20px' }}>
-              <div style={{ fontSize: 24, fontWeight: 600, fontFamily: 'monospace', lineHeight: 1.2 }}>
-                {r?.cantidad ?? 0}
-              </div>
-              <div style={{ fontSize: 11, fontWeight: 500, color, textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: 4 }}>
-                {label}
-              </div>
-              {r?.total > 0 && (
-                <div style={{ fontSize: 11, color: token.colorTextQuaternary, marginTop: 2 }}>{fmt(r.total)}</div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
       <Card bordered={false} style={{ borderRadius: 12 }}>
         <Table
           dataSource={notas?.data ?? []}

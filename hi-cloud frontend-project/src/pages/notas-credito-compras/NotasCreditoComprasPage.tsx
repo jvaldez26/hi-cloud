@@ -140,29 +140,6 @@ export default function NotasCreditoComprasPage() {
         </Space>
       </div>
 
-      {/* KPIs */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        {[
-          { label: 'Borrador',    color: 'linear-gradient(135deg,#6b7280,#9ca3af)', estado: 'borrador' },
-          { label: 'Confirmadas', color: 'linear-gradient(135deg,#059669,#10b981)', estado: 'recibida' },
-          { label: 'Anuladas',    color: 'linear-gradient(135deg,#dc2626,#ef4444)', estado: 'anulada'  },
-        ].map(s => {
-          const r = resumen.find((x: any) => x.estado === s.estado);
-          return (
-            <Col xs={8} key={s.label}>
-              <Card bordered={false} style={{ borderRadius: 12, background: s.color }}>
-                <Statistic
-                  title={<span style={{ color: 'rgba(255,255,255,.8)', fontSize: 12 }}>{s.label}</span>}
-                  value={r?.cantidad ?? 0}
-                  suffix={r?.total > 0 ? <Text style={{ color: 'rgba(255,255,255,.6)', fontSize: 11 }}> · {fmt(r.total)}</Text> : ''}
-                  valueStyle={{ color: '#fff', fontSize: 28 }}
-                />
-              </Card>
-            </Col>
-          );
-        })}
-      </Row>
-
       <Card bordered={false} style={{ borderRadius: 12 }}>
         <Table
           dataSource={notas?.data ?? []}

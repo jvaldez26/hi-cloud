@@ -264,34 +264,6 @@ export default function CotizacionesPage() {
         </Col>
       </Row>
 
-      {/* KPI Stats */}
-      <div style={{ overflowX: 'auto', marginBottom: 16 }}>
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: `repeat(${Math.max((Array.isArray(resumen) ? resumen : []).length, 5)}, minmax(100px, 1fr))`,
-          minWidth: 500,
-          gap: 1, background: '#E0E0E0',
-          border: '1px solid #E0E0E0', borderRadius: 6, overflow: 'hidden',
-        }}>
-          {(Array.isArray(resumen) ? resumen : []).map((r: any) => (
-            <div key={r.estado} style={{
-              background: '#fff', padding: '14px 16px',
-              display: 'flex', flexDirection: 'column', gap: 3,
-            }}>
-              <span style={{ fontSize: 22, fontWeight: 600, color: '#1A1A1A', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
-                {r.cantidad ?? 0}
-              </span>
-              <span style={{ fontSize: 10, fontWeight: 600, color: kpiColors[r.estado as CotEstado] ?? '#616161', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                {r.estado}
-              </span>
-              {r.montoTotal > 0 && (
-                <span style={{ fontSize: 10, color: '#6B7280' }}>{fmt.money(r.montoTotal)}</span>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-
       <Card>
         <Table columns={fcCot(cols as any)} dataSource={data?.data ?? []} rowKey="id"
           loading={isLoading} size="small"

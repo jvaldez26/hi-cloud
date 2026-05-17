@@ -257,30 +257,6 @@ export default function NotasDebitoPage() {
         message={<span><strong>¿Cuándo usar una Nota de Débito E33?</strong> Cuando necesitas cobrar un monto adicional sobre una factura ya emitida y con e-CF Aceptado.</span>}
       />
 
-      {/* KPIs */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        {[
-          { label: 'Borrador', bg: token.colorFillAlter,                     estado: 'borrador' },
-          { label: 'Emitidas', bg: 'linear-gradient(135deg,#d97706,#f59e0b)', estado: 'emitida'  },
-          { label: 'Anuladas', bg: 'linear-gradient(135deg,#dc2626,#ef4444)', estado: 'anulada'  },
-        ].map(({ label, bg, estado }) => {
-          const r = resumen.find((x: any) => x.estado === estado);
-          const isGrad = bg.startsWith('linear');
-          return (
-            <Col xs={12} sm={8} key={estado}>
-              <Card bordered={false} style={{ borderRadius: 12, background: bg }}>
-                <Statistic
-                  title={<span style={{ color: isGrad ? 'rgba(255,255,255,.8)' : token.colorTextSecondary, fontSize: 12 }}>{label}</span>}
-                  value={r?.cantidad ?? 0}
-                  suffix={r?.total > 0 ? <Text style={{ color: isGrad ? 'rgba(255,255,255,.6)' : token.colorTextSecondary, fontSize: 11 }}> · {fmt(r.total)}</Text> : ''}
-                  valueStyle={{ color: isGrad ? '#fff' : token.colorText, fontSize: 28 }}
-                />
-              </Card>
-            </Col>
-          );
-        })}
-      </Row>
-
       <Card bordered={false} style={{ borderRadius: 12 }}>
         <Table dataSource={notas?.data ?? []} rowKey="id" loading={isLoading} size="middle"
           pagination={{ pageSize: 15 }}

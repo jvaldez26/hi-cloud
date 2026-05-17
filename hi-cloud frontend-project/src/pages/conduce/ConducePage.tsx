@@ -140,21 +140,6 @@ export default function ConducePage() {
         </Space>
       </div>
 
-      {/* KPI */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        {Object.entries(ESTADO_CONFIG).map(([estado, conf]) => (
-          <Col xs={12} sm={6} key={estado}>
-            <Card bordered={false} style={{ borderRadius: 12, textAlign: 'center' }}>
-              <Statistic
-                title={<Tag color={conf.color}>{conf.label}</Tag>}
-                value={resumen.find((r: any) => r.estado === estado)?.cantidad ?? 0}
-                valueStyle={{ fontSize: 28 }}
-              />
-            </Card>
-          </Col>
-        ))}
-      </Row>
-
       <Card bordered={false} style={{ borderRadius: 12 }}>
         <Table
           dataSource={conduces?.data ?? []}

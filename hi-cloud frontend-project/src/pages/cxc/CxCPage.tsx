@@ -179,25 +179,6 @@ export default function CxCPage() {
 
   return (
     <div>
-      {/* KPI Cards */}
-      <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
-        {[
-          { title: 'Por Cobrar',          value: resumen?.totalPorCobrar,   color: token.colorPrimary },
-          { title: 'Vencido',             value: resumen?.totalVencido,     color: '#dc2626' },
-          { title: 'Por Vencer (30 días)',value: resumen?.totalPorVencer30, color: '#d97706' },
-          { title: 'Cobrado este mes',    value: resumen?.cobradoEsteMes,   color: '#059669' },
-        ].map(k => (
-          <Col xs={12} lg={6} key={k.title}>
-            <Card size="small">
-              <Statistic title={<Text style={{ fontSize: 12 }}>{k.title}</Text>}
-                value={k.value ?? 0}
-                formatter={v => fmt.money(Number(v))}
-                valueStyle={{ color: k.color, fontSize: 18, fontWeight: 700 }} />
-            </Card>
-          </Col>
-        ))}
-      </Row>
-
       <Card>
         {/* Header + filtros */}
         <Row justify="space-between" align="middle" style={{ marginBottom: 12 }}>
