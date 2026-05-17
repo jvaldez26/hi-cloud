@@ -2,15 +2,16 @@
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { TableActions } from '../../components/ui/TableActions';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   DatePicker, InputNumber, Space, Typography, Statistic, Popconfirm,
-  message, theme, Tooltip,
+  message, theme, Tooltip, Drawer, Descriptions, Divider,
 } from 'antd';
 import {
   FileTextOutlined, PlusOutlined, PrinterOutlined, DeleteOutlined,
   DollarOutlined, CheckCircleOutlined, MailOutlined, FileExcelOutlined,
-  FilePdfOutlined, LoadingOutlined,
+  FilePdfOutlined, LoadingOutlined, StopOutlined, EyeOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -92,7 +93,52 @@ export default function RecibosCobrosPage() {
   const [emailRecibo,      setEmailRecibo]       = useState<any>(null);
   const [emailDestino,     setEmailDestino]      = useState('');
   const [pdfPending,       setPdfPending]        = useState<number | null>(null);
+  const [detalleRecibo,    setDetalleRecibo]     = useState<any>(null);
+  const [motivoAnulacion,  setMotivoAnulacion]   = useState('');
   const [form] = Form.useForm();
+
+  const anularMut = useMutation({
+    mutationFn: ({ id, motivo }: { id: number; motivo: string }) =>
+      api.delete(`/recibos-cobro/${id}`, { data: { motivo } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['recibos-cobro'] });
+      qc.invalidateQueries({ queryKey: ['recibos-resumen'] });
+      setDetalleRecibo(null);
+      message.success('Recibo anulado correctamente');
+    },
+    onError: (e: any) => message.error(errMsg(e), 5),
+  });
+
+  const confirmarAnulacion = (r: any) => {
+    setMotivoAnulacion('');
+    let motivo = '';
+    Modal.confirm({
+      title: '¿Anular este recibo?',
+      icon: <StopOutlined style={{ color: '#EF4444' }} />,
+      content: (
+        <div>
+          <p style={{ margin: '0 0 4px' }}>Recibo: <strong>{r.numero}</strong></p>
+          <p style={{ margin: '0 0 8px' }}>Monto: <strong>{fmt(Number(r.monto))}</strong></p>
+          <p style={{ color: '#EF4444', fontSize: 12, margin: '0 0 8px' }}>
+            Esta acción revertirá el pago registrado
+            {r.facturaId ? ' y actualizará el saldo pendiente de la factura.' : '.'}
+          </p>
+          <Input.TextArea
+            placeholder="Motivo de anulación (obligatorio)"
+            rows={2}
+            onChange={e => { motivo = e.target.value; setMotivoAnulacion(e.target.value); }}
+          />
+        </div>
+      ),
+      okText: 'Anular recibo',
+      okButtonProps: { danger: true },
+      cancelText: 'Cancelar',
+      onOk: () => {
+        if (!motivo.trim()) { message.warning('Debes ingresar un motivo'); return Promise.reject(); }
+        return anularMut.mutateAsync({ id: r.id, motivo });
+      },
+    });
+  };
 
   const emailMut = useMutation({
     mutationFn: ({ id, email }: { id: number; email: string }) =>
@@ -252,34 +298,103 @@ export default function RecibosCobrosPage() {
               render: (v: any) => <Text strong style={{ color: token.colorSuccess, fontSize: 14 }}>{fmt(v)}</Text>,
             },
             {
-              title: '', key: 'acc',
+              title: '', key: 'acciones', width: 72, align: 'right' as const, fixed: 'right' as const,
               render: (_: any, r: any) => (
-                <Space size={4}>
-                  <Button size="small"
-                    icon={<PrinterOutlined />} onClick={() => handleImprimir(r)}>
-                    Imprimir
-                  </Button>
-                  <Button size="small" type="text"
-                    icon={pdfPending === r.id ? <LoadingOutlined /> : <FilePdfOutlined />}
-                    disabled={pdfPending === r.id}
-                    onClick={() => descargarPDF(r)}
-                    title="Descargar PDF"
-                  />
-                  <Tooltip title="Enviar por email">
-                    <Button size="small" type="text" icon={<MailOutlined />}
-                      onClick={() => { setEmailRecibo(r); setEmailDestino(r.clienteEmail ?? ''); }}
-                    />
-                  </Tooltip>
-                  <Popconfirm title="¿Eliminar recibo?" onConfirm={() => eliminar.mutate(r.id)}
-                    okText="Eliminar" okButtonProps={{ danger: true }}>
-                    <Button size="small" danger type="text" icon={<DeleteOutlined />} />
-                  </Popconfirm>
-                </Space>
+                <TableActions
+                  onView={() => setDetalleRecibo(r)}
+                  viewLabel="Ver detalle"
+                  items={[
+                    { key: 'imprimir', label: 'Imprimir recibo', icon: <PrinterOutlined />,
+                      onClick: () => handleImprimir(r) },
+                    { key: 'pdf',      label: pdfPending === r.id ? 'Generando PDF...' : 'Descargar PDF',
+                      icon: pdfPending === r.id ? <LoadingOutlined /> : <FilePdfOutlined />,
+                      disabled: pdfPending === r.id,
+                      onClick: () => descargarPDF(r) },
+                    { key: 'email',    label: 'Enviar por email', icon: <MailOutlined />,
+                      onClick: () => { setEmailRecibo(r); setEmailDestino(r.clienteEmail ?? ''); } },
+                    { type: 'divider' as const },
+                    { key: 'anular',   label: 'Anular recibo', icon: <StopOutlined />, danger: true,
+                      disabled: r.isActive === false,
+                      onClick: () => confirmarAnulacion(r) },
+                  ]}
+                />
               ),
             },
           ] as any)}
         />
       </Card>
+
+      {/* Drawer detalle recibo */}
+      <Drawer
+        title={
+          <Space>
+            <FileTextOutlined style={{ color: token.colorSuccess }} />
+            {detalleRecibo?.numero ?? 'Detalle de Recibo'}
+          </Space>
+        }
+        open={!!detalleRecibo}
+        onClose={() => setDetalleRecibo(null)}
+        width={420}
+        footer={
+          <Space style={{ justifyContent: 'flex-end', width: '100%' }}>
+            <Button icon={<PrinterOutlined />} onClick={() => detalleRecibo && handleImprimir(detalleRecibo)}>
+              Imprimir
+            </Button>
+            <Button
+              icon={pdfPending === detalleRecibo?.id ? <LoadingOutlined /> : <FilePdfOutlined />}
+              disabled={pdfPending === detalleRecibo?.id}
+              onClick={() => detalleRecibo && descargarPDF(detalleRecibo)}
+            >
+              PDF
+            </Button>
+            <Button icon={<MailOutlined />}
+              onClick={() => { setEmailRecibo(detalleRecibo); setEmailDestino(detalleRecibo?.clienteEmail ?? ''); setDetalleRecibo(null); }}>
+              Email
+            </Button>
+            <Button danger icon={<StopOutlined />}
+              disabled={detalleRecibo?.isActive === false}
+              onClick={() => { const r = detalleRecibo; setDetalleRecibo(null); confirmarAnulacion(r); }}>
+              Anular
+            </Button>
+          </Space>
+        }
+      >
+        {detalleRecibo && (
+          <Descriptions column={1} size="small" bordered>
+            <Descriptions.Item label="Número">
+              <Text strong style={{ fontFamily: 'monospace', color: token.colorSuccess }}>
+                {detalleRecibo.numero}
+              </Text>
+            </Descriptions.Item>
+            <Descriptions.Item label="Fecha">{detalleRecibo.fecha}</Descriptions.Item>
+            <Descriptions.Item label="Cliente">
+              <Text strong>{detalleRecibo.clienteNombre ?? '—'}</Text>
+            </Descriptions.Item>
+            <Descriptions.Item label="Método">
+              <Tag>{METODOS.find(m => m.value === detalleRecibo.metodoPago)?.label ?? detalleRecibo.metodoPago}</Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="Concepto">{detalleRecibo.concepto ?? '—'}</Descriptions.Item>
+            <Descriptions.Item label="Referencia">{detalleRecibo.referencia ?? '—'}</Descriptions.Item>
+            <Descriptions.Item label="Monto">
+              <Text strong style={{ color: token.colorSuccess, fontSize: 16 }}>
+                {fmt(Number(detalleRecibo.monto))}
+              </Text>
+            </Descriptions.Item>
+            <Descriptions.Item label="Cajero">{detalleRecibo.nombreUsuario ?? '—'}</Descriptions.Item>
+            {detalleRecibo.facturaFolio && (
+              <Descriptions.Item label="Factura">{detalleRecibo.facturaFolio}</Descriptions.Item>
+            )}
+            <Descriptions.Item label="Estado">
+              <Tag color={detalleRecibo.isActive !== false ? 'success' : 'error'}>
+                {detalleRecibo.isActive !== false ? 'Activo' : 'Anulado'}
+              </Tag>
+            </Descriptions.Item>
+            {detalleRecibo.notas && (
+              <Descriptions.Item label="Notas">{detalleRecibo.notas}</Descriptions.Item>
+            )}
+          </Descriptions>
+        )}
+      </Drawer>
 
       {/* Modal email */}
       <Modal
