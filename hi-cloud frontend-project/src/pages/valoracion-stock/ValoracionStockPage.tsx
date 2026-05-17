@@ -101,41 +101,6 @@ export default function ValoracionStockPage() {
         </Space>
       </div>
 
-      {/* KPIs */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={12} sm={8}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#1a56db,#3b82f6)' }}>
-            <Statistic
-              title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Valor Total Inventario</span>}
-              value={totales.valorTotal ?? 0}
-              formatter={v => fmt(Number(v))}
-              prefix={<DollarOutlined />}
-              valueStyle={{ color: '#fff', fontSize: 22 }}
-            />
-          </Card>
-        </Col>
-        <Col xs={12} sm={8}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#059669,#10b981)' }}>
-            <Statistic
-              title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Productos</span>}
-              value={totales.cantidadProductos ?? 0}
-              prefix={<DatabaseOutlined />}
-              valueStyle={{ color: '#fff', fontSize: 28 }}
-            />
-          </Card>
-        </Col>
-        <Col xs={12} sm={8}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#7c3aed,#a78bfa)' }}>
-            <Statistic
-              title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Categorías</span>}
-              value={Object.keys(porCat).length}
-              prefix={<BarChartOutlined />}
-              valueStyle={{ color: '#fff', fontSize: 28 }}
-            />
-          </Card>
-        </Col>
-      </Row>
-
       <Row gutter={[16, 16]}>
         {/* Gráfico por categoría */}
         {chartData.length > 0 && (

@@ -124,62 +124,6 @@ export default function AnalyticsPage() {
         </Space>
       </div>
 
-      {/* ── KPI Cards ─────────────────────────────────────────────────────── */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={12} sm={6}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#1a56db,#3b82f6)' }}>
-            <Statistic
-              title={<span style={{ color: 'rgba(255,255,255,.8)', fontSize: 12 }}>Ventas del Período</span>}
-              value={overview?.ventas?.total ?? 0}
-              formatter={v => fmt(Number(v))}
-              prefix={<RiseOutlined />}
-              suffix={<Text style={{ color: 'rgba(255,255,255,.6)', fontSize: 11 }}> {overview?.ventas?.cantidad ?? 0} fact.</Text>}
-              valueStyle={{ color: '#fff', fontSize: 20 }}
-            />
-          </Card>
-        </Col>
-        <Col xs={12} sm={6}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#7c3aed,#a78bfa)' }}>
-            <Statistic
-              title={<span style={{ color: 'rgba(255,255,255,.8)', fontSize: 12 }}>CxC Pendiente</span>}
-              value={overview?.cxc?.total ?? 0}
-              formatter={v => fmt(Number(v))}
-              prefix={<DollarOutlined />}
-              suffix={<Text style={{ color: 'rgba(255,255,255,.6)', fontSize: 11 }}> {overview?.cxc?.cantidad ?? 0} cuentas</Text>}
-              valueStyle={{ color: '#fff', fontSize: 20 }}
-            />
-          </Card>
-        </Col>
-        <Col xs={12} sm={6}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#059669,#10b981)' }}>
-            <Statistic
-              title={<span style={{ color: 'rgba(255,255,255,.8)', fontSize: 12 }}>Tasa Conversión</span>}
-              value={overview?.cotizaciones?.tasaConversion ?? 0}
-              suffix="%"
-              prefix={<FunnelPlotOutlined />}
-              valueStyle={{ color: '#fff', fontSize: 28 }}
-            />
-            <Text style={{ color: 'rgba(255,255,255,.6)', fontSize: 10 }}>
-              {overview?.cotizaciones?.convertidas ?? 0} de {overview?.cotizaciones?.total ?? 0} cotizaciones
-            </Text>
-          </Card>
-        </Col>
-        <Col xs={12} sm={6}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#d97706,#f59e0b)' }}>
-            <Statistic
-              title={<span style={{ color: 'rgba(255,255,255,.8)', fontSize: 12 }}>Margen Bruto</span>}
-              value={overview?.ventas?.margen ?? 0}
-              suffix="%"
-              prefix={<TrophyOutlined />}
-              valueStyle={{ color: '#fff', fontSize: 28 }}
-            />
-            <Text style={{ color: 'rgba(255,255,255,.6)', fontSize: 10 }}>
-              Ventas − Compras
-            </Text>
-          </Card>
-        </Col>
-      </Row>
-
       <Tabs
         defaultActiveKey="tendencia"
         items={[

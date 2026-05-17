@@ -161,63 +161,6 @@ export default function ReportesFinancierosPage() {
               <Spin spinning={loadingER}>
                 {er && (
                   <>
-                    {/* KPI Cards */}
-                    <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-                      <Col xs={24} sm={6}>
-                        <Card bordered={false} style={{ borderRadius: 12, background: '#eff6ff', border: '1px solid #bfdbfe' }}>
-                          <Statistic
-                            title={<Text style={{ color: '#1e40af', fontSize: 12 }}>Ingresos Totales</Text>}
-                            value={er.ingresos.total}
-                            formatter={v => fmt(Number(v))}
-                            prefix={<RiseOutlined style={{ color: '#1e40af' }} />}
-                            valueStyle={{ color: '#1e40af', fontSize: 20 }}
-                          />
-                        </Card>
-                      </Col>
-                      <Col xs={24} sm={6}>
-                        <Card bordered={false} style={{ borderRadius: 12, background: '#fef3c7', border: '1px solid #fde68a' }}>
-                          <Statistic
-                            title={<Text style={{ color: '#92400e', fontSize: 12 }}>Costos</Text>}
-                            value={er.costos.total}
-                            formatter={v => fmt(Number(v))}
-                            prefix={<FallOutlined style={{ color: '#92400e' }} />}
-                            valueStyle={{ color: '#92400e', fontSize: 20 }}
-                          />
-                        </Card>
-                      </Col>
-                      <Col xs={24} sm={6}>
-                        <Card bordered={false} style={{ borderRadius: 12, background: token.colorWarningBg, border: `1px solid ${token.colorWarningBorder}` }}>
-                          <Statistic
-                            title={<Text style={{ color: '#9a3412', fontSize: 12 }}>Gastos</Text>}
-                            value={er.gastos.total}
-                            formatter={v => fmt(Number(v))}
-                            valueStyle={{ color: '#9a3412', fontSize: 20 }}
-                          />
-                        </Card>
-                      </Col>
-                      <Col xs={24} sm={6}>
-                        <Card
-                          bordered={false}
-                          style={{
-                            borderRadius: 12,
-                            background: er.resultados.utilidadNeta >= 0
-                              ? 'linear-gradient(135deg,#059669,#10b981)'
-                              : 'linear-gradient(135deg,#dc2626,#ef4444)',
-                          }}
-                        >
-                          <Statistic
-                            title={<span style={{ color: 'rgba(255,255,255,.8)', fontSize: 12 }}>
-                              {er.resultados.utilidadNeta >= 0 ? 'Utilidad Neta' : 'Pérdida Neta'}
-                            </span>}
-                            value={Math.abs(er.resultados.utilidadNeta)}
-                            formatter={v => fmt(Number(v))}
-                            suffix={<Text style={{ color: 'rgba(255,255,255,.7)', fontSize: 12 }}> {pct(er.resultados.margenNeto)}</Text>}
-                            valueStyle={{ color: '#fff', fontSize: 20 }}
-                          />
-                        </Card>
-                      </Col>
-                    </Row>
-
                     {/* Tabla de Estado de Resultados */}
                     <Card bordered={false} style={{ borderRadius: 12 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>

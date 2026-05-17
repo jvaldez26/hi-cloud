@@ -157,33 +157,6 @@ export default function VendedoresPage() {
         </Space>
       </div>
 
-      {/* KPIs */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={12} sm={6}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#1a56db,#3b82f6)' }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Vendedores Activos</span>}
-              value={Array.isArray(resumen?.vendedores) ? resumen.vendedores.length : (resumen?.vendedores ?? 0)} prefix={<TeamOutlined />} valueStyle={{ color: '#fff', fontSize: 28 }} />
-          </Card>
-        </Col>
-        <Col xs={12} sm={6}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#059669,#10b981)' }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Ventas del Mes</span>}
-              value={resumen?.totalVentasMes ?? 0} formatter={v => fmt(Number(v))}
-              prefix={<DollarOutlined />} valueStyle={{ color: '#fff', fontSize: 22 }} />
-          </Card>
-        </Col>
-        <Col xs={12} sm={6}>
-          <Card bordered={false} style={{ borderRadius: 12 }}>
-            <Statistic title="Líder del Mes" value={ranking[0]?.nombre?.split(' ')[0] ?? '—'} prefix={<TrophyOutlined style={{ color: '#fbbf24' }} />} valueStyle={{ fontSize: 20 }} />
-          </Card>
-        </Col>
-        <Col xs={12} sm={6}>
-          <Card bordered={false} style={{ borderRadius: 12 }}>
-            <Statistic title="Mejor Venta" value={ranking[0]?.totalVentas ?? 0} formatter={v => fmt(Number(v))} valueStyle={{ fontSize: 20, color: '#1a56db' }} />
-          </Card>
-        </Col>
-      </Row>
-
       <Tabs
         activeKey={tabActiva}
         onChange={k => { setTabActiva(k); if (k !== 'rendimiento' && k !== 'clientes') setVendedorSel(null); }}

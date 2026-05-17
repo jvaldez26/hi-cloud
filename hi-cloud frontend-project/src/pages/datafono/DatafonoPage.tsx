@@ -101,31 +101,6 @@ export default function DatafonoPage() {
         </div>
       </div>
 
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={24} sm={8}>
-          <Card bordered={false} style={{ background: 'linear-gradient(135deg,#1a56db,#3b82f6)', borderRadius: 12 }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Terminales Activas</span>}
-              value={resumen?.terminales ?? 0} prefix={<BankOutlined />}
-              valueStyle={{ color: '#fff', fontSize: 28 }} />
-          </Card>
-        </Col>
-        <Col xs={24} sm={8}>
-          <Card bordered={false} style={{ background: 'linear-gradient(135deg,#d97706,#f59e0b)', borderRadius: 12 }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Transacciones Pendientes</span>}
-              value={resumen?.pendientes ?? 0} prefix={<SyncOutlined />}
-              valueStyle={{ color: '#fff', fontSize: 28 }} />
-          </Card>
-        </Col>
-        <Col xs={24} sm={8}>
-          <Card bordered={false} style={{ background: 'linear-gradient(135deg,#059669,#10b981)', borderRadius: 12 }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Ventas Tarjeta Hoy</span>}
-              value={resumen?.ventasHoy ?? 0} prefix={<DollarOutlined />}
-              precision={2} formatter={v => fmt(Number(v))}
-              valueStyle={{ color: '#fff', fontSize: 24 }} />
-          </Card>
-        </Col>
-      </Row>
-
       <Card bordered={false} style={{ borderRadius: 12 }}>
         <Tabs
           activeKey={tabActiva}

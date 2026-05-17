@@ -156,55 +156,6 @@ export default function PeriodoContablePage() {
         </Space>
       </div>
 
-      {/* KPI Cards */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={12} sm={6}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#1a56db,#3b82f6)' }}>
-            <Statistic
-              title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Abiertos</span>}
-              value={resumen?.abiertos ?? 0}
-              prefix={<UnlockOutlined />}
-              valueStyle={{ color: '#fff', fontSize: 28 }}
-            />
-          </Card>
-        </Col>
-        <Col xs={12} sm={6}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#059669,#10b981)' }}>
-            <Statistic
-              title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Cerrados</span>}
-              value={resumen?.cerrados ?? 0}
-              prefix={<CheckCircleOutlined />}
-              valueStyle={{ color: '#fff', fontSize: 28 }}
-            />
-          </Card>
-        </Col>
-        <Col xs={12} sm={6}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#6b7280,#9ca3af)' }}>
-            <Statistic
-              title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Bloqueados</span>}
-              value={resumen?.bloqueados ?? 0}
-              prefix={<LockOutlined />}
-              valueStyle={{ color: '#fff', fontSize: 28 }}
-            />
-          </Card>
-        </Col>
-        <Col xs={12} sm={6}>
-          <Card bordered={false} style={{ borderRadius: 12 }}>
-            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
-              Avance del año
-            </Text>
-            <Progress
-              percent={pctAvance}
-              strokeColor={{ '0%': '#1a56db', '100%': '#059669' }}
-              style={{ marginBottom: 4 }}
-            />
-            <Text type="secondary" style={{ fontSize: 11 }}>
-              {resumen?.cerrados ?? 0} de 12 meses cerrados
-            </Text>
-          </Card>
-        </Col>
-      </Row>
-
       {/* Grid de 12 meses */}
       <Card bordered={false} style={{ borderRadius: 12 }} loading={isLoading}>
         <Row gutter={[12, 12]}>

@@ -71,23 +71,6 @@ export default function ContactosPage() {
         </Space>
       </div>
 
-      {/* KPIs */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        {[
-          { label: 'Total Contactos', value: resumen?.total ?? 0,       bg: 'linear-gradient(135deg,#1a56db,#3b82f6)' },
-          { label: 'Clientes',        value: resumen?.clientes ?? 0,    bg: 'linear-gradient(135deg,#059669,#10b981)' },
-          { label: 'Proveedores',     value: resumen?.proveedores ?? 0, bg: 'linear-gradient(135deg,#7c3aed,#a78bfa)' },
-          { label: 'Empleados',       value: resumen?.empleados ?? 0,   bg: 'linear-gradient(135deg,#d97706,#f59e0b)' },
-        ].map(s => (
-          <Col xs={12} sm={6} key={s.label}>
-            <Card bordered={false} style={{ borderRadius: 12, background: s.bg }}>
-              <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)', fontSize: 12 }}>{s.label}</span>}
-                value={s.value} valueStyle={{ color: '#fff', fontSize: 28 }} />
-            </Card>
-          </Col>
-        ))}
-      </Row>
-
       {/* Filtros */}
       <Card bordered={false} style={{ borderRadius: 10, marginBottom: 16, background: token.colorFillAlter }}>
         <Row gutter={12} align="middle">

@@ -116,45 +116,6 @@ export default function DepositosPage() {
         </Space>
       </div>
 
-      {/* KPIs */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={12} sm={8}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#059669,#10b981)' }}>
-            <Statistic
-              title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Total Depositado</span>}
-              value={resumen?.totalGeneral ?? 0}
-              formatter={v => fmt(Number(v))}
-              prefix={<DollarOutlined />}
-              valueStyle={{ color: '#fff', fontSize: 22 }}
-            />
-          </Card>
-        </Col>
-        <Col xs={12} sm={8}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#1a56db,#3b82f6)' }}>
-            <Statistic
-              title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Total Depósitos</span>}
-              value={resumen?.cantidadTotal ?? 0}
-              prefix={<BankOutlined />}
-              valueStyle={{ color: '#fff', fontSize: 28 }}
-            />
-          </Card>
-        </Col>
-        <Col xs={12} sm={8}>
-          <Card bordered={false} style={{ borderRadius: 12 }}>
-            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>Por tipo</Text>
-            {(resumen?.porTipo ?? []).map((t: any) => {
-              const conf = TIPOS.find(x => x.value === t.tipo);
-              return (
-                <div key={t.tipo} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <Tag color={conf?.color} style={{ fontSize: 11 }}>{conf?.label ?? t.tipo}</Tag>
-                  <Text style={{ fontSize: 12 }}>{fmt(t.total)}</Text>
-                </div>
-              );
-            })}
-          </Card>
-        </Col>
-      </Row>
-
       <Card bordered={false} style={{ borderRadius: 12 }}>
         <Table
           dataSource={depositos?.data ?? []}

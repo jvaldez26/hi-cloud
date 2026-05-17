@@ -131,34 +131,6 @@ export default function ComunicacionesPage() {
         </div>
       </div>
 
-      {/* KPI */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={12} sm={6}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#25D366,#128C7E)' }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>CxC Pendientes</span>}
-              value={cxcPendientes.length} prefix={<DollarOutlined />} valueStyle={{ color: '#fff', fontSize: 28 }} />
-          </Card>
-        </Col>
-        <Col xs={12} sm={6}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#dc2626,#ef4444)' }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Vencidas</span>}
-              value={vencidas.length} prefix={<BellOutlined />} valueStyle={{ color: '#fff', fontSize: 28 }} />
-          </Card>
-        </Col>
-        <Col xs={12} sm={6}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#7c3aed,#a78bfa)' }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Total Pendiente</span>}
-              value={totalPend} formatter={v => fmt(Number(v))} valueStyle={{ color: '#fff', fontSize: 20 }} />
-          </Card>
-        </Col>
-        <Col xs={12} sm={6}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#d97706,#f59e0b)' }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Total Vencido</span>}
-              value={totalVenc} formatter={v => fmt(Number(v))} valueStyle={{ color: '#fff', fontSize: 20 }} />
-          </Card>
-        </Col>
-      </Row>
-
       <Tabs
         defaultActiveKey="cxc"
         items={[

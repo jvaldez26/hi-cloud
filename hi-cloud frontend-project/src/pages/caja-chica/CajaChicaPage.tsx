@@ -115,36 +115,6 @@ export default function CajaChicaPage() {
         </span>
       </div>
 
-      {/* KPI */}
-      {resumen && (
-        <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-          <Col xs={12} sm={6}>
-            <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#1a56db,#3b82f6)' }}>
-              <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Cajas Activas</span>}
-                value={resumen.cajasActivas} prefix={<WalletOutlined />} valueStyle={{ color: '#fff', fontSize: 28 }} />
-            </Card>
-          </Col>
-          <Col xs={12} sm={6}>
-            <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#dc2626,#ef4444)' }}>
-              <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Total Egresos</span>}
-                value={resumen.totalEgresos} formatter={v => fmt(Number(v))} valueStyle={{ color: '#fff', fontSize: 24 }} />
-            </Card>
-          </Col>
-          <Col xs={12} sm={6}>
-            <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#059669,#10b981)' }}>
-              <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Total Reposiciones</span>}
-                value={resumen.totalReposiciones} formatter={v => fmt(Number(v))} valueStyle={{ color: '#fff', fontSize: 24 }} />
-            </Card>
-          </Col>
-          <Col xs={12} sm={6}>
-            <Card bordered={false} style={{ borderRadius: 12, textAlign: 'center' }}>
-              <div style={{ fontSize: 28, fontWeight: 800, color: '#d97706' }}>{resumen.cajas?.filter((c: any) => c.enAlerta).length}</div>
-              <Text type="warning"><ExclamationCircleOutlined /> En Alerta</Text>
-            </Card>
-          </Col>
-        </Row>
-      )}
-
       <Row gutter={[16, 16]}>
         {/* Lista de Cajas */}
         <Col xs={24} lg={cajaSeleccionada ? 8 : 24}>

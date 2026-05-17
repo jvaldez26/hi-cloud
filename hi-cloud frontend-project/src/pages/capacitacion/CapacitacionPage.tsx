@@ -112,30 +112,6 @@ export default function CapacitacionPage() {
         </div>
       </div>
 
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={24} sm={8}>
-          <Card bordered={false} style={{ background: 'linear-gradient(135deg,#1a56db,#3b82f6)', borderRadius: 12 }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Cursos Activos</span>}
-              value={resumen?.cursos ?? 0} prefix={<BookOutlined />}
-              valueStyle={{ color: '#fff', fontSize: 28 }} />
-          </Card>
-        </Col>
-        <Col xs={24} sm={8}>
-          <Card bordered={false} style={{ background: 'linear-gradient(135deg,#7c3aed,#a78bfa)', borderRadius: 12 }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Sesiones Programadas</span>}
-              value={resumen?.sesiones ?? 0} prefix={<TeamOutlined />}
-              valueStyle={{ color: '#fff', fontSize: 28 }} />
-          </Card>
-        </Col>
-        <Col xs={24} sm={8}>
-          <Card bordered={false} style={{ background: 'linear-gradient(135deg,#059669,#10b981)', borderRadius: 12 }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Certificados Emitidos</span>}
-              value={resumen?.certificados ?? 0} prefix={<SafetyCertificateOutlined />}
-              valueStyle={{ color: '#fff', fontSize: 28 }} />
-          </Card>
-        </Col>
-      </Row>
-
       <Card bordered={false} style={{ borderRadius: 12 }}>
         <Tabs
           activeKey={tabActiva}

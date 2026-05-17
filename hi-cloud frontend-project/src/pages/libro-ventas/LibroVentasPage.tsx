@@ -143,33 +143,6 @@ export default function LibroVentasPage() {
         </Row>
       )}
 
-      {/* KPIs totales */}
-      {totales && (
-        <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
-          <Col xs={8}>
-            <Card bordered={false} style={{ borderRadius: 10, background: 'linear-gradient(135deg,#1a56db,#3b82f6)' }}>
-              <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)', fontSize: 12 }}>Subtotal Gravado</span>}
-                value={totales.subtotal ?? 0} formatter={v => fmt(Number(v))}
-                valueStyle={{ color: '#fff', fontSize: 18 }} />
-            </Card>
-          </Col>
-          <Col xs={8}>
-            <Card bordered={false} style={{ borderRadius: 10, background: 'linear-gradient(135deg,#d97706,#f59e0b)' }}>
-              <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)', fontSize: 12 }}>ITBIS</span>}
-                value={totales.iva ?? 0} formatter={v => fmt(Number(v))}
-                valueStyle={{ color: '#fff', fontSize: 18 }} />
-            </Card>
-          </Col>
-          <Col xs={8}>
-            <Card bordered={false} style={{ borderRadius: 10, background: 'linear-gradient(135deg,#059669,#10b981)' }}>
-              <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)', fontSize: 12 }}>Total {tabActiva === 'ventas' ? 'Ingresos' : 'Egresos'}</span>}
-                value={totales.total ?? 0} formatter={v => fmt(Number(v))}
-                valueStyle={{ color: '#fff', fontSize: 18 }} />
-            </Card>
-          </Col>
-        </Row>
-      )}
-
       <Card bordered={false} style={{ borderRadius: 12 }}>
         <Tabs
           activeKey={tabActiva}

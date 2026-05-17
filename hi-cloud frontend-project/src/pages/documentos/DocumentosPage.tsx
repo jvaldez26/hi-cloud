@@ -97,40 +97,6 @@ export default function DocumentosPage() {
         </Button>
       </div>
 
-      {/* KPI Cards */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={24} sm={8}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#1a56db,#3b82f6)' }}>
-            <Statistic
-              title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Total Documentos</span>}
-              value={resumen?.total ?? 0}
-              prefix={<FileOutlined />}
-              valueStyle={{ color: '#fff', fontSize: 28 }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={8}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#059669,#10b981)' }}>
-            <Statistic
-              title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Tipos de Entidad</span>}
-              value={(resumen?.porTipo ?? []).length}
-              prefix={<InboxOutlined />}
-              valueStyle={{ color: '#fff', fontSize: 28 }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={8}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#7c3aed,#a78bfa)' }}>
-            <Statistic
-              title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Almacenamiento</span>}
-              value={totalKb > 1024 ? (totalKb / 1024).toFixed(1) : totalKb}
-              suffix={totalKb > 1024 ? ' MB' : ' KB'}
-              valueStyle={{ color: '#fff', fontSize: 28 }}
-            />
-          </Card>
-        </Col>
-      </Row>
-
       <Card bordered={false} style={{ borderRadius: 12 }}>
         {/* Filtro por tipo */}
         <div style={{ marginBottom: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>

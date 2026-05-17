@@ -127,28 +127,6 @@ export default function DescuentosPage() {
         </Space>
       </div>
 
-      {/* KPIs */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={12} sm={8}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#1a56db,#3b82f6)' }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Reglas Activas</span>}
-              value={resumen?.activas ?? 0} prefix={<ThunderboltOutlined />} valueStyle={{ color: '#fff', fontSize: 28 }} />
-          </Card>
-        </Col>
-        <Col xs={12} sm={8}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#059669,#10b981)' }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Total Reglas</span>}
-              value={resumen?.total ?? 0} prefix={<CheckCircleOutlined />} valueStyle={{ color: '#fff', fontSize: 28 }} />
-          </Card>
-        </Col>
-        <Col xs={12} sm={8}>
-          <Card bordered={false} style={{ borderRadius: 12, background: `linear-gradient(135deg,${token.colorWarning},${token.colorWarningHover ?? '#f59e0b'})` }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Inactivas</span>}
-              value={resumen?.inactivas ?? 0} valueStyle={{ color: '#fff', fontSize: 28 }} />
-          </Card>
-        </Col>
-      </Row>
-
       <Alert
         type="info"
         showIcon
