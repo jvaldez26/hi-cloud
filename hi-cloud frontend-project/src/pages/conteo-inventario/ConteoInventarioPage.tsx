@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   DatePicker, Space, Typography, Statistic, Popconfirm, message,
@@ -128,6 +129,8 @@ export default function ConteoInventarioPage() {
             }));
             exportarExcel(filas, 'Conteos-Inventario');
           }}>Excel</Button>
+            <RefreshByKeyButton queryKey={['conteos']} />
+            <VideoTutorialButton />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalCrear(true)}>
             Nuevo Conteo
           </Button>

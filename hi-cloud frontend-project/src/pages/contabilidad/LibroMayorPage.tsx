@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { Card, Select, Table, Typography, Row, Col, Statistic,
          Button, DatePicker, Space, Tag, Empty } from 'antd';
 import { DownloadOutlined } from '@ant-design/icons';
@@ -60,7 +61,13 @@ export default function LibroMayorPage() {
 
   return (
     <div>
-      <Title level={4} style={{ marginBottom: 16 }}>Libro Mayor</Title>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <Title level={4} style={{ margin: 0 }}>Libro Mayor</Title>
+        <Space size={2}>
+          <RefreshByKeyButton queryKey={['libro-mayor']} />
+          <VideoTutorialButton />
+        </Space>
+      </div>
 
       <Card style={{ marginBottom: 16 }}>
         <Row gutter={[12, 12]} align="middle">

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input,
   InputNumber, Switch, Space, Typography, Statistic, message,
@@ -92,6 +93,8 @@ export default function FidelidadPage() {
             }));
             exportarExcel(filas, 'Fidelidad-Ranking');
           }}>Excel</Button>
+            <RefreshByKeyButton queryKey={['fidelidad']} />
+            <VideoTutorialButton />
           <Button icon={<SettingOutlined />} onClick={abrirConfig}>Configurar</Button>
         </Space>
       </div>

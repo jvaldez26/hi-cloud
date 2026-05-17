@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { Table, Button, Card, Row, Col, Typography, Statistic, Tag, Space,
          Modal, Form, Input, InputNumber, Select, message, Popconfirm,
          Tabs, Alert } from 'antd';
@@ -108,9 +109,13 @@ function ListadoTab() {
   return (
     <>
       <Row justify="end" style={{ marginBottom: 12 }}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { setOpen(true); form.resetFields(); }}>
-          Registrar retención
-        </Button>
+        <Space size={2}>
+          <RefreshByKeyButton queryKey={['retenciones']} />
+          <VideoTutorialButton />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { setOpen(true); form.resetFields(); }}>
+            Registrar retención
+          </Button>
+        </Space>
       </Row>
       <Table columns={cols} dataSource={data?.data ?? []} rowKey="id"
         loading={isLoading} size="small"

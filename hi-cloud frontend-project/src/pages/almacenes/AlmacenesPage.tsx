@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Typography, Table, Tag, Statistic,
   Button, Space, Modal, Form, Input, Tabs, Popconfirm,
@@ -161,6 +162,8 @@ export default function AlmacenesPage() {
               }));
               exportarExcel(filas, `Almacenes-${dayjs().format('YYYY-MM-DD')}`);
             }}>Excel</Button>
+            <RefreshByKeyButton queryKey={['almacenes']} />
+            <VideoTutorialButton />
             <Button icon={<SwapOutlined />} onClick={() => setTransfModal(true)}>
               Nueva transferencia
             </Button>

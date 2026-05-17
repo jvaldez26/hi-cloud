@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Typography, Select, Table, Tag, Statistic,
   Tabs, Button, Space, Alert, Progress, Tooltip, Spin,
@@ -467,6 +468,8 @@ export default function DeclaracionesPage() {
                 <Space>
                   <Button size="small" icon={<FileExcelOutlined />} disabled={!f606?.filas?.length}
                     onClick={() => exportar606(f606, mes, anio)}>Excel</Button>
+            <RefreshByKeyButton queryKey={['declaraciones']} />
+            <VideoTutorialButton />
                   <Button size="small" icon={<DownloadOutlined />} disabled={!f606?.filas?.length}
                     onClick={() => exportCSV(`Formato606-${anio}-${String(mes).padStart(2,'0')}`, f606?.filas ?? [],
                       [{ key:'linea',label:'Línea'},{ key:'rncProveedor',label:'RNC Proveedor'},

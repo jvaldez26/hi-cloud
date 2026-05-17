@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Typography, Select, Table, Tag, Statistic,
   Button, Space, Modal, Form, Input, InputNumber, Tabs,
@@ -164,6 +165,8 @@ export default function BancosPage() {
                 Importar CSV
               </Button>
             )}
+            <RefreshByKeyButton queryKey={['bancos']} />
+            <VideoTutorialButton />
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setCuentaModal(true)}>
               Nueva cuenta
             </Button>

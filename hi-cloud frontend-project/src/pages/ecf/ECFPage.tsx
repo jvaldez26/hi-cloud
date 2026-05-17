@@ -1,4 +1,5 @@
 ﻿import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { usePlanGuard } from '../../hooks/usePlan';
 import ModuloBloqueado from '../../components/ui/ModuloBloqueado';
 import {
@@ -131,7 +132,9 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
         </Col>
         <Col>
           <Tooltip title="Actualizar lista">
-            <Button icon={<ReloadOutlined spin={isFetching} />}
+            <RefreshByKeyButton queryKey={["ecf-list"]} />
+          <VideoTutorialButton />
+          <Button icon={<ReloadOutlined spin={isFetching} />}
               onClick={() => { qc.invalidateQueries({ queryKey: ['ecf-list'] }); onRefresh(); }}>
               Actualizar
             </Button>

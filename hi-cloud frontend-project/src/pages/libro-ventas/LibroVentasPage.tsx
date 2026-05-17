@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Table, Typography, Statistic, Button,
   Space, Tag, DatePicker, Select, theme, Tabs, Divider,
@@ -110,6 +111,8 @@ export default function LibroVentasPage() {
               }));
               exportarExcel(filas, tabActiva === 'ventas' ? 'Libro-Ventas' : 'Libro-Compras');
             }}>Excel</Button>
+            <RefreshByKeyButton queryKey={['libro-ventas']} />
+            <VideoTutorialButton />
           <Button icon={<DownloadOutlined />}
             onClick={() => {
               if (tabActiva === 'ventas') {

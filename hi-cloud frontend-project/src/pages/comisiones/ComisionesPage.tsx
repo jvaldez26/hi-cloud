@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { Card, Row, Col, Typography, Statistic, Button, Table, Tag,
          Select, InputNumber, Space, message, Tabs, Popconfirm, Modal,
          Form, Input } from 'antd';
@@ -135,6 +136,8 @@ function AdminTab() {
             }));
             exportarExcel(filas, `Comisiones-${mes}-${anio}`);
           }}>Excel</Button>
+            <RefreshByKeyButton queryKey={['comisiones']} />
+            <VideoTutorialButton />
         </Col>
       </Row>
 

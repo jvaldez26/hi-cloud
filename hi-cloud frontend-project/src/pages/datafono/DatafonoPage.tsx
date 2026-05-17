@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { exportarExcel } from '../../utils/exportExcel';
 import {
   Card, Row, Col, Statistic, Button, Table, Tag, Modal, Form,
@@ -142,6 +143,8 @@ export default function DatafonoPage() {
                 }));
                 exportarExcel(filas, `Datafono-${tabActiva}`);
               }}>Excel</Button>
+            <RefreshByKeyButton queryKey={['datafono']} />
+            <VideoTutorialButton />
               {tabActiva === 'terminales' && (
                 <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalTerminal(true)}>
                   Terminal

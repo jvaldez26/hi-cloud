@@ -1,4 +1,5 @@
 ﻿import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   DatePicker, InputNumber, Space, Typography, Statistic, Popconfirm,
@@ -116,6 +117,8 @@ export default function CuotasPage() {
           exportarExcel(filas, `Cuotas-Planes-${dayjs().format('YYYY-MM-DD')}`);
           message.success(`${filas.length} planes exportados`);
         }}>Excel</Button>
+            <RefreshByKeyButton queryKey={['planes-pago']} />
+            <VideoTutorialButton />
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalCrear(true)}>
           Nuevo Plan
         </Button>

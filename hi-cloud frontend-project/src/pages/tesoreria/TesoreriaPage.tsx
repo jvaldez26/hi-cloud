@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { exportarExcel } from '../../utils/exportExcel';
 import { Card, Row, Col, Table, Button, Tag, Typography, Statistic,
          Modal, Form, Input, InputNumber, Select, Tabs, message,
@@ -117,6 +118,8 @@ export default function TesoreriaPage() {
                       }));
                       exportarExcel(filas, `Tesoreria-Movimientos-${dayjs().format('YYYY-MM')}`);
                     }}>Excel</Button>
+            <RefreshByKeyButton queryKey={['movimientos']} />
+            <VideoTutorialButton />
                     <Button icon={<UploadOutlined />} type="primary" onClick={() => { setOpenMovim('deposito'); formMovim.resetFields(); }}>Depósito</Button>
                     <Button icon={<DownloadOutlined />} danger onClick={() => { setOpenMovim('retiro'); formMovim.resetFields(); }}>Retiro</Button>
                     <Button icon={<SwapOutlined />} onClick={() => { setOpenMovim('transferencia'); formMovim.resetFields(); }}>Transferencia</Button>

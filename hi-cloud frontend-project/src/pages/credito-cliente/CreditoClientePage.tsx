@@ -1,4 +1,5 @@
 ﻿import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Button, Table, Modal, Form, Input, Select,
   InputNumber, Space, Typography, Statistic, message, theme,
@@ -88,6 +89,8 @@ export default function CreditoClientePage() {
           }));
           exportarExcel(filas, `Credito-Clientes-${dayjs().format('YYYY-MM-DD')}`);
         }}>Excel</Button>
+            <RefreshByKeyButton queryKey={['credito-cliente']} />
+            <VideoTutorialButton />
         <Button type="primary" icon={<PlusOutlined />} onClick={() => abrirConfiguracion()}>
           Configurar Crédito
         </Button>

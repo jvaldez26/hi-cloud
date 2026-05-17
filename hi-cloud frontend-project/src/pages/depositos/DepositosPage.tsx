@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   DatePicker, InputNumber, Space, Typography, Statistic, Popconfirm,
@@ -107,6 +108,8 @@ export default function DepositosPage() {
             }));
             exportarExcel(filas, `Depositos-${dayjs().format('YYYY-MM-DD')}`);
           }}>Excel</Button>
+            <RefreshByKeyButton queryKey={['depositos']} />
+            <VideoTutorialButton />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalCrear(true)}>
             Nuevo Depósito
           </Button>

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { Card, Row, Col, Typography, Statistic, Select, DatePicker, Button,
          Table, Tabs, Spin, Tag, Progress, message, Alert, Badge, Tooltip } from 'antd';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip,
@@ -51,7 +52,13 @@ export default function ReportesPage() {
 
   return (
     <div>
-      <Title level={4} style={{ marginBottom: 16 }}>Reportes y Análisis</Title>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <Title level={4} style={{ margin: 0 }}>Reportes y Análisis</Title>
+        <span style={{ display: 'flex', gap: 2 }}>
+          <RefreshByKeyButton queryKey={['reportes']} />
+          <VideoTutorialButton />
+        </span>
+      </div>
 
       <Tabs defaultActiveKey="ventas" items={[
         /* ── VENTAS ── */

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Table, Tag, Select, Typography, Statistic,
   Space, theme, Progress, Button, Tooltip,
@@ -93,6 +94,8 @@ export default function ValoracionStockPage() {
               }));
               exportarExcel(filas, 'Valoracion-Stock');
             }}>Excel</Button>
+            <RefreshByKeyButton queryKey={['valoracion']} />
+            <VideoTutorialButton />
             <Button icon={<DownloadOutlined />} onClick={exportarCSV}>CSV</Button>
           </Tooltip>
         </Space>

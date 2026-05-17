@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Typography, Select, Table, Tag, Statistic,
   Button, Space, Tabs, Alert, Divider, Progress,
@@ -91,6 +92,8 @@ export default function TSSPage() {
             <Select value={mes} onChange={setMes} style={{ width: 130 }} options={MESES} />
             <Select value={anio} onChange={setAnio} style={{ width: 90 }}
               options={[2024, 2025, 2026].map(y => ({ value: y, label: y }))} />
+            <RefreshByKeyButton queryKey={['tss']} />
+            <VideoTutorialButton />
           </Space>
         </Col>
       </Row>

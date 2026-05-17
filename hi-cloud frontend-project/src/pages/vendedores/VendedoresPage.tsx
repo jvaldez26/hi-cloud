@@ -1,4 +1,5 @@
 ﻿import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { exportarExcel } from '../../utils/exportExcel';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
@@ -148,6 +149,8 @@ export default function VendedoresPage() {
             }));
             exportarExcel(filas, 'Vendedores');
           }}>Excel</Button>
+            <RefreshByKeyButton queryKey={['vendedores']} />
+            <VideoTutorialButton />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditando(null); formCrear.resetFields(); setModalCrear(true); }}>
             Nuevo Vendedor
           </Button>

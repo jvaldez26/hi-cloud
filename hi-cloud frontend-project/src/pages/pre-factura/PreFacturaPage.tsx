@@ -1,4 +1,5 @@
 ﻿import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   DatePicker, InputNumber, Space, Typography, Popconfirm,
@@ -220,9 +221,13 @@ export default function PreFacturaPage() {
             <Text type="secondary">Facturas proforma · Aprobación → Conversión a factura oficial</Text>
           </div>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalCrear(true)}>
-          Nueva Pre-Factura
-        </Button>
+        <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <RefreshByKeyButton queryKey={['pre-facturas']} />
+          <VideoTutorialButton />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalCrear(true)}>
+            Nueva Pre-Factura
+          </Button>
+        </span>
       </div>
 
       {/* ── Tabla ────────────────────────────────────────────────────────── */}

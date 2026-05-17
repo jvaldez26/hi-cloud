@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Button, Table, Typography, Space, Modal,
   Form, Input, InputNumber, Select, message, Popconfirm,
@@ -117,6 +118,8 @@ function UnidadesTab() {
           )}
         </Col>
         <Col>
+          <RefreshByKeyButton queryKey={['uom']} />
+          <VideoTutorialButton />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setOpen(true); }}>
             Nueva unidad
           </Button>

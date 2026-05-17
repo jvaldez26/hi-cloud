@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   InputNumber, Space, Typography, Tabs, Popconfirm, message, Tree,
@@ -99,6 +100,8 @@ export default function GruposPage() {
             }));
             exportarExcel(filas, tabActiva === 'productos' ? 'Grupos-Producto' : 'Segmentos-Cliente');
           }}>Excel</Button>
+            <RefreshByKeyButton queryKey={['grupos']} />
+            <VideoTutorialButton />
           <Button type="primary" icon={<PlusOutlined />}
             onClick={() => tabActiva === 'productos' ? abrirGrupo() : abrirSeg()}>
             {tabActiva === 'productos' ? 'Nuevo Grupo' : 'Nuevo Segmento'}

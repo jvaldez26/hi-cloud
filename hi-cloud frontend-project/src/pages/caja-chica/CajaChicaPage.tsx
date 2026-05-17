@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   DatePicker, InputNumber, Space, Typography, Statistic, Popconfirm,
@@ -105,9 +106,13 @@ export default function CajaChicaPage() {
             <Text type="secondary">Fondos rotatorios · Egresos menores · Control de saldos</Text>
           </div>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalCajaCrear(true)}>
-          Nueva Caja Chica
-        </Button>
+        <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <RefreshByKeyButton queryKey={['caja-chica']} />
+          <VideoTutorialButton />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalCajaCrear(true)}>
+            Nueva Caja Chica
+          </Button>
+        </span>
       </div>
 
       {/* KPI */}

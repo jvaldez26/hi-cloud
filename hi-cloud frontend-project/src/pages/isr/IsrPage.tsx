@@ -1,4 +1,5 @@
 ﻿import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Table, Typography, Statistic, InputNumber,
   Space, theme, Tag, Alert, Divider, Progress, Tabs, Button, message,
@@ -92,20 +93,24 @@ export default function IsrPage() {
                   <Col xs={24} lg={chartData.length > 0 ? 16 : 24}>
                     <Card bordered={false} style={{ borderRadius: 12 }} title="Detalle ISR por Empleado"
                       extra={
-                        <Button size="small" icon={<FileExcelOutlined />} onClick={() => {
-                          const filas = empleados.map((e: any) => ({
-                            'Cédula':          e.cedula ?? '',
-                            'Nombre':          e.nombre ?? '',
-                            'Salario Bruto':   Number(e.salarioBruto ?? 0),
-                            'Salario Anual':   Number(e.salarioAnual ?? 0),
-                            'Base Gravable':   Number(e.baseGravable ?? 0),
-                            'ISR Anual':       Number(e.isrAnual ?? 0),
-                            'ISR Mensual':     Number(e.isrMensual ?? 0),
-                            'Tasa Efectiva':   `${Number(e.tasaEfectiva ?? 0).toFixed(1)}%`,
-                            'Exento':          e.exento ? 'Sí' : 'No',
-                          }));
-                          exportarExcel(filas, `ISR-Nomina-${new Date().getFullYear()}`);
-                        }}>Excel</Button>
+                        <span style={{ display: 'flex', gap: 4 }}>
+                          <Button size="small" icon={<FileExcelOutlined />} onClick={() => {
+                            const filas = empleados.map((e: any) => ({
+                              'Cédula':          e.cedula ?? '',
+                              'Nombre':          e.nombre ?? '',
+                              'Salario Bruto':   Number(e.salarioBruto ?? 0),
+                              'Salario Anual':   Number(e.salarioAnual ?? 0),
+                              'Base Gravable':   Number(e.baseGravable ?? 0),
+                              'ISR Anual':       Number(e.isrAnual ?? 0),
+                              'ISR Mensual':     Number(e.isrMensual ?? 0),
+                              'Tasa Efectiva':   `${Number(e.tasaEfectiva ?? 0).toFixed(1)}%`,
+                              'Exento':          e.exento ? 'Sí' : 'No',
+                            }));
+                            exportarExcel(filas, `ISR-Nomina-${new Date().getFullYear()}`);
+                          }}>Excel</Button>
+                          <RefreshByKeyButton queryKey={['isr']} />
+                          <VideoTutorialButton />
+                        </span>
                       }>
                       <Table
                         dataSource={empleados}
