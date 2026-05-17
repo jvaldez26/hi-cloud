@@ -639,7 +639,11 @@ export class AuthService implements OnModuleInit {
   async forzarLogout(userId: number) {
     const user = await this.userRepository.findOneBy({ id: userId });
     if (!user) throw new BadRequestException(`Usuario #${userId} no encontrado`);
-    await this.userRepository.update(userId, { sessionToken: undefined, sessionCreatedAt: undefined });
+    // Usar SQL raw: TypeORM ignora `undefined` en .update(), NULL requiere query explícita
+    await this.dataSource.query(
+      `UPDATE users SET "sessionToken" = NULL, "sessionCreatedAt" = NULL WHERE id = $1`,
+      [userId],
+    );
     await this.refreshTokenSvc.revocarTodos(userId);
     this.logger.log(`Super admin forzó logout del usuario #${userId}`);
     return { message: `Sesión del usuario #${userId} cerrada correctamente` };
