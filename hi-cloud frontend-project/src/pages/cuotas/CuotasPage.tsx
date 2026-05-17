@@ -2,7 +2,7 @@
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
-  DatePicker, InputNumber, Space, Typography, Statistic, Popconfirm,
+  DatePicker, InputNumber, Space, Typography, Popconfirm,
   message, Tabs, Progress, Alert, Divider, theme,
 } from 'antd';
 import {
@@ -123,27 +123,6 @@ export default function CuotasPage() {
           Nuevo Plan
         </Button>
       </div>
-
-      {/* KPIs */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        {[
-          { label: 'Vigentes',    estado: 'vigente',    bg: 'linear-gradient(135deg,#1a56db,#3b82f6)' },
-          { label: 'Completados', estado: 'completado', bg: 'linear-gradient(135deg,#059669,#10b981)' },
-          { label: 'Cuotas Venc.', estado: null, bg: 'linear-gradient(135deg,#dc2626,#ef4444)', value: resumen?.cuotasVencidas ?? 0 },
-        ].map(s => {
-          const r = s.estado ? resumen?.planes?.find((p: any) => p.estado === s.estado) : null;
-          return (
-            <Col xs={12} sm={8} key={s.label}>
-              <Card bordered={false} style={{ borderRadius: 12, background: s.bg }}>
-                <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)', fontSize: 12 }}>{s.label}</span>}
-                  value={s.value ?? r?.cantidad ?? 0}
-                  suffix={r?.montoTotal > 0 ? <Text style={{ color: 'rgba(255,255,255,.6)', fontSize: 11 }}> · {fmt(r.montoTotal)}</Text> : ''}
-                  valueStyle={{ color: '#fff', fontSize: 28 }} />
-              </Card>
-            </Col>
-          );
-        })}
-      </Row>
 
       <Row gutter={[16, 16]}>
         {/* Lista de planes */}

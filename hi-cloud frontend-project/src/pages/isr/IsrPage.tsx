@@ -1,7 +1,7 @@
 ﻿import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
-  Card, Row, Col, Table, Typography, Statistic, InputNumber,
+  Card, Row, Col, Table, Typography, InputNumber,
   Space, theme, Tag, Alert, Divider, Progress, Tabs, Button, message,
 } from 'antd';
 import {
@@ -67,27 +67,6 @@ export default function IsrPage() {
             label: <Space><TeamOutlined />Plantilla de Empleados</Space>,
             children: (
               <>
-                {/* KPIs */}
-                <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-                  {[
-                    { label: 'Total Empleados',   value: resumen.totalEmpleados ?? 0,   suffix: '',    bg: '#1a56db,#3b82f6' },
-                    { label: 'Exentos de ISR',    value: resumen.exentos ?? 0,           suffix: '',    bg: '#059669,#10b981' },
-                    { label: 'Sujetos a ISR',     value: resumen.gravados ?? 0,          suffix: '',    bg: '#7c3aed,#a78bfa' },
-                    { label: 'ISR Total Mensual', value: resumen.totalIsrMensual ?? 0,   fmt: true,     bg: '#d97706,#f59e0b' },
-                  ].map(s => (
-                    <Col xs={12} sm={6} key={s.label}>
-                      <Card bordered={false} style={{ borderRadius: 12, background: `linear-gradient(135deg,${s.bg})` }}>
-                        <Statistic
-                          title={<span style={{ color: 'rgba(255,255,255,.8)', fontSize: 12 }}>{s.label}</span>}
-                          value={(s as any).fmt ? fmt(s.value) : s.value}
-                          formatter={(s as any).fmt ? undefined : undefined}
-                          valueStyle={{ color: '#fff', fontSize: (s as any).fmt ? 18 : 28 }}
-                        />
-                      </Card>
-                    </Col>
-                  ))}
-                </Row>
-
                 <Row gutter={[16, 16]}>
                   {/* Tabla empleados */}
                   <Col xs={24} lg={chartData.length > 0 ? 16 : 24}>

@@ -640,35 +640,6 @@ export default function NominaPage() {
     <div>
       <Title level={4} style={{ marginBottom: 16 }}>Nómina y Recursos Humanos</Title>
 
-      <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
-        <Col xs={24} sm={12} md={6}>
-          <Card>
-            <Statistic title="Empleados activos" value={resumen?.empleados?.activos ?? 0} suffix="empleados" />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card>
-            <Statistic title="Último período pagado" value={resumen?.ultimoPeriodoPagado?.totalNeto ?? 0}
-              formatter={v => fmt.money(Number(v))} />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card>
-            <Statistic title="Períodos en proceso" value={resumen?.periodosEnProceso ?? 0} suffix="período(s)" />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card>
-            <Statistic
-              title="Novedades pendientes"
-              value={resumen?.novedadesPendientes ?? 0}
-              suffix="novedad(es)"
-              valueStyle={{ color: (resumen?.novedadesPendientes ?? 0) > 0 ? '#fa8c16' : undefined }}
-            />
-          </Card>
-        </Col>
-      </Row>
-
       <Card>
         <Tabs defaultActiveKey="empleados" items={[
           { key: 'empleados',  label: <><UserOutlined />  Empleados</>,           children: <EmpleadosTab /> },
