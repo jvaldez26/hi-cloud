@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { TableActions } from '../../components/ui/TableActions';
+import { DetailDrawer } from '../../components/ui/DetailDrawer';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Table, Button, Card, Row, Col, Typography, Statistic, Tag,
          Modal, Form, Input, InputNumber, Select, DatePicker, message,
@@ -39,8 +41,9 @@ export default function GastosPage() {
   const [mes,        setMes]        = useState(dayjs().month() + 1);
   const [anio,       setAnio]       = useState(dayjs().year());
   const [catFilt,    setCatFilt]    = useState<string | undefined>();
-  const [open,       setOpen]       = useState(false);
-  const [ecfEncf,    setEcfEncf]    = useState<string | null>(null);
+  const [open,         setOpen]         = useState(false);
+  const [ecfEncf,      setEcfEncf]      = useState<string | null>(null);
+  const [detalleGasto, setDetalleGasto] = useState<any>(null);
   const [pdfPending, setPdfPending] = useState<number | null>(null);
   const [form]                      = Form.useForm();
   const qc = useQueryClient();
@@ -159,19 +162,21 @@ export default function GastosPage() {
         return <Text type="secondary" style={{ fontSize: 11 }}>—</Text>;
       },
     },
-    { title: '', key: 'del', width: 70,
+    { title: '', key: 'acciones', width: 72, align: 'right' as const,
       render: (_: any, r: any) => (
-        <Space size={2}>
-          <Button size="small" type="text"
-            icon={pdfPending === r.id ? <LoadingOutlined /> : <FilePdfOutlined />}
-            disabled={pdfPending === r.id}
-            onClick={() => descargarPDF(r)}
-            title="Descargar PDF"
-          />
-          <Popconfirm title="¿Eliminar gasto?" onConfirm={() => eliminarMut.mutate(r.id)}>
-            <Button type="text" danger size="small" icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
+        <TableActions
+          onView={() => setDetalleGasto(r)}
+          viewLabel="Ver gasto"
+          items={[
+            { key: 'pdf', label: pdfPending === r.id ? 'Generando...' : 'Descargar PDF',
+              icon: pdfPending === r.id ? <LoadingOutlined /> : <FilePdfOutlined />,
+              disabled: pdfPending === r.id,
+              onClick: () => descargarPDF(r) },
+            { type: 'divider' as const },
+            { key: 'eliminar', label: 'Eliminar gasto', icon: <DeleteOutlined />, danger: true,
+              onClick: () => { if (window.confirm('¿Eliminar este gasto?')) eliminarMut.mutate(r.id); } },
+          ]}
+        />
       )},
   ];
 
@@ -418,6 +423,25 @@ export default function GastosPage() {
       </Modal>
 
       <EcfResultModal encf={ecfEncf} onClose={() => setEcfEncf(null)} />
+
+      <DetailDrawer
+        open={!!detalleGasto}
+        onClose={() => setDetalleGasto(null)}
+        title={`Gasto — ${detalleGasto?.comprobante ?? detalleGasto?.id ?? ''}`}
+        sections={[{
+          fields: [
+            { label: 'Fecha',        value: detalleGasto?.fecha },
+            { label: 'Categoría',    value: detalleGasto?.categoria?.replace(/_/g,' ') },
+            { label: 'Descripción',  value: detalleGasto?.descripcion, span: 2 },
+            { label: 'Proveedor',    value: detalleGasto?.proveedor },
+            { label: 'Comprobante',  value: detalleGasto?.comprobante },
+            { label: 'Monto',        value: detalleGasto?.monto !== undefined ? `RD$${Number(detalleGasto.monto).toLocaleString('es-DO',{minimumFractionDigits:2})}` : undefined },
+            { label: 'ITBIS',        value: detalleGasto?.itbis !== undefined ? `RD$${Number(detalleGasto.itbis).toLocaleString('es-DO',{minimumFractionDigits:2})}` : undefined },
+            { label: 'Total',        value: detalleGasto?.total !== undefined ? `RD$${Number(detalleGasto.total).toLocaleString('es-DO',{minimumFractionDigits:2})}` : undefined },
+            { label: 'e-CF',         value: detalleGasto?.ecfNumero, hidden: !detalleGasto?.ecfNumero },
+          ],
+        }]}
+      />
     </div>
   );
 }

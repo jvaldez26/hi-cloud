@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { DetailDrawer } from '../../components/ui/DetailDrawer';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Table, Button, Input, Space, Tag, Modal, Form, Row, Col,
@@ -402,7 +403,8 @@ function ProductosCatalogo() {
   const [categoria,  setCategoria]  = useState<string | undefined>();
   const [page,       setPage]       = useState(1);
   const [open,       setOpen]       = useState(false);
-  const [editing,    setEditing]    = useState<Producto | null>(null);
+  const [editing,          setEditing]          = useState<Producto | null>(null);
+  const [detalleProducto,  setDetalleProducto]  = useState<Producto | null>(null);
   const [preview,    setPreview]    = useState('');
   const [uploading,  setUploading]  = useState(false);
   const [form]                      = Form.useForm<ProductoPayload>();
@@ -476,7 +478,7 @@ function ProductosCatalogo() {
     { title: '', key: 'actions', width: 80, isActions: true,
       render: (_: unknown, r: Producto) => (
         <TableActions
-          onView={() => openEdit(r)}
+          onView={() => setDetalleProducto(r)}
           viewLabel="Editar producto"
           items={[
             ...(puedeEditar ? [{ key: 'editar', label: 'Editar', icon: <EditOutlined />, onClick: () => openEdit(r) }] : []),
@@ -656,6 +658,23 @@ function ProductosCatalogo() {
           </Row>
         </Form>
       </Modal>
+
+      <DetailDrawer
+        open={!!detalleProducto}
+        onClose={() => setDetalleProducto(null)}
+        title={detalleProducto?.nombre ?? 'Producto'}
+        sections={[{
+          fields: [
+            { label: 'Código',    value: detalleProducto?.codigo },
+            { label: 'SKU',       value: (detalleProducto as any)?.sku },
+            { label: 'Nombre',    value: detalleProducto?.nombre, span: 2 },
+            { label: 'Categoría', value: detalleProducto?.categoria },
+            { label: 'Precio',    value: detalleProducto?.precio !== undefined ? `RD$${Number(detalleProducto.precio).toLocaleString('es-DO',{minimumFractionDigits:2})}` : undefined },
+            { label: 'Stock',     value: detalleProducto?.stock !== undefined ? `${detalleProducto.stock} unidades` : undefined },
+            { label: 'Estado',    value: <Tag color={detalleProducto?.isActive !== false ? 'green' : 'red'}>{detalleProducto?.isActive !== false ? 'Activo' : 'Inactivo'}</Tag> },
+          ],
+        }]}
+      />
     </>
   );
 }

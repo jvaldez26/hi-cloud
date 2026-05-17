@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { TableActions } from '../../components/ui/TableActions';
 import {
   Tabs, Table, Button, Tag, Space, Modal, Form, Input, InputNumber,
   Select, Row, Col, Typography, Card, Statistic, Popconfirm,
@@ -89,27 +90,47 @@ function SolicitudesTab() {
     { title: 'Estado', dataIndex: 'estado', width: 130,
       render: (v: string) => <Tag color={ESTADO_SOL_COLOR[v]}>{v?.replace('_', ' ').toUpperCase()}</Tag> },
     { title: 'Ítems', key: 'items', width: 70, render: (_: any, r: any) => r.lineas?.length ?? 0 },
-    { title: '', key: 'acc', width: 200,
+    { title: '', key: 'acciones', width: 72, align: 'right' as const,
       render: (_: any, r: any) => (
-        <Space size={4}>
-          <Button size="small" icon={<EyeOutlined />} onClick={() => setDetalle(r)}>Ver</Button>
-          {r.estado === 'borrador' && (
-            <Popconfirm title="¿Enviar para aprobación?" onConfirm={() => estadoMut.mutate({ id: r.id, estado: 'enviada' })}>
-              <Button size="small" type="primary" icon={<SendOutlined />}>Enviar</Button>
-            </Popconfirm>
-          )}
-          {r.estado === 'aprobada' && (
-            <Button size="small" icon={<ShoppingCartOutlined />} onClick={() => setCotModal(r)}>Cotizar</Button>
-          )}
-          {(r.estado === 'en_cotizacion' || r.estado === 'aprobada') && (
-            <Button size="small" icon={<BarChartOutlined />} onClick={() => setComparativoId(r.id)}>Comparar</Button>
-          )}
-        </Space>
+        <TableActions
+          onView={() => setDetalle(r)}
+          viewLabel="Ver solicitud"
+          items={[
+            ...(r.estado === 'borrador' ? [
+              { key: 'enviar', label: 'Enviar para aprobación', icon: <SendOutlined />,
+                onClick: () => estadoMut.mutate({ id: r.id, estado: 'enviada' }) },
+            ] : []),
+            ...(r.estado === 'aprobada' ? [
+              { key: 'cotizar', label: 'Cotizar con proveedor', icon: <ShoppingCartOutlined />,
+                onClick: () => setCotModal(r) },
+            ] : []),
+            ...((r.estado === 'en_cotizacion' || r.estado === 'aprobada') ? [
+              { key: 'comparar', label: 'Comparar cotizaciones', icon: <BarChartOutlined />,
+                onClick: () => setComparativoId(r.id) },
+            ] : []),
+          ]}
+        />
       ) },
   ];
 
   return (
     <>
+      {/* KPIs */}
+      <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
+        {[
+          { label: 'Pendientes aprobación', key: 'enviada',    color: '#1677ff' },
+          { label: 'Aprobadas',             key: 'aprobada',   color: '#52c41a' },
+          { label: 'En cotización',          key: 'en_cotizacion', color: '#7c3aed' },
+          { label: 'Rechazadas',             key: 'rechazada',  color: '#dc2626' },
+        ].map(k => (
+          <Col xs={12} md={6} key={k.key}>
+            <Card size="small" style={{ cursor: 'pointer', borderColor: estadoFiltro === k.key ? k.color : undefined }}
+              onClick={() => setEstadoFiltro(estadoFiltro === k.key ? undefined : k.key)}>
+              <Statistic title={k.label} value={resumen?.[k.key] ?? 0} valueStyle={{ color: k.color, fontSize: 20 }} />
+            </Card>
+          </Col>
+        ))}
+      </Row>
 
       <Row justify="space-between" align="middle" style={{ marginBottom: 12 }}>
         <Col>

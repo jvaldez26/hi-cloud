@@ -1,5 +1,6 @@
 ﻿import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { TableActions } from '../../components/ui/TableActions';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   DatePicker, InputNumber, Space, Typography, Statistic, Popconfirm,
@@ -172,27 +173,28 @@ export default function ConducePage() {
             { title: 'Ítems', key: 'items', render: (_, r: any) => <Tag>{r.detalles?.length ?? 0} ítem(s)</Tag> },
             { title: 'Estado', dataIndex: 'estado', key: 'e', render: v => <Tag color={ESTADO_CONFIG[v]?.color}>{ESTADO_CONFIG[v]?.label}</Tag> },
             {
-              title: '', key: 'acc', width: 180,
-              render: (_, r: any) => (
-                <Space>
-                  <Tooltip title="Ver"><Button size="small" icon={<EyeOutlined />} onClick={() => setModalDetalle(r)} /></Tooltip>
-                  <Button size="small" type="text"
-                    icon={pdfPending === r.id ? <LoadingOutlined /> : <FilePdfOutlined />}
-                    disabled={pdfPending === r.id}
-                    onClick={() => descargarPDF(r)}
-                    title="Descargar PDF"
-                  />
-                  <WhatsAppButton tipo="conduce" id={r.id} size="small" onlyIcon />
-                  <PrintButton size="small" nombreArchivo={`${r.numero}.pdf`} simple label="" getHtml={async () => {
-                    const full = await api.get(`/conduces/${r.id}`).then((res: any) => res.data?.data ?? res.data).catch(() => r);
-                    const filas = (full.detalles ?? []).map((d: any) => `<tr><td style="padding:5px 8px;border-bottom:1px solid #eee">${d.descripcion ?? ''}</td><td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:right">${d.cantidad ?? 0}</td><td style="padding:5px 8px;border-bottom:1px solid #eee">${d.unidadMedida ?? 'PZA'}</td></tr>`).join('');
-                    return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Conduce ${full.numero}</title><style>body{font-family:Arial,sans-serif;font-size:13px;color:#111;padding:32px}h2{color:#1a56db;margin:0 0 4px}p{margin:0 0 6px;color:#555}table{width:100%;border-collapse:collapse;margin-top:14px}th{background:#1a56db;color:#fff;padding:8px;text-align:left}@page{margin:15mm}</style></head><body><h2>Conduce ${full.numero ?? r.numero}</h2><p>Fecha: ${full.fecha ?? '—'} · Estado: ${full.estado ?? '—'}</p><p>Cliente: <strong>${full.cliente?.nombre ?? r.cliente?.nombre ?? '—'}</strong></p><p>Destino: ${full.direccionEntrega ?? '—'}</p>${full.conductor ? `<p>Conductor: ${full.conductor}</p>` : ''}<table><thead><tr><th>Descripción</th><th style="text-align:right">Cant.</th><th>Unidad</th></tr></thead><tbody>${filas}</tbody></table></body></html>`;
-                  }} />
-                  {r.estado === 'generado'    && <Tooltip title="Marcar En Tránsito"><Button size="small" icon={<SendOutlined />} type="primary" ghost onClick={() => enTransito.mutate(r.id)} /></Tooltip>}
-                  {r.estado === 'en_transito' && <Tooltip title="Confirmar Entrega"><Button size="small" icon={<CheckCircleOutlined />} style={{ color: '#059669', borderColor: '#059669' }} onClick={() => setModalEntrega({ id: r.id, tipo: 'entregado' })} /></Tooltip>}
-                  {r.estado === 'en_transito' && <Tooltip title="Registrar Devolución"><Button size="small" icon={<RollbackOutlined />} danger onClick={() => setModalEntrega({ id: r.id, tipo: 'devuelto' })} /></Tooltip>}
-                  {r.estado !== 'entregado' && <Popconfirm title="¿Eliminar?" onConfirm={() => eliminar.mutate(r.id)}><Button size="small" icon={<DeleteOutlined />} type="link" danger /></Popconfirm>}
-                </Space>
+              title: '', key: 'acciones', width: 72, align: 'right' as const,
+              render: (_: any, r: any) => (
+                <TableActions
+                  onView={() => setModalDetalle(r)}
+                  viewLabel="Ver detalle"
+                  items={[
+                    { key: 'pdf', label: pdfPending === r.id ? 'Generando...' : 'Descargar PDF',
+                      icon: pdfPending === r.id ? <LoadingOutlined /> : <FilePdfOutlined />,
+                      disabled: pdfPending === r.id, onClick: () => descargarPDF(r) },
+                    ...(r.estado === 'generado' ? [
+                      { key: 'transito', label: 'Marcar En Tránsito', icon: <SendOutlined />, onClick: () => enTransito.mutate(r.id) },
+                    ] : []),
+                    ...(r.estado === 'en_transito' ? [
+                      { key: 'entregar', label: 'Confirmar Entrega', icon: <CheckCircleOutlined />, onClick: () => setModalEntrega({ id: r.id, tipo: 'entregado' }) },
+                      { key: 'devolver', label: 'Registrar Devolución', icon: <RollbackOutlined />, onClick: () => setModalEntrega({ id: r.id, tipo: 'devuelto' }) },
+                    ] : []),
+                    { type: 'divider' as const },
+                    { key: 'eliminar', label: 'Eliminar', icon: <DeleteOutlined />, danger: true,
+                      disabled: r.estado === 'entregado',
+                      onClick: () => { if (window.confirm('¿Eliminar conduce?')) eliminar.mutate(r.id); } },
+                  ]}
+                />
               ),
             },
           ]}

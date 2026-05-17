@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { TableActions } from '../../components/ui/TableActions';
 import {
   Card, Row, Col, Typography, Select, Table, Tag, Statistic,
   Button, Space, Modal, Form, Input, InputNumber, Tabs,
@@ -134,16 +135,20 @@ export default function BancosPage() {
       render: (v: boolean) => v
         ? <Tag color="green" icon={<CheckOutlined />}>Conciliado</Tag>
         : <Tag color="orange">Pendiente</Tag> },
-    { title: '', key: 'actions', width: 90,
+    { title: '', key: 'acciones', width: 72, align: 'right' as const,
       render: (_: any, r: any) => (
-        <Space size={4}>
-          {r.conciliado
-            ? <Tooltip title="Desconciliar"><Button size="small" icon={<DisconnectOutlined />} onClick={() => desconciliarMut.mutate(r.id)} /></Tooltip>
-            : <Tooltip title="Marcar conciliado"><Button size="small" type="primary" icon={<LinkOutlined />} onClick={() => conciliarMut.mutate(r.id)} /></Tooltip>}
-          <Popconfirm title="¿Eliminar?" onConfirm={() => eliminarMovMut.mutate(r.id)}>
-            <Button size="small" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
+        <TableActions
+          onView={() => {}}
+          viewLabel="Ver movimiento"
+          items={[
+            r.conciliado
+              ? { key: 'desconciliar', label: 'Desconciliar', icon: <DisconnectOutlined />, onClick: () => desconciliarMut.mutate(r.id) }
+              : { key: 'conciliar', label: 'Marcar conciliado', icon: <LinkOutlined />, onClick: () => conciliarMut.mutate(r.id) },
+            { type: 'divider' as const },
+            { key: 'eliminar', label: 'Eliminar movimiento', icon: <DeleteOutlined />, danger: true,
+              onClick: () => { if (window.confirm('¿Eliminar este movimiento?')) eliminarMovMut.mutate(r.id); } },
+          ]}
+        />
       )},
   ];
 

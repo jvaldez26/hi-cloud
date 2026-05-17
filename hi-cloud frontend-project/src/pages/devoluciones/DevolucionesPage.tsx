@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { TableActions } from '../../components/ui/TableActions';
 import { exportarExcel } from '../../utils/exportExcel';
 import { Table, Button, Tag, Card, Row, Col, Typography, Statistic, Space,
          Modal, Form, Input, Select, InputNumber, DatePicker, message,
@@ -117,24 +118,23 @@ export default function DevolucionesPage() {
           ? <Tag color="default" style={{ fontSize: 10 }}>—</Tag>
           : null,
     },
-    { title: '', key: 'actions', width: 130,
+    { title: '', key: 'acciones', width: 72, align: 'right' as const,
       render: (_: any, r: any) => (
-        <Space size={4}>
-          <Button size="small" onClick={() => setDetail(r)}>Ver</Button>
-          {r.estado === 'pendiente' && (
-            <Popconfirm
-              title="¿Procesar devolución?"
-              description="Se revertirá el inventario y se generará automáticamente la Nota de Crédito E34."
-              onConfirm={() => procesarMut.mutate(r.id)} okText="Procesar">
-              <Button size="small" type="primary" icon={<CheckOutlined />} loading={procesarMut.isPending}>Procesar</Button>
-            </Popconfirm>
-          )}
-          {r.estado === 'pendiente' && (
-            <Popconfirm title="¿Anular?" onConfirm={() => anularMut.mutate(r.id)}>
-              <Button size="small" danger>Anular</Button>
-            </Popconfirm>
-          )}
-        </Space>
+        <TableActions
+          onView={() => setDetail(r)}
+          viewLabel="Ver devolución"
+          items={[
+            ...(r.estado === 'pendiente' ? [
+              { key: 'procesar', label: 'Procesar devolución', icon: <CheckOutlined />,
+                onClick: () => { if (window.confirm('¿Procesar? Se revertirá el inventario y se generará la NC E34.')) procesarMut.mutate(r.id); } },
+            ] : []),
+            { type: 'divider' as const },
+            ...(r.estado === 'pendiente' ? [
+              { key: 'anular', label: 'Anular devolución', danger: true,
+                onClick: () => { if (window.confirm('¿Anular esta devolución?')) anularMut.mutate(r.id); } },
+            ] : []),
+          ]}
+        />
       )},
   ];
 

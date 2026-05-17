@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { TableActions } from '../../components/ui/TableActions';
+import { DetailDrawer } from '../../components/ui/DetailDrawer';
 import {
   Card, Row, Col, Typography, Select, Table, Tag, Statistic,
   Button, Space, Modal, Form, Input, InputNumber, Tabs,
@@ -52,6 +54,7 @@ export default function ChequesPage() {
   const [chequeraModal,setChequeraModal]= useState(false);
   const [chequeModal,  setChequeModal]  = useState(false);
   const [cobrarModal,  setCobrarModal]  = useState<any>(null);
+  const [detalleCheque,setDetalleCheque]= useState<any>(null);
   const [formCh]                        = Form.useForm();
   const [formCheq]                      = Form.useForm();
   const [formCobro]                     = Form.useForm();
@@ -114,21 +117,22 @@ export default function ChequesPage() {
       render: (v: number) => <Text strong style={{ color: '#1677ff' }}>{fmt.money(v)}</Text> },
     { title: 'Estado',      dataIndex: 'estado',       width: 120,
       render: (v: string) => <Tag color={ESTADO_COLOR[v]}>{ESTADO_LABEL[v] ?? v}</Tag> },
-    { title: '', key: 'actions', width: 140,
+    { title: '', key: 'acciones', width: 72, align: 'right' as const,
       render: (_: any, r: any) => (
-        <Space size={4}>
-          {r.estado !== 'cobrado' && r.estado !== 'anulado' && (
-            <Tooltip title="Marcar cobrado">
-              <Button size="small" type="primary" icon={<CheckOutlined />}
-                onClick={() => { setCobrarModal(r); formCobro.setFieldsValue({ fechaCobro: dayjs().format('YYYY-MM-DD') }); }} />
-            </Tooltip>
-          )}
-          {r.estado !== 'anulado' && r.estado !== 'cobrado' && (
-            <Popconfirm title="¿Anular cheque?" onConfirm={() => estadoMut.mutate({ id: r.id, estado: 'anulado' })}>
-              <Button size="small" danger icon={<StopOutlined />} />
-            </Popconfirm>
-          )}
-        </Space>
+        <TableActions
+          onView={() => setDetalleCheque(r)}
+          viewLabel="Ver cheque"
+          items={[
+            ...(r.estado !== 'cobrado' && r.estado !== 'anulado' ? [
+              { key: 'cobrar', label: 'Marcar cobrado', icon: <CheckOutlined />,
+                onClick: () => { setCobrarModal(r); formCobro.setFieldsValue({ fechaCobro: dayjs().format('YYYY-MM-DD') }); } },
+            ] : []),
+            { type: 'divider' as const },
+            { key: 'anular', label: 'Anular cheque', icon: <StopOutlined />, danger: true,
+              disabled: r.estado === 'anulado' || r.estado === 'cobrado',
+              onClick: () => { if (window.confirm('¿Anular cheque?')) estadoMut.mutate({ id: r.id, estado: 'anulado' }); } },
+          ]}
+        />
       )},
   ];
 
@@ -385,6 +389,24 @@ export default function ChequesPage() {
           </Row>
         </Form>
       </Modal>
+
+      <DetailDrawer
+        open={!!detalleCheque}
+        onClose={() => setDetalleCheque(null)}
+        title={`Cheque #${detalleCheque?.numeroCheque ?? detalleCheque?.id ?? ''}`}
+        sections={[{
+          fields: [
+            { label: 'Número',      value: detalleCheque?.numeroCheque },
+            { label: 'Fecha',       value: detalleCheque?.fechaEmision },
+            { label: 'Beneficiario',value: detalleCheque?.beneficiario, span: 2 },
+            { label: 'Concepto',    value: detalleCheque?.concepto, span: 2 },
+            { label: 'Monto',       value: detalleCheque?.monto !== undefined ? `RD$${Number(detalleCheque.monto).toLocaleString('es-DO',{minimumFractionDigits:2})}` : undefined },
+            { label: 'Estado',      value: detalleCheque?.estado ? <Tag color={ESTADO_COLOR[detalleCheque.estado]}>{ESTADO_LABEL[detalleCheque.estado]}</Tag> : undefined },
+            { label: 'Chequera',    value: detalleCheque?.chequera?.nombre },
+            { label: 'Fecha cobro', value: detalleCheque?.fechaCobro, hidden: !detalleCheque?.fechaCobro },
+          ],
+        }]}
+      />
     </div>
   );
 }

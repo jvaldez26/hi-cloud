@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { TableActions } from '../../components/ui/TableActions';
 import {
   Table, Button, Tag, Card, Row, Col, Typography, Statistic,
   Modal, Form, Select, DatePicker, Input, Space, Popconfirm,
@@ -131,19 +132,19 @@ export default function VacacionesPage() {
     { title: 'Estado',    dataIndex: 'estado', width: 110,
       render: (v: string) => <Tag color={ESTADO_COLOR[v]}>{v.toUpperCase()}</Tag> },
     { title: 'Motivo',    dataIndex: 'motivo', ellipsis: true, render: (v: string) => v ?? '—' },
-    { title: '', key: 'actions', width: 100,
-      render: (_: any, r: any) => r.estado === 'pendiente' ? (
-        <Space size={4}>
-          <Tooltip title="Aprobar">
-            <Button size="small" type="primary" icon={<CheckOutlined />}
-              onClick={() => setRespModal({ id: r.id, tipo: 'aprobar' })} />
-          </Tooltip>
-          <Tooltip title="Rechazar">
-            <Button size="small" danger icon={<CloseOutlined />}
-              onClick={() => setRespModal({ id: r.id, tipo: 'rechazar' })} />
-          </Tooltip>
-        </Space>
-      ) : null },
+    { title: '', key: 'acciones', width: 72, align: 'right' as const,
+      render: (_: any, r: any) => (
+        <TableActions
+          onView={() => {}}
+          viewLabel="Ver solicitud"
+          items={[
+            ...(r.estado === 'pendiente' ? [
+              { key: 'aprobar',  label: 'Aprobar solicitud',  icon: <CheckOutlined />, onClick: () => setRespModal({ id: r.id, tipo: 'aprobar' }) },
+              { key: 'rechazar', label: 'Rechazar solicitud', icon: <CloseOutlined />, danger: true, onClick: () => setRespModal({ id: r.id, tipo: 'rechazar' }) },
+            ] : []),
+          ]}
+        />
+      )},
   ];
 
   const colsAus = [
@@ -156,11 +157,16 @@ export default function VacacionesPage() {
     { title: 'Justificada',dataIndex: 'justificada',width: 100,
       render: (v: boolean) => v ? <Tag color="green">Sí</Tag> : <Tag color="red">No</Tag> },
     { title: 'Descripción',dataIndex: 'descripcion',ellipsis: true, render: (v: string) => v ?? '—' },
-    { title: '', key: 'del', width: 50,
+    { title: '', key: 'acciones', width: 72, align: 'right' as const,
       render: (_: any, r: any) => (
-        <Popconfirm title="¿Eliminar?" onConfirm={() => elimAusMut.mutate(r.id)}>
-          <Button type="text" danger size="small" icon={<DeleteOutlined />} />
-        </Popconfirm>
+        <TableActions
+          onView={() => {}}
+          viewLabel="Ver ausencia"
+          items={[
+            { key: 'eliminar', label: 'Eliminar ausencia', icon: <DeleteOutlined />, danger: true,
+              onClick: () => { if (window.confirm('¿Eliminar esta ausencia?')) elimAusMut.mutate(r.id); } },
+          ]}
+        />
       )},
   ];
 

@@ -2,6 +2,7 @@
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { TableActions } from '../../components/ui/TableActions';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   DatePicker, InputNumber, Space, Typography, Statistic, Popconfirm,
@@ -275,25 +276,33 @@ export default function NotasDebitoPage() {
                 : <Text type="secondary" style={{ fontSize: 11 }}>—</Text> },
             { title: '', key: 'acc', width: 220,
               render: (_: any, r: any) => (
-                <Space>
-                  <Button size="small" icon={<EyeOutlined />} onClick={() => setModalDetalle(r)} />
-                  <Button size="small" type="text"
-                    icon={pdfPending === r.id ? <LoadingOutlined /> : <FilePdfOutlined />}
-                    disabled={pdfPending === r.id}
-                    onClick={() => descargarPDF(r)}
-                    title="Descargar PDF"
-                  />
-                  {r.estado === 'emitida' && <Button size="small" type="text" icon={<MailOutlined />} onClick={() => { setEmailNota(r); setEmailDest(r.cliente?.email ?? ''); }} />}
-                  {r.estado === 'borrador' && <Button size="small" icon={<CheckCircleOutlined />} style={{ color: '#d97706', borderColor: '#d97706' }} onClick={() => emitir.mutate(r.id)}>Emitir</Button>}
-                  {r.estado === 'emitida' && !r.ecfNumero &&
-                    !['aceptado', 'enviado', 'pendiente_envio', 'aceptado_condicion'].includes(r.ecf?.estadoDGII) && (
-                    <Popconfirm title="¿Emitir e-CF E33?" description="Se enviará a la DGII vía tu proveedor e-CF." onConfirm={() => emitirEcfMut.mutate(r.id)} okText="Sí" cancelText="No">
-                      <Button size="small" icon={<AuditOutlined />} loading={emitirEcfMut.isPending} style={{ color: '#7c3aed', borderColor: '#7c3aed' }}>e-CF E33</Button>
-                    </Popconfirm>
-                  )}
-                  {r.estado === 'emitida' && <Popconfirm title="¿Anular nota?" onConfirm={() => anular.mutate(r.id)}><Button size="small" danger icon={<CloseCircleOutlined />}>Anular</Button></Popconfirm>}
-                  {r.estado === 'borrador' && <Popconfirm title="¿Eliminar?" onConfirm={() => eliminar.mutate(r.id)}><Button size="small" danger type="text" icon={<DeleteOutlined />} /></Popconfirm>}
-                </Space>
+                <TableActions
+                  onView={() => setModalDetalle(r)}
+                  viewLabel="Ver detalle"
+                  items={[
+                    { key: 'pdf', label: pdfPending === r.id ? 'Generando...' : 'Descargar PDF',
+                      icon: pdfPending === r.id ? <LoadingOutlined /> : <FilePdfOutlined />,
+                      disabled: pdfPending === r.id, onClick: () => descargarPDF(r) },
+                    { key: 'email', label: 'Enviar email', icon: <MailOutlined />,
+                      disabled: r.estado !== 'emitida',
+                      onClick: () => { setEmailNota(r); setEmailDest(r.cliente?.email ?? ''); } },
+                    ...(r.estado === 'borrador' ? [
+                      { key: 'emitir', label: 'Emitir nota', icon: <CheckCircleOutlined />, onClick: () => emitir.mutate(r.id) },
+                    ] : []),
+                    ...(r.estado === 'emitida' && !r.ecfNumero ? [
+                      { key: 'ecf', label: 'Emitir e-CF E33', icon: <AuditOutlined />, onClick: () => emitirEcfMut.mutate(r.id) },
+                    ] : []),
+                    { type: 'divider' as const },
+                    ...(r.estado === 'emitida' ? [
+                      { key: 'anular', label: 'Anular nota', icon: <CloseCircleOutlined />, danger: true,
+                        onClick: () => { if (window.confirm('¿Anular esta nota de débito?')) anular.mutate(r.id); } },
+                    ] : []),
+                    ...(r.estado === 'borrador' ? [
+                      { key: 'eliminar', label: 'Eliminar', icon: <DeleteOutlined />, danger: true,
+                        onClick: () => { if (window.confirm('¿Eliminar?')) eliminar.mutate(r.id); } },
+                    ] : []),
+                  ]}
+                />
               ) },
           ] as any)} />
       </Card>

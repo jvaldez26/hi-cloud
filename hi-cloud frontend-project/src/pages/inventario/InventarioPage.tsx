@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { TableActions } from '../../components/ui/TableActions';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Table, Tag, Card, Row, Col, Typography, Select, Button,
@@ -280,16 +281,18 @@ function LotesTab() {
     { title: 'Estado', dataIndex: 'estado', width: 110,
       render: (v: string) => <Tag color={ESTADO_LOTE_COLOR[v]}>{v?.toUpperCase()}</Tag> },
     { title: 'Proveedor', dataIndex: 'proveedor', ellipsis: true, render: (v: string) => v ?? '—' },
-    { title: '', key: 'acc', width: 120,
-      render: (_: any, r: any) => r.estado === 'activo' && (
-        <Space size={4}>
-          <Popconfirm title="¿Marcar como vencido?" onConfirm={() => updateMut.mutate({ id: r.id, body: { estado: 'vencido' } })}>
-            <Button size="small" danger>Vencer</Button>
-          </Popconfirm>
-          <Popconfirm title="¿Marcar como agotado?" onConfirm={() => updateMut.mutate({ id: r.id, body: { estado: 'agotado' } })}>
-            <Button size="small">Agotar</Button>
-          </Popconfirm>
-        </Space>
+    { title: '', key: 'acciones', width: 72, align: 'right' as const,
+      render: (_: any, r: any) => (
+        <TableActions
+          onView={() => {}}
+          viewLabel="Ver lote"
+          items={r.estado === 'activo' ? [
+            { key: 'vencer', label: 'Marcar como vencido', icon: <WarningOutlined />, danger: true,
+              onClick: () => { if (window.confirm('¿Marcar como vencido?')) updateMut.mutate({ id: r.id, body: { estado: 'vencido' } }); } },
+            { key: 'agotar', label: 'Marcar como agotado',
+              onClick: () => { if (window.confirm('¿Marcar como agotado?')) updateMut.mutate({ id: r.id, body: { estado: 'agotado' } }); } },
+          ] : []}
+        />
       ) },
   ];
 

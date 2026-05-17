@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { DetailDrawer } from '../../components/ui/DetailDrawer';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
@@ -27,8 +28,9 @@ export default function ProveedoresPage() {
   const { token } = theme.useToken();
   const [search,  setSearch]  = useState('');
   const [page,    setPage]    = useState(1);
-  const [open,    setOpen]    = useState(false);
-  const [editing, setEditing] = useState<Proveedor | null>(null);
+  const [open,           setOpen]           = useState(false);
+  const [editing,        setEditing]        = useState<Proveedor | null>(null);
+  const [detalleProveedor, setDetalleProveedor] = useState<Proveedor | null>(null);
   const [form] = Form.useForm<ProveedorPayload>();
   const qc = useQueryClient();
 
@@ -122,8 +124,8 @@ export default function ProveedoresPage() {
       title: '', key: 'actions', width: 80, align: 'right' as const,
       render: (_: unknown, r: Proveedor) => (
         <TableActions
-          onView={() => openEdit(r)}
-          viewLabel="Editar proveedor"
+          onView={() => setDetalleProveedor(r)}
+          viewLabel="Ver proveedor"
           items={[
             { key: 'editar', label: 'Editar', icon: <EditOutlined />, onClick: () => openEdit(r) },
             { type: 'divider' as const },
@@ -252,6 +254,23 @@ export default function ProveedoresPage() {
           </Row>
         </Form>
       </Modal>
+
+      <DetailDrawer
+        open={!!detalleProveedor}
+        onClose={() => setDetalleProveedor(null)}
+        title={detalleProveedor?.nombre ?? 'Proveedor'}
+        sections={[{
+          fields: [
+            { label: 'RNC',       value: detalleProveedor?.rnc },
+            { label: 'Estado',    value: <Tag color={detalleProveedor?.isActive !== false ? 'green' : 'red'}>{detalleProveedor?.isActive !== false ? 'Activo' : 'Inactivo'}</Tag> },
+            { label: 'Email',     value: detalleProveedor?.email },
+            { label: 'Teléfono',  value: detalleProveedor?.telefono },
+            { label: 'Dirección', value: (detalleProveedor as any)?.direccion, span: 2 },
+            { label: 'Contacto',  value: (detalleProveedor as any)?.contacto },
+            { label: 'Días crédito', value: (detalleProveedor as any)?.diasCredito !== undefined ? `${(detalleProveedor as any).diasCredito} días` : undefined },
+          ],
+        }]}
+      />
     </Card>
   );
 }
