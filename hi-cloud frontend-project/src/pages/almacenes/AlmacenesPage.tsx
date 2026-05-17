@@ -3,7 +3,7 @@ import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/Tab
 import {
   Card, Row, Col, Typography, Table, Tag, Statistic,
   Button, Space, Modal, Form, Input, Tabs, Popconfirm,
-  message, Progress, Select, InputNumber, Badge, Tooltip,
+  message, Progress, Select, InputNumber, Badge, Tooltip, theme,
 } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, SwapOutlined,
@@ -40,6 +40,7 @@ const ESTADO_TRANSF: Record<string, { label: string; color: string }> = {
 };
 
 export default function AlmacenesPage() {
+  const { token } = theme.useToken();
   const [almSeleccionado, setAlmSeleccionado] = useState<any>(null);
   const [crearModal,  setCrearModal]  = useState(false);
   const [transfModal, setTransfModal] = useState(false);
@@ -183,7 +184,14 @@ export default function AlmacenesPage() {
                 onClick={() => setAlmSeleccionado(alm)}
                 style={{
                   cursor: 'pointer',
-                  border: almSeleccionado?.id === alm.id ? '2px solid #06b6d4' : '1px solid #e2e8f0',
+                  borderRadius: 12,
+                  border: almSeleccionado?.id === alm.id
+                    ? `2px solid ${token.colorInfo}`
+                    : `1px solid ${token.colorBorderSecondary}`,
+                  boxShadow: almSeleccionado?.id === alm.id
+                    ? `0 0 0 3px ${token.colorInfoBg}`
+                    : 'none',
+                  transition: 'all 0.15s ease',
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -204,7 +212,7 @@ export default function AlmacenesPage() {
                   </Col>
                   <Col xs={24} sm={12}>
                     <Statistic title="Valor estimado" value={fmt.money(alm.valorTotal)}
-                      valueStyle={{ fontSize: 14, color: '#06b6d4' }} />
+                      valueStyle={{ fontSize: 14, color: token.colorInfo }} />
                   </Col>
                 </Row>
               </Card>

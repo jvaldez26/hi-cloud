@@ -1018,23 +1018,39 @@ export default function AppLayout() {
   const location   = useLocation();
   const activePath = location.pathname;
 
-  // Accordion (modo expandido): qué categorías están abiertas
-  // Accordion: solo UNA categoría abierta a la vez
+  // Accordion (modo expandido): qué categoría está abierta
+  // Persiste la preferencia manual del usuario en localStorage.
+  // '' en localStorage significa "el usuario cerró todos los grupos".
+  const ACCORDION_KEY = 'hicloud-sidebar-group';
+
   const [openCategories, setOpenCategories] = useState<string | null>(() => {
+    const saved = localStorage.getItem(ACCORDION_KEY);
+    if (saved !== null) {
+      // El usuario tiene preferencia explícita: '' = cerrado, 'id' = abierto
+      return saved === '' ? null : saved;
+    }
+    // Sin preferencia → abrir el grupo de la ruta actual
     const active = MENU_CATEGORIES.find(g =>
       g.items.some(i => activePath.startsWith(i.path))
     );
     return active?.id ?? null;
   });
 
-  // Auto-abrir la categoría de la ruta activa al navegar
+  // Auto-abrir al navegar A UN GRUPO DIFERENTE al guardado
+  // (permite que la navegación desde fuera abra el grupo correcto)
   useEffect(() => {
     const activeGroup = MENU_CATEGORIES.find(g =>
       g.items.some(i => activePath.startsWith(i.path))
     );
-    if (activeGroup && openCategories !== activeGroup.id) {
+    if (!activeGroup) return;
+    const saved = localStorage.getItem(ACCORDION_KEY);
+    // Solo abrir automáticamente si no hay preferencia guardada
+    // o si la ruta cambia a un grupo que no es el guardado
+    if (saved === null || (saved !== '' && saved !== activeGroup.id)) {
       setOpenCategories(activeGroup.id);
+      localStorage.setItem(ACCORDION_KEY, activeGroup.id);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePath]);
 
   // Flyout (modo colapsado): qué categoría activa el panel secundario
@@ -1158,10 +1174,14 @@ export default function AppLayout() {
   }, [empresasLoaded, misEmpresas.length, navigate, user?.role]);
 
   // ── Accordion (expandido) ────────────────────────────────────────────────────
-  // Toggle accordion: abre la seleccionada, cierra la anterior
+  // Toggle accordion: guarda la preferencia del usuario en localStorage
   const toggleCategory = useCallback((id: string) => {
-    setOpenCategories(prev => (prev === id ? null : id));
-  }, []);
+    setOpenCategories(prev => {
+      const next = prev === id ? null : id;
+      localStorage.setItem(ACCORDION_KEY, next ?? '');
+      return next;
+    });
+  }, [ACCORDION_KEY]);
 
   // ── Flyout (colapsado) ───────────────────────────────────────────────────────
   const closePanel  = useCallback(() => setActivePanel(null), []);
