@@ -1,5 +1,6 @@
 ﻿import { useState } from 'react';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
@@ -292,6 +293,8 @@ export default function NotasCreditoPage() {
             message.success(`${filas.length} notas exportadas`);
           }}>Excel</Button>
           <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['notas-credito']} />
+          <VideoTutorialButton />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => abrirDesdeFactura()}>
             Nueva Nota de Crédito
           </Button>

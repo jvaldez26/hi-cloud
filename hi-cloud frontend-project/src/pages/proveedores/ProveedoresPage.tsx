@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Table, Button, Input, Space, Modal, Form, Row, Col,
@@ -155,6 +156,8 @@ export default function ProveedoresPage() {
             />
             <Button icon={<FileExcelOutlined />} onClick={handleExcel}>Excel</Button>
             <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+            <RefreshByKeyButton queryKey={['proveedores']} />
+            <VideoTutorialButton />
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Nuevo proveedor</Button>
           </Space>
         </Col>

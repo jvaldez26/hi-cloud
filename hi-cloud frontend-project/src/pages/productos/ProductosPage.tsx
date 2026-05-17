@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Table, Button, Input, Space, Tag, Modal, Form, Row, Col,
          Typography, Popconfirm, message, Card, InputNumber,
@@ -513,6 +514,8 @@ function ProductosCatalogo() {
               Excel
             </Button>
             <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+            <RefreshByKeyButton queryKey={['productos']} />
+            <VideoTutorialButton />
             {puedeCrear && (
               <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
                 Nuevo producto

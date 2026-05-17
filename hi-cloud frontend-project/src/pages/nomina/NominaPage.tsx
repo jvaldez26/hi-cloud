@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { usePlanGuard } from '../../hooks/usePlan';
 import ModuloBloqueado from '../../components/ui/ModuloBloqueado';
@@ -119,6 +120,8 @@ function EmpleadosTab() {
               exportarExcel(filas, `Empleados-${dayjs().format('YYYY-MM-DD')}`);
             }}>Excel</Button>
             <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+            <RefreshByKeyButton queryKey={['empleados']} />
+            <VideoTutorialButton />
             <Button type="primary" icon={<PlusOutlined />}
               onClick={() => { setEditing(null); form.resetFields(); setOpen(true); }}>
               Nuevo empleado

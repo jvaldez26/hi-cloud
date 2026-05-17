@@ -1,5 +1,6 @@
 ﻿import { useState, useCallback } from 'react';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Table, Button, Tag, Space, Typography, Card, Row, Col,
@@ -250,6 +251,8 @@ export default function ComprasPage() {
           <Space>
             <Button icon={<FileExcelOutlined />} onClick={handleExcel}>Excel</Button>
             <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+            <RefreshByKeyButton queryKey={['compras']} />
+            <VideoTutorialButton />
             {puedeCrear && (
               <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/compras/nueva')}>
                 Nueva compra

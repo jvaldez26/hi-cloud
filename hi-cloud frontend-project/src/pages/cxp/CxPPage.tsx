@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Table, Button, Tag, Space, Modal, Form, InputNumber, Select, Input,
@@ -181,6 +182,8 @@ export default function CxPPage() {
           <Col>
             <Button icon={<FileExcelOutlined />} onClick={handleExcel}>Excel</Button>
             <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+            <RefreshByKeyButton queryKey={['cxp']} />
+            <VideoTutorialButton />
           </Col>
         </Row>
 

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Button, Table, Tag, Avatar, Typography, Space, Modal,
@@ -291,6 +292,8 @@ export default function EquipoPage() {
         <Col>
           <Space>
             <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+            <RefreshByKeyButton queryKey={['equipo-miembros']} />
+            <VideoTutorialButton />
             <Button type="primary" icon={<UserAddOutlined />}
               onClick={() => { setInvModal(true); invForm.resetFields(); setRol('viewer'); }}>
               Invitar usuario

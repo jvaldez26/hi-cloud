@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Table, Button, Input, Space, Tag, Modal, Form, Row, Col,
@@ -175,6 +176,8 @@ export default function ClientesPage() {
             />
             <Button icon={<FileExcelOutlined />} onClick={handleExcel}>Excel</Button>
             <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+            <RefreshByKeyButton queryKey={['clientes']} />
+            <VideoTutorialButton />
             {puedeCrear && (
               <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Nuevo cliente</Button>
             )}

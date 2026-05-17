@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Table, Button, Card, Row, Col, Typography, Statistic, Tag,
          Modal, Form, Input, InputNumber, Select, DatePicker, message,
@@ -273,6 +274,8 @@ export default function GastosPage() {
                     Excel
                   </Button>
                   <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+                  <RefreshByKeyButton queryKey={['gastos']} />
+                  <VideoTutorialButton />
                 </Col>
               </Row>
               <Table columns={fcGastos(cols as any)} dataSource={lista?.data ?? []} rowKey="id"

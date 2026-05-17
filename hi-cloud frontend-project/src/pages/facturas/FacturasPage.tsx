@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Table, Button, Tag, Space, Typography, Card, Row, Col,
@@ -368,6 +369,8 @@ export default function FacturasPage() {
           <Space>
             <Button icon={<FileExcelOutlined />} onClick={handleExportExcel}>Excel</Button>
             <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+            <RefreshByKeyButton queryKey={['facturas']} />
+            <VideoTutorialButton />
             {puedeCrear && (
               <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/facturas/nueva')}>
                 Nueva factura
