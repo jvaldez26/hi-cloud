@@ -6,7 +6,7 @@ import { Card, Row, Col, Typography, Statistic, Button, InputNumber,
          Table, Tag, Modal, Form, Input, Space, Alert, Spin, message, Avatar,
          theme, Drawer, Descriptions, Divider } from 'antd';
 import { UnlockOutlined, LockOutlined, HistoryOutlined,
-         UserOutlined, RollbackOutlined, WarningOutlined,
+         RollbackOutlined, WarningOutlined,
          PrinterOutlined, DownloadOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../../store/auth.store';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -393,20 +393,59 @@ export default function CajaPage() {
       </Drawer>
 
       {/* Modal abrir caja */}
-      <Modal title="Abrir Caja" open={openAbrir} onCancel={() => setOpenAbrir(false)} footer={null} width={420}>
+      <Modal
+        title={<Space><UnlockOutlined style={{ color: '#10B981' }} />Abrir Caja</Space>}
+        open={openAbrir} onCancel={() => setOpenAbrir(false)} footer={null} width={420}
+      >
+        {/* Cajero — automático desde JWT */}
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 500, color: token.colorTextSecondary, marginBottom: 6 }}>
+            Cajero responsable
+          </div>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '8px 12px',
+            background: token.colorFillAlter,
+            border: `1px solid ${token.colorBorderSecondary}`,
+            borderRadius: 8,
+          }}>
+            <Avatar size={28} style={{ background: avatarColor(user?.nombre ?? ''), fontSize: 12, fontWeight: 600, flexShrink: 0 }}>
+              {(user?.nombre ?? 'U').charAt(0).toUpperCase()}
+            </Avatar>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 500, color: token.colorText }}>{user?.nombre}</div>
+              <div style={{ fontSize: 11, color: token.colorTextTertiary }}>{user?.role} · {user?.email}</div>
+            </div>
+            <LockOutlined style={{ color: token.colorTextTertiary, fontSize: 12 }} />
+          </div>
+          <div style={{ fontSize: 11, color: token.colorTextTertiary, marginTop: 4 }}>
+            El cajero se asigna automáticamente al usuario activo
+          </div>
+        </div>
+
         <Form form={form} layout="vertical" onFinish={v => abrirMut.mutate(v)} initialValues={{ saldoApertura: 0 }}>
-          <Form.Item name="vendedorNombre" label="Cajero responsable" rules={[{ required: true, message: 'Indica el nombre del cajero' }]}>
-            <Input prefix={<UserOutlined />} placeholder="Nombre del cajero" size="large" />
-          </Form.Item>
           <Form.Item name="saldoApertura" label="Saldo de apertura (RD$)">
-            <InputNumber style={{ width: '100%' }} min={0} precision={2} size="large" />
+            <InputNumber
+              style={{ width: '100%' }} min={0} precision={2} size="large" autoFocus
+              formatter={v => `RD$ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+              parser={(v: any) => v!.replace(/RD\$\s?|(,*)/g, '')}
+            />
           </Form.Item>
+          <div style={{ fontSize: 11, color: token.colorTextTertiary, marginTop: -12, marginBottom: 16 }}>
+            Ingresa el efectivo inicial en la caja
+          </div>
           <Form.Item name="notas" label="Notas (opcional)">
-            <Input.TextArea rows={2} />
+            <Input.TextArea rows={2} placeholder="Ej: Billetes recibidos del banco, apertura especial..." />
           </Form.Item>
           <Row justify="end" gutter={8}>
             <Col><Button onClick={() => setOpenAbrir(false)}>Cancelar</Button></Col>
-            <Col><Button type="primary" htmlType="submit" icon={<UnlockOutlined />} loading={abrirMut.isPending}>Abrir caja</Button></Col>
+            <Col>
+              <Button type="primary" htmlType="submit" icon={<UnlockOutlined />}
+                loading={abrirMut.isPending}
+                style={{ background: '#10B981', borderColor: '#10B981' }}>
+                Abrir caja
+              </Button>
+            </Col>
           </Row>
         </Form>
       </Modal>

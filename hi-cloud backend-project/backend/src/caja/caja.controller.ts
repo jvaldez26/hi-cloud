@@ -56,14 +56,14 @@ export class CajaController {
   @Post('abrir')
   @HttpCode(HttpStatus.CREATED)
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)
-  @ApiOperation({ summary: 'Abrir caja del día (por vendedor)' })
+  @ApiOperation({ summary: 'Abrir caja del día (cajero = usuario autenticado)' })
   abrirCaja(@Body() dto: AbrirCajaDto, @GetUser() usuario: User) {
     return this.cajaService.abrirCaja(
       usuario.id,
       dto.saldoApertura ?? 0,
       dto.notas,
-      dto.vendedorId,
-      dto.vendedorNombre,
+      usuario.id,
+      usuario.nombre,
     );
   }
 
