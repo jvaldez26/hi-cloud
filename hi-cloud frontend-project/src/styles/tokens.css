@@ -234,46 +234,65 @@ body {
   display: block;
 }
 
-/* SA tabla: usar los colores del ConfigProvider propio, no los de darkmode.css */
-/* Modo oscuro del SA (slate, no negro puro) */
-.sa-scope .ant-table-thead > tr > th,
-.sa-scope .ant-table-thead > tr > td {
+/* ── SA MODO OSCURO — solo aplica cuando NO tiene la clase sa-light ─────────
+   Usando :not(.sa-light) para que NO afecten al modo claro del SA.            */
+.sa-scope:not(.sa-light) .ant-table-thead > tr > th,
+.sa-scope:not(.sa-light) .ant-table-thead > tr > td {
   background: #1E293B !important;
   border-bottom-color: #334155 !important;
   color: #94A3B8 !important;
 }
-.sa-scope .ant-table-tbody > tr > td {
+.sa-scope:not(.sa-light) .ant-table-tbody > tr > td {
+  background: #0F172A !important;
   border-bottom-color: #1E293B !important;
 }
-.sa-scope .ant-table-tbody > tr:hover > td {
+.sa-scope:not(.sa-light) .ant-table-tbody > tr:hover > td {
   background: #1a2535 !important;
 }
-.sa-scope .ant-input,
-.sa-scope .ant-input-affix-wrapper,
-.sa-scope .ant-select-selector,
-.sa-scope .ant-picker {
+.sa-scope:not(.sa-light) .ant-input,
+.sa-scope:not(.sa-light) .ant-input-affix-wrapper,
+.sa-scope:not(.sa-light) .ant-select-selector,
+.sa-scope:not(.sa-light) .ant-picker {
   background: #1E293B !important;
   border-color: #334155 !important;
   color: #F8FAFC !important;
 }
 
-/* SA modo claro: usar paleta SA_LIGHT */
+/* ── SA MODO CLARO — paleta SA_LIGHT (blanco/slate-light) ───────────────────
+   Estas reglas tienen mayor especificidad que las oscuras y los overrides de
+   darkmode.css, garantizando la vista correcta en modo claro.                 */
 .sa-scope.sa-light .ant-table-thead > tr > th,
 .sa-scope.sa-light .ant-table-thead > tr > td {
   background: #F8FAFC !important;
   border-bottom-color: #E2E8F0 !important;
   color: #475569 !important;
 }
+.sa-scope.sa-light .ant-table-tbody > tr > td {
+  background: #FFFFFF !important;
+  border-bottom-color: #F1F5F9 !important;
+  color: #0F172A !important;
+}
 .sa-scope.sa-light .ant-table-tbody > tr:hover > td {
   background: #F0F4F8 !important;
 }
 .sa-scope.sa-light .ant-input,
 .sa-scope.sa-light .ant-input-affix-wrapper,
-.sa-scope.sa-light .ant-select-selector {
+.sa-scope.sa-light .ant-select-selector,
+.sa-scope.sa-light .ant-picker {
   background: #FFFFFF !important;
   border-color: #E2E8F0 !important;
   color: #0F172A !important;
 }
+/* Cards, modales y dropdowns en modo claro SA */
+.sa-scope.sa-light .ant-card,
+.sa-scope.sa-light .ant-card-body   { background: #FFFFFF !important; border-color: #E2E8F0 !important; }
+.sa-scope.sa-light .ant-card-head   { background: #F8FAFC !important; border-bottom-color: #E2E8F0 !important; }
+.sa-scope.sa-light .ant-modal-content,
+.sa-scope.sa-light .ant-modal-header{ background: #FFFFFF !important; }
+.sa-scope.sa-light .ant-dropdown-menu,
+.sa-scope.sa-light .ant-select-dropdown { background: #FFFFFF !important; border-color: #E2E8F0 !important; }
+.sa-scope.sa-light .ant-statistic-title { color: #64748B !important; }
+.sa-scope.sa-light .ant-divider         { border-color: #E2E8F0 !important; }
 
 /* ── SA: darkmode.css tiene reglas sin :not(.sa-scope) que afectan al SA.
    La solución correcta es que el ConfigProvider del SA maneje sus propios tokens
