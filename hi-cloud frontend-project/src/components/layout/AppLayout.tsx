@@ -769,7 +769,7 @@ function CategoryBtnCollapsed({
   category:   MenuCategory;
   activePath: string;
   isActive:   boolean;
-  onClick:    () => void;
+  onClick:    (e: React.MouseEvent<HTMLButtonElement>) => void;
 }) {
   const C = useC();
   const [hover, setHover] = useState(false);
@@ -806,116 +806,113 @@ function CategoryBtnCollapsed({
 
 // ── Panel secundario (flyout) ─────────────────────────────────────────────────
 function FlyoutPanel({
-  category, activePath, sidebarWidth, onNavigate, onClose, planActual, onLocked,
+  category, activePath, sidebarWidth, panelTop, onNavigate, onClose, planActual, onLocked,
 }: {
   category:     MenuCategory;
   activePath:   string;
   sidebarWidth: number;
+  panelTop:     number;     // posición Y del botón que lo abrió
   onNavigate:   (path: string) => void;
   onClose:      () => void;
   planActual:   PlanTipo;
   onLocked:     (item: SubItem, planMinimo: PlanTipo) => void;
 }) {
   const C = useC();
+
+  // Ajuste automático si el flyout se sale de la pantalla por abajo
+  const HEADER_H = 42;
+  const ITEM_H   = 34;
+  const PADDING  = 10;
+  const estimatedH = HEADER_H + category.items.length * ITEM_H + PADDING;
+  const adjustedTop = Math.max(
+    8,
+    Math.min(panelTop, window.innerHeight - estimatedH - 8),
+  );
+
   return (
     <>
-      {/* Overlay — cubre el área de contenido, captura clicks fuera del panel */}
+      {/* Overlay full-screen: captura clicks fuera del flyout y del sidebar */}
       <div
         onMouseDown={onClose}
         style={{
           position: 'fixed',
-          top: 0, bottom: 0,
-          left: sidebarWidth + 220, // empieza después del panel
-          right: 0,
-          zIndex: 150,
+          inset:    0,
+          zIndex:   149,
         }}
       />
 
-    <motion.div
-      key={category.id}
-      initial={{ opacity: 0, x: -12 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -12 }}
-      transition={{ duration: 0.16, ease: [0.25, 0.46, 0.45, 0.94] }}
-      style={{
-        position:      'fixed',
-        left:          sidebarWidth,
-        top:           0,
-        width:         220,
-        height:        '100vh',
-        background:    C.panelBg,
-        boxShadow:     '6px 0 20px rgba(0,0,0,0.3)',
-        zIndex:        200,
-        display:       'flex',
-        flexDirection: 'column',
-        borderRight:   `1px solid ${C.panelBorder}`,
-      }}
-    >
-      {/* Header compacto */}
-      <div style={{
-        padding:       '12px 16px',
-        borderBottom:  '1px solid #334155',
-        flexShrink:    0,
-        display:       'flex',
-        alignItems:    'center',
-        justifyContent:'space-between',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <category.Icon size={14} strokeWidth={2.5} style={{ color: C.accent, flexShrink: 0 }} />
+      <motion.div
+        key={category.id}
+        initial={{ opacity: 0, x: -8, scale: 0.97 }}
+        animate={{ opacity: 1, x: 0,  scale: 1    }}
+        exit={{    opacity: 0, x: -8, scale: 0.97 }}
+        transition={{ duration: 0.14, ease: [0.25, 0.46, 0.45, 0.94] }}
+        style={{
+          position:      'fixed',
+          left:          sidebarWidth,
+          top:           adjustedTop,
+          width:         200,
+          // height AUTO — se ajusta al número de items
+          background:    C.panelBg,
+          boxShadow:     '4px 4px 16px rgba(0,0,0,0.35)',
+          zIndex:        200,
+          display:       'flex',
+          flexDirection: 'column',
+          borderRadius:  '0 8px 8px 0',
+          overflow:      'hidden',
+          borderRight:   `1px solid ${C.panelBorder}`,
+        }}
+      >
+        {/* Header */}
+        <div style={{
+          padding:      '10px 14px',
+          borderBottom: `1px solid ${C.panelBorder}`,
+          flexShrink:   0,
+          display:      'flex',
+          alignItems:   'center',
+          gap:          8,
+        }}>
+          <category.Icon size={13} strokeWidth={2.5} style={{ color: C.accent, flexShrink: 0 }} />
           <span style={{
             fontSize:      11,
             fontWeight:    700,
             color:         C.textSub,
             textTransform: 'uppercase',
             letterSpacing: '0.08em',
+            flex:          1,
+            overflow:      'hidden',
+            textOverflow:  'ellipsis',
+            whiteSpace:    'nowrap',
           }}>
             {category.label}
           </span>
         </div>
-        <button
-          onClick={onClose}
-          style={{
-            background: 'transparent', border: 'none', cursor: 'pointer',
-            color: C.footerText, display: 'flex', padding: 3, borderRadius: 4,
-          }}
-          onMouseEnter={e => (e.currentTarget.style.color = C.textSub)}
-          onMouseLeave={e => (e.currentTarget.style.color = C.footerText)}
-        >
-          <X size={13} strokeWidth={2} />
-        </button>
-      </div>
 
-      {/* Lista de items compacta */}
-      <div style={{
-        flex:           1,
-        overflowY:      'auto',
-        padding:        '6px 0',
-        scrollbarWidth: 'thin',
-        scrollbarColor: '#334155 transparent',
-      }}>
-        {category.items.map((item, idx) => (
-          <motion.div
-            key={item.path}
-            initial={{ opacity: 0, x: -6 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: idx * 0.018, duration: 0.12 }}
-          >
-            <FlyoutItem
-              item={item}
-              active={activePath.startsWith(item.path)}
-              locked={esRutaBloqueada(item.path, planActual)}
-              planMinimo={PATH_MIN_PLAN[item.path] as PlanTipo | undefined}
-              onClick={() => {
-                const minPlan = PATH_MIN_PLAN[item.path] as PlanTipo | undefined;
-                if (minPlan && esRutaBloqueada(item.path, planActual)) {
-                  onClose(); onLocked(item, minPlan);
-                } else { onNavigate(item.path); onClose(); }
-              }}
-            />
-          </motion.div>
-        ))}
-      </div>
-    </motion.div>
+        {/* Items — sin scroll (height auto ajustada al contenido) */}
+        <div style={{ padding: '5px 0' }}>
+          {category.items.map((item, idx) => (
+            <motion.div
+              key={item.path}
+              initial={{ opacity: 0, x: -4 }}
+              animate={{ opacity: 1, x: 0  }}
+              transition={{ delay: idx * 0.015, duration: 0.1 }}
+            >
+              <FlyoutItem
+                item={item}
+                active={activePath.startsWith(item.path)}
+                locked={esRutaBloqueada(item.path, planActual)}
+                planMinimo={PATH_MIN_PLAN[item.path] as PlanTipo | undefined}
+                onClick={() => {
+                  const minPlan = PATH_MIN_PLAN[item.path] as PlanTipo | undefined;
+                  if (minPlan && esRutaBloqueada(item.path, planActual)) {
+                    onClose(); onLocked(item, minPlan);
+                  } else { onNavigate(item.path); onClose(); }
+                }}
+              />
+            </motion.div>
+          ))}
+        </div>
+      </motion.div>
     </>
   );
 }
@@ -1026,7 +1023,8 @@ export default function AppLayout() {
   }, [activePath]);
 
   // Flyout (modo colapsado): qué categoría activa el panel secundario
-  const [activePanel, setActivePanel] = useState<string | null>(null);
+  // { id, top } → id del grupo + posición Y del botón que lo abrió
+  const [activePanel, setActivePanel] = useState<{ id: string; top: number } | null>(null);
 
   // Refs para detectar clicks fuera del flyout
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -1115,8 +1113,8 @@ export default function AppLayout() {
 
   // ── Flyout (colapsado) ───────────────────────────────────────────────────────
   const closePanel  = useCallback(() => setActivePanel(null), []);
-  const togglePanel = useCallback((id: string) =>
-    setActivePanel(prev => (prev === id ? null : id)), []);
+  const togglePanel = useCallback((id: string, top: number) =>
+    setActivePanel(prev => (prev?.id === id ? null : { id, top })), []);
 
   // Al expandir el sidebar → cerrar cualquier panel flyout abierto
   useEffect(() => { if (!collapsed) closePanel(); }, [collapsed, closePanel]);
@@ -1389,8 +1387,11 @@ export default function AppLayout() {
               <CategoryBtnCollapsed
                 category={cat}
                 activePath={activePath}
-                isActive={activePanel === cat.id}
-                onClick={() => togglePanel(cat.id)}
+                isActive={activePanel?.id === cat.id}
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  togglePanel(cat.id, rect.top);
+                }}
               />
             ) : (
               <CategoryAccordion
@@ -1616,14 +1617,15 @@ export default function AppLayout() {
         {/* ══ FLYOUT PANEL ═══════════════════════════════════════════ */}
         <AnimatePresence>
           {activePanel && (() => {
-            const cat = categoriasFiltradas.find(c => c.id === activePanel);
+            const cat = categoriasFiltradas.find(c => c.id === activePanel.id);
             if (!cat) return null;
             return (
               <FlyoutPanel
-                key={activePanel}
+                key={activePanel.id}
                 category={cat}
                 activePath={activePath}
                 sidebarWidth={collapsed ? 64 : 220}
+                panelTop={activePanel.top}
                 onNavigate={handleNavigate}
                 onClose={closePanel}
                 planActual={planActual}
