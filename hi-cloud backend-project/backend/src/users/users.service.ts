@@ -44,6 +44,7 @@ export class UsersService implements OnModuleInit {
     return this.userRepository
       .createQueryBuilder('u')
       .addSelect('u.password')
+      .addSelect('u.sessionToken')
       .where('u.email = :email', { email })
       .getOne();
   }

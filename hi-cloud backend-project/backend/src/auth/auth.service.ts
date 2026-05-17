@@ -63,16 +63,16 @@ export class AuthService implements OnModuleInit {
     }
   }
 
-  /** Inicia nueva sesión: genera sessionToken, revoca refresh tokens anteriores. */
-  private async initNewSession(user: User): Promise<string> {
+  /** Inicia nueva sesión: genera sessionToken, revoca refresh tokens anteriores.
+   *  Usa SQL raw para garantizar que la escritura llega a BD independiente
+   *  de cómo TypeORM resuelva los metadatos de la entidad en producción. */
+  private async initNewSession(userId: number): Promise<string> {
     const sessionToken = randomUUID();
-    await this.userRepository.update(user.id, {
-      sessionToken,
-      sessionCreatedAt: new Date(),
-    });
-    user.sessionToken      = sessionToken;
-    user.sessionCreatedAt  = new Date();
-    await this.refreshTokenSvc.revocarTodos(user.id);
+    await this.dataSource.query(
+      `UPDATE users SET "sessionToken" = $1, "sessionCreatedAt" = NOW() WHERE id = $2`,
+      [sessionToken, userId],
+    );
+    await this.refreshTokenSvc.revocarTodos(userId);
     return sessionToken;
   }
 
@@ -230,7 +230,8 @@ export class AuthService implements OnModuleInit {
     }
 
     // Desplazar sesión anterior: nuevo sessionToken + revocar refresh tokens previos
-    await this.initNewSession(user);
+    const sessionToken = await this.initNewSession(user.id);
+    (user as any).sessionToken = sessionToken;  // propagar al buildToken
 
     const empresaId    = await this.getEmpresaPrincipal(user.id);
     const accessToken  = this.buildToken(user, empresaId);
@@ -651,7 +652,8 @@ export class AuthService implements OnModuleInit {
 
   /** Genera la respuesta de login completa (token + empresas) para un User */
   async buildLoginResponse(user: User) {
-    await this.initNewSession(user);
+    const sessionToken = await this.initNewSession(user.id);
+    (user as any).sessionToken = sessionToken;  // propagar al buildToken
     const empresaId   = await this.getEmpresaPrincipal(user.id);
     const accessToken = this.buildToken(user, empresaId);
     const empresas    = await this.ueRepository.find({

@@ -2,6 +2,8 @@ import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 import { UsersService } from '../../users/users.service';
 import { TokenBlacklistService } from '../token-blacklist.service';
 import type { Request } from 'express';
@@ -26,6 +28,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     private configService:    ConfigService,
     private usersService:     UsersService,
     private blacklistService: TokenBlacklistService,
+    @InjectDataSource() private ds: DataSource,
   ) {
     const secret = configService.get<string>('JWT_SECRET');
     if (!secret) {
@@ -59,11 +62,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Token inválido o usuario inactivo');
     }
 
-    // Sesión desplazada o revocada por forzarLogout:
-    // Si el token declara un sessionToken, DEBE coincidir con el de la BD.
-    // Si user.sessionToken es NULL (forzarLogout), también se rechaza.
+    // Sesión desplazada o revocada: SQL raw para garantizar lectura fresca de BD
+    // (evita cualquier caché de TypeORM entity / query result)
     if (payload.sessionToken) {
-      if (!user.sessionToken || payload.sessionToken !== user.sessionToken) {
+      const rows = await this.ds.query(
+        `SELECT "sessionToken" FROM users WHERE id = $1 AND "isActive" = true LIMIT 1`,
+        [payload.sub],
+      );
+      const dbToken = rows[0]?.sessionToken ?? null;
+      if (!dbToken || payload.sessionToken !== dbToken) {
         throw new UnauthorizedException('SESION_DESPLAZADA');
       }
     }
