@@ -132,13 +132,17 @@ export class FacturasRecurrentesService {
           continue;
         }
 
-        // Calcular totales
+        // Calcular totales — normalizar a números para evitar NaN en BD
         let subtotal = 0, iva = 0;
         const detallesData = rec.detalles.map(d => {
-          const sub    = Number(d.precioUnitario) * d.cantidad;
-          const impIva = sub * (d.porcentajeIva / 100);
+          const precio   = Number(d.precioUnitario ?? 0) || 0;
+          const cantidad = Number(d.cantidad       ?? 1) || 1;
+          const pctIva   = Number(d.porcentajeIva  ?? 0) || 0;
+          const sub      = precio * cantidad;
+          const impIva   = sub * (pctIva / 100);
           subtotal += sub; iva += impIva;
-          return { ...d, subtotal: sub, importeIva: impIva, total: sub + impIva };
+          return { ...d, precioUnitario: precio, cantidad, porcentajeIva: pctIva,
+                   subtotal: sub, importeIva: impIva, total: sub + impIva };
         });
 
         // Generar folio con MAX para evitar duplicados en concurrencia

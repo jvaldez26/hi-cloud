@@ -29,8 +29,10 @@ const DATETIME_FMT = new Intl.DateTimeFormat('es-DO', {
 });
 
 export const fmt = {
-  money: (n: number) =>
-    new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'DOP' }).format(n),
+  money: (n: any) => {
+    const val = Number(n);
+    return new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'DOP' }).format(isNaN(val) ? 0 : val);
+  },
 
   number: (n: number) =>
     new Intl.NumberFormat('es-DO').format(n),
