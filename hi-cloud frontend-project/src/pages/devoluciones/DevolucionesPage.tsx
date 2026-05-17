@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { TableActions } from '../../components/ui/TableActions';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
 import { Table, Button, Tag, Card, Row, Col, Typography, Statistic, Space,
          Modal, Form, Input, Select, InputNumber, DatePicker, message,
-         Popconfirm, Drawer, Descriptions } from 'antd';
-import { PlusOutlined, RollbackOutlined, CheckOutlined, FileExcelOutlined } from '@ant-design/icons';
+         Drawer, Descriptions } from 'antd';
+import { PlusOutlined, CheckOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { motion } from 'framer-motion';
 import api from '../../api/client';
 import { fmt } from '../../utils/formatters';
 import dayjs from 'dayjs';
@@ -44,7 +45,6 @@ export default function DevolucionesPage() {
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({ queryKey: ['devoluciones', page], queryFn: () => devolucionesApi.list(page) });
-  const { data: resumen }   = useQuery({ queryKey: ['dev-resumen'], queryFn: devolucionesApi.resumen });
 
   const { data: facturaDetalle } = useQuery({
     queryKey: ['factura-detalle', facturaSelId],
@@ -101,17 +101,28 @@ export default function DevolucionesPage() {
     });
   };
 
+  const COLS_DEF = [
+    { key: 'numero',  label: 'Número',         defaultVisible: true  },
+    { key: 'fecha',   label: 'Fecha',           defaultVisible: true  },
+    { key: 'tipo',    label: 'Tipo',            defaultVisible: true  },
+    { key: 'cli',     label: 'Cliente',         defaultVisible: true  },
+    { key: 'fac',     label: 'Factura',         defaultVisible: true  },
+    { key: 'total',   label: 'Total',           defaultVisible: true  },
+    { key: 'estado',  label: 'Estado',          defaultVisible: true  },
+    { key: 'nc',      label: 'NC E34 Generada', defaultVisible: false },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('devoluciones', COLS_DEF);
+
   const cols = [
-    { title: 'Número',   dataIndex: 'numero',          width: 170, render: (v: string) => <code>{v}</code> },
-    { title: 'Fecha',    dataIndex: 'fecha',            width: 100, render: (v: string) => fmt.date(v) },
-    { title: 'Tipo',     dataIndex: 'tipo',             width: 80,  render: (v: string) => <Tag>{v.toUpperCase()}</Tag> },
-    { title: 'Cliente',  key: 'cli',                    ellipsis: true, render: (_: any, r: any) => r.cliente?.nombre },
-    { title: 'Factura',  key: 'fac',                    width: 150, render: (_: any, r: any) => r.factura?.folio },
-    { title: 'Total',    dataIndex: 'total',             width: 120, render: (v: number) => fmt.money(v) },
-    { title: 'Estado',   dataIndex: 'estado',            width: 110,
+    { key: 'numero',  title: 'Número',   dataIndex: 'numero',  width: 170, render: (v: string) => <code>{v}</code> },
+    { key: 'fecha',   title: 'Fecha',    dataIndex: 'fecha',   width: 100, render: (v: string) => fmt.date(v) },
+    { key: 'tipo',    title: 'Tipo',     dataIndex: 'tipo',    width: 80,  render: (v: string) => <Tag>{v.toUpperCase()}</Tag> },
+    { key: 'cli',     title: 'Cliente',  ellipsis: true,                   render: (_: any, r: any) => r.cliente?.nombre },
+    { key: 'fac',     title: 'Factura',  width: 150,                       render: (_: any, r: any) => r.factura?.folio },
+    { key: 'total',   title: 'Total',    dataIndex: 'total',   width: 120, render: (v: number) => fmt.money(v) },
+    { key: 'estado',  title: 'Estado',   dataIndex: 'estado',  width: 110,
       render: (v: EstadoDev) => <Tag color={estadoColor[v]}>{v.toUpperCase()}</Tag> },
-    {
-      title: 'NC E34 Generada', key: 'nc', width: 140,
+    { key: 'nc',      title: 'NC E34 Generada', width: 140,
       render: (_: any, r: any) => r.notaCreditoNumero
         ? <Tag color="green" style={{ fontSize: 11 }}>✓ {r.notaCreditoNumero}</Tag>
         : r.estado === 'procesada'
@@ -142,21 +153,6 @@ export default function DevolucionesPage() {
     <div>
       <Title level={4} style={{ marginBottom: 16 }}>Devoluciones</Title>
 
-      {/* KPIs */}
-      <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
-        {(Array.isArray(resumen) ? resumen : []).map((r: any, i: number) => (
-          <Col xs={12} md={8} key={r.estado}>
-            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}>
-              <Card size="small">
-                <Statistic title={r.estado.toUpperCase()} value={r.cantidad}
-                  suffix={<small> · {fmt.money(r.montoTotal)}</small>}
-                  valueStyle={{ color: estadoColor[r.estado as EstadoDev] }} />
-              </Card>
-            </motion.div>
-          </Col>
-        ))}
-      </Row>
-
       <Card extra={
         <Space>
           <Button icon={<FileExcelOutlined />} onClick={() => {
@@ -171,6 +167,7 @@ export default function DevolucionesPage() {
             }));
             exportarExcel(filas, 'Devoluciones');
           }}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
           <RefreshByKeyButton queryKey={['devoluciones']} />
           <VideoTutorialButton />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => { setOpen(true); form.resetFields(); setLineas([]); }}>
@@ -178,7 +175,7 @@ export default function DevolucionesPage() {
           </Button>
         </Space>
       }>
-        <Table columns={cols} dataSource={data?.data ?? []} rowKey="id" loading={isLoading} size="small"
+        <Table columns={filterColumns(cols)} dataSource={data?.data ?? []} rowKey="id" loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
           pagination={{ total: data?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }} />
       </Card>
