@@ -59,10 +59,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Token inválido o usuario inactivo');
     }
 
-    // Sesión desplazada: el usuario inició sesión desde otro dispositivo
-    if (payload.sessionToken && user.sessionToken &&
-        payload.sessionToken !== user.sessionToken) {
-      throw new UnauthorizedException('SESION_DESPLAZADA');
+    // Sesión desplazada o revocada por forzarLogout:
+    // Si el token declara un sessionToken, DEBE coincidir con el de la BD.
+    // Si user.sessionToken es NULL (forzarLogout), también se rechaza.
+    if (payload.sessionToken) {
+      if (!user.sessionToken || payload.sessionToken !== user.sessionToken) {
+        throw new UnauthorizedException('SESION_DESPLAZADA');
+      }
     }
 
     (user as any).empresaId = payload.empresaId ?? null;
