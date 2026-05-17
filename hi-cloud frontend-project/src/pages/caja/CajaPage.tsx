@@ -39,7 +39,13 @@ function avatarColor(name: string) {
 
 export default function CajaPage() {
   const { token } = theme.useToken();
-  const [cerrarTarget, setCerrarTarget] = useState<{ id: number; nombre: string; saldoEsperado: number } | null>(null);
+  const [cerrarTarget, setCerrarTarget] = useState<{
+    id: number; nombre: string;
+    saldoEsperado: number; saldoApertura: number;
+    ventasEfectivo: number; ventasTarjeta: number; ventasTransferencia: number;
+    cobrosRecibidos: number; gastosEfectivo: number; retiros: number;
+    cantidadTransacciones: number; fecha: string;
+  } | null>(null);
   const [anularTarget, setAnularTarget] = useState<{ id: number; nombre: string; fecha: string } | null>(null);
   const [detalleCierre, setDetalleCierre] = useState<any>(null);
   const [saldoFisicoInput, setSaldoFisicoInput] = useState<number>(0);
@@ -183,7 +189,21 @@ export default function CajaPage() {
                       extra={
                         caja.estado === 'abierta' ? (
                           <Button size="small" danger icon={<LockOutlined />}
-                            onClick={() => { setCerrarTarget({ id: caja.id, nombre, saldoEsperado }); form.resetFields(); setSaldoFisicoInput(0); }}>
+                            onClick={() => {
+                            setCerrarTarget({
+                              id: caja.id, nombre, saldoEsperado,
+                              saldoApertura:          Number(caja.saldoApertura ?? 0),
+                              ventasEfectivo:         Number(caja.ventasEfectivo ?? 0),
+                              ventasTarjeta:          Number(caja.ventasTarjeta ?? 0),
+                              ventasTransferencia:    Number(caja.ventasTransferencia ?? 0),
+                              cobrosRecibidos:        Number(caja.cobrosRecibidos ?? 0),
+                              gastosEfectivo:         Number(caja.gastosEfectivo ?? 0),
+                              retiros:                Number(caja.retiros ?? 0),
+                              cantidadTransacciones:  caja.cantidadTransacciones ?? 0,
+                              fecha:                  caja.fecha ?? '',
+                            });
+                            form.resetFields(); setSaldoFisicoInput(0);
+                          }}>
                             Cerrar caja
                           </Button>
                         ) : null
@@ -391,40 +411,90 @@ export default function CajaPage() {
         </Form>
       </Modal>
 
-      {/* Modal cerrar caja — con cálculo en tiempo real de diferencia */}
+      {/* Modal cerrar caja — resumen completo + diferencia en tiempo real */}
       <Modal
-        title={<Space><LockOutlined />{`Cerrar caja — ${cerrarTarget?.nombre ?? ''}`}</Space>}
-        open={!!cerrarTarget} onCancel={() => { setCerrarTarget(null); setSaldoFisicoInput(0); }} footer={null}>
-        <Alert type="info" showIcon style={{ marginBottom: 16 }}
-          message={`Efectivo esperado: ${fmt.money(cerrarTarget?.saldoEsperado ?? 0)}`}
-          description="Cuenta el efectivo físico e ingresa el monto real. El sistema calculará la diferencia." />
+        title={<Space><LockOutlined style={{ color: '#EF4444' }} />{`Cerrar caja — ${cerrarTarget?.nombre ?? ''}`}</Space>}
+        open={!!cerrarTarget}
+        onCancel={() => { setCerrarTarget(null); setSaldoFisicoInput(0); }}
+        footer={null}
+        width={460}
+      >
+        {/* ── Resumen del turno ── */}
+        <div style={{
+          background: token.colorFillAlter,
+          border: `1px solid ${token.colorBorderSecondary}`,
+          borderRadius: 8, padding: '12px 16px', marginBottom: 16,
+        }}>
+          <div style={{
+            fontSize: 11, fontWeight: 600, textTransform: 'uppercase',
+            letterSpacing: '0.06em', color: token.colorTextTertiary, marginBottom: 10,
+          }}>
+            Resumen del turno
+          </div>
 
-        {/* Diferencia en tiempo real */}
-        {saldoFisicoInput > 0 && (
-          <Alert
-            type={diferenciaCierre === 0 ? 'success' : diferenciaCierre > 0 ? 'info' : 'error'}
-            showIcon
-            style={{ marginBottom: 16 }}
-            message={
-              <span>
-                Diferencia:{' '}
-                <strong>{diferenciaCierre > 0 ? '+' : ''}{fmt.money(diferenciaCierre)}</strong>
-                {diferenciaCierre === 0 ? ' — ✅ Caja cuadrada' : diferenciaCierre > 0 ? ' — sobrante' : ' — faltante'}
+          {[
+            { label: 'Ventas efectivo',      value: cerrarTarget?.ventasEfectivo ?? 0,      color: '#10B981' },
+            { label: 'Ventas tarjeta',       value: cerrarTarget?.ventasTarjeta ?? 0,       color: undefined },
+            { label: 'Ventas transferencia', value: cerrarTarget?.ventasTransferencia ?? 0, color: undefined },
+            { label: 'Cobros recibidos',     value: cerrarTarget?.cobrosRecibidos ?? 0,     color: '#0EA5E9' },
+            { label: 'Apertura (fondo)',     value: cerrarTarget?.saldoApertura ?? 0,       color: undefined },
+            { label: 'Gastos registrados',   value: cerrarTarget?.gastosEfectivo ?? 0,      color: '#EF4444', signo: true },
+            { label: 'Retiros',              value: cerrarTarget?.retiros ?? 0,             color: '#EF4444', signo: true },
+          ].filter(item => item.value > 0).map(item => (
+            <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', fontSize: 13 }}>
+              <span style={{ color: token.colorTextSecondary }}>{item.label}</span>
+              <span style={{ fontWeight: 500, color: item.color ?? token.colorText }}>
+                {item.signo ? '− ' : ''}{fmt.money(item.value)}
               </span>
-            }
-          />
-        )}
+            </div>
+          ))}
+
+          <div style={{ borderTop: `1px solid ${token.colorBorder}`, marginTop: 8, paddingTop: 8, display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ fontWeight: 600, fontSize: 13, color: token.colorText }}>Efectivo esperado</span>
+            <span style={{ fontWeight: 700, fontSize: 15, color: token.colorText }}>{fmt.money(cerrarTarget?.saldoEsperado ?? 0)}</span>
+          </div>
+          <div style={{ fontSize: 11, color: token.colorTextTertiary, textAlign: 'center', marginTop: 6 }}>
+            {cerrarTarget?.cantidadTransacciones ?? 0} transacciones · {cerrarTarget?.fecha ? fmt.date(cerrarTarget.fecha) : ''}
+          </div>
+        </div>
 
         <Form form={form} layout="vertical" onFinish={v => cerrarMut.mutate({ id: cerrarTarget!.id, body: v })}>
-          <Form.Item name="saldoFisico" label="Efectivo físico contado (RD$)" rules={[{ required: true }]}>
+          <Form.Item
+            name="saldoFisico"
+            label={<span style={{ fontWeight: 500 }}>Efectivo físico contado (RD$)</span>}
+            rules={[{ required: true, message: 'Ingresa el monto contado' }]}
+          >
             <InputNumber
-              style={{ width: '100%' }} min={0} precision={2} size="large" autoFocus
+              style={{ width: '100%', fontSize: 16 }} size="large"
+              min={0} precision={2} autoFocus placeholder="0.00"
               onChange={v => setSaldoFisicoInput(Number(v ?? 0))}
             />
           </Form.Item>
+
+          {/* Diferencia en tiempo real */}
+          {saldoFisicoInput > 0 && (() => {
+            const difColor = diferenciaCierre === 0 ? token.colorSuccess : diferenciaCierre > 0 ? token.colorPrimary : token.colorError;
+            const difBg    = diferenciaCierre === 0 ? token.colorSuccessBg : diferenciaCierre > 0 ? token.colorPrimaryBg : token.colorErrorBg;
+            return (
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '10px 14px', borderRadius: 8, marginBottom: 16, marginTop: -8,
+                background: difBg, border: `1px solid ${difColor}55`,
+              }}>
+                <span style={{ fontSize: 13, fontWeight: 500, color: token.colorText }}>Diferencia</span>
+                <span style={{ fontSize: 15, fontWeight: 700, color: difColor, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {diferenciaCierre === 0 ? '✅' : diferenciaCierre > 0 ? '↑' : '↓'}
+                  {' '}{fmt.money(Math.abs(diferenciaCierre))}
+                  {diferenciaCierre === 0 ? ' Cuadrado' : diferenciaCierre > 0 ? ' Sobrante' : ' Faltante'}
+                </span>
+              </div>
+            );
+          })()}
+
           <Form.Item name="notas" label="Observaciones (opcional)">
-            <Input.TextArea rows={2} />
+            <Input.TextArea rows={2} placeholder="Ej: Billete roto de RD$500, cliente pagó con dólares..." />
           </Form.Item>
+
           <Row justify="end" gutter={8}>
             <Col><Button onClick={() => { setCerrarTarget(null); setSaldoFisicoInput(0); }}>Cancelar</Button></Col>
             <Col>
