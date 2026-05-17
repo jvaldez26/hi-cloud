@@ -2,7 +2,7 @@
 import { useMobile, useTablet } from '../../hooks/useMediaQuery';
 import {
   Layout, Avatar, Dropdown, Typography, Badge, Space,
-  Button, Tooltip, theme, Select, Tag, Modal, Input, Divider,
+  Button, Tooltip, theme, Select, Tag, Modal, Input, Divider, Checkbox, message,
 } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../api/client';
@@ -10,6 +10,7 @@ import {
   LogoutOutlined, UserOutlined, BellOutlined,
   MoonOutlined, SunOutlined, SearchOutlined,
   MenuFoldOutlined, MenuUnfoldOutlined, PlusCircleOutlined,
+  AppstoreOutlined,
 } from '@ant-design/icons';
 import {
   LayoutDashboard, ShoppingCart, Wallet, TrendingUp, Package,
@@ -971,6 +972,22 @@ function getEmpresaColor(nombre: string): string {
   return PALETTE[(nombre.charCodeAt(0) || 72) % PALETTE.length];
 }
 
+// ── Grupos del menú configurables por el usuario ─────────────────────────────
+const GRUPOS_MENU = [
+  { key: 'ventas',     label: 'Ventas & Clientes',         obligatorio: false },
+  { key: 'compras',    label: 'Compras & Gastos',          obligatorio: false },
+  { key: 'inventario', label: 'Inventario & Logística',    obligatorio: false },
+  { key: 'finanzas',   label: 'Finanzas & Contabilidad',   obligatorio: false },
+  { key: 'fiscal',     label: 'Fiscal (DGII)',             obligatorio: false },
+  { key: 'comercial',  label: 'Comercial & Servicios',     obligatorio: false },
+  { key: 'rrhh',       label: 'Recursos Humanos',          obligatorio: false },
+  { key: 'reportes',   label: 'Reportes & Análisis',       obligatorio: false },
+  { key: 'sistema',    label: 'Sistema',                   obligatorio: false },
+] as const;
+
+type GrupoMenuKey = typeof GRUPOS_MENU[number]['key'];
+const TODOS_LOS_GRUPOS: string[] = GRUPOS_MENU.map(g => g.key);
+
 // ── AppLayout principal ───────────────────────────────────────────────────────
 export default function AppLayout() {
   useRealtime();   // ← conexión WebSocket para actualizaciones en vivo
@@ -981,6 +998,7 @@ export default function AppLayout() {
   const [mobileOpen,      setMobileOpen]      = useState(false);
   const [modalEmpresa,    setModalEmpresa]    = useState(false);
   const [busquedaEmpresa, setBusquedaEmpresa] = useState('');
+  const [modalMenu,       setModalMenu]       = useState(false);
   // Modal de upgrade cuando se hace click en módulo bloqueado
   const [upgradeModal, setUpgradeModal] = useState<{ label: string; planMinimo: PlanTipo } | null>(null);
 
@@ -1048,15 +1066,17 @@ export default function AppLayout() {
 
   const userRole = user?.role ?? 'viewer';
 
-  // Categorías filtradas: oculta /super-admin para usuarios normales
-  // y oculta rutas que el rol del usuario no puede ver
-  const categoriasFiltradas = MENU_CATEGORIES.map(cat => ({
-    ...cat,
-    items: cat.items.filter(item =>
-      (item.path !== '/super-admin' || esSuperAdmin) &&
-      rolPuedeVerRuta(item.path, userRole)
-    ),
-  })).filter(cat => cat.items.length > 0);
+  // Categorías filtradas: oculta /super-admin para usuarios normales,
+  // oculta rutas que el rol no puede ver, y aplica preferencias del menú
+  const categoriasFiltradas = MENU_CATEGORIES
+    .filter(cat => menuActivos.includes(cat.id) || !TODOS_LOS_GRUPOS.includes(cat.id))
+    .map(cat => ({
+      ...cat,
+      items: cat.items.filter(item =>
+        (item.path !== '/super-admin' || esSuperAdmin) &&
+        rolPuedeVerRuta(item.path, userRole)
+      ),
+    })).filter(cat => cat.items.length > 0);
 
   // Paleta activa del sidebar según el modo de tema
   const C = isDark ? sidebarDark : sidebarLight;
@@ -1224,6 +1244,45 @@ export default function AppLayout() {
   // ── Sidebar interno ─────────────────────────────────────────────────────────
 
   const empresaNombre = (misEmpresas as any[]).find((e: any) => e.empresaId === empresaActiva)?.nombre ?? '';
+
+  // ── Preferencias de menú ───────────────────────────────────────────────────
+  const menuStorageKey = `hicloud-menu-${user?.id ?? 'default'}`;
+  const [menuActivos, setMenuActivos] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem(`hicloud-menu-${user?.id ?? 'default'}`);
+      if (saved) return JSON.parse(saved) as string[];
+    } catch { /* ignorar */ }
+    return TODOS_LOS_GRUPOS;
+  });
+  const [menuTemp, setMenuTemp] = useState<string[]>(menuActivos);
+
+  const toggleGrupoTemp = (key: string) => {
+    const grupo = GRUPOS_MENU.find(g => g.key === key);
+    if (grupo?.obligatorio) return;
+    setMenuTemp(prev => {
+      if (prev.includes(key)) {
+        const sinEste = prev.filter(k => k !== key);
+        if (sinEste.length < 1) {
+          message.warning('Debe haber al menos un módulo visible');
+          return prev;
+        }
+        return sinEste;
+      }
+      return [...prev, key];
+    });
+  };
+
+  const aplicarMenu = () => {
+    setMenuActivos(menuTemp);
+    try { localStorage.setItem(menuStorageKey, JSON.stringify(menuTemp)); } catch { /* ignorar */ }
+    setModalMenu(false);
+    message.success('Menú actualizado');
+  };
+
+  const cancelarMenu = () => {
+    setMenuTemp(menuActivos);
+    setModalMenu(false);
+  };
   const empresasFiltradas = (misEmpresas as any[]).filter((e: any) =>
     e.nombre?.toLowerCase().includes(busquedaEmpresa.toLowerCase())
   );
@@ -1408,6 +1467,24 @@ export default function AppLayout() {
           </div>
         ))}
       </div>
+
+      {/* ── Opciones de Menú ────────────────────────────────────── */}
+      {!collapsed && (
+        <button
+          onClick={() => { setMenuTemp(menuActivos); setModalMenu(true); }}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '6px 16px', background: 'none', border: 'none',
+            cursor: 'pointer', color: C.footerText, fontSize: 12,
+            width: '100%', transition: 'all 0.15s',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = C.bgHover; e.currentTarget.style.color = C.text; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'none';    e.currentTarget.style.color = C.footerText; }}
+        >
+          <AppstoreOutlined style={{ fontSize: 13 }} />
+          Opciones de Menú
+        </button>
+      )}
 
       {/* ── Footer: usuario + acciones ──────────────────────────── */}
       <div style={{
@@ -1686,6 +1763,48 @@ export default function AppLayout() {
 
       <OnboardingTour />
       <HelpCenter open={helpOpen} onClose={() => setHelpOpen(false)} />
+
+      {/* ── Modal Opciones de Menú ───────────────────────────────── */}
+      <Modal
+        open={modalMenu}
+        onCancel={cancelarMenu}
+        footer={
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <Button onClick={cancelarMenu}>Cancelar</Button>
+            <Button type="primary" onClick={aplicarMenu}>Aplicar</Button>
+          </div>
+        }
+        width={420}
+        title={
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 600 }}>Mostrar en Menú</div>
+            <div style={{ fontSize: 12, fontWeight: 400, color: '#9CA3AF', marginTop: 2 }}>
+              Elige los módulos que deseas ver en el menú
+            </div>
+          </div>
+        }
+      >
+        <div style={{ padding: '4px 0' }}>
+          {GRUPOS_MENU.map((grupo, idx) => (
+            <div
+              key={grupo.key}
+              onClick={() => toggleGrupoTemp(grupo.key)}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '10px 4px', cursor: grupo.obligatorio ? 'default' : 'pointer',
+                borderBottom: idx < GRUPOS_MENU.length - 1 ? '1px solid #F3F4F6' : 'none',
+              }}
+            >
+              <span style={{ fontSize: 14, fontWeight: 500 }}>{grupo.label}</span>
+              <Checkbox
+                checked={menuTemp.includes(grupo.key)}
+                disabled={grupo.obligatorio}
+                style={{ pointerEvents: 'none' }}
+              />
+            </div>
+          ))}
+        </div>
+      </Modal>
 
       {/* ── Modal Cambiar Empresa ─────────────────────────────────── */}
       <Modal
