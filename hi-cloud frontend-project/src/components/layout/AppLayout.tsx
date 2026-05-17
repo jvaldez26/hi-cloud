@@ -1341,26 +1341,42 @@ export default function AppLayout() {
         padding:        collapsed ? '16px 12px 10px' : '14px 16px 10px',
         flexShrink:     0,
       }}>
-        {collapsed ? (
-          <img
-            src="/logo-hicloud.png"
-            alt="HiCloud"
-            style={{ width: 32, height: 32, objectFit: 'contain' }}
-          />
-        ) : (
-          <motion.div
-            key="logo-full"
-            initial={{ opacity: 0, x: -8 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.18 }}
-          >
+        {/* Logo — clickeable: navega al dashboard o refresca si ya está en él */}
+        <div
+          onClick={() => {
+            if (activePath === '/dashboard') {
+              window.dispatchEvent(new CustomEvent('dashboard:refresh'));
+            } else {
+              navigate('/dashboard');
+            }
+          }}
+          title="Ir al Dashboard"
+          style={{ cursor: 'pointer', display: 'flex', alignItems: 'center',
+            borderRadius: 6, padding: 2, transition: 'opacity 0.15s' }}
+          onMouseEnter={e => (e.currentTarget.style.opacity = '0.75')}
+          onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+        >
+          {collapsed ? (
             <img
               src="/logo-hicloud.png"
-              alt="HiCloud ERP"
-              style={{ height: 28, width: 'auto', objectFit: 'contain' }}
+              alt="HiCloud"
+              style={{ width: 32, height: 32, objectFit: 'contain' }}
             />
-          </motion.div>
-        )}
+          ) : (
+            <motion.div
+              key="logo-full"
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.18 }}
+            >
+              <img
+                src="/logo-hicloud.png"
+                alt="HiCloud ERP"
+                style={{ height: 28, width: 'auto', objectFit: 'contain' }}
+              />
+            </motion.div>
+          )}
+        </div>
         {!collapsed && (
           <button
             onClick={() => setCollapsedPersisted(!collapsed)}

@@ -2,7 +2,8 @@ import { Row, Col, Card, Table, Typography, Spin, Tag, Space, Button, theme, Dat
 import {
   DollarOutlined, FileTextOutlined, RightOutlined, ReloadOutlined,
 } from '@ant-design/icons';
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useQuery } from '@tanstack/react-query';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -137,7 +138,25 @@ function CardWidget({ title, extra, children, noPad }: {
 function DashboardAdmin() {
   const navigate  = useNavigate();
   const { token } = theme.useToken();
+  const qc        = useQueryClient();
   const [grupoAbierto, setGrupoAbierto] = useState(true);
+
+  // Listener para el evento 'dashboard:refresh' disparado por el logo del sidebar
+  const refreshAll = useCallback(() => {
+    qc.invalidateQueries({ queryKey: ['bancos-dashboard'] });
+    qc.invalidateQueries({ queryKey: ['kpis-cf'] });
+    qc.invalidateQueries({ queryKey: ['actividad-cf'] });
+    qc.invalidateQueries({ queryKey: ['gastos-anual-cf'] });
+    qc.invalidateQueries({ queryKey: ['fact-pend-cf'] });
+    qc.invalidateQueries({ queryKey: ['antiguedad-cobrar'] });
+    qc.invalidateQueries({ queryKey: ['antiguedad-pagar'] });
+    qc.invalidateQueries({ queryKey: ['resumen-gastos-dash'] });
+  }, [qc]);
+
+  useEffect(() => {
+    window.addEventListener('dashboard:refresh', refreshAll);
+    return () => window.removeEventListener('dashboard:refresh', refreshAll);
+  }, [refreshAll]);
 
   const mesActual  = dayjs().month() + 1;
   const anioActual = dayjs().year();
