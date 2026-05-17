@@ -283,7 +283,7 @@ export default function CxPPage() {
         destroyOnClose
       >
         {pagoRow && (
-          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '12px 16px', marginBottom: 16 }}>
+          <div style={{ background: token.colorErrorBg, border: `1px solid ${token.colorErrorBorder}`, borderRadius: 8, padding: '12px 16px', marginBottom: 16 }}>
             <Text strong style={{ fontSize: 14 }}>
               {(pagoRow as any).proveedor?.nombre ?? '—'}
             </Text>

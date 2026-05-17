@@ -189,7 +189,7 @@ export default function BancosPage() {
                 style={{
                   padding: '14px 18px', borderRadius: 12, cursor: 'pointer',
                   border: `2px solid ${cuentaId === c.id ? '#1677ff' : '#e2e8f0'}`,
-                  background: cuentaId === c.id ? '#eff6ff' : '#fff',
+                  background: cuentaId === c.id ? token.colorPrimaryBg : token.colorBgContainer,
                   transition: 'all .15s',
                 }}
               >

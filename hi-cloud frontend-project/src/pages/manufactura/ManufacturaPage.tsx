@@ -3,8 +3,7 @@ import {
   Card, Row, Col, Typography, Select, Table, Tag, Statistic,
   Button, Space, Modal, Form, Input, InputNumber, Tabs,
   Popconfirm, message, Steps, Progress, Drawer, Alert,
-  Descriptions, Badge, Switch, Spin,
-} from 'antd';
+  Descriptions, Badge, Switch, Spin, theme } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, EditOutlined, PlayCircleOutlined,
   CheckCircleOutlined, StopOutlined, ToolOutlined, AppstoreOutlined,
@@ -319,6 +318,7 @@ const ESTADO_OP = [
 ];
 
 export default function ManufacturaPage() {
+  const { token } = theme.useToken();
   const [tabKey,      setTabKey]      = useState('lm');
   const [lmModal,     setLMModal]     = useState(false);
   const [compModal,   setCompModal]   = useState<number | null>(null);

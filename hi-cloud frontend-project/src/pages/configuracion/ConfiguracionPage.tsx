@@ -192,6 +192,7 @@ function ConfigSidebar({
 // ── Sección: Datos Generales ──────────────────────────────────────────────────
 
 function SeccionDatos({ empresa, onSaved }: { empresa: any; onSaved: () => void }) {
+  const { token } = theme.useToken();
   const [form]            = Form.useForm();
   const qc                = useQueryClient();
   const [pendingValues,   setPendingValues]   = useState<any>(null);
@@ -396,7 +397,7 @@ function SeccionDatos({ empresa, onSaved }: { empresa: any; onSaved: () => void 
       >
         <div style={{ lineHeight: 1.7 }}>
           <p>Estás cambiando el RNC de la empresa:</p>
-          <div style={{ background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 8, padding: '10px 14px', margin: '12px 0', fontFamily: 'monospace', fontSize: 14 }}>
+          <div style={{ background: token.colorWarningBg, border: `1px solid ${token.colorWarningBorder}`, borderRadius: 8, padding: '10px 14px', margin: '12px 0', fontFamily: 'monospace', fontSize: 14 }}>
             <div><span style={{ color: '#6b7280' }}>Anterior: </span><strong style={{ color: '#dc2626' }}>{rncAnterior}</strong></div>
             <div><span style={{ color: '#6b7280' }}>Nuevo:    </span><strong style={{ color: '#059669' }}>{pendingValues?.rnc}</strong></div>
           </div>
@@ -407,7 +408,7 @@ function SeccionDatos({ empresa, onSaved }: { empresa: any; onSaved: () => void 
             <li>El RNC que aparece en facturas e-CF</li>
           </ul>
           {rncInfo?.tieneEcfConfig && (
-            <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '10px 14px', marginTop: 8 }}>
+            <div style={{ background: token.colorErrorBg, border: `1px solid ${token.colorErrorBorder}`, borderRadius: 8, padding: '10px 14px', marginTop: 8 }}>
               <strong style={{ color: '#dc2626' }}>🔴 Advertencia e-CF:</strong>
               <p style={{ margin: '4px 0 0', fontSize: 13, color: '#7f1d1d' }}>
                 Esta empresa tiene configuración e-CF activa en tu proveedor e-CF. Después de cambiar el RNC,
@@ -500,6 +501,7 @@ function SeccionUbicacion({ empresa, onSaved }: { empresa: any; onSaved: () => v
 // ── Sección: Branding ─────────────────────────────────────────────────────────
 
 function SeccionBranding({ empresa, onSaved }: { empresa: any; onSaved: () => void }) {
+  const { token } = theme.useToken();
   const [form] = Form.useForm();
   const qc = useQueryClient();
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -570,7 +572,7 @@ function SeccionBranding({ empresa, onSaved }: { empresa: any; onSaved: () => vo
               <div style={{
                 width: '100%', height: 80, border: '1px dashed #d9d9d9', borderRadius: 8,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: '#fafafa', overflow: 'hidden',
+                background: token.colorFillAlter, overflow: 'hidden',
               }}>
                 {logoPreview
                   ? <img src={logoPreview} alt="Logo" style={{ maxHeight: 64, maxWidth: '80%', objectFit: 'contain' }} />

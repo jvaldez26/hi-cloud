@@ -346,6 +346,7 @@ function IT1Card({ data }: { data: any }) {
 
 // ── Página principal ──────────────────────────────────────────────────────────
 export default function DeclaracionesPage() {
+  const { token } = theme.useToken();
   const mesAnterior = dayjs().subtract(1, 'month');
   const [mes,  setMes]  = useState(dayjs().month() + 1);
   const [anio, setAnio] = useState(dayjs().year());
@@ -664,7 +665,7 @@ export default function DeclaracionesPage() {
                         <Col xs={12} sm={8} md={4} key={m.mes}>
                           <div style={{
                             padding: '10px 12px', borderRadius: 8, textAlign: 'center',
-                            background: m.estado === 'A PAGAR' ? '#fef2f2' : '#f0fdf4',
+                            background: m.estado === 'A PAGAR' ? token.colorErrorBg : token.colorSuccessBg,
                             border: `1px solid ${m.estado === 'A PAGAR' ? '#fca5a5' : '#86efac'}`,
                           }}>
                             <Text style={{ fontSize: 11, display: 'block' }}>

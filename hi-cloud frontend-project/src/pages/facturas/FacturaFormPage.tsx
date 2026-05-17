@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Form, Input, Button, Card, Row, Col, Typography, Select,
-         DatePicker, Table, InputNumber, Space, Divider, message, Tag, Alert } from 'antd';
+         DatePicker, Table, InputNumber, Space, Divider, message, Tag, Alert, theme } from 'antd';
 import { PlusOutlined, DeleteOutlined, ArrowLeftOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -32,6 +32,7 @@ interface LineaForm {
 const NCF_VENTAS = ['E31', 'E32', 'E41', 'E44', 'E45', 'E46', 'E47'];
 
 export default function FacturaFormPage() {
+  const { token } = theme.useToken();
   const [form]     = Form.useForm();
   const [lineas,   setLineas]   = useState<LineaForm[]>([
     { key: '1', cantidad: 1, precioUnitario: 0, porcentajeIva: 18 },

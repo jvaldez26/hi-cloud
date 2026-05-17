@@ -624,7 +624,7 @@ export default function NotasCreditoPage() {
               </Select>
             </div>
             {ecfCodigo === '1' && (
-              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px' }}>
+              <div style={{ background: token.colorErrorBg, border: `1px solid ${token.colorErrorBorder}`, borderRadius: 8, padding: '10px 14px' }}>
                 <strong style={{ color: '#dc2626' }}>Anulación total:</strong>
                 <span style={{ color: '#7f1d1d', fontSize: 13 }}> El monto de la nota debe ser igual al de la factura original. La factura original quedará marcada como anulada en DGII.</span>
               </div>

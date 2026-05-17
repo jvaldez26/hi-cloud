@@ -4,7 +4,7 @@ import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/Tab
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Table, Button, Tag, Card, Row, Col, Typography, Statistic,
          Space, Popconfirm, message, Dropdown, Drawer, Descriptions,
-         Modal, Input, Form, Tooltip } from 'antd';
+         Modal, Input, Form, Tooltip, theme } from 'antd';
 import { TableActions } from '../../components/ui/TableActions';
 import { PlusOutlined, EyeOutlined, MoreOutlined,
          MailOutlined, FileExcelOutlined, FilePdfOutlined, CopyOutlined,
@@ -45,6 +45,7 @@ const TRANSICIONES: Record<CotEstado, string[]> = {
 };
 
 export default function CotizacionesPage() {
+  const { token } = theme.useToken();
   const [page,        setPage]        = useState(1);
   const [detail,      setDetail]      = useState<any>(null);
   const [detailId,    setDetailId]    = useState<number | null>(null);

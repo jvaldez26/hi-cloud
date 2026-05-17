@@ -5,8 +5,7 @@ import { DetailDrawer } from '../../components/ui/DetailDrawer';
 import {
   Card, Row, Col, Typography, Select, Table, Tag, Statistic,
   Button, Space, Modal, Form, Input, InputNumber, Tabs,
-  Popconfirm, message, Badge, Alert, Tooltip, Divider,
-} from 'antd';
+  Popconfirm, message, Badge, Alert, Tooltip, Divider, theme } from 'antd';
 import {
   PlusOutlined, CheckOutlined, StopOutlined, WarningOutlined,
   BankOutlined, FileTextOutlined, FileExcelOutlined,
@@ -45,6 +44,7 @@ const chequesApi = {
 };
 
 export default function ChequesPage() {
+  const { token } = theme.useToken();
   const [mes,          setMes]          = useState(dayjs().month() + 1);
   const [anio,         setAnio]         = useState(dayjs().year());
   const [estadoF,      setEstadoF]      = useState<string | undefined>();

@@ -298,7 +298,7 @@ export default function CxCPage() {
         width={480}
       >
         {pagoRow && (
-          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '12px 16px', marginBottom: 16 }}>
+          <div style={{ background: token.colorFillAlter, border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, padding: '12px 16px', marginBottom: 16 }}>
             <Text strong style={{ fontSize: 14 }}>
               {(pagoRow as any).cliente?.nombre ?? 'Consumidor Final'}
             </Text>

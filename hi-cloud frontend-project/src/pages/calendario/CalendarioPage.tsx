@@ -1,8 +1,7 @@
 import { useState, useMemo } from 'react';
 import {
   Card, Row, Col, Typography, Tag, Statistic, Badge,
-  Button, Select, Space, Tooltip, List, Avatar,
-} from 'antd';
+  Button, Select, Space, Tooltip, List, Avatar, theme } from 'antd';
 import {
   CalendarOutlined, WarningOutlined, CheckCircleOutlined,
   ClockCircleOutlined, DollarOutlined, SafetyCertificateOutlined,
@@ -122,6 +121,7 @@ function CalendarioGrid({ mes, anio, eventos }: { mes: number; anio: number; eve
 }
 
 export default function CalendarioPage() {
+  const { token } = theme.useToken();
   const [mes,  setMes]  = useState(dayjs().month() + 1);
   const [anio, setAnio] = useState(dayjs().year());
   const [tipoF, setTipoF] = useState<string | undefined>();

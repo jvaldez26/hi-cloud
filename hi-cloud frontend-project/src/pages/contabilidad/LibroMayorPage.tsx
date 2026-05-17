@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { Card, Select, Table, Typography, Row, Col, Statistic,
-         Button, DatePicker, Space, Tag, Empty } from 'antd';
+         Button, DatePicker, Space, Tag, Empty, theme } from 'antd';
 import { DownloadOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -14,6 +14,7 @@ const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
 
 export default function LibroMayorPage() {
+  const { token } = theme.useToken();
   const [cuentaId, setCuentaId] = useState<number | undefined>();
   const [rango, setRango]       = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
 

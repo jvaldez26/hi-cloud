@@ -3,8 +3,7 @@ import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/Tab
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   DatePicker, InputNumber, Space, Typography, Statistic, Popconfirm,
-  message, Divider, Progress, Alert, Badge,
-} from 'antd';
+  message, Divider, Progress, Alert, Badge, theme } from 'antd';
 import {
   WalletOutlined, PlusOutlined, PlusCircleOutlined, MinusCircleOutlined,
   LockOutlined, HistoryOutlined, ExclamationCircleOutlined,
@@ -37,6 +36,7 @@ const TIPO_COLOR: Record<string, string> = {
 
 export default function CajaChicaPage() {
   const qc = useQueryClient();
+  const { token } = theme.useToken();
   const [cajaSeleccionada, setCajaSeleccionada] = useState<any>(null);
   const [modalCajaCrear,   setModalCajaCrear]   = useState(false);
   const [modalEgreso,      setModalEgreso]       = useState(false);

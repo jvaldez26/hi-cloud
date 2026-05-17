@@ -2,8 +2,7 @@ import { useState } from 'react';
 import {
   Card, Row, Col, Typography, Table, Tag, Statistic, Button,
   Space, Modal, Form, Select, InputNumber, Tabs,
-  message, Rate, Progress, Avatar, Popconfirm, Descriptions,
-} from 'antd';
+  message, Rate, Progress, Avatar, Popconfirm, Descriptions, theme } from 'antd';
 import { PlusOutlined, CheckOutlined, StarOutlined, TeamOutlined, FileExcelOutlined, DeleteOutlined } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -27,6 +26,7 @@ const NOTA_COLOR = (nota: number) => nota >= 4.5 ? '#10b981' : nota >= 3.5 ? '#1
 const NOTA_LABEL = (nota: number) => nota >= 4.5 ? 'Excelente' : nota >= 3.5 ? 'Bueno' : nota >= 2.5 ? 'Regular' : 'Deficiente';
 
 export default function EvaluacionesPage() {
+  const { token } = theme.useToken();
   const [anio,       setAnio]       = useState(dayjs().year());
   const [crearModal, setCrearModal] = useState(false);
   const [detalle,    setDetalle]    = useState<any>(null);
