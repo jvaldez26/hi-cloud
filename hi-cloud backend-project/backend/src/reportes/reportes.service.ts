@@ -807,4 +807,109 @@ export class ReportesService {
       grafica: rows.map(r => ({ label: r.categoria, value: Number(r.valorTotal) })),
     };
   }
+
+  // ── Antigüedad por Cobrar (CxC) ───────────────────────────────────────────
+
+  async getAntiguedadCobrar() {
+    const eid = this.eid;
+    const [row] = await this.dataSource.query<any[]>(`
+      SELECT
+        COALESCE(SUM(CASE WHEN "fechaVencimiento" >= NOW()
+                         THEN "montoPendiente" ELSE 0 END), 0)::numeric AS corriente,
+        COALESCE(SUM(CASE WHEN "fechaVencimiento" < NOW()
+                          AND "fechaVencimiento" >= NOW() - INTERVAL '30 days'
+                         THEN "montoPendiente" ELSE 0 END), 0)::numeric AS dias_0_30,
+        COALESCE(SUM(CASE WHEN "fechaVencimiento" < NOW() - INTERVAL '30 days'
+                          AND "fechaVencimiento" >= NOW() - INTERVAL '60 days'
+                         THEN "montoPendiente" ELSE 0 END), 0)::numeric AS dias_31_60,
+        COALESCE(SUM(CASE WHEN "fechaVencimiento" < NOW() - INTERVAL '60 days'
+                          AND "fechaVencimiento" >= NOW() - INTERVAL '90 days'
+                         THEN "montoPendiente" ELSE 0 END), 0)::numeric AS dias_61_90,
+        COALESCE(SUM(CASE WHEN "fechaVencimiento" < NOW() - INTERVAL '90 days'
+                         THEN "montoPendiente" ELSE 0 END), 0)::numeric AS dias_90_plus,
+        COALESCE(SUM("montoPendiente"), 0)::numeric AS total
+      FROM cuentas_por_cobrar
+      WHERE "empresaId" = $1
+        AND estado NOT IN ('pagada', 'anulada')
+        AND "isActive" = true
+    `, [eid]);
+
+    return {
+      corriente:   Number(row?.corriente   ?? 0),
+      dias_0_30:   Number(row?.dias_0_30   ?? 0),
+      dias_31_60:  Number(row?.dias_31_60  ?? 0),
+      dias_61_90:  Number(row?.dias_61_90  ?? 0),
+      dias_90_plus:Number(row?.dias_90_plus ?? 0),
+      total:       Number(row?.total        ?? 0),
+    };
+  }
+
+  // ── Antigüedad por Pagar (CxP) ────────────────────────────────────────────
+
+  async getAntiguedadPagar() {
+    const eid = this.eid;
+    const [row] = await this.dataSource.query<any[]>(`
+      SELECT
+        COALESCE(SUM(CASE WHEN "fechaVencimiento" >= NOW()
+                         THEN "montoPendiente" ELSE 0 END), 0)::numeric AS corriente,
+        COALESCE(SUM(CASE WHEN "fechaVencimiento" < NOW()
+                          AND "fechaVencimiento" >= NOW() - INTERVAL '30 days'
+                         THEN "montoPendiente" ELSE 0 END), 0)::numeric AS dias_0_30,
+        COALESCE(SUM(CASE WHEN "fechaVencimiento" < NOW() - INTERVAL '30 days'
+                          AND "fechaVencimiento" >= NOW() - INTERVAL '60 days'
+                         THEN "montoPendiente" ELSE 0 END), 0)::numeric AS dias_31_60,
+        COALESCE(SUM(CASE WHEN "fechaVencimiento" < NOW() - INTERVAL '60 days'
+                          AND "fechaVencimiento" >= NOW() - INTERVAL '90 days'
+                         THEN "montoPendiente" ELSE 0 END), 0)::numeric AS dias_61_90,
+        COALESCE(SUM(CASE WHEN "fechaVencimiento" < NOW() - INTERVAL '90 days'
+                         THEN "montoPendiente" ELSE 0 END), 0)::numeric AS dias_90_plus,
+        COALESCE(SUM("montoPendiente"), 0)::numeric AS total
+      FROM cuentas_por_pagar
+      WHERE "empresaId" = $1
+        AND estado NOT IN ('pagada', 'anulada')
+        AND "isActive" = true
+    `, [eid]);
+
+    return {
+      corriente:   Number(row?.corriente   ?? 0),
+      dias_0_30:   Number(row?.dias_0_30   ?? 0),
+      dias_31_60:  Number(row?.dias_31_60  ?? 0),
+      dias_61_90:  Number(row?.dias_61_90  ?? 0),
+      dias_90_plus:Number(row?.dias_90_plus ?? 0),
+      total:       Number(row?.total        ?? 0),
+    };
+  }
+
+  // ── Resumen de Gastos del mes (por categoría) ─────────────────────────────
+
+  async getResumenGastos() {
+    const eid  = this.eid;
+    const ahora = new Date();
+    const mesActual  = ahora.getMonth() + 1;
+    const anioActual = ahora.getFullYear();
+
+    const rows = await this.dataSource.query<any[]>(`
+      SELECT
+        COALESCE(categoria, 'Sin categoría') AS categoria,
+        COALESCE(SUM(total), 0)::numeric      AS monto
+      FROM gastos
+      WHERE "empresaId" = $1
+        AND EXTRACT(MONTH FROM fecha) = $2
+        AND EXTRACT(YEAR  FROM fecha) = $3
+        AND "isActive" = true
+      GROUP BY categoria
+      ORDER BY monto DESC
+    `, [eid, mesActual, anioActual]);
+
+    const gastos = rows.map(r => ({
+      categoria: String(r.categoria).replace(/_/g, ' ')
+        .replace(/\b\w/g, c => c.toUpperCase()),
+      monto: Number(r.monto),
+    }));
+
+    const total = gastos.reduce((s, g) => s + g.monto, 0);
+    const mes   = ahora.toLocaleDateString('es-DO', { month: 'long', year: 'numeric' });
+
+    return { gastos, total, mes };
+  }
 }

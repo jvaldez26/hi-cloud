@@ -37,6 +37,27 @@ export class ReportesController {
     return this.reportesService.getKPIs();
   }
 
+  @Get('dashboard/antiguedad-cobrar')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Antigüedad de CxC por rangos de días vencidos' })
+  getAntiguedadCobrar() {
+    return this.reportesService.getAntiguedadCobrar();
+  }
+
+  @Get('dashboard/antiguedad-pagar')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Antigüedad de CxP por rangos de días vencidos' })
+  getAntiguedadPagar() {
+    return this.reportesService.getAntiguedadPagar();
+  }
+
+  @Get('dashboard/resumen-gastos')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Resumen de gastos del mes actual agrupados por categoría' })
+  getResumenGastos() {
+    return this.reportesService.getResumenGastos();
+  }
+
   // ── Ventas ─────────────────────────────────────────────────────────────────
 
   @Get('ventas')

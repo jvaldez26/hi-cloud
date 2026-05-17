@@ -1,12 +1,12 @@
-import { Row, Col, Card, Table, Typography, Spin, Tag, Space, Button, theme, DatePicker, Statistic } from 'antd';
+import { Row, Col, Card, Table, Typography, Spin, Tag, Space, Button, theme, DatePicker, Statistic, Empty } from 'antd';
 import {
-  DollarOutlined, FileTextOutlined, RightOutlined,
+  DollarOutlined, FileTextOutlined, RightOutlined, ReloadOutlined,
 } from '@ant-design/icons';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer,
+  ResponsiveContainer, BarChart, Bar, Cell, PieChart, Pie, Legend,
 } from 'recharts';
 import { useNavigate } from 'react-router-dom';
 import { reportesApi } from '../../api/reportes.api';
@@ -192,6 +192,27 @@ function DashboardAdmin() {
   const ahora     = dayjs();
   const actHoy    = auditLogs.filter((l: any) => dayjs(l.createdAt).isSame(ahora, 'day'));
   const actSemana = auditLogs.filter((l: any) => !dayjs(l.createdAt).isSame(ahora, 'day') && dayjs(l.createdAt).isAfter(ahora.startOf('week')));
+
+  // Antigüedad CxC
+  const { data: antiguedadCxC, refetch: refetchCxC } = useQuery<any>({
+    queryKey: ['antiguedad-cobrar'],
+    queryFn:  () => api.get('/reportes/dashboard/antiguedad-cobrar').then((r: any) => r.data?.data ?? r.data),
+    staleTime: 120_000,
+  });
+
+  // Antigüedad CxP
+  const { data: antiguedadCxP, refetch: refetchCxP } = useQuery<any>({
+    queryKey: ['antiguedad-pagar'],
+    queryFn:  () => api.get('/reportes/dashboard/antiguedad-pagar').then((r: any) => r.data?.data ?? r.data),
+    staleTime: 120_000,
+  });
+
+  // Resumen gastos
+  const { data: resumenGastos, refetch: refetchGastos } = useQuery<any>({
+    queryKey: ['resumen-gastos-dash'],
+    queryFn:  () => api.get('/reportes/dashboard/resumen-gastos').then((r: any) => r.data?.data ?? r.data),
+    staleTime: 120_000,
+  });
 
   // Datos del gráfico — 12 meses
   const chartData = Array.from({ length: 12 }, (_, i) => {
@@ -455,6 +476,206 @@ function DashboardAdmin() {
           </CardWidget>
         </Col>
       </Row>
+
+      {/* ══ Fila 2: Antigüedad CxC | Antigüedad CxP | Resumen Gastos ══ */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, 1fr)',
+        gap: 16,
+        marginTop: 16,
+      }}
+        className="dashboard-widgets-row"
+      >
+        {/* ── Antigüedad por Cobrar ── */}
+        <WidgetAntiguedad
+          titulo="Antigüedad por Cobrar"
+          data={antiguedadCxC}
+          labelTotal="POR COBRAR TOTAL"
+          colorTotal="#10B981"
+          onRefresh={refetchCxC}
+        />
+
+        {/* ── Antigüedad por Pagar ── */}
+        <WidgetAntiguedad
+          titulo="Antigüedad por Pagar"
+          data={antiguedadCxP}
+          labelTotal="POR PAGAR TOTAL"
+          colorTotal="#EF4444"
+          onRefresh={refetchCxP}
+        />
+
+        {/* ── Resumen de Gastos ── */}
+        <WidgetResumenGastos
+          data={resumenGastos}
+          onRefresh={refetchGastos}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ── Widget Antigüedad (CxC o CxP) ────────────────────────────────────────────
+const ANTIGUEDAD_CONFIG = [
+  { key: 'corriente',   rango: 'Corriente', color: '#10B981' },
+  { key: 'dias_0_30',   rango: '0-30',      color: '#0EA5E9' },
+  { key: 'dias_31_60',  rango: '31-60',     color: '#F59E0B' },
+  { key: 'dias_61_90',  rango: '61-90',     color: '#F97316' },
+  { key: 'dias_90_plus',rango: '90+',       color: '#EF4444' },
+];
+
+function WidgetAntiguedad({ titulo, data, labelTotal, colorTotal, onRefresh }: {
+  titulo: string; data: any; labelTotal: string;
+  colorTotal: string; onRefresh: () => void;
+}) {
+  const { token } = theme.useToken();
+  const chartData = ANTIGUEDAD_CONFIG.map(c => ({
+    rango:  c.rango,
+    monto:  Number(data?.[c.key] ?? 0),
+    color:  c.color,
+  }));
+  const total = Number(data?.total ?? 0);
+
+  return (
+    <div style={{
+      background: token.colorBgContainer,
+      border: `1px solid ${token.colorBorderSecondary}`,
+      borderRadius: 12, overflow: 'hidden',
+    }}>
+      {/* Header */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '14px 16px', borderBottom: `1px solid ${token.colorBorderSecondary}`,
+      }}>
+        <span style={{ fontWeight: 600, fontSize: 14 }}>{titulo}</span>
+        <Button type="text" size="small" icon={<ReloadOutlined />} onClick={onRefresh}
+          style={{ color: token.colorTextTertiary }} />
+      </div>
+
+      {/* Gráfica */}
+      <div style={{ padding: '8px 0 0' }}>
+        <ResponsiveContainer width="100%" height={220}>
+          <BarChart data={chartData} layout="vertical"
+            margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" horizontal={false}
+              stroke={token.colorBorderSecondary} />
+            <XAxis type="number"
+              tick={{ fontSize: 10, fill: token.colorTextTertiary }}
+              axisLine={false} tickLine={false}
+              tickFormatter={v => v === 0 ? '0' : `${(v / 1000).toFixed(0)}K`} />
+            <YAxis type="category" dataKey="rango" width={58}
+              tick={{ fontSize: 11, fill: token.colorTextTertiary }}
+              axisLine={false} tickLine={false} />
+            <Tooltip
+              contentStyle={{
+                background: token.colorBgElevated,
+                border: `1px solid ${token.colorBorderSecondary}`,
+                borderRadius: 8, fontSize: 12,
+              }}
+              formatter={(v: number) => [fmt.money(v), 'Monto']}
+            />
+            <Bar dataKey="monto" radius={[0, 4, 4, 0]} maxBarSize={18}>
+              {chartData.map((entry, i) => (
+                <Cell key={i} fill={entry.color} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Footer total */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '10px 16px', borderTop: `1px solid ${token.colorBorderSecondary}`,
+        background: token.colorFillAlter,
+      }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: token.colorTextTertiary,
+          textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          {labelTotal}
+        </span>
+        <span style={{ fontSize: 14, fontWeight: 700, color: colorTotal }}>
+          {fmt.money(total)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ── Widget Resumen de Gastos (donut) ─────────────────────────────────────────
+const COLORES_GASTOS = ['#0EA5E9','#10B981','#F59E0B','#8B5CF6','#EF4444','#F97316','#EC4899','#06B6D4'];
+
+function WidgetResumenGastos({ data, onRefresh }: { data: any; onRefresh: () => void }) {
+  const { token } = theme.useToken();
+  const gastos: any[] = data?.gastos ?? [];
+  const total = Number(data?.total ?? 0);
+  const mes   = data?.mes ?? '';
+
+  return (
+    <div style={{
+      background: token.colorBgContainer,
+      border: `1px solid ${token.colorBorderSecondary}`,
+      borderRadius: 12, overflow: 'hidden',
+    }}>
+      {/* Header */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '14px 16px', borderBottom: `1px solid ${token.colorBorderSecondary}`,
+      }}>
+        <div>
+          <span style={{ fontWeight: 600, fontSize: 14 }}>Resumen de Gastos</span>
+          {mes && <span style={{ fontSize: 11, color: token.colorTextTertiary, marginLeft: 8 }}>{mes}</span>}
+        </div>
+        <Button type="text" size="small" icon={<ReloadOutlined />} onClick={onRefresh}
+          style={{ color: token.colorTextTertiary }} />
+      </div>
+
+      {/* Gráfica */}
+      {gastos.length === 0 ? (
+        <div style={{ height: 260, display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          <div style={{ fontSize: 36 }}>📊</div>
+          <div style={{ fontSize: 13, color: token.colorTextTertiary }}>
+            Sin gastos registrados este mes
+          </div>
+        </div>
+      ) : (
+        <ResponsiveContainer width="100%" height={260}>
+          <PieChart>
+            <Pie data={gastos} cx="50%" cy="45%" innerRadius={60} outerRadius={95}
+              paddingAngle={2} dataKey="monto" nameKey="categoria">
+              {gastos.map((_: any, i: number) => (
+                <Cell key={i} fill={COLORES_GASTOS[i % COLORES_GASTOS.length]} />
+              ))}
+            </Pie>
+            <Tooltip
+              contentStyle={{
+                background: token.colorBgElevated,
+                border: `1px solid ${token.colorBorderSecondary}`,
+                borderRadius: 8, fontSize: 12,
+              }}
+              formatter={(v: number, name: string) => [fmt.money(v), name]}
+            />
+            <Legend iconType="circle" iconSize={8}
+              wrapperStyle={{ fontSize: 11, paddingTop: 4 }} />
+          </PieChart>
+        </ResponsiveContainer>
+      )}
+
+      {/* Footer total */}
+      {total > 0 && (
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          padding: '10px 16px', borderTop: `1px solid ${token.colorBorderSecondary}`,
+          background: token.colorFillAlter,
+        }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: token.colorTextTertiary,
+            textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            TOTAL GASTOS
+          </span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: '#EF4444' }}>
+            {fmt.money(total)}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

@@ -286,3 +286,20 @@ body {
 .ant-drawer-content {
   transition: background-color 0.2s ease, border-color 0.2s ease !important;
 }
+
+/* ── Dashboard widgets row — responsive ─────────────────────────────────── */
+.dashboard-widgets-row {
+  grid-template-columns: repeat(3, 1fr) !important;
+}
+
+@media (max-width: 1024px) {
+  .dashboard-widgets-row {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .dashboard-widgets-row {
+    grid-template-columns: 1fr !important;
+  }
+}
