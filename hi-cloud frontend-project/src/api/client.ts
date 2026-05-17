@@ -73,7 +73,9 @@ apiClient.interceptors.response.use(
       const original = err.config as any;
 
       // Sesión desplazada: el usuario inició sesión en otro dispositivo
-      if (data?.message === 'SESION_DESPLAZADA') {
+      // El filter devuelve { errors: ["SESION_DESPLAZADA"] }, no { message: "..." }
+      // → usar `message` (ya extraído de errors[0] por extractBackendMessage)
+      if (message === 'SESION_DESPLAZADA') {
         localStorage.removeItem('auth_user');
         localStorage.removeItem('empresaId');
         localStorage.removeItem('mis_empresas');
