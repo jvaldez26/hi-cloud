@@ -1,4 +1,6 @@
 ﻿import { useState } from 'react';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   DatePicker, InputNumber, Space, Typography, Statistic, Popconfirm,
@@ -257,6 +259,16 @@ export default function NotasCreditoPage() {
   const totalEmitidas  = resumen.find((r: any) => r.estado === 'emitida')?.total  ?? 0;
   const cantEmitidas   = resumen.find((r: any) => r.estado === 'emitida')?.cantidad ?? 0;
 
+  const COLS_DEF = [
+    { key: 'n',   label: 'Número',       defaultVisible: true  },
+    { key: 'f',   label: 'Fecha',        defaultVisible: true  },
+    { key: 'c',   label: 'Cliente',      defaultVisible: true  },
+    { key: 't',   label: 'Total',        defaultVisible: true  },
+    { key: 'fof', label: 'Factura orig.',defaultVisible: true  },
+    { key: 'e',   label: 'Estado',       defaultVisible: true  },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns: fcNC } = useColumnVisibility('notas-credito', COLS_DEF);
+
   return (
     <div style={{ padding: '24px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
@@ -279,6 +291,7 @@ export default function NotasCreditoPage() {
             exportarExcel(filas, `Notas-Credito-${dayjs().format('YYYY-MM-DD')}`);
             message.success(`${filas.length} notas exportadas`);
           }}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => abrirDesdeFactura()}>
             Nueva Nota de Crédito
           </Button>
@@ -327,11 +340,11 @@ export default function NotasCreditoPage() {
           size="middle"
           pagination={{ pageSize: 15 }}
           scroll={{ x: 'max-content' }}
-          columns={[
+          columns={fcNC([
             { title: 'Número', dataIndex: 'numero', key: 'n', width: 100,
-              render: v => <Text strong style={{ fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{v}</Text> },
+              render: (v: any) => <Text strong style={{ fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{v}</Text> },
             { title: 'Fecha',  dataIndex: 'fecha',  key: 'f', width: 90,
-              render: v => <span style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{v ? String(v).slice(0, 10) : '—'}</span> },
+              render: (v: any) => <span style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{v ? String(v).slice(0, 10) : '—'}</span> },
             {
               title: 'Cliente', key: 'c', ellipsis: true, minWidth: 120,
               render: (_: any, r: any) => <Text strong ellipsis style={{ maxWidth: 160 }}>{r.cliente?.nombre ?? 'Consumidor Final'}</Text>,
@@ -350,7 +363,7 @@ export default function NotasCreditoPage() {
             },
             {
               title: '', key: 'acc', width: 220, fixed: 'right' as const,
-              render: (_, r: any) => (
+              render: (_: any, r: any) => (
                 <Space>
                   <Button size="small" icon={<EyeOutlined />} onClick={() => setModalDetalle(r)} />
                   <Button size="small" type="text"
@@ -394,7 +407,7 @@ export default function NotasCreditoPage() {
                 </Space>
               ),
             },
-          ]}
+          ] as any)}
         />
       </Card>
 

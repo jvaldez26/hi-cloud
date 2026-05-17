@@ -1,4 +1,6 @@
 ﻿import { useState } from 'react';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   DatePicker, InputNumber, Space, Typography, Statistic, Popconfirm,
@@ -219,6 +221,17 @@ export default function NotasDebitoPage() {
     setModalCrear(true);
   };
 
+  const COLS_DEF = [
+    { key: 'n',   label: 'Número',        defaultVisible: true  },
+    { key: 'f',   label: 'Fecha',         defaultVisible: true  },
+    { key: 'c',   label: 'Cliente',       defaultVisible: true  },
+    { key: 'fof', label: 'Fact. Original',defaultVisible: true  },
+    { key: 't',   label: 'Total',         defaultVisible: true  },
+    { key: 'e',   label: 'Estado',        defaultVisible: true  },
+    { key: 'ecf', label: 'e-CF',          defaultVisible: false },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns: fcND } = useColumnVisibility('notas-debito', COLS_DEF);
+
   return (
     <div style={{ padding: '24px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
@@ -235,6 +248,7 @@ export default function NotasDebitoPage() {
             exportarExcel(filas, `Notas-Debito-${dayjs().format('YYYY-MM-DD')}`);
             message.success(`${filas.length} notas exportadas`);
           }}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => abrirDesdeFactura()}>Nueva Nota de Débito</Button>
         </Space>
       </div>
@@ -270,7 +284,7 @@ export default function NotasDebitoPage() {
       <Card bordered={false} style={{ borderRadius: 12 }}>
         <Table dataSource={notas?.data ?? []} rowKey="id" loading={isLoading} size="middle"
           pagination={{ pageSize: 15 }}
-          columns={[
+          columns={fcND([
             { title: 'Número', dataIndex: 'numero', key: 'n', width: 150, render: (v: string) => <Text strong style={{ fontFamily: 'monospace', fontSize: 12, color: '#d97706' }}>{v}</Text> },
             { title: 'Fecha', dataIndex: 'fecha', key: 'f', width: 100, render: (v: string) => <Text style={{ fontSize: 12 }}>{v}</Text> },
             { title: 'Cliente', key: 'c', ellipsis: true, render: (_: any, r: any) => <Text strong style={{ fontSize: 13 }}>{r.cliente?.nombre ?? '—'}</Text> },
@@ -302,7 +316,7 @@ export default function NotasDebitoPage() {
                   {r.estado === 'borrador' && <Popconfirm title="¿Eliminar?" onConfirm={() => eliminar.mutate(r.id)}><Button size="small" danger type="text" icon={<DeleteOutlined />} /></Popconfirm>}
                 </Space>
               ) },
-          ]} />
+          ] as any)} />
       </Card>
 
       {/* ── Modal Crear ── */}

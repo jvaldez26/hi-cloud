@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Button, Table, Tag, Avatar, Typography, Space, Modal,
   Form, Input, Select, Popconfirm, message, Row, Col, Statistic,
@@ -164,6 +166,14 @@ export default function EquipoPage() {
   const invsData     = (invitaciones ?? []).filter((i: any) => i.estado === 'pendiente');
   const totalActivos = miembrosData.filter((m: any) => m.user?.isActive !== false).length;
 
+  const COLS_DEF = [
+    { key: 'user',        label: 'Usuario',           defaultVisible: true  },
+    { key: 'rol',         label: 'Rol',               defaultVisible: true  },
+    { key: 'estado',      label: 'Estado',            defaultVisible: true  },
+    { key: 'isPrincipal', label: 'Empresa principal', defaultVisible: false },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns: fcEquipo } = useColumnVisibility('equipo', COLS_DEF);
+
   const colsMiembros = [
     {
       title: 'Usuario', key: 'user',
@@ -279,10 +289,13 @@ export default function EquipoPage() {
           </Text>
         </Col>
         <Col>
-          <Button type="primary" icon={<UserAddOutlined />}
-            onClick={() => { setInvModal(true); invForm.resetFields(); setRol('viewer'); }}>
-            Invitar usuario
-          </Button>
+          <Space>
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+            <Button type="primary" icon={<UserAddOutlined />}
+              onClick={() => { setInvModal(true); invForm.resetFields(); setRol('viewer'); }}>
+              Invitar usuario
+            </Button>
+          </Space>
         </Col>
       </Row>
 
@@ -319,7 +332,7 @@ export default function EquipoPage() {
       {/* Miembros activos */}
       <Card title={<Space><TeamOutlined /><span>Miembros del equipo</span></Space>}
         style={{ marginBottom: 16 }}>
-        <Table columns={colsMiembros} dataSource={miembrosData}
+        <Table columns={fcEquipo(colsMiembros)} dataSource={miembrosData}
           rowKey="userId" loading={loadM} size="small"
         scroll={{ x: 'max-content' }} pagination={false} />
       </Card>

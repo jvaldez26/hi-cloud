@@ -1,4 +1,6 @@
 import { useState, useCallback } from 'react';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Table, Button, Tag, Space, Modal, Form, InputNumber, Select, Input,
   Typography, message, Card, Row, Col, Statistic, DatePicker, theme, Tooltip,
@@ -99,28 +101,38 @@ export default function CxPPage() {
     );
   });
 
+  const COLS_DEF = [
+    { key: 'folio',           label: 'Compra',      defaultVisible: true  },
+    { key: 'proveedor',       label: 'Proveedor',   defaultVisible: true  },
+    { key: 'montoOriginal',   label: 'Total',       defaultVisible: false },
+    { key: 'montoPendiente',  label: 'Pendiente',   defaultVisible: true  },
+    { key: 'fechaVencimiento',label: 'Vencimiento', defaultVisible: true  },
+    { key: 'estado',          label: 'Estado',      defaultVisible: true  },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('cxp', COLS_DEF);
+
   const columns = [
     {
-      title: 'Compra', dataIndex: ['compra', 'folio'], width: 160,
+      title: 'Compra', key: 'folio', dataIndex: ['compra', 'folio'], width: 160,
       render: (v: string) => <Text strong style={{ fontFamily: 'monospace', fontSize: 12 }}>{v ?? '—'}</Text>,
     },
     {
-      title: 'Proveedor', dataIndex: ['proveedor', 'nombre'], ellipsis: true,
+      title: 'Proveedor', key: 'proveedor', dataIndex: ['proveedor', 'nombre'], ellipsis: true,
       render: (v: string) => <Text style={{ fontSize: 13 }}>{v ?? '—'}</Text>,
     },
     {
-      title: 'Total', dataIndex: 'montoOriginal', width: 120, align: 'right' as const, isAmount: true,
+      title: 'Total', key: 'montoOriginal', dataIndex: 'montoOriginal', width: 120, align: 'right' as const, isAmount: true,
       render: (v: number) => fmt.money(v),
     },
     // Pagado omitido — disponible en historial de pagos (ojo)
     {
-      title: 'Pendiente', dataIndex: 'montoPendiente', width: 120, align: 'right' as const,
+      title: 'Pendiente', key: 'montoPendiente', dataIndex: 'montoPendiente', width: 120, align: 'right' as const,
       render: (v: number) => (
         <Text strong style={{ color: v > 0 ? '#dc2626' : '#059669' }}>{fmt.money(v)}</Text>
       ),
     },
     {
-      title: 'Vencimiento', dataIndex: 'fechaVencimiento', width: 112,
+      title: 'Vencimiento', key: 'fechaVencimiento', dataIndex: 'fechaVencimiento', width: 112,
       render: (v: string) => {
         if (!v) return '—';
         const dias = dayjs(v).diff(dayjs(), 'day');
@@ -129,7 +141,7 @@ export default function CxPPage() {
       },
     },
     {
-      title: 'Estado', dataIndex: 'estado', width: 120,
+      title: 'Estado', key: 'estado', dataIndex: 'estado', width: 120,
       render: (v: string) => (
         <Tag color={estadoColor[v] ?? 'default'} style={{ fontSize: 11, fontWeight: 600, margin: 0 }}>
           {v.replace('_', ' ').toUpperCase()}
@@ -189,6 +201,7 @@ export default function CxPPage() {
           </Col>
           <Col>
             <Button icon={<FileExcelOutlined />} onClick={handleExcel}>Excel</Button>
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
           </Col>
         </Row>
 
@@ -229,7 +242,7 @@ export default function CxPPage() {
         </Row>
 
         <Table
-          columns={columns} dataSource={rows} rowKey="id"
+          columns={filterColumns(columns)} dataSource={rows} rowKey="id"
           loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
           pagination={{
