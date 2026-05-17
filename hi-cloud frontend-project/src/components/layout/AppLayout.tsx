@@ -990,7 +990,29 @@ const TODOS_GRUPOS_KEYS = GRUPOS_MENU.map(g => g.key);
 export default function AppLayout() {
   useRealtime();   // ← conexión WebSocket para actualizaciones en vivo
 
-  const [collapsed,       setCollapsed]       = useState(false);
+  // collapsed: persiste en localStorage para recordar preferencia del usuario.
+  // Default: false (expandido). Solo colapsa si el usuario lo eligió explícitamente.
+  const COLLAPSED_KEY = 'hicloud-sidebar-collapsed';
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem(COLLAPSED_KEY);
+      // Limpiar cualquier valor corrupto (no es 'true' ni 'false' ni null)
+      if (saved !== null && saved !== 'true' && saved !== 'false') {
+        localStorage.removeItem(COLLAPSED_KEY);
+        return false;
+      }
+      return saved === 'true';  // default false si null
+    } catch {
+      return false;
+    }
+  });
+
+  // Wrapper que persiste en localStorage al colapsar/expandir
+  const setCollapsedPersisted = useCallback((next: boolean) => {
+    setCollapsed(next);
+    try { localStorage.setItem(COLLAPSED_KEY, String(next)); } catch { /* ignorar */ }
+  }, [COLLAPSED_KEY]);
+
   const [cmdOpen,         setCmdOpen]         = useState(false);
   const [helpOpen,        setHelpOpen]        = useState(false);
   const [mobileOpen,      setMobileOpen]      = useState(false);
@@ -1341,7 +1363,7 @@ export default function AppLayout() {
         )}
         {!collapsed && (
           <button
-            onClick={() => setCollapsed(v => !v)}
+            onClick={() => setCollapsedPersisted(!collapsed)}
             title="Colapsar menú"
             style={{
               background: 'rgba(255,255,255,0.10)', border: 'none', cursor: 'pointer',
@@ -1368,7 +1390,7 @@ export default function AppLayout() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: collapsed ? undefined : 1 }}>
           {/* Avatar con iniciales */}
           <div
-            onClick={collapsed ? () => setCollapsed(false) : undefined}
+            onClick={collapsed ? () => setCollapsedPersisted(false) : undefined}
             title={collapsed ? (empresaNombre || 'Mi Empresa') : undefined}
             style={{
               width: 28, height: 28, borderRadius: 6, flexShrink: 0,
@@ -1520,7 +1542,7 @@ export default function AppLayout() {
             <Tooltip title="Notificaciones" placement="right">
               <Badge count={totalAlertas} size="small" offset={[-4, 4]}
                 style={{ background: alertasCriticas > 0 ? '#dc2626' : '#d97706' }}>
-                <button onClick={() => setCollapsed(false)}
+                <button onClick={() => setCollapsedPersisted(false)}
                   style={{ background: 'transparent', border: 'none', cursor: 'pointer',
                     color: C.footerText, display: 'flex', padding: 2 }}>
                   <Bell size={14} />
