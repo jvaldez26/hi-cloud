@@ -300,9 +300,6 @@ function HistorialPanel({ mes, anio }: { mes: number; anio: number }) {
         locale={{ emptyText: 'Sin reportes generados aún' }}
       
         scroll={{ x: 'max-content' }} />
-      <div style={{ textAlign: 'right', marginTop: 8 }}>
-        <Button size="small" icon={<SyncOutlined />} onClick={() => refetch()}>Actualizar</Button>
-      </div>
     </div>
   );
 }

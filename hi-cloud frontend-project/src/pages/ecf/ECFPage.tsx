@@ -131,14 +131,10 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
           </Space>
         </Col>
         <Col>
-          <Tooltip title="Actualizar lista">
-            <RefreshByKeyButton queryKey={["ecf-list"]} />
-          <VideoTutorialButton />
-          <Button icon={<ReloadOutlined spin={isFetching} />}
-              onClick={() => { qc.invalidateQueries({ queryKey: ['ecf-list'] }); onRefresh(); }}>
-              Actualizar
-            </Button>
-          </Tooltip>
+          <Space size={2}>
+            <RefreshByKeyButton queryKey={['ecf-list']} />
+            <VideoTutorialButton />
+          </Space>
         </Col>
       </Row>
 
@@ -308,17 +304,17 @@ function SecuenciasTab({ onRefresh }: { onRefresh: () => void }) {
       )}
 
       <Row justify="space-between" align="middle" style={{ marginBottom: 12 }}>
+        <Col />
         <Col>
-          <Tooltip title="Actualizar secuencias">
-            <Button icon={<ReloadOutlined spin={isFetching} />} onClick={() => { qc.invalidateQueries({ queryKey: ['ecf-secuencias'] }); }}>
-              Actualizar
+          <Space size={2}>
+            <Tooltip title="Actualizar secuencias">
+              <Button type="text" size="small" icon={<ReloadOutlined spin={isFetching} />}
+                onClick={() => { qc.invalidateQueries({ queryKey: ['ecf-secuencias'] }); }} />
+            </Tooltip>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpenCreate(true)}>
+              Registrar secuencia DGII
             </Button>
-          </Tooltip>
-        </Col>
-        <Col>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpenCreate(true)}>
-            Registrar secuencia DGII
-          </Button>
+          </Space>
         </Col>
       </Row>
 
@@ -419,14 +415,12 @@ function ResumenTab({ onRefresh }: { onRefresh: () => void }) {
     <>
       <Row justify="end" style={{ marginBottom: 12 }}>
         <Tooltip title="Actualizar resumen">
-          <Button icon={<ReloadOutlined spin={fetchingP || fetchingR} />}
+          <Button type="text" size="small" icon={<ReloadOutlined spin={fetchingP || fetchingR} />}
             onClick={() => {
               qc.invalidateQueries({ queryKey: ['ecf-pendientes'] });
               qc.invalidateQueries({ queryKey: ['ecf-rechazados'] });
               onRefresh();
-            }}>
-            Actualizar
-          </Button>
+            }} />
         </Tooltip>
       </Row>
       <Row gutter={[16, 16]}>
@@ -488,13 +482,6 @@ export default function ECFPage() {
           <Title level={4} style={{ margin: 0 }}>
             e-CF — Comprobantes Fiscales Electrónicos DGII
           </Title>
-        </Col>
-        <Col>
-          <Tooltip title="Actualizar todos los datos del módulo">
-            <Button icon={<ReloadOutlined />} onClick={handleGlobalRefresh}>
-              Actualizar
-            </Button>
-          </Tooltip>
         </Col>
       </Row>
 
