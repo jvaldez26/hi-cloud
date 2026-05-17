@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Typography, Select, Table, Tag, Statistic,
   Button, Space, Modal, Form, Input, InputNumber, Tabs,
@@ -157,6 +158,8 @@ export default function ChequesPage() {
               exportarExcel(filas, `Cheques-${anio}-${String(mes).padStart(2,'0')}`);
               message.success(`${filas.length} cheques exportados`);
             }}>Excel</Button>
+            <RefreshByKeyButton queryKey={['cheques']} />
+            <VideoTutorialButton />
             <Button onClick={() => setChequeraModal(true)}>
               <BankOutlined /> Nueva chequera
             </Button>

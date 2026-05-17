@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { usePlanGuard } from '../../hooks/usePlan';
 import ModuloBloqueado from '../../components/ui/ModuloBloqueado';
 import { Table, Card, Row, Col, Typography, Statistic, Tag, Select,
@@ -88,7 +89,13 @@ export default function AuditoriaPage() {
 
   return (
     <div>
-      <Title level={4} style={{ marginBottom: 16 }}>Auditoría y Logs del Sistema</Title>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <Title level={4} style={{ margin: 0 }}>Auditoría y Logs del Sistema</Title>
+        <Space size={2}>
+          <RefreshByKeyButton queryKey={['audit-logs']} />
+          <VideoTutorialButton />
+        </Space>
+      </div>
 
       {/* KPIs */}
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>

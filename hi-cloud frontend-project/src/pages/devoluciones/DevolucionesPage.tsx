@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { exportarExcel } from '../../utils/exportExcel';
 import { Table, Button, Tag, Card, Row, Col, Typography, Statistic, Space,
          Modal, Form, Input, Select, InputNumber, DatePicker, message,
@@ -170,6 +171,8 @@ export default function DevolucionesPage() {
             }));
             exportarExcel(filas, 'Devoluciones');
           }}>Excel</Button>
+          <RefreshByKeyButton queryKey={['devoluciones']} />
+          <VideoTutorialButton />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => { setOpen(true); form.resetFields(); setLineas([]); }}>
             Nueva devolución
           </Button>

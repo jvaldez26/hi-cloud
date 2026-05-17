@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Table, Tag, Card, Row, Col, Typography, Select, Button,
   Modal, Form, InputNumber, Input, message, Space, DatePicker,
@@ -166,6 +167,8 @@ function MovimientosTab() {
         <Col>
           <Space>
             <Button icon={<FileExcelOutlined />} onClick={handleExcel}>Excel</Button>
+            <RefreshByKeyButton queryKey={['inventario']} />
+            <VideoTutorialButton />
             <Button icon={<UploadOutlined />} type="primary" onClick={() => { setModal('entrada'); form.resetFields(); }}>Entrada</Button>
             <Button icon={<DownloadOutlined />} danger onClick={() => { setModal('salida'); form.resetFields(); }}>Salida</Button>
           </Space>

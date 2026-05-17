@@ -1,4 +1,5 @@
 ﻿import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   DatePicker, InputNumber, Space, Typography, Statistic, Popconfirm,
@@ -180,6 +181,8 @@ export default function RecibosCobrosPage() {
             exportarExcel(filas, `Recibos-${dayjs().format('YYYY-MM-DD')}`);
             message.success(`${filas.length} recibos exportados`);
           }}>Excel</Button>
+          <RefreshByKeyButton queryKey={['recibos-cobro']} />
+          <VideoTutorialButton />
           <Button type="primary" icon={<PlusOutlined />}
             style={{ background: token.colorSuccess, borderColor: token.colorSuccess }}
             onClick={() => setModalCrear(true)}>

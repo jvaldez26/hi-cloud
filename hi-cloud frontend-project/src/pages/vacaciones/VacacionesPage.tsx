@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Table, Button, Tag, Card, Row, Col, Typography, Statistic,
   Modal, Form, Select, DatePicker, Input, Space, Popconfirm,
@@ -190,6 +191,8 @@ export default function VacacionesPage() {
             <Select value={mes}  onChange={setMes}  style={{ width: 120 }} options={MESES} />
             <Select value={anio} onChange={setAnio} style={{ width: 90 }}
               options={[2024, 2025, 2026].map(y => ({ value: y, label: y }))} />
+            <RefreshByKeyButton queryKey={['vacaciones']} />
+            <VideoTutorialButton />
           </Space>
         </Col>
       </Row>

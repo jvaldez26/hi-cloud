@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Tabs, Table, Button, Tag, Space, Modal, Form, Input, InputNumber,
   Select, Row, Col, Typography, Card, Statistic, Popconfirm,
@@ -137,9 +138,13 @@ function SolicitudesTab() {
           </Space>
         </Col>
         <Col>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setOpen(true); }}>
-            Nueva solicitud
-          </Button>
+          <Space size={2}>
+            <RefreshByKeyButton queryKey={['solicitudes-compra']} />
+            <VideoTutorialButton />
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setOpen(true); }}>
+              Nueva solicitud
+            </Button>
+          </Space>
         </Col>
       </Row>
 

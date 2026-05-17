@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { usePlanGuard } from '../../hooks/usePlan';
 import ModuloBloqueado from '../../components/ui/ModuloBloqueado';
 import { Tabs, Table, Tag, Button, Card, Row, Col, Typography, Statistic,
@@ -146,6 +147,8 @@ function Asientos() {
               exportarExcel(filas, `Asientos-${new Date().toISOString().split('T')[0]}`);
               message.success(`${filas.length} asientos exportados`);
             }}>Excel</Button>
+            <RefreshByKeyButton queryKey={['asientos']} />
+            <VideoTutorialButton />
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>Nuevo asiento manual</Button>
           </Space>
         </Col>

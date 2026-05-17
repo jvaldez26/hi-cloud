@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { exportarExcel } from '../../utils/exportExcel';
 import { Table, Button, Tag, Card, Row, Col, Typography, Space,
          Modal, Form, Input, InputNumber, Select, Popconfirm, message,
@@ -91,6 +92,8 @@ export default function FacturasRecurrentesPage() {
             }));
             exportarExcel(filas, 'Facturas-Recurrentes');
           }}>Excel</Button>
+          <RefreshByKeyButton queryKey={['recurrentes']} />
+          <VideoTutorialButton />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => { setOpen(true); form.resetFields(); }}>
             Nueva recurrente
           </Button>
