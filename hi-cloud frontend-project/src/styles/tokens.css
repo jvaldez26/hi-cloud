@@ -275,52 +275,24 @@ body {
   color: #0F172A !important;
 }
 
-/* ── SA: Protección contra reglas de dark mode sin exclusión (.sa-scope) ────
-   darkmode.css tiene reglas como [data-theme="dark"] .ant-card sin :not(.sa-scope),
-   por lo que el Super Admin se ve afectado cuando el app principal está en dark mode.
-   Estos overrides garantizan que el SA use siempre su propio sistema de colores.
-   El !important aquí tiene mayor especificidad que los !important de darkmode.css
-   porque incluyen la clase .sa-scope adicional.                                  */
+/* ── SA: darkmode.css tiene reglas sin :not(.sa-scope) que afectan al SA.
+   La solución correcta es que el ConfigProvider del SA maneje sus propios tokens
+   (ver components: { Card, Input, Select, Modal, Drawer } en SuperAdminPage.tsx).
+   Solo añadimos overrides mínimos de un nivel superior de especificidad para
+   los elementos que el ConfigProvider no puede cubrir directamente.           */
 
-/* SA DARK mode (el SA propio en modo oscuro = slate azulado) */
-.sa-scope .ant-card                   { background: #1E293B !important; border-color: #334155 !important; }
-.sa-scope .ant-card-head              { background: #1E293B !important; border-bottom-color: #334155 !important; }
-.sa-scope .ant-card-body              { background: #1E293B !important; }
-.sa-scope .ant-modal-content,
-.sa-scope .ant-modal-header           { background: #1E293B !important; border-color: #334155 !important; }
-.sa-scope .ant-dropdown-menu,
-.sa-scope .ant-select-dropdown        { background: #1E293B !important; border-color: #334155 !important; }
-.sa-scope .ant-dropdown-menu-item:hover,
-.sa-scope .ant-select-item-option-active { background: #1a2535 !important; }
-.sa-scope .ant-input-number,
-.sa-scope .ant-input-number-input     { background: #1E293B !important; color: #F8FAFC !important; }
-.sa-scope .ant-statistic-title        { color: #94A3B8 !important; }
-.sa-scope .ant-divider                { border-color: #334155 !important; }
-.sa-scope .ant-tabs-nav::before       { border-bottom-color: #334155 !important; }
-.sa-scope .ant-alert-info             { background: rgba(26,86,219,0.15) !important; border-color: rgba(26,86,219,0.35) !important; }
-.sa-scope .ant-alert-warning          { background: rgba(217,119,6,0.15) !important; border-color: rgba(217,119,6,0.35) !important; }
-.sa-scope .ant-alert-error            { background: rgba(220,38,38,0.15) !important; border-color: rgba(220,38,38,0.35) !important; }
-.sa-scope .ant-alert-success          { background: rgba(5,150,105,0.15) !important; border-color: rgba(5,150,105,0.35) !important; }
-
-/* SA LIGHT mode (el SA propio en modo claro) — cuando app principal está en dark mode */
-.sa-scope.sa-light .ant-card                { background: #FFFFFF !important; border-color: #E2E8F0 !important; }
-.sa-scope.sa-light .ant-card-head           { background: #F8FAFC !important; border-bottom-color: #E2E8F0 !important; }
-.sa-scope.sa-light .ant-card-body           { background: #FFFFFF !important; }
-.sa-scope.sa-light .ant-modal-content,
-.sa-scope.sa-light .ant-modal-header        { background: #FFFFFF !important; border-color: #E2E8F0 !important; }
-.sa-scope.sa-light .ant-dropdown-menu,
-.sa-scope.sa-light .ant-select-dropdown     { background: #FFFFFF !important; border-color: #E2E8F0 !important; }
-.sa-scope.sa-light .ant-dropdown-menu-item:hover,
-.sa-scope.sa-light .ant-select-item-option-active { background: #F1F5F9 !important; }
-.sa-scope.sa-light .ant-input-number,
-.sa-scope.sa-light .ant-input-number-input  { background: #FFFFFF !important; color: #0F172A !important; }
-.sa-scope.sa-light .ant-statistic-title     { color: #64748B !important; }
-.sa-scope.sa-light .ant-divider             { border-color: #E2E8F0 !important; }
-.sa-scope.sa-light .ant-tabs-nav::before    { border-bottom-color: #E2E8F0 !important; }
-.sa-scope.sa-light .ant-alert-info          { background: rgba(239,246,255,1) !important; border-color: rgba(147,197,253,1) !important; }
-.sa-scope.sa-light .ant-alert-warning       { background: rgba(255,251,235,1) !important; border-color: rgba(253,230,138,1) !important; }
-.sa-scope.sa-light .ant-alert-error         { background: rgba(254,242,242,1) !important; border-color: rgba(252,165,165,1) !important; }
-.sa-scope.sa-light .ant-alert-success       { background: rgba(240,253,244,1) !important; border-color: rgba(134,239,172,1) !important; }
+/* Anular reglas de darkmode.css que no tienen exclusión .sa-scope.
+   Usamos inherit para delegar al ConfigProvider del SA (quien sí tiene los tokens correctos). */
+[data-theme="dark"] .sa-scope .ant-card              { background: inherit; border-color: inherit; }
+[data-theme="dark"] .sa-scope .ant-card-head          { background: inherit; border-color: inherit; }
+[data-theme="dark"] .sa-scope .ant-modal-content,
+[data-theme="dark"] .sa-scope .ant-modal-header       { background: inherit; }
+[data-theme="dark"] .sa-scope .ant-input-number,
+[data-theme="dark"] .sa-scope .ant-input-number-input { background: inherit; color: inherit; }
+[data-theme="dark"] .sa-scope .ant-dropdown-menu,
+[data-theme="dark"] .sa-scope .ant-select-dropdown    { background: inherit; }
+[data-theme="dark"] .sa-scope .ant-statistic-title    { color: inherit; }
+[data-theme="dark"] .sa-scope .ant-divider            { border-color: inherit; }
 
 /* Transición suave de tema en componentes antd */
 .ant-layout,
