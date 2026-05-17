@@ -87,30 +87,6 @@ export default function AprobacionesPage() {
         </Button>
       </div>
 
-      {/* KPIs */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={8}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#d97706,#f59e0b)' }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Pendientes</span>}
-              value={resumen?.pendientes ?? 0} prefix={<ClockCircleOutlined />}
-              valueStyle={{ color: '#fff', fontSize: 28 }} />
-          </Card>
-        </Col>
-        <Col xs={8}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#059669,#10b981)' }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Aprobados</span>}
-              value={resumen?.aprobados ?? 0} prefix={<CheckCircleOutlined />}
-              valueStyle={{ color: '#fff', fontSize: 28 }} />
-          </Card>
-        </Col>
-        <Col xs={8}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#dc2626,#ef4444)' }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Rechazados</span>}
-              value={resumen?.rechazados ?? 0} prefix={<CloseCircleOutlined />}
-              valueStyle={{ color: '#fff', fontSize: 28 }} />
-          </Card>
-        </Col>
-      </Row>
 
       <Card bordered={false} style={{ borderRadius: 12 }}>
         <Tabs

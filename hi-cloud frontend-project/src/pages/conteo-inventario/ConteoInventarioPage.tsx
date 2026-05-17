@@ -137,23 +137,6 @@ export default function ConteoInventarioPage() {
         </Space>
       </div>
 
-      {/* KPIs */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        {['borrador','en_proceso','confirmado'].map(estado => {
-          const r = resumen.find((x: any) => x.estado === estado);
-          return (
-            <Col xs={12} sm={8} key={estado}>
-              <Card bordered={false} style={{ borderRadius: 12, textAlign: 'center' }}>
-                <Statistic
-                  title={<Tag color={ESTADO_CONFIG[estado]?.color}>{ESTADO_CONFIG[estado]?.label}</Tag>}
-                  value={r?.cantidad ?? 0}
-                  valueStyle={{ fontSize: 28 }}
-                />
-              </Card>
-            </Col>
-          );
-        })}
-      </Row>
 
       <Row gutter={[16, 16]}>
         {/* Lista de conteos */}

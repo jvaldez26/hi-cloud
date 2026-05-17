@@ -508,25 +508,6 @@ export default function FacturasPage() {
         />
       </div>
 
-      {/* ── Totales rápidos de la página ── */}
-      {resumen.length > 0 && (
-        <Row gutter={[12, 0]} style={{ marginBottom: 12 }}>
-          {[
-            { label: 'Emitidas',  count: resumen.filter(f => f.estado === 'emitida').length,  color: '#1677ff' },
-            { label: 'Pagadas',   count: resumen.filter(f => f.estado === 'pagada').length,   color: '#059669' },
-            { label: 'Borradores',count: resumen.filter(f => f.estado === 'borrador').length, color: '#d97706' },
-            { label: 'Total página', count: '', extra: fmt.money(totalPagina),                color: token.colorPrimary },
-          ].map(k => (
-            <Col key={k.label}>
-              <Statistic
-                title={<Text type="secondary" style={{ fontSize: 11 }}>{k.label}</Text>}
-                value={k.extra ?? k.count}
-                valueStyle={{ fontSize: 16, color: k.color, fontWeight: 700 }}
-              />
-            </Col>
-          ))}
-        </Row>
-      )}
 
       {/* ── Tabla — scroll interno para que la página no desborde ── */}
       <Table

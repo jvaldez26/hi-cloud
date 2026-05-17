@@ -294,25 +294,6 @@ export default function ComprasPage() {
         )}
       </Row>
 
-      {/* Totales rápidos */}
-      {rows.length > 0 && (
-        <Row gutter={[12, 0]} style={{ marginBottom: 12 }}>
-          {[
-            { label: 'Borradores',  count: rows.filter(c => c.estado === 'borrador').length,  color: '#d97706' },
-            { label: 'Recibidas',   count: rows.filter(c => c.estado === 'recibida').length,  color: '#1677ff' },
-            { label: 'Pagadas',     count: rows.filter(c => c.estado === 'pagada').length,    color: '#059669' },
-            { label: 'Total página',count: '', extra: fmt.money(totalPag), color: token.colorPrimary },
-          ].map(k => (
-            <Col key={k.label}>
-              <Statistic
-                title={<Text type="secondary" style={{ fontSize: 11 }}>{k.label}</Text>}
-                value={k.extra ?? k.count}
-                valueStyle={{ fontSize: 16, color: k.color, fontWeight: 700 }}
-              />
-            </Col>
-          ))}
-        </Row>
-      )}
 
       <Table
         columns={filterColumns(columns)} dataSource={rows} rowKey="id"

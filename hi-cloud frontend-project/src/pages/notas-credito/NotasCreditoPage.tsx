@@ -257,8 +257,6 @@ export default function NotasCreditoPage() {
     setModalCrear(true);
   };
 
-  const totalEmitidas  = resumen.find((r: any) => r.estado === 'emitida')?.total  ?? 0;
-  const cantEmitidas   = resumen.find((r: any) => r.estado === 'emitida')?.cantidad ?? 0;
 
   const COLS_DEF = [
     { key: 'n',   label: 'Número',       defaultVisible: true  },
