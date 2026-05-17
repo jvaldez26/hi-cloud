@@ -3,7 +3,7 @@ import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/Tab
 import { TableActions } from '../../components/ui/TableActions';
 import { DetailDrawer } from '../../components/ui/DetailDrawer';
 import { Card, Row, Col, Typography, Statistic, Button, InputNumber,
-         Table, Tag, Modal, Form, Input, Space, Alert, Spin, message, Avatar,
+         Table, Tag, Modal, Form, Input, Select, Space, Alert, Spin, message, Avatar,
          theme, Drawer, Descriptions, Divider } from 'antd';
 import { UnlockOutlined, LockOutlined, HistoryOutlined,
          RollbackOutlined, WarningOutlined,
@@ -19,6 +19,7 @@ const { Title, Text } = Typography;
 
 const cajaApi = {
   hoy:       ()                          => api.get('/caja/hoy').then(r => r.data?.data ?? r.data),
+  cajeros:   ()                          => api.get('/caja/cajeros').then(r => r.data?.data ?? r.data),
   abrir:     (body: any)                 => api.post('/caja/abrir', body).then(r => r.data?.data),
   cerrar:    (id: number, body: any)     => api.patch(`/caja/${id}/cerrar`, body).then(r => r.data?.data),
   anular:    (id: number, motivo: string) => api.patch(`/caja/${id}/anular`, { motivo }).then(r => r.data?.data),
@@ -55,11 +56,18 @@ export default function CajaPage() {
   const qc = useQueryClient();
   const user = useAuthStore(s => s.user);
   const puedeAnular = user?.role === 'admin' || user?.role === 'contador' || user?.role === 'super_admin';
+  const esAdmin     = user?.role === 'admin' || user?.role === 'contador' || user?.role === 'super_admin';
 
   const { data: cajaData, isLoading } = useQuery({
     queryKey: ['caja-hoy'],
     queryFn:  cajaApi.hoy,
     refetchInterval: 30_000,
+  });
+
+  const { data: cajeros = [] } = useQuery<any[]>({
+    queryKey: ['caja-cajeros'],
+    queryFn:  cajaApi.cajeros,
+    staleTime: 60_000,
   });
 
   const { data: historial } = useQuery({
@@ -148,7 +156,14 @@ export default function CajaPage() {
           <Space wrap>
             <RefreshByKeyButton queryKey={['caja-hoy']} />
             <VideoTutorialButton />
-            <Button type="primary" icon={<UnlockOutlined />} onClick={() => { setOpenAbrir(true); form.resetFields(); }}>
+            <Button type="primary" icon={<UnlockOutlined />} onClick={() => {
+              setOpenAbrir(true);
+              form.setFieldsValue({
+                saldoApertura: 0,
+                vendedorId: esAdmin ? undefined : user?.id,
+                notas: undefined,
+              });
+            }}>
               Abrir caja
             </Button>
           </Space>
@@ -397,33 +412,29 @@ export default function CajaPage() {
         title={<Space><UnlockOutlined style={{ color: '#10B981' }} />Abrir Caja</Space>}
         open={openAbrir} onCancel={() => setOpenAbrir(false)} footer={null} width={420}
       >
-        {/* Cajero — automático desde JWT */}
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 500, color: token.colorTextSecondary, marginBottom: 6 }}>
-            Cajero responsable
-          </div>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 10,
-            padding: '8px 12px',
-            background: token.colorFillAlter,
-            border: `1px solid ${token.colorBorderSecondary}`,
-            borderRadius: 8,
-          }}>
-            <Avatar size={28} style={{ background: avatarColor(user?.nombre ?? ''), fontSize: 12, fontWeight: 600, flexShrink: 0 }}>
-              {(user?.nombre ?? 'U').charAt(0).toUpperCase()}
-            </Avatar>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 500, color: token.colorText }}>{user?.nombre}</div>
-              <div style={{ fontSize: 11, color: token.colorTextTertiary }}>{user?.role} · {user?.email}</div>
-            </div>
-            <LockOutlined style={{ color: token.colorTextTertiary, fontSize: 12 }} />
-          </div>
-          <div style={{ fontSize: 11, color: token.colorTextTertiary, marginTop: 4 }}>
-            El cajero se asigna automáticamente al usuario activo
-          </div>
-        </div>
-
-        <Form form={form} layout="vertical" onFinish={v => abrirMut.mutate(v)} initialValues={{ saldoApertura: 0 }}>
+        <Form form={form} layout="vertical" onFinish={v => abrirMut.mutate(v)}>
+          <Form.Item name="vendedorId" label="Cajero responsable" rules={[{ required: true, message: 'Selecciona un cajero' }]}>
+            <Select
+              size="large"
+              placeholder="Seleccionar cajero..."
+              showSearch
+              filterOption={(input: string, opt: any) =>
+                (opt?.label ?? '').toLowerCase().includes(input.toLowerCase())
+              }
+              options={cajeros.map((u: any) => ({ value: u.id, label: u.nombre, email: u.email }))}
+              optionRender={(opt: any) => (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 0' }}>
+                  <Avatar size={22} style={{ background: avatarColor(opt.data.label as string), fontSize: 10, flexShrink: 0 }}>
+                    {(opt.data.label as string)?.charAt(0).toUpperCase()}
+                  </Avatar>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 500 }}>{opt.data.label as string}</div>
+                    <div style={{ fontSize: 11, color: token.colorTextTertiary }}>{opt.data.email}</div>
+                  </div>
+                </div>
+              )}
+            />
+          </Form.Item>
           <Form.Item name="saldoApertura" label="Saldo de apertura (RD$)">
             <InputNumber
               style={{ width: '100%' }} min={0} precision={2} size="large" autoFocus

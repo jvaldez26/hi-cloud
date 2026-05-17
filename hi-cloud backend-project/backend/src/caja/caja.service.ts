@@ -56,6 +56,21 @@ export class CajaService {
     }
   }
 
+  // ── Cajeros activos de la empresa ─────────────────────────────────────────
+
+  async listarCajeros(): Promise<{ id: number; nombre: string; email: string; role: string }[]> {
+    const empresaId = this.tenantService.getEmpresaId();
+    return this.dataSource.query(`
+      SELECT u.id, u.nombre, u.email, u.role
+      FROM users u
+      JOIN usuario_empresas ue ON ue."userId" = u.id
+      WHERE ue."empresaId" = $1
+        AND ue."isActive"  = true
+        AND u."isActive"   = true
+      ORDER BY u.nombre
+    `, [empresaId]);
+  }
+
   // ── Abrir caja por vendedor ────────────────────────────────────────────────
 
   async abrirCaja(
@@ -66,6 +81,15 @@ export class CajaService {
     vendedorNombre?: string,
   ) {
     const empresaId = this.tenantService.getEmpresaId();
+
+    // Resolver nombre del cajero desde BD si no fue enviado
+    if (vendedorId && !vendedorNombre) {
+      const rows = await this.dataSource.query(
+        `SELECT nombre FROM users WHERE id = $1`,
+        [vendedorId],
+      );
+      vendedorNombre = rows[0]?.nombre ?? String(vendedorId);
+    }
     const hoy = new Date().toISOString().split('T')[0];
 
     // Buscar caja existente para este vendedor HOY dentro de la misma empresa

@@ -3,7 +3,7 @@ import {
   ParseIntPipe, Query, HttpCode, HttpStatus, UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
-import { IsOptional, IsNumber, IsString, Min, MaxLength } from 'class-validator';
+import { IsOptional, IsNumber, IsString, IsNotEmpty, IsInt, IsPositive, Min, MaxLength } from 'class-validator';
 import { CajaService } from './caja.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -13,14 +13,11 @@ import { UserRole } from '../users/enums/user-role.enum';
 import { User } from '../users/users.entity';
 
 class AbrirCajaDto {
+  @IsNotEmpty() @IsInt() @IsPositive()
+  vendedorId: number;
+
   @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0)
   saldoApertura?: number;
-
-  @IsOptional() @IsNumber()
-  vendedorId?: number;
-
-  @IsOptional() @IsString()
-  vendedorNombre?: string;
 
   @IsOptional() @IsString()
   notas?: string;
@@ -53,17 +50,23 @@ export class CajaController {
     return this.cajaService.getCajaHoy(vid);
   }
 
+  @Get('cajeros')
+  @ApiOperation({ summary: 'Usuarios activos de la empresa (para selector de cajero)' })
+  getCajeros() {
+    return this.cajaService.listarCajeros();
+  }
+
   @Post('abrir')
   @HttpCode(HttpStatus.CREATED)
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)
-  @ApiOperation({ summary: 'Abrir caja del día (cajero = usuario autenticado)' })
+  @ApiOperation({ summary: 'Abrir caja del día para el cajero seleccionado' })
   abrirCaja(@Body() dto: AbrirCajaDto, @GetUser() usuario: User) {
     return this.cajaService.abrirCaja(
       usuario.id,
       dto.saldoApertura ?? 0,
       dto.notas,
-      usuario.id,
-      usuario.nombre,
+      dto.vendedorId,
+      undefined,  // service resuelve el nombre desde BD
     );
   }
 
