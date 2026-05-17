@@ -145,16 +145,14 @@ export class FacturasRecurrentesService {
                    subtotal: sub, importeIva: impIva, total: sub + impIva };
         });
 
-        // Generar folio con MAX para evitar duplicados en concurrencia
-        const y      = hoy.getFullYear();
-        const m      = String(hoy.getMonth() + 1).padStart(2, '0');
-        const prefix = `FAC-${y}${m}-`;
+        // Generar folio con mismo formato que facturas regulares (FAC-NNN)
         const maxRes = await this.facturaRepository
           .createQueryBuilder('f')
-          .select(`MAX(CAST(SPLIT_PART(f.folio, '-', 3) AS INTEGER))`, 'maxNum')
-          .where('f.folio LIKE :p', { p: `${prefix}%` })
+          .select(`MAX(CASE WHEN f.folio ~ '^FAC-[0-9]+$' THEN CAST(SUBSTRING(f.folio FROM 5) AS INTEGER) ELSE 100 END)`, 'maxNum')
+          .where('f.empresaId = :eid', { eid: rec.empresaId })
+          .andWhere('f.isActive = :a', { a: true })
           .getRawOne<{ maxNum: number | null }>();
-        const folio = `${prefix}${String((maxRes?.maxNum ?? 0) + 1).padStart(4, '0')}`;
+        const folio = `FAC-${Math.max(101, (maxRes?.maxNum ?? 100) + 1)}`;
 
         // Crear factura — propaga empresaId del recurrente
         const factura = await this.facturaRepository.save(

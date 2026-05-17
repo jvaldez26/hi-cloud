@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input,
-  InputNumber, Switch, Space, Typography, Statistic, message,
-  Tabs, Progress, Divider, theme,
+  InputNumber, Switch, Space, Typography, message,
+  Progress, Divider, theme,
 } from 'antd';
 import {
   StarOutlined, GiftOutlined, TrophyOutlined, SettingOutlined,
@@ -98,38 +98,6 @@ export default function FidelidadPage() {
           <Button icon={<SettingOutlined />} onClick={abrirConfig}>Configurar</Button>
         </Space>
       </div>
-
-      {/* KPIs */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={12} sm={6}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#f59e0b,#fbbf24)' }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Clientes con Puntos</span>}
-              value={resumen?.clientesConPuntos ?? 0} prefix={<StarOutlined />}
-              valueStyle={{ color: '#fff', fontSize: 28 }} />
-          </Card>
-        </Col>
-        <Col xs={12} sm={6}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#1a56db,#3b82f6)' }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Puntos Acumulados</span>}
-              value={resumen?.totalAcumulados ?? 0}
-              valueStyle={{ color: '#fff', fontSize: 24 }} />
-          </Card>
-        </Col>
-        <Col xs={12} sm={6}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#059669,#10b981)' }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Puntos Canjeados</span>}
-              value={resumen?.totalCanjeados ?? 0}
-              valueStyle={{ color: '#fff', fontSize: 24 }} />
-          </Card>
-        </Col>
-        <Col xs={12} sm={6}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#7c3aed,#a78bfa)' }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Puntos Disponibles</span>}
-              value={resumen?.totalDisponibles ?? 0}
-              valueStyle={{ color: '#fff', fontSize: 24 }} />
-          </Card>
-        </Col>
-      </Row>
 
       {/* Configuración rápida del programa */}
       {prog && (

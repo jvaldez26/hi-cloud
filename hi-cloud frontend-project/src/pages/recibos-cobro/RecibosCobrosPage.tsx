@@ -5,13 +5,13 @@ import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { TableActions } from '../../components/ui/TableActions';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
-  DatePicker, InputNumber, Space, Typography, Statistic, Popconfirm,
+  DatePicker, InputNumber, Space, Typography, Popconfirm,
   message, theme, Tooltip, Drawer, Descriptions, Divider,
 } from 'antd';
 import {
-  FileTextOutlined, PlusOutlined, PrinterOutlined, DeleteOutlined,
-  DollarOutlined, CheckCircleOutlined, MailOutlined, FileExcelOutlined,
-  FilePdfOutlined, LoadingOutlined, StopOutlined, EyeOutlined,
+  FileTextOutlined, PlusOutlined, PrinterOutlined,
+  CheckCircleOutlined, MailOutlined, FileExcelOutlined,
+  FilePdfOutlined, LoadingOutlined, StopOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -249,33 +249,6 @@ export default function RecibosCobrosPage() {
           </Button>
         </Space>
       </div>
-
-      {/* KPIs */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={12} sm={8}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#059669,#10b981)' }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Cobrado Hoy</span>}
-              value={resumen?.hoy?.total ?? 0} formatter={v => fmt(Number(v))}
-              prefix={<DollarOutlined />} valueStyle={{ color: '#fff', fontSize: 22 }} />
-            <Text style={{ color: 'rgba(255,255,255,.6)', fontSize: 11 }}>{resumen?.hoy?.cantidad ?? 0} recibo(s)</Text>
-          </Card>
-        </Col>
-        <Col xs={12} sm={8}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#1a56db,#3b82f6)' }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Cobrado Este Mes</span>}
-              value={resumen?.mes?.total ?? 0} formatter={v => fmt(Number(v))}
-              valueStyle={{ color: '#fff', fontSize: 22 }} />
-          </Card>
-        </Col>
-        <Col xs={12} sm={8}>
-          <Card bordered={false} style={{ borderRadius: 12, background: 'linear-gradient(135deg,#7c3aed,#a78bfa)' }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Total Histórico</span>}
-              value={resumen?.total?.total ?? 0} formatter={v => fmt(Number(v))}
-              valueStyle={{ color: '#fff', fontSize: 20 }} />
-            <Text style={{ color: 'rgba(255,255,255,.6)', fontSize: 11 }}>{resumen?.total?.cantidad ?? 0} recibo(s)</Text>
-          </Card>
-        </Col>
-      </Row>
 
       <Card bordered={false} style={{ borderRadius: 12 }}>
         <Table
