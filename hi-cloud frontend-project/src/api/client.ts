@@ -72,6 +72,22 @@ apiClient.interceptors.response.use(
     if (status === 401) {
       const original = err.config as any;
 
+      // Sesión desplazada: el usuario inició sesión en otro dispositivo
+      if (data?.message === 'SESION_DESPLAZADA') {
+        localStorage.removeItem('auth_user');
+        localStorage.removeItem('empresaId');
+        localStorage.removeItem('mis_empresas');
+        sessionStorage.setItem(
+          'login_error',
+          'Tu sesión fue cerrada porque iniciaste sesión en otro dispositivo. ' +
+          'Si no fuiste tú, cambia tu contraseña inmediatamente.',
+        );
+        if (!window.location.pathname.startsWith('/login')) {
+          window.location.replace('/login');
+        }
+        return Promise.reject(err);
+      }
+
       // No reintentar en refresh/login para evitar loops infinitos
       // NOTA: /auth/me NO está excluido — si el access token expira durante la
       // hidratación de App.tsx, el interceptor debe renovarlo transparentemente.

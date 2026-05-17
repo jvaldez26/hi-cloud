@@ -1,5 +1,5 @@
 import {
-  Controller, Post, Get, Patch, Body, Param,
+  Controller, Post, Get, Patch, Body, Param, ParseIntPipe,
   HttpCode, HttpStatus, UseGuards, Req, Res,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
@@ -305,5 +305,18 @@ export class AuthController {
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 días
       path:   '/api/v1/auth/refresh',    // Solo se envía al endpoint de refresh
     });
+  }
+
+  // ── Super admin: forzar cierre de sesión de un usuario ────────────────────
+  @Post('usuarios/:id/cerrar-sesion')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Super admin: cerrar sesión activa de un usuario' })
+  forzarLogout(@Param('id', ParseIntPipe) id: number, @GetUser() admin: User) {
+    if (admin.role !== 'super_admin') {
+      throw new (require('@nestjs/common').ForbiddenException)('Solo super admin puede forzar logout');
+    }
+    return this.authService.forzarLogout(id);
   }
 }

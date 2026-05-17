@@ -1,5 +1,6 @@
 ﻿import {
   Injectable,
+  OnModuleInit,
   UnauthorizedException,
   ConflictException,
   InternalServerErrorException,
@@ -13,6 +14,8 @@ import { Repository, DataSource } from 'typeorm';
 import { randomUUID, randomBytes } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import { UsersService } from '../users/users.service';
+import { TokenBlacklistService } from './token-blacklist.service';
+import { RefreshTokenService } from './refresh-token.service';
 import { EmailService } from '../notificaciones/services/email.service';
 import { User } from '../users/users.entity';
 import { UsuarioEmpresa } from '../multi-empresa/entities/usuario-empresa.entity';
@@ -24,13 +27,15 @@ import { LoginDto } from './dto/login.dto';
 import { UserRole } from '../users/enums/user-role.enum';
 
 @Injectable()
-export class AuthService {
+export class AuthService implements OnModuleInit {
   private readonly logger = new Logger(AuthService.name);
 
   constructor(
-    private usersService:  UsersService,
-    private jwtService:    JwtService,
-    private emailService:  EmailService,
+    private usersService:       UsersService,
+    private jwtService:         JwtService,
+    private emailService:       EmailService,
+    private blacklistSvc:       TokenBlacklistService,
+    private refreshTokenSvc:    RefreshTokenService,
     @InjectRepository(User)
     private userRepository: Repository<User>,
     @InjectRepository(UsuarioEmpresa)
@@ -42,6 +47,34 @@ export class AuthService {
     private contabilidadService: ContabilidadService,
     @InjectDataSource() private dataSource: DataSource,
   ) {}
+
+  async onModuleInit() {
+    try {
+      await this.dataSource.query(`
+        ALTER TABLE users
+          ADD COLUMN IF NOT EXISTS "sessionToken"      VARCHAR(64),
+          ADD COLUMN IF NOT EXISTS "sessionCreatedAt"  TIMESTAMPTZ
+      `);
+      await this.dataSource.query(`
+        CREATE INDEX IF NOT EXISTS "IDX_users_sessionToken" ON users("sessionToken")
+      `);
+    } catch (e) {
+      this.logger.warn('Session columns migration (ignorado): ' + e);
+    }
+  }
+
+  /** Inicia nueva sesión: genera sessionToken, revoca refresh tokens anteriores. */
+  private async initNewSession(user: User): Promise<string> {
+    const sessionToken = randomUUID();
+    await this.userRepository.update(user.id, {
+      sessionToken,
+      sessionCreatedAt: new Date(),
+    });
+    user.sessionToken      = sessionToken;
+    user.sessionCreatedAt  = new Date();
+    await this.refreshTokenSvc.revocarTodos(user.id);
+    return sessionToken;
+  }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -63,12 +96,13 @@ export class AuthService {
     // S-27: jti único por token — permite revocación individual en blacklist
     // S-31: roleVersion en JWT para detectar cambios de rol sin ir a BD en cada request
     return this.jwtService.sign({
-      sub:         user.id,
-      email:       user.email,
-      role:        user.role,
-      empresaId:   empresaId ?? null,
-      jti:         randomUUID(),
-      roleVersion: (user as any).roleVersion ?? 1,
+      sub:          user.id,
+      email:        user.email,
+      role:         user.role,
+      empresaId:    empresaId ?? null,
+      jti:          randomUUID(),
+      sessionToken: user.sessionToken ?? undefined,
+      roleVersion:  (user as any).roleVersion ?? 1,
     });
   }
 
@@ -194,6 +228,9 @@ export class AuthService {
       this.sendVerificationEmail(user.id, user.email, user.nombre).catch(() => null);
       throw new UnauthorizedException('Credenciales inválidas');
     }
+
+    // Desplazar sesión anterior: nuevo sessionToken + revocar refresh tokens previos
+    await this.initNewSession(user);
 
     const empresaId    = await this.getEmpresaPrincipal(user.id);
     const accessToken  = this.buildToken(user, empresaId);
@@ -598,8 +635,19 @@ export class AuthService {
     return this.buildToken(user, empresaId);
   }
 
+  /** Super admin: fuerza el logout de un usuario limpiando su sessionToken. */
+  async forzarLogout(userId: number) {
+    const user = await this.userRepository.findOneBy({ id: userId });
+    if (!user) throw new BadRequestException(`Usuario #${userId} no encontrado`);
+    await this.userRepository.update(userId, { sessionToken: undefined, sessionCreatedAt: undefined });
+    await this.refreshTokenSvc.revocarTodos(userId);
+    this.logger.log(`Super admin forzó logout del usuario #${userId}`);
+    return { message: `Sesión del usuario #${userId} cerrada correctamente` };
+  }
+
   /** Genera la respuesta de login completa (token + empresas) para un User */
   async buildLoginResponse(user: User) {
+    await this.initNewSession(user);
     const empresaId   = await this.getEmpresaPrincipal(user.id);
     const accessToken = this.buildToken(user, empresaId);
     const empresas    = await this.ueRepository.find({

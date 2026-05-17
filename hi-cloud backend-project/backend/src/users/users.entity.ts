@@ -51,6 +51,14 @@ export class User extends BaseEntity {
   @Column({ type: 'int', default: 1 })
   roleVersion!: number;
 
+  // ── Session control — una sesión activa por usuario ───────────────────────
+  // sessionToken = UUID incluido en el JWT; si difiere → sesión desplazada
+  @Column({ length: 64, nullable: true })
+  sessionToken?: string;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  sessionCreatedAt?: Date;
+
   @Column({ default: false })
   tourCompletado!: boolean;
 

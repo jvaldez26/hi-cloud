@@ -8,13 +8,14 @@ import type { Request } from 'express';
 import { extractJwtFromRequest } from '../utils/extract-jwt.util';
 
 export interface JwtPayload {
-  sub:          number;
-  email:        string;
-  role:         string;
-  empresaId?:   number | null;
-  jti?:         string;   // S-27: JWT ID para blacklist
-  exp?:         number;
-  roleVersion?: number;   // S-31: versión de rol para invalidación rápida
+  sub:           number;
+  email:         string;
+  role:          string;
+  empresaId?:    number | null;
+  jti?:          string;         // S-27: JWT ID para blacklist
+  exp?:          number;
+  roleVersion?:  number;         // S-31: versión de rol para invalidación rápida
+  sessionToken?: string;         // Control de sesión única por usuario
 }
 
 @Injectable()
@@ -57,6 +58,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!user || !user.isActive) {
       throw new UnauthorizedException('Token inválido o usuario inactivo');
     }
+
+    // Sesión desplazada: el usuario inició sesión desde otro dispositivo
+    if (payload.sessionToken && user.sessionToken &&
+        payload.sessionToken !== user.sessionToken) {
+      throw new UnauthorizedException('SESION_DESPLAZADA');
+    }
+
     (user as any).empresaId = payload.empresaId ?? null;
     (user as any).jti       = payload.jti;
     (user as any).exp       = payload.exp;
