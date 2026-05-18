@@ -7,8 +7,7 @@ import { Table, Button, Tag, Card, Row, Col, Typography,
          Modal, Form, Input, InputNumber, Select, DatePicker, Space,
          Drawer, Descriptions, Popconfirm, message, Divider, Steps } from 'antd';
 import {
-  PlusOutlined, ToolOutlined, FileTextOutlined, FileExcelOutlined,
-  CheckOutlined, WarningOutlined,
+  PlusOutlined, FileTextOutlined, FileExcelOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';

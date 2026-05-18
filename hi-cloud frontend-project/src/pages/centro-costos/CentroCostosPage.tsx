@@ -6,10 +6,10 @@ import { TableActions } from '../../components/ui/TableActions';
 import {
   Card, Row, Col, Typography, Table, Tag, Statistic,
   Button, Space, Modal, Form, Input, InputNumber, Select,
-  Popconfirm, message, Progress, Tabs, Divider,
+  message, Progress, Tabs, Divider,
 } from 'antd';
 import {
-  PlusOutlined, DeleteOutlined, EditOutlined, ApartmentOutlined, FileExcelOutlined,
+  PlusOutlined, DeleteOutlined, ApartmentOutlined, FileExcelOutlined,
 } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';

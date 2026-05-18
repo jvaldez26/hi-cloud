@@ -5,7 +5,7 @@ import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/Tab
 import { TableActions } from '../../components/ui/TableActions';
 import {
   Card, Row, Col, Button, Table, Typography, Space, Modal,
-  Form, Input, InputNumber, Select, message, Popconfirm,
+  Form, Input, InputNumber, Select, message,
   Tag, Tabs, Alert, Statistic, Divider,
 } from 'antd';
 import {

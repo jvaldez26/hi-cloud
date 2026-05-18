@@ -8,7 +8,7 @@ import ModuloBloqueado from '../../components/ui/ModuloBloqueado';
 import {
   Tabs, Table, Button, Tag, Card, Row, Col, Typography, Modal,
   Form, Input, InputNumber, Select, Space, Alert, message,
-  Badge, Drawer, Descriptions, Tooltip, Popconfirm, theme } from 'antd';
+  Badge, Drawer, Descriptions, Tooltip, theme } from 'antd';
 import {
   ReloadOutlined, DownloadOutlined, SendOutlined,
   WarningOutlined, CheckCircleOutlined, CloseCircleOutlined,
