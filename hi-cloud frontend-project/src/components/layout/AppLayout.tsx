@@ -92,6 +92,13 @@ const sidebarDark: SidebarPalette = {
 const SidebarCtx = createContext<SidebarPalette>(sidebarDark);
 const useC = () => useContext(SidebarCtx);
 
+// ── Comparación de rutas sin falsos positivos ─────────────────────────────────
+// activePath.startsWith('/notas-credito') también matchea '/notas-credito-compras'.
+// Esta función exige que el path coincida exactamente O que lo que sigue sea '/'.
+function isActivePath(activePath: string, path: string): boolean {
+  return activePath === path || activePath.startsWith(path + '/');
+}
+
 // ── Estructura de navegación ──────────────────────────────────────────────────
 
 interface QuickItem {
@@ -623,7 +630,7 @@ function CategoryAccordion({
 }) {
   const C = useC();
   const [hover, setHover] = useState(false);
-  const hasActiveSub = category.items.some(i => activePath.startsWith(i.path));
+  const hasActiveSub = category.items.some(i => isActivePath(activePath, i.path));
 
   return (
     <div>
@@ -685,7 +692,7 @@ function CategoryAccordion({
           >
             <div style={{ paddingBottom: 4 }}>
               {category.items.map(item => {
-                const isActive  = activePath.startsWith(item.path);
+                const isActive  = isActivePath(activePath, item.path);
                 const minPlan   = PATH_MIN_PLAN[item.path] as PlanTipo | undefined;
                 const isLocked  = !!minPlan && esRutaBloqueada(item.path, planActual);
                 return (
@@ -769,7 +776,7 @@ function CategoryBtnCollapsed({
 }) {
   const C = useC();
   const [hover, setHover] = useState(false);
-  const hasActiveSub = category.items.some(i => activePath.startsWith(i.path));
+  const hasActiveSub = category.items.some(i => isActivePath(activePath, i.path));
 
   return (
     <Tooltip title={category.label} placement="right">
@@ -895,7 +902,7 @@ function FlyoutPanel({
             >
               <FlyoutItem
                 item={item}
-                active={activePath.startsWith(item.path)}
+                active={isActivePath(activePath, item.path)}
                 locked={esRutaBloqueada(item.path, planActual)}
                 planMinimo={PATH_MIN_PLAN[item.path] as PlanTipo | undefined}
                 onClick={() => {
@@ -1048,7 +1055,7 @@ export default function AppLayout() {
     }
     // Sin preferencia → abrir el grupo de la ruta actual
     const active = MENU_CATEGORIES.find(g =>
-      g.items.some(i => activePath.startsWith(i.path))
+      g.items.some(i => isActivePath(activePath, i.path))
     );
     return active?.id ?? null;
   });
@@ -1057,7 +1064,7 @@ export default function AppLayout() {
   // (permite que la navegación desde fuera abra el grupo correcto)
   useEffect(() => {
     const activeGroup = MENU_CATEGORIES.find(g =>
-      g.items.some(i => activePath.startsWith(i.path))
+      g.items.some(i => isActivePath(activePath, i.path))
     );
     if (!activeGroup) return;
     const saved = localStorage.getItem(ACCORDION_KEY);
@@ -1468,7 +1475,7 @@ export default function AppLayout() {
             <QuickItemComp
               key={item.path}
               item={item}
-              active={activePath.startsWith(item.path)}
+              active={isActivePath(activePath, item.path)}
               collapsed={collapsed}
               onClick={() => { handleNavigate(item.path); }}
               onHover={() => prefetchRoute(item.path)}
@@ -2065,4 +2072,5 @@ export default function AppLayout() {
     </>
   );
 }
+
 
