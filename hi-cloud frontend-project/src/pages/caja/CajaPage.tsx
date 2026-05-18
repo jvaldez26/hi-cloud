@@ -15,6 +15,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import api from '../../api/client';
 import { fmt } from '../../utils/formatters';
+import { imprimirHtml } from '../../utils/printUtils';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -147,19 +148,56 @@ export default function CajaPage() {
   const diferenciaCierre = saldoFisicoInput - (cerrarTarget?.saldoEsperado ?? 0);
 
   const imprimirCierre = (r: any) => {
-    window.print();
-    message.info('Función de impresión disponible próximamente');
+    const totalIngresos = (Number(r.ventasEfectivo ?? 0) + Number(r.ventasTarjeta ?? 0) + Number(r.ventasTransferencia ?? 0)).toFixed(2);
+    const diferencia = Number(r.diferencia ?? 0);
+    const difColor = diferencia === 0 ? '#10b981' : diferencia > 0 ? '#3b82f6' : '#ef4444';
+    const difLabel = diferencia === 0 ? '✅ Cuadrado' : diferencia > 0 ? `+${fmt.money(diferencia)} sobrante` : `${fmt.money(diferencia)} faltante`;
+    imprimirHtml(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Cierre de Caja</title>
+<style>body{font-family:'Courier New',monospace;max-width:320px;margin:0 auto;padding:12px;font-size:13px}
+h2{text-align:center;font-size:16px;margin:0 0 4px}
+.center{text-align:center}.sep{border:none;border-top:1px dashed #999;margin:8px 0}
+.row{display:flex;justify-content:space-between;margin:3px 0}
+.total{font-weight:bold;font-size:15px}.difBox{padding:6px;border-radius:4px;text-align:center;font-weight:bold;margin:8px 0}</style>
+</head><body>
+<h2>HiCloud ERP</h2>
+<p class="center">CIERRE DE CAJA</p>
+<hr class="sep">
+<div class="row"><span>Cajero:</span><span>${r.vendedorNombre ?? 'Administrador'}</span></div>
+<div class="row"><span>Fecha:</span><span>${r.fecha}</span></div>
+<div class="row"><span>Estado:</span><span>${r.estado?.toUpperCase()}</span></div>
+<hr class="sep">
+<b>INGRESOS DEL TURNO</b>
+<div class="row"><span>Ventas efectivo:</span><span>${fmt.money(Number(r.ventasEfectivo ?? 0))}</span></div>
+<div class="row"><span>Ventas tarjeta:</span><span>${fmt.money(Number(r.ventasTarjeta ?? 0))}</span></div>
+<div class="row"><span>Ventas transfer.:</span><span>${fmt.money(Number(r.ventasTransferencia ?? 0))}</span></div>
+<div class="row"><span>Cobros recibidos:</span><span>${fmt.money(Number(r.cobrosRecibidos ?? 0))}</span></div>
+<hr class="sep">
+<b>EGRESOS</b>
+<div class="row"><span>Gastos:</span><span>${fmt.money(Number(r.gastosEfectivo ?? 0))}</span></div>
+<div class="row"><span>Retiros:</span><span>${fmt.money(Number(r.retiros ?? 0))}</span></div>
+<hr class="sep">
+<b>CUADRE</b>
+<div class="row"><span>Saldo apertura:</span><span>${fmt.money(Number(r.saldoApertura ?? 0))}</span></div>
+<div class="row"><span>Efectivo esperado:</span><span>${fmt.money(Number(r.saldoCierre ?? 0))}</span></div>
+<div class="row"><span>Efectivo contado:</span><span>${fmt.money(Number(r.saldoFisico ?? 0))}</span></div>
+<div class="difBox" style="background:${difColor}22;color:${difColor};border:1px solid ${difColor}66">${difLabel}</div>
+<div class="row"><span>Total ingresos:</span><span class="total">${fmt.money(Number(totalIngresos))}</span></div>
+<hr class="sep">
+<p class="center" style="font-size:11px">${r.cantidadTransacciones ?? 0} transacciones</p>
+<p class="center" style="font-size:10px;color:#666">${new Date().toLocaleString('es-DO')}</p>
+</body></html>`);
   };
 
   const descargarPDFCierre = async (r: any) => {
     try {
       const res = await api.get(`/caja/${r.id}/pdf`, { responseType: 'blob' });
-      const url = URL.createObjectURL(res.data);
+      const url = URL.createObjectURL(res.data as Blob);
       const a = document.createElement('a');
       a.href = url; a.download = `Cierre-${r.fecha}.pdf`; a.click();
       URL.revokeObjectURL(url);
     } catch {
-      message.warning('PDF de cierre disponible próximamente');
+      // PDF backend no configurado → generar impresión HTML como alternativa
+      imprimirCierre(r);
     }
   };
 

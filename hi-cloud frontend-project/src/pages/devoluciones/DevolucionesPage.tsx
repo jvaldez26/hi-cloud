@@ -42,6 +42,8 @@ export default function DevolucionesPage() {
   const [form]              = Form.useForm();
   const [facturaSelId, setFacturaSelId] = useState<number | null>(null);
   const [lineas, setLineas] = useState<any[]>([]);
+  const [facturaOptions, setFacturaOptions] = useState<{ value: number; label: string }[]>([]);
+  const [buscandoFacturas, setBuscandoFacturas] = useState(false);
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({ queryKey: ['devoluciones', page], queryFn: () => devolucionesApi.list(page) });
@@ -187,16 +189,21 @@ export default function DevolucionesPage() {
           <Row gutter={12}>
             <Col xs={24} sm={12}>
               <Form.Item name="facturaId" label="Factura original" rules={[{ required: true }]}>
-                <Select showSearch filterOption={false} placeholder="Buscar por folio o cliente..."
-                  onSearch={async (v) => { if (v.length < 2) return; }}
+                <Select
+                  showSearch filterOption={false}
+                  placeholder="Buscar por folio o cliente..."
+                  loading={buscandoFacturas}
+                  onSearch={async (v) => {
+                    if (v.length < 2) return;
+                    setBuscandoFacturas(true);
+                    try {
+                      const res = await facturasApi.buscar(v);
+                      const lista = res?.data ?? (Array.isArray(res) ? res : []);
+                      setFacturaOptions(lista.map((f: any) => ({ value: f.id, label: `${f.folio} — ${f.cliente?.nombre ?? ''}` })));
+                    } finally { setBuscandoFacturas(false); }
+                  }}
                   onChange={onFacturaChange}
-                  options={[]}
-                  notFoundContent={<Button type="link" size="small" onClick={async () => {
-                    const folio = form.getFieldValue('buscarFactura');
-                    if (!folio) return;
-                    const res = await facturasApi.buscar(folio);
-                    // simplified: for demo
-                  }}>Buscar</Button>}
+                  options={facturaOptions}
                 />
               </Form.Item>
               <Form.Item name="buscarFactura" label="Folio de factura">
