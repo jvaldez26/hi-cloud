@@ -3310,17 +3310,24 @@ export default function POSPage() {
   };
 
   // ── Confirmar salida ────────────────────────────────────────────────────────
-  const confirmarSalir = () => {
+  // Salir del POS → dashboard (sin cerrar sesión)
+  const salirDelPOS = () => {
     Modal.confirm({
-      title: '¿Cerrar sesión?',
-      content: '¿Estás seguro que deseas salir del sistema?',
-      okText: 'Salir', okButtonProps: { danger: true }, cancelText: 'Cancelar',
-      onOk: async () => {
-        sessionStorage.removeItem('pos_bloqueado');
-        await api.post('/auth/logout').catch(() => {});
-        navigate('/login');
+      title: '¿Salir del Punto de Venta?',
+      content: 'Serás redirigido al dashboard. La sesión permanece activa.',
+      okText: 'Salir', cancelText: 'Cancelar',
+      onOk: () => {
+        sessionStorage.removeItem('pos_turno');
+        navigate('/dashboard');
       },
     });
+  };
+
+  // Cerrar sesión completa → login (solo desde pantalla bloqueada)
+  const cerrarSesion = async () => {
+    sessionStorage.removeItem('pos_bloqueado');
+    await api.post('/auth/logout').catch(() => {});
+    navigate('/login');
   };
 
   // ── Timer de inactividad (5 min) ───────────────────────────────────────────
@@ -3405,7 +3412,7 @@ export default function POSPage() {
         onBloquear={() => { sessionStorage.setItem('pos_bloqueado', 'true'); setPantallaBloqueada(true); setPwDesbloqueo(''); setErrDesbloqueo(''); }}
         onSupervisor={() => { setModalSupervisor(true); setPwSupervisor(''); setErrSupervisor(''); }}
         onCambiarUsuario={() => { setModalCambiarUser(true); setCambiarUserId(undefined); setPwCambio(''); setErrCambio(''); }}
-        onExit={confirmarSalir} />
+        onExit={salirDelPOS} />
 
       {/* Tab bar mobile — cambia entre productos y carrito */}
       {isMobile && (
@@ -3989,11 +3996,7 @@ export default function POSPage() {
         <button onClick={desbloquearPantalla} disabled={desbloqueando} style={{ background: 'none', border: 'none', color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer', marginBottom: 48 }}>
           {desbloqueando ? 'Verificando...' : 'Desbloquear'}
         </button>
-        <div onClick={async () => {
-          sessionStorage.removeItem('pos_bloqueado');
-          await api.post('/auth/logout').catch(() => {});
-          navigate('/login');
-        }} style={{ position: 'absolute', bottom: 20, display: 'flex', alignItems: 'center', gap: 8, color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 14 }}>
+        <div onClick={cerrarSesion} style={{ position: 'absolute', bottom: 20, display: 'flex', alignItems: 'center', gap: 8, color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 14 }}>
           <LogoutOutlined /> Salir
         </div>
       </div>
