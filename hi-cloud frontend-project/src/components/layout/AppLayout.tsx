@@ -1170,14 +1170,35 @@ export default function AppLayout() {
     // ÚNICAMENTE del payload del JWT, no del header X-Empresa-ID.
     try {
       await api.post('/auth/cambiar-empresa', { empresaId: id });
-    } catch { /* Si falla, continuar de todas formas — el reload refrescará */ }
+    } catch {
+      // Si falla (empresa inválida / sin acceso), limpiar localStorage para
+      // que la lógica de redirección maneje el estado correctamente y NO loop
+      localStorage.removeItem('empresaId');
+      setEmpresaActiva(null);
+      return; // NO recargar — dejar que los useEffects redirigean
+    }
     window.location.reload();
   }, []);
+
+  // ── Limpiar empresaId stale (empresa eliminada / acceso revocado) ───────────
+  // Si localStorage tiene un empresaId que ya no está en misEmpresas (lista activa),
+  // se limpia para que la lógica de redirección opere correctamente sin loop.
+  useEffect(() => {
+    if (!empresasLoaded) return;
+    const stored = localStorage.getItem('empresaId');
+    if (!stored) return;
+    const storedNum = Number(stored);
+    const estaEnLista = (misEmpresas as any[]).some((e: any) => e.empresaId === storedNum);
+    if (!estaEnLista) {
+      localStorage.removeItem('empresaId');
+      setEmpresaActiva(null);
+    }
+  }, [empresasLoaded, misEmpresas]);
 
   // Auto-seleccionar la primera empresa si no hay ninguna activa
   useEffect(() => {
     if (misEmpresas.length > 0 && !localStorage.getItem('empresaId')) {
-      cambiarEmpresa(misEmpresas[0].empresaId);
+      cambiarEmpresa((misEmpresas as any[])[0].empresaId);
     }
   }, [misEmpresas, cambiarEmpresa]);
 
