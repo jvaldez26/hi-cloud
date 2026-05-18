@@ -1163,9 +1163,14 @@ export default function AppLayout() {
     enabled:  !!user,
     staleTime: 60_000,
   });
-  const cambiarEmpresa = useCallback((id: number) => {
+  const cambiarEmpresa = useCallback(async (id: number) => {
     setEmpresaActiva(id);
     localStorage.setItem('empresaId', String(id));
+    // Renovar JWT con el nuevo empresaId — el TenantMiddleware lee empresaId
+    // ÚNICAMENTE del payload del JWT, no del header X-Empresa-ID.
+    try {
+      await api.post('/auth/cambiar-empresa', { empresaId: id });
+    } catch { /* Si falla, continuar de todas formas — el reload refrescará */ }
     window.location.reload();
   }, []);
 
