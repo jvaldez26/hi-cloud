@@ -636,6 +636,15 @@ export class AuthService implements OnModuleInit {
     return this.buildToken(user, empresaId);
   }
 
+  /** POS Screen Lock: verifica que la contraseña coincide con la del usuario autenticado. */
+  async verificarPassword(email: string, password: string): Promise<{ ok: true }> {
+    const user = await this.usersService.findByEmailForAuth(email);
+    if (!user) throw new UnauthorizedException('Credenciales inválidas');
+    const valida = await bcrypt.compare(password, user.password!);
+    if (!valida) throw new UnauthorizedException('Contraseña incorrecta');
+    return { ok: true };
+  }
+
   /** Super admin: fuerza el logout de un usuario limpiando su sessionToken. */
   async forzarLogout(userId: number) {
     const user = await this.userRepository.findOneBy({ id: userId });

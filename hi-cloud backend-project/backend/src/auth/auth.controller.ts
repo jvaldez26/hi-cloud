@@ -108,6 +108,18 @@ export class AuthController {
     return { ok: true };
   }
 
+  @Post('verificar-password')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Verificar contraseña del usuario autenticado (POS screen lock)' })
+  async verificarPassword(
+    @Body() body: { password: string },
+    @GetUser() usuario: User,
+  ) {
+    return this.authService.verificarPassword(usuario.email, body.password);
+  }
+
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)

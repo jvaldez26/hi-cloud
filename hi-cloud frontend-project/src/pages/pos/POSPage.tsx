@@ -1,7 +1,8 @@
 ﻿import { useState, useCallback, useEffect, useRef, createContext, useContext } from 'react';
 import QRCode from 'qrcode';
-import { Select, Modal, Badge, Empty, Spin, Tooltip, message, Avatar, Popover } from 'antd';
-import { SearchOutlined, ShoppingCartOutlined, CheckCircleOutlined, DisconnectOutlined, LogoutOutlined, PrinterOutlined } from '@ant-design/icons';
+import { Select, Modal, Badge, Empty, Spin, Tooltip, message, Avatar, Popover, Input } from 'antd';
+import { SearchOutlined, ShoppingCartOutlined, CheckCircleOutlined, DisconnectOutlined, LogoutOutlined, PrinterOutlined, LockOutlined, UserSwitchOutlined, SwapOutlined, EyeOutlined, EyeInvisibleOutlined } from '@ant-design/icons';
+import { useAuthStore } from '../../store/auth.store';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
@@ -625,16 +626,18 @@ const ATAJOS_POS = [
 ];
 
 // ── Top bar ───────────────────────────────────────────────────────────────────
-function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit,
+function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, onSupervisor, onCambiarUsuario,
   modoFacturacion, onModoChange, tipoNcf, onTipoNcfChange, ecfOnline }: {
   empresaNombre: string; cajeroNombre: string; isOffline: boolean; onExit: () => void;
+  onBloquear: () => void; onSupervisor: () => void; onCambiarUsuario: () => void;
   modoFacturacion: ModoFacturacion; onModoChange: (m: ModoFacturacion) => void;
   tipoNcf: string; onTipoNcfChange: (t: string) => void;
   ecfOnline: boolean | null;
 }) {
   const C = useC();
-  const [showModoMenu, setShowModoMenu]   = useState(false);
-  const [showNcfMenu,  setShowNcfMenu]    = useState(false);
+  const [showModoMenu,     setShowModoMenu]     = useState(false);
+  const [showNcfMenu,      setShowNcfMenu]      = useState(false);
+  const [showOpcionesMenu, setShowOpcionesMenu] = useState(false);
   const [showAtalhos,  setShowAtalhos]    = useState(false);
   const modoActual = MODOS_FACTURACION.find(m => m.id === modoFacturacion)!;
   const ecfColors  = ECF_COLORS[tipoNcf] ?? ECF_COLORS.E32;
@@ -816,11 +819,42 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit,
           </div>
         </div>
       </div>
-      <Tooltip title="Cerrar turno y salir">
-        <button onClick={onExit} style={{ height: 30, padding: '0 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,.15)', background: 'rgba(255,255,255,.05)', color: '#94A3B8', cursor: 'pointer', fontSize: 12, outline: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
-          <LogoutOutlined style={{ fontSize: 12 }} /> Salir
+      {/* ── Menú de opciones (candado) ── */}
+      <div style={{ position: 'relative', flexShrink: 0 }}>
+        <button
+          onClick={() => setShowOpcionesMenu(v => !v)}
+          style={{ height: 30, width: 34, borderRadius: 6, border: '1px solid rgba(255,255,255,.15)', background: showOpcionesMenu ? 'rgba(255,255,255,.18)' : 'rgba(255,255,255,.06)', color: '#F1F5F9', cursor: 'pointer', outline: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          title="Opciones"
+        >
+          <LockOutlined style={{ fontSize: 14 }} />
         </button>
-      </Tooltip>
+        {showOpcionesMenu && (
+          <>
+            <div onClick={() => setShowOpcionesMenu(false)} style={{ position: 'fixed', inset: 0, zIndex: 1000 }} />
+            <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 6, zIndex: 1001, background: '#fff', border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden', minWidth: 230, boxShadow: '0 8px 24px rgba(0,0,0,.18)' }}>
+              <div style={{ padding: '8px 16px 4px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#9CA3AF' }}>OPCIONES</div>
+              {[
+                { icon: <UserSwitchOutlined />, label: 'Supervisor', sub: 'Privilegios de supervisor', action: () => { setShowOpcionesMenu(false); onSupervisor(); } },
+                { icon: <SwapOutlined />, label: 'Cambiar Usuario', sub: 'Intercambiar Usuario', action: () => { setShowOpcionesMenu(false); onCambiarUsuario(); } },
+                { icon: <LockOutlined />, label: 'Bloquear pantalla', sub: 'Bloquear pantalla con clave', action: () => { setShowOpcionesMenu(false); onBloquear(); } },
+              ].map(item => (
+                <button key={item.label} onClick={item.action} style={{ width: '100%', padding: '9px 16px', border: 'none', borderBottom: '1px solid #F8FAFC', background: '#fff', cursor: 'pointer', outline: 'none', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12, transition: 'background .12s' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = '#F8FAFC')}
+                  onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>
+                  <span style={{ fontSize: 16, color: '#6B7280' }}>{item.icon}</span>
+                  <div><div style={{ fontSize: 13, fontWeight: 500, color: '#111827' }}>{item.label}</div><div style={{ fontSize: 11, color: '#9CA3AF' }}>{item.sub}</div></div>
+                </button>
+              ))}
+              <button onClick={() => { setShowOpcionesMenu(false); onExit(); }} style={{ width: '100%', padding: '9px 16px', border: 'none', borderTop: '1px solid #F1F5F9', background: '#fff', cursor: 'pointer', outline: 'none', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12, transition: 'background .12s' }}
+                onMouseEnter={e => (e.currentTarget.style.background = '#FEF2F2')}
+                onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>
+                <LogoutOutlined style={{ fontSize: 16, color: '#EF4444' }} />
+                <div><div style={{ fontSize: 13, fontWeight: 500, color: '#EF4444' }}>Salir</div><div style={{ fontSize: 11, color: '#9CA3AF' }}>Cerrar sesión</div></div>
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -2706,6 +2740,22 @@ export default function POSPage() {
   const palette      = isDark ? darkC : lightC;
   const C            = palette;
   const qc           = useQueryClient();
+  const user         = useAuthStore(s => s.user);
+
+  // ── Bloqueo de pantalla ────────────────────────────────────────────────────
+  const [pantallaBloqueada,   setPantallaBloqueada]   = useState(false);
+  const [pwDesbloqueo,        setPwDesbloqueo]        = useState('');
+  const [errDesbloqueo,       setErrDesbloqueo]       = useState('');
+  const [desbloqueando,       setDesbloqueando]       = useState(false);
+  // ── Modal supervisor ──────────────────────────────────────────────────────
+  const [modalSupervisor,     setModalSupervisor]     = useState(false);
+  const [pwSupervisor,        setPwSupervisor]        = useState('');
+  const [errSupervisor,       setErrSupervisor]       = useState('');
+  const [verificandoSup,      setVerificandoSup]      = useState(false);
+  const [supervisorOk,        setSupervisorOk]        = useState(false);
+  // ── Modal cambiar usuario ─────────────────────────────────────────────────
+  const [modalCambiarUser,    setModalCambiarUser]    = useState(false);
+  const [nuevoUserId,         setNuevoUserId]         = useState<number | undefined>();
 
   const [turnoAbierto,  setTurnoAbierto]  = useState(() => Boolean(sessionStorage.getItem('pos_turno')));
   const [search,        setSearch]        = useState('');
@@ -3200,6 +3250,62 @@ export default function POSPage() {
   const cajeroNombre  = vendedores.find((v: any) => v.id === vendedorId)?.nombre
                         || localStorage.getItem('user_name') || localStorage.getItem('nombre') || 'Cajero';
 
+  // ── Desbloquear pantalla (verifica contra backend) ─────────────────────────
+  const desbloquearPantalla = async () => {
+    if (!pwDesbloqueo.trim()) { setErrDesbloqueo('Ingresa tu contraseña'); return; }
+    setDesbloqueando(true); setErrDesbloqueo('');
+    try {
+      await api.post('/auth/verificar-password', { password: pwDesbloqueo });
+      setPantallaBloqueada(false); setPwDesbloqueo('');
+    } catch (e: any) {
+      setErrDesbloqueo(e?.response?.data?.errors?.[0] ?? 'Contraseña incorrecta');
+      setPwDesbloqueo('');
+    } finally { setDesbloqueando(false); }
+  };
+
+  // ── Verificar supervisor (admin password) ──────────────────────────────────
+  const verificarSupervisor = async () => {
+    if (!pwSupervisor.trim()) { setErrSupervisor('Ingresa tu contraseña'); return; }
+    setVerificandoSup(true); setErrSupervisor('');
+    try {
+      await api.post('/auth/verificar-password', { password: pwSupervisor });
+      setSupervisorOk(true); setModalSupervisor(false); setPwSupervisor('');
+      message.success('Modo supervisor activo');
+    } catch {
+      setErrSupervisor('Contraseña incorrecta');
+      setPwSupervisor('');
+    } finally { setVerificandoSup(false); }
+  };
+
+  // ── Confirmar salida ────────────────────────────────────────────────────────
+  const confirmarSalir = () => {
+    Modal.confirm({
+      title: '¿Cerrar sesión?',
+      content: '¿Estás seguro que deseas salir del sistema?',
+      okText: 'Salir', okButtonProps: { danger: true }, cancelText: 'Cancelar',
+      onOk: async () => { await api.post('/auth/logout').catch(() => {}); navigate('/login'); },
+    });
+  };
+
+  // ── Timer de inactividad (5 min) ───────────────────────────────────────────
+  const inactividadRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const INACTIVIDAD_MS = 5 * 60 * 1000;
+    const reset = () => {
+      if (inactividadRef.current) clearTimeout(inactividadRef.current);
+      if (!pantallaBloqueada && turnoAbierto) {
+        inactividadRef.current = setTimeout(() => setPantallaBloqueada(true), INACTIVIDAD_MS);
+      }
+    };
+    const eventos = ['mousedown', 'keydown', 'touchstart', 'scroll'];
+    eventos.forEach(e => window.addEventListener(e, reset));
+    reset();
+    return () => {
+      if (inactividadRef.current) clearTimeout(inactividadRef.current);
+      eventos.forEach(e => window.removeEventListener(e, reset));
+    };
+  }, [pantallaBloqueada, turnoAbierto]);
+
   // necesitaRnc: el tipo lo exige Y el cliente no lo aporta automáticamente
   const tipoExigeRnc = tipoNcf === 'E31' || tipoNcf === 'E44' || tipoNcf === 'E45' || totalEfectivo >= 250_000;
   const necesitaRnc  = tipoExigeRnc && !clienteTieneRNC;
@@ -3257,11 +3363,10 @@ export default function POSPage() {
         modoFacturacion={modoFacturacion} onModoChange={setModoFacturacion}
         tipoNcf={tipoNcf} onTipoNcfChange={setTipoNcf}
         ecfOnline={ecfOnline ?? null}
-        onExit={() => {
-          sessionStorage.removeItem('pos_turno');
-          localStorage.removeItem('pos_vendedor_id');
-          navigate('/dashboard');
-        }} />
+        onBloquear={() => { setPantallaBloqueada(true); setPwDesbloqueo(''); setErrDesbloqueo(''); }}
+        onSupervisor={() => { setModalSupervisor(true); setPwSupervisor(''); setErrSupervisor(''); }}
+        onCambiarUsuario={() => setModalCambiarUser(true)}
+        onExit={confirmarSalir} />
 
       {/* Tab bar mobile — cambia entre productos y carrito */}
       {isMobile && (
@@ -3815,6 +3920,81 @@ export default function POSPage() {
       </Modal>
 
     </div>
+
+    {/* ── Pantalla de bloqueo ─────────────────────────────────────────────── */}
+    {pantallaBloqueada && (
+      <div style={{ position: 'fixed', inset: 0, background: '#1E40AF', zIndex: 9999, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+        {/* Avatar */}
+        <div style={{ width: 100, height: 100, borderRadius: '50%', background: 'rgba(255,255,255,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, fontSize: 40, color: 'rgba(255,255,255,.7)' }}>
+          {cajeroNombre.charAt(0).toUpperCase()}
+        </div>
+        <h2 style={{ color: '#fff', fontSize: 22, fontWeight: 600, margin: '0 0 24px' }}>{cajeroNombre}</h2>
+
+        {/* Password */}
+        <div style={{ width: 300, marginBottom: 8 }}>
+          <Input.Password
+            placeholder="Contraseña"
+            value={pwDesbloqueo}
+            onChange={e => { setPwDesbloqueo(e.target.value); setErrDesbloqueo(''); }}
+            onPressEnter={desbloquearPantalla}
+            autoFocus size="large"
+            style={{ borderRadius: 8, background: 'rgba(255,255,255,.15)', border: errDesbloqueo ? '1px solid #EF4444' : '1px solid rgba(255,255,255,.3)', color: '#fff' }}
+            iconRender={v => v ? <EyeOutlined style={{ color: 'rgba(255,255,255,.6)' }} /> : <EyeInvisibleOutlined style={{ color: 'rgba(255,255,255,.6)' }} />}
+          />
+          {errDesbloqueo && <div style={{ color: '#FCA5A5', fontSize: 12, marginTop: 4, textAlign: 'center' }}>{errDesbloqueo}</div>}
+        </div>
+        <button onClick={desbloquearPantalla} disabled={desbloqueando} style={{ background: 'none', border: 'none', color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer', marginBottom: 48 }}>
+          {desbloqueando ? 'Verificando...' : 'Desbloquear'}
+        </button>
+        <div onClick={confirmarSalir} style={{ position: 'absolute', bottom: 20, display: 'flex', alignItems: 'center', gap: 8, color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 14 }}>
+          <LogoutOutlined /> Salir
+        </div>
+      </div>
+    )}
+
+    {/* ── Modal supervisor ────────────────────────────────────────────────── */}
+    <Modal
+      title={<span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><UserSwitchOutlined style={{ color: '#F59E0B' }} /> Acceso de Supervisor</span>}
+      open={modalSupervisor} onCancel={() => { setModalSupervisor(false); setPwSupervisor(''); setErrSupervisor(''); }}
+      footer={null} width={360} destroyOnClose>
+      <p style={{ color: '#6B7280', fontSize: 13, marginBottom: 12 }}>Ingresa tu contraseña para acceder a funciones privilegiadas.</p>
+      <Input.Password placeholder="Contraseña de supervisor" value={pwSupervisor}
+        onChange={e => { setPwSupervisor(e.target.value); setErrSupervisor(''); }}
+        onPressEnter={verificarSupervisor} autoFocus />
+      {errSupervisor && <div style={{ color: '#EF4444', fontSize: 12, marginTop: 4 }}>{errSupervisor}</div>}
+      <button onClick={verificarSupervisor} disabled={verificandoSup}
+        style={{ width: '100%', marginTop: 12, padding: '10px 0', background: '#F59E0B', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 14 }}>
+        {verificandoSup ? 'Verificando...' : 'Verificar'}
+      </button>
+    </Modal>
+
+    {/* ── Modal cambiar usuario ────────────────────────────────────────────── */}
+    <Modal
+      title={<span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><SwapOutlined style={{ color: '#3B82F6' }} /> Cambiar Usuario</span>}
+      open={modalCambiarUser} onCancel={() => { setModalCambiarUser(false); setNuevoUserId(undefined); }}
+      footer={null} width={380} destroyOnClose>
+      <p style={{ color: '#6B7280', fontSize: 13, marginBottom: 12 }}>Selecciona el cajero que tomará el turno.</p>
+      <Select style={{ width: '100%' }} size="large" placeholder="Seleccionar cajero..."
+        value={nuevoUserId} onChange={setNuevoUserId} showSearch
+        filterOption={(input, opt) => (opt?.label as string ?? '').toLowerCase().includes(input.toLowerCase())}
+        options={vendedores.map((v: any) => ({ value: v.id, label: v.nombre }))} />
+      <button
+        onClick={() => {
+          if (!nuevoUserId) return;
+          const nuevo = vendedores.find((v: any) => v.id === nuevoUserId);
+          if (nuevo) {
+            localStorage.setItem('pos_vendedor_id', String(nuevoUserId));
+            setVendedorId(nuevoUserId);
+            message.success(`Cajero cambiado a ${nuevo.nombre}`);
+            setModalCambiarUser(false); setNuevoUserId(undefined);
+          }
+        }}
+        disabled={!nuevoUserId}
+        style={{ width: '100%', marginTop: 12, padding: '10px 0', background: nuevoUserId ? '#3B82F6' : '#E5E7EB', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 700, cursor: nuevoUserId ? 'pointer' : 'not-allowed', fontSize: 14 }}>
+        Cambiar
+      </button>
+    </Modal>
+
     </ThemeCtx.Provider>
   );
 }
