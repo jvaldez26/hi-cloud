@@ -82,7 +82,7 @@ const fmtUsd = (n: number) => `US$ ${n.toFixed(2)}`;
 // ── Tabla comparativa ─────────────────────────────────────────────────────────
 
 const TABLA_COMPARATIVA = [
-  { feature: 'Factura electrónica e-CF',       emprendedor: '✓', pyme: '✓', pro: '✓', plus: '✓' },
+  { feature: 'Factura electrónica e-CF DGII gratuita', emprendedor: '✓', pyme: '✓', pro: '✓', plus: '✓' },
   { feature: 'Ingresos máx/mes',                emprendedor: 'RD$125K', pyme: 'RD$500K', pro: 'RD$1.25M', plus: 'RD$6.25M' },
   { feature: 'Usuarios incluidos',              emprendedor: '2', pyme: '3', pro: '4', plus: '10' },
   { feature: 'Cotizaciones',                    emprendedor: '✓', pyme: '✓', pro: '✓', plus: '✓' },
