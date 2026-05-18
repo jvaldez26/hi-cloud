@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { TableActions } from '../../components/ui/TableActions';
 import {
   Card, Row, Col, Typography, Table, Tag, Button,
   Space, Modal, Form, Select, InputNumber, Tabs,
-  message, Rate, Progress, Avatar, Popconfirm, Descriptions, theme } from 'antd';
+  message, Rate, Progress, Avatar, Descriptions, theme } from 'antd';
 import { PlusOutlined, CheckOutlined, StarOutlined, TeamOutlined, FileExcelOutlined, DeleteOutlined } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -101,23 +102,23 @@ export default function EvaluacionesPage() {
       render: (v: string) => <Tag color={v === 'completada' ? 'success' : v === 'en_revision' ? 'processing' : 'default'}>
         {v}
       </Tag> },
-    { title: '', key: 'actions', width: 160,
+    { title: '', key: 'actions', width: 72, align: 'right' as const,
       render: (_: any, r: any) => (
-        <Space size={4}>
-          <Button size="small" onClick={() => setDetalle(r)}>Ver</Button>
-          {r.estado !== 'completada' && (
-            <Button size="small" type="primary" icon={<CheckOutlined />}
-              loading={completarMut.isPending}
-              onClick={() => completarMut.mutate(r.id)}>
-              Completar
-            </Button>
-          )}
-          {r.estado === 'borrador' && (
-            <Popconfirm title="¿Eliminar evaluación?" onConfirm={() => eliminarMut.mutate(r.id)} okButtonProps={{ danger: true }}>
-              <Button size="small" type="text" danger icon={<DeleteOutlined />} />
-            </Popconfirm>
-          )}
-        </Space>
+        <TableActions
+          onView={() => setDetalle(r)}
+          viewLabel="Ver detalle"
+          items={[
+            ...(r.estado !== 'completada' ? [{
+              key: 'completar', label: 'Completar', icon: <CheckOutlined />,
+              onClick: () => completarMut.mutate(r.id),
+            }] : []),
+            ...(r.estado === 'borrador' ? [
+              { type: 'divider' as const },
+              { key: 'del', label: 'Eliminar', danger: true, icon: <DeleteOutlined />,
+                onClick: () => { if (window.confirm('¿Eliminar evaluación?')) eliminarMut.mutate(r.id); } },
+            ] : []),
+          ]}
+        />
       )},
   ];
 

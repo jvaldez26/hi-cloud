@@ -4,13 +4,14 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Typography, Table, Tag, Statistic,
-  Button, Space, Modal, Form, Input, Tabs, Popconfirm,
+  Button, Space, Modal, Form, Input, Tabs,
   message, Progress, Select, InputNumber, Badge, Tooltip, theme,
 } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, SwapOutlined,
   InboxOutlined, WarningOutlined, CheckOutlined, FileExcelOutlined, CloseCircleOutlined,
 } from '@ant-design/icons';
+import { TableActions } from '../../components/ui/TableActions';
 import { exportarExcel } from '../../utils/exportExcel';
 import dayjs from 'dayjs';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -134,23 +135,25 @@ export default function AlmacenesPage() {
         const s = ESTADO_TRANSF[v] ?? { label: v, color: 'default' };
         return <Tag color={s.color}>{s.label}</Tag>;
       }},
-    { title: '', key: 'actions', width: 160,
+    { title: '', key: 'actions', width: 72, align: 'right' as const,
       render: (_: any, r: any) => (
-        <Space size={4}>
-          {r.estado === 'borrador' && (
-            <Button size="small" type="primary" icon={<CheckOutlined />}
-              loading={confirmarMut.isPending}
-              onClick={() => confirmarMut.mutate(r.id)}>
-              Confirmar
-            </Button>
-          )}
-          {(r.estado === 'borrador' || r.estado === 'en_transito') && (
-            <Popconfirm title="¿Cancelar transferencia?" onConfirm={() => cancelarMut.mutate(r.id)}
-              okButtonProps={{ danger: true }} okText="Cancelar transferencia" cancelText="No">
-              <Button size="small" danger type="text" icon={<CloseCircleOutlined />} />
-            </Popconfirm>
-          )}
-        </Space>
+        <TableActions
+          items={[
+            ...(r.estado === 'borrador' ? [{
+              key: 'confirmar',
+              label: 'Confirmar',
+              icon: <CheckOutlined />,
+              onClick: () => confirmarMut.mutate(r.id),
+            }] : []),
+            ...((r.estado === 'borrador' || r.estado === 'en_transito') ? [{
+              key: 'cancelar',
+              label: 'Cancelar transferencia',
+              danger: true,
+              icon: <CloseCircleOutlined />,
+              onClick: () => { if (window.confirm('¿Cancelar transferencia?')) cancelarMut.mutate(r.id); },
+            }] : []),
+          ]}
+        />
       )},
   ];
 

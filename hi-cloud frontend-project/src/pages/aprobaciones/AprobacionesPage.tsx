@@ -3,13 +3,14 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Table, Tag, Button, Modal, Form, Input,
-  Select, Space, Typography, Statistic, Popconfirm, message,
-  Badge, Tabs, Divider, theme,
+  Select, Space, Typography, message,
+  Badge, Tabs, theme,
 } from 'antd';
 import {
   CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined,
   FileTextOutlined, PlusOutlined,
 } from '@ant-design/icons';
+import { TableActions } from '../../components/ui/TableActions';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
 
@@ -115,19 +116,15 @@ export default function AprobacionesPage() {
       render: (v: any) => v ? <Text type="secondary" style={{ fontSize: 12 }}>{v.slice(0, 50)}</Text> : '—',
     },
     {
-      title: '', key: 'acc', width: 160,
+      title: '', key: 'acc', width: 72, align: 'right' as const,
       render: (_: any, r: any) => r.estado === 'pendiente' ? (
-        <Space>
-          <Button size="small" icon={<CheckCircleOutlined />}
-            style={{ color: token.colorSuccess, borderColor: token.colorSuccess }}
-            onClick={() => setModalResolver({ id: r.id, accion: 'aprobar' })}>
-            Aprobar
-          </Button>
-          <Button size="small" danger
-            onClick={() => setModalResolver({ id: r.id, accion: 'rechazar' })}>
-            Rechazar
-          </Button>
-        </Space>
+        <TableActions
+          items={[
+            { key: 'aprobar', label: 'Aprobar', icon: <CheckCircleOutlined />, onClick: () => setModalResolver({ id: r.id, accion: 'aprobar' }) },
+            { type: 'divider' as const },
+            { key: 'rechazar', label: 'Rechazar', danger: true, icon: <CloseCircleOutlined />, onClick: () => setModalResolver({ id: r.id, accion: 'rechazar' }) },
+          ]}
+        />
       ) : null,
     },
   ];

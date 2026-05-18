@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { TableActions } from '../../components/ui/TableActions';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
-  DatePicker, Space, Typography, Statistic, Popconfirm, message,
+  DatePicker, Space, Typography, Statistic, message,
   Progress, InputNumber, Badge, Alert, theme,
 } from 'antd';
 import {
@@ -173,21 +174,27 @@ export default function ConteoInventarioPage() {
                   render: v => v > 0 ? <Tag color="orange">{v}</Tag> : <Tag color="green">0</Tag> },
                 { title: 'Estado', dataIndex: 'estado', key: 'e', render: v => <Tag color={ESTADO_CONFIG[v]?.color}>{ESTADO_CONFIG[v]?.label}</Tag> },
                 {
-                  title: '', key: 'a',
-                  render: (_, r: any) => (
-                    <Space onClick={e => e.stopPropagation()}>
-                      {r.estado === 'borrador' && <Button size="small" icon={<PlayCircleOutlined />} type="primary" ghost onClick={() => iniciar.mutate(r.id)}>Iniciar</Button>}
-                      {r.estado === 'en_proceso' && (
-                        <Popconfirm title="¿Confirmar y aplicar ajustes de stock?" onConfirm={() => confirmar.mutate(r.id)}>
-                          <Button size="small" icon={<CheckCircleOutlined />} style={{ color: token.colorSuccess, borderColor: token.colorSuccess }}>Confirmar</Button>
-                        </Popconfirm>
-                      )}
-                      {r.estado !== 'confirmado' && (
-                        <Popconfirm title="¿Cancelar conteo?" onConfirm={() => cancelar.mutate(r.id)}>
-                          <Button size="small" danger icon={<StopOutlined />} />
-                        </Popconfirm>
-                      )}
-                    </Space>
+                  title: '', key: 'a', width: 72, align: 'right' as const,
+                  render: (_: any, r: any) => (
+                    <TableActions
+                      onView={() => setConteoActivo(r)}
+                      viewLabel="Ver detalle"
+                      items={[
+                        ...(r.estado === 'borrador' ? [{
+                          key: 'iniciar', label: 'Iniciar', icon: <PlayCircleOutlined />,
+                          onClick: () => iniciar.mutate(r.id),
+                        }] : []),
+                        ...(r.estado === 'en_proceso' ? [{
+                          key: 'confirmar', label: 'Confirmar y aplicar stock', icon: <CheckCircleOutlined />,
+                          onClick: () => { if (window.confirm('¿Confirmar y aplicar ajustes de stock?')) confirmar.mutate(r.id); },
+                        }] : []),
+                        ...(r.estado !== 'confirmado' ? [
+                          { type: 'divider' as const },
+                          { key: 'cancelar', label: 'Cancelar conteo', danger: true, icon: <StopOutlined />,
+                            onClick: () => { if (window.confirm('¿Cancelar conteo?')) cancelar.mutate(r.id); } },
+                        ] : []),
+                      ]}
+                    />
                   ),
                 },
               ])}

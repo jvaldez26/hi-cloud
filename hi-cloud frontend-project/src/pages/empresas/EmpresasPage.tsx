@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   Space, Typography, Tabs, Divider, Avatar, Popconfirm, message,
@@ -12,6 +14,12 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
 import api from '../../api/client';
+
+const COLS_DEF = [
+  { key: 'usuario', label: 'Usuario',  defaultVisible: true },
+  { key: 'rol',     label: 'Rol',      defaultVisible: true },
+  { key: 'email',   label: 'Email',    defaultVisible: true },
+];
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -31,6 +39,7 @@ const SECTORES = [
 export default function EmpresasPage() {
   const qc = useQueryClient();
   const { empresas: misEmpresas, empresaActual, cambiarEmpresa } = useAuthStore();
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('empresas', COLS_DEF);
   const [modalCrear,    setModalCrear]    = useState(false);
   const [modalInvitar,  setModalInvitar]  = useState<number | null>(null);
   const [formCrear]   = Form.useForm();
@@ -217,14 +226,17 @@ export default function EmpresasPage() {
               </Space>
             }
             extra={
-              <Button
-                type="primary"
-                size="small"
-                icon={<UserAddOutlined />}
-                onClick={() => setModalInvitar(empresaActual)}
-              >
-                Invitar
-              </Button>
+              <Space>
+                <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+                <Button
+                  type="primary"
+                  size="small"
+                  icon={<UserAddOutlined />}
+                  onClick={() => setModalInvitar(empresaActual)}
+                >
+                  Invitar
+                </Button>
+              </Space>
             }
           >
             <Tabs
@@ -239,10 +251,10 @@ export default function EmpresasPage() {
                       size="small"
         scroll={{ x: 'max-content' }}
                       pagination={false}
-                      columns={[
+                      columns={filterColumns([
                         {
-                          title: 'Usuario', key: 'user',
-                          render: (_, r: any) => (
+                          title: 'Usuario', key: 'usuario',
+                          render: (_: any, r: any) => (
                             <Space>
                               <Avatar size="small" style={{ background: '#e0e7ff', color: '#4f46e5' }}>
                                 {r.user?.nombre?.charAt(0)}
@@ -256,14 +268,20 @@ export default function EmpresasPage() {
                         },
                         {
                           title: 'Rol', dataIndex: 'rol', key: 'rol',
-                          render: v => {
+                          render: (v: any) => {
                             const r = ROLES.find(x => x.value === v);
                             return <Tag color={r?.color}>{r?.label ?? v}</Tag>;
                           },
                         },
                         {
+                          title: 'Email', key: 'email',
+                          render: (_: any, r: any) => (
+                            <Text type="secondary" style={{ fontSize: 12 }}>{r.user?.email ?? '—'}</Text>
+                          ),
+                        },
+                        {
                           title: '', key: 'acc',
-                          render: (_, r: any) => (
+                          render: (_: any, r: any) => (
                             <Popconfirm
                               title="¿Remover acceso?"
                               onConfirm={() => removerUsuario.mutate(r.userId)}
@@ -272,7 +290,7 @@ export default function EmpresasPage() {
                             </Popconfirm>
                           ),
                         },
-                      ]}
+                      ])}
                     />
                   ),
                 },

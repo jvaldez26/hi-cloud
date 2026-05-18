@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { TableActions } from '../../components/ui/TableActions';
 import {
   Card, Row, Col, Typography, Table, Tag, Statistic,
   Button, Space, Modal, Form, Input, InputNumber, Select,
@@ -96,19 +97,16 @@ export default function CentroCostosPage() {
         return <Tag color={t?.color}>{t?.label ?? v}</Tag>;
       }},
     { title: 'Presupuesto', dataIndex: 'presupuesto', width: 130, render: (v: number) => fmt.money(v) },
-    { title: '', key: 'actions', width: 100,
+    { title: '', key: 'actions', width: 72, align: 'right' as const,
       render: (_: any, r: any) => (
-        <Space size={4}>
-          <Button size="small" icon={<EditOutlined />}
-            onClick={() => {
-              setEditando(r);
-              formCC.setFieldsValue(r);
-              setCCModal(true);
-            }} />
-          <Popconfirm title="¿Eliminar?" onConfirm={() => eliminarMut.mutate(r.id)}>
-            <Button size="small" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
+        <TableActions
+          onView={() => { setEditando(r); formCC.setFieldsValue(r); setCCModal(true); }}
+          viewLabel="Editar"
+          items={[
+            { key: 'eliminar', label: 'Eliminar', icon: <DeleteOutlined />, danger: true,
+              onClick: () => { if (window.confirm('¿Eliminar este centro de costo?')) eliminarMut.mutate(r.id); } },
+          ]}
+        />
       )},
   ]);
 

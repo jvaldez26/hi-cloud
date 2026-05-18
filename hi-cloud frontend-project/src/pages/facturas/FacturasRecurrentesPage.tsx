@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { TableActions } from '../../components/ui/TableActions';
 import { DetailDrawer } from '../../components/ui/DetailDrawer';
@@ -29,7 +31,18 @@ const recurrenteApi = {
   remove:  (id: number) => api.delete(`/facturas-recurrentes/${id}`).then(r => r.data?.data ?? r.data),
 };
 
+const REC_COLS_DEF = [
+  { key: 'nombre',           label: 'Nombre',    defaultVisible: true  },
+  { key: 'cli',              label: 'Cliente',   defaultVisible: true  },
+  { key: 'frecuencia',       label: 'Frecuencia',defaultVisible: true  },
+  { key: 'proximaEjecucion', label: 'Próxima',   defaultVisible: true  },
+  { key: 'ultimaEjecucion',  label: 'Últ. gen.', defaultVisible: false },
+  { key: 'totalGeneradas',   label: 'Gen.',      defaultVisible: false },
+  { key: 'activa',           label: 'Activa',    defaultVisible: true  },
+];
+
 export default function FacturasRecurrentesPage() {
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('facturas-recurrentes', REC_COLS_DEF);
   const { token } = theme.useToken();
   const [page,   setPage]   = useState(1);
   const [open,   setOpen]   = useState(false);
@@ -161,6 +174,7 @@ export default function FacturasRecurrentesPage() {
               }));
               exportarExcel(filas, 'Facturas-Recurrentes');
             }}>Excel</Button>
+            <ColumnToggle columns={REC_COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <RefreshByKeyButton queryKey={['recurrentes']} />
             <VideoTutorialButton />
             <Button type="primary" icon={<PlusOutlined />} onClick={() => { setOpen(true); form.resetFields(); setLineas([{ descripcion: '', cantidad: 1, precioUnitario: 0, porcentajeIva: 18 }]); }}>
@@ -170,7 +184,7 @@ export default function FacturasRecurrentesPage() {
         </Col>
       </Row>
 
-      <Table columns={cols} dataSource={data?.data ?? []} rowKey="id"
+      <Table columns={filterColumns(cols)} dataSource={data?.data ?? []} rowKey="id"
         loading={isLoading} size="small" scroll={{ x: 'max-content' }}
         pagination={{ total: data?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }} />
 

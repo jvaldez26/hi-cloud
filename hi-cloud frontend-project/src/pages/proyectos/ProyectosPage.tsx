@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { TableActions } from '../../components/ui/TableActions';
 import { exportarExcel } from '../../utils/exportExcel';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -612,11 +613,20 @@ export default function ProyectosPage() {
       render: (v: string) => v ? (
         <Text type={new Date(v) < new Date() ? 'danger' : 'secondary'}>{fmt.date(v)}</Text>
       ) : '—' },
-    { title: '', key: 'del', width: 50,
+    { title: '', key: 'del', width: 72, align: 'right' as const,
       render: (_: any, r: any) => (
-        <Popconfirm title="¿Eliminar proyecto?" onConfirm={() => eliminarMut.mutate(r.id)}>
-          <Button type="text" danger size="small" icon={<DeleteOutlined />} />
-        </Popconfirm>
+        <TableActions
+          onView={() => setDetalle(r)}
+          viewLabel="Ver detalle"
+          items={[
+            {
+              key: 'eliminar',
+              label: 'Eliminar',
+              danger: true,
+              onClick: () => eliminarMut.mutate(r.id),
+            },
+          ]}
+        />
       )},
   ];
 

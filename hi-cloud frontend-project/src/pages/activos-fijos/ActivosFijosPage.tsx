@@ -6,6 +6,7 @@ import { Table, Button, Tag, Card, Row, Col, Typography, Statistic,
          Modal, Form, Input, InputNumber, Select, Tabs, message,
          Space, Progress, Popconfirm, DatePicker, Drawer } from 'antd';
 import { PlusOutlined, ToolOutlined, BarChartOutlined, FileExcelOutlined } from '@ant-design/icons';
+import { TableActions } from '../../components/ui/TableActions';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { activosFijosApi, type ActivoPayload } from '../../api/activos-fijos.api';
 import { fmt } from '../../utils/formatters';
@@ -63,12 +64,15 @@ export default function ActivosFijosPage() {
     { title: 'Estado',      dataIndex: 'estado',        width: 110,
       render: (v: string) => <Tag color={estadoColor[v]}>{v.replace('_', ' ').toUpperCase()}</Tag> },
     {
-      title: '', key: 'actions', width: 110,
+      title: '', key: 'actions', width: 72, align: 'right' as const,
       render: (_: any, r: any) => (
-        <Space size={4}>
-          <Button size="small" icon={<BarChartOutlined />} onClick={() => setOpenHist(r)} />
-          {r.estado === 'activo' && <Button size="small" danger onClick={() => setOpenBaja(r)}>Baja</Button>}
-        </Space>
+        <TableActions
+          onView={() => setOpenHist(r)}
+          viewLabel="Ver historial"
+          items={r.estado === 'activo' ? [
+            { key: 'baja', label: 'Dar de baja', danger: true, icon: <BarChartOutlined />, onClick: () => setOpenBaja(r) },
+          ] : []}
+        />
       ),
     },
   ];

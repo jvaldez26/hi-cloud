@@ -3,6 +3,7 @@ import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/Tab
 import { exportarExcel } from '../../utils/exportExcel';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { TableActions } from '../../components/ui/TableActions';
 import {
   Card, Row, Col, Statistic, Button, Table, Tag, Modal, Form,
   Input, InputNumber, Select, DatePicker, Space, Tabs, Switch,
@@ -225,7 +226,14 @@ export default function CapacitacionPage() {
                         </Select>
                       ),
                     },
-                    { title: '', key: 'ver', render: () => <Button size="small" type="link">Ver asistencia</Button> },
+                    { title: '', key: 'ver', width: 72, align: 'right' as const,
+                      render: (_: any, r: any) => (
+                        <TableActions
+                          onView={() => { setSesionSeleccionada(r); setTabActiva('registros'); }}
+                          viewLabel="Ver asistencia"
+                          items={[]}
+                        />
+                      )},
                   ]}
                 />
               ),

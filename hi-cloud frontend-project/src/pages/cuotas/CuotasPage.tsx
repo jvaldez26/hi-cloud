@@ -2,6 +2,7 @@
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { TableActions } from '../../components/ui/TableActions';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   DatePicker, InputNumber, Space, Typography, Popconfirm,
@@ -182,14 +183,16 @@ export default function CuotasPage() {
                   },
                   { title: 'Pagado', dataIndex: 'fechaPago', key: 'fp', render: v => v ?? '—' },
                   {
-                    title: '', key: 'acc',
-                    render: (_, r: any) => r.estado === 'pendiente' ? (
-                      <Popconfirm title="¿Registrar pago?" onConfirm={() => pagarCuota.mutate(r.id)}>
-                        <Button size="small" icon={<CheckCircleOutlined />}
-                          style={{ color: token.colorSuccess, borderColor: token.colorSuccess }}>
-                          Pagar
-                        </Button>
-                      </Popconfirm>
+                    title: '', key: 'acc', width: 72, align: 'right' as const,
+                    render: (_: any, r: any) => r.estado === 'pendiente' ? (
+                      <TableActions
+                        onView={() => {}}
+                        viewLabel="Ver cuota"
+                        items={[
+                          { key: 'pagar', label: 'Registrar pago', icon: <CheckCircleOutlined />,
+                            onClick: () => { if (window.confirm('¿Registrar pago de esta cuota?')) pagarCuota.mutate(r.id); } },
+                        ]}
+                      />
                     ) : null,
                   },
                 ]}

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { TableActions } from '../../components/ui/TableActions';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -102,19 +103,20 @@ function ListadoTab() {
       render: (v: number) => <Text style={{ color: '#ef4444' }} strong>{fmt.money(v)}</Text> },
     { title: 'Neto',       dataIndex: 'montoNeto',         key: 'montoNeto',          width: 110,
       render: (v: number) => <Text style={{ color: '#10b981' }} strong>{fmt.money(v)}</Text> },
-    { title: '', key: 'del', width: 80,
+    { title: '', key: 'del', width: 72, align: 'right' as const,
       render: (_: any, r: any) => (
-        <Space size={2}>
-          <Button size="small" type="text"
-            icon={pdfPending === r.id ? <LoadingOutlined /> : <FilePdfOutlined />}
-            disabled={pdfPending === r.id}
-            onClick={() => descargarPDF(r)}
-            title="Descargar PDF"
-          />
-          <Popconfirm title="¿Eliminar?" onConfirm={() => removeMut.mutate(r.id)}>
-            <Button type="text" danger size="small" icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
+        <TableActions
+          onView={() => descargarPDF(r)}
+          viewLabel="Descargar PDF"
+          items={[
+            {
+              key: 'eliminar',
+              label: 'Eliminar',
+              danger: true,
+              onClick: () => removeMut.mutate(r.id),
+            },
+          ]}
+        />
       )},
   ];
 

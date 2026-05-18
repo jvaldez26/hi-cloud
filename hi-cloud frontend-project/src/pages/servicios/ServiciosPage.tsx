@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { exportarExcel } from '../../utils/exportExcel';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { TableActions } from '../../components/ui/TableActions';
 import { Table, Button, Tag, Card, Row, Col, Typography,
          Modal, Form, Input, InputNumber, Select, DatePicker, Space,
          Drawer, Descriptions, Popconfirm, message, Divider, Steps } from 'antd';
@@ -98,8 +99,14 @@ export default function ServiciosPage() {
     { title: 'Promesa',  dataIndex: 'fechaPromesa',  key: 'fechaPromesa',      width: 100,
       render: (v: string) => v ? <Text type={new Date(v) < new Date() ? 'danger' : 'secondary'}>{fmt.date(v)}</Text> : '—' },
     { title: 'Total',    dataIndex: 'total',         key: 'total',             width: 110, render: (v: number) => fmt.money(v) },
-    { title: '', key: 'actions', width: 80,
-      render: (_: any, r: any) => <Button size="small" icon={<ToolOutlined />} onClick={() => setDetail(r)}>Gestionar</Button> },
+    { title: '', key: 'actions', width: 72, align: 'right' as const,
+      render: (_: any, r: any) => (
+        <TableActions
+          onView={() => setDetail(r)}
+          viewLabel="Gestionar orden"
+          items={[]}
+        />
+      )},
   ];
 
   const pasoActual = detail ? ESTADO_INFO[detail.estado as EstadoOrden]?.step ?? 0 : 0;

@@ -3,10 +3,11 @@ import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/Tab
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Card, Row, Col, Typography, Statistic, Button, Table, Tag,
-         Select, InputNumber, Space, message, Tabs, Popconfirm, Modal,
+         Select, InputNumber, message, Tabs, Modal,
          Form, Input } from 'antd';
 import { CalculatorOutlined, CheckOutlined, DollarOutlined,
          FileExcelOutlined, PlusOutlined, DeleteOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import { TableActions } from '../../components/ui/TableActions';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -168,18 +169,24 @@ function AdminTab() {
             render: (v: number) => <Text strong style={{ color: '#1677ff' }}>{fmt.money(v)}</Text> },
           { title: 'Estado',      dataIndex: 'estado', width: 110,
             render: (v: string) => <Tag color={estadoColor[v]}>{v?.toUpperCase()}</Tag> },
-          { title: '', key: 'actions', width: 130,
+          { title: '', key: 'actions', width: 72, align: 'right' as const,
             render: (_: any, r: any) => (
-              <Space size={4}>
-                {r.estado === 'pendiente' && (
-                  <Button size="small" icon={<CheckOutlined />} onClick={() => aprobarMut.mutate(r.id)}>Aprobar</Button>
-                )}
-                {r.estado === 'aprobada' && (
-                  <Popconfirm title="¿Confirmar pago?" onConfirm={() => pagarMut.mutate(r.id)}>
-                    <Button size="small" type="primary" icon={<DollarOutlined />}>Pagar</Button>
-                  </Popconfirm>
-                )}
-              </Space>
+              <TableActions
+                items={[
+                  ...(r.estado === 'pendiente' ? [{
+                    key: 'aprobar',
+                    label: 'Aprobar',
+                    icon: <CheckOutlined />,
+                    onClick: () => aprobarMut.mutate(r.id),
+                  }] : []),
+                  ...(r.estado === 'aprobada' ? [{
+                    key: 'pagar',
+                    label: 'Pagar',
+                    icon: <DollarOutlined />,
+                    onClick: () => { if (window.confirm('¿Confirmar pago?')) pagarMut.mutate(r.id); },
+                  }] : []),
+                ]}
+              />
             )},
         ])} />
     </>
@@ -227,8 +234,15 @@ function ReglasTab() {
         return 'Aplica a todos';
     } },
     { title: 'Estado', dataIndex: 'activa', width: 80, render: (v: boolean) => <Tag color={v ? 'green' : 'red'}>{v ? 'Activa' : 'Inactiva'}</Tag> },
-    { title: '', key: 'del', width: 60,
-      render: (_: any, r: any) => <Popconfirm title="¿Eliminar regla?" onConfirm={() => delMut.mutate(r.id)}><Button size="small" danger icon={<DeleteOutlined />} /></Popconfirm> },
+    { title: '', key: 'del', width: 72, align: 'right' as const,
+      render: (_: any, r: any) => (
+        <TableActions
+          items={[
+            { key: 'del', label: 'Eliminar', danger: true, icon: <DeleteOutlined />,
+              onClick: () => { if (window.confirm('¿Eliminar regla?')) delMut.mutate(r.id); } },
+          ]}
+        />
+      )},
   ];
 
   return (

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { TableActions } from '../../components/ui/TableActions';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Table, Button, Tag, Card, Row, Col, Typography, Statistic, Modal,
@@ -79,18 +80,25 @@ export default function PresupuestosPage() {
     { title: 'Tipo',   dataIndex: 'tipo',              key: 'tipo',              width: 90, render: (v: string) => <Tag>{tipoLabel[v]}</Tag> },
     { title: 'Total',  dataIndex: 'totalPresupuestado',key: 'totalPresupuestado',width: 130, render: (v: number) => fmt.money(v) },
     { title: 'Estado', dataIndex: 'estado',            key: 'estado',            width: 100, render: (v: string) => <Tag color={estadoColor[v]}>{v?.toUpperCase()}</Tag> },
-    { title: '', key: 'actions', width: 180,
+    { title: '', key: 'actions', width: 72, align: 'right' as const,
       render: (_: any, r: any) => (
-        <Space size={4}>
-          <Button size="small" icon={<BarChartOutlined />} onClick={() => setOpenVar(r)}>Variación</Button>
-          <Button size="small" type="text"
-            icon={pdfPending === r.id ? <LoadingOutlined /> : <FilePdfOutlined />}
-            disabled={pdfPending === r.id}
-            onClick={() => descargarPDF(r)}
-            title="Descargar PDF"
-          />
-          {r.estado === 'borrador' && <Button size="small" type="primary" icon={<CheckOutlined />} onClick={() => aprobarMut.mutate(r.id)}>Aprobar</Button>}
-        </Space>
+        <TableActions
+          onView={() => setOpenVar(r)}
+          viewLabel="Ver variación"
+          items={[
+            {
+              key: 'pdf',
+              label: pdfPending === r.id ? 'Generando PDF...' : 'Descargar PDF',
+              disabled: pdfPending === r.id,
+              onClick: () => descargarPDF(r),
+            },
+            r.estado === 'borrador' ? {
+              key: 'aprobar',
+              label: 'Aprobar',
+              onClick: () => aprobarMut.mutate(r.id),
+            } : null,
+          ].filter(Boolean)}
+        />
       )},
   ];
 

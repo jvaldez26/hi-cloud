@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { TableActions } from '../../components/ui/TableActions';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
@@ -437,29 +438,29 @@ export default function ManufacturaPage() {
         const e = ESTADO_OP.find(x => x.value === v);
         return <Tag color={e?.color}>{e?.label ?? v}</Tag>;
       }},
-    { title: '', key: 'actions', width: 160,
+    { title: '', key: 'actions', width: 72, align: 'right' as const,
       render: (_: any, r: any) => (
-        <Space size={4}>
-          <Button size="small" onClick={() => setDetalleOP(r)}>Detalle</Button>
-          {r.estado === 'borrador' && (
-            <Button size="small" type="primary"
-              onClick={() => estadoOPMut.mutate({ id: r.id, estado: 'planificada' })}>
-              Planificar
-            </Button>
-          )}
-          {r.estado === 'planificada' && (
-            <Button size="small" style={{ background: '#f59e0b', border: 'none', color: '#fff' }}
-              onClick={() => estadoOPMut.mutate({ id: r.id, estado: 'en_proceso' })}>
-              <PlayCircleOutlined /> Iniciar
-            </Button>
-          )}
-          {r.estado === 'en_proceso' && (
-            <Button size="small" type="primary" style={{ background: '#10b981', border: 'none' }}
-              onClick={() => { setCompletarModal(r); formCompletar.setFieldsValue({ cantidadProducida: r.cantidadPlanificada }); }}>
-              <CheckCircleOutlined /> Completar
-            </Button>
-          )}
-        </Space>
+        <TableActions
+          onView={() => setDetalleOP(r)}
+          viewLabel="Ver detalle"
+          items={[
+            r.estado === 'borrador' ? {
+              key: 'planificar',
+              label: 'Planificar',
+              onClick: () => estadoOPMut.mutate({ id: r.id, estado: 'planificada' }),
+            } : null,
+            r.estado === 'planificada' ? {
+              key: 'iniciar',
+              label: 'Iniciar',
+              onClick: () => estadoOPMut.mutate({ id: r.id, estado: 'en_proceso' }),
+            } : null,
+            r.estado === 'en_proceso' ? {
+              key: 'completar',
+              label: 'Completar',
+              onClick: () => { setCompletarModal(r); formCompletar.setFieldsValue({ cantidadProducida: r.cantidadPlanificada }); },
+            } : null,
+          ].filter(Boolean)}
+        />
       )},
   ];
 

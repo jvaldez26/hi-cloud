@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { exportarExcel } from '../../utils/exportExcel';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { TableActions } from '../../components/ui/TableActions';
 import {
   Card, Row, Col, Typography, Table, Tag, Button,
   Space, Modal, Form, Input, Select, DatePicker, InputNumber,
-  Tabs, Popconfirm, message, Badge, Tooltip,
+  Tabs, message, Badge, Tooltip,
 } from 'antd';
 import {
   PlusOutlined, CheckOutlined, StopOutlined, ToolOutlined, FileExcelOutlined,
@@ -129,22 +130,23 @@ export default function MantenimientoPage() {
         return <Tag color={s.color}>{s.label}</Tag>;
       }},
     { title: 'Costo est.',dataIndex: 'costoEstimado', key: 'costoEstimado', width: 110, render: (v: number) => v ? fmt.money(v) : '—' },
-    { title: '', key: 'actions', width: 120,
+    { title: '', key: 'actions', width: 72, align: 'right' as const,
       render: (_: any, r: any) => (
-        <Space size={4}>
-          {(r.estado === 'programado' || r.estado === 'en_proceso') && (
-            <Button size="small" type="primary" icon={<CheckOutlined />}
-              style={{ background: '#10b981', border: 'none' }}
-              onClick={() => { setCompletModal(r); formComp.resetFields(); }}>
-              Completar
-            </Button>
-          )}
-          {r.estado === 'programado' && (
-            <Popconfirm title="¿Cancelar?" onConfirm={() => cancelarMut.mutate(r.id)}>
-              <Button size="small" danger icon={<StopOutlined />} />
-            </Popconfirm>
-          )}
-        </Space>
+        <TableActions
+          onView={() => { setCompletModal(r); formComp.resetFields(); }}
+          viewLabel="Completar"
+          items={[
+            ...(r.estado === 'programado' || r.estado === 'en_proceso' ? [{
+              key: 'completar', label: 'Completar', icon: <CheckOutlined />,
+              onClick: () => { setCompletModal(r); formComp.resetFields(); },
+            }] : []),
+            ...(r.estado === 'programado' ? [
+              { type: 'divider' as const },
+              { key: 'cancelar', label: 'Cancelar', danger: true, icon: <StopOutlined />,
+                onClick: () => { if (window.confirm('¿Cancelar?')) cancelarMut.mutate(r.id); } },
+            ] : []),
+          ]}
+        />
       )},
   ];
 
@@ -223,13 +225,16 @@ export default function MantenimientoPage() {
                     render: (v: string) => v ? (
                       <Text type={new Date(v) < new Date() ? 'danger' : 'secondary'}>{fmt.date(v)}</Text>
                     ) : '—' },
-                  { title: '', key: 'del', width: 50,
+                  { title: '', key: 'del', width: 72, align: 'right' as const,
                     render: (_: any, r: any) => (
-                      <Popconfirm title="¿Eliminar programa?" onConfirm={() => {
-                        mntApi.elimProg(r.id).then(() => inv());
-                      }}>
-                        <Button size="small" danger icon={<StopOutlined />} />
-                      </Popconfirm>
+                      <TableActions
+                        onView={() => {}}
+                        viewLabel="Programa"
+                        items={[
+                          { key: 'del', label: 'Eliminar', danger: true, icon: <StopOutlined />,
+                            onClick: () => { if (window.confirm('¿Eliminar programa?')) mntApi.elimProg(r.id).then(() => inv()); } },
+                        ]}
+                      />
                     )},
                 ]}
               />

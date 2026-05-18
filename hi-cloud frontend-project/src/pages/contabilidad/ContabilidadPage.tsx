@@ -8,6 +8,7 @@ import { Tabs, Table, Tag, Button, Card, Row, Col, Typography, Statistic,
          Space, Modal, Form, Input, InputNumber, Select, DatePicker, message,
          Descriptions, Collapse, Drawer, theme } from 'antd';
 import { PlusOutlined, CheckOutlined, EyeOutlined, SearchOutlined, FileExcelOutlined } from '@ant-design/icons';
+import { TableActions } from '../../components/ui/TableActions';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -111,15 +112,15 @@ function Asientos() {
     { title: 'Haber',       dataIndex: 'totalHaber',   key: 'totalHaber',  width: 120, render: (v: number) => fmt.money(v) },
     { title: 'Estado',      dataIndex: 'estado',       key: 'estado',      width: 110,
       render: (v: string) => <Tag color={estadoColor[v]}>{v?.toUpperCase()}</Tag> },
-    { title: '', key: 'actions', width: 120,
+    { title: '', key: 'actions', width: 72, align: 'right' as const,
       render: (_: any, r: any) => (
-        <Space size={4}>
-          <Button size="small" icon={<EyeOutlined />} onClick={() => setDetail(r)}>Ver</Button>
-          {r.estado === 'borrador' && (
-            <Button size="small" type="primary" icon={<CheckOutlined />}
-              onClick={() => contabilizarMut.mutate(r.id)}>Contabilizar</Button>
-          )}
-        </Space>
+        <TableActions
+          onView={() => setDetail(r)}
+          viewLabel="Ver detalle"
+          items={r.estado === 'borrador' ? [
+            { key: 'contabilizar', label: 'Contabilizar', icon: <CheckOutlined />, onClick: () => contabilizarMut.mutate(r.id) },
+          ] : []}
+        />
       ),
     },
   ]);

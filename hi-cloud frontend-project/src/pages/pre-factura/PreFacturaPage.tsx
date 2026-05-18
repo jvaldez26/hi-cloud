@@ -1,4 +1,5 @@
 ﻿import { useState } from 'react';
+import { TableActions } from '../../components/ui/TableActions';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -289,80 +290,57 @@ export default function PreFacturaPage() {
               render: v => v ?? <Text type="secondary">—</Text>,
             },
             {
-              title: '', key: 'acciones', width: 210,
-              render: (_, r: any) => (
-                <Space size={4}>
-                  <Tooltip title="Ver detalle">
-                    <Button size="small" icon={<EyeOutlined />} onClick={() => setModalDetalle(r)} />
-                  </Tooltip>
-                  <Button size="small" type="text"
-                    icon={pdfPending === r.id ? <LoadingOutlined /> : <FilePdfOutlined />}
-                    disabled={pdfPending === r.id}
-                    onClick={() => descargarPDF(r)}
-                    title="Descargar PDF"
-                  />
-                  {r.estado === 'borrador' && (
-                    <Tooltip title="Editar pre-factura">
-                      <Button size="small" type="text" icon={<EditOutlined />}
-                        onClick={() => abrirEditar(r)} />
-                    </Tooltip>
-                  )}
-                  {r.estado === 'borrador' && (
-                    <Tooltip title="Enviar al cliente">
-                      <Button
-                        size="small" type="primary" ghost
-                        icon={<SendOutlined />}
-                        onClick={() => enviar.mutate(r.id)}
-                        loading={enviar.isPending}
-                      />
-                    </Tooltip>
-                  )}
-                  <Tooltip title="Enviar por email">
-                    <Button
-                      size="small" type="text"
-                      icon={<MailOutlined />}
-                      onClick={() => {
-                        setEmailPF(r);
-                        setEmailDest(r.cliente?.email ?? '');
-                      }}
-                    />
-                  </Tooltip>
-                  {['enviada', 'borrador'].includes(r.estado) && (
-                    <Tooltip title="Aprobar">
-                      <Button
-                        size="small"
-                        icon={<CheckCircleOutlined />}
-                        style={{ color: token.colorSuccess, borderColor: token.colorSuccess }}
-                        onClick={() => aprobar.mutate(r.id)}
-                        loading={aprobar.isPending}
-                      />
-                    </Tooltip>
-                  )}
-                  {['enviada', 'borrador', 'aprobada'].includes(r.estado) && (
-                    <Tooltip title="Rechazar">
-                      <Button
-                        size="small" danger
-                        icon={<CloseCircleOutlined />}
-                        onClick={() => setModalRechazar(r)}
-                      />
-                    </Tooltip>
-                  )}
-                  {r.estado === 'aprobada' && (
-                    <Tooltip title="Convertir a Factura oficial">
-                      <Button
-                        size="small" type="primary"
-                        icon={<RetweetOutlined />}
-                        onClick={() => convertir.mutate(r.id)}
-                        loading={convertir.isPending}
-                      />
-                    </Tooltip>
-                  )}
-                  {r.estado !== 'convertida' && (
-                    <Popconfirm title="¿Eliminar pre-factura?" onConfirm={() => eliminar.mutate(r.id)}>
-                      <Button size="small" danger type="text" icon={<DeleteOutlined />} />
-                    </Popconfirm>
-                  )}
-                </Space>
+              title: '', key: 'acciones', width: 72, align: 'right' as const,
+              render: (_: any, r: any) => (
+                <TableActions
+                  onView={() => setModalDetalle(r)}
+                  viewLabel="Ver detalle"
+                  items={[
+                    {
+                      key: 'pdf',
+                      label: pdfPending === r.id ? 'Generando PDF...' : 'Descargar PDF',
+                      disabled: pdfPending === r.id,
+                      onClick: () => descargarPDF(r),
+                    },
+                    r.estado === 'borrador' ? {
+                      key: 'editar',
+                      label: 'Editar',
+                      onClick: () => abrirEditar(r),
+                    } : null,
+                    r.estado === 'borrador' ? {
+                      key: 'enviar',
+                      label: 'Enviar al cliente',
+                      onClick: () => enviar.mutate(r.id),
+                    } : null,
+                    {
+                      key: 'email',
+                      label: 'Enviar por email',
+                      onClick: () => { setEmailPF(r); setEmailDest(r.cliente?.email ?? ''); },
+                    },
+                    ['enviada', 'borrador'].includes(r.estado) ? {
+                      key: 'aprobar',
+                      label: 'Aprobar',
+                      onClick: () => aprobar.mutate(r.id),
+                    } : null,
+                    ['enviada', 'borrador', 'aprobada'].includes(r.estado) ? {
+                      key: 'rechazar',
+                      label: 'Rechazar',
+                      danger: true,
+                      onClick: () => setModalRechazar(r),
+                    } : null,
+                    r.estado === 'aprobada' ? {
+                      key: 'convertir',
+                      label: 'Convertir a Factura',
+                      onClick: () => convertir.mutate(r.id),
+                    } : null,
+                    r.estado !== 'convertida' ? {
+                      key: 'eliminar',
+                      label: 'Eliminar',
+                      danger: true,
+                      onClick: () => eliminar.mutate(r.id),
+                    } : null,
+                  ].filter(Boolean)}
+                />
               ),
             },
           ])}

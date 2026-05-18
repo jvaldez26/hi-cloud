@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { TableActions } from '../../components/ui/TableActions';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
-  InputNumber, Switch, Space, Typography, Statistic, Popconfirm,
+  InputNumber, Switch, Space, Typography, Statistic,
   message, DatePicker, Divider, Alert, theme,
 } from 'antd';
 import {
@@ -202,14 +203,18 @@ export default function DescuentosPage() {
               ),
             },
             {
-              title: '', key: 'acc',
-              render: (_, r: any) => (
-                <Space>
-                  <Button size="small" icon={<EditOutlined />} onClick={() => abrirEditar(r)} />
-                  <Popconfirm title="¿Eliminar regla?" onConfirm={() => eliminar.mutate(r.id)}>
-                    <Button size="small" danger icon={<DeleteOutlined />} />
-                  </Popconfirm>
-                </Space>
+              title: '', key: 'acc', width: 72, align: 'right' as const,
+              render: (_: any, r: any) => (
+                <TableActions
+                  onView={() => abrirEditar(r)}
+                  viewLabel="Editar"
+                  items={[
+                    { key: 'edit', label: 'Editar', icon: <EditOutlined />, onClick: () => abrirEditar(r) },
+                    { type: 'divider' as const },
+                    { key: 'del', label: 'Eliminar', danger: true, icon: <DeleteOutlined />,
+                      onClick: () => { if (window.confirm('¿Eliminar regla?')) eliminar.mutate(r.id); } },
+                  ]}
+                />
               ),
             },
           ])}

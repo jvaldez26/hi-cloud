@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { TableActions } from '../../components/ui/TableActions';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
@@ -181,29 +182,31 @@ export default function NotasCreditoComprasPage() {
             { title: 'Estado', dataIndex: 'estado', key: 'e', width: 100,
               render: (v: any) => <Tag color={ESTADO_CONFIG[v]?.color}>{ESTADO_CONFIG[v]?.label}</Tag> },
             {
-              title: '', key: 'acc', width: 200,
+              title: '', key: 'acc', width: 72, align: 'right' as const,
               render: (_: any, r: any) => (
-                <Space>
-                  <Button size="small" icon={<EyeOutlined />} onClick={() => setModalDetalle(r)} />
-                  {r.estado === 'borrador' && (
-                    <Popconfirm title="¿Confirmar NC? El inventario será ajustado." onConfirm={() => recibir.mutate(r.id)}>
-                      <Button size="small" icon={<CheckCircleOutlined />}
-                        style={{ color: token.colorSuccess, borderColor: token.colorSuccess }}>
-                        Confirmar
-                      </Button>
-                    </Popconfirm>
-                  )}
-                  {r.estado === 'recibida' && (
-                    <Popconfirm title="¿Anular?" onConfirm={() => anular.mutate(r.id)}>
-                      <Button size="small" danger icon={<CloseCircleOutlined />}>Anular</Button>
-                    </Popconfirm>
-                  )}
-                  {r.estado === 'borrador' && (
-                    <Popconfirm title="¿Eliminar?" onConfirm={() => eliminar.mutate(r.id)}>
-                      <Button size="small" danger type="text" icon={<DeleteOutlined />} />
-                    </Popconfirm>
-                  )}
-                </Space>
+                <TableActions
+                  onView={() => setModalDetalle(r)}
+                  viewLabel="Ver detalle"
+                  items={[
+                    r.estado === 'borrador' ? {
+                      key: 'confirmar',
+                      label: 'Confirmar NC',
+                      onClick: () => recibir.mutate(r.id),
+                    } : null,
+                    r.estado === 'recibida' ? {
+                      key: 'anular',
+                      label: 'Anular',
+                      danger: true,
+                      onClick: () => anular.mutate(r.id),
+                    } : null,
+                    r.estado === 'borrador' ? {
+                      key: 'eliminar',
+                      label: 'Eliminar',
+                      danger: true,
+                      onClick: () => eliminar.mutate(r.id),
+                    } : null,
+                  ].filter(Boolean)}
+                />
               ),
             },
           ] as any)}

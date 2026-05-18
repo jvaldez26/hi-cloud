@@ -2,6 +2,7 @@
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { TableActions } from '../../components/ui/TableActions';
 import { exportarExcel } from '../../utils/exportExcel';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
@@ -356,11 +357,17 @@ export default function VendedoresPage() {
                       { title: 'RNC/Cédula', dataIndex: 'rncReceptor', key: 'rncReceptor', render: (v, r: any) => v || r.rfc || '—' },
                       { title: 'Email', dataIndex: 'email', key: 'email', render: v => v || '—' },
                       { title: 'Teléfono', dataIndex: 'telefono', key: 'telefono', render: v => v || '—' },
-                      { title: '', key: 'acciones', render: (_, r: any) => (
-                        <Popconfirm title="¿Desasignar cliente?" onConfirm={() => desasignarCliente.mutate({ vendId: vendedorSel.id, cliId: r.id })}>
-                          <Button size="small" danger type="text">Desasignar</Button>
-                        </Popconfirm>
-                      )},
+                      { title: '', key: 'acciones', width: 72, align: 'right' as const,
+                        render: (_: any, r: any) => (
+                          <TableActions
+                            onView={() => {}}
+                            viewLabel="Ver cliente"
+                            items={[
+                              { key: 'desasignar', label: 'Desasignar', danger: true,
+                                onClick: () => { if (window.confirm('¿Desasignar cliente?')) desasignarCliente.mutate({ vendId: vendedorSel.id, cliId: r.id }); } },
+                            ]}
+                          />
+                        )},
                     ])}
                   />
                 )}

@@ -1,4 +1,5 @@
 ﻿import { useState } from 'react';
+import { TableActions } from '../../components/ui/TableActions';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -329,49 +330,48 @@ export default function NotasCreditoPage() {
               render: (v: any) => <Tag color={ESTADO_CONFIG[v]?.color}>{ESTADO_CONFIG[v]?.label}</Tag>,
             },
             {
-              title: '', key: 'acc', width: 220, fixed: 'right' as const,
+              title: '', key: 'acc', width: 72, align: 'right' as const,
               render: (_: any, r: any) => (
-                <Space>
-                  <Button size="small" icon={<EyeOutlined />} onClick={() => setModalDetalle(r)} />
-                  <Button size="small" type="text"
-                    icon={pdfPending === r.id ? <LoadingOutlined /> : <FilePdfOutlined />}
-                    disabled={pdfPending === r.id}
-                    onClick={() => descargarPDF(r)}
-                    title="Descargar PDF"
-                  />
-                  {r.estado === 'emitida' && (
-                    <Button size="small" type="text" icon={<MailOutlined />}
-                      onClick={() => { setEmailNota(r); setEmailDest(r.cliente?.email ?? ''); }}
-                    />
-                  )}
-                  {r.estado === 'borrador' && (
-                    <Button size="small" icon={<CheckCircleOutlined />}
-                      style={{ color: token.colorSuccess, borderColor: token.colorSuccess }}
-                      onClick={() => emitir.mutate(r.id)}>Emitir</Button>
-                  )}
-                  {r.estado === 'emitida' && !r.ecfNumero &&
-                    !['aceptado', 'enviado', 'pendiente_envio', 'aceptado_condicion'].includes(r.ecf?.estadoDGII) && (
-                    <Button
-                      size="small"
-                      icon={<AuditOutlined />}
-                      style={{ color: '#7c3aed', borderColor: '#7c3aed' }}
-                      loading={emitirEcfMut.isPending && ecfModal?.id === r.id}
-                      onClick={() => { setEcfModal(r); setEcfCodigo('3'); }}
-                    >
-                      e-CF E34
-                    </Button>
-                  )}
-                  {r.estado === 'emitida' && (
-                    <Popconfirm title="¿Anular nota?" onConfirm={() => anular.mutate(r.id)}>
-                      <Button size="small" danger icon={<CloseCircleOutlined />}>Anular</Button>
-                    </Popconfirm>
-                  )}
-                  {r.estado === 'borrador' && (
-                    <Popconfirm title="¿Eliminar?" onConfirm={() => eliminar.mutate(r.id)}>
-                      <Button size="small" danger type="text" icon={<DeleteOutlined />} />
-                    </Popconfirm>
-                  )}
-                </Space>
+                <TableActions
+                  onView={() => setModalDetalle(r)}
+                  viewLabel="Ver detalle"
+                  items={[
+                    {
+                      key: 'pdf',
+                      label: pdfPending === r.id ? 'Generando PDF...' : 'Descargar PDF',
+                      disabled: pdfPending === r.id,
+                      onClick: () => descargarPDF(r),
+                    },
+                    r.estado === 'emitida' ? {
+                      key: 'email',
+                      label: 'Enviar por email',
+                      onClick: () => { setEmailNota(r); setEmailDest(r.cliente?.email ?? ''); },
+                    } : null,
+                    r.estado === 'borrador' ? {
+                      key: 'emitir',
+                      label: 'Emitir',
+                      onClick: () => emitir.mutate(r.id),
+                    } : null,
+                    (r.estado === 'emitida' && !r.ecfNumero &&
+                      !['aceptado', 'enviado', 'pendiente_envio', 'aceptado_condicion'].includes(r.ecf?.estadoDGII)) ? {
+                      key: 'ecf',
+                      label: 'e-CF E34',
+                      onClick: () => { setEcfModal(r); setEcfCodigo('3'); },
+                    } : null,
+                    r.estado === 'emitida' ? {
+                      key: 'anular',
+                      label: 'Anular',
+                      danger: true,
+                      onClick: () => anular.mutate(r.id),
+                    } : null,
+                    r.estado === 'borrador' ? {
+                      key: 'eliminar',
+                      label: 'Eliminar',
+                      danger: true,
+                      onClick: () => eliminar.mutate(r.id),
+                    } : null,
+                  ].filter(Boolean)}
+                />
               ),
             },
           ] as any)}

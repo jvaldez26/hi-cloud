@@ -2,14 +2,15 @@ import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { TableActions } from '../../components/ui/TableActions';
 import { exportarExcel } from '../../utils/exportExcel';
 import {
   Card, Row, Col, Typography, Table, Tag, Statistic, Button,
   Space, Modal, Form, Input, Select, InputNumber, Tabs,
-  Popconfirm, message, Drawer, Badge, Alert,
+  message, Drawer, Badge, Alert,
 } from 'antd';
 import {
-  PlusOutlined, CarOutlined, WarningOutlined, DollarOutlined, FileExcelOutlined,
+  PlusOutlined, CarOutlined, WarningOutlined, DollarOutlined, FileExcelOutlined, DeleteOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -203,11 +204,16 @@ export default function FlotaPage() {
                     { title: 'Km',     dataIndex: 'kilometraje', key: 'kilometraje', width: 80,  render: (v: number) => v ? v.toLocaleString() : '—' },
                     { title: 'Litros', dataIndex: 'litros',      key: 'litros',      width: 70,  render: (v: number) => v ? `${v}L` : '—' },
                     { title: 'Descripción', dataIndex: 'descripcion', key: 'descripcion', ellipsis: true, render: (v: string) => v ?? '—' },
-                    { title: '', key: 'acciones', width: 50,
+                    { title: '', key: 'acciones', width: 72, align: 'right' as const,
                       render: (_: any, r: any) => (
-                        <Popconfirm title="¿Eliminar?" onConfirm={() => flotaApi.eliminarReg(r.id).then(() => inv())}>
-                          <Button type="text" danger size="small">✕</Button>
-                        </Popconfirm>
+                        <TableActions
+                          onView={() => {}}
+                          viewLabel="Registro"
+                          items={[
+                            { key: 'del', label: 'Eliminar', danger: true, icon: <DeleteOutlined />,
+                              onClick: () => { if (window.confirm('¿Eliminar?')) flotaApi.eliminarReg(r.id).then(() => inv()); } },
+                          ]}
+                        />
                       )},
                   ])}
                 />

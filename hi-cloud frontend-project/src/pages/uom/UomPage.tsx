@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { TableActions } from '../../components/ui/TableActions';
 import {
   Card, Row, Col, Button, Table, Typography, Space, Modal,
   Form, Input, InputNumber, Select, message, Popconfirm,
@@ -86,12 +87,17 @@ function UnidadesTab() {
     { title: 'Tipo', dataIndex: 'tipo', width: 120,
       render: (v: string) => <Tag color={TIPO_COLOR[v]}>{TIPO_LABEL[v] ?? v}</Tag> },
     { title: 'Base', dataIndex: 'esBase', width: 70, render: (v: boolean) => v ? <Tag color="blue">Base</Tag> : null },
-    { title: '', key: 'del', width: 50,
+    { title: '', key: 'del', width: 72, align: 'right' as const,
       render: (_: any, r: any) => (
-        <Popconfirm title="¿Eliminar?" onConfirm={() => delMut.mutate(r.id)}>
-          <Button size="small" type="text" danger icon={<DeleteOutlined />} />
-        </Popconfirm>
-      ) },
+        <TableActions
+          onView={() => {}}
+          viewLabel="Detalles"
+          items={[
+            { key: 'del', label: 'Eliminar', icon: <DeleteOutlined />, danger: true,
+              onClick: () => { if (window.confirm('¿Eliminar esta unidad?')) delMut.mutate(r.id); } },
+          ]}
+        />
+      )},
   ];
 
   return (
@@ -199,12 +205,17 @@ function ConversionesTab() {
           1 {r.unidadDesde?.codigo} = {Number(r.factor).toFixed(4).replace(/\.?0+$/, '')} {r.unidadHasta?.codigo}
         </Text>
       ) },
-    { title: '', key: 'del', width: 50,
+    { title: '', key: 'del', width: 72, align: 'right' as const,
       render: (_: any, r: any) => (
-        <Popconfirm title="¿Eliminar conversión?" onConfirm={() => delMut.mutate(r.id)}>
-          <Button size="small" type="text" danger icon={<DeleteOutlined />} />
-        </Popconfirm>
-      ) },
+        <TableActions
+          onView={() => {}}
+          viewLabel="Detalles"
+          items={[
+            { key: 'del', label: 'Eliminar conversión', icon: <DeleteOutlined />, danger: true,
+              onClick: () => { if (window.confirm('¿Eliminar esta conversión?')) delMut.mutate(r.id); } },
+          ]}
+        />
+      )},
   ];
 
   return (

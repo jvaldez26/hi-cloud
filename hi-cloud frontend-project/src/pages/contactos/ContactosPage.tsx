@@ -1,5 +1,7 @@
 ﻿import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Input, Select, Table, Tag, Typography,
   Statistic, Space, Button, Avatar, Tooltip, theme,
@@ -24,12 +26,21 @@ const TIPO_CONFIG: Record<string, { color: string; label: string; icon: React.Re
 
 const COLORES_AVATAR = ['#1a56db','#059669','#7c3aed','#d97706','#dc2626','#0891b2'];
 
+const COLS_DEF = [
+  { key: 'n',   label: 'Nombre',   defaultVisible: true },
+  { key: 't',   label: 'Tipo',     defaultVisible: true },
+  { key: 'e',   label: 'Email',    defaultVisible: true },
+  { key: 'tel', label: 'Teléfono', defaultVisible: true },
+  { key: 'r',   label: 'RNC',      defaultVisible: true },
+];
+
 export default function ContactosPage() {
   const { token } = theme.useToken();
   const navigate  = useNavigate();
   const [busqueda, setBusqueda] = useState('');
   const [tipoFiltro, setTipoFiltro] = useState<string | undefined>();
   const [vista, setVista] = useState<'tabla' | 'tarjetas'>('tarjetas');
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('contactos-tabla', COLS_DEF);
 
   const { data: resumen } = useQuery<any>({
     queryKey: ['contactos-resumen'],
@@ -64,6 +75,9 @@ export default function ContactosPage() {
         <Space>
           <RefreshByKeyButton queryKey={['contactos']} />
           <VideoTutorialButton />
+          {vista === 'tabla' && (
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          )}
           <Button
             type={vista === 'tarjetas' ? 'primary' : 'default'}
             onClick={() => setVista('tarjetas')}
@@ -184,7 +198,7 @@ export default function ContactosPage() {
             loading={isLoading}
             size="middle"
             pagination={{ pageSize: 20 }}
-            columns={[
+            columns={filterColumns([
               {
                 title: 'Nombre', dataIndex: 'nombre', key: 'n',
                 render: (v, r: any) => (
@@ -232,7 +246,7 @@ export default function ContactosPage() {
                   />
                 ),
               },
-            ]}
+            ])}
           />
         </Card>
       )}

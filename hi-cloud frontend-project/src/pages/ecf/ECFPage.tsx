@@ -2,6 +2,7 @@
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { TableActions } from '../../components/ui/TableActions';
 import { usePlanGuard } from '../../hooks/usePlan';
 import ModuloBloqueado from '../../components/ui/ModuloBloqueado';
 import {
@@ -96,23 +97,20 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
       render: (v: number) => <Badge count={v} color={v >= 3 ? 'red' : v > 0 ? 'orange' : 'green'} showZero /> },
     { title: 'Fecha',       dataIndex: 'createdAt',    width: 100, render: (v: string) => fmt.date(v) },
     {
-      title: '', key: 'actions', width: 140,
+      title: '', key: 'actions', width: 72, align: 'right' as const,
       render: (_: any, r: any) => (
-        <Space size={4}>
-          <Tooltip title="Ver detalle">
-            <Button size="small" onClick={() => setDetail(r)}>Ver</Button>
-          </Tooltip>
-          <Tooltip title="Ver XML / diagnóstico">
-            <Button size="small" icon={<DownloadOutlined />} onClick={() => handleVerXML(r.numero)} />
-          </Tooltip>
-          {['pendiente_envio', 'rechazado'].includes(r.estadoDGII) && r.intentosEnvio < 5 && (
-            <Tooltip title="Reenviar a tu proveedor e-CF">
-              <Button size="small" type="primary" icon={<SendOutlined />}
-                loading={reenviarMut.isPending}
-                onClick={() => reenviarMut.mutate(r.numero)} />
-            </Tooltip>
-          )}
-        </Space>
+        <TableActions
+          onView={() => setDetail(r)}
+          viewLabel="Ver detalle"
+          items={[
+            { key: 'xml', label: 'Ver XML / diagnóstico', icon: <DownloadOutlined />,
+              onClick: () => handleVerXML(r.numero) },
+            ...(['pendiente_envio', 'rechazado'].includes(r.estadoDGII) && r.intentosEnvio < 5
+              ? [{ key: 'reenviar', label: 'Reenviar a proveedor e-CF', icon: <SendOutlined />,
+                   onClick: () => reenviarMut.mutate(r.numero) }]
+              : []),
+          ]}
+        />
       ),
     },
   ];
@@ -276,33 +274,22 @@ function SecuenciasTab({ onRefresh }: { onRefresh: () => void }) {
     {
       title: '',
       key: 'actions',
-      width: 110,
+      width: 72,
+      align: 'right' as const,
       render: (_: any, r: any) => {
         const puedeInactivar = r.isActiva && !r.isAgotada;
         const puedeEditar    = noUsada(r) && puedeInactivar;
         return (
-          <Space size={4}>
-            {puedeEditar && (
-              <Tooltip title="Editar — sin números emitidos aún">
-                <Button size="small" icon={<EditOutlined />} onClick={() => handleEdit(r)} />
-              </Tooltip>
-            )}
-            {puedeInactivar && (
-              <Popconfirm
-                title="¿Inactivar esta secuencia?"
-                description="La secuencia quedará inactiva y no se usará para nuevos e-CFs."
-                okText="Inactivar"
-                okButtonProps={{ danger: true }}
-                cancelText="Cancelar"
-                onConfirm={() => desactivarMut.mutate(r.id)}
-              >
-                <Tooltip title="Inactivar secuencia">
-                  <Button size="small" danger icon={<StopOutlined />}
-                    loading={desactivarMut.isPending} />
-                </Tooltip>
-              </Popconfirm>
-            )}
-          </Space>
+          <TableActions
+            onView={() => puedeEditar ? handleEdit(r) : undefined}
+            viewLabel={puedeEditar ? 'Editar secuencia' : 'Ver secuencia'}
+            items={[
+              ...(puedeInactivar
+                ? [{ key: 'inactivar', label: 'Inactivar secuencia', icon: <StopOutlined />, danger: true,
+                     onClick: () => { if (window.confirm('¿Inactivar esta secuencia? No se usará para nuevos e-CFs.')) desactivarMut.mutate(r.id); } }]
+                : []),
+            ]}
+          />
         );
       },
     },

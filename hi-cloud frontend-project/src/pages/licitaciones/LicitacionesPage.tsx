@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { exportarExcel } from '../../utils/exportExcel';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { TableActions } from '../../components/ui/TableActions';
 import {
   Card, Row, Col, Typography, Table, Tag, Statistic, Button,
   Space, Modal, Form, Input, Select, DatePicker, InputNumber,
-  Tabs, Popconfirm, message, Drawer, Descriptions, Steps,
+  Tabs, message, Drawer, Descriptions, Steps,
 } from 'antd';
 import {
   PlusOutlined, TrophyOutlined, FileTextOutlined, FileExcelOutlined,
@@ -102,11 +103,16 @@ export default function LicitacionesPage() {
         const e = ESTADO_PIPELINE.find(x => x.key === v);
         return <Tag color={e?.color}>{e?.label ?? v}</Tag>;
       }},
-    { title: '', key: 'del', width: 50,
+    { title: '', key: 'del', width: 72, align: 'right' as const,
       render: (_: any, r: any) => (
-        <Popconfirm title="¿Eliminar?" onConfirm={() => licApi.eliminar(r.id).then(() => inv())}>
-          <Button type="text" danger size="small" icon={<CloseCircleOutlined />} />
-        </Popconfirm>
+        <TableActions
+          onView={() => setDetalle(r)}
+          viewLabel="Ver detalle"
+          items={[
+            { key: 'del', label: 'Eliminar', danger: true, icon: <CloseCircleOutlined />,
+              onClick: () => { if (window.confirm('¿Eliminar?')) licApi.eliminar(r.id).then(() => inv()); } },
+          ]}
+        />
       )},
   ];
 
