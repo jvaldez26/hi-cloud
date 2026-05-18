@@ -131,12 +131,14 @@ export default function EmpresasPage() {
         </Button>
       </div>
 
-      {/* ── Empresa activa ──────────────────────────────────────────────────── */}
+      {/* ── Empresa activa — usar div en lugar de Card para evitar el override
+           global de tokens.css que elimina linear-gradient de .ant-card ── */}
       {empresaActualData && (
-        <Card
-          bordered={false}
-          style={{ background: 'linear-gradient(135deg,#1a56db,#3b82f6)', borderRadius: 12, marginBottom: 24 }}
-        >
+        <div style={{
+          background: 'linear-gradient(135deg,#1a56db,#3b82f6)',
+          borderRadius: 12, marginBottom: 24,
+          padding: '16px 24px',
+        }}>
           <Row align="middle" gutter={16}>
             <Col>
               <Avatar size={56} style={{ background: 'rgba(255,255,255,.2)', fontSize: 22, fontWeight: 800 }}>
@@ -151,7 +153,7 @@ export default function EmpresasPage() {
                 {empresaActualData.nombre}
               </Text>
               <Space>
-                <Tag color="blue" style={{ background: 'rgba(255,255,255,.2)', borderColor: 'transparent', color: '#fff' }}>
+                <Tag style={{ background: 'rgba(255,255,255,.2)', borderColor: 'transparent', color: '#fff' }}>
                   RNC: {empresaActualData.rnc}
                 </Tag>
                 <Tag style={{ background: 'rgba(255,255,255,.2)', borderColor: 'transparent', color: '#fff' }}>
@@ -172,7 +174,7 @@ export default function EmpresasPage() {
               </Button>
             </Col>
           </Row>
-        </Card>
+        </div>
       )}
 
       <Row gutter={[16, 16]}>
