@@ -9,7 +9,7 @@ export enum TipoMovimientoBanco {
 }
 
 @TenantScoped()
-@Entity('movimientos_bancarios')
+@Entity('bancos_conciliacion')
 export class MovimientoBancario extends BaseEntity {
   @Column({ nullable: true })
   empresaId?: number;
