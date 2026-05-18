@@ -198,7 +198,6 @@ export default function LoginPage() {
           {/* ── Paso 2: código TOTP ────────────────────────────────────────── */}
           {pending2FA && (
             <div>
-              {error && <Alert message={error} type="error" showIcon style={{ marginBottom: 16, borderRadius: 8 }} />}
               <div style={{ textAlign: 'center', marginBottom: 20 }}>
                 <Text style={{ color: 'rgba(255,255,255,.9)', fontWeight: 600, fontSize: 15, display: 'block' }}>
                   Autenticación en dos factores
