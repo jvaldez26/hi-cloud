@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Table, Typography, Button,
   Space, Tag, DatePicker, Select, theme, Tabs, Divider,
@@ -62,6 +64,30 @@ export default function LibroVentasPage() {
   const totales   = tabActiva === 'ventas' ? ventas?.totales : compras?.totales;
   const porNcf    = ventas?.porTipoNcf ?? [];
 
+  const VENTAS_COLS_DEF = [
+    { key: 'fecha',         label: 'Fecha',          defaultVisible: true  },
+    { key: 'folio',         label: 'Folio',          defaultVisible: true  },
+    { key: 'tipoNcf',       label: 'Tipo NCF',       defaultVisible: true  },
+    { key: 'encf',          label: 'e-NCF',          defaultVisible: true  },
+    { key: 'clienteNombre', label: 'Cliente',        defaultVisible: true  },
+    { key: 'rncCliente',    label: 'RNC',            defaultVisible: false },
+    { key: 'subtotal',      label: 'Subtotal',       defaultVisible: false },
+    { key: 'iva',           label: 'ITBIS',          defaultVisible: true  },
+    { key: 'total',         label: 'Total',          defaultVisible: true  },
+  ];
+  const COMPRAS_COLS_DEF = [
+    { key: 'fecha',           label: 'Fecha',          defaultVisible: true  },
+    { key: 'folio',           label: 'Folio',          defaultVisible: true  },
+    { key: 'encf',            label: 'e-NCF E41',      defaultVisible: true  },
+    { key: 'proveedorNombre', label: 'Proveedor',      defaultVisible: true  },
+    { key: 'rncProveedor',    label: 'RNC',            defaultVisible: false },
+    { key: 'subtotal',        label: 'Subtotal',       defaultVisible: false },
+    { key: 'iva',             label: 'ITBIS',          defaultVisible: true  },
+    { key: 'total',           label: 'Total',          defaultVisible: true  },
+  ];
+  const { visibleColumns: vcVentas,  updateVisibility: setVcVentas,  filterColumns: fcVentas  } = useColumnVisibility('libro-ventas-ventas',  VENTAS_COLS_DEF);
+  const { visibleColumns: vcCompras, updateVisibility: setVcCompras, filterColumns: fcCompras } = useColumnVisibility('libro-ventas-compras', COMPRAS_COLS_DEF);
+
   return (
     <div style={{ padding: 24 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
@@ -113,6 +139,11 @@ export default function LibroVentasPage() {
             }}>Excel</Button>
             <RefreshByKeyButton queryKey={['libro-ventas']} />
             <VideoTutorialButton />
+            <ColumnToggle
+              columns={tabActiva === 'ventas' ? VENTAS_COLS_DEF : COMPRAS_COLS_DEF}
+              visibleColumns={tabActiva === 'ventas' ? vcVentas : vcCompras}
+              onChange={tabActiva === 'ventas' ? setVcVentas : setVcCompras}
+            />
           <Button icon={<DownloadOutlined />}
             onClick={() => {
               if (tabActiva === 'ventas') {

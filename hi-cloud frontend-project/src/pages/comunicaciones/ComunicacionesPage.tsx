@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Input, Space,
   Typography, Statistic, message, Tooltip, Tabs, Badge, theme,
@@ -129,6 +130,10 @@ export default function ComunicacionesPage() {
             <Text type="secondary">Envía facturas, recordatorios y notificaciones directamente por WhatsApp</Text>
           </div>
         </div>
+        <Space>
+          <RefreshByKeyButton queryKey={['comunicaciones']} />
+          <VideoTutorialButton />
+        </Space>
       </div>
 
       <Tabs

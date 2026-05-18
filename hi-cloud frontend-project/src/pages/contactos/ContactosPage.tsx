@@ -1,4 +1,5 @@
 ﻿import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Input, Select, Table, Tag, Typography,
   Statistic, Space, Button, Avatar, Tooltip, theme,
@@ -10,6 +11,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/client';
+import { TableActions } from '../../components/ui/TableActions';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -60,6 +62,8 @@ export default function ContactosPage() {
           </div>
         </div>
         <Space>
+          <RefreshByKeyButton queryKey={['contactos']} />
+          <VideoTutorialButton />
           <Button
             type={vista === 'tarjetas' ? 'primary' : 'default'}
             onClick={() => setVista('tarjetas')}
@@ -219,11 +223,13 @@ export default function ContactosPage() {
               },
               { title: 'RNC', dataIndex: 'rnc', key: 'r', render: v => v || <Text type="secondary">—</Text> },
               {
-                title: '', key: 'acc',
-                render: (_, r: any) => (
-                  <Button size="small" onClick={() => navigate(`${TIPO_CONFIG[r.tipo]?.ruta}`)}>
-                    Ver
-                  </Button>
+                title: '', key: 'acc', width: 72, align: 'right' as const,
+                render: (_: any, r: any) => (
+                  <TableActions
+                    onView={() => navigate(`${TIPO_CONFIG[r.tipo]?.ruta}`)}
+                    viewLabel="Ver módulo"
+                    items={[]}
+                  />
                 ),
               },
             ]}

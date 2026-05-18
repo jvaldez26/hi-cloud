@@ -12,6 +12,7 @@ import api from '../../api/client';
 import { clientesApi } from '../../api/clientes.api';
 import { fmt } from '../../utils/formatters';
 import dayjs from 'dayjs';
+import { TableActions } from '../../components/ui/TableActions';
 
 const { Title, Text } = Typography;
 
@@ -98,8 +99,14 @@ export default function ContratosPage() {
       render: (v: string) => v ? <Text type={new Date(v) < new Date() ? 'danger' : 'secondary'}>{fmt.date(v)}</Text> : '—' },
     { title: 'Estado',    dataIndex: 'estado', key: 'estado',                 width: 100,
       render: (v: string) => <Tag color={estadoColor[v]}>{v?.toUpperCase()}</Tag> },
-    { title: '', key: 'actions', width: 80,
-      render: (_: any, r: any) => <Button size="small" onClick={() => setDetail(r)}>Ver</Button> },
+    { title: '', key: 'actions', width: 72, align: 'right' as const,
+      render: (_: any, r: any) => (
+        <TableActions
+          onView={() => setDetail(r)}
+          viewLabel="Ver detalle"
+          items={[]}
+        />
+      ) },
   ];
 
   return (

@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Button, Input, Select, Space, Typography,
   InputNumber, Tag, Tooltip, Divider, Badge, Empty, Slider,
@@ -355,6 +356,8 @@ export default function EtiquetasPage() {
           </div>
         </div>
         <Space>
+          <RefreshByKeyButton queryKey={['etiquetas']} />
+          <VideoTutorialButton />
           <Button icon={<SettingOutlined />} onClick={() => setMostrarConfig(!mostrarConfig)}>
             Configurar
           </Button>

@@ -1,10 +1,13 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Button, Table, Tag, Typography, Statistic,
   Modal, Form, Input, InputNumber, Select, Space, Popconfirm,
   message, Tabs, Descriptions,
 } from 'antd';
-import { PlusOutlined, DeleteOutlined, EyeOutlined, BarChartOutlined, PlusCircleOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, BarChartOutlined, PlusCircleOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
@@ -12,6 +15,7 @@ import {
 } from 'recharts';
 import api from '../../api/client';
 import { fmt } from '../../utils/formatters';
+import { TableActions } from '../../components/ui/TableActions';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -87,23 +91,39 @@ function CuentasTab() {
     mes: MESES[i], valor: m.valor,
   }));
 
-  const cols = [
-    { title: 'Código', dataIndex: 'codigo', width: 90, render: (v: string) => <Text code>{v}</Text> },
-    { title: 'Nombre', dataIndex: 'nombre', ellipsis: true },
-    { title: 'Tipo', dataIndex: 'tipo', width: 120,
-      render: (v: string) => <Tag color={TIPO_COLOR[v]}>{TIPO_LABEL[v] ?? v}</Tag> },
-    { title: 'Unidad', dataIndex: 'unidad', width: 80 },
-    { title: 'Categoría', dataIndex: 'categoria', width: 100, render: (v: string) => v ?? '—' },
-    { title: 'Valor este mes', dataIndex: 'valorMesSuma', width: 120, render: (v: number, r: any) => `${fmt.number(v)} ${r.unidad}` },
-    { title: '', key: 'acc', width: 120,
-      render: (_: any, r: any) => (
-        <Space size={4}>
-          <Button size="small" icon={<EyeOutlined />} onClick={() => setDetalle(r)}>Ver</Button>
-          <Button size="small" icon={<PlusCircleOutlined />} onClick={() => { setRegOpen(r); formReg.setFieldsValue({ cuentaId: r.id, fecha: dayjs().format('YYYY-MM-DD') }); }}>Registrar</Button>
-          <Popconfirm title="¿Eliminar?" onConfirm={() => delMut.mutate(r.id)}><Button size="small" danger icon={<DeleteOutlined />} /></Popconfirm>
-        </Space>
-      ) },
+  const COLS_DEF = [
+    { key: 'codigo',       label: 'Código',        defaultVisible: true  },
+    { key: 'nombre',       label: 'Nombre',         defaultVisible: true  },
+    { key: 'tipo',         label: 'Tipo',           defaultVisible: true  },
+    { key: 'unidad',       label: 'Unidad',         defaultVisible: false },
+    { key: 'categoria',    label: 'Categoría',      defaultVisible: false },
+    { key: 'valorMesSuma', label: 'Valor este mes', defaultVisible: true  },
   ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('cuentas-estadisticas', COLS_DEF);
+
+  const cols = filterColumns([
+    { title: 'Código', dataIndex: 'codigo', key: 'codigo', width: 90, render: (v: string) => <Text code>{v}</Text> },
+    { title: 'Nombre', dataIndex: 'nombre', key: 'nombre', ellipsis: true },
+    { title: 'Tipo', dataIndex: 'tipo', key: 'tipo', width: 120,
+      render: (v: string) => <Tag color={TIPO_COLOR[v]}>{TIPO_LABEL[v] ?? v}</Tag> },
+    { title: 'Unidad', dataIndex: 'unidad', key: 'unidad', width: 80 },
+    { title: 'Categoría', dataIndex: 'categoria', key: 'categoria', width: 100, render: (v: string) => v ?? '—' },
+    { title: 'Valor este mes', dataIndex: 'valorMesSuma', key: 'valorMesSuma', width: 120, render: (v: number, r: any) => `${fmt.number(v)} ${r.unidad}` },
+    { title: '', key: 'acciones', width: 72, align: 'right' as const,
+      render: (_: any, r: any) => (
+        <TableActions
+          onView={() => setDetalle(r)}
+          viewLabel="Ver detalle"
+          items={[
+            { key: 'register', label: 'Registrar valor', icon: <PlusCircleOutlined />,
+              onClick: () => { setRegOpen(r); formReg.setFieldsValue({ cuentaId: r.id, fecha: dayjs().format('YYYY-MM-DD') }); } },
+            { type: 'divider' as const },
+            { key: 'delete', label: 'Eliminar', danger: true, icon: <DeleteOutlined />,
+              onClick: () => delMut.mutate(r.id) },
+          ]}
+        />
+      ) },
+  ]);
 
   const movCols = [
     { title: 'Fecha', dataIndex: 'fecha', width: 100, render: (v: string) => fmt.date(v) },
@@ -117,7 +137,12 @@ function CuentasTab() {
   return (
     <>
       <Row justify="end" style={{ marginBottom: 12 }}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setOpen(true); }}>Nueva cuenta</Button>
+        <Space>
+          <RefreshByKeyButton queryKey={['cuentas-estadisticas']} />
+          <VideoTutorialButton />
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setOpen(true); }}>Nueva cuenta</Button>
+        </Space>
       </Row>
       <Table columns={cols} dataSource={cuentas ?? []} rowKey="id" loading={isLoading} size="small"
         scroll={{ x: 'max-content' }} pagination={false} />

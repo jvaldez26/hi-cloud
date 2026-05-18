@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
 import { Card, Row, Col, Table, Button, Tag, Typography,
          Modal, Form, Input, InputNumber, Select, Tabs, message,
@@ -74,6 +76,18 @@ export default function TesoreriaPage() {
     dia: `D${d.dia}`, entradas: d.entradas, salidas: d.salidas,
   }));
 
+  const MOV_COLS_DEF = [
+    { key: 'fecha',       label: 'Fecha',       defaultVisible: true  },
+    { key: 'tipo',        label: 'Tipo',        defaultVisible: true  },
+    { key: 'descripcion', label: 'Descripción', defaultVisible: true  },
+    { key: 'referencia',  label: 'Referencia',  defaultVisible: false },
+    { key: 'monto',       label: 'Monto',       defaultVisible: true  },
+    { key: 'saldoNuevo',  label: 'Saldo',       defaultVisible: false },
+    { key: 'cta',         label: 'Cuenta',      defaultVisible: true  },
+  ];
+  const { visibleColumns: movCols, updateVisibility: setMovCols, filterColumns: filterMovCols } =
+    useColumnVisibility('tesoreria-movimientos', MOV_COLS_DEF);
+
   return (
     <div>
       <Title level={4} style={{ marginBottom: 16 }}>Tesorería y Flujo de Caja</Title>
@@ -104,6 +118,7 @@ export default function TesoreriaPage() {
                     }}>Excel</Button>
             <RefreshByKeyButton queryKey={['movimientos']} />
             <VideoTutorialButton />
+                    <ColumnToggle columns={MOV_COLS_DEF} visibleColumns={movCols} onChange={setMovCols} />
                     <Button icon={<UploadOutlined />} type="primary" onClick={() => { setOpenMovim('deposito'); formMovim.resetFields(); }}>Depósito</Button>
                     <Button icon={<DownloadOutlined />} danger onClick={() => { setOpenMovim('retiro'); formMovim.resetFields(); }}>Retiro</Button>
                     <Button icon={<SwapOutlined />} onClick={() => { setOpenMovim('transferencia'); formMovim.resetFields(); }}>Transferencia</Button>
@@ -114,15 +129,15 @@ export default function TesoreriaPage() {
                 dataSource={movims?.data ?? []} rowKey="id" loading={movLoading} size="small"
         scroll={{ x: 'max-content' }}
                 pagination={{ total: movims?.meta?.total, pageSize: 15, current: page, onChange: setPage, showSizeChanger: false }}
-                columns={[
-                  { title: 'Fecha',       dataIndex: 'fecha',       width: 100, render: (v: string) => fmt.date(v) },
-                  { title: 'Tipo',        dataIndex: 'tipo',        width: 140, render: (v: string) => <Tag color={tipoMovColor[v]}>{v.replace('_',' ').toUpperCase()}</Tag> },
-                  { title: 'Descripción', dataIndex: 'descripcion', ellipsis: true },
-                  { title: 'Referencia',  dataIndex: 'referencia',  width: 120 },
-                  { title: 'Monto',       dataIndex: 'monto',       width: 130, render: (v: number, r: any) => <span style={{ color: ['deposito','transferencia_entrada','nota_credito','interes'].includes(r.tipo) ? '#52c41a' : '#ff4d4f' }}>{fmt.money(v)}</span> },
-                  { title: 'Saldo',       dataIndex: 'saldoNuevo',  width: 130, render: (v: number) => <strong>{fmt.money(v)}</strong> },
+                columns={filterMovCols([
+                  { title: 'Fecha',       dataIndex: 'fecha',       key: 'fecha',       width: 100, render: (v: string) => fmt.date(v) },
+                  { title: 'Tipo',        dataIndex: 'tipo',        key: 'tipo',        width: 140, render: (v: string) => <Tag color={tipoMovColor[v]}>{v.replace('_',' ').toUpperCase()}</Tag> },
+                  { title: 'Descripción', dataIndex: 'descripcion', key: 'descripcion', ellipsis: true },
+                  { title: 'Referencia',  dataIndex: 'referencia',  key: 'referencia',  width: 120 },
+                  { title: 'Monto',       dataIndex: 'monto',       key: 'monto',       width: 130, render: (v: number, r: any) => <span style={{ color: ['deposito','transferencia_entrada','nota_credito','interes'].includes(r.tipo) ? '#52c41a' : '#ff4d4f' }}>{fmt.money(v)}</span> },
+                  { title: 'Saldo',       dataIndex: 'saldoNuevo',  key: 'saldoNuevo',  width: 130, render: (v: number) => <strong>{fmt.money(v)}</strong> },
                   { title: 'Cuenta',      key: 'cta',               width: 140, render: (_: any, r: any) => r.cuentaBancaria?.banco },
-                ]} />
+                ])} />
             </>
           ),
         },

@@ -1,4 +1,6 @@
 ﻿import { useState } from 'react';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { usePlanGuard } from '../../hooks/usePlan';
 import ModuloBloqueado from '../../components/ui/ModuloBloqueado';
@@ -37,7 +39,17 @@ const estadoDGIIIcon: Record<string, React.ReactNode> = {
 };
 
 // ── Tab: Lista de e-CFs ───────────────────────────────────────────────────────
+const ECF_COLS_DEF = [
+  { key: 'numero',     label: 'e-NCF',        defaultVisible: true  },
+  { key: 'tipo',       label: 'Tipo',         defaultVisible: true  },
+  { key: 'estadoDGII', label: 'Estado DGII',  defaultVisible: true  },
+  { key: 'doc',        label: 'Documento',    defaultVisible: true  },
+  { key: 'intentosEnvio', label: 'Intentos', defaultVisible: false },
+  { key: 'createdAt',  label: 'Fecha',        defaultVisible: true  },
+];
+
 function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('ecf', ECF_COLS_DEF);
   const [estado, setEstado] = useState<string | undefined>();
   const [tipo,   setTipo]   = useState<string | undefined>();
   const [page,   setPage]   = useState(1);
@@ -131,13 +143,14 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
         </Col>
         <Col>
           <Space size={2}>
+            <ColumnToggle columns={ECF_COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <RefreshByKeyButton queryKey={['ecf-list']} />
             <VideoTutorialButton />
           </Space>
         </Col>
       </Row>
 
-      <Table columns={cols} dataSource={data?.data ?? []} rowKey="id" loading={isLoading} size="small"
+      <Table columns={filterColumns(cols)} dataSource={data?.data ?? []} rowKey="id" loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
         pagination={{ total: data?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }} />
 

@@ -1,5 +1,8 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { exportarExcel } from '../../utils/exportExcel';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Statistic, Button, Table, Tag, Modal, Form,
   Input, InputNumber, Select, DatePicker, Space, Tabs, Switch,
@@ -33,6 +36,15 @@ export default function CapacitacionPage() {
   const [sesionSeleccionada, setSesionSeleccionada] = useState<any>(null);
   const [formCurso] = Form.useForm();
   const [formSesion] = Form.useForm();
+
+  const COLS_DEF = [
+    { key: 'nombre',        label: 'Curso' },
+    { key: 'categoria',     label: 'Categoría' },
+    { key: 'instructor',    label: 'Instructor' },
+    { key: 'duracionHoras', label: 'Duración' },
+    { key: 'modalidad',     label: 'Modalidad' },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('capacitacion', COLS_DEF);
 
   const { data: resumen } = useQuery<any>({
     queryKey: ['capacitacion-resumen'],
@@ -118,6 +130,11 @@ export default function CapacitacionPage() {
           onChange={setTabActiva}
           tabBarExtraContent={
             <Space>
+              <RefreshByKeyButton queryKey={['capacitacion']} />
+              {tabActiva === 'cursos' && (
+                <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+              )}
+              <VideoTutorialButton />
               <Button icon={<FileExcelOutlined />} size="small" onClick={() => {
                 const src = tabActiva === 'cursos' ? cursos : sesiones ?? [];
                 const filas = (src ?? []).map((r: any) => ({
@@ -151,7 +168,7 @@ export default function CapacitacionPage() {
                   rowKey="id"
                   size="middle"
                   pagination={{ pageSize: 10 }}
-                  columns={[
+                  columns={filterColumns([
                     {
                       title: 'Curso', dataIndex: 'nombre', key: 'nombre',
                       render: (v, r: any) => (
@@ -168,7 +185,7 @@ export default function CapacitacionPage() {
                       render: v => <Space><ClockCircleOutlined />{v}h</Space>,
                     },
                     { title: 'Modalidad', dataIndex: 'modalidad', key: 'modalidad', render: v => <Tag color={modalidadColor[v]}>{v}</Tag> },
-                  ]}
+                  ])}
                 />
               ),
             },

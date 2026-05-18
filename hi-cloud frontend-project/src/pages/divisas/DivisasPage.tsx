@@ -1,7 +1,8 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
-  InputNumber, Space, Typography, Statistic, message, theme,
+  InputNumber, Space, Typography, message, theme,
   Divider,
 } from 'antd';
 import {
@@ -85,9 +86,13 @@ export default function DivisasPage() {
             <Text type="secondary">Gestión de monedas extranjeras · Conversión en tiempo real a DOP</Text>
           </div>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalNueva(true)}>
-          Registrar Tasa
-        </Button>
+        <Space>
+          <RefreshByKeyButton queryKey={['divisas']} />
+          <VideoTutorialButton />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalNueva(true)}>
+            Registrar Tasa
+          </Button>
+        </Space>
       </div>
 
       {/* Tasas actuales */}

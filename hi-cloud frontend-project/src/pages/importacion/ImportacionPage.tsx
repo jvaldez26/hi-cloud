@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { Card, Row, Col, Typography, Button, Upload, Table, Tag, Alert,
          Space, Steps, Tabs, Divider, message } from 'antd';
 import { UploadOutlined, DownloadOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
@@ -117,7 +118,13 @@ function ImportCard({ tipo, title, campos }: { tipo: TipoImport; title: string; 
 export default function ImportacionPage() {
   return (
     <div>
-      <Title level={4} style={{ marginBottom: 8 }}>Importación Masiva de Datos</Title>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <Title level={4} style={{ margin: 0 }}>Importación Masiva de Datos</Title>
+        <Space>
+          <RefreshByKeyButton queryKey={['importacion']} />
+          <VideoTutorialButton />
+        </Space>
+      </div>
       <Paragraph type="secondary" style={{ marginBottom: 20 }}>
         Importa clientes y productos en masa desde archivos CSV. Útil para migrar de otro sistema o cargar datos iniciales.
       </Paragraph>

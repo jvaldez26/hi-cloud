@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Typography, Table, Tag, Statistic,
   Button, Space, Modal, Form, Input, InputNumber, Select,
@@ -76,7 +79,15 @@ export default function CentroCostosPage() {
     onSuccess: () => { inv(); setAsigModal(null); formAsig.resetFields(); message.success('Asignación registrada'); },
   });
 
-  const cols = [
+  const COLS_DEF = [
+    { key: 'codigo',      label: 'Código' },
+    { key: 'nombre',      label: 'Nombre' },
+    { key: 'tipo',        label: 'Tipo' },
+    { key: 'presupuesto', label: 'Presupuesto' },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('centro-costos', COLS_DEF);
+
+  const cols = filterColumns([
     { title: 'Código',      dataIndex: 'codigo',      width: 100, render: (v: string) => <Text code>{v}</Text> },
     { title: 'Nombre',      dataIndex: 'nombre',      ellipsis: true },
     { title: 'Tipo',        dataIndex: 'tipo',        width: 120,
@@ -99,7 +110,7 @@ export default function CentroCostosPage() {
           </Popconfirm>
         </Space>
       )},
-  ];
+  ]);
 
   return (
     <div>
@@ -128,6 +139,9 @@ export default function CentroCostosPage() {
               }));
               exportarExcel(filas, 'Centros-de-Costo');
             }}>Excel</Button>
+            <RefreshByKeyButton queryKey={['centro-costos']} />
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+            <VideoTutorialButton />
             <Button type="primary" icon={<PlusOutlined />}
               onClick={() => { setEditando(null); formCC.resetFields(); setCCModal(true); }}>
               Nuevo centro

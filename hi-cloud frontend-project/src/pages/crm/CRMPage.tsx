@@ -7,7 +7,7 @@ import ModuloBloqueado from '../../components/ui/ModuloBloqueado';
 import {
   Table, Button, Tag, Card, Row, Col, Typography, Statistic,
   Modal, Form, Input, InputNumber, Select, DatePicker, Space,
-  Popconfirm, message, Drawer, Tabs, Badge, Tooltip, Progress,
+  Popconfirm, message, Drawer, Tabs, Badge, Progress,
   Timeline, theme,
 } from 'antd';
 import {
@@ -20,6 +20,7 @@ import { motion } from 'framer-motion';
 import dayjs from 'dayjs';
 import api from '../../api/client';
 import { fmt } from '../../utils/formatters';
+import { TableActions } from '../../components/ui/TableActions';
 
 const { Title, Text } = Typography;
 
@@ -250,18 +251,16 @@ export default function CRMPage() {
         const e = ESTADOS_LEAD.find(s => s.value === v);
         return <Tag color={e?.color}>{e?.label ?? v}</Tag>;
       }},
-    { title: '', key: 'acts', width: 60,
+    { title: '', key: 'acc', width: 72, align: 'right' as const,
       render: (_: any, r: any) => (
-        <Tooltip title="Actividades">
-          <Button size="small" icon={<PhoneOutlined />}
-            onClick={() => setActModal({ leadId: r.id })} />
-        </Tooltip>
-      )},
-    { title: '', key: 'del', width: 50,
-      render: (_: any, r: any) => (
-        <Popconfirm title="¿Eliminar lead?" onConfirm={() => elimLeadMut.mutate(r.id)}>
-          <Button type="text" danger size="small" icon={<DeleteOutlined />} />
-        </Popconfirm>
+        <TableActions
+          onView={() => setActModal({ leadId: r.id })}
+          viewLabel="Ver actividades"
+          items={[
+            { key: 'delete', label: 'Eliminar', danger: true, icon: <DeleteOutlined />,
+              onClick: () => elimLeadMut.mutate(r.id) },
+          ]}
+        />
       )},
   ];
 

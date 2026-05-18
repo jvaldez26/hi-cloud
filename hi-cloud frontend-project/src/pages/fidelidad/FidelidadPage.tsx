@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input,
   InputNumber, Switch, Space, Typography, message,
@@ -12,6 +14,7 @@ import {
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
+import { TableActions } from '../../components/ui/TableActions';
 
 const { Title, Text } = Typography;
 
@@ -71,6 +74,15 @@ export default function FidelidadPage() {
 
   const maxPuntos = Math.max(...ranking.map((r: any) => Number(r.puntosDisponibles)), 1);
 
+  const COLS_DEF = [
+    { key: 'rank',             label: '#',                defaultVisible: true  },
+    { key: 'clienteNombre',    label: 'Cliente',          defaultVisible: true  },
+    { key: 'puntosDisponibles',label: 'Puntos Disponibles', defaultVisible: true },
+    { key: 'puntosTotales',    label: 'Total Acumulados', defaultVisible: true  },
+    { key: 'puntosCanjeados',  label: 'Canjeados',        defaultVisible: false },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('fidelidad-ranking', COLS_DEF);
+
   return (
     <div style={{ padding: 24 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
@@ -95,6 +107,7 @@ export default function FidelidadPage() {
           }}>Excel</Button>
             <RefreshByKeyButton queryKey={['fidelidad']} />
             <VideoTutorialButton />
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
           <Button icon={<SettingOutlined />} onClick={abrirConfig}>Configurar</Button>
         </Space>
       </div>
@@ -124,7 +137,7 @@ export default function FidelidadPage() {
           size="small"
         scroll={{ x: 'max-content' }}
           pagination={{ pageSize: 15 }}
-          columns={[
+          columns={filterColumns([
             {
               title: '#', key: 'rank',
               render: (_, __, i) => (
@@ -139,9 +152,9 @@ export default function FidelidadPage() {
               ),
               width: 50,
             },
-            { title: 'Cliente', dataIndex: 'clienteNombre', key: 'c', render: v => <Text strong>{v ?? `Cliente #${v}`}</Text> },
+            { title: 'Cliente', dataIndex: 'clienteNombre', key: 'clienteNombre', render: v => <Text strong>{v ?? `Cliente #${v}`}</Text> },
             {
-              title: 'Puntos Disponibles', dataIndex: 'puntosDisponibles', key: 'pd',
+              title: 'Puntos Disponibles', dataIndex: 'puntosDisponibles', key: 'puntosDisponibles',
               render: (v, r: any) => (
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
@@ -158,18 +171,19 @@ export default function FidelidadPage() {
                 </div>
               ),
             },
-            { title: 'Total Acumulados', dataIndex: 'puntosTotales', key: 'pt', align: 'right', render: v => Number(v).toLocaleString('es-DO') },
-            { title: 'Canjeados', dataIndex: 'puntosCanjeados', key: 'pc', align: 'right', render: v => Number(v).toLocaleString('es-DO') },
+            { title: 'Total Acumulados', dataIndex: 'puntosTotales', key: 'puntosTotales', align: 'right', render: v => Number(v).toLocaleString('es-DO') },
+            { title: 'Canjeados', dataIndex: 'puntosCanjeados', key: 'puntosCanjeados', align: 'right', render: v => Number(v).toLocaleString('es-DO') },
             {
-              title: '', key: 'acc',
-              render: (_, r: any) => Number(r.puntosDisponibles) >= (prog?.minimoCanjePoints ?? 100) ? (
-                <Button size="small" icon={<GiftOutlined />}
-                  onClick={() => { setModalCanje(r); formCanje.resetFields(); }}>
-                  Canjear
-                </Button>
+              title: '', key: 'acciones', width: 72, align: 'right' as const,
+              render: (_: any, r: any) => Number(r.puntosDisponibles) >= (prog?.minimoCanjePoints ?? 100) ? (
+                <TableActions
+                  onView={() => { setModalCanje(r); formCanje.resetFields(); }}
+                  viewLabel="Canjear puntos"
+                  items={[]}
+                />
               ) : null,
             },
-          ]}
+          ])}
         />
       </Card>
 

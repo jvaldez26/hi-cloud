@@ -13,6 +13,7 @@ import { exportarExcel } from '../../utils/exportExcel';
 import dayjs from 'dayjs';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
+import { TableActions } from '../../components/ui/TableActions';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -143,9 +144,13 @@ export default function CreditoClientePage() {
             },
             { title: 'Días Plazo', dataIndex: 'diasPlazo', key: 'dp', align: 'center', render: v => <Tag>{v} días</Tag> },
             {
-              title: '', key: 'acc',
-              render: (_, r: any) => (
-                <Button size="small" onClick={() => abrirConfiguracion(r)}>Editar</Button>
+              title: '', key: 'acc', width: 72, align: 'right' as const,
+              render: (_: any, r: any) => (
+                <TableActions
+                  onView={() => abrirConfiguracion(r)}
+                  viewLabel="Editar crédito"
+                  items={[]}
+                />
               ),
             },
           ]}

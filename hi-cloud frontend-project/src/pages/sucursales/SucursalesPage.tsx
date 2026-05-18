@@ -1,4 +1,5 @@
 ﻿import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input,
   Space, Typography, Popconfirm, message, Avatar, Tooltip,
@@ -101,6 +102,8 @@ export default function SucursalesPage() {
             }));
             exportarExcel(filas, 'Sucursales');
           }}>Excel</Button>
+          <RefreshByKeyButton queryKey={['sucursales']} />
+          <VideoTutorialButton />
           <Button type="primary" icon={<PlusOutlined />} onClick={abrirCrear}>
             Nueva Sucursal
           </Button>

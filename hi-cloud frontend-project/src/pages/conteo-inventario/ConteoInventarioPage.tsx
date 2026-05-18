@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   DatePicker, Space, Typography, Statistic, Popconfirm, message,
@@ -35,6 +37,16 @@ export default function ConteoInventarioPage() {
   const [editandoLinea, setEditandoLinea] = useState<any>(null);
   const [cantidadEdit,  setCantidadEdit]  = useState<number>(0);
   const [formCrear] = Form.useForm();
+
+  const COLS_DEF = [
+    { key: 'n',     label: 'N°' },
+    { key: 'nm',    label: 'Nombre' },
+    { key: 'f',     label: 'Fecha' },
+    { key: 'tp',    label: 'Productos' },
+    { key: 'td',    label: 'Diferencias' },
+    { key: 'e',     label: 'Estado' },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('conteo-inventario', COLS_DEF);
 
   const { data: resumen = [] } = useQuery<any[]>({
     queryKey: ['conteo-resumen'],
@@ -130,6 +142,7 @@ export default function ConteoInventarioPage() {
             exportarExcel(filas, 'Conteos-Inventario');
           }}>Excel</Button>
             <RefreshByKeyButton queryKey={['conteos']} />
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <VideoTutorialButton />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalCrear(true)}>
             Nuevo Conteo

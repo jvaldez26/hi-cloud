@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { TableActions } from '../../components/ui/TableActions';
 import { DetailDrawer } from '../../components/ui/DetailDrawer';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Card, Row, Col, Typography, Statistic, Button, InputNumber,
          Table, Tag, Modal, Form, Input, Select, Space, Alert, Spin, message, Avatar,
          theme, Drawer, Descriptions, Divider } from 'antd';
@@ -57,6 +59,19 @@ export default function CajaPage() {
   const user = useAuthStore(s => s.user);
   const puedeAnular = user?.role === 'admin' || user?.role === 'contador' || user?.role === 'super_admin';
   const esAdmin     = user?.role === 'admin' || user?.role === 'contador' || user?.role === 'super_admin';
+
+  const COLS_DEF = [
+    { key: 'fecha',                   label: 'Fecha' },
+    { key: 'vendedorNombre',          label: 'Cajero' },
+    { key: 'estado',                  label: 'Estado' },
+    { key: 'saldoApertura',           label: 'Apertura' },
+    { key: 'ing',                     label: 'Total Ingresos' },
+    { key: 'saldoCierre',             label: 'Esperado' },
+    { key: 'saldoFisico',             label: 'Contado' },
+    { key: 'diferencia',              label: 'Diferencia' },
+    { key: 'cantidadTransacciones',   label: 'Trans.' },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('caja-historial', COLS_DEF);
 
   const { data: cajaData, isLoading } = useQuery({
     queryKey: ['caja-hoy'],
@@ -155,6 +170,7 @@ export default function CajaPage() {
         <Col>
           <Space wrap>
             <RefreshByKeyButton queryKey={['caja-hoy']} />
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <VideoTutorialButton />
             <Button type="primary" icon={<UnlockOutlined />} onClick={() => {
               setOpenAbrir(true);
@@ -277,7 +293,7 @@ export default function CajaPage() {
           dataSource={historialCerrados}
           rowKey="id"
           pagination={{ pageSize: 10, showSizeChanger: false }}
-          columns={[
+          columns={filterColumns([
             { title: 'Fecha',  dataIndex: 'fecha',  width: 100, render: (v: string) => fmt.date(v) },
             {
               title: 'Cajero', dataIndex: 'vendedorNombre', width: 150,
@@ -324,7 +340,7 @@ export default function CajaPage() {
                 />
               ),
             },
-          ]} />
+          ])} />
       </Card>
 
       {/* Drawer detalle de cierre */}

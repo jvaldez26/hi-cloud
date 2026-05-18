@@ -1,13 +1,14 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { exportarExcel } from '../../utils/exportExcel';
 import {
-  Card, Row, Col, Statistic, Button, Table, Tag, Modal, Form,
+  Card, Row, Col, Button, Table, Tag, Modal, Form,
   Input, Select, Space, Tabs, Progress, Typography, Tooltip,
   message, Divider, Rate,
 } from 'antd';
 import {
   SmileOutlined, PlusOutlined, LinkOutlined, FileExcelOutlined,
-  BarChartOutlined, StarOutlined,
+  BarChartOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
@@ -70,8 +71,6 @@ export default function EncuestasPage() {
     message.success('Link copiado al portapapeles');
   };
 
-  const totalRespuestas = encuestas.reduce((s: number, e: any) => s + (e.respuestasCount ?? 0), 0);
-
   return (
     <div style={{ padding: '24px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
@@ -82,47 +81,24 @@ export default function EncuestasPage() {
             <Text type="secondary">NPS · CSAT · Feedback de clientes en tiempo real</Text>
           </div>
         </div>
-        <Button icon={<FileExcelOutlined />} onClick={() => {
-          const filas = encuestas.map((e: any) => ({
-            'Título':    e.titulo ?? '',
-            'Tipo':      e.tipo ?? '',
-            'Activa':    e.activa ? 'Sí' : 'No',
-            'Respuestas':Number(e.totalRespuestas ?? 0),
-            'NPS Score': e.npsScore ?? '—',
-          }));
-          exportarExcel(filas, 'Encuestas');
-        }}>Excel</Button>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalCrear(true)}>
-          Nueva Encuesta
-        </Button>
+        <Space>
+          <Button icon={<FileExcelOutlined />} onClick={() => {
+            const filas = encuestas.map((e: any) => ({
+              'Título':    e.titulo ?? '',
+              'Tipo':      e.tipo ?? '',
+              'Activa':    e.activa ? 'Sí' : 'No',
+              'Respuestas':Number(e.totalRespuestas ?? 0),
+              'NPS Score': e.npsScore ?? '—',
+            }));
+            exportarExcel(filas, 'Encuestas');
+          }}>Excel</Button>
+          <RefreshByKeyButton queryKey={['encuestas']} />
+          <VideoTutorialButton />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalCrear(true)}>
+            Nueva Encuesta
+          </Button>
+        </Space>
       </div>
-
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={24} sm={8}>
-          <Card bordered={false} style={{ background: 'linear-gradient(135deg,#7c3aed,#a78bfa)', borderRadius: 12 }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Encuestas Activas</span>}
-              value={encuestas.filter((e: any) => e.activa).length}
-              prefix={<StarOutlined />}
-              valueStyle={{ color: '#fff', fontSize: 28 }} />
-          </Card>
-        </Col>
-        <Col xs={24} sm={8}>
-          <Card bordered={false} style={{ background: 'linear-gradient(135deg,#0891b2,#06b6d4)', borderRadius: 12 }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Total Respuestas</span>}
-              value={totalRespuestas}
-              prefix={<BarChartOutlined />}
-              valueStyle={{ color: '#fff', fontSize: 28 }} />
-          </Card>
-        </Col>
-        <Col xs={24} sm={8}>
-          <Card bordered={false} style={{ background: 'linear-gradient(135deg,#d97706,#f59e0b)', borderRadius: 12 }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,.8)' }}>Encuestas NPS</span>}
-              value={encuestas.filter((e: any) => e.tipo === 'nps').length}
-              prefix={<SmileOutlined />}
-              valueStyle={{ color: '#fff', fontSize: 28 }} />
-          </Card>
-        </Col>
-      </Row>
 
       <Row gutter={[16, 16]}>
         {encuestas.map((enc: any) => (

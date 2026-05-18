@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   Upload, Space, Typography, Statistic, Popconfirm, message,
@@ -92,9 +93,13 @@ export default function DocumentosPage() {
             <Text type="secondary">Archivos adjuntos a facturas, contratos, clientes y más</Text>
           </div>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalSubir(true)}>
-          Registrar Documento
-        </Button>
+        <Space>
+          <RefreshByKeyButton queryKey={['documentos']} />
+          <VideoTutorialButton />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalSubir(true)}>
+            Registrar Documento
+          </Button>
+        </Space>
       </div>
 
       <Card bordered={false} style={{ borderRadius: 12 }}>
