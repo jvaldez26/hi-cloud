@@ -244,7 +244,13 @@ function ReglasTab() {
         <TableActions
           items={[
             { key: 'del', label: 'Eliminar', danger: true, icon: <DeleteOutlined />,
-              onClick: () => { if (window.confirm('¿Eliminar regla?')) delMut.mutate(r.id); } },
+              onClick: () => Modal.confirm({
+                title: '¿Eliminar regla?',
+                okText: 'Confirmar',
+                cancelText: 'Cancelar',
+                okButtonProps: { danger: true },
+                onOk: () => delMut.mutate(r.id),
+              }) },
           ]}
         />
       )},
