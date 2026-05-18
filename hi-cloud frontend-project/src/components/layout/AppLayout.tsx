@@ -50,42 +50,42 @@ type SidebarPalette = {
   panelBg: string; panelBorder: string;
 };
 
-// Modo claro — estilo Cashflow: sidebar azul sólido con acento dorado
+// Modo claro — gradiente profundo #1a2c5b → #0f1d3e
 const sidebarLight: SidebarPalette = {
-  bg:           '#1E3A8A',                       // azul Cashflow
-  bgHover:      'rgba(255,255,255,0.08)',
-  bgActive:     'rgba(255,255,255,0.08)',
-  border:       'rgba(255,255,255,0.12)',
-  separator:    'transparent',                   // sin separadores visibles
-  text:         'rgba(255,255,255,0.90)',
-  textActive:   '#FFFFFF',
-  textCategory: 'rgba(255,255,255,0.55)',
-  textSub:      'rgba(255,255,255,0.72)',
-  textSubHover: '#FFFFFF',
-  accent:       '#FCD34D',                       // dorado Cashflow
-  footerText:   'rgba(255,255,255,0.50)',
-  scrollbar:    'rgba(255,255,255,0.12)',
-  panelBg:      '#1a3380',
-  panelBorder:  'rgba(255,255,255,0.12)',
+  bg:           'linear-gradient(160deg, #1a2c5b 0%, #0f1d3e 100%)',
+  bgHover:      'rgba(255,255,255,0.07)',
+  bgActive:     'rgba(99,130,255,0.18)',
+  border:       'rgba(255,255,255,0.08)',
+  separator:    'rgba(255,255,255,0.08)',
+  text:         'rgba(255,255,255,0.6)',
+  textActive:   '#a0b4ff',
+  textCategory: 'rgba(255,255,255,0.25)',
+  textSub:      'rgba(255,255,255,0.5)',
+  textSubHover: 'rgba(255,255,255,0.9)',
+  accent:       '#7b9fff',
+  footerText:   'rgba(255,255,255,0.35)',
+  scrollbar:    'rgba(255,255,255,0.08)',
+  panelBg:      '#1a2c5b',
+  panelBorder:  'rgba(255,255,255,0.08)',
 };
 
-// Modo oscuro — azul más profundo para contraste oscuro
+// Modo oscuro — gradiente aún más profundo
 const sidebarDark: SidebarPalette = {
-  bg:           '#172554',                       // azul más oscuro en dark
-  bgHover:      'rgba(255,255,255,0.08)',
-  bgActive:     'rgba(255,255,255,0.08)',
-  border:       'rgba(255,255,255,0.10)',
-  separator:    'transparent',
-  text:         'rgba(255,255,255,0.85)',
-  textActive:   '#FFFFFF',
-  textCategory: 'rgba(255,255,255,0.50)',
-  textSub:      'rgba(255,255,255,0.65)',
-  textSubHover: '#FFFFFF',
-  accent:       '#FCD34D',
-  footerText:   'rgba(255,255,255,0.45)',
-  scrollbar:    'rgba(255,255,255,0.10)',
-  panelBg:      '#162050',
-  panelBorder:  'rgba(255,255,255,0.10)',
+  bg:           'linear-gradient(160deg, #111e3d 0%, #080f20 100%)',
+  bgHover:      'rgba(255,255,255,0.07)',
+  bgActive:     'rgba(99,130,255,0.18)',
+  border:       'rgba(255,255,255,0.07)',
+  separator:    'rgba(255,255,255,0.07)',
+  text:         'rgba(255,255,255,0.55)',
+  textActive:   '#a0b4ff',
+  textCategory: 'rgba(255,255,255,0.22)',
+  textSub:      'rgba(255,255,255,0.45)',
+  textSubHover: 'rgba(255,255,255,0.85)',
+  accent:       '#7b9fff',
+  footerText:   'rgba(255,255,255,0.30)',
+  scrollbar:    'rgba(255,255,255,0.07)',
+  panelBg:      '#111e3d',
+  panelBorder:  'rgba(255,255,255,0.07)',
 };
 
 // Contexto de tema del sidebar — inyectado una vez en AppLayout
@@ -124,7 +124,7 @@ const MENU_CATEGORIES: MenuCategory[] = [
 
   // ─── VENTAS & CLIENTES ─────────────────────────────────────────────────────
   {
-    id: 'ventas', label: 'Ventas & Clientes', Icon: TrendingUp, sectionLabel: 'VENTAS',
+    id: 'ventas', label: 'Ventas & Clientes', Icon: TrendingUp, sectionLabel: 'OPERACIONES',
     items: [
       { path: '/facturas',             label: 'Facturas' },
       { path: '/cotizaciones',         label: 'Cotizaciones' },
@@ -145,7 +145,7 @@ const MENU_CATEGORIES: MenuCategory[] = [
 
   // ─── COMPRAS & GASTOS ──────────────────────────────────────────────────────
   {
-    id: 'compras', label: 'Compras & Gastos', Icon: ClipboardList, sectionLabel: 'COMPRAS',
+    id: 'compras', label: 'Compras & Gastos', Icon: ClipboardList, sectionLabel: undefined,
     items: [
       { path: '/solicitudes-compra',    label: 'Solicitudes de Compra' },
       { path: '/compras',               label: 'Órdenes de Compra' },
@@ -159,7 +159,7 @@ const MENU_CATEGORIES: MenuCategory[] = [
 
   // ─── INVENTARIO & LOGÍSTICA ────────────────────────────────────────────────
   {
-    id: 'inventario', label: 'Inventario & Logística', Icon: Boxes, sectionLabel: 'INVENTARIO',
+    id: 'inventario', label: 'Inventario & Logística', Icon: Boxes, sectionLabel: undefined,
     items: [
       { path: '/productos',          label: 'Productos' },
       { path: '/almacenes',          label: 'Almacenes / Bodegas' },
@@ -177,7 +177,7 @@ const MENU_CATEGORIES: MenuCategory[] = [
 
   // ─── FINANZAS & CONTABILIDAD ───────────────────────────────────────────────
   {
-    id: 'finanzas', label: 'Finanzas & Contabilidad', Icon: Banknote, sectionLabel: 'FINANZAS',
+    id: 'finanzas', label: 'Finanzas & Contabilidad', Icon: Banknote, sectionLabel: undefined,
     items: [
       { path: '/bancos',                label: 'Bancos / Tesorería' },
       { path: '/depositos',             label: 'Depósitos Bancarios' },
@@ -200,7 +200,7 @@ const MENU_CATEGORIES: MenuCategory[] = [
 
   // ─── FISCAL (DGII) ─────────────────────────────────────────────────────────
   {
-    id: 'fiscal', label: 'Fiscal (DGII)', Icon: Receipt, sectionLabel: 'FISCAL',
+    id: 'fiscal', label: 'Fiscal (DGII)', Icon: Receipt, sectionLabel: 'GESTIÓN',
     items: [
       { path: '/ecf',           label: 'e-CF — Panel DGII' },
       { path: '/declaraciones', label: 'Declaraciones 606/607' },
@@ -210,7 +210,7 @@ const MENU_CATEGORIES: MenuCategory[] = [
 
   // ─── COMERCIAL & SERVICIOS ─────────────────────────────────────────────────
   {
-    id: 'comercial', label: 'Comercial & Servicios', Icon: Briefcase, sectionLabel: 'COMERCIAL',
+    id: 'comercial', label: 'Comercial & Servicios', Icon: Briefcase, sectionLabel: undefined,
     items: [
       { path: '/crm',          label: 'Leads & Oportunidades' },
       { path: '/vendedores',   label: 'Vendedores' },
@@ -227,7 +227,7 @@ const MENU_CATEGORIES: MenuCategory[] = [
 
   // ─── RECURSOS HUMANOS ──────────────────────────────────────────────────────
   {
-    id: 'rrhh', label: 'Recursos Humanos', Icon: UserCheck, sectionLabel: 'RRHH',
+    id: 'rrhh', label: 'Recursos Humanos', Icon: UserCheck, sectionLabel: undefined,
     items: [
       { path: '/nomina',          label: 'Nómina' },
       { path: '/portal-empleado', label: 'Portal Empleados' },
@@ -241,7 +241,7 @@ const MENU_CATEGORIES: MenuCategory[] = [
 
   // ─── REPORTES & ANÁLISIS ────────────────────────────────────────────────────
   {
-    id: 'reportes', label: 'Reportes & Análisis', Icon: BarChart3, sectionLabel: 'REPORTES',
+    id: 'reportes', label: 'Reportes & Análisis', Icon: BarChart3, sectionLabel: undefined,
     items: [
       { path: '/reportes',           label: 'Reportes' },
       { path: '/analytics',          label: 'Business Intelligence' },
@@ -254,7 +254,7 @@ const MENU_CATEGORIES: MenuCategory[] = [
 
   // ─── SISTEMA ────────────────────────────────────────────────────────────────
   {
-    id: 'sistema', label: 'Sistema', Icon: Settings, sectionLabel: 'SISTEMA',
+    id: 'sistema', label: 'Sistema', Icon: Settings, sectionLabel: undefined,
     items: [
       { path: '/configuracion', label: 'Configuración' },
       { path: '/mis-empresas',  label: 'Empresas' },
@@ -545,46 +545,42 @@ function QuickItemComp({
       onMouseEnter={() => { setHover(true); onHover?.(); }}
       onMouseLeave={() => setHover(false)}
       style={{
-        width:          collapsed ? 40 : 'calc(100% - 16px)',
+        width:          collapsed ? 44 : 'calc(100% - 16px)',
         display:        'flex',
         alignItems:     'center',
         gap:            10,
-        padding:        collapsed ? '7px 0' : '7px 14px',
+        padding:        collapsed ? '6px 0' : '8px 10px',
         height:         36,
-        border:         'none',
+        border:         active ? '1px solid rgba(99,130,255,0.25)' : '1px solid transparent',
         cursor:         'pointer',
-        borderRadius:   6,
+        borderRadius:   10,
         justifyContent: collapsed ? 'center' : 'flex-start',
-        position:       'relative',
         background:     active ? C.bgActive : hover ? C.bgHover : 'transparent',
         transition:     'all 0.15s ease',
-        margin:         '0 8px',
+        margin:         '1px 8px',
       }}
     >
-      {/* Borde izquierdo activo */}
-      {active && (
-        <span style={{
-          position:     'absolute',
-          left:         0, top: 6, bottom: 6,
-          width:        3,
-          borderRadius: '0 3px 3px 0',
-          background:   C.accent,
-        }} />
-      )}
-
-      <item.Icon
-        size={16}
-        strokeWidth={active ? 2.5 : 2}
-        style={{ color: active ? C.accent : hover ? C.text : C.textSub, flexShrink: 0 }}
-      />
+      {/* Contenedor de ícono 28×28 */}
+      <span style={{
+        width: 28, height: 28, borderRadius: 7, flexShrink: 0,
+        background: active ? 'rgba(99,130,255,0.2)' : 'rgba(255,255,255,0.05)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        transition: 'background 0.15s',
+      }}>
+        <item.Icon
+          size={15}
+          strokeWidth={active ? 2.2 : 1.8}
+          style={{ color: active ? C.accent : hover ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.45)' }}
+        />
+      </span>
 
       {!collapsed && (
         <>
           <span style={{
             flex:         1,
-            fontSize:     13,
+            fontSize:     12.5,
             fontWeight:   active ? 600 : 500,
-            color:        active ? C.textActive : hover ? C.text : C.text,
+            color:        active ? C.textActive : hover ? 'rgba(255,255,255,0.85)' : C.text,
             textAlign:    'left',
             whiteSpace:   'nowrap',
             overflow:     'hidden',
@@ -595,9 +591,9 @@ function QuickItemComp({
           </span>
           {item.badge && (
             <span style={{
-              fontSize:     9, fontWeight: 700, padding: '2px 7px',
-              borderRadius: 6, background: active ? C.accent : C.accent,
-              color:        '#fff', letterSpacing: 0.5, textTransform: 'uppercase',
+              fontSize: 9, fontWeight: 700, padding: '2px 7px',
+              borderRadius: 5, background: '#3b5bdb',
+              color: '#fff', letterSpacing: 0.5, textTransform: 'uppercase',
             }}>
               {item.badge}
             </span>
@@ -640,40 +636,39 @@ function CategoryAccordion({
           display:        'flex',
           alignItems:     'center',
           gap:            10,
-          padding:        '7px 12px',
-          height:         34,
-          border:         'none',
+          padding:        '8px 10px',
+          height:         36,
+          border:         hasActiveSub ? '1px solid rgba(99,130,255,0.25)' : '1px solid transparent',
           cursor:         'pointer',
-          borderRadius:   6,
-          position:       'relative',
-          background:     hover ? C.bgHover : 'transparent',
-          margin:         '0 8px',
-          transition:     'background 0.15s',
+          borderRadius:   10,
+          background:     hasActiveSub ? C.bgActive : hover ? C.bgHover : 'transparent',
+          margin:         '1px 8px',
+          transition:     'all 0.15s',
         }}
       >
-        {/* Borde dorado izquierdo cuando hay sub-item activo */}
-        {hasActiveSub && (
-          <span style={{
-            position: 'absolute', left: 0, top: 6, bottom: 6,
-            width: 3, borderRadius: '0 3px 3px 0', background: C.accent,
-          }} />
-        )}
-        <category.Icon
-          size={16}
-          strokeWidth={2}
-          style={{ color: C.textSub, flexShrink: 0 }}
-        />
+        {/* Contenedor de ícono 28×28 */}
         <span style={{
-          flex: 1, fontSize: 12.5, fontWeight: 500,
-          color: C.text,
+          width: 28, height: 28, borderRadius: 7, flexShrink: 0,
+          background: hasActiveSub ? 'rgba(99,130,255,0.2)' : 'rgba(255,255,255,0.05)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          transition: 'background 0.15s',
+        }}>
+          <category.Icon
+            size={15} strokeWidth={1.8}
+            style={{ color: hasActiveSub ? C.accent : hover ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.45)' }}
+          />
+        </span>
+        <span style={{
+          flex: 1, fontSize: 12.5, fontWeight: hasActiveSub ? 600 : 500,
+          color: hasActiveSub ? C.textActive : hover ? 'rgba(255,255,255,0.85)' : C.text,
           textAlign: 'left', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
         }}>
           {category.label}
         </span>
         <ChevronDown
-          size={13} strokeWidth={2}
+          size={12} strokeWidth={2}
           style={{
-            color: C.textSub, flexShrink: 0,
+            color: hasActiveSub ? C.accent : C.textCategory, flexShrink: 0,
             transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)',
             transition: 'transform 0.22s ease',
           }}
@@ -1324,13 +1319,14 @@ export default function AppLayout() {
 
   const SidebarContent = (
     <div style={{
-      width:         collapsed ? 64 : 220,
+      width:         collapsed ? 64 : 240,
       height:        '100%',
       display:       'flex',
       flexDirection: 'column',
       background:    C.bg,
       transition:    'width 0.25s ease',
       overflowX:     'hidden',
+      fontFamily:    "'Plus Jakarta Sans', 'Inter', sans-serif",
     }}>
 
       {/* ── Header Fila 1: Logo + botón colapsar ────────────────────── */}
@@ -1459,6 +1455,14 @@ export default function AppLayout() {
       }}>
 
         {/* Items rápidos (sin categoría) — filtrados por rol */}
+        {/* Label PRINCIPAL */}
+        {!collapsed && (
+          <div style={{ padding: '4px 18px 4px', fontSize: 9, fontWeight: 600,
+            textTransform: 'uppercase', letterSpacing: '0.8px', color: C.textCategory }}>
+            PRINCIPAL
+          </div>
+        )}
+
         <div style={{ marginBottom: 6 }}>
           {QUICK_ITEMS.filter(item => rolPuedeVerRuta(item.path, userRole)).map(item => (
             <QuickItemComp
@@ -1484,14 +1488,20 @@ export default function AppLayout() {
             – Colapsado → ícono que abre panel flyout              */}
         {categoriasFiltradas.map(cat => (
           <div key={cat.id} style={{ marginBottom: 2 }}>
-            {/* Divider sutil entre grupos (sin label) */}
-            {cat.sectionLabel && (
+            {/* Label de sección (OPERACIONES / GESTIÓN) */}
+            {cat.sectionLabel && !collapsed && (
               <div style={{
-                height: 1,
-                background: C.separator,
-                margin: '6px 12px',
-                opacity: 0.6,
-              }} />
+                padding: '14px 18px 4px',
+                fontSize: 9, fontWeight: 600,
+                textTransform: 'uppercase',
+                letterSpacing: '0.8px',
+                color: C.textCategory,
+              }}>
+                {cat.sectionLabel}
+              </div>
+            )}
+            {cat.sectionLabel && collapsed && (
+              <div style={{ height: 1, background: C.separator, margin: '8px 10px' }} />
             )}
             {collapsed ? (
               <CategoryBtnCollapsed
@@ -1519,22 +1529,41 @@ export default function AppLayout() {
         ))}
       </div>
 
-      {/* ── Opciones de Menú ────────────────────────────────────── */}
+      {/* ── Barra de accesos rápidos ─────────────────────────── */}
       {!collapsed && (
-        <button
-          onClick={() => { setMenuTemp(menuActivos); setModalMenu(true); }}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            padding: '6px 16px', background: 'none', border: 'none',
-            cursor: 'pointer', color: C.footerText, fontSize: 12,
-            width: '100%', transition: 'all 0.15s',
-          }}
-          onMouseEnter={e => { e.currentTarget.style.background = C.bgHover; e.currentTarget.style.color = C.text; }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = C.footerText; }}
-        >
-          <AppstoreOutlined style={{ fontSize: 13 }} />
-          Opciones de Menú
-        </button>
+        <div style={{
+          display: 'flex', gap: 6, padding: '6px 10px',
+          borderTop: `1px solid ${C.border}`,
+        }}>
+          <button
+            onClick={() => { setMenuTemp(menuActivos); setModalMenu(true); }}
+            style={{
+              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+              padding: '6px 0', background: 'rgba(255,255,255,0.05)',
+              border: `1px solid ${C.border}`, borderRadius: 9, cursor: 'pointer',
+              color: C.footerText, fontSize: 10, transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.09)'; e.currentTarget.style.color = C.text; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = C.footerText; }}
+          >
+            <AppstoreOutlined style={{ fontSize: 12 }} />
+            Opciones
+          </button>
+          <button
+            onClick={() => setCmdOpen(true)}
+            style={{
+              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+              padding: '6px 0', background: 'rgba(255,255,255,0.05)',
+              border: `1px solid ${C.border}`, borderRadius: 9, cursor: 'pointer',
+              color: C.footerText, fontSize: 10, transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.09)'; e.currentTarget.style.color = C.text; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = C.footerText; }}
+          >
+            <SearchOutlined style={{ fontSize: 12 }} />
+            Buscar
+          </button>
+        </div>
       )}
 
       {/* ── Footer: usuario + acciones ──────────────────────────── */}
@@ -1697,8 +1726,8 @@ export default function AppLayout() {
           <div
             ref={sidebarRef}
             style={{
-              width:       collapsed ? 64 : 220,
-              minWidth:    collapsed ? 64 : 220,
+              width:       collapsed ? 64 : 240,
+              minWidth:    collapsed ? 64 : 240,
               height:      '100%',
               flexShrink:  0,
               transition:  'width 0.25s ease, min-width 0.25s ease',
@@ -1729,9 +1758,9 @@ export default function AppLayout() {
                 top:        0,
                 left:       0,
                 height:     '100%',
-                width:      220,
+                width:      240,
                 zIndex:     200,
-                transform:  mobileOpen ? 'translateX(0)' : 'translateX(-220px)',
+                transform:  mobileOpen ? 'translateX(0)' : 'translateX(-240px)',
                 transition: 'transform 0.25s ease',
                 overflowY:  'hidden',
                 boxShadow:  mobileOpen ? '4px 0 20px rgba(0,0,0,0.3)' : 'none',
@@ -1752,7 +1781,7 @@ export default function AppLayout() {
                 key={activePanel.id}
                 category={cat}
                 activePath={activePath}
-                sidebarWidth={collapsed ? 64 : 220}
+                sidebarWidth={collapsed ? 64 : 240}
                 panelTop={activePanel.top}
                 onNavigate={handleNavigate}
                 onClose={closePanel}
@@ -2036,3 +2065,4 @@ export default function AppLayout() {
     </>
   );
 }
+
