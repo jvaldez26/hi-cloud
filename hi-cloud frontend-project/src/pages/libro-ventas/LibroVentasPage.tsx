@@ -173,11 +173,11 @@ export default function LibroVentasPage() {
                   size="small"
                   pagination={{ pageSize: 25 }}
                   scroll={{ x: 900 }}
-                  columns={[
-                    { title: 'Fecha',    dataIndex: 'fecha',         key: 'f',  width: 95 },
-                    { title: 'Folio',    dataIndex: 'folio',         key: 'fo', width: 140, render: v => <Text strong style={{ fontFamily: 'monospace', fontSize: 11 }}>{v}</Text> },
-                    { title: 'Tipo NCF', dataIndex: 'tipoNcf',       key: 'n',  width: 70, render: v => <Tag color={TIPO_NCF_COLOR[v] ?? 'default'} style={{ fontSize: 10 }}>{v}</Tag> },
-                    { title: 'e-NCF',    dataIndex: 'encf',          key: 'en', width: 150,
+                  columns={fcVentas([
+                    { title: 'Fecha',    dataIndex: 'fecha',         key: 'fecha',         width: 95 },
+                    { title: 'Folio',    dataIndex: 'folio',         key: 'folio',         width: 140, render: v => <Text strong style={{ fontFamily: 'monospace', fontSize: 11 }}>{v}</Text> },
+                    { title: 'Tipo NCF', dataIndex: 'tipoNcf',       key: 'tipoNcf',       width: 70, render: v => <Tag color={TIPO_NCF_COLOR[v] ?? 'default'} style={{ fontSize: 10 }}>{v}</Tag> },
+                    { title: 'e-NCF',    dataIndex: 'encf',          key: 'encf',          width: 150,
                       render: (v: string, r: any) => v
                         ? <Space size={4}>
                             <Text code style={{ fontSize: 10 }}>{v}</Text>
@@ -185,12 +185,12 @@ export default function LibroVentasPage() {
                           </Space>
                         : <Text type="secondary" style={{ fontSize: 11 }}>Sin e-CF</Text>
                     },
-                    { title: 'Cliente', dataIndex: 'clienteNombre', key: 'c', ellipsis: true },
-                    { title: 'RNC',     dataIndex: 'rncCliente',    key: 'r', width: 110, render: v => <Text type="secondary" style={{ fontSize: 11 }}>{v || '—'}</Text> },
-                    { title: 'Subtotal', dataIndex: 'subtotal',     key: 's', align: 'right', render: v => fmt(v) },
-                    { title: 'ITBIS',   dataIndex: 'iva',           key: 'i', align: 'right', render: v => fmt(v) },
-                    { title: 'Total',   dataIndex: 'total',         key: 't', align: 'right', render: v => <Text strong>{fmt(v)}</Text> },
-                  ]}
+                    { title: 'Cliente', dataIndex: 'clienteNombre', key: 'clienteNombre', ellipsis: true },
+                    { title: 'RNC',     dataIndex: 'rncCliente',    key: 'rncCliente',    width: 110, render: v => <Text type="secondary" style={{ fontSize: 11 }}>{v || '—'}</Text> },
+                    { title: 'Subtotal', dataIndex: 'subtotal',     key: 'subtotal',      align: 'right', render: v => fmt(v) },
+                    { title: 'ITBIS',   dataIndex: 'iva',           key: 'iva',           align: 'right', render: v => fmt(v) },
+                    { title: 'Total',   dataIndex: 'total',         key: 'total',         align: 'right', render: v => <Text strong>{fmt(v)}</Text> },
+                  ])}
                   summary={() => totales ? (
                     <Table.Summary.Row style={{ background: token.colorFillAlter, fontWeight: 700 }}>
                       <Table.Summary.Cell index={0} colSpan={5}><Text strong>TOTALES — {totales.cantidad} documentos</Text></Table.Summary.Cell>
@@ -212,10 +212,10 @@ export default function LibroVentasPage() {
                   loading={loadingC}
                   size="small"
                   pagination={{ pageSize: 25 }}
-                  columns={[
-                    { title: 'Fecha',     dataIndex: 'fecha',           key: 'f',  width: 95 },
-                    { title: 'Folio',     dataIndex: 'folio',           key: 'fo', width: 140, render: v => <Text strong style={{ fontFamily: 'monospace', fontSize: 11 }}>{v}</Text> },
-                    { title: 'e-NCF E41', dataIndex: 'encf',            key: 'en', width: 150,
+                  columns={fcCompras([
+                    { title: 'Fecha',     dataIndex: 'fecha',           key: 'fecha',           width: 95 },
+                    { title: 'Folio',     dataIndex: 'folio',           key: 'folio',           width: 140, render: v => <Text strong style={{ fontFamily: 'monospace', fontSize: 11 }}>{v}</Text> },
+                    { title: 'e-NCF E41', dataIndex: 'encf',            key: 'encf',            width: 150,
                       render: (v: string, r: any) => v
                         ? <Space size={4}>
                             <Text code style={{ fontSize: 10 }}>{v}</Text>
@@ -223,12 +223,12 @@ export default function LibroVentasPage() {
                           </Space>
                         : <Text type="secondary" style={{ fontSize: 11 }}>Sin e-CF</Text>
                     },
-                    { title: 'Proveedor', dataIndex: 'proveedorNombre', key: 'p', ellipsis: true },
-                    { title: 'RNC',       dataIndex: 'rncProveedor',    key: 'r', width: 110, render: v => <Text type="secondary" style={{ fontSize: 11 }}>{v || '—'}</Text> },
-                    { title: 'Subtotal',  dataIndex: 'subtotal',        key: 's', align: 'right', render: v => fmt(v) },
-                    { title: 'ITBIS',     dataIndex: 'iva',             key: 'i', align: 'right', render: v => fmt(v) },
-                    { title: 'Total',     dataIndex: 'total',           key: 't', align: 'right', render: v => <Text strong>{fmt(v)}</Text> },
-                  ]}
+                    { title: 'Proveedor', dataIndex: 'proveedorNombre', key: 'proveedorNombre', ellipsis: true },
+                    { title: 'RNC',       dataIndex: 'rncProveedor',    key: 'rncProveedor',    width: 110, render: v => <Text type="secondary" style={{ fontSize: 11 }}>{v || '—'}</Text> },
+                    { title: 'Subtotal',  dataIndex: 'subtotal',        key: 'subtotal',        align: 'right', render: v => fmt(v) },
+                    { title: 'ITBIS',     dataIndex: 'iva',             key: 'iva',             align: 'right', render: v => fmt(v) },
+                    { title: 'Total',     dataIndex: 'total',           key: 'total',           align: 'right', render: v => <Text strong>{fmt(v)}</Text> },
+                  ])}
                   summary={() => totales ? (
                     <Table.Summary.Row style={{ background: token.colorFillAlter, fontWeight: 700 }}>
                       <Table.Summary.Cell index={0} colSpan={4}><Text strong>TOTALES — {totales.cantidad} documentos</Text></Table.Summary.Cell>

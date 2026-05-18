@@ -1,5 +1,7 @@
 ﻿import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Table, Typography, InputNumber,
   Space, theme, Tag, Alert, Divider, Progress, Tabs, Button, message,
@@ -42,6 +44,15 @@ export default function IsrPage() {
 
   const empleados = plantilla?.empleados ?? [];
   const resumen   = plantilla?.resumen ?? {};
+
+  const COLS_DEF = [
+    { key: 'n',   label: 'Empleado' },
+    { key: 'sb',  label: 'Salario Bruto' },
+    { key: 'ded', label: 'AFP + SFS' },
+    { key: 'isr', label: 'ISR Mensual' },
+    { key: 'te',  label: 'Tasa Efect.' },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('isr', COLS_DEF);
 
   const chartData = empleados
     .filter((e: any) => e.isrMensual > 0)
@@ -88,6 +99,7 @@ export default function IsrPage() {
                             exportarExcel(filas, `ISR-Nomina-${new Date().getFullYear()}`);
                           }}>Excel</Button>
                           <RefreshByKeyButton queryKey={['isr']} />
+                          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
                           <VideoTutorialButton />
                         </span>
                       }>
@@ -98,7 +110,7 @@ export default function IsrPage() {
                         size="small"
         scroll={{ x: 'max-content' }}
                         pagination={{ pageSize: 12 }}
-                        columns={[
+                        columns={filterColumns([
                           { title: 'Empleado', dataIndex: 'nombre', key: 'n', render: v => <Text strong style={{ fontSize: 12 }}>{v}</Text> },
                           { title: 'Salario Bruto', dataIndex: 'salarioBruto', key: 'sb', align: 'right', render: v => fmt(v) },
                           {
@@ -121,7 +133,7 @@ export default function IsrPage() {
                               ? <Text style={{ fontSize: 11 }}>{v}%</Text>
                               : <Text type="secondary" style={{ fontSize: 11 }}>—</Text>,
                           },
-                        ]}
+                        ])}
                         summary={() => (
                           <Table.Summary.Row style={{ background: token.colorFillAlter, fontWeight: 700 }}>
                             <Table.Summary.Cell index={0}>TOTAL</Table.Summary.Cell>

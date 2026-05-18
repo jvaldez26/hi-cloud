@@ -1,5 +1,7 @@
 ﻿import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Button, Table, Modal, Form, Input, Select,
   InputNumber, Space, Typography, message, theme,
@@ -27,6 +29,16 @@ export default function CreditoClientePage() {
   const [modalVisible, setModalVisible] = useState(false);
   const [clienteSel, setClienteSel] = useState<any>(null);
   const [form] = Form.useForm();
+
+  const COLS_DEF = [
+    { key: 'c',   label: 'Cliente' },
+    { key: 'l',   label: 'Límite' },
+    { key: 'u',   label: 'Utilizado' },
+    { key: 'd',   label: 'Disponible' },
+    { key: 'pct', label: 'Utilización' },
+    { key: 'dp',  label: 'Días Plazo' },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('credito-cliente', COLS_DEF);
 
   const { data: resumen } = useQuery<any>({
     queryKey: ['credito-resumen'],
@@ -91,6 +103,7 @@ export default function CreditoClientePage() {
           exportarExcel(filas, `Credito-Clientes-${dayjs().format('YYYY-MM-DD')}`);
         }}>Excel</Button>
             <RefreshByKeyButton queryKey={['credito-cliente']} />
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <VideoTutorialButton />
         <Button type="primary" icon={<PlusOutlined />} onClick={() => abrirConfiguracion()}>
           Configurar Crédito
@@ -110,7 +123,7 @@ export default function CreditoClientePage() {
           loading={isLoading}
           size="middle"
           pagination={{ pageSize: 15 }}
-          columns={[
+          columns={filterColumns([
             {
               title: 'Cliente', dataIndex: 'clienteNombre', key: 'c',
               render: v => <Text strong>{v}</Text>,
@@ -144,7 +157,7 @@ export default function CreditoClientePage() {
             },
             { title: 'Días Plazo', dataIndex: 'diasPlazo', key: 'dp', align: 'center', render: v => <Tag>{v} días</Tag> },
             {
-              title: '', key: 'acc', width: 72, align: 'right' as const,
+              title: '', key: 'acciones', width: 72, align: 'right' as const,
               render: (_: any, r: any) => (
                 <TableActions
                   onView={() => abrirConfiguracion(r)}
@@ -153,7 +166,7 @@ export default function CreditoClientePage() {
                 />
               ),
             },
-          ]}
+          ])}
         />
       </Card>
 

@@ -164,7 +164,7 @@ export default function ConteoInventarioPage() {
                 style:   { cursor: 'pointer', background: row.id === conteoActivo?.id ? token.colorPrimaryBg : undefined },
                 onClick: () => setConteoActivo(row),
               })}
-              columns={[
+              columns={filterColumns([
                 { title: 'N°', dataIndex: 'numero', key: 'n', render: v => <Text strong style={{ fontFamily: 'mono' }}>{v}</Text> },
                 { title: 'Nombre', dataIndex: 'nombre', key: 'nm' },
                 { title: 'Fecha', dataIndex: 'fecha', key: 'f' },
@@ -190,7 +190,7 @@ export default function ConteoInventarioPage() {
                     </Space>
                   ),
                 },
-              ]}
+              ])}
             />
           </Card>
         </Col>
