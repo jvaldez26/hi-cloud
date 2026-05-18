@@ -71,16 +71,51 @@ export class AuthController {
   @ApiOperation({ summary: 'Iniciar sesión — setea cookies httpOnly access_token + refresh_token' })
   async login(@Body() dto: LoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const data = await this.authService.login(dto);
-    this.setAuthCookie(res, data.accessToken);
+
+    // Si 2FA está activo → guardar token temporal y pedir código TOTP
+    if ('requiresTwoFactor' in data && data.requiresTwoFactor) {
+      const isProd = process.env.NODE_ENV === 'production';
+      (res as any).cookie('2fa_pending', data.pending2FAToken, {
+        httpOnly: true, secure: isProd, sameSite: 'strict',
+        maxAge: 5 * 60 * 1000,
+      });
+      return { requiresTwoFactor: true };
+    }
+
+    this.setAuthCookie(res, (data as any).accessToken);
 
     // S-28: refresh token de 30 días en cookie httpOnly restringida a /auth/refresh
     const refreshValue = await this.refreshTokenSvc.crear(
-      data.user.id,
+      (data as any).user.id,
       req.headers['user-agent'],
       req.ip,
     );
     this.setRefreshCookie(res, refreshValue);
 
+    const { accessToken: _tok, ...safe } = data as any;
+    return safe;
+  }
+
+  @Post('2fa/complete-login')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } }) // 5 intentos por minuto
+  @ApiOperation({ summary: 'Segundo paso del login cuando 2FA está activo' })
+  async complete2FALogin(
+    @Body() body: { codigo: string },
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const pendingToken = (req.cookies as Record<string, string>)?.['2fa_pending'];
+    if (!pendingToken) {
+      throw new (require('@nestjs/common').UnauthorizedException)('Sesión 2FA expirada. Inicia sesión de nuevo.');
+    }
+    const data = await this.authService.completarLogin2FA(pendingToken, body.codigo);
+
+    // Limpiar cookie temporal y emitir JWT completo
+    res.clearCookie('2fa_pending');
+    this.setAuthCookie(res, data.accessToken);
+    const refreshValue = await this.refreshTokenSvc.crear(data.user.id, req.headers['user-agent'], req.ip);
+    this.setRefreshCookie(res, refreshValue);
     const { accessToken: _tok, ...safe } = data;
     return safe;
   }

@@ -5,6 +5,11 @@ export const authApi = {
   login: async (email: string, password: string) => {
     // S-23: backend setea cookie httpOnly — response solo contiene user info
     const res = await api.post<ApiResponse<LoginResponse>>('/auth/login', { email, password });
+    return res.data.data as (LoginResponse & { requiresTwoFactor?: boolean }) | null;
+  },
+
+  complete2FALogin: async (codigo: string) => {
+    const res = await api.post<ApiResponse<LoginResponse>>('/auth/2fa/complete-login', { codigo });
     return res.data.data;
   },
 

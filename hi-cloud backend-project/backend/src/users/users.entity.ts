@@ -67,4 +67,8 @@ export class User extends BaseEntity {
 
   @Column({ length: 100, nullable: true, select: false })
   twoFactorSecret?: string;
+
+  // Códigos de respaldo 2FA (hashed con SHA-256, uso único)
+  @Column({ type: 'jsonb', nullable: true, select: false })
+  twoFactorBackupCodes?: string[];
 }

@@ -16,6 +16,7 @@ import * as bcrypt from 'bcrypt';
 import { UsersService } from '../users/users.service';
 import { TokenBlacklistService } from './token-blacklist.service';
 import { RefreshTokenService } from './refresh-token.service';
+import { TwoFactorService } from './two-factor.service';
 import { EmailService } from '../notificaciones/services/email.service';
 import { User } from '../users/users.entity';
 import { UsuarioEmpresa } from '../multi-empresa/entities/usuario-empresa.entity';
@@ -36,6 +37,7 @@ export class AuthService implements OnModuleInit {
     private emailService:       EmailService,
     private blacklistSvc:       TokenBlacklistService,
     private refreshTokenSvc:    RefreshTokenService,
+    private twoFactorService:   TwoFactorService,
     @InjectRepository(User)
     private userRepository: Repository<User>,
     @InjectRepository(UsuarioEmpresa)
@@ -227,6 +229,15 @@ export class AuthService implements OnModuleInit {
     if (!user.emailVerifiedAt) {
       this.sendVerificationEmail(user.id, user.email, user.nombre).catch(() => null);
       throw new UnauthorizedException('Credenciales inválidas');
+    }
+
+    // Si 2FA está activo → devolver indicador + token temporal en lugar del JWT completo
+    if (user.twoFactorEnabled) {
+      const pending2FAToken = this.jwtService.sign(
+        { sub: user.id, tfa: 1 },
+        { expiresIn: '5m' },
+      );
+      return { requiresTwoFactor: true as const, pending2FAToken };
     }
 
     // Desplazar sesión anterior: nuevo sessionToken + revocar refresh tokens previos
@@ -657,6 +668,43 @@ export class AuthService implements OnModuleInit {
     await this.refreshTokenSvc.revocarTodos(userId);
     this.logger.log(`Super admin forzó logout del usuario #${userId}`);
     return { message: `Sesión del usuario #${userId} cerrada correctamente` };
+  }
+
+  /** Segundo paso del login cuando 2FA está activo: verifica TOTP y emite JWT completo. */
+  async completarLogin2FA(pendingToken: string, codigo: string) {
+    let payload: any;
+    try {
+      payload = this.jwtService.verify(pendingToken);
+    } catch {
+      throw new UnauthorizedException('Sesión de verificación expirada. Inicia sesión de nuevo.');
+    }
+    if (!payload?.tfa) throw new UnauthorizedException('Token de verificación inválido');
+
+    const valid = await this.twoFactorService.verificarCodigo(payload.sub, codigo);
+    if (!valid) throw new UnauthorizedException('Código de autenticación incorrecto');
+
+    const user = await this.usersService.findById(payload.sub);
+    if (!user || !user.isActive) throw new UnauthorizedException('Usuario no encontrado');
+
+    const sessionToken = await this.initNewSession(user.id);
+    (user as any).sessionToken = sessionToken;
+    const empresaId  = await this.getEmpresaPrincipal(user.id);
+    const accessToken = this.buildToken(user, empresaId);
+    const empresas   = await this.ueRepository.find({
+      where: { userId: user.id, isActive: true },
+      relations: ['empresa'],
+      order: { isPrincipal: 'DESC' },
+    });
+    return {
+      message:       'Login exitoso',
+      accessToken,
+      empresaActual: empresaId ?? null,
+      empresas: empresas.map(e => ({
+        empresaId:   e.empresaId, nombre: e.empresa?.nombre,
+        rnc:         e.empresa?.rnc, rol: e.rol, isPrincipal: e.isPrincipal,
+      })),
+      user: { id: user.id, nombre: user.nombre, email: user.email, role: user.role, tourCompletado: (user as any).tourCompletado ?? false },
+    };
   }
 
   /** Genera la respuesta de login completa (token + empresas) para un User */

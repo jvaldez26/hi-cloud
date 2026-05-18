@@ -18,9 +18,10 @@ const roleLabel: Record<string, string> = {
 
 function TwoFactorSection() {
   const qc = useQueryClient();
-  const [qrModal, setQrModal] = useState(false);
-  const [code, setCode]       = useState('');
-  const [qrData, setQrData]   = useState<{ qrDataUrl: string; secret: string } | null>(null);
+  const [qrModal,      setQrModal]      = useState(false);
+  const [code,         setCode]         = useState('');
+  const [qrData,       setQrData]       = useState<{ qrDataUrl: string; secret: string } | null>(null);
+  const [backupCodes,  setBackupCodes]  = useState<string[] | null>(null);
 
   const { data: status } = useQuery({
     queryKey: ['2fa-status'],
@@ -34,11 +35,11 @@ function TwoFactorSection() {
   });
 
   const activateMut = useMutation({
-    mutationFn: (codigo: string) => api.post('/auth/2fa/activate', { codigo }),
-    onSuccess: () => {
-      message.success('2FA activado exitosamente');
+    mutationFn: (codigo: string) => api.post('/auth/2fa/activate', { codigo }).then(r => r.data?.data ?? r.data),
+    onSuccess: (data: any) => {
       setQrModal(false); setCode(''); setQrData(null);
       qc.invalidateQueries({ queryKey: ['2fa-status'] });
+      if (data?.backupCodes) setBackupCodes(data.backupCodes);
     },
     onError: () => message.error('Código incorrecto. Intenta de nuevo.'),
   });
@@ -112,6 +113,33 @@ function TwoFactorSection() {
           </Button>
         </Space>
       )}
+
+      {/* ── Modal códigos de respaldo ────────────────────────────────────── */}
+      <Modal
+        open={!!backupCodes}
+        title="🔐 Guarda tus códigos de respaldo"
+        onCancel={() => setBackupCodes(null)}
+        footer={
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Button onClick={() => { navigator.clipboard.writeText((backupCodes ?? []).join('\n')); message.success('Códigos copiados'); }}>
+              Copiar códigos
+            </Button>
+            <Button type="primary" onClick={() => { setBackupCodes(null); message.success('2FA activado exitosamente'); }}>
+              He guardado mis códigos
+            </Button>
+          </div>
+        }
+        width={420}
+      >
+        <Alert type="warning" showIcon style={{ marginBottom: 16 }}
+          message="Solo se muestran una vez"
+          description="Guarda estos códigos en un lugar seguro. Úsalos si pierdes acceso a tu autenticador." />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, background: '#F8FAFC', padding: 16, borderRadius: 8, fontFamily: 'monospace', fontSize: 14 }}>
+          {(backupCodes ?? []).map(code => (
+            <div key={code} style={{ textAlign: 'center', padding: '6px 0', border: '1px solid #E2E8F0', borderRadius: 6, color: '#1E293B', fontWeight: 600 }}>{code}</div>
+          ))}
+        </div>
+      </Modal>
 
       <Modal
         open={qrModal}

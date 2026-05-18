@@ -41,6 +41,8 @@ export default function LoginPage() {
   const [emailIngresado,setEmailIngresado]= useState('');
   const [reenviando,    setReenviando]    = useState(false);
   const [reenviado,     setReenviado]     = useState(false);
+  const [pending2FA,    setPending2FA]    = useState(false);
+  const [codigoTOTP,    setCodigoTOTP]    = useState('');
   const { login } = useAuthStore();
   const navigate  = useNavigate();
 
@@ -65,9 +67,17 @@ export default function LoginPage() {
     setEmailIngresado(values.email);
     try {
       const data = await authApi.login(values.email, values.password);
-      login(data.user, data.empresaActual, data.empresas ?? []);
-      // Super Admin tiene su propio panel — no necesita empresa
-      if (data.user?.role === 'super_admin') {
+      if (!data) throw new Error('Sin respuesta');
+
+      // Segundo factor requerido → mostrar paso de TOTP
+      if ((data as any).requiresTwoFactor) {
+        setPending2FA(true);
+        setLoading(false);
+        return;
+      }
+
+      login((data as any).user, (data as any).empresaActual, (data as any).empresas ?? []);
+      if ((data as any).user?.role === 'super_admin') {
         navigate('/super-admin');
       } else {
         navigate('/dashboard');
@@ -79,6 +89,28 @@ export default function LoginPage() {
       } else {
         setError(msg);
       }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onFinish2FA = async () => {
+    if (codigoTOTP.length !== 6) { setError('Ingresa el código de 6 dígitos'); return; }
+    setLoading(true);
+    setError('');
+    try {
+      const data = await authApi.complete2FALogin(codigoTOTP);
+      if (!data) throw new Error('Sin respuesta');
+      login((data as any).user, (data as any).empresaActual, (data as any).empresas ?? []);
+      if ((data as any).user?.role === 'super_admin') {
+        navigate('/super-admin');
+      } else {
+        navigate('/dashboard');
+      }
+    } catch (e: unknown) {
+      const msg = (e as any)?.response?.data?.errors?.[0] ?? 'Código incorrecto';
+      setError(msg);
+      setCodigoTOTP('');
     } finally {
       setLoading(false);
     }
@@ -163,7 +195,41 @@ export default function LoginPage() {
             />
           )}
 
-          <Form layout="vertical" onFinish={onFinish} size="large">
+          {/* ── Paso 2: código TOTP ────────────────────────────────────────── */}
+          {pending2FA && (
+            <div>
+              {error && <Alert message={error} type="error" showIcon style={{ marginBottom: 16, borderRadius: 8 }} />}
+              <div style={{ textAlign: 'center', marginBottom: 20 }}>
+                <Text style={{ color: 'rgba(255,255,255,.9)', fontWeight: 600, fontSize: 15, display: 'block' }}>
+                  Autenticación en dos factores
+                </Text>
+                <Text style={{ color: 'rgba(255,255,255,.5)', fontSize: 13 }}>
+                  Ingresa el código de tu aplicación autenticadora
+                </Text>
+              </div>
+              <Input
+                maxLength={6}
+                placeholder="123456"
+                value={codigoTOTP}
+                onChange={e => { setCodigoTOTP(e.target.value.replace(/\D/g, '')); setError(''); }}
+                onPressEnter={onFinish2FA}
+                autoFocus
+                style={{ textAlign: 'center', fontSize: 24, letterSpacing: 8, height: 56, background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.2)', color: '#fff', borderRadius: 10, marginBottom: 12 }}
+              />
+              <Button type="primary" block loading={loading} onClick={onFinish2FA}
+                disabled={codigoTOTP.length !== 6}
+                style={{ height: 48, background: 'linear-gradient(135deg,#1a56db,#0ea5e9)', border: 'none', borderRadius: 10, fontSize: 15, fontWeight: 600, boxShadow: '0 4px 20px rgba(26,86,219,.45)' }}>
+                {loading ? 'Verificando…' : 'Verificar código'}
+              </Button>
+              <button onClick={() => { setPending2FA(false); setCodigoTOTP(''); setError(''); }}
+                style={{ width: '100%', background: 'none', border: 'none', color: 'rgba(255,255,255,.4)', cursor: 'pointer', marginTop: 12, fontSize: 12 }}>
+                ← Volver al login
+              </button>
+            </div>
+          )}
+
+          <Form layout="vertical" onFinish={onFinish} size="large"
+            style={{ display: pending2FA ? 'none' : undefined }}>
             <Form.Item
               name="email"
               label={<Text style={{ color: 'rgba(255,255,255,.75)', fontSize: 13 }}>Correo electrónico</Text>}
