@@ -186,12 +186,23 @@ export default function ConteoInventarioPage() {
                         }] : []),
                         ...(r.estado === 'en_proceso' ? [{
                           key: 'confirmar', label: 'Confirmar y aplicar stock', icon: <CheckCircleOutlined />,
-                          onClick: () => { if (window.confirm('¿Confirmar y aplicar ajustes de stock?')) confirmar.mutate(r.id); },
+                          onClick: () => Modal.confirm({
+                            title: '¿Confirmar y aplicar ajustes de stock?',
+                            okText: 'Confirmar',
+                            cancelText: 'Cancelar',
+                            onOk: () => confirmar.mutate(r.id),
+                          }),
                         }] : []),
                         ...(r.estado !== 'confirmado' ? [
                           { type: 'divider' as const },
                           { key: 'cancelar', label: 'Cancelar conteo', danger: true, icon: <StopOutlined />,
-                            onClick: () => { if (window.confirm('¿Cancelar conteo?')) cancelar.mutate(r.id); } },
+                            onClick: () => Modal.confirm({
+                              title: '¿Cancelar conteo?',
+                              okText: 'Confirmar',
+                              cancelText: 'Cancelar',
+                              okButtonProps: { danger: true },
+                              onOk: () => cancelar.mutate(r.id),
+                            }) },
                         ] : []),
                       ]}
                     />

@@ -190,7 +190,12 @@ export default function CuotasPage() {
                         viewLabel="Ver cuota"
                         items={[
                           { key: 'pagar', label: 'Registrar pago', icon: <CheckCircleOutlined />,
-                            onClick: () => { if (window.confirm('¿Registrar pago de esta cuota?')) pagarCuota.mutate(r.id); } },
+                            onClick: () => Modal.confirm({
+                              title: '¿Registrar pago de esta cuota?',
+                              okText: 'Confirmar',
+                              cancelText: 'Cancelar',
+                              onOk: () => pagarCuota.mutate(r.id),
+                            }) },
                         ]}
                       />
                     ) : null,

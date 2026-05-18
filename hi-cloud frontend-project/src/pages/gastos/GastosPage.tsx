@@ -174,7 +174,13 @@ export default function GastosPage() {
               onClick: () => descargarPDF(r) },
             { type: 'divider' as const },
             { key: 'eliminar', label: 'Eliminar gasto', icon: <DeleteOutlined />, danger: true,
-              onClick: () => { if (window.confirm('¿Eliminar este gasto?')) eliminarMut.mutate(r.id); } },
+              onClick: () => Modal.confirm({
+                title: '¿Eliminar este gasto?',
+                okText: 'Confirmar',
+                cancelText: 'Cancelar',
+                okButtonProps: { danger: true },
+                onOk: () => eliminarMut.mutate(r.id),
+              }) },
           ]}
         />
       )},

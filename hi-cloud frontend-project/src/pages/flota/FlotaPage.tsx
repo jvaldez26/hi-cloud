@@ -211,7 +211,13 @@ export default function FlotaPage() {
                           viewLabel="Registro"
                           items={[
                             { key: 'del', label: 'Eliminar', danger: true, icon: <DeleteOutlined />,
-                              onClick: () => { if (window.confirm('¿Eliminar?')) flotaApi.eliminarReg(r.id).then(() => inv()); } },
+                              onClick: () => Modal.confirm({
+                                title: '¿Eliminar?',
+                                okText: 'Confirmar',
+                                cancelText: 'Cancelar',
+                                okButtonProps: { danger: true },
+                                onOk: () => flotaApi.eliminarReg(r.id).then(() => inv()),
+                              }) },
                           ]}
                         />
                       )},

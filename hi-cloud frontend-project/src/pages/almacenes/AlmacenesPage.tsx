@@ -150,7 +150,13 @@ export default function AlmacenesPage() {
               label: 'Cancelar transferencia',
               danger: true,
               icon: <CloseCircleOutlined />,
-              onClick: () => { if (window.confirm('¿Cancelar transferencia?')) cancelarMut.mutate(r.id); },
+              onClick: () => Modal.confirm({
+                title: '¿Cancelar transferencia?',
+                okText: 'Confirmar',
+                cancelText: 'Cancelar',
+                okButtonProps: { danger: true },
+                onOk: () => cancelarMut.mutate(r.id),
+              }),
             }] : []),
           ]}
         />

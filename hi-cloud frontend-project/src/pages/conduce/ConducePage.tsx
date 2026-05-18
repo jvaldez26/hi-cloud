@@ -205,7 +205,13 @@ export default function ConducePage() {
                     { type: 'divider' as const },
                     { key: 'eliminar', label: 'Eliminar', icon: <DeleteOutlined />, danger: true,
                       disabled: r.estado === 'entregado',
-                      onClick: () => { if (window.confirm('¿Eliminar conduce?')) eliminar.mutate(r.id); } },
+                      onClick: () => Modal.confirm({
+                        title: '¿Eliminar conduce?',
+                        okText: 'Confirmar',
+                        cancelText: 'Cancelar',
+                        okButtonProps: { danger: true },
+                        onOk: () => eliminar.mutate(r.id),
+                      }) },
                   ]}
                 />
               ),

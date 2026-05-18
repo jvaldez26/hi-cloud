@@ -286,7 +286,13 @@ function SecuenciasTab({ onRefresh }: { onRefresh: () => void }) {
             items={[
               ...(puedeInactivar
                 ? [{ key: 'inactivar', label: 'Inactivar secuencia', icon: <StopOutlined />, danger: true,
-                     onClick: () => { if (window.confirm('¿Inactivar esta secuencia? No se usará para nuevos e-CFs.')) desactivarMut.mutate(r.id); } }]
+                     onClick: () => Modal.confirm({
+                       title: '¿Inactivar esta secuencia? No se usará para nuevos e-CFs.',
+                       okText: 'Confirmar',
+                       cancelText: 'Cancelar',
+                       okButtonProps: { danger: true },
+                       onOk: () => desactivarMut.mutate(r.id),
+                     }) }]
                 : []),
             ]}
           />

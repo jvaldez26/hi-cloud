@@ -116,7 +116,13 @@ export default function EvaluacionesPage() {
             ...(r.estado === 'borrador' ? [
               { type: 'divider' as const },
               { key: 'del', label: 'Eliminar', danger: true, icon: <DeleteOutlined />,
-                onClick: () => { if (window.confirm('¿Eliminar evaluación?')) eliminarMut.mutate(r.id); } },
+                onClick: () => Modal.confirm({
+                  title: '¿Eliminar evaluación?',
+                  okText: 'Confirmar',
+                  cancelText: 'Cancelar',
+                  okButtonProps: { danger: true },
+                  onOk: () => eliminarMut.mutate(r.id),
+                }) },
             ] : []),
           ]}
         />

@@ -139,12 +139,23 @@ export default function DevolucionesPage() {
           items={[
             ...(r.estado === 'pendiente' ? [
               { key: 'procesar', label: 'Procesar devolución', icon: <CheckOutlined />,
-                onClick: () => { if (window.confirm('¿Procesar? Se revertirá el inventario y se generará la NC E34.')) procesarMut.mutate(r.id); } },
+                onClick: () => Modal.confirm({
+                  title: '¿Procesar? Se revertirá el inventario y se generará la NC E34.',
+                  okText: 'Confirmar',
+                  cancelText: 'Cancelar',
+                  onOk: () => procesarMut.mutate(r.id),
+                }) },
             ] : []),
             { type: 'divider' as const },
             ...(r.estado === 'pendiente' ? [
               { key: 'anular', label: 'Anular devolución', danger: true,
-                onClick: () => { if (window.confirm('¿Anular esta devolución?')) anularMut.mutate(r.id); } },
+                onClick: () => Modal.confirm({
+                  title: '¿Anular esta devolución?',
+                  okText: 'Confirmar',
+                  cancelText: 'Cancelar',
+                  okButtonProps: { danger: true },
+                  onOk: () => anularMut.mutate(r.id),
+                }) },
             ] : []),
           ]}
         />

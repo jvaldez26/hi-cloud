@@ -215,7 +215,13 @@ export default function DescuentosPage() {
                     { key: 'edit', label: 'Editar', icon: <EditOutlined />, onClick: () => abrirEditar(r) },
                     { type: 'divider' as const },
                     { key: 'del', label: 'Eliminar', danger: true, icon: <DeleteOutlined />,
-                      onClick: () => { if (window.confirm('¿Eliminar regla?')) eliminar.mutate(r.id); } },
+                      onClick: () => Modal.confirm({
+                        title: '¿Eliminar regla?',
+                        okText: 'Confirmar',
+                        cancelText: 'Cancelar',
+                        okButtonProps: { danger: true },
+                        onOk: () => eliminar.mutate(r.id),
+                      }) },
                   ]}
                 />
               ),

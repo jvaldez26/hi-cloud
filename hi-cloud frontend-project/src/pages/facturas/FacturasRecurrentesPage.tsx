@@ -151,7 +151,13 @@ export default function FacturasRecurrentesPage() {
               onClick: () => ejecutMut.mutate(r.id) },
             { type: 'divider' as const },
             { key: 'eliminar', label: 'Eliminar', icon: <DeleteOutlined />, danger: true,
-              onClick: () => { if (window.confirm('¿Eliminar esta factura recurrente?')) removeMut.mutate(r.id); } },
+              onClick: () => Modal.confirm({
+                title: '¿Eliminar esta factura recurrente?',
+                okText: 'Confirmar',
+                cancelText: 'Cancelar',
+                okButtonProps: { danger: true },
+                onOk: () => removeMut.mutate(r.id),
+              }) },
           ]}
         />
       )},

@@ -104,7 +104,13 @@ export default function CentroCostosPage() {
           viewLabel="Editar"
           items={[
             { key: 'eliminar', label: 'Eliminar', icon: <DeleteOutlined />, danger: true,
-              onClick: () => { if (window.confirm('¿Eliminar este centro de costo?')) eliminarMut.mutate(r.id); } },
+              onClick: () => Modal.confirm({
+                title: '¿Eliminar este centro de costo?',
+                okText: 'Confirmar',
+                cancelText: 'Cancelar',
+                okButtonProps: { danger: true },
+                onOk: () => eliminarMut.mutate(r.id),
+              }) },
           ]}
         />
       )},

@@ -143,7 +143,13 @@ export default function ChequesPage() {
             { type: 'divider' as const },
             { key: 'anular', label: 'Anular cheque', icon: <StopOutlined />, danger: true,
               disabled: r.estado === 'anulado' || r.estado === 'cobrado',
-              onClick: () => { if (window.confirm('¿Anular cheque?')) estadoMut.mutate({ id: r.id, estado: 'anulado' }); } },
+              onClick: () => Modal.confirm({
+                title: '¿Anular cheque?',
+                okText: 'Confirmar',
+                cancelText: 'Cancelar',
+                okButtonProps: { danger: true },
+                onOk: () => estadoMut.mutate({ id: r.id, estado: 'anulado' }),
+              }) },
           ]}
         />
       )},

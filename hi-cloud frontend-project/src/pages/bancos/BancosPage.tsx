@@ -158,7 +158,13 @@ export default function BancosPage() {
               : { key: 'conciliar', label: 'Marcar conciliado', icon: <LinkOutlined />, onClick: () => conciliarMut.mutate(r.id) },
             { type: 'divider' as const },
             { key: 'eliminar', label: 'Eliminar movimiento', icon: <DeleteOutlined />, danger: true,
-              onClick: () => { if (window.confirm('¿Eliminar este movimiento?')) eliminarMovMut.mutate(r.id); } },
+              onClick: () => Modal.confirm({
+                title: '¿Eliminar este movimiento?',
+                okText: 'Confirmar',
+                cancelText: 'Cancelar',
+                okButtonProps: { danger: true },
+                onOk: () => eliminarMovMut.mutate(r.id),
+              }) },
           ]}
         />
       )},

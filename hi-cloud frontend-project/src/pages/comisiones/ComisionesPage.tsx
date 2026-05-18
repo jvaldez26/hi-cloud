@@ -183,7 +183,12 @@ function AdminTab() {
                     key: 'pagar',
                     label: 'Pagar',
                     icon: <DollarOutlined />,
-                    onClick: () => { if (window.confirm('¿Confirmar pago?')) pagarMut.mutate(r.id); },
+                    onClick: () => Modal.confirm({
+                      title: '¿Confirmar pago?',
+                      okText: 'Confirmar',
+                      cancelText: 'Cancelar',
+                      onOk: () => pagarMut.mutate(r.id),
+                    }),
                   }] : []),
                 ]}
               />

@@ -302,9 +302,20 @@ function LotesTab() {
           viewLabel="Ver lote"
           items={r.estado === 'activo' ? [
             { key: 'vencer', label: 'Marcar como vencido', icon: <WarningOutlined />, danger: true,
-              onClick: () => { if (window.confirm('¿Marcar como vencido?')) updateMut.mutate({ id: r.id, body: { estado: 'vencido' } }); } },
+              onClick: () => Modal.confirm({
+                title: '¿Marcar como vencido?',
+                okText: 'Confirmar',
+                cancelText: 'Cancelar',
+                okButtonProps: { danger: true },
+                onOk: () => updateMut.mutate({ id: r.id, body: { estado: 'vencido' } }),
+              }) },
             { key: 'agotar', label: 'Marcar como agotado',
-              onClick: () => { if (window.confirm('¿Marcar como agotado?')) updateMut.mutate({ id: r.id, body: { estado: 'agotado' } }); } },
+              onClick: () => Modal.confirm({
+                title: '¿Marcar como agotado?',
+                okText: 'Confirmar',
+                cancelText: 'Cancelar',
+                onOk: () => updateMut.mutate({ id: r.id, body: { estado: 'agotado' } }),
+              }) },
           ] : []}
         />
       ) },
