@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { exportarExcel } from '../../utils/exportExcel';
 import {
-  Card, Row, Col, Typography, Table, Tag, Statistic, Button,
+  Card, Row, Col, Typography, Table, Tag, Button,
   Space, Modal, Form, Input, Select, DatePicker, InputNumber,
   Tabs, Popconfirm, message, Badge, Tooltip,
 } from 'antd';
@@ -168,27 +168,6 @@ export default function MantenimientoPage() {
           </Space>
         </Col>
       </Row>
-
-      {/* KPIs */}
-      {dash && (
-        <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
-          {[
-            { label: 'Programadas',    value: dash.programados,  color: '#3b82f6' },
-            { label: 'En proceso',     value: dash.enProceso,    color: '#f59e0b' },
-            { label: 'Completadas',    value: dash.completados,  color: '#10b981' },
-            { label: 'Vencidas',       value: dash.vencidos,     color: '#ef4444' },
-            { label: 'Próximas 7 días',value: dash.proximos7,    color: '#7c3aed' },
-            { label: 'Costo mes',      value: fmt.money(dash.costoMes), color: '#1677ff', noFormat: true },
-          ].map((k, i) => (
-            <Col xs={12} md={4} key={i}>
-              <Card size="small" style={{ borderTop: `3px solid ${k.color}` }}>
-                <Statistic title={k.label} value={k.value}
-                  valueStyle={{ color: k.color, fontSize: 18 }} />
-              </Card>
-            </Col>
-          ))}
-        </Row>
-      )}
 
       <Tabs items={[
         {

@@ -3,7 +3,7 @@ import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/Tab
 import { TableActions } from '../../components/ui/TableActions';
 import { DetailDrawer } from '../../components/ui/DetailDrawer';
 import {
-  Card, Row, Col, Typography, Select, Table, Tag, Statistic,
+  Card, Row, Col, Typography, Select, Table, Tag,
   Button, Space, Modal, Form, Input, InputNumber, Tabs,
   Popconfirm, message, Badge, Alert, Tooltip, Divider, theme } from 'antd';
 import {
@@ -173,43 +173,6 @@ export default function ChequesPage() {
           </Space>
         </Col>
       </Row>
-
-      {/* KPIs */}
-      {dash && (
-        <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
-          <Col xs={12} md={4}>
-            <Card size="small">
-              <Statistic title="En cartera" value={dash.enCartera}
-                valueStyle={{ color: '#1677ff' }} />
-            </Card>
-          </Col>
-          <Col xs={12} md={4}>
-            <Card size="small">
-              <Statistic title="Entregados" value={dash.entregados}
-                valueStyle={{ color: '#06b6d4' }} />
-            </Card>
-          </Col>
-          <Col xs={12} md={4}>
-            <Card size="small">
-              <Statistic title="Cobrados" value={dash.cobrados}
-                valueStyle={{ color: '#10b981' }} />
-            </Card>
-          </Col>
-          <Col xs={12} md={4}>
-            <Card size="small">
-              <Statistic title="Posfechados" value={dash.posfechados}
-                valueStyle={{ color: '#f59e0b' }} />
-            </Card>
-          </Col>
-          <Col xs={24} md={8}>
-            <Card size="small" style={{ borderColor: '#1677ff' }}>
-              <Statistic title="Monto en cartera / pendiente"
-                value={dash.montoEnCartera} formatter={v => fmt.money(Number(v))}
-                valueStyle={{ color: '#1677ff', fontSize: 20 }} />
-            </Card>
-          </Col>
-        </Row>
-      )}
 
       {/* Alerta cheques posfechados que vencen pronto */}
       {dash?.vencenProximo?.length > 0 && (

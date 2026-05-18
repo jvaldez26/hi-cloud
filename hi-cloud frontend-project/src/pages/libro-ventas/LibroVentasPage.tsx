@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
-  Card, Row, Col, Table, Typography, Statistic, Button,
+  Card, Row, Col, Table, Typography, Button,
   Space, Tag, DatePicker, Select, theme, Tabs, Divider,
 } from 'antd';
 import { BookOutlined, DownloadOutlined, FileExcelOutlined } from '@ant-design/icons';
@@ -125,23 +125,6 @@ export default function LibroVentasPage() {
           </Button>
         </Space>
       </div>
-
-      {/* KPI Cards por tipo NCF — solo en ventas */}
-      {tabActiva === 'ventas' && porNcf.length > 0 && (
-        <Row gutter={[10, 10]} style={{ marginBottom: 20 }}>
-          {porNcf.map((n: any) => (
-            <Col key={n.tipo} xs={12} sm={8} md={4}>
-              <Card bordered={false} size="small" style={{ borderRadius: 8, border: `1px solid ${token.colorBorderSecondary}` }}>
-                <Tag color={TIPO_NCF_COLOR[n.tipo] ?? 'default'} style={{ fontSize: 13, fontWeight: 700, display: 'block', marginBottom: 4 }}>
-                  {n.tipo}
-                </Tag>
-                <Text strong style={{ fontSize: 13, display: 'block' }}>{fmt(n.total)}</Text>
-                <Text type="secondary" style={{ fontSize: 11 }}>{n.cantidad} docto(s)</Text>
-              </Card>
-            </Col>
-          ))}
-        </Row>
-      )}
 
       <Card bordered={false} style={{ borderRadius: 12 }}>
         <Tabs

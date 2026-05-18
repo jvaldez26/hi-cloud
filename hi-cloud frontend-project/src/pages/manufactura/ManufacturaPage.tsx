@@ -480,25 +480,6 @@ export default function ManufacturaPage() {
         </Col>
       </Row>
 
-      {/* KPIs */}
-      {dash && (
-        <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
-          {[
-            { label: 'Fórmulas BOM',   value: dash.totalLM,      color: '#1677ff' },
-            { label: 'Planificadas',   value: dash.planificadas,  color: '#06b6d4' },
-            { label: 'En proceso',     value: dash.enProceso,     color: '#f59e0b' },
-            { label: 'Completadas',    value: dash.completadas,   color: '#10b981' },
-            { label: 'Canceladas',     value: dash.canceladas,    color: '#ef4444' },
-          ].map((k, i) => (
-            <Col xs={12} md={4} key={i}>
-              <Card size="small">
-                <Statistic title={k.label} value={k.value} valueStyle={{ color: k.color }} />
-              </Card>
-            </Col>
-          ))}
-        </Row>
-      )}
-
       <Tabs activeKey={tabKey} onChange={setTabKey} items={[
         // ── Listas de Materiales (BOM) ─────────────────────────────────────
         {

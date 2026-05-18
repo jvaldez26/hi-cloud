@@ -115,23 +115,6 @@ function SolicitudesTab() {
 
   return (
     <>
-      {/* KPIs */}
-      <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
-        {[
-          { label: 'Pendientes aprobación', key: 'enviada',    color: '#1677ff' },
-          { label: 'Aprobadas',             key: 'aprobada',   color: '#52c41a' },
-          { label: 'En cotización',          key: 'en_cotizacion', color: '#7c3aed' },
-          { label: 'Rechazadas',             key: 'rechazada',  color: '#dc2626' },
-        ].map(k => (
-          <Col xs={12} md={6} key={k.key}>
-            <Card size="small" style={{ cursor: 'pointer', borderColor: estadoFiltro === k.key ? k.color : undefined }}
-              onClick={() => setEstadoFiltro(estadoFiltro === k.key ? undefined : k.key)}>
-              <Statistic title={k.label} value={resumen?.[k.key] ?? 0} valueStyle={{ color: k.color, fontSize: 20 }} />
-            </Card>
-          </Col>
-        ))}
-      </Row>
-
       <Row justify="space-between" align="middle" style={{ marginBottom: 12 }}>
         <Col>
           <Space>

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { usePlanGuard } from '../../hooks/usePlan';
 import ModuloBloqueado from '../../components/ui/ModuloBloqueado';
-import { Table, Card, Row, Col, Typography, Statistic, Tag, Select,
+import { Table, Card, Row, Col, Typography, Tag, Select,
          Space, Badge, Tabs, Input } from 'antd';
 import { SearchOutlined, WarningOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
@@ -96,18 +96,6 @@ export default function AuditoriaPage() {
           <VideoTutorialButton />
         </Space>
       </div>
-
-      {/* KPIs */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col xs={12} sm={6}><Card><Statistic title="Eventos hoy"     value={resumen?.eventos?.ultimas24h     ?? 0} /></Card></Col>
-        <Col xs={12} sm={6}><Card><Statistic title="Esta semana"     value={resumen?.eventos?.ultimaSemana   ?? 0} /></Card></Col>
-        <Col xs={12} sm={6}><Card><Statistic title="Este mes"        value={resumen?.eventos?.esteMes        ?? 0} /></Card></Col>
-        <Col xs={12} sm={6}><Card>
-          <Statistic title="Errores hoy" value={resumen?.eventos?.erroresHoy ?? 0}
-            valueStyle={{ color: (resumen?.eventos?.erroresHoy ?? 0) > 0 ? '#ff4d4f' : '#52c41a' }}
-            prefix={<WarningOutlined />} />
-        </Card></Col>
-      </Row>
 
       {/* Gráficas */}
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>

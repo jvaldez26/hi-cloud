@@ -1,13 +1,12 @@
 import { useState } from 'react';
 import { exportarExcel } from '../../utils/exportExcel';
 import {
-  Card, Row, Col, Typography, Tag, Statistic, Button,
+  Card, Row, Col, Typography, Tag, Button,
   Space, Modal, Form, Input, Select, InputNumber, Tabs,
   Popconfirm, message, Progress, Tooltip, theme,
 } from 'antd';
 import {
-  PlusOutlined, TrophyOutlined, RiseOutlined, FileExcelOutlined,
-  WarningOutlined, CheckCircleOutlined, AimOutlined,
+  PlusOutlined, TrophyOutlined, FileExcelOutlined, AimOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -250,45 +249,6 @@ export default function ObjetivosPage() {
           </Space>
         </Col>
       </Row>
-
-      {/* KPIs */}
-      {dash && (
-        <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
-          <Col xs={12} md={4}>
-            <Card size="small">
-              <Statistic title="Total objetivos" value={dash.total} />
-            </Card>
-          </Col>
-          <Col xs={12} md={4}>
-            <Card size="small" style={{ borderTop: '3px solid #10b981' }}>
-              <Statistic title="Cumplidos" value={dash.cumplidos}
-                prefix={<CheckCircleOutlined />} valueStyle={{ color: '#10b981' }} />
-            </Card>
-          </Col>
-          <Col xs={12} md={4}>
-            <Card size="small" style={{ borderTop: '3px solid #ef4444' }}>
-              <Statistic title="En riesgo" value={dash.enRiesgo}
-                prefix={<WarningOutlined />} valueStyle={{ color: '#ef4444' }} />
-            </Card>
-          </Col>
-          <Col xs={12} md={4}>
-            <Card size="small" style={{ borderTop: '3px solid #1677ff' }}>
-              <Statistic title="Activos" value={dash.activos}
-                prefix={<RiseOutlined />} valueStyle={{ color: '#1677ff' }} />
-            </Card>
-          </Col>
-          <Col xs={24} md={8}>
-            <Card size="small" style={{ borderTop: '3px solid #7c3aed' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Statistic title="Progreso promedio" value={`${dash.promedioGlobal}%`}
-                  valueStyle={{ color: '#7c3aed', fontSize: 24 }} />
-                <Progress type="circle" percent={dash.promedioGlobal} width={60}
-                  strokeColor="#7c3aed" />
-              </div>
-            </Card>
-          </Col>
-        </Row>
-      )}
 
       {/* Lista de objetivos */}
       {(objetivos ?? []).length === 0 ? (

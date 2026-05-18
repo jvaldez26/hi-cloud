@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import {
-  Card, Row, Col, Typography, Tag, Statistic, Badge,
+  Card, Row, Col, Typography, Tag, Badge,
   Button, Select, Space, Tooltip, List, Avatar, theme } from 'antd';
 import {
   CalendarOutlined, WarningOutlined, CheckCircleOutlined,
@@ -163,42 +163,6 @@ export default function CalendarioPage() {
           </Space>
         </Col>
       </Row>
-
-      {/* KPIs de alertas */}
-      {alertas && (
-        <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
-          <Col xs={12} md={4}>
-            <Card size="small" style={{ borderColor: '#ef4444' }}>
-              <Statistic title="Vencidos" value={alertas.resumen.vencidos}
-                valueStyle={{ color: '#ef4444' }} prefix={<WarningOutlined />} />
-            </Card>
-          </Col>
-          <Col xs={12} md={4}>
-            <Card size="small" style={{ borderColor: '#f59e0b' }}>
-              <Statistic title="Próximos (7 días)" value={alertas.resumen.proximos}
-                valueStyle={{ color: '#f59e0b' }} prefix={<ClockCircleOutlined />} />
-            </Card>
-          </Col>
-          <Col xs={12} md={4}>
-            <Card size="small">
-              <Statistic title="Pendientes" value={alertas.resumen.pendientes}
-                valueStyle={{ color: '#1677ff' }} prefix={<CalendarOutlined />} />
-            </Card>
-          </Col>
-          <Col xs={12} md={6}>
-            <Card size="small">
-              <Statistic title="CxC vencida" value={alertas.resumen.montoVencidoCxC}
-                formatter={v => fmt.money(Number(v))} valueStyle={{ color: '#ef4444', fontSize: 14 }} />
-            </Card>
-          </Col>
-          <Col xs={12} md={6}>
-            <Card size="small">
-              <Statistic title="CxP vencida" value={alertas.resumen.montoVencidoCxP}
-                formatter={v => fmt.money(Number(v))} valueStyle={{ color: '#8b5cf6', fontSize: 14 }} />
-            </Card>
-          </Col>
-        </Row>
-      )}
 
       <Row gutter={[16, 16]}>
         {/* Calendario visual */}

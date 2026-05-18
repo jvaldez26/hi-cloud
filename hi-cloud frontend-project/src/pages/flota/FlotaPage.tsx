@@ -112,30 +112,17 @@ export default function FlotaPage() {
         </Col>
       </Row>
 
-      {/* KPIs */}
-      {dash && (
-        <>
-          <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
-            <Col xs={12} md={4}><Card size="small"><Statistic title="Activos"   value={dash.flota.activos}   valueStyle={{ color: '#10b981' }} /></Card></Col>
-            <Col xs={12} md={4}><Card size="small"><Statistic title="En taller" value={dash.flota.enTaller}  valueStyle={{ color: '#f59e0b' }} /></Card></Col>
-            <Col xs={12} md={4}><Card size="small"><Statistic title="Gasto mes" value={fmt.money(dash.gastoMes.total)} valueStyle={{ color: '#ef4444', fontSize: 16 }} /></Card></Col>
-            <Col xs={12} md={4}><Card size="small"><Statistic title="Combustible (litros)" value={Number(dash.combustible.litros).toFixed(0)} /></Card></Col>
-            <Col xs={12} md={4}><Card size="small"><Statistic title="Costo combustible" value={fmt.money(dash.combustible.monto)} valueStyle={{ fontSize: 14 }} /></Card></Col>
-          </Row>
-
-          {/* Alertas de documentos */}
-          {(dash.alertas.vencenItbis + dash.alertas.vencenSeguro + dash.alertas.vencenInspeccion) > 0 && (
-            <Alert type="warning" showIcon icon={<WarningOutlined />} style={{ marginBottom: 16 }}
-              message="Documentos por vencer en los próximos 30 días"
-              description={
-                <Space>
-                  {dash.alertas.vencenItbis      > 0 && <Tag color="orange">{dash.alertas.vencenItbis} marbetes</Tag>}
-                  {dash.alertas.vencenSeguro     > 0 && <Tag color="orange">{dash.alertas.vencenSeguro} seguros</Tag>}
-                  {dash.alertas.vencenInspeccion > 0 && <Tag color="orange">{dash.alertas.vencenInspeccion} inspecciones</Tag>}
-                </Space>
-              } />
-          )}
-        </>
+      {/* Alertas de documentos */}
+      {dash && (dash.alertas.vencenItbis + dash.alertas.vencenSeguro + dash.alertas.vencenInspeccion) > 0 && (
+        <Alert type="warning" showIcon icon={<WarningOutlined />} style={{ marginBottom: 16 }}
+          message="Documentos por vencer en los próximos 30 días"
+          description={
+            <Space>
+              {dash.alertas.vencenItbis      > 0 && <Tag color="orange">{dash.alertas.vencenItbis} marbetes</Tag>}
+              {dash.alertas.vencenSeguro     > 0 && <Tag color="orange">{dash.alertas.vencenSeguro} seguros</Tag>}
+              {dash.alertas.vencenInspeccion > 0 && <Tag color="orange">{dash.alertas.vencenInspeccion} inspecciones</Tag>}
+            </Space>
+          } />
       )}
 
       {/* Grid de vehículos */}

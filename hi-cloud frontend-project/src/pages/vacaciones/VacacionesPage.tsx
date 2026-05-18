@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { TableActions } from '../../components/ui/TableActions';
 import {
-  Table, Button, Tag, Card, Row, Col, Typography, Statistic,
+  Table, Button, Tag, Card, Row, Col, Typography,
   Modal, Form, Select, DatePicker, Input, Space, Popconfirm,
   message, Drawer, Tabs, Badge, Progress, Tooltip,
 } from 'antd';
@@ -202,32 +202,6 @@ export default function VacacionesPage() {
           </Space>
         </Col>
       </Row>
-
-      {/* KPIs del mes */}
-      {resumen && (
-        <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-          <Col xs={12} md={6}>
-            <Card size="small">
-              <Statistic title="En vacaciones" value={resumen.enVacaciones}
-                prefix={<CalendarOutlined />} valueStyle={{ color: '#1677ff' }} />
-            </Card>
-          </Col>
-          <Col xs={12} md={6}>
-            <Card size="small">
-              <Statistic title="Solicitudes pendientes" value={resumen.solicitudesPendientes}
-                prefix={<Badge status="warning" />} valueStyle={{ color: '#f59e0b' }} />
-            </Card>
-          </Col>
-          {resumen.ausenciasPorTipo?.map((a: any, i: number) => (
-            <Col xs={12} md={6} key={i}>
-              <Card size="small">
-                <Statistic title={TIPO_AUSENCIA.find(t => t.value === a.tipo)?.label ?? a.tipo}
-                  value={Number(a.dias).toFixed(1)} suffix="días" />
-              </Card>
-            </Col>
-          ))}
-        </Row>
-      )}
 
       <Tabs items={[
         {

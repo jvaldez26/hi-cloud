@@ -635,27 +635,6 @@ export default function ProyectosPage() {
         </Col>
       </Row>
 
-      {/* KPIs */}
-      {dash && (
-        <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
-          {[
-            { title: 'Activos',            value: dash.activos,         icon: <ProjectOutlined />,      color: '#10b981' },
-            { title: 'Completados',         value: dash.completados,     icon: <CheckSquareOutlined />,  color: '#1677ff' },
-            { title: 'En pausa',            value: dash.enPausa,         color: '#f59e0b' },
-            { title: 'Horas este mes',      value: `${dash.horasMes.toFixed(1)}h`, icon: <ClockCircleOutlined />, color: '#7c3aed' },
-            { title: 'Tareas pendientes',   value: dash.tareasPendientes, color: '#6b7280' },
-            { title: 'Tareas vencidas',     value: dash.tareasVencidas,  icon: <WarningOutlined />,      color: '#ef4444' },
-          ].map((k, i) => (
-            <Col xs={12} md={4} key={i}>
-              <Card size="small">
-                <Statistic title={k.title} value={k.value}
-                  prefix={k.icon} valueStyle={{ color: k.color, fontSize: 18 }} />
-              </Card>
-            </Col>
-          ))}
-        </Row>
-      )}
-
       <Card extra={
         <Select placeholder="Estado" allowClear value={estadoF} onChange={v => { setEstadoF(v); setPage(1); }}
           style={{ width: 140 }}

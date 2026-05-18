@@ -4,7 +4,7 @@ import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/Tab
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Button, Table, Tag, Avatar, Typography, Space, Modal,
-  Form, Input, Select, Popconfirm, message, Row, Col, Statistic,
+  Form, Input, Select, Popconfirm, message, Row, Col,
   Tooltip, Badge, Divider, Alert,
 } from 'antd';
 import { TableActions } from '../../components/ui/TableActions';
@@ -299,36 +299,6 @@ export default function EquipoPage() {
               Invitar usuario
             </Button>
           </Space>
-        </Col>
-      </Row>
-
-      {/* KPIs */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
-        <Col xs={12} md={6}>
-          <Card size="small">
-            <Statistic title="Miembros activos" value={totalActivos}
-              prefix={<TeamOutlined />} valueStyle={{ color: '#1677ff' }} />
-          </Card>
-        </Col>
-        <Col xs={12} md={6}>
-          <Card size="small">
-            <Statistic title="Invitaciones pendientes" value={invsData.length}
-              prefix={<MailOutlined />} valueStyle={{ color: '#f59e0b' }} />
-          </Card>
-        </Col>
-        <Col xs={12} md={6}>
-          <Card size="small">
-            <Statistic title="Administradores"
-              value={miembrosData.filter((m: any) => m.rol === 'admin').length}
-              prefix={<CrownOutlined />} valueStyle={{ color: '#7c3aed' }} />
-          </Card>
-        </Col>
-        <Col xs={12} md={6}>
-          <Card size="small">
-            <Statistic title="Contadores"
-              value={miembrosData.filter((m: any) => m.rol === 'contador').length}
-              prefix={<span>📊</span>} valueStyle={{ color: '#10b981' }} />
-          </Card>
         </Col>
       </Row>
 

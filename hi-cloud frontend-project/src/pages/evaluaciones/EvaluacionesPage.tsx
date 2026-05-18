@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  Card, Row, Col, Typography, Table, Tag, Statistic, Button,
+  Card, Row, Col, Typography, Table, Tag, Button,
   Space, Modal, Form, Select, InputNumber, Tabs,
   message, Rate, Progress, Avatar, Popconfirm, Descriptions, theme } from 'antd';
 import { PlusOutlined, CheckOutlined, StarOutlined, TeamOutlined, FileExcelOutlined, DeleteOutlined } from '@ant-design/icons';
@@ -142,46 +142,6 @@ export default function EvaluacionesPage() {
           </Space>
         </Col>
       </Row>
-
-      {/* KPIs del equipo */}
-      {resumen && (
-        <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
-          <Col xs={12} md={6}>
-            <Card size="small">
-              <Statistic title="Promedio del equipo" value={resumen.promedio}
-                suffix="/5" valueStyle={{ color: NOTA_COLOR(resumen.promedio), fontSize: 22 }} />
-            </Card>
-          </Col>
-          <Col xs={12} md={6}>
-            <Card size="small">
-              <Statistic title="Total evaluados" value={resumen.empleados?.length ?? 0}
-                prefix={<TeamOutlined />} />
-            </Card>
-          </Col>
-          {resumen.top?.[0] && (
-            <Col xs={24} md={6}>
-              <Card size="small" style={{ borderColor: '#10b981' }}>
-                <Text type="secondary" style={{ fontSize: 11 }}>🏆 Mejor evaluado</Text>
-                <div style={{ marginTop: 4 }}>
-                  <Text strong style={{ color: '#10b981' }}>{resumen.top[0].nombre}</Text>
-                  <Tag color="green" style={{ marginLeft: 8 }}>{resumen.top[0].promedio}/5</Tag>
-                </div>
-              </Card>
-            </Col>
-          )}
-          {resumen.mejora?.[0] && (
-            <Col xs={24} md={6}>
-              <Card size="small" style={{ borderColor: '#f59e0b' }}>
-                <Text type="secondary" style={{ fontSize: 11 }}>📈 Requiere mejora</Text>
-                <div style={{ marginTop: 4 }}>
-                  <Text strong style={{ color: '#f59e0b' }}>{resumen.mejora[0].nombre}</Text>
-                  <Tag color="orange" style={{ marginLeft: 8 }}>{resumen.mejora[0].promedio}/5</Tag>
-                </div>
-              </Card>
-            </Col>
-          )}
-        </Row>
-      )}
 
       <Tabs items={[
         {

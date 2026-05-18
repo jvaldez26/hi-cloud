@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { exportarExcel } from '../../utils/exportExcel';
-import { Card, Row, Col, Table, Button, Tag, Typography, Statistic,
+import { Card, Row, Col, Table, Button, Tag, Typography,
          Modal, Form, Input, InputNumber, Select, Tabs, message,
          Space, DatePicker } from 'antd';
 import { PlusOutlined, UploadOutlined, DownloadOutlined, SwapOutlined, FileExcelOutlined } from '@ant-design/icons';
@@ -77,22 +77,6 @@ export default function TesoreriaPage() {
   return (
     <div>
       <Title level={4} style={{ marginBottom: 16 }}>Tesorería y Flujo de Caja</Title>
-
-      {/* KPIs */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col xs={24} sm={12} md={6}>
-          <Card><Statistic title="Total DOP" value={resumen?.totalCuentasDOP ?? 0} formatter={v => fmt.money(Number(v))} valueStyle={{ color: '#1677ff' }} /></Card>
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card><Statistic title="Total USD" value={resumen?.totalCuentasUSD ?? 0} prefix="$" precision={2} /></Card>
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card><Statistic title="Entradas hoy" value={resumen?.movimientosHoy?.entradas ?? 0} formatter={v => fmt.money(Number(v))} valueStyle={{ color: '#52c41a' }} /></Card>
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card><Statistic title="Salidas hoy" value={resumen?.movimientosHoy?.salidas ?? 0} formatter={v => fmt.money(Number(v))} valueStyle={{ color: '#ff4d4f' }} /></Card>
-        </Col>
-      </Row>
 
       <Tabs defaultActiveKey="movimientos" items={[
         {

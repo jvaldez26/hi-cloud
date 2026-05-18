@@ -131,43 +131,6 @@ export default function FlujoCajaPage() {
                 </Space>
               </Card>
 
-              {/* KPIs */}
-              {proyeccion && (
-                <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
-                  <Col xs={24} md={8}>
-                    <Card size="small" style={{ borderColor: '#10b981' }}>
-                      <Statistic title={`Total ingresos proyectados (${mesesProyeccion} meses)`}
-                        value={proyeccion.resumen.totalIngresos}
-                        formatter={v => fmt.money(Number(v))}
-                        prefix={<RiseOutlined />}
-                        valueStyle={{ color: '#10b981' }} />
-                    </Card>
-                  </Col>
-                  <Col xs={24} md={8}>
-                    <Card size="small" style={{ borderColor: '#ef4444' }}>
-                      <Statistic title={`Total egresos proyectados (${mesesProyeccion} meses)`}
-                        value={proyeccion.resumen.totalEgresos}
-                        formatter={v => fmt.money(Number(v))}
-                        prefix={<FallOutlined />}
-                        valueStyle={{ color: '#ef4444' }} />
-                    </Card>
-                  </Col>
-                  <Col xs={24} md={8}>
-                    <Card size="small"
-                      style={{ borderColor: proyeccion.resumen.flujoBruto >= 0 ? '#1677ff' : '#ef4444', borderWidth: 2 }}>
-                      <Statistic title="Flujo neto proyectado"
-                        value={proyeccion.resumen.flujoBruto}
-                        formatter={v => fmt.money(Number(v))}
-                        prefix={<DollarOutlined />}
-                        valueStyle={{
-                          color: proyeccion.resumen.flujoBruto >= 0 ? '#1677ff' : '#ef4444',
-                          fontSize: 22,
-                        }} />
-                    </Card>
-                  </Col>
-                </Row>
-              )}
-
               {/* Gráfico */}
               {proyeccion && (
                 <Card title="Flujo de caja proyectado — Ingresos vs Egresos vs Saldo acumulado"

@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
@@ -34,7 +36,18 @@ const ESTADO_CONFIG: Record<string, { color: string; label: string }> = {
   anulada:  { color: 'red',     label: 'Anulada'   },
 };
 
+const COLS_DEF = [
+  { key: 'n',   label: 'Número',      defaultVisible: true  },
+  { key: 'f',   label: 'Fecha',       defaultVisible: true  },
+  { key: 'p',   label: 'Proveedor',   defaultVisible: true  },
+  { key: 'm',   label: 'Motivo',      defaultVisible: false },
+  { key: 'cof', label: 'Compra ref.', defaultVisible: false },
+  { key: 't',   label: 'Total',       defaultVisible: true  },
+  { key: 'e',   label: 'Estado',      defaultVisible: true  },
+];
+
 export default function NotasCreditoComprasPage() {
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('notas-credito-compras', COLS_DEF);
   const qc = useQueryClient();
   const { token } = theme.useToken();
   const [modalCrear,   setModalCrear]   = useState(false);
@@ -135,6 +148,7 @@ export default function NotasCreditoComprasPage() {
             }));
             exportarExcel(filas, `NC-Compras-${dayjs().format('YYYY-MM-DD')}`);
           }}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
           <RefreshByKeyButton queryKey={['notas-credito-compras']} />
           <VideoTutorialButton />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalCrear(true)}>
@@ -151,7 +165,7 @@ export default function NotasCreditoComprasPage() {
           size="middle"
           pagination={{ pageSize: 15 }}
           scroll={{ x: 'max-content' }}
-          columns={[
+          columns={filterColumns([
             { title: 'Número',    dataIndex: 'numero', key: 'n', width: 110,
               render: (v: any) => <Text strong style={{ fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{v}</Text> },
             { title: 'Fecha',     dataIndex: 'fecha',  key: 'f', width: 90,
@@ -168,7 +182,7 @@ export default function NotasCreditoComprasPage() {
               render: (v: any) => <Tag color={ESTADO_CONFIG[v]?.color}>{ESTADO_CONFIG[v]?.label}</Tag> },
             {
               title: '', key: 'acc', width: 200,
-              render: (_, r: any) => (
+              render: (_: any, r: any) => (
                 <Space>
                   <Button size="small" icon={<EyeOutlined />} onClick={() => setModalDetalle(r)} />
                   {r.estado === 'borrador' && (
@@ -192,7 +206,7 @@ export default function NotasCreditoComprasPage() {
                 </Space>
               ),
             },
-          ]}
+          ] as any)}
         />
       </Card>
 

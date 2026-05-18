@@ -1,9 +1,11 @@
 ﻿import { useState } from 'react';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { TableActions } from '../../components/ui/TableActions';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
-  DatePicker, InputNumber, Space, Typography, Statistic, Popconfirm,
+  DatePicker, InputNumber, Space, Typography, Popconfirm,
   message, Divider, Steps, Tooltip,
 } from 'antd';
 import {
@@ -114,6 +116,16 @@ export default function ConducePage() {
     finally { setPdfPending(null); }
   };
 
+  const COLS_DEF = [
+    { key: 'n',     label: 'No.',     defaultVisible: true  },
+    { key: 'f',     label: 'Fecha',   defaultVisible: true  },
+    { key: 'c',     label: 'Cliente', defaultVisible: true  },
+    { key: 'd',     label: 'Destino', defaultVisible: false },
+    { key: 'items', label: 'Items',   defaultVisible: true  },
+    { key: 'e',     label: 'Estado',  defaultVisible: true  },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('conduces', COLS_DEF);
+
   return (
     <div style={{ padding: '24px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
@@ -136,6 +148,7 @@ export default function ConducePage() {
             }));
             exportarExcel(filas, `Conduces-${dayjs().format('YYYY-MM-DD')}`);
           }}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
           <RefreshByKeyButton queryKey={['conduces']} />
           <VideoTutorialButton />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalCrear(true)}>
@@ -165,7 +178,7 @@ export default function ConducePage() {
               />
             ),
           }}
-          columns={[
+          columns={filterColumns([
             { title: 'No.', dataIndex: 'numero', key: 'n', render: v => <Text strong style={{ fontFamily: 'mono' }}>{v}</Text> },
             { title: 'Fecha', dataIndex: 'fecha', key: 'f' },
             { title: 'Cliente', key: 'c', render: (_, r: any) => <Text strong>{r.cliente?.nombre}</Text> },
@@ -197,7 +210,7 @@ export default function ConducePage() {
                 />
               ),
             },
-          ]}
+          ])}
         />
       </Card>
 

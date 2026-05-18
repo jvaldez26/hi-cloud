@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { exportarExcel } from '../../utils/exportExcel';
-import { Table, Button, Tag, Card, Row, Col, Typography, Statistic,
+import { Table, Button, Tag, Card, Row, Col, Typography,
          Modal, Form, Input, InputNumber, Select, DatePicker, Space,
          Drawer, Descriptions, Popconfirm, message, Divider, Steps } from 'antd';
 import {
@@ -96,29 +96,6 @@ export default function ServiciosPage() {
   return (
     <div>
       <Title level={4} style={{ marginBottom: 16 }}>Órdenes de Servicio</Title>
-
-      {/* KPIs */}
-      <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
-        {(resumen?.porEstado ?? []).map((s: any, i: number) => (
-          <Col key={s.estado}>
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * .05 }}>
-              <Card size="small" style={{ minWidth: 110 }}>
-                <Statistic title={ESTADO_INFO[s.estado as EstadoOrden]?.label ?? s.estado}
-                  value={s.cantidad}
-                  valueStyle={{ color: s.estado === 'cancelado' ? '#9ca3af' : undefined, fontSize: 20 }} />
-              </Card>
-            </motion.div>
-          </Col>
-        ))}
-        {(resumen?.ordenesVencidas ?? 0) > 0 && (
-          <Col>
-            <Card size="small" style={{ borderColor: '#fca5a5', minWidth: 110 }}>
-              <Statistic title={<><WarningOutlined style={{ color: '#ef4444' }} /> Vencidas</>}
-                value={resumen.ordenesVencidas} valueStyle={{ color: '#ef4444' }} />
-            </Card>
-          </Col>
-        )}
-      </Row>
 
       <Card extra={
         <Space>
