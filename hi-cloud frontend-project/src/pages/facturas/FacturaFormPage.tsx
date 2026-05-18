@@ -335,9 +335,9 @@ export default function FacturaFormPage() {
                     <button key={tp} type="button" onClick={() => setTipoPago(tp)}
                       style={{
                         flex: 1, height: 32, borderRadius: 6, cursor: 'pointer',
-                        border: tipoPago === tp ? '1.5px solid #1677ff' : '1px solid #d9d9d9',
-                        background: tipoPago === tp ? '#e6f4ff' : '#fff',
-                        color: tipoPago === tp ? '#1677ff' : '#555',
+                        border: tipoPago === tp ? `1.5px solid ${token.colorPrimary}` : `1px solid ${token.colorBorder}`,
+                        background: tipoPago === tp ? token.colorPrimaryBg : token.colorBgContainer,
+                        color: tipoPago === tp ? token.colorPrimary : token.colorTextSecondary,
                         fontWeight: tipoPago === tp ? 700 : 400, fontSize: 13,
                       }}>
                       {tp === 'CONTADO' ? '💵 Contado' : '📋 Crédito'}

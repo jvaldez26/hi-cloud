@@ -5,7 +5,7 @@ import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   Space, Typography, Tabs, Divider, Avatar, Popconfirm, message,
-  Alert,
+  Alert, theme,
 } from 'antd';
 import {
   BankOutlined, PlusOutlined, UserAddOutlined, TeamOutlined,
@@ -39,6 +39,7 @@ const SECTORES = [
 
 export default function EmpresasPage() {
   const qc = useQueryClient();
+  const { token } = theme.useToken();
   const { empresas: misEmpresas, empresaActual, cambiarEmpresa } = useAuthStore();
   const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('empresas', COLS_DEF);
   const [modalCrear,    setModalCrear]    = useState(false);
@@ -190,7 +191,7 @@ export default function EmpresasPage() {
                 }}
                 onClick={() => e.empresaId !== empresaActual && handleCambiarEmpresa(e.empresaId)}
               >
-                <Avatar style={{ background: e.empresaId === empresaActual ? '#1a56db' : '#e0e7ff', color: e.empresaId === empresaActual ? '#fff' : '#4f46e5', fontWeight: 700 }}>
+                <Avatar style={{ background: e.empresaId === empresaActual ? token.colorPrimary : token.colorPrimaryBg, color: e.empresaId === empresaActual ? '#fff' : token.colorPrimary, fontWeight: 700 }}>
                   {e.nombre?.charAt(0)}
                 </Avatar>
                 <div style={{ flex: 1 }}>
@@ -259,7 +260,7 @@ export default function EmpresasPage() {
                           title: 'Usuario', key: 'usuario',
                           render: (_: any, r: any) => (
                             <Space>
-                              <Avatar size="small" style={{ background: '#e0e7ff', color: '#4f46e5' }}>
+                              <Avatar size="small" style={{ background: token.colorPrimaryBg, color: token.colorPrimary }}>
                                 {r.user?.nombre?.charAt(0)}
                               </Avatar>
                               <div>

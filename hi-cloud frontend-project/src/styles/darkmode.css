@@ -352,3 +352,150 @@ body[data-theme="dark"] .ant-message-notice-content {
   background: var(--hc-bg-hover) !important;
   border-top-color: var(--hc-border) !important;
 }
+
+/* ── List ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .ant-list-item {
+  border-bottom-color: var(--hc-border) !important;
+  color: var(--hc-text) !important;
+}
+[data-theme="dark"] .ant-list-header,
+[data-theme="dark"] .ant-list-footer {
+  color: var(--hc-text) !important;
+}
+
+/* ── Checkbox / Radio ─────────────────────────────────────────────────────── */
+[data-theme="dark"] .ant-checkbox-wrapper,
+[data-theme="dark"] .ant-radio-wrapper {
+  color: var(--hc-text) !important;
+}
+[data-theme="dark"] .ant-checkbox-inner,
+[data-theme="dark"] .ant-radio-inner {
+  background: var(--hc-bg-hover) !important;
+  border-color: var(--hc-border) !important;
+}
+
+/* ── Switch ───────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .ant-switch:not(.ant-switch-checked) {
+  background: var(--hc-border) !important;
+}
+
+/* ── Typography ───────────────────────────────────────────────────────────── */
+[data-theme="dark"] .ant-typography,
+[data-theme="dark"] .ant-typography h1,
+[data-theme="dark"] .ant-typography h2,
+[data-theme="dark"] .ant-typography h3,
+[data-theme="dark"] .ant-typography h4,
+[data-theme="dark"] .ant-typography p {
+  color: var(--hc-text);
+}
+[data-theme="dark"] .ant-typography.ant-typography-secondary {
+  color: var(--hc-text-2) !important;
+}
+
+/* ── Tag ──────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .ant-tag:not([class*="ant-tag-"]) {
+  background: var(--hc-bg-hover) !important;
+  border-color: var(--hc-border) !important;
+  color: var(--hc-text) !important;
+}
+
+/* ── Descriptions ─────────────────────────────────────────────────────────── */
+[data-theme="dark"] .ant-descriptions-bordered .ant-descriptions-item-label {
+  background: var(--hc-bg-hover) !important;
+  border-color: var(--hc-border) !important;
+  color: var(--hc-text-2) !important;
+}
+[data-theme="dark"] .ant-descriptions-bordered .ant-descriptions-item-content {
+  background: var(--hc-bg-card) !important;
+  border-color: var(--hc-border) !important;
+  color: var(--hc-text) !important;
+}
+[data-theme="dark"] .ant-descriptions-bordered,
+[data-theme="dark"] .ant-descriptions-view {
+  border-color: var(--hc-border) !important;
+}
+
+/* ── Timeline ─────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .ant-timeline-item-content {
+  color: var(--hc-text) !important;
+}
+[data-theme="dark"] .ant-timeline-item-tail {
+  border-color: var(--hc-border) !important;
+}
+
+/* ── Pagination ───────────────────────────────────────────────────────────── */
+[data-theme="dark"] .ant-pagination-item {
+  background: var(--hc-bg-card) !important;
+  border-color: var(--hc-border) !important;
+}
+[data-theme="dark"] .ant-pagination-item a {
+  color: var(--hc-text) !important;
+}
+[data-theme="dark"] .ant-pagination-item-active {
+  border-color: var(--ant-color-primary, #0EA5E9) !important;
+}
+[data-theme="dark"] .ant-pagination-prev button,
+[data-theme="dark"] .ant-pagination-next button {
+  background: var(--hc-bg-card) !important;
+  border-color: var(--hc-border) !important;
+  color: var(--hc-text) !important;
+}
+
+/* ── Breadcrumb ───────────────────────────────────────────────────────────── */
+[data-theme="dark"] .ant-breadcrumb-link,
+[data-theme="dark"] .ant-breadcrumb-separator {
+  color: var(--hc-text-2) !important;
+}
+
+/* ── Spin ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .ant-spin-text {
+  color: var(--hc-text-2) !important;
+}
+
+/* ── Rate ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .ant-rate-star-zero .ant-rate-star-first,
+[data-theme="dark"] .ant-rate-star-zero .ant-rate-star-second {
+  color: var(--hc-border) !important;
+}
+
+/* ── Slider ───────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .ant-slider-rail {
+  background: var(--hc-bg-hover) !important;
+}
+
+/* ── Table — Expanded row ─────────────────────────────────────────────────── */
+[data-theme="dark"] :not(.sa-scope) .ant-table-expanded-row > td {
+  background: var(--hc-bg-hover) !important;
+}
+
+/* ── Card con background coloreado claro → adaptar en dark ───────────────── */
+[data-theme="dark"] .ant-card[style*="#e0e7ff"],
+[data-theme="dark"] .ant-card[style*="#eff6ff"],
+[data-theme="dark"] .ant-card[style*="#f0fdf4"],
+[data-theme="dark"] .ant-card[style*="#fef3c7"],
+[data-theme="dark"] .ant-card[style*="#fff7ed"],
+[data-theme="dark"] .ant-card[style*="#fdf4ff"] {
+  background: var(--hc-bg-hover) !important;
+  border-color: var(--hc-border) !important;
+}
+
+/* ── Ant Design Table — summary row ──────────────────────────────────────── */
+[data-theme="dark"] :not(.sa-scope) .ant-table-summary > tr > td {
+  background: var(--hc-bg-hover) !important;
+  border-top-color: var(--hc-border) !important;
+}
+
+/* ── Transition suave para TODOS los elementos al cambiar tema ───────────── */
+[data-theme="dark"] *,
+[data-theme="light"] * {
+  transition-property: background-color, border-color, color, fill, stroke;
+  transition-duration: 0.15s;
+  transition-timing-function: ease;
+}
+/* Excepciones: animaciones y transiciones específicas no deben ser afectadas */
+[data-theme="dark"] .ant-motion-collapse,
+[data-theme="light"] .ant-motion-collapse,
+[data-theme="dark"] [class*="motion-"],
+[data-theme="light"] [class*="motion-"] {
+  transition: none !important;
+}
