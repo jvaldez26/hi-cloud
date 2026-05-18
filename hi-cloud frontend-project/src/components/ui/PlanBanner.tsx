@@ -171,7 +171,12 @@ export default function PlanBanner() {
     );
   }
 
-  // ── Plan pago activo → indicador discreto ─────────────────────────────────
+  // ── Plan activo (estado !== 'prueba') → sin banner ───────────────────────
+  // Solo mostrar recordatorio cuando la suscripción está en período de prueba
+  // con días restantes. Estados 'activa', 'cancelada' → no mostrar nada.
+  if (estado !== 'prueba' || dias <= 0) return null;
+
+  // ── Prueba con plan específico (emprendedor, pyme, etc.) ─────────────────
   return (
     <div style={{
       background: '#F0FDF4', borderBottom: '1px solid #BBF7D0',
@@ -180,8 +185,7 @@ export default function PlanBanner() {
     }}>
       <Crown size={12} color="#10B981" />
       <span style={{ color: '#065F46', fontSize: 12 }}>
-        Plan <strong>{suscripcion.info?.nombre ?? plan}</strong> activo
-        {dias > 0 ? ` · vence en ${dias} días` : ''}
+        Plan <strong>{suscripcion.info?.nombre ?? plan}</strong> activo · vence en {dias} día{dias !== 1 ? 's' : ''}
       </span>
       <button onClick={() => navigate('/suscripcion/planes')} style={{
         background: 'none', border: 'none', cursor: 'pointer',
