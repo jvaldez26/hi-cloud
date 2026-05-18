@@ -130,18 +130,38 @@ apiClient.interceptors.response.use(
       return Promise.reject(err);
     }
 
-    // ── 403 por empresa SUSPENDIDA → mostrar error y desconectar ────
+    // ── 403 por empresa SUSPENDIDA ────────────────────────────────────────
+    // Si el usuario tiene otras empresas activas, limpiar solo el empresaId
+    // stale y dejar que AppLayout redirija a la empresa activa disponible.
+    // Solo hacer logout completo si no hay otras empresas activas.
     if (status === 403 && message.toLowerCase().includes('suspendida')) {
-      localStorage.removeItem('auth_user');
+      const empresaIdActual = localStorage.getItem('empresaId');
+      // Limpiar el empresaId stale para que AppLayout detecte el cambio
       localStorage.removeItem('empresaId');
-      localStorage.removeItem('mis_empresas');
-      // Guardar el mensaje para mostrarlo en la pantalla de login
-      sessionStorage.setItem(
-        'login_error',
-        'Esta empresa ha sido suspendida. Contacte al administrador de la plataforma HiCloud.',
+
+      // Verificar si el usuario tiene otras empresas activas
+      const misEmpresasRaw = localStorage.getItem('mis_empresas');
+      const misEmpresas: any[] = misEmpresasRaw ? JSON.parse(misEmpresasRaw) : [];
+      const otraEmpresaActiva = misEmpresas.find(
+        (e: any) => String(e.empresaId) !== String(empresaIdActual),
       );
-      if (!window.location.pathname.startsWith('/login')) {
-        window.location.replace('/login');
+
+      if (otraEmpresaActiva) {
+        // Tiene otras empresas → redirigir al dashboard (AppLayout auto-seleccionará la activa)
+        if (!window.location.pathname.startsWith('/dashboard')) {
+          window.location.replace('/dashboard');
+        }
+      } else {
+        // Sin otras empresas activas → logout con mensaje
+        localStorage.removeItem('auth_user');
+        localStorage.removeItem('mis_empresas');
+        sessionStorage.setItem(
+          'login_error',
+          'Esta empresa ha sido suspendida. Contacte al administrador de la plataforma HiCloud.',
+        );
+        if (!window.location.pathname.startsWith('/login')) {
+          window.location.replace('/login');
+        }
       }
       return Promise.reject(err);
     }

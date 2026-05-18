@@ -279,6 +279,13 @@ export class AuthService implements OnModuleInit {
         relations: ['empresa'],
       });
       if (!acceso) throw new ForbiddenException(`Sin acceso a empresa #${empresaId}`);
+
+      // Verificar que la empresa destino no esté suspendida
+      if (acceso.empresa && !acceso.empresa.isActive) {
+        throw new ForbiddenException(
+          'Esta empresa ha sido suspendida. Contacte al administrador de la plataforma HiCloud.',
+        );
+      }
     }
 
     const user = await this.userRepository.findOneBy({ id: userId });
@@ -302,14 +309,18 @@ export class AuthService implements OnModuleInit {
     });
 
     if (accesos.length > 0) {
-      return accesos.map(a => ({
-        empresaId:   a.empresaId,
-        nombre:      a.empresa?.nombre ?? `Empresa #${a.empresaId}`,
-        rnc:         a.empresa?.rnc,
-        rol:         a.rol,
-        isPrincipal: a.isPrincipal,
-        plan:        (a.empresa as any)?.planSuscripcion ?? 'TRIAL',
-      }));
+      // Solo devolver empresas activas (isActive:true) — las suspendidas se excluyen
+      // para que no aparezcan en el selector y el usuario no intente cambiar a ellas.
+      return accesos
+        .filter(a => a.empresa?.isActive)
+        .map(a => ({
+          empresaId:   a.empresaId,
+          nombre:      a.empresa?.nombre ?? `Empresa #${a.empresaId}`,
+          rnc:         a.empresa?.rnc,
+          rol:         a.rol,
+          isPrincipal: a.isPrincipal,
+          plan:        (a.empresa as any)?.planSuscripcion ?? 'TRIAL',
+        }));
     }
 
     // Admin global sin vínculos explícitos → devuelve todas las empresas

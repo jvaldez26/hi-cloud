@@ -108,13 +108,16 @@ export class MultiEmpresaService {
     });
 
     if (accesos.length > 0) {
-      return accesos.map((a) => ({
-        empresaId:   a.empresaId,
-        nombre:      a.empresa.nombre,
-        rnc:         a.empresa.rnc,
-        rol:         a.rol,
-        isPrincipal: a.isPrincipal,
-      }));
+      // Filtrar empresas suspendidas — solo devolver las activas
+      return accesos
+        .filter((a) => a.empresa?.isActive)
+        .map((a) => ({
+          empresaId:   a.empresaId,
+          nombre:      a.empresa.nombre,
+          rnc:         a.empresa.rnc,
+          rol:         a.rol,
+          isPrincipal: a.isPrincipal,
+        }));
     }
 
     // Admin global sin vinculación explícita → devuelve todas las empresas
