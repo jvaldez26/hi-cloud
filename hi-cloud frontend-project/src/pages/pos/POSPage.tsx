@@ -1,6 +1,6 @@
 ﻿import { useState, useCallback, useEffect, useRef, createContext, useContext } from 'react';
 import QRCode from 'qrcode';
-import { Select, Modal, Badge, Empty, Spin, Tooltip, message, Avatar, Popover, Input } from 'antd';
+import { Select, Modal, Badge, Empty, Spin, Tooltip, message, Avatar, Popover, Input, Button } from 'antd';
 import { SearchOutlined, ShoppingCartOutlined, CheckCircleOutlined, DisconnectOutlined, LogoutOutlined, PrinterOutlined, LockOutlined, UserSwitchOutlined, SwapOutlined, EyeOutlined, EyeInvisibleOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../../store/auth.store';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -2757,7 +2757,10 @@ export default function POSPage() {
   const [supervisorOk,        setSupervisorOk]        = useState(false);
   // ── Modal cambiar usuario ─────────────────────────────────────────────────
   const [modalCambiarUser,    setModalCambiarUser]    = useState(false);
-  const [nuevoUserId,         setNuevoUserId]         = useState<number | undefined>();
+  const [cambiarUserId,       setCambiarUserId]       = useState<number | undefined>();
+  const [pwCambio,            setPwCambio]            = useState('');
+  const [errCambio,           setErrCambio]           = useState('');
+  const [cambiandoUser,       setCambiandoUser]       = useState(false);
 
   const [turnoAbierto,  setTurnoAbierto]  = useState(() => Boolean(sessionStorage.getItem('pos_turno')));
   const [search,        setSearch]        = useState('');
@@ -2855,6 +2858,13 @@ export default function POSPage() {
   const { data: vendedores = [] } = useQuery<any[]>({
     queryKey: ['vendedores-sel'],
     queryFn:  () => api.get('/vendedores').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
+  });
+  // Usuarios activos de la empresa con email — para Cambiar Usuario
+  const { data: usuariosEmpresa = [] } = useQuery<any[]>({
+    queryKey: ['pos-cajeros'],
+    queryFn:  () => api.get('/caja/cajeros').then((r: any) => r.data?.data ?? r.data ?? []),
+    enabled:  modalCambiarUser,
+    staleTime: 60_000,
   });
   const { data: sucursales = [] } = useQuery<any[]>({
     queryKey: ['sucursales-pos'],
@@ -3266,6 +3276,25 @@ export default function POSPage() {
     } finally { setDesbloqueando(false); }
   };
 
+  // ── Cambiar usuario: login con credenciales del nuevo usuario ─────────────
+  const ejecutarCambioUsuario = async () => {
+    if (!cambiarUserId) { setErrCambio('Selecciona un usuario'); return; }
+    if (!pwCambio.trim()) { setErrCambio('Ingresa la contraseña'); return; }
+    setCambiandoUser(true); setErrCambio('');
+    const usuario = usuariosEmpresa.find((u: any) => u.id === cambiarUserId);
+    if (!usuario?.email) { setErrCambio('Usuario inválido'); setCambiandoUser(false); return; }
+    try {
+      await api.post('/auth/login', { email: usuario.email, password: pwCambio });
+      // Login exitoso → limpiar bloqueo y recargar con el nuevo usuario
+      sessionStorage.removeItem('pos_bloqueado');
+      setModalCambiarUser(false);
+      window.location.reload();
+    } catch (e: any) {
+      setErrCambio(e?.response?.data?.errors?.[0] ?? 'Usuario o contraseña incorrectos');
+      setPwCambio('');
+    } finally { setCambiandoUser(false); }
+  };
+
   // ── Verificar supervisor (admin password) ──────────────────────────────────
   const verificarSupervisor = async () => {
     if (!pwSupervisor.trim()) { setErrSupervisor('Ingresa tu contraseña'); return; }
@@ -3375,7 +3404,7 @@ export default function POSPage() {
         ecfOnline={ecfOnline ?? null}
         onBloquear={() => { sessionStorage.setItem('pos_bloqueado', 'true'); setPantallaBloqueada(true); setPwDesbloqueo(''); setErrDesbloqueo(''); }}
         onSupervisor={() => { setModalSupervisor(true); setPwSupervisor(''); setErrSupervisor(''); }}
-        onCambiarUsuario={() => setModalCambiarUser(true)}
+        onCambiarUsuario={() => { setModalCambiarUser(true); setCambiarUserId(undefined); setPwCambio(''); setErrCambio(''); }}
         onExit={confirmarSalir} />
 
       {/* Tab bar mobile — cambia entre productos y carrito */}
@@ -3985,29 +4014,36 @@ export default function POSPage() {
 
     {/* ── Modal cambiar usuario ────────────────────────────────────────────── */}
     <Modal
-      title={<span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><SwapOutlined style={{ color: '#3B82F6' }} /> Cambiar Usuario</span>}
-      open={modalCambiarUser} onCancel={() => { setModalCambiarUser(false); setNuevoUserId(undefined); }}
-      footer={null} width={380} destroyOnClose>
-      <p style={{ color: '#6B7280', fontSize: 13, marginBottom: 12 }}>Selecciona el cajero que tomará el turno.</p>
-      <Select style={{ width: '100%' }} size="large" placeholder="Seleccionar cajero..."
-        value={nuevoUserId} onChange={setNuevoUserId} showSearch
-        filterOption={(input, opt) => (opt?.label as string ?? '').toLowerCase().includes(input.toLowerCase())}
-        options={vendedores.map((v: any) => ({ value: v.id, label: v.nombre }))} />
-      <button
-        onClick={() => {
-          if (!nuevoUserId) return;
-          const nuevo = vendedores.find((v: any) => v.id === nuevoUserId);
-          if (nuevo) {
-            localStorage.setItem('pos_vendedor_id', String(nuevoUserId));
-            setVendedorId(nuevoUserId);
-            message.success(`Cajero cambiado a ${nuevo.nombre}`);
-            setModalCambiarUser(false); setNuevoUserId(undefined);
-          }
-        }}
-        disabled={!nuevoUserId}
-        style={{ width: '100%', marginTop: 12, padding: '10px 0', background: nuevoUserId ? '#3B82F6' : '#E5E7EB', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 700, cursor: nuevoUserId ? 'pointer' : 'not-allowed', fontSize: 14 }}>
-        Cambiar
-      </button>
+      title={<span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 16, fontWeight: 600 }}><SwapOutlined style={{ color: '#0EA5E9' }} /> Cambio De Usuario</span>}
+      open={modalCambiarUser}
+      onCancel={() => { setModalCambiarUser(false); setCambiarUserId(undefined); setPwCambio(''); setErrCambio(''); }}
+      footer={null} width={420} destroyOnClose
+      closeIcon={<div style={{ width: 24, height: 24, borderRadius: '50%', background: '#EF4444', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12 }}>✕</div>}
+    >
+      {/* Campo USUARIO */}
+      <div style={{ marginBottom: 16 }}>
+        <label style={{ display: 'block', fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#9CA3AF', marginBottom: 6 }}>USUARIO</label>
+        <Select
+          style={{ width: '100%' }} size="large" placeholder="Seleccione un usuario"
+          value={cambiarUserId} onChange={(v) => { setCambiarUserId(v); setErrCambio(''); }}
+          showSearch filterOption={(input, opt) => (opt?.label as string ?? '').toLowerCase().includes(input.toLowerCase())}
+          options={usuariosEmpresa.map((u: any) => ({ value: u.id, label: u.nombre }))}
+        />
+      </div>
+      {/* Campo CONTRASEÑA */}
+      <div style={{ marginBottom: 24 }}>
+        <label style={{ display: 'block', fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#9CA3AF', marginBottom: 6 }}>CONTRASEÑA</label>
+        <Input.Password size="large" placeholder="••••••••"
+          value={pwCambio}
+          onChange={e => { setPwCambio(e.target.value); setErrCambio(''); }}
+          onPressEnter={ejecutarCambioUsuario}
+          autoFocus={!!cambiarUserId}
+        />
+        {errCambio && <div style={{ color: '#EF4444', fontSize: 12, marginTop: 4 }}>{errCambio}</div>}
+      </div>
+      <Button type="primary" block size="large" onClick={ejecutarCambioUsuario} loading={cambiandoUser} style={{ height: 44 }}>
+        Iniciar sesión
+      </Button>
     </Modal>
 
     </ThemeCtx.Provider>
