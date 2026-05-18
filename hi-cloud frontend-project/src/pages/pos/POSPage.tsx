@@ -2743,7 +2743,9 @@ export default function POSPage() {
   const user         = useAuthStore(s => s.user);
 
   // ── Bloqueo de pantalla ────────────────────────────────────────────────────
-  const [pantallaBloqueada,   setPantallaBloqueada]   = useState(false);
+  const [pantallaBloqueada,   setPantallaBloqueada]   = useState(() =>
+    sessionStorage.getItem('pos_bloqueado') === 'true'
+  );
   const [pwDesbloqueo,        setPwDesbloqueo]        = useState('');
   const [errDesbloqueo,       setErrDesbloqueo]       = useState('');
   const [desbloqueando,       setDesbloqueando]       = useState(false);
@@ -3256,6 +3258,7 @@ export default function POSPage() {
     setDesbloqueando(true); setErrDesbloqueo('');
     try {
       await api.post('/auth/verificar-password', { password: pwDesbloqueo });
+      sessionStorage.removeItem('pos_bloqueado');
       setPantallaBloqueada(false); setPwDesbloqueo('');
     } catch (e: any) {
       setErrDesbloqueo(e?.response?.data?.errors?.[0] ?? 'Contraseña incorrecta');
@@ -3283,7 +3286,11 @@ export default function POSPage() {
       title: '¿Cerrar sesión?',
       content: '¿Estás seguro que deseas salir del sistema?',
       okText: 'Salir', okButtonProps: { danger: true }, cancelText: 'Cancelar',
-      onOk: async () => { await api.post('/auth/logout').catch(() => {}); navigate('/login'); },
+      onOk: async () => {
+        sessionStorage.removeItem('pos_bloqueado');
+        await api.post('/auth/logout').catch(() => {});
+        navigate('/login');
+      },
     });
   };
 
@@ -3294,7 +3301,10 @@ export default function POSPage() {
     const reset = () => {
       if (inactividadRef.current) clearTimeout(inactividadRef.current);
       if (!pantallaBloqueada && turnoAbierto) {
-        inactividadRef.current = setTimeout(() => setPantallaBloqueada(true), INACTIVIDAD_MS);
+        inactividadRef.current = setTimeout(() => {
+          sessionStorage.setItem('pos_bloqueado', 'true');
+          setPantallaBloqueada(true);
+        }, INACTIVIDAD_MS);
       }
     };
     const eventos = ['mousedown', 'keydown', 'touchstart', 'scroll'];
@@ -3363,7 +3373,7 @@ export default function POSPage() {
         modoFacturacion={modoFacturacion} onModoChange={setModoFacturacion}
         tipoNcf={tipoNcf} onTipoNcfChange={setTipoNcf}
         ecfOnline={ecfOnline ?? null}
-        onBloquear={() => { setPantallaBloqueada(true); setPwDesbloqueo(''); setErrDesbloqueo(''); }}
+        onBloquear={() => { sessionStorage.setItem('pos_bloqueado', 'true'); setPantallaBloqueada(true); setPwDesbloqueo(''); setErrDesbloqueo(''); }}
         onSupervisor={() => { setModalSupervisor(true); setPwSupervisor(''); setErrSupervisor(''); }}
         onCambiarUsuario={() => setModalCambiarUser(true)}
         onExit={confirmarSalir} />
@@ -3924,6 +3934,11 @@ export default function POSPage() {
     {/* ── Pantalla de bloqueo ─────────────────────────────────────────────── */}
     {pantallaBloqueada && (
       <div style={{ position: 'fixed', inset: 0, background: '#1E40AF', zIndex: 9999, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+        {/* Logo HiCloud */}
+        <div style={{ marginBottom: 36 }}>
+          <img src="/logo-hicloud.svg" alt="HiCloud ERP" style={{ height: 38, filter: 'brightness(0) invert(1)', opacity: 0.9 }}
+            onError={e => { (e.target as HTMLImageElement).src = '/logo-hicloud.png'; }} />
+        </div>
         {/* Avatar */}
         <div style={{ width: 100, height: 100, borderRadius: '50%', background: 'rgba(255,255,255,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, fontSize: 40, color: 'rgba(255,255,255,.7)' }}>
           {cajeroNombre.charAt(0).toUpperCase()}
