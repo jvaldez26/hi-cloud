@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { exportarExcel } from '../../utils/exportExcel';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { TableActions } from '../../components/ui/TableActions';
@@ -178,6 +179,8 @@ export default function MantenimientoPage() {
               }));
               exportarExcel(filas, 'Mantenimiento-Ordenes');
             }}>Excel</Button>
+            <RefreshByKeyButton queryKey={['mantenimiento']} />
+            <VideoTutorialButton />
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setOrdenModal(true)}>
               Nueva orden
             </Button>

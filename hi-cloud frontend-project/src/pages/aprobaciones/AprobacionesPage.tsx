@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
@@ -141,6 +142,8 @@ export default function AprobacionesPage() {
         </div>
         <Space>
           <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['aprobaciones']} />
+          <VideoTutorialButton />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalSolicitud(true)}>
             Nueva Solicitud
           </Button>

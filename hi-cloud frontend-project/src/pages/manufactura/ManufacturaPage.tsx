@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { TableActions } from '../../components/ui/TableActions';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
@@ -488,6 +489,8 @@ export default function ManufacturaPage() {
             }));
             exportarExcel(filas, `Manufactura-${tabKey === 'lm' ? 'BOM' : 'Ordenes'}`);
           }}>Excel</Button>
+          <RefreshByKeyButton queryKey={['ordenes-produccion']} />
+          <VideoTutorialButton />
           <Button type="primary" icon={<PlusOutlined />}
             onClick={() => tabKey === 'lm' ? setLMModal(true) : setOrdenModal(true)}>
             {tabKey === 'lm' ? 'Nueva lista BOM' : 'Nueva orden'}

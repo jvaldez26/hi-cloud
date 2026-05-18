@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { exportarExcel } from '../../utils/exportExcel';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { TableActions } from '../../components/ui/TableActions';
@@ -132,6 +133,8 @@ export default function ServiciosPage() {
             exportarExcel(filas, `Servicios-${dayjs().format('YYYY-MM-DD')}`);
           }}>Excel</Button>
           <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['ordenes-servicio']} />
+          <VideoTutorialButton />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => { setOpenCreate(true); formCreate.resetFields(); }}>
             Nueva orden
           </Button>

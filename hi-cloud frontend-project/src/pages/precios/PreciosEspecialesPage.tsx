@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { Card, Table, Button, Tag, Row, Col, Typography, Modal, Form,
          InputNumber, Select, Input, DatePicker, Space, Popconfirm, message, Alert } from 'antd';
 import { PlusOutlined, DeleteOutlined, PercentageOutlined, FileExcelOutlined } from '@ant-design/icons';
@@ -102,6 +103,8 @@ export default function PreciosEspecialesPage() {
             }));
             exportarExcel(filas, 'Precios-Especiales');
           }}>Excel</Button>
+          <RefreshByKeyButton queryKey={['precios-especiales']} />
+          <VideoTutorialButton />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => { setOpen(true); setTipo('global'); form.resetFields(); }}>
             Nuevo precio especial
           </Button>

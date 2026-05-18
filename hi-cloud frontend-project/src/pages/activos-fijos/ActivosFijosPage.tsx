@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { exportarExcel } from '../../utils/exportExcel';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Table, Button, Tag, Card, Row, Col, Typography, Statistic,
@@ -115,6 +116,8 @@ export default function ActivosFijosPage() {
             }));
             exportarExcel(filas, 'Activos-Fijos');
           }}>Excel</Button>
+          <RefreshByKeyButton queryKey={['activos-fijos']} />
+          <VideoTutorialButton />
           <Button icon={<ToolOutlined />} onClick={() => setOpenDepr(true)}>Procesar depreciación</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => { setOpen(true); form.resetFields(); }}>Nuevo activo</Button>
         </Space>

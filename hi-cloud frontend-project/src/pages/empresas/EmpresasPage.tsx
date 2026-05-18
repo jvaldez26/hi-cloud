@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
@@ -228,6 +229,8 @@ export default function EmpresasPage() {
             extra={
               <Space>
                 <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+                <RefreshByKeyButton queryKey={['empresa-usuarios']} />
+                <VideoTutorialButton />
                 <Button
                   type="primary"
                   size="small"

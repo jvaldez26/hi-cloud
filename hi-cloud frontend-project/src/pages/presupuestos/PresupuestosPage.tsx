@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { TableActions } from '../../components/ui/TableActions';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Table, Button, Tag, Card, Row, Col, Typography, Statistic, Modal,
@@ -181,6 +182,8 @@ export default function PresupuestosPage() {
                       message.success(`${filas.length} presupuestos exportados`);
                     }}>Excel</Button>
                     <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+                    <RefreshByKeyButton queryKey={['presupuestos']} />
+                    <VideoTutorialButton />
                     <Button type="primary" icon={<PlusOutlined />} onClick={() => { setOpen(true); form.resetFields(); }}>Nuevo presupuesto</Button>
                   </Space>
                 </Col>

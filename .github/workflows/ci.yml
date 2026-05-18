@@ -32,6 +32,10 @@ jobs:
       - name: TypeScript check
         run: npx tsc --noEmit
 
+      - name: Security audit (S-39)
+        run: npm audit --audit-level=high
+        continue-on-error: true  # alerta pero no bloquea el deploy
+
       - name: Build
         run: npm run build
 
@@ -59,6 +63,10 @@ jobs:
 
       - name: TypeScript check
         run: npx tsc --noEmit
+
+      - name: Security audit (S-39)
+        run: npm audit --audit-level=high
+        continue-on-error: true
 
       - name: Build producción
         run: npm run build

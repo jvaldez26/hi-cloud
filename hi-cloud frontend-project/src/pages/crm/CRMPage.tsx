@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { exportarExcel } from '../../utils/exportExcel';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { usePlanGuard } from '../../hooks/usePlan';
@@ -350,6 +351,8 @@ export default function CRMPage() {
                 <Select placeholder="Fuente" allowClear style={{ width: 150 }}
                   value={fuenteF} onChange={v => { setFuenteF(v); setPageLead(1); }}
                   options={FUENTES} />
+                <RefreshByKeyButton queryKey={['crm-leads']} />
+                <VideoTutorialButton />
                 <Button type="primary" icon={<PlusOutlined />}
                   onClick={() => { setLeadModal(true); formLead.resetFields(); }}>
                   Nuevo lead

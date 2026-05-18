@@ -11,6 +11,9 @@ import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { RolesGuard } from './guards/roles.guard';
+import { Roles } from './decorators/roles.decorator';
+import { UserRole } from '../users/enums/user-role.enum';
 import { GetUser } from './decorators/get-user.decorator';
 import { User } from '../users/users.entity';
 import { TokenBlacklistService } from './token-blacklist.service';
@@ -357,13 +360,11 @@ export class AuthController {
   // ── Super admin: forzar cierre de sesión de un usuario ────────────────────
   @Post('usuarios/:id/cerrar-sesion')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN)
   @ApiBearerAuth('access-token')
-  @ApiOperation({ summary: 'Super admin: cerrar sesión activa de un usuario' })
-  forzarLogout(@Param('id', ParseIntPipe) id: number, @GetUser() admin: User) {
-    if (admin.role !== 'super_admin') {
-      throw new (require('@nestjs/common').ForbiddenException)('Solo super admin puede forzar logout');
-    }
+  @ApiOperation({ summary: 'Super admin: cerrar sesión activa de un usuario (S-32: DB lookup vía RolesGuard)' })
+  forzarLogout(@Param('id', ParseIntPipe) id: number) {
     return this.authService.forzarLogout(id);
   }
 }

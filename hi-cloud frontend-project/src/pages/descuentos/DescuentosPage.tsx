@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { TableActions } from '../../components/ui/TableActions';
@@ -134,6 +135,8 @@ export default function DescuentosPage() {
             }));
             exportarExcel(filas, 'Descuentos-Reglas');
           }}>Excel</Button>
+          <RefreshByKeyButton queryKey={['descuentos']} />
+          <VideoTutorialButton />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditando(null); form.resetFields(); setModalVisible(true); }}>
             Nueva Regla
           </Button>

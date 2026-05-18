@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { exportarExcel } from '../../utils/exportExcel';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Typography, Tag, Button,
   Space, Modal, Form, Input, Select, InputNumber, Tabs,
@@ -242,6 +243,8 @@ export default function ObjetivosPage() {
               }));
               exportarExcel(filas, `OKR-${anio}`);
             }}>Excel</Button>
+            <RefreshByKeyButton queryKey={['objetivos']} />
+            <VideoTutorialButton />
             <Button type="primary" icon={<PlusOutlined />}
               onClick={() => { setCrearModal(true); form.resetFields(); }}>
               Nuevo objetivo

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { TableActions } from '../../components/ui/TableActions';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { exportarExcel } from '../../utils/exportExcel';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -651,6 +652,8 @@ export default function ProyectosPage() {
               }));
               exportarExcel(filas, 'Proyectos');
             }}>Excel</Button>
+            <RefreshByKeyButton queryKey={['proyectos']} />
+            <VideoTutorialButton />
             <Button type="primary" icon={<PlusOutlined />} onClick={() => { setCrearOpen(true); formProy.resetFields(); }}>
               Nuevo proyecto
             </Button>

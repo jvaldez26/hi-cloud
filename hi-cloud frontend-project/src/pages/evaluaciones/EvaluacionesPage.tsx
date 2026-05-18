@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { TableActions } from '../../components/ui/TableActions';
@@ -147,6 +148,8 @@ export default function EvaluacionesPage() {
               }));
               exportarExcel(filas, `Evaluaciones-${anio}`);
             }}>Excel</Button>
+            <RefreshByKeyButton queryKey={['evaluaciones']} />
+            <VideoTutorialButton />
             <Button type="primary" icon={<PlusOutlined />}
               onClick={() => { setCrearModal(true); form.resetFields(); setCriterios({}); }}>
               Nueva evaluación

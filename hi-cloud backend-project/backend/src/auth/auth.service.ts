@@ -341,8 +341,10 @@ export class AuthService implements OnModuleInit {
     const token  = randomUUID().replace(/-/g, '');
     const expiry = new Date(); expiry.setHours(expiry.getHours() + 1);
 
+    // S-37: guardar token hasheado (SHA-256) — nunca el token en texto plano
+    const tokenHash = require('crypto').createHash('sha256').update(token).digest('hex');
     await this.userRepository.update(user.id, {
-      resetPasswordToken:   token,
+      resetPasswordToken:   tokenHash,
       resetPasswordExpires: expiry,
     });
 
@@ -375,8 +377,10 @@ export class AuthService implements OnModuleInit {
   }
 
   async resetPassword(token: string, newPassword: string) {
+    // S-37: comparar con el hash del token, nunca buscar por texto plano
+    const tokenHash = require('crypto').createHash('sha256').update(token).digest('hex');
     const user = await this.userRepository.findOne({
-      where: { resetPasswordToken: token },
+      where: { resetPasswordToken: tokenHash },
       select: ['id', 'resetPasswordToken', 'resetPasswordExpires', 'isActive'],
     });
 
