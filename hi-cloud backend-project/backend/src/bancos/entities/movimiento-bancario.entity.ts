@@ -30,7 +30,7 @@ export class MovimientoBancario extends BaseEntity {
   @Column({ length: 60, nullable: true })
   referencia?: string;
 
-  @Column({ type: 'enum', enum: TipoMovimientoBanco })
+  @Column({ type: 'varchar', length: 20 })
   tipo!: TipoMovimientoBanco;
 
   @Column({ type: 'decimal', precision: 14, scale: 2 })
