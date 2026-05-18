@@ -3964,8 +3964,8 @@ export default function POSPage() {
     {pantallaBloqueada && (
       <div style={{ position: 'fixed', inset: 0, background: '#1E40AF', zIndex: 9999, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
         {/* Logo HiCloud */}
-        <div style={{ marginBottom: 36 }}>
-          <img src="/logo-hicloud.png" alt="HiCloud ERP" style={{ height: 38, filter: 'brightness(0) invert(1)', opacity: 0.9 }} />
+        <div style={{ marginBottom: 36, background: 'rgba(255,255,255,0.95)', borderRadius: 12, padding: '8px 20px' }}>
+          <img src="/logo-hicloud.png" alt="HiCloud ERP" style={{ height: 36, display: 'block' }} />
         </div>
         {/* Avatar */}
         <div style={{ width: 100, height: 100, borderRadius: '50%', background: 'rgba(255,255,255,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, fontSize: 40, color: 'rgba(255,255,255,.7)' }}>
