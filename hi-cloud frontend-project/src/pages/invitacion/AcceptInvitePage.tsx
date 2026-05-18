@@ -5,6 +5,7 @@ import { LockOutlined, UserOutlined, CheckCircleOutlined, MailOutlined } from '@
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import api from '../../api/client';
+import { useAuthStore } from '../../store/auth.store';
 const { Title, Text } = Typography;
 
 const ROL_INFO: Record<string, { label: string; color: string; icon: string }> = {
@@ -19,6 +20,8 @@ export default function AcceptInvitePage() {
   const { token }   = useParams<{ token: string }>();
   const navigate    = useNavigate();
   const [done,  setDone]  = useState(false);
+  const [empresaIdAceptada, setEmpresaIdAceptada] = useState<number | null>(null);
+  const { user } = useAuthStore();
 
   // Obtener datos de la invitación
   const { data: inv, isLoading, error } = useQuery({
@@ -32,7 +35,22 @@ export default function AcceptInvitePage() {
   const aceptarMut = useMutation({
     mutationFn: (body: { nombre?: string; password?: string }) =>
       api.post(`/invitaciones/aceptar/${token}`, body).then(r => r.data?.data ?? r.data),
-    onSuccess: () => setDone(true),
+    onSuccess: async (data: any) => {
+      const nuevoEmpresaId = data?.empresaId ?? null;
+      setEmpresaIdAceptada(nuevoEmpresaId);
+
+      // Si el usuario ya está logueado, actualizar el JWT con la nueva empresa
+      // para evitar el loop de recargas en AppLayout al navegar al dashboard.
+      if (user && nuevoEmpresaId) {
+        try {
+          await api.post('/auth/cambiar-empresa', { empresaId: nuevoEmpresaId });
+          localStorage.setItem('empresaId', String(nuevoEmpresaId));
+        } catch {
+          // Si falla, el usuario puede hacer login de nuevo
+        }
+      }
+      setDone(true);
+    },
     onError: (e: any) => {
       // Si el usuario ya existía, igual mostramos éxito
       if (e?.response?.status === 409) setDone(true);
@@ -80,13 +98,23 @@ export default function AcceptInvitePage() {
           <Title level={3} style={{ color: '#10b981' }}>¡Bienvenido al equipo!</Title>
           <Text type="secondary">
             Ya tienes acceso a <strong>{inv?.nombreEmpresa}</strong>.<br />
-            Inicia sesión con tu email y contraseña.
+            {user ? 'Accede ahora al sistema.' : 'Inicia sesión con tu email y contraseña.'}
           </Text>
           <div style={{ marginTop: 24 }}>
-            <Button type="primary" size="large" block onClick={() => navigate('/login')}
-              style={{ borderRadius: 10, height: 48 }}>
-              Ir al inicio de sesión
-            </Button>
+            {user && empresaIdAceptada ? (
+              // Usuario ya logueado: JWT actualizado → ir directo al dashboard
+              <Button type="primary" size="large" block
+                onClick={() => { window.location.replace('/dashboard'); }}
+                style={{ borderRadius: 10, height: 48, background: '#10b981', border: 'none' }}>
+                Ir al Dashboard →
+              </Button>
+            ) : (
+              // Usuario nuevo o sesión inactiva: hacer login limpio
+              <Button type="primary" size="large" block onClick={() => navigate('/login')}
+                style={{ borderRadius: 10, height: 48 }}>
+                Ir al inicio de sesión
+              </Button>
+            )}
           </div>
         </Card>
       </motion.div>
