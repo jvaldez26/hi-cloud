@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { TableActions } from '../../components/ui/TableActions';
 import {
   Card, Row, Col, Typography, Select, Table, Tag, Statistic,
@@ -118,6 +120,16 @@ export default function BancosPage() {
     onSuccess: () => { inv(); message.success('Eliminado'); },
     onError: (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error al eliminar'),
   });
+
+  const COLS_DEF = [
+    { key: 'fecha',       label: 'Fecha',       defaultVisible: true  },
+    { key: 'descripcion', label: 'Descripción', defaultVisible: true  },
+    { key: 'referencia',  label: 'Referencia',  defaultVisible: false },
+    { key: 'tipo',        label: 'Tipo',        defaultVisible: true  },
+    { key: 'monto',       label: 'Monto',       defaultVisible: true  },
+    { key: 'conciliado',  label: 'Estado',      defaultVisible: true  },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('bancos-movimientos', COLS_DEF);
 
   const colsMov = [
     { title: 'Fecha',       dataIndex: 'fecha',       width: 100, render: (v: string) => fmt.date(v) },
@@ -272,6 +284,7 @@ export default function BancosPage() {
                   onClick={() => { setSoloNoCon(!soloNoCon); setPageMov(1); }}>
                   {soloNoCon ? '⚠️ Solo pendientes' : 'Todos'}
                 </Button>
+                <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
                 <Button size="small" icon={<PlusOutlined />}
                   onClick={() => { setMovModal(true); formMov.setFieldsValue({ cuentaId }); }}>
                   Agregar
@@ -279,7 +292,7 @@ export default function BancosPage() {
               </Space>
             }
           >
-            <Table columns={colsMov} dataSource={movs?.data ?? []} rowKey="id"
+            <Table columns={filterColumns(colsMov)} dataSource={movs?.data ?? []} rowKey="id"
               loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
               rowClassName={(r: any) => r.conciliado ? '' : 'ant-table-row-warning'}

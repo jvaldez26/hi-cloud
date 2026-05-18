@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { TableActions } from '../../components/ui/TableActions';
 import {
   Tabs, Table, Button, Tag, Space, Modal, Form, Input, InputNumber,
@@ -80,14 +82,25 @@ function SolicitudesTab() {
 
   const provOpts = (proveedores?.data ?? []).map((p: any) => ({ value: p.id, label: p.nombre }));
 
-  const cols = [
-    { title: 'N°', dataIndex: 'numero', width: 130 },
+  const COLS_DEF = [
+    { key: 'numero',        label: 'N°',         defaultVisible: true  },
+    { key: 'sol',           label: 'Solicitante', defaultVisible: true  },
+    { key: 'departamento',  label: 'Depto.',      defaultVisible: true  },
+    { key: 'prioridad',     label: 'Prioridad',   defaultVisible: true  },
+    { key: 'fechaNecesidad',label: 'Fecha Nec.',  defaultVisible: false },
+    { key: 'estado',        label: 'Estado',      defaultVisible: true  },
+    { key: 'items',         label: 'Ítems',       defaultVisible: true  },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('solicitudes-compra', COLS_DEF);
+
+  const cols = filterColumns([
+    { title: 'N°', dataIndex: 'numero', key: 'numero', width: 130 },
     { title: 'Solicitante', key: 'sol', render: (_: any, r: any) => `${r.solicitante?.nombre ?? ''} ${r.solicitante?.apellido ?? ''}` },
-    { title: 'Depto.', dataIndex: 'departamento', width: 120, render: (v: string) => v ?? '—' },
-    { title: 'Prioridad', dataIndex: 'prioridad', width: 100,
+    { title: 'Depto.', dataIndex: 'departamento', key: 'departamento', width: 120, render: (v: string) => v ?? '—' },
+    { title: 'Prioridad', dataIndex: 'prioridad', key: 'prioridad', width: 100,
       render: (v: string) => <Tag color={PRIORIDAD_COLOR[v]}>{v?.toUpperCase()}</Tag> },
-    { title: 'Fecha Nec.', dataIndex: 'fechaNecesidad', width: 110, render: (v: string) => v ? fmt.date(v) : '—' },
-    { title: 'Estado', dataIndex: 'estado', width: 130,
+    { title: 'Fecha Nec.', dataIndex: 'fechaNecesidad', key: 'fechaNecesidad', width: 110, render: (v: string) => v ? fmt.date(v) : '—' },
+    { title: 'Estado', dataIndex: 'estado', key: 'estado', width: 130,
       render: (v: string) => <Tag color={ESTADO_SOL_COLOR[v]}>{v?.replace('_', ' ').toUpperCase()}</Tag> },
     { title: 'Ítems', key: 'items', width: 70, render: (_: any, r: any) => r.lineas?.length ?? 0 },
     { title: '', key: 'acciones', width: 72, align: 'right' as const,
@@ -111,7 +124,7 @@ function SolicitudesTab() {
           ]}
         />
       ) },
-  ];
+  ]);
 
   return (
     <>
@@ -127,6 +140,7 @@ function SolicitudesTab() {
         </Col>
         <Col>
           <Space size={2}>
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <RefreshByKeyButton queryKey={['solicitudes-compra']} />
             <VideoTutorialButton />
             <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setOpen(true); }}>

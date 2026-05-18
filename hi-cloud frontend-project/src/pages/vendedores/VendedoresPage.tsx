@@ -1,5 +1,7 @@
 ﻿import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
@@ -114,6 +116,14 @@ export default function VendedoresPage() {
     setModalCrear(true);
   };
 
+  const COLS_DEF = [
+    { key: 'nombre',      label: 'Cliente',     defaultVisible: true  },
+    { key: 'rncReceptor', label: 'RNC/Cédula',  defaultVisible: false },
+    { key: 'email',       label: 'Email',        defaultVisible: true  },
+    { key: 'telefono',    label: 'Teléfono',     defaultVisible: true  },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('vendedores', COLS_DEF);
+
   const PERIODO_SELECTOR = (
     <Space wrap>
       <Select value={mes} onChange={setMes} style={{ width: 110 }}>
@@ -149,6 +159,7 @@ export default function VendedoresPage() {
             }));
             exportarExcel(filas, 'Vendedores');
           }}>Excel</Button>
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <RefreshByKeyButton queryKey={['vendedores']} />
             <VideoTutorialButton />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditando(null); formCrear.resetFields(); setModalCrear(true); }}>
@@ -340,17 +351,17 @@ export default function VendedoresPage() {
                     size="small"
         scroll={{ x: 'max-content' }}
                     pagination={{ pageSize: 15 }}
-                    columns={[
-                      { title: 'Cliente', dataIndex: 'nombre', key: 'n', render: v => <Text strong>{v}</Text> },
-                      { title: 'RNC/Cédula', dataIndex: 'rncReceptor', key: 'rn', render: (v, r: any) => v || r.rfc || '—' },
-                      { title: 'Email', dataIndex: 'email', key: 'e', render: v => v || '—' },
-                      { title: 'Teléfono', dataIndex: 'telefono', key: 't', render: v => v || '—' },
-                      { title: '', key: 'a', render: (_, r: any) => (
+                    columns={filterColumns([
+                      { title: 'Cliente', dataIndex: 'nombre', key: 'nombre', render: v => <Text strong>{v}</Text> },
+                      { title: 'RNC/Cédula', dataIndex: 'rncReceptor', key: 'rncReceptor', render: (v, r: any) => v || r.rfc || '—' },
+                      { title: 'Email', dataIndex: 'email', key: 'email', render: v => v || '—' },
+                      { title: 'Teléfono', dataIndex: 'telefono', key: 'telefono', render: v => v || '—' },
+                      { title: '', key: 'acciones', render: (_, r: any) => (
                         <Popconfirm title="¿Desasignar cliente?" onConfirm={() => desasignarCliente.mutate({ vendId: vendedorSel.id, cliId: r.id })}>
                           <Button size="small" danger type="text">Desasignar</Button>
                         </Popconfirm>
                       )},
-                    ]}
+                    ])}
                   />
                 )}
               </Card>

@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { exportarExcel } from '../../utils/exportExcel';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Typography, Table, Tag, Statistic, Button,
   Space, Modal, Form, Input, Select, DatePicker, InputNumber,
@@ -75,16 +77,27 @@ export default function LicitacionesPage() {
     onSuccess: (updated) => { inv(); setEstadoModal(null); setDetalle(updated); message.success('Estado actualizado'); },
   });
 
+  const COLS_DEF = [
+    { key: 'numero',             label: 'Número',   defaultVisible: true  },
+    { key: 'titulo',             label: 'Título',   defaultVisible: true  },
+    { key: 'entidadConvocante',  label: 'Entidad',  defaultVisible: true  },
+    { key: 'tipo',               label: 'Tipo',     defaultVisible: false },
+    { key: 'fechaLimiteOfertas', label: 'Límite',   defaultVisible: true  },
+    { key: 'montoOfertado',      label: 'Ofertado', defaultVisible: true  },
+    { key: 'estado',             label: 'Estado',   defaultVisible: true  },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('licitaciones', COLS_DEF);
+
   const cols = [
-    { title: 'Número',    dataIndex: 'numero',            width: 130, render: (v: string) => <Text code strong>{v}</Text> },
-    { title: 'Título',    dataIndex: 'titulo',            ellipsis: true,
+    { title: 'Número',    dataIndex: 'numero',            key: 'numero',            width: 130, render: (v: string) => <Text code strong>{v}</Text> },
+    { title: 'Título',    dataIndex: 'titulo',            key: 'titulo',            ellipsis: true,
       render: (v: string, r: any) => <Button type="link" style={{ padding: 0 }} onClick={() => setDetalle(r)}>{v}</Button> },
-    { title: 'Entidad',   dataIndex: 'entidadConvocante', ellipsis: true },
-    { title: 'Tipo',      dataIndex: 'tipo',              width: 100, render: (v: string) => TIPO_LIC.find(t => t.value === v)?.label ?? v },
-    { title: 'Límite',    dataIndex: 'fechaLimiteOfertas',width: 105,
+    { title: 'Entidad',   dataIndex: 'entidadConvocante', key: 'entidadConvocante',  ellipsis: true },
+    { title: 'Tipo',      dataIndex: 'tipo',              key: 'tipo',               width: 100, render: (v: string) => TIPO_LIC.find(t => t.value === v)?.label ?? v },
+    { title: 'Límite',    dataIndex: 'fechaLimiteOfertas',key: 'fechaLimiteOfertas', width: 105,
       render: (v: string) => v ? <Text type={new Date(v) < new Date() ? 'danger' : undefined}>{fmt.date(v)}</Text> : '—' },
-    { title: 'Ofertado',  dataIndex: 'montoOfertado',     width: 130, render: (v: number) => v ? fmt.money(v) : '—' },
-    { title: 'Estado',    dataIndex: 'estado',            width: 120,
+    { title: 'Ofertado',  dataIndex: 'montoOfertado',     key: 'montoOfertado',      width: 130, render: (v: number) => v ? fmt.money(v) : '—' },
+    { title: 'Estado',    dataIndex: 'estado',            key: 'estado',             width: 120,
       render: (v: string) => {
         const e = ESTADO_PIPELINE.find(x => x.key === v);
         return <Tag color={e?.color}>{e?.label ?? v}</Tag>;
@@ -122,6 +135,7 @@ export default function LicitacionesPage() {
             onClick={() => { setCrearModal(true); form.resetFields(); }}>
             Registrar licitación
           </Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
         </Col>
       </Row>
 
@@ -158,7 +172,7 @@ export default function LicitacionesPage() {
             value: e.key, label: <Tag color={e.color}>{e.label}</Tag>,
           }))} />
       }>
-        <Table columns={cols} dataSource={lista?.data ?? []} rowKey="id"
+        <Table columns={filterColumns(cols)} dataSource={lista?.data ?? []} rowKey="id"
           loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
           pagination={{ total: lista?.meta?.total, pageSize: 10, current: page,

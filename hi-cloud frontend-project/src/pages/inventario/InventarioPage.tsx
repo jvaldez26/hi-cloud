@@ -1,6 +1,8 @@
 import { useState, useCallback } from 'react';
 import { TableActions } from '../../components/ui/TableActions';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Table, Tag, Card, Row, Col, Typography, Select, Button,
   Modal, Form, InputNumber, Input, message, Space, DatePicker,
@@ -110,10 +112,21 @@ function MovimientosTab() {
 
   const rows = data?.data ?? [];
 
+  const COLS_DEF = [
+    { key: 'createdAt',  label: 'Fecha',              defaultVisible: true  },
+    { key: 'tipo',       label: 'Tipo',               defaultVisible: true  },
+    { key: 'producto',   label: 'Producto',           defaultVisible: true  },
+    { key: 'cantidad',   label: 'Cantidad',           defaultVisible: true  },
+    { key: 'stock',      label: 'Stock ant. → nuevo', defaultVisible: true  },
+    { key: 'motivo',     label: 'Motivo',             defaultVisible: false },
+    { key: 'referencia', label: 'Referencia',         defaultVisible: false },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('inventario-movimientos', COLS_DEF);
+
   const columns = [
-    { title: 'Fecha', dataIndex: 'createdAt', width: 130,
+    { title: 'Fecha', dataIndex: 'createdAt', key: 'createdAt', width: 130,
       render: (v: string) => <Text style={{ fontSize: 12 }}>{dayjs(v).format('DD/MM/YY HH:mm')}</Text> },
-    { title: 'Tipo', dataIndex: 'tipo', width: 115,
+    { title: 'Tipo', dataIndex: 'tipo', key: 'tipo', width: 115,
       render: (v: string) => <Tag color={TIPO_COLOR[v] ?? 'default'} style={{ fontSize: 11, fontWeight: 600, margin: 0 }}>{TIPO_ICON[v]} {v.toUpperCase()}</Tag> },
     { title: 'Producto', key: 'producto', ellipsis: true,
       render: (_: unknown, r: MovimientoInventario) => (
@@ -122,7 +135,7 @@ function MovimientosTab() {
           {(r as any).producto?.codigo && <Text type="secondary" style={{ fontSize: 11, marginLeft: 6 }}>[{(r as any).producto.codigo}]</Text>}
         </div>
       ) },
-    { title: 'Cantidad', dataIndex: 'cantidad', width: 90, align: 'right' as const,
+    { title: 'Cantidad', dataIndex: 'cantidad', key: 'cantidad', width: 90, align: 'right' as const,
       render: (v: number, r: MovimientoInventario) => (
         <Text strong style={{ color: r.tipo === 'salida' ? '#dc2626' : r.tipo === 'entrada' ? '#059669' : token.colorText }}>
           {r.tipo === 'salida' ? '-' : '+'}{fmt.number(Math.abs(v))}
@@ -136,8 +149,8 @@ function MovimientosTab() {
           <Text strong style={{ color: token.colorPrimary }}>{fmt.number((r as any).cantidadNueva ?? 0)}</Text>
         </Text>
       ) },
-    { title: 'Motivo', dataIndex: 'motivo', ellipsis: true, render: (v: string) => v ?? '—' },
-    { title: 'Referencia', dataIndex: 'referencia', width: 110, render: (v: string) => v ?? '—' },
+    { title: 'Motivo', dataIndex: 'motivo', key: 'motivo', ellipsis: true, render: (v: string) => v ?? '—' },
+    { title: 'Referencia', dataIndex: 'referencia', key: 'referencia', width: 110, render: (v: string) => v ?? '—' },
   ];
 
   return (
@@ -169,6 +182,7 @@ function MovimientosTab() {
           <Space>
             <Button icon={<FileExcelOutlined />} onClick={handleExcel}>Excel</Button>
             <RefreshByKeyButton queryKey={['inventario']} />
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <VideoTutorialButton />
             <Button icon={<UploadOutlined />} type="primary" onClick={() => { setModal('entrada'); form.resetFields(); }}>Entrada</Button>
             <Button icon={<DownloadOutlined />} danger onClick={() => { setModal('salida'); form.resetFields(); }}>Salida</Button>
@@ -195,7 +209,7 @@ function MovimientosTab() {
         )}
       </Row>
 
-      <Table columns={columns} dataSource={rows} rowKey="id" loading={isLoading} size="small"
+      <Table columns={filterColumns(columns)} dataSource={rows} rowKey="id" loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
         pagination={{ total: data?.meta?.total, pageSize: 15, current: page, onChange: setPage, showSizeChanger: false, size: 'small' }} />
 

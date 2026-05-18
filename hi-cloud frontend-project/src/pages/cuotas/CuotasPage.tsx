@@ -1,4 +1,6 @@
 ﻿import { useState } from 'react';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
@@ -32,7 +34,16 @@ const ESTADO_CUOTA: Record<string, { color: string }> = {
   vencida:   { color: 'red'    }, cancelada: { color: 'default' },
 };
 
+const COLS_DEF_CUOTAS = [
+  { key: 'n',      label: 'No.',     defaultVisible: true  },
+  { key: 'c',      label: 'Cliente', defaultVisible: true  },
+  { key: 'cuotas', label: 'Cuotas',  defaultVisible: true  },
+  { key: 'm',      label: 'Total',   defaultVisible: true  },
+  { key: 'e',      label: 'Estado',  defaultVisible: true  },
+];
+
 export default function CuotasPage() {
+  const { visibleColumns: vcCuotas, updateVisibility: uvCuotas, filterColumns: fcCuotas } = useColumnVisibility('cuotas', COLS_DEF_CUOTAS);
   const qc = useQueryClient();
   const { token } = theme.useToken();
   const [modalCrear, setModalCrear] = useState(false);
@@ -117,6 +128,7 @@ export default function CuotasPage() {
           exportarExcel(filas, `Cuotas-Planes-${dayjs().format('YYYY-MM-DD')}`);
           message.success(`${filas.length} planes exportados`);
         }}>Excel</Button>
+            <ColumnToggle columns={COLS_DEF_CUOTAS} visibleColumns={vcCuotas} onChange={uvCuotas} />
             <RefreshByKeyButton queryKey={['planes-pago']} />
             <VideoTutorialButton />
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalCrear(true)}>
@@ -130,13 +142,13 @@ export default function CuotasPage() {
           <Card bordered={false} style={{ borderRadius: 12 }} title="Planes de Pago">
             <Table dataSource={planes} rowKey="id" size="small" pagination={{ pageSize: 12 }}
               onRow={r => ({ style: { cursor: 'pointer' }, onClick: () => setPlanSel(r) })}
-              columns={[
-                { title: 'No.', dataIndex: 'numero', key: 'n', render: v => <Text strong style={{ fontFamily: 'mono', fontSize: 11 }}>{v}</Text> },
-                { title: 'Cliente', dataIndex: 'clienteNombre', key: 'c', render: v => <Text strong>{v}</Text> },
-                { title: 'Cuotas', key: 'cuotas', render: (_, r: any) => `${r.numeroCuotas} × ${fmt(r.montoCuota)}` },
-                { title: 'Total', dataIndex: 'montoTotal', key: 'm', align: 'right', render: v => fmt(v) },
-                { title: 'Estado', dataIndex: 'estado', key: 'e', render: v => <Tag color={ESTADO_PLAN[v]?.color}>{ESTADO_PLAN[v]?.label}</Tag> },
-              ]}
+              columns={fcCuotas([
+                { title: 'No.', dataIndex: 'numero', key: 'n', render: (v: any) => <Text strong style={{ fontFamily: 'mono', fontSize: 11 }}>{v}</Text> },
+                { title: 'Cliente', dataIndex: 'clienteNombre', key: 'c', render: (v: any) => <Text strong>{v}</Text> },
+                { title: 'Cuotas', key: 'cuotas', render: (_: any, r: any) => `${r.numeroCuotas} × ${fmt(r.montoCuota)}` },
+                { title: 'Total', dataIndex: 'montoTotal', key: 'm', align: 'right' as const, render: (v: any) => fmt(v) },
+                { title: 'Estado', dataIndex: 'estado', key: 'e', render: (v: any) => <Tag color={ESTADO_PLAN[v]?.color}>{ESTADO_PLAN[v]?.label}</Tag> },
+              ])}
             />
           </Card>
         </Col>

@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { TableActions } from '../../components/ui/TableActions';
 import {
   Table, Button, Tag, Card, Row, Col, Typography,
@@ -123,15 +125,25 @@ export default function VacacionesPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['vac-aus'] }); message.success('Eliminada'); },
   });
 
-  const colsSol = [
+  const COLS_DEF = [
+    { key: 'emp',             label: 'Empleado', defaultVisible: true  },
+    { key: 'fechaInicio',     label: 'Inicio',   defaultVisible: true  },
+    { key: 'fechaFin',        label: 'Fin',      defaultVisible: true  },
+    { key: 'diasSolicitados', label: 'Días',     defaultVisible: true  },
+    { key: 'estado',          label: 'Estado',   defaultVisible: true  },
+    { key: 'motivo',          label: 'Motivo',   defaultVisible: false },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('vacaciones', COLS_DEF);
+
+  const colsSol = filterColumns([
     { title: 'Empleado',  key: 'emp', ellipsis: true,
       render: (_: any, r: any) => `${r.empleado?.nombre ?? ''} ${r.empleado?.apellido ?? ''}`.trim() },
-    { title: 'Inicio',    dataIndex: 'fechaInicio', width: 100, render: (v: string) => fmt.date(v) },
-    { title: 'Fin',       dataIndex: 'fechaFin',    width: 100, render: (v: string) => fmt.date(v) },
-    { title: 'Días',      dataIndex: 'diasSolicitados', width: 60, render: (v: number) => <Text strong>{v}</Text> },
-    { title: 'Estado',    dataIndex: 'estado', width: 110,
+    { title: 'Inicio',    dataIndex: 'fechaInicio', key: 'fechaInicio', width: 100, render: (v: string) => fmt.date(v) },
+    { title: 'Fin',       dataIndex: 'fechaFin',    key: 'fechaFin',    width: 100, render: (v: string) => fmt.date(v) },
+    { title: 'Días',      dataIndex: 'diasSolicitados', key: 'diasSolicitados', width: 60, render: (v: number) => <Text strong>{v}</Text> },
+    { title: 'Estado',    dataIndex: 'estado', key: 'estado', width: 110,
       render: (v: string) => <Tag color={ESTADO_COLOR[v]}>{v.toUpperCase()}</Tag> },
-    { title: 'Motivo',    dataIndex: 'motivo', ellipsis: true, render: (v: string) => v ?? '—' },
+    { title: 'Motivo',    dataIndex: 'motivo', key: 'motivo', ellipsis: true, render: (v: string) => v ?? '—' },
     { title: '', key: 'acciones', width: 72, align: 'right' as const,
       render: (_: any, r: any) => (
         <TableActions
@@ -145,7 +157,7 @@ export default function VacacionesPage() {
           ]}
         />
       )},
-  ];
+  ]);
 
   const colsAus = [
     { title: 'Empleado',  key: 'emp', ellipsis: true,
@@ -197,6 +209,7 @@ export default function VacacionesPage() {
             <Select value={mes}  onChange={setMes}  style={{ width: 120 }} options={MESES} />
             <Select value={anio} onChange={setAnio} style={{ width: 90 }}
               options={[2024, 2025, 2026].map(y => ({ value: y, label: y }))} />
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <RefreshByKeyButton queryKey={['vacaciones']} />
             <VideoTutorialButton />
           </Space>

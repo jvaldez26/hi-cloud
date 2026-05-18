@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Button, Table, Typography, Space, Modal,
@@ -38,7 +40,16 @@ const TIPO_LABEL: Record<string, string> = {
 };
 
 // ── Tab Unidades ───────────────────────────────────────────────────────────────
+const UOM_COLS_DEF = [
+  { key: 'codigo',  label: 'Código',  defaultVisible: true  },
+  { key: 'nombre',  label: 'Nombre',  defaultVisible: true  },
+  { key: 'simbolo', label: 'Símbolo', defaultVisible: true  },
+  { key: 'tipo',    label: 'Tipo',    defaultVisible: true  },
+  { key: 'esBase',  label: 'Base',    defaultVisible: false },
+];
+
 function UnidadesTab() {
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('uom', UOM_COLS_DEF);
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm();
   const qc = useQueryClient();
@@ -118,6 +129,7 @@ function UnidadesTab() {
           )}
         </Col>
         <Col>
+          <ColumnToggle columns={UOM_COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
           <RefreshByKeyButton queryKey={['uom']} />
           <VideoTutorialButton />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setOpen(true); }}>
@@ -126,7 +138,7 @@ function UnidadesTab() {
         </Col>
       </Row>
 
-      <Table columns={cols} dataSource={unidades ?? []} rowKey="id" loading={isLoading}
+      <Table columns={filterColumns(cols)} dataSource={unidades ?? []} rowKey="id" loading={isLoading}
         size="small"
         scroll={{ x: 'max-content' }} pagination={{ pageSize: 20 }} />
 

@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   InputNumber, Switch, Space, Typography, Statistic, Popconfirm,
@@ -99,6 +101,16 @@ export default function DescuentosPage() {
     crearActualizar.mutate(dto);
   };
 
+  const COLS_DEF = [
+    { key: 'nombre',    label: 'Regla',      defaultVisible: true  },
+    { key: 'tipo',      label: 'Descuento',  defaultVisible: true  },
+    { key: 'condicion', label: 'Condición',  defaultVisible: true  },
+    { key: 'vigencia',  label: 'Vigencia',   defaultVisible: false },
+    { key: 'p',         label: 'Prioridad',  defaultVisible: true  },
+    { key: 'activo',    label: 'Activa',     defaultVisible: true  },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('descuentos', COLS_DEF);
+
   return (
     <div style={{ padding: '24px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
@@ -124,6 +136,7 @@ export default function DescuentosPage() {
           <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditando(null); form.resetFields(); setModalVisible(true); }}>
             Nueva Regla
           </Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
         </Space>
       </div>
 
@@ -141,7 +154,7 @@ export default function DescuentosPage() {
           loading={isLoading}
           size="middle"
           pagination={{ pageSize: 15 }}
-          columns={[
+          columns={filterColumns([
             {
               title: 'Regla', key: 'nombre',
               render: (_, r: any) => (
@@ -199,7 +212,7 @@ export default function DescuentosPage() {
                 </Space>
               ),
             },
-          ]}
+          ])}
         />
       </Card>
 

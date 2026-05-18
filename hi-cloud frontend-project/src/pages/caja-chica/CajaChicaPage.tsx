@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   DatePicker, InputNumber, Space, Typography, Statistic, Popconfirm,
@@ -96,6 +98,46 @@ export default function CajaChicaPage() {
       e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
+  const COLS_DEF = [
+    { key: 'fecha',     label: 'Fecha',       defaultVisible: true  },
+    { key: 'tipo',      label: 'Tipo',        defaultVisible: true  },
+    { key: 'desc',      label: 'Descripción', defaultVisible: true  },
+    { key: 'monto',     label: 'Monto',       defaultVisible: true  },
+    { key: 'sn',        label: 'Saldo',       defaultVisible: true  },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('caja-chica', COLS_DEF);
+
+  const cols = [
+    { title: 'Fecha', dataIndex: 'fecha', key: 'fecha', width: 100 },
+    {
+      title: 'Tipo', dataIndex: 'tipo', key: 'tipo', width: 110,
+      render: (v: any) => <Tag color={TIPO_COLOR[v]}>{v.toUpperCase()}</Tag>,
+    },
+    {
+      title: 'Descripción', key: 'desc',
+      render: (_: any, r: any) => (
+        <div>
+          <Text style={{ fontSize: 13 }}>{r.descripcion}</Text>
+          {r.categoria && <div><Text type="secondary" style={{ fontSize: 11 }}>{CATEGORIAS.find(c => c.value === r.categoria)?.label ?? r.categoria}</Text></div>}
+          {r.beneficiario && <div><Text type="secondary" style={{ fontSize: 11 }}>Para: {r.beneficiario}</Text></div>}
+          {r.comprobante && <Tag style={{ fontSize: 10 }}>Comp: {r.comprobante}</Tag>}
+        </div>
+      ),
+    },
+    {
+      title: 'Monto', dataIndex: 'monto', key: 'monto', align: 'right' as const, width: 110,
+      render: (v: any, r: any) => (
+        <Text style={{ color: r.tipo === 'egreso' ? '#ef4444' : '#059669', fontWeight: 600 }}>
+          {r.tipo === 'egreso' ? '-' : '+'}{fmt(v)}
+        </Text>
+      ),
+    },
+    {
+      title: 'Saldo', dataIndex: 'saldoNuevo', key: 'sn', align: 'right' as const, width: 110,
+      render: (v: any) => <Text type="secondary">{fmt(v)}</Text>,
+    },
+  ];
+
   return (
     <div style={{ padding: '24px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
@@ -108,6 +150,7 @@ export default function CajaChicaPage() {
         </div>
         <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
           <RefreshByKeyButton queryKey={['caja-chica']} />
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
           <VideoTutorialButton />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalCajaCrear(true)}>
             Nueva Caja Chica
@@ -191,36 +234,7 @@ export default function CajaChicaPage() {
                 size="small"
         scroll={{ x: 'max-content' }}
                 pagination={{ pageSize: 20 }}
-                columns={[
-                  { title: 'Fecha', dataIndex: 'fecha', key: 'fecha', width: 100 },
-                  {
-                    title: 'Tipo', dataIndex: 'tipo', key: 'tipo', width: 110,
-                    render: v => <Tag color={TIPO_COLOR[v]}>{v.toUpperCase()}</Tag>,
-                  },
-                  {
-                    title: 'Descripción', key: 'desc',
-                    render: (_, r: any) => (
-                      <div>
-                        <Text style={{ fontSize: 13 }}>{r.descripcion}</Text>
-                        {r.categoria && <div><Text type="secondary" style={{ fontSize: 11 }}>{CATEGORIAS.find(c => c.value === r.categoria)?.label ?? r.categoria}</Text></div>}
-                        {r.beneficiario && <div><Text type="secondary" style={{ fontSize: 11 }}>Para: {r.beneficiario}</Text></div>}
-                        {r.comprobante && <Tag style={{ fontSize: 10 }}>Comp: {r.comprobante}</Tag>}
-                      </div>
-                    ),
-                  },
-                  {
-                    title: 'Monto', dataIndex: 'monto', key: 'monto', align: 'right', width: 110,
-                    render: (v, r: any) => (
-                      <Text style={{ color: r.tipo === 'egreso' ? '#ef4444' : '#059669', fontWeight: 600 }}>
-                        {r.tipo === 'egreso' ? '-' : '+'}{fmt(v)}
-                      </Text>
-                    ),
-                  },
-                  {
-                    title: 'Saldo', dataIndex: 'saldoNuevo', key: 'sn', align: 'right', width: 110,
-                    render: v => <Text type="secondary">{fmt(v)}</Text>,
-                  },
-                ]}
+                columns={filterColumns(cols)}
               />
             </Card>
           </Col>

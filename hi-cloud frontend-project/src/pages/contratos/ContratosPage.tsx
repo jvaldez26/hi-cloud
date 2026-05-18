@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Table, Button, Tag, Card, Row, Col, Typography, Statistic,
          Modal, Form, Input, InputNumber, Select, DatePicker, Space,
          Popconfirm, message, Drawer, Descriptions } from 'antd';
@@ -74,16 +76,27 @@ export default function ContratosPage() {
     });
   };
 
+  const COLS_DEF = [
+    { key: 'numero',             label: 'Número',   defaultVisible: true  },
+    { key: 'cli',                label: 'Cliente',  defaultVisible: true  },
+    { key: 'nombre',             label: 'Nombre',   defaultVisible: true  },
+    { key: 'periodoFacturacion', label: 'Período',  defaultVisible: true  },
+    { key: 'montoBase',          label: 'Monto',    defaultVisible: true  },
+    { key: 'proximaFactura',     label: 'Próxima',  defaultVisible: true  },
+    { key: 'estado',             label: 'Estado',   defaultVisible: true  },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('contratos', COLS_DEF);
+
   const cols = [
-    { title: 'Número',    dataIndex: 'numero',     width: 155, render: (v: string) => <Text code>{v}</Text> },
+    { title: 'Número',    dataIndex: 'numero',     key: 'numero',             width: 155, render: (v: string) => <Text code>{v}</Text> },
     { title: 'Cliente',   key: 'cli', ellipsis: true, render: (_: any, r: any) => r.cliente?.nombre },
-    { title: 'Nombre',    dataIndex: 'nombre',     ellipsis: true },
-    { title: 'Período',   dataIndex: 'periodoFacturacion', width: 110,
+    { title: 'Nombre',    dataIndex: 'nombre',     key: 'nombre',             ellipsis: true },
+    { title: 'Período',   dataIndex: 'periodoFacturacion', key: 'periodoFacturacion', width: 110,
       render: (v: string) => PERIODOS.find(p => p.value === v)?.label.replace('📅 ', '') ?? v },
-    { title: 'Monto',     dataIndex: 'montoBase',  width: 120, render: (v: number) => fmt.money(v) },
-    { title: 'Próxima',   dataIndex: 'proximaFactura', width: 100,
+    { title: 'Monto',     dataIndex: 'montoBase',  key: 'montoBase',          width: 120, render: (v: number) => fmt.money(v) },
+    { title: 'Próxima',   dataIndex: 'proximaFactura', key: 'proximaFactura', width: 100,
       render: (v: string) => v ? <Text type={new Date(v) < new Date() ? 'danger' : 'secondary'}>{fmt.date(v)}</Text> : '—' },
-    { title: 'Estado',    dataIndex: 'estado', width: 100,
+    { title: 'Estado',    dataIndex: 'estado', key: 'estado',                 width: 100,
       render: (v: string) => <Tag color={estadoColor[v]}>{v?.toUpperCase()}</Tag> },
     { title: '', key: 'actions', width: 80,
       render: (_: any, r: any) => <Button size="small" onClick={() => setDetail(r)}>Ver</Button> },
@@ -127,9 +140,10 @@ export default function ContratosPage() {
           <Button type="primary" icon={<PlusOutlined />} onClick={() => { setOpen(true); form.resetFields(); }}>
             Nuevo contrato
           </Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
         </Space>
       }>
-        <Table columns={cols} dataSource={(data?.data ?? []).filter((c: any) => {
+        <Table columns={filterColumns(cols)} dataSource={(data?.data ?? []).filter((c: any) => {
             if (!search) return true;
             const s = search.toLowerCase();
             return c.cliente?.nombre?.toLowerCase().includes(s) || c.nombre?.toLowerCase().includes(s) || c.numero?.toLowerCase().includes(s);

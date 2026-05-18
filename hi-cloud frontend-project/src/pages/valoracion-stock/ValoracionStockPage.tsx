@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Table, Tag, Select, Typography, Statistic,
   Space, theme, Progress, Button, Tooltip,
@@ -46,6 +48,15 @@ export default function ValoracionStockPage() {
     .slice(0, 10);
 
   const maxValor = Math.max(...lineas.map((l: any) => l.valorTotal), 1);
+
+  const COLS_DEF = [
+    { key: 'codigo',        label: 'Código',       defaultVisible: true  },
+    { key: 'nombre',        label: 'Producto',     defaultVisible: true  },
+    { key: 'stock',         label: 'Stock',        defaultVisible: true  },
+    { key: 'costoPromedio', label: 'Costo Prom.',  defaultVisible: false },
+    { key: 'valorTotal',    label: 'Valor Total',  defaultVisible: true  },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('valoracion-stock', COLS_DEF);
 
   const exportarCSV = () => {
     const rows = [
@@ -94,6 +105,7 @@ export default function ValoracionStockPage() {
               }));
               exportarExcel(filas, 'Valoracion-Stock');
             }}>Excel</Button>
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <RefreshByKeyButton queryKey={['valoracion']} />
             <VideoTutorialButton />
             <Button icon={<DownloadOutlined />} onClick={exportarCSV}>CSV</Button>
@@ -131,13 +143,13 @@ export default function ValoracionStockPage() {
               size="small"
         scroll={{ x: 'max-content' }}
               pagination={{ pageSize: 15 }}
-              columns={[
+              columns={filterColumns([
                 {
-                  title: 'Código', dataIndex: 'codigo', key: 'c', width: 90,
+                  title: 'Código', dataIndex: 'codigo', key: 'codigo', width: 90,
                   render: v => <Tag style={{ fontFamily: 'monospace', fontSize: 11 }}>{v}</Tag>,
                 },
                 {
-                  title: 'Producto', dataIndex: 'nombre', key: 'n',
+                  title: 'Producto', dataIndex: 'nombre', key: 'nombre',
                   render: (v, r: any) => (
                     <div>
                       <Text strong style={{ fontSize: 13 }}>{v}</Text>
@@ -146,7 +158,7 @@ export default function ValoracionStockPage() {
                   ),
                 },
                 {
-                  title: 'Stock', dataIndex: 'stock', key: 's', align: 'right', width: 80,
+                  title: 'Stock', dataIndex: 'stock', key: 'stock', align: 'right', width: 80,
                   render: (v, r: any) => (
                     <Text style={{ color: v <= 0 ? token.colorError : token.colorSuccess }}>
                       {Number(v).toLocaleString('es-DO')} {r.unidadMedida}
@@ -154,11 +166,11 @@ export default function ValoracionStockPage() {
                   ),
                 },
                 {
-                  title: 'Costo Prom.', dataIndex: 'costoPromedio', key: 'cp', align: 'right', width: 110,
+                  title: 'Costo Prom.', dataIndex: 'costoPromedio', key: 'costoPromedio', align: 'right', width: 110,
                   render: v => <Text>{fmt(v)}</Text>,
                 },
                 {
-                  title: 'Valor Total', dataIndex: 'valorTotal', key: 'vt', align: 'right', width: 130,
+                  title: 'Valor Total', dataIndex: 'valorTotal', key: 'valorTotal', align: 'right', width: 130,
                   render: (v, r: any) => (
                     <div>
                       <Text strong style={{ color: token.colorPrimary }}>{fmt(v)}</Text>
@@ -173,7 +185,7 @@ export default function ValoracionStockPage() {
                     </div>
                   ),
                 },
-              ]}
+              ])}
               summary={() => (
                 <Table.Summary.Row style={{ background: token.colorFillAlter, fontWeight: 700 }}>
                   <Table.Summary.Cell index={0} colSpan={4}>

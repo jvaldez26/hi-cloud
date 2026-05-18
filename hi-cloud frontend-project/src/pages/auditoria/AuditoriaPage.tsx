@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { usePlanGuard } from '../../hooks/usePlan';
 import ModuloBloqueado from '../../components/ui/ModuloBloqueado';
 import { Table, Card, Row, Col, Typography, Tag, Select,
@@ -32,6 +34,18 @@ function LogsTab({ filtroExitoso }: { filtroExitoso?: boolean }) {
     queryFn:  () => auditoriaApi.logs(page, 20, accion, modulo, filtroExitoso),
   });
 
+  const COLS_DEF = [
+    { key: 'createdAt',   label: 'Fecha',       defaultVisible: true  },
+    { key: 'accion',      label: 'Acción',      defaultVisible: true  },
+    { key: 'modulo',      label: 'Módulo',      defaultVisible: true  },
+    { key: 'descripcion', label: 'Descripción', defaultVisible: true  },
+    { key: 'userName',    label: 'Usuario',     defaultVisible: true  },
+    { key: 'ipAddress',   label: 'IP',          defaultVisible: false },
+    { key: 'exitoso',     label: 'Estado',      defaultVisible: true  },
+    { key: 'duracionMs',  label: 'ms',          defaultVisible: false },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('auditoria', COLS_DEF);
+
   const cols = [
     { title: 'Fecha',    dataIndex: 'createdAt',   width: 130,
       render: (v: string) => <Text style={{ fontSize: 12 }}>{fmt.dateTime(v)}</Text> },
@@ -63,8 +77,11 @@ function LogsTab({ filtroExitoso }: { filtroExitoso?: boolean }) {
           <Input prefix={<SearchOutlined />} placeholder="Módulo (facturas, clientes...)" style={{ width: 220 }}
             onChange={e => setModulo(e.target.value || undefined)} allowClear />
         </Col>
+        <Col>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+        </Col>
       </Row>
-      <Table columns={cols} dataSource={data?.data ?? []} rowKey="id" loading={isLoading} size="small"
+      <Table columns={filterColumns(cols)} dataSource={data?.data ?? []} rowKey="id" loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
         pagination={{ total: data?.meta?.total, pageSize: 20, current: page, onChange: setPage, showSizeChanger: false }} />
     </>

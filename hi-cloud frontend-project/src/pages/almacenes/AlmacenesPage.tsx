@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Typography, Table, Tag, Statistic,
   Button, Space, Modal, Form, Input, Tabs, Popconfirm,
@@ -93,6 +95,17 @@ export default function AlmacenesPage() {
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al cancelar'),
   });
 
+  const COLS_DEF = [
+    { key: 'numero',   label: 'Número',   defaultVisible: true  },
+    { key: 'orig',     label: 'Origen',   defaultVisible: true  },
+    { key: 'dest',     label: 'Destino',  defaultVisible: true  },
+    { key: 'prod',     label: 'Producto', defaultVisible: true  },
+    { key: 'cantidad', label: 'Cantidad', defaultVisible: true  },
+    { key: 'fecha',    label: 'Fecha',    defaultVisible: true  },
+    { key: 'estado',   label: 'Estado',   defaultVisible: true  },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('almacenes', COLS_DEF);
+
   const colsStock = [
     { title: 'Código',   key: 'cod', width: 100, render: (_: any, r: any) => r.producto?.codigo },
     { title: 'Producto', key: 'nom', ellipsis: true, render: (_: any, r: any) => r.producto?.nombre },
@@ -164,6 +177,7 @@ export default function AlmacenesPage() {
               exportarExcel(filas, `Almacenes-${dayjs().format('YYYY-MM-DD')}`);
             }}>Excel</Button>
             <RefreshByKeyButton queryKey={['almacenes']} />
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <VideoTutorialButton />
             <Button icon={<SwapOutlined />} onClick={() => setTransfModal(true)}>
               Nueva transferencia
@@ -240,7 +254,7 @@ export default function AlmacenesPage() {
             label: <><SwapOutlined /> Transferencias</>,
             children: (
               <Card title={`Transferencias — ${almSeleccionado.nombre}`}>
-                <Table columns={colsTransf} dataSource={Array.isArray(transferencias) ? transferencias : (transferencias?.data ?? [])} rowKey="id"
+                <Table columns={filterColumns(colsTransf)} dataSource={Array.isArray(transferencias) ? transferencias : (transferencias?.data ?? [])} rowKey="id"
                   size="small"
         scroll={{ x: 'max-content' }} pagination={false} />
               </Card>

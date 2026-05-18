@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { exportarExcel } from '../../utils/exportExcel';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { usePlanGuard } from '../../hooks/usePlan';
 import ModuloBloqueado from '../../components/ui/ModuloBloqueado';
 import {
@@ -220,6 +222,16 @@ export default function CRMPage() {
     return acc;
   }, {} as Record<string, any[]>);
 
+  const COLS_DEF = [
+    { key: 'nombre',         label: 'Nombre',  defaultVisible: true  },
+    { key: 'empresa',        label: 'Empresa', defaultVisible: true  },
+    { key: 'email',          label: 'Email',   defaultVisible: true  },
+    { key: 'fuente',         label: 'Fuente',  defaultVisible: true  },
+    { key: 'valorEstimado',  label: 'Valor',   defaultVisible: true  },
+    { key: 'estado',         label: 'Estado',  defaultVisible: true  },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('crm', COLS_DEF);
+
   const colsLeads = [
     { title: 'Nombre',   dataIndex: 'nombre',   ellipsis: true,
       render: (v: string, r: any) => (
@@ -343,9 +355,10 @@ export default function CRMPage() {
                   onClick={() => { setLeadModal(true); formLead.resetFields(); }}>
                   Nuevo lead
                 </Button>
+                <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
               </Space>
             }>
-              <Table columns={colsLeads} dataSource={leads?.data ?? []} rowKey="id"
+              <Table columns={filterColumns(colsLeads)} dataSource={leads?.data ?? []} rowKey="id"
                 loading={loadingLeads} size="small"
         scroll={{ x: 'max-content' }}
                 pagination={{ total: leads?.meta?.total, pageSize: 10, current: pageLead,

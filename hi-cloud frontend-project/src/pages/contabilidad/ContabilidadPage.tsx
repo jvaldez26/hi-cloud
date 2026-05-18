@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { usePlanGuard } from '../../hooks/usePlan';
 import ModuloBloqueado from '../../components/ui/ModuloBloqueado';
 import { Tabs, Table, Tag, Button, Card, Row, Col, Typography, Statistic,
@@ -88,15 +90,26 @@ function Asientos() {
   const totalHaber = lineas.reduce((s, l) => s + (l.haber || 0), 0);
   const cuadra = Math.abs(totalDebe - totalHaber) < 0.01;
 
-  const cols = [
-    { title: 'Número',      dataIndex: 'numero',       width: 170 },
-    { title: 'Fecha',       dataIndex: 'fecha',        width: 100, render: (v: string) => fmt.date(v) },
-    { title: 'Descripción', dataIndex: 'descripcion',  ellipsis: true },
-    { title: 'Tipo',        dataIndex: 'tipoOrigen',   width: 100,
+  const COLS_DEF = [
+    { key: 'numero',      label: 'Número',      defaultVisible: true  },
+    { key: 'fecha',       label: 'Fecha',       defaultVisible: true  },
+    { key: 'descripcion', label: 'Descripción', defaultVisible: true  },
+    { key: 'tipoOrigen',  label: 'Tipo',        defaultVisible: false },
+    { key: 'totalDebe',   label: 'Debe',        defaultVisible: true  },
+    { key: 'totalHaber',  label: 'Haber',       defaultVisible: true  },
+    { key: 'estado',      label: 'Estado',      defaultVisible: true  },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('asientos', COLS_DEF);
+
+  const cols = filterColumns([
+    { title: 'Número',      dataIndex: 'numero',       key: 'numero',      width: 170 },
+    { title: 'Fecha',       dataIndex: 'fecha',        key: 'fecha',       width: 100, render: (v: string) => fmt.date(v) },
+    { title: 'Descripción', dataIndex: 'descripcion',  key: 'descripcion', ellipsis: true },
+    { title: 'Tipo',        dataIndex: 'tipoOrigen',   key: 'tipoOrigen',  width: 100,
       render: (v: string) => <Tag style={{ textTransform: 'capitalize' }}>{v}</Tag> },
-    { title: 'Debe',        dataIndex: 'totalDebe',    width: 120, render: (v: number) => fmt.money(v) },
-    { title: 'Haber',       dataIndex: 'totalHaber',   width: 120, render: (v: number) => fmt.money(v) },
-    { title: 'Estado',      dataIndex: 'estado',       width: 110,
+    { title: 'Debe',        dataIndex: 'totalDebe',    key: 'totalDebe',   width: 120, render: (v: number) => fmt.money(v) },
+    { title: 'Haber',       dataIndex: 'totalHaber',   key: 'totalHaber',  width: 120, render: (v: number) => fmt.money(v) },
+    { title: 'Estado',      dataIndex: 'estado',       key: 'estado',      width: 110,
       render: (v: string) => <Tag color={estadoColor[v]}>{v?.toUpperCase()}</Tag> },
     { title: '', key: 'actions', width: 120,
       render: (_: any, r: any) => (
@@ -109,7 +122,7 @@ function Asientos() {
         </Space>
       ),
     },
-  ];
+  ]);
 
   const handleSubmit = (values: { fecha: dayjs.Dayjs; descripcion: string }) => {
     const payload: AsientoPayload = {
@@ -147,6 +160,7 @@ function Asientos() {
               exportarExcel(filas, `Asientos-${new Date().toISOString().split('T')[0]}`);
               message.success(`${filas.length} asientos exportados`);
             }}>Excel</Button>
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <RefreshByKeyButton queryKey={['asientos']} />
             <VideoTutorialButton />
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>Nuevo asiento manual</Button>

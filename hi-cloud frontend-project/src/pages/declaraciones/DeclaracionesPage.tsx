@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Typography, Select, Table, Tag, Statistic,
   Tabs, Button, Space, Alert, Progress, Tooltip, Spin,
@@ -362,6 +364,31 @@ export default function DeclaracionesPage() {
 
   const periodLabel = `${MESES.find(m => m.value === mes)?.label} ${anio}`;
 
+  // ── ColumnToggle ─────────────────────────────────────────────────────────────
+  const COLS_DEF_606 = [
+    { key: 'linea',           label: '#',            defaultVisible: true  },
+    { key: 'rncProveedor',    label: 'RNC Proveedor',defaultVisible: true  },
+    { key: 'nombreProveedor', label: 'Proveedor',    defaultVisible: true  },
+    { key: 'ncfProveedor',    label: 'NCF',          defaultVisible: true  },
+    { key: 'tipoBienesLabel', label: 'Tipo Bienes',  defaultVisible: false },
+    { key: 'fechaComprobante',label: 'Fecha',        defaultVisible: true  },
+    { key: 'formaPagoLabel',  label: 'Forma Pago',   defaultVisible: false },
+    { key: 'montoFacturado',  label: 'Monto',        defaultVisible: true  },
+    { key: 'itbis',           label: 'ITBIS',        defaultVisible: true  },
+  ];
+  const COLS_DEF_607 = [
+    { key: 'linea',           label: '#',            defaultVisible: true  },
+    { key: 'rncComprador',    label: 'RNC Comprador',defaultVisible: true  },
+    { key: 'encf',            label: 'e-NCF',        defaultVisible: true  },
+    { key: 'tipoNcf',         label: 'Tipo',         defaultVisible: true  },
+    { key: 'estadoDgii',      label: 'Estado DGII',  defaultVisible: false },
+    { key: 'fechaComprobante',label: 'Fecha',        defaultVisible: true  },
+    { key: 'montoFacturado',  label: 'Monto',        defaultVisible: true  },
+    { key: 'itbis',           label: 'ITBIS',        defaultVisible: true  },
+  ];
+  const { visibleColumns: vis606, updateVisibility: upd606, filterColumns: flt606 } = useColumnVisibility('declaraciones_606', COLS_DEF_606);
+  const { visibleColumns: vis607, updateVisibility: upd607, filterColumns: flt607 } = useColumnVisibility('declaraciones_607', COLS_DEF_607);
+
   // ── Columnas tablas ──────────────────────────────────────────────────────────
   const cols606 = [
     { title: '#',            dataIndex: 'linea',           width: 45 },
@@ -468,6 +495,7 @@ export default function DeclaracionesPage() {
                     onClick={() => exportar606(f606, mes, anio)}>Excel</Button>
             <RefreshByKeyButton queryKey={['declaraciones']} />
             <VideoTutorialButton />
+                  <ColumnToggle columns={COLS_DEF_606} visibleColumns={vis606} onChange={upd606} />
                   <Button size="small" icon={<DownloadOutlined />} disabled={!f606?.filas?.length}
                     onClick={() => exportCSV(`Formato606-${anio}-${String(mes).padStart(2,'0')}`, f606?.filas ?? [],
                       [{ key:'linea',label:'Línea'},{ key:'rncProveedor',label:'RNC Proveedor'},
@@ -485,7 +513,7 @@ export default function DeclaracionesPage() {
               <ValidationPanel tipo="606" mes={mes} anio={anio}
                 onTxtClick={() => descargarTxt('606', mes, anio, setTxt606)}
                 txtCargando={txt606} />
-              <Table columns={cols606} dataSource={f606?.filas ?? []} rowKey="linea"
+              <Table columns={flt606(cols606)} dataSource={f606?.filas ?? []} rowKey="linea"
                 loading={l6} size="small" scroll={{ x: 900 }}
                 pagination={{ pageSize: 20, showSizeChanger: false }}
                 summary={() => f606?.filas?.length > 0 ? (
@@ -515,6 +543,7 @@ export default function DeclaracionesPage() {
               }
               extra={
                 <Space>
+                  <ColumnToggle columns={COLS_DEF_607} visibleColumns={vis607} onChange={upd607} />
                   <Button size="small" icon={<FileExcelOutlined />} disabled={!f607?.filas?.length}
                     onClick={() => exportar607(f607, mes, anio)}>Excel</Button>
                   <Button size="small" icon={<DownloadOutlined />} disabled={!f607?.filas?.length}
@@ -534,7 +563,7 @@ export default function DeclaracionesPage() {
               <ValidationPanel tipo="607" mes={mes} anio={anio}
                 onTxtClick={() => descargarTxt('607', mes, anio, setTxt607)}
                 txtCargando={txt607} />
-              <Table columns={cols607} dataSource={f607?.filas ?? []} rowKey="linea"
+              <Table columns={flt607(cols607)} dataSource={f607?.filas ?? []} rowKey="linea"
                 loading={l7} size="small" scroll={{ x: 850 }}
                 pagination={{ pageSize: 20, showSizeChanger: false }}
                 summary={() => f607?.totales ? (

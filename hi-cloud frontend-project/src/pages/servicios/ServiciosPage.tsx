@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { exportarExcel } from '../../utils/exportExcel';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Table, Button, Tag, Card, Row, Col, Typography,
          Modal, Form, Input, InputNumber, Select, DatePicker, Space,
          Drawer, Descriptions, Popconfirm, message, Divider, Steps } from 'antd';
@@ -77,15 +79,25 @@ export default function ServiciosPage() {
   const detalleMut = useMutation({ mutationFn: ({ id, body }: any) => serviciosApi.detalle(id, body), onSuccess: () => { qc.invalidateQueries({ queryKey: ['servicios'] }); setOpenDetalle(false); formDetalle.resetFields(); message.success('Detalle agregado'); }, onError: (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error al agregar detalle') });
   const facturarMut= useMutation({ mutationFn: serviciosApi.facturar, onSuccess: () => { qc.invalidateQueries({ queryKey: ['servicios'] }); setDetail(null); message.success('Convertida a factura'); }, onError: (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error al facturar') });
 
+  const COLS_DEF = [
+    { key: 'numero',             label: 'Número',  defaultVisible: true  },
+    { key: 'cli',                label: 'Cliente', defaultVisible: true  },
+    { key: 'descripcionEquipo',  label: 'Equipo',  defaultVisible: true  },
+    { key: 'estado',             label: 'Estado',  defaultVisible: true  },
+    { key: 'fechaPromesa',       label: 'Promesa', defaultVisible: true  },
+    { key: 'total',              label: 'Total',   defaultVisible: false },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('servicios', COLS_DEF);
+
   const cols = [
-    { title: 'Número',   dataIndex: 'numero',       width: 155, render: (v: string) => <Text code>{v}</Text> },
+    { title: 'Número',   dataIndex: 'numero',       key: 'numero',            width: 155, render: (v: string) => <Text code>{v}</Text> },
     { title: 'Cliente',  key: 'cli', ellipsis: true, render: (_: any, r: any) => r.cliente?.nombre },
-    { title: 'Equipo',   dataIndex: 'descripcionEquipo', ellipsis: true },
-    { title: 'Estado',   dataIndex: 'estado', width: 160,
+    { title: 'Equipo',   dataIndex: 'descripcionEquipo', key: 'descripcionEquipo', ellipsis: true },
+    { title: 'Estado',   dataIndex: 'estado',        key: 'estado',            width: 160,
       render: (v: EstadoOrden) => <Tag color={ESTADO_INFO[v]?.color}>{ESTADO_INFO[v]?.label}</Tag> },
-    { title: 'Promesa',  dataIndex: 'fechaPromesa', width: 100,
+    { title: 'Promesa',  dataIndex: 'fechaPromesa',  key: 'fechaPromesa',      width: 100,
       render: (v: string) => v ? <Text type={new Date(v) < new Date() ? 'danger' : 'secondary'}>{fmt.date(v)}</Text> : '—' },
-    { title: 'Total',    dataIndex: 'total', width: 110, render: (v: number) => fmt.money(v) },
+    { title: 'Total',    dataIndex: 'total',         key: 'total',             width: 110, render: (v: number) => fmt.money(v) },
     { title: '', key: 'actions', width: 80,
       render: (_: any, r: any) => <Button size="small" icon={<ToolOutlined />} onClick={() => setDetail(r)}>Gestionar</Button> },
   ];
@@ -113,12 +125,13 @@ export default function ServiciosPage() {
             }));
             exportarExcel(filas, `Servicios-${dayjs().format('YYYY-MM-DD')}`);
           }}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => { setOpenCreate(true); formCreate.resetFields(); }}>
             Nueva orden
           </Button>
         </Space>
       }>
-        <Table columns={cols} dataSource={data?.data ?? []} rowKey="id"
+        <Table columns={filterColumns(cols)} dataSource={data?.data ?? []} rowKey="id"
           loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
           pagination={{ total: data?.meta?.total, pageSize: 10, current: page,

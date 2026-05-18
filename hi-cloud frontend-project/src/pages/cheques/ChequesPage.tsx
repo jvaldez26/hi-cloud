@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { TableActions } from '../../components/ui/TableActions';
 import { DetailDrawer } from '../../components/ui/DetailDrawer';
 import {
@@ -101,6 +103,17 @@ export default function ChequesPage() {
     onError: (e: any) => message.error(`Error al eliminar: ${errMsg(e)}`, 6),
   });
 
+  const COLS_DEF = [
+    { key: 'numero',       label: 'Número',       defaultVisible: true  },
+    { key: 'banco',        label: 'Banco',        defaultVisible: true  },
+    { key: 'tipo',         label: 'Tipo',         defaultVisible: true  },
+    { key: 'beneficiario', label: 'Beneficiario', defaultVisible: true  },
+    { key: 'fecha',        label: 'Fecha',        defaultVisible: true  },
+    { key: 'monto',        label: 'Monto',        defaultVisible: true  },
+    { key: 'estado',       label: 'Estado',       defaultVisible: true  },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('cheques', COLS_DEF);
+
   const cols = [
     { title: 'Número',      dataIndex: 'numero',       width: 100, render: (v: string) => <Text code strong>{v}</Text> },
     { title: 'Banco',       key: 'banco',              width: 130, render: (_: any, r: any) => r.chequera?.banco ?? '—' },
@@ -163,6 +176,7 @@ export default function ChequesPage() {
               message.success(`${filas.length} cheques exportados`);
             }}>Excel</Button>
             <RefreshByKeyButton queryKey={['cheques']} />
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <VideoTutorialButton />
             <Button onClick={() => setChequeraModal(true)}>
               <BankOutlined /> Nueva chequera
@@ -212,7 +226,7 @@ export default function ChequesPage() {
                   options={(chequeras ?? []).map((c: any) => ({ value: c.id, label: `${c.banco} ${c.numeroCuenta}` }))} />
               </Space>
             }>
-              <Table columns={cols} dataSource={cheques?.data ?? []} rowKey="id"
+              <Table columns={filterColumns(cols)} dataSource={cheques?.data ?? []} rowKey="id"
                 loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
                 pagination={{ total: cheques?.meta?.total, pageSize: 15, current: pageCheq,

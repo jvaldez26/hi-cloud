@@ -1,5 +1,7 @@
 ﻿import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   DatePicker, InputNumber, Space, Typography, Popconfirm,
@@ -207,6 +209,18 @@ export default function PreFacturaPage() {
     finally { setPdfPending(null); }
   };
 
+  // ─── Column visibility ────────────────────────────────────────────────────────
+
+  const COLS_DEF = [
+    { key: 'folio',           label: 'Folio',   defaultVisible: true  },
+    { key: 'fecha',           label: 'Fecha',   defaultVisible: true  },
+    { key: 'cliente',         label: 'Cliente', defaultVisible: true  },
+    { key: 'total',           label: 'Total',   defaultVisible: true  },
+    { key: 'estado',          label: 'Estado',  defaultVisible: true  },
+    { key: 'fv',              label: 'Vence',   defaultVisible: false },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('pre-facturas', COLS_DEF);
+
   // ─── Render ───────────────────────────────────────────────────────────────────
 
   return (
@@ -222,6 +236,7 @@ export default function PreFacturaPage() {
           </div>
         </div>
         <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
           <RefreshByKeyButton queryKey={['pre-facturas']} />
           <VideoTutorialButton />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalCrear(true)}>
@@ -238,7 +253,7 @@ export default function PreFacturaPage() {
           loading={isLoading}
           size="middle"
           pagination={{ pageSize: 15, total: preFacturas?.meta?.total }}
-          columns={[
+          columns={filterColumns([
             {
               title: 'Folio', dataIndex: 'folio', key: 'folio',
               render: v => <Text strong style={{ fontFamily: 'monospace' }}>{v}</Text>,
@@ -274,7 +289,7 @@ export default function PreFacturaPage() {
               render: v => v ?? <Text type="secondary">—</Text>,
             },
             {
-              title: '', key: 'acc', width: 210,
+              title: '', key: 'acciones', width: 210,
               render: (_, r: any) => (
                 <Space size={4}>
                   <Tooltip title="Ver detalle">
@@ -350,7 +365,7 @@ export default function PreFacturaPage() {
                 </Space>
               ),
             },
-          ]}
+          ])}
         />
       </Card>
 

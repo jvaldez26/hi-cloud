@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
 import {
   Card, Row, Col, Typography, Table, Tag, Statistic, Button,
@@ -51,6 +54,16 @@ export default function FlotaPage() {
   const [formVeh]  = Form.useForm();
   const [formReg]  = Form.useForm();
   const qc = useQueryClient();
+
+  const COLS_DEF = [
+    { key: 'fecha',        label: 'Fecha',        defaultVisible: true  },
+    { key: 'tipo',         label: 'Tipo',         defaultVisible: true  },
+    { key: 'monto',        label: 'Monto',        defaultVisible: true  },
+    { key: 'kilometraje',  label: 'Km',           defaultVisible: true  },
+    { key: 'litros',       label: 'Litros',       defaultVisible: false },
+    { key: 'descripcion',  label: 'Descripción',  defaultVisible: false },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('flota', COLS_DEF);
 
   const { data: dash }      = useQuery({ queryKey: ['flota-dash'],                    queryFn: flotaApi.dashboard });
   const { data: vehiculos } = useQuery({ queryKey: ['flota-vehs'],                    queryFn: flotaApi.vehiculos });
@@ -106,6 +119,9 @@ export default function FlotaPage() {
             }));
             exportarExcel(filas, 'Flota-Vehiculos');
           }}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['flota-vehs']} />
+          <VideoTutorialButton />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setCrearModal(true)}>
             Agregar vehículo
           </Button>
@@ -180,20 +196,20 @@ export default function FlotaPage() {
                 <Table size="small"
         scroll={{ x: 'max-content' }} pagination={false}
                   dataSource={registros?.data ?? []} rowKey="id"
-                  columns={[
-                    { title: 'Fecha',  dataIndex: 'fecha', width: 100, render: (v: string) => fmt.date(v) },
-                    { title: 'Tipo',   dataIndex: 'tipo',  width: 130, render: (v: string) => TIPO_REG.find(t => t.value === v)?.label ?? v },
-                    { title: 'Monto',  dataIndex: 'monto', width: 120, render: (v: number) => fmt.money(v) },
-                    { title: 'Km',     dataIndex: 'kilometraje', width: 80, render: (v: number) => v ? v.toLocaleString() : '—' },
-                    { title: 'Litros', dataIndex: 'litros', width: 70, render: (v: number) => v ? `${v}L` : '—' },
-                    { title: 'Descripción', dataIndex: 'descripcion', ellipsis: true, render: (v: string) => v ?? '—' },
-                    { title: '', key: 'del', width: 50,
+                  columns={filterColumns([
+                    { title: 'Fecha',  dataIndex: 'fecha',       key: 'fecha',       width: 100, render: (v: string) => fmt.date(v) },
+                    { title: 'Tipo',   dataIndex: 'tipo',        key: 'tipo',        width: 130, render: (v: string) => TIPO_REG.find(t => t.value === v)?.label ?? v },
+                    { title: 'Monto',  dataIndex: 'monto',       key: 'monto',       width: 120, render: (v: number) => fmt.money(v) },
+                    { title: 'Km',     dataIndex: 'kilometraje', key: 'kilometraje', width: 80,  render: (v: number) => v ? v.toLocaleString() : '—' },
+                    { title: 'Litros', dataIndex: 'litros',      key: 'litros',      width: 70,  render: (v: number) => v ? `${v}L` : '—' },
+                    { title: 'Descripción', dataIndex: 'descripcion', key: 'descripcion', ellipsis: true, render: (v: string) => v ?? '—' },
+                    { title: '', key: 'acciones', width: 50,
                       render: (_: any, r: any) => (
                         <Popconfirm title="¿Eliminar?" onConfirm={() => flotaApi.eliminarReg(r.id).then(() => inv())}>
                           <Button type="text" danger size="small">✕</Button>
                         </Popconfirm>
                       )},
-                  ]}
+                  ])}
                 />
               </Card>
             ),

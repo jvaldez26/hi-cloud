@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Typography, Select, Table, Tag, Statistic,
   Button, Space, Tabs, Alert, Divider, Progress,
@@ -51,31 +53,47 @@ export default function TSSPage() {
   const { data,       isLoading }  = useQuery({ queryKey: ['tss-mensual', mes, anio], queryFn: () => tssApi.mensual(mes, anio) });
   const { data: anualData }        = useQuery({ queryKey: ['tss-anual', anio],         queryFn: () => tssApi.anual(anio) });
 
-  const cols = [
-    { title: 'Cédula',        dataIndex: 'cedula',         width: 120, render: (v: string) => <Text code style={{ fontSize: 11 }}>{v}</Text> },
-    { title: 'Empleado',      dataIndex: 'nombre',         ellipsis: true },
-    { title: 'Cargo',         dataIndex: 'cargo',          width: 130, ellipsis: true },
-    { title: 'Sal. Bruto',    dataIndex: 'salarioBruto',   width: 120, render: (v: number) => fmt.money(v) },
-    { title: 'Base Cotiz.',   dataIndex: 'baseCotizable',  width: 115, render: (v: number) => fmt.money(v) },
+  const COLS_DEF = [
+    { key: 'cedula',        label: 'Cédula',        defaultVisible: false },
+    { key: 'nombre',        label: 'Empleado',      defaultVisible: true  },
+    { key: 'cargo',         label: 'Cargo',         defaultVisible: true  },
+    { key: 'salarioBruto',  label: 'Sal. Bruto',    defaultVisible: true  },
+    { key: 'baseCotizable', label: 'Base Cotiz.',   defaultVisible: false },
+    { key: 'sfs',           label: 'SFS',           defaultVisible: true  },
+    { key: 'afp',           label: 'AFP',           defaultVisible: true  },
+    { key: 'srlEmpleador',  label: 'SRL Emp.',      defaultVisible: false },
+    { key: 'totalEmpleado', label: 'Total Emp.',    defaultVisible: true  },
+    { key: 'totalEmpleador',label: 'Total Empr.',   defaultVisible: true  },
+    { key: 'totalGeneral',  label: 'Total',         defaultVisible: true  },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('tss', COLS_DEF);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cols = filterColumns(([
+    { title: 'Cédula',        dataIndex: 'cedula',         key: 'cedula',         width: 120, render: (v: string) => <Text code style={{ fontSize: 11 }}>{v}</Text> },
+    { title: 'Empleado',      dataIndex: 'nombre',         key: 'nombre',         ellipsis: true },
+    { title: 'Cargo',         dataIndex: 'cargo',          key: 'cargo',          width: 130, ellipsis: true },
+    { title: 'Sal. Bruto',    dataIndex: 'salarioBruto',   key: 'salarioBruto',   width: 120, render: (v: number) => fmt.money(v) },
+    { title: 'Base Cotiz.',   dataIndex: 'baseCotizable',  key: 'baseCotizable',  width: 115, render: (v: number) => fmt.money(v) },
     {
-      title: 'SFS',
+      title: 'SFS', key: 'sfs',
       children: [
         { title: 'Empleado', dataIndex: 'sfsEmpleado',  width: 100, render: (v: number) => <Text style={{ color: '#ef4444' }}>{fmt.money(v)}</Text> },
         { title: 'Empleador',dataIndex: 'sfsEmpleador', width: 100, render: (v: number) => <Text style={{ color: '#1677ff' }}>{fmt.money(v)}</Text> },
       ],
     },
     {
-      title: 'AFP',
+      title: 'AFP', key: 'afp',
       children: [
         { title: 'Empleado', dataIndex: 'afpEmpleado',  width: 100, render: (v: number) => <Text style={{ color: '#ef4444' }}>{fmt.money(v)}</Text> },
         { title: 'Empleador',dataIndex: 'afpEmpleador', width: 100, render: (v: number) => <Text style={{ color: '#1677ff' }}>{fmt.money(v)}</Text> },
       ],
     },
-    { title: 'SRL Emp.',      dataIndex: 'srlEmpleador',   width: 95, render: (v: number) => fmt.money(v) },
-    { title: 'Total Emp.',    dataIndex: 'totalEmpleado',  width: 110, render: (v: number) => <Text strong style={{ color: '#ef4444' }}>{fmt.money(v)}</Text> },
-    { title: 'Total Empr.',   dataIndex: 'totalEmpleador', width: 110, render: (v: number) => <Text strong style={{ color: '#1677ff' }}>{fmt.money(v)}</Text> },
-    { title: 'Total',         dataIndex: 'totalGeneral',   width: 120, render: (v: number) => <Text strong>{fmt.money(v)}</Text> },
-  ];
+    { title: 'SRL Emp.',      dataIndex: 'srlEmpleador',   key: 'srlEmpleador',   width: 95, render: (v: number) => fmt.money(v) },
+    { title: 'Total Emp.',    dataIndex: 'totalEmpleado',  key: 'totalEmpleado',  width: 110, render: (v: number) => <Text strong style={{ color: '#ef4444' }}>{fmt.money(v)}</Text> },
+    { title: 'Total Empr.',   dataIndex: 'totalEmpleador', key: 'totalEmpleador', width: 110, render: (v: number) => <Text strong style={{ color: '#1677ff' }}>{fmt.money(v)}</Text> },
+    { title: 'Total',         dataIndex: 'totalGeneral',   key: 'totalGeneral',   width: 120, render: (v: number) => <Text strong>{fmt.money(v)}</Text> },
+  ] as any));
 
   return (
     <div>
@@ -92,6 +110,7 @@ export default function TSSPage() {
             <Select value={mes} onChange={setMes} style={{ width: 130 }} options={MESES} />
             <Select value={anio} onChange={setAnio} style={{ width: 90 }}
               options={[2024, 2025, 2026].map(y => ({ value: y, label: y }))} />
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <RefreshByKeyButton queryKey={['tss']} />
             <VideoTutorialButton />
           </Space>

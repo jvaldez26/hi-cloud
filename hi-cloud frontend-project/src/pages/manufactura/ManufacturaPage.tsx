@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Typography, Select, Table, Tag, Statistic,
   Button, Space, Modal, Form, Input, InputNumber, Tabs,
@@ -416,12 +418,21 @@ export default function ManufacturaPage() {
       )},
   ];
 
+  const COLS_DEF_OP = [
+    { key: 'numero',             label: 'Número',   defaultVisible: true  },
+    { key: 'prod',               label: 'Producto', defaultVisible: true  },
+    { key: 'cantidadPlanificada',label: 'Cantidad', defaultVisible: true  },
+    { key: 'fechaInicio',        label: 'Inicio',   defaultVisible: true  },
+    { key: 'estado',             label: 'Estado',   defaultVisible: true  },
+  ];
+  const { visibleColumns: visibleColumnsOP, updateVisibility: updateVisibilityOP, filterColumns: filterColumnsOP } = useColumnVisibility('manufactura', COLS_DEF_OP);
+
   const colsOP = [
-    { title: 'Número',    dataIndex: 'numero',             width: 130, render: (v: string) => <Text code strong>{v}</Text> },
+    { title: 'Número',    dataIndex: 'numero',             key: 'numero',              width: 130, render: (v: string) => <Text code strong>{v}</Text> },
     { title: 'Producto',  key: 'prod',                     ellipsis: true, render: (_: any, r: any) => r.lista?.nombre ?? '—' },
-    { title: 'Cantidad',  dataIndex: 'cantidadPlanificada',width: 100 },
-    { title: 'Inicio',    dataIndex: 'fechaInicio',         width: 100, render: (v: string) => fmt.date(v) },
-    { title: 'Estado',    dataIndex: 'estado',              width: 120,
+    { title: 'Cantidad',  dataIndex: 'cantidadPlanificada',key: 'cantidadPlanificada', width: 100 },
+    { title: 'Inicio',    dataIndex: 'fechaInicio',        key: 'fechaInicio',          width: 100, render: (v: string) => fmt.date(v) },
+    { title: 'Estado',    dataIndex: 'estado',             key: 'estado',               width: 120,
       render: (v: string) => {
         const e = ESTADO_OP.find(x => x.value === v);
         return <Tag color={e?.color}>{e?.label ?? v}</Tag>;
@@ -462,6 +473,9 @@ export default function ManufacturaPage() {
           </Title>
         </Col>
         <Col>
+          {tabKey === 'ordenes' && (
+            <ColumnToggle columns={COLS_DEF_OP} visibleColumns={visibleColumnsOP} onChange={updateVisibilityOP} />
+          )}
           <Button icon={<FileExcelOutlined />} onClick={() => {
             const rows = tabKey === 'lm' ? (lms?.data ?? lms ?? []) : (ordenes?.data ?? ordenes ?? []);
             const filas = rows.map((r: any) => ({
@@ -504,7 +518,7 @@ export default function ManufacturaPage() {
                 value={estadoF} onChange={v => { setEstadoF(v); setPageOP(1); }}
                 options={ESTADO_OP.map(e => ({ value: e.value, label: <Tag color={e.color}>{e.label}</Tag> }))} />
             }>
-              <Table columns={colsOP} dataSource={ordenes?.data ?? []} rowKey="id"
+              <Table columns={filterColumnsOP(colsOP)} dataSource={ordenes?.data ?? []} rowKey="id"
                 loading={loadOP} size="small"
         scroll={{ x: 'max-content' }}
                 pagination={{ total: ordenes?.meta?.total, pageSize: 10, current: pageOP,

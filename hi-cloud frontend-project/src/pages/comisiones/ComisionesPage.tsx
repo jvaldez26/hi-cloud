@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Card, Row, Col, Typography, Statistic, Button, Table, Tag,
          Select, InputNumber, Space, message, Tabs, Popconfirm, Modal,
          Form, Input } from 'antd';
@@ -70,12 +72,22 @@ function MiResumenTab() {
   );
 }
 
+const COLS_DEF_COMISIONES = [
+  { key: 'vend',              label: 'Vendedor',   defaultVisible: true  },
+  { key: 'periodo',           label: 'Período',    defaultVisible: true  },
+  { key: 'montoVenta',        label: 'Venta',      defaultVisible: true  },
+  { key: 'porcentajeComision',label: '%',          defaultVisible: true  },
+  { key: 'montoComision',     label: 'Comisión',   defaultVisible: true  },
+  { key: 'estado',            label: 'Estado',     defaultVisible: true  },
+];
+
 function AdminTab() {
   const [mes,  setMes]  = useState(dayjs().month() + 1);
   const [anio, setAnio] = useState(dayjs().year());
   const [pct,  setPct]  = useState(5);
   const [estado, setEstado] = useState<string | undefined>();
   const qc = useQueryClient();
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('comisiones', COLS_DEF_COMISIONES);
 
   const { data: lista, isLoading } = useQuery({
     queryKey: ['comisiones-lista', estado],
@@ -138,13 +150,14 @@ function AdminTab() {
           }}>Excel</Button>
             <RefreshByKeyButton queryKey={['comisiones']} />
             <VideoTutorialButton />
+            <ColumnToggle columns={COLS_DEF_COMISIONES} visibleColumns={visibleColumns} onChange={updateVisibility} />
         </Col>
       </Row>
 
       <Table size="small"
         scroll={{ x: 'max-content' }} loading={isLoading}
         dataSource={lista ?? []} rowKey="id"
-        columns={[
+        columns={filterColumns([
           { title: 'Vendedor', key: 'vend', ellipsis: true,
             render: (_: any, r: any) => r.vendedor?.nombre ?? r.vendedorNombre ?? `#${r.vendedorId}`,
           },
@@ -168,7 +181,7 @@ function AdminTab() {
                 )}
               </Space>
             )},
-        ]} />
+        ])} />
     </>
   );
 }

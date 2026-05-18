@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Typography, Table, Tag, Button,
   Space, Modal, Form, Select, InputNumber, Tabs,
@@ -66,6 +68,15 @@ export default function EvaluacionesPage() {
   const handleCrear = (values: any) => {
     crearMut.mutate({ ...values, criterios, anio });
   };
+
+  const COLS_DEF = [
+    { key: 'emp',                   label: 'Empleado',      defaultVisible: true  },
+    { key: 'periodo',               label: 'Período',       defaultVisible: true  },
+    { key: 'semestre',              label: 'Semestre',      defaultVisible: false },
+    { key: 'calificacionGeneral',   label: 'Calificación',  defaultVisible: true  },
+    { key: 'estado',                label: 'Estado',        defaultVisible: true  },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('evaluaciones', COLS_DEF);
 
   const cols = [
     { title: 'Empleado', key: 'emp', ellipsis: true,
@@ -139,6 +150,7 @@ export default function EvaluacionesPage() {
               onClick={() => { setCrearModal(true); form.resetFields(); setCriterios({}); }}>
               Nueva evaluación
             </Button>
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
           </Space>
         </Col>
       </Row>
@@ -149,7 +161,7 @@ export default function EvaluacionesPage() {
           label: 'Evaluaciones',
           children: (
             <Card>
-              <Table columns={cols} dataSource={evaluaciones ?? []} rowKey="id"
+              <Table columns={filterColumns(cols)} dataSource={evaluaciones ?? []} rowKey="id"
                 loading={isLoading} size="small"
         scroll={{ x: 'max-content' }} pagination={false} />
             </Card>

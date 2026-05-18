@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Table, Button, Card, Row, Col, Typography, Statistic, Tag, Space,
          Modal, Form, Input, InputNumber, Select, message, Popconfirm,
          Tabs, Alert } from 'antd';
@@ -76,17 +78,29 @@ function ListadoTab() {
     finally { setPdfPending(null); }
   };
 
+  const COLS_DEF = [
+    { key: 'periodo',            label: 'Período',    defaultVisible: true  },
+    { key: 'nombreProveedor',    label: 'Proveedor',  defaultVisible: true  },
+    { key: 'rncProveedor',       label: 'RNC',        defaultVisible: false },
+    { key: 'tipoServicio',       label: 'Tipo',       defaultVisible: true  },
+    { key: 'montoBruto',         label: 'Bruto',      defaultVisible: true  },
+    { key: 'porcentajeRetencion',label: '% Ret.',     defaultVisible: false },
+    { key: 'montoRetenido',      label: 'Retenido',   defaultVisible: true  },
+    { key: 'montoNeto',          label: 'Neto',       defaultVisible: true  },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('retenciones', COLS_DEF);
+
   const cols = [
-    { title: 'Período',    dataIndex: 'periodo',           width: 90 },
-    { title: 'Proveedor',  dataIndex: 'nombreProveedor',   ellipsis: true },
-    { title: 'RNC',        dataIndex: 'rncProveedor',      width: 110, render: (v: string) => v ?? '—' },
-    { title: 'Tipo',       dataIndex: 'tipoServicio',      width: 150,
+    { title: 'Período',    dataIndex: 'periodo',           key: 'periodo',            width: 90 },
+    { title: 'Proveedor',  dataIndex: 'nombreProveedor',   key: 'nombreProveedor',    ellipsis: true },
+    { title: 'RNC',        dataIndex: 'rncProveedor',      key: 'rncProveedor',       width: 110, render: (v: string) => v ?? '—' },
+    { title: 'Tipo',       dataIndex: 'tipoServicio',      key: 'tipoServicio',       width: 150,
       render: (v: string) => <Tag style={{ textTransform: 'capitalize' }}>{v.replace('_', ' ')}</Tag> },
-    { title: 'Bruto',      dataIndex: 'montoBruto',        width: 120, render: (v: number) => fmt.money(v) },
-    { title: '% Ret.',     dataIndex: 'porcentajeRetencion', width: 80, render: (v: number) => `${v}%` },
-    { title: 'Retenido',   dataIndex: 'montoRetenido',     width: 110,
+    { title: 'Bruto',      dataIndex: 'montoBruto',        key: 'montoBruto',         width: 120, render: (v: number) => fmt.money(v) },
+    { title: '% Ret.',     dataIndex: 'porcentajeRetencion', key: 'porcentajeRetencion', width: 80, render: (v: number) => `${v}%` },
+    { title: 'Retenido',   dataIndex: 'montoRetenido',     key: 'montoRetenido',      width: 110,
       render: (v: number) => <Text style={{ color: '#ef4444' }} strong>{fmt.money(v)}</Text> },
-    { title: 'Neto',       dataIndex: 'montoNeto',         width: 110,
+    { title: 'Neto',       dataIndex: 'montoNeto',         key: 'montoNeto',          width: 110,
       render: (v: number) => <Text style={{ color: '#10b981' }} strong>{fmt.money(v)}</Text> },
     { title: '', key: 'del', width: 80,
       render: (_: any, r: any) => (
@@ -111,13 +125,14 @@ function ListadoTab() {
       <Row justify="end" style={{ marginBottom: 12 }}>
         <Space size={2}>
           <RefreshByKeyButton queryKey={['retenciones']} />
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
           <VideoTutorialButton />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => { setOpen(true); form.resetFields(); }}>
             Registrar retención
           </Button>
         </Space>
       </Row>
-      <Table columns={cols} dataSource={data?.data ?? []} rowKey="id"
+      <Table columns={filterColumns(cols)} dataSource={data?.data ?? []} rowKey="id"
         loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
         pagination={{ total: data?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }} />

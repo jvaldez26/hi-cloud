@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Table, Tag, Button, Modal, Form, Input,
   Select, Space, Typography, Statistic, Popconfirm, message,
@@ -72,6 +74,64 @@ export default function AprobacionesPage() {
 
   const items = aprobaciones?.data ?? [];
 
+  const COLS_DEF = [
+    { key: 't',   label: 'Tipo',           defaultVisible: true  },
+    { key: 'ref', label: 'Ref.',            defaultVisible: false },
+    { key: 'm',   label: 'Monto',          defaultVisible: true  },
+    { key: 'ns',  label: 'Solicitado por', defaultVisible: true  },
+    { key: 'cs',  label: 'Solicitud',      defaultVisible: true  },
+    { key: 'e',   label: 'Estado',         defaultVisible: true  },
+    { key: 'cr',  label: 'Resolución',     defaultVisible: false },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('aprobaciones', COLS_DEF);
+
+  const cols = [
+    {
+      title: 'Tipo', dataIndex: 'tipo', key: 't',
+      render: (v: any) => <Tag color={TIPO_LABELS[v]?.color}>{TIPO_LABELS[v]?.label ?? v}</Tag>,
+    },
+    {
+      title: 'Ref.', dataIndex: 'entidadRef', key: 'ref',
+      render: (v: any) => v ? <Text strong style={{ fontFamily: 'mono' }}>{v}</Text> : <Text type="secondary">—</Text>,
+    },
+    {
+      title: 'Monto', dataIndex: 'monto', key: 'm', align: 'right' as const,
+      render: (v: any) => v ? fmt(v) : <Text type="secondary">—</Text>,
+    },
+    { title: 'Solicitado por', dataIndex: 'nombreSolicitante', key: 'ns' },
+    {
+      title: 'Solicitud', dataIndex: 'comentarioSolicitud', key: 'cs',
+      render: (v: any) => v ? <Text type="secondary" style={{ fontSize: 12 }}>{v.slice(0, 60)}</Text> : '—',
+    },
+    {
+      title: 'Estado', dataIndex: 'estado', key: 'e',
+      render: (v: any) => {
+        const conf = ESTADO_CONFIG[v];
+        return <Tag color={conf?.color} icon={conf?.icon}>{conf?.label}</Tag>;
+      },
+    },
+    {
+      title: 'Resolución', dataIndex: 'comentarioResolucion', key: 'cr',
+      render: (v: any) => v ? <Text type="secondary" style={{ fontSize: 12 }}>{v.slice(0, 50)}</Text> : '—',
+    },
+    {
+      title: '', key: 'acc', width: 160,
+      render: (_: any, r: any) => r.estado === 'pendiente' ? (
+        <Space>
+          <Button size="small" icon={<CheckCircleOutlined />}
+            style={{ color: token.colorSuccess, borderColor: token.colorSuccess }}
+            onClick={() => setModalResolver({ id: r.id, accion: 'aprobar' })}>
+            Aprobar
+          </Button>
+          <Button size="small" danger
+            onClick={() => setModalResolver({ id: r.id, accion: 'rechazar' })}>
+            Rechazar
+          </Button>
+        </Space>
+      ) : null,
+    },
+  ];
+
   return (
     <div style={{ padding: 24 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
@@ -82,9 +142,12 @@ export default function AprobacionesPage() {
             <Text type="secondary">Flujo de aprobación para cotizaciones, compras y gastos</Text>
           </div>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalSolicitud(true)}>
-          Nueva Solicitud
-        </Button>
+        <Space>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalSolicitud(true)}>
+            Nueva Solicitud
+          </Button>
+        </Space>
       </div>
 
 
@@ -108,52 +171,7 @@ export default function AprobacionesPage() {
           loading={isLoading}
           size="middle"
           pagination={{ pageSize: 15 }}
-          columns={[
-            {
-              title: 'Tipo', dataIndex: 'tipo', key: 't',
-              render: v => <Tag color={TIPO_LABELS[v]?.color}>{TIPO_LABELS[v]?.label ?? v}</Tag>,
-            },
-            {
-              title: 'Ref.', dataIndex: 'entidadRef', key: 'ref',
-              render: v => v ? <Text strong style={{ fontFamily: 'mono' }}>{v}</Text> : <Text type="secondary">—</Text>,
-            },
-            {
-              title: 'Monto', dataIndex: 'monto', key: 'm', align: 'right',
-              render: v => v ? fmt(v) : <Text type="secondary">—</Text>,
-            },
-            { title: 'Solicitado por', dataIndex: 'nombreSolicitante', key: 'ns' },
-            {
-              title: 'Solicitud', dataIndex: 'comentarioSolicitud', key: 'cs',
-              render: v => v ? <Text type="secondary" style={{ fontSize: 12 }}>{v.slice(0, 60)}</Text> : '—',
-            },
-            {
-              title: 'Estado', dataIndex: 'estado', key: 'e',
-              render: v => {
-                const conf = ESTADO_CONFIG[v];
-                return <Tag color={conf?.color} icon={conf?.icon}>{conf?.label}</Tag>;
-              },
-            },
-            {
-              title: 'Resolución', dataIndex: 'comentarioResolucion', key: 'cr',
-              render: v => v ? <Text type="secondary" style={{ fontSize: 12 }}>{v.slice(0, 50)}</Text> : '—',
-            },
-            {
-              title: '', key: 'acc', width: 160,
-              render: (_, r: any) => r.estado === 'pendiente' ? (
-                <Space>
-                  <Button size="small" icon={<CheckCircleOutlined />}
-                    style={{ color: token.colorSuccess, borderColor: token.colorSuccess }}
-                    onClick={() => setModalResolver({ id: r.id, accion: 'aprobar' })}>
-                    Aprobar
-                  </Button>
-                  <Button size="small" danger
-                    onClick={() => setModalResolver({ id: r.id, accion: 'rechazar' })}>
-                    Rechazar
-                  </Button>
-                </Space>
-              ) : null,
-            },
-          ]}
+          columns={filterColumns(cols)}
         />
       </Card>
 

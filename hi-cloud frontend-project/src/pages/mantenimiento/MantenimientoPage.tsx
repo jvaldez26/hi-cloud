@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { exportarExcel } from '../../utils/exportExcel';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Typography, Table, Tag, Button,
   Space, Modal, Form, Input, Select, DatePicker, InputNumber,
@@ -100,22 +102,33 @@ export default function MantenimientoPage() {
     value: a.id, label: `${a.codigo} — ${a.descripcion}`,
   }));
 
+  const COLS_DEF = [
+    { key: 'numero',         label: 'Número',     defaultVisible: true  },
+    { key: 'act',            label: 'Activo',     defaultVisible: true  },
+    { key: 'tipo',           label: 'Tipo',       defaultVisible: true  },
+    { key: 'prioridad',      label: 'Prioridad',  defaultVisible: true  },
+    { key: 'fechaProgramada',label: 'Programado', defaultVisible: true  },
+    { key: 'estado',         label: 'Estado',     defaultVisible: true  },
+    { key: 'costoEstimado',  label: 'Costo est.', defaultVisible: false },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('mantenimiento', COLS_DEF);
+
   const cols = [
-    { title: 'Número',   dataIndex: 'numero',      width: 130, render: (v: string) => <Text code>{v}</Text> },
+    { title: 'Número',   dataIndex: 'numero',      key: 'numero',          width: 130, render: (v: string) => <Text code>{v}</Text> },
     { title: 'Activo',   key: 'act',               ellipsis: true, render: (_: any, r: any) => r.activo?.descripcion ?? '—' },
-    { title: 'Tipo',     dataIndex: 'tipo',         width: 110, render: (v: string) => TIPO_MNT.find(t => t.value === v)?.label ?? v },
-    { title: 'Prioridad',dataIndex: 'prioridad',    width: 100,
+    { title: 'Tipo',     dataIndex: 'tipo',         key: 'tipo',            width: 110, render: (v: string) => TIPO_MNT.find(t => t.value === v)?.label ?? v },
+    { title: 'Prioridad',dataIndex: 'prioridad',    key: 'prioridad',       width: 100,
       render: (v: string) => {
         const p = PRIORIDAD.find(x => x.value === v);
         return <Tag color={p?.color}>{p?.label ?? v}</Tag>;
       }},
-    { title: 'Programado',dataIndex:'fechaProgramada',width: 105, render: (v: string) => fmt.date(v) },
-    { title: 'Estado',   dataIndex: 'estado',       width: 110,
+    { title: 'Programado',dataIndex:'fechaProgramada', key: 'fechaProgramada', width: 105, render: (v: string) => fmt.date(v) },
+    { title: 'Estado',   dataIndex: 'estado',       key: 'estado',          width: 110,
       render: (v: string) => {
         const s = ESTADO_MNT[v] ?? { label: v, color: 'default' };
         return <Tag color={s.color}>{s.label}</Tag>;
       }},
-    { title: 'Costo est.',dataIndex: 'costoEstimado',width: 110, render: (v: number) => v ? fmt.money(v) : '—' },
+    { title: 'Costo est.',dataIndex: 'costoEstimado', key: 'costoEstimado', width: 110, render: (v: number) => v ? fmt.money(v) : '—' },
     { title: '', key: 'actions', width: 120,
       render: (_: any, r: any) => (
         <Space size={4}>
@@ -149,6 +162,7 @@ export default function MantenimientoPage() {
             <Button icon={<CalendarOutlined />} onClick={() => setProgModal(true)}>
               Programa preventivo
             </Button>
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <Button icon={<FileExcelOutlined />} onClick={() => {
               const filas = (ordenes?.data ?? []).map((o: any) => ({
                 'Número':    o.numero ?? '',
@@ -181,7 +195,7 @@ export default function MantenimientoPage() {
                   value: v, label: <Tag color={s.color}>{s.label}</Tag>,
                 }))} />
             }>
-              <Table columns={cols} dataSource={ordenes?.data ?? []} rowKey="id"
+              <Table columns={filterColumns(cols)} dataSource={ordenes?.data ?? []} rowKey="id"
                 loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
                 pagination={{ total: ordenes?.meta?.total, pageSize: 15, current: pageOrd,

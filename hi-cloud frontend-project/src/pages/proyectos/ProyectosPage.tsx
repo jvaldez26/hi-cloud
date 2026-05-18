@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { exportarExcel } from '../../utils/exportExcel';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { usePlanGuard } from '../../hooks/usePlan';
 import ModuloBloqueado from '../../components/ui/ModuloBloqueado';
 import {
@@ -581,22 +583,32 @@ export default function ProyectosPage() {
     onSuccess: () => { inv(); setDetalle(null); message.success('Eliminado'); },
   });
 
+  const COLS_DEF = [
+    { key: 'nombre',           label: 'Nombre',      defaultVisible: true  },
+    { key: 'estado',           label: 'Estado',      defaultVisible: true  },
+    { key: 'avance',           label: 'Avance',      defaultVisible: true  },
+    { key: 'presupuesto',      label: 'Presupuesto', defaultVisible: true  },
+    { key: 'horasRegistradas', label: 'Horas reg.',  defaultVisible: false },
+    { key: 'fechaFin',         label: 'Vence',       defaultVisible: true  },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('proyectos', COLS_DEF);
+
   const cols = [
-    { title: 'Nombre',      dataIndex: 'nombre',    ellipsis: true,
+    { title: 'Nombre',      dataIndex: 'nombre',    key: 'nombre',           ellipsis: true,
       render: (v: string, r: any) => (
         <Button type="link" style={{ padding: 0 }} onClick={() => setDetalle(r)}>{v}</Button>
       )},
-    { title: 'Estado',      dataIndex: 'estado',    width: 120,
+    { title: 'Estado',      dataIndex: 'estado',    key: 'estado',           width: 120,
       render: (v: string) => {
         const e = ESTADO_PROY.find(s => s.value === v);
         return <Tag color={e?.color}>{e?.label ?? v}</Tag>;
       }},
-    { title: 'Avance',      dataIndex: 'avance',    width: 140,
+    { title: 'Avance',      dataIndex: 'avance',    key: 'avance',           width: 140,
       render: (v: number) => <Progress percent={v} size="small" steps={10} /> },
-    { title: 'Presupuesto', dataIndex: 'presupuesto', width: 120, render: (v: number) => fmt.money(v) },
-    { title: 'Horas reg.',  dataIndex: 'horasRegistradas', width: 90,
+    { title: 'Presupuesto', dataIndex: 'presupuesto', key: 'presupuesto',    width: 120, render: (v: number) => fmt.money(v) },
+    { title: 'Horas reg.',  dataIndex: 'horasRegistradas', key: 'horasRegistradas', width: 90,
       render: (v: number) => `${Number(v ?? 0).toFixed(1)} h` },
-    { title: 'Vence',       dataIndex: 'fechaFin',  width: 100,
+    { title: 'Vence',       dataIndex: 'fechaFin',  key: 'fechaFin',         width: 100,
       render: (v: string) => v ? (
         <Text type={new Date(v) < new Date() ? 'danger' : 'secondary'}>{fmt.date(v)}</Text>
       ) : '—' },
@@ -614,6 +626,7 @@ export default function ProyectosPage() {
         <Col><Title level={4} style={{ margin: 0 }}>Gestión de Proyectos</Title></Col>
         <Col>
           <Space>
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <Button icon={<FileExcelOutlined />} onClick={() => {
               const filas = (proyectos?.data ?? []).map((p: any) => ({
                 'Código':      p.codigo ?? '',
@@ -640,7 +653,7 @@ export default function ProyectosPage() {
           style={{ width: 140 }}
           options={ESTADO_PROY.map(e => ({ value: e.value, label: <Tag color={e.color}>{e.label}</Tag> }))} />
       }>
-        <Table columns={cols} dataSource={proyectos?.data ?? []} rowKey="id"
+        <Table columns={filterColumns(cols)} dataSource={proyectos?.data ?? []} rowKey="id"
           loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
           pagination={{ total: proyectos?.meta?.total, pageSize: 10, current: page,

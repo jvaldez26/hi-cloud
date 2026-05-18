@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { exportarExcel } from '../../utils/exportExcel';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Table, Button, Tag, Card, Row, Col, Typography, Statistic,
          Modal, Form, Input, InputNumber, Select, Tabs, message,
          Space, Progress, Popconfirm, DatePicker, Drawer } from 'antd';
@@ -35,6 +37,17 @@ export default function ActivosFijosPage() {
   const createMut  = useMutation({ mutationFn: activosFijosApi.createActivo, onSuccess: () => { qc.invalidateQueries({ queryKey: ['activos'] }); setOpen(false); form.resetFields(); message.success('Activo registrado'); }, onError: (e: any) => onErr(e, 'Error al registrar activo') });
   const bajaMut    = useMutation({ mutationFn: ({ id, body }: any) => activosFijosApi.darDeBaja(id, body), onSuccess: () => { qc.invalidateQueries({ queryKey: ['activos'] }); setOpenBaja(null); message.success('Activo dado de baja'); }, onError: (e: any) => onErr(e, 'Error al dar de baja') });
   const deprMut    = useMutation({ mutationFn: activosFijosApi.procesarDepreciacion, onSuccess: (d) => { qc.invalidateQueries({ queryKey: ['activos'] }); setOpenDepr(false); message.success(`${d.activosDepreciados} activos depreciados — Total: ${fmt.money(d.totalDepreciacion)}`); }, onError: (e: any) => message.error(e?.response?.data?.errors?.[0] ?? 'Error al procesar') });
+
+  const COLS_DEF = [
+    { key: 'codigo',               label: 'Código',       defaultVisible: true  },
+    { key: 'descripcion',          label: 'Descripción',  defaultVisible: true  },
+    { key: 'cat',                  label: 'Categoría',    defaultVisible: true  },
+    { key: 'costoAdquisicion',     label: 'Costo Hist.',  defaultVisible: true  },
+    { key: 'depreciacionAcumulada',label: 'Dep. Acum.',   defaultVisible: false },
+    { key: 'valorLibros',          label: 'Valor Libros', defaultVisible: true  },
+    { key: 'estado',               label: 'Estado',       defaultVisible: true  },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('activos-fijos', COLS_DEF);
 
   const cols = [
     { title: 'Código',      dataIndex: 'codigo',        width: 100 },
@@ -83,6 +96,7 @@ export default function ActivosFijosPage() {
 
       <Card extra={
         <Space>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
           <Button icon={<FileExcelOutlined />} onClick={() => {
             const filas = (activos?.data ?? []).map((a: any) => ({
               'Código':       a.codigo ?? '',
@@ -101,7 +115,7 @@ export default function ActivosFijosPage() {
           <Button type="primary" icon={<PlusOutlined />} onClick={() => { setOpen(true); form.resetFields(); }}>Nuevo activo</Button>
         </Space>
       }>
-        <Table columns={cols} dataSource={activos?.data ?? []} rowKey="id" loading={isLoading} size="small"
+        <Table columns={filterColumns(cols)} dataSource={activos?.data ?? []} rowKey="id" loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
           pagination={{ total: activos?.meta?.total, pageSize: 12, current: page, onChange: setPage, showSizeChanger: false }} />
       </Card>

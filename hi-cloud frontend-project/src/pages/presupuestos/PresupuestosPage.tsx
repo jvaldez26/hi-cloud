@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Table, Button, Tag, Card, Row, Col, Typography, Statistic, Modal,
          Form, Input, InputNumber, Select, Tabs, message, Space, Drawer, Progress } from 'antd';
 import { PlusOutlined, BarChartOutlined, CheckOutlined, FileExcelOutlined, FilePdfOutlined, LoadingOutlined } from '@ant-design/icons';
@@ -61,6 +63,36 @@ export default function PresupuestosPage() {
     } catch (e: any) { message.error(`No se pudo generar el PDF: ${e?.message ?? ''}`); }
     finally { setPdfPending(null); }
   };
+
+  const COLS_DEF = [
+    { key: 'anio',              label: 'Año',    defaultVisible: true  },
+    { key: 'nombre',            label: 'Nombre', defaultVisible: true  },
+    { key: 'tipo',              label: 'Tipo',   defaultVisible: true  },
+    { key: 'totalPresupuestado',label: 'Total',  defaultVisible: true  },
+    { key: 'estado',            label: 'Estado', defaultVisible: true  },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('presupuestos', COLS_DEF);
+
+  const presCols = [
+    { title: 'Año',    dataIndex: 'anio',              key: 'anio',              width: 70 },
+    { title: 'Nombre', dataIndex: 'nombre',            key: 'nombre',            ellipsis: true },
+    { title: 'Tipo',   dataIndex: 'tipo',              key: 'tipo',              width: 90, render: (v: string) => <Tag>{tipoLabel[v]}</Tag> },
+    { title: 'Total',  dataIndex: 'totalPresupuestado',key: 'totalPresupuestado',width: 130, render: (v: number) => fmt.money(v) },
+    { title: 'Estado', dataIndex: 'estado',            key: 'estado',            width: 100, render: (v: string) => <Tag color={estadoColor[v]}>{v?.toUpperCase()}</Tag> },
+    { title: '', key: 'actions', width: 180,
+      render: (_: any, r: any) => (
+        <Space size={4}>
+          <Button size="small" icon={<BarChartOutlined />} onClick={() => setOpenVar(r)}>Variación</Button>
+          <Button size="small" type="text"
+            icon={pdfPending === r.id ? <LoadingOutlined /> : <FilePdfOutlined />}
+            disabled={pdfPending === r.id}
+            onClick={() => descargarPDF(r)}
+            title="Descargar PDF"
+          />
+          {r.estado === 'borrador' && <Button size="small" type="primary" icon={<CheckOutlined />} onClick={() => aprobarMut.mutate(r.id)}>Aprobar</Button>}
+        </Space>
+      )},
+  ];
 
   const comparChart = (comparativa?.meses ?? []).map((m: any) => ({
     mes: m.etiqueta, ventas: m.ventas, compras: m.compras, gastos: m.gastos,
@@ -140,6 +172,7 @@ export default function PresupuestosPage() {
                       exportarExcel(filas, `Presupuestos-${anio}`);
                       message.success(`${filas.length} presupuestos exportados`);
                     }}>Excel</Button>
+                    <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
                     <Button type="primary" icon={<PlusOutlined />} onClick={() => { setOpen(true); form.resetFields(); }}>Nuevo presupuesto</Button>
                   </Space>
                 </Col>
@@ -147,26 +180,7 @@ export default function PresupuestosPage() {
               <Table dataSource={lista?.data ?? []} rowKey="id" loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
                 pagination={{ total: lista?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }}
-                columns={[
-                  { title: 'Año',     dataIndex: 'anio',         width: 70 },
-                  { title: 'Nombre',  dataIndex: 'nombre',       ellipsis: true },
-                  { title: 'Tipo',    dataIndex: 'tipo',         width: 90, render: (v: string) => <Tag>{tipoLabel[v]}</Tag> },
-                  { title: 'Total',   dataIndex: 'totalPresupuestado', width: 130, render: (v: number) => fmt.money(v) },
-                  { title: 'Estado',  dataIndex: 'estado',       width: 100, render: (v: string) => <Tag color={estadoColor[v]}>{v?.toUpperCase()}</Tag> },
-                  { title: '', key: 'actions', width: 180,
-                    render: (_: any, r: any) => (
-                      <Space size={4}>
-                        <Button size="small" icon={<BarChartOutlined />} onClick={() => setOpenVar(r)}>Variación</Button>
-                        <Button size="small" type="text"
-                          icon={pdfPending === r.id ? <LoadingOutlined /> : <FilePdfOutlined />}
-                          disabled={pdfPending === r.id}
-                          onClick={() => descargarPDF(r)}
-                          title="Descargar PDF"
-                        />
-                        {r.estado === 'borrador' && <Button size="small" type="primary" icon={<CheckOutlined />} onClick={() => aprobarMut.mutate(r.id)}>Aprobar</Button>}
-                      </Space>
-                    )},
-                ]} />
+                columns={filterColumns(presCols)} />
             </>
           ),
         },
