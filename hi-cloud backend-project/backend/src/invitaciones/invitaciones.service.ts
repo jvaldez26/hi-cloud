@@ -40,11 +40,12 @@ export class InvitacionesService {
     // ── Verificar límite de usuarios del plan ANTES de enviar la invitación ──
     await this.limitesService.verificarLimiteUsuarios(empresaId);
 
-    // Verificar si ya tiene acceso a la empresa
-    const acceso = await this.ueRepo.findOne({ where: { empresaId, isActive: true } });
+    // Verificar si el usuario ya tiene acceso activo a esta empresa
     const userExistente = await this.userRepo.findOne({ where: { email } });
-    if (userExistente && acceso) {
-      const yaAsignado = await this.ueRepo.findOne({ where: { userId: userExistente.id, empresaId, isActive: true } });
+    if (userExistente) {
+      const yaAsignado = await this.ueRepo.findOne({
+        where: { userId: userExistente.id, empresaId, isActive: true },
+      });
       if (yaAsignado) throw new ConflictException(`${email} ya tiene acceso a esta empresa`);
     }
 
@@ -214,11 +215,16 @@ export class InvitacionesService {
     // Asignar a la empresa
     const yaAsignado = await this.ueRepo.findOne({ where: { userId: user.id, empresaId: inv.empresaId } });
     if (!yaAsignado) {
+      // Si el usuario no tiene ninguna empresa activa (ej: su empresa anterior fue eliminada),
+      // marcar esta como principal. Si ya tiene otra empresa principal activa, no tocar ese flag.
+      const tieneEmpresaActivaPrincipal = await this.ueRepo.findOne({
+        where: { userId: user.id, isPrincipal: true, isActive: true },
+      });
       await this.ueRepo.save(this.ueRepo.create({
         userId:      user.id,
         empresaId:   inv.empresaId,
         rol:         inv.rol,
-        isPrincipal: true,
+        isPrincipal: !tieneEmpresaActivaPrincipal,  // principal solo si no tiene otra activa
       }));
     } else {
       await this.ueRepo.update(yaAsignado.id, { rol: inv.rol, isActive: true });

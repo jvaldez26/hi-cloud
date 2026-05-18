@@ -49,6 +49,8 @@ export class SuperAdminService {
 
   async suspenderEmpresa(id: number) {
     await this.ds.query(`UPDATE empresa SET "isActive" = false WHERE id = $1`, [id]);
+    // No desactivar usuario_empresa en suspensión — solo en eliminación definitiva.
+    // En suspensión, los vínculos se preservan para reactivar sin perder accesos.
     return { ok: true, mensaje: `Empresa #${id} suspendida` };
   }
 
@@ -220,6 +222,10 @@ export class SuperAdminService {
   async eliminarEmpresa(id: number) {
     await this.ds.query(`UPDATE empresa SET "isActive" = false WHERE id = $1`, [id]);
     await this.ds.query(`UPDATE suscripciones SET estado = 'cancelada' WHERE "empresaId" = $1`, [id]);
+    // Desactivar todos los vínculos usuario↔empresa para que getEmpresaPrincipal
+    // no devuelva esta empresa eliminada como empresa principal del usuario.
+    await this.ds.query(`UPDATE usuario_empresa SET "isActive" = false WHERE "empresaId" = $1`, [id]);
+    this.logger.log(`Empresa #${id} eliminada — ${await this.ds.query(`SELECT COUNT(*) FROM usuario_empresa WHERE "empresaId"=$1`,[id]).then(r=>r[0].count)} vínculos usuario desactivados`);
     return { ok: true, mensaje: `Empresa #${id} eliminada` };
   }
 
