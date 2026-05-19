@@ -315,18 +315,30 @@ export class AuthService implements OnModuleInit {
     });
 
     if (accesos.length > 0) {
-      // Excluir empresas explícitamente suspendidas (isActive === false).
-      // isActive === null/undefined se trata como activa (registros anteriores a la migración).
-      return accesos
-        .filter(a => a.empresa?.isActive !== false)
-        .map(a => ({
-          empresaId:   a.empresaId,
-          nombre:      a.empresa?.nombre ?? `Empresa #${a.empresaId}`,
-          rnc:         a.empresa?.rnc,
-          rol:         a.rol,
-          isPrincipal: a.isPrincipal,
-          plan:        (a.empresa as any)?.planSuscripcion ?? 'TRIAL',
-        }));
+      const filtradas = accesos.filter(a => a.empresa?.isActive !== false);
+      const empresaIds = filtradas.map(a => a.empresaId);
+
+      // Buscar el plan real desde suscripciones (no existe en la entidad Empresa)
+      let planMap: Record<number, string> = {};
+      if (empresaIds.length > 0) {
+        const rows = await this.dataSource.query<{ empresaId: number; plan: string }[]>(
+          `SELECT "empresaId", plan FROM suscripciones WHERE "empresaId" = ANY($1::int[]) ORDER BY id DESC`,
+          [empresaIds],
+        );
+        // Tomar el plan más reciente por empresa
+        for (const r of rows) {
+          if (!planMap[r.empresaId]) planMap[r.empresaId] = r.plan;
+        }
+      }
+
+      return filtradas.map(a => ({
+        empresaId:   a.empresaId,
+        nombre:      a.empresa?.nombre ?? `Empresa #${a.empresaId}`,
+        rnc:         a.empresa?.rnc,
+        rol:         a.rol,
+        isPrincipal: a.isPrincipal,
+        plan:        planMap[a.empresaId] ?? null,
+      }));
     }
 
     // Admin global sin vínculos explícitos → devuelve todas las empresas

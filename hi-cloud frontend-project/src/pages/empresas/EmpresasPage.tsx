@@ -159,9 +159,11 @@ export default function EmpresasPage() {
                 <Tag style={{ background: 'rgba(255,255,255,.2)', borderColor: 'transparent', color: '#fff' }}>
                   {empresaActualData.rol?.toUpperCase()}
                 </Tag>
-                <Tag style={{ background: 'rgba(255,255,255,.2)', borderColor: 'transparent', color: '#fff' }}>
-                  Plan: {empresaActualData.plan ?? 'TRIAL'}
-                </Tag>
+                {empresaActualData.plan && (
+                  <Tag style={{ background: 'rgba(255,255,255,.2)', borderColor: 'transparent', color: '#fff' }}>
+                    Plan: {empresaActualData.plan.charAt(0).toUpperCase() + empresaActualData.plan.slice(1)}
+                  </Tag>
+                )}
               </Space>
             </Col>
             <Col>

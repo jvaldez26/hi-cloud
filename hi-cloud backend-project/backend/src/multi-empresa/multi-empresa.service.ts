@@ -5,8 +5,8 @@ import {
   ConflictException,
   BadRequestException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { UsuarioEmpresa } from './entities/usuario-empresa.entity';
 import { Empresa } from '../configuracion/entities/empresa.entity';
 import { Sucursal } from '../configuracion/entities/sucursal.entity';
@@ -31,6 +31,7 @@ export class MultiEmpresaService {
     @InjectRepository(User)
     private usuarioRepo:        Repository<User>,
     private contabilidadSvc:    ContabilidadService,
+    @InjectDataSource() private ds: DataSource,
   ) {}
 
   // ──────────────────────────────────────────────────────────────────
@@ -108,17 +109,28 @@ export class MultiEmpresaService {
     });
 
     if (accesos.length > 0) {
-      // Excluir empresas explícitamente suspendidas (isActive === false).
-      // isActive === null/undefined se trata como activa (registros anteriores a la migración).
-      return accesos
-        .filter((a) => a.empresa?.isActive !== false)
-        .map((a) => ({
-          empresaId:   a.empresaId,
-          nombre:      a.empresa.nombre,
-          rnc:         a.empresa.rnc,
-          rol:         a.rol,
-          isPrincipal: a.isPrincipal,
-        }));
+      const filtradas = accesos.filter((a) => a.empresa?.isActive !== false);
+      const empresaIds = filtradas.map(a => a.empresaId);
+
+      let planMap: Record<number, string> = {};
+      if (empresaIds.length > 0) {
+        const rows = await this.ds.query<{ empresaId: number; plan: string }[]>(
+          `SELECT "empresaId", plan FROM suscripciones WHERE "empresaId" = ANY($1::int[]) ORDER BY id DESC`,
+          [empresaIds],
+        );
+        for (const r of rows) {
+          if (!planMap[r.empresaId]) planMap[r.empresaId] = r.plan;
+        }
+      }
+
+      return filtradas.map((a) => ({
+        empresaId:   a.empresaId,
+        nombre:      a.empresa.nombre,
+        rnc:         a.empresa.rnc,
+        rol:         a.rol,
+        isPrincipal: a.isPrincipal,
+        plan:        planMap[a.empresaId] ?? null,
+      }));
     }
 
     // Admin global sin vinculación explícita → devuelve todas las empresas
