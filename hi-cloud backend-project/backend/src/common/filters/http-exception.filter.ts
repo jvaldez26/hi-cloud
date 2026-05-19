@@ -48,9 +48,16 @@ export class HttpExceptionFilter implements ExceptionFilter {
         message = res;
       } else if (typeof res === 'object' && res !== null) {
         const resObj = res as Record<string, unknown>;
-        message = Array.isArray(resObj['message'])
-          ? (resObj['message'] as string[])
-          : (resObj['message'] as string) || exception.message;
+        if (Array.isArray(resObj['message'])) {
+          message = resObj['message'] as string[];
+        } else if (typeof resObj['message'] === 'string') {
+          message = resObj['message'];
+        } else if (typeof resObj['mensaje'] === 'string') {
+          // Errores estructurados con campo 'mensaje' (ej: LIMITE_USUARIOS, LIMITE_INGRESOS)
+          message = resObj['mensaje'] as string;
+        } else {
+          message = exception.message;
+        }
       }
       return this.send(response, request, status, message);
     }
