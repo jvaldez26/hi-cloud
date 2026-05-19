@@ -147,14 +147,16 @@ export class AuthService implements OnModuleInit {
           }),
         );
 
-        await qr.manager.save(
-          qr.manager.create(UsuarioEmpresa, {
-            userId:      user.id,
-            empresaId:   empresa.id,
-            rol:         UserRole.ADMIN,
-            isPrincipal: true,
-          }),
-        );
+        // insert() en lugar de save() para evitar que TypeORM haga un eager SELECT
+        // post-INSERT en una conexión diferente del pool, que no ve las filas
+        // aún no commiteadas de user y empresa en esta misma transacción.
+        await qr.manager.insert(UsuarioEmpresa, {
+          userId:      user.id,
+          empresaId:   empresa.id,
+          rol:         UserRole.ADMIN,
+          isPrincipal: true,
+          isActive:    true,
+        });
 
         await qr.manager.save(
           qr.manager.create(Sucursal, {
