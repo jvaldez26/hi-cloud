@@ -161,12 +161,13 @@ export class HealthController {
       this.ds.query(`SELECT "isActive"::text, COUNT(*) FROM empresa GROUP BY "isActive"`),
       this.ds.query(`SELECT "isActive"::text, COUNT(*) FROM usuario_empresa GROUP BY "isActive"`),
       this.ds.query(`SELECT name FROM typeorm_migrations ORDER BY timestamp DESC LIMIT 5`),
-      // Registros detallados de JEAN (valdezsamuel03)
+      // Registros detallados de JEAN + test IS NOT FALSE
       this.ds.query(`
-        SELECT u.id as userId, u.email, u.role,
+        SELECT u.id as userId, u.email,
                ue.id as ueId, ue."empresaId", ue."isActive" as ue_isActive,
-               ue."isPrincipal", ue.rol,
-               e.nombre as empresa_nombre, e."isActive" as e_isActive
+               ue."isPrincipal",
+               e.nombre as empresa_nombre, e."isActive" as e_isActive,
+               (ue."isActive" IS NOT FALSE) as pasa_filtro
         FROM users u
         LEFT JOIN usuario_empresa ue ON ue."userId" = u.id
         LEFT JOIN empresa e ON e.id = ue."empresaId"
@@ -174,6 +175,7 @@ export class HealthController {
         ORDER BY ue."isPrincipal" DESC
       `),
     ]);
-    return { empresa: empresaRows, usuario_empresa: ueRows, migrations, jean: jeanRows };
+    const pasanFiltro = jeanRows.filter((r: any) => r.pasa_filtro);
+    return { empresa: empresaRows, usuario_empresa: ueRows, migrations, jean: jeanRows, jean_pasan_filtro: pasanFiltro.length };
   }
 }

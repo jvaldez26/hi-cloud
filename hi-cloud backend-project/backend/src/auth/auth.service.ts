@@ -82,20 +82,17 @@ export class AuthService implements OnModuleInit {
   // ─── Helpers ─────────────────────────────────────────────────────────────────
 
   private async getEmpresaPrincipal(userId: number): Promise<number | undefined> {
-    // Incluir isActive NULL (registros antiguos sin el valor explícito)
     const principal = await this.ueRepository
       .createQueryBuilder('ue')
-      .where('ue."userId" = :userId', { userId })
-      .andWhere('ue."isPrincipal" = true')
-      .andWhere('(ue."isActive" = true OR ue."isActive" IS NULL)')
+      .where({ userId, isPrincipal: true })
+      .andWhere('ue.isActive IS NOT FALSE')
       .getOne();
     if (principal) return principal.empresaId;
 
-    // Fallback: primera empresa del usuario
     const primera = await this.ueRepository
       .createQueryBuilder('ue')
-      .where('ue."userId" = :userId', { userId })
-      .andWhere('(ue."isActive" = true OR ue."isActive" IS NULL)')
+      .where({ userId })
+      .andWhere('ue.isActive IS NOT FALSE')
       .orderBy('ue.id', 'ASC')
       .getOne();
     return primera?.empresaId;
@@ -314,14 +311,12 @@ export class AuthService implements OnModuleInit {
   // ─── Mis empresas ─────────────────────────────────────────────────────────────
 
   async misEmpresas(userId: number, isGlobalAdmin = false) {
-    // Usar raw query para incluir registros donde isActive = true OR isActive IS NULL
-    // (TypeORM WHERE {isActive: true} excluye silenciosamente los NULL en PostgreSQL)
     const accesos = await this.ueRepository
       .createQueryBuilder('ue')
       .leftJoinAndSelect('ue.empresa', 'e')
-      .where('ue."userId" = :userId', { userId })
-      .andWhere('(ue."isActive" = true OR ue."isActive" IS NULL)')
-      .orderBy('ue."isPrincipal"', 'DESC')
+      .where({ userId })
+      .andWhere('ue.isActive IS NOT FALSE')
+      .orderBy('ue.isPrincipal', 'DESC')
       .getMany();
 
     if (accesos.length > 0) {
