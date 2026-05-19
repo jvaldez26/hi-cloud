@@ -360,4 +360,20 @@ export class SuperAdminController {
     );
     return { ok: true, empresaId, fechaFinPrueba: fechaStr };
   }
+
+  @Patch('suscripciones/:empresaId/ingresos-mes')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '[Testing] Fijar ingresosMesActualDop para pruebas de límite' })
+  async setIngresosMes(
+    @Param('empresaId', ParseIntPipe) empresaId: number,
+    @Body() body: { monto: number },
+  ) {
+    const mes = new Date();
+    const mesPeriodo = `${mes.getFullYear()}-${String(mes.getMonth() + 1).padStart(2, '0')}`;
+    await this.suscSvc['ds'].query(
+      `UPDATE suscripciones SET "ingresosMesActualDop"=$1, "mesPeriodo"=$2 WHERE "empresaId"=$3`,
+      [body.monto, mesPeriodo, empresaId],
+    );
+    return { ok: true, empresaId, ingresosMesActualDop: body.monto, mesPeriodo };
+  }
 }
