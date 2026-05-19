@@ -153,4 +153,19 @@ export class HealthController {
       },
     };
   }
+
+  @Get('db-isactive')
+  @ApiOperation({ summary: 'Diagnóstico: distribución isActive en empresa y usuario_empresa' })
+  async checkIsActive() {
+    const [empresaRows, ueRows, migrations] = await Promise.all([
+      this.ds.query(`SELECT "isActive"::text, COUNT(*) FROM empresa GROUP BY "isActive"`),
+      this.ds.query(`SELECT "isActive"::text, COUNT(*) FROM usuario_empresa GROUP BY "isActive"`),
+      this.ds.query(`SELECT name, "timestamp" FROM typeorm_migrations ORDER BY "timestamp" DESC LIMIT 10`),
+    ]);
+    return {
+      empresa:         empresaRows,
+      usuario_empresa: ueRows,
+      migrations_recientes: migrations,
+    };
+  }
 }
