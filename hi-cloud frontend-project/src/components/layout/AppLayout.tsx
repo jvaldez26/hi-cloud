@@ -1196,9 +1196,14 @@ export default function AppLayout() {
     }
   }, [empresasLoaded, misEmpresas]);
 
-  // Auto-seleccionar la primera empresa si no hay ninguna activa
+  // Auto-seleccionar empresa si:
+  // a) No hay empresaId en localStorage, O
+  // b) El empresaId en localStorage no coincide con ninguna empresa disponible
   useEffect(() => {
-    if (misEmpresas.length > 0 && !localStorage.getItem('empresaId')) {
+    if (misEmpresas.length === 0) return;
+    const stored = localStorage.getItem('empresaId');
+    const estaEnLista = stored && (misEmpresas as any[]).some((e: any) => e.empresaId === Number(stored));
+    if (!stored || !estaEnLista) {
       cambiarEmpresa((misEmpresas as any[])[0].empresaId);
     }
   }, [misEmpresas, cambiarEmpresa]);
@@ -1346,7 +1351,11 @@ export default function AppLayout() {
 
   // ── Sidebar interno ─────────────────────────────────────────────────────────
 
-  const empresaNombre = (misEmpresas as any[]).find((e: any) => e.empresaId === empresaActiva)?.nombre ?? '';
+  // Nombre de la empresa activa — si no hay match exacto, mostrar la primera disponible
+  const empresaNombre =
+    (misEmpresas as any[]).find((e: any) => e.empresaId === empresaActiva)?.nombre ??
+    (misEmpresas as any[])[0]?.nombre ??
+    '';
   const empresasFiltradas = (misEmpresas as any[]).filter((e: any) =>
     e.nombre?.toLowerCase().includes(busquedaEmpresa.toLowerCase())
   );
