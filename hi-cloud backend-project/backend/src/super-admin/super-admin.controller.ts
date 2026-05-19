@@ -312,4 +312,22 @@ export class SuperAdminController {
     if (key !== process.env.INTERNAL_API_KEY) return { error: 'No autorizado' };
     return this.backupSvc.registrarFallo({ mensaje: dto.mensaje, tipo: dto.tipo });
   }
+
+  // ── Crons manuales (testing / forzar ejecución) ────────────────────────────
+
+  @Post('suscripciones/ejecutar-cron/vencimientos')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Ejecutar manualmente el cron de vencimientos de prueba' })
+  async ejecutarCronVencimientos() {
+    await this.suscSvc.procesarVencimientosPrueba();
+    return { ok: true, cron: 'vencimientos' };
+  }
+
+  @Post('suscripciones/ejecutar-cron/recordatorios')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Ejecutar manualmente el cron de recordatorios (5d y 1d)' })
+  async ejecutarCronRecordatorios() {
+    await this.suscSvc.enviarRecordatoriosPrueba();
+    return { ok: true, cron: 'recordatorios' };
+  }
 }
