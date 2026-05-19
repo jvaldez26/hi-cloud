@@ -157,15 +157,23 @@ export class HealthController {
   @Get('db-isactive')
   @ApiOperation({ summary: 'Diagnóstico: distribución isActive en empresa y usuario_empresa' })
   async checkIsActive() {
-    const [empresaRows, ueRows, migrations] = await Promise.all([
+    const [empresaRows, ueRows, migrations, jeanRows] = await Promise.all([
       this.ds.query(`SELECT "isActive"::text, COUNT(*) FROM empresa GROUP BY "isActive"`),
       this.ds.query(`SELECT "isActive"::text, COUNT(*) FROM usuario_empresa GROUP BY "isActive"`),
-      this.ds.query(`SELECT name, "timestamp" FROM typeorm_migrations ORDER BY "timestamp" DESC LIMIT 10`),
+      this.ds.query(`SELECT name FROM typeorm_migrations ORDER BY timestamp DESC LIMIT 5`),
+      // Registros detallados de JEAN (valdezsamuel03)
+      this.ds.query(`
+        SELECT u.id as userId, u.email, u.role,
+               ue.id as ueId, ue."empresaId", ue."isActive" as ue_isActive,
+               ue."isPrincipal", ue.rol,
+               e.nombre as empresa_nombre, e."isActive" as e_isActive
+        FROM users u
+        LEFT JOIN usuario_empresa ue ON ue."userId" = u.id
+        LEFT JOIN empresa e ON e.id = ue."empresaId"
+        WHERE u.email = 'valdezsamuel03@gmail.com'
+        ORDER BY ue."isPrincipal" DESC
+      `),
     ]);
-    return {
-      empresa:         empresaRows,
-      usuario_empresa: ueRows,
-      migrations_recientes: migrations,
-    };
+    return { empresa: empresaRows, usuario_empresa: ueRows, migrations, jean: jeanRows };
   }
 }
