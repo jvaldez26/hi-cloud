@@ -148,10 +148,9 @@ jobs:
             set -e
             cd /home/ubuntu/hicloud
 
-            echo "━━━ [1/4] Git pull ━━━"
-            git checkout -- "hi-cloud backend-project/backend/package-lock.json" 2>/dev/null || true
-            git checkout -- "hi-cloud frontend-project/package-lock.json" 2>/dev/null || true
-            git pull origin main
+            echo "━━━ [1/4] Git sync ━━━"
+            git fetch origin main
+            git reset --hard origin/main
 
             echo "━━━ [2/4] Variables de entorno críticas ━━━"
             ENV_FILE="hi-cloud backend-project/backend/.env"
