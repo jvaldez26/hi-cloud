@@ -212,6 +212,19 @@ export class SuperAdminController {
   @ApiOperation({ summary: 'Listar todos los usuarios del sistema' })
   listarUsuarios() { return this.svc.listarUsuarios(); }
 
+  @Get('usuarios/verification-token')
+  @ApiOperation({ summary: '[Testing] Obtener token de verificación de email por email' })
+  async getVerificationToken(@Query('email') email: string) {
+    const rows = await this.svc['ds'].query<{ emailVerificationToken: string; emailVerificationExpires: string }[]>(
+      `SELECT "emailVerificationToken", "emailVerificationExpires" FROM users WHERE email = $1 LIMIT 1`,
+      [email],
+    );
+    if (!rows.length || !rows[0].emailVerificationToken) {
+      return { token: null, message: 'No hay token pendiente para este email' };
+    }
+    return { token: rows[0].emailVerificationToken, expires: rows[0].emailVerificationExpires };
+  }
+
   @Patch('usuarios/:id/rol')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Cambiar rol global de un usuario' })
