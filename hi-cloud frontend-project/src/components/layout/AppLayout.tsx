@@ -1161,7 +1161,8 @@ export default function AppLayout() {
     queryKey: ['mis-empresas', user?.id],
     queryFn:  () => api.get('/multi-empresa/mis-empresas').then(r => r.data?.data ?? r.data ?? []),
     enabled:  !!user,
-    staleTime: 60_000,
+    staleTime: 30_000,           // reducido a 30s para detectar cambios más rápido
+    refetchOnWindowFocus: true,  // refrescar al volver a la pestaña
   });
   const cambiarEmpresa = useCallback(async (id: number) => {
     setEmpresaActiva(id);
