@@ -108,9 +108,10 @@ export class MultiEmpresaService {
     });
 
     if (accesos.length > 0) {
-      // Filtrar empresas suspendidas — solo devolver las activas
+      // Excluir empresas explícitamente suspendidas (isActive === false).
+      // isActive === null/undefined se trata como activa (registros anteriores a la migración).
       return accesos
-        .filter((a) => a.empresa?.isActive)
+        .filter((a) => a.empresa?.isActive !== false)
         .map((a) => ({
           empresaId:   a.empresaId,
           nombre:      a.empresa.nombre,

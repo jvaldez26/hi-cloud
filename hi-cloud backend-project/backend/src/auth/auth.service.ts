@@ -286,8 +286,8 @@ export class AuthService implements OnModuleInit {
       });
       if (!acceso) throw new ForbiddenException(`Sin acceso a empresa #${empresaId}`);
 
-      // Verificar que la empresa destino no esté suspendida
-      if (acceso.empresa && !acceso.empresa.isActive) {
+      // Verificar que la empresa destino no esté explícitamente suspendida
+      if (acceso.empresa && acceso.empresa.isActive === false) {
         throw new ForbiddenException(
           'Esta empresa ha sido suspendida. Contacte al administrador de la plataforma HiCloud.',
         );
@@ -315,10 +315,10 @@ export class AuthService implements OnModuleInit {
     });
 
     if (accesos.length > 0) {
-      // Solo devolver empresas activas (isActive:true) — las suspendidas se excluyen
-      // para que no aparezcan en el selector y el usuario no intente cambiar a ellas.
+      // Excluir empresas explícitamente suspendidas (isActive === false).
+      // isActive === null/undefined se trata como activa (registros anteriores a la migración).
       return accesos
-        .filter(a => a.empresa?.isActive)
+        .filter(a => a.empresa?.isActive !== false)
         .map(a => ({
           empresaId:   a.empresaId,
           nombre:      a.empresa?.nombre ?? `Empresa #${a.empresaId}`,
