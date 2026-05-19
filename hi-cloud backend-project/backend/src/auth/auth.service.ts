@@ -138,35 +138,34 @@ export class AuthService implements OnModuleInit {
       );
 
       if (dto.empresaNombre && dto.empresaRnc) {
-        const empresa = await qr.manager.save(
-          qr.manager.create(Empresa, {
-            nombre:      dto.empresaNombre,
-            rnc:         dto.empresaRnc,
-            moneda:      'DOP',
-            zonaHoraria: 'America/Santo_Domingo',
-          }),
-        );
+        // Usar insert() en lugar de save() en todo este bloque para evitar que TypeORM
+        // haga SELECTs post-INSERT usando una conexión diferente del pool, que no vería
+        // las filas no-commiteadas de esta misma transacción.
+        const empresaResult = await qr.manager.insert(Empresa, {
+          nombre:      dto.empresaNombre,
+          rnc:         dto.empresaRnc,
+          moneda:      'DOP',
+          zonaHoraria: 'America/Santo_Domingo',
+          isActive:    true,
+        });
+        const empresaId = empresaResult.identifiers[0].id as number;
 
-        // insert() en lugar de save() para evitar que TypeORM haga un eager SELECT
-        // post-INSERT en una conexión diferente del pool, que no ve las filas
-        // aún no commiteadas de user y empresa en esta misma transacción.
         await qr.manager.insert(UsuarioEmpresa, {
           userId:      user.id,
-          empresaId:   empresa.id,
+          empresaId,
           rol:         UserRole.ADMIN,
           isPrincipal: true,
           isActive:    true,
         });
 
-        await qr.manager.save(
-          qr.manager.create(Sucursal, {
-            empresaId:   empresa.id,
-            codigo:      'PRIN',
-            nombre:      'Sucursal Principal',
-            ciudad:      'Santo Domingo',
-            esPrincipal: true,
-          }),
-        );
+        await qr.manager.insert(Sucursal, {
+          empresaId,
+          codigo:      'PRIN',
+          nombre:      'Sucursal Principal',
+          ciudad:      'Santo Domingo',
+          esPrincipal: true,
+          isActive:    true,
+        });
 
         // Crear suscripción PRUEBA con el plan elegido — el reloj de 15 días empieza aquí
         const planElegido = dto.planElegido ?? 'emprendedor';
@@ -176,15 +175,15 @@ export class AuthService implements OnModuleInit {
              ("empresaId", plan, estado, "fechaInicio", "fechaVencimiento",
               "fechaFinPrueba", "planElegidoEnRegistro", "modalidad")
            VALUES ($1, $2, 'prueba', NOW(), $3, $3, $2, 'mensual')`,
-          [empresa.id, planElegido, fechaFinPrueba.toISOString()],
+          [empresaId, planElegido, fechaFinPrueba.toISOString()],
         );
 
         await qr.commitTransaction();
-        this.logger.log(`Empresa "${empresa.nombre}" (id=${empresa.id}) creada para usuario #${user.id} | plan=${planElegido}`);
+        this.logger.log(`Empresa "${dto.empresaNombre}" (id=${empresaId}) creada para usuario #${user.id} | plan=${planElegido}`);
 
         // Tareas post-commit: no forman parte de la transacción atómica
-        this.contabilidadService.seedPlanCuentas(empresa.id).catch(err =>
-          this.logger.warn(`seedPlanCuentas empresa ${empresa.id}: ${err?.message}`),
+        this.contabilidadService.seedPlanCuentas(empresaId).catch(err =>
+          this.logger.warn(`seedPlanCuentas empresa ${empresaId}: ${err?.message}`),
         );
       } else {
         await qr.commitTransaction();
