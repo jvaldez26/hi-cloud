@@ -6,6 +6,7 @@
   InternalServerErrorException,
   BadRequestException,
   ForbiddenException,
+  NotFoundException,
   Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -294,7 +295,7 @@ export class AuthService implements OnModuleInit {
     }
 
     const user = await this.userRepository.findOneBy({ id: userId });
-    if (!user) throw new UnauthorizedException('Usuario no encontrado');
+    if (!user) throw new NotFoundException('Usuario no encontrado');
     const accessToken = this.buildToken(user, empresaId);
 
     return {
@@ -426,7 +427,7 @@ export class AuthService implements OnModuleInit {
       .where('u.id = :id', { id: userId })
       .getOne();
 
-    if (!user || !user.isActive) throw new UnauthorizedException('Usuario no encontrado');
+    if (!user || !user.isActive) throw new NotFoundException('Usuario no encontrado');
 
     const isValid = await bcrypt.compare(currentPassword, user.password);
     if (!isValid) throw new BadRequestException('La contraseña actual es incorrecta');
@@ -704,7 +705,7 @@ export class AuthService implements OnModuleInit {
     if (!valid) throw new UnauthorizedException('Código de autenticación incorrecto');
 
     const user = await this.usersService.findById(payload.sub);
-    if (!user || !user.isActive) throw new UnauthorizedException('Usuario no encontrado');
+    if (!user || !user.isActive) throw new NotFoundException('Usuario no encontrado');
 
     const sessionToken = await this.initNewSession(user.id);
     (user as any).sessionToken = sessionToken;
