@@ -330,4 +330,21 @@ export class SuperAdminController {
     await this.suscSvc.enviarRecordatoriosPrueba();
     return { ok: true, cron: 'recordatorios' };
   }
+
+  @Patch('suscripciones/:empresaId/fecha-fin-prueba')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Forzar fechaFinPrueba para pruebas de cron (solo testing)' })
+  async setFechaFinPrueba(
+    @Param('empresaId', ParseIntPipe) empresaId: number,
+    @Body() body: { diasDesdeHoy: number },
+  ) {
+    const fecha = new Date();
+    fecha.setDate(fecha.getDate() + body.diasDesdeHoy);
+    const fechaStr = fecha.toISOString().slice(0, 10);
+    await this.suscSvc['ds'].query(
+      `UPDATE suscripciones SET "fechaFinPrueba"=$1 WHERE "empresaId"=$2`,
+      [fechaStr, empresaId],
+    );
+    return { ok: true, empresaId, fechaFinPrueba: fechaStr };
+  }
 }
