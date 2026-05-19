@@ -207,15 +207,15 @@ export class SuscripcionesController {
   // ── Listados (admin legacy) ───────────────────────────────────────────────
 
   @Get()
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Listar todas las suscripciones' })
+  @Roles(UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Listar todas las suscripciones (solo super admin)' })
   listarTodas() {
     return this.svc.listarTodasLasSuscripciones();
   }
 
   @Get('estadisticas')
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Estadísticas de planes activos' })
+  @Roles(UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Estadísticas de planes activos (solo super admin)' })
   estadisticas() {
     return this.svc.getEstadisticasPlanes();
   }
