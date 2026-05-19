@@ -102,11 +102,15 @@ export class MultiEmpresaService {
   // ──────────────────────────────────────────────────────────────────
 
   async getEmpresasDeUsuario(userId: number, isGlobalAdmin = false) {
-    const accesos = await this.usuarioEmpresaRepo.find({
-      where: { userId, isActive: true },
-      relations: ['empresa'],
-      order: { isPrincipal: 'DESC' },
-    });
+    // Usar raw query para incluir registros donde isActive = true OR isActive IS NULL
+    // (TypeORM WHERE {isActive: true} excluye silenciosamente los NULL en PostgreSQL)
+    const accesos = await this.usuarioEmpresaRepo
+      .createQueryBuilder('ue')
+      .leftJoinAndSelect('ue.empresa', 'e')
+      .where('ue."userId" = :userId', { userId })
+      .andWhere('(ue."isActive" = true OR ue."isActive" IS NULL)')
+      .orderBy('ue."isPrincipal"', 'DESC')
+      .getMany();
 
     if (accesos.length > 0) {
       const filtradas = accesos.filter((a) => a.empresa?.isActive !== false);
