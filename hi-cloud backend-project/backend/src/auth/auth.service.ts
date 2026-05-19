@@ -259,13 +259,17 @@ export class AuthService implements OnModuleInit {
       message: 'Login exitoso',
       accessToken,
       empresaActual: empresaId ?? null,
-      empresas: empresas.map(e => ({
-        empresaId:   e.empresaId,
-        nombre:      e.empresa?.nombre,
-        rnc:         e.empresa?.rnc,
-        rol:         e.rol,
-        isPrincipal: e.isPrincipal,
-      })),
+      // Filtrar empresas suspendidas (empresa.isActive = false) para que no
+      // aparezcan en el selector del frontend y el usuario no intente acceder.
+      empresas: empresas
+        .filter(e => e.empresa?.isActive !== false)
+        .map(e => ({
+          empresaId:   e.empresaId,
+          nombre:      e.empresa?.nombre,
+          rnc:         e.empresa?.rnc,
+          rol:         e.rol,
+          isPrincipal: e.isPrincipal,
+        })),
       user: { id: user.id, nombre: user.nombre, email: user.email, role: user.role, tourCompletado: (user as any).tourCompletado ?? false },
     };
   }
