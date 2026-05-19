@@ -14,6 +14,11 @@ import { GetUser } from '../auth/decorators/get-user.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
 import { User } from '../users/users.entity';
 import { PaginationDto } from '../common/dto/pagination.dto';
+
+class RecibosQueryDto extends PaginationDto {
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number)
+  clienteId?: number;
+}
 import { RecibosCobrosService } from './recibos-cobro.service';
 import { ReciboPDFService } from './recibo-pdf.service';
 import { MetodoPagoRecibo } from './entities/recibo-cobro.entity';
@@ -52,10 +57,9 @@ export class RecibosCobrosController {
   @Get()
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
   listar(
-    @Query() pagination: PaginationDto,
-    @Query('clienteId') clienteId?: string,
+    @Query() query: RecibosQueryDto,
   ) {
-    return this.svc.listar(pagination, clienteId ? Number(clienteId) : undefined);
+    return this.svc.listar(query, query.clienteId);
   }
 
   @Get(':id/pdf')
