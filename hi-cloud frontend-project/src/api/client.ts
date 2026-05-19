@@ -121,10 +121,16 @@ apiClient.interceptors.response.use(
       }
 
       // Limpiar UI y redirigir a login
+      // No redirigir si ya estamos en una ruta pública (reset, verificar, etc.)
+      // para evitar que el 401 de /auth/me en el hydrate interrumpa el flujo.
+      const publicPaths = ['/login', '/registrar', '/recuperar-contrasena',
+                           '/restablecer', '/verificar-correo', '/portal/',
+                           '/invitacion/', '/precios', '/auth/callback'];
+      const onPublicPage = publicPaths.some(p => window.location.pathname.startsWith(p));
       localStorage.removeItem('auth_user');
       localStorage.removeItem('empresaId');
       localStorage.removeItem('mis_empresas');
-      if (!window.location.pathname.startsWith('/login')) {
+      if (!onPublicPage) {
         window.location.replace('/login');
       }
       return Promise.reject(err);
