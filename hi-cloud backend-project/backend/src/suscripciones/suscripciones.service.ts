@@ -46,27 +46,34 @@ export class SuscripcionesService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    // Planes nuevos al enum de PLAN (solo valores de plan, no de estado)
-    const nuevosPlanes = ['emprendedor', 'pyme', 'pro', 'plus'];
-    for (const val of nuevosPlanes) {
-      await this.ds.query(`
-        DO $$ BEGIN
-          IF NOT EXISTS (
-            SELECT 1 FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
-            WHERE t.typname = 'suscripciones_plan_enum' AND e.enumlabel = '${val}'
-          ) THEN ALTER TYPE suscripciones_plan_enum ADD VALUE '${val}'; END IF;
-        END $$;
-      `).catch(() => null);
+    // ALTER TYPE ADD VALUE no puede ejecutarse dentro de un DO block (PL/pgSQL)
+    // en ciertas versiones de PostgreSQL. Se usa SQL directo con IF NOT EXISTS.
+    const enumPlan  = 'suscripciones_plan_enum';
+    const enumEstado = 'suscripciones_estado_enum';
+
+    for (const val of ['emprendedor', 'pyme', 'pro', 'plus']) {
+      const exists = await this.ds.query(
+        `SELECT 1 FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
+         WHERE t.typname = $1 AND e.enumlabel = $2`,
+        [enumPlan, val],
+      ).catch(() => []);
+      if (!exists?.length) {
+        await this.ds.query(
+          `ALTER TYPE suscripciones_plan_enum ADD VALUE '${val}'`,
+        ).catch(e => this.logger.warn(`onModuleInit plan enum '${val}': ${e?.message}`));
+      }
     }
-    // Estado 'prueba' al enum de ESTADO (solo)
-    await this.ds.query(`
-      DO $$ BEGIN
-        IF NOT EXISTS (
-          SELECT 1 FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
-          WHERE t.typname = 'suscripciones_estado_enum' AND e.enumlabel = 'prueba'
-        ) THEN ALTER TYPE suscripciones_estado_enum ADD VALUE 'prueba'; END IF;
-      END $$;
-    `).catch(() => null);
+
+    const prueba = await this.ds.query(
+      `SELECT 1 FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
+       WHERE t.typname = $1 AND e.enumlabel = 'prueba'`,
+      [enumEstado],
+    ).catch(() => []);
+    if (!prueba?.length) {
+      await this.ds.query(
+        `ALTER TYPE suscripciones_estado_enum ADD VALUE 'prueba'`,
+      ).catch(e => this.logger.warn(`onModuleInit estado enum 'prueba': ${e?.message}`));
+    }
 
     await this.seedPlanConfiguracion();
   }

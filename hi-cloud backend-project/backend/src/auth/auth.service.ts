@@ -174,8 +174,8 @@ export class AuthService implements OnModuleInit {
           `INSERT INTO suscripciones
              ("empresaId", plan, estado, "fechaInicio", "fechaVencimiento",
               "fechaFinPrueba", "planElegidoEnRegistro", "modalidad")
-           VALUES ($1, $2, 'prueba', NOW(), $3, $3, $2, 'mensual')`,
-          [empresaId, planElegido, fechaFinPrueba.toISOString()],
+           VALUES ($1, $2, 'prueba', NOW(), $3, $3, $4, 'mensual')`,
+          [empresaId, planElegido, fechaFinPrueba.toISOString(), planElegido],
         );
 
         await qr.commitTransaction();
