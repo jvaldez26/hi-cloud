@@ -20,6 +20,7 @@ const RUTAS_SIN_TENANT = [
   '/api-yaml',
   '/portal/',
   '/invitacion/',
+  '/invitaciones/aceptar',  // aceptar invitación desde otro contexto de empresa
   '/encuestas/responder',
   '/datafono',
   '/encuestas',
