@@ -1,8 +1,9 @@
-import { Row, Col, Card, Table, Typography, Spin, Tag, Space, Button, theme, DatePicker, Statistic, Empty } from 'antd';
+import { Row, Col, Card, Table, Typography, Spin, Tag, Space, Button, theme, DatePicker, Statistic, Empty, Tooltip as AntTooltip } from 'antd';
 import {
   DollarOutlined, FileTextOutlined, RightOutlined, ReloadOutlined,
+  LineChartOutlined, BarChartOutlined, DownloadOutlined,
 } from '@ant-design/icons';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -139,7 +140,34 @@ function DashboardAdmin() {
   const navigate  = useNavigate();
   const { token } = theme.useToken();
   const qc        = useQueryClient();
-  const [grupoAbierto, setGrupoAbierto] = useState(true);
+  const [grupoAbierto,  setGrupoAbierto]  = useState(true);
+  const [chartTipo,     setChartTipo]     = useState<'line' | 'bar'>('line');
+  const chartContainerRef = useRef<HTMLDivElement>(null);
+
+  const descargarGrafico = useCallback(() => {
+    const container = chartContainerRef.current;
+    if (!container) return;
+    const svg = container.querySelector('svg');
+    if (!svg) return;
+    const { width, height } = svg.getBoundingClientRect();
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const blob    = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+    const url     = URL.createObjectURL(blob);
+    const canvas  = document.createElement('canvas');
+    canvas.width  = width  || 800;
+    canvas.height = height || 280;
+    const ctx  = canvas.getContext('2d');
+    const img  = new Image();
+    img.onload = () => {
+      ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      const a = document.createElement('a');
+      a.download = `ingresos-gastos-${new Date().toISOString().slice(0, 10)}.png`;
+      a.href = canvas.toDataURL('image/png');
+      a.click();
+    };
+    img.src = url;
+  }, []);
 
   // Listener para el evento 'dashboard:refresh' disparado por el logo del sidebar
   const refreshAll = useCallback(() => {
@@ -397,7 +425,48 @@ function DashboardAdmin() {
         <Col xs={24} lg={15}>
 
           {/* Widget: Ingresos & Gastos */}
-          <CardWidget title="Ingresos & Gastos">
+          <CardWidget
+            title="Ingresos & Gastos"
+            extra={
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <AntTooltip title={chartTipo === 'line' ? 'Ver como barras' : 'Ver como línea'}>
+                    <button
+                      onClick={() => setChartTipo(t => t === 'line' ? 'bar' : 'line')}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer',
+                        color: token.colorPrimary, padding: '2px 4px', borderRadius: 4,
+                        display: 'flex', alignItems: 'center', fontSize: 14 }}
+                    >
+                      {chartTipo === 'line' ? <BarChartOutlined /> : <LineChartOutlined />}
+                    </button>
+                  </AntTooltip>
+                  <AntTooltip title="Actualizar datos">
+                    <button
+                      onClick={() => qc.invalidateQueries({ queryKey: ['kpis-cf'] })}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer',
+                        color: token.colorPrimary, padding: '2px 4px', borderRadius: 4,
+                        display: 'flex', alignItems: 'center', fontSize: 14 }}
+                    >
+                      <ReloadOutlined />
+                    </button>
+                  </AntTooltip>
+                  <AntTooltip title="Guardar como imagen">
+                    <button
+                      onClick={descargarGrafico}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer',
+                        color: token.colorPrimary, padding: '2px 4px', borderRadius: 4,
+                        display: 'flex', alignItems: 'center', fontSize: 14 }}
+                    >
+                      <DownloadOutlined />
+                    </button>
+                  </AntTooltip>
+                </div>
+                <Text style={{ fontSize: 11, color: token.colorPrimary }}>
+                  {chartTipo === 'line' ? 'Switch to Bar Chart' : 'Switch to Line Chart'}
+                </Text>
+              </div>
+            }
+          >
             {/* Leyenda */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '12px 16px 4px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -409,30 +478,40 @@ function DashboardAdmin() {
                 <Text style={{ fontSize: 12 }}>Gastos</Text>
               </div>
             </div>
-            {/* Gráfico de línea */}
-            <div style={{ padding: '0 8px 16px' }}>
+            {/* Gráfico */}
+            <div ref={chartContainerRef} style={{ padding: '0 8px 16px' }}>
               <ResponsiveContainer width="100%" height={240}>
-                <LineChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: 10 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={token.colorBorderSecondary} vertical={false} />
-                  <XAxis dataKey="label"
-                    tick={{ fontSize: 10, fill: token.colorTextTertiary }}
-                    axisLine={false} tickLine={false}
-                    tickFormatter={v => v.split(' ')[0]} />
-                  <YAxis tickFormatter={v => v === 0 ? '0' : `${(v / 1000).toFixed(0)}k`}
-                    tick={{ fontSize: 10, fill: token.colorTextTertiary }}
-                    axisLine={false} tickLine={false} />
-                  <Tooltip
-                    formatter={(v: number, n: string) => [fmt.money(v), n === 'ingreso' ? 'Ingresos' : 'Gastos']}
-                    contentStyle={{
-                      background: token.colorBgElevated,
-                      border: `1px solid ${token.colorBorderSecondary}`,
-                      borderRadius: 8, fontSize: 12,
-                    }} />
-                  <Line type="monotone" dataKey="ingreso" stroke="#10B981" strokeWidth={2}
-                    dot={false} activeDot={{ r: 4 }} />
-                  <Line type="monotone" dataKey="gasto" stroke="#9CA3AF" strokeWidth={2}
-                    dot={false} activeDot={{ r: 4 }} strokeDasharray="4 4" />
-                </LineChart>
+                {chartTipo === 'line' ? (
+                  <LineChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: 10 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={token.colorBorderSecondary} vertical={false} />
+                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: token.colorTextTertiary }}
+                      axisLine={false} tickLine={false} tickFormatter={v => v.split(' ')[0]} />
+                    <YAxis tickFormatter={v => v === 0 ? '0' : `${(v / 1000).toFixed(0)}k`}
+                      tick={{ fontSize: 10, fill: token.colorTextTertiary }} axisLine={false} tickLine={false} />
+                    <Tooltip
+                      formatter={(v: number, n: string) => [fmt.money(v), n === 'ingreso' ? 'Ingresos' : 'Gastos']}
+                      contentStyle={{ background: token.colorBgElevated,
+                        border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, fontSize: 12 }} />
+                    <Line type="monotone" dataKey="ingreso" stroke="#10B981" strokeWidth={2}
+                      dot={false} activeDot={{ r: 4 }} />
+                    <Line type="monotone" dataKey="gasto" stroke="#9CA3AF" strokeWidth={2}
+                      dot={false} activeDot={{ r: 4 }} strokeDasharray="4 4" />
+                  </LineChart>
+                ) : (
+                  <BarChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: 10 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={token.colorBorderSecondary} vertical={false} />
+                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: token.colorTextTertiary }}
+                      axisLine={false} tickLine={false} tickFormatter={v => v.split(' ')[0]} />
+                    <YAxis tickFormatter={v => v === 0 ? '0' : `${(v / 1000).toFixed(0)}k`}
+                      tick={{ fontSize: 10, fill: token.colorTextTertiary }} axisLine={false} tickLine={false} />
+                    <Tooltip
+                      formatter={(v: number, n: string) => [fmt.money(v), n === 'ingreso' ? 'Ingresos' : 'Gastos']}
+                      contentStyle={{ background: token.colorBgElevated,
+                        border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, fontSize: 12 }} />
+                    <Bar dataKey="ingreso" fill="#10B981" radius={[3, 3, 0, 0]} maxBarSize={20} />
+                    <Bar dataKey="gasto"   fill="#9CA3AF" radius={[3, 3, 0, 0]} maxBarSize={20} />
+                  </BarChart>
+                )}
               </ResponsiveContainer>
             </div>
           </CardWidget>
