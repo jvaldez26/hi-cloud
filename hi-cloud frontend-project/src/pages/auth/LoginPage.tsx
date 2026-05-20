@@ -139,10 +139,6 @@ export default function LoginPage() {
         animate={{ opacity: 1, y: 0 }}
         style={{ position: 'absolute', top: 24, left: 24 }}
       >
-        <Link to="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 6 }}>
-          <ArrowLeftOutlined style={{ color: 'rgba(255,255,255,.5)', fontSize: 13 }} />
-          <Text style={{ color: 'rgba(255,255,255,.5)', fontSize: 13 }}>Volver al inicio</Text>
-        </Link>
       </motion.div>
 
       {/* ── Card de login ────────────────────────────────────────────── */}
