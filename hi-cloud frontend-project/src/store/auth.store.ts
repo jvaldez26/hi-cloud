@@ -62,6 +62,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     localStorage.removeItem('auth_user');
     localStorage.removeItem('empresaId');
     localStorage.removeItem('mis_empresas');
+    localStorage.removeItem('hicloud-sidebar-group');  // estado accordion (legacy)
     set({ user: null, empresaActual: null, empresas: [], hydrated: true });
     _onLogout?.();
   },

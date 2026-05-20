@@ -10,15 +10,6 @@ export const apiClient = axios.create({
 });
 
 // ─── Helpers ────────────────────────────────────────────────────────
-/** Decodifica el payload del JWT sin verificar firma. */
-function jwtPayload(token: string): Record<string, unknown> | null {
-  try {
-    return JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-  } catch {
-    return null;
-  }
-}
-
 /** Extrae el mensaje de error más descriptivo del backend */
 function extractBackendMessage(err: AxiosError): string {
   const data = err.response?.data as any;
@@ -65,7 +56,6 @@ apiClient.interceptors.response.use(
 
   async (err: AxiosError) => {
     const status  = err.response?.status;
-    const data    = err.response?.data as any;
     const message = extractBackendMessage(err);
 
     // ── 401: access token expirado → intentar refresh automático (S-28) ─────
@@ -127,6 +117,7 @@ apiClient.interceptors.response.use(
       localStorage.removeItem('auth_user');
       localStorage.removeItem('empresaId');
       localStorage.removeItem('mis_empresas');
+      localStorage.removeItem('hicloud-sidebar-group');
       if (!onPublicPage) {
         window.location.replace('/login');
       }
