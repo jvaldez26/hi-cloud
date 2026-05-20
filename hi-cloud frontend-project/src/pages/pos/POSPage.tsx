@@ -3371,6 +3371,8 @@ export default function POSPage() {
         inactividadRef.current = setTimeout(() => {
           sessionStorage.setItem('pos_bloqueado', 'true');
           setPantallaBloqueada(true);
+          setPwDesbloqueo('');
+          setErrDesbloqueo('');
         }, INACTIVIDAD_MS);
       }
     };
@@ -4018,7 +4020,9 @@ export default function POSPage() {
             value={pwDesbloqueo}
             onChange={e => { setPwDesbloqueo(e.target.value); setErrDesbloqueo(''); }}
             onPressEnter={desbloquearPantalla}
-            autoFocus size="large"
+            autoFocus
+            autoComplete="new-password"
+            size="large"
             style={{ borderRadius: 8, background: 'rgba(255,255,255,.15)', border: errDesbloqueo ? '1px solid #EF4444' : '1px solid rgba(255,255,255,.3)', color: '#fff' }}
             iconRender={v => v ? <EyeOutlined style={{ color: 'rgba(255,255,255,.6)' }} /> : <EyeInvisibleOutlined style={{ color: 'rgba(255,255,255,.6)' }} />}
           />
