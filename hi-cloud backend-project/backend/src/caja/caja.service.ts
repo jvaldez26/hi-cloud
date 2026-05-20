@@ -58,15 +58,47 @@ export class CajaService {
 
   // ── Cajeros activos de la empresa ─────────────────────────────────────────
 
-  async listarCajeros(): Promise<{ id: number; nombre: string; email: string | null; telefono: string | null }[]> {
+  async listarCajeros(): Promise<{
+    id: number; nombre: string; email: string;
+    role: string; vendedorId: number | null; tienePerfilVendedor: boolean;
+  }[]> {
     const empresaId = this.tenantService.getEmpresaId();
-    return this.dataSource.query(`
-      SELECT id, nombre, email, telefono
-      FROM vendedores
-      WHERE "empresaId" = $1
-        AND "isActive"  = true
-      ORDER BY nombre ASC
+
+    // Usuarios operativos de la empresa (admin, vendedor, contador)
+    const usuarios: any[] = await this.dataSource.query(`
+      SELECT u.id, u.nombre, u.email, u.role
+      FROM users u
+      JOIN usuario_empresa ue ON ue."userId" = u.id
+      WHERE ue."empresaId" = $1
+        AND ue."isActive"  = true
+        AND u."isActive"   = true
+        AND u.role IN ('admin', 'vendedor', 'contador')
+      ORDER BY u.nombre
     `, [empresaId]);
+
+    // Perfiles vendedor con usuarioId vinculado
+    const perfiles: any[] = await this.dataSource.query(`
+      SELECT id, nombre, "usuarioId"
+      FROM vendedores
+      WHERE "empresaId" = $1 AND "isActive" = true AND "usuarioId" IS NOT NULL
+    `, [empresaId]);
+
+    const perfilMap = new Map<number, { id: number; nombre: string }>(
+      perfiles.map((v: any) => [Number(v.usuarioId), { id: v.id, nombre: v.nombre }]),
+    );
+
+    // Si el usuario tiene perfil vendedor → mostrar nombre del vendedor
+    return usuarios.map((u: any) => {
+      const perfil = perfilMap.get(Number(u.id));
+      return {
+        id:                  u.id,
+        email:               u.email,
+        role:                u.role,
+        nombre:              perfil?.nombre ?? u.nombre ?? u.email,
+        vendedorId:          perfil?.id ?? null,
+        tienePerfilVendedor: !!perfil,
+      };
+    });
   }
 
   // ── Abrir caja por vendedor ────────────────────────────────────────────────
@@ -80,13 +112,24 @@ export class CajaService {
   ) {
     const empresaId = this.tenantService.getEmpresaId();
 
-    // Resolver nombre del cajero desde BD si no fue enviado
+    // Resolver nombre del cajero: perfil vendedor > nombre usuario
     if (vendedorId && !vendedorNombre) {
-      const rows = await this.dataSource.query(
-        `SELECT nombre FROM users WHERE id = $1`,
-        [vendedorId],
-      );
-      vendedorNombre = rows[0]?.nombre ?? String(vendedorId);
+      // 1. Buscar si el usuario tiene perfil vendedor asociado
+      const perfilVendedor = await this.dataSource.query(`
+        SELECT nombre FROM vendedores
+        WHERE "usuarioId" = $1 AND "empresaId" = $2 AND "isActive" = true
+        LIMIT 1
+      `, [vendedorId, empresaId]);
+
+      if (perfilVendedor[0]?.nombre) {
+        vendedorNombre = perfilVendedor[0].nombre;
+      } else {
+        // 2. Fallback: nombre del usuario del sistema
+        const rows = await this.dataSource.query(
+          `SELECT nombre FROM users WHERE id = $1`, [vendedorId],
+        );
+        vendedorNombre = rows[0]?.nombre ?? String(vendedorId);
+      }
     }
     const hoy = new Date().toISOString().split('T')[0];
 

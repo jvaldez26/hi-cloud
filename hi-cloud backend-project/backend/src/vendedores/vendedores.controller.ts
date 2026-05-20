@@ -2,6 +2,8 @@ import {
   Controller, Get, Post, Patch, Delete, Body, Param, Query,
   ParseIntPipe, UseGuards, HttpCode, HttpStatus,
 } from '@nestjs/common';
+import { GetUser } from '../auth/decorators/get-user.decorator';
+import { User } from '../users/users.entity';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiHeader } from '@nestjs/swagger';
 import {
   IsString, IsOptional, IsInt, IsPositive, IsNumber, IsEmail,
@@ -39,6 +41,12 @@ class AsignarClienteDto {
 @Controller('vendedores')
 export class VendedoresController {
   constructor(private readonly svc: VendedoresService) {}
+
+  @Get('mi-perfil')
+  @ApiOperation({ summary: 'Perfil vendedor del usuario autenticado (null si no tiene uno asociado)' })
+  getMiPerfil(@GetUser() user: User) {
+    return this.svc.getMiPerfil(user.id);
+  }
 
   @Get('resumen')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)

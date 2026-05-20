@@ -81,6 +81,13 @@ export default function VendedoresPage() {
     enabled: !!vendedorSel?.id && tabActiva === 'clientes',
   });
 
+  // Usuarios del sistema para vincular al perfil vendedor
+  const { data: usuariosSistema = [] } = useQuery<any[]>({
+    queryKey: ['usuarios-sistema-select'],
+    queryFn:  () => api.get('/caja/cajeros').then((r: any) => r.data?.data ?? r.data ?? []),
+    staleTime: 60_000,
+  });
+
   const crearActualizar = useMutation({
     mutationFn: (dto: any) => editando
       ? api.patch(`/vendedores/${editando.id}`, dto)
@@ -410,8 +417,21 @@ export default function VendedoresPage() {
             <Col xs={24} sm={8}><Form.Item name="metaMensual" label="Meta Mensual (RD$)"><InputNumber min={0} style={{ width: '100%' }} prefix="RD$" /></Form.Item></Col>
             <Col xs={24} sm={8}><Form.Item name="fechaIngreso" label="Fecha Ingreso"><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item></Col>
           </Row>
-          <Form.Item name="usuarioId" label="Usuario del Sistema (opcional)">
-            <InputNumber style={{ width: '100%' }} placeholder="ID del usuario para vincular ventas" />
+          <Form.Item
+            name="usuarioId"
+            label="Usuario del sistema (opcional)"
+            help="Al vincular un usuario, el nombre de este vendedor aparecerá en Caja Diaria y POS cuando ese usuario abra turno"
+          >
+            <Select
+              allowClear
+              showSearch
+              placeholder="Sin usuario vinculado"
+              optionFilterProp="label"
+              options={usuariosSistema.map((u: any) => ({
+                value: u.id,
+                label: `${u.nombre} (${u.email})`,
+              }))}
+            />
           </Form.Item>
           <Form.Item name="notas" label="Notas"><Input.TextArea rows={2} /></Form.Item>
         </Form>

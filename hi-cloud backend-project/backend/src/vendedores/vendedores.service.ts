@@ -58,6 +58,15 @@ export class VendedoresService {
     });
   }
 
+  /** Perfil vendedor del usuario autenticado (null si no tiene uno asociado) */
+  async getMiPerfil(userId: number) {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const vendedor  = await this.vendedorRepo.findOne({
+      where: { usuarioId: userId, empresaId, activo: true, isActive: true },
+    });
+    return vendedor ?? null;
+  }
+
   async findOne(id: number) {
     const empresaId = this.tenantSvc.getEmpresaId();
     const v = await this.vendedorRepo.findOne({ where: { id, empresaId, isActive: true } });
