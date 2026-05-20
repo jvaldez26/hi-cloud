@@ -148,31 +148,6 @@ export default function LicitacionesPage() {
         </Col>
       </Row>
 
-      {dash && (
-        <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
-          {ESTADO_PIPELINE.slice(0, 4).map(e => (
-            <Col xs={12} md={4} key={e.key}>
-              <Card size="small" style={{ borderTop: `3px solid ${e.color}` }}>
-                <Statistic title={e.label}
-                  value={dash.por_estado[e.key] ?? 0}
-                  valueStyle={{ color: e.color }} />
-              </Card>
-            </Col>
-          ))}
-          <Col xs={12} md={4}>
-            <Card size="small" style={{ borderTop: '3px solid #10b981' }}>
-              <Statistic title="Total adjudicado" value={fmt.money(dash.totalAdjudicado)}
-                valueStyle={{ color: '#10b981', fontSize: 14 }} />
-            </Card>
-          </Col>
-          <Col xs={12} md={4}>
-            <Card size="small" style={{ borderTop: '3px solid #7c3aed' }}>
-              <Statistic title="Tasa de éxito" value={`${dash.tasaExito}%`}
-                prefix={<TrophyOutlined />} valueStyle={{ color: '#7c3aed' }} />
-            </Card>
-          </Col>
-        </Row>
-      )}
 
       <Card extra={
         <Select placeholder="Estado" allowClear style={{ width: 150 }}
