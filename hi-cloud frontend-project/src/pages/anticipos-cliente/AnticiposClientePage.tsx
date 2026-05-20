@@ -82,16 +82,18 @@ export default function AnticiposClientePage() {
   });
 
   // CxC del cliente seleccionado para aplicar anticipo
+  // Endpoint correcto: GET /cxc/cliente/:id (no /cxc?clienteId=X)
   const clienteAplicarId = Form.useWatch('cxcClienteId', formAplicar);
   const { data: cxcCliente = [] } = useQuery<any[]>({
     queryKey: ['cxc-cliente-aplicar', clienteAplicarId],
-    queryFn:  () => api.get(`/cxc?clienteId=${clienteAplicarId}&limit=50`).then(r => {
+    queryFn:  () => api.get(`/cxc/cliente/${clienteAplicarId}?limit=50`).then(r => {
       const d = r.data?.data ?? r.data;
       return (Array.isArray(d) ? d : (d?.data ?? [])).filter((c: any) =>
         c.estado !== 'pagada' && c.estado !== 'anulada',
       );
     }),
     enabled: !!clienteAplicarId,
+    staleTime: 0,
   });
 
   // ── Mutations ─────────────────────────────────────────────────────────────

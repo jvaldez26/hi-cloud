@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Form, Input, Button, Card, Row, Col, Typography, Select,
-         DatePicker, Table, InputNumber, Space, Divider, message, Tag, Alert, theme } from 'antd';
+         DatePicker, Table, InputNumber, Space, Divider, message, Tag, Alert, Modal, theme } from 'antd';
 import { PlusOutlined, DeleteOutlined, ArrowLeftOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -41,6 +41,8 @@ export default function FacturaFormPage() {
   const [tipoPago,    setTipoPago]    = useState<'CONTADO' | 'CREDITO'>('CONTADO');
   const [diasCredito, setDiasCredito] = useState(30);
   const [clienteSeleccionado, setClienteSeleccionado] = useState<Cliente | null>(null);
+  const [modalAnticipo, setModalAnticipo] = useState<{ facturaId: number; clienteId: number } | null>(null);
+  const [formAnticipo] = Form.useForm();
   const navigate = useNavigate();
   const qc = useQueryClient();
 
@@ -61,15 +63,54 @@ export default function FacturaFormPage() {
 
   const createMut = useMutation({
     mutationFn: facturasApi.create,
-    onSuccess: () => {
+    onSuccess: (res: any) => {
       qc.invalidateQueries({ queryKey: ['facturas'] });
       message.success('Factura creada exitosamente');
-      navigate('/facturas');
+      // Si el cliente tiene anticipos activos, ofrecer aplicarlos
+      const facturaId  = res?.data?.data?.id ?? res?.data?.id ?? res?.id;
+      const clienteId  = form.getFieldValue('clienteId');
+      if (facturaId && clienteId && (anticiposCliente?.length ?? 0) > 0) {
+        setModalAnticipo({ facturaId, clienteId });
+      } else {
+        navigate('/facturas');
+      }
     },
     onError: (e: unknown) => {
       const msg = (e as any)?.response?.data?.errors?.[0] ?? 'Error';
       message.error(msg);
     },
+  });
+
+  // Anticipos activos del cliente seleccionado
+  const clienteIdWatch = Form.useWatch('clienteId', form);
+  const { data: anticiposCliente = [] } = useQuery<any[]>({
+    queryKey: ['anticipos-activos-cliente', clienteIdWatch],
+    queryFn:  () => api.get(`/anticipos/cliente/${clienteIdWatch}`)
+      .then(r => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : []; }),
+    enabled: !!clienteIdWatch,
+    staleTime: 0,
+  });
+
+  // CxC pendientes de la factura recién creada para el modal de anticipo
+  const { data: cxcFactura = [] } = useQuery<any[]>({
+    queryKey: ['cxc-factura-nueva', modalAnticipo?.facturaId],
+    queryFn:  () => api.get(`/cxc/cliente/${modalAnticipo!.clienteId}?limit=20`)
+      .then(r => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
+    enabled: !!modalAnticipo,
+    staleTime: 0,
+  });
+
+  const aplicarAnticipoMut = useMutation({
+    mutationFn: ({ anticipoId, cxcId, monto }: { anticipoId: number; cxcId: number; monto: number }) =>
+      api.post(`/anticipos/${anticipoId}/aplicar`, { cxcId, monto }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['anticipos'] });
+      qc.invalidateQueries({ queryKey: ['cxc'] });
+      message.success('Anticipo aplicado correctamente');
+      setModalAnticipo(null);
+      navigate('/facturas');
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al aplicar anticipo', 5),
   });
 
   const subtotal = lineas.reduce((s, l) => s + l.precioUnitario * l.cantidad, 0);
@@ -305,6 +346,14 @@ export default function FacturaFormPage() {
                   options={clientes?.data.map((c: Cliente) => ({ value: c.id, label: `${c.rfc} — ${c.nombre}` }))}
                   onChange={onClienteChange} />
               </Form.Item>
+              {anticiposCliente.length > 0 && (
+                <Alert
+                  type="info"
+                  showIcon
+                  style={{ marginTop: -8, marginBottom: 8, fontSize: 12 }}
+                  message={`Este cliente tiene ${anticiposCliente.length} anticipo${anticiposCliente.length > 1 ? 's' : ''} activo${anticiposCliente.length > 1 ? 's' : ''} — saldo disponible: RD$ ${anticiposCliente.reduce((s: number, a: any) => s + Number(a.montoPendiente ?? 0), 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`}
+                />
+              )}
             </Col>
             <Col xs={12} sm={6}>
               <Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}>
@@ -447,6 +496,63 @@ export default function FacturaFormPage() {
           </Row>
         </Card>
       </Form>
+
+      {/* ── Modal: aplicar anticipo a la factura recién creada ─────────── */}
+      <Modal
+        title="¿Deseas aplicar un anticipo disponible?"
+        open={!!modalAnticipo}
+        onCancel={() => { setModalAnticipo(null); navigate('/facturas'); }}
+        onOk={() => formAnticipo.submit()}
+        confirmLoading={aplicarAnticipoMut.isPending}
+        okText="Aplicar anticipo"
+        cancelText="Omitir"
+        width={480}
+        destroyOnClose
+      >
+        <Alert
+          type="success"
+          showIcon
+          message="Factura creada correctamente"
+          style={{ marginBottom: 16 }}
+        />
+        <p style={{ color: token.colorTextSecondary, fontSize: 13, marginBottom: 16 }}>
+          Este cliente tiene anticipos disponibles. Puedes aplicarlos ahora para reducir el saldo pendiente de esta factura.
+        </p>
+        <Form
+          form={formAnticipo}
+          layout="vertical"
+          onFinish={v => {
+            if (!modalAnticipo) return;
+            aplicarAnticipoMut.mutate({
+              anticipoId: v.anticipoId,
+              cxcId:      v.cxcId,
+              monto:      Number(v.monto),
+            });
+          }}
+        >
+          <Form.Item name="anticipoId" label="Anticipo a aplicar" rules={[{ required: true }]}>
+            <Select placeholder="Seleccionar anticipo">
+              {anticiposCliente.map((a: any) => (
+                <Select.Option key={a.id} value={a.id}>
+                  {a.numero} — Disponible: RD$ {Number(a.montoPendiente).toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+                </Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+          <Form.Item name="cxcId" label="Aplicar a (CxC de la factura)" rules={[{ required: true }]}>
+            <Select placeholder="Seleccionar CxC" notFoundContent="Cargando...">
+              {cxcFactura.map((c: any) => (
+                <Select.Option key={c.id} value={c.id}>
+                  {c.factura?.folio ?? `CxC #${c.id}`} — Pendiente: RD$ {Number(c.montoPendiente).toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+                </Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+          <Form.Item name="monto" label="Monto a aplicar (RD$)" rules={[{ required: true }]}>
+            <InputNumber min={0.01} precision={2} style={{ width: '100%' }} prefix="RD$" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }
