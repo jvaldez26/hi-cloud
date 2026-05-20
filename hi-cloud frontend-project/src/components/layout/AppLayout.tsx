@@ -1716,15 +1716,17 @@ export default function AppLayout() {
                 </Avatar>
               </button>
             </Tooltip>
-            <Tooltip title="Notificaciones" placement="right">
-              <Badge count={totalAlertas} size="small" offset={[-4, 4]}
-                style={{ background: alertasCriticas > 0 ? '#dc2626' : '#d97706' }}>
-                <button onClick={() => setCollapsedPersisted(false)}
-                  style={{ background: 'transparent', border: 'none', cursor: 'pointer',
-                    color: C.footerText, display: 'flex', padding: 2 }}>
-                  <Bell size={14} />
-                </button>
-              </Badge>
+            <Tooltip title="Cerrar sesión" placement="right">
+              <button
+                onClick={() => { logout(); navigate('/login'); }}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer',
+                  color: C.footerText, display: 'flex', padding: 2, borderRadius: 6,
+                  transition: 'color 0.15s' }}
+                onMouseEnter={e => (e.currentTarget.style.color = '#EF4444')}
+                onMouseLeave={e => (e.currentTarget.style.color = C.footerText)}
+              >
+                <LogoutOutlined style={{ fontSize: 14 }} />
+              </button>
             </Tooltip>
           </div>
         ) : (
