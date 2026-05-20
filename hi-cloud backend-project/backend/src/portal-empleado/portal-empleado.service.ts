@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { Empleado } from '../nomina/entities/empleado.entity';
@@ -49,6 +49,8 @@ export class PortalEmpleadoService {
 
     const nominas = await this.dataSource.query<any[]>(`
       SELECT
+        pn.id            AS "periodoId",
+        ln.id            AS "lineaId",
         pn.periodo,
         pn."diasTrabajados",
         pn."salarioBruto"::text,
@@ -137,5 +139,64 @@ export class PortalEmpleadoService {
       diasDisponibles: Math.max(0, diasPorLey - (diasUsados % diasPorLey)),
       historial:    vacaciones,
     };
+  }
+
+  // ─── Solicitudes de vacaciones / permisos del empleado ───────────────────────
+
+  async getMisSolicitudes(usuarioId: number) {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const emp = await this.getMiPerfil(usuarioId);
+
+    const solicitudes = await this.dataSource.query<any[]>(`
+      SELECT
+        id,
+        "fechaInicio"::text,
+        "fechaFin"::text,
+        "diasSolicitados",
+        estado,
+        motivo,
+        "observacionAprobador",
+        anio,
+        "createdAt"::text
+      FROM solicitudes_vacacion
+      WHERE "empleadoId" = $1
+        AND "empresaId"  = $2
+        AND "isActive"   = true
+      ORDER BY "createdAt" DESC
+      LIMIT 50
+    `, [emp.id, empresaId]).catch(() => []);
+
+    return { empleado: emp, solicitudes };
+  }
+
+  async crearSolicitud(usuarioId: number, dto: {
+    fechaInicio: string;
+    fechaFin:    string;
+    motivo?:     string;
+  }) {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const emp = await this.getMiPerfil(usuarioId);
+
+    const inicio = new Date(dto.fechaInicio);
+    const fin    = new Date(dto.fechaFin);
+    if (fin < inicio) throw new BadRequestException('La fecha fin debe ser posterior a la fecha inicio');
+
+    // Calcular días hábiles (lunes-viernes)
+    let dias = 0;
+    const d  = new Date(inicio);
+    while (d <= fin) {
+      if (d.getDay() !== 0 && d.getDay() !== 6) dias++;
+      d.setDate(d.getDate() + 1);
+    }
+    if (dias <= 0) throw new BadRequestException('El período no contiene días hábiles');
+
+    const [result] = await this.dataSource.query<{ id: number }[]>(`
+      INSERT INTO solicitudes_vacacion
+        ("empresaId", "empleadoId", "fechaInicio", "fechaFin", "diasSolicitados", estado, motivo, anio, "isActive", "createdAt", "updatedAt")
+      VALUES ($1, $2, $3, $4, $5, 'pendiente', $6, $7, true, NOW(), NOW())
+      RETURNING id
+    `, [empresaId, emp.id, dto.fechaInicio, dto.fechaFin, dias, dto.motivo ?? null, inicio.getFullYear()]);
+
+    return { ok: true, id: result?.id, diasSolicitados: dias };
   }
 }

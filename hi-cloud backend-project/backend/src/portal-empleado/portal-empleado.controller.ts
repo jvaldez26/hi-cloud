@@ -1,4 +1,11 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { IsString, IsOptional, IsDateString } from 'class-validator';
+
+class SolicitudVacacionesDto {
+  @IsDateString()   fechaInicio!: string;
+  @IsDateString()   fechaFin!:    string;
+  @IsOptional() @IsString() motivo?: string;
+}
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiHeader } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GetUser } from '../auth/decorators/get-user.decorator';
@@ -35,5 +42,18 @@ export class PortalEmpleadoController {
   @ApiOperation({ summary: 'Saldo de vacaciones y solicitudes (Ley 16-92 RD)' })
   misVacaciones(@GetUser() user: User) {
     return this.svc.getMisVacaciones(user.id);
+  }
+
+  @Get('mis-solicitudes')
+  @ApiOperation({ summary: 'Solicitudes de vacaciones/permisos del empleado' })
+  misSolicitudes(@GetUser() user: User) {
+    return this.svc.getMisSolicitudes(user.id);
+  }
+
+  @Post('solicitar-vacaciones')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Crear solicitud de vacaciones o permiso' })
+  solicitarVacaciones(@GetUser() user: User, @Body() dto: SolicitudVacacionesDto) {
+    return this.svc.crearSolicitud(user.id, dto);
   }
 }
