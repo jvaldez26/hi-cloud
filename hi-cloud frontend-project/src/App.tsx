@@ -203,7 +203,8 @@ export default function App() {
     const publicPaths = ['/login', '/registrar', '/recuperar-contrasena',
                          '/restablecer', '/verificar-correo', '/portal/',
                          '/invitacion/', '/precios', '/auth/callback'];
-    const onPublicPage = publicPaths.some(p => window.location.pathname.startsWith(p));
+    const onPublicPage = window.location.pathname === '/' ||
+                         publicPaths.some(p => window.location.pathname.startsWith(p));
     if (!savedUser && onPublicPage) {
       setHydrated(true);
       return;

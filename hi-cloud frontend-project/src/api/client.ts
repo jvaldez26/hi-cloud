@@ -81,10 +81,12 @@ apiClient.interceptors.response.use(
       }
 
       // Rutas públicas — no intentar refresh ni redirigir desde ellas
+      // '/' se compara exacto (startsWith('/') matchearía todo)
       const publicPaths = ['/login', '/registrar', '/recuperar-contrasena',
                            '/restablecer', '/verificar-correo', '/portal/',
                            '/invitacion/', '/precios', '/auth/callback'];
-      const onPublicPage = publicPaths.some(p => window.location.pathname.startsWith(p));
+      const onPublicPage = window.location.pathname === '/' ||
+                           publicPaths.some(p => window.location.pathname.startsWith(p));
 
       // No reintentar en refresh/login ni en páginas públicas para evitar
       // que un refresh_token válido restaure la sesión tras un logout explícito.
