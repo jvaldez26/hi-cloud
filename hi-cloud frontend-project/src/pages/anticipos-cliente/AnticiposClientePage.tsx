@@ -60,11 +60,6 @@ export default function AnticiposClientePage() {
   const [formAplicar] = Form.useForm();
 
   // ── Queries ──────────────────────────────────────────────────────────────
-  const { data: resumen } = useQuery<any>({
-    queryKey: ['anticipos-resumen'],
-    queryFn:  () => api.get('/anticipos/resumen').then(r => r.data?.data ?? r.data),
-  });
-
   const { data: anticipos = [], isLoading } = useQuery<any[]>({
     queryKey: ['anticipos'],
     queryFn:  () => api.get('/anticipos?limit=100').then(r => {
@@ -174,25 +169,6 @@ export default function AnticiposClientePage() {
           </Button>
         </Space>
       </div>
-
-      {/* Resumen */}
-      {resumen && (
-        <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
-          {[
-            { label: 'Anticipos hoy',       value: resumen.hoy?.total   ?? 0, sub: `${resumen.hoy?.cantidad   ?? 0} recibidos` },
-            { label: 'Saldo activo',        value: resumen.activos?.total ?? 0, sub: `${resumen.activos?.cantidad ?? 0} pendientes de aplicar`, color: token.colorPrimary },
-            { label: 'Total histórico',     value: resumen.total?.total  ?? 0, sub: `${resumen.total?.cantidad  ?? 0} registros` },
-          ].map(item => (
-            <Card key={item.label} bordered={false} style={{ flex: 1, minWidth: 200, borderRadius: 12 }}>
-              <Text type="secondary" style={{ fontSize: 12 }}>{item.label}</Text>
-              <div style={{ fontSize: 22, fontWeight: 700, color: item.color ?? token.colorText, marginTop: 4 }}>
-                {fmt(item.value)}
-              </div>
-              <Text type="secondary" style={{ fontSize: 11 }}>{item.sub}</Text>
-            </Card>
-          ))}
-        </div>
-      )}
 
       {/* Tabla */}
       <Card bordered={false} style={{ borderRadius: 12 }}>
