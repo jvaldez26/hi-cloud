@@ -46,6 +46,9 @@ export class CierreCaja {
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   cobrosRecibidos!: number;
 
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  totalAnticipos!: number;
+
   // Egresos
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   gastosEfectivo!: number;

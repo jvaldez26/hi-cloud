@@ -249,11 +249,24 @@ export class CajaService {
       [fecha],
     );
 
+    // Anticipos del día desde tabla anticipo_cliente
+    const anticipsFilter = empresaId ? `AND a."empresaId" = ${Number(empresaId)}` : '';
+    const [anticipos] = await this.dataSource.query<{ total: string }[]>(
+      `SELECT COALESCE(SUM(a.monto), 0)::text AS total
+       FROM anticipo_cliente a
+       WHERE DATE(a."fechaRegistro") = $1
+         AND a."isActive" = true
+         AND a.estado != 'anulado'
+         ${anticipsFilter}`,
+      [fecha],
+    ).catch(() => [{ total: '0' }]);
+
     await this.repo.update(cajaId, {
       ventasEfectivo:        Number(ventas?.efectivo      ?? 0),
       ventasTarjeta:         Number(ventas?.tarjeta       ?? 0),
       ventasTransferencia:   Number(ventas?.transferencia ?? 0),
       cobrosRecibidos:       Number(cobros?.total         ?? 0),
+      totalAnticipos:        Number(anticipos?.total      ?? 0),
       cantidadTransacciones: Number(ventas?.cantidad      ?? 0),
     });
   }

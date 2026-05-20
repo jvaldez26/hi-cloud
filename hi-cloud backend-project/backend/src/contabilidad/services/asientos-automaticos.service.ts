@@ -8,20 +8,21 @@ import { TenantService } from '../../tenant/tenant.service';
 
 // Códigos del plan de cuentas dominicano
 const COD = {
-  CLIENTES:        '1.1.2.01',
-  BANCOS:          '1.1.1.03',
-  CAJA:            '1.1.1.02',
-  INVENTARIO:      '1.1.3.01',
-  ITBIS_CREDITO:   '1.1.4.01',
-  PROVEEDORES:     '2.1.1.01',
-  ITBIS_POR_PAGAR: '2.1.2.01',
-  VENTAS:          '4.1.1.01',
-  SUELDOS:         '6.1.1.01',
-  TSS_PATRONAL:    '6.1.1.02',
-  SUELDOS_X_PAGAR: '2.1.3.01',
-  TSS_X_PAGAR:     '2.1.3.02',
-  ISR_X_PAGAR:     '2.1.2.02',
+  CLIENTES:           '1.1.2.01',
+  BANCOS:             '1.1.1.03',
+  CAJA:               '1.1.1.02',
+  INVENTARIO:         '1.1.3.01',
+  ITBIS_CREDITO:      '1.1.4.01',
+  PROVEEDORES:        '2.1.1.01',
+  ITBIS_POR_PAGAR:    '2.1.2.01',
+  VENTAS:             '4.1.1.01',
+  SUELDOS:            '6.1.1.01',
+  TSS_PATRONAL:       '6.1.1.02',
+  SUELDOS_X_PAGAR:    '2.1.3.01',
+  TSS_X_PAGAR:        '2.1.3.02',
+  ISR_X_PAGAR:        '2.1.2.02',
   ITBIS_CREDITO_COMPRAS: '1.1.4.01',
+  ANTICIPOS_CLIENTES: '2.1.5.01',  // Pasivo corriente — anticipos recibidos
 } as const;
 
 @Injectable()
@@ -386,6 +387,70 @@ export class AsientosAutomaticosService {
       this.logger.log(`Asiento gasto #${gastoId} generado: ${total.toFixed(2)}`);
     } catch (err) {
       this.logger.error(`Error asiento gasto #${gastoId}: ${(err as Error).message}`);
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Anticipo recibido de cliente → Caja/Banco / Anticipos de Clientes
+  // Efectivo: DÉBITO Caja. Resto: DÉBITO Bancos.
+  // CRÉDITO: Anticipos de Clientes (pasivo 2.1.5.01)
+  // Retorna el id del asiento generado, o null si falló.
+  // ──────────────────────────────────────────────────────────────────
+
+  async asientoAnticipo(
+    monto:      number,
+    anticipoId: number,
+    tipoPago:   string,
+    userId:     number,
+  ): Promise<number | null> {
+    const cuentaDebito = tipoPago === 'efectivo' ? COD.CAJA : COD.BANCOS;
+    try {
+      const asiento = await this.crearAsientoContabilizado({
+        descripcion:     `Anticipo recibido #${anticipoId}`,
+        tipoOrigen:      TipoOrigenAsiento.COBRO,
+        referenciaId:    anticipoId,
+        referenciaFolio: `ANT-${anticipoId}`,
+        userId,
+        lineas: [
+          { codigo: cuentaDebito,            descripcion: `Ingreso anticipo #${anticipoId}`,           debe: monto, haber: 0    },
+          { codigo: COD.ANTICIPOS_CLIENTES,  descripcion: `Anticipo recibido de cliente #${anticipoId}`, debe: 0,   haber: monto },
+        ],
+      });
+      this.logger.log(`Asiento anticipo #${anticipoId} generado`);
+      return asiento?.id ?? null;
+    } catch (err) {
+      this.logger.error(`Error asiento anticipo #${anticipoId}: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Aplicación de anticipo a CxC → Anticipos de Clientes / Clientes
+  // DÉBITO: Anticipos de Clientes (libera el pasivo)
+  // CRÉDITO: Clientes (reduce la cuenta por cobrar)
+  // ──────────────────────────────────────────────────────────────────
+
+  async asientoAplicarAnticipo(
+    monto:      number,
+    anticipoId: number,
+    cxcId:      number,
+    userId:     number,
+  ): Promise<void> {
+    try {
+      await this.crearAsientoContabilizado({
+        descripcion:     `Aplicación anticipo #${anticipoId} → CxC #${cxcId}`,
+        tipoOrigen:      TipoOrigenAsiento.COBRO,
+        referenciaId:    anticipoId,
+        referenciaFolio: `ANT-${anticipoId}`,
+        userId,
+        lineas: [
+          { codigo: COD.ANTICIPOS_CLIENTES, descripcion: `Aplicar anticipo #${anticipoId}`,   debe: monto, haber: 0    },
+          { codigo: COD.CLIENTES,           descripcion: `Abono CxC #${cxcId} por anticipo`,  debe: 0,     haber: monto },
+        ],
+      });
+      this.logger.log(`Asiento aplicación anticipo #${anticipoId} → CxC #${cxcId}`);
+    } catch (err) {
+      this.logger.error(`Error asiento aplicar anticipo #${anticipoId}: ${(err as Error).message}`);
     }
   }
 }

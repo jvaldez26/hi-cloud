@@ -101,6 +101,7 @@ import { AlertasSistemaModule } from './alertas-sistema/alertas-sistema.module';
 import { FidelidadModule } from './fidelidad/fidelidad.module';
 import { CuotasModule } from './cuotas/cuotas.module';
 import { RecibosCobrosModule } from './recibos-cobro/recibos-cobro.module';
+import { AnticiposClienteModule } from './anticipos-cliente/anticipos-cliente.module';
 import { NotasCreditoComprasModule } from './notas-credito-compras/notas-credito-compras.module';
 import { LibroVentasModule } from './libro-ventas/libro-ventas.module';
 import { PortalEmpleadoModule } from './portal-empleado/portal-empleado.module';
@@ -272,6 +273,7 @@ import { UomModule }                     from './uom/uom.module';
     FidelidadModule,
     CuotasModule,
     RecibosCobrosModule,
+    AnticiposClienteModule,
     NotasCreditoComprasModule,
     LibroVentasModule,
     PortalEmpleadoModule,
