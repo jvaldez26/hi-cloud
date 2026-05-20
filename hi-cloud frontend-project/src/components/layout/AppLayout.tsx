@@ -1131,8 +1131,9 @@ export default function AppLayout() {
     queryKey: ['mis-empresas', user?.id],
     queryFn:  () => api.get('/multi-empresa/mis-empresas').then(r => r.data?.data ?? r.data ?? []),
     enabled:  !!user,
-    staleTime: 30_000,           // reducido a 30s para detectar cambios más rápido
-    refetchOnWindowFocus: true,  // refrescar al volver a la pestaña
+    staleTime:          0,          // siempre stale → garantiza datos frescos al montar
+    refetchOnMount:     'always',   // fuerza fetch en cada montaje sin importar caché
+    refetchOnWindowFocus: true,
   });
   const cambiarEmpresa = useCallback(async (id: number) => {
     setEmpresaActiva(id);
@@ -1151,25 +1152,14 @@ export default function AppLayout() {
     window.location.reload();
   }, []);
 
-  // ── Sincronizar empresaActiva cuando cargan las empresas ───────────────────
+  // ── Sincronizar empresaActiva cuando está null y cargan las empresas ────────
   useEffect(() => {
-    if (!empresasLoaded || misEmpresas.length === 0) return;
-    const stored = localStorage.getItem('empresaId');
-    const storedNum = stored ? Number(stored) : null;
-    const estaEnLista = storedNum && (misEmpresas as any[]).some((e: any) => e.empresaId === storedNum);
-
-    if (estaEnLista) {
-      // localStorage tiene un ID válido — sincronizar estado React
-      if (!empresaActiva || empresaActiva !== storedNum) {
-        setEmpresaActiva(storedNum);
-      }
-    } else {
-      // localStorage vacío o tiene un ID que ya no existe → seleccionar la primera
-      const primera = (misEmpresas as any[])[0];
-      localStorage.setItem('empresaId', String(primera.empresaId));
-      setEmpresaActiva(primera.empresaId);
+    if (!empresaActiva && misEmpresas.length > 0) {
+      const id    = localStorage.getItem('empresaId');
+      const match = id ? (misEmpresas as any[]).find((e: any) => e.empresaId === Number(id)) : null;
+      setEmpresaActiva(match?.empresaId ?? (misEmpresas as any[])[0].empresaId);
     }
-  }, [empresasLoaded, misEmpresas]);
+  }, [misEmpresas, empresaActiva]);
 
   // Auto-seleccionar empresa si:
   // a) No hay empresaId en localStorage, O
@@ -1321,9 +1311,12 @@ export default function AppLayout() {
 
   // ── Sidebar interno ─────────────────────────────────────────────────────────
 
-  // Nombre de la empresa activa — si no hay match exacto, mostrar la primera disponible
+  // Nombre de la empresa activa.
+  // empresaActivaNum: usa state; si es null (aún sincronizando) cae a localStorage.
+  const empresaActivaNum = empresaActiva
+    ?? (localStorage.getItem('empresaId') ? Number(localStorage.getItem('empresaId')) : null);
   const empresaNombre =
-    (misEmpresas as any[]).find((e: any) => e.empresaId === empresaActiva)?.nombre ??
+    (misEmpresas as any[]).find((e: any) => e.empresaId === empresaActivaNum)?.nombre ??
     (misEmpresas as any[])[0]?.nombre ??
     '';
   const empresasFiltradas = (misEmpresas as any[]).filter((e: any) =>
