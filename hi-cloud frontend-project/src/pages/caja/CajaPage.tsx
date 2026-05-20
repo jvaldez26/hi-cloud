@@ -476,7 +476,7 @@ h2{text-align:center;font-size:16px;margin:0 0 4px}
               filterOption={(input: string, opt: any) =>
                 (opt?.label ?? '').toLowerCase().includes(input.toLowerCase())
               }
-              options={cajeros.map((u: any) => ({ value: u.id, label: u.nombre, email: u.email }))}
+              options={cajeros.map((u: any) => ({ value: u.id, label: u.nombre, sub: u.email ?? u.telefono ?? '' }))}
               optionRender={(opt: any) => (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 0' }}>
                   <Avatar size={22} style={{ background: avatarColor(opt.data.label as string), fontSize: 10, flexShrink: 0 }}>
@@ -484,7 +484,7 @@ h2{text-align:center;font-size:16px;margin:0 0 4px}
                   </Avatar>
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 500 }}>{opt.data.label as string}</div>
-                    <div style={{ fontSize: 11, color: token.colorTextTertiary }}>{opt.data.email}</div>
+                    <div style={{ fontSize: 11, color: token.colorTextTertiary }}>{opt.data.sub}</div>
                   </div>
                 </div>
               )}

@@ -58,16 +58,14 @@ export class CajaService {
 
   // ── Cajeros activos de la empresa ─────────────────────────────────────────
 
-  async listarCajeros(): Promise<{ id: number; nombre: string; email: string; role: string }[]> {
+  async listarCajeros(): Promise<{ id: number; nombre: string; email: string | null; telefono: string | null }[]> {
     const empresaId = this.tenantService.getEmpresaId();
     return this.dataSource.query(`
-      SELECT u.id, u.nombre, u.email, u.role
-      FROM users u
-      JOIN usuario_empresa ue ON ue."userId" = u.id
-      WHERE ue."empresaId" = $1
-        AND ue."isActive"  = true
-        AND u."isActive"   = true
-      ORDER BY u.nombre
+      SELECT id, nombre, email, telefono
+      FROM vendedores
+      WHERE "empresaId" = $1
+        AND "isActive"  = true
+      ORDER BY nombre ASC
     `, [empresaId]);
   }
 
