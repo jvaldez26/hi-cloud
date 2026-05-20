@@ -39,7 +39,8 @@ function makeContext(token?: string): any {
 function buildGuard(): SuperAdminGuard {
   const jwtSvc = new JwtService({ secret: JWT_SECRET });
   const cfgSvc = { get: (key: string) => key === 'JWT_SECRET' ? JWT_SECRET : '' } as ConfigService;
-  return new SuperAdminGuard(jwtSvc, cfgSvc);
+  // DataSource = null → @Optional() activa fallback sin DB (solo JWT)
+  return new SuperAdminGuard(jwtSvc, cfgSvc, null as any);
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -54,10 +55,9 @@ describe('SuperAdminGuard', () => {
   // ── Casos que DEBEN pasar ──────────────────────────────────────────────────
 
   describe('Acceso permitido', () => {
-    it('permite acceso a usuario con role super_admin', () => {
+    it('permite acceso a usuario con role super_admin', async () => {
       const token = makeToken({ sub: 99, role: 'super_admin', email: 'sa@hicloud.com' });
-      expect(() => guard.canActivate(makeContext(token))).not.toThrow();
-      expect(guard.canActivate(makeContext(token))).toBe(true);
+      await expect(guard.canActivate(makeContext(token))).resolves.toBe(true);
     });
   });
 
@@ -67,43 +67,39 @@ describe('SuperAdminGuard', () => {
     const rolesCliente = ['admin', 'contador', 'vendedor', 'viewer'];
 
     rolesCliente.forEach(role => {
-      it(`rechaza con 403 al role "${role}"`, () => {
+      it(`rechaza con 403 al role "${role}"`, async () => {
         const token = makeToken({ sub: 1, role, email: `${role}@test.com` });
-        expect(() => guard.canActivate(makeContext(token))).toThrow(ForbiddenException);
+        await expect(guard.canActivate(makeContext(token))).rejects.toThrow(ForbiddenException);
       });
     });
   });
 
   describe('Acceso denegado — tokens inválidos', () => {
-    it('rechaza con 401 cuando no hay token', () => {
-      expect(() => guard.canActivate(makeContext())).toThrow(UnauthorizedException);
+    it('rechaza con 401 cuando no hay token', async () => {
+      await expect(guard.canActivate(makeContext())).rejects.toThrow(UnauthorizedException);
     });
 
-    it('rechaza con 401 cuando el header no empieza con Bearer', () => {
+    it('rechaza con 401 cuando el header no empieza con Bearer', async () => {
       const ctx = makeContext();
       (ctx.switchToHttp().getRequest() as any).headers.authorization = 'Basic sometoken';
-      expect(() => guard.canActivate(ctx)).toThrow(UnauthorizedException);
+      await expect(guard.canActivate(ctx)).rejects.toThrow(UnauthorizedException);
     });
 
-    it('rechaza con 401 cuando el token está firmado con otro secret', () => {
+    it('rechaza con 401 cuando el token está firmado con otro secret', async () => {
       const badJwt = new JwtService({ secret: 'otro-secret-falso' });
       const badToken = badJwt.sign({ sub: 99, role: 'super_admin' });
-      expect(() => guard.canActivate(makeContext(badToken))).toThrow(UnauthorizedException);
+      await expect(guard.canActivate(makeContext(badToken))).rejects.toThrow(UnauthorizedException);
     });
 
-    it('rechaza con 401 cuando el token está expirado', () => {
+    it('rechaza con 401 cuando el token está expirado', async () => {
       const jwt = new JwtService({ secret: JWT_SECRET });
-      // Token con iat/exp en el pasado
       const expiredToken = jwt.sign({ sub: 99, role: 'super_admin' }, { expiresIn: '0s' });
-      // Pequeña espera para asegurar que 0s ya expiró
-      return new Promise<void>(resolve => setTimeout(() => {
-        expect(() => guard.canActivate(makeContext(expiredToken))).toThrow(UnauthorizedException);
-        resolve();
-      }, 50));
+      await new Promise(r => setTimeout(r, 50));
+      await expect(guard.canActivate(makeContext(expiredToken))).rejects.toThrow(UnauthorizedException);
     });
 
-    it('rechaza con 401 cuando el token es un string malformado', () => {
-      expect(() => guard.canActivate(makeContext('not.a.valid.jwt'))).toThrow(UnauthorizedException);
+    it('rechaza con 401 cuando el token es un string malformado', async () => {
+      await expect(guard.canActivate(makeContext('not.a.valid.jwt'))).rejects.toThrow(UnauthorizedException);
     });
   });
 
