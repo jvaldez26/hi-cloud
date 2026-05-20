@@ -1815,14 +1815,16 @@ export default function AppLayout() {
               }
             </button>
 
-            {/* Ayuda */}
-            <button onClick={() => setHelpOpen(true)} title="Ayuda (F1)"
+            {/* Cerrar sesión */}
+            <button
+              onClick={() => { logout(); navigate('/login'); }}
+              title="Cerrar sesión"
               style={{ background: 'transparent', border: 'none', cursor: 'pointer',
                 color: C.footerText, display: 'flex', padding: 4, borderRadius: 6,
                 transition: 'color 0.15s' }}
-              onMouseEnter={e => (e.currentTarget.style.color = C.text)}
+              onMouseEnter={e => (e.currentTarget.style.color = '#EF4444')}
               onMouseLeave={e => (e.currentTarget.style.color = C.footerText)}>
-              <HelpCircle size={13} />
+              <LogoutOutlined style={{ fontSize: 13 }} />
             </button>
           </div>
         )}
