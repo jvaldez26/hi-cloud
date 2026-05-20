@@ -1982,7 +1982,7 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
                   <td style={{padding:'8px 12px',color:C.blue,fontFamily:'monospace',fontSize:11}}>{r.numero||r.id}</td>
                   <td style={{padding:'8px 12px',color:C.text}}>{r.clienteNombre||r.cliente?.nombre||'—'}</td>
                   <td style={{padding:'8px 12px',color:C.green,fontWeight:700}}>{fmt.money(r.monto??r.total??0)}</td>
-                  <td style={{padding:'8px 12px',color:C.textSub,fontSize:11}}>{r.metodoPago||'—'}</td>
+                  <td style={{padding:'8px 12px',color:C.textSub,fontSize:11}}>{r.tipoPago||r.metodoPago||'—'}</td>
                 </tr>
               ))}</tbody>
             </table>

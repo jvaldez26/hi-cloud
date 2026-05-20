@@ -345,7 +345,7 @@ export default function AnticiposClientePage() {
                 >
                   {cxcCliente.map((c: any) => (
                     <Option key={c.id} value={c.id}>
-                      {c.factura?.folio ?? `CxC #${c.id}`} — Pendiente: {fmt(Number(c.montoPendiente))}
+                      {c.factura?.folio ?? c.factura?.numero ?? `CxC #${c.id}`} — Pendiente: {fmt(Number(c.montoPendiente))}
                     </Option>
                   ))}
                 </Select>

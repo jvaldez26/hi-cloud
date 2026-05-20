@@ -543,7 +543,7 @@ export default function FacturaFormPage() {
             <Select placeholder="Seleccionar CxC" notFoundContent="Cargando...">
               {cxcFactura.map((c: any) => (
                 <Select.Option key={c.id} value={c.id}>
-                  {c.factura?.folio ?? `CxC #${c.id}`} — Pendiente: RD$ {Number(c.montoPendiente).toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+                  {c.factura?.folio ?? c.factura?.numero ?? `CxC #${c.id}`} — Pendiente: RD$ {Number(c.montoPendiente).toLocaleString('es-DO', { minimumFractionDigits: 2 })}
                 </Select.Option>
               ))}
             </Select>

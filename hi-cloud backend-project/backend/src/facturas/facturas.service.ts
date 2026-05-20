@@ -379,11 +379,11 @@ export class FacturasService {
         );
       }
 
-      // 2. CxC — solo si es crédito explícito O si es pago NO inmediato (compatibilidad)
+      // 2. CxC — solo si tipoPago === 'CREDITO' (contado nunca genera CxC)
       const esCredito = (factura as any).tipoPago === 'CREDITO';
       const diasCred  = Number((factura as any).diasCredito ?? 0);
-      if (esCredito || (!pagoInmediato && !esCredito)) {
-        const dias = esCredito && diasCred > 0 ? diasCred : 30;
+      if (esCredito) {
+        const dias = diasCred > 0 ? diasCred : 30;
         await this.cxcService.crear(factura.id, factura.usuarioId, dias);
         // Guardar fechaVencimiento en la factura si es crédito explícito
         if (esCredito && diasCred > 0) {

@@ -1,7 +1,4 @@
-import { Controller, Get, Inject, Optional, Param } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { UsuarioEmpresa } from '../multi-empresa/entities/usuario-empresa.entity';
+import { Controller, Get, Inject, Optional } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
@@ -22,7 +19,6 @@ export class HealthController {
     private readonly schemaValidator: SchemaValidatorService,
     @Optional() private readonly queues: QueuesService,
     @Optional() @Inject(CACHE_MANAGER) private readonly cache: Cache,
-    @Optional() @InjectRepository(UsuarioEmpresa) private readonly ueRepo: Repository<UsuarioEmpresa>,
   ) {}
 
   @Get()
@@ -158,61 +154,4 @@ export class HealthController {
     };
   }
 
-  @Get('mis-empresas/:userId')
-  @ApiOperation({ summary: 'Debug: ejecuta exactamente el mismo query que mis-empresas' })
-  async debugMisEmpresas(@Param('userId') userId: string) {
-    const id = Number(userId);
-    // Ejecutar la misma lógica que getEmpresasDeUsuario
-    const qb = this.ueRepo
-      ? this.ueRepo
-          .createQueryBuilder('ue')
-          .leftJoinAndSelect('ue.empresa', 'e')
-          .where({ userId: id })
-          .andWhere('ue.isActive IS NOT FALSE')
-          .orderBy('ue.isPrincipal', 'DESC')
-      : null;
-    const sql    = qb?.getSql() ?? 'ueRepo no disponible';
-    const result = qb ? await qb.getMany() : [];
-    // Raw SQL para comparar
-    const rawResult = await this.ds.query(
-      `SELECT ue.*, e.nombre as empresa_nombre, e."isActive" as e_isactive
-       FROM usuario_empresa ue
-       LEFT JOIN empresa e ON e.id = ue."empresaId"
-       WHERE ue."userId" = $1 AND (ue."isActive" IS NOT FALSE)`,
-      [id],
-    );
-    return {
-      userId: id,
-      queryBuilder_sql:    sql,
-      queryBuilder_count:  result.length,
-      queryBuilder_result: result.map(r => ({ empresaId: r.empresaId, nombre: r.empresa?.nombre, isActive: r.isActive })),
-      raw_sql_count:       rawResult.length,
-      raw_sql_result:      rawResult,
-    };
-  }
-
-  @Get('db-isactive')
-  @ApiOperation({ summary: 'Diagnóstico: distribución isActive en empresa y usuario_empresa' })
-  async checkIsActive() {
-    const [empresaRows, ueRows, migrations, jeanRows] = await Promise.all([
-      this.ds.query(`SELECT "isActive"::text, COUNT(*) FROM empresa GROUP BY "isActive"`),
-      this.ds.query(`SELECT "isActive"::text, COUNT(*) FROM usuario_empresa GROUP BY "isActive"`),
-      this.ds.query(`SELECT name FROM typeorm_migrations ORDER BY timestamp DESC LIMIT 5`),
-      // Registros detallados de JEAN + test IS NOT FALSE
-      this.ds.query(`
-        SELECT u.id as userId, u.email,
-               ue.id as ueId, ue."empresaId", ue."isActive" as ue_isActive,
-               ue."isPrincipal",
-               e.nombre as empresa_nombre, e."isActive" as e_isActive,
-               (ue."isActive" IS NOT FALSE) as pasa_filtro
-        FROM users u
-        LEFT JOIN usuario_empresa ue ON ue."userId" = u.id
-        LEFT JOIN empresa e ON e.id = ue."empresaId"
-        WHERE u.email = 'valdezsamuel03@gmail.com'
-        ORDER BY ue."isPrincipal" DESC
-      `),
-    ]);
-    const pasanFiltro = jeanRows.filter((r: any) => r.pasa_filtro);
-    return { empresa: empresaRows, usuario_empresa: ueRows, migrations, jean: jeanRows, jean_pasan_filtro: pasanFiltro.length };
-  }
 }
