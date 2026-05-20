@@ -142,7 +142,7 @@ function Navbar({ onDemo }: { onDemo: () => void }) {
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <ThemeToggleBtn />
-        <button onClick={() => window.open('/login', '_blank')}
+        <button onClick={() => navigate('/login')}
           style={{ background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.2)',
             color: '#fff', fontSize: 13, fontWeight: 600, padding: '7px 16px', borderRadius: 8,
             cursor: 'pointer', transition: 'all .15s' }}
@@ -181,7 +181,7 @@ function Navbar({ onDemo }: { onDemo: () => void }) {
                 {l.label}
               </button>
             ))}
-            <button onClick={() => { window.open('/login', '_blank'); setMopen(false); }}
+            <button onClick={() => { navigate('/login'); setMopen(false); }}
               style={{ marginTop: 16, width: '100%', background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.2)',
                 color: '#fff', fontSize: 14, fontWeight: 600, padding: '12px', borderRadius: 8, cursor: 'pointer' }}>
               Iniciar sesión

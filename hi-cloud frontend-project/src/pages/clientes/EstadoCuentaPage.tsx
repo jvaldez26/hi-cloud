@@ -103,13 +103,13 @@ export default function EstadoCuentaPage() {
             <Button icon={<DownloadOutlined />} onClick={handleExportar}>Excel</Button>
             <Button icon={<FilePdfOutlined />} type="primary" danger
               onClick={async () => {
-                const token = localStorage.getItem('access_token') ?? '';
                 const eid   = localStorage.getItem('empresaId') ?? '';
                 const params = new URLSearchParams();
                 if (rango?.[0]) params.set('fechaDesde', rango[0].format('YYYY-MM-DD'));
                 if (rango?.[1]) params.set('fechaHasta', rango[1].format('YYYY-MM-DD'));
                 const res = await fetch(`/api/v1/clientes/${id}/estado-cuenta/pdf?${params}`, {
-                  headers: { Authorization: `Bearer ${token}`, 'X-Empresa-ID': eid },
+      credentials: 'include',
+                  headers: { 'X-Empresa-ID': eid },
                 });
                 if (!res.ok) { alert('Error generando PDF'); return; }
                 const blob = await res.blob();

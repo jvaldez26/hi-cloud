@@ -42,10 +42,10 @@ export default function WhatsAppButton({
 
       // 2. Si sendPdf y es factura, intentar compartir el PDF
       if (sendPdf && tipo === 'factura') {
-        const tk  = localStorage.getItem('access_token') ?? '';
-        const eid = localStorage.getItem('empresaId')    ?? '';
+        const eid = localStorage.getItem('empresaId') ?? '';
         const pdfRes = await fetch(`/api/v1/facturas/${id}/pdf`, {
-          headers: { Authorization: `Bearer ${tk}`, 'X-Empresa-ID': eid },
+          credentials: 'include',
+          headers: { 'X-Empresa-ID': eid },
         });
 
         if (pdfRes.ok) {

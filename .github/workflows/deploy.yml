@@ -24,6 +24,10 @@ jobs:
         working-directory: 'hi-cloud backend-project/backend'
         run: npm ci && npx tsc --noEmit
 
+      - name: Backend — Audit vulnerabilidades (S-39)
+        working-directory: 'hi-cloud backend-project/backend'
+        run: npm audit --audit-level=high || true
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -33,6 +37,10 @@ jobs:
       - name: Frontend — TypeScript
         working-directory: 'hi-cloud frontend-project'
         run: npm ci && npx tsc --noEmit
+
+      - name: Frontend — Audit vulnerabilidades (S-39)
+        working-directory: 'hi-cloud frontend-project'
+        run: npm audit --audit-level=high || true
 
   # ── 2. Build backend en el runner (sin límite de timeout en EC2) ─────────────
   build-backend:

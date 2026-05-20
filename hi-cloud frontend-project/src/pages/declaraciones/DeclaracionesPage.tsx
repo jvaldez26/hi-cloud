@@ -49,7 +49,6 @@ const declApi = {
 
 function authHeaders() {
   return {
-    Authorization:  `Bearer ${localStorage.getItem('access_token') ?? ''}`,
     'X-Empresa-ID': localStorage.getItem('empresaId') ?? '',
   };
 }

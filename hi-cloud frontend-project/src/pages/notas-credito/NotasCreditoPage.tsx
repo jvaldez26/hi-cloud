@@ -105,10 +105,10 @@ export default function NotasCreditoPage() {
   const descargarPDF = async (nota: any) => {
     setPdfPending(nota.id);
     try {
-      const token = localStorage.getItem('access_token') ?? '';
       const eid   = localStorage.getItem('empresaId') ?? '';
       const res   = await fetch(`/api/v1/notas-credito/${nota.id}/pdf`, {
-        headers: { Authorization: `Bearer ${token}`, 'X-Empresa-ID': eid },
+      credentials: 'include',
+        headers: { 'X-Empresa-ID': eid },
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));

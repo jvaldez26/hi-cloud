@@ -515,10 +515,10 @@ function PeriodosTab() {
         <Tooltip title="Descargar recibo PDF">
           <Button size="small" type="text" icon={<FilePdfOutlined />}
             onClick={async () => {
-              const token = localStorage.getItem('access_token') ?? '';
               const eid   = localStorage.getItem('empresaId') ?? '';
               const res   = await fetch(`/api/v1/nomina/periodos/${openDetail?.id}/recibo/${r.empleadoId}/pdf`, {
-                headers: { Authorization: `Bearer ${token}`, 'X-Empresa-ID': eid },
+      credentials: 'include',
+                headers: { 'X-Empresa-ID': eid },
               });
               if (!res.ok) { message.error('Error generando recibo'); return; }
               const blob = await res.blob();

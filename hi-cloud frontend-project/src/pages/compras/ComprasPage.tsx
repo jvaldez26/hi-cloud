@@ -81,10 +81,10 @@ export default function ComprasPage() {
   const descargarPDF = async (compra: Compra) => {
     setPdfPending(compra.id);
     try {
-      const token = localStorage.getItem('access_token') ?? '';
       const eid   = localStorage.getItem('empresaId') ?? '';
       const res   = await fetch(`/api/v1/compras/${compra.id}/pdf`, {
-        headers: { Authorization: `Bearer ${token}`, 'X-Empresa-ID': eid },
+      credentials: 'include',
+        headers: { 'X-Empresa-ID': eid },
       });
       if (!res.ok) throw new Error('Error PDF');
       const blob = await res.blob();

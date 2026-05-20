@@ -228,10 +228,10 @@ export default function RecibosCobrosPage() {
   const descargarPDF = async (item: any) => {
     setPdfPending(item.id);
     try {
-      const token = localStorage.getItem('access_token') ?? '';
       const eid   = localStorage.getItem('empresaId') ?? '';
       const res   = await fetch(`/api/v1/recibos-cobro/${item.id}/pdf`, {
-        headers: { Authorization: `Bearer ${token}`, 'X-Empresa-ID': eid },
+      credentials: 'include',
+        headers: { 'X-Empresa-ID': eid },
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));

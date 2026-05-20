@@ -111,14 +111,13 @@ export default function FacturaDetailPage() {
               style={{ background: '#1E40AF', border: 'none' }}
               onClick={() => {
                 const empresaId = localStorage.getItem('empresaId');
-                const token = localStorage.getItem('access_token');
                 // Abrir en nueva pestaña — el browser descarga el PDF
                 const url = `/api/v1/facturas/${id}/pdf`;
                 const a = document.createElement('a');
                 a.href = url;
                 a.target = '_blank';
                 // Header via fetch para pasar auth
-                fetch(url, { headers: { Authorization: `Bearer ${token}`, 'X-Empresa-ID': empresaId || '' } })
+                fetch(url, { headers: { 'X-Empresa-ID': empresaId || '' } })
                   .then(r => r.blob())
                   .then(blob => {
                     const link = document.createElement('a');
@@ -137,10 +136,9 @@ export default function FacturaDetailPage() {
             <Button
               icon={<EyeOutlined />}
               onClick={() => {
-                const token = localStorage.getItem('access_token');
                 const empresaId = localStorage.getItem('empresaId');
                 fetch(`/api/v1/facturas/${id}/preview`, {
-                  headers: { Authorization: `Bearer ${token}`, 'X-Empresa-ID': empresaId || '' }
+                  headers: { 'X-Empresa-ID': empresaId || '' }
                 })
                   .then(r => r.text())
                   .then(html => {

@@ -94,11 +94,10 @@ export default function ReportesFinancierosPage() {
           {tabActiva === 'estado-resultados' && (
             <Button icon={<FilePdfOutlined />} type="primary" danger
               onClick={async () => {
-                const token     = localStorage.getItem('access_token') ?? '';
                 const empresaId = localStorage.getItem('empresaId') ?? '';
                 const res = await fetch(
                   `/api/v1/reportes-financieros/estado-resultados/pdf?desde=${desde}&hasta=${hasta}`,
-                  { headers: { Authorization: `Bearer ${token}`, 'X-Empresa-ID': empresaId } }
+                  { headers: { 'X-Empresa-ID': empresaId } }
                 );
                 if (!res.ok) { alert('Error generando PDF'); return; }
                 const blob = await res.blob();
@@ -113,11 +112,10 @@ export default function ReportesFinancierosPage() {
           {tabActiva === 'balance-general' && (
             <Button icon={<FilePdfOutlined />} type="primary" danger
               onClick={async () => {
-                const token     = localStorage.getItem('access_token') ?? '';
                 const empresaId = localStorage.getItem('empresaId') ?? '';
                 const res = await fetch(
                   `/api/v1/reportes-financieros/balance-general/pdf?fechaCorte=${corte}`,
-                  { headers: { Authorization: `Bearer ${token}`, 'X-Empresa-ID': empresaId } }
+                  { headers: { 'X-Empresa-ID': empresaId } }
                 );
                 if (!res.ok) { alert('Error generando PDF'); return; }
                 const blob = await res.blob();

@@ -56,10 +56,10 @@ const ESTADO_LABEL: Record<string, string> = {
 async function descargarPDF(factura: Factura, setPending: (id: number | null) => void) {
   setPending(factura.id);
   try {
-    const token     = localStorage.getItem('access_token') ?? '';
     const empresaId = localStorage.getItem('empresaId') ?? '';
     const res = await fetch(`/api/v1/facturas/${factura.id}/pdf`, {
-      headers: { Authorization: `Bearer ${token}`, 'X-Empresa-ID': empresaId },
+      credentials: 'include',
+      headers: { 'X-Empresa-ID': empresaId },
     });
     if (!res.ok) throw new Error(await res.text());
     const blob = await res.blob();
