@@ -1784,12 +1784,24 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
   const [metodo, setMetodo]       = useState('Efectivo');
   const [referencia, setRef]      = useState('');
   const [descripcion, setDesc]    = useState('');
-  const [facturaFolio, setFacturaFolio] = useState('');  // FIX 7: factura de referencia
+  const [facturaId,    setFacturaId]    = useState<number|null>(null);
+  const [facturaFolio, setFacturaFolio] = useState('');
   const { data: clientes } = useQuery<any>({
     queryKey: ['pos-cli-sel', busqCliente],
     queryFn: () => api.get(`/clientes?limit=20${busqCliente?'&search='+encodeURIComponent(busqCliente):''}`)
       .then(r=>{ const d=r.data?.data??r.data; return d?.data??d??[]; }),
     staleTime: 30_000,
+  });
+  const { data: facturasCliente = [], isFetching: loadingFacturas } = useQuery<any[]>({
+    queryKey: ['pos-facturas-cli', clienteId],
+    queryFn:  () => api.get(`/facturas?clienteId=${clienteId}&limit=100`)
+      .then(r => {
+        const d   = r.data?.data ?? r.data;
+        const arr = Array.isArray(d) ? d : (d?.data ?? []);
+        return arr.filter((f: any) => f.estado !== 'pagada' && f.estado !== 'anulada');
+      }),
+    enabled: !!clienteId && !esAnticipo,
+    staleTime: 0,
   });
   const { data: lista, isLoading } = useQuery<any>({
     queryKey: ['pos-panel', tipo],
@@ -1809,14 +1821,14 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
         concepto:   descripcion || (esAnticipo ? 'Anticipo' : 'Recibo de cobro'),
         fecha:      new Date().toISOString().split('T')[0],
       };
-      if (clienteId) body.clienteId = clienteId;
-      if (referencia) body.referencia = referencia;
-      if (facturaFolio) body.facturaFolio = facturaFolio;  // FIX 7
+      if (clienteId)   body.clienteId   = clienteId;
+      if (referencia)  body.referencia  = referencia;
+      if (facturaId)   { body.facturaId = facturaId; body.facturaFolio = facturaFolio; }
       return api.post(`/${tipo}`, body);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['pos-panel', tipo] }); qc.refetchQueries({ queryKey: ['pos-panel', tipo] });
-      setForm(false); setMonto(''); setMetodo('Efectivo'); setRef(''); setDesc(''); setClienteId(null); setBusqCliente(''); setFacturaFolio('');
+      setForm(false); setMonto(''); setMetodo('Efectivo'); setRef(''); setDesc(''); setClienteId(null); setBusqCliente(''); setFacturaId(null); setFacturaFolio('');
       message.success(esAnticipo ? 'Anticipo registrado' : 'Recibo registrado');
     },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al guardar'),
@@ -1832,7 +1844,7 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
           <div style={{ maxWidth:440, color:C.text }}>
             <div style={{ marginBottom:12 }}>
               <div style={{ fontSize:12, fontWeight:600, marginBottom:4 }}>Buscar Cliente</div>
-              <select value={clienteId??''} onChange={e=>setClienteId(e.target.value?Number(e.target.value):null)}
+              <select value={clienteId??''} onChange={e=>{ setClienteId(e.target.value?Number(e.target.value):null); setFacturaId(null); setFacturaFolio(''); }}
                 style={{ width:'100%', height:38, padding:'0 12px', borderRadius:8,
                   border:`1px solid ${C.border2}`, fontSize:13, background:C.inputBg, color:C.text, cursor:'pointer', outline:'none', boxSizing:'border-box' }}>
                 <option value="">Sin cliente específico</option>
@@ -1843,8 +1855,27 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
             </div>
             <PanelInput C={C} label="Monto" type="number" placeholder="Monto" value={monto} onChange={e=>setMonto(e.target.value)} />
             {!esAnticipo && (
-              <PanelInput C={C} label="N° Factura de referencia (opcional)" placeholder="Ej: FAC-2025-0001"
-                value={facturaFolio} onChange={e=>setFacturaFolio(e.target.value)} />
+              <PanelSelect
+                C={C}
+                label="Factura de referencia (opcional)"
+                value={facturaId ?? ''}
+                disabled={!clienteId}
+                onChange={e => {
+                  const val = e.target.value ? Number(e.target.value) : null;
+                  setFacturaId(val);
+                  const f = facturasCliente.find((x: any) => x.id === val);
+                  setFacturaFolio(f ? (f.numero ?? f.folio ?? '') : '');
+                }}
+              >
+                <option value="">
+                  {!clienteId ? 'Selecciona un cliente primero' : loadingFacturas ? 'Cargando...' : 'Sin factura de referencia'}
+                </option>
+                {facturasCliente.map((f: any) => (
+                  <option key={f.id} value={f.id}>
+                    {f.numero ?? f.folio} — RD$ {Number(f.total ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+                  </option>
+                ))}
+              </PanelSelect>
             )}
             <PanelSelect C={C} label="Tipo de Pago" value={metodo} onChange={e=>setMetodo(e.target.value)}>
               {METODOS_PAGO.map(m=><option key={m} value={m}>{m}</option>)}
