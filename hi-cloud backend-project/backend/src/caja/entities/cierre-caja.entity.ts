@@ -72,6 +72,13 @@ export class CierreCaja {
   @Column({ type: 'text', nullable: true })
   notas?: string;
 
+  // Desglose de billetes y método de pago al cierre (enviado por el POS)
+  @Column({ type: 'jsonb', nullable: true })
+  desgloseBilletes?: Record<string, number>;
+
+  @Column({ type: 'jsonb', nullable: true })
+  desglosePago?: Record<string, string>;
+
   @Column()
   userId!: number;
 

@@ -141,7 +141,13 @@ export class CajaService {
 
   // ── Cerrar caja ───────────────────────────────────────────────────────────
 
-  async cerrarCaja(id: number, saldoFisico: number, notas?: string) {
+  async cerrarCaja(
+    id: number,
+    saldoFisico: number,
+    notas?: string,
+    desgloseBilletes?: Record<string, number>,
+    desglosePago?: Record<string, string>,
+  ) {
     const empresaId = this.tenantService.getEmpresaId();
     const caja = await this.repo.findOne({ where: { id, empresaId } });
     if (!caja) throw new NotFoundException(`Caja #${id} no encontrada`);
@@ -162,11 +168,13 @@ export class CajaService {
     const diferencia = saldoFisico - saldoCierre;
 
     await this.repo.update(id, {
-      estado:      EstadoCierre.CERRADA,
-      saldoCierre: Number(saldoCierre.toFixed(2)),
-      saldoFisico: Number(saldoFisico.toFixed(2)),
-      diferencia:  Number(diferencia.toFixed(2)),
-      notas:       notas ?? caja.notas,
+      estado:           EstadoCierre.CERRADA,
+      saldoCierre:      Number(saldoCierre.toFixed(2)),
+      saldoFisico:      Number(saldoFisico.toFixed(2)),
+      diferencia:       Number(diferencia.toFixed(2)),
+      notas:            notas ?? caja.notas,
+      ...(desgloseBilletes ? { desgloseBilletes } : {}),
+      ...(desglosePago     ? { desglosePago }     : {}),
     });
 
     const quien = caja.vendedorNombre ? ` [${caja.vendedorNombre}]` : '';

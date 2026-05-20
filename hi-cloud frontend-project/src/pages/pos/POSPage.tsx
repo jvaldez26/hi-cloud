@@ -3537,6 +3537,8 @@ export default function POSPage() {
         onAbrir={(m, vid, sid) => {
           setTurnoAbierto(true);
           sessionStorage.setItem('pos_turno', '1');
+          // Sincronizar caja diaria con el turno recién abierto
+          qc.invalidateQueries({ queryKey: ['pos-caja-hoy'] });
           if (vid) {
             setVendedorId(vid);
             localStorage.setItem('pos_vendedor_id', String(vid));

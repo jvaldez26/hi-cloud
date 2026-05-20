@@ -29,6 +29,12 @@ class CerrarCajaDto {
 
   @IsOptional() @IsString()
   notas?: string;
+
+  @IsOptional()
+  desgloseBilletes?: Record<string, number>;
+
+  @IsOptional()
+  desglosePago?: Record<string, string>;
 }
 
 class AnularCierreDto {
@@ -58,7 +64,7 @@ export class CajaController {
 
   @Post('abrir')
   @HttpCode(HttpStatus.CREATED)
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Abrir caja del día para el cajero seleccionado' })
   abrirCaja(@Body() dto: AbrirCajaDto, @GetUser() usuario: User) {
     return this.cajaService.abrirCaja(
@@ -71,13 +77,16 @@ export class CajaController {
   }
 
   @Patch(':id/cerrar')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Cerrar caja por ID — calcula diferencia vs efectivo físico' })
   cerrarCaja(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CerrarCajaDto,
   ) {
-    return this.cajaService.cerrarCaja(id, dto.saldoFisico, dto.notas);
+    return this.cajaService.cerrarCaja(
+      id, dto.saldoFisico, dto.notas,
+      dto.desgloseBilletes, dto.desglosePago,
+    );
   }
 
   @Patch(':id/anular')
