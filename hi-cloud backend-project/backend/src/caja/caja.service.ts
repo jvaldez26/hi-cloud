@@ -59,46 +59,25 @@ export class CajaService {
   // ── Cajeros activos de la empresa ─────────────────────────────────────────
 
   async listarCajeros(): Promise<{
-    id: number; nombre: string; email: string;
-    role: string; vendedorId: number | null; tienePerfilVendedor: boolean;
+    id: number; nombre: string; codigo: string; email: string | null;
   }[]> {
     const empresaId = this.tenantService.getEmpresaId();
-
-    // Usuarios operativos de la empresa (admin, vendedor, contador)
-    const usuarios: any[] = await this.dataSource.query(`
-      SELECT u.id, u.nombre, u.email, u.role
-      FROM users u
-      JOIN usuario_empresa ue ON ue."userId" = u.id
-      WHERE ue."empresaId" = $1
-        AND ue."isActive"  = true
-        AND u."isActive"   = true
-        AND u.role IN ('admin', 'vendedor', 'contador')
-      ORDER BY u.nombre
+    // Devuelve vendedores — mismo origen que el POS (GET /vendedores).
+    // Así vendedorId en cierres_caja siempre es un vendedor.id consistente.
+    // Si el vendedor tiene usuarioId, trae el email del usuario para mostrarlo.
+    return this.dataSource.query(`
+      SELECT
+        v.id,
+        v.nombre,
+        v.codigo,
+        COALESCE(u.email, v.email) AS email
+      FROM vendedores v
+      LEFT JOIN users u ON u.id = v."usuarioId" AND u."isActive" = true
+      WHERE v."empresaId" = $1
+        AND v."isActive"  = true
+        AND v.activo      = true
+      ORDER BY v.nombre
     `, [empresaId]);
-
-    // Perfiles vendedor con usuarioId vinculado
-    const perfiles: any[] = await this.dataSource.query(`
-      SELECT id, nombre, "usuarioId"
-      FROM vendedores
-      WHERE "empresaId" = $1 AND "isActive" = true AND "usuarioId" IS NOT NULL
-    `, [empresaId]);
-
-    const perfilMap = new Map<number, { id: number; nombre: string }>(
-      perfiles.map((v: any) => [Number(v.usuarioId), { id: v.id, nombre: v.nombre }]),
-    );
-
-    // Si el usuario tiene perfil vendedor → mostrar nombre del vendedor
-    return usuarios.map((u: any) => {
-      const perfil = perfilMap.get(Number(u.id));
-      return {
-        id:                  u.id,
-        email:               u.email,
-        role:                u.role,
-        nombre:              perfil?.nombre ?? u.nombre ?? u.email,
-        vendedorId:          perfil?.id ?? null,
-        tienePerfilVendedor: !!perfil,
-      };
-    });
   }
 
   // ── Abrir caja por vendedor ────────────────────────────────────────────────
@@ -112,23 +91,22 @@ export class CajaService {
   ) {
     const empresaId = this.tenantService.getEmpresaId();
 
-    // Resolver nombre del cajero: perfil vendedor > nombre usuario
+    // Resolver nombre del cajero.
+    // vendedorId es siempre un vendedor.id (tabla vendedores) — el POS
+    // usa GET /vendedores y envía ese ID. Buscamos el nombre ahí primero.
     if (vendedorId && !vendedorNombre) {
-      // 1. Buscar si el usuario tiene perfil vendedor asociado
-      const perfilVendedor = await this.dataSource.query(`
-        SELECT nombre FROM vendedores
-        WHERE "usuarioId" = $1 AND "empresaId" = $2 AND "isActive" = true
-        LIMIT 1
-      `, [vendedorId, empresaId]);
-
-      if (perfilVendedor[0]?.nombre) {
-        vendedorNombre = perfilVendedor[0].nombre;
+      const rows = await this.dataSource.query(
+        `SELECT nombre FROM vendedores WHERE id = $1 AND "empresaId" = $2 LIMIT 1`,
+        [vendedorId, empresaId],
+      );
+      if (rows[0]?.nombre) {
+        vendedorNombre = rows[0].nombre;
       } else {
-        // 2. Fallback: nombre del usuario del sistema
-        const rows = await this.dataSource.query(
+        // Fallback: compatibilidad con cajas antiguas que guardaban user.id
+        const userRows = await this.dataSource.query(
           `SELECT nombre FROM users WHERE id = $1`, [vendedorId],
         );
-        vendedorNombre = rows[0]?.nombre ?? String(vendedorId);
+        vendedorNombre = userRows[0]?.nombre ?? String(vendedorId);
       }
     }
     const hoy = new Date().toISOString().split('T')[0];
