@@ -168,9 +168,9 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 /** Evita que un usuario autenticado vea páginas públicas (login, registro). */
 function GuestRoute({ children }: { children: React.ReactNode }) {
   const isAuth = useAuthStore((s) => s.isAuth());
-  const user   = useAuthStore((s) => s.user);
   if (!isAuth) return <>{children}</>;
-  return <Navigate to={user?.role === 'super_admin' ? '/super-admin' : '/dashboard'} replace />;
+  // Autenticado → volver a la landing (ya tiene el botón "Ir al Dashboard")
+  return <Navigate to="/" replace />;
 }
 
 // Panel exclusivo del Super Admin — solo accesible con role === 'super_admin'

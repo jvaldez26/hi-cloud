@@ -453,4 +453,34 @@ export class AsientosAutomaticosService {
       this.logger.error(`Error asiento aplicar anticipo #${anticipoId}: ${(err as Error).message}`);
     }
   }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Reversión de cobro (anulación de recibo) → Clientes / Bancos
+  // Inverso del asientoCobro: DÉBITO Clientes, CRÉDITO Bancos
+  // ──────────────────────────────────────────────────────────────────
+
+  async asientoReversion(
+    monto:     number,
+    cxcId:     number,
+    reciboId:  number,
+    tipo:      string,
+    userId:    number,
+  ): Promise<void> {
+    try {
+      await this.crearAsientoContabilizado({
+        descripcion:     `Reversión ${tipo} #${reciboId} — CxC #${cxcId}`,
+        tipoOrigen:      TipoOrigenAsiento.AJUSTE,
+        referenciaId:    reciboId,
+        referenciaFolio: `REV-${reciboId}`,
+        userId,
+        lineas: [
+          { codigo: COD.CLIENTES, descripcion: `Reversar cobro CxC #${cxcId}`, debe: monto, haber: 0    },
+          { codigo: COD.BANCOS,   descripcion: `Reversar ingreso ${tipo} #${reciboId}`, debe: 0, haber: monto },
+        ],
+      });
+      this.logger.log(`Asiento reversión ${tipo} #${reciboId} generado`);
+    } catch (err) {
+      this.logger.error(`Error asiento reversión ${tipo} #${reciboId}: ${(err as Error).message}`);
+    }
+  }
 }

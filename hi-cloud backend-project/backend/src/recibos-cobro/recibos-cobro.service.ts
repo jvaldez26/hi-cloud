@@ -244,9 +244,45 @@ export class RecibosCobrosService {
   }
 
   async eliminar(id: number) {
-    await this.findOne(id);
+    const recibo     = await this.findOne(id);
+    const empresaId  = this.tenantSvc.getEmpresaId();
+    const monto      = Number(recibo.monto);
+
+    // ── 1. Revertir CxC si el recibo estaba vinculado a una factura ──
+    if (recibo.cxcId) {
+      const cxc = await this.cxcRepo.findOne({ where: { id: recibo.cxcId, empresaId, isActive: true } });
+      if (cxc) {
+        const nuevoMontoPagado    = Math.max(0, +(Number(cxc.montoPagado) - monto).toFixed(2));
+        const nuevoMontoPendiente = +(Number(cxc.montoOriginal) - nuevoMontoPagado).toFixed(2);
+        const nuevoEstado =
+          nuevoMontoPagado <= 0          ? EstadoCuenta.PENDIENTE :
+          nuevoMontoPendiente > 0        ? EstadoCuenta.PAGADA_PARCIAL :
+                                           EstadoCuenta.PAGADA;
+
+        await this.dataSource.transaction(async (em) => {
+          await em.getRepository(CuentaPorCobrar).update(cxc.id, {
+            montoPagado:    nuevoMontoPagado,
+            montoPendiente: nuevoMontoPendiente,
+            estado:         nuevoEstado as any,
+          });
+          // Revertir estado de factura si había quedado PAGADA por este recibo
+          if (cxc.facturaId && nuevoEstado !== EstadoCuenta.PAGADA) {
+            await em.getRepository(Factura).update(cxc.facturaId, {
+              estado: FacturaEstado.EMITIDA,
+            });
+          }
+        });
+
+        // Asiento de reversión: CRÉDITO Bancos, DÉBITO Clientes (inverso del cobro)
+        await this.asientosService.asientoReversion(
+          monto, recibo.cxcId, recibo.id, 'recibo', recibo.usuarioId,
+        ).catch(err => this.logger.error(`Error asiento reversión ${recibo.numero}: ${err.message}`));
+      }
+    }
+
+    // ── 2. Anular el recibo ───────────────────────────────────────────
     await this.repo.update(id, { isActive: false });
-    return { ok: true };
+    return { ok: true, mensaje: `Recibo ${recibo.numero} anulado y CxC revertida` };
   }
 
   async resumen() {

@@ -47,7 +47,7 @@ export default function CajaPage() {
     id: number; nombre: string;
     saldoEsperado: number; saldoApertura: number;
     ventasEfectivo: number; ventasTarjeta: number; ventasTransferencia: number;
-    cobrosRecibidos: number; gastosEfectivo: number; retiros: number;
+    cobrosRecibidos: number; totalAnticipos: number; gastosEfectivo: number; retiros: number;
     cantidadTransacciones: number; fecha: string;
   } | null>(null);
   const [anularTarget, setAnularTarget] = useState<{ id: number; nombre: string; fecha: string } | null>(null);
@@ -266,7 +266,8 @@ h2{text-align:center;font-size:16px;margin:0 0 4px}
                               ventasTarjeta:          Number(caja.ventasTarjeta ?? 0),
                               ventasTransferencia:    Number(caja.ventasTransferencia ?? 0),
                               cobrosRecibidos:        Number(caja.cobrosRecibidos ?? 0),
-                              gastosEfectivo:         Number(caja.gastosEfectivo ?? 0),
+                              totalAnticipos:         Number(caja.totalAnticipos  ?? 0),
+                              gastosEfectivo:         Number(caja.gastosEfectivo  ?? 0),
                               retiros:                Number(caja.retiros ?? 0),
                               cantidadTransacciones:  caja.cantidadTransacciones ?? 0,
                               fecha:                  caja.fecha ?? '',
@@ -541,6 +542,7 @@ h2{text-align:center;font-size:16px;margin:0 0 4px}
             { label: 'Ventas tarjeta',       value: cerrarTarget?.ventasTarjeta ?? 0,       color: undefined },
             { label: 'Ventas transferencia', value: cerrarTarget?.ventasTransferencia ?? 0, color: undefined },
             { label: 'Cobros recibidos',     value: cerrarTarget?.cobrosRecibidos ?? 0,     color: '#0EA5E9' },
+            { label: 'Anticipos recibidos',  value: cerrarTarget?.totalAnticipos ?? 0,      color: '#7C3AED' },
             { label: 'Apertura (fondo)',     value: cerrarTarget?.saldoApertura ?? 0,       color: undefined },
             { label: 'Gastos registrados',   value: cerrarTarget?.gastosEfectivo ?? 0,      color: '#EF4444', signo: true },
             { label: 'Retiros',              value: cerrarTarget?.retiros ?? 0,             color: '#EF4444', signo: true },

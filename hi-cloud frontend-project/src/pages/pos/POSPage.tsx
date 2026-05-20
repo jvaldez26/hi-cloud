@@ -2013,7 +2013,10 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
            (lista??[]).length===0 ? <Empty style={{marginTop:40}} description={<span style={{color:C.textSub}}>Sin registros</span>}/> : (
             <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
               <thead><tr style={{background:C.card,position:'sticky',top:0}}>
-                {['Número','Cliente','Monto','Método'].map(h=>(
+                {(esAnticipo
+                  ? ['Número','Cliente','Monto','Pendiente','Estado']
+                  : ['Número','Cliente','Monto','Método']
+                ).map(h=>(
                   <th key={h} style={{padding:'8px 12px',textAlign:'left',color:C.textSub,fontWeight:600,fontSize:11,borderBottom:`1px solid ${C.border}`}}>{h}</th>
                 ))}
               </tr></thead>
@@ -2022,7 +2025,22 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
                   <td style={{padding:'8px 12px',color:C.blue,fontFamily:'monospace',fontSize:11}}>{r.numero||r.id}</td>
                   <td style={{padding:'8px 12px',color:C.text}}>{r.clienteNombre||r.cliente?.nombre||'—'}</td>
                   <td style={{padding:'8px 12px',color:C.green,fontWeight:700}}>{fmt.money(r.monto??r.total??0)}</td>
-                  <td style={{padding:'8px 12px',color:C.textSub,fontSize:11}}>{r.tipoPago||r.metodoPago||'—'}</td>
+                  {esAnticipo ? (
+                    <>
+                      <td style={{padding:'8px 12px',color:Number(r.montoPendiente??0)>0?C.green:C.textSub,fontWeight:700}}>
+                        {fmt.money(Number(r.montoPendiente??0))}
+                      </td>
+                      <td style={{padding:'8px 12px'}}>
+                        <span style={{
+                          fontSize:10,fontWeight:600,padding:'2px 6px',borderRadius:10,
+                          background: r.estado==='activo'?'rgba(59,130,246,.15)':r.estado==='aplicado'?'rgba(16,185,129,.15)':'rgba(239,68,68,.15)',
+                          color: r.estado==='activo'?C.blue:r.estado==='aplicado'?C.green:'#EF4444',
+                        }}>{(r.estado??'').toUpperCase()}</span>
+                      </td>
+                    </>
+                  ) : (
+                    <td style={{padding:'8px 12px',color:C.textSub,fontSize:11}}>{r.tipoPago||r.metodoPago||'—'}</td>
+                  )}
                 </tr>
               ))}</tbody>
             </table>
