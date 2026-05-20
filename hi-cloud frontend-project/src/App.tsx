@@ -149,9 +149,18 @@ export const qc = new QueryClient({
   },
 });
 
-// Ruta raíz: siempre muestra la landing page.
-// La landing detecta si el usuario está autenticado y adapta los botones.
+// Ruta raíz: landing para visitantes, dashboard para autenticados.
 function PublicHome() {
+  const { hydrated }  = useAuthStore();
+  const isAuth = useAuthStore((s) => s.isAuth());
+  const user   = useAuthStore((s) => s.user);
+
+  // Mientras se verifica la sesión → no redirigir todavía
+  if (!hydrated) return null;
+
+  if (isAuth) {
+    return <Navigate to={user?.role === 'super_admin' ? '/super-admin' : '/dashboard'} replace />;
+  }
   return <LandingPage />;
 }
 
@@ -168,9 +177,9 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 /** Evita que un usuario autenticado vea páginas públicas (login, registro). */
 function GuestRoute({ children }: { children: React.ReactNode }) {
   const isAuth = useAuthStore((s) => s.isAuth());
+  const user   = useAuthStore((s) => s.user);
   if (!isAuth) return <>{children}</>;
-  // Autenticado → volver a la landing (ya tiene el botón "Ir al Dashboard")
-  return <Navigate to="/" replace />;
+  return <Navigate to={user?.role === 'super_admin' ? '/super-admin' : '/dashboard'} replace />;
 }
 
 // Panel exclusivo del Super Admin — solo accesible con role === 'super_admin'
