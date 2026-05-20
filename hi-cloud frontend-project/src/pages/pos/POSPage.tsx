@@ -1820,6 +1820,8 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
 
   const buildBody = (extras: Record<string, any> = {}) => {
     const metodoPagoNorm = metodo.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    // Vendedor activo del turno POS (guardado en localStorage al abrir turno)
+    const posVendedorId = localStorage.getItem('pos_vendedor_id');
     const body: any = {
       monto:      Number(monto),
       metodoPago: metodoPagoNorm,
@@ -1827,9 +1829,11 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
       fecha:      new Date().toISOString().split('T')[0],
       ...extras,
     };
-    if (clienteId)   body.clienteId  = clienteId;
-    if (referencia)  body.referencia = referencia;
-    if (facturaId)   { body.facturaId = facturaId; body.facturaFolio = facturaFolio; }
+    if (clienteId)    body.clienteId   = clienteId;
+    if (referencia)   body.referencia  = referencia;
+    if (facturaId)    { body.facturaId = facturaId; body.facturaFolio = facturaFolio; }
+    // Pasar vendedorId para imputar el cobro al cierre de caja correcto
+    if (posVendedorId) body.vendedorId = Number(posVendedorId);
     return body;
   };
 

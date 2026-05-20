@@ -49,6 +49,10 @@ export class ReciboCobro extends TenantBaseEntity {
   @Column({ length: 100, nullable: true })
   referencia?: string;
 
+  // Caja diaria a la que se imputa este cobro (para cierre correcto)
+  @Column({ nullable: true })
+  cajaDiariaId?: number;
+
   @Column()
   usuarioId!: number;
 

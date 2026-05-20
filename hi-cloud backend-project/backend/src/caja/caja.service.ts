@@ -279,8 +279,7 @@ export class CajaService {
       [fecha],
     );
 
-    // Cobros del día desde tabla recibos_cobro (independiente de las ventas)
-    const recibosFilter = empresaId ? `AND r."empresaId" = ${Number(empresaId)}` : '';
+    // Cobros del día — filtrados por cajaDiariaId para imputar al cajero correcto
     const [cobros] = await this.dataSource.query<{ total: string; cantidad: string }[]>(
       `SELECT
          COALESCE(SUM(r.monto), 0)::text AS total,
@@ -288,20 +287,19 @@ export class CajaService {
        FROM recibos_cobro r
        WHERE DATE(r.fecha) = $1
          AND r."isActive" = true
-         ${recibosFilter}`,
-      [fecha],
+         AND r."cajaDiariaId" = $2`,
+      [fecha, cajaId],
     );
 
-    // Anticipos del día desde tabla anticipo_cliente
-    const anticipsFilter = empresaId ? `AND a."empresaId" = ${Number(empresaId)}` : '';
+    // Anticipos del día — filtrados por cajaDiariaId
     const [anticipos] = await this.dataSource.query<{ total: string }[]>(
       `SELECT COALESCE(SUM(a.monto), 0)::text AS total
        FROM anticipo_cliente a
        WHERE DATE(a."fechaRegistro") = $1
          AND a."isActive" = true
          AND a.estado != 'anulado'
-         ${anticipsFilter}`,
-      [fecha],
+         AND a."cajaDiariaId" = $2`,
+      [fecha, cajaId],
     ).catch(() => [{ total: '0' }]);
 
     await this.repo.update(cajaId, {

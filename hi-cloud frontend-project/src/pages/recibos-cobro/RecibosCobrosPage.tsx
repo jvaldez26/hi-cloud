@@ -172,6 +172,13 @@ export default function RecibosCobrosPage() {
     queryFn:  () => api.get('/recibos-cobro/resumen').then((r: any) => r.data?.data ?? r.data),
   });
 
+  // Cajeros con caja abierta HOY para imputar el cobro correctamente
+  const { data: cajerosHoy = [] } = useQuery<any[]>({
+    queryKey: ['cajeros-caja-hoy'],
+    queryFn:  () => api.get('/caja/cajeros').then((r: any) => r.data?.data ?? r.data ?? []),
+    staleTime: 60_000,
+  });
+
   const { data: recibos, isLoading } = useQuery<any>({
     queryKey: ['recibos-cobro'],
     queryFn:  () => api.get('/recibos-cobro?limit=50').then((r: any) => r.data?.data ?? r.data),
@@ -482,6 +489,17 @@ export default function RecibosCobrosPage() {
           </Row>
           <Form.Item name="monto" label="Monto Recibido (RD$)" rules={[{ required: true }]}>
             <InputNumber min={0.01} precision={2} style={{ width: '100%' }} prefix="RD$" size="large" />
+          </Form.Item>
+          <Form.Item
+            name="vendedorId"
+            label="Cajero que recibe (opcional)"
+            help="Selecciona el cajero para que este cobro se refleje en su cierre de caja"
+          >
+            <Select allowClear placeholder="Sin cajero específico" optionFilterProp="label"
+              options={cajerosHoy.map((c: any) => ({
+                value: c.id,
+                label: `${c.codigo ? c.codigo + ' — ' : ''}${c.nombre}`,
+              }))} />
           </Form.Item>
           <Form.Item name="concepto" label="Concepto" rules={[{ required: true }]}>
             <Input placeholder="Pago de factura, abono, cuota #1, etc." />

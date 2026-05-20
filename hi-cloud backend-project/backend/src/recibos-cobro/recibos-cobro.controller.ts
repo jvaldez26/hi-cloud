@@ -36,6 +36,7 @@ class CreateReciboDto {
   @IsOptional() @IsString()                                  referencia?: string;
   @IsOptional() @IsString()                                  notas?: string;
   @IsOptional()                                              registrarExcedente?: boolean;
+  @IsOptional() @IsInt() @Type(() => Number)                 vendedorId?: number;
 }
 
 @ApiTags('Recibos de Cobro')

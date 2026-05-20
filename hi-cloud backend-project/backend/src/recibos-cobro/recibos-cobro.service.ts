@@ -26,6 +26,8 @@ interface CreateReciboDto {
   cxcId?:              number;
   referencia?:         string;
   notas?:              string;
+  // vendedorId del POS (para asociar al cierre de caja correcto)
+  vendedorId?:         number;
   nombreUsuario?:      string;
   registrarExcedente?: boolean; // true → crea anticipo con el excedente sobre la CxC
 }
@@ -63,6 +65,47 @@ export class RecibosCobrosService {
     return `REC-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
   }
 
+  /** Encuentra la caja diaria abierta para este recibo.
+   *  Prioridad: vendedorId del POS → perfil vendedor del usuario → cualquier caja abierta del usuario */
+  private async resolverCajaDiaria(
+    empresaId: number,
+    usuarioId: number,
+    vendedorId?: number,
+  ): Promise<number | null> {
+    const hoy = new Date().toISOString().split('T')[0];
+
+    // 1. Si el POS envió vendedorId → caja de ese vendedor
+    if (vendedorId) {
+      const rows = await this.dataSource.query<{ id: number }[]>(
+        `SELECT id FROM cierres_caja
+         WHERE "empresaId" = $1 AND DATE(fecha) = $2
+           AND estado = 'abierta' AND "vendedorId" = $3 LIMIT 1`,
+        [empresaId, hoy, vendedorId],
+      );
+      if (rows[0]?.id) return rows[0].id;
+    }
+
+    // 2. Buscar perfil vendedor del usuario autenticado y su caja
+    const perfilRows = await this.dataSource.query<{ id: number }[]>(
+      `SELECT id FROM vendedores WHERE "usuarioId" = $1 AND "empresaId" = $2 AND "isActive" = true LIMIT 1`,
+      [usuarioId, empresaId],
+    ).catch(() => []);
+    const perfilVendedorId = perfilRows[0]?.id;
+
+    if (perfilVendedorId) {
+      const rows = await this.dataSource.query<{ id: number }[]>(
+        `SELECT id FROM cierres_caja
+         WHERE "empresaId" = $1 AND DATE(fecha) = $2
+           AND estado = 'abierta' AND "vendedorId" = $3 LIMIT 1`,
+        [empresaId, hoy, perfilVendedorId],
+      );
+      if (rows[0]?.id) return rows[0].id;
+    }
+
+    // 3. Ninguna caja encontrada → recibo no se imputa a ninguna caja
+    return null;
+  }
+
   async crear(dto: CreateReciboDto, usuarioId: number) {
     const empresaId = this.tenantSvc.getEmpresaId();
     const monto     = Number(dto.monto);
@@ -97,13 +140,15 @@ export class RecibosCobrosService {
       }
     }
 
-    // ── 3. Guardar recibo ───────────────────────────────────────────
+    // ── 3. Resolver caja diaria y guardar recibo ───────────────────
+    const cajaDiariaId = await this.resolverCajaDiaria(empresaId, usuarioId, dto.vendedorId);
     const numero = await this.generarNumero();
     const recibo = await this.repo.save(
       this.repo.create({
         ...dto,
         empresaId,
         numero,
+        cajaDiariaId: cajaDiariaId ?? undefined,
         usuarioId,
         cxcId: cxc?.id ?? dto.cxcId,
       }),
