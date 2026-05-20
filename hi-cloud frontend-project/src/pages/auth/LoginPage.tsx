@@ -1,5 +1,5 @@
 ﻿import { useState } from 'react';
-import { Form, Input, Button, Typography, Alert } from 'antd';
+import { Form, Input, Button, Typography, Alert, Checkbox } from 'antd';
 import { UserOutlined, LockOutlined, RocketOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -35,8 +35,11 @@ function ThemeToggle() {
 }
 
 export default function LoginPage() {
-  const [loading,       setLoading]       = useState(false);
-  const [demoOpen,      setDemoOpen]      = useState(false);
+  const [loading,          setLoading]          = useState(false);
+  const [demoOpen,         setDemoOpen]         = useState(false);
+  const [recordarPassword, setRecordarPassword] = useState<boolean>(
+    () => localStorage.getItem('hicloud_recordar_pw') === 'true',
+  );
   const [correoNoVerif, setCorreoNoVerif] = useState(false);
   const [emailIngresado,setEmailIngresado]= useState('');
   const [reenviando,    setReenviando]    = useState(false);
@@ -265,7 +268,7 @@ export default function LoginPage() {
               <Input.Password
                 prefix={<LockOutlined style={{ color: 'rgba(255,255,255,.3)' }} />}
                 placeholder="••••••••"
-                autoComplete="current-password"
+                autoComplete={recordarPassword ? 'current-password' : 'new-password'}
                 style={{
                   background: 'rgba(255,255,255,.07)',
                   border: '1px solid rgba(255,255,255,.15)',
@@ -275,6 +278,19 @@ export default function LoginPage() {
                 }}
               />
             </Form.Item>
+
+            <div style={{ marginBottom: 16, marginTop: -4 }}>
+              <Checkbox
+                checked={recordarPassword}
+                onChange={e => {
+                  setRecordarPassword(e.target.checked);
+                  localStorage.setItem('hicloud_recordar_pw', String(e.target.checked));
+                }}
+                style={{ color: 'rgba(255,255,255,.65)', fontSize: 13 }}
+              >
+                Recordar contraseña en este dispositivo
+              </Checkbox>
+            </div>
 
             <Button
               type="primary"
