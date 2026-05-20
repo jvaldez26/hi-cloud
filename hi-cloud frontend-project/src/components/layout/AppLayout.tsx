@@ -1181,18 +1181,23 @@ export default function AppLayout() {
     window.location.reload();
   }, []);
 
-  // ── Limpiar empresaId stale (empresa eliminada / acceso revocado) ───────────
-  // Si localStorage tiene un empresaId que ya no está en misEmpresas (lista activa),
-  // se limpia para que la lógica de redirección opere correctamente sin loop.
+  // ── Sincronizar empresaActiva cuando cargan las empresas ───────────────────
   useEffect(() => {
-    if (!empresasLoaded) return;
+    if (!empresasLoaded || misEmpresas.length === 0) return;
     const stored = localStorage.getItem('empresaId');
-    if (!stored) return;
-    const storedNum = Number(stored);
-    const estaEnLista = (misEmpresas as any[]).some((e: any) => e.empresaId === storedNum);
-    if (!estaEnLista) {
-      localStorage.removeItem('empresaId');
-      setEmpresaActiva(null);
+    const storedNum = stored ? Number(stored) : null;
+    const estaEnLista = storedNum && (misEmpresas as any[]).some((e: any) => e.empresaId === storedNum);
+
+    if (estaEnLista) {
+      // localStorage tiene un ID válido — sincronizar estado React
+      if (!empresaActiva || empresaActiva !== storedNum) {
+        setEmpresaActiva(storedNum);
+      }
+    } else {
+      // localStorage vacío o tiene un ID que ya no existe → seleccionar la primera
+      const primera = (misEmpresas as any[])[0];
+      localStorage.setItem('empresaId', String(primera.empresaId));
+      setEmpresaActiva(primera.empresaId);
     }
   }, [empresasLoaded, misEmpresas]);
 
