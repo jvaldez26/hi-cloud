@@ -48,13 +48,20 @@ export class AnticiposClienteService implements OnModuleInit {
   // ── Garantizar que exista la cuenta "Anticipos de Clientes" en todas las empresas ──
   async onModuleInit() {
     try {
+      // Tabla: cuentas_contables  Columnas: codigo, nombre, tipo (enum), naturaleza (enum),
+      //        nivel, permiteMovimientos, empresaId, isActive, createdAt, updatedAt
       await this.ds.query(`
-        INSERT INTO cuenta_contable (codigo, nombre, tipo, "empresaId", "isActive", "createdAt", "updatedAt")
-        SELECT '2.1.5.01', 'Anticipos de Clientes', 'pasivo', e.id, true, NOW(), NOW()
+        INSERT INTO cuentas_contables (
+          codigo, nombre, tipo, naturaleza, nivel, "permiteMovimientos",
+          "empresaId", "isActive", "createdAt", "updatedAt"
+        )
+        SELECT
+          '2.1.5.01', 'Anticipos de Clientes', 'pasivo', 'acreedora', 3, true,
+          e.id, true, NOW(), NOW()
         FROM empresa e
         WHERE e."isActive" = true
           AND NOT EXISTS (
-            SELECT 1 FROM cuenta_contable cc
+            SELECT 1 FROM cuentas_contables cc
             WHERE cc.codigo = '2.1.5.01' AND cc."empresaId" = e.id
           )
         ON CONFLICT DO NOTHING
