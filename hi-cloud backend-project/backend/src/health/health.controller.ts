@@ -1,4 +1,7 @@
-import { Controller, Get, Inject, Optional } from '@nestjs/common';
+import { Controller, Get, Inject, Optional, Param } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { UsuarioEmpresa } from '../multi-empresa/entities/usuario-empresa.entity';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
@@ -19,6 +22,7 @@ export class HealthController {
     private readonly schemaValidator: SchemaValidatorService,
     @Optional() private readonly queues: QueuesService,
     @Optional() @Inject(CACHE_MANAGER) private readonly cache: Cache,
+    @Optional() @InjectRepository(UsuarioEmpresa) private readonly ueRepo: Repository<UsuarioEmpresa>,
   ) {}
 
   @Get()
@@ -151,6 +155,39 @@ export class HealthController {
         heapTotalMB: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
         rssMB:       Math.round(process.memoryUsage().rss       / 1024 / 1024),
       },
+    };
+  }
+
+  @Get('mis-empresas/:userId')
+  @ApiOperation({ summary: 'Debug: ejecuta exactamente el mismo query que mis-empresas' })
+  async debugMisEmpresas(@Param('userId') userId: string) {
+    const id = Number(userId);
+    // Ejecutar la misma lógica que getEmpresasDeUsuario
+    const qb = this.ueRepo
+      ? this.ueRepo
+          .createQueryBuilder('ue')
+          .leftJoinAndSelect('ue.empresa', 'e')
+          .where({ userId: id })
+          .andWhere('ue.isActive IS NOT FALSE')
+          .orderBy('ue.isPrincipal', 'DESC')
+      : null;
+    const sql    = qb?.getSql() ?? 'ueRepo no disponible';
+    const result = qb ? await qb.getMany() : [];
+    // Raw SQL para comparar
+    const rawResult = await this.ds.query(
+      `SELECT ue.*, e.nombre as empresa_nombre, e."isActive" as e_isactive
+       FROM usuario_empresa ue
+       LEFT JOIN empresa e ON e.id = ue."empresaId"
+       WHERE ue."userId" = $1 AND (ue."isActive" IS NOT FALSE)`,
+      [id],
+    );
+    return {
+      userId: id,
+      queryBuilder_sql:    sql,
+      queryBuilder_count:  result.length,
+      queryBuilder_result: result.map(r => ({ empresaId: r.empresaId, nombre: r.empresa?.nombre, isActive: r.isActive })),
+      raw_sql_count:       rawResult.length,
+      raw_sql_result:      rawResult,
     };
   }
 
