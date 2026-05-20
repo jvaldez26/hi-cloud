@@ -13,20 +13,23 @@ import { extractJwtFromRequest } from '../auth/utils/extract-jwt.util';
 /** Rutas que NO requieren X-Empresa-ID */
 const RUTAS_SIN_TENANT = [
   '/auth/',
-  '/admin/',          // Super Admin — acceso global sin tenant
-  '/admin',           // GET /admin/*
+  '/admin/',              // Super Admin — acceso global sin tenant
+  '/admin',
   '/health',
   '/api-json',
   '/api-yaml',
   '/portal/',
   '/invitacion/',
-  '/invitaciones/aceptar',  // aceptar invitación desde otro contexto de empresa
+  '/invitaciones/aceptar',
   '/encuestas/responder',
   '/datafono',
   '/encuestas',
   '/capacitacion',
-  '/demo/',           // Solicitud de demo — endpoint público de la landing page
+  '/demo/',
   '/demo',
+  // Endpoints de usuario — listan empresas del usuario, no son tenant-específicos
+  '/multi-empresa/mis-empresas',
+  '/multi-empresa/empresa-principal',
 ];
 
 @Injectable()

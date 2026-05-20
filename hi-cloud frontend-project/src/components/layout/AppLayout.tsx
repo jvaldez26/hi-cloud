@@ -1129,11 +1129,15 @@ export default function AppLayout() {
   );
   const { data: misEmpresas = [], isSuccess: empresasLoaded } = useQuery<any[]>({
     queryKey: ['mis-empresas', user?.id],
-    queryFn:  () => api.get('/multi-empresa/mis-empresas').then(r => r.data?.data ?? r.data ?? []),
+    // Usa /auth/mis-empresas (prefijo /auth/ está en RUTAS_SIN_TENANT del backend).
+    // /multi-empresa/mis-empresas pasa por TenantMiddleware y puede ser bloqueado
+    // si el JWT tiene un empresaId sin acceso válido en ese momento.
+    queryFn:  () => api.get('/auth/mis-empresas').then(r => r.data?.data ?? r.data ?? []),
     enabled:  !!user,
-    staleTime:          0,          // siempre stale → garantiza datos frescos al montar
-    refetchOnMount:     'always',   // fuerza fetch en cada montaje sin importar caché
+    staleTime:          0,        // siempre stale → datos frescos garantizados
+    refetchOnMount:     'always', // fetch en cada montaje sin importar caché
     refetchOnWindowFocus: true,
+    retry: false,                 // no reintentar en error — evita enmascarar fallos
   });
   const cambiarEmpresa = useCallback(async (id: number) => {
     setEmpresaActiva(id);
