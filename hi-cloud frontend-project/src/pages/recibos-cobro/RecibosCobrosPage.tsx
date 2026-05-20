@@ -152,6 +152,20 @@ export default function RecibosCobrosPage() {
     queryFn:  () => api.get('/clientes?limit=200').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
   });
 
+  // Facturas pendientes del cliente seleccionado
+  const clienteIdWatch = Form.useWatch('clienteId', form);
+  const { data: facturasCliente = [], isFetching: loadingFacturas } = useQuery<any[]>({
+    queryKey: ['facturas-pendientes-cliente', clienteIdWatch],
+    queryFn:  () =>
+      api.get(`/facturas?clienteId=${clienteIdWatch}&limit=200`).then((r: any) => {
+        const d   = r.data?.data ?? r.data;
+        const arr = Array.isArray(d) ? d : (d?.data ?? []);
+        return arr.filter((f: any) => f.estado !== 'pagada' && f.estado !== 'anulada');
+      }),
+    enabled: !!clienteIdWatch,
+    staleTime: 0,
+  });
+
   const { data: resumen } = useQuery<any>({
     queryKey: ['recibos-resumen'],
     queryFn:  () => api.get('/recibos-cobro/resumen').then((r: any) => r.data?.data ?? r.data),
@@ -412,12 +426,21 @@ export default function RecibosCobrosPage() {
           initialValues={{ fecha: dayjs(), metodoPago: 'efectivo' }}
           onFinish={v => crear.mutate({
             ...v,
-            fecha: v.fecha?.format('YYYY-MM-DD'),
-            monto: Number(v.monto),
+            fecha:         v.fecha?.format('YYYY-MM-DD'),
+            monto:         Number(v.monto),
             clienteNombre: clientes.find((c: any) => c.id === v.clienteId)?.nombre,
+            facturaId:     v.facturaId ?? undefined,
+            facturaFolio:  v.facturaFolio ?? undefined,
           })}>
           <Form.Item name="clienteId" label="Cliente" rules={[{ required: true }]}>
-            <Select showSearch optionFilterProp="children" placeholder="Seleccionar cliente">
+            <Select
+              showSearch
+              optionFilterProp="children"
+              placeholder="Seleccionar cliente"
+              onChange={() => {
+                form.setFieldsValue({ facturaId: undefined, facturaFolio: undefined });
+              }}
+            >
               {clientes.map((c: any) => <Option key={c.id} value={c.id}>{c.nombre}</Option>)}
             </Select>
           </Form.Item>
@@ -441,18 +464,45 @@ export default function RecibosCobrosPage() {
           <Form.Item name="concepto" label="Concepto" rules={[{ required: true }]}>
             <Input placeholder="Pago de factura, abono, cuota #1, etc." />
           </Form.Item>
-          <Row gutter={12}>
-            <Col xs={24} sm={12}>
-              <Form.Item name="facturaFolio" label="Factura de referencia">
-                <Input placeholder="FAC-202505-0001" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={12}>
-              <Form.Item name="referencia" label="Referencia / Cheque #">
-                <Input placeholder="Banco, número de cheque..." />
-              </Form.Item>
-            </Col>
-          </Row>
+          <Form.Item
+            name="facturaId"
+            label="Factura de referencia (opcional)"
+            help={!clienteIdWatch ? 'Selecciona un cliente para ver sus facturas pendientes' : undefined}
+          >
+            <Select
+              allowClear
+              showSearch
+              loading={loadingFacturas}
+              disabled={!clienteIdWatch}
+              placeholder={clienteIdWatch ? 'Seleccionar factura pendiente...' : 'Primero selecciona un cliente'}
+              optionFilterProp="label"
+              notFoundContent={clienteIdWatch ? 'No hay facturas pendientes para este cliente' : null}
+              onChange={(val) => {
+                const f = facturasCliente.find((x: any) => x.id === val);
+                form.setFieldValue('facturaFolio', f?.numero ?? f?.folio ?? undefined);
+              }}
+            >
+              {facturasCliente.map((f: any) => (
+                <Option
+                  key={f.id}
+                  value={f.id}
+                  label={f.numero ?? f.folio}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{f.numero ?? f.folio}</span>
+                    <span style={{ color: '#10B981', fontSize: 12, whiteSpace: 'nowrap' }}>
+                      {fmt(Number(f.total ?? 0))}
+                    </span>
+                  </div>
+                </Option>
+              ))}
+            </Select>
+          </Form.Item>
+          {/* Campo oculto que almacena el folio para enviarlo al backend */}
+          <Form.Item name="facturaFolio" hidden><Input /></Form.Item>
+          <Form.Item name="referencia" label="Referencia / Cheque #">
+            <Input placeholder="Banco, número de cheque..." />
+          </Form.Item>
           <Form.Item name="notas" label="Notas">
             <Input.TextArea rows={2} />
           </Form.Item>
