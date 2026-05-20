@@ -1784,8 +1784,10 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
   const [metodo, setMetodo]       = useState('Efectivo');
   const [referencia, setRef]      = useState('');
   const [descripcion, setDesc]    = useState('');
-  const [facturaId,    setFacturaId]    = useState<number|null>(null);
-  const [facturaFolio, setFacturaFolio] = useState('');
+  const [facturaId,           setFacturaId]           = useState<number|null>(null);
+  const [facturaFolio,        setFacturaFolio]        = useState('');
+  const [facturaSearch,       setFacturaSearch]       = useState('');
+  const [showFacturaDropdown, setShowFacturaDropdown] = useState(false);
   const { data: clientes } = useQuery<any>({
     queryKey: ['pos-cli-sel', busqCliente],
     queryFn: () => api.get(`/clientes?limit=20${busqCliente?'&search='+encodeURIComponent(busqCliente):''}`)
@@ -1828,7 +1830,7 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['pos-panel', tipo] }); qc.refetchQueries({ queryKey: ['pos-panel', tipo] });
-      setForm(false); setMonto(''); setMetodo('Efectivo'); setRef(''); setDesc(''); setClienteId(null); setBusqCliente(''); setFacturaId(null); setFacturaFolio('');
+      setForm(false); setMonto(''); setMetodo('Efectivo'); setRef(''); setDesc(''); setClienteId(null); setBusqCliente(''); setFacturaId(null); setFacturaFolio(''); setFacturaSearch(''); setShowFacturaDropdown(false);
       message.success(esAnticipo ? 'Anticipo registrado' : 'Recibo registrado');
     },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al guardar'),
@@ -1844,7 +1846,7 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
           <div style={{ maxWidth:440, color:C.text }}>
             <div style={{ marginBottom:12 }}>
               <div style={{ fontSize:12, fontWeight:600, marginBottom:4 }}>Buscar Cliente</div>
-              <select value={clienteId??''} onChange={e=>{ setClienteId(e.target.value?Number(e.target.value):null); setFacturaId(null); setFacturaFolio(''); }}
+              <select value={clienteId??''} onChange={e=>{ setClienteId(e.target.value?Number(e.target.value):null); setFacturaId(null); setFacturaFolio(''); setFacturaSearch(''); setShowFacturaDropdown(false); }}
                 style={{ width:'100%', height:38, padding:'0 12px', borderRadius:8,
                   border:`1px solid ${C.border2}`, fontSize:13, background:C.inputBg, color:C.text, cursor:'pointer', outline:'none', boxSizing:'border-box' }}>
                 <option value="">Sin cliente específico</option>
@@ -1854,29 +1856,97 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
                 style={{ width:'100%', height:32, padding:'0 12px', marginTop:4, borderRadius:8, border:`1px solid ${C.border}`, fontSize:12, outline:'none', boxSizing:'border-box', background:C.inputBg, color:C.text }} />
             </div>
             <PanelInput C={C} label="Monto" type="number" placeholder="Monto" value={monto} onChange={e=>setMonto(e.target.value)} />
-            {!esAnticipo && (
-              <PanelSelect
-                C={C}
-                label="Factura de referencia (opcional)"
-                value={facturaId ?? ''}
-                disabled={!clienteId}
-                onChange={e => {
-                  const val = e.target.value ? Number(e.target.value) : null;
-                  setFacturaId(val);
-                  const f = facturasCliente.find((x: any) => x.id === val);
-                  setFacturaFolio(f ? (f.numero ?? f.folio ?? '') : '');
-                }}
-              >
-                <option value="">
-                  {!clienteId ? 'Selecciona un cliente primero' : loadingFacturas ? 'Cargando...' : 'Sin factura de referencia'}
-                </option>
-                {facturasCliente.map((f: any) => (
-                  <option key={f.id} value={f.id}>
-                    {f.numero ?? f.folio} — RD$ {Number(f.total ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}
-                  </option>
-                ))}
-              </PanelSelect>
-            )}
+            {!esAnticipo && (() => {
+              const term = facturaSearch.trim().toLowerCase();
+              const filtradas = facturasCliente.filter((f: any) =>
+                !term || (f.numero ?? f.folio ?? '').toLowerCase().includes(term)
+              );
+              const totalFmt = (f: any) => {
+                const v = Number(f.total ?? f.montoTotal ?? f.monto ?? 0);
+                return v.toLocaleString('es-DO', { minimumFractionDigits: 2 });
+              };
+              return (
+                <div style={{ marginBottom: 12, position: 'relative' }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: C.text }}>
+                    Factura de referencia (opcional)
+                  </div>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      type="text"
+                      autoComplete="off"
+                      placeholder={!clienteId ? 'Selecciona un cliente primero' : loadingFacturas ? 'Cargando facturas...' : 'Escribe el número de factura...'}
+                      disabled={!clienteId}
+                      value={facturaSearch}
+                      onChange={e => {
+                        setFacturaSearch(e.target.value);
+                        setFacturaId(null);
+                        setFacturaFolio('');
+                        setShowFacturaDropdown(true);
+                      }}
+                      onFocus={() => { if (clienteId) setShowFacturaDropdown(true); }}
+                      onBlur={() => setTimeout(() => setShowFacturaDropdown(false), 180)}
+                      style={{
+                        width: '100%', height: 38, padding: '0 36px 0 12px', borderRadius: 8,
+                        border: `1px solid ${facturaId ? '#10B981' : C.border2}`,
+                        fontSize: 13, boxSizing: 'border-box' as const,
+                        background: C.inputBg, color: C.text, outline: 'none',
+                      }}
+                    />
+                    {facturaId && (
+                      <button
+                        onClick={() => { setFacturaId(null); setFacturaFolio(''); setFacturaSearch(''); }}
+                        style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+                          background: 'none', border: 'none', cursor: 'pointer', color: C.textSub, fontSize: 16, lineHeight: 1, padding: 0 }}
+                        title="Quitar factura"
+                      >×</button>
+                    )}
+                  </div>
+                  {facturaId && (
+                    <div style={{ fontSize: 11, color: '#10B981', marginTop: 3 }}>
+                      ✓ {facturaFolio} seleccionada
+                    </div>
+                  )}
+                  {showFacturaDropdown && clienteId && (
+                    <div style={{
+                      position: 'absolute', zIndex: 999, width: '100%', maxHeight: 220,
+                      overflowY: 'auto', borderRadius: 8, marginTop: 2,
+                      background: C.card, border: `1px solid ${C.border2}`,
+                      boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+                    }}>
+                      {filtradas.length === 0 ? (
+                        <div style={{ padding: '10px 14px', color: C.textSub, fontSize: 12 }}>
+                          {loadingFacturas ? 'Cargando...' : 'No se encontraron facturas pendientes'}
+                        </div>
+                      ) : filtradas.map((f: any) => (
+                        <div
+                          key={f.id}
+                          onMouseDown={() => {
+                            setFacturaId(f.id);
+                            setFacturaFolio(f.numero ?? f.folio ?? '');
+                            setFacturaSearch(f.numero ?? f.folio ?? '');
+                            setShowFacturaDropdown(false);
+                          }}
+                          style={{
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            padding: '9px 14px', cursor: 'pointer', fontSize: 13,
+                            borderBottom: `1px solid ${C.border}`,
+                          }}
+                          onMouseEnter={e => (e.currentTarget.style.background = C.inputBg)}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                        >
+                          <span style={{ fontFamily: 'monospace', fontWeight: 600, color: C.text }}>
+                            {f.numero ?? f.folio}
+                          </span>
+                          <span style={{ color: '#10B981', fontSize: 12 }}>
+                            RD$ {totalFmt(f)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
             <PanelSelect C={C} label="Tipo de Pago" value={metodo} onChange={e=>setMetodo(e.target.value)}>
               {METODOS_PAGO.map(m=><option key={m} value={m}>{m}</option>)}
             </PanelSelect>
