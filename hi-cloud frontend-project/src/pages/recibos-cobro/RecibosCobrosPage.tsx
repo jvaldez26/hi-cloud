@@ -94,7 +94,8 @@ export default function RecibosCobrosPage() {
   const [emailDestino,     setEmailDestino]      = useState('');
   const [pdfPending,       setPdfPending]        = useState<number | null>(null);
   const [detalleRecibo,    setDetalleRecibo]     = useState<any>(null);
-  const [motivoAnulacion,  setMotivoAnulacion]   = useState('');
+  const [motivoAnulacion,     setMotivoAnulacion]     = useState('');
+  const [pendienteExcedente,  setPendienteExcedente]  = useState<{ dto: any; excedente: number; pendiente: number } | null>(null);
   const [form] = Form.useForm();
 
   const anularMut = useMutation({
@@ -183,12 +184,33 @@ export default function RecibosCobrosPage() {
     onSuccess: (res: any) => {
       qc.invalidateQueries({ queryKey: ['recibos-cobro'] });
       qc.invalidateQueries({ queryKey: ['recibos-resumen'] });
+      qc.invalidateQueries({ queryKey: ['anticipos'] });
       setModalCrear(false);
+      setPendienteExcedente(null);
       form.resetFields();
-      message.success(`Recibo ${res.data?.numero ?? ''} generado`);
-      setReciboImprimir(res.data);
+      const d = res.data?.data ?? res.data;
+      const recibo  = d?.recibo ?? d;
+      const anticipo = d?.anticipo;
+      if (anticipo) {
+        message.success(`Recibo ${recibo?.numero ?? ''} y Anticipo ${anticipo.numero} (RD$ ${Number(anticipo.monto).toLocaleString('es-DO', { minimumFractionDigits: 2 })}) registrados`, 5);
+      } else {
+        message.success(`Recibo ${recibo?.numero ?? ''} generado`);
+      }
+      setReciboImprimir(recibo);
     },
-    onError: (e: any) => message.error(errMsg(e), 5),
+    onError: (e: any) => {
+      const msg: string = e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? '';
+      // Detectar error de excedente: "EXCEDENTE:500.00:1000.00"
+      if (msg.startsWith('EXCEDENTE:')) {
+        const [, exStr, penStr] = msg.split(':');
+        const excedente = Number(exStr);
+        const pendiente = Number(penStr);
+        const dto = (crear as any).variables;
+        setPendienteExcedente({ dto, excedente, pendiente });
+      } else {
+        message.error(msg || 'Error inesperado', 5);
+      }
+    },
   });
 
   const eliminar = useMutation({
@@ -507,6 +529,69 @@ export default function RecibosCobrosPage() {
             <Input.TextArea rows={2} />
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* ── Modal: excedente sobre CxC → registrar como anticipo ─── */}
+      <Modal
+        open={!!pendienteExcedente}
+        title="Monto superior al saldo pendiente"
+        onCancel={() => setPendienteExcedente(null)}
+        footer={[
+          <Button key="cancel" onClick={() => setPendienteExcedente(null)}>
+            Cancelar
+          </Button>,
+          <Button
+            key="no"
+            onClick={() => {
+              if (pendienteExcedente) {
+                crear.mutate({ ...pendienteExcedente.dto, registrarExcedente: false,
+                  monto: pendienteExcedente.pendiente });
+              }
+            }}
+            loading={crear.isPending}
+          >
+            Cobrar solo RD$ {pendienteExcedente?.pendiente.toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+          </Button>,
+          <Button
+            key="yes"
+            type="primary"
+            onClick={() => {
+              if (pendienteExcedente) {
+                crear.mutate({ ...pendienteExcedente.dto, registrarExcedente: true });
+              }
+            }}
+            loading={crear.isPending}
+          >
+            Sí, registrar anticipo
+          </Button>,
+        ]}
+        width={440}
+        centered
+      >
+        {pendienteExcedente && (
+          <div style={{ textAlign: 'center', padding: '8px 0 16px' }}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>💰</div>
+            <p style={{ fontSize: 14, color: token.colorText, marginBottom: 8 }}>
+              El monto recibido supera el saldo pendiente de la factura.
+            </p>
+            <div style={{
+              background: token.colorFillSecondary, borderRadius: 10,
+              padding: '12px 20px', margin: '0 auto 16px', display: 'inline-block',
+            }}>
+              <div style={{ fontSize: 12, color: token.colorTextSecondary }}>Saldo factura</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: token.colorText }}>
+                RD$ {pendienteExcedente.pendiente.toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+              </div>
+              <div style={{ fontSize: 12, color: token.colorTextSecondary, marginTop: 8 }}>Excedente</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: token.colorSuccess }}>
+                + RD$ {pendienteExcedente.excedente.toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+              </div>
+            </div>
+            <p style={{ fontSize: 13, color: token.colorTextSecondary }}>
+              ¿Deseas registrar <strong>RD$ {pendienteExcedente.excedente.toLocaleString('es-DO', { minimumFractionDigits: 2 })}</strong> como anticipo del cliente para futuras facturas?
+            </p>
+          </div>
+        )}
       </Modal>
     </div>
   );

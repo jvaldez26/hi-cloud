@@ -6,6 +6,7 @@ import { Repository, DataSource } from 'typeorm';
 import { ReciboCobro, MetodoPagoRecibo } from './entities/recibo-cobro.entity';
 import { CuentaPorCobrar } from '../cxc/entities/cuenta-por-cobrar.entity';
 import { Factura, FacturaEstado } from '../facturas/entities/factura.entity';
+import { AnticipoCliente, EstadoAnticipo } from '../anticipos-cliente/entities/anticipo-cliente.entity';
 import { EstadoCuenta } from '../common/enums/estado-cuenta.enum';
 import { AsientosAutomaticosService } from '../contabilidad/services/asientos-automaticos.service';
 import { TesoreriaService } from '../tesoreria/tesoreria.service';
@@ -14,18 +15,19 @@ import { TenantService } from '../tenant/tenant.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
 
 interface CreateReciboDto {
-  clienteId?:     number;
-  clienteNombre?: string;
-  fecha?:         string;
-  monto:          number;
-  metodoPago:     MetodoPagoRecibo;
-  concepto:       string;
-  facturaId?:     number;
-  facturaFolio?:  string;
-  cxcId?:         number;
-  referencia?:    string;
-  notas?:         string;
-  nombreUsuario?: string;
+  clienteId?:          number;
+  clienteNombre?:      string;
+  fecha?:              string;
+  monto:               number;
+  metodoPago:          MetodoPagoRecibo;
+  concepto:            string;
+  facturaId?:          number;
+  facturaFolio?:       string;
+  cxcId?:              number;
+  referencia?:         string;
+  notas?:              string;
+  nombreUsuario?:      string;
+  registrarExcedente?: boolean; // true → crea anticipo con el excedente sobre la CxC
 }
 
 @Injectable()
@@ -39,6 +41,8 @@ export class RecibosCobrosService {
     private cxcRepo: Repository<CuentaPorCobrar>,
     @InjectRepository(Factura)
     private facturaRepo: Repository<Factura>,
+    @InjectRepository(AnticipoCliente)
+    private anticipoRepo: Repository<AnticipoCliente>,
     @InjectDataSource()
     private dataSource: DataSource,
     private asientosService: AsientosAutomaticosService,
@@ -85,9 +89,10 @@ export class RecibosCobrosService {
         throw new BadRequestException(`La cuenta por cobrar está "${cxc.estado}" y no acepta más pagos`);
       }
       const pendiente = Number(cxc.montoPendiente);
-      if (monto > pendiente + 0.01) {
+      if (monto > pendiente + 0.01 && !dto.registrarExcedente) {
+        // El frontend debe preguntar al usuario y reenviar con registrarExcedente=true
         throw new BadRequestException(
-          `El monto (${monto.toFixed(2)}) supera el saldo pendiente de la factura (${pendiente.toFixed(2)})`,
+          `EXCEDENTE:${(monto - pendiente).toFixed(2)}:${pendiente.toFixed(2)}`,
         );
       }
     }
@@ -106,7 +111,10 @@ export class RecibosCobrosService {
 
     // ── 4. Actualizar CxC y Factura (transacción atómica) ──────────
     if (cxc) {
-      const nuevoPagado    = Number((Number(cxc.montoPagado) + monto).toFixed(2));
+      const pendiente      = Number(cxc.montoPendiente);
+      const excedente      = monto - pendiente;
+      const montoParaCxc   = excedente > 0.01 ? pendiente : monto; // si hay excedente, aplicar solo el pendiente
+      const nuevoPagado    = Number((Number(cxc.montoPagado) + montoParaCxc).toFixed(2));
       const nuevoPendiente = Number((Number(cxc.montoOriginal) - nuevoPagado).toFixed(2));
       const nuevoEstado    = nuevoPendiente <= 0 ? EstadoCuenta.PAGADA : EstadoCuenta.PAGADA_PARCIAL;
 
@@ -127,12 +135,12 @@ export class RecibosCobrosService {
         }
       });
 
-      // Asiento contable: DÉBITO Bancos, CRÉDITO Clientes
-      await this.asientosService.asientoCobro(monto, cxc.id, usuarioId).catch(err =>
+      // Asiento contable: DÉBITO Bancos, CRÉDITO Clientes (solo por el monto aplicado a CxC)
+      await this.asientosService.asientoCobro(montoParaCxc, cxc.id, usuarioId).catch(err =>
         this.logger.error(`Error asiento cobro ${recibo.numero}: ${err.message}`),
       );
 
-      // Tesorería: movimiento de entrada
+      // Tesorería: movimiento de entrada (monto total recibido)
       await this.tesoreriaService.registrarMovimientoAutomatico(
         TipoMovimientoBancario.DEPOSITO,
         monto,
@@ -143,6 +151,51 @@ export class RecibosCobrosService {
       ).catch(err =>
         this.logger.error(`Error tesorería ${recibo.numero}: ${err.message}`),
       );
+
+      // ── Excedente → crear anticipo automáticamente ─────────────
+      if (excedente > 0.01 && dto.registrarExcedente) {
+        try {
+          const hoy = new Date().toISOString().split('T')[0];
+          const [cajaRow] = await this.dataSource.query<{ id: number }[]>(
+            `SELECT id FROM cierres_caja WHERE "empresaId" = $1 AND DATE(fecha) = $2 AND estado = 'abierta' ORDER BY id DESC LIMIT 1`,
+            [empresaId, hoy],
+          ).catch(() => []);
+          const antNumRes = await this.anticipoRepo
+            .createQueryBuilder('a')
+            .select(`MAX(CASE WHEN a.numero ~ '^ANT-[0-9]+$' THEN CAST(SUBSTRING(a.numero FROM 5) AS INTEGER) ELSE 100 END)`, 'maxNum')
+            .where('a.empresaId = :eid', { eid: empresaId })
+            .getRawOne<{ maxNum: number | null }>();
+          const antNumero = `ANT-${Math.max(101, (antNumRes?.maxNum ?? 100) + 1)}`;
+
+          const anticipo = await this.anticipoRepo.save(
+            this.anticipoRepo.create({
+              numero:        antNumero,
+              clienteId:     cxc.clienteId,
+              clienteNombre: dto.clienteNombre,
+              monto:         excedente,
+              montoPendiente: excedente,
+              tipoPago:      dto.metodoPago,
+              descripcion:   `Excedente de Recibo ${recibo.numero}`,
+              estado:        EstadoAnticipo.ACTIVO,
+              fechaRegistro: hoy,
+              cajaDiariaId:  cajaRow?.id,
+              usuarioId,
+              nombreUsuario: dto.nombreUsuario,
+              empresaId,
+            }),
+          );
+
+          // Asiento excedente: DÉBITO Caja/Banco, CRÉDITO Anticipos de Clientes
+          await this.asientosService.asientoAnticipo(excedente, anticipo.id, dto.metodoPago, usuarioId)
+            .then(async (asientoId) => { if (asientoId) await this.anticipoRepo.update(anticipo.id, { asientoId }); })
+            .catch(err => this.logger.error(`Asiento anticipo excedente ${anticipo.numero}: ${err.message}`));
+
+          this.logger.log(`Anticipo ${anticipo.numero} creado por excedente de recibo ${recibo.numero}`);
+          return { recibo, anticipo };
+        } catch (err: any) {
+          this.logger.error(`Error creando anticipo por excedente: ${err.message}`);
+        }
+      }
     } else {
       // Sin CxC — anticipo o cobro genérico
       // Asiento: DÉBITO Caja/Bancos, CRÉDITO Clientes

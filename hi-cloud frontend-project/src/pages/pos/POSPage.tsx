@@ -1812,28 +1812,68 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
     staleTime: 30_000,
     enabled: !form,
   });
+  const resetForm = () => {
+    setForm(false); setMonto(''); setMetodo('Efectivo'); setRef(''); setDesc('');
+    setClienteId(null); setBusqCliente(''); setFacturaId(null); setFacturaFolio('');
+    setFacturaSearch(''); setShowFacturaDropdown(false);
+  };
+
+  const buildBody = (extras: Record<string, any> = {}) => {
+    const metodoPagoNorm = metodo.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const body: any = {
+      monto:      Number(monto),
+      metodoPago: metodoPagoNorm,
+      concepto:   descripcion || (esAnticipo ? 'Anticipo' : 'Recibo de cobro'),
+      fecha:      new Date().toISOString().split('T')[0],
+      ...extras,
+    };
+    if (clienteId)   body.clienteId  = clienteId;
+    if (referencia)  body.referencia = referencia;
+    if (facturaId)   { body.facturaId = facturaId; body.facturaFolio = facturaFolio; }
+    return body;
+  };
+
   const guardarMut = useMutation({
-    mutationFn: () => {
-      // FIX 6: normalizar método (quitar tilde de Depósito), agregar fecha y concepto
-      const metodoPagoNorm = metodo.toLowerCase()
-        .normalize('NFD').replace(/[̀-ͯ]/g, ''); // elimina acentos: depósito → deposito
-      const body: any = {
-        monto:      Number(monto),
-        metodoPago: metodoPagoNorm,
-        concepto:   descripcion || (esAnticipo ? 'Anticipo' : 'Recibo de cobro'),
-        fecha:      new Date().toISOString().split('T')[0],
-      };
-      if (clienteId)   body.clienteId   = clienteId;
-      if (referencia)  body.referencia  = referencia;
-      if (facturaId)   { body.facturaId = facturaId; body.facturaFolio = facturaFolio; }
-      return api.post(`/${tipo}`, body);
+    mutationFn: (extras: Record<string, any> = {}) => api.post(`/${tipo}`, buildBody(extras)),
+    onSuccess: (res: any) => {
+      qc.invalidateQueries({ queryKey: ['pos-panel', tipo] });
+      qc.refetchQueries({ queryKey: ['pos-panel', tipo] });
+      qc.invalidateQueries({ queryKey: ['pos-panel', 'anticipos'] });
+      const d = res.data?.data ?? res.data;
+      const anticipo = d?.anticipo;
+      if (anticipo) {
+        message.success(`Recibo registrado + Anticipo ${anticipo.numero} (RD$ ${Number(anticipo.monto).toLocaleString('es-DO', { minimumFractionDigits: 2 })})`, 5);
+      } else {
+        message.success(esAnticipo ? 'Anticipo registrado' : 'Recibo registrado');
+      }
+      resetForm();
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['pos-panel', tipo] }); qc.refetchQueries({ queryKey: ['pos-panel', tipo] });
-      setForm(false); setMonto(''); setMetodo('Efectivo'); setRef(''); setDesc(''); setClienteId(null); setBusqCliente(''); setFacturaId(null); setFacturaFolio(''); setFacturaSearch(''); setShowFacturaDropdown(false);
-      message.success(esAnticipo ? 'Anticipo registrado' : 'Recibo registrado');
+    onError: (e: any) => {
+      const msg: string = e?.response?.data?.message ?? 'Error al guardar';
+      if (msg.startsWith('EXCEDENTE:')) {
+        const [, exStr, penStr] = msg.split(':');
+        Modal.confirm({
+          title: 'Monto superior al saldo pendiente',
+          icon: null,
+          content: (
+            <div style={{ textAlign: 'center', padding: '8px 0' }}>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>💰</div>
+              <p>El saldo pendiente de la factura es <strong>RD$ {Number(penStr).toLocaleString('es-DO', { minimumFractionDigits: 2 })}</strong>.</p>
+              <p>El excedente de <strong>RD$ {Number(exStr).toLocaleString('es-DO', { minimumFractionDigits: 2 })}</strong> puede registrarse como anticipo del cliente.</p>
+              <p>¿Deseas registrarlo como anticipo?</p>
+            </div>
+          ),
+          okText: 'Sí, registrar anticipo',
+          cancelText: 'Cobrar solo el saldo',
+          onOk:    () => guardarMut.mutate({ registrarExcedente: true }),
+          onCancel: () => guardarMut.mutate({ registrarExcedente: false, monto: Number(penStr) }),
+          centered: true,
+          width: 400,
+        });
+      } else {
+        message.error(msg, 4);
+      }
     },
-    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al guardar'),
   });
   const title = esAnticipo ? 'Anticipos' : 'Recibos de Cobro';
   const icon  = esAnticipo ? '💰' : '🧾';
@@ -1959,7 +1999,7 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
                 rows={3} style={{ width:'100%', padding:'8px 12px', borderRadius:8, border:`1px solid ${C.border2}`,
                   fontSize:13, resize:'vertical', outline:'none', boxSizing:'border-box', background:C.inputBg, color:C.text }} />
             </div>
-            <button onClick={() => guardarMut.mutate()} disabled={guardarMut.isPending || !monto}
+            <button onClick={() => guardarMut.mutate({})} disabled={guardarMut.isPending || !monto}
               style={{ width:'100%', height:44, borderRadius:10, border:'none',
                 background: !monto?'#ccc':'#059669', color:'#fff',
                 fontWeight:700, fontSize:15, cursor:!monto?'not-allowed':'pointer' }}>
