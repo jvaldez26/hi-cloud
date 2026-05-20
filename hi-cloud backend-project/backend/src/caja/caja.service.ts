@@ -56,6 +56,22 @@ export class CajaService {
     }
   }
 
+  // ── Usuarios operativos de la empresa (para vincular a perfil vendedor) ────
+
+  async listarUsuarios(): Promise<{ id: number; nombre: string; email: string; role: string }[]> {
+    const empresaId = this.tenantService.getEmpresaId();
+    return this.dataSource.query(`
+      SELECT u.id, u.nombre, u.email, u.role
+      FROM users u
+      JOIN usuario_empresa ue ON ue."userId" = u.id
+      WHERE ue."empresaId" = $1
+        AND ue."isActive"  = true
+        AND u."isActive"   = true
+        AND u.role NOT IN ('super_admin', 'viewer')
+      ORDER BY u.nombre
+    `, [empresaId]);
+  }
+
   // ── Cajeros activos de la empresa ─────────────────────────────────────────
 
   async listarCajeros(): Promise<{

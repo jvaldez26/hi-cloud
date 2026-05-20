@@ -81,10 +81,10 @@ export default function VendedoresPage() {
     enabled: !!vendedorSel?.id && tabActiva === 'clientes',
   });
 
-  // Usuarios del sistema para vincular al perfil vendedor
+  // Usuarios del sistema para vincular al perfil vendedor (endpoint dedicado)
   const { data: usuariosSistema = [] } = useQuery<any[]>({
     queryKey: ['usuarios-sistema-select'],
-    queryFn:  () => api.get('/caja/cajeros').then((r: any) => r.data?.data ?? r.data ?? []),
+    queryFn:  () => api.get('/caja/usuarios').then((r: any) => r.data?.data ?? r.data ?? []),
     staleTime: 60_000,
   });
 
@@ -429,7 +429,7 @@ export default function VendedoresPage() {
               optionFilterProp="label"
               options={usuariosSistema.map((u: any) => ({
                 value: u.id,
-                label: `${u.nombre} (${u.email})`,
+                label: `${u.nombre ?? ''}${u.email ? ' — ' + u.email : ''}`,
               }))}
             />
           </Form.Item>

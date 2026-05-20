@@ -56,8 +56,14 @@ export class CajaController {
     return this.cajaService.getCajaHoy(vid);
   }
 
+  @Get('usuarios')
+  @ApiOperation({ summary: 'Usuarios operativos de la empresa (para vincular a perfil vendedor)' })
+  getUsuarios() {
+    return this.cajaService.listarUsuarios();
+  }
+
   @Get('cajeros')
-  @ApiOperation({ summary: 'Usuarios activos de la empresa (para selector de cajero)' })
+  @ApiOperation({ summary: 'Vendedores activos de la empresa (para selector de cajero en caja)' })
   getCajeros() {
     return this.cajaService.listarCajeros();
   }
