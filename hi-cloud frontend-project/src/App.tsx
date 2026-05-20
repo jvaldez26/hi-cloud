@@ -149,13 +149,10 @@ export const qc = new QueryClient({
   },
 });
 
-// Ruta raíz: landing para visitantes, dashboard para usuarios autenticados
-// El super_admin siempre va a su panel exclusivo
+// Ruta raíz: siempre muestra la landing page.
+// La landing detecta si el usuario está autenticado y adapta los botones.
 function PublicHome() {
-  const isAuth = useAuthStore((s) => s.isAuth());
-  const user   = useAuthStore((s) => s.user);
-  if (!isAuth) return <LandingPage />;
-  return <Navigate to={user?.role === 'super_admin' ? '/super-admin' : '/dashboard'} replace />;
+  return <LandingPage />;
 }
 
 // Rutas del ERP normal — BLOQUEADAS para super_admin

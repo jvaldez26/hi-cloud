@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, useInView, AnimatePresence } from 'framer-motion';
 import api from '../../api/client';
 import { useThemeStore } from '../../store/theme.store';
+import { useAuthStore } from '../../store/auth.store';
 
 // ── Paleta dinámica (light/dark) ─────────────────────────────────────────────
 function buildPalette(isDark: boolean) {
@@ -86,7 +87,10 @@ function ThemeToggleBtn() {
 function Navbar({ onDemo }: { onDemo: () => void }) {
   const [scrolled, setScrolled] = useState(false);
   const [mopen,    setMopen]    = useState(false);
-  const navigate = useNavigate();
+  const navigate  = useNavigate();
+  const isAuth    = useAuthStore((s) => s.isAuth());
+  const user      = useAuthStore((s) => s.user);
+  const irSistema = () => navigate(user?.role === 'super_admin' ? '/super-admin' : '/dashboard');
 
   useEffect(() => {
     const fn = () => setScrolled(window.scrollY > 40);
@@ -142,13 +146,13 @@ function Navbar({ onDemo }: { onDemo: () => void }) {
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <ThemeToggleBtn />
-        <button onClick={() => navigate('/login')}
+        <button onClick={() => isAuth ? irSistema() : window.open('/login', '_blank')}
           style={{ background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.2)',
             color: '#fff', fontSize: 13, fontWeight: 600, padding: '7px 16px', borderRadius: 8,
             cursor: 'pointer', transition: 'all .15s' }}
           onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,.18)')}
           onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,.1)')}>
-          Iniciar sesión
+          {isAuth ? '→ Ir al Dashboard' : 'Iniciar sesión'}
         </button>
         <button onClick={onDemo}
           style={{ background: 'linear-gradient(135deg,#00BFA5,#009688)', border: 'none',
@@ -181,10 +185,10 @@ function Navbar({ onDemo }: { onDemo: () => void }) {
                 {l.label}
               </button>
             ))}
-            <button onClick={() => { navigate('/login'); setMopen(false); }}
+            <button onClick={() => { isAuth ? irSistema() : window.open('/login', '_blank'); setMopen(false); }}
               style={{ marginTop: 16, width: '100%', background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.2)',
                 color: '#fff', fontSize: 14, fontWeight: 600, padding: '12px', borderRadius: 8, cursor: 'pointer' }}>
-              Iniciar sesión
+              {isAuth ? '→ Ir al Dashboard' : 'Iniciar sesión'}
             </button>
           </motion.div>
         )}
@@ -578,7 +582,10 @@ export default function LandingPage() {
   const [showForm, setShowForm] = useState(false);
   const navigate = useNavigate();
   const { isDark } = useThemeStore();
-  const P = buildPalette(isDark); // paleta reactiva al tema
+  const P = buildPalette(isDark);
+  const isAuth = useAuthStore((s) => s.isAuth());
+  const user   = useAuthStore((s) => s.user);
+  const irAlSistema = () => navigate(user?.role === 'super_admin' ? '/super-admin' : '/dashboard');
 
   // Planes dinámicos desde la BD
   const [planesDB, setPlanesDB] = useState<any[]>([]);
