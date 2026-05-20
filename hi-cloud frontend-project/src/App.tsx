@@ -110,6 +110,7 @@ const ValoracionStockPage         = lazy(() => import('./pages/valoracion-stock/
 const DepositosPage               = lazy(() => import('./pages/depositos/DepositosPage'));
 const IsrPage                     = lazy(() => import('./pages/isr/IsrPage'));
 const CreditoClientePage          = lazy(() => import('./pages/credito-cliente/CreditoClientePage'));
+const AnticiposClientePage        = lazy(() => import('./pages/anticipos-cliente/AnticiposClientePage'));
 const GeneradorReportesPage       = lazy(() => import('./pages/generador-reportes/GeneradorReportesPage'));
 const ContactosPage               = lazy(() => import('./pages/contactos/ContactosPage'));
 const AprobacionesPage            = lazy(() => import('./pages/aprobaciones/AprobacionesPage'));
@@ -496,6 +497,7 @@ export default function App() {
                     <Route path="/depositos"              element={<DepositosPage />} />
                     <Route path="/isr"                    element={<IsrPage />} />
                     <Route path="/credito-cliente"        element={<CreditoClientePage />} />
+                    <Route path="/anticipos-cliente"      element={<AnticiposClientePage />} />
                     <Route path="/generador-reportes"     element={<GeneradorReportesPage />} />
                     <Route path="/contactos"              element={<ContactosPage />} />
                     <Route path="/aprobaciones"           element={<AprobacionesPage />} />

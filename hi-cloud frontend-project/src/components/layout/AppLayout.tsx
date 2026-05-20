@@ -145,6 +145,7 @@ const MENU_CATEGORIES: MenuCategory[] = [
       { path: '/cxc',                  label: 'Cuentas por Cobrar' },
       { path: '/cuotas',               label: 'Cuotas / Pagos' },
       { path: '/recibos-cobro',        label: 'Recibos de Cobro' },
+      { path: '/anticipos-cliente',    label: 'Anticipos de Clientes' },
       { path: '/fidelidad',            label: 'Fidelidad & Puntos' },
       { path: '/conduces',             label: 'Conduces / Entregas' },
     ],
@@ -387,6 +388,7 @@ const PATH_ROLES: Record<string, string[]> = {
   '/fidelidad':             ADMIN_CONT,
   '/cuotas':                ADMIN_CONT,
   '/credito-cliente':       ADMIN_CONT,
+  '/anticipos-cliente':     ADMIN_CONT,
   '/productos':             ADMIN_CONT,
   '/inventario':            ADMIN_CONT,
   '/conteo-inventario':     ADMIN_CONT,
@@ -1304,6 +1306,60 @@ export default function AppLayout() {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
+  // ── Cierre de sesión automático por inactividad (60 min) ────────────────────
+  const INACTIVIDAD_MS  = 60 * 60 * 1000;   // 60 min → logout
+  const ADVERTENCIA_MS  = 55 * 60 * 1000;   // 55 min → mostrar modal
+
+  const [showInactividad,    setShowInactividad]    = useState(false);
+  const [inactividadConteo,  setInactividadConteo]  = useState(300); // 5 min en seg
+
+  const timerLogout    = useRef<ReturnType<typeof setTimeout>>();
+  const timerAviso     = useRef<ReturnType<typeof setTimeout>>();
+  const timerCountdown = useRef<ReturnType<typeof setInterval>>();
+
+  const limpiarTimers = useCallback(() => {
+    clearTimeout(timerLogout.current);
+    clearTimeout(timerAviso.current);
+    clearInterval(timerCountdown.current);
+  }, []);
+
+  const resetInactividad = useCallback(() => {
+    limpiarTimers();
+    setShowInactividad(false);
+
+    // Aviso a los 55 min
+    timerAviso.current = setTimeout(() => {
+      setInactividadConteo(300);
+      setShowInactividad(true);
+      timerCountdown.current = setInterval(() => {
+        setInactividadConteo(prev => {
+          if (prev <= 1) { clearInterval(timerCountdown.current); return 0; }
+          return prev - 1;
+        });
+      }, 1000);
+    }, ADVERTENCIA_MS);
+
+    // Logout a los 60 min
+    timerLogout.current = setTimeout(() => {
+      limpiarTimers();
+      setShowInactividad(false);
+      logout();
+      navigate('/login');
+    }, INACTIVIDAD_MS);
+  }, [limpiarTimers, logout, navigate, ADVERTENCIA_MS, INACTIVIDAD_MS]);
+
+  useEffect(() => {
+    const eventos = ['mousemove', 'click', 'keydown', 'scroll', 'touchstart'] as const;
+    const handler = () => resetInactividad();
+    eventos.forEach(e => window.addEventListener(e, handler, { passive: true }));
+    resetInactividad(); // arrancar al montar
+    return () => {
+      eventos.forEach(e => window.removeEventListener(e, handler));
+      limpiarTimers();
+    };
+  }, [resetInactividad, limpiarTimers]);
+  // ─────────────────────────────────────────────────────────────────────────────
+
   const userMenu = {
     items: [
       { key: 'profile', icon: <UserOutlined />, label: 'Mi perfil',     onClick: () => navigate('/profile') },
@@ -2071,6 +2127,58 @@ export default function AppLayout() {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* ── Modal de advertencia por inactividad ───────────────────────── */}
+      <Modal
+        open={showInactividad}
+        footer={null}
+        closable={false}
+        maskClosable={false}
+        centered
+        width={380}
+        styles={{ mask: { backdropFilter: 'blur(2px)' } }}
+      >
+        <div style={{ textAlign: 'center', padding: '12px 0 4px' }}>
+          {/* Ícono animado */}
+          <div style={{
+            width: 64, height: 64, borderRadius: '50%',
+            background: inactividadConteo <= 60 ? 'rgba(239,68,68,.12)' : 'rgba(245,158,11,.12)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            margin: '0 auto 16px', fontSize: 28,
+          }}>
+            🔐
+          </div>
+          <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 6, color: token.colorText }}>
+            Sesión por expirar
+          </div>
+          <div style={{ color: token.colorTextSecondary, fontSize: 13, marginBottom: 20 }}>
+            Tu sesión cerrará automáticamente por inactividad en
+          </div>
+          {/* Countdown */}
+          <div style={{
+            fontSize: 52, fontWeight: 900, fontFamily: '"SF Mono", "Fira Code", monospace',
+            letterSpacing: 3, marginBottom: 24,
+            color: inactividadConteo <= 60 ? '#EF4444' : (inactividadConteo <= 120 ? '#F59E0B' : token.colorText),
+            transition: 'color 0.3s',
+          }}>
+            {String(Math.floor(inactividadConteo / 60)).padStart(2, '0')}
+            <span style={{ opacity: 0.5, fontSize: 36 }}>:</span>
+            {String(inactividadConteo % 60).padStart(2, '0')}
+          </div>
+          <Button
+            type="primary"
+            size="large"
+            block
+            style={{ height: 44, fontSize: 15, fontWeight: 600 }}
+            onClick={() => { resetInactividad(); setShowInactividad(false); }}
+          >
+            Continuar sesión
+          </Button>
+          <div style={{ marginTop: 12, fontSize: 12, color: token.colorTextSecondary }}>
+            Haz clic en cualquier parte o presiona una tecla para continuar
+          </div>
+        </div>
       </Modal>
     </>
   );
