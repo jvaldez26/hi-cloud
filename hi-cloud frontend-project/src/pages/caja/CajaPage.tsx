@@ -77,7 +77,9 @@ export default function CajaPage() {
   const { data: cajaData, isLoading } = useQuery({
     queryKey: ['caja-hoy'],
     queryFn:  cajaApi.hoy,
-    refetchInterval: 30_000,
+    refetchInterval:      5_000,   // cada 5s — detecta cajas abiertas desde el POS
+    refetchOnWindowFocus: true,    // refresca al volver a esta pestaña
+    staleTime:            0,       // siempre stale
   });
 
   const { data: cajeros = [] } = useQuery<any[]>({
