@@ -90,13 +90,18 @@ apiClient.interceptors.response.use(
         return Promise.reject(err);
       }
 
-      // No reintentar en refresh/login para evitar loops infinitos
-      // NOTA: /auth/me NO está excluido — si el access token expira durante la
-      // hidratación de App.tsx, el interceptor debe renovarlo transparentemente.
+      // Rutas públicas — no intentar refresh ni redirigir desde ellas
+      const publicPaths = ['/login', '/registrar', '/recuperar-contrasena',
+                           '/restablecer', '/verificar-correo', '/portal/',
+                           '/invitacion/', '/precios', '/auth/callback'];
+      const onPublicPage = publicPaths.some(p => window.location.pathname.startsWith(p));
+
+      // No reintentar en refresh/login ni en páginas públicas para evitar
+      // que un refresh_token válido restaure la sesión tras un logout explícito.
       const isAuthEndpoint = original?.url?.includes('/auth/refresh') ||
                              original?.url?.includes('/auth/login');
 
-      if (!isAuthEndpoint && !original?._retry) {
+      if (!isAuthEndpoint && !original?._retry && !onPublicPage) {
         // Si ya está refrescando, encolar este request
         if (_isRefreshing) {
           return new Promise<void>((resolve, reject) => {
@@ -119,14 +124,6 @@ apiClient.interceptors.response.use(
           _isRefreshing = false;
         }
       }
-
-      // Limpiar UI y redirigir a login
-      // No redirigir si ya estamos en una ruta pública (reset, verificar, etc.)
-      // para evitar que el 401 de /auth/me en el hydrate interrumpa el flujo.
-      const publicPaths = ['/login', '/registrar', '/recuperar-contrasena',
-                           '/restablecer', '/verificar-correo', '/portal/',
-                           '/invitacion/', '/precios', '/auth/callback'];
-      const onPublicPage = publicPaths.some(p => window.location.pathname.startsWith(p));
       localStorage.removeItem('auth_user');
       localStorage.removeItem('empresaId');
       localStorage.removeItem('mis_empresas');

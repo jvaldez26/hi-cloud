@@ -197,6 +197,20 @@ export default function App() {
   // Si hay cookie válida → restaurar estado. Si no → limpiar.
   useEffect(() => {
     if (hydrated) return;
+
+    // Si el usuario hizo logout (no hay auth_user en localStorage) y está en una
+    // página pública, no intentar rehidratar — evita que la cookie httpOnly restaure
+    // la sesión silenciosamente después de un logout explícito.
+    const savedUser = localStorage.getItem('auth_user');
+    const publicPaths = ['/login', '/registrar', '/recuperar-contrasena',
+                         '/restablecer', '/verificar-correo', '/portal/',
+                         '/invitacion/', '/precios', '/auth/callback'];
+    const onPublicPage = publicPaths.some(p => window.location.pathname.startsWith(p));
+    if (!savedUser && onPublicPage) {
+      setHydrated(true);
+      return;
+    }
+
     import('./api/client').then(({ default: api }) => {
       api.get('/auth/me')
         .then((r) => {
