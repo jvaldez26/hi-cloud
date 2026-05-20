@@ -205,6 +205,36 @@ export class AsientosAutomaticosService {
   }
 
   // ──────────────────────────────────────────────────────────────────
+  // Recibo de cobro sin CxC → Caja/Banco / Clientes
+  // Para efectivo: DÉBITO Caja. Para el resto: DÉBITO Bancos.
+  // ──────────────────────────────────────────────────────────────────
+
+  async asientoRecibo(
+    monto:     number,
+    reciboId:  number,
+    metodoPago: string,
+    userId:    number,
+  ): Promise<void> {
+    const cuentaDebito = metodoPago === 'efectivo' ? COD.CAJA : COD.BANCOS;
+    try {
+      await this.crearAsientoContabilizado({
+        descripcion:     `Recibo de cobro #${reciboId}`,
+        tipoOrigen:      TipoOrigenAsiento.COBRO,
+        referenciaId:    reciboId,
+        referenciaFolio: `REC-${reciboId}`,
+        userId,
+        lineas: [
+          { codigo: cuentaDebito, descripcion: `Ingreso recibo #${reciboId}`, debe: monto, haber: 0    },
+          { codigo: COD.CLIENTES, descripcion: `Cobro recibido REC-${reciboId}`, debe: 0,  haber: monto },
+        ],
+      });
+      this.logger.log(`Asiento recibo de cobro #${reciboId} generado`);
+    } catch (err) {
+      this.logger.error(`Error asiento recibo #${reciboId}: ${(err as Error).message}`);
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────
   // Pago realizado (CxP) → Proveedores / Bancos
   // ──────────────────────────────────────────────────────────────────
 
