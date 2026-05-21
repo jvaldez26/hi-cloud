@@ -145,6 +145,7 @@ export class PDFService {
     const itbisTotal      = Number(factura.iva  ?? 0);
     const totalGeneral    = Number(factura.total ?? 0);
     const colorPrimario   = empresa.configuracion?.colorPrimario;
+    const factConf = (empresa.configuracion ?? {}) as Record<string, unknown>;
 
     // Tipo cliente
     const tipoCliente: 'RNC' | 'CEDULA' | 'CONSUMIDOR' =
@@ -180,10 +181,10 @@ export class PDFService {
       empresaRNC:         empresa.rnc || '',
       empresaDireccion:   empresa.direccion || '',
       empresaCiudad:      empresa.ciudad,
-      empresaTelefono:    empresa.telefono,
-      empresaEmail:       empresa.email,
-      empresaSitioWeb:    empresa.sitioWeb,
-      empresaLogo:        logoSrc,
+      empresaLogo:        (factConf.factMostrarLogo    !== false) ? logoSrc : undefined,
+      empresaTelefono:    (factConf.factMostrarTelefono !== false) ? empresa.telefono : undefined,
+      empresaEmail:       (factConf.factMostrarEmail    !== false) ? empresa.email    : undefined,
+      empresaSitioWeb:    (factConf.factMostrarWeb      !== false) ? empresa.sitioWeb : undefined,
       empresaColorPrimario: colorPrimario,
       empresaPieFactura:    empresa.configuracion?.pieFactura as string | undefined,
       empresaTerminos:      empresa.configuracion?.terminosCondiciones as string | undefined,

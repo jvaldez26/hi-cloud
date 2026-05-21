@@ -114,7 +114,7 @@ interface Sale {
   empresaTelefono?:        string;
 }
 
-type MetodoPago = 'efectivo' | 'tarjeta' | 'transferencia' | 'credito';
+type MetodoPago = 'efectivo' | 'tarjeta' | 'transferencia' | 'credito' | 'cheque' | 'vale';
 
 type ModoFacturacion = 'factura' | 'valor-fiscal' | 'pro-forma' | 'pre-factura' | 'conduce' | 'cotizacion';
 
@@ -1287,7 +1287,12 @@ function GenericThermalDoc({ doc }: { doc: GenericDocData }) {
 }
 
 // ── Modal éxito post-venta ────────────────────────────────────────────────────
-function ModalExito({ sale, onNueva, onCrearConduce }: { sale: Sale | null; onNueva: () => void; onCrearConduce?: () => void }) {
+function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir }: {
+  sale: Sale | null;
+  onNueva: () => void;
+  onCrearConduce?: () => void;
+  autoImprimir?: boolean;
+}) {
   const C = useC();
   const [countdown, setCountdown] = useState(15);
   const intervalRef  = useRef<ReturnType<typeof setInterval>  | null>(null);
@@ -1313,6 +1318,18 @@ function ModalExito({ sale, onNueva, onCrearConduce }: { sale: Sale | null; onNu
 
     return cancelarContador;
   }, [sale]);
+
+  // Auto-imprimir al abrir el modal si la configuración lo indica
+  useEffect(() => {
+    if (!sale || !autoImprimir) return;
+    // Pequeño delay para que el DOM del recibo esté listo
+    const t = setTimeout(() => {
+      cancelarContador();
+      imprimirElemento(RECEIPT_ID, '80mm auto');
+      window.addEventListener('afterprint', onNueva, { once: true });
+    }, 300);
+    return () => clearTimeout(t);
+  }, [sale?.folio, autoImprimir]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePrint = () => {
     cancelarContador();
@@ -3879,7 +3896,9 @@ export default function POSPage() {
   }, [pantallaBloqueada, turnoAbierto]);
 
   // necesitaRnc: el tipo lo exige Y el cliente no lo aporta automáticamente
-  const tipoExigeRnc = tipoNcf === 'E31' || tipoNcf === 'E44' || tipoNcf === 'E45' || totalEfectivo >= 250_000;
+  const posConf       = (empresa?.configuracion ?? {}) as Record<string, unknown>;
+  const posCedulaMonto = typeof posConf.posCedulaMonto === 'number' ? posConf.posCedulaMonto : 250_000;
+  const tipoExigeRnc = tipoNcf === 'E31' || tipoNcf === 'E44' || tipoNcf === 'E45' || totalEfectivo >= posCedulaMonto;
   const necesitaRnc  = tipoExigeRnc && !clienteTieneRNC;
   const rncValido    = clienteTieneRNC || /^\d{9}$|^\d{11}$/.test(rncComprador);
   const canPay       = tipoPagoPos === 'CREDITO' || metodoPago !== 'efectivo' || montoRecibido >= totalEfectivo;
@@ -3922,7 +3941,8 @@ export default function POSPage() {
         }}
         onCancelar={() => navigate('/dashboard')} />
       <ModalExito sale={sale} onNueva={() => setSale(null)}
-        onCrearConduce={() => { setSale(null); setPanelActivo('conduce'); }} />
+        onCrearConduce={() => { setSale(null); setPanelActivo('conduce'); }}
+        autoImprimir={empresa?.configuracion?.posImpresionAuto === true} />
       <POSNotaCreditoModal open={showNotaCredito} onClose={() => setShowNotaCredito(false)} palette={palette} />
 
       {/* Indicador de ventas offline pendientes */}
@@ -4376,15 +4396,20 @@ export default function POSPage() {
           {tipoPagoPos === 'CONTADO' && (
           <div style={{ flexShrink: 0, padding: '10px 16px 8px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
             <div style={{ fontSize: 9, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 5 }}>Método de pago</div>
-            <div style={{ display: 'flex', gap: 5 }}>
-              {([
-                { key: 'efectivo', icon: '💵', label: 'Efectivo', color: '#15803D', bg: '#F0FDF4', border: '#86EFAC' },
-                { key: 'tarjeta', icon: '💳', label: 'Tarjeta', color: '#1D4ED8', bg: '#EFF6FF', border: '#93C5FD' },
-                { key: 'transferencia', icon: '🏦', label: 'Transfer.', color: '#6D28D9', bg: '#F5F3FF', border: '#C4B5FD' },
-              ] as const).map(m => {
+            <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+              {(([
+                { key: 'efectivo',      icon: '💵', label: 'Efectivo',  color: '#15803D', bg: '#F0FDF4', border: '#86EFAC', flag: 'posEfectivo'       },
+                { key: 'tarjeta',       icon: '💳', label: 'Tarjeta',   color: '#1D4ED8', bg: '#EFF6FF', border: '#93C5FD', flag: 'posTarjetaCredito'  },
+                { key: 'transferencia', icon: '🏦', label: 'Transfer.', color: '#6D28D9', bg: '#F5F3FF', border: '#C4B5FD', flag: 'posTransferencia'   },
+                { key: 'cheque',        icon: '📄', label: 'Cheque',    color: '#B45309', bg: '#FFFBEB', border: '#FCD34D', flag: 'posCheque'          },
+                { key: 'vale',          icon: '🎫', label: 'Vale',      color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE', flag: 'posVale'            },
+              ] as const).filter(m =>
+                // Mostrar si el flag es true, o si no está definido (default true para efectivo/tarjeta/transferencia)
+                posConf[m.flag] !== false && (posConf[m.flag] === true || ['posEfectivo','posTarjetaCredito','posTransferencia'].includes(m.flag))
+              )).map(m => {
                 const act = metodoPago === m.key;
                 return (
-                  <button key={m.key} onClick={() => setMetodoPago(m.key as MetodoPago)} style={{ flex: 1, height: 34, borderRadius: 7, border: act ? `1.5px solid ${m.border}` : '1.5px solid #E2E8F0', background: act ? m.bg : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, outline: 'none', transition: 'all 0.12s' }}>
+                  <button key={m.key} onClick={() => setMetodoPago(m.key as MetodoPago)} style={{ flex: 1, minWidth: 60, height: 34, borderRadius: 7, border: act ? `1.5px solid ${m.border}` : '1.5px solid #E2E8F0', background: act ? m.bg : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, outline: 'none', transition: 'all 0.12s' }}>
                     <span style={{ fontSize: 12 }}>{m.icon}</span>
                     <span style={{ fontSize: 11, fontWeight: 600, color: act ? m.color : '#475569' }}>{m.label}</span>
                   </button>

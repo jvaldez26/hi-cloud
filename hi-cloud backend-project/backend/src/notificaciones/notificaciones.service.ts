@@ -246,10 +246,14 @@ export class NotificacionesService {
   async cronAlertasSemanales() {
     if (!this.notifActiva) return;
     this.logger.log('⏰ Cron: alertas semanales (lunes)');
+    // Verificar flags de notificación de la empresa (primera empresa activa)
+    const [empConf] = await this.dataSource.query<{ configuracion: any }[]>(
+      `SELECT configuracion FROM empresa WHERE "isActive" = true ORDER BY id LIMIT 1`
+    ).catch(() => [{ configuracion: {} }]);
+    const notifConf = (empConf?.configuracion ?? {}) as Record<string, unknown>;
     await Promise.all([
-      this.notificarCxCVencidas(),
-      this.notificarStockBajo(),
-      this.notificarECFSecuenciasVencimiento(),
+      notifConf.notifStockBajo !== false ? this.notificarStockBajo() : Promise.resolve(0),
+      notifConf.notifVencECF   !== false ? this.notificarECFSecuenciasVencimiento() : Promise.resolve(0),
     ]);
   }
 
@@ -257,6 +261,11 @@ export class NotificacionesService {
   async cronAlertasDiarias() {
     if (!this.notifActiva) return;
     this.logger.log('⏰ Cron: alertas diarias CxP');
+    const [empConf2] = await this.dataSource.query<{ configuracion: any }[]>(
+      `SELECT configuracion FROM empresa WHERE "isActive" = true ORDER BY id LIMIT 1`
+    ).catch(() => [{ configuracion: {} }]);
+    const notifConf2 = (empConf2?.configuracion ?? {}) as Record<string, unknown>;
+    if (notifConf2.notifVencCxP === false) return;
     await this.notificarCxPPorVencer();
   }
 
