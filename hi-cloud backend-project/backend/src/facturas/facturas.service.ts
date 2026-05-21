@@ -288,6 +288,8 @@ export class FacturasService {
   // ── Detecta si el pago es inmediato según el campo notas ─────────────────────
   private esPagoInmediato(notas: string | undefined | null): boolean {
     const n = (notas ?? '').toLowerCase();
+    // Ventas a crédito nunca son pago inmediato aunque las notas contengan "pos ·"
+    if (/cr[eé]dito/.test(n)) return false;
     return /efectivo|tarjeta|transferencia|cheque|pos\s*·/.test(n);
   }
 
@@ -421,7 +423,8 @@ export class FacturasService {
       );
 
       // 4. Actualizar estado de la factura
-      const estadoFinal = pagoInmediato ? FacturaEstado.PAGADA : FacturaEstado.EMITIDA;
+      // Crédito SIEMPRE = EMITIDA (pendiente de cobro), nunca PAGADA al emitir
+      const estadoFinal = (!esCredito && pagoInmediato) ? FacturaEstado.PAGADA : FacturaEstado.EMITIDA;
       await this.facturaRepository.update(id, { estado: estadoFinal });
       this.realtimeService.notify(factura.empresaId, 'factura', 'updated', id);
 
