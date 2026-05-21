@@ -890,14 +890,14 @@ export class ReportesService {
 
     const rows = await this.dataSource.query<any[]>(`
       SELECT
-        COALESCE(categoria, 'Sin categoría') AS categoria,
-        COALESCE(SUM(total), 0)::numeric      AS monto
+        COALESCE(categoria::text, 'Sin categoría') AS categoria,
+        COALESCE(SUM(total), 0)::numeric            AS monto
       FROM gastos
       WHERE "empresaId" = $1
         AND EXTRACT(MONTH FROM fecha) = $2
         AND EXTRACT(YEAR  FROM fecha) = $3
         AND "isActive" = true
-      GROUP BY categoria
+      GROUP BY categoria::text
       ORDER BY monto DESC
     `, [eid, mesActual, anioActual]);
 
