@@ -20,6 +20,9 @@ class AbrirCajaDto {
   saldoApertura?: number;
 
   @IsOptional() @IsString()
+  vendedorNombre?: string;
+
+  @IsOptional() @IsString()
   notas?: string;
 }
 
@@ -78,7 +81,7 @@ export class CajaController {
       dto.saldoApertura ?? 0,
       dto.notas,
       dto.vendedorId,
-      undefined,  // service resuelve el nombre desde BD
+      dto.vendedorNombre,  // opcional — el servicio lo resuelve desde BD si no viene
     );
   }
 

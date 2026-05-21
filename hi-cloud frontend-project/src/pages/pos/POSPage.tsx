@@ -1001,7 +1001,9 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar 
       }
 
       // Cualquier otro error de red / 500 — tampoco abrir sin caja
-      message.error('No se pudo registrar la caja diaria. Verifica tu conexión e intenta de nuevo.', 5);
+      const detalleError = (e as any)?.response?.data?.message ?? (e as any)?.message ?? 'error desconocido';
+      console.error('[AperturaTurno] Error al abrir caja:', detalleError, e);
+      message.error(`No se pudo registrar la caja diaria. Verifica tu conexión e intenta de nuevo.`, 5);
       setAbriendo(false);
     } finally {
       setAbriendo(false);
