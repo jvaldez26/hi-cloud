@@ -964,19 +964,26 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar 
       onAbrir(monto, vendedorId, sucursalSel);
     } catch (e: any) {
       const httpStatus = (e as any)?.response?.status;
-      const errMsg: string = (e as any)?.response?.data?.errors?.[0] ?? '';
+      const errMsg: string = (e as any)?.response?.data?.errors?.[0] ?? (e as any)?.response?.data?.message ?? '';
 
+      // 400 — caja ya cerrada hoy
       if (httpStatus === 400 && (errMsg.includes('cerrada') || errMsg.includes('ya existe') || errMsg.includes('ya abierta'))) {
-        // La caja ya fue cerrada hoy para este vendedor — bloquear
         setCajaStatus('cerrada_hoy');
         setAbriendo(false);
         return;
       }
-      // Cualquier otro error → abrir turno de todos modos
-      if (httpStatus !== 400) {
-        message.warning('El turno se abrió pero no se pudo registrar la caja diaria.');
+
+      // 401 / sesión expirada — NO abrir turno sin caja en BD
+      // El interceptor ya redirige a login; aquí solo bloqueamos la apertura
+      if (httpStatus === 401 || errMsg.includes('SESION_DESPLAZADA') || errMsg.includes('expirado') || errMsg.includes('inválido')) {
+        message.error('Tu sesión expiró. Por favor inicia sesión nuevamente.', 5);
+        setAbriendo(false);
+        return; // NO llamar onAbrir — el interceptor maneja la redirección
       }
-      onAbrir(monto, vendedorId, sucursalSel);
+
+      // Cualquier otro error de red / 500 — tampoco abrir sin caja
+      message.error('No se pudo registrar la caja diaria. Verifica tu conexión e intenta de nuevo.', 5);
+      setAbriendo(false);
     } finally {
       setAbriendo(false);
     }
