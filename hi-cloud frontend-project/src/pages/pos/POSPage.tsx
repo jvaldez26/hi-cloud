@@ -104,6 +104,7 @@ interface Sale {
   qrUrl?:                  string;
   notas?:                  string;   // incluye "Crédito X días" para ventas a crédito
   diasCredito?:            number;
+  clienteId?:              number;   // para pre-llenar conduce
   // Emisor
   cajero?:                 string;
   empresaNombreComercial?: string;
@@ -1272,7 +1273,7 @@ function GenericThermalDoc({ doc }: { doc: GenericDocData }) {
 }
 
 // ── Modal éxito post-venta ────────────────────────────────────────────────────
-function ModalExito({ sale, onNueva }: { sale: Sale | null; onNueva: () => void }) {
+function ModalExito({ sale, onNueva, onCrearConduce }: { sale: Sale | null; onNueva: () => void; onCrearConduce?: () => void }) {
   const C = useC();
   const [countdown, setCountdown] = useState(15);
   const intervalRef  = useRef<ReturnType<typeof setInterval>  | null>(null);
@@ -1396,6 +1397,15 @@ function ModalExito({ sale, onNueva }: { sale: Sale | null; onNueva: () => void 
           }}>
             <PrinterOutlined style={{ fontSize: 16 }} /> Imprimir recibo térmico
           </button>
+          {onCrearConduce && (
+            <button onClick={() => { cancelarContador(); onCrearConduce(); }}
+              style={{ width: '100%', height: 38, borderRadius: 10, border: `1px solid #3B82F6`,
+                background: 'rgba(59,130,246,.1)', color: '#3B82F6',
+                fontSize: 13, fontWeight: 700, cursor: 'pointer', outline: 'none',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8 }}>
+              🚚 Crear Conduce de Entrega
+            </button>
+          )}
           <button onClick={onNueva} style={{ width: '100%', height: 46, borderRadius: 12, border: 'none', background: 'linear-gradient(135deg,#059669,#10B981)', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', outline: 'none', boxShadow: '0 4px 16px rgba(16,185,129,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
             ✚ Nueva Venta
             <span style={{ fontSize: 11, opacity: 0.8, background: 'rgba(0,0,0,.25)', borderRadius: 4, padding: '1px 7px' }}>{countdown}s</span>
@@ -1716,6 +1726,262 @@ function POSInventarioPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
 }
 
 // ── Panel Clientes ────────────────────────────────────────────────────────────
+// ── Panel Conduces completo ───────────────────────────────────────────────────
+function POSConducePanel({ C, onVolver, initClienteId, initFacturaId }: {
+  C: Palette; onVolver: () => void; initClienteId?: number; initFacturaId?: number;
+}) {
+  const qc = useQueryClient();
+  const [modoForm,   setModoForm]   = useState(!!initClienteId);
+  const [busq,       setBusq]       = useState('');
+  const [busqCli,    setBusqCli]    = useState('');
+  const [fClienteId, setFClienteId] = useState<number|null>(initClienteId ?? null);
+  const [fDireccion, setFDireccion] = useState('');
+  const [fNotas,     setFNotas]     = useState('');
+  const [fItems,     setFItems]     = useState([{ desc: '', cant: '1', um: 'PZA' }]);
+  const [imprimiendo,setImprimiendo]= useState<number|null>(null);
+
+  const { data: conduces = [], isLoading } = useQuery<any[]>({
+    queryKey: ['pos-conduces', busq],
+    queryFn: () => api.get(`/conduces?limit=50${busq ? '&search=' + encodeURIComponent(busq) : ''}`)
+      .then(r => { const d = r.data?.data ?? r.data; return d?.data ?? d ?? []; }),
+    staleTime: 0,
+    refetchInterval: 30_000,
+  });
+
+  const { data: clientes = [] } = useQuery<any[]>({
+    queryKey: ['pos-cli-conduce', busqCli],
+    queryFn: () => api.get(`/clientes?limit=30${busqCli ? '&search=' + encodeURIComponent(busqCli) : ''}`)
+      .then(r => { const d = r.data?.data ?? r.data; return d?.data ?? d ?? []; }),
+    staleTime: 30_000,
+  });
+
+  const { data: resumen } = useQuery<any>({
+    queryKey: ['pos-conduces-resumen'],
+    queryFn: () => api.get('/conduces/resumen').then(r => r.data?.data ?? r.data),
+    refetchInterval: 30_000,
+  });
+
+  const pendientes = (resumen?.generado ?? 0) + (resumen?.en_transito ?? 0);
+
+  const crearMut = useMutation({
+    mutationFn: () => api.post('/conduces', {
+      clienteId:       fClienteId,
+      fecha:           new Date().toISOString().split('T')[0],
+      direccionEntrega: fDireccion.trim(),
+      notas:           fNotas || undefined,
+      facturaId:       initFacturaId || undefined,
+      detalles: fItems.filter(i => i.desc.trim()).map(i => ({
+        descripcion: i.desc.trim(), cantidad: parseFloat(i.cant) || 1, unidadMedida: i.um || 'PZA',
+      })),
+    }),
+    onSuccess: (res: any) => {
+      qc.invalidateQueries({ queryKey: ['pos-conduces'] });
+      qc.invalidateQueries({ queryKey: ['pos-conduces-resumen'] });
+      const num = res.data?.data?.numero ?? res.data?.numero ?? '';
+      message.success(`Conduce ${num} creado`);
+      setModoForm(false);
+      setFClienteId(null); setFDireccion(''); setFNotas('');
+      setFItems([{ desc: '', cant: '1', um: 'PZA' }]);
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al crear conduce', 5),
+  });
+
+  const cambiarEstadoMut = useMutation({
+    mutationFn: ({ id, estado }: { id: number; estado: string }) => {
+      if (estado === 'en_transito') return api.patch(`/conduces/${id}/en-transito`);
+      if (estado === 'entregado')   return api.patch(`/conduces/${id}/entregado`);
+      return api.patch(`/conduces/${id}/devuelto`);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pos-conduces'] });
+      qc.invalidateQueries({ queryKey: ['pos-conduces-resumen'] });
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
+  });
+
+  const imprimirPDF = async (id: number, numero: string) => {
+    setImprimiendo(id);
+    try {
+      const eid = localStorage.getItem('empresaId') ?? '';
+      const res = await fetch(`/api/v1/conduces/${id}/pdf`, {
+        credentials: 'include', headers: { 'X-Empresa-ID': eid },
+      });
+      if (!res.ok) { message.error('Error al generar PDF'); return; }
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `${numero}.pdf`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } finally { setImprimiendo(null); }
+  };
+
+  const canCreate = !!fClienteId && !!fDireccion.trim() && fItems.some(i => i.desc.trim());
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <PanelHeader
+        title={pendientes > 0 ? `Conduces (${pendientes} pend.)` : 'Conduces'}
+        icon="🚚" C={C} onVolver={onVolver}
+        onNuevo={() => setModoForm(v => !v)}
+        labelNuevo={modoForm ? 'Ver lista' : 'Nuevo'}
+      />
+
+      {modoForm ? (
+        /* ── FORMULARIO ────────────────────────────────────────────── */
+        <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+          <div style={{ maxWidth: 480, color: C.text }}>
+
+            {/* Cliente */}
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: C.text }}>Cliente *</div>
+              <select value={fClienteId ?? ''} onChange={e => setFClienteId(e.target.value ? Number(e.target.value) : null)}
+                style={{ width: '100%', height: 38, padding: '0 12px', borderRadius: 8,
+                  border: `1px solid ${C.border2}`, fontSize: 13, background: C.inputBg, color: C.text,
+                  outline: 'none', boxSizing: 'border-box' as const, cursor: 'pointer' }}>
+                <option value="">Seleccionar cliente...</option>
+                {(clientes ?? []).map((c: any) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+              </select>
+              <input value={busqCli} onChange={e => setBusqCli(e.target.value)} placeholder="Escribir para buscar..."
+                style={{ width: '100%', height: 30, padding: '0 10px', marginTop: 4, borderRadius: 7,
+                  border: `1px solid ${C.border}`, fontSize: 11, outline: 'none', background: C.inputBg,
+                  color: C.text, boxSizing: 'border-box' as const }} />
+            </div>
+
+            <PanelInput C={C} label="Dirección de entrega *" placeholder="Dirección completa de entrega"
+              value={fDireccion} onChange={e => setFDireccion(e.target.value)} />
+
+            {/* Ítems */}
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, color: C.text,
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>Ítems a despachar</span>
+                <button onClick={() => setFItems(p => [...p, { desc: '', cant: '1', um: 'PZA' }])}
+                  style={{ fontSize: 11, background: C.inputBg, border: `1px solid ${C.border2}`,
+                    borderRadius: 5, color: C.blue, padding: '2px 8px', cursor: 'pointer' }}>
+                  + Agregar ítem
+                </button>
+              </div>
+              {fItems.map((item, idx) => (
+                <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 56px 52px 24px', gap: 5, marginBottom: 6 }}>
+                  <input placeholder="Descripción del producto" value={item.desc}
+                    onChange={e => setFItems(p => p.map((x, i) => i === idx ? { ...x, desc: e.target.value } : x))}
+                    style={{ height: 34, padding: '0 10px', borderRadius: 7, border: `1px solid ${C.border2}`,
+                      fontSize: 12, background: C.inputBg, color: C.text, outline: 'none', boxSizing: 'border-box' as const }} />
+                  <input type="number" placeholder="Cant" value={item.cant}
+                    onChange={e => setFItems(p => p.map((x, i) => i === idx ? { ...x, cant: e.target.value } : x))}
+                    style={{ height: 34, padding: '0 4px', borderRadius: 7, border: `1px solid ${C.border2}`,
+                      fontSize: 12, background: C.inputBg, color: C.text, outline: 'none', textAlign: 'center' as const }} />
+                  <input placeholder="UM" value={item.um}
+                    onChange={e => setFItems(p => p.map((x, i) => i === idx ? { ...x, um: e.target.value } : x))}
+                    style={{ height: 34, padding: '0 4px', borderRadius: 7, border: `1px solid ${C.border2}`,
+                      fontSize: 11, background: C.inputBg, color: C.text, outline: 'none', textAlign: 'center' as const }} />
+                  {fItems.length > 1 && (
+                    <button onClick={() => setFItems(p => p.filter((_, i) => i !== idx))}
+                      style={{ height: 34, background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: 18, padding: 0 }}>×</button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <PanelInput C={C} label="Notas de entrega (opcional)" placeholder="Instrucciones, referencias, horario..."
+              value={fNotas} onChange={e => setFNotas(e.target.value)} />
+
+            <button onClick={() => crearMut.mutate()} disabled={crearMut.isPending || !canCreate}
+              style={{ width: '100%', height: 44, borderRadius: 10, border: 'none',
+                background: !canCreate ? '#ccc' : '#059669', color: '#fff',
+                fontWeight: 700, fontSize: 15, cursor: !canCreate ? 'not-allowed' : 'pointer' }}>
+              {crearMut.isPending ? 'Creando...' : '🚚 Crear Conduce'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        /* ── LISTA ─────────────────────────────────────────────────── */
+        <>
+          <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}` }}>
+            <input value={busq} onChange={e => setBusq(e.target.value)} placeholder="Buscar por número o cliente..."
+              style={{ width: '100%', height: 34, padding: '0 12px', background: C.card,
+                border: `1px solid ${C.border}`, borderRadius: 8, color: C.text,
+                fontSize: 12, outline: 'none', boxSizing: 'border-box' as const }} />
+          </div>
+
+          <div style={{ flex: 1, overflowY: 'auto', scrollbarWidth: 'thin' as const }}>
+            {isLoading ? <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
+              : (conduces ?? []).length === 0
+                ? <Empty style={{ marginTop: 40 }} description={<span style={{ color: C.textSub }}>Sin conduces</span>} />
+                : (
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead><tr style={{ background: C.card, position: 'sticky', top: 0 }}>
+                      {['Número', 'Cliente', 'Dirección', 'Estado', 'Acciones'].map(h => (
+                        <th key={h} style={{ padding: '8px 10px', textAlign: 'left', color: C.textSub,
+                          fontWeight: 600, fontSize: 11, borderBottom: `1px solid ${C.border}` }}>{h}</th>
+                      ))}
+                    </tr></thead>
+                    <tbody>{(conduces ?? []).map((r: any, i: number) => {
+                      const eColor = r.estado === 'entregado' ? C.green
+                        : r.estado === 'en_transito' ? C.blue
+                        : r.estado === 'devuelto' ? C.red : C.orange;
+                      const eLabel = r.estado === 'en_transito' ? 'EN RUTA'
+                        : (r.estado ?? '').replace('_', ' ').toUpperCase();
+                      return (
+                        <tr key={r.id} style={{ borderBottom: `1px solid ${C.border}`, background: i % 2 === 0 ? 'transparent' : C.card }}>
+                          <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontSize: 11, color: C.blue, fontWeight: 700 }}>{r.numero}</td>
+                          <td style={{ padding: '8px 10px', color: C.text, fontSize: 11, maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
+                            {r.cliente?.nombre ?? '—'}
+                          </td>
+                          <td style={{ padding: '8px 10px', color: C.textSub, fontSize: 10, maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
+                            {r.direccionEntrega ?? '—'}
+                          </td>
+                          <td style={{ padding: '8px 10px' }}>
+                            <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 10,
+                              background: eColor + '22', color: eColor }}>
+                              {eLabel}
+                            </span>
+                          </td>
+                          <td style={{ padding: '8px 8px' }}>
+                            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' as const }}>
+                              <button onClick={() => imprimirPDF(r.id, r.numero)} disabled={imprimiendo === r.id}
+                                title="Descargar PDF"
+                                style={{ background: 'none', border: `1px solid ${C.border2}`, borderRadius: 5,
+                                  color: C.blue, cursor: 'pointer', padding: '3px 6px', fontSize: 12 }}>
+                                {imprimiendo === r.id ? '⏳' : '🖨️'}
+                              </button>
+                              {r.estado === 'generado' && (
+                                <button onClick={() => cambiarEstadoMut.mutate({ id: r.id, estado: 'en_transito' })}
+                                  title="Marcar En Ruta"
+                                  style={{ background: C.blue + '22', border: `1px solid ${C.blue}55`, borderRadius: 5,
+                                    color: C.blue, cursor: 'pointer', padding: '3px 6px', fontSize: 10, fontWeight: 700 }}>
+                                  🚚 En Ruta
+                                </button>
+                              )}
+                              {r.estado === 'en_transito' && (<>
+                                <button onClick={() => cambiarEstadoMut.mutate({ id: r.id, estado: 'entregado' })}
+                                  title="Marcar Entregado"
+                                  style={{ background: C.green + '22', border: `1px solid ${C.green}55`, borderRadius: 5,
+                                    color: C.green, cursor: 'pointer', padding: '3px 6px', fontSize: 10, fontWeight: 700 }}>
+                                  ✅ Entregado
+                                </button>
+                                <button onClick={() => cambiarEstadoMut.mutate({ id: r.id, estado: 'devuelto' })}
+                                  title="Marcar Devuelto"
+                                  style={{ background: C.orange + '22', border: `1px solid ${C.orange}55`, borderRadius: 5,
+                                    color: C.orange, cursor: 'pointer', padding: '3px 6px', fontSize: 10, fontWeight: 700 }}>
+                                  ↩ Dev.
+                                </button>
+                              </>)}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}</tbody>
+                  </table>
+                )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function POSClientesPanel({ C, onVolver }: { C: Palette; onVolver: () => void }) {
   const qc = useQueryClient();
   const [form, setForm] = useState(false);
@@ -2630,6 +2896,7 @@ function POSPanel({ panel, palette, onVolver }: {
   if (panel === 'inventario')   return <POSInventarioPanel C={C} onVolver={onVolver} />;
   if (panel === 'clientes')     return <POSClientesPanel   C={C} onVolver={onVolver} />;
   if (panel === 'cierre-caja')  return <POSCierreCajaPanel C={C} onVolver={onVolver} />;
+  if (panel === 'conduce')      return <POSConducePanel    C={C} onVolver={onVolver} />;
   if (panel === 'recibos-cobro' || panel === 'anticipos')
     return <POSReciboAnticipoPanel tipo={panel as 'recibos-cobro'|'anticipos'} C={C} onVolver={onVolver} />;
 
@@ -2705,8 +2972,8 @@ function POSPanel({ panel, palette, onVolver }: {
                         >
                           {imprimiendo === row.id ? '⏳' : '🖨️'}
                         </button>
-                        {/* FIX 3: Botones de estado para conduces */}
-                        {(panel === 'conduce' || panel === 'despacho') && row.estado !== 'entregado' && row.estado !== 'devuelto' && (
+                        {/* Botones de estado para despacho (conduce usa POSConducePanel) */}
+                        {panel === 'despacho' && row.estado !== 'entregado' && row.estado !== 'devuelto' && (
                           cambEstado === row.id ? (
                             <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>
                               {row.estado === 'generado' && (
@@ -2738,7 +3005,7 @@ function POSPanel({ panel, palette, onVolver }: {
                           )
                         )}
                         {/* Anular */}
-                        {!yaAnulado && puedeAnular(row) && panel !== 'conduce' && panel !== 'despacho' && (
+                        {!yaAnulado && puedeAnular(row) && panel !== 'despacho' && (
                           anulando === row.id ? (
                             <span style={{ fontSize: 11, color: C.textSub }}>
                               <button onClick={() => { anularMutation.mutate({ id: row.id, mod: panel }); }}
@@ -3383,6 +3650,7 @@ export default function POSPage() {
         metodo:                  tipoPagoPos === 'CREDITO' ? 'credito' : metodoPago,
         notas:                   tipoPagoPos === 'CREDITO' ? `Crédito ${diasCreditoPos} días` : undefined,
         diasCredito:             tipoPagoPos === 'CREDITO' ? diasCreditoPos : undefined,
+        clienteId:               clienteId ?? undefined,
         items:                   [...cart],
         cliente:                 clientes?.data.find((c: Cliente) => c.id === clienteId)?.nombre,
         iva:                     ivaEfectivo,
@@ -3612,7 +3880,8 @@ export default function POSPage() {
           }
         }}
         onCancelar={() => navigate('/dashboard')} />
-      <ModalExito sale={sale} onNueva={() => setSale(null)} />
+      <ModalExito sale={sale} onNueva={() => setSale(null)}
+        onCrearConduce={() => { setSale(null); setPanelActivo('conduce'); }} />
       <POSNotaCreditoModal open={showNotaCredito} onClose={() => setShowNotaCredito(false)} palette={palette} />
 
       {/* Indicador de ventas offline pendientes */}
