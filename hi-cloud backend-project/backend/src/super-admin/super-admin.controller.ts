@@ -79,6 +79,11 @@ class CambiarRolDto {
   rol!: string;
 }
 
+class HardDeleteDto {
+  @IsString() @IsNotEmpty()
+  confirmacion!: string;
+}
+
 class BackupAlertDto {
   @IsString() @IsNotEmpty() mensaje!: string;
   @IsOptional() @IsString() tipo?: string;
@@ -236,6 +241,20 @@ export class SuperAdminController {
     return this.svc.cambiarRolUsuario(id, dto.rol, solicitante.id);
   }
 
+  @Patch('usuarios/:id/suspender')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Suspender usuario — desactiva el acceso sin eliminar datos' })
+  suspenderUsuario(@Param('id', ParseIntPipe) id: number, @GetUser() admin: User) {
+    return this.svc.suspenderUsuario(id, admin.id);
+  }
+
+  @Patch('usuarios/:id/activar')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reactivar usuario suspendido' })
+  activarUsuario(@Param('id', ParseIntPipe) id: number, @GetUser() admin: User) {
+    return this.svc.activarUsuario(id, admin.id);
+  }
+
   @Delete('usuarios/:id')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Eliminar usuario (soft delete — desactiva e-mail liberado)' })
@@ -244,6 +263,28 @@ export class SuperAdminController {
     @GetUser() superAdmin: User,
   ) {
     return this.svc.eliminarUsuario(id, superAdmin.id);
+  }
+
+  @Delete('usuarios/:id/permanente')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Eliminar usuario PERMANENTEMENTE — requiere confirmación textual' })
+  eliminarUsuarioPermanente(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: HardDeleteDto,
+    @GetUser() admin: User,
+  ) {
+    return this.svc.eliminarUsuarioPermanente(id, admin.id, dto.confirmacion);
+  }
+
+  @Delete('empresas/:id/permanente')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Eliminar empresa PERMANENTEMENTE — requiere confirmación textual' })
+  eliminarEmpresaPermanente(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: HardDeleteDto,
+    @GetUser() admin: User,
+  ) {
+    return this.svc.eliminarEmpresaPermanente(id, admin.id, dto.confirmacion);
   }
 
   @Get('suscripciones')

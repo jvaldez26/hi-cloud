@@ -200,6 +200,53 @@ export class SuperAdminService {
     };
   }
 
+  async suspenderUsuario(userId: number, superAdminId: number) {
+    if (userId === superAdminId) throw new BadRequestException('No puedes suspender tu propia cuenta');
+    const [u] = await this.ds.query<any[]>('SELECT id, nombre, email, role, "isActive" FROM users WHERE id = $1', [userId]);
+    if (!u) throw new NotFoundException(`Usuario #${userId} no encontrado`);
+    if (u.role === 'super_admin') throw new ForbiddenException('No puedes suspender a otro Super Admin');
+    if (!u.isActive) throw new BadRequestException('El usuario ya está suspendido');
+    await this.ds.query('UPDATE users SET "isActive" = false, "updatedAt" = NOW() WHERE id = $1', [userId]);
+    this.logger.warn(`Usuario #${userId} (${u.email}) suspendido por super_admin #${superAdminId}`);
+    return { ok: true, mensaje: `Usuario ${u.nombre} suspendido correctamente` };
+  }
+
+  async activarUsuario(userId: number, superAdminId: number) {
+    const [u] = await this.ds.query<any[]>('SELECT id, nombre, email, role, "isActive" FROM users WHERE id = $1', [userId]);
+    if (!u) throw new NotFoundException(`Usuario #${userId} no encontrado`);
+    if (u.isActive) throw new BadRequestException('El usuario ya está activo');
+    await this.ds.query('UPDATE users SET "isActive" = true, "updatedAt" = NOW() WHERE id = $1', [userId]);
+    this.logger.log(`Usuario #${userId} (${u.email}) activado por super_admin #${superAdminId}`);
+    return { ok: true, mensaje: `Usuario ${u.nombre} activado correctamente` };
+  }
+
+  async eliminarUsuarioPermanente(userId: number, superAdminId: number, confirmacion: string) {
+    if (confirmacion !== 'ELIMINAR_PERMANENTE') {
+      throw new BadRequestException('Confirmación inválida. Escribe exactamente: ELIMINAR_PERMANENTE');
+    }
+    if (userId === superAdminId) throw new BadRequestException('No puedes eliminarte a ti mismo');
+    const [u] = await this.ds.query<any[]>('SELECT id, nombre, email, role FROM users WHERE id = $1', [userId]);
+    if (!u) throw new NotFoundException(`Usuario #${userId} no encontrado`);
+    if (u.role === 'super_admin') throw new ForbiddenException('No puedes eliminar a otro Super Admin');
+
+    this.logger.warn(`[HARD DELETE] Usuario #${userId} (${u.email}) eliminado permanentemente por super_admin #${superAdminId}`);
+    await this.ds.query('DELETE FROM users WHERE id = $1', [userId]);
+    return { ok: true, mensaje: `Usuario ${u.nombre} (${u.email}) eliminado permanentemente` };
+  }
+
+  async eliminarEmpresaPermanente(id: number, superAdminId: number, confirmacion: string) {
+    if (confirmacion !== 'ELIMINAR_PERMANENTE') {
+      throw new BadRequestException('Confirmación inválida. Escribe exactamente: ELIMINAR_PERMANENTE');
+    }
+    const [e] = await this.ds.query<any[]>('SELECT id, nombre, rnc FROM empresa WHERE id = $1', [id]);
+    if (!e) throw new NotFoundException(`Empresa #${id} no encontrada`);
+
+    this.logger.warn(`[HARD DELETE] Empresa #${id} (${e.nombre}) eliminada permanentemente por super_admin #${superAdminId}`);
+    // Los CASCADE en BD eliminan facturas, productos, empleados, etc.
+    await this.ds.query('DELETE FROM empresa WHERE id = $1', [id]);
+    return { ok: true, mensaje: `Empresa "${e.nombre}" (RNC: ${e.rnc}) eliminada permanentemente` };
+  }
+
   async cambiarRolUsuario(userId: number, nuevoRol: string, solicitanteId: number) {
     const rows = await this.ds.query<any[]>('SELECT id, nombre, role FROM users WHERE id = $1', [userId]);
     if (!rows[0]) throw new NotFoundException(`Usuario #${userId} no encontrado`);

@@ -886,8 +886,13 @@ export default function SuperAdminPage() {
     staleTime: 30_000,
   });
 
-  // ── Eliminar usuario ─────────────────────────────────────────────────────
+  // ── Eliminar / suspender / activar usuario ──────────────────────────────
   const [eliminarModal,    setEliminarModal]    = useState<any>(null);
+  const [hardDeleteUsu,    setHardDeleteUsu]    = useState<any>(null);
+  const [hardDeleteEmp,    setHardDeleteEmp]    = useState<any>(null);
+  const [confirmHardUsu,   setConfirmHardUsu]   = useState('');
+  const [confirmHardEmp,   setConfirmHardEmp]   = useState('');
+
   const eliminarUsuarioMut = useMutation({
     mutationFn: (id: number) => api.delete(`/admin/usuarios/${id}`).then(xd),
     onSuccess: (res: any) => {
@@ -896,6 +901,40 @@ export default function SuperAdminPage() {
       setEliminarModal(null);
     },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al eliminar usuario'),
+  });
+
+  const suspenderUsuarioMut = useMutation({
+    mutationFn: (id: number) => api.patch(`/admin/usuarios/${id}/suspender`).then(xd),
+    onSuccess: (res: any) => { qc.invalidateQueries({ queryKey: ['sa-usuarios'] }); message.success(res?.mensaje ?? 'Usuario suspendido'); },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
+  });
+
+  const activarUsuarioMut = useMutation({
+    mutationFn: (id: number) => api.patch(`/admin/usuarios/${id}/activar`).then(xd),
+    onSuccess: (res: any) => { qc.invalidateQueries({ queryKey: ['sa-usuarios'] }); message.success(res?.mensaje ?? 'Usuario activado'); },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
+  });
+
+  const hardDeleteUsuMut = useMutation({
+    mutationFn: ({ id, confirmacion }: { id: number; confirmacion: string }) =>
+      api.delete(`/admin/usuarios/${id}/permanente`, { data: { confirmacion } }).then(xd),
+    onSuccess: (res: any) => {
+      qc.invalidateQueries({ queryKey: ['sa-usuarios'] });
+      message.success(res?.mensaje ?? 'Eliminado permanentemente');
+      setHardDeleteUsu(null); setConfirmHardUsu('');
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
+  });
+
+  const hardDeleteEmpMut = useMutation({
+    mutationFn: ({ id, confirmacion }: { id: number; confirmacion: string }) =>
+      api.delete(`/admin/empresas/${id}/permanente`, { data: { confirmacion } }).then(xd),
+    onSuccess: (res: any) => {
+      qc.invalidateQueries({ queryKey: ['sa-empresas'] });
+      message.success(res?.mensaje ?? 'Empresa eliminada permanentemente');
+      setHardDeleteEmp(null); setConfirmHardEmp('');
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
   });
 
   // ── Cambiar rol de usuario ────────────────────────────────────────────────
@@ -1107,7 +1146,7 @@ export default function SuperAdminPage() {
               },
           { type: 'divider' },
           {
-            key: 'delete', icon: <Trash2 size={13} />, label: 'Eliminar empresa',
+            key: 'delete', icon: <Trash2 size={13} />, label: 'Eliminar empresa (soft)',
             danger: true,
             onClick: () => {
               Modal.confirm({
@@ -1117,6 +1156,11 @@ export default function SuperAdminPage() {
                 onOk: () => eliminarMut.mutate(r.id),
               });
             },
+          },
+          {
+            key: 'hard-delete', icon: <span>💀</span>, label: '⚠ Eliminar PERMANENTEMENTE',
+            danger: true,
+            onClick: () => { setHardDeleteEmp(r); setConfirmHardEmp(''); },
           },
         ];
 
@@ -1206,35 +1250,45 @@ export default function SuperAdminPage() {
       render: (v: string) => <span style={{ color: C.txt2, fontSize: 12 }}>{fmtFecha(v)}</span>,
     },
     {
-      title: '', key: 'eliminar', width: 50, align: 'center' as const,
+      title: 'Acciones', key: 'acciones', width: 140, align: 'center' as const,
       render: (_: any, r: any) => {
-        const esSuperAdmin  = r.role === 'super_admin';
-        const esPropiaCtaId = r.id === user?.id;
-        const deshabilitado = esSuperAdmin || esPropiaCtaId;
-
+        const esSA   = r.role === 'super_admin';
+        const esYo   = r.id === user?.id;
+        const bloque = esSA || esYo;
+        const tipBlock = esSA ? 'No aplica a Super Admin' : 'No aplica a tu cuenta';
         return (
-          <button
-            title={
-              esSuperAdmin  ? 'No se puede eliminar a otro Super Admin' :
-              esPropiaCtaId ? 'No puedes eliminar tu propia cuenta'     :
-              'Eliminar usuario'
-            }
-            disabled={deshabilitado}
-            onClick={() => !deshabilitado && setEliminarModal(r)}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              cursor: deshabilitado ? 'not-allowed' : 'pointer',
-              color: C.red,
-              opacity: deshabilitado ? 0.25 : 1,
-              padding: '4px 6px',
-              borderRadius: 6,
-              display: 'flex',
-              alignItems: 'center',
-            }}
-          >
-            <Trash2 size={14} strokeWidth={2} />
-          </button>
+          <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+            {/* Suspender / Activar */}
+            {r.isActive ? (
+              <button title={bloque ? tipBlock : 'Suspender acceso'} disabled={bloque}
+                onClick={() => !bloque && suspenderUsuarioMut.mutate(r.id)}
+                style={{ background: 'transparent', border: '1px solid #F59E0B44', borderRadius: 6,
+                  cursor: bloque ? 'not-allowed' : 'pointer', color: '#F59E0B', opacity: bloque ? 0.3 : 1, padding: '3px 7px', fontSize: 11 }}>
+                ⏸
+              </button>
+            ) : (
+              <button title={esSA ? tipBlock : 'Activar usuario'} disabled={esSA}
+                onClick={() => !esSA && activarUsuarioMut.mutate(r.id)}
+                style={{ background: 'transparent', border: `1px solid ${C.green}44`, borderRadius: 6,
+                  cursor: esSA ? 'not-allowed' : 'pointer', color: C.green, opacity: esSA ? 0.3 : 1, padding: '3px 7px', fontSize: 11 }}>
+                ▶
+              </button>
+            )}
+            {/* Soft delete */}
+            <button title={bloque ? tipBlock : 'Eliminar (desactivar)'}
+              disabled={bloque} onClick={() => !bloque && setEliminarModal(r)}
+              style={{ background: 'transparent', border: `1px solid ${C.red}44`, borderRadius: 6,
+                cursor: bloque ? 'not-allowed' : 'pointer', color: C.red, opacity: bloque ? 0.3 : 1, padding: '3px 7px' }}>
+              <Trash2 size={12} strokeWidth={2} />
+            </button>
+            {/* Hard delete */}
+            <button title={bloque ? tipBlock : '⚠ Eliminar permanentemente'}
+              disabled={bloque} onClick={() => !bloque && (setHardDeleteUsu(r), setConfirmHardUsu(''))}
+              style={{ background: 'transparent', border: `1px solid ${C.red}66`, borderRadius: 6,
+                cursor: bloque ? 'not-allowed' : 'pointer', color: C.red, opacity: bloque ? 0.3 : 1, padding: '3px 7px', fontWeight: 700, fontSize: 11 }}>
+              💀
+            </button>
+          </div>
         );
       },
     },
@@ -2137,6 +2191,82 @@ export default function SuperAdminPage() {
                 ⚠️ Super Admin tiene acceso total al sistema y a todas las empresas.
               </div>
             )}
+          </div>
+        )}
+      </Modal>
+
+      {/* ── Modal HARD DELETE usuario ───────────────────────────────────── */}
+      <Modal
+        title={<span style={{ color: '#DC2626' }}>💀 Eliminar usuario PERMANENTEMENTE</span>}
+        open={!!hardDeleteUsu}
+        onCancel={() => { setHardDeleteUsu(null); setConfirmHardUsu(''); }}
+        onOk={() => hardDeleteUsu && hardDeleteUsuMut.mutate({ id: hardDeleteUsu.id, confirmacion: confirmHardUsu })}
+        okText="Eliminar permanentemente"
+        okButtonProps={{ danger: true, loading: hardDeleteUsuMut.isPending, disabled: confirmHardUsu !== 'ELIMINAR_PERMANENTE' }}
+        cancelText="Cancelar"
+        width={500}
+        destroyOnClose
+      >
+        {hardDeleteUsu && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '8px 0' }}>
+            <div style={{ background: 'rgba(220,38,38,.1)', border: '1px solid rgba(220,38,38,.4)', borderRadius: 8, padding: '12px 16px' }}>
+              <div style={{ color: '#DC2626', fontWeight: 700, fontSize: 13, marginBottom: 4 }}>🚨 Esta acción es IRREVERSIBLE</div>
+              <div style={{ color: '#B91C1C', fontSize: 12 }}>
+                El usuario y todos sus datos se eliminarán físicamente de la base de datos. No se puede deshacer.
+              </div>
+            </div>
+            <div style={{ fontSize: 13 }}>
+              Usuario: <strong>{hardDeleteUsu.nombre}</strong> ({hardDeleteUsu.email})
+            </div>
+            <div>
+              <div style={{ fontSize: 12, marginBottom: 6, color: '#94A3B8' }}>
+                Escribe <strong>ELIMINAR_PERMANENTE</strong> para confirmar:
+              </div>
+              <Input
+                value={confirmHardUsu}
+                onChange={e => setConfirmHardUsu(e.target.value)}
+                placeholder="ELIMINAR_PERMANENTE"
+                style={{ borderColor: confirmHardUsu === 'ELIMINAR_PERMANENTE' ? '#16A34A' : undefined }}
+              />
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ── Modal HARD DELETE empresa ────────────────────────────────────── */}
+      <Modal
+        title={<span style={{ color: '#DC2626' }}>💀 Eliminar empresa PERMANENTEMENTE</span>}
+        open={!!hardDeleteEmp}
+        onCancel={() => { setHardDeleteEmp(null); setConfirmHardEmp(''); }}
+        onOk={() => hardDeleteEmp && hardDeleteEmpMut.mutate({ id: hardDeleteEmp.id, confirmacion: confirmHardEmp })}
+        okText="Eliminar permanentemente"
+        okButtonProps={{ danger: true, loading: hardDeleteEmpMut.isPending, disabled: confirmHardEmp !== 'ELIMINAR_PERMANENTE' }}
+        cancelText="Cancelar"
+        width={500}
+        destroyOnClose
+      >
+        {hardDeleteEmp && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '8px 0' }}>
+            <div style={{ background: 'rgba(220,38,38,.1)', border: '1px solid rgba(220,38,38,.4)', borderRadius: 8, padding: '12px 16px' }}>
+              <div style={{ color: '#DC2626', fontWeight: 700, fontSize: 13, marginBottom: 4 }}>🚨 Esta acción es IRREVERSIBLE</div>
+              <div style={{ color: '#B91C1C', fontSize: 12 }}>
+                La empresa y TODOS sus datos (facturas, clientes, productos, empleados, etc.) se eliminarán permanentemente. No hay recuperación posible.
+              </div>
+            </div>
+            <div style={{ fontSize: 13 }}>
+              Empresa: <strong>{hardDeleteEmp.nombre}</strong> (RNC: {hardDeleteEmp.rnc})
+            </div>
+            <div>
+              <div style={{ fontSize: 12, marginBottom: 6, color: '#94A3B8' }}>
+                Escribe <strong>ELIMINAR_PERMANENTE</strong> para confirmar:
+              </div>
+              <Input
+                value={confirmHardEmp}
+                onChange={e => setConfirmHardEmp(e.target.value)}
+                placeholder="ELIMINAR_PERMANENTE"
+                style={{ borderColor: confirmHardEmp === 'ELIMINAR_PERMANENTE' ? '#16A34A' : undefined }}
+              />
+            </div>
           </div>
         )}
       </Modal>
