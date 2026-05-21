@@ -158,6 +158,23 @@ export class AuthController {
     return this.authService.verificarPassword(usuario.email, body.password);
   }
 
+  @Post('verificar-supervisor')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Verificar credenciales de supervisor (admin/contador del mismo tenant)' })
+  async verificarSupervisor(
+    @Body() body: { email: string; password: string; action?: string; detail?: string },
+    @GetUser() cajero: User,
+    @Req() req: Request,
+  ) {
+    return this.authService.verificarSupervisor(
+      body.email, body.password,
+      cajero.id, (cajero as any).empresaId,
+      body.action, body.detail,
+    );
+  }
+
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)

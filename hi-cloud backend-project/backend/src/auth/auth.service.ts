@@ -694,6 +694,49 @@ export class AuthService implements OnModuleInit {
     return { ok: true };
   }
 
+  /**
+   * Verifica credenciales de un supervisor (admin/contador/super_admin del mismo tenant).
+   * Registra la autorización en pos_supervisor_log para auditoría.
+   */
+  async verificarSupervisor(
+    supervisorEmail: string,
+    supervisorPassword: string,
+    cajeroId: number,
+    empresaId: number,
+    action?: string,
+    detail?: string,
+  ): Promise<{ ok: true; nombre: string; role: string }> {
+    // Buscar supervisor en el mismo tenant con rol autorizado
+    const rows = await this.dataSource.query<any[]>(`
+      SELECT u.id, u.nombre, u.email, u.password, u.role
+      FROM users u
+      JOIN usuario_empresa ue ON ue."userId" = u.id
+      WHERE LOWER(u.email) = LOWER($1)
+        AND ue."empresaId" = $2
+        AND ue."isActive" = true
+        AND u."isActive" = true
+        AND u.role IN ('admin', 'contador', 'super_admin')
+      LIMIT 1
+    `, [supervisorEmail, empresaId]);
+
+    const sup = rows[0];
+    if (!sup) throw new UnauthorizedException('No se encontró supervisor con ese correo en esta empresa');
+
+    const valida = await bcrypt.compare(supervisorPassword, sup.password);
+    if (!valida) throw new UnauthorizedException('Contraseña incorrecta');
+
+    // Registrar en audit log
+    await this.dataSource.query(`
+      INSERT INTO pos_supervisor_log
+        ("empresaId", "cajeroId", "supervisorId", "supervisorNombre", action, detail, "createdAt")
+      VALUES ($1, $2, $3, $4, $5, $6, NOW())
+      ON CONFLICT DO NOTHING
+    `, [empresaId, cajeroId, sup.id, sup.nombre, action ?? 'SUPERVISOR_LOGIN', detail ?? ''])
+      .catch(() => {}); // log no debe bloquear
+
+    return { ok: true, nombre: sup.nombre, role: sup.role };
+  }
+
   /** Super admin: fuerza el logout de un usuario limpiando su sessionToken. */
   async forzarLogout(userId: number) {
     const user = await this.userRepository.findOneBy({ id: userId });

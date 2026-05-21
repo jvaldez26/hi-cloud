@@ -82,6 +82,21 @@ export class ConfiguracionController {
     return this.configuracionService.updateEmpresa(dto);
   }
 
+  @Get('empresa/pos-config')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Obtener configuración del POS (modo supervisor, descuentos)' })
+  getPosConfig() { return this.configuracionService.getPosConfig(); }
+
+  @Patch('empresa/pos-config')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Actualizar configuración del POS (solo ADMIN)' })
+  updatePosConfig(@Body() body: { supervisorModeEnabled: boolean; maxDiscountPercent: number }) {
+    return this.configuracionService.updatePosConfig(body);
+  }
+
   @Post('empresa/upload-logo')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard, RolesGuard)

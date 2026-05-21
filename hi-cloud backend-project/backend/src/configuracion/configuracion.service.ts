@@ -201,6 +201,24 @@ export class ConfiguracionService implements OnModuleInit {
     return this.getEmpresa();
   }
 
+  /** Configuración del POS almacenada en empresa.configuracion (JSONB) */
+  async getPosConfig(): Promise<{ supervisorModeEnabled: boolean; maxDiscountPercent: number }> {
+    const empresa = await this.getEmpresa();
+    const pos = (empresa.configuracion as any)?.pos ?? {};
+    return {
+      supervisorModeEnabled: pos.supervisorModeEnabled ?? false,
+      maxDiscountPercent:    pos.maxDiscountPercent    ?? 10,
+    };
+  }
+
+  async updatePosConfig(data: { supervisorModeEnabled: boolean; maxDiscountPercent: number }): Promise<void> {
+    const empresa = await this.getEmpresa();
+    const cfg = (empresa.configuracion ?? {}) as any;
+    cfg.pos = { ...(cfg.pos ?? {}), ...data };
+    await this.empresaRepository.update(empresa.id, { configuracion: cfg } as any);
+    await this.cache.del(CacheKeys.empresaConfig(empresa.id));
+  }
+
   /**
    * Verifica si un RNC ya existe en otra empresa.
    * Usado por el frontend antes de mostrar el modal de confirmación.

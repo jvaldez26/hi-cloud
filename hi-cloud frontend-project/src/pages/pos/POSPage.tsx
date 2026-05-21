@@ -17,6 +17,7 @@ import { fmt } from '../../utils/formatters';
 import { imprimirElemento } from '../../utils/printUtils';
 import { useThemeStore } from '../../store/theme.store';
 import { useOfflineQueue } from '../../hooks/useOfflineQueue';
+import { useSupervisor } from '../../hooks/useSupervisor';
 import type { Producto, Cliente } from '../../types';
 import dayjs from 'dayjs';
 
@@ -633,13 +634,14 @@ const ATAJOS_POS = [
 ];
 
 // ── Top bar ───────────────────────────────────────────────────────────────────
-function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, onSupervisor, onCambiarUsuario,
+function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, onSupervisor, onCambiarUsuario, supervisorActiveBadge,
   modoFacturacion, onModoChange, tipoNcf, onTipoNcfChange, ecfOnline }: {
   empresaNombre: string; cajeroNombre: string; isOffline: boolean; onExit: () => void;
   onBloquear: () => void; onSupervisor: () => void; onCambiarUsuario: () => void;
   modoFacturacion: ModoFacturacion; onModoChange: (m: ModoFacturacion) => void;
   tipoNcf: string; onTipoNcfChange: (t: string) => void;
   ecfOnline: boolean | null;
+  supervisorActiveBadge?: string;
 }) {
   const C = useC();
   const [showModoMenu,     setShowModoMenu]     = useState(false);
@@ -826,6 +828,16 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
           </div>
         </div>
       </div>
+      {/* Badge supervisor activo */}
+      {supervisorActiveBadge && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#F59E0B22',
+          border: '1px solid #F59E0B55', borderRadius: 6, padding: '3px 8px', flexShrink: 0 }}>
+          <span style={{ fontSize: 10 }}>🛡</span>
+          <span style={{ fontSize: 10, fontWeight: 700, color: '#F59E0B', whiteSpace: 'nowrap' }}>
+            SUP: {supervisorActiveBadge}
+          </span>
+        </div>
+      )}
       {/* ── Menú de opciones (candado) ── */}
       <div style={{ position: 'relative', flexShrink: 0 }}>
         <button
@@ -2392,11 +2404,21 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
 
   const { data: cajaHoy, isLoading } = useQuery<any>({
     queryKey: ['pos-caja-hoy'],
-    queryFn:  () => api.get('/caja/hoy').then(r => {
-      const d = r.data?.data ?? r.data;
-      // Si es array, tomar la abierta
-      return Array.isArray(d) ? d.find((c:any) => c.estado === 'abierta') ?? d[0] : d;
-    }),
+    queryFn:  () => {
+      // Usar vendedorId del turno activo para obtener la caja correcta
+      const vid = localStorage.getItem('pos_vendedor_id');
+      const url = vid ? `/caja/hoy?vendedorId=${vid}` : '/caja/hoy';
+      return api.get(url).then(r => {
+        const d = r.data?.data ?? r.data;
+        // GET /caja/hoy?vendedorId=X → objeto único o { estado:'sin_apertura' }
+        // GET /caja/hoy             → { cajas:[...], totalCajas:N }
+        if (d?.cajas) return d.cajas.find((c:any) => c.estado === 'abierta') ?? null;
+        if (Array.isArray(d)) return d.find((c:any) => c.estado === 'abierta') ?? null;
+        return d?.estado === 'sin_apertura' ? null : d;
+      });
+    },
+    staleTime:            0,
+    refetchOnWindowFocus: true,
   });
 
   // Auto-llenar efectivo del desglose con ventas en efectivo
@@ -3204,12 +3226,19 @@ export default function POSPage() {
   const [pwDesbloqueo,        setPwDesbloqueo]        = useState('');
   const [errDesbloqueo,       setErrDesbloqueo]       = useState('');
   const [desbloqueando,       setDesbloqueando]       = useState(false);
-  // ── Modal supervisor ──────────────────────────────────────────────────────
+  // ── Modo supervisor (configurable por tenant) ─────────────────────────────
+  const supervisor = useSupervisor();
+  // ── Modal supervisor (legacy — se mantiene para el botón manual del TopBar) ─
   const [modalSupervisor,     setModalSupervisor]     = useState(false);
   const [pwSupervisor,        setPwSupervisor]        = useState('');
   const [errSupervisor,       setErrSupervisor]       = useState('');
   const [verificandoSup,      setVerificandoSup]      = useState(false);
   const [supervisorOk,        setSupervisorOk]        = useState(false);
+  // Email del supervisor (nuevo modal)
+  const [supEmail,            setSupEmail]            = useState('');
+  const [supPassword,         setSupPassword]         = useState('');
+  const [supError,            setSupError]            = useState('');
+  const [verificandoSupNuevo, setVerificandoSupNuevo] = useState(false);
   // ── Modal cambiar usuario ─────────────────────────────────────────────────
   const [modalCambiarUser,    setModalCambiarUser]    = useState(false);
   const [cambiarUserId,       setCambiarUserId]       = useState<number | undefined>();
@@ -3515,7 +3544,17 @@ export default function POSPage() {
 
   const updateQty    = (idx: number, delta: number) => setCart(prev => { const u=[...prev]; u[idx].cantidad = Math.min(Number(u[idx].produto.stock), Math.max(1, u[idx].cantidad + delta)); return u; });
   const removeItem   = (idx: number) => setCart(p => p.filter((_, i) => i !== idx));
-  const setDescuento = (idx: number, pct: number) => setCart(p => { const u=[...p]; u[idx].descuento = pct; return u; });
+  const setDescuento = async (idx: number, pct: number) => {
+    // Si el modo supervisor está activo y el descuento supera el máximo → pedir autorización
+    if (supervisor.supervisorModeEnabled && pct > supervisor.maxDiscountPercent) {
+      const ok = await supervisor.requireSupervisor(
+        `Descuento del ${pct}%`,
+        `Máximo permitido sin supervisor: ${supervisor.maxDiscountPercent}%`,
+      );
+      if (!ok) return; // cancelado
+    }
+    setCart(p => { const u=[...p]; u[idx].descuento = pct; return u; });
+  };
 
   // Búsqueda por código de barras → agrega al carrito directamente
   const handleBarcode = useCallback(async (code: string) => {
@@ -3904,6 +3943,7 @@ export default function POSPage() {
         modoFacturacion={modoFacturacion} onModoChange={setModoFacturacion}
         tipoNcf={tipoNcf} onTipoNcfChange={setTipoNcf}
         ecfOnline={ecfOnline ?? null}
+        supervisorActiveBadge={supervisor.supervisorActive ? supervisor.supervisorName : undefined}
         onBloquear={() => { sessionStorage.setItem('pos_bloqueado', 'true'); setPantallaBloqueada(true); setPwDesbloqueo(''); setErrDesbloqueo(''); }}
         onSupervisor={() => { setModalSupervisor(true); setPwSupervisor(''); setErrSupervisor(''); }}
         onCambiarUsuario={() => { setModalCambiarUser(true); setCambiarUserId(undefined); setPwCambio(''); setErrCambio(''); }}
@@ -4565,7 +4605,7 @@ export default function POSPage() {
       </div>
     )}
 
-    {/* ── Modal supervisor ────────────────────────────────────────────────── */}
+    {/* ── Modal supervisor (botón manual TopBar — verifica usuario actual) ──── */}
     <Modal
       title={<span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><UserSwitchOutlined style={{ color: '#F59E0B' }} /> Acceso de Supervisor</span>}
       open={modalSupervisor} onCancel={() => { setModalSupervisor(false); setPwSupervisor(''); setErrSupervisor(''); }}
@@ -4573,12 +4613,90 @@ export default function POSPage() {
       <p style={{ color: '#6B7280', fontSize: 13, marginBottom: 12 }}>Ingresa tu contraseña para acceder a funciones privilegiadas.</p>
       <Input.Password placeholder="Contraseña de supervisor" value={pwSupervisor}
         onChange={e => { setPwSupervisor(e.target.value); setErrSupervisor(''); }}
-        onPressEnter={verificarSupervisor} autoFocus />
+        onPressEnter={verificarSupervisor} autoFocus autoComplete="new-password" />
       {errSupervisor && <div style={{ color: '#EF4444', fontSize: 12, marginTop: 4 }}>{errSupervisor}</div>}
       <button onClick={verificarSupervisor} disabled={verificandoSup}
         style={{ width: '100%', marginTop: 12, padding: '10px 0', background: '#F59E0B', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 14 }}>
         {verificandoSup ? 'Verificando...' : 'Verificar'}
       </button>
+    </Modal>
+
+    {/* ── Modal supervisor nuevo (modo supervisor configurable) ────────────── */}
+    <Modal
+      title={
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <UserSwitchOutlined style={{ color: '#F59E0B' }} />
+          Autorización de Supervisor
+        </span>
+      }
+      open={!!supervisor.pendingAction}
+      onCancel={() => { supervisor.resolveModal(false); setSupEmail(''); setSupPassword(''); setSupError(''); }}
+      footer={null} width={400} destroyOnClose
+    >
+      {supervisor.pendingAction && (
+        <div>
+          <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 8,
+            padding: '8px 12px', marginBottom: 16, fontSize: 12, color: '#92400E' }}>
+            <strong>Acción:</strong> {supervisor.pendingAction.action}
+            {supervisor.pendingAction.detail && <> — {supervisor.pendingAction.detail}</>}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Correo del supervisor (admin/contador)</div>
+              <Input placeholder="supervisor@empresa.com" value={supEmail}
+                onChange={e => { setSupEmail(e.target.value); setSupError(''); }}
+                autoComplete="username" />
+            </div>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Contraseña</div>
+              <Input.Password placeholder="Contraseña" value={supPassword}
+                onChange={e => { setSupPassword(e.target.value); setSupError(''); }}
+                onPressEnter={async () => {
+                  if (!supEmail || !supPassword) { setSupError('Ingresa correo y contraseña'); return; }
+                  setVerificandoSupNuevo(true); setSupError('');
+                  try {
+                    const res: any = await api.post('/auth/verificar-supervisor', {
+                      email: supEmail, password: supPassword,
+                      action: supervisor.pendingAction?.action,
+                      detail: supervisor.pendingAction?.detail,
+                    });
+                    const d = res.data?.data ?? res.data;
+                    supervisor.resolveModal(true, d.nombre, d.role);
+                    message.success(`✓ Autorizado por ${d.nombre}`);
+                    setSupEmail(''); setSupPassword('');
+                  } catch (e: any) {
+                    setSupError(e?.response?.data?.message ?? 'Credenciales inválidas');
+                  } finally { setVerificandoSupNuevo(false); }
+                }}
+                autoComplete="new-password" />
+            </div>
+            {supError && <div style={{ color: '#EF4444', fontSize: 12 }}>{supError}</div>}
+            <button
+              disabled={verificandoSupNuevo || !supEmail || !supPassword}
+              onClick={async () => {
+                if (!supEmail || !supPassword) { setSupError('Ingresa correo y contraseña'); return; }
+                setVerificandoSupNuevo(true); setSupError('');
+                try {
+                  const res: any = await api.post('/auth/verificar-supervisor', {
+                    email: supEmail, password: supPassword,
+                    action: supervisor.pendingAction?.action,
+                    detail: supervisor.pendingAction?.detail,
+                  });
+                  const d = res.data?.data ?? res.data;
+                  supervisor.resolveModal(true, d.nombre, d.role);
+                  message.success(`✓ Autorizado por ${d.nombre}`);
+                  setSupEmail(''); setSupPassword('');
+                } catch (e: any) {
+                  setSupError(e?.response?.data?.message ?? 'Credenciales inválidas');
+                } finally { setVerificandoSupNuevo(false); }
+              }}
+              style={{ padding: '10px 0', background: (!supEmail || !supPassword) ? '#ccc' : '#F59E0B',
+                border: 'none', borderRadius: 8, color: '#fff', fontWeight: 700, cursor: (!supEmail||!supPassword)?'not-allowed':'pointer', fontSize: 14 }}>
+              {verificandoSupNuevo ? 'Verificando...' : 'Autorizar'}
+            </button>
+          </div>
+        </div>
+      )}
     </Modal>
 
     {/* ── Modal cambiar usuario ────────────────────────────────────────────── */}
