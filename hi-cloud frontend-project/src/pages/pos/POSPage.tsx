@@ -3000,20 +3000,22 @@ export default function POSPage() {
       .catch(() => {});
   }, []);   // solo al montar
 
-  // Verificar que la caja del cajero activo esté abierta (refresca vía WebSocket)
+  // Verificar que la caja del cajero activo esté abierta.
+  // vendedorId está en el queryKey → se re-ejecuta automáticamente cuando cambia el estado.
   const { data: cajaActivaHoy } = useQuery<any>({
-    queryKey: ['pos-caja-hoy'],
+    queryKey: ['pos-caja-abierta', vendedorId],
     queryFn:  () => {
-      const vid = localStorage.getItem('pos_vendedor_id');
-      if (!vid) return null;
-      return api.get(`/caja/hoy?vendedorId=${vid}`).then(r => {
+      if (!vendedorId) return null;
+      return api.get(`/caja/hoy?vendedorId=${vendedorId}`).then(r => {
         const d = r.data?.data ?? r.data;
-        return Array.isArray(d) ? d.find((c: any) => c.estado === 'abierta') ?? null : d;
+        const caja = Array.isArray(d) ? d.find((c: any) => c.estado === 'abierta') ?? null : d;
+        return caja?.estado === 'abierta' ? caja : null;
       }).catch(() => null);
     },
     refetchInterval:      10_000,
     refetchOnWindowFocus: true,
-    enabled:              turnoAbierto,
+    staleTime:            0,
+    enabled:              turnoAbierto && !!vendedorId,
   });
 
   // Queries
@@ -3556,13 +3558,17 @@ export default function POSPage() {
 
       <ModalAperturaTurno open={!turnoAbierto} vendedores={vendedores} sucursales={sucursales}
         onAbrir={(m, vid, sid) => {
-          setTurnoAbierto(true);
-          sessionStorage.setItem('pos_turno', '1');
-          // Sincronizar caja diaria con el turno recién abierto
-          qc.invalidateQueries({ queryKey: ['pos-caja-hoy'] });
+          // Primero guardar vendedorId en localStorage y estado para que
+          // las queries lo lean correctamente en el siguiente ciclo
           if (vid) {
             setVendedorId(vid);
             localStorage.setItem('pos_vendedor_id', String(vid));
+          }
+          setTurnoAbierto(true);
+          sessionStorage.setItem('pos_turno', '1');
+          qc.invalidateQueries({ queryKey: ['pos-caja-hoy'] });
+          qc.invalidateQueries({ queryKey: ['pos-caja-abierta', vid] });
+          if (vid) {
           }
           if (sid) {
             setSucursalId(sid);
