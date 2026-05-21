@@ -1047,9 +1047,12 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar 
               </span>
             )}
             {cajaStatus === 'cerrada_hoy' && (
-              <span style={{ fontSize: 11, color: C.textSub }}>
-                Un cajero solo puede tener un turno por día. Contacta al administrador si necesitas reapertura.
-              </span>
+              <div style={{ fontSize: 11, color: C.textSub }}>
+                <div>Un cajero solo puede tener un turno por día.</div>
+                <div style={{ marginTop: 4, color: C.orange, fontWeight: 600 }}>
+                  ✦ El administrador puede ir a <strong>Caja Diaria</strong> → menú de esta caja → <strong>"Anular cierre"</strong> para reabrir el turno.
+                </div>
+              </div>
             )}
           </div>
         </div>
