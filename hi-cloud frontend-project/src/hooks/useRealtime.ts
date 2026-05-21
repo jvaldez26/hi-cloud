@@ -8,7 +8,7 @@ const ENTITY_KEYS: Record<string, string[][]> = {
   producto:   [['productos'], ['pos-products'], ['inventario']],
   cliente:    [['clientes'], ['clientes-pos']],
   proveedor:  [['proveedores']],
-  caja:       [['caja-hoy'], ['caja-hist'], ['caja-resumen']],
+  caja:       [['caja-hoy'], ['caja-hist'], ['caja-resumen'], ['pos-caja-hoy']],
   inventario: [['inventario'], ['pos-products']],
   cxc:        [['cxc']],
   cotizacion: [['cotizaciones']],
@@ -31,14 +31,16 @@ export function useRealtime() {
   const qc = useQueryClient();
 
   useEffect(() => {
-    const token     = localStorage.getItem('access_token');
     const empresaId = localStorage.getItem('empresaId');
-    if (!token || !empresaId) return;
+    if (!empresaId) return; // sin empresa → sin socket
 
     if (_globalSocket?.connected) return; // ya hay conexión activa
 
+    // withCredentials: true envía la cookie httpOnly access_token en el handshake.
+    // El gateway lee la cookie como fallback cuando no hay token explícito (S-23).
     const socket = io('/realtime', {
-      auth:                 { token, empresaId: Number(empresaId) },
+      auth:                 { empresaId: Number(empresaId) },
+      withCredentials:      true,
       transports:           ['websocket', 'polling'],
       reconnectionDelay:    1000,
       reconnectionDelayMax: 15000,

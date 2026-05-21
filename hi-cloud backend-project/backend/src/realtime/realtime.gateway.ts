@@ -24,13 +24,21 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   handleConnection(client: Socket) {
     try {
-      // WebSocket: no usa extractJwtFromRequest (es contexto HTTP),
-      // Lee del auth explícito del cliente Socket.IO o del header de handshake.
-      // Las cookies httpOnly no se envían en handshakes WS — el cliente
-      // debe pasar el token en client.handshake.auth.token.
-      const token =
+      // Prioridad de token:
+      // 1. auth.token explícito (legado)
+      // 2. Authorization header
+      // 3. Cookie httpOnly access_token (migración S-23)
+      let token: string | undefined =
         (client.handshake.auth as any)?.token ??
         client.handshake.headers.authorization?.replace('Bearer ', '');
+
+      if (!token) {
+        // Leer cookie access_token del handshake (withCredentials: true en el cliente)
+        const rawCookie: string = (client.handshake.headers as any).cookie ?? '';
+        const match = rawCookie.split(';').map(c => c.trim())
+          .find(c => c.startsWith('access_token='));
+        token = match?.split('=').slice(1).join('='); // soporta '=' en el valor
+      }
 
       if (!token) { client.disconnect(); return; }
 
