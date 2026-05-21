@@ -230,6 +230,35 @@ export class SuperAdminService {
     if (u.role === 'super_admin') throw new ForbiddenException('No puedes eliminar a otro Super Admin');
 
     this.logger.warn(`[HARD DELETE] Usuario #${userId} (${u.email}) eliminado permanentemente por super_admin #${superAdminId}`);
+
+    // Limpiar referencias FK antes de eliminar (sin CASCADE en BD)
+    // Tablas que eliminamos directamente (datos de sesión/vinculación)
+    const tablasBorrar = [
+      'usuario_empresa',        // vínculos usuario↔empresa
+      'refresh_tokens',         // tokens de sesión
+    ];
+    for (const t of tablasBorrar) {
+      await this.ds.query(`DELETE FROM "${t}" WHERE "userId" = $1`, [userId]).catch(() => {});
+    }
+
+    // Tablas en las que nullificamos userId (preservamos el registro histórico)
+    const tablasNulificar = [
+      'facturas', 'compras', 'cotizaciones', 'devoluciones',
+      'cuentas_por_cobrar', 'cuentas_por_pagar',
+      'pagos_cobrados', 'pagos_realizados',
+      'movimientos_inventario', 'movimientos_bancarios',
+      'asientos_contables', 'presupuestos',
+      'contratos', 'activos_fijos',
+      'secuencias_ecf', 'facturas_recurrentes',
+      'nomina_periodos', 'conciliaciones_bancarias',
+      'reportes_generados', 'cierres_caja',
+      'anticipos_cliente', 'recibos_cobro',
+    ];
+    for (const t of tablasNulificar) {
+      await this.ds.query(`UPDATE "${t}" SET "userId" = NULL WHERE "userId" = $1`, [userId]).catch(() => {});
+    }
+
+    // Eliminar el usuario
     await this.ds.query('DELETE FROM users WHERE id = $1', [userId]);
     return { ok: true, mensaje: `Usuario ${u.nombre} (${u.email}) eliminado permanentemente` };
   }
