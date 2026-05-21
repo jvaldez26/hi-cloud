@@ -1728,9 +1728,18 @@ function POSClientesPanel({ C, onVolver }: { C: Palette; onVolver: () => void })
     staleTime: 30_000,
   });
   const crearMut = useMutation({
-    mutationFn: () => api.post('/clientes', { nombre: f.nombre.trim(), telefono: f.telefono, email: f.email, rncReceptor: f.rnc, empresa: f.empresa }),
+    mutationFn: () => api.post('/clientes', {
+      nombre:      f.nombre.trim(),
+      telefono:    f.telefono   || undefined,
+      email:       f.email      || undefined,
+      rfc:         f.rnc.trim() || undefined,   // campo correcto del DTO
+      razonSocial: f.empresa    || undefined,   // empresa → razonSocial en la entidad
+    }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['pos-clientes'] }); setForm(false); setF({ nombre:'',telefono:'',email:'',rnc:'',empresa:'' }); message.success('Cliente registrado'); },
-    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al guardar'),
+    onError: (e: any) => {
+      const msg = e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error al guardar';
+      message.error(Array.isArray(msg) ? msg[0] : msg, 5);
+    },
   });
   const inp = (key: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF(p => ({ ...p, [key]: e.target.value }));
   return (
@@ -1741,12 +1750,12 @@ function POSClientesPanel({ C, onVolver }: { C: Palette; onVolver: () => void })
         <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
           <div style={{ maxWidth: 480, color: C.text }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 0 }}>
-              <PanelInput label="Nombre *" placeholder="Nombre del cliente" value={f.nombre} onChange={inp('nombre')} />
-              <PanelInput label="Teléfono" placeholder="Teléfono" value={f.telefono} onChange={inp('telefono')} />
-              <PanelInput label="Correo electrónico" placeholder="correo@email.com" value={f.email} onChange={inp('email')} />
-              <PanelInput label="RNC / Cédula" placeholder="RNC o Cédula" value={f.rnc} onChange={inp('rnc')} />
+              <PanelInput C={C} label="Nombre *" placeholder="Nombre del cliente" value={f.nombre} onChange={inp('nombre')} />
+              <PanelInput C={C} label="Teléfono" placeholder="Teléfono" value={f.telefono} onChange={inp('telefono')} />
+              <PanelInput C={C} label="Correo electrónico" placeholder="correo@email.com" value={f.email} onChange={inp('email')} />
+              <PanelInput C={C} label="RNC / Cédula" placeholder="RNC o Cédula" value={f.rnc} onChange={inp('rnc')} />
             </div>
-            <PanelInput label="Empresa / Compañía" placeholder="Nombre de la empresa" value={f.empresa} onChange={inp('empresa')} />
+            <PanelInput C={C} label="Empresa / Compañía" placeholder="Nombre de la empresa" value={f.empresa} onChange={inp('empresa')} />
             <button onClick={() => crearMut.mutate()} disabled={crearMut.isPending || !f.nombre.trim()}
               style={{ width: '100%', height: 44, borderRadius: 10, border: 'none',
                 background: !f.nombre.trim() ? '#ccc' : '#059669', color: '#fff',

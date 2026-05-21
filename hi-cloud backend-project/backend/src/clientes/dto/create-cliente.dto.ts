@@ -15,14 +15,16 @@ export class CreateClienteDto {
    *  - Cédula dominicana (11 dígitos): 00112345678
    *  - RFC mexicano (12-13 chars):     XAXX010101000
    *  - Pasaporte / ID extranjero:      AA1234567
+   *
+   * Opcional para crear clientes básicos desde el POS
    */
+  @IsOptional()
   @IsString({ message: 'El RNC/cédula debe ser texto' })
-  @IsNotEmpty({ message: 'El RNC o cédula es requerido' })
   @Length(7, 13, { message: 'El RNC/cédula debe tener entre 7 y 13 caracteres' })
   @Matches(/^[A-Z&Ñ]{3,4}\d{6}[A-Z0-9]{2,3}$|^\d{9,11}$|^[A-Z0-9]{7,13}$/, {
     message: 'RNC/cédula inválido — acepta RNC (9 dígitos), cédula (11 dígitos) o RFC (12-13 chars)',
   })
-  rfc!: string;
+  rfc?: string;
 
   @IsOptional()
   @IsString({ message: 'La razón social debe ser texto' })
