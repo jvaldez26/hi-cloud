@@ -1611,6 +1611,7 @@ export default function SuperAdminPage() {
               { key: 'suscripciones', icon: <Crown size={15} />,      label: 'Suscripciones', count: (suscripciones as any[]).length, countColor: C.blue },
               { key: 'solicitudes',   icon: <Send size={15} />,       label: 'Solicitudes',   count: solicitudesPendientes ?? 0, countColor: C.red, badge: true },
               { key: 'pruebas',       icon: <ClockIcon size={15} />,  label: 'En Prueba',     count: (pruebas as any[]).length, countColor: C.gold },
+              { key: 'auditoria',     icon: <Shield size={15} />,     label: 'Auditoría',     count: 0, countColor: C.blue },
             ].map(t => {
               const activo = tab === t.key;
               return (
@@ -1895,6 +1896,11 @@ export default function SuperAdminPage() {
                 isLoading={loadPruebas}
                 onRefresh={() => qc.invalidateQueries({ queryKey: ['sa-pruebas'] })}
               />
+            )}
+
+            {/* ── TAB AUDITORÍA ─────────────────────────────────────────────── */}
+            {tab === 'auditoria' && (
+              <AuditoriaTab C={C} />
             )}
 
             {/* ── TAB CONFIGURACIÓN ─────────────────────────────────────────── */}
@@ -2336,4 +2342,81 @@ function btnStyle(color: string, outline = false, full = false): React.CSSProper
     transition:   'all .15s',
     width:        full ? 'auto' : undefined,
   };
+}
+
+// ── Tab de Auditoría del Sistema (solo Super Admin) ───────────────────────────
+function AuditoriaTab({ C }: { C: any }) {
+  const { token } = antTheme.useToken();
+  const [busq,    setBusq]    = useState('');
+  const [modulo,  setModulo]  = useState<string | undefined>();
+  const [pagAud,  setPagAud]  = useState(1);
+
+  const { data: logs, isLoading } = useQuery<any>({
+    queryKey: ['sa-auditoria', modulo, pagAud, busq],
+    queryFn:  () => {
+      let url = `/auditoria?page=${pagAud}&limit=50`;
+      if (modulo) url += `&modulo=${modulo}`;
+      if (busq)   url += `&search=${encodeURIComponent(busq)}`;
+      return api.get(url).then(r => r.data?.data ?? r.data);
+    },
+    staleTime: 30_000,
+  });
+
+  const eventos: any[] = logs?.data ?? logs ?? [];
+  const total  = logs?.meta?.total ?? eventos.length;
+
+  const MODULOS = ['AUTH','FACTURAS','COMPRAS','CLIENTES','PRODUCTOS','NOMINA','USUARIOS','SISTEMA'];
+
+  return (
+    <div>
+      <div style={{ marginBottom: 16, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <Input.Search
+          placeholder="Buscar en logs..."
+          value={busq}
+          onChange={e => setBusq(e.target.value)}
+          style={{ width: 260 }}
+          allowClear
+        />
+        <Select
+          allowClear
+          placeholder="Módulo"
+          style={{ width: 160 }}
+          value={modulo}
+          onChange={v => { setModulo(v); setPagAud(1); }}
+          options={MODULOS.map(m => ({ value: m, label: m }))}
+        />
+        <span style={{ color: token.colorTextSecondary, fontSize: 12, alignSelf: 'center' }}>
+          {total} registros
+        </span>
+      </div>
+
+      <Table
+        dataSource={eventos}
+        rowKey="id"
+        loading={isLoading}
+        size="small"
+        pagination={{
+          current: pagAud, pageSize: 50, total,
+          onChange: p => setPagAud(p),
+          showSizeChanger: false,
+        }}
+        columns={[
+          { title: 'Fecha', dataIndex: 'createdAt', key: 'f', width: 155,
+            render: (v: any) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: token.colorTextSecondary }}>
+              {v ? new Date(v).toLocaleString('es-DO') : '—'}
+            </span> },
+          { title: 'Usuario', dataIndex: 'userName', key: 'u', width: 150,
+            render: (v: any, r: any) => <span style={{ fontSize: 12 }}>{v ?? r.userId ?? '—'}</span> },
+          { title: 'Módulo', dataIndex: 'modulo', key: 'm', width: 120,
+            render: (v: any) => <Tag style={{ fontSize: 11 }}>{v ?? '—'}</Tag> },
+          { title: 'Acción', dataIndex: 'accion', key: 'a', width: 160,
+            render: (v: any) => <span style={{ fontSize: 12, fontFamily: 'monospace' }}>{v}</span> },
+          { title: 'Detalle', dataIndex: 'descripcion', key: 'd', ellipsis: true,
+            render: (v: any) => <span style={{ fontSize: 12, color: token.colorTextSecondary }}>{v ?? '—'}</span> },
+          { title: 'IP', dataIndex: 'ipAddress', key: 'ip', width: 130,
+            render: (v: any) => <span style={{ fontSize: 11, fontFamily: 'monospace', color: token.colorTextTertiary }}>{v ?? '—'}</span> },
+        ]}
+      />
+    </div>
+  );
 }

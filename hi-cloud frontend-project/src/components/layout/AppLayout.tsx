@@ -268,7 +268,6 @@ const MENU_CATEGORIES: MenuCategory[] = [
       { path: '/mis-empresas',  label: 'Empresas' },
       { path: '/sucursales',    label: 'Sucursales' },
       { path: '/equipo',        label: 'Usuarios y Roles' },
-      { path: '/auditoria',     label: 'Auditoría' },
       { path: '/aprobaciones',  label: 'Aprobaciones' },
       { path: '/importacion',   label: 'Importación CSV' },
       { path: '/documentos',    label: 'Documentos' },
@@ -314,7 +313,7 @@ const PATH_ROLES: Record<string, string[]> = {
   '/sucursales':         ADMIN,
   '/aprobaciones':       ADMIN,
   '/importacion':        ADMIN,
-  '/auditoria':          ADMIN,
+  '/auditoria':          ['super_admin'],  // solo super admin
 
   // ── Admin + Contador ──────────────────────────────────────────────────────
   '/compras':               ADMIN_CONT,
