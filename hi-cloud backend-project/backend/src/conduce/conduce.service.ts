@@ -1,11 +1,12 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { Conduce, EstadoConduce } from './entities/conduce.entity';
 import { ConduceDetalle } from './entities/conduce-detalle.entity';
 import { TenantService } from '../tenant/tenant.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { RealtimeService } from '../realtime/realtime.service';
+import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 
 interface DetalleConduceDto {
   productoId?:     number;
@@ -39,19 +40,12 @@ export class ConduceService {
     @InjectRepository(ConduceDetalle) private detRepo:         Repository<ConduceDetalle>,
     private tenantSvc:       TenantService,
     private realtimeService: RealtimeService,
+    @InjectDataSource() private ds: DataSource,
   ) {}
 
   private async generarNumero(): Promise<string> {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const res = await this.conduceRepo
-      .createQueryBuilder('c')
-      .select(`MAX(CASE WHEN c.numero ~ '^CON-[0-9]+$'
-                        THEN CAST(SUBSTRING(c.numero FROM 5) AS INTEGER)
-                        ELSE 100 END)`, 'maxNum')
-      .where('c.empresaId = :eid', { eid: empresaId })
-      .andWhere('c.isActive = :a', { a: true })
-      .getRawOne<{ maxNum: number | null }>();
-    return `CON-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
+    return generarNumeroSecuencial(this.ds, 'conduces', 'numero', '^CON-[0-9]+$', 'CON-', 1, empresaId);
   }
 
   async crear(dto: CreateConduceDto, usuarioId: number) {

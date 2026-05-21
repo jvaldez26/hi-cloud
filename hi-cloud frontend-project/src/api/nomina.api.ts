@@ -117,10 +117,9 @@ export const nominaApi = {
     api.patch(`/nomina/periodos/${id}/anular`).then(r => r.data.data),
 
   descargarArchivoBanco: async (periodoId: number, periodo: string) => {
-    const token = localStorage.getItem('access_token') ?? '';
-    const eid   = localStorage.getItem('empresaId') ?? '';
-    const res   = await fetch(`/api/v1/nomina/periodos/${periodoId}/archivo-banco`, {
-      headers: { Authorization: `Bearer ${token}`, 'X-Empresa-ID': eid },
+    // JWT en httpOnly cookie — credentials: 'include' la envía automáticamente
+    const res = await fetch(`/api/v1/nomina/periodos/${periodoId}/archivo-banco`, {
+      credentials: 'include',
     });
     if (!res.ok) throw new Error('Error generando archivo de banco');
     const blob = await res.blob();

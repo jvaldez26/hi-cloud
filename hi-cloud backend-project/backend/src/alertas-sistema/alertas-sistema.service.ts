@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { TenantService } from '../tenant/tenant.service';
 
@@ -16,6 +16,8 @@ export interface Alerta {
 
 @Injectable()
 export class AlertasSistemaService {
+  private readonly logger = new Logger(AlertasSistemaService.name);
+
   constructor(
     private readonly ds:        DataSource,
     private readonly tenantSvc: TenantService,
@@ -120,7 +122,9 @@ export class AlertasSistemaService {
         descripcion: `${n} contrato(s) vencen en los próximos 30 días`,
         cantidad: n, ruta: '/contratos', emoji: '📋',
       });
-    } catch {}
+    } catch (err: unknown) {
+      this.logger.warn('alertasContratosVence: tabla posiblemente inexistente', { error: err instanceof Error ? err.message : String(err) });
+    }
   }
 
   private async alertasFlotaVence(out: Alerta[], eid: number) {
@@ -142,7 +146,9 @@ export class AlertasSistemaService {
         descripcion: `${n} vehículo(s) con marbete o seguro próximos a vencer`,
         cantidad: n, ruta: '/flota', emoji: '🚗',
       });
-    } catch {}
+    } catch (err: unknown) {
+      this.logger.warn('alertasFlotaVence: tabla posiblemente inexistente', { error: err instanceof Error ? err.message : String(err) });
+    }
   }
 
   private async alertasFacturasBorrador(out: Alerta[], eid: number) {
@@ -180,7 +186,9 @@ export class AlertasSistemaService {
         descripcion: `${n} cliente(s) han superado su límite de crédito`,
         cantidad: n, ruta: '/credito-cliente', emoji: '⚠️',
       });
-    } catch {}
+    } catch (err: unknown) {
+      this.logger.warn('alertasCreditoExcedido: tabla posiblemente inexistente', { error: err instanceof Error ? err.message : String(err) });
+    }
   }
 
   private async alertasPeriodoSinCerrar(out: Alerta[], eid: number) {
@@ -198,7 +206,9 @@ export class AlertasSistemaService {
         descripcion: `${n} período(s) contable(s) ya vencieron y aún están abiertos`,
         cantidad: n, ruta: '/periodo-contable', emoji: '📅',
       });
-    } catch {}
+    } catch (err: unknown) {
+      this.logger.warn('alertasPeriodoSinCerrar: tabla posiblemente inexistente', { error: err instanceof Error ? err.message : String(err) });
+    }
   }
 
   private async alertasRecurrentesPendientes(out: Alerta[], eid: number) {
@@ -216,7 +226,9 @@ export class AlertasSistemaService {
         descripcion: `${n} factura(s) recurrente(s) no se generaron en la fecha programada`,
         cantidad: n, ruta: '/facturas-recurrentes', emoji: '🔄',
       });
-    } catch {}
+    } catch (err: unknown) {
+      this.logger.warn('alertasRecurrentesPendientes: tabla posiblemente inexistente', { error: err instanceof Error ? err.message : String(err) });
+    }
   }
 
   private async alertasECFRechazados(out: Alerta[], eid: number) {
@@ -234,7 +246,9 @@ export class AlertasSistemaService {
         descripcion: `${n} e-CF(s) fueron rechazados o están en contingencia. Requieren acción inmediata.`,
         cantidad: n, ruta: '/ecf', emoji: '❌',
       });
-    } catch {}
+    } catch (err: unknown) {
+      this.logger.warn('alertasECFRechazados: tabla ECF posiblemente inexistente', { error: err instanceof Error ? err.message : String(err) });
+    }
   }
 
   private async alertasECFAtascados(out: Alerta[], eid: number) {
@@ -254,7 +268,9 @@ export class AlertasSistemaService {
         descripcion: `${n} e-CF(s) llevan más de 10 minutos sin confirmación de MSeller.`,
         cantidad: n, ruta: '/ecf', emoji: '⏳',
       });
-    } catch {}
+    } catch (err: unknown) {
+      this.logger.warn('alertasECFAtascados: tabla ECF posiblemente inexistente', { error: err instanceof Error ? err.message : String(err) });
+    }
   }
 
   private async alertasSecuenciasECF(out: Alerta[], eid: number) {
@@ -281,6 +297,8 @@ export class AlertasSistemaService {
         descripcion: `${n} secuencia(s) vencen en ≤30 días o tienen ≥85% de uso. Solicita autorización a la DGII.`,
         cantidad: n, ruta: '/ecf', emoji: '🔢',
       });
-    } catch {}
+    } catch (err: unknown) {
+      this.logger.warn('alertasSecuenciasECF: tabla secuencias_ecf posiblemente inexistente', { error: err instanceof Error ? err.message : String(err) });
+    }
   }
 }

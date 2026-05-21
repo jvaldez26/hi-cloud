@@ -3,8 +3,8 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { Compra, CompraEstado } from './entities/compra.entity';
 import { CompraDetalle } from './entities/compra-detalle.entity';
 import { CreateCompraDto } from './dto/create-compra.dto';
@@ -17,6 +17,7 @@ import { PaginationDto } from '../common/dto/pagination.dto';
 import { TenantService } from '../tenant/tenant.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { User } from '../users/users.entity';
+import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 
 const ITBIS_DEFAULT = 18;
 
@@ -34,20 +35,12 @@ export class ComprasService {
     private asientosService:    AsientosAutomaticosService,
     private tenantService:      TenantService,
     private realtimeService:    RealtimeService,
+    @InjectDataSource() private ds: DataSource,
   ) {}
 
   private async generarFolio(): Promise<string> {
     const empresaId = this.tenantService.getEmpresaId();
-    const result = await this.compraRepository
-      .createQueryBuilder('c')
-      .select(`MAX(CASE WHEN c.folio ~ '^COM-[0-9]+$'
-                        THEN CAST(SUBSTRING(c.folio FROM 5) AS INTEGER)
-                        ELSE 100 END)`, 'maxNum')
-      .where('c.empresaId = :eid', { eid: empresaId })
-      .andWhere('c.isActive = :a', { a: true })
-      .getRawOne<{ maxNum: number | null }>();
-    const next = Math.max(101, (result?.maxNum ?? 100) + 1);
-    return `COM-${next}`;
+    return generarNumeroSecuencial(this.ds, 'compras', 'folio', '^COM-[0-9]+$', 'COM-', 1, empresaId);
   }
 
   async create(dto: CreateCompraDto, usuario: User) {

@@ -114,8 +114,7 @@ export function useOfflineQueue() {
 
     try {
       const pending = (await dbGetAll()).filter(s => s.status === 'pending');
-      const token     = localStorage.getItem('access_token') ?? '';
-      const empresaId = localStorage.getItem('empresaId')    ?? '';
+      // JWT está en httpOnly cookie — se envía automáticamente con credentials: 'include'
 
       for (const sale of pending) {
         // Marcar como syncing
@@ -125,13 +124,10 @@ export function useOfflineQueue() {
         try {
           // Crear factura
           const res = await fetch('/api/v1/facturas', {
-            method:  'POST',
-            headers: {
-              'Content-Type':  'application/json',
-              Authorization:   `Bearer ${token}`,
-              'X-Empresa-ID':  empresaId,
-            },
-            body: JSON.stringify(sale.payload),
+            method:      'POST',
+            credentials: 'include',
+            headers:     { 'Content-Type': 'application/json' },
+            body:        JSON.stringify(sale.payload),
           });
 
           if (!res.ok) throw new Error(await res.text());
@@ -139,13 +135,10 @@ export function useOfflineQueue() {
 
           // Emitir factura
           await fetch(`/api/v1/facturas/${factura.id}/estado`, {
-            method:  'PATCH',
-            headers: {
-              'Content-Type':  'application/json',
-              Authorization:   `Bearer ${token}`,
-              'X-Empresa-ID':  empresaId,
-            },
-            body: JSON.stringify({ estado: 'emitida' }),
+            method:      'PATCH',
+            credentials: 'include',
+            headers:     { 'Content-Type': 'application/json' },
+            body:        JSON.stringify({ estado: 'emitida' }),
           });
 
           await dbDelete(sale.id);

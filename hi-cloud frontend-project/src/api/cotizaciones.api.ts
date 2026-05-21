@@ -45,10 +45,9 @@ export const cotizacionesApi = {
     api.get('/cotizaciones/resumen').then(r => r.data.data),
 
   pdf: async (id: number, numero: string) => {
-    const tk  = localStorage.getItem('access_token');
-    const eid = localStorage.getItem('empresaId');
+    // JWT en httpOnly cookie — credentials: 'include' la envía automáticamente
     const res = await fetch(`/api/v1/cotizaciones/${id}/pdf`, {
-      headers: { Authorization: `Bearer ${tk}`, 'X-Empresa-ID': eid || '' },
+      credentials: 'include',
     });
     if (!res.ok) throw new Error(await res.text());
     const blob = await res.blob();

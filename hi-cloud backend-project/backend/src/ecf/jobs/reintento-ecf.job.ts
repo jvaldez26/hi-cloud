@@ -53,6 +53,48 @@ export class ReintentoECFJob {
     }
   }
 
+  /**
+   * Cada 30 minutos intenta rescatar e-CF en CONTINGENCIA que tengan < 48 horas.
+   * Los resetea a PENDIENTE_ENVIO con intentosEnvio = 0 para que el job principal
+   * los reintente cuando MSeller/DGII vuelva a estar disponible.
+   */
+  @Cron('*/30 * * * *', { name: 'rescate-contingencia-ecf' })
+  async rescatarContingencia(): Promise<void> {
+    const hace48h = new Date(Date.now() - 48 * 60 * 60_000);
+
+    const enContingencia = await this.ecfRepo.find({
+      where: {
+        estadoDGII: EstadoDGII.CONTINGENCIA,
+        isActive:   true,
+      },
+      order: { updatedAt: 'ASC' },
+      take: 30,
+    });
+
+    const candidatos = enContingencia.filter(
+      e => new Date(e.updatedAt).getTime() > hace48h.getTime(),
+    );
+
+    if (candidatos.length === 0) return;
+
+    this.logger.log(`RescateContingencia: ${candidatos.length} e-CF(s) a reintentar`);
+
+    for (const ecf of candidatos) {
+      await this.ecfRepo.update(ecf.id, {
+        estadoDGII:         EstadoDGII.PENDIENTE_ENVIO,
+        intentosEnvio:      0,
+        ultimoIntentoEnvio: undefined,
+        errorEnvio:         `Rescate automático desde CONTINGENCIA (${new Date().toISOString()})`,
+      });
+
+      await this.logEvento(ecf.id, TipoEcfEvento.REINTENTO, {
+        origen: 'rescate-contingencia',
+      }, 'Rescatado de CONTINGENCIA → PENDIENTE_ENVIO para reintento automático');
+
+      this.logger.log(`e-CF ${ecf.numero} rescatado de CONTINGENCIA → PENDIENTE_ENVIO`);
+    }
+  }
+
   private async procesarPendientes(): Promise<void> {
     const ahora = new Date();
 

@@ -3,19 +3,13 @@
  * Genera PDFs llamando al backend (puppeteer) o abriendo ventanas HTML para imprimir.
  */
 
-const authHeaders = () => {
-  const token     = localStorage.getItem('access_token');
-  const empresaId = localStorage.getItem('empresaId');
-  return {
-    Authorization:  `Bearer ${token}`,
-    'X-Empresa-ID': empresaId ?? '',
-  };
-};
+// JWT está en cookie httpOnly — las cookies se envían automáticamente con credentials: 'include'.
+// No se usa localStorage para tokens.
 
 // ── PDF desde endpoint del backend (puppeteer) ────────────────────────────────
 
 export async function descargarPDFDesdeURL(apiPath: string, nombreArchivo: string): Promise<void> {
-  const res = await fetch(apiPath, { headers: authHeaders() });
+  const res = await fetch(apiPath, { credentials: 'include' });
   if (!res.ok) throw new Error(`Error ${res.status} al generar PDF`);
   const blob = await res.blob();
   const url  = URL.createObjectURL(blob);
@@ -27,7 +21,7 @@ export async function descargarPDFDesdeURL(apiPath: string, nombreArchivo: strin
 }
 
 export async function verPDFDesdeURL(apiPath: string): Promise<void> {
-  const res = await fetch(apiPath, { headers: authHeaders() });
+  const res = await fetch(apiPath, { credentials: 'include' });
   if (!res.ok) throw new Error(`Error ${res.status} al generar PDF`);
   const blob = await res.blob();
   const url  = URL.createObjectURL(blob);

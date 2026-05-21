@@ -1,12 +1,13 @@
 import {
   Injectable, NotFoundException, BadRequestException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { NotaCredito, EstadoNotaCredito, MotivoNotaCredito } from './entities/nota-credito.entity';
 import { NotaCreditoDetalle } from './entities/nota-credito-detalle.entity';
 import { TenantService } from '../tenant/tenant.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
+import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 
 interface DetalleDto {
   productoId?:    number;
@@ -37,21 +38,14 @@ export class NotasCreditoService {
     @InjectRepository(NotaCredito)        private ncRepo:     Repository<NotaCredito>,
     @InjectRepository(NotaCreditoDetalle) private detRepo:    Repository<NotaCreditoDetalle>,
     private tenantSvc: TenantService,
+    @InjectDataSource() private ds: DataSource,
   ) {}
 
-  // ─── Folio ────────────────────────────────────────────────────────────────────
+  // ─── Folio (atómico con SELECT FOR UPDATE) ────────────────────────────────────
 
   private async generarNumero(): Promise<string> {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const res = await this.ncRepo
-      .createQueryBuilder('nc')
-      .select(`MAX(CASE WHEN nc.numero ~ '^NC-[0-9]+$'
-                        THEN CAST(SUBSTRING(nc.numero FROM 4) AS INTEGER)
-                        ELSE 100 END)`, 'maxNum')
-      .where('nc.empresaId = :eid', { eid: empresaId })
-      .andWhere('nc.isActive = :a', { a: true })
-      .getRawOne<{ maxNum: number | null }>();
-    return `NC-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
+    return generarNumeroSecuencial(this.ds, 'notas_credito', 'numero', '^NC-[0-9]+$', 'NC-', 1, empresaId);
   }
 
   // ─── CRUD ─────────────────────────────────────────────────────────────────────

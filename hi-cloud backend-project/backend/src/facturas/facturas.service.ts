@@ -46,18 +46,27 @@ export class FacturasService {
     @InjectDataSource() private dataSource: DataSource,
   ) {}
 
+  /**
+   * Genera el folio siguiente de forma ATÓMICA usando SELECT ... FOR UPDATE.
+   * Previene race conditions cuando dos cajeros emiten facturas simultáneamente.
+   * Sin este lock, MAX()+1 concurrente produce folios duplicados.
+   */
   private async generarFolio(): Promise<string> {
     const empresaId = this.tenantService.getEmpresaId();
-    const result = await this.facturaRepository
-      .createQueryBuilder('f')
-      .select(`MAX(CASE WHEN f.folio ~ '^FAC-[0-9]+$'
-                        THEN CAST(SUBSTRING(f.folio FROM 5) AS INTEGER)
-                        ELSE 100 END)`, 'maxNum')
-      .where('f.empresaId = :eid', { eid: empresaId })
-      .andWhere('f.isActive = :a', { a: true })
-      .getRawOne<{ maxNum: number | null }>();
-    const next = Math.max(101, (result?.maxNum ?? 100) + 1);
-    return `FAC-${next}`;
+    // Usamos una transacción con lock a nivel de fila para garantizar atomicidad
+    return this.dataSource.transaction(async (em) => {
+      // SELECT FOR UPDATE → bloquea la lectura hasta que la transacción termine
+      const [row] = await em.query<{ maxNum: number | null }[]>(`
+        SELECT MAX(CASE WHEN folio ~ '^FAC-[0-9]+$'
+                        THEN CAST(SUBSTRING(folio FROM 5) AS INTEGER)
+                        ELSE 100 END) AS "maxNum"
+        FROM facturas
+        WHERE "empresaId" = $1 AND "isActive" = true
+        FOR UPDATE
+      `, [empresaId]);
+      const next = Math.max(101, (row?.maxNum ?? 100) + 1);
+      return `FAC-${next}`;
+    });
   }
 
   async create(dto: CreateFacturaDto, usuario: User) {
@@ -469,7 +478,12 @@ export class FacturasService {
             if (ecfCreado?.e_id) {
               await this.facturaRepository.update(id, { ecfId: ecfCreado.e_id });
             }
-          } catch { /* no bloquear la respuesta si esta query falla */ }
+          } catch (linkErr: unknown) {
+            this.logger.warn(
+              `[ECF] No se pudo linkear ecfId a factura ${id}: ` +
+              `${linkErr instanceof Error ? linkErr.message : String(linkErr)}`,
+            );
+          }
         });
 
       return this.findOne(id);
