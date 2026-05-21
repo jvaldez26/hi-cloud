@@ -3,6 +3,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
+import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import { AnticipoCliente, EstadoAnticipo } from './entities/anticipo-cliente.entity';
 import { CuentaPorCobrar } from '../cxc/entities/cuenta-por-cobrar.entity';
 import { Factura, FacturaEstado } from '../facturas/entities/factura.entity';
@@ -75,14 +76,9 @@ export class AnticiposClienteService implements OnModuleInit {
   // ── Número correlativo ──────────────────────────────────────────────────────
   private async generarNumero(): Promise<string> {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const res = await this.repo
-      .createQueryBuilder('a')
-      .select(`MAX(CASE WHEN a.numero ~ '^ANT-[0-9]+$'
-                        THEN CAST(SUBSTRING(a.numero FROM 5) AS INTEGER)
-                        ELSE 100 END)`, 'maxNum')
-      .where('a.empresaId = :eid', { eid: empresaId })
-      .getRawOne<{ maxNum: number | null }>();
-    return `ANT-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
+    return generarNumeroSecuencial(
+      this.ds, 'anticipo_cliente', 'numero', '^ANT-[0-9]+$', 'ANT-', 1, empresaId,
+    );
   }
 
   // ── Crear anticipo ──────────────────────────────────────────────────────────

@@ -3,6 +3,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
+import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import { ReciboCobro, MetodoPagoRecibo } from './entities/recibo-cobro.entity';
 import { CuentaPorCobrar } from '../cxc/entities/cuenta-por-cobrar.entity';
 import { Factura, FacturaEstado } from '../facturas/entities/factura.entity';
@@ -54,15 +55,9 @@ export class RecibosCobrosService {
 
   private async generarNumero(): Promise<string> {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const res = await this.repo
-      .createQueryBuilder('r')
-      .select(`MAX(CASE WHEN r.numero ~ '^REC-[0-9]+$'
-                        THEN CAST(SUBSTRING(r.numero FROM 5) AS INTEGER)
-                        ELSE 100 END)`, 'maxNum')
-      .where('r.empresaId = :eid', { eid: empresaId })
-      .andWhere('r.isActive = :a', { a: true })
-      .getRawOne<{ maxNum: number | null }>();
-    return `REC-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
+    return generarNumeroSecuencial(
+      this.dataSource, 'recibos_cobro', 'numero', '^REC-[0-9]+$', 'REC-', 1, empresaId,
+    );
   }
 
   /** Encuentra la caja diaria abierta para este recibo.
@@ -205,12 +200,9 @@ export class RecibosCobrosService {
             `SELECT id FROM cierres_caja WHERE "empresaId" = $1 AND DATE(fecha) = $2 AND estado = 'abierta' ORDER BY id DESC LIMIT 1`,
             [empresaId, hoy],
           ).catch(() => []);
-          const antNumRes = await this.anticipoRepo
-            .createQueryBuilder('a')
-            .select(`MAX(CASE WHEN a.numero ~ '^ANT-[0-9]+$' THEN CAST(SUBSTRING(a.numero FROM 5) AS INTEGER) ELSE 100 END)`, 'maxNum')
-            .where('a.empresaId = :eid', { eid: empresaId })
-            .getRawOne<{ maxNum: number | null }>();
-          const antNumero = `ANT-${Math.max(101, (antNumRes?.maxNum ?? 100) + 1)}`;
+          const antNumero = await generarNumeroSecuencial(
+            this.dataSource, 'anticipo_cliente', 'numero', '^ANT-[0-9]+$', 'ANT-', 1, empresaId,
+          );
 
           const anticipo = await this.anticipoRepo.save(
             this.anticipoRepo.create({

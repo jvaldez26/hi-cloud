@@ -6,8 +6,9 @@ import { generarHTMLCotizacion, CotizacionPDFData, CotizacionPDFItem } from './t
 import * as https from 'https';
 import * as http  from 'http';
 import * as qrcode from 'qrcode';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThan, In } from 'typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { Repository, LessThan, In, DataSource } from 'typeorm';
+import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import { Cron } from '@nestjs/schedule';
 import { Cotizacion, CotizacionEstado } from './entities/cotizacion.entity';
 import { CotizacionDetalle } from './entities/cotizacion-detalle.entity';
@@ -34,6 +35,7 @@ export class CotizacionesService {
     private facturaDetalleRepository: Repository<FacturaDetalle>,
     private tenantService:    TenantService,
     private realtimeService:  RealtimeService,
+    @InjectDataSource() private dataSource: DataSource,
   ) {}
 
   // ──────────────────────────────────────────────────────────────────
@@ -42,16 +44,9 @@ export class CotizacionesService {
 
   private async generarNumero(): Promise<string> {
     const empresaId = this.tenantService.getEmpresaId();
-    const result = await this.cotizacionRepository
-      .createQueryBuilder('c')
-      .select(`MAX(CASE WHEN c.numero ~ '^COT-[0-9]+$'
-                        THEN CAST(SUBSTRING(c.numero FROM 5) AS INTEGER)
-                        ELSE 100 END)`, 'maxNum')
-      .where('c.empresaId = :eid', { eid: empresaId })
-      .andWhere('c.isActive = :a', { a: true })
-      .getRawOne<{ maxNum: number | null }>();
-    const next = Math.max(101, (result?.maxNum ?? 100) + 1);
-    return `COT-${next}`;
+    return generarNumeroSecuencial(
+      this.dataSource, 'cotizaciones', 'numero', '^COT-[0-9]+$', 'COT-', 1, empresaId,
+    );
   }
 
   // ──────────────────────────────────────────────────────────────────
