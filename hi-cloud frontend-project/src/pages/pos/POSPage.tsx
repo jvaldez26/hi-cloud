@@ -2971,6 +2971,8 @@ export default function POSPage() {
   const [showPago,           setShowPago]           = useState(false);
   const [metodoPago,         setMetodoPago]         = useState<MetodoPago>('efectivo');
   const [montoRecibido,      setMontoRecibido]      = useState(0);
+  const [tipoPagoPos,        setTipoPagoPos]        = useState<'CONTADO' | 'CREDITO'>('CONTADO');
+  const [diasCreditoPos,     setDiasCreditoPos]     = useState(30);
   const [sale,               setSale]               = useState<Sale | null>(null);
   const [tipoNcf,            setTipoNcf]            = useState('E32');
   const [ventasEnEspera,     setVentasEnEspera]     = useState<ParkedSale[]>([]);
@@ -3278,7 +3280,11 @@ export default function POSPage() {
         ),
         fecha:          dayjs().format('YYYY-MM-DD'),
         tipoNcf,
-        notas:          `POS · ${METODOS.find(m => m.key === metodoPago)?.label}`,
+        tipoPago:       tipoPagoPos,
+        diasCredito:    tipoPagoPos === 'CREDITO' ? diasCreditoPos : 0,
+        notas:          tipoPagoPos === 'CREDITO'
+          ? `POS · Crédito ${diasCreditoPos} días`
+          : `POS · ${METODOS.find(m => m.key === metodoPago)?.label}`,
         vendedorId,
         nombreVendedor: vendedor?.nombre,
         sucursalId,
@@ -3382,6 +3388,7 @@ export default function POSPage() {
       setShowPago(false);
       setRncComprador(''); setRazonSocialComp(''); setNumeroOrdenCompra(''); setGuardarRncPerfil(false);
       setCart([]); resetCliente(); setVendedorId(undefined); setMontoRecibido(0);
+      setTipoPagoPos('CONTADO'); setDiasCreditoPos(30);
       qc.invalidateQueries({ queryKey: ['pos-panel', 'facturas'] });
       qc.refetchQueries({    queryKey: ['pos-panel', 'facturas'] });
     },
@@ -3549,9 +3556,11 @@ export default function POSPage() {
   const tipoExigeRnc = tipoNcf === 'E31' || tipoNcf === 'E44' || tipoNcf === 'E45' || totalEfectivo >= 250_000;
   const necesitaRnc  = tipoExigeRnc && !clienteTieneRNC;
   const rncValido    = clienteTieneRNC || /^\d{9}$|^\d{11}$/.test(rncComprador);
-  const canPay       = metodoPago !== 'efectivo' || montoRecibido >= totalEfectivo;
-  const cajaAbierta  = cajaActivaHoy?.estado === 'abierta';  // caja debe estar registrada
-  const canCheckout  = canPay && (!tipoExigeRnc || rncValido) && cajaAbierta;
+  const canPay       = tipoPagoPos === 'CREDITO' || metodoPago !== 'efectivo' || montoRecibido >= totalEfectivo;
+  const cajaAbierta  = cajaActivaHoy?.estado === 'abierta';
+  // Crédito requiere cliente real seleccionado (no consumidor final por defecto)
+  const clienteParaCredito = tipoPagoPos === 'CONTADO' || clienteId != null;
+  const canCheckout  = canPay && (!tipoExigeRnc || rncValido) && cajaAbierta && clienteParaCredito;
 
   return (
     <ThemeCtx.Provider value={palette}>
@@ -3992,7 +4001,51 @@ export default function POSPage() {
             )}
           </div>
 
-          {/* Método de pago */}
+          {/* Tipo de cobro: Contado / Crédito */}
+          <div style={{ flexShrink: 0, padding: '10px 16px 8px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+            <div style={{ fontSize: 9, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 6 }}>Tipo de cobro</div>
+            <div style={{ display: 'flex', gap: 6, marginBottom: tipoPagoPos === 'CREDITO' ? 10 : 0 }}>
+              {([
+                { key: 'CONTADO', icon: '💵', label: 'Contado',  color: '#15803D', bg: '#F0FDF4', border: '#86EFAC' },
+                { key: 'CREDITO', icon: '📋', label: 'Crédito',  color: '#0F3460', bg: '#EEF2FF', border: '#A5B4FC' },
+              ] as const).map(t => {
+                const act = tipoPagoPos === t.key;
+                return (
+                  <button key={t.key} onClick={() => setTipoPagoPos(t.key)}
+                    style={{ flex: 1, height: 34, borderRadius: 7, border: act ? `1.5px solid ${t.border}` : '1.5px solid #E2E8F0',
+                      background: act ? t.bg : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', gap: 4, outline: 'none', transition: 'all 0.12s' }}>
+                    <span style={{ fontSize: 12 }}>{t.icon}</span>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: act ? t.color : '#475569' }}>{t.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {/* Campos extra para crédito */}
+            {tipoPagoPos === 'CREDITO' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: clienteId ? '#EEF2FF' : '#FEF2F2',
+                borderRadius: 8, border: `1px solid ${clienteId ? '#A5B4FC' : '#FECACA'}`, fontSize: 12 }}>
+                {clienteId ? (
+                  <>
+                    <span style={{ color: '#4338CA', fontWeight: 600 }}>📋 Crédito</span>
+                    <span style={{ color: '#4338CA' }}>·</span>
+                    <input type="number" min={1} max={365} value={diasCreditoPos}
+                      onChange={e => setDiasCreditoPos(Math.max(1, Math.min(365, Number(e.target.value))))}
+                      style={{ width: 52, height: 26, border: '1px solid #A5B4FC', borderRadius: 5, textAlign: 'center',
+                        fontSize: 12, fontWeight: 700, color: '#3730A3', outline: 'none', background: '#EEF2FF' }} />
+                    <span style={{ color: '#6B7280' }}>días · vence {
+                      new Date(Date.now() + diasCreditoPos * 86400000).toLocaleDateString('es-DO', { day: '2-digit', month: 'short' })
+                    }</span>
+                  </>
+                ) : (
+                  <span style={{ color: '#DC2626', fontWeight: 600 }}>⚠ Selecciona un cliente para venta a crédito</span>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Método de pago — solo visible en contado */}
+          {tipoPagoPos === 'CONTADO' && (
           <div style={{ flexShrink: 0, padding: '10px 16px 8px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
             <div style={{ fontSize: 9, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 5 }}>Método de pago</div>
             <div style={{ display: 'flex', gap: 5 }}>
@@ -4011,6 +4064,7 @@ export default function POSPage() {
               })}
             </div>
           </div>
+          )}
 
           {/* ── Sección datos del comprador — dinámica según escenario ───── */}
           {tipoExigeRnc && (
@@ -4103,9 +4157,20 @@ export default function POSPage() {
             </div>
           )}
 
-          {/* Numpad / card confirm */}
+          {/* Numpad / card confirm / crédito */}
           <div style={{ flex: 1, padding: '10px 16px 0', background: '#fff', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            {metodoPago === 'efectivo' ? (
+            {tipoPagoPos === 'CREDITO' ? (
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                <div style={{ fontSize: 40 }}>📋</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#3730A3' }}>Venta a Crédito</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: '#0F172A', fontVariantNumeric: 'tabular-nums' }}>{fmt.money(totalEfectivo)}</div>
+                <div style={{ fontSize: 12, color: '#6B7280', textAlign: 'center' }}>
+                  {clienteId ? <>Plazo: <strong>{diasCreditoPos} días</strong> · vence {
+                    new Date(Date.now() + diasCreditoPos * 86400000).toLocaleDateString('es-DO', { weekday: 'short', day: '2-digit', month: 'short' })
+                  }</> : <span style={{ color: '#DC2626' }}>Selecciona un cliente para continuar</span>}
+                </div>
+              </div>
+            ) : metodoPago === 'efectivo' ? (
               <>
                 <div style={{ flexShrink: 0, display: 'flex', alignItems: 'baseline', gap: 4, borderBottom: '2px solid #3B82F6', paddingBottom: 4, marginBottom: 5 }}>
                   <span style={{ fontSize: 12, color: '#94A3B8', fontWeight: 500 }}>RD$</span>
