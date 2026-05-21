@@ -102,6 +102,8 @@ interface Sale {
   razonSocial?:            string;
   securityCode?:           string;
   qrUrl?:                  string;
+  notas?:                  string;   // incluye "Crédito X días" para ventas a crédito
+  diasCredito?:            number;
   // Emisor
   cajero?:                 string;
   empresaNombreComercial?: string;
@@ -110,7 +112,7 @@ interface Sale {
   empresaTelefono?:        string;
 }
 
-type MetodoPago = 'efectivo' | 'tarjeta' | 'transferencia';
+type MetodoPago = 'efectivo' | 'tarjeta' | 'transferencia' | 'credito';
 
 type ModoFacturacion = 'factura' | 'valor-fiscal' | 'pro-forma' | 'pre-factura' | 'conduce' | 'cotizacion';
 
@@ -125,9 +127,10 @@ const MODOS_FACTURACION: Array<{ id: ModoFacturacion; label: string; icon: strin
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const METODOS: { key: MetodoPago; label: string; icon: string }[] = [
-  { key: 'efectivo',      label: 'Efectivo',     icon: '💵' },
-  { key: 'tarjeta',       label: 'Tarjeta',       icon: '💳' },
-  { key: 'transferencia', label: 'Transferencia', icon: '🏦' },
+  { key: 'efectivo',      label: 'Efectivo',      icon: '💵' },
+  { key: 'tarjeta',       label: 'Tarjeta',        icon: '💳' },
+  { key: 'transferencia', label: 'Transferencia',  icon: '🏦' },
+  { key: 'credito',       label: 'Crédito',        icon: '📋' },
 ];
 
 const NCF_OPTS = [
@@ -548,6 +551,9 @@ function ThermalReceipt({ sale }: { sale: Sale }) {
         label={`${METODOS.find(m => m.key === sale.metodo)?.label ?? 'Pago'}:`}
         value={sale.metodo === 'efectivo' && sale.cambio > 0 ? moneda(sale.total + sale.cambio) : moneda(sale.total)}
       />
+      {sale.metodo === 'credito' && (
+        <RRow label="Plazo:" value={sale.diasCredito ? `${sale.diasCredito} días` : '—'} />
+      )}
       {sale.metodo === 'efectivo' && sale.cambio > 0 && (
         <RRow label="Cambio:" value={moneda(sale.cambio)} bold />
       )}
@@ -3365,7 +3371,9 @@ export default function POSPage() {
         folio:                   factura.folio,
         total:                   totalEfectivo,
         cambio,
-        metodo:                  metodoPago,
+        metodo:                  tipoPagoPos === 'CREDITO' ? 'credito' : metodoPago,
+        notas:                   tipoPagoPos === 'CREDITO' ? `Crédito ${diasCreditoPos} días` : undefined,
+        diasCredito:             tipoPagoPos === 'CREDITO' ? diasCreditoPos : undefined,
         items:                   [...cart],
         cliente:                 clientes?.data.find((c: Cliente) => c.id === clienteId)?.nombre,
         iva:                     ivaEfectivo,
