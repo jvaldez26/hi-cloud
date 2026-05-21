@@ -3000,6 +3000,22 @@ export default function POSPage() {
       .catch(() => {});
   }, []);   // solo al montar
 
+  // Verificar que la caja del cajero activo esté abierta (refresca vía WebSocket)
+  const { data: cajaActivaHoy } = useQuery<any>({
+    queryKey: ['pos-caja-hoy'],
+    queryFn:  () => {
+      const vid = localStorage.getItem('pos_vendedor_id');
+      if (!vid) return null;
+      return api.get(`/caja/hoy?vendedorId=${vid}`).then(r => {
+        const d = r.data?.data ?? r.data;
+        return Array.isArray(d) ? d.find((c: any) => c.estado === 'abierta') ?? null : d;
+      }).catch(() => null);
+    },
+    refetchInterval:      10_000,
+    refetchOnWindowFocus: true,
+    enabled:              turnoAbierto,
+  });
+
   // Queries
   const { data: produtos, isLoading, refetch: refetchProductos } = useQuery({
     queryKey: ['pos-products', search],
@@ -3522,7 +3538,8 @@ export default function POSPage() {
   const necesitaRnc  = tipoExigeRnc && !clienteTieneRNC;
   const rncValido    = clienteTieneRNC || /^\d{9}$|^\d{11}$/.test(rncComprador);
   const canPay       = metodoPago !== 'efectivo' || montoRecibido >= totalEfectivo;
-  const canCheckout  = canPay && (!tipoExigeRnc || rncValido);
+  const cajaAbierta  = cajaActivaHoy?.estado === 'abierta';  // caja debe estar registrada
+  const canCheckout  = canPay && (!tipoExigeRnc || rncValido) && cajaAbierta;
 
   return (
     <ThemeCtx.Provider value={palette}>
@@ -4112,8 +4129,18 @@ export default function POSPage() {
                 </motion.div>
               )}
             </AnimatePresence>
+            {!cajaAbierta && (
+              <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8,
+                padding: '8px 12px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 16 }}>🔒</span>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#DC2626' }}>Caja no registrada</div>
+                  <div style={{ fontSize: 11, color: '#B91C1C' }}>Abre tu turno en Caja Diaria antes de facturar</div>
+                </div>
+              </div>
+            )}
             <Tooltip
-              title={necesitaRnc && !rncValido ? 'Ingresa el RNC del comprador para continuar' : ''}
+              title={!cajaAbierta ? 'Debes abrir la caja diaria antes de facturar' : necesitaRnc && !rncValido ? 'Ingresa el RNC del comprador para continuar' : ''}
             >
               <motion.button whileTap={{ scale: canCheckout ? 0.97 : 1 }}
                 onClick={() => { if (canCheckout) ventaMut.mutate(); }}

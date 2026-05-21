@@ -4,8 +4,8 @@ import {
   BadRequestException,
   Logger,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { Factura, FacturaEstado } from './entities/factura.entity';
 import { FacturaDetalle } from './entities/factura-detalle.entity';
 import { CreateFacturaDto } from './dto/create-factura.dto';
@@ -43,6 +43,7 @@ export class FacturasService {
     private realtimeService:   RealtimeService,
     private limitesService:    LimitesService,
     private emitirECFUseCase:  EmitirECFUseCase,
+    @InjectDataSource() private dataSource: DataSource,
   ) {}
 
   private async generarFolio(): Promise<string> {
@@ -335,6 +336,22 @@ export class FacturasService {
     }
 
     if (estado === FacturaEstado.EMITIDA) {
+      // Verificar que hay caja abierta si la factura viene del POS (tiene vendedorId)
+      if ((factura as any).vendedorId) {
+        const hoy = new Date().toISOString().split('T')[0];
+        const [cajaAbierta] = await this.dataSource.query<{ id: number }[]>(`
+          SELECT id FROM cierres_caja
+          WHERE "empresaId" = $1 AND DATE(fecha) = $2
+            AND estado = 'abierta' AND "vendedorId" = $3 LIMIT 1
+        `, [factura.empresaId, hoy, (factura as any).vendedorId]).catch(() => []);
+
+        if (!cajaAbierta) {
+          throw new BadRequestException(
+            'No hay una caja diaria abierta para este vendedor. Abre el turno antes de facturar.',
+          );
+        }
+      }
+
       // Verificar límite de ingresos ANTES de emitir
       const aviso = await this.limitesService.verificarLimiteIngresos(
         factura.empresaId,
