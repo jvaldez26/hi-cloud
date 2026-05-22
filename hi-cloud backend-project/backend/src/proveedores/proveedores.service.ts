@@ -23,15 +23,21 @@ export class ProveedoresService {
 
   async create(dto: CreateProveedorDto) {
     const empresaId = this.tenantService.getEmpresaId();
-    const existing = await this.proveedorRepository.findOne({
-      where: { rnc: dto.rnc, empresaId },
-    });
-    if (existing) throw new ConflictException(`RNC ${dto.rnc} ya está registrado en esta empresa`);
-
     const proveedor = this.proveedorRepository.create({ ...dto, empresaId });
-    const saved     = await this.proveedorRepository.save(proveedor) as Proveedor;
-    this.realtimeService.notify(empresaId, 'proveedor', 'created', saved.id);
-    return saved;
+    try {
+      const saved = await this.proveedorRepository.save(proveedor) as Proveedor;
+      this.realtimeService.notify(empresaId, 'proveedor', 'created', saved.id);
+      return saved;
+    } catch (err: any) {
+      if (err?.code === '23505' || err?.message?.includes('duplicate key')) {
+        throw new ConflictException(
+          dto.rnc
+            ? `Ya existe un proveedor con RNC ${dto.rnc} en su empresa`
+            : 'Ya existe un proveedor con ese RNC en su empresa',
+        );
+      }
+      throw err;
+    }
   }
 
   async findAll(pagination: PaginationDto) {
@@ -82,16 +88,21 @@ export class ProveedoresService {
 
   async update(id: number, dto: UpdateProveedorDto) {
     const empresaId = this.tenantService.getEmpresaId();
-    const proveedor = await this.findOne(id);
+    await this.findOne(id); // valida que existe en este tenant
 
-    if (dto.rnc && dto.rnc !== proveedor.rnc) {
-      const rncExists = await this.proveedorRepository.findOne({
-        where: { rnc: dto.rnc, empresaId },
-      });
-      if (rncExists) throw new ConflictException(`RNC ${dto.rnc} ya está registrado`);
+    try {
+      await this.proveedorRepository.update(id, dto);
+    } catch (err: any) {
+      if (err?.code === '23505' || err?.message?.includes('duplicate key')) {
+        throw new ConflictException(
+          dto.rnc
+            ? `Ya existe un proveedor con RNC ${dto.rnc} en su empresa`
+            : 'Ya existe un proveedor con ese RNC en su empresa',
+        );
+      }
+      throw err;
     }
 
-    await this.proveedorRepository.update(id, dto);
     this.realtimeService.notify(empresaId, 'proveedor', 'updated', id);
     return this.findOne(id);
   }

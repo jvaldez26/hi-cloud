@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
@@ -13,8 +14,22 @@ import { TenantService } from '../tenant/tenant.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { LimitesService } from '../suscripciones/limites.service';
 
+/** Lanza ConflictException amigable si el error es 23505 (duplicate key) */
+function handleRfcDuplicate(err: any, rfc?: string): never {
+  if (err?.code === '23505' || err?.message?.includes('duplicate key') || err?.message?.includes('ya existe')) {
+    throw new ConflictException(
+      rfc
+        ? `Ya existe un cliente con RNC/Cédula ${rfc} en su empresa`
+        : 'Ya existe un cliente con ese RNC/Cédula en su empresa',
+    );
+  }
+  throw err;
+}
+
 @Injectable()
 export class ClientesService {
+  private readonly logger = new Logger(ClientesService.name);
+
   constructor(
     @InjectRepository(Cliente)
     private clienteRepository: Repository<Cliente>,
@@ -28,17 +43,14 @@ export class ClientesService {
     const empresaId = this.tenantService.getEmpresaId();
     await this.limitesService.verificarLimiteClientes(empresaId);
 
-    if (dto.rfc) {
-      const existing = await this.clienteRepository.findOne({
-        where: { rfc: dto.rfc, empresaId, isActive: true },
-      });
-      if (existing) throw new ConflictException(`RNC/Cédula ${dto.rfc} ya está registrado en esta empresa`);
-    }
-
     const cliente = this.clienteRepository.create({ ...dto, empresaId });
-    const saved   = await this.clienteRepository.save(cliente);
-    this.realtimeService.notify(empresaId, 'cliente', 'created', saved.id);
-    return saved;
+    try {
+      const saved = await this.clienteRepository.save(cliente);
+      this.realtimeService.notify(empresaId, 'cliente', 'created', saved.id);
+      return saved;
+    } catch (err: unknown) {
+      handleRfcDuplicate(err, dto.rfc);
+    }
   }
 
   async findAll(pagination: PaginationDto) {
@@ -89,16 +101,14 @@ export class ClientesService {
 
   async update(id: number, dto: UpdateClienteDto) {
     const empresaId = this.tenantService.getEmpresaId();
-    const cliente   = await this.findOne(id);
+    await this.findOne(id); // valida que existe en este tenant
 
-    if (dto.rfc && dto.rfc !== cliente.rfc) {
-      const rfcExists = await this.clienteRepository.findOne({
-        where: { rfc: dto.rfc, empresaId, isActive: true },
-      });
-      if (rfcExists) throw new ConflictException(`RNC/Cédula ${dto.rfc} ya está registrado`);
+    try {
+      await this.clienteRepository.update(id, dto);
+    } catch (err: unknown) {
+      handleRfcDuplicate(err, dto.rfc);
     }
 
-    await this.clienteRepository.update(id, dto);
     this.realtimeService.notify(empresaId, 'cliente', 'updated', id);
     return this.findOne(id);
   }
