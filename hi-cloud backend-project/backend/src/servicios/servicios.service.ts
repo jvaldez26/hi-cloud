@@ -2,7 +2,9 @@ import {
   Injectable, NotFoundException, BadRequestException, Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
+import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import {
   OrdenServicio, OrdenServicioDetalle, EstadoOrden,
 } from './entities/orden-servicio.entity';
@@ -52,17 +54,20 @@ export class ServiciosService {
     @InjectRepository(FacturaDetalle)
     private factDetalleRepo: Repository<FacturaDetalle>,
     private tenantService: TenantService,
+    @InjectDataSource() private dataSource: DataSource,
   ) {}
 
   private async generarNumero(): Promise<string> {
     const empresaId = this.tenantService.getEmpresaId();
-    const res = await this.ordenRepo
-      .createQueryBuilder('o')
-      .select(`MAX(CASE WHEN o.numero ~ '^SRV-[0-9]+$' THEN CAST(SUBSTRING(o.numero FROM 5) AS INTEGER) ELSE 100 END)`, 'maxNum')
-      .where('o.empresaId = :eid', { eid: empresaId })
-      .andWhere('o.isActive = :a', { a: true })
-      .getRawOne<{ maxNum: number | null }>();
-    return `SRV-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
+    return generarNumeroSecuencial(
+      this.dataSource,
+      'ordenes_servicio',
+      'numero',
+      '^SRV-[0-9]+$',
+      'SRV-',
+      5,
+      empresaId,
+    );
   }
 
   async crear(dto: CreateOrdenDto, usuario: User): Promise<OrdenServicio> {

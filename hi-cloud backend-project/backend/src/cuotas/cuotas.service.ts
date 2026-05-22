@@ -1,11 +1,13 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { PlanPago, EstadoPlanPago } from './entities/plan-pago.entity';
 import { Cuota, EstadoCuota } from './entities/cuota.entity';
 import { TenantService } from '../tenant/tenant.service';
 import dayjs from 'dayjs';
 import { fechaHoyRD } from '../common/utils/fecha-local.util';
+import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 
 interface CreatePlanDto {
   clienteId:           number;
@@ -25,18 +27,15 @@ export class CuotasService {
   constructor(
     @InjectRepository(PlanPago) private planRepo:  Repository<PlanPago>,
     @InjectRepository(Cuota)    private cuotaRepo: Repository<Cuota>,
+    @InjectDataSource()         private ds:        DataSource,
     private tenantSvc: TenantService,
   ) {}
 
   private async generarNumero(): Promise<string> {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const res = await this.planRepo
-      .createQueryBuilder('p')
-      .select(`MAX(CASE WHEN p.numero ~ '^PP-[0-9]+$' THEN CAST(SUBSTRING(p.numero FROM 4) AS INTEGER) ELSE 100 END)`, 'maxNum')
-      .where('p.empresaId = :eid', { eid: empresaId })
-      .andWhere('p.isActive = :a', { a: true })
-      .getRawOne<{ maxNum: number | null }>();
-    return `PP-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
+    return generarNumeroSecuencial(
+      this.ds, 'planes_pago', 'numero', '^PP-[0-9]+$', 'PP-', 1, empresaId,
+    );
   }
 
   // ─── Calcular cuota mensual (fórmula de amortización francesa) ───────────────

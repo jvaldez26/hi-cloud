@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { Repository, DataSource } from 'typeorm';
+import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import { Licitacion, EstadoLicitacion } from './entities/licitacion.entity';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { TenantService } from '../tenant/tenant.service';
@@ -10,17 +12,20 @@ export class LicitacionesService {
   constructor(
     @InjectRepository(Licitacion) private repo: Repository<Licitacion>,
     private tenantService: TenantService,
+    @InjectDataSource() private dataSource: DataSource,
   ) {}
 
   private async generarNumero(): Promise<string> {
     const empresaId = this.tenantService.getEmpresaId();
-    const res = await this.repo
-      .createQueryBuilder('l')
-      .select(`MAX(CASE WHEN l.numero ~ '^LIC-[0-9]+$' THEN CAST(SUBSTRING(l.numero FROM 5) AS INTEGER) ELSE 100 END)`, 'maxNum')
-      .where('l.empresaId = :eid', { eid: empresaId })
-      .andWhere('l.isActive = :a', { a: true })
-      .getRawOne<{ maxNum: number | null }>();
-    return `LIC-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
+    return generarNumeroSecuencial(
+      this.dataSource,
+      'licitaciones',
+      'numero',
+      '^LIC-[0-9]+$',
+      'LIC-',
+      5,
+      empresaId,
+    );
   }
 
   async crear(dto: any) {

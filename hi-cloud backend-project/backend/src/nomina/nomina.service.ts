@@ -5,7 +5,9 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { Repository, DataSource } from 'typeorm';
+import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import { Empleado, EstadoEmpleado, TipoContrato } from './entities/empleado.entity';
 import { NominaPeriodo, EstadoNomina } from './entities/nomina-periodo.entity';
 import { NominaLinea } from './entities/nomina-linea.entity';
@@ -38,6 +40,7 @@ export class NominaService {
     private asientosService:  AsientosAutomaticosService,
     private tesoreriaService: TesoreriaService,
     private tenantService:    TenantService,
+    @InjectDataSource() private dataSource: DataSource,
   ) {}
 
   // ──────────────────────────────────────────────────────────────────
@@ -203,8 +206,15 @@ export class NominaService {
 
   private async generarNumeroContrato(): Promise<string> {
     const empresaId = this.tenantService.getEmpresaId();
-    const total = await this.contratoRepository.count({ where: { empresaId } });
-    return `CONT-${String(total + 1).padStart(4, '0')}`;
+    return generarNumeroSecuencial(
+      this.dataSource,
+      'contratos_laborales',
+      'numero',
+      '^CONT-[0-9]+$',
+      'CONT-',
+      4,
+      empresaId,
+    );
   }
 
   async getContratos(empleadoId?: number) {

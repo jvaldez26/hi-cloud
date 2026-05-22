@@ -1,10 +1,12 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { DepositoBancario, TipoDeposito } from './entities/deposito-bancario.entity';
 import { CuentaBancaria } from '../bancos/entities/cuenta-bancaria.entity';
 import { TenantService } from '../tenant/tenant.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
+import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 
 interface CreateDepositoDto {
   cuentaId:          number;
@@ -24,18 +26,15 @@ export class DepositosService {
   constructor(
     @InjectRepository(DepositoBancario) private depoRepo:   Repository<DepositoBancario>,
     @InjectRepository(CuentaBancaria)   private cuentaRepo: Repository<CuentaBancaria>,
+    @InjectDataSource()                 private ds:         DataSource,
     private tenantSvc: TenantService,
   ) {}
 
   private async generarNumero(): Promise<string> {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const res = await this.depoRepo
-      .createQueryBuilder('d')
-      .select(`MAX(CASE WHEN d.numero ~ '^DEP-[0-9]+$' THEN CAST(SUBSTRING(d.numero FROM 5) AS INTEGER) ELSE 100 END)`, 'maxNum')
-      .where('d.empresaId = :eid', { eid: empresaId })
-      .andWhere('d.isActive = :a', { a: true })
-      .getRawOne<{ maxNum: number | null }>();
-    return `DEP-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
+    return generarNumeroSecuencial(
+      this.ds, 'depositos_bancarios', 'numero', '^DEP-[0-9]+$', 'DEP-', 1, empresaId,
+    );
   }
 
   async crear(dto: CreateDepositoDto, usuarioId: number) {

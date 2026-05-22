@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { Repository, DataSource } from 'typeorm';
+import { generarNumeroSecuencial } from '../../common/utils/generar-numero.util';
 import { CuentaContable } from '../entities/cuenta-contable.entity';
 import { AsientoContable, TipoOrigenAsiento, EstadoAsiento } from '../entities/asiento-contable.entity';
 import { AsientoLinea } from '../entities/asiento-linea.entity';
@@ -37,6 +39,7 @@ export class AsientosAutomaticosService {
     @InjectRepository(AsientoLinea)
     private lineaRepository:   Repository<AsientoLinea>,
     private tenantService:     TenantService,
+    @InjectDataSource() private dataSource: DataSource,
   ) {}
 
   private get eid(): number | undefined {
@@ -54,12 +57,15 @@ export class AsientosAutomaticosService {
   }
 
   private async generarNumero(empresaId?: number): Promise<string> {
-    const qb = this.asientoRepository.createQueryBuilder('a')
-      .select(`MAX(CASE WHEN a.numero ~ '^ASI-[0-9]+$' THEN CAST(SUBSTRING(a.numero FROM 5) AS INTEGER) ELSE 100 END)`, 'maxNum')
-      .where('a.isActive = :active', { active: true });
-    if (empresaId) qb.andWhere('a.empresaId = :eid', { eid: empresaId });
-    const res = await qb.getRawOne<{ maxNum: number | null }>();
-    return `ASI-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
+    return generarNumeroSecuencial(
+      this.dataSource,
+      'asientos_contables',
+      'numero',
+      '^ASI-[0-9]+$',
+      'ASI-',
+      5,
+      empresaId ?? 0,
+    );
   }
 
   private async crearAsientoContabilizado(params: {

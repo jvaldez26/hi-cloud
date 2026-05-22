@@ -29,15 +29,21 @@ El problema era el **lado de consumo**: los sistemas que debían leer y actuar s
 | Toggle Vale/cortesía | ❌ No aparecía en el POS (btn faltante) | ✅ Botón agregado, visible si `posVale=true` | POSPage.tsx |
 | Campo Requerir cédula monto | ❌ Hardcoded `>= 250.000` | ✅ Lee `posCedulaMonto` de configuración | POSPage.tsx |
 | Toggle Imprimir ticket automáticamente | ❌ Print siempre manual | ✅ Auto-dispara `window.print()` si `posImpresionAuto=true` | POSPage.tsx |
-| Toggle Propina activada | ❌ Sin UI de propina en POS | 📋 Pendiente — requiere nuevo campo en checkout + lógica de cálculo de totales |
-| Toggle Modo contingencia | ❌ Solo alert visual en Config | 📋 Pendiente — requiere enviar flag al backend y que el ECF service lo respete inmediatamente |
-| Toggle Pedir confirmación antes de anular | ❌ Anulación no existe en POS (solo en módulo Facturas) | 📋 Documentado — anulación desde POS no está implementada; aplica en módulo /facturas |
+| Toggle Propina activada | ❌ Sin UI de propina en POS | ✅ UI en modal de cobro (%, fijo, botones rápidos), recibo y ModalExito muestran propina | POSPage.tsx |
+| Toggle Modo contingencia | ❌ Solo alert visual en Config | ✅ POS pasa `modoContingencia` al backend; ECF se guarda en CONTINGENCIA sin llamar MSeller | POSPage.tsx + EmitirECFUseCase |
+| Toggle Pedir confirmación antes de anular | ❌ No conectado | ✅ Panel de facturas del POS respeta `posConfirmarAnulacion`; si false, anula directo | POSPage.tsx |
 
 ### Notas técnicas
 
-**Métodos de pago**: La lógica de filtrado usa `posConf[flag] !== false` para los métodos que son `true` por defecto (efectivo, tarjeta, transferencia) y `posConf[flag] === true` para los que son `false` por defecto (cheque, vale). El tipo `MetodoPago` fue extendido con `'cheque' | 'vale'`.
+**Métodos de pago**: La lógica de filtrado usa `posConf[flag] !== false` para los métodos `true` por defecto (efectivo, tarjeta, transferencia) y `posConf[flag] === true` para los `false` por defecto (cheque, vale). El tipo `MetodoPago` fue extendido con `'cheque' | 'vale'`.
 
-**Auto-impresión**: Se implementó como un `useEffect` en `ModalExito` que escucha el cambio de `sale.folio` y `autoImprimir`. Usa un delay de 300ms para garantizar que el DOM del recibo esté renderizado antes de `window.print()`.
+**Auto-impresión**: Se implementó como un `useEffect` en `ModalExito` con delay de 300ms para que el DOM del recibo esté listo antes de `window.print()`.
+
+**Propina**: Estado `propinaValor`/`propinaTipo` + cálculo `propinaMontoCalc` + `totalAPagar`. UI: sección ámbar en el modal de cobro con toggle %/fijo, botones 5/10/15/18%. El recibo y ModalExito muestran la propina como línea separada. El e-CF solo lleva los items originales (sin propina).
+
+**Modo contingencia**: `EmitirDesdePos` DTO acepta `modoContingencia: boolean`. El `EmitirECFUseCase` crea el ECF con `estadoDGII=CONTINGENCIA` y retorna sin llamar MSeller. El cron de rescate (cada 30 min) lo reintenta automáticamente.
+
+**Confirmar antes de anular**: El panel `POSPanelFacturas` acepta prop `confirmarAnulacion`. Si `false` → el botón 🚫 llama `anularMutation` directamente; si `true` → el flujo de doble confirmación (setAnulando → botón Confirmar).
 
 ---
 

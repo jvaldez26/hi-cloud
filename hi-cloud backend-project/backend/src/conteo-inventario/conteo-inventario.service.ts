@@ -5,6 +5,7 @@ import { ConteoInventario, EstadoConteo } from './entities/conteo-inventario.ent
 import { LineaConteo } from './entities/linea-conteo.entity';
 import { Producto } from '../productos/entities/producto.entity';
 import { TenantService } from '../tenant/tenant.service';
+import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 
 interface CreateConteoDto {
   nombre:      string;
@@ -32,13 +33,9 @@ export class ConteoInventarioService {
 
   private async generarNumero(): Promise<string> {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const res = await this.conteoRepo
-      .createQueryBuilder('c')
-      .select(`MAX(CASE WHEN c.numero ~ '^CNT-[0-9]+$' THEN CAST(SUBSTRING(c.numero FROM 5) AS INTEGER) ELSE 100 END)`, 'maxNum')
-      .where('c.empresaId = :eid', { eid: empresaId })
-      .andWhere('c.isActive = :a', { a: true })
-      .getRawOne<{ maxNum: number | null }>();
-    return `CNT-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
+    return generarNumeroSecuencial(
+      this.dataSource, 'conteos_inventario', 'numero', '^CNT-[0-9]+$', 'CNT-', 1, empresaId,
+    );
   }
 
   async crear(dto: CreateConteoDto, usuarioId: number) {

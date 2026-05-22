@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, LessThanOrEqual } from 'typeorm';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { Repository, Between, LessThanOrEqual, DataSource } from 'typeorm';
 import { Cron } from '@nestjs/schedule';
 import {
   OrdenMantenimiento, TipoMantenimiento, PrioridadMantenimiento,
@@ -9,26 +10,24 @@ import {
 import { ProgramaMantenimiento } from './entities/programa-mantenimiento.entity';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { TenantService } from '../tenant/tenant.service';
+import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 
 @Injectable()
 export class MantenimientoService {
   private readonly logger = new Logger(MantenimientoService.name);
 
   constructor(
-    @InjectRepository(OrdenMantenimiento)  private ordenRepo:   Repository<OrdenMantenimiento>,
-    @InjectRepository(ProgramaMantenimiento) private progRepo:  Repository<ProgramaMantenimiento>,
+    @InjectRepository(OrdenMantenimiento)    private ordenRepo:   Repository<OrdenMantenimiento>,
+    @InjectRepository(ProgramaMantenimiento) private progRepo:    Repository<ProgramaMantenimiento>,
+    @InjectDataSource()                      private ds:          DataSource,
     private tenantService: TenantService,
   ) {}
 
   private async generarNumero(): Promise<string> {
     const empresaId = this.tenantService.getEmpresaId();
-    const res = await this.ordenRepo
-      .createQueryBuilder('o')
-      .select(`MAX(CASE WHEN o.numero ~ '^MNT-[0-9]+$' THEN CAST(SUBSTRING(o.numero FROM 5) AS INTEGER) ELSE 100 END)`, 'maxNum')
-      .where('o.empresaId = :eid', { eid: empresaId })
-      .andWhere('o.isActive = :a', { a: true })
-      .getRawOne<{ maxNum: number | null }>();
-    return `MNT-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
+    return generarNumeroSecuencial(
+      this.ds, 'ordenes_mantenimiento', 'numero', '^MNT-[0-9]+$', 'MNT-', 1, empresaId,
+    );
   }
 
   // ── Órdenes de mantenimiento ──────────────────────────────────────────────

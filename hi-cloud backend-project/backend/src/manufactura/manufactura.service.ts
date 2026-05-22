@@ -7,6 +7,7 @@ import { OrdenProduccion, EstadoOrdenProduccion } from './entities/orden-producc
 import { Producto } from '../productos/entities/producto.entity';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { TenantService } from '../tenant/tenant.service';
+import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 
 @Injectable()
 export class ManufacturaService {
@@ -23,13 +24,9 @@ export class ManufacturaService {
 
   private async generarNumeroOrden(): Promise<string> {
     const empresaId = this.tenantService.getEmpresaId();
-    const res = await this.ordenRepo
-      .createQueryBuilder('o')
-      .select(`MAX(CASE WHEN o.numero ~ '^OP-[0-9]+$' THEN CAST(SUBSTRING(o.numero FROM 4) AS INTEGER) ELSE 100 END)`, 'maxNum')
-      .where('o.empresaId = :eid', { eid: empresaId })
-      .andWhere('o.isActive = :a', { a: true })
-      .getRawOne<{ maxNum: number | null }>();
-    return `OP-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
+    return generarNumeroSecuencial(
+      this.dataSource, 'ordenes_produccion', 'numero', '^OP-[0-9]+$', 'OP-', 1, empresaId,
+    );
   }
 
   // ── Listas de Materiales (BOM) ────────────────────────────────────────────
