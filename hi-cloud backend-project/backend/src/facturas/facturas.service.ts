@@ -139,12 +139,25 @@ export class FacturasService {
       fechaVencimiento: fechaVenc,
     });
 
-    const savedFactura = await this.facturaRepository.save(factura as any) as Factura;
+    let savedFactura: Factura;
+    try {
+      savedFactura = await this.facturaRepository.save(factura as any) as Factura;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`[Factura.create] save() falló — folio=${folio} empresaId=${empresaId}: ${msg}`);
+      throw err; // re-throw para que el filtro HTTP lo procese
+    }
 
     const savedDetalles = this.detalleRepository.create(
       detalles.map((d) => ({ ...d, facturaId: savedFactura.id })),
     );
-    await this.detalleRepository.save(savedDetalles);
+    try {
+      await this.detalleRepository.save(savedDetalles);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`[Factura.create] detalles.save() falló — facturaId=${savedFactura.id}: ${msg}`);
+      throw err;
+    }
 
     this.realtimeService.notify(empresaId, 'factura', 'created', savedFactura.id);
     return this.findOne(savedFactura.id);
