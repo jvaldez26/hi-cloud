@@ -1,14 +1,14 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Card, Row, Col, Button, Table, Tag, Typography, Statistic,
   Modal, Form, Input, InputNumber, Select, Space, Popconfirm,
   message, Tabs, Steps, Progress, Badge, Alert, Descriptions,
-  Drawer,
+  Drawer, theme,
 } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, EyeOutlined, SendOutlined,
   CheckCircleOutlined, PlayCircleOutlined, InboxOutlined,
-  NodeIndexOutlined, TeamOutlined, WarningOutlined,
+  NodeIndexOutlined, TeamOutlined, WarningOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
@@ -98,8 +98,10 @@ function DashboardTab() {
 
 // ── Tab Ubicaciones ────────────────────────────────────────────────────────────
 function UbicacionesTab() {
+  const { token } = theme.useToken();
   const [open, setOpen] = useState(false);
   const [almacenFiltro, setAlmacenFiltro] = useState<number | undefined>();
+  const [search, setSearch] = useState('');
   const [form] = Form.useForm();
   const qc = useQueryClient();
 
@@ -107,6 +109,13 @@ function UbicacionesTab() {
     queryKey: ['wms-ubicaciones', almacenFiltro],
     queryFn: () => wmsApi.ubicaciones(almacenFiltro),
   });
+
+  const ubicsFiltradas = useMemo(() =>
+    (ubics ?? []).filter((i: any) =>
+      String(i.codigo   ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      String(i.pasillo  ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      String(i.tipo     ?? '').toLowerCase().includes(search.toLowerCase())
+    ), [ubics, search]);
 
   const crearMut = useMutation({
     mutationFn: wmsApi.crearUbicacion,
@@ -137,11 +146,23 @@ function UbicacionesTab() {
 
   return (
     <>
-      <Row justify="space-between" style={{ marginBottom: 12 }}>
-        <Col><InputNumber placeholder="Filtrar por almacén ID" value={almacenFiltro} onChange={v => setAlmacenFiltro(v ?? undefined)} style={{ width: 200 }} /></Col>
+      <Row justify="space-between" align="middle" style={{ marginBottom: 12 }}>
+        <Col>
+          <Space>
+            <InputNumber placeholder="Filtrar por almacén ID" value={almacenFiltro} onChange={v => setAlmacenFiltro(v ?? undefined)} style={{ width: 200 }} />
+            <Input
+              placeholder="Buscar por código o ubicación..."
+              prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              allowClear
+              style={{ width: 220 }}
+            />
+          </Space>
+        </Col>
         <Col><Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setOpen(true); }}>Nueva ubicación</Button></Col>
       </Row>
-      <Table columns={cols} dataSource={ubics ?? []} rowKey="id" loading={isLoading} size="small"
+      <Table columns={cols} dataSource={ubicsFiltradas} rowKey="id" loading={isLoading} size="small"
         scroll={{ x: 'max-content' }} pagination={{ pageSize: 20 }} />
 
       <Modal title="Nueva ubicación" open={open} onCancel={() => { setOpen(false); form.resetFields(); }} footer={null} width={560}>
@@ -169,8 +190,10 @@ function UbicacionesTab() {
 
 // ── Tab Órdenes de Picking ─────────────────────────────────────────────────────
 function OrdenesPickingTab() {
+  const { token } = theme.useToken();
   const [page, setPage]           = useState(1);
   const [estadoF, setEstadoF]     = useState<string | undefined>();
+  const [search, setSearch]       = useState('');
   const [openCreate, setOpenCreate] = useState(false);
   const [detalle, setDetalle]     = useState<any>(null);
   const [asignarModal, setAsignarModal] = useState<any>(null);
@@ -181,6 +204,14 @@ function OrdenesPickingTab() {
     queryKey: ['wms-ordenes', page, estadoF],
     queryFn: () => wmsApi.ordenes(page, estadoF),
   });
+
+  const ordenesFiltradas = useMemo(() =>
+    (data?.data ?? []).filter((i: any) =>
+      String(i.numero       ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      String(i.destinatario ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      String(i.operador?.nombre ?? '').toLowerCase().includes(search.toLowerCase())
+    ), [data, search]);
+
   const { data: detalleData, isLoading: loadDet } = useQuery({
     queryKey: ['wms-orden', detalle?.id],
     queryFn: () => wmsApi.getRuta(detalle.id),
@@ -222,20 +253,30 @@ function OrdenesPickingTab() {
 
   return (
     <>
-      <Row justify="space-between" style={{ marginBottom: 12 }}>
+      <Row justify="space-between" align="middle" style={{ marginBottom: 12 }}>
         <Col>
-          <Select placeholder="Estado" value={estadoF} onChange={v => { setEstadoF(v); setPage(1); }} allowClear style={{ width: 150 }}>
-            {['borrador','asignada','en_proceso','empacada','despachada','cancelada'].map(e =>
-              <Select.Option key={e} value={e}><Tag color={ESTADO_COLOR[e]}>{e.replace('_',' ').toUpperCase()}</Tag></Select.Option>
-            )}
-          </Select>
+          <Space>
+            <Select placeholder="Estado" value={estadoF} onChange={v => { setEstadoF(v); setPage(1); }} allowClear style={{ width: 150 }}>
+              {['borrador','asignada','en_proceso','empacada','despachada','cancelada'].map(e =>
+                <Select.Option key={e} value={e}><Tag color={ESTADO_COLOR[e]}>{e.replace('_',' ').toUpperCase()}</Tag></Select.Option>
+              )}
+            </Select>
+            <Input
+              placeholder="Buscar por código o ubicación..."
+              prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(1); }}
+              allowClear
+              style={{ width: 220 }}
+            />
+          </Space>
         </Col>
         <Col>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setOpenCreate(true); }}>Nueva orden</Button>
         </Col>
       </Row>
 
-      <Table columns={cols} dataSource={data?.data ?? []} rowKey="id" loading={isLoading} size="small"
+      <Table columns={cols} dataSource={ordenesFiltradas} rowKey="id" loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
         pagination={{ total: data?.meta?.total, pageSize: 20, current: page, onChange: setPage, showSizeChanger: false }} />
 

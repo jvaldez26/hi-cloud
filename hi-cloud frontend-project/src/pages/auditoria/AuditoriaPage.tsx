@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { usePlanGuard } from '../../hooks/usePlan';
 import ModuloBloqueado from '../../components/ui/ModuloBloqueado';
 import { Table, Card, Row, Col, Typography, Tag, Select,
-         Space, Badge, Tabs, Input } from 'antd';
+         Space, Badge, Tabs, Input, theme } from 'antd';
 import { SearchOutlined, WarningOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -25,14 +25,22 @@ const accionIcon: Record<string, string> = {
 };
 
 function LogsTab({ filtroExitoso }: { filtroExitoso?: boolean }) {
+  const { token } = theme.useToken();
   const [page,   setPage]   = useState(1);
   const [accion, setAccion] = useState<string | undefined>();
   const [modulo, setModulo] = useState<string | undefined>();
+  const [search, setSearch] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['audit-logs', page, accion, modulo, filtroExitoso],
     queryFn:  () => auditoriaApi.logs(page, 20, accion, modulo, filtroExitoso),
   });
+
+  const logsfiltrados = useMemo(() =>
+    (data?.data ?? []).filter((i: any) =>
+      String(i.userName ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      String(i.descripcion ?? '').toLowerCase().includes(search.toLowerCase())
+    ), [data, search]);
 
   const COLS_DEF = [
     { key: 'createdAt',   label: 'Fecha',       defaultVisible: true  },
@@ -78,10 +86,20 @@ function LogsTab({ filtroExitoso }: { filtroExitoso?: boolean }) {
             onChange={e => setModulo(e.target.value || undefined)} allowClear />
         </Col>
         <Col>
+          <Input
+            placeholder="Buscar por usuario o acción..."
+            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+            value={search}
+            onChange={e => { setSearch(e.target.value); setPage(1); }}
+            allowClear
+            style={{ width: 220 }}
+          />
+        </Col>
+        <Col>
           <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
         </Col>
       </Row>
-      <Table columns={filterColumns(cols)} dataSource={data?.data ?? []} rowKey="id" loading={isLoading} size="small"
+      <Table columns={filterColumns(cols)} dataSource={logsfiltrados} rowKey="id" loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
         pagination={{ total: data?.meta?.total, pageSize: 20, current: page, onChange: setPage, showSizeChanger: false }} />
     </>

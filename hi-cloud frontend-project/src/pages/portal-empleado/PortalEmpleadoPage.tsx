@@ -6,9 +6,10 @@ import {
 import {
   UserOutlined, DollarOutlined, CalendarOutlined, FileTextOutlined,
   DownloadOutlined, PlusOutlined, SendOutlined, ClockCircleOutlined,
+  SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import dayjs from 'dayjs';
 import api from '../../api/client';
 import { useAuthStore } from '../../store/auth.store';
@@ -112,9 +113,26 @@ function TabPerfil({ emp, calc }: { emp: any; calc: any }) {
 // ── Tab: Mis Recibos ──────────────────────────────────────────────────────────
 function TabRecibos({ empleadoId, nominas }: { empleadoId: number; nominas: any[] }) {
   const { token } = theme.useToken();
+  const [search, setSearch] = useState('');
+  const nominasFiltradas = useMemo(() =>
+    nominas.filter(i =>
+      String(i.periodo ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      String(i.estado  ?? '').toLowerCase().includes(search.toLowerCase())
+    ), [nominas, search]);
   return (
+    <>
+      <div style={{ marginBottom: 12 }}>
+        <Input
+          placeholder="Buscar..."
+          prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          allowClear
+          style={{ width: 220 }}
+        />
+      </div>
     <Table
-      dataSource={nominas}
+      dataSource={nominasFiltradas}
       rowKey="periodoId"
       size="middle"
       pagination={{ pageSize: 12 }}
@@ -138,6 +156,7 @@ function TabRecibos({ empleadoId, nominas }: { empleadoId: number; nominas: any[
         },
       ]}
     />
+    </>
   );
 }
 
@@ -237,6 +256,8 @@ function TabVacaciones({ usuarioId, vac }: { usuarioId: number; vac: any }) {
 
 // ── Tab: Solicitudes ──────────────────────────────────────────────────────────
 function TabSolicitudes() {
+  const { token } = theme.useToken();
+  const [search, setSearch] = useState('');
   const { data, isLoading } = useQuery<any>({
     queryKey: ['portal-solicitudes'],
     queryFn:  () => api.get('/portal-empleado/mis-solicitudes').then(r => r.data?.data ?? r.data),
@@ -244,10 +265,26 @@ function TabSolicitudes() {
   });
 
   const solicitudes = data?.solicitudes ?? [];
+  const solicitudesFiltradas = useMemo(() =>
+    solicitudes.filter((i: any) =>
+      String(i.motivo ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      String(i.estado ?? '').toLowerCase().includes(search.toLowerCase())
+    ), [solicitudes, search]);
 
   return (
+    <>
+      <div style={{ marginBottom: 12 }}>
+        <Input
+          placeholder="Buscar..."
+          prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          allowClear
+          style={{ width: 220 }}
+        />
+      </div>
     <Table
-      dataSource={solicitudes}
+      dataSource={solicitudesFiltradas}
       rowKey="id"
       loading={isLoading}
       size="middle"
@@ -266,6 +303,7 @@ function TabSolicitudes() {
       ]}
       locale={{ emptyText: 'No tienes solicitudes registradas' }}
     />
+    </>
   );
 }
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -10,7 +10,7 @@ import {
 import {
   BankOutlined, PlusOutlined, UserAddOutlined, TeamOutlined,
   SettingOutlined, MailOutlined, SwapOutlined,
-  CheckCircleOutlined,
+  CheckCircleOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
@@ -46,6 +46,8 @@ export default function EmpresasPage() {
   const [modalInvitar,  setModalInvitar]  = useState<number | null>(null);
   const [formCrear]   = Form.useForm();
   const [formInvitar] = Form.useForm();
+  const [searchEmpresas, setSearchEmpresas] = useState('');
+  const [searchMiembros, setSearchMiembros] = useState('');
 
   const { data: empresasData = [] } = useQuery<any[]>({
     queryKey: ['mis-empresas'],
@@ -116,6 +118,19 @@ export default function EmpresasPage() {
 
   const empresaActualData = empresasData.find((e: any) => e.empresaId === empresaActual);
 
+  const empresasFiltradas = useMemo(() =>
+    empresasData.filter((e: any) =>
+      String(e.nombre ?? '').toLowerCase().includes(searchEmpresas.toLowerCase()) ||
+      String(e.rnc    ?? '').toLowerCase().includes(searchEmpresas.toLowerCase())
+    ), [empresasData, searchEmpresas]);
+
+  const miembrosFiltrados = useMemo(() =>
+    usuarios.filter((u: any) =>
+      String(u.user?.nombre ?? '').toLowerCase().includes(searchMiembros.toLowerCase()) ||
+      String(u.user?.email  ?? '').toLowerCase().includes(searchMiembros.toLowerCase()) ||
+      String(u.rol          ?? '').toLowerCase().includes(searchMiembros.toLowerCase())
+    ), [usuarios, searchMiembros]);
+
   return (
     <div style={{ padding: '24px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
@@ -183,7 +198,15 @@ export default function EmpresasPage() {
         {/* ── Lista de empresas ────────────────────────────────────────────── */}
         <Col xs={24} lg={10}>
           <Card title="Todas mis empresas" bordered={false} style={{ borderRadius: 12 }}>
-            {empresasData.map((e: any) => (
+            <Input
+              placeholder="Buscar por nombre o RNC..."
+              prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+              value={searchEmpresas}
+              onChange={e => setSearchEmpresas(e.target.value)}
+              allowClear
+              style={{ width: 220, marginBottom: 12 }}
+            />
+            {empresasFiltradas.map((e: any) => (
               <div
                 key={e.empresaId}
                 style={{
@@ -211,7 +234,7 @@ export default function EmpresasPage() {
                 }
               </div>
             ))}
-            {empresasData.length === 0 && (
+            {empresasFiltradas.length === 0 && (
               <div style={{ textAlign: 'center', padding: 32 }}>
                 <BankOutlined style={{ fontSize: 32, color: '#d9d9d9', marginBottom: 8 }} />
                 <div><Text type="secondary">No tienes empresas. ¡Crea la primera!</Text></div>
@@ -253,8 +276,17 @@ export default function EmpresasPage() {
                   key: 'miembros',
                   label: `Miembros (${usuarios.length})`,
                   children: (
+                    <>
+                    <Input
+                      placeholder="Buscar por nombre o RNC..."
+                      prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+                      value={searchMiembros}
+                      onChange={e => setSearchMiembros(e.target.value)}
+                      allowClear
+                      style={{ width: 220, marginBottom: 12 }}
+                    />
                     <Table
-                      dataSource={usuarios}
+                      dataSource={miembrosFiltrados}
                       rowKey="id"
                       size="small"
         scroll={{ x: 'max-content' }}
@@ -300,6 +332,7 @@ export default function EmpresasPage() {
                         },
                       ])}
                     />
+                    </>
                   ),
                 },
                 {

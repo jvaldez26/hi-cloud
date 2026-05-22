@@ -1,12 +1,12 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Typography, Select, Table, Tag, Statistic,
-  Button, Space, Tabs, Alert, Divider, Progress,
+  Button, Space, Tabs, Alert, Divider, Progress, Input,
 } from 'antd';
-import { DownloadOutlined, TeamOutlined, SafetyCertificateOutlined, FileExcelOutlined } from '@ant-design/icons';
+import { DownloadOutlined, TeamOutlined, SafetyCertificateOutlined, FileExcelOutlined, SearchOutlined } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -49,9 +49,17 @@ export default function TSSPage() {
   const { token }       = theme.useToken();
   const [mes,  setMes]  = useState(dayjs().month() + 1);
   const [anio, setAnio] = useState(dayjs().year());
+  const [search, setSearch] = useState('');
 
   const { data,       isLoading }  = useQuery({ queryKey: ['tss-mensual', mes, anio], queryFn: () => tssApi.mensual(mes, anio) });
   const { data: anualData }        = useQuery({ queryKey: ['tss-anual', anio],         queryFn: () => tssApi.anual(anio) });
+
+  const filasFiltradas = useMemo(() =>
+    (data?.filas ?? []).filter((i: any) =>
+      String(i.nombre ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      String(i.cedula ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      String(i.cargo  ?? '').toLowerCase().includes(search.toLowerCase())
+    ), [data, search]);
 
   const COLS_DEF = [
     { key: 'cedula',        label: 'Cédula',        defaultVisible: false },
@@ -110,6 +118,14 @@ export default function TSSPage() {
             <Select value={mes} onChange={setMes} style={{ width: 130 }} options={MESES} />
             <Select value={anio} onChange={setAnio} style={{ width: 90 }}
               options={[2024, 2025, 2026].map(y => ({ value: y, label: y }))} />
+            <Input
+              placeholder="Buscar por empleado o período..."
+              prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              allowClear
+              style={{ width: 220 }}
+            />
             <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <RefreshByKeyButton queryKey={['tss']} />
             <VideoTutorialButton />
@@ -199,7 +215,7 @@ export default function TSSPage() {
                   >
                     <Table
                       columns={cols as any}
-                      dataSource={data.filas}
+                      dataSource={filasFiltradas}
                       rowKey="cedula"
                       loading={isLoading}
                       size="small"
