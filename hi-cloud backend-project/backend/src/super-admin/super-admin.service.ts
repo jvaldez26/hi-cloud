@@ -229,109 +229,77 @@ export class SuperAdminService {
     if (!u) throw new NotFoundException(`Usuario #${userId} no encontrado`);
     if (u.role === 'super_admin') throw new ForbiddenException('No puedes eliminar a otro Super Admin');
 
-    this.logger.warn(`[HARD DELETE] Usuario #${userId} (${u.email}) eliminado permanentemente por super_admin #${superAdminId}`);
-
-    // ── Mapa completo de tablas que referencian users.id ──────────────────────
-    //
-    // IMPORTANTE: algunas entidades usan "userId" y otras "usuarioId".
-    // Usar el nombre incorrecto genera 0 filas afectadas sin error, dejando
-    // la FK viva y causando que el DELETE final falle con 23503.
-    //
-    // Auditado contra todos los *.entity.ts del proyecto (2026-05-22).
-    // ─────────────────────────────────────────────────────────────────────────
-
-    /** Tablas que se ELIMINAN físicamente (sesión/vinculación sin valor histórico) */
-    const TABLAS_BORRAR: string[] = [
-      'usuario_empresa',   // FK column: userId
-      'refresh_tokens',    // FK column: userId
-    ];
-
-    /** Tablas con columna "userId" que se ponen a NULL (preservar histórico) */
-    const NULLIFY_USER_ID: string[] = [
-      'activos_fijos',
-      'depreciaciones_activos',
-      'cierres_caja',
-      'movimientos_caja_chica',
-      'comisiones',
-      'asientos_contables',
-      'contratos',
-      'cotizaciones',
-      'cuentas_por_cobrar',
-      'pagos_cobrados',
-      'cuentas_por_pagar',
-      'pagos_realizados',
-      'devoluciones',
-      'secuencias_ecf',
-      'facturas_recurrentes',
-      'gastos',
-      'movimientos_inventario',
-      'nomina_periodos',
-      'conciliaciones_bancarias',
-      'movimientos_bancarios',
-      'reportes_generados',
-      'presupuestos',
-      'precios_especiales',
-      'retenciones_isr',
-      'ordenes_servicio',
-    ];
-
-    /** Tablas con columna "usuarioId" que se ponen a NULL */
-    const NULLIFY_USUARIO_ID: string[] = [
-      'facturas',               // ← era el bug principal
-      'compras',                // ← bug
-      'anticipos_cliente',      // ← bug
-      'recibos_cobro',          // ← bug
-      'conduces',
-      'conteos_inventario',
-      'planes_pago',
-      'depositos_bancarios',
-      'notas_credito',
-      'notas_credito_compras',
-      'notas_debito',
-      'pre_facturas',
-      'proyecto_tiempos',
-    ];
+    this.logger.warn(`[HARD DELETE] Usuario #${userId} (${u.email}) iniciado por super_admin #${superAdminId}`);
 
     await this.ds.transaction(async em => {
-      // 1. Eliminar registros de sesión del usuario
-      for (const t of TABLAS_BORRAR) {
-        await em.query(`DELETE FROM "${t}" WHERE "userId" = $1`, [userId]).catch(() => {});
+
+      // ── 1. Eliminar registros de sesión / vinculación ───────────────────────
+      await em.query(`DELETE FROM usuario_empresa WHERE "userId" = $1`, [userId]).catch(() => {});
+      await em.query(`DELETE FROM refresh_tokens    WHERE "userId" = $1`, [userId]).catch(() => {});
+
+      // ── 2. Detectar TODAS las FK que apuntan a users dinámicamente ──────────
+      //    Así funciona aunque se agreguen nuevas tablas en el futuro.
+      const fkRefs = await em.query<{ table_name: string; column_name: string }[]>(`
+        SELECT DISTINCT
+          tc.table_name,
+          kcu.column_name
+        FROM information_schema.table_constraints AS tc
+        JOIN information_schema.key_column_usage AS kcu
+          ON  tc.constraint_name = kcu.constraint_name
+          AND tc.table_schema    = kcu.table_schema
+        JOIN information_schema.referential_constraints AS rc
+          ON  tc.constraint_name = rc.constraint_name
+        JOIN information_schema.table_constraints AS ccu
+          ON  ccu.constraint_name = rc.unique_constraint_name
+          AND ccu.table_schema    = tc.table_schema
+        WHERE tc.constraint_type = 'FOREIGN KEY'
+          AND ccu.table_name     = 'users'
+          AND tc.table_name  NOT IN ('usuario_empresa', 'refresh_tokens')
+          AND tc.table_schema    = 'public'
+        ORDER BY tc.table_name, kcu.column_name
+      `);
+
+      this.logger.debug(
+        `[HARD DELETE] FK refs encontradas: ${fkRefs.map(r => `${r.table_name}.${r.column_name}`).join(', ')}`,
+      );
+
+      // ── 3. Nullificar cada FK (preservar historial) ─────────────────────────
+      for (const { table_name, column_name } of fkRefs) {
+        await em.query(
+          `UPDATE "${table_name}" SET "${column_name}" = NULL WHERE "${column_name}" = $1`,
+          [userId],
+        ).catch((err: any) => {
+          this.logger.warn(`[HARD DELETE] No se pudo nullificar ${table_name}.${column_name}: ${err.message}`);
+        });
       }
 
-      // 2. Nullificar userId en registros históricos
-      for (const t of NULLIFY_USER_ID) {
-        await em.query(`UPDATE "${t}" SET "userId" = NULL WHERE "userId" = $1`, [userId]).catch(() => {});
-      }
-
-      // 3. Nullificar usuarioId en registros históricos
-      for (const t of NULLIFY_USUARIO_ID) {
-        await em.query(`UPDATE "${t}" SET "usuarioId" = NULL WHERE "usuarioId" = $1`, [userId]).catch(() => {});
-      }
-
-      // 4. Limpiar pos_supervisor_log (sin FK formal, solo limpieza de datos PII)
+      // ── 4. Limpiar tablas sin FK formal (datos PII) ─────────────────────────
       await em.query(
-        `UPDATE pos_supervisor_log SET "cajeroId" = NULL, "supervisorId" = NULL WHERE "cajeroId" = $1 OR "supervisorId" = $1`,
+        `UPDATE pos_supervisor_log
+           SET "cajeroId" = NULL, "supervisorId" = NULL
+         WHERE "cajeroId" = $1 OR "supervisorId" = $1`,
         [userId],
       ).catch(() => {});
 
-      // 5. Eliminar el usuario — si aún hay FK pendiente lanza 23503 con detalle
+      // ── 5. Eliminar el usuario ──────────────────────────────────────────────
       try {
         await em.query('DELETE FROM users WHERE id = $1', [userId]);
       } catch (err: any) {
-        // FK constraint: hay una tabla no mapeada que todavía referencia este userId
         if (err?.code === '23503') {
-          const detail = err?.detail ?? '';
+          // FK residual no detectada — reportar la tabla exacta para debug
+          const detail = err?.detail ?? err?.message ?? '';
           const tabla  = detail.match(/table "([^"]+)"/)?.[1] ?? 'tabla desconocida';
-          this.logger.error(`[HARD DELETE] FK residual en "${tabla}" al eliminar usuario #${userId}: ${detail}`);
+          this.logger.error(`[HARD DELETE] FK residual en "${tabla}": ${detail}`);
           throw new BadRequestException(
-            `No se puede eliminar: el usuario tiene registros en "${tabla}" que deben limpiarse primero. ` +
-            `Contacta al equipo técnico para agregar "${tabla}" al proceso de limpieza.`,
+            `No se puede eliminar: quedan registros en "${tabla}". ` +
+            `Reporta esto al equipo técnico.`,
           );
         }
         throw err;
       }
     });
 
+    this.logger.warn(`[HARD DELETE] Usuario #${userId} (${u.email}) eliminado por super_admin #${superAdminId}`);
     return { ok: true, mensaje: `Usuario ${u.nombre} (${u.email}) eliminado permanentemente` };
   }
 
