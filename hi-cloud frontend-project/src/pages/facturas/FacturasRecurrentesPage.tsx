@@ -9,7 +9,7 @@ import { Table, Button, Tag, Card, Row, Col, Typography, Space,
          Modal, Form, Input, InputNumber, Select, message,
          Switch, Descriptions, Divider, Tooltip, theme } from 'antd';
 import { PlusOutlined, ThunderboltOutlined, DeleteOutlined,
-         FileExcelOutlined, WarningOutlined, ClockCircleOutlined } from '@ant-design/icons';
+         FileExcelOutlined, WarningOutlined, ClockCircleOutlined, SearchOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
 import { clientesApi } from '../../api/clientes.api';
@@ -24,7 +24,7 @@ const frecuenciaLabel: Record<string, string> = {
 };
 
 const recurrenteApi = {
-  list:    (p = 1) => api.get(`/facturas-recurrentes?page=${p}`).then(r => r.data?.data ?? r.data),
+  list:    (p = 1, search = '') => api.get(`/facturas-recurrentes?page=${p}${search ? `&search=${encodeURIComponent(search)}` : ''}`).then(r => r.data?.data ?? r.data),
   create:  (body: any) => api.post('/facturas-recurrentes', body).then(r => r.data?.data ?? r.data),
   toggle:  (id: number) => api.patch(`/facturas-recurrentes/${id}/toggle`).then(r => r.data?.data ?? r.data),
   ejecutar:(id: number) => api.post(`/facturas-recurrentes/${id}/ejecutar-ahora`).then(r => r.data?.data ?? r.data),
@@ -44,6 +44,7 @@ const REC_COLS_DEF = [
 export default function FacturasRecurrentesPage() {
   const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('facturas-recurrentes', REC_COLS_DEF);
   const { token } = theme.useToken();
+  const [search, setSearch] = useState('');
   const [page,   setPage]   = useState(1);
   const [open,   setOpen]   = useState(false);
   const [detalle,setDetalle]= useState<any>(null);
@@ -52,8 +53,8 @@ export default function FacturasRecurrentesPage() {
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['recurrentes', page],
-    queryFn:  () => recurrenteApi.list(page),
+    queryKey: ['recurrentes', page, search],
+    queryFn:  () => recurrenteApi.list(page, search),
   });
   const { data: clientes } = useQuery({
     queryKey: ['clientes-rec'],
@@ -169,6 +170,14 @@ export default function FacturasRecurrentesPage() {
         <Col><Title level={4} style={{ margin: 0 }}>Facturas Recurrentes</Title></Col>
         <Col>
           <Space wrap>
+            <Input
+              placeholder="Buscar por número o cliente..."
+              prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(1); }}
+              allowClear
+              style={{ width: 220 }}
+            />
             <Button icon={<FileExcelOutlined />} onClick={() => {
               const filas = (data?.data ?? []).map((r: any) => ({
                 'Nombre':    r.nombre ?? '',

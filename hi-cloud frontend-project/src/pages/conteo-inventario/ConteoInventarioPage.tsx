@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -10,7 +10,7 @@ import {
 } from 'antd';
 import {
   AuditOutlined, PlusOutlined, CheckCircleOutlined, PlayCircleOutlined,
-  StopOutlined, EditOutlined, FileExcelOutlined,
+  StopOutlined, EditOutlined, FileExcelOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -33,6 +33,7 @@ const ESTADO_CONFIG: Record<string, { color: string; label: string }> = {
 export default function ConteoInventarioPage() {
   const qc = useQueryClient();
   const { token } = theme.useToken();
+  const [search, setSearch]             = useState('');
   const [modalCrear,    setModalCrear]    = useState(false);
   const [conteoActivo,  setConteoActivo]  = useState<any>(null);
   const [editandoLinea, setEditandoLinea] = useState<any>(null);
@@ -114,6 +115,12 @@ export default function ConteoInventarioPage() {
       e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
+  const conteosFiltrados = useMemo(() =>
+    conteos.filter((c: any) =>
+      String(c.numero ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      String(c.almacen ?? c.nombre ?? '').toLowerCase().includes(search.toLowerCase())
+    ), [conteos, search]);
+
   const lineas     = conteoDetalle?.lineas ?? [];
   const contadas   = lineas.filter((l: any) => l.cantidadFisica != null).length;
   const diferencias = lineas.filter((l: any) => l.diferencia !== 0).length;
@@ -142,6 +149,14 @@ export default function ConteoInventarioPage() {
             }));
             exportarExcel(filas, 'Conteos-Inventario');
           }}>Excel</Button>
+            <Input
+              placeholder="Buscar por número o almacén..."
+              prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              allowClear
+              style={{ width: 220 }}
+            />
             <RefreshByKeyButton queryKey={['conteos']} />
             <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <VideoTutorialButton />
@@ -157,7 +172,7 @@ export default function ConteoInventarioPage() {
         <Col xs={24} lg={conteoActivo ? 10 : 24}>
           <Card bordered={false} style={{ borderRadius: 12 }} title="Hojas de Conteo">
             <Table
-              dataSource={conteos}
+              dataSource={conteosFiltrados}
               rowKey="id"
               size="middle"
               pagination={{ pageSize: 10 }}

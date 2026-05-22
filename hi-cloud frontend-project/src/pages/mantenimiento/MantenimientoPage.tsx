@@ -7,13 +7,14 @@ import { TableActions } from '../../components/ui/TableActions';
 import {
   Card, Row, Col, Typography, Table, Tag, Button,
   Space, Modal, Form, Input, Select, DatePicker, InputNumber,
-  Tabs, message, Badge, Tooltip,
+  Tabs, message, Badge, Tooltip, theme,
 } from 'antd';
 import {
   PlusOutlined, CheckOutlined, StopOutlined, ToolOutlined, FileExcelOutlined,
-  WarningOutlined, CalendarOutlined, ClockCircleOutlined,
+  WarningOutlined, CalendarOutlined, ClockCircleOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMemo } from 'react';
 import dayjs from 'dayjs';
 import api from '../../api/client';
 import { fmt } from '../../utils/formatters';
@@ -55,6 +56,8 @@ const PRIORIDAD = [
 ];
 
 export default function MantenimientoPage() {
+  const { token } = theme.useToken();
+  const [search,       setSearch]       = useState('');
   const [estadoF,      setEstadoF]      = useState<string | undefined>();
   const [pageOrd,      setPageOrd]      = useState(1);
   const [ordenModal,   setOrdenModal]   = useState(false);
@@ -67,9 +70,15 @@ export default function MantenimientoPage() {
 
   const { data: dash }     = useQuery({ queryKey: ['mnt-dash'],           queryFn: mntApi.dashboard });
   const { data: ordenes, isLoading } = useQuery({
-    queryKey: ['mnt-ordenes', pageOrd, estadoF],
+    queryKey: ['mnt-ordenes', pageOrd, estadoF, search],
     queryFn:  () => mntApi.ordenes(pageOrd, estadoF),
   });
+
+  const ordenesFiltradas = useMemo(() =>
+    (ordenes?.data ?? []).filter((i: any) =>
+      String(i.numero ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      String(i.activo?.descripcion ?? i.tecnico ?? '').toLowerCase().includes(search.toLowerCase())
+    ), [ordenes, search]);
   const { data: programas } = useQuery({ queryKey: ['mnt-progs'],         queryFn: mntApi.programas });
   const { data: activos }   = useQuery({ queryKey: ['activos-mnt'],       queryFn: mntApi.activos });
 
@@ -162,6 +171,14 @@ export default function MantenimientoPage() {
         </Col>
         <Col>
           <Space>
+            <Input
+              placeholder="Buscar por activo o técnico..."
+              prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPageOrd(1); }}
+              allowClear
+              style={{ width: 220 }}
+            />
             <Button icon={<CalendarOutlined />} onClick={() => setProgModal(true)}>
               Programa preventivo
             </Button>
@@ -200,7 +217,7 @@ export default function MantenimientoPage() {
                   value: v, label: <Tag color={s.color}>{s.label}</Tag>,
                 }))} />
             }>
-              <Table columns={filterColumns(cols)} dataSource={ordenes?.data ?? []} rowKey="id"
+              <Table columns={filterColumns(cols)} dataSource={ordenesFiltradas} rowKey="id"
                 loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
                 pagination={{ total: ordenes?.meta?.total, pageSize: 15, current: pageOrd,

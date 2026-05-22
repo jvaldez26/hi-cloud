@@ -6,12 +6,12 @@ import { TableActions } from '../../components/ui/TableActions';
 import {
   Tabs, Table, Button, Tag, Space, Modal, Form, Input, InputNumber,
   Select, Row, Col, Typography, Card, Statistic, Popconfirm,
-  message, Descriptions, Drawer, Alert, Badge, Tooltip, Divider,
+  message, Descriptions, Drawer, Alert, Badge, Tooltip, Divider, theme,
 } from 'antd';
 import {
   PlusOutlined, EyeOutlined, CheckOutlined, CloseOutlined,
   FileTextOutlined, ShoppingCartOutlined, BarChartOutlined,
-  SendOutlined, TrophyOutlined,
+  SendOutlined, TrophyOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -35,19 +35,21 @@ const ESTADO_COT_COLOR: Record<string, string> = {
 
 // ── Tab Solicitudes ────────────────────────────────────────────────────────────
 function SolicitudesTab() {
+  const { token } = theme.useToken();
   const [open, setOpen] = useState(false);
   const [detalle, setDetalle] = useState<any>(null);
   const [cotModal, setCotModal] = useState<any>(null);
   const [comparativoId, setComparativoId] = useState<number | null>(null);
   const [page, setPage] = useState(1);
   const [estadoFiltro, setEstadoFiltro] = useState<string | undefined>();
+  const [search, setSearch] = useState('');
   const [form] = Form.useForm<CreateSolicitudPayload>();
   const [formCot] = Form.useForm<CreateCotizacionPayload>();
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['solicitudes-compra', page, estadoFiltro],
-    queryFn: () => solicitudesCompraApi.listar({ page, estado: estadoFiltro }),
+    queryKey: ['solicitudes-compra', page, estadoFiltro, search],
+    queryFn: () => solicitudesCompraApi.listar({ page, estado: estadoFiltro, search }),
   });
   const { data: resumen } = useQuery({
     queryKey: ['solicitudes-compra-resumen'],
@@ -131,6 +133,14 @@ function SolicitudesTab() {
       <Row justify="space-between" align="middle" style={{ marginBottom: 12 }}>
         <Col>
           <Space>
+            <Input
+              placeholder="Buscar por número o solicitante..."
+              prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(1); }}
+              allowClear
+              style={{ width: 220 }}
+            />
             <Select placeholder="Filtrar estado" value={estadoFiltro} onChange={setEstadoFiltro} allowClear style={{ width: 180 }}>
               {['borrador','enviada','aprobada','rechazada','en_cotizacion','procesada','cancelada'].map(e =>
                 <Select.Option key={e} value={e}>{e.replace('_',' ').toUpperCase()}</Select.Option>

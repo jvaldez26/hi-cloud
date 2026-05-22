@@ -1,13 +1,13 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Button, Table, Tag, Typography, Statistic,
   Modal, Form, Input, InputNumber, Select, Space, Popconfirm,
-  message, Tabs, Descriptions,
+  message, Tabs, Descriptions, theme,
 } from 'antd';
-import { PlusOutlined, DeleteOutlined, BarChartOutlined, PlusCircleOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, BarChartOutlined, PlusCircleOutlined, SearchOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
@@ -52,9 +52,11 @@ function CuentasTab() {
   const [detalle, setDetalle] = useState<any>(null);
   const [regOpen, setRegOpen] = useState<any>(null);
   const [anio,    setAnio]    = useState(dayjs().year());
+  const [search,  setSearch]  = useState('');
   const [form]    = Form.useForm();
   const [formReg] = Form.useForm();
   const qc = useQueryClient();
+  const { token } = theme.useToken();
 
   const { data: cuentas, isLoading } = useQuery({ queryKey: ['cuentas-est'], queryFn: ceApi.listar });
   const { data: resumen } = useQuery({
@@ -125,6 +127,12 @@ function CuentasTab() {
       ) },
   ]);
 
+  const cuentasFiltradas = useMemo(() =>
+    (cuentas ?? []).filter((i: any) =>
+      String(i.nombre ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      String(i.codigo ?? '').toLowerCase().includes(search.toLowerCase())
+    ), [cuentas, search]);
+
   const movCols = [
     { title: 'Fecha', dataIndex: 'fecha', width: 100, render: (v: string) => fmt.date(v) },
     { title: 'Valor', dataIndex: 'valor', width: 120, render: (v: number, r: any) => `${fmt.number(v)} ${detalle?.unidad}` },
@@ -138,13 +146,21 @@ function CuentasTab() {
     <>
       <Row justify="end" style={{ marginBottom: 12 }}>
         <Space>
+          <Input
+            placeholder="Buscar por cuenta o código..."
+            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            allowClear
+            style={{ width: 220 }}
+          />
           <RefreshByKeyButton queryKey={['cuentas-estadisticas']} />
           <VideoTutorialButton />
           <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setOpen(true); }}>Nueva cuenta</Button>
         </Space>
       </Row>
-      <Table columns={cols} dataSource={cuentas ?? []} rowKey="id" loading={isLoading} size="small"
+      <Table columns={cols} dataSource={cuentasFiltradas} rowKey="id" loading={isLoading} size="small"
         scroll={{ x: 'max-content' }} pagination={false} />
 
       {/* Modal crear cuenta */}

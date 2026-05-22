@@ -11,6 +11,7 @@ import {
 import {
   PlusOutlined, CheckOutlined, CloseOutlined, BankOutlined,
   UploadOutlined, LinkOutlined, DisconnectOutlined, DeleteOutlined,
+  SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -46,6 +47,7 @@ export default function BancosPage() {
   const [mes,         setMes]         = useState(dayjs().month() + 1);
   const [anio,        setAnio]        = useState(dayjs().year());
   const [pageMov,     setPageMov]     = useState(1);
+  const [search,      setSearch]      = useState('');
   const [soloNoCon,   setSoloNoCon]   = useState(false);
   const [cuentaModal, setCuentaModal] = useState(false);
   const [movModal,    setMovModal]    = useState(false);
@@ -58,7 +60,7 @@ export default function BancosPage() {
 
   const { data: cuentas }   = useQuery({ queryKey: ['bancos-cuentas'], queryFn: bancosApi.cuentas });
   const { data: movs, isLoading } = useQuery({
-    queryKey: ['bancos-movs', cuentaId, pageMov, soloNoCon],
+    queryKey: ['bancos-movs', cuentaId, pageMov, soloNoCon, search],
     queryFn:  () => bancosApi.movimientos(cuentaId!, pageMov, soloNoCon),
     enabled:  !!cuentaId,
   });
@@ -285,6 +287,14 @@ export default function BancosPage() {
             title={`Movimientos — ${cuentaActual?.banco} ${cuentaActual?.numeroCuenta}`}
             extra={
               <Space>
+                <Input
+                  placeholder="Buscar por nombre o banco..."
+                  prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+                  value={search}
+                  onChange={e => { setSearch(e.target.value); setPageMov(1); }}
+                  allowClear
+                  style={{ width: 220 }}
+                />
                 <Button size="small"
                   type={soloNoCon ? 'primary' : 'default'}
                   onClick={() => { setSoloNoCon(!soloNoCon); setPageMov(1); }}>

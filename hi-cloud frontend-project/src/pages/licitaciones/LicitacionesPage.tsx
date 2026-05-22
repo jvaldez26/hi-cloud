@@ -7,11 +7,11 @@ import { TableActions } from '../../components/ui/TableActions';
 import {
   Card, Row, Col, Typography, Table, Tag, Statistic, Button,
   Space, Modal, Form, Input, Select, DatePicker, InputNumber,
-  Tabs, message, Drawer, Descriptions, Steps,
+  Tabs, message, Drawer, Descriptions, Steps, theme,
 } from 'antd';
 import {
   PlusOutlined, TrophyOutlined, FileTextOutlined, FileExcelOutlined,
-  CloseCircleOutlined, LinkOutlined,
+  CloseCircleOutlined, LinkOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -22,8 +22,8 @@ const { Title, Text } = Typography;
 
 const licApi = {
   dashboard:   ()               => api.get('/licitaciones/dashboard').then(r => r.data?.data ?? r.data),
-  listar:      (p = 1, e?: string) =>
-    api.get(`/licitaciones?page=${p}${e ? `&estado=${e}` : ''}`).then(r => r.data?.data ?? r.data),
+  listar:      (p = 1, e?: string, s?: string) =>
+    api.get(`/licitaciones?page=${p}${e ? `&estado=${e}` : ''}${s ? `&search=${encodeURIComponent(s)}` : ''}`).then(r => r.data?.data ?? r.data),
   crear:       (b: any)          => api.post('/licitaciones', b).then(r => r.data?.data ?? r.data),
   actualizar:  (id: number, b: any) => api.patch(`/licitaciones/${id}`, b).then(r => r.data?.data ?? r.data),
   estado:      (id: number, estado: string, motivo?: string, monto?: number) =>
@@ -48,8 +48,10 @@ const TIPO_LIC = [
 ];
 
 export default function LicitacionesPage() {
+  const { token } = theme.useToken();
   const [page,        setPage]        = useState(1);
   const [estadoF,     setEstadoF]     = useState<string | undefined>();
+  const [search,      setSearch]      = useState('');
   const [crearModal,  setCrearModal]  = useState(false);
   const [detalle,     setDetalle]     = useState<any>(null);
   const [estadoModal, setEstadoModal] = useState<any>(null);
@@ -59,8 +61,8 @@ export default function LicitacionesPage() {
 
   const { data: dash }     = useQuery({ queryKey: ['lic-dash'],             queryFn: licApi.dashboard });
   const { data: lista, isLoading } = useQuery({
-    queryKey: ['licitaciones', page, estadoF],
-    queryFn:  () => licApi.listar(page, estadoF),
+    queryKey: ['licitaciones', page, estadoF, search],
+    queryFn:  () => licApi.listar(page, estadoF, search),
   });
 
   const inv = () => {
@@ -127,24 +129,34 @@ export default function LicitacionesPage() {
           </Title>
         </Col>
         <Col>
-          <Button icon={<FileExcelOutlined />} onClick={() => {
-            const filas = (lista?.data ?? []).map((l: any) => ({
-              'Número':     l.numero ?? '',
-              'Título':     l.titulo ?? '',
-              'Entidad':    l.entidadConvocante ?? '',
-              'Monto':      Number(l.montoEstimado ?? 0),
-              'Estado':     l.estado ?? '',
-              'Vencimiento':l.fechaVencimiento ?? '',
-            }));
-            exportarExcel(filas, 'Licitaciones');
-          }}>Excel</Button>
-          <RefreshByKeyButton queryKey={['licitaciones']} />
-          <VideoTutorialButton />
-          <Button type="primary" icon={<PlusOutlined />}
-            onClick={() => { setCrearModal(true); form.resetFields(); }}>
-            Registrar licitación
-          </Button>
-          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <Space>
+            <Input
+              placeholder="Buscar por número o descripción..."
+              prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(1); }}
+              allowClear
+              style={{ width: 220 }}
+            />
+            <Button icon={<FileExcelOutlined />} onClick={() => {
+              const filas = (lista?.data ?? []).map((l: any) => ({
+                'Número':     l.numero ?? '',
+                'Título':     l.titulo ?? '',
+                'Entidad':    l.entidadConvocante ?? '',
+                'Monto':      Number(l.montoEstimado ?? 0),
+                'Estado':     l.estado ?? '',
+                'Vencimiento':l.fechaVencimiento ?? '',
+              }));
+              exportarExcel(filas, 'Licitaciones');
+            }}>Excel</Button>
+            <RefreshByKeyButton queryKey={['licitaciones']} />
+            <VideoTutorialButton />
+            <Button type="primary" icon={<PlusOutlined />}
+              onClick={() => { setCrearModal(true); form.resetFields(); }}>
+              Registrar licitación
+            </Button>
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          </Space>
         </Col>
       </Row>
 

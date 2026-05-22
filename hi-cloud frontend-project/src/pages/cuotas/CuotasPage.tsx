@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+﻿import { useState, useMemo } from 'react';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
@@ -10,7 +10,7 @@ import {
 } from 'antd';
 import {
   CreditCardOutlined, PlusOutlined, CheckCircleOutlined, CalculatorOutlined,
-  WarningOutlined, FileExcelOutlined,
+  WarningOutlined, FileExcelOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -47,6 +47,7 @@ export default function CuotasPage() {
   const { visibleColumns: vcCuotas, updateVisibility: uvCuotas, filterColumns: fcCuotas } = useColumnVisibility('cuotas', COLS_DEF_CUOTAS);
   const qc = useQueryClient();
   const { token } = theme.useToken();
+  const [search,     setSearch]     = useState('');
   const [modalCrear, setModalCrear] = useState(false);
   const [planSel,    setPlanSel]    = useState<any>(null);
   const [formCrear]  = Form.useForm();
@@ -61,6 +62,15 @@ export default function CuotasPage() {
     queryKey: ['planes-pago'],
     queryFn:  () => api.get('/cuotas').then((r: any) => r.data?.data ?? r.data),
   });
+
+  const planesFiltrados = useMemo(() => {
+    if (!search.trim()) return planes;
+    const q = search.toLowerCase();
+    return planes.filter((p: any) =>
+      (p.numero ?? '').toLowerCase().includes(q) ||
+      (p.clienteNombre ?? '').toLowerCase().includes(q)
+    );
+  }, [planes, search]);
 
   const { data: planDetalle } = useQuery<any>({
     queryKey: ['plan-detalle', planSel?.id],
@@ -140,8 +150,19 @@ export default function CuotasPage() {
       <Row gutter={[16, 16]}>
         {/* Lista de planes */}
         <Col xs={24} lg={planSel ? 10 : 24}>
-          <Card bordered={false} style={{ borderRadius: 12 }} title="Planes de Pago">
-            <Table dataSource={planes} rowKey="id" size="small" pagination={{ pageSize: 12 }}
+          <Card bordered={false} style={{ borderRadius: 12 }} title="Planes de Pago"
+            extra={
+              <Input
+                placeholder="Buscar por número o cliente..."
+                prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+                value={search}
+                onChange={e => { setSearch(e.target.value); }}
+                allowClear
+                style={{ width: 220 }}
+              />
+            }
+          >
+            <Table dataSource={planesFiltrados} rowKey="id" size="small" pagination={{ pageSize: 12 }}
               onRow={r => ({ style: { cursor: 'pointer' }, onClick: () => setPlanSel(r) })}
               columns={fcCuotas([
                 { title: 'No.', dataIndex: 'numero', key: 'n', render: (v: any) => <Text strong style={{ fontFamily: 'mono', fontSize: 11 }}>{v}</Text> },

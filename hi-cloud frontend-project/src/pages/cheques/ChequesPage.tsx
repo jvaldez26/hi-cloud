@@ -10,7 +10,7 @@ import {
   Popconfirm, message, Badge, Alert, Tooltip, Divider, theme } from 'antd';
 import {
   PlusOutlined, CheckOutlined, StopOutlined, WarningOutlined,
-  BankOutlined, FileTextOutlined, FileExcelOutlined,
+  BankOutlined, FileTextOutlined, FileExcelOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -36,8 +36,8 @@ const chequesApi = {
   dashboard:       ()                   => api.get('/cheques/dashboard').then(r => r.data?.data ?? r.data),
   chequeras:       ()                   => api.get('/cheques/chequeras').then(r => r.data?.data ?? r.data ?? []),
   crearChequera:   (b: any)             => api.post('/cheques/chequeras', b).then(r => r.data?.data ?? r.data),
-  lista:           (p = 1, e?: string, t?: string, cid?: number) =>
-    api.get(`/cheques?page=${p}${e ? `&estado=${e}` : ''}${t ? `&tipo=${t}` : ''}${cid ? `&chequeraId=${cid}` : ''}`).then(r => r.data?.data ?? r.data),
+  lista:           (p = 1, e?: string, t?: string, cid?: number, search?: string) =>
+    api.get(`/cheques?page=${p}${e ? `&estado=${e}` : ''}${t ? `&tipo=${t}` : ''}${cid ? `&chequeraId=${cid}` : ''}${search ? `&search=${encodeURIComponent(search)}` : ''}`).then(r => r.data?.data ?? r.data),
   emitir:          (b: any)             => api.post('/cheques', b).then(r => r.data?.data ?? r.data),
   cambiarEstado:   (id: number, estado: string, fechaCobro?: string) =>
     api.patch(`/cheques/${id}/estado`, { estado, fechaCobro }).then(r => r.data?.data ?? r.data),
@@ -52,6 +52,7 @@ export default function ChequesPage() {
   const [estadoF,      setEstadoF]      = useState<string | undefined>();
   const [tipoF,        setTipoF]        = useState<string | undefined>();
   const [chequeraF,    setChequeraF]    = useState<number | undefined>();
+  const [search,       setSearch]       = useState('');
   const [pageCheq,     setPageCheq]     = useState(1);
   const [chequeraModal,setChequeraModal]= useState(false);
   const [chequeModal,  setChequeModal]  = useState(false);
@@ -65,8 +66,8 @@ export default function ChequesPage() {
   const { data: dash }      = useQuery({ queryKey: ['cheques-dash'],              queryFn: chequesApi.dashboard });
   const { data: chequeras } = useQuery({ queryKey: ['chequeras'],                 queryFn: chequesApi.chequeras });
   const { data: cheques, isLoading } = useQuery({
-    queryKey: ['cheques-lista', pageCheq, estadoF, tipoF, chequeraF],
-    queryFn:  () => chequesApi.lista(pageCheq, estadoF, tipoF, chequeraF),
+    queryKey: ['cheques-lista', pageCheq, estadoF, tipoF, chequeraF, search],
+    queryFn:  () => chequesApi.lista(pageCheq, estadoF, tipoF, chequeraF, search),
   });
   const { data: resumen }   = useQuery({ queryKey: ['cheques-res', mes, anio],    queryFn: () => chequesApi.resumen(mes, anio) });
 
@@ -166,6 +167,14 @@ export default function ChequesPage() {
         </Col>
         <Col xs={24} sm="auto">
           <Space wrap>
+            <Input
+              placeholder="Buscar por número o beneficiario..."
+              prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPageCheq(1); }}
+              allowClear
+              style={{ width: 220 }}
+            />
             <Button icon={<FileExcelOutlined />} onClick={() => {
               const filas = (cheques?.data ?? []).map((c: any) => ({
                 'Número':      c.numeroCheque ?? '',

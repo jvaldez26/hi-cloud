@@ -1,14 +1,14 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { exportarExcel } from '../../utils/exportExcel';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form,
   Input, Select, Space, Tabs, Progress, Typography, Tooltip,
-  message, Divider, Rate,
+  message, Divider, Rate, theme,
 } from 'antd';
 import {
   SmileOutlined, PlusOutlined, LinkOutlined, FileExcelOutlined,
-  BarChartOutlined,
+  BarChartOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
@@ -30,6 +30,8 @@ function NpsGauge({ score }: { score: number | null }) {
 
 export default function EncuestasPage() {
   const qc = useQueryClient();
+  const { token } = theme.useToken();
+  const [search, setSearch] = useState('');
   const [modalCrear, setModalCrear] = useState(false);
   const [modalMetricas, setModalMetricas] = useState<any>(null);
   const [formCrear] = Form.useForm();
@@ -65,11 +67,16 @@ export default function EncuestasPage() {
       e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
-  const linkEncuesta = (token: string) => {
-    const url = `${window.location.origin}/encuesta/${token}`;
+  const linkEncuesta = (tok: string) => {
+    const url = `${window.location.origin}/encuesta/${tok}`;
     navigator.clipboard.writeText(url);
     message.success('Link copiado al portapapeles');
   };
+
+  const encuestasFiltradas = useMemo(() =>
+    encuestas.filter((e: any) =>
+      String(e.titulo ?? '').toLowerCase().includes(search.toLowerCase())
+    ), [encuestas, search]);
 
   return (
     <div style={{ padding: '24px' }}>
@@ -82,6 +89,14 @@ export default function EncuestasPage() {
           </div>
         </div>
         <Space>
+          <Input
+            placeholder="Buscar por título..."
+            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            allowClear
+            style={{ width: 220 }}
+          />
           <Button icon={<FileExcelOutlined />} onClick={() => {
             const filas = encuestas.map((e: any) => ({
               'Título':    e.titulo ?? '',
@@ -101,7 +116,7 @@ export default function EncuestasPage() {
       </div>
 
       <Row gutter={[16, 16]}>
-        {encuestas.map((enc: any) => (
+        {encuestasFiltradas.map((enc: any) => (
           <Col xs={24} md={12} xl={8} key={enc.id}>
             <Card
               bordered={false}
@@ -145,7 +160,7 @@ export default function EncuestasPage() {
             </Card>
           </Col>
         ))}
-        {encuestas.length === 0 && (
+        {encuestasFiltradas.length === 0 && (
           <Col span={24}>
             <Card bordered={false} style={{ textAlign: 'center', padding: 48, borderRadius: 12 }}>
               <SmileOutlined style={{ fontSize: 48, color: '#d9d9d9', marginBottom: 16 }} />

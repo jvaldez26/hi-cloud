@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { TableActions } from '../../components/ui/TableActions';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
@@ -13,6 +13,7 @@ import {
   CheckCircleOutlined, StopOutlined, ToolOutlined, AppstoreOutlined,
   ExclamationCircleOutlined, FileExcelOutlined, ClockCircleOutlined,
   SettingOutlined, NodeIndexOutlined, CloseOutlined, EyeOutlined,
+  SearchOutlined,
 } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -331,6 +332,7 @@ export default function ManufacturaPage() {
   const [completarModal, setCompletarModal] = useState<any>(null);
   const [pageOP,      setPageOP]      = useState(1);
   const [estadoF,     setEstadoF]     = useState<string | undefined>();
+  const [search,      setSearch]      = useState('');
   const [formLM]                      = Form.useForm();
   const [formComp]                    = Form.useForm();
   const [formOP]                      = Form.useForm();
@@ -340,9 +342,21 @@ export default function ManufacturaPage() {
   const { data: dash }   = useQuery({ queryKey: ['mfg-dash'],           queryFn: mApi.dashboard });
   const { data: lms }    = useQuery({ queryKey: ['mfg-lm'],             queryFn: mApi.listLM });
   const { data: ordenes, isLoading: loadOP } = useQuery({
-    queryKey: ['mfg-ordenes', pageOP, estadoF],
+    queryKey: ['mfg-ordenes', pageOP, estadoF, search],
     queryFn:  () => mApi.listOrdenes(pageOP, estadoF),
   });
+
+  const lmsFiltradas = useMemo(() =>
+    (lms ?? []).filter((i: any) =>
+      String(i.nombre ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      String(i.codigo ?? '').toLowerCase().includes(search.toLowerCase())
+    ), [lms, search]);
+
+  const ordenesFiltradas = useMemo(() =>
+    (ordenes?.data ?? []).filter((i: any) =>
+      String(i.numero ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      String(i.lista?.nombre ?? '').toLowerCase().includes(search.toLowerCase())
+    ), [ordenes, search]);
   const { data: productos } = useQuery({ queryKey: ['productos-mfg'], queryFn: () => productosApi.list(1, 200) });
   const { data: lmDetalle, refetch: refetchLM } = useQuery({
     queryKey: ['mfg-lm-det', compModal],
@@ -475,6 +489,14 @@ export default function ManufacturaPage() {
           </Title>
         </Col>
         <Col>
+          <Input
+            placeholder="Buscar por producto u orden..."
+            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+            value={search}
+            onChange={e => { setSearch(e.target.value); setPageOP(1); }}
+            allowClear
+            style={{ width: 220 }}
+          />
           {tabKey === 'ordenes' && (
             <ColumnToggle columns={COLS_DEF_OP} visibleColumns={visibleColumnsOP} onChange={updateVisibilityOP} />
           )}
@@ -505,7 +527,7 @@ export default function ManufacturaPage() {
           label: <><AppstoreOutlined /> Listas de Materiales</>,
           children: (
             <Card>
-              <Table columns={colsLM} dataSource={lms ?? []} rowKey="id"
+              <Table columns={colsLM} dataSource={lmsFiltradas} rowKey="id"
                 size="small"
         scroll={{ x: 'max-content' }} pagination={false} />
             </Card>
@@ -522,7 +544,7 @@ export default function ManufacturaPage() {
                 value={estadoF} onChange={v => { setEstadoF(v); setPageOP(1); }}
                 options={ESTADO_OP.map(e => ({ value: e.value, label: <Tag color={e.color}>{e.label}</Tag> }))} />
             }>
-              <Table columns={filterColumnsOP(colsOP)} dataSource={ordenes?.data ?? []} rowKey="id"
+              <Table columns={filterColumnsOP(colsOP)} dataSource={ordenesFiltradas} rowKey="id"
                 loading={loadOP} size="small"
         scroll={{ x: 'max-content' }}
                 pagination={{ total: ordenes?.meta?.total, pageSize: 10, current: pageOP,

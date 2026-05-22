@@ -21,8 +21,8 @@ export const ecfApi = {
     api.get('/ecf/secuencias/proximas-vencer').then(r => r.data.data),
 
   // e-CFs
-  list: (p = 1, limit = 10, estado?: string, tipo?: string) =>
-    api.get(`/ecf?page=${p}&limit=${limit}${estado ? `&estado=${estado}` : ''}${tipo ? `&tipo=${tipo}` : ''}`).then(r => r.data.data),
+  list: (p = 1, limit = 10, estado?: string, tipo?: string, search?: string) =>
+    api.get(`/ecf?page=${p}&limit=${limit}${estado ? `&estado=${estado}` : ''}${tipo ? `&tipo=${tipo}` : ''}${search ? `&search=${encodeURIComponent(search)}` : ''}`).then(r => r.data.data),
 
   pendientes: () =>
     api.get('/ecf/pendientes').then(r => r.data.data),

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
@@ -7,7 +7,7 @@ import {
 } from 'antd';
 import {
   AppstoreOutlined, PlusOutlined, EditOutlined, DeleteOutlined,
-  TeamOutlined, FolderOutlined, FileExcelOutlined,
+  TeamOutlined, FolderOutlined, FileExcelOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -32,6 +32,7 @@ function buildTreeData(grupos: any[]): any[] {
 export default function GruposPage() {
   const qc = useQueryClient();
   const { token } = theme.useToken();
+  const [search,    setSearch]    = useState('');
   const [tabActiva, setTabActiva] = useState('productos');
   const [modalVisible, setModalVisible] = useState(false);
   const [editando,     setEditando]     = useState<any>(null);
@@ -53,6 +54,24 @@ export default function GruposPage() {
     arr.flatMap((g: any) => [g, ...flatGrupos(g.children ?? [])]);
 
   const allGrupos = flatGrupos(gruposFlat);
+
+  const gruposFiltrados = useMemo(() => {
+    if (!search.trim()) return allGrupos;
+    const q = search.toLowerCase();
+    return allGrupos.filter((g: any) =>
+      (g.nombre ?? '').toLowerCase().includes(q) ||
+      (g.codigo ?? '').toLowerCase().includes(q)
+    );
+  }, [allGrupos, search]);
+
+  const segmentosFiltrados = useMemo(() => {
+    if (!search.trim()) return segmentos;
+    const q = search.toLowerCase();
+    return segmentos.filter((s: any) =>
+      (s.nombre ?? '').toLowerCase().includes(q) ||
+      (s.codigo ?? '').toLowerCase().includes(q)
+    );
+  }, [segmentos, search]);
 
   const mutGrupo = useMutation({
     mutationFn: (dto: any) => editando
@@ -89,6 +108,14 @@ export default function GruposPage() {
           </div>
         </div>
         <Space>
+          <Input
+            placeholder="Buscar por nombre..."
+            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+            value={search}
+            onChange={e => { setSearch(e.target.value); }}
+            allowClear
+            style={{ width: 220 }}
+          />
           <Button icon={<FileExcelOutlined />} onClick={() => {
             const src   = tabActiva === 'productos' ? gruposFlat : segmentos;
             const filas = (src ?? []).map((g: any) => ({
@@ -137,7 +164,7 @@ export default function GruposPage() {
                 <Col xs={24} lg={14}>
                   <Card bordered={false} style={{ borderRadius: 12 }} title="Lista de Grupos">
                     <Table
-                      dataSource={allGrupos}
+                      dataSource={gruposFiltrados}
                       rowKey="id"
                       size="small"
         scroll={{ x: 'max-content' }}
@@ -174,7 +201,7 @@ export default function GruposPage() {
             children: (
               <Card bordered={false} style={{ borderRadius: 12 }}>
                 <Table
-                  dataSource={segmentos}
+                  dataSource={segmentosFiltrados}
                   rowKey="id"
                   size="middle"
                   pagination={{ pageSize: 15 }}

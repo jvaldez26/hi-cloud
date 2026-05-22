@@ -11,7 +11,7 @@ import {
 import {
   FileTextOutlined, PlusOutlined, SendOutlined, CheckCircleOutlined,
   CloseCircleOutlined, RetweetOutlined, DeleteOutlined, EyeOutlined,
-  MailOutlined, FilePdfOutlined, LoadingOutlined, EditOutlined,
+  MailOutlined, FilePdfOutlined, LoadingOutlined, EditOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -45,6 +45,8 @@ export default function PreFacturaPage() {
   const qc = useQueryClient();
   const { token } = theme.useToken();
 
+  const [search,        setSearch]        = useState('');
+  const [page,          setPage]          = useState(1);
   const [modalCrear,    setModalCrear]    = useState(false);
   const [editandoPF,    setEditandoPF]    = useState<any>(null); // pre-factura siendo editada
   const [modalDetalle,  setModalDetalle]  = useState<any>(null);
@@ -78,8 +80,8 @@ export default function PreFacturaPage() {
   });
 
   const { data: preFacturas, isLoading } = useQuery<any>({
-    queryKey: ['pre-facturas'],
-    queryFn:  () => api.get('/pre-facturas?limit=50').then((r: any) => r.data?.data ?? r.data),
+    queryKey: ['pre-facturas', page, search],
+    queryFn:  () => api.get(`/pre-facturas?page=${page}&limit=50${search ? `&search=${encodeURIComponent(search)}` : ''}`).then((r: any) => r.data?.data ?? r.data),
   });
 
   // ─── Mutations ────────────────────────────────────────────────────────────────
@@ -237,6 +239,14 @@ export default function PreFacturaPage() {
           </div>
         </div>
         <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <Input
+            placeholder="Buscar por número o cliente..."
+            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+            value={search}
+            onChange={e => { setSearch(e.target.value); setPage(1); }}
+            allowClear
+            style={{ width: 220 }}
+          />
           <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
           <RefreshByKeyButton queryKey={['pre-facturas']} />
           <VideoTutorialButton />
@@ -253,7 +263,7 @@ export default function PreFacturaPage() {
           rowKey="id"
           loading={isLoading}
           size="middle"
-          pagination={{ pageSize: 15, total: preFacturas?.meta?.total }}
+          pagination={{ pageSize: 15, total: preFacturas?.meta?.total, current: page, onChange: setPage, showSizeChanger: false }}
           columns={filterColumns([
             {
               title: 'Folio', dataIndex: 'folio', key: 'folio',

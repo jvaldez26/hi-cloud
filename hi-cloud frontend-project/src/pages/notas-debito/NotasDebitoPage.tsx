@@ -96,6 +96,8 @@ function BuscadorFactura({ onSelect }: { onSelect: (f: any) => void }) {
 export default function NotasDebitoPage() {
   const qc = useQueryClient();
   const { token } = theme.useToken();
+  const [search,        setSearch]        = useState('');
+  const [page,          setPage]          = useState(1);
   const [modalCrear,    setModalCrear]    = useState(false);
   const [modalDetalle,  setModalDetalle]  = useState<any>(null);
   const [emailNota,     setEmailNota]     = useState<any>(null);
@@ -156,8 +158,8 @@ export default function NotasDebitoPage() {
   });
 
   const { data: notas, isLoading } = useQuery<any>({
-    queryKey: ['notas-debito'],
-    queryFn: () => api.get('/notas-debito?limit=50').then((r: any) => r.data?.data ?? r.data),
+    queryKey: ['notas-debito', search, page],
+    queryFn: () => api.get(`/notas-debito?limit=50${search ? `&search=${encodeURIComponent(search)}` : ''}&page=${page}`).then((r: any) => r.data?.data ?? r.data),
   });
 
   const onErr = (e: any, msg: string) => message.error((e as any)?.friendlyMessage ?? msg);
@@ -260,6 +262,17 @@ export default function NotasDebitoPage() {
       <Alert type="info" showIcon style={{ marginBottom: 20, borderRadius: 8 }}
         message={<span><strong>¿Cuándo usar una Nota de Débito E33?</strong> Cuando necesitas cobrar un monto adicional sobre una factura ya emitida y con e-CF Aceptado.</span>}
       />
+
+      <div style={{ marginBottom: 16 }}>
+        <Input
+          placeholder="Buscar por número o cliente..."
+          prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+          value={search}
+          onChange={e => { setSearch(e.target.value); setPage(1); }}
+          allowClear
+          style={{ width: 280 }}
+        />
+      </div>
 
       <Card bordered={false} style={{ borderRadius: 12 }}>
         <Table dataSource={notas?.data ?? []} rowKey="id" loading={isLoading} size="middle"

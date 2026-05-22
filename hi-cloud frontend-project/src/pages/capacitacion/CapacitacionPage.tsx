@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { exportarExcel } from '../../utils/exportExcel';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
@@ -7,11 +7,11 @@ import { TableActions } from '../../components/ui/TableActions';
 import {
   Card, Row, Col, Statistic, Button, Table, Tag, Modal, Form,
   Input, InputNumber, Select, DatePicker, Space, Tabs, Switch,
-  message, Typography, Badge, Progress, Tooltip,
+  message, Typography, Badge, Progress, Tooltip, theme,
 } from 'antd';
 import {
   BookOutlined, PlusOutlined, TeamOutlined, FileExcelOutlined,
-  SafetyCertificateOutlined, ClockCircleOutlined,
+  SafetyCertificateOutlined, ClockCircleOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
@@ -31,6 +31,8 @@ const modalidadColor: Record<string, string> = {
 
 export default function CapacitacionPage() {
   const qc = useQueryClient();
+  const { token } = theme.useToken();
+  const [search, setSearch] = useState('');
   const [tabActiva, setTabActiva] = useState('cursos');
   const [modalCurso, setModalCurso] = useState(false);
   const [modalSesion, setModalSesion] = useState(false);
@@ -113,6 +115,18 @@ export default function CapacitacionPage() {
       e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
+  const cursosFiltrados = useMemo(() =>
+    (cursos ?? []).filter((i: any) =>
+      String(i.nombre ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      String(i.instructor ?? '').toLowerCase().includes(search.toLowerCase())
+    ), [cursos, search]);
+
+  const sesionesFiltradas = useMemo(() =>
+    (sesiones ?? []).filter((i: any) =>
+      String(i.curso?.nombre ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      String(i.lugar ?? '').toLowerCase().includes(search.toLowerCase())
+    ), [sesiones, search]);
+
   return (
     <div style={{ padding: '24px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
@@ -131,6 +145,14 @@ export default function CapacitacionPage() {
           onChange={setTabActiva}
           tabBarExtraContent={
             <Space>
+              <Input
+                placeholder="Buscar por título o instructor..."
+                prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+                value={search}
+                onChange={e => { setSearch(e.target.value); }}
+                allowClear
+                style={{ width: 220 }}
+              />
               <RefreshByKeyButton queryKey={['capacitacion']} />
               {tabActiva === 'cursos' && (
                 <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
@@ -165,7 +187,7 @@ export default function CapacitacionPage() {
               label: 'Cursos',
               children: (
                 <Table
-                  dataSource={cursos}
+                  dataSource={cursosFiltrados}
                   rowKey="id"
                   size="middle"
                   pagination={{ pageSize: 10 }}
@@ -195,7 +217,7 @@ export default function CapacitacionPage() {
               label: 'Sesiones',
               children: (
                 <Table
-                  dataSource={sesiones}
+                  dataSource={sesionesFiltradas}
                   rowKey="id"
                   size="middle"
                   pagination={{ pageSize: 12 }}

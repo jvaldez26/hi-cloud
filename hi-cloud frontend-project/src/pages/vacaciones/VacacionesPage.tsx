@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -6,11 +6,11 @@ import { TableActions } from '../../components/ui/TableActions';
 import {
   Table, Button, Tag, Card, Row, Col, Typography,
   Modal, Form, Select, DatePicker, Input, Space, Popconfirm,
-  message, Drawer, Tabs, Badge, Progress, Tooltip,
+  message, Drawer, Tabs, Badge, Progress, Tooltip, theme,
 } from 'antd';
 import {
   PlusOutlined, CheckOutlined, CloseOutlined, DeleteOutlined,
-  CalendarOutlined, UserOutlined, FileExcelOutlined,
+  CalendarOutlined, UserOutlined, FileExcelOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -60,6 +60,8 @@ const vacApi = {
 };
 
 export default function VacacionesPage() {
+  const { token } = theme.useToken();
+  const [search, setSearch]           = useState('');
   const [anio,        setAnio]        = useState(dayjs().year());
   const [mes,         setMes]         = useState(dayjs().month() + 1);
   const [estadoF,     setEstadoF]     = useState<string | undefined>();
@@ -124,6 +126,18 @@ export default function VacacionesPage() {
     mutationFn: vacApi.eliminarAus,
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['vac-aus'] }); message.success('Eliminada'); },
   });
+
+  const solicitudesFiltradas = useMemo(() =>
+    (solicitudes?.data ?? []).filter((i: any) => {
+      const nombre = `${i.empleado?.nombre ?? ''} ${i.empleado?.apellido ?? ''}`.toLowerCase();
+      return nombre.includes(search.toLowerCase());
+    }), [solicitudes, search]);
+
+  const ausenciasFiltradas = useMemo(() =>
+    (ausencias?.data ?? []).filter((i: any) => {
+      const nombre = `${i.empleado?.nombre ?? ''} ${i.empleado?.apellido ?? ''}`.toLowerCase();
+      return nombre.includes(search.toLowerCase());
+    }), [ausencias, search]);
 
   const COLS_DEF = [
     { key: 'emp',             label: 'Empleado', defaultVisible: true  },
@@ -206,6 +220,14 @@ export default function VacacionesPage() {
         <Col><Title level={4} style={{ margin: 0 }}>Vacaciones y Ausencias</Title></Col>
         <Col xs={24} sm="auto">
           <Space wrap>
+            <Input
+              placeholder="Buscar por empleado..."
+              prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPageSol(1); setPageAus(1); }}
+              allowClear
+              style={{ width: 220 }}
+            />
             <Select value={mes}  onChange={setMes}  style={{ width: 120 }} options={MESES} />
             <Select value={anio} onChange={setAnio} style={{ width: 90 }}
               options={[2024, 2025, 2026].map(y => ({ value: y, label: y }))} />
@@ -246,7 +268,7 @@ export default function VacacionesPage() {
                 </Button>
               </Space>
             }>
-              <Table columns={colsSol} dataSource={solicitudes?.data ?? []} rowKey="id"
+              <Table columns={colsSol} dataSource={solicitudesFiltradas} rowKey="id"
                 loading={loadingSol} size="small"
         scroll={{ x: 'max-content' }}
                 pagination={{ total: solicitudes?.meta?.total, pageSize: 10, current: pageSol,
@@ -263,7 +285,7 @@ export default function VacacionesPage() {
                 Registrar ausencia
               </Button>
             }>
-              <Table columns={colsAus} dataSource={ausencias?.data ?? []} rowKey="id"
+              <Table columns={colsAus} dataSource={ausenciasFiltradas} rowKey="id"
                 loading={loadingAus} size="small"
         scroll={{ x: 'max-content' }}
                 pagination={{ total: ausencias?.meta?.total, pageSize: 10, current: pageAus,

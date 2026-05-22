@@ -6,7 +6,7 @@ import {
   message, theme,
 } from 'antd';
 import {
-  BankOutlined, PlusOutlined, DeleteOutlined, DollarOutlined, FileExcelOutlined,
+  BankOutlined, PlusOutlined, DeleteOutlined, DollarOutlined, FileExcelOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -32,6 +32,8 @@ export default function DepositosPage() {
   const { token } = theme.useToken();
   const [modalCrear, setModalCrear] = useState(false);
   const [cuentaFiltro, setCuentaFiltro] = useState<number | undefined>();
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
   const [form] = Form.useForm();
 
   const { data: cuentas = [] } = useQuery<any[]>({
@@ -45,8 +47,8 @@ export default function DepositosPage() {
   });
 
   const { data: depositos, isLoading } = useQuery<any>({
-    queryKey: ['depositos', cuentaFiltro],
-    queryFn: () => api.get(`/depositos?limit=50${cuentaFiltro ? `&cuentaId=${cuentaFiltro}` : ''}`).then((r: any) => r.data?.data ?? r.data),
+    queryKey: ['depositos', cuentaFiltro, search, page],
+    queryFn: () => api.get(`/depositos?limit=50&page=${page}${cuentaFiltro ? `&cuentaId=${cuentaFiltro}` : ''}${search ? `&search=${encodeURIComponent(search)}` : ''}`).then((r: any) => r.data?.data ?? r.data),
   });
 
   const crear = useMutation({
@@ -86,6 +88,14 @@ export default function DepositosPage() {
           </div>
         </div>
         <Space>
+          <Input
+            placeholder="Buscar por referencia o banco..."
+            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+            value={search}
+            onChange={e => { setSearch(e.target.value); setPage(1); }}
+            allowClear
+            style={{ width: 220 }}
+          />
           <Select
             allowClear
             placeholder="Filtrar por cuenta"

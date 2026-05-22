@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -7,10 +7,10 @@ import { exportarExcel } from '../../utils/exportExcel';
 import {
   Card, Row, Col, Typography, Table, Tag, Statistic, Button,
   Space, Modal, Form, Input, Select, InputNumber, Tabs,
-  message, Drawer, Badge, Alert,
+  message, Drawer, Badge, Alert, theme,
 } from 'antd';
 import {
-  PlusOutlined, CarOutlined, WarningOutlined, DollarOutlined, FileExcelOutlined, DeleteOutlined,
+  PlusOutlined, CarOutlined, WarningOutlined, DollarOutlined, FileExcelOutlined, DeleteOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -52,9 +52,11 @@ export default function FlotaPage() {
   const [vehSeleccionado, setVehSeleccionado] = useState<any>(null);
   const [crearModal,  setCrearModal]  = useState(false);
   const [regModal,    setRegModal]    = useState(false);
+  const [search,      setSearch]      = useState('');
   const [formVeh]  = Form.useForm();
   const [formReg]  = Form.useForm();
   const qc = useQueryClient();
+  const { token } = theme.useToken();
 
   const COLS_DEF = [
     { key: 'fecha',        label: 'Fecha',        defaultVisible: true  },
@@ -86,6 +88,12 @@ export default function FlotaPage() {
     qc.invalidateQueries({ queryKey: ['flota-res'] });
   };
 
+  const vehiculosFiltrados = useMemo(() => (vehiculos ?? []).filter((v: any) =>
+    v.placa?.toLowerCase().includes(search.toLowerCase()) ||
+    v.marca?.toLowerCase().includes(search.toLowerCase()) ||
+    v.modelo?.toLowerCase().includes(search.toLowerCase())
+  ), [vehiculos, search]);
+
   const crearMut = useMutation({
     mutationFn: flotaApi.crear,
     onSuccess: () => { inv(); setCrearModal(false); formVeh.resetFields(); message.success('Vehículo agregado'); },
@@ -108,6 +116,15 @@ export default function FlotaPage() {
           </Title>
         </Col>
         <Col>
+          <Space>
+          <Input
+            placeholder="Buscar por placa, marca o modelo..."
+            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            allowClear
+            style={{ width: 220 }}
+          />
           <Button icon={<FileExcelOutlined />} onClick={() => {
             const filas = (vehiculos ?? []).map((v: any) => ({
               'Placa':       v.placa ?? '',
@@ -126,6 +143,7 @@ export default function FlotaPage() {
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setCrearModal(true)}>
             Agregar vehículo
           </Button>
+          </Space>
         </Col>
       </Row>
 
@@ -144,7 +162,7 @@ export default function FlotaPage() {
 
       {/* Grid de vehículos */}
       <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
-        {(vehiculos ?? []).map((v: any) => (
+        {vehiculosFiltrados.map((v: any) => (
           <Col xs={24} sm={12} md={8} lg={6} key={v.id}>
             <Card
               onClick={() => setVehSeleccionado(v)}

@@ -6,12 +6,12 @@ import { TableActions } from '../../components/ui/TableActions';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   DatePicker, InputNumber, Space, Typography, Popconfirm,
-  message, Divider, Steps, Tooltip,
+  message, Divider, Steps, Tooltip, theme,
 } from 'antd';
 import {
   CarOutlined, PlusOutlined, SendOutlined, CheckCircleOutlined,
   RollbackOutlined, DeleteOutlined, EyeOutlined, FileExcelOutlined,
-  FilePdfOutlined, LoadingOutlined,
+  FilePdfOutlined, LoadingOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -32,6 +32,9 @@ const ESTADO_CONFIG: Record<string, { color: string; label: string; step: number
 
 export default function ConducePage() {
   const qc = useQueryClient();
+  const { token } = theme.useToken();
+  const [search,        setSearch]        = useState('');
+  const [page,          setPage]          = useState(1);
   const [modalCrear,    setModalCrear]    = useState(false);
   const [modalDetalle,  setModalDetalle]  = useState<any>(null);
   const [modalEntrega,  setModalEntrega]  = useState<{ id: number; tipo: 'entregado' | 'devuelto' } | null>(null);
@@ -55,8 +58,8 @@ export default function ConducePage() {
   });
 
   const { data: conduces, isLoading } = useQuery<any>({
-    queryKey: ['conduces'],
-    queryFn:  () => api.get('/conduces?limit=50').then((r: any) => r.data?.data ?? r.data),
+    queryKey: ['conduces', page, search],
+    queryFn:  () => api.get(`/conduces?page=${page}&limit=50${search ? `&search=${encodeURIComponent(search)}` : ''}`).then((r: any) => r.data?.data ?? r.data),
   });
 
   const onErr = (e: any, fallback: string) => message.error((e as any)?.friendlyMessage ?? fallback);
@@ -137,6 +140,14 @@ export default function ConducePage() {
           </div>
         </div>
         <Space>
+          <Input
+            placeholder="Buscar por número o cliente..."
+            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+            value={search}
+            onChange={e => { setSearch(e.target.value); setPage(1); }}
+            allowClear
+            style={{ width: 220 }}
+          />
           <Button icon={<FileExcelOutlined />} onClick={() => {
             const filas = (conduces?.data ?? []).map((c: any) => ({
               'Número':   c.numero ?? '',
@@ -163,7 +174,7 @@ export default function ConducePage() {
           rowKey="id"
           loading={isLoading}
           size="middle"
-          pagination={{ pageSize: 15 }}
+          pagination={{ pageSize: 15, current: page, total: conduces?.meta?.total, onChange: setPage, showSizeChanger: false }}
           expandable={{
             expandedRowRender: (r: any) => (
               <Steps

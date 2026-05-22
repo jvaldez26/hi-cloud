@@ -1,12 +1,12 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Card, Row, Col, Typography, Statistic, Button, Table, Tag,
          Select, InputNumber, message, Tabs, Modal,
-         Form, Input } from 'antd';
+         Form, Input, theme } from 'antd';
 import { CalculatorOutlined, CheckOutlined, DollarOutlined,
-         FileExcelOutlined, PlusOutlined, DeleteOutlined, ThunderboltOutlined } from '@ant-design/icons';
+         FileExcelOutlined, PlusOutlined, DeleteOutlined, ThunderboltOutlined, SearchOutlined } from '@ant-design/icons';
 import { TableActions } from '../../components/ui/TableActions';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -83,10 +83,12 @@ const COLS_DEF_COMISIONES = [
 ];
 
 function AdminTab() {
-  const [mes,  setMes]  = useState(dayjs().month() + 1);
-  const [anio, setAnio] = useState(dayjs().year());
-  const [pct,  setPct]  = useState(5);
+  const [mes,    setMes]    = useState(dayjs().month() + 1);
+  const [anio,   setAnio]   = useState(dayjs().year());
+  const [pct,    setPct]    = useState(5);
   const [estado, setEstado] = useState<string | undefined>();
+  const [search, setSearch] = useState('');
+  const { token } = theme.useToken();
   const qc = useQueryClient();
   const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('comisiones', COLS_DEF_COMISIONES);
 
@@ -94,6 +96,16 @@ function AdminTab() {
     queryKey: ['comisiones-lista', estado],
     queryFn:  () => comisionesApi.listar(undefined, estado),
   });
+
+  const listaFiltrada = useMemo(() => {
+    const base = lista ?? [];
+    if (!search.trim()) return base;
+    const q = search.toLowerCase();
+    return base.filter((r: any) =>
+      (r.vendedor?.nombre ?? r.vendedorNombre ?? '').toLowerCase().includes(q) ||
+      (r.periodo ?? '').toLowerCase().includes(q)
+    );
+  }, [lista, search]);
 
   const calcMut = useMutation({
     mutationFn: () => comisionesApi.calcular(mes, anio, pct),
@@ -114,6 +126,16 @@ function AdminTab() {
   return (
     <>
       <Row gutter={[12, 12]} align="middle" style={{ marginBottom: 16 }}>
+        <Col>
+          <Input
+            placeholder="Buscar por nombre o código..."
+            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            allowClear
+            style={{ width: 220 }}
+          />
+        </Col>
         <Col>
           <Select value={mes} onChange={setMes} style={{ width: 130 }}
             options={Array.from({ length: 12 }, (_, i) => ({ value: i + 1, label: dayjs().month(i).format('MMMM') }))} />
@@ -157,7 +179,7 @@ function AdminTab() {
 
       <Table size="small"
         scroll={{ x: 'max-content' }} loading={isLoading}
-        dataSource={lista ?? []} rowKey="id"
+        dataSource={listaFiltrada} rowKey="id"
         columns={filterColumns([
           { title: 'Vendedor', key: 'vend', ellipsis: true,
             render: (_: any, r: any) => r.vendedor?.nombre ?? r.vendedorNombre ?? `#${r.vendedorId}`,

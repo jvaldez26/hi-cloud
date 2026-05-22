@@ -6,9 +6,9 @@ import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { TableActions } from '../../components/ui/TableActions';
 import { Table, Button, Tag, Card, Row, Col, Typography,
          Modal, Form, Input, InputNumber, Select, DatePicker, Space,
-         Drawer, Descriptions, Popconfirm, message, Divider, Steps } from 'antd';
+         Drawer, Descriptions, Popconfirm, message, Divider, Steps, theme } from 'antd';
 import {
-  PlusOutlined, FileTextOutlined, FileExcelOutlined,
+  PlusOutlined, FileTextOutlined, FileExcelOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -46,8 +46,8 @@ const TRANSICIONES: Record<EstadoOrden, EstadoOrden[]> = {
 
 const serviciosApi = {
   resumen:   ()         => api.get('/servicios/resumen').then(r => r.data?.data ?? r.data),
-  list:      (p = 1, estado?: string) =>
-    api.get(`/servicios?page=${p}${estado ? `&estado=${estado}` : ''}`).then(r => r.data?.data ?? r.data),
+  list:      (p = 1, estado?: string, s?: string) =>
+    api.get(`/servicios?page=${p}${estado ? `&estado=${estado}` : ''}${s ? `&search=${encodeURIComponent(s)}` : ''}`).then(r => r.data?.data ?? r.data),
   getOne:    (id: number) => api.get(`/servicios/${id}`).then(r => r.data?.data ?? r.data),
   crear:     (body: any)  => api.post('/servicios', body).then(r => r.data?.data ?? r.data),
   estado:    (id: number, body: any) => api.patch(`/servicios/${id}/estado`, body).then(r => r.data?.data ?? r.data),
@@ -57,8 +57,10 @@ const serviciosApi = {
 };
 
 export default function ServiciosPage() {
+  const { token } = theme.useToken();
   const [page,       setPage]       = useState(1);
   const [estadoFilt, setEstadoFilt] = useState<string | undefined>();
+  const [search,     setSearch]     = useState('');
   const [openCreate, setOpenCreate] = useState(false);
   const [detail,     setDetail]     = useState<any>(null);
   const [openDetalle,setOpenDetalle]= useState(false);
@@ -68,8 +70,8 @@ export default function ServiciosPage() {
 
   const { data: resumen } = useQuery({ queryKey: ['srv-resumen'], queryFn: serviciosApi.resumen });
   const { data, isLoading } = useQuery({
-    queryKey: ['servicios', page, estadoFilt],
-    queryFn:  () => serviciosApi.list(page, estadoFilt),
+    queryKey: ['servicios', page, estadoFilt, search],
+    queryFn:  () => serviciosApi.list(page, estadoFilt, search),
   });
   const { data: clientes }  = useQuery({ queryKey: ['cli-srv'],   queryFn: () => clientesApi.list(1, 100) });
   const { data: productos } = useQuery({ queryKey: ['prod-srv'],  queryFn: () => productosApi.list(1, 200) });
@@ -118,6 +120,14 @@ export default function ServiciosPage() {
 
       <Card extra={
         <Space>
+          <Input
+            placeholder="Buscar por nombre o número de orden..."
+            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+            value={search}
+            onChange={e => { setSearch(e.target.value); setPage(1); }}
+            allowClear
+            style={{ width: 220 }}
+          />
           <Select placeholder="Filtrar estado" allowClear style={{ width: 180 }}
             value={estadoFilt} onChange={(v) => { setEstadoFilt(v); setPage(1); }}
             options={Object.entries(ESTADO_INFO).map(([k, v]) => ({ value: k, label: v.label }))} />

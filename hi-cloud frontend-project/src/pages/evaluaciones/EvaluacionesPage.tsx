@@ -1,13 +1,13 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { TableActions } from '../../components/ui/TableActions';
 import {
   Card, Row, Col, Typography, Table, Tag, Button,
-  Space, Modal, Form, Select, InputNumber, Tabs,
+  Space, Modal, Form, Input, Select, InputNumber, Tabs,
   message, Rate, Progress, Avatar, Descriptions, theme } from 'antd';
-import { PlusOutlined, CheckOutlined, StarOutlined, TeamOutlined, FileExcelOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, CheckOutlined, StarOutlined, TeamOutlined, FileExcelOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -32,6 +32,7 @@ const NOTA_LABEL = (nota: number) => nota >= 4.5 ? 'Excelente' : nota >= 3.5 ? '
 export default function EvaluacionesPage() {
   const { token } = theme.useToken();
   const [anio,       setAnio]       = useState(dayjs().year());
+  const [search,     setSearch]     = useState('');
   const [crearModal, setCrearModal] = useState(false);
   const [detalle,    setDetalle]    = useState<any>(null);
   const [criterios,  setCriterios]  = useState<Record<string, number>>({});
@@ -50,6 +51,16 @@ export default function EvaluacionesPage() {
     qc.invalidateQueries({ queryKey: ['evals'] });
     qc.invalidateQueries({ queryKey: ['eval-resumen'] });
   };
+
+  const evaluacionesFiltradas = useMemo(() => {
+    const lista = Array.isArray(evaluaciones) ? evaluaciones : [];
+    if (!search.trim()) return lista;
+    const q = search.toLowerCase();
+    return lista.filter((e: any) =>
+      `${e.empleado?.nombre ?? ''} ${e.empleado?.apellido ?? ''}`.toLowerCase().includes(q) ||
+      (e.tipo ?? '').toLowerCase().includes(q)
+    );
+  }, [evaluaciones, search]);
 
   const crearMut = useMutation({
     mutationFn: evalApi.crear,
@@ -140,10 +151,18 @@ export default function EvaluacionesPage() {
         </Col>
         <Col>
           <Space>
+            <Input
+              placeholder="Buscar por nombre o tipo..."
+              prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              allowClear
+              style={{ width: 220 }}
+            />
             <Select value={anio} onChange={setAnio} style={{ width: 90 }}
               options={[2023, 2024, 2025, 2026].map(y => ({ value: y, label: y }))} />
             <Button icon={<FileExcelOutlined />} onClick={() => {
-              const filas = (Array.isArray(evaluaciones) ? evaluaciones : []).map((e: any) => ({
+              const filas = evaluacionesFiltradas.map((e: any) => ({
                 'Empleado':       `${e.empleado?.nombre ?? ''} ${e.empleado?.apellido ?? ''}`.trim(),
                 'Período':        e.periodo ?? '',
                 'Tipo':           e.tipo ?? '',
@@ -171,7 +190,7 @@ export default function EvaluacionesPage() {
           label: 'Evaluaciones',
           children: (
             <Card>
-              <Table columns={filterColumns(cols)} dataSource={evaluaciones ?? []} rowKey="id"
+              <Table columns={filterColumns(cols)} dataSource={evaluacionesFiltradas} rowKey="id"
                 loading={isLoading} size="small"
         scroll={{ x: 'max-content' }} pagination={false} />
             </Card>

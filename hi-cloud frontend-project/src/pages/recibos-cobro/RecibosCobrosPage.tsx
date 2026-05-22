@@ -11,7 +11,7 @@ import {
 import {
   FileTextOutlined, PlusOutlined, PrinterOutlined,
   CheckCircleOutlined, MailOutlined, FileExcelOutlined,
-  FilePdfOutlined, LoadingOutlined, StopOutlined,
+  FilePdfOutlined, LoadingOutlined, StopOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -88,6 +88,8 @@ export default function RecibosCobrosPage() {
     { key: 'mo',  label: 'Monto',    defaultVisible: true  },
   ];
   const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('recibos-cobro', COLS_DEF);
+  const [search,           setSearch]           = useState('');
+  const [page,             setPage]             = useState(1);
   const [modalCrear,       setModalCrear]       = useState(false);
   const [reciboImprimir,   setReciboImprimir]   = useState<any>(null);
   const [emailRecibo,      setEmailRecibo]       = useState<any>(null);
@@ -180,8 +182,8 @@ export default function RecibosCobrosPage() {
   });
 
   const { data: recibos, isLoading } = useQuery<any>({
-    queryKey: ['recibos-cobro'],
-    queryFn:  () => api.get('/recibos-cobro?limit=50').then((r: any) => r.data?.data ?? r.data),
+    queryKey: ['recibos-cobro', search, page],
+    queryFn:  () => api.get(`/recibos-cobro?limit=50${search ? `&search=${encodeURIComponent(search)}` : ''}&page=${page}`).then((r: any) => r.data?.data ?? r.data),
   });
 
   const errMsg = (e: any) => e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado';
@@ -291,6 +293,17 @@ export default function RecibosCobrosPage() {
             Nuevo Recibo
           </Button>
         </Space>
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <Input
+          placeholder="Buscar por número, cliente o factura..."
+          prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+          value={search}
+          onChange={e => { setSearch(e.target.value); setPage(1); }}
+          allowClear
+          style={{ width: 320 }}
+        />
       </div>
 
       <Card bordered={false} style={{ borderRadius: 12 }}>

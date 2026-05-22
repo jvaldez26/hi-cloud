@@ -93,6 +93,8 @@ const fmtNC = (v: number) =>
 export default function NotasCreditoPage() {
   const qc = useQueryClient();
   const { token } = theme.useToken();
+  const [search,        setSearch]        = useState('');
+  const [page,          setPage]          = useState(1);
   const [modalCrear,    setModalCrear]    = useState(false);
   const [modalDetalle,  setModalDetalle]  = useState<any>(null);
   const [emailNota,     setEmailNota]     = useState<any>(null);
@@ -163,8 +165,8 @@ export default function NotasCreditoPage() {
   });
 
   const { data: notas, isLoading } = useQuery<any>({
-    queryKey: ['notas-credito'],
-    queryFn:  () => api.get('/notas-credito?limit=50').then((r: any) => r.data?.data ?? r.data),
+    queryKey: ['notas-credito', search, page],
+    queryFn:  () => api.get(`/notas-credito?limit=50${search ? `&search=${encodeURIComponent(search)}` : ''}&page=${page}`).then((r: any) => r.data?.data ?? r.data),
   });
 
   const crear = useMutation({
@@ -298,6 +300,17 @@ export default function NotasCreditoPage() {
             Nueva Nota de Crédito
           </Button>
         </Space>
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <Input
+          placeholder="Buscar por número o cliente..."
+          prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+          value={search}
+          onChange={e => { setSearch(e.target.value); setPage(1); }}
+          allowClear
+          style={{ width: 280 }}
+        />
       </div>
 
       <Card bordered={false} style={{ borderRadius: 12 }}>

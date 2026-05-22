@@ -12,7 +12,7 @@ import {
 import {
   ReloadOutlined, DownloadOutlined, SendOutlined,
   WarningOutlined, CheckCircleOutlined, CloseCircleOutlined,
-  ClockCircleOutlined, PlusOutlined, EditOutlined, StopOutlined,
+  ClockCircleOutlined, PlusOutlined, EditOutlined, StopOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ecfApi } from '../../api/ecf.api';
@@ -51,16 +51,18 @@ const ECF_COLS_DEF = [
 
 function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
   const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('ecf', ECF_COLS_DEF);
+  const { token } = theme.useToken();
   const [estado, setEstado] = useState<string | undefined>();
   const [tipo,   setTipo]   = useState<string | undefined>();
+  const [search, setSearch] = useState('');
   const [page,   setPage]   = useState(1);
   const [detail, setDetail] = useState<any>(null);
   const [xmlModal, setXmlModal] = useState<{ numero: string; xml: string } | null>(null);
   const qc = useQueryClient();
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['ecf-list', page, estado, tipo],
-    queryFn:  () => ecfApi.list(page, 10, estado, tipo),
+    queryKey: ['ecf-list', page, estado, tipo, search],
+    queryFn:  () => ecfApi.list(page, 10, estado, tipo, search),
   });
 
   const { data: tipos } = useQuery({ queryKey: ['ecf-tipos'], queryFn: ecfApi.tipos });
@@ -120,6 +122,14 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
       <Row gutter={[12, 12]} align="middle" justify="space-between" style={{ marginBottom: 16 }}>
         <Col>
           <Space>
+            <Input
+              placeholder="Buscar por número, e-NCF o estado..."
+              prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(1); }}
+              allowClear
+              style={{ width: 280 }}
+            />
             <Select placeholder="Estado DGII" allowClear style={{ width: 190 }}
               onChange={(v) => { setEstado(v); setPage(1); }}
               options={[

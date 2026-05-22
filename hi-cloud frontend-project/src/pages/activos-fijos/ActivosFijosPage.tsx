@@ -5,8 +5,8 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Table, Button, Tag, Card, Row, Col, Typography, Statistic,
          Modal, Form, Input, InputNumber, Select, Tabs, message,
-         Space, Progress, Popconfirm, DatePicker, Drawer } from 'antd';
-import { PlusOutlined, ToolOutlined, BarChartOutlined, FileExcelOutlined } from '@ant-design/icons';
+         Space, Progress, Popconfirm, DatePicker, Drawer, theme } from 'antd';
+import { PlusOutlined, ToolOutlined, BarChartOutlined, FileExcelOutlined, SearchOutlined } from '@ant-design/icons';
 import { TableActions } from '../../components/ui/TableActions';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { activosFijosApi, type ActivoPayload } from '../../api/activos-fijos.api';
@@ -25,14 +25,16 @@ export default function ActivosFijosPage() {
   const [openDepr, setOpenDepr] = useState(false);
   const [openHist, setOpenHist] = useState<any>(null);
   const [page, setPage]         = useState(1);
+  const [search, setSearch]     = useState('');
   const [form] = Form.useForm<ActivoPayload>();
   const [formBaja] = Form.useForm();
   const [formDepr] = Form.useForm();
   const qc = useQueryClient();
+  const { token } = theme.useToken();
 
   const { data: resumen }    = useQuery({ queryKey: ['activos-resumen'],    queryFn: activosFijosApi.resumen });
   const { data: categorias } = useQuery({ queryKey: ['categorias-activos'], queryFn: activosFijosApi.categorias });
-  const { data: activos, isLoading } = useQuery({ queryKey: ['activos', page], queryFn: () => activosFijosApi.activos(page, 12) });
+  const { data: activos, isLoading } = useQuery({ queryKey: ['activos', page, search], queryFn: () => activosFijosApi.activos(page, 12, search) });
   const { data: historial } = useQuery({ queryKey: ['historial-activo', openHist?.id], queryFn: () => activosFijosApi.historial(openHist.id), enabled: !!openHist });
 
   const onErr = (e: any, fb: string) => message.error((e as any)?.friendlyMessage ?? fb);
@@ -101,6 +103,14 @@ export default function ActivosFijosPage() {
 
       <Card extra={
         <Space>
+          <Input
+            placeholder="Buscar por nombre o código..."
+            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+            value={search}
+            onChange={e => { setSearch(e.target.value); setPage(1); }}
+            allowClear
+            style={{ width: 220 }}
+          />
           <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
           <Button icon={<FileExcelOutlined />} onClick={() => {
             const filas = (activos?.data ?? []).map((a: any) => ({

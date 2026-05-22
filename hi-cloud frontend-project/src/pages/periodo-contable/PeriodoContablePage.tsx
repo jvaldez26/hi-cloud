@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Card, Row, Col, Button, Tag, Modal, Form, Select, Input,
   Space, Typography, Statistic, Popconfirm, message, Tooltip,
@@ -8,7 +8,7 @@ import {
   CalendarOutlined, LockOutlined, UnlockOutlined,
   CheckCircleOutlined, PlusOutlined, CloseCircleOutlined,
   DollarOutlined, FileTextOutlined, WarningOutlined,
-  ThunderboltOutlined,
+  ThunderboltOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
@@ -48,6 +48,7 @@ export default function PeriodoContablePage() {
   const { token }   = theme.useToken();
   const ESTADO_CONFIG = useEstadoConfig();
   const anioActual  = new Date().getFullYear();
+  const [search, setSearch] = useState('');
   const [anio, setAnio] = useState(anioActual);
   const [modalCrear,  setModalCrear]  = useState(false);
   const [modalCerrar, setModalCerrar] = useState<any>(null);
@@ -120,6 +121,12 @@ export default function PeriodoContablePage() {
   const mesActual = new Date().getMonth() + 1;
   const pctAvance = resumen ? Math.round(((resumen.cerrados + resumen.bloqueados) / 12) * 100) : 0;
 
+  const mesesFiltrados = useMemo(() =>
+    MESES.map((nombre, idx) => ({ nombre, numMes: idx + 1 }))
+      .filter(({ nombre }) =>
+        nombre.toLowerCase().includes(search.toLowerCase())
+      ), [search]);
+
   return (
     <div style={{ padding: '24px' }}>
       {/* Header */}
@@ -132,6 +139,14 @@ export default function PeriodoContablePage() {
           </div>
         </div>
         <Space>
+          <Input
+            placeholder="Buscar por período..."
+            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            allowClear
+            style={{ width: 220 }}
+          />
           <Select
             value={anio}
             onChange={setAnio}
@@ -159,8 +174,7 @@ export default function PeriodoContablePage() {
       {/* Grid de 12 meses */}
       <Card bordered={false} style={{ borderRadius: 12 }} loading={isLoading}>
         <Row gutter={[12, 12]}>
-          {MESES.map((nombreMes, idx) => {
-            const numMes  = idx + 1;
+          {mesesFiltrados.map(({ nombre: nombreMes, numMes }) => {
             const periodo = periodosPorMes[numMes];
             const conf    = periodo ? ESTADO_CONFIG[periodo.estado as keyof typeof ESTADO_CONFIG] : ESTADO_CONFIG.sincrear;
             const esActual = numMes === mesActual && anio === anioActual;

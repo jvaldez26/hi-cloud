@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { TableActions } from '../../components/ui/TableActions';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -10,7 +10,7 @@ import {
 } from 'antd';
 import {
   RollbackOutlined, PlusOutlined, CheckCircleOutlined,
-  CloseCircleOutlined, DeleteOutlined, EyeOutlined, FileExcelOutlined,
+  CloseCircleOutlined, DeleteOutlined, EyeOutlined, FileExcelOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -51,6 +51,7 @@ export default function NotasCreditoComprasPage() {
   const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('notas-credito-compras', COLS_DEF);
   const qc = useQueryClient();
   const { token } = theme.useToken();
+  const [search,       setSearch]       = useState('');
   const [modalCrear,   setModalCrear]   = useState(false);
   const [modalDetalle, setModalDetalle] = useState<any>(null);
   const [formCrear] = Form.useForm();
@@ -74,6 +75,16 @@ export default function NotasCreditoComprasPage() {
     queryKey: ['notas-credito-compras'],
     queryFn:  () => api.get('/notas-credito-compras?limit=50').then((r: any) => r.data?.data ?? r.data),
   });
+
+  const notasFiltradas = useMemo(() => {
+    const lista = notas?.data ?? [];
+    if (!search.trim()) return lista;
+    const q = search.toLowerCase();
+    return lista.filter((n: any) =>
+      (n.numero ?? '').toLowerCase().includes(q) ||
+      (n.proveedor?.nombre ?? '').toLowerCase().includes(q)
+    );
+  }, [notas, search]);
 
   const errMsg = (e: any) =>
     e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado';
@@ -138,6 +149,14 @@ export default function NotasCreditoComprasPage() {
           </div>
         </div>
         <Space>
+          <Input
+            placeholder="Buscar por número o proveedor..."
+            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            allowClear
+            style={{ width: 220 }}
+          />
           <Button icon={<FileExcelOutlined />} onClick={() => {
             const filas = (notas?.data ?? []).map((n: any) => ({
               'Número':    n.numero ?? '',
@@ -160,7 +179,7 @@ export default function NotasCreditoComprasPage() {
 
       <Card bordered={false} style={{ borderRadius: 12 }}>
         <Table
-          dataSource={notas?.data ?? []}
+          dataSource={notasFiltradas}
           rowKey="id"
           loading={isLoading}
           size="middle"

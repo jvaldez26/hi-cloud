@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -10,7 +10,7 @@ import {
 } from 'antd';
 import {
   PercentageOutlined, PlusOutlined, EditOutlined, DeleteOutlined,
-  ThunderboltOutlined, CheckCircleOutlined, FileExcelOutlined,
+  ThunderboltOutlined, CheckCircleOutlined, FileExcelOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import dayjs from 'dayjs';
@@ -38,6 +38,7 @@ const CONDICION_LABELS: Record<string, { label: string; desc: string }> = {
 export default function DescuentosPage() {
   const qc = useQueryClient();
   const { token } = theme.useToken();
+  const [search,       setSearch]       = useState('');
   const [modalVisible, setModalVisible] = useState(false);
   const [editando,     setEditando]     = useState<any>(null);
   const [form] = Form.useForm();
@@ -52,6 +53,16 @@ export default function DescuentosPage() {
     queryKey: ['descuentos'],
     queryFn: () => api.get('/descuentos').then((r: any) => r.data?.data ?? r.data),
   });
+
+  const reglasFiltradas = useMemo(() => {
+    if (!search.trim()) return reglas;
+    const q = search.toLowerCase();
+    return reglas.filter((r: any) =>
+      (r.nombre ?? '').toLowerCase().includes(q) ||
+      (r.codigo ?? '').toLowerCase().includes(q) ||
+      (r.descripcion ?? '').toLowerCase().includes(q)
+    );
+  }, [reglas, search]);
 
   const crearActualizar = useMutation({
     mutationFn: (dto: any) => editando
@@ -124,6 +135,14 @@ export default function DescuentosPage() {
           </div>
         </div>
         <Space>
+          <Input
+            placeholder="Buscar por nombre o código..."
+            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+            value={search}
+            onChange={e => { setSearch(e.target.value); }}
+            allowClear
+            style={{ width: 220 }}
+          />
           <Button icon={<FileExcelOutlined />} onClick={() => {
             const filas = reglas.map((r: any) => ({
               'Nombre':    r.nombre ?? '',
@@ -153,7 +172,7 @@ export default function DescuentosPage() {
 
       <Card bordered={false} style={{ borderRadius: 12 }}>
         <Table
-          dataSource={reglas}
+          dataSource={reglasFiltradas}
           rowKey="id"
           loading={isLoading}
           size="middle"

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Input, Space,
@@ -7,7 +7,7 @@ import {
 } from 'antd';
 import {
   WhatsAppOutlined, MessageOutlined, BellOutlined, CopyOutlined,
-  SendOutlined, PhoneOutlined, DollarOutlined,
+  SendOutlined, PhoneOutlined, DollarOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../api/client';
@@ -73,6 +73,7 @@ function WhatsAppModal({ titulo, texto, link, onClose }: {
 
 export default function ComunicacionesPage() {
   const { token } = theme.useToken();
+  const [search, setSearch] = useState('');
   const [modalData, setModalData] = useState<{ titulo: string; texto: string; link: string } | null>(null);
   const [loading,   setLoading]   = useState<number | null>(null);
 
@@ -110,6 +111,12 @@ export default function ComunicacionesPage() {
   const totalPend   = cxcPendientes.reduce((s: number, c: any) => s + c.montoPendiente, 0);
   const totalVenc   = vencidas.reduce((s: number, c: any) => s + c.montoPendiente, 0);
 
+  const cxcFiltradas = useMemo(() =>
+    cxcPendientes.filter((c: any) =>
+      String(c.clienteNombre ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      String(c.clienteTelefono ?? '').toLowerCase().includes(search.toLowerCase())
+    ), [cxcPendientes, search]);
+
   return (
     <div style={{ padding: '24px' }}>
       {modalData && (
@@ -144,6 +151,16 @@ export default function ComunicacionesPage() {
             label: <Space><BellOutlined />Recordatorios CxC</Space>,
             children: (
               <>
+                <div style={{ marginBottom: 16 }}>
+                  <Input
+                    placeholder="Buscar por asunto o destinatario..."
+                    prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    allowClear
+                    style={{ width: 220 }}
+                  />
+                </div>
                 {vencidas.length > 0 && (
                   <Alert
                     type="warning"
@@ -154,7 +171,7 @@ export default function ComunicacionesPage() {
                 )}
                 <Card bordered={false} style={{ borderRadius: 12 }}>
                   <Table
-                    dataSource={cxcPendientes}
+                    dataSource={cxcFiltradas}
                     rowKey="id"
                     size="middle"
                     pagination={{ pageSize: 20 }}

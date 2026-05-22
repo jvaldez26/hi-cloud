@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
@@ -6,10 +6,11 @@ import { TableActions } from '../../components/ui/TableActions';
 import {
   Card, Row, Col, Button, Table, Typography, Space, Modal,
   Form, Input, InputNumber, Select, message,
-  Tag, Tabs, Alert, Statistic, Divider,
+  Tag, Tabs, Alert, Statistic, Divider, theme,
 } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, SwapOutlined, ThunderboltOutlined,
+  SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
@@ -50,12 +51,20 @@ const UOM_COLS_DEF = [
 ];
 
 function UnidadesTab() {
+  const { token } = theme.useToken();
   const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('uom', UOM_COLS_DEF);
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const [form] = Form.useForm();
   const qc = useQueryClient();
 
   const { data: unidades, isLoading } = useQuery({ queryKey: ['uom-unidades'], queryFn: () => uomApi.unidades() });
+
+  const unidadesFiltradas = useMemo(() =>
+    (unidades ?? []).filter((i: any) =>
+      String(i.nombre ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      String(i.simbolo ?? i.codigo ?? '').toLowerCase().includes(search.toLowerCase())
+    ), [unidades, search]);
 
   const inicMut = useMutation({
     mutationFn: uomApi.inicializar,
@@ -135,6 +144,14 @@ function UnidadesTab() {
           )}
         </Col>
         <Col>
+          <Input
+            placeholder="Buscar por nombre o símbolo..."
+            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            allowClear
+            style={{ width: 220 }}
+          />
           <ColumnToggle columns={UOM_COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
           <RefreshByKeyButton queryKey={['uom']} />
           <VideoTutorialButton />
@@ -144,7 +161,7 @@ function UnidadesTab() {
         </Col>
       </Row>
 
-      <Table columns={filterColumns(cols)} dataSource={unidades ?? []} rowKey="id" loading={isLoading}
+      <Table columns={filterColumns(cols)} dataSource={unidadesFiltradas} rowKey="id" loading={isLoading}
         size="small"
         scroll={{ x: 'max-content' }} pagination={{ pageSize: 20 }} />
 

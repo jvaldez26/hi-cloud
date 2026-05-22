@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
@@ -6,7 +6,7 @@ import {
   Divider,
 } from 'antd';
 import {
-  DollarOutlined, PlusOutlined, RetweetOutlined, BarChartOutlined,
+  DollarOutlined, PlusOutlined, RetweetOutlined, BarChartOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -29,6 +29,7 @@ const MONEDA_COLOR: Record<string, string> = {
 export default function DivisasPage() {
   const qc = useQueryClient();
   const { token } = theme.useToken();
+  const [search, setSearch] = useState('');
   const [modalNueva, setModalNueva] = useState(false);
   const [monedaHistorial, setMonedaHistorial] = useState('USD');
   const [formNueva] = Form.useForm();
@@ -76,6 +77,12 @@ export default function DivisasPage() {
     compra:   Number(h.tasaCompra),
   }));
 
+  const historialFiltrado = useMemo(() =>
+    (historial ?? []).filter((i: any) =>
+      String(i.fecha ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      String(i.fuente ?? '').toLowerCase().includes(search.toLowerCase())
+    ).slice(0, 10), [historial, search]);
+
   return (
     <div style={{ padding: '24px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
@@ -87,6 +94,14 @@ export default function DivisasPage() {
           </div>
         </div>
         <Space>
+          <Input
+            placeholder="Buscar por moneda..."
+            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            allowClear
+            style={{ width: 220 }}
+          />
           <RefreshByKeyButton queryKey={['divisas']} />
           <VideoTutorialButton />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalNueva(true)}>
@@ -171,7 +186,7 @@ export default function DivisasPage() {
               <Text type="secondary">Sin historial para {monedaHistorial}</Text>
             )}
             <Table
-              dataSource={historial.slice(0, 10)}
+              dataSource={historialFiltrado}
               rowKey="id"
               size="small"
         scroll={{ x: 'max-content' }}

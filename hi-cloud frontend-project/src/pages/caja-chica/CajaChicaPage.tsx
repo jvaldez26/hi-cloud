@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -8,7 +8,7 @@ import {
   message, Divider, Progress, Alert, Badge, theme } from 'antd';
 import {
   WalletOutlined, PlusOutlined, PlusCircleOutlined, MinusCircleOutlined,
-  LockOutlined, HistoryOutlined, ExclamationCircleOutlined,
+  LockOutlined, HistoryOutlined, ExclamationCircleOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -39,6 +39,7 @@ const TIPO_COLOR: Record<string, string> = {
 export default function CajaChicaPage() {
   const qc = useQueryClient();
   const { token } = theme.useToken();
+  const [search, setSearch] = useState('');
   const [cajaSeleccionada, setCajaSeleccionada] = useState<any>(null);
   const [modalCajaCrear,   setModalCajaCrear]   = useState(false);
   const [modalEgreso,      setModalEgreso]       = useState(false);
@@ -57,6 +58,12 @@ export default function CajaChicaPage() {
     queryFn:  () => api.get(`/caja-chica/cajas/${cajaSeleccionada.id}/movimientos`).then((r: any) => r.data?.data ?? r.data ?? []),
     enabled:  !!cajaSeleccionada?.id,
   });
+
+  const movimientosFiltrados = useMemo(() =>
+    (movimientos ?? []).filter(item =>
+      String(item.descripcion ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      String(item.comprobante ?? item.referencia ?? '').toLowerCase().includes(search.toLowerCase())
+    ), [movimientos, search]);
 
   const crearCaja = useMutation({
     mutationFn: (dto: any) => api.post('/caja-chica/cajas', dto),
@@ -149,6 +156,14 @@ export default function CajaChicaPage() {
           </div>
         </div>
         <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <Input
+            placeholder="Buscar por descripción o referencia..."
+            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            allowClear
+            style={{ width: 220 }}
+          />
           <RefreshByKeyButton queryKey={['caja-chica']} />
           <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
           <VideoTutorialButton />
@@ -229,7 +244,7 @@ export default function CajaChicaPage() {
               extra={<Button size="small" type="link" onClick={() => setCajaSeleccionada(null)}>Cerrar ✕</Button>}
             >
               <Table
-                dataSource={movimientos}
+                dataSource={movimientosFiltrados}
                 rowKey="id"
                 size="small"
         scroll={{ x: 'max-content' }}

@@ -1,17 +1,17 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Typography, Select, Table, Tag, Statistic,
   Tabs, Button, Space, Alert, Progress, Tooltip, Spin,
-  Badge, message, theme,
+  Badge, message, theme, Input,
 } from 'antd';
 import {
   FileDoneOutlined, DownloadOutlined, CheckCircleOutlined,
   ExclamationCircleOutlined, BarChartOutlined, FileTextOutlined,
   SafetyCertificateOutlined, FileExcelOutlined, FilePdfOutlined,
-  HistoryOutlined, WarningOutlined, SyncOutlined, ClockCircleOutlined,
+  HistoryOutlined, WarningOutlined, SyncOutlined, ClockCircleOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { exportar606, exportar607 } from '../../utils/exportExcel';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -349,8 +349,9 @@ function IT1Card({ data }: { data: any }) {
 export default function DeclaracionesPage() {
   const { token } = theme.useToken();
   const mesAnterior = dayjs().subtract(1, 'month');
-  const [mes,  setMes]  = useState(dayjs().month() + 1);
-  const [anio, setAnio] = useState(dayjs().year());
+  const [mes,    setMes]    = useState(dayjs().month() + 1);
+  const [anio,   setAnio]   = useState(dayjs().year());
+  const [search, setSearch] = useState('');
   const [txt606, setTxt606] = useState(false);
   const [txt607, setTxt607] = useState(false);
   const [txt608, setTxt608] = useState(false);
@@ -362,6 +363,29 @@ export default function DeclaracionesPage() {
   const { data: anual               }   = useQuery({ queryKey: ['decl-anual', anio],       queryFn: () => declApi.anual(anio) });
 
   const periodLabel = `${MESES.find(m => m.value === mes)?.label} ${anio}`;
+
+  const filas606Filtradas = useMemo(() => {
+    const filas = f606?.filas ?? [];
+    if (!search.trim()) return filas;
+    const q = search.toLowerCase();
+    return filas.filter((r: any) =>
+      (r.rncProveedor ?? '').toLowerCase().includes(q) ||
+      (r.nombreProveedor ?? '').toLowerCase().includes(q) ||
+      (r.ncfProveedor ?? '').toLowerCase().includes(q) ||
+      (r.fechaComprobante ?? '').toLowerCase().includes(q)
+    );
+  }, [f606, search]);
+
+  const filas607Filtradas = useMemo(() => {
+    const filas = f607?.filas ?? [];
+    if (!search.trim()) return filas;
+    const q = search.toLowerCase();
+    return filas.filter((r: any) =>
+      (r.rncComprador ?? '').toLowerCase().includes(q) ||
+      (r.encf ?? '').toLowerCase().includes(q) ||
+      (r.fechaComprobante ?? '').toLowerCase().includes(q)
+    );
+  }, [f607, search]);
 
   // ── ColumnToggle ─────────────────────────────────────────────────────────────
   const COLS_DEF_606 = [
@@ -431,6 +455,14 @@ export default function DeclaracionesPage() {
         </Col>
         <Col>
           <Space>
+            <Input
+              placeholder="Buscar por RNC o período..."
+              prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              allowClear
+              style={{ width: 220 }}
+            />
             <Button size="small" icon={<ClockCircleOutlined />}
               onClick={() => { setMes(mesAnterior.month() + 1); setAnio(mesAnterior.year()); }}>
               Mes anterior
@@ -512,7 +544,7 @@ export default function DeclaracionesPage() {
               <ValidationPanel tipo="606" mes={mes} anio={anio}
                 onTxtClick={() => descargarTxt('606', mes, anio, setTxt606)}
                 txtCargando={txt606} />
-              <Table columns={flt606(cols606)} dataSource={f606?.filas ?? []} rowKey="linea"
+              <Table columns={flt606(cols606)} dataSource={filas606Filtradas} rowKey="linea"
                 loading={l6} size="small" scroll={{ x: 900 }}
                 pagination={{ pageSize: 20, showSizeChanger: false }}
                 summary={() => f606?.filas?.length > 0 ? (
@@ -562,7 +594,7 @@ export default function DeclaracionesPage() {
               <ValidationPanel tipo="607" mes={mes} anio={anio}
                 onTxtClick={() => descargarTxt('607', mes, anio, setTxt607)}
                 txtCargando={txt607} />
-              <Table columns={flt607(cols607)} dataSource={f607?.filas ?? []} rowKey="linea"
+              <Table columns={flt607(cols607)} dataSource={filas607Filtradas} rowKey="linea"
                 loading={l7} size="small" scroll={{ x: 850 }}
                 pagination={{ pageSize: 20, showSizeChanger: false }}
                 summary={() => f607?.totales ? (

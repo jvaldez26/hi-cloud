@@ -14,7 +14,7 @@ import {
 import {
   PlusOutlined, DeleteOutlined, CheckOutlined,
   PhoneOutlined, MailOutlined, TeamOutlined,
-  TrophyOutlined, FunnelPlotOutlined, FileExcelOutlined,
+  TrophyOutlined, FunnelPlotOutlined, FileExcelOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -65,8 +65,8 @@ const TIPO_ACT = [
 
 const crmApi = {
   dashboard:          ()               => api.get('/crm/dashboard').then(r => r.data?.data ?? r.data),
-  leads:              (p = 1, e?: string, f?: string) =>
-    api.get(`/crm/leads?page=${p}${e ? `&estado=${e}` : ''}${f ? `&fuente=${f}` : ''}`).then(r => r.data?.data ?? r.data),
+  leads:              (p = 1, e?: string, f?: string, s?: string) =>
+    api.get(`/crm/leads?page=${p}${e ? `&estado=${e}` : ''}${f ? `&fuente=${f}` : ''}${s ? `&search=${encodeURIComponent(s)}` : ''}`).then(r => r.data?.data ?? r.data),
   crearLead:          (b: any)         => api.post('/crm/leads', b).then(r => r.data?.data ?? r.data),
   actualizarLead:     (id: number, b: any) => api.patch(`/crm/leads/${id}`, b).then(r => r.data?.data ?? r.data),
   eliminarLead:       (id: number)     => api.delete(`/crm/leads/${id}`).then(r => r.data?.data ?? r.data),
@@ -143,6 +143,8 @@ function KanbanCol({ etapa, items, onMover, onEditar, onEliminar }: {
 // ── Page principal ────────────────────────────────────────────────────────────
 
 export default function CRMPage() {
+  const { token } = theme.useToken();
+  const [search, setSearch] = useState('');
   const [estadoF, setEstadoF] = useState<string | undefined>();
   const [fuenteF, setFuenteF] = useState<string | undefined>();
   const [pageLead, setPageLead] = useState(1);
@@ -158,8 +160,8 @@ export default function CRMPage() {
 
   const { data: dash }      = useQuery({ queryKey: ['crm-dash'],                queryFn: crmApi.dashboard });
   const { data: leads, isLoading: loadingLeads } = useQuery({
-    queryKey: ['crm-leads', pageLead, estadoF, fuenteF],
-    queryFn:  () => crmApi.leads(pageLead, estadoF, fuenteF),
+    queryKey: ['crm-leads', pageLead, estadoF, fuenteF, search],
+    queryFn:  () => crmApi.leads(pageLead, estadoF, fuenteF, search),
   });
   const { data: oports }    = useQuery({ queryKey: ['crm-oports'],              queryFn: () => crmApi.oportunidades() });
   const { data: actividades } = useQuery({
@@ -343,6 +345,14 @@ export default function CRMPage() {
           children: (
             <Card extra={
               <Space>
+                <Input
+                  placeholder="Buscar por nombre o empresa..."
+                  prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+                  value={search}
+                  onChange={e => { setSearch(e.target.value); setPageLead(1); }}
+                  allowClear
+                  style={{ width: 220 }}
+                />
                 <Select placeholder="Estado" allowClear style={{ width: 140 }}
                   value={estadoF} onChange={v => { setEstadoF(v); setPageLead(1); }}
                   options={ESTADOS_LEAD.map(e => ({

@@ -1,15 +1,15 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   Upload, Space, Typography, Statistic, Popconfirm, message,
-  Tabs, Tooltip,
+  Tabs, Tooltip, theme,
 } from 'antd';
 import {
   FileOutlined, PlusOutlined, DeleteOutlined, EyeOutlined,
   FileTextOutlined, FilePdfOutlined, FileImageOutlined,
   FileExcelOutlined, PaperClipOutlined, InboxOutlined,
-  DownloadOutlined,
+  DownloadOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
@@ -42,9 +42,11 @@ function iconPorExtension(ext?: string) {
 }
 
 export default function DocumentosPage() {
+  const { token } = theme.useToken();
   const qc = useQueryClient();
   const [modalSubir, setModalSubir] = useState(false);
   const [filtroTipo, setFiltroTipo] = useState<string | undefined>(undefined);
+  const [search, setSearch] = useState('');
   const [form] = Form.useForm();
 
   const { data: resumen } = useQuery<any>({
@@ -81,6 +83,12 @@ export default function DocumentosPage() {
       e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
+  const documentosFiltrados = useMemo(() =>
+    (documentos ?? []).filter((i: any) =>
+      String(i.nombre ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      String(i.tipoEntidad ?? i.descripcion ?? '').toLowerCase().includes(search.toLowerCase())
+    ), [documentos, search]);
+
   const totalKb = (resumen?.porTipo ?? []).reduce((s: number, t: any) => s + Number(t.totalKb), 0);
 
   return (
@@ -94,6 +102,14 @@ export default function DocumentosPage() {
           </div>
         </div>
         <Space>
+          <Input
+            placeholder="Buscar por nombre o tipo..."
+            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            allowClear
+            style={{ width: 220 }}
+          />
           <RefreshByKeyButton queryKey={['documentos']} />
           <VideoTutorialButton />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalSubir(true)}>
@@ -128,7 +144,7 @@ export default function DocumentosPage() {
         </div>
 
         <Table
-          dataSource={documentos}
+          dataSource={documentosFiltrados}
           rowKey="id"
           loading={isLoading}
           size="middle"

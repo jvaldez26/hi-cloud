@@ -1,17 +1,17 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Button, Table, Tag, Avatar, Typography, Space, Modal,
   Form, Input, Select, Popconfirm, message, Row, Col,
-  Tooltip, Badge, Divider, Alert,
+  Tooltip, Badge, Divider, Alert, theme,
 } from 'antd';
 import { TableActions } from '../../components/ui/TableActions';
 import {
   UserAddOutlined, MailOutlined, DeleteOutlined, CrownOutlined,
   TeamOutlined, ClockCircleOutlined, CheckCircleOutlined,
-  CloseCircleOutlined, ReloadOutlined, CopyOutlined,
+  CloseCircleOutlined, ReloadOutlined, CopyOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -74,6 +74,8 @@ function RolCard({ rol, selected, onSelect }: {
 
 export default function EquipoPage() {
   const empresaId = getEmpresaId();
+  const { token } = theme.useToken();
+  const [search, setSearch]         = useState('');
   const [invModal,   setInvModal]   = useState(false);
   const [rolModal,   setRolModal]   = useState<{ userId: number; rolActual: string } | null>(null);
   const [rolForm]                   = Form.useForm();
@@ -166,6 +168,12 @@ export default function EquipoPage() {
   const miembrosData = miembros ?? [];
   const invsData     = (invitaciones ?? []).filter((i: any) => i.estado === 'pendiente');
   const totalActivos = miembrosData.filter((m: any) => m.user?.isActive !== false).length;
+
+  const miembrosFiltrados = useMemo(() =>
+    miembrosData.filter((m: any) =>
+      String(m.user?.nombre ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      String(m.user?.email ?? '').toLowerCase().includes(search.toLowerCase())
+    ), [miembrosData, search]);
 
   const COLS_DEF = [
     { key: 'user',        label: 'Usuario',           defaultVisible: true  },
@@ -291,6 +299,14 @@ export default function EquipoPage() {
         </Col>
         <Col>
           <Space>
+            <Input
+              placeholder="Buscar por nombre o correo..."
+              prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              allowClear
+              style={{ width: 220 }}
+            />
             <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <RefreshByKeyButton queryKey={['equipo-miembros']} />
             <VideoTutorialButton />
@@ -305,7 +321,7 @@ export default function EquipoPage() {
       {/* Miembros activos */}
       <Card title={<Space><TeamOutlined /><span>Miembros del equipo</span></Space>}
         style={{ marginBottom: 16 }}>
-        <Table columns={fcEquipo(colsMiembros)} dataSource={miembrosData}
+        <Table columns={fcEquipo(colsMiembros)} dataSource={miembrosFiltrados}
           rowKey="userId" loading={loadM} size="small"
         scroll={{ x: 'max-content' }} pagination={false} />
       </Card>

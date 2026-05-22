@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -6,10 +6,10 @@ import { TableActions } from '../../components/ui/TableActions';
 import {
   Card, Row, Col, Typography, Table, Tag, Statistic,
   Button, Space, Modal, Form, Input, InputNumber, Select,
-  message, Progress, Tabs, Divider,
+  message, Progress, Tabs, Divider, theme,
 } from 'antd';
 import {
-  PlusOutlined, DeleteOutlined, ApartmentOutlined, FileExcelOutlined,
+  PlusOutlined, DeleteOutlined, ApartmentOutlined, FileExcelOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -47,9 +47,11 @@ export default function CentroCostosPage() {
   const [ccModal,    setCCModal]    = useState(false);
   const [asigModal,  setAsigModal]  = useState<number | null>(null);
   const [editando,   setEditando]   = useState<any>(null);
+  const [search,     setSearch]     = useState('');
   const [formCC]                    = Form.useForm();
   const [formAsig]                  = Form.useForm();
   const qc = useQueryClient();
+  const { token } = theme.useToken();
 
   const { data: centros,  isLoading } = useQuery({ queryKey: ['cc-lista'],           queryFn: ccApi.listar });
   const { data: reporte }             = useQuery({ queryKey: ['cc-reporte', anio],   queryFn: () => ccApi.reporte(anio) });
@@ -116,6 +118,12 @@ export default function CentroCostosPage() {
       )},
   ]);
 
+  const centrosFiltrados = useMemo(() =>
+    (centros ?? []).filter((i: any) =>
+      String(i.nombre ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      String(i.codigo ?? '').toLowerCase().includes(search.toLowerCase())
+    ), [centros, search]);
+
   return (
     <div>
       <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
@@ -130,6 +138,14 @@ export default function CentroCostosPage() {
         </Col>
         <Col>
           <Space>
+            <Input
+              placeholder="Buscar por nombre o código..."
+              prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              allowClear
+              style={{ width: 220 }}
+            />
             <Select value={anio} onChange={setAnio} style={{ width: 90 }}
               options={[2024, 2025, 2026].map(y => ({ value: y, label: y }))} />
             <Button icon={<FileExcelOutlined />} onClick={() => {
@@ -161,7 +177,7 @@ export default function CentroCostosPage() {
           label: '🏢 Centros',
           children: (
             <Card>
-              <Table columns={cols} dataSource={centros ?? []} rowKey="id"
+              <Table columns={cols} dataSource={centrosFiltrados} rowKey="id"
                 loading={isLoading} size="small"
         scroll={{ x: 'max-content' }} pagination={false} />
             </Card>

@@ -1,14 +1,14 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { exportarExcel } from '../../utils/exportExcel';
 import {
   Card, Row, Col, Statistic, Button, Table, Tag, Modal, Form,
   Input, InputNumber, Select, DatePicker, Space, Tabs, Popconfirm,
-  message, Typography, Divider,
+  message, Typography, Divider, theme,
 } from 'antd';
 import {
   CreditCardOutlined, PlusOutlined, CheckCircleOutlined, FileExcelOutlined,
-  SyncOutlined, DollarOutlined, BankOutlined,
+  SyncOutlined, DollarOutlined, BankOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -25,6 +25,8 @@ const BANCOS_DR = ['Banreservas', 'Popular', 'BHD León', 'Scotiabank', 'Apap', 
 
 export default function DatafonoPage() {
   const qc = useQueryClient();
+  const { token } = theme.useToken();
+  const [search, setSearch] = useState('');
   const [tabActiva, setTabActiva] = useState('terminales');
   const [modalTerminal, setModalTerminal] = useState(false);
   const [modalTransaccion, setModalTransaccion] = useState(false);
@@ -89,6 +91,24 @@ export default function DatafonoPage() {
     borrador: 'default', confirmada: 'blue', cerrada: 'purple',
   };
 
+  const terminalesFiltradas = useMemo(() =>
+    (terminales ?? []).filter(i =>
+      String(i.numeroTerminal ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      String(i.banco ?? '').toLowerCase().includes(search.toLowerCase())
+    ), [terminales, search]);
+
+  const transaccionesFiltradas = useMemo(() =>
+    (transacciones ?? []).filter(i =>
+      String(i.referencia ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      String(i.tarjetaUltimos4 ?? '').toLowerCase().includes(search.toLowerCase())
+    ), [transacciones, search]);
+
+  const conciliacionesFiltradas = useMemo(() =>
+    (conciliaciones ?? []).filter(i =>
+      String(i.fechaDesde ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      String(i.estado ?? '').toLowerCase().includes(search.toLowerCase())
+    ), [conciliaciones, search]);
+
   return (
     <div style={{ padding: '24px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
@@ -107,6 +127,14 @@ export default function DatafonoPage() {
           onChange={setTabActiva}
           tabBarExtraContent={
             <Space>
+              <Input
+                placeholder="Buscar por referencia o tarjeta..."
+                prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+                value={search}
+                onChange={e => { setSearch(e.target.value); }}
+                allowClear
+                style={{ width: 220 }}
+              />
               <Button icon={<FileExcelOutlined />} size="small" onClick={() => {
                 const src = tabActiva === 'terminales' ? terminales : transacciones;
                 const filas = (src ?? []).map((r: any) => ({
@@ -143,7 +171,7 @@ export default function DatafonoPage() {
               label: 'Terminales',
               children: (
                 <Table
-                  dataSource={terminales}
+                  dataSource={terminalesFiltradas}
                   rowKey="id"
                   size="middle"
                   pagination={{ pageSize: 10 }}
@@ -163,7 +191,7 @@ export default function DatafonoPage() {
               label: 'Transacciones',
               children: (
                 <Table
-                  dataSource={transacciones}
+                  dataSource={transaccionesFiltradas}
                   rowKey="id"
                   size="middle"
                   pagination={{ pageSize: 15 }}
@@ -184,7 +212,7 @@ export default function DatafonoPage() {
               label: 'Conciliaciones',
               children: (
                 <Table
-                  dataSource={conciliaciones}
+                  dataSource={conciliacionesFiltradas}
                   rowKey="id"
                   size="middle"
                   pagination={{ pageSize: 10 }}

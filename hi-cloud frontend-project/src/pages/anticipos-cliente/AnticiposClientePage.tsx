@@ -6,7 +6,7 @@ import {
 } from 'antd';
 import {
   PlusOutlined, CheckOutlined, StopOutlined,
-  FileTextOutlined, DollarOutlined,
+  FileTextOutlined, DollarOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -53,6 +53,7 @@ export default function AnticiposClientePage() {
   ];
   const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('anticipos-cliente', COLS_DEF);
 
+  const [search,       setSearch]       = useState('');
   const [modalCrear,   setModalCrear]   = useState(false);
   const [modalAplicar, setModalAplicar] = useState<any>(null);   // anticipo seleccionado
   const [detalleAnt,   setDetalleAnt]   = useState<any>(null);
@@ -61,8 +62,8 @@ export default function AnticiposClientePage() {
 
   // ── Queries ──────────────────────────────────────────────────────────────
   const { data: anticipos = [], isLoading } = useQuery<any[]>({
-    queryKey: ['anticipos'],
-    queryFn:  () => api.get('/anticipos?limit=100').then(r => {
+    queryKey: ['anticipos', search],
+    queryFn:  () => api.get(`/anticipos?limit=100${search ? `&search=${encodeURIComponent(search)}` : ''}`).then(r => {
       const d = r.data?.data ?? r.data;
       return Array.isArray(d) ? d : (d?.data ?? []);
     }),
@@ -150,6 +151,14 @@ export default function AnticiposClientePage() {
           </div>
         </div>
         <Space>
+          <Input
+            placeholder="Buscar por número o cliente..."
+            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            allowClear
+            style={{ width: 220 }}
+          />
           <Button icon={<FileExcelOutlined />} onClick={() => {
             exportarExcel(anticipos.map((a: any) => ({
               Número:    a.numero,

@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+﻿import { useState, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -9,7 +9,7 @@ import {
 } from 'antd';
 import {
   CreditCardOutlined, PlusOutlined,
-  CloseCircleOutlined, FileExcelOutlined,
+  CloseCircleOutlined, FileExcelOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import dayjs from 'dayjs';
@@ -28,6 +28,7 @@ export default function CreditoClientePage() {
   const { token } = theme.useToken();
   const [modalVisible, setModalVisible] = useState(false);
   const [clienteSel, setClienteSel] = useState<any>(null);
+  const [search, setSearch] = useState('');
   const [form] = Form.useForm();
 
   const COLS_DEF = [
@@ -54,6 +55,10 @@ export default function CreditoClientePage() {
     queryKey: ['clientes-select'],
     queryFn: () => api.get('/clientes?limit=200').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
   });
+
+  const creditosFiltrados = useMemo(() => (creditos ?? []).filter((item: any) =>
+    item.clienteNombre?.toLowerCase().includes(search.toLowerCase())
+  ), [creditos, search]);
 
   const setCredito = useMutation({
     mutationFn: ({ clienteId, dto }: { clienteId: number; dto: any }) =>
@@ -90,24 +95,34 @@ export default function CreditoClientePage() {
             <Text type="secondary">Límites de crédito · Saldos en tiempo real · Alertas de exceso</Text>
           </div>
         </div>
-        <Button icon={<FileExcelOutlined />} onClick={() => {
-          const filas = creditos.map((c: any) => ({
-            'Cliente':        c.cliente?.nombre ?? '',
-            'RNC':            c.cliente?.rncReceptor ?? c.cliente?.rfc ?? '',
-            'Límite':         Number(c.limiteCredito ?? 0),
-            'Usado':          Number(c.creditoUsado ?? 0),
-            'Disponible':     Number((c.limiteCredito ?? 0) - (c.creditoUsado ?? 0)),
-            'Días Crédito':   c.diasCredito ?? 0,
-            'Estado':         c.estado ?? (c.activo ? 'Activo' : 'Inactivo'),
-          }));
-          exportarExcel(filas, `Credito-Clientes-${dayjs().format('YYYY-MM-DD')}`);
-        }}>Excel</Button>
-            <RefreshByKeyButton queryKey={['credito-cliente']} />
-            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
-            <VideoTutorialButton />
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => abrirConfiguracion()}>
-          Configurar Crédito
-        </Button>
+        <Space>
+          <Input
+            placeholder="Buscar por cliente..."
+            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            allowClear
+            style={{ width: 220 }}
+          />
+          <Button icon={<FileExcelOutlined />} onClick={() => {
+            const filas = creditos.map((c: any) => ({
+              'Cliente':        c.cliente?.nombre ?? '',
+              'RNC':            c.cliente?.rncReceptor ?? c.cliente?.rfc ?? '',
+              'Límite':         Number(c.limiteCredito ?? 0),
+              'Usado':          Number(c.creditoUsado ?? 0),
+              'Disponible':     Number((c.limiteCredito ?? 0) - (c.creditoUsado ?? 0)),
+              'Días Crédito':   c.diasCredito ?? 0,
+              'Estado':         c.estado ?? (c.activo ? 'Activo' : 'Inactivo'),
+            }));
+            exportarExcel(filas, `Credito-Clientes-${dayjs().format('YYYY-MM-DD')}`);
+          }}>Excel</Button>
+          <RefreshByKeyButton queryKey={['credito-cliente']} />
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <VideoTutorialButton />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => abrirConfiguracion()}>
+            Configurar Crédito
+          </Button>
+        </Space>
       </div>
 
       {resumen?.excedidos > 0 && (
@@ -118,7 +133,7 @@ export default function CreditoClientePage() {
 
       <Card bordered={false} style={{ borderRadius: 12 }}>
         <Table
-          dataSource={creditos}
+          dataSource={creditosFiltrados}
           rowKey="clienteId"
           loading={isLoading}
           size="middle"

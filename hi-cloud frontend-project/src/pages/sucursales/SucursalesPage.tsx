@@ -1,14 +1,14 @@
-﻿import { useState } from 'react';
+﻿import { useState, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input,
   Space, Typography, Popconfirm, message, Avatar, Tooltip,
-  Switch,
+  Switch, theme,
 } from 'antd';
 import {
   BankOutlined, PlusOutlined, EditOutlined, DeleteOutlined,
   StarOutlined, StarFilled, PhoneOutlined, MailOutlined,
-  EnvironmentOutlined, UserOutlined, FileExcelOutlined,
+  EnvironmentOutlined, UserOutlined, FileExcelOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -20,6 +20,8 @@ const COLORES = ['#1a56db','#059669','#7c3aed','#d97706','#dc2626','#0891b2','#d
 
 export default function SucursalesPage() {
   const qc = useQueryClient();
+  const { token } = theme.useToken();
+  const [search, setSearch]             = useState('');
   const [modalVisible, setModalVisible] = useState(false);
   const [editando, setEditando]         = useState<any>(null);
   const [form] = Form.useForm();
@@ -76,6 +78,12 @@ export default function SucursalesPage() {
     setModalVisible(true);
   };
 
+  const sucursalesFiltradas = useMemo(() =>
+    sucursales.filter((s: any) =>
+      String(s.nombre ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      String(s.codigo ?? '').toLowerCase().includes(search.toLowerCase())
+    ), [sucursales, search]);
+
   const principal = sucursales.find((s: any) => s.esPrincipal);
 
   return (
@@ -102,6 +110,14 @@ export default function SucursalesPage() {
             }));
             exportarExcel(filas, 'Sucursales');
           }}>Excel</Button>
+          <Input
+            placeholder="Buscar por nombre o código..."
+            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            allowClear
+            style={{ width: 220 }}
+          />
           <RefreshByKeyButton queryKey={['sucursales']} />
           <VideoTutorialButton />
           <Button type="primary" icon={<PlusOutlined />} onClick={abrirCrear}>
@@ -162,7 +178,7 @@ export default function SucursalesPage() {
 
       {/* Grid de sucursales */}
       <Row gutter={[16, 16]}>
-        {sucursales.map((suc: any, idx: number) => {
+        {sucursalesFiltradas.map((suc: any, idx: number) => {
           const color = COLORES[idx % COLORES.length];
           return (
             <Col xs={24} sm={12} lg={8} key={suc.id}>
@@ -229,7 +245,7 @@ export default function SucursalesPage() {
           );
         })}
 
-        {sucursales.length === 0 && !isLoading && (
+        {sucursalesFiltradas.length === 0 && !isLoading && (
           <Col span={24}>
             <Card bordered={false} style={{ textAlign: 'center', padding: 48, borderRadius: 12 }}>
               <BankOutlined style={{ fontSize: 48, color: '#d9d9d9', marginBottom: 16 }} />

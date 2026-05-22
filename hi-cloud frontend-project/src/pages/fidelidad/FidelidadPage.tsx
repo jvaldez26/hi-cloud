@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -9,7 +9,7 @@ import {
 } from 'antd';
 import {
   StarOutlined, GiftOutlined, TrophyOutlined, SettingOutlined,
-  PlusOutlined, HistoryOutlined, FileExcelOutlined,
+  PlusOutlined, HistoryOutlined, FileExcelOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -24,6 +24,7 @@ const fmt = (v: number) =>
 export default function FidelidadPage() {
   const qc = useQueryClient();
   const { token } = theme.useToken();
+  const [search, setSearch]             = useState('');
   const [modalConfig,  setModalConfig]  = useState(false);
   const [modalCanje,   setModalCanje]   = useState<any>(null);
   const [clienteQuery, setClienteQuery] = useState('');
@@ -71,6 +72,12 @@ export default function FidelidadPage() {
     if (prog) formConfig.setFieldsValue(prog);
     setModalConfig(true);
   };
+
+  const rankingFiltrado = useMemo(() =>
+    ranking.filter((r: any) =>
+      String(r.clienteNombre ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      String(r.codigo ?? '').toLowerCase().includes(search.toLowerCase())
+    ), [ranking, search]);
 
   const maxPuntos = Math.max(...ranking.map((r: any) => Number(r.puntosDisponibles)), 1);
 
@@ -130,9 +137,20 @@ export default function FidelidadPage() {
       )}
 
       {/* Ranking */}
-      <Card bordered={false} style={{ borderRadius: 12 }} title={<Space><TrophyOutlined style={{ color: '#f59e0b' }} />Top Clientes por Puntos</Space>}>
+      <Card bordered={false} style={{ borderRadius: 12 }} title={<Space><TrophyOutlined style={{ color: '#f59e0b' }} />Top Clientes por Puntos</Space>}
+        extra={
+          <Input
+            placeholder="Buscar por cliente o código..."
+            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            allowClear
+            style={{ width: 220 }}
+          />
+        }
+      >
         <Table
-          dataSource={ranking}
+          dataSource={rankingFiltrado}
           rowKey="id"
           size="small"
         scroll={{ x: 'max-content' }}

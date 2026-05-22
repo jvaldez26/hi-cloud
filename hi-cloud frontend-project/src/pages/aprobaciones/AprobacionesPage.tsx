@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -9,7 +9,7 @@ import {
 } from 'antd';
 import {
   CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined,
-  FileTextOutlined, PlusOutlined,
+  FileTextOutlined, PlusOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { TableActions } from '../../components/ui/TableActions';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -39,6 +39,7 @@ const ESTADO_CONFIG: Record<string, { color: string; label: string; icon: React.
 export default function AprobacionesPage() {
   const qc = useQueryClient();
   const { token } = theme.useToken();
+  const [search, setSearch]             = useState('');
   const [tabActiva, setTabActiva]       = useState('pendientes');
   const [modalSolicitud, setModalSolicitud] = useState(false);
   const [modalResolver,  setModalResolver]  = useState<{ id: number; accion: 'aprobar' | 'rechazar' } | null>(null);
@@ -75,6 +76,12 @@ export default function AprobacionesPage() {
   });
 
   const items = aprobaciones?.data ?? [];
+
+  const itemsFiltrados = useMemo(() =>
+    items.filter((i: any) =>
+      String(i.nombreSolicitante ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      String(i.tipo ?? '').toLowerCase().includes(search.toLowerCase())
+    ), [items, search]);
 
   const COLS_DEF = [
     { key: 't',   label: 'Tipo',           defaultVisible: true  },
@@ -151,6 +158,17 @@ export default function AprobacionesPage() {
       </div>
 
 
+      <div style={{ marginBottom: 16 }}>
+        <Input
+          placeholder="Buscar por solicitante o módulo..."
+          prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          allowClear
+          style={{ width: 220 }}
+        />
+      </div>
+
       <Card bordered={false} style={{ borderRadius: 12 }}>
         <Tabs
           activeKey={tabActiva}
@@ -166,7 +184,7 @@ export default function AprobacionesPage() {
         />
 
         <Table
-          dataSource={items}
+          dataSource={itemsFiltrados}
           rowKey="id"
           loading={isLoading}
           size="middle"

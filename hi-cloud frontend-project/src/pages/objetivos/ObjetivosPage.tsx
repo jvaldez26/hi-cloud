@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { exportarExcel } from '../../utils/exportExcel';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
@@ -7,7 +7,7 @@ import {
   Popconfirm, message, Progress, Tooltip, theme,
 } from 'antd';
 import {
-  PlusOutlined, TrophyOutlined, FileExcelOutlined, AimOutlined,
+  PlusOutlined, TrophyOutlined, FileExcelOutlined, AimOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -193,6 +193,7 @@ function ObjetivoCard({ obj, onUpdate }: { obj: any; onUpdate: () => void }) {
 
 export default function ObjetivosPage() {
   const { token }                   = theme.useToken();
+  const [search, setSearch]         = useState('');
   const [anio,       setAnio]       = useState(new Date().getFullYear());
   const [crearModal, setCrearModal] = useState(false);
   const [form]                      = Form.useForm();
@@ -216,6 +217,12 @@ export default function ObjetivosPage() {
     qc.invalidateQueries({ queryKey: ['okr-dash'] });
   };
 
+  const objetivosFiltrados = useMemo(() =>
+    (objetivos ?? []).filter((o: any) =>
+      String(o.titulo ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      String(o.propietario ?? '').toLowerCase().includes(search.toLowerCase())
+    ), [objetivos, search]);
+
   return (
     <div>
       <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
@@ -230,6 +237,14 @@ export default function ObjetivosPage() {
         </Col>
         <Col>
           <Space>
+            <Input
+              placeholder="Buscar por nombre o responsable..."
+              prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              allowClear
+              style={{ width: 220 }}
+            />
             <Select value={anio} onChange={setAnio} style={{ width: 90 }}
               options={[2024, 2025, 2026].map(y => ({ value: y, label: y }))} />
             <Button icon={<FileExcelOutlined />} onClick={() => {
@@ -254,7 +269,7 @@ export default function ObjetivosPage() {
       </Row>
 
       {/* Lista de objetivos */}
-      {(objetivos ?? []).length === 0 ? (
+      {objetivosFiltrados.length === 0 ? (
         <Card style={{ textAlign: 'center', padding: 40 }}>
           <AimOutlined style={{ fontSize: 48, color: '#d1d5db', marginBottom: 12 }} />
           <br />
@@ -266,7 +281,7 @@ export default function ObjetivosPage() {
         </Card>
       ) : (
         <AnimatePresence>
-          {(objetivos ?? []).map((obj: any) => (
+          {objetivosFiltrados.map((obj: any) => (
             <ObjetivoCard key={obj.id} obj={obj} onUpdate={reload} />
           ))}
         </AnimatePresence>

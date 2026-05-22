@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { TableActions } from '../../components/ui/TableActions';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Table, Button, Tag, Card, Row, Col, Typography, Statistic, Modal,
-         Form, Input, InputNumber, Select, Tabs, message, Space, Drawer, Progress } from 'antd';
-import { PlusOutlined, BarChartOutlined, CheckOutlined, FileExcelOutlined, FilePdfOutlined, LoadingOutlined } from '@ant-design/icons';
+         Form, Input, InputNumber, Select, Tabs, message, Space, Drawer, Progress, theme } from 'antd';
+import { PlusOutlined, BarChartOutlined, CheckOutlined, FileExcelOutlined, FilePdfOutlined, LoadingOutlined, SearchOutlined } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
@@ -23,14 +23,21 @@ export default function PresupuestosPage() {
   const [open,       setOpen]       = useState(false);
   const [openVar,    setOpenVar]    = useState<any>(null);
   const [page,       setPage]       = useState(1);
+  const [search,     setSearch]     = useState('');
   const [pdfPending, setPdfPending] = useState<number | null>(null);
   const [form] = Form.useForm();
   const qc = useQueryClient();
+  const { token } = theme.useToken();
 
   const { data: dashboard } = useQuery({ queryKey: ['pres-dash', anio],  queryFn: () => presupuestosApi.dashboard(anio) });
   const { data: comparativa } = useQuery({ queryKey: ['comparativa', anio], queryFn: () => presupuestosApi.comparativa(anio) });
   const { data: lista, isLoading } = useQuery({ queryKey: ['presupuestos', page, anio], queryFn: () => presupuestosApi.list(page, 10, anio) });
   const { data: variacion } = useQuery({ queryKey: ['variacion', openVar?.id], queryFn: () => presupuestosApi.variacion(openVar.id), enabled: !!openVar });
+
+  const presupuestosFiltrados = useMemo(() => (lista?.data ?? []).filter((item: any) =>
+    String(item.anio ?? '').includes(search) ||
+    item.nombre?.toLowerCase().includes(search.toLowerCase())
+  ), [lista, search]);
 
   const errMsg = (e: any) => e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado';
 
@@ -170,6 +177,14 @@ export default function PresupuestosPage() {
                 </Col>
                 <Col>
                   <Space>
+                    <Input
+                      placeholder="Buscar por número o nombre..."
+                      prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+                      value={search}
+                      onChange={e => { setSearch(e.target.value); setPage(1); }}
+                      allowClear
+                      style={{ width: 220 }}
+                    />
                     <Button icon={<FileExcelOutlined />} onClick={() => {
                       const filas = (lista?.data ?? []).map((p: any) => ({
                         'Año':    p.anio ?? '',
@@ -188,7 +203,7 @@ export default function PresupuestosPage() {
                   </Space>
                 </Col>
               </Row>
-              <Table dataSource={lista?.data ?? []} rowKey="id" loading={isLoading} size="small"
+              <Table dataSource={presupuestosFiltrados} rowKey="id" loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
                 pagination={{ total: lista?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }}
                 columns={filterColumns(presCols)} />

@@ -8,7 +8,7 @@ import { Table, Button, Tag, Card, Row, Col, Typography, Statistic,
 import { TableActions } from '../../components/ui/TableActions';
 import { PlusOutlined, EyeOutlined, MoreOutlined,
          MailOutlined, FileExcelOutlined, FilePdfOutlined, CopyOutlined,
-         EditOutlined } from '@ant-design/icons';
+         EditOutlined, SearchOutlined } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import api from '../../api/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -46,6 +46,7 @@ const TRANSICIONES: Record<CotEstado, string[]> = {
 
 export default function CotizacionesPage() {
   const { token } = theme.useToken();
+  const [search,      setSearch]      = useState('');
   const [page,        setPage]        = useState(1);
   const [detail,      setDetail]      = useState<any>(null);
   const [detailId,    setDetailId]    = useState<number | null>(null);
@@ -75,8 +76,8 @@ export default function CotizacionesPage() {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey:       ['cotizaciones', page],
-    queryFn:        () => cotizacionesApi.list(page, 10),
+    queryKey:       ['cotizaciones', page, search],
+    queryFn:        () => cotizacionesApi.list(page, 10, search),
     refetchOnMount: 'always',  // override global false — garantiza datos frescos al volver del form
   });
 
@@ -244,6 +245,14 @@ export default function CotizacionesPage() {
         <Col><Title level={4} style={{ margin: 0 }}>Cotizaciones</Title></Col>
         <Col>
           <Space>
+            <Input
+              placeholder="Buscar por número o cliente..."
+              prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(1); }}
+              allowClear
+              style={{ width: 220 }}
+            />
             <Button icon={<FileExcelOutlined />} onClick={() => {
               const filas = (data?.data ?? []).map((c: any) => ({
                 'Número':  c.numero ?? '',

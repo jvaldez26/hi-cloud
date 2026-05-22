@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+﻿import { useState, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -12,7 +12,7 @@ import {
 import {
   TeamOutlined, PlusOutlined, TrophyOutlined, EditOutlined, FileExcelOutlined,
   DeleteOutlined, UserOutlined, BarChartOutlined, LinkOutlined,
-  StarFilled, DollarOutlined,
+  StarFilled, DollarOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -39,6 +39,7 @@ export default function VendedoresPage() {
   const { token } = theme.useToken();
   const qc = useQueryClient();
   const hoy = dayjs();
+  const [search,      setSearch]        = useState('');
   const [tabActiva, setTabActiva]       = useState('directorio');
   const [modalCrear,  setModalCrear]    = useState(false);
   const [editando,    setEditando]      = useState<any>(null);
@@ -56,6 +57,12 @@ export default function VendedoresPage() {
     queryKey: ['vendedores'],
     queryFn: () => api.get('/vendedores').then((r: any) => r.data?.data ?? r.data ?? []),
   });
+
+  const vendedoresFiltrados = useMemo(() =>
+    (vendedores ?? []).filter(v =>
+      v.nombre?.toLowerCase().includes(search.toLowerCase()) ||
+      v.codigo?.toLowerCase().includes(search.toLowerCase())
+    ), [vendedores, search]);
 
   const { data: ranking = [] } = useQuery<any[]>({
     queryKey: ['vendedores-ranking', mes, anio],
@@ -185,8 +192,19 @@ export default function VendedoresPage() {
             key: 'directorio',
             label: 'Directorio',
             children: (
+              <>
+                <div style={{ marginBottom: 16 }}>
+                  <Input
+                    placeholder="Buscar por nombre o código..."
+                    prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    allowClear
+                    style={{ width: 260 }}
+                  />
+                </div>
               <Row gutter={[16, 16]}>
-                {vendedores.map((v: any, idx: number) => (
+                {vendedoresFiltrados.map((v: any, idx: number) => (
                   <Col xs={24} sm={12} lg={8} xl={6} key={v.id}>
                     <Card
                       bordered={false}
@@ -221,13 +239,14 @@ export default function VendedoresPage() {
                     </Card>
                   </Col>
                 ))}
-                {vendedores.length === 0 && !isLoading && (
+                {vendedoresFiltrados.length === 0 && !isLoading && (
                   <Col span={24}><Card bordered={false} style={{ textAlign: 'center', padding: 48 }}>
                     <TeamOutlined style={{ fontSize: 48, color: '#d9d9d9' }} />
-                    <div style={{ marginTop: 16 }}><Text type="secondary">No hay vendedores registrados.</Text></div>
+                    <div style={{ marginTop: 16 }}><Text type="secondary">{search ? 'Sin resultados para la búsqueda.' : 'No hay vendedores registrados.'}</Text></div>
                   </Card></Col>
                 )}
               </Row>
+              </>
             ),
           },
           {

@@ -6,8 +6,8 @@ import { DetailDrawer } from '../../components/ui/DetailDrawer';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Table, Button, Card, Row, Col, Typography, Statistic, Tag,
          Modal, Form, Input, InputNumber, Select, DatePicker, message,
-         Tabs, Popconfirm, Space, Alert } from 'antd';
-import { PlusOutlined, DeleteOutlined, FileExcelOutlined, AuditOutlined, FilePdfOutlined, LoadingOutlined } from '@ant-design/icons';
+         Tabs, Popconfirm, Space, Alert, theme } from 'antd';
+import { PlusOutlined, DeleteOutlined, FileExcelOutlined, AuditOutlined, FilePdfOutlined, LoadingOutlined, SearchOutlined } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -28,8 +28,8 @@ const gastosApi = {
   categorias: ()           => api.get('/gastos/categorias').then(r => r.data?.data ?? r.data),
   resumen:    (m: number, a: number) => api.get(`/gastos/resumen?mes=${m}&anio=${a}`).then(r => r.data?.data ?? r.data),
   anual:      (a: number)  => api.get(`/gastos/anual?anio=${a}`).then(r => r.data?.data ?? r.data),
-  list:       (p = 1, m?: number, a?: number, cat?: string) =>
-    api.get(`/gastos?page=${p}${m ? `&mes=${m}&anio=${a}` : ''}${cat ? `&categoria=${cat}` : ''}`).then(r => r.data?.data ?? r.data),
+  list:       (p = 1, m?: number, a?: number, cat?: string, search = '') =>
+    api.get(`/gastos?page=${p}${m ? `&mes=${m}&anio=${a}` : ''}${cat ? `&categoria=${cat}` : ''}${search ? `&search=${encodeURIComponent(search)}` : ''}`).then(r => r.data?.data ?? r.data),
   crear:      (body: any)  => api.post('/gastos', body).then(r => r.data?.data ?? r.data),
   eliminar:   (id: number) => api.delete(`/gastos/${id}`).then(r => r.data?.data ?? r.data),
 };
@@ -37,6 +37,8 @@ const gastosApi = {
 const COLORES = ['#1677ff','#10b981','#f59e0b','#ef4444','#7c3aed','#0891b2','#f97316','#84cc16','#ec4899','#6b7280'];
 
 export default function GastosPage() {
+  const { token } = theme.useToken();
+  const [search,     setSearch]     = useState('');
   const [page,       setPage]       = useState(1);
   const [mes,        setMes]        = useState(dayjs().month() + 1);
   const [anio,       setAnio]       = useState(dayjs().year());
@@ -57,8 +59,8 @@ export default function GastosPage() {
   const { data: resumen }    = useQuery({ queryKey: ['gasto-res', mes, anio], queryFn: () => gastosApi.resumen(mes, anio) });
   const { data: anual }      = useQuery({ queryKey: ['gasto-anual', anio], queryFn: () => gastosApi.anual(anio) });
   const { data: lista, isLoading } = useQuery({
-    queryKey: ['gastos', page, mes, anio, catFilt],
-    queryFn:  () => gastosApi.list(page, mes, anio, catFilt),
+    queryKey: ['gastos', page, mes, anio, catFilt, search],
+    queryFn:  () => gastosApi.list(page, mes, anio, catFilt, search),
   });
 
   const crearMut   = useMutation({
@@ -263,9 +265,19 @@ export default function GastosPage() {
             <>
               <Row justify="space-between" style={{ marginBottom: 12 }}>
                 <Col>
-                  <Select placeholder="Filtrar categoría" allowClear style={{ width: 220 }}
-                    value={catFilt} onChange={setCatFilt}
-                    options={categorias?.map((c: any) => ({ value: c.value, label: c.label }))} />
+                  <Space>
+                    <Input
+                      placeholder="Buscar por descripción..."
+                      prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+                      value={search}
+                      onChange={e => { setSearch(e.target.value); setPage(1); }}
+                      allowClear
+                      style={{ width: 220 }}
+                    />
+                    <Select placeholder="Filtrar categoría" allowClear style={{ width: 220 }}
+                      value={catFilt} onChange={setCatFilt}
+                      options={categorias?.map((c: any) => ({ value: c.value, label: c.label }))} />
+                  </Space>
                 </Col>
                 <Col>
                   <Button icon={<FileExcelOutlined />} onClick={() => {

@@ -10,12 +10,12 @@ import {
   Table, Button, Tag, Card, Row, Col, Typography, Statistic,
   Modal, Form, Input, InputNumber, Select, DatePicker, Space,
   Popconfirm, message, Drawer, Tabs, Progress, Badge, Tooltip,
-  Timeline,
+  Timeline, theme,
 } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, ClockCircleOutlined,
   ProjectOutlined, CheckSquareOutlined, WarningOutlined, FileExcelOutlined,
-  CheckCircleOutlined,
+  CheckCircleOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -59,7 +59,7 @@ const PRIORIDAD = [
 const d = (r: any) => r.data?.data ?? r.data;
 const proyApi = {
   dashboard:       ()                   => api.get('/proyectos/dashboard').then(d),
-  list:            (p = 1, e?: string)  => api.get(`/proyectos?page=${p}${e ? `&estado=${e}` : ''}`).then(d),
+  list:            (p = 1, e?: string, s?: string)  => api.get(`/proyectos?page=${p}${e ? `&estado=${e}` : ''}${s ? `&search=${encodeURIComponent(s)}` : ''}`).then(d),
   crear:           (b: any)             => api.post('/proyectos', b).then(d),
   actualizar:      (id: number, b: any) => api.patch(`/proyectos/${id}`, b).then(d),
   eliminar:        (id: number)         => api.delete(`/proyectos/${id}`).then(d),
@@ -541,8 +541,10 @@ function HitosTab({ proyectoId, fechaInicio }: { proyectoId: number; fechaInicio
 // ── Page principal ────────────────────────────────────────────────────────────
 
 export default function ProyectosPage() {
+  const { token } = theme.useToken();
   const [page,      setPage]      = useState(1);
   const [estadoF,   setEstadoF]   = useState<string | undefined>('activo');
+  const [search,    setSearch]    = useState('');
   const [crearOpen, setCrearOpen] = useState(false);
   const [detalle,   setDetalle]   = useState<any>(null);
   const [editando,  setEditando]  = useState(false);
@@ -552,8 +554,8 @@ export default function ProyectosPage() {
 
   const { data: dash }    = useQuery({ queryKey: ['proy-dash'],              queryFn: proyApi.dashboard });
   const { data: proyectos, isLoading } = useQuery({
-    queryKey: ['proy-list', page, estadoF],
-    queryFn:  () => proyApi.list(page, estadoF),
+    queryKey: ['proy-list', page, estadoF, search],
+    queryFn:  () => proyApi.list(page, estadoF, search),
   });
 
   const { bloqueado, config, plan } = usePlanGuard();
@@ -637,6 +639,14 @@ export default function ProyectosPage() {
         <Col><Title level={4} style={{ margin: 0 }}>Gestión de Proyectos</Title></Col>
         <Col>
           <Space>
+            <Input
+              placeholder="Buscar por nombre o código..."
+              prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(1); }}
+              allowClear
+              style={{ width: 220 }}
+            />
             <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <Button icon={<FileExcelOutlined />} onClick={() => {
               const filas = (proyectos?.data ?? []).map((p: any) => ({

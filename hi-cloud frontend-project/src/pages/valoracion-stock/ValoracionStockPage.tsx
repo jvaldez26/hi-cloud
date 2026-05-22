@@ -1,13 +1,13 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Table, Tag, Select, Typography, Statistic,
-  Space, theme, Progress, Button, Tooltip,
+  Space, theme, Progress, Button, Tooltip, Input,
 } from 'antd';
 import {
-  DatabaseOutlined, DollarOutlined, BarChartOutlined, DownloadOutlined, FileExcelOutlined,
+  DatabaseOutlined, DollarOutlined, BarChartOutlined, DownloadOutlined, FileExcelOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery } from '@tanstack/react-query';
@@ -27,6 +27,7 @@ const COLORES = ['#1a56db','#059669','#7c3aed','#d97706','#dc2626','#0891b2','#d
 
 export default function ValoracionStockPage() {
   const { token } = theme.useToken();
+  const [search, setSearch] = useState('');
   const [categoriaFiltro, setCategoriaFiltro] = useState<string | undefined>();
 
   const { data: categorias = [] } = useQuery<string[]>({
@@ -41,6 +42,12 @@ export default function ValoracionStockPage() {
 
   const lineas    = data?.lineas ?? [];
   const totales   = data?.totales ?? {};
+
+  const lineasFiltradas = useMemo(() =>
+    lineas.filter((l: any) =>
+      String(l.nombre ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      String(l.codigo ?? '').toLowerCase().includes(search.toLowerCase())
+    ), [lineas, search]);
   const porCat    = totales.valorPorCategoria ?? {};
   const chartData = Object.entries(porCat)
     .map(([nombre, valor]) => ({ nombre: nombre.slice(0, 14), valor: Number(valor) }))
@@ -83,6 +90,14 @@ export default function ValoracionStockPage() {
           </div>
         </div>
         <Space>
+          <Input
+            placeholder="Buscar por producto o código..."
+            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            allowClear
+            style={{ width: 220 }}
+          />
           <Select
             allowClear
             placeholder="Todas las categorías"
@@ -137,7 +152,7 @@ export default function ValoracionStockPage() {
         <Col xs={24} lg={chartData.length > 0 ? 14 : 24}>
           <Card bordered={false} style={{ borderRadius: 12 }} title="Detalle por Producto">
             <Table
-              dataSource={lineas}
+              dataSource={lineasFiltradas}
               rowKey="productoId"
               loading={isLoading}
               size="small"

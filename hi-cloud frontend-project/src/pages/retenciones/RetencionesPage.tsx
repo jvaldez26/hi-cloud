@@ -5,8 +5,8 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Table, Button, Card, Row, Col, Typography, Statistic, Tag, Space,
          Modal, Form, Input, InputNumber, Select, message, Popconfirm,
-         Tabs, Alert } from 'antd';
-import { PlusOutlined, DeleteOutlined, FileTextOutlined, FilePdfOutlined, LoadingOutlined } from '@ant-design/icons';
+         Tabs, Alert, theme } from 'antd';
+import { PlusOutlined, DeleteOutlined, FileTextOutlined, FilePdfOutlined, LoadingOutlined, SearchOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import api from '../../api/client';
@@ -31,7 +31,7 @@ const TASAS: Record<string, number> = {
 };
 
 const retencionApi = {
-  list:     (p = 1) => api.get(`/retenciones?page=${p}`).then(r => r.data?.data ?? r.data),
+  list:     (p = 1, search = '') => api.get(`/retenciones?page=${p}&search=${encodeURIComponent(search)}`).then(r => r.data?.data ?? r.data),
   create:   (body: any) => api.post('/retenciones', body).then(r => r.data?.data ?? r.data),
   remove:   (id: number) => api.delete(`/retenciones/${id}`).then(r => r.data?.data ?? r.data),
   ir17:     (mes: number, anio: number) =>
@@ -40,13 +40,15 @@ const retencionApi = {
 
 function ListadoTab() {
   const [page,       setPage]       = useState(1);
+  const [search,     setSearch]     = useState('');
   const [open,       setOpen]       = useState(false);
   const [pdfPending, setPdfPending] = useState<number | null>(null);
   const [form] = Form.useForm();
   const [tasa, setTasa] = useState(10);
   const qc = useQueryClient();
+  const { token } = theme.useToken();
 
-  const { data, isLoading } = useQuery({ queryKey: ['retenciones', page], queryFn: () => retencionApi.list(page) });
+  const { data, isLoading } = useQuery({ queryKey: ['retenciones', page, search], queryFn: () => retencionApi.list(page, search) });
 
   const createMut = useMutation({
     mutationFn: retencionApi.create,
@@ -126,6 +128,14 @@ function ListadoTab() {
     <>
       <Row justify="end" style={{ marginBottom: 12 }}>
         <Space size={2}>
+          <Input
+            placeholder="Buscar por número o proveedor..."
+            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+            value={search}
+            onChange={e => { setSearch(e.target.value); setPage(1); }}
+            allowClear
+            style={{ width: 220 }}
+          />
           <RefreshByKeyButton queryKey={['retenciones']} />
           <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
           <VideoTutorialButton />

@@ -5,8 +5,8 @@ import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
 import { Card, Row, Col, Table, Button, Tag, Typography,
          Modal, Form, Input, InputNumber, Select, Tabs, message,
-         Space, DatePicker } from 'antd';
-import { PlusOutlined, UploadOutlined, DownloadOutlined, SwapOutlined, FileExcelOutlined } from '@ant-design/icons';
+         Space, DatePicker, theme } from 'antd';
+import { PlusOutlined, UploadOutlined, DownloadOutlined, SwapOutlined, FileExcelOutlined, SearchOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { tesoreriaApi, type CuentaBancariaPayload } from '../../api/tesoreria.api';
@@ -21,9 +21,11 @@ const tipoMovColor: Record<string, string> = {
 };
 
 export default function TesoreriaPage() {
+  const { token } = theme.useToken();
   const [openCuenta,    setOpenCuenta]    = useState(false);
   const [openMovim,     setOpenMovim]     = useState<'deposito' | 'retiro' | 'transferencia' | null>(null);
   const [cuentaFiltro,  setCuentaFiltro]  = useState<number | undefined>();
+  const [search,        setSearch]        = useState('');
   const [page,          setPage]          = useState(1);
   const [mes,           setMes]           = useState(dayjs().month() + 1);
   const [anio,          setAnio]          = useState(dayjs().year());
@@ -34,7 +36,7 @@ export default function TesoreriaPage() {
   const { data: resumen }   = useQuery({ queryKey: ['tesoreria-resumen'],   queryFn: tesoreriaApi.resumen });
   const { data: cuentas }   = useQuery({ queryKey: ['cuentas-bancarias'],   queryFn: tesoreriaApi.cuentas });
   const { data: movims, isLoading: movLoading } = useQuery({
-    queryKey: ['movimientos-bancarios', page, cuentaFiltro],
+    queryKey: ['movimientos-bancarios', page, cuentaFiltro, search],
     queryFn: () => tesoreriaApi.movimientos(page, 15, cuentaFiltro),
   });
   const { data: flujoDia } = useQuery({
@@ -99,9 +101,19 @@ export default function TesoreriaPage() {
             <>
               <Row justify="space-between" align="middle" style={{ marginBottom: 12 }}>
                 <Col>
-                  <Select placeholder="Filtrar por cuenta" allowClear style={{ width: 220 }}
-                    onChange={(v) => { setCuentaFiltro(v); setPage(1); }}
-                    options={(cuentas ?? []).map((c: any) => ({ value: c.id, label: `${c.banco} — ${c.numeroCuenta}` }))} />
+                  <Space>
+                    <Select placeholder="Filtrar por cuenta" allowClear style={{ width: 220 }}
+                      onChange={(v) => { setCuentaFiltro(v); setPage(1); }}
+                      options={(cuentas ?? []).map((c: any) => ({ value: c.id, label: `${c.banco} — ${c.numeroCuenta}` }))} />
+                    <Input
+                      placeholder="Buscar por referencia o descripción..."
+                      prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+                      value={search}
+                      onChange={e => { setSearch(e.target.value); setPage(1); }}
+                      allowClear
+                      style={{ width: 220 }}
+                    />
+                  </Space>
                 </Col>
                 <Col>
                   <Space>
