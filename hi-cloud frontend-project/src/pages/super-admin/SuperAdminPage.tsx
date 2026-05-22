@@ -23,6 +23,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/client';
+import { demoApi, ESTADO_DEMO_LABEL, ESTADO_DEMO_COLOR } from '../../api/demo.api';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -832,6 +833,270 @@ function PlanesEditor({ C }: { C: typeof SA_DARK }) {
   );
 }
 
+// ── DemosTab ──────────────────────────────────────────────────────────────────
+
+function DemosTab({ C }: { C: SaTheme }) {
+  const qc = useQueryClient();
+  const [page,        setPage]        = useState(1);
+  const [estado,      setEstado]      = useState('');
+  const [search,      setSearch]      = useState('');
+  const [detalle,     setDetalle]     = useState<any>(null);
+  const [nuevaNota,   setNuevaNota]   = useState('');
+  const [guardandoNota, setGuardandoNota] = useState(false);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['sa-demos', page, estado, search],
+    queryFn:  () => demoApi.listar(page, estado || undefined, search || undefined),
+    staleTime: 15_000,
+  });
+
+  const { data: stats } = useQuery({
+    queryKey: ['sa-demo-stats'],
+    queryFn:  demoApi.estadisticas,
+    staleTime: 30_000,
+  });
+
+  const updateMut = useMutation({
+    mutationFn: ({ id, body }: { id: number; body: any }) => demoApi.actualizarEstado(id, body),
+    onSuccess: (updated) => {
+      qc.invalidateQueries({ queryKey: ['sa-demos'] });
+      qc.invalidateQueries({ queryKey: ['sa-demo-stats'] });
+      setDetalle(updated);
+      message.success('Solicitud actualizada');
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
+  });
+
+  const addNota = async () => {
+    if (!nuevaNota.trim() || !detalle) return;
+    setGuardandoNota(true);
+    try {
+      const updated = await demoApi.agregarNota(detalle.id, nuevaNota.trim());
+      setDetalle(updated);
+      setNuevaNota('');
+      qc.invalidateQueries({ queryKey: ['sa-demos'] });
+      message.success('Nota guardada');
+    } catch { message.error('Error al guardar nota'); }
+    finally { setGuardandoNota(false); }
+  };
+
+  const ESTADOS = Object.entries(ESTADO_DEMO_LABEL).map(([k, v]) => ({ value: k, label: v }));
+
+  // Métricas
+  const total     = stats?.total      ?? 0;
+  const nuevas    = stats?.nuevas     ?? 0;
+  const agendadas = stats?.agendadas  ?? 0;
+  const tasa      = stats?.tasaConversion ?? 0;
+
+  return (
+    <div>
+      {/* KPIs */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 20 }}>
+        {[
+          { label: 'Total solicitudes',      value: total,         color: C.blue,   sub: `${stats?.hoy ?? 0} hoy` },
+          { label: 'Sin contactar',          value: nuevas,        color: C.red,    sub: nuevas > 0 ? '⚠ Requieren acción' : '✓ Al día' },
+          { label: 'Demos agendadas',        value: agendadas,     color: C.gold,   sub: 'En proceso' },
+          { label: 'Tasa conversión',        value: `${tasa}%`,    color: C.green,  sub: 'Nuevas → Convertidas' },
+        ].map(k => (
+          <div key={k.label} style={{
+            background: C.card, borderRadius: 12, padding: '18px 20px',
+            border: `1px solid ${C.border}`, borderTop: `3px solid ${k.color}`,
+          }}>
+            <div style={{ color: C.txt2, fontSize: 12, marginBottom: 6 }}>{k.label}</div>
+            <div style={{ color: k.color, fontWeight: 800, fontSize: 28 }}>{k.value}</div>
+            <div style={{ color: C.txt2, fontSize: 11, marginTop: 4 }}>{k.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filtros */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+        <Input
+          placeholder="Buscar por nombre, empresa o email..."
+          value={search}
+          onChange={e => { setSearch(e.target.value); setPage(1); }}
+          allowClear
+          style={{ width: 280, background: C.card, borderColor: C.border, color: C.txt }}
+          prefix={<Search size={13} style={{ color: C.txt2 }} />}
+        />
+        <Select
+          placeholder="Estado"
+          allowClear
+          value={estado || undefined}
+          onChange={(v) => { setEstado(v ?? ''); setPage(1); }}
+          style={{ width: 180 }}
+          options={ESTADOS}
+        />
+        <span style={{ color: C.txt2, fontSize: 12, marginLeft: 'auto' }}>
+          {data?.meta?.total ?? 0} solicitudes
+        </span>
+      </div>
+
+      {/* Tabla */}
+      <div style={{ background: C.card, borderRadius: 12, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
+        <Table
+          size="small"
+          scroll={{ x: 900 }}
+          loading={isLoading}
+          rowKey="id"
+          dataSource={data?.data ?? []}
+          pagination={{
+            current: page, pageSize: 20,
+            total: data?.meta?.total,
+            onChange: setPage,
+            showSizeChanger: false,
+            showTotal: t => `${t} solicitudes`,
+            style: { padding: '8px 16px', borderTop: `1px solid ${C.border}` },
+          }}
+          onRow={r => ({ onClick: () => setDetalle(r), style: { cursor: 'pointer' } })}
+          columns={[
+            { title: 'Fecha',   dataIndex: 'createdAt', width: 100,
+              render: (v: string) => new Date(v).toLocaleDateString('es-DO', { day:'2-digit', month:'2-digit', year:'numeric' }) },
+            { title: 'Nombre',  dataIndex: 'nombre',  ellipsis: true },
+            { title: 'Empresa', dataIndex: 'empresa', ellipsis: true },
+            { title: 'Email',   dataIndex: 'email',   ellipsis: true },
+            { title: 'Tel.',    dataIndex: 'telefono', width: 120 },
+            { title: 'País',    dataIndex: 'pais',    width: 100 },
+            { title: 'Estado',  dataIndex: 'estado',  width: 160,
+              render: (v: string) => (
+                <Tag color={ESTADO_DEMO_COLOR[v] ?? 'default'} style={{ fontSize: 11 }}>
+                  {ESTADO_DEMO_LABEL[v] ?? v}
+                </Tag>
+              )},
+            { title: 'Notas', key: 'notas', width: 60, align: 'center' as const,
+              render: (_: any, r: any) => r.notas?.length > 0
+                ? <span style={{ color: C.gold, fontSize: 12 }}>💬 {r.notas.length}</span>
+                : null },
+          ]}
+        />
+      </div>
+
+      {/* Drawer de detalle */}
+      <Modal
+        open={!!detalle}
+        onCancel={() => setDetalle(null)}
+        footer={null}
+        width={560}
+        title={
+          <span style={{ fontWeight: 700 }}>
+            {detalle?.empresa} — {detalle?.nombre}
+          </span>
+        }
+      >
+        {detalle && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Datos del prospecto */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              {[
+                ['Email',    detalle.email],
+                ['Teléfono', detalle.telefono],
+                ['País',     detalle.pais],
+                ['Tamaño',   `${detalle.tamanoEmpresa} empleados`],
+              ].map(([l, v]) => (
+                <div key={l}>
+                  <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 2 }}>{l}</div>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{v}</div>
+                </div>
+              ))}
+            </div>
+            {detalle.modulosInteres?.length > 0 && (
+              <div>
+                <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 6 }}>Módulos de interés</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {detalle.modulosInteres.map((m: string) => (
+                    <Tag key={m} style={{ fontSize: 11 }}>{m}</Tag>
+                  ))}
+                </div>
+              </div>
+            )}
+            {detalle.mensaje && (
+              <div>
+                <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 4 }}>Mensaje del prospecto</div>
+                <div style={{ fontSize: 13, color: '#475569', fontStyle: 'italic' }}>"{detalle.mensaje}"</div>
+              </div>
+            )}
+
+            {/* Cambiar estado inline */}
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <div style={{ fontSize: 12, color: '#64748B', fontWeight: 600, minWidth: 70 }}>Estado:</div>
+              <Select
+                value={detalle.estado}
+                onChange={(v) => updateMut.mutate({ id: detalle.id, body: { estado: v } })}
+                style={{ flex: 1 }}
+                options={ESTADOS}
+                loading={updateMut.isPending}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <div style={{ fontSize: 12, color: '#64748B', fontWeight: 600, minWidth: 70 }}>Asignado:</div>
+              <Input
+                defaultValue={detalle.asignadoA ?? ''}
+                placeholder="Nombre del ejecutivo..."
+                onBlur={e => {
+                  if (e.target.value !== (detalle.asignadoA ?? '')) {
+                    updateMut.mutate({ id: detalle.id, body: { asignadoA: e.target.value } });
+                  }
+                }}
+                style={{ flex: 1 }}
+              />
+            </div>
+
+            {/* Historial de notas */}
+            <div>
+              <div style={{ fontSize: 12, color: '#64748B', fontWeight: 700, marginBottom: 8 }}>
+                💬 Notas internas
+              </div>
+              {(detalle.notas ?? []).length === 0 && (
+                <div style={{ color: '#94A3B8', fontSize: 12, fontStyle: 'italic', marginBottom: 8 }}>
+                  Sin notas aún
+                </div>
+              )}
+              {(detalle.notas ?? []).map((n: any, i: number) => (
+                <div key={i} style={{
+                  background: '#F8FAFC', borderRadius: 8, padding: '10px 14px',
+                  marginBottom: 8, border: '1px solid #E2E8F0',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>{n.autorNombre}</span>
+                    <span style={{ fontSize: 11, color: '#94A3B8' }}>
+                      {new Date(n.fecha).toLocaleString('es-DO', { dateStyle: 'short', timeStyle: 'short' })}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 13, color: '#1E293B' }}>{n.texto}</div>
+                </div>
+              ))}
+
+              {/* Agregar nota */}
+              <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                <Input.TextArea
+                  placeholder="Agregar nota interna..."
+                  value={nuevaNota}
+                  onChange={e => setNuevaNota(e.target.value)}
+                  rows={2}
+                  style={{ flex: 1, resize: 'none' }}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) addNota();
+                  }}
+                />
+                <Button
+                  type="primary"
+                  onClick={addNota}
+                  loading={guardandoNota}
+                  disabled={!nuevaNota.trim()}
+                  style={{ alignSelf: 'flex-end' }}
+                >
+                  Guardar
+                </Button>
+              </div>
+              <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 4 }}>Ctrl+Enter para guardar rápido</div>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
 export default function SuperAdminPage() {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
@@ -885,6 +1150,15 @@ export default function SuperAdminPage() {
     queryFn:  () => api.get('/admin/usuarios').then(xd),
     staleTime: 30_000,
   });
+
+  // ── Demo stats — para badge en sidebar ───────────────────────────────────
+  const { data: demoStats } = useQuery({
+    queryKey: ['sa-demo-stats-main'],
+    queryFn:  demoApi.estadisticas,
+    staleTime: 60_000,
+    refetchInterval: 120_000,
+  });
+  const demosNuevas = demoStats?.nuevas ?? 0;
 
   // ── Eliminar / suspender / activar usuario ──────────────────────────────
   const [eliminarModal,    setEliminarModal]    = useState<any>(null);
@@ -1610,6 +1884,7 @@ export default function SuperAdminPage() {
               { key: 'usuarios',      icon: <Users size={15} />,      label: 'Usuarios',      count: (usuarios as any[]).length, countColor: C.blue },
               { key: 'suscripciones', icon: <Crown size={15} />,      label: 'Suscripciones', count: (suscripciones as any[]).length, countColor: C.blue },
               { key: 'solicitudes',   icon: <Send size={15} />,       label: 'Solicitudes',   count: solicitudesPendientes ?? 0, countColor: C.red, badge: true },
+              { key: 'demos',         icon: <MessageSquare size={15} />, label: 'Demos',       count: demosNuevas, countColor: C.red, badge: demosNuevas > 0 },
               { key: 'pruebas',       icon: <ClockIcon size={15} />,  label: 'En Prueba',     count: (pruebas as any[]).length, countColor: C.gold },
               { key: 'auditoria',     icon: <Shield size={15} />,     label: 'Auditoría',     count: 0, countColor: C.blue },
             ].map(t => {
@@ -1896,6 +2171,11 @@ export default function SuperAdminPage() {
                 isLoading={loadPruebas}
                 onRefresh={() => qc.invalidateQueries({ queryKey: ['sa-pruebas'] })}
               />
+            )}
+
+            {/* ── TAB DEMOS ─────────────────────────────────────────────────── */}
+            {tab === 'demos' && (
+              <DemosTab C={C} />
             )}
 
             {/* ── TAB AUDITORÍA ─────────────────────────────────────────────── */}

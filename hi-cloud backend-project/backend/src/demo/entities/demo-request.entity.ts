@@ -7,8 +7,16 @@ export enum EstadoDemo {
   NUEVO           = 'nuevo',
   CONTACTADO      = 'contactado',
   DEMO_AGENDADA   = 'demo_agendada',
+  DEMO_REALIZADA  = 'demo_realizada',
   CONVERTIDO      = 'convertido',
   DESCARTADO      = 'descartado',
+}
+
+export interface NotaDemo {
+  texto:       string;
+  autorId?:    number;
+  autorNombre: string;
+  fecha:       string;   // ISO 8601
 }
 
 export enum TamanoEmpresa {
@@ -51,11 +59,20 @@ export class DemoRequest {
   @Column({ type: 'enum', enum: EstadoDemo, default: EstadoDemo.NUEVO })
   estado!: EstadoDemo;
 
+  /** Notas internas como texto plano (legado) */
   @Column({ type: 'text', nullable: true })
   notasInternas?: string;
 
+  /** Historial de notas estructuradas con autor y fecha */
+  @Column({ type: 'jsonb', default: '[]' })
+  notas!: NotaDemo[];
+
   @Column({ nullable: true })
   asignadoA?: string;
+
+  /** userId del super_admin que gestiona esta solicitud */
+  @Column({ nullable: true })
+  atendidoPor?: number;
 
   @CreateDateColumn()
   createdAt!: Date;
