@@ -1079,9 +1079,18 @@ export default function AppLayout() {
   const [modalMenu,  setModalMenu]  = useState(false);
   const [menuActivos, setMenuActivos] = useState<string[]>(() => {
     try {
-      const key  = `hicloud-menu-${user?.id ?? 'default'}`;
-      const saved = localStorage.getItem(key);
-      if (saved) return JSON.parse(saved) as string[];
+      const key    = `hicloud-menu-${user?.id ?? 'default'}`;
+      const saved  = localStorage.getItem(key);
+      if (saved) {
+        const parsed = JSON.parse(saved) as string[];
+        // Validar que sea un array con al menos 2 grupos conocidos.
+        // < 2 grupos es señal de configuración corrupta o accidentalmente
+        // vaciada — en ese caso restaurar todos los grupos por defecto.
+        const validos = parsed.filter((k: string) => TODOS_GRUPOS_KEYS.includes(k));
+        if (validos.length >= 2) return validos;
+        // Menos de 2 grupos válidos → resetear y limpiar la entrada corrupta
+        localStorage.removeItem(key);
+      }
     } catch { /* ignorar */ }
     return TODOS_GRUPOS_KEYS;
   });
@@ -1093,11 +1102,18 @@ export default function AppLayout() {
     setMenuTemp(prev => {
       if (prev.includes(key)) {
         const sinEste = prev.filter(k => k !== key);
-        if (sinEste.length < 1) { message.warning('Debe haber al menos un módulo visible'); return prev; }
+        if (sinEste.length < 2) {
+          message.warning('Debe mantener al menos 2 módulos visibles para usar el sistema correctamente');
+          return prev;
+        }
         return sinEste;
       }
       return [...prev, key];
     });
+  };
+
+  const restaurarMenu = () => {
+    setMenuTemp(TODOS_GRUPOS_KEYS);
   };
 
   const aplicarMenu = () => {
@@ -1984,9 +2000,18 @@ export default function AppLayout() {
         open={modalMenu}
         onCancel={cancelarMenu}
         footer={
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <Button onClick={cancelarMenu}>Cancelar</Button>
-            <Button type="primary" onClick={aplicarMenu}>Aplicar</Button>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}>
+            <Button
+              size="small"
+              onClick={restaurarMenu}
+              style={{ color: '#6B7280', fontSize: 12 }}
+            >
+              ↺ Restaurar predeterminados
+            </Button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Button onClick={cancelarMenu}>Cancelar</Button>
+              <Button type="primary" onClick={aplicarMenu}>Aplicar</Button>
+            </div>
           </div>
         }
         width={420}
@@ -2000,6 +2025,16 @@ export default function AppLayout() {
         }
       >
         <div style={{ padding: '4px 0' }}>
+          {menuTemp.length < TODOS_GRUPOS_KEYS.length && (
+            <div style={{
+              fontSize: 12, color: '#D97706', background: '#FEF3C7',
+              border: '1px solid #FDE68A', borderRadius: 6,
+              padding: '6px 10px', marginBottom: 8,
+            }}>
+              ⚠ Tienes {TODOS_GRUPOS_KEYS.length - menuTemp.length} módulo(s) ocultos.
+              Usa "Restaurar predeterminados" para volver a ver todo.
+            </div>
+          )}
           {GRUPOS_MENU.map((grupo, idx) => (
             <div
               key={grupo.key}
