@@ -396,16 +396,21 @@ export class FacturasService {
         datosComprador,
       };
 
-      // 1. Salida de inventario
+      // 1. Salida de inventario — no bloquear emisión si falla (ej. stock ya ajustado manualmente)
       for (const detalle of factura.detalles) {
-        if (!detalle.productoId) continue;  // líneas de servicio sin producto no afectan inventario
+        if (!detalle.productoId) continue;
         await this.inventarioService.registrarSalida(
           detalle.productoId,
           Number(detalle.cantidad),
           factura.usuarioId,
           `Factura emitida: ${factura.folio}`,
           factura.folio,
-        );
+        ).catch((err: unknown) => {
+          this.logger.warn(
+            `[Factura] registrarSalida para ${factura.folio} falló (no bloquea emisión): ` +
+            `${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
       }
 
       // 2. CxC — solo si tipoPago === 'CREDITO' (contado nunca genera CxC)
@@ -414,15 +419,14 @@ export class FacturasService {
       if (esCredito) {
         const dias = diasCred > 0 ? diasCred : 30;
         await this.cxcService.crear(factura.id, factura.usuarioId, dias);
-        // Guardar fechaVencimiento en la factura si es crédito explícito
-        if (esCredito && diasCred > 0) {
+        if (diasCred > 0) {
           const fv = new Date();
           fv.setDate(fv.getDate() + dias);
           await this.facturaRepository.update(factura.id, { fechaVencimiento: fv } as any);
         }
       }
 
-      // 3. Asiento contable
+      // 3. Asiento contable — no bloquear emisión si la empresa no tiene cuentas configuradas
       await this.asientosService.asientoFacturaEmitida(
         factura.id,
         Number(factura.total),
@@ -430,7 +434,12 @@ export class FacturasService {
         Number(factura.iva),
         factura.folio,
         factura.usuarioId,
-      );
+      ).catch((err: unknown) => {
+        this.logger.warn(
+          `[Factura] asientoFacturaEmitida para ${factura.folio} falló (no bloquea emisión): ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
 
       // 4. Actualizar estado de la factura
       // Crédito SIEMPRE = EMITIDA (pendiente de cobro), nunca PAGADA al emitir
