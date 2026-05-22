@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
+import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import { NotaCreditoCompra, EstadoNCCompra, MotivoNCCompra } from './entities/nota-credito-compra.entity';
 import { NotaCreditoCompraDetalle } from './entities/nota-credito-compra-detalle.entity';
 import { Producto } from '../productos/entities/producto.entity';
@@ -39,15 +40,9 @@ export class NotasCreditoComprasService {
 
   private async generarNumero(): Promise<string> {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const res = await this.nccRepo
-      .createQueryBuilder('n')
-      .select(`MAX(CASE WHEN n.numero ~ '^NCC-[0-9]+$'
-                        THEN CAST(SUBSTRING(n.numero FROM 5) AS INTEGER)
-                        ELSE 100 END)`, 'maxNum')
-      .where('n.empresaId = :eid', { eid: empresaId })
-      .andWhere('n.isActive = :a', { a: true })
-      .getRawOne<{ maxNum: number | null }>();
-    return `NCC-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
+    return generarNumeroSecuencial(
+      this.dataSource, 'notas_credito_compras', 'numero', '^NCC-[0-9]+$', 'NCC-', 1, empresaId,
+    );
   }
 
   async crear(dto: CreateNCCDto, usuarioId: number) {

@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { Repository, DataSource } from 'typeorm';
+import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import { NotaDebito, EstadoNotaDebito } from './entities/nota-debito.entity';
 import { NotaDebitoDetalle } from './entities/nota-debito-detalle.entity';
 import { TenantService } from '../tenant/tenant.service';
@@ -34,21 +35,16 @@ export class NotasDebitoService {
     @InjectRepository(NotaDebito)        private ndRepo:  Repository<NotaDebito>,
     @InjectRepository(NotaDebitoDetalle) private detRepo: Repository<NotaDebitoDetalle>,
     private tenantSvc: TenantService,
+    @InjectDataSource() private ds: DataSource,
   ) {}
 
   // ─── Folio ────────────────────────────────────────────────────────────────────
 
   private async generarNumero(): Promise<string> {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const res = await this.ndRepo
-      .createQueryBuilder('nd')
-      .select(`MAX(CASE WHEN nd.numero ~ '^ND-[0-9]+$'
-                        THEN CAST(SUBSTRING(nd.numero FROM 4) AS INTEGER)
-                        ELSE 100 END)`, 'maxNum')
-      .where('nd.empresaId = :eid', { eid: empresaId })
-      .andWhere('nd.isActive = :a', { a: true })
-      .getRawOne<{ maxNum: number | null }>();
-    return `ND-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
+    return generarNumeroSecuencial(
+      this.ds, 'notas_debito', 'numero', '^ND-[0-9]+$', 'ND-', 1, empresaId,
+    );
   }
 
   // ─── CRUD ─────────────────────────────────────────────────────────────────────

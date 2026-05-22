@@ -4,8 +4,9 @@ import {
   BadRequestException,
   Logger,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { Repository, DataSource } from 'typeorm';
+import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import { Devolucion, EstadoDevolucion } from './entities/devolucion.entity';
 import { DevolucionDetalle } from './entities/devolucion-detalle.entity';
 import { Factura } from '../facturas/entities/factura.entity';
@@ -31,30 +32,23 @@ export class DevolucionesService {
     private inventarioService: InventarioService,
     private asientosService:   AsientosAutomaticosService,
     private tenantService:     TenantService,
+    @InjectDataSource() private ds: DataSource,
   ) {}
 
   // ─── Folios ───────────────────────────────────────────────────────────────────
 
   private async generarNumero(): Promise<string> {
     const empresaId = this.tenantService.getEmpresaId();
-    const res = await this.devRepository
-      .createQueryBuilder('d')
-      .select(`MAX(CASE WHEN d.numero ~ '^DEV-[0-9]+$' THEN CAST(SUBSTRING(d.numero FROM 5) AS INTEGER) ELSE 100 END)`, 'maxNum')
-      .where('d.empresaId = :eid', { eid: empresaId })
-      .andWhere('d.isActive = :a', { a: true })
-      .getRawOne<{ maxNum: number | null }>();
-    return `DEV-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
+    return generarNumeroSecuencial(
+      this.ds, 'devoluciones', 'numero', '^DEV-[0-9]+$', 'DEV-', 1, empresaId,
+    );
   }
 
   private async generarNumeroNC(): Promise<string> {
     const empresaId = this.tenantService.getEmpresaId();
-    const res = await this.ncRepository
-      .createQueryBuilder('nc')
-      .select(`MAX(CASE WHEN nc.numero ~ '^NC-[0-9]+$' THEN CAST(SUBSTRING(nc.numero FROM 4) AS INTEGER) ELSE 100 END)`, 'maxNum')
-      .where('nc.empresaId = :eid', { eid: empresaId })
-      .andWhere('nc.isActive = :a', { a: true })
-      .getRawOne<{ maxNum: number | null }>();
-    return `NC-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
+    return generarNumeroSecuencial(
+      this.ds, 'notas_credito', 'numero', '^NC-[0-9]+$', 'NC-', 1, empresaId,
+    );
   }
 
   // ─── Crear devolución ─────────────────────────────────────────────────────────

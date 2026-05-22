@@ -1,8 +1,9 @@
 import {
   Injectable, NotFoundException, BadRequestException, ConflictException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { Repository, DataSource } from 'typeorm';
+import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import { PreFactura, EstadoPreFactura } from './entities/pre-factura.entity';
 import { PreFacturaDetalle } from './entities/pre-factura-detalle.entity';
 import { Factura, FacturaEstado } from '../facturas/entities/factura.entity';
@@ -35,21 +36,16 @@ export class PreFacturaService {
     @InjectRepository(PreFacturaDetalle) private pfDetRepo:    Repository<PreFacturaDetalle>,
     @InjectRepository(Factura)          private facturaRepo:  Repository<Factura>,
     private tenantSvc: TenantService,
+    @InjectDataSource() private ds: DataSource,
   ) {}
 
   // ─── Folio ────────────────────────────────────────────────────────────────────
 
   private async generarFolio(): Promise<string> {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const res = await this.pfRepo
-      .createQueryBuilder('pf')
-      .select(`MAX(CASE WHEN pf.folio ~ '^PRE-[0-9]+$'
-                        THEN CAST(SUBSTRING(pf.folio FROM 5) AS INTEGER)
-                        ELSE 100 END)`, 'maxNum')
-      .where('pf.empresaId = :eid', { eid: empresaId })
-      .andWhere('pf.isActive = :a', { a: true })
-      .getRawOne<{ maxNum: number | null }>();
-    return `PRE-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
+    return generarNumeroSecuencial(
+      this.ds, 'pre_facturas', 'folio', '^PRE-[0-9]+$', 'PRE-', 1, empresaId,
+    );
   }
 
   // ─── Calcular totales ─────────────────────────────────────────────────────────
