@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { Card, Table, Button, Tag, Row, Col, Typography, Modal, Form,
-         InputNumber, Select, Input, DatePicker, Space, Popconfirm, message, Alert } from 'antd';
-import { PlusOutlined, DeleteOutlined, PercentageOutlined, FileExcelOutlined } from '@ant-design/icons';
+         InputNumber, Select, Input, DatePicker, Space, Popconfirm, message, Alert, theme } from 'antd';
+import { PlusOutlined, DeleteOutlined, PercentageOutlined, FileExcelOutlined, SearchOutlined } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
@@ -29,9 +29,11 @@ const preciosApi = {
 };
 
 export default function PreciosEspecialesPage() {
-  const [open,  setOpen]  = useState(false);
-  const [tipo,  setTipo]  = useState<'cliente' | 'tier' | 'global'>('global');
-  const [form]            = Form.useForm();
+  const { token } = theme.useToken();
+  const [open,   setOpen]   = useState(false);
+  const [tipo,   setTipo]   = useState<'cliente' | 'tier' | 'global'>('global');
+  const [search, setSearch] = useState('');
+  const [form]              = Form.useForm();
   const qc = useQueryClient();
 
   const { data: lista, isLoading } = useQuery({ queryKey: ['precios-especiales'], queryFn: () => preciosApi.listar({}) });
@@ -48,6 +50,21 @@ export default function PreciosEspecialesPage() {
     mutationFn: preciosApi.eliminar,
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['precios-especiales'] }); message.success('Eliminado'); },
   });
+
+  const listaFiltrada = useMemo(() => {
+    if (!search.trim()) return lista ?? [];
+    const q = search.toLowerCase();
+    return (lista ?? []).filter((r: any) => {
+      const prod = productos?.data?.find((x: any) => x.id === r.productoId);
+      const cli  = clientes?.data?.find((x: any) => x.id === r.clienteId);
+      return (
+        prod?.nombre?.toLowerCase().includes(q) ||
+        prod?.codigo?.toLowerCase().includes(q) ||
+        cli?.nombre?.toLowerCase().includes(q) ||
+        String(r.tier ?? '').toLowerCase().includes(q)
+      );
+    });
+  }, [lista, search, productos, clientes]);
 
   const cols = [
     { title: 'Producto', key: 'prod', ellipsis: true,
@@ -90,7 +107,15 @@ export default function PreciosEspecialesPage() {
       </Text>
 
       <Card extra={
-        <Space>
+        <Space wrap>
+          <Input
+            placeholder="Buscar por producto, cliente o tier..."
+            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            allowClear
+            style={{ width: 240 }}
+          />
           <Button icon={<FileExcelOutlined />} onClick={() => {
             const filas = (lista ?? []).map((p: any) => ({
               'Producto':  p.producto?.nombre ?? p.productoNombre ?? '',
@@ -110,7 +135,7 @@ export default function PreciosEspecialesPage() {
           </Button>
         </Space>
       }>
-        <Table columns={cols} dataSource={lista ?? []} rowKey="id"
+        <Table columns={cols} dataSource={listaFiltrada} rowKey="id"
           loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
           pagination={{ pageSize: 15, showSizeChanger: false }} />

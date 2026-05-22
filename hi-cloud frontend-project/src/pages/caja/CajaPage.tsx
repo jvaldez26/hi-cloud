@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { TableActions } from '../../components/ui/TableActions';
 import { DetailDrawer } from '../../components/ui/DetailDrawer';
@@ -9,7 +9,7 @@ import { Card, Row, Col, Typography, Statistic, Button, InputNumber,
          theme, Drawer, Descriptions, Divider } from 'antd';
 import { UnlockOutlined, LockOutlined, HistoryOutlined,
          RollbackOutlined, WarningOutlined,
-         PrinterOutlined, DownloadOutlined } from '@ant-design/icons';
+         PrinterOutlined, DownloadOutlined, SearchOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../../store/auth.store';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -142,9 +142,17 @@ export default function CajaPage() {
 
   // BUG FIX: El historial solo muestra cierres completados (NO abierta)
   // Una caja con estado 'abierta' es el turno activo, no un cierre del historial
-  const historialCerrados = (historial?.data ?? []).filter(
-    (r: any) => r.estado !== 'abierta'
-  );
+  const [searchHistorial, setSearchHistorial] = useState('');
+
+  const historialCerrados = useMemo(() => {
+    const base = (historial?.data ?? []).filter((r: any) => r.estado !== 'abierta');
+    if (!searchHistorial.trim()) return base;
+    const q = searchHistorial.toLowerCase();
+    return base.filter((r: any) =>
+      String(r.vendedorNombre ?? '').toLowerCase().includes(q) ||
+      String(r.fecha ?? '').includes(q)
+    );
+  }, [historial, searchHistorial]);
 
   // Calcular diferencia en tiempo real para el modal de cierre
   const diferenciaCierre = saldoFisicoInput - (cerrarTarget?.saldoEsperado ?? 0);
@@ -324,7 +332,20 @@ h2{text-align:center;font-size:16px;margin:0 0 4px}
       )}
 
       {/* Historial — solo muestra cierres COMPLETADOS (no abierta) */}
-      <Card title={<><HistoryOutlined /> Historial de Cierres</>}>
+      <Card
+        title={<><HistoryOutlined /> Historial de Cierres</>}
+        extra={
+          <Input
+            placeholder="Buscar por cajero o fecha..."
+            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+            value={searchHistorial}
+            onChange={e => setSearchHistorial(e.target.value)}
+            allowClear
+            size="small"
+            style={{ width: 220 }}
+          />
+        }
+      >
         {historialCerrados.length === 0 && !isLoading && (
           <Text type="secondary" style={{ fontSize: 13 }}>
             Sin cierres registrados aún. Los cierres completados aparecerán aquí.
