@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TasaCambio } from './entities/tasa-cambio.entity';
 import { TenantService } from '../tenant/tenant.service';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 const MONEDAS_DEFECTO: Record<string, string> = {
   USD: 'Dólar Estadounidense',
@@ -33,7 +34,7 @@ export class DivisasService {
 
   async getTasasHoy() {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = fechaHoyRD();
 
     // Para cada moneda, obtener la más reciente
     const monedas = ['USD', 'EUR', 'GBP', 'CAD'];
@@ -68,7 +69,7 @@ export class DivisasService {
     fecha?: string; fuente?: string;
   }) {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const fecha     = dto.fecha ?? new Date().toISOString().split('T')[0];
+    const fecha     = dto.fecha ?? fechaHoyRD();
     const moneda    = dto.moneda.toUpperCase();
 
     return this.tasaRepo.save(

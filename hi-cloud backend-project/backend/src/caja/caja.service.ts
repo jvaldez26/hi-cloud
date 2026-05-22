@@ -6,6 +6,7 @@ import { Repository, DataSource, IsNull } from 'typeorm';
 import { CierreCaja, EstadoCierre } from './entities/cierre-caja.entity';
 import { TenantService } from '../tenant/tenant.service';
 import { RealtimeService } from '../realtime/realtime.service';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 @Injectable()
 export class CajaService {
@@ -125,7 +126,7 @@ export class CajaService {
         vendedorNombre = userRows[0]?.nombre ?? String(vendedorId);
       }
     }
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = fechaHoyRD();
 
     // Buscar caja existente para este vendedor HOY dentro de la misma empresa
     const where: any = { fecha: new Date(hoy) as any, empresaId };
@@ -192,7 +193,9 @@ export class CajaService {
       throw new BadRequestException('La caja ya está cerrada');
     }
 
-    const fechaStr = new Date(caja.fecha).toISOString().split('T')[0];
+    // La columna fecha es tipo DATE (sin timezone). TypeORM la lee como Date UTC-midnight.
+    // Usamos toLocaleDateString con la zona RD para evitar off-by-one en casos límite.
+    const fechaStr = new Date(caja.fecha).toLocaleDateString('en-CA', { timeZone: 'America/Santo_Domingo' });
     await this.recalcularDesdeBD(id, fechaStr, caja.vendedorId, empresaId);
 
     const fresh = await this.repo.findOne({ where: { id } }) as CierreCaja;
@@ -316,7 +319,7 @@ export class CajaService {
 
   async getCajaHoy(vendedorId?: number) {
     const empresaId = this.tenantService.getEmpresaId();
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = fechaHoyRD();
 
     if (vendedorId !== undefined) {
       const where: any = { fecha: new Date(hoy) as any, empresaId };

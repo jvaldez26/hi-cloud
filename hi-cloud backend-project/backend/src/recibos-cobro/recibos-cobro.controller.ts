@@ -14,6 +14,7 @@ import { GetUser } from '../auth/decorators/get-user.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
 import { User } from '../users/users.entity';
 import { PaginationDto } from '../common/dto/pagination.dto';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 class RecibosQueryDto extends PaginationDto {
   @IsOptional() @IsInt() @IsPositive() @Type(() => Number)
@@ -88,7 +89,7 @@ export class RecibosCobrosController {
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Emitir recibo de cobro' })
   crear(@Body() dto: CreateReciboDto, @GetUser() user: User) {
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = fechaHoyRD();
     return this.svc.crear({ ...dto, fecha: dto.fecha ?? hoy, nombreUsuario: user.nombre }, user.id);
   }
 

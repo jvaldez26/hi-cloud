@@ -18,6 +18,7 @@ import { AsientosAutomaticosService } from '../contabilidad/services/asientos-au
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { TenantService } from '../tenant/tenant.service';
 import { RealtimeService } from '../realtime/realtime.service';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 import { User } from '../users/users.entity';
 import { LimitesService } from '../suscripciones/limites.service';
 import { EmitirECFUseCase, DatosCompradorECF } from '../ecf/use-cases/emitir-ecf.use-case';
@@ -349,7 +350,7 @@ export class FacturasService {
     if (estado === FacturaEstado.EMITIDA) {
       // Verificar que hay caja abierta si la factura viene del POS (tiene vendedorId)
       if ((factura as any).vendedorId) {
-        const hoy = new Date().toISOString().split('T')[0];
+        const hoy = fechaHoyRD();
         const [cajaAbierta] = await this.dataSource.query<{ id: number }[]>(`
           SELECT id FROM cierres_caja
           WHERE "empresaId" = $1 AND DATE(fecha) = $2

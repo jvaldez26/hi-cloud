@@ -6,6 +6,7 @@ import { Repository } from 'typeorm';
 import { CajaChica, EstadoCajaChica } from './entities/caja-chica.entity';
 import { MovimientoCajaChica, TipoMovCajaChica } from './entities/movimiento-caja-chica.entity';
 import { TenantService } from '../tenant/tenant.service';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 interface CreateCajaDto {
   nombre:               string;
@@ -78,7 +79,7 @@ export class CajaChicaService {
         empresaId,
         cajaChicaId:   caja.id,
         tipo:          TipoMovCajaChica.APERTURA,
-        fecha:         new Date().toISOString().split('T')[0],
+        fecha:         fechaHoyRD(),
         descripcion:   `Apertura de caja chica "${caja.nombre}"`,
         monto:         dto.montoInicial,
         saldoAnterior: 0,
@@ -192,7 +193,7 @@ export class CajaChicaService {
         empresaId,
         cajaChicaId:   cajaId,
         tipo:          TipoMovCajaChica.CIERRE,
-        fecha:         new Date().toISOString().split('T')[0],
+        fecha:         fechaHoyRD(),
         descripcion:   `Cierre de caja chica "${caja.nombre}"`,
         monto:         Number(caja.saldoActual),
         saldoAnterior: Number(caja.saldoActual),

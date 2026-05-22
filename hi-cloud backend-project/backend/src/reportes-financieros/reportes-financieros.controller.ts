@@ -8,6 +8,7 @@ import { UserRole } from '../users/enums/user-role.enum';
 import { ReportesFinancierosService } from './reportes-financieros.service';
 import { BalanceComprobacionService } from './balance-comprobacion.service';
 import { ReportesPdfService }         from './reportes-pdf.service';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 @ApiTags('Reportes Financieros')
 @ApiBearerAuth('access-token')
@@ -30,7 +31,7 @@ export class ReportesFinancierosController {
     @Query('hasta')        hasta?: string,
     @Query('fechaBalance') fechaBalance?: string,
   ) {
-    const hoy    = new Date().toISOString().split('T')[0];
+    const hoy    = fechaHoyRD();
     const inicio = `${new Date().getFullYear()}-01-01`;
     return this.svc.resumenEjecutivo(desde ?? inicio, hasta ?? hoy, fechaBalance ?? hoy);
   }
@@ -44,7 +45,7 @@ export class ReportesFinancierosController {
   @Get('balance-general')
   @ApiOperation({ summary: 'Balance General a una fecha de corte' })
   balanceGeneral(@Query('fechaCorte') fechaCorte?: string) {
-    return this.svc.balanceGeneral(fechaCorte ?? new Date().toISOString().split('T')[0]);
+    return this.svc.balanceGeneral(fechaCorte ?? fechaHoyRD());
   }
 
   @Get('flujo-efectivo')
@@ -77,7 +78,7 @@ export class ReportesFinancierosController {
     @Query('hasta') hasta: string,
     @Res() res: Response,
   ) {
-    const hoy    = new Date().toISOString().split('T')[0];
+    const hoy    = fechaHoyRD();
     const inicio = `${new Date().getFullYear()}-01-01`;
     const { buffer, filename } = await this.pdfSvc.generarEstadoResultadosPDF(desde ?? inicio, hasta ?? hoy);
     res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${filename}"` });
@@ -90,7 +91,7 @@ export class ReportesFinancierosController {
     @Query('fechaCorte') fechaCorte: string,
     @Res() res: Response,
   ) {
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = fechaHoyRD();
     const { buffer, filename } = await this.pdfSvc.generarBalanceGeneralPDF(fechaCorte ?? hoy);
     res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${filename}"` });
     res.send(buffer);

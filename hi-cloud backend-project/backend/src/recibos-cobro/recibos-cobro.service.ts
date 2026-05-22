@@ -4,6 +4,7 @@ import {
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
+import { fechaHoyRD, mesHoyRD } from '../common/utils/fecha-local.util';
 import { ReciboCobro, MetodoPagoRecibo } from './entities/recibo-cobro.entity';
 import { CuentaPorCobrar } from '../cxc/entities/cuenta-por-cobrar.entity';
 import { Factura, FacturaEstado } from '../facturas/entities/factura.entity';
@@ -67,7 +68,7 @@ export class RecibosCobrosService {
     usuarioId: number,
     vendedorId?: number,
   ): Promise<number | null> {
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = fechaHoyRD();
 
     // 1. Si el POS envió vendedorId → caja de ese vendedor
     if (vendedorId) {
@@ -195,7 +196,7 @@ export class RecibosCobrosService {
       // ── Excedente → crear anticipo automáticamente ─────────────
       if (excedente > 0.01 && dto.registrarExcedente) {
         try {
-          const hoy = new Date().toISOString().split('T')[0];
+          const hoy = fechaHoyRD();
           const [cajaRow] = await this.dataSource.query<{ id: number }[]>(
             `SELECT id FROM cierres_caja WHERE "empresaId" = $1 AND DATE(fecha) = $2 AND estado = 'abierta' ORDER BY id DESC LIMIT 1`,
             [empresaId, hoy],
@@ -324,8 +325,8 @@ export class RecibosCobrosService {
 
   async resumen() {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const hoy = new Date().toISOString().split('T')[0];
-    const mes = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+    const hoy = fechaHoyRD();
+    const mes = mesHoyRD();
 
     const [hoyR, mesR, totalR] = await Promise.all([
       this.repo

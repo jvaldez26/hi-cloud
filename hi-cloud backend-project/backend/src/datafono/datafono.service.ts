@@ -5,6 +5,7 @@ import { TerminalDatafono } from './entities/terminal-datafono.entity';
 import { TransaccionTarjeta, EstadoTransaccion } from './entities/transaccion-tarjeta.entity';
 import { ConciliacionDatafono, EstadoConciliacion } from './entities/conciliacion-datafono.entity';
 import { TenantService } from '../tenant/tenant.service';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 interface CreateTerminalDto {
   numeroTerminal: string; banco: string; tipoTarjeta?: string;
@@ -126,7 +127,7 @@ export class DatafonoService {
     const terminales = await this.terminalRepo.count({ where: { activo: true } });
     const pendientes = await this.transaccionRepo.count({ where: { estado: EstadoTransaccion.PENDIENTE } });
 
-    const hoy    = new Date().toISOString().split('T')[0];
+    const hoy    = fechaHoyRD();
     const result = await this.transaccionRepo
       .createQueryBuilder('t')
       .select('COALESCE(SUM(t.monto), 0)', 'total')

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { TenantService } from '../tenant/tenant.service';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 export interface LineaBalance {
   codigo:      string;
@@ -28,7 +29,7 @@ export class BalanceComprobacionService {
     totales: { debe: number; haber: number; deudor: number; acreedor: number; cuadra: boolean };
     fecha:   string;
   }> {
-    const fechaCorte = hasta ?? new Date().toISOString().split('T')[0];
+    const fechaCorte = hasta ?? fechaHoyRD();
 
     const rows = await this.ds.query<{
       codigo: string; nombre: string; tipo: string; naturaleza: string;

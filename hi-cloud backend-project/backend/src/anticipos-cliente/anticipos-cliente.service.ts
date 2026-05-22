@@ -4,6 +4,7 @@ import {
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
+import { fechaHoyRD, mesHoyRD } from '../common/utils/fecha-local.util';
 import { AnticipoCliente, EstadoAnticipo } from './entities/anticipo-cliente.entity';
 import { CuentaPorCobrar } from '../cxc/entities/cuenta-por-cobrar.entity';
 import { Factura, FacturaEstado } from '../facturas/entities/factura.entity';
@@ -230,8 +231,8 @@ export class AnticiposClienteService implements OnModuleInit {
   // ── Resumen ─────────────────────────────────────────────────────────────────
   async resumen() {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const hoy = new Date().toISOString().split('T')[0];
-    const mes = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+    const hoy = fechaHoyRD();
+    const mes = mesHoyRD();
 
     const [hoyR, activos, totalR] = await Promise.all([
       this.repo.createQueryBuilder('a')

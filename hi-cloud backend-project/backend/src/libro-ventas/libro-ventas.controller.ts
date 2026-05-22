@@ -5,8 +5,9 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
 import { LibroVentasService } from './libro-ventas.service';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
-const HOY    = () => new Date().toISOString().split('T')[0];
+const HOY    = () => fechaHoyRD();
 const INICIO = () => `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`;
 
 @ApiTags('Libro de Ventas & Compras')

@@ -5,6 +5,7 @@ import { PlanPago, EstadoPlanPago } from './entities/plan-pago.entity';
 import { Cuota, EstadoCuota } from './entities/cuota.entity';
 import { TenantService } from '../tenant/tenant.service';
 import dayjs from 'dayjs';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 interface CreatePlanDto {
   clienteId:           number;
@@ -129,7 +130,7 @@ export class CuotasService {
     await this.cuotaRepo.update(cuotaId, {
       estado:         EstadoCuota.PAGADA,
       montoPagado:    cuota.monto,
-      fechaPago:      new Date().toISOString().split('T')[0],
+      fechaPago:      fechaHoyRD(),
       referenciaPago: referencia,
     });
 

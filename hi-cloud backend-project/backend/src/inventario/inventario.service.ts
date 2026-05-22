@@ -16,6 +16,7 @@ import { RegistrarAjusteDto } from './dto/registrar-ajuste.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { RealtimeService } from '../realtime/realtime.service';
 import { TenantService } from '../tenant/tenant.service';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 @Injectable()
 export class InventarioService {
@@ -229,7 +230,7 @@ export class InventarioService {
     if (productoId) qb.andWhere('l.productoId = :pid', { pid: productoId });
     if (estado)     qb.andWhere('l.estado = :estado', { estado });
     if (soloVigentes) {
-      const hoy = new Date().toISOString().split('T')[0];
+      const hoy = fechaHoyRD();
       qb.andWhere('(l.fechaVencimiento IS NULL OR l.fechaVencimiento >= :hoy)', { hoy });
       qb.andWhere('l.estado = :activo', { activo: EstadoLote.ACTIVO });
     }
@@ -241,8 +242,8 @@ export class InventarioService {
     const empresaId = this.tenantService.getEmpresaId();
     const hoy       = new Date();
     const en30dias  = new Date(hoy.getTime() + 30 * 24 * 60 * 60 * 1000);
-    const en30str   = en30dias.toISOString().split('T')[0];
-    const hoyStr    = hoy.toISOString().split('T')[0];
+    const en30str   = en30dias.toLocaleDateString('en-CA', { timeZone: 'America/Santo_Domingo' });
+    const hoyStr    = hoy.toLocaleDateString('en-CA', { timeZone: 'America/Santo_Domingo' });
 
     const [vencidos, proximosAVencer] = await Promise.all([
       this.loteRepository

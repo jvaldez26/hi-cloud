@@ -23,6 +23,7 @@ import { UpdateCuentaContableDto } from '../dto/update-cuenta-contable.dto';
 import { CreateAsientoDto } from '../dto/create-asiento.dto';
 import { FiltroContabilidadDto } from '../dto/filtro-contabilidad.dto';
 import { TenantService } from '../../tenant/tenant.service';
+import { fechaHoyRD } from '../../common/utils/fecha-local.util';
 
 // ── Plan de Cuentas estándar dominicano ─────────────────────────────────────
 interface SeedCuenta {
@@ -402,7 +403,7 @@ export class ContabilidadService implements OnModuleInit {
     const totalPatrimonio = patrimonio.reduce((a, c) => a + c.saldo, 0);
 
     return {
-      fecha:   fechaHasta ?? new Date().toISOString().split('T')[0],
+      fecha:   fechaHasta ?? fechaHoyRD(),
       activos: { detalle: activos,    total: totalActivos },
       pasivos: { detalle: pasivos,    total: totalPasivos },
       patrimonio: { detalle: patrimonio, total: totalPatrimonio },

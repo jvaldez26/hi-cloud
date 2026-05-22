@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ReglaDescuento, TipoDescuento, CondicionDescuento } from './entities/regla-descuento.entity';
 import { TenantService } from '../tenant/tenant.service';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 interface CalcularDescuentoDto {
   productoId:    number;
@@ -54,7 +55,7 @@ export class DescuentosService {
 
   async calcular(items: CalcularDescuentoDto[]): Promise<ResultadoDescuento[]> {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const hoy       = new Date().toISOString().split('T')[0];
+    const hoy       = fechaHoyRD();
 
     const reglas = await this.reglaRepo
       .createQueryBuilder('r')

@@ -5,8 +5,9 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
 import { GeneradorReportesService } from './generador-reportes.service';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
-const HOY    = () => new Date().toISOString().split('T')[0];
+const HOY    = () => fechaHoyRD();
 const INICIO = () => `${new Date().getFullYear()}-01-01`;
 
 @ApiTags('Generador de Reportes')

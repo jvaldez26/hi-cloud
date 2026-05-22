@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { TenantService } from '../tenant/tenant.service';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 @Injectable()
 export class AnalyticsService {
@@ -99,7 +100,7 @@ export class AnalyticsService {
   async topClientes(limit = 10, desde?: string, hasta?: string) {
     const empresaId = this.eid;
     const d = desde ?? `${new Date().getFullYear()}-01-01`;
-    const h = hasta  ?? new Date().toISOString().split('T')[0];
+    const h = hasta  ?? fechaHoyRD();
 
     return this.ds.query<any[]>(`
       SELECT f."clienteId", c.nombre,
@@ -122,7 +123,7 @@ export class AnalyticsService {
   async topProductos(limit = 10, desde?: string, hasta?: string) {
     const empresaId = this.eid;
     const d = desde ?? `${new Date().getFullYear()}-01-01`;
-    const h = hasta  ?? new Date().toISOString().split('T')[0];
+    const h = hasta  ?? fechaHoyRD();
 
     return this.ds.query<any[]>(`
       SELECT fd."productoId", p.nombre,
@@ -200,7 +201,7 @@ export class AnalyticsService {
   async ventasPorVendedor(desde?: string, hasta?: string) {
     const empresaId = this.eid;
     const d = desde ?? `${new Date().getFullYear()}-01-01`;
-    const h = hasta  ?? new Date().toISOString().split('T')[0];
+    const h = hasta  ?? fechaHoyRD();
 
     return this.ds.query<any[]>(`
       SELECT COALESCE("nombreVendedor", 'Sin vendedor') AS nombre,
