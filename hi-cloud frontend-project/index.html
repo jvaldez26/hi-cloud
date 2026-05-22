@@ -3,11 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <!-- Anti-FOUC: aplicar data-theme ANTES de que React hidrate -->
+    <!-- El default del sistema es SIEMPRE light — ignoramos prefers-color-scheme del OS.
+         Solo se aplica dark si el usuario lo eligió explícitamente (preferencia guardada). -->
     <script>
       (function() {
         try {
           var s = localStorage.getItem('hicloud-theme');
-          var dark = s ? JSON.parse(s).state.isDark : window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var dark = s ? JSON.parse(s).state.isDark === true : false;
           if (dark) document.documentElement.setAttribute('data-theme', 'dark');
         } catch(e) {}
       })();

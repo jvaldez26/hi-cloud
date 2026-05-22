@@ -1105,7 +1105,7 @@ export default function SuperAdminPage() {
   // ── Tema independiente del ERP ────────────────────────────────────────────
   const [isDark, setIsDark] = useState<boolean>(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
-    return saved ? saved === 'dark' : true; // oscuro por defecto
+    return saved ? saved === 'dark' : false; // light por defecto (igual que el ERP principal)
   });
 
   const C = isDark ? SA_DARK : SA_LIGHT;
