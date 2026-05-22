@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThanOrEqual } from 'typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { Repository, LessThanOrEqual, DataSource } from 'typeorm';
 import { Cron } from '@nestjs/schedule';
 import { FacturaRecurrente, Frecuencia } from './entities/factura-recurrente.entity';
 import { Factura, FacturaEstado } from '../facturas/entities/factura.entity';
@@ -8,6 +8,8 @@ import { FacturaDetalle } from '../facturas/entities/factura-detalle.entity';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { User } from '../users/users.entity';
 import { TenantService } from '../tenant/tenant.service';
+import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
+import { EmailService } from '../notificaciones/services/email.service';
 
 interface CreateRecurrenteDto {
   nombre:        string;
@@ -31,7 +33,9 @@ export class FacturasRecurrentesService {
     private facturaRepository: Repository<Factura>,
     @InjectRepository(FacturaDetalle)
     private detalleRepository: Repository<FacturaDetalle>,
+    @InjectDataSource() private ds: DataSource,
     private tenantService: TenantService,
+    private emailService:  EmailService,
   ) {}
 
   private calcularProxima(frecuencia: Frecuencia, diaEjecucion: number, desde: Date): Date {
@@ -124,6 +128,9 @@ export class FacturasRecurrentesService {
 
     this.logger.log(`Generando ${pendientes.length} facturas recurrentes...`);
 
+    // Rastrear resultados por empresa para el email de notificación
+    const resumenPorEmpresa = new Map<number, { generadas: number; errores: number; folios: string[] }>();
+
     for (const rec of pendientes) {
       try {
         // Verificar que no haya pasado la fecha fin
@@ -145,14 +152,10 @@ export class FacturasRecurrentesService {
                    subtotal: sub, importeIva: impIva, total: sub + impIva };
         });
 
-        // Generar folio con mismo formato que facturas regulares (FAC-NNN)
-        const maxRes = await this.facturaRepository
-          .createQueryBuilder('f')
-          .select(`MAX(CASE WHEN f.folio ~ '^FAC-[0-9]+$' THEN CAST(SUBSTRING(f.folio FROM 5) AS INTEGER) ELSE 100 END)`, 'maxNum')
-          .where('f.empresaId = :eid', { eid: rec.empresaId })
-          .andWhere('f.isActive = :a', { a: true })
-          .getRawOne<{ maxNum: number | null }>();
-        const folio = `FAC-${Math.max(101, (maxRes?.maxNum ?? 100) + 1)}`;
+        // Generar folio atómico con la misma utilidad que facturas regulares
+        const folio = await generarNumeroSecuencial(
+          this.ds, 'facturas', 'folio', '^FAC-[0-9]+$', 'FAC-', 1, rec.empresaId!,
+        );
 
         // Crear factura — propaga empresaId del recurrente
         const factura = await this.facturaRepository.save(
@@ -185,9 +188,91 @@ export class FacturasRecurrentesService {
           totalGeneradas:   rec.totalGeneradas + 1,
         });
 
+        // Acumular para el email resumen
+        if (rec.empresaId) {
+          const emp = resumenPorEmpresa.get(rec.empresaId) ?? { generadas: 0, errores: 0, folios: [] };
+          emp.generadas++;
+          emp.folios.push(folio);
+          resumenPorEmpresa.set(rec.empresaId, emp);
+        }
+
         this.logger.log(`✅ Factura recurrente "${rec.nombre}" → ${folio} (próxima: ${proxima.toDateString()})`);
       } catch (err) {
         this.logger.error(`Error generando recurrente #${rec.id}: ${(err as Error).message}`);
+        // Acumular errores
+        if (rec.empresaId) {
+          const emp = resumenPorEmpresa.get(rec.empresaId) ?? { generadas: 0, errores: 0, folios: [] };
+          emp.errores++;
+          resumenPorEmpresa.set(rec.empresaId, emp);
+        }
+      }
+    }
+
+    // Enviar email resumen a las empresas con notifFactRecurrente habilitado
+    await this.notificarResumen(resumenPorEmpresa).catch(e =>
+      this.logger.warn(`[Recurrentes] Email resumen falló: ${e?.message}`),
+    );
+  }
+
+  private async notificarResumen(
+    resumen: Map<number, { generadas: number; errores: number; folios: string[] }>,
+  ): Promise<void> {
+    if (resumen.size === 0) return;
+
+    for (const [empresaId, r] of resumen.entries()) {
+      try {
+        // Verificar flag de notificación de la empresa
+        const [emp] = await this.ds.query<{ configuracion: any; nombre: string }[]>(
+          `SELECT configuracion, nombre FROM empresa WHERE id = $1 AND "isActive" = true`,
+          [empresaId],
+        );
+        if (!emp) continue;
+        const cfg = (emp.configuracion ?? {}) as Record<string, unknown>;
+        if (cfg.notifFactRecurrente === false) continue; // flag desactivado
+
+        // Obtener emails de admin/contador de la empresa
+        const admins = await this.ds.query<{ email: string; nombre: string }[]>(
+          `SELECT u.email, u.nombre FROM users u
+           JOIN usuario_empresa ue ON ue."userId" = u.id
+           WHERE ue."empresaId" = $1 AND ue."isActive" = true
+             AND u."isActive" = true AND u.role IN ('admin','contador')
+           LIMIT 5`,
+          [empresaId],
+        );
+        if (!admins.length) continue;
+
+        const foliosList = r.folios.length > 5
+          ? [...r.folios.slice(0, 5), `... y ${r.folios.length - 5} más`]
+          : r.folios;
+
+        const html = `
+          <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
+            <div style="background:#0F172A;padding:20px 24px;border-radius:10px 10px 0 0">
+              <div style="color:#F59E0B;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em">
+                🔄 Facturas Recurrentes — ${emp.nombre}
+              </div>
+            </div>
+            <div style="background:#fff;padding:20px 24px;border:1px solid #E2E8F0;border-top:none;border-radius:0 0 10px 10px">
+              <p style="margin:0 0 12px;color:#0F172A;font-size:14px">
+                El cron diario de hoy generó <strong>${r.generadas} factura(s)</strong>:
+              </p>
+              <ul style="margin:0 0 12px;padding-left:20px;color:#475569;font-size:13px">
+                ${foliosList.map(f => `<li>${f}</li>`).join('')}
+              </ul>
+              ${r.errores > 0 ? `<p style="color:#DC2626;font-size:13px">⚠ ${r.errores} factura(s) no se pudieron generar por errores. Revisa los logs.</p>` : ''}
+              <p style="color:#94A3B8;font-size:11px;margin:8px 0 0">Las facturas están en estado <strong>Borrador</strong> — revisar y emitir.</p>
+            </div>
+          </div>`;
+
+        await this.emailService.enviar({
+          to:      admins.map(a => a.email),
+          subject: `🔄 ${r.generadas} factura(s) recurrente(s) generadas — ${emp.nombre}`,
+          html,
+        });
+
+        this.logger.log(`[Recurrentes] Email enviado a empresa #${empresaId}: ${r.generadas} generadas`);
+      } catch (err) {
+        this.logger.warn(`[Recurrentes] Error notificando empresa #${empresaId}: ${(err as Error).message}`);
       }
     }
   }

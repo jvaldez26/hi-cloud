@@ -42,15 +42,19 @@ export class ContratosService {
   ) {}
 
   private async generarNumero(): Promise<string> {
-    const now    = new Date();
-    const y      = now.getFullYear();
-    const m      = String(now.getMonth() + 1).padStart(2, '0');
-    const prefix = `CTR-${y}${m}-`;
+    const now      = new Date();
+    const y        = now.getFullYear();
+    const m        = String(now.getMonth() + 1).padStart(2, '0');
+    const prefix   = `CTR-${y}${m}-`;
+    const empresaId = this.tenantService.getEmpresaId();
 
+    // Prefijo dinámico mensual → incompatible con generarNumeroSecuencial.
+    // Filtramos SIEMPRE por empresaId para garantizar aislamiento multi-tenant.
     const result = await this.repo
       .createQueryBuilder('c')
       .select(`MAX(CAST(SPLIT_PART(c.numero, '-', 3) AS INTEGER))`, 'maxNum')
       .where('c.numero LIKE :p', { p: `${prefix}%` })
+      .andWhere('c.empresaId = :eid', { eid: empresaId })
       .getRawOne<{ maxNum: number | null }>();
 
     const next = (result?.maxNum ?? 0) + 1;
