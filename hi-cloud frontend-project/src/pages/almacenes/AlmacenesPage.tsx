@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -42,6 +42,8 @@ const ESTADO_TRANSF: Record<string, { label: string; color: string }> = {
   cancelada:   { label: 'Cancelada',   color: 'error' },
 };
 
+const FILTROS_KEY = 'alm-filtros-v1';
+
 export default function AlmacenesPage() {
   const { token } = theme.useToken();
   const [almSeleccionado, setAlmSeleccionado] = useState<any>(null);
@@ -50,6 +52,34 @@ export default function AlmacenesPage() {
   const [formAlm]    = Form.useForm();
   const [formTransf] = Form.useForm();
   const qc = useQueryClient();
+
+  // ── Filtros del Stock tab ────────────────────────────────────────────────
+  const [filtros, setFiltros] = useState<{
+    estado?: string;
+    orden?:  string;
+  }>(() => {
+    try { return JSON.parse(sessionStorage.getItem(FILTROS_KEY) ?? '{}'); }
+    catch { return {}; }
+  });
+  const [buscarInput, setBuscarInput] = useState<string>(() => {
+    try { return JSON.parse(sessionStorage.getItem(FILTROS_KEY) ?? '{}').buscar ?? ''; }
+    catch { return ''; }
+  });
+  const [buscar, setBuscar] = useState(buscarInput);
+
+  // Debounce buscador 300ms
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setBuscar(buscarInput);
+      setFiltros(p => ({ ...p, buscar: buscarInput }));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [buscarInput]);
+
+  // Persistir filtros en sessionStorage
+  useEffect(() => {
+    sessionStorage.setItem(FILTROS_KEY, JSON.stringify({ ...filtros, buscar }));
+  }, [filtros, buscar]);
 
   const { data: resumen }    = useQuery({ queryKey: ['alm-resumen'], queryFn: almApi.resumen });
   const { data: almacenes }  = useQuery({ queryKey: ['alm-list'],    queryFn: almApi.listar });
@@ -95,6 +125,58 @@ export default function AlmacenesPage() {
     onSuccess: () => { inv(); message.success('Transferencia cancelada'); },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al cancelar'),
   });
+
+  // ── Stock filtrado y ordenado ────────────────────────────────────────────
+  const stockFiltrado = useMemo(() => {
+    let items: any[] = stock ?? [];
+
+    // Buscador por nombre o código
+    if (buscar.trim()) {
+      const q = buscar.trim().toLowerCase();
+      items = items.filter(r =>
+        r.producto?.nombre?.toLowerCase().includes(q) ||
+        r.producto?.codigo?.toLowerCase().includes(q),
+      );
+    }
+
+    // Filtro estado
+    const est = filtros.estado ?? 'todos';
+    if (est !== 'todos') {
+      items = items.filter(r => {
+        const s = Number(r.stock);
+        const m = Number(r.stockMinimo ?? 0);
+        if (est === 'ok')   return s > m;
+        if (est === 'bajo') return s > 0 && s <= m;
+        if (est === 'sin')  return s === 0;
+        return true;
+      });
+    }
+
+    // Ordenar
+    const sorted = [...items];
+    switch (filtros.orden ?? 'nombre_az') {
+      case 'stock_mayor':  sorted.sort((a, b) => Number(b.stock) - Number(a.stock)); break;
+      case 'stock_menor':  sorted.sort((a, b) => Number(a.stock) - Number(b.stock)); break;
+      case 'bajo_primero': sorted.sort((a, b) => {
+        const ab = Number(a.stock) <= Number(a.stockMinimo ?? 0) ? 0 : 1;
+        const bb = Number(b.stock) <= Number(b.stockMinimo ?? 0) ? 0 : 1;
+        return ab - bb;
+      }); break;
+      default: sorted.sort((a, b) =>
+        (a.producto?.nombre ?? '').localeCompare(b.producto?.nombre ?? ''));
+    }
+    return sorted;
+  }, [stock, buscar, filtros.estado, filtros.orden]);
+
+  const hayFiltros = buscar.trim() !== '' ||
+    (filtros.estado && filtros.estado !== 'todos') ||
+    (filtros.orden  && filtros.orden  !== 'nombre_az');
+
+  const limpiarFiltros = () => {
+    setBuscarInput(''); setBuscar('');
+    setFiltros({});
+    sessionStorage.removeItem(FILTROS_KEY);
+  };
 
   const COLS_DEF = [
     { key: 'numero',   label: 'Número',   defaultVisible: true  },
@@ -251,10 +333,107 @@ export default function AlmacenesPage() {
             key: 'stock',
             label: <><InboxOutlined /> Stock</>,
             children: (
-              <Card title={`Stock en ${almSeleccionado.nombre}`}>
-                <Table columns={colsStock} dataSource={stock ?? []} rowKey="id"
+              <Card title={
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  Stock en
+                  <Select
+                    size="small"
+                    value={almSeleccionado?.id}
+                    onChange={id => setAlmSeleccionado(
+                      (almacenes ?? []).find((a: any) => a.id === id) ?? null
+                    )}
+                    options={(almacenes ?? []).map((a: any) => ({ value: a.id, label: a.nombre }))}
+                    style={{ minWidth: 140, fontWeight: 'normal', fontSize: 13 }}
+                    variant="borderless"
+                  />
+                </span>
+              }>
+                {/* ── Barra de filtros ──────────────────────────────── */}
+                <div style={{
+                  display: 'flex', gap: 8, flexWrap: 'wrap',
+                  alignItems: 'center', marginBottom: 12,
+                }}>
+                  {/* Buscador */}
+                  <Input
+                    placeholder="Nombre o código..."
+                    value={buscarInput}
+                    onChange={e => setBuscarInput(e.target.value)}
+                    allowClear
+                    onClear={() => { setBuscarInput(''); setBuscar(''); }}
+                    size="small"
+                    style={{ width: 190 }}
+                    prefix={<span style={{ color: token.colorTextQuaternary, fontSize: 12 }}>🔍</span>}
+                  />
+
+                  {/* Estado — pills */}
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    {([
+                      { key: 'todos', label: 'Todos' },
+                      { key: 'ok',    label: '✓ OK' },
+                      { key: 'bajo',  label: '⚠ Stock bajo' },
+                      { key: 'sin',   label: '✕ Sin stock'  },
+                    ] as const).map(opt => {
+                      const activo = (filtros.estado ?? 'todos') === opt.key;
+                      return (
+                        <button key={opt.key}
+                          onClick={() => setFiltros(p => ({ ...p, estado: opt.key }))}
+                          style={{
+                            padding: '2px 10px', borderRadius: 20, fontSize: 12,
+                            border: `1px solid ${activo ? token.colorPrimary : token.colorBorderSecondary}`,
+                            background: activo ? token.colorPrimary : 'transparent',
+                            color:      activo ? '#fff' : token.colorText,
+                            cursor: 'pointer', outline: 'none',
+                            transition: 'all 0.15s',
+                          }}>
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Ordenar por */}
+                  <Select
+                    size="small"
+                    value={filtros.orden ?? 'nombre_az'}
+                    onChange={v => setFiltros(p => ({ ...p, orden: v }))}
+                    style={{ minWidth: 170 }}
+                    options={[
+                      { value: 'nombre_az',   label: '↕ Nombre A-Z'           },
+                      { value: 'stock_mayor', label: '↓ Stock mayor primero'   },
+                      { value: 'stock_menor', label: '↑ Stock menor primero'   },
+                      { value: 'bajo_primero',label: '⚠ Stock bajo primero'   },
+                    ]}
+                  />
+
+                  {/* Contador + limpiar */}
+                  <Text type="secondary" style={{ fontSize: 12, marginLeft: 'auto', whiteSpace: 'nowrap' }}>
+                    {stockFiltrado.length} de {(stock ?? []).length} productos
+                  </Text>
+                  {hayFiltros && (
+                    <button onClick={limpiarFiltros} style={{
+                      padding: '2px 10px', borderRadius: 6, fontSize: 12,
+                      border: `1px solid ${token.colorBorderSecondary}`,
+                      background: 'transparent', color: token.colorTextSecondary,
+                      cursor: 'pointer', outline: 'none',
+                    }}>
+                      Limpiar filtros
+                    </button>
+                  )}
+                </div>
+
+                {/* ── Tabla ─────────────────────────────────────────── */}
+                <Table columns={colsStock} dataSource={stockFiltrado} rowKey="id"
                   loading={loadStock} size="small"
-        scroll={{ x: 'max-content' }} pagination={false} />
+                  scroll={{ x: 'max-content' }}
+                  pagination={stockFiltrado.length > 30
+                    ? { pageSize: 30, showSizeChanger: false, size: 'small' }
+                    : false
+                  }
+                  locale={{ emptyText: hayFiltros
+                    ? 'Sin productos con esos filtros — prueba limpiarlos'
+                    : 'Sin productos en este almacén'
+                  }}
+                />
               </Card>
             ),
           },
