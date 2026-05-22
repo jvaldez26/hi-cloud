@@ -22,6 +22,7 @@ import { AsientosAutomaticosService } from '../contabilidad/services/asientos-au
 import { TesoreriaService } from '../tesoreria/tesoreria.service';
 import { TipoMovimientoBancario, OrigenMovimiento } from '../tesoreria/entities/movimiento-bancario.entity';
 import { TenantService } from '../tenant/tenant.service';
+import { BrowserService } from '../common/services/browser.service';
 
 @Injectable()
 export class NominaService {
@@ -41,6 +42,7 @@ export class NominaService {
     private tesoreriaService: TesoreriaService,
     private tenantService:    TenantService,
     @InjectDataSource() private dataSource: DataSource,
+    private browserSvc:       BrowserService,
   ) {}
 
   // ──────────────────────────────────────────────────────────────────
@@ -599,15 +601,9 @@ ${novedades.length > 0 ? `
 </div>
 </body></html>`;
 
-    const puppeteer = await import('puppeteer');
-    const browser   = await puppeteer.default.launch({ headless: true, args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-gpu'] });
-    try {
-      const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'networkidle0', timeout: 15_000 });
-      const buf = await page.pdf({ format: 'Letter', printBackground: true });
-      const nombre = `${emp.nombre ?? 'Empleado'}`.replace(/\s+/g, '-');
-      return { buffer: Buffer.from(buf), filename: `Recibo-${nombre}-${per.periodo ?? ''}.pdf` };
-    } finally { await browser.close(); }
+    const buf    = await this.browserSvc.htmlToPDF(html);
+    const nombre = `${emp.nombre ?? 'Empleado'}`.replace(/\s+/g, '-');
+    return { buffer: buf, filename: `Recibo-${nombre}-${per.periodo ?? ''}.pdf` };
   }
 
   // ──────────────────────────────────────────────────────────────────

@@ -7,6 +7,7 @@ import { ReciboCobro } from './entities/recibo-cobro.entity';
 import { TenantService } from '../tenant/tenant.service';
 import { generarDocumento } from '../common/doc.template';
 import type { DocData } from '../common/doc.template';
+import { BrowserService } from '../common/services/browser.service';
 
 const METODO_LABEL: Record<string, string> = {
   efectivo: 'Efectivo', transferencia: 'Transferencia Bancaria',
@@ -19,17 +20,11 @@ export class ReciboPDFService {
   constructor(
     @InjectRepository(ReciboCobro) private repo: Repository<ReciboCobro>,
     private tenantSvc: TenantService,
+    private browserSvc: BrowserService,
   ) {}
 
   private async htmlToPDF(html: string): Promise<Buffer> {
-    const puppeteer = await import('puppeteer');
-    const browser   = await puppeteer.default.launch({ headless: true, args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-gpu'] });
-    try {
-      const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'networkidle0' });
-      const pdf = await page.pdf({ format: 'A4', printBackground: true, margin: { top:'0',bottom:'0',left:'0',right:'0' } });
-      return Buffer.from(pdf);
-    } finally { await browser.close(); }
+    return this.browserSvc.htmlToPDF(html);
   }
 
   private async resolverLogo(url: string): Promise<string> {

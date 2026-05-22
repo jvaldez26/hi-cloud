@@ -6,11 +6,12 @@ import { GastosController } from './gastos.controller';
 import { Gasto } from './entities/gasto.entity';
 import { ContabilidadModule } from '../contabilidad/contabilidad.module';
 import { ECFModule } from '../ecf/ecf.module';
+import { BrowserService } from '../common/services/browser.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Gasto]), ContabilidadModule, ECFModule],
   controllers: [GastosController],
-  providers: [GastosService, GastoPDFService],
+  providers: [GastosService, GastoPDFService, BrowserService],
   exports: [GastosService],
 })
 export class GastosModule {}

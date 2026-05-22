@@ -6,6 +6,7 @@ import { generarHTMLCotizacion, CotizacionPDFData, CotizacionPDFItem } from './t
 import * as https from 'https';
 import * as http  from 'http';
 import * as qrcode from 'qrcode';
+import { BrowserService } from '../common/services/browser.service';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, LessThan, In, DataSource } from 'typeorm';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
@@ -36,6 +37,7 @@ export class CotizacionesService {
     private tenantService:    TenantService,
     private realtimeService:  RealtimeService,
     @InjectDataSource() private dataSource: DataSource,
+    private browserSvc: BrowserService,
   ) {}
 
   // ──────────────────────────────────────────────────────────────────
@@ -327,19 +329,7 @@ export class CotizacionesService {
   }
 
   private async htmlToPDF(html: string): Promise<Buffer> {
-    const puppeteer = await import('puppeteer');
-    const browser = await puppeteer.default.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
-    });
-    try {
-      const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'networkidle0', timeout: 30_000 });
-      const pdf = await page.pdf({ format: 'A4', printBackground: true, margin: { top: '0', bottom: '0', left: '0', right: '0' } });
-      return Buffer.from(pdf);
-    } finally {
-      await browser.close();
-    }
+    return this.browserSvc.htmlToPDF(html);
   }
 
   // ──────────────────────────────────────────────────────────────────

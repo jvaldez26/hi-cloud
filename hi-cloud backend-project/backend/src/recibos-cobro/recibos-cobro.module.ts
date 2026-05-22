@@ -9,6 +9,7 @@ import { Factura } from '../facturas/entities/factura.entity';
 import { AnticipoCliente } from '../anticipos-cliente/entities/anticipo-cliente.entity';
 import { ContabilidadModule } from '../contabilidad/contabilidad.module';
 import { TesoreriaModule } from '../tesoreria/tesoreria.module';
+import { BrowserService } from '../common/services/browser.service';
 
 @Module({
   imports: [
@@ -17,7 +18,7 @@ import { TesoreriaModule } from '../tesoreria/tesoreria.module';
     TesoreriaModule,
   ],
   controllers: [RecibosCobrosController],
-  providers: [RecibosCobrosService, ReciboPDFService],
+  providers: [RecibosCobrosService, ReciboPDFService, BrowserService],
   exports: [RecibosCobrosService],
 })
 export class RecibosCobrosModule {}

@@ -9,6 +9,7 @@ import { TenantService } from '../../tenant/tenant.service';
 import { NumeroLetrasService } from './numero-letras.service';
 import { generarHTMLFactura, FacturaPDFData, FacturaPDFItem } from '../templates/factura.template';
 import { generarHTMLRecibo, ReciboPOSData } from '../templates/recibo-termico.template';
+import { BrowserService } from '../../common/services/browser.service';
 
 @Injectable()
 export class PDFService {
@@ -19,6 +20,7 @@ export class PDFService {
     private facturaRepo: Repository<Factura>,
     private tenantSvc:   TenantService,
     private numLetras:   NumeroLetrasService,
+    private browserSvc:  BrowserService,
   ) {}
 
   // ── Genera QR base64 ────────────────────────────────────────────────
@@ -51,42 +53,9 @@ export class PDFService {
     });
   }
 
-  // ── Lanza puppeteer y convierte HTML → PDF ──────────────────────────
-  private async htmlToPDF(html: string, opts: { width?: string; thermal?: boolean } = {}): Promise<Buffer> {
-    const puppeteer = await import('puppeteer');
-    const browser = await puppeteer.default.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
-    });
-    try {
-      const page = await browser.newPage();
-
-      if (opts.thermal) {
-        // Para recibos térmicos: viewport estrecho y altura automática
-        await page.setViewport({ width: 302, height: 800 });
-        await page.setContent(html, { waitUntil: 'networkidle0' });
-        // Medir altura real del contenido
-        const bodyHeight = await page.evaluate(() => document.body.scrollHeight);
-        const pdf = await page.pdf({
-          width:           '80mm',
-          height:          `${bodyHeight + 20}px`,
-          printBackground:  true,
-          margin:           { top: 0, bottom: 0, left: 0, right: 0 },
-        });
-        return Buffer.from(pdf);
-      }
-
-      // Factura A4
-      await page.setContent(html, { waitUntil: 'networkidle0' });
-      const pdf = await page.pdf({
-        format:          'A4',
-        printBackground: true,
-        margin:          { top: '0', bottom: '0', left: '0', right: '0' },
-      });
-      return Buffer.from(pdf);
-    } finally {
-      await browser.close();
-    }
+  // ── Delega al BrowserService singleton (no lanza browser nuevo) ──────
+  private async htmlToPDF(html: string, opts: { thermal?: boolean } = {}): Promise<Buffer> {
+    return this.browserSvc.htmlToPDF(html, opts);
   }
 
   // ── Construye FacturaPDFData desde la entidad ───────────────────────
@@ -211,6 +180,7 @@ export class PDFService {
 
   // ── Genera PDF de factura ───────────────────────────────────────────
   async generarFacturaPDF(facturaId: number): Promise<{ buffer: Buffer; filename: string }> {
+    const t0 = Date.now();
     const empresaId = this.tenantSvc.getEmpresaId();
     const factura = await this.facturaRepo.findOne({
       where: { id: facturaId, empresaId, isActive: true },
@@ -221,6 +191,9 @@ export class PDFService {
     const data    = await this.buildFacturaData(factura);
     const html    = generarHTMLFactura(data);
     const buffer  = await this.htmlToPDF(html);
+    this.logger.log(
+      `PDF generado en ${Date.now() - t0} ms — ${factura.folio} — ${factura.detalles?.length ?? 0} líneas`,
+    );
     return { buffer, filename: `${factura.folio}.pdf` };
   }
 

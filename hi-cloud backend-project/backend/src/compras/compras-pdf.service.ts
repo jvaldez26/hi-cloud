@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { Compra } from './entities/compra.entity';
 import { Empresa } from '../configuracion/entities/empresa.entity';
 import { TenantService } from '../tenant/tenant.service';
+import { BrowserService } from '../common/services/browser.service';
 
 function esc(s: string | null | undefined): string {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -24,6 +25,7 @@ export class ComprasPdfService {
     @InjectRepository(Compra)  private compraRepo:  Repository<Compra>,
     @InjectRepository(Empresa) private empresaRepo: Repository<Empresa>,
     private tenantService: TenantService,
+    private browserSvc: BrowserService,
   ) {}
 
   async generarOrdenCompraPDF(compraId: number): Promise<{ buffer: Buffer; filename: string }> {
@@ -175,19 +177,8 @@ export class ComprasPdfService {
 </body>
 </html>`;
 
-    const puppeteer = await import('puppeteer');
-    const browser   = await puppeteer.default.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
-    });
-    try {
-      const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'networkidle0', timeout: 15_000 });
-      const buf = await page.pdf({ format: 'Letter', printBackground: true });
-      this.logger.log(`PDF Orden de Compra generado: ${compra.folio}`);
-      return { buffer: Buffer.from(buf), filename: `${compra.folio}.pdf` };
-    } finally {
-      await browser.close();
-    }
+    const buf = await this.browserSvc.htmlToPDF(html);
+    this.logger.log(`PDF Orden de Compra generado: ${compra.folio}`);
+    return { buffer: buf, filename: `${compra.folio}.pdf` };
   }
 }

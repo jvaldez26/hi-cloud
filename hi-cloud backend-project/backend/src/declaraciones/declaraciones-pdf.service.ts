@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DeclaracionesService } from './declaraciones.service';
+import { BrowserService } from '../common/services/browser.service';
 
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
                'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -63,7 +64,10 @@ const BASE_CSS = `
 
 @Injectable()
 export class DeclaracionesPdfService {
-  constructor(private readonly svc: DeclaracionesService) {}
+  constructor(
+    private readonly svc: DeclaracionesService,
+    private readonly browserSvc: BrowserService,
+  ) {}
 
   async generar606(mes: number, anio: number): Promise<Buffer> {
     const data = await this.svc.getFormato606(mes, anio);
@@ -262,24 +266,7 @@ export class DeclaracionesPdfService {
   // ── Puppeteer render ───────────────────────────────────────────────────────
 
   private async render(html: string): Promise<Buffer> {
-    const puppeteer = await import('puppeteer');
-    const browser = await puppeteer.default.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
-    });
-    try {
-      const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'networkidle0' });
-      const pdf = await page.pdf({
-        format:          'A4',
-        landscape:       true,
-        printBackground: true,
-        margin:          { top: '12mm', bottom: '12mm', left: '10mm', right: '10mm' },
-      });
-      return Buffer.from(pdf);
-    } finally {
-      await browser.close();
-    }
+    return this.browserSvc.htmlToPDF(html);
   }
 
   private fmtDate(d: any): string {

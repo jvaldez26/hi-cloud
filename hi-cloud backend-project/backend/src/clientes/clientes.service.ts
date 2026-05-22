@@ -13,6 +13,7 @@ import { PaginationDto } from '../common/dto/pagination.dto';
 import { TenantService } from '../tenant/tenant.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { LimitesService } from '../suscripciones/limites.service';
+import { BrowserService } from '../common/services/browser.service';
 
 /** Lanza ConflictException amigable si el error es 23505 (duplicate key) */
 function handleRfcDuplicate(err: any, rfc?: string): never {
@@ -37,6 +38,7 @@ export class ClientesService {
     private tenantService:    TenantService,
     private realtimeService:  RealtimeService,
     private limitesService:   LimitesService,
+    private browserSvc:       BrowserService,
   ) {}
 
   async create(dto: CreateClienteDto) {
@@ -263,21 +265,10 @@ ${(data.cobros ?? []).length > 0 ? `
 </div>
 </body></html>`;
 
-    const puppeteer = await import('puppeteer');
-    const browser   = await puppeteer.default.launch({
-      headless: true,
-      args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-gpu'],
-    });
-    try {
-      const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'networkidle0', timeout: 15_000 });
-      const buf = await page.pdf({ format: 'Letter', printBackground: true });
-      return {
-        buffer:   Buffer.from(buf),
-        filename: `Estado-Cuenta-${(data.cliente?.nombre ?? 'cliente').replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.pdf`,
-      };
-    } finally {
-      await browser.close();
-    }
+    const buf = await this.browserSvc.htmlToPDF(html);
+    return {
+      buffer:   buf,
+      filename: `Estado-Cuenta-${(data.cliente?.nombre ?? 'cliente').replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.pdf`,
+    };
   }
 }

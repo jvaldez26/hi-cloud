@@ -4,6 +4,7 @@ import { TenantService } from '../tenant/tenant.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Empresa } from '../configuracion/entities/empresa.entity';
+import { BrowserService } from '../common/services/browser.service';
 
 const FMT = (n: number) =>
   new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'DOP', minimumFractionDigits: 2 }).format(n ?? 0);
@@ -82,6 +83,7 @@ export class ReportesPdfService {
     private svc:         ReportesFinancierosService,
     private tenantSvc:   TenantService,
     @InjectRepository(Empresa) private empresaRepo: Repository<Empresa>,
+    private browserSvc:  BrowserService,
   ) {}
 
   private async getEmpresa(): Promise<Empresa | null> {
@@ -92,19 +94,7 @@ export class ReportesPdfService {
   }
 
   private async htmlToPDF(html: string): Promise<Buffer> {
-    const puppeteer = await import('puppeteer');
-    const browser   = await puppeteer.default.launch({
-      headless: true,
-      args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-gpu'],
-    });
-    try {
-      const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'networkidle0', timeout: 15_000 });
-      const buf = await page.pdf({ format: 'Letter', printBackground: true });
-      return Buffer.from(buf);
-    } finally {
-      await browser.close();
-    }
+    return this.browserSvc.htmlToPDF(html);
   }
 
   // ── Estado de Resultados ───────────────────────────────────────────────────
