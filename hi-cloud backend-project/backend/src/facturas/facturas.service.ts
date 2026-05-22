@@ -48,26 +48,21 @@ export class FacturasService {
   ) {}
 
   /**
-   * Genera el folio siguiente de forma ATÓMICA usando SELECT ... FOR UPDATE.
-   * Previene race conditions cuando dos cajeros emiten facturas simultáneamente.
-   * Sin este lock, MAX()+1 concurrente produce folios duplicados.
+   * Genera el siguiente folio de factura.
+   * FOR UPDATE no es compatible con MAX() en PostgreSQL — se delega la protección
+   * contra duplicados a la constraint UNIQUE de la tabla facturas.
    */
   private async generarFolio(): Promise<string> {
     const empresaId = this.tenantService.getEmpresaId();
-    // Usamos una transacción con lock a nivel de fila para garantizar atomicidad
-    return this.dataSource.transaction(async (em) => {
-      // SELECT FOR UPDATE → bloquea la lectura hasta que la transacción termine
-      const [row] = await em.query<{ maxNum: number | null }[]>(`
-        SELECT MAX(CASE WHEN folio ~ '^FAC-[0-9]+$'
-                        THEN CAST(SUBSTRING(folio FROM 5) AS INTEGER)
-                        ELSE 100 END) AS "maxNum"
-        FROM facturas
-        WHERE "empresaId" = $1 AND "isActive" = true
-        FOR UPDATE
-      `, [empresaId]);
-      const next = Math.max(101, (row?.maxNum ?? 100) + 1);
-      return `FAC-${next}`;
-    });
+    const [row] = await this.dataSource.query<{ maxNum: number | null }[]>(`
+      SELECT MAX(CASE WHEN folio ~ '^FAC-[0-9]+$'
+                      THEN CAST(SUBSTRING(folio FROM 5) AS INTEGER)
+                      ELSE 100 END) AS "maxNum"
+      FROM facturas
+      WHERE "empresaId" = $1 AND "isActive" = true
+    `, [empresaId]);
+    const next = Math.max(101, (row?.maxNum ?? 100) + 1);
+    return `FAC-${next}`;
   }
 
   async create(dto: CreateFacturaDto, usuario: User) {
