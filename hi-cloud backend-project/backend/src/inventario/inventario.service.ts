@@ -4,8 +4,8 @@ import {
   BadRequestException,
   ConflictException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { Repository, LessThanOrEqual, MoreThanOrEqual, DataSource } from 'typeorm';
 import { Movimiento, TipoMovimiento } from './entities/movimiento.entity';
 import { LoteProducto, EstadoLote } from './entities/lote-producto.entity';
 import { SerialProducto, EstadoSerial } from './entities/serial-producto.entity';
@@ -29,9 +29,36 @@ export class InventarioService {
     private loteRepository: Repository<LoteProducto>,
     @InjectRepository(SerialProducto)
     private serialRepository: Repository<SerialProducto>,
+    @InjectDataSource() private ds: DataSource,
     private realtimeService: RealtimeService,
     private tenantService: TenantService,
   ) {}
+
+  /**
+   * Sincroniza stock_almacen con el nuevo stock del producto.
+   * Asigna al almacén "principal" de la empresa (el de menor id).
+   * No lanza error si no hay almacenes — el stock global sigue funcionando.
+   */
+  private async syncStockAlmacen(empresaId: number, productoId: number, nuevoStock: number, stockMinimo: number) {
+    await this.ds.query(`
+      INSERT INTO stock_almacen (
+        "empresaId", "almacenId", "productoId", stock, "stockMinimo", "isActive", "createdAt", "updatedAt"
+      )
+      SELECT $1, a.id, $2, $3, $4, true, NOW(), NOW()
+      FROM almacenes a
+      WHERE a."empresaId" = $1
+        AND a."isActive"  = true
+        AND a.activo      = true
+      ORDER BY a.id ASC
+      LIMIT 1
+      ON CONFLICT ("almacenId", "productoId") DO UPDATE SET
+        stock       = EXCLUDED.stock,
+        "stockMinimo"= EXCLUDED."stockMinimo",
+        "updatedAt" = NOW()
+    `, [empresaId, productoId, Math.max(0, nuevoStock), stockMinimo ?? 0]).catch(() => {
+      // No bloquear el movimiento si la tabla stock_almacen no existe aún
+    });
+  }
 
   // ──────────────────────────────────────────────────────────
   // Helpers internos
@@ -74,7 +101,10 @@ export class InventarioService {
     const cantidadNueva = Number((cantidadAnterior + cantidad).toFixed(4));
 
     await this.productoRepository.update(productoId, { stock: cantidadNueva });
-    if (producto.empresaId) this.realtimeService.notify(producto.empresaId, 'producto', 'updated', productoId);
+    if (producto.empresaId) {
+      this.realtimeService.notify(producto.empresaId, 'producto', 'updated', productoId);
+      await this.syncStockAlmacen(producto.empresaId, productoId, cantidadNueva, Number(producto.stockMinimo));
+    }
 
     return this.persistirMovimiento(TipoMovimiento.ENTRADA, productoId, cantidad, cantidadAnterior, cantidadNueva, userId, motivo, referencia, producto.empresaId);
   }
@@ -91,7 +121,10 @@ export class InventarioService {
 
     const cantidadNueva = Number((cantidadAnterior - cantidad).toFixed(4));
     await this.productoRepository.update(productoId, { stock: cantidadNueva });
-    if (producto.empresaId) this.realtimeService.notify(producto.empresaId, 'producto', 'updated', productoId);
+    if (producto.empresaId) {
+      this.realtimeService.notify(producto.empresaId, 'producto', 'updated', productoId);
+      await this.syncStockAlmacen(producto.empresaId, productoId, cantidadNueva, Number(producto.stockMinimo));
+    }
 
     return this.persistirMovimiento(TipoMovimiento.SALIDA, productoId, cantidad, cantidadAnterior, cantidadNueva, userId, motivo, referencia, producto.empresaId);
   }
@@ -102,7 +135,10 @@ export class InventarioService {
     const cantidadNueva = Number((cantidadAnterior + cantidad).toFixed(4));
 
     await this.productoRepository.update(productoId, { stock: cantidadNueva });
-    if (producto.empresaId) this.realtimeService.notify(producto.empresaId, 'producto', 'updated', productoId);
+    if (producto.empresaId) {
+      this.realtimeService.notify(producto.empresaId, 'producto', 'updated', productoId);
+      await this.syncStockAlmacen(producto.empresaId, productoId, cantidadNueva, Number(producto.stockMinimo));
+    }
 
     return this.persistirMovimiento(TipoMovimiento.DEVOLUCION, productoId, cantidad, cantidadAnterior, cantidadNueva, userId, motivo, referencia, producto.empresaId);
   }
@@ -113,6 +149,9 @@ export class InventarioService {
     const diferencia = Math.abs(cantidadNueva - cantidadAnterior);
 
     await this.productoRepository.update(productoId, { stock: cantidadNueva });
+    if (producto.empresaId) {
+      await this.syncStockAlmacen(producto.empresaId, productoId, cantidadNueva, Number(producto.stockMinimo));
+    }
     return this.persistirMovimiento(TipoMovimiento.AJUSTE, productoId, diferencia, cantidadAnterior, cantidadNueva, userId, motivo);
   }
 

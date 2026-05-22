@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
+import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import { Almacen } from './entities/almacen.entity';
 import { StockAlmacen } from './entities/stock-almacen.entity';
 import { TransferenciaAlmacen, EstadoTransferencia } from './entities/transferencia.entity';
@@ -114,13 +115,9 @@ export class AlmacenesService {
 
   private async generarNumero(): Promise<string> {
     const empresaId = this.tenantService.getEmpresaId();
-    const res = await this.transRepo
-      .createQueryBuilder('t')
-      .select(`MAX(CASE WHEN t.numero ~ '^TRF-[0-9]+$' THEN CAST(SUBSTRING(t.numero FROM 5) AS INTEGER) ELSE 100 END)`, 'maxNum')
-      .where('t.empresaId = :eid', { eid: empresaId })
-      .andWhere('t.isActive = :a', { a: true })
-      .getRawOne<{ maxNum: number | null }>();
-    return `TRF-${Math.max(101, (res?.maxNum ?? 100) + 1)}`;
+    return generarNumeroSecuencial(
+      this.dataSource, 'transferencias_almacen', 'numero', '^TRF-[0-9]+$', 'TRF-', 1, empresaId,
+    );
   }
 
   async crearTransferencia(dto: any, userId: number) {
