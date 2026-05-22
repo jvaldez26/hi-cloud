@@ -9,7 +9,7 @@ import { clientesApi } from '../../api/clientes.api';
 import { productosApi } from '../../api/productos.api';
 import api from '../../api/client';
 import { fmt } from '../../utils/formatters';
-import NCFSelector, { TIPOS_NCF } from '../../components/ui/NCFSelector';
+import { TIPOS_NCF } from '../../components/ui/NCFSelector';
 import type { Cliente } from '../../types';
 import dayjs from 'dayjs';
 
@@ -252,93 +252,51 @@ export default function FacturaFormPage() {
       <Form form={form} layout="vertical" onFinish={handleSubmit}
         initialValues={{ fecha: dayjs() }}>
 
-        {/* ── Tipo de comprobante fiscal ──────────────────────────────── */}
-        <Card
-          size="small"
-          style={{ marginBottom: 16, borderColor: tipoInfo?.color, borderWidth: 1.5 }}
-          styles={{ body: { padding: '10px 16px' } }}
-          title={
-            <Space size={6}>
-              <SafetyCertificateOutlined style={{ color: tipoInfo?.color, fontSize: 13 }} />
-              <Text strong style={{ fontSize: 13 }}>Tipo de Comprobante Fiscal (e-CF DGII)</Text>
-              {tipoInfo && (
-                <Tag color={tipoInfo.color} style={{ marginLeft: 2, fontSize: 11 }}>
-                  {tipoInfo.codigo} · {tipoInfo.titulo}
-                </Tag>
-              )}
-            </Space>
-          }
-        >
-          <NCFSelector
-            value={tipoNcf}
-            onChange={setTipoNcf}
-            filtro={NCF_VENTAS}
-            compact
-          />
-
-          {mostrarAlertaRNC && (
-            <Alert
-              style={{ marginTop: 12 }}
-              type="warning"
-              showIcon
-              message="El cliente seleccionado no tiene RNC registrado. E31 (Crédito Fiscal) requiere RNC válido de 9 dígitos."
-            />
-          )}
-
-          {tipoNcf === 'E31' && clienteSeleccionado && (
-            <div style={{ marginTop: 10, padding: '8px 12px', background: '#eff6ff', borderRadius: 8 }}>
-              <Text style={{ fontSize: 12, color: '#1a56db' }}>
-                <strong>RNC del cliente:</strong> {clienteSeleccionado.rfc || 'No registrado'}
-                {' · '}
-                <strong>Nombre:</strong> {clienteSeleccionado.nombre}
-              </Text>
-            </div>
-          )}
-
-          {mostrarAlertaExento && (
-            <Alert
-              style={{ marginTop: 12 }}
-              type="info"
-              showIcon
-              message={
-                tipoNcf === 'E44'
-                  ? 'E44 Régimen Especial (Zona Franca): el ITBIS será 0. Asegúrese de tener la documentación de régimen especial.'
-                  : 'E45 Gubernamental: factura a entidad del gobierno dominicano. RNC de la entidad requerido.'
-              }
-            />
-          )}
-
-          {mostrarAlertaExportacion && (
-            <Alert
-              style={{ marginTop: 12 }}
-              type="info"
-              showIcon
-              message="E46 Exportación: el ITBIS será 0 (exento). Si la venta es en moneda extranjera, seleccione la moneda y tipo de cambio abajo."
-            />
-          )}
-
-          {mostrarAlertaPagoExterior && (
-            <Alert
-              style={{ marginTop: 12 }}
-              type="info"
-              showIcon
-              message="E47 Pagos al Exterior: para pagos a proveedores extranjeros sin establecimiento permanente en RD. ITBIS exento. Se requiere nombre y país del proveedor extranjero."
-            />
-          )}
-
-          {mostrarAlertaE41 && (
-            <Alert
-              style={{ marginTop: 12 }}
-              type="warning"
-              showIcon
-              message="E41 Comprobante de Compras: para proveedores informales (solo cédula, sin RNC). El ITBIS aplica y se retiene el 30% como agente de retención. Ingresa la cédula del proveedor en el campo de observaciones."
-            />
-          )}
-        </Card>
-
-        {/* ── Datos generales ─────────────────────────────────────────── */}
+        {/* ── Datos generales + Tipo de comprobante (integrado) ──────── */}
         <Card style={{ marginBottom: 16 }}>
+
+          {/* Fila 1: Tipo de comprobante · Cliente · Fecha */}
           <Row gutter={16}>
+            <Col xs={24} sm={8}>
+              <Form.Item
+                label={
+                  <span>
+                    <SafetyCertificateOutlined style={{ color: tipoInfo?.color, marginRight: 5 }} />
+                    Tipo de comprobante <span style={{ color: 'red' }}>*</span>
+                  </span>
+                }
+              >
+                <Select
+                  value={tipoNcf}
+                  onChange={setTipoNcf}
+                  optionLabelProp="label"
+                  popupMatchSelectWidth={false}
+                  dropdownStyle={{ minWidth: 300 }}
+                >
+                  {TIPOS_NCF.filter(t => NCF_VENTAS.includes(t.codigo)).map(t => (
+                    <Select.Option key={t.codigo} value={t.codigo} label={
+                      <span>
+                        <Tag color={t.color} style={{ fontSize: 11, marginRight: 6, lineHeight: '18px' }}>
+                          {t.codigo}
+                        </Tag>
+                        {t.titulo}
+                      </span>
+                    }>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Tag color={t.color} style={{ fontSize: 11, lineHeight: '18px', flexShrink: 0 }}>
+                          {t.codigo}
+                        </Tag>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 500 }}>{t.titulo}</div>
+                          <div style={{ fontSize: 11, color: '#9CA3AF', lineHeight: 1.3 }}>{t.descripcion}</div>
+                        </div>
+                      </div>
+                    </Select.Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+
             <Col xs={24} sm={10}>
               <Form.Item name="clienteId" label="Cliente" rules={[{ required: true }]}>
                 <Select showSearch placeholder="Buscar cliente..."
@@ -437,6 +395,59 @@ export default function FacturaFormPage() {
               </Form.Item>
             </Col>
           </Row>
+
+          {/* ── Alertas contextuales del tipo de comprobante ─────────── */}
+          {mostrarAlertaRNC && (
+            <Alert
+              style={{ marginTop: 4 }}
+              type="warning"
+              showIcon
+              message="El cliente seleccionado no tiene RNC registrado. E31 (Crédito Fiscal) requiere RNC válido de 9 dígitos."
+            />
+          )}
+          {tipoNcf === 'E31' && clienteSeleccionado && !mostrarAlertaRNC && (
+            <div style={{ marginTop: 4, padding: '6px 12px', background: token.colorInfoBg, borderRadius: 8, border: `1px solid ${token.colorInfoBorder}` }}>
+              <Text style={{ fontSize: 12, color: token.colorInfoText }}>
+                <strong>RNC del cliente:</strong> {clienteSeleccionado.rfc || 'No registrado'}
+                {' · '}
+                <strong>Nombre:</strong> {clienteSeleccionado.nombre}
+              </Text>
+            </div>
+          )}
+          {mostrarAlertaExento && (
+            <Alert
+              style={{ marginTop: 4 }}
+              type="info"
+              showIcon
+              message={tipoNcf === 'E44'
+                ? 'E44 Régimen Especial (Zona Franca): el ITBIS será 0. Asegúrese de tener la documentación de régimen especial.'
+                : 'E45 Gubernamental: factura a entidad del gobierno dominicano. RNC de la entidad requerido.'}
+            />
+          )}
+          {mostrarAlertaExportacion && (
+            <Alert
+              style={{ marginTop: 4 }}
+              type="info"
+              showIcon
+              message="E46 Exportación: el ITBIS será 0 (exento). Si la venta es en moneda extranjera, seleccione la moneda y tipo de cambio abajo."
+            />
+          )}
+          {mostrarAlertaPagoExterior && (
+            <Alert
+              style={{ marginTop: 4 }}
+              type="info"
+              showIcon
+              message="E47 Pagos al Exterior: para pagos a proveedores extranjeros sin establecimiento permanente en RD. ITBIS exento."
+            />
+          )}
+          {mostrarAlertaE41 && (
+            <Alert
+              style={{ marginTop: 4 }}
+              type="warning"
+              showIcon
+              message="E41 Comprobante de Compras: para proveedores informales (solo cédula, sin RNC). El ITBIS aplica y se retiene el 30%. Ingresa la cédula del proveedor en el campo de notas."
+            />
+          )}
         </Card>
 
         {/* ── Líneas de detalle ────────────────────────────────────────── */}
