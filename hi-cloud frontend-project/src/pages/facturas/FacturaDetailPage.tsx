@@ -225,7 +225,7 @@ export default function FacturaDetailPage() {
               <Col xs={24} sm={12}>
                 <Descriptions column={1} size="small">
                   <Descriptions.Item label="Cliente">{factura.cliente?.nombre}</Descriptions.Item>
-                  <Descriptions.Item label="RFC/RNC">{factura.cliente?.rfc}</Descriptions.Item>
+                  <Descriptions.Item label="RNC/Cédula">{factura.cliente?.rfc}</Descriptions.Item>
                   <Descriptions.Item label="Email">{factura.cliente?.email ?? '—'}</Descriptions.Item>
                   <Descriptions.Item label="Teléfono">{factura.cliente?.telefono ?? '—'}</Descriptions.Item>
                 </Descriptions>

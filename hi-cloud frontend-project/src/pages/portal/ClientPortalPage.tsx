@@ -101,7 +101,7 @@ export default function ClientPortalPage() {
           <Title level={3} style={{ color: '#fff', margin: 0 }}>
             Bienvenido, {cliente.nombre}
           </Title>
-          {cliente.rfc && <Text style={{ color: 'rgba(255,255,255,.8)' }}>RFC/RNC: {cliente.rfc}</Text>}
+          {cliente.rfc && <Text style={{ color: 'rgba(255,255,255,.8)' }}>RNC/Cédula: {cliente.rfc}</Text>}
         </div>
       </div>
 

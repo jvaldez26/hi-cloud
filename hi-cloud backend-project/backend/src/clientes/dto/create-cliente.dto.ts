@@ -2,6 +2,7 @@ import {
   IsString, IsNotEmpty, IsOptional, IsEmail, IsInt, IsNumber,
   Matches, MaxLength, Length, Min, Max,
 } from 'class-validator';
+// Length se importa por otros campos (codigoPostal, rncReceptor)
 
 export class CreateClienteDto {
   @IsString({ message: 'El nombre debe ser texto' })
@@ -10,19 +11,14 @@ export class CreateClienteDto {
   nombre!: string;
 
   /**
-   * Acepta:
-   *  - RNC dominicano (9 dígitos):     101234567
-   *  - Cédula dominicana (11 dígitos): 00112345678
-   *  - RFC mexicano (12-13 chars):     XAXX010101000
-   *  - Pasaporte / ID extranjero:      AA1234567
-   *
-   * Opcional para crear clientes básicos desde el POS
+   * RNC (9 dígitos exactos) o Cédula (11 dígitos exactos).
+   * República Dominicana no usa RFC (México) ni otros formatos.
+   * Opcional para crear clientes básicos (ej. consumidor final desde POS).
    */
   @IsOptional()
-  @IsString({ message: 'El RNC/cédula debe ser texto' })
-  @Length(7, 13, { message: 'El RNC/cédula debe tener entre 7 y 13 caracteres' })
-  @Matches(/^[A-Z&Ñ]{3,4}\d{6}[A-Z0-9]{2,3}$|^\d{9,11}$|^[A-Z0-9]{7,13}$/, {
-    message: 'RNC/cédula inválido — acepta RNC (9 dígitos), cédula (11 dígitos) o RFC (12-13 chars)',
+  @IsString({ message: 'El RNC/Cédula debe ser texto' })
+  @Matches(/^\d{9}$|^\d{11}$/, {
+    message: 'RNC debe tener 9 dígitos o Cédula debe tener 11 dígitos',
   })
   rfc?: string;
 

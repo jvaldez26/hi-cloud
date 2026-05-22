@@ -32,7 +32,7 @@ export class ClientesService {
       const existing = await this.clienteRepository.findOne({
         where: { rfc: dto.rfc, empresaId, isActive: true },
       });
-      if (existing) throw new ConflictException(`RFC ${dto.rfc} ya está registrado en esta empresa`);
+      if (existing) throw new ConflictException(`RNC/Cédula ${dto.rfc} ya está registrado en esta empresa`);
     }
 
     const cliente = this.clienteRepository.create({ ...dto, empresaId });
@@ -83,7 +83,7 @@ export class ClientesService {
     const cliente = await this.clienteRepository.findOne({
       where: { rfc, empresaId, isActive: true },
     });
-    if (!cliente) throw new NotFoundException(`Cliente con RFC ${rfc} no encontrado`);
+    if (!cliente) throw new NotFoundException(`Cliente con RNC/Cédula ${rfc} no encontrado`);
     return cliente;
   }
 
@@ -95,7 +95,7 @@ export class ClientesService {
       const rfcExists = await this.clienteRepository.findOne({
         where: { rfc: dto.rfc, empresaId, isActive: true },
       });
-      if (rfcExists) throw new ConflictException(`RFC ${dto.rfc} ya está registrado`);
+      if (rfcExists) throw new ConflictException(`RNC/Cédula ${dto.rfc} ya está registrado`);
     }
 
     await this.clienteRepository.update(id, dto);

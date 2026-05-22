@@ -81,7 +81,7 @@ export class ClientesController {
 
   @Get('rfc/:rfc')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
-  @ApiOperation({ summary: 'Buscar cliente por RFC' })
+  @ApiOperation({ summary: 'Buscar cliente por RNC/Cédula' })
   findByRfc(@Param('rfc') rfc: string) {
     return this.clientesService.findByRfc(rfc);
   }

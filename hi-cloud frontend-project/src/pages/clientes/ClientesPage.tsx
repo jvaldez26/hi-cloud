@@ -75,7 +75,7 @@ export default function ClientesPage() {
     const all = await clientesApi.list(1, 5000, search);
     const filas = (all?.data ?? []).map((c: Cliente) => ({
       'Nombre':     c.nombre,
-      'RFC/RNC':    c.rfc ?? '',
+      'RNC/Cédula': c.rfc ?? '',
       'Email':      c.email ?? '',
       'Teléfono':   c.telefono ?? '',
       'Ciudad':     c.ciudad ?? '',
@@ -168,7 +168,7 @@ export default function ClientesPage() {
         <Col xs={24} sm="auto">
           <Space wrap>
             <Input
-              placeholder="Buscar por nombre o RFC..."
+              placeholder="Buscar por nombre o RNC/Cédula..."
               prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
               value={search}
               onChange={e => { setSearch(e.target.value); setPage(1); }}
@@ -209,9 +209,15 @@ export default function ClientesPage() {
               </Form.Item>
             </Col>
             <Col xs={24} sm={8}>
-              <Form.Item name="rfc" label="RFC / RNC / Cédula"
-                rules={[{ required: true }, { min: 7, max: 13, message: 'Entre 7 y 13 caracteres' }]}>
-                <Input placeholder="RNC: 130000001 | Cédula: 00112345678" />
+              <Form.Item name="rfc" label="RNC / Cédula"
+                rules={[
+                  { required: true, message: 'El RNC o Cédula es requerido' },
+                  {
+                    pattern: /^\d{9}$|^\d{11}$/,
+                    message: 'RNC debe tener 9 dígitos o Cédula debe tener 11 dígitos',
+                  },
+                ]}>
+                <Input placeholder="9 dígitos (RNC) u 11 dígitos (Cédula)" maxLength={11} />
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
