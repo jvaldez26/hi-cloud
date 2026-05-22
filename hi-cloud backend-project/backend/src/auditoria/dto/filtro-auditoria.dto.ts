@@ -26,4 +26,6 @@ export class FiltroAuditoriaDto extends PaginationDto {
   @IsBoolean()
   @Transform(({ value }) => value === 'true' || value === true)
   exitoso?: boolean;
+
+  // search heredado de PaginationDto — usado para búsqueda en descripcion/userName/modulo/ruta
 }

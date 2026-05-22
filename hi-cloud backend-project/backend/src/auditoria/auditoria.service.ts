@@ -51,7 +51,8 @@ export class AuditoriaService {
   // ──────────────────────────────────────────────────────────────────
 
   async getLogs(filtro: FiltroAuditoriaDto, empresaId?: number) {
-    const { limit = 20, page = 1, accion, modulo, userId, fechaDesde, fechaHasta, exitoso } = filtro;
+    const { limit = 50, page = 1, accion, modulo, userId, fechaDesde, fechaHasta, exitoso } = filtro;
+    const search = (filtro as any).search as string | undefined;
 
     const qb = this.logRepository
       .createQueryBuilder('l')
@@ -62,15 +63,35 @@ export class AuditoriaService {
     if (modulo)     qb.andWhere('l.modulo ILIKE :mod', { mod: `%${modulo}%` });
     if (userId)     qb.andWhere('l.userId = :uid', { uid: userId });
     if (fechaDesde) qb.andWhere('l.createdAt >= :desde', { desde: new Date(fechaDesde) });
-    if (fechaHasta) qb.andWhere('l.createdAt <= :hasta', { hasta: new Date(fechaHasta) });
+    if (fechaHasta) qb.andWhere('l.createdAt <= :hasta', { hasta: new Date(fechaHasta + 'T23:59:59') });
     if (exitoso !== undefined) qb.andWhere('l.exitoso = :exitoso', { exitoso });
+    if (search?.trim()) {
+      const s = `%${search.trim()}%`;
+      qb.andWhere(
+        '(l.descripcion ILIKE :s OR l."userName" ILIKE :s OR l.modulo ILIKE :s OR l.ruta ILIKE :s)',
+        { s },
+      );
+    }
 
     const [data, total] = await qb
       .skip((page - 1) * limit)
-      .take(limit)
+      .take(Math.min(limit, 100))
       .getManyAndCount();
 
     return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+  }
+
+  /** Lista de módulos únicos que tienen logs — para el selector del panel */
+  async getModulosDistintos(empresaId?: number): Promise<string[]> {
+    const qb = this.logRepository
+      .createQueryBuilder('l')
+      .select('DISTINCT l.modulo', 'modulo')
+      .orderBy('l.modulo', 'ASC');
+
+    if (empresaId) qb.andWhere('(l.empresaId = :eid OR l.empresaId IS NULL)', { eid: empresaId });
+
+    const rows = await qb.getRawMany<{ modulo: string }>();
+    return rows.map(r => r.modulo).filter(Boolean);
   }
 
   async getLogsByUser(userId: number, filtro: FiltroAuditoriaDto, empresaId?: number) {

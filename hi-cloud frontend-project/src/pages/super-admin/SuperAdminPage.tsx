@@ -2625,78 +2625,185 @@ function btnStyle(color: string, outline = false, full = false): React.CSSProper
 }
 
 // ── Tab de Auditoría del Sistema (solo Super Admin) ───────────────────────────
+
+const ACCION_COLOR: Record<string, string> = {
+  create: 'green', read: 'default', update: 'blue', delete: 'red',
+  login: 'cyan', logout: 'orange', export: 'purple', error: 'red',
+};
+
+const RANGOS = [
+  { label: 'Hoy',        dias: 0    },
+  { label: '7 días',     dias: 7    },
+  { label: '30 días',    dias: 30   },
+  { label: '90 días',    dias: 90   },
+  { label: 'Todo',       dias: null },
+];
+
 function AuditoriaTab({ C }: { C: any }) {
-  const { token } = antTheme.useToken();
-  const [busq,    setBusq]    = useState('');
-  const [modulo,  setModulo]  = useState<string | undefined>();
-  const [pagAud,  setPagAud]  = useState(1);
+  const qc = useQueryClient();
+  const [busq,       setBusq]       = useState('');
+  const [modulo,     setModulo]     = useState<string | undefined>();
+  const [accion,     setAccion]     = useState<string | undefined>();
+  const [diasRango,  setDiasRango]  = useState<number | null>(30);
+  const [pagAud,     setPagAud]     = useState(1);
+
+  // Fechas calculadas a partir del rango seleccionado
+  const { fechaDesde, fechaHasta } = useMemo(() => {
+    if (diasRango === null) return { fechaDesde: undefined, fechaHasta: undefined };
+    const hoy   = new Date();
+    const hasta = hoy.toISOString().split('T')[0];
+    if (diasRango === 0) return { fechaDesde: hasta, fechaHasta: hasta };
+    const desde = new Date(hoy.getTime() - diasRango * 86400000).toISOString().split('T')[0];
+    return { fechaDesde: desde, fechaHasta: hasta };
+  }, [diasRango]);
+
+  // Módulos disponibles (dinámico desde la BD)
+  const { data: modulosDisp = [] } = useQuery<string[]>({
+    queryKey: ['sa-audit-modulos'],
+    queryFn:  () => api.get('/auditoria/modulos').then(r => r.data?.data ?? r.data ?? []),
+    staleTime: 300_000,
+  });
 
   const { data: logs, isLoading } = useQuery<any>({
-    queryKey: ['sa-auditoria', modulo, pagAud, busq],
+    queryKey: ['sa-auditoria', modulo, accion, pagAud, busq, fechaDesde, fechaHasta],
     queryFn:  () => {
-      let url = `/auditoria?page=${pagAud}&limit=50`;
-      if (modulo) url += `&modulo=${modulo}`;
-      if (busq)   url += `&search=${encodeURIComponent(busq)}`;
-      return api.get(url).then(r => r.data?.data ?? r.data);
+      const params = new URLSearchParams({ page: String(pagAud), limit: '50' });
+      if (modulo)    params.set('modulo',     modulo);
+      if (accion)    params.set('accion',     accion);
+      if (busq)      params.set('search',     busq);
+      if (fechaDesde)params.set('fechaDesde', fechaDesde!);
+      if (fechaHasta)params.set('fechaHasta', fechaHasta!);
+      return api.get(`/auditoria?${params}`).then(r => r.data?.data ?? r.data);
     },
-    staleTime: 30_000,
+    staleTime: 20_000,
   });
 
   const eventos: any[] = logs?.data ?? logs ?? [];
-  const total  = logs?.meta?.total ?? eventos.length;
+  const total   = logs?.meta?.total ?? eventos.length;
 
-  const MODULOS = ['AUTH','FACTURAS','COMPRAS','CLIENTES','PRODUCTOS','NOMINA','USUARIOS','SISTEMA'];
+  const handleExcel = () => {
+    const filas = eventos.map((e: any) => ({
+      'Fecha':    e.createdAt ? new Date(e.createdAt).toLocaleString('es-DO') : '',
+      'Usuario':  e.userName ?? e.userId ?? '—',
+      'Rol':      e.userRole ?? '—',
+      'Módulo':   e.modulo ?? '—',
+      'Acción':   e.accion ?? '—',
+      'Descripción': e.descripcion ?? '—',
+      'Ruta':     e.ruta ?? '—',
+      'Status':   e.statusCode ?? '',
+      'IP':       e.ipAddress ?? '—',
+      'Éxito':    e.exitoso ? 'Sí' : 'No',
+    }));
+    import('../../utils/exportExcel').then(({ exportarExcel }) => {
+      exportarExcel(filas, `Auditoria-${new Date().toISOString().split('T')[0]}`);
+    });
+  };
 
   return (
     <div>
-      <div style={{ marginBottom: 16, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <Input.Search
+      {/* Filtros */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+        <Input
           placeholder="Buscar en logs..."
           value={busq}
-          onChange={e => setBusq(e.target.value)}
-          style={{ width: 260 }}
+          onChange={e => { setBusq(e.target.value); setPagAud(1); }}
           allowClear
+          style={{ width: 240, background: C.card, borderColor: C.border, color: C.txt }}
+          prefix={<Search size={13} style={{ color: C.txt2 }} />}
         />
+        {/* Rango de fechas — pills */}
+        <div style={{ display: 'flex', gap: 4 }}>
+          {RANGOS.map(r => {
+            const activo = diasRango === r.dias;
+            return (
+              <button key={String(r.dias)} onClick={() => { setDiasRango(r.dias); setPagAud(1); }} style={{
+                padding: '4px 10px', borderRadius: 20, fontSize: 11, cursor: 'pointer', outline: 'none',
+                border:     `1px solid ${activo ? C.gold : C.border}`,
+                background:  activo ? `${C.gold}22` : 'transparent',
+                color:       activo ? C.gold : C.txt2,
+                fontWeight:  activo ? 700 : 500,
+                transition:  'all .15s',
+              }}>{r.label}</button>
+            );
+          })}
+        </div>
         <Select
-          allowClear
-          placeholder="Módulo"
-          style={{ width: 160 }}
+          allowClear placeholder="Módulo"
+          style={{ width: 140 }}
           value={modulo}
           onChange={v => { setModulo(v); setPagAud(1); }}
-          options={MODULOS.map(m => ({ value: m, label: m }))}
+          options={(modulosDisp as string[]).map(m => ({ value: m, label: m.toUpperCase() }))}
         />
-        <span style={{ color: token.colorTextSecondary, fontSize: 12, alignSelf: 'center' }}>
-          {total} registros
+        <Select
+          allowClear placeholder="Acción"
+          style={{ width: 130 }}
+          value={accion}
+          onChange={v => { setAccion(v); setPagAud(1); }}
+          options={['create','update','delete','login','logout','error','export'].map(a => ({
+            value: a, label: <Tag color={ACCION_COLOR[a]} style={{ fontSize: 10 }}>{a}</Tag>,
+          }))}
+        />
+        <span style={{ color: C.txt2, fontSize: 12, marginLeft: 'auto' }}>
+          {total.toLocaleString('es-DO')} registros
         </span>
+        <button onClick={handleExcel} style={{
+          padding: '4px 12px', borderRadius: 7, fontSize: 12, cursor: 'pointer',
+          border: `1px solid ${C.border}`, background: 'transparent', color: C.txt2, outline: 'none',
+        }}>↓ Excel</button>
+        <button onClick={() => qc.invalidateQueries({ queryKey: ['sa-auditoria'] })} style={{
+          padding: '4px 10px', borderRadius: 7, fontSize: 12, cursor: 'pointer',
+          border: `1px solid ${C.border}`, background: 'transparent', color: C.txt2, outline: 'none',
+        }}>⟳</button>
       </div>
 
-      <Table
-        dataSource={eventos}
-        rowKey="id"
-        loading={isLoading}
-        size="small"
-        pagination={{
-          current: pagAud, pageSize: 50, total,
-          onChange: p => setPagAud(p),
-          showSizeChanger: false,
-        }}
-        columns={[
-          { title: 'Fecha', dataIndex: 'createdAt', key: 'f', width: 155,
-            render: (v: any) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: token.colorTextSecondary }}>
-              {v ? new Date(v).toLocaleString('es-DO') : '—'}
-            </span> },
-          { title: 'Usuario', dataIndex: 'userName', key: 'u', width: 150,
-            render: (v: any, r: any) => <span style={{ fontSize: 12 }}>{v ?? r.userId ?? '—'}</span> },
-          { title: 'Módulo', dataIndex: 'modulo', key: 'm', width: 120,
-            render: (v: any) => <Tag style={{ fontSize: 11 }}>{v ?? '—'}</Tag> },
-          { title: 'Acción', dataIndex: 'accion', key: 'a', width: 160,
-            render: (v: any) => <span style={{ fontSize: 12, fontFamily: 'monospace' }}>{v}</span> },
-          { title: 'Detalle', dataIndex: 'descripcion', key: 'd', ellipsis: true,
-            render: (v: any) => <span style={{ fontSize: 12, color: token.colorTextSecondary }}>{v ?? '—'}</span> },
-          { title: 'IP', dataIndex: 'ipAddress', key: 'ip', width: 130,
-            render: (v: any) => <span style={{ fontSize: 11, fontFamily: 'monospace', color: token.colorTextTertiary }}>{v ?? '—'}</span> },
-        ]}
-      />
+      {/* Tabla — solo lectura */}
+      <div style={{ background: C.card, borderRadius: 12, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
+        <Table
+          dataSource={eventos}
+          rowKey="id"
+          loading={isLoading}
+          size="small"
+          scroll={{ x: 900 }}
+          pagination={{
+            current: pagAud, pageSize: 50, total,
+            onChange: p => setPagAud(p),
+            showSizeChanger: false,
+            showTotal: t => `${t.toLocaleString('es-DO')} registros`,
+            style: { padding: '8px 16px', borderTop: `1px solid ${C.border}` },
+          }}
+          locale={{ emptyText: isLoading ? 'Cargando...' : 'Sin registros de auditoría para estos filtros' }}
+          columns={[
+            { title: 'Fecha', dataIndex: 'createdAt', key: 'f', width: 150,
+              render: (v: any) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.txt2 }}>
+                {v ? new Date(v).toLocaleString('es-DO', { dateStyle: 'short', timeStyle: 'short' }) : '—'}
+              </span> },
+            { title: 'Usuario', dataIndex: 'userName', key: 'u', width: 140,
+              render: (v: any, r: any) => (
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: C.txt }}>{v ?? '—'}</div>
+                  {r.userRole && <div style={{ fontSize: 10, color: C.txt2 }}>{r.userRole}</div>}
+                </div>
+              )},
+            { title: 'Módulo', dataIndex: 'modulo', key: 'm', width: 110,
+              render: (v: any) => <Tag style={{ fontSize: 10, textTransform: 'uppercase' }}>{v ?? '—'}</Tag> },
+            { title: 'Acción', dataIndex: 'accion', key: 'a', width: 90,
+              render: (v: any) => <Tag color={ACCION_COLOR[v] ?? 'default'} style={{ fontSize: 10 }}>{v}</Tag> },
+            { title: 'Descripción', dataIndex: 'descripcion', key: 'd', ellipsis: true,
+              render: (v: any) => <span style={{ fontSize: 12, color: C.txt2 }}>{v ?? '—'}</span> },
+            { title: 'IP', dataIndex: 'ipAddress', key: 'ip', width: 120,
+              render: (v: any) => <span style={{ fontSize: 11, fontFamily: 'monospace', color: C.txt2 }}>{v ?? '—'}</span> },
+            { title: 'Status', dataIndex: 'statusCode', key: 's', width: 70, align: 'center' as const,
+              render: (v: any, r: any) => (
+                <span style={{ fontSize: 11, fontWeight: 600, color: r.exitoso ? C.green : C.red }}>
+                  {v ?? '—'}
+                </span>
+              )},
+          ]}
+        />
+      </div>
+      <div style={{ fontSize: 11, color: C.txt2, marginTop: 6, textAlign: 'right' }}>
+        🔒 Solo lectura — los registros de auditoría no pueden modificarse ni eliminarse
+      </div>
     </div>
   );
 }
