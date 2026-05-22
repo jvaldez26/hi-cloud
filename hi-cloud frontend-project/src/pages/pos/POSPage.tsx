@@ -106,6 +106,8 @@ interface Sale {
   notas?:                  string;   // incluye "Crédito X días" para ventas a crédito
   diasCredito?:            number;
   clienteId?:              number;   // para pre-llenar conduce
+  // Propina (opcional)
+  propina?:                number;
   // Emisor
   cajero?:                 string;
   empresaNombreComercial?: string;
@@ -539,6 +541,9 @@ function ThermalReceipt({ sale }: { sale: Sale }) {
       {/* ── TOTALES ───────────────────────────────────────────────── */}
       <RRow label="Subtotal:" value={moneda(sale.subtotal)} />
       <RRow label={esExento ? 'ITBIS (Exento ZF):' : 'ITBIS (18%):'} value={esExento ? 'RD$0.00' : moneda(sale.iva)} />
+      {(sale.propina ?? 0) > 0 && (
+        <RRow label="Propina:" value={moneda(sale.propina!)} />
+      )}
       {esExento && (
         <div style={{ fontSize: 9, color: '#555', marginBottom: 3, paddingLeft: 4 }}>
           (Exento de ITBIS - Zona Franca)
@@ -1372,10 +1377,16 @@ function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir }: {
             <span style={{ fontSize: 11, color: C.textSub }}>Subtotal</span>
             <span style={{ fontSize: 11, color: C.text }}>{fmt.money(sale.subtotal)}</span>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: (sale.propina ?? 0) > 0 ? 4 : 8 }}>
             <span style={{ fontSize: 11, color: C.textSub }}>ITBIS</span>
             <span style={{ fontSize: 11, color: C.text }}>{fmt.money(sale.iva)}</span>
           </div>
+          {(sale.propina ?? 0) > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+              <span style={{ fontSize: 11, color: '#B45309' }}>🙏 Propina</span>
+              <span style={{ fontSize: 11, color: '#B45309', fontWeight: 600 }}>+{fmt.money(sale.propina!)}</span>
+            </div>
+          )}
           <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: `2px solid ${C.border2}`, paddingTop: 8, marginBottom: 10 }}>
             <span style={{ fontSize: 16, fontWeight: 700, color: C.text }}>TOTAL</span>
             <span style={{ fontSize: 22, fontWeight: 800, color: C.green }}>{fmt.money(sale.total)}</span>
@@ -2618,10 +2629,11 @@ const PANEL_TITLES: Record<PanelId, { label: string; icon: string }> = {
   'cierre-caja':    { label: 'Cierre de Caja',    icon: '🏧' },
 };
 
-function POSPanel({ panel, palette, onVolver }: {
-  panel:    PanelId;
-  palette:  Palette;
-  onVolver: () => void;
+function POSPanel({ panel, palette, onVolver, confirmarAnulacion }: {
+  panel:              PanelId;
+  palette:            Palette;
+  onVolver:           () => void;
+  confirmarAnulacion?: boolean;   // posConfirmarAnulacion de la config (default true)
 }) {
   const C  = palette;
   const qc = useQueryClient();
@@ -3060,7 +3072,14 @@ function POSPanel({ panel, palette, onVolver }: {
                             </span>
                           ) : (
                             <button
-                              onClick={() => setAnulando(row.id)}
+                              onClick={() => {
+                                // Si confirmarAnulacion = false → anular directo sin modal de confirmación
+                                if (confirmarAnulacion === false) {
+                                  anularMutation.mutate({ id: row.id, mod: panel });
+                                } else {
+                                  setAnulando(row.id);
+                                }
+                              }}
                               title="Anular"
                               style={{ background: 'none', border: `1px solid ${C.border2}`, borderRadius: 6, color: C.red, cursor: 'pointer', padding: '4px 8px', fontSize: 14 }}
                             >
@@ -3302,6 +3321,8 @@ export default function POSPage() {
   const [metodoPago,         setMetodoPago]         = useState<MetodoPago>('efectivo');
   const [montoRecibido,      setMontoRecibido]      = useState(0);
   const [tipoPagoPos,        setTipoPagoPos]        = useState<'CONTADO' | 'CREDITO'>('CONTADO');
+  const [propinaValor,       setPropinaValor]       = useState<string>('');
+  const [propinaTipo,        setPropinaTipo]        = useState<'%' | 'fijo'>('%');
   const [diasCreditoPos,     setDiasCreditoPos]     = useState(30);
   const [sale,               setSale]               = useState<Sale | null>(null);
   const [tipoNcf,            setTipoNcf]            = useState('E32');
@@ -3466,8 +3487,19 @@ export default function POSPage() {
   // E44 (Zona Franca): ITBIS = 0 — Opción B: precio base sin ITBIS
   const ivaEfectivo   = tipoNcf === 'E44' ? 0 : iva;
   const totalEfectivo = tipoNcf === 'E44' ? subtotal : total;
-  const cambio        = metodoPago === 'efectivo' ? Math.max(0, montoRecibido - totalEfectivo) : 0;
   const totalItems    = cart.reduce((s, i) => s + i.cantidad, 0);
+
+  // Config POS — leída aquí para que propina y cambio puedan usarla
+  const posConf          = (empresa?.configuracion ?? {}) as Record<string, unknown>;
+  const propinaActiva    = posConf.posPropinaActiva === true && tipoPagoPos === 'CONTADO';
+  const propinaDefPct    = typeof posConf.posPorcentajePropina === 'number' ? posConf.posPorcentajePropina : 10;
+  const propinaNum       = propinaActiva ? (Number(propinaValor) || 0) : 0;
+  const propinaMontoCalc = propinaActiva && propinaNum > 0
+    ? (propinaTipo === '%' ? +(totalEfectivo * propinaNum / 100).toFixed(2) : +propinaNum.toFixed(2))
+    : 0;
+  const totalAPagar      = +(totalEfectivo + propinaMontoCalc).toFixed(2);
+  // Cambio basado en totalAPagar (incluye propina)
+  const cambio           = metodoPago === 'efectivo' ? Math.max(0, montoRecibido - totalAPagar) : 0;
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -3476,7 +3508,9 @@ export default function POSPage() {
       if (e.key === 'F9' && cart.length > 0) {
         e.preventDefault();
         if (modoFacturacion === 'factura' || modoFacturacion === 'valor-fiscal') {
-          setMontoRecibido(totalEfectivo); setShowPago(true);
+          setMontoRecibido(totalEfectivo);
+          if (posConf.posPropinaActiva === true) setPropinaValor(String(propinaDefPct));
+          setShowPago(true);
         } else {
           modoAltMut.mutate();
         }
@@ -3624,7 +3658,7 @@ export default function POSPage() {
         diasCredito:    tipoPagoPos === 'CREDITO' ? diasCreditoPos : 0,
         notas:          tipoPagoPos === 'CREDITO'
           ? `POS · Crédito ${diasCreditoPos} días`
-          : `POS · ${METODOS.find(m => m.key === metodoPago)?.label}`,
+          : `POS · ${METODOS.find(m => m.key === metodoPago)?.label ?? metodoPago}${propinaMontoCalc > 0 ? ` · Propina: RD$${propinaMontoCalc.toFixed(2)}` : ''}`,
         vendedorId,
         nombreVendedor: vendedor?.nombre,
         sucursalId,
@@ -3703,8 +3737,9 @@ export default function POSPage() {
         : dayjs().format('DD-MM-YYYY HH:mm:ss');
       setSale({
         folio:                   factura.folio,
-        total:                   totalEfectivo,
+        total:                   totalAPagar,
         cambio,
+        propina:                 propinaMontoCalc > 0 ? propinaMontoCalc : undefined,
         metodo:                  tipoPagoPos === 'CREDITO' ? 'credito' : metodoPago,
         notas:                   tipoPagoPos === 'CREDITO' ? `Crédito ${diasCreditoPos} días` : undefined,
         diasCredito:             tipoPagoPos === 'CREDITO' ? diasCreditoPos : undefined,
@@ -3731,7 +3766,7 @@ export default function POSPage() {
       setShowPago(false);
       setRncComprador(''); setRazonSocialComp(''); setNumeroOrdenCompra(''); setGuardarRncPerfil(false);
       setCart([]); resetCliente(); setVendedorId(undefined); setMontoRecibido(0);
-      setTipoPagoPos('CONTADO'); setDiasCreditoPos(30);
+      setTipoPagoPos('CONTADO'); setDiasCreditoPos(30); setPropinaValor('');
       qc.invalidateQueries({ queryKey: ['pos-panel', 'facturas'] });
       qc.refetchQueries({    queryKey: ['pos-panel', 'facturas'] });
     },
@@ -3896,12 +3931,11 @@ export default function POSPage() {
   }, [pantallaBloqueada, turnoAbierto]);
 
   // necesitaRnc: el tipo lo exige Y el cliente no lo aporta automáticamente
-  const posConf       = (empresa?.configuracion ?? {}) as Record<string, unknown>;
   const posCedulaMonto = typeof posConf.posCedulaMonto === 'number' ? posConf.posCedulaMonto : 250_000;
   const tipoExigeRnc = tipoNcf === 'E31' || tipoNcf === 'E44' || tipoNcf === 'E45' || totalEfectivo >= posCedulaMonto;
   const necesitaRnc  = tipoExigeRnc && !clienteTieneRNC;
   const rncValido    = clienteTieneRNC || /^\d{9}$|^\d{11}$/.test(rncComprador);
-  const canPay       = tipoPagoPos === 'CREDITO' || metodoPago !== 'efectivo' || montoRecibido >= totalEfectivo;
+  const canPay       = tipoPagoPos === 'CREDITO' || metodoPago !== 'efectivo' || montoRecibido >= totalAPagar;
   const cajaAbierta  = cajaActivaHoy?.estado === 'abierta';
   // Crédito requiere cliente real seleccionado (no consumidor final por defecto)
   const clienteParaCredito = tipoPagoPos === 'CONTADO' || clienteId != null;
@@ -4004,6 +4038,7 @@ export default function POSPage() {
             panel={panelActivo}
             palette={palette}
             onVolver={() => setPanelActivo('items')}
+            confirmarAnulacion={posConf.posConfirmarAnulacion !== false}
           />
         )}
         {panelActivo === 'items' && (<>
@@ -4282,7 +4317,7 @@ export default function POSPage() {
               {/* Botón de acción principal */}
               {modoFacturacion === 'factura' || modoFacturacion === 'valor-fiscal' ? (
                 <motion.button whileTap={{ scale: 0.97 }}
-                  onClick={() => { setMontoRecibido(totalEfectivo); setShowPago(true); }}
+                  onClick={() => { setMontoRecibido(totalEfectivo); if (posConf.posPropinaActiva === true) setPropinaValor(String(propinaDefPct)); setShowPago(true); }}
                   style={{ width: '100%', height: 52, borderRadius: 12, border: 'none',
                     background: 'linear-gradient(135deg,#059669,#10B981)', color: '#fff',
                     fontSize: 16, fontWeight: 700, cursor: 'pointer', outline: 'none',
@@ -4341,7 +4376,12 @@ export default function POSPage() {
                 <button onClick={() => setShowPago(false)} style={{ width: 24, height: 24, borderRadius: 6, border: 'none', background: 'rgba(255,255,255,.12)', color: '#fff', cursor: 'pointer', outline: 'none', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
               </div>
             </div>
-            <div style={{ fontSize: 28, fontWeight: 800, color: '#fff', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{fmt.money(totalEfectivo)}</div>
+            <div style={{ fontSize: 28, fontWeight: 800, color: '#fff', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{fmt.money(totalAPagar)}</div>
+            {propinaMontoCalc > 0 && (
+              <div style={{ fontSize: 11, color: '#FCD34D', marginTop: 2 }}>
+                Total factura {fmt.money(totalEfectivo)} + Propina {fmt.money(propinaMontoCalc)}
+              </div>
+            )}
             {tipoNcf === 'E44' && iva > 0 && (
               <div style={{ fontSize: 11, color: '#6EE7B7', marginTop: 2 }}>
                 EXENTO DE ITBIS · ahorro {fmt.money(iva)}
@@ -4416,6 +4456,49 @@ export default function POSPage() {
                 );
               })}
             </div>
+          </div>
+          )}
+
+          {/* ── Propina (solo si posPropinaActiva = true y CONTADO) ─────── */}
+          {propinaActiva && (
+          <div style={{ flexShrink: 0, padding: '8px 16px', background: '#FFFBEB', borderBottom: '1px solid #FDE68A' }}>
+            <div style={{ fontSize: 9, fontWeight: 600, color: '#92400E', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 6 }}>
+              🙏 Propina (opcional)
+            </div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              {/* Toggle % / Fijo */}
+              <button
+                onClick={() => { setPropinaTipo(t => t === '%' ? 'fijo' : '%'); setPropinaValor(''); }}
+                style={{ flexShrink: 0, height: 30, borderRadius: 7, border: '1px solid #FCD34D', background: '#FEF3C7', color: '#92400E', fontWeight: 700, fontSize: 12, cursor: 'pointer', padding: '0 10px', outline: 'none' }}>
+                {propinaTipo === '%' ? '%' : 'RD$'}
+              </button>
+              {/* Input */}
+              <input
+                type="number" min={0} max={propinaTipo === '%' ? 50 : undefined}
+                value={propinaValor}
+                onChange={e => setPropinaValor(e.target.value)}
+                placeholder={propinaTipo === '%' ? `${propinaDefPct}%` : 'Monto'}
+                style={{ flex: 1, height: 30, borderRadius: 7, border: '1px solid #FCD34D', background: '#fff', fontSize: 13, fontWeight: 700, color: '#92400E', textAlign: 'right', padding: '0 10px', outline: 'none' }}
+              />
+              {/* Botones rápidos */}
+              {propinaTipo === '%' && [5, 10, 15, 18].map(p => (
+                <button key={p}
+                  onClick={() => setPropinaValor(String(p))}
+                  style={{ flexShrink: 0, height: 30, borderRadius: 7, border: `1.5px solid ${propinaValor === String(p) ? '#D97706' : '#FDE68A'}`, background: propinaValor === String(p) ? '#FEF3C7' : '#fff', color: '#B45309', fontSize: 11, fontWeight: 700, cursor: 'pointer', padding: '0 7px', outline: 'none' }}>
+                  {p}%
+                </button>
+              ))}
+              {/* Limpiar */}
+              {propinaValor && (
+                <button onClick={() => setPropinaValor('')}
+                  style={{ flexShrink: 0, height: 30, width: 30, borderRadius: 7, border: '1px solid #E2E8F0', background: '#F8FAFC', color: '#94A3B8', fontSize: 13, cursor: 'pointer', outline: 'none' }}>✕</button>
+              )}
+            </div>
+            {propinaMontoCalc > 0 && (
+              <div style={{ fontSize: 11, color: '#B45309', marginTop: 5, fontWeight: 600, textAlign: 'right' }}>
+                Propina: {fmt.money(propinaMontoCalc)} → Total a cobrar: {fmt.money(totalAPagar)}
+              </div>
+            )}
           </div>
           )}
 
@@ -4535,7 +4618,7 @@ export default function POSPage() {
                   {[200, 500, 1000, 2000].map(a => (
                     <button key={a} onClick={() => setMontoRecibido(a)} style={{ flex: 1, height: 26, borderRadius: 6, border: '1px solid #E2E8F0', background: '#F1F5F9', fontSize: 11, fontWeight: 700, color: '#475569', cursor: 'pointer', outline: 'none' }}>{a >= 1000 ? `${a/1000}K` : a}</button>
                   ))}
-                  <button onClick={() => setMontoRecibido(totalEfectivo)} style={{ flex: 1, height: 26, borderRadius: 6, border: '1px solid #86EFAC', background: '#F0FDF4', fontSize: 11, fontWeight: 700, color: '#15803D', cursor: 'pointer', outline: 'none' }}>Exacto</button>
+                  <button onClick={() => setMontoRecibido(totalAPagar)} style={{ flex: 1, height: 26, borderRadius: 6, border: '1px solid #86EFAC', background: '#F0FDF4', fontSize: 11, fontWeight: 700, color: '#15803D', cursor: 'pointer', outline: 'none' }}>Exacto</button>
                 </div>
                 <div style={{ flexShrink: 0, height: 168 }}>
                   <Numpad value={montoRecibido} onChange={setMontoRecibido} />
