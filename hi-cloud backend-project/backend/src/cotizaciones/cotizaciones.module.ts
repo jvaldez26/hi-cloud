@@ -7,12 +7,11 @@ import { CotizacionDetalle } from './entities/cotizacion-detalle.entity';
 import { Factura } from '../facturas/entities/factura.entity';
 import { FacturaDetalle } from '../facturas/entities/factura-detalle.entity';
 import { TenantModule } from '../tenant/tenant.module';
-import { BrowserService } from '../common/services/browser.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Cotizacion, CotizacionDetalle, Factura, FacturaDetalle]), TenantModule],
   controllers: [CotizacionesController],
-  providers: [CotizacionesService, BrowserService],
+  providers: [CotizacionesService],
   exports: [CotizacionesService],
 })
 export class CotizacionesModule {}

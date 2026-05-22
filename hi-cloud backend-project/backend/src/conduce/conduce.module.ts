@@ -5,12 +5,11 @@ import { ConduceService } from './conduce.service';
 import { ConducePDFService } from './conduce-pdf.service';
 import { Conduce } from './entities/conduce.entity';
 import { ConduceDetalle } from './entities/conduce-detalle.entity';
-import { BrowserService } from '../common/services/browser.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Conduce, ConduceDetalle])],
   controllers: [ConduceController],
-  providers: [ConduceService, ConducePDFService, BrowserService],
+  providers: [ConduceService, ConducePDFService],
   exports: [ConduceService],
 })
 export class ConduceModule {}

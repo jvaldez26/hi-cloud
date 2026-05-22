@@ -5,12 +5,11 @@ import { ClientesController } from './clientes.controller';
 import { Cliente } from './entities/cliente.entity';
 
 import { SuscripcionesModule } from '../suscripciones/suscripciones.module';
-import { BrowserService } from '../common/services/browser.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Cliente]), SuscripcionesModule],
   controllers: [ClientesController],
-  providers: [ClientesService, BrowserService],
+  providers: [ClientesService],
   exports: [ClientesService],
 })
 export class ClientesModule {}

@@ -11,7 +11,6 @@ import { NominaNovedadEmpleado } from './entities/nomina-novedad.entity';
 import { ContratoLaboral } from './entities/contrato-laboral.entity';
 import { ContabilidadModule } from '../contabilidad/contabilidad.module';
 import { TesoreriaModule } from '../tesoreria/tesoreria.module';
-import { BrowserService } from '../common/services/browser.service';
 
 @Module({
   imports: [
@@ -27,7 +26,7 @@ import { BrowserService } from '../common/services/browser.service';
     SuscripcionesModule,
   ],
   controllers: [NominaController],
-  providers: [NominaService, NominaCalculosService, BrowserService],
+  providers: [NominaService, NominaCalculosService],
   exports: [NominaService],
 })
 export class NominaModule {}

@@ -5,6 +5,7 @@ import { CacheModule } from '@nestjs/cache-manager';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { QueuesModule } from './queues/queues.module';
 import { S3Module }     from './common/s3/s3.module';
+import { BrowserModule } from './common/browser.module';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
@@ -123,6 +124,7 @@ import { UomModule }                     from './uom/uom.module';
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
     QueuesModule,
     S3Module,
+    BrowserModule,     // Global — una única instancia de Chromium para todos los PDFs
     // ── Cache global (Redis en producción, in-memory en dev) ──────────
     CacheModule.registerAsync({
       isGlobal: true,

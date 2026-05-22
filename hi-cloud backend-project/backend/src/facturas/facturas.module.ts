@@ -13,7 +13,6 @@ import { ECFModule } from '../ecf/ecf.module';
 import { CxCModule } from '../cxc/cxc.module';
 import { ContabilidadModule } from '../contabilidad/contabilidad.module';
 import { SuscripcionesModule } from '../suscripciones/suscripciones.module';
-import { BrowserService } from '../common/services/browser.service';
 
 @Module({
   imports: [
@@ -23,7 +22,7 @@ import { BrowserService } from '../common/services/browser.service';
     SuscripcionesModule,
   ],
   controllers: [FacturasController],
-  providers: [FacturasService, PDFService, NumeroLetrasService, BrowserService],
-  exports: [FacturasService, PDFService, BrowserService],
+  providers: [FacturasService, PDFService, NumeroLetrasService],
+  exports: [FacturasService, PDFService],
 })
 export class FacturasModule {}

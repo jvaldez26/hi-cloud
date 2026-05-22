@@ -12,7 +12,6 @@ import { InventarioModule }  from '../inventario/inventario.module';
 import { CxPModule }         from '../cxp/cxp.module';
 import { ContabilidadModule }from '../contabilidad/contabilidad.module';
 import { TenantModule }      from '../tenant/tenant.module';
-import { BrowserService }    from '../common/services/browser.service';
 
 @Module({
   imports: [
@@ -21,7 +20,7 @@ import { BrowserService }    from '../common/services/browser.service';
     CxPModule, ContabilidadModule, TenantModule,
   ],
   controllers: [ComprasController],
-  providers:   [ComprasService, ComprasPdfService, BrowserService],
+  providers:   [ComprasService, ComprasPdfService],
   exports:     [ComprasService, ComprasPdfService],
 })
 export class ComprasModule {}
