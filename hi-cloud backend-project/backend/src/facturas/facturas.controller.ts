@@ -26,7 +26,7 @@ import { GetUser } from '../auth/decorators/get-user.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
 import { User } from '../users/users.entity';
 import { FacturaEstado } from './entities/factura.entity';
-import { IsEnum, IsOptional, IsString, IsInt, ValidateNested } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsInt, IsBoolean, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 class FacturasFilterDto extends PaginationDto {
@@ -86,6 +86,14 @@ class EmitirDesdePos {
 
   @IsOptional() @ValidateNested() @Type(() => DatosCompradorPosDto)
   datosComprador?: DatosCompradorPosDto;
+
+  /**
+   * Si true → crear el e-CF directamente en CONTINGENCIA (sin llamar a MSeller).
+   * Se usa cuando el usuario activó "Modo contingencia" en Configuración → POS.
+   * El cron de rescate lo reintentará cada 30 minutos.
+   */
+  @IsOptional() @IsBoolean()
+  modoContingencia?: boolean;
 }
 
 @ApiTags('Facturas')
@@ -167,6 +175,7 @@ export class FacturasController {
       true,
       dto.tipoEcf,
       dto.datosComprador,
+      dto.modoContingencia,
     );
   }
 

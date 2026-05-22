@@ -328,10 +328,10 @@ export class FacturasService {
   }
 
   /**
-   * @param modoSincrono     true = POS (timeout 8s, fallo devuelve PENDIENTE no lanza);
-   *                         false = regular (async fire-and-forget, 30s)
-   * @param tipoEcfOverride  tipo de e-CF seleccionado en POS (sobreescribe el tipoNcf de la factura)
-   * @param datosComprador   datos del comprador capturados en POS (RNC, razón social, etc.)
+   * @param modoSincrono       true = POS (timeout 8s, fallo devuelve PENDIENTE no lanza)
+   * @param tipoEcfOverride    tipo de e-CF del POS (sobreescribe el tipoNcf de la factura)
+   * @param datosComprador     datos del comprador capturados en POS
+   * @param modoContingencia   true = crear e-CF en CONTINGENCIA sin llamar a MSeller
    */
   async cambiarEstado(
     id: number,
@@ -339,6 +339,7 @@ export class FacturasService {
     modoSincrono = false,
     tipoEcfOverride?: number,
     datosComprador?: DatosCompradorECF,
+    modoContingencia?: boolean,
   ) {
     const factura = await this.findOne(id);
 
@@ -400,6 +401,7 @@ export class FacturasService {
         documentoOrigenId:   factura.id,
         tipoEcf:             tipoEcfNum,
         modoSincrono,
+        modoContingencia:    modoContingencia === true,
         otraMoneda:          otraMoneda as any,
         datosComprador,
       };

@@ -52,6 +52,7 @@ export interface EmitirECFInput {
   documentoOrigenId:   number;
   tipoEcf:             number;   // 31 | 32 | 33 | 34 | 41 | 43 | 44 | 45 | 46 | 47
   modoSincrono?:       boolean;  // true = POS (timeout 8s)
+  modoContingencia?:   boolean;  // true = crear e-CF en CONTINGENCIA sin llamar a MSeller
   datosComprador?:     DatosCompradorECF;   // POS: datos capturados en el momento de la venta
   infoReferencia?:     MSellerInfoReferencia;  // E33/E34
   nombreExtranjero?:   string;                 // E46/E47
@@ -124,6 +125,7 @@ export class EmitirECFUseCase {
   async execute(input: EmitirECFInput): Promise<EmitirECFResult> {
     const {
       empresaId, documentoOrigenTipo, documentoOrigenId, tipoEcf, modoSincrono,
+      modoContingencia,
       datosComprador,
       infoReferencia: infoRefInput, nombreExtranjero, paisExtranjero,
     } = input;
@@ -132,7 +134,7 @@ export class EmitirECFUseCase {
     this.logger.log(
       `EmitirECF inicio | empresa #${empresaId} | ` +
       `${documentoOrigenTipo}#${documentoOrigenId} | tipo E${tipoEcf} | ` +
-      `${modoSincrono ? 'SINCRONO (POS)' : 'REGULAR'}`,
+      `${modoContingencia ? 'CONTINGENCIA PROACTIVA' : modoSincrono ? 'SINCRONO (POS)' : 'REGULAR'}`,
     );
 
     // ── 1. IDEMPOTENCIA ───────────────────────────────────────────────────────
@@ -299,6 +301,30 @@ export class EmitirECFUseCase {
     await this.registrarEvento(ecfSaved.id, TipoEcfEvento.CREADO, {
       encf, tipoEcf, documentoOrigenTipo, documentoOrigenId,
     });
+
+    // ── 5b. MODO CONTINGENCIA PROACTIVO — no enviar a MSeller ────────────────
+    //    El administrador activó "Modo contingencia" en Configuración → POS.
+    //    Se guarda en CONTINGENCIA directamente. El cron de rescate (cada 30 min)
+    //    lo reintentará cuando MSeller/DGII vuelva a estar disponible.
+    if (modoContingencia) {
+      await this.ecfRepo.update(ecfSaved.id, {
+        estadoDGII: EstadoDGII.CONTINGENCIA,
+        errorEnvio: 'Modo contingencia activado por el administrador.',
+      });
+      await this.registrarEvento(ecfSaved.id, TipoEcfEvento.ESTADO_CAMBIADO, {
+        de: EstadoDGII.PENDIENTE_ENVIO, a: EstadoDGII.CONTINGENCIA,
+        motivo: 'modoContingencia=true — configuración POS',
+      });
+      this.logger.log(`e-CF ${encf} → CONTINGENCIA (proactivo por config)`);
+      return {
+        encf,
+        securityCode: undefined,
+        qrUrl:        undefined,
+        estado:       EstadoDGII.CONTINGENCIA,
+        idempotente:  false,
+        ecf:          { ...ecfSaved, estadoDGII: EstadoDGII.CONTINGENCIA } as ECF,
+      };
+    }
 
     // ── 6. ENVIAR A MSELLER ───────────────────────────────────────────────────
     try {

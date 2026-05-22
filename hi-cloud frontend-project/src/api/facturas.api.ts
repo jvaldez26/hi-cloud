@@ -15,6 +15,8 @@ export interface EmitirPosBody {
     direccion?: string;
     numeroOrdenCompra?: string;
   };
+  /** Si true → crear e-CF en CONTINGENCIA sin llamar a MSeller (modo contingencia en Config POS) */
+  modoContingencia?: boolean;
 }
 export interface FacturaPayload {
   clienteId:       number;

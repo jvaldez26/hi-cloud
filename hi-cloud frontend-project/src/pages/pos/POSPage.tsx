@@ -3709,8 +3709,10 @@ export default function POSPage() {
 
       try {
         const emitResult = await facturasApi.emitirPos(factura.id, {
-          tipoEcf:        tipoEcfNum,
-          datosComprador: Object.keys(datosComprador).length ? datosComprador : undefined,
+          tipoEcf:          tipoEcfNum,
+          datosComprador:   Object.keys(datosComprador).length ? datosComprador : undefined,
+          // Modo contingencia proactivo: no intentar MSeller, guardar directamente en CONTINGENCIA
+          modoContingencia: posConf.posModoContingencia === true || undefined,
         }) as any;
         const encf  = emitResult?.encf ?? emitResult?.numero ?? '';
         const estado = emitResult?.estado ?? emitResult?.estadoDGII ?? '';
