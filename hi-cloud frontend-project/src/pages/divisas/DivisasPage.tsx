@@ -112,39 +112,59 @@ export default function DivisasPage() {
 
       {/* Tasas actuales */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        {tasasHoy.map((t: any) => (
+        {tasasHoy.map((t: any) => {
+          const base = MONEDA_COLOR[t.moneda] ?? '#1a56db';
+          return (
           <Col xs={12} sm={6} key={t.moneda}>
-            <Card
-              bordered={false}
+            {/* Usamos div en vez de Card para evitar que los tokens CSS de Ant Design
+                (colorText, colorBgContainer) sobrescriban el color del texto en modo claro */}
+            <div
+              onClick={() => setMonedaHistorial(t.moneda)}
               style={{
                 borderRadius: 12,
-                background: `linear-gradient(135deg,${MONEDA_COLOR[t.moneda] ?? '#1a56db'},${MONEDA_COLOR[t.moneda] ?? '#3b82f6'}cc)`,
+                padding: '20px 24px',
                 cursor: 'pointer',
+                background: `linear-gradient(135deg, ${base}, ${base}cc)`,
+                boxShadow: `0 4px 14px ${base}40`,
+                transition: 'transform .15s, box-shadow .15s',
+                userSelect: 'none',
               }}
-              onClick={() => setMonedaHistorial(t.moneda)}
+              onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = 'none'; }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
-                  <Text style={{ color: 'rgba(255,255,255,.7)', fontSize: 12 }}>
+                  {/* Todos los textos con color explícito en style — no heredan tokens de Ant Design */}
+                  <span style={{ color: 'rgba(255,255,255,.75)', fontSize: 12, display: 'block', marginBottom: 4 }}>
                     {MONEDA_FLAG[t.moneda]} {t.moneda}
-                  </Text>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: '#fff', lineHeight: 1.2 }}>
+                  </span>
+                  <span style={{ fontSize: 24, fontWeight: 800, color: '#ffffff', lineHeight: 1.2, display: 'block' }}>
                     {Number(t.tasaVenta).toFixed(2)}
-                  </div>
-                  <Text style={{ color: 'rgba(255,255,255,.6)', fontSize: 11 }}>
+                  </span>
+                  <span style={{ color: 'rgba(255,255,255,.65)', fontSize: 11, display: 'block', marginTop: 3 }}>
                     Compra: {Number(t.tasaCompra).toFixed(2)}
-                  </Text>
+                  </span>
                 </div>
-                <Tag style={{ background: 'rgba(255,255,255,.2)', border: 'none', color: '#fff', fontSize: 10 }}>
+                <span style={{
+                  background: 'rgba(255,255,255,.2)',
+                  color: '#ffffff',
+                  fontSize: 10,
+                  borderRadius: 6,
+                  padding: '2px 8px',
+                  lineHeight: '18px',
+                  display: 'inline-block',
+                  whiteSpace: 'nowrap',
+                }}>
                   {t.fecha}
-                </Tag>
+                </span>
               </div>
-              <Text style={{ color: 'rgba(255,255,255,.5)', fontSize: 10, display: 'block', marginTop: 4 }}>
+              <span style={{ color: 'rgba(255,255,255,.5)', fontSize: 10, display: 'block', marginTop: 6 }}>
                 {t.nombreMoneda}
-              </Text>
-            </Card>
+              </span>
+            </div>
           </Col>
-        ))}
+          );
+        })}
         {tasasHoy.length === 0 && (
           <Col span={24}>
             <Card bordered={false} style={{ borderRadius: 12, textAlign: 'center', padding: 32 }}>
