@@ -232,10 +232,26 @@ export class SuperAdminService {
     this.logger.warn(`[HARD DELETE] Usuario #${userId} (${u.email}) iniciado por super_admin #${superAdminId}`);
 
     await this.ds.transaction(async em => {
+      // Helper SAVEPOINT — igual que en eliminarEmpresaPermanente.
+      // .catch() JS NO restaura el estado de la transacción en PostgreSQL;
+      // sólo ROLLBACK TO SAVEPOINT lo hace.
+      let _spSeq = 0;
+      const safeQuery = async (sql: string, params: any[], label: string) => {
+        const sp = `sp_usr_${++_spSeq}`;
+        await em.query(`SAVEPOINT "${sp}"`);
+        try {
+          await em.query(sql, params);
+          await em.query(`RELEASE SAVEPOINT "${sp}"`);
+        } catch (err: any) {
+          await em.query(`ROLLBACK TO SAVEPOINT "${sp}"`);
+          await em.query(`RELEASE SAVEPOINT "${sp}"`);
+          this.logger.warn(`[HARD DELETE] ${label}: ${(err.message ?? '').split('\n')[0]}`);
+        }
+      };
 
       // ── 1. Eliminar registros de sesión / vinculación ───────────────────────
-      await em.query(`DELETE FROM usuario_empresa WHERE "userId" = $1`, [userId]).catch(() => {});
-      await em.query(`DELETE FROM refresh_tokens    WHERE "userId" = $1`, [userId]).catch(() => {});
+      await safeQuery(`DELETE FROM usuario_empresa WHERE "userId" = $1`, [userId], 'usuario_empresa');
+      await safeQuery(`DELETE FROM refresh_tokens    WHERE "userId" = $1`, [userId], 'refresh_tokens');
 
       // ── 2. Detectar TODAS las FK que apuntan a users dinámicamente ──────────
       //    Así funciona aunque se agreguen nuevas tablas en el futuro.
@@ -265,21 +281,21 @@ export class SuperAdminService {
 
       // ── 3. Nullificar cada FK (preservar historial) ─────────────────────────
       for (const { table_name, column_name } of fkRefs) {
-        await em.query(
+        await safeQuery(
           `UPDATE "${table_name}" SET "${column_name}" = NULL WHERE "${column_name}" = $1`,
           [userId],
-        ).catch((err: any) => {
-          this.logger.warn(`[HARD DELETE] No se pudo nullificar ${table_name}.${column_name}: ${err.message}`);
-        });
+          `nullificar ${table_name}.${column_name}`,
+        );
       }
 
       // ── 4. Limpiar tablas sin FK formal (datos PII) ─────────────────────────
-      await em.query(
+      await safeQuery(
         `UPDATE pos_supervisor_log
            SET "cajeroId" = NULL, "supervisorId" = NULL
          WHERE "cajeroId" = $1 OR "supervisorId" = $1`,
         [userId],
-      ).catch(() => {});
+        'pos_supervisor_log PII',
+      );
 
       // ── 5. Eliminar el usuario ──────────────────────────────────────────────
       try {
