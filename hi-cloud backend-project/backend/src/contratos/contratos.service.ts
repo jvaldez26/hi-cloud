@@ -1,8 +1,9 @@
 import {
   Injectable, NotFoundException, BadRequestException, Logger,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { Repository, DataSource } from 'typeorm';
+import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import { Cron } from '@nestjs/schedule';
 import {
   Contrato, EstadoContrato, PeriodoFacturacion,
@@ -39,6 +40,7 @@ export class ContratosService {
     @InjectRepository(FacturaDetalle)
     private detalleRepo: Repository<FacturaDetalle>,
     private tenantService: TenantService,
+    @InjectDataSource() private dataSource: DataSource,
   ) {}
 
   private async generarNumero(): Promise<string> {
@@ -133,16 +135,10 @@ export class ContratosService {
       throw new BadRequestException('Solo se pueden facturar contratos activos');
     }
 
-    const now    = new Date();
-    const y      = now.getFullYear();
-    const m      = String(now.getMonth() + 1).padStart(2, '0');
-    const prefix = `FAC-${y}${m}-`;
-    const maxRes = await this.facturaRepo
-      .createQueryBuilder('f')
-      .select(`MAX(CAST(SPLIT_PART(f.folio, '-', 3) AS INTEGER))`, 'maxNum')
-      .where('f.folio LIKE :p', { p: `${prefix}%` })
-      .getRawOne<{ maxNum: number | null }>();
-    const folio = `${prefix}${String((maxRes?.maxNum ?? 0) + 1).padStart(4, '0')}`;
+    const now   = new Date();
+    const folio = await generarNumeroSecuencial(
+      this.dataSource, 'facturas', 'folio', '^FAC-[0-9]+$', 'FAC-', 1, contrato.empresaId,
+    );
 
     const iva      = Number(contrato.montoBase) * Number(contrato.porcentajeIva) / 100;
     const total    = Number(contrato.montoBase) + iva;

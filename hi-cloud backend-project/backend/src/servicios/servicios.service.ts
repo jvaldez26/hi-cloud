@@ -215,11 +215,10 @@ export class ServiciosService {
       throw new BadRequestException('La orden no tiene detalles para facturar');
     }
 
-    const count  = await this.facturaRepo.count();
-    const now    = new Date();
-    const y      = now.getFullYear();
-    const m      = String(now.getMonth() + 1).padStart(2, '0');
-    const folio  = `FAC-${y}${m}-${String(count + 1).padStart(4, '0')}`;
+    const now   = new Date();
+    const folio = await generarNumeroSecuencial(
+      this.dataSource, 'facturas', 'folio', '^FAC-[0-9]+$', 'FAC-', 1, orden.empresaId,
+    );
 
     const factura = await this.facturaRepo.save(
       this.facturaRepo.create({
