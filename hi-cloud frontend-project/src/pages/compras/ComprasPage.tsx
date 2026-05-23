@@ -10,8 +10,9 @@ import {
 import {
   PlusOutlined, EyeOutlined, DownOutlined, SearchOutlined,
   FileExcelOutlined, FilterOutlined, MailOutlined, FilePdfOutlined,
-  LoadingOutlined, AuditOutlined, CopyOutlined,
+  LoadingOutlined, AuditOutlined, CopyOutlined, CheckCircleOutlined,
 } from '@ant-design/icons';
+import { SolicitarAprobacionModal } from '../../components/ui/SolicitarAprobacionModal';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useCanDo } from '../../hooks/useCanDo';
@@ -58,9 +59,10 @@ export default function ComprasPage() {
   const [search, setSearch]     = useState('');
   const [estado, setEstado]     = useState<string | undefined>();
   const [rango, setRango]       = useState<[Dayjs, Dayjs] | null>(null);
-  const [emailCompra, setEmailCompra] = useState<any>(null);
-  const [emailDest,   setEmailDest]   = useState('');
-  const [ecfEncf,     setEcfEncf]     = useState<string | null>(null);
+  const [emailCompra,  setEmailCompra]  = useState<any>(null);
+  const [emailDest,    setEmailDest]    = useState('');
+  const [ecfEncf,      setEcfEncf]      = useState<string | null>(null);
+  const [aprobCompra,  setAprobCompra]  = useState<any>(null);
 
   const filters = {
     search: search || undefined,
@@ -215,6 +217,10 @@ export default function ComprasPage() {
           { key: 'pdf', label: 'Descargar PDF', icon: <FilePdfOutlined />, onClick: () => descargarPDF(r) },
           { key: 'email', label: 'Enviar email al proveedor', icon: <MailOutlined />, onClick: () => { setEmailCompra(r); setEmailDest((r as any).proveedor?.email ?? ''); } },
           { key: 'duplicar', label: 'Duplicar compra', icon: <CopyOutlined />, onClick: () => duplicarMut.mutate(r.id) },
+          ...(r.estado === 'borrador' ? [
+            { type: 'divider' as const },
+            { key: 'solicitar-aprobacion', label: <><CheckCircleOutlined style={{ marginRight: 6, color: '#1677ff' }} />Solicitar aprobación</>, onClick: () => setAprobCompra(r) },
+          ] : []),
           ...items,
           ...((r.estado === 'recibida' || r.estado === 'pagada') && !(r as any).ecfNumero ? [
             { type: 'divider' as const },
@@ -333,6 +339,17 @@ export default function ComprasPage() {
           </div>
         )}
       </Modal>
+
+      {aprobCompra && (
+        <SolicitarAprobacionModal
+          open={!!aprobCompra}
+          onClose={() => setAprobCompra(null)}
+          tipo="compra"
+          entidadId={aprobCompra.id}
+          entidadRef={aprobCompra.folio}
+          monto={aprobCompra.total}
+        />
+      )}
 
       <EcfResultModal encf={ecfEncf} onClose={() => setEcfEncf(null)} />
     </Card>

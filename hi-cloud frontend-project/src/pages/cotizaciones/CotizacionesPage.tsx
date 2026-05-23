@@ -6,9 +6,10 @@ import { Table, Button, Tag, Card, Row, Col, Typography, Statistic,
          Space, Popconfirm, message, Dropdown, Drawer, Descriptions,
          Modal, Input, Form, Tooltip, theme } from 'antd';
 import { TableActions } from '../../components/ui/TableActions';
+import { SolicitarAprobacionModal } from '../../components/ui/SolicitarAprobacionModal';
 import { PlusOutlined, EyeOutlined, MoreOutlined,
          MailOutlined, FileExcelOutlined, FilePdfOutlined, CopyOutlined,
-         EditOutlined, SearchOutlined } from '@ant-design/icons';
+         EditOutlined, SearchOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import api from '../../api/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -52,6 +53,7 @@ export default function CotizacionesPage() {
   const [detailId,    setDetailId]    = useState<number | null>(null);
   const [emailCot,    setEmailCot]    = useState<any>(null);
   const [emailForm]                   = Form.useForm();
+  const [aprobCot,    setAprobCot]    = useState<any>(null);   // cotización a aprobar
   const navigate = useNavigate();
   const qc = useQueryClient();
 
@@ -188,6 +190,14 @@ export default function CotizacionesPage() {
               window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`, '_blank');
             },
           },
+          ...(estado === 'borrador' || estado === 'enviada' ? [
+            { type: 'divider' as const },
+            {
+              key: 'aprobar',
+              label: <><CheckCircleOutlined style={{ marginRight: 6, color: '#1677ff' }} />Solicitar aprobación</>,
+              onClick: () => setAprobCot(r),
+            },
+          ] : []),
           ...(sigs.length > 0 ? [
             { type: 'divider' as const },
             ...sigs.map(s => ({
@@ -351,6 +361,18 @@ export default function CotizacionesPage() {
           </>
         )}
       </Drawer>
+
+      {/* Modal Solicitar Aprobación */}
+      {aprobCot && (
+        <SolicitarAprobacionModal
+          open={!!aprobCot}
+          onClose={() => setAprobCot(null)}
+          tipo="cotizacion"
+          entidadId={aprobCot.id}
+          entidadRef={aprobCot.numero}
+          monto={aprobCot.total}
+        />
+      )}
 
       {/* Modal envío por email */}
       <Modal

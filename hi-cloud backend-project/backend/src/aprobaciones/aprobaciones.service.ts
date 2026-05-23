@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { Aprobacion, EstadoAprobacion, TipoAprobacion } from './entities/aprobacion.entity';
 import { TenantService } from '../tenant/tenant.service';
 import { UserRole } from '../users/enums/user-role.enum';
@@ -21,6 +21,7 @@ export class AprobacionesService {
     @InjectRepository(Aprobacion)
     private repo: Repository<Aprobacion>,
     private tenantSvc: TenantService,
+    @InjectDataSource() private dataSource: DataSource,
   ) {}
 
   // ─── Solicitar aprobación ─────────────────────────────────────────────────────
@@ -129,6 +130,78 @@ export class AprobacionesService {
       aprobados:  Number(raw.find(r => r.estado === 'aprobado')?.cantidad  ?? 0),
       rechazados: Number(raw.find(r => r.estado === 'rechazado')?.cantidad ?? 0),
     };
+  }
+
+  // ─── Buscar documento para autocomplete ──────────────────────────────────────
+
+  async buscarDocumento(
+    tipo: TipoAprobacion,
+    q: string,
+  ): Promise<{ id: number; ref: string; monto: number; extra: string }[]> {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const like = `%${(q ?? '').toLowerCase()}%`;
+
+    switch (tipo) {
+      case TipoAprobacion.COTIZACION:
+        return this.dataSource.query(
+          `SELECT c.id, c.numero AS ref, c.total::float AS monto, c.estado, cl.nombre AS extra
+           FROM cotizaciones c
+           LEFT JOIN clientes cl ON cl.id = c."clienteId"
+           WHERE c."empresaId" = $1 AND c."isActive" = true
+             AND (LOWER(c.numero) LIKE $2 OR LOWER(COALESCE(cl.nombre,'')) LIKE $2)
+           ORDER BY c."createdAt" DESC LIMIT 10`,
+          [empresaId, like],
+        );
+
+      case TipoAprobacion.PRE_FACTURA:
+        return this.dataSource.query(
+          `SELECT p.id, p.folio AS ref, p.total::float AS monto, p.estado, cl.nombre AS extra
+           FROM pre_facturas p
+           LEFT JOIN clientes cl ON cl.id = p."clienteId"
+           WHERE p."empresaId" = $1 AND p."isActive" = true
+             AND (LOWER(p.folio) LIKE $2 OR LOWER(COALESCE(cl.nombre,'')) LIKE $2)
+           ORDER BY p."createdAt" DESC LIMIT 10`,
+          [empresaId, like],
+        );
+
+      case TipoAprobacion.COMPRA:
+        return this.dataSource.query(
+          `SELECT c.id, c.folio AS ref, c.total::float AS monto, c.estado, pr.nombre AS extra
+           FROM compras c
+           LEFT JOIN proveedores pr ON pr.id = c."proveedorId"
+           WHERE c."empresaId" = $1 AND c."isActive" = true
+             AND (LOWER(c.folio) LIKE $2 OR LOWER(COALESCE(pr.nombre,'')) LIKE $2)
+           ORDER BY c."createdAt" DESC LIMIT 10`,
+          [empresaId, like],
+        );
+
+      case TipoAprobacion.GASTO:
+        return this.dataSource.query(
+          `SELECT g.id,
+                  'GAS-' || LPAD(g.id::text, 6, '0') AS ref,
+                  g.total::float AS monto,
+                  g.descripcion AS extra
+           FROM gastos g
+           WHERE g."empresaId" = $1 AND g."isActive" = true
+             AND (LOWER(g.descripcion) LIKE $2 OR LOWER(COALESCE(g.proveedor,'')) LIKE $2)
+           ORDER BY g."createdAt" DESC LIMIT 10`,
+          [empresaId, like],
+        );
+
+      case TipoAprobacion.NOTA_DEBITO:
+        return this.dataSource.query(
+          `SELECT nd.id, nd.numero AS ref, nd.total::float AS monto, nd.estado, cl.nombre AS extra
+           FROM notas_debito nd
+           LEFT JOIN clientes cl ON cl.id = nd."clienteId"
+           WHERE nd."empresaId" = $1 AND nd."isActive" = true
+             AND (LOWER(nd.numero) LIKE $2 OR LOWER(COALESCE(cl.nombre,'')) LIKE $2)
+           ORDER BY nd."createdAt" DESC LIMIT 10`,
+          [empresaId, like],
+        );
+
+      default:
+        return [];
+    }
   }
 
   private verificarPermiso(userRole: string) {

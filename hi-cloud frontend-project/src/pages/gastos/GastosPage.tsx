@@ -7,7 +7,8 @@ import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Table, Button, Card, Row, Col, Typography, Statistic, Tag,
          Modal, Form, Input, InputNumber, Select, DatePicker, message,
          Tabs, Popconfirm, Space, Alert, theme } from 'antd';
-import { PlusOutlined, DeleteOutlined, FileExcelOutlined, AuditOutlined, FilePdfOutlined, LoadingOutlined, SearchOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, FileExcelOutlined, AuditOutlined, FilePdfOutlined, LoadingOutlined, SearchOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import { SolicitarAprobacionModal } from '../../components/ui/SolicitarAprobacionModal';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -46,7 +47,8 @@ export default function GastosPage() {
   const [open,         setOpen]         = useState(false);
   const [ecfEncf,      setEcfEncf]      = useState<string | null>(null);
   const [detalleGasto, setDetalleGasto] = useState<any>(null);
-  const [pdfPending, setPdfPending] = useState<number | null>(null);
+  const [pdfPending,   setPdfPending]   = useState<number | null>(null);
+  const [aprobGasto,   setAprobGasto]   = useState<any>(null);
   const [form]                      = Form.useForm();
   const qc = useQueryClient();
 
@@ -174,6 +176,12 @@ export default function GastosPage() {
               icon: pdfPending === r.id ? <LoadingOutlined /> : <FilePdfOutlined />,
               disabled: pdfPending === r.id,
               onClick: () => descargarPDF(r) },
+            { type: 'divider' as const },
+            {
+              key: 'solicitar-aprobacion',
+              label: <><CheckCircleOutlined style={{ marginRight: 6, color: '#1677ff' }} />Solicitar aprobación</>,
+              onClick: () => setAprobGasto(r),
+            },
             { type: 'divider' as const },
             { key: 'eliminar', label: 'Eliminar gasto', icon: <DeleteOutlined />, danger: true,
               onClick: () => Modal.confirm({
@@ -441,6 +449,17 @@ export default function GastosPage() {
       </Modal>
 
       <EcfResultModal encf={ecfEncf} onClose={() => setEcfEncf(null)} />
+
+      {aprobGasto && (
+        <SolicitarAprobacionModal
+          open={!!aprobGasto}
+          onClose={() => setAprobGasto(null)}
+          tipo="gasto"
+          entidadId={aprobGasto.id}
+          entidadRef={`GAS-${String(aprobGasto.id).padStart(6, '0')}`}
+          monto={aprobGasto.total}
+        />
+      )}
 
       <DetailDrawer
         open={!!detalleGasto}

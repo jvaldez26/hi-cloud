@@ -50,6 +50,14 @@ export class AprobacionesController {
     @Query('tipo')   tipo?:   TipoAprobacion,
   ) { return this.svc.listar(pagination, estado, tipo); }
 
+  @Get('buscar-documento')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Buscar documentos reales por tipo para autocompletado — ?tipo=cotizacion&q=COT-001' })
+  buscarDocumento(
+    @Query('tipo') tipo: TipoAprobacion,
+    @Query('q')    q:    string,
+  ) { return this.svc.buscarDocumento(tipo, q ?? ''); }
+
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   findOne(@Param('id', ParseIntPipe) id: number) { return this.svc.findOne(id); }
