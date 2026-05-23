@@ -1,6 +1,7 @@
 /* ─────────────────────────────────────────────────────────────────────────────
-   HiCloud ERP — Template de Factura Electrónica
+   HiCloud ERP — Template de Factura Electrónica v2
    Diseño profesional para el mercado dominicano · Puppeteer HTML → PDF A4
+   Layout: Header 2col | Separador negro | Cliente box | Tabla | QR + Totales
 ───────────────────────────────────────────────────────────────────────────── */
 
 export interface FacturaPDFData {
@@ -20,6 +21,7 @@ export interface FacturaPDFData {
   ecfTipoDescripcion?: string;
   ecfCodigoSeguridad?: string;
   ecfEstadoDGII?:      string;
+  ecfFechaFirma?:      string;   // fecha firma digital MSeller
   // Empresa (emisor)
   empresaNombre:       string;
   empresaRNC:          string;
@@ -53,7 +55,7 @@ export interface FacturaPDFData {
   itbisTotal:          number;
   totalGeneral:        number;
   montoEnLetras:       string;
-  // QR base64
+  // QR base64 (generado desde ecf.qrUrl de MSeller)
   qrBase64?:           string;
 }
 
@@ -75,17 +77,17 @@ export interface FacturaPDFItem {
 
 function money(n: number | undefined | null): string {
   if (n == null) return 'RD$ 0.00';
-  return 'RD$ ' + n.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return 'RD$ ' + n.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function dateFmt(s: string | undefined): string {
   if (!s) return '';
   try {
     const d = new Date(s);
-    const dd = String(d.getDate()).padStart(2, '0');
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd   = String(d.getDate()).padStart(2, '0');
+    const mm   = String(d.getMonth() + 1).padStart(2, '0');
     const yyyy = d.getFullYear();
-    return `${dd}-${mm}-${yyyy}`;
+    return `${dd}/${mm}/${yyyy}`;
   } catch { return s; }
 }
 
@@ -94,281 +96,255 @@ function esc(s?: string | null): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+/** Mapea código ECF → título completo del documento */
+function ecfTipoTitulo(tipo?: string): string {
+  const map: Record<string, string> = {
+    E31: 'FACTURA DE CRÉDITO FISCAL ELECTRÓNICA',
+    E32: 'FACTURA DE CONSUMO ELECTRÓNICA',
+    E33: 'NOTA DE DÉBITO ELECTRÓNICA',
+    E34: 'NOTA DE CRÉDITO ELECTRÓNICA',
+    E41: 'COMPROBANTE DE COMPRAS ELECTRÓNICO',
+    E44: 'REGÍMENES ESPECIALES ELECTRÓNICO',
+    E45: 'GUBERNAMENTAL ELECTRÓNICO',
+    E47: 'COMPROBANTE PARA GASTOS MENORES ELECTRÓNICO',
+  };
+  return tipo ? (map[tipo] ?? 'FACTURA ELECTRÓNICA') : 'FACTURA ELECTRÓNICA';
+}
+
 // ── Generador ─────────────────────────────────────────────────────────────────
 
 export function generarHTMLFactura(d: FacturaPDFData): string {
-  const COLOR = d.empresaColorPrimario || '#1E3A8A';
-  const DARK  = '#111827';
-  const GRAY  = '#6B7280';
-  const LGRAY = '#F3F4F6';
-  const TEXT  = '#1F2937';
-  const GREEN = '#15803D';
-  const RED   = '#DC2626';
+  const NEAR_BLACK = '#1a1a1a';
+  const GRAY       = '#555555';
+  const LGRAY      = '#f5f5f5';
+  const GREEN      = '#15803D';
 
-  // ── Logo ──────────────────────────────────────────────────────────
+  // ── Logo ──────────────────────────────────────────────────────────────────
   const iniciales = (d.empresaNombre || 'HC')
     .split(' ').slice(0, 2).map((w: string) => w[0]).join('').toUpperCase();
 
   const logoHtml = d.empresaLogo
-    ? `<img src="${d.empresaLogo}" style="height:72px;max-width:160px;object-fit:contain;" onerror="this.style.display='none'">`
-    : `<div style="width:64px;height:64px;background:${COLOR};border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;color:#fff;">${iniciales}</div>`;
+    ? `<img src="${d.empresaLogo}" style="height:70px;max-width:160px;object-fit:contain;display:block;" onerror="this.style.display='none'">`
+    : `<div style="width:60px;height:60px;background:${NEAR_BLACK};border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900;color:#fff;flex-shrink:0;">${iniciales}</div>`;
 
-  // ── Badge ORIGINAL / COPIA ────────────────────────────────────────
-  const badgeLabel = d.esOriginal ? 'ORIGINAL' : 'COPIA';
-  const badgeColor = d.esOriginal ? COLOR : '#9CA3AF';
+  // ── Título del documento (por tipo ECF) ───────────────────────────────────
+  const docTitulo = ecfTipoTitulo(d.ecfTipo);
 
-  // ── Estado e-CF ───────────────────────────────────────────────────
-  const ecfColor = d.ecfEstadoDGII === 'aceptado' ? GREEN
-    : d.ecfEstadoDGII === 'rechazado' ? RED
-    : '#D97706';
+  // ── e-NCF block (columna derecha del header) ──────────────────────────────
+  const encfBlock = d.ecfNumero
+    ? `<div style="font-size:18px;font-weight:900;color:${NEAR_BLACK};font-family:monospace;letter-spacing:1px;margin-top:4px;">${esc(d.ecfNumero)}</div>`
+    : `<div style="font-size:11px;color:#999;margin-top:4px;font-style:italic;">e-NCF pendiente</div>`;
 
-  // ── Filas de items ────────────────────────────────────────────────
+  // ── Fecha de vigencia / vencimiento (verde) ───────────────────────────────
+  const fechaVigenciaBlock = d.fechaVencimiento
+    ? `<div style="font-size:10px;font-weight:600;color:${GREEN};margin-top:3px;">Vence: ${dateFmt(d.fechaVencimiento)}</div>`
+    : '';
+
+  // ── Filas de info (columna derecha) ──────────────────────────────────────
+  const infoDerechaRows: Array<[string, string]> = [
+    ['No. Factura', esc(d.numero)],
+    ...(d.vendedorNombre  ? [['Vendedor',  esc(d.vendedorNombre)]  as [string, string]] : []),
+    ['Moneda',     esc(d.moneda)],
+    ['Tipo',       esc(d.condicionPago ?? d.tipo)],
+    ...(d.sucursalNombre  ? [['Sucursal',  esc(d.sucursalNombre)]  as [string, string]] : []),
+    ['Fecha',      dateFmt(d.fechaEmision)],
+  ];
+
+  const infoDerechaHtml = infoDerechaRows.map(([label, val]) =>
+    `<div style="display:flex;justify-content:flex-end;gap:8px;font-size:10px;line-height:1.7;">
+      <span style="color:${GRAY};font-weight:600;">${label}:</span>
+      <span style="color:${NEAR_BLACK};font-weight:700;">${val}</span>
+    </div>`
+  ).join('');
+
+  // ── Filas de productos ────────────────────────────────────────────────────
   const itemRows = d.items.map((item, i) => {
-    const bg = i % 2 === 0 ? '#fff' : LGRAY;
-    const itbisLabel = item.itbisPct === 0
+    const bg         = i % 2 === 0 ? '#ffffff' : LGRAY;
+    const descValor  = item.descuentoPct > 0
+      ? `${item.descuentoPct}%`
+      : `<span style="color:#ccc;">—</span>`;
+    const itbisValor = item.itbisPct === 0
       ? `<span style="font-size:9px;background:#D1FAE5;color:${GREEN};padding:1px 5px;border-radius:3px;font-weight:700;">EXENTO</span>`
-      : `${item.itbisPct}%`;
+      : money(item.importeItbis);
     return `
-      <tr style="background:${bg};border-bottom:1px solid #E5E7EB;">
-        <td style="padding:8px 10px;font-size:10px;color:${GRAY};font-family:monospace;white-space:nowrap;">${esc(item.codigo ?? '')}</td>
-        <td style="padding:8px 10px;font-size:11px;color:${TEXT};font-weight:500;max-width:200px;">${esc(item.descripcion)}</td>
-        <td style="padding:8px 10px;font-size:11px;color:${TEXT};text-align:right;font-variant-numeric:tabular-nums;">${Number(item.cantidad).toLocaleString('es-DO', { minimumFractionDigits: 2 })}</td>
-        <td style="padding:8px 10px;font-size:10px;color:${GRAY};text-align:center;">${esc(item.unidadMedida ?? 'UN')}</td>
-        <td style="padding:8px 10px;font-size:11px;color:${TEXT};text-align:right;font-variant-numeric:tabular-nums;">${money(item.precioUnitario)}</td>
-        <td style="padding:8px 10px;font-size:10px;text-align:center;color:${GRAY};">${itbisLabel}</td>
-        <td style="padding:8px 10px;font-size:11px;color:${DARK};font-weight:700;text-align:right;font-variant-numeric:tabular-nums;">${money(item.total)}</td>
+      <tr style="background:${bg};border-bottom:1px solid #e8e8e8;">
+        <td style="padding:8px 10px;font-size:10.5px;color:${NEAR_BLACK};">${esc(item.descripcion)}</td>
+        <td style="padding:8px 8px;font-size:10.5px;color:${NEAR_BLACK};text-align:right;font-variant-numeric:tabular-nums;">${Number(item.cantidad).toLocaleString('es-DO', { minimumFractionDigits: 2 })}</td>
+        <td style="padding:8px 8px;font-size:10.5px;color:${NEAR_BLACK};text-align:right;font-variant-numeric:tabular-nums;">${money(item.precioUnitario)}</td>
+        <td style="padding:8px 8px;font-size:10.5px;color:${GRAY};text-align:right;">${descValor}</td>
+        <td style="padding:8px 8px;font-size:10.5px;color:${NEAR_BLACK};text-align:right;font-variant-numeric:tabular-nums;">${money(item.subtotal)}</td>
+        <td style="padding:8px 8px;font-size:10.5px;text-align:right;">${itbisValor}</td>
+        <td style="padding:8px 10px;font-size:10.5px;color:${NEAR_BLACK};font-weight:700;text-align:right;font-variant-numeric:tabular-nums;">${money(item.total)}</td>
       </tr>`;
   }).join('');
 
-  // ── QR / ECF block ────────────────────────────────────────────────
-  const ecfAceptado = ['aceptado'].includes(d.ecfEstadoDGII ?? '');
-  const sinEcf      = !d.ecfNumero;
+  // ── Sección de seguridad DGII (QR + código) ───────────────────────────────
+  const qrImgHtml = d.qrBase64
+    ? `<img src="data:image/png;base64,${d.qrBase64}" style="width:130px;height:130px;display:block;margin:8px auto;" alt="QR DGII">`
+    : `<div style="width:130px;height:130px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-size:9px;color:#999;text-align:center;margin:8px auto;border:1px dashed #ccc;">QR<br>pendiente</div>`;
 
-  const qrBlock = d.qrBase64
-    ? `<img src="data:image/png;base64,${d.qrBase64}" style="width:100px;height:100px;display:block;margin:0 auto;" alt="QR DGII">`
-    : `<div style="width:100px;height:100px;background:#E5E7EB;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:9px;color:${GRAY};text-align:center;margin:0 auto;">QR<br>pendiente</div>`;
-
-  const ecfSection = sinEcf ? `
-    <div style="background:#FFFBEB;border:1px solid #FCD34D;border-radius:8px;padding:12px 16px;display:flex;align-items:center;gap:10px;">
-      <span style="font-size:18px;">⚠️</span>
-      <div>
-        <div style="font-size:11px;font-weight:700;color:#92400E;">Comprobante Fiscal Electrónico en proceso</div>
-        <div style="font-size:10px;color:#B45309;margin-top:2px;">El e-NCF se actualizará cuando sea aceptado por la DGII.</div>
-      </div>
+  const seguridadFiscalHtml = d.ecfNumero ? `
+    <div style="border:1.5px dashed #333;padding:12px 14px;text-align:center;min-width:180px;max-width:220px;">
+      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:${NEAR_BLACK};margin-bottom:4px;">Seguridad Fiscal DGII</div>
+      ${qrImgHtml}
+      ${d.ecfCodigoSeguridad
+        ? `<div style="font-size:9px;color:${GRAY};margin-top:4px;">Cód. Seguridad: <strong style="color:${NEAR_BLACK};font-family:monospace;letter-spacing:2px;">${esc(d.ecfCodigoSeguridad)}</strong></div>`
+        : ''}
+      ${d.ecfFechaFirma
+        ? `<div style="font-size:9px;color:${GRAY};margin-top:3px;">Fecha Firma Digital: <strong style="color:${NEAR_BLACK};">${dateFmt(d.ecfFechaFirma)}</strong></div>`
+        : ''}
+      <div style="font-size:8px;color:#777;margin-top:6px;">Verifique en: <strong>ecf.dgii.gov.do</strong></div>
     </div>` : `
-    <div style="border:1px solid #D1FAE5;border-radius:8px;background:#F0FDF4;padding:14px 16px;display:flex;gap:16px;align-items:center;">
-      <div style="flex-shrink:0;">
-        ${qrBlock}
-        <div style="font-size:8px;color:${GRAY};text-align:center;margin-top:4px;">Escanear en DGII</div>
-      </div>
-      <div style="flex:1;">
-        <div style="font-size:10px;font-weight:800;color:${GREEN};text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">🔒 Comprobante Fiscal Electrónico</div>
-        <div style="font-size:15px;font-weight:900;color:${DARK};font-family:monospace;letter-spacing:-0.5px;">${esc(d.ecfNumero)}</div>
-        <div style="font-size:10px;color:${GRAY};margin-top:4px;">${esc(d.ecfTipoDescripcion ?? d.ecfTipo ?? '')}</div>
-        ${d.ecfCodigoSeguridad ? `
-        <div style="margin-top:6px;">
-          <span style="font-size:10px;color:${GRAY};">Código de Seguridad: </span>
-          <span style="font-size:11px;font-weight:700;color:${DARK};font-family:monospace;letter-spacing:2px;">${esc(d.ecfCodigoSeguridad)}</span>
-        </div>` : ''}
-        ${d.ecfEstadoDGII ? `
-        <div style="margin-top:6px;">
-          <span style="background:${ecfColor}22;color:${ecfColor};font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;">${(d.ecfEstadoDGII).toUpperCase()}</span>
-        </div>` : ''}
-        <div style="margin-top:8px;font-size:9px;color:${GRAY};">Verifique en: <strong>ecf.dgii.gov.do</strong></div>
-      </div>
+    <div style="border:1.5px dashed #ddd;padding:12px 14px;text-align:center;min-width:180px;max-width:220px;">
+      <div style="font-size:9px;color:#bbb;">e-NCF en proceso de emisión</div>
     </div>`;
 
-  // ── Fila de info de la factura ─────────────────────────────────────
-  const infoRows: [string, string][] = [
-    ['Fecha',     dateFmt(d.fechaEmision)],
-    ['Factura No.', esc(d.numero)],
-    ['Tipo e-CF',   esc(d.ecfTipo ? `${d.ecfTipo} — ${d.ecfTipoDescripcion ?? ''}` : '—')],
-    ['Tipo Pago',   esc(d.condicionPago ?? d.tipo)],
-    ...(d.tipo === 'CRÉDITO' && d.diasCredito ? [['Plazo', `${d.diasCredito} días`] as [string, string]] : []),
-    ...(d.fechaVencimiento ? [['Vencimiento', dateFmt(d.fechaVencimiento)] as [string, string]] : []),
-    ['Moneda',      esc(d.moneda)],
-    ...(d.vendedorNombre ? [['Vendedor', esc(d.vendedorNombre)] as [string, string]] : []),
-    ...(d.sucursalNombre  ? [['Sucursal',  esc(d.sucursalNombre)] as [string, string]]  : []),
+  // ── Totales ───────────────────────────────────────────────────────────────
+  const totalesFilas: Array<[string, string]> = [
+    ['Subtotal Gravado',  money(d.subtotalGravado)],
+    ...(d.subtotalExento > 0  ? [['Subtotal Exento',  money(d.subtotalExento)]  as [string, string]] : []),
+    ['Subtotal General', money(d.subtotalGeneral)],
+    ...(d.descuentoTotal > 0  ? [['Descuento',        `-${money(d.descuentoTotal)}`] as [string, string]] : []),
+    ['ITBIS 18%',        money(d.itbisTotal)],
   ];
 
-  const infoRowsHtml = infoRows.map(([label, val]) => `
-    <tr>
-      <td style="padding:5px 10px;font-size:10px;font-weight:600;color:${GRAY};text-transform:uppercase;white-space:nowrap;border-bottom:1px solid #E5E7EB;">${label}</td>
-      <td style="padding:5px 10px;font-size:11px;font-weight:700;color:${DARK};border-bottom:1px solid #E5E7EB;">${val}</td>
-    </tr>`).join('');
+  const totalesHtml = totalesFilas.map(([label, val]) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #e8e8e8;">
+      <span style="font-size:11px;color:${GRAY};">${label}</span>
+      <span style="font-size:11px;font-weight:600;color:${NEAR_BLACK};font-variant-numeric:tabular-nums;">${val}</span>
+    </div>`).join('');
 
-  // ── Badge tipo cliente ─────────────────────────────────────────────
-  const badgeTipoCliente = d.tipoCliente === 'RNC'
-    ? `<span style="background:#DBEAFE;color:#1D4ED8;font-size:9px;font-weight:700;padding:2px 7px;border-radius:10px;">CONTRIBUYENTE RNC</span>`
-    : d.tipoCliente === 'CEDULA'
-    ? `<span style="background:#D1FAE5;color:${GREEN};font-size:9px;font-weight:700;padding:2px 7px;border-radius:10px;">PERSONA FÍSICA</span>`
-    : `<span style="background:#F3F4F6;color:${GRAY};font-size:9px;font-weight:700;padding:2px 7px;border-radius:10px;">CONSUMIDOR FINAL</span>`;
+  // ── Notas / pie factura ───────────────────────────────────────────────────
+  const tieneNotas     = !!(d.notas?.trim());
+  const tienePie       = !!(d.empresaPieFactura?.trim());
+  const notasHtml = (tieneNotas || tienePie) ? `
+    <div style="margin-top:12px;padding:8px 12px;background:#fafafa;border-left:3px solid #ddd;border-radius:0 4px 4px 0;">
+      <div style="font-size:9px;font-weight:700;color:#777;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">Notas</div>
+      <div style="font-size:10px;color:#555;line-height:1.6;">${esc(d.notas || d.empresaPieFactura)}</div>
+    </div>` : '';
 
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <title>Factura ${esc(d.numero)}</title>
 <style>
-  *  { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family:'Inter','Segoe UI',Arial,sans-serif; background:#fff; color:${TEXT}; font-size:12px; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; background:#fff; color:${NEAR_BLACK}; font-size:11px; }
   @page { size:A4; margin:0; }
   @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
-  .page { width:794px; min-height:1123px; background:#fff; display:flex; flex-direction:column; }
+  .page { width:794px; min-height:1123px; background:#fff; display:flex; flex-direction:column; padding:28px 36px 24px; }
   table { border-collapse:collapse; width:100%; }
-  .mono { font-variant-numeric:tabular-nums; }
 </style>
 </head>
 <body>
 <div class="page">
 
-  <!-- ▌ Franja superior color ──────────────────────────────────────── -->
-  <div style="height:5px;background:${COLOR};"></div>
+  <!-- ══════════════════════════════════════════════════════════════════
+       SECCIÓN 1: ENCABEZADO — dos columnas
+  ══════════════════════════════════════════════════════════════════ -->
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin-bottom:14px;">
 
-  <!-- ▌ SECCIÓN 1: Encabezado ──────────────────────────────────────── -->
-  <div style="padding:22px 36px 16px;display:flex;justify-content:space-between;align-items:flex-start;gap:20px;">
-
-    <!-- Logo + datos empresa -->
-    <div style="display:flex;gap:14px;align-items:flex-start;flex:1;">
+    <!-- Columna izquierda: Logo + datos empresa -->
+    <div style="display:flex;gap:12px;align-items:flex-start;flex:1;">
       ${logoHtml}
-      <div>
-        <div style="font-size:16px;font-weight:900;color:${DARK};line-height:1.2;text-transform:uppercase;">${esc(d.empresaNombre)}</div>
-        <div style="margin-top:5px;">
-          <span style="font-size:9px;font-weight:700;background:${DARK};color:#fff;padding:2px 8px;border-radius:10px;letter-spacing:.5px;">RNC ${esc(d.empresaRNC)}</span>
-        </div>
-        <div style="margin-top:7px;font-size:10px;color:${GRAY};line-height:1.8;">
+      <div style="padding-top:2px;">
+        <div style="font-size:17px;font-weight:900;color:${NEAR_BLACK};text-transform:uppercase;line-height:1.25;">${esc(d.empresaNombre)}</div>
+        <div style="margin-top:6px;font-size:10px;color:${GRAY};line-height:1.85;">
           ${d.empresaDireccion ? `<div>${esc(d.empresaDireccion)}${d.empresaCiudad ? ', ' + esc(d.empresaCiudad) : ''}</div>` : ''}
-          ${d.empresaTelefono  ? `<div>Tel. ${esc(d.empresaTelefono)}</div>` : ''}
-          ${d.empresaEmail     ? `<div>${esc(d.empresaEmail)}</div>` : ''}
-          ${d.empresaSitioWeb  ? `<div style="color:${COLOR};">${esc(d.empresaSitioWeb)}</div>` : ''}
+          ${d.empresaEmail     ? `<div>${esc(d.empresaEmail)}</div>`                                                           : ''}
+          ${d.empresaTelefono  ? `<div>Tel. ${esc(d.empresaTelefono)}</div>`                                                   : ''}
+          <div>RNC: <strong style="color:${NEAR_BLACK};">${esc(d.empresaRNC)}</strong></div>
         </div>
       </div>
     </div>
 
-    <!-- Título + badge ORIGINAL/COPIA -->
-    <div style="text-align:right;flex-shrink:0;min-width:180px;">
-      <div style="display:inline-block;border:2px solid ${badgeColor};border-radius:6px;padding:4px 18px;margin-bottom:10px;">
-        <div style="font-size:14px;font-weight:900;color:${badgeColor};letter-spacing:2px;">${badgeLabel}</div>
-      </div>
-      <div style="font-size:11px;font-weight:700;color:${GRAY};text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Factura Electrónica</div>
-      <div style="font-size:20px;font-weight:900;color:${COLOR};font-family:monospace;letter-spacing:-1px;">${esc(d.numero)}</div>
-      <div style="font-size:12px;font-weight:600;color:${DARK};margin-top:4px;">${dateFmt(d.fechaEmision)}</div>
-    </div>
-  </div>
-
-  <!-- Separador -->
-  <div style="height:2px;background:${COLOR};margin:0 36px;"></div>
-
-  <!-- ▌ SECCIÓN 2: Info factura + datos cliente ─────────────────────── -->
-  <div style="display:flex;gap:16px;padding:16px 36px;">
-
-    <!-- Datos de la factura -->
-    <div style="flex:0 0 240px;border:1px solid #E5E7EB;border-radius:8px;overflow:hidden;">
-      <div style="background:${COLOR};padding:7px 12px;">
-        <span style="font-size:10px;font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:.8px;">📋 Datos de la Factura</span>
-      </div>
-      <table>
-        <tbody>${infoRowsHtml}</tbody>
-      </table>
-    </div>
-
-    <!-- Datos del cliente -->
-    <div style="flex:1;border:1px solid #E5E7EB;border-radius:8px;overflow:hidden;">
-      <div style="background:${DARK};padding:7px 12px;">
-        <span style="font-size:10px;font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:.8px;">👤 Cliente</span>
-      </div>
-      <div style="padding:12px 14px;">
-        <div style="margin-bottom:6px;">${badgeTipoCliente}</div>
-        <div style="font-size:15px;font-weight:900;color:${DARK};line-height:1.3;margin-top:4px;">${esc(d.clienteNombre)}</div>
-        ${d.clienteRNC ? `<div style="font-size:10px;color:${GRAY};margin-top:4px;">RNC / Cédula: <strong style="color:${DARK};">${esc(d.clienteRNC)}</strong></div>` : ''}
-        ${d.clienteDireccion ? `<div style="font-size:10px;color:${GRAY};margin-top:4px;">${esc(d.clienteDireccion)}${d.clienteCiudad ? ', ' + esc(d.clienteCiudad) : ''}</div>` : ''}
-        <div style="display:flex;gap:14px;margin-top:6px;flex-wrap:wrap;">
-          ${d.clienteTelefono ? `<span style="font-size:10px;color:${GRAY};">Tel. ${esc(d.clienteTelefono)}</span>` : ''}
-          ${d.clienteEmail    ? `<span style="font-size:10px;color:${GRAY};">${esc(d.clienteEmail)}</span>` : ''}
-        </div>
+    <!-- Columna derecha: tipo documento + e-NCF + info -->
+    <div style="text-align:right;flex-shrink:0;min-width:240px;max-width:270px;">
+      <div style="font-size:11px;font-weight:900;color:${NEAR_BLACK};text-transform:uppercase;line-height:1.35;">${docTitulo}</div>
+      ${encfBlock}
+      ${fechaVigenciaBlock}
+      <div style="margin-top:8px;">
+        ${infoDerechaHtml}
       </div>
     </div>
   </div>
 
-  <!-- ▌ SECCIÓN 3: Tabla de items ────────────────────────────────────── -->
-  <div style="padding:0 36px;flex:1;">
-    <table>
-      <thead>
-        <tr style="background:${DARK};">
-          <th style="padding:9px 10px;font-size:9px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.5px;text-align:left;width:70px;">Código</th>
-          <th style="padding:9px 10px;font-size:9px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.5px;text-align:left;">Descripción</th>
-          <th style="padding:9px 10px;font-size:9px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.5px;text-align:right;width:60px;">Cant.</th>
-          <th style="padding:9px 10px;font-size:9px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.5px;text-align:center;width:45px;">U/M</th>
-          <th style="padding:9px 10px;font-size:9px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.5px;text-align:right;width:100px;">Precio Unit.</th>
-          <th style="padding:9px 10px;font-size:9px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.5px;text-align:center;width:60px;">ITBIS</th>
-          <th style="padding:9px 10px;font-size:9px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.5px;text-align:right;width:100px;">Total</th>
-        </tr>
-      </thead>
-      <tbody>${itemRows}</tbody>
-    </table>
+  <!-- ══════════════════════════════════════════════════════════════════
+       SEPARADOR negro grueso
+  ══════════════════════════════════════════════════════════════════ -->
+  <div style="height:4px;background:${NEAR_BLACK};margin-bottom:12px;"></div>
+
+  <!-- ══════════════════════════════════════════════════════════════════
+       SECCIÓN 2: DATOS DEL CLIENTE — caja con borde
+  ══════════════════════════════════════════════════════════════════ -->
+  <div style="border:1.5px solid ${NEAR_BLACK};display:flex;margin-bottom:14px;">
+    <div style="flex:0 0 180px;padding:8px 12px;border-right:1.5px solid ${NEAR_BLACK};">
+      <div style="font-size:9px;font-weight:700;color:${GRAY};text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">RNC / Cédula</div>
+      <div style="font-size:13px;font-weight:700;color:${NEAR_BLACK};">${esc(d.clienteRNC || '—')}</div>
+    </div>
+    <div style="flex:1;padding:8px 12px;">
+      <div style="font-size:9px;font-weight:700;color:${GRAY};text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">Nombre / Razón Social</div>
+      <div style="font-size:13px;font-weight:700;color:${NEAR_BLACK};">${esc(d.clienteNombre)}</div>
+      ${d.clienteDireccion ? `<div style="font-size:9px;color:${GRAY};margin-top:3px;">${esc(d.clienteDireccion)}${d.clienteCiudad ? ', ' + esc(d.clienteCiudad) : ''}</div>` : ''}
+    </div>
   </div>
 
-  <!-- ▌ SECCIÓN 4: Totales ────────────────────────────────────────────── -->
-  <div style="display:flex;justify-content:flex-end;padding:14px 36px 0;">
-    <div style="width:300px;">
-      ${[
-        ['Subtotal Gravado',  money(d.subtotalGravado),  false],
-        ...(d.subtotalExento > 0 ? [['Subtotal Exento', money(d.subtotalExento), false]] : []),
-        ...(d.descuentoTotal > 0 ? [['Descuento', `-${money(d.descuentoTotal)}`, false]] : []),
-        ['ITBIS 18%',         money(d.itbisTotal),       false],
-      ].map(([label, val]) => `
-        <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #E5E7EB;">
-          <span style="font-size:11px;color:${GRAY};">${label}</span>
-          <span class="mono" style="font-size:11px;font-weight:600;color:${DARK};">${val}</span>
-        </div>`).join('')}
-      <!-- Total general -->
-      <div style="background:${COLOR};border-radius:6px;padding:12px 16px;margin-top:8px;display:flex;justify-content:space-between;align-items:center;">
-        <span style="font-size:12px;font-weight:700;color:#fff;">TOTAL</span>
-        <span class="mono" style="font-size:20px;font-weight:900;color:#fff;">${money(d.totalGeneral)}</span>
+  <!-- ══════════════════════════════════════════════════════════════════
+       SECCIÓN 3: TABLA DE PRODUCTOS
+  ══════════════════════════════════════════════════════════════════ -->
+  <table style="margin-bottom:16px;">
+    <thead>
+      <tr style="background:${NEAR_BLACK};">
+        <th style="padding:9px 10px;font-size:9px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;text-align:left;">Descripción</th>
+        <th style="padding:9px 8px;font-size:9px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;text-align:right;width:58px;">Cant.</th>
+        <th style="padding:9px 8px;font-size:9px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;text-align:right;width:92px;">Precio U.</th>
+        <th style="padding:9px 8px;font-size:9px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;text-align:right;width:58px;">Desc.</th>
+        <th style="padding:9px 8px;font-size:9px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;text-align:right;width:92px;">Subtotal</th>
+        <th style="padding:9px 8px;font-size:9px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;text-align:right;width:85px;">ITBIS</th>
+        <th style="padding:9px 10px;font-size:9px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;text-align:right;width:92px;">Total</th>
+      </tr>
+    </thead>
+    <tbody>${itemRows}</tbody>
+  </table>
+
+  <!-- ══════════════════════════════════════════════════════════════════
+       SECCIÓN 4: QR DGII (izq) + TOTALES (der)
+  ══════════════════════════════════════════════════════════════════ -->
+  <div style="display:flex;gap:20px;align-items:flex-start;flex:1;">
+
+    <!-- Izquierda: Seguridad Fiscal DGII -->
+    ${seguridadFiscalHtml}
+
+    <!-- Derecha: Totales -->
+    <div style="flex:1;display:flex;flex-direction:column;">
+      ${totalesHtml}
+      <!-- TOTAL GENERAL -->
+      <div style="background:${NEAR_BLACK};color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
+        <span style="font-size:13px;font-weight:700;letter-spacing:.5px;">TOTAL GENERAL</span>
+        <span style="font-size:22px;font-weight:900;font-family:monospace;font-variant-numeric:tabular-nums;">${money(d.totalGeneral)}</span>
       </div>
-      <div style="margin-top:6px;font-size:9px;color:${GRAY};text-align:right;font-style:italic;line-height:1.4;">${esc(d.montoEnLetras)}</div>
+      <div style="margin-top:6px;font-size:9px;color:${GRAY};text-align:right;font-style:italic;line-height:1.5;">${esc(d.montoEnLetras)}</div>
     </div>
   </div>
 
-  <!-- ▌ SECCIÓN 5: e-CF + QR ──────────────────────────────────────────── -->
-  <div style="padding:14px 36px 0;">
-    ${ecfSection}
-  </div>
+  <!-- Notas / pie de factura -->
+  ${notasHtml}
 
-  <!-- ▌ SECCIÓN 6: Notas ──────────────────────────────────────────────── -->
-  ${(d.notas || d.empresaPieFactura) ? `
-  <div style="padding:12px 36px 0;">
-    <div style="background:#FFFBEB;border-left:3px solid #FCD34D;border-radius:0 6px 6px 0;padding:10px 14px;">
-      <div style="font-size:9px;font-weight:700;color:#92400E;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Notas</div>
-      <div style="font-size:10px;color:#78350F;line-height:1.6;">${esc(d.notas || d.empresaPieFactura)}</div>
+  <!-- ══════════════════════════════════════════════════════════════════
+       SECCIÓN 5: FOOTER
+  ══════════════════════════════════════════════════════════════════ -->
+  <div style="margin-top:auto;padding-top:14px;border-top:1px solid #ddd;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;">
+    <div style="font-size:9px;color:${GRAY};flex:1;">
+      ${d.empresaPieFactura ? esc(d.empresaPieFactura) : 'Gracias por su preferencia.'}
     </div>
-  </div>` : ''}
-
-  <!-- ▌ SECCIÓN 7: Firmas ──────────────────────────────────────────────── -->
-  <div style="display:flex;gap:0;padding:20px 36px 0;margin-top:auto;">
-    ${['ELABORADO POR', 'AUTORIZADO POR', 'RECIBIDO CONFORME'].map((label, i) => `
-      <div style="flex:1;text-align:center;padding:0 12px;${i > 0 ? 'border-left:1px solid #E5E7EB;' : ''}">
-        <div style="border-bottom:1px solid ${DARK};margin-bottom:6px;height:36px;"></div>
-        <div style="font-size:9px;font-weight:700;color:${GRAY};text-transform:uppercase;letter-spacing:.5px;">${label}</div>
-        ${i === 0 && d.vendedorNombre ? `<div style="font-size:9px;color:${DARK};margin-top:2px;">${esc(d.vendedorNombre)}</div>` : ''}
-        ${i === 2 ? `<div style="font-size:9px;color:${GRAY};margin-top:2px;">Cédula: _______________</div>` : ''}
-      </div>`).join('')}
-  </div>
-
-  <!-- ▌ Footer ─────────────────────────────────────────────────────────── -->
-  <div style="background:${DARK};padding:10px 36px;margin-top:16px;display:flex;justify-content:space-between;align-items:center;">
-    <div style="font-size:9px;color:#9CA3AF;">
-      Documento generado electrónicamente · Válido según <strong style="color:#D1D5DB;">Ley 32-23 DGII República Dominicana</strong>
+    <div style="font-size:9px;color:${GRAY};text-align:center;">
+      ${d.empresaSitioWeb ? esc(d.empresaSitioWeb) : ''}
     </div>
-    <div style="font-size:9px;color:#6B7280;">
-      <strong style="color:${COLOR === '#1E3A8A' ? '#60A5FA' : COLOR};">HiCloud</strong> ERP
+    <div style="font-size:9px;color:#999;text-align:right;flex:1;">
+      Generado por <strong style="color:${NEAR_BLACK};">HiCloud ERP</strong>
     </div>
   </div>
-
-  <!-- Franja inferior -->
-  <div style="height:5px;background:${COLOR};"></div>
 
 </div>
 </body>

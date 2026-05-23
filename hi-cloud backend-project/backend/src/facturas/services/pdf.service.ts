@@ -68,20 +68,23 @@ export class PDFService {
       [empresaId],
     ).then((rows: any[]) => rows[0] || {});
 
-    // e-CF
+    // e-CF (incluye fechaFirma para el bloque de seguridad DGII en el PDF)
     const ecf = factura.ecfId
       ? await this.facturaRepo.manager.query(
-          'SELECT e.*, t.codigo, t.descripcion FROM ecf e JOIN tipos_ecf t ON t.id = e."tipoECFId" WHERE e.id = $1 LIMIT 1',
+          `SELECT e.*, t.codigo, t.descripcion
+             FROM ecf e
+             JOIN tipos_ecf t ON t.id = e."tipoECFId"
+            WHERE e.id = $1 LIMIT 1`,
           [factura.ecfId],
         ).then((r: any[]) => r[0])
       : null;
 
-    // QR DGII
+    // QR DGII — prioridad: qrUrl de MSeller (tiene CodigoSeguridadNCF real)
+    // Si no hay qrUrl, construir URL estándar DGII con CodigoSeguridadNCF
     let qrBase64 = '';
     if (ecf?.numero && empresa.rnc) {
-      // Usar qrUrl de MSeller si está disponible (URL oficial DGII), si no construirla
       const urlQR = ecf.qrUrl
-        ?? `https://ecf.dgii.gov.do/consulta?encf=${ecf.numero}&rnc=${empresa.rnc}${ecf.codigoSeguridad ? '&codseg=' + ecf.codigoSeguridad : ''}`;
+        ?? `https://ecf.dgii.gov.do/ECF/ConsultaResultado?RNCEmisor=${empresa.rnc}&eNCF=${ecf.numero}${ecf.codigoSeguridad ? '&CodigoSeguridadNCF=' + ecf.codigoSeguridad : ''}`;
       qrBase64 = await this.generarQR(urlQR);
     }
 
@@ -146,6 +149,7 @@ export class PDFService {
       ecfTipoDescripcion: ecf?.descripcion,
       ecfCodigoSeguridad: ecf?.codigoSeguridad,
       ecfEstadoDGII:      ecf?.estadoDGII,
+      ecfFechaFirma:      ecf?.fechaFirma ? String(ecf.fechaFirma) : undefined,
       empresaNombre:      empresa.razonSocial || empresa.nombre || 'Mi Empresa',
       empresaRNC:         empresa.rnc || '',
       empresaDireccion:   empresa.direccion || '',
