@@ -1,6 +1,6 @@
 /* ─────────────────────────────────────────────────────────────────────────────
-   HiCloud ERP — Template PDF para Nota de Débito (E33) y Nota de Crédito (E34)
-   Diseño profesional A4 · Puppeteer HTML → PDF
+   HiCloud ERP — Template PDF para Nota de Débito (E33) y Nota de Crédito (E34)  v2
+   Mismo diseño que factura: header 2col | sep negro | caja | tabla dark | totales
 ───────────────────────────────────────────────────────────────────────────── */
 
 export interface NotaPDFData {
@@ -47,237 +47,209 @@ export interface NotaPDFData {
   estado:             string;
 }
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
 function fmt(v: number): string {
-  return new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'DOP', minimumFractionDigits: 2 }).format(v ?? 0);
+  return 'RD$ ' + (v ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
-function fmtFecha(s: string): string {
-  try { return new Date(s + 'T12:00:00').toLocaleDateString('es-DO', { day: '2-digit', month: 'long', year: 'numeric' }); }
-  catch { return s; }
+
+function fmtF(s: string): string {
+  try {
+    const d  = new Date(s + 'T12:00:00');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    return `${dd}/${mm}/${d.getFullYear()}`;
+  } catch { return s; }
 }
+
+function esc(s?: string | null): string {
+  if (!s) return '';
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ── Generador ─────────────────────────────────────────────────────────────────
 
 export function generarHTMLNota(d: NotaPDFData): string {
-  const esDebito = d.tipo === 'DEBITO';
-  const color    = d.empresaColor ?? (esDebito ? '#d97706' : '#1a56db');
-  const colorLt  = esDebito ? '#fffbeb' : '#eff6ff';
-  const tipoLabel = esDebito ? 'NOTA DE DÉBITO' : 'NOTA DE CRÉDITO';
-  const tipoSub   = esDebito ? 'Comprobante de Cargo Adicional · E33' : 'Comprobante de Crédito / Devolución · E34';
-  const signo     = esDebito ? '+' : '-';
-  const estadoBadge = d.estado === 'emitida'  ? `<span style="background:#dcfce7;color:#15803d;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.5px">EMITIDA</span>`
-                   : d.estado === 'borrador' ? `<span style="background:#fef9c3;color:#92400e;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.5px">BORRADOR</span>`
-                   : `<span style="background:#fee2e2;color:#991b1b;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.5px">ANULADA</span>`;
+  const esDebito  = d.tipo === 'DEBITO';
+  const DARK      = '#111111';
+  const THEAD     = '#2d2d2d';
+  const GRAY      = '#555555';
+  const LGRAY     = '#f5f5f5';
+  const BORDER    = '#aaaaaa';
+  const GREEN     = '#15803D';
+
+  const tipoLabel  = esDebito ? 'NOTA DE DÉBITO ELECTRÓNICA' : 'NOTA DE CRÉDITO ELECTRÓNICA';
+  const tipoNcfLbl = esDebito ? 'E33' : 'E34';
+  const signo      = esDebito ? '+' : '-';
+
+  // Estado badge
+  const estadoBadge = d.estado === 'emitida'
+    ? `<span style="background:#dcfce7;color:${GREEN};font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;">EMITIDA</span>`
+    : d.estado === 'borrador'
+    ? `<span style="background:#fef3c7;color:#92400e;font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;">BORRADOR</span>`
+    : `<span style="background:#fee2e2;color:#991b1b;font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;">ANULADA</span>`;
+
+  // ── Logo ─────────────────────────────────────────────────────────────────
+  const iniciales = (d.empresaNombre || 'HC')
+    .split(' ').slice(0, 2).map((w: string) => w[0]).join('').toUpperCase();
 
   const logoHtml = d.empresaLogo
-    ? `<img src="${d.empresaLogo.startsWith('data:') ? d.empresaLogo : `data:image/jpeg;base64,${d.empresaLogo}`}" style="max-height:60px;max-width:160px;object-fit:contain" />`
-    : `<div style="font-size:22px;font-weight:900;color:${color};letter-spacing:-1px">${d.empresaNombre.substring(0,2).toUpperCase()}</div>`;
+    ? `<img src="${d.empresaLogo.startsWith('data:') ? d.empresaLogo : d.empresaLogo}" style="height:68px;max-width:150px;object-fit:contain;display:block;flex-shrink:0;" onerror="this.style.display='none'">`
+    : `<div style="width:56px;height:56px;background:${DARK};border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900;color:#fff;flex-shrink:0;">${iniciales}</div>`;
 
+  // ── Filas de items ────────────────────────────────────────────────────────
   const itemRows = d.items.map((it, i) => `
-    <tr style="background:${i % 2 === 0 ? '#fff' : '#f8fafc'}">
-      <td style="padding:8px 10px;font-size:12px;color:#1e293b">${it.descripcion}</td>
-      <td style="padding:8px 10px;text-align:right;font-size:12px;color:#475569">${Number(it.cantidad).toLocaleString('es-DO')}</td>
-      <td style="padding:8px 10px;text-align:right;font-size:12px;color:#475569">${fmt(it.precioUnitario)}</td>
-      <td style="padding:8px 10px;text-align:center;font-size:12px;color:#475569">${it.porcentajeIva}%</td>
-      <td style="padding:8px 10px;text-align:right;font-size:12px;color:#475569">${fmt(it.importeIva)}</td>
-      <td style="padding:8px 10px;text-align:right;font-size:12px;font-weight:700;color:#1e293b">${fmt(it.total)}</td>
+    <tr style="background:${i % 2 === 0 ? '#fff' : LGRAY};border-bottom:1px solid #e8e8e8;">
+      <td style="padding:7px 10px;font-size:10px;color:${DARK};">${esc(it.descripcion)}</td>
+      <td style="padding:7px 8px;font-size:10px;color:${DARK};text-align:right;font-variant-numeric:tabular-nums;">${Number(it.cantidad).toLocaleString('es-DO')}</td>
+      <td style="padding:7px 8px;font-size:10px;color:${DARK};text-align:right;font-variant-numeric:tabular-nums;">${fmt(it.precioUnitario)}</td>
+      <td style="padding:7px 8px;font-size:10px;color:${GRAY};text-align:center;">${it.porcentajeIva}%</td>
+      <td style="padding:7px 8px;font-size:10px;color:${DARK};text-align:right;font-variant-numeric:tabular-nums;">${fmt(it.importeIva)}</td>
+      <td style="padding:7px 10px;font-size:10px;color:${DARK};font-weight:700;text-align:right;font-variant-numeric:tabular-nums;">${fmt(it.total)}</td>
     </tr>`).join('');
 
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
+<title>${tipoLabel} ${esc(d.numero)}</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family: 'Helvetica Neue', Arial, sans-serif; color:#1e293b; background:#fff; font-size:13px; line-height:1.5; }
-  .page { width:210mm; min-height:297mm; padding:14mm 14mm 12mm; }
-  /* Header */
-  .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px; }
-  .header-left { flex:1; }
-  .header-right { text-align:right; }
-  .doc-type-badge {
-    display:inline-block; background:${color}; color:#fff;
-    padding:6px 18px; border-radius:6px; font-size:15px; font-weight:800;
-    letter-spacing:.5px; margin-bottom:6px;
-  }
-  .doc-number { font-size:20px; font-weight:900; color:#0f172a; font-family:monospace; }
-  .doc-sub { font-size:11px; color:#64748b; margin-top:2px; }
-  /* Strip */
-  .strip { height:4px; background:${color}; border-radius:2px; margin:16px 0; }
-  /* Parties */
-  .parties { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px; }
-  .party-box { border:1px solid #e2e8f0; border-radius:8px; padding:12px 14px; }
-  .party-label { font-size:10px; font-weight:700; color:${color}; text-transform:uppercase; letter-spacing:.8px; margin-bottom:6px; }
-  .party-name { font-size:14px; font-weight:700; color:#0f172a; margin-bottom:3px; }
-  .party-info { font-size:11px; color:#64748b; line-height:1.7; }
-  /* Reference box */
-  .ref-box { background:${colorLt}; border:1px solid ${color}30; border-left:4px solid ${color}; border-radius:6px; padding:10px 14px; margin-bottom:16px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
-  .ref-label { font-size:10px; font-weight:700; color:${color}; text-transform:uppercase; letter-spacing:.6px; }
-  .ref-value { font-size:13px; font-weight:700; color:#0f172a; font-family:monospace; }
-  .ref-encf { font-size:11px; color:#64748b; }
-  /* Table */
-  .items-table { width:100%; border-collapse:collapse; margin-bottom:16px; }
-  .items-table thead tr { background:${color}; }
-  .items-table thead th { padding:9px 10px; color:#fff; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; }
-  .items-table thead th:first-child { text-align:left; border-radius:6px 0 0 0; }
-  .items-table thead th:last-child  { border-radius:0 6px 0 0; }
-  .items-table tbody tr:last-child td { border-bottom:1px solid #e2e8f0; }
-  /* Totals */
-  .totals-wrap { display:flex; justify-content:flex-end; margin-bottom:16px; }
-  .totals-box { min-width:260px; border:1px solid #e2e8f0; border-radius:8px; overflow:hidden; }
-  .totals-row { display:flex; justify-content:space-between; padding:7px 14px; font-size:12px; }
-  .totals-row:nth-child(odd) { background:#f8fafc; }
-  .totals-row-total { background:${color}!important; color:#fff; font-weight:800; font-size:14px; padding:10px 14px; display:flex; justify-content:space-between; }
-  /* Notes */
-  .notes-box { border:1px solid #e2e8f0; border-radius:8px; padding:10px 14px; margin-bottom:14px; font-size:11px; color:#475569; }
-  .notes-label { font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase; letter-spacing:.5px; margin-bottom:4px; }
-  /* Footer */
-  .footer { border-top:1px solid #e2e8f0; padding-top:10px; display:flex; justify-content:space-between; align-items:flex-end; }
-  .footer-legal { font-size:10px; color:#94a3b8; max-width:340px; line-height:1.5; }
-  .ecf-badge { text-align:right; }
-  .ecf-num { font-family:monospace; font-size:11px; font-weight:700; color:${color}; }
-  .ecf-estado { font-size:10px; color:#64748b; }
-  .powered { font-size:9px; color:#cbd5e1; margin-top:4px; }
-  .date-info { display:flex; gap:20px; margin-bottom:16px; }
-  .date-block { border:1px solid #e2e8f0; border-radius:6px; padding:8px 14px; }
-  .date-label { font-size:10px; color:#94a3b8; font-weight:600; text-transform:uppercase; letter-spacing:.4px; }
-  .date-val { font-size:13px; font-weight:700; color:#0f172a; }
+  body { font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; background:#fff; color:${DARK}; font-size:11px; }
+  @page { size:A4; margin:0; }
+  @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
+  .page { width:794px; min-height:1123px; background:#fff; display:flex; flex-direction:column; padding:28px 36px 24px; }
+  table { border-collapse:collapse; width:100%; }
 </style>
 </head>
 <body>
 <div class="page">
 
-  <!-- HEADER -->
-  <div class="header">
-    <div class="header-left">
+  <!-- ══════════════════════════════════════════════════════════════════
+       ENCABEZADO — empresa (izq) · tipo nota + e-NCF (der)
+  ══════════════════════════════════════════════════════════════════ -->
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:20px;margin-bottom:14px;">
+
+    <!-- Izquierda: Logo + empresa -->
+    <div style="display:flex;gap:12px;align-items:flex-start;flex:1;min-width:0;">
       ${logoHtml}
-      <div style="margin-top:8px">
-        <div style="font-size:15px;font-weight:800;color:#0f172a">${d.empresaNombre}</div>
-        <div style="font-size:11px;color:#64748b">RNC: ${d.empresaRNC}</div>
-        ${d.empresaDireccion ? `<div style="font-size:11px;color:#64748b">${d.empresaDireccion}${d.empresaCiudad ? ', ' + d.empresaCiudad : ''}</div>` : ''}
-        ${d.empresaTelefono ? `<div style="font-size:11px;color:#64748b">Tel: ${d.empresaTelefono}</div>` : ''}
-        ${d.empresaEmail    ? `<div style="font-size:11px;color:#64748b">${d.empresaEmail}</div>` : ''}
+      <div style="min-width:0;padding-top:2px;">
+        <div style="font-size:15px;font-weight:900;color:${DARK};text-transform:uppercase;line-height:1.3;margin-bottom:6px;">${esc(d.empresaNombre)}</div>
+        <div style="font-size:9.5px;color:${GRAY};line-height:1.85;">
+          ${d.empresaDireccion
+            ? `<div>${esc(d.empresaDireccion)}${d.empresaCiudad ? ', ' + esc(d.empresaCiudad) : ''}.</div>`
+            : ''}
+          ${d.empresaEmail    ? `<div>Correo: ${esc(d.empresaEmail)}</div>`   : ''}
+          ${d.empresaTelefono ? `<div>Teléfono: ${esc(d.empresaTelefono)}</div>` : ''}
+          <div><strong style="color:${DARK};">RNC: ${esc(d.empresaRNC)}</strong></div>
+        </div>
       </div>
     </div>
-    <div class="header-right">
-      <div class="doc-type-badge">${tipoLabel}</div>
-      <div class="doc-number">${d.numero}</div>
-      <div class="doc-sub">${tipoSub}</div>
-      <div style="margin-top:8px">${estadoBadge}</div>
-    </div>
-  </div>
 
-  <div class="strip"></div>
-
-  <!-- FECHA -->
-  <div class="date-info">
-    <div class="date-block">
-      <div class="date-label">Fecha de emisión</div>
-      <div class="date-val">${fmtFecha(d.fecha)}</div>
-    </div>
-    <div class="date-block">
-      <div class="date-label">Tipo NCF</div>
-      <div class="date-val" style="color:${color};font-family:monospace">${d.tipoNcf}</div>
-    </div>
-    ${d.ecfNumero ? `
-    <div class="date-block">
-      <div class="date-label">e-CF Emitido</div>
-      <div class="date-val" style="font-family:monospace;font-size:12px">${d.ecfNumero}</div>
-    </div>` : ''}
-  </div>
-
-  <!-- EMISOR / RECEPTOR -->
-  <div class="parties">
-    <div class="party-box">
-      <div class="party-label">Emisor</div>
-      <div class="party-name">${d.empresaNombre}</div>
-      <div class="party-info">
-        RNC: ${d.empresaRNC}<br/>
-        ${d.empresaDireccion ?? ''}${d.empresaCiudad ? ', ' + d.empresaCiudad : ''}
-        ${d.empresaTelefono ? `<br/>Tel: ${d.empresaTelefono}` : ''}
+    <!-- Derecha: tipo nota + e-NCF + info -->
+    <div style="text-align:right;flex-shrink:0;min-width:230px;max-width:260px;">
+      <div style="font-size:10px;font-weight:700;color:${DARK};text-transform:uppercase;line-height:1.35;">${tipoLabel}</div>
+      <div style="margin-top:5px;">
+        <span style="font-size:10px;color:${GRAY};">e-NCF : </span>
+        <span style="font-size:15px;font-weight:900;color:${DARK};font-family:monospace;letter-spacing:1px;">${esc(d.ecfNumero ?? '—')}</span>
       </div>
-    </div>
-    <div class="party-box">
-      <div class="party-label">Receptor / Cliente</div>
-      <div class="party-name">${d.clienteNombre}</div>
-      <div class="party-info">
-        ${d.clienteRNC ? `RNC/Cédula: ${d.clienteRNC}<br/>` : ''}
-        ${d.clienteDireccion ?? ''}
-        ${d.clienteTelefono ? `<br/>Tel: ${d.clienteTelefono}` : ''}
-        ${d.clienteEmail    ? `<br/>${d.clienteEmail}` : ''}
+      <div style="margin-top:8px;font-size:9.5px;color:${GRAY};line-height:1.85;text-align:right;">
+        <div>Número: <strong style="color:${DARK};">${esc(d.numero)}</strong></div>
+        <div>Tipo NCF: <strong style="color:${DARK};font-family:monospace;">${tipoNcfLbl}</strong></div>
+        <div>Fecha: <strong style="color:${DARK};">${fmtF(d.fecha)}</strong></div>
+        <div style="margin-top:4px;">${estadoBadge}</div>
       </div>
     </div>
   </div>
 
-  <!-- REFERENCIA A FACTURA ORIGINAL -->
-  ${(d.facturaOriginalFolio || d.ncfOriginal) ? `
-  <div class="ref-box">
-    <div>
-      <div class="ref-label">Modifica a</div>
-      ${d.facturaOriginalFolio ? `<div class="ref-value">Factura: ${d.facturaOriginalFolio}</div>` : ''}
-      ${d.ncfOriginal ? `<div class="ref-encf">eNCF original: ${d.ncfOriginal}</div>` : ''}
+  <!-- ══════════════════════════════════════════════════════════════════
+       SEPARADOR negro grueso
+  ══════════════════════════════════════════════════════════════════ -->
+  <div style="height:3px;background:${DARK};margin-bottom:12px;"></div>
+
+  <!-- ══════════════════════════════════════════════════════════════════
+       DATOS DEL CLIENTE
+  ══════════════════════════════════════════════════════════════════ -->
+  <div style="border:1px solid ${BORDER};padding:10px 14px;margin-bottom:12px;">
+    <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:${DARK};margin-bottom:7px;">Datos del Cliente</div>
+    <div style="font-size:10.5px;color:${GRAY};margin-bottom:3px;">
+      RNC o Cédula: <strong style="color:${DARK};">${esc(d.clienteRNC || '—')}</strong>
     </div>
-    ${d.descripcionMotivo ? `
-    <div style="border-left:1px solid ${color}30;padding-left:14px">
-      <div class="ref-label">Motivo</div>
-      <div style="font-size:12px;color:#1e293b">${d.descripcionMotivo}</div>
-    </div>` : ''}
+    <div style="font-size:10.5px;color:${GRAY};">
+      Nombre o Razón Social: <strong style="color:${DARK};">${esc(d.clienteNombre)}</strong>
+    </div>
+    ${d.clienteDireccion ? `<div style="font-size:9.5px;color:#888;margin-top:3px;">${esc(d.clienteDireccion)}</div>` : ''}
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════
+       REFERENCIA A DOCUMENTO ORIGINAL (si aplica)
+  ══════════════════════════════════════════════════════════════════ -->
+  ${(d.facturaOriginalFolio || d.ncfOriginal || d.descripcionMotivo) ? `
+  <div style="border:1px solid #ddd;padding:10px 14px;margin-bottom:12px;background:#fafafa;">
+    <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:${DARK};margin-bottom:6px;">Modifica a</div>
+    <div style="display:flex;gap:24px;flex-wrap:wrap;">
+      ${d.facturaOriginalFolio ? `<div style="font-size:10.5px;color:${GRAY};">Factura: <strong style="color:${DARK};font-family:monospace;">${esc(d.facturaOriginalFolio)}</strong></div>` : ''}
+      ${d.ncfOriginal ? `<div style="font-size:10.5px;color:${GRAY};">e-NCF original: <strong style="color:${DARK};font-family:monospace;">${esc(d.ncfOriginal)}</strong></div>` : ''}
+      ${d.descripcionMotivo ? `<div style="font-size:10.5px;color:${GRAY};">Motivo: <strong style="color:${DARK};">${esc(d.descripcionMotivo)}</strong></div>` : ''}
+    </div>
   </div>` : ''}
 
-  <!-- TABLA DE ÍTEMS -->
-  <table class="items-table">
+  <!-- ══════════════════════════════════════════════════════════════════
+       TABLA DE ÍTEMS
+  ══════════════════════════════════════════════════════════════════ -->
+  <table style="margin-bottom:16px;">
     <thead>
-      <tr>
-        <th style="text-align:left;width:38%">Descripción</th>
-        <th style="text-align:right;width:9%">Cant.</th>
-        <th style="text-align:right;width:14%">Precio Unit.</th>
-        <th style="text-align:center;width:9%">ITBIS%</th>
-        <th style="text-align:right;width:13%">ITBIS</th>
-        <th style="text-align:right;width:17%">Total</th>
+      <tr style="background:${THEAD};">
+        <th style="padding:9px 10px;font-size:8.5px;font-weight:700;color:#fff;text-transform:uppercase;text-align:left;">Descripción</th>
+        <th style="padding:9px 8px;font-size:8.5px;font-weight:700;color:#fff;text-transform:uppercase;text-align:right;width:58px;">Cant.</th>
+        <th style="padding:9px 8px;font-size:8.5px;font-weight:700;color:#fff;text-transform:uppercase;text-align:right;width:95px;">Precio Unit.</th>
+        <th style="padding:9px 8px;font-size:8.5px;font-weight:700;color:#fff;text-transform:uppercase;text-align:center;width:60px;">ITBIS %</th>
+        <th style="padding:9px 8px;font-size:8.5px;font-weight:700;color:#fff;text-transform:uppercase;text-align:right;width:88px;">ITBIS</th>
+        <th style="padding:9px 10px;font-size:8.5px;font-weight:700;color:#fff;text-transform:uppercase;text-align:right;width:95px;">Total</th>
       </tr>
     </thead>
     <tbody>
-      ${itemRows || `<tr><td colspan="6" style="padding:20px;text-align:center;color:#94a3b8;font-size:12px">Sin ítems</td></tr>`}
+      ${itemRows || `<tr><td colspan="6" style="padding:20px;text-align:center;color:${GRAY};font-style:italic;">Sin ítems</td></tr>`}
     </tbody>
   </table>
 
-  <!-- TOTALES -->
-  <div class="totals-wrap">
-    <div class="totals-box">
-      <div class="totals-row">
-        <span style="color:#64748b">Subtotal</span>
-        <span style="font-weight:600">${fmt(d.subtotal)}</span>
+  <!-- ══════════════════════════════════════════════════════════════════
+       TOTALES
+  ══════════════════════════════════════════════════════════════════ -->
+  <div style="display:flex;justify-content:flex-end;margin-bottom:14px;">
+    <div style="min-width:260px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #e8e8e8;">
+        <span style="font-size:10.5px;color:${GRAY};">Subtotal:</span>
+        <span style="font-size:10.5px;font-weight:500;color:${DARK};font-variant-numeric:tabular-nums;">${fmt(d.subtotal)}</span>
       </div>
-      <div class="totals-row">
-        <span style="color:#64748b">ITBIS (18%)</span>
-        <span style="font-weight:600">${fmt(d.iva)}</span>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #e8e8e8;">
+        <span style="font-size:10.5px;color:${GRAY};">ITBIS (18%):</span>
+        <span style="font-size:10.5px;font-weight:500;color:${DARK};font-variant-numeric:tabular-nums;">${fmt(d.iva)}</span>
       </div>
-      <div class="totals-row-total">
-        <span>${esDebito ? 'Total a Cobrar' : 'Total a Acreditar'}</span>
-        <span>${signo}${fmt(d.total)}</span>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-top:2px solid ${DARK};margin-top:4px;">
+        <span style="font-size:12px;font-weight:700;color:${DARK};">${esDebito ? 'TOTAL A COBRAR' : 'TOTAL A ACREDITAR'}:</span>
+        <span style="font-size:18px;font-weight:900;color:${DARK};font-variant-numeric:tabular-nums;font-family:monospace;">${signo}${fmt(d.total)}</span>
       </div>
     </div>
   </div>
 
   <!-- NOTAS -->
   ${d.notas ? `
-  <div class="notes-box">
-    <div class="notes-label">Notas</div>
-    <div>${d.notas}</div>
+  <div style="padding:8px 12px;background:#fafafa;border-left:3px solid #ddd;margin-bottom:12px;">
+    <div style="font-size:9px;font-weight:700;color:#777;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">Notas</div>
+    <div style="font-size:9.5px;color:#555;line-height:1.6;">${esc(d.notas)}</div>
   </div>` : ''}
 
-  <!-- FOOTER -->
-  <div class="footer">
-    <div class="footer-legal">
+  <!-- ══════════════════════════════════════════════════════════════════
+       FOOTER
+  ══════════════════════════════════════════════════════════════════ -->
+  <div style="margin-top:auto;padding-top:14px;border-top:1px solid #ddd;text-align:center;">
+    <div style="font-size:10px;color:#555;">
       ${esDebito
-        ? 'Este documento es una Nota de Débito (E33) emitida conforme a la normativa de la DGII de la República Dominicana. Modifica el monto de la factura referenciada aumentándolo.'
-        : 'Este documento es una Nota de Crédito (E34) emitida conforme a la normativa de la DGII de la República Dominicana. Modifica el monto de la factura referenciada reduciéndolo.'
-      }
-      <div class="powered">Generado por HiCloud ERP · hicloud.app</div>
+        ? 'Este documento es una Nota de Débito (E33) emitida conforme a la normativa de la DGII de la República Dominicana.'
+        : 'Este documento es una Nota de Crédito (E34) emitida conforme a la normativa de la DGII de la República Dominicana.'}
     </div>
-    <div class="ecf-badge">
-      ${d.ecfNumero ? `
-        <div class="ecf-num">${d.ecfNumero}</div>
-        <div class="ecf-estado">${d.ecfEstado?.toUpperCase() ?? ''}</div>
-      ` : `<div style="font-size:11px;color:#cbd5e1">Sin e-CF emitido</div>`}
-    </div>
+    <div style="font-size:8.5px;color:#aaa;margin-top:5px;">Documento generado por <strong style="color:#666;">HiCloud ERP</strong></div>
   </div>
 
 </div>
