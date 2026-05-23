@@ -1,9 +1,8 @@
 ﻿import { useState, useEffect, useRef } from 'react';
-import { message } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { motion, useInView, AnimatePresence } from 'framer-motion';
-import api from '../../api/client';
 import { useThemeStore } from '../../store/theme.store';
+import DemoModal from '../auth/DemoModal';
 
 // ── Paleta dinámica (light/dark) ─────────────────────────────────────────────
 function buildPalette(isDark: boolean) {
@@ -286,108 +285,6 @@ function FAQItem({ q, a }: { q: string; a: string }) {
   );
 }
 
-// ── Formulario de Demo ────────────────────────────────────────────────────────────
-function DemoForm() {
-  const [form, setForm]       = useState({ nombre: '', empresa: '', rnc: '', email: '', telefono: '', usuarios: '1-5', mensaje: '' });
-  const [loading, setLoading] = useState(false);
-  const [sent,    setSent]    = useState(false);
-  const { isDark } = useThemeStore();
-  const P = buildPalette(isDark);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.nombre || !form.empresa || !form.email || !form.telefono) {
-      message.error('Por favor completa los campos requeridos');
-      return;
-    }
-    setLoading(true);
-    try {
-      await api.post('/demo/solicitar', form);
-      setSent(true);
-    } catch {
-      message.error('Error al enviar. Intenta de nuevo o escríbenos por WhatsApp.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const inputStyle: React.CSSProperties = {
-    width: '100%', padding: '11px 14px', borderRadius: 8,
-    border: `1px solid ${P.border}`, fontSize: 14, outline: 'none',
-    background: P.white, color: P.text, boxSizing: 'border-box',
-    transition: 'border-color .15s',
-  };
-
-  if (sent) return (
-    <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-      <div style={{ fontSize: 52, marginBottom: 16 }}>✅</div>
-      <h3 style={{ color: P.text, marginBottom: 8 }}>¡Solicitud recibida!</h3>
-      <p style={{ color: P.muted }}>Nuestro equipo se contactará contigo en menos de 24 horas.</p>
-    </div>
-  );
-
-  return (
-    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
-        <div>
-          <label style={{ fontSize: 12, fontWeight: 600, color: P.muted, display: 'block', marginBottom: 5 }}>Nombre completo *</label>
-          <input style={inputStyle} value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
-            placeholder="Juan Pérez" required
-            onFocus={e => (e.target.style.borderColor = P.primary)} onBlur={e => (e.target.style.borderColor = P.border)} />
-        </div>
-        <div>
-          <label style={{ fontSize: 12, fontWeight: 600, color: P.muted, display: 'block', marginBottom: 5 }}>Empresa *</label>
-          <input style={inputStyle} value={form.empresa} onChange={e => setForm(f => ({ ...f, empresa: e.target.value }))}
-            placeholder="Mi Empresa S.R.L." required
-            onFocus={e => (e.target.style.borderColor = P.primary)} onBlur={e => (e.target.style.borderColor = P.border)} />
-        </div>
-        <div>
-          <label style={{ fontSize: 12, fontWeight: 600, color: P.muted, display: 'block', marginBottom: 5 }}>Correo electrónico *</label>
-          <input style={inputStyle} type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-            placeholder="juan@empresa.com" required
-            onFocus={e => (e.target.style.borderColor = P.primary)} onBlur={e => (e.target.style.borderColor = P.border)} />
-        </div>
-        <div>
-          <label style={{ fontSize: 12, fontWeight: 600, color: P.muted, display: 'block', marginBottom: 5 }}>Teléfono / WhatsApp *</label>
-          <input style={inputStyle} value={form.telefono} onChange={e => setForm(f => ({ ...f, telefono: e.target.value }))}
-            placeholder="809-555-0000" required
-            onFocus={e => (e.target.style.borderColor = P.primary)} onBlur={e => (e.target.style.borderColor = P.border)} />
-        </div>
-        <div>
-          <label style={{ fontSize: 12, fontWeight: 600, color: P.muted, display: 'block', marginBottom: 5 }}>RNC (opcional)</label>
-          <input style={inputStyle} value={form.rnc} onChange={e => setForm(f => ({ ...f, rnc: e.target.value }))}
-            placeholder="132xxxxxx"
-            onFocus={e => (e.target.style.borderColor = P.primary)} onBlur={e => (e.target.style.borderColor = P.border)} />
-        </div>
-        <div>
-          <label style={{ fontSize: 12, fontWeight: 600, color: P.muted, display: 'block', marginBottom: 5 }}>Número de usuarios</label>
-          <select style={inputStyle} value={form.usuarios} onChange={e => setForm(f => ({ ...f, usuarios: e.target.value }))}>
-            <option value="1-5">1-5 usuarios</option>
-            <option value="6-15">6-15 usuarios</option>
-            <option value="16-30">16-30 usuarios</option>
-            <option value="30+">Más de 30</option>
-          </select>
-        </div>
-      </div>
-      <div>
-        <label style={{ fontSize: 12, fontWeight: 600, color: P.muted, display: 'block', marginBottom: 5 }}>¿Qué necesitas? (opcional)</label>
-        <textarea style={{ ...inputStyle, height: 80, resize: 'vertical' as const }}
-          value={form.mensaje} onChange={e => setForm(f => ({ ...f, mensaje: e.target.value }))}
-          placeholder="Cuéntanos un poco sobre tu negocio y qué módulos necesitas..."
-          onFocus={e => (e.target.style.borderColor = P.primary)} onBlur={e => (e.target.style.borderColor = P.border)} />
-      </div>
-      <button type="submit" disabled={loading}
-        style={{ background: loading ? '#94A3B8' : 'linear-gradient(135deg,#00BFA5,#009688)',
-          color: '#fff', border: 'none', borderRadius: 10, padding: '14px 32px',
-          fontSize: 16, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer',
-          boxShadow: loading ? 'none' : '0 4px 16px rgba(0,191,165,.4)', transition: 'all .2s' }}>
-        {loading ? 'Enviando…' : 'Solicitar Demo Gratis →'}
-      </button>
-      <p style={{ margin: 0, color: P.muted, fontSize: 12, textAlign: 'center' }}>Sin compromiso · Sin tarjeta de crédito · Respuesta en 24h</p>
-    </form>
-  );
-}
-
 // ── Sección de precios ────────────────────────────────────────────────────────────
 
 const PLANES_LANDING = [
@@ -575,7 +472,7 @@ function PreciosSection({ navigate }: { navigate: (to: string) => void }) {
 
 // ── Landing principal ─────────────────────────────────────────────────────────────
 export default function LandingPage() {
-  const [showForm, setShowForm] = useState(false);
+  const [demoOpen, setDemoOpen] = useState(false);
   const navigate = useNavigate();
   const { isDark } = useThemeStore();
   const P = buildPalette(isDark);
@@ -606,13 +503,11 @@ export default function LandingPage() {
           features:['25 usuarios','5000 facturas/mes','Todos los módulos','e-CF incluido','API access','Soporte: Teléfono'] },
       ];
 
-  const scrollToForm = () => {
-    document.getElementById('demo-form')?.scrollIntoView({ behavior: 'smooth' });
-  };
+  const openDemo = () => setDemoOpen(true);
 
   return (
     <div style={{ fontFamily: "'Inter', -apple-system, sans-serif", color: P.text, overflowX: 'hidden', background: P.pageBg }}>
-      <Navbar onDemo={scrollToForm} />
+      <Navbar onDemo={openDemo} />
 
       {/* ─── HERO ─────────────────────────────────────────────────────────────── */}
       <section style={{
@@ -658,7 +553,7 @@ export default function LandingPage() {
           {/* CTAs */}
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
             style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 12 }}>
-            <button onClick={scrollToForm}
+            <button onClick={openDemo}
               style={{ background: 'linear-gradient(135deg,#00BFA5,#009688)', color: '#fff', border: 'none',
                 fontSize: 16, fontWeight: 700, padding: '14px 28px', borderRadius: 10, cursor: 'pointer',
                 boxShadow: '0 4px 20px rgba(0,191,165,.45)', transition: 'all .2s' }}
@@ -683,7 +578,7 @@ export default function LandingPage() {
         <p style={{ margin: 0, color: '#fff', fontSize: 'clamp(13px,2vw,15px)', fontWeight: 600 }}>
           ⏰ <strong>DGII:</strong> Plazo hasta el 15 de noviembre 2026 para pequeños y micro contribuyentes.
           HiCloud te pone en operación en menos de una semana.
-          <button onClick={scrollToForm} style={{ marginLeft: 12, background: 'rgba(255,255,255,.2)', border: '1px solid rgba(255,255,255,.4)',
+          <button onClick={openDemo} style={{ marginLeft: 12, background: 'rgba(255,255,255,.2)', border: '1px solid rgba(255,255,255,.4)',
             color: '#fff', fontSize: 13, fontWeight: 700, padding: '4px 12px', borderRadius: 6, cursor: 'pointer' }}>
             Empezar ahora →
           </button>
@@ -842,23 +737,31 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ─── CTA FINAL + FORMULARIO ──────────────────────────────────────────── */}
+      {/* ─── CTA FINAL ───────────────────────────────────────────────────────── */}
       <section id="demo-form" style={{ padding: 'clamp(60px,8vw,96px) clamp(16px,5vw,80px)', background: P.dark }}>
-        <div style={{ maxWidth: 760, margin: '0 auto' }}>
+        <div style={{ maxWidth: 640, margin: '0 auto', textAlign: 'center' }}>
           <FadeIn>
-            <div style={{ textAlign: 'center', marginBottom: 48 }}>
-              <h2 style={{ fontSize: 'clamp(26px,4vw,42px)', fontWeight: 800, color: '#fff', marginBottom: 14, letterSpacing: '-0.02em' }}>
-                ¿Listo para modernizar tu negocio?
-              </h2>
-              <p style={{ color: 'rgba(255,255,255,.62)', fontSize: 17, maxWidth: 520, margin: '0 auto' }}>
-                Solicita tu demo gratuita. Nuestro equipo te contacta en menos de 24 horas.
-              </p>
-            </div>
-          </FadeIn>
-          <FadeIn delay={0.15}>
-            <div style={{ background: P.white, borderRadius: 20, padding: 'clamp(24px,4vw,40px)', boxShadow: '0 24px 64px rgba(0,0,0,.3)' }}>
-              <DemoForm />
-            </div>
+            <h2 style={{ fontSize: 'clamp(26px,4vw,42px)', fontWeight: 800, color: '#fff', marginBottom: 16, letterSpacing: '-0.02em' }}>
+              ¿Listo para modernizar tu negocio?
+            </h2>
+            <p style={{ color: 'rgba(255,255,255,.62)', fontSize: 17, maxWidth: 520, margin: '0 auto 36px' }}>
+              Solicita tu demo gratuita. Nuestro equipo te contacta en menos de 24 horas.
+            </p>
+            <button
+              onClick={openDemo}
+              style={{
+                background: 'linear-gradient(135deg,#00BFA5,#009688)', color: '#fff', border: 'none',
+                fontSize: 18, fontWeight: 700, padding: '16px 40px', borderRadius: 12, cursor: 'pointer',
+                boxShadow: '0 6px 24px rgba(0,191,165,.45)', transition: 'all .2s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 10px 32px rgba(0,191,165,.55)'; }}
+              onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = '0 6px 24px rgba(0,191,165,.45)'; }}
+            >
+              Solicitar Demo Gratuita →
+            </button>
+            <p style={{ color: 'rgba(255,255,255,.35)', fontSize: 13, marginTop: 16 }}>
+              Sin compromiso · Sin tarjeta de crédito · Respuesta en 24h
+            </p>
           </FadeIn>
         </div>
       </section>
@@ -896,7 +799,7 @@ export default function LandingPage() {
               <h4 style={{ color: '#fff', fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 16 }}>Producto</h4>
               {['Características', 'Precios', 'e-CF DGII', 'Documentación', 'Demo'].map(l => (
                 <p key={l} style={{ margin: '0 0 10px' }}>
-                  <a href="#" onClick={e => { e.preventDefault(); scrollToForm(); }}
+                  <a href="#" onClick={e => { e.preventDefault(); openDemo(); }}
                     style={{ color: 'rgba(255,255,255,.55)', fontSize: 13, textDecoration: 'none', transition: 'color .15s' }}
                     onMouseEnter={e => ((e.currentTarget as HTMLAnchorElement).style.color = '#fff')}
                     onMouseLeave={e => ((e.currentTarget as HTMLAnchorElement).style.color = 'rgba(255,255,255,.55)')}>
@@ -935,6 +838,9 @@ export default function LandingPage() {
           .nav-hamburger { display: flex !important; }
         }
       `}</style>
+
+      {/* Modal de demo — compartido por todos los CTA de la landing */}
+      <DemoModal open={demoOpen} onClose={() => setDemoOpen(false)} />
     </div>
   );
 }
