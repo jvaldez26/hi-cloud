@@ -69,6 +69,11 @@ export class User extends BaseEntity {
   @Column({ length: 20, default: 'activo' })
   accountStatus!: string;
 
+  // true  = contraseña configurada (todos los usuarios existentes + registro manual)
+  // false = usuario Google aprobado que aún no configuró su contraseña vía /setup-password
+  @Column({ default: true })
+  passwordConfigured!: boolean;
+
   @Column({ default: false })
   twoFactorEnabled!: boolean;
 

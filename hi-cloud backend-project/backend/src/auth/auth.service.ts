@@ -66,8 +66,27 @@ export class AuthService implements OnModuleInit {
         ALTER TABLE users
           ADD COLUMN IF NOT EXISTS "accountStatus" VARCHAR(20) NOT NULL DEFAULT 'activo'
       `);
+      // passwordConfigured — false para usuarios Google nuevos hasta que configuren contraseña
+      await this.dataSource.query(`
+        ALTER TABLE users
+          ADD COLUMN IF NOT EXISTS "passwordConfigured" BOOLEAN NOT NULL DEFAULT true
+      `);
+      // Tabla de tokens de configuración de contraseña (Google users aprobados)
+      await this.dataSource.query(`
+        CREATE TABLE IF NOT EXISTS setup_tokens (
+          id           SERIAL PRIMARY KEY,
+          "userId"     INTEGER      NOT NULL,
+          "tokenHash"  VARCHAR(64)  NOT NULL UNIQUE,
+          "expiresAt"  TIMESTAMPTZ  NOT NULL,
+          used         BOOLEAN      NOT NULL DEFAULT false,
+          "createdAt"  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        )
+      `);
+      await this.dataSource.query(`
+        CREATE INDEX IF NOT EXISTS "IDX_setup_tokens_tokenHash" ON setup_tokens("tokenHash")
+      `);
     } catch (e) {
-      this.logger.warn('Session/accountStatus columns migration (ignorado): ' + e);
+      this.logger.warn('Session/accountStatus/passwordConfigured/setup_tokens migration (ignorado): ' + e);
     }
   }
 
@@ -238,7 +257,12 @@ export class AuthService implements OnModuleInit {
 
     // Cuenta pendiente de aprobación del Super Admin
     if ((user as any).accountStatus === 'pendiente') {
-      throw new (require('@nestjs/common').ForbiddenException)('CUENTA_PENDIENTE');
+      throw new ForbiddenException('CUENTA_PENDIENTE');
+    }
+
+    // Usuario Google aprobado pero sin contraseña configurada — debe usar el link del email
+    if ((user as any).passwordConfigured === false) {
+      throw new ForbiddenException('CONTRASEÑA_NO_CONFIGURADA');
     }
 
     // S-40: No revelar si el usuario existe — mensaje genérico en ambos casos.
@@ -630,14 +654,15 @@ export class AuthService implements OnModuleInit {
     // 3. Crear cuenta nueva — queda en PENDIENTE hasta aprobación del Super Admin
     const pw = await bcrypt.hash(randomBytes(32).toString('hex'), 12);
     const newUser = this.userRepository.create({
-      nombre:          data.nombre,
-      email:           data.email,
-      password:        pw,
-      googleId:        data.googleId,
-      provider:        'GOOGLE',
-      role:            UserRole.ADMIN,
-      emailVerifiedAt: new Date(),      // Google ya verificó el email
-      accountStatus:   'pendiente',     // Requiere aprobación del Super Admin
+      nombre:             data.nombre,
+      email:              data.email,
+      password:           pw,
+      googleId:           data.googleId,
+      provider:           'GOOGLE',
+      role:               UserRole.ADMIN,
+      emailVerifiedAt:    new Date(),      // Google ya verificó el email
+      accountStatus:      'pendiente',     // Requiere aprobación del Super Admin
+      passwordConfigured: false,           // Configurará contraseña tras la aprobación
     } as any);
     const saved = await this.userRepository.save(newUser) as unknown as User;
 
@@ -850,6 +875,103 @@ export class AuthService implements OnModuleInit {
       }).catch(() => null);
     }
     this.logger.log(`[REGISTRO] Admins notificados del nuevo registro pendiente: ${email}`);
+  }
+
+  // ─── Setup Password (Google users) ───────────────────────────────────────────
+
+  /** Genera y persiste un token de configuración de contraseña para un usuario Google.
+   *  Invalida tokens anteriores del mismo usuario antes de crear el nuevo. */
+  async generarSetupToken(userId: number): Promise<string> {
+    // Invalidar tokens anteriores (no-usados) del mismo usuario
+    await this.dataSource.query(
+      `UPDATE setup_tokens SET used = true WHERE "userId" = $1 AND used = false`,
+      [userId],
+    );
+    const rawToken  = randomBytes(32).toString('hex');
+    const tokenHash = require('crypto').createHash('sha256').update(rawToken).digest('hex');
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
+    await this.dataSource.query(
+      `INSERT INTO setup_tokens ("userId", "tokenHash", "expiresAt", used) VALUES ($1, $2, $3, false)`,
+      [userId, tokenHash, expiresAt],
+    );
+    this.logger.log(`[SETUP-TOKEN] Token generado para usuario #${userId}`);
+    return rawToken;
+  }
+
+  /** Valida el token de setup, hashea y guarda la contraseña, crea sesión y devuelve JWT.
+   *  POST /auth/setup-password — endpoint público (no requiere JWT). */
+  async setupPassword(rawToken: string, password: string, confirmPassword: string) {
+    if (password !== confirmPassword) {
+      throw new BadRequestException('Las contraseñas no coinciden');
+    }
+
+    const tokenHash = require('crypto').createHash('sha256').update(rawToken).digest('hex');
+    const [tokenRow] = await this.dataSource.query<any[]>(
+      `SELECT id, "userId", "expiresAt", used FROM setup_tokens WHERE "tokenHash" = $1`,
+      [tokenHash],
+    );
+
+    if (!tokenRow) {
+      throw new BadRequestException('El enlace es inválido o ya fue utilizado');
+    }
+    if (tokenRow.used) {
+      throw new BadRequestException('Este enlace ya fue utilizado. Inicia sesión con Google para obtener uno nuevo.');
+    }
+    if (new Date(tokenRow.expiresAt) < new Date()) {
+      throw new BadRequestException('El enlace ha expirado. Inicia sesión con Google para obtener uno nuevo.');
+    }
+
+    const userId = tokenRow.userId;
+
+    // Hashear y guardar contraseña + marcar passwordConfigured = true
+    const hashed = await bcrypt.hash(password, 12);
+    await this.dataSource.query(
+      `UPDATE users SET password = $1, "passwordConfigured" = true WHERE id = $2`,
+      [hashed, userId],
+    );
+
+    // Marcar token como usado (un solo uso)
+    await this.dataSource.query(
+      `UPDATE setup_tokens SET used = true WHERE id = $1`,
+      [tokenRow.id],
+    );
+
+    // Auto-login: crear sesión y devolver JWT
+    const user = await this.userRepository.findOneBy({ id: userId });
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+
+    const sessionToken = await this.initNewSession(userId);
+    (user as any).sessionToken = sessionToken;
+
+    const empresaId   = await this.getEmpresaPrincipal(userId);
+    const accessToken = this.buildToken(user, empresaId);
+
+    const empresas = await this.ueRepository.find({
+      where: { userId, isActive: true },
+      relations: ['empresa'],
+      order: { isPrincipal: 'DESC' },
+    });
+
+    this.logger.log(`[SETUP-PASSWORD] Contraseña configurada para usuario #${userId} — sesión iniciada`);
+
+    return {
+      accessToken,
+      empresaActual: empresaId ?? null,
+      empresas: empresas.map(e => ({
+        empresaId:   e.empresaId,
+        nombre:      e.empresa?.nombre,
+        rnc:         e.empresa?.rnc,
+        rol:         e.rol,
+        isPrincipal: e.isPrincipal,
+      })),
+      user: {
+        id:             user.id,
+        nombre:         user.nombre,
+        email:          user.email,
+        role:           user.role,
+        tourCompletado: (user as any).tourCompletado ?? false,
+      },
+    };
   }
 
   /** Genera la respuesta de login completa (token + empresas) para un User */

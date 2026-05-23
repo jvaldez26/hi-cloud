@@ -51,6 +51,22 @@ class ChangePasswordDto {
   newPassword: string;
 }
 
+class SetupPasswordDto {
+  @IsString()
+  token: string;
+
+  @IsString()
+  @MinLength(8, { message: 'La contraseña debe tener al menos 8 caracteres' })
+  @MaxLength(100)
+  @Matches(/(?=.*[A-Z])(?=.*\d)/, {
+    message: 'Debe tener al menos una mayúscula y un número',
+  })
+  password: string;
+
+  @IsString()
+  confirmPassword: string;
+}
+
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
@@ -337,6 +353,12 @@ export class AuthController {
         return (res as any).redirect(`${frontendUrl}/pending-approval`);
       }
 
+      // Aprobado pero sin contraseña configurada → generar token de setup y redirigir
+      if (googleUser?.passwordConfigured === false) {
+        const rawToken = await this.authService.generarSetupToken(googleUser.id);
+        return (res as any).redirect(`${frontendUrl}/setup-password?token=${rawToken}`);
+      }
+
       const loginData = await this.authService.buildLoginResponse(req.user as User);
       // S-41: token en cookie httpOnly, NO en la URL
       this.setAuthCookie(res as any, loginData.accessToken);
@@ -354,6 +376,29 @@ export class AuthController {
     } catch {
       return (res as any).redirect(`${frontendUrl}/login?error=google_failed`);
     }
+  }
+
+  // ── Setup Password (Google users post-aprobación) ─────────────────────────
+
+  @Post('setup-password')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 3_600_000 } }) // 10 intentos por hora
+  @ApiOperation({ summary: 'Configurar contraseña inicial para usuario aprobado (Google OAuth)' })
+  async setupPassword(
+    @Body() dto: SetupPasswordDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const data = await this.authService.setupPassword(dto.token, dto.password, dto.confirmPassword);
+    this.setAuthCookie(res, data.accessToken);
+    const refreshValue = await this.refreshTokenSvc.crear(
+      data.user.id,
+      req.headers['user-agent'],
+      req.ip,
+    );
+    this.setRefreshCookie(res, refreshValue);
+    const { accessToken: _tok, ...safe } = data;
+    return safe;
   }
 
   // ── Helpers privados ──────────────────────────────────────────────────────

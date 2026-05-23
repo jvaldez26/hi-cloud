@@ -3,6 +3,7 @@ import {
   ForbiddenException, Logger,
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { randomBytes, createHash } from 'crypto';
 import { EmailService } from '../notificaciones/services/email.service';
 
 @Injectable()
@@ -758,7 +759,8 @@ export class SuperAdminService {
 
   async aprobarRegistro(userId: number, superAdminId: number) {
     const [u] = await this.ds.query<any[]>(
-      `SELECT id, nombre, email, "accountStatus" FROM users WHERE id = $1`, [userId],
+      `SELECT id, nombre, email, "accountStatus", provider, "passwordConfigured" FROM users WHERE id = $1`,
+      [userId],
     );
     if (!u) throw new NotFoundException(`Usuario #${userId} no encontrado`);
     if (u.accountStatus !== 'pendiente') {
@@ -770,7 +772,56 @@ export class SuperAdminService {
     );
 
     const frontendUrl = process.env['FRONTEND_URL'] ?? 'https://hicloudrd.com';
-    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+
+    // Usuarios Google (o sin contraseña): generar token de configuración de contraseña
+    const needsSetup = u.provider === 'GOOGLE' || u.passwordConfigured === false;
+    let setupUrl = `${frontendUrl}/login`;
+
+    if (needsSetup) {
+      // Invalidar tokens anteriores y generar uno nuevo con validez de 24h
+      await this.ds.query(
+        `UPDATE setup_tokens SET used = true WHERE "userId" = $1 AND used = false`,
+        [userId],
+      );
+      const rawToken  = randomBytes(32).toString('hex');
+      const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      await this.ds.query(
+        `INSERT INTO setup_tokens ("userId", "tokenHash", "expiresAt", used) VALUES ($1, $2, $3, false)`,
+        [userId, tokenHash, expiresAt],
+      );
+      setupUrl = `${frontendUrl}/setup-password?token=${rawToken}`;
+      this.logger.log(`[REGISTRO] Setup token generado para usuario Google #${userId}`);
+    }
+
+    // Email de aprobación — con o sin link de configuración de contraseña
+    const html = needsSetup
+      ? `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>body{font-family:'Inter',sans-serif;background:#f5f5f5;margin:0;padding:20px}
+.card{background:#fff;max-width:520px;margin:0 auto;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.1)}
+.header{background:linear-gradient(135deg,#059669,#10b981);padding:28px;color:#fff;text-align:center}
+.body{padding:28px}.btn{display:inline-block;background:linear-gradient(135deg,#1a56db,#0ea5e9);color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:16px}
+.notice{background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:14px 16px;margin:16px 0;font-size:13px;color:#92400e}
+.footer{padding:16px;text-align:center;font-size:12px;color:#9ca3af}</style></head>
+<body><div class="card">
+  <div class="header"><h2 style="margin:0">✅ Tu cuenta fue aprobada</h2></div>
+  <div class="body">
+    <p>Hola <strong>${u.nombre}</strong>,</p>
+    <p>¡Tu solicitud de acceso a HiCloud ERP fue <strong>aprobada</strong>! Para comenzar, debes configurar tu contraseña:</p>
+    <p style="text-align:center;margin:28px 0">
+      <a href="${setupUrl}" class="btn">Configurar contraseña →</a>
+    </p>
+    <div class="notice">
+      ⏰ Este enlace es de <strong>un solo uso</strong> y expira en <strong>24 horas</strong>.<br/>
+      Si no lo usas a tiempo, inicia sesión con Google para obtener un nuevo enlace automáticamente.
+    </div>
+    <p style="color:#9ca3af;font-size:12px">O copia este enlace en tu navegador:<br/>${setupUrl}</p>
+    <p style="color:#6b7280;font-size:13px">¿Tienes preguntas? Escríbenos a soporte@hicloudrd.com</p>
+  </div>
+  <div class="footer">© 2026 HiCloud ERP · República Dominicana</div>
+</div></body></html>`
+      : `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 <style>body{font-family:'Inter',sans-serif;background:#f5f5f5;margin:0;padding:20px}
 .card{background:#fff;max-width:520px;margin:0 auto;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.1)}
@@ -781,11 +832,11 @@ export class SuperAdminService {
   <div class="header"><h2 style="margin:0">✅ Tu cuenta fue aprobada</h2></div>
   <div class="body">
     <p>Hola <strong>${u.nombre}</strong>,</p>
-    <p>¡Buenas noticias! Tu solicitud de acceso a HiCloud ERP fue <strong>aprobada</strong>. Ya puedes iniciar sesión.</p>
+    <p>¡Tu solicitud de acceso a HiCloud ERP fue <strong>aprobada</strong>! Ya puedes iniciar sesión con tu correo y contraseña.</p>
     <p style="text-align:center;margin:28px 0">
       <a href="${frontendUrl}/login" class="btn">Iniciar sesión →</a>
     </p>
-    <p style="color:#6b7280;font-size:13px">Si tienes alguna pregunta, escríbenos a soporte@hicloudrd.com</p>
+    <p style="color:#6b7280;font-size:13px">¿Tienes preguntas? Escríbenos a soporte@hicloudrd.com</p>
   </div>
   <div class="footer">© 2026 HiCloud ERP · República Dominicana</div>
 </div></body></html>`;
@@ -796,8 +847,13 @@ export class SuperAdminService {
       html,
     }).catch(err => this.logger.warn(`[REGISTRO] Email aprobación #${userId}: ${err?.message}`));
 
-    this.logger.warn(`[REGISTRO] Usuario #${userId} (${u.email}) aprobado por super_admin #${superAdminId}`);
-    return { ok: true, mensaje: `Cuenta de ${u.nombre} aprobada. El usuario ya puede iniciar sesión.` };
+    this.logger.warn(`[REGISTRO] Usuario #${userId} (${u.email}) aprobado por super_admin #${superAdminId}${needsSetup ? ' — link setup enviado' : ''}`);
+    return {
+      ok: true,
+      mensaje: needsSetup
+        ? `Cuenta de ${u.nombre} aprobada. Se envió un link de configuración de contraseña al email.`
+        : `Cuenta de ${u.nombre} aprobada. El usuario ya puede iniciar sesión.`,
+    };
   }
 
   async rechazarRegistro(userId: number, superAdminId: number, motivo: string) {

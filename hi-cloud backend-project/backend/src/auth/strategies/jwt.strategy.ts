@@ -67,6 +67,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('CUENTA_PENDIENTE');
     }
 
+    // Bloquear usuarios sin contraseña configurada (Google users antes de /setup-password)
+    if ((user as any).passwordConfigured === false) {
+      throw new UnauthorizedException('CONTRASEÑA_NO_CONFIGURADA');
+    }
+
     // Sesión desplazada o revocada: SQL raw para garantizar lectura fresca de BD
     // (evita cualquier caché de TypeORM entity / query result)
     if (payload.sessionToken) {
