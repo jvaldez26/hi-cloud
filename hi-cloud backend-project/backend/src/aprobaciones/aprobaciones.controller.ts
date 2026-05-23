@@ -58,10 +58,7 @@ export class AprobacionesController {
     @Query('q')    q:    string,
   ) { return this.svc.buscarDocumento(tipo, q ?? ''); }
 
-  @Get(':id')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
-  findOne(@Param('id', ParseIntPipe) id: number) { return this.svc.findOne(id); }
-
+  // NOTA: rutas literales ANTES de :id para evitar que NestJS las capture con ParseIntPipe
   @Get('estado/:tipo/:entidadId')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Estado actual de aprobación de un documento específico' })
@@ -69,6 +66,10 @@ export class AprobacionesController {
     @Param('tipo')        tipo:       TipoAprobacion,
     @Param('entidadId', ParseIntPipe) entidadId: number,
   ) { return this.svc.getEstado(tipo, entidadId); }
+
+  @Get(':id')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  findOne(@Param('id', ParseIntPipe) id: number) { return this.svc.findOne(id); }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)

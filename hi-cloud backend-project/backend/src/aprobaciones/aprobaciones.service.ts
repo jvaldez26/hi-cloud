@@ -84,18 +84,21 @@ export class AprobacionesService {
   async listar(pagination: PaginationDto, estado?: EstadoAprobacion, tipo?: TipoAprobacion) {
     const empresaId = this.tenantSvc.getEmpresaId();
     const { limit = 10, page = 1 } = pagination;
-    const where: any = { empresaId, isActive: true };
-    if (estado) where.estado = estado;
-    if (tipo)   where.tipo   = tipo;
+    const take = Math.min(limit, 100);
+    const skip = (page - 1) * take;
 
-    const [data, total] = await this.repo.findAndCount({
-      where,
-      order: { createdAt: 'DESC' },
-      skip:  (page - 1) * limit,
-      take:  Math.min(limit, 100),
-    });
+    const qb = this.repo
+      .createQueryBuilder('a')
+      .where('a.empresaId = :eid', { eid: empresaId })
+      .andWhere('a.isActive = :ac', { ac: true });
 
-    return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+    if (estado) qb.andWhere('a.estado = :est', { est: estado });
+    if (tipo)   qb.andWhere('a.tipo   = :tp',  { tp: tipo });
+
+    qb.orderBy('a.createdAt', 'DESC').skip(skip).take(take);
+
+    const [data, total] = await qb.getManyAndCount();
+    return { data, meta: { total, page, limit: take, totalPages: Math.ceil(total / take) } };
   }
 
   async findOne(id: number) {
