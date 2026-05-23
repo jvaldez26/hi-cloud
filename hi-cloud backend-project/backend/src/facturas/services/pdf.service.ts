@@ -68,12 +68,14 @@ export class PDFService {
       [empresaId],
     ).then((rows: any[]) => rows[0] || {});
 
-    // e-CF (incluye fechaFirma para el bloque de seguridad DGII en el PDF)
+    // e-CF — incluye fechaFirma (bloque seguridad) y fechaVencimiento secuencia (Válida hasta)
     const ecf = factura.ecfId
       ? await this.facturaRepo.manager.query(
-          `SELECT e.*, t.codigo, t.descripcion
+          `SELECT e.*, t.codigo, t.descripcion,
+                  s."fechaVencimiento" AS "secFechaVencimiento"
              FROM ecf e
-             JOIN tipos_ecf t ON t.id = e."tipoECFId"
+             JOIN tipos_ecf     t ON t.id = e."tipoECFId"
+             JOIN secuencias_ecf s ON s.id = e."secuenciaId"
             WHERE e.id = $1 LIMIT 1`,
           [factura.ecfId],
         ).then((r: any[]) => r[0])
@@ -149,7 +151,8 @@ export class PDFService {
       ecfTipoDescripcion: ecf?.descripcion,
       ecfCodigoSeguridad: ecf?.codigoSeguridad,
       ecfEstadoDGII:      ecf?.estadoDGII,
-      ecfFechaFirma:      ecf?.fechaFirma ? String(ecf.fechaFirma) : undefined,
+      ecfFechaFirma:      ecf?.fechaFirma           ? String(ecf.fechaFirma)           : undefined,
+      ecfFechaVigencia:   ecf?.secFechaVencimiento  ? String(ecf.secFechaVencimiento)  : undefined,
       empresaNombre:      empresa.razonSocial || empresa.nombre || 'Mi Empresa',
       empresaRNC:         empresa.rnc || '',
       empresaDireccion:   empresa.direccion || '',
