@@ -180,6 +180,30 @@ export class ServiciosService {
     return this.findById(ordenId);
   }
 
+  async eliminarDetalle(ordenId: number, detalleId: number) {
+    const orden = await this.findById(ordenId);
+    if ([EstadoOrden.ENTREGADO, EstadoOrden.COBRADO, EstadoOrden.CANCELADO].includes(orden.estado)) {
+      throw new BadRequestException('No se pueden modificar detalles de una orden cerrada');
+    }
+
+    const detalle = await this.detalleRepo.findOne({ where: { id: detalleId, ordenId } });
+    if (!detalle) throw new NotFoundException(`Detalle #${detalleId} no encontrado en la orden`);
+
+    await this.detalleRepo.delete(detalleId);
+
+    // Recalcular totales
+    const detalles = await this.detalleRepo.find({ where: { ordenId } });
+    const totalPiezas   = detalles.filter(d => d.tipo !== 'mano_obra').reduce((s, d) => s + Number(d.subtotal), 0);
+    const totalManoObra = detalles.filter(d => d.tipo === 'mano_obra').reduce((s, d) => s + Number(d.subtotal), 0);
+    await this.ordenRepo.update(ordenId, {
+      totalPiezas:   Number(totalPiezas.toFixed(2)),
+      totalManoObra: Number(totalManoObra.toFixed(2)),
+      total:         Number((totalPiezas + totalManoObra).toFixed(2)),
+    });
+
+    return this.findById(ordenId);
+  }
+
   // ── Convertir orden a factura ──────────────────────────────────────────────
 
   async convertirAFactura(id: number, usuario: User) {

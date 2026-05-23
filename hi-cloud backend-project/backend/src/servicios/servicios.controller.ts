@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Patch, Body, Param, Query,
+  Controller, Get, Post, Patch, Delete, Body, Param, Query,
   ParseIntPipe, HttpCode, HttpStatus, UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
@@ -119,6 +119,17 @@ export class ServiciosController {
     @Body() dto: DetalleOrdenDto,
   ) {
     return this.svc.agregarDetalle(id, dto);
+  }
+
+  @Delete(':id/detalles/:detalleId')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Eliminar pieza o mano de obra de la orden' })
+  eliminarDetalle(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('detalleId', ParseIntPipe) detalleId: number,
+  ) {
+    return this.svc.eliminarDetalle(id, detalleId);
   }
 
   @Post(':id/facturar')
