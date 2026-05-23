@@ -313,6 +313,22 @@ export class SuperAdminService {
     this.logger.warn(`[HARD DELETE] Empresa #${id} (${e.nombre}) iniciado por super_admin #${superAdminId}`);
 
     await this.ds.transaction(async em => {
+      // Helper: envuelve cada DELETE en un SAVEPOINT para que un fallo por FK
+      // no aborte la transacción PostgreSQL completa (.catch() JS NO restaura
+      // el estado de la transacción en PG — sólo ROLLBACK TO SAVEPOINT lo hace).
+      let _spSeq = 0;
+      const safeDelete = async (sql: string, params: any[], label: string) => {
+        const sp = `sp_del_${++_spSeq}`;
+        await em.query(`SAVEPOINT "${sp}"`);
+        try {
+          await em.query(sql, params);
+          await em.query(`RELEASE SAVEPOINT "${sp}"`);
+        } catch (err: any) {
+          await em.query(`ROLLBACK TO SAVEPOINT "${sp}"`);
+          await em.query(`RELEASE SAVEPOINT "${sp}"`);
+          this.logger.warn(`[HARD DELETE] ${label}: ${(err.message ?? '').split('\n')[0]}`);
+        }
+      };
 
       // ── 1. Tablas con FK directo a empresa (bloquean el DELETE final) ─────
       //    Las encontramos dinámicamente para sobrevivir a nuevas tablas.
@@ -363,23 +379,21 @@ export class SuperAdminService {
 
         for (const { child_table, child_col } of hijos) {
           // Borrar hijos cuyo parent pertenece a la empresa
-          await em.query(
+          await safeDelete(
             `DELETE FROM "${child_table}"
               WHERE "${child_col}" IN (
                 SELECT id FROM "${table_name}" WHERE "${column_name}" = $1
               )`,
             [id],
-          ).catch((err: any) =>
-            this.logger.warn(`[HARD DELETE] hijo ${child_table}: ${err.message}`),
+            `hijo ${child_table}`,
           );
         }
 
         // Ahora borrar la tabla que FK apunta directamente a empresa
-        await em.query(
+        await safeDelete(
           `DELETE FROM "${table_name}" WHERE "${column_name}" = $1`,
           [id],
-        ).catch((err: any) =>
-          this.logger.warn(`[HARD DELETE] ${table_name}: ${err.message}`),
+          `fk-directo ${table_name}`,
         );
       }
 
@@ -430,21 +444,20 @@ export class SuperAdminService {
       }
 
       for (const { child_table, child_col, parent_table } of tablasSinEmpresaId) {
-        await em.query(
+        await safeDelete(
           `DELETE FROM "${child_table}"
             WHERE "${child_col}" IN (
               SELECT id FROM "${parent_table}" WHERE "empresaId" = $1
             )`,
           [id],
-        ).catch((err: any) =>
-          this.logger.warn(`[HARD DELETE] sin-empresaId ${child_table}: ${err.message}`),
+          `sin-empresaId ${child_table}`,
         );
       }
 
       // ── 4. Borrar TODO lo que tenga columna empresaId (datos del tenant) ──
       //    Esto limpia facturas, clientes, productos, aprobaciones, etc.
-      //    Usamos dos pasadas: la 1ª puede fallar por FK entre tablas del tenant;
-      //    la 2ª limpia lo que quedó pendiente.
+      //    Cada DELETE usa safeDelete (SAVEPOINT) para que un fallo por FK entre
+      //    tablas del tenant no aborte la transacción PostgreSQL completa.
       const tablasTenant = await em.query<{ table_name: string }[]>(`
         SELECT c.table_name
         FROM information_schema.columns c
@@ -454,21 +467,12 @@ export class SuperAdminService {
         ORDER BY c.table_name
       `);
 
-      // Pasada 1 — silenciosa (puede fallar por FK intertenant)
+      // Una sola pasada con SAVEPOINT para que los fallos FK no aborten la PG tx
       for (const { table_name } of tablasTenant) {
-        await em.query(
+        await safeDelete(
           `DELETE FROM "${table_name}" WHERE "empresaId" = $1`,
           [id],
-        ).catch(() => {});
-      }
-
-      // Pasada 2 — logging de lo que siga fallando
-      for (const { table_name } of tablasTenant) {
-        await em.query(
-          `DELETE FROM "${table_name}" WHERE "empresaId" = $1`,
-          [id],
-        ).catch((err: any) =>
-          this.logger.warn(`[HARD DELETE] (pasada 2) ${table_name}: ${err.message}`),
+          `tenant ${table_name}`,
         );
       }
 
