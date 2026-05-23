@@ -254,11 +254,14 @@ export class SuperAdminService {
       await safeQuery(`DELETE FROM refresh_tokens    WHERE "userId" = $1`, [userId], 'refresh_tokens');
 
       // ── 2. Detectar TODAS las FK que apuntan a users dinámicamente ──────────
-      //    Así funciona aunque se agreguen nuevas tablas en el futuro.
-      const fkRefs = await em.query<{ table_name: string; column_name: string }[]>(`
+      //    También obtenemos is_nullable para decidir si nullificar o borrar.
+      const fkRefs = await em.query<{
+        table_name: string; column_name: string; is_nullable: string;
+      }[]>(`
         SELECT DISTINCT
           tc.table_name,
-          kcu.column_name
+          kcu.column_name,
+          cols.is_nullable
         FROM information_schema.table_constraints AS tc
         JOIN information_schema.key_column_usage AS kcu
           ON  tc.constraint_name = kcu.constraint_name
@@ -268,6 +271,10 @@ export class SuperAdminService {
         JOIN information_schema.table_constraints AS ccu
           ON  ccu.constraint_name = rc.unique_constraint_name
           AND ccu.table_schema    = tc.table_schema
+        JOIN information_schema.columns cols
+          ON  cols.table_schema  = 'public'
+          AND cols.table_name    = tc.table_name
+          AND cols.column_name   = kcu.column_name
         WHERE tc.constraint_type = 'FOREIGN KEY'
           AND ccu.table_name     = 'users'
           AND tc.table_name  NOT IN ('usuario_empresa', 'refresh_tokens')
@@ -276,16 +283,27 @@ export class SuperAdminService {
       `);
 
       this.logger.debug(
-        `[HARD DELETE] FK refs encontradas: ${fkRefs.map(r => `${r.table_name}.${r.column_name}`).join(', ')}`,
+        `[HARD DELETE] FK refs: ${fkRefs.map(r => `${r.table_name}.${r.column_name}(nullable=${r.is_nullable})`).join(', ')}`,
       );
 
-      // ── 3. Nullificar cada FK (preservar historial) ─────────────────────────
-      for (const { table_name, column_name } of fkRefs) {
-        await safeQuery(
-          `UPDATE "${table_name}" SET "${column_name}" = NULL WHERE "${column_name}" = $1`,
-          [userId],
-          `nullificar ${table_name}.${column_name}`,
-        );
+      // ── 3. Resolver cada FK según si admite NULL ────────────────────────────
+      //    - is_nullable = YES → SET col = NULL (preserva el historial)
+      //    - is_nullable = NO  → DELETE la fila (columna no admite NULL)
+      for (const { table_name, column_name, is_nullable } of fkRefs) {
+        if (is_nullable === 'YES') {
+          await safeQuery(
+            `UPDATE "${table_name}" SET "${column_name}" = NULL WHERE "${column_name}" = $1`,
+            [userId],
+            `nullificar ${table_name}.${column_name}`,
+          );
+        } else {
+          // Columna NOT NULL — no podemos nullificar, hay que borrar la fila
+          await safeQuery(
+            `DELETE FROM "${table_name}" WHERE "${column_name}" = $1`,
+            [userId],
+            `delete NOT-NULL FK ${table_name}.${column_name}`,
+          );
+        }
       }
 
       // ── 4. Limpiar tablas sin FK formal (datos PII) ─────────────────────────
