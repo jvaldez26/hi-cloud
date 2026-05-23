@@ -62,6 +62,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Token inválido o usuario inactivo');
     }
 
+    // Bloquear cuentas pendientes de aprobación (defensa en profundidad)
+    if ((user as any).accountStatus === 'pendiente') {
+      throw new UnauthorizedException('CUENTA_PENDIENTE');
+    }
+
     // Sesión desplazada o revocada: SQL raw para garantizar lectura fresca de BD
     // (evita cualquier caché de TypeORM entity / query result)
     if (payload.sessionToken) {

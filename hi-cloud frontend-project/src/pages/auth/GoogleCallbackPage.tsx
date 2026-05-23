@@ -20,6 +20,16 @@ export default function GoogleCallbackPage() {
       return;
     }
 
+    // El backend redirige a /pending-approval si la cuenta es nueva (pendiente de aprobación)
+    // Nota: este componente también maneja el caso en que el backend redirigió
+    // directamente a /auth/callback — la ruta /pending-approval es manejada
+    // por el backend directamente. Este guard es defensa extra en caso de
+    // que el backend redirija con ?pending=true en el futuro.
+    if (params.get('pending') === 'true') {
+      navigate('/pending-approval', { replace: true });
+      return;
+    }
+
     // S-23: el backend seteó la cookie httpOnly — llamamos /auth/me
     // para obtener los datos reales del usuario (id correcto, empresas, etc.)
     const empresaId  = params.get('empresaId');

@@ -61,8 +61,13 @@ export class AuthService implements OnModuleInit {
       await this.dataSource.query(`
         CREATE INDEX IF NOT EXISTS "IDX_users_sessionToken" ON users("sessionToken")
       `);
+      // Columna de estado de cuenta — 'pendiente' bloquea el acceso hasta aprobación del Super Admin
+      await this.dataSource.query(`
+        ALTER TABLE users
+          ADD COLUMN IF NOT EXISTS "accountStatus" VARCHAR(20) NOT NULL DEFAULT 'activo'
+      `);
     } catch (e) {
-      this.logger.warn('Session columns migration (ignorado): ' + e);
+      this.logger.warn('Session/accountStatus columns migration (ignorado): ' + e);
     }
   }
 
@@ -133,12 +138,14 @@ export class AuthService implements OnModuleInit {
     try {
       const user = await qr.manager.save(
         qr.manager.create(User, {
-          nombre:   dto.nombre,
-          email:    dto.email,
-          password: hashed,
-          role:     UserRole.ADMIN,
-          isActive: true,
-        }),
+          nombre:          dto.nombre,
+          email:           dto.email,
+          password:        hashed,
+          role:            UserRole.ADMIN,
+          isActive:        true,
+          accountStatus:   'pendiente',   // Requiere aprobación del Super Admin
+          emailVerifiedAt: new Date(),    // Skip email verification — el Super Admin es el gate
+        } as any),
       );
 
       if (dto.empresaNombre && dto.empresaRnc) {
@@ -193,13 +200,14 @@ export class AuthService implements OnModuleInit {
         await qr.commitTransaction();
       }
 
-      // Correo de verificación — post-commit, no revertir la TX si falla
-      this.sendVerificationEmail(user.id, user.email, user.nombre).catch(err =>
-        this.logger.warn(`No se pudo enviar verificación: ${err?.message}`),
+      // Notificar a los Super Admins del nuevo registro pendiente (post-commit)
+      this.notificarAdminsPendiente(user.nombre, user.email).catch(err =>
+        this.logger.warn(`No se pudo notificar a admins: ${err?.message}`),
       );
 
       return {
-        message: 'Cuenta creada. Revisa tu correo para verificar tu cuenta antes de iniciar sesión.',
+        pendingApproval: true,
+        message: 'Tu solicitud fue recibida. Nuestro equipo la revisará y recibirás un email en menos de 24 horas.',
         user: { id: user.id, nombre: user.nombre, email: user.email },
       };
     } catch (e: any) {
@@ -227,6 +235,11 @@ export class AuthService implements OnModuleInit {
 
     const isValid = await bcrypt.compare(dto.password, user.password);
     if (!isValid) throw new UnauthorizedException('Credenciales inválidas');
+
+    // Cuenta pendiente de aprobación del Super Admin
+    if ((user as any).accountStatus === 'pendiente') {
+      throw new (require('@nestjs/common').ForbiddenException)('CUENTA_PENDIENTE');
+    }
 
     // S-40: No revelar si el usuario existe — mensaje genérico en ambos casos.
     // Si el correo no está verificado, reenviar email en background (UX amigable)
@@ -614,7 +627,7 @@ export class AuthService implements OnModuleInit {
       return { ...user, ...updates } as User;
     }
 
-    // 3. Crear cuenta nueva — el registro con Google es siempre auto-registro (admin de su empresa)
+    // 3. Crear cuenta nueva — queda en PENDIENTE hasta aprobación del Super Admin
     const pw = await bcrypt.hash(randomBytes(32).toString('hex'), 12);
     const newUser = this.userRepository.create({
       nombre:          data.nombre,
@@ -622,10 +635,18 @@ export class AuthService implements OnModuleInit {
       password:        pw,
       googleId:        data.googleId,
       provider:        'GOOGLE',
-      role:            UserRole.ADMIN,  // auto-registro = admin de su empresa
+      role:            UserRole.ADMIN,
       emailVerifiedAt: new Date(),      // Google ya verificó el email
+      accountStatus:   'pendiente',     // Requiere aprobación del Super Admin
     } as any);
-    return this.userRepository.save(newUser) as unknown as User;
+    const saved = await this.userRepository.save(newUser) as unknown as User;
+
+    // Notificar a los Super Admins (non-fatal)
+    this.notificarAdminsPendiente(data.nombre, data.email).catch(err =>
+      this.logger.warn(`[GOOGLE] No se pudo notificar a admins: ${err?.message}`),
+    );
+
+    return saved;
   }
 
   async marcarTourCompletado(userId: number): Promise<void> {
@@ -786,6 +807,49 @@ export class AuthService implements OnModuleInit {
       })),
       user: { id: user.id, nombre: user.nombre, email: user.email, role: user.role, tourCompletado: (user as any).tourCompletado ?? false },
     };
+  }
+
+  // ─── Notificación de registro pendiente ───────────────────────────────────
+
+  /** Envía email a todos los Super Admins cuando un nuevo usuario se registra. */
+  async notificarAdminsPendiente(nombre: string, email: string): Promise<void> {
+    const admins = await this.dataSource.query<any[]>(
+      `SELECT email, nombre FROM users WHERE role = 'super_admin' AND "isActive" = true LIMIT 10`,
+    );
+    if (!admins.length) return;
+
+    const frontendUrl = process.env['FRONTEND_URL'] ?? 'https://hicloudrd.com';
+    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>body{font-family:'Inter',sans-serif;background:#f5f5f5;margin:0;padding:20px}
+.card{background:#fff;max-width:520px;margin:0 auto;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.1)}
+.header{background:linear-gradient(135deg,#f59e0b,#d97706);padding:28px;color:#fff;text-align:center}
+.body{padding:28px}.btn{display:inline-block;background:linear-gradient(135deg,#1a56db,#0ea5e9);color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:16px}
+.footer{padding:16px;text-align:center;font-size:12px;color:#9ca3af}</style></head>
+<body><div class="card">
+  <div class="header"><h2 style="margin:0">🔔 Nueva solicitud de registro</h2></div>
+  <div class="body">
+    <p>Un nuevo usuario se ha registrado y está esperando tu aprobación:</p>
+    <table style="background:#f9fafb;border-radius:8px;padding:16px;width:100%;margin:16px 0">
+      <tr><td style="color:#6b7280;font-size:13px;padding:4px 0">Nombre:</td><td style="font-weight:700">${nombre}</td></tr>
+      <tr><td style="color:#6b7280;font-size:13px;padding:4px 0">Email:</td><td style="font-weight:700">${email}</td></tr>
+    </table>
+    <p style="text-align:center;margin:28px 0">
+      <a href="${frontendUrl}/super-admin" class="btn">Revisar en el panel →</a>
+    </p>
+    <p style="color:#6b7280;font-size:13px">Ve a Super Admin → Pendientes para aprobar o rechazar.</p>
+  </div>
+  <div class="footer">© 2026 HiCloud ERP · República Dominicana</div>
+</div></body></html>`;
+
+    for (const admin of admins) {
+      await this.emailService.enviar({
+        to:      admin.email,
+        subject: `Nueva solicitud de registro — ${nombre} (${email})`,
+        html,
+      }).catch(() => null);
+    }
+    this.logger.log(`[REGISTRO] Admins notificados del nuevo registro pendiente: ${email}`);
   }
 
   /** Genera la respuesta de login completa (token + empresas) para un User */

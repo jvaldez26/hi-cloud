@@ -3,11 +3,15 @@ import {
   ForbiddenException, Logger,
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { EmailService } from '../notificaciones/services/email.service';
 
 @Injectable()
 export class SuperAdminService {
   private readonly logger = new Logger(SuperAdminService.name);
-  constructor(private ds: DataSource) {}
+  constructor(
+    private ds: DataSource,
+    private emailService: EmailService,
+  ) {}
 
   // ── Empresas ──────────────────────────────────────────────────────────────
 
@@ -724,5 +728,117 @@ export class SuperAdminService {
       dist[r.plan] = { cantidad: (dist[r.plan]?.cantidad ?? 0) + Number(r.cantidad), mrrUsd: (dist[r.plan]?.mrrUsd ?? 0) + p * Number(r.cantidad) };
     }
     return { mrrUsd: Math.round(mrrUsd * 100) / 100, arrUsd: Math.round(mrrUsd * 12 * 100) / 100, distribucion: dist };
+  }
+
+  // ── Gestión de registros pendientes de aprobación ─────────────────────────
+
+  async listarRegistrosPendientes() {
+    return this.ds.query<any[]>(`
+      SELECT
+        u.id, u.nombre, u.email, u.provider, u."createdAt",
+        e.nombre AS empresa, e.rnc,
+        s.plan
+      FROM users u
+      LEFT JOIN usuario_empresa ue ON ue."userId" = u.id AND ue."isPrincipal" = true AND ue."isActive" = true
+      LEFT JOIN empresa e ON e.id = ue."empresaId"
+      LEFT JOIN suscripciones s ON s."empresaId" = e.id
+      WHERE u."accountStatus" = 'pendiente'
+        AND u."isActive" = true
+        AND u.role != 'super_admin'
+      ORDER BY u."createdAt" DESC
+    `);
+  }
+
+  async contarRegistrosPendientes(): Promise<number> {
+    const [{ cnt }] = await this.ds.query<any[]>(
+      `SELECT COUNT(*)::int AS cnt FROM users WHERE "accountStatus" = 'pendiente' AND "isActive" = true AND role != 'super_admin'`,
+    );
+    return cnt ?? 0;
+  }
+
+  async aprobarRegistro(userId: number, superAdminId: number) {
+    const [u] = await this.ds.query<any[]>(
+      `SELECT id, nombre, email, "accountStatus" FROM users WHERE id = $1`, [userId],
+    );
+    if (!u) throw new NotFoundException(`Usuario #${userId} no encontrado`);
+    if (u.accountStatus !== 'pendiente') {
+      throw new BadRequestException('Este usuario no está pendiente de aprobación');
+    }
+
+    await this.ds.query(
+      `UPDATE users SET "accountStatus" = 'activo' WHERE id = $1`, [userId],
+    );
+
+    const frontendUrl = process.env['FRONTEND_URL'] ?? 'https://hicloudrd.com';
+    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>body{font-family:'Inter',sans-serif;background:#f5f5f5;margin:0;padding:20px}
+.card{background:#fff;max-width:520px;margin:0 auto;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.1)}
+.header{background:linear-gradient(135deg,#059669,#10b981);padding:28px;color:#fff;text-align:center}
+.body{padding:28px}.btn{display:inline-block;background:linear-gradient(135deg,#1a56db,#0ea5e9);color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:16px}
+.footer{padding:16px;text-align:center;font-size:12px;color:#9ca3af}</style></head>
+<body><div class="card">
+  <div class="header"><h2 style="margin:0">✅ Tu cuenta fue aprobada</h2></div>
+  <div class="body">
+    <p>Hola <strong>${u.nombre}</strong>,</p>
+    <p>¡Buenas noticias! Tu solicitud de acceso a HiCloud ERP fue <strong>aprobada</strong>. Ya puedes iniciar sesión.</p>
+    <p style="text-align:center;margin:28px 0">
+      <a href="${frontendUrl}/login" class="btn">Iniciar sesión →</a>
+    </p>
+    <p style="color:#6b7280;font-size:13px">Si tienes alguna pregunta, escríbenos a soporte@hicloudrd.com</p>
+  </div>
+  <div class="footer">© 2026 HiCloud ERP · República Dominicana</div>
+</div></body></html>`;
+
+    await this.emailService.enviar({
+      to:      u.email,
+      subject: '✅ Tu cuenta en HiCloud ERP fue aprobada',
+      html,
+    }).catch(err => this.logger.warn(`[REGISTRO] Email aprobación #${userId}: ${err?.message}`));
+
+    this.logger.warn(`[REGISTRO] Usuario #${userId} (${u.email}) aprobado por super_admin #${superAdminId}`);
+    return { ok: true, mensaje: `Cuenta de ${u.nombre} aprobada. El usuario ya puede iniciar sesión.` };
+  }
+
+  async rechazarRegistro(userId: number, superAdminId: number, motivo: string) {
+    const [u] = await this.ds.query<any[]>(
+      `SELECT id, nombre, email, "accountStatus" FROM users WHERE id = $1`, [userId],
+    );
+    if (!u) throw new NotFoundException(`Usuario #${userId} no encontrado`);
+    if (u.accountStatus !== 'pendiente') {
+      throw new BadRequestException('Este usuario no está pendiente de aprobación');
+    }
+
+    await this.ds.query(
+      `UPDATE users SET "accountStatus" = 'rechazado', "isActive" = false WHERE id = $1`, [userId],
+    );
+
+    const motivoTexto = motivo || 'No se especificó un motivo';
+    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>body{font-family:'Inter',sans-serif;background:#f5f5f5;margin:0;padding:20px}
+.card{background:#fff;max-width:520px;margin:0 auto;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.1)}
+.header{background:linear-gradient(135deg,#ef4444,#dc2626);padding:28px;color:#fff;text-align:center}
+.body{padding:28px}
+.footer{padding:16px;text-align:center;font-size:12px;color:#9ca3af}</style></head>
+<body><div class="card">
+  <div class="header"><h2 style="margin:0">Sobre tu solicitud de acceso</h2></div>
+  <div class="body">
+    <p>Hola <strong>${u.nombre}</strong>,</p>
+    <p>Hemos revisado tu solicitud de acceso a HiCloud ERP. En este momento, no podemos activar tu cuenta.</p>
+    ${motivo ? `<p><strong>Motivo:</strong> ${motivoTexto}</p>` : ''}
+    <p>Si crees que esto es un error o tienes preguntas, contacta a nuestro equipo en <a href="mailto:soporte@hicloudrd.com">soporte@hicloudrd.com</a>.</p>
+  </div>
+  <div class="footer">© 2026 HiCloud ERP · República Dominicana</div>
+</div></body></html>`;
+
+    await this.emailService.enviar({
+      to:      u.email,
+      subject: 'Actualización sobre tu solicitud de acceso — HiCloud ERP',
+      html,
+    }).catch(err => this.logger.warn(`[REGISTRO] Email rechazo #${userId}: ${err?.message}`));
+
+    this.logger.warn(`[REGISTRO] Usuario #${userId} (${u.email}) rechazado por super_admin #${superAdminId}: ${motivo}`);
+    return { ok: true, mensaje: `Solicitud de ${u.nombre} rechazada.` };
   }
 }

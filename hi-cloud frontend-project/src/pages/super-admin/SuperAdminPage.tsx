@@ -1160,6 +1160,41 @@ export default function SuperAdminPage() {
   });
   const demosNuevas = demoStats?.nuevas ?? 0;
 
+  // ── Registros pendientes de aprobación ────────────────────────────────────
+  const { data: pendientes = [], isLoading: loadPendientes, refetch: refetchPendientes } = useQuery({
+    queryKey: ['sa-pendientes'],
+    queryFn:  () => api.get('/admin/registros-pendientes').then(xd),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+  const pendientesCount = (pendientes as any[]).length;
+
+  const aprobarRegistroMut = useMutation({
+    mutationFn: (id: number) => api.post(`/admin/registros-pendientes/${id}/aprobar`).then(xd),
+    onSuccess: (res: any) => {
+      qc.invalidateQueries({ queryKey: ['sa-pendientes'] });
+      qc.invalidateQueries({ queryKey: ['sa-usuarios'] });
+      message.success(res?.mensaje ?? 'Cuenta aprobada');
+    },
+    onError: () => message.error('Error al aprobar'),
+  });
+
+  const [rechazarModal, setRechazarModal] = useState<any>(null);
+  const [motivoRechazo, setMotivoRechazo] = useState('');
+
+  const rechazarRegistroMut = useMutation({
+    mutationFn: ({ id, motivo }: { id: number; motivo: string }) =>
+      api.post(`/admin/registros-pendientes/${id}/rechazar`, { motivo }).then(xd),
+    onSuccess: (res: any) => {
+      qc.invalidateQueries({ queryKey: ['sa-pendientes'] });
+      qc.invalidateQueries({ queryKey: ['sa-usuarios'] });
+      setRechazarModal(null);
+      setMotivoRechazo('');
+      message.success(res?.mensaje ?? 'Solicitud rechazada');
+    },
+    onError: () => message.error('Error al rechazar'),
+  });
+
   // ── Eliminar / suspender / activar usuario ──────────────────────────────
   const [eliminarModal,    setEliminarModal]    = useState<any>(null);
   const [hardDeleteUsu,    setHardDeleteUsu]    = useState<any>(null);
@@ -1882,6 +1917,7 @@ export default function SuperAdminPage() {
             {[
               { key: 'empresas',      icon: <Building2 size={15} />,  label: 'Empresas',      count: (empresas as any[]).length, countColor: C.blue },
               { key: 'usuarios',      icon: <Users size={15} />,      label: 'Usuarios',      count: (usuarios as any[]).length, countColor: C.blue },
+              { key: 'pendientes',    icon: <ClockIcon size={15} />,  label: 'Pendientes',    count: pendientesCount, countColor: C.red, badge: pendientesCount > 0 },
               { key: 'suscripciones', icon: <Crown size={15} />,      label: 'Suscripciones', count: (suscripciones as any[]).length, countColor: C.blue },
               { key: 'solicitudes',   icon: <Send size={15} />,       label: 'Solicitudes',   count: solicitudesPendientes ?? 0, countColor: C.red, badge: true },
               { key: 'demos',         icon: <MessageSquare size={15} />, label: 'Demos',       count: demosNuevas, countColor: C.red, badge: demosNuevas > 0 },
@@ -2011,6 +2047,117 @@ export default function SuperAdminPage() {
             )}
 
             {/* ── TAB USUARIOS ──────────────────────────────────────────────── */}
+            {/* ── TAB PENDIENTES ───────────────────────────────────────────── */}
+            {tab === 'pendientes' && (
+              <>
+                {pendientesCount === 0 && !loadPendientes ? (
+                  <div style={{ textAlign: 'center', padding: '60px 0' }}>
+                    <CheckCircle size={48} color={C.green} style={{ marginBottom: 12 }} />
+                    <p style={{ color: C.txt2, fontSize: 15 }}>No hay solicitudes pendientes</p>
+                  </div>
+                ) : (
+                  <Table
+                    dataSource={pendientes as any[]}
+                    loading={loadPendientes}
+                    rowKey="id"
+                    size="small"
+                    scroll={{ x: 720 }}
+                    pagination={{ pageSize: 15, showTotal: t => `${t} solicitudes` }}
+                    columns={[
+                      {
+                        title: 'Usuario',
+                        render: (_: any, r: any) => (
+                          <div>
+                            <div style={{ fontWeight: 600, color: C.txt }}>{r.nombre}</div>
+                            <div style={{ color: C.txt2, fontSize: 12 }}>{r.email}</div>
+                          </div>
+                        ),
+                      },
+                      {
+                        title: 'Empresa',
+                        render: (_: any, r: any) => r.empresa
+                          ? <span style={{ color: C.txt }}>{r.empresa} <span style={{ color: C.txt2 }}>({r.rnc})</span></span>
+                          : <span style={{ color: C.txt2 }}>—</span>,
+                      },
+                      {
+                        title: 'Plan',
+                        dataIndex: 'plan',
+                        render: (v: string) => v ? <Tag color="gold">{v}</Tag> : '—',
+                      },
+                      {
+                        title: 'Registro via',
+                        dataIndex: 'provider',
+                        render: (v: string) => (
+                          <Tag color={v === 'GOOGLE' ? 'blue' : 'default'}>{v === 'GOOGLE' ? '🔵 Google' : '✉ Email'}</Tag>
+                        ),
+                      },
+                      {
+                        title: 'Fecha',
+                        dataIndex: 'createdAt',
+                        render: (v: string) => fmtFecha(v),
+                      },
+                      {
+                        title: 'Acciones',
+                        render: (_: any, r: any) => (
+                          <Space>
+                            <Button
+                              type="primary"
+                              size="small"
+                              icon={<CheckCircle size={13} />}
+                              style={{ background: C.green, borderColor: C.green }}
+                              loading={aprobarRegistroMut.isPending}
+                              onClick={() => {
+                                Modal.confirm({
+                                  title: `Aprobar a ${r.nombre}`,
+                                  content: `¿Confirmas activar la cuenta de ${r.email}? El usuario recibirá un email de bienvenida.`,
+                                  okText: 'Aprobar',
+                                  okButtonProps: { style: { background: C.green, borderColor: C.green } },
+                                  cancelText: 'Cancelar',
+                                  onOk: () => aprobarRegistroMut.mutate(r.id),
+                                });
+                              }}
+                            >
+                              Aprobar
+                            </Button>
+                            <Button
+                              size="small"
+                              danger
+                              icon={<XCircle size={13} />}
+                              onClick={() => { setRechazarModal(r); setMotivoRechazo(''); }}
+                            >
+                              Rechazar
+                            </Button>
+                          </Space>
+                        ),
+                      },
+                    ]}
+                  />
+                )}
+
+                {/* Modal rechazar */}
+                <Modal
+                  open={!!rechazarModal}
+                  title={`Rechazar solicitud — ${rechazarModal?.nombre}`}
+                  onCancel={() => { setRechazarModal(null); setMotivoRechazo(''); }}
+                  onOk={() => rechazarRegistroMut.mutate({ id: rechazarModal?.id, motivo: motivoRechazo })}
+                  okText="Rechazar"
+                  okButtonProps={{ danger: true, loading: rechazarRegistroMut.isPending }}
+                  cancelText="Cancelar"
+                >
+                  <p style={{ marginBottom: 12 }}>
+                    Se enviará un email a <strong>{rechazarModal?.email}</strong> informando que su solicitud fue denegada.
+                  </p>
+                  <Input.TextArea
+                    placeholder="Motivo del rechazo (opcional — se incluirá en el email)"
+                    value={motivoRechazo}
+                    onChange={e => setMotivoRechazo(e.target.value)}
+                    rows={3}
+                    maxLength={300}
+                  />
+                </Modal>
+              </>
+            )}
+
             {tab === 'usuarios' && (
               <Table
                 dataSource={usuarios as any[]}

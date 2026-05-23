@@ -62,6 +62,13 @@ export class User extends BaseEntity {
   @Column({ default: false })
   tourCompletado!: boolean;
 
+  // ── Control de acceso ─────────────────────────────────────────────────────
+  // 'pendiente' = registro recibido, esperando aprobación del Super Admin
+  // 'activo'    = aprobado, puede iniciar sesión (default para todos los existentes)
+  // 'rechazado' = solicitud denegada
+  @Column({ length: 20, default: 'activo' })
+  accountStatus!: string;
+
   @Column({ default: false })
   twoFactorEnabled!: boolean;
 

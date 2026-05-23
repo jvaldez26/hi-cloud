@@ -330,6 +330,13 @@ export class AuthController {
   async googleCallback(@Req() req: Request, @Res() res: Response) {
     const frontendUrl = process.env.FRONTEND_URL ?? 'https://hicloudrd.com';
     try {
+      const googleUser = req.user as any;
+
+      // Cuenta nueva → queda PENDIENTE hasta aprobación del Super Admin
+      if (googleUser?.accountStatus === 'pendiente') {
+        return (res as any).redirect(`${frontendUrl}/pending-approval`);
+      }
+
       const loginData = await this.authService.buildLoginResponse(req.user as User);
       // S-41: token en cookie httpOnly, NO en la URL
       this.setAuthCookie(res as any, loginData.accessToken);

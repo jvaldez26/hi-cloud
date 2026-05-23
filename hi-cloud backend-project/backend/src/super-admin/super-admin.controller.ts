@@ -84,6 +84,11 @@ class HardDeleteDto {
   confirmacion!: string;
 }
 
+class RechazarRegistroDto {
+  @IsOptional() @IsString()
+  motivo?: string;
+}
+
 class BackupAlertDto {
   @IsString() @IsNotEmpty() mensaje!: string;
   @IsOptional() @IsString() tipo?: string;
@@ -416,5 +421,33 @@ export class SuperAdminController {
       [body.monto, mesPeriodo, empresaId],
     );
     return { ok: true, empresaId, ingresosMesActualDop: body.monto, mesPeriodo };
+  }
+
+  // ── Registros pendientes de aprobación ─────────────────────────────────────
+
+  @Get('registros-pendientes')
+  @ApiOperation({ summary: 'Listar usuarios pendientes de aprobación' })
+  listarPendientes() { return this.svc.listarRegistrosPendientes(); }
+
+  @Get('registros-pendientes/count')
+  @ApiOperation({ summary: 'Contar usuarios pendientes de aprobación (para badge)' })
+  contarPendientes() { return this.svc.contarRegistrosPendientes(); }
+
+  @Post('registros-pendientes/:id/aprobar')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Aprobar solicitud de registro — activa la cuenta y envía email de bienvenida' })
+  aprobarRegistro(@Param('id', ParseIntPipe) id: number, @GetUser() admin: User) {
+    return this.svc.aprobarRegistro(id, admin.id);
+  }
+
+  @Post('registros-pendientes/:id/rechazar')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Rechazar solicitud de registro — desactiva la cuenta y envía email con motivo' })
+  rechazarRegistro(
+    @Param('id', ParseIntPipe) id: number,
+    @GetUser() admin: User,
+    @Body() dto: RechazarRegistroDto,
+  ) {
+    return this.svc.rechazarRegistro(id, admin.id, dto.motivo ?? '');
   }
 }

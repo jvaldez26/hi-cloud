@@ -8,11 +8,13 @@ import { SuperAdminGuard }      from './super-admin.guard';
 import { BackupService }        from './backup.service';
 import { BackupRegistro }       from './entities/backup-registro.entity';
 import { SuscripcionesModule }  from '../suscripciones/suscripciones.module';
+import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 
 @Module({
   imports: [
     ConfigModule,
     SuscripcionesModule,
+    NotificacionesModule,
     TypeOrmModule.forFeature([BackupRegistro]),
     JwtModule.registerAsync({
       imports: [ConfigModule],

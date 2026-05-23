@@ -236,38 +236,43 @@ export default function RegisterPage() {
                 initial={{ opacity: 0, scale: .95 }} animate={{ opacity: 1, scale: 1 }}
                 style={{ textAlign: 'center', padding: '16px 0' }}>
                 <div style={{
-                  width: 64, height: 64, borderRadius: '50%',
-                  background: 'rgba(16,185,129,.2)',
+                  width: 72, height: 72, borderRadius: '50%',
+                  background: 'rgba(245,158,11,.15)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  margin: '0 auto 20px', fontSize: 28,
-                }}>✉️</div>
-                <Title level={4} style={{ color: '#fff', marginBottom: 8 }}>¡Revisa tu correo!</Title>
+                  margin: '0 auto 20px', fontSize: 32, border: '2px solid rgba(245,158,11,.3)',
+                }}>⏳</div>
+                <Title level={4} style={{ color: '#fff', marginBottom: 8 }}>¡Solicitud recibida!</Title>
                 <Text style={{ color: 'rgba(255,255,255,.6)', display: 'block', marginBottom: 4 }}>
-                  Enviamos un enlace de verificación a:
+                  Tu cuenta fue creada para:
                 </Text>
-                <Text strong style={{ color: '#60a5fa', display: 'block', marginBottom: 12 }}>
+                <Text strong style={{ color: '#60a5fa', display: 'block', marginBottom: 16 }}>
                   {emailRegistrado}
                 </Text>
                 <div style={{
-                  background: 'rgba(16,185,129,.1)', border: '1px solid rgba(16,185,129,.3)',
-                  borderRadius: 10, padding: '12px 16px', marginBottom: 20, textAlign: 'left',
+                  background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.25)',
+                  borderRadius: 10, padding: '14px 16px', marginBottom: 16, textAlign: 'left',
                 }}>
-                  <Text style={{ color: '#10B981', fontSize: 13 }}>
-                    Plan elegido: <strong>{planSeleccionado.nombre}</strong> (US${planSeleccionado.precio}/mes)
+                  <Text style={{ color: '#f59e0b', fontWeight: 700, fontSize: 13, display: 'block', marginBottom: 6 }}>
+                    ⏰ Pendiente de aprobación
                   </Text>
-                  <br />
-                  <Text style={{ color: 'rgba(255,255,255,.5)', fontSize: 12 }}>
-                    Prueba gratuita de 15 días — sin tarjeta de crédito
+                  <Text style={{ color: 'rgba(255,255,255,.6)', fontSize: 13 }}>
+                    Nuestro equipo revisará tu solicitud y recibirás un email en{' '}
+                    <strong style={{ color: 'rgba(255,255,255,.85)' }}>menos de 24 horas</strong>.
+                    Al ser aprobada, podrás iniciar sesión y comenzar tu prueba gratuita.
                   </Text>
                 </div>
-                <Text style={{ color: 'rgba(255,255,255,.45)', fontSize: 13, display: 'block', marginBottom: 24 }}>
-                  Haz clic en el enlace del correo para activar tu cuenta.
-                  El enlace expira en 24 horas.
-                </Text>
+                <div style={{
+                  background: 'rgba(16,185,129,.08)', border: '1px solid rgba(16,185,129,.2)',
+                  borderRadius: 10, padding: '10px 14px', marginBottom: 20, textAlign: 'left',
+                }}>
+                  <Text style={{ color: '#10B981', fontSize: 12 }}>
+                    Plan elegido: <strong>{planSeleccionado?.nombre}</strong> — prueba gratuita de 15 días
+                  </Text>
+                </div>
                 <Button type="primary" block size="large"
-                  onClick={() => navigate('/login')}
-                  style={{ height: 48, background: 'linear-gradient(135deg,#1a56db,#0ea5e9)', border: 'none', borderRadius: 10, fontWeight: 600 }}>
-                  Ir a iniciar sesión
+                  onClick={() => navigate('/pending-approval')}
+                  style={{ height: 48, background: 'linear-gradient(135deg,#f59e0b,#d97706)', border: 'none', borderRadius: 10, fontWeight: 600 }}>
+                  Ver estado de mi solicitud
                 </Button>
               </motion.div>
 
