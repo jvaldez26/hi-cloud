@@ -310,9 +310,128 @@ export class SuperAdminService {
     const [e] = await this.ds.query<any[]>('SELECT id, nombre, rnc FROM empresa WHERE id = $1', [id]);
     if (!e) throw new NotFoundException(`Empresa #${id} no encontrada`);
 
-    this.logger.warn(`[HARD DELETE] Empresa #${id} (${e.nombre}) eliminada permanentemente por super_admin #${superAdminId}`);
-    // Los CASCADE en BD eliminan facturas, productos, empleados, etc.
-    await this.ds.query('DELETE FROM empresa WHERE id = $1', [id]);
+    this.logger.warn(`[HARD DELETE] Empresa #${id} (${e.nombre}) iniciado por super_admin #${superAdminId}`);
+
+    await this.ds.transaction(async em => {
+
+      // ── 1. Tablas con FK directo a empresa (bloquean el DELETE final) ─────
+      //    Las encontramos dinámicamente para sobrevivir a nuevas tablas.
+      const fkDirectos = await em.query<{ table_name: string; column_name: string }[]>(`
+        SELECT DISTINCT
+          tc.table_name,
+          kcu.column_name
+        FROM information_schema.table_constraints   tc
+        JOIN information_schema.key_column_usage     kcu
+          ON  tc.constraint_name = kcu.constraint_name
+          AND tc.table_schema    = kcu.table_schema
+        JOIN information_schema.referential_constraints rc
+          ON  tc.constraint_name = rc.constraint_name
+        JOIN information_schema.table_constraints    ccu
+          ON  ccu.constraint_name = rc.unique_constraint_name
+          AND ccu.table_schema    = tc.table_schema
+        WHERE tc.constraint_type = 'FOREIGN KEY'
+          AND ccu.table_name     = 'empresa'
+          AND tc.table_schema    = 'public'
+        ORDER BY tc.table_name
+      `);
+
+      this.logger.debug(
+        `[HARD DELETE] FK directos a empresa: ${fkDirectos.map(r => `${r.table_name}.${r.column_name}`).join(', ')}`,
+      );
+
+      // ── 2. Para cada tabla con FK a empresa, borrar primero sus hijos ─────
+      //    (suscripcion_auditoria → suscripciones, etc.)
+      for (const { table_name, column_name } of fkDirectos) {
+        // Encontrar tablas con FK que apunten a esta tabla
+        const hijos = await em.query<{ child_table: string; child_col: string }[]>(`
+          SELECT DISTINCT
+            tc.table_name  AS child_table,
+            kcu.column_name AS child_col
+          FROM information_schema.table_constraints   tc
+          JOIN information_schema.key_column_usage     kcu
+            ON  tc.constraint_name = kcu.constraint_name
+            AND tc.table_schema    = kcu.table_schema
+          JOIN information_schema.referential_constraints rc
+            ON  tc.constraint_name = rc.constraint_name
+          JOIN information_schema.table_constraints    ccu
+            ON  ccu.constraint_name = rc.unique_constraint_name
+            AND ccu.table_schema    = tc.table_schema
+          WHERE tc.constraint_type = 'FOREIGN KEY'
+            AND ccu.table_name     = $1
+            AND tc.table_schema    = 'public'
+        `, [table_name]);
+
+        for (const { child_table, child_col } of hijos) {
+          // Borrar hijos cuyo parent pertenece a la empresa
+          await em.query(
+            `DELETE FROM "${child_table}"
+              WHERE "${child_col}" IN (
+                SELECT id FROM "${table_name}" WHERE "${column_name}" = $1
+              )`,
+            [id],
+          ).catch((err: any) =>
+            this.logger.warn(`[HARD DELETE] hijo ${child_table}: ${err.message}`),
+          );
+        }
+
+        // Ahora borrar la tabla que FK apunta directamente a empresa
+        await em.query(
+          `DELETE FROM "${table_name}" WHERE "${column_name}" = $1`,
+          [id],
+        ).catch((err: any) =>
+          this.logger.warn(`[HARD DELETE] ${table_name}: ${err.message}`),
+        );
+      }
+
+      // ── 3. Borrar TODO lo que tenga columna empresaId (datos del tenant) ──
+      //    Esto limpia facturas, clientes, productos, aprobaciones, etc.
+      //    Usamos dos pasadas: la 1ª puede fallar por FK entre tablas del tenant;
+      //    la 2ª limpia lo que quedó pendiente.
+      const tablasTenant = await em.query<{ table_name: string }[]>(`
+        SELECT c.table_name
+        FROM information_schema.columns c
+        WHERE c.table_schema = 'public'
+          AND c.column_name  = 'empresaId'
+          AND c.table_name  != 'empresa'
+        ORDER BY c.table_name
+      `);
+
+      // Pasada 1 — silenciosa (puede fallar por FK intertenant)
+      for (const { table_name } of tablasTenant) {
+        await em.query(
+          `DELETE FROM "${table_name}" WHERE "empresaId" = $1`,
+          [id],
+        ).catch(() => {});
+      }
+
+      // Pasada 2 — logging de lo que siga fallando
+      for (const { table_name } of tablasTenant) {
+        await em.query(
+          `DELETE FROM "${table_name}" WHERE "empresaId" = $1`,
+          [id],
+        ).catch((err: any) =>
+          this.logger.warn(`[HARD DELETE] (pasada 2) ${table_name}: ${err.message}`),
+        );
+      }
+
+      // ── 4. Eliminar la empresa ────────────────────────────────────────────
+      try {
+        await em.query('DELETE FROM empresa WHERE id = $1', [id]);
+      } catch (err: any) {
+        if (err?.code === '23503') {
+          const detail = err?.detail ?? err?.message ?? '';
+          const tabla  = detail.match(/table "([^"]+)"/)?.[1] ?? 'tabla desconocida';
+          this.logger.error(`[HARD DELETE] FK residual en "${tabla}": ${detail}`);
+          throw new BadRequestException(
+            `No se puede eliminar la empresa: quedan registros en "${tabla}". ` +
+            `Reporta esto al equipo técnico para que se agregue al proceso.`,
+          );
+        }
+        throw err;
+      }
+    });
+
+    this.logger.warn(`[HARD DELETE] Empresa #${id} (${e.nombre}) eliminada por super_admin #${superAdminId}`);
     return { ok: true, mensaje: `Empresa "${e.nombre}" (RNC: ${e.rnc}) eliminada permanentemente` };
   }
 
