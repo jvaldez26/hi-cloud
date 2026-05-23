@@ -383,7 +383,65 @@ export class SuperAdminService {
         );
       }
 
-      // ── 3. Borrar TODO lo que tenga columna empresaId (datos del tenant) ──
+      // ── 3. Tablas SIN empresaId con FK a tablas que SÍ tienen empresaId ─────
+      //    Ejemplo: nomina_lineas → nomina_periodos (sin CASCADE, sin empresaId).
+      //    Las encontramos dinámicamente y borramos vía subquery.
+      const tablasSinEmpresaId = await em.query<{
+        child_table: string; child_col: string; parent_table: string;
+      }[]>(`
+        SELECT DISTINCT
+          tc.table_name   AS child_table,
+          kcu.column_name AS child_col,
+          ccu.table_name  AS parent_table
+        FROM information_schema.table_constraints   tc
+        JOIN information_schema.key_column_usage     kcu
+          ON  tc.constraint_name = kcu.constraint_name
+          AND tc.table_schema    = kcu.table_schema
+        JOIN information_schema.referential_constraints rc
+          ON  tc.constraint_name = rc.constraint_name
+        JOIN information_schema.table_constraints    ccu
+          ON  ccu.constraint_name = rc.unique_constraint_name
+          AND ccu.table_schema    = tc.table_schema
+        WHERE tc.constraint_type = 'FOREIGN KEY'
+          AND tc.table_schema    = 'public'
+          -- La tabla padre tiene columna empresaId (es tabla tenant)
+          AND EXISTS (
+            SELECT 1 FROM information_schema.columns pc
+            WHERE pc.table_schema = 'public'
+              AND pc.table_name   = ccu.table_name
+              AND pc.column_name  = 'empresaId'
+          )
+          -- La tabla hija NO tiene empresaId (no la cubre el paso siguiente)
+          AND NOT EXISTS (
+            SELECT 1 FROM information_schema.columns cc
+            WHERE cc.table_schema = 'public'
+              AND cc.table_name   = tc.table_name
+              AND cc.column_name  = 'empresaId'
+          )
+        ORDER BY tc.table_name
+      `);
+
+      if (tablasSinEmpresaId.length) {
+        this.logger.debug(
+          `[HARD DELETE] Tablas sin empresaId con FK tenant: ${
+            tablasSinEmpresaId.map(r => `${r.child_table}.${r.child_col} → ${r.parent_table}`).join(', ')
+          }`,
+        );
+      }
+
+      for (const { child_table, child_col, parent_table } of tablasSinEmpresaId) {
+        await em.query(
+          `DELETE FROM "${child_table}"
+            WHERE "${child_col}" IN (
+              SELECT id FROM "${parent_table}" WHERE "empresaId" = $1
+            )`,
+          [id],
+        ).catch((err: any) =>
+          this.logger.warn(`[HARD DELETE] sin-empresaId ${child_table}: ${err.message}`),
+        );
+      }
+
+      // ── 4. Borrar TODO lo que tenga columna empresaId (datos del tenant) ──
       //    Esto limpia facturas, clientes, productos, aprobaciones, etc.
       //    Usamos dos pasadas: la 1ª puede fallar por FK entre tablas del tenant;
       //    la 2ª limpia lo que quedó pendiente.
