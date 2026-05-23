@@ -282,13 +282,56 @@ export class SuperAdminService {
         ORDER BY tc.table_name, kcu.column_name
       `);
 
-      this.logger.debug(
-        `[HARD DELETE] FK refs: ${fkRefs.map(r => `${r.table_name}.${r.column_name}(nullable=${r.is_nullable})`).join(', ')}`,
+      this.logger.log(
+        `[HARD DELETE] FK refs encontradas (${fkRefs.length}): ` +
+        fkRefs.map(r => `${r.table_name}.${r.column_name}[nullable=${r.is_nullable}]`).join(', '),
       );
 
-      // ── 3. Resolver cada FK según si admite NULL ────────────────────────────
+      // ── 3A. Para tablas NOT NULL FK a users: borrar sus hijos primero ────────
+      //    Ejemplo: nomina_periodos.userId NOT NULL → no podemos borrarlo directamente
+      //    porque nomina_lineas.periodoId FK a nomina_periodos sin CASCADE.
+      //    Mismo patrón que el paso 3 de eliminarEmpresaPermanente.
+      const notNullTables = fkRefs.filter(r => r.is_nullable === 'NO');
+      for (const { table_name, column_name } of notNullTables) {
+        const nietos = await em.query<{ child_table: string; child_col: string }[]>(`
+          SELECT DISTINCT
+            tc.table_name   AS child_table,
+            kcu.column_name AS child_col
+          FROM information_schema.table_constraints   tc
+          JOIN information_schema.key_column_usage     kcu
+            ON  tc.constraint_name = kcu.constraint_name
+            AND tc.table_schema    = kcu.table_schema
+          JOIN information_schema.referential_constraints rc
+            ON  tc.constraint_name = rc.constraint_name
+          JOIN information_schema.table_constraints    ccu
+            ON  ccu.constraint_name = rc.unique_constraint_name
+            AND ccu.table_schema    = tc.table_schema
+          WHERE tc.constraint_type = 'FOREIGN KEY'
+            AND ccu.table_name     = $1
+            AND tc.table_schema    = 'public'
+        `, [table_name]);
+
+        if (nietos.length) {
+          this.logger.log(
+            `[HARD DELETE] Nietos de ${table_name}: ${nietos.map(n => `${n.child_table}.${n.child_col}`).join(', ')}`,
+          );
+        }
+
+        for (const { child_table, child_col } of nietos) {
+          await safeQuery(
+            `DELETE FROM "${child_table}"
+               WHERE "${child_col}" IN (
+                 SELECT id FROM "${table_name}" WHERE "${column_name}" = $1
+               )`,
+            [userId],
+            `nieto ${child_table} via ${table_name}`,
+          );
+        }
+      }
+
+      // ── 3B. Resolver cada FK según si admite NULL ───────────────────────────
       //    - is_nullable = YES → SET col = NULL (preserva el historial)
-      //    - is_nullable = NO  → DELETE la fila (columna no admite NULL)
+      //    - is_nullable = NO  → DELETE la fila (ya eliminamos sus hijos en 3A)
       for (const { table_name, column_name, is_nullable } of fkRefs) {
         if (is_nullable === 'YES') {
           await safeQuery(
@@ -297,7 +340,6 @@ export class SuperAdminService {
             `nullificar ${table_name}.${column_name}`,
           );
         } else {
-          // Columna NOT NULL — no podemos nullificar, hay que borrar la fila
           await safeQuery(
             `DELETE FROM "${table_name}" WHERE "${column_name}" = $1`,
             [userId],
@@ -319,8 +361,10 @@ export class SuperAdminService {
       try {
         await em.query('DELETE FROM users WHERE id = $1', [userId]);
       } catch (err: any) {
+        // Log completo para diagnóstico
+        this.logger.error(`[HARD DELETE] FULL ERROR usuario #${userId}: ${JSON.stringify(err)}`);
+        console.error('[HARD DELETE] FULL ERROR:', JSON.stringify(err, null, 2));
         if (err?.code === '23503') {
-          // FK residual no detectada — reportar la tabla exacta para debug
           const detail = err?.detail ?? err?.message ?? '';
           const tabla  = detail.match(/table "([^"]+)"/)?.[1] ?? 'tabla desconocida';
           this.logger.error(`[HARD DELETE] FK residual en "${tabla}": ${detail}`);
