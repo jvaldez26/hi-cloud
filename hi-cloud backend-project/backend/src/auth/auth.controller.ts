@@ -51,6 +51,13 @@ class ChangePasswordDto {
   newPassword: string;
 }
 
+class UpdateProfileDto {
+  @IsString({ message: 'El nombre debe ser texto' })
+  @MinLength(3, { message: 'El nombre debe tener al menos 3 caracteres' })
+  @MaxLength(200, { message: 'El nombre no puede superar 200 caracteres' })
+  nombre: string;
+}
+
 class SetupPasswordDto {
   @IsString()
   token: string;
@@ -329,6 +336,18 @@ export class AuthController {
   async marcarTourCompletado(@GetUser() user: User) {
     await this.authService.marcarTourCompletado(user.id);
     return { ok: true };
+  }
+
+  @Patch('profile')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Actualizar nombre del usuario autenticado' })
+  updateProfile(
+    @GetUser() user: User,
+    @Body() dto: UpdateProfileDto,
+  ) {
+    return this.authService.updateProfile(user.id, dto.nombre);
   }
 
   // ── Google OAuth ──────────────────────────────────────────────────────────

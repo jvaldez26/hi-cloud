@@ -27,6 +27,7 @@ interface AuthState {
   cambiarEmpresa:   (empresaId: number) => void;
   getEmpresaActual: () => EmpresaItem | undefined;
   setHydrated:      (v: boolean) => void;
+  updateUser:       (partial: Partial<AuthUser>) => void;
 }
 
 // Solo guardamos info de UI (NO el token — ahora vive en cookie httpOnly)
@@ -80,4 +81,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   setHydrated: (v) => set({ hydrated: v }),
+
+  /** Actualiza campos del usuario en memoria + localStorage sin re-login completo. */
+  updateUser: (partial) => {
+    set(state => {
+      if (!state.user) return {};
+      const updated = { ...state.user, ...partial };
+      localStorage.setItem('auth_user', JSON.stringify(updated));
+      return { user: updated };
+    });
+  },
 }));

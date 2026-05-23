@@ -678,6 +678,20 @@ export class AuthService implements OnModuleInit {
     await this.userRepository.update(userId, { tourCompletado: true } as any);
   }
 
+  /** PATCH /auth/profile — actualizar nombre del usuario autenticado. */
+  async updateProfile(userId: number, nombre: string) {
+    const trimmed = nombre.trim();
+    if (!trimmed || trimmed.length < 3) {
+      throw new BadRequestException('El nombre debe tener al menos 3 caracteres');
+    }
+    if (trimmed.length > 200) {
+      throw new BadRequestException('El nombre no puede superar 200 caracteres');
+    }
+    await this.userRepository.update(userId, { nombre: trimmed });
+    this.logger.log(`[PROFILE] Nombre actualizado para usuario #${userId}: "${trimmed}"`);
+    return { ok: true, nombre: trimmed };
+  }
+
   private async enviarEmailBienvenida(userId: number, nombre: string, email: string, empresaId: number): Promise<void> {
     try {
       // Leer la suscripción para saber plan y fecha de vencimiento

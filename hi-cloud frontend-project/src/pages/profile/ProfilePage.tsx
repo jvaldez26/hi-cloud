@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Card, Form, Input, Button, Row, Col, Typography, Tag, Avatar,
-         Space, Divider, message, Alert, Modal } from 'antd';
-import { UserOutlined, LockOutlined, SaveOutlined, SafetyOutlined } from '@ant-design/icons';
+         Space, Divider, message, Alert, Modal, Tooltip } from 'antd';
+import { UserOutlined, LockOutlined, SaveOutlined, SafetyOutlined,
+         EditOutlined, CloseOutlined, GoogleOutlined, LinkOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
 import api from '../../api/client';
@@ -184,10 +185,49 @@ function TwoFactorSection() {
 }
 
 export default function ProfilePage() {
-  const { user } = useAuthStore();
+  const { user, updateUser } = useAuthStore();
   const [form]   = Form.useForm();
   const [ok,  setOk]  = useState(false);
   const [err, setErr] = useState('');
+
+  // ── Edición de perfil ─────────────────────────────────────────────────────
+  const [editing,     setEditing]     = useState(false);
+  const [editNombre,  setEditNombre]  = useState('');
+
+  const startEdit = () => {
+    setEditNombre(user?.nombre ?? '');
+    setEditing(true);
+  };
+
+  const cancelEdit = () => setEditing(false);
+
+  const updateProfileMut = useMutation({
+    mutationFn: (nombre: string) =>
+      api.patch('/auth/profile', { nombre }).then(r => r.data),
+    onSuccess: (data) => {
+      updateUser({ nombre: data.nombre });
+      setEditing(false);
+      message.success('Nombre actualizado correctamente');
+    },
+    onError: (e: any) => {
+      const msg: string =
+        e?.response?.data?.errors?.[0] ??
+        e?.response?.data?.message ??
+        'Error al actualizar el perfil';
+      message.error(msg);
+    },
+  });
+
+  const handleSaveProfile = () => {
+    const nombre = editNombre.trim();
+    if (!nombre || nombre.length < 3) {
+      message.warning('El nombre debe tener al menos 3 caracteres');
+      return;
+    }
+    updateProfileMut.mutate(nombre);
+  };
+
+  const isGoogleUser = user?.provider === 'GOOGLE';
 
   const changePwMut = useMutation({
     mutationFn: async (values: { currentPassword: string; newPassword: string }) => {
@@ -217,9 +257,69 @@ export default function ProfilePage() {
         <Col xs={24} md={8}>
           <Card>
             <Space direction="vertical" align="center" style={{ width: '100%' }}>
+              {/* Avatar */}
               <Avatar size={80} style={{ background: '#1677ff', fontSize: 32 }} icon={<UserOutlined />} />
-              <Title level={4} style={{ margin: 0 }}>{user?.nombre}</Title>
-              <Text type="secondary">{user?.email}</Text>
+
+              {/* Nombre — modo lectura / edición */}
+              {editing ? (
+                <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                  <Input
+                    value={editNombre}
+                    onChange={e => setEditNombre(e.target.value)}
+                    onPressEnter={handleSaveProfile}
+                    maxLength={200}
+                    autoFocus
+                    size="large"
+                    style={{ textAlign: 'center', fontWeight: 600 }}
+                    placeholder="Tu nombre completo"
+                    status={editNombre.trim().length > 0 && editNombre.trim().length < 3 ? 'error' : ''}
+                  />
+                  {editNombre.trim().length > 0 && editNombre.trim().length < 3 && (
+                    <Text type="danger" style={{ fontSize: 12, display: 'block', textAlign: 'center' }}>
+                      Mínimo 3 caracteres
+                    </Text>
+                  )}
+                  <Space style={{ justifyContent: 'center', width: '100%' }}>
+                    <Button
+                      type="primary" size="small" icon={<SaveOutlined />}
+                      loading={updateProfileMut.isPending}
+                      onClick={handleSaveProfile}
+                      disabled={editNombre.trim().length < 3}
+                    >
+                      Guardar
+                    </Button>
+                    <Button size="small" icon={<CloseOutlined />} onClick={cancelEdit}>
+                      Cancelar
+                    </Button>
+                  </Space>
+                </Space>
+              ) : (
+                <Space align="center" size={6}>
+                  <Title level={4} style={{ margin: 0 }}>{user?.nombre}</Title>
+                  <Tooltip title="Editar nombre">
+                    <Button
+                      type="text" size="small"
+                      icon={<EditOutlined style={{ color: '#1677ff' }} />}
+                      onClick={startEdit}
+                      style={{ padding: '0 4px', height: 'auto' }}
+                    />
+                  </Tooltip>
+                </Space>
+              )}
+
+              {/* Email — con indicador Google si aplica */}
+              {isGoogleUser ? (
+                <Tooltip title="Email vinculado a cuenta Google — no se puede cambiar">
+                  <Space size={4} style={{ cursor: 'default' }}>
+                    <GoogleOutlined style={{ color: '#ea4335', fontSize: 13 }} />
+                    <Text type="secondary" style={{ fontSize: 13 }}>{user?.email}</Text>
+                    <LinkOutlined style={{ color: '#94a3b8', fontSize: 11 }} />
+                  </Space>
+                </Tooltip>
+              ) : (
+                <Text type="secondary">{user?.email}</Text>
+              )}
+
               <Tag color={roleColor[user?.role ?? 'viewer']} style={{ fontSize: 13, padding: '4px 12px' }}>
                 {roleLabel[user?.role ?? 'viewer']}
               </Tag>
@@ -236,6 +336,15 @@ export default function ProfilePage() {
                 <Text type="secondary">Rol:</Text>
                 <Text strong style={{ textTransform: 'capitalize' }}>{user?.role}</Text>
               </Row>
+              {isGoogleUser && (
+                <Row justify="space-between">
+                  <Text type="secondary">Cuenta:</Text>
+                  <Space size={4}>
+                    <GoogleOutlined style={{ color: '#ea4335', fontSize: 12 }} />
+                    <Text strong style={{ fontSize: 13 }}>Google</Text>
+                  </Space>
+                </Row>
+              )}
               <Row justify="space-between">
                 <Text type="secondary">Sistema:</Text>
                 <Text strong>HiCloud ERP</Text>

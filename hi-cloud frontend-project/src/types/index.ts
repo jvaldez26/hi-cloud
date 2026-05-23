@@ -7,6 +7,7 @@ export interface AuthUser {
   email:           string;
   role:            UserRole;
   tourCompletado?: boolean;
+  provider?:       string;  // 'LOCAL' | 'GOOGLE' — para mostrar candado en email
 }
 
 export interface EmpresaItem {
