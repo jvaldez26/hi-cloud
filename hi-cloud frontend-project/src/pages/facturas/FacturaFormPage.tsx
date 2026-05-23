@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Form, Input, Button, Card, Row, Col, Typography, Select,
-         DatePicker, Table, InputNumber, Space, Divider, message, Tag, Alert, Modal, theme } from 'antd';
+         DatePicker, Table, InputNumber, Space, Divider, message, Tag, Alert, Modal, theme, Spin } from 'antd';
 import { PlusOutlined, DeleteOutlined, ArrowLeftOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { facturasApi, type FacturaDetallePayload } from '../../api/facturas.api';
 import { clientesApi } from '../../api/clientes.api';
 import { productosApi } from '../../api/productos.api';
@@ -25,14 +25,13 @@ interface LineaForm {
 }
 
 // Tipos NCF disponibles en el módulo de Facturas.
-// E33 → usa el módulo Notas de Débito (tiene flujo propio con referencia a factura origen)
-// E34 → usa el módulo Devoluciones (generado automáticamente)
-// E41 → Comprobante de Compras para proveedor informal (cédula, sin RNC)
-// E47 → Pagos al Exterior (proveedor extranjero sin establecimiento en RD)
 const NCF_VENTAS = ['E31', 'E32', 'E41', 'E44', 'E45', 'E46', 'E47'];
 
 export default function FacturaFormPage() {
   const { token } = theme.useToken();
+  const { id }    = useParams<{ id?: string }>();
+  const editMode  = !!id;
+
   const [form]     = Form.useForm();
   const [lineas,   setLineas]   = useState<LineaForm[]>([
     { key: '1', cantidad: 1, precioUnitario: 0, porcentajeIva: 18 },
@@ -46,6 +45,7 @@ export default function FacturaFormPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
 
+  // ── Datos base ──────────────────────────────────────────────────────────────
   const { data: clientes } = useQuery({
     queryKey: ['clientes-sel'],
     queryFn:  () => clientesApi.list(1, 100),
@@ -61,12 +61,60 @@ export default function FacturaFormPage() {
     queryFn:  () => api.get('/vendedores').then((r: any) => r.data?.data?.data ?? r.data?.data ?? []),
   });
 
+  // ── Carga de factura existente (modo edición) ──────────────────────────────
+  const { data: facturaEdit, isLoading: loadingEdit } = useQuery({
+    queryKey: ['factura-edit', id],
+    queryFn:  () => facturasApi.getOne(Number(id)),
+    enabled:  editMode,
+    staleTime: 0,
+  });
+
+  // Poblar formulario cuando la factura cargue
+  useEffect(() => {
+    if (!facturaEdit) return;
+
+    // Cabecera
+    form.setFieldsValue({
+      clienteId:  (facturaEdit as any).clienteId,
+      fecha:      dayjs((facturaEdit as any).fecha),
+      notas:      (facturaEdit as any).notas,
+      vendedorId: (facturaEdit as any).vendedorId,
+      moneda:     (facturaEdit as any).moneda ?? 'DOP',
+      tipoCambio: (facturaEdit as any).tipoCambio,
+    });
+
+    // Estados controlados
+    setTipoNcf((facturaEdit as any).tipoNcf ?? 'E32');
+    setTipoPago(((facturaEdit as any).tipoPago ?? 'CONTADO') as 'CONTADO' | 'CREDITO');
+    setDiasCredito(Number((facturaEdit as any).diasCredito ?? 30));
+
+    // Líneas
+    const detallesCargados: any[] = (facturaEdit as any).detalles ?? [];
+    if (detallesCargados.length > 0) {
+      setLineas(detallesCargados.map((d: any, i: number) => ({
+        key: String(i + 1),
+        productoId:     d.productoId,
+        descripcion:    d.descripcion,
+        cantidad:       Number(d.cantidad),
+        precioUnitario: Number(d.precioUnitario),
+        porcentajeIva:  Number(d.porcentajeIva ?? 18),
+      })));
+    }
+  }, [facturaEdit, form]);
+
+  // Poblar clienteSeleccionado cuando ambos datos estén disponibles
+  useEffect(() => {
+    if (!facturaEdit || !clientes?.data) return;
+    const cli = clientes.data.find((c: Cliente) => c.id === (facturaEdit as any).clienteId) ?? null;
+    setClienteSeleccionado(cli);
+  }, [facturaEdit, clientes?.data]);
+
+  // ── Mutaciones ──────────────────────────────────────────────────────────────
   const createMut = useMutation({
     mutationFn: facturasApi.create,
     onSuccess: (res: any) => {
       qc.invalidateQueries({ queryKey: ['facturas'] });
       message.success('Factura creada exitosamente');
-      // Si el cliente tiene anticipos activos, ofrecer aplicarlos
       const facturaId  = res?.data?.data?.id ?? res?.data?.id ?? res?.id;
       const clienteId  = form.getFieldValue('clienteId');
       if (facturaId && clienteId && (anticiposCliente?.length ?? 0) > 0) {
@@ -76,22 +124,37 @@ export default function FacturaFormPage() {
       }
     },
     onError: (e: unknown) => {
-      const msg = (e as any)?.response?.data?.errors?.[0] ?? 'Error';
+      const msg = (e as any)?.response?.data?.errors?.[0] ??
+                  (e as any)?.response?.data?.message ?? 'Error al crear factura';
       message.error(msg);
     },
   });
 
-  // Anticipos activos del cliente seleccionado
+  const updateMut = useMutation({
+    mutationFn: (body: any) => facturasApi.update(Number(id), body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['facturas'] });
+      qc.invalidateQueries({ queryKey: ['factura-edit', id] });
+      message.success('Factura actualizada exitosamente');
+      navigate('/facturas');
+    },
+    onError: (e: unknown) => {
+      const msg = (e as any)?.response?.data?.errors?.[0] ??
+                  (e as any)?.response?.data?.message ?? 'Error al actualizar factura';
+      message.error(msg);
+    },
+  });
+
+  // Anticipos activos del cliente (solo en modo creación)
   const clienteIdWatch = Form.useWatch('clienteId', form);
   const { data: anticiposCliente = [] } = useQuery<any[]>({
     queryKey: ['anticipos-activos-cliente', clienteIdWatch],
     queryFn:  () => api.get(`/anticipos/cliente/${clienteIdWatch}`)
       .then(r => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : []; }),
-    enabled: !!clienteIdWatch,
+    enabled: !!clienteIdWatch && !editMode,
     staleTime: 0,
   });
 
-  // CxC pendientes de la factura recién creada para el modal de anticipo
   const { data: cxcFactura = [] } = useQuery<any[]>({
     queryKey: ['cxc-factura-nueva', modalAnticipo?.facturaId],
     queryFn:  () => api.get(`/cxc/cliente/${modalAnticipo!.clienteId}?limit=20`)
@@ -113,15 +176,15 @@ export default function FacturaFormPage() {
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al aplicar anticipo', 5),
   });
 
+  // ── Cálculos ────────────────────────────────────────────────────────────────
   const subtotal = lineas.reduce((s, l) => s + l.precioUnitario * l.cantidad, 0);
   const iva      = lineas.reduce((s, l) => s + l.precioUnitario * l.cantidad * (l.porcentajeIva / 100), 0);
   const total    = subtotal + iva;
 
-  // Auto-selección NCF al cambiar cliente (según TipoClienteECF)
+  // ── Handlers ────────────────────────────────────────────────────────────────
   const onClienteChange = (clienteId: number) => {
     const cli = clientes?.data.find((c: Cliente) => c.id === clienteId) ?? null;
     setClienteSeleccionado(cli);
-    // Auto-poblar días de crédito desde el cliente (si tiene) o default empresa
     if ((cli as any)?.diasCredito > 0) setDiasCredito((cli as any).diasCredito);
 
     const tipoMapa: Record<string, string> = {
@@ -133,8 +196,6 @@ export default function FacturaFormPage() {
       gubernamental:    'E45',
     };
     const sugerido = tipoMapa[(cli as any)?.tipoCliente ?? 'consumidor_final'] ?? 'E32';
-
-    // Si tipoCliente sugiere E31 pero no tiene RNC, usar E32
     if (sugerido === 'E31' && !(cli?.rfc && /^\d{9,11}$/.test((cli.rfc ?? '').trim()))) {
       setTipoNcf('E32');
     } else {
@@ -156,16 +217,20 @@ export default function FacturaFormPage() {
     setLineas(updated);
   };
 
-  const handleSubmit = (values: { clienteId: number; fecha: dayjs.Dayjs; notas?: string; vendedorId?: number; moneda?: string; tipoCambio?: number }) => {
+  const handleSubmit = (values: {
+    clienteId: number; fecha: dayjs.Dayjs; notas?: string;
+    vendedorId?: number; moneda?: string; tipoCambio?: number;
+  }) => {
     const vendedor = vendedores.find((v: any) => v.id === values.vendedorId);
     const detalles: FacturaDetallePayload[] = lineas.map(l => ({
-      productoId:    l.productoId!,
-      descripcion:   l.descripcion,
-      cantidad:      l.cantidad,
+      productoId:     l.productoId as number,
+      descripcion:    l.descripcion,
+      cantidad:       l.cantidad,
       precioUnitario: l.precioUnitario,
-      porcentajeIva: l.porcentajeIva,
+      porcentajeIva:  l.porcentajeIva,
     }));
-    createMut.mutate({
+
+    const payload = {
       clienteId:       values.clienteId,
       fecha:           values.fecha.format('YYYY-MM-DD'),
       detalles,
@@ -177,21 +242,30 @@ export default function FacturaFormPage() {
       tipoCambio:      values.tipoCambio ?? 1,
       tipoPago,
       diasCredito:     tipoPago === 'CREDITO' ? diasCredito : 0,
-    } as any);
+    } as any;
+
+    if (editMode) {
+      updateMut.mutate(payload);
+    } else {
+      createMut.mutate(payload);
+    }
   };
 
+  // ── Alertas contextuales ────────────────────────────────────────────────────
   const tipoInfo = TIPOS_NCF.find(t => t.codigo === tipoNcf);
-  const mostrarAlertaRNC         = tipoNcf === 'E31' && clienteSeleccionado && !(/^\d{9}$/.test(clienteSeleccionado?.rfc?.trim() ?? ''));
-  const mostrarAlertaExportacion = tipoNcf === 'E46' && clienteSeleccionado;
+  const mostrarAlertaRNC          = tipoNcf === 'E31' && clienteSeleccionado && !(/^\d{9}$/.test(clienteSeleccionado?.rfc?.trim() ?? ''));
+  const mostrarAlertaExportacion  = tipoNcf === 'E46' && clienteSeleccionado;
   const mostrarAlertaPagoExterior = tipoNcf === 'E47';
-  const mostrarAlertaExento      = (tipoNcf === 'E44' || tipoNcf === 'E45') && clienteSeleccionado;
-  const mostrarAlertaE41         = tipoNcf === 'E41';
+  const mostrarAlertaExento       = (tipoNcf === 'E44' || tipoNcf === 'E45') && clienteSeleccionado;
+  const mostrarAlertaE41          = tipoNcf === 'E41';
 
+  // ── Columnas de la tabla de líneas ──────────────────────────────────────────
   const lineaCols = [
     {
       title: 'Producto', key: 'producto', width: 220,
-      render: (_: unknown, _r: LineaForm, idx: number) => (
+      render: (_: unknown, r: LineaForm, idx: number) => (
         <Select style={{ width: '100%' }} placeholder="Seleccionar..." showSearch
+          value={r.productoId}
           filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
           options={productos?.data.map(p => ({ value: p.id, label: `${p.codigo} — ${p.nombre}` }))}
           onChange={(v) => onProductoChange(v, idx)} />
@@ -240,19 +314,33 @@ export default function FacturaFormPage() {
     },
   ];
 
+  // ── Render ──────────────────────────────────────────────────────────────────
+  if (editMode && loadingEdit) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', padding: 64 }}>
+        <Spin size="large" tip="Cargando factura..." />
+      </div>
+    );
+  }
+
   return (
     <div>
       <Row align="middle" style={{ marginBottom: 16 }}>
         <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/facturas')}>
           Volver
         </Button>
-        <Title level={4} style={{ margin: '0 0 0 8px' }}>Nueva Factura</Title>
+        <Title level={4} style={{ margin: '0 0 0 8px' }}>
+          {editMode ? `Editar Factura — ${(facturaEdit as any)?.folio ?? ''}` : 'Nueva Factura'}
+        </Title>
+        {editMode && (
+          <Tag color="orange" style={{ marginLeft: 12, fontSize: 12 }}>BORRADOR</Tag>
+        )}
       </Row>
 
       <Form form={form} layout="vertical" onFinish={handleSubmit}
-        initialValues={{ fecha: dayjs() }}>
+        initialValues={{ fecha: dayjs(), moneda: 'DOP' }}>
 
-        {/* ── Datos generales + Tipo de comprobante (integrado) ──────── */}
+        {/* ── Datos generales + Tipo de comprobante ──────────────────────── */}
         <Card style={{ marginBottom: 16 }}>
 
           {/* Fila 1: Tipo de comprobante · Cliente · Fecha */}
@@ -304,10 +392,9 @@ export default function FacturaFormPage() {
                   options={clientes?.data.map((c: Cliente) => ({ value: c.id, label: `${c.rfc} — ${c.nombre}` }))}
                   onChange={onClienteChange} />
               </Form.Item>
-              {anticiposCliente.length > 0 && (
+              {!editMode && anticiposCliente.length > 0 && (
                 <Alert
-                  type="info"
-                  showIcon
+                  type="info" showIcon
                   style={{ marginTop: -8, marginBottom: 8, fontSize: 12 }}
                   message={`Este cliente tiene ${anticiposCliente.length} anticipo${anticiposCliente.length > 1 ? 's' : ''} activo${anticiposCliente.length > 1 ? 's' : ''} — saldo disponible: RD$ ${anticiposCliente.reduce((s: number, a: any) => s + Number(a.montoPendiente ?? 0), 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`}
                 />
@@ -320,20 +407,17 @@ export default function FacturaFormPage() {
             </Col>
             <Col xs={12} sm={8}>
               <Form.Item name="vendedorId" label="Vendedor">
-                <Select
-                  allowClear
-                  showSearch
-                  placeholder="Sin vendedor asignado"
+                <Select allowClear showSearch placeholder="Sin vendedor asignado"
                   optionFilterProp="label"
                   options={vendedores.map((v: any) => ({
                     value: v.id,
                     label: `${v.codigo} — ${v.nombre}`,
-                  }))}
-                />
+                  }))} />
               </Form.Item>
             </Col>
           </Row>
-          {/* ── Forma de pago ─────────────────────────────────────────── */}
+
+          {/* ── Forma de pago ──────────────────────────────────────────── */}
           <Row gutter={16} style={{ marginBottom: 4 }}>
             <Col xs={24} sm={8}>
               <Form.Item label="Forma de pago">
@@ -396,14 +480,10 @@ export default function FacturaFormPage() {
             </Col>
           </Row>
 
-          {/* ── Alertas contextuales del tipo de comprobante ─────────── */}
+          {/* ── Alertas contextuales ────────────────────────────────────── */}
           {mostrarAlertaRNC && (
-            <Alert
-              style={{ marginTop: 4 }}
-              type="warning"
-              showIcon
-              message="El cliente seleccionado no tiene RNC registrado. E31 (Crédito Fiscal) requiere RNC válido de 9 dígitos."
-            />
+            <Alert style={{ marginTop: 4 }} type="warning" showIcon
+              message="El cliente seleccionado no tiene RNC registrado. E31 (Crédito Fiscal) requiere RNC válido de 9 dígitos." />
           )}
           {tipoNcf === 'E31' && clienteSeleccionado && !mostrarAlertaRNC && (
             <div style={{ marginTop: 4, padding: '6px 12px', background: token.colorInfoBg, borderRadius: 8, border: `1px solid ${token.colorInfoBorder}` }}>
@@ -415,42 +495,26 @@ export default function FacturaFormPage() {
             </div>
           )}
           {mostrarAlertaExento && (
-            <Alert
-              style={{ marginTop: 4 }}
-              type="info"
-              showIcon
+            <Alert style={{ marginTop: 4 }} type="info" showIcon
               message={tipoNcf === 'E44'
                 ? 'E44 Régimen Especial (Zona Franca): el ITBIS será 0. Asegúrese de tener la documentación de régimen especial.'
-                : 'E45 Gubernamental: factura a entidad del gobierno dominicano. RNC de la entidad requerido.'}
-            />
+                : 'E45 Gubernamental: factura a entidad del gobierno dominicano. RNC de la entidad requerido.'} />
           )}
           {mostrarAlertaExportacion && (
-            <Alert
-              style={{ marginTop: 4 }}
-              type="info"
-              showIcon
-              message="E46 Exportación: el ITBIS será 0 (exento). Si la venta es en moneda extranjera, seleccione la moneda y tipo de cambio abajo."
-            />
+            <Alert style={{ marginTop: 4 }} type="info" showIcon
+              message="E46 Exportación: el ITBIS será 0 (exento). Si la venta es en moneda extranjera, seleccione la moneda y tipo de cambio abajo." />
           )}
           {mostrarAlertaPagoExterior && (
-            <Alert
-              style={{ marginTop: 4 }}
-              type="info"
-              showIcon
-              message="E47 Pagos al Exterior: para pagos a proveedores extranjeros sin establecimiento permanente en RD. ITBIS exento."
-            />
+            <Alert style={{ marginTop: 4 }} type="info" showIcon
+              message="E47 Pagos al Exterior: para pagos a proveedores extranjeros sin establecimiento permanente en RD. ITBIS exento." />
           )}
           {mostrarAlertaE41 && (
-            <Alert
-              style={{ marginTop: 4 }}
-              type="warning"
-              showIcon
-              message="E41 Comprobante de Compras: para proveedores informales (solo cédula, sin RNC). El ITBIS aplica y se retiene el 30%. Ingresa la cédula del proveedor en el campo de notas."
-            />
+            <Alert style={{ marginTop: 4 }} type="warning" showIcon
+              message="E41 Comprobante de Compras: para proveedores informales (solo cédula, sin RNC). El ITBIS aplica y se retiene el 30%. Ingresa la cédula del proveedor en el campo de notas." />
           )}
         </Card>
 
-        {/* ── Líneas de detalle ────────────────────────────────────────── */}
+        {/* ── Líneas de detalle ──────────────────────────────────────────── */}
         <Card title="Líneas de factura" style={{ marginBottom: 16 }}
           extra={
             <Button icon={<PlusOutlined />}
@@ -459,11 +523,10 @@ export default function FacturaFormPage() {
             </Button>
           }>
           <Table columns={lineaCols as any} dataSource={lineas} rowKey="key"
-            pagination={false} size="small"
-        scroll={{ x: 'max-content' }} />
+            pagination={false} size="small" scroll={{ x: 'max-content' }} />
         </Card>
 
-        {/* ── Totales ──────────────────────────────────────────────────── */}
+        {/* ── Totales ────────────────────────────────────────────────────── */}
         <Card>
           <Row justify="end">
             <Col xs={24} sm={14} md={9}>
@@ -498,72 +561,75 @@ export default function FacturaFormPage() {
                 )}
 
                 <Button type="primary" htmlType="submit" block size="large"
-                  loading={createMut.isPending}
+                  loading={editMode ? updateMut.isPending : createMut.isPending}
                   style={{ height: 48, fontSize: 15 }}>
-                  Crear Factura
+                  {editMode ? 'Guardar cambios' : 'Crear Factura'}
                 </Button>
+
+                {editMode && (
+                  <Button block size="large" onClick={() => navigate('/facturas')}>
+                    Cancelar
+                  </Button>
+                )}
               </Space>
             </Col>
           </Row>
         </Card>
       </Form>
 
-      {/* ── Modal: aplicar anticipo a la factura recién creada ─────────── */}
-      <Modal
-        title="¿Deseas aplicar un anticipo disponible?"
-        open={!!modalAnticipo}
-        onCancel={() => { setModalAnticipo(null); navigate('/facturas'); }}
-        onOk={() => formAnticipo.submit()}
-        confirmLoading={aplicarAnticipoMut.isPending}
-        okText="Aplicar anticipo"
-        cancelText="Omitir"
-        width={480}
-        destroyOnClose
-      >
-        <Alert
-          type="success"
-          showIcon
-          message="Factura creada correctamente"
-          style={{ marginBottom: 16 }}
-        />
-        <p style={{ color: token.colorTextSecondary, fontSize: 13, marginBottom: 16 }}>
-          Este cliente tiene anticipos disponibles. Puedes aplicarlos ahora para reducir el saldo pendiente de esta factura.
-        </p>
-        <Form
-          form={formAnticipo}
-          layout="vertical"
-          onFinish={v => {
-            if (!modalAnticipo) return;
-            aplicarAnticipoMut.mutate({
-              anticipoId: v.anticipoId,
-              cxcId:      v.cxcId,
-              monto:      Number(v.monto),
-            });
-          }}
+      {/* ── Modal: aplicar anticipo (solo modo creación) ───────────────── */}
+      {!editMode && (
+        <Modal
+          title="¿Deseas aplicar un anticipo disponible?"
+          open={!!modalAnticipo}
+          onCancel={() => { setModalAnticipo(null); navigate('/facturas'); }}
+          onOk={() => formAnticipo.submit()}
+          confirmLoading={aplicarAnticipoMut.isPending}
+          okText="Aplicar anticipo"
+          cancelText="Omitir"
+          width={480}
+          destroyOnClose
         >
-          <Form.Item name="anticipoId" label="Anticipo a aplicar" rules={[{ required: true }]}>
-            <Select placeholder="Seleccionar anticipo">
-              {anticiposCliente.map((a: any) => (
-                <Select.Option key={a.id} value={a.id}>
-                  {a.numero} — Disponible: RD$ {Number(a.montoPendiente).toLocaleString('es-DO', { minimumFractionDigits: 2 })}
-                </Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
-          <Form.Item name="cxcId" label="Aplicar a (CxC de la factura)" rules={[{ required: true }]}>
-            <Select placeholder="Seleccionar CxC" notFoundContent="Cargando...">
-              {cxcFactura.map((c: any) => (
-                <Select.Option key={c.id} value={c.id}>
-                  {c.factura?.folio ?? c.factura?.numero ?? `CxC #${c.id}`} — Pendiente: RD$ {Number(c.montoPendiente).toLocaleString('es-DO', { minimumFractionDigits: 2 })}
-                </Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
-          <Form.Item name="monto" label="Monto a aplicar (RD$)" rules={[{ required: true }]}>
-            <InputNumber min={0.01} precision={2} style={{ width: '100%' }} prefix="RD$" />
-          </Form.Item>
-        </Form>
-      </Modal>
+          <Alert type="success" showIcon message="Factura creada correctamente" style={{ marginBottom: 16 }} />
+          <p style={{ color: token.colorTextSecondary, fontSize: 13, marginBottom: 16 }}>
+            Este cliente tiene anticipos disponibles. Puedes aplicarlos ahora para reducir el saldo pendiente de esta factura.
+          </p>
+          <Form
+            form={formAnticipo}
+            layout="vertical"
+            onFinish={v => {
+              if (!modalAnticipo) return;
+              aplicarAnticipoMut.mutate({
+                anticipoId: v.anticipoId,
+                cxcId:      v.cxcId,
+                monto:      Number(v.monto),
+              });
+            }}
+          >
+            <Form.Item name="anticipoId" label="Anticipo a aplicar" rules={[{ required: true }]}>
+              <Select placeholder="Seleccionar anticipo">
+                {anticiposCliente.map((a: any) => (
+                  <Select.Option key={a.id} value={a.id}>
+                    {a.numero} — Disponible: RD$ {Number(a.montoPendiente).toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+                  </Select.Option>
+                ))}
+              </Select>
+            </Form.Item>
+            <Form.Item name="cxcId" label="Aplicar a (CxC de la factura)" rules={[{ required: true }]}>
+              <Select placeholder="Seleccionar CxC" notFoundContent="Cargando...">
+                {cxcFactura.map((c: any) => (
+                  <Select.Option key={c.id} value={c.id}>
+                    {c.factura?.folio ?? c.factura?.numero ?? `CxC #${c.id}`} — Pendiente: RD$ {Number(c.montoPendiente).toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+                  </Select.Option>
+                ))}
+              </Select>
+            </Form.Item>
+            <Form.Item name="monto" label="Monto a aplicar (RD$)" rules={[{ required: true }]}>
+              <InputNumber min={0.01} precision={2} style={{ width: '100%' }} prefix="RD$" />
+            </Form.Item>
+          </Form>
+        </Modal>
+      )}
     </div>
   );
 }

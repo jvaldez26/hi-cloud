@@ -418,6 +418,7 @@ export default function App() {
                     <Route path="/cotizaciones/:id/editar"   element={<CotizacionFormPage />} />
                     <Route path="/facturas"                    element={<FacturasPage />} />
                     <Route path="/facturas/nueva"            element={<FacturaFormPage />} />
+                    <Route path="/facturas/:id/editar"       element={<FacturaFormPage />} />
                     <Route path="/facturas/:id"              element={<FacturaDetailPage />} />
                     <Route path="/facturas-recurrentes"      element={<FacturasRecurrentesPage />} />
                     <Route path="/devoluciones"              element={<DevolucionesPage />} />

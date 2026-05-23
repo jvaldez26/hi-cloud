@@ -158,6 +158,83 @@ export class FacturasService {
     return this.findOne(savedFactura.id);
   }
 
+  /** Editar factura — solo permitido en estado BORRADOR */
+  async update(id: number, dto: CreateFacturaDto) {
+    const factura = await this.findOne(id);
+    if (factura.estado !== FacturaEstado.BORRADOR) {
+      throw new BadRequestException('Solo se pueden editar facturas en estado borrador');
+    }
+
+    if (dto.clienteId) await this.clientesService.findOne(dto.clienteId);
+
+    const detalles: Partial<FacturaDetalle>[] = [];
+    let subtotalFactura = 0;
+    let ivaFactura = 0;
+
+    for (const item of dto.detalles) {
+      const producto = item.productoId
+        ? await this.productosService.findOne(item.productoId)
+        : null;
+      const porcentajeIva = item.porcentajeIva ?? (producto ? Number(producto.porcentajeIva) : 18);
+      const subtotal    = Number(item.precioUnitario) * item.cantidad;
+      const importeIva  = subtotal * (porcentajeIva / 100);
+      const total       = subtotal + importeIva;
+
+      subtotalFactura += subtotal;
+      ivaFactura      += importeIva;
+
+      detalles.push({
+        productoId:     item.productoId,
+        descripcion:    item.descripcion || producto?.nombre || 'Servicio',
+        precioUnitario: item.precioUnitario,
+        cantidad:       item.cantidad,
+        porcentajeIva,
+        subtotal,
+        importeIva,
+        total,
+      });
+    }
+
+    const moneda        = dto.moneda ?? 'DOP';
+    const tipoCambio    = dto.tipoCambio ?? 1;
+    const totalDOP      = subtotalFactura + ivaFactura;
+    const totalOriginal = moneda !== 'DOP' ? +(totalDOP / tipoCambio).toFixed(2) : undefined;
+
+    const tipoPago  = dto.tipoPago?.toUpperCase() === 'CREDITO' ? 'CREDITO' : 'CONTADO';
+    const diasCred  = tipoPago === 'CREDITO' ? (dto.diasCredito ?? 30) : 0;
+    const fechaVenc = tipoPago === 'CREDITO'
+      ? (() => { const d = new Date(); d.setDate(d.getDate() + diasCred); return d; })()
+      : null;
+
+    // Reemplazar detalles — eliminar los viejos e insertar los nuevos
+    await this.detalleRepository.delete({ facturaId: id });
+    await this.detalleRepository.save(
+      this.detalleRepository.create(detalles.map(d => ({ ...d, facturaId: id }))),
+    );
+
+    // Actualizar cabecera (folio y empresaId NO cambian)
+    await this.facturaRepository.update(id, {
+      fecha:           new Date(dto.fecha),
+      clienteId:       dto.clienteId,
+      notas:           dto.notas ?? null,
+      tipoNcf:         dto.tipoNcf ?? factura.tipoNcf,
+      vendedorId:      dto.vendedorId ?? null,
+      nombreVendedor:  dto.nombreVendedor ?? null,
+      moneda,
+      tipoCambio,
+      totalOriginal:   totalOriginal ?? null,
+      subtotal:        subtotalFactura,
+      iva:             ivaFactura,
+      total:           totalDOP,
+      tipoPago,
+      diasCredito:     diasCred,
+      fechaVencimiento: fechaVenc,
+    } as any);
+
+    this.realtimeService.notify(factura.empresaId, 'factura', 'updated', id);
+    return this.findOne(id);
+  }
+
   async findAll(pagination: PaginationDto & {
     estado?: string; desde?: string; hasta?: string; clienteId?: number;
   }) {

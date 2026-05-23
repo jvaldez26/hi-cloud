@@ -12,6 +12,7 @@ import {
   CheckCircleOutlined, CloseCircleOutlined, DeleteOutlined,
   FilePdfOutlined, LoadingOutlined, ReloadOutlined, SearchOutlined,
   FileExcelOutlined, FilterOutlined, CopyOutlined, ControlOutlined,
+  EditOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -314,6 +315,10 @@ export default function FacturasPage() {
             key: 'detalle', icon: <EyeOutlined />, label: 'Ver detalle',
             onClick: () => navigate(`/facturas/${r.id}`),
           },
+          ...(r.estado === 'borrador' && puedeCrear ? [{
+            key: 'editar', icon: <EditOutlined />, label: 'Editar',
+            onClick: () => navigate(`/facturas/${r.id}/editar`),
+          }] : []),
           ...(puedePDF ? [{
             key: 'pdf', icon: pdfPending === r.id ? <LoadingOutlined /> : <FilePdfOutlined />,
             label: 'Descargar PDF',

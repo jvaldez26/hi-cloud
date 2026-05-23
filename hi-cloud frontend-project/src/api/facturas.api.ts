@@ -56,6 +56,9 @@ export const facturasApi = {
   create: (body: FacturaPayload) =>
     api.post<ApiResponse<Factura>>('/facturas', body).then(r => r.data.data),
 
+  update: (id: number, body: FacturaPayload & { tipoPago?: string; diasCredito?: number }) =>
+    api.patch<ApiResponse<Factura>>(`/facturas/${id}`, body).then(r => r.data.data ?? r.data),
+
   cambiarEstado: (id: number, estado: FacturaEstado) =>
     api.patch(`/facturas/${id}/estado`, { estado }).then(r => r.data.data ?? r.data),
 

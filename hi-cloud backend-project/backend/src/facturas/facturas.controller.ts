@@ -179,6 +179,16 @@ export class FacturasController {
     );
   }
 
+  @Patch(':id')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Editar factura en borrador — actualiza cabecera y reemplaza líneas' })
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CreateFacturaDto,
+  ) {
+    return this.facturasService.update(id, dto);
+  }
+
   @Delete(':id')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Eliminar factura (solo borradores)' })
