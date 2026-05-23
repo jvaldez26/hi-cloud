@@ -26,7 +26,8 @@ export function useColumnVisibility(moduloKey: string, allColumns: ColDef[]) {
   const filterColumns = <T,>(columns: ColumnType<T>[]): ColumnType<T>[] =>
     columns.filter(col => {
       const k = (col.key ?? (col as any).dataIndex) as string;
-      return k === 'acciones' || k === 'actions' || visibleColumns.includes(k);
+      // 'acc' / 'acciones' / 'actions' son siempre visibles (columna de botones)
+      return k === 'acc' || k === 'acciones' || k === 'actions' || visibleColumns.includes(k);
     });
 
   return { visibleColumns, updateVisibility, filterColumns };
