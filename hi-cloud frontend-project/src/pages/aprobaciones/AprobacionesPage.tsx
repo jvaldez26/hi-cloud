@@ -135,7 +135,9 @@ export default function AprobacionesPage() {
     setComentarioSol('');
   };
 
+  console.log('[AprobacionesPage] aprobaciones (raw):', aprobaciones, '| isLoading:', isLoading);
   const items = Array.isArray(aprobaciones) ? aprobaciones : (aprobaciones?.data ?? []);
+  console.log('[AprobacionesPage] items:', items);
 
   const itemsFiltrados = useMemo(
     () =>
