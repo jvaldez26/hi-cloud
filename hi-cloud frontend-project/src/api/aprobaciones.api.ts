@@ -23,13 +23,7 @@ export const aprobacionesApi = {
   list: (estado?: string, limit = 50) => {
     const params = new URLSearchParams({ limit: String(limit) });
     if (estado) params.set('estado', estado);
-    return api.get(`/aprobaciones?${params}`).then(r => {
-      console.log('[aprobaciones.list] r.data:', r.data);
-      console.log('[aprobaciones.list] r.data?.data:', r.data?.data);
-      const result = r.data?.data ?? r.data;
-      console.log('[aprobaciones.list] result devuelto:', result);
-      return result;
-    });
+    return api.get(`/aprobaciones?${params}`).then(r => r.data?.data ?? r.data);
   },
 
   solicitar: (dto: SolicitarDto) =>

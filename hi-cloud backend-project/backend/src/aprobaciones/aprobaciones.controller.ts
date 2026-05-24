@@ -17,6 +17,18 @@ import { PaginationDto } from '../common/dto/pagination.dto';
 import { AprobacionesService } from './aprobaciones.service';
 import { EstadoAprobacion, TipoAprobacion } from './entities/aprobacion.entity';
 
+// DTO específico que extiende PaginationDto con filtros de aprobaciones
+// Necesario porque ValidationPipe tiene forbidNonWhitelisted: true globalmente
+class ListAprobacionesDto extends PaginationDto {
+  @IsOptional()
+  @IsEnum(EstadoAprobacion)
+  estado?: EstadoAprobacion;
+
+  @IsOptional()
+  @IsEnum(TipoAprobacion)
+  tipo?: TipoAprobacion;
+}
+
 class SolicitarDto {
   @IsEnum(TipoAprobacion)                                tipo!: TipoAprobacion;
   @IsInt() @IsPositive() @Type(() => Number)              entidadId!: number;
@@ -45,10 +57,8 @@ export class AprobacionesController {
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Listar aprobaciones — filtrar por ?estado=pendiente&tipo=cotizacion' })
   listar(
-    @Query() pagination: PaginationDto,
-    @Query('estado') estado?: EstadoAprobacion,
-    @Query('tipo')   tipo?:   TipoAprobacion,
-  ) { return this.svc.listar(pagination, estado, tipo); }
+    @Query() dto: ListAprobacionesDto,
+  ) { return this.svc.listar(dto, dto.estado, dto.tipo); }
 
   @Get('buscar-documento')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
