@@ -135,7 +135,7 @@ export default function AprobacionesPage() {
     setComentarioSol('');
   };
 
-  const items = aprobaciones?.data ?? [];
+  const items = Array.isArray(aprobaciones) ? aprobaciones : (aprobaciones?.data ?? []);
 
   const itemsFiltrados = useMemo(
     () =>
