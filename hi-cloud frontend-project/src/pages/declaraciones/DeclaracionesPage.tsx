@@ -443,7 +443,7 @@ export default function DeclaracionesPage() {
   return (
     <div>
       {/* ── Header + selector de período ── */}
-      <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
+      <Row justify="space-between" align="middle" gutter={[0, 8]} style={{ marginBottom: 16 }}>
         <Col>
           <Title level={4} style={{ margin: 0 }}>
             <SafetyCertificateOutlined style={{ marginRight: 8, color: '#1677ff' }} />
@@ -453,15 +453,15 @@ export default function DeclaracionesPage() {
             IT-1 · Formato 606 · Formato 607 · 608 · República Dominicana
           </Text>
         </Col>
-        <Col>
-          <Space>
+        <Col xs={24} sm="auto">
+          <Space wrap>
             <Input
               placeholder="Buscar por RNC o período..."
               prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
               value={search}
               onChange={e => setSearch(e.target.value)}
               allowClear
-              style={{ width: 220 }}
+              style={{ width: '100%', maxWidth: 220, minWidth: 0 }}
             />
             <Button size="small" icon={<ClockCircleOutlined />}
               onClick={() => { setMes(mesAnterior.month() + 1); setAnio(mesAnterior.year()); }}>
