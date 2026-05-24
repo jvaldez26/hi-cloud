@@ -112,7 +112,7 @@ export default function RegisterPage() {
   const { isDark, toggle } = useThemeStore();
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#0d1117', position: 'relative' }}>
+    <div className="reg-container" style={{ display: 'flex', minHeight: '100vh', background: '#0d1117', position: 'relative' }}>
       {/* Toggle tema — esquina superior derecha */}
       <button
         onClick={toggle}
@@ -129,7 +129,7 @@ export default function RegisterPage() {
         }
       </button>
       {/* Panel izquierdo */}
-      <div style={{
+      <div className="reg-left" style={{
         flex: 1, display: 'flex', flexDirection: 'column',
         justifyContent: 'center', padding: '64px 56px',
         background: 'radial-gradient(ellipse 80% 60% at 30% 50%, rgba(26,86,219,.2), transparent)',
@@ -192,7 +192,7 @@ export default function RegisterPage() {
       </div>
 
       {/* Panel derecho — Formulario */}
-      <div style={{
+      <div className="reg-right" style={{
         width: 480, display: 'flex', flexDirection: 'column',
         justifyContent: 'center', padding: '48px 40px',
         background: '#111827',
@@ -200,6 +200,17 @@ export default function RegisterPage() {
         overflowY: 'auto',
       }}>
         <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .4 }}>
+          {/* Marca: solo visible en mobile (panel izquierdo oculto) */}
+          <Link to="/" className="reg-mobile-brand" style={{ alignItems: 'center', gap: 10, textDecoration: 'none', marginBottom: 28 }}>
+            <div style={{
+              width: 36, height: 36, borderRadius: 9,
+              background: 'linear-gradient(135deg,#1a56db,#0ea5e9)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 16, fontWeight: 700, color: '#fff', flexShrink: 0,
+            }}>H</div>
+            <Text strong style={{ color: '#fff', fontSize: 18 }}>HiCloud ERP</Text>
+          </Link>
+
           <Title level={3} style={{ color: '#fff', marginBottom: 4 }}>Crear cuenta</Title>
           <Text style={{ color: 'rgba(255,255,255,.4)', display: 'block', marginBottom: 20 }}>
             ¿Ya tienes cuenta?{' '}
@@ -438,6 +449,41 @@ export default function RegisterPage() {
           </Text>
         </motion.div>
       </div>
+
+      {/* ── CSS responsivo ── */}
+      <style>{`
+        /* Logo mobile: oculto en desktop */
+        .reg-mobile-brand { display: none; }
+
+        /* ── Mobile ≤ 768px ── */
+        @media (max-width: 768px) {
+          /* Colapsar a columna única */
+          .reg-container { display: block !important; }
+
+          /* Ocultar panel informativo izquierdo */
+          .reg-left { display: none !important; }
+
+          /* Panel del formulario: full-width */
+          .reg-right {
+            width: 100% !important;
+            max-width: 100% !important;
+            border-left: none !important;
+            padding: 64px 24px 48px !important;
+            min-height: 100vh;
+            box-sizing: border-box;
+          }
+
+          /* Mostrar marca en la cabecera del form */
+          .reg-mobile-brand { display: flex !important; }
+        }
+
+        /* ── Mobile pequeño ≤ 400px ── */
+        @media (max-width: 400px) {
+          .reg-right {
+            padding: 60px 16px 40px !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }
