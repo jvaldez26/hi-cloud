@@ -139,12 +139,24 @@ width="min(400px, 95vw)"  // Modal recibo venta
 
 ---
 
-## Pendientes / Mejoras Futuras
+## Segunda Pasada — Mejoras UI (commit 5b51868)
 
-- [ ] POS — numpad buttons podría aumentar a 48px (actualmente 40px)
-- [ ] AnimatedStatCard — fontSize 26 en mobile podría ser 20px
-- [ ] TableToolbar.tsx — gap entre botones podría reducirse en mobile
-- [ ] Formularios de alta complejidad (FacturaFormPage, CompraFormPage) — revisar en tablet
+| Componente | Mejora | Fix |
+|---|---|---|
+| POSPage Numpad | Botones 40px → 48px (cumple 44px min touch) | `height: 48, fontSize: 16` |
+| AnimatedStatCard | Padding y font-size fijos → adaptativos | `clamp()` en padding y font-size |
+| TableToolbar | Gap 12px → 8px en toolbar actions | `gap: 8` |
+
+## Formularios de alta complejidad
+
+- **FacturaFormPage** — ya usa `xs={24}` + `scroll={{ x: 'max-content' }}` ✅
+- **CompraFormPage** — ya usa `xs={24}` + `scroll={{ x: 'max-content' }}` ✅
+- **ProfilePage** — sin modales de ancho fijo, ya responsive ✅
+
+## Pendientes (no críticos)
+
+- [ ] CotizacionFormPage — revisar tabla de líneas en tablet ≤768px
+- [ ] Módulos secundarios de RRHH (Nómina, Vacaciones) — cubiertos por global CSS, ok en tablet
 
 ---
 
