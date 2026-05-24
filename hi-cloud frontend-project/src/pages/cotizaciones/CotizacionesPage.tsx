@@ -251,17 +251,17 @@ export default function CotizacionesPage() {
 
   return (
     <div>
-      <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
+      <Row justify="space-between" align="middle" gutter={[0, 8]} style={{ marginBottom: 16 }}>
         <Col><Title level={4} style={{ margin: 0 }}>Cotizaciones</Title></Col>
-        <Col>
-          <Space>
+        <Col xs={24} sm="auto">
+          <Space wrap>
             <Input
               placeholder="Buscar por número o cliente..."
               prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
               value={search}
               onChange={e => { setSearch(e.target.value); setPage(1); }}
               allowClear
-              style={{ width: 220 }}
+              style={{ width: '100%', maxWidth: 220, minWidth: 0 }}
             />
             <Button icon={<FileExcelOutlined />} onClick={() => {
               const filas = (data?.data ?? []).map((c: any) => ({
@@ -290,7 +290,7 @@ export default function CotizacionesPage() {
       <Card>
         <Table columns={fcCot(cols as any)} dataSource={data?.data ?? []} rowKey="id"
           loading={isLoading} size="small"
-          tableLayout="fixed"
+          scroll={{ x: 'max-content' }}
           rowClassName={(r: any) => r.estado === 'vencida' ? 'ant-table-row-warn' : ''}
           pagination={{ total: data?.meta?.total, pageSize: 10, current: page,
                         onChange: setPage, showTotal: t => `${t} cotizaciones`, showSizeChanger: false }} />
@@ -301,7 +301,7 @@ export default function CotizacionesPage() {
         title={`Cotización ${detail?.numero}`}
         open={!!detail}
         onClose={() => { setDetail(null); setDetailId(null); }}
-        width={700}
+        width="min(700px, 95vw)"
         loading={loadingDetail}
       >
         {drawerData && (
@@ -325,7 +325,7 @@ export default function CotizacionesPage() {
               )}
             </Descriptions>
 
-            <Table size="small" pagination={false}
+            <Table size="small" pagination={false} scroll={{ x: 'max-content' }}
               dataSource={drawerData.detalles ?? []} rowKey="id"
               summary={() => (
                 <Table.Summary>

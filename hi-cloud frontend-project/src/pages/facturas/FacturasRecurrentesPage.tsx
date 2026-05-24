@@ -168,7 +168,7 @@ export default function FacturasRecurrentesPage() {
     <div>
       <Row justify="space-between" align="middle" gutter={[0, 8]} style={{ marginBottom: 16 }}>
         <Col><Title level={4} style={{ margin: 0 }}>Facturas Recurrentes</Title></Col>
-        <Col>
+        <Col xs={24} sm="auto">
           <Space wrap>
             <Input
               placeholder="Buscar por número o cliente..."

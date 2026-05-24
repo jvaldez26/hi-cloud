@@ -170,7 +170,7 @@ export default function CxPPage() {
   return (
     <div>
       <Card>
-        <Row justify="space-between" align="middle" style={{ marginBottom: 12 }}>
+        <Row justify="space-between" align="middle" gutter={[0, 8]} style={{ marginBottom: 12 }}>
           <Col>
             <Title level={4} style={{ margin: 0 }}>Cuentas por Pagar</Title>
             {data?.meta && (
@@ -179,11 +179,13 @@ export default function CxPPage() {
               </Text>
             )}
           </Col>
-          <Col>
-            <Button icon={<FileExcelOutlined />} onClick={handleExcel}>Excel</Button>
-            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
-            <RefreshByKeyButton queryKey={['cxp']} />
-            <VideoTutorialButton />
+          <Col xs={24} sm="auto">
+            <Space wrap>
+              <Button icon={<FileExcelOutlined />} onClick={handleExcel}>Excel</Button>
+              <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+              <RefreshByKeyButton queryKey={['cxp']} />
+              <VideoTutorialButton />
+            </Space>
           </Col>
         </Row>
 

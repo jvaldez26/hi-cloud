@@ -182,7 +182,7 @@ export default function CxCPage() {
     <div>
       <Card>
         {/* Header + filtros */}
-        <Row justify="space-between" align="middle" style={{ marginBottom: 12 }}>
+        <Row justify="space-between" align="middle" gutter={[0, 8]} style={{ marginBottom: 12 }}>
           <Col>
             <Title level={4} style={{ margin: 0 }}>Cuentas por Cobrar</Title>
             {data?.meta && (
@@ -191,11 +191,13 @@ export default function CxCPage() {
               </Text>
             )}
           </Col>
-          <Col>
-            <Button icon={<FileExcelOutlined />} onClick={handleExcel}>Excel</Button>
-            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
-            <RefreshByKeyButton queryKey={['cxc']} />
-            <VideoTutorialButton />
+          <Col xs={24} sm="auto">
+            <Space wrap>
+              <Button icon={<FileExcelOutlined />} onClick={handleExcel}>Excel</Button>
+              <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+              <RefreshByKeyButton queryKey={['cxc']} />
+              <VideoTutorialButton />
+            </Space>
           </Col>
         </Row>
 

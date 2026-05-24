@@ -273,7 +273,7 @@ export default function NotasCreditoPage() {
 
   return (
     <div style={{ padding: '24px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <FileTextOutlined style={{ fontSize: 28, color: token.colorPrimary }} />
           <div>
@@ -281,7 +281,7 @@ export default function NotasCreditoPage() {
             <Text type="secondary">Comprobantes de devolución y ajustes DGII · Tipo E34</Text>
           </div>
         </div>
-        <Space>
+        <Space wrap>
           <Button icon={<FileExcelOutlined />} onClick={() => {
             const filas = (Array.isArray(notas) ? notas : notas?.data ?? []).map((n: any) => ({
               'Número':   n.numero ?? '',

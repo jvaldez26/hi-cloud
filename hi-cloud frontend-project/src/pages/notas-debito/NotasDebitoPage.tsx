@@ -238,7 +238,7 @@ export default function NotasDebitoPage() {
 
   return (
     <div style={{ padding: '24px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <FileTextOutlined style={{ fontSize: 28, color: '#d97706' }} />
           <div>
@@ -246,7 +246,7 @@ export default function NotasDebitoPage() {
             <Text type="secondary">Cargos adicionales al cliente · Ajustes de precio · Intereses · DGII E33</Text>
           </div>
         </div>
-        <Space>
+        <Space wrap>
           <Button icon={<FileExcelOutlined />} onClick={() => {
             const filas = (notas?.data ?? []).map((n: any) => ({ 'Número': n.numero ?? '', 'Fecha': n.fecha ? dayjs(n.fecha).format('DD/MM/YYYY') : '', 'Cliente': n.cliente?.nombre ?? '', 'Motivo': n.motivo?.replace(/_/g,' ') ?? '', 'Total': Number(n.total ?? 0), 'Estado': n.estado ?? '' }));
             exportarExcel(filas, `Notas-Debito-${dayjs().format('YYYY-MM-DD')}`);

@@ -120,15 +120,15 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
   return (
     <>
       <Row gutter={[12, 12]} align="middle" justify="space-between" style={{ marginBottom: 16 }}>
-        <Col>
-          <Space>
+        <Col xs={24} md="auto">
+          <Space wrap>
             <Input
               placeholder="Buscar por número, e-NCF o estado..."
               prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
               value={search}
               onChange={e => { setSearch(e.target.value); setPage(1); }}
               allowClear
-              style={{ width: 280 }}
+              style={{ width: '100%', maxWidth: 280, minWidth: 0 }}
             />
             <Select placeholder="Estado DGII" allowClear style={{ width: 190 }}
               onChange={(v) => { setEstado(v); setPage(1); }}
@@ -149,8 +149,8 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
               options={tipos?.map((t: any) => ({ value: t.codigo, label: t.codigo }))} />
           </Space>
         </Col>
-        <Col>
-          <Space size={2}>
+        <Col xs={24} sm="auto">
+          <Space size={2} wrap>
             <ColumnToggle columns={ECF_COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <RefreshByKeyButton queryKey={['ecf-list']} />
             <VideoTutorialButton />
