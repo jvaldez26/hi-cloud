@@ -176,15 +176,15 @@ export default function BancosPage() {
 
   return (
     <div>
-      <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
+      <Row justify="space-between" align="middle" gutter={[0, 8]} style={{ marginBottom: 16 }}>
         <Col>
           <Title level={4} style={{ margin: 0 }}>
             <BankOutlined style={{ marginRight: 8, color: '#1677ff' }} />
             Cuentas Bancarias & Conciliación
           </Title>
         </Col>
-        <Col>
-          <Space>
+        <Col xs={24} sm="auto">
+          <Space wrap>
             {cuentaId && (
               <Button icon={<UploadOutlined />} onClick={() => setImportModal(true)}>
                 Importar CSV

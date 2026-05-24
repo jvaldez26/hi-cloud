@@ -146,9 +146,9 @@ function UbicacionesTab() {
 
   return (
     <>
-      <Row justify="space-between" align="middle" style={{ marginBottom: 12 }}>
-        <Col>
-          <Space>
+      <Row justify="space-between" align="middle" gutter={[0, 8]} style={{ marginBottom: 12 }}>
+        <Col xs={24} md="auto">
+          <Space wrap>
             <InputNumber placeholder="Filtrar por almacén ID" value={almacenFiltro} onChange={v => setAlmacenFiltro(v ?? undefined)} style={{ width: 200 }} />
             <Input
               placeholder="Buscar por código o ubicación..."
@@ -156,11 +156,11 @@ function UbicacionesTab() {
               value={search}
               onChange={e => setSearch(e.target.value)}
               allowClear
-              style={{ width: 220 }}
+              style={{ width: '100%', maxWidth: 220, minWidth: 0 }}
             />
           </Space>
         </Col>
-        <Col><Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setOpen(true); }}>Nueva ubicación</Button></Col>
+        <Col xs={24} sm="auto"><Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setOpen(true); }}>Nueva ubicación</Button></Col>
       </Row>
       <Table columns={cols} dataSource={ubicsFiltradas} rowKey="id" loading={isLoading} size="small"
         scroll={{ x: 'max-content' }} pagination={{ pageSize: 20 }} />

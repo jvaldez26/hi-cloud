@@ -170,20 +170,20 @@ export default function PresupuestosPage() {
           key: 'lista', label: '📋 Presupuestos',
           children: (
             <>
-              <Row justify="space-between" align="middle" style={{ marginBottom: 12 }}>
+              <Row justify="space-between" align="middle" gutter={[0, 8]} style={{ marginBottom: 12 }}>
                 <Col>
                   <Select value={anio} onChange={(v) => { setAnio(v); setPage(1); }} style={{ width: 100 }}
                     options={[2024, 2025, 2026].map(y => ({ value: y, label: y }))} />
                 </Col>
-                <Col>
-                  <Space>
+                <Col xs={24} sm="auto">
+                  <Space wrap>
                     <Input
                       placeholder="Buscar por número o nombre..."
                       prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
                       value={search}
                       onChange={e => { setSearch(e.target.value); setPage(1); }}
                       allowClear
-                      style={{ width: 220 }}
+                      style={{ width: '100%', maxWidth: 220, minWidth: 0 }}
                     />
                     <Button icon={<FileExcelOutlined />} onClick={() => {
                       const filas = (lista?.data ?? []).map((p: any) => ({

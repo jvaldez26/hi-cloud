@@ -247,15 +247,15 @@ export default function AlmacenesPage() {
 
   return (
     <div>
-      <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
+      <Row justify="space-between" align="middle" gutter={[0, 8]} style={{ marginBottom: 16 }}>
         <Col>
           <Title level={4} style={{ margin: 0 }}>
             <InboxOutlined style={{ marginRight: 8, color: '#06b6d4' }} />
             Almacenes Múltiples
           </Title>
         </Col>
-        <Col>
-          <Space>
+        <Col xs={24} sm="auto">
+          <Space wrap>
             <Button icon={<FileExcelOutlined />} onClick={() => {
               const filas = (almacenes ?? []).map((a: any) => ({
                 'Código':    a.codigo ?? '',

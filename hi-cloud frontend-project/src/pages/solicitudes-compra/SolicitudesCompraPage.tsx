@@ -130,16 +130,16 @@ function SolicitudesTab() {
 
   return (
     <>
-      <Row justify="space-between" align="middle" style={{ marginBottom: 12 }}>
-        <Col>
-          <Space>
+      <Row justify="space-between" align="middle" gutter={[0, 8]} style={{ marginBottom: 12 }}>
+        <Col xs={24} md="auto">
+          <Space wrap>
             <Input
               placeholder="Buscar por número o solicitante..."
               prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
               value={search}
               onChange={e => { setSearch(e.target.value); setPage(1); }}
               allowClear
-              style={{ width: 220 }}
+              style={{ width: '100%', maxWidth: 220, minWidth: 0 }}
             />
             <Select placeholder="Filtrar estado" value={estadoFiltro} onChange={setEstadoFiltro} allowClear style={{ width: 180 }}>
               {['borrador','enviada','aprobada','rechazada','en_cotizacion','procesada','cancelada'].map(e =>
@@ -148,8 +148,8 @@ function SolicitudesTab() {
             </Select>
           </Space>
         </Col>
-        <Col>
-          <Space size={2}>
+        <Col xs={24} sm="auto">
+          <Space size={2} wrap>
             <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <RefreshByKeyButton queryKey={['solicitudes-compra']} />
             <VideoTutorialButton />

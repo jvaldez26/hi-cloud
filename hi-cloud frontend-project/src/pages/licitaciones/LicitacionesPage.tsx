@@ -121,22 +121,22 @@ export default function LicitacionesPage() {
 
   return (
     <div>
-      <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
+      <Row justify="space-between" align="middle" gutter={[0, 8]} style={{ marginBottom: 16 }}>
         <Col>
           <Title level={4} style={{ margin: 0 }}>
             <FileTextOutlined style={{ marginRight: 8, color: '#1677ff' }} />
             Licitaciones y Propuestas
           </Title>
         </Col>
-        <Col>
-          <Space>
+        <Col xs={24} sm="auto">
+          <Space wrap>
             <Input
               placeholder="Buscar por número o descripción..."
               prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
               value={search}
               onChange={e => { setSearch(e.target.value); setPage(1); }}
               allowClear
-              style={{ width: 220 }}
+              style={{ width: '100%', maxWidth: 220, minWidth: 0 }}
             />
             <Button icon={<FileExcelOutlined />} onClick={() => {
               const filas = (lista?.data ?? []).map((l: any) => ({

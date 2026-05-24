@@ -126,7 +126,7 @@ export default function BackupsPage() {
 
   return (
     <div>
-      <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
+      <Row justify="space-between" align="middle" gutter={[0, 8]} style={{ marginBottom: 16 }}>
         <Col>
           <Title level={4} style={{ margin: 0 }}>
             <DatabaseOutlined style={{ marginRight: 8, color: '#1677ff' }} />
@@ -136,8 +136,8 @@ export default function BackupsPage() {
             Copias de seguridad automáticas · Daily 02:00 AM · S3 STANDARD_IA
           </Text>
         </Col>
-        <Col>
-          <Space>
+        <Col xs={24} sm="auto">
+          <Space wrap>
             <Button icon={<SyncOutlined />} onClick={() => refetch()}>Actualizar</Button>
             <Button type="primary" icon={<CloudUploadOutlined />}
               loading={triggerMut.isPending}

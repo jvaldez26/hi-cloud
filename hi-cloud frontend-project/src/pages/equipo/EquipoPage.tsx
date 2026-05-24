@@ -287,7 +287,7 @@ export default function EquipoPage() {
 
   return (
     <div>
-      <Row justify="space-between" align="middle" style={{ marginBottom: 20 }}>
+      <Row justify="space-between" align="middle" gutter={[0, 8]} style={{ marginBottom: 20 }}>
         <Col>
           <Title level={4} style={{ margin: 0 }}>
             <TeamOutlined style={{ marginRight: 8, color: '#1677ff' }} />
@@ -297,15 +297,15 @@ export default function EquipoPage() {
             Gestiona quién tiene acceso a tu empresa en HiCloud ERP
           </Text>
         </Col>
-        <Col>
-          <Space>
+        <Col xs={24} sm="auto">
+          <Space wrap>
             <Input
               placeholder="Buscar por nombre o correo..."
               prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
               value={search}
               onChange={e => setSearch(e.target.value)}
               allowClear
-              style={{ width: 220 }}
+              style={{ width: '100%', maxWidth: 220, minWidth: 0 }}
             />
             <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <RefreshByKeyButton queryKey={['equipo-miembros']} />

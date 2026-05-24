@@ -108,22 +108,22 @@ export default function FlotaPage() {
 
   return (
     <div>
-      <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
+      <Row justify="space-between" align="middle" gutter={[0, 8]} style={{ marginBottom: 16 }}>
         <Col>
           <Title level={4} style={{ margin: 0 }}>
             <CarOutlined style={{ marginRight: 8, color: '#06b6d4' }} />
             Flota de Vehículos
           </Title>
         </Col>
-        <Col>
-          <Space>
+        <Col xs={24} sm="auto">
+          <Space wrap>
           <Input
             placeholder="Buscar por placa, marca o modelo..."
             prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
             value={search}
             onChange={e => setSearch(e.target.value)}
             allowClear
-            style={{ width: 220 }}
+            style={{ width: '100%', maxWidth: 220, minWidth: 0 }}
           />
           <Button icon={<FileExcelOutlined />} onClick={() => {
             const filas = (vehiculos ?? []).map((v: any) => ({

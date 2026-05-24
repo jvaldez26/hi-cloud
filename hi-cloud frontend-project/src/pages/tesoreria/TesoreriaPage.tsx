@@ -99,9 +99,9 @@ export default function TesoreriaPage() {
           key: 'movimientos', label: 'Movimientos',
           children: (
             <>
-              <Row justify="space-between" align="middle" style={{ marginBottom: 12 }}>
-                <Col>
-                  <Space>
+              <Row justify="space-between" align="middle" gutter={[0, 8]} style={{ marginBottom: 12 }}>
+                <Col xs={24} md="auto">
+                  <Space wrap>
                     <Select placeholder="Filtrar por cuenta" allowClear style={{ width: 220 }}
                       onChange={(v) => { setCuentaFiltro(v); setPage(1); }}
                       options={(cuentas ?? []).map((c: any) => ({ value: c.id, label: `${c.banco} — ${c.numeroCuenta}` }))} />
@@ -111,12 +111,12 @@ export default function TesoreriaPage() {
                       value={search}
                       onChange={e => { setSearch(e.target.value); setPage(1); }}
                       allowClear
-                      style={{ width: 220 }}
+                      style={{ width: '100%', maxWidth: 220, minWidth: 0 }}
                     />
                   </Space>
                 </Col>
-                <Col>
-                  <Space>
+                <Col xs={24} sm="auto">
+                  <Space wrap>
                     <Button icon={<FileExcelOutlined />} onClick={() => {
                       const filas = (movims?.data ?? movims ?? []).map((m: any) => ({
                         'Fecha':    m.fecha ? dayjs(m.fecha).format('DD/MM/YYYY') : '',
