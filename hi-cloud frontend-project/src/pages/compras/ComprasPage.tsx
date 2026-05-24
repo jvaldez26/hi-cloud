@@ -244,7 +244,7 @@ export default function ComprasPage() {
 
   return (
     <Card>
-      <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
+      <Row justify="space-between" align="middle" gutter={[0, 8]} style={{ marginBottom: 16 }}>
         <Col>
           <Title level={4} style={{ margin: 0 }}>Órdenes de Compra</Title>
           {data?.meta && (
@@ -253,8 +253,8 @@ export default function ComprasPage() {
             </Text>
           )}
         </Col>
-        <Col>
-          <Space>
+        <Col xs={24} sm="auto">
+          <Space wrap>
             <Button icon={<FileExcelOutlined />} onClick={handleExcel}>Excel</Button>
             <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <RefreshByKeyButton queryKey={['compras']} />

@@ -1981,7 +1981,7 @@ export default function AppLayout() {
           {/* Único área scrollable — scroll siempre aquí, nunca en el body */}
           <div
             id="main-content"
-            style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: 20 }}
+            style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: isMobile ? 12 : 20 }}
           >
             <Suspense fallback={<ContentLoader />}>
               <PageTransition>

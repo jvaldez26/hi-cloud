@@ -1528,14 +1528,43 @@ export default function ConfiguracionPage() {
   };
 
   return (
-    <div style={{ display: 'flex', height: 'calc(100vh - 120px)', overflow: 'hidden' }}>
-      <ConfigSidebar
-        active={activeSection}
-        onSelect={setActiveSection}
-        collapsed={collapsed}
-        onToggle={() => setCollapsed(c => !c)}
-      />
-      <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px 24px' }}>
+    <div style={{ display: 'flex', height: 'calc(100vh - 120px)', overflow: 'hidden' }} className="config-layout">
+      <style>{`
+        @media (max-width: 768px) {
+          .config-layout { height: auto !important; overflow: visible !important; flex-direction: column; }
+          .config-sidebar { display: none !important; }
+          .config-content { padding: 0 0 24px !important; overflow-y: visible !important; height: auto !important; }
+          .config-section-nav { display: flex !important; overflow-x: auto; padding: 0 0 8px; gap: 4px; margin-bottom: 16px; }
+        }
+        @media (min-width: 769px) {
+          .config-section-nav { display: none !important; }
+        }
+      `}</style>
+      <div className="config-sidebar" style={{ display: 'contents' }}>
+        <ConfigSidebar
+          active={activeSection}
+          onSelect={setActiveSection}
+          collapsed={collapsed}
+          onToggle={() => setCollapsed(c => !c)}
+        />
+      </div>
+      {/* Mobile nav — horizontal scroll de secciones */}
+      <div className="config-section-nav" style={{ display: 'none' }}>
+        {SIDEBAR_GROUPS.flatMap(g => g.items).map(item => (
+          <button
+            key={item.key}
+            onClick={() => setActiveSection(item.key)}
+            style={{
+              padding: '6px 12px', borderRadius: 20, border: '1px solid',
+              borderColor: activeSection === item.key ? '#1a56db' : '#d9d9d9',
+              background: activeSection === item.key ? '#1a56db' : 'transparent',
+              color: activeSection === item.key ? '#fff' : 'inherit',
+              fontSize: 12, whiteSpace: 'nowrap', cursor: 'pointer', flexShrink: 0,
+            }}
+          >{item.label}</button>
+        ))}
+      </div>
+      <div className="config-content" style={{ flex: 1, overflowY: 'auto', padding: '0 24px 24px' }}>
         <div style={{ marginBottom: 20, paddingTop: 4 }}>
           <Title level={4} style={{ margin: 0 }}>{sectionLabel}</Title>
           {empresa && (

@@ -255,7 +255,7 @@ export default function LoginPage() {
             <Form.Item
               name="password"
               label={
-                <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', minWidth: 310 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
                   <Text style={{ color: 'rgba(255,255,255,.75)', fontSize: 13 }}>Contraseña</Text>
                   <Link to="/recuperar-contrasena"
                     style={{ color: '#60a5fa', fontSize: 12, fontWeight: 400 }}>

@@ -68,13 +68,13 @@ export default function ReportesPage() {
           children: (
             <div>
               <Row gutter={[8, 8]} align="middle" style={{ marginBottom: 16 }}>
-                <Col>
-                  <Select value={mes} onChange={setMes} style={{ width: 130 }} options={MESES_OPT} />
+                <Col xs={12} sm="auto">
+                  <Select value={mes} onChange={setMes} style={{ width: '100%', minWidth: 120 }} options={MESES_OPT} />
                 </Col>
-                <Col>
-                  <Select value={anio} onChange={setAnio} style={{ width: 100 }} options={ANIOS_OPT} />
+                <Col xs={8} sm="auto">
+                  <Select value={anio} onChange={setAnio} style={{ width: '100%', minWidth: 90 }} options={ANIOS_OPT} />
                 </Col>
-                <Col>
+                <Col xs={4} sm="auto">
                   <Button icon={<FileExcelOutlined />} size="small" onClick={() => {
                     const filas = (ventasDia?.detalle ?? []).map((d: any) => ({
                       'Día': d.dia, 'Facturas': d.cantidad, 'Total': Number(d.total),
@@ -214,8 +214,8 @@ export default function ReportesPage() {
           children: itbis ? (
             <div>
               <Row gutter={[8, 8]} align="middle" style={{ marginBottom: 16 }}>
-                <Col><Select value={mes} onChange={setMes} style={{ width: 130 }} options={MESES_OPT} /></Col>
-                <Col><Select value={anio} onChange={setAnio} style={{ width: 100 }} options={ANIOS_OPT} /></Col>
+                <Col xs={12} sm="auto"><Select value={mes} onChange={setMes} style={{ width: '100%', minWidth: 120 }} options={MESES_OPT} /></Col>
+                <Col xs={8} sm="auto"><Select value={anio} onChange={setAnio} style={{ width: '100%', minWidth: 90 }} options={ANIOS_OPT} /></Col>
                 <Col>
                   <Button icon={<DownloadOutlined />} size="small"
                     onClick={() => exportarITBIS(itbis, mes, anio)}>
@@ -317,8 +317,8 @@ export default function ReportesPage() {
             <div>
               {/* Selector mes/año compartido */}
               <Row gutter={[8, 8]} align="middle" style={{ marginBottom: 16 }}>
-                <Col><Select value={mes} onChange={setMes} style={{ width: 130 }} options={MESES_OPT} /></Col>
-                <Col><Select value={anio} onChange={setAnio} style={{ width: 100 }} options={ANIOS_OPT} /></Col>
+                <Col xs={12} sm="auto"><Select value={mes} onChange={setMes} style={{ width: '100%', minWidth: 120 }} options={MESES_OPT} /></Col>
+                <Col xs={8} sm="auto"><Select value={anio} onChange={setAnio} style={{ width: '100%', minWidth: 90 }} options={ANIOS_OPT} /></Col>
               </Row>
 
               <Alert

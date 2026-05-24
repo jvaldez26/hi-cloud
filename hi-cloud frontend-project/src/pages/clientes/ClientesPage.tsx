@@ -172,7 +172,7 @@ export default function ClientesPage() {
               prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
               value={search}
               onChange={e => { setSearch(e.target.value); setPage(1); }}
-              allowClear style={{ width: '100%', maxWidth: 260 }}
+              allowClear style={{ width: '100%', maxWidth: 260, minWidth: 0 }}
             />
             <Button icon={<FileExcelOutlined />} onClick={handleExcel}>Excel</Button>
             <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
@@ -199,7 +199,8 @@ export default function ClientesPage() {
       {/* Modal crear/editar */}
       <Modal
         title={editing ? 'Editar cliente' : 'Nuevo cliente'}
-        open={open} onCancel={closeModal} footer={null} width={680} destroyOnClose
+        open={open} onCancel={closeModal} footer={null}
+        width="min(680px, 95vw)" destroyOnClose
       >
         <Form form={form} layout="vertical" onFinish={handleSubmit}>
           <Row gutter={16}>

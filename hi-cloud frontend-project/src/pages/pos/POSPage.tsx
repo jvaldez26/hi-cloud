@@ -1016,7 +1016,7 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar 
   };
 
   return (
-    <Modal open={open} footer={null} closable={false} centered width={400}
+    <Modal open={open} footer={null} closable={false} centered width="min(400px, 95vw)"
       styles={{ content: { background: C.card, borderRadius: 20, padding: 0, overflow: 'hidden' }, body: { padding: 0 } }}>
       <div style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 20 }}>
 
@@ -1347,7 +1347,7 @@ function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir }: {
   if (!sale) return null;
 
   return (
-    <Modal open={!!sale} footer={null} closable={false} centered width={400}
+    <Modal open={!!sale} footer={null} closable={false} centered width="min(400px, 95vw)"
       styles={{ content: { background: C.card, borderRadius: 20, padding: 0, overflow: 'hidden' }, body: { padding: 0 } }}>
       <div>
         <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}

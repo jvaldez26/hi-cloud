@@ -360,7 +360,7 @@ export default function FacturasPage() {
   return (
     <Card>
       {/* ── Header ── */}
-      <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
+      <Row justify="space-between" align="middle" gutter={[0, 8]} style={{ marginBottom: 16 }}>
         <Col>
           <Title level={4} style={{ margin: 0 }}>Facturas</Title>
           {data?.meta && (
@@ -370,8 +370,8 @@ export default function FacturasPage() {
             </Text>
           )}
         </Col>
-        <Col>
-          <Space>
+        <Col xs={24} sm="auto">
+          <Space wrap>
             <Button icon={<FileExcelOutlined />} onClick={handleExportExcel}>Excel</Button>
             <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <RefreshByKeyButton queryKey={['facturas']} />
@@ -408,7 +408,7 @@ export default function FacturasPage() {
               ))}
             </Select>
           </Col>
-          <Col xs={12} sm={6} md={7}>
+          <Col xs={24} sm={6} md={7}>
             <RangePicker value={rango}
               onChange={v => { setRango(v as [Dayjs, Dayjs] | null); setPage(1); }}
               format="DD/MM/YYYY" style={{ width: '100%' }} placeholder={['Desde', 'Hasta']} />

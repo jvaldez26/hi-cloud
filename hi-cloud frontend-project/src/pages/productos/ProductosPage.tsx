@@ -130,7 +130,7 @@ function AtributosTab() {
         ))}
       </Row>
 
-      <Modal title="Nuevo atributo" open={open} onCancel={() => { setOpen(false); form.resetFields(); }} footer={null} width={480}>
+      <Modal title="Nuevo atributo" open={open} onCancel={() => { setOpen(false); form.resetFields(); }} footer={null} width="min(480px, 95vw)">
         <Form form={form} layout="vertical" onFinish={(v) => crearMut.mutate(v)}>
           <Row gutter={12}>
             <Col xs={24} sm={14}><Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input placeholder="Talla, Color, Material..." /></Form.Item></Col>
@@ -493,18 +493,18 @@ function ProductosCatalogo() {
 
   return (
     <>
-      <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
+      <Row justify="space-between" align="middle" gutter={[0, 8]} style={{ marginBottom: 16 }}>
         <Col>
           {data?.meta && <Text type="secondary" style={{ fontSize: 12 }}>{data.meta.total.toLocaleString('es-DO')} productos</Text>}
         </Col>
-        <Col>
+        <Col xs={24} sm="auto">
           <Space wrap>
             <Input
               placeholder="Código, nombre o categoría..."
               prefix={<SearchOutlined />}
               value={search}
               onChange={e => { setSearch(e.target.value); setPage(1); }}
-              allowClear style={{ width: 220 }}
+              allowClear style={{ width: '100%', minWidth: 0, maxWidth: 220 }}
             />
             <Select placeholder="Categoría" value={categoria} onChange={v => setCategoria(v)} allowClear style={{ width: 150 }}>
               {categorias.map(c => <Select.Option key={c} value={c}>{c}</Select.Option>)}
@@ -535,7 +535,7 @@ function ProductosCatalogo() {
                       onChange: setPage, showTotal: t => `${t} productos`, showSizeChanger: false }} />
 
       <Modal title={editing ? 'Editar producto' : 'Nuevo producto'}
-        open={open} onCancel={closeModal} footer={null} width={700}>
+        open={open} onCancel={closeModal} footer={null} width="min(700px, 95vw)">
         <Form form={form} layout="vertical" onFinish={handleSubmit}
           initialValues={{ unidadMedida: 'PZA', porcentajeIva: 18, stock: 0, stockMinimo: 0 }}>
           <UomMedidaSelector />

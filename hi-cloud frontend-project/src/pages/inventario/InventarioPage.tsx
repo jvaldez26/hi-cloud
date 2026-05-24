@@ -376,7 +376,7 @@ function LotesTab() {
       <Table columns={cols} dataSource={rows} rowKey="id" loading={isLoading} size="small"
         scroll={{ x: 'max-content' }} pagination={{ pageSize: 15 }} />
 
-      <Modal title="Registrar lote / batch" open={open} onCancel={() => { setOpen(false); form.resetFields(); }} footer={null} width={620}>
+      <Modal title="Registrar lote / batch" open={open} onCancel={() => { setOpen(false); form.resetFields(); }} footer={null} width="min(620px, 95vw)">
         <Form form={form} layout="vertical" onFinish={(v) => crearMut.mutate(v)}>
           <Row gutter={12}>
             <Col xs={24} sm={16}>
@@ -556,7 +556,7 @@ function SerialesTab() {
         scroll={{ x: 'max-content' }} pagination={{ pageSize: 20 }} />
 
       {/* Modal registrar seriales */}
-      <Modal title="Registrar números de serie" open={open} onCancel={() => { setOpen(false); form.resetFields(); setNumerosTexto(''); }} footer={null} width={560}>
+      <Modal title="Registrar números de serie" open={open} onCancel={() => { setOpen(false); form.resetFields(); setNumerosTexto(''); }} footer={null} width="min(560px, 95vw)">
         <Form form={form} layout="vertical" onFinish={handleRegistrar}>
           <Form.Item name="productoId" label="Producto" rules={[{ required: true }]}>
             <Select showSearch optionFilterProp="label"
@@ -589,7 +589,7 @@ function SerialesTab() {
       </Modal>
 
       {/* Drawer detalle serial */}
-      <Modal title={`Serial: ${detalle?.numeroSerie}`} open={!!detalle} onCancel={() => setDetalle(null)} footer={null} width={480}>
+      <Modal title={`Serial: ${detalle?.numeroSerie}`} open={!!detalle} onCancel={() => setDetalle(null)} footer={null} width="min(480px, 95vw)">
         {detalle && (
           <>
             <Descriptions column={2} size="small" bordered style={{ marginBottom: 16 }}>

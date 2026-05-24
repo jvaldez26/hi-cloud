@@ -415,7 +415,7 @@ h2{text-align:center;font-size:16px;margin:0 0 4px}
         }
         open={!!detalleCierre}
         onClose={() => setDetalleCierre(null)}
-        width={480}
+        width="min(480px, 95vw)"
         footer={
           <Space>
             <Button icon={<PrinterOutlined />} onClick={() => imprimirCierre(detalleCierre)}>Imprimir</Button>
@@ -488,7 +488,7 @@ h2{text-align:center;font-size:16px;margin:0 0 4px}
       {/* Modal abrir caja */}
       <Modal
         title={<Space><UnlockOutlined style={{ color: '#10B981' }} />Abrir Caja</Space>}
-        open={openAbrir} onCancel={() => setOpenAbrir(false)} footer={null} width={420}
+        open={openAbrir} onCancel={() => setOpenAbrir(false)} footer={null} width="min(420px, 95vw)"
       >
         <Form form={form} layout="vertical" onFinish={v => abrirMut.mutate(v)}>
           <Form.Item name="vendedorId" label="Cajero responsable" rules={[{ required: true, message: 'Selecciona un cajero' }]}>
@@ -549,7 +549,7 @@ h2{text-align:center;font-size:16px;margin:0 0 4px}
         open={!!cerrarTarget}
         onCancel={() => { setCerrarTarget(null); setSaldoFisicoInput(0); }}
         footer={null}
-        width={460}
+        width="min(460px, 95vw)"
       >
         {/* ── Resumen del turno ── */}
         <div style={{
@@ -644,7 +644,7 @@ h2{text-align:center;font-size:16px;margin:0 0 4px}
         title={<Space><RollbackOutlined style={{ color: '#d97706' }} />{`Anular cierre — ${anularTarget?.nombre}`}</Space>}
         open={!!anularTarget}
         onCancel={() => { setAnularTarget(null); formAnular.resetFields(); }}
-        footer={null} width={460} destroyOnClose
+        footer={null} width="min(460px, 95vw)" destroyOnClose
       >
         <Alert type="warning" showIcon icon={<WarningOutlined />}
           message="¿Estás seguro de anular este cierre?"

@@ -336,7 +336,51 @@ body {
   }
 }
 
+@media (max-width: 600px) {
+  .dashboard-widgets-row {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ── Mobile global overrides ─────────────────────────────────────────────── */
 @media (max-width: 768px) {
+  /* Modales — máximo 95vw para no desbordarse */
+  .ant-modal {
+    max-width: 95vw !important;
+  }
+
+  /* Drawers — máximo 95vw */
+  .ant-drawer-content-wrapper {
+    max-width: 95vw !important;
+  }
+
+  /* Cards — reducir padding en mobile */
+  .ant-card-body {
+    padding: 12px 12px !important;
+  }
+
+  /* Formularios — asegurar inputs full-width */
+  .ant-form-item .ant-input,
+  .ant-form-item .ant-input-affix-wrapper,
+  .ant-form-item .ant-select,
+  .ant-form-item .ant-picker,
+  .ant-form-item .ant-input-number {
+    width: 100% !important;
+  }
+
+  /* Tablas — asegurar scroll horizontal */
+  .ant-table-wrapper {
+    overflow-x: auto;
+  }
+
+  /* Paginación — centrar en mobile */
+  .ant-pagination {
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  /* Dashboard widgets row — 1 columna en mobile */
   .dashboard-widgets-row {
     grid-template-columns: 1fr !important;
   }
