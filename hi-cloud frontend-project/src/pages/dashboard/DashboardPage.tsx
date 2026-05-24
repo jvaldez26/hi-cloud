@@ -1,4 +1,4 @@
-import { Row, Col, Card, Table, Typography, Spin, Tag, Space, Button, theme, DatePicker, Statistic, Empty, Tooltip as AntTooltip } from 'antd';
+import { Row, Col, Card, Table, Typography, Spin, Tag, Space, Button, theme, DatePicker, Empty, Tooltip as AntTooltip } from 'antd';
 import {
   DollarOutlined, FileTextOutlined, RightOutlined, ReloadOutlined,
   LineChartOutlined, BarChartOutlined, DownloadOutlined,
@@ -41,44 +41,11 @@ function DashboardVendedor() {
   const factData = Array.isArray(misFacturas?.data) ? misFacturas.data : (Array.isArray(misFacturas) ? misFacturas : []);
   const cotData  = Array.isArray(misCotizaciones?.data) ? misCotizaciones.data : (Array.isArray(misCotizaciones) ? misCotizaciones : []);
 
-  const totalFacturado = factData.reduce((s: number, f: any) => s + Number(f.total ?? 0), 0);
-  const totalCotizado  = cotData.reduce((s: number, c: any) => s + Number(c.total ?? 0), 0);
-  const cotAceptadas   = cotData.filter((c: any) => c.estado === 'aceptada').length;
-
   return (
     <div>
       <Row justify="space-between" align="middle" style={{ marginBottom: 20 }}>
         <Title level={4} style={{ margin: 0 }}>Mi Panel</Title>
         <DatePicker.MonthPicker value={periodo} onChange={v => v && setPeriodo(v)} format="MMMM YYYY" allowClear={false} />
-      </Row>
-
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={24} sm={8}>
-          <Card style={{ borderRadius: 12, borderLeft: '3px solid #0EA5E9' }}>
-            <Statistic title={<span style={{ fontSize: 12, color: token.colorTextTertiary }}>Facturado este mes</span>}
-              value={totalFacturado} formatter={v => fmt.money(Number(v))}
-              valueStyle={{ fontSize: 22, fontWeight: 700 }}
-              prefix={<DollarOutlined style={{ color: '#0EA5E9', marginRight: 4 }} />} />
-            <Button size="small" type="link" style={{ padding: 0, marginTop: 6 }} onClick={() => navigate('/facturas')}>Ver facturas →</Button>
-          </Card>
-        </Col>
-        <Col xs={24} sm={8}>
-          <Card style={{ borderRadius: 12, borderLeft: '3px solid #10B981' }}>
-            <Statistic title={<span style={{ fontSize: 12, color: token.colorTextTertiary }}>Cotizaciones activas</span>}
-              value={cotData.filter((c: any) => ['borrador','enviada'].includes(c.estado)).length}
-              valueStyle={{ fontSize: 22, fontWeight: 700 }}
-              suffix={<span style={{ fontSize: 13, color: token.colorTextTertiary }}> cotizaciones</span>} />
-            <Button size="small" type="link" style={{ padding: 0, marginTop: 6 }} onClick={() => navigate('/cotizaciones')}>Ver cotizaciones →</Button>
-          </Card>
-        </Col>
-        <Col xs={24} sm={8}>
-          <Card style={{ borderRadius: 12, borderLeft: '3px solid #F59E0B' }}>
-            <Statistic title={<span style={{ fontSize: 12, color: token.colorTextTertiary }}>Cotizaciones aceptadas</span>}
-              value={cotAceptadas} valueStyle={{ fontSize: 22, fontWeight: 700, color: '#F59E0B' }}
-              suffix={<span style={{ fontSize: 13, color: token.colorTextTertiary }}>/ {cotData.length}</span>} />
-            <div style={{ color: token.colorTextTertiary, fontSize: 11, marginTop: 6 }}>Total cotizado: {fmt.money(totalCotizado)}</div>
-          </Card>
-        </Col>
       </Row>
 
       <Row gutter={[16, 16]}>
