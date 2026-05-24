@@ -115,7 +115,7 @@ function Navbar({ onDemo }: { onDemo: () => void }) {
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
     }}>
       {/* Logo */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', flexShrink: 0 }}
         onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
         <img src="/logo-hicloud.png" alt="HiCloud ERP"
           style={{ height: 44, width: 'auto', objectFit: 'contain',
@@ -142,6 +142,7 @@ function Navbar({ onDemo }: { onDemo: () => void }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <ThemeToggleBtn />
         <button onClick={() => window.open('/login', '_blank')}
+          className="nav-cta-hide"
           style={{ background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.2)',
             color: '#fff', fontSize: 13, fontWeight: 600, padding: '7px 16px', borderRadius: 8,
             cursor: 'pointer', transition: 'all .15s' }}
@@ -150,6 +151,7 @@ function Navbar({ onDemo }: { onDemo: () => void }) {
           Iniciar sesión
         </button>
         <button onClick={onDemo}
+          className="nav-cta-hide"
           style={{ background: 'linear-gradient(135deg,#00BFA5,#009688)', border: 'none',
             color: '#fff', fontSize: 13, fontWeight: 700, padding: '8px 18px', borderRadius: 8,
             cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,191,165,.35)', transition: 'all .15s' }}
@@ -184,6 +186,11 @@ function Navbar({ onDemo }: { onDemo: () => void }) {
               style={{ marginTop: 16, width: '100%', background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.2)',
                 color: '#fff', fontSize: 14, fontWeight: 600, padding: '12px', borderRadius: 8, cursor: 'pointer' }}>
               Iniciar sesión
+            </button>
+            <button onClick={() => { onDemo(); setMopen(false); }}
+              style={{ marginTop: 8, width: '100%', background: 'linear-gradient(135deg,#00BFA5,#009688)', border: 'none',
+                color: '#fff', fontSize: 14, fontWeight: 700, padding: '12px', borderRadius: 8, cursor: 'pointer' }}>
+              Demo gratis →
             </button>
           </motion.div>
         )}
@@ -366,12 +373,12 @@ function PreciosSection({ navigate }: { navigate: (to: string) => void }) {
         </FadeIn>
 
         {/* 4 tarjetas */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 20, alignItems: 'end', marginBottom: 40 }}>
+        <div className="pricing-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 20, alignItems: 'end', marginBottom: 40 }}>
           {PLANES_LANDING.map((p, i) => {
             const precio = anual ? p.precioAnual : p.precio;
             return (
               <FadeIn key={p.clave} delay={i * 0.08}>
-                <div style={{
+                <div className={p.popular ? 'pricing-popular' : ''} style={{
                   background: p.popular ? P.dark : P.white,
                   border: `2px solid ${p.popular ? p.border : P.border}`,
                   borderRadius: 18, padding: '28px 24px', position: 'relative',
@@ -552,6 +559,7 @@ export default function LandingPage() {
 
           {/* CTAs */}
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
+            className="hero-ctas"
             style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 12 }}>
             <button onClick={openDemo}
               style={{ background: 'linear-gradient(135deg,#00BFA5,#009688)', color: '#fff', border: 'none',
@@ -575,14 +583,14 @@ export default function LandingPage() {
 
       {/* ─── BANNER DE URGENCIA ──────────────────────────────────────────────── */}
       <section style={{ background: 'linear-gradient(135deg,#B45309,#D97706)', padding: '16px 24px', textAlign: 'center' }}>
-        <p style={{ margin: 0, color: '#fff', fontSize: 'clamp(13px,2vw,15px)', fontWeight: 600 }}>
-          ⏰ <strong>DGII:</strong> Plazo hasta el 15 de noviembre 2026 para pequeños y micro contribuyentes.
-          HiCloud te pone en operación en menos de una semana.
-          <button onClick={openDemo} style={{ marginLeft: 12, background: 'rgba(255,255,255,.2)', border: '1px solid rgba(255,255,255,.4)',
-            color: '#fff', fontSize: 13, fontWeight: 700, padding: '4px 12px', borderRadius: 6, cursor: 'pointer' }}>
+        <div className="banner-inner" style={{ margin: 0, color: '#fff', fontSize: 'clamp(13px,2vw,15px)', fontWeight: 600 }}>
+          <span>⏰ <strong>DGII:</strong> Plazo hasta el 15 de noviembre 2026 para pequeños y micro contribuyentes.
+          HiCloud te pone en operación en menos de una semana.</span>
+          <button onClick={openDemo} className="banner-btn" style={{ marginLeft: 12, background: 'rgba(255,255,255,.2)', border: '1px solid rgba(255,255,255,.4)',
+            color: '#fff', fontSize: 13, fontWeight: 700, padding: '6px 14px', borderRadius: 6, cursor: 'pointer', whiteSpace: 'nowrap' }}>
             Empezar ahora →
           </button>
-        </p>
+        </div>
       </section>
 
       {/* ─── PROBLEMA → SOLUCIÓN ─────────────────────────────────────────────── */}
@@ -593,7 +601,7 @@ export default function LandingPage() {
               ¿Sigues usando <span style={{ color: '#DC2626' }}>Excel para facturar</span>?
             </h2>
           </FadeIn>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 24 }}>
+          <div className="problem-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 24 }}>
             <FadeIn delay={0.1}>
               <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 16, padding: 28 }}>
                 <div style={{ fontSize: 22, marginBottom: 16, fontWeight: 700, color: '#DC2626' }}>❌ El dolor hoy</div>
@@ -631,7 +639,7 @@ export default function LandingPage() {
               </p>
             </div>
           </FadeIn>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 20 }}>
+          <div className="features-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 20 }}>
             {FEATURES.map((f, i) => (
               <FadeIn key={f.title} delay={i * 0.06}>
                 <div style={{ background: P.gray, border: `1px solid ${P.border}`, borderRadius: 14, padding: '22px 24px',
@@ -661,7 +669,7 @@ export default function LandingPage() {
               </p>
             </div>
           </FadeIn>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 24 }}>
+          <div className="ecf-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 24 }}>
             {[
               { n: '01', title: 'Configura tu empresa', desc: 'Agrega tu RNC, conecta tus credenciales de MSeller y carga tus secuencias DGII. Todo en minutos.', color: '#42A5F5' },
               { n: '02', title: 'Emite desde cualquier módulo', desc: 'Facturas, POS, compras — todos generan el e-CF automáticamente al confirmar la operación.', color: '#00BFA5' },
@@ -703,7 +711,7 @@ export default function LandingPage() {
 
       {/* ─── MÉTRICAS ────────────────────────────────────────────────────────── */}
       <section style={{ padding: 'clamp(40px,6vw,64px) clamp(16px,5vw,80px)', background: L.primary }}>
-        <div style={{ maxWidth: 900, margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 32, textAlign: 'center' }}>
+        <div className="metrics-grid" style={{ maxWidth: 900, margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 32, textAlign: 'center' }}>
           {[
             { label: 'Facturas emitidas', value: 69,   suffix: '+' },
             { label: 'Tipos de e-CF',     value: 10,   suffix: '' },
@@ -748,6 +756,7 @@ export default function LandingPage() {
               Solicita tu demo gratuita. Nuestro equipo te contacta en menos de 24 horas.
             </p>
             <button
+              className="cta-final-btn"
               onClick={openDemo}
               style={{
                 background: 'linear-gradient(135deg,#00BFA5,#009688)', color: '#fff', border: 'none',
@@ -824,18 +833,120 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <div style={{ borderTop: '1px solid rgba(255,255,255,.08)', paddingTop: 24, display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 12, fontSize: 12 }}>
+          <div className="footer-bottom" style={{ borderTop: '1px solid rgba(255,255,255,.08)', paddingTop: 24, display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 12, fontSize: 12 }}>
             <span>© 2026 HiCloud ERP — República Dominicana 🇩🇴</span>
             <span>Desarrollado con ❤️ en RD</span>
           </div>
         </div>
       </footer>
 
-      {/* CSS para mobile nav */}
+      {/* CSS responsivo completo */}
       <style>{`
+        /* ── Hamburger oculto por defecto (desktop) ── */
+        .nav-hamburger { display: none !important; }
+
+        /* ═══════════════════════════════════════════════════
+           MOBILE  ≤ 768 px
+        ═══════════════════════════════════════════════════ */
         @media (max-width: 768px) {
-          .nav-desktop { display: none !important; }
+          /* Nav: ocultar links + botones CTA, mostrar hamburger */
+          .nav-desktop  { display: none !important; }
+          .nav-cta-hide { display: none !important; }
           .nav-hamburger { display: flex !important; }
+
+          /* Pricing: quitar scale del card popular */
+          .pricing-popular { transform: none !important; }
+
+          /* Pricing grid: 2 columnas en tablet-ish */
+          .pricing-grid {
+            grid-template-columns: repeat(2, 1fr) !important;
+          }
+
+          /* Footer bottom: centrado */
+          .footer-bottom {
+            flex-direction: column !important;
+            align-items: center !important;
+            text-align: center !important;
+          }
+        }
+
+        /* ═══════════════════════════════════════════════════
+           MOBILE  ≤ 600 px  — banner wrap
+        ═══════════════════════════════════════════════════ */
+        @media (max-width: 600px) {
+          /* Banner: apilar texto + botón en columna */
+          .banner-inner {
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            gap: 10px !important;
+          }
+          .banner-btn {
+            margin-left: 0 !important;
+            width: 100%;
+            max-width: 260px;
+            text-align: center;
+          }
+        }
+
+        /* ═══════════════════════════════════════════════════
+           MOBILE  ≤ 540 px  — pricing 1 col
+        ═══════════════════════════════════════════════════ */
+        @media (max-width: 540px) {
+          .pricing-grid {
+            grid-template-columns: 1fr !important;
+          }
+        }
+
+        /* ═══════════════════════════════════════════════════
+           MOBILE  ≤ 480 px  — hero, CTA, metrics, features
+        ═══════════════════════════════════════════════════ */
+        @media (max-width: 480px) {
+          /* Hero CTAs: botones full-width apilados */
+          .hero-ctas {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            padding: 0 4px;
+          }
+          .hero-ctas button {
+            width: 100% !important;
+            text-align: center !important;
+          }
+
+          /* CTA final: full-width */
+          .cta-final-btn {
+            width: 100% !important;
+            padding: 14px 20px !important;
+            font-size: 16px !important;
+          }
+
+          /* Métricas: 2 columnas en lugar de 4 */
+          .metrics-grid {
+            grid-template-columns: repeat(2, 1fr) !important;
+            gap: 24px !important;
+          }
+        }
+
+        /* ═══════════════════════════════════════════════════
+           MOBILE  ≤ 360 px  — grids 1 col para pantallas tiny
+        ═══════════════════════════════════════════════════ */
+        @media (max-width: 360px) {
+          /* Forzar 1 columna en grids que aún podrían desbordar */
+          .problem-grid,
+          .features-grid,
+          .ecf-grid {
+            grid-template-columns: 1fr !important;
+          }
+        }
+
+        /* ── Estilos base para banner-inner (flex en cualquier ancho) ── */
+        .banner-inner {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex-wrap: wrap;
+          gap: 6px;
+          line-height: 1.7;
         }
       `}</style>
 
