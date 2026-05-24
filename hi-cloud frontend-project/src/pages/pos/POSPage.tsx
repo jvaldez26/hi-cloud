@@ -181,7 +181,7 @@ function Numpad({ value, onChange }: { value: number; onChange: (v: number) => v
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 5 }}>
       {keys.map(k => (
         <button key={k} onClick={() => press(k)} style={{
-          height: 40, borderRadius: 8, cursor: 'pointer', outline: 'none', fontSize: 15, fontWeight: 600,
+          height: 48, borderRadius: 8, cursor: 'pointer', outline: 'none', fontSize: 16, fontWeight: 600,
           border: k === '⌫' ? '1px solid #FECACA' : '1px solid #E2E8F0',
           background: k === '⌫' ? '#FEF2F2' : '#F8FAFC',
           color: k === '⌫' ? '#EF4444' : '#1E293B',

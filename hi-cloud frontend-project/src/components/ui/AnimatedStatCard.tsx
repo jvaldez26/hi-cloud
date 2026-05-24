@@ -64,7 +64,7 @@ export default function AnimatedStatCard({ title, value, prefix = '', suffix = '
         background:    'var(--hc-bg-card, #fff)',
         border:        '1px solid var(--hc-border, #E2E8F0)',
         borderRadius:  12,
-        padding:       '18px 20px',
+        padding:       'clamp(12px, 2.5vw, 18px) clamp(12px, 2.5vw, 20px)',
         boxShadow:     '0 1px 3px rgba(0,0,0,0.05)',
         display:       'flex',
         flexDirection: 'column',
@@ -97,7 +97,7 @@ export default function AnimatedStatCard({ title, value, prefix = '', suffix = '
 
         {/* Valor */}
         <div style={{
-          fontSize:       26,
+          fontSize:       'clamp(18px, 3.5vw, 26px)',
           fontWeight:     700,
           letterSpacing:  -0.5,
           color:          'var(--hc-text, #0F172A)',

@@ -91,7 +91,7 @@ export function TableToolbar({
   return (
     <div style={{
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      marginBottom: 16, gap: 12, flexWrap: 'wrap',
+      marginBottom: 16, gap: 8, flexWrap: 'wrap',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
         {titulo && <h4 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>{titulo}</h4>}
