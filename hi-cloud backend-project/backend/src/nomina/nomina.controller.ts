@@ -14,7 +14,9 @@ import {
   HttpStatus,
   UseGuards,
   Res,
+  Logger,
 } from '@nestjs/common';
+import { HttpException } from '@nestjs/common';
 import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { IsString, IsOptional, IsEnum, IsNumber, IsInt, IsPositive, Min, IsBoolean } from 'class-validator';
@@ -70,6 +72,8 @@ class UpdateContratoDto {
 @RequiereModulo('nomina')
 @Controller('nomina')
 export class NominaController {
+  private readonly logger = new Logger(NominaController.name);
+
   constructor(
     private nominaService: NominaService,
     private calculos: NominaCalculosService,
@@ -289,10 +293,27 @@ export class NominaController {
     @Param('empleadoId', ParseIntPipe) empleadoId: number,
     @Res() res: Response,
   ) {
-    const data  = await this.nominaService.getReciboEmpleado(periodoId, empleadoId);
-    const { buffer, filename } = await this.nominaService.generarReciboPdf(data);
-    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${filename}"` });
-    res.send(buffer);
+    // Try-catch explícito: @Res() sin passthrough puede no propagar al ExceptionFilter global
+    try {
+      const data  = await this.nominaService.getReciboEmpleado(periodoId, empleadoId);
+      const { buffer, filename } = await this.nominaService.generarReciboPdf(data);
+      res.set({
+        'Content-Type':        'application/pdf',
+        'Content-Disposition': `attachment; filename="${filename}"`,
+      });
+      res.send(buffer);
+    } catch (err: any) {
+      this.logger.error(
+        `[ReciboPDF] Error en handler — periodoId:${periodoId}, empleadoId:${empleadoId}`,
+        err?.stack ?? err?.message ?? String(err),
+      );
+      if (res.headersSent) return;
+      const status  = err instanceof HttpException ? err.getStatus() : 500;
+      const message = err instanceof HttpException
+        ? (err.getResponse() as any)?.message ?? err.message
+        : (err?.message ?? 'Error al generar recibo PDF');
+      res.status(status).json({ success: false, statusCode: status, message });
+    }
   }
 
   @Get('periodos/:id/archivo-banco')

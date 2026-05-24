@@ -107,9 +107,25 @@ export const nominaApi = {
   getRecibo: (periodoId: number, empleadoId: number) =>
     api.get(`/nomina/periodos/${periodoId}/recibo/${empleadoId}`).then(r => r.data.data),
 
-  getReciboPdf: (periodoId: number, empleadoId: number): Promise<Blob> =>
-    api.get(`/nomina/periodos/${periodoId}/recibo/${empleadoId}/pdf`, { responseType: 'blob' })
-       .then(r => r.data),
+  getReciboPdf: async (periodoId: number, empleadoId: number): Promise<Blob> => {
+    try {
+      const res = await api.get(
+        `/nomina/periodos/${periodoId}/recibo/${empleadoId}/pdf`,
+        { responseType: 'blob' },
+      );
+      return res.data as Blob;
+    } catch (err: any) {
+      // Con responseType:'blob' las respuestas de error también llegan como Blob.
+      // Las parseamos de vuelta a JSON para que e.response.data.message funcione.
+      if (err.response?.data instanceof Blob) {
+        try {
+          const text  = await (err.response.data as Blob).text();
+          err.response.data = JSON.parse(text);
+        } catch { /* si no es JSON, dejarlo como está */ }
+      }
+      throw err;
+    }
+  },
 
   procesarPeriodo: (id: number) =>
     api.patch(`/nomina/periodos/${id}/procesar`).then(r => r.data.data),
