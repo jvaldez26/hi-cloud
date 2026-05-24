@@ -305,6 +305,7 @@ function esRutaBloqueada(_path: string, _planActual: PlanTipo): boolean {
 const ADMIN             = ['admin'];
 const ADMIN_CONT        = ['admin', 'contador'];
 const ADMIN_CONT_VEND   = ['admin', 'contador', 'vendedor'];
+const ALL_ROLES         = ['admin', 'contador', 'vendedor', 'viewer'];
 
 const PATH_ROLES: Record<string, string[]> = {
   // ── Solo Admin ────────────────────────────────────────────────────────────
@@ -370,10 +371,13 @@ const PATH_ROLES: Record<string, string[]> = {
   '/flota':                 ADMIN_CONT,
   '/mantenimiento':         ADMIN_CONT,
 
-  // ── Admin + Contador + Vendedor — SOLO estos 4 módulos ──────────────────────
-  '/facturas':              ADMIN_CONT_VEND,
+  // ── Todos los roles autenticados (viewer solo lectura) ───────────────────
+  '/facturas':              ALL_ROLES,   // viewer: solo ver — useCanDo oculta botones de acción
+  '/clientes':              ALL_ROLES,   // viewer: solo ver
+  '/productos':             ALL_ROLES,   // viewer: solo ver
+
+  // ── Admin + Contador + Vendedor ───────────────────────────────────────────
   '/cotizaciones':          ADMIN_CONT_VEND,
-  '/clientes':              ADMIN_CONT_VEND,
 
   // ── Admin + Contador (vendedor ya NO tiene acceso) ────────────────────────
   '/pre-facturas':          ADMIN_CONT,
@@ -388,7 +392,6 @@ const PATH_ROLES: Record<string, string[]> = {
   '/cuotas':                ADMIN_CONT,
   '/credito-cliente':       ADMIN_CONT,
   '/anticipos-cliente':     ADMIN_CONT,
-  '/productos':             ADMIN_CONT,
   '/inventario':            ADMIN_CONT,
   '/conteo-inventario':     ADMIN_CONT,
   '/etiquetas':             ADMIN_CONT,
