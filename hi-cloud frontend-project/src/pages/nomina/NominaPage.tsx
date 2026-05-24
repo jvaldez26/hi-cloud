@@ -459,6 +459,7 @@ function PeriodosTab() {
   const [openCreate, setOpenCreate] = useState(false);
   const [openDetail, setOpenDetail] = useState<any>(null);
   const [page, setPage] = useState(1);
+  const [pdfLoading, setPdfLoading] = useState<number | null>(null);
   const [form] = Form.useForm<PeriodoPayload>();
   const qc = useQueryClient();
 
@@ -513,19 +514,26 @@ function PeriodosTab() {
       title: '', key: 'recibo', width: 60, align: 'center' as const,
       render: (_: any, r: any) => (
         <Tooltip title="Descargar recibo PDF">
-          <Button size="small" type="text" icon={<FilePdfOutlined />}
+          <Button
+            size="small"
+            type="text"
+            icon={<FilePdfOutlined />}
+            loading={pdfLoading === r.empleadoId}
+            disabled={pdfLoading !== null}
             onClick={async () => {
-              const eid   = localStorage.getItem('empresaId') ?? '';
-              const res   = await fetch(`/api/v1/nomina/periodos/${openDetail?.id}/recibo/${r.empleadoId}/pdf`, {
-      credentials: 'include',
-                headers: { 'X-Empresa-ID': eid },
-              });
-              if (!res.ok) { message.error('Error generando recibo'); return; }
-              const blob = await res.blob();
-              const a = document.createElement('a');
-              a.href = URL.createObjectURL(blob);
-              a.download = `Recibo-${r.empleado?.nombre ?? r.empleadoId}-${openDetail?.periodo}.pdf`;
-              a.click(); URL.revokeObjectURL(a.href);
+              setPdfLoading(r.empleadoId);
+              try {
+                const blob = await nominaApi.getReciboPdf(openDetail?.id, r.empleadoId);
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = `Recibo-${r.empleado?.nombre ?? r.empleadoId}-${openDetail?.periodo}.pdf`;
+                a.click();
+                URL.revokeObjectURL(a.href);
+              } catch (e: any) {
+                message.error(e?.response?.data?.message ?? 'Error generando recibo PDF');
+              } finally {
+                setPdfLoading(null);
+              }
             }}
           />
         </Tooltip>

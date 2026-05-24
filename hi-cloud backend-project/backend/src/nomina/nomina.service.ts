@@ -3,6 +3,8 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  Logger,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
@@ -26,6 +28,8 @@ import { BrowserService } from '../common/services/browser.service';
 
 @Injectable()
 export class NominaService {
+  private readonly logger = new Logger(NominaService.name);
+
   constructor(
     @InjectRepository(Empleado)
     private empleadoRepository: Repository<Empleado>,
@@ -522,28 +526,38 @@ export class NominaService {
   }
 
   async generarReciboPdf(data: any): Promise<{ buffer: Buffer; filename: string }> {
-    const fmtM = (v: number) => `RD$ ${Number(v ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
-    const fmtD = (d: any) => d ? new Date(d).toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
-    const C = '#1a56db', G = '#059669', R = '#dc2626', GR = '#6b7280';
-    const fila = (l: string, v: number, c = '#111') =>
-      `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0f0f0;font-size:12px"><span style="color:${GR}">${l}</span><span style="font-weight:600;color:${c}">${fmtM(v)}</span></div>`;
+    const emp  = data.empleado  ?? {};
+    const per  = data.periodo   ?? {};
+    const ing  = data.ingresos  ?? {};
+    const ded  = data.deducciones ?? {};
+    const emp2 = data.empresa   ?? {};
 
-    const emp = data.empleado ?? {}, per = data.periodo ?? {}, ing = data.ingresos ?? {}, ded = data.deducciones ?? {}, emp2 = data.empresa ?? {};
-    const novedades: any[] = data.novedades ?? [];
+    this.logger.log(
+      `[ReciboPDF] Generando recibo — empleado: "${emp.nombre ?? 'N/A'}", período: "${per.periodo ?? 'N/A'}"`,
+    );
 
-    const novedadesHtml = novedades.length > 0
-      ? novedades.map((n: any) => {
-          const signo = (n.tipo === 'ausencia' || n.tipo === 'descuento') ? '-' : '+';
-          return `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:11px;border-bottom:1px solid #f5f5f5">
-            <span style="color:${GR}">${n.descripcion}${n.horas ? ` (${n.horas}h)` : ''}</span>
-            <span style="font-weight:600;color:${signo === '-' ? R : G}">${signo}${fmtM(Math.abs(n.monto))}</span>
-          </div>`;
-        }).join('')
-      : '<div style="font-size:11px;color:#9ca3af">Sin novedades este período</div>';
+    try {
+      const fmtM = (v: number) => `RD$ ${Number(v ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
+      const fmtD = (d: any) => d ? new Date(d).toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
+      const C = '#1a56db', G = '#059669', R = '#dc2626', GR = '#6b7280';
+      const fila = (l: string, v: number, c = '#111') =>
+        `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0f0f0;font-size:12px"><span style="color:${GR}">${l}</span><span style="font-weight:600;color:${c}">${fmtM(v)}</span></div>`;
 
-    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet"/>
-<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Inter',Arial,sans-serif;font-size:12px;color:#111;background:#fff}@page{margin:10mm 12mm;size:Letter}</style>
+      const novedades: any[] = data.novedades ?? [];
+
+      const novedadesHtml = novedades.length > 0
+        ? novedades.map((n: any) => {
+            const signo = (n.tipo === 'ausencia' || n.tipo === 'descuento') ? '-' : '+';
+            return `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:11px;border-bottom:1px solid #f5f5f5">
+              <span style="color:${GR}">${n.descripcion}${n.horas ? ` (${n.horas}h)` : ''}</span>
+              <span style="font-weight:600;color:${signo === '-' ? R : G}">${signo}${fmtM(Math.abs(n.monto))}</span>
+            </div>`;
+          }).join('')
+        : '<div style="font-size:11px;color:#9ca3af">Sin novedades este período</div>';
+
+      // Fuentes del sistema — sin dependencia de red (Google Fonts eliminado)
+      const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:12px;color:#111;background:#fff}@page{margin:10mm 12mm;size:Letter}</style>
 </head><body>
 <div style="background:linear-gradient(135deg,${C},#3b82f6);padding:20px 24px;margin-bottom:18px;color:#fff">
   <div style="display:flex;justify-content:space-between;align-items:flex-start">
@@ -601,9 +615,22 @@ ${novedades.length > 0 ? `
 </div>
 </body></html>`;
 
-    const buf    = await this.browserSvc.htmlToPDF(html);
-    const nombre = `${emp.nombre ?? 'Empleado'}`.replace(/\s+/g, '-');
-    return { buffer: buf, filename: `Recibo-${nombre}-${per.periodo ?? ''}.pdf` };
+      const buf    = await this.browserSvc.htmlToPDF(html);
+      const nombre = `${emp.nombre ?? 'Empleado'}`.replace(/\s+/g, '-');
+      const filename = `Recibo-${nombre}-${per.periodo ?? ''}.pdf`;
+
+      this.logger.log(`[ReciboPDF] ✅ PDF generado correctamente — ${filename} (${buf.length} bytes)`);
+      return { buffer: buf, filename };
+
+    } catch (err: any) {
+      this.logger.error(
+        `[ReciboPDF] ❌ Error generando PDF — empleado: "${emp.nombre ?? 'N/A'}", período: "${per.periodo ?? 'N/A'}"`,
+        err?.stack ?? err?.message ?? String(err),
+      );
+      throw new InternalServerErrorException(
+        `Error al generar el recibo PDF: ${err?.message ?? 'error desconocido'}`,
+      );
+    }
   }
 
   // ──────────────────────────────────────────────────────────────────

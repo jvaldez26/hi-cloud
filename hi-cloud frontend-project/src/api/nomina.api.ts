@@ -107,6 +107,10 @@ export const nominaApi = {
   getRecibo: (periodoId: number, empleadoId: number) =>
     api.get(`/nomina/periodos/${periodoId}/recibo/${empleadoId}`).then(r => r.data.data),
 
+  getReciboPdf: (periodoId: number, empleadoId: number): Promise<Blob> =>
+    api.get(`/nomina/periodos/${periodoId}/recibo/${empleadoId}/pdf`, { responseType: 'blob' })
+       .then(r => r.data),
+
   procesarPeriodo: (id: number) =>
     api.patch(`/nomina/periodos/${id}/procesar`).then(r => r.data.data),
 
