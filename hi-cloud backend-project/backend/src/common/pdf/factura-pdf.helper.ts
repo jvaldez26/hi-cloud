@@ -1,6 +1,7 @@
 /* ──────────────────────────────────────────────────────────────────────────────
-   HiCloud ERP — PDF de Factura Electrónica con PDFKit
-   Reemplaza a: BrowserService.htmlToPDF(generarHTMLFactura(data))
+   HiCloud ERP — PDF de Factura Electrónica con PDFKit v4
+   Diseño exacto según referencia · A4 · Márgenes ~15mm
+   PDFKit se usa en TODOS los PDFs — no se usa Puppeteer/BrowserService
    ──────────────────────────────────────────────────────────────────────────── */
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -28,9 +29,46 @@ function fmtF(s: string | undefined | null): string {
   } catch { return String(s); }
 }
 
+function fmtDT(s: string | undefined | null): string {
+  if (!s) return '';
+  try {
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return String(s);
+    return [
+      String(d.getDate()).padStart(2, '0'),
+      String(d.getMonth() + 1).padStart(2, '0'),
+      d.getFullYear(),
+    ].join('/') + ' ' + [
+      String(d.getHours()).padStart(2, '0'),
+      String(d.getMinutes()).padStart(2, '0'),
+    ].join(':');
+  } catch { return String(s); }
+}
+
+function ecfTipoTitulo(tipo?: string): string {
+  const map: Record<string, string> = {
+    E31: 'FACTURA DE CRÉDITO FISCAL ELECTRÓNICA',
+    E32: 'FACTURA DE CONSUMO ELECTRÓNICA',
+    E33: 'NOTA DE DÉBITO ELECTRÓNICA',
+    E34: 'NOTA DE CRÉDITO ELECTRÓNICA',
+    E41: 'COMPRA ELECTRÓNICA',
+    E44: 'REGÍMENES ESPECIALES ELECTRÓNICA',
+    E45: 'GUBERNAMENTAL ELECTRÓNICA',
+    E47: 'PAGOS AL EXTERIOR ELECTRÓNICA',
+  };
+  return tipo ? (map[tipo] ?? 'FACTURA ELECTRÓNICA') : 'FACTURA ELECTRÓNICA';
+}
+
 // ── Generador ────────────────────────────────────────────────────────────────
 
-export async function generarFacturaPDF(d: FacturaPDFData): Promise<Buffer> {
+/**
+ * @param d       - datos de la factura
+ * @param logoBuf - logo de la empresa descargado como Buffer (opcional)
+ */
+export async function generarFacturaPDF(
+  d: FacturaPDFData,
+  logoBuf?: Buffer,
+): Promise<Buffer> {
   return new Promise<Buffer>((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: 0, compress: true });
     const chunks: Buffer[] = [];
@@ -38,280 +76,355 @@ export async function generarFacturaPDF(d: FacturaPDFData): Promise<Buffer> {
     doc.on('end',   () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    const PW   = doc.page.width;
-    const PH   = doc.page.height;
-    const PL   = 40;
-    const PR   = PW - 40;
-    const W    = PR - PL;
+    const PW   = doc.page.width;   // 595.28
+    const PH   = doc.page.height;  // 841.89
+    const PL   = 42;               // margen izquierdo ≈ 15mm
+    const PR   = PW - 42;          // margen derecho
+    const W    = PR - PL;          // ancho útil ≈ 511
 
-    const DARK  = '#111111';
-    const THEAD = '#1e3a8a';   // azul oscuro para facturas (igual al conduce)
-    const GRAY  = '#555555';
-    const LGRAY = '#f5f5f5';
+    const DARK   = '#111111';
+    const GRAY   = '#555555';
+    const GREEN  = '#16a34a';
+    const THEAD  = '#1a3a5c';
+    const BORDER = '#cccccc';
 
     let y = 36;
 
-    // ── ENCABEZADO IZQUIERDO ─────────────────────────────────────────────────
+    // ── ENCABEZADO IZQUIERDO — Logo + datos empresa ──────────────────
 
+    const leftColW = Math.round(W * 0.50);  // ~255
     const iniciales = (d.empresaNombre || 'HC')
       .split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
-    doc.rect(PL, y, 48, 48).fill(DARK);
-    doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(18)
-      .text(iniciales, PL, y + 16, { width: 48, align: 'center' });
 
-    const infoX = PL + 56;
-    const infoW = 215;
-    doc.fillColor(DARK).font('Helvetica-Bold').fontSize(13)
-      .text(d.empresaNombre.toUpperCase(), infoX, y, { width: infoW });
-
-    let iy = y + 20;
-    doc.font('Helvetica').fontSize(8).fillColor(GRAY);
-    if (d.empresaDireccion) {
-      const dir = d.empresaDireccion +
-        (d.empresaCiudad ? ', ' + d.empresaCiudad : '') + '.';
-      doc.text(dir, infoX, iy, { width: infoW }); iy += 11;
+    let logoH = 0;
+    if (logoBuf) {
+      try {
+        doc.image(logoBuf, PL, y, { fit: [110, 68] });
+        logoH = 74;
+      } catch {
+        // falla la imagen → iniciales
+        doc.rect(PL, y, 56, 56).fill(DARK);
+        doc.fillColor('#fff').font('Helvetica-Bold').fontSize(18)
+          .text(iniciales, PL, y + 19, { width: 56, align: 'center' });
+        logoH = 62;
+      }
+    } else {
+      doc.rect(PL, y, 56, 56).fill(DARK);
+      doc.fillColor('#fff').font('Helvetica-Bold').fontSize(18)
+        .text(iniciales, PL, y + 19, { width: 56, align: 'center' });
+      logoH = 62;
     }
-    if (d.empresaEmail)    { doc.text('Correo: '    + d.empresaEmail,    infoX, iy, { width: infoW }); iy += 11; }
-    if (d.empresaTelefono) { doc.text('Teléfono: '  + d.empresaTelefono, infoX, iy, { width: infoW }); iy += 11; }
-    if (d.empresaSitioWeb) { doc.text(d.empresaSitioWeb, infoX, iy, { width: infoW }); iy += 11; }
-    doc.font('Helvetica-Bold').fontSize(8.5).fillColor(DARK)
-      .text('RNC: ' + d.empresaRNC, infoX, iy);
 
-    const leftBottom = Math.max(y + 52, iy + 14);
+    // Nombre empresa (bold MAYÚSCULAS) debajo del logo
+    let ly = y + logoH + 4;
+    doc.fillColor(DARK).font('Helvetica-Bold').fontSize(13)
+      .text(d.empresaNombre.toUpperCase(), PL, ly, { width: leftColW });
+    ly += 17;
 
-    // ── ENCABEZADO DERECHO: e-NCF + folio + tipo + fecha ─────────────────────
+    // Datos de contacto
+    doc.font('Helvetica').fontSize(9).fillColor(GRAY);
+    if (d.empresaDireccion) {
+      const dir = 'C/ ' + d.empresaDireccion +
+        (d.empresaCiudad ? ', ' + d.empresaCiudad : '') + '.';
+      doc.text(dir, PL, ly, { width: leftColW }); ly += 12;
+    }
+    if (d.empresaEmail)    { doc.text('Correo: '   + d.empresaEmail,    PL, ly, { width: leftColW }); ly += 12; }
+    if (d.empresaTelefono) { doc.text('Teléfono: ' + d.empresaTelefono, PL, ly, { width: leftColW }); ly += 12; }
+    doc.fillColor(DARK).font('Helvetica-Bold').fontSize(9)
+      .text('RNC: ' + d.empresaRNC, PL, ly, { width: leftColW });
+    const leftBottom = ly + 14;
 
-    const rightW = 205;
-    const rightX = PR - rightW;
+    // ── ENCABEZADO DERECHO — Tipo doc + NCF + info rows ──────────────
+
+    const rightColW = Math.round(W * 0.46);  // ~235
+    const rightColX = PR - rightColW;
     let ry = y;
 
+    // Título del documento (uppercase bold, puede hacer wrap)
+    const titulo = ecfTipoTitulo(d.ecfTipo);
     doc.fillColor(DARK).font('Helvetica-Bold').fontSize(10)
-      .text('FACTURA ELECTRÓNICA', rightX, ry, { width: rightW, align: 'right' });
-    ry += 13;
+      .text(titulo, rightColX, ry, { width: rightColW, align: 'right' });
+    ry += titulo.length > 32 ? 28 : 15;
 
+    // e-NCF label + número grande
     if (d.ecfNumero) {
-      doc.fillColor(GRAY).font('Helvetica').fontSize(8)
-        .text('e-NCF:', rightX, ry, { width: rightW, align: 'right' }); ry += 11;
-      doc.fillColor(DARK).font('Helvetica-Bold').fontSize(13)
-        .text(d.ecfNumero, rightX, ry, { width: rightW, align: 'right' }); ry += 17;
+      doc.fillColor(GRAY).font('Helvetica').fontSize(8.5)
+        .text('e-NCF:', rightColX, ry, { width: rightColW, align: 'right' });
+      ry += 11;
+      doc.fillColor(DARK).font('Helvetica-Bold').fontSize(15)
+        .text(d.ecfNumero, rightColX, ry, { width: rightColW, align: 'right' });
+      ry += 20;
     }
 
-    doc.fillColor(DARK).font('Helvetica-Bold').fontSize(16)
-      .text(d.numero, rightX, ry, { width: rightW, align: 'right' }); ry += 21;
-
-    doc.fillColor(GRAY).font('Helvetica').fontSize(8.5);
-    doc.text('Fecha emisión: ' + fmtF(d.fechaEmision), rightX, ry, { width: rightW, align: 'right' }); ry += 11;
-    if (d.fechaVencimiento) {
-      doc.text('Vence: ' + fmtF(d.fechaVencimiento), rightX, ry, { width: rightW, align: 'right' }); ry += 11;
-    }
-    doc.text('Tipo: ' + d.tipo, rightX, ry, { width: rightW, align: 'right' }); ry += 11;
-    if (d.vendedorNombre) {
-      doc.text('Vendedor: ' + d.vendedorNombre, rightX, ry, { width: rightW, align: 'right' }); ry += 11;
+    // Válida hasta (verde)
+    if (d.ecfFechaVigencia) {
+      doc.fillColor(GREEN).font('Helvetica').fontSize(9)
+        .text('Válida hasta: ' + fmtF(d.ecfFechaVigencia), rightColX, ry, {
+          width: rightColW, align: 'right',
+        });
+      ry += 13;
     }
 
-    // Badge ORIGINAL / e-CF estado
-    const estadoLbl = d.esOriginal ? 'ORIGINAL' : 'COPIA';
-    const badgeW    = 70;
-    const badgeX    = PR - badgeW;
-    ry += 2;
-    doc.roundedRect(badgeX, ry, badgeW, 18, 4).fill(THEAD);
-    doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(8)
-      .text(estadoLbl, badgeX, ry + 4, { width: badgeW, align: 'center' });
-    ry += 22;
+    // Info rows — label (gray) + valor (bold dark), ambos right-aligned
+    const infoRows: Array<[string, string]> = [
+      ['Número Factura', d.numero],
+      ...(d.vendedorNombre  ? [['Vendedor',       d.vendedorNombre ]  as [string, string]] : []),
+      ['Moneda',             d.moneda],
+      ['Tipo de Factura',    d.condicionPago ?? d.tipo],
+      ...(d.sucursalNombre  ? [['Sucursal',        d.sucursalNombre ]  as [string, string]] : []),
+      ['Fecha Emisión',      fmtF(d.fechaEmision)],
+    ];
 
-    y = Math.max(leftBottom, ry) + 14;
+    ry += 3;
+    const labelColW = Math.round(rightColW * 0.55);
+    const valueColW = rightColW - labelColW;
+    for (const [label, val] of infoRows) {
+      doc.fillColor(GRAY).font('Helvetica').fontSize(9)
+        .text(label + ':', rightColX, ry, { width: labelColW, align: 'right' });
+      doc.fillColor(DARK).font('Helvetica-Bold').fontSize(9)
+        .text(String(val ?? ''), rightColX + labelColW, ry, { width: valueColW, align: 'right' });
+      ry += 13;
+    }
 
-    // ── SEPARADOR ────────────────────────────────────────────────────────────
+    y = Math.max(leftBottom, ry) + 10;
 
-    doc.rect(PL, y, W, 3).fill(DARK);
-    y += 12;
+    // ── SEPARADOR negro doble ────────────────────────────────────────
 
-    // ── DATOS DEL CLIENTE ────────────────────────────────────────────────────
+    doc.rect(PL, y, W, 3).fill(DARK);  y += 5;
+    doc.rect(PL, y, W, 1).fill(DARK);  y += 12;
+
+    // ── DATOS DEL CLIENTE ────────────────────────────────────────────
 
     const cliLines: string[] = [];
     if (d.clienteRNC) cliLines.push('RNC o Cédula: ' + d.clienteRNC);
     cliLines.push('Nombre o Razón Social: ' + d.clienteNombre);
     if (d.clienteDireccion) {
-      cliLines.push(d.clienteDireccion +
-        (d.clienteCiudad ? ', ' + d.clienteCiudad : ''));
+      cliLines.push(d.clienteDireccion + (d.clienteCiudad ? ', ' + d.clienteCiudad : ''));
     }
-    const ctLine = [
-      d.clienteTelefono ? 'Tel. ' + d.clienteTelefono : '',
-      d.clienteEmail ?? '',
-    ].filter(Boolean).join('  ');
-    if (ctLine) cliLines.push(ctLine);
+    const cliBoxH = 18 + cliLines.length * 13 + 6;
 
-    const cliBoxH = 20 + cliLines.length * 13 + 6;
-    doc.rect(PL, y, W, cliBoxH).stroke('#aaaaaa');
+    doc.rect(PL, y, W, cliBoxH).strokeColor(BORDER).lineWidth(0.75).stroke();
+    doc.lineWidth(1);
     doc.fillColor(DARK).font('Helvetica-Bold').fontSize(8)
-      .text('DATOS DEL COMPRADOR', PL + 10, y + 8);
-    let py = y + 20;
+      .text('DATOS DEL CLIENTE', PL + 10, y + 6);
+    let py = y + 18;
     for (const line of cliLines) {
-      doc.fillColor(GRAY).font('Helvetica').fontSize(10)
+      doc.fillColor(GRAY).font('Helvetica').fontSize(9.5)
         .text(line, PL + 10, py, { width: W - 20 }); py += 13;
     }
     y += cliBoxH + 10;
 
-    // ── TABLA DE ÍTEMS ───────────────────────────────────────────────────────
+    // ── TABLA DE PRODUCTOS ───────────────────────────────────────────
 
-    const hasCode = d.items.some(i => i.codigo);
-    const descW   = W - 24 - (hasCode ? 55 : 0) - 55 - 42 - 88 - 75 - 85;
-    const cols: { label: string; width: number; align: 'left' | 'right' | 'center' }[] = [
-      { label: '#',          width: 24,                      align: 'center' },
-      ...(hasCode ? [{ label: 'Código',   width: 55, align: 'left' as const }] : []),
-      { label: 'Descripción',width: descW,                   align: 'left'   },
-      { label: 'Cant.',      width: 55,                      align: 'right'  },
-      { label: 'Ud.',        width: 42,                      align: 'center' },
-      { label: 'P. Unit.',   width: 88,                      align: 'right'  },
-      { label: 'ITBIS %',    width: 75,                      align: 'center' },
-      { label: 'Total',      width: 85,                      align: 'right'  },
+    // Anchos de columna (% del ancho útil W)
+    const rawCols = [
+      { label: 'Descripción', pct: 0.35, align: 'left'   as const },
+      { label: 'Cant.',       pct: 0.08, align: 'right'  as const },
+      { label: 'Precio U.',   pct: 0.13, align: 'right'  as const },
+      { label: 'Desc.',       pct: 0.08, align: 'center' as const },
+      { label: 'Subtotal',    pct: 0.13, align: 'right'  as const },
+      { label: 'ITBIS',       pct: 0.10, align: 'right'  as const },
+      { label: 'Total',       pct: 0.13, align: 'right'  as const },
     ];
+    // Convertir % a pts; la última columna absorbe los decimales
+    const cols = rawCols.map((c, i) => ({
+      ...c,
+      w: i < rawCols.length - 1
+        ? Math.floor(W * c.pct)
+        : W - rawCols.slice(0, -1).reduce((s, x) => s + Math.floor(W * x.pct), 0),
+    }));
 
-    // Cabecera
-    doc.rect(PL, y, W, 20).fill(THEAD);
+    // Header azul oscuro
+    const thH = 22;
+    doc.rect(PL, y, W, thH).fill(THEAD);
     let hx = PL;
-    doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(7);
+    doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(7.5);
     for (const col of cols) {
-      doc.text(col.label.toUpperCase(), hx + 2, y + 5, {
-        width: col.width - 4, align: col.align,
+      doc.text(col.label.toUpperCase(), hx + 4, y + 7, {
+        width: col.w - 8, align: col.align,
       });
-      hx += col.width;
+      hx += col.w;
     }
-    y += 20;
+    y += thH;
 
-    // Filas
-    for (let idx = 0; idx < d.items.length; idx++) {
-      const item = d.items[idx];
-      if (y + 20 > PH - 90) { doc.addPage(); y = 40; }
-      const bg = idx % 2 === 0 ? '#ffffff' : LGRAY;
-      doc.rect(PL, y, W, 20).fill(bg)
-        .strokeColor('#e8e8e8').lineWidth(0.5).stroke();
+    // Filas de productos (fondo blanco, borde inferior fino)
+    const rowH = 18;
+    for (const item of d.items) {
+      if (y + rowH > PH - 90) { doc.addPage(); y = 40; }
+
+      doc.rect(PL, y, W, rowH).fill('#ffffff');
+      doc.rect(PL, y, W, rowH)
+        .strokeColor('#dddddd').lineWidth(0.5).stroke();
       doc.lineWidth(1);
 
-      const cells: { text: string; width: number; align: 'left' | 'right' | 'center' }[] = [
-        { text: String(item.numero),             width: 24,    align: 'center' },
-        ...(hasCode ? [{ text: item.codigo ?? '', width: 55, align: 'left' as const }] : []),
-        { text: item.descripcion,                width: descW, align: 'left'   },
-        { text: String(item.cantidad),           width: 55,    align: 'right'  },
-        { text: item.unidadMedida ?? 'UN',       width: 42,    align: 'center' },
-        { text: fmtM(item.precioUnitario),       width: 88,    align: 'right'  },
-        { text: item.itbisPct + '%',             width: 75,    align: 'center' },
-        { text: fmtM(item.total),                width: 85,    align: 'right'  },
+      const descVal  = item.descuentoPct > 0 ? `${item.descuentoPct}%` : '-';
+      const itbisVal = item.itbisPct === 0 ? 'EXENTO' : fmtM(item.importeItbis);
+      const cells    = [
+        item.descripcion.toUpperCase(),
+        String(item.cantidad),
+        fmtM(item.precioUnitario),
+        descVal,
+        fmtM(item.subtotal),
+        itbisVal,
+        fmtM(item.total),
       ];
 
       let rx = PL;
-      for (const cell of cells) {
-        doc.fillColor(DARK).font('Helvetica').fontSize(7.5)
-          .text(cell.text, rx + 2, y + 5, {
-            width: cell.width - 4, align: cell.align, ellipsis: true,
+      for (let i = 0; i < cols.length; i++) {
+        const col = cols[i];
+        const isBold = i === cols.length - 1;  // Total en bold
+        doc.fillColor(DARK)
+          .font(isBold ? 'Helvetica-Bold' : 'Helvetica')
+          .fontSize(8.5)
+          .text(cells[i], rx + 4, y + 5, {
+            width: col.w - 8, align: col.align,
+            ellipsis: true, lineBreak: false,
           });
-        rx += cell.width;
+        rx += col.w;
       }
-      y += 20;
+      y += rowH;
     }
     y += 10;
 
-    // ── TOTALES + QR ─────────────────────────────────────────────────────────
+    // ── SECCIÓN INFERIOR: QR (38%) + TOTALES (62%) ───────────────────
 
-    // QR (izquierda inferior)
-    const qrSize = 80;
-    let qrDrawn  = false;
+    const qrBoxW  = Math.round(W * 0.38);
+    const gapMid  = 14;
+    const totW    = W - qrBoxW - gapMid;
+    const totX    = PL + qrBoxW + gapMid;
+
+    // Calcular altura del QR box
+    const qrSize  = 100;
+    const qrBoxH  = 26 + qrSize + 10
+      + (d.ecfCodigoSeguridad ? 28 : 0)
+      + (d.ecfFechaFirma      ? 28 : 0)
+      + 32; // nota final
+
+    // ── QR BOX ──────────────────────────────────────────────────────
+    doc.rect(PL, y, qrBoxW, qrBoxH).strokeColor(BORDER).lineWidth(0.75).stroke();
+    doc.lineWidth(1);
+
+    doc.fillColor(DARK).font('Helvetica-Bold').fontSize(8.5)
+      .text('SEGURIDAD FISCAL DGII', PL, y + 8, { width: qrBoxW, align: 'center' });
+
+    let qy = y + 22;
     if (d.qrBase64) {
       try {
         const qrBuf = Buffer.from(d.qrBase64, 'base64');
-        doc.image(qrBuf, PL, y, { width: qrSize, height: qrSize });
-        qrDrawn = true;
-      } catch { /* continuar sin QR si falla */ }
+        const qrX   = PL + Math.round((qrBoxW - qrSize) / 2);
+        doc.image(qrBuf, qrX, qy, { width: qrSize, height: qrSize });
+        qy += qrSize + 8;
+      } catch { qy += 8; }
+    } else {
+      const qrX = PL + Math.round((qrBoxW - qrSize) / 2);
+      doc.rect(qrX, qy, qrSize, qrSize).fill('#f5f5f5').strokeColor('#cccccc').stroke();
+      doc.fillColor('#999').font('Helvetica').fontSize(7.5)
+        .text('Comprobante en proceso\nde validación DGII', qrX, qy + 36, {
+          width: qrSize, align: 'center',
+        });
+      qy += qrSize + 8;
     }
 
-    // Totales (derecha)
-    const totW = 265;
-    const totX = PR - totW;
+    if (d.ecfCodigoSeguridad) {
+      doc.fillColor(GRAY).font('Helvetica').fontSize(8)
+        .text('Código de Seguridad:', PL, qy, { width: qrBoxW, align: 'center' }); qy += 11;
+      doc.fillColor(DARK).font('Helvetica-Bold').fontSize(8)
+        .text(d.ecfCodigoSeguridad, PL, qy, { width: qrBoxW, align: 'center' }); qy += 13;
+    }
 
-    const totRows: Array<[string, number, boolean]> = [];
-    if (d.subtotalGravado > 0) totRows.push(['Subtotal Gravado', d.subtotalGravado, false]);
-    if (d.subtotalExento  > 0) totRows.push(['Subtotal Exento',  d.subtotalExento,  false]);
-    totRows.push(['ITBIS (18%)',   d.itbisTotal,   false]);
-    totRows.push(['TOTAL GENERAL', d.totalGeneral, true]);
+    if (d.ecfFechaFirma) {
+      doc.fillColor(GRAY).font('Helvetica').fontSize(8)
+        .text('Fecha Firma Digital:', PL, qy, { width: qrBoxW, align: 'center' }); qy += 11;
+      doc.fillColor(DARK).font('Helvetica-Bold').fontSize(8)
+        .text(fmtDT(d.ecfFechaFirma), PL, qy, { width: qrBoxW, align: 'center' }); qy += 13;
+    }
+
+    const nota = 'La validez de este comprobante puede ser verificada mediante el código QR ante la DGII.';
+    doc.fillColor('#888').font('Helvetica-Oblique').fontSize(7)
+      .text(nota, PL + 6, qy, { width: qrBoxW - 12, align: 'center' });
+
+    // ── TOTALES ──────────────────────────────────────────────────────
+    const totals: Array<[string, string]> = [
+      ['Subtotal Gravado',   fmtM(d.subtotalGravado)],
+      ['Subtotal Exento',    fmtM(d.subtotalExento)],   // siempre visible
+      ['Subtotal General',   fmtM(d.subtotalGeneral)],
+      ['ITBIS Total (18%)',  fmtM(d.itbisTotal)],
+    ];
+
+    const labelW2 = Math.round(totW * 0.57);
+    const valueW2 = totW - labelW2;
 
     let ty = y;
-    for (let i = 0; i < totRows.length; i++) {
-      const [lbl, val, isBold] = totRows[i];
-      if (i < totRows.length - 1) {
-        doc.fillColor(GRAY).font('Helvetica').fontSize(10)
-          .text(lbl + ':', totX, ty, { width: 135 });
-        doc.fillColor(DARK).font('Helvetica').fontSize(10)
-          .text(fmtM(val), totX + 135, ty, { width: totW - 135, align: 'right' });
-        doc.moveTo(totX, ty + 14).lineTo(PR, ty + 14)
-          .strokeColor('#e8e8e8').lineWidth(0.5).stroke();
-        doc.lineWidth(1);
-        ty += 15;
-      } else {
-        ty += 4;
-        doc.moveTo(totX, ty).lineTo(PR, ty).strokeColor(DARK).lineWidth(2).stroke();
-        doc.lineWidth(1); ty += 7;
-        doc.fillColor(DARK).font('Helvetica-Bold').fontSize(11)
-          .text(String(lbl) + ':', totX, ty, { width: 135 });
-        doc.font('Helvetica-Bold').fontSize(15).fillColor(DARK)
-          .text(fmtM(val), totX + 130, ty - 1, { width: totW - 130, align: 'right' });
-        ty += 22;
-      }
+    for (const [label, val] of totals) {
+      doc.fillColor(GRAY).font('Helvetica').fontSize(9.5)
+        .text(label + ':', totX, ty, { width: labelW2, align: 'left' });
+      doc.fillColor(DARK).font('Helvetica').fontSize(9.5)
+        .text(val, totX + labelW2, ty, { width: valueW2, align: 'right' });
+      doc.moveTo(totX, ty + 14).lineTo(totX + totW, ty + 14)
+        .strokeColor('#e0e0e0').lineWidth(0.5).stroke();
+      doc.lineWidth(1);
+      ty += 15;
     }
 
-    // Monto en letras
-    if (d.montoEnLetras) {
-      ty += 4;
-      doc.fillColor(GRAY).font('Helvetica').fontSize(8)
-        .text('Son: ' + d.montoEnLetras, totX, ty, { width: totW, align: 'right' });
-      ty += 12;
+    // Descuento (si aplica)
+    if (d.descuentoTotal > 0) {
+      doc.fillColor(GRAY).font('Helvetica').fontSize(9.5)
+        .text('Descuento:', totX, ty, { width: labelW2, align: 'left' });
+      doc.fillColor(DARK).font('Helvetica').fontSize(9.5)
+        .text('-' + fmtM(d.descuentoTotal), totX + labelW2, ty, { width: valueW2, align: 'right' });
+      ty += 15;
     }
 
-    y = Math.max(ty, y + (qrDrawn ? qrSize + 10 : 0)) + 10;
+    // TOTAL GENERAL A PAGAR
+    ty += 4;
+    doc.moveTo(totX, ty).lineTo(totX + totW, ty)
+      .strokeColor(DARK).lineWidth(2).stroke();
+    doc.lineWidth(1);
+    ty += 8;
 
-    // ── NOTAS ────────────────────────────────────────────────────────────────
+    doc.fillColor(DARK).font('Helvetica-Bold').fontSize(11)
+      .text('TOTAL GENERAL A PAGAR:', totX, ty, { width: labelW2, align: 'left' });
+    doc.fillColor(DARK).font('Helvetica-Bold').fontSize(13.5)
+      .text(fmtM(d.totalGeneral), totX + labelW2, ty - 1, { width: valueW2, align: 'right' });
 
-    if (d.notas) {
-      const nh = Math.max(36, doc.heightOfString(d.notas, { width: W - 20 }) + 24);
+    y += Math.max(qrBoxH, ty - y + 28) + 10;
+
+    // ── NOTAS ────────────────────────────────────────────────────────
+
+    if (d.notas?.trim()) {
+      doc.fontSize(9);
+      const nh = Math.max(36, 24 + doc.heightOfString(d.notas, { width: W - 24 }));
       doc.rect(PL, y, 3, nh).fill('#dddddd');
-      doc.fillColor('#777777').font('Helvetica-Bold').fontSize(8).text('NOTAS', PL + 8, y + 5);
-      doc.fillColor('#555555').font('Helvetica').fontSize(9)
-        .text(d.notas, PL + 8, y + 17, { width: W - 20 });
+      doc.fillColor('#777').font('Helvetica-Bold').fontSize(8)
+        .text('NOTAS', PL + 8, y + 5);
+      doc.fillColor(GRAY).font('Helvetica').fontSize(9)
+        .text(d.notas, PL + 8, y + 17, { width: W - 24 });
       y += nh + 10;
     }
 
-    // ECF info footer box
-    if (d.ecfNumero || d.ecfFechaFirma) {
-      const ecfLines = [
-        d.ecfNumero       ? 'e-NCF: ' + d.ecfNumero               : null,
-        d.ecfTipo         ? 'Tipo NCF: ' + d.ecfTipo               : null,
-        d.ecfFechaFirma   ? 'Firma digital: ' + fmtF(d.ecfFechaFirma) : null,
-        d.ecfFechaVigencia? 'Secuencia válida hasta: ' + fmtF(d.ecfFechaVigencia) : null,
-      ].filter(Boolean) as string[];
+    // ── PIE DE PÁGINA ────────────────────────────────────────────────
 
-      const ecfH = 12 + ecfLines.length * 11 + 8;
-      doc.rect(PL, y, W, ecfH).fill('#f8fafc').stroke('#e2e8f0');
-      let ey = y + 8;
-      for (const line of ecfLines) {
-        doc.fillColor(GRAY).font('Helvetica').fontSize(8)
-          .text(line, PL + 10, ey, { width: W - 20 }); ey += 11;
-      }
-      y += ecfH + 8;
-    }
-
-    // ── PIE DE PÁGINA ────────────────────────────────────────────────────────
-
-    const footerY = PH - 48;
+    const footerY = PH - 50;
     doc.moveTo(PL, footerY).lineTo(PR, footerY)
       .strokeColor('#dddddd').lineWidth(0.5).stroke();
 
-    const pie = d.empresaPieFactura
-      ?? 'Gracias por su preferencia. Este comprobante fiscal es emitido conforme a las normativas de la DGII de la República Dominicana.';
-    doc.fillColor('#555555').font('Helvetica').fontSize(8)
-      .text(pie, PL, footerY + 8, { width: W, align: 'center' });
+    const pie = d.empresaPieFactura?.trim() || '¡Gracias por su preferencia!';
+    doc.fillColor('#333').font('Helvetica-Bold').fontSize(10.5)
+      .text(pie, PL, footerY + 7, { width: W, align: 'center' });
+
+    if (d.empresaSitioWeb) {
+      doc.fillColor('#777').font('Helvetica').fontSize(8.5)
+        .text('Visítanos en: ' + d.empresaSitioWeb, PL, footerY + 21, {
+          width: W, align: 'center',
+        });
+    }
+
     doc.fillColor('#aaaaaa').font('Helvetica').fontSize(7.5)
-      .text('Documento generado por HiCloud ERP', PL, footerY + 22, {
-        width: W, align: 'center',
-      });
+      .text('Documento generado por HiCloud ERP',
+        PL,
+        footerY + (d.empresaSitioWeb ? 33 : 21),
+        { width: W, align: 'center' },
+      );
 
     doc.end();
   });
@@ -323,7 +436,6 @@ import type { ReciboPOSData } from '../../facturas/templates/recibo-termico.temp
 
 export async function generarReciboPOSPDF(d: ReciboPOSData): Promise<Buffer> {
   return new Promise<Buffer>((resolve, reject) => {
-    // Ancho 58mm en puntos: 58 * 72 / 25.4 ≈ 164pt; usamos 200pt para legibilidad
     const TW  = 200;
     const doc = new PDFDocument({ size: [TW, 800], margin: 0, compress: true });
     const chunks: Buffer[] = [];
@@ -353,13 +465,12 @@ export async function generarReciboPOSPDF(d: ReciboPOSData): Promise<Buffer> {
     center('RECIBO DE COMPRA', 10, 'Helvetica-Bold');
     center(d.numero, 11, 'Helvetica-Bold');
     center(d.fechaHora, 8);
-    if (d.vendedor) center('Atendido por: ' + d.vendedor, 7);
+    if (d.vendedor)  center('Atendido por: ' + d.vendedor, 7);
     if (d.ecfNumero) center('e-NCF: ' + d.ecfNumero, 7);
 
     y += 4;
     doc.moveTo(PL, y).lineTo(PR, y).strokeColor('#000').lineWidth(1).stroke(); y += 4;
 
-    // Header items
     doc.fillColor('#000').font('Helvetica-Bold').fontSize(7);
     doc.text('Descripción', PL, y, { width: W * 0.5 });
     doc.text('Cant', PL + W * 0.5, y, { width: W * 0.2, align: 'right' });
@@ -387,13 +498,12 @@ export async function generarReciboPOSPDF(d: ReciboPOSData): Promise<Buffer> {
       y += size + 4;
     };
     totRow('Subtotal:', d.subtotal);
-    totRow('ITBIS:', d.itbis);
-    totRow('TOTAL:', d.total, true);
+    totRow('ITBIS:',    d.itbis);
+    totRow('TOTAL:',    d.total, true);
 
     y += 4;
     doc.moveTo(PL, y).lineTo(PR, y).strokeColor('#ccc').lineWidth(0.5).stroke(); y += 6;
 
-    // QR
     if (d.qrBase64) {
       try {
         const qrBuf = Buffer.from(d.qrBase64, 'base64');
@@ -406,9 +516,7 @@ export async function generarReciboPOSPDF(d: ReciboPOSData): Promise<Buffer> {
     center('¡Gracias por su compra!', 8);
     center('HiCloud ERP', 7, 'Helvetica', '#888');
 
-    // Ajustar altura de página al contenido
     doc.page.height = y + 20;
-
     doc.end();
   });
 }
