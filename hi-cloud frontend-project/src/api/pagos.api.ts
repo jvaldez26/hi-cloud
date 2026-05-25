@@ -63,18 +63,26 @@ export interface ResumenCobros {
 
 const BASE = '/pagos-suscripcion';
 
+// Desempaqueta la envoltura { success, data, timestamp } del ResponseInterceptor global
+function unwrap<T>(r: any): T {
+  return r?.data?.data ?? r?.data ?? r;
+}
+
 export const pagosApi = {
   /** Resumen plan + días restantes + saldo */
   resumen: (): Promise<ResumenSuscripcion> =>
-    apiClient.get(`${BASE}/resumen`).then(r => r.data),
+    apiClient.get(`${BASE}/resumen`).then(r => unwrap<ResumenSuscripcion>(r)),
 
   /** Historial de cargos, pagos y créditos */
   historial: (): Promise<PagoSuscripcion[]> =>
-    apiClient.get(`${BASE}/historial`).then(r => r.data),
+    apiClient.get(`${BASE}/historial`).then(r => {
+      const raw = unwrap<any>(r);
+      return Array.isArray(raw) ? raw : [];
+    }),
 
   /** Datos bancarios de HiCloud para realizar transferencia */
   configuracionBancaria: (): Promise<ConfiguracionBancaria | null> =>
-    apiClient.get(`${BASE}/configuracion-bancaria`).then(r => r.data),
+    apiClient.get(`${BASE}/configuracion-bancaria`).then(r => unwrap<ConfiguracionBancaria | null>(r)),
 
   /** Subir comprobante de transferencia */
   subirComprobante: (
@@ -103,19 +111,31 @@ const ADMIN = '/admin/pagos-suscripcion';
 export const pagosAdminApi = {
   /** Lista todos los pagos (opcional: filtro por estado) */
   listar: (estado?: string): Promise<PagoSuscripcion[]> =>
-    apiClient.get(ADMIN, { params: estado ? { estado } : {} }).then(r => r.data),
+    apiClient.get(ADMIN, { params: estado ? { estado } : {} }).then(r => {
+      const raw = unwrap<any>(r);
+      return Array.isArray(raw) ? raw : [];
+    }),
 
   /** Resumen de cobros por empresa */
   resumenCobros: (): Promise<ResumenCobros[]> =>
-    apiClient.get(`${ADMIN}/resumen-cobros`).then(r => r.data),
+    apiClient.get(`${ADMIN}/resumen-cobros`).then(r => {
+      const raw = unwrap<any>(r);
+      return Array.isArray(raw) ? raw : [];
+    }),
 
   /** Comprobantes de transferencia pendientes de confirmación */
   comprobantesPendientes: (): Promise<PagoSuscripcion[]> =>
-    apiClient.get(`${ADMIN}/comprobantes-pendientes`).then(r => r.data),
+    apiClient.get(`${ADMIN}/comprobantes-pendientes`).then(r => {
+      const raw = unwrap<any>(r);
+      return Array.isArray(raw) ? raw : [];
+    }),
 
   /** Historial completo de una empresa */
   historialEmpresa: (empresaId: number): Promise<PagoSuscripcion[]> =>
-    apiClient.get(`${ADMIN}/empresa/${empresaId}`).then(r => r.data),
+    apiClient.get(`${ADMIN}/empresa/${empresaId}`).then(r => {
+      const raw = unwrap<any>(r);
+      return Array.isArray(raw) ? raw : [];
+    }),
 
   /** Registrar pago manual */
   registrarPago: (empresaId: number, data: {
@@ -151,7 +171,7 @@ export const pagosAdminApi = {
 
   /** Obtener configuración bancaria */
   getConfigBancaria: (): Promise<ConfiguracionBancaria | null> =>
-    apiClient.get(`${ADMIN}/config-bancaria`).then(r => r.data),
+    apiClient.get(`${ADMIN}/config-bancaria`).then(r => unwrap<ConfiguracionBancaria | null>(r)),
 
   /** Actualizar configuración bancaria */
   updateConfigBancaria: (data: {

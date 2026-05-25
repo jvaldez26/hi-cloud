@@ -177,15 +177,15 @@ export default function MiSuscripcionPage() {
                           <Row gutter={16} align="middle" style={{ marginBottom: 16 }}>
                             <Col>
                               <Tag
-                                color={PLAN_COLOR[resumen.plan] ?? 'blue'}
+                                color={PLAN_COLOR[resumen.plan ?? ''] ?? 'blue'}
                                 style={{ fontSize: 16, padding: '4px 16px', borderRadius: 8 }}
                               >
-                                {resumen.plan.charAt(0).toUpperCase() + resumen.plan.slice(1)}
+                                {(resumen.plan ?? '').charAt(0).toUpperCase() + (resumen.plan ?? '').slice(1)}
                               </Tag>
                             </Col>
                             <Col>
-                              <Tag color={PLAN_COLOR[resumen.estado] ?? 'default'}>
-                                {resumen.estado.toUpperCase()}
+                              <Tag color={PLAN_COLOR[resumen.estado ?? ''] ?? 'default'}>
+                                {(resumen.estado ?? '').toUpperCase()}
                               </Tag>
                             </Col>
                           </Row>
@@ -311,8 +311,9 @@ export default function MiSuscripcionPage() {
                         <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }}>
                           <Descriptions.Item label="Banco">{datosBancarios.banco}</Descriptions.Item>
                           <Descriptions.Item label="Tipo de cuenta">
-                            {datosBancarios.tipoCuenta?.charAt(0).toUpperCase() +
-                             (datosBancarios.tipoCuenta?.slice(1) ?? '')}
+                            {datosBancarios.tipoCuenta
+                              ? datosBancarios.tipoCuenta.charAt(0).toUpperCase() + datosBancarios.tipoCuenta.slice(1)
+                              : '—'}
                           </Descriptions.Item>
                           <Descriptions.Item label="Número de cuenta">
                             <Text copyable strong>{datosBancarios.numeroCuenta}</Text>

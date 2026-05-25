@@ -46,21 +46,24 @@ export default function CobrosPage() {
   const [formRechazo] = Form.useForm();
 
   // ── Queries ──────────────────────────────────────────────────────────────
-  const { data: resumen = [], isLoading: loadRes } = useQuery({
+  const { data: resumenRaw, isLoading: loadRes } = useQuery({
     queryKey: ['cobros-resumen'],
     queryFn:  pagosAdminApi.resumenCobros,
   });
+  const resumen: ResumenCobros[] = Array.isArray(resumenRaw) ? resumenRaw : [];
 
-  const { data: pendientes = [], isLoading: loadPend } = useQuery({
+  const { data: pendientesRaw, isLoading: loadPend } = useQuery({
     queryKey: ['comprobantes-pendientes'],
     queryFn:  pagosAdminApi.comprobantesPendientes,
   });
+  const pendientes: PagoSuscripcion[] = Array.isArray(pendientesRaw) ? pendientesRaw : [];
 
-  const { data: histEmpresa = [] } = useQuery({
+  const { data: histEmpresaRaw } = useQuery({
     queryKey: ['hist-empresa', openHist],
     queryFn:  () => pagosAdminApi.historialEmpresa(openHist!),
     enabled:  !!openHist,
   });
+  const histEmpresa: PagoSuscripcion[] = Array.isArray(histEmpresaRaw) ? histEmpresaRaw : [];
 
   const { data: configBanco } = useQuery({
     queryKey: ['config-bancaria-admin'],
