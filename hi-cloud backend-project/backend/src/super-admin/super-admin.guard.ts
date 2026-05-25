@@ -46,7 +46,10 @@ export class SuperAdminGuard implements CanActivate {
       }
     }
 
-    req.user = payload;
+    // Normalizar req.user para que @GetUser('id') funcione igual que con JwtAuthGuard
+    // JwtStrategy.validate() devuelve una entidad User con `id`, pero aquí solo tenemos
+    // el JWT payload que usa `sub`. Asignamos `id = sub` para compatibilidad.
+    req.user = { ...payload, id: payload.sub };
     return true;
   }
 }

@@ -2,6 +2,7 @@ import {
   IsEnum, IsNotEmpty, IsNumber, IsOptional,
   IsString, MaxLength, IsDateString, Min,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { TipoPago } from '../entities/pago-suscripcion.entity';
 
 // ── Registrar pago (super admin) ──────────────────────────────────────────────
@@ -12,7 +13,7 @@ export class RegistrarPagoDto {
   @IsString() @IsNotEmpty() @MaxLength(500)
   concepto: string;
 
-  @IsNumber() @Min(0.01)
+  @Type(() => Number) @IsNumber() @Min(0.01)
   montoUsd: number;
 
   @IsOptional() @IsString()
@@ -44,7 +45,7 @@ export class AgregarCargoDto {
   @IsString() @IsNotEmpty() @MaxLength(500)
   concepto: string;
 
-  @IsNumber() @Min(0.01)
+  @Type(() => Number) @IsNumber() @Min(0.01)
   montoUsd: number;
 
   @IsOptional() @IsString()
@@ -56,7 +57,7 @@ export class AplicarCreditoDto {
   @IsString() @IsNotEmpty() @MaxLength(500)
   concepto: string;
 
-  @IsNumber() @Min(0.01)
+  @Type(() => Number) @IsNumber() @Min(0.01)
   montoUsd: number;
 
   @IsOptional() @IsString()
@@ -65,7 +66,8 @@ export class AplicarCreditoDto {
 
 // ── Subir comprobante de transferencia ────────────────────────────────────────
 export class SubirComprobanteDto {
-  @IsNumber() @Min(0.01)
+  // multipart/form-data envía todo como string → @Type convierte antes de validar
+  @Type(() => Number) @IsNumber() @Min(0.01)
   montoUsd: number;
 
   @IsOptional() @IsString()
