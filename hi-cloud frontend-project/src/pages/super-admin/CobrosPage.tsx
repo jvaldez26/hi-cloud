@@ -167,11 +167,16 @@ export default function CobrosPage() {
       align: 'right' as const,
       render: (v: number | string) => {
         const saldo = Number(v ?? 0);
-        return (
-          <Text strong style={{ color: saldo > 0 ? '#ef4444' : '#10b981' }}>
-            {fmtUsd(saldo)}
-          </Text>
-        );
+        if (saldo > 0)
+          return <Text strong style={{ color: '#ef4444' }}>{fmtUsd(saldo)}</Text>;
+        if (saldo < 0)
+          return (
+            <Space direction="vertical" size={0} style={{ textAlign: 'right' }}>
+              <Text strong style={{ color: '#10b981' }}>{fmtUsd(Math.abs(saldo))}</Text>
+              <Text style={{ fontSize: 10, color: '#10b981' }}>a favor</Text>
+            </Space>
+          );
+        return <Text type="secondary">—</Text>;
       },
     },
     {

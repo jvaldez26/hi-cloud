@@ -254,7 +254,7 @@ export default function MiSuscripcionPage() {
                     <Card title="Balance">
                       <div style={{ textAlign: 'center', padding: '16px 0' }}>
                         <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 8 }}>
-                          Saldo pendiente
+                          {saldo > 0 ? 'Saldo pendiente' : saldo < 0 ? 'Crédito disponible' : 'Balance'}
                         </div>
                         <div style={{
                           fontSize: 36, fontWeight: 700,
@@ -264,6 +264,8 @@ export default function MiSuscripcionPage() {
                         </div>
                         {saldo > 0 ? (
                           <Tag color="red" style={{ marginTop: 8 }}>⚠️ Tienes saldo pendiente</Tag>
+                        ) : saldo < 0 ? (
+                          <Tag color="green" style={{ marginTop: 8 }}>💳 Crédito disponible: {fmtUsd(Math.abs(saldo))}</Tag>
                         ) : (
                           <Tag color="green" style={{ marginTop: 8 }}>✅ Al día</Tag>
                         )}
@@ -361,17 +363,20 @@ export default function MiSuscripcionPage() {
                     pagination={{ pageSize: 15, showSizeChanger: false }}
                     scroll={{ x: 'max-content' }}
                     summary={data => {
-                      // Fórmula: CARGO suma deuda, pagos confirmados la reducen
+                      // Fórmula: CARGO suma deuda, CREDITO/pagos confirmados la reducen
                       const pendiente = data.reduce((acc, mov) => {
                         const monto = Number(mov.montoUsd ?? 0);
                         if (mov.tipo === 'CARGO') return acc + monto;
-                        if (mov.estado === 'CONFIRMADO') return acc - monto;
+                        if (['TRANSFERENCIA','MANUAL','TARJETA','CREDITO'].includes(mov.tipo) && mov.estado === 'CONFIRMADO')
+                          return acc - monto;
                         return acc;
                       }, 0);
                       return (
                         <Table.Summary.Row>
                           <Table.Summary.Cell index={0} colSpan={3}>
-                            <Text strong>Saldo pendiente</Text>
+                            <Text strong>
+                              {pendiente > 0 ? 'Saldo pendiente' : pendiente < 0 ? 'Crédito disponible' : 'Al día ✓'}
+                            </Text>
                           </Table.Summary.Cell>
                           <Table.Summary.Cell index={3} align="right">
                             <Text strong style={{ color: pendiente > 0 ? '#ef4444' : '#10b981' }}>
