@@ -19,6 +19,18 @@ import { GetUser } from '../auth/decorators/get-user.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
 import { User } from '../users/users.entity';
 
+// DTOs específicos — necesario porque ValidationPipe tiene forbidNonWhitelisted: true globalmente
+class ListSolicitudesDto extends PaginationDto {
+  @IsOptional() @IsEnum(EstadoSolicitud) estado?: EstadoSolicitud;
+  @IsOptional() @Type(() => Number) @IsInt() @IsPositive() empleadoId?: number;
+}
+
+class ListAusenciasDto extends PaginationDto {
+  @IsOptional() @Type(() => Number) @IsInt() @IsPositive() empleadoId?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(12) mes?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @IsPositive() anio?: number;
+}
+
 class CreateSolicitudDto {
   @IsInt() @IsPositive()    empleadoId:  number;
   @IsDateString()           fechaInicio: string;
@@ -86,12 +98,8 @@ export class VacacionesController {
 
   @Get('solicitudes')
   @ApiOperation({ summary: 'Listar solicitudes de vacaciones' })
-  listar(
-    @Query() pagination: PaginationDto,
-    @Query('estado') estado?: EstadoSolicitud,
-    @Query('empleadoId') empleadoId?: string,
-  ) {
-    return this.svc.listarSolicitudes(pagination, estado, empleadoId ? Number(empleadoId) : undefined);
+  listar(@Query() dto: ListSolicitudesDto) {
+    return this.svc.listarSolicitudes(dto, dto.estado, dto.empleadoId);
   }
 
   @Patch('solicitudes/:id/aprobar')
@@ -125,18 +133,8 @@ export class VacacionesController {
 
   @Get('ausencias')
   @ApiOperation({ summary: 'Listar ausencias' })
-  listarAusencias(
-    @Query() pagination: PaginationDto,
-    @Query('empleadoId') empleadoId?: string,
-    @Query('mes')  mes?:  string,
-    @Query('anio') anio?: string,
-  ) {
-    return this.svc.listarAusencias(
-      pagination,
-      empleadoId ? Number(empleadoId) : undefined,
-      mes  ? Number(mes)  : undefined,
-      anio ? Number(anio) : undefined,
-    );
+  listarAusencias(@Query() dto: ListAusenciasDto) {
+    return this.svc.listarAusencias(dto, dto.empleadoId, dto.mes, dto.anio);
   }
 
   @Delete('ausencias/:id')
