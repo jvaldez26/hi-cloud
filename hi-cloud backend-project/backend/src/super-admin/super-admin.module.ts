@@ -24,6 +24,6 @@ import { NotificacionesModule } from '../notificaciones/notificaciones.module';
   ],
   controllers: [SuperAdminController],
   providers:   [SuperAdminService, SuperAdminGuard, BackupService],
-  exports:     [SuperAdminGuard],
+  exports:     [SuperAdminGuard, JwtModule],
 })
 export class SuperAdminModule {}
