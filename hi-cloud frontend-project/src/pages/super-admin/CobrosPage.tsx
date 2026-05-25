@@ -32,12 +32,13 @@ const PLAN_COLOR: Record<string, string> = {
 export default function CobrosPage() {
   const qc = useQueryClient();
 
-  const [openPago,    setOpenPago]    = useState<number | null>(null);  // empresaId
-  const [openCargo,   setOpenCargo]   = useState<number | null>(null);
-  const [openCredito, setOpenCredito] = useState<number | null>(null);
-  const [openHist,    setOpenHist]    = useState<number | null>(null);
-  const [openBanco,   setOpenBanco]   = useState(false);
-  const [openRechazo, setOpenRechazo] = useState<number | null>(null);  // pagoId
+  const [openPago,         setOpenPago]         = useState<number | null>(null);  // empresaId
+  const [openCargo,        setOpenCargo]        = useState<number | null>(null);
+  const [openCredito,      setOpenCredito]      = useState<number | null>(null);
+  const [openHist,         setOpenHist]         = useState<number | null>(null);
+  const [openBanco,        setOpenBanco]        = useState(false);
+  const [openRechazo,      setOpenRechazo]      = useState<number | null>(null);  // pagoId
+  const [openComprobante,  setOpenComprobante]  = useState<PagoSuscripcion | null>(null);
 
   const [formPago]    = Form.useForm();
   const [formCargo]   = Form.useForm();
@@ -232,15 +233,23 @@ export default function CobrosPage() {
     {
       title: 'Comprobante',
       dataIndex: 'comprobanteUrl',
-      width: 100,
-      render: (url: string) => url ? (
-        url.toLowerCase().endsWith('.pdf')
-          ? <Button size="small" type="link" href={url} target="_blank">Ver PDF</Button>
-          : <Image src={url} width={50} height={50} style={{ objectFit: 'cover', borderRadius: 4 }} />
-      ) : <Text type="secondary">Sin archivo</Text>,
+      width: 140,
+      render: (url: string, r: PagoSuscripcion) => url ? (
+        <Button
+          size="small"
+          type="link"
+          icon={<EyeOutlined />}
+          style={{ color: '#3b82f6', padding: 0 }}
+          onClick={() => setOpenComprobante(r)}
+        >
+          Ver comprobante
+        </Button>
+      ) : (
+        <Text type="secondary" style={{ fontSize: 12 }}>Sin comprobante</Text>
+      ),
     },
     {
-      title: '',
+      title: 'Acciones',
       key: 'actions',
       width: 160,
       render: (_: any, r: PagoSuscripcion) => (
@@ -510,6 +519,92 @@ export default function CobrosPage() {
           pagination={{ pageSize: 15 }}
           scroll={{ x: 'max-content' }}
         />
+      </Modal>
+
+      {/* Modal: Ver comprobante */}
+      <Modal
+        title={
+          openComprobante
+            ? `🧾 Comprobante — ${openComprobante.empresaNombre ?? `Empresa #${openComprobante.empresaId}`} — ${fmtUsd(openComprobante.montoUsd)}`
+            : '🧾 Comprobante'
+        }
+        open={!!openComprobante}
+        onCancel={() => setOpenComprobante(null)}
+        width={680}
+        footer={[
+          <Button
+            key="rechazar"
+            danger
+            icon={<CloseOutlined />}
+            onClick={() => {
+              const id = openComprobante!.id;
+              setOpenComprobante(null);
+              setOpenRechazo(id);
+            }}
+          >
+            Rechazar ❌
+          </Button>,
+          <Popconfirm
+            key="confirmar"
+            title="¿Confirmar este pago?"
+            description="Esto activará o extenderá la suscripción de la empresa."
+            onConfirm={() => {
+              confirmarMut.mutate(openComprobante!.id);
+              setOpenComprobante(null);
+            }}
+            okText="Confirmar" cancelText="Cancelar"
+          >
+            <Button type="primary" icon={<CheckOutlined />} loading={confirmarMut.isPending}>
+              Confirmar pago ✅
+            </Button>
+          </Popconfirm>,
+        ]}
+      >
+        {openComprobante?.comprobanteUrl && (() => {
+          const url = openComprobante.comprobanteUrl!;
+          const isPdf = url.toLowerCase().endsWith('.pdf');
+          return isPdf ? (
+            <div style={{ textAlign: 'center' }}>
+              <iframe
+                src={url}
+                style={{ width: '100%', height: 480, border: 'none', borderRadius: 8 }}
+                title="Comprobante PDF"
+              />
+              <Button
+                type="link"
+                href={url}
+                target="_blank"
+                style={{ marginTop: 8 }}
+              >
+                Abrir en nueva pestaña ↗
+              </Button>
+            </div>
+          ) : (
+            <div style={{ textAlign: 'center' }}>
+              <Image
+                src={url}
+                alt="Comprobante"
+                style={{ maxWidth: '100%', maxHeight: 500, borderRadius: 8, objectFit: 'contain' }}
+                preview={{ src: url }}
+              />
+            </div>
+          );
+        })()}
+        {openComprobante && (
+          <Descriptions size="small" style={{ marginTop: 16 }} column={2} bordered>
+            <Descriptions.Item label="Referencia">
+              {openComprobante.referencia ?? '—'}
+            </Descriptions.Item>
+            <Descriptions.Item label="Fecha subida">
+              {fmtDate(openComprobante.creadoEn)}
+            </Descriptions.Item>
+            {openComprobante.notas && (
+              <Descriptions.Item label="Notas" span={2}>
+                {openComprobante.notas}
+              </Descriptions.Item>
+            )}
+          </Descriptions>
+        )}
       </Modal>
 
       {/* Modal: Rechazar transferencia */}

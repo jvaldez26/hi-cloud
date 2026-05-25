@@ -1,3 +1,6 @@
+import * as fs   from 'fs';
+import * as path from 'path';
+import { randomUUID } from 'crypto';
 import {
   Injectable, Logger, NotFoundException,
   BadRequestException,
@@ -129,6 +132,20 @@ export class PagosSuscripcionService {
         'comprobantes',
         empresaId,
       );
+    } else {
+      // Fallback: disco local → Nginx sirve /uploads/comprobantes/ como estático
+      const ext      = path.extname(file.originalname).toLowerCase() || '.bin';
+      const filename = `${randomUUID()}${ext}`;
+      const uploadDir = '/var/www/hicloudrd.com/html/uploads/comprobantes';
+      const filePath  = path.join(uploadDir, filename);
+      try {
+        fs.mkdirSync(uploadDir, { recursive: true });
+        fs.writeFileSync(filePath, file.buffer);
+        comprobanteUrl = `https://hicloudrd.com/uploads/comprobantes/${filename}`;
+        this.logger.log(`Comprobante guardado localmente: ${filePath}`);
+      } catch (e: any) {
+        this.logger.error(`Error guardando comprobante local: ${e?.message}`);
+      }
     }
 
     const pago = this.pagoRepo.create({
