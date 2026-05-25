@@ -82,10 +82,12 @@ export class PagosSuscripcionService {
 
   async getHistorialCliente() {
     const empresaId = this.tenantSvc.getEmpresaId();
-    return this.pagoRepo.find({
+    const rows = await this.pagoRepo.find({
       where:  { empresaId },
       order:  { creadoEn: 'DESC' },
     });
+    // TypeORM con pg devuelve numeric como string — normalizar
+    return rows.map(r => ({ ...r, montoUsd: Number(r.montoUsd ?? 0) }));
   }
 
   async getSaldoPendiente(empresaId: number): Promise<number> {
@@ -176,7 +178,7 @@ export class PagosSuscripcionService {
     const where = estado ? `WHERE p.estado = $1` : '';
     const params = estado ? [estado] : [];
 
-    return this.ds.query<any[]>(`
+    const rows = await this.ds.query<any[]>(`
       SELECT p.*,
              e.nombre AS "empresaNombre", e.rnc,
              s.plan, s.estado AS "estadoSuscripcion",
@@ -188,10 +190,12 @@ export class PagosSuscripcionService {
       ORDER BY p."creadoEn" DESC
       LIMIT 200
     `, params);
+    // PostgreSQL devuelve numeric como string — normalizar a JS number
+    return rows.map(r => ({ ...r, montoUsd: Number(r.montoUsd ?? 0) }));
   }
 
   async listarComprobantesPeridentes() {
-    return this.ds.query<any[]>(`
+    const rows = await this.ds.query<any[]>(`
       SELECT p.*,
              e.nombre AS "empresaNombre", e.email AS "empresaEmail"
       FROM pagos_suscripcion p
@@ -199,11 +203,12 @@ export class PagosSuscripcionService {
       WHERE p.tipo = 'TRANSFERENCIA' AND p.estado = 'PENDIENTE'
       ORDER BY p."creadoEn" DESC
     `);
+    return rows.map(r => ({ ...r, montoUsd: Number(r.montoUsd ?? 0) }));
   }
 
   /** Resumen por empresa para el panel de cobros */
   async resumenCobros() {
-    return this.ds.query<any[]>(`
+    const rows = await this.ds.query<any[]>(`
       SELECT
         e.id AS "empresaId",
         e.nombre,
@@ -213,12 +218,12 @@ export class PagosSuscripcionService {
         s."fechaVencimiento"::date AS "venceSuscripcion",
         COALESCE(SUM(
           CASE
-            WHEN p.tipo IN ('CARGO')                                             THEN  p."montoUsd"
+            WHEN p.tipo = 'CARGO'                                                        THEN  p."montoUsd"
             WHEN p.tipo IN ('TRANSFERENCIA','TARJETA','MANUAL') AND p.estado = 'CONFIRMADO' THEN -p."montoUsd"
             WHEN p.tipo = 'CREDITO'                             AND p.estado = 'CONFIRMADO' THEN -p."montoUsd"
             ELSE 0
           END
-        ), 0)::numeric AS "saldoPendienteUsd",
+        ), 0)::float AS "saldoPendienteUsd",
         MAX(CASE WHEN p.estado = 'CONFIRMADO' THEN p."confirmadoEn" END) AS "ultimoPago",
         COUNT(CASE WHEN p.tipo = 'TRANSFERENCIA' AND p.estado = 'PENDIENTE' THEN 1 END)::int AS "pendientesConfirmacion"
       FROM empresa e
@@ -228,6 +233,12 @@ export class PagosSuscripcionService {
       GROUP BY e.id, e.nombre, e.email, s.plan, s.estado, s."fechaVencimiento"
       ORDER BY "saldoPendienteUsd" DESC, e.nombre
     `);
+    // Garantizar tipos JS correctos (PostgreSQL devuelve numeric/int como string vía ds.query)
+    return rows.map(r => ({
+      ...r,
+      saldoPendienteUsd:      Number(r.saldoPendienteUsd      ?? 0),
+      pendientesConfirmacion: Number(r.pendientesConfirmacion  ?? 0),
+    }));
   }
 
   async registrarPago(empresaId: number, dto: RegistrarPagoDto, adminId: number) {
@@ -353,7 +364,8 @@ export class PagosSuscripcionService {
   }
 
   async getHistorialEmpresa(empresaId: number) {
-    return this.pagoRepo.find({ where: { empresaId }, order: { creadoEn: 'DESC' } });
+    const rows = await this.pagoRepo.find({ where: { empresaId }, order: { creadoEn: 'DESC' } });
+    return rows.map(r => ({ ...r, montoUsd: Number(r.montoUsd ?? 0) }));
   }
 
   // ──────────────────────────────────────────────────────────────────────────

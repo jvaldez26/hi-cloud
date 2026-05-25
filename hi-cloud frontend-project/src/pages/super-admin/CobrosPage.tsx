@@ -165,11 +165,14 @@ export default function CobrosPage() {
       dataIndex: 'saldoPendienteUsd',
       width: 120,
       align: 'right' as const,
-      render: (v: number) => (
-        <Text strong style={{ color: v > 0 ? '#ef4444' : '#10b981' }}>
-          {fmtUsd(v)}
-        </Text>
-      ),
+      render: (v: number | string) => {
+        const saldo = Number(v ?? 0);
+        return (
+          <Text strong style={{ color: saldo > 0 ? '#ef4444' : '#10b981' }}>
+            {fmtUsd(saldo)}
+          </Text>
+        );
+      },
     },
     {
       title: 'Último pago',
@@ -287,12 +290,16 @@ export default function CobrosPage() {
       render: (v: string) => <Tag>{v}</Tag>,
     },
     {
-      title: 'Monto', dataIndex: 'montoUsd', width: 110, align: 'right' as const,
-      render: (v: number, r: PagoSuscripcion) => (
-        <Text style={{ color: r.tipo === 'CARGO' ? '#ef4444' : '#10b981', fontWeight: 600 }}>
-          {r.tipo === 'CARGO' ? '+' : '-'}{fmtUsd(v)}
-        </Text>
-      ),
+      title: 'Monto', dataIndex: 'montoUsd', width: 120, align: 'right' as const,
+      render: (v: number | string, r: PagoSuscripcion) => {
+        const monto = Number(v ?? 0);
+        const esCargo = r.tipo === 'CARGO';
+        return (
+          <Text style={{ color: esCargo ? '#ef4444' : '#10b981', fontWeight: 600 }}>
+            {esCargo ? '+' : '−'}{fmtUsd(monto)}
+          </Text>
+        );
+      },
     },
     {
       title: 'Estado', dataIndex: 'estado', width: 100,
@@ -337,7 +344,7 @@ export default function CobrosPage() {
           <Card size="small">
             <Statistic
               title="Con saldo pendiente"
-              value={resumen.filter(r => r.saldoPendienteUsd > 0).length}
+              value={resumen.filter(r => Number(r.saldoPendienteUsd) > 0).length}
               valueStyle={{ color: '#ef4444' }}
             />
           </Card>

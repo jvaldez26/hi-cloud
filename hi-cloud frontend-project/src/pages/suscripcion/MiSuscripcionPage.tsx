@@ -109,14 +109,15 @@ export default function MiSuscripcionPage() {
       dataIndex: 'montoUsd',
       width: 110,
       align: 'right' as const,
-      render: (v: number, r: PagoSuscripcion) => (
-        <Text style={{
-          color: r.tipo === 'CARGO' ? '#ef4444' : '#10b981',
-          fontWeight: 600,
-        }}>
-          {r.tipo === 'CARGO' ? '+' : '-'}{fmtUsd(v)}
-        </Text>
-      ),
+      render: (v: number | string, r: PagoSuscripcion) => {
+        const monto  = Number(v ?? 0);
+        const esCargo = r.tipo === 'CARGO';
+        return (
+          <Text style={{ color: esCargo ? '#ef4444' : '#10b981', fontWeight: 600 }}>
+            {esCargo ? '+' : '−'}{fmtUsd(monto)}
+          </Text>
+        );
+      },
     },
     {
       title: 'Estado',
@@ -360,12 +361,13 @@ export default function MiSuscripcionPage() {
                     pagination={{ pageSize: 15, showSizeChanger: false }}
                     scroll={{ x: 'max-content' }}
                     summary={data => {
-                      const pendiente = data
-                        .filter(r => r.tipo === 'CARGO')
-                        .reduce((s, r) => s + Number(r.montoUsd), 0)
-                        - data
-                        .filter(r => r.tipo !== 'CARGO' && r.estado === 'CONFIRMADO')
-                        .reduce((s, r) => s + Number(r.montoUsd), 0);
+                      // Fórmula: CARGO suma deuda, pagos confirmados la reducen
+                      const pendiente = data.reduce((acc, mov) => {
+                        const monto = Number(mov.montoUsd ?? 0);
+                        if (mov.tipo === 'CARGO') return acc + monto;
+                        if (mov.estado === 'CONFIRMADO') return acc - monto;
+                        return acc;
+                      }, 0);
                       return (
                         <Table.Summary.Row>
                           <Table.Summary.Cell index={0} colSpan={3}>
