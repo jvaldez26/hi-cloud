@@ -107,9 +107,11 @@ export class SuperAdminService {
           AND "isActive" = true AND estado != 'cancelada'
       `),
       this.ds.query<any[]>(`
-        SELECT plan, COUNT(DISTINCT "empresaId")::int AS cantidad
-        FROM suscripciones WHERE estado = 'activa'
-        GROUP BY plan ORDER BY cantidad DESC
+        SELECT s.plan, COUNT(DISTINCT s."empresaId")::int AS cantidad
+        FROM suscripciones s
+        JOIN empresa e ON e.id = s."empresaId" AND e."isActive" = true
+        WHERE s.estado = 'activa'
+        GROUP BY s.plan ORDER BY cantidad DESC
       `),
       this.ds.query<any[]>(`
         SELECT COUNT(*)::int AS cnt,
@@ -720,7 +722,13 @@ export class SuperAdminService {
 
   async getMrrArr() {
     const USD: Record<string, number> = { trial: 0, emprendedor: 29, pyme: 59, pro: 89, plus: 129, basico: 0, profesional: 0, empresarial: 0, enterprise: 0 };
-    const rows = await this.ds.query<any[]>(`SELECT plan, modalidad, COUNT(DISTINCT "empresaId")::int AS cantidad FROM suscripciones WHERE estado = 'activa' GROUP BY plan, modalidad`);
+    const rows = await this.ds.query<any[]>(`
+      SELECT s.plan, s.modalidad, COUNT(DISTINCT s."empresaId")::int AS cantidad
+      FROM suscripciones s
+      JOIN empresa e ON e.id = s."empresaId" AND e."isActive" = true
+      WHERE s.estado = 'activa'
+      GROUP BY s.plan, s.modalidad
+    `);
     let mrrUsd = 0;
     const dist: Record<string, { cantidad: number; mrrUsd: number }> = {};
     for (const r of rows) {
