@@ -7,6 +7,7 @@ import {
   Table, Button, Tag, Card, Row, Col, Typography,
   Modal, Form, Select, DatePicker, Input, Space, Popconfirm,
   message, Drawer, Tabs, Badge, Progress, Tooltip, theme,
+  Descriptions, Divider,
 } from 'antd';
 import {
   PlusOutlined, CheckOutlined, CloseOutlined, DeleteOutlined,
@@ -57,6 +58,8 @@ const vacApi = {
     api.post('/vacaciones/ausencias', body).then(r => r.data?.data ?? r.data),
   eliminarAus: (id: number) =>
     api.delete(`/vacaciones/ausencias/${id}`).then(r => r.data?.data ?? r.data),
+  cancelar: (id: number) =>
+    api.patch(`/vacaciones/solicitudes/${id}/cancelar`).then(r => r.data?.data ?? r.data),
 };
 
 export default function VacacionesPage() {
@@ -70,6 +73,7 @@ export default function VacacionesPage() {
   const [solOpen,     setSolOpen]     = useState(false);
   const [ausOpen,     setAusOpen]     = useState(false);
   const [respModal,   setRespModal]   = useState<{ id: number; tipo: 'aprobar' | 'rechazar' } | null>(null);
+  const [solDetail,   setSolDetail]   = useState<any>(null);
   const [formSol]                     = Form.useForm();
   const [formAus]                     = Form.useForm();
   const [formResp]                    = Form.useForm();
@@ -127,6 +131,12 @@ export default function VacacionesPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['vac-aus'] }); message.success('Eliminada'); },
   });
 
+  const cancelarMut = useMutation({
+    mutationFn: vacApi.cancelar,
+    onSuccess: () => { invalidate(); setSolDetail(null); message.success('Solicitud revocada'); },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? e?.message ?? 'Error al revocar'),
+  });
+
   const solicitudesFiltradas = useMemo(() =>
     (solicitudes?.data ?? []).filter((i: any) => {
       const nombre = `${i.empleado?.nombre ?? ''} ${i.empleado?.apellido ?? ''}`.toLowerCase();
@@ -161,7 +171,7 @@ export default function VacacionesPage() {
     { title: '', key: 'acciones', width: 72, align: 'right' as const,
       render: (_: any, r: any) => (
         <TableActions
-          onView={() => {}}
+          onView={() => setSolDetail(r)}
           viewLabel="Ver solicitud"
           items={[
             ...(r.estado === 'pendiente' ? [
@@ -403,6 +413,98 @@ export default function VacacionesPage() {
           </Row>
         </Form>
       </Modal>
+
+      {/* Drawer detalle solicitud */}
+      <Drawer
+        title="Detalle de Solicitud"
+        open={!!solDetail}
+        onClose={() => setSolDetail(null)}
+        width={480}
+        extra={
+          solDetail && (
+            <Tag color={ESTADO_COLOR[solDetail.estado] ?? 'default'} style={{ fontSize: 13 }}>
+              {solDetail.estado?.toUpperCase()}
+            </Tag>
+          )
+        }
+      >
+        {solDetail && (
+          <>
+            <Descriptions column={1} bordered size="small" labelStyle={{ width: 140 }}>
+              <Descriptions.Item label="Empleado">
+                <Text strong>
+                  {`${solDetail.empleado?.nombre ?? ''} ${solDetail.empleado?.apellido ?? ''}`.trim() || `Empleado #${solDetail.empleadoId}`}
+                </Text>
+              </Descriptions.Item>
+              <Descriptions.Item label="Período">
+                {fmt.date(solDetail.fechaInicio)} → {fmt.date(solDetail.fechaFin)}
+              </Descriptions.Item>
+              <Descriptions.Item label="Días hábiles">
+                <Text strong>{solDetail.diasSolicitados} días</Text>
+              </Descriptions.Item>
+              <Descriptions.Item label="Estado">
+                <Tag color={ESTADO_COLOR[solDetail.estado] ?? 'default'}>{solDetail.estado?.toUpperCase()}</Tag>
+              </Descriptions.Item>
+              {solDetail.motivo && (
+                <Descriptions.Item label="Motivo">
+                  {solDetail.motivo}
+                </Descriptions.Item>
+              )}
+              <Descriptions.Item label="Solicitado el">
+                {fmt.dateTime(solDetail.createdAt)}
+              </Descriptions.Item>
+              {solDetail.fechaRespuesta && (
+                <Descriptions.Item label="Fecha respuesta">
+                  {fmt.dateTime(solDetail.fechaRespuesta)}
+                </Descriptions.Item>
+              )}
+              {solDetail.observacionAprobador && (
+                <Descriptions.Item label="Observación">
+                  {solDetail.observacionAprobador}
+                </Descriptions.Item>
+              )}
+            </Descriptions>
+
+            <Divider />
+
+            <Space>
+              {solDetail.estado === 'pendiente' && (
+                <>
+                  <Button
+                    type="primary"
+                    icon={<CheckOutlined />}
+                    onClick={() => { setSolDetail(null); setRespModal({ id: solDetail.id, tipo: 'aprobar' }); }}
+                  >
+                    Aprobar
+                  </Button>
+                  <Button
+                    danger
+                    icon={<CloseOutlined />}
+                    onClick={() => { setSolDetail(null); setRespModal({ id: solDetail.id, tipo: 'rechazar' }); }}
+                  >
+                    Rechazar
+                  </Button>
+                </>
+              )}
+              {solDetail.estado === 'aprobada' && (
+                <Popconfirm
+                  title="¿Revocar esta solicitud?"
+                  description="La solicitud cambiará a estado CANCELADA."
+                  onConfirm={() => cancelarMut.mutate(solDetail.id)}
+                  okText="Sí, revocar"
+                  cancelText="No"
+                  okButtonProps={{ danger: true }}
+                >
+                  <Button danger loading={cancelarMut.isPending}>
+                    Revocar vacaciones
+                  </Button>
+                </Popconfirm>
+              )}
+              <Button onClick={() => setSolDetail(null)}>Cerrar</Button>
+            </Space>
+          </>
+        )}
+      </Drawer>
 
       {/* Modal responder solicitud */}
       <Modal

@@ -122,6 +122,15 @@ export class VacacionesController {
     return this.svc.rechazar(id, user.id, dto.observacion);
   }
 
+  @Patch('solicitudes/:id/cancelar')
+  @ApiOperation({ summary: 'Revocar solicitud aprobada (cambia a cancelada)' })
+  cancelar(
+    @Param('id', ParseIntPipe) id: number,
+    @GetUser() user: User,
+  ) {
+    return this.svc.cancelar(id, user.id);
+  }
+
   // ── Ausencias ────────────────────────────────────────────────────────────────
 
   @Post('ausencias')

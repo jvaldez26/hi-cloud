@@ -199,6 +199,21 @@ export class VacacionesService {
     return this.solicitudRepo.findOne({ where: { id }, relations: ['empleado'] }) as Promise<SolicitudVacacion>;
   }
 
+  async cancelar(id: number, userId: number): Promise<SolicitudVacacion> {
+    const empresaId = this.tenantService.getEmpresaId();
+    const s = await this.solicitudRepo.findOne({ where: { id, empresaId } });
+    if (!s) throw new NotFoundException(`Solicitud #${id} no encontrada`);
+    if (s.estado !== EstadoSolicitud.APROBADA)
+      throw new BadRequestException('Solo se pueden revocar solicitudes aprobadas');
+
+    await this.solicitudRepo.update(id, {
+      estado:         EstadoSolicitud.CANCELADA,
+      aprobadorId:    userId,
+      fechaRespuesta: new Date(),
+    });
+    return this.solicitudRepo.findOne({ where: { id }, relations: ['empleado'] }) as Promise<SolicitudVacacion>;
+  }
+
   // ── Ausencias ────────────────────────────────────────────────────────────────
 
   async registrarAusencia(dto: CreateAusenciaDto, userId: number): Promise<Ausencia> {
