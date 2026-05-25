@@ -26,10 +26,12 @@ import api from '../../api/client';
 import { demoApi, ESTADO_DEMO_LABEL, ESTADO_DEMO_COLOR } from '../../api/demo.api';
 import CobrosPage from './CobrosPage';
 
-/** Wrapper sin contexto de color para panel cobros (usa Ant Design propio) */
+/** Wrapper con contexto de color del Super Admin — respeta modo oscuro */
 function CobrosAdminPanel() {
+  const C = useSaTheme();
+  const isDark = C.bg === SA_DARK.bg;
   return (
-    <ConfigProvider theme={{ algorithm: antTheme.defaultAlgorithm }}>
+    <ConfigProvider theme={{ algorithm: isDark ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm }}>
       <CobrosPage />
     </ConfigProvider>
   );
@@ -317,7 +319,7 @@ function SolicitudesTab({ C, solicitudes, isLoading, onRefresh }:
                 type="primary" block
                 loading={aprobarMut.isPending}
                 onClick={() => aprobarMut.mutate({ id: drawerSolicitud.id, nota: notaInterna })}
-                style={{ background: '#10B981', border: 'none', fontWeight: 700 }}>
+                style={{ background: C.green, border: 'none', fontWeight: 700 }}>
                 Aprobar y activar plan
               </Button>
             </div>
@@ -1004,14 +1006,14 @@ function DemosTab({ C }: { C: SaTheme }) {
                 ['Tamaño',   `${detalle.tamanoEmpresa} empleados`],
               ].map(([l, v]) => (
                 <div key={l}>
-                  <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 2 }}>{l}</div>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{v}</div>
+                  <div style={{ fontSize: 11, color: C.txt2, marginBottom: 2 }}>{l}</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: C.txt }}>{v}</div>
                 </div>
               ))}
             </div>
             {detalle.modulosInteres?.length > 0 && (
               <div>
-                <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 6 }}>Módulos de interés</div>
+                <div style={{ fontSize: 11, color: C.txt2, marginBottom: 6 }}>Módulos de interés</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                   {detalle.modulosInteres.map((m: string) => (
                     <Tag key={m} style={{ fontSize: 11 }}>{m}</Tag>
@@ -1021,14 +1023,14 @@ function DemosTab({ C }: { C: SaTheme }) {
             )}
             {detalle.mensaje && (
               <div>
-                <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 4 }}>Mensaje del prospecto</div>
-                <div style={{ fontSize: 13, color: '#475569', fontStyle: 'italic' }}>"{detalle.mensaje}"</div>
+                <div style={{ fontSize: 11, color: C.txt2, marginBottom: 4 }}>Mensaje del prospecto</div>
+                <div style={{ fontSize: 13, color: C.txt2, fontStyle: 'italic' }}>"{detalle.mensaje}"</div>
               </div>
             )}
 
             {/* Cambiar estado inline */}
             <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-              <div style={{ fontSize: 12, color: '#64748B', fontWeight: 600, minWidth: 70 }}>Estado:</div>
+              <div style={{ fontSize: 12, color: C.txt2, fontWeight: 600, minWidth: 70 }}>Estado:</div>
               <Select
                 value={detalle.estado}
                 onChange={(v) => updateMut.mutate({ id: detalle.id, body: { estado: v } })}
@@ -1038,7 +1040,7 @@ function DemosTab({ C }: { C: SaTheme }) {
               />
             </div>
             <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-              <div style={{ fontSize: 12, color: '#64748B', fontWeight: 600, minWidth: 70 }}>Asignado:</div>
+              <div style={{ fontSize: 12, color: C.txt2, fontWeight: 600, minWidth: 70 }}>Asignado:</div>
               <Input
                 defaultValue={detalle.asignadoA ?? ''}
                 placeholder="Nombre del ejecutivo..."
@@ -1053,26 +1055,26 @@ function DemosTab({ C }: { C: SaTheme }) {
 
             {/* Historial de notas */}
             <div>
-              <div style={{ fontSize: 12, color: '#64748B', fontWeight: 700, marginBottom: 8 }}>
+              <div style={{ fontSize: 12, color: C.txt2, fontWeight: 700, marginBottom: 8 }}>
                 💬 Notas internas
               </div>
               {(detalle.notas ?? []).length === 0 && (
-                <div style={{ color: '#94A3B8', fontSize: 12, fontStyle: 'italic', marginBottom: 8 }}>
+                <div style={{ color: C.txt2, fontSize: 12, fontStyle: 'italic', marginBottom: 8 }}>
                   Sin notas aún
                 </div>
               )}
               {(detalle.notas ?? []).map((n: any, i: number) => (
                 <div key={i} style={{
-                  background: '#F8FAFC', borderRadius: 8, padding: '10px 14px',
-                  marginBottom: 8, border: '1px solid #E2E8F0',
+                  background: C.bg, borderRadius: 8, padding: '10px 14px',
+                  marginBottom: 8, border: `1px solid ${C.border}`,
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>{n.autorNombre}</span>
-                    <span style={{ fontSize: 11, color: '#94A3B8' }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: C.txt2 }}>{n.autorNombre}</span>
+                    <span style={{ fontSize: 11, color: C.txt2 }}>
                       {new Date(n.fecha).toLocaleString('es-DO', { dateStyle: 'short', timeStyle: 'short' })}
                     </span>
                   </div>
-                  <div style={{ fontSize: 13, color: '#1E293B' }}>{n.texto}</div>
+                  <div style={{ fontSize: 13, color: C.txt }}>{n.texto}</div>
                 </div>
               ))}
 
@@ -1098,7 +1100,7 @@ function DemosTab({ C }: { C: SaTheme }) {
                   Guardar
                 </Button>
               </div>
-              <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 4 }}>Ctrl+Enter para guardar rápido</div>
+              <div style={{ fontSize: 10, color: C.txt2, marginTop: 4 }}>Ctrl+Enter para guardar rápido</div>
             </div>
           </div>
         )}
@@ -1791,7 +1793,7 @@ export default function SuperAdminPage() {
         {/* Derecha */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <LiveClock />
-          <span style={{ color: '#94A3B8', fontSize: 13 }}>{user?.email}</span>
+          <span style={{ color: C.txt2, fontSize: 13 }}>{user?.email}</span>
 
           {/* Toggle oscuro/claro — independiente del ERP */}
           <button
@@ -2052,7 +2054,7 @@ export default function SuperAdminPage() {
                   onRow={r => ({ onClick: () => setDetalleEmpresa(r), style: { cursor: 'pointer' } })}
                   pagination={{ pageSize: 15, showTotal: t => `${t} empresas`, showSizeChanger: true }}
                   rowClassName={() => 'sa-row'}
-                  style={{ '--sa-row-bg': C.bg, '--sa-row-hover': '#1a2535' } as any}
+                  style={{ '--sa-row-bg': C.bg, '--sa-row-hover': isDark ? '#1a2535' : '#EEF2FF' } as any}
                 />
               </>
             )}
@@ -2614,11 +2616,11 @@ export default function SuperAdminPage() {
         {rolModal && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '8px 0' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ color: '#6b7280', fontSize: 13 }}>Rol actual:</span>
+              <span style={{ color: C.txt2, fontSize: 13 }}>Rol actual:</span>
               <span style={{
-                background: rolModal.role === 'super_admin' ? '#fef3c7' : '#eff6ff',
-                color:      rolModal.role === 'super_admin' ? '#d97706' : '#1d4ed8',
-                border:     `1px solid ${rolModal.role === 'super_admin' ? '#fde68a' : '#bfdbfe'}`,
+                background: rolModal.role === 'super_admin' ? `${C.gold}20` : `${C.blue}20`,
+                color:      rolModal.role === 'super_admin' ? C.gold : C.blue,
+                border:     `1px solid ${rolModal.role === 'super_admin' ? `${C.gold}55` : `${C.blue}55`}`,
                 borderRadius: 6, padding: '2px 10px', fontSize: 12, fontWeight: 700,
                 textTransform: 'uppercase',
               }}>
@@ -2626,7 +2628,7 @@ export default function SuperAdminPage() {
               </span>
             </div>
             <div>
-              <div style={{ fontSize: 13, color: '#374151', marginBottom: 6, fontWeight: 500 }}>Nuevo rol *</div>
+              <div style={{ fontSize: 13, color: C.txt, marginBottom: 6, fontWeight: 500 }}>Nuevo rol *</div>
               <Select value={nuevoRol} onChange={setNuevoRol} style={{ width: '100%' }}
                 options={[
                   { value: 'viewer',      label: 'Viewer — Solo lectura' },
@@ -2638,7 +2640,7 @@ export default function SuperAdminPage() {
               />
             </div>
             {nuevoRol === 'super_admin' && (
-              <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#92400e' }}>
+              <div style={{ background: `${C.gold}15`, border: `1px solid ${C.gold}44`, borderRadius: 8, padding: '10px 14px', fontSize: 12, color: C.gold }}>
                 ⚠️ Super Admin tiene acceso total al sistema y a todas las empresas.
               </div>
             )}
@@ -2660,17 +2662,17 @@ export default function SuperAdminPage() {
       >
         {hardDeleteUsu && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '8px 0' }}>
-            <div style={{ background: 'rgba(220,38,38,.1)', border: '1px solid rgba(220,38,38,.4)', borderRadius: 8, padding: '12px 16px' }}>
-              <div style={{ color: '#DC2626', fontWeight: 700, fontSize: 13, marginBottom: 4 }}>🚨 Esta acción es IRREVERSIBLE</div>
-              <div style={{ color: '#B91C1C', fontSize: 12 }}>
+            <div style={{ background: `${C.red}15`, border: `1px solid ${C.red}44`, borderRadius: 8, padding: '12px 16px' }}>
+              <div style={{ color: C.red, fontWeight: 700, fontSize: 13, marginBottom: 4 }}>🚨 Esta acción es IRREVERSIBLE</div>
+              <div style={{ color: C.red, fontSize: 12, opacity: 0.8 }}>
                 El usuario y todos sus datos se eliminarán físicamente de la base de datos. No se puede deshacer.
               </div>
             </div>
-            <div style={{ fontSize: 13 }}>
+            <div style={{ fontSize: 13, color: C.txt }}>
               Usuario: <strong>{hardDeleteUsu.nombre}</strong> ({hardDeleteUsu.email})
             </div>
             <div>
-              <div style={{ fontSize: 12, marginBottom: 6, color: '#94A3B8' }}>
+              <div style={{ fontSize: 12, marginBottom: 6, color: C.txt2 }}>
                 Escribe <strong>ELIMINAR_PERMANENTE</strong> para confirmar:
               </div>
               <Input
@@ -2698,17 +2700,17 @@ export default function SuperAdminPage() {
       >
         {hardDeleteEmp && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '8px 0' }}>
-            <div style={{ background: 'rgba(220,38,38,.1)', border: '1px solid rgba(220,38,38,.4)', borderRadius: 8, padding: '12px 16px' }}>
-              <div style={{ color: '#DC2626', fontWeight: 700, fontSize: 13, marginBottom: 4 }}>🚨 Esta acción es IRREVERSIBLE</div>
-              <div style={{ color: '#B91C1C', fontSize: 12 }}>
+            <div style={{ background: `${C.red}15`, border: `1px solid ${C.red}44`, borderRadius: 8, padding: '12px 16px' }}>
+              <div style={{ color: C.red, fontWeight: 700, fontSize: 13, marginBottom: 4 }}>🚨 Esta acción es IRREVERSIBLE</div>
+              <div style={{ color: C.red, fontSize: 12, opacity: 0.8 }}>
                 La empresa y TODOS sus datos (facturas, clientes, productos, empleados, etc.) se eliminarán permanentemente. No hay recuperación posible.
               </div>
             </div>
-            <div style={{ fontSize: 13 }}>
+            <div style={{ fontSize: 13, color: C.txt }}>
               Empresa: <strong>{hardDeleteEmp.nombre}</strong> (RNC: {hardDeleteEmp.rnc})
             </div>
             <div>
-              <div style={{ fontSize: 12, marginBottom: 6, color: '#94A3B8' }}>
+              <div style={{ fontSize: 12, marginBottom: 6, color: C.txt2 }}>
                 Escribe <strong>ELIMINAR_PERMANENTE</strong> para confirmar:
               </div>
               <Input
@@ -2736,26 +2738,26 @@ export default function SuperAdminPage() {
         {eliminarModal && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '8px 0' }}>
             <div style={{
-              background: 'rgba(239,68,68,.08)',
-              border: '1px solid rgba(239,68,68,.3)',
+              background: `${C.red}15`,
+              border: `1px solid ${C.red}44`,
               borderRadius: 8,
               padding: '10px 14px',
               fontSize: 13,
-              color: '#EF4444',
+              color: C.red,
               fontWeight: 600,
             }}>
               Esta acción no se puede deshacer
             </div>
-            <div style={{ fontSize: 13, color: '#94A3B8' }}>
+            <div style={{ fontSize: 13, color: C.txt2 }}>
               ¿Estás seguro que deseas eliminar al usuario:
             </div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: '#F8FAFC' }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.txt }}>
               {eliminarModal.nombre}
-              <span style={{ fontWeight: 400, color: '#94A3B8', marginLeft: 6 }}>
+              <span style={{ fontWeight: 400, color: C.txt2, marginLeft: 6 }}>
                 ({eliminarModal.email})
               </span>
             </div>
-            <div style={{ fontSize: 12, color: '#64748B' }}>
+            <div style={{ fontSize: 12, color: C.txt2 }}>
               El usuario perderá acceso inmediatamente. Sus datos, facturas
               y registros históricos se mantendrán en el sistema.
             </div>

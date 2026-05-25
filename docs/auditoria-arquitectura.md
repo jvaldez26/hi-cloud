@@ -257,4 +257,76 @@ GROUP BY "empresaId";
 
 ---
 
-*Generado automáticamente — última actualización: 2026-05-21*
+## REGLA OBLIGATORIA — Modo Oscuro en Super Admin
+
+**Fecha:** 2026-05-25  
+**Contexto:** El Super Admin usa su propio sistema de temas independiente del ERP principal (`SA_DARK` / `SA_LIGHT`), con `isDark` y `C` (paleta) provistos via `SaThemeCtx`.
+
+### ⚠️ Problema recurrente
+Cada vez que se añaden secciones nuevas al Super Admin, los colores hardcodeados rompen el modo oscuro (texto negro sobre fondo negro, dropdowns ilegibles, etc.).
+
+### Reglas obligatorias para todos los componentes del Super Admin
+
+#### 1. Usar siempre variables del tema `C.*`
+```typescript
+// ❌ PROHIBIDO — hardcodeado, rompe modo oscuro
+<div style={{ background: '#F8FAFC', color: '#1E293B', border: '1px solid #E2E8F0' }}>
+
+// ✅ CORRECTO — usa variables del tema
+<div style={{ background: C.bg, color: C.txt, border: `1px solid ${C.border}` }}>
+```
+
+| Variable | Oscuro | Claro | Uso |
+|----------|--------|-------|-----|
+| `C.bg` | `#0F172A` | `#F1F5F9` | Fondo de página / secciones |
+| `C.card` | `#1E293B` | `#FFFFFF` | Fondo de cards / paneles |
+| `C.border` | `#334155` | `#E2E8F0` | Bordes |
+| `C.txt` | `#F8FAFC` | `#0F172A` | Texto principal |
+| `C.txt2` | `#94A3B8` | `#64748B` | Texto secundario / labels |
+| `C.gold` | `#F59E0B` | `#F59E0B` | Acentos dorados |
+| `C.green` | `#10B981` | `#059669` | Estado activo / aprobado |
+| `C.red` | `#EF4444` | `#DC2626` | Estado error / eliminar |
+| `C.blue` | `#3B82F6` | `#2563EB` | Acentos azules |
+| `C.purple` | `#8B5CF6` | `#7C3AED` | Acentos morados |
+
+#### 2. Sub-componentes: usar `useSaTheme()` o recibir `C` como prop
+```typescript
+// Opción A: hook de contexto (para componentes sin props de tema)
+function MiComponente() {
+  const C = useSaTheme();
+  // ...
+}
+
+// Opción B: prop explícita (para componentes que ya la reciben)
+function MiTab({ C }: { C: SaTheme }) {
+  // ...
+}
+```
+
+#### 3. `CobrosAdminPanel` y wrappers con `ConfigProvider`
+Si un wrapper necesita su propio `ConfigProvider` de Ant Design, DEBE detectar el modo oscuro desde `SaThemeCtx`:
+```typescript
+function MiWrapper() {
+  const C = useSaTheme();
+  const isDark = C.bg === SA_DARK.bg;
+  return (
+    <ConfigProvider theme={{ algorithm: isDark ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm }}>
+      <MiComponente />
+    </ConfigProvider>
+  );
+}
+```
+
+#### 4. Colores semánticos de acciones destructivas
+Para banners de advertencia / error destructivo, usar `C.red` con opacidad:
+```typescript
+// ✅ Correcto
+<div style={{ background: `${C.red}15`, border: `1px solid ${C.red}44`, color: C.red }}>
+```
+
+#### 5. Verificación antes de hacer commit
+Activar modo oscuro en el panel y revisar **todas las secciones**: Empresas, Usuarios, Cobros, Solicitudes, Demos, Auditoría, Métricas MRR, e-CF Config, Configuración.
+
+---
+
+*Generado automáticamente — última actualización: 2026-05-25*
