@@ -49,8 +49,16 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
     this.launching = true;
     try {
       const puppeteer = await import('puppeteer');
+
+      // Soporte para PUPPETEER_EXECUTABLE_PATH (Chrome del sistema como fallback)
+      const executablePath = process.env['PUPPETEER_EXECUTABLE_PATH'] || undefined;
+      if (executablePath) {
+        this.logger.log(`Usando Chrome externo: ${executablePath}`);
+      }
+
       this.browser = await puppeteer.default.launch({
         headless: true,
+        executablePath,
         args: this.ARGS,
       });
       this.logger.log('✅ Browser Puppeteer singleton iniciado');
@@ -63,7 +71,13 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
         setTimeout(() => this.initBrowser(), 1_000);
       });
     } catch (err: any) {
-      this.logger.error(`Error iniciando browser: ${err.message}`);
+      // Log completo para diagnosticar en PM2
+      this.logger.error(
+        `❌ Error iniciando Puppeteer browser — ${err.message}\n` +
+        `   Verifica: npx puppeteer browsers install chrome && librerías del sistema`,
+        err?.stack,
+      );
+      // this.browser queda en null → htmlToPDF lanzará error descriptivo
     } finally {
       this.launching = false;
     }

@@ -201,8 +201,22 @@ jobs:
               exit 1
             fi
 
+            # Librerías del sistema requeridas por Chromium/Puppeteer en Ubuntu
+            echo "  → Instalando dependencias de sistema para Puppeteer/Chromium..."
+            sudo apt-get install -y -q \
+              libgbm1 libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
+              libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 \
+              libxrandr2 libpango-1.0-0 libcairo2 libasound2 \
+              libx11-xcb1 libxshmfence1 libglib2.0-0 fonts-liberation \
+              2>/dev/null || echo "  ⚠️  apt-get warning (no crítico)"
+
             # Instalar dependencias (el build TypeScript ya viene del CI)
             npm ci 2>&1 | tail -3
+
+            # Puppeteer 22+: descargar Chrome explícitamente (postinstall no siempre lo hace en CI/CD)
+            echo "  → Asegurando browser Puppeteer descargado..."
+            npx puppeteer browsers install chrome 2>&1 | tail -4 \
+              || echo "  ⚠️  Puppeteer browser install warning (puede que ya exista)"
 
             # Reemplazar dist/ con el build precompilado del CI
             rm -rf dist
