@@ -172,6 +172,16 @@ function NovedadesTab() {
   const qc = useQueryClient();
   const watchTipo = Form.useWatch('tipo', form);
 
+  const COLS_DEF = [
+    { key: 'emp',         label: 'Empleado',     defaultVisible: true  },
+    { key: 'tipo',        label: 'Tipo',         defaultVisible: true  },
+    { key: 'descripcion', label: 'Descripción',  defaultVisible: true  },
+    { key: 'valor',       label: 'Monto/Horas',  defaultVisible: true  },
+    { key: 'aplicado',    label: 'Estado',       defaultVisible: true  },
+  ];
+  const { visibleColumns: visNov, updateVisibility: updateNov, filterColumns: fcNov } =
+    useColumnVisibility('nomina-novedades', COLS_DEF);
+
   const { data: novedades, isLoading } = useQuery({
     queryKey: ['novedades'],
     queryFn: () => nominaApi.novedades(undefined, undefined, false),
@@ -193,27 +203,27 @@ function NovedadesTab() {
 
   const esIngreso = (tipo: string) => tipo === 'bono' || tipo === 'horas_extras' || tipo === 'otro';
 
-  const cols = [
+  const cols = fcNov([
     { title: 'Empleado', key: 'emp', ellipsis: true,
       render: (_: any, r: any) => `${r.empleado?.nombre ?? ''} ${r.empleado?.apellido ?? ''}` },
-    { title: 'Tipo', dataIndex: 'tipo', width: 120,
+    { title: 'Tipo', key: 'tipo', dataIndex: 'tipo', width: 120,
       render: (v: string) => { const t = tipoNovedadLabel[v]; return <Tag color={t?.color}>{t?.label ?? v}</Tag>; } },
-    { title: 'Descripción', dataIndex: 'descripcion', ellipsis: true },
+    { title: 'Descripción', key: 'descripcion', dataIndex: 'descripcion', ellipsis: true },
     { title: 'Monto / Horas', key: 'valor', width: 130, align: 'right' as const,
       render: (_: any, r: any) => r.tipo === 'horas_extras'
         ? <span style={{ color: '#1677ff' }}><strong>{r.horasExtras}h</strong></span>
         : <span style={{ color: esIngreso(r.tipo) ? '#52c41a' : '#ff4d4f' }}>
             {esIngreso(r.tipo) ? '+' : '-'}{fmt.money(Number(r.monto ?? 0))}
           </span> },
-    { title: 'Estado', dataIndex: 'aplicado', width: 100,
+    { title: 'Estado', key: 'aplicado', dataIndex: 'aplicado', width: 100,
       render: (v: boolean) => <Tag color={v ? 'green' : 'orange'}>{v ? 'Aplicada' : 'Pendiente'}</Tag> },
-    { title: '', key: 'del', width: 60,
+    { title: '', key: 'acciones', width: 60,
       render: (_: any, r: any) => !r.aplicado && (
         <Popconfirm title="¿Eliminar novedad?" onConfirm={() => deleteMut.mutate(r.id)}>
           <Button type="text" danger size="small" icon={<CloseCircleOutlined />} />
         </Popconfirm>
       ) },
-  ];
+  ] as any);
 
   const empOptions = (empleados?.data ?? []).map((e: any) => ({
     value: e.id,
@@ -231,12 +241,15 @@ function NovedadesTab() {
           />
         </Col>
         <Col>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setOpen(true); }}>
-            Nueva novedad
-          </Button>
+          <Space>
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visNov} onChange={updateNov} />
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setOpen(true); }}>
+              Nueva novedad
+            </Button>
+          </Space>
         </Col>
       </Row>
-      <Table columns={cols} dataSource={novedades ?? []} rowKey="id" loading={isLoading} size="small" pagination={{ pageSize: 15 }} 
+      <Table columns={cols} dataSource={novedades ?? []} rowKey="id" loading={isLoading} size="small" pagination={{ pageSize: 15 }}
         scroll={{ x: 'max-content' }} />
 
       <Modal title="Registrar novedad" open={open} onCancel={() => { setOpen(false); form.resetFields(); }} footer={null} width={520}>
@@ -357,28 +370,42 @@ function ContratosTab() {
 
   const estadoContratColor: Record<string, string> = { activo: 'green', vencido: 'orange', rescindido: 'red' };
 
-  const cols = [
-    { title: 'N°',       dataIndex: 'numero',    width: 110 },
+  const COLS_DEF_CON = [
+    { key: 'numero',      label: 'N°',       defaultVisible: true  },
+    { key: 'emp',         label: 'Empleado', defaultVisible: true  },
+    { key: 'tipo',        label: 'Tipo',     defaultVisible: true  },
+    { key: 'cargo',       label: 'Cargo',    defaultVisible: true  },
+    { key: 'salario',     label: 'Salario',  defaultVisible: true  },
+    { key: 'fechaInicio', label: 'Inicio',   defaultVisible: true  },
+    { key: 'fechaFin',    label: 'Vence',    defaultVisible: true  },
+    { key: 'estado',      label: 'Estado',   defaultVisible: true  },
+    { key: 'estadoFirma', label: 'Firma',    defaultVisible: true  },
+  ];
+  const { visibleColumns: visCon, updateVisibility: updateCon, filterColumns: fcCon } =
+    useColumnVisibility('nomina-contratos', COLS_DEF_CON);
+
+  const cols = fcCon([
+    { title: 'N°',       key: 'numero',     dataIndex: 'numero',    width: 110 },
     { title: 'Empleado', key: 'emp', ellipsis: true,
       render: (_: any, r: any) => `${r.empleado?.nombre ?? ''} ${r.empleado?.apellido ?? ''}` },
-    { title: 'Tipo',     dataIndex: 'tipo',       width: 100,
+    { title: 'Tipo',     key: 'tipo',       dataIndex: 'tipo',       width: 100,
       render: (v: string) => <Tag>{v?.toUpperCase()}</Tag> },
-    { title: 'Cargo',    dataIndex: 'cargo',      ellipsis: true },
-    { title: 'Salario',  dataIndex: 'salario',    width: 130, render: (v: number) => fmt.money(v) },
-    { title: 'Inicio',   dataIndex: 'fechaInicio', width: 105, render: (v: string) => fmt.date(v) },
-    { title: 'Vence',    dataIndex: 'fechaFin',    width: 105,
+    { title: 'Cargo',    key: 'cargo',      dataIndex: 'cargo',      ellipsis: true },
+    { title: 'Salario',  key: 'salario',    dataIndex: 'salario',    width: 130, render: (v: number) => fmt.money(v) },
+    { title: 'Inicio',   key: 'fechaInicio', dataIndex: 'fechaInicio', width: 105, render: (v: string) => fmt.date(v) },
+    { title: 'Vence',    key: 'fechaFin',   dataIndex: 'fechaFin',    width: 105,
       render: (v: string) => v ? fmt.date(v) : <Text type="secondary">Indefinido</Text> },
-    { title: 'Estado',   dataIndex: 'estado',     width: 100,
+    { title: 'Estado',   key: 'estado',     dataIndex: 'estado',     width: 100,
       render: (v: string) => <Tag color={estadoContratColor[v]}>{v?.toUpperCase()}</Tag> },
-    { title: 'Firma',    dataIndex: 'estadoFirma', width: 120,
+    { title: 'Firma',    key: 'estadoFirma', dataIndex: 'estadoFirma', width: 120,
       render: (v: string) => (
         <Tag color={v === 'firmado' ? 'green' : 'orange'}>
           {v === 'firmado' ? '✓ Firmado' : 'Pendiente firma'}
         </Tag>
       )},
-    { title: '', key: 'ver', width: 60,
+    { title: '', key: 'acciones', width: 60,
       render: (_: any, r: any) => <Button type="text" icon={<EyeOutlined />} onClick={() => setDetail(r)} /> },
-  ];
+  ] as any);
 
   const empOptions = (empleados?.data ?? []).map((e: any) => ({
     value: e.id,
@@ -390,9 +417,12 @@ function ContratosTab() {
       <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
         <Col />
         <Col>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setOpen(true); }}>
-            Nuevo contrato
-          </Button>
+          <Space>
+            <ColumnToggle columns={COLS_DEF_CON} visibleColumns={visCon} onChange={updateCon} />
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setOpen(true); }}>
+              Nuevo contrato
+            </Button>
+          </Space>
         </Col>
       </Row>
       <Table columns={cols} dataSource={contratos ?? []} rowKey="id" loading={isLoading} size="small"
@@ -577,13 +607,24 @@ function PeriodosTab() {
   const procesarMut = useMutation({ mutationFn: nominaApi.procesarPeriodo, onSuccess: () => { qc.invalidateQueries({ queryKey: ['periodos'] }); message.success('Nómina procesada'); } });
   const pagarMut    = useMutation({ mutationFn: nominaApi.pagarPeriodo,    onSuccess: () => { qc.invalidateQueries({ queryKey: ['periodos'] }); qc.invalidateQueries({ queryKey: ['nomina-resumen'] }); message.success('Nómina marcada como pagada'); } });
 
-  const cols = [
-    { title: 'Período',     dataIndex: 'periodo',           width: 100 },
-    { title: 'Fecha Pago',  dataIndex: 'fechaPago',         width: 110, render: (v: string) => fmt.date(v) },
-    { title: 'Empleados',   dataIndex: 'totalEmpleados',    width: 90 },
-    { title: 'Total Bruto', dataIndex: 'totalSalariosBruto', width: 130, render: (v: number) => fmt.money(v) },
-    { title: 'Total Neto',  dataIndex: 'totalNeto',         width: 130, render: (v: number) => <strong>{fmt.money(v)}</strong> },
-    { title: 'Estado',      dataIndex: 'estado',            width: 100,
+  const COLS_DEF_PER = [
+    { key: 'periodo',            label: 'Período',     defaultVisible: true },
+    { key: 'fechaPago',          label: 'Fecha Pago',  defaultVisible: true },
+    { key: 'totalEmpleados',     label: 'Empleados',   defaultVisible: true },
+    { key: 'totalSalariosBruto', label: 'Total Bruto', defaultVisible: true },
+    { key: 'totalNeto',          label: 'Total Neto',  defaultVisible: true },
+    { key: 'estado',             label: 'Estado',      defaultVisible: true },
+  ];
+  const { visibleColumns: visPer, updateVisibility: updatePer, filterColumns: fcPer } =
+    useColumnVisibility('nomina-periodos', COLS_DEF_PER);
+
+  const cols = fcPer([
+    { title: 'Período',     key: 'periodo',            dataIndex: 'periodo',           width: 100 },
+    { title: 'Fecha Pago',  key: 'fechaPago',          dataIndex: 'fechaPago',         width: 110, render: (v: string) => fmt.date(v) },
+    { title: 'Empleados',   key: 'totalEmpleados',     dataIndex: 'totalEmpleados',    width: 90 },
+    { title: 'Total Bruto', key: 'totalSalariosBruto', dataIndex: 'totalSalariosBruto', width: 130, render: (v: number) => fmt.money(v) },
+    { title: 'Total Neto',  key: 'totalNeto',          dataIndex: 'totalNeto',         width: 130, render: (v: number) => <strong>{fmt.money(v)}</strong> },
+    { title: 'Estado',      key: 'estado',             dataIndex: 'estado',            width: 100,
       render: (v: string) => <Tag color={estadoNominaColor[v]}>{v?.toUpperCase()}</Tag> },
     {
       title: '', key: 'actions', width: 210,
@@ -595,7 +636,7 @@ function PeriodosTab() {
         </Space>
       ),
     },
-  ];
+  ] as any);
 
   const lineasCols = [
     { title: 'Empleado', key: 'emp', ellipsis: true, render: (_: any, r: any) => `${r.empleado?.nombre ?? ''} ${r.empleado?.apellido ?? ''}` },
@@ -645,13 +686,16 @@ function PeriodosTab() {
       <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
         <Col />
         <Col>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => { setOpenCreate(true); form.resetFields(); }}>
-            Generar nómina
-          </Button>
+          <Space>
+            <ColumnToggle columns={COLS_DEF_PER} visibleColumns={visPer} onChange={updatePer} />
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => { setOpenCreate(true); form.resetFields(); }}>
+              Generar nómina
+            </Button>
+          </Space>
         </Col>
       </Row>
       <Table columns={cols} dataSource={data?.data ?? []} rowKey="id" loading={isLoading} size="small"
-        pagination={{ total: data?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }} 
+        pagination={{ total: data?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }}
         scroll={{ x: 'max-content' }} />
 
       <Modal title="Generar período de nómina" open={openCreate} onCancel={() => setOpenCreate(false)} footer={null} width={520}>
