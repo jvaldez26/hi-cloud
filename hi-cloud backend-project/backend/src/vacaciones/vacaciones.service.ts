@@ -98,7 +98,11 @@ export class VacacionesService {
   async getBalanceTodos(anio?: number) {
     const year      = anio ?? new Date().getFullYear();
     const empleados = await this.empleadoRepo.find({ where: { empresaId: this.tenantService.getEmpresaId(), isActive: true } });
-    return Promise.all(empleados.map(e => this.getBalance(e.id, year)));
+    // allSettled: un empleado con datos inválidos no rompe el balance de todos
+    const results = await Promise.allSettled(empleados.map(e => this.getBalance(e.id, year)));
+    return results
+      .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled')
+      .map(r => r.value);
   }
 
   // ── Solicitudes ─────────────────────────────────────────────────────────────
@@ -164,7 +168,8 @@ export class VacacionesService {
   }
 
   async aprobar(id: number, userId: number, obs?: string): Promise<SolicitudVacacion> {
-    const s = await this.solicitudRepo.findOne({ where: { id } });
+    const empresaId = this.tenantService.getEmpresaId();
+    const s = await this.solicitudRepo.findOne({ where: { id, empresaId } });
     if (!s) throw new NotFoundException(`Solicitud #${id} no encontrada`);
     if (s.estado !== EstadoSolicitud.PENDIENTE)
       throw new BadRequestException('Solo se pueden aprobar solicitudes pendientes');
@@ -179,7 +184,8 @@ export class VacacionesService {
   }
 
   async rechazar(id: number, userId: number, obs?: string): Promise<SolicitudVacacion> {
-    const s = await this.solicitudRepo.findOne({ where: { id } });
+    const empresaId = this.tenantService.getEmpresaId();
+    const s = await this.solicitudRepo.findOne({ where: { id, empresaId } });
     if (!s) throw new NotFoundException(`Solicitud #${id} no encontrada`);
     if (s.estado !== EstadoSolicitud.PENDIENTE)
       throw new BadRequestException('Solo se pueden rechazar solicitudes pendientes');
@@ -196,8 +202,10 @@ export class VacacionesService {
   // ── Ausencias ────────────────────────────────────────────────────────────────
 
   async registrarAusencia(dto: CreateAusenciaDto, userId: number): Promise<Ausencia> {
+    const empresaId = this.tenantService.getEmpresaId();
     return this.ausenciaRepo.save(
       this.ausenciaRepo.create({
+        empresaId,                          // ← FIX: era siempre null → no aparecía en lista
         empleadoId:    dto.empleadoId,
         fecha:         new Date(dto.fecha),
         tipo:          dto.tipo,

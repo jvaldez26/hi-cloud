@@ -99,7 +99,7 @@ export default function VacacionesPage() {
   const crearSolMut = useMutation({
     mutationFn: vacApi.crearSol,
     onSuccess: () => { invalidate(); setSolOpen(false); formSol.resetFields(); message.success('Solicitud creada'); },
-    onError: (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error'),
+    onError: (e: any) => message.error(e?.response?.data?.message ?? e?.message ?? 'Error al crear solicitud'),
   });
 
   const aprobarMut = useMutation({
@@ -119,7 +119,7 @@ export default function VacacionesPage() {
       qc.invalidateQueries({ queryKey: ['vac-res'] });
       setAusOpen(false); formAus.resetFields(); message.success('Ausencia registrada');
     },
-    onError: (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error'),
+    onError: (e: any) => message.error(e?.response?.data?.message ?? e?.message ?? 'Error al registrar ausencia'),
   });
 
   const elimAusMut = useMutation({
@@ -232,7 +232,7 @@ export default function VacacionesPage() {
             <Select value={anio} onChange={setAnio} style={{ width: 90 }}
               options={[2024, 2025, 2026].map(y => ({ value: y, label: y }))} />
             <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
-            <RefreshByKeyButton queryKey={['vacaciones']} />
+            <RefreshByKeyButton queryKey={['vac-sol']} />
             <VideoTutorialButton />
           </Space>
         </Col>
