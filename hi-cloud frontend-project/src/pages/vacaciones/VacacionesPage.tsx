@@ -149,6 +149,7 @@ export default function VacacionesPage() {
       return nombre.includes(search.toLowerCase());
     }), [ausencias, search]);
 
+  // ── Column visibility defs (una por pestaña, clave independiente en localStorage) ──
   const COLS_DEF = [
     { key: 'emp',             label: 'Empleado', defaultVisible: true  },
     { key: 'fechaInicio',     label: 'Inicio',   defaultVisible: true  },
@@ -157,7 +158,39 @@ export default function VacacionesPage() {
     { key: 'estado',          label: 'Estado',   defaultVisible: true  },
     { key: 'motivo',          label: 'Motivo',   defaultVisible: false },
   ];
-  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('vacaciones', COLS_DEF);
+  const { visibleColumns, updateVisibility, filterColumns } =
+    useColumnVisibility('vacaciones-solicitudes', COLS_DEF);
+
+  const COLS_AUS_DEF = [
+    { key: 'emp',         label: 'Empleado',    defaultVisible: true  },
+    { key: 'fecha',       label: 'Fecha',       defaultVisible: true  },
+    { key: 'tipo',        label: 'Tipo',        defaultVisible: true  },
+    { key: 'dias',        label: 'Días',        defaultVisible: true  },
+    { key: 'justificada', label: 'Justificada', defaultVisible: true  },
+    { key: 'descripcion', label: 'Descripción', defaultVisible: false },
+  ];
+  const { visibleColumns: visColsAus, updateVisibility: updateVisAus, filterColumns: filterColsAus } =
+    useColumnVisibility('vacaciones-ausencias', COLS_AUS_DEF);
+
+  const COLS_BAL_DEF = [
+    { key: 'nombre',           label: 'Empleado',    defaultVisible: true },
+    { key: 'correspondientes', label: 'Acumulados',  defaultVisible: true },
+    { key: 'usados',           label: 'Usados',      defaultVisible: true },
+    { key: 'disponibles',      label: 'Disponibles', defaultVisible: true },
+    { key: 'prog',             label: 'Progreso',    defaultVisible: true },
+  ];
+  const { visibleColumns: visColsBal, updateVisibility: updateVisBal, filterColumns: filterColsBal } =
+    useColumnVisibility('vacaciones-balance', COLS_BAL_DEF);
+
+  const COLS_VAC_DEF = [
+    { key: 'emp',     label: 'Empleado',   defaultVisible: true },
+    { key: 'inicio',  label: 'Inicio',     defaultVisible: true },
+    { key: 'fin',     label: 'Fin',        defaultVisible: true },
+    { key: 'dias',    label: 'Días',       defaultVisible: true },
+    { key: 'regresa', label: 'Regresa el', defaultVisible: true },
+  ];
+  const { visibleColumns: visColsVac, updateVisibility: updateVisVac, filterColumns: filterColsVac } =
+    useColumnVisibility('vacaciones-en-vacaciones', COLS_VAC_DEF);
 
   const colsSol = filterColumns([
     { title: 'Empleado',  key: 'emp', ellipsis: true,
@@ -183,16 +216,17 @@ export default function VacacionesPage() {
       )},
   ]);
 
-  const colsAus = [
-    { title: 'Empleado',  key: 'emp', ellipsis: true,
+  const colsAus = filterColsAus([
+    { title: 'Empleado',   key: 'emp', ellipsis: true,
       render: (_: any, r: any) => `${r.empleado?.nombre ?? ''} ${r.empleado?.apellido ?? ''}`.trim() },
-    { title: 'Fecha',      dataIndex: 'fecha',      width: 100, render: (v: string) => fmt.date(v) },
-    { title: 'Tipo',       dataIndex: 'tipo',       width: 150,
+    { title: 'Fecha',      dataIndex: 'fecha',       width: 100, render: (v: string) => fmt.date(v) },
+    { title: 'Tipo',       dataIndex: 'tipo',        width: 150,
       render: (v: string) => TIPO_AUSENCIA.find(t => t.value === v)?.label ?? v },
-    { title: 'Días',       dataIndex: 'dias',       width: 60 },
-    { title: 'Justificada',dataIndex: 'justificada',width: 100,
+    { title: 'Días',       dataIndex: 'dias',        width: 60 },
+    { title: 'Justificada',dataIndex: 'justificada', width: 100,
       render: (v: boolean) => v ? <Tag color="green">Sí</Tag> : <Tag color="red">No</Tag> },
-    { title: 'Descripción',dataIndex: 'descripcion',ellipsis: true, render: (v: string) => v ?? '—' },
+    { title: 'Descripción',dataIndex: 'descripcion', key: 'descripcion', ellipsis: true,
+      render: (v: string) => v ?? '—' },
     { title: '', key: 'acciones', width: 72, align: 'right' as const,
       render: (_: any, r: any) => (
         <TableActions
@@ -204,15 +238,17 @@ export default function VacacionesPage() {
           ]}
         />
       )},
-  ];
+  ]);
 
-  const colsBalance = [
-    { title: 'Empleado',       dataIndex: 'nombre',          ellipsis: true },
-    { title: 'Corresponden',   dataIndex: 'correspondientes', width: 110, render: (v: number) => `${v} días` },
-    { title: 'Usados',         dataIndex: 'usados',           width: 90,  render: (v: number) => `${v} días` },
-    { title: 'Disponibles',    dataIndex: 'disponibles',      width: 100,
+  const colsBalance = filterColsBal([
+    { title: 'Empleado',    key: 'nombre',           dataIndex: 'nombre',          ellipsis: true },
+    { title: 'Acumulados',  key: 'correspondientes', dataIndex: 'correspondientes', width: 110,
+      render: (v: number) => `${v} días` },
+    { title: 'Usados',      key: 'usados',           dataIndex: 'usados',          width: 90,
+      render: (v: number) => `${v} días` },
+    { title: 'Disponibles', key: 'disponibles',      dataIndex: 'disponibles',     width: 100,
       render: (v: number) => <Text strong style={{ color: v > 0 ? '#10b981' : '#ef4444' }}>{v} días</Text> },
-    { title: '',               key: 'prog', width: 180,
+    { title: 'Progreso',    key: 'prog',             width: 180,
       render: (_: any, r: any) => (
         <Progress
           percent={r.correspondientes > 0 ? Math.round((r.usados / r.correspondientes) * 100) : 0}
@@ -220,7 +256,20 @@ export default function VacacionesPage() {
           status={r.disponibles === 0 ? 'exception' : 'normal'}
         />
       )},
-  ];
+  ]);
+
+  const colsVac = filterColsVac([
+    { title: 'Empleado',   key: 'emp',     ellipsis: true,
+      render: (_: any, r: any) => <Text strong>{r.empleado}</Text> },
+    { title: 'Inicio',     key: 'inicio',  width: 110,
+      render: (_: any, r: any) => fmt.date(r.fechaInicio) },
+    { title: 'Fin',        key: 'fin',     width: 110,
+      render: (_: any, r: any) => fmt.date(r.fechaFin) },
+    { title: 'Días',       key: 'dias',    width: 70,
+      render: (_: any, r: any) => <Tag color="blue">{r.dias} días</Tag> },
+    { title: 'Regresa el', key: 'regresa', width: 120,
+      render: (_: any, r: any) => fmt.date(dayjs(r.fechaFin).add(1, 'day').toDate()) },
+  ]);
 
   const MESES = Array.from({ length: 12 }, (_, i) => ({ value: i + 1, label: dayjs().month(i).format('MMMM') }));
 
@@ -241,7 +290,6 @@ export default function VacacionesPage() {
             <Select value={mes}  onChange={setMes}  style={{ width: 120 }} options={MESES} />
             <Select value={anio} onChange={setAnio} style={{ width: 90 }}
               options={[2024, 2025, 2026].map(y => ({ value: y, label: y }))} />
-            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <RefreshByKeyButton queryKey={['vac-sol']} />
             <VideoTutorialButton />
           </Space>
@@ -255,6 +303,7 @@ export default function VacacionesPage() {
           children: (
             <Card extra={
               <Space>
+                <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
                 <Select placeholder="Filtrar estado" allowClear style={{ width: 140 }}
                   value={estadoF} onChange={(v) => { setEstadoF(v); setPageSol(1); }}
                   options={['pendiente','aprobada','rechazada','cancelada'].map(v => ({
@@ -291,9 +340,12 @@ export default function VacacionesPage() {
           label: <><UserOutlined /> Ausencias</>,
           children: (
             <Card extra={
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => { setAusOpen(true); formAus.resetFields(); }}>
-                Registrar ausencia
-              </Button>
+              <Space>
+                <ColumnToggle columns={COLS_AUS_DEF} visibleColumns={visColsAus} onChange={updateVisAus} />
+                <Button type="primary" icon={<PlusOutlined />} onClick={() => { setAusOpen(true); formAus.resetFields(); }}>
+                  Registrar ausencia
+                </Button>
+              </Space>
             }>
               <Table columns={colsAus} dataSource={ausenciasFiltradas} rowKey="id"
                 loading={loadingAus} size="small"
@@ -307,10 +359,13 @@ export default function VacacionesPage() {
           key: 'balance',
           label: '📊 Balance Anual',
           children: (
-            <Card title={`Balance de vacaciones ${anio}`}>
+            <Card
+              title={`Balance de vacaciones ${anio}`}
+              extra={<ColumnToggle columns={COLS_BAL_DEF} visibleColumns={visColsBal} onChange={updateVisBal} />}
+            >
               <Table columns={colsBalance} dataSource={balance ?? []} rowKey="empleadoId"
                 size="small"
-        scroll={{ x: 'max-content' }} pagination={false} />
+                scroll={{ x: 'max-content' }} pagination={false} />
             </Card>
           ),
         },
@@ -318,26 +373,19 @@ export default function VacacionesPage() {
           key: 'calendario',
           label: '📅 En vacaciones',
           children: (
-            <Card title="Empleados en vacaciones este mes">
-              {(resumen?.detalleVacaciones ?? []).length === 0 ? (
-                <Text type="secondary">Ningún empleado en vacaciones este mes.</Text>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {(resumen?.detalleVacaciones ?? []).map((v: any, i: number) => (
-                    <Card key={i} size="small" style={{ borderLeft: '3px solid #1677ff' }}>
-                      <Row justify="space-between">
-                        <Col><Text strong>{v.empleado}</Text></Col>
-                        <Col>
-                          <Tag color="blue">{v.dias} días</Tag>
-                          <Text type="secondary" style={{ fontSize: 12 }}>
-                            {fmt.date(v.fechaInicio)} → {fmt.date(v.fechaFin)}
-                          </Text>
-                        </Col>
-                      </Row>
-                    </Card>
-                  ))}
-                </div>
-              )}
+            <Card
+              title="Empleados en vacaciones este mes"
+              extra={<ColumnToggle columns={COLS_VAC_DEF} visibleColumns={visColsVac} onChange={updateVisVac} />}
+            >
+              <Table
+                columns={colsVac}
+                dataSource={resumen?.detalleVacaciones ?? []}
+                rowKey={(r: any) => `${r.empleado}-${r.fechaInicio}`}
+                size="small"
+                scroll={{ x: 'max-content' }}
+                pagination={false}
+                locale={{ emptyText: 'Ningún empleado en vacaciones este mes.' }}
+              />
             </Card>
           ),
         },
