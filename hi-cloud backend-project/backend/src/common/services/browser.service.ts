@@ -19,10 +19,11 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
   private readonly ARGS = [
     '--no-sandbox',
     '--disable-setuid-sandbox',
-    '--disable-dev-shm-usage',
+    '--disable-dev-shm-usage',      // crítico en EC2 (evita errores de /dev/shm)
     '--disable-gpu',
     '--no-first-run',
     '--no-zygote',
+    '--single-process',             // necesario en entornos sin zygote (EC2/Docker)
     '--disable-extensions',
     '--disable-background-networking',
     '--disable-default-apps',
