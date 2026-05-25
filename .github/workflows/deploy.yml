@@ -260,9 +260,16 @@ jobs:
               pm2 restart hicloud-backend --update-env
             fi
             pm2 save
-            sleep 12
+            sleep 20
 
             echo "━━━ [4/4] Health check ━━━"
+            # Mostrar estado PM2 y últimas líneas de log para diagnóstico
+            echo "--- PM2 status ---"
+            pm2 list
+            echo "--- PM2 logs (últimas 40 líneas) ---"
+            pm2 logs hicloud-backend --lines 40 --nostream 2>/dev/null || true
+            echo "---"
+
             STATUS=$(curl -sk https://hicloudrd.com/api/v1/health | \
               python3 -c "import sys,json; print(json.load(sys.stdin)['data']['status'])" 2>/dev/null || echo "error")
             echo "Health: $STATUS"
@@ -270,5 +277,11 @@ jobs:
               echo "✅ Deploy exitoso — servidor healthy"
             else
               echo "❌ Health check falló: $STATUS"
+              # Logs adicionales de error
+              echo "--- curl raw response ---"
+              curl -sk https://hicloudrd.com/api/v1/health || true
+              echo ""
+              echo "--- PM2 error logs ---"
+              pm2 logs hicloud-backend --lines 60 --err --nostream 2>/dev/null || true
               exit 1
             fi
