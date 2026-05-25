@@ -2,14 +2,12 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as qrcode from 'qrcode';
-import * as https from 'https';
-import * as http  from 'http';
 import { Factura } from '../entities/factura.entity';
 import { TenantService } from '../../tenant/tenant.service';
 import { NumeroLetrasService } from './numero-letras.service';
-import { generarHTMLFactura, FacturaPDFData, FacturaPDFItem } from '../templates/factura.template';
-import { generarHTMLRecibo, ReciboPOSData } from '../templates/recibo-termico.template';
-import { BrowserService } from '../../common/services/browser.service';
+import type { FacturaPDFData, FacturaPDFItem } from '../templates/factura.template';
+import type { ReciboPOSData } from '../templates/recibo-termico.template';
+import { generarFacturaPDF, generarReciboPOSPDF } from '../../common/pdf/factura-pdf.helper';
 
 @Injectable()
 export class PDFService {
@@ -20,13 +18,12 @@ export class PDFService {
     private facturaRepo: Repository<Factura>,
     private tenantSvc:   TenantService,
     private numLetras:   NumeroLetrasService,
-    private browserSvc:  BrowserService,
   ) {}
 
   // ── Genera QR base64 ────────────────────────────────────────────────
   private async generarQR(texto: string): Promise<string> {
     try {
-      const url  = await qrcode.toDataURL(texto, { width: 160, margin: 1, color: { dark: '#000', light: '#fff' } });
+      const url = await qrcode.toDataURL(texto, { width: 160, margin: 1, color: { dark: '#000', light: '#fff' } });
       return url.replace('data:image/png;base64,', '');
     } catch (e) {
       this.logger.warn('No se pudo generar QR: ' + e);
@@ -34,41 +31,15 @@ export class PDFService {
     }
   }
 
-  // ── Resuelve logo a una src usable en HTML (data URI o descarga HTTP) ──
-  private async resolverLogoSrc(url: string): Promise<string> {
-    if (!url) return '';
-    // data URI guardada directamente (upload via base64) — se usa tal cual
-    if (url.startsWith('data:')) return url;
-    // URL HTTP — descarga y convierte
-    if (!url.startsWith('http')) return '';
-    return new Promise((resolve) => {
-      const lib = url.startsWith('https') ? https : http;
-      lib.get(url, (res) => {
-        const ct = res.headers['content-type'] ?? 'image/jpeg';
-        const chunks: Buffer[] = [];
-        res.on('data',  c  => chunks.push(c));
-        res.on('end',   () => resolve(`data:${ct};base64,${Buffer.concat(chunks).toString('base64')}`));
-        res.on('error', () => resolve(''));
-      }).on('error', () => resolve(''));
-    });
-  }
-
-  // ── Delega al BrowserService singleton (no lanza browser nuevo) ──────
-  private async htmlToPDF(html: string, opts: { thermal?: boolean } = {}): Promise<Buffer> {
-    return this.browserSvc.htmlToPDF(html, opts);
-  }
-
   // ── Construye FacturaPDFData desde la entidad ───────────────────────
   private async buildFacturaData(factura: Factura): Promise<FacturaPDFData> {
     const empresaId = this.tenantSvc.getEmpresaId();
 
-    // Cargar empresa desde BD (sin TenantService.getEmpresa para no crear dep circular)
     const empresa = await this.facturaRepo.manager.query(
       'SELECT * FROM empresa WHERE id = $1 AND "isActive" = true LIMIT 1',
       [empresaId],
     ).then((rows: any[]) => rows[0] || {});
 
-    // e-CF — incluye fechaFirma (bloque seguridad) y fechaVencimiento secuencia (Válida hasta)
     const ecf = factura.ecfId
       ? await this.facturaRepo.manager.query(
           `SELECT e.*, t.codigo, t.descripcion,
@@ -81,8 +52,6 @@ export class PDFService {
         ).then((r: any[]) => r[0])
       : null;
 
-    // QR DGII — prioridad: qrUrl de MSeller (tiene CodigoSeguridadNCF real)
-    // Si no hay qrUrl, construir URL estándar DGII con CodigoSeguridadNCF
     let qrBase64 = '';
     if (ecf?.numero && empresa.rnc) {
       const urlQR = ecf.qrUrl
@@ -90,10 +59,6 @@ export class PDFService {
       qrBase64 = await this.generarQR(urlQR);
     }
 
-    // Logo empresa (data URI propio o URL externa)
-    const logoSrc = await this.resolverLogoSrc(empresa.logo ?? '');
-
-    // Items
     const items: FacturaPDFItem[] = (factura.detalles || []).map((d, i) => {
       const itbisPct  = Number(d.porcentajeIva ?? 18);
       const subtotal  = Number(d.precioUnitario) * Number(d.cantidad);
@@ -118,10 +83,8 @@ export class PDFService {
     const subtotalGeneral = subtotalGravado + subtotalExento;
     const itbisTotal      = Number(factura.iva  ?? 0);
     const totalGeneral    = Number(factura.total ?? 0);
-    const colorPrimario   = empresa.configuracion?.colorPrimario;
-    const factConf = (empresa.configuracion ?? {}) as Record<string, unknown>;
+    const factConf        = (empresa.configuracion ?? {}) as Record<string, unknown>;
 
-    // Tipo cliente
     const tipoCliente: 'RNC' | 'CEDULA' | 'CONSUMIDOR' =
       factura.cliente?.rncReceptor ? 'RNC' :
       factura.cliente?.rfc?.length === 11 ? 'CEDULA' : 'CONSUMIDOR';
@@ -151,17 +114,16 @@ export class PDFService {
       ecfTipoDescripcion: ecf?.descripcion,
       ecfCodigoSeguridad: ecf?.codigoSeguridad,
       ecfEstadoDGII:      ecf?.estadoDGII,
-      ecfFechaFirma:      ecf?.fechaFirma           ? String(ecf.fechaFirma)           : undefined,
-      ecfFechaVigencia:   ecf?.secFechaVencimiento  ? String(ecf.secFechaVencimiento)  : undefined,
+      ecfFechaFirma:      ecf?.fechaFirma           ? String(ecf.fechaFirma)          : undefined,
+      ecfFechaVigencia:   ecf?.secFechaVencimiento  ? String(ecf.secFechaVencimiento) : undefined,
       empresaNombre:      empresa.razonSocial || empresa.nombre || 'Mi Empresa',
       empresaRNC:         empresa.rnc || '',
       empresaDireccion:   empresa.direccion || '',
       empresaCiudad:      empresa.ciudad,
-      empresaLogo:        (factConf.factMostrarLogo    !== false) ? logoSrc : undefined,
       empresaTelefono:    (factConf.factMostrarTelefono !== false) ? empresa.telefono : undefined,
       empresaEmail:       (factConf.factMostrarEmail    !== false) ? empresa.email    : undefined,
       empresaSitioWeb:    (factConf.factMostrarWeb      !== false) ? empresa.sitioWeb : undefined,
-      empresaColorPrimario: colorPrimario,
+      empresaColorPrimario: empresa.configuracion?.colorPrimario,
       empresaPieFactura:    empresa.configuracion?.pieFactura as string | undefined,
       empresaTerminos:      empresa.configuracion?.terminosCondiciones as string | undefined,
       vendedorNombre:     factura.nombreVendedor,
@@ -195,16 +157,15 @@ export class PDFService {
     });
     if (!factura) throw new NotFoundException(`Factura #${facturaId} no encontrada`);
 
-    const data    = await this.buildFacturaData(factura);
-    const html    = generarHTMLFactura(data);
-    const buffer  = await this.htmlToPDF(html);
+    const data   = await this.buildFacturaData(factura);
+    const buffer = await generarFacturaPDF(data);
     this.logger.log(
       `PDF generado en ${Date.now() - t0} ms — ${factura.folio} — ${factura.detalles?.length ?? 0} líneas`,
     );
     return { buffer, filename: `${factura.folio}.pdf` };
   }
 
-  // ── Retorna HTML preview ────────────────────────────────────────────
+  // ── Retorna HTML preview (mantener para compatibilidad) ─────────────
   async generarFacturaHTML(facturaId: number): Promise<string> {
     const empresaId = this.tenantSvc.getEmpresaId();
     const factura = await this.facturaRepo.findOne({
@@ -212,8 +173,9 @@ export class PDFService {
       relations: ['cliente', 'detalles', 'usuario'],
     });
     if (!factura) throw new NotFoundException(`Factura #${facturaId} no encontrada`);
+    // Retorna JSON resumido de la data (HTML no es viable sin Puppeteer)
     const data = await this.buildFacturaData(factura);
-    return generarHTMLFactura(data);
+    return JSON.stringify({ folio: data.numero, cliente: data.clienteNombre, total: data.totalGeneral });
   }
 
   // ── Genera recibo térmico POS ───────────────────────────────────────
@@ -237,11 +199,14 @@ export class PDFService {
 
     let qrBase64 = '';
     if (ecf?.numero && empresa.rnc) {
-      qrBase64 = await this.generarQR(`https://ecf.dgii.gov.do/consulta?encf=${ecf.numero}&rnc=${empresa.rnc}`);
+      qrBase64 = await this.generarQR(
+        `https://ecf.dgii.gov.do/consulta?encf=${ecf.numero}&rnc=${empresa.rnc}`,
+      );
     }
 
     const now = new Date();
-    const fechaHora = now.toLocaleDateString('es-DO') + ' ' + now.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });
+    const fechaHora = now.toLocaleDateString('es-DO') + ' ' +
+      now.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });
 
     const data: ReciboPOSData = {
       empresaNombre:   empresa.razonSocial || empresa.nombre || 'Mi Empresa',
@@ -252,12 +217,15 @@ export class PDFService {
       fechaHora,
       numero:          factura.folio,
       ecfNumero:       ecf?.numero,
-      metodoPago:      factura.notas?.includes('Tarjeta') ? 'Tarjeta' : factura.notas?.includes('Transferencia') ? 'Transferencia' : 'Efectivo',
+      metodoPago:      factura.notas?.includes('Tarjeta')
+        ? 'Tarjeta'
+        : factura.notas?.includes('Transferencia') ? 'Transferencia' : 'Efectivo',
       items: (factura.detalles || []).map(d => ({
         descripcion: d.descripcion,
         cantidad:    Number(d.cantidad),
         precio:      Number(d.precioUnitario),
-        total:       Number(d.precioUnitario) * Number(d.cantidad) * (1 + Number(d.porcentajeIva ?? 0) / 100),
+        total:       Number(d.precioUnitario) * Number(d.cantidad) *
+                     (1 + Number(d.porcentajeIva ?? 0) / 100),
       })),
       subtotal:  Number(factura.subtotal ?? 0),
       itbis:     Number(factura.iva ?? 0),
@@ -265,8 +233,7 @@ export class PDFService {
       qrBase64,
     };
 
-    const html   = generarHTMLRecibo(data);
-    const buffer = await this.htmlToPDF(html, { thermal: true });
+    const buffer = await generarReciboPOSPDF(data);
     return { buffer, filename: `recibo-${factura.folio}.pdf` };
   }
 }

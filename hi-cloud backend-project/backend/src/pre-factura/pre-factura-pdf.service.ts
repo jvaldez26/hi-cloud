@@ -1,13 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { Repository } from 'typeorm';
-import * as https from 'https';
-import * as http  from 'http';
 import { PreFactura } from './entities/pre-factura.entity';
 import { TenantService } from '../tenant/tenant.service';
-import { generarDocumento } from '../common/doc.template';
 import type { DocData, DocTotal, DocCampo } from '../common/doc.template';
-import { BrowserService } from '../common/services/browser.service';
+import { generarDocumentoPDF } from '../common/pdf/doc-pdf.helper';
 
 const ESTADO_COLOR: Record<string, string> = {
   borrador: 'orange', enviada: 'blue', aprobada: 'green',
@@ -19,25 +16,7 @@ export class PreFacturaPDFService {
   constructor(
     @InjectRepository(PreFactura) private repo: Repository<PreFactura>,
     private tenantSvc: TenantService,
-    private browserSvc: BrowserService,
   ) {}
-
-  private async htmlToPDF(html: string): Promise<Buffer> {
-    return this.browserSvc.htmlToPDF(html);
-  }
-
-  private async resolverLogo(url: string): Promise<string> {
-    if (!url || !url.startsWith('http')) return '';
-    return new Promise(resolve => {
-      const lib = url.startsWith('https') ? https : http;
-      lib.get(url, res => {
-        const ct = res.headers['content-type'] ?? 'image/jpeg'; const ch: Buffer[] = [];
-        res.on('data', (c: Buffer) => ch.push(c));
-        res.on('end',  () => resolve(`data:${ct};base64,${Buffer.concat(ch).toString('base64')}`));
-        res.on('error', () => resolve(''));
-      }).on('error', () => resolve(''));
-    });
-  }
 
   async generarPDF(id: number): Promise<{ buffer: Buffer; filename: string }> {
     const empresaId = this.tenantSvc.getEmpresaId();
@@ -51,21 +30,20 @@ export class PreFacturaPDFService {
       .query('SELECT * FROM empresa WHERE id = $1 AND "isActive" = true LIMIT 1', [empresaId])
       .then((r: any[]) => r[0] || {});
 
-    const logo = await this.resolverLogo(empresa.logo ?? '');
     const subtotal = Number(pf.subtotal ?? 0);
-    const iva      = Number(pf.iva ?? 0);
-    const total    = Number(pf.total ?? 0);
+    const iva      = Number(pf.iva      ?? 0);
+    const total    = Number(pf.total    ?? 0);
 
     const totales: DocTotal[] = [
-      { label: 'Subtotal', valor: subtotal },
+      { label: 'Subtotal',    valor: subtotal },
       { label: 'ITBIS (18%)', valor: iva },
-      { label: 'Total', valor: total, bold: true },
+      { label: 'Total',       valor: total, bold: true },
     ];
 
     const campos: DocCampo[] = [];
-    if (pf.tipoNcf)           campos.push({ label: 'Tipo NCF', valor: pf.tipoNcf, mono: true });
+    if (pf.tipoNcf)           campos.push({ label: 'Tipo NCF',     valor: pf.tipoNcf,               mono: true });
     if (pf.fechaVencimiento)  campos.push({ label: 'Válida hasta', valor: String(pf.fechaVencimiento) });
-    if (pf.nombreVendedor)    campos.push({ label: 'Vendedor', valor: pf.nombreVendedor });
+    if (pf.nombreVendedor)    campos.push({ label: 'Vendedor',     valor: pf.nombreVendedor });
 
     const data: DocData = {
       tipo:        'PRE-FACTURA',
@@ -81,8 +59,6 @@ export class PreFacturaPDFService {
         ciudad:    empresa.ciudad,
         telefono:  empresa.telefono,
         email:     empresa.email,
-        logo,
-        color:     (empresa.configuracion as any)?.colorPrimario,
       },
       participante: {
         label:  'Cliente',
@@ -105,7 +81,7 @@ export class PreFacturaPDFService {
       pie: 'Esta pre-factura es una cotización formal y no constituye un comprobante fiscal. Sujeta a aprobación. HiCloud ERP · República Dominicana',
     };
 
-    const buffer = await this.htmlToPDF(generarDocumento(data));
+    const buffer = await generarDocumentoPDF(data);
     return { buffer, filename: `${pf.folio}.pdf` };
   }
 }

@@ -1,13 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { Repository } from 'typeorm';
-import * as https from 'https';
-import * as http  from 'http';
 import { Gasto } from './entities/gasto.entity';
 import { TenantService } from '../tenant/tenant.service';
-import { generarDocumento } from '../common/doc.template';
 import type { DocData } from '../common/doc.template';
-import { BrowserService } from '../common/services/browser.service';
+import { generarDocumentoPDF } from '../common/pdf/doc-pdf.helper';
 
 const CATEGORIA_LABEL: Record<string, string> = {
   alquiler: 'Alquiler', servicios_publicos: 'Servicios Públicos', comunicaciones: 'Comunicaciones',
@@ -21,25 +18,7 @@ export class GastoPDFService {
   constructor(
     @InjectRepository(Gasto) private repo: Repository<Gasto>,
     private tenantSvc: TenantService,
-    private browserSvc: BrowserService,
   ) {}
-
-  private async htmlToPDF(html: string): Promise<Buffer> {
-    return this.browserSvc.htmlToPDF(html);
-  }
-
-  private async resolverLogo(url: string): Promise<string> {
-    if (!url || !url.startsWith('http')) return '';
-    return new Promise(resolve => {
-      const lib = url.startsWith('https') ? https : http;
-      lib.get(url, res => {
-        const ct = res.headers['content-type'] ?? 'image/jpeg'; const ch: Buffer[] = [];
-        res.on('data', (c: Buffer) => ch.push(c));
-        res.on('end',  () => resolve(`data:${ct};base64,${Buffer.concat(ch).toString('base64')}`));
-        res.on('error', () => resolve(''));
-      }).on('error', () => resolve(''));
-    });
-  }
 
   async generarPDF(id: number): Promise<{ buffer: Buffer; filename: string }> {
     const empresaId = this.tenantSvc.getEmpresaId();
@@ -50,14 +29,13 @@ export class GastoPDFService {
       .query('SELECT * FROM empresa WHERE id = $1 AND "isActive" = true LIMIT 1', [empresaId])
       .then((r: any[]) => r[0] || {});
 
-    const logo = await this.resolverLogo(empresa.logo ?? '');
     const numero = `GAS-${g.id.toString().padStart(6, '0')}`;
 
     const campos: any[] = [
       { label: 'Categoría', valor: CATEGORIA_LABEL[g.categoria as string] ?? (g.categoria as string) },
       { label: 'Período', valor: g.periodo },
     ];
-    if (g.proveedor)    campos.push({ label: 'Proveedor', valor: g.proveedor });
+    if (g.proveedor)    campos.push({ label: 'Proveedor',   valor: g.proveedor });
     if (g.rncProveedor) campos.push({ label: 'RNC Proveedor', valor: g.rncProveedor, mono: true });
     if (g.comprobante)  campos.push({ label: 'Comprobante', valor: g.comprobante, mono: true });
 
@@ -73,8 +51,6 @@ export class GastoPDFService {
         ciudad:    empresa.ciudad,
         telefono:  empresa.telefono,
         email:     empresa.email,
-        logo,
-        color:     (empresa.configuracion as any)?.colorPrimario,
       },
       campos,
       items: [
@@ -89,7 +65,7 @@ export class GastoPDFService {
       pie: 'Este comprobante de gasto es para uso interno contable. HiCloud ERP · República Dominicana',
     };
 
-    const buffer = await this.htmlToPDF(generarDocumento(data));
+    const buffer = await generarDocumentoPDF(data);
     return { buffer, filename: `gasto-${numero}.pdf` };
   }
 }

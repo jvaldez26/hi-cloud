@@ -1,40 +1,17 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository }       from 'typeorm';
-import * as https           from 'https';
-import * as http            from 'http';
 import { NotaCredito }      from './entities/nota-credito.entity';
 import { TenantService }    from '../tenant/tenant.service';
-import { generarHTMLNota } from '../notas-debito/nota.template';
-import type { NotaPDFData } from '../notas-debito/nota.template';
-import { BrowserService }   from '../common/services/browser.service';
+import { generarNotaPDF }   from '../common/pdf/nota-pdf.helper';
+import type { NotaPDFData } from '../common/pdf/nota-pdf.helper';
 
 @Injectable()
 export class NotaCreditoPDFService {
   constructor(
     @InjectRepository(NotaCredito) private repo: Repository<NotaCredito>,
     private tenantSvc: TenantService,
-    private browserSvc: BrowserService,
   ) {}
-
-  private async htmlToPDF(html: string): Promise<Buffer> {
-    return this.browserSvc.htmlToPDF(html);
-  }
-
-  private async resolverLogo(url: string): Promise<string> {
-    if (!url || !url.startsWith('http')) return '';
-    if (url.startsWith('data:')) return url;
-    return new Promise((resolve) => {
-      const lib = url.startsWith('https') ? https : http;
-      lib.get(url, (res) => {
-        const ct = res.headers['content-type'] ?? 'image/jpeg';
-        const chunks: Buffer[] = [];
-        res.on('data', (c: Buffer) => chunks.push(c));
-        res.on('end',  () => resolve(`data:${ct};base64,${Buffer.concat(chunks).toString('base64')}`));
-        res.on('error', () => resolve(''));
-      }).on('error', () => resolve(''));
-    });
-  }
 
   async generarPDF(id: number): Promise<{ buffer: Buffer; filename: string }> {
     const empresaId = this.tenantSvc.getEmpresaId();
@@ -60,8 +37,6 @@ export class NotaCreditoPDFService {
       )
       .then((r: any[]) => r[0] || null);
 
-    const logoSrc = await this.resolverLogo(empresa.logo ?? '');
-
     const data: NotaPDFData = {
       tipo:                 'CREDITO',
       numero:               nc.numero,
@@ -75,7 +50,6 @@ export class NotaCreditoPDFService {
       empresaCiudad:        empresa.ciudad,
       empresaTelefono:      empresa.telefono,
       empresaEmail:         empresa.email,
-      empresaLogo:          logoSrc,
       empresaColor:         (empresa.configuracion as any)?.colorPrimario ?? '#1a56db',
       clienteNombre:        nc.cliente?.nombre || 'Consumidor Final',
       clienteRNC:           nc.cliente?.rncReceptor || nc.cliente?.rfc,
@@ -99,8 +73,7 @@ export class NotaCreditoPDFService {
       estado:   nc.estado,
     };
 
-    const html   = generarHTMLNota(data);
-    const buffer = await this.htmlToPDF(html);
+    const buffer = await generarNotaPDF(data);
     return { buffer, filename: `${nc.numero}.pdf` };
   }
 }

@@ -2,11 +2,8 @@ import {
   Injectable, NotFoundException, BadRequestException, Logger,
   StreamableFile,
 } from '@nestjs/common';
-import { generarHTMLCotizacion, CotizacionPDFData, CotizacionPDFItem } from './templates/cotizacion.template';
-import * as https from 'https';
-import * as http  from 'http';
-import * as qrcode from 'qrcode';
-import { BrowserService } from '../common/services/browser.service';
+import type { DocData } from '../common/doc.template';
+import { generarDocumentoPDF } from '../common/pdf/doc-pdf.helper';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, LessThan, In, DataSource } from 'typeorm';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
@@ -37,7 +34,6 @@ export class CotizacionesService {
     private tenantService:    TenantService,
     private realtimeService:  RealtimeService,
     @InjectDataSource() private dataSource: DataSource,
-    private browserSvc: BrowserService,
   ) {}
 
   // ──────────────────────────────────────────────────────────────────
@@ -259,77 +255,61 @@ export class CotizacionesService {
   async generarPDF(id: number): Promise<{ buffer: Buffer; filename: string }> {
     const cot = await this.findById(id);
 
-    // Empresa desde BD
     const empresa = await this.cotizacionRepository.manager
       .query('SELECT * FROM empresa WHERE id = $1 LIMIT 1', [cot.empresaId])
       .then((r: any[]) => r[0] || {});
 
-    // Logo como data URI
-    const logoSrc = await this.resolverLogo(empresa.logo ?? '');
+    const campos: any[] = [];
+    if (cot.fechaVencimiento) campos.push({ label: 'Válida hasta', valor: String(cot.fechaVencimiento) });
+    if (cot.validezDias)      campos.push({ label: 'Validez (días)', valor: cot.validezDias });
+    if (cot.condicionesPago)  campos.push({ label: 'Condiciones de Pago', valor: cot.condicionesPago });
+    if (cot.nombreVendedor)   campos.push({ label: 'Vendedor', valor: cot.nombreVendedor });
 
-    const items: CotizacionPDFItem[] = (cot.detalles || []).map((d, i) => ({
-      numero:        i + 1,
-      codigo:        (d as any).producto?.codigo,
-      descripcion:   d.descripcion,
-      cantidad:      Number(d.cantidad),
-      unidadMedida:  (d as any).producto?.unidadMedida ?? 'UN',
-      precioUnitario: Number(d.precioUnitario),
-      itbisPct:      Number(d.porcentajeIva),
-      subtotal:      Number(d.subtotal),
-      total:         Number(d.total),
-    }));
-
-    const data: CotizacionPDFData = {
-      numero:           cot.numero,
-      fecha:            String(cot.fecha),
-      fechaVencimiento: String(cot.fechaVencimiento),
-      validezDias:      cot.validezDias,
-      condicionesPago:  cot.condicionesPago,
-      notas:            cot.notas,
-      empresaNombre:    empresa.razonSocial || empresa.nombre || 'Mi Empresa',
-      empresaRNC:       empresa.rnc || '',
-      empresaDireccion: empresa.direccion || '',
-      empresaCiudad:    empresa.ciudad,
-      empresaTelefono:  empresa.telefono,
-      empresaEmail:     empresa.email,
-      empresaLogo:      logoSrc,
-      empresaColor:     empresa.configuracion?.colorPrimario,
-      vendedorNombre:   cot.nombreVendedor,
-      clienteNombre:    cot.cliente?.nombre || 'Sin cliente',
-      clienteRNC:       cot.cliente?.rncReceptor || cot.cliente?.rfc,
-      clienteDireccion: cot.cliente?.direccion,
-      clienteCiudad:    cot.cliente?.ciudad,
-      clienteTelefono:  cot.cliente?.telefono,
-      clienteEmail:     cot.cliente?.email,
-      items,
-      subtotal: Number(cot.subtotal),
-      iva:      Number(cot.iva),
-      total:    Number(cot.total),
+    const data: DocData = {
+      tipo:        'COTIZACIÓN',
+      tipoSub:     'Propuesta comercial · No válida como comprobante fiscal',
+      numero:      cot.numero,
+      fecha:       String(cot.fecha),
+      estado:      (cot as any).estado,
+      estadoColor: (cot as any).estado === 'aprobada' ? 'green'
+                 : (cot as any).estado === 'rechazada' ? 'red'
+                 : (cot as any).estado === 'vencida'   ? 'red'
+                 : 'orange',
+      empresa: {
+        nombre:    empresa.razonSocial || empresa.nombre || 'Mi Empresa',
+        rnc:       empresa.rnc || '',
+        direccion: empresa.direccion || '',
+        ciudad:    empresa.ciudad,
+        telefono:  empresa.telefono,
+        email:     empresa.email,
+      },
+      participante: {
+        label:  'Cliente',
+        nombre: cot.cliente?.nombre || 'Sin cliente',
+        rnc:    cot.cliente?.rncReceptor || cot.cliente?.rfc,
+        dir:    cot.cliente?.direccion,
+        tel:    cot.cliente?.telefono,
+        email:  cot.cliente?.email,
+      },
+      campos,
+      items: (cot.detalles || []).map((d: any) => ({
+        descripcion:    d.descripcion,
+        cantidad:       Number(d.cantidad),
+        unidad:         (d as any).producto?.unidadMedida ?? 'UN',
+        precioUnitario: Number(d.precioUnitario),
+        importe:        Number(d.total ?? 0),
+      })),
+      totales: [
+        { label: 'Subtotal',    valor: Number(cot.subtotal) },
+        { label: 'ITBIS (18%)', valor: Number(cot.iva) },
+        { label: 'Total',       valor: Number(cot.total), bold: true },
+      ],
+      notas: cot.notas ?? undefined,
+      pie: 'Esta cotización es una propuesta comercial y no constituye un comprobante fiscal. Válida hasta la fecha indicada. HiCloud ERP · República Dominicana',
     };
 
-    const html   = generarHTMLCotizacion(data);
-    const buffer = await this.htmlToPDF(html);
+    const buffer = await generarDocumentoPDF(data);
     return { buffer, filename: `${cot.numero}.pdf` };
-  }
-
-  private async resolverLogo(url: string): Promise<string> {
-    if (!url) return '';
-    if (url.startsWith('data:')) return url;
-    if (!url.startsWith('http')) return '';
-    return new Promise(resolve => {
-      const lib = url.startsWith('https') ? https : http;
-      lib.get(url, res => {
-        const ct = res.headers['content-type'] ?? 'image/jpeg';
-        const chunks: Buffer[] = [];
-        res.on('data',  c => chunks.push(c));
-        res.on('end',   () => resolve(`data:${ct};base64,${Buffer.concat(chunks).toString('base64')}`));
-        res.on('error', () => resolve(''));
-      }).on('error', () => resolve(''));
-    });
-  }
-
-  private async htmlToPDF(html: string): Promise<Buffer> {
-    return this.browserSvc.htmlToPDF(html);
   }
 
   // ──────────────────────────────────────────────────────────────────

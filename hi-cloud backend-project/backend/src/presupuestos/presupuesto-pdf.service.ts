@@ -1,13 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { Repository } from 'typeorm';
-import * as https from 'https';
-import * as http  from 'http';
 import { Presupuesto } from './entities/presupuesto.entity';
 import { TenantService } from '../tenant/tenant.service';
-import { generarDocumento } from '../common/doc.template';
 import type { DocData } from '../common/doc.template';
-import { BrowserService } from '../common/services/browser.service';
+import { generarDocumentoPDF } from '../common/pdf/doc-pdf.helper';
 
 const TIPO_LABEL: Record<string, string> = {
   ventas: 'Ventas', compras: 'Compras', gastos: 'Gastos', caja: 'Caja', general: 'General',
@@ -19,25 +16,7 @@ export class PresupuestoPDFService {
   constructor(
     @InjectRepository(Presupuesto) private repo: Repository<Presupuesto>,
     private tenantSvc: TenantService,
-    private browserSvc: BrowserService,
   ) {}
-
-  private async htmlToPDF(html: string): Promise<Buffer> {
-    return this.browserSvc.htmlToPDF(html);
-  }
-
-  private async resolverLogo(url: string): Promise<string> {
-    if (!url || !url.startsWith('http')) return '';
-    return new Promise(resolve => {
-      const lib = url.startsWith('https') ? https : http;
-      lib.get(url, res => {
-        const ct = res.headers['content-type'] ?? 'image/jpeg'; const ch: Buffer[] = [];
-        res.on('data', (c: Buffer) => ch.push(c));
-        res.on('end',  () => resolve(`data:${ct};base64,${Buffer.concat(ch).toString('base64')}`));
-        res.on('error', () => resolve(''));
-      }).on('error', () => resolve(''));
-    });
-  }
 
   async generarPDF(id: number): Promise<{ buffer: Buffer; filename: string }> {
     const empresaId = this.tenantSvc.getEmpresaId();
@@ -51,7 +30,6 @@ export class PresupuestoPDFService {
       .query('SELECT * FROM empresa WHERE id = $1 AND "isActive" = true LIMIT 1', [empresaId])
       .then((r: any[]) => r[0] || {});
 
-    const logo   = await this.resolverLogo(empresa.logo ?? '');
     const numero = `PRES-${pres.id.toString().padStart(4, '0')}`;
     const lineas = ((pres as any).lineas ?? []).sort((a: any, b: any) => a.mes - b.mes);
 
@@ -69,13 +47,11 @@ export class PresupuestoPDFService {
         ciudad:    empresa.ciudad,
         telefono:  empresa.telefono,
         email:     empresa.email,
-        logo,
-        color:     (empresa.configuracion as any)?.colorPrimario,
       },
       campos: [
         { label: 'Nombre', valor: pres.nombre },
-        { label: 'Tipo', valor: TIPO_LABEL[pres.tipo] ?? pres.tipo },
-        { label: 'Año', valor: pres.anio },
+        { label: 'Tipo',   valor: TIPO_LABEL[pres.tipo] ?? pres.tipo },
+        { label: 'Año',    valor: pres.anio },
       ],
       items: lineas.map((l: any) => ({
         descripcion: `${MESES[(l.mes ?? 1) - 1] ?? l.mes} · ${l.categoria || 'General'}`,
@@ -89,7 +65,7 @@ export class PresupuestoPDFService {
       pie: `Presupuesto ${TIPO_LABEL[pres.tipo] ?? pres.tipo} para el año ${pres.anio}. HiCloud ERP · República Dominicana`,
     };
 
-    const buffer = await this.htmlToPDF(generarDocumento(data));
+    const buffer = await generarDocumentoPDF(data);
     return { buffer, filename: `presupuesto-${numero}.pdf` };
   }
 }

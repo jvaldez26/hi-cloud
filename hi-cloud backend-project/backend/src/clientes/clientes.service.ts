@@ -13,7 +13,8 @@ import { PaginationDto } from '../common/dto/pagination.dto';
 import { TenantService } from '../tenant/tenant.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { LimitesService } from '../suscripciones/limites.service';
-import { BrowserService } from '../common/services/browser.service';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const PDFKit = require('pdfkit') as typeof import('pdfkit');
 
 /** Lanza ConflictException amigable si el error es 23505 (duplicate key) */
 function handleRfcDuplicate(err: any, rfc?: string): never {
@@ -38,7 +39,6 @@ export class ClientesService {
     private tenantService:    TenantService,
     private realtimeService:  RealtimeService,
     private limitesService:   LimitesService,
-    private browserSvc:       BrowserService,
   ) {}
 
   async create(dto: CreateClienteDto) {
@@ -181,93 +181,176 @@ export class ClientesService {
   }
 
   async generarEstadoCuentaPdf(data: any): Promise<{ buffer: Buffer; filename: string }> {
-    const fmtM = (v: number) => `RD$ ${Number(v ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
-    const fmtD = (d: string) => d ? new Date(d).toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
-    const COLOR = '#1a56db', GREEN = '#059669', RED = '#dc2626';
+    const fmtM = (v: number) =>
+      'RD$ ' + Number(v ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmtD = (d: string) =>
+      d ? new Date(d).toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
 
-    const filasF = (data.facturas ?? []).map((f: any) => `<tr style="border-bottom:1px solid #f0f0f0">
-      <td style="padding:7px 9px;font-size:11px;font-weight:600">${f.folio}</td>
-      <td style="padding:7px 9px;font-size:11px">${fmtD(f.fecha)}</td>
-      <td style="padding:7px 9px;font-size:10px"><span style="background:${f.estado==='pagada'?'#d1fae5':f.estado==='emitida'?'#dbeafe':'#fef3c7'};color:${f.estado==='pagada'?GREEN:f.estado==='emitida'?COLOR:'#d97706'};border-radius:3px;padding:2px 5px;font-weight:600">${f.estado.toUpperCase()}</span></td>
-      <td style="padding:7px 9px;text-align:right;font-size:11px">${fmtM(f.total)}</td>
-      <td style="padding:7px 9px;text-align:right;font-size:11px;color:${GREEN}">${fmtM(f.montoPagado)}</td>
-      <td style="padding:7px 9px;text-align:right;font-size:11px;font-weight:700;color:${f.montoPendiente>0?RED:GREEN}">${fmtM(f.montoPendiente)}</td>
-    </tr>`).join('');
+    const buffer = await new Promise<Buffer>((resolve, reject) => {
+      const doc    = new PDFKit({ size: 'A4', margin: 0, compress: true });
+      const chunks: Buffer[] = [];
+      doc.on('data',  c  => chunks.push(c));
+      doc.on('end',   () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
 
-    const filasC = (data.cobros ?? []).map((c: any) => `<tr style="border-bottom:1px solid #f0f0f0">
-      <td style="padding:7px 9px;font-size:11px">${fmtD(c.fecha)}</td>
-      <td style="padding:7px 9px;font-size:11px;text-transform:capitalize">${c.metodoPago}</td>
-      <td style="padding:7px 9px;font-size:11px;color:#6b7280">${c.referencia || '—'}</td>
-      <td style="padding:7px 9px;text-align:right;font-size:11px;font-weight:600;color:${GREEN}">${fmtM(c.monto)}</td>
-    </tr>`).join('');
+      const PW   = doc.page.width;
+      const PH   = doc.page.height;
+      const PL   = 36;
+      const PR   = PW - 36;
+      const W    = PR - PL;
+      const BLUE = '#1a56db';
+      const DARK = '#111111';
+      const GRAY = '#555555';
+      const r    = data.resumen ?? {};
 
-    const r = data.resumen ?? {};
+      let y = 30;
 
-    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet"/>
-<style>* {box-sizing:border-box;margin:0;padding:0} body{font-family:'Inter',Arial,sans-serif;font-size:12px;color:#111;background:#fff} @page{margin:10mm 12mm}</style>
-</head><body>
-<div style="border-bottom:3px solid ${COLOR};padding-bottom:14px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:flex-start">
-  <div>
-    <div style="font-size:9px;color:${COLOR};font-weight:700;text-transform:uppercase;letter-spacing:1px">Estado de Cuenta</div>
-    <div style="font-size:18px;font-weight:800;color:#111;margin:3px 0">${data.cliente?.nombre ?? ''}</div>
-    ${data.cliente?.rfc ? `<div style="font-size:11px;color:#6b7280">RNC/Cédula: ${data.cliente.rfc}</div>` : ''}
-  </div>
-  <div style="text-align:right">
-    <div style="font-size:11px;font-weight:600;color:#111">Período: ${data.periodo?.desde === 'inicio' ? 'Todo' : fmtD(data.periodo?.desde)} — ${data.periodo?.hasta === 'hoy' ? 'Hoy' : fmtD(data.periodo?.hasta)}</div>
-    <div style="font-size:10px;color:#9ca3af;margin-top:3px">Generado: ${new Date().toLocaleDateString('es-DO')}</div>
-  </div>
-</div>
-<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px">
-  <div style="background:#eff6ff;border-radius:6px;padding:10px 12px;border-left:3px solid ${COLOR}">
-    <div style="font-size:10px;color:#6b7280;margin-bottom:3px">Total Facturado</div>
-    <div style="font-size:15px;font-weight:800;color:${COLOR}">${fmtM(r.totalFacturado ?? 0)}</div>
-  </div>
-  <div style="background:#f0fdf4;border-radius:6px;padding:10px 12px;border-left:3px solid ${GREEN}">
-    <div style="font-size:10px;color:#6b7280;margin-bottom:3px">Total Cobrado</div>
-    <div style="font-size:15px;font-weight:800;color:${GREEN}">${fmtM(r.totalCobrado ?? 0)}</div>
-  </div>
-  <div style="background:${(r.saldoPendiente??0)>0?'#fef2f2':'#f0fdf4'};border-radius:6px;padding:10px 12px;border-left:3px solid ${(r.saldoPendiente??0)>0?RED:GREEN}">
-    <div style="font-size:10px;color:#6b7280;margin-bottom:3px">Saldo Pendiente</div>
-    <div style="font-size:15px;font-weight:800;color:${(r.saldoPendiente??0)>0?RED:GREEN}">${fmtM(r.saldoPendiente ?? 0)}</div>
-  </div>
-</div>
-<div style="margin-bottom:18px">
-  <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#374151;letter-spacing:.4px;margin-bottom:6px;border-left:3px solid ${COLOR};padding-left:7px">Facturas (${r.cantidadFacturas ?? 0})</div>
-  <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden">
-    <thead><tr style="background:${COLOR}">
-      <th style="padding:7px 9px;text-align:left;color:#fff;font-size:9px">Folio</th>
-      <th style="padding:7px 9px;text-align:left;color:#fff;font-size:9px">Fecha</th>
-      <th style="padding:7px 9px;text-align:left;color:#fff;font-size:9px">Estado</th>
-      <th style="padding:7px 9px;text-align:right;color:#fff;font-size:9px">Total</th>
-      <th style="padding:7px 9px;text-align:right;color:#fff;font-size:9px">Cobrado</th>
-      <th style="padding:7px 9px;text-align:right;color:#fff;font-size:9px">Pendiente</th>
-    </tr></thead>
-    <tbody>${filasF || '<tr><td colspan="6" style="padding:10px;text-align:center;color:#9ca3af">Sin facturas</td></tr>'}</tbody>
-  </table>
-</div>
-${(data.cobros ?? []).length > 0 ? `
-<div>
-  <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#374151;letter-spacing:.4px;margin-bottom:6px;border-left:3px solid ${GREEN};padding-left:7px">Cobros (${(data.cobros??[]).length})</div>
-  <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden">
-    <thead><tr style="background:${GREEN}">
-      <th style="padding:7px 9px;text-align:left;color:#fff;font-size:9px">Fecha</th>
-      <th style="padding:7px 9px;text-align:left;color:#fff;font-size:9px">Método</th>
-      <th style="padding:7px 9px;text-align:left;color:#fff;font-size:9px">Referencia</th>
-      <th style="padding:7px 9px;text-align:right;color:#fff;font-size:9px">Monto</th>
-    </tr></thead>
-    <tbody>${filasC}</tbody>
-  </table>
-</div>` : ''}
-<div style="margin-top:16px;padding-top:8px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;font-size:10px;color:#9ca3af">
-  <span>HiCloud ERP · Documento generado automáticamente</span>
-  <span>${new Date().toLocaleString('es-DO')}</span>
-</div>
-</body></html>`;
+      // ── Título / cliente ─────────────────────────────────────────────────────
 
-    const buf = await this.browserSvc.htmlToPDF(html);
+      doc.fillColor(BLUE).font('Helvetica-Bold').fontSize(8)
+        .text('ESTADO DE CUENTA', PL, y);
+      y += 13;
+      doc.fillColor(DARK).font('Helvetica-Bold').fontSize(17)
+        .text(data.cliente?.nombre ?? 'Cliente', PL, y, { width: W * 0.65 });
+      if (data.cliente?.rfc) {
+        doc.fillColor(GRAY).font('Helvetica').fontSize(9)
+          .text('RNC/Cédula: ' + data.cliente.rfc, PL, y + 22, { width: W * 0.65 });
+      }
+      const periodoTxt =
+        `Período: ${data.periodo?.desde === 'inicio' ? 'Todo' : fmtD(data.periodo?.desde)} — ${data.periodo?.hasta === 'hoy' ? 'Hoy' : fmtD(data.periodo?.hasta)}`;
+      doc.fillColor(DARK).font('Helvetica-Bold').fontSize(9)
+        .text(periodoTxt, PL + W * 0.65, y, { width: W * 0.35, align: 'right' });
+      doc.fillColor(GRAY).font('Helvetica').fontSize(8)
+        .text('Generado: ' + new Date().toLocaleDateString('es-DO'), PL + W * 0.65, y + 13, { width: W * 0.35, align: 'right' });
+      y += 38;
+
+      // Separador azul
+      doc.rect(PL, y, W, 3).fill(BLUE); y += 10;
+
+      // ── Tarjetas resumen ─────────────────────────────────────────────────────
+
+      const cardW = (W - 16) / 3;
+      const cards = [
+        { label: 'Total Facturado', value: fmtM(r.totalFacturado ?? 0), color: BLUE   },
+        { label: 'Total Cobrado',   value: fmtM(r.totalCobrado ?? 0),   color: '#059669' },
+        { label: 'Saldo Pendiente', value: fmtM(r.saldoPendiente ?? 0), color: (r.saldoPendiente ?? 0) > 0 ? '#dc2626' : '#059669' },
+      ];
+      cards.forEach((card, i) => {
+        const cx = PL + i * (cardW + 8);
+        doc.rect(cx, y, cardW, 40).fill('#f8fafc').stroke('#e2e8f0');
+        doc.fillColor(GRAY).font('Helvetica').fontSize(8).text(card.label, cx + 8, y + 7, { width: cardW - 16 });
+        doc.fillColor(card.color).font('Helvetica-Bold').fontSize(13).text(card.value, cx + 8, y + 18, { width: cardW - 16 });
+      });
+      y += 52;
+
+      // ── Tabla Facturas ───────────────────────────────────────────────────────
+
+      doc.fillColor(DARK).font('Helvetica-Bold').fontSize(8.5)
+        .text(`FACTURAS (${r.cantidadFacturas ?? 0})`, PL, y); y += 12;
+
+      const fCols = [
+        { h: 'Folio',     w: 80,  a: 'left'  as const },
+        { h: 'Fecha',     w: 65,  a: 'center' as const },
+        { h: 'Estado',    w: 65,  a: 'center' as const },
+        { h: 'Total',     w: 90,  a: 'right'  as const },
+        { h: 'Cobrado',   w: 90,  a: 'right'  as const },
+        { h: 'Pendiente', w: W - 80 - 65 - 65 - 90 - 90, a: 'right' as const },
+      ];
+      doc.rect(PL, y, W, 18).fill(BLUE);
+      let hx = PL;
+      doc.fillColor('#fff').font('Helvetica-Bold').fontSize(7.5);
+      fCols.forEach(c => {
+        doc.text(c.h.toUpperCase(), hx + 3, y + 4, { width: c.w - 6, align: c.a });
+        hx += c.w;
+      });
+      y += 18;
+
+      const facturas: any[] = data.facturas ?? [];
+      if (facturas.length === 0) {
+        doc.rect(PL, y, W, 20).fill('#f9fafb');
+        doc.fillColor(GRAY).font('Helvetica').fontSize(8).text('Sin facturas', PL, y + 6, { width: W, align: 'center' });
+        y += 20;
+      }
+      facturas.forEach((f: any, idx: number) => {
+        if (y + 18 > PH - 60) { doc.addPage(); y = 36; }
+        doc.rect(PL, y, W, 18).fill(idx % 2 === 0 ? '#fff' : '#f8fafc')
+          .strokeColor('#e8e8e8').lineWidth(0.5).stroke();
+        doc.lineWidth(1);
+        let rx = PL;
+        const cells = [
+          { t: f.folio,                              w: fCols[0].w, a: 'left'  as const },
+          { t: fmtD(f.fecha),                        w: fCols[1].w, a: 'center' as const },
+          { t: (f.estado ?? '').toUpperCase(),        w: fCols[2].w, a: 'center' as const },
+          { t: fmtM(f.total),                        w: fCols[3].w, a: 'right'  as const },
+          { t: fmtM(f.montoPagado),                  w: fCols[4].w, a: 'right'  as const },
+          { t: fmtM(f.montoPendiente),               w: fCols[5].w, a: 'right'  as const },
+        ];
+        cells.forEach(cell => {
+          const isP = cell === cells[5] && Number(f.montoPendiente) > 0;
+          doc.fillColor(isP ? '#dc2626' : DARK).font('Helvetica').fontSize(8)
+            .text(cell.t, rx + 3, y + 4, { width: cell.w - 6, align: cell.a, ellipsis: true });
+          rx += cell.w;
+        });
+        y += 18;
+      });
+      y += 10;
+
+      // ── Tabla Cobros ─────────────────────────────────────────────────────────
+
+      const cobros: any[] = data.cobros ?? [];
+      if (cobros.length > 0) {
+        doc.fillColor(DARK).font('Helvetica-Bold').fontSize(8.5)
+          .text(`COBROS (${cobros.length})`, PL, y); y += 12;
+
+        const cCols = [
+          { h: 'Fecha',      w: 80,  a: 'center' as const },
+          { h: 'Método',     w: 110, a: 'left'   as const },
+          { h: 'Referencia', w: W - 80 - 110 - 100, a: 'left' as const },
+          { h: 'Monto',      w: 100, a: 'right'  as const },
+        ];
+        doc.rect(PL, y, W, 18).fill('#059669');
+        hx = PL;
+        doc.fillColor('#fff').font('Helvetica-Bold').fontSize(7.5);
+        cCols.forEach(c => {
+          doc.text(c.h.toUpperCase(), hx + 3, y + 4, { width: c.w - 6, align: c.a });
+          hx += c.w;
+        });
+        y += 18;
+
+        cobros.forEach((c: any, idx: number) => {
+          if (y + 18 > PH - 60) { doc.addPage(); y = 36; }
+          doc.rect(PL, y, W, 18).fill(idx % 2 === 0 ? '#fff' : '#f0fdf4')
+            .strokeColor('#e8e8e8').lineWidth(0.5).stroke();
+          doc.lineWidth(1);
+          let rx2 = PL;
+          [
+            { t: fmtD(c.fecha),    w: cCols[0].w, a: 'center' as const },
+            { t: c.metodoPago,     w: cCols[1].w, a: 'left'   as const },
+            { t: c.referencia||'—',w: cCols[2].w, a: 'left'   as const },
+            { t: fmtM(c.monto),    w: cCols[3].w, a: 'right'  as const },
+          ].forEach(cell => {
+            doc.fillColor(cell === ([...[]].at(-1) as any) ? '#059669' : DARK).font('Helvetica').fontSize(8)
+              .text(cell.t, rx2 + 3, y + 4, { width: cell.w - 6, align: cell.a, ellipsis: true });
+            rx2 += cell.w;
+          });
+          y += 18;
+        });
+        y += 8;
+      }
+
+      // ── Footer ───────────────────────────────────────────────────────────────
+
+      const fy = PH - 30;
+      doc.moveTo(PL, fy).lineTo(PR, fy).strokeColor('#e5e7eb').lineWidth(0.5).stroke();
+      doc.fillColor('#9ca3af').font('Helvetica').fontSize(7.5)
+        .text('HiCloud ERP · Documento generado automáticamente', PL, fy + 8, { width: W / 2 });
+      doc.text(new Date().toLocaleString('es-DO'), PR - W / 2, fy + 8, { width: W / 2, align: 'right' });
+
+      doc.end();
+    });
+
     return {
-      buffer:   buf,
+      buffer,
       filename: `Estado-Cuenta-${(data.cliente?.nombre ?? 'cliente').replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.pdf`,
     };
   }
