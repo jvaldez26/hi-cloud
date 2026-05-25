@@ -153,11 +153,11 @@ export class VacacionesService {
     const { limit = 10, page = 1 } = pagination;
     const qb = this.solicitudRepo.createQueryBuilder('s')
       .leftJoinAndSelect('s.empleado', 'e')
-      .where('s.empresaId = :eid', { eid: empresaId })
+      .where('s.empresaId = :empresaId', { empresaId })
       .andWhere('s.isActive = :a', { a: true });
 
     if (estado)     qb.andWhere('s.estado = :e', { e: estado });
-    if (empleadoId) qb.andWhere('s.empleadoId = :eid', { eid: empleadoId });
+    if (empleadoId) qb.andWhere('s.empleadoId = :empId', { empId: empleadoId });
 
     const [data, total] = await qb
       .orderBy('s.fechaInicio', 'DESC')
@@ -221,9 +221,9 @@ export class VacacionesService {
     const { limit = 10, page = 1 } = pagination;
     const qb = this.ausenciaRepo.createQueryBuilder('a')
       .leftJoinAndSelect('a.empleado', 'e')
-      .where('a.isActive = :ac AND a.empresaId = :eid', { ac: true, eid: this.tenantService.getEmpresaId() });
+      .where('a.isActive = :ac AND a.empresaId = :empresaId', { ac: true, empresaId: this.tenantService.getEmpresaId() });
 
-    if (empleadoId) qb.andWhere('a.empleadoId = :eid', { eid: empleadoId });
+    if (empleadoId) qb.andWhere('a.empleadoId = :empId', { empId: empleadoId });
     if (mes && anio) {
       const desde = new Date(anio, mes - 1, 1);
       const hasta = new Date(anio, mes, 0);
