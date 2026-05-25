@@ -264,7 +264,8 @@ const MENU_CATEGORIES: MenuCategory[] = [
   {
     id: 'sistema', label: 'Sistema', Icon: Settings, sectionLabel: undefined,
     items: [
-      { path: '/configuracion', label: 'Configuración' },
+      { path: '/configuracion',   label: 'Configuración' },
+      { path: '/mi-suscripcion',  label: 'Mi Suscripción y Pagos' },
       { path: '/mis-empresas',  label: 'Empresas' },
       { path: '/sucursales',    label: 'Sucursales' },
       { path: '/equipo',        label: 'Usuarios y Roles' },

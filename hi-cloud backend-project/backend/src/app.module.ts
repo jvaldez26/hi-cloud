@@ -116,6 +116,7 @@ import { WmsModule }                     from './wms/wms.module';
 import { AtributosProductoModule }       from './atributos-producto/atributos-producto.module';
 import { DistribucionCostosModule }      from './distribucion-costos/distribucion-costos.module';
 import { UomModule }                     from './uom/uom.module';
+import { PagosSuscripcionModule }        from './pagos-suscripcion/pagos-suscripcion.module';
 
 @Module({
   imports: [
@@ -288,6 +289,7 @@ import { UomModule }                     from './uom/uom.module';
     AtributosProductoModule,
     DistribucionCostosModule,
     UomModule,
+    PagosSuscripcionModule,
   ],
   controllers: [AppController],
   providers: [

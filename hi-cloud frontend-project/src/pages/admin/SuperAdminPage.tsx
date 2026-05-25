@@ -1,24 +1,29 @@
 import { useState } from 'react';
 import { Table, Card, Row, Col, Typography, Statistic, Tag, Button,
-         Select, Modal, Form, InputNumber, Input, Space, message, Popconfirm } from 'antd';
-import { PauseCircleOutlined, PlayCircleOutlined, UpCircleOutlined } from '@ant-design/icons';
+         Select, Modal, Form, InputNumber, Input, Space, message, Popconfirm, Tabs, Badge } from 'antd';
+import { PauseCircleOutlined, UpCircleOutlined, DollarOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { suscripcionesApi } from '../../api/suscripciones.api';
 import { demoApi } from '../../api/demo.api';
 import { fmt } from '../../utils/formatters';
+import CobrosPage from '../super-admin/CobrosPage';
 
 const { Title, Text } = Typography;
 
 const PLAN_CONFIG: Record<string, { color: string; label: string }> = {
-  trial:       { color: 'orange', label: '🎁 Trial' },
-  basico:      { color: 'default', label: '⭐ Básico' },
-  profesional: { color: 'blue',   label: '🚀 Profesional' },
-  empresarial: { color: 'purple', label: '👑 Empresarial' },
+  emprendedor: { color: 'blue',    label: '🚀 Emprendedor' },
+  pyme:        { color: 'green',   label: '🏢 Pyme'        },
+  pro:         { color: 'purple',  label: '⚡ Pro'          },
+  plus:        { color: 'gold',    label: '👑 Plus'         },
+  trial:       { color: 'orange',  label: '🎁 Trial'        },
+  basico:      { color: 'default', label: '⭐ Básico'       },
+  profesional: { color: 'blue',    label: '🚀 Profesional'  },
+  empresarial: { color: 'purple',  label: '👑 Empresarial'  },
 };
 
 const ESTADO_COLOR: Record<string, string> = {
-  activa: 'green', vencida: 'red', suspendida: 'orange', cancelada: 'default',
+  activa: 'green', vencida: 'red', suspendida: 'orange', cancelada: 'default', prueba: 'cyan',
 };
 
 export default function SuperAdminPage() {
@@ -115,13 +120,31 @@ export default function SuperAdminPage() {
         </Row>
       )}
 
-      {/* Tabla */}
-      <Card>
-        <Table columns={cols} dataSource={suscripciones ?? []} rowKey="id"
-          loading={isLoading} size="small"
-          pagination={{ pageSize: 20, showSizeChanger: false }} 
-        scroll={{ x: 'max-content' }} />
-      </Card>
+      {/* Tabs: Suscripciones + Cobros */}
+      <Tabs
+        defaultActiveKey="suscripciones"
+        items={[
+          {
+            key: 'suscripciones',
+            label: '📋 Suscripciones',
+            children: (
+              <Card>
+                <Table columns={cols} dataSource={suscripciones ?? []} rowKey="id"
+                  loading={isLoading} size="small"
+                  pagination={{ pageSize: 20, showSizeChanger: false }}
+                  scroll={{ x: 'max-content' }} />
+              </Card>
+            ),
+          },
+          {
+            key: 'cobros',
+            label: (
+              <span><DollarOutlined /> 💰 Cobros</span>
+            ),
+            children: <CobrosPage />,
+          },
+        ]}
+      />
 
       {/* Modal activar plan */}
       <Modal title={`Activar plan — Empresa #${openActivar}`}
@@ -129,7 +152,7 @@ export default function SuperAdminPage() {
         <Form form={form} layout="vertical"
           onFinish={(v) => activarMut.mutate({ id: openActivar, ...v })}>
           <Form.Item name="plan" label="Plan" rules={[{ required: true }]}>
-            <Select options={['trial','basico','profesional','empresarial']
+            <Select options={['emprendedor','pyme','pro','plus','trial','basico','profesional','empresarial']
               .map(p => ({ value: p, label: planLabel(p) }))} />
           </Form.Item>
           <Form.Item name="meses" label="Duración (meses)" rules={[{ required: true }]}>

@@ -133,6 +133,7 @@ const CuentasEstadisticasPage     = lazy(() => import('./pages/cuentas-estadisti
 const WmsPage                     = lazy(() => import('./pages/wms/WmsPage'));
 const DistribucionCostosPage      = lazy(() => import('./pages/distribucion-costos/DistribucionCostosPage'));
 const UomPage                     = lazy(() => import('./pages/uom/UomPage'));
+const MiSuscripcionPage           = lazy(() => import('./pages/suscripcion/MiSuscripcionPage'));
 dayjs.locale('es');
 
 export const qc = new QueryClient({
@@ -526,6 +527,7 @@ export default function App() {
                     <Route path="/auditoria"          element={<AuditoriaPage />} />
                     <Route path="/importacion"        element={<ImportacionPage />} />
                     <Route path="/configuracion"      element={<ConfiguracionPage />} />
+                    <Route path="/mi-suscripcion"     element={<MiSuscripcionPage />} />
                     <Route path="/profile"            element={<ProfilePage />} />
                     <Route path="/asistente"          element={<AsistentePage />} />
                     <Route path="/demo-requests"      element={<DemoRequestsPage />} />

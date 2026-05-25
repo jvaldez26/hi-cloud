@@ -24,6 +24,16 @@ import { useAuthStore } from '../../store/auth.store';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { demoApi, ESTADO_DEMO_LABEL, ESTADO_DEMO_COLOR } from '../../api/demo.api';
+import CobrosPage from './CobrosPage';
+
+/** Wrapper sin contexto de color para panel cobros (usa Ant Design propio) */
+function CobrosAdminPanel() {
+  return (
+    <ConfigProvider theme={{ algorithm: antTheme.defaultAlgorithm }}>
+      <CobrosPage />
+    </ConfigProvider>
+  );
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -1919,6 +1929,7 @@ export default function SuperAdminPage() {
               { key: 'usuarios',      icon: <Users size={15} />,      label: 'Usuarios',      count: (usuarios as any[]).length, countColor: C.blue },
               { key: 'pendientes',    icon: <ClockIcon size={15} />,  label: 'Pendientes',    count: pendientesCount, countColor: C.red, badge: pendientesCount > 0 },
               { key: 'suscripciones', icon: <Crown size={15} />,      label: 'Suscripciones', count: (suscripciones as any[]).length, countColor: C.blue },
+              { key: 'cobros',        icon: <DollarSign size={15} />, label: 'Cobros',        count: 0, countColor: C.gold },
               { key: 'solicitudes',   icon: <Send size={15} />,       label: 'Solicitudes',   count: solicitudesPendientes ?? 0, countColor: C.red, badge: true },
               { key: 'demos',         icon: <MessageSquare size={15} />, label: 'Demos',       count: demosNuevas, countColor: C.red, badge: demosNuevas > 0 },
               { key: 'pruebas',       icon: <ClockIcon size={15} />,  label: 'En Prueba',     count: (pruebas as any[]).length, countColor: C.gold },
@@ -2323,6 +2334,13 @@ export default function SuperAdminPage() {
             {/* ── TAB DEMOS ─────────────────────────────────────────────────── */}
             {tab === 'demos' && (
               <DemosTab C={C} />
+            )}
+
+            {/* ── TAB COBROS ────────────────────────────────────────────────── */}
+            {tab === 'cobros' && (
+              <div style={{ padding: '0 4px' }}>
+                <CobrosAdminPanel />
+              </div>
             )}
 
             {/* ── TAB AUDITORÍA ─────────────────────────────────────────────── */}
