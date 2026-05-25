@@ -279,10 +279,60 @@ export class FacturasRecurrentesService {
 
   async ejecutarAhora(id: number) {
     const rec = await this.findById(id);
-    await this.recurrenteRepository.update(id, {
-      proximaEjecucion: new Date(Date.now() - 1000),
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    // Generar factura directamente (sin depender del cron ni afectar otras empresas)
+    let subtotal = 0, iva = 0;
+    const detallesData = rec.detalles.map(d => {
+      const precio   = Number(d.precioUnitario ?? 0) || 0;
+      const cantidad = Number(d.cantidad       ?? 1) || 1;
+      const pctIva   = Number(d.porcentajeIva  ?? 0) || 0;
+      const sub      = precio * cantidad;
+      const impIva   = sub * (pctIva / 100);
+      subtotal += sub; iva += impIva;
+      return { ...d, precioUnitario: precio, cantidad, porcentajeIva: pctIva,
+               subtotal: sub, importeIva: impIva, total: sub + impIva };
     });
-    await this.generarFacturasDiarias();
+
+    const folio = await generarNumeroSecuencial(
+      this.ds, 'facturas', 'folio', '^FAC-[0-9]+$', 'FAC-', 1, rec.empresaId!,
+    );
+
+    const factura = await this.facturaRepository.save(
+      this.facturaRepository.create({
+        empresaId: rec.empresaId,
+        folio,
+        fecha:     hoy,
+        estado:    FacturaEstado.BORRADOR,
+        clienteId: rec.clienteId,
+        usuarioId: rec.userId,
+        notas:     `Factura recurrente: ${rec.nombre}`,
+        subtotal:  Number(subtotal.toFixed(2)),
+        iva:       Number(iva.toFixed(2)),
+        total:     Number((subtotal + iva).toFixed(2)),
+      }),
+    );
+
+    await this.detalleRepository.save(
+      this.detalleRepository.create(
+        detallesData.map(d => ({ ...d, facturaId: factura.id })),
+      ),
+    );
+
+    // Calcular próxima ejecución desde hoy
+    const proxima = this.calcularProxima(rec.frecuencia, rec.diaEjecucion, hoy);
+
+    await this.recurrenteRepository.update(id, {
+      ultimaEjecucion:  hoy,
+      proximaEjecucion: proxima,
+      totalGeneradas:   rec.totalGeneradas + 1,
+    });
+
+    this.logger.log(
+      `✅ Ejecución manual "${rec.nombre}" → ${folio} (próxima: ${proxima.toDateString()})`,
+    );
+
     return this.findById(id);
   }
 }

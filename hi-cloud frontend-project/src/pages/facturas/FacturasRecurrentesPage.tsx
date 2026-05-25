@@ -25,6 +25,7 @@ const frecuenciaLabel: Record<string, string> = {
 
 const recurrenteApi = {
   list:    (p = 1, search = '') => api.get(`/facturas-recurrentes?page=${p}${search ? `&search=${encodeURIComponent(search)}` : ''}`).then(r => r.data?.data ?? r.data),
+  get:     (id: number) => api.get(`/facturas-recurrentes/${id}`).then(r => r.data?.data ?? r.data),
   create:  (body: any) => api.post('/facturas-recurrentes', body).then(r => r.data?.data ?? r.data),
   toggle:  (id: number) => api.patch(`/facturas-recurrentes/${id}/toggle`).then(r => r.data?.data ?? r.data),
   ejecutar:(id: number) => api.post(`/facturas-recurrentes/${id}/ejecutar-ahora`).then(r => r.data?.data ?? r.data),
@@ -51,6 +52,13 @@ export default function FacturasRecurrentesPage() {
   const [form]              = Form.useForm();
   const [lineas, setLineas] = useState([{ descripcion: '', cantidad: 1, precioUnitario: 0, porcentajeIva: 18 }]);
   const qc = useQueryClient();
+
+  // Carga fresca del registro abierto en el drawer (evita mostrar datos stale de la lista)
+  const { data: detalleRefresh } = useQuery({
+    queryKey: ['recurrente', detalle?.id],
+    queryFn:  () => recurrenteApi.get(detalle!.id),
+    enabled:  !!detalle?.id,
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ['recurrentes', page, search],
@@ -204,39 +212,55 @@ export default function FacturasRecurrentesPage() {
         pagination={{ total: data?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }} />
 
       {/* Drawer detalle */}
-      <DetailDrawer
-        open={!!detalle}
-        onClose={() => setDetalle(null)}
-        title={detalle?.nombre ?? 'Recurrente'}
-        sections={[{
-          title: 'Información',
-          fields: [
-            { label: 'Cliente',     value: detalle?.cliente?.nombre },
-            { label: 'Frecuencia',  value: frecuenciaLabel[detalle?.frecuencia] ?? detalle?.frecuencia },
-            { label: 'Próx. ejecución', value: detalle?.proximaEjecucion ? dayjs(detalle.proximaEjecucion).format('DD/MM/YYYY') : undefined },
-            { label: 'Últ. ejecución',  value: detalle?.ultimaEjecucion  ? dayjs(detalle.ultimaEjecucion).format('DD/MM/YYYY')  : '—' },
-            { label: 'Total generadas', value: String(detalle?.totalGeneradas ?? 0) },
-            { label: 'Estado', value: <Tag color={detalle?.activa ? 'green' : 'default'}>{detalle?.activa ? 'Activa' : 'Pausada'}</Tag> },
-          ],
-        }, {
-          title: 'Ítems de la plantilla',
-          fields: (detalle?.detalles ?? []).map((d: any, i: number) => ({
-            label: `Ítem ${i + 1}`,
-            value: `${d.descripcion} × ${d.cantidad} = ${fmt.money(Number(d.precioUnitario) * Number(d.cantidad))} + ${d.porcentajeIva}% ITBIS`,
-            span: 2 as const,
-          })),
-        }]}
-        footer={
-          <Space>
-            <Button icon={<ThunderboltOutlined />} type="primary"
-              loading={ejecutMut.isPending}
-              onClick={() => { if (detalle) ejecutMut.mutate(detalle.id); }}>
-              Generar ahora
-            </Button>
-            <Button onClick={() => setDetalle(null)}>Cerrar</Button>
-          </Space>
-        }
-      />
+      {(() => {
+        // Preferir datos frescos del GET/:id; si aún no llegaron, usar la fila de la lista
+        const det = detalleRefresh ?? detalle;
+        const isVencida = det?.fechaFin && dayjs(det.fechaFin).isBefore(hoy);
+        const estadoLabel = det?.activa ? 'Activa' : isVencida ? 'Vencida' : 'Pausada';
+        const estadoColor = det?.activa ? 'green' : isVencida ? 'volcano' : 'default';
+        return (
+          <DetailDrawer
+            open={!!detalle}
+            onClose={() => setDetalle(null)}
+            title={det?.nombre ?? 'Recurrente'}
+            sections={[{
+              title: 'Información',
+              fields: [
+                { label: 'Cliente',     value: det?.cliente?.nombre },
+                { label: 'Frecuencia',  value: frecuenciaLabel[det?.frecuencia] ?? det?.frecuencia },
+                { label: 'Próx. ejecución', value: det?.proximaEjecucion ? dayjs(det.proximaEjecucion).format('DD/MM/YYYY') : undefined },
+                { label: 'Últ. ejecución',  value: det?.ultimaEjecucion  ? dayjs(det.ultimaEjecucion).format('DD/MM/YYYY')  : '—' },
+                { label: 'Fecha fin',        value: det?.fechaFin ? dayjs(det.fechaFin).format('DD/MM/YYYY') : '—' },
+                { label: 'Total generadas',  value: String(det?.totalGeneradas ?? 0) },
+                { label: 'Estado', value: <Tag color={estadoColor}>{estadoLabel}</Tag> },
+              ],
+            }, {
+              title: 'Ítems de la plantilla',
+              fields: (det?.detalles ?? []).map((d: any, i: number) => ({
+                label: `Ítem ${i + 1}`,
+                value: (() => {
+                  const desc   = d.descripcion ?? d.concepto ?? d.nombre ?? '—';
+                  const cant   = Number(d.cantidad ?? d.qty ?? 1);
+                  const precio = Number(d.precioUnitario ?? d.precio ?? 0);
+                  const iva    = Number(d.porcentajeIva ?? d.itbis ?? 18);
+                  return `${desc} × ${cant} = ${fmt.money(precio * cant)} + ${iva}% ITBIS`;
+                })(),
+                span: 2 as const,
+              })),
+            }]}
+            footer={
+              <Space>
+                <Button icon={<ThunderboltOutlined />} type="primary"
+                  loading={ejecutMut.isPending}
+                  onClick={() => { if (detalle) ejecutMut.mutate(detalle.id); }}>
+                  Generar ahora
+                </Button>
+                <Button onClick={() => setDetalle(null)}>Cerrar</Button>
+              </Space>
+            }
+          />
+        );
+      })()}
 
       {/* Modal crear */}
       <Modal title="Nueva Factura Recurrente" open={open} onCancel={() => setOpen(false)} footer={null} width={700}>
