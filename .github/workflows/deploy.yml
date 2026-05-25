@@ -187,45 +187,35 @@ jobs:
               echo 'GOOGLE_CALLBACK_URL=https://hicloudrd.com/api/v1/auth/google/callback' >> "$ENV_FILE"
             fi
 
-            # ── Google Chrome estable como ejecutable para Puppeteer ──────────────
-            # Más confiable que el Chrome descargado por npm porque apt gestiona
-            # todas las dependencias del sistema automáticamente
-            echo "  → Instalando Google Chrome estable para Puppeteer..."
-            if ! command -v google-chrome-stable > /dev/null 2>&1 && \
-               ! command -v google-chrome       > /dev/null 2>&1; then
-              wget -qO /tmp/chrome.deb \
-                "https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb"
-              sudo apt-get install -y -q /tmp/chrome.deb 2>/dev/null \
-                || sudo apt-get install -f -y -q 2>/dev/null \
-                || true
-              rm -f /tmp/chrome.deb
-            fi
-            CHROME_PATH=$(command -v google-chrome-stable 2>/dev/null \
-              || command -v google-chrome      2>/dev/null \
-              || command -v chromium-browser   2>/dev/null \
-              || command -v chromium           2>/dev/null \
-              || echo "")
-            echo "  ✅ Chrome detectado en: ${CHROME_PATH:-'NO ENCONTRADO'}"
-
-            # Guardar PUPPETEER_EXECUTABLE_PATH en .env
-            if [ -n "$CHROME_PATH" ]; then
-              if grep -q '^PUPPETEER_EXECUTABLE_PATH=' "$ENV_FILE" 2>/dev/null; then
-                sed -i "s|^PUPPETEER_EXECUTABLE_PATH=.*|PUPPETEER_EXECUTABLE_PATH=${CHROME_PATH}|" "$ENV_FILE"
-              else
-                echo "PUPPETEER_EXECUTABLE_PATH=${CHROME_PATH}" >> "$ENV_FILE"
-              fi
-              echo "  ✅ PUPPETEER_EXECUTABLE_PATH=${CHROME_PATH}"
-            fi
-            # Evitar que npm install descargue Chrome de Puppeteer (usamos el de sistema)
-            if grep -q '^PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=' "$ENV_FILE" 2>/dev/null; then
-              sed -i 's|^PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=.*|PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true|' "$ENV_FILE"
-            else
-              echo 'PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true' >> "$ENV_FILE"
-            fi
-
             echo "  ✅ APP_URL y FRONTEND_URL configurados"
             echo "  ✅ DB_CA_CERT=$(grep '^DB_CA_CERT=' $ENV_FILE)"
             echo "  ✅ GOOGLE_CALLBACK_URL=$(grep '^GOOGLE_CALLBACK_URL=' $ENV_FILE)"
+
+            # ── Chromium para Puppeteer (set +e: errores aquí no abortan deploy) ─
+            echo "  → Configurando Chromium para generación PDF..."
+            set +e
+            # Instalar chromium-browser si no existe (Ubuntu 20.04 = .deb, 22.04 = snap ignorado)
+            if ! command -v chromium-browser > /dev/null 2>&1 \
+            && ! command -v google-chrome    > /dev/null 2>&1 \
+            && ! command -v chromium         > /dev/null 2>&1; then
+              apt-get install -y -q chromium-browser 2>/dev/null \
+                || apt-get install -y -q chromium 2>/dev/null \
+                || true
+            fi
+            CHROME_PATH=$(command -v google-chrome-stable 2>/dev/null \
+              || command -v google-chrome    2>/dev/null \
+              || command -v chromium-browser 2>/dev/null \
+              || command -v chromium         2>/dev/null \
+              || echo "")
+            echo "  Chrome path: ${CHROME_PATH:-'no encontrado — se usará bundled Puppeteer'}"
+            if [ -n "$CHROME_PATH" ]; then
+              grep -q '^PUPPETEER_EXECUTABLE_PATH=' "$ENV_FILE" 2>/dev/null \
+                && sed -i "s|^PUPPETEER_EXECUTABLE_PATH=.*|PUPPETEER_EXECUTABLE_PATH=${CHROME_PATH}|" "$ENV_FILE" \
+                || echo "PUPPETEER_EXECUTABLE_PATH=${CHROME_PATH}" >> "$ENV_FILE"
+              echo "  PUPPETEER_EXECUTABLE_PATH=${CHROME_PATH}"
+            fi
+            set -e
+            # ─────────────────────────────────────────────────────────────────────
 
             echo "━━━ [3/4] Deps + dist (precompilado en CI) + migraciones + restart ━━━"
             BACKEND_DIR="/home/ubuntu/hicloud/hi-cloud backend-project/backend"
@@ -238,8 +228,7 @@ jobs:
             fi
 
             # Instalar dependencias (el build TypeScript ya viene del CI)
-            # PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true evita re-descargar Chrome de npm
-            PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true npm ci 2>&1 | tail -3
+            npm ci 2>&1 | tail -3
 
             # Reemplazar dist/ con el build precompilado del CI
             rm -rf dist
