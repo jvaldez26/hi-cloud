@@ -24,6 +24,7 @@ import { AsientosAutomaticosService } from '../contabilidad/services/asientos-au
 import { TesoreriaService } from '../tesoreria/tesoreria.service';
 import { TipoMovimientoBancario, OrigenMovimiento } from '../tesoreria/entities/movimiento-bancario.entity';
 import { TenantService } from '../tenant/tenant.service';
+import { Empresa } from '../configuracion/entities/empresa.entity';
 import PDFDocument from 'pdfkit';
 
 @Injectable()
@@ -245,6 +246,257 @@ export class NominaService {
     await this.findContratoById(id);
     await this.contratoRepository.update(id, dto as any);
     return this.findContratoById(id);
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Contrato Laboral — PDF y Firma Digital
+  // ──────────────────────────────────────────────────────────────────
+
+  /** Obtiene los datos necesarios y genera el PDF del contrato. */
+  async getContratoPdf(id: number): Promise<{ buffer: Buffer; filename: string }> {
+    const empresaId = this.tenantService.getEmpresaId();
+    const contrato  = await this.contratoRepository.findOne({ where: { id, empresaId, isActive: true } });
+    if (!contrato) throw new NotFoundException(`Contrato #${id} no encontrado`);
+
+    const empresa = await this.dataSource.getRepository(Empresa).findOne({ where: { id: empresaId, isActive: true } });
+    if (!empresa) throw new NotFoundException('Empresa no configurada');
+
+    return this.generarContratoPdf(contrato, empresa);
+  }
+
+  /** Marca el contrato como firmado (registro de que el físico fue firmado). */
+  async marcarContratoFirmado(id: number): Promise<ContratoLaboral> {
+    const empresaId = this.tenantService.getEmpresaId();
+    const contrato  = await this.contratoRepository.findOne({ where: { id, empresaId, isActive: true } });
+    if (!contrato) throw new NotFoundException(`Contrato #${id} no encontrado`);
+    if (contrato.estadoFirma === 'firmado') throw new BadRequestException('El contrato ya está marcado como firmado');
+    await this.contratoRepository.update(id, { estadoFirma: 'firmado', firmadoEn: new Date() } as any);
+    return this.contratoRepository.findOne({ where: { id, empresaId } }) as Promise<ContratoLaboral>;
+  }
+
+  /**
+   * Genera un PDF legal de contrato laboral (Ley 16-92 RD) con PDFKit.
+   * No requiere Chrome — puro Node.js.
+   */
+  private async generarContratoPdf(
+    contrato: ContratoLaboral,
+    empresa:  Empresa,
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    const emp = contrato.empleado;
+    const W   = 595.28;   // A4 pts
+    const MAR = 60;
+
+    const tipoMap: Record<string, string> = {
+      indefinido: 'INDEFINIDO', fijo: 'PLAZO FIJO', temporal: 'TEMPORAL',
+    };
+    const tipoLabel    = tipoMap[contrato.tipo] ?? contrato.tipo.toUpperCase();
+    const periodoLabel = (emp as any)?.tipoPago === 'quincenal' ? 'quincenal' : 'mensual';
+    const ciudad       = empresa.ciudad ?? 'Santo Domingo';
+
+    const fmtD = (d: any) =>
+      d ? new Date(d).toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
+    const fmtM = (v: number) =>
+      `RD$ ${Number(v ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
+
+    const hoy = new Date();
+    const dia = hoy.getDate();
+    const mes = hoy.toLocaleDateString('es-DO', { month: 'long' });
+    const año = hoy.getFullYear();
+
+    this.logger.log(
+      `[ContratoPDF] Generando — contrato: "${contrato.numero}", empleado: "${emp?.nombre ?? 'N/A'} ${emp?.apellido ?? ''}"`,
+    );
+
+    try {
+      const buffer = await new Promise<Buffer>((resolve, reject) => {
+        const chunks: Buffer[] = [];
+        const doc = new PDFDocument({
+          size:   'A4',
+          margin: MAR,
+          info:   { Title: `Contrato de Trabajo — ${contrato.numero}`, Author: empresa.nombre },
+        });
+        doc.on('data',  (c: Buffer) => chunks.push(c));
+        doc.on('end',   () => resolve(Buffer.concat(chunks)));
+        doc.on('error', reject);
+
+        // ── Helpers ────────────────────────────────────────────────────────────
+        const sectionTitle = (t: string) => {
+          doc.moveDown(0.7);
+          doc.font('Helvetica-Bold').fontSize(9).fillColor('#1a56db').text(t);
+          const ly = doc.y;
+          doc.moveTo(MAR, ly).lineTo(W - MAR, ly).lineWidth(0.4).stroke('#c7d7f4');
+          doc.moveDown(0.35);
+          doc.fillColor('#1e293b');
+        };
+        const body = (t: string) => {
+          doc.font('Helvetica').fontSize(9.5).fillColor('#1e293b')
+             .text(t, { lineGap: 2, paragraphGap: 0 });
+        };
+
+        // ── HEADER (fondo azul, dibujado sobre el margen) ───────────────────────
+        doc.rect(0, 0, W, 88).fill('#1a56db');
+        doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(19)
+           .text('CONTRATO DE TRABAJO', 0, 16, { align: 'center', width: W });
+        doc.font('Helvetica-Bold').fontSize(10).fillColor('rgba(255,255,255,0.85)')
+           .text(`TIPO: ${tipoLabel}`, 0, 44, { align: 'center', width: W });
+        doc.font('Helvetica').fontSize(8).fillColor('rgba(255,255,255,0.65)')
+           .text(`${contrato.numero}  ·  ${empresa.nombre}`, 0, 62, { align: 'center', width: W });
+
+        // Posicionar cursor debajo del header
+        doc.y = 106;
+        doc.fillColor('#1e293b');
+
+        // ── COMPARECIENTES ─────────────────────────────────────────────────────
+        sectionTitle('COMPARECIENTES');
+        body(
+          `Entre:\n` +
+          `${empresa.nombre ?? 'LA EMPRESA'}, con RNC ${empresa.rnc ?? 'N/A'}, con domicilio en ` +
+          `${empresa.direccion ?? 'su dirección registrada'}, representada por ` +
+          `${empresa.representanteLegal ?? 'su Representante Legal'}, en lo adelante "EL EMPLEADOR".\n\n` +
+          `Y:\n` +
+          `${emp?.nombre ?? ''} ${emp?.apellido ?? ''}, portador de la Cédula de Identidad y Electoral ` +
+          `No. ${emp?.cedula ?? 'N/A'}, de nacionalidad dominicana, mayor de edad, en lo adelante "EL TRABAJADOR".`,
+        );
+
+        // ── CLÁUSULA PRIMERA — OBJETO ──────────────────────────────────────────
+        sectionTitle('CLÁUSULA PRIMERA — OBJETO');
+        body(
+          `El EMPLEADOR contrata los servicios del TRABAJADOR para desempeñar el cargo de ` +
+          `${contrato.cargo ?? emp?.cargo ?? 'N/A'} en el departamento de ` +
+          `${contrato.departamento ?? emp?.departamento ?? 'la empresa'}, ` +
+          `en ${contrato.lugarTrabajo ?? (emp as any)?.lugarTrabajo ?? ciudad}.\n` +
+          `El TRABAJADOR se obliga a prestar sus servicios con dedicación, eficiencia y en condiciones ` +
+          `de subordinación y dependencia económica hacia el EMPLEADOR, conforme al Código de Trabajo de la RD.`,
+        );
+
+        // ── CLÁUSULA SEGUNDA — DURACIÓN ────────────────────────────────────────
+        sectionTitle('CLÁUSULA SEGUNDA — DURACIÓN');
+        if (contrato.tipo === 'indefinido' || !contrato.fechaFin) {
+          body(
+            `El presente contrato es de naturaleza INDEFINIDA. Inicia el ${fmtD(contrato.fechaInicio)} ` +
+            `y tendrá vigencia indefinida conforme al Art. 26 del Código de Trabajo de la República Dominicana.`,
+          );
+        } else {
+          body(
+            `El presente contrato es de naturaleza DETERMINADA (${tipoLabel}).\n` +
+            `Fecha de inicio: ${fmtD(contrato.fechaInicio)} — Fecha de vencimiento: ${fmtD(contrato.fechaFin)}.\n` +
+            `Al vencimiento del plazo, el contrato podrá renovarse o convertirse en indefinido conforme a la ley.`,
+          );
+        }
+
+        // ── CLÁUSULA TERCERA — JORNADA ─────────────────────────────────────────
+        sectionTitle('CLÁUSULA TERCERA — JORNADA DE TRABAJO');
+        body(
+          `El TRABAJADOR laborará ${contrato.horasSemana ?? 44} horas semanales, conforme al Art. 147 del ` +
+          `Código de Trabajo, que establece un máximo de 44 horas semanales para trabajo diurno.\n` +
+          `Las horas trabajadas en exceso serán compensadas a una tasa no inferior al 135% del valor ` +
+          `de la hora ordinaria, conforme al Art. 203 del Código de Trabajo.`,
+        );
+
+        // ── CLÁUSULA CUARTA — SALARIO ──────────────────────────────────────────
+        sectionTitle('CLÁUSULA CUARTA — SALARIO');
+        body(
+          `El EMPLEADOR pagará al TRABAJADOR un salario de ${fmtM(Number(contrato.salario))} ${periodoLabel}.\n` +
+          `Este salario no podrá ser inferior al Salario Mínimo Nacional establecido por el ` +
+          `Comité Nacional de Salarios, conforme a las disposiciones del Código de Trabajo de la RD.`,
+        );
+
+        // ── CLÁUSULA QUINTA — PRESTACIONES ────────────────────────────────────
+        sectionTitle('CLÁUSULA QUINTA — PRESTACIONES DE LEY');
+        body(
+          `El TRABAJADOR gozará de todos los beneficios establecidos por el Código de Trabajo de la ` +
+          `República Dominicana, incluyendo:\n` +
+          `  • Vacaciones: 14 días laborables después del primer año (Art. 177).\n` +
+          `  • Preaviso: conforme a la escala establecida en el Art. 76.\n` +
+          `  • Cesantía: conforme a la escala establecida en el Art. 80.\n` +
+          `  • Seguro Familiar de Salud (SFS) y Fondo de Pensiones (AFP): según Ley 87-01.\n` +
+          `  • Regalía Pascual: equivalente a un salario mensual ordinario (Art. 219).`,
+        );
+
+        // ── CLÁUSULA SEXTA — LUGAR ─────────────────────────────────────────────
+        sectionTitle('CLÁUSULA SEXTA — LUGAR DE TRABAJO');
+        body(
+          `El TRABAJADOR prestará sus servicios en ` +
+          `${contrato.lugarTrabajo ?? (emp as any)?.lugarTrabajo ?? ciudad}, ` +
+          `pudiendo ser requerido en otros lugares por necesidades del servicio, previa notificación ` +
+          `y sin detrimento de sus condiciones laborales establecidas en este contrato.`,
+        );
+
+        // ── CLÁUSULA SÉPTIMA — ADICIONALES ────────────────────────────────────
+        sectionTitle('CLÁUSULA SÉPTIMA — CLÁUSULAS ADICIONALES');
+        body(
+          contrato.clausulas?.trim()
+            ? contrato.clausulas
+            : 'No aplica. Las condiciones generales de trabajo se rigen íntegramente por el Código de Trabajo de la RD.',
+        );
+
+        // ── CLÁUSULA OCTAVA — LEGISLACIÓN ─────────────────────────────────────
+        sectionTitle('CLÁUSULA OCTAVA — LEGISLACIÓN APLICABLE');
+        body(
+          `El presente contrato se rige por las disposiciones del Código de Trabajo de la ` +
+          `República Dominicana (Ley 16-92) y sus modificaciones. Para cualquier controversia ` +
+          `que surja en relación con este contrato, las partes se someten a la jurisdicción de ` +
+          `los Tribunales de Trabajo de la República Dominicana.`,
+        );
+
+        // ── FE DE LAS PARTES ────────────────────────────────────────────────────
+        doc.moveDown(1.2);
+        doc.font('Helvetica').fontSize(9.5).fillColor('#1e293b')
+           .text(
+             `En fe de lo cual, las partes firman el presente contrato en dos (2) ejemplares de un ` +
+             `mismo tenor y a un solo efecto, en la ciudad de ${ciudad}, a los ${dia} días del mes ` +
+             `de ${mes} del año ${año}.`,
+             { lineGap: 2 },
+           );
+
+        // ── FIRMAS ─────────────────────────────────────────────────────────────
+        doc.moveDown(2.2);
+        const fw = (W - MAR * 2 - 30) / 2;
+        const sy = doc.y;
+
+        // Empleador
+        doc.moveTo(MAR, sy + 26).lineTo(MAR + fw, sy + 26).lineWidth(0.5).stroke('#374151');
+        doc.font('Helvetica-Bold').fontSize(9).fillColor('#111111')
+           .text('EL EMPLEADOR', MAR, sy + 30, { width: fw, align: 'center' });
+        doc.font('Helvetica').fontSize(8).fillColor('#374151')
+           .text(empresa.representanteLegal ?? 'Representante Legal', MAR, sy + 43, { width: fw, align: 'center' });
+        doc.text(`RNC: ${empresa.rnc ?? ''}`, MAR, sy + 55, { width: fw, align: 'center' });
+
+        // Trabajador
+        doc.moveTo(MAR + fw + 30, sy + 26).lineTo(W - MAR, sy + 26).lineWidth(0.5).stroke('#374151');
+        doc.font('Helvetica-Bold').fontSize(9).fillColor('#111111')
+           .text('EL TRABAJADOR', MAR + fw + 30, sy + 30, { width: fw, align: 'center' });
+        doc.font('Helvetica').fontSize(8).fillColor('#374151')
+           .text(`${emp?.nombre ?? ''} ${emp?.apellido ?? ''}`, MAR + fw + 30, sy + 43, { width: fw, align: 'center' });
+        doc.text(`Cédula: ${emp?.cedula ?? ''}`, MAR + fw + 30, sy + 55, { width: fw, align: 'center' });
+
+        // ── FOOTER ─────────────────────────────────────────────────────────────
+        doc.moveDown(2.5);
+        const fy = doc.y;
+        doc.moveTo(MAR, fy).lineTo(W - MAR, fy).lineWidth(0.4).stroke('#e2e8f0');
+        doc.font('Helvetica').fontSize(7.5).fillColor('#9ca3af')
+           .text(
+             `Registro ${contrato.numero}  ·  HiCloud ERP  ·  Generado el: ${hoy.toLocaleString('es-DO')}`,
+             MAR, fy + 6, { width: W - MAR * 2, align: 'center' },
+           );
+
+        doc.end();
+      });
+
+      const nombre   = `${emp?.nombre ?? 'Empleado'}-${emp?.apellido ?? ''}`.replace(/\s+/g, '-');
+      const filename = `Contrato-${contrato.numero}-${nombre}.pdf`;
+      this.logger.log(`[ContratoPDF] ✅ PDF generado — ${filename} (${buffer.length} bytes)`);
+      return { buffer, filename };
+
+    } catch (err: any) {
+      this.logger.error(
+        `[ContratoPDF] ❌ Error — contrato: "${contrato.numero}"`,
+        err?.stack ?? err?.message ?? String(err),
+      );
+      throw new InternalServerErrorException(
+        `Error al generar contrato PDF: ${err?.message ?? 'error desconocido'}`,
+      );
+    }
   }
 
   // ──────────────────────────────────────────────────────────────────

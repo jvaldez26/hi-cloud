@@ -52,4 +52,11 @@ export class ContratoLaboral extends TenantBaseEntity {
 
   @Column({ type: 'int', nullable: true })
   horasSemana?: number;
+
+  /** 'pendiente_firma' | 'firmado' */
+  @Column({ length: 30, default: 'pendiente_firma' })
+  estadoFirma: string = 'pendiente_firma';
+
+  @Column({ type: 'timestamp', nullable: true })
+  firmadoEn?: Date;
 }

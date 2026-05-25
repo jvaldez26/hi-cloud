@@ -287,8 +287,10 @@ function NovedadesTab() {
 
 // ── Contratos Laborales ────────────────────────────────────────────────────────
 function ContratosTab() {
-  const [open,    setOpen]    = useState(false);
-  const [detail,  setDetail]  = useState<any>(null);
+  const [open,         setOpen]         = useState(false);
+  const [detail,       setDetail]       = useState<any>(null);
+  const [pdfLoading,   setPdfLoading]   = useState(false);
+  const [firmarLoading,setFirmarLoading]= useState(false);
   const [form] = Form.useForm<ContratoPayload>();
   const qc = useQueryClient();
   const watchTipo = Form.useWatch('tipo', form);
@@ -304,13 +306,54 @@ function ContratosTab() {
 
   const createMut = useMutation({
     mutationFn: nominaApi.createContrato,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['contratos-laborales'] }); setOpen(false); form.resetFields(); message.success('Contrato creado'); },
-    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
+    onSuccess: (data: any) => {
+      qc.invalidateQueries({ queryKey: ['contratos-laborales'] });
+      setOpen(false);
+      form.resetFields();
+      message.success('Contrato creado — descargue el PDF en el detalle');
+      // Abrir el detalle del contrato recién creado para poder descargar el PDF
+      setDetail(data);
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al crear contrato'),
   });
   const updateMut = useMutation({
     mutationFn: ({ id, body }: { id: number; body: any }) => nominaApi.updateContrato(id, body),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['contratos-laborales'] }); setDetail(null); message.success('Contrato actualizado'); },
+    onSuccess: (data: any) => {
+      qc.invalidateQueries({ queryKey: ['contratos-laborales'] });
+      setDetail(data);
+      message.success('Contrato actualizado');
+    },
   });
+
+  const descargarPdf = async (contratoId: number, numero: string) => {
+    setPdfLoading(true);
+    try {
+      const blob = await nominaApi.getContratoPdf(contratoId);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `Contrato-${numero}.pdf`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e: any) {
+      message.error(e?.response?.data?.message ?? 'Error generando PDF del contrato');
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  const marcarFirmado = async (contratoId: number) => {
+    setFirmarLoading(true);
+    try {
+      const updated = await nominaApi.marcarContratoFirmado(contratoId);
+      qc.invalidateQueries({ queryKey: ['contratos-laborales'] });
+      setDetail(updated);
+      message.success('Contrato marcado como firmado ✅');
+    } catch (e: any) {
+      message.error(e?.response?.data?.message ?? 'Error al marcar como firmado');
+    } finally {
+      setFirmarLoading(false);
+    }
+  };
 
   const estadoContratColor: Record<string, string> = { activo: 'green', vencido: 'orange', rescindido: 'red' };
 
@@ -323,9 +366,16 @@ function ContratosTab() {
     { title: 'Cargo',    dataIndex: 'cargo',      ellipsis: true },
     { title: 'Salario',  dataIndex: 'salario',    width: 130, render: (v: number) => fmt.money(v) },
     { title: 'Inicio',   dataIndex: 'fechaInicio', width: 105, render: (v: string) => fmt.date(v) },
-    { title: 'Vence',    dataIndex: 'fechaFin',    width: 105, render: (v: string) => v ? fmt.date(v) : <Text type="secondary">Indefinido</Text> },
+    { title: 'Vence',    dataIndex: 'fechaFin',    width: 105,
+      render: (v: string) => v ? fmt.date(v) : <Text type="secondary">Indefinido</Text> },
     { title: 'Estado',   dataIndex: 'estado',     width: 100,
       render: (v: string) => <Tag color={estadoContratColor[v]}>{v?.toUpperCase()}</Tag> },
+    { title: 'Firma',    dataIndex: 'estadoFirma', width: 120,
+      render: (v: string) => (
+        <Tag color={v === 'firmado' ? 'green' : 'orange'}>
+          {v === 'firmado' ? '✓ Firmado' : 'Pendiente firma'}
+        </Tag>
+      )},
     { title: '', key: 'ver', width: 60,
       render: (_: any, r: any) => <Button type="text" icon={<EyeOutlined />} onClick={() => setDetail(r)} /> },
   ];
@@ -345,8 +395,8 @@ function ContratosTab() {
           </Button>
         </Col>
       </Row>
-      <Table columns={cols} dataSource={contratos ?? []} rowKey="id" loading={isLoading} size="small" pagination={{ pageSize: 15 }} 
-        scroll={{ x: 'max-content' }} />
+      <Table columns={cols} dataSource={contratos ?? []} rowKey="id" loading={isLoading} size="small"
+        pagination={{ pageSize: 15 }} scroll={{ x: 'max-content' }} />
 
       <Modal title="Nuevo contrato laboral" open={open} onCancel={() => { setOpen(false); form.resetFields(); }} footer={null} width={680}>
         <Form form={form} layout="vertical" onFinish={(v) => createMut.mutate(v)}>
@@ -411,12 +461,44 @@ function ContratosTab() {
         </Form>
       </Modal>
 
-      <Drawer title={`Contrato ${detail?.numero}`} open={!!detail} onClose={() => setDetail(null)} width={540}>
+      <Drawer
+        title={`Contrato ${detail?.numero}`}
+        open={!!detail}
+        onClose={() => setDetail(null)}
+        width={540}
+        extra={
+          <Tooltip title="Descargar contrato en PDF (Ley 16-92 RD)">
+            <Button
+              icon={<FilePdfOutlined />}
+              loading={pdfLoading}
+              onClick={() => descargarPdf(detail?.id, detail?.numero)}
+              type="primary"
+              ghost
+            >
+              PDF
+            </Button>
+          </Tooltip>
+        }
+      >
         {detail && (
           <>
+            {/* Badge de estado de firma */}
+            <div style={{ marginBottom: 16 }}>
+              {detail.estadoFirma === 'firmado' ? (
+                <Tag color="green" style={{ fontSize: 13, padding: '4px 12px' }}>
+                  ✓ Firmado {detail.firmadoEn ? `— ${fmt.date(detail.firmadoEn)}` : ''}
+                </Tag>
+              ) : (
+                <Tag color="orange" style={{ fontSize: 13, padding: '4px 12px' }}>
+                  ⏳ Pendiente de firma
+                </Tag>
+              )}
+            </div>
+
             <Descriptions column={2} size="small" bordered style={{ marginBottom: 16 }}>
               <Descriptions.Item label="Empleado" span={2}>
                 <strong>{detail.empleado?.nombre} {detail.empleado?.apellido}</strong>
+                {detail.empleado?.cedula && <Text type="secondary" style={{ marginLeft: 8, fontSize: 11 }}>Cédula: {detail.empleado.cedula}</Text>}
               </Descriptions.Item>
               <Descriptions.Item label="Tipo"><Tag>{detail.tipo?.toUpperCase()}</Tag></Descriptions.Item>
               <Descriptions.Item label="Estado">
@@ -432,21 +514,38 @@ function ContratosTab() {
               <Descriptions.Item label="Vence">{detail.fechaFin ? fmt.date(detail.fechaFin) : 'Indefinido'}</Descriptions.Item>
               {detail.lugarTrabajo && <Descriptions.Item label="Lugar" span={2}>{detail.lugarTrabajo}</Descriptions.Item>}
             </Descriptions>
+
             {detail.clausulas && (
               <Card size="small" title="Cláusulas adicionales" style={{ marginBottom: 16 }}>
                 <Text style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{detail.clausulas}</Text>
               </Card>
             )}
-            {detail.estado === 'activo' && (
-              <Space>
+
+            <Space wrap>
+              {/* Marcar como firmado (solo si pendiente) */}
+              {detail.estadoFirma !== 'firmado' && (
+                <Popconfirm
+                  title="¿Marcar como firmado?"
+                  description="Confirma que el contrato físico fue firmado y archivado."
+                  onConfirm={() => marcarFirmado(detail.id)}
+                >
+                  <Button icon={<CheckOutlined />} loading={firmarLoading}>
+                    Marcar como firmado
+                  </Button>
+                </Popconfirm>
+              )}
+
+              {/* Rescindir (solo si activo) */}
+              {detail.estado === 'activo' && (
                 <Popconfirm
                   title="¿Rescindir contrato?"
                   description="Esta acción no se puede deshacer."
-                  onConfirm={() => updateMut.mutate({ id: detail.id, body: { estado: 'rescindido' } })}>
-                  <Button danger>Rescindir</Button>
+                  onConfirm={() => updateMut.mutate({ id: detail.id, body: { estado: 'rescindido' } })}
+                >
+                  <Button danger loading={updateMut.isPending}>Rescindir</Button>
                 </Popconfirm>
-              </Space>
-            )}
+              )}
+            </Space>
           </>
         )}
       </Drawer>

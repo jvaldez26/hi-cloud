@@ -90,6 +90,24 @@ export const nominaApi = {
   updateContrato: (id: number, body: { estado?: string; clausulas?: string; fechaFin?: string }) =>
     api.patch(`/nomina/contratos/${id}`, body).then(r => r.data.data),
 
+  getContratoPdf: async (id: number): Promise<Blob> => {
+    try {
+      const res = await api.get(`/nomina/contratos/${id}/pdf`, { responseType: 'blob' });
+      return res.data as Blob;
+    } catch (err: any) {
+      if (err.response?.data instanceof Blob) {
+        try {
+          const text = await (err.response.data as Blob).text();
+          err.response.data = JSON.parse(text);
+        } catch { /* si no es JSON, dejarlo como está */ }
+      }
+      throw err;
+    }
+  },
+
+  marcarContratoFirmado: (id: number) =>
+    api.patch(`/nomina/contratos/${id}/firmar`).then(r => r.data.data),
+
   // ── Períodos ─────────────────────────────────────────────────────────────
   periodos: (p = 1, limit = 10, estado?: string) =>
     api.get(`/nomina/periodos?page=${p}&limit=${limit}${estado ? `&estado=${estado}` : ''}`)

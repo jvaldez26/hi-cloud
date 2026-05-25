@@ -244,6 +244,41 @@ export class NominaController {
     return this.nominaService.updateContrato(id, dto);
   }
 
+  @Get('contratos/:id/pdf')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Descargar contrato laboral en PDF (estructura legal Ley 16-92 RD)' })
+  async getContratoPdf(
+    @Param('id', ParseIntPipe) id: number,
+    @Res() res: Response,
+  ) {
+    try {
+      const { buffer, filename } = await this.nominaService.getContratoPdf(id);
+      res.set({
+        'Content-Type':        'application/pdf',
+        'Content-Disposition': `attachment; filename="${filename}"`,
+      });
+      res.send(buffer);
+    } catch (err: any) {
+      this.logger.error(
+        `[ContratoPDF] Error en handler — contratoId:${id}`,
+        err?.stack ?? err?.message ?? String(err),
+      );
+      if (res.headersSent) return;
+      const status  = err instanceof HttpException ? err.getStatus() : 500;
+      const message = err instanceof HttpException
+        ? (err.getResponse() as any)?.message ?? err.message
+        : (err?.message ?? 'Error al generar contrato PDF');
+      res.status(status).json({ success: false, statusCode: status, message });
+    }
+  }
+
+  @Patch('contratos/:id/firmar')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Marcar contrato como firmado (el físico fue firmado y archivado)' })
+  marcarContratoFirmado(@Param('id', ParseIntPipe) id: number) {
+    return this.nominaService.marcarContratoFirmado(id);
+  }
+
   // ── Períodos de Nómina ─────────────────────────────────────────────────────
 
   @Post('periodos')
