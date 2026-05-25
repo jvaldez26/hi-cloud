@@ -243,12 +243,36 @@ jobs:
               AppDataSource.initialize()
                 .then(ds => ds.runMigrations({ transaction: 'each' }))
                 .then(migs => {
-                  if (migs.length === 0) { console.log('  ✅ Sin migraciones pendientes'); }
-                  else { console.log('  ✅ Migraciones aplicadas:', migs.map(m=>m.name).join(', ')); }
+                  if (migs.length === 0) { console.log('  Sin migraciones pendientes'); }
+                  else { console.log('  Migraciones aplicadas:', migs.map(m=>m.name).join(', ')); }
                   process.exit(0);
                 })
-                .catch(err => { console.error('  ❌ Migración falló:', err.message); process.exit(1); });
-            " || { echo '❌ Migraciones fallaron — deploy abortado'; exit 1; }
+                .catch(err => {
+                  console.error('  MIGRACION FALLO:', err.message);
+                  console.error('  STACK:', err.stack);
+                  process.exit(1);
+                });
+            " || { echo 'MIGRACIONES FALLARON - deploy abortado'; exit 1; }
+
+            # ── DIAGNÓSTICO: verificar que NestJS puede arrancar ─────────────
+            echo "  → Verificando startup de NestJS (15s)..."
+            node dist/main.js > /tmp/nest-test.log 2>&1 &
+            NEST_PID=$!
+            sleep 15
+            # Mostrar output de NestJS (éxito o error)
+            echo "--- NestJS stdout+stderr (últimas 60 líneas) ---"
+            tail -60 /tmp/nest-test.log 2>/dev/null || echo "(sin log)"
+            echo "---"
+            # Verificar si arrancó o murió
+            if kill -0 $NEST_PID 2>/dev/null; then
+              echo "  NestJS arrancó correctamente — matando proceso de prueba"
+              kill $NEST_PID 2>/dev/null; wait $NEST_PID 2>/dev/null || true
+            else
+              echo "  NestJS murió durante el startup!"
+              cat /tmp/nest-test.log 2>/dev/null || true
+              exit 1
+            fi
+            sleep 2
 
             # Reiniciar backend con el nuevo código
             if ! pm2 list | grep -q hicloud-backend; then
@@ -263,25 +287,18 @@ jobs:
             sleep 20
 
             echo "━━━ [4/4] Health check ━━━"
-            # Mostrar estado PM2 y últimas líneas de log para diagnóstico
-            echo "--- PM2 status ---"
             pm2 list
-            echo "--- PM2 logs (últimas 40 líneas) ---"
-            pm2 logs hicloud-backend --lines 40 --nostream 2>/dev/null || true
-            echo "---"
+            pm2 logs hicloud-backend --lines 30 --nostream 2>/dev/null || true
 
             STATUS=$(curl -sk https://hicloudrd.com/api/v1/health | \
               python3 -c "import sys,json; print(json.load(sys.stdin)['data']['status'])" 2>/dev/null || echo "error")
             echo "Health: $STATUS"
             if [ "$STATUS" = "healthy" ] || [ "$STATUS" = "degraded" ]; then
-              echo "✅ Deploy exitoso — servidor healthy"
+              echo "Deploy exitoso — servidor healthy"
             else
-              echo "❌ Health check falló: $STATUS"
-              # Logs adicionales de error
-              echo "--- curl raw response ---"
+              echo "Health check fallo: $STATUS"
               curl -sk https://hicloudrd.com/api/v1/health || true
               echo ""
-              echo "--- PM2 error logs ---"
-              pm2 logs hicloud-backend --lines 60 --err --nostream 2>/dev/null || true
+              pm2 logs hicloud-backend --lines 100 --nostream 2>/dev/null || true
               exit 1
             fi
