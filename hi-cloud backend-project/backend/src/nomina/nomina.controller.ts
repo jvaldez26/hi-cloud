@@ -42,6 +42,12 @@ class VincularUsuarioDto {
   userId!: number | null;
 }
 
+class InvitarPortalDto {
+  /** Email opcional — si se omite, se usa el email del empleado */
+  @IsOptional() @IsString()
+  email?: string;
+}
+
 class CreateNovedadDto {
   @IsInt() @IsPositive()                empleadoId!:   number;
   @IsOptional() @IsInt() @IsPositive()  periodoId?:    number;
@@ -195,6 +201,17 @@ export class NominaController {
   @ApiOperation({ summary: 'Listar usuarios activos del tenant (para dropdown de vinculación)' })
   getUsuariosTenant() {
     return this.nominaService.getUsuariosTenant();
+  }
+
+  @Post('empleados/:id/invitar')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Invitar empleado al Portal del Empleado — crea usuario rol:empleado y envía email de configuración' })
+  invitarEmpleado(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: InvitarPortalDto,
+  ) {
+    return this.nominaService.invitarEmpleado(id, dto.email);
   }
 
   // ── Novedades ──────────────────────────────────────────────────────────────

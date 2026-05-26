@@ -1,6 +1,6 @@
 # Roles y Permisos — HiCloud ERP
-**Última actualización:** 2026-05-23  
-**Versión:** Sistema multi-tenant con 5 niveles de acceso
+**Última actualización:** 2026-05-25  
+**Versión:** Sistema multi-tenant con 6 niveles de acceso
 
 ---
 
@@ -12,12 +12,14 @@
 | 📊 Contador | `contador` | Contabilidad, finanzas, reportes DGII completos |
 | 🛒 Vendedor | `vendedor` | Ventas, POS, clientes, cotizaciones |
 | 👁️ Solo lectura | `viewer` | Consulta de documentos sin creación ni edición |
+| 👤 Empleado | `empleado` | Acceso exclusivo al Portal del Empleado (recibos, perfil, prestaciones) |
 | 🔧 Super Admin | `super_admin` | Administrador global de la plataforma HiCloud |
 
 ---
 
 ## Flujo de invitación
 
+### Usuarios del ERP (admin, contador, vendedor, viewer)
 ```
 Admin → Equipo & Accesos → Invitar usuario
   ↓
@@ -41,6 +43,26 @@ Usuario hace login → JWT con role y empresaId
 Estado en Equipo & Accesos: Pendiente → Aceptada
 ```
 
+### Empleados al Portal del Empleado (rol `empleado`)
+```
+Admin → Nómina → Empleados → menú "..." → Invitar al Portal del Empleado
+  ↓
+Confirma email (pre-relleno con el del empleado o se puede cambiar)
+  ↓
+Backend: POST /nomina/empleados/:id/invitar
+  → Crea usuario con role='empleado', passwordConfigured=false
+  → Crea UsuarioEmpresa (vinculación al tenant)
+  → Vincula empleado.userId = nuevo userId
+  → Genera setup token (48h) en tabla setup_tokens
+  → Envía email con enlace /setup-password/:token
+  ↓
+Empleado abre enlace → SetupPasswordPage → establece contraseña
+  ↓
+Empleado hace login → redirigido automáticamente a /portal-empleado
+  ↓
+Badge en Nómina → Empleados: "Sin portal" → "✓ Portal activo"
+```
+
 **Nota SMTP:** Si el servidor de email no está configurado, el backend retorna `emailEnviado: false` + el enlace directo. El admin puede copiar y compartir el enlace manualmente.
 
 ---
@@ -49,72 +71,77 @@ Estado en Equipo & Accesos: Pendiente → Aceptada
 
 ### 🏢 Páginas / módulos visibles
 
-| Módulo / Ruta | Admin | Contador | Vendedor | Viewer |
-|---|:---:|:---:|:---:|:---:|
-| Dashboard `/dashboard` | ✅ | ✅ | ✅ | ✅ |
-| Punto de Venta `/pos` | ✅ | ✅ | ✅ | ❌ |
-| Facturas `/facturas` | ✅ | ✅ | ✅ | ✅ 👁️ |
-| Cotizaciones `/cotizaciones` | ✅ | ✅ | ✅ | ❌ |
-| Clientes `/clientes` | ✅ | ✅ | ✅ | ✅ 👁️ |
-| Productos `/productos` | ✅ | ✅ | ❌ | ✅ 👁️ |
-| Compras `/compras` | ✅ | ✅ | ❌ | ❌ |
-| Proveedores `/proveedores` | ✅ | ✅ | ❌ | ❌ |
-| Gastos `/gastos` | ✅ | ✅ | ❌ | ❌ |
-| Inventario `/inventario` | ✅ | ✅ | ❌ | ❌ |
-| Caja `/caja` | ✅ | ✅ | ❌ | ❌ |
-| Reportes DGII `/reportes` | ✅ | ✅ | ❌ | ❌ |
-| Declaraciones `/declaraciones` | ✅ | ✅ | ❌ | ❌ |
-| Contabilidad `/contabilidad` | ✅ | ✅ | ❌ | ❌ |
-| Libro Mayor `/libro-mayor` | ✅ | ✅ | ❌ | ❌ |
-| Bancos `/bancos` | ✅ | ✅ | ❌ | ❌ |
-| Tesorería `/tesoreria` | ✅ | ✅ | ❌ | ❌ |
-| Cheques `/cheques` | ✅ | ✅ | ❌ | ❌ |
-| CxC (cobros) `/cxc` | ✅ | ✅ | ❌ | ❌ |
-| CxP (pagos) `/cxp` | ✅ | ✅ | ❌ | ❌ |
-| Nómina `/nomina` | ✅ | ✅ | ❌ | ❌ |
-| Equipo & Accesos `/equipo` | ✅ | ❌ | ❌ | ❌ |
-| Configuración `/configuracion` | ✅ | ❌ | ❌ | ❌ |
-| Auditoría `/auditoria` | ❌ | ❌ | ❌ | ❌ |
-| Super Admin `/super-admin` | ❌ | ❌ | ❌ | ❌ |
+| Módulo / Ruta | Admin | Contador | Vendedor | Viewer | Empleado |
+|---|:---:|:---:|:---:|:---:|:---:|
+| Dashboard `/dashboard` | ✅ | ✅ | ✅ | ✅ | ❌ 🔀 |
+| Punto de Venta `/pos` | ✅ | ✅ | ✅ | ❌ | ❌ 🔀 |
+| Facturas `/facturas` | ✅ | ✅ | ✅ | ✅ 👁️ | ❌ 🔀 |
+| Cotizaciones `/cotizaciones` | ✅ | ✅ | ✅ | ❌ | ❌ 🔀 |
+| Clientes `/clientes` | ✅ | ✅ | ✅ | ✅ 👁️ | ❌ 🔀 |
+| Productos `/productos` | ✅ | ✅ | ❌ | ✅ 👁️ | ❌ 🔀 |
+| Compras `/compras` | ✅ | ✅ | ❌ | ❌ | ❌ 🔀 |
+| Proveedores `/proveedores` | ✅ | ✅ | ❌ | ❌ | ❌ 🔀 |
+| Gastos `/gastos` | ✅ | ✅ | ❌ | ❌ | ❌ 🔀 |
+| Inventario `/inventario` | ✅ | ✅ | ❌ | ❌ | ❌ 🔀 |
+| Caja `/caja` | ✅ | ✅ | ❌ | ❌ | ❌ 🔀 |
+| Reportes DGII `/reportes` | ✅ | ✅ | ❌ | ❌ | ❌ 🔀 |
+| Declaraciones `/declaraciones` | ✅ | ✅ | ❌ | ❌ | ❌ 🔀 |
+| Contabilidad `/contabilidad` | ✅ | ✅ | ❌ | ❌ | ❌ 🔀 |
+| Libro Mayor `/libro-mayor` | ✅ | ✅ | ❌ | ❌ | ❌ 🔀 |
+| Bancos `/bancos` | ✅ | ✅ | ❌ | ❌ | ❌ 🔀 |
+| Tesorería `/tesoreria` | ✅ | ✅ | ❌ | ❌ | ❌ 🔀 |
+| Cheques `/cheques` | ✅ | ✅ | ❌ | ❌ | ❌ 🔀 |
+| CxC (cobros) `/cxc` | ✅ | ✅ | ❌ | ❌ | ❌ 🔀 |
+| CxP (pagos) `/cxp` | ✅ | ✅ | ❌ | ❌ | ❌ 🔀 |
+| Nómina `/nomina` | ✅ | ✅ | ❌ | ❌ | ❌ 🔀 |
+| Equipo & Accesos `/equipo` | ✅ | ❌ | ❌ | ❌ | ❌ 🔀 |
+| Configuración `/configuracion` | ✅ | ❌ | ❌ | ❌ | ❌ 🔀 |
+| Auditoría `/auditoria` | ❌ | ❌ | ❌ | ❌ | ❌ 🔀 |
+| Super Admin `/super-admin` | ❌ | ❌ | ❌ | ❌ | ❌ 🔀 |
+| **Portal del Empleado `/portal-empleado`** | ✅ 👁️ | ✅ 👁️ | ❌ | ❌ | ✅ |
 
-> 👁️ = Puede ver pero NO crear/editar/eliminar (botones ocultos via `useCanDo`)
-> ❌ = Redireccionado a `/dashboard` si intenta acceder directamente
+> 👁️ = Puede ver pero NO crear/editar/eliminar (botones ocultos via `useCanDo`)  
+> ❌ = Sin acceso  
+> 🔀 = El rol `empleado` es redirigido automáticamente a `/portal-empleado` al iniciar sesión; cualquier ruta del ERP lo redirige allí
 
 ---
 
 ### ⚡ Acciones específicas (hook `useCanDo`)
 
-| Acción | Admin | Contador | Vendedor | Viewer |
-|---|:---:|:---:|:---:|:---:|
-| `facturas:ver` | ✅ | ✅ | ✅ | ✅ |
-| `facturas:crear` | ✅ | ✅ | ✅ | ❌ |
-| `facturas:editar` | ✅ | ✅ | ✅ | ❌ |
-| `facturas:anular` | ✅ | ✅ | ❌ | ❌ |
-| `facturas:eliminar` | ✅ | ❌ | ❌ | ❌ |
-| `facturas:pdf` | ✅ | ✅ | ✅ | ❌ |
-| `clientes:ver` | ✅ | ✅ | ✅ | ✅ |
-| `clientes:crear` | ✅ | ✅ | ✅ | ❌ |
-| `clientes:editar` | ✅ | ✅ | ✅ | ❌ |
-| `clientes:eliminar` | ✅ | ❌ | ❌ | ❌ |
-| `clientes:estado_cuenta` | ✅ | ✅ | ❌ | ❌ |
-| `productos:ver` | ✅ | ✅ | ✅ | ✅ |
-| `productos:crear` | ✅ | ✅ | ❌ | ❌ |
-| `productos:editar` | ✅ | ✅ | ❌ | ❌ |
-| `productos:eliminar` | ✅ | ❌ | ❌ | ❌ |
-| `productos:stock` | ✅ | ✅ | ✅ | ❌ |
-| `compras:ver` | ✅ | ✅ | ❌ | ❌ |
-| `compras:crear` | ✅ | ✅ | ❌ | ❌ |
-| `reportes:ventas` | ✅ | ✅ | ✅ | ❌ |
-| `reportes:dgii` | ✅ | ✅ | ❌ | ❌ |
-| `reportes:financiero` | ✅ | ✅ | ❌ | ❌ |
-| `pos:usar` | ✅ | ✅ | ✅ | ❌ |
-| `caja:abrir` | ✅ | ✅ | ✅ | ❌ |
-| `caja:cerrar` | ✅ | ✅ | ✅ | ❌ |
-| `caja:anular` | ✅ | ✅ | ❌ | ❌ |
-| `configuracion:ver` | ✅ | ❌ | ❌ | ❌ |
-| `configuracion:editar` | ✅ | ❌ | ❌ | ❌ |
-| `usuarios:ver` | ✅ | ❌ | ❌ | ❌ |
-| `usuarios:editar` | ✅ | ❌ | ❌ | ❌ |
+> El rol `empleado` no accede al ERP, por lo que ninguna acción del hook `useCanDo` aplica.  
+> En el Portal del Empleado solo puede leer su propio perfil, recibos y prestaciones.
+
+| Acción | Admin | Contador | Vendedor | Viewer | Empleado |
+|---|:---:|:---:|:---:|:---:|:---:|
+| `facturas:ver` | ✅ | ✅ | ✅ | ✅ | ❌ |
+| `facturas:crear` | ✅ | ✅ | ✅ | ❌ | ❌ |
+| `facturas:editar` | ✅ | ✅ | ✅ | ❌ | ❌ |
+| `facturas:anular` | ✅ | ✅ | ❌ | ❌ | ❌ |
+| `facturas:eliminar` | ✅ | ❌ | ❌ | ❌ | ❌ |
+| `facturas:pdf` | ✅ | ✅ | ✅ | ❌ | ❌ |
+| `clientes:ver` | ✅ | ✅ | ✅ | ✅ | ❌ |
+| `clientes:crear` | ✅ | ✅ | ✅ | ❌ | ❌ |
+| `clientes:editar` | ✅ | ✅ | ✅ | ❌ | ❌ |
+| `clientes:eliminar` | ✅ | ❌ | ❌ | ❌ | ❌ |
+| `clientes:estado_cuenta` | ✅ | ✅ | ❌ | ❌ | ❌ |
+| `productos:ver` | ✅ | ✅ | ✅ | ✅ | ❌ |
+| `productos:crear` | ✅ | ✅ | ❌ | ❌ | ❌ |
+| `productos:editar` | ✅ | ✅ | ❌ | ❌ | ❌ |
+| `productos:eliminar` | ✅ | ❌ | ❌ | ❌ | ❌ |
+| `productos:stock` | ✅ | ✅ | ✅ | ❌ | ❌ |
+| `compras:ver` | ✅ | ✅ | ❌ | ❌ | ❌ |
+| `compras:crear` | ✅ | ✅ | ❌ | ❌ | ❌ |
+| `reportes:ventas` | ✅ | ✅ | ✅ | ❌ | ❌ |
+| `reportes:dgii` | ✅ | ✅ | ❌ | ❌ | ❌ |
+| `reportes:financiero` | ✅ | ✅ | ❌ | ❌ | ❌ |
+| `pos:usar` | ✅ | ✅ | ✅ | ❌ | ❌ |
+| `caja:abrir` | ✅ | ✅ | ✅ | ❌ | ❌ |
+| `caja:cerrar` | ✅ | ✅ | ✅ | ❌ | ❌ |
+| `caja:anular` | ✅ | ✅ | ❌ | ❌ | ❌ |
+| `configuracion:ver` | ✅ | ❌ | ❌ | ❌ | ❌ |
+| `configuracion:editar` | ✅ | ❌ | ❌ | ❌ | ❌ |
+| `usuarios:ver` | ✅ | ❌ | ❌ | ❌ | ❌ |
+| `usuarios:editar` | ✅ | ❌ | ❌ | ❌ | ❌ |
 
 ---
 
@@ -163,6 +190,38 @@ curl -X PATCH https://api.hicloud.com.do/configuracion \
 ### Frontend (`rolPuedeVerRuta` + `useCanDo`)
 - **Navegación**: `AppLayout.tsx` → `PATH_ROLES` define rutas por rol → redirige a `/dashboard` si no autorizado
 - **Botones de acción**: `useCanDo('accion:especifica')` → devuelve `false` para viewer en acciones de escritura
+
+---
+
+## Endpoints del Portal del Empleado
+
+| Método | Endpoint | Auth | Descripción |
+|---|---|---|---|
+| `GET` | `/portal-empleado/mi-perfil` | empleado / admin / contador | Perfil del empleado vinculado al usuario |
+| `GET` | `/portal-empleado/mis-recibos` | empleado / admin / contador | Lista de recibos de nómina del empleado |
+| `GET` | `/portal-empleado/mis-prestaciones` | empleado / admin / contador | Prestaciones laborales calculadas |
+| `POST` | `/portal-empleado/solicitar-vinculacion` | empleado | Solicita al admin vincular su usuario |
+
+### POST `/nomina/empleados/:id/invitar` — Invitar al Portal
+```json
+{ "email": "empleado@empresa.com" }   // email opcional; si se omite usa el del empleado
+```
+**Respuesta:**
+```json
+{
+  "mensaje": "Invitación enviada a empleado@empresa.com",
+  "emailEnviado": true,
+  "userId": 12
+}
+```
+
+### PATCH `/nomina/empleados/:id/vincular-usuario` — Vincular usuario existente
+```json
+{ "userId": 12 }   // userId=null desvincula
+```
+
+### GET `/nomina/usuarios-tenant` — Usuarios disponibles para vincular
+Retorna lista de usuarios activos del tenant (para el dropdown del admin).
 
 ---
 
@@ -253,6 +312,16 @@ curl -X PATCH https://api.hicloud.com.do/configuracion \
 - **Solo puede ver**: Facturas, Clientes, Productos (con botones de acción ocultos)
 - **No puede**: Crear ni editar ningún documento, acceder al POS
 - **Uso típico**: Auditor externo, socio consultor, directivo de solo consulta
+
+### 👤 Empleado (`empleado`)
+- **Solo accede al Portal del Empleado** (`/portal-empleado`) — NO ve el ERP
+- **Puede ver**: Su perfil, sus recibos de nómina (PDF descargable), sus prestaciones calculadas
+- **No puede**: Ver ni acceder a ningún módulo del ERP (facturas, clientes, reportes, etc.)
+- **Redirección automática**: Al iniciar sesión es redirigido a `/portal-empleado`; si intenta ir a cualquier ruta del ERP es redirigido de vuelta al portal
+- **Creación**: No se invita por el módulo de Equipo & Accesos, sino desde **Nómina → Empleados → Invitar al Portal del Empleado**
+- **Setup**: Recibe email con enlace `/setup-password/:token` (token válido 48h) para configurar contraseña
+- **Vinculación**: El admin puede también vincular un usuario existente del sistema a un empleado mediante "Vincular usuario del sistema"
+- **Uso típico**: Cualquier empleado que necesita consultar sus recibos y prestaciones desde el portal
 
 ---
 

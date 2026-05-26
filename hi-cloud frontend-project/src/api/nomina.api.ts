@@ -177,6 +177,10 @@ export const nominaApi = {
   vincularUsuario: (empleadoId: number, userId: number | null) =>
     api.patch(`/nomina/empleados/${empleadoId}/vincular-usuario`, { userId }).then(r => r.data.data),
 
+  /** Invita a un empleado al Portal del Empleado — crea usuario rol:empleado + email setup */
+  invitarEmpleado: (empleadoId: number, email?: string) =>
+    api.post(`/nomina/empleados/${empleadoId}/invitar`, email ? { email } : {}).then(r => r.data.data ?? r.data),
+
   // ── Utilidades ────────────────────────────────────────────────────────────
   tasas: () => api.get('/nomina/tasas-tss').then(r => r.data.data),
 

@@ -14,6 +14,7 @@ import {
   PlusOutlined, EyeOutlined, CheckOutlined, DollarOutlined,
   UserOutlined, FileExcelOutlined, SearchOutlined, FilePdfOutlined,
   BankOutlined, FileTextOutlined, ThunderboltOutlined, CloseCircleOutlined,
+  MailOutlined, LinkOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { nominaApi, type EmpleadoPayload, type PeriodoPayload, type NovedadPayload, type ContratoPayload } from '../../api/nomina.api';
@@ -37,14 +38,16 @@ const tipoNovedadLabel: Record<string, { label: string; color: string }> = {
 
 // ── Empleados ──────────────────────────────────────────────────────────────────
 function EmpleadosTab() {
-  const [open,        setOpen]        = useState(false);
-  const [editing,     setEditing]     = useState<any>(null);
-  const [vinculando,  setVinculando]  = useState<any>(null); // empleado en modal de vinculación
-  const [page,        setPage]        = useState(1);
-  const [search,      setSearch]      = useState('');
-  const [form]        = Form.useForm<EmpleadoPayload>();
-  const [formVinc]    = Form.useForm();
-  const qc            = useQueryClient();
+  const [open,         setOpen]         = useState(false);
+  const [editing,      setEditing]      = useState<any>(null);
+  const [vinculando,   setVinculando]   = useState<any>(null);
+  const [invitando,    setInvitando]    = useState<any>(null); // empleado en modal de invitación
+  const [page,         setPage]         = useState(1);
+  const [search,       setSearch]       = useState('');
+  const [form]         = Form.useForm<EmpleadoPayload>();
+  const [formVinc]     = Form.useForm();
+  const [formInvit]    = Form.useForm();
+  const qc             = useQueryClient();
 
   const { data, isLoading } = useQuery({
     queryKey: ['empleados', page, search],
@@ -79,6 +82,22 @@ function EmpleadosTab() {
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al vincular'),
   });
 
+  const invitarMut = useMutation({
+    mutationFn: ({ id, email }: { id: number; email?: string }) =>
+      nominaApi.invitarEmpleado(id, email),
+    onSuccess: (res: any) => {
+      qc.invalidateQueries({ queryKey: ['empleados'] });
+      setInvitando(null);
+      formInvit.resetFields();
+      if (res?.yaVinculado) {
+        message.info(`${res.mensaje}`, 6);
+      } else {
+        message.success(res?.mensaje ?? 'Invitación enviada ✅', 6);
+      }
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al enviar invitación'),
+  });
+
   const openEdit = (r: any) => {
     setEditing(r);
     form.setFieldsValue({
@@ -93,6 +112,11 @@ function EmpleadosTab() {
   const openVincular = (r: any) => {
     setVinculando(r);
     formVinc.setFieldsValue({ userId: r.userId ?? null });
+  };
+
+  const openInvitar = (r: any) => {
+    setInvitando(r);
+    formInvit.setFieldsValue({ email: r.email ?? '' });
   };
 
   const COLS_DEF = [
@@ -114,17 +138,27 @@ function EmpleadosTab() {
     { title: 'Salario',  key: 'salarioBase',  dataIndex: 'salarioBase',  width: 130, render: (v: number) => fmt.money(v) },
     { title: 'Estado',   key: 'estado',       dataIndex: 'estado',       width: 90,
       render: (v: string) => <Tag color={v === 'activo' ? 'green' : 'red'}>{v?.toUpperCase()}</Tag> },
-    { title: 'Portal',   key: 'portal',       dataIndex: 'userId',       width: 90,
-      render: (v: number) => v
-        ? <Tooltip title="Portal habilitado"><Tag color="green" style={{ cursor: 'pointer' }}>✓ Vinculado</Tag></Tooltip>
-        : <Tooltip title="Sin usuario vinculado — el empleado no puede ver su portal"><Tag color="default">Sin vincular</Tag></Tooltip>
+    { title: 'Portal',   key: 'portal',       dataIndex: 'userId',       width: 110,
+      render: (_: any, r: any) => {
+        if (!r.userId) {
+          return <Tooltip title="Sin acceso al portal — usa 'Invitar al Portal' para dar acceso">
+            <Tag color="default" style={{ fontSize: 11 }}>Sin portal</Tag>
+          </Tooltip>;
+        }
+        // Verificamos el accountStatus del usuario vinculado (viene en el campo extra si lo cargamos)
+        // Como la tabla no carga ese campo, usamos userId como proxy de "tiene acceso"
+        return <Tooltip title="Portal activo">
+          <Tag color="green" style={{ fontSize: 11 }}>✓ Portal activo</Tag>
+        </Tooltip>;
+      }
     },
     { title: '', key: 'actions', width: 70, isActions: true,
       render: (_: any, r: any) => (
         <TableActions onView={() => openEdit(r)} viewLabel="Ver empleado"
           items={[
-            { key: 'editar', label: 'Editar empleado', icon: <EyeOutlined />, onClick: () => openEdit(r) },
-            { key: 'vincular', label: 'Vincular usuario del sistema', icon: <UserOutlined />, onClick: () => openVincular(r) },
+            { key: 'editar',   label: 'Editar empleado',              icon: <EyeOutlined />,  onClick: () => openEdit(r) },
+            { key: 'invitar',  label: 'Invitar al Portal del Empleado', icon: <MailOutlined />, onClick: () => openInvitar(r) },
+            { key: 'vincular', label: 'Vincular usuario del sistema',  icon: <LinkOutlined />, onClick: () => openVincular(r) },
           ]} />
       )},
   ];
@@ -209,7 +243,7 @@ function EmpleadosTab() {
 
       {/* ── Modal vincular usuario del sistema ──────────────────────────────── */}
       <Modal
-        title={<Space><UserOutlined />Vincular usuario del sistema</Space>}
+        title={<Space><LinkOutlined />Vincular usuario del sistema</Space>}
         open={!!vinculando}
         onCancel={() => { setVinculando(null); formVinc.resetFields(); }}
         onOk={() => formVinc.submit()}
@@ -251,6 +285,57 @@ function EmpleadosTab() {
                 placeholder="Seleccionar usuario..."
                 options={userOptions}
                 style={{ width: '100%' }}
+              />
+            </Form.Item>
+          </Form>
+        )}
+      </Modal>
+
+      {/* ── Modal invitar al Portal del Empleado ─────────────────────────── */}
+      <Modal
+        title={<Space><MailOutlined />Invitar al Portal del Empleado</Space>}
+        open={!!invitando}
+        onCancel={() => { setInvitando(null); formInvit.resetFields(); }}
+        onOk={() => formInvit.submit()}
+        confirmLoading={invitarMut.isPending}
+        okText="Enviar invitación"
+        width={480}
+        destroyOnClose
+      >
+        {invitando && (
+          <Form form={formInvit} layout="vertical"
+            onFinish={v => invitarMut.mutate({ id: invitando.id, email: v.email || undefined })}>
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 16, fontSize: 12 }}
+              message="¿Qué hace esto?"
+              description={
+                <ul style={{ margin: '4px 0 0', paddingLeft: 20, fontSize: 12 }}>
+                  <li>Crea una cuenta con rol <strong>Empleado</strong> (solo accede a su portal)</li>
+                  <li>Envía email con enlace para configurar su contraseña (válido 48h)</li>
+                  <li>Al ingresar, verá únicamente su portal: recibos, vacaciones y perfil</li>
+                </ul>
+              }
+            />
+            {invitando.userId && (
+              <Alert
+                type="warning"
+                showIcon
+                style={{ marginBottom: 16, fontSize: 12 }}
+                message="Este empleado ya tiene un usuario vinculado. Al continuar se enviará un nuevo enlace de acceso."
+              />
+            )}
+            <Form.Item
+              name="email"
+              label="Email del empleado"
+              rules={[{ type: 'email', message: 'Ingresa un email válido' }]}
+              help="Deja en blanco para usar el email registrado del empleado."
+            >
+              <Input
+                prefix={<MailOutlined style={{ color: '#94a3b8' }} />}
+                placeholder={invitando.email ?? 'email@ejemplo.com'}
+                allowClear
               />
             </Form.Item>
           </Form>

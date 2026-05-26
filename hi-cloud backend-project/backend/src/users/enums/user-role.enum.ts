@@ -4,4 +4,5 @@ export enum UserRole {
   CONTADOR    = 'contador',
   VENDEDOR    = 'vendedor',
   VIEWER      = 'viewer',
+  EMPLEADO    = 'empleado',   // Acceso exclusivo al Portal del Empleado (sus propios datos)
 }

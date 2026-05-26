@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, UseGuards, HttpCode, HttpStatus, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, HttpCode, HttpStatus, Logger, ForbiddenException } from '@nestjs/common';
 import { IsString, IsOptional, IsDateString } from 'class-validator';
 
 class SolicitudVacacionesDto {
@@ -8,14 +8,27 @@ class SolicitudVacacionesDto {
 }
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiHeader } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 import { User } from '../users/users.entity';
+import { UserRole } from '../users/enums/user-role.enum';
 import { PortalEmpleadoService } from './portal-empleado.service';
+
+// Roles que pueden acceder al portal del empleado
+// EMPLEADO: solo sus propios datos. Admin/Contador: pueden ver cualquier empleado.
+const PORTAL_ROLES = [
+  UserRole.EMPLEADO,
+  UserRole.ADMIN,
+  UserRole.CONTADOR,
+  UserRole.SUPER_ADMIN,
+];
 
 @ApiTags('Portal del Empleado')
 @ApiBearerAuth('access-token')
 @ApiHeader({ name: 'X-Empresa-ID', required: true })
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(...PORTAL_ROLES)
 @Controller('portal-empleado')
 export class PortalEmpleadoController {
   private readonly logger = new Logger(PortalEmpleadoController.name);

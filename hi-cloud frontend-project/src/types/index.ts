@@ -1,9 +1,10 @@
 // ── Auth ─────────────────────────────────────────────────────────────────────
-export type UserRole = 'super_admin' | 'admin' | 'contador' | 'vendedor' | 'viewer';
+export type UserRole = 'super_admin' | 'admin' | 'contador' | 'vendedor' | 'viewer' | 'empleado';
 
 export interface AuthUser {
   id:              number;
   nombre:          string;
+  apellido?:       string;  // presente en respuestas del backend
   email:           string;
   role:            UserRole;
   tourCompletado?: boolean;

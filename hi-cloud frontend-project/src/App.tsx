@@ -8,7 +8,8 @@ import 'dayjs/locale/es';
 
 import { useAuthStore, registerLogoutCallback }  from './store/auth.store';
 import { useThemeStore } from './store/theme.store';
-import AppLayout         from './components/layout/AppLayout';
+import AppLayout                from './components/layout/AppLayout';
+import PortalEmpleadoLayout     from './components/layout/PortalEmpleadoLayout';
 import ErrorBoundary     from './components/ui/ErrorBoundary';
 import PageLoader        from './components/ui/PageLoader';
 import ScrollToTop          from './components/ui/ScrollToTop';
@@ -152,6 +153,13 @@ export const qc = new QueryClient({
   },
 });
 
+/** Calcula la ruta home de un usuario autenticado según su rol */
+function homeForRole(role?: string): string {
+  if (role === 'super_admin') return '/super-admin';
+  if (role === 'empleado')    return '/portal-empleado';
+  return '/dashboard';
+}
+
 // Ruta raíz: landing para visitantes, dashboard para autenticados.
 function PublicHome() {
   const { hydrated }  = useAuthStore();
@@ -162,18 +170,18 @@ function PublicHome() {
   if (!hydrated) return null;
 
   if (isAuth) {
-    return <Navigate to={user?.role === 'super_admin' ? '/super-admin' : '/dashboard'} replace />;
+    return <Navigate to={homeForRole(user?.role)} replace />;
   }
   return <LandingPage />;
 }
 
-// Rutas del ERP normal — BLOQUEADAS para super_admin
-// Si un super_admin intenta acceder a /dashboard, /facturas, etc. → lo manda a /super-admin
+// Rutas del ERP normal — BLOQUEADAS para super_admin y empleado
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuth = useAuthStore((s) => s.isAuth());
   const user   = useAuthStore((s) => s.user);
   if (!isAuth) return <Navigate to="/login" replace />;
   if (user?.role === 'super_admin') return <Navigate to="/super-admin" replace />;
+  if (user?.role === 'empleado')    return <Navigate to="/portal-empleado" replace />;
   return <>{children}</>;
 }
 
@@ -182,7 +190,7 @@ function GuestRoute({ children }: { children: React.ReactNode }) {
   const isAuth = useAuthStore((s) => s.isAuth());
   const user   = useAuthStore((s) => s.user);
   if (!isAuth) return <>{children}</>;
-  return <Navigate to={user?.role === 'super_admin' ? '/super-admin' : '/dashboard'} replace />;
+  return <Navigate to={homeForRole(user?.role)} replace />;
 }
 
 // Panel exclusivo del Super Admin — solo accesible con role === 'super_admin'
@@ -190,7 +198,17 @@ function SuperAdminRoute({ children }: { children: React.ReactNode }) {
   const user   = useAuthStore((s) => s.user);
   const isAuth = useAuthStore((s) => s.isAuth());
   if (!isAuth) return <Navigate to="/login" replace />;
-  if (user?.role !== 'super_admin') return <Navigate to="/dashboard" replace />;
+  if (user?.role !== 'super_admin') return <Navigate to={homeForRole(user?.role)} replace />;
+  return <>{children}</>;
+}
+
+// Portal exclusivo del Empleado — solo role === 'empleado' (o admin/contador para pruebas)
+function EmpleadoRoute({ children }: { children: React.ReactNode }) {
+  const isAuth = useAuthStore((s) => s.isAuth());
+  const user   = useAuthStore((s) => s.user);
+  if (!isAuth) return <Navigate to="/login" replace />;
+  // Admin y contador pueden ver el portal desde el ERP — no bloqueamos
+  if (user?.role === 'super_admin') return <Navigate to="/super-admin" replace />;
   return <>{children}</>;
 }
 
@@ -408,6 +426,12 @@ export default function App() {
                   {/* Aceptar invitación — PÚBLICO */}
                   <Route path="/invitacion/:token"       element={<AcceptInvitePage />} />
 
+                  {/* ── Portal del Empleado — layout minimalista, solo rol empleado ── */}
+                  {/* Empleados usan este layout; admin/contador acceden desde AppLayout */}
+                  <Route element={<EmpleadoRoute><PortalEmpleadoLayout /></EmpleadoRoute>}>
+                    <Route path="/portal-empleado" element={<PortalEmpleadoPage />} />
+                  </Route>
+
                   {/* ── App protegida — rutas absolutas bajo AppLayout ── */}
                   <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
 
@@ -522,7 +546,8 @@ export default function App() {
                     <Route path="/notas-credito"          element={<NotasCreditoPage />} />
                     <Route path="/notas-credito-compras"  element={<NotasCreditoComprasPage />} />
                     <Route path="/libro-ventas"           element={<LibroVentasPage />} />
-                    <Route path="/portal-empleado"        element={<PortalEmpleadoPage />} />
+                    {/* /portal-empleado definida fuera del AppLayout para rol empleado */}
+                    {/* Admin/Contador acceden desde el sidebar, que navega a /portal-empleado */}
                     {/* ── Sistema ── */}
                     <Route path="/auditoria"          element={<AuditoriaPage />} />
                     <Route path="/importacion"        element={<ImportacionPage />} />

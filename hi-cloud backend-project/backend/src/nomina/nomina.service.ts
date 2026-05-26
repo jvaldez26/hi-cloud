@@ -25,6 +25,11 @@ import { TesoreriaService } from '../tesoreria/tesoreria.service';
 import { TipoMovimientoBancario, OrigenMovimiento } from '../tesoreria/entities/movimiento-bancario.entity';
 import { TenantService } from '../tenant/tenant.service';
 import { Empresa } from '../configuracion/entities/empresa.entity';
+import { EmailService } from '../notificaciones/services/email.service';
+import { UserRole } from '../users/enums/user-role.enum';
+import { randomBytes } from 'crypto';
+import { createHash } from 'crypto';
+import * as bcrypt from 'bcrypt';
 import PDFDocument from 'pdfkit';
 
 @Injectable()
@@ -46,6 +51,7 @@ export class NominaService {
     private asientosService:  AsientosAutomaticosService,
     private tesoreriaService: TesoreriaService,
     private tenantService:    TenantService,
+    private emailService:     EmailService,
     @InjectDataSource() private dataSource: DataSource,
   ) {}
 
@@ -148,6 +154,173 @@ export class NominaService {
 
     await this.empleadoRepository.update(empleadoId, { userId: userId ?? undefined });
     return this.findEmpleadoById(empleadoId);
+  }
+
+  /**
+   * Invita a un empleado al Portal del Empleado:
+   * - Si ya tiene usuario vinculado → devuelve info del usuario existente
+   * - Si no tiene → crea usuario con rol 'empleado', lo vincula, genera setup token (48h) y envía email
+   */
+  async invitarEmpleado(empleadoId: number, emailOverride?: string) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const emp = await this.empleadoRepository.findOne({
+      where: { id: empleadoId, empresaId, isActive: true },
+    });
+    if (!emp) throw new NotFoundException(`Empleado #${empleadoId} no encontrado`);
+
+    // Obtener nombre de la empresa para el email
+    const [empresa] = await this.dataSource.query<any[]>(
+      `SELECT nombre FROM empresa WHERE id = $1 LIMIT 1`, [empresaId],
+    );
+    const empresaNombre = empresa?.nombre ?? 'HiCloud ERP';
+
+    // Si ya tiene usuario vinculado → retornar estado
+    if (emp.userId) {
+      const [user] = await this.dataSource.query<any[]>(
+        `SELECT id, email, "accountStatus" FROM users WHERE id = $1 LIMIT 1`, [emp.userId],
+      );
+      if (user) {
+        return {
+          yaVinculado: true,
+          userId:      user.id,
+          email:       user.email,
+          estado:      user.accountStatus ?? 'activo',
+          mensaje:     `${emp.nombre} ya tiene acceso al portal con el email ${user.email}`,
+        };
+      }
+    }
+
+    // Email a usar: el override o el del empleado
+    const emailDestino = emailOverride ?? emp.email;
+    if (!emailDestino) throw new BadRequestException(
+      'El empleado no tiene email registrado. Ingresa un email para enviar la invitación.',
+    );
+
+    // Verificar si ya existe un usuario con ese email en el tenant
+    const [existingUser] = await this.dataSource.query<any[]>(
+      `SELECT u.id, u.email, u.role, u."accountStatus"
+       FROM users u
+       JOIN usuarios_empresas ue ON ue."usuarioId" = u.id
+       WHERE LOWER(u.email) = LOWER($1) AND ue."empresaId" = $2 LIMIT 1`,
+      [emailDestino, empresaId],
+    );
+
+    let userId: number;
+
+    if (existingUser) {
+      // Usuario ya existe en el tenant — solo vincularlo y enviar nuevo token
+      userId = existingUser.id;
+      this.logger.log(`[INVITAR-PORTAL] Usuario #${userId} ya existe — enviando nuevo setup token`);
+    } else {
+      // Crear nuevo usuario con rol 'empleado'
+      const nombre   = emp.nombre;
+      const apellido = emp.apellido;
+      const passTemp = await bcrypt.hash(randomBytes(16).toString('hex'), 10); // password temporal bloqueado
+
+      const [newUser] = await this.dataSource.query<any[]>(`
+        INSERT INTO users
+          (email, nombre, apellido, password, role, "isActive", "emailVerified",
+           "passwordConfigured", "accountStatus", "roleVersion", "createdAt", "updatedAt")
+        VALUES ($1, $2, $3, $4, $5, true, true, false, 'activo', 1, NOW(), NOW())
+        RETURNING id
+      `, [emailDestino, nombre, apellido, passTemp, UserRole.EMPLEADO]);
+
+      userId = newUser.id;
+
+      // Vincular empresa al nuevo usuario
+      await this.dataSource.query(`
+        INSERT INTO usuarios_empresas ("usuarioId", "empresaId", rol, "isPrincipal", "isActive", "createdAt", "updatedAt")
+        VALUES ($1, $2, 'empleado', true, true, NOW(), NOW())
+        ON CONFLICT DO NOTHING
+      `, [userId, empresaId]);
+
+      this.logger.log(`[INVITAR-PORTAL] Nuevo usuario empleado #${userId} (${emailDestino}) creado para empresa #${empresaId}`);
+    }
+
+    // Vincular empleado ↔ usuario
+    await this.empleadoRepository.update(empleadoId, { userId });
+
+    // Generar setup token (48h — más tiempo que el estándar de 24h)
+    await this.dataSource.query(
+      `UPDATE setup_tokens SET used = true WHERE "userId" = $1 AND used = false`,
+      [userId],
+    );
+    const rawToken  = randomBytes(32).toString('hex');
+    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+    const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 horas
+    await this.dataSource.query(
+      `INSERT INTO setup_tokens ("userId", "tokenHash", "expiresAt", used) VALUES ($1, $2, $3, false)`,
+      [userId, tokenHash, expiresAt],
+    );
+
+    // Enviar email de invitación
+    const frontendUrl = process.env['FRONTEND_URL'] ?? 'https://hicloudrd.com';
+    const setupUrl    = `${frontendUrl}/setup-password?token=${rawToken}`;
+
+    await this.emailService.enviar({
+      to:      emailDestino,
+      subject: `Acceso a tu Portal del Empleado — ${empresaNombre}`,
+      html:    this.buildInvitacionHtml(emp.nombre, empresaNombre, setupUrl),
+    });
+
+    this.logger.log(`[INVITAR-PORTAL] Invitación enviada a ${emailDestino} (empleado #${empleadoId}, usuario #${userId})`);
+
+    return {
+      ok:      true,
+      userId,
+      email:   emailDestino,
+      mensaje: `Invitación enviada a ${emailDestino}. El empleado tiene 48 horas para configurar su contraseña.`,
+    };
+  }
+
+  private buildInvitacionHtml(nombreEmpleado: string, empresaNombre: string, setupUrl: string): string {
+    return `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family:'Inter',sans-serif; background:#f5f5f5; margin:0; padding:20px; }
+    .card { background:#fff; max-width:540px; margin:0 auto; border-radius:12px; overflow:hidden; box-shadow:0 4px 20px rgba(0,0,0,.1); }
+    .header { background:linear-gradient(135deg,#1a2c5b 0%,#0f1d3e 100%); padding:32px; color:#fff; text-align:center; }
+    .header h2 { margin:0 0 6px; font-size:22px; }
+    .header p  { margin:0; color:rgba(255,255,255,.75); font-size:14px; }
+    .body { padding:32px; }
+    .features { background:#f8fafc; border-radius:10px; padding:20px; margin:20px 0; }
+    .features li { margin:8px 0; color:#475569; font-size:14px; }
+    .btn { display:inline-block; background:linear-gradient(135deg,#1677ff,#0ea5e9); color:#fff !important; text-decoration:none; padding:14px 36px; border-radius:10px; font-weight:700; font-size:15px; margin:8px 0; }
+    .note { color:#94a3b8; font-size:12px; margin-top:16px; }
+    .footer { padding:16px; text-align:center; font-size:12px; color:#9ca3af; border-top:1px solid #f1f5f9; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h2>🏢 Portal del Empleado</h2>
+      <p>${empresaNombre} te ha dado acceso a HiCloud ERP</p>
+    </div>
+    <div class="body">
+      <p>Hola <strong>${nombreEmpleado}</strong>,</p>
+      <p>${empresaNombre} te ha invitado a acceder a tu <strong>Portal del Empleado</strong> donde podrás consultar:</p>
+      <div class="features">
+        <ul style="margin:0;padding-left:20px;">
+          <li>📄 Tus recibos de nómina</li>
+          <li>🏖️ Tu saldo de vacaciones y solicitar permisos</li>
+          <li>📑 Tu contrato laboral</li>
+          <li>💰 Tu desglose mensual de sueldo</li>
+        </ul>
+      </div>
+      <p>Para activar tu cuenta, configura tu contraseña haciendo clic aquí:</p>
+      <p style="text-align:center;margin:28px 0;">
+        <a href="${setupUrl}" class="btn">Configurar mi contraseña →</a>
+      </p>
+      <p class="note">⏱️ Este enlace expira en <strong>48 horas</strong>. Si no lo solicitaste, ignora este mensaje.</p>
+    </div>
+    <div class="footer">© ${new Date().getFullYear()} HiCloud ERP · República Dominicana</div>
+  </div>
+</body>
+</html>`;
   }
 
   /**
