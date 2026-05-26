@@ -193,9 +193,12 @@ export class CajaService {
       throw new BadRequestException('La caja ya está cerrada');
     }
 
-    // La columna fecha es tipo DATE (sin timezone). TypeORM la lee como Date UTC-midnight.
-    // Usamos toLocaleDateString con la zona RD para evitar off-by-one en casos límite.
-    const fechaStr = new Date(caja.fecha).toLocaleDateString('en-CA', { timeZone: 'America/Santo_Domingo' });
+    // La columna fecha es tipo DATE almacenada como UTC midnight (new Date('YYYY-MM-DD')).
+    // NO convertir con toLocaleDateString + zona horaria: eso da el día anterior (UTC-4 convierte
+    // 2026-05-26T00:00:00Z → 2026-05-25 20:00 RD → fecha '2026-05-25', off-by-one).
+    // toISOString() recupera exactamente la fecha UTC original que se guardó.
+    const fechaDate = caja.fecha instanceof Date ? caja.fecha : new Date(caja.fecha as any);
+    const fechaStr  = fechaDate.toISOString().substring(0, 10);
     await this.recalcularDesdeBD(id, fechaStr, caja.vendedorId, empresaId);
 
     const fresh = await this.repo.findOne({ where: { id } }) as CierreCaja;
