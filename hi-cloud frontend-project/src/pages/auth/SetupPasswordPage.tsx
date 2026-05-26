@@ -47,17 +47,17 @@ export default function SetupPasswordPage() {
       });
 
       const data = res.data;
-      // Auto-login: guardar estado y redirigir al dashboard
+      // Auto-login: guardar estado y redirigir según rol
       login(data.user, data.empresaActual, data.empresas ?? []);
       setSuccess(true);
 
-      setTimeout(() => {
-        if (data.user?.role === 'super_admin') {
-          navigate('/super-admin', { replace: true });
-        } else {
-          navigate('/dashboard', { replace: true });
-        }
-      }, 1500);
+      const role: string = data.user?.role ?? '';
+      const destino =
+        role === 'super_admin' ? '/super-admin'    :
+        role === 'empleado'    ? '/portal-empleado':
+        '/dashboard';
+
+      setTimeout(() => navigate(destino, { replace: true }), 1500);
     } catch (err: any) {
       const msg: string =
         err?.response?.data?.message ??
@@ -94,7 +94,7 @@ export default function SetupPasswordPage() {
             ¡Contraseña configurada!
           </h1>
           <p style={{ color: '#94a3b8', fontSize: 15 }}>
-            Redirigiendo al dashboard…
+            Redirigiendo…
           </p>
         </div>
       </div>
