@@ -2,8 +2,8 @@ import {
   Injectable, NotFoundException, BadRequestException, Logger,
   StreamableFile,
 } from '@nestjs/common';
-import type { DocData } from '../common/doc.template';
-import { generarDocumentoPDF } from '../common/pdf/doc-pdf.helper';
+import type { DocumentoPDFData, DocumentoPDFItem } from '../common/pdf/documento-pdf.helper';
+import { generarDocumentoPDFFactura } from '../common/pdf/documento-pdf.helper';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, LessThan, In, DataSource } from 'typeorm';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
@@ -259,56 +259,80 @@ export class CotizacionesService {
       .query('SELECT * FROM empresa WHERE id = $1 LIMIT 1', [cot.empresaId])
       .then((r: any[]) => r[0] || {});
 
-    const campos: any[] = [];
-    if (cot.fechaVencimiento) campos.push({ label: 'Válida hasta', valor: String(cot.fechaVencimiento) });
-    if (cot.validezDias)      campos.push({ label: 'Validez (días)', valor: cot.validezDias });
-    if (cot.condicionesPago)  campos.push({ label: 'Condiciones de Pago', valor: cot.condicionesPago });
-    if (cot.nombreVendedor)   campos.push({ label: 'Vendedor', valor: cot.nombreVendedor });
+    // Descargar logo de la empresa
+    let logoBuf: Buffer | undefined;
+    if (empresa.logo) {
+      try {
+        const res = await fetch(empresa.logo, { signal: AbortSignal.timeout(5_000) });
+        if (res.ok) logoBuf = Buffer.from(await res.arrayBuffer());
+      } catch { /* logo no disponible — se usan iniciales */ }
+    }
 
-    const data: DocData = {
-      tipo:        'COTIZACIÓN',
-      tipoSub:     'Propuesta comercial · No válida como comprobante fiscal',
-      numero:      cot.numero,
-      fecha:       String(cot.fecha),
-      estado:      (cot as any).estado,
-      estadoColor: (cot as any).estado === 'aprobada' ? 'green'
-                 : (cot as any).estado === 'rechazada' ? 'red'
-                 : (cot as any).estado === 'vencida'   ? 'red'
-                 : 'orange',
-      empresa: {
-        nombre:    empresa.razonSocial || empresa.nombre || 'Mi Empresa',
-        rnc:       empresa.rnc || '',
-        direccion: empresa.direccion || '',
-        ciudad:    empresa.ciudad,
-        telefono:  empresa.telefono,
-        email:     empresa.email,
-      },
-      participante: {
-        label:  'Cliente',
-        nombre: cot.cliente?.nombre || 'Sin cliente',
-        rnc:    cot.cliente?.rncReceptor || cot.cliente?.rfc,
-        dir:    cot.cliente?.direccion,
-        tel:    cot.cliente?.telefono,
-        email:  cot.cliente?.email,
-      },
-      campos,
-      items: (cot.detalles || []).map((d: any) => ({
+    // Estado → color de badge
+    const estadoColor =
+      cot.estado === 'aceptada'   ? 'green'  :
+      cot.estado === 'convertida' ? 'green'  :
+      cot.estado === 'rechazada'  ? 'red'    :
+      cot.estado === 'vencida'    ? 'red'    : 'orange';
+
+    // Calcular subtotales gravado/exento
+    const items: DocumentoPDFItem[] = (cot.detalles || []).map(d => {
+      const itbisPct   = Number((d as any).porcentajeIva ?? 18);
+      const subtotal   = Number(d.precioUnitario) * Number(d.cantidad);
+      const importeItbis = Number((d as any).importeIva ?? subtotal * (itbisPct / 100));
+      return {
         descripcion:    d.descripcion,
         cantidad:       Number(d.cantidad),
-        unidad:         (d as any).producto?.unidadMedida ?? 'UN',
+        unidadMedida:   (d as any).producto?.unidadMedida ?? 'UN',
         precioUnitario: Number(d.precioUnitario),
-        importe:        Number(d.total ?? 0),
-      })),
-      totales: [
-        { label: 'Subtotal',    valor: Number(cot.subtotal) },
-        { label: 'ITBIS (18%)', valor: Number(cot.iva) },
-        { label: 'Total',       valor: Number(cot.total), bold: true },
-      ],
-      notas: cot.notas ?? undefined,
-      pie: 'Esta cotización es una propuesta comercial y no constituye un comprobante fiscal. Válida hasta la fecha indicada. HiCloud ERP · República Dominicana',
+        itbisPct,
+        importeItbis,
+        subtotal,
+        total:          Number(d.total ?? subtotal + importeItbis),
+      };
+    });
+
+    const subtotalGravado = items.filter(i => i.itbisPct > 0).reduce((s, i) => s + i.subtotal, 0);
+    const subtotalExento  = items.filter(i => i.itbisPct === 0).reduce((s, i) => s + i.subtotal, 0);
+
+    const factConf = (empresa.configuracion ?? {}) as Record<string, unknown>;
+
+    const data: DocumentoPDFData = {
+      tipo:              'COTIZACIÓN',
+      tipoSub:           'Propuesta comercial · No válida como comprobante fiscal',
+      numero:            cot.numero,
+      fecha:             String(cot.fecha),
+      fechaVencimiento:  cot.fechaVencimiento ? String(cot.fechaVencimiento) : undefined,
+      validezDias:       cot.validezDias,
+      condicionesPago:   cot.condicionesPago,
+      estado:            cot.estado,
+      estadoColor,
+      empresaNombre:     empresa.razonSocial || empresa.nombre || 'Mi Empresa',
+      empresaRNC:        empresa.rnc || '',
+      empresaDireccion:  empresa.direccion || '',
+      empresaCiudad:     empresa.ciudad,
+      empresaTelefono:   factConf.factMostrarTelefono !== false ? empresa.telefono : undefined,
+      empresaEmail:      factConf.factMostrarEmail    !== false ? empresa.email    : undefined,
+      empresaSitioWeb:   factConf.factMostrarWeb      !== false ? empresa.sitioWeb : undefined,
+      empresaPie:        empresa.configuracion?.pieFactura as string | undefined,
+      vendedorNombre:    cot.nombreVendedor,
+      clienteNombre:     cot.cliente?.nombre || 'Consumidor Final',
+      clienteRNC:        (cot.cliente as any)?.rncReceptor || (cot.cliente as any)?.rfc,
+      clienteDireccion:  cot.cliente?.direccion,
+      clienteCiudad:     cot.cliente?.ciudad,
+      clienteTelefono:   cot.cliente?.telefono,
+      clienteEmail:      cot.cliente?.email,
+      items,
+      subtotalGravado,
+      subtotalExento,
+      subtotalGeneral:   subtotalGravado + subtotalExento,
+      itbisTotal:        Number(cot.iva ?? 0),
+      totalGeneral:      Number(cot.total ?? 0),
+      notas:             cot.notas ?? undefined,
+      mostrarFirma:      true,  // Las cotizaciones siempre muestran sección de aceptación
     };
 
-    const buffer = await generarDocumentoPDF(data);
+    const buffer = await generarDocumentoPDFFactura(data, logoBuf);
     return { buffer, filename: `${cot.numero}.pdf` };
   }
 
