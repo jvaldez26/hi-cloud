@@ -199,38 +199,35 @@ export function generarHTMLFactura(d: FacturaPDFData): string {
     );
   }).join('');
 
-  // ── Bloque QR / Seguridad DGII ────────────────────────────────────────────
-  const qrImgHtml = d.qrBase64
-    ? `<img src="data:image/png;base64,${d.qrBase64}" ` +
-      `style="width:130px;height:130px;display:block;margin:8px auto 6px;" alt="QR DGII">`
-    : `<div style="width:130px;height:130px;background:#f5f5f5;border:1px dashed #bbb;` +
-      `display:flex;align-items:center;justify-content:center;` +
-      `font-size:8px;color:#999;text-align:center;margin:8px auto 6px;` +
-      `line-height:1.7;padding:10px;">` +
-      `Comprobante<br>en proceso de<br>validación DGII</div>`;
-
-  const seguridadHtml =
-    `<div style="border:1px solid ${BORDER};padding:12px 14px;text-align:center;">` +
-    `<div style="font-size:9px;font-weight:700;text-transform:uppercase;` +
-    `letter-spacing:.5px;color:${DARK};margin-bottom:2px;">Seguridad Fiscal DGII</div>` +
-    qrImgHtml +
-    (d.ecfCodigoSeguridad
-      ? `<div style="font-size:8.5px;color:${GRAY};margin-top:5px;line-height:1.85;">` +
-        `Código de Seguridad:<br>` +
-        `<strong style="color:${DARK};font-family:monospace;letter-spacing:1px;">${esc(d.ecfCodigoSeguridad)}</strong>` +
-        `</div>`
-      : '') +
-    (d.ecfFechaFirma
-      ? `<div style="font-size:8.5px;color:${GRAY};margin-top:5px;line-height:1.85;">` +
-        `Fecha Firma Digital:<br>` +
-        `<strong style="color:${DARK};">${dateTimeFmt(d.ecfFechaFirma)}</strong>` +
-        `</div>`
-      : '') +
-    `<div style="font-size:7.5px;color:#888;margin-top:10px;font-style:italic;` +
-    `line-height:1.65;padding:0 6px;">` +
-    `La validez de este comprobante puede ser verificada mediante el código QR ante la DGII.` +
-    `</div>` +
-    `</div>`;
+  // ── Bloque QR / Seguridad DGII ──────────────────────────────────────────
+  // BUG4: Sin recuadro/caja. Si no hay e-NCF → no mostrar nada.
+  // Si hay e-NCF → mostrar solo QR + datos de seguridad, sin borde exterior.
+  const seguridadHtml = d.ecfNumero
+    ? `<div style="text-align:center;padding:8px 0;">` +
+      `<div style="font-size:9px;font-weight:700;text-transform:uppercase;` +
+      `letter-spacing:.5px;color:${DARK};margin-bottom:6px;">Seguridad Fiscal DGII</div>` +
+      (d.qrBase64
+        ? `<img src="data:image/png;base64,${d.qrBase64}" ` +
+          `style="width:100px;height:100px;display:block;margin:0 auto 6px;" alt="QR DGII">`
+        : '') +
+      (d.ecfCodigoSeguridad
+        ? `<div style="font-size:8.5px;color:${GRAY};margin-top:5px;line-height:1.85;">` +
+          `Código de Seguridad:<br>` +
+          `<strong style="color:${DARK};font-family:monospace;letter-spacing:1px;">${esc(d.ecfCodigoSeguridad)}</strong>` +
+          `</div>`
+        : '') +
+      (d.ecfFechaFirma
+        ? `<div style="font-size:8.5px;color:${GRAY};margin-top:5px;line-height:1.85;">` +
+          `Fecha Firma Digital:<br>` +
+          `<strong style="color:${DARK};">${dateTimeFmt(d.ecfFechaFirma)}</strong>` +
+          `</div>`
+        : '') +
+      `<div style="font-size:7.5px;color:#888;margin-top:10px;font-style:italic;` +
+      `line-height:1.65;padding:0 6px;">` +
+      `La validez de este comprobante puede ser verificada mediante el código QR ante la DGII.` +
+      `</div>` +
+      `</div>`
+    : '';
 
   // ── Totales ───────────────────────────────────────────────────────────────
   const totalesFilas: Array<[string, string]> = [
@@ -241,9 +238,9 @@ export function generarHTMLFactura(d: FacturaPDFData): string {
     ['ITBIS Total (18%)',  money(d.itbisTotal)],
   ];
 
+  // BUG5: Sin border-bottom entre subtotales — solo la línea antes del TOTAL GENERAL
   const totalesRowsHtml = totalesFilas.map(([label, val]) =>
-    `<div style="display:flex;justify-content:space-between;align-items:center;` +
-    `padding:5px 0;border-bottom:1px solid #e0e0e0;">` +
+    `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;">` +
     `<span style="font-size:9.5px;color:${GRAY};">${label}:</span>` +
     `<span style="font-size:9.5px;color:${DARK};">${val}</span>` +
     `</div>`
@@ -284,43 +281,46 @@ export function generarHTMLFactura(d: FacturaPDFData): string {
 
   <!-- ══════════════════════════════════════════════════════════════════
        SECCIÓN 1: ENCABEZADO — Logo+Empresa (izq) · Tipo doc+NCF (der)
+       BUG1+BUG2: tabla en vez de flex; font-size 12px para nombre empresa
+       BUG3: e-NCF solo si existe (sin placeholder "—")
   ══════════════════════════════════════════════════════════════════ -->
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin-bottom:12px;">
-
-    <!-- Columna izquierda: Logo arriba, datos empresa abajo -->
-    <div style="flex:1;min-width:0;">
-      ${logoHtml}
-      <div style="font-size:13px;font-weight:700;color:${DARK};text-transform:uppercase;
-                  line-height:1.2;margin-bottom:5px;">${esc(d.empresaNombre)}</div>
-      <div style="font-size:9px;color:${GRAY};line-height:1.95;">
-        ${d.empresaDireccion
-          ? `<div>C/ ${esc(d.empresaDireccion)}${d.empresaCiudad ? ', ' + esc(d.empresaCiudad) : ''}.</div>`
-          : ''}
-        ${d.empresaEmail
-          ? `<div>Correo: ${esc(d.empresaEmail)}</div>`
-          : ''}
-        ${d.empresaTelefono
-          ? `<div>Teléfono: ${esc(d.empresaTelefono)}</div>`
-          : ''}
-        <div style="color:${DARK};font-weight:700;font-size:9.5px;margin-top:1px;">RNC: ${esc(d.empresaRNC)}</div>
-      </div>
-    </div>
-
-    <!-- Columna derecha: tipo documento + e-NCF + vigencia + info rows -->
-    <div style="text-align:right;flex-shrink:0;min-width:250px;max-width:285px;">
-      <div style="font-size:10px;font-weight:700;color:${DARK};text-transform:uppercase;
-                  line-height:1.4;margin-bottom:5px;">${docTitulo}</div>
-      <div style="margin-bottom:2px;">
-        <span style="font-size:9.5px;color:${GRAY};">e-NCF: </span>
-        <span style="font-size:16px;font-weight:900;color:${DARK};
-                     font-family:monospace;letter-spacing:1px;">${esc(d.ecfNumero ?? '—')}</span>
-      </div>
-      ${d.ecfFechaVigencia
-        ? `<div style="font-size:8.5px;color:${GREEN};margin-bottom:7px;">Válida hasta: ${dateFmt(d.ecfFechaVigencia)}</div>`
-        : `<div style="height:7px;"></div>`}
-      ${infoRowsHtml}
-    </div>
-  </div>
+  <table width="100%" style="border-collapse:collapse;margin-bottom:12px;" cellspacing="0" cellpadding="0">
+    <tr>
+      <!-- Columna izquierda: Logo arriba, datos empresa abajo -->
+      <td width="55%" valign="top" style="padding-right:20px;">
+        ${logoHtml}
+        <div style="font-size:12px;font-weight:700;color:${DARK};text-transform:uppercase;
+                    line-height:1.2;margin-bottom:5px;">${esc(d.empresaNombre)}</div>
+        <div style="font-size:9px;color:${GRAY};line-height:1.95;">
+          ${d.empresaDireccion
+            ? `<div>C/ ${esc(d.empresaDireccion)}${d.empresaCiudad ? ', ' + esc(d.empresaCiudad) : ''}.</div>`
+            : ''}
+          ${d.empresaEmail
+            ? `<div>Correo: ${esc(d.empresaEmail)}</div>`
+            : ''}
+          ${d.empresaTelefono
+            ? `<div>Teléfono: ${esc(d.empresaTelefono)}</div>`
+            : ''}
+          <div style="color:${DARK};font-weight:700;font-size:9.5px;margin-top:1px;">RNC: ${esc(d.empresaRNC)}</div>
+        </div>
+      </td>
+      <!-- Columna derecha: tipo documento + e-NCF (solo si existe) + info rows -->
+      <td width="45%" valign="top" style="text-align:right;">
+        <div style="font-size:10px;font-weight:700;color:${DARK};text-transform:uppercase;
+                    line-height:1.4;margin-bottom:5px;">${docTitulo}</div>
+        ${d.ecfNumero
+          ? `<div style="margin-bottom:2px;">` +
+            `<span style="font-size:9.5px;color:${GRAY};">e-NCF: </span>` +
+            `<span style="font-size:16px;font-weight:900;color:${DARK};font-family:monospace;letter-spacing:1px;">${esc(d.ecfNumero)}</span>` +
+            `</div>` +
+            (d.ecfFechaVigencia
+              ? `<div style="font-size:8.5px;color:${GREEN};margin-bottom:7px;">Válida hasta: ${dateFmt(d.ecfFechaVigencia)}</div>`
+              : '<div style="height:7px;"></div>')
+          : '<div style="height:7px;"></div>'}
+        ${infoRowsHtml}
+      </td>
+    </tr>
+  </table>
 
   <!-- ══════════════════════════════════════════════════════════════════
        SEPARADOR negro doble grueso
@@ -371,14 +371,13 @@ export function generarHTMLFactura(d: FacturaPDFData): string {
   </table>
 
   <!-- ══════════════════════════════════════════════════════════════════
-       SECCIÓN 4: SEGURIDAD DGII (40%) + TOTALES (60%)
+       SECCIÓN 4: SEGURIDAD DGII (38%, solo si hay e-NCF) + TOTALES
+       BUG4: columna QR solo se muestra cuando hay e-NCF
   ══════════════════════════════════════════════════════════════════ -->
   <div style="display:flex;gap:20px;align-items:flex-start;margin-bottom:20px;">
 
-    <!-- Izquierda: caja Seguridad Fiscal DGII -->
-    <div style="width:38%;flex-shrink:0;">
-      ${seguridadHtml}
-    </div>
+    <!-- Izquierda: Seguridad Fiscal DGII (solo si hay e-NCF) -->
+    ${seguridadHtml ? `<div style="width:38%;flex-shrink:0;">${seguridadHtml}</div>` : ''}
 
     <!-- Derecha: totales -->
     <div style="flex:1;">

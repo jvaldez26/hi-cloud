@@ -149,18 +149,14 @@ export async function generarFacturaPDF(
       .text(titulo, rightColX, ry, { width: rightColW, align: 'right' });
     ry = doc.y + 4;
 
-    // BUG3 FIX: e-NCF siempre visible (con '—' cuando no está asignado aún)
-    doc.fillColor(GRAY).font('Helvetica').fontSize(8.5)
-      .text('e-NCF:', rightColX, ry, { width: rightColW, align: 'right' });
-    ry += 11;
+    // e-NCF label + número grande (solo si existe — sin placeholder cuando null)
     if (d.ecfNumero) {
+      doc.fillColor(GRAY).font('Helvetica').fontSize(8.5)
+        .text('e-NCF:', rightColX, ry, { width: rightColW, align: 'right' });
+      ry += 11;
       doc.fillColor(DARK).font('Helvetica-Bold').fontSize(15)
         .text(d.ecfNumero, rightColX, ry, { width: rightColW, align: 'right' });
       ry += 20;
-    } else {
-      doc.fillColor(GRAY).font('Helvetica').fontSize(9)
-        .text('— Pendiente de validación DGII —', rightColX, ry, { width: rightColW, align: 'right' });
-      ry += 13;
     }
 
     // Válida hasta (verde)
@@ -296,67 +292,56 @@ export async function generarFacturaPDF(
     }
     y += 10;
 
-    // ── SECCIÓN INFERIOR: QR (38%) + TOTALES (62%) ───────────────────
+    // ── SECCIÓN INFERIOR: QR (38%, solo si hay e-NCF) + TOTALES ─────
+    // Si no hay e-NCF → sin caja QR, totales ocupan todo el ancho
 
-    const qrBoxW  = Math.round(W * 0.38);
-    const gapMid  = 14;
+    const hasEcf  = Boolean(d.ecfNumero);
+    const qrBoxW  = hasEcf ? Math.round(W * 0.38) : 0;
+    const gapMid  = hasEcf ? 14 : 0;
     const totW    = W - qrBoxW - gapMid;
     const totX    = PL + qrBoxW + gapMid;
 
-    // Calcular altura del QR box
+    // ── QR BOX (solo cuando hay e-NCF) ──────────────────────────────
     const qrSize  = 100;
-    const qrBoxH  = 26 + qrSize + 10
-      + (d.ecfCodigoSeguridad ? 28 : 0)
-      + (d.ecfFechaFirma      ? 28 : 0)
-      + 32; // nota final
+    let   qrBoxH  = 0;  // 0 cuando no hay e-NCF → y lo calcula solo por totales
+    if (hasEcf) {
+      qrBoxH = 26 + qrSize + 10
+        + (d.ecfCodigoSeguridad ? 28 : 0)
+        + (d.ecfFechaFirma      ? 28 : 0)
+        + 32; // nota final
 
-    // ── QR BOX ──────────────────────────────────────────────────────
-    doc.rect(PL, y, qrBoxW, qrBoxH).strokeColor(BORDER).lineWidth(0.75).stroke();
-    doc.lineWidth(1);
+      // Sin recuadro exterior — solo contenido DGII
+      doc.fillColor(DARK).font('Helvetica-Bold').fontSize(8.5)
+        .text('SEGURIDAD FISCAL DGII', PL, y + 4, { width: qrBoxW, align: 'center' });
 
-    doc.fillColor(DARK).font('Helvetica-Bold').fontSize(8.5)
-      .text('SEGURIDAD FISCAL DGII', PL, y + 8, { width: qrBoxW, align: 'center' });
+      let qy = y + 18;
+      const qrX = PL + Math.round((qrBoxW - qrSize) / 2);
+      if (d.qrBase64) {
+        try {
+          const qrBuf = Buffer.from(d.qrBase64, 'base64');
+          doc.image(qrBuf, qrX, qy, { width: qrSize, height: qrSize });
+          qy += qrSize + 8;
+        } catch { qy += 8; }
+      }
 
-    let qy = y + 22;
-    const qrX = PL + Math.round((qrBoxW - qrSize) / 2);
-    // BUG4 FIX: si qrBase64 falla (excepción o vacío), siempre mostrar placeholder informativo
-    let qrDibujado = false;
-    if (d.qrBase64) {
-      try {
-        const qrBuf = Buffer.from(d.qrBase64, 'base64');
-        doc.image(qrBuf, qrX, qy, { width: qrSize, height: qrSize });
-        qrDibujado = true;
-      } catch { /* fallback al placeholder */ }
+      if (d.ecfCodigoSeguridad) {
+        doc.fillColor(GRAY).font('Helvetica').fontSize(8)
+          .text('Código de Seguridad:', PL, qy, { width: qrBoxW, align: 'center' }); qy += 11;
+        doc.fillColor(DARK).font('Helvetica-Bold').fontSize(8)
+          .text(d.ecfCodigoSeguridad, PL, qy, { width: qrBoxW, align: 'center' }); qy += 13;
+      }
+
+      if (d.ecfFechaFirma) {
+        doc.fillColor(GRAY).font('Helvetica').fontSize(8)
+          .text('Fecha Firma Digital:', PL, qy, { width: qrBoxW, align: 'center' }); qy += 11;
+        doc.fillColor(DARK).font('Helvetica-Bold').fontSize(8)
+          .text(fmtDT(d.ecfFechaFirma), PL, qy, { width: qrBoxW, align: 'center' }); qy += 13;
+      }
+
+      const nota = 'La validez de este comprobante puede ser verificada mediante el código QR ante la DGII.';
+      doc.fillColor('#888').font('Helvetica-Oblique').fontSize(7)
+        .text(nota, PL + 6, qy, { width: qrBoxW - 12, align: 'center' });
     }
-    if (!qrDibujado) {
-      // Placeholder con borde y texto centrado vertical (~40% del alto)
-      doc.rect(qrX, qy, qrSize, qrSize).fillAndStroke('#f5f5f5', '#cccccc');
-      doc.fillColor('#777').font('Helvetica').fontSize(7.5)
-        .text(
-          'Comprobante en\nproceso de\nvalidación DGII',
-          qrX, qy + Math.round(qrSize * 0.32),
-          { width: qrSize, align: 'center', lineGap: 2 },
-        );
-    }
-    qy += qrSize + 8;
-
-    if (d.ecfCodigoSeguridad) {
-      doc.fillColor(GRAY).font('Helvetica').fontSize(8)
-        .text('Código de Seguridad:', PL, qy, { width: qrBoxW, align: 'center' }); qy += 11;
-      doc.fillColor(DARK).font('Helvetica-Bold').fontSize(8)
-        .text(d.ecfCodigoSeguridad, PL, qy, { width: qrBoxW, align: 'center' }); qy += 13;
-    }
-
-    if (d.ecfFechaFirma) {
-      doc.fillColor(GRAY).font('Helvetica').fontSize(8)
-        .text('Fecha Firma Digital:', PL, qy, { width: qrBoxW, align: 'center' }); qy += 11;
-      doc.fillColor(DARK).font('Helvetica-Bold').fontSize(8)
-        .text(fmtDT(d.ecfFechaFirma), PL, qy, { width: qrBoxW, align: 'center' }); qy += 13;
-    }
-
-    const nota = 'La validez de este comprobante puede ser verificada mediante el código QR ante la DGII.';
-    doc.fillColor('#888').font('Helvetica-Oblique').fontSize(7)
-      .text(nota, PL + 6, qy, { width: qrBoxW - 12, align: 'center' });
 
     // ── TOTALES ──────────────────────────────────────────────────────
     const totals: Array<[string, string]> = [
@@ -369,16 +354,14 @@ export async function generarFacturaPDF(
     const labelW2 = Math.round(totW * 0.57);
     const valueW2 = totW - labelW2;
 
+    // BUG5 (consistencia con HTML): sin líneas separadoras entre subtotales
     let ty = y;
     for (const [label, val] of totals) {
       doc.fillColor(GRAY).font('Helvetica').fontSize(9.5)
         .text(label + ':', totX, ty, { width: labelW2, align: 'left' });
       doc.fillColor(DARK).font('Helvetica').fontSize(9.5)
         .text(val, totX + labelW2, ty, { width: valueW2, align: 'right' });
-      doc.moveTo(totX, ty + 14).lineTo(totX + totW, ty + 14)
-        .strokeColor('#e0e0e0').lineWidth(0.5).stroke();
-      doc.lineWidth(1);
-      ty += 15;
+      ty += 14;
     }
 
     // Descuento (si aplica)
