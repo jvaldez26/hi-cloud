@@ -94,12 +94,14 @@ export class PagosSuscripcionService {
     const rows = await this.ds.query<{ saldo: string }[]>(`
       SELECT COALESCE(SUM(
         CASE
-          WHEN tipo IN ('CARGO')                                             THEN  "montoUsd"
-          WHEN tipo IN ('TRANSFERENCIA','TARJETA','MANUAL') AND estado = 'CONFIRMADO' THEN -"montoUsd"
-          WHEN tipo = 'CREDITO'                             AND estado = 'CONFIRMADO' THEN -"montoUsd"
+          WHEN tipo = 'CARGO'
+            THEN  "montoUsd"
+          WHEN tipo IN ('TRANSFERENCIA','TARJETA','MANUAL','CREDITO')
+               AND estado = 'CONFIRMADO'
+            THEN -"montoUsd"
           ELSE 0
         END
-      ), 0)::numeric AS saldo
+      ), 0)::float AS saldo
       FROM pagos_suscripcion
       WHERE "empresaId" = $1
         AND estado != 'RECHAZADO'
