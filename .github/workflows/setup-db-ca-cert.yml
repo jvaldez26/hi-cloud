@@ -1,0 +1,77 @@
+name: Setup DB_CA_CERT Secret (one-time)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Workflow de uso único para sincronizar el cert SSL de RDS (que vive en el
+# .env del servidor EC2) como GitHub Secret.
+#
+# PREREQUISITO — ejecutar UNA sola vez en la UI de GitHub:
+#   Settings → Secrets and variables → Actions → New repository secret
+#   Nombre: GH_PAT
+#   Valor:  Personal Access Token (classic) con scope "repo"
+#   Crear en: https://github.com/settings/tokens/new
+#
+# PARA EJECUTAR:
+#   GitHub → Actions → "Setup DB_CA_CERT Secret" → Run workflow → Run
+#
+# RESULTADO:
+#   GitHub Secret DB_CA_CERT queda configurado con el valor del EC2.
+#   Los deploys futuros usan ese secret para actualizar el .env automáticamente.
+#   Después de verificar, puedes eliminar el GH_PAT secret si lo deseas.
+# ─────────────────────────────────────────────────────────────────────────────
+
+on:
+  workflow_dispatch:
+
+jobs:
+  set-secret:
+    name: Sync DB_CA_CERT from EC2 to GitHub Secrets
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/ec2_key
+          chmod 600 ~/.ssh/ec2_key
+          ssh-keyscan -H 3.137.152.75 >> ~/.ssh/known_hosts 2>/dev/null
+          echo "✅ SSH key configurada"
+
+      - name: Read DB_CA_CERT from EC2 and set GitHub Secret
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          # Leer el cert desde el .env del servidor EC2
+          CERT_VALUE=$(ssh -i ~/.ssh/ec2_key -o StrictHostKeyChecking=no ubuntu@3.137.152.75 \
+            "grep '^DB_CA_CERT=' \"/home/ubuntu/hicloud/hi-cloud backend-project/backend/.env\" \
+             | cut -d'=' -f2-" 2>/dev/null || echo "")
+
+          if [ -z "$CERT_VALUE" ]; then
+            echo "❌ DB_CA_CERT no encontrado en EC2 .env"
+            echo "   Ruta buscada: /home/ubuntu/hicloud/hi-cloud backend-project/backend/.env"
+            exit 1
+          fi
+
+          echo "✅ Cert leído de EC2 (${#CERT_VALUE} caracteres)"
+
+          # Configurar el GitHub Secret usando gh CLI
+          echo "$CERT_VALUE" | gh secret set DB_CA_CERT \
+            --repo jvaldez26/hi-cloud \
+            --body -
+
+          echo "✅ GitHub Secret DB_CA_CERT configurado exitosamente"
+
+      - name: Verify secret was saved
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          if gh secret list --repo jvaldez26/hi-cloud | grep -q "^DB_CA_CERT"; then
+            echo "✅ Verificado: DB_CA_CERT aparece en GitHub Secrets"
+            echo ""
+            echo "━━━ RESULTADO ━━━"
+            echo "Los deploys futuros actualizarán automáticamente el .env"
+            echo "con el cert SSL de RDS desde GitHub Secrets."
+            echo "Puedes eliminar el GH_PAT secret si ya no lo necesitas."
+          else
+            echo "❌ Error: DB_CA_CERT no encontrado en la lista de secrets"
+            exit 1
+          fi

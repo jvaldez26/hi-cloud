@@ -1,5 +1,5 @@
 import {
-  Injectable, NotFoundException, BadRequestException, ConflictException,
+  Injectable, NotFoundException, BadRequestException, ConflictException, Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -7,9 +7,12 @@ import { UbicacionAlmacen, TipoUbicacion } from './entities/ubicacion-almacen.en
 import { OrdenPicking, EstadoPicking, TipoOrdenPicking } from './entities/orden-picking.entity';
 import { OrdenPickingLinea, EstadoLineaPicking } from './entities/orden-picking-linea.entity';
 import { TenantService } from '../tenant/tenant.service';
+import { InventarioService } from '../inventario/inventario.service';
 
 @Injectable()
 export class WmsService {
+  private readonly logger = new Logger(WmsService.name);
+
   constructor(
     @InjectRepository(UbicacionAlmacen)
     private ubicRepo: Repository<UbicacionAlmacen>,
@@ -18,6 +21,7 @@ export class WmsService {
     @InjectRepository(OrdenPickingLinea)
     private lineaRepo: Repository<OrdenPickingLinea>,
     private tenantService: TenantService,
+    private inventarioSvc: InventarioService,
   ) {}
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -241,16 +245,39 @@ export class WmsService {
     return this.findOrdenById(linea.ordenId);
   }
 
-  async despacharOrden(id: number, dto: { observaciones?: string }) {
+  async despacharOrden(id: number, dto: { observaciones?: string; operadorId?: number }) {
     const o = await this.findOrdenById(id);
     if (o.estado !== EstadoPicking.EMPACADA) {
       throw new BadRequestException('La orden debe estar empacada para despachar');
     }
+
     await this.ordenRepo.update(id, {
       estado:           EstadoPicking.DESPACHADA,
       fechaDespachado:  new Date(),
       observaciones:    dto.observaciones ?? o.observaciones,
     } as any);
+
+    // Descontar inventario por cada línea pickeada — no bloquear si falla
+    const operadorId = dto.operadorId ?? o.creadoPorId ?? 0;
+    for (const linea of o.lineas) {
+      const pickeada = Number(linea.cantidadPickeada ?? 0);
+      if (!linea.productoId || pickeada <= 0) continue;
+      await this.inventarioSvc
+        .registrarSalida(
+          linea.productoId,
+          pickeada,
+          operadorId,
+          `Picking despachado OP ${o.numero}`,
+          o.numero,
+        )
+        .catch((err: unknown) => {
+          this.logger.warn(
+            `[WMS] registrarSalida OP ${o.numero} prod #${linea.productoId} ` +
+            `(${pickeada} uds) falló: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
+    }
+
     return this.findOrdenById(id);
   }
 

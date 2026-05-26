@@ -1,12 +1,12 @@
 import {
   Card, Row, Col, Typography, Tag, Alert, Table, Progress,
   Tabs, Space, Button, Modal, Form, DatePicker, Input,
-  message, theme, Avatar, Statistic, Spin,
+  message, theme, Avatar, Statistic, Spin, Descriptions, Divider,
 } from 'antd';
 import {
   UserOutlined, DollarOutlined, CalendarOutlined, FileTextOutlined,
   DownloadOutlined, PlusOutlined, SendOutlined, ClockCircleOutlined,
-  SearchOutlined, LinkOutlined,
+  SearchOutlined, LinkOutlined, FileDoneOutlined, PrinterOutlined,
 } from '@ant-design/icons';
 import { useMutation } from '@tanstack/react-query';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -253,6 +253,141 @@ function TabVacaciones({ vac }: { vac: any }) {
   );
 }
 
+// ── Tab: Documentos ──────────────────────────────────────────────────────────
+function TabDocumentos() {
+  const { token } = theme.useToken();
+
+  const { data: contratoData, isLoading: loadContrato, error: errContrato } = useQuery<any>({
+    queryKey: ['portal-contrato'],
+    queryFn:  () => api.get('/portal-empleado/mi-contrato-laboral').then(r => r.data?.data ?? r.data),
+    retry: false,
+  });
+
+  const { data: cartaData, isLoading: loadCarta, refetch: fetchCarta } = useQuery<any>({
+    queryKey: ['portal-carta'],
+    queryFn:  () => api.get('/portal-empleado/carta-trabajo').then(r => r.data?.data ?? r.data),
+    enabled:  false,
+    retry: false,
+  });
+
+  const imprimirCarta = async () => {
+    if (!cartaData) await fetchCarta();
+    // Pequeña espera para que se actualice el estado
+    setTimeout(() => {
+      const win = window.open('', '_blank', 'width=800,height=600');
+      const carta = cartaData;
+      if (!win || !carta) return;
+      win.document.write(`
+        <html><head><title>Carta de Trabajo</title>
+        <style>body{font-family:Arial,sans-serif;max-width:700px;margin:40px auto;line-height:1.6;font-size:14px}
+        h3{text-align:center;text-transform:uppercase;letter-spacing:1px}
+        .empresa{text-align:center;font-size:12px;color:#555;margin-bottom:30px}
+        pre{white-space:pre-wrap;font-family:inherit;font-size:14px}
+        @media print{button{display:none}}</style></head>
+        <body>
+          <h3>${carta.empresa}</h3>
+          <div class="empresa">RNC: ${carta.rnc || '—'}</div>
+          <hr/>
+          <pre>${carta.texto}</pre>
+          <div style="margin-top:60px;text-align:center">
+            <div style="border-top:1px solid #000;width:250px;margin:0 auto;padding-top:8px">
+              Firma Autorizada
+            </div>
+          </div>
+        </body></html>
+      `);
+      win.document.close();
+      win.focus();
+      win.print();
+    }, 300);
+  };
+
+  return (
+    <Row gutter={[16, 16]}>
+      {/* ── Carta de Trabajo ──────────────────────────────────────── */}
+      <Col xs={24} md={12}>
+        <Card
+          title={<Space><FileDoneOutlined />Carta de Trabajo</Space>}
+          bordered={false}
+          style={{ borderRadius: 10 }}
+          extra={
+            <Button
+              type="primary"
+              icon={<PrinterOutlined />}
+              size="small"
+              loading={loadCarta}
+              onClick={imprimirCarta}
+            >
+              Generar e imprimir
+            </Button>
+          }
+        >
+          <div style={{ color: token.colorTextSecondary, fontSize: 13 }}>
+            <p>Genera una carta de trabajo / certificación laboral para trámites bancarios, visas u otros propósitos.</p>
+            <p style={{ marginBottom: 0 }}>
+              La carta incluye: cargo, departamento, tipo de contrato, fecha de ingreso y firma de autorización.
+            </p>
+          </div>
+          {cartaData && (
+            <div style={{ marginTop: 12 }}>
+              <Divider style={{ margin: '12px 0' }} />
+              <pre style={{
+                whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 12,
+                background: token.colorFillAlter, padding: 12, borderRadius: 6,
+                border: `1px solid ${token.colorBorderSecondary}`, maxHeight: 200, overflow: 'auto',
+              }}>
+                {cartaData.texto}
+              </pre>
+            </div>
+          )}
+        </Card>
+      </Col>
+
+      {/* ── Contrato Laboral ──────────────────────────────────────── */}
+      <Col xs={24} md={12}>
+        <Card
+          title={<Space><FileTextOutlined />Mi Contrato Laboral</Space>}
+          bordered={false}
+          style={{ borderRadius: 10 }}
+          loading={loadContrato}
+        >
+          {errContrato ? (
+            <Alert
+              type="info"
+              message="Sin contrato registrado"
+              description="No tienes contratos laborales registrados en el sistema. Consulta con Recursos Humanos."
+              showIcon
+              style={{ borderRadius: 6 }}
+            />
+          ) : contratoData?.contrato ? (
+            <Descriptions column={1} size="small" bordered>
+              <Descriptions.Item label="N° Contrato">{contratoData.contrato.numero}</Descriptions.Item>
+              <Descriptions.Item label="Tipo">{contratoData.contrato.tipo}</Descriptions.Item>
+              <Descriptions.Item label="Estado">
+                <Tag color={contratoData.contrato.estado === 'activo' ? 'green' : 'orange'}>
+                  {(contratoData.contrato.estado ?? '').toUpperCase()}
+                </Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="Cargo">{contratoData.contrato.cargo}</Descriptions.Item>
+              <Descriptions.Item label="Inicio">{fmtDate(contratoData.contrato.fechaInicio)}</Descriptions.Item>
+              <Descriptions.Item label="Fin">
+                {contratoData.contrato.fechaFin ? fmtDate(contratoData.contrato.fechaFin) : 'Indefinido'}
+              </Descriptions.Item>
+              <Descriptions.Item label="Salario">
+                <Typography.Text strong style={{ color: token.colorSuccess }}>
+                  {fmt(contratoData.contrato.salario)}
+                </Typography.Text>
+              </Descriptions.Item>
+            </Descriptions>
+          ) : (
+            <Spin size="small" />
+          )}
+        </Card>
+      </Col>
+    </Row>
+  );
+}
+
 // ── Tab: Solicitudes ──────────────────────────────────────────────────────────
 function TabSolicitudes() {
   const { token } = theme.useToken();
@@ -407,6 +542,11 @@ export default function PortalEmpleadoPage() {
       key: 'solicitudes',
       label: <Space><ClockCircleOutlined />Mis Solicitudes</Space>,
       children: <TabSolicitudes />,
+    },
+    {
+      key: 'documentos',
+      label: <Space><FileDoneOutlined />Documentos</Space>,
+      children: <TabDocumentos />,
     },
   ];
 

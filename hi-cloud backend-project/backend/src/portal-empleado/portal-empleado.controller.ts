@@ -71,6 +71,18 @@ export class PortalEmpleadoController {
     return this.svc.crearSolicitud(user.id, dto);
   }
 
+  @Get('mi-contrato-laboral')
+  @ApiOperation({ summary: 'Contrato laboral activo más reciente del empleado' })
+  miContratoLaboral(@GetUser() user: User) {
+    return this.svc.getMiContratoLaboral(user.id);
+  }
+
+  @Get('carta-trabajo')
+  @ApiOperation({ summary: 'Genera carta de trabajo / certificación laboral del empleado' })
+  cartaTrabajo(@GetUser() user: User) {
+    return this.svc.generarCartaTrabajo(user.id);
+  }
+
   @Post('solicitar-vinculacion')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Empleado solicita que el admin lo vincule con su usuario de sistema' })

@@ -1,6 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 import { EcfConfigService } from './ecf-config.service';
 import type { MSellerPayload } from './ecf-builder.service';
 import { assertEmisorOrder } from '../builders/sections/emisor.section';
@@ -9,6 +11,7 @@ import {
   EcfValidacionError,
 } from '../errors/ecf.errors';
 import { ModoEcf } from '../entities/empresa-ecf-config.entity';
+import { CacheKeys, CacheTTL } from '../../common/cache/cache-keys';
 
 // ── Tipos de respuesta MSeller ────────────────────────────────────────────────
 
@@ -37,7 +40,7 @@ interface TokenCacheEntry {
   idToken:      string;
   accessToken:  string;
   refreshToken: string;
-  expiresAt:    Date;
+  expiresAt:    number;  // timestamp ms — JSON-serializable para Redis
 }
 
 const MSELLER_ENV_PATH: Record<ModoEcf, string> = {
@@ -61,12 +64,11 @@ const RETRY_DELAYS = [1_000, 2_000, 4_000];
 export class MSellerClientService {
   private readonly logger = new Logger(MSellerClientService.name);
 
-  /** Caché de tokens por empresaId. En producción multi-instancia usar Redis. */
-  private readonly tokenCache = new Map<number, TokenCacheEntry>();
-
   constructor(
     private readonly http:           HttpService,
     private readonly ecfConfigSvc:   EcfConfigService,
+    /** Cache global (Redis en prod, in-memory en dev) — multi-instancia safe */
+    @Inject(CACHE_MANAGER) private readonly cache: Cache,
   ) {}
 
   // ── Autenticación ─────────────────────────────────────────────────────────
@@ -84,9 +86,10 @@ export class MSellerClientService {
   }> {
     const creds = await this.ecfConfigSvc.getCredencialesDescifradas(empresaId);
 
-    // Verificar caché — los tokens de MSeller duran ~1 hora
-    const cached = this.tokenCache.get(empresaId);
-    if (cached && cached.expiresAt > new Date(Date.now() + 2 * 60_000)) {
+    // Verificar caché Redis — los tokens de MSeller duran ~1 hora
+    const cacheKey = CacheKeys.msellerToken(empresaId);
+    const cached   = await this.cache.get<TokenCacheEntry>(cacheKey);
+    if (cached && cached.expiresAt > Date.now() + 2 * 60_000) {
       return {
         idToken:     cached.idToken,
         accessToken: cached.accessToken,
@@ -111,18 +114,17 @@ export class MSellerClientService {
       );
 
       const { idToken, accessToken, refreshToken } = resp.data;
-      // Asumir expiración de 55 min (conservador, Cognito emite tokens de 1h)
-      this.tokenCache.set(empresaId, {
-        idToken,
-        accessToken,
-        refreshToken,
-        expiresAt: new Date(Date.now() + 55 * 60_000),
-      });
+      // Guardar en Redis con TTL 55 min (conservador vs 1h de Cognito)
+      await this.cache.set(
+        CacheKeys.msellerToken(empresaId),
+        { idToken, accessToken, refreshToken, expiresAt: Date.now() + 55 * 60_000 },
+        CacheTTL.MSELLER_TOKEN,
+      );
 
       this.logger.log(`Auth MSeller OK [${Date.now() - t0}ms] empresa #${empresaId}`);
       return { idToken, accessToken, apiKey: creds.apiKey, baseUrl: creds.urlBase, envPath: creds.envPath };
     } catch (err: any) {
-      this.tokenCache.delete(empresaId); // limpiar caché si falla
+      await this.cache.del(CacheKeys.msellerToken(empresaId)); // limpiar caché si falla
       const status = err?.response?.status;
       const msg    = err?.response?.data?.message ?? err?.message ?? 'timeout';
       throw new EcfComunicacionError(
@@ -131,9 +133,9 @@ export class MSellerClientService {
     }
   }
 
-  /** Invalida el token cacheado (forzar re-autenticación en el próximo envío). */
-  invalidateToken(empresaId: number): void {
-    this.tokenCache.delete(empresaId);
+  /** Invalida el token cacheado en Redis (forzar re-autenticación en el próximo envío). */
+  async invalidateToken(empresaId: number): Promise<void> {
+    await this.cache.del(CacheKeys.msellerToken(empresaId));
     this.logger.log(`Token MSeller invalidado para empresa #${empresaId}`);
   }
 
@@ -338,10 +340,10 @@ export class MSellerClientService {
           throw new EcfValidacionError(status, msg, detalles);
         }
 
-        // ── 401: token expirado → invalidar caché y reintentar una vez ───
+        // ── 401: token expirado → invalidar caché Redis y reintentar una vez ───
         if (status === 401) {
           this.logger.warn(`Token expirado para empresa #${empresaId}, invalidando...`);
-          this.invalidateToken(empresaId);
+          await this.invalidateToken(empresaId);
           if (attempt === 0) continue; // reintentar inmediatamente
         }
 

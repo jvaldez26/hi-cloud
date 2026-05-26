@@ -15,6 +15,8 @@ export const CacheKeys = {
   secuenciasECF:  (empresaId: number) => `ecf:secuencias:${empresaId}`,
   categorias:     (empresaId: number) => `categorias:${empresaId}`,
   planInfo:       (empresaId: number) => `plan:${empresaId}`,
+  // Token de autenticación MSeller por empresa (multi-instancia safe via Redis)
+  msellerToken:   (empresaId: number) => `mseller:token:${empresaId}`,
 } as const;
 
 export const CacheTTL = {
@@ -23,4 +25,5 @@ export const CacheTTL = {
   SECUENCIAS_ECF:   600_000,   // 10 minutos
   CATEGORIAS:     3_600_000,   // 1 hora
   PLAN_INFO:      1_800_000,   // 30 minutos
+  MSELLER_TOKEN:  3_300_000,   // 55 minutos (Cognito emite tokens de 1h; 5 min de margen)
 } as const;

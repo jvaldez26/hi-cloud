@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, Logger } from '@nes
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { Empleado } from '../nomina/entities/empleado.entity';
+import { ContratoLaboral } from '../nomina/entities/contrato-laboral.entity';
 import { TenantService } from '../tenant/tenant.service';
 import { IsrService } from '../isr/isr.service';
 
@@ -9,7 +10,8 @@ import { IsrService } from '../isr/isr.service';
 export class PortalEmpleadoService {
   private readonly logger = new Logger(PortalEmpleadoService.name);
   constructor(
-    @InjectRepository(Empleado) private empRepo: Repository<Empleado>,
+    @InjectRepository(Empleado)        private empRepo:       Repository<Empleado>,
+    @InjectRepository(ContratoLaboral) private contratoRepo:  Repository<ContratoLaboral>,
     private dataSource:  DataSource,
     private tenantSvc:   TenantService,
     private isrSvc:      IsrService,
@@ -208,6 +210,88 @@ export class PortalEmpleadoService {
       ok: true,
       mensaje: `Solicitud enviada. El administrador recibirá la notificación y vinculará tu perfil desde Nómina → Empleados.`,
     };
+  }
+
+  // ─── Contrato laboral del empleado ───────────────────────────────────────────
+
+  async getMiContratoLaboral(usuarioId: number) {
+    const emp = await this.getMiPerfil(usuarioId);
+
+    const contrato = await this.contratoRepo.findOne({
+      where:  { empleadoId: emp.id, empresaId: emp.empresaId, isActive: true } as any,
+      order:  { createdAt: 'DESC' },
+    });
+
+    if (!contrato) throw new NotFoundException(
+      'No tienes contratos laborales registrados. Consulta con el área de Recursos Humanos.',
+    );
+
+    return {
+      empleado: `${emp.nombre} ${emp.apellido}`,
+      contrato: {
+        id:           contrato.id,
+        numero:       contrato.numero,
+        tipo:         contrato.tipo,
+        estado:       contrato.estado,
+        fechaInicio:  contrato.fechaInicio,
+        fechaFin:     contrato.fechaFin ?? null,
+        salario:      Number(contrato.salario),
+        cargo:        contrato.cargo,
+        departamento: contrato.departamento ?? null,
+        clausulas:    contrato.clausulas ?? null,
+      },
+    };
+  }
+
+  // ─── Carta de trabajo (certificación laboral) ────────────────────────────────
+
+  async generarCartaTrabajo(usuarioId: number) {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const emp       = await this.getMiPerfil(usuarioId);
+
+    // Obtener nombre de empresa
+    const [empresa] = await this.dataSource.query<{ nombre: string; rnc: string }[]>(
+      `SELECT "nombreComercial" AS nombre, rnc FROM empresas WHERE id = $1 LIMIT 1`,
+      [empresaId],
+    ).catch(() => [{ nombre: 'La Empresa', rnc: '' }]);
+
+    const aniosServicio = emp.fechaIngreso
+      ? Math.floor((Date.now() - new Date(emp.fechaIngreso).getTime()) / (1000 * 60 * 60 * 24 * 365))
+      : 0;
+
+    const fechaHoy = new Date().toLocaleDateString('es-DO', {
+      day: 'numeric', month: 'long', year: 'numeric',
+    });
+
+    const carta = {
+      empresa:         empresa?.nombre ?? 'La Empresa',
+      rnc:             empresa?.rnc ?? '',
+      empleado:        `${emp.nombre} ${emp.apellido}`,
+      cedula:          emp.cedula,
+      cargo:           emp.cargo,
+      departamento:    emp.departamento ?? null,
+      tipoContrato:    emp.tipoContrato,
+      fechaIngreso:    emp.fechaIngreso,
+      aniosServicio,
+      salarioBase:     Number(emp.salarioBase),
+      fechaEmision:    fechaHoy,
+      // Texto de la carta listo para imprimir
+      texto: [
+        `A QUIEN PUEDA INTERESAR:`,
+        ``,
+        `Mediante la presente, ${empresa?.nombre ?? 'La Empresa'} certifica que el/la Sr/Sra.`,
+        `${emp.nombre} ${emp.apellido}, portador/a de la cédula de identidad No. ${emp.cedula ?? 'N/A'},`,
+        `labora en esta empresa desde el ${new Date(emp.fechaIngreso).toLocaleDateString('es-DO')}`,
+        `en el cargo de ${emp.cargo}${emp.departamento ? `, departamento de ${emp.departamento}` : ''},`,
+        `con un contrato de tipo ${emp.tipoContrato}.`,
+        ``,
+        `La presente se expide para los fines que el/la interesado/a estime conveniente.`,
+        ``,
+        `Santo Domingo, República Dominicana, ${fechaHoy}.`,
+      ].join('\n'),
+    };
+
+    return carta;
   }
 
   async crearSolicitud(usuarioId: number, dto: {

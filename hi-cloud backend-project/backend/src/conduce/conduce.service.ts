@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { Conduce, EstadoConduce } from './entities/conduce.entity';
@@ -7,6 +7,7 @@ import { TenantService } from '../tenant/tenant.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { RealtimeService } from '../realtime/realtime.service';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
+import { InventarioService } from '../inventario/inventario.service';
 
 interface DetalleConduceDto {
   productoId?:     number;
@@ -35,12 +36,15 @@ interface CreateConduceDto {
 
 @Injectable()
 export class ConduceService {
+  private readonly logger = new Logger(ConduceService.name);
+
   constructor(
     @InjectRepository(Conduce)        private conduceRepo:     Repository<Conduce>,
     @InjectRepository(ConduceDetalle) private detRepo:         Repository<ConduceDetalle>,
     private tenantSvc:       TenantService,
     private realtimeService: RealtimeService,
     @InjectDataSource() private ds: DataSource,
+    private inventarioSvc:   InventarioService,
   ) {}
 
   private async generarNumero(): Promise<string> {
@@ -124,16 +128,34 @@ export class ConduceService {
     return this.findOne(id);
   }
 
-  async marcarEntregado(id: number, observaciones?: string) {
+  async marcarEntregado(id: number, observaciones?: string, usuarioId = 0) {
     const c = await this.findOne(id);
     if (c.estado !== EstadoConduce.EN_TRANSITO) {
       throw new BadRequestException('El conduce debe estar EN TRÁNSITO para marcar como entregado');
     }
+
+    // Cargar detalles para descontar inventario
+    const detalles = await this.detRepo.find({ where: { conduceId: id } as any });
+
     await this.conduceRepo.update(id, {
       estado:               EstadoConduce.ENTREGADO,
       fechaEntregaReal:     new Date(),
       observacionesEntrega: observaciones,
     });
+
+    // Descontar inventario — no bloquear si falla (conduce ya marcado como entregado)
+    for (const det of detalles) {
+      if (!det.productoId) continue;
+      await this.inventarioSvc
+        .registrarSalida(det.productoId, Number(det.cantidad), usuarioId, 'Conduce entregado', c.numero)
+        .catch((err: unknown) => {
+          this.logger.warn(
+            `[Conduce] registrarSalida para ${c.numero} prod #${det.productoId} falló: ` +
+            `${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
+    }
+
     this.realtimeService.notify(c.empresaId, 'conduce', 'updated', id);
     return this.findOne(id);
   }
