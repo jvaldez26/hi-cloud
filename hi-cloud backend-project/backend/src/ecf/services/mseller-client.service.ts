@@ -34,9 +34,10 @@ export interface MSellerEstadoResponse {
 }
 
 interface TokenCacheEntry {
-  idToken:     string;
+  idToken:      string;
+  accessToken:  string;
   refreshToken: string;
-  expiresAt:   Date;
+  expiresAt:    Date;
 }
 
 const MSELLER_ENV_PATH: Record<ModoEcf, string> = {
@@ -75,10 +76,11 @@ export class MSellerClientService {
    * Usa caché en memoria; renueva si está a < 2 min de expirar.
    */
   async getIdToken(empresaId: number): Promise<{
-    idToken: string;
-    apiKey:  string;
-    baseUrl: string;
-    envPath: string;
+    idToken:     string;
+    accessToken: string;
+    apiKey:      string;
+    baseUrl:     string;
+    envPath:     string;
   }> {
     const creds = await this.ecfConfigSvc.getCredencialesDescifradas(empresaId);
 
@@ -86,10 +88,11 @@ export class MSellerClientService {
     const cached = this.tokenCache.get(empresaId);
     if (cached && cached.expiresAt > new Date(Date.now() + 2 * 60_000)) {
       return {
-        idToken: cached.idToken,
-        apiKey:  creds.apiKey,
-        baseUrl: creds.urlBase,
-        envPath: creds.envPath,
+        idToken:     cached.idToken,
+        accessToken: cached.accessToken,
+        apiKey:      creds.apiKey,
+        baseUrl:     creds.urlBase,
+        envPath:     creds.envPath,
       };
     }
 
@@ -107,16 +110,17 @@ export class MSellerClientService {
         ),
       );
 
-      const { idToken, refreshToken } = resp.data;
+      const { idToken, accessToken, refreshToken } = resp.data;
       // Asumir expiración de 55 min (conservador, Cognito emite tokens de 1h)
       this.tokenCache.set(empresaId, {
         idToken,
+        accessToken,
         refreshToken,
         expiresAt: new Date(Date.now() + 55 * 60_000),
       });
 
       this.logger.log(`Auth MSeller OK [${Date.now() - t0}ms] empresa #${empresaId}`);
-      return { idToken, apiKey: creds.apiKey, baseUrl: creds.urlBase, envPath: creds.envPath };
+      return { idToken, accessToken, apiKey: creds.apiKey, baseUrl: creds.urlBase, envPath: creds.envPath };
     } catch (err: any) {
       this.tokenCache.delete(empresaId); // limpiar caché si falla
       const status = err?.response?.status;
@@ -249,17 +253,21 @@ export class MSellerClientService {
     trackId:   string,
     empresaId: number,
   ): Promise<MSellerEstadoResponse> {
-    const { idToken, apiKey, baseUrl, envPath } = await this.getIdToken(empresaId);
+    const { accessToken, apiKey, baseUrl, envPath } = await this.getIdToken(empresaId);
     const url = `${baseUrl}/${envPath}/documentos-ecf/${trackId}`;
 
+    // El endpoint GET /documentos-ecf/{trackId} de MSeller usa solo X-API-KEY
+    // para autenticación. Enviar "Authorization: Bearer {jwt}" en este endpoint
+    // causa 403 "Invalid key=value pair" en el API Gateway de MSeller.
+    // El accessToken (OAuth2 access token) se guarda como fallback por si MSeller
+    // actualiza el endpoint para requerirlo en el futuro.
     const t0 = Date.now();
     try {
       const resp = await firstValueFrom(
         this.http.get<MSellerEstadoResponse>(url, {
           timeout: 15_000,
           headers: {
-            'Authorization': `Bearer ${idToken}`,
-            'X-API-KEY':     apiKey,
+            'X-API-KEY': apiKey,
           },
         }),
       );
@@ -268,8 +276,38 @@ export class MSellerClientService {
       );
       return resp.data;
     } catch (err: any) {
-      const status = err?.response?.status;
-      const msg    = err?.response?.data?.message ?? err?.message;
+      const status  = err?.response?.status;
+      const msg     = err?.response?.data?.message ?? err?.message;
+
+      // Si X-API-KEY solo no funciona (401/403), reintentar con accessToken
+      if (status === 401 || status === 403) {
+        this.logger.warn(
+          `GET estado ${trackId} falló con X-API-KEY solo [${status}]. ` +
+          `Reintentando con Authorization: Bearer ${accessToken ? '(token)' : 'MISSING'}`,
+        );
+        try {
+          const resp2 = await firstValueFrom(
+            this.http.get<MSellerEstadoResponse>(url, {
+              timeout: 15_000,
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'X-API-KEY':     apiKey,
+              },
+            }),
+          );
+          this.logger.log(
+            `Estado MSeller ${trackId}: ${resp2.data.status} [${Date.now() - t0}ms] (accessToken fallback)`,
+          );
+          return resp2.data;
+        } catch (err2: any) {
+          const s2 = err2?.response?.status;
+          const m2 = err2?.response?.data?.message ?? err2?.message;
+          throw new EcfComunicacionError(
+            `Error consultando estado en MSeller [${s2 ?? 'timeout'}]: ${m2}`,
+          );
+        }
+      }
+
       throw new EcfComunicacionError(
         `Error consultando estado en MSeller [${status ?? 'timeout'}]: ${msg}`,
       );
