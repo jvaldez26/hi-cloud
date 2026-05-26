@@ -119,7 +119,8 @@ export async function generarFacturaPDF(
     let ly = y + logoH + 4;
     doc.fillColor(DARK).font('Helvetica-Bold').fontSize(13)
       .text(d.empresaNombre.toUpperCase(), PL, ly, { width: leftColW });
-    ly += 17;
+    // BUG1 FIX: usar doc.y después del texto para calcular altura real (maneja wrapping)
+    ly = doc.y + 4;
 
     // Datos de contacto
     doc.font('Helvetica').fontSize(9).fillColor(GRAY);
@@ -140,20 +141,26 @@ export async function generarFacturaPDF(
     const rightColX = PR - rightColW;
     let ry = y;
 
-    // Título del documento (uppercase bold, puede hacer wrap)
-    const titulo = ecfTipoTitulo(d.ecfTipo);
+    // BUG2 FIX: Título del documento — usar ecfTipoDescripcion como fallback si ecfTipo no está mapeado
+    const titulo = d.ecfTipo
+      ? ecfTipoTitulo(d.ecfTipo)
+      : (d.ecfTipoDescripcion?.toUpperCase() ?? 'FACTURA ELECTRÓNICA');
     doc.fillColor(DARK).font('Helvetica-Bold').fontSize(10)
       .text(titulo, rightColX, ry, { width: rightColW, align: 'right' });
-    ry += titulo.length > 32 ? 28 : 15;
+    ry = doc.y + 4;
 
-    // e-NCF label + número grande
+    // BUG3 FIX: e-NCF siempre visible (con '—' cuando no está asignado aún)
+    doc.fillColor(GRAY).font('Helvetica').fontSize(8.5)
+      .text('e-NCF:', rightColX, ry, { width: rightColW, align: 'right' });
+    ry += 11;
     if (d.ecfNumero) {
-      doc.fillColor(GRAY).font('Helvetica').fontSize(8.5)
-        .text('e-NCF:', rightColX, ry, { width: rightColW, align: 'right' });
-      ry += 11;
       doc.fillColor(DARK).font('Helvetica-Bold').fontSize(15)
         .text(d.ecfNumero, rightColX, ry, { width: rightColW, align: 'right' });
       ry += 20;
+    } else {
+      doc.fillColor(GRAY).font('Helvetica').fontSize(9)
+        .text('— Pendiente de validación DGII —', rightColX, ry, { width: rightColW, align: 'right' });
+      ry += 13;
     }
 
     // Válida hasta (verde)
@@ -171,6 +178,9 @@ export async function generarFacturaPDF(
       ...(d.vendedorNombre  ? [['Vendedor',       d.vendedorNombre ]  as [string, string]] : []),
       ['Moneda',             d.moneda],
       ['Tipo de Factura',    d.condicionPago ?? d.tipo],
+      // Plazo + Vence solo para facturas a crédito
+      ...(d.diasCredito && d.diasCredito > 0 ? [['Plazo', `${d.diasCredito} días`] as [string, string]] : []),
+      ...(d.fechaVencimiento ? [['Vence',         fmtF(d.fechaVencimiento)] as [string, string]] : []),
       ...(d.sucursalNombre  ? [['Sucursal',        d.sucursalNombre ]  as [string, string]] : []),
       ['Fecha Emisión',      fmtF(d.fechaEmision)],
     ];
@@ -308,22 +318,27 @@ export async function generarFacturaPDF(
       .text('SEGURIDAD FISCAL DGII', PL, y + 8, { width: qrBoxW, align: 'center' });
 
     let qy = y + 22;
+    const qrX = PL + Math.round((qrBoxW - qrSize) / 2);
+    // BUG4 FIX: si qrBase64 falla (excepción o vacío), siempre mostrar placeholder informativo
+    let qrDibujado = false;
     if (d.qrBase64) {
       try {
         const qrBuf = Buffer.from(d.qrBase64, 'base64');
-        const qrX   = PL + Math.round((qrBoxW - qrSize) / 2);
         doc.image(qrBuf, qrX, qy, { width: qrSize, height: qrSize });
-        qy += qrSize + 8;
-      } catch { qy += 8; }
-    } else {
-      const qrX = PL + Math.round((qrBoxW - qrSize) / 2);
-      doc.rect(qrX, qy, qrSize, qrSize).fill('#f5f5f5').strokeColor('#cccccc').stroke();
-      doc.fillColor('#999').font('Helvetica').fontSize(7.5)
-        .text('Comprobante en proceso\nde validación DGII', qrX, qy + 36, {
-          width: qrSize, align: 'center',
-        });
-      qy += qrSize + 8;
+        qrDibujado = true;
+      } catch { /* fallback al placeholder */ }
     }
+    if (!qrDibujado) {
+      // Placeholder con borde y texto centrado vertical (~40% del alto)
+      doc.rect(qrX, qy, qrSize, qrSize).fillAndStroke('#f5f5f5', '#cccccc');
+      doc.fillColor('#777').font('Helvetica').fontSize(7.5)
+        .text(
+          'Comprobante en\nproceso de\nvalidación DGII',
+          qrX, qy + Math.round(qrSize * 0.32),
+          { width: qrSize, align: 'center', lineGap: 2 },
+        );
+    }
+    qy += qrSize + 8;
 
     if (d.ecfCodigoSeguridad) {
       doc.fillColor(GRAY).font('Helvetica').fontSize(8)
