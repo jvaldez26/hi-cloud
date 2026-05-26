@@ -168,6 +168,15 @@ export const nominaApi = {
     URL.revokeObjectURL(a.href);
   },
 
+  // ── Vinculación usuario ───────────────────────────────────────────────────
+  /** Lista usuarios activos del tenant para dropdown de vinculación */
+  usuariosTenant: () =>
+    api.get('/nomina/usuarios-tenant').then(r => r.data.data ?? r.data),
+
+  /** Vincula (o desvincula con userId=null) un empleado con usuario del sistema */
+  vincularUsuario: (empleadoId: number, userId: number | null) =>
+    api.patch(`/nomina/empleados/${empleadoId}/vincular-usuario`, { userId }).then(r => r.data.data),
+
   // ── Utilidades ────────────────────────────────────────────────────────────
   tasas: () => api.get('/nomina/tasas-tss').then(r => r.data.data),
 

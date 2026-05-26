@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, HttpCode, HttpStatus, Logger } from '@nestjs/common';
 import { IsString, IsOptional, IsDateString } from 'class-validator';
 
 class SolicitudVacacionesDto {
@@ -18,6 +18,7 @@ import { PortalEmpleadoService } from './portal-empleado.service';
 @UseGuards(JwtAuthGuard)
 @Controller('portal-empleado')
 export class PortalEmpleadoController {
+  private readonly logger = new Logger(PortalEmpleadoController.name);
   constructor(private readonly svc: PortalEmpleadoService) {}
 
   @Get('mi-perfil')
@@ -55,5 +56,16 @@ export class PortalEmpleadoController {
   @ApiOperation({ summary: 'Crear solicitud de vacaciones o permiso' })
   solicitarVacaciones(@GetUser() user: User, @Body() dto: SolicitudVacacionesDto) {
     return this.svc.crearSolicitud(user.id, dto);
+  }
+
+  @Post('solicitar-vinculacion')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Empleado solicita que el admin lo vincule con su usuario de sistema' })
+  async solicitarVinculacion(@GetUser() user: User) {
+    // Notifica al admin por email/log — el admin debe ir a Nómina → Empleados y vincular
+    this.logger.log(
+      `Solicitud de vinculación: usuario #${user.id} (${user.email}) empresa ID pendiente verificación`
+    );
+    return this.svc.solicitarVinculacion(user.id);
   }
 }

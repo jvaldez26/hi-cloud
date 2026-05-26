@@ -6,9 +6,10 @@ import {
 import {
   UserOutlined, DollarOutlined, CalendarOutlined, FileTextOutlined,
   DownloadOutlined, PlusOutlined, SendOutlined, ClockCircleOutlined,
-  SearchOutlined,
+  SearchOutlined, LinkOutlined,
 } from '@ant-design/icons';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, useMemo } from 'react';
 import dayjs from 'dayjs';
 import api from '../../api/client';
@@ -330,6 +331,13 @@ export default function PortalEmpleadoPage() {
     retry: false,
   });
 
+  // Solicitar vinculación al admin
+  const solicitarVinc = useMutation({
+    mutationFn: () => api.post('/portal-empleado/solicitar-vinculacion').then(r => r.data?.data ?? r.data),
+    onSuccess: (res: any) => message.success(res?.mensaje ?? 'Solicitud enviada al administrador ✅', 6),
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al enviar solicitud'),
+  });
+
   // ── Estado de carga ──
   if (isLoading) {
     return (
@@ -342,16 +350,34 @@ export default function PortalEmpleadoPage() {
   // ── Sin empleado vinculado (404) u otro error ──
   if (error || !resumen) {
     return (
-      <div style={{ padding: 24 }}>
-        <Alert type="info" showIcon icon={<UserOutlined />}
+      <div style={{ padding: 24, maxWidth: 600 }}>
+        <Alert
+          type="info"
+          showIcon
+          icon={<UserOutlined />}
           message="Portal del Empleado"
           description={
-            <>
-              <p>Este portal muestra tu información laboral, recibos de nómina y saldo de vacaciones.</p>
-              <p><strong>Para habilitar el portal</strong>, el administrador debe vincular tu usuario de sistema ({user?.email}) con tu registro de empleado en el módulo de Nómina.</p>
-            </>
+            <div>
+              <p style={{ marginBottom: 8 }}>
+                Este portal muestra tu información laboral, recibos de nómina y saldo de vacaciones.
+              </p>
+              <p style={{ marginBottom: 16 }}>
+                <strong>Para habilitar el portal</strong>, el administrador debe vincular tu
+                usuario de sistema (<strong>{user?.email}</strong>) con tu registro de empleado
+                en el módulo de <strong>Nómina → Empleados</strong>.
+              </p>
+              <Button
+                type="primary"
+                icon={<LinkOutlined />}
+                loading={solicitarVinc.isPending}
+                onClick={() => solicitarVinc.mutate()}
+              >
+                Solicitar vinculación al administrador
+              </Button>
+            </div>
           }
-          style={{ borderRadius: 8 }} />
+          style={{ borderRadius: 8 }}
+        />
       </div>
     );
   }

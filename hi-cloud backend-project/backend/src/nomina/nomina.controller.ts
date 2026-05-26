@@ -15,11 +15,11 @@ import {
   UseGuards,
   Res,
   Logger,
+  HttpException,
 } from '@nestjs/common';
-import { HttpException } from '@nestjs/common';
 import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
-import { IsString, IsOptional, IsEnum, IsNumber, IsInt, IsPositive, Min, IsBoolean } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsNumber, IsInt, IsPositive, Min, IsBoolean, ValidateIf } from 'class-validator';
 import { NominaService } from './nomina.service';
 import { TipoContrato } from './entities/empleado.entity';
 import { NominaCalculosService } from './services/nomina-calculos.service';
@@ -35,6 +35,12 @@ import { GetUser } from '../auth/decorators/get-user.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
 import { User } from '../users/users.entity';
 import { RequiereModulo } from '../suscripciones/decorators/requiere-modulo.decorator';
+
+class VincularUsuarioDto {
+  @ValidateIf(o => o.userId !== null)
+  @IsOptional() @IsInt() @IsPositive()
+  userId!: number | null;
+}
 
 class CreateNovedadDto {
   @IsInt() @IsPositive()                empleadoId!:   number;
@@ -172,6 +178,23 @@ export class NominaController {
   @ApiOperation({ summary: 'Desactivar empleado (soft delete)' })
   removeEmpleado(@Param('id', ParseIntPipe) id: number) {
     return this.nominaService.removeEmpleado(id);
+  }
+
+  @Patch('empleados/:id/vincular-usuario')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Vincular/desvincular usuario del sistema con empleado (habilita Portal del Empleado)' })
+  vincularUsuario(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: VincularUsuarioDto,
+  ) {
+    return this.nominaService.vincularUsuario(id, dto.userId);
+  }
+
+  @Get('usuarios-tenant')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Listar usuarios activos del tenant (para dropdown de vinculación)' })
+  getUsuariosTenant() {
+    return this.nominaService.getUsuariosTenant();
   }
 
   // ── Novedades ──────────────────────────────────────────────────────────────

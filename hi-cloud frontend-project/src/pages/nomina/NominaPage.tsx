@@ -37,16 +37,25 @@ const tipoNovedadLabel: Record<string, { label: string; color: string }> = {
 
 // ── Empleados ──────────────────────────────────────────────────────────────────
 function EmpleadosTab() {
-  const [open,    setOpen]    = useState(false);
-  const [editing, setEditing] = useState<any>(null);
-  const [page,    setPage]    = useState(1);
-  const [search,  setSearch]  = useState('');
-  const [form] = Form.useForm<EmpleadoPayload>();
-  const qc = useQueryClient();
+  const [open,        setOpen]        = useState(false);
+  const [editing,     setEditing]     = useState<any>(null);
+  const [vinculando,  setVinculando]  = useState<any>(null); // empleado en modal de vinculación
+  const [page,        setPage]        = useState(1);
+  const [search,      setSearch]      = useState('');
+  const [form]        = Form.useForm<EmpleadoPayload>();
+  const [formVinc]    = Form.useForm();
+  const qc            = useQueryClient();
 
   const { data, isLoading } = useQuery({
     queryKey: ['empleados', page, search],
     queryFn: () => nominaApi.empleados(page, 10, search),
+  });
+
+  // Usuarios del tenant — solo se carga cuando el modal de vinculación está abierto
+  const { data: usuarios } = useQuery({
+    queryKey: ['usuarios-tenant'],
+    queryFn: nominaApi.usuariosTenant,
+    enabled: !!vinculando,
   });
 
   const createMut = useMutation({
@@ -58,6 +67,16 @@ function EmpleadosTab() {
     mutationFn: ({ id, body }: { id: number; body: Partial<EmpleadoPayload> }) => nominaApi.updateEmpleado(id, body),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['empleados'] }); setOpen(false); message.success('Actualizado'); },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al actualizar empleado'),
+  });
+  const vincularMut = useMutation({
+    mutationFn: ({ id, userId }: { id: number; userId: number | null }) => nominaApi.vincularUsuario(id, userId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['empleados'] });
+      setVinculando(null);
+      formVinc.resetFields();
+      message.success('Usuario vinculado correctamente ✅');
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al vincular'),
   });
 
   const openEdit = (r: any) => {
@@ -71,6 +90,11 @@ function EmpleadosTab() {
   };
   const closeModal = () => { setOpen(false); setEditing(null); form.resetFields(); };
 
+  const openVincular = (r: any) => {
+    setVinculando(r);
+    formVinc.setFieldsValue({ userId: r.userId ?? null });
+  };
+
   const COLS_DEF = [
     { key: 'cedula',       label: 'Cédula',      defaultVisible: false },
     { key: 'nombre',       label: 'Nombre',      defaultVisible: true  },
@@ -78,6 +102,7 @@ function EmpleadosTab() {
     { key: 'departamento', label: 'Depto.',      defaultVisible: true  },
     { key: 'salarioBase',  label: 'Salario',     defaultVisible: true  },
     { key: 'estado',       label: 'Estado',      defaultVisible: true  },
+    { key: 'portal',       label: 'Portal',      defaultVisible: true  },
   ];
   const { visibleColumns, updateVisibility, filterColumns: fcNom } = useColumnVisibility('nomina-empleados', COLS_DEF);
 
@@ -89,12 +114,31 @@ function EmpleadosTab() {
     { title: 'Salario',  key: 'salarioBase',  dataIndex: 'salarioBase',  width: 130, render: (v: number) => fmt.money(v) },
     { title: 'Estado',   key: 'estado',       dataIndex: 'estado',       width: 90,
       render: (v: string) => <Tag color={v === 'activo' ? 'green' : 'red'}>{v?.toUpperCase()}</Tag> },
+    { title: 'Portal',   key: 'portal',       dataIndex: 'userId',       width: 90,
+      render: (v: number) => v
+        ? <Tooltip title="Portal habilitado"><Tag color="green" style={{ cursor: 'pointer' }}>✓ Vinculado</Tag></Tooltip>
+        : <Tooltip title="Sin usuario vinculado — el empleado no puede ver su portal"><Tag color="default">Sin vincular</Tag></Tooltip>
+    },
     { title: '', key: 'actions', width: 70, isActions: true,
       render: (_: any, r: any) => (
         <TableActions onView={() => openEdit(r)} viewLabel="Ver empleado"
-          items={[{ key: 'editar', label: 'Editar empleado', icon: <EyeOutlined />, onClick: () => openEdit(r) }]} />
+          items={[
+            { key: 'editar', label: 'Editar empleado', icon: <EyeOutlined />, onClick: () => openEdit(r) },
+            { key: 'vincular', label: 'Vincular usuario del sistema', icon: <UserOutlined />, onClick: () => openVincular(r) },
+          ]} />
       )},
   ];
+
+  // Autosugerencia: cuando se abre modal de vinculación, si email del empleado
+  // coincide con algún usuario del tenant, pre-seleccionarlo
+  const usuarioSugerido = vinculando && usuarios
+    ? usuarios.find((u: any) => u.email?.toLowerCase() === vinculando.email?.toLowerCase())
+    : null;
+
+  const userOptions = (usuarios ?? []).map((u: any) => ({
+    value: u.id,
+    label: `${u.nombre ?? ''} ${u.apellido ?? ''} — ${u.email}`.trim(),
+  }));
 
   return (
     <>
@@ -133,6 +177,7 @@ function EmpleadosTab() {
         pagination={{ total: data?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }}
         scroll={{ x: 'max-content' }} />
 
+      {/* ── Modal crear/editar empleado ─────────────────────────────────────── */}
       <Modal title={editing ? 'Editar empleado' : 'Nuevo empleado'} open={open} onCancel={closeModal} footer={null} width={780}>
         <Form form={form} layout="vertical"
           onFinish={(v) => editing ? updateMut.mutate({ id: editing.id, body: v }) : createMut.mutate(v)}>
@@ -160,6 +205,56 @@ function EmpleadosTab() {
             <Col><Button type="primary" htmlType="submit" loading={createMut.isPending || updateMut.isPending}>{editing ? 'Actualizar' : 'Registrar'}</Button></Col>
           </Row>
         </Form>
+      </Modal>
+
+      {/* ── Modal vincular usuario del sistema ──────────────────────────────── */}
+      <Modal
+        title={<Space><UserOutlined />Vincular usuario del sistema</Space>}
+        open={!!vinculando}
+        onCancel={() => { setVinculando(null); formVinc.resetFields(); }}
+        onOk={() => formVinc.submit()}
+        confirmLoading={vincularMut.isPending}
+        okText="Guardar vinculación"
+        width={480}
+        destroyOnClose
+      >
+        {vinculando && (
+          <Form form={formVinc} layout="vertical"
+            onFinish={v => vincularMut.mutate({ id: vinculando.id, userId: v.userId ?? null })}>
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 16, fontSize: 12 }}
+              message="Portal del Empleado"
+              description={
+                `Vincula "${vinculando.nombre} ${vinculando.apellido}" con su cuenta de usuario ` +
+                `para que pueda acceder al Portal del Empleado y ver sus recibos, vacaciones y más.`
+              }
+            />
+            {usuarioSugerido && (
+              <Alert
+                type="success"
+                showIcon
+                style={{ marginBottom: 16, fontSize: 12 }}
+                message={`Sugerencia: el email del empleado (${vinculando.email}) coincide con el usuario "${usuarioSugerido.nombre ?? ''} ${usuarioSugerido.apellido ?? ''}" — ¿vincular a ese usuario?`}
+              />
+            )}
+            <Form.Item
+              name="userId"
+              label="Usuario del sistema"
+              help="Selecciona el usuario que corresponde a este empleado, o deja vacío para desvincular."
+            >
+              <Select
+                showSearch
+                allowClear
+                optionFilterProp="label"
+                placeholder="Seleccionar usuario..."
+                options={userOptions}
+                style={{ width: '100%' }}
+              />
+            </Form.Item>
+          </Form>
+        )}
       </Modal>
     </>
   );

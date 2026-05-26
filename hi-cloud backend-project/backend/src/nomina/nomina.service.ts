@@ -115,6 +115,57 @@ export class NominaService {
     return { message: `Empleado "${emp.nombre} ${emp.apellido}" desactivado` };
   }
 
+  /**
+   * Vincula un empleado con un usuario del sistema (para Portal del Empleado).
+   * Permite al usuario ver su portal, recibos y vacaciones.
+   */
+  async vincularUsuario(empleadoId: number, userId: number | null) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const emp = await this.empleadoRepository.findOne({
+      where: { id: empleadoId, empresaId, isActive: true },
+    });
+    if (!emp) throw new NotFoundException(`Empleado #${empleadoId} no encontrado`);
+
+    // Verificar que el userId pertenece al tenant (mismo empresaId en usuarios_empresas)
+    if (userId !== null) {
+      const [rows] = await this.dataSource.query<any[]>(`
+        SELECT 1 FROM usuarios_empresas
+        WHERE "usuarioId" = $1 AND "empresaId" = $2
+        LIMIT 1
+      `, [userId, empresaId]);
+      if (!rows) throw new BadRequestException('El usuario no pertenece a esta empresa');
+
+      // Verificar que ningún otro empleado activo en esta empresa ya tenga ese userId
+      const conflicto = await this.empleadoRepository.findOne({
+        where: { userId, empresaId, isActive: true },
+      });
+      if (conflicto && conflicto.id !== empleadoId) {
+        throw new BadRequestException(
+          `El usuario ya está vinculado al empleado "${conflicto.nombre} ${conflicto.apellido}"`
+        );
+      }
+    }
+
+    await this.empleadoRepository.update(empleadoId, { userId: userId ?? undefined });
+    return this.findEmpleadoById(empleadoId);
+  }
+
+  /**
+   * Lista todos los usuarios activos del tenant (para el dropdown de vinculación).
+   */
+  async getUsuariosTenant() {
+    const empresaId = this.tenantService.getEmpresaId();
+    const rows = await this.dataSource.query<any[]>(`
+      SELECT u.id, u.email, u.nombre, u.apellido, u.role
+      FROM users u
+      JOIN usuarios_empresas ue ON ue."usuarioId" = u.id
+      WHERE ue."empresaId" = $1
+        AND u."isActive" = true
+      ORDER BY u.nombre, u.apellido
+    `, [empresaId]);
+    return rows;
+  }
+
   async getPrestaciones(empleadoId: number) {
     const emp = await this.findEmpleadoById(empleadoId);
     return this.calculos.calcularPrestaciones(emp);

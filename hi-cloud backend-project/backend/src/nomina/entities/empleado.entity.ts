@@ -88,4 +88,8 @@ export class Empleado extends TenantBaseEntity {
 
   @Column({ type: 'text', nullable: true })
   notas?: string;
+
+  /** ID del usuario del sistema vinculado (para Portal del Empleado) */
+  @Column({ nullable: true })
+  userId?: number;
 }

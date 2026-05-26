@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { Empleado } from '../nomina/entities/empleado.entity';
@@ -7,6 +7,7 @@ import { IsrService } from '../isr/isr.service';
 
 @Injectable()
 export class PortalEmpleadoService {
+  private readonly logger = new Logger(PortalEmpleadoService.name);
   constructor(
     @InjectRepository(Empleado) private empRepo: Repository<Empleado>,
     private dataSource:  DataSource,
@@ -20,23 +21,34 @@ export class PortalEmpleadoService {
   async getMiPerfil(usuarioId: number) {
     const empresaId = this.tenantSvc.getEmpresaId();
 
-    // Obtener el email del usuario para buscar el empleado vinculado
-    const [userRow] = await this.dataSource.query<{ email: string }[]>(
-      `SELECT email FROM users WHERE id = $1 LIMIT 1`,
+    // Obtener datos del usuario logueado
+    const [userRow] = await this.dataSource.query<{ email: string; nombre: string }[]>(
+      `SELECT email, nombre FROM users WHERE id = $1 LIMIT 1`,
       [usuarioId],
     );
     if (!userRow) throw new NotFoundException('Usuario no encontrado');
 
-    const emp = await this.empRepo
+    // 1) Buscar por userId directo (vinculación explícita del admin)
+    let emp = await this.empRepo
       .createQueryBuilder('e')
-      .where('e."empresaId" = :eid',             { eid: empresaId })
-      .andWhere('LOWER(e.email) = LOWER(:email)', { email: userRow.email })
-      .andWhere('e."isActive" = :a',              { a: true })
+      .where('e."empresaId" = :eid', { eid: empresaId })
+      .andWhere('e."userId" = :uid',  { uid: usuarioId })
+      .andWhere('e."isActive" = :a',  { a: true })
       .getOne();
 
+    // 2) Fallback: buscar por email coincidente (vinculación implícita)
+    if (!emp) {
+      emp = await this.empRepo
+        .createQueryBuilder('e')
+        .where('e."empresaId" = :eid',             { eid: empresaId })
+        .andWhere('LOWER(e.email) = LOWER(:email)', { email: userRow.email })
+        .andWhere('e."isActive" = :a',              { a: true })
+        .getOne();
+    }
+
     if (!emp) throw new NotFoundException(
-      'No hay un empleado vinculado a tu usuario en esta empresa. ' +
-      'Pide al administrador que registre tu empleado con el correo: ' + userRow.email,
+      `Para habilitar el portal, el administrador debe vincular tu usuario ` +
+      `de sistema (${userRow.email}) con tu registro de empleado en el módulo de Nómina.`,
     );
     return emp;
   }
@@ -174,6 +186,28 @@ export class PortalEmpleadoService {
     `, [emp.id, empresaId]).catch(() => []);
 
     return { empleado: emp, solicitudes };
+  }
+
+  /**
+   * El empleado solicita vinculación con su usuario del sistema.
+   * Registra la solicitud y notifica al admin por log (el admin va a Nómina → Empleados).
+   */
+  async solicitarVinculacion(usuarioId: number) {
+    const [userRow] = await this.dataSource.query<{ email: string; nombre: string }[]>(
+      `SELECT email, nombre FROM users WHERE id = $1 LIMIT 1`,
+      [usuarioId],
+    );
+    if (!userRow) throw new NotFoundException('Usuario no encontrado');
+
+    this.logger.warn(
+      `[SOLICITUD-VINCULACION] Usuario "${userRow.nombre}" (${userRow.email}) ` +
+      `solicita ser vinculado con su empleado en el módulo de Nómina.`
+    );
+
+    return {
+      ok: true,
+      mensaje: `Solicitud enviada. El administrador recibirá la notificación y vinculará tu perfil desde Nómina → Empleados.`,
+    };
   }
 
   async crearSolicitud(usuarioId: number, dto: {
