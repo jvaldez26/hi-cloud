@@ -1,7 +1,7 @@
 import {
   Card, Row, Col, Typography, Tag, Alert, Table, Progress,
   Tabs, Space, Button, Modal, Form, DatePicker, Input,
-  Descriptions, Badge, message, theme, Avatar, Statistic, Spin,
+  message, theme, Avatar, Statistic, Spin,
 } from 'antd';
 import {
   UserOutlined, DollarOutlined, CalendarOutlined, FileTextOutlined,
@@ -15,7 +15,6 @@ import api from '../../api/client';
 import { useAuthStore } from '../../store/auth.store';
 
 const { Title, Text } = Typography;
-const { TabPane } = Tabs;
 
 const fmt = (v: number) =>
   new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'DOP', minimumFractionDigits: 2 }).format(v ?? 0);
@@ -56,7 +55,7 @@ function TabPerfil({ emp, calc }: { emp: any; calc: any }) {
       <Col xs={24} lg={12}>
         <Card title={<Space><UserOutlined />Datos Personales</Space>} bordered={false} style={{ borderRadius: 10 }}>
           {[
-            { label: 'Nombre completo', value: `${emp.nombre} ${emp.apellido}` },
+            { label: 'Nombre completo', value: `${emp.nombre ?? ''} ${emp.apellido ?? ''}`.trim() },
             { label: 'Cédula',          value: emp.cedula ?? '—' },
             { label: 'Email',           value: emp.email ?? '—' },
             { label: 'Teléfono',        value: emp.telefono ?? '—' },
@@ -73,9 +72,9 @@ function TabPerfil({ emp, calc }: { emp: any; calc: any }) {
       <Col xs={24} lg={12}>
         <Card title={<Space><FileTextOutlined />Datos Laborales</Space>} bordered={false} style={{ borderRadius: 10 }}>
           {[
-            { label: 'Cargo',           value: emp.cargo },
+            { label: 'Cargo',           value: emp.cargo ?? '—' },
             { label: 'Departamento',    value: emp.departamento ?? '—' },
-            { label: 'Tipo contrato',   value: emp.tipoContrato },
+            { label: 'Tipo contrato',   value: emp.tipoContrato ?? '—' },
             { label: 'Fecha ingreso',   value: fmtDate(emp.fechaIngreso) },
             { label: 'Antigüedad',      value: calcAntig(emp.fechaIngreso) },
             { label: 'Banco',           value: emp.banco ?? '—' },
@@ -131,37 +130,38 @@ function TabRecibos({ empleadoId, nominas }: { empleadoId: number; nominas: any[
           style={{ width: 220 }}
         />
       </div>
-    <Table
-      dataSource={nominasFiltradas}
-      rowKey="periodoId"
-      size="middle"
-      pagination={{ pageSize: 12 }}
-      columns={[
-        { title: 'Período', dataIndex: 'periodo', key: 'p', render: v => <Text strong>{v}</Text> },
-        { title: 'Días', dataIndex: 'diasTrabajados', key: 'd', align: 'center' as const },
-        { title: 'Bruto', dataIndex: 'salarioBruto', key: 'b', align: 'right' as const, render: v => fmt(Number(v)) },
-        { title: 'AFP', dataIndex: 'descuentoAfp', key: 'afp', align: 'right' as const, render: v => <Text type="secondary" style={{ fontSize: 11 }}>-{fmt(Number(v))}</Text> },
-        { title: 'SFS', dataIndex: 'descuentoSfs', key: 'sfs', align: 'right' as const, render: v => <Text type="secondary" style={{ fontSize: 11 }}>-{fmt(Number(v))}</Text> },
-        { title: 'ISR', dataIndex: 'descuentoIsr', key: 'isr', align: 'right' as const, render: v => <Text type="secondary" style={{ fontSize: 11 }}>-{fmt(Number(v))}</Text> },
-        { title: 'Neto', dataIndex: 'salarioNeto', key: 'n', align: 'right' as const, render: v => <Text strong style={{ color: token.colorSuccess }}>{fmt(Number(v))}</Text> },
-        { title: 'Estado', dataIndex: 'estado', key: 'e', render: v => <Tag color={ESTADO_COLOR[v] ?? 'default'}>{(v ?? '').toUpperCase()}</Tag> },
-        { title: 'Pago', dataIndex: 'fechaPago', key: 'fp', render: v => v ?? '—' },
-        {
-          title: '', key: 'pdf', width: 60, align: 'center' as const,
-          render: (_: any, r: any) => r.periodoId ? (
-            <Button size="small" icon={<DownloadOutlined />} type="text"
-              title="Descargar recibo PDF"
-              onClick={() => descargarReciboPdf(r.periodoId, empleadoId, r.periodo)} />
-          ) : null,
-        },
-      ]}
-    />
+      <Table
+        dataSource={nominasFiltradas}
+        rowKey="periodoId"
+        size="middle"
+        pagination={{ pageSize: 12 }}
+        columns={[
+          { title: 'Período', dataIndex: 'periodo', key: 'p', render: v => <Text strong>{v}</Text> },
+          { title: 'Días', dataIndex: 'diasTrabajados', key: 'd', align: 'center' as const },
+          { title: 'Bruto', dataIndex: 'salarioBruto', key: 'b', align: 'right' as const, render: v => fmt(Number(v)) },
+          { title: 'AFP', dataIndex: 'descuentoAfp', key: 'afp', align: 'right' as const, render: v => <Text type="secondary" style={{ fontSize: 11 }}>-{fmt(Number(v))}</Text> },
+          { title: 'SFS', dataIndex: 'descuentoSfs', key: 'sfs', align: 'right' as const, render: v => <Text type="secondary" style={{ fontSize: 11 }}>-{fmt(Number(v))}</Text> },
+          { title: 'ISR', dataIndex: 'descuentoIsr', key: 'isr', align: 'right' as const, render: v => <Text type="secondary" style={{ fontSize: 11 }}>-{fmt(Number(v))}</Text> },
+          { title: 'Neto', dataIndex: 'salarioNeto', key: 'n', align: 'right' as const, render: v => <Text strong style={{ color: token.colorSuccess }}>{fmt(Number(v))}</Text> },
+          { title: 'Estado', dataIndex: 'estado', key: 'e', render: v => <Tag color={ESTADO_COLOR[v] ?? 'default'}>{(v ?? '').toUpperCase()}</Tag> },
+          { title: 'Pago', dataIndex: 'fechaPago', key: 'fp', render: v => v ?? '—' },
+          {
+            title: '', key: 'pdf', width: 60, align: 'center' as const,
+            render: (_: any, r: any) => r.periodoId ? (
+              <Button size="small" icon={<DownloadOutlined />} type="text"
+                title="Descargar recibo PDF"
+                onClick={() => descargarReciboPdf(r.periodoId, empleadoId, r.periodo)} />
+            ) : null,
+          },
+        ]}
+        locale={{ emptyText: 'No tienes recibos de nómina registrados' }}
+      />
     </>
   );
 }
 
 // ── Tab: Vacaciones ───────────────────────────────────────────────────────────
-function TabVacaciones({ usuarioId, vac }: { usuarioId: number; vac: any }) {
+function TabVacaciones({ vac }: { vac: any }) {
   const qc  = useQueryClient();
   const { token } = theme.useToken();
   const [form] = Form.useForm();
@@ -184,7 +184,6 @@ function TabVacaciones({ usuarioId, vac }: { usuarioId: number; vac: any }) {
 
   return (
     <div>
-      {/* Resumen */}
       {vac && (
         <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
           {[
@@ -214,7 +213,6 @@ function TabVacaciones({ usuarioId, vac }: { usuarioId: number; vac: any }) {
         Solicitar vacaciones
       </Button>
 
-      {/* Historial */}
       <Table
         dataSource={vac?.historial ?? []}
         rowKey={(r: any, i: any) => `${r.fechaInicio}-${i}`}
@@ -227,9 +225,9 @@ function TabVacaciones({ usuarioId, vac }: { usuarioId: number; vac: any }) {
           { title: 'Motivo', dataIndex: 'motivo',       key: 'm',  render: v => v ?? '—', ellipsis: true },
           { title: 'Estado', dataIndex: 'estado',       key: 'e',  render: v => <Tag color={ESTADO_COLOR[v] ?? 'default'}>{(v ?? '').toUpperCase()}</Tag> },
         ]}
+        locale={{ emptyText: 'No tienes vacaciones registradas' }}
       />
 
-      {/* Modal solicitud */}
       <Modal
         title={<Space><SendOutlined />Solicitud de Vacaciones</Space>}
         open={modal}
@@ -283,26 +281,26 @@ function TabSolicitudes() {
           style={{ width: 220 }}
         />
       </div>
-    <Table
-      dataSource={solicitudesFiltradas}
-      rowKey="id"
-      loading={isLoading}
-      size="middle"
-      pagination={{ pageSize: 12 }}
-      columns={[
-        { title: 'Desde',   dataIndex: 'fechaInicio',    key: 'fi', render: v => fmtDate(v) },
-        { title: 'Hasta',   dataIndex: 'fechaFin',       key: 'ff', render: v => fmtDate(v) },
-        { title: 'Días',    dataIndex: 'diasSolicitados', key: 'd',  align: 'center' as const },
-        { title: 'Motivo',  dataIndex: 'motivo',          key: 'm',  render: v => v ?? '—', ellipsis: true },
-        {
-          title: 'Estado', dataIndex: 'estado', key: 'e',
-          render: v => <Tag color={ESTADO_COLOR[v] ?? 'default'}>{(v ?? '').toUpperCase()}</Tag>,
-        },
-        { title: 'Observación', dataIndex: 'observacionAprobador', key: 'obs', render: v => v ?? '—', ellipsis: true },
-        { title: 'Fecha solicitud', dataIndex: 'createdAt', key: 'c', render: v => fmtDate(v) },
-      ]}
-      locale={{ emptyText: 'No tienes solicitudes registradas' }}
-    />
+      <Table
+        dataSource={solicitudesFiltradas}
+        rowKey="id"
+        loading={isLoading}
+        size="middle"
+        pagination={{ pageSize: 12 }}
+        columns={[
+          { title: 'Desde',   dataIndex: 'fechaInicio',    key: 'fi', render: v => fmtDate(v) },
+          { title: 'Hasta',   dataIndex: 'fechaFin',       key: 'ff', render: v => fmtDate(v) },
+          { title: 'Días',    dataIndex: 'diasSolicitados', key: 'd',  align: 'center' as const },
+          { title: 'Motivo',  dataIndex: 'motivo',          key: 'm',  render: v => v ?? '—', ellipsis: true },
+          {
+            title: 'Estado', dataIndex: 'estado', key: 'e',
+            render: v => <Tag color={ESTADO_COLOR[v] ?? 'default'}>{(v ?? '').toUpperCase()}</Tag>,
+          },
+          { title: 'Observación', dataIndex: 'observacionAprobador', key: 'obs', render: v => v ?? '—', ellipsis: true },
+          { title: 'Fecha solicitud', dataIndex: 'createdAt', key: 'c', render: v => fmtDate(v) },
+        ]}
+        locale={{ emptyText: 'No tienes solicitudes registradas' }}
+      />
     </>
   );
 }
@@ -321,19 +319,27 @@ export default function PortalEmpleadoPage() {
   const { data: nominasData } = useQuery<any>({
     queryKey: ['portal-nominas'],
     queryFn:  () => api.get('/portal-empleado/mis-nominas').then((r: any) => r.data?.data ?? r.data),
-    enabled:  !error,
+    enabled:  !!resumen,
     retry: false,
   });
 
   const { data: vacData } = useQuery<any>({
     queryKey: ['portal-vacaciones'],
     queryFn:  () => api.get('/portal-empleado/mis-vacaciones').then((r: any) => r.data?.data ?? r.data),
-    enabled:  !error,
+    enabled:  !!resumen,
     retry: false,
   });
 
-  if (isLoading) return <div style={{ padding: 48, textAlign: 'center' }}><Spin size="large" /></div>;
+  // ── Estado de carga ──
+  if (isLoading) {
+    return (
+      <div style={{ padding: 80, textAlign: 'center' }}>
+        <Spin size="large" tip="Cargando tu portal..." />
+      </div>
+    );
+  }
 
+  // ── Sin empleado vinculado (404) u otro error ──
   if (error || !resumen) {
     return (
       <div style={{ padding: 24 }}>
@@ -350,10 +356,33 @@ export default function PortalEmpleadoPage() {
     );
   }
 
-  const emp    = resumen.empleado;
-  const calc   = resumen.calculoMensual;
+  const emp     = resumen.empleado;
+  const calc    = resumen.calculoMensual;
   const nominas = nominasData?.nominas ?? [];
-  const empId  = nominasData?.empleado?.id ?? 0;
+  const empId   = nominasData?.empleado?.id ?? 0;
+
+  const tabItems = [
+    {
+      key: 'perfil',
+      label: <Space><UserOutlined />Mi Perfil</Space>,
+      children: <TabPerfil emp={emp} calc={calc} />,
+    },
+    {
+      key: 'recibos',
+      label: <Space><DollarOutlined />Mis Recibos</Space>,
+      children: <TabRecibos empleadoId={empId} nominas={nominas} />,
+    },
+    {
+      key: 'vacaciones',
+      label: <Space><CalendarOutlined />Vacaciones</Space>,
+      children: <TabVacaciones vac={vacData} />,
+    },
+    {
+      key: 'solicitudes',
+      label: <Space><ClockCircleOutlined />Mis Solicitudes</Space>,
+      children: <TabSolicitudes />,
+    },
+  ];
 
   return (
     <div style={{ padding: 24 }}>
@@ -361,7 +390,7 @@ export default function PortalEmpleadoPage() {
       <Card bordered={false} style={{ borderRadius: 12, marginBottom: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <Avatar size={56} style={{ background: token.colorPrimary, fontSize: 22, fontWeight: 700 }}>
-            {emp.nombre?.charAt(0).toUpperCase()}
+            {(emp.nombre ?? '?').charAt(0).toUpperCase()}
           </Avatar>
           <div style={{ flex: 1 }}>
             <Title level={4} style={{ margin: 0 }}>{emp.nombre} {emp.apellido ?? ''}</Title>
@@ -393,22 +422,9 @@ export default function PortalEmpleadoPage() {
         </Row>
       </Card>
 
-      {/* Tabs */}
+      {/* Tabs — usando la API moderna de Ant Design 5 (items en vez de TabPane) */}
       <Card bordered={false} style={{ borderRadius: 12 }}>
-        <Tabs defaultActiveKey="perfil">
-          <TabPane tab={<Space><UserOutlined />Mi Perfil</Space>} key="perfil">
-            <TabPerfil emp={emp} calc={calc} />
-          </TabPane>
-          <TabPane tab={<Space><DollarOutlined />Mis Recibos</Space>} key="recibos">
-            <TabRecibos empleadoId={empId} nominas={nominas} />
-          </TabPane>
-          <TabPane tab={<Space><CalendarOutlined />Vacaciones</Space>} key="vacaciones">
-            <TabVacaciones usuarioId={user?.id ?? 0} vac={vacData} />
-          </TabPane>
-          <TabPane tab={<Space><ClockCircleOutlined />Mis Solicitudes</Space>} key="solicitudes">
-            <TabSolicitudes />
-          </TabPane>
-        </Tabs>
+        <Tabs defaultActiveKey="perfil" items={tabItems} />
       </Card>
     </div>
   );

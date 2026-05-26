@@ -81,13 +81,20 @@ export class PortalEmpleadoService {
 
     return {
       empleado: {
-        nombre:      `${emp.nombre} ${emp.apellido}`,
-        cedula:      emp.cedula,
-        cargo:       emp.cargo,
-        departamento: emp.departamento,
-        fechaIngreso: emp.fechaIngreso,
-        salarioBase:  Number(emp.salarioBase),
-        tipoContrato: emp.tipoContrato,
+        nombre:          emp.nombre,
+        apellido:        emp.apellido,
+        cedula:          emp.cedula,
+        email:           emp.email ?? null,
+        telefono:        emp.telefono ?? null,
+        fechaNacimiento: emp.fechaNacimiento ?? null,
+        cargo:           emp.cargo,
+        departamento:    emp.departamento ?? null,
+        fechaIngreso:    emp.fechaIngreso,
+        salarioBase:     Number(emp.salarioBase),
+        tipoContrato:    emp.tipoContrato,
+        banco:           emp.banco ?? null,
+        cuentaBancaria:  emp.cuentaBancaria ?? null,
+        estado:          emp.estado,
       },
       calculoMensual: {
         salarioBruto:    Number(emp.salarioBase),
