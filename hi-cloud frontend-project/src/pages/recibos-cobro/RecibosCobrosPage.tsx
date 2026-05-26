@@ -11,7 +11,7 @@ import {
 import {
   FileTextOutlined, PlusOutlined, PrinterOutlined,
   CheckCircleOutlined, MailOutlined, FileExcelOutlined,
-  FilePdfOutlined, LoadingOutlined, StopOutlined, SearchOutlined,
+  LoadingOutlined, StopOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -234,12 +234,12 @@ export default function RecibosCobrosPage() {
     setTimeout(() => imprimirElemento(RECIBO_PRINT_ID, '80mm auto'), 200);
   };
 
-  const descargarPDF = async (item: any) => {
+  const imprimirPDF = async (item: any) => {
     setPdfPending(item.id);
     try {
-      const eid   = localStorage.getItem('empresaId') ?? '';
-      const res   = await fetch(`/api/v1/recibos-cobro/${item.id}/pdf`, {
-      credentials: 'include',
+      const eid = localStorage.getItem('empresaId') ?? '';
+      const res = await fetch(`/api/v1/recibos-cobro/${item.id}/pdf`, {
+        credentials: 'include',
         headers: { 'X-Empresa-ID': eid },
       });
       if (!res.ok) {
@@ -247,10 +247,12 @@ export default function RecibosCobrosPage() {
         message.error(`Error PDF: ${err?.message ?? res.status}`); return;
       }
       const blob = await res.blob();
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `${item.numero ?? item.id}.pdf`;
-      a.click(); URL.revokeObjectURL(a.href);
+      const url  = URL.createObjectURL(blob);
+      const win  = window.open(url, '_blank');
+      if (!win) { message.warning('El navegador bloqueó la ventana emergente'); URL.revokeObjectURL(url); return; }
+      win.addEventListener('load', () => {
+        setTimeout(() => { win.print(); setTimeout(() => URL.revokeObjectURL(url), 1_000); }, 500);
+      });
     } catch (e: any) { message.error(`No se pudo generar el PDF: ${e?.message ?? ''}`); }
     finally { setPdfPending(null); }
   };
@@ -335,10 +337,10 @@ export default function RecibosCobrosPage() {
                   items={[
                     { key: 'imprimir', label: 'Imprimir recibo', icon: <PrinterOutlined />,
                       onClick: () => handleImprimir(r) },
-                    { key: 'pdf',      label: pdfPending === r.id ? 'Generando PDF...' : 'Descargar PDF',
-                      icon: pdfPending === r.id ? <LoadingOutlined /> : <FilePdfOutlined />,
+                    { key: 'pdf',      label: pdfPending === r.id ? 'Generando PDF...' : 'Imprimir A4',
+                      icon: pdfPending === r.id ? <LoadingOutlined /> : <PrinterOutlined />,
                       disabled: pdfPending === r.id,
-                      onClick: () => descargarPDF(r) },
+                      onClick: () => imprimirPDF(r) },
                     { key: 'email',    label: 'Enviar por email', icon: <MailOutlined />,
                       onClick: () => { setEmailRecibo(r); setEmailDestino(r.clienteEmail ?? ''); } },
                     { type: 'divider' as const },
@@ -370,11 +372,11 @@ export default function RecibosCobrosPage() {
               Imprimir
             </Button>
             <Button
-              icon={pdfPending === detalleRecibo?.id ? <LoadingOutlined /> : <FilePdfOutlined />}
+              icon={pdfPending === detalleRecibo?.id ? <LoadingOutlined /> : <PrinterOutlined />}
               disabled={pdfPending === detalleRecibo?.id}
-              onClick={() => detalleRecibo && descargarPDF(detalleRecibo)}
+              onClick={() => detalleRecibo && imprimirPDF(detalleRecibo)}
             >
-              PDF
+              Imprimir A4
             </Button>
             <Button icon={<MailOutlined />}
               onClick={() => { setEmailRecibo(detalleRecibo); setEmailDestino(detalleRecibo?.clienteEmail ?? ''); setDetalleRecibo(null); }}>

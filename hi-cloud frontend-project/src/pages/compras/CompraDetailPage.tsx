@@ -1,7 +1,7 @@
 import { Button, Card, Descriptions, Table, Tag, Row, Col, Typography,
          Statistic, Space, Spin, Steps, message, Popconfirm, theme } from 'antd';
 import { ArrowLeftOutlined, SendOutlined, CheckCircleOutlined,
-         CloseCircleOutlined, FilePdfOutlined, LoadingOutlined } from '@ant-design/icons';
+         CloseCircleOutlined, PrinterOutlined, LoadingOutlined } from '@ant-design/icons';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -34,20 +34,22 @@ export default function CompraDetailPage() {
   const qc       = useQueryClient();
   const [pdfLoading, setPdfLoading] = useState(false);
 
-  const descargarPDF = async () => {
+  const imprimirPDF = async () => {
     setPdfLoading(true);
     try {
-      const eid   = localStorage.getItem('empresaId') ?? '';
-      const res   = await fetch(`/api/v1/compras/${id}/pdf`, {
-      credentials: 'include',
+      const eid = localStorage.getItem('empresaId') ?? '';
+      const res = await fetch(`/api/v1/compras/${id}/pdf`, {
+        credentials: 'include',
         headers: { 'X-Empresa-ID': eid },
       });
       if (!res.ok) throw new Error();
       const blob = await res.blob();
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `${(compra as any)?.folio ?? 'compra'}.pdf`;
-      a.click(); URL.revokeObjectURL(a.href);
+      const url  = URL.createObjectURL(blob);
+      const win  = window.open(url, '_blank');
+      if (!win) { message.warning('El navegador bloqueó la ventana emergente'); URL.revokeObjectURL(url); return; }
+      win.addEventListener('load', () => {
+        setTimeout(() => { win.print(); setTimeout(() => URL.revokeObjectURL(url), 1_000); }, 500);
+      });
     } catch { message.error('No se pudo generar el PDF'); }
     finally { setPdfLoading(false); }
   };
@@ -102,9 +104,9 @@ export default function CompraDetailPage() {
         </Col>
         <Col>
           <Space>
-            <Button icon={pdfLoading ? <LoadingOutlined /> : <FilePdfOutlined />}
-              onClick={descargarPDF} disabled={pdfLoading}>
-              Descargar PDF
+            <Button icon={pdfLoading ? <LoadingOutlined /> : <PrinterOutlined />}
+              onClick={imprimirPDF} disabled={pdfLoading}>
+              Imprimir
             </Button>
             {siguientes.map(sig => (
               <Popconfirm key={sig}

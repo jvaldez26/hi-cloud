@@ -9,7 +9,7 @@ import {
 } from 'antd';
 import {
   PlusOutlined, EyeOutlined, DownOutlined, SearchOutlined,
-  FileExcelOutlined, FilterOutlined, MailOutlined, FilePdfOutlined,
+  FileExcelOutlined, FilterOutlined, MailOutlined, PrinterOutlined,
   LoadingOutlined, AuditOutlined, CopyOutlined, CheckCircleOutlined,
 } from '@ant-design/icons';
 import { SolicitarAprobacionModal } from '../../components/ui/SolicitarAprobacionModal';
@@ -80,20 +80,22 @@ export default function ComprasPage() {
   const rows = data?.data ?? [];
   const [pdfPending, setPdfPending] = useState<number | null>(null);
 
-  const descargarPDF = async (compra: Compra) => {
+  const imprimirPDF = async (compra: Compra) => {
     setPdfPending(compra.id);
     try {
-      const eid   = localStorage.getItem('empresaId') ?? '';
-      const res   = await fetch(`/api/v1/compras/${compra.id}/pdf`, {
-      credentials: 'include',
+      const eid = localStorage.getItem('empresaId') ?? '';
+      const res = await fetch(`/api/v1/compras/${compra.id}/pdf`, {
+        credentials: 'include',
         headers: { 'X-Empresa-ID': eid },
       });
       if (!res.ok) throw new Error('Error PDF');
       const blob = await res.blob();
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `${(compra as any).folio}.pdf`;
-      a.click(); URL.revokeObjectURL(a.href);
+      const url  = URL.createObjectURL(blob);
+      const win  = window.open(url, '_blank');
+      if (!win) { message.warning('El navegador bloqueó la ventana emergente'); URL.revokeObjectURL(url); return; }
+      win.addEventListener('load', () => {
+        setTimeout(() => { win.print(); setTimeout(() => URL.revokeObjectURL(url), 1_000); }, 500);
+      });
     } catch { message.error('No se pudo generar el PDF'); }
     finally { setPdfPending(null); }
   };
@@ -214,7 +216,7 @@ export default function ComprasPage() {
           onClick: () => estadoMut.mutate({ id: r.id, estado: s }),
         }));
         const menuItems2 = [
-          { key: 'pdf', label: 'Descargar PDF', icon: <FilePdfOutlined />, onClick: () => descargarPDF(r) },
+          { key: 'pdf', label: pdfPending === r.id ? 'Generando...' : 'Imprimir', icon: pdfPending === r.id ? <LoadingOutlined /> : <PrinterOutlined />, disabled: pdfPending === r.id, onClick: () => imprimirPDF(r) },
           { key: 'email', label: 'Enviar email al proveedor', icon: <MailOutlined />, onClick: () => { setEmailCompra(r); setEmailDest((r as any).proveedor?.email ?? ''); } },
           { key: 'duplicar', label: 'Duplicar compra', icon: <CopyOutlined />, onClick: () => duplicarMut.mutate(r.id) },
           ...(r.estado === 'borrador' ? [

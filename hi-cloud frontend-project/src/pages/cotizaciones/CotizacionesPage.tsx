@@ -8,8 +8,8 @@ import { Table, Button, Tag, Card, Row, Col, Typography, Statistic,
 import { TableActions } from '../../components/ui/TableActions';
 import { SolicitarAprobacionModal } from '../../components/ui/SolicitarAprobacionModal';
 import { PlusOutlined, EyeOutlined, MoreOutlined,
-         MailOutlined, FileExcelOutlined, FilePdfOutlined, CopyOutlined,
-         EditOutlined, SearchOutlined, CheckCircleOutlined } from '@ant-design/icons';
+         MailOutlined, FileExcelOutlined, PrinterOutlined, CopyOutlined,
+         EditOutlined, SearchOutlined, CheckCircleOutlined, LoadingOutlined } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import api from '../../api/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -54,6 +54,7 @@ export default function CotizacionesPage() {
   const [emailCot,    setEmailCot]    = useState<any>(null);
   const [emailForm]                   = Form.useForm();
   const [aprobCot,    setAprobCot]    = useState<any>(null);   // cotización a aprobar
+  const [pdfPending,  setPdfPending]  = useState<number | null>(null);
   const navigate = useNavigate();
   const qc = useQueryClient();
 
@@ -123,6 +124,26 @@ export default function CotizacionesPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['cotizaciones'] }); message.success('Eliminada'); },
   });
 
+  const imprimirPDF = async (r: any) => {
+    setPdfPending(r.id);
+    try {
+      const eid = localStorage.getItem('empresaId') ?? '';
+      const res = await fetch(`/api/v1/cotizaciones/${r.id}/pdf`, {
+        credentials: 'include',
+        headers: { 'X-Empresa-ID': eid },
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const win  = window.open(url, '_blank');
+      if (!win) { message.warning('El navegador bloqueó la ventana emergente'); URL.revokeObjectURL(url); return; }
+      win.addEventListener('load', () => {
+        setTimeout(() => { win.print(); setTimeout(() => URL.revokeObjectURL(url), 1_000); }, 500);
+      });
+    } catch (e: any) { message.error('Error al generar PDF: ' + e.message); }
+    finally { setPdfPending(null); }
+  };
+
   const kpiColors: Record<string, string> = {
     borrador: '#6b7280', enviada: '#1d4ed8', aceptada: '#059669',
     rechazada: '#dc2626', vencida: '#d97706', convertida: '#0891b2',
@@ -173,9 +194,9 @@ export default function CotizacionesPage() {
           }] : []),
           {
             key: 'pdf',
-            label: <><FilePdfOutlined style={{ marginRight: 6 }} />Descargar PDF</>,
-            onClick: () => cotizacionesApi.pdf(r.id, r.numero)
-              .catch((e: any) => message.error('Error al generar PDF: ' + e.message)),
+            label: <>{pdfPending === r.id ? <LoadingOutlined style={{ marginRight: 6 }} /> : <PrinterOutlined style={{ marginRight: 6 }} />}{pdfPending === r.id ? 'Generando...' : 'Imprimir'}</>,
+            disabled: pdfPending === r.id,
+            onClick: () => imprimirPDF(r),
           },
           {
             key: 'email',

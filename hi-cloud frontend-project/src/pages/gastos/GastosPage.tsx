@@ -7,7 +7,7 @@ import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Table, Button, Card, Row, Col, Typography, Statistic, Tag,
          Modal, Form, Input, InputNumber, Select, DatePicker, message,
          Tabs, Popconfirm, Space, Alert, theme } from 'antd';
-import { PlusOutlined, DeleteOutlined, FileExcelOutlined, AuditOutlined, FilePdfOutlined, LoadingOutlined, SearchOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, FileExcelOutlined, AuditOutlined, PrinterOutlined, LoadingOutlined, SearchOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import { SolicitarAprobacionModal } from '../../components/ui/SolicitarAprobacionModal';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -85,12 +85,12 @@ export default function GastosPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['gastos'] }); message.success('Eliminado'); },
   });
 
-  const descargarPDF = async (item: any) => {
+  const imprimirPDF = async (item: any) => {
     setPdfPending(item.id);
     try {
-      const eid   = localStorage.getItem('empresaId') ?? '';
-      const res   = await fetch(`/api/v1/gastos/${item.id}/pdf`, {
-      credentials: 'include',
+      const eid = localStorage.getItem('empresaId') ?? '';
+      const res = await fetch(`/api/v1/gastos/${item.id}/pdf`, {
+        credentials: 'include',
         headers: { 'X-Empresa-ID': eid },
       });
       if (!res.ok) {
@@ -98,10 +98,12 @@ export default function GastosPage() {
         message.error(`Error PDF: ${err?.message ?? res.status}`); return;
       }
       const blob = await res.blob();
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `${`GAS-${String(item.id).padStart(6,'0')}`}.pdf`;
-      a.click(); URL.revokeObjectURL(a.href);
+      const url  = URL.createObjectURL(blob);
+      const win  = window.open(url, '_blank');
+      if (!win) { message.warning('El navegador bloqueó la ventana emergente'); URL.revokeObjectURL(url); return; }
+      win.addEventListener('load', () => {
+        setTimeout(() => { win.print(); setTimeout(() => URL.revokeObjectURL(url), 1_000); }, 500);
+      });
     } catch (e: any) { message.error(`No se pudo generar el PDF: ${e?.message ?? ''}`); }
     finally { setPdfPending(null); }
   };
@@ -172,10 +174,10 @@ export default function GastosPage() {
           onView={() => setDetalleGasto(r)}
           viewLabel="Ver gasto"
           items={[
-            { key: 'pdf', label: pdfPending === r.id ? 'Generando...' : 'Descargar PDF',
-              icon: pdfPending === r.id ? <LoadingOutlined /> : <FilePdfOutlined />,
+            { key: 'pdf', label: pdfPending === r.id ? 'Generando...' : 'Imprimir',
+              icon: pdfPending === r.id ? <LoadingOutlined /> : <PrinterOutlined />,
               disabled: pdfPending === r.id,
-              onClick: () => descargarPDF(r) },
+              onClick: () => imprimirPDF(r) },
             { type: 'divider' as const },
             {
               key: 'solicitar-aprobacion',

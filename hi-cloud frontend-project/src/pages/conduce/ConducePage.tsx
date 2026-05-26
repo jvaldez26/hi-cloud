@@ -11,7 +11,7 @@ import {
 import {
   CarOutlined, PlusOutlined, SendOutlined, CheckCircleOutlined,
   RollbackOutlined, DeleteOutlined, EyeOutlined, FileExcelOutlined,
-  FilePdfOutlined, LoadingOutlined, SearchOutlined,
+  PrinterOutlined, LoadingOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -98,12 +98,12 @@ export default function ConducePage() {
     onError: (e: any) => onErr(e, 'Error al eliminar conduce'),
   });
 
-  const descargarPDF = async (item: any) => {
+  const imprimirPDF = async (item: any) => {
     setPdfPending(item.id);
     try {
-      const eid   = localStorage.getItem('empresaId') ?? '';
-      const res   = await fetch(`/api/v1/conduces/${item.id}/pdf`, {
-      credentials: 'include',
+      const eid = localStorage.getItem('empresaId') ?? '';
+      const res = await fetch(`/api/v1/conduces/${item.id}/pdf`, {
+        credentials: 'include',
         headers: { 'X-Empresa-ID': eid },
       });
       if (!res.ok) {
@@ -111,10 +111,12 @@ export default function ConducePage() {
         message.error(`Error PDF: ${err?.message ?? res.status}`); return;
       }
       const blob = await res.blob();
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `${item.numero ?? item.id}.pdf`;
-      a.click(); URL.revokeObjectURL(a.href);
+      const url  = URL.createObjectURL(blob);
+      const win  = window.open(url, '_blank');
+      if (!win) { message.warning('El navegador bloqueó la ventana emergente'); URL.revokeObjectURL(url); return; }
+      win.addEventListener('load', () => {
+        setTimeout(() => { win.print(); setTimeout(() => URL.revokeObjectURL(url), 1_000); }, 500);
+      });
     } catch (e: any) { message.error(`No se pudo generar el PDF: ${e?.message ?? ''}`); }
     finally { setPdfPending(null); }
   };
@@ -203,9 +205,9 @@ export default function ConducePage() {
                   onView={() => setModalDetalle(r)}
                   viewLabel="Ver detalle"
                   items={[
-                    { key: 'pdf', label: pdfPending === r.id ? 'Generando...' : 'Descargar PDF',
-                      icon: pdfPending === r.id ? <LoadingOutlined /> : <FilePdfOutlined />,
-                      disabled: pdfPending === r.id, onClick: () => descargarPDF(r) },
+                    { key: 'pdf', label: pdfPending === r.id ? 'Generando...' : 'Imprimir',
+                      icon: pdfPending === r.id ? <LoadingOutlined /> : <PrinterOutlined />,
+                      disabled: pdfPending === r.id, onClick: () => imprimirPDF(r) },
                     ...(r.estado === 'generado' ? [
                       { key: 'transito', label: 'Marcar En Tránsito', icon: <SendOutlined />, onClick: () => enTransito.mutate(r.id) },
                     ] : []),

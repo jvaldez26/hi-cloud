@@ -9,7 +9,7 @@ import { Card, Row, Col, Typography, Statistic, Button, InputNumber,
          theme, Drawer, Descriptions, Divider } from 'antd';
 import { UnlockOutlined, LockOutlined, HistoryOutlined,
          RollbackOutlined, WarningOutlined,
-         PrinterOutlined, DownloadOutlined, SearchOutlined } from '@ant-design/icons';
+         PrinterOutlined, SearchOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../../store/auth.store';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -198,13 +198,15 @@ h2{text-align:center;font-size:16px;margin:0 0 4px}
 </body></html>`);
   };
 
-  const descargarPDFCierre = async (r: any) => {
+  const imprimirPDFCierre = async (r: any) => {
     try {
       const res = await api.get(`/caja/${r.id}/pdf`, { responseType: 'blob' });
       const url = URL.createObjectURL(res.data as Blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = `Cierre-${r.fecha}.pdf`; a.click();
-      URL.revokeObjectURL(url);
+      const win = window.open(url, '_blank');
+      if (!win) { imprimirCierre(r); URL.revokeObjectURL(url); return; }
+      win.addEventListener('load', () => {
+        setTimeout(() => { win.print(); setTimeout(() => URL.revokeObjectURL(url), 1_000); }, 500);
+      });
     } catch {
       // PDF backend no configurado → generar impresión HTML como alternativa
       imprimirCierre(r);
@@ -391,7 +393,7 @@ h2{text-align:center;font-size:16px;margin:0 0 4px}
                   viewLabel="Ver detalle del cierre"
                   items={[
                     { key: 'imprimir', label: 'Imprimir cierre', icon: <PrinterOutlined />, onClick: () => imprimirCierre(r) },
-                    { key: 'pdf',      label: 'Descargar PDF',   icon: <DownloadOutlined />, onClick: () => descargarPDFCierre(r) },
+                    { key: 'pdf',      label: 'Imprimir PDF',    icon: <PrinterOutlined />, onClick: () => imprimirPDFCierre(r) },
                     ...(puedeAnular ? [
                       { type: 'divider' as const },
                       { key: 'anular', label: 'Anular cierre', icon: <RollbackOutlined />, danger: true,
@@ -419,7 +421,7 @@ h2{text-align:center;font-size:16px;margin:0 0 4px}
         footer={
           <Space>
             <Button icon={<PrinterOutlined />} onClick={() => imprimirCierre(detalleCierre)}>Imprimir</Button>
-            <Button icon={<DownloadOutlined />} onClick={() => descargarPDFCierre(detalleCierre)}>PDF</Button>
+            <Button icon={<PrinterOutlined />} onClick={() => imprimirPDFCierre(detalleCierre)}>Imprimir PDF</Button>
             {puedeAnular && detalleCierre?.estado !== 'anulada' && (
               <Button danger icon={<RollbackOutlined />}
                 onClick={() => { setAnularTarget({ id: detalleCierre.id, nombre: detalleCierre.vendedorNombre ?? 'Administrador', fecha: detalleCierre.fecha }); setDetalleCierre(null); formAnular.resetFields(); }}>

@@ -6,7 +6,7 @@ import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Table, Button, Card, Row, Col, Typography, Statistic, Tag, Space,
          Modal, Form, Input, InputNumber, Select, message, Popconfirm,
          Tabs, Alert, theme } from 'antd';
-import { PlusOutlined, DeleteOutlined, FileTextOutlined, FilePdfOutlined, LoadingOutlined, SearchOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, FileTextOutlined, PrinterOutlined, LoadingOutlined, SearchOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import api from '../../api/client';
@@ -60,12 +60,12 @@ function ListadoTab() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['retenciones'] }); message.success('Eliminada'); },
   });
 
-  const descargarPDF = async (item: any) => {
+  const imprimirPDF = async (item: any) => {
     setPdfPending(item.id);
     try {
-      const eid   = localStorage.getItem('empresaId') ?? '';
-      const res   = await fetch(`/api/v1/retenciones/${item.id}/pdf`, {
-      credentials: 'include',
+      const eid = localStorage.getItem('empresaId') ?? '';
+      const res = await fetch(`/api/v1/retenciones/${item.id}/pdf`, {
+        credentials: 'include',
         headers: { 'X-Empresa-ID': eid },
       });
       if (!res.ok) {
@@ -73,10 +73,12 @@ function ListadoTab() {
         message.error(`Error PDF: ${err?.message ?? res.status}`); return;
       }
       const blob = await res.blob();
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `${`RET-${String(item.id).padStart(6,'0')}`}.pdf`;
-      a.click(); URL.revokeObjectURL(a.href);
+      const url  = URL.createObjectURL(blob);
+      const win  = window.open(url, '_blank');
+      if (!win) { message.warning('El navegador bloqueó la ventana emergente'); URL.revokeObjectURL(url); return; }
+      win.addEventListener('load', () => {
+        setTimeout(() => { win.print(); setTimeout(() => URL.revokeObjectURL(url), 1_000); }, 500);
+      });
     } catch (e: any) { message.error(`No se pudo generar el PDF: ${e?.message ?? ''}`); }
     finally { setPdfPending(null); }
   };
@@ -108,8 +110,8 @@ function ListadoTab() {
     { title: '', key: 'del', width: 72, align: 'right' as const,
       render: (_: any, r: any) => (
         <TableActions
-          onView={() => descargarPDF(r)}
-          viewLabel="Descargar PDF"
+          onView={() => imprimirPDF(r)}
+          viewLabel="Imprimir"
           items={[
             {
               key: 'eliminar',
