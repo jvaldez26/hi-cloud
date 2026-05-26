@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
@@ -6,7 +6,7 @@ import { TableActions } from '../../components/ui/TableActions';
 import { DetailDrawer } from '../../components/ui/DetailDrawer';
 import { exportarExcel } from '../../utils/exportExcel';
 import { Table, Button, Tag, Card, Row, Col, Typography, Space,
-         Modal, Form, Input, InputNumber, Select, message,
+         Modal, Form, Input, InputNumber, Select, AutoComplete, message,
          Switch, Descriptions, Divider, Tooltip, theme } from 'antd';
 import { PlusOutlined, ThunderboltOutlined, DeleteOutlined,
          FileExcelOutlined, WarningOutlined, ClockCircleOutlined, SearchOutlined } from '@ant-design/icons';
@@ -50,8 +50,25 @@ export default function FacturasRecurrentesPage() {
   const [open,   setOpen]   = useState(false);
   const [detalle,setDetalle]= useState<any>(null);
   const [form]              = Form.useForm();
-  const [lineas, setLineas] = useState([{ descripcion: '', cantidad: 1, precioUnitario: 0, porcentajeIva: 18 }]);
+  const [lineas, setLineas] = useState<Array<{ descripcion: string; cantidad: number; precioUnitario: number; porcentajeIva: number; productoId?: number }>>([
+    { descripcion: '', cantidad: 1, precioUnitario: 0, porcentajeIva: 18 },
+  ]);
+  const [searchIdx,     setSearchIdx]     = useState<number | null>(null);
+  const [searchTerm,    setSearchTerm]    = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
   const qc = useQueryClient();
+
+  // Debounce product search
+  useEffect(() => {
+    if (!searchTerm || searchTerm.length < 2) { setSearchResults([]); return; }
+    const t = setTimeout(async () => {
+      try {
+        const res = await api.get(`/productos?search=${encodeURIComponent(searchTerm)}&limit=10`);
+        setSearchResults(res.data?.data?.data ?? res.data?.data ?? []);
+      } catch { setSearchResults([]); }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
 
   // Carga fresca del registro abierto en el drawer (evita mostrar datos stale de la lista)
   const { data: detalleRefresh } = useQuery({
@@ -74,7 +91,7 @@ export default function FacturasRecurrentesPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['recurrentes'] });
       setOpen(false); form.resetFields();
-      setLineas([{ descripcion: '', cantidad: 1, precioUnitario: 0, porcentajeIva: 18 }]);
+      setLineas([{ descripcion: '', cantidad: 1, precioUnitario: 0, porcentajeIva: 18, productoId: undefined }]);
       message.success('Factura recurrente creada');
     },
     onError: (e: any) => message.error(e?.response?.data?.errors?.[0] ?? 'Error'),
@@ -103,7 +120,8 @@ export default function FacturasRecurrentesPage() {
     createMut.mutate({
       ...values,
       detalles: lineas.map(l => ({
-        ...l,
+        descripcion:    l.descripcion,
+        productoId:     l.productoId,
         cantidad:       Number(l.cantidad)       || 1,
         precioUnitario: Number(l.precioUnitario) || 0,
         porcentajeIva:  Number(l.porcentajeIva)  || 0,
@@ -200,7 +218,7 @@ export default function FacturasRecurrentesPage() {
             <ColumnToggle columns={REC_COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <RefreshByKeyButton queryKey={['recurrentes']} />
             <VideoTutorialButton />
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => { setOpen(true); form.resetFields(); setLineas([{ descripcion: '', cantidad: 1, precioUnitario: 0, porcentajeIva: 18 }]); }}>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => { setOpen(true); form.resetFields(); setLineas([{ descripcion: '', cantidad: 1, precioUnitario: 0, porcentajeIva: 18, productoId: undefined }]); setSearchResults([]); setSearchIdx(null); }}>
               Nueva recurrente
             </Button>
           </Space>
@@ -309,8 +327,46 @@ export default function FacturasRecurrentesPage() {
           {lineas.map((l, i) => (
             <Row key={i} gutter={8} style={{ marginBottom: 8, alignItems: 'center' }}>
               <Col xs={24} sm={9}>
-                <Input placeholder="Descripción del servicio/producto" value={l.descripcion}
-                  onChange={e => { const u=[...lineas]; u[i].descripcion=e.target.value; setLineas(u); }} />
+                <AutoComplete
+                  style={{ width: '100%' }}
+                  value={l.descripcion}
+                  placeholder="Buscar producto o escribir descripción..."
+                  options={searchIdx === i
+                    ? searchResults.map(p => ({
+                        value: p.nombre,
+                        label: (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12 }}>
+                            <span style={{ color: '#8c8c8c', flexShrink: 0 }}>{p.codigo}</span>
+                            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.nombre}</span>
+                            <span style={{ color: '#10b981', flexShrink: 0 }}>{fmt.money(Number(p.precio ?? 0))}</span>
+                          </div>
+                        ),
+                        producto: p,
+                      }))
+                    : []
+                  }
+                  onChange={text => {
+                    const u = [...lineas];
+                    u[i] = { ...u[i], descripcion: text, productoId: undefined };
+                    setLineas(u);
+                    setSearchIdx(i);
+                    setSearchTerm(text);
+                  }}
+                  onSelect={(_val, opt: any) => {
+                    const p = opt.producto;
+                    const u = [...lineas];
+                    u[i] = {
+                      ...u[i],
+                      descripcion:    p.nombre,
+                      precioUnitario: Number(p.precio ?? 0),
+                      porcentajeIva:  Number(p.porcentajeIva ?? 18),
+                      productoId:     p.id,
+                    };
+                    setLineas(u);
+                    setSearchResults([]);
+                    setSearchIdx(null);
+                  }}
+                />
               </Col>
               <Col xs={8} sm={3}>
                 <InputNumber placeholder="Cant." min={1} value={l.cantidad} style={{ width:'100%' }}
@@ -336,7 +392,7 @@ export default function FacturasRecurrentesPage() {
               </Col>
             </Row>
           ))}
-          <Button size="small" onClick={() => setLineas([...lineas, { descripcion: '', cantidad: 1, precioUnitario: 0, porcentajeIva: 18 }])}>
+          <Button size="small" onClick={() => setLineas([...lineas, { descripcion: '', cantidad: 1, precioUnitario: 0, porcentajeIva: 18, productoId: undefined }])}>
             + Agregar ítem
           </Button>
 
