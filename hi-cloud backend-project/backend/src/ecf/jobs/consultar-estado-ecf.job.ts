@@ -8,6 +8,15 @@ import { MSellerClientService } from '../services/mseller-client.service';
 
 const MINUTOS_SIN_RESPUESTA = 10;  // esperar 10 min antes de primer intento
 
+/**
+ * Días máximos antes de marcar un ENVIADO como contingencia.
+ * MSeller usa webhooks como mecanismo principal de notificación.
+ * El polling es fallback para los primeros 3 días. Pasado ese plazo,
+ * si no llegó webhook ni respuesta por polling, el comprobante
+ * se marca contingencia para no bloquear la cola indefinidamente.
+ */
+const DIAS_MAX_POLLING = 3;
+
 /** Mapeo de estados MSeller → EstadoDGII interno. */
 const MSELLER_ESTADO_MAP: Record<string, EstadoDGII> = {
   ACEPTADO:   EstadoDGII.ACEPTADO,
@@ -50,15 +59,53 @@ export class ConsultarEstadoECFJob {
   }
 
   private async consultarPendientes(force = false): Promise<void> {
-    const corte = new Date(Date.now() - MINUTOS_SIN_RESPUESTA * 60_000);
+    const corte   = new Date(Date.now() - MINUTOS_SIN_RESPUESTA * 60_000);
+    const maxAge  = new Date(Date.now() - DIAS_MAX_POLLING * 24 * 60 * 60_000);
 
-    // force=true → consulta TODOS los enviados sin importar antigüedad (admin manual)
+    // Paso 1: Marcar como contingencia los comprobantes con más de DIAS_MAX_POLLING días
+    //         sin respuesta. MSeller notifica vía webhook; si no llegó en 3 días,
+    //         no llegará por polling tampoco.
+    const viejos = await this.ecfRepo
+      .createQueryBuilder('ecf')
+      .where('ecf.estadoDGII = :estado', { estado: EstadoDGII.ENVIADO })
+      .andWhere('ecf.trackId IS NOT NULL')
+      .andWhere('ecf.respuestaDgii IS NULL')
+      .andWhere('ecf.isActive = true')
+      .andWhere('ecf.createdAt < :maxAge', { maxAge })
+      .getMany();
+
+    if (viejos.length > 0) {
+      this.logger.warn(
+        `ConsultarEstadoECF: ${viejos.length} comprobante(s) en ENVIADO > ${DIAS_MAX_POLLING} días ` +
+        `sin respuesta de MSeller → marcando como contingencia`,
+      );
+      for (const ecf of viejos) {
+        await this.ecfRepo.update(ecf.id, {
+          estadoDGII:    EstadoDGII.CONTINGENCIA,
+          respuestaDgii: {
+            status:  'CONTINGENCIA',
+            message: `Sin respuesta de MSeller tras ${DIAS_MAX_POLLING} días. ` +
+                     `Verificar estado en portal DGII. TrackId: ${ecf.trackId}`,
+          } as any,
+        });
+        await this.logEvento(ecf.id, TipoEcfEvento.ESTADO_CAMBIADO, {
+          de:  EstadoDGII.ENVIADO,
+          a:   EstadoDGII.CONTINGENCIA,
+          via: 'timeout',
+          diasTranscurridos: DIAS_MAX_POLLING,
+        }, `Sin respuesta de MSeller tras ${DIAS_MAX_POLLING} días — verificar en portal DGII`);
+        this.logger.warn(`e-CF ${ecf.numero} → CONTINGENCIA (timeout ${DIAS_MAX_POLLING}d)`);
+      }
+    }
+
+    // Paso 2: Consultar por polling los comprobantes recientes (< DIAS_MAX_POLLING días)
     const qb = this.ecfRepo
       .createQueryBuilder('ecf')
       .where('ecf.estadoDGII = :estado', { estado: EstadoDGII.ENVIADO })
       .andWhere('ecf.trackId IS NOT NULL')
       .andWhere('ecf.respuestaDgii IS NULL')
-      .andWhere('ecf.isActive = true');
+      .andWhere('ecf.isActive = true')
+      .andWhere('ecf.createdAt >= :maxAge', { maxAge });  // solo recientes
 
     if (!force) {
       qb.andWhere('ecf.updatedAt < :corte', { corte });
