@@ -132,22 +132,38 @@ export default function FacturaDetailPage() {
               Descargar PDF
             </Button>
 
-            {/* ── Botón Vista Previa HTML ── */}
+            {/* ── Botón Vista Previa → abre HTML y dispara diálogo de impresión ── */}
             <Button
               icon={<EyeOutlined />}
               onClick={() => {
                 const empresaId = localStorage.getItem('empresaId');
                 fetch(`/api/v1/facturas/${id}/preview`, {
-                  headers: { 'X-Empresa-ID': empresaId || '' }
+                  credentials: 'include',
+                  headers: { 'X-Empresa-ID': empresaId || '' },
                 })
-                  .then(r => r.text())
+                  .then(r => {
+                    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                    return r.text();
+                  })
                   .then(html => {
                     const blob = new Blob([html], { type: 'text/html' });
-                    const url = URL.createObjectURL(blob);
-                    const win = window.open(url, '_blank');
-                    win?.addEventListener('load', () => URL.revokeObjectURL(url));
+                    const url  = URL.createObjectURL(blob);
+                    const win  = window.open(url, '_blank');
+                    if (!win) {
+                      message.warning('El navegador bloqueó la ventana emergente. Permite pop-ups para este sitio.');
+                      URL.revokeObjectURL(url);
+                      return;
+                    }
+                    win.addEventListener('load', () => {
+                      // Disparar diálogo de impresión automáticamente
+                      win.print();
+                      // Revocar el blob URL al cerrar el diálogo (afterprint)
+                      // y como fallback después de 5 min
+                      win.addEventListener('afterprint', () => URL.revokeObjectURL(url));
+                      setTimeout(() => URL.revokeObjectURL(url), 5 * 60_000);
+                    });
                   })
-                  .catch(() => message.error('Error al cargar preview'));
+                  .catch(() => message.error('Error al cargar vista previa'));
               }}
             >
               Vista Previa
