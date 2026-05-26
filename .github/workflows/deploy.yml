@@ -146,10 +146,13 @@ jobs:
       # ── EC2: solo git pull + env vars + deps + mv dist + migrate + restart ────
       - name: Setup + Migrate + Restart
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          DB_CA_CERT: ${{ secrets.DB_CA_CERT }}
         with:
           host:            3.137.152.75
           username:        ubuntu
           key:             ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          envs:            DB_CA_CERT
           timeout:         900s
           command_timeout: 15m
           script: |
@@ -175,10 +178,17 @@ jobs:
               echo 'FRONTEND_URL=https://hicloudrd.com' >> "$ENV_FILE"
             fi
 
-            if grep -q '^DB_CA_CERT=' "$ENV_FILE" 2>/dev/null; then
-              sed -i 's|^DB_CA_CERT=.*|DB_CA_CERT=/etc/ssl/certs/rds-ca-us-east-2.pem|' "$ENV_FILE"
+            # S-25: DB_CA_CERT — usar el GitHub Secret (base64 del cert AWS RDS us-east-2).
+            # Si el secret no está disponible (vacío), preservar el valor existente en .env.
+            if [ -n "$DB_CA_CERT" ]; then
+              if grep -q '^DB_CA_CERT=' "$ENV_FILE" 2>/dev/null; then
+                sed -i "s|^DB_CA_CERT=.*|DB_CA_CERT=${DB_CA_CERT}|" "$ENV_FILE"
+              else
+                echo "DB_CA_CERT=${DB_CA_CERT}" >> "$ENV_FILE"
+              fi
+              echo "  ✅ DB_CA_CERT actualizado desde GitHub Secret (${#DB_CA_CERT} chars)"
             else
-              echo 'DB_CA_CERT=/etc/ssl/certs/rds-ca-us-east-2.pem' >> "$ENV_FILE"
+              echo "  ⚠️  DB_CA_CERT secret vacío — se preserva el valor existente en .env"
             fi
 
             if grep -q '^GOOGLE_CALLBACK_URL=' "$ENV_FILE" 2>/dev/null; then
@@ -188,7 +198,6 @@ jobs:
             fi
 
             echo "  ✅ APP_URL y FRONTEND_URL configurados"
-            echo "  ✅ DB_CA_CERT=$(grep '^DB_CA_CERT=' $ENV_FILE)"
             echo "  ✅ GOOGLE_CALLBACK_URL=$(grep '^GOOGLE_CALLBACK_URL=' $ENV_FILE)"
 
             # ── Chromium para Puppeteer (set +e: errores aquí no abortan deploy) ─
