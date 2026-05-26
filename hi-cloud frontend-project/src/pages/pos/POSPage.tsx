@@ -2465,7 +2465,7 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
       if (!id) throw new Error('No hay caja abierta');
       return api.patch(`/caja/${id}/cerrar`, {
         saldoFisico:       totalFisico,
-        nota,
+        notas:             nota || undefined,   // DTO espera 'notas' (plural)
         desgloseBilletes:  billetes,
         desglosePago:      pago,
       });
@@ -3421,10 +3421,12 @@ export default function POSPage() {
   });
 
   // tu proveedor e-CF health — null=checking, true=online, false=offline
+  // Usamos /ecf/tipos (accesible a todos los roles) en lugar de /ecf/secuencias
+  // que solo tienen ADMIN/CONTADOR — evita mostrar "Contingencia" al vendedor.
   const { data: ecfOnline } = useQuery<boolean>({
     queryKey: ['pos-ecf-health'],
     queryFn: async () => {
-      try { await api.get('/ecf/secuencias?limit=1'); return true; }
+      try { await api.get('/ecf/tipos'); return true; }
       catch { return false; }
     },
     staleTime: 0, refetchInterval: 30_000,
