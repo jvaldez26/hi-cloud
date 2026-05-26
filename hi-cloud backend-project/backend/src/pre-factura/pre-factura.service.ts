@@ -101,7 +101,8 @@ export class PreFacturaService {
 
     const qb = this.pfRepo
       .createQueryBuilder('pf')
-      .leftJoinAndSelect('pf.cliente', 'c')
+      .leftJoinAndSelect('pf.cliente',  'c')
+      .leftJoinAndSelect('pf.detalles', 'd')   // QueryBuilder ignora eager:true; join explícito necesario
       .where('pf.empresaId = :eid', { eid: empresaId })
       .andWhere('pf.isActive = :a',  { a: true });
 
@@ -119,7 +120,10 @@ export class PreFacturaService {
 
   async findOne(id: number) {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const pf = await this.pfRepo.findOne({ where: { id, empresaId, isActive: true } });
+    const pf = await this.pfRepo.findOne({
+      where:     { id, empresaId, isActive: true },
+      relations: ['cliente', 'detalles'],        // garantizar que detalles siempre llegan
+    });
     if (!pf) throw new NotFoundException(`Pre-Factura #${id} no encontrada`);
     return pf;
   }
