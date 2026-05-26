@@ -59,17 +59,26 @@ export class PDFService {
       [empresaId],
     ).then((rows: any[]) => rows[0] || {});
 
-    const ecf = factura.ecfId
-      ? await this.facturaRepo.manager.query(
-          `SELECT e.*, t.codigo, t.descripcion,
-                  s."fechaVencimiento" AS "secFechaVencimiento"
-             FROM ecf e
-             JOIN tipos_ecf     t ON t.id = e."tipoECFId"
-             JOIN secuencias_ecf s ON s.id = e."secuenciaId"
-            WHERE e.id = $1 LIMIT 1`,
-          [factura.ecfId],
-        ).then((r: any[]) => r[0])
-      : null;
+    // CRÍTICO: buscar ECF por 3 vías — el campo factura.ecfId puede ser null
+    // si el e-CF fue aprobado después de crear la factura y no se backfilló.
+    // Fallback 1: ecf.facturaId = factura.id
+    // Fallback 2: ecf.documentoOrigenId = factura.id (vinculación genérica)
+    // LEFT JOIN para evitar que la ausencia de secuencia anule el resultado.
+    const ecf = await this.facturaRepo.manager.query(
+      `SELECT e.*, t.codigo, t.descripcion,
+              s."fechaVencimiento" AS "secFechaVencimiento"
+         FROM ecf e
+         LEFT JOIN tipos_ecf      t ON t.id = e."tipoECFId"
+         LEFT JOIN secuencias_ecf s ON s.id = e."secuenciaId"
+        WHERE e."empresaId" = $1
+          AND (
+            e.id = $2
+            OR e."facturaId" = $3
+            OR (e."documentoOrigenId" = $3 AND e."documentoOrigenTipo" = 'FACTURA')
+          )
+        ORDER BY e."createdAt" DESC LIMIT 1`,
+      [empresaId, factura.ecfId ?? -1, factura.id],
+    ).then((r: any[]) => r[0] ?? null);
 
     let qrBase64 = '';
     if (ecf?.numero && empresa.rnc) {
@@ -82,6 +91,12 @@ export class PDFService {
     const factConf   = (empresa.configuracion ?? {}) as Record<string, unknown>;
     const logoBuf    = factConf.factMostrarLogo !== false
       ? await this.logoBuffer(empresa.logo)
+      : undefined;
+
+    // Convertir logo a base64 data URL — embedding seguro en template HTML sin onerror
+    // (evita que comillas dobles en el atributo onerror corrompan el HTML)
+    const logoDataUrl = logoBuf
+      ? `data:image/png;base64,${logoBuf.toString('base64')}`
       : undefined;
 
     const items: FacturaPDFItem[] = (factura.detalles || []).map((d, i) => {
@@ -147,7 +162,7 @@ export class PDFService {
       empresaTelefono:     factConf.factMostrarTelefono !== false ? empresa.telefono   : undefined,
       empresaEmail:        factConf.factMostrarEmail    !== false ? empresa.email      : undefined,
       empresaSitioWeb:     factConf.factMostrarWeb      !== false ? empresa.sitioWeb   : undefined,
-      empresaLogo:         empresa.logo,
+      empresaLogo:         logoDataUrl,  // base64 data URL (evita onerror malformado)
       empresaColorPrimario: empresa.configuracion?.colorPrimario,
       empresaPieFactura:    empresa.configuracion?.pieFactura          as string | undefined,
       empresaTerminos:      empresa.configuracion?.terminosCondiciones as string | undefined,

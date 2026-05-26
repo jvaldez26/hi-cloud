@@ -154,10 +154,13 @@ export function generarHTMLFactura(d: FacturaPDFData): string {
     `font-size:22px;font-weight:900;color:#fff;margin-bottom:7px;` +
     `font-family:Arial,sans-serif;">${iniciales}</div>`;
 
+  // empresaLogo llega como base64 data URL (desde pdf.service) → nunca falla al cargar.
+  // Sin onerror: las dobles comillas en style="..." dentro del atributo onerror="..."
+  // corrompían el HTML produciendo el artefacto "VG-'>" en el PDF.
   const logoHtml = d.empresaLogo
     ? `<img src="${d.empresaLogo}" ` +
       `style="max-width:120px;max-height:80px;object-fit:contain;display:block;margin-bottom:7px;" ` +
-      `onerror="this.outerHTML='${fallbackLogoHtml.replace(/'/g, '&#39;')}';">`
+      `alt="Logo empresa">`
     : fallbackLogoHtml;
 
   // ── Título del documento ──────────────────────────────────────────────────
