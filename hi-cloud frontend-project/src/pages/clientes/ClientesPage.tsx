@@ -12,6 +12,7 @@ import { TableActions } from '../../components/ui/TableActions';
 import {
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
   FileExcelOutlined, PhoneOutlined, MailOutlined, EyeOutlined,
+  GlobalOutlined, CopyOutlined, LinkOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -40,6 +41,8 @@ export default function ClientesPage() {
   const [editing,      setEditing]      = useState<Cliente | null>(null);
   const [emailCliente, setEmailCliente] = useState<Cliente | null>(null);
   const [emailDestino, setEmailDestino] = useState('');
+  const [portalCliente, setPortalCliente] = useState<Cliente | null>(null);
+  const [portalUrl,     setPortalUrl]     = useState('');
   const [form]                          = Form.useForm<ClientePayload>();
   const qc = useQueryClient();
 
@@ -74,6 +77,15 @@ export default function ClientesPage() {
       message.success(`Estado de cuenta enviado a ${vars.email}`);
     },
     onError: (e: any) => message.error(e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error al enviar'),
+  });
+
+  const portalMut = useMutation({
+    mutationFn: (clienteId: number) =>
+      api.post(`/portal/cliente/${clienteId}/activar`).then(r => r.data?.data ?? r.data),
+    onSuccess: (data) => {
+      setPortalUrl(data.portalUrl ?? '');
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al generar enlace del portal'),
   });
 
   const openCreate = () => { setEditing(null); form.resetFields(); setOpen(true); };
@@ -163,6 +175,12 @@ export default function ClientesPage() {
               icon: <MailOutlined />,
               onClick: () => { setEmailCliente(r); setEmailDestino(r.email ?? ''); },
             }] : []),
+            {
+              key: 'portal',
+              label: 'Portal del cliente',
+              icon: <GlobalOutlined />,
+              onClick: () => { setPortalCliente(r); setPortalUrl(''); portalMut.mutate(r.id); },
+            },
             ...(puedeEliminar ? [
               { type: 'divider' as const },
               { key: 'eliminar', label: 'Eliminar', danger: true, icon: <DeleteOutlined />, onClick: () => deleteMut.mutate(r.id) },
@@ -214,6 +232,62 @@ export default function ClientesPage() {
           showSizeChanger: false, size: 'small',
         }}
       />
+
+      {/* Modal: Portal del cliente */}
+      <Modal
+        title={<><GlobalOutlined style={{ color: '#1677ff', marginRight: 8 }} />Portal del cliente</>}
+        open={!!portalCliente}
+        onCancel={() => { setPortalCliente(null); setPortalUrl(''); }}
+        footer={[
+          <Button key="close" onClick={() => { setPortalCliente(null); setPortalUrl(''); }}>Cerrar</Button>,
+          portalUrl && (
+            <Button key="copy" type="primary" icon={<CopyOutlined />}
+              onClick={() => {
+                navigator.clipboard.writeText(portalUrl);
+                message.success('Enlace copiado al portapapeles');
+              }}>
+              Copiar enlace
+            </Button>
+          ),
+        ]}
+        destroyOnHidden
+        width={480}
+      >
+        {portalCliente && (
+          <div>
+            <p style={{ margin: '0 0 8px', color: '#6b7280', fontSize: 13 }}>
+              Cliente: <strong>{portalCliente.nombre}</strong>
+            </p>
+            <p style={{ margin: '0 0 12px', color: '#6b7280', fontSize: 12 }}>
+              Comparte este enlace con tu cliente para que vea sus facturas, estado de cuenta y pueda crear tickets de soporte.
+              El enlace es válido por <strong>30 días</strong>.
+            </p>
+            {portalMut.isPending ? (
+              <div style={{ textAlign: 'center', padding: '16px 0' }}>
+                <span>Generando enlace...</span>
+              </div>
+            ) : portalUrl ? (
+              <div style={{
+                padding: '10px 14px',
+                background: '#f0f9ff',
+                border: '1px solid #bae6fd',
+                borderRadius: 8,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+              }}>
+                <LinkOutlined style={{ color: '#0369a1', flexShrink: 0 }} />
+                <Text
+                  style={{ fontSize: 12, wordBreak: 'break-all', flex: 1, color: '#0369a1' }}
+                  copyable={{ tooltips: ['Copiar', 'Copiado'] }}
+                >
+                  {portalUrl}
+                </Text>
+              </div>
+            ) : null}
+          </div>
+        )}
+      </Modal>
 
       {/* Modal: Estado de cuenta por email */}
       <Modal
