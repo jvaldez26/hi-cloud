@@ -32,9 +32,10 @@ export class ManufacturaService {
   // ── Listas de Materiales (BOM) ────────────────────────────────────────────
 
   async crearLM(dto: any) {
-    const existe = await this.lmRepo.findOne({ where: { codigo: dto.codigo } });
+    const empresaId = this.tenantService.getEmpresaId();
+    const existe = await this.lmRepo.findOne({ where: { codigo: dto.codigo, empresaId } });
     if (existe) throw new BadRequestException(`Código ${dto.codigo} ya existe`);
-    return this.lmRepo.save(this.lmRepo.create(dto));
+    return this.lmRepo.save(this.lmRepo.create({ ...dto, empresaId }));
   }
 
   async listarLM() {
@@ -67,7 +68,9 @@ export class ManufacturaService {
   }
 
   async actualizarLM(id: number, dto: any) {
-    await this.lmRepo.findOne({ where: { id } });
+    const empresaId = this.tenantService.getEmpresaId();
+    const lm = await this.lmRepo.findOne({ where: { id, empresaId, isActive: true } });
+    if (!lm) throw new NotFoundException(`Lista de materiales #${id} no encontrada`);
     await this.lmRepo.update(id, dto);
     return this.getLM(id);
   }
@@ -80,10 +83,11 @@ export class ManufacturaService {
   // ── Componentes ───────────────────────────────────────────────────────────
 
   async agregarComponente(listaId: number, dto: any) {
+    const empresaId = this.tenantService.getEmpresaId();
     await this.getLM(listaId);
-    const total = await this.compRepo.count({ where: { listaId, empresaId: this.tenantService.getEmpresaId(), isActive: true } });
+    const total = await this.compRepo.count({ where: { listaId, empresaId, isActive: true } });
     return this.compRepo.save(this.compRepo.create({
-      listaId, ...dto, orden: dto.orden ?? total,
+      listaId, ...dto, empresaId, orden: dto.orden ?? total,
     }));
   }
 
@@ -231,15 +235,16 @@ export class ManufacturaService {
   // ── Dashboard manufactura ─────────────────────────────────────────────────
 
   async getDashboard() {
+    const empresaId = this.tenantService.getEmpresaId();
     const [borrador, planificadas, enProceso, completadas, canceladas] = await Promise.all([
-      this.ordenRepo.count({ where: { isActive: true, estado: EstadoOrdenProduccion.BORRADOR } }),
-      this.ordenRepo.count({ where: { isActive: true, estado: EstadoOrdenProduccion.PLANIFICADA } }),
-      this.ordenRepo.count({ where: { isActive: true, estado: EstadoOrdenProduccion.EN_PROCESO } }),
-      this.ordenRepo.count({ where: { isActive: true, estado: EstadoOrdenProduccion.COMPLETADA } }),
-      this.ordenRepo.count({ where: { isActive: true, estado: EstadoOrdenProduccion.CANCELADA } }),
+      this.ordenRepo.count({ where: { isActive: true, empresaId, estado: EstadoOrdenProduccion.BORRADOR } }),
+      this.ordenRepo.count({ where: { isActive: true, empresaId, estado: EstadoOrdenProduccion.PLANIFICADA } }),
+      this.ordenRepo.count({ where: { isActive: true, empresaId, estado: EstadoOrdenProduccion.EN_PROCESO } }),
+      this.ordenRepo.count({ where: { isActive: true, empresaId, estado: EstadoOrdenProduccion.COMPLETADA } }),
+      this.ordenRepo.count({ where: { isActive: true, empresaId, estado: EstadoOrdenProduccion.CANCELADA } }),
     ]);
 
-    const totalLM = await this.lmRepo.count({ where: { isActive: true, activa: true } });
+    const totalLM = await this.lmRepo.count({ where: { isActive: true, empresaId, activa: true } });
 
     return { borrador, planificadas, enProceso, completadas, canceladas, totalLM };
   }

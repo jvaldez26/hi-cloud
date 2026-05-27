@@ -511,7 +511,7 @@ export default function ManufacturaPage() {
             }));
             exportarExcel(filas, `Manufactura-${tabKey === 'lm' ? 'BOM' : 'Ordenes'}`);
           }}>Excel</Button>
-          <RefreshByKeyButton queryKey={['ordenes-produccion']} />
+          <RefreshByKeyButton queryKey={['mfg-ordenes']} />
           <VideoTutorialButton />
           <Button type="primary" icon={<PlusOutlined />}
             onClick={() => tabKey === 'lm' ? setLMModal(true) : setOrdenModal(true)}>

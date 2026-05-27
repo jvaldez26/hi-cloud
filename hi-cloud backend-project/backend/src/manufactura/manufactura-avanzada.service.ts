@@ -104,6 +104,22 @@ export class ManufacturaAvanzadaService {
     return r;
   }
 
+  async updateRuta(id: number, dto: { codigo?: string; nombre?: string; descripcion?: string; listaId?: number }) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const ruta = await this.rutaRepo.findOne({ where: { id, empresaId, isActive: true } });
+    if (!ruta) throw new NotFoundException(`Ruta #${id} no encontrada`);
+    await this.rutaRepo.update(id, dto as any);
+    return this.getRuta(id);
+  }
+
+  async deleteRuta(id: number) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const ruta = await this.rutaRepo.findOne({ where: { id, empresaId, isActive: true } });
+    if (!ruta) throw new NotFoundException(`Ruta #${id} no encontrada`);
+    await this.rutaRepo.update(id, { isActive: false } as any);
+    return { message: 'Ruta eliminada' };
+  }
+
   async agregarEtapa(rutaId: number, dto: {
     centroTrabajoId?: number; nombre: string; orden: number;
     tiempoSetupMin?: number; tiempoOperacionMinPorUnidad?: number;
@@ -229,7 +245,7 @@ export class ManufacturaAvanzadaService {
           totalEtapas:  registros.length,
           completadas,
           progreso:     registros.length > 0 ? Number(((completadas / registros.length) * 100).toFixed(1)) : 0,
-          etapaActual:  etapaActual ? null : 'Sin ruta',
+          etapaActual:  etapaActual?.etapaId ? String(etapaActual.etapaId) : 'Sin ruta',
           etapaId:      etapaActual?.etapaId,
         };
       }),

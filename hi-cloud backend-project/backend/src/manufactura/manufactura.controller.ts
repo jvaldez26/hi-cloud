@@ -199,6 +199,17 @@ export class ManufacturaController {
   @ApiOperation({ summary: 'Detalle de ruta con etapas y tiempos' })
   getRuta(@Param('id', ParseIntPipe) id: number) { return this.avanzado.getRuta(id); }
 
+  @Patch('rutas/:id')
+  @ApiOperation({ summary: 'Actualizar ruta de producción' })
+  updateRuta(@Param('id', ParseIntPipe) id: number, @Body() dto: CreateRutaDto) {
+    return this.avanzado.updateRuta(id, dto);
+  }
+
+  @Delete('rutas/:id')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Eliminar ruta de producción' })
+  deleteRuta(@Param('id', ParseIntPipe) id: number) { return this.avanzado.deleteRuta(id); }
+
   @Post('rutas/:id/etapas')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Agregar etapa a ruta' })
