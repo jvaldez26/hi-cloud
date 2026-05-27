@@ -290,6 +290,14 @@ jobs:
             # Symlink sin espacios para PM2
             ln -sfn "$BACKEND_DIR" /home/ubuntu/hicloud/backend-current
 
+            # FIX CRÍTICO: dotenv no overridea env vars ya seteadas desde el shell de GitHub Actions.
+            # La variable DB_CA_CERT viene del GitHub Secret (valor "-" corrupto) heredada por node.
+            # Solución: exportar explícitamente CERT_VALUE (del PEM) para que node lo use directamente.
+            if [ -n "$CERT_VALUE" ] && [ "${#CERT_VALUE}" -gt 200 ]; then
+              export DB_CA_CERT="$CERT_VALUE"
+              echo "  DB_CA_CERT exportado al entorno de node (${#DB_CA_CERT} chars)"
+            fi
+
             echo "  → Corriendo migraciones pendientes..."
             node -e "
               const { AppDataSource } = require('./dist/data-source');
