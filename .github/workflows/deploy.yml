@@ -5,6 +5,11 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Evitar deploys concurrentes que interfieren entre sí (npm ci, rm -rf dist, pm2 restart)
+concurrency:
+  group: production
+  cancel-in-progress: false
+
 jobs:
   # ── 1. CI: TypeScript checks (ambos proyectos) ───────────────────────────────
   ci:
@@ -306,7 +311,7 @@ jobs:
               if [ "$STATUS" = "healthy" ] || [ "$STATUS" = "degraded" ]; then
                 break
               fi
-              [ "$i" -lt 5 ] && sleep 6
+              [ "$i" -lt 5 ] && sleep 6 || true
             done
 
             if [ "$STATUS" = "healthy" ] || [ "$STATUS" = "degraded" ]; then
