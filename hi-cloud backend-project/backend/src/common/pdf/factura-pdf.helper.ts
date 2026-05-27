@@ -304,8 +304,11 @@ export async function generarFacturaPDF(
     // Anclar la sección al pie: si queda mucho espacio vacío, empujarla hacia abajo
     // para que no flote en el centro con pocas líneas de ítems.
     const footerAreaY = PH - 50;          // donde empieza el footer
-    const bottomSecH  = hasEcf            // altura estimada del bloque QR+totales
-      ? 26 + 82 + 10 + 28 + 28 + 32 + 20  // ~226 con codigoSeguridad + fechaFirma
+    const bottomSecH  = hasEcf            // altura exacta del bloque QR+totales
+      ? 26 + 82 + 10
+        + (d.ecfCodigoSeguridad ? 28 : 0)
+        + (d.ecfFechaFirma      ? 28 : 0)
+        + 32 + 80                          // nota DGII + sección totales (~80)
       : 80;
     const minBottomY  = footerAreaY - bottomSecH - 10;
     if (y < minBottomY) y = minBottomY;   // empujar hacia abajo si hay hueco excesivo
