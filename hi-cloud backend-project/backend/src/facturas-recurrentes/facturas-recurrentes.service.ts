@@ -141,14 +141,15 @@ export class FacturasRecurrentesService {
 
         // Calcular totales — normalizar a números para evitar NaN en BD
         let subtotal = 0, iva = 0;
-        const detallesData = rec.detalles.map(d => {
-          const precio   = Number(d.precioUnitario ?? 0) || 0;
-          const cantidad = Number(d.cantidad       ?? 1) || 1;
-          const pctIva   = Number(d.porcentajeIva  ?? 0) || 0;
-          const sub      = precio * cantidad;
-          const impIva   = sub * (pctIva / 100);
+        const detallesData = rec.detalles.map((d, idx) => {
+          const precio      = Number(d.precioUnitario ?? 0) || 0;
+          const cantidad    = Number(d.cantidad       ?? 1) || 1;
+          const pctIva      = Number(d.porcentajeIva  ?? 0) || 0;
+          const descripcion = (d.descripcion ?? '').trim() || `Ítem ${idx + 1}`;
+          const sub         = precio * cantidad;
+          const impIva      = sub * (pctIva / 100);
           subtotal += sub; iva += impIva;
-          return { ...d, precioUnitario: precio, cantidad, porcentajeIva: pctIva,
+          return { ...d, descripcion, precioUnitario: precio, cantidad, porcentajeIva: pctIva,
                    subtotal: sub, importeIva: impIva, total: sub + impIva };
         });
 
@@ -284,14 +285,15 @@ export class FacturasRecurrentesService {
 
     // Generar factura directamente (sin depender del cron ni afectar otras empresas)
     let subtotal = 0, iva = 0;
-    const detallesData = rec.detalles.map(d => {
-      const precio   = Number(d.precioUnitario ?? 0) || 0;
-      const cantidad = Number(d.cantidad       ?? 1) || 1;
-      const pctIva   = Number(d.porcentajeIva  ?? 0) || 0;
-      const sub      = precio * cantidad;
-      const impIva   = sub * (pctIva / 100);
+    const detallesData = rec.detalles.map((d, idx) => {
+      const precio      = Number(d.precioUnitario ?? 0) || 0;
+      const cantidad    = Number(d.cantidad       ?? 1) || 1;
+      const pctIva      = Number(d.porcentajeIva  ?? 0) || 0;
+      const descripcion = (d.descripcion ?? '').trim() || `Ítem ${idx + 1}`;
+      const sub         = precio * cantidad;
+      const impIva      = sub * (pctIva / 100);
       subtotal += sub; iva += impIva;
-      return { ...d, precioUnitario: precio, cantidad, porcentajeIva: pctIva,
+      return { ...d, descripcion, precioUnitario: precio, cantidad, porcentajeIva: pctIva,
                subtotal: sub, importeIva: impIva, total: sub + impIva };
     });
 

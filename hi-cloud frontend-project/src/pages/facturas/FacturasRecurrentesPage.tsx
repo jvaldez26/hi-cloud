@@ -106,7 +106,10 @@ export default function FacturasRecurrentesPage() {
       qc.invalidateQueries({ queryKey: ['recurrentes'] });
       message.success(`✅ Factura generada. Total generadas: ${updated?.totalGeneradas ?? '?'}`);
     },
-    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al generar'),
+    onError: (e: any) => message.error(
+      e?.response?.data?.errors?.[0] ?? e?.response?.data?.message ?? 'Error al generar',
+      8,
+    ),
   });
   const removeMut = useMutation({
     mutationFn: recurrenteApi.remove,
@@ -114,9 +117,11 @@ export default function FacturasRecurrentesPage() {
   });
 
   const handleSubmit = (values: any) => {
-    // Validar que todos los ítems tienen precio > 0
-    const lineaValida = lineas.every(l => l.descripcion.trim() && l.precioUnitario > 0);
-    if (!lineaValida) { message.warning('Todos los ítems deben tener descripción y precio mayor a 0'); return; }
+    // Validar que todos los ítems tienen descripción y precio > 0
+    const idxSinDesc  = lineas.findIndex(l => !l.descripcion.trim());
+    const idxSinPrecio = lineas.findIndex(l => l.precioUnitario <= 0);
+    if (idxSinDesc  >= 0) { message.warning(`El ítem ${idxSinDesc + 1} no tiene descripción`); return; }
+    if (idxSinPrecio >= 0) { message.warning(`El ítem ${idxSinPrecio + 1} necesita precio mayor a 0`); return; }
     createMut.mutate({
       ...values,
       detalles: lineas.map(l => ({
