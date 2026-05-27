@@ -240,6 +240,7 @@ jobs:
             inject_env SMTP_PASS        "$SMTP_PASS"
             inject_env SMTP_FROM        "$SMTP_FROM"
             inject_env NOTIF_ADMIN_EMAIL "$NOTIF_ADMIN_EMAIL"
+            inject_env SEED_PLAN_CUENTAS_RUN "true"
 
             echo "  ✅ APP_URL y FRONTEND_URL configurados"
             echo "  ✅ GOOGLE_CALLBACK_URL=$(grep '^GOOGLE_CALLBACK_URL=' $ENV_FILE)"
@@ -338,6 +339,9 @@ jobs:
 
             if [ "$STATUS" = "healthy" ] || [ "$STATUS" = "degraded" ]; then
               echo "Deploy exitoso — servidor $STATUS"
+              # Desactivar re-sembrado para que no vuelva a ejecutarse en reinicios futuros
+              sed -i 's|^SEED_PLAN_CUENTAS_RUN=.*|SEED_PLAN_CUENTAS_RUN=false|' "$ENV_FILE" 2>/dev/null || true
+              echo "  SEED_PLAN_CUENTAS_RUN desactivado para próximos reinicios"
             else
               echo "Health check fallo tras 5 intentos: $STATUS"
               curl -sk https://hicloudrd.com/api/v1/health || true

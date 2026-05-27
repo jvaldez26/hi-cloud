@@ -150,25 +150,101 @@ export class ContabilidadService implements OnModuleInit {
     try { return this.tenantService.getEmpresaId(); } catch { return undefined; }
   }
 
-  /** Siembra el Plan de Cuentas dominicano para una empresa específica */
-  async seedPlanCuentas(empresaId: number): Promise<void> {
-    const total = await this.cuentaRepository.count({ where: { empresaId } as any });
-    if (total > 0) return;
+  /**
+   * Siembra el Plan de Cuentas dominicano para una empresa específica.
+   * Idempotente: solo agrega cuentas que no existan por (codigo, empresaId).
+   * Retorna estadísticas { agregadas, omitidas }.
+   */
+  async seedPlanCuentas(
+    empresaId: number,
+    soloCodigosNuevos?: string[],
+  ): Promise<{ agregadas: number; omitidas: number }> {
+    let agregadas = 0;
+    let omitidas = 0;
 
+    const cuentas = soloCodigosNuevos
+      ? PLAN_CUENTAS.filter((c) => soloCodigosNuevos.includes(c.codigo))
+      : PLAN_CUENTAS;
+
+    // Procesar por niveles para respetar FK padre→hijo
     for (let nivel = 1; nivel <= 4; nivel++) {
-      for (const c of PLAN_CUENTAS.filter((x) => x.nivel === nivel)) {
+      for (const c of cuentas.filter((x) => x.nivel === nivel)) {
+        const existe = await this.cuentaRepository.findOne({
+          where: { codigo: c.codigo, empresaId } as any,
+        });
+        if (existe) {
+          omitidas++;
+          continue;
+        }
+
         const codigoPadre = c.codigo.split('.').slice(0, -1).join('.');
         let cuentaPadreId: number | undefined;
         if (codigoPadre) {
-          const padre = await this.cuentaRepository.findOne({ where: { codigo: codigoPadre, empresaId } as any });
+          const padre = await this.cuentaRepository.findOne({
+            where: { codigo: codigoPadre, empresaId } as any,
+          });
           cuentaPadreId = padre?.id;
         }
+
         await this.cuentaRepository.save(
           this.cuentaRepository.create({ ...c, empresaId, cuentaPadreId }),
         );
+        agregadas++;
+        this.logger.log(
+          `[seedPlanCuentas] empresa=${empresaId} cuenta=${c.codigo} agregada`,
+        );
       }
     }
-    this.logger.log(`Plan de Cuentas sembrado para empresa ${empresaId}: ${PLAN_CUENTAS.length} cuentas`);
+
+    this.logger.log(
+      `[seedPlanCuentas] empresa=${empresaId}: ${agregadas} agregadas, ${omitidas} omitidas`,
+    );
+    return { agregadas, omitidas };
+  }
+
+  /**
+   * Sincroniza el plan de cuentas para todas las empresas activas (o una sola si se especifica).
+   * Idempotente — solo agrega cuentas faltantes sin tocar las existentes.
+   */
+  async sincronizarPlanCuentasTodas(soloEmpresaId?: number): Promise<{
+    procesadas: number;
+    cuentasAgregadas: number;
+    errores: string[];
+  }> {
+    const errores: string[] = [];
+    let procesadas = 0;
+    let cuentasAgregadas = 0;
+
+    let empresaIds: number[];
+    if (soloEmpresaId) {
+      empresaIds = [soloEmpresaId];
+    } else {
+      const rows = await this.dataSource.query(
+        `SELECT id FROM empresa WHERE "isActive" = true ORDER BY id`,
+      ) as { id: number }[];
+      empresaIds = rows.map((r) => r.id);
+    }
+
+    this.logger.log(
+      `[sincronizarPlanCuentas] iniciando para ${empresaIds.length} empresa(s)`,
+    );
+
+    for (const empId of empresaIds) {
+      try {
+        const { agregadas } = await this.seedPlanCuentas(empId);
+        cuentasAgregadas += agregadas;
+        procesadas++;
+      } catch (err: any) {
+        const msg = `empresa ${empId}: ${err?.message ?? 'error desconocido'}`;
+        this.logger.error(`[sincronizarPlanCuentas] ${msg}`);
+        errores.push(msg);
+      }
+    }
+
+    this.logger.log(
+      `[sincronizarPlanCuentas] completado: ${procesadas} empresas, ${cuentasAgregadas} cuentas nuevas, ${errores.length} errores`,
+    );
+    return { procesadas, cuentasAgregadas, errores };
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -176,8 +252,23 @@ export class ContabilidadService implements OnModuleInit {
   // ──────────────────────────────────────────────────────────────────
 
   async onModuleInit() {
-    // El seed ahora es por empresa — se llama desde multi-empresa.service al crear empresa
-    // Este método legacy se mantiene para empresas existentes sin COA
+    // Si SEED_PLAN_CUENTAS_RUN=true, sincronizar cuentas faltantes en todas las empresas activas
+    if (process.env.SEED_PLAN_CUENTAS_RUN === 'true') {
+      this.logger.log(
+        '[onModuleInit] SEED_PLAN_CUENTAS_RUN=true — iniciando re-sembrado del plan de cuentas...',
+      );
+      try {
+        const result = await this.sincronizarPlanCuentasTodas();
+        this.logger.log(
+          `[onModuleInit] re-sembrado completado: ${result.procesadas} empresas, ${result.cuentasAgregadas} cuentas agregadas`,
+        );
+      } catch (err: any) {
+        this.logger.error(`[onModuleInit] re-sembrado falló: ${err?.message}`);
+      }
+      return;
+    }
+
+    // Comportamiento legacy: sembrar una sola vez si no hay ninguna cuenta en absoluto
     const total = await this.cuentaRepository.count();
     if (total > 0) return;
 

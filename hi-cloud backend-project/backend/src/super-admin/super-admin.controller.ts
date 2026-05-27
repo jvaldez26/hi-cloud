@@ -11,6 +11,7 @@ import { SuperAdminService } from './super-admin.service';
 import { SuperAdminGuard }   from './super-admin.guard';
 import { SuscripcionesService } from '../suscripciones/suscripciones.service';
 import { BackupService } from './backup.service';
+import { ContabilidadService } from '../contabilidad/services/contabilidad.service';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 import type { User } from '../users/users.entity';
 
@@ -100,15 +101,21 @@ class BackupSuccessDto {
   @IsOptional() @IsString()       checksum?: string;
 }
 
+class SincronizarPlanCuentasDto {
+  @IsOptional() @IsInt() @IsPositive()
+  empresaId?: number;
+}
+
 @ApiTags('Super Admin')
 @ApiBearerAuth('access-token')
 @UseGuards(SuperAdminGuard)
 @Controller('admin')
 export class SuperAdminController {
   constructor(
-    private svc:         SuperAdminService,
-    private suscSvc:     SuscripcionesService,
-    private backupSvc:   BackupService,
+    private svc:              SuperAdminService,
+    private suscSvc:          SuscripcionesService,
+    private backupSvc:        BackupService,
+    private contabilidadSvc:  ContabilidadService,
   ) {}
 
   @Get('metricas')
@@ -449,5 +456,14 @@ export class SuperAdminController {
     @Body() dto: RechazarRegistroDto,
   ) {
     return this.svc.rechazarRegistro(id, admin.id, dto.motivo ?? '');
+  }
+
+  // ── Plan de Cuentas — Re-sembrado ─────────────────────────────────────────
+
+  @Post('contabilidad/plan-cuentas/sincronizar')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Sincronizar plan de cuentas — agrega cuentas faltantes a empresas existentes sin borrar las configuradas' })
+  sincronizarPlanCuentas(@Body() dto: SincronizarPlanCuentasDto) {
+    return this.contabilidadSvc.sincronizarPlanCuentasTodas(dto.empresaId);
   }
 }

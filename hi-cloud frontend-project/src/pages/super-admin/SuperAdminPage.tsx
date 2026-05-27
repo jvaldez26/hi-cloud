@@ -1142,6 +1142,32 @@ export default function SuperAdminPage() {
   const [ecfTargetId, setEcfTargetId] = useState<number | null>(null);
   const [formMsg]                   = Form.useForm();
 
+  // ── Plan de Cuentas — sincronización ─────────────────────────────────────
+  const [loadingSync, setLoadingSync] = useState(false);
+  const [syncResult, setSyncResult]   = useState<{
+    procesadas: number;
+    cuentasAgregadas: number;
+    errores: string[];
+  } | null>(null);
+  const [empresaIdFiltro, setEmpresaIdFiltro] = useState<number | undefined>();
+
+  const handleSincronizarPlanCuentas = async () => {
+    setLoadingSync(true);
+    setSyncResult(null);
+    try {
+      const res = await api.post('/admin/contabilidad/plan-cuentas/sincronizar', {
+        empresaId: empresaIdFiltro,
+      });
+      const data = res.data?.data ?? res.data;
+      setSyncResult(data);
+      message.success(`${data.cuentasAgregadas} cuentas agregadas en ${data.procesadas} empresa(s)`);
+    } catch (err: any) {
+      message.error(err?.response?.data?.message ?? 'Error al sincronizar el plan de cuentas');
+    } finally {
+      setLoadingSync(false);
+    }
+  };
+
   // ── Queries ──────────────────────────────────────────────────────────────────
 
   const { data: metricas, isLoading: loadMet } = useQuery({
@@ -1969,9 +1995,10 @@ export default function SuperAdminPage() {
               Sistema
             </div>
             {[
-              { key: 'metricas', icon: <BarChart2 size={15} />,  label: 'Métricas MRR' },
-              { key: 'ecf',      icon: <FileText size={15} />,   label: 'e-CF Config' },
-              { key: 'config',   icon: <Settings size={15} />,   label: 'Configuración' },
+              { key: 'metricas',      icon: <BarChart2 size={15} />,  label: 'Métricas MRR' },
+              { key: 'ecf',           icon: <FileText size={15} />,   label: 'e-CF Config' },
+              { key: 'herramientas',  icon: <Settings size={15} />,   label: 'Herramientas' },
+              { key: 'config',        icon: <Settings size={15} />,   label: 'Configuración' },
             ].map(t => {
               const activo = tab === t.key;
               return (
@@ -2348,6 +2375,92 @@ export default function SuperAdminPage() {
             {/* ── TAB AUDITORÍA ─────────────────────────────────────────────── */}
             {tab === 'auditoria' && (
               <AuditoriaTab C={C} />
+            )}
+
+            {/* ── TAB HERRAMIENTAS ─────────────────────────────────────────── */}
+            {tab === 'herramientas' && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+
+                {/* Plan de Cuentas — Sincronización */}
+                <div style={{ background: C.card, borderRadius: 12, border: `1px solid ${C.border}`, padding: 24 }}>
+                  <h3 style={{ color: C.txt, fontWeight: 700, fontSize: 15, margin: '0 0 8px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <FileText size={16} style={{ color: C.blue }} /> Plan de Cuentas
+                  </h3>
+                  <p style={{ color: C.txt2, fontSize: 12, margin: '0 0 18px', lineHeight: 1.5 }}>
+                    Agrega cuentas faltantes del catálogo dominicano a empresas existentes sin borrar ni modificar las ya configuradas.
+                    Operación idempotente — segura de ejecutar múltiples veces.
+                  </p>
+
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ color: C.txt2, fontSize: 11, marginBottom: 6 }}>
+                      Empresa (opcional — dejar vacío para todas las empresas activas)
+                    </div>
+                    <Select
+                      allowClear
+                      placeholder="Todas las empresas activas"
+                      value={empresaIdFiltro}
+                      onChange={(v: number | undefined) => setEmpresaIdFiltro(v)}
+                      style={{ width: '100%' }}
+                      options={(empresas as any[]).map((e: any) => ({ value: e.id, label: `#${e.id} — ${e.nombre}` }))}
+                      showSearch
+                      filterOption={(input, opt) =>
+                        String(opt?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                      }
+                    />
+                  </div>
+
+                  <button
+                    onClick={handleSincronizarPlanCuentas}
+                    disabled={loadingSync}
+                    style={{
+                      width: '100%', padding: '10px 0', borderRadius: 8, border: 'none', cursor: loadingSync ? 'not-allowed' : 'pointer',
+                      background: loadingSync ? `${C.blue}55` : C.blue, color: '#fff', fontWeight: 700, fontSize: 13,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                      transition: 'all .15s', opacity: loadingSync ? 0.7 : 1,
+                    }}
+                  >
+                    {loadingSync ? (
+                      <><Spin size="small" style={{ marginRight: 6 }} /> Sincronizando...</>
+                    ) : (
+                      <><RefreshCw size={14} /> Sincronizar Plan de Cuentas</>
+                    )}
+                  </button>
+
+                  {syncResult && (
+                    <div style={{ marginTop: 16 }}>
+                      <Alert
+                        type={syncResult.errores.length > 0 ? 'warning' : 'success'}
+                        message={
+                          <div>
+                            <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                              {syncResult.errores.length === 0 ? 'Sincronización completada' : 'Sincronización con errores'}
+                            </div>
+                            <div style={{ fontSize: 12 }}>
+                              <span>{syncResult.procesadas} empresa(s) procesadas</span>
+                              <span style={{ margin: '0 8px', opacity: 0.4 }}>|</span>
+                              <span style={{ fontWeight: 600, color: '#059669' }}>{syncResult.cuentasAgregadas} cuentas nuevas</span>
+                              {syncResult.errores.length > 0 && (
+                                <>
+                                  <span style={{ margin: '0 8px', opacity: 0.4 }}>|</span>
+                                  <span style={{ color: '#DC2626' }}>{syncResult.errores.length} error(es)</span>
+                                </>
+                              )}
+                            </div>
+                            {syncResult.errores.length > 0 && (
+                              <div style={{ marginTop: 8, fontSize: 11, color: '#DC2626' }}>
+                                {syncResult.errores.map((e, i) => <div key={i}>• {e}</div>)}
+                              </div>
+                            )}
+                          </div>
+                        }
+                        showIcon
+                        style={{ borderRadius: 8 }}
+                      />
+                    </div>
+                  )}
+                </div>
+
+              </div>
             )}
 
             {/* ── TAB CONFIGURACIÓN ─────────────────────────────────────────── */}
