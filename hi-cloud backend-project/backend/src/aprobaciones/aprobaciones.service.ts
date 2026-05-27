@@ -1,10 +1,11 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { Aprobacion, EstadoAprobacion, TipoAprobacion } from './entities/aprobacion.entity';
 import { TenantService } from '../tenant/tenant.service';
 import { UserRole } from '../users/enums/user-role.enum';
 import { PaginationDto } from '../common/dto/pagination.dto';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
 
 interface SolicitarDto {
   tipo:                  TipoAprobacion;
@@ -17,12 +18,42 @@ interface SolicitarDto {
 
 @Injectable()
 export class AprobacionesService {
+  private readonly logger = new Logger(AprobacionesService.name);
+
   constructor(
     @InjectRepository(Aprobacion)
     private repo: Repository<Aprobacion>,
     private tenantSvc: TenantService,
     @InjectDataSource() private dataSource: DataSource,
+    private notifSvc: NotificacionesService,
   ) {}
+
+  // ─── Helper: obtener email del solicitante y nombre de empresa ───────────────
+  private async obtenerDatosNotificacion(aprobacion: Aprobacion): Promise<{
+    emailSolicitante: string | null;
+    nombreSolicitante: string;
+    empresaNombre: string;
+  }> {
+    try {
+      const rows = await this.dataSource.query(
+        `SELECT u.email, e.nombre AS "empresaNombre"
+           FROM users u
+           JOIN empresa e ON e.id = $2
+          WHERE u.id = $1
+          LIMIT 1`,
+        [aprobacion.solicitadoPorId, aprobacion.empresaId],
+      );
+      if (!rows || rows.length === 0) return { emailSolicitante: null, nombreSolicitante: aprobacion.nombreSolicitante ?? 'Solicitante', empresaNombre: 'HiCloud ERP' };
+      return {
+        emailSolicitante: rows[0].email ?? null,
+        nombreSolicitante: aprobacion.nombreSolicitante ?? rows[0].nombre ?? 'Solicitante',
+        empresaNombre:     rows[0].empresaNombre ?? 'HiCloud ERP',
+      };
+    } catch (err: any) {
+      this.logger.warn(`[obtenerDatosNotificacion] ${err?.message}`);
+      return { emailSolicitante: null, nombreSolicitante: aprobacion.nombreSolicitante ?? 'Solicitante', empresaNombre: 'HiCloud ERP' };
+    }
+  }
 
   // ─── Solicitar aprobación ─────────────────────────────────────────────────────
 
@@ -59,7 +90,26 @@ export class AprobacionesService {
       comentarioResolucion: comentario,
       fechaResolucion:      new Date(),
     });
-    return this.findOne(id);
+    const resultado = await this.findOne(id);
+
+    // Notificar al solicitante — no-bloqueante
+    this.obtenerDatosNotificacion(aprobacion).then(({ emailSolicitante, nombreSolicitante, empresaNombre }) => {
+      if (!emailSolicitante) {
+        this.logger.warn(`[aprobar] Solicitante #${aprobacion.solicitadoPorId} sin email — notificación omitida`);
+        return;
+      }
+      return this.notifSvc.notificarResolucionAprobacion({
+        emailSolicitante,
+        nombreSolicitante,
+        tipo:        aprobacion.tipo,
+        entidadRef:  aprobacion.entidadRef ?? undefined,
+        estado:      'aprobado',
+        comentario,
+        empresaNombre,
+      });
+    }).catch((err: Error) => this.logger.warn(`[aprobar] Error enviando notificación: ${err?.message}`));
+
+    return resultado;
   }
 
   // ─── Rechazar ─────────────────────────────────────────────────────────────────
@@ -76,7 +126,26 @@ export class AprobacionesService {
       comentarioResolucion: comentario,
       fechaResolucion:      new Date(),
     });
-    return this.findOne(id);
+    const resultado = await this.findOne(id);
+
+    // Notificar al solicitante — no-bloqueante
+    this.obtenerDatosNotificacion(aprobacion).then(({ emailSolicitante, nombreSolicitante, empresaNombre }) => {
+      if (!emailSolicitante) {
+        this.logger.warn(`[rechazar] Solicitante #${aprobacion.solicitadoPorId} sin email — notificación omitida`);
+        return;
+      }
+      return this.notifSvc.notificarResolucionAprobacion({
+        emailSolicitante,
+        nombreSolicitante,
+        tipo:        aprobacion.tipo,
+        entidadRef:  aprobacion.entidadRef ?? undefined,
+        estado:      'rechazado',
+        comentario,
+        empresaNombre,
+      });
+    }).catch((err: Error) => this.logger.warn(`[rechazar] Error enviando notificación: ${err?.message}`));
+
+    return resultado;
   }
 
   // ─── Listar ───────────────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between } from 'typeorm';
 import {
@@ -8,6 +8,7 @@ import { Ausencia, TipoAusencia } from './entities/ausencia.entity';
 import { Empleado } from '../nomina/entities/empleado.entity';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { TenantService } from '../tenant/tenant.service';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
 
 interface CreateSolicitudDto {
   empleadoId:   number;
@@ -27,6 +28,8 @@ interface CreateAusenciaDto {
 
 @Injectable()
 export class VacacionesService {
+  private readonly logger = new Logger(VacacionesService.name);
+
   constructor(
     @InjectRepository(SolicitudVacacion)
     private solicitudRepo: Repository<SolicitudVacacion>,
@@ -35,6 +38,7 @@ export class VacacionesService {
     @InjectRepository(Empleado)
     private empleadoRepo:  Repository<Empleado>,
     private tenantService: TenantService,
+    private notifSvc: NotificacionesService,
   ) {}
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -180,7 +184,27 @@ export class VacacionesService {
       fechaRespuesta:       new Date(),
       observacionAprobador: obs,
     });
-    return this.solicitudRepo.findOne({ where: { id }, relations: ['empleado'] }) as Promise<SolicitudVacacion>;
+    const resultado = await this.solicitudRepo.findOne({ where: { id }, relations: ['empleado'] }) as SolicitudVacacion;
+
+    // Notificar al empleado — no-bloqueante
+    const emailEmpleado = (resultado as any).empleado?.email as string | undefined;
+    if (emailEmpleado) {
+      const fmtD = (d: Date | string) =>
+        new Date(d).toLocaleDateString('es-DO', { day: '2-digit', month: 'long', year: 'numeric' });
+      this.notifSvc.notificarResolucionAprobacion({
+        emailSolicitante:  emailEmpleado,
+        nombreSolicitante: (resultado as any).empleado?.nombre ?? 'Empleado',
+        tipo:       'otro',
+        entidadRef: `Vacaciones ${fmtD(s.fechaInicio)} – ${fmtD(s.fechaFin)}`,
+        estado:     'aprobado',
+        comentario: obs,
+        empresaNombre: 'HiCloud ERP',
+      }).catch((err: Error) => this.logger.warn(`[aprobar vacaciones] notif: ${err?.message}`));
+    } else {
+      this.logger.warn(`[aprobar vacaciones] Empleado #${s.empleadoId} sin email — notificación omitida`);
+    }
+
+    return resultado;
   }
 
   async rechazar(id: number, userId: number, obs?: string): Promise<SolicitudVacacion> {
@@ -196,7 +220,27 @@ export class VacacionesService {
       fechaRespuesta:       new Date(),
       observacionAprobador: obs,
     });
-    return this.solicitudRepo.findOne({ where: { id }, relations: ['empleado'] }) as Promise<SolicitudVacacion>;
+    const resultado = await this.solicitudRepo.findOne({ where: { id }, relations: ['empleado'] }) as SolicitudVacacion;
+
+    // Notificar al empleado — no-bloqueante
+    const emailEmpleado = (resultado as any).empleado?.email as string | undefined;
+    if (emailEmpleado) {
+      const fmtD = (d: Date | string) =>
+        new Date(d).toLocaleDateString('es-DO', { day: '2-digit', month: 'long', year: 'numeric' });
+      this.notifSvc.notificarResolucionAprobacion({
+        emailSolicitante:  emailEmpleado,
+        nombreSolicitante: (resultado as any).empleado?.nombre ?? 'Empleado',
+        tipo:       'otro',
+        entidadRef: `Vacaciones ${fmtD(s.fechaInicio)} – ${fmtD(s.fechaFin)}`,
+        estado:     'rechazado',
+        comentario: obs,
+        empresaNombre: 'HiCloud ERP',
+      }).catch((err: Error) => this.logger.warn(`[rechazar vacaciones] notif: ${err?.message}`));
+    } else {
+      this.logger.warn(`[rechazar vacaciones] Empleado #${s.empleadoId} sin email — notificación omitida`);
+    }
+
+    return resultado;
   }
 
   async cancelar(id: number, userId: number): Promise<SolicitudVacacion> {

@@ -1292,6 +1292,101 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
     return { mensaje: `Cotización ${r.numero} enviada a ${emailCliente}` };
   }
 
+  // ── Notificar resolución de solicitud de aprobación al solicitante ───────────
+  async notificarResolucionAprobacion(params: {
+    emailSolicitante: string;
+    nombreSolicitante: string;
+    tipo: string;
+    entidadRef?: string;
+    estado: 'aprobado' | 'rechazado';
+    comentario?: string;
+    empresaNombre: string;
+  }): Promise<void> {
+    const { emailSolicitante, nombreSolicitante, tipo, entidadRef, estado, comentario, empresaNombre } = params;
+
+    const esAprobado = estado === 'aprobado';
+    const color      = esAprobado ? '#059669' : '#dc2626';
+    const gradient   = esAprobado
+      ? 'linear-gradient(135deg,#059669,#10b981)'
+      : 'linear-gradient(135deg,#dc2626,#ef4444)';
+    const icono  = esAprobado ? '✅' : '❌';
+    const titulo = esAprobado ? 'Solicitud Aprobada' : 'Solicitud Rechazada';
+
+    const tipoLabel: Record<string, string> = {
+      cotizacion:  'Cotización',
+      pre_factura: 'Pre-Factura',
+      compra:      'Compra',
+      gasto:       'Gasto',
+      nota_debito: 'Nota de Débito',
+      otro:        'Solicitud',
+    };
+    const tipoTexto = tipoLabel[tipo] ?? tipo;
+
+    const html = `<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet"/>
+</head>
+<body style="margin:0;padding:0;background:#f4f6f9;font-family:'Inter',Arial,sans-serif">
+<div style="max-width:520px;margin:24px auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.1)">
+  <div style="background:${gradient};padding:24px 28px">
+    <div style="font-size:11px;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">
+      ${icono} ${titulo.toUpperCase()}
+    </div>
+    <div style="font-size:20px;font-weight:800;color:#fff">${tipoTexto}${entidadRef ? ` — ${entidadRef}` : ''}</div>
+  </div>
+  <div style="padding:24px 28px">
+    <p style="margin:0 0 16px;font-size:14px;color:#374151">
+      Estimado/a <strong>${nombreSolicitante}</strong>,
+    </p>
+    <p style="margin:0 0 20px;font-size:13px;color:#6b7280">
+      ${esAprobado
+        ? `Su solicitud de <strong>${tipoTexto}</strong>${entidadRef ? ` <strong>${entidadRef}</strong>` : ''} ha sido <strong style="color:${color}">aprobada</strong>.`
+        : `Su solicitud de <strong>${tipoTexto}</strong>${entidadRef ? ` <strong>${entidadRef}</strong>` : ''} ha sido <strong style="color:${color}">rechazada</strong>.`}
+    </p>
+    ${comentario ? `
+    <div style="background:#f9fafb;border-left:4px solid ${color};border-radius:4px;padding:14px 16px;margin-bottom:20px">
+      <div style="font-size:11px;text-transform:uppercase;color:#9ca3af;margin-bottom:6px">
+        ${esAprobado ? 'Comentario' : 'Motivo del rechazo'}
+      </div>
+      <div style="font-size:13px;color:#374151">${comentario}</div>
+    </div>` : ''}
+    <p style="font-size:12px;color:#9ca3af;margin:0">
+      Si tiene dudas, comuníquese con el administrador de <strong>${empresaNombre}</strong>.
+    </p>
+  </div>
+  <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:12px 28px;text-align:center;font-size:11px;color:#9ca3af">
+    <strong>${empresaNombre}</strong> · <strong style="color:${color}">HiCloud ERP</strong>
+  </div>
+</div>
+</body></html>`;
+
+    const asunto = `${icono} ${titulo}: ${tipoTexto}${entidadRef ? ` ${entidadRef}` : ''} — ${empresaNombre}`;
+    const { exitoso, error } = await this.emailService.enviar({
+      to: emailSolicitante, subject: asunto, html,
+    });
+
+    await this.registrar(
+      TipoNotificacion.MANUAL,
+      CanalNotificacion.EMAIL,
+      emailSolicitante,
+      asunto,
+      `Resolución aprobación: ${estado} — ${tipoTexto} ${entidadRef ?? ''}`,
+      exitoso,
+      entidadRef,
+      error,
+    );
+
+    if (!exitoso) {
+      this.logger.warn(
+        `[notificarResolucionAprobacion] No se pudo enviar email a ${emailSolicitante}: ${error}`,
+      );
+    } else {
+      this.logger.log(
+        `[notificarResolucionAprobacion] Email ${estado} enviado a ${emailSolicitante} (${tipoTexto} ${entidadRef ?? ''})`,
+      );
+    }
+  }
+
   async disparar(tipo: 'cxc' | 'cxp' | 'stock' | 'ecf' | 'resumen') {
     switch (tipo) {
       case 'cxc':     return { enviadas: await this.notificarCxCVencidas() };

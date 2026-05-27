@@ -5,9 +5,13 @@ import { VacacionesService } from './vacaciones.service';
 import { SolicitudVacacion } from './entities/solicitud-vacacion.entity';
 import { Ausencia } from './entities/ausencia.entity';
 import { Empleado } from '../nomina/entities/empleado.entity';
+import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([SolicitudVacacion, Ausencia, Empleado])],
+  imports: [
+    TypeOrmModule.forFeature([SolicitudVacacion, Ausencia, Empleado]),
+    NotificacionesModule,
+  ],
   controllers: [VacacionesController],
   providers: [VacacionesService],
   exports: [VacacionesService],
