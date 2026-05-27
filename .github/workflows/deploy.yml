@@ -186,10 +186,12 @@ jobs:
             fi
 
             # S-25: DB_CA_CERT — usar el GitHub Secret (base64 del cert AWS RDS us-east-2).
-            # NOTA: sed falla con strings base64 largos — python3 -c one-liner es seguro en YAML.
-            if [ -n "$DB_CA_CERT" ]; then
+            # GUARD: si el secret tiene menos de 200 chars es inválido — preservar .env existente.
+            if [ -n "$DB_CA_CERT" ] && [ "${#DB_CA_CERT}" -gt 200 ]; then
               python3 -c "import sys,re; e,cert=sys.argv[1],sys.argv[2]; buf=open(e).read(); buf=re.sub(r'(?m)^DB_CA_CERT=.*','DB_CA_CERT='+cert,buf) if re.search(r'(?m)^DB_CA_CERT=',buf) else buf+chr(10)+'DB_CA_CERT='+cert; open(e,'w').write(buf); print('  DB_CA_CERT ok '+str(len(cert))+' chars')" "$ENV_FILE" "$DB_CA_CERT"
-              echo "  ✅ DB_CA_CERT actualizado desde GitHub Secret"
+              echo "  ✅ DB_CA_CERT actualizado desde GitHub Secret (${#DB_CA_CERT} chars)"
+            elif [ -n "$DB_CA_CERT" ]; then
+              echo "  ⚠️  DB_CA_CERT secret sospechosamente corto (${#DB_CA_CERT} chars) — preservando .env existente"
             else
               echo "  ⚠️  DB_CA_CERT secret vacío — se preserva el valor existente en .env"
             fi

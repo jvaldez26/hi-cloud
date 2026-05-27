@@ -40,18 +40,17 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
-          # Leer el cert desde el .env del servidor EC2
+          # Leer el cert DIRECTAMENTE del PEM file en EC2 (fuente de verdad — no del .env que puede estar corrupto)
           CERT_VALUE=$(ssh -i ~/.ssh/ec2_key -o StrictHostKeyChecking=no ubuntu@3.137.152.75 \
-            "grep '^DB_CA_CERT=' \"/home/ubuntu/hicloud/hi-cloud backend-project/backend/.env\" \
-             | cut -d'=' -f2-" 2>/dev/null || echo "")
+            "base64 -w 0 /home/ubuntu/us-east-2-bundle.pem" 2>/dev/null || echo "")
 
-          if [ -z "$CERT_VALUE" ]; then
-            echo "❌ DB_CA_CERT no encontrado en EC2 .env"
-            echo "   Ruta buscada: /home/ubuntu/hicloud/hi-cloud backend-project/backend/.env"
+          if [ -z "$CERT_VALUE" ] || [ "${#CERT_VALUE}" -lt 200 ]; then
+            echo "❌ DB_CA_CERT inválido o demasiado corto (${#CERT_VALUE} chars)"
+            echo "   Verificar: /home/ubuntu/us-east-2-bundle.pem en EC2"
             exit 1
           fi
 
-          echo "✅ Cert leído de EC2 (${#CERT_VALUE} caracteres)"
+          echo "✅ Cert leído del PEM file en EC2 (${#CERT_VALUE} caracteres)"
 
           # Configurar el GitHub Secret usando gh CLI
           echo "$CERT_VALUE" | gh secret set DB_CA_CERT \
