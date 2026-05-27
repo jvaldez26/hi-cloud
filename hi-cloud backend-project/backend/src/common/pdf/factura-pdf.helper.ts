@@ -159,8 +159,12 @@ export async function generarFacturaPDF(
       ry += 20;
     }
 
-    // Válida hasta (verde) — E32 (Consumo) no lleva fecha de vigencia según normativa DGII
-    if (d.ecfFechaVigencia && d.ecfTipo !== 'E32') {
+    // E32 = Factura de Consumo Electrónica — DGII no requiere fecha de vigencia ni vencimiento.
+    // Verificar ecfTipo (si fue cargado del JOIN) O el prefijo del número NCF (más robusto).
+    const esE32 = d.ecfTipo === 'E32' || d.ecfNumero?.startsWith('E32');
+
+    // Válida hasta (verde) — E32 NO lleva fecha de vigencia según normativa DGII
+    if (d.ecfFechaVigencia && !esE32) {
       doc.fillColor(GREEN).font('Helvetica').fontSize(9)
         .text('Válida hasta: ' + fmtF(d.ecfFechaVigencia), rightColX, ry, {
           width: rightColW, align: 'right',
@@ -174,9 +178,9 @@ export async function generarFacturaPDF(
       ...(d.vendedorNombre  ? [['Vendedor',       d.vendedorNombre ]  as [string, string]] : []),
       ['Moneda',             d.moneda],
       ['Tipo de Factura',    d.condicionPago ?? d.tipo],
-      // Plazo + Vence solo para facturas a crédito
+      // Plazo + Vence solo para facturas a crédito (y NO para E32)
       ...(d.diasCredito && d.diasCredito > 0 ? [['Plazo', `${d.diasCredito} días`] as [string, string]] : []),
-      ...(d.fechaVencimiento && d.ecfTipo !== 'E32' ? [['Vence',         fmtF(d.fechaVencimiento)] as [string, string]] : []),
+      ...(d.fechaVencimiento && !esE32 ? [['Vence',         fmtF(d.fechaVencimiento)] as [string, string]] : []),
       ...(d.sucursalNombre  ? [['Sucursal',        d.sucursalNombre ]  as [string, string]] : []),
       ['Fecha Emisión',      fmtF(d.fechaEmision)],
     ];
@@ -296,6 +300,15 @@ export async function generarFacturaPDF(
     // Si no hay e-NCF → sin caja QR, totales ocupan todo el ancho
 
     const hasEcf  = Boolean(d.ecfNumero);
+
+    // Anclar la sección al pie: si queda mucho espacio vacío, empujarla hacia abajo
+    // para que no flote en el centro con pocas líneas de ítems.
+    const footerAreaY = PH - 50;          // donde empieza el footer
+    const bottomSecH  = hasEcf            // altura estimada del bloque QR+totales
+      ? 26 + 82 + 10 + 28 + 28 + 32 + 20  // ~226 con codigoSeguridad + fechaFirma
+      : 80;
+    const minBottomY  = footerAreaY - bottomSecH - 10;
+    if (y < minBottomY) y = minBottomY;   // empujar hacia abajo si hay hueco excesivo
     const qrBoxW  = hasEcf ? Math.round(W * 0.38) : 0;
     const gapMid  = hasEcf ? 14 : 0;
     const totW    = W - qrBoxW - gapMid;
