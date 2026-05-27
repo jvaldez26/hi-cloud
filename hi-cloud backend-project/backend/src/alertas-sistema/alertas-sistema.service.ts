@@ -134,9 +134,11 @@ export class AlertasSistemaService {
         FROM vehiculos
         WHERE "empresaId" = $1 AND "isActive" = true
           AND (
-            ("fechaMarbete" IS NOT NULL AND "fechaMarbete" BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days')
+            ("vencimientoItbis"       IS NOT NULL AND "vencimientoItbis"       BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days')
             OR
-            ("fechaSeguro"  IS NOT NULL AND "fechaSeguro"  BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days')
+            ("vencimientoSeguro"      IS NOT NULL AND "vencimientoSeguro"      BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days')
+            OR
+            ("vencimientoInspeccion"  IS NOT NULL AND "vencimientoInspeccion"  BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days')
           )
       `, [eid]);
       const n = Number(res[0]?.cantidad ?? 0);
