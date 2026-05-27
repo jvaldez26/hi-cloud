@@ -407,16 +407,17 @@ export class FacturasRecurrentesService {
 
     const factura = await this.facturaRepository.save(
       this.facturaRepository.create({
-        empresaId: rec.empresaId,
+        empresaId:           rec.empresaId,
         folio,
-        fecha:     hoy,
-        estado:    FacturaEstado.BORRADOR,
-        clienteId: rec.clienteId,
-        usuarioId: rec.userId,
-        notas:     `Factura recurrente: ${rec.nombre}`,
-        subtotal:  Number(subtotal.toFixed(2)),
-        iva:       Number(iva.toFixed(2)),
-        total:     Number((subtotal + iva).toFixed(2)),
+        fecha:               hoy,
+        estado:              FacturaEstado.BORRADOR,
+        clienteId:           rec.clienteId,
+        usuarioId:           rec.userId,
+        notas:               `Factura recurrente: ${rec.nombre}`,
+        subtotal:            Number(subtotal.toFixed(2)),
+        iva:                 Number(iva.toFixed(2)),
+        total:               Number((subtotal + iva).toFixed(2)),
+        facturaRecurrenteId: rec.id,   // trazabilidad al template
       }),
     );
 
