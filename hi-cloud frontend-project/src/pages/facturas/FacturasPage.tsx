@@ -12,7 +12,7 @@ import {
   CheckCircleOutlined, CloseCircleOutlined, DeleteOutlined,
   FilePdfOutlined, LoadingOutlined, ReloadOutlined, SearchOutlined,
   FileExcelOutlined, FilterOutlined, CopyOutlined, ControlOutlined,
-  EditOutlined,
+  EditOutlined, MailOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -92,6 +92,8 @@ export default function FacturasPage() {
   const [estado, setEstado]         = useState<string | undefined>();
   const [rango, setRango]           = useState<[Dayjs, Dayjs] | null>(null);
   const [pdfPending, setPdfPending] = useState<number | null>(null);
+  const [emailFactura, setEmailFactura] = useState<Factura | null>(null);
+  const [emailDestino, setEmailDestino] = useState('');
   // Filtros avanzados
   const [clienteId,  setClienteId]  = useState<number | undefined>();
   const [tipoPago,   setTipoPago]   = useState<string | undefined>();
@@ -178,6 +180,16 @@ export default function FacturasPage() {
       message.success(`Factura duplicada → ${nueva?.folio ?? 'borrador'}`);
     },
     onError: () => message.error('Error al duplicar'),
+  });
+
+  const emailMut = useMutation({
+    mutationFn: ({ id, email }: { id: number; email: string }) =>
+      api.post(`/notificaciones/factura/${id}/enviar`, { email }).then(r => r.data?.data ?? r.data),
+    onSuccess: (_, vars) => {
+      setEmailFactura(null); setEmailDestino('');
+      message.success(`Factura enviada a ${vars.email}`);
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error al enviar email'),
   });
 
   const confirmarEliminar = (r: Factura) =>
@@ -324,6 +336,10 @@ export default function FacturasPage() {
             label: 'Descargar PDF',
             disabled: pdfPending === r.id,
             onClick: () => descargarPDF(r, setPdfPending),
+          }] : []),
+          ...(r.estado !== 'borrador' ? [{
+            key: 'email', icon: <MailOutlined />, label: 'Enviar por email',
+            onClick: () => { setEmailFactura(r); setEmailDestino((r as any).cliente?.email ?? ''); },
           }] : []),
           ...(puedeDuplicar ? [{
             key: 'duplicar', icon: <CopyOutlined />, label: 'Duplicar factura',
@@ -513,6 +529,39 @@ export default function FacturasPage() {
         />
       </div>
 
+
+      {/* ── Modal enviar por email ── */}
+      <Modal
+        title={<><MailOutlined style={{ color: '#1677ff', marginRight: 8 }} />Enviar factura por email</>}
+        open={!!emailFactura}
+        onCancel={() => { setEmailFactura(null); setEmailDestino(''); }}
+        onOk={() => emailFactura && emailMut.mutate({ id: emailFactura.id, email: emailDestino })}
+        confirmLoading={emailMut.isPending}
+        okText="Enviar"
+        okButtonProps={{ disabled: !emailDestino }}
+        destroyOnHidden
+        width={420}
+      >
+        {emailFactura && (
+          <div>
+            <p style={{ margin: '0 0 12px', color: '#6b7280', fontSize: 13 }}>
+              Factura <strong>{emailFactura.folio}</strong>
+              {(emailFactura as any).cliente?.nombre
+                ? <> · Cliente: <strong>{(emailFactura as any).cliente.nombre}</strong></>
+                : ' · Consumidor Final'
+              }
+            </p>
+            <Input
+              prefix={<MailOutlined />}
+              placeholder="correo@cliente.com"
+              value={emailDestino}
+              onChange={e => setEmailDestino(e.target.value)}
+              size="large"
+              type="email"
+            />
+          </div>
+        )}
+      </Modal>
 
       {/* ── Tabla — scroll interno para que la página no desborde ── */}
       <Table
