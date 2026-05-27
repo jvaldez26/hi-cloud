@@ -5,12 +5,11 @@ import { ActivosFijosController } from './activos-fijos.controller';
 import { CategoriaActivo } from './entities/categoria-activo.entity';
 import { ActivoFijo } from './entities/activo-fijo.entity';
 import { DepreciacionActivo } from './entities/depreciacion-activo.entity';
-import { CuentaContable } from '../contabilidad/entities/cuenta-contable.entity';
 import { ContabilidadModule } from '../contabilidad/contabilidad.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([CategoriaActivo, ActivoFijo, DepreciacionActivo, CuentaContable]),
+    TypeOrmModule.forFeature([CategoriaActivo, ActivoFijo, DepreciacionActivo]),
     ContabilidadModule,
   ],
   controllers: [ActivosFijosController],

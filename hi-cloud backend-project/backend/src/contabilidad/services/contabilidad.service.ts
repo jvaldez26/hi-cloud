@@ -53,6 +53,9 @@ const PLAN_CUENTAS: SeedCuenta[] = [
   { codigo: '1.1.2.02',   nombre: 'Documentos por Cobrar',             tipo: TipoCuenta.ACTIVO,     naturaleza: D, nivel: 4, permiteMovimientos: true },
   { codigo: '1.1.3',      nombre: 'Inventarios',                       tipo: TipoCuenta.ACTIVO,     naturaleza: D, nivel: 3, permiteMovimientos: false },
   { codigo: '1.1.3.01',   nombre: 'Mercancías para la Venta',          tipo: TipoCuenta.ACTIVO,     naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '1.1.3.02',   nombre: 'Inventario de Producción en Proceso', tipo: TipoCuenta.ACTIVO,   naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '1.1.3.03',   nombre: 'Inventario de Productos Terminados', tipo: TipoCuenta.ACTIVO,    naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '1.1.3.04',   nombre: 'Inventario de Materia Prima',       tipo: TipoCuenta.ACTIVO,     naturaleza: D, nivel: 4, permiteMovimientos: true },
   { codigo: '1.1.4',      nombre: 'Impuestos Anticipados',             tipo: TipoCuenta.ACTIVO,     naturaleza: D, nivel: 3, permiteMovimientos: false },
   { codigo: '1.1.4.01',   nombre: 'ITBIS Crédito Fiscal (Compras)',    tipo: TipoCuenta.ACTIVO,     naturaleza: D, nivel: 4, permiteMovimientos: true },
   { codigo: '1.2',        nombre: 'Activo No Corriente',               tipo: TipoCuenta.ACTIVO,     naturaleza: D, nivel: 2, permiteMovimientos: false },
@@ -73,6 +76,9 @@ const PLAN_CUENTAS: SeedCuenta[] = [
   { codigo: '2.1.3',      nombre: 'Obligaciones Laborales',            tipo: TipoCuenta.PASIVO,     naturaleza: A, nivel: 3, permiteMovimientos: false },
   { codigo: '2.1.3.01',   nombre: 'Sueldos por Pagar',                 tipo: TipoCuenta.PASIVO,     naturaleza: A, nivel: 4, permiteMovimientos: true },
   { codigo: '2.1.3.02',   nombre: 'TSS por Pagar',                     tipo: TipoCuenta.PASIVO,     naturaleza: A, nivel: 4, permiteMovimientos: true },
+  { codigo: '2.1.4',      nombre: 'Otras Cuentas por Pagar CP',        tipo: TipoCuenta.PASIVO,     naturaleza: A, nivel: 3, permiteMovimientos: false },
+  { codigo: '2.1.5',      nombre: 'Anticipos de Clientes',             tipo: TipoCuenta.PASIVO,     naturaleza: A, nivel: 3, permiteMovimientos: false },
+  { codigo: '2.1.5.01',   nombre: 'Anticipos Recibidos de Clientes',   tipo: TipoCuenta.PASIVO,     naturaleza: A, nivel: 4, permiteMovimientos: true },
   { codigo: '2.2',        nombre: 'Pasivo No Corriente',               tipo: TipoCuenta.PASIVO,     naturaleza: A, nivel: 2, permiteMovimientos: false },
   { codigo: '2.2.1.01',   nombre: 'Préstamos Bancarios LP',            tipo: TipoCuenta.PASIVO,     naturaleza: A, nivel: 4, permiteMovimientos: true },
 
@@ -97,7 +103,9 @@ const PLAN_CUENTAS: SeedCuenta[] = [
   // ── CLASE 5 — COSTOS ───────────────────────────────────────────────────────
   { codigo: '5',          nombre: 'COSTOS',                            tipo: TipoCuenta.COSTO,      naturaleza: D, nivel: 1, permiteMovimientos: false },
   { codigo: '5.1',        nombre: 'Costo de Ventas',                   tipo: TipoCuenta.COSTO,      naturaleza: D, nivel: 2, permiteMovimientos: false },
+  { codigo: '5.1.1',      nombre: 'Costo de Ventas Directos',          tipo: TipoCuenta.COSTO,      naturaleza: D, nivel: 3, permiteMovimientos: false },
   { codigo: '5.1.1.01',   nombre: 'Costo de Ventas de Bienes',         tipo: TipoCuenta.COSTO,      naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '5.1.1.02',   nombre: 'Costo de Producción',               tipo: TipoCuenta.COSTO,      naturaleza: D, nivel: 4, permiteMovimientos: true },
 
   // ── CLASE 6 — GASTOS ───────────────────────────────────────────────────────
   { codigo: '6',          nombre: 'GASTOS',                            tipo: TipoCuenta.GASTO,      naturaleza: D, nivel: 1, permiteMovimientos: false },
@@ -111,6 +119,13 @@ const PLAN_CUENTAS: SeedCuenta[] = [
   { codigo: '6.1.2.02',   nombre: 'Servicios Públicos',                tipo: TipoCuenta.GASTO,      naturaleza: D, nivel: 4, permiteMovimientos: true },
   { codigo: '6.1.2.03',   nombre: 'Comunicaciones',                    tipo: TipoCuenta.GASTO,      naturaleza: D, nivel: 4, permiteMovimientos: true },
   { codigo: '6.1.2.04',   nombre: 'Materiales de Oficina',             tipo: TipoCuenta.GASTO,      naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.2.05',   nombre: 'Depreciación y Amortización',       tipo: TipoCuenta.GASTO,      naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.2.06',   nombre: 'ITBIS no Recuperable',              tipo: TipoCuenta.GASTO,      naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.2',        nombre: 'Gastos Operacionales Otros',        tipo: TipoCuenta.GASTO,      naturaleza: D, nivel: 2, permiteMovimientos: false },
+  { codigo: '6.2.1',      nombre: 'Gastos de Depreciación',            tipo: TipoCuenta.GASTO,      naturaleza: D, nivel: 3, permiteMovimientos: false },
+  { codigo: '6.2.1.01',   nombre: 'Gasto de Depreciación Activos',     tipo: TipoCuenta.GASTO,      naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '1.2.2',      nombre: 'Depreciación Acumulada',            tipo: TipoCuenta.ACTIVO,     naturaleza: A, nivel: 3, permiteMovimientos: false },
+  { codigo: '1.2.2.01',   nombre: 'Deprec. Acumulada Activos Fijos',   tipo: TipoCuenta.ACTIVO,     naturaleza: A, nivel: 4, permiteMovimientos: true },
   { codigo: '6.1.3',      nombre: 'Gastos Financieros',                tipo: TipoCuenta.GASTO,      naturaleza: D, nivel: 3, permiteMovimientos: false },
   { codigo: '6.1.3.01',   nombre: 'Intereses Bancarios',               tipo: TipoCuenta.GASTO,      naturaleza: D, nivel: 4, permiteMovimientos: true },
   { codigo: '6.1.3.02',   nombre: 'Comisiones Bancarias',              tipo: TipoCuenta.GASTO,      naturaleza: D, nivel: 4, permiteMovimientos: true },

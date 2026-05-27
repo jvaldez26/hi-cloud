@@ -92,8 +92,9 @@ export class PresupuestosService {
   }
 
   async findById(id: number) {
+    const empresaId = this.tenantService.getEmpresaId();
     const p = await this.presupuestoRepository.findOne({
-      where: { id, isActive: true },
+      where: { id, isActive: true, empresaId } as any,
       relations: ['lineas', 'user'],
     });
     if (!p) throw new NotFoundException(`Presupuesto #${id} no encontrado`);
@@ -129,7 +130,8 @@ export class PresupuestosService {
   }
 
   async updateLinea(lineaId: number, montoPresupuestado: number) {
-    const linea = await this.lineaRepository.findOne({ where: { id: lineaId } });
+    const empresaId = this.tenantService.getEmpresaId();
+    const linea = await this.lineaRepository.findOne({ where: { id: lineaId, empresaId } as any });
     if (!linea) throw new NotFoundException(`Línea #${lineaId} no encontrada`);
 
     await this.lineaRepository.update(lineaId, { montoPresupuestado });
@@ -170,32 +172,37 @@ export class PresupuestosService {
   // ──────────────────────────────────────────────────────────────────
 
   private async obtenerRealVentas(anio: number): Promise<Record<number, number>> {
+    const empresaId = this.tenantService.getEmpresaId();
     const rows = await this.dataSource.query<{ mes: number; real: string }[]>(
       `SELECT EXTRACT(MONTH FROM fecha)::int AS mes,
               COALESCE(SUM(total), 0) AS real
        FROM facturas
        WHERE "isActive" = true AND estado IN ('emitida','pagada')
+         AND "empresaId" = $2
          AND EXTRACT(YEAR FROM fecha) = $1
        GROUP BY EXTRACT(MONTH FROM fecha)`,
-      [anio],
+      [anio, empresaId],
     );
     return Object.fromEntries(rows.map((r) => [r.mes, Number(r.real)]));
   }
 
   private async obtenerRealCompras(anio: number): Promise<Record<number, number>> {
+    const empresaId = this.tenantService.getEmpresaId();
     const rows = await this.dataSource.query<{ mes: number; real: string }[]>(
       `SELECT EXTRACT(MONTH FROM fecha)::int AS mes,
               COALESCE(SUM(total), 0) AS real
        FROM compras
        WHERE "isActive" = true AND estado IN ('recibida','pagada')
+         AND "empresaId" = $2
          AND EXTRACT(YEAR FROM fecha) = $1
        GROUP BY EXTRACT(MONTH FROM fecha)`,
-      [anio],
+      [anio, empresaId],
     );
     return Object.fromEntries(rows.map((r) => [r.mes, Number(r.real)]));
   }
 
   private async obtenerRealGastos(anio: number): Promise<Record<number, number>> {
+    const empresaId = this.tenantService.getEmpresaId();
     const rows = await this.dataSource.query<{ mes: number; real: string }[]>(
       `SELECT EXTRACT(MONTH FROM a.fecha)::int AS mes,
               COALESCE(SUM(l.debe), 0) AS real
@@ -204,9 +211,10 @@ export class PresupuestosService {
        JOIN cuentas_contables   c ON c.id = l."cuentaContableId"
        WHERE a.estado = 'contabilizado' AND a."isActive" = true AND l."isActive" = true
          AND c.tipo IN ('gasto','costo')
+         AND a."empresaId" = $2
          AND EXTRACT(YEAR FROM a.fecha) = $1
        GROUP BY EXTRACT(MONTH FROM a.fecha)`,
-      [anio],
+      [anio, empresaId],
     );
     return Object.fromEntries(rows.map((r) => [r.mes, Number(r.real)]));
   }
@@ -278,8 +286,9 @@ export class PresupuestosService {
   // ──────────────────────────────────────────────────────────────────
 
   async getDashboardPresupuestal(anio: number) {
+    const empresaId = this.tenantService.getEmpresaId();
     const presupuestosAnio = await this.presupuestoRepository.find({
-      where: { anio, isActive: true, estado: EstadoPresupuesto.APROBADO },
+      where: { anio, isActive: true, estado: EstadoPresupuesto.APROBADO, empresaId } as any,
       relations: ['lineas'],
     });
 

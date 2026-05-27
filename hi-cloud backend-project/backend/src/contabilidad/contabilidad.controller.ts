@@ -42,8 +42,8 @@ export class ContabilidadController {
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Plan de Cuentas dominicano completo' })
   @ApiQuery({ name: 'soloMovimientos', required: false, type: Boolean })
-  getCuentas(@Query('soloMovimientos') soloMovimientos?: boolean) {
-    return this.contabilidadService.getCuentas(soloMovimientos);
+  getCuentas(@Query('soloMovimientos') soloMovimientos?: string) {
+    return this.contabilidadService.getCuentas(soloMovimientos === 'true');
   }
 
   @Post('cuentas')

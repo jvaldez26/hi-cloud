@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   ConflictException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
@@ -21,6 +22,8 @@ import { ContabilidadService } from '../contabilidad/services/contabilidad.servi
 
 @Injectable()
 export class MultiEmpresaService {
+  private readonly logger = new Logger(MultiEmpresaService.name);
+
   constructor(
     @InjectRepository(UsuarioEmpresa)
     private usuarioEmpresaRepo: Repository<UsuarioEmpresa>,
@@ -80,7 +83,11 @@ export class MultiEmpresaService {
     );
 
     // Sembrar Plan de Cuentas dominicano para la nueva empresa
-    try { await this.contabilidadSvc.seedPlanCuentas(empresa.id); } catch {}
+    try {
+      await this.contabilidadSvc.seedPlanCuentas(empresa.id);
+    } catch (err: any) {
+      this.logger.warn(`seedPlanCuentas empresa ${empresa.id}: ${err?.message ?? err}`);
+    }
 
     return Object.assign({}, empresa, { empresaId: empresa.id }) as Empresa & { empresaId: number };
   }

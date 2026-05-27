@@ -19,7 +19,6 @@ import { CreateActivoFijoDto } from './dto/create-activo-fijo.dto';
 import { DarDeBajaDto } from './dto/dar-de-baja.dto';
 import { FiltroActivosDto, FiltroDepreciacionDto } from './dto/filtro-activos.dto';
 import { AsientosAutomaticosService } from '../contabilidad/services/asientos-automaticos.service';
-import { CuentaContable, TipoCuenta, NaturalezaCuenta } from '../contabilidad/entities/cuenta-contable.entity';
 import { TenantService } from '../tenant/tenant.service';
 
 // ── Categorías DGII según Ley 11-92 (Código Tributario RD) ──────────────────
@@ -68,14 +67,6 @@ const CATEGORIAS_DGII: SeedCategoria[] = [
   },
 ];
 
-// Cuentas contables necesarias para depreciación (se agregan si no existen)
-const CUENTAS_DEPRECIACION = [
-  { codigo: '1.2.2',    nombre: 'Depreciación Acumulada',           tipo: TipoCuenta.ACTIVO,  naturaleza: NaturalezaCuenta.ACREEDORA, nivel: 3, permiteMovimientos: false },
-  { codigo: '1.2.2.01', nombre: 'Deprec. Acumulada Activos Fijos',  tipo: TipoCuenta.ACTIVO,  naturaleza: NaturalezaCuenta.ACREEDORA, nivel: 4, permiteMovimientos: true },
-  { codigo: '6.2',      nombre: 'Otros Gastos Operacionales',       tipo: TipoCuenta.GASTO,   naturaleza: NaturalezaCuenta.DEUDORA,   nivel: 2, permiteMovimientos: false },
-  { codigo: '6.2.1.01', nombre: 'Gasto de Depreciación',            tipo: TipoCuenta.GASTO,   naturaleza: NaturalezaCuenta.DEUDORA,   nivel: 4, permiteMovimientos: true },
-];
-
 @Injectable()
 export class ActivosFijosService implements OnModuleInit {
   private readonly logger = new Logger(ActivosFijosService.name);
@@ -87,8 +78,6 @@ export class ActivosFijosService implements OnModuleInit {
     private activoRepository: Repository<ActivoFijo>,
     @InjectRepository(DepreciacionActivo)
     private depreciacionRepository: Repository<DepreciacionActivo>,
-    @InjectRepository(CuentaContable)
-    private cuentaRepository: Repository<CuentaContable>,
     private asientosService: AsientosAutomaticosService,
     private tenantService: TenantService,
   ) {}
@@ -106,25 +95,9 @@ export class ActivosFijosService implements OnModuleInit {
       );
       this.logger.log('Categorías DGII sembradas (6 categorías Ley 11-92)');
     }
-
-    // Sembrar cuentas contables de depreciación si no existen
-    for (const c of CUENTAS_DEPRECIACION) {
-      const existe = await this.cuentaRepository.findOne({ where: { codigo: c.codigo } });
-      if (!existe) {
-        // Buscar cuenta padre
-        const codigoPadre = c.codigo.split('.').slice(0, -1).join('.');
-        const padre = codigoPadre
-          ? await this.cuentaRepository.findOne({ where: { codigo: codigoPadre } })
-          : null;
-
-        await this.cuentaRepository.save(
-          this.cuentaRepository.create({
-            ...c,
-            cuentaPadreId: padre?.id,
-          }),
-        );
-      }
-    }
+    // Nota: las cuentas contables de depreciación (1.2.2, 6.2.1) ya forman
+    // parte del PLAN_CUENTAS base que se siembra por empresa desde seedPlanCuentas().
+    // No se siembran globalmente aquí para evitar duplicados cross-tenant.
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -202,8 +175,9 @@ export class ActivosFijosService implements OnModuleInit {
   }
 
   async findActivoById(id: number) {
+    const empresaId = this.tenantService.getEmpresaId();
     const a = await this.activoRepository.findOne({
-      where: { id, isActive: true },
+      where: { id, isActive: true, empresaId },
       relations: ['categoria', 'user'],
     });
     if (!a) throw new NotFoundException(`Activo #${id} no encontrado`);
@@ -264,16 +238,17 @@ export class ActivosFijosService implements OnModuleInit {
     return Number(Math.min(dep, maxDep).toFixed(2));
   }
 
-  // NOTE: cron jobs run without tenant context - skip empresaId filter here
   async procesarDepreciacionMensual(periodo: string, userId: number) {
+    const empresaId = this.tenantService.getEmpresaId();
+
     // Validar formato YYYY-MM
     if (!/^\d{4}-\d{2}$/.test(periodo)) {
       throw new BadRequestException('Período debe tener formato YYYY-MM');
     }
 
-    // Verificar que no se haya procesado ya
+    // Verificar que no se haya procesado ya para esta empresa
     const yaProcesado = await this.depreciacionRepository.count({
-      where: { periodo, isActive: true },
+      where: { periodo, isActive: true, empresaId } as any,
     });
     if (yaProcesado > 0) {
       throw new ConflictException(`El período ${periodo} ya tiene depreciación registrada`);
@@ -284,7 +259,7 @@ export class ActivosFijosService implements OnModuleInit {
     const fechaFin    = new Date(year, month, 0);
 
     const activos = await this.activoRepository.find({
-      where: { estado: EstadoActivo.ACTIVO, isActive: true },
+      where: { estado: EstadoActivo.ACTIVO, isActive: true, empresaId },
       relations: ['categoria'],
     });
 
@@ -309,6 +284,7 @@ export class ActivosFijosService implements OnModuleInit {
 
       registros.push({
         activoId:            activo.id,
+        empresaId,
         periodo,
         fechaInicio,
         fechaFin,
@@ -319,7 +295,7 @@ export class ActivosFijosService implements OnModuleInit {
         valorLibrosFin:      nuevoLibros,
         depreciacionAcumulada: nuevoAcumulado,
         userId,
-      });
+      } as any);
 
       await this.activoRepository.update(activo.id, {
         valorLibros:           nuevoLibros,
@@ -391,8 +367,9 @@ export class ActivosFijosService implements OnModuleInit {
   // ──────────────────────────────────────────────────────────────────
 
   async getResumenActivos() {
+    const empresaId = this.tenantService.getEmpresaId();
     const activos = await this.activoRepository.find({
-      where: { isActive: true },
+      where: { isActive: true, empresaId },
       relations: ['categoria'],
     });
 
@@ -433,8 +410,9 @@ export class ActivosFijosService implements OnModuleInit {
   }
 
   async getReporteDGII(anio: number) {
+    const empresaId = this.tenantService.getEmpresaId();
     const activos = await this.activoRepository.find({
-      where: { isActive: true },
+      where: { isActive: true, empresaId },
       relations: ['categoria'],
       order: { categoria: { codigo: 'ASC' }, codigo: 'ASC' },
     });
@@ -444,6 +422,7 @@ export class ActivosFijosService implements OnModuleInit {
       .select('d.activoId', 'activoId')
       .addSelect('COALESCE(SUM(d.montoDepreciacion), 0)', 'totalAnio')
       .where('d.isActive = true')
+      .andWhere('d.empresaId = :eid', { eid: empresaId })
       .andWhere("d.periodo LIKE :pattern", { pattern: `${anio}-%` })
       .groupBy('d.activoId')
       .getRawMany<{ activoId: number; totalAnio: string }>();

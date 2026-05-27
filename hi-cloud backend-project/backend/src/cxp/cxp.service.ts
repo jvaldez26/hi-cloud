@@ -116,7 +116,9 @@ export class CxPService {
     }
 
     // Asiento contable: Proveedores / Bancos
-    await this.asientosService.asientoPago(dto.monto, id, userId);
+    await this.asientosService.asientoPago(dto.monto, id, userId).catch(err =>
+      this.logger.error(`Error asiento pago CxP #${id}: ${err?.message ?? err}`),
+    );
 
     // Retiro bancario automático
     await this.tesoreriaService.registrarMovimientoAutomatico(
@@ -126,6 +128,8 @@ export class CxPService {
       OrigenMovimiento.PAGO_CXP,
       id,
       userId,
+    ).catch(err =>
+      this.logger.error(`Error tesorería pago CxP #${id}: ${err?.message ?? err}`),
     );
 
     const cuentaFinal = await this.findById(id);
