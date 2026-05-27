@@ -9,9 +9,11 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  Logger,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam } from '@nestjs/swagger';
 import { NotificacionesService } from './notificaciones.service';
+import { PDFService } from '../facturas/services/pdf.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -24,7 +26,12 @@ import { UserRole } from '../users/enums/user-role.enum';
 @Roles(UserRole.ADMIN, UserRole.CONTADOR)
 @Controller('notificaciones')
 export class NotificacionesController {
-  constructor(private notificacionesService: NotificacionesService) {}
+  private readonly logger = new Logger(NotificacionesController.name);
+
+  constructor(
+    private notificacionesService: NotificacionesService,
+    private pdfService: PDFService,
+  ) {}
 
   @Get('config')
   @ApiOperation({ summary: 'Verificar configuración SMTP y WhatsApp' })
@@ -59,15 +66,28 @@ export class NotificacionesController {
     return this.notificacionesService.disparar(tipo as any);
   }
 
+  /**
+   * Enviar factura por email al cliente.
+   * Genera el PDF automáticamente y lo adjunta al correo.
+   * Si el PDF falla (Chromium no disponible, etc.) el email se envía sin adjunto.
+   */
   @Post('factura/:id/enviar')
   @HttpCode(HttpStatus.OK)
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  @ApiOperation({ summary: 'Enviar factura por email al cliente' })
-  enviarFactura(
+  @ApiOperation({ summary: 'Enviar factura por email al cliente (con PDF adjunto)' })
+  async enviarFactura(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: { email: string; asunto?: string },
   ) {
-    return this.notificacionesService.enviarFacturaAlCliente(id, body.email, body.asunto);
+    // Intentar generar PDF — si falla, el email se envía sin adjunto (degradación elegante)
+    let pdfBuffer: Buffer | undefined;
+    try {
+      const { buffer } = await this.pdfService.generarFacturaPDF(id);
+      pdfBuffer = buffer;
+    } catch (err) {
+      this.logger.warn(`No se pudo generar PDF para factura #${id}: ${(err as Error).message}`);
+    }
+    return this.notificacionesService.enviarFacturaAlCliente(id, body.email, body.asunto, pdfBuffer);
   }
 
   @Post('factura/:id/whatsapp')

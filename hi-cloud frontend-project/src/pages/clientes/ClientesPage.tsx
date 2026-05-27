@@ -15,6 +15,7 @@ import {
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
+import api from '../../api/client';
 import { clientesApi, type ClientePayload } from '../../api/clientes.api';
 import { exportarExcel } from '../../utils/exportExcel';
 import type { Cliente } from '../../types';
@@ -35,9 +36,11 @@ export default function ClientesPage() {
   const puedeEstadoCuenta = useCanDo('clientes:estado_cuenta');
   const [search,  setSearch]  = useState('');
   const [page,    setPage]    = useState(1);
-  const [open,    setOpen]    = useState(false);
-  const [editing, setEditing] = useState<Cliente | null>(null);
-  const [form]                = Form.useForm<ClientePayload>();
+  const [open,         setOpen]         = useState(false);
+  const [editing,      setEditing]      = useState<Cliente | null>(null);
+  const [emailCliente, setEmailCliente] = useState<Cliente | null>(null);
+  const [emailDestino, setEmailDestino] = useState('');
+  const [form]                          = Form.useForm<ClientePayload>();
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -61,6 +64,16 @@ export default function ClientesPage() {
     mutationFn: clientesApi.remove,
     onSuccess:  () => { qc.invalidateQueries({ queryKey: ['clientes'] }); message.success('Cliente eliminado'); },
     onError:    (e: any) => message.error((e as any)?.friendlyMessage ?? 'No se puede eliminar'),
+  });
+
+  const estadoCuentaMut = useMutation({
+    mutationFn: ({ id, email }: { id: number; email: string }) =>
+      api.post(`/notificaciones/cliente/${id}/estado-cuenta`, { email }).then(r => r.data?.data ?? r.data),
+    onSuccess: (_, vars) => {
+      setEmailCliente(null); setEmailDestino('');
+      message.success(`Estado de cuenta enviado a ${vars.email}`);
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error al enviar'),
   });
 
   const openCreate = () => { setEditing(null); form.resetFields(); setOpen(true); };
@@ -144,6 +157,12 @@ export default function ClientesPage() {
           items={[
             { key: 'editar', label: 'Editar', icon: <EditOutlined />, onClick: () => openEdit(r) },
             ...(puedeEstadoCuenta ? [{ key: 'estado', label: 'Estado de cuenta', icon: <EyeOutlined />, onClick: () => navigate(`/clientes/${r.id}/estado-cuenta`) }] : []),
+            ...(puedeEstadoCuenta && r.email ? [{
+              key: 'email-estado',
+              label: 'Enviar estado de cuenta',
+              icon: <MailOutlined />,
+              onClick: () => { setEmailCliente(r); setEmailDestino(r.email ?? ''); },
+            }] : []),
             ...(puedeEliminar ? [
               { type: 'divider' as const },
               { key: 'eliminar', label: 'Eliminar', danger: true, icon: <DeleteOutlined />, onClick: () => deleteMut.mutate(r.id) },
@@ -195,6 +214,38 @@ export default function ClientesPage() {
           showSizeChanger: false, size: 'small',
         }}
       />
+
+      {/* Modal: Estado de cuenta por email */}
+      <Modal
+        title={<><MailOutlined style={{ color: '#1677ff', marginRight: 8 }} />Enviar estado de cuenta</>}
+        open={!!emailCliente}
+        onCancel={() => { setEmailCliente(null); setEmailDestino(''); }}
+        onOk={() => emailCliente && estadoCuentaMut.mutate({ id: emailCliente.id, email: emailDestino })}
+        confirmLoading={estadoCuentaMut.isPending}
+        okText="Enviar"
+        okButtonProps={{ disabled: !emailDestino }}
+        destroyOnHidden
+        width={420}
+      >
+        {emailCliente && (
+          <div>
+            <p style={{ margin: '0 0 12px', color: '#6b7280', fontSize: 13 }}>
+              Cliente: <strong>{emailCliente.nombre}</strong>
+            </p>
+            <p style={{ margin: '0 0 12px', color: '#6b7280', fontSize: 12 }}>
+              Se enviará un resumen de todas las facturas pendientes de pago.
+            </p>
+            <Input
+              prefix={<MailOutlined />}
+              placeholder="correo@cliente.com"
+              value={emailDestino}
+              onChange={e => setEmailDestino(e.target.value)}
+              size="large"
+              type="email"
+            />
+          </div>
+        )}
+      </Modal>
 
       {/* Modal crear/editar */}
       <Modal

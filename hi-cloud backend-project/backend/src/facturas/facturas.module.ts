@@ -2,8 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { FacturasService } from './facturas.service';
 import { FacturasController } from './facturas.controller';
-import { PDFService } from './services/pdf.service';
-import { NumeroLetrasService } from './services/numero-letras.service';
+import { PdfModule } from './pdf.module';
 import { Factura } from './entities/factura.entity';
 import { FacturaDetalle } from './entities/factura-detalle.entity';
 import { ClientesModule } from '../clientes/clientes.module';
@@ -20,9 +19,10 @@ import { SuscripcionesModule } from '../suscripciones/suscripciones.module';
     ClientesModule, ProductosModule, InventarioModule,
     ECFModule, CxCModule, ContabilidadModule,
     SuscripcionesModule,
+    PdfModule,           // PDFService + NumeroLetrasService encapsulados aquí
   ],
   controllers: [FacturasController],
-  providers: [FacturasService, PDFService, NumeroLetrasService],
-  exports: [FacturasService, PDFService],
+  providers: [FacturasService],
+  exports: [FacturasService, PdfModule],  // re-exporta PdfModule → PDFService disponible para importadores
 })
 export class FacturasModule {}

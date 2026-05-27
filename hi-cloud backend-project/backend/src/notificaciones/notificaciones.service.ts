@@ -512,6 +512,7 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
     facturaId:    number,
     emailCliente: string,
     asunto?:      string,
+    pdfBuffer?:   Buffer,   // generado por el controlador (HTTP context) con PDFService
   ) {
     // ── 1. Obtener factura completa ───────────────────────────────────────────
     const factRows = await this.dataSource.query<{
@@ -656,6 +657,9 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
       to:      emailCliente,
       subject: asuntoFinal,
       html,
+      ...(pdfBuffer
+        ? { attachments: [{ filename: `${r.folio}.pdf`, content: pdfBuffer, contentType: 'application/pdf' }] }
+        : {}),
     });
 
     await this.registrar(
@@ -663,7 +667,7 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
       CanalNotificacion.EMAIL,
       emailCliente,
       asuntoFinal,
-      `Factura ${r.folio} enviada por email`,
+      `Factura ${r.folio} enviada por email${pdfBuffer ? ' (con PDF adjunto)' : ''}`,
       exitoso,
       r.folio,
       error,
@@ -677,7 +681,7 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
       }
       throw new Error(`Error enviando email: ${causa}`);
     }
-    return { mensaje: `Factura ${r.folio} enviada a ${emailCliente}` };
+    return { mensaje: `Factura ${r.folio} enviada a ${emailCliente}${pdfBuffer ? ' (con PDF adjunto)' : ''}` };
   }
 
   // ── Estado de cuenta por email ─────────────────────────────────────────────
