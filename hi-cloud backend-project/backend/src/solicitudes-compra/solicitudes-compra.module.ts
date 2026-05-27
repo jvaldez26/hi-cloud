@@ -6,6 +6,7 @@ import { SolicitudCompra } from './entities/solicitud-compra.entity';
 import { SolicitudCompraLinea } from './entities/solicitud-compra-linea.entity';
 import { CotizacionProveedor } from './entities/cotizacion-proveedor.entity';
 import { CotizacionProveedorLinea } from './entities/cotizacion-proveedor-linea.entity';
+import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { CotizacionProveedorLinea } from './entities/cotizacion-proveedor-linea.
       CotizacionProveedor,
       CotizacionProveedorLinea,
     ]),
+    NotificacionesModule,
   ],
   controllers: [SolicitudesCompraController],
   providers: [SolicitudesCompraService],

@@ -565,8 +565,15 @@ export default function VacacionesPage() {
             if (respModal.tipo === 'aprobar') aprobarMut.mutate({ id: respModal.id, obs: v.obs });
             else rechazarMut.mutate({ id: respModal.id, obs: v.obs });
           }}>
-          <Form.Item name="obs" label="Observación (opcional)">
-            <Input.TextArea rows={2} />
+          <Form.Item
+            name="obs"
+            label={respModal?.tipo === 'rechazar' ? 'Motivo del rechazo' : 'Observación (opcional)'}
+            rules={respModal?.tipo === 'rechazar' ? [{ required: true, message: 'Indica el motivo del rechazo' }] : []}
+          >
+            <Input.TextArea
+              rows={2}
+              placeholder={respModal?.tipo === 'rechazar' ? 'Explica el motivo del rechazo (obligatorio)...' : 'Observaciones adicionales...'}
+            />
           </Form.Item>
           <Row justify="end" gutter={8}>
             <Col><Button onClick={() => setRespModal(null)}>Cancelar</Button></Col>

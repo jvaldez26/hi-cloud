@@ -706,8 +706,53 @@ export class SuperAdminService {
   }
 
   async rechazarSolicitud(solicitudId: number, superAdminId: number, motivo: string) {
+    const [sol] = await this.ds.query<any[]>(
+      `SELECT sc."empresaId", sc."planSolicitado" FROM solicitud_cambio_plan sc WHERE sc.id = $1`, [solicitudId],
+    );
     await this.ds.query(`UPDATE solicitud_cambio_plan SET estado='rechazada',"motivoRechazo"=$1,"superAdminId"=$2,"updatedAt"=NOW() WHERE id=$3`, [motivo, superAdminId, solicitudId]);
+
+    // Notificar al cliente — no-bloqueante
+    if (sol) {
+      this.notificarRechazoSolicitudPlan(sol.empresaId, sol.planSolicitado, motivo)
+        .catch(err => this.logger.warn(`Email rechazo solicitud plan #${solicitudId}: ${(err as Error).message}`));
+    }
+
     return { ok: true };
+  }
+
+  private async notificarRechazoSolicitudPlan(empresaId: number, planSolicitado: string, motivo: string): Promise<void> {
+    try {
+      const [admin] = await this.ds.query<{ email: string; nombre: string }[]>(`
+        SELECT u.email, u.nombre FROM users u
+        JOIN usuario_empresa ue ON ue."userId" = u.id
+        WHERE ue."empresaId" = $1 AND ue."isActive" = true AND ue."isPrincipal" = true
+        LIMIT 1
+      `, [empresaId]);
+      if (!admin) return;
+
+      await this.emailService.enviar({
+        to: admin.email,
+        subject: `Actualización sobre tu solicitud de plan ${planSolicitado} — HiCloud ERP`,
+        html: `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>body{font-family:'Inter',sans-serif;background:#f5f5f5;margin:0;padding:20px}
+.card{background:#fff;max-width:520px;margin:0 auto;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.1)}
+.header{background:linear-gradient(135deg,#ef4444,#dc2626);padding:28px;color:#fff;text-align:center}
+.body{padding:28px}.footer{padding:16px;text-align:center;font-size:12px;color:#9ca3af}</style></head>
+<body><div class="card">
+  <div class="header"><h2 style="margin:0">Sobre tu solicitud de plan</h2></div>
+  <div class="body">
+    <p>Hola <strong>${admin.nombre}</strong>,</p>
+    <p>Hemos revisado tu solicitud de activación del plan <strong>${planSolicitado}</strong>. En este momento no hemos podido procesarla.</p>
+    ${motivo ? `<p><strong>Motivo:</strong> ${motivo}</p>` : ''}
+    <p>Puedes hacer una nueva solicitud desde tu panel o contactarnos en <a href="mailto:soporte@hicloudrd.com">soporte@hicloudrd.com</a>.</p>
+  </div>
+  <div class="footer">© 2026 HiCloud ERP · República Dominicana</div>
+</div></body></html>`,
+      });
+    } catch (err) {
+      this.logger.warn(`notificarRechazoSolicitudPlan empresa #${empresaId}: ${(err as Error).message}`);
+    }
   }
 
   async getAuditoria(empresaId: number) {

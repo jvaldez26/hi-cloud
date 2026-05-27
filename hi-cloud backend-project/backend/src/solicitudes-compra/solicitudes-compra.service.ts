@@ -1,8 +1,8 @@
 import {
-  Injectable, NotFoundException, BadRequestException, ConflictException,
+  Injectable, NotFoundException, BadRequestException, Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import {
   SolicitudCompra,
   EstadoSolicitudCompra,
@@ -15,9 +15,12 @@ import {
 } from './entities/cotizacion-proveedor.entity';
 import { CotizacionProveedorLinea } from './entities/cotizacion-proveedor-linea.entity';
 import { TenantService } from '../tenant/tenant.service';
+import { EmailService } from '../notificaciones/services/email.service';
 
 @Injectable()
 export class SolicitudesCompraService {
+  private readonly logger = new Logger(SolicitudesCompraService.name);
+
   constructor(
     @InjectRepository(SolicitudCompra)
     private solicitudRepo: Repository<SolicitudCompra>,
@@ -28,6 +31,8 @@ export class SolicitudesCompraService {
     @InjectRepository(CotizacionProveedorLinea)
     private lineaCotRepo: Repository<CotizacionProveedorLinea>,
     private tenantService: TenantService,
+    private dataSource: DataSource,
+    private emailSvc: EmailService,
   ) {}
 
   // ─── Numeración ───────────────────────────────────────────────────────────
@@ -158,7 +163,50 @@ export class SolicitudesCompraService {
     }
 
     await this.solicitudRepo.update(id, update as any);
-    return this.findSolicitudById(id);
+    const resultado = await this.findSolicitudById(id);
+
+    // Notificar al solicitante cuando se aprueba o rechaza — no-bloqueante
+    if (nuevoEstado === EstadoSolicitudCompra.APROBADA || nuevoEstado === EstadoSolicitudCompra.RECHAZADA) {
+      this.notificarSolicitante(resultado, nuevoEstado, comentario)
+        .catch(err => this.logger.warn(`notificarSolicitante SC#${id}: ${(err as Error).message}`));
+    }
+
+    return resultado;
+  }
+
+  private async notificarSolicitante(
+    solicitud: SolicitudCompra,
+    nuevoEstado: EstadoSolicitudCompra,
+    comentario?: string,
+  ): Promise<void> {
+    try {
+      if (!solicitud.solicitanteId) return;
+      const [user] = await this.dataSource.query<{ email: string; nombre: string }[]>(
+        `SELECT email, nombre FROM users WHERE id = $1 AND "isActive" = true LIMIT 1`,
+        [solicitud.solicitanteId],
+      );
+      if (!user?.email) return;
+
+      const esAprobado = nuevoEstado === EstadoSolicitudCompra.APROBADA;
+      const icono  = esAprobado ? '✅' : '❌';
+      const titulo = esAprobado ? 'Solicitud de Compra Aprobada' : 'Solicitud de Compra Rechazada';
+      const color  = esAprobado ? '#059669' : '#dc2626';
+
+      await this.emailSvc.enviar({
+        to: user.email,
+        subject: `${icono} ${titulo} — ${solicitud.numero}`,
+        html: `
+          <p>Hola ${user.nombre},</p>
+          <p>Tu solicitud de compra <strong>${solicitud.numero}</strong> ha sido
+             <strong style="color:${color}">${esAprobado ? 'aprobada' : 'rechazada'}</strong>.</p>
+          ${solicitud.justificacion ? `<p><strong>Justificación:</strong> ${solicitud.justificacion}</p>` : ''}
+          ${comentario ? `<p><strong>${esAprobado ? 'Comentario' : 'Motivo del rechazo'}:</strong> ${comentario}</p>` : ''}
+          <p>Puedes ver el detalle en el módulo de Solicitudes de Compra en HiCloud ERP.</p>
+        `,
+      });
+    } catch (err) {
+      this.logger.warn(`notificarSolicitante SC#${solicitud.id}: ${(err as Error).message}`);
+    }
   }
 
   async getResumenSolicitudes() {

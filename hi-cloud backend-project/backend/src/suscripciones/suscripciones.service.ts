@@ -311,7 +311,9 @@ export class SuscripcionesService implements OnModuleInit {
           <p>¿Tienes urgencia? Escríbenos a <a href="mailto:soporte@hicloudrd.com">soporte@hicloudrd.com</a></p>
         `,
       });
-    } catch { /* silencioso */ }
+    } catch (err) {
+      this.logger.warn(`notificarVencimientoPrueba empresa #${empresaId}: ${(err as Error).message}`);
+    }
   }
 
   // ── Gestión de solicitudes (Super Admin) ──────────────────────────────────
@@ -424,6 +426,10 @@ export class SuscripcionesService implements OnModuleInit {
       })).catch(e => this.logger.warn(`Auditoría rechazar #${solicitudId}: ${(e as Error).message}`));
     }
 
+    // Notificar al cliente sobre el rechazo (no-bloqueante)
+    this.notificarRechazoSolicitud(solicitud.empresaId, solicitud.planSolicitado, motivoRechazo)
+      .catch(e => this.logger.warn(`Email rechazo solicitud #${solicitudId}: ${(e as Error).message}`));
+
     this.logger.log(`Solicitud #${solicitudId} rechazada por super admin #${superAdminId}`);
     return { message: 'Solicitud rechazada' };
   }
@@ -511,7 +517,45 @@ export class SuscripcionesService implements OnModuleInit {
           <p>Gracias por confiar en HiCloud ERP para tu negocio.</p>
         `,
       });
-    } catch { /* silencioso */ }
+    } catch (err) {
+      this.logger.warn(`notificarActivacionPlan empresa #${empresaId}: ${(err as Error).message}`);
+    }
+  }
+
+  // ── Notificar rechazo de solicitud al cliente ─────────────────────────────
+
+  private async notificarRechazoSolicitud(
+    empresaId: number,
+    planSolicitado: string,
+    motivoRechazo: string,
+  ): Promise<void> {
+    try {
+      const admin = await this.ds.query<{ email: string; nombre: string }[]>(`
+        SELECT u.email, u.nombre FROM users u
+        JOIN usuario_empresa ue ON ue."userId" = u.id
+        WHERE ue."empresaId" = $1 AND ue."isActive" = true AND ue."isPrincipal" = true
+        LIMIT 1
+      `, [empresaId]);
+      if (!admin.length) return;
+
+      const planNombre = PLANES[planSolicitado as PlanTipo]?.nombre ?? planSolicitado;
+      await this.emailSvc.enviar({
+        to: admin[0].email,
+        subject: `Actualización sobre tu solicitud de plan ${planNombre} — HiCloud ERP`,
+        html: `
+          <p>Hola ${admin[0].nombre},</p>
+          <p>Hemos revisado tu solicitud de activación del plan <strong>${planNombre}</strong>.</p>
+          <p>En este momento no hemos podido procesarla por el siguiente motivo:</p>
+          <blockquote style="border-left:4px solid #ef4444;padding:8px 16px;background:#fef2f2;color:#991b1b;">
+            ${motivoRechazo}
+          </blockquote>
+          <p>Si tienes dudas o deseas más información, contáctanos en <a href="mailto:soporte@hicloudrd.com">soporte@hicloudrd.com</a>.</p>
+          <p>Puedes hacer una nueva solicitud desde tu panel en cualquier momento.</p>
+        `,
+      });
+    } catch (err) {
+      this.logger.warn(`notificarRechazoSolicitud empresa #${empresaId}: ${(err as Error).message}`);
+    }
   }
 
   // ── Notificar al super admin sobre nueva solicitud ────────────────────────
@@ -551,7 +595,9 @@ export class SuscripcionesService implements OnModuleInit {
           <p><a href="${frontendUrl}/super-admin">Ver solicitud en el panel →</a></p>
         `,
       });
-    } catch { /* silencioso */ }
+    } catch (err) {
+      this.logger.warn(`notificarSuperAdminNuevaSolicitud empresa #${empresaId}: ${(err as Error).message}`);
+    }
   }
 
   // ── Catálogo de planes ────────────────────────────────────────────────────

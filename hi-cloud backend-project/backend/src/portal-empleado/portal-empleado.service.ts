@@ -5,6 +5,7 @@ import { Empleado } from '../nomina/entities/empleado.entity';
 import { ContratoLaboral } from '../nomina/entities/contrato-laboral.entity';
 import { TenantService } from '../tenant/tenant.service';
 import { IsrService } from '../isr/isr.service';
+import { EmailService } from '../notificaciones/services/email.service';
 
 @Injectable()
 export class PortalEmpleadoService {
@@ -15,6 +16,7 @@ export class PortalEmpleadoService {
     private dataSource:  DataSource,
     private tenantSvc:   TenantService,
     private isrSvc:      IsrService,
+    private emailSvc:    EmailService,
   ) {}
 
   // ─── Perfil del empleado vinculado al usuario logueado ───────────────────────
@@ -322,6 +324,49 @@ export class PortalEmpleadoService {
       RETURNING id
     `, [empresaId, emp.id, dto.fechaInicio, dto.fechaFin, dias, dto.motivo ?? null, inicio.getFullYear()]);
 
+    // Notificar al admin de la empresa sobre la nueva solicitud — no-bloqueante
+    this.notificarAdminNuevaSolicitud(empresaId, emp, dto.fechaInicio, dto.fechaFin, dias, dto.motivo)
+      .catch(err => this.logger.warn(`[crearSolicitud] notificación admin empresa #${empresaId}: ${(err as Error).message}`));
+
     return { ok: true, id: result?.id, diasSolicitados: dias };
+  }
+
+  private async notificarAdminNuevaSolicitud(
+    empresaId:   number,
+    emp:         Empleado,
+    fechaInicio: string,
+    fechaFin:    string,
+    dias:        number,
+    motivo?:     string,
+  ): Promise<void> {
+    try {
+      const [admin] = await this.dataSource.query<{ email: string; nombre: string }[]>(`
+        SELECT u.email, u.nombre FROM users u
+        JOIN usuario_empresa ue ON ue."userId" = u.id
+        WHERE ue."empresaId" = $1 AND ue."isActive" = true AND ue."isPrincipal" = true
+        LIMIT 1
+      `, [empresaId]);
+      if (!admin) return;
+
+      const fmtD = (d: string) =>
+        new Date(d).toLocaleDateString('es-DO', { day: '2-digit', month: 'long', year: 'numeric' });
+
+      await this.emailSvc.enviar({
+        to: admin.email,
+        subject: `Nueva solicitud de vacaciones — ${emp.nombre} ${emp.apellido}`,
+        html: `
+          <p>Hola ${admin.nombre},</p>
+          <p>El empleado <strong>${emp.nombre} ${emp.apellido}</strong> ha enviado una solicitud de vacaciones que requiere tu atención:</p>
+          <ul>
+            <li><strong>Período:</strong> ${fmtD(fechaInicio)} al ${fmtD(fechaFin)}</li>
+            <li><strong>Días hábiles:</strong> ${dias}</li>
+            ${motivo ? `<li><strong>Motivo:</strong> ${motivo}</li>` : ''}
+          </ul>
+          <p>Puedes aprobar o rechazar esta solicitud desde el módulo de Vacaciones en HiCloud ERP.</p>
+        `,
+      });
+    } catch (err) {
+      this.logger.warn(`notificarAdminNuevaSolicitud empresa #${empresaId}: ${(err as Error).message}`);
+    }
   }
 }
