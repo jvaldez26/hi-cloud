@@ -51,8 +51,9 @@ export class PDFService {
   // ── Construye FacturaPDFData desde la entidad ───────────────────────
   private async buildFacturaData(
     factura: Factura,
+    empresaIdParam?: number,
   ): Promise<{ data: FacturaPDFData; logoBuf?: Buffer }> {
-    const empresaId = this.tenantSvc.getEmpresaId();
+    const empresaId = empresaIdParam ?? this.tenantSvc.getEmpresaId();
 
     const empresa = await this.facturaRepo.manager.query(
       'SELECT * FROM empresa WHERE id = $1 AND "isActive" = true LIMIT 1',
@@ -206,6 +207,20 @@ export class PDFService {
     this.logger.log(
       `PDF generado en ${Date.now() - t0} ms — ${factura.folio} — ` +
       `${factura.detalles?.length ?? 0} líneas`,
+    );
+    return { buffer, filename: `${factura.folio}.pdf` };
+  }
+
+  // ── Genera PDF desde entidad ya cargada (para uso fuera del contexto HTTP, ej. cron) ──
+  async generarPDFDesdeEntidad(
+    factura: Factura,
+    empresaId: number,
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    const t0 = Date.now();
+    const { data, logoBuf } = await this.buildFacturaData(factura, empresaId);
+    const buffer = await generarFacturaPDF(data, logoBuf);
+    this.logger.log(
+      `PDF (cron) generado en ${Date.now() - t0} ms — ${factura.folio}`,
     );
     return { buffer, filename: `${factura.folio}.pdf` };
   }

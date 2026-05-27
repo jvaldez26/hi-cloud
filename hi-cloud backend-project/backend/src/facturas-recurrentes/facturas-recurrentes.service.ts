@@ -10,6 +10,7 @@ import { User } from '../users/users.entity';
 import { TenantService } from '../tenant/tenant.service';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import { EmailService } from '../notificaciones/services/email.service';
+import { PDFService } from '../facturas/services/pdf.service';
 
 interface CreateRecurrenteDto {
   nombre:        string;
@@ -36,6 +37,7 @@ export class FacturasRecurrentesService {
     @InjectDataSource() private ds: DataSource,
     private tenantService: TenantService,
     private emailService:  EmailService,
+    private pdfService:    PDFService,
   ) {}
 
   private calcularProxima(frecuencia: Frecuencia, diaEjecucion: number, desde: Date): Date {
@@ -197,6 +199,19 @@ export class FacturasRecurrentesService {
           resumenPorEmpresa.set(rec.empresaId, emp);
         }
 
+        // Enviar email al cliente (non-blocking — carga relaciones, luego dispara)
+        if (rec.empresaId) {
+          this.facturaRepository.findOne({
+            where: { id: factura.id },
+            relations: ['cliente', 'detalles'],
+          }).then(fConRel => {
+            if (!fConRel) return;
+            return this.enviarEmailFactura(fConRel, rec, rec.empresaId!);
+          }).catch(e =>
+            this.logger.warn(`[EmailFactura] Falló cron "${rec.nombre}": ${e?.message}`),
+          );
+        }
+
         this.logger.log(`✅ Factura recurrente "${rec.nombre}" → ${folio} (próxima: ${proxima.toDateString()})`);
       } catch (err) {
         this.logger.error(`Error generando recurrente #${rec.id}: ${(err as Error).message}`);
@@ -278,6 +293,79 @@ export class FacturasRecurrentesService {
     }
   }
 
+  // ──────────────────────────────────────────────────────────────────
+  // Email automático al cliente cuando se genera una factura recurrente
+  // ──────────────────────────────────────────────────────────────────
+
+  private async enviarEmailFactura(
+    factura: Factura,
+    rec: FacturaRecurrente,
+    empresaId: number,
+  ): Promise<void> {
+    // 1. Verificar que el cliente tiene email
+    const clienteEmail = factura.cliente?.email;
+    if (!clienteEmail) {
+      this.logger.debug(`[EmailFactura] Cliente #${factura.clienteId} sin email — se omite`);
+      return;
+    }
+
+    // 2. Verificar flag de la empresa: autoEmailFacturaRecurrente (default: true)
+    const [emp] = await this.ds.query<{ configuracion: any; nombre: string; razonSocial: string }[]>(
+      `SELECT configuracion, nombre, "razonSocial" FROM empresa WHERE id = $1 AND "isActive" = true`,
+      [empresaId],
+    );
+    if (!emp) return;
+    const cfg = (emp.configuracion ?? {}) as Record<string, unknown>;
+    if (cfg.autoEmailFacturaRecurrente === false) {
+      this.logger.debug(`[EmailFactura] autoEmailFacturaRecurrente desactivado para empresa #${empresaId}`);
+      return;
+    }
+
+    // 3. Generar PDF (fuera del contexto HTTP — usa empresaId directo)
+    const { buffer, filename } = await this.pdfService.generarPDFDesdeEntidad(factura, empresaId);
+
+    // 4. Construir HTML del email
+    const empresaNombre = emp.razonSocial || emp.nombre || 'HiCloud ERP';
+    const clienteNombre = factura.cliente?.nombre || 'Cliente';
+    const folio         = factura.folio;
+    const total         = Number(factura.total ?? 0).toLocaleString('es-DO', {
+      style: 'currency', currency: factura.moneda || 'DOP',
+    });
+
+    const html = `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
+        <div style="background:#0F172A;padding:20px 24px;border-radius:10px 10px 0 0">
+          <div style="color:#F59E0B;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em">
+            📄 Factura — ${empresaNombre}
+          </div>
+        </div>
+        <div style="background:#fff;padding:24px;border:1px solid #E2E8F0;border-top:none;border-radius:0 0 10px 10px">
+          <p style="margin:0 0 12px;color:#0F172A;font-size:14px">
+            Estimado/a <strong>${clienteNombre}</strong>,
+          </p>
+          <p style="margin:0 0 16px;color:#475569;font-size:13px">
+            Adjunto encontrará la factura <strong>${folio}</strong> por un total de <strong>${total}</strong>.
+          </p>
+          <p style="margin:0 0 8px;color:#475569;font-size:13px">
+            Para consultas sobre esta factura, no dude en contactarnos.
+          </p>
+          <p style="color:#94A3B8;font-size:11px;margin:16px 0 0;border-top:1px solid #F1F5F9;padding-top:12px">
+            ${empresaNombre} · Factura generada automáticamente por HiCloud ERP
+          </p>
+        </div>
+      </div>`;
+
+    // 5. Enviar email — no-throw
+    await this.emailService.enviar({
+      to:      clienteEmail,
+      subject: `Factura ${folio} — ${empresaNombre}`,
+      html,
+      attachments: [{ filename, content: buffer, contentType: 'application/pdf' }],
+    });
+
+    this.logger.log(`[EmailFactura] Enviada ${folio} a ${clienteEmail}`);
+  }
+
   async ejecutarAhora(id: number) {
     const rec = await this.findById(id);
     const hoy = new Date();
@@ -334,6 +422,19 @@ export class FacturasRecurrentesService {
     this.logger.log(
       `✅ Ejecución manual "${rec.nombre}" → ${folio} (próxima: ${proxima.toDateString()})`,
     );
+
+    // Enviar email al cliente (non-blocking, no falla la generación)
+    if (rec.empresaId) {
+      const facturaConRelaciones = await this.facturaRepository.findOne({
+        where: { id: factura.id },
+        relations: ['cliente', 'detalles'],
+      });
+      if (facturaConRelaciones) {
+        this.enviarEmailFactura(facturaConRelaciones, rec, rec.empresaId).catch(e =>
+          this.logger.warn(`[EmailFactura] Falló envío manual "${rec.nombre}": ${e?.message}`),
+        );
+      }
+    }
 
     return this.findById(id);
   }

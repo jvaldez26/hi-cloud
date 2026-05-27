@@ -681,11 +681,13 @@ function SeccionFacturacion({ empresa, onSaved }: { empresa: any; onSaved: () =>
       creditoHabilitado:     empresa?.creditoHabilitado ?? true,
       pieFactura:            conf.pieFactura ?? '',
       terminosCondiciones:   conf.terminosCondiciones ?? '',
-      factMostrarLogo:       conf.factMostrarLogo ?? true,
-      factMostrarTelefono:   conf.factMostrarTelefono ?? true,
-      factMostrarEmail:      conf.factMostrarEmail ?? true,
-      factMostrarWeb:        conf.factMostrarWeb ?? false,
-      factMostrarOC:         conf.factMostrarOC ?? false,
+      factMostrarLogo:             conf.factMostrarLogo ?? true,
+      factMostrarTelefono:         conf.factMostrarTelefono ?? true,
+      factMostrarEmail:            conf.factMostrarEmail ?? true,
+      factMostrarWeb:              conf.factMostrarWeb ?? false,
+      factMostrarOC:               conf.factMostrarOC ?? false,
+      autoEmailFacturaRecurrente:  conf.autoEmailFacturaRecurrente ?? true,
+      notifFactRecurrente:         conf.notifFactRecurrente ?? true,
     });
   }, [empresa]);
 
@@ -780,6 +782,30 @@ function SeccionFacturacion({ empresa, onSaved }: { empresa: any; onSaved: () =>
             </Form.Item>
           </Col>
         ))}
+      </Row>
+
+      <Divider orientation="left" orientationMargin={0}>Notificaciones automáticas</Divider>
+      <Row gutter={[16, 8]}>
+        <Col xs={24} sm={12}>
+          <Form.Item name="autoEmailFacturaRecurrente" valuePropName="checked" style={{ marginBottom: 2 }}>
+            <Switch size="small" />
+          </Form.Item>
+          <Text style={{ fontSize: 13, fontWeight: 600 }}>Enviar factura al cliente por email</Text>
+          <br />
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            Al generar una factura recurrente, adjunta el PDF y lo envía automáticamente al correo del cliente.
+          </Text>
+        </Col>
+        <Col xs={24} sm={12}>
+          <Form.Item name="notifFactRecurrente" valuePropName="checked" style={{ marginBottom: 2 }}>
+            <Switch size="small" />
+          </Form.Item>
+          <Text style={{ fontSize: 13, fontWeight: 600 }}>Resumen diario de facturas recurrentes</Text>
+          <br />
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            Envía un email a los administradores con el resumen de facturas generadas por el cron diario.
+          </Text>
+        </Col>
       </Row>
 
       <div style={{ marginTop: 16 }}>

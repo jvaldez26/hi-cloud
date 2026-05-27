@@ -2,11 +2,18 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 
+export interface EmailAttachment {
+  filename: string;
+  content:  Buffer;
+  contentType?: string;
+}
+
 export interface EmailPayload {
-  to:       string | string[];
-  subject:  string;
-  html:     string;
-  text?:    string;
+  to:           string | string[];
+  subject:      string;
+  html:         string;
+  text?:        string;
+  attachments?: EmailAttachment[];
 }
 
 @Injectable()
@@ -66,10 +73,15 @@ export class EmailService {
     try {
       await this.transporter.sendMail({
         from,
-        to:      Array.isArray(payload.to) ? payload.to.join(', ') : payload.to,
-        subject: payload.subject,
-        html:    payload.html,
-        text:    payload.text,
+        to:          Array.isArray(payload.to) ? payload.to.join(', ') : payload.to,
+        subject:     payload.subject,
+        html:        payload.html,
+        text:        payload.text,
+        attachments: payload.attachments?.map(a => ({
+          filename:    a.filename,
+          content:     a.content,
+          contentType: a.contentType ?? 'application/pdf',
+        })),
       });
       this.logger.log(`Email enviado a: ${payload.to} — ${payload.subject}`);
       return { exitoso: true };
