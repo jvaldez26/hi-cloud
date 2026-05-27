@@ -147,12 +147,19 @@ jobs:
       - name: Setup + Migrate + Restart
         uses: appleboy/ssh-action@v1.0.3
         env:
-          DB_CA_CERT: ${{ secrets.DB_CA_CERT }}
+          DB_CA_CERT:       ${{ secrets.DB_CA_CERT }}
+          SMTP_HOST:        ${{ secrets.SMTP_HOST }}
+          SMTP_PORT:        ${{ secrets.SMTP_PORT }}
+          SMTP_SECURE:      ${{ secrets.SMTP_SECURE }}
+          SMTP_USER:        ${{ secrets.SMTP_USER }}
+          SMTP_PASS:        ${{ secrets.SMTP_PASS }}
+          SMTP_FROM:        ${{ secrets.SMTP_FROM }}
+          NOTIF_ADMIN_EMAIL: ${{ secrets.NOTIF_ADMIN_EMAIL }}
         with:
           host:            3.137.152.75
           username:        ubuntu
           key:             ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          envs:            DB_CA_CERT
+          envs:            DB_CA_CERT,SMTP_HOST,SMTP_PORT,SMTP_SECURE,SMTP_USER,SMTP_PASS,SMTP_FROM,NOTIF_ADMIN_EMAIL
           timeout:         900s
           command_timeout: 15m
           script: |
@@ -196,6 +203,26 @@ jobs:
             else
               echo 'GOOGLE_CALLBACK_URL=https://hicloudrd.com/api/v1/auth/google/callback' >> "$ENV_FILE"
             fi
+
+            # ── SMTP (Email) — inyectar desde GitHub Secrets si están disponibles ──
+            inject_env() {
+              local key="$1" val="$2"
+              [ -z "$val" ] && return   # secret vacío → preservar valor existente
+              if grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
+                # escapar | en el valor para sed
+                local escaped; escaped=$(printf '%s\n' "$val" | sed 's|[&\\/]|\\&|g; s/|/\\|/g')
+                sed -i "s|^${key}=.*|${key}=${escaped}|" "$ENV_FILE"
+              else
+                echo "${key}=${val}" >> "$ENV_FILE"
+              fi
+            }
+            inject_env SMTP_HOST        "$SMTP_HOST"
+            inject_env SMTP_PORT        "$SMTP_PORT"
+            inject_env SMTP_SECURE      "$SMTP_SECURE"
+            inject_env SMTP_USER        "$SMTP_USER"
+            inject_env SMTP_PASS        "$SMTP_PASS"
+            inject_env SMTP_FROM        "$SMTP_FROM"
+            inject_env NOTIF_ADMIN_EMAIL "$NOTIF_ADMIN_EMAIL"
 
             echo "  ✅ APP_URL y FRONTEND_URL configurados"
             echo "  ✅ GOOGLE_CALLBACK_URL=$(grep '^GOOGLE_CALLBACK_URL=' $ENV_FILE)"

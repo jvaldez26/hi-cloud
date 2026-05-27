@@ -59,7 +59,7 @@ export class EmailService {
   async enviar(payload: EmailPayload): Promise<{ exitoso: boolean; error?: string }> {
     const from = this.configService.get<string>(
       'SMTP_FROM',
-      'HiCloud ERP <no-reply@hicloud.com>',
+      'HiCloud iERP <noreply@hicloudrd.com>',
     );
 
     if (!this.transporter) {
