@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
@@ -7,9 +8,10 @@ import { DetailDrawer } from '../../components/ui/DetailDrawer';
 import { exportarExcel } from '../../utils/exportExcel';
 import { Table, Button, Tag, Card, Row, Col, Typography, Space,
          Modal, Form, Input, InputNumber, Select, AutoComplete, message,
-         Switch, Descriptions, Divider, Tooltip, theme } from 'antd';
+         Switch, Descriptions, Divider, Tooltip, theme, Tabs, Empty } from 'antd';
 import { PlusOutlined, ThunderboltOutlined, DeleteOutlined,
-         FileExcelOutlined, WarningOutlined, ClockCircleOutlined, SearchOutlined } from '@ant-design/icons';
+         FileExcelOutlined, WarningOutlined, ClockCircleOutlined, SearchOutlined,
+         FileTextOutlined, EyeOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
 import { clientesApi } from '../../api/clientes.api';
@@ -24,12 +26,13 @@ const frecuenciaLabel: Record<string, string> = {
 };
 
 const recurrenteApi = {
-  list:    (p = 1, search = '') => api.get(`/facturas-recurrentes?page=${p}${search ? `&search=${encodeURIComponent(search)}` : ''}`).then(r => r.data?.data ?? r.data),
-  get:     (id: number) => api.get(`/facturas-recurrentes/${id}`).then(r => r.data?.data ?? r.data),
-  create:  (body: any) => api.post('/facturas-recurrentes', body).then(r => r.data?.data ?? r.data),
-  toggle:  (id: number) => api.patch(`/facturas-recurrentes/${id}/toggle`).then(r => r.data?.data ?? r.data),
-  ejecutar:(id: number) => api.post(`/facturas-recurrentes/${id}/ejecutar-ahora`).then(r => r.data?.data ?? r.data),
-  remove:  (id: number) => api.delete(`/facturas-recurrentes/${id}`).then(r => r.data?.data ?? r.data),
+  list:     (p = 1, search = '') => api.get(`/facturas-recurrentes?page=${p}${search ? `&search=${encodeURIComponent(search)}` : ''}`).then(r => r.data?.data ?? r.data),
+  get:      (id: number) => api.get(`/facturas-recurrentes/${id}`).then(r => r.data?.data ?? r.data),
+  create:   (body: any) => api.post('/facturas-recurrentes', body).then(r => r.data?.data ?? r.data),
+  toggle:   (id: number) => api.patch(`/facturas-recurrentes/${id}/toggle`).then(r => r.data?.data ?? r.data),
+  ejecutar: (id: number) => api.post(`/facturas-recurrentes/${id}/ejecutar-ahora`).then(r => r.data?.data ?? r.data),
+  remove:   (id: number) => api.delete(`/facturas-recurrentes/${id}`).then(r => r.data?.data ?? r.data),
+  historial:(id: number, p = 1) => api.get(`/facturas-recurrentes/${id}/historial?page=${p}&limit=10`).then(r => r.data?.data ?? r.data),
 };
 
 const REC_COLS_DEF = [
@@ -45,10 +48,12 @@ const REC_COLS_DEF = [
 export default function FacturasRecurrentesPage() {
   const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('facturas-recurrentes', REC_COLS_DEF);
   const { token } = theme.useToken();
+  const navigate  = useNavigate();
   const [search, setSearch] = useState('');
   const [page,   setPage]   = useState(1);
   const [open,   setOpen]   = useState(false);
   const [detalle,setDetalle]= useState<any>(null);
+  const [histPage, setHistPage] = useState(1);
   const [form]              = Form.useForm();
   const [lineas, setLineas] = useState<Array<{ descripcion: string; cantidad: number; precioUnitario: number; porcentajeIva: number; productoId?: number }>>([
     { descripcion: '', cantidad: 1, precioUnitario: 0, porcentajeIva: 18 },
@@ -74,6 +79,13 @@ export default function FacturasRecurrentesPage() {
   const { data: detalleRefresh } = useQuery({
     queryKey: ['recurrente', detalle?.id],
     queryFn:  () => recurrenteApi.get(detalle!.id),
+    enabled:  !!detalle?.id,
+  });
+
+  // Historial de facturas generadas por la plantilla abierta en el drawer
+  const { data: historialData, isLoading: histLoading } = useQuery({
+    queryKey: ['recurrente-historial', detalle?.id, histPage],
+    queryFn:  () => recurrenteApi.historial(detalle!.id, histPage),
     enabled:  !!detalle?.id,
   });
 
@@ -241,36 +253,39 @@ export default function FacturasRecurrentesPage() {
         const isVencida = det?.fechaFin && dayjs(det.fechaFin).isBefore(hoy);
         const estadoLabel = det?.activa ? 'Activa' : isVencida ? 'Vencida' : 'Pausada';
         const estadoColor = det?.activa ? 'green' : isVencida ? 'volcano' : 'default';
+
+        const facturaEstadoColor: Record<string, string> = {
+          borrador: 'default', emitida: 'blue', pagada: 'green', cancelada: 'red',
+        };
+
+        const historialCols = [
+          { title: 'Folio', dataIndex: 'folio', width: 110,
+            render: (v: string, r: any) => (
+              <Button type="link" size="small" icon={<EyeOutlined />} style={{ padding: 0 }}
+                onClick={() => { setDetalle(null); navigate(`/facturas/${r.id}`); }}>
+                {v}
+              </Button>
+            )},
+          { title: 'Fecha', dataIndex: 'fecha', width: 100,
+            render: (v: string) => fmt.date(v) },
+          { title: 'Estado', dataIndex: 'estado', width: 90,
+            render: (v: string) => <Tag color={facturaEstadoColor[v] ?? 'default'}>{v}</Tag> },
+          { title: 'Total', dataIndex: 'total', align: 'right' as const,
+            render: (v: number) => <Text strong>{fmt.money(Number(v))}</Text> },
+        ];
+
         return (
           <DetailDrawer
             open={!!detalle}
-            onClose={() => setDetalle(null)}
+            onClose={() => { setDetalle(null); setHistPage(1); }}
             title={det?.nombre ?? 'Recurrente'}
-            sections={[{
-              title: 'Información',
-              fields: [
-                { label: 'Cliente',     value: det?.cliente?.nombre },
-                { label: 'Frecuencia',  value: frecuenciaLabel[det?.frecuencia] ?? det?.frecuencia },
-                { label: 'Próx. ejecución', value: det?.proximaEjecucion ? dayjs(det.proximaEjecucion).format('DD/MM/YYYY') : undefined },
-                { label: 'Últ. ejecución',  value: det?.ultimaEjecucion  ? dayjs(det.ultimaEjecucion).format('DD/MM/YYYY')  : '—' },
-                { label: 'Fecha fin',        value: det?.fechaFin ? dayjs(det.fechaFin).format('DD/MM/YYYY') : '—' },
-                { label: 'Total generadas',  value: String(det?.totalGeneradas ?? 0) },
-                { label: 'Estado', value: <Tag color={estadoColor}>{estadoLabel}</Tag> },
-              ],
-            }, {
-              title: 'Ítems de la plantilla',
-              fields: (det?.detalles ?? []).map((d: any, i: number) => ({
-                label: `Ítem ${i + 1}`,
-                value: (() => {
-                  const desc   = d.descripcion ?? d.concepto ?? d.nombre ?? '—';
-                  const cant   = Number(d.cantidad ?? d.qty ?? 1);
-                  const precio = Number(d.precioUnitario ?? d.precio ?? 0);
-                  const iva    = Number(d.porcentajeIva ?? d.itbis ?? 18);
-                  return `${desc} × ${cant} = ${fmt.money(precio * cant)} + ${iva}% ITBIS`;
-                })(),
-                span: 2 as const,
-              })),
-            }]}
+            extra={
+              <Space>
+                <Tag color={estadoColor}>{estadoLabel}</Tag>
+                <Tag>{frecuenciaLabel[det?.frecuencia] ?? det?.frecuencia}</Tag>
+              </Space>
+            }
+            sections={[]}
             footer={
               <Space>
                 <Button icon={<ThunderboltOutlined />} type="primary"
@@ -278,10 +293,116 @@ export default function FacturasRecurrentesPage() {
                   onClick={() => { if (detalle) ejecutMut.mutate(detalle.id); }}>
                   Generar ahora
                 </Button>
-                <Button onClick={() => setDetalle(null)}>Cerrar</Button>
+                <Button onClick={() => { setDetalle(null); setHistPage(1); }}>Cerrar</Button>
               </Space>
             }
-          />
+          >
+            <Tabs
+              size="small"
+              items={[
+                {
+                  key: 'info',
+                  label: 'Información',
+                  children: (
+                    <div style={{ padding: '8px 0' }}>
+                      <Descriptions column={2} size="small" bordered>
+                        <Descriptions.Item label="Cliente" span={2}>
+                          {det?.cliente?.nombre ?? '—'}
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Frecuencia">
+                          {frecuenciaLabel[det?.frecuencia] ?? det?.frecuencia}
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Día de ejecución">
+                          {det?.diaEjecucion ?? '—'}
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Próx. ejecución">
+                          {det?.proximaEjecucion ? dayjs(det.proximaEjecucion).format('DD/MM/YYYY') : '—'}
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Últ. ejecución">
+                          {det?.ultimaEjecucion ? dayjs(det.ultimaEjecucion).format('DD/MM/YYYY') : '—'}
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Fecha inicio">
+                          {det?.fechaInicio ? dayjs(det.fechaInicio).format('DD/MM/YYYY') : '—'}
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Fecha fin">
+                          {det?.fechaFin ? dayjs(det.fechaFin).format('DD/MM/YYYY') : '—'}
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Total generadas" span={2}>
+                          <Text strong style={{ color: token.colorPrimary }}>{det?.totalGeneradas ?? 0}</Text>
+                        </Descriptions.Item>
+                        {det?.notas && (
+                          <Descriptions.Item label="Notas" span={2}>
+                            <Text type="secondary" style={{ fontSize: 12 }}>{det.notas}</Text>
+                          </Descriptions.Item>
+                        )}
+                      </Descriptions>
+
+                      <Divider orientation="left" plain style={{ fontSize: 12, marginTop: 16 }}>
+                        Ítems de la plantilla
+                      </Divider>
+                      {(det?.detalles ?? []).map((d: any, i: number) => {
+                        const desc   = d.descripcion ?? d.concepto ?? d.nombre ?? '—';
+                        const cant   = Number(d.cantidad ?? 1);
+                        const precio = Number(d.precioUnitario ?? d.precio ?? 0);
+                        const iva    = Number(d.porcentajeIva ?? 18);
+                        return (
+                          <Card key={i} size="small" style={{ marginBottom: 8 }}
+                            bodyStyle={{ padding: '8px 12px' }}>
+                            <Row justify="space-between">
+                              <Col><Text strong style={{ fontSize: 12 }}>{desc}</Text></Col>
+                              <Col><Text style={{ fontSize: 12 }}>{cant} × {fmt.money(precio)}</Text></Col>
+                            </Row>
+                            <Row justify="space-between">
+                              <Col><Text type="secondary" style={{ fontSize: 11 }}>ITBIS {iva}%</Text></Col>
+                              <Col><Text strong style={{ fontSize: 12 }}>{fmt.money(cant * precio)}</Text></Col>
+                            </Row>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  ),
+                },
+                {
+                  key: 'historial',
+                  label: (
+                    <span>
+                      <FileTextOutlined style={{ marginRight: 4 }} />
+                      Historial
+                      {(historialData?.meta?.total > 0) && (
+                        <Tag color="blue" style={{ marginLeft: 6, lineHeight: '16px', padding: '0 4px' }}>
+                          {historialData.meta.total}
+                        </Tag>
+                      )}
+                    </span>
+                  ),
+                  children: (
+                    <div style={{ padding: '8px 0' }}>
+                      {!histLoading && (historialData?.data ?? []).length === 0 ? (
+                        <Empty description="Aún no se han generado facturas" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                      ) : (
+                        <Table
+                          columns={historialCols}
+                          dataSource={historialData?.data ?? []}
+                          rowKey="id"
+                          size="small"
+                          loading={histLoading}
+                          pagination={{
+                            total: historialData?.meta?.total,
+                            pageSize: 10,
+                            current: histPage,
+                            onChange: setHistPage,
+                            showSizeChanger: false,
+                            size: 'small',
+                            showTotal: (t: number) => `${t} facturas`,
+                          }}
+                        />
+                      )}
+                    </div>
+                  ),
+                },
+              ]}
+            />
+          </DetailDrawer>
         );
       })()}
 

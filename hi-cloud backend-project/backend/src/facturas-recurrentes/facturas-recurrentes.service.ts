@@ -108,6 +108,21 @@ export class FacturasRecurrentesService {
     return { message: 'Factura recurrente eliminada' };
   }
 
+  /** Historial de facturas generadas por una plantilla recurrente. */
+  async historialRecurrente(id: number, pagination: PaginationDto) {
+    await this.findById(id); // lanza 404 si no existe
+    const page  = pagination.page  ?? 1;
+    const limit = pagination.limit ?? 10;
+    const [data, total] = await this.facturaRepository.findAndCount({
+      where:  { facturaRecurrenteId: id, isActive: true },
+      order:  { createdAt: 'DESC' },
+      skip:   (page - 1) * limit,
+      take:   limit,
+      select: ['id', 'folio', 'fecha', 'estado', 'total', 'subtotal', 'iva', 'createdAt', 'clienteId'],
+    });
+    return { data, meta: { total, page, pageSize: limit } };
+  }
+
   // ──────────────────────────────────────────────────────────────────
   // Cron diario: generar facturas que toca hoy
   // ──────────────────────────────────────────────────────────────────
@@ -163,16 +178,17 @@ export class FacturasRecurrentesService {
         // Crear factura — propaga empresaId del recurrente
         const factura = await this.facturaRepository.save(
           this.facturaRepository.create({
-            empresaId: rec.empresaId,
+            empresaId:           rec.empresaId,
             folio,
-            fecha:     hoy,
-            estado:    FacturaEstado.BORRADOR,
-            clienteId: rec.clienteId,
-            usuarioId: rec.userId,
-            notas:     `Factura recurrente: ${rec.nombre}`,
-            subtotal:  Number(subtotal.toFixed(2)),
-            iva:       Number(iva.toFixed(2)),
-            total:     Number((subtotal + iva).toFixed(2)),
+            fecha:               hoy,
+            estado:              FacturaEstado.BORRADOR,
+            clienteId:           rec.clienteId,
+            usuarioId:           rec.userId,
+            notas:               `Factura recurrente: ${rec.nombre}`,
+            subtotal:            Number(subtotal.toFixed(2)),
+            iva:                 Number(iva.toFixed(2)),
+            total:               Number((subtotal + iva).toFixed(2)),
+            facturaRecurrenteId: rec.id,   // trazabilidad al template
           }),
         );
 

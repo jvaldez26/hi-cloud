@@ -22,10 +22,12 @@ interface DetailDrawerProps {
   footer?: ReactNode;
   width?: number;
   extra?: ReactNode;
+  /** Contenido libre que se renderiza en lugar de (o después de) las sections */
+  children?: ReactNode;
 }
 
 export function DetailDrawer({
-  open, onClose, title, sections, footer, width = 480, extra,
+  open, onClose, title, sections, footer, width = 480, extra, children,
 }: DetailDrawerProps) {
   return (
     <Drawer
@@ -37,6 +39,7 @@ export function DetailDrawer({
       extra={extra}
       destroyOnClose={false}
     >
+      {children}
       {sections.map((section, si) => (
         <div key={si} style={{ marginBottom: section.title ? 24 : 16 }}>
           {section.title && (

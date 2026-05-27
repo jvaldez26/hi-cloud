@@ -64,6 +64,12 @@ export class FacturasRecurrentesController {
     return this.svc.findById(id);
   }
 
+  @Get(':id/historial')
+  @ApiOperation({ summary: 'Historial de facturas generadas por esta plantilla' })
+  historial(@Param('id', ParseIntPipe) id: number, @Query() pagination: PaginationDto) {
+    return this.svc.historialRecurrente(id, pagination);
+  }
+
   @Patch(':id/toggle')
   @ApiOperation({ summary: 'Activar o pausar la factura recurrente' })
   toggle(@Param('id', ParseIntPipe) id: number) {

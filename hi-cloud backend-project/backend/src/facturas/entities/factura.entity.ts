@@ -81,6 +81,11 @@ export class Factura extends TenantBaseEntity {
   @Column({ type: 'text', nullable: true })
   notas?: string;
 
+  // ── Factura recurrente origen ─────────────────────────────────────────────
+  /** ID de la FacturaRecurrente que generó esta factura (null si fue manual) */
+  @Column({ nullable: true })
+  facturaRecurrenteId?: number;
+
   // ── Crédito ───────────────────────────────────────────────────────────────
   @Column({ length: 10, default: 'CONTADO' })
   tipoPago!: string;             // 'CONTADO' | 'CREDITO'
