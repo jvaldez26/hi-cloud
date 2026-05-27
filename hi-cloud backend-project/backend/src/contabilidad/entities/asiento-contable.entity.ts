@@ -5,12 +5,13 @@ import { User } from '../../users/users.entity';
 import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum TipoOrigenAsiento {
-  MANUAL   = 'manual',
-  FACTURA  = 'factura',
-  COMPRA   = 'compra',
-  COBRO    = 'cobro',
-  PAGO     = 'pago',
-  AJUSTE   = 'ajuste',
+  MANUAL        = 'manual',
+  FACTURA       = 'factura',
+  COMPRA        = 'compra',
+  COBRO         = 'cobro',
+  PAGO          = 'pago',
+  AJUSTE        = 'ajuste',
+  MANUFACTURA   = 'manufactura',
 }
 
 export enum EstadoAsiento {

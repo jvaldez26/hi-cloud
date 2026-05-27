@@ -68,7 +68,7 @@ export class AsientosAutomaticosService {
     );
   }
 
-  private async crearAsientoContabilizado(params: {
+  private async _crearAsientoContabilizado(params: {
     descripcion: string;
     tipoOrigen: TipoOrigenAsiento;
     referenciaId: number;
@@ -135,7 +135,7 @@ export class AsientosAutomaticosService {
     userId: number,
   ): Promise<void> {
     try {
-      await this.crearAsientoContabilizado({
+      await this._crearAsientoContabilizado({
         descripcion:     `Venta según factura ${folio}`,
         tipoOrigen:      TipoOrigenAsiento.FACTURA,
         referenciaId:    facturaId,
@@ -166,7 +166,7 @@ export class AsientosAutomaticosService {
     userId: number,
   ): Promise<void> {
     try {
-      await this.crearAsientoContabilizado({
+      await this._crearAsientoContabilizado({
         descripcion:     `Compra según orden ${folio}`,
         tipoOrigen:      TipoOrigenAsiento.COMPRA,
         referenciaId:    compraId,
@@ -194,7 +194,7 @@ export class AsientosAutomaticosService {
     userId: number,
   ): Promise<void> {
     try {
-      await this.crearAsientoContabilizado({
+      await this._crearAsientoContabilizado({
         descripcion:     `Cobro CxC #${cxcId}`,
         tipoOrigen:      TipoOrigenAsiento.COBRO,
         referenciaId:    cxcId,
@@ -224,7 +224,7 @@ export class AsientosAutomaticosService {
   ): Promise<void> {
     const cuentaDebito = metodoPago === 'efectivo' ? COD.CAJA : COD.BANCOS;
     try {
-      await this.crearAsientoContabilizado({
+      await this._crearAsientoContabilizado({
         descripcion:     `Recibo de cobro #${reciboId}`,
         tipoOrigen:      TipoOrigenAsiento.COBRO,
         referenciaId:    reciboId,
@@ -251,7 +251,7 @@ export class AsientosAutomaticosService {
     userId: number,
   ): Promise<void> {
     try {
-      await this.crearAsientoContabilizado({
+      await this._crearAsientoContabilizado({
         descripcion:     `Pago CxP #${cxpId}`,
         tipoOrigen:      TipoOrigenAsiento.PAGO,
         referenciaId:    cxpId,
@@ -284,7 +284,7 @@ export class AsientosAutomaticosService {
   ): Promise<void> {
     try {
       const costoTotal = totalBruto + totalTSSPatronal;
-      await this.crearAsientoContabilizado({
+      await this._crearAsientoContabilizado({
         descripcion:     `Nómina ${periodo}`,
         tipoOrigen:      TipoOrigenAsiento.AJUSTE,
         referenciaId:    periodoId,
@@ -314,7 +314,7 @@ export class AsientosAutomaticosService {
     userId: number,
   ): Promise<void> {
     try {
-      await this.crearAsientoContabilizado({
+      await this._crearAsientoContabilizado({
         descripcion:     `Depreciación activos fijos ${periodo}`,
         tipoOrigen:      TipoOrigenAsiento.AJUSTE,
         referenciaId:    0,
@@ -344,7 +344,7 @@ export class AsientosAutomaticosService {
     userId: number,
   ): Promise<void> {
     try {
-      await this.crearAsientoContabilizado({
+      await this._crearAsientoContabilizado({
         descripcion:     `Devolución de venta ${numero}`,
         tipoOrigen:      TipoOrigenAsiento.AJUSTE,
         referenciaId:    devolucionId,
@@ -382,7 +382,7 @@ export class AsientosAutomaticosService {
         { codigo: COD.BANCOS, descripcion: `Pago ${descripcion}`, debe: 0, haber: total },
       ];
 
-      await this.crearAsientoContabilizado({
+      await this._crearAsientoContabilizado({
         descripcion,
         tipoOrigen:      TipoOrigenAsiento.AJUSTE,
         referenciaId:    gastoId,
@@ -411,7 +411,7 @@ export class AsientosAutomaticosService {
   ): Promise<number | null> {
     const cuentaDebito = tipoPago === 'efectivo' ? COD.CAJA : COD.BANCOS;
     try {
-      const asiento = await this.crearAsientoContabilizado({
+      const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Anticipo recibido #${anticipoId}`,
         tipoOrigen:      TipoOrigenAsiento.COBRO,
         referenciaId:    anticipoId,
@@ -443,7 +443,7 @@ export class AsientosAutomaticosService {
     userId:     number,
   ): Promise<void> {
     try {
-      await this.crearAsientoContabilizado({
+      await this._crearAsientoContabilizado({
         descripcion:     `Aplicación anticipo #${anticipoId} → CxC #${cxcId}`,
         tipoOrigen:      TipoOrigenAsiento.COBRO,
         referenciaId:    anticipoId,
@@ -473,7 +473,7 @@ export class AsientosAutomaticosService {
     userId:    number,
   ): Promise<void> {
     try {
-      await this.crearAsientoContabilizado({
+      await this._crearAsientoContabilizado({
         descripcion:     `Reversión ${tipo} #${reciboId} — CxC #${cxcId}`,
         tipoOrigen:      TipoOrigenAsiento.AJUSTE,
         referenciaId:    reciboId,
@@ -488,5 +488,27 @@ export class AsientosAutomaticosService {
     } catch (err) {
       this.logger.error(`Error asiento reversión ${tipo} #${reciboId}: ${(err as Error).message}`);
     }
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Manufactura — acceso público al builder genérico
+  // Permite a ManufacturaService crear asientos con cuentas arbitrarias
+  // sin duplicar la lógica de numeración y persistencia.
+  // ──────────────────────────────────────────────────────────────────
+
+  /**
+   * Crea un asiento contabilizado con líneas de cuentas arbitrarias.
+   * Retorna el AsientoContable creado, o null si alguna cuenta no existe.
+   * Úsalo desde módulos que generan asientos automáticos fuera de contabilidad.
+   */
+  async crearAsientoContabilizado(params: {
+    descripcion: string;
+    tipoOrigen: TipoOrigenAsiento;
+    referenciaId: number;
+    referenciaFolio: string;
+    userId: number;
+    lineas: Array<{ codigo: string; descripcion: string; debe: number; haber: number }>;
+  }): Promise<import('../entities/asiento-contable.entity').AsientoContable | null> {
+    return this._crearAsientoContabilizado(params);
   }
 }

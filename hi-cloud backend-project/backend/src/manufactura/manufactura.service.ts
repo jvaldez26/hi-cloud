@@ -8,6 +8,8 @@ import { Producto } from '../productos/entities/producto.entity';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { TenantService } from '../tenant/tenant.service';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
+import { AsientosAutomaticosService } from '../contabilidad/services/asientos-automaticos.service';
+import { TipoOrigenAsiento } from '../contabilidad/entities/asiento-contable.entity';
 
 @Injectable()
 export class ManufacturaService {
@@ -20,6 +22,7 @@ export class ManufacturaService {
     @InjectRepository(Producto)        private prodRepo:   Repository<Producto>,
     private dataSource: DataSource,
     private tenantService: TenantService,
+    private asientosService: AsientosAutomaticosService,
   ) {}
 
   private async generarNumeroOrden(): Promise<string> {
@@ -174,9 +177,17 @@ export class ManufacturaService {
       return this.getOrden(id);
     }
 
+    if (estado === EstadoOrdenProduccion.EN_PROCESO) {
+      await this._iniciarOrden(orden);
+      return this.getOrden(id);
+    }
+
     const update: any = { estado };
     if (estado === EstadoOrdenProduccion.CANCELADA) {
       update.fechaFinReal = new Date();
+      await this.ordenRepo.update(id, update);
+      await this._asientoRevertirInicio(orden);
+      return this.getOrden(id);
     }
     await this.ordenRepo.update(id, update);
     return this.getOrden(id);
@@ -190,6 +201,13 @@ export class ManufacturaService {
     const prodIds = [...new Set([orden.lista.productoFinalId, ...comps.map((c: any) => c.productoId)])];
     const prods   = await this.prodRepo.find({ where: { id: In(prodIds) } });
     const prodMap = new Map(prods.map(p => [p.id, p]));
+
+    // Calcular costo real de MP consumida (usando costoPromedio de cada producto)
+    let costoMP = 0;
+    for (const c of comps) {
+      const prod = prodMap.get(c.productoId);
+      costoMP += Number(c.cantidad) * factor * Number(prod?.costoPromedio ?? 0);
+    }
 
     // Transacción atómica: todos los movimientos de stock o ninguno
     await this.dataSource.transaction(async (em) => {
@@ -216,10 +234,171 @@ export class ManufacturaService {
         estado:           EstadoOrdenProduccion.COMPLETADA,
         cantidadProducida,
         fechaFinReal:     new Date(),
+        costoReal:        Number(costoMP.toFixed(2)),
       });
     });
 
     this.logger.log(`Orden ${orden.numero} completada — ${cantidadProducida} unidades producidas`);
+
+    // Asiento contable: WIP → Producto Terminado (fuera de la transacción de stock para no bloquearla)
+    await this._asientoCompletarOrden(orden, cantidadProducida, costoMP);
+  }
+
+  /**
+   * Asiento al INICIAR una orden: cambia estado a EN_PROCESO y registra asiento MP → WIP.
+   * DEBE: 1.1.3.02 WIP (Productos en Proceso), HABER: 1.1.3.01 Inventario (MP)
+   */
+  private async _iniciarOrden(orden: any): Promise<void> {
+    // Cambiar estado primero
+    await this.ordenRepo.update(orden.id, { estado: EstadoOrdenProduccion.EN_PROCESO });
+
+    // Calcular costo estimado de MP para el asiento
+    const comps = await this.compRepo.find({ where: { listaId: orden.listaId, isActive: true } });
+    if (comps.length === 0) return;
+
+    const prodIds = comps.map((c: any) => c.productoId);
+    const prods   = await this.prodRepo.find({ where: { id: In(prodIds) } });
+    const prodMap = new Map(prods.map(p => [p.id, p]));
+
+    const factor = Number(orden.cantidadPlanificada) / Number(orden.lista?.rendimiento ?? 1);
+    const costoEstimado = comps.reduce((sum: number, c: any) => {
+      const prod = prodMap.get(c.productoId);
+      return sum + Number(c.cantidad) * factor * Number(prod?.costoPromedio ?? 0);
+    }, 0);
+
+    if (costoEstimado <= 0) {
+      this.logger.warn(`Orden ${orden.numero}: costo estimado MP = 0 — se omite asiento de inicio`);
+      return;
+    }
+
+    const userId = this.tenantService.getUserId() ?? 0;
+    const empresaId = this.tenantService.getEmpresaId();
+
+    try {
+      const asiento = await this.asientosService.crearAsientoContabilizado({
+        descripcion:     `Traslado MP a WIP - Orden ${orden.numero}`,
+        tipoOrigen:      TipoOrigenAsiento.MANUFACTURA,
+        referenciaId:    orden.id,
+        referenciaFolio: orden.numero,
+        userId,
+        lineas: [
+          { codigo: '1.1.3.02', descripcion: `WIP Orden ${orden.numero}`,           debe: costoEstimado, haber: 0             },
+          { codigo: '1.1.3.01', descripcion: `Consumo MP Orden ${orden.numero}`,    debe: 0,             haber: costoEstimado },
+        ],
+      });
+      if (asiento?.id) {
+        await this.ordenRepo.update(orden.id, { asientoInicioId: asiento.id });
+        this.logger.log(`Asiento inicio Orden ${orden.numero} — id=${asiento.id} — monto=${costoEstimado.toFixed(2)}`);
+      }
+    } catch (err: any) {
+      this.logger.warn(`No se pudo crear asiento de inicio para Orden ${orden.numero}: ${err?.message}`);
+    }
+  }
+
+  /**
+   * Asiento al COMPLETAR una orden: WIP → Producto Terminado.
+   * DEBE: 1.1.3.03 Productos Terminados, HABER: 1.1.3.02 WIP
+   * Si hay costo de mano de obra (centros de trabajo), se agrega HABER: 6.1.1.01 MOD.
+   */
+  private async _asientoCompletarOrden(orden: any, cantidadProducida: number, costoMP: number): Promise<void> {
+    if (costoMP <= 0) {
+      this.logger.warn(`Orden ${orden.numero}: costo MP = 0 — se omite asiento de cierre`);
+      return;
+    }
+
+    // Calcular costo de mano de obra directa (MOD) desde centros de trabajo
+    let costoMOD = 0;
+    try {
+      const etapas: Array<{ tiempoRealHoras: number; costoHora: number }> = await this.dataSource.query(
+        `SELECT
+           COALESCE(EXTRACT(EPOCH FROM (re."fechaFin" - re."fechaInicio")) / 3600, 0) AS "tiempoRealHoras",
+           COALESCE(ct."costoHora", 0) AS "costoHora"
+         FROM registro_etapas_orden re
+         LEFT JOIN etapas_ruta er ON er.id = re."etapaId"
+         LEFT JOIN centros_trabajo ct ON ct.id = er."centroTrabajoId"
+         WHERE re."ordenId" = $1
+           AND re."estado" = 'completada'`,
+        [orden.id],
+      );
+      costoMOD = etapas.reduce(
+        (sum, e) => sum + Number(e.tiempoRealHoras) * Number(e.costoHora),
+        0,
+      );
+    } catch (err: any) {
+      this.logger.warn(`No se pudo calcular MOD para Orden ${orden.numero}: ${err?.message}`);
+    }
+
+    const costoTotal = costoMP + costoMOD;
+    const userId     = this.tenantService.getUserId() ?? 0;
+
+    try {
+      const lineas: Array<{ codigo: string; descripcion: string; debe: number; haber: number }> = [
+        { codigo: '1.1.3.03', descripcion: `PT Orden ${orden.numero} — ${cantidadProducida} und.`, debe: costoTotal, haber: 0       },
+        { codigo: '1.1.3.02', descripcion: `WIP liberado Orden ${orden.numero}`,                   debe: 0,          haber: costoMP  },
+      ];
+
+      if (costoMOD > 0) {
+        lineas.push({ codigo: '6.1.1.01', descripcion: `MOD aplicada Orden ${orden.numero}`, debe: 0, haber: costoMOD });
+      }
+
+      const asiento = await this.asientosService.crearAsientoContabilizado({
+        descripcion:     `Producción completada - Orden ${orden.numero} - ${cantidadProducida} unidades`,
+        tipoOrigen:      TipoOrigenAsiento.MANUFACTURA,
+        referenciaId:    orden.id,
+        referenciaFolio: orden.numero,
+        userId,
+        lineas,
+      });
+      if (asiento?.id) {
+        await this.ordenRepo.update(orden.id, { asientoFinId: asiento.id });
+        this.logger.log(`Asiento cierre Orden ${orden.numero} — id=${asiento.id} — costoTotal=${costoTotal.toFixed(2)}`);
+      }
+    } catch (err: any) {
+      this.logger.warn(`No se pudo crear asiento de cierre para Orden ${orden.numero}: ${err?.message}`);
+    }
+  }
+
+  /**
+   * Asiento de reversión al cancelar una orden en proceso: WIP → MP.
+   * DEBE: 1.1.3.01 Inventario (MP), HABER: 1.1.3.02 WIP
+   * Solo aplica si ya se generó asiento de inicio.
+   */
+  private async _asientoRevertirInicio(orden: any): Promise<void> {
+    if (!orden.asientoInicioId) return;
+
+    // Buscar el monto del asiento original para reversarlo
+    let montoOriginal = 0;
+    try {
+      const rows: Array<{ totalDebe: string }> = await this.dataSource.query(
+        `SELECT "totalDebe" FROM asientos_contables WHERE id = $1 LIMIT 1`,
+        [orden.asientoInicioId],
+      );
+      montoOriginal = rows.length > 0 ? Number(rows[0].totalDebe) : 0;
+    } catch (err: any) {
+      this.logger.warn(`No se pudo leer asiento de inicio para Orden ${orden.numero}: ${err?.message}`);
+      return;
+    }
+
+    if (montoOriginal <= 0) return;
+
+    const userId = this.tenantService.getUserId() ?? 0;
+
+    try {
+      await this.asientosService.crearAsientoContabilizado({
+        descripcion:     `Reversión cancelación - Orden ${orden.numero}`,
+        tipoOrigen:      TipoOrigenAsiento.MANUFACTURA,
+        referenciaId:    orden.id,
+        referenciaFolio: orden.numero,
+        userId,
+        lineas: [
+          { codigo: '1.1.3.01', descripcion: `Devolución MP Orden ${orden.numero}`, debe: montoOriginal, haber: 0             },
+          { codigo: '1.1.3.02', descripcion: `WIP reversado Orden ${orden.numero}`, debe: 0,             haber: montoOriginal },
+        ],
+      });
+      this.logger.log(`Asiento reversión Orden ${orden.numero} — monto=${montoOriginal.toFixed(2)}`);
+    } catch (err: any) {
+      this.logger.warn(`No se pudo crear asiento de reversión para Orden ${orden.numero}: ${err?.message}`);
+    }
   }
 
   async eliminarOrden(id: number) {

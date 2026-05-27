@@ -11,12 +11,16 @@ import { RutaProduccion } from './entities/ruta-produccion.entity';
 import { EtapaRuta } from './entities/etapa-ruta.entity';
 import { RegistroEtapaOrden } from './entities/registro-etapa-orden.entity';
 import { Producto } from '../productos/entities/producto.entity';
+import { ContabilidadModule } from '../contabilidad/contabilidad.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([
-    ListaMateriales, ComponenteLM, OrdenProduccion, Producto,
-    CentroTrabajo, RutaProduccion, EtapaRuta, RegistroEtapaOrden,
-  ])],
+  imports: [
+    TypeOrmModule.forFeature([
+      ListaMateriales, ComponenteLM, OrdenProduccion, Producto,
+      CentroTrabajo, RutaProduccion, EtapaRuta, RegistroEtapaOrden,
+    ]),
+    ContabilidadModule,
+  ],
   controllers: [ManufacturaController],
   providers: [ManufacturaService, ManufacturaAvanzadaService],
   exports: [ManufacturaService, ManufacturaAvanzadaService],

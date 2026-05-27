@@ -53,4 +53,12 @@ export class OrdenProduccion extends BaseEntity {
 
   @Column({ type: 'decimal', precision: 14, scale: 2, nullable: true })
   costoReal?: number;
+
+  /** ID del asiento contable generado al iniciar la orden (MP → WIP) */
+  @Column({ nullable: true })
+  asientoInicioId?: number;
+
+  /** ID del asiento contable generado al completar la orden (WIP → PT) */
+  @Column({ nullable: true })
+  asientoFinId?: number;
 }
