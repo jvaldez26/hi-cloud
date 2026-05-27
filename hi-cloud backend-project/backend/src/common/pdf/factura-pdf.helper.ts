@@ -159,13 +159,13 @@ export async function generarFacturaPDF(
       ry += 20;
     }
 
-    // Válida hasta (verde)
-    if (d.ecfFechaVigencia) {
+    // Válida hasta (verde) — E32 (Consumo) no lleva fecha de vigencia según normativa DGII
+    if (d.ecfFechaVigencia && d.ecfTipo !== 'E32') {
       doc.fillColor(GREEN).font('Helvetica').fontSize(9)
         .text('Válida hasta: ' + fmtF(d.ecfFechaVigencia), rightColX, ry, {
           width: rightColW, align: 'right',
         });
-      ry += 13;
+      ry += 11;
     }
 
     // Info rows — label (gray) + valor (bold dark), ambos right-aligned
@@ -176,7 +176,7 @@ export async function generarFacturaPDF(
       ['Tipo de Factura',    d.condicionPago ?? d.tipo],
       // Plazo + Vence solo para facturas a crédito
       ...(d.diasCredito && d.diasCredito > 0 ? [['Plazo', `${d.diasCredito} días`] as [string, string]] : []),
-      ...(d.fechaVencimiento ? [['Vence',         fmtF(d.fechaVencimiento)] as [string, string]] : []),
+      ...(d.fechaVencimiento && d.ecfTipo !== 'E32' ? [['Vence',         fmtF(d.fechaVencimiento)] as [string, string]] : []),
       ...(d.sucursalNombre  ? [['Sucursal',        d.sucursalNombre ]  as [string, string]] : []),
       ['Fecha Emisión',      fmtF(d.fechaEmision)],
     ];
@@ -187,9 +187,9 @@ export async function generarFacturaPDF(
     for (const [label, val] of infoRows) {
       doc.fillColor(GRAY).font('Helvetica').fontSize(9)
         .text(label + ':', rightColX, ry, { width: labelColW, align: 'right' });
-      doc.fillColor(DARK).font('Helvetica-Bold').fontSize(9)
+      doc.fillColor(DARK).font('Helvetica-Bold').fontSize(9.5)
         .text(String(val ?? ''), rightColX + labelColW, ry, { width: valueColW, align: 'right' });
-      ry += 13;
+      ry += 11;
     }
 
     y = Math.max(leftBottom, ry) + 10;
@@ -302,7 +302,7 @@ export async function generarFacturaPDF(
     const totX    = PL + qrBoxW + gapMid;
 
     // ── QR BOX (solo cuando hay e-NCF) ──────────────────────────────
-    const qrSize  = 100;
+    const qrSize  = 82;
     let   qrBoxH  = 0;  // 0 cuando no hay e-NCF → y lo calcula solo por totales
     if (hasEcf) {
       qrBoxH = 26 + qrSize + 10
@@ -361,7 +361,7 @@ export async function generarFacturaPDF(
         .text(label + ':', totX, ty, { width: labelW2, align: 'left' });
       doc.fillColor(DARK).font('Helvetica').fontSize(9.5)
         .text(val, totX + labelW2, ty, { width: valueW2, align: 'right' });
-      ty += 14;
+      ty += 11;
     }
 
     // Descuento (si aplica)
@@ -370,15 +370,15 @@ export async function generarFacturaPDF(
         .text('Descuento:', totX, ty, { width: labelW2, align: 'left' });
       doc.fillColor(DARK).font('Helvetica').fontSize(9.5)
         .text('-' + fmtM(d.descuentoTotal), totX + labelW2, ty, { width: valueW2, align: 'right' });
-      ty += 15;
+      ty += 11;
     }
 
     // TOTAL GENERAL A PAGAR
-    ty += 4;
+    ty += 2;
     doc.moveTo(totX, ty).lineTo(totX + totW, ty)
       .strokeColor(DARK).lineWidth(2).stroke();
     doc.lineWidth(1);
-    ty += 8;
+    ty += 5;
 
     doc.fillColor(DARK).font('Helvetica-Bold').fontSize(11)
       .text('TOTAL GENERAL A PAGAR:', totX, ty, { width: labelW2, align: 'left' });
