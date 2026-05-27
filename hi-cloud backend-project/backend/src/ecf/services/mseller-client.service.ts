@@ -283,7 +283,7 @@ export class MSellerClientService {
 
       // Si X-API-KEY solo no funciona (401/403), reintentar con accessToken
       if (status === 401 || status === 403) {
-        this.logger.warn(
+        this.logger.debug(
           `GET estado ${trackId} falló con X-API-KEY solo [${status}]. ` +
           `Reintentando con Authorization: Bearer ${accessToken ? '(token)' : 'MISSING'}`,
         );

@@ -9,6 +9,13 @@ import { ECFBuilderService, ECFBuildInput } from '../services/ecf-builder.servic
 import { EcfConfigService } from '../services/ecf-config.service';
 import { EcfValidacionError, EcfComunicacionError } from '../errors/ecf.errors';
 
+/** Orden canónico de campos del Emisor según XSD DGII — FechaEmision siempre al final. */
+const EMISOR_CANON = [
+  'RNCEmisor', 'RazonSocialEmisor', 'NombreComercial', 'Sucursal',
+  'DireccionEmisor', 'Municipio', 'Provincia', 'Telefono', 'CorreoEmisor',
+  'ActividadEconomica', 'FechaEmision',
+] as const;
+
 const MAX_INTENTOS = 5;
 
 /**
@@ -151,8 +158,12 @@ export class ReintentoECFJob {
         intento: intentosEnvio + 1,
       });
 
+      // Normalizar el payload recuperado de BD para garantizar FechaEmision al final.
+      // Payloads creados antes del fix pueden tener el Emisor en orden incorrecto.
+      const payloadNormalizado = this.normalizarEmisorPayload(jsonEnviado as any);
+
       const respuesta = await this.mseller.enviarDocumento(
-        jsonEnviado as any,
+        payloadNormalizado,
         empresaId!,
         30_000,
       );
@@ -223,6 +234,48 @@ export class ReintentoECFJob {
       }, msg);
 
       this.logger.warn(`e-CF ${numero} reintento #${nuevos} fallido: ${msg}`);
+    }
+  }
+
+  /**
+   * Reordena el Emisor del payload almacenado en BD para que FechaEmision quede
+   * al final, respetando el orden del XSD DGII.
+   * Los payloads emitidos antes del fix tienen FechaEmision en posición incorrecta;
+   * al leerlos desde JSONB PostgreSQL pueden salir en orden distinto al original.
+   */
+  private normalizarEmisorPayload(payload: any): any {
+    try {
+      const emisor = payload?.ECF?.Encabezado?.Emisor;
+      if (!emisor || typeof emisor !== 'object') return payload;
+
+      // Construir objeto con el orden canónico (FechaEmision al final)
+      const normalizado: Record<string, unknown> = {};
+      for (const key of EMISOR_CANON) {
+        const v = emisor[key];
+        if (v !== undefined && v !== null && v !== '') {
+          normalizado[key] = v;
+        }
+      }
+      // Preservar cualquier campo desconocido al final
+      for (const key of Object.keys(emisor)) {
+        if (!(EMISOR_CANON as readonly string[]).includes(key)) {
+          normalizado[key] = emisor[key];
+        }
+      }
+
+      return {
+        ...payload,
+        ECF: {
+          ...payload.ECF,
+          Encabezado: {
+            ...payload.ECF.Encabezado,
+            Emisor: normalizado,
+          },
+        },
+      };
+    } catch {
+      // Si algo falla, usar payload original (assertEmisorOrder lo detectará)
+      return payload;
     }
   }
 
