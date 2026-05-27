@@ -63,19 +63,24 @@ export async function generarDocumentoPDF(d: DocData): Promise<Buffer> {
     doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(18)
       .text(iniciales, PL, y + 16, { width: 48, align: 'center' });
 
-    const infoX = PL + 56;
-    const infoW = 220;
+    // 14px gap after logo (logo ends at PL+48) para evitar solapamiento visual
+    const infoX = PL + 48 + 14;  // 102
+    const infoW = 240;            // más ancho para direcciones largas
 
-    doc.fillColor(DARK).font('Helvetica-Bold').fontSize(13)
-      .text(d.empresa.nombre.toUpperCase(), infoX, y, { width: infoW });
+    // Nombre empresa — calcular altura real por si es multi-línea
+    doc.fillColor(DARK).font('Helvetica-Bold').fontSize(13);
+    doc.text(d.empresa.nombre.toUpperCase(), infoX, y, { width: infoW });
+    const nameH = doc.heightOfString(d.empresa.nombre.toUpperCase(), { width: infoW });
+    let iy = y + Math.max(nameH + 3, 17);
 
-    let iy = y + 20;
     doc.font('Helvetica').fontSize(8).fillColor(GRAY);
     if (d.empresa.direccion) {
       const dir = d.empresa.direccion +
         (d.empresa.ciudad ? ', ' + d.empresa.ciudad : '') + '.';
       doc.text(dir, infoX, iy, { width: infoW });
-      iy += 11;
+      // Rastrear altura real en caso de que la dirección haga wrap
+      const dirH = doc.heightOfString(dir, { width: infoW });
+      iy += dirH + 3;
     }
     if (d.empresa.email) {
       doc.text('Correo: ' + d.empresa.email, infoX, iy, { width: infoW });
