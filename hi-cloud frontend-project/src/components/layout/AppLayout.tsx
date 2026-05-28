@@ -1488,16 +1488,10 @@ export default function AppLayout() {
         padding:        collapsed ? '16px 12px 10px' : '14px 16px 10px',
         flexShrink:     0,
       }}>
-        {/* Logo — clickeable: navega al dashboard o refresca si ya está en él */}
+        {/* Logo — clickeable: toggle colapsar/expandir sidebar */}
         <div
-          onClick={() => {
-            if (activePath === '/dashboard') {
-              window.dispatchEvent(new CustomEvent('dashboard:refresh'));
-            } else {
-              navigate('/dashboard');
-            }
-          }}
-          title="Ir al Dashboard"
+          onClick={() => setCollapsedPersisted(!collapsed)}
+          title={collapsed ? 'Expandir menú' : 'Colapsar menú'}
           style={{ cursor: 'pointer', display: 'flex', alignItems: 'center',
             borderRadius: 6, padding: 2, transition: 'opacity 0.15s' }}
           onMouseEnter={e => (e.currentTarget.style.opacity = '0.75')}
@@ -1553,17 +1547,18 @@ export default function AppLayout() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: collapsed ? undefined : 1 }}>
           {/* Avatar con iniciales */}
           <div
-            onClick={() => setCollapsedPersisted(!collapsed)}
-            title={collapsed ? 'Expandir menú' : 'Colapsar menú'}
+            onClick={collapsed ? () => setCollapsedPersisted(false) : undefined}
+            title={collapsed ? (empresaNombre || 'Mi Empresa') : undefined}
             style={{
               width: 28, height: 28, borderRadius: 6, flexShrink: 0,
+              background: getEmpresaColor(empresaNombre || 'H'),
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: 'pointer', userSelect: 'none', transition: 'opacity 0.15s',
+              fontSize: 11, fontWeight: 700, color: '#FFFFFF',
+              cursor: collapsed ? 'pointer' : 'default',
+              userSelect: 'none',
             }}
-            onMouseEnter={e => (e.currentTarget.style.opacity = '0.75')}
-            onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
           >
-            <img src="/logo-hicloud.png" alt="HiCloud" style={{ width: 28, height: 28, objectFit: 'contain' }} />
+            {(empresaNombre || 'HI').slice(0, 2).toUpperCase()}
           </div>
           {!collapsed && (
             <span style={{
