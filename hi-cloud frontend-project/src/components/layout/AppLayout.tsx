@@ -1553,18 +1553,17 @@ export default function AppLayout() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: collapsed ? undefined : 1 }}>
           {/* Avatar con iniciales */}
           <div
-            onClick={collapsed ? () => setCollapsedPersisted(false) : undefined}
-            title={collapsed ? (empresaNombre || 'Mi Empresa') : undefined}
+            onClick={() => setCollapsedPersisted(!collapsed)}
+            title={collapsed ? 'Expandir menú' : 'Colapsar menú'}
             style={{
               width: 28, height: 28, borderRadius: 6, flexShrink: 0,
-              background: getEmpresaColor(empresaNombre || 'H'),
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 11, fontWeight: 700, color: '#FFFFFF',
-              cursor: collapsed ? 'pointer' : 'default',
-              userSelect: 'none',
+              cursor: 'pointer', userSelect: 'none', transition: 'opacity 0.15s',
             }}
+            onMouseEnter={e => (e.currentTarget.style.opacity = '0.75')}
+            onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
           >
-            {(empresaNombre || 'HI').slice(0, 2).toUpperCase()}
+            <img src="/logo-hicloud.png" alt="HiCloud" style={{ width: 28, height: 28, objectFit: 'contain' }} />
           </div>
           {!collapsed && (
             <span style={{
