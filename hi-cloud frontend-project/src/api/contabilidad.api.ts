@@ -29,9 +29,14 @@ export const contabilidadApi = {
   updateCuenta: (id: number, body: Partial<CuentaPayload>) =>
     api.patch(`/contabilidad/cuentas/${id}`, body).then(r => r.data.data),
 
-  asientos: (p = 1, limit = 10, estado?: string) =>
-    api.get(`/contabilidad/asientos?page=${p}&limit=${limit}${estado ? `&estado=${estado}` : ''}`)
-       .then(r => r.data.data),
+  asientos: (p = 1, limit = 10, estado?: string, desde?: string, hasta?: string, tipo?: string) => {
+    const params: Record<string, any> = { page: p, limit };
+    if (estado) params.estado = estado;
+    if (desde)  params.fechaDesde = desde;
+    if (hasta)  params.fechaHasta = hasta;
+    if (tipo)   params.tipoOrigen = tipo;
+    return api.get('/contabilidad/asientos', { params }).then(r => r.data.data);
+  },
 
   createAsiento: (body: AsientoPayload) =>
     api.post('/contabilidad/asientos', body).then(r => r.data.data),

@@ -57,10 +57,14 @@ function PlanCuentas() {
 
 // ── Asientos Contables ─────────────────────────────────────────────────────────
 function Asientos() {
-  const [page,   setPage]   = useState(1);
-  const [search, setSearch] = useState('');
-  const [open,   setOpen]   = useState(false);
-  const [detail, setDetail] = useState<any>(null);
+  const [page,       setPage]       = useState(1);
+  const [search,     setSearch]     = useState('');
+  const [open,       setOpen]       = useState(false);
+  const [detail,     setDetail]     = useState<any>(null);
+  const [desde,      setDesde]      = useState('');
+  const [hasta,      setHasta]      = useState('');
+  const [estadoFilt, setEstadoFilt] = useState<string | undefined>();
+  const [tipoFilt,   setTipoFilt]   = useState<string | undefined>();
   const [lineas, setLineas] = useState<AsientoLineaPayload[]>([
     { cuentaContableId: 0, descripcion: '', debe: 0, haber: 0 },
     { cuentaContableId: 0, descripcion: '', debe: 0, haber: 0 },
@@ -69,8 +73,8 @@ function Asientos() {
   const qc = useQueryClient();
 
   const { data: asientos, isLoading } = useQuery({
-    queryKey: ['asientos', page],
-    queryFn: () => contabilidadApi.asientos(page, 15),
+    queryKey: ['asientos', page, desde, hasta, estadoFilt, tipoFilt],
+    queryFn: () => contabilidadApi.asientos(page, 15, estadoFilt, desde || undefined, hasta || undefined, tipoFilt),
   });
   const { data: cuentas } = useQuery({ queryKey: ['cuentas-sel'], queryFn: () => contabilidadApi.cuentas(true) });
 
@@ -84,6 +88,12 @@ function Asientos() {
     mutationFn: contabilidadApi.contabilizar,
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['asientos'] }); message.success('Asiento contabilizado'); },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al contabilizar'),
+  });
+
+  const anularMut = useMutation({
+    mutationFn: contabilidadApi.anularAsiento,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['asientos'] }); setDetail(null); message.success('Asiento anulado'); },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al anular'),
   });
 
   const estadoColor: Record<string, string> = { borrador: 'default', contabilizado: 'green', anulado: 'red' };
@@ -136,17 +146,43 @@ function Asientos() {
 
   return (
     <>
-      <Row justify="space-between" align="middle" gutter={[0, 8]} style={{ marginBottom: 12 }}>
-        <Col xs={24} sm="auto">
+      <Row gutter={[8, 8]} align="middle" style={{ marginBottom: 12 }}>
+        <Col xs={24} sm={12} md={6}>
           <Input
             placeholder="Buscar por número o descripción..."
             prefix={<SearchOutlined />}
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(1); }}
-            allowClear style={{ width: '100%', maxWidth: 280 }}
+            allowClear
           />
         </Col>
-        <Col xs={24} sm="auto">
+        <Col xs={12} sm={6} md={3}>
+          <Input type="date" value={desde} style={{ width: '100%' }}
+            onChange={e => { setDesde(e.target.value); setPage(1); }} />
+        </Col>
+        <Col xs={12} sm={6} md={3}>
+          <Input type="date" value={hasta} style={{ width: '100%' }}
+            onChange={e => { setHasta(e.target.value); setPage(1); }} />
+        </Col>
+        <Col xs={12} sm={6} md={3}>
+          <Select style={{ width: '100%' }} placeholder="Estado" allowClear
+            value={estadoFilt} onChange={v => { setEstadoFilt(v); setPage(1); }}>
+            <Select.Option value="borrador">Borrador</Select.Option>
+            <Select.Option value="contabilizado">Contabilizado</Select.Option>
+            <Select.Option value="anulado">Anulado</Select.Option>
+          </Select>
+        </Col>
+        <Col xs={12} sm={6} md={3}>
+          <Select style={{ width: '100%' }} placeholder="Tipo" allowClear
+            value={tipoFilt} onChange={v => { setTipoFilt(v); setPage(1); }}>
+            <Select.Option value="manual">Manual</Select.Option>
+            <Select.Option value="factura">Factura</Select.Option>
+            <Select.Option value="compra">Compra</Select.Option>
+            <Select.Option value="nomina">Nómina</Select.Option>
+            <Select.Option value="ajuste">Ajuste</Select.Option>
+          </Select>
+        </Col>
+        <Col xs={24} sm="auto" style={{ marginLeft: 'auto' }}>
           <Space wrap>
             <Button icon={<FileExcelOutlined />} onClick={() => {
               const filas = (asientos?.data ?? []).map((a: any) => ({
@@ -231,7 +267,27 @@ function Asientos() {
       </Modal>
 
       {/* Detalle asiento */}
-      <Drawer title={`Asiento ${detail?.numero}`} open={!!detail} onClose={() => setDetail(null)} width={700}>
+      <Drawer
+        title={`Asiento ${detail?.numero}`}
+        open={!!detail}
+        onClose={() => setDetail(null)}
+        width={700}
+        extra={
+          detail && (
+            <Space>
+              {detail.referenciaFolio && (
+                <Tag color="blue">Ref: {detail.referenciaFolio}</Tag>
+              )}
+              {detail.estado === 'contabilizado' && (
+                <Button danger size="small" loading={anularMut.isPending}
+                  onClick={() => anularMut.mutate(detail.id)}>
+                  Anular
+                </Button>
+              )}
+            </Space>
+          )
+        }
+      >
         {detail && (
           <>
             <Descriptions bordered size="small" column={2} style={{ marginBottom: 16 }}>
@@ -240,15 +296,20 @@ function Asientos() {
               <Descriptions.Item label="Descripción" span={2}>{detail.descripcion}</Descriptions.Item>
               <Descriptions.Item label="Total Debe">{fmt.money(detail.totalDebe)}</Descriptions.Item>
               <Descriptions.Item label="Total Haber">{fmt.money(detail.totalHaber)}</Descriptions.Item>
+              {detail.referenciaFolio && (
+                <Descriptions.Item label="Documento origen" span={2}>
+                  <Text code>{detail.referenciaFolio}</Text>
+                </Descriptions.Item>
+              )}
             </Descriptions>
             <Table size="small"
-        scroll={{ x: 'max-content' }} pagination={false}
+              scroll={{ x: 'max-content' }} pagination={false}
               dataSource={detail.lineas ?? []} rowKey="id"
               columns={[
                 { title: 'Cuenta', key: 'cta', ellipsis: true, render: (_: any, r: any) => `${r.cuentaContable?.codigo} — ${r.cuentaContable?.nombre}` },
                 { title: 'Descripción', dataIndex: 'descripcion', ellipsis: true },
-                { title: 'Debe',  dataIndex: 'debe',  render: (v: number) => v > 0 ? fmt.money(v) : '' },
-                { title: 'Haber', dataIndex: 'haber', render: (v: number) => v > 0 ? fmt.money(v) : '' },
+                { title: 'Debe',  dataIndex: 'debe',  width: 120, align: 'right' as const, render: (v: number) => v > 0 ? fmt.money(v) : '' },
+                { title: 'Haber', dataIndex: 'haber', width: 120, align: 'right' as const, render: (v: number) => v > 0 ? fmt.money(v) : '' },
               ]} />
           </>
         )}
@@ -515,10 +576,8 @@ export default function ContabilidadPage() {
 
   return (
     <div>
-      <Title level={4} style={{ marginBottom: 16 }}>Contabilidad General</Title>
-      <Card>
-        <EstadosFinancieros />
-      </Card>
+      <Title level={4} style={{ marginBottom: 16 }}>Asientos Contables</Title>
+      <Asientos />
     </div>
   );
 }
