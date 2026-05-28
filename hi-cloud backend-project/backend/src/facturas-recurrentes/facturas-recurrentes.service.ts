@@ -128,40 +128,65 @@ export class FacturasRecurrentesService {
   // ──────────────────────────────────────────────────────────────────
 
   private async generarDesdeTemplate(rec: FacturaRecurrente, fecha: Date): Promise<{ factura: Factura; folio: string }> {
-    // 1. Guardia: la plantilla debe tener detalles con precios válidos
+    // 1. Guardia: la plantilla debe tener ítems
     const rawDetalles = Array.isArray(rec.detalles) ? rec.detalles : [];
     if (rawDetalles.length === 0) {
       throw new Error(`Plantilla "${rec.nombre}" no tiene ítems — no se puede generar factura`);
     }
 
-    // 2. Calcular totales — parsear explícitamente a float para cubrir el caso
-    //    en que PostgreSQL devuelva los valores del JSON como strings
+    // 2. Calcular totales con fallback a precio del producto cuando precioUnitario = 0
+    //    El JSON puede devolver valores como strings o números — se normaliza con parseFloat(String())
     let subtotal = 0, iva = 0;
-    const detallesData = rawDetalles.map((d: any, idx: number) => {
-      const precio      = parseFloat(String(d.precioUnitario ?? d.precio ?? 0)) || 0;
-      const cantidad    = parseFloat(String(d.cantidad ?? 1))  || 1;
+    const detallesData: Array<{
+      descripcion: string; productoId?: number;
+      precioUnitario: number; cantidad: number; porcentajeIva: number;
+      subtotal: number; importeIva: number; total: number;
+    }> = [];
+
+    for (let idx = 0; idx < rawDetalles.length; idx++) {
+      const d = rawDetalles[idx] as any;
+      let precio = parseFloat(String(d.precioUnitario ?? d.precio ?? 0)) || 0;
+
+      // ── FALLBACK: si precio = 0 pero hay productoId, buscar precio actual en BD ──
+      if (precio === 0 && d.productoId) {
+        const [prod] = await this.ds.query<{ precio: string }[]>(
+          `SELECT precio FROM productos WHERE id = $1 AND "isActive" = true AND "empresaId" = $2 LIMIT 1`,
+          [d.productoId, rec.empresaId],
+        );
+        if (prod?.precio) {
+          precio = parseFloat(String(prod.precio)) || 0;
+          this.logger.log(
+            `[Recurrentes] "${rec.nombre}" ítem ${idx + 1}: precioUnitario=0 en plantilla → ` +
+            `usando precio del producto #${d.productoId}: ${precio}`,
+          );
+        }
+      }
+
+      const cantidad    = parseFloat(String(d.cantidad ?? 1)) || 1;
       const pctIva      = parseFloat(String(d.porcentajeIva ?? d.iva ?? 0)) || 0;
       const descripcion = (String(d.descripcion ?? d.concepto ?? d.nombre ?? '')).trim() || `Ítem ${idx + 1}`;
       const sub         = +(precio * cantidad).toFixed(2);
       const impIva      = +(sub * (pctIva / 100)).toFixed(2);
+
       subtotal = +(subtotal + sub).toFixed(2);
       iva      = +(iva + impIva).toFixed(2);
-      return {
+
+      detallesData.push({
         descripcion,
-        productoId:     d.productoId ?? null,
+        productoId:     d.productoId != null ? Number(d.productoId) : undefined,
         precioUnitario: precio,
         cantidad,
         porcentajeIva:  pctIva,
         subtotal:       sub,
         importeIva:     impIva,
         total:          +(sub + impIva).toFixed(2),
-      };
-    });
+      });
+    }
 
     if (subtotal === 0) {
       this.logger.warn(
-        `[Recurrentes] Plantilla "${rec.nombre}" (#${rec.id}) generó subtotal=0. ` +
-        `Detalles raw: ${JSON.stringify(rawDetalles).slice(0, 200)}`,
+        `[Recurrentes] Plantilla "${rec.nombre}" (#${rec.id}) subtotal=0 después del fallback. ` +
+        `Detalles raw: ${JSON.stringify(rawDetalles).slice(0, 300)}`,
       );
     }
 
@@ -358,7 +383,7 @@ export class FacturasRecurrentesService {
 
   private async enviarEmailFactura(
     factura: Factura,
-    rec: FacturaRecurrente,
+    _rec: FacturaRecurrente,
     empresaId: number,
   ): Promise<void> {
     const clienteEmail = factura.cliente?.email;

@@ -950,4 +950,161 @@ export class SuperAdminService {
     this.logger.warn(`[REGISTRO] Usuario #${userId} (${u.email}) rechazado por super_admin #${superAdminId}: ${motivo}`);
     return { ok: true, mensaje: `Solicitud de ${u.nombre} rechazada.` };
   }
+
+  // ── Facturas Recurrentes — Diagnóstico y Reparación ───────────────────────
+
+  async diagnosticoFacturasRecurrentes() {
+    // 1. Plantillas con detalles que tienen precioUnitario = 0
+    const templatesConPreciosCero = await this.ds.query<any[]>(`
+      SELECT
+        fr.id,
+        fr.nombre,
+        fr."empresaId",
+        e.nombre AS empresa,
+        fr.activa,
+        fr."totalGeneradas",
+        fr.detalles AS "detallesJson",
+        (
+          SELECT COUNT(*)::int
+          FROM jsonb_array_elements(fr.detalles::jsonb) elem
+          WHERE (COALESCE(elem->>'precioUnitario', '0'))::numeric = 0
+        ) AS "itemsConPrecioCero"
+      FROM facturas_recurrentes fr
+      JOIN empresa e ON e.id = fr."empresaId"
+      WHERE fr."isActive" = true
+        AND EXISTS (
+          SELECT 1 FROM jsonb_array_elements(fr.detalles::jsonb) elem
+          WHERE (COALESCE(elem->>'precioUnitario', '0'))::numeric = 0
+        )
+      ORDER BY fr."empresaId", fr.id
+    `);
+
+    // 2. Facturas con total = 0 generadas por recurrentes
+    const facturasConMontosCero = await this.ds.query<any[]>(`
+      SELECT
+        f.id, f.folio, f.fecha, f.total, f.subtotal, f.iva,
+        f."facturaRecurrenteId",
+        fr.nombre AS "templateNombre",
+        e.nombre  AS empresa,
+        (
+          SELECT COUNT(*)::int FROM factura_detalles fd
+          WHERE fd."facturaId" = f.id AND fd."isActive" = true
+        ) AS "numDetalles",
+        (
+          SELECT COUNT(*)::int FROM factura_detalles fd
+          WHERE fd."facturaId" = f.id AND fd."isActive" = true
+            AND fd."precioUnitario"::numeric = 0
+        ) AS "detallesConPrecioCero"
+      FROM facturas f
+      JOIN facturas_recurrentes fr ON fr.id = f."facturaRecurrenteId"
+      JOIN empresa e ON e.id = f."empresaId"
+      WHERE f."facturaRecurrenteId" IS NOT NULL
+        AND f.total::numeric = 0
+        AND f."isActive" = true
+      ORDER BY f."empresaId", f.id DESC
+      LIMIT 50
+    `);
+
+    // 3. Resumen global
+    const resumen = await this.ds.query<any[]>(`
+      SELECT
+        (SELECT COUNT(*)::int FROM facturas_recurrentes WHERE "isActive" = true) AS "totalTemplates",
+        (SELECT COUNT(*)::int FROM facturas WHERE "facturaRecurrenteId" IS NOT NULL AND "isActive" = true) AS "totalGeneradas",
+        (SELECT COUNT(*)::int FROM facturas WHERE "facturaRecurrenteId" IS NOT NULL AND total::numeric = 0 AND "isActive" = true) AS "generadasConMontosCero"
+    `);
+
+    return {
+      resumen: resumen[0],
+      templatesConPreciosCero,
+      facturasConMontosCero,
+    };
+  }
+
+  async repararMontosRecurrentes() {
+    this.logger.log('[RepararRecurrentes] Iniciando reparación...');
+
+    // 1. Contar antes
+    const [antes] = await this.ds.query<{ cero: string }[]>(
+      `SELECT COUNT(*)::text AS cero FROM facturas WHERE "facturaRecurrenteId" IS NOT NULL AND total::numeric = 0 AND "isActive" = true`,
+    );
+
+    // 2. Actualizar factura_detalles con precio del producto (cuando productoId existe y precio > 0)
+    await this.ds.query(`
+      UPDATE factura_detalles fd
+      SET
+        "precioUnitario" = p.precio,
+        subtotal         = ROUND(p.precio::numeric * fd.cantidad::numeric, 2),
+        "importeIva"     = ROUND(p.precio::numeric * fd.cantidad::numeric * fd."porcentajeIva"::numeric / 100, 2),
+        total            = ROUND(p.precio::numeric * fd.cantidad::numeric * (1 + fd."porcentajeIva"::numeric / 100), 2)
+      FROM productos p
+      JOIN facturas f ON f.id = fd."facturaId"
+      WHERE fd."productoId" IS NOT NULL
+        AND fd."precioUnitario"::numeric = 0
+        AND p.id = fd."productoId" AND p."isActive" = true AND p.precio::numeric > 0
+        AND f."facturaRecurrenteId" IS NOT NULL AND f."isActive" = true AND fd."isActive" = true
+    `);
+
+    // 3. Recalcular headers de facturas afectadas
+    await this.ds.query(`
+      UPDATE facturas f
+      SET subtotal = sub.subtotal, iva = sub.iva, total = sub.total
+      FROM (
+        SELECT "facturaId",
+          ROUND(COALESCE(SUM(subtotal),     0), 2) AS subtotal,
+          ROUND(COALESCE(SUM("importeIva"), 0), 2) AS iva,
+          ROUND(COALESCE(SUM(total),        0), 2) AS total
+        FROM factura_detalles WHERE "isActive" = true GROUP BY "facturaId"
+      ) sub
+      WHERE f.id = sub."facturaId"
+        AND f."facturaRecurrenteId" IS NOT NULL AND f."isActive" = true AND sub.total > 0
+    `);
+
+    // 4. Reparar también el JSON de las plantillas
+    await this.ds.query(`
+      UPDATE facturas_recurrentes fr
+      SET detalles = fixed.detalles
+      FROM (
+        SELECT fr2.id,
+          jsonb_agg(
+            CASE
+              WHEN (elem->>'productoId') IS NOT NULL
+                AND (COALESCE(elem->>'precioUnitario', '0'))::numeric = 0
+                AND p.precio::numeric > 0
+              THEN jsonb_set(
+                     jsonb_set(elem, '{precioUnitario}', to_jsonb(p.precio::numeric)),
+                     '{porcentajeIva}', to_jsonb(p."porcentajeIva"::numeric))
+              ELSE elem
+            END ORDER BY ordinality) AS detalles
+        FROM facturas_recurrentes fr2,
+          LATERAL jsonb_array_elements(fr2.detalles::jsonb) WITH ORDINALITY AS t(elem, ordinality)
+        LEFT JOIN productos p
+          ON p.id = (elem->>'productoId')::integer AND p."isActive" = true
+        WHERE fr2."isActive" = true
+          AND EXISTS (
+            SELECT 1 FROM jsonb_array_elements(fr2.detalles::jsonb) e2
+            WHERE (COALESCE(e2->>'precioUnitario', '0'))::numeric = 0 AND (e2->>'productoId') IS NOT NULL
+          )
+        GROUP BY fr2.id
+      ) fixed
+      WHERE fr.id = fixed.id
+    `);
+
+    // 5. Contar después
+    const [despues] = await this.ds.query<{ cero: string }[]>(
+      `SELECT COUNT(*)::text AS cero FROM facturas WHERE "facturaRecurrenteId" IS NOT NULL AND total::numeric = 0 AND "isActive" = true`,
+    );
+
+    const corregidas = Number(antes.cero) - Number(despues.cero);
+    this.logger.log(`[RepararRecurrentes] Antes: ${antes.cero} con total=0 → Después: ${despues.cero} → ${corregidas} corregidas`);
+
+    return {
+      ok: true,
+      antesConMontosCero: Number(antes.cero),
+      despuesConMontosCero: Number(despues.cero),
+      corregidas,
+      mensaje: corregidas > 0
+        ? `${corregidas} factura(s) reparadas correctamente.`
+        : 'No se encontraron facturas con montos cero vinculadas a productos.',
+    };
+  }
 }

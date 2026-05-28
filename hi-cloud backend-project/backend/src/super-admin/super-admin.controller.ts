@@ -466,4 +466,19 @@ export class SuperAdminController {
   sincronizarPlanCuentas(@Body() dto: SincronizarPlanCuentasDto) {
     return this.contabilidadSvc.sincronizarPlanCuentasTodas(dto.empresaId);
   }
+
+  // ── Facturas Recurrentes — Diagnóstico y Reparación ────────────────────────
+
+  @Get('facturas-recurrentes/diagnostico')
+  @ApiOperation({ summary: 'Diagnosticar plantillas recurrentes y facturas con montos cero' })
+  async diagnosticoRecurrentes() {
+    return this.svc.diagnosticoFacturasRecurrentes();
+  }
+
+  @Post('facturas-recurrentes/reparar-montos')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reparar facturas recurrentes con total = 0 usando precios de productos' })
+  async repararMontosRecurrentes() {
+    return this.svc.repararMontosRecurrentes();
+  }
 }
