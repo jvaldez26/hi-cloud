@@ -103,7 +103,9 @@ export default function EcfSeccion({ facturaId, documentoOrigenId, queryKeyBase 
       extra={
         <Space>
           {procesando && (
-            <Text type="secondary" style={{ fontSize: 11 }}>Verificando con DGII…</Text>
+            <Text type="secondary" style={{ fontSize: 11 }}>
+              {ecf?.estadoDGII === 'enviado' && ecf?.trackId ? 'Recibido por MSeller…' : 'Verificando con DGII…'}
+            </Text>
           )}
           {puedeReenviar && (
             <Tooltip title="Reenviar a tu proveedor e-CF">
@@ -120,8 +122,19 @@ export default function EcfSeccion({ facturaId, documentoOrigenId, queryKeyBase 
       {procesando && (
         <Alert type="info" showIcon icon={<Spin size="small" />}
           style={{ marginBottom: 10 }}
-          message="Enviado — esperando respuesta de la DGII"
-          description="El comprobante fue enviado a tu proveedor e-CF. Se actualizará automáticamente cuando la DGII responda." />
+          message={
+            ecf.estadoDGII === 'enviado' && ecf.trackId
+              ? 'Recibido por MSeller — verificando aceptación DGII'
+              : ecf.estadoDGII === 'enviado'
+              ? 'Enviado a MSeller — esperando confirmación de recepción'
+              : 'Enviando a MSeller…'
+          }
+          description={
+            ecf.estadoDGII === 'enviado' && ecf.trackId
+              ? 'El documento fue recibido por MSeller/DGII. Se actualizará automáticamente cuando sea aceptado o rechazado.'
+              : 'El comprobante fue enviado a tu proveedor e-CF. Se actualizará automáticamente cuando la DGII responda.'
+          }
+        />
       )}
       {esAceptado && (
         <Alert type="success" showIcon icon={<CheckCircleFilled />}
