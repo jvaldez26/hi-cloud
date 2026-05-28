@@ -4,7 +4,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { usePlanGuard } from '../../hooks/usePlan';
 import ModuloBloqueado from '../../components/ui/ModuloBloqueado';
-import { Tabs, Table, Tag, Button, Card, Row, Col, Typography, Statistic,
+import { Table, Tag, Button, Card, Row, Col, Typography, Statistic,
          Space, Modal, Form, Input, InputNumber, Select, DatePicker, message,
          Descriptions, Collapse, Drawer, theme } from 'antd';
 import { PlusOutlined, CheckOutlined, EyeOutlined, SearchOutlined, FileExcelOutlined } from '@ant-design/icons';
@@ -517,13 +517,7 @@ export default function ContabilidadPage() {
     <div>
       <Title level={4} style={{ marginBottom: 16 }}>Contabilidad General</Title>
       <Card>
-        <Tabs defaultActiveKey="estados" items={[
-          { key: 'estados',      label: '📊 Estados Financieros',    children: <EstadosFinancieros /> },
-          { key: 'comprobacion', label: '⚖️ Balance Comprobación',  children: <BalanceComprobacion /> },
-          { key: 'mayor',        label: '📓 Libro Mayor',             children: <LibroMayor /> },
-          { key: 'asientos',     label: '📋 Asientos Contables',      children: <Asientos /> },
-          { key: 'cuentas',      label: '📒 Plan de Cuentas',         children: <PlanCuentas /> },
-        ]} />
+        <EstadosFinancieros />
       </Card>
     </div>
   );
