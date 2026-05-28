@@ -41,13 +41,13 @@ export class FixRecurrenteFromProductPrices1749930000000 implements MigrationInt
                                  * fd."porcentajeIva"::numeric / 100, 2),
         total            = ROUND(p.precio::numeric * fd.cantidad::numeric
                                  * (1 + fd."porcentajeIva"::numeric / 100), 2)
-      FROM productos p
-      JOIN facturas f ON f.id = fd."facturaId"
+      FROM productos p, facturas f
       WHERE fd."productoId" IS NOT NULL
         AND fd."precioUnitario"::numeric = 0
         AND p.id         = fd."productoId"
         AND p."isActive" = true
         AND p.precio::numeric > 0
+        AND f.id         = fd."facturaId"
         AND f."facturaRecurrenteId" IS NOT NULL
         AND f."isActive" = true
         AND fd."isActive" = true
