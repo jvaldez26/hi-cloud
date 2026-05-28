@@ -124,6 +124,98 @@ export class FacturasRecurrentesService {
   }
 
   // ──────────────────────────────────────────────────────────────────
+  // Helper principal: genera una factura a partir de la plantilla
+  // ──────────────────────────────────────────────────────────────────
+
+  private async generarDesdeTemplate(rec: FacturaRecurrente, fecha: Date): Promise<{ factura: Factura; folio: string }> {
+    // 1. Guardia: la plantilla debe tener detalles con precios válidos
+    const rawDetalles = Array.isArray(rec.detalles) ? rec.detalles : [];
+    if (rawDetalles.length === 0) {
+      throw new Error(`Plantilla "${rec.nombre}" no tiene ítems — no se puede generar factura`);
+    }
+
+    // 2. Calcular totales — parsear explícitamente a float para cubrir el caso
+    //    en que PostgreSQL devuelva los valores del JSON como strings
+    let subtotal = 0, iva = 0;
+    const detallesData = rawDetalles.map((d: any, idx: number) => {
+      const precio      = parseFloat(String(d.precioUnitario ?? d.precio ?? 0)) || 0;
+      const cantidad    = parseFloat(String(d.cantidad ?? 1))  || 1;
+      const pctIva      = parseFloat(String(d.porcentajeIva ?? d.iva ?? 0)) || 0;
+      const descripcion = (String(d.descripcion ?? d.concepto ?? d.nombre ?? '')).trim() || `Ítem ${idx + 1}`;
+      const sub         = +(precio * cantidad).toFixed(2);
+      const impIva      = +(sub * (pctIva / 100)).toFixed(2);
+      subtotal = +(subtotal + sub).toFixed(2);
+      iva      = +(iva + impIva).toFixed(2);
+      return {
+        descripcion,
+        productoId:     d.productoId ?? null,
+        precioUnitario: precio,
+        cantidad,
+        porcentajeIva:  pctIva,
+        subtotal:       sub,
+        importeIva:     impIva,
+        total:          +(sub + impIva).toFixed(2),
+      };
+    });
+
+    if (subtotal === 0) {
+      this.logger.warn(
+        `[Recurrentes] Plantilla "${rec.nombre}" (#${rec.id}) generó subtotal=0. ` +
+        `Detalles raw: ${JSON.stringify(rawDetalles).slice(0, 200)}`,
+      );
+    }
+
+    // 3. Folio atómico
+    const folio = await generarNumeroSecuencial(
+      this.ds, 'facturas', 'folio', '^FAC-[0-9]+$', 'FAC-', 1, rec.empresaId!,
+    );
+
+    // 4. Insertar cabecera de la factura
+    const factura = await this.facturaRepository.save(
+      this.facturaRepository.create({
+        empresaId:           rec.empresaId,
+        folio,
+        fecha,
+        estado:              FacturaEstado.BORRADOR,
+        clienteId:           rec.clienteId,
+        usuarioId:           rec.userId,
+        notas:               `Factura recurrente: ${rec.nombre}`,
+        subtotal,
+        iva,
+        total:               +(subtotal + iva).toFixed(2),
+        facturaRecurrenteId: rec.id,
+      }),
+    );
+
+    // 5. Insertar detalles
+    await this.detalleRepository.save(
+      this.detalleRepository.create(
+        detallesData.map(d => ({ ...d, facturaId: factura.id })),
+      ),
+    );
+
+    // 6. RECALCULAR totales desde la BD para garantizar coherencia
+    //    (cubre cualquier edge-case de tipado entre el JSON de la plantilla y la BD)
+    await this.ds.query(
+      `UPDATE facturas
+          SET subtotal  = (SELECT COALESCE(SUM(subtotal),    0) FROM factura_detalles WHERE "facturaId" = $1 AND "isActive" = true),
+              iva       = (SELECT COALESCE(SUM("importeIva"), 0) FROM factura_detalles WHERE "facturaId" = $1 AND "isActive" = true),
+              total     = (SELECT COALESCE(SUM(total),        0) FROM factura_detalles WHERE "facturaId" = $1 AND "isActive" = true)
+        WHERE id = $1`,
+      [factura.id],
+    );
+
+    // 7. Leer la factura actualizada
+    const facturaFinal = await this.facturaRepository.findOne({ where: { id: factura.id } }) as Factura;
+
+    this.logger.log(
+      `[Recurrentes] "${rec.nombre}" → ${folio} | subtotal=${facturaFinal.subtotal} total=${facturaFinal.total}`,
+    );
+
+    return { factura: facturaFinal, folio };
+  }
+
+  // ──────────────────────────────────────────────────────────────────
   // Cron diario: generar facturas que toca hoy
   // ──────────────────────────────────────────────────────────────────
 
@@ -145,69 +237,24 @@ export class FacturasRecurrentesService {
 
     this.logger.log(`Generando ${pendientes.length} facturas recurrentes...`);
 
-    // Rastrear resultados por empresa para el email de notificación
     const resumenPorEmpresa = new Map<number, { generadas: number; errores: number; folios: string[] }>();
 
     for (const rec of pendientes) {
       try {
-        // Verificar que no haya pasado la fecha fin
         if (rec.fechaFin && new Date(rec.fechaFin) < hoy) {
           await this.recurrenteRepository.update(rec.id, { activa: false });
           continue;
         }
 
-        // Calcular totales — normalizar a números para evitar NaN en BD
-        let subtotal = 0, iva = 0;
-        const detallesData = rec.detalles.map((d, idx) => {
-          const precio      = Number(d.precioUnitario ?? 0) || 0;
-          const cantidad    = Number(d.cantidad       ?? 1) || 1;
-          const pctIva      = Number(d.porcentajeIva  ?? 0) || 0;
-          const descripcion = (d.descripcion ?? '').trim() || `Ítem ${idx + 1}`;
-          const sub         = precio * cantidad;
-          const impIva      = sub * (pctIva / 100);
-          subtotal += sub; iva += impIva;
-          return { ...d, descripcion, precioUnitario: precio, cantidad, porcentajeIva: pctIva,
-                   subtotal: sub, importeIva: impIva, total: sub + impIva };
-        });
+        const { factura, folio } = await this.generarDesdeTemplate(rec, hoy);
 
-        // Generar folio atómico con la misma utilidad que facturas regulares
-        const folio = await generarNumeroSecuencial(
-          this.ds, 'facturas', 'folio', '^FAC-[0-9]+$', 'FAC-', 1, rec.empresaId!,
-        );
-
-        // Crear factura — propaga empresaId del recurrente
-        const factura = await this.facturaRepository.save(
-          this.facturaRepository.create({
-            empresaId:           rec.empresaId,
-            folio,
-            fecha:               hoy,
-            estado:              FacturaEstado.BORRADOR,
-            clienteId:           rec.clienteId,
-            usuarioId:           rec.userId,
-            notas:               `Factura recurrente: ${rec.nombre}`,
-            subtotal:            Number(subtotal.toFixed(2)),
-            iva:                 Number(iva.toFixed(2)),
-            total:               Number((subtotal + iva).toFixed(2)),
-            facturaRecurrenteId: rec.id,   // trazabilidad al template
-          }),
-        );
-
-        await this.detalleRepository.save(
-          this.detalleRepository.create(
-            detallesData.map(d => ({ ...d, facturaId: factura.id })),
-          ),
-        );
-
-        // Calcular próxima ejecución
         const proxima = this.calcularProxima(rec.frecuencia, rec.diaEjecucion, hoy);
-
         await this.recurrenteRepository.update(rec.id, {
           ultimaEjecucion:  hoy,
           proximaEjecucion: proxima,
           totalGeneradas:   rec.totalGeneradas + 1,
         });
 
-        // Acumular para el email resumen
         if (rec.empresaId) {
           const emp = resumenPorEmpresa.get(rec.empresaId) ?? { generadas: 0, errores: 0, folios: [] };
           emp.generadas++;
@@ -215,7 +262,7 @@ export class FacturasRecurrentesService {
           resumenPorEmpresa.set(rec.empresaId, emp);
         }
 
-        // Enviar email al cliente (non-blocking — carga relaciones, luego dispara)
+        // Enviar email al cliente (non-blocking)
         if (rec.empresaId) {
           this.facturaRepository.findOne({
             where: { id: factura.id },
@@ -231,7 +278,6 @@ export class FacturasRecurrentesService {
         this.logger.log(`✅ Factura recurrente "${rec.nombre}" → ${folio} (próxima: ${proxima.toDateString()})`);
       } catch (err) {
         this.logger.error(`Error generando recurrente #${rec.id}: ${(err as Error).message}`);
-        // Acumular errores
         if (rec.empresaId) {
           const emp = resumenPorEmpresa.get(rec.empresaId) ?? { generadas: 0, errores: 0, folios: [] };
           emp.errores++;
@@ -240,7 +286,6 @@ export class FacturasRecurrentesService {
       }
     }
 
-    // Enviar email resumen a las empresas con notifFactRecurrente habilitado
     await this.notificarResumen(resumenPorEmpresa).catch(e =>
       this.logger.warn(`[Recurrentes] Email resumen falló: ${e?.message}`),
     );
@@ -253,16 +298,14 @@ export class FacturasRecurrentesService {
 
     for (const [empresaId, r] of resumen.entries()) {
       try {
-        // Verificar flag de notificación de la empresa
         const [emp] = await this.ds.query<{ configuracion: any; nombre: string }[]>(
           `SELECT configuracion, nombre FROM empresa WHERE id = $1 AND "isActive" = true`,
           [empresaId],
         );
         if (!emp) continue;
         const cfg = (emp.configuracion ?? {}) as Record<string, unknown>;
-        if (cfg.notifFactRecurrente === false) continue; // flag desactivado
+        if (cfg.notifFactRecurrente === false) continue;
 
-        // Obtener emails de admin/contador de la empresa
         const admins = await this.ds.query<{ email: string; nombre: string }[]>(
           `SELECT u.email, u.nombre FROM users u
            JOIN usuario_empresa ue ON ue."userId" = u.id
@@ -318,14 +361,12 @@ export class FacturasRecurrentesService {
     rec: FacturaRecurrente,
     empresaId: number,
   ): Promise<void> {
-    // 1. Verificar que el cliente tiene email
     const clienteEmail = factura.cliente?.email;
     if (!clienteEmail) {
       this.logger.debug(`[EmailFactura] Cliente #${factura.clienteId} sin email — se omite`);
       return;
     }
 
-    // 2. Verificar flag de la empresa: autoEmailFacturaRecurrente (default: true)
     const [emp] = await this.ds.query<{ configuracion: any; nombre: string; razonSocial: string }[]>(
       `SELECT configuracion, nombre, "razonSocial" FROM empresa WHERE id = $1 AND "isActive" = true`,
       [empresaId],
@@ -337,10 +378,8 @@ export class FacturasRecurrentesService {
       return;
     }
 
-    // 3. Generar PDF (fuera del contexto HTTP — usa empresaId directo)
     const { buffer, filename } = await this.pdfService.generarPDFDesdeEntidad(factura, empresaId);
 
-    // 4. Construir HTML del email
     const empresaNombre = emp.razonSocial || emp.nombre || 'HiCloud ERP';
     const clienteNombre = factura.cliente?.nombre || 'Cliente';
     const folio         = factura.folio;
@@ -371,7 +410,6 @@ export class FacturasRecurrentesService {
         </div>
       </div>`;
 
-    // 5. Enviar email — no-throw
     await this.emailService.enviar({
       to:      clienteEmail,
       subject: `Factura ${folio} — ${empresaNombre}`,
@@ -387,49 +425,9 @@ export class FacturasRecurrentesService {
     const hoy = new Date();
     hoy.setHours(0, 0, 0, 0);
 
-    // Generar factura directamente (sin depender del cron ni afectar otras empresas)
-    let subtotal = 0, iva = 0;
-    const detallesData = rec.detalles.map((d, idx) => {
-      const precio      = Number(d.precioUnitario ?? 0) || 0;
-      const cantidad    = Number(d.cantidad       ?? 1) || 1;
-      const pctIva      = Number(d.porcentajeIva  ?? 0) || 0;
-      const descripcion = (d.descripcion ?? '').trim() || `Ítem ${idx + 1}`;
-      const sub         = precio * cantidad;
-      const impIva      = sub * (pctIva / 100);
-      subtotal += sub; iva += impIva;
-      return { ...d, descripcion, precioUnitario: precio, cantidad, porcentajeIva: pctIva,
-               subtotal: sub, importeIva: impIva, total: sub + impIva };
-    });
+    const { factura, folio } = await this.generarDesdeTemplate(rec, hoy);
 
-    const folio = await generarNumeroSecuencial(
-      this.ds, 'facturas', 'folio', '^FAC-[0-9]+$', 'FAC-', 1, rec.empresaId!,
-    );
-
-    const factura = await this.facturaRepository.save(
-      this.facturaRepository.create({
-        empresaId:           rec.empresaId,
-        folio,
-        fecha:               hoy,
-        estado:              FacturaEstado.BORRADOR,
-        clienteId:           rec.clienteId,
-        usuarioId:           rec.userId,
-        notas:               `Factura recurrente: ${rec.nombre}`,
-        subtotal:            Number(subtotal.toFixed(2)),
-        iva:                 Number(iva.toFixed(2)),
-        total:               Number((subtotal + iva).toFixed(2)),
-        facturaRecurrenteId: rec.id,   // trazabilidad al template
-      }),
-    );
-
-    await this.detalleRepository.save(
-      this.detalleRepository.create(
-        detallesData.map(d => ({ ...d, facturaId: factura.id })),
-      ),
-    );
-
-    // Calcular próxima ejecución desde hoy
     const proxima = this.calcularProxima(rec.frecuencia, rec.diaEjecucion, hoy);
-
     await this.recurrenteRepository.update(id, {
       ultimaEjecucion:  hoy,
       proximaEjecucion: proxima,

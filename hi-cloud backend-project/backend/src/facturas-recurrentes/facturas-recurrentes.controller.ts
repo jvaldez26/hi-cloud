@@ -14,24 +14,27 @@ import { UserRole } from '../users/enums/user-role.enum';
 import { User } from '../users/users.entity';
 import {
   IsString, IsInt, IsPositive, IsEnum, IsArray,
-  IsOptional, IsDateString, IsNumber,
+  IsOptional, IsDateString, IsNumber, ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
 class DetalleDto {
-  @IsOptional() @IsInt() productoId?: number;
+  @IsOptional() @IsInt() @Type(() => Number) productoId?: number;
   @IsString() descripcion: string;
   @IsInt() @IsPositive() @Type(() => Number) cantidad: number;
-  @IsNumber({ maxDecimalPlaces: 2 }) @IsPositive() precioUnitario: number;
-  @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) porcentajeIva?: number;
+  @IsNumber({ maxDecimalPlaces: 2 }) @IsPositive() @Type(() => Number) precioUnitario: number;
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Type(() => Number) porcentajeIva?: number;
 }
 
 class CreateRecurrenteDto {
   @IsString() nombre: string;
-  @IsInt() @IsPositive() clienteId: number;
-  @IsArray() detalles: DetalleDto[];
+  @IsInt() @IsPositive() @Type(() => Number) clienteId: number;
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => DetalleDto)
+  detalles: DetalleDto[];
   @IsEnum(Frecuencia) frecuencia: Frecuencia;
-  @IsInt() @IsPositive() diaEjecucion: number;
+  @IsInt() @IsPositive() @Type(() => Number) diaEjecucion: number;
   @IsDateString() fechaInicio: string;
   @IsOptional() @IsDateString() fechaFin?: string;
   @IsOptional() @IsString() notas?: string;
