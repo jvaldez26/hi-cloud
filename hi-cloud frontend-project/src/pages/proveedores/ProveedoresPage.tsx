@@ -6,7 +6,7 @@ import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Table, Button, Input, Space, Modal, Form, Row, Col,
   Typography, Popconfirm, message, Card, Select, InputNumber,
-  Avatar, Tag, Tooltip, theme,
+  Avatar, Tag, Tooltip, theme, Checkbox,
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
@@ -188,9 +188,21 @@ export default function ProveedoresPage() {
               </Form.Item>
             </Col>
             <Col xs={24} sm={8}>
-              <Form.Item name="rnc" label="RNC"
-                rules={[{ required: true }, { pattern: /^\d{9}$|^\d{11}$/, message: '9 u 11 dígitos' }]}>
-                <Input placeholder="130000001" maxLength={11} />
+              <Form.Item noStyle shouldUpdate={(prev, cur) => prev.esInformal !== cur.esInformal}>
+                {({ getFieldValue }) => {
+                  const informal = getFieldValue('esInformal');
+                  return (
+                    <Form.Item name="rnc" label="RNC"
+                      rules={informal ? [] : [{ required: true }, { pattern: /^\d{9}$|^\d{11}$/, message: '9 u 11 dígitos' }]}>
+                      <Input placeholder="130000001" maxLength={11} disabled={informal} />
+                    </Form.Item>
+                  );
+                }}
+              </Form.Item>
+            </Col>
+            <Col xs={24}>
+              <Form.Item name="esInformal" valuePropName="checked" style={{ marginBottom: 4 }}>
+                <Checkbox>Proveedor informal (sin RNC) — genera E41 en órdenes de compra</Checkbox>
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>

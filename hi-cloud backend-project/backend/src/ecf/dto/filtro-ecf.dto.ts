@@ -31,4 +31,9 @@ export class FiltroECFDto extends PaginationDto {
   @IsInt()
   @IsPositive()
   documentoOrigenId?: number;
+
+  /** Tipo del documento origen — OBLIGATORIO para evitar colisión de IDs entre tipos */
+  @IsOptional()
+  @IsString()
+  documentoOrigenTipo?: string;
 }

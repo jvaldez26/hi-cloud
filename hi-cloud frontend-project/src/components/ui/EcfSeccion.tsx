@@ -14,6 +14,8 @@ interface Props {
   facturaId?:        number;
   /** ID del documento origen — usar para compras, gastos, notas */
   documentoOrigenId?: number;
+  /** Tipo del documento origen (COMPRA, GASTO, etc.) — evita colisión de IDs entre tipos */
+  documentoOrigenTipo?: string;
   /** Clave de query a invalidar al reenviar */
   queryKeyBase?:     string;
 }
@@ -25,7 +27,7 @@ interface Props {
  */
 const POLL_TIMEOUT_MS = 5 * 60 * 1000; // dejar de hacer polling después de 5 minutos
 
-export default function EcfSeccion({ facturaId, documentoOrigenId, queryKeyBase }: Props) {
+export default function EcfSeccion({ facturaId, documentoOrigenId, documentoOrigenTipo, queryKeyBase }: Props) {
   const qc = useQueryClient();
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const pollStartRef = useRef<number | null>(null);
@@ -36,7 +38,7 @@ export default function EcfSeccion({ facturaId, documentoOrigenId, queryKeyBase 
 
   const queryFn = facturaId
     ? () => ecfApi.getEcfByFactura(facturaId!)
-    : () => ecfApi.getEcfByDocumento(documentoOrigenId!);
+    : () => ecfApi.getEcfByDocumento(documentoOrigenId!, documentoOrigenTipo);
 
   const { data: ecf } = useQuery({
     queryKey,
@@ -103,9 +105,7 @@ export default function EcfSeccion({ facturaId, documentoOrigenId, queryKeyBase 
       extra={
         <Space>
           {procesando && (
-            <Text type="secondary" style={{ fontSize: 11 }}>
-              {ecf?.estadoDGII === 'enviado' && ecf?.trackId ? 'Recibido por MSeller…' : 'Verificando con DGII…'}
-            </Text>
+            <Text type="secondary" style={{ fontSize: 11 }}>Verificando con DGII…</Text>
           )}
           {puedeReenviar && (
             <Tooltip title="Reenviar a tu proveedor e-CF">
@@ -122,19 +122,8 @@ export default function EcfSeccion({ facturaId, documentoOrigenId, queryKeyBase 
       {procesando && (
         <Alert type="info" showIcon icon={<Spin size="small" />}
           style={{ marginBottom: 10 }}
-          message={
-            ecf.estadoDGII === 'enviado' && ecf.trackId
-              ? 'Recibido por MSeller — verificando aceptación DGII'
-              : ecf.estadoDGII === 'enviado'
-              ? 'Enviado a MSeller — esperando confirmación de recepción'
-              : 'Enviando a MSeller…'
-          }
-          description={
-            ecf.estadoDGII === 'enviado' && ecf.trackId
-              ? 'El documento fue recibido por MSeller/DGII. Se actualizará automáticamente cuando sea aceptado o rechazado.'
-              : 'El comprobante fue enviado a tu proveedor e-CF. Se actualizará automáticamente cuando la DGII responda.'
-          }
-        />
+          message="Enviado — esperando respuesta de la DGII"
+          description="El comprobante fue enviado a tu proveedor e-CF. Se actualizará automáticamente cuando la DGII responda." />
       )}
       {esAceptado && (
         <Alert type="success" showIcon icon={<CheckCircleFilled />}

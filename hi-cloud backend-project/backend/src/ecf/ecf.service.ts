@@ -626,7 +626,7 @@ export class ECFService implements OnModuleInit {
   // ──────────────────────────────────────────────────────────────────
 
   async getECFs(filtro: FiltroECFDto) {
-    const { limit = 10, page = 1, search, estado, tipo, fecha, facturaId, documentoOrigenId } = filtro;
+    const { limit = 10, page = 1, search, estado, tipo, fecha, facturaId, documentoOrigenId, documentoOrigenTipo } = filtro;
     const empresaId = this.tenantService.getEmpresaId();
 
     const qb = this.ecfRepository
@@ -639,8 +639,9 @@ export class ECFService implements OnModuleInit {
     if (estado)          qb.andWhere('ecf.estadoDGII = :estado', { estado });
     if (tipo)            qb.andWhere('tipo.codigo = :tipo', { tipo });
     if (fecha)           qb.andWhere("TO_CHAR(ecf.createdAt, 'YYYY-MM') = :fecha", { fecha });
-    if (facturaId)       qb.andWhere('ecf.facturaId = :facturaId', { facturaId });
-    if (documentoOrigenId) qb.andWhere('ecf.documentoOrigenId = :docId', { docId: documentoOrigenId });
+    if (facturaId)          qb.andWhere('ecf.facturaId = :facturaId', { facturaId });
+    if (documentoOrigenId)  qb.andWhere('ecf.documentoOrigenId = :docId', { docId: documentoOrigenId });
+    if (documentoOrigenTipo) qb.andWhere('ecf.documentoOrigenTipo = :docTipo', { docTipo: documentoOrigenTipo });
     if (search) {
       qb.andWhere(
         '(ecf.numero ILIKE :s OR ecf.proveedorReferencia ILIKE :s)',

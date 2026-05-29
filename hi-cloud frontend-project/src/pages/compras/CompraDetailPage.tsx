@@ -1,5 +1,5 @@
 import { Button, Card, Descriptions, Table, Tag, Row, Col, Typography,
-         Statistic, Space, Spin, Steps, message, Popconfirm, theme } from 'antd';
+         Statistic, Space, Spin, Steps, message, Popconfirm, theme, Alert } from 'antd';
 import { ArrowLeftOutlined, SendOutlined, CheckCircleOutlined,
          CloseCircleOutlined, PrinterOutlined, LoadingOutlined } from '@ant-design/icons';
 import { useState } from 'react';
@@ -171,8 +171,39 @@ export default function CompraDetailPage() {
             </Row>
           </Card>
 
-          {/* ── Sección e-CF ─────────────────────────────────────────── */}
-          {compra && <EcfSeccion documentoOrigenId={(compra as any).id} queryKeyBase="compras" />}
+          {/* ── Sección e-CF / NCF Proveedor ─────────────────────────── */}
+          {(() => {
+            const proveedor = (compra as any).proveedor;
+            const esInformal = !proveedor?.rnc ||
+                               proveedor.rnc === '000000000' ||
+                               proveedor.esInformal === true;
+            if (esInformal) {
+              // Proveedor sin RNC → emitir E41 (Comprobante de Compras)
+              return (
+                <EcfSeccion
+                  documentoOrigenId={(compra as any).id}
+                  documentoOrigenTipo="COMPRA"
+                  queryKeyBase="compras"
+                />
+              );
+            }
+            // Proveedor formal → mostrar NCF que emitió el proveedor
+            return (
+              <Card size="small" style={{ marginBottom: 16 }}>
+                <Alert
+                  type="info"
+                  showIcon
+                  message="Comprobante Fiscal del Proveedor"
+                  description={
+                    (compra as any).numeroFacturaProveedor
+                      ? <>NCF: <strong>{(compra as any).numeroFacturaProveedor}</strong> — emitido por {proveedor?.nombre}</>
+                      : 'Sin NCF registrado. Ingresa el número de comprobante del proveedor al editar la orden.'
+                  }
+                  style={{ marginBottom: 0 }}
+                />
+              </Card>
+            );
+          })()}
 
           <Card title="Detalle de productos">
             <Table

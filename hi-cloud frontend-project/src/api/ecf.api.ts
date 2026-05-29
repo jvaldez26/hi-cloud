@@ -40,12 +40,16 @@ export const ecfApi = {
       return (d?.data ?? d)?.[0] ?? null;
     }),
 
-  /** e-CF de cualquier documento origen (compra, gasto, nota, etc.) */
-  getEcfByDocumento: (documentoOrigenId: number) =>
-    api.get(`/ecf?documentoOrigenId=${documentoOrigenId}&limit=1`).then(r => {
+  /** e-CF de cualquier documento origen (compra, gasto, nota, etc.)
+   *  Pasar documentoOrigenTipo evita colisión cuando factura y compra tienen el mismo ID */
+  getEcfByDocumento: (documentoOrigenId: number, documentoOrigenTipo?: string) => {
+    const params: Record<string, any> = { documentoOrigenId, limit: 1 };
+    if (documentoOrigenTipo) params.documentoOrigenTipo = documentoOrigenTipo;
+    return api.get('/ecf', { params }).then(r => {
       const d = r.data?.data ?? r.data;
       return (d?.data ?? d)?.[0] ?? null;
-    }),
+    });
+  },
 
   getXml: (numero: string) =>
     api.get(`/ecf/${numero}/xml`).then(r => r.data.data),

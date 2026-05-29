@@ -38,4 +38,8 @@ export class Proveedor extends TenantBaseEntity {
 
   @Column({ type: 'text', nullable: true })
   notas?: string;
+
+  /** Proveedor sin RNC (persona física o negocio informal) — genera E41 en compras */
+  @Column({ type: 'boolean', nullable: true, default: false })
+  esInformal?: boolean;
 }

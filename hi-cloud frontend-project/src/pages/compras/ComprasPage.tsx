@@ -237,7 +237,7 @@ export default function ComprasPage() {
             { key: 'solicitar-aprobacion', label: <><CheckCircleOutlined style={{ marginRight: 6, color: '#1677ff' }} />Solicitar aprobación</>, onClick: () => setAprobCompra(r) },
           ] : []),
           ...items,
-          ...((r.estado === 'recibida' || r.estado === 'pagada') && !(r as any).ecfNumero ? [
+          ...((r.estado === 'recibida' || r.estado === 'pagada') && !(r as any).ecfNumero && (!(r as any).proveedor?.rnc || (r as any).proveedor?.esInformal) ? [
             { type: 'divider' as const },
             { key: 'e41', label: 'Emitir Comprobante E41', icon: <AuditOutlined />, onClick: () => emitirEcfE41.mutate(r.id) },
           ] : []),
