@@ -368,7 +368,6 @@ export class FacturasService {
         AND f."isActive"  = true
         AND f.estado IN ('emitida', 'pagada')
         AND e.id IS NOT NULL
-        AND e."estadoDGII" != 'anulado'
         AND COALESCE(t.codigo, SUBSTRING(e.numero, 1, 3)) = ANY($3::text[])
         AND (
           f.folio          ILIKE $2
