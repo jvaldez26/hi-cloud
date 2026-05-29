@@ -63,9 +63,19 @@ export default function CompraDetailPage() {
 
   const emitirE41Mut = useMutation({
     mutationFn: () => ecfApi.emitirEcfCompra(Number(id)),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['compra', id] }); message.success('E41 emitido'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['compra', id] }); message.success('E41 emitido correctamente'); },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al emitir E41'),
   });
+
+  const handleEmitirE41 = async () => {
+    const DEFINITIVOS = ['aceptado', 'enviado', 'pendiente_envio', 'observado', 'condicionado'];
+    const ecfExistente = await ecfApi.getEcfByDocumento(Number(id), 'COMPRA').catch(() => null);
+    if (ecfExistente && DEFINITIVOS.includes(ecfExistente.estadoDGII ?? '')) {
+      message.warning(`Ya existe un Comprobante E41 para esta orden: ${ecfExistente.numero}. No se emitirá un duplicado.`);
+      return;
+    }
+    emitirE41Mut.mutate();
+  };
 
   const estadoMut = useMutation({
     mutationFn: ({ estado }: { estado: CompraEstado }) =>
@@ -185,8 +195,7 @@ export default function CompraDetailPage() {
                                proveedor.rnc === '000000000' ||
                                proveedor.esInformal === true;
             if (esInformal) {
-              // Proveedor sin RNC → mostrar E41 (Comprobante de Compras) o botón para emitirlo
-              const puedeEmitir = (estado === 'recibida' || estado === 'pagada');
+              const puedeEmitir = estado === 'recibida' || estado === 'pagada';
               return (
                 <>
                   <EcfSeccion
@@ -196,12 +205,8 @@ export default function CompraDetailPage() {
                   />
                   {puedeEmitir && (
                     <div style={{ marginBottom: 16 }}>
-                      <Button
-                        icon={<AuditOutlined />}
-                        loading={emitirE41Mut.isPending}
-                        onClick={() => emitirE41Mut.mutate()}
-                        size="small"
-                      >
+                      <Button icon={<AuditOutlined />} size="small"
+                        loading={emitirE41Mut.isPending} onClick={handleEmitirE41}>
                         Emitir Comprobante E41
                       </Button>
                     </div>

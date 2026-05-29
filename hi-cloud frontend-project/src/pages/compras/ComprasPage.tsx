@@ -134,6 +134,17 @@ export default function ComprasPage() {
     ),
   });
 
+  const handleEmitirE41 = async (id: number) => {
+    const ecfExistente = await ecfApi.getEcfByDocumento(id, 'COMPRA').catch(() => null);
+    const ESTADOS_DEFINITIVOS = ['aceptado', 'enviado', 'pendiente_envio', 'observado', 'condicionado'];
+    if (ecfExistente && ESTADOS_DEFINITIVOS.includes(ecfExistente.estadoDGII ?? '')) {
+      message.warning(`Ya existe un Comprobante E41 emitido para esta orden: ${ecfExistente.numero}. No se creará un duplicado.`);
+      if (ecfExistente.numero) setEcfEncf(ecfExistente.numero);
+      return;
+    }
+    emitirEcfE41.mutate(id);
+  };
+
   const emailMut = useMutation({
     mutationFn: ({ id, email }: { id: number; email: string }) =>
       api.post(`/notificaciones/compra/${id}/enviar`, { email }).then(r => r.data?.data ?? r.data),
@@ -237,9 +248,9 @@ export default function ComprasPage() {
             { key: 'solicitar-aprobacion', label: <><CheckCircleOutlined style={{ marginRight: 6, color: '#1677ff' }} />Solicitar aprobación</>, onClick: () => setAprobCompra(r) },
           ] : []),
           ...items,
-          ...((r.estado === 'recibida' || r.estado === 'pagada') && !(r as any).ecfNumero && (!(r as any).proveedor?.rnc || (r as any).proveedor?.esInformal) ? [
+          ...((r.estado === 'recibida' || r.estado === 'pagada') && (!(r as any).proveedor?.rnc || (r as any).proveedor?.esInformal) ? [
             { type: 'divider' as const },
-            { key: 'e41', label: 'Emitir Comprobante E41', icon: <AuditOutlined />, onClick: () => emitirEcfE41.mutate(r.id) },
+            { key: 'e41', label: 'Emitir Comprobante E41', icon: <AuditOutlined />, onClick: () => handleEmitirE41(r.id) },
           ] : []),
           ...(r.estado === 'borrador' && puedeEliminar ? [
             { type: 'divider' as const },
