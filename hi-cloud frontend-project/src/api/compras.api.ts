@@ -9,6 +9,8 @@ export interface CompraPayload {
   proveedorId: number; fecha: string;
   detalles: CompraDetallePayload[];
   notas?: string; numeroFacturaProveedor?: string;
+  tipoPago?: 'contado' | 'credito';
+  diasCredito?: number;
 }
 
 export const comprasApi = {

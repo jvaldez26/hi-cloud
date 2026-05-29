@@ -75,10 +75,18 @@ export class ComprasService {
     const folio     = await this.generarFolio();
     const empresaId = this.tenantService.getEmpresaId();
 
+    const tipoPago    = dto.tipoPago ?? 'credito';
+    const diasCredito = dto.diasCredito ?? 30;
+    let fechaVencimiento: Date | undefined;
+    if (tipoPago === 'credito') {
+      fechaVencimiento = new Date(dto.fecha);
+      fechaVencimiento.setDate(fechaVencimiento.getDate() + diasCredito);
+    }
+
     const compra = this.compraRepository.create({
       empresaId,
       folio,
-      fecha: new Date(dto.fecha),
+      fecha:                  new Date(dto.fecha),
       proveedorId:            dto.proveedorId,
       usuarioId:              usuario.id,
       notas:                  dto.notas,
@@ -86,6 +94,9 @@ export class ComprasService {
       subtotal:               Number(subtotalCompra.toFixed(2)),
       itbis:                  Number(itbisCompra.toFixed(2)),
       total:                  Number((subtotalCompra + itbisCompra).toFixed(2)),
+      tipoPago,
+      diasCredito,
+      fechaVencimiento,
     });
 
     const savedCompra = await this.compraRepository.save(compra);
@@ -173,8 +184,10 @@ export class ComprasService {
         );
       }
 
-      // 2. Crear cuenta por pagar automáticamente (30 días por defecto)
-      await this.cxpService.crear(compra.id, compra.usuarioId);
+      // 2. Crear cuenta por pagar solo si tipoPago = 'credito'
+      if (!compra.tipoPago || compra.tipoPago === 'credito') {
+        await this.cxpService.crear(compra.id, compra.usuarioId, compra.diasCredito ?? 30);
+      }
 
       // 3. Asiento contable automático
       await this.asientosService.asientoCompraRecibida(

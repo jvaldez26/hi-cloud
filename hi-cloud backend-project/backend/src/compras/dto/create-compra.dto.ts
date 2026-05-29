@@ -62,4 +62,15 @@ export class CreateCompraDto {
   @IsOptional()
   @IsString() @MaxLength(2000)
   notas?: string;
+
+  @IsOptional()
+  @IsString()
+  tipoPago?: 'contado' | 'credito';
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(365)
+  @Type(() => Number)
+  diasCredito?: number;
 }

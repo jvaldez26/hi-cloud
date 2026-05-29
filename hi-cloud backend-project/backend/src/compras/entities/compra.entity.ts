@@ -73,4 +73,16 @@ export class Compra extends TenantBaseEntity {
   /** Fecha efectiva de pago (puede diferir de fecha del comprobante) */
   @Column({ type: 'date', nullable: true })
   fechaPago?: Date;
+
+  /** Tipo de pago: contado (no genera CxP) o credito (genera CxP automáticamente) */
+  @Column({ length: 10, nullable: true, default: 'credito' })
+  tipoPago?: string;
+
+  /** Días de crédito (solo aplica si tipoPago = 'credito') */
+  @Column({ type: 'int', nullable: true, default: 30 })
+  diasCredito?: number;
+
+  /** Fecha de vencimiento del crédito (fecha + diasCredito) */
+  @Column({ type: 'date', nullable: true })
+  fechaVencimiento?: Date;
 }

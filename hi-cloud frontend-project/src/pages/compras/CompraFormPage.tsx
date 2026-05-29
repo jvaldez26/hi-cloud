@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Form, Input, Button, Card, Row, Col, Typography, Select,
-         DatePicker, Table, InputNumber, Space, Divider, message } from 'antd';
+         DatePicker, Table, InputNumber, Space, Divider, message, Tag, Alert } from 'antd';
 import { PlusOutlined, DeleteOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -17,6 +17,8 @@ interface Linea { key: string; productoId?: number; descripcion?: string; cantid
 export default function CompraFormPage() {
   const [form] = Form.useForm();
   const [lineas, setLineas] = useState<Linea[]>([{ key: '1', cantidad: 1, precioUnitario: 0, porcentajeItbis: 18 }]);
+  const [tipoPago, setTipoPago]     = useState<'contado' | 'credito'>('credito');
+  const [diasCredito, setDiasCredito] = useState(30);
   const navigate = useNavigate();
   const qc = useQueryClient();
 
@@ -41,12 +43,26 @@ export default function CompraFormPage() {
     setLineas(updated);
   };
 
+  const fechaVencimientoCalc = (() => {
+    const fechaVal = form.getFieldValue('fecha') as dayjs.Dayjs | undefined;
+    if (tipoPago !== 'credito' || !fechaVal) return null;
+    return fechaVal.add(diasCredito, 'day');
+  })();
+
   const handleSubmit = (values: { proveedorId: number; fecha: dayjs.Dayjs; numeroFacturaProveedor?: string; notas?: string }) => {
     const detalles: CompraDetallePayload[] = lineas.map(l => ({
       productoId: l.productoId!, descripcion: l.descripcion,
       cantidad: l.cantidad, precioUnitario: l.precioUnitario, porcentajeItbis: l.porcentajeItbis,
     }));
-    createMut.mutate({ proveedorId: values.proveedorId, fecha: values.fecha.format('YYYY-MM-DD'), detalles, notas: values.notas, numeroFacturaProveedor: values.numeroFacturaProveedor });
+    createMut.mutate({
+      proveedorId: values.proveedorId,
+      fecha: values.fecha.format('YYYY-MM-DD'),
+      detalles,
+      notas: values.notas,
+      numeroFacturaProveedor: values.numeroFacturaProveedor,
+      tipoPago,
+      diasCredito: tipoPago === 'credito' ? diasCredito : undefined,
+    });
   };
 
   const lineaCols = [
@@ -86,7 +102,7 @@ export default function CompraFormPage() {
     <div>
       <Row align="middle" style={{ marginBottom: 16 }}>
         <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/compras')}>Volver</Button>
-        <Title level={4} style={{ margin: '0 0 0 8px' }}>Nueva Orden de Compra</Title>
+        <Title level={4} style={{ margin: '0 0 0 8px' }}>Nueva Factura de Compra</Title>
       </Row>
       <Form form={form} layout="vertical" onFinish={handleSubmit} initialValues={{ fecha: dayjs() }}>
         <Card style={{ marginBottom: 16 }}>
@@ -97,20 +113,52 @@ export default function CompraFormPage() {
                   options={proveedores?.data.map(p => ({ value: p.id, label: `${p.rnc} — ${p.nombre}` }))} />
               </Form.Item>
             </Col>
-            <Col xs={12} sm={5}>
+            <Col xs={12} sm={4}>
               <Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}>
                 <DatePicker style={{ width:'100%' }} format="DD/MM/YYYY" />
               </Form.Item>
             </Col>
-            <Col xs={12} sm={5}>
-              <Form.Item name="numeroFacturaProveedor" label="No. Factura Proveedor">
+            <Col xs={12} sm={4}>
+              <Form.Item name="numeroFacturaProveedor" label="NCF Proveedor">
                 <Input placeholder="B01-00000001" />
               </Form.Item>
             </Col>
-            <Col xs={12} sm={4}>
+            <Col xs={12} sm={3}>
+              <Form.Item label="Tipo de pago" required>
+                <Select value={tipoPago} onChange={v => setTipoPago(v)} style={{ width: '100%' }}>
+                  <Select.Option value="contado">Contado</Select.Option>
+                  <Select.Option value="credito">Crédito</Select.Option>
+                </Select>
+              </Form.Item>
+            </Col>
+            {tipoPago === 'credito' && (
+              <Col xs={12} sm={3}>
+                <Form.Item label="Días crédito">
+                  <InputNumber min={1} max={365} value={diasCredito}
+                    onChange={v => setDiasCredito(v ?? 30)} style={{ width: '100%' }} addonAfter="días" />
+                </Form.Item>
+              </Col>
+            )}
+            <Col xs={24} sm={4}>
               <Form.Item name="notas" label="Notas"><Input.TextArea rows={1} /></Form.Item>
             </Col>
           </Row>
+          {tipoPago === 'credito' && fechaVencimientoCalc && (
+            <Alert
+              type="info" showIcon style={{ marginTop: 4 }}
+              message={
+                <span>
+                  Vence el <strong>{fechaVencimientoCalc.format('DD/MM/YYYY')}</strong>
+                  {' '}<Tag color="blue">{diasCredito} días crédito</Tag>
+                  — se creará una Cuenta por Pagar automáticamente al recibir.
+                </span>
+              }
+            />
+          )}
+          {tipoPago === 'contado' && (
+            <Alert type="success" showIcon style={{ marginTop: 4 }}
+              message="Pago de contado — no se generará Cuenta por Pagar." />
+          )}
         </Card>
         <Card title="Ítems" style={{ marginBottom: 16 }}
           extra={<Button icon={<PlusOutlined />} onClick={() => setLineas([...lineas, { key: Date.now().toString(), cantidad: 1, precioUnitario: 0, porcentajeItbis: 18 }])}>Agregar</Button>}>
@@ -129,7 +177,7 @@ export default function CompraFormPage() {
                   <strong style={{ fontSize: 18, color: '#1677ff' }}>{fmt.money(total)}</strong>
                 </Row>
                 <Button type="primary" htmlType="submit" block size="large" loading={createMut.isPending}>
-                  Crear Orden de Compra
+                  Crear Factura de Compra
                 </Button>
               </Space>
             </Col>

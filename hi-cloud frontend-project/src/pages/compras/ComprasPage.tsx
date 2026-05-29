@@ -161,12 +161,14 @@ export default function ComprasPage() {
   const hayFiltros = !!(search || estado || rango);
 
   const COLS_DEF = [
-    { key: 'folio',    label: 'Folio',     defaultVisible: true  },
-    { key: 'fecha',    label: 'Fecha',     defaultVisible: true  },
-    { key: 'proveedor',label: 'Proveedor', defaultVisible: true  },
-    { key: 'total',    label: 'Total',     defaultVisible: true  },
-    { key: 'estado',   label: 'Estado',    defaultVisible: true  },
-    { key: 'ecf',      label: 'e-CF',      defaultVisible: false },
+    { key: 'folio',     label: 'Folio',        defaultVisible: true  },
+    { key: 'fecha',     label: 'Fecha',        defaultVisible: true  },
+    { key: 'proveedor', label: 'Proveedor',    defaultVisible: true  },
+    { key: 'ncf',       label: 'NCF Proveedor',defaultVisible: true  },
+    { key: 'tipoPago',  label: 'Tipo Pago',    defaultVisible: true  },
+    { key: 'total',     label: 'Total',        defaultVisible: true  },
+    { key: 'estado',    label: 'Estado',       defaultVisible: true  },
+    { key: 'ecf',       label: 'e-CF',         defaultVisible: false },
   ];
   const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('compras', COLS_DEF);
 
@@ -183,7 +185,18 @@ export default function ComprasPage() {
       title: 'Proveedor', key: 'proveedor', dataIndex: ['proveedor', 'nombre'], ellipsis: true, minWidth: 120,
       render: (v: string) => <Text style={{ fontSize: 13 }}>{v ?? '—'}</Text>,
     },
-    // Subtotal e ITBIS omitidos — disponibles en el detalle de la compra
+    {
+      title: 'NCF Proveedor', key: 'ncf', dataIndex: 'numeroFacturaProveedor', width: 130,
+      render: (v: string) => v ? <Text code style={{ fontSize: 11 }}>{v}</Text> : <Text type="secondary">—</Text>,
+    },
+    {
+      title: 'Tipo Pago', key: 'tipoPago', dataIndex: 'tipoPago', width: 90,
+      render: (v: string) => (
+        <Tag color={v === 'contado' ? 'green' : 'blue'} style={{ fontSize: 11, margin: 0 }}>
+          {v === 'contado' ? 'Contado' : 'Crédito'}
+        </Tag>
+      ),
+    },
     {
       title: 'Total', key: 'total', dataIndex: 'total', width: 110, align: 'right' as const,
       render: (v: number) => <Text strong style={{ color: token.colorPrimary }}>{fmt.money(v)}</Text>,
@@ -248,7 +261,7 @@ export default function ComprasPage() {
     <Card>
       <Row justify="space-between" align="middle" gutter={[0, 8]} style={{ marginBottom: 16 }}>
         <Col>
-          <Title level={4} style={{ margin: 0 }}>Órdenes de Compra</Title>
+          <Title level={4} style={{ margin: 0 }}>Facturas de Compra</Title>
           {data?.meta && (
             <Text type="secondary" style={{ fontSize: 12 }}>
               {data.meta.total.toLocaleString('es-DO')} compras{hayFiltros ? ' (filtradas)' : ''}
