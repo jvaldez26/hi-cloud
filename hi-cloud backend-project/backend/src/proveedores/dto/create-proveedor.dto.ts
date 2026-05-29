@@ -1,6 +1,6 @@
 import {
   IsString, IsNotEmpty, IsOptional, IsEmail,
-  MaxLength, Matches,
+  MaxLength, Matches, IsBoolean,
 } from 'class-validator';
 
 export class CreateProveedorDto {
@@ -9,12 +9,16 @@ export class CreateProveedorDto {
   @MaxLength(200, { message: 'El nombre no puede superar 200 caracteres' })
   nombre: string;
 
+  @IsOptional()
   @IsString({ message: 'El RNC debe ser texto' })
-  @IsNotEmpty({ message: 'El RNC es requerido' })
   @Matches(/^\d{9}$|^\d{11}$/, {
     message: 'RNC inválido — debe tener 9 dígitos (empresa) u 11 dígitos (persona física)',
   })
-  rnc: string;
+  rnc?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  esInformal?: boolean;
 
   @IsOptional()
   @IsString({ message: 'El teléfono debe ser texto' })
