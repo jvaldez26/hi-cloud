@@ -3,7 +3,7 @@
  * Propósito: recuperar costos/gastos posteriores (mora, fletes, etc.).
  * InformacionReferencia obligatoria: NCFModificado, FechaNCFModificado, CodigoModificacion.
  * FechaVencimientoSecuencia: obligatoria en E33.
- * IndicadorMontoGravado: 0 (precios sin ITBIS incluido).
+ * IndicadorMontoGravado: NO aplica en E33 (documento de modificación).
  */
 import {
   ECFBuildInput, MSellerPayload,
@@ -37,8 +37,7 @@ export function buildE33(input: ECFBuildInput): MSellerPayload {
           tipo:                  33,
           encf,
           fechaVencSec,
-          // Sin IndicadorEnvioDiferido
-          indicadorMontoGravado: 0,
+          // Sin IndicadorEnvioDiferido; sin IndicadorMontoGravado (no aplica en E33)
           tipoIngresos:          '01',
           tipoPago:              1,
           tablaFormasPago:       { FormaDePago: [{ FormaPago: 1, MontoPago: total.toFixed(2) }] },

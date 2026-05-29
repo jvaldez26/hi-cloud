@@ -2,6 +2,7 @@
  * E46 — Comprobante para Exportaciones Electrónico
  * Propósito: reportar ventas de bienes fuera del territorio nacional.
  * IndicadorFacturacion: obligatoriamente 3 (ITBIS Tasa Cero) en todos los ítems.
+ * IndicadorMontoGravado: NO aplica en E46.
  * Comprador: identificado por nombre y país (no requiere RNC).
  */
 import {
@@ -10,8 +11,8 @@ import {
   buildIdDoc, fmtFecha,
   buildCompradorExtranjero,
   buildTotalesExentos,
-  buildItems,
 } from './base-ecf.builder';
+import { round2 } from './sections/totales.section';
 
 export function buildE46(input: ECFBuildInput): MSellerPayload {
   const { encf, factura, config, fechaVencSec, nombreExtranjero, paisExtranjero } = input;
@@ -20,17 +21,29 @@ export function buildE46(input: ECFBuildInput): MSellerPayload {
   const emisor = buildEmisor(toEmpresaConfig(config), fecha);
   assertEmisorOrder(emisor);
 
+  // Exportaciones: IndicadorFacturacion = 3 (ITBIS Tasa Cero) obligatorio
+  const items = (factura.detalles as any[] ?? []).map((d: any, idx: number) => ({
+    NumeroLinea:            idx + 1,
+    IndicadorFacturacion:   3,
+    NombreItem:             d.descripcion,
+    IndicadorBienoServicio: 1,
+    CantidadItem:           Number(d.cantidad),
+    UnidadMedida:           43,
+    PrecioUnitarioItem:     round2(Number(d.precioUnitario)),
+    MontoItem:              round2(Number(d.subtotal)),
+  }));
+
   return {
     ECF: {
       Encabezado: {
         Version: '1.0',
         IdDoc: buildIdDoc({
-          tipo:                  46,
+          tipo:         46,
           encf,
           fechaVencSec,
-          indicadorMontoGravado: 0,
-          tipoIngresos:          '01',
-          tipoPago:              1,
+          // Sin IndicadorMontoGravado (no aplica en E46)
+          tipoIngresos: '01',
+          tipoPago:     1,
         }),
         Emisor:    emisor,
         Comprador: buildCompradorExtranjero(
@@ -39,7 +52,7 @@ export function buildE46(input: ECFBuildInput): MSellerPayload {
         ),
         Totales: buildTotalesExentos(total),
       },
-      DetallesItems: { Item: buildItems(factura.detalles as any[] ?? []) },
+      DetallesItems: { Item: items },
     },
   };
 }

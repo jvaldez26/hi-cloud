@@ -3,6 +3,7 @@
  * Propósito: transacciones exentas a entidades acogidas a leyes/convenios especiales.
  * Comprador: RNC obligatorio del beneficiario del régimen.
  * IndicadorFacturacion: siempre 4 (Exento) en todos los ítems.
+ * IndicadorMontoGravado: NO aplica en E44 — campo inválido para este tipo (causa error 3).
  */
 import {
   ECFBuildInput, MSellerPayload,
@@ -42,12 +43,12 @@ export function buildE44(input: ECFBuildInput): MSellerPayload {
       Encabezado: {
         Version: '1.0',
         IdDoc: buildIdDoc({
-          tipo:                  44,
+          tipo:         44,
           encf,
           fechaVencSec,
-          indicadorMontoGravado: 0,
-          tipoIngresos:          '01',
-          tipoPago:              1,
+          // Sin IndicadorMontoGravado (no existe en XSD E44)
+          tipoIngresos: '01',
+          tipoPago:     1,
         }),
         Emisor:    emisor,
         Comprador: buildCompradorRNC(rnc, cliente?.nombre ?? 'Sin nombre',

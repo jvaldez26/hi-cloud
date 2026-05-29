@@ -39,7 +39,7 @@ export function buildE41(input: ECFBuildInput): MSellerPayload {
           encf,
           fechaVencSec,
           indicadorMontoGravado: hayGravado,
-          // Sin TipoIngresos en E41
+          tipoIngresos:          '01',
           tipoPago:              2,
           fechaLimitePago:       fechaLimite,
         }),

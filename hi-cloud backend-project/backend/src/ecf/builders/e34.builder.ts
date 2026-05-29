@@ -1,16 +1,16 @@
 /**
  * E34 — Nota de Crédito Electrónica
  * InformacionReferencia obligatoria.
- * FechaVencimientoSecuencia: NO incluir (spec definitiva DGII).
+ * FechaVencimientoSecuencia: NO incluir (doc de modificación — no tiene secuencia propia).
  * IndicadorNotaCredito: '0' obligatorio.
- * IndicadorMontoGravado: 0 si todo exento, 1 si hay monto gravado.
+ * IndicadorMontoGravado: NO aplica en E34 (documento de modificación).
  */
 import {
   ECFBuildInput, MSellerPayload,
   buildEmisor, assertEmisorOrder, toEmpresaConfig,
   buildIdDoc, fmtFecha, addDias,
   buildCompradorRNC,
-  buildTotalesExentos, tieneMontoGravado,
+  buildTotalesExentos,
   buildItems,
 } from './base-ecf.builder';
 
@@ -28,7 +28,6 @@ export function buildE34(input: ECFBuildInput): MSellerPayload {
   assertEmisorOrder(emisor);
 
   const detalles    = factura.detalles as any[] ?? [];
-  const hayGravado: 0 | 1 = tieneMontoGravado(detalles) ? 1 : 0;
   const fechaLimite = addDias(factura.fecha ?? new Date(), 30);
 
   return {
@@ -38,10 +37,10 @@ export function buildE34(input: ECFBuildInput): MSellerPayload {
         IdDoc: buildIdDoc({
           tipo:                   34,
           encf,
-          fechaVencSec,
+          // Sin FechaVencimientoSecuencia (E34 es doc de modificación)
           indicadorNotaCredito:   '0',
           indicadorEnvioDiferido: 1,
-          indicadorMontoGravado:  hayGravado,
+          // Sin IndicadorMontoGravado (no aplica en E34)
           tipoIngresos:           '01',
           tipoPago:               2,
           fechaLimitePago:        fechaLimite,
