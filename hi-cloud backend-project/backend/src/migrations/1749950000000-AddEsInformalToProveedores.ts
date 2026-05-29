@@ -13,7 +13,7 @@ export class AddEsInformalToProveedores1749950000000 implements MigrationInterfa
     const incorrectos = await queryRunner.query(`
       SELECT ecf.numero, ecf."documentoOrigenId", t.codigo AS tipo
       FROM ecf
-      JOIN tipo_ecf t ON t.id = ecf."tipoECFId"
+      JOIN tipos_ecf t ON t.id = ecf."tipoECFId"
       WHERE ecf."documentoOrigenTipo" = 'COMPRA'
         AND t.codigo NOT IN ('E41', 'E47')
         AND ecf."isActive" = true
