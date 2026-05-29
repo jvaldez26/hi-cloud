@@ -102,7 +102,7 @@ export default function CompraFormPage() {
     <div>
       <Row align="middle" style={{ marginBottom: 16 }}>
         <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/compras')}>Volver</Button>
-        <Title level={4} style={{ margin: '0 0 0 8px' }}>Nueva Factura de Compra</Title>
+        <Title level={4} style={{ margin: '0 0 0 8px' }}>Nueva Orden de Compra</Title>
       </Row>
       <Form form={form} layout="vertical" onFinish={handleSubmit} initialValues={{ fecha: dayjs() }}>
         <Card style={{ marginBottom: 16 }}>
@@ -177,7 +177,7 @@ export default function CompraFormPage() {
                   <strong style={{ fontSize: 18, color: '#1677ff' }}>{fmt.money(total)}</strong>
                 </Row>
                 <Button type="primary" htmlType="submit" block size="large" loading={createMut.isPending}>
-                  Crear Factura de Compra
+                  Crear Orden de Compra
                 </Button>
               </Space>
             </Col>

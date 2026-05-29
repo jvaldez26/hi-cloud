@@ -156,7 +156,7 @@ const MENU_CATEGORIES: MenuCategory[] = [
     id: 'compras', label: 'Compras & Gastos', Icon: ClipboardList, sectionLabel: undefined,
     items: [
       { path: '/solicitudes-compra',    label: 'Solicitudes de Compra' },
-      { path: '/compras',               label: 'Facturas de Compra' },
+      { path: '/compras',               label: 'Órdenes de Compra' },
       { path: '/proveedores',           label: 'Proveedores' },
       { path: '/cxp',                   label: 'Cuentas por Pagar' },
       { path: '/notas-credito-compras', label: 'NC de Compras' },

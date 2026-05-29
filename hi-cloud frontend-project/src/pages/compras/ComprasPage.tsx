@@ -261,7 +261,7 @@ export default function ComprasPage() {
     <Card>
       <Row justify="space-between" align="middle" gutter={[0, 8]} style={{ marginBottom: 16 }}>
         <Col>
-          <Title level={4} style={{ margin: 0 }}>Facturas de Compra</Title>
+          <Title level={4} style={{ margin: 0 }}>Órdenes de Compra</Title>
           {data?.meta && (
             <Text type="secondary" style={{ fontSize: 12 }}>
               {data.meta.total.toLocaleString('es-DO')} compras{hayFiltros ? ' (filtradas)' : ''}
