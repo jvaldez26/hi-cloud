@@ -92,6 +92,7 @@ function buildE31(input: ECFBuildInput): MSellerPayload {
           encf,
           fechaVencSec,
           indicadorEnvioDiferido:  1,
+          indicadorMontoGravado:   0,   // 0 = precios sin ITBIS incluido (estándar HiCloud)
           tipoIngresos:            '01',
           tipoPago:                1,
         }),
@@ -174,13 +175,14 @@ function buildE33(input: ECFBuildInput): MSellerPayload {
       Encabezado: {
         Version: '1.0',
         IdDoc: buildIdDoc({
-          tipo:              33,
+          tipo:                   33,
           encf,
           fechaVencSec,
           // SIN IndicadorEnvioDiferido
-          tipoIngresos:      '01',
-          tipoPago:          1,
-          tablaFormasPago:   { FormaDePago: [{ FormaPago: 1, MontoPago: total.toFixed(2) }] },
+          indicadorMontoGravado:  0,   // 0 = precios sin ITBIS incluido
+          tipoIngresos:           '01',
+          tipoPago:               1,
+          tablaFormasPago:        { FormaDePago: [{ FormaPago: 1, MontoPago: total.toFixed(2) }] },
         }),
         Emisor:    emisor,
         Comprador: buildCompradorRNC(rnc, cliente?.nombre ?? 'Sin nombre',
