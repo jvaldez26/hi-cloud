@@ -184,19 +184,6 @@ export class ComprasPdfService {
         doc.moveTo(M, y).lineTo(M + CW, y).lineWidth(1).strokeColor('#cccccc').stroke();
         y += 10;
 
-        // ── SECCIÓN FISCAL ─────────────────────────────────────────────────
-        doc.fontSize(8).font('Helvetica-Bold').fillColor('#333333')
-           .text('INFORMACIÓN FISCAL DGII', M, y);
-        y += 12;
-        doc.fontSize(8).font('Helvetica').fillColor('#555555')
-           .text(`Tipo e-CF: E41 — Comprobante de Compras`, M, y, { width: CW * 0.5 })
-           .text(`Código de Seguridad: ${ecf.codigoSeguridad ?? '—'}`, M + CW * 0.5, y, { width: CW * 0.5 });
-        y += 14;
-
-        // Separador
-        doc.moveTo(M, y).lineTo(M + CW, y).lineWidth(0.5).strokeColor('#dddddd').stroke();
-        y += 10;
-
         // ── DATOS DEL PROVEEDOR ─────────────────────────────────────────────
         doc.fontSize(8).font('Helvetica-Bold').fillColor('#333333')
            .text('DATOS DEL PROVEEDOR', M, y);
