@@ -43,6 +43,7 @@ const ESTADO_CONFIG: Record<string, { color: string; label: string }> = {
 };
 
 // ── Búsqueda de factura original con autocompletado ────────────────────────────
+// E33 (Nota Débito) solo puede referenciar E31 — el backend filtra automáticamente.
 function BuscadorFactura({ onSelect }: { onSelect: (f: any) => void }) {
   const [busqueda, setBusqueda] = useState('');
   const [buscando, setBuscando] = useState(false);
@@ -53,15 +54,16 @@ function BuscadorFactura({ onSelect }: { onSelect: (f: any) => void }) {
     if (q.length < 2) { setOpciones([]); return; }
     setBuscando(true);
     try {
-      const r = await api.get(`/facturas/buscar-para-nota?q=${encodeURIComponent(q)}`);
+      const r = await api.get(`/facturas/buscar-para-nota?tipoNota=E33&q=${encodeURIComponent(q)}`);
       setOpciones(r.data?.data ?? r.data ?? []);
     } finally { setBuscando(false); }
   };
 
   const opcionesAC = opciones.map((f: any) => ({
-    value: String(f.id),
+    value: String(f.ecfId),
     label: (
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Tag color="blue" style={{ fontSize: 10, margin: 0 }}>E31</Tag>
         <Text strong style={{ fontSize: 12 }}>{f.folio}</Text>
         <Text type="secondary" style={{ fontSize: 11 }}>{f.clienteNombre}</Text>
         <Text type="secondary" style={{ fontSize: 11 }}>— {fmt(Number(f.total))}</Text>
@@ -76,18 +78,18 @@ function BuscadorFactura({ onSelect }: { onSelect: (f: any) => void }) {
       <AutoComplete
         style={{ width: '100%' }} options={opcionesAC} value={busqueda}
         onChange={setBusqueda}
-        onSelect={(_, opt: any) => { onSelect(opt.data); setBusqueda(opt.data.folio); setOpciones([]); }}
+        onSelect={(_, opt: any) => { onSelect(opt.data); setBusqueda(opt.data.folio ?? opt.data.encf); setOpciones([]); }}
         onSearch={buscar}
         notFoundContent={buscando
           ? <Spin size="small" />
-          : busqueda.length >= 2 ? <Text type="secondary" style={{ fontSize: 12 }}>Sin resultados — solo facturas con e-CF Aceptado</Text> : null}
+          : busqueda.length >= 2 ? <Text type="secondary" style={{ fontSize: 12 }}>Sin resultados — solo e-CFs E31 Aceptados</Text> : null}
       >
         <Input prefix={<SearchOutlined />}
-          placeholder="Buscar por folio (FAC-...) o eNCF (E31...)"
+          placeholder="Buscar por folio (FAC-...), eNCF, cliente o RNC..."
           suffix={buscando ? <Spin size="small" /> : null} />
       </AutoComplete>
       <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 3 }}>
-        Solo facturas con e-CF Aceptado por DGII pueden ser referenciadas en un E33.
+        E33 (Nota Débito) solo puede referenciar e-CFs tipo E31 Aceptados por DGII.
       </Text>
     </div>
   );

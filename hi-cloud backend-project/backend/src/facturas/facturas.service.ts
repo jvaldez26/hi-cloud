@@ -326,58 +326,60 @@ export class FacturasService {
   // ── Búsqueda de facturas para E33/E34 ────────────────────────────────────────
   // Devuelve facturas con e-CF ACEPTADO que sirven como documento de referencia.
 
-  async buscarParaNota(q: string) {
+  /**
+   * Busca e-CFs aceptados para usar como referencia en E33 (Nota Débito) o E34 (Nota Crédito).
+   * Según normativa DGII:
+   *   - E33 solo puede referenciar E31.
+   *   - E34 puede referenciar E31, E32, E41, E43, E44, E45, E46, E47.
+   */
+  async buscarParaNota(q: string, tipoNota: 'E33' | 'E34' = 'E34') {
     const empresaId = this.tenantService.getEmpresaId();
     if (!q || q.length < 2) return [];
 
+    const tiposPermitidos: string[] =
+      tipoNota === 'E33'
+        ? ['E31']
+        : ['E31', 'E32', 'E41', 'E43', 'E44', 'E45', 'E46', 'E47'];
+
+    // Consulta ECF directamente — incluye facturas, compras y gastos como origen
     const rows = await this.facturaRepository.manager.query<any[]>(`
       SELECT
-        f.id,
-        f.folio,
-        f.fecha::text              AS fecha,
-        f.total::numeric           AS total,
-        f.subtotal::numeric        AS subtotal,
-        f.iva::numeric             AS iva,
-        c.id                       AS "clienteId",
-        c.nombre                   AS "clienteNombre",
-        c."rncReceptor"            AS "clienteRNC",
-        e.id                       AS "ecfId",
-        e.numero                   AS "encf",
-        e."estadoDGII"             AS "estadoEcf",
-        e."createdAt"::text        AS "fechaEcf",
-        COALESCE(
-          JSON_AGG(
-            JSON_BUILD_OBJECT(
-              'productoId',    fd."productoId",
-              'descripcion',   fd.descripcion,
-              'cantidad',      fd.cantidad::numeric,
-              'precioUnitario',fd."precioUnitario"::numeric,
-              'porcentajeIva', fd."porcentajeIva"::numeric,
-              'importeIva',    fd."importeIva"::numeric,
-              'total',         fd.total::numeric
-            ) ORDER BY fd.id
-          ) FILTER (WHERE fd.id IS NOT NULL),
-          '[]'::json
-        )                          AS detalles
-      FROM facturas f
-      LEFT JOIN clientes c         ON c.id = f."clienteId"
-      LEFT JOIN ecf e              ON e."facturaId" = f.id AND e."isActive" = true
-      LEFT JOIN factura_detalles fd ON fd."facturaId" = f.id
-      WHERE f."empresaId" = $1
-        AND f."isActive"  = true
-        AND f.estado IN ('emitida', 'pagada')
+        e.id                                            AS "ecfId",
+        e.numero                                        AS "encf",
+        t.codigo                                        AS "tipoEcf",
+        COALESCE(f.id::text, co.id::text)               AS id,
+        COALESCE(f.folio, co.folio, e.numero)           AS folio,
+        COALESCE(f.total, co.total)::numeric            AS total,
+        COALESCE(cl.nombre, pr.nombre, 'Sin cliente')   AS "clienteNombre",
+        COALESCE(cl."rncReceptor", pr.rnc)              AS "clienteRNC",
+        f."clienteId"                                   AS "clienteId",
+        COALESCE(f.fecha, co.fecha, e."createdAt"::date)::text AS fecha
+      FROM ecf e
+      JOIN tipos_ecf t        ON t.id = e."tipoECFId"
+      LEFT JOIN facturas f    ON f.id = e."facturaId" AND f."isActive" = true
+      LEFT JOIN clientes cl   ON cl.id = f."clienteId"
+      LEFT JOIN compras co    ON co.id = e."documentoOrigenId"
+                             AND e."documentoOrigenTipo" = 'COMPRA'
+                             AND co."isActive" = true
+      LEFT JOIN proveedores pr ON pr.id = co."proveedorId"
+      WHERE e."empresaId" = $1
+        AND e."isActive"  = true
+        AND e."estadoDGII" = 'aceptado'
+        AND t.codigo = ANY($3::text[])
         AND (
-          f.folio ILIKE $2
-          OR e.numero ILIKE $2
+          e.numero  ILIKE $2
+          OR f.folio ILIKE $2
+          OR co.folio ILIKE $2
+          OR cl.nombre ILIKE $2
+          OR cl."rncReceptor" ILIKE $2
+          OR pr.nombre ILIKE $2
+          OR pr.rnc ILIKE $2
         )
-      GROUP BY f.id, f.folio, f.fecha, f.total, f.subtotal, f.iva,
-               c.id, c.nombre, c."rncReceptor",
-               e.id, e.numero, e."estadoDGII", e."createdAt"
-      ORDER BY f.fecha DESC
-      LIMIT 15
-    `, [empresaId, `%${q}%`]);
+      ORDER BY e."createdAt" DESC
+      LIMIT 20
+    `, [empresaId, `%${q}%`, tiposPermitidos]);
 
-    return rows.filter(r => r.ecfId && r.estadoEcf?.toLowerCase() === 'aceptado');
+    return rows;
   }
 
   // ── Detecta si el pago es inmediato según el campo notas ─────────────────────

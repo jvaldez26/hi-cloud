@@ -51,7 +51,26 @@ export class NotasDebitoService {
 
   async crear(dto: CreateNDDto, usuarioId: number) {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const numero    = await this.generarNumero();
+
+    // E33 (Nota Débito) solo puede referenciar e-CFs tipo E31 según normativa DGII
+    if (dto.facturaOriginalId) {
+      const [ecfOriginal] = await this.ds.query<any[]>(
+        `SELECT t.codigo FROM ecf e
+         JOIN tipos_ecf t ON t.id = e."tipoECFId"
+         WHERE e."facturaId" = $1 AND e."empresaId" = $2
+           AND e."estadoDGII" = 'aceptado' AND e."isActive" = true
+         ORDER BY e."createdAt" DESC LIMIT 1`,
+        [dto.facturaOriginalId, empresaId],
+      );
+      if (ecfOriginal && ecfOriginal.codigo !== 'E31') {
+        throw new BadRequestException(
+          `Una Nota de Débito (E33) solo puede referenciar un e-CF tipo E31. ` +
+          `El documento seleccionado es tipo ${ecfOriginal.codigo}.`,
+        );
+      }
+    }
+
+    const numero = await this.generarNumero();
 
     const detalles = dto.detalles.map(d => {
       const pctIva   = d.porcentajeIva ?? 18;

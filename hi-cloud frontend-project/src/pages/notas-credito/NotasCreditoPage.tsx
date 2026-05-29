@@ -35,7 +35,12 @@ const ESTADO_CONFIG: Record<string, { color: string; label: string }> = {
   anulada:  { color: 'red',    label: 'Anulada'  },
 };
 
-// ── Búsqueda de factura original ──────────────────────────────────────────────
+// ── Búsqueda de factura/documento original ────────────────────────────────────
+const ECF_TIPO_COLOR: Record<string, string> = {
+  E31: 'blue', E32: 'cyan', E41: 'orange', E43: 'purple',
+  E44: 'geekblue', E45: 'green', E46: 'magenta', E47: 'volcano',
+};
+
 function BuscadorFacturaNC({ onSelect }: { onSelect: (f: any) => void }) {
   const [busqueda, setBusqueda] = useState('');
   const [buscando, setBuscando] = useState(false);
@@ -46,15 +51,16 @@ function BuscadorFacturaNC({ onSelect }: { onSelect: (f: any) => void }) {
     if (q.length < 2) { setOpciones([]); return; }
     setBuscando(true);
     try {
-      const r = await api.get(`/facturas/buscar-para-nota?q=${encodeURIComponent(q)}`);
+      const r = await api.get(`/facturas/buscar-para-nota?tipoNota=E34&q=${encodeURIComponent(q)}`);
       setOpciones(r.data?.data ?? r.data ?? []);
     } finally { setBuscando(false); }
   };
 
   const opcionesAC = opciones.map((f: any) => ({
-    value: String(f.id),
+    value: String(f.ecfId),
     label: (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <Tag color={ECF_TIPO_COLOR[f.tipoEcf] ?? 'default'} style={{ fontSize: 10, margin: 0 }}>{f.tipoEcf}</Tag>
         <Typography.Text strong style={{ fontSize: 12 }}>{f.folio}</Typography.Text>
         <Typography.Text type="secondary" style={{ fontSize: 11 }}>{f.clienteNombre}</Typography.Text>
         <Typography.Text type="secondary" style={{ fontSize: 11 }}>— {new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'DOP', minimumFractionDigits: 2 }).format(Number(f.total))}</Typography.Text>
@@ -68,13 +74,13 @@ function BuscadorFacturaNC({ onSelect }: { onSelect: (f: any) => void }) {
     <div>
       <AutoComplete style={{ width: '100%' }} options={opcionesAC} value={busqueda}
         onChange={setBusqueda}
-        onSelect={(_, opt: any) => { onSelect(opt.data); setBusqueda(opt.data.folio); setOpciones([]); }}
+        onSelect={(_, opt: any) => { onSelect(opt.data); setBusqueda(opt.data.folio ?? opt.data.encf); setOpciones([]); }}
         onSearch={buscar}
-        notFoundContent={buscando ? <Spin size="small" /> : busqueda.length >= 2 ? <Typography.Text type="secondary" style={{ fontSize: 12 }}>Sin resultados — solo facturas con e-CF Aceptado</Typography.Text> : null}>
-        <Input prefix={<SearchOutlined />} placeholder="Buscar por folio (FAC-...) o eNCF (E31...)" suffix={buscando ? <Spin size="small" /> : null} />
+        notFoundContent={buscando ? <Spin size="small" /> : busqueda.length >= 2 ? <Typography.Text type="secondary" style={{ fontSize: 12 }}>Sin resultados — solo e-CFs Aceptados (E31, E32, E41–E47)</Typography.Text> : null}>
+        <Input prefix={<SearchOutlined />} placeholder="Buscar por folio, eNCF, cliente o RNC..." suffix={buscando ? <Spin size="small" /> : null} />
       </AutoComplete>
       <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 3 }}>
-        Solo facturas con e-CF Aceptado pueden ser referenciadas en un E34.
+        E34 puede referenciar: E31, E32, E41, E43, E44, E45, E46, E47 (todos con e-CF Aceptado).
       </Typography.Text>
     </div>
   );
@@ -435,7 +441,10 @@ export default function NotasCreditoPage() {
                 </Col>
                 <Col xs={24} sm={12}>
                   <Typography.Text type="secondary" style={{ fontSize: 11 }}>eNCF Original (referencia DGII)</Typography.Text>
-                  <div><Typography.Text strong style={{ fontFamily: 'monospace', color: token.colorPrimary }}>{facturaOrigen.encf}</Typography.Text></div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Typography.Text strong style={{ fontFamily: 'monospace', color: token.colorPrimary }}>{facturaOrigen.encf}</Typography.Text>
+                    {facturaOrigen.tipoEcf && <Tag color={ECF_TIPO_COLOR[facturaOrigen.tipoEcf] ?? 'default'} style={{ margin: 0 }}>{facturaOrigen.tipoEcf}</Tag>}
+                  </div>
                   <Typography.Text type="secondary" style={{ fontSize: 11 }}>Fecha: {facturaOrigen.fecha}</Typography.Text>
                 </Col>
                 <Col span={8} style={{ marginTop: 8 }}>

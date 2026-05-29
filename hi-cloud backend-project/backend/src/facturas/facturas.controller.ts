@@ -134,8 +134,12 @@ export class FacturasController {
     summary: 'Buscar facturas con e-CF ACEPTADO para usar como referencia en E33 o E34',
     description: 'Devuelve facturas cuyo e-CF está ACEPTADO por DGII. Búsqueda por folio o eNCF.',
   })
-  buscarParaNota(@Query('q') q: string) {
-    return this.facturasService.buscarParaNota(q ?? '');
+  buscarParaNota(
+    @Query('q')        q:        string,
+    @Query('tipoNota') tipoNota: string,
+  ) {
+    const tipo = (tipoNota === 'E33' ? 'E33' : 'E34') as 'E33' | 'E34';
+    return this.facturasService.buscarParaNota(q ?? '', tipo);
   }
 
   @Get(':id')
