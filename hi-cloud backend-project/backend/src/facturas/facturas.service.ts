@@ -353,7 +353,8 @@ export class FacturasService {
         COALESCE(cl.nombre, pr.nombre, 'Sin cliente')   AS "clienteNombre",
         COALESCE(cl."rncReceptor", pr.rnc)              AS "clienteRNC",
         f."clienteId"                                   AS "clienteId",
-        COALESCE(f.fecha, co.fecha, e."createdAt"::date)::text AS fecha
+        COALESCE(f.fecha, co.fecha, e."createdAt"::date)::text AS fecha,
+        e."estadoDGII"                                  AS "estadoEcf"
       FROM ecf e
       JOIN tipos_ecf t        ON t.id = e."tipoECFId"
       LEFT JOIN facturas f    ON f.id = e."facturaId" AND f."isActive" = true
@@ -364,7 +365,7 @@ export class FacturasService {
       LEFT JOIN proveedores pr ON pr.id = co."proveedorId"
       WHERE e."empresaId" = $1
         AND e."isActive"  = true
-        AND e."estadoDGII" = 'aceptado'
+        AND e."estadoDGII" != 'anulado'
         AND t.codigo = ANY($3::text[])
         AND (
           e.numero  ILIKE $2

@@ -44,6 +44,11 @@ const ESTADO_CONFIG: Record<string, { color: string; label: string }> = {
 
 // ── Búsqueda de factura original con autocompletado ────────────────────────────
 // E33 (Nota Débito) solo puede referenciar E31 — el backend filtra automáticamente.
+const ECF_ESTADO_COLOR_ND: Record<string, string> = {
+  aceptado: 'success', enviado: 'processing', pendiente_envio: 'warning',
+  pendiente: 'warning', contingencia: 'warning', rechazado: 'error',
+};
+
 function BuscadorFactura({ onSelect }: { onSelect: (f: any) => void }) {
   const [busqueda, setBusqueda] = useState('');
   const [buscando, setBuscando] = useState(false);
@@ -67,7 +72,7 @@ function BuscadorFactura({ onSelect }: { onSelect: (f: any) => void }) {
         <Text strong style={{ fontSize: 12 }}>{f.folio}</Text>
         <Text type="secondary" style={{ fontSize: 11 }}>{f.clienteNombre}</Text>
         <Text type="secondary" style={{ fontSize: 11 }}>— {fmt(Number(f.total))}</Text>
-        <Tag color="green" style={{ fontSize: 10, margin: 0 }}>{f.encf}</Tag>
+        <Tag color={ECF_ESTADO_COLOR_ND[f.estadoEcf] ?? 'default'} style={{ fontSize: 10, margin: 0 }}>{f.estadoEcf}</Tag>
       </div>
     ),
     data: f,
@@ -82,7 +87,7 @@ function BuscadorFactura({ onSelect }: { onSelect: (f: any) => void }) {
         onSearch={buscar}
         notFoundContent={buscando
           ? <Spin size="small" />
-          : busqueda.length >= 2 ? <Text type="secondary" style={{ fontSize: 12 }}>Sin resultados — solo e-CFs E31 Aceptados</Text> : null}
+          : busqueda.length >= 2 ? <Text type="secondary" style={{ fontSize: 12 }}>Sin resultados — busca por número de factura, eNCF o cliente</Text> : null}
       >
         <Input prefix={<SearchOutlined />}
           placeholder="Buscar por folio (FAC-...), eNCF, cliente o RNC..."
@@ -354,8 +359,15 @@ export default function NotasDebitoPage() {
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                 <CheckCircleFilled style={{ color: token.colorSuccess }} />
-                <Text strong style={{ color: token.colorSuccess, fontSize: 13 }}>Factura original cargada correctamente</Text>
+                <Text strong style={{ color: token.colorSuccess, fontSize: 13 }}>Documento original cargado</Text>
+                {facturaOrigen.estadoEcf && facturaOrigen.estadoEcf !== 'aceptado' && (
+                  <Tag color={ECF_ESTADO_COLOR_ND[facturaOrigen.estadoEcf] ?? 'warning'} style={{ margin: 0 }}>{facturaOrigen.estadoEcf}</Tag>
+                )}
               </div>
+              {facturaOrigen.estadoEcf && facturaOrigen.estadoEcf !== 'aceptado' && (
+                <Alert type="warning" showIcon style={{ marginBottom: 8 }}
+                  message="⚠️ Este comprobante aún no ha sido aceptado por la DGII. La nota de débito podría ser rechazada si el e-CF original no está validado." />
+              )}
               <Row gutter={16}>
                 <Col xs={24} sm={12}>
                   <Text type="secondary" style={{ fontSize: 11 }}>Cliente</Text>

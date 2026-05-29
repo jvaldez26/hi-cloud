@@ -40,6 +40,10 @@ const ECF_TIPO_COLOR: Record<string, string> = {
   E31: 'blue', E32: 'cyan', E41: 'orange', E43: 'purple',
   E44: 'geekblue', E45: 'green', E46: 'magenta', E47: 'volcano',
 };
+const ECF_ESTADO_COLOR: Record<string, string> = {
+  aceptado: 'success', enviado: 'processing', pendiente_envio: 'warning',
+  pendiente: 'warning', contingencia: 'warning', rechazado: 'error',
+};
 
 function BuscadorFacturaNC({ onSelect }: { onSelect: (f: any) => void }) {
   const [busqueda, setBusqueda] = useState('');
@@ -64,7 +68,7 @@ function BuscadorFacturaNC({ onSelect }: { onSelect: (f: any) => void }) {
         <Typography.Text strong style={{ fontSize: 12 }}>{f.folio}</Typography.Text>
         <Typography.Text type="secondary" style={{ fontSize: 11 }}>{f.clienteNombre}</Typography.Text>
         <Typography.Text type="secondary" style={{ fontSize: 11 }}>— {new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'DOP', minimumFractionDigits: 2 }).format(Number(f.total))}</Typography.Text>
-        <Tag color="green" style={{ fontSize: 10, margin: 0 }}>{f.encf}</Tag>
+        <Tag color={ECF_ESTADO_COLOR[f.estadoEcf] ?? 'default'} style={{ fontSize: 10, margin: 0 }}>{f.estadoEcf}</Tag>
       </div>
     ),
     data: f,
@@ -76,11 +80,11 @@ function BuscadorFacturaNC({ onSelect }: { onSelect: (f: any) => void }) {
         onChange={setBusqueda}
         onSelect={(_, opt: any) => { onSelect(opt.data); setBusqueda(opt.data.folio ?? opt.data.encf); setOpciones([]); }}
         onSearch={buscar}
-        notFoundContent={buscando ? <Spin size="small" /> : busqueda.length >= 2 ? <Typography.Text type="secondary" style={{ fontSize: 12 }}>Sin resultados — solo e-CFs Aceptados (E31, E32, E41–E47)</Typography.Text> : null}>
+        notFoundContent={buscando ? <Spin size="small" /> : busqueda.length >= 2 ? <Typography.Text type="secondary" style={{ fontSize: 12 }}>Sin resultados — busca por número de factura, eNCF o cliente</Typography.Text> : null}>
         <Input prefix={<SearchOutlined />} placeholder="Buscar por folio, eNCF, cliente o RNC..." suffix={buscando ? <Spin size="small" /> : null} />
       </AutoComplete>
       <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 3 }}>
-        E34 puede referenciar: E31, E32, E41, E43, E44, E45, E46, E47 (todos con e-CF Aceptado).
+        E34 puede referenciar: E31, E32, E41, E43, E44, E45, E46, E47.
       </Typography.Text>
     </div>
   );
@@ -431,8 +435,16 @@ export default function NotasCreditoPage() {
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                 <CheckCircleFilled style={{ color: token.colorSuccess }} />
-                <Typography.Text strong style={{ color: token.colorSuccess, fontSize: 13 }}>Factura original cargada correctamente</Typography.Text>
+                <Typography.Text strong style={{ color: token.colorSuccess, fontSize: 13 }}>Documento original cargado</Typography.Text>
+                {facturaOrigen.tipoEcf && <Tag color={ECF_TIPO_COLOR[facturaOrigen.tipoEcf] ?? 'default'} style={{ margin: 0 }}>{facturaOrigen.tipoEcf}</Tag>}
+                {facturaOrigen.estadoEcf && facturaOrigen.estadoEcf !== 'aceptado' && (
+                  <Tag color={ECF_ESTADO_COLOR[facturaOrigen.estadoEcf] ?? 'warning'} style={{ margin: 0 }}>{facturaOrigen.estadoEcf}</Tag>
+                )}
               </div>
+              {facturaOrigen.estadoEcf && facturaOrigen.estadoEcf !== 'aceptado' && (
+                <Alert type="warning" showIcon style={{ marginBottom: 8 }}
+                  message="⚠️ Este comprobante aún no ha sido aceptado por la DGII. La nota de crédito podría ser rechazada si el e-CF original no está validado." />
+              )}
               <Row gutter={16}>
                 <Col xs={24} sm={12}>
                   <Typography.Text type="secondary" style={{ fontSize: 11 }}>Cliente</Typography.Text>
