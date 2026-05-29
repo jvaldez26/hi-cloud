@@ -359,22 +359,40 @@ export class FacturasService {
         e.id                                                      AS "ecfId",
         e.numero                                                  AS "encf",
         e."estadoDGII"                                            AS "estadoEcf",
-        COALESCE(t.codigo, SUBSTRING(e.numero, 1, 3))             AS "tipoEcf"
+        COALESCE(t.codigo, SUBSTRING(e.numero, 1, 3))             AS "tipoEcf",
+        COALESCE(
+          JSON_AGG(
+            JSON_BUILD_OBJECT(
+              'productoId',     fd."productoId",
+              'descripcion',    fd.descripcion,
+              'cantidad',       fd.cantidad::numeric,
+              'precioUnitario', fd."precioUnitario"::numeric,
+              'porcentajeIva',  fd."porcentajeIva"::numeric,
+              'importeIva',     fd."importeIva"::numeric,
+              'total',          fd.total::numeric
+            ) ORDER BY fd.id
+          ) FILTER (WHERE fd.id IS NOT NULL),
+          '[]'::json
+        )                                                         AS detalles
       FROM facturas f
-      LEFT JOIN clientes c     ON c.id  = f."clienteId"
-      LEFT JOIN ecf e          ON e."facturaId" = f.id AND e."isActive" = true
-      LEFT JOIN tipos_ecf t    ON t.id  = e."tipoECFId"
+      LEFT JOIN clientes c        ON c.id  = f."clienteId"
+      LEFT JOIN ecf e             ON e."facturaId" = f.id AND e."isActive" = true
+      LEFT JOIN tipos_ecf t       ON t.id  = e."tipoECFId"
+      LEFT JOIN factura_detalles fd ON fd."facturaId" = f.id
       WHERE f."empresaId" = $1
         AND f."isActive"  = true
         AND f.estado IN ('emitida', 'pagada')
         AND e.id IS NOT NULL
         AND COALESCE(t.codigo, SUBSTRING(e.numero, 1, 3)) = ANY($3::text[])
         AND (
-          f.folio          ILIKE $2
-          OR e.numero      ILIKE $2
-          OR c.nombre      ILIKE $2
+          f.folio            ILIKE $2
+          OR e.numero        ILIKE $2
+          OR c.nombre        ILIKE $2
           OR c."rncReceptor" ILIKE $2
         )
+      GROUP BY f.id, f.folio, f.fecha, f.total, f.subtotal, f.iva,
+               c.id, c.nombre, c."rncReceptor",
+               e.id, e.numero, e."estadoDGII", e."tipoECFId", t.codigo
       ORDER BY f.fecha DESC
       LIMIT 20
     `, [empresaId, `%${q}%`, tiposPermitidos]);
