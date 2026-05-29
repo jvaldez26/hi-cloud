@@ -341,12 +341,18 @@ export class FacturasService {
         ? ['E31']
         : ['E31', 'E32', 'E41', 'E43', 'E44', 'E45', 'E46', 'E47'];
 
-    // Consulta ECF directamente — incluye facturas, compras y gastos como origen
+    // Parámetros posicionales: $1=empresaId, $2=búsqueda, $3..$N=tipos permitidos
+    const params: unknown[] = [empresaId, `%${q}%`, ...tiposPermitidos];
+    const tiposIn = tiposPermitidos.map((_, i) => `$${i + 3}`).join(', ');
+
+    // Consulta ECF directamente — incluye facturas, compras y gastos como origen.
+    // LEFT JOIN tipos_ecf para no excluir ECFs con tipoECFId=0 (fallo de tipo al emitir).
+    // IN clause dinámica en lugar de ANY($n::text[]) para evitar bugs con arrays pg.
     const rows = await this.facturaRepository.manager.query<any[]>(`
       SELECT
         e.id                                            AS "ecfId",
         e.numero                                        AS "encf",
-        t.codigo                                        AS "tipoEcf",
+        COALESCE(t.codigo, '')                          AS "tipoEcf",
         COALESCE(f.id::text, co.id::text)               AS id,
         COALESCE(f.folio, co.folio, e.numero)           AS folio,
         COALESCE(f.total, co.total)::numeric            AS total,
@@ -356,7 +362,7 @@ export class FacturasService {
         COALESCE(f.fecha, co.fecha, e."createdAt"::date)::text AS fecha,
         e."estadoDGII"                                  AS "estadoEcf"
       FROM ecf e
-      JOIN tipos_ecf t        ON t.id = e."tipoECFId"
+      LEFT JOIN tipos_ecf t   ON t.id = e."tipoECFId"
       LEFT JOIN facturas f    ON f.id = e."facturaId" AND f."isActive" = true
       LEFT JOIN clientes cl   ON cl.id = f."clienteId"
       LEFT JOIN compras co    ON co.id = e."documentoOrigenId"
@@ -366,20 +372,23 @@ export class FacturasService {
       WHERE e."empresaId" = $1
         AND e."isActive"  = true
         AND e."estadoDGII" != 'anulado'
-        AND t.codigo = ANY($3::text[])
+        AND t.codigo IN (${tiposIn})
         AND (
-          e.numero  ILIKE $2
-          OR f.folio ILIKE $2
-          OR co.folio ILIKE $2
-          OR cl.nombre ILIKE $2
+          e.numero            ILIKE $2
+          OR f.folio          ILIKE $2
+          OR co.folio         ILIKE $2
+          OR cl.nombre        ILIKE $2
           OR cl."rncReceptor" ILIKE $2
-          OR pr.nombre ILIKE $2
-          OR pr.rnc ILIKE $2
+          OR pr.nombre        ILIKE $2
+          OR pr.rnc           ILIKE $2
         )
       ORDER BY e."createdAt" DESC
       LIMIT 20
-    `, [empresaId, `%${q}%`, tiposPermitidos]);
+    `, params);
 
+    this.logger.debug(
+      `[buscarParaNota] q="${q}" tipoNota=${tipoNota} empresa=${empresaId} → ${rows.length} resultados`,
+    );
     return rows;
   }
 
