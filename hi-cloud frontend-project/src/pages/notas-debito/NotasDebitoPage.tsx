@@ -6,7 +6,7 @@ import { TableActions } from '../../components/ui/TableActions';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   DatePicker, InputNumber, Space, Typography, Statistic, Popconfirm,
-  message, Divider, theme, Alert, AutoComplete, Spin,
+  message, Divider, theme, Alert, AutoComplete, Spin, Checkbox,
 } from 'antd';
 import {
   FileTextOutlined, PlusOutlined, CheckCircleOutlined,
@@ -111,6 +111,7 @@ export default function NotasDebitoPage() {
   const [emailDest,     setEmailDest]     = useState('');
   const [ecfEncf,       setEcfEncf]       = useState<string | null>(null);
   const [facturaOrigen, setFacturaOrigen] = useState<any>(null);
+  const [sinItbis,      setSinItbis]      = useState(false);
   const [pdfPending,    setPdfPending]    = useState<number | null>(null);
   const [formCrear] = Form.useForm();
 
@@ -140,7 +141,7 @@ export default function NotasDebitoPage() {
   // Totales en tiempo real desde Form.useWatch
   const detalles: any[] = Form.useWatch('detalles', formCrear) ?? [];
   const subtotalCargo = detalles.reduce((s, d) => s + (Number(d?.precioUnitario ?? 0) * Number(d?.cantidad ?? 0)), 0);
-  const itbisCargo    = subtotalCargo * 0.18;
+  const itbisCargo    = sinItbis ? 0 : subtotalCargo * 0.18;
   const totalCargo    = subtotalCargo + itbisCargo;
 
   const emailMut = useMutation({
@@ -213,6 +214,7 @@ export default function NotasDebitoPage() {
         cantidad:       Math.max(Number(d.cantidad) || 1, 0.01),
         precioUnitario: Math.max(Number(d.precioUnitario) || 0, 0),
         productoId:     d.productoId ?? undefined,
+        porcentajeIva:  sinItbis ? 0 : undefined,
       }));
     if (detallesLimpios.length === 0) {
       message.error('Debes agregar al menos un cargo con descripción.'); return;
@@ -406,6 +408,14 @@ export default function NotasDebitoPage() {
           </Row>
 
           <Divider orientation="left" style={{ fontSize: 13 }}>Cargos adicionales a facturar</Divider>
+
+          <Checkbox
+            checked={sinItbis}
+            onChange={e => setSinItbis(e.target.checked)}
+            style={{ marginBottom: 10 }}
+          >
+            No aplica ITBIS
+          </Checkbox>
 
           <Form.List name="detalles">
             {(fields, { add, remove }) => (

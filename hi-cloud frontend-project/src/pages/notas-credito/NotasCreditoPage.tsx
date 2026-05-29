@@ -6,7 +6,7 @@ import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   DatePicker, InputNumber, Space, Typography, Statistic, Popconfirm,
-  message, Divider, theme, Alert, AutoComplete, Spin,
+  message, Divider, theme, Alert, AutoComplete, Spin, Checkbox,
 } from 'antd';
 import { SearchOutlined, CheckCircleFilled, WarningOutlined } from '@ant-design/icons';
 import {
@@ -111,6 +111,7 @@ export default function NotasCreditoPage() {
   const [emailDest,     setEmailDest]     = useState('');
   const [facturaOrigen, setFacturaOrigen] = useState<any>(null);
   const [codigoMod,     setCodigoMod]     = useState('3');
+  const [sinItbis,      setSinItbis]      = useState(false);
   const [pdfPending,    setPdfPending]    = useState<number | null>(null);
   const [formCrear] = Form.useForm();
 
@@ -215,7 +216,7 @@ export default function NotasCreditoPage() {
   // Totales en tiempo real
   const detallesWatch: any[] = Form.useWatch('detalles', formCrear) ?? [];
   const subtotalNC = detallesWatch.reduce((s, d) => s + (Number(d?.precioUnitario ?? 0) * Number(d?.cantidad ?? 0)), 0);
-  const itbisNC    = subtotalNC * 0.18;
+  const itbisNC    = sinItbis ? 0 : subtotalNC * 0.18;
   const totalNC    = subtotalNC + itbisNC;
 
   const handleSeleccionarFactura = (f: any) => {
@@ -245,11 +246,13 @@ export default function NotasCreditoPage() {
       descripcion:    `Anulación total de ${facturaOrigen.folio}`,
       cantidad:       1,
       precioUnitario: Number(facturaOrigen.subtotal) || Number(facturaOrigen.total) || 1,
+      porcentajeIva:  sinItbis ? 0 : undefined,
     }] : (values.detalles ?? []).filter((d: any) => d?.descripcion || d?.productoId).map((d: any) => ({
       descripcion:    String(d.descripcion ?? 'Ítem'),
       cantidad:       Math.max(Number(d.cantidad) || 1, 0.01),
       precioUnitario: Math.max(Number(d.precioUnitario) || 0, 0),
       productoId:     d.productoId ?? undefined,
+      porcentajeIva:  sinItbis ? 0 : undefined,
     }));
     if (detallesLimpios.length === 0) {
       message.error('Debes agregar al menos un ítem con descripción.'); return;
@@ -529,6 +532,13 @@ export default function NotasCreditoPage() {
           {codigoMod !== '1' && (
             <>
               <Divider orientation="left" style={{ fontSize: 13 }}>Ítems a acreditar</Divider>
+              <Checkbox
+                checked={sinItbis}
+                onChange={e => setSinItbis(e.target.checked)}
+                style={{ marginBottom: 10 }}
+              >
+                No aplica ITBIS
+              </Checkbox>
               <Form.List name="detalles">
                 {(fields, { add, remove }) => (
                   <>
