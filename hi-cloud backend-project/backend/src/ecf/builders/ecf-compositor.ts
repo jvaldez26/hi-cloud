@@ -101,7 +101,7 @@ function buildE31(input: ECFBuildInput): MSellerPayload {
         ),
         Totales: totales,
       },
-      DetallesItems: { Item: buildItemsConImpuesto(detalles) },
+      DetallesItems: { Item: buildItems(detalles) },
     },
   };
 }
@@ -280,7 +280,7 @@ function buildE41(input: ECFBuildInput): MSellerPayload {
         ),
         Totales: buildTotalesGravados(detalles, total),
       },
-      DetallesItems: { Item: buildItemsConImpuesto(detalles) },
+      DetallesItems: { Item: buildItems(detalles) },
     },
   };
 }
@@ -390,7 +390,7 @@ function buildE45(input: ECFBuildInput): MSellerPayload {
         Comprador: buildCompradorRNC(rnc, cliente?.nombre ?? 'Entidad Gubernamental', compradorExtras),
         Totales:   buildTotalesGravados(detalles, Number(factura.total)),
       },
-      DetallesItems: { Item: buildItemsConImpuesto(detalles) },
+      DetallesItems: { Item: buildItems(detalles) },
     },
   };
 }

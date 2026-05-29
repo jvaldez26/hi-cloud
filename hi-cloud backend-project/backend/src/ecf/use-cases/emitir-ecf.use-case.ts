@@ -257,6 +257,9 @@ export class EmitirECFUseCase {
         paisExtranjero,
       };
       payload = this.builder.build(tipoEcf, buildInput);
+      this.logger.debug(
+        `[E${tipoEcf}] Payload JSON → MSeller:\n${JSON.stringify(payload, null, 2)}`,
+      );
     } catch (err) {
       if (err instanceof EcfRncRequeridoError) throw err;
       throw err;
