@@ -491,17 +491,20 @@ export class ECFService implements OnModuleInit {
     if (!sec) throw new NotFoundException(`Secuencia #${id} no encontrada`);
 
     const usados = sec.secuenciaActual - sec.secuenciaInicial;
-    if (usados > 0) {
+
+    // Si ya hay e-CFs emitidos, solo se permite corregir la fecha de vencimiento
+    if (usados > 0 && (dto.secuenciaInicial !== undefined || dto.secuenciaFinal !== undefined)) {
       throw new BadRequestException(
-        `La secuencia ya tiene ${usados} número(s) emitido(s) y no puede modificarse.`,
+        `La secuencia ya tiene ${usados} número(s) emitido(s). Solo se puede modificar la fecha de vencimiento.`,
       );
     }
 
-    const nuevoInicial = dto.secuenciaInicial ?? sec.secuenciaInicial;
-    const nuevoFinal   = dto.secuenciaFinal   ?? sec.secuenciaFinal;
-
-    if (nuevoFinal <= nuevoInicial) {
-      throw new BadRequestException('secuenciaFinal debe ser mayor que secuenciaInicial');
+    if (dto.secuenciaInicial !== undefined || dto.secuenciaFinal !== undefined) {
+      const nuevoInicial = dto.secuenciaInicial ?? sec.secuenciaInicial;
+      const nuevoFinal   = dto.secuenciaFinal   ?? sec.secuenciaFinal;
+      if (nuevoFinal <= nuevoInicial) {
+        throw new BadRequestException('secuenciaFinal debe ser mayor que secuenciaInicial');
+      }
     }
 
     await this.secuenciaRepository.update(id, {

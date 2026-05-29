@@ -13,6 +13,7 @@ import {
   ReloadOutlined, DownloadOutlined, SendOutlined,
   WarningOutlined, CheckCircleOutlined, CloseCircleOutlined,
   ClockCircleOutlined, PlusOutlined, EditOutlined, StopOutlined, SearchOutlined,
+  CalendarOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ecfApi } from '../../api/ecf.api';
@@ -205,10 +206,12 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
 
 // ── Tab: Secuencias ───────────────────────────────────────────────────────────
 function SecuenciasTab({ onRefresh }: { onRefresh: () => void }) {
-  const [openCreate, setOpenCreate]   = useState(false);
-  const [editTarget, setEditTarget]   = useState<any>(null);
+  const [openCreate,      setOpenCreate]      = useState(false);
+  const [editTarget,      setEditTarget]      = useState<any>(null);
+  const [editFechaTarget, setEditFechaTarget] = useState<any>(null);
   const [createForm] = Form.useForm();
   const [editForm]   = Form.useForm();
+  const [fechaForm]  = Form.useForm();
   const qc = useQueryClient();
 
   const { data: secuencias, isLoading, isFetching } = useQuery({
@@ -234,6 +237,13 @@ function SecuenciasTab({ onRefresh }: { onRefresh: () => void }) {
     mutationFn: ({ id, body }: { id: number; body: any }) => ecfApi.updateSecuencia(id, body),
     onSuccess: () => { invalidar(); setEditTarget(null); editForm.resetFields(); message.success('Secuencia actualizada'); },
     onError: (e: any) => message.error((e as any)?.friendlyMessage ?? 'No se puede modificar'),
+  });
+
+  const updateFechaMut = useMutation({
+    mutationFn: ({ id, fechaVencimiento }: { id: number; fechaVencimiento: string }) =>
+      ecfApi.updateSecuencia(id, { fechaVencimiento }),
+    onSuccess: () => { invalidar(); setEditFechaTarget(null); fechaForm.resetFields(); message.success('Fecha de vencimiento actualizada'); },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'No se pudo actualizar la fecha'),
   });
 
   const desactivarMut = useMutation({
@@ -294,6 +304,13 @@ function SecuenciasTab({ onRefresh }: { onRefresh: () => void }) {
             onView={() => puedeEditar ? handleEdit(r) : undefined}
             viewLabel={puedeEditar ? 'Editar secuencia' : 'Ver secuencia'}
             items={[
+              ...(puedeInactivar
+                ? [{ key: 'fecha', label: 'Corregir fecha vencimiento', icon: <CalendarOutlined />,
+                     onClick: () => {
+                       setEditFechaTarget(r);
+                       fechaForm.setFieldsValue({ fechaVencimiento: r.fechaVencimiento?.toString().slice(0, 10) });
+                     } }]
+                : []),
               ...(puedeInactivar
                 ? [{ key: 'inactivar', label: 'Inactivar secuencia', icon: <StopOutlined />, danger: true,
                      onClick: () => Modal.confirm({
@@ -362,6 +379,32 @@ function SecuenciasTab({ onRefresh }: { onRefresh: () => void }) {
           <Row justify="end" gutter={8}>
             <Col><Button onClick={() => setOpenCreate(false)}>Cancelar</Button></Col>
             <Col><Button type="primary" htmlType="submit" loading={createMut.isPending}>Registrar</Button></Col>
+          </Row>
+        </Form>
+      </Modal>
+
+      {/* Modal: corregir solo fecha vencimiento (para secuencias ya usadas) */}
+      <Modal
+        title={
+          <Space>
+            <CalendarOutlined />
+            <span>Corregir fecha vencimiento — {editFechaTarget?.tipoECF?.codigo}</span>
+          </Space>
+        }
+        open={!!editFechaTarget}
+        onCancel={() => { setEditFechaTarget(null); fechaForm.resetFields(); }}
+        footer={null}
+        destroyOnClose
+        width={380}
+      >
+        <Form form={fechaForm} layout="vertical"
+          onFinish={v => updateFechaMut.mutate({ id: editFechaTarget.id, fechaVencimiento: v.fechaVencimiento })}>
+          <Form.Item name="fechaVencimiento" label="Nueva Fecha de Vencimiento" rules={[{ required: true }]}>
+            <Input type="date" />
+          </Form.Item>
+          <Row justify="end" gutter={8}>
+            <Col><Button onClick={() => { setEditFechaTarget(null); fechaForm.resetFields(); }}>Cancelar</Button></Col>
+            <Col><Button type="primary" htmlType="submit" loading={updateFechaMut.isPending}>Guardar</Button></Col>
           </Row>
         </Form>
       </Modal>
