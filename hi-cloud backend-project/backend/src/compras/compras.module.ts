@@ -12,12 +12,13 @@ import { InventarioModule }  from '../inventario/inventario.module';
 import { CxPModule }         from '../cxp/cxp.module';
 import { ContabilidadModule }from '../contabilidad/contabilidad.module';
 import { TenantModule }      from '../tenant/tenant.module';
+import { ECFModule }         from '../ecf/ecf.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Compra, CompraDetalle, Empresa]),
     ProveedoresModule, ProductosModule, InventarioModule,
-    CxPModule, ContabilidadModule, TenantModule,
+    CxPModule, ContabilidadModule, TenantModule, ECFModule,
   ],
   controllers: [ComprasController],
   providers:   [ComprasService, ComprasPdfService],

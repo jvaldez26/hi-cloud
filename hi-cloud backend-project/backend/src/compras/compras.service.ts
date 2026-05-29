@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
@@ -18,11 +19,15 @@ import { TenantService } from '../tenant/tenant.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { User } from '../users/users.entity';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
+import { EmitirECFUseCase } from '../ecf/use-cases/emitir-ecf.use-case';
+import { DocumentoOrigenTipo } from '../ecf/entities/ecf.entity';
 
 const ITBIS_DEFAULT = 18;
 
 @Injectable()
 export class ComprasService {
+  private readonly logger = new Logger(ComprasService.name);
+
   constructor(
     @InjectRepository(Compra)
     private compraRepository: Repository<Compra>,
@@ -35,6 +40,7 @@ export class ComprasService {
     private asientosService:    AsientosAutomaticosService,
     private tenantService:      TenantService,
     private realtimeService:    RealtimeService,
+    private emitirEcfUseCase:   EmitirECFUseCase,
     @InjectDataSource() private ds: DataSource,
   ) {}
 
@@ -198,6 +204,25 @@ export class ComprasService {
         compra.folio,
         compra.usuarioId,
       );
+
+      // 4. E41 automático para proveedores informales (no bloquea el flujo si falla)
+      const proveedor = compra.proveedor as any;
+      const esInformal = !proveedor?.rnc || proveedor.rnc === '000000000' || proveedor?.esInformal === true;
+      if (esInformal) {
+        this.emitirEcfUseCase
+          .execute({
+            empresaId:           this.tenantService.getEmpresaId(),
+            documentoOrigenTipo: DocumentoOrigenTipo.COMPRA,
+            documentoOrigenId:   compra.id,
+            tipoEcf:             41,
+          })
+          .then(() => this.logger.log(`[Compras] E41 emitido automáticamente para ${compra.folio}`))
+          .catch((err: Error) =>
+            this.logger.warn(
+              `[Compras] No se pudo emitir E41 automáticamente para ${compra.folio}: ${err.message}`,
+            ),
+          );
+      }
     }
 
     if (estado === CompraEstado.CANCELADA && compra.estado === CompraEstado.RECIBIDA) {

@@ -1,11 +1,12 @@
 import { Button, Card, Descriptions, Table, Tag, Row, Col, Typography,
          Statistic, Space, Spin, Steps, message, Popconfirm, theme, Alert } from 'antd';
 import { ArrowLeftOutlined, SendOutlined, CheckCircleOutlined,
-         CloseCircleOutlined, PrinterOutlined, LoadingOutlined } from '@ant-design/icons';
+         CloseCircleOutlined, PrinterOutlined, LoadingOutlined, AuditOutlined } from '@ant-design/icons';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { comprasApi } from '../../api/compras.api';
+import { ecfApi } from '../../api/ecf.api';
 import { fmt, estadoColor } from '../../utils/formatters';
 import type { CompraEstado } from '../../types';
 import EcfSeccion from '../../components/ui/EcfSeccion';
@@ -58,6 +59,12 @@ export default function CompraDetailPage() {
     queryKey: ['compra', id],
     queryFn:  () => comprasApi.getOne(Number(id)),
     enabled:  !!id,
+  });
+
+  const emitirE41Mut = useMutation({
+    mutationFn: () => ecfApi.emitirEcfCompra(Number(id)),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['compra', id] }); message.success('E41 emitido'); },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al emitir E41'),
   });
 
   const estadoMut = useMutation({
@@ -178,13 +185,28 @@ export default function CompraDetailPage() {
                                proveedor.rnc === '000000000' ||
                                proveedor.esInformal === true;
             if (esInformal) {
-              // Proveedor sin RNC → emitir E41 (Comprobante de Compras)
+              // Proveedor sin RNC → mostrar E41 (Comprobante de Compras) o botón para emitirlo
+              const puedeEmitir = (estado === 'recibida' || estado === 'pagada');
               return (
-                <EcfSeccion
-                  documentoOrigenId={(compra as any).id}
-                  documentoOrigenTipo="COMPRA"
-                  queryKeyBase="compras"
-                />
+                <>
+                  <EcfSeccion
+                    documentoOrigenId={(compra as any).id}
+                    documentoOrigenTipo="COMPRA"
+                    queryKeyBase="compras"
+                  />
+                  {puedeEmitir && (
+                    <div style={{ marginBottom: 16 }}>
+                      <Button
+                        icon={<AuditOutlined />}
+                        loading={emitirE41Mut.isPending}
+                        onClick={() => emitirE41Mut.mutate()}
+                        size="small"
+                      >
+                        Emitir Comprobante E41
+                      </Button>
+                    </div>
+                  )}
+                </>
               );
             }
             // Proveedor formal → mostrar NCF que emitió el proveedor
