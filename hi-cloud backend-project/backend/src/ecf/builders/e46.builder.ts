@@ -19,6 +19,8 @@ import {
 } from './base-ecf.builder';
 import { round2 } from './sections/totales.section';
 
+function fmt2(v: number): number { return parseFloat(v.toFixed(2)); }
+
 export function buildE46(input: ECFBuildInput): MSellerPayload {
   const { encf, factura, config, fechaVencSec, nombreExtranjero, paisExtranjero } = input;
   const cliente  = factura.cliente as any;
@@ -72,8 +74,19 @@ export function buildE46(input: ECFBuildInput): MSellerPayload {
     Comprador: buildCompradorExtranjero(nombre, pais, idExtranjero, rncComprador),
     Totales: buildTotalesTasaCero(total),
   };
-  const otME = mc.otraMonedaExentos(totalME);
-  if (otME) encabezado['OtraMoneda'] = otME;
+  // OtraMoneda E46: Tasa 0% (IndicadorFacturacion=3), NO MontoExentoOtraMoneda
+  if (mc.esME) {
+    const subtotalUSD = parseFloat(fmt2(Number((factura as any).subtotal ?? totalME)).toFixed(2));
+    encabezado['OtraMoneda'] = {
+      TipoMoneda:                  mc.moneda,
+      TipoCambio:                  mc.tasa.toFixed(4),
+      MontoGravadoTotalOtraMoneda: subtotalUSD.toFixed(2),
+      MontoGravado3OtraMoneda:     subtotalUSD.toFixed(2),  // Tasa 0% — NO MontoExento
+      TotalITBISOtraMoneda:        '0.00',
+      TotalITBIS3OtraMoneda:       '0.00',
+      MontoTotalOtraMoneda:        fmt2(totalME).toFixed(2),
+    };
+  }
 
   return {
     ECF: { Encabezado: encabezado as any, DetallesItems: { Item: items } },
