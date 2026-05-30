@@ -17,6 +17,7 @@ export {
   buildTotalesGravados,
   buildTotalesMixtos,
   buildTotalesExentos,
+  buildTotalesTasaCero,
   buildTotalesCero,
   tieneMontoGravado,
 } from './sections/totales.section';

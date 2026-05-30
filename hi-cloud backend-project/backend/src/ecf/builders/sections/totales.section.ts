@@ -75,6 +75,22 @@ export function tieneMontoGravado(detalles: DetalleLike[]): boolean {
 }
 
 /**
+ * Totales Tasa Cero — E46 (Exportaciones).
+ * Las exportaciones NO son exentas: son ITBIS Tasa 0% (IndicadorFacturacion=3).
+ * El XSD requiere MontoGravadoI3 (no MontoExento) con ITBIS = 0.
+ */
+export function buildTotalesTasaCero(total: number): Record<string, unknown> {
+  return {
+    MontoGravadoTotal: round2(total),
+    MontoGravadoI3:    round2(total),   // monto gravado a tasa 0%
+    ITBIS3:            0,               // tasa = 0%
+    TotalITBIS:        0,
+    TotalITBIS3:       0,
+    MontoTotal:        round2(total),
+  };
+}
+
+/**
  * Totales cero — CodigoModificacion=2 (corrección de texto):
  * la nota no tiene impacto financiero, todos los montos deben ser 0.
  */

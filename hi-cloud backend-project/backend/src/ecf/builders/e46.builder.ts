@@ -10,7 +10,7 @@ import {
   buildEmisor, assertEmisorOrder, toEmpresaConfig,
   buildIdDoc, fmtFecha,
   buildCompradorExtranjero,
-  buildTotalesExentos,
+  buildTotalesTasaCero,
 } from './base-ecf.builder';
 import { round2 } from './sections/totales.section';
 
@@ -50,7 +50,8 @@ export function buildE46(input: ECFBuildInput): MSellerPayload {
           nombreExtranjero ?? (factura.cliente as any)?.nombre ?? 'Cliente Extranjero',
           paisExtranjero   ?? 'US',
         ),
-        Totales: buildTotalesExentos(total),
+        // E46: Tasa 0% (no exento) — MontoGravadoI3, ITBIS3=0
+        Totales: buildTotalesTasaCero(total),
       },
       DetallesItems: { Item: items },
     },

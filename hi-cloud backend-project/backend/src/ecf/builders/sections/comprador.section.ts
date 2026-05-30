@@ -23,13 +23,14 @@ export function buildCompradorRNC(
   };
 }
 
-/** Comprador extranjero — E46 (Exportaciones) y E47 (Pagos al Exterior) */
+/** Comprador extranjero — E46 (Exportaciones) y E47 (Pagos al Exterior).
+ *  XSD DGII: usar RazonSocialComprador (no NombreExtranjero). */
 export function buildCompradorExtranjero(
   nombre:  string,
   paisISO: string,   // código ISO 2 letras: 'US', 'MX', 'ES', 'PR'...
 ): Record<string, unknown> {
   return {
-    NombreExtranjero:        nombre,
+    RazonSocialComprador:    nombre,
     PaisCompradorExtranjero: paisISO,
   };
 }
