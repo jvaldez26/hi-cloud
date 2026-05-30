@@ -1,13 +1,24 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository }       from 'typeorm';
+import * as qrcode          from 'qrcode';
 import { NotaCredito }      from './entities/nota-credito.entity';
 import { TenantService }    from '../tenant/tenant.service';
 import { generarNotaPDF }   from '../common/pdf/nota-pdf.helper';
 import type { NotaPDFData } from '../common/pdf/nota-pdf.helper';
 
+const CODIGO_MOD_LABEL: Record<string, string> = {
+  '1': '1 — Anulación total',
+  '2': '2 — Corrección de texto',
+  '3': '3 — Devolución / Ajuste de montos',
+  '4': '4 — Reemplazo por contingencia',
+  '5': '5 — Referencia a Factura de Consumo',
+};
+
 @Injectable()
 export class NotaCreditoPDFService {
+  private readonly logger = new Logger(NotaCreditoPDFService.name);
+
   constructor(
     @InjectRepository(NotaCredito) private repo: Repository<NotaCredito>,
     private tenantSvc: TenantService,
@@ -26,16 +37,30 @@ export class NotaCreditoPDFService {
       .query('SELECT * FROM empresa WHERE id = $1 AND "isActive" = true LIMIT 1', [empresaId])
       .then((r: any[]) => r[0] || {});
 
-    const ecf = await this.repo.manager
-      .query(
-        `SELECT numero, "estadoDGII" FROM ecf
-         WHERE "documentoOrigenId" = $1
-           AND "documentoOrigenTipo" = 'NOTA_CREDITO'
-           AND "isActive" = true
-         ORDER BY "createdAt" DESC LIMIT 1`,
-        [id],
-      )
-      .then((r: any[]) => r[0] || null);
+    // ECF de esta nota (para e-NCF, QR, código de seguridad)
+    const ecf = await this.repo.manager.query(
+      `SELECT numero, "estadoDGII", "codigoSeguridad", "qrUrl", "ncfModificado", "codigoModificacion"
+       FROM ecf
+       WHERE "documentoOrigenId"   = $1
+         AND "documentoOrigenTipo" = 'NOTA_CREDITO'
+         AND "isActive"            = true
+       ORDER BY "createdAt" DESC LIMIT 1`,
+      [id],
+    ).then((r: any[]) => r[0] || null);
+
+    // Generar QR DGII
+    let qrBase64 = '';
+    if (ecf?.numero && empresa.rnc) {
+      const urlQR = ecf.qrUrl
+        ?? `https://ecf.dgii.gov.do/ECF/ConsultaResultado?RNCEmisor=${empresa.rnc}` +
+           `&eNCF=${ecf.numero}` +
+           (ecf.codigoSeguridad ? `&CodigoSeguridadNCF=${ecf.codigoSeguridad}` : '');
+      qrBase64 = await qrcode.toDataURL(urlQR, {
+        width: 180, margin: 1, color: { dark: '#000000', light: '#ffffff' },
+      })
+        .then(url => url.replace('data:image/png;base64,', ''))
+        .catch(err => { this.logger.warn(`[NC-PDF] QR error: ${err.message}`); return ''; });
+    }
 
     const data: NotaPDFData = {
       tipo:                 'CREDITO',
@@ -44,7 +69,9 @@ export class NotaCreditoPDFService {
       tipoNcf:              nc.tipoNcf ?? 'E34',
       ecfNumero:            ecf?.numero,
       ecfEstado:            ecf?.estadoDGII,
-      empresaNombre:        empresa.razonSocial || empresa.nombre || 'Mi Empresa',
+      ecfCodigoSeguridad:   ecf?.codigoSeguridad,
+      qrBase64,
+      empresaNombre:        empresa.nombreComercial || empresa.razonSocial || empresa.nombre || 'Mi Empresa',
       empresaRNC:           empresa.rnc || '',
       empresaDireccion:     empresa.direccion || '',
       empresaCiudad:        empresa.ciudad,
@@ -53,10 +80,11 @@ export class NotaCreditoPDFService {
       empresaColor:         (empresa.configuracion as any)?.colorPrimario ?? '#1a56db',
       clienteNombre:        nc.cliente?.nombre || 'Consumidor Final',
       clienteRNC:           nc.cliente?.rncReceptor || nc.cliente?.rfc,
-      clienteDireccion:     nc.cliente?.direccion,
-      clienteTelefono:      nc.cliente?.telefono,
-      clienteEmail:         nc.cliente?.email,
       facturaOriginalFolio: nc.facturaOriginalFolio,
+      ncfOriginal:          ecf?.ncfModificado,
+      codigoModificacion:   ecf?.codigoModificacion
+        ? CODIGO_MOD_LABEL[String(ecf.codigoModificacion)] ?? `Código ${ecf.codigoModificacion}`
+        : undefined,
       descripcionMotivo:    nc.descripcionMotivo,
       notas:                nc.notas,
       items: (nc.detalles ?? []).map(det => ({
