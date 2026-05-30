@@ -416,6 +416,18 @@ export async function generarFacturaPDF(
 
     y += Math.max(qrBoxH, ty - y + 28) + 10;
 
+    // ── EQUIVALENTE EN RD$ (solo si moneda extranjera) ───────────────
+    if (d.moneda && d.moneda !== 'DOP' && d.tipoCambio && d.tipoCambio > 1) {
+      const totalDOP = parseFloat((d.totalGeneral * d.tipoCambio).toFixed(2));
+      doc.fontSize(8.5).font('Helvetica').fillColor('#555')
+        .text(
+          `Tasa de cambio: RD$${d.tipoCambio.toFixed(2)} por ${d.moneda}1.00  ·  ` +
+          `Equivalente en RD$: ${totalDOP.toLocaleString('es-DO', { style:'currency', currency:'DOP', minimumFractionDigits:2 })}`,
+          PL, y, { width: W, align: 'right' },
+        );
+      y += 14;
+    }
+
     // ── NOTAS ────────────────────────────────────────────────────────
 
     if (d.notas?.trim()) {

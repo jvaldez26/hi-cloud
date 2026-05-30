@@ -14,6 +14,7 @@ export interface FacturaPDFData {
   diasCredito?:       number;
   notas?:             string;
   moneda:             string;
+  tipoCambio?:        number;   // tasa de cambio si moneda != DOP
   esOriginal:         boolean;
   // e-CF
   ecfNumero?:          string;

@@ -152,6 +152,7 @@ export class PDFService {
       diasCredito:         diasCredito ?? undefined,
       notas:               factura.notas || '',
       moneda:              factura.moneda || 'DOP',
+      tipoCambio:          factura.moneda && factura.moneda !== 'DOP' ? Number(factura.tipoCambio ?? 1) : undefined,
       esOriginal:          true,
       ecfNumero:           ecf?.numero,
       ecfTipo:             ecf?.codigo,
