@@ -84,11 +84,31 @@ export function buildE31(input: ECFBuildInput): MSellerPayload {
   if (montoExento > 0) totales['MontoExento'] = montoExento;
   totales['MontoTotal'] = montoTotal;
 
-  // ── PASO 3: OtraMoneda como sección HERMANA de Totales en Encabezado ─────────
-  const totalME    = Number(factura.total);
-  const subtotalME = Number((factura as any).subtotal ?? factura.total);
-  const itbisME    = Number((factura as any).iva ?? 0);
-  const otMEEncab  = mc.otraMonedaGravados(subtotalME, itbisME, totalME);
+  // ── PASO 3: OtraMoneda calculada DESDE los items en moneda original ──────────
+  // Se calcula directamente de detallesME (no de factura.subtotal/iva)
+  // para garantizar cuadratura exacta con MontoItemOtraMoneda de cada item.
+  let otraMoneda: Record<string, unknown> | undefined;
+  if (mc.esME) {
+    let montoGrav1ME = 0, itbis1ME = 0, montoExentoME = 0;
+    detallesME.forEach((d: any) => {
+      const pct = parseFloat(String(d.porcentajeIva ?? 18));
+      const sub = f2(Number(d.subtotal));           // subtotal en USD (original)
+      const iva = f2(Number(d.importeIva ?? d.iva ?? 0)); // ITBIS en USD
+      if (pct >= 18)      { montoGrav1ME += sub; itbis1ME += iva; }
+      else if (pct >= 16) { /* no común en E31, ignorar por ahora */ }
+      else                { montoExentoME += sub; }
+    });
+    const montoTotalME = f2(montoGrav1ME + montoExentoME + itbis1ME);
+    otraMoneda = {
+      TipoMoneda:              mc.moneda,
+      TipoCambio:              mc.tasa.toFixed(4),
+      MontoGravado1OtraMoneda: f2(montoGrav1ME).toFixed(2),  // cuadra con items
+      ITBIS1OtraMoneda:        f2(itbis1ME).toFixed(2),
+      TotalITBISOtraMoneda:    f2(itbis1ME).toFixed(2),
+      MontoTotalOtraMoneda:    montoTotalME.toFixed(2),
+    };
+    if (montoExentoME > 0) otraMoneda['MontoExentoOtraMoneda'] = f2(montoExentoME).toFixed(2);
+  }
 
   return {
     ECF: {
@@ -108,8 +128,7 @@ export function buildE31(input: ECFBuildInput): MSellerPayload {
           cliente?.direccion ? { DireccionComprador: cliente.direccion } : undefined,
         ),
         Totales:   totales,
-        // OtraMoneda va DESPUÉS de Totales, al mismo nivel (hermana, no hija)
-        ...(otMEEncab ? { OtraMoneda: otMEEncab } : {}),
+        ...(otraMoneda ? { OtraMoneda: otraMoneda } : {}),
       } as any,
       DetallesItems: { Item: items },
     },
