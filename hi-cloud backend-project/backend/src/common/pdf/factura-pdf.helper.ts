@@ -54,6 +54,7 @@ function ecfTipoTitulo(tipo?: string): string {
     E41: 'COMPRA ELECTRÓNICA',
     E44: 'REGÍMENES ESPECIALES ELECTRÓNICA',
     E45: 'GUBERNAMENTAL ELECTRÓNICA',
+    E46: 'EXPORTACIONES ELECTRÓNICA',
     E47: 'PAGOS AL EXTERIOR ELECTRÓNICA',
   };
   return tipo ? (map[tipo] ?? 'FACTURA ELECTRÓNICA') : 'FACTURA ELECTRÓNICA';
@@ -81,6 +82,13 @@ export async function generarFacturaPDF(
     const PL   = 42;               // margen izquierdo ≈ 15mm
     const PR   = PW - 42;          // margen derecho
     const W    = PR - PL;          // ancho útil ≈ 511
+
+    // Símbolo de moneda según la factura (DOP=RD$, USD=US$, etc.)
+    const simb = d.moneda === 'USD' ? 'US$' : d.moneda === 'EUR' ? '€' : 'RD$';
+    // Sombrea fmtM con versión currency-aware para esta factura
+    // eslint-disable-next-line no-shadow
+    const fmtM = (v: number | null | undefined) =>
+      simb + ' ' + (v ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
     const DARK   = '#111111';
     const GRAY   = '#555555';
@@ -208,9 +216,11 @@ export async function generarFacturaPDF(
     const cliLines: string[] = [];
     if (d.clienteRNC) cliLines.push('RNC o Cédula: ' + d.clienteRNC);
     cliLines.push('Nombre o Razón Social: ' + d.clienteNombre);
-    if (d.clienteDireccion) {
-      cliLines.push(d.clienteDireccion + (d.clienteCiudad ? ', ' + d.clienteCiudad : ''));
-    }
+    // Filtrar campos que son solo números (códigos postales almacenados incorrectamente)
+    const dir  = d.clienteDireccion && !/^\d+$/.test(d.clienteDireccion.trim()) ? d.clienteDireccion : '';
+    const ciu  = d.clienteCiudad    && !/^\d+$/.test(d.clienteCiudad.trim())    ? d.clienteCiudad    : '';
+    if (dir) cliLines.push(dir + (ciu ? ', ' + ciu : ''));
+    else if (ciu) cliLines.push(ciu);
     const cliBoxH = 18 + cliLines.length * 13 + 6;
 
     doc.rect(PL, y, W, cliBoxH).strokeColor(BORDER).lineWidth(0.75).stroke();
@@ -268,7 +278,10 @@ export async function generarFacturaPDF(
       doc.lineWidth(1);
 
       const descVal  = item.descuentoPct > 0 ? `${item.descuentoPct}%` : '-';
-      const itbisVal = item.itbisPct === 0 ? 'EXENTO' : fmtM(item.importeItbis);
+      // E46 exportaciones: 0% = Tasa Cero (no exento). Otros tipos con 0% = EXENTO.
+      const itbisVal = item.itbisPct === 0
+        ? (d.ecfTipo === 'E46' ? 'Tasa 0%' : 'EXENTO')
+        : fmtM(item.importeItbis);
       const cells    = [
         item.descripcion.toUpperCase(),
         String(item.cantidad),
