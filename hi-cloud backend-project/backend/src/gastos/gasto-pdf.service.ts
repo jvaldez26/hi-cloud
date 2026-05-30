@@ -134,9 +134,9 @@ export class GastoPDFService {
         // ── HEADER DERECHO — datos fiscales ───────────────────────────────────
         const rW = 215; const rX = PR - rW;
         let ry = y;
-        doc.fillColor(THEAD).font('Helvetica-Bold').fontSize(9.5)
+        doc.fillColor(THEAD).font('Helvetica-Bold').fontSize(8)
           .text('COMPROBANTE DE GASTOS MENORES ELECTRÓNICO', rX, ry, { width: rW, align: 'right' });
-        ry += 14;
+        ry += 16;
         if (ecf?.numero) {
           doc.fillColor('#0047AB').font('Helvetica-Bold').fontSize(15)
             .text(ecf.numero, rX, ry, { width: rW, align: 'right' });
@@ -216,12 +216,11 @@ export class GastoPDFService {
 
         // ── TOTALES ───────────────────────────────────────────────────────────
         const tW = 240; const tX = PR - tW;
-        const addRow = (label: string, val: string, bold = false, color = DARK) => {
+        const addRow = (label: string, val: string, _bold = false, color = DARK) => {
           doc.fillColor(GRAY).font('Helvetica').fontSize(9).text(label+':', tX, y, { width: 130 });
-          doc.fillColor(color).font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(9)
+          doc.fillColor(color).font('Helvetica').fontSize(9)
             .text(val, tX+130, y, { width: tW-130, align: 'right' });
-          doc.moveTo(tX, y+13).lineTo(PR, y+13).strokeColor('#e8e8e8').lineWidth(0.5).stroke();
-          doc.lineWidth(1);
+          // Sin línea entre filas intermedias — solo espaciado
           y += 14;
         };
         addRow('Subtotal Exento', fmtM(monto));
