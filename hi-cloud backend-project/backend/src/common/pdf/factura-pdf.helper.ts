@@ -214,7 +214,8 @@ export async function generarFacturaPDF(
     // ── DATOS DEL CLIENTE ────────────────────────────────────────────
 
     const cliLines: string[] = [];
-    if (d.clienteRNC) cliLines.push('RNC o Cédula: ' + d.clienteRNC);
+    if (d.clienteIdentificadorExtranjero) cliLines.push('ID Extranjero: ' + d.clienteIdentificadorExtranjero);
+    else if (d.clienteRNC) cliLines.push('RNC o Cédula: ' + d.clienteRNC);
     cliLines.push('Nombre o Razón Social: ' + d.clienteNombre);
     // Filtrar campos que son solo números (códigos postales almacenados incorrectamente)
     const dir  = d.clienteDireccion && !/^\d+$/.test(d.clienteDireccion.trim()) ? d.clienteDireccion : '';

@@ -40,9 +40,10 @@ export interface FacturaPDFData {
   vendedorNombre?:     string;
   sucursalNombre?:     string;
   // Cliente
-  clienteNombre:       string;
-  clienteRNC?:         string;
-  clienteDireccion?:   string;
+  clienteNombre:                  string;
+  clienteRNC?:                    string;
+  clienteIdentificadorExtranjero?: string;  // para E46/E47
+  clienteDireccion?:              string;
   clienteCiudad?:      string;
   clienteTelefono?:    string;
   clienteEmail?:       string;
