@@ -1,37 +1,41 @@
 /**
  * E43 — Comprobante para Gastos Menores Electrónico
- * Propósito: sustentar pagos del personal (peajes, pasajes, parqueos).
+ * Propósito: sustentar pagos del personal (peajes, pasajes, parqueos, dietas).
  * IndicadorFacturacion: siempre 4 (Exento) en todos los ítems.
- * IndicadorMontoGravado: NO aplica en E43.
- * ITBIS: no utilizable como adelanto de ITBIS.
- * Comprador: dato fijo "GASTOS MENORES" requerido por DGII.
+ * IndicadorBienoServicio: dinámico — 2 (Servicio) para peajes/pasajes/parqueos, 1 (Bien) para consumibles.
+ * SIN Comprador (E43 es autofactura interna — minOccurs=0).
+ * SIN TipoIngresos en IdDoc (no corresponde a E43).
+ * Totales: solo MontoExento y MontoTotal.
  */
 import {
   ECFBuildInput, MSellerPayload,
   buildEmisor, assertEmisorOrder, toEmpresaConfig,
   buildIdDoc, fmtFecha,
-  COMPRADOR_GASTOS_MENORES,
   buildTotalesExentos,
 } from './base-ecf.builder';
-import { round2 } from './sections/totales.section';
+
+function fmt2(v: number): number {
+  return parseFloat(v.toFixed(2));
+}
 
 export function buildE43(input: ECFBuildInput): MSellerPayload {
   const { encf, factura, config, fechaVencSec } = input;
-  const total  = Number(factura.total);
+  const total  = fmt2(Number(factura.total));
   const fecha  = fmtFecha(factura.fecha ?? new Date());
   const emisor = buildEmisor(toEmpresaConfig(config), fecha);
   assertEmisorOrder(emisor);
 
-  // Todos los ítems son exentos en E43 (IndicadorFacturacion = 4)
+  // Items: IndicadorFacturacion siempre 4 (Exento).
+  // IndicadorBienoServicio: 2=Servicio (peaje/pasaje/parqueo/dieta), 1=Bien (consumible).
   const items = (factura.detalles as any[] ?? []).map((d: any, idx: number) => ({
     NumeroLinea:            idx + 1,
     IndicadorFacturacion:   4,
     NombreItem:             d.descripcion,
-    IndicadorBienoServicio: 1,
+    IndicadorBienoServicio: d.esServicio === false ? 1 : 2,  // default Servicio para gastos menores
     CantidadItem:           Number(d.cantidad),
     UnidadMedida:           43,
-    PrecioUnitarioItem:     round2(Number(d.precioUnitario)),
-    MontoItem:              round2(Number(d.subtotal)),
+    PrecioUnitarioItem:     fmt2(Number(d.precioUnitario)),
+    MontoItem:              fmt2(Number(d.subtotal)),
   }));
 
   return {
@@ -42,13 +46,13 @@ export function buildE43(input: ECFBuildInput): MSellerPayload {
           tipo:         43,
           encf,
           fechaVencSec,
-          // Sin IndicadorMontoGravado (no aplica en E43)
-          tipoIngresos: '01',
+          // SIN TipoIngresos (no corresponde a E43)
+          // SIN IndicadorMontoGravado (no aplica en E43)
           tipoPago:     1,
         }),
         Emisor:    emisor,
-        Comprador: { ...COMPRADOR_GASTOS_MENORES },
-        Totales:   buildTotalesExentos(total),
+        // SIN Comprador (E43 es autofactura interna, Comprador minOccurs=0)
+        Totales:   buildTotalesExentos(total),   // solo MontoExento + MontoTotal
       },
       DetallesItems: { Item: items },
     },
