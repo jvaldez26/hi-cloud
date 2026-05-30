@@ -30,6 +30,8 @@ interface CreateNotaCreditoDto {
   vendedorId?:        number;
   nombreVendedor?:    string;
   detalles:           DetalleDto[];
+  moneda?:            string;
+  tipoCambio?:        number;
 }
 
 @Injectable()
@@ -76,6 +78,8 @@ export class NotasCreditoService {
       motivo:                 (dto.motivo ?? MotivoNotaCredito.DEVOLUCION) as any,
       descripcionMotivo:      dto.descripcionMotivo,
       notas:                  dto.notas,
+      moneda:                 dto.moneda ?? 'DOP',
+      tipoCambio:             dto.tipoCambio ?? 1,
       vendedorId:             dto.vendedorId,
       nombreVendedor:         dto.nombreVendedor,
       subtotal:               +subtotal.toFixed(2),

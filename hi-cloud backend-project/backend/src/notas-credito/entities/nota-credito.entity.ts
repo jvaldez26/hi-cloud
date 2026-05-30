@@ -79,4 +79,12 @@ export class NotaCredito extends TenantBaseEntity {
 
   @Column({ type: 'text', nullable: true })
   notas?: string;
+
+  /** Moneda heredada de la factura original (DOP, USD, etc.) */
+  @Column({ length: 3, default: 'DOP' })
+  moneda!: string;
+
+  /** Tasa de cambio al momento de la factura original */
+  @Column({ type: 'decimal', precision: 10, scale: 4, default: 1 })
+  tipoCambio!: number;
 }

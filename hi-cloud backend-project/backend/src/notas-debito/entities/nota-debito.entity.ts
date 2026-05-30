@@ -79,4 +79,10 @@ export class NotaDebito extends TenantBaseEntity {
 
   @Column({ type: 'text', nullable: true })
   notas?: string;
+
+  @Column({ length: 3, default: 'DOP' })
+  moneda!: string;
+
+  @Column({ type: 'decimal', precision: 10, scale: 4, default: 1 })
+  tipoCambio!: number;
 }

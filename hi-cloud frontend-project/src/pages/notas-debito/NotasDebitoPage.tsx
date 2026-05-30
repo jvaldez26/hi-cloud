@@ -224,6 +224,8 @@ export default function NotasDebitoPage() {
       fecha:                values.fecha?.format('YYYY-MM-DD'),
       facturaOriginalId:    facturaOrigen.id,
       facturaOriginalFolio: facturaOrigen.folio,
+      moneda:               facturaOrigen.moneda ?? 'DOP',
+      tipoCambio:           facturaOrigen.tipoCambio ? Number(facturaOrigen.tipoCambio) : 1,
       detalles:             detallesLimpios,
     });
   };
@@ -362,10 +364,17 @@ export default function NotasDebitoPage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                 <CheckCircleFilled style={{ color: token.colorSuccess }} />
                 <Text strong style={{ color: token.colorSuccess, fontSize: 13 }}>Documento original cargado</Text>
+                {facturaOrigen.moneda && facturaOrigen.moneda !== 'DOP' && (
+                  <Tag color="gold" style={{ margin: 0 }}>{facturaOrigen.moneda}</Tag>
+                )}
                 {facturaOrigen.estadoEcf && facturaOrigen.estadoEcf !== 'aceptado' && (
                   <Tag color={ECF_ESTADO_COLOR_ND[facturaOrigen.estadoEcf] ?? 'warning'} style={{ margin: 0 }}>{facturaOrigen.estadoEcf}</Tag>
                 )}
               </div>
+              {facturaOrigen.moneda && facturaOrigen.moneda !== 'DOP' && (
+                <Alert type="info" showIcon style={{ marginBottom: 8 }}
+                  message={`⚠️ Esta factura fue emitida en ${facturaOrigen.moneda} (Tasa: RD$${Number(facturaOrigen.tipoCambio ?? 1).toFixed(2)} por ${facturaOrigen.moneda}1.00). La nota de débito se generará en ${facturaOrigen.moneda}.`} />
+              )}
               {facturaOrigen.estadoEcf && facturaOrigen.estadoEcf !== 'aceptado' && (
                 <Alert type="warning" showIcon style={{ marginBottom: 8 }}
                   message="⚠️ Este comprobante aún no ha sido aceptado por la DGII. La nota de débito podría ser rechazada si el e-CF original no está validado." />

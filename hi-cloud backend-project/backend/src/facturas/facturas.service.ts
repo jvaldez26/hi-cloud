@@ -360,6 +360,8 @@ export class FacturasService {
         e.numero                                                  AS "encf",
         e."estadoDGII"                                            AS "estadoEcf",
         COALESCE(t.codigo, SUBSTRING(e.numero, 1, 3))             AS "tipoEcf",
+        COALESCE(f.moneda, 'DOP')                                 AS moneda,
+        COALESCE(f."tipoCambio", 1)::numeric                      AS "tipoCambio",
         COALESCE(
           JSON_AGG(
             JSON_BUILD_OBJECT(
