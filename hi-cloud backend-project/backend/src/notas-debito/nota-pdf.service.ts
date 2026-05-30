@@ -1,13 +1,25 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository }       from 'typeorm';
+import * as qrcode          from 'qrcode';
 import { NotaDebito }       from './entities/nota-debito.entity';
 import { TenantService }    from '../tenant/tenant.service';
 import { generarNotaPDF }   from '../common/pdf/nota-pdf.helper';
 import type { NotaPDFData } from '../common/pdf/nota-pdf.helper';
 
+const MOTIVO_LABEL: Record<string, string> = {
+  cargo_adicional:   'Cargo adicional',
+  ajuste_precio:     'Ajuste de precio',
+  intereses:         'Intereses por mora',
+  flete_adicional:   'Flete / Transporte adicional',
+  diferencia_cambio: 'Diferencia de cambio',
+  otro:              'Otros cargos adicionales',
+};
+
 @Injectable()
 export class NotaDebitoPDFService {
+  private readonly logger = new Logger(NotaDebitoPDFService.name);
+
   constructor(
     @InjectRepository(NotaDebito) private repo: Repository<NotaDebito>,
     private tenantSvc: TenantService,
@@ -26,16 +38,40 @@ export class NotaDebitoPDFService {
       .query('SELECT * FROM empresa WHERE id = $1 AND "isActive" = true LIMIT 1', [empresaId])
       .then((r: any[]) => r[0] || {});
 
-    const ecf = await this.repo.manager
-      .query(
-        `SELECT numero, "estadoDGII" FROM ecf
-         WHERE "documentoOrigenId" = $1
-           AND "documentoOrigenTipo" = 'NOTA_DEBITO'
-           AND "isActive" = true
-         ORDER BY "createdAt" DESC LIMIT 1`,
-        [id],
-      )
-      .then((r: any[]) => r[0] || null);
+    // ECF de esta nota — incluye QR, código seguridad, NCF modificado, fecha venc. secuencia
+    const ecf = await this.repo.manager.query(
+      `SELECT e.numero, e."estadoDGII", e."codigoSeguridad", e."qrUrl",
+              e."ncfModificado", e."codigoModificacion",
+              s."fechaVencimiento" AS "secFechaVenc"
+       FROM ecf e
+       LEFT JOIN secuencias_ecf s ON s.id = e."secuenciaId"
+       WHERE e."documentoOrigenId"   = $1
+         AND e."documentoOrigenTipo" = 'NOTA_DEBITO'
+         AND e."isActive"            = true
+       ORDER BY e."createdAt" DESC LIMIT 1`,
+      [id],
+    ).then((r: any[]) => r[0] || null);
+
+    // Generar QR DGII
+    let qrBase64 = '';
+    if (ecf?.numero && empresa.rnc) {
+      const urlQR = ecf.qrUrl
+        ?? `https://ecf.dgii.gov.do/ECF/ConsultaResultado?RNCEmisor=${empresa.rnc}` +
+           `&eNCF=${ecf.numero}` +
+           (ecf.codigoSeguridad ? `&CodigoSeguridadNCF=${ecf.codigoSeguridad}` : '');
+      qrBase64 = await qrcode.toDataURL(urlQR, {
+        width: 180, margin: 1, color: { dark: '#000000', light: '#ffffff' },
+      })
+        .then(url => url.replace('data:image/png;base64,', ''))
+        .catch(err => { this.logger.warn(`[ND-PDF] QR error: ${err.message}`); return ''; });
+    }
+
+    // Fecha de vencimiento de la secuencia (E33 SÍ tiene FechaVencimientoSecuencia)
+    const fechaVencSecuencia = ecf?.secFechaVenc
+      ? new Date(ecf.secFechaVenc).toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      : undefined;
+
+    const motivoLabel = nd.motivo ? (MOTIVO_LABEL[nd.motivo] ?? nd.motivo) : undefined;
 
     const data: NotaPDFData = {
       tipo:                 'DEBITO',
@@ -44,7 +80,10 @@ export class NotaDebitoPDFService {
       tipoNcf:              nd.tipoNcf ?? 'E33',
       ecfNumero:            ecf?.numero,
       ecfEstado:            ecf?.estadoDGII,
-      empresaNombre:        empresa.razonSocial || empresa.nombre || 'Mi Empresa',
+      ecfCodigoSeguridad:   ecf?.codigoSeguridad,
+      qrBase64,
+      fechaVencSecuencia,
+      empresaNombre:        empresa.nombreComercial || empresa.razonSocial || empresa.nombre || 'Mi Empresa',
       empresaRNC:           empresa.rnc || '',
       empresaDireccion:     empresa.direccion || '',
       empresaCiudad:        empresa.ciudad,
@@ -53,10 +92,10 @@ export class NotaDebitoPDFService {
       empresaColor:         (empresa.configuracion as any)?.colorPrimario ?? '#d97706',
       clienteNombre:        nd.cliente?.nombre || 'Consumidor Final',
       clienteRNC:           nd.cliente?.rncReceptor || nd.cliente?.rfc,
-      clienteDireccion:     nd.cliente?.direccion,
-      clienteTelefono:      nd.cliente?.telefono,
-      clienteEmail:         nd.cliente?.email,
       facturaOriginalFolio: nd.facturaOriginalFolio,
+      ncfOriginal:          ecf?.ncfModificado,
+      codigoModificacion:   'Código 3 — Corrección de montos',
+      motivoConcepto:       motivoLabel,
       descripcionMotivo:    nd.descripcionMotivo,
       notas:                nd.notas,
       items: (nd.detalles ?? []).map(det => ({

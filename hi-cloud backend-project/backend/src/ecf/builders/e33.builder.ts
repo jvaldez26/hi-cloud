@@ -16,10 +16,8 @@ import {
   buildItemsE33,
 } from './base-ecf.builder';
 
-const CODIGOS_MODIFICACION_E33: Record<string, string> = {
-  '3': 'Ajuste de montos (cargo adicional)',
-  '4': 'Reemplazo por contingencia',
-};
+// E33 (Nota Débito): CodigoModificacion siempre debe ser '3' (corrección de montos)
+// según normativa DGII. Otros códigos no aplican para notas de débito.
 
 export function buildE33(input: ECFBuildInput): MSellerPayload {
   const { encf, factura, config, fechaVencSec, infoReferencia } = input;
@@ -28,11 +26,15 @@ export function buildE33(input: ECFBuildInput): MSellerPayload {
     throw new Error('E33 requiere infoReferencia.NCFModificado (eNCF de la factura original)');
   }
 
-  const codigoMod = String(infoReferencia.CodigoModificacion ?? '3');
-  if (!CODIGOS_MODIFICACION_E33[codigoMod]) {
+  // E33 siempre usa CodigoModificacion='3' (corrección de montos hacia arriba)
+  const codigoMod = '3';
+
+  // NCFModificado acepta series E (electrónico), A, B y P (papel/contingencia)
+  const ncfModificado = infoReferencia.NCFModificado;
+  if (!ncfModificado || !/^[EABP]\d+/.test(ncfModificado)) {
     throw new Error(
-      `CodigoModificacion "${codigoMod}" inválido para E33. ` +
-      `Válidos: ${Object.entries(CODIGOS_MODIFICACION_E33).map(([k, v]) => `${k}=${v}`).join(', ')}`,
+      `NCFModificado "${ncfModificado}" inválido para E33. ` +
+      `Debe comenzar con E, A, B o P seguido de dígitos.`,
     );
   }
 

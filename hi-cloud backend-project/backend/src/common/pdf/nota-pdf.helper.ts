@@ -27,10 +27,12 @@ export interface NotaPDFData {
   clienteDireccion?:   string;
   clienteTelefono?:    string;
   clienteEmail?:       string;
-  facturaOriginalFolio?: string;
-  ncfOriginal?:          string;
-  codigoModificacion?:   string;   // "3 — Ajuste de montos", etc.
-  fechaNcfModificado?:   string;
+  facturaOriginalFolio?:  string;
+  ncfOriginal?:           string;
+  codigoModificacion?:    string;   // "3 — Ajuste de montos", etc.
+  fechaNcfModificado?:    string;
+  fechaVencSecuencia?:    string;   // E33: fecha vencimiento de la secuencia DGII
+  motivoConcepto?:        string;   // E33: motivo legible (cargo adicional, flete, etc.)
   items: Array<{
     descripcion:    string;
     cantidad:       number;
@@ -134,9 +136,13 @@ export async function generarNotaPDF(d: NotaPDFData): Promise<Buffer> {
     ry += 20;
 
     doc.fillColor(GRAY).font('Helvetica').fontSize(8.5);
-    doc.text('Número interno: ' + d.numero,  rightX, ry, { width: rightW, align: 'right' }); ry += 11;
-    doc.text('Tipo NCF: '       + tipoNcfLbl, rightX, ry, { width: rightW, align: 'right' }); ry += 11;
-    doc.text('Fecha: '          + fmtF(d.fecha), rightX, ry, { width: rightW, align: 'right' }); ry += 13;
+    doc.text('Número interno: ' + d.numero,    rightX, ry, { width: rightW, align: 'right' }); ry += 11;
+    doc.text('Tipo NCF: '       + tipoNcfLbl,  rightX, ry, { width: rightW, align: 'right' }); ry += 11;
+    doc.text('Fecha: '          + fmtF(d.fecha), rightX, ry, { width: rightW, align: 'right' }); ry += 11;
+    if (esDebito && d.fechaVencSecuencia) {
+      doc.text('Válida hasta: ' + d.fechaVencSecuencia, rightX, ry, { width: rightW, align: 'right' }); ry += 11;
+    }
+    ry += 2;
 
     // Estado badge
     const badgeCfg: Record<string, [string, string]> = {
@@ -263,6 +269,23 @@ export async function generarNotaPDF(d: NotaPDFData): Promise<Buffer> {
     }
     y += 12;
 
+    // ── CONCEPTO DE LA NOTA DE DÉBITO ────────────────────────────────────────
+    if (esDebito && (d.motivoConcepto || d.descripcionMotivo)) {
+      const conceptoLines: string[] = [];
+      if (d.motivoConcepto)    conceptoLines.push('Motivo: ' + d.motivoConcepto);
+      if (d.descripcionMotivo) conceptoLines.push('Detalle: ' + d.descripcionMotivo);
+      const cH = 16 + conceptoLines.length * 13 + 6;
+      doc.rect(PL, y, W, cH).fillAndStroke('#fffbeb', '#f59e0b');
+      doc.fillColor('#92400e').font('Helvetica-Bold').fontSize(7.5)
+        .text('CONCEPTO DE LA NOTA DE DÉBITO', PL + 10, y + 6);
+      let cy = y + 18;
+      for (const line of conceptoLines) {
+        doc.fillColor('#555555').font('Helvetica').fontSize(9.5)
+          .text(line, PL + 10, cy, { width: W - 20 }); cy += 13;
+      }
+      y += cH + 10;
+    }
+
     // ── TOTALES ───────────────────────────────────────────────────────────────
 
     const totW  = 265;
@@ -348,9 +371,15 @@ export async function generarNotaPDF(d: NotaPDFData): Promise<Buffer> {
 
     const footerY = PH - 36;
     doc.moveTo(PL, footerY).lineTo(PR, footerY).strokeColor('#dddddd').lineWidth(0.5).stroke();
-    const pieText = esDebito
-      ? 'Nota de Débito Electrónica (E33) — emitida conforme a normativa DGII República Dominicana'
-      : 'Nota de Crédito Electrónica (E34) — emitida conforme a normativa DGII República Dominicana';
+    let pieText: string;
+    if (esDebito && d.ncfOriginal) {
+      pieText = `Este documento modifica el comprobante ${d.ncfOriginal}. ` +
+        `Emitido de acuerdo a la Ley 32-23 y normativa DGII República Dominicana.`;
+    } else if (esDebito) {
+      pieText = 'Nota de Débito Electrónica (E33) — emitida conforme a normativa DGII República Dominicana';
+    } else {
+      pieText = 'Nota de Crédito Electrónica (E34) — emitida conforme a normativa DGII República Dominicana';
+    }
     doc.fillColor('#666666').font('Helvetica').fontSize(7.5)
       .text(pieText, PL, footerY + 8, { width: W, align: 'center' });
 
