@@ -90,4 +90,9 @@ export class CreateClienteDto {
   @IsNumber({}, { message: 'El límite de crédito debe ser un número' })
   @Min(0, { message: 'El límite de crédito no puede ser negativo' })
   limiteCredito?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  identificadorExtranjero?: string;
 }
