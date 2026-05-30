@@ -91,21 +91,24 @@ export function buildTotalesTasaCero(total: number): Record<string, unknown> {
 }
 
 /**
- * Totales para E47 (Pagos al Exterior).
- * Incluye TotalISRRetencion obligatorio — suma de MontoISRRetenido de todos los ítems.
+ * Totales para E47 (Pagos al Exterior) — orden estricto XSD DGII:
+ *   MontoExento → MontoTotal → TotalISRRetencion (solo si > 0)
+ * Prohibidos: TotalITBIS, TotalITBIS1/2/3, MontoGravadoTotal, tags vacíos.
  */
 export function buildTotalesE47(
-  total:      number,
-  subtotal:   number,
-  isr:        number,   // suma de retenciones ISR
+  total:    number,
+  subtotal: number,
+  isr:      number,   // suma de MontoISRRetenido de todos los ítems
 ): Record<string, unknown> {
-  return {
-    MontoGravadoTotal: 0,
-    MontoExento:       round2(subtotal),
-    TotalITBIS:        0,
-    TotalISRRetencion: round2(isr),
-    MontoTotal:        round2(total),
+  const tot: Record<string, unknown> = {
+    MontoExento: round2(subtotal),
+    MontoTotal:  round2(total),
   };
+  // TotalISRRetencion al final, solo si hay retención
+  if (isr > 0) {
+    tot['TotalISRRetencion'] = round2(isr);
+  }
+  return tot;
 }
 
 /**
