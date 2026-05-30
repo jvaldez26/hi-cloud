@@ -2,18 +2,21 @@
  * E45 — Comprobante Gubernamental Electrónico
  * Propósito: venta de bienes/servicios a instituciones del Estado.
  * Comprador: RNC de la institución pública obligatorio.
- * IndicadorMontoGravado: condicional (0 si exento, 1 si hay gravado).
+ * Totales calculados DESDE los items — MontoExento omitido si es 0.
  */
 import {
   ECFBuildInput, MSellerPayload,
   buildEmisor, assertEmisorOrder, toEmpresaConfig,
   buildIdDoc, fmtFecha,
   buildCompradorRNC,
-  buildTotalesGravados, tieneMontoGravado,
   EcfRncRequeridoError,
   resolverMoneda,
 } from './base-ecf.builder';
-import { round2 } from './sections/totales.section';
+import { Logger } from '@nestjs/common';
+
+const logger = new Logger('E45Builder');
+
+function f2(v: number): number { return parseFloat(v.toFixed(2)); }
 
 export function buildE45(input: ECFBuildInput): MSellerPayload {
   const { encf, factura, config, fechaVencSec } = input;
@@ -28,57 +31,90 @@ export function buildE45(input: ECFBuildInput): MSellerPayload {
   assertEmisorOrder(emisor);
 
   const detallesME = factura.detalles as any[] ?? [];
-  const hayGravado: 0 | 1 = tieneMontoGravado(detallesME) ? 1 : 0;
-  const detallesRD = detallesME.map(d => ({
-    ...d,
-    subtotal:   mc.toDOP(Number(d.subtotal)),
-    importeIva: mc.toDOP(Number(d.importeIva ?? d.iva ?? 0)),
-    iva:        mc.toDOP(Number(d.importeIva ?? d.iva ?? 0)),
-  }));
 
   const compradorExtras: Record<string, unknown> = {};
   if (cliente?.direccion)         compradorExtras['DireccionComprador'] = cliente.direccion;
   if (cliente?.numeroOrdenCompra) compradorExtras['NumeroOrdenCompra']  = cliente.numeroOrdenCompra;
 
+  // PASO 1: construir items con DOP
   const items = detallesME.map((d: any, idx: number) => {
     const precioME = Number(d.precioUnitario);
     const montoME  = Number(d.subtotal);
+    const pct      = parseFloat(String(d.porcentajeIva ?? 18));
+    const indFact  = pct >= 18 ? 1 : pct >= 16 ? 2 : 4;
     const otME     = mc.otraMonedaItem(precioME, montoME);
     return {
       NumeroLinea:            idx + 1,
-      IndicadorFacturacion:   d.porcentajeIva === 18 ? 1 : d.porcentajeIva === 16 ? 2 : 4,
+      IndicadorFacturacion:   indFact,
       NombreItem:             d.descripcion,
       IndicadorBienoServicio: 1,
       CantidadItem:           Number(d.cantidad),
       UnidadMedida:           43,
-      PrecioUnitarioItem:     round2(mc.toDOP(precioME)),
+      PrecioUnitarioItem:     f2(mc.toDOP(precioME)),
       ...(otME ? { OtraMonedaDetalle: otME } : {}),
-      MontoItem:              round2(mc.toDOP(montoME)),
+      MontoItem:              f2(mc.toDOP(montoME)),
     };
   });
 
-  const encabezado: Record<string, unknown> = {
-    Version: '1.0',
-    IdDoc: buildIdDoc({
-      tipo:                  45,
-      encf,
-      fechaVencSec,
-      indicadorMontoGravado: hayGravado,
-      tipoIngresos:          '01',
-      tipoPago:              1,
-    }),
-    Emisor:    emisor,
-    Comprador: buildCompradorRNC(rnc, cliente?.nombre ?? 'Entidad Gubernamental', compradorExtras),
-    Totales:   buildTotalesGravados(detallesRD, mc.toDOP(totalME)),
-  };
-  const otME = mc.otraMonedaGravados(
-    Number((factura as any).subtotal ?? factura.total),
-    Number((factura as any).iva ?? 0),
-    totalME,
-  );
-  if (otME) encabezado['OtraMoneda'] = otME;
+  // PASO 2: calcular totales DESDE los items (en RD$)
+  let montoGravado18 = 0, montoGravado16 = 0, montoExento = 0;
+  let itbis18 = 0, itbis16 = 0;
+
+  detallesME.forEach((d: any) => {
+    const pct = parseFloat(String(d.porcentajeIva ?? 18));
+    const sub = f2(mc.toDOP(Number(d.subtotal)));
+    const iva = f2(mc.toDOP(Number(d.importeIva ?? d.iva ?? 0)));
+    if (pct >= 18)      { montoGravado18 += sub; itbis18 += iva; }
+    else if (pct >= 16) { montoGravado16 += sub; itbis16 += iva; }
+    else                { montoExento += sub; }
+  });
+
+  const montoGravadoTotal = f2(montoGravado18 + montoGravado16);
+  const totalITBIS        = f2(itbis18 + itbis16);
+  const montoTotal        = f2(montoGravadoTotal + montoExento + totalITBIS);
+  const hayGravado: 0 | 1 = montoGravadoTotal > 0 ? 1 : 0;
+
+  const totales: Record<string, unknown> = {};
+  if (montoGravadoTotal > 0) {
+    totales['MontoGravadoTotal'] = montoGravadoTotal;
+    totales['MontoGravadoI1']    = f2(montoGravado18);
+    totales['ITBIS1']            = 18;
+    totales['TotalITBIS']        = totalITBIS;
+    totales['TotalITBIS1']       = f2(itbis18);
+  }
+  if (montoGravado16 > 0) {
+    totales['MontoGravadoI2'] = f2(montoGravado16);
+    totales['ITBIS2']         = 16;
+    totales['TotalITBIS2']    = f2(itbis16);
+  }
+  if (montoExento > 0) totales['MontoExento'] = montoExento;  // OMITIR si es 0
+  totales['MontoTotal'] = montoTotal;
+
+  logger.debug(`[E45] Totales: ${JSON.stringify(totales)}`);
+
+  // PASO 3: OtraMoneda si USD
+  const subtotalME = Number((factura as any).subtotal ?? factura.total);
+  const itbisME    = Number((factura as any).iva ?? 0);
+  const otMEEncab  = mc.otraMonedaGravados(subtotalME, itbisME, totalME);
+  if (otMEEncab) totales['OtraMoneda'] = otMEEncab;
 
   return {
-    ECF: { Encabezado: encabezado as any, DetallesItems: { Item: items } },
+    ECF: {
+      Encabezado: {
+        Version: '1.0',
+        IdDoc: buildIdDoc({
+          tipo:                  45,
+          encf,
+          fechaVencSec,
+          indicadorMontoGravado: hayGravado,
+          tipoIngresos:          '01',
+          tipoPago:              1,
+        }),
+        Emisor:    emisor,
+        Comprador: buildCompradorRNC(rnc, cliente?.nombre ?? 'Entidad Gubernamental', compradorExtras),
+        Totales:   totales,
+      } as any,
+      DetallesItems: { Item: items },
+    },
   };
 }
