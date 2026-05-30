@@ -129,14 +129,18 @@ export class PDFService {
       factura.cliente?.rncReceptor ? 'RNC' :
       factura.cliente?.rfc?.length === 11 ? 'CEDULA' : 'CONSUMIDOR';
 
-    const diasCredito = factura.cliente?.diasCredito;
-    const esCreditoPorDias = diasCredito && diasCredito > 0;
+    // Usar tipoPago de la FACTURA (no del cliente) para determinar contado vs crédito
+    const esCreditoPorDias = factura.tipoPago === 'CREDITO';
+    const diasCredito = esCreditoPorDias && factura.diasCredito > 0
+      ? factura.diasCredito : undefined;
     const fechaVencimiento = esCreditoPorDias
-      ? (() => {
-          const dt = new Date(factura.fecha);
-          dt.setDate(dt.getDate() + diasCredito!);
-          return dt.toISOString();
-        })()
+      ? (factura.fechaVencimiento
+          ? String(factura.fechaVencimiento)
+          : (() => {
+              const dt = new Date(factura.fecha);
+              dt.setDate(dt.getDate() + (diasCredito ?? 30));
+              return dt.toISOString();
+            })())
       : undefined;
 
     const data: FacturaPDFData = {
