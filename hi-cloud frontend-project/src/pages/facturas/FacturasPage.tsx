@@ -279,7 +279,7 @@ export default function FacturasPage() {
     },
     // ── e-CF — badge compacto + botón emitir/reenviar ─────────────────────────
     {
-      title: 'e-CF', key: 'ecf', width: 130,
+      title: 'e-CF', key: 'ecf', width: 160,
       render: (_: unknown, r: Factura) => {
         const ecf = (r as any).ecf;
         if (r.estado === 'borrador') return null;
@@ -301,18 +301,30 @@ export default function FacturasPage() {
 
         const puedeReenviar = ['rechazado', 'contingencia', 'pendiente_envio'].includes(ecf.estadoDGII);
         return (
-          <Space size={4}>
-            <EcfBadge estado={ecf.estadoDGII as EstadoEcf} encf={ecf.numero} small />
-            {puedeReenviar && (
-              <Tooltip title="Reenviar a DGII">
-                <Button
-                  size="small" type="text" icon={<ReloadOutlined />}
-                  loading={reenviarEcfMut.isPending}
-                  onClick={e => { e.stopPropagation(); reenviarEcfMut.mutate(ecf.numero); }}
-                />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <Space size={4}>
+              <EcfBadge estado={ecf.estadoDGII as EstadoEcf} encf={ecf.numero} small />
+              {puedeReenviar && (
+                <Tooltip title="Reenviar a DGII">
+                  <Button
+                    size="small" type="text" icon={<ReloadOutlined />}
+                    loading={reenviarEcfMut.isPending}
+                    onClick={e => { e.stopPropagation(); reenviarEcfMut.mutate(ecf.numero); }}
+                  />
+                </Tooltip>
+              )}
+            </Space>
+            {ecf.numero && (
+              <Tooltip title={ecf.numero}>
+                <Typography.Text
+                  copyable={{ text: ecf.numero }}
+                  style={{ fontSize: 10, fontFamily: 'monospace', color: '#555', lineHeight: 1.2 }}
+                >
+                  {ecf.numero}
+                </Typography.Text>
               </Tooltip>
             )}
-          </Space>
+          </div>
         );
       },
     },
