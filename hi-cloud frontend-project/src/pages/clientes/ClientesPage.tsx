@@ -335,15 +335,19 @@ export default function ClientesPage() {
               </Form.Item>
             </Col>
             <Col xs={24} sm={8}>
-              <Form.Item name="rfc" label="RNC / Cédula"
-                rules={[
-                  { required: true, message: 'El RNC o Cédula es requerido' },
-                  {
-                    pattern: /^\d{9}$|^\d{11}$/,
-                    message: 'RNC debe tener 9 dígitos o Cédula debe tener 11 dígitos',
-                  },
-                ]}>
-                <Input placeholder="9 dígitos (RNC) u 11 dígitos (Cédula)" maxLength={11} />
+              <Form.Item noStyle shouldUpdate={(p, c) => p.identificadorExtranjero !== c.identificadorExtranjero}>
+                {({ getFieldValue }) => {
+                  const tieneIdExt = !!getFieldValue('identificadorExtranjero');
+                  return (
+                    <Form.Item name="rfc" label="RNC / Cédula"
+                      rules={[
+                        { required: !tieneIdExt, message: 'El RNC o Cédula es requerido (o ingrese Identificador Extranjero)' },
+                        { pattern: /^\d{9}$|^\d{11}$/, message: 'RNC debe tener 9 dígitos o Cédula debe tener 11 dígitos' },
+                      ]}>
+                      <Input placeholder="9 dígitos (RNC) u 11 dígitos (Cédula)" maxLength={11} />
+                    </Form.Item>
+                  );
+                }}
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
