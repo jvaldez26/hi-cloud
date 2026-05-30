@@ -93,14 +93,11 @@ export function buildE32(input: ECFBuildInput): MSellerPayload {
   const subtotME  = Number((factura as any).subtotal ?? factura.total);
   const itbisME   = Number((factura as any).iva ?? 0);
   const otMEEncab = mc.otraMonedaGravados(subtotME, itbisME, totalME);
-  if (otMEEncab) totales['OtraMoneda'] = otMEEncab;
 
   const comprador = rnc
     ? buildCompradorRNC(rnc, cliente?.nombre ?? 'Cliente',
         cliente?.direccion ? { DireccionComprador: cliente.direccion } : undefined)
     : { ...COMPRADOR_CONSUMIDOR_FINAL };
-
-  void hayGravado; // unused
 
   return {
     ECF: {
@@ -117,6 +114,7 @@ export function buildE32(input: ECFBuildInput): MSellerPayload {
         Emisor:    emisor,
         Comprador: comprador,
         Totales:   totales,
+        ...(otMEEncab ? { OtraMoneda: otMEEncab } : {}),
       } as any,
       DetallesItems: { Item: items },
     },

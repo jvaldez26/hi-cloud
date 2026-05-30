@@ -96,7 +96,6 @@ export function buildE45(input: ECFBuildInput): MSellerPayload {
   const subtotalME = Number((factura as any).subtotal ?? factura.total);
   const itbisME    = Number((factura as any).iva ?? 0);
   const otMEEncab  = mc.otraMonedaGravados(subtotalME, itbisME, totalME);
-  if (otMEEncab) totales['OtraMoneda'] = otMEEncab;
 
   return {
     ECF: {
@@ -113,6 +112,7 @@ export function buildE45(input: ECFBuildInput): MSellerPayload {
         Emisor:    emisor,
         Comprador: buildCompradorRNC(rnc, cliente?.nombre ?? 'Entidad Gubernamental', compradorExtras),
         Totales:   totales,
+        ...(otMEEncab ? { OtraMoneda: otMEEncab } : {}),
       } as any,
       DetallesItems: { Item: items },
     },

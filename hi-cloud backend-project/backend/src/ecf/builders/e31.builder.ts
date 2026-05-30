@@ -84,12 +84,11 @@ export function buildE31(input: ECFBuildInput): MSellerPayload {
   if (montoExento > 0) totales['MontoExento'] = montoExento;
   totales['MontoTotal'] = montoTotal;
 
-  // ── PASO 3: OtraMoneda si moneda extranjera (valores en USD al final) ──────
+  // ── PASO 3: OtraMoneda como sección HERMANA de Totales en Encabezado ─────────
   const totalME    = Number(factura.total);
   const subtotalME = Number((factura as any).subtotal ?? factura.total);
   const itbisME    = Number((factura as any).iva ?? 0);
   const otMEEncab  = mc.otraMonedaGravados(subtotalME, itbisME, totalME);
-  if (otMEEncab) totales['OtraMoneda'] = otMEEncab;
 
   return {
     ECF: {
@@ -109,6 +108,8 @@ export function buildE31(input: ECFBuildInput): MSellerPayload {
           cliente?.direccion ? { DireccionComprador: cliente.direccion } : undefined,
         ),
         Totales:   totales,
+        // OtraMoneda va DESPUÉS de Totales, al mismo nivel (hermana, no hija)
+        ...(otMEEncab ? { OtraMoneda: otMEEncab } : {}),
       } as any,
       DetallesItems: { Item: items },
     },
