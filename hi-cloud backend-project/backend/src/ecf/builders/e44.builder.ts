@@ -31,9 +31,10 @@ export function buildE44(input: ECFBuildInput): MSellerPayload {
 
   // Todos los ítems son exentos (IndicadorFacturacion = 4)
   const items = (factura.detalles as any[] ?? []).map((d: any, idx: number) => {
-    const precioME = Number(d.precioUnitario);
+    const precioME    = Number(d.precioUnitario);
     const itemMontoME = Number(d.subtotal);
-    const item: Record<string, unknown> = {
+    const otME        = mc.otraMonedaItem(precioME, itemMontoME);
+    return {
       NumeroLinea:            idx + 1,
       IndicadorFacturacion:   4,
       NombreItem:             d.descripcion,
@@ -41,11 +42,9 @@ export function buildE44(input: ECFBuildInput): MSellerPayload {
       CantidadItem:           Number(d.cantidad),
       UnidadMedida:           43,
       PrecioUnitarioItem:     round2(mc.toDOP(precioME)),
+      ...(otME ? { OtraMonedaDetalle: otME } : {}),
       MontoItem:              round2(mc.toDOP(itemMontoME)),
     };
-    const otME = mc.otraMonedaItem(precioME, itemMontoME);
-    if (otME) item['OtraMonedaDetalle'] = otME;
-    return item;
   });
 
   return {

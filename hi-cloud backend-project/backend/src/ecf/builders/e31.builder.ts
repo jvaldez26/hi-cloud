@@ -38,7 +38,8 @@ export function buildE31(input: ECFBuildInput): MSellerPayload {
   const items = detallesME.map((d: any, idx: number) => {
     const precioME = Number(d.precioUnitario);
     const montoME  = Number(d.subtotal);
-    const item: Record<string, unknown> = {
+    const otME     = mc.otraMonedaItem(precioME, montoME);
+    return {
       NumeroLinea:            idx + 1,
       IndicadorFacturacion:   d.porcentajeIva === 18 ? 1 : d.porcentajeIva === 16 ? 2 : 4,
       NombreItem:             d.descripcion,
@@ -46,11 +47,9 @@ export function buildE31(input: ECFBuildInput): MSellerPayload {
       CantidadItem:           Number(d.cantidad),
       UnidadMedida:           43,
       PrecioUnitarioItem:     round2(mc.toDOP(precioME)),
-      MontoItem:              round2(mc.toDOP(montoME)),
+      ...(otME ? { OtraMonedaDetalle: otME } : {}),  // ANTES de MontoItem
+      MontoItem:              round2(mc.toDOP(montoME)),  // SIEMPRE AL FINAL
     };
-    const otME = mc.otraMonedaItem(precioME, montoME);
-    if (otME) item['OtraMonedaDetalle'] = otME;
-    return item;
   });
 
   const encabezado: Record<string, unknown> = {

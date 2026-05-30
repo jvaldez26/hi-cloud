@@ -49,19 +49,20 @@ export function buildE32(input: ECFBuildInput): MSellerPayload {
     : { ...COMPRADOR_CONSUMIDOR_FINAL };
 
   const items = detallesME.map((d: any, idx: number) => {
-    const item: Record<string, unknown> = {
+    const precioME = Number(d.precioUnitario);
+    const montoME  = Number(d.subtotal);
+    const otME     = mc.otraMonedaItem(precioME, montoME);
+    return {
       NumeroLinea:            idx + 1,
       IndicadorFacturacion:   d.porcentajeIva === 18 ? 1 : d.porcentajeIva === 16 ? 2 : 4,
       NombreItem:             d.descripcion,
       IndicadorBienoServicio: 1,
       CantidadItem:           Number(d.cantidad),
       UnidadMedida:           43,
-      PrecioUnitarioItem:     round2(mc.toDOP(Number(d.precioUnitario))),
-      MontoItem:              round2(mc.toDOP(Number(d.subtotal))),
+      PrecioUnitarioItem:     round2(mc.toDOP(precioME)),
+      ...(otME ? { OtraMonedaDetalle: otME } : {}),
+      MontoItem:              round2(mc.toDOP(montoME)),
     };
-    const otME = mc.otraMonedaItem(Number(d.precioUnitario), Number(d.subtotal));
-    if (otME) item['OtraMonedaDetalle'] = otME;
-    return item;
   });
 
   const encabezado: Record<string, unknown> = {
