@@ -552,8 +552,9 @@ export class FacturasService {
       });
 
       // 4. Actualizar estado de la factura
-      // Crédito SIEMPRE = EMITIDA (pendiente de cobro), nunca PAGADA al emitir
-      const estadoFinal = (!esCredito && pagoInmediato) ? FacturaEstado.PAGADA : FacturaEstado.EMITIDA;
+      // Contado → siempre PAGADA al emitir (pago se recibe en el acto)
+      // Crédito → EMITIDA (pendiente de cobro)
+      const estadoFinal = !esCredito ? FacturaEstado.PAGADA : FacturaEstado.EMITIDA;
       await this.facturaRepository.update(id, { estado: estadoFinal });
       this.realtimeService.notify(factura.empresaId, 'factura', 'updated', id);
 
