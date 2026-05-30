@@ -186,9 +186,9 @@ export async function generarFacturaPDF(
       ...(d.vendedorNombre  ? [['Vendedor',       d.vendedorNombre ]  as [string, string]] : []),
       ['Moneda',             d.moneda],
       ['Tipo de Factura',    d.condicionPago ?? d.tipo],
-      // Plazo + Vence solo para facturas a crédito (y NO para E32)
-      ...(d.diasCredito && d.diasCredito > 0 ? [['Plazo', `${d.diasCredito} días`] as [string, string]] : []),
-      ...(d.fechaVencimiento && !esE32 ? [['Vence',         fmtF(d.fechaVencimiento)] as [string, string]] : []),
+      // Plazo + Vence solo para facturas a CRÉDITO — no para contado aunque diasCredito tenga valor
+      ...(d.tipo === 'CRÉDITO' && d.diasCredito && d.diasCredito > 0 ? [['Plazo', `${d.diasCredito} días`] as [string, string]] : []),
+      ...(d.tipo === 'CRÉDITO' && d.fechaVencimiento && !esE32 ? [['Vence', fmtF(d.fechaVencimiento)] as [string, string]] : []),
       ...(d.sucursalNombre  ? [['Sucursal',        d.sucursalNombre ]  as [string, string]] : []),
       ['Fecha Emisión',      fmtF(d.fechaEmision)],
     ];
