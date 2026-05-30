@@ -14,6 +14,7 @@ import {
   buildEmisor, assertEmisorOrder, toEmpresaConfig,
   buildIdDoc, fmtFecha,
   buildTotalesE47,
+  resolverMoneda,
 } from './base-ecf.builder';
 import { Logger } from '@nestjs/common';
 
@@ -27,8 +28,10 @@ function fmt2(v: number): number {
 export function buildE47(input: ECFBuildInput): MSellerPayload {
   const { encf, factura, config, fechaVencSec, nombreExtranjero } = input;
   const cliente = factura.cliente as any;
-  const total   = fmt2(Number(factura.total));
-  const subtotal = fmt2(Number((factura as any).subtotal ?? factura.total));
+  const mc      = resolverMoneda(factura);
+  const totalME  = Number(factura.total);
+  const total    = mc.toDOP(totalME);   // principal en DOP
+  const subtotal = mc.toDOP(Number((factura as any).subtotal ?? factura.total));
   const fecha   = fmtFecha(factura.fecha ?? new Date());
   const emisor  = buildEmisor(toEmpresaConfig(config), fecha);
   assertEmisorOrder(emisor);
@@ -58,8 +61,8 @@ export function buildE47(input: ECFBuildInput): MSellerPayload {
       IndicadorBienoServicio: 2,
       CantidadItem:           Number(d.cantidad),
       UnidadMedida:           43,
-      PrecioUnitarioItem:     fmt2(Number(d.precioUnitario)),
-      MontoItem:              fmt2(Number(d.subtotal)),
+      PrecioUnitarioItem:     fmt2(mc.toDOP(Number(d.precioUnitario))),
+      MontoItem:              fmt2(mc.toDOP(Number(d.subtotal))),
     };
     return item;
   });
@@ -90,6 +93,7 @@ export function buildE47(input: ECFBuildInput): MSellerPayload {
         Emisor:    emisor,
         Comprador: comprador,
         Totales:   buildTotalesE47(total, subtotal, totalISR),
+        ...( mc.otraMonedaExentos(totalME) ? { OtraMoneda: mc.otraMonedaExentos(totalME) } : {} ),
       },
       DetallesItems: { Item: items },
     },

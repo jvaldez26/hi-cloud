@@ -12,31 +12,41 @@ import {
   buildCompradorRNC,
   buildTotalesExentos,
   EcfRncRequeridoError,
+  resolverMoneda,
 } from './base-ecf.builder';
 import { round2 } from './sections/totales.section';
 
 export function buildE44(input: ECFBuildInput): MSellerPayload {
   const { encf, factura, config, fechaVencSec } = input;
   const cliente     = factura.cliente as any;
+  const mc          = resolverMoneda(factura);
   const rnc         = cliente?.rncReceptor ?? cliente?.rfc;
   if (!rnc) throw new EcfRncRequeridoError(44, Number(factura.total));
 
-  const montoExento = Number((factura as any).subtotal ?? factura.total);
+  const montoME     = Number(factura.total);
+  const montoExento = mc.toDOP(Number((factura as any).subtotal ?? factura.total));
   const fecha       = fmtFecha(factura.fecha ?? new Date());
   const emisor      = buildEmisor(toEmpresaConfig(config), fecha);
   assertEmisorOrder(emisor);
 
   // Todos los ítems son exentos (IndicadorFacturacion = 4)
-  const items = (factura.detalles as any[] ?? []).map((d: any, idx: number) => ({
-    NumeroLinea:            idx + 1,
-    IndicadorFacturacion:   4,
-    NombreItem:             d.descripcion,
-    IndicadorBienoServicio: 1,
-    CantidadItem:           Number(d.cantidad),
-    UnidadMedida:           43,
-    PrecioUnitarioItem:     round2(Number(d.precioUnitario)),
-    MontoItem:              round2(Number(d.subtotal)),
-  }));
+  const items = (factura.detalles as any[] ?? []).map((d: any, idx: number) => {
+    const precioME = Number(d.precioUnitario);
+    const itemMontoME = Number(d.subtotal);
+    const item: Record<string, unknown> = {
+      NumeroLinea:            idx + 1,
+      IndicadorFacturacion:   4,
+      NombreItem:             d.descripcion,
+      IndicadorBienoServicio: 1,
+      CantidadItem:           Number(d.cantidad),
+      UnidadMedida:           43,
+      PrecioUnitarioItem:     round2(mc.toDOP(precioME)),
+      MontoItem:              round2(mc.toDOP(itemMontoME)),
+    };
+    const otME = mc.otraMonedaItem(precioME, itemMontoME);
+    if (otME) item['OtraMonedaDetalle'] = otME;
+    return item;
+  });
 
   return {
     ECF: {
@@ -55,6 +65,7 @@ export function buildE44(input: ECFBuildInput): MSellerPayload {
           cliente?.direccion ? { DireccionComprador: cliente.direccion } : undefined,
         ),
         Totales: buildTotalesExentos(montoExento),
+        ...( mc.otraMonedaExentos(montoME) ? { OtraMoneda: mc.otraMonedaExentos(montoME) } : {} ),
       },
       DetallesItems: { Item: items },
     },

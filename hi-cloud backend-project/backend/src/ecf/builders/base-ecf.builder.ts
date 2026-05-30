@@ -72,3 +72,60 @@ export function toEmpresaConfig(c: EmpresaEcfConfig): EmpresaConfig {
     provincia:       c.provincia,
   };
 }
+
+// ── Utilidad de moneda extranjera ─────────────────────────────────────────────
+
+function fmt2(v: number): number { return parseFloat(v.toFixed(2)); }
+
+export interface MonedaCtx {
+  esME:    boolean;
+  moneda:  string;
+  tasa:    number;
+  /** Convierte un monto de moneda extranjera a DOP */
+  toDOP:   (v: number) => number;
+  /** OtraMoneda para Encabezado (gravados: subtotal, itbis, total en moneda extranjera) */
+  otraMonedaGravados: (subtotalME: number, itbisME: number, totalME: number) => Record<string, unknown> | undefined;
+  /** OtraMoneda para Encabezado (exentos: total en moneda extranjera) */
+  otraMonedaExentos:  (totalME: number) => Record<string, unknown> | undefined;
+  /** OtraMonedaDetalle para cada Item */
+  otraMonedaItem:     (precioME: number, montoME: number) => Record<string, unknown> | undefined;
+}
+
+/**
+ * Resuelve el contexto de moneda de una factura.
+ * Si la factura es en moneda extranjera, provee funciones para:
+ *  - Convertir montos a DOP (principal en XML DGII)
+ *  - Construir bloques OtraMoneda / OtraMonedaDetalle
+ */
+export function resolverMoneda(factura: any): MonedaCtx {
+  const moneda = String(factura.moneda || 'DOP').toUpperCase();
+  const tasa   = parseFloat(String(factura.tipoCambio || 1));
+  const esME   = moneda !== 'DOP' && tasa > 1;
+
+  const toDOP = (v: number) => esME ? fmt2(v * tasa) : fmt2(v);
+
+  const otraMonedaGravados = (subtotalME: number, itbisME: number, totalME: number) =>
+    esME ? {
+      TipoMoneda:                    moneda,
+      TipoCambio:                    tasa.toFixed(4),
+      MontoGravadoTotalOtraMoneda:   fmt2(subtotalME).toFixed(2),
+      TotalITBISOtraMoneda:          fmt2(itbisME).toFixed(2),
+      MontoTotalOtraMoneda:          fmt2(totalME).toFixed(2),
+    } : undefined;
+
+  const otraMonedaExentos = (totalME: number) =>
+    esME ? {
+      TipoMoneda:              moneda,
+      TipoCambio:              tasa.toFixed(4),
+      MontoExentoOtraMoneda:   fmt2(totalME).toFixed(2),
+      MontoTotalOtraMoneda:    fmt2(totalME).toFixed(2),
+    } : undefined;
+
+  const otraMonedaItem = (precioME: number, montoME: number) =>
+    esME ? {
+      PrecioOtraMoneda:    fmt2(precioME).toFixed(2),
+      MontoItemOtraMoneda: fmt2(montoME).toFixed(2),
+    } : undefined;
+
+  return { esME, moneda, tasa, toDOP, otraMonedaGravados, otraMonedaExentos, otraMonedaItem };
+}
