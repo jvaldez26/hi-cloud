@@ -100,14 +100,15 @@ export function buildE31(input: ECFBuildInput): MSellerPayload {
     });
     const montoTotalME = f2(montoGrav1ME + montoExentoME + itbis1ME);
     otraMoneda = {
-      TipoMoneda:              mc.moneda,
-      TipoCambio:              mc.tasa.toFixed(4),
-      MontoGravado1OtraMoneda: f2(montoGrav1ME).toFixed(2),  // cuadra con items
-      ITBIS1OtraMoneda:        f2(itbis1ME).toFixed(2),
-      TotalITBISOtraMoneda:    f2(itbis1ME).toFixed(2),
-      MontoTotalOtraMoneda:    montoTotalME.toFixed(2),
+      TipoMoneda:                    mc.moneda,
+      TipoCambio:                    mc.tasa.toFixed(4),
+      MontoGravadoTotalOtraMoneda:   f2(montoGrav1ME).toFixed(2),  // suma todos los gravados
+      MontoGravado1OtraMoneda:       f2(montoGrav1ME).toFixed(2),  // items tasa 18%
+      ...(montoExentoME > 0 ? { MontoExentoOtraMoneda: f2(montoExentoME).toFixed(2) } : {}),
+      TotalITBISOtraMoneda:          f2(itbis1ME).toFixed(2),
+      TotalITBIS1OtraMoneda:         f2(itbis1ME).toFixed(2),      // era ITBIS1OtraMoneda (incorrecto)
+      MontoTotalOtraMoneda:          montoTotalME.toFixed(2),       // siempre al final
     };
-    if (montoExentoME > 0) otraMoneda['MontoExentoOtraMoneda'] = f2(montoExentoME).toFixed(2);
   }
 
   return {
