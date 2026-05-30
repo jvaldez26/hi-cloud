@@ -483,7 +483,7 @@ export default function FacturaFormPage() {
           {/* ── Alertas contextuales ────────────────────────────────────── */}
           {mostrarAlertaRNC && (
             <Alert style={{ marginTop: 4 }} type="warning" showIcon
-              message="El cliente seleccionado no tiene RNC registrado. E31 (Crédito Fiscal) requiere RNC válido de 9 dígitos." />
+              message="El cliente seleccionado no tiene RNC registrado. E31 (Crédito Fiscal) requiere RNC válido de 9 dígitos (empresa) u 11 dígitos (cédula)." />
           )}
           {tipoNcf === 'E31' && clienteSeleccionado && !mostrarAlertaRNC && (
             <div style={{ marginTop: 4, padding: '6px 12px', background: token.colorInfoBg, borderRadius: 8, border: `1px solid ${token.colorInfoBorder}` }}>
