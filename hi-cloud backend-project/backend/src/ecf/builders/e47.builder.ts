@@ -49,13 +49,11 @@ export function buildE47(input: ECFBuildInput): MSellerPayload {
     const item: Record<string, unknown> = {
       NumeroLinea:            idx + 1,
       IndicadorFacturacion:   4,
-      ...(retencionISR > 0 ? {
-        // Retencion SOLO si hay monto (no enviar tag vacío)
-        Retencion: {
-          IndicadorAgenteRetencionoPercepcion: 1,
-          MontoISRRetenido: retencionISR,
-        },
-      } : {}),
+      // Retencion SIEMPRE presente (minOccurs=1 en XSD E47), incluso con 0
+      Retencion: {
+        IndicadorAgenteRetencionoPercepcion: 1,
+        MontoISRRetenido: retencionISR,   // 0.00 si no hay retención
+      },
       NombreItem:             d.descripcion,
       IndicadorBienoServicio: 2,
       CantidadItem:           Number(d.cantidad),

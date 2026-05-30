@@ -104,10 +104,8 @@ export function buildTotalesE47(
     MontoExento: round2(subtotal),
     MontoTotal:  round2(total),
   };
-  // TotalISRRetencion al final, solo si hay retención
-  if (isr > 0) {
-    tot['TotalISRRetencion'] = round2(isr);
-  }
+  // TotalISRRetencion siempre presente (items siempre tienen Retencion en E47)
+  tot['TotalISRRetencion'] = round2(isr);
   return tot;
 }
 
