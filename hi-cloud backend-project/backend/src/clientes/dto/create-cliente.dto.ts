@@ -74,6 +74,7 @@ export class CreateClienteDto {
 
   @IsOptional()
   @IsString({ message: 'El RNC receptor debe ser texto' })
+  @ValidateIf(o => !o.identificadorExtranjero && !!o.rncReceptor)
   @Length(9, 11, { message: 'El RNC receptor debe tener 9 u 11 dígitos' })
   rncReceptor?: string;
 

@@ -361,9 +361,26 @@ export default function ClientesPage() {
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
-              <Form.Item name="rncReceptor" label="RNC Receptor (e-CF)"
-                rules={[{ pattern: /^\d{9}$|^\d{11}$/, message: '9 u 11 dígitos' }]}>
-                <Input placeholder="9 u 11 dígitos" maxLength={11} />
+              <Form.Item noStyle shouldUpdate={(p, c) => p.identificadorExtranjero !== c.identificadorExtranjero}>
+                {({ getFieldValue }) => {
+                  const tieneIdExt = !!getFieldValue('identificadorExtranjero');
+                  return (
+                    <Form.Item name="rncReceptor" label="RNC Receptor (e-CF)"
+                      rules={[{
+                        validator: (_, v) => {
+                          if (!v || tieneIdExt) return Promise.resolve();
+                          return /^\d{9}$|^\d{11}$/.test(v)
+                            ? Promise.resolve()
+                            : Promise.reject('9 u 11 dígitos');
+                        },
+                      }]}>
+                      <Input
+                        placeholder={tieneIdExt ? '(opcional para clientes extranjeros)' : '9 u 11 dígitos'}
+                        maxLength={11}
+                      />
+                    </Form.Item>
+                  );
+                }}
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
