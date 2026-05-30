@@ -43,9 +43,10 @@ export function buildE47(input: ECFBuildInput): MSellerPayload {
     return {
       NumeroLinea:            idx + 1,
       IndicadorFacturacion:   4,            // siempre Exento (ITBIS local no aplica)
-      // Retencion OBLIGATORIA antes de NombreItem
+      // Retencion OBLIGATORIA antes de NombreItem — orden estricto XSD DGII
       Retencion: {
-        RetencionISR: retencionISR,         // monto ISR retenido (0 si no aplica)
+        IndicadorAgenteRetencionoPercepcion: 1,   // 1 = Retención (siempre para E47)
+        MontoISRRetenido: retencionISR,            // monto ISR retenido (0 si no aplica)
       },
       NombreItem:             d.descripcion,
       IndicadorBienoServicio: 2,            // siempre Servicio
