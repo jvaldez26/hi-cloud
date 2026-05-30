@@ -1,6 +1,6 @@
 import {
   IsString, IsNotEmpty, IsOptional, IsEmail, IsInt, IsNumber,
-  Matches, MaxLength, Length, Min, Max,
+  Matches, MaxLength, Length, Min, Max, ValidateIf,
 } from 'class-validator';
 // Length se importa por otros campos (codigoPostal, rncReceptor)
 
@@ -17,6 +17,8 @@ export class CreateClienteDto {
    */
   @IsOptional()
   @IsString({ message: 'El RNC/Cédula debe ser texto' })
+  // Solo validar formato cuando hay valor Y no hay identificadorExtranjero
+  @ValidateIf(o => !o.identificadorExtranjero && !!o.rfc)
   @Matches(/^\d{9}$|^\d{11}$/, {
     message: 'RNC debe tener 9 dígitos o Cédula debe tener 11 dígitos',
   })

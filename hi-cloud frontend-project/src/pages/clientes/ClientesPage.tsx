@@ -351,7 +351,10 @@ export default function ClientesPage() {
                           },
                         },
                       ]}>
-                      <Input placeholder="9 dígitos (RNC) u 11 dígitos (Cédula)" maxLength={11} />
+                      <Input
+                        placeholder={tieneIdExt ? '(opcional para clientes extranjeros)' : '9 dígitos (RNC) u 11 dígitos (Cédula)'}
+                        maxLength={11}
+                      />
                     </Form.Item>
                   );
                 }}
