@@ -234,6 +234,7 @@ export default function FacturasPage() {
     { key: 'fecha',   label: 'Fecha',   defaultVisible: true  },
     { key: 'cliente', label: 'Cliente', defaultVisible: true  },
     { key: 'total',   label: 'Total',   defaultVisible: true  },
+    { key: 'moneda',  label: 'Moneda',  defaultVisible: true  },
     { key: 'estado',  label: 'Estado',  defaultVisible: true  },
     { key: 'ecf',     label: 'e-CF',    defaultVisible: true  },
   ];
@@ -267,7 +268,22 @@ export default function FacturasPage() {
         <Text strong style={{ fontSize: 13, color: token.colorPrimary }}>{fmt.money(v)}</Text>
       ),
     },
-    // Pago (contado/crédito) omitido — disponible en detalle
+    // ── Moneda ─────────────────────────────────────────────────────────────────
+    {
+      title: 'Moneda', key: 'moneda', dataIndex: 'moneda', width: 68,
+      render: (v: string) => {
+        const m = v || 'DOP';
+        const esDOP = m === 'DOP';
+        return (
+          <Tag
+            color={esDOP ? 'default' : 'blue'}
+            style={{ fontSize: 11, fontWeight: 600, margin: 0, fontFamily: 'monospace' }}
+          >
+            {m}
+          </Tag>
+        );
+      },
+    },
     // ── Estado ─────────────────────────────────────────────────────────────────
     {
       title: 'Estado', key: 'estado', dataIndex: 'estado', width: 90,
