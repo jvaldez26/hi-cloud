@@ -67,13 +67,18 @@ export function buildE31(input: ECFBuildInput): MSellerPayload {
     Comprador: buildCompradorRNC(rnc, cliente?.nombre ?? 'Sin nombre',
       cliente?.direccion ? { DireccionComprador: cliente.direccion } : undefined,
     ),
-    Totales: buildTotalesGravados(detallesME.map(d => ({
-      ...d,
-      subtotal:   mc.toDOP(Number(d.subtotal)),
-      importeIva: mc.toDOP(Number(d.importeIva ?? d.iva ?? 0)),
-      iva:        mc.toDOP(Number(d.importeIva ?? d.iva ?? 0)),
-      porcentajeIva: Number(d.porcentajeIva ?? 18),
-    })), totalRD),
+    Totales: (() => {
+      // E31 no permite MontoExento en Totales (solo items gravados)
+      const t = buildTotalesGravados(detallesME.map(d => ({
+        ...d,
+        subtotal:     mc.toDOP(Number(d.subtotal)),
+        importeIva:   mc.toDOP(Number(d.importeIva ?? d.iva ?? 0)),
+        iva:          mc.toDOP(Number(d.importeIva ?? d.iva ?? 0)),
+        porcentajeIva: Number(d.porcentajeIva ?? 18),
+      })), totalRD);
+      delete t['MontoExento'];   // prohibido en XSD E31
+      return t;
+    })(),
   };
 
   const otME = mc.otraMonedaGravados(subtotalME, itbisME, totalME);
