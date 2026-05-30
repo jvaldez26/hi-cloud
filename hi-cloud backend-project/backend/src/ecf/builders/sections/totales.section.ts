@@ -73,3 +73,11 @@ export function tieneMontoGravado(detalles: DetalleLike[]): boolean {
   const { gravado18, gravado16 } = desgloseDetalles(detalles);
   return gravado18 + gravado16 > 0;
 }
+
+/**
+ * Totales cero — CodigoModificacion=2 (corrección de texto):
+ * la nota no tiene impacto financiero, todos los montos deben ser 0.
+ */
+export function buildTotalesCero(): Record<string, unknown> {
+  return { MontoExento: 0, MontoTotal: 0 };
+}

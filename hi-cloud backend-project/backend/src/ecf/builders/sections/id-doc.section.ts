@@ -20,7 +20,7 @@ export interface IdDocInput {
   tipo:                     number;
   encf:                     string;
   fechaVencSec?:            Date;                          // omitir en E32
-  indicadorNotaCredito?:    '0';                           // E34 exclusivo
+  indicadorNotaCredito?:    '0' | '1';                     // E34: '0'=dentro 30d, '1'=después 30d
   indicadorEnvioDiferido?:  0 | 1;
   indicadorMontoGravado?:   0 | 1;
   tipoIngresos?:            string;                        // '01'; omitir en E41, E47
