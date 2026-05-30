@@ -342,7 +342,14 @@ export default function ClientesPage() {
                     <Form.Item name="rfc" label="RNC / Cédula"
                       rules={[
                         { required: !tieneIdExt, message: 'El RNC o Cédula es requerido (o ingrese Identificador Extranjero)' },
-                        { pattern: /^\d{9}$|^\d{11}$/, message: 'RNC debe tener 9 dígitos o Cédula debe tener 11 dígitos' },
+                        {
+                          validator: (_, v) => {
+                            if (!v) return Promise.resolve();
+                            return /^\d{9}$|^\d{11}$/.test(v)
+                              ? Promise.resolve()
+                              : Promise.reject('RNC debe tener 9 dígitos o Cédula debe tener 11 dígitos');
+                          },
+                        },
                       ]}>
                       <Input placeholder="9 dígitos (RNC) u 11 dígitos (Cédula)" maxLength={11} />
                     </Form.Item>
