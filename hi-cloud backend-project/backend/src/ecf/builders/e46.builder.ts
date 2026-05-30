@@ -3,7 +3,10 @@
  * Propósito: reportar ventas de bienes fuera del territorio nacional.
  * IndicadorFacturacion: obligatoriamente 3 (ITBIS Tasa Cero) en todos los ítems.
  * IndicadorMontoGravado: NO aplica en E46.
- * Comprador: identificado por nombre y país (no requiere RNC).
+ *
+ * Comprador (dos casos):
+ *   A) Cliente extranjero → IdentificadorExtranjero (ID fiscal en su país) OBLIGATORIO
+ *   B) Zona Franca / residente RD → RNCComprador OBLIGATORIO
  */
 import {
   ECFBuildInput, MSellerPayload,
@@ -11,15 +14,29 @@ import {
   buildIdDoc, fmtFecha,
   buildCompradorExtranjero,
   buildTotalesTasaCero,
+  EcfRncRequeridoError,
 } from './base-ecf.builder';
 import { round2 } from './sections/totales.section';
 
 export function buildE46(input: ECFBuildInput): MSellerPayload {
   const { encf, factura, config, fechaVencSec, nombreExtranjero, paisExtranjero } = input;
-  const total  = Number(factura.total);
-  const fecha  = fmtFecha(factura.fecha ?? new Date());
-  const emisor = buildEmisor(toEmpresaConfig(config), fecha);
+  const cliente = factura.cliente as any;
+  const total   = Number(factura.total);
+  const fecha   = fmtFecha(factura.fecha ?? new Date());
+  const emisor  = buildEmisor(toEmpresaConfig(config), fecha);
   assertEmisorOrder(emisor);
+
+  const nombre = nombreExtranjero ?? cliente?.nombre ?? 'Cliente Extranjero';
+  const pais   = paisExtranjero   ?? 'US';
+
+  // Determinar identificación del comprador
+  const esZonaFranca = !!(cliente?.rncReceptor && !cliente?.esExtranjero);
+  const rncComprador = esZonaFranca ? cliente.rncReceptor : undefined;
+  const idExtranjero = !esZonaFranca ? (cliente?.identificadorExtranjero as string | undefined) : undefined;
+
+  if (!rncComprador && !idExtranjero) {
+    throw new EcfRncRequeridoError(46, total);
+  }
 
   // Exportaciones: IndicadorFacturacion = 3 (ITBIS Tasa Cero) obligatorio
   const items = (factura.detalles as any[] ?? []).map((d: any, idx: number) => ({
@@ -45,11 +62,8 @@ export function buildE46(input: ECFBuildInput): MSellerPayload {
           tipoIngresos: '01',
           tipoPago:     1,
         }),
-        Emisor:    emisor,
-        Comprador: buildCompradorExtranjero(
-          nombreExtranjero ?? (factura.cliente as any)?.nombre ?? 'Cliente Extranjero',
-          paisExtranjero   ?? 'US',
-        ),
+        Emisor: emisor,
+        Comprador: buildCompradorExtranjero(nombre, pais, idExtranjero, rncComprador),
         // E46: Tasa 0% (no exento) — MontoGravadoI3, ITBIS3=0
         Totales: buildTotalesTasaCero(total),
       },

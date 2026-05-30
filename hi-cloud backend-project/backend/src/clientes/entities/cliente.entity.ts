@@ -60,6 +60,10 @@ export class Cliente extends TenantBaseEntity {
   @Column({ type: 'text', nullable: true })
   notas?: string;
 
+  /** ID fiscal del cliente en su país (obligatorio en E46 para clientes extranjeros) */
+  @Column({ length: 30, nullable: true })
+  identificadorExtranjero?: string;
+
   @Column({ length: 64, nullable: true })
   sector?: string;
 

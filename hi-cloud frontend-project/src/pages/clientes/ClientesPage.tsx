@@ -353,6 +353,14 @@ export default function ClientesPage() {
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
+              <Form.Item
+                name="identificadorExtranjero"
+                label="Identificador Extranjero (E46)"
+                tooltip="ID fiscal del cliente en su país — obligatorio para emitir e-CF E46 (Exportaciones)">
+                <Input placeholder="EIN, NIT, RFC, VAT…" maxLength={30} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
               <Form.Item name="regimenFiscal" label="Régimen Fiscal">
                 <Select allowClear>
                   <Option value="ORDINARIO">Ordinario</Option>

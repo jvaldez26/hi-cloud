@@ -23,14 +23,28 @@ export function buildCompradorRNC(
   };
 }
 
-/** Comprador extranjero — E46 (Exportaciones) y E47 (Pagos al Exterior).
- *  XSD DGII: RazonSocialComprador (obligatorio) + PaisComprador (código ISO 2). */
+/**
+ * Comprador extranjero — E46 (Exportaciones) y E47 (Pagos al Exterior).
+ *
+ * CASO A — Cliente extranjero (exportación estándar):
+ *   IdentificadorExtranjero + RazonSocialComprador + PaisComprador
+ *
+ * CASO B — Zona Franca / residente RD con régimen especial:
+ *   RNCComprador + RazonSocialComprador + PaisComprador
+ */
 export function buildCompradorExtranjero(
-  nombre:  string,
-  paisISO: string,   // código ISO 2 letras: 'US', 'MX', 'ES', 'PR'...
+  nombre:                  string,
+  paisISO:                 string,   // código ISO 2 letras: 'US', 'MX', 'ES'…
+  identificadorExtranjero?: string,  // ID fiscal del cliente en su país
+  rncComprador?:            string,  // RNC si es Zona Franca (residente RD)
 ): Record<string, unknown> {
-  return {
-    RazonSocialComprador: nombre,
-    PaisComprador:        paisISO,   // XSD: PaisComprador (no PaisCompradorExtranjero)
-  };
+  const comp: Record<string, unknown> = {};
+  if (rncComprador) {
+    comp['RNCComprador'] = rncComprador;
+  } else if (identificadorExtranjero) {
+    comp['IdentificadorExtranjero'] = identificadorExtranjero;
+  }
+  comp['RazonSocialComprador'] = nombre;
+  comp['PaisComprador']        = paisISO;
+  return comp;
 }
