@@ -53,7 +53,8 @@ export function buildE33(input: ECFBuildInput): MSellerPayload {
           tipo:            33,
           encf,
           fechaVencSec,
-          // Sin IndicadorEnvioDiferido ni IndicadorMontoGravado en E33
+          // Sin IndicadorEnvioDiferido
+          indicadorMontoGravado: 0,   // 0 = precios sin ITBIS incluido (estándar HiCloud)
           tipoIngresos:    '01',
           tipoPago:        1,
           tablaFormasPago: { FormaDePago: [{ FormaPago: 1, MontoPago: total.toFixed(2) }] },

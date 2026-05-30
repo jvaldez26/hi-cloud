@@ -38,7 +38,7 @@ export function buildE41(input: ECFBuildInput): MSellerPayload {
           tipo:                  41,
           encf,
           fechaVencSec,
-          indicadorMontoGravado: hayGravado,
+          indicadorMontoGravado: 0,   // 0 = precios sin ITBIS incluido (estándar HiCloud)
           tipoIngresos:          '01',
           tipoPago:              2,
           fechaLimitePago:       fechaLimite,

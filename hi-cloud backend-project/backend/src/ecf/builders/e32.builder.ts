@@ -47,7 +47,7 @@ export function buildE32(input: ECFBuildInput): MSellerPayload {
           encf,
           // Sin FechaVencimientoSecuencia (spec definitiva E32)
           indicadorEnvioDiferido: 1,
-          indicadorMontoGravado:  hayGravado,
+          indicadorMontoGravado:  0,   // 0 = precios sin ITBIS incluido (estándar HiCloud)
           tipoIngresos:           '01',
           tipoPago:               1,
         }),
