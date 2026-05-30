@@ -224,21 +224,30 @@ export class ECFController {
   ) {
     const empresaId = (usuario as any).empresaId ?? 0;
 
+    // Si el caller no provee ncfModificado, pasa undefined para que el use-case
+    // auto-resuelva el NCF original desde la nota (busca en tabla ecf).
+    // Si lo provee, forma el objeto completo en orden correcto (NCFModificado primero).
     const infoReferencia: import('./services/ecf-builder.service').MSellerInfoReferencia | undefined =
       dto.ncfModificado
         ? {
             NCFModificado:      dto.ncfModificado,
             FechaNCFModificado: dto.fechaNcfModificado ?? '',
-            CodigoModificacion: dto.codigoModificacion,   // ya es string desde el DTO
+            CodigoModificacion: dto.codigoModificacion,
           }
-        : { CodigoModificacion: dto.codigoModificacion } as any;
+        : undefined;
+
+    // CodigoModificacion se pasa como parte de infoReferencia o se setea via auto-resolve.
+    // Para que el auto-resolve use el código correcto, inyectarlo en infoReferencia parcial.
+    const infoRefFinal = infoReferencia ?? (dto.codigoModificacion
+      ? { NCFModificado: '', FechaNCFModificado: '', CodigoModificacion: dto.codigoModificacion } as any
+      : undefined);
 
     return this.emitirUseCase.execute({
       empresaId,
       documentoOrigenTipo: DocumentoOrigenTipo.NOTA_CREDITO,
       documentoOrigenId:   id,
       tipoEcf:             34,
-      infoReferencia,
+      infoReferencia:      infoRefFinal,
     });
   }
 

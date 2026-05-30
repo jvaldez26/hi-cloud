@@ -207,8 +207,9 @@ export class EmitirECFUseCase {
 
     // ── 4. RESOLVER infoReferencia para E33/E34 ──────────────────────────────
     let infoReferencia = infoRefInput;
-    if ((tipoEcf === 33 || tipoEcf === 34) && !infoReferencia) {
-      // Auto-resolver desde la nota: busca el ECF aceptado de la factura original
+    // Auto-resolver cuando: (a) no se proporcionó infoReferencia, o (b) se proporcionó
+    // solo CodigoModificacion sin NCFModificado (caso típico del controller).
+    if ((tipoEcf === 33 || tipoEcf === 34) && !infoReferencia?.NCFModificado) {
       const nota = factura as unknown as (NotaDebito | NotaCredito);
       const facturaOrigId = (nota as any).facturaOriginalId as number | undefined;
       if (!facturaOrigId) {
@@ -217,8 +218,14 @@ export class EmitirECFUseCase {
           `Proporcione infoReferencia manualmente.`,
         );
       }
+      // Aceptar ECF en cualquier estado activo (no solo ACEPTADO) — el eNCF ya fue emitido
       const ecfOriginal = await this.ecfRepo.findOne({
-        where: { facturaId: facturaOrigId, estadoDGII: EstadoDGII.ACEPTADO, empresaId },
+        where: [
+          { facturaId: facturaOrigId, estadoDGII: EstadoDGII.ACEPTADO,       empresaId },
+          { facturaId: facturaOrigId, estadoDGII: EstadoDGII.ENVIADO,         empresaId },
+          { facturaId: facturaOrigId, estadoDGII: EstadoDGII.PENDIENTE_ENVIO, empresaId },
+          { facturaId: facturaOrigId, estadoDGII: EstadoDGII.OBSERVADO,       empresaId },
+        ],
         order: { createdAt: 'DESC' },
       });
       if (!ecfOriginal) throw new EcfNcfReferenciadoError(facturaOrigId);
@@ -226,7 +233,7 @@ export class EmitirECFUseCase {
       const facturaOrig = await this.facturaRepo.findOne({ where: { id: facturaOrigId, empresaId } });
 
       // Validación E34 código 1 (anulación total): monto debe coincidir
-      if (tipoEcf === 34 && (infoRefInput?.CodigoModificacion === '1' || !infoRefInput)) {
+      if (tipoEcf === 34 && infoRefInput?.CodigoModificacion === '1') {
         const montoNota = Number((nota as any).total);
         const montoOrig = Number(facturaOrig?.total ?? ecfOriginal.montoTotal ?? 0);
         if (montoNota > montoOrig) {
@@ -238,9 +245,9 @@ export class EmitirECFUseCase {
 
       infoReferencia = {
         NCFModificado:      ecfOriginal.numero,
-        FechaNCFModificado: fmtFechaEcf(ecfOriginal.fechaUso ?? ecfOriginal.createdAt),
-        // E33: "3" = corrección de montos (debit note). E34: "3" por defecto; caller puede overridear vía infoRefInput
-        CodigoModificacion: '3',
+        FechaNCFModificado: fmtFechaEcf(ecfOriginal.fechaUso ?? facturaOrig?.fecha ?? ecfOriginal.createdAt),
+        // Preservar CodigoModificacion del input si fue proporcionado; default '3'
+        CodigoModificacion: infoRefInput?.CodigoModificacion ?? '3',
       };
     }
 
