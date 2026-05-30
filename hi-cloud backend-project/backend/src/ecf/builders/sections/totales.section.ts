@@ -91,6 +91,24 @@ export function buildTotalesTasaCero(total: number): Record<string, unknown> {
 }
 
 /**
+ * Totales para E47 (Pagos al Exterior).
+ * Incluye TotalISRRetencion obligatorio — suma de MontoISRRetenido de todos los ítems.
+ */
+export function buildTotalesE47(
+  total:      number,
+  subtotal:   number,
+  isr:        number,   // suma de retenciones ISR
+): Record<string, unknown> {
+  return {
+    MontoGravadoTotal: 0,
+    MontoExento:       round2(subtotal),
+    TotalITBIS:        0,
+    TotalISRRetencion: round2(isr),
+    MontoTotal:        round2(total),
+  };
+}
+
+/**
  * Totales cero — CodigoModificacion=2 (corrección de texto):
  * la nota no tiene impacto financiero, todos los montos deben ser 0.
  */

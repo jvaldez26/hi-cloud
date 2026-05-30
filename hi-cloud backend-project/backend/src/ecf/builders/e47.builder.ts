@@ -13,7 +13,7 @@ import {
   ECFBuildInput, MSellerPayload,
   buildEmisor, assertEmisorOrder, toEmpresaConfig,
   buildIdDoc, fmtFecha,
-  buildTotalesExentos,
+  buildTotalesE47,
 } from './base-ecf.builder';
 import { round2 } from './sections/totales.section';
 
@@ -25,20 +25,22 @@ export function buildE47(input: ECFBuildInput): MSellerPayload {
   const emisor  = buildEmisor(toEmpresaConfig(config), fecha);
   assertEmisorOrder(emisor);
 
-  // Comprador E47: IdentificadorExtranjero + RazonSocialComprador
-  // SIN PaisComprador (no existe en XSD E47)
+  // Comprador E47: solo IdentificadorExtranjero + RazonSocialComprador
+  // RNCComprador NO existe en XSD E47 (si receptor tiene RNC local → usar E31)
+  // PaisComprador NO existe en XSD E47 (va en Transporte/PaisDestino si aplica)
   const nombreBenef = nombreExtranjero ?? cliente?.nombre ?? 'Beneficiario Exterior';
   const comprador: Record<string, unknown> = {};
-  if (cliente?.rncReceptor) {
-    comprador['RNCComprador'] = cliente.rncReceptor;
-  } else if (cliente?.identificadorExtranjero) {
+  if (cliente?.identificadorExtranjero) {
     comprador['IdentificadorExtranjero'] = cliente.identificadorExtranjero;
   }
   comprador['RazonSocialComprador'] = nombreBenef;
-  // Nota: PaisComprador NO se incluye en E47 (solo en E46)
 
-  // Items: orden estricto XSD — Retencion ANTES de NombreItem
-  const items = (factura.detalles as any[] ?? []).map((d: any, idx: number) => {
+  // Calcular TotalISRRetencion = suma de todas las retenciones de los ítems
+  const detalles = factura.detalles as any[] ?? [];
+  const totalISR = round2(detalles.reduce((s, d) => s + Number(d.retencionISR ?? 0), 0));
+  const subtotal = Number((factura as any).subtotal ?? factura.total);
+
+  const items = detalles.map((d: any, idx: number) => {
     const retencionISR = round2(Number(d.retencionISR ?? 0));
     return {
       NumeroLinea:            idx + 1,
@@ -71,7 +73,7 @@ export function buildE47(input: ECFBuildInput): MSellerPayload {
         }),
         Emisor:    emisor,
         Comprador: comprador,
-        Totales:   buildTotalesExentos(total),
+        Totales:   buildTotalesE47(total, subtotal, totalISR),
       },
       DetallesItems: { Item: items },
     },
