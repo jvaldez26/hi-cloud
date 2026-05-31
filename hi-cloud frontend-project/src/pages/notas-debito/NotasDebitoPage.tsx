@@ -146,9 +146,12 @@ export default function NotasDebitoPage() {
 
   // Totales en tiempo real desde Form.useWatch
   const detalles: any[] = Form.useWatch('detalles', formCrear) ?? [];
+  const tasaForm: number = Form.useWatch('tipoCambio', formCrear) ?? (facturaOrigen?.tipoCambio ? Number(facturaOrigen.tipoCambio) : 1);
   const subtotalCargo = detalles.reduce((s, d) => s + (Number(d?.precioUnitario ?? 0) * Number(d?.cantidad ?? 0)), 0);
   const itbisCargo    = sinItbis ? 0 : subtotalCargo * 0.18;
   const totalCargo    = subtotalCargo + itbisCargo;
+  const monedaND      = facturaOrigen?.moneda ?? 'DOP';
+  const esMonedaExt   = monedaND !== 'DOP';
 
   const emailMut = useMutation({
     mutationFn: ({ id, email }: { id: number; email: string }) =>
@@ -231,7 +234,7 @@ export default function NotasDebitoPage() {
       facturaOriginalId:    facturaOrigen.id,
       facturaOriginalFolio: facturaOrigen.folio,
       moneda:               facturaOrigen.moneda ?? 'DOP',
-      tipoCambio:           facturaOrigen.tipoCambio ? Number(facturaOrigen.tipoCambio) : 1,
+      tipoCambio:           values.tipoCambio ? Number(values.tipoCambio) : (facturaOrigen.tipoCambio ? Number(facturaOrigen.tipoCambio) : 1),
       detalles:             detallesLimpios,
     });
   };
@@ -406,15 +409,15 @@ export default function NotasDebitoPage() {
                 </Col>
                 <Col span={8} style={{ marginTop: 8 }}>
                   <Text type="secondary" style={{ fontSize: 11 }}>Subtotal</Text>
-                  <div><Text>{fmt(Number(facturaOrigen.subtotal))}</Text></div>
+                  <div><Text>{fmtMon(Number(facturaOrigen.subtotal), monedaND)}</Text></div>
                 </Col>
                 <Col span={8} style={{ marginTop: 8 }}>
                   <Text type="secondary" style={{ fontSize: 11 }}>ITBIS</Text>
-                  <div><Text>{fmt(Number(facturaOrigen.iva))}</Text></div>
+                  <div><Text>{fmtMon(Number(facturaOrigen.iva), monedaND)}</Text></div>
                 </Col>
                 <Col span={8} style={{ marginTop: 8 }}>
                   <Text type="secondary" style={{ fontSize: 11 }}>Total original</Text>
-                  <div><Text strong style={{ color: token.colorPrimary }}>{fmt(Number(facturaOrigen.total))}</Text></div>
+                  <div><Text strong style={{ color: token.colorPrimary }}>{fmtMon(Number(facturaOrigen.total), monedaND)}</Text></div>
                 </Col>
               </Row>
             </div>
@@ -429,6 +432,46 @@ export default function NotasDebitoPage() {
             <Col xs={24} sm={8}><Form.Item name="motivo" label="Motivo *" rules={[{ required: true }]}><Select placeholder="Seleccionar motivo">{MOTIVOS.map(m => <Option key={m.value} value={m.value}>{m.label}</Option>)}</Select></Form.Item></Col>
             <Col xs={24} sm={8}><Form.Item name="descripcionMotivo" label="Descripción"><Input placeholder="Detalle del cargo..." /></Form.Item></Col>
           </Row>
+
+          {/* Tasa de cambio del día — solo cuando moneda extranjera */}
+          {esMonedaExt && (
+            <Form.Item noStyle shouldUpdate={(p, c) => p.tipoCambio !== c.tipoCambio}>
+              {({ getFieldValue }) => {
+                const tasa = Number(getFieldValue('tipoCambio') ?? facturaOrigen?.tipoCambio ?? 1);
+                const totalDOP = totalCargo * tasa;
+                return (
+                  <Row gutter={12} style={{ marginBottom: 4 }}>
+                    <Col xs={24} sm={12}>
+                      <Form.Item
+                        name="tipoCambio"
+                        label={`Tasa de cambio del día (RD$ por ${monedaND} 1)`}
+                        initialValue={Number(facturaOrigen?.tipoCambio ?? 1)}
+                      >
+                        <InputNumber
+                          style={{ width: '100%' }}
+                          min={1} precision={4}
+                          addonBefore="RD$"
+                          addonAfter={`por ${monedaND} 1`}
+                        />
+                      </Form.Item>
+                    </Col>
+                    {totalCargo > 0 && (
+                      <Col xs={24} sm={12}>
+                        <Form.Item label={`Equivalente en RD$ del cargo`}>
+                          <Text strong style={{ fontSize: 14, color: token.colorPrimary }}>
+                            {fmtMon(totalDOP, 'DOP')}
+                          </Text>
+                          <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>
+                            ({fmtMon(totalCargo, monedaND)} × {tasa.toFixed(4)})
+                          </Text>
+                        </Form.Item>
+                      </Col>
+                    )}
+                  </Row>
+                );
+              }}
+            </Form.Item>
+          )}
 
           <Divider orientation="left" style={{ fontSize: 13 }}>Cargos adicionales a facturar</Divider>
 
@@ -463,14 +506,20 @@ export default function NotasDebitoPage() {
           {facturaOrigen && totalCargo > 0 && (
             <div style={{ background: token.colorFillAlter, border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, padding: '12px 16px', marginTop: 8 }}>
               <Text strong style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>Resumen del cargo adicional</Text>
-              <Row justify="space-between" style={{ marginBottom: 3 }}><Text type="secondary" style={{ fontSize: 12 }}>Factura original:</Text><Text style={{ fontSize: 12 }}>{fmt(Number(facturaOrigen.total))}</Text></Row>
-              <Row justify="space-between" style={{ marginBottom: 3 }}><Text type="secondary" style={{ fontSize: 12 }}>Cargo adicional (subtotal):</Text><Text style={{ fontSize: 12, color: '#d97706' }}>+{fmt(subtotalCargo)}</Text></Row>
-              <Row justify="space-between" style={{ marginBottom: 3 }}><Text type="secondary" style={{ fontSize: 12 }}>ITBIS del cargo (18%):</Text><Text style={{ fontSize: 12, color: '#d97706' }}>+{fmt(itbisCargo)}</Text></Row>
+              <Row justify="space-between" style={{ marginBottom: 3 }}><Text type="secondary" style={{ fontSize: 12 }}>Factura original:</Text><Text style={{ fontSize: 12 }}>{fmtMon(Number(facturaOrigen.total), monedaND)}</Text></Row>
+              <Row justify="space-between" style={{ marginBottom: 3 }}><Text type="secondary" style={{ fontSize: 12 }}>Cargo adicional (subtotal):</Text><Text style={{ fontSize: 12, color: '#d97706' }}>+{fmtMon(subtotalCargo, monedaND)}</Text></Row>
+              <Row justify="space-between" style={{ marginBottom: 3 }}><Text type="secondary" style={{ fontSize: 12 }}>ITBIS del cargo (18%):</Text><Text style={{ fontSize: 12, color: '#d97706' }}>+{fmtMon(itbisCargo, monedaND)}</Text></Row>
               <Divider style={{ margin: '6px 0' }} />
-              <Row justify="space-between">
+              <Row justify="space-between" style={{ marginBottom: 3 }}>
                 <Text strong style={{ fontSize: 12 }}>Nuevo total efectivo del cliente:</Text>
-                <Text strong style={{ fontSize: 14, color: '#1a56db' }}>{fmt(Number(facturaOrigen.total) + totalCargo)}</Text>
+                <Text strong style={{ fontSize: 14, color: '#1a56db' }}>{fmtMon(Number(facturaOrigen.total) + totalCargo, monedaND)}</Text>
               </Row>
+              {esMonedaExt && tasaForm > 1 && (
+                <Row justify="space-between">
+                  <Text type="secondary" style={{ fontSize: 11 }}>Equivalente cargo en RD$:</Text>
+                  <Text style={{ fontSize: 11, color: '#6b7280' }}>{fmtMon(totalCargo * tasaForm, 'DOP')}</Text>
+                </Row>
+              )}
             </div>
           )}
         </Form>
