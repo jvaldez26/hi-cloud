@@ -1,6 +1,6 @@
 import {
   IsString, IsNotEmpty, IsOptional, IsEmail, IsDateString,
-  IsNumber, IsPositive, IsEnum, Min, MaxLength, Matches,
+  IsNumber, IsPositive, IsEnum, IsIn, Min, MaxLength, Matches,
 } from 'class-validator';
 import { EstadoEmpleado, TipoContrato, TipoPago, Sexo } from '../entities/empleado.entity';
 
@@ -62,4 +62,14 @@ export class CreateEmpleadoDto {
 
   @IsOptional() @IsString()
   notas?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['DOP', 'USD', 'EUR'])
+  moneda?: string;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(1)
+  tipoCambio?: number;
 }

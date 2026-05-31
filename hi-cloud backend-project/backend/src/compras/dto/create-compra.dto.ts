@@ -7,6 +7,7 @@ import {
   ValidateNested,
   IsDateString,
   IsNumber,
+  IsIn,
   Min,
   Max,
   ArrayMinSize,
@@ -73,4 +74,15 @@ export class CreateCompraDto {
   @Max(365)
   @Type(() => Number)
   diasCredito?: number;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['DOP', 'USD', 'EUR'])
+  moneda?: string;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(1)
+  @Type(() => Number)
+  tipoCambio?: number;
 }
