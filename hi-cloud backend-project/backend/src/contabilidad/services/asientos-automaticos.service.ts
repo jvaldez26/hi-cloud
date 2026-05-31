@@ -27,6 +27,8 @@ const COD = {
   ANTICIPOS_CLIENTES:  '2.1.5.01',  // Pasivo corriente — anticipos recibidos
   GANANCIA_CAMBIARIA:  '4.1.3.01',  // Ingreso — ganancia en diferencia cambiaria
   PERDIDA_CAMBIARIA:   '6.1.5.01',  // Gasto — pérdida en diferencia cambiaria
+  ITBIS_RET_POR_PAGAR: '2.1.2.03',  // Pasivo — ITBIS retenido por enterar a DGII (E41)
+  ISR_RET_POR_PAGAR:   '2.1.2.04',  // Pasivo — ISR retenido por enterar a DGII (E41)
 } as const;
 
 @Injectable()
@@ -166,7 +168,26 @@ export class AsientosAutomaticosService {
     itbis: number,
     folio: string,
     userId: number,
+    retenciones?: { montoItbis?: number; montoIsr?: number; netoPagar?: number },
   ): Promise<void> {
+    const retenItbis = retenciones?.montoItbis ?? 0;
+    const retenIsr   = retenciones?.montoIsr   ?? 0;
+    const neto       = retenciones?.netoPagar  ?? total;
+    // ITBIS que queda como crédito fiscal = ITBIS facturado - ITBIS retenido
+    const itbisCredito = Number((itbis - retenItbis).toFixed(2));
+
+    const lineas: { codigo: string; descripcion: string; debe: number; haber: number }[] = [
+      { codigo: COD.INVENTARIO,    descripcion: `Mercancía recibida ${folio}`, debe: subtotal, haber: 0 },
+      { codigo: COD.ITBIS_CREDITO, descripcion: `ITBIS crédito fiscal ${folio}`, debe: itbisCredito > 0 ? itbisCredito : itbis, haber: 0 },
+      { codigo: COD.PROVEEDORES,   descripcion: `CxP proveedor ${folio}`,      debe: 0,       haber: neto },
+    ];
+    if (retenItbis > 0) {
+      lineas.push({ codigo: COD.ITBIS_RET_POR_PAGAR, descripcion: `ITBIS retenido E41 ${folio}`, debe: 0, haber: retenItbis });
+    }
+    if (retenIsr > 0) {
+      lineas.push({ codigo: COD.ISR_RET_POR_PAGAR, descripcion: `ISR retenido E41 ${folio}`, debe: 0, haber: retenIsr });
+    }
+
     try {
       await this._crearAsientoContabilizado({
         descripcion:     `Compra según orden ${folio}`,
@@ -174,11 +195,7 @@ export class AsientosAutomaticosService {
         referenciaId:    compraId,
         referenciaFolio: folio,
         userId,
-        lineas: [
-          { codigo: COD.INVENTARIO,    descripcion: `Mercancía recibida ${folio}`, debe: subtotal, haber: 0 },
-          { codigo: COD.ITBIS_CREDITO, descripcion: `ITBIS crédito fiscal ${folio}`, debe: itbis, haber: 0 },
-          { codigo: COD.PROVEEDORES,   descripcion: `CxP proveedor ${folio}`,      debe: 0,       haber: total },
-        ],
+        lineas,
       });
       this.logger.log(`Asiento compra ${folio} generado`);
     } catch (err) {

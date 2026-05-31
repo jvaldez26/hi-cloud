@@ -93,4 +93,28 @@ export class Compra extends TenantBaseEntity {
   /** Tasa de cambio al momento de registrar la compra */
   @Column({ type: 'decimal', precision: 10, scale: 4, nullable: true, default: 1 })
   tipoCambio?: number;
+
+  // ── Retenciones E41 (solo proveedores informales) ──────────────────
+
+  @Column({ default: false })
+  retieneItbis!: boolean;
+
+  @Column({ type: 'decimal', precision: 5, scale: 2, default: 30 })
+  porcentajeRetencionItbis!: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  montoRetencionItbis!: number;
+
+  @Column({ default: false })
+  retieneIsr!: boolean;
+
+  @Column({ type: 'decimal', precision: 5, scale: 2, default: 10 })
+  porcentajeRetencionIsr!: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  montoRetencionIsr!: number;
+
+  /** Total - retenciones (lo que realmente se paga al proveedor) */
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  netoPagar!: number;
 }

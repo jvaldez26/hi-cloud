@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Form, Input, Button, Card, Row, Col, Typography, Select,
-         DatePicker, Table, InputNumber, Space, Divider, message, Tag, Alert } from 'antd';
+         DatePicker, Table, InputNumber, Space, Divider, message, Tag, Alert, Checkbox, theme } from 'antd';
 import { PlusOutlined, DeleteOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -21,16 +21,28 @@ const fmtMon = (v: number, moneda = 'DOP') => {
 
 export default function CompraFormPage() {
   const [form] = Form.useForm();
+  const { token } = theme.useToken();
   const [lineas, setLineas] = useState<Linea[]>([{ key: '1', cantidad: 1, precioUnitario: 0, porcentajeItbis: 18 }]);
-  const [tipoPago, setTipoPago]     = useState<'contado' | 'credito'>('credito');
-  const [diasCredito, setDiasCredito] = useState(30);
-  const [moneda, setMoneda]         = useState<'DOP' | 'USD' | 'EUR'>('DOP');
-  const [tipoCambio, setTipoCambio] = useState<number>(1);
+  const [tipoPago, setTipoPago]         = useState<'contado' | 'credito'>('credito');
+  const [diasCredito, setDiasCredito]   = useState(30);
+  const [moneda, setMoneda]             = useState<'DOP' | 'USD' | 'EUR'>('DOP');
+  const [tipoCambio, setTipoCambio]     = useState<number>(1);
+  const [proveedorSelId, setProveedorSelId] = useState<number | null>(null);
+  const [retieneItbis, setRetieneItbis] = useState(false);
+  const [pctItbis, setPctItbis]         = useState(30);
+  const [retieneIsr, setRetieneIsr]     = useState(false);
+  const [pctIsr, setPctIsr]             = useState(10);
   const navigate = useNavigate();
   const qc = useQueryClient();
 
   const { data: proveedores } = useQuery({ queryKey: ['proveedores-sel'], queryFn: () => proveedoresApi.list(1, 200) });
   const { data: productos }   = useQuery({ queryKey: ['productos-sel'],   queryFn: () => productosApi.list(1, 200) });
+
+  // Detectar si el proveedor seleccionado es informal
+  const proveedorSel = (proveedores?.data ?? []).find((p: any) => p.id === proveedorSelId);
+  const esInformal   = proveedorSel
+    ? (!proveedorSel.rnc || proveedorSel.rnc === '000000000' || (proveedorSel as any).esInformal === true)
+    : false;
 
   const createMut = useMutation({
     mutationFn: comprasApi.create,
@@ -41,6 +53,11 @@ export default function CompraFormPage() {
   const subtotal = lineas.reduce((s, l) => s + l.precioUnitario * l.cantidad, 0);
   const itbis    = lineas.reduce((s, l) => s + l.precioUnitario * l.cantidad * (l.porcentajeItbis / 100), 0);
   const total    = subtotal + itbis;
+
+  // Cálculo retenciones (solo si informal)
+  const montoRetItbis  = (esInformal && retieneItbis) ? Number((itbis  * pctItbis / 100).toFixed(2)) : 0;
+  const montoRetIsr    = (esInformal && retieneIsr)   ? Number((subtotal * pctIsr   / 100).toFixed(2)) : 0;
+  const netoPagar      = Number((total - montoRetItbis - montoRetIsr).toFixed(2));
 
   const onProductoChange = (productoId: number, idx: number) => {
     const prod = productos?.data.find(p => p.id === productoId);
@@ -86,6 +103,8 @@ export default function CompraFormPage() {
       diasCredito: tipoPago === 'credito' ? diasCredito : undefined,
       moneda,
       tipoCambio: moneda !== 'DOP' ? tipoCambio : undefined,
+      ...(esInformal && retieneItbis ? { retieneItbis: true, porcentajeRetencionItbis: pctItbis } : {}),
+      ...(esInformal && retieneIsr   ? { retieneIsr:   true, porcentajeRetencionIsr:   pctIsr   } : {}),
     } as any);
   };
 
@@ -134,7 +153,12 @@ export default function CompraFormPage() {
             <Col xs={24} sm={10}>
               <Form.Item name="proveedorId" label="Proveedor" rules={[{ required: true }]}>
                 <Select showSearch filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
-                  options={proveedores?.data.map(p => ({ value: p.id, label: `${p.rnc} — ${p.nombre}` }))} />
+                  options={(proveedores?.data ?? []).map((p: any) => ({
+                    value: p.id,
+                    label: `${(p as any).rnc || 'Sin RNC'} — ${p.nombre}${(p as any).esInformal ? ' ⚠ Informal' : ''}`,
+                  }))}
+                  onChange={(v: number) => { setProveedorSelId(v); setRetieneItbis(false); setRetieneIsr(false); }}
+                />
               </Form.Item>
             </Col>
             <Col xs={12} sm={4}>
@@ -210,6 +234,56 @@ export default function CompraFormPage() {
           <Table columns={lineaCols as any} dataSource={lineas} rowKey="key" pagination={false} size="small"
         scroll={{ x: 'max-content' }} />
         </Card>
+        {/* ── Retenciones E41 — solo para proveedores informales ── */}
+        {esInformal && (
+          <Card
+            title={<span>⚠ Retenciones E41 — Proveedor informal</span>}
+            style={{ marginBottom: 16, borderColor: '#f59e0b', background: token.colorWarningBg }}
+            headStyle={{ borderColor: '#f59e0b', color: '#92400e' }}
+          >
+            <Row gutter={[16, 8]}>
+              <Col xs={24} sm={12}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+                  <Checkbox checked={retieneItbis} onChange={e => setRetieneItbis(e.target.checked)}>
+                    Retener ITBIS
+                  </Checkbox>
+                  {retieneItbis && (
+                    <InputNumber
+                      min={0} max={100} precision={2}
+                      value={pctItbis}
+                      onChange={v => setPctItbis(v ?? 30)}
+                      addonAfter="%" style={{ width: 110 }}
+                    />
+                  )}
+                </div>
+                {retieneItbis && (
+                  <Alert type="warning" showIcon style={{ fontSize: 12 }}
+                    message={`Monto a retener ITBIS: ${fmtMon(montoRetItbis, moneda)} (${pctItbis}% de ${fmtMon(itbis, moneda)})`} />
+                )}
+              </Col>
+              <Col xs={24} sm={12}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+                  <Checkbox checked={retieneIsr} onChange={e => setRetieneIsr(e.target.checked)}>
+                    Retener ISR
+                  </Checkbox>
+                  {retieneIsr && (
+                    <InputNumber
+                      min={0} max={100} precision={2}
+                      value={pctIsr}
+                      onChange={v => setPctIsr(v ?? 10)}
+                      addonAfter="%" style={{ width: 110 }}
+                    />
+                  )}
+                </div>
+                {retieneIsr && (
+                  <Alert type="warning" showIcon style={{ fontSize: 12 }}
+                    message={`Monto a retener ISR: ${fmtMon(montoRetIsr, moneda)} (${pctIsr}% de ${fmtMon(subtotal, moneda)})`} />
+                )}
+              </Col>
+            </Row>
+          </Card>
+        )}
+
         <Card>
           <Row justify="end">
             <Col xs={24} sm={10}>
@@ -218,13 +292,40 @@ export default function CompraFormPage() {
                 <Row justify="space-between"><span>ITBIS (18%):</span><strong>{fmtMon(itbis, moneda)}</strong></Row>
                 <Divider style={{ margin: '8px 0' }} />
                 <Row justify="space-between">
-                  <span style={{ fontSize: 16 }}>Total:</span>
-                  <strong style={{ fontSize: 18, color: '#1677ff' }}>{fmtMon(total, moneda)}</strong>
+                  <span style={{ fontSize: 16 }}>Total bruto:</span>
+                  <strong style={{ fontSize: 16 }}>{fmtMon(total, moneda)}</strong>
                 </Row>
+                {(montoRetItbis > 0 || montoRetIsr > 0) && (
+                  <>
+                    {montoRetItbis > 0 && (
+                      <Row justify="space-between" style={{ color: '#d97706' }}>
+                        <span>(-) Retención ITBIS ({pctItbis}%):</span>
+                        <span>-{fmtMon(montoRetItbis, moneda)}</span>
+                      </Row>
+                    )}
+                    {montoRetIsr > 0 && (
+                      <Row justify="space-between" style={{ color: '#d97706' }}>
+                        <span>(-) Retención ISR ({pctIsr}%):</span>
+                        <span>-{fmtMon(montoRetIsr, moneda)}</span>
+                      </Row>
+                    )}
+                    <Divider style={{ margin: '6px 0' }} />
+                    <Row justify="space-between">
+                      <span style={{ fontSize: 16, fontWeight: 700 }}>NETO A PAGAR:</span>
+                      <strong style={{ fontSize: 18, color: '#059669' }}>{fmtMon(netoPagar, moneda)}</strong>
+                    </Row>
+                  </>
+                )}
+                {!(montoRetItbis > 0 || montoRetIsr > 0) && (
+                  <Row justify="space-between">
+                    <span style={{ fontSize: 16 }}>Total:</span>
+                    <strong style={{ fontSize: 18, color: '#1677ff' }}>{fmtMon(total, moneda)}</strong>
+                  </Row>
+                )}
                 {moneda !== 'DOP' && tipoCambio > 1 && (
                   <Row justify="space-between" style={{ color: '#888', fontSize: 12 }}>
                     <span>Equivalente RD$:</span>
-                    <span>{fmtMon(total * tipoCambio, 'DOP')}</span>
+                    <span>{fmtMon((montoRetItbis > 0 || montoRetIsr > 0 ? netoPagar : total) * tipoCambio, 'DOP')}</span>
                   </Row>
                 )}
                 <Button type="primary" htmlType="submit" block size="large" loading={createMut.isPending}>

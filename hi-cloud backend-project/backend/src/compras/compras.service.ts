@@ -2,7 +2,6 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
-  Logger,
 } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
@@ -19,15 +18,11 @@ import { TenantService } from '../tenant/tenant.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { User } from '../users/users.entity';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
-import { EmitirECFUseCase } from '../ecf/use-cases/emitir-ecf.use-case';
-import { DocumentoOrigenTipo } from '../ecf/entities/ecf.entity';
 
 const ITBIS_DEFAULT = 18;
 
 @Injectable()
 export class ComprasService {
-  private readonly logger = new Logger(ComprasService.name);
-
   constructor(
     @InjectRepository(Compra)
     private compraRepository: Repository<Compra>,
@@ -40,7 +35,6 @@ export class ComprasService {
     private asientosService:    AsientosAutomaticosService,
     private tenantService:      TenantService,
     private realtimeService:    RealtimeService,
-    private emitirEcfUseCase:   EmitirECFUseCase,
     @InjectDataSource() private ds: DataSource,
   ) {}
 
@@ -89,6 +83,17 @@ export class ComprasService {
       fechaVencimiento.setDate(fechaVencimiento.getDate() + diasCredito);
     }
 
+    // Retenciones E41 (solo informales)
+    const retieneItbis          = dto.retieneItbis ?? false;
+    const pctItbis              = dto.porcentajeRetencionItbis ?? 30;
+    const retieneIsr            = dto.retieneIsr ?? false;
+    const pctIsr                = dto.porcentajeRetencionIsr ?? 10;
+    const montoItbisTotal       = Number(itbisCompra.toFixed(2));
+    const montoRetencionItbis   = retieneItbis ? Number((montoItbisTotal * pctItbis / 100).toFixed(2)) : 0;
+    const montoRetencionIsr     = retieneIsr   ? Number((subtotalCompra * pctIsr / 100).toFixed(2)) : 0;
+    const totalBruto            = Number((subtotalCompra + itbisCompra).toFixed(2));
+    const netoPagar             = Number((totalBruto - montoRetencionItbis - montoRetencionIsr).toFixed(2));
+
     const compra = this.compraRepository.create({
       empresaId,
       folio,
@@ -98,11 +103,20 @@ export class ComprasService {
       notas:                  dto.notas,
       numeroFacturaProveedor: dto.numeroFacturaProveedor,
       subtotal:               Number(subtotalCompra.toFixed(2)),
-      itbis:                  Number(itbisCompra.toFixed(2)),
-      total:                  Number((subtotalCompra + itbisCompra).toFixed(2)),
+      itbis:                  montoItbisTotal,
+      total:                  totalBruto,
       tipoPago,
       diasCredito,
       fechaVencimiento,
+      moneda:                 dto.moneda ?? 'DOP',
+      tipoCambio:             dto.tipoCambio ?? 1,
+      retieneItbis,
+      porcentajeRetencionItbis: pctItbis,
+      montoRetencionItbis,
+      retieneIsr,
+      porcentajeRetencionIsr: pctIsr,
+      montoRetencionIsr,
+      netoPagar,
     });
 
     const savedCompra = await this.compraRepository.save(compra);
@@ -195,7 +209,7 @@ export class ComprasService {
         await this.cxpService.crear(compra.id, compra.usuarioId, compra.diasCredito ?? 30);
       }
 
-      // 3. Asiento contable automático
+      // 3. Asiento contable automático (con retenciones si aplica)
       await this.asientosService.asientoCompraRecibida(
         compra.id,
         Number(compra.total),
@@ -203,26 +217,14 @@ export class ComprasService {
         Number(compra.itbis),
         compra.folio,
         compra.usuarioId,
+        compra.retieneItbis || compra.retieneIsr
+          ? {
+              montoItbis: Number(compra.montoRetencionItbis ?? 0),
+              montoIsr:   Number(compra.montoRetencionIsr   ?? 0),
+              netoPagar:  Number(compra.netoPagar           ?? compra.total),
+            }
+          : undefined,
       );
-
-      // 4. E41 automático para proveedores informales (no bloquea el flujo si falla)
-      const proveedor = compra.proveedor as any;
-      const esInformal = !proveedor?.rnc || proveedor.rnc === '000000000' || proveedor?.esInformal === true;
-      if (esInformal) {
-        this.emitirEcfUseCase
-          .execute({
-            empresaId:           this.tenantService.getEmpresaId(),
-            documentoOrigenTipo: DocumentoOrigenTipo.COMPRA,
-            documentoOrigenId:   compra.id,
-            tipoEcf:             41,
-          })
-          .then(() => this.logger.log(`[Compras] E41 emitido automáticamente para ${compra.folio}`))
-          .catch((err: Error) =>
-            this.logger.warn(
-              `[Compras] No se pudo emitir E41 automáticamente para ${compra.folio}: ${err.message}`,
-            ),
-          );
-      }
     }
 
     if (estado === CompraEstado.CANCELADA && compra.estado === CompraEstado.RECIBIDA) {

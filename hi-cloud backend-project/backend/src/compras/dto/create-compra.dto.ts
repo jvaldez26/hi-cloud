@@ -7,6 +7,7 @@ import {
   ValidateNested,
   IsDateString,
   IsNumber,
+  IsBoolean,
   IsIn,
   Min,
   Max,
@@ -85,4 +86,16 @@ export class CreateCompraDto {
   @Min(1)
   @Type(() => Number)
   tipoCambio?: number;
+
+  @IsOptional() @IsBoolean()
+  retieneItbis?: boolean;
+
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(100) @Type(() => Number)
+  porcentajeRetencionItbis?: number;
+
+  @IsOptional() @IsBoolean()
+  retieneIsr?: boolean;
+
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(100) @Type(() => Number)
+  porcentajeRetencionIsr?: number;
 }
