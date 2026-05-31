@@ -7,11 +7,13 @@ import { Empresa } from '../configuracion/entities/empresa.entity';
 import { Sucursal } from '../configuracion/entities/sucursal.entity';
 import { User } from '../users/users.entity';
 import { ContabilidadModule } from '../contabilidad/contabilidad.module';
+import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([UsuarioEmpresa, Empresa, Sucursal, User]),
     ContabilidadModule,
+    NotificacionesModule,
   ],
   controllers: [MultiEmpresaController],
   providers: [MultiEmpresaService],

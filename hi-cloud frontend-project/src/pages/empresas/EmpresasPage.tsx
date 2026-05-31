@@ -68,18 +68,22 @@ export default function EmpresasPage() {
 
   const crearEmpresa = useMutation({
     mutationFn: (dto: any) => api.post('/multi-empresa', dto),
-    onSuccess: (res: any) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['mis-empresas'] });
       setModalCrear(false);
       formCrear.resetFields();
-      message.success('Empresa creada exitosamente');
-      const nueva = res.data?.data ?? res.data;
-      if (nueva?.id) {
-        cambiarEmpresa(nueva.id);
-        window.location.reload();
-      }
+      Modal.success({
+        title: '✅ Solicitud enviada exitosamente',
+        content: (
+          <div>
+            <p>Tu solicitud fue enviada. Un administrador revisará tu empresa y recibirás un email cuando sea aprobada.</p>
+            <p style={{ color: '#6b7280', fontSize: 13 }}>Tiempo estimado de respuesta: 1-2 días hábiles.</p>
+          </div>
+        ),
+        okText: 'Entendido',
+      });
     },
-    onError: (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error al crear empresa'),
+    onError: (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error al enviar solicitud'),
   });
 
   const invitarUsuario = useMutation({
@@ -206,34 +210,44 @@ export default function EmpresasPage() {
               allowClear
               style={{ width: 220, marginBottom: 12 }}
             />
-            {empresasFiltradas.map((e: any) => (
-              <div
-                key={e.empresaId}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 12,
-                  padding: '12px 0',
-                  borderBottom: '1px solid #f0f0f0',
-                  cursor: e.empresaId !== empresaActual ? 'pointer' : 'default',
-                  opacity: e.empresaId !== empresaActual ? 1 : 1,
-                }}
-                onClick={() => e.empresaId !== empresaActual && handleCambiarEmpresa(e.empresaId)}
-              >
-                <Avatar style={{ background: e.empresaId === empresaActual ? token.colorPrimary : token.colorPrimaryBg, color: e.empresaId === empresaActual ? '#fff' : token.colorPrimary, fontWeight: 700 }}>
-                  {e.nombre?.charAt(0)}
-                </Avatar>
-                <div style={{ flex: 1 }}>
-                  <Text strong>{e.nombre}</Text>
-                  <div>
-                    <Tag style={{ fontSize: 10 }}>{e.rol}</Tag>
-                    {e.isPrincipal && <Tag color="gold" style={{ fontSize: 10 }}>Principal</Tag>}
+            {empresasFiltradas.map((e: any) => {
+              const esPendiente  = e.estadoAprobacion === 'pendiente';
+              const esRechazada  = e.estadoAprobacion === 'rechazada';
+              const puedeAcceder = !esPendiente && !esRechazada;
+              return (
+                <div
+                  key={e.empresaId}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '12px 0',
+                    borderBottom: '1px solid #f0f0f0',
+                    cursor: puedeAcceder && e.empresaId !== empresaActual ? 'pointer' : 'default',
+                    opacity: esPendiente || esRechazada ? 0.7 : 1,
+                  }}
+                  onClick={() => puedeAcceder && e.empresaId !== empresaActual && handleCambiarEmpresa(e.empresaId)}
+                >
+                  <Avatar style={{ background: e.empresaId === empresaActual ? token.colorPrimary : (esPendiente ? '#f59e0b' : esRechazada ? '#dc2626' : token.colorPrimaryBg), color: '#fff', fontWeight: 700 }}>
+                    {e.nombre?.charAt(0)}
+                  </Avatar>
+                  <div style={{ flex: 1 }}>
+                    <Text strong>{e.nombre}</Text>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 2 }}>
+                      <Tag style={{ fontSize: 10 }}>{e.rol}</Tag>
+                      {e.isPrincipal && <Tag color="gold" style={{ fontSize: 10 }}>Principal</Tag>}
+                      {esPendiente  && <Tag color="orange" style={{ fontSize: 10 }}>⏳ En revisión</Tag>}
+                      {esRechazada  && <Tag color="red"    style={{ fontSize: 10 }}>❌ Rechazada</Tag>}
+                    </div>
+                    {esRechazada && e.motivoRechazo && (
+                      <Text type="secondary" style={{ fontSize: 11 }}>Motivo: {e.motivoRechazo}</Text>
+                    )}
                   </div>
+                  {e.empresaId === empresaActual
+                    ? <CheckCircleOutlined style={{ color: '#1a56db', fontSize: 18 }} />
+                    : puedeAcceder ? <SwapOutlined style={{ color: '#9ca3af' }} /> : null
+                  }
                 </div>
-                {e.empresaId === empresaActual
-                  ? <CheckCircleOutlined style={{ color: '#1a56db', fontSize: 18 }} />
-                  : <SwapOutlined style={{ color: '#9ca3af' }} />
-                }
-              </div>
-            ))}
+              );
+            })}
             {empresasFiltradas.length === 0 && (
               <div style={{ textAlign: 'center', padding: 32 }}>
                 <BankOutlined style={{ fontSize: 32, color: '#d9d9d9', marginBottom: 8 }} />
@@ -392,12 +406,13 @@ export default function EmpresasPage() {
         onCancel={() => setModalCrear(false)}
         onOk={() => formCrear.submit()}
         confirmLoading={crearEmpresa.isPending}
-        okText="Crear Empresa"
+        okText="Enviar solicitud"
         width={560}
       >
         <Alert
           type="info"
           message="Cada empresa es un espacio completamente aislado con sus propios clientes, facturas y datos."
+          description="Tu solicitud será revisada por un administrador antes de activarse. Recibirás un email de confirmación."
           style={{ marginBottom: 16 }}
         />
         <Form form={formCrear} layout="vertical" onFinish={v => crearEmpresa.mutate(v)}>

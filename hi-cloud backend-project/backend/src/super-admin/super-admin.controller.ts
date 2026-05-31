@@ -458,6 +458,30 @@ export class SuperAdminController {
     return this.svc.rechazarRegistro(id, admin.id, dto.motivo ?? '');
   }
 
+  // ── Aprobación de nuevas empresas ─────────────────────────────────────────
+
+  @Get('empresas-pendientes-aprobacion')
+  @ApiOperation({ summary: 'Listar empresas pendientes de aprobación por Super Admin' })
+  empresasPendientes() { return this.svc.getEmpresasPendientesAprobacion(); }
+
+  @Post('empresas/:id/aprobar-empresa')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Aprobar empresa — activa, crea Trial 15 días, envía email' })
+  aprobarEmpresa(@Param('id', ParseIntPipe) id: number, @GetUser() admin: User) {
+    return this.svc.aprobarEmpresa(id, admin.id);
+  }
+
+  @Post('empresas/:id/rechazar-empresa')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Rechazar empresa — guarda motivo y envía email al solicitante' })
+  rechazarEmpresa(
+    @Param('id', ParseIntPipe) id: number,
+    @GetUser() admin: User,
+    @Body() dto: RechazarRegistroDto,
+  ) {
+    return this.svc.rechazarEmpresa(id, admin.id, dto.motivo ?? 'Sin motivo especificado');
+  }
+
   // ── Plan de Cuentas — Re-sembrado ─────────────────────────────────────────
 
   @Post('contabilidad/plan-cuentas/sincronizar')

@@ -64,6 +64,115 @@ export class SuperAdminService {
     return { ok: true, mensaje: `Empresa #${id} activada` };
   }
 
+  // ── Aprobación de nuevas empresas ─────────────────────────────────────────
+
+  async getEmpresasPendientesAprobacion() {
+    return this.ds.query<any[]>(`
+      SELECT e.id, e.nombre, e.rnc, e.email, e.sector, e.telefono, e."createdAt",
+             u.nombre AS "solicitanteNombre", u.email AS "solicitanteEmail"
+      FROM empresa e
+      LEFT JOIN usuario_empresa ue ON ue."empresaId" = e.id AND ue."isPrincipal" = true
+      LEFT JOIN users u ON u.id = ue."userId"
+      WHERE e."estadoAprobacion" = 'pendiente' AND e."isActive" = true
+      ORDER BY e."createdAt" ASC
+    `);
+  }
+
+  async aprobarEmpresa(empresaId: number, adminId: number) {
+    const [emp] = await this.ds.query<any[]>(
+      `SELECT e.*, u.email AS "solicitanteEmail", u.nombre AS "solicitanteNombre"
+       FROM empresa e
+       LEFT JOIN usuario_empresa ue ON ue."empresaId" = e.id AND ue."isPrincipal" = true
+       LEFT JOIN users u ON u.id = ue."userId"
+       WHERE e.id = $1`,
+      [empresaId],
+    );
+    if (!emp) throw new NotFoundException(`Empresa #${empresaId} no encontrada`);
+    if (emp.estadoAprobacion !== 'pendiente') {
+      throw new BadRequestException(`La empresa ya fue ${emp.estadoAprobacion}`);
+    }
+
+    await this.ds.query(
+      `UPDATE empresa SET "estadoAprobacion"='aprobada', "aprobadoPor"=$1, "fechaAprobacion"=NOW() WHERE id=$2`,
+      [adminId, empresaId],
+    );
+
+    // Crear suscripción Trial de 15 días
+    const fechaFin = new Date();
+    fechaFin.setDate(fechaFin.getDate() + 15);
+    await this.ds.query(
+      `INSERT INTO suscripciones ("empresaId", plan, estado, "fechaInicio", "fechaVencimiento", "creadoPor")
+       VALUES ($1, 'trial', 'activo', NOW(), $2, $3)
+       ON CONFLICT DO NOTHING`,
+      [empresaId, fechaFin, adminId],
+    );
+
+    // Email al solicitante
+    const frontendUrl = process.env['FRONTEND_URL'] ?? 'https://hicloudrd.com';
+    if (emp.solicitanteEmail) {
+      await this.emailService.enviar({
+        to:      emp.solicitanteEmail,
+        subject: `¡Tu empresa fue aprobada en HiCloud!`,
+        html: `<div style="font-family:sans-serif;max-width:520px;margin:0 auto">
+          <div style="background:linear-gradient(135deg,#059669,#10b981);padding:24px;border-radius:12px 12px 0 0;text-align:center;color:#fff">
+            <h2 style="margin:0">✅ ¡Empresa aprobada!</h2>
+          </div>
+          <div style="padding:24px;background:#fff;border:1px solid #e5e7eb;border-radius:0 0 12px 12px">
+            <p>Hola <strong>${emp.solicitanteNombre ?? 'usuario'}</strong>,</p>
+            <p>Tu solicitud para la empresa <strong>${emp.nombre}</strong> fue <strong>aprobada</strong>.</p>
+            <p>Ya puedes acceder y tu plan Trial de <strong>15 días</strong> ha comenzado.</p>
+            <p style="text-align:center;margin:24px 0">
+              <a href="${frontendUrl}/login" style="background:#1a56db;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700">
+                Acceder a HiCloud →
+              </a>
+            </p>
+          </div>
+        </div>`,
+      }).catch(err => this.logger.warn(`Email aprobación empresa #${empresaId}: ${err?.message}`));
+    }
+
+    this.logger.log(`[Empresa] #${empresaId} aprobada por admin #${adminId}`);
+    return { ok: true, mensaje: `Empresa #${empresaId} aprobada`, empresaId };
+  }
+
+  async rechazarEmpresa(empresaId: number, adminId: number, motivo: string) {
+    const [emp] = await this.ds.query<any[]>(
+      `SELECT e.nombre, u.email AS "solicitanteEmail", u.nombre AS "solicitanteNombre"
+       FROM empresa e
+       LEFT JOIN usuario_empresa ue ON ue."empresaId" = e.id AND ue."isPrincipal" = true
+       LEFT JOIN users u ON u.id = ue."userId"
+       WHERE e.id = $1`,
+      [empresaId],
+    );
+    if (!emp) throw new NotFoundException(`Empresa #${empresaId} no encontrada`);
+
+    await this.ds.query(
+      `UPDATE empresa SET "estadoAprobacion"='rechazada', "motivoRechazo"=$1, "aprobadoPor"=$2, "fechaAprobacion"=NOW() WHERE id=$3`,
+      [motivo, adminId, empresaId],
+    );
+
+    if (emp.solicitanteEmail) {
+      await this.emailService.enviar({
+        to:      emp.solicitanteEmail,
+        subject: `Solicitud de empresa no aprobada`,
+        html: `<div style="font-family:sans-serif;max-width:520px;margin:0 auto">
+          <div style="background:linear-gradient(135deg,#dc2626,#ef4444);padding:24px;border-radius:12px 12px 0 0;text-align:center;color:#fff">
+            <h2 style="margin:0">Solicitud no aprobada</h2>
+          </div>
+          <div style="padding:24px;background:#fff;border:1px solid #e5e7eb;border-radius:0 0 12px 12px">
+            <p>Hola <strong>${emp.solicitanteNombre ?? 'usuario'}</strong>,</p>
+            <p>Tu solicitud para la empresa <strong>${emp.nombre}</strong> no fue aprobada en este momento.</p>
+            <p><strong>Motivo:</strong> ${motivo}</p>
+            <p>Puedes contactarnos a través del portal para más información.</p>
+          </div>
+        </div>`,
+      }).catch(err => this.logger.warn(`Email rechazo empresa #${empresaId}: ${err?.message}`));
+    }
+
+    this.logger.log(`[Empresa] #${empresaId} rechazada por admin #${adminId}: ${motivo}`);
+    return { ok: true, mensaje: `Empresa #${empresaId} rechazada`, empresaId };
+  }
+
   // ── Usuarios ─────────────────────────────────────────────────────────────
 
   async listarUsuarios() {

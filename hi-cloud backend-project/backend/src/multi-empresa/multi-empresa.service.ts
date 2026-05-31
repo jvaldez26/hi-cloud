@@ -19,6 +19,7 @@ import {
 } from './dto/multi-empresa.dto';
 import { UserRole } from '../users/enums/user-role.enum';
 import { ContabilidadService } from '../contabilidad/services/contabilidad.service';
+import { EmailService }        from '../notificaciones/services/email.service';
 
 @Injectable()
 export class MultiEmpresaService {
@@ -34,6 +35,7 @@ export class MultiEmpresaService {
     @InjectRepository(User)
     private usuarioRepo:        Repository<User>,
     private contabilidadSvc:    ContabilidadService,
+    private emailSvc:           EmailService,
     @InjectDataSource() private ds: DataSource,
   ) {}
 
@@ -54,13 +56,14 @@ export class MultiEmpresaService {
 
     const empresa = this.empresaRepo.create({
       ...dto,
-      moneda:      'DOP',
-      zonaHoraria: 'America/Santo_Domingo',
+      moneda:            'DOP',
+      zonaHoraria:       'America/Santo_Domingo',
+      estadoAprobacion:  'pendiente',
     });
     return this.empresaRepo.save(empresa);
   }
 
-  async createEmpresaConAdmin(dto: CreateEmpresaTenantDto, adminId: number): Promise<Empresa & { empresaId: number }> {
+  async createEmpresaConAdmin(dto: CreateEmpresaTenantDto, adminId: number): Promise<Empresa & { empresaId: number; pendienteAprobacion: true }> {
     const empresa = await this.createEmpresa(dto);
 
     // Vincular al creador como admin principal de la empresa
@@ -89,7 +92,33 @@ export class MultiEmpresaService {
       this.logger.warn(`seedPlanCuentas empresa ${empresa.id}: ${err?.message ?? err}`);
     }
 
-    return Object.assign({}, empresa, { empresaId: empresa.id }) as Empresa & { empresaId: number };
+    // Notificar al Super Admin de la nueva solicitud
+    const [solicitante] = await this.ds.query<any[]>(
+      `SELECT nombre, email FROM users WHERE id = $1 LIMIT 1`, [adminId],
+    );
+    const adminEmail    = process.env['SUPER_ADMIN_EMAIL'] ?? 'admin@hicloudrd.com';
+    const frontendUrl   = process.env['FRONTEND_URL'] ?? 'https://hicloudrd.com';
+
+    this.emailSvc.enviar({
+      to:      adminEmail,
+      subject: `Nueva solicitud de empresa — ${empresa.nombre}`,
+      html: `<div style="font-family:sans-serif;max-width:520px;margin:0 auto">
+        <h2 style="color:#1a56db">Nueva solicitud de empresa</h2>
+        <table style="width:100%;border-collapse:collapse">
+          <tr><td style="padding:6px;color:#555">Empresa:</td><td style="padding:6px;font-weight:700">${empresa.nombre}</td></tr>
+          <tr><td style="padding:6px;color:#555">RNC:</td><td style="padding:6px">${empresa.rnc}</td></tr>
+          <tr><td style="padding:6px;color:#555">Solicitante:</td><td style="padding:6px">${solicitante?.nombre ?? '—'} (${solicitante?.email ?? '—'})</td></tr>
+          <tr><td style="padding:6px;color:#555">Sector:</td><td style="padding:6px">${empresa.sector ?? '—'}</td></tr>
+        </table>
+        <p style="margin-top:16px">
+          <a href="${frontendUrl}/super-admin" style="background:#1a56db;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">
+            Revisar en el panel →
+          </a>
+        </p>
+      </div>`,
+    }).catch(err => this.logger.warn(`Email notif super admin empresa #${empresa.id}: ${err?.message}`));
+
+    return Object.assign({}, empresa, { empresaId: empresa.id, pendienteAprobacion: true as const });
   }
 
   async getEmpresaById(id: number): Promise<Empresa> {

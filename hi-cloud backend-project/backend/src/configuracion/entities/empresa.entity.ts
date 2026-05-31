@@ -118,6 +118,19 @@ export class Empresa extends BaseEntity {
   @Column({ type: 'jsonb', nullable: true, default: {} })
   configuracion?: Record<string, unknown>;
 
+  // ── Aprobación por Super Admin ────────────────────────────────────────────
+  @Column({ length: 20, default: 'aprobada' })
+  estadoAprobacion!: string;   // 'pendiente' | 'aprobada' | 'rechazada'
+
+  @Column({ type: 'text', nullable: true })
+  motivoRechazo?: string;
+
+  @Column({ nullable: true })
+  aprobadoPor?: number;        // userId del super admin
+
+  @Column({ type: 'timestamptz', nullable: true })
+  fechaAprobacion?: Date;
+
   // ── Crédito ───────────────────────────────────────────────────────────────
   @Column({ type: 'int', default: 30 })
   diasCreditoDefault!: number;

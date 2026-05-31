@@ -1233,6 +1233,40 @@ export default function SuperAdminPage() {
     onError: () => message.error('Error al rechazar'),
   });
 
+  // ── Empresas pendientes de aprobación ────────────────────────────────────
+  const { data: empresasPend = [], isLoading: loadEmpPend, refetch: refetchEmpPend } = useQuery({
+    queryKey: ['sa-empresas-pendientes'],
+    queryFn:  () => api.get('/admin/empresas-pendientes-aprobacion').then(xd),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+  const empresasPendCount = (empresasPend as any[]).length;
+
+  const [rechazarEmpModal, setRechazarEmpModal] = useState<any>(null);
+  const [motivoRechEmp,    setMotivoRechEmp]    = useState('');
+
+  const aprobarEmpresaMut = useMutation({
+    mutationFn: (id: number) => api.post(`/admin/empresas/${id}/aprobar-empresa`).then(xd),
+    onSuccess: (res: any) => {
+      qc.invalidateQueries({ queryKey: ['sa-empresas-pendientes'] });
+      qc.invalidateQueries({ queryKey: ['sa-empresas'] });
+      message.success(res?.mensaje ?? 'Empresa aprobada');
+      refetchEmpPend();
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al aprobar'),
+  });
+
+  const rechazarEmpresaMut = useMutation({
+    mutationFn: ({ id, motivo }: { id: number; motivo: string }) =>
+      api.post(`/admin/empresas/${id}/rechazar-empresa`, { motivo }).then(xd),
+    onSuccess: (res: any) => {
+      qc.invalidateQueries({ queryKey: ['sa-empresas-pendientes'] });
+      setRechazarEmpModal(null); setMotivoRechEmp('');
+      message.success(res?.mensaje ?? 'Empresa rechazada');
+    },
+    onError: () => message.error('Error al rechazar'),
+  });
+
   // ── Eliminar / suspender / activar usuario ──────────────────────────────
   const [eliminarModal,    setEliminarModal]    = useState<any>(null);
   const [hardDeleteUsu,    setHardDeleteUsu]    = useState<any>(null);
@@ -1955,7 +1989,7 @@ export default function SuperAdminPage() {
             {[
               { key: 'empresas',      icon: <Building2 size={15} />,  label: 'Empresas',      count: (empresas as any[]).length, countColor: C.blue },
               { key: 'usuarios',      icon: <Users size={15} />,      label: 'Usuarios',      count: (usuarios as any[]).length, countColor: C.blue },
-              { key: 'pendientes',    icon: <ClockIcon size={15} />,  label: 'Pendientes',    count: pendientesCount, countColor: C.red, badge: pendientesCount > 0 },
+              { key: 'pendientes',    icon: <ClockIcon size={15} />,  label: 'Pendientes',    count: pendientesCount + empresasPendCount, countColor: C.red, badge: (pendientesCount + empresasPendCount) > 0 },
               { key: 'suscripciones', icon: <Crown size={15} />,      label: 'Suscripciones', count: (suscripciones as any[]).length, countColor: C.blue },
               { key: 'cobros',        icon: <DollarSign size={15} />, label: 'Cobros',        count: 0, countColor: C.gold },
               { key: 'solicitudes',   icon: <Send size={15} />,       label: 'Solicitudes',   count: solicitudesPendientes ?? 0, countColor: C.red, badge: true },
@@ -2193,6 +2227,83 @@ export default function SuperAdminPage() {
                     onChange={e => setMotivoRechazo(e.target.value)}
                     rows={3}
                     maxLength={300}
+                  />
+                </Modal>
+
+                {/* ── Empresas pendientes de aprobación ── */}
+                <div style={{ marginTop: 28 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                    <span style={{ fontSize: 15, fontWeight: 700, color: C.txt }}>🏢 Empresas pendientes de aprobación</span>
+                    {empresasPendCount > 0 && (
+                      <span style={{ background: C.red, color: '#fff', borderRadius: 12, padding: '1px 8px', fontSize: 12, fontWeight: 700 }}>{empresasPendCount}</span>
+                    )}
+                  </div>
+                  {empresasPendCount === 0 && !loadEmpPend ? (
+                    <p style={{ color: C.txt2, fontSize: 13 }}>No hay empresas pendientes de aprobación</p>
+                  ) : (
+                    <Table
+                      dataSource={empresasPend as any[]}
+                      loading={loadEmpPend}
+                      rowKey="id"
+                      size="small"
+                      scroll={{ x: 720 }}
+                      pagination={{ pageSize: 10, showTotal: t => `${t} empresas` }}
+                      columns={[
+                        { title: 'Empresa', render: (_: any, r: any) => (
+                          <div>
+                            <div style={{ fontWeight: 600, color: C.txt }}>{r.nombre}</div>
+                            <div style={{ color: C.txt2, fontSize: 12 }}>RNC: {r.rnc}</div>
+                          </div>
+                        )},
+                        { title: 'Sector', dataIndex: 'sector', render: (v: string) => v ? <Tag>{v}</Tag> : '—' },
+                        { title: 'Solicitante', render: (_: any, r: any) => (
+                          <div>
+                            <div style={{ color: C.txt }}>{r.solicitanteNombre ?? '—'}</div>
+                            <div style={{ color: C.txt2, fontSize: 12 }}>{r.solicitanteEmail ?? '—'}</div>
+                          </div>
+                        )},
+                        { title: 'Fecha', dataIndex: 'createdAt', render: (v: string) => fmtFecha(v) },
+                        { title: 'Acciones', render: (_: any, r: any) => (
+                          <Space>
+                            <Button type="primary" size="small" icon={<CheckCircle size={13} />}
+                              style={{ background: C.green, borderColor: C.green }}
+                              loading={aprobarEmpresaMut.isPending}
+                              onClick={() => Modal.confirm({
+                                title: `Aprobar empresa — ${r.nombre}`,
+                                content: `¿Confirmas activar la empresa ${r.nombre} (RNC: ${r.rnc})? Se creará un Trial de 15 días y se notificará al solicitante.`,
+                                okText: 'Aprobar', cancelText: 'Cancelar',
+                                okButtonProps: { style: { background: C.green, borderColor: C.green } },
+                                onOk: () => aprobarEmpresaMut.mutateAsync(r.id),
+                              })}>
+                              Aprobar
+                            </Button>
+                            <Button size="small" danger onClick={() => { setRechazarEmpModal(r); setMotivoRechEmp(''); }}>
+                              Rechazar
+                            </Button>
+                          </Space>
+                        )},
+                      ]}
+                    />
+                  )}
+                </div>
+
+                {/* Modal rechazar empresa */}
+                <Modal
+                  open={!!rechazarEmpModal}
+                  title={`Rechazar empresa — ${rechazarEmpModal?.nombre}`}
+                  onCancel={() => { setRechazarEmpModal(null); setMotivoRechEmp(''); }}
+                  onOk={() => rechazarEmpresaMut.mutate({ id: rechazarEmpModal?.id, motivo: motivoRechEmp })}
+                  okText="Rechazar" okButtonProps={{ danger: true, loading: rechazarEmpresaMut.isPending }}
+                  cancelText="Cancelar"
+                >
+                  <p style={{ marginBottom: 12 }}>
+                    Se enviará un email a <strong>{rechazarEmpModal?.solicitanteEmail}</strong> con el motivo.
+                  </p>
+                  <Input.TextArea
+                    placeholder="Motivo del rechazo (requerido — se incluirá en el email)"
+                    value={motivoRechEmp}
+                    onChange={e => setMotivoRechEmp(e.target.value)}
+                    rows={3} maxLength={300}
                   />
                 </Modal>
               </>
