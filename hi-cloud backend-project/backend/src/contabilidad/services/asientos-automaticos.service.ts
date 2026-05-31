@@ -24,7 +24,9 @@ const COD = {
   TSS_X_PAGAR:        '2.1.3.02',
   ISR_X_PAGAR:        '2.1.2.02',
   ITBIS_CREDITO_COMPRAS: '1.1.4.01',
-  ANTICIPOS_CLIENTES: '2.1.5.01',  // Pasivo corriente — anticipos recibidos
+  ANTICIPOS_CLIENTES:  '2.1.5.01',  // Pasivo corriente — anticipos recibidos
+  GANANCIA_CAMBIARIA:  '4.1.3.01',  // Ingreso — ganancia en diferencia cambiaria
+  PERDIDA_CAMBIARIA:   '6.1.5.01',  // Gasto — pérdida en diferencia cambiaria
 } as const;
 
 @Injectable()
@@ -208,6 +210,51 @@ export class AsientosAutomaticosService {
       this.logger.log(`Asiento cobro CxC #${cxcId} generado`);
     } catch (err) {
       this.logger.error(`Error asiento cobro CxC #${cxcId}: ${(err as Error).message}`);
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Cobro CxC en moneda extranjera con diferencia cambiaria
+  // DÉBITO BANCOS     = montoME * tasaHoy (DOP reales recibidos)
+  // CRÉDITO CLIENTES  = montoME * tasaOrig (DOP registrados al crear CxC)
+  // Diferencia → GANANCIA_CAMBIARIA o PÉRDIDA_CAMBIARIA
+  // ──────────────────────────────────────────────────────────────────
+
+  async asientoCobroME(
+    montoME:  number,
+    moneda:   string,
+    tasaHoy:  number,
+    tasaOrig: number,
+    cxcId:    number,
+    userId:   number,
+  ): Promise<void> {
+    const montoReal = parseFloat((montoME * tasaHoy).toFixed(2));
+    const montoLib  = parseFloat((montoME * tasaOrig).toFixed(2));
+    const diff      = parseFloat((montoReal - montoLib).toFixed(2));
+
+    const lineas: { codigo: string; descripcion: string; debe: number; haber: number }[] = [
+      { codigo: COD.BANCOS,   descripcion: `Cobro ${moneda} CxC #${cxcId}`,   debe: montoReal, haber: 0        },
+      { codigo: COD.CLIENTES, descripcion: `Cancelación CxC #${cxcId}`,        debe: 0,         haber: montoLib },
+    ];
+
+    if (diff > 0.005) {
+      lineas.push({ codigo: COD.GANANCIA_CAMBIARIA, descripcion: `Ganancia cambiaria CxC #${cxcId} (${moneda})`, debe: 0,    haber: diff });
+    } else if (diff < -0.005) {
+      lineas.push({ codigo: COD.PERDIDA_CAMBIARIA,  descripcion: `Pérdida cambiaria CxC #${cxcId} (${moneda})`,  debe: -diff, haber: 0   });
+    }
+
+    try {
+      await this._crearAsientoContabilizado({
+        descripcion:     `Cobro ${moneda} CxC #${cxcId}`,
+        tipoOrigen:      TipoOrigenAsiento.COBRO,
+        referenciaId:    cxcId,
+        referenciaFolio: `CXC-${cxcId}`,
+        userId,
+        lineas,
+      });
+      this.logger.log(`Asiento cobro ME CxC #${cxcId} — diff cambiaria: ${diff} RD$`);
+    } catch (err) {
+      this.logger.error(`Error asiento cobro ME CxC #${cxcId}: ${(err as Error).message}`);
     }
   }
 

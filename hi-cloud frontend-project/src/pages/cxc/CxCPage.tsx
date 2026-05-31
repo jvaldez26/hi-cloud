@@ -5,7 +5,7 @@ import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Table, Button, Tag, Space, Modal, Form, InputNumber, Select, Input,
   Typography, message, Card, Row, Col, Statistic, DatePicker, theme, Tooltip,
-  Drawer, Divider,
+  Drawer, Divider, Alert,
 } from 'antd';
 import {
   DollarOutlined, SearchOutlined, FileExcelOutlined,
@@ -67,8 +67,8 @@ export default function CxCPage() {
   });
 
   const pagoMut = useMutation({
-    mutationFn: ({ id, monto, metodoPago, ref, fechaPago }: { id: number; monto: number; metodoPago: MetodoPago; ref?: string; fechaPago?: string }) =>
-      cxcApi.registrarPago(id, monto, metodoPago, ref, fechaPago),
+    mutationFn: ({ id, monto, metodoPago, ref, fechaPago, tipoCambio }: { id: number; monto: number; metodoPago: MetodoPago; ref?: string; fechaPago?: string; tipoCambio?: number }) =>
+      cxcApi.registrarPago(id, monto, metodoPago, ref, fechaPago, tipoCambio),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['cxc'] });
       qc.invalidateQueries({ queryKey: ['cxc-resumen'] });
@@ -345,17 +345,21 @@ export default function CxCPage() {
         <Form
           form={form}
           layout="vertical"
-          onFinish={v => pagoId && pagoMut.mutate({ id: pagoId, monto: v.monto, metodoPago: v.metodoPago, ref: v.referencia, fechaPago: v.fechaPago?.format('YYYY-MM-DD') })}
+          onFinish={v => pagoId && pagoMut.mutate({ id: pagoId, monto: v.monto, metodoPago: v.metodoPago, ref: v.referencia, fechaPago: v.fechaPago?.format('YYYY-MM-DD'), tipoCambio: v.tipoCambio ? Number(v.tipoCambio) : undefined })}
         >
+          {(pagoRow as any)?.moneda && (pagoRow as any).moneda !== 'DOP' && (
+            <Alert type="info" showIcon style={{ marginBottom: 12 }}
+              message={`Moneda: ${(pagoRow as any).moneda} — el monto se ingresa en ${(pagoRow as any).moneda}`} />
+          )}
           <Row gutter={12}>
             <Col xs={24} sm={12}>
-              <Form.Item name="monto" label="Monto a cobrar" rules={[{ required: true, message: 'Ingresa un monto' }]}>
+              <Form.Item name="monto" label={`Monto a cobrar${(pagoRow as any)?.moneda && (pagoRow as any).moneda !== 'DOP' ? ` (${(pagoRow as any).moneda})` : ''}`} rules={[{ required: true, message: 'Ingresa un monto' }]}>
                 <InputNumber
                   style={{ width: '100%' }}
                   min={0.01}
                   max={pagoRow ? Number(pagoRow.montoPendiente) : undefined}
                   precision={2}
-                  addonBefore="RD$"
+                  addonBefore={(pagoRow as any)?.moneda === 'USD' ? 'US$' : (pagoRow as any)?.moneda === 'EUR' ? '€' : 'RD$'}
                   formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
                   parser={(v: any) => v?.replace(/,/g, '')}
                   size="large"
@@ -368,6 +372,34 @@ export default function CxCPage() {
               </Form.Item>
             </Col>
           </Row>
+          {(pagoRow as any)?.moneda && (pagoRow as any).moneda !== 'DOP' && (
+            <Form.Item noStyle shouldUpdate={(p, c) => p.monto !== c.monto || p.tipoCambio !== c.tipoCambio}>
+              {({ getFieldValue }) => {
+                const monto = Number(getFieldValue('monto') ?? 0);
+                const tasa  = Number(getFieldValue('tipoCambio') ?? (pagoRow as any)?.tipoCambio ?? 1);
+                const dop   = fmt.moneyM(monto * tasa, 'DOP');
+                return (
+                  <Row gutter={12} style={{ marginBottom: 16 }}>
+                    <Col xs={24} sm={12}>
+                      <Form.Item name="tipoCambio" label="Tasa de cambio del día (RD$)">
+                        <InputNumber
+                          style={{ width: '100%' }}
+                          min={1} precision={4}
+                          addonBefore="RD$" addonAfter={`por ${(pagoRow as any).moneda}1`}
+                          defaultValue={Number((pagoRow as any)?.tipoCambio ?? 1)}
+                        />
+                      </Form.Item>
+                    </Col>
+                    <Col xs={24} sm={12}>
+                      <Form.Item label="Equivalente en RD$">
+                        <Text strong style={{ fontSize: 15, color: token.colorPrimary }}>{dop}</Text>
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                );
+              }}
+            </Form.Item>
+          )}
           <Form.Item name="metodoPago" label="Método de pago" rules={[{ required: true, message: 'Selecciona un método' }]}>
             <Select size="large">
               {[

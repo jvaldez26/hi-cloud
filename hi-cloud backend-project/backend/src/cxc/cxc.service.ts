@@ -125,12 +125,24 @@ export class CxCService {
     });
 
     // Asiento contable y tesorería (fuera de la transacción DB, son efectos secundarios)
-    await this.asientosService.asientoCobro(dto.monto, id, userId).catch(err =>
-      this.logger.error(`Error asiento cobro CxC #${id}: ${err.message}`),
-    );
+    const moneda   = cuenta.moneda ?? 'DOP';
+    const tasaHoy  = Number(dto.tipoCambio ?? cuenta.tipoCambio ?? 1);
+    const tasaOrig = Number(cuenta.tipoCambio ?? 1);
+    const montoDOP = moneda !== 'DOP' ? parseFloat((dto.monto * tasaHoy).toFixed(2)) : dto.monto;
+
+    if (moneda !== 'DOP') {
+      await this.asientosService.asientoCobroME(dto.monto, moneda, tasaHoy, tasaOrig, id, userId).catch(err =>
+        this.logger.error(`Error asiento cobro ME CxC #${id}: ${err.message}`),
+      );
+    } else {
+      await this.asientosService.asientoCobro(dto.monto, id, userId).catch(err =>
+        this.logger.error(`Error asiento cobro CxC #${id}: ${err.message}`),
+      );
+    }
+
     await this.tesoreriaService.registrarMovimientoAutomatico(
       TipoMovimientoBancario.DEPOSITO,
-      dto.monto,
+      montoDOP,
       `Cobro CxC #${id} — ${dto.referencia ?? dto.metodoPago}`,
       OrigenMovimiento.COBRO_CXC,
       id,
