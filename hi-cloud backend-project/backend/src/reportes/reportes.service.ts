@@ -34,8 +34,9 @@ export class ReportesService {
   // ══════════════════════════════════════════════════════════════════════════
 
   private async sumarFacturas(desde: Date, hasta: Date) {
-    const r = await this.dataSource.query<{ total: string; subtotal: string; iva: string; cantidad: string }[]>(
+    const rows = await this.dataSource.query<{ moneda: string; total: string; subtotal: string; iva: string; cantidad: string }[]>(
       `SELECT
+         COALESCE(moneda,'DOP')     AS moneda,
          COALESCE(SUM(total), 0)    AS total,
          COALESCE(SUM(subtotal), 0) AS subtotal,
          COALESCE(SUM(iva), 0)      AS iva,
@@ -44,21 +45,39 @@ export class ReportesService {
        WHERE "isActive" = true
          AND "empresaId" = $3
          AND estado IN ('emitida','pagada')
-         AND fecha BETWEEN $1 AND $2`,
+         AND fecha BETWEEN $1 AND $2
+       GROUP BY COALESCE(moneda,'DOP')`,
       [desde, hasta, this.eid],
     );
-    const row = r[0];
+    const dop = rows.find(r => r.moneda === 'DOP');
+    const usd = rows.find(r => r.moneda === 'USD');
+    // total legacy = suma DOP nativa + DOP equiv de USD (usando tipoCambio guardado)
+    const totalDOP = rows.reduce((s, r) => {
+      if (r.moneda === 'DOP') return s + Number(r.total);
+      // Para monedas ME: no convertimos en el dashboard — reportamos nativos
+      return s;
+    }, 0);
     return {
-      total:    Number(row.total),
-      subtotal: Number(row.subtotal),
-      iva:      Number(row.iva),
-      cantidad: Number(row.cantidad),
+      total:    totalDOP,                         // DOP nativos (backward compat)
+      subtotal: Number(dop?.subtotal ?? 0),
+      iva:      Number(dop?.iva ?? 0),
+      cantidad: rows.reduce((s, r) => s + Number(r.cantidad), 0),
+      porMoneda: rows.map(r => ({
+        moneda:   r.moneda,
+        total:    Number(r.total),
+        subtotal: Number(r.subtotal),
+        iva:      Number(r.iva),
+        cantidad: Number(r.cantidad),
+      })),
+      dopTotal: Number(dop?.total ?? 0),
+      usdTotal: Number(usd?.total ?? 0),
     };
   }
 
   private async sumarCompras(desde: Date, hasta: Date) {
-    const r = await this.dataSource.query<{ total: string; subtotal: string; itbis: string; cantidad: string }[]>(
+    const rows = await this.dataSource.query<{ moneda: string; total: string; subtotal: string; itbis: string; cantidad: string }[]>(
       `SELECT
+         COALESCE(moneda,'DOP')     AS moneda,
          COALESCE(SUM(total), 0)    AS total,
          COALESCE(SUM(subtotal), 0) AS subtotal,
          COALESCE(SUM(itbis), 0)    AS itbis,
@@ -67,15 +86,26 @@ export class ReportesService {
        WHERE "isActive" = true
          AND "empresaId" = $3
          AND estado IN ('recibida','pagada')
-         AND fecha BETWEEN $1 AND $2`,
+         AND fecha BETWEEN $1 AND $2
+       GROUP BY COALESCE(moneda,'DOP')`,
       [desde, hasta, this.eid],
     );
-    const row = r[0];
+    const dop = rows.find(r => r.moneda === 'DOP');
+    const usd = rows.find(r => r.moneda === 'USD');
     return {
-      total:    Number(row.total),
-      subtotal: Number(row.subtotal),
-      itbis:    Number(row.itbis),
-      cantidad: Number(row.cantidad),
+      total:    Number(dop?.total ?? 0),           // DOP nativos (backward compat)
+      subtotal: Number(dop?.subtotal ?? 0),
+      itbis:    Number(dop?.itbis ?? 0),
+      cantidad: rows.reduce((s, r) => s + Number(r.cantidad), 0),
+      porMoneda: rows.map(r => ({
+        moneda:   r.moneda,
+        total:    Number(r.total),
+        subtotal: Number(r.subtotal),
+        itbis:    Number(r.itbis),
+        cantidad: Number(r.cantidad),
+      })),
+      dopTotal: Number(dop?.total ?? 0),
+      usdTotal: Number(usd?.total ?? 0),
     };
   }
 

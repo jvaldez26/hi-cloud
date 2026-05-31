@@ -236,8 +236,10 @@ function DashboardAdmin() {
     const gastoRow = (Array.isArray(gastosAnual) ? gastosAnual : [])
       .find((r: any) => Number(r.mes) === mes && Number(r.anio ?? anioActual) === anio);
     const gasto   = Number(gastoRow?.total ?? 0);
+    // Usar dopTotal si disponible (solo DOP) para no mezclar con USD
+    const ingresoMes = kpis?.ventas?.dopTotal ?? kpis?.ventas?.mes ?? 0;
     const ingreso = (mes === mesActual && anio === anioActual)
-      ? Number(kpis?.ventas?.mes ?? 0) : 0;
+      ? Number(ingresoMes) : 0;
     return { label: d.format('MMM YYYY'), ingreso, gasto };
   });
 
@@ -482,6 +484,32 @@ function DashboardAdmin() {
               </ResponsiveContainer>
             </div>
           </CardWidget>
+
+          {/* Widget: KPIs multi-moneda (solo visible si hay operaciones USD) */}
+          {((kpis?.ventas?.usdTotal ?? 0) > 0 || (kpis?.compras?.usdTotal ?? 0) > 0) && (
+            <CardWidget title="Resumen en Divisas (USD)">
+              <div style={{ padding: '10px 16px', display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+                {(kpis?.ventas?.usdTotal ?? 0) > 0 && (
+                  <div>
+                    <Text type="secondary" style={{ fontSize: 11 }}>Ventas del mes (USD)</Text>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: '#b45309' }}>
+                      US$ {Number(kpis.ventas.usdTotal).toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+                    </div>
+                    <Text type="secondary" style={{ fontSize: 11 }}>DOP: {fmt.money(Number(kpis.ventas.dopTotal ?? 0))}</Text>
+                  </div>
+                )}
+                {(kpis?.compras?.usdTotal ?? 0) > 0 && (
+                  <div>
+                    <Text type="secondary" style={{ fontSize: 11 }}>Compras del mes (USD)</Text>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: '#dc2626' }}>
+                      US$ {Number(kpis.compras.usdTotal).toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+                    </div>
+                    <Text type="secondary" style={{ fontSize: 11 }}>DOP: {fmt.money(Number(kpis.compras.dopTotal ?? 0))}</Text>
+                  </div>
+                )}
+              </div>
+            </CardWidget>
+          )}
 
           {/* Widget: Facturas & Cobros */}
           <CardWidget
