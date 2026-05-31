@@ -773,7 +773,17 @@ export class NominaService {
         n => n.empleadoId === emp.id && (n.periodoId == null || n.periodoId === periodo.id),
       );
 
-      const c = this.calculos.calcularLinea(emp, diasPeriodo, diasPeriodo, novedadesEmp);
+      // Para empleados con salario en ME, obtener tasa vigente
+      const monedaEmp = (emp as any).moneda ?? 'DOP';
+      let tasaCambioEmp = 1;
+      if (monedaEmp !== 'DOP') {
+        const [tasa] = await this.dataSource.query<any[]>(
+          `SELECT "tasaVenta" FROM tasas_cambio WHERE moneda = $1 AND "isActive" = true ORDER BY fecha DESC, "createdAt" DESC LIMIT 1`,
+          [monedaEmp],
+        );
+        tasaCambioEmp = tasa ? Number(tasa.tasaVenta) : Number((emp as any).tipoCambio ?? 1);
+      }
+      const c = this.calculos.calcularLinea(emp, diasPeriodo, diasPeriodo, novedadesEmp, tasaCambioEmp);
       lineas.push({ ...c, periodoId: periodo.id, empleadoId: emp.id });
 
       totalBruto   += c.salarioBruto;

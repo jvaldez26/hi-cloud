@@ -135,7 +135,11 @@ function EmpleadosTab() {
     { title: 'Nombre',   key: 'nombre', ellipsis: true, render: (_: any, r: any) => `${r.nombre} ${r.apellido}` },
     { title: 'Cargo',    key: 'cargo',        dataIndex: 'cargo',        ellipsis: true },
     { title: 'Depto.',   key: 'departamento', dataIndex: 'departamento', width: 120 },
-    { title: 'Salario',  key: 'salarioBase',  dataIndex: 'salarioBase',  width: 130, render: (v: number) => fmt.money(v) },
+    { title: 'Salario',  key: 'salarioBase',  dataIndex: 'salarioBase',  width: 130, render: (v: number, r: any) => {
+        const m = r.moneda ?? 'DOP';
+        const sym = m === 'USD' ? 'US$' : 'RD$';
+        return <><Text>{sym} {Number(v).toLocaleString('es-DO', { minimumFractionDigits: 2 })}</Text>{m !== 'DOP' && <Tag color="gold" style={{ marginLeft: 4, fontSize: 10 }}>{m}</Tag>}</>;
+      }},
     { title: 'Estado',   key: 'estado',       dataIndex: 'estado',       width: 90,
       render: (v: string) => <Tag color={v === 'activo' ? 'green' : 'red'}>{v?.toUpperCase()}</Tag> },
     { title: 'Portal',   key: 'portal',       dataIndex: 'userId',       width: 110,
@@ -223,7 +227,20 @@ function EmpleadosTab() {
             <Col xs={24} sm={8}><Form.Item name="fechaIngreso" label="Fecha Ingreso" rules={[{ required: true }]}><Input type="date" /></Form.Item></Col>
             <Col xs={24} sm={8}><Form.Item name="cargo" label="Cargo" rules={[{ required: true }]}><Input /></Form.Item></Col>
             <Col xs={24} sm={8}><Form.Item name="departamento" label="Departamento"><Input /></Form.Item></Col>
-            <Col xs={24} sm={8}><Form.Item name="salarioBase" label="Salario Base (RD$)" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
+            <Col xs={24} sm={4}><Form.Item name="moneda" label="Moneda sueldo" initialValue="DOP">
+              <Select options={[{ value: 'DOP', label: 'DOP (Pesos)' }, { value: 'USD', label: 'USD (Dólares)' }]} />
+            </Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item noStyle shouldUpdate={(p, c) => p.moneda !== c.moneda}>
+              {({ getFieldValue }) => {
+                const mon = getFieldValue('moneda') ?? 'DOP';
+                return (
+                  <Form.Item name="salarioBase" label={`Salario Base (${mon})`} rules={[{ required: true }]}>
+                    <InputNumber style={{ width: '100%' }} min={0} precision={2}
+                      addonBefore={mon === 'USD' ? 'US$' : 'RD$'} />
+                  </Form.Item>
+                );
+              }}
+            </Form.Item></Col>
             <Col xs={24} sm={8}><Form.Item name="tipoPago" label="Tipo Pago" rules={[{ required: true }]}>
               <Select options={[{ value: 'mensual', label: 'Mensual' }, { value: 'quincenal', label: 'Quincenal' }]} /></Form.Item></Col>
             <Col xs={24} sm={8}><Form.Item name="tipoContrato" label="Contrato" rules={[{ required: true }]}>

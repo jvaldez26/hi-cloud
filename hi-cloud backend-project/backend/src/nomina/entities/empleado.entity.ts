@@ -89,6 +89,14 @@ export class Empleado extends TenantBaseEntity {
   @Column({ type: 'text', nullable: true })
   notas?: string;
 
+  /** Moneda del salario (DOP o USD para empleados Zona Franca) */
+  @Column({ length: 3, nullable: true, default: 'DOP' })
+  moneda?: string;
+
+  /** Tasa de cambio vigente al registrar el salario (solo aplica si moneda != DOP) */
+  @Column({ type: 'decimal', precision: 10, scale: 4, nullable: true, default: 1 })
+  tipoCambio?: number;
+
   /** ID del usuario del sistema vinculado (para Portal del Empleado) */
   @Column({ nullable: true })
   userId?: number;

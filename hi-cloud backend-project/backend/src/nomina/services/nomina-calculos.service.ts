@@ -25,6 +25,9 @@ const RECARGO_HORAS_EXTRAS = 1.35;
 export interface ResultadoCalculo {
   salarioBase:         number;
   diasTrabajados:      number;
+  moneda?:             string;
+  tipoCambio?:         number;
+  salarioBaseUSD?:     number;
   horasExtras:         number;
   montoHorasExtras:    number;
   bonos:               number;
@@ -65,8 +68,14 @@ export class NominaCalculosService {
     diasTrabajados: number,
     diasPeriodo: number,
     novedades: NominaNovedadEmpleado[] = [],
+    tasaCambio = 1,
   ): ResultadoCalculo {
-    const salarioMensual = Number(empleado.salarioBase);
+    const moneda = (empleado as any).moneda ?? 'DOP';
+    // Si el salario está en USD, convertir a DOP para todos los cálculos legales
+    const salarioBaseOriginal = Number(empleado.salarioBase);
+    const salarioMensual = moneda !== 'DOP'
+      ? Number((salarioBaseOriginal * tasaCambio).toFixed(2))
+      : salarioBaseOriginal;
 
     // Salario proporcional al período
     const salarioProporcional = Number(
@@ -121,8 +130,11 @@ export class NominaCalculosService {
     );
 
     return {
-      salarioBase:        salarioMensual,
+      salarioBase:        salarioMensual,  // en DOP (ya convertido)
       diasTrabajados,
+      moneda,
+      tipoCambio:         moneda !== 'DOP' ? tasaCambio : undefined,
+      salarioBaseUSD:     moneda !== 'DOP' ? salarioBaseOriginal : undefined,
       horasExtras:        totalHorasExtras,
       montoHorasExtras,
       bonos,

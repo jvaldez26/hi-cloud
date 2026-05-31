@@ -84,4 +84,16 @@ export class NominaLinea extends BaseEntity {
 
   @Column({ type: 'text', nullable: true })
   novedadesDetalle?: string;
+
+  /** Moneda del salario del empleado en este período */
+  @Column({ length: 3, nullable: true, default: 'DOP' })
+  moneda?: string;
+
+  /** Tasa de cambio usada al procesar la nómina */
+  @Column({ type: 'decimal', precision: 10, scale: 4, nullable: true, default: 1 })
+  tipoCambio?: number;
+
+  /** Salario base en moneda extranjera (si moneda != DOP) */
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  salarioBaseUSD?: number;
 }
