@@ -28,6 +28,13 @@ const { Option } = Select;
 const fmt = (v: number) =>
   new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'DOP', minimumFractionDigits: 2 }).format(v ?? 0);
 
+/** Formatea un monto con el símbolo correcto según la moneda */
+const fmtMon = (v: number, moneda?: string) => {
+  const m = moneda || 'DOP';
+  const simb = m === 'USD' ? 'US$' : m === 'EUR' ? '€' : 'RD$';
+  return simb + ' ' + (v ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
 
 const ESTADO_CONFIG: Record<string, { color: string; label: string }> = {
   borrador: { color: 'default', label: 'Borrador' },
@@ -350,7 +357,7 @@ export default function NotasCreditoPage() {
             },
             {
               title: 'Total', dataIndex: 'total', key: 't', align: 'right' as const, width: 110,
-              render: (v: any) => <Text strong style={{ color: token.colorError, whiteSpace: 'nowrap' }}>{fmt(v)}</Text>,
+              render: (v: any, r: any) => <Text strong style={{ color: token.colorError, whiteSpace: 'nowrap' }}>{fmtMon(v, r.moneda)}</Text>,
             },
             {
               title: 'Moneda', dataIndex: 'moneda', key: 'mon', width: 68,
@@ -637,16 +644,16 @@ export default function NotasCreditoPage() {
               columns={[
                 { title: 'Descripción', dataIndex: 'descripcion', key: 'd' },
                 { title: 'Cant.',       dataIndex: 'cantidad',    key: 'c', align: 'right' },
-                { title: 'Precio',      dataIndex: 'precioUnitario', key: 'p', align: 'right', render: v => fmt(v) },
-                { title: 'ITBIS',       dataIndex: 'iva',         key: 'i', align: 'right', render: v => fmt(v) },
-                { title: 'Total',       dataIndex: 'total',       key: 't', align: 'right', render: v => <Text strong style={{ color: token.colorError }}>{fmt(v)}</Text> },
+                { title: 'Precio',      dataIndex: 'precioUnitario', key: 'p', align: 'right', render: v => fmtMon(v, modalDetalle?.moneda) },
+                { title: 'ITBIS',       dataIndex: 'iva',         key: 'i', align: 'right', render: v => fmtMon(v, modalDetalle?.moneda) },
+                { title: 'Total',       dataIndex: 'total',       key: 't', align: 'right', render: v => <Text strong style={{ color: token.colorError }}>{fmtMon(v, modalDetalle?.moneda)}</Text> },
               ]}
             />
             <Divider />
             <Row justify="end" gutter={24}>
-              <Col><Text type="secondary">Subtotal: {fmt(modalDetalle.subtotal)}</Text></Col>
-              <Col><Text type="secondary">ITBIS: {fmt(modalDetalle.iva)}</Text></Col>
-              <Col><Text strong style={{ fontSize: 16, color: token.colorError }}>Total NC: -{fmt(modalDetalle.total)}</Text></Col>
+              <Col><Text type="secondary">Subtotal: {fmtMon(modalDetalle.subtotal, modalDetalle?.moneda)}</Text></Col>
+              <Col><Text type="secondary">ITBIS: {fmtMon(modalDetalle.iva, modalDetalle?.moneda)}</Text></Col>
+              <Col><Text strong style={{ fontSize: 16, color: token.colorError }}>Total NC: -{fmtMon(modalDetalle.total, modalDetalle?.moneda)}</Text></Col>
             </Row>
           </>
         )}

@@ -27,6 +27,12 @@ const { Option } = Select;
 const fmt = (v: number) =>
   new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'DOP', minimumFractionDigits: 2 }).format(v ?? 0);
 
+const fmtMon = (v: number, moneda?: string) => {
+  const m = moneda || 'DOP';
+  const simb = m === 'USD' ? 'US$' : m === 'EUR' ? '€' : 'RD$';
+  return simb + ' ' + (v ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
 const MOTIVOS = [
   { value: 'cargo_adicional',   label: 'Cargo adicional al cliente' },
   { value: 'ajuste_precio',     label: 'Ajuste de precio hacia arriba' },
@@ -303,7 +309,7 @@ export default function NotasDebitoPage() {
                 return <Tag color={m === 'DOP' ? 'default' : 'gold'} style={{ fontSize: 11, fontWeight: 600, margin: 0, fontFamily: 'monospace' }}>{m}</Tag>;
               },
             },
-            { title: 'Total', dataIndex: 'total', key: 't', width: 120, align: 'right' as const, render: (v: number) => <Text strong style={{ color: '#d97706' }}>+{fmt(v)}</Text> },
+            { title: 'Total', dataIndex: 'total', key: 't', width: 120, align: 'right' as const, render: (v: number, r: any) => <Text strong style={{ color: '#d97706' }}>+{fmtMon(v, r.moneda)}</Text> },
             { title: 'Estado', dataIndex: 'estado', key: 'e', width: 100, render: (v: string) => <Tag color={ESTADO_CONFIG[v]?.color} style={{ margin: 0, fontSize: 11 }}>{ESTADO_CONFIG[v]?.label}</Tag> },
             { title: 'e-CF', key: 'ecf', width: 120, render: (_: any, r: any) => r.ecfNumero
                 ? <Text style={{ fontFamily: 'monospace', fontSize: 11, color: '#059669' }}>{r.ecfNumero}</Text>
@@ -497,15 +503,15 @@ export default function NotasDebitoPage() {
               columns={[
                 { title: 'Descripción', dataIndex: 'descripcion', key: 'd' },
                 { title: 'Cant.', dataIndex: 'cantidad', key: 'c', align: 'right' as const },
-                { title: 'Precio', dataIndex: 'precioUnitario', key: 'p', align: 'right' as const, render: (v: number) => fmt(v) },
-                { title: 'ITBIS', dataIndex: 'iva', key: 'i', align: 'right' as const, render: (v: number) => fmt(v) },
-                { title: 'Total', dataIndex: 'total', key: 't', align: 'right' as const, render: (v: number) => <Text strong style={{ color: '#d97706' }}>+{fmt(v)}</Text> },
+                { title: 'Precio', dataIndex: 'precioUnitario', key: 'p', align: 'right' as const, render: (v: number) => fmtMon(v, modalDetalle?.moneda) },
+                { title: 'ITBIS', dataIndex: 'iva', key: 'i', align: 'right' as const, render: (v: number) => fmtMon(v, modalDetalle?.moneda) },
+                { title: 'Total', dataIndex: 'total', key: 't', align: 'right' as const, render: (v: number) => <Text strong style={{ color: '#d97706' }}>+{fmtMon(v, modalDetalle?.moneda)}</Text> },
               ]} />
             <Divider />
             <Row justify="end" gutter={24}>
-              <Col><Text type="secondary">Subtotal: {fmt(modalDetalle.subtotal)}</Text></Col>
-              <Col><Text type="secondary">ITBIS: {fmt(modalDetalle.iva)}</Text></Col>
-              <Col><Text strong style={{ fontSize: 18, color: '#d97706' }}>+{fmt(modalDetalle.total)}</Text></Col>
+              <Col><Text type="secondary">Subtotal: {fmtMon(modalDetalle.subtotal, modalDetalle?.moneda)}</Text></Col>
+              <Col><Text type="secondary">ITBIS: {fmtMon(modalDetalle.iva, modalDetalle?.moneda)}</Text></Col>
+              <Col><Text strong style={{ fontSize: 18, color: '#d97706' }}>+{fmtMon(modalDetalle.total, modalDetalle?.moneda)}</Text></Col>
             </Row>
           </>
         )}
