@@ -117,6 +117,7 @@ export default function NotasCreditoPage() {
   const [emailNota,     setEmailNota]     = useState<any>(null);
   const [emailDest,     setEmailDest]     = useState('');
   const [facturaOrigen, setFacturaOrigen] = useState<any>(null);
+  const [saldoNC,       setSaldoNC]       = useState<{ totalFactura: number; ncEmitidas: number; saldoDisponible: number; moneda: string } | null>(null);
   const [codigoMod,     setCodigoMod]     = useState('3');
   const [sinItbis,      setSinItbis]      = useState(false);
   const [pdfPending,    setPdfPending]    = useState<number | null>(null);
@@ -226,8 +227,9 @@ export default function NotasCreditoPage() {
   const itbisNC    = sinItbis ? 0 : subtotalNC * 0.18;
   const totalNC    = subtotalNC + itbisNC;
 
-  const handleSeleccionarFactura = (f: any) => {
+  const handleSeleccionarFactura = async (f: any) => {
     setFacturaOrigen(f);
+    setSaldoNC(null);
     const detallesPrecargados = (f.detalles ?? []).map((d: any) => ({
       productoId:     d.productoId ?? undefined,
       descripcion:    d.descripcion,
@@ -240,12 +242,19 @@ export default function NotasCreditoPage() {
       facturaOriginalId:    f.id,
       detalles:             detallesPrecargados.length > 0 ? detallesPrecargados : [{}],
     });
+    // Cargar saldo disponible para NC
+    try {
+      const r = await api.get(`/notas-credito/por-factura/${f.id}/saldo-disponible`);
+      setSaldoNC(r.data?.data ?? r.data);
+    } catch { /* saldo no crítico — el backend valida al guardar */ }
   };
 
   const handleCrear = (values: any) => {
     if (!facturaOrigen) { message.error('Selecciona la factura original.'); return; }
-    if (codigoMod === '3' && totalNC > Number(facturaOrigen.total)) {
-      message.error(`El monto a acreditar (${fmtNC(totalNC)}) no puede superar el total original (${fmtNC(Number(facturaOrigen.total))}).`);
+    const limiteDisponible = saldoNC ? saldoNC.saldoDisponible : Number(facturaOrigen.total);
+    const monedaNC = facturaOrigen.moneda ?? 'DOP';
+    if (codigoMod === '3' && totalNC > limiteDisponible + 0.005) {
+      message.error(`El monto a acreditar (${fmtMon(totalNC, monedaNC)}) supera el saldo disponible de la factura (${fmtMon(limiteDisponible, monedaNC)}).`);
       return;
     }
     const { fecha, detalles: _det, ...rest } = values;
@@ -279,7 +288,7 @@ export default function NotasCreditoPage() {
   const abrirDesdeFactura = (facturaPresel?: any) => {
     formCrear.resetFields();
     formCrear.setFieldsValue({ fecha: dayjs(), detalles: [{}] });
-    setFacturaOrigen(null); setCodigoMod('3');
+    setFacturaOrigen(null); setSaldoNC(null); setCodigoMod('3');
     if (facturaPresel) handleSeleccionarFactura(facturaPresel);
     setModalCrear(true);
   };
@@ -428,7 +437,7 @@ export default function NotasCreditoPage() {
       <Modal
         title={<Space><FileTextOutlined />Nueva Nota de Crédito (e-CF E34)</Space>}
         open={modalCrear}
-        onCancel={() => { setModalCrear(false); formCrear.resetFields(); setFacturaOrigen(null); setCodigoMod('3'); }}
+        onCancel={() => { setModalCrear(false); formCrear.resetFields(); setFacturaOrigen(null); setSaldoNC(null); setCodigoMod('3'); }}
         onOk={() => formCrear.submit()}
         confirmLoading={crear.isPending}
         okText="Crear en Borrador"
@@ -503,6 +512,41 @@ export default function NotasCreditoPage() {
           ) : (
             <Alert type="warning" showIcon style={{ marginBottom: 16, fontSize: 12 }}
               message="Busca y selecciona la factura original. El cliente se completará automáticamente." />
+          )}
+
+          {/* ── Panel de balance NC ── */}
+          {facturaOrigen && saldoNC && (
+            <div style={{
+              background: saldoNC.ncEmitidas > 0 ? '#fff7ed' : '#f0fdf4',
+              border: `1px solid ${saldoNC.ncEmitidas > 0 ? '#fed7aa' : '#bbf7d0'}`,
+              borderRadius: 8, padding: '10px 14px', marginBottom: 14,
+            }}>
+              <Typography.Text strong style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
+                📊 Balance NC — {facturaOrigen.folio}
+              </Typography.Text>
+              <Row gutter={16}>
+                <Col span={8}>
+                  <Typography.Text type="secondary" style={{ fontSize: 11 }}>Total original</Typography.Text>
+                  <div><Typography.Text style={{ fontSize: 13 }}>{fmtMon(saldoNC.totalFactura, saldoNC.moneda)}</Typography.Text></div>
+                </Col>
+                <Col span={8}>
+                  <Typography.Text type="secondary" style={{ fontSize: 11 }}>NC emitidas</Typography.Text>
+                  <div><Typography.Text style={{ fontSize: 13, color: '#dc2626' }}>-{fmtMon(saldoNC.ncEmitidas, saldoNC.moneda)}</Typography.Text></div>
+                </Col>
+                <Col span={8}>
+                  <Typography.Text type="secondary" style={{ fontSize: 11 }}>Saldo disponible</Typography.Text>
+                  <div>
+                    <Typography.Text strong style={{ fontSize: 13, color: saldoNC.saldoDisponible > 0 ? '#059669' : '#dc2626' }}>
+                      {fmtMon(saldoNC.saldoDisponible, saldoNC.moneda)}
+                    </Typography.Text>
+                  </div>
+                </Col>
+              </Row>
+              {codigoMod === '3' && totalNC > saldoNC.saldoDisponible + 0.005 && (
+                <Alert type="error" showIcon style={{ marginTop: 8, fontSize: 11 }}
+                  message={`⚠️ El monto ingresado (${fmtMon(totalNC, saldoNC.moneda)}) supera el saldo disponible (${fmtMon(saldoNC.saldoDisponible, saldoNC.moneda)})`} />
+              )}
+            </div>
           )}
 
           {/* ── PASO 2: Tipo de nota (CodigoModificacion DGII) ── */}
@@ -595,8 +639,8 @@ export default function NotasCreditoPage() {
                 <>
                   <Row justify="space-between" style={{ marginBottom: 3 }}><Typography.Text type="secondary" style={{ fontSize: 12 }}>Monto a acreditar (subtotal):</Typography.Text><Typography.Text style={{ fontSize: 12, color: '#dc2626' }}>-{fmtNC(subtotalNC)}</Typography.Text></Row>
                   <Row justify="space-between" style={{ marginBottom: 3 }}><Typography.Text type="secondary" style={{ fontSize: 12 }}>ITBIS a revertir (18%):</Typography.Text><Typography.Text style={{ fontSize: 12, color: '#dc2626' }}>-{fmtNC(itbisNC)}</Typography.Text></Row>
-                  {codigoMod === '3' && totalNC > Number(facturaOrigen.total) && (
-                    <Alert type="error" showIcon style={{ marginTop: 6, fontSize: 11 }} message={`El monto (${fmtNC(totalNC)}) supera el total original (${fmtNC(Number(facturaOrigen.total))})`} />
+                  {codigoMod === '3' && totalNC > (saldoNC ? saldoNC.saldoDisponible : Number(facturaOrigen.total)) + 0.005 && (
+                    <Alert type="error" showIcon style={{ marginTop: 6, fontSize: 11 }} message={`El monto (${fmtMon(totalNC, facturaOrigen.moneda)}) supera el saldo disponible (${fmtMon(saldoNC ? saldoNC.saldoDisponible : Number(facturaOrigen.total), facturaOrigen.moneda)})`} />
                   )}
                 </>
               )}

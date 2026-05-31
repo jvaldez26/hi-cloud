@@ -117,6 +117,7 @@ export default function NotasDebitoPage() {
   const [emailDest,     setEmailDest]     = useState('');
   const [ecfEncf,       setEcfEncf]       = useState<string | null>(null);
   const [facturaOrigen, setFacturaOrigen] = useState<any>(null);
+  const [balanceND,     setBalanceND]     = useState<{ totalOriginal: number; ndEmitidas: number; balanceActual: number; moneda: string } | null>(null);
   const [sinItbis,      setSinItbis]      = useState(false);
   const [pdfPending,    setPdfPending]    = useState<number | null>(null);
   const [formCrear] = Form.useForm();
@@ -187,7 +188,7 @@ export default function NotasDebitoPage() {
     mutationFn: (dto: any) => api.post('/notas-debito', dto),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['notas-debito'] }); qc.invalidateQueries({ queryKey: ['nd-resumen'] });
-      setModalCrear(false); formCrear.resetFields(); setFacturaOrigen(null);
+      setModalCrear(false); formCrear.resetFields(); setFacturaOrigen(null); setBalanceND(null);
       message.success('Nota de Débito creada');
     },
     onError: (e: any) => onErr(e, 'Error al crear nota de débito'),
@@ -197,8 +198,14 @@ export default function NotasDebitoPage() {
   const anular  = useMutation({ mutationFn: (id: number) => api.patch(`/notas-debito/${id}/anular`),  onSuccess: () => { qc.invalidateQueries({ queryKey: ['notas-debito'] }); qc.invalidateQueries({ queryKey: ['nd-resumen'] }); message.success('Nota anulada'); },  onError: (e: any) => onErr(e, 'Error al anular') });
   const eliminar = useMutation({ mutationFn: (id: number) => api.delete(`/notas-debito/${id}`),       onSuccess: () => { qc.invalidateQueries({ queryKey: ['notas-debito'] }); qc.invalidateQueries({ queryKey: ['nd-resumen'] }); message.success('Nota eliminada'); }, onError: (e: any) => onErr(e, 'Error al eliminar') });
 
-  const handleSeleccionarFactura = (f: any) => {
+  const handleSeleccionarFactura = async (f: any) => {
     setFacturaOrigen(f);
+    setBalanceND(null);
+    // Cargar balance ND (informativo — ND aumenta el balance, no bloquea)
+    try {
+      const r = await api.get(`/notas-debito/factura/${f.id}/balance`);
+      setBalanceND(r.data?.data ?? r.data);
+    } catch { /* no crítico */ }
     const detallesPrecargados = (f.detalles ?? []).map((d: any) => ({
       productoId:    d.productoId ?? undefined,
       descripcion:   d.descripcion,
@@ -242,7 +249,7 @@ export default function NotasDebitoPage() {
   const abrirDesdeFactura = (facturaPresel?: any) => {
     formCrear.resetFields();
     formCrear.setFieldsValue({ fecha: dayjs(), detalles: [{}] });
-    setFacturaOrigen(null);
+    setFacturaOrigen(null); setBalanceND(null);
     if (facturaPresel) handleSeleccionarFactura(facturaPresel);
     setModalCrear(true);
   };
@@ -354,7 +361,7 @@ export default function NotasDebitoPage() {
       <Modal
         title={<Space><FileTextOutlined style={{ color: '#d97706' }} />Nueva Nota de Débito (e-CF E33)</Space>}
         open={modalCrear}
-        onCancel={() => { setModalCrear(false); formCrear.resetFields(); setFacturaOrigen(null); }}
+        onCancel={() => { setModalCrear(false); formCrear.resetFields(); setFacturaOrigen(null); setBalanceND(null); }}
         onOk={() => formCrear.submit()}
         confirmLoading={crear.isPending}
         okText="Crear en Borrador"
@@ -424,6 +431,33 @@ export default function NotasDebitoPage() {
           ) : (
             <Alert type="warning" showIcon style={{ marginBottom: 16, fontSize: 12 }}
               message="Busca y selecciona la factura original. El cliente se completará automáticamente." />
+          )}
+
+          {/* ── Panel de balance ND (informativo) ── */}
+          {facturaOrigen && balanceND && (
+            <div style={{
+              background: '#eff6ff',
+              border: '1px solid #bfdbfe',
+              borderRadius: 8, padding: '10px 14px', marginBottom: 14,
+            }}>
+              <Text strong style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
+                📊 Balance ND — {facturaOrigen.folio}
+              </Text>
+              <Row gutter={16}>
+                <Col span={8}>
+                  <Text type="secondary" style={{ fontSize: 11 }}>Total original</Text>
+                  <div><Text style={{ fontSize: 13 }}>{fmtMon(balanceND.totalOriginal, balanceND.moneda)}</Text></div>
+                </Col>
+                <Col span={8}>
+                  <Text type="secondary" style={{ fontSize: 11 }}>ND emitidas</Text>
+                  <div><Text style={{ fontSize: 13, color: '#d97706' }}>+{fmtMon(balanceND.ndEmitidas, balanceND.moneda)}</Text></div>
+                </Col>
+                <Col span={8}>
+                  <Text type="secondary" style={{ fontSize: 11 }}>Balance actual</Text>
+                  <div><Text strong style={{ fontSize: 13, color: '#1d4ed8' }}>{fmtMon(balanceND.balanceActual, balanceND.moneda)}</Text></div>
+                </Col>
+              </Row>
+            </div>
           )}
 
           {/* ── PASO 2: Datos del cargo ── */}

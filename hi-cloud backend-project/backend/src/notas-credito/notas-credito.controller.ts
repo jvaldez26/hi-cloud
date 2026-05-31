@@ -73,6 +73,13 @@ export class NotasCreditoController {
     return this.svc.porFactura(facturaId);
   }
 
+  @Get('por-factura/:facturaId/saldo-disponible')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
+  @ApiOperation({ summary: 'Saldo disponible para NC sobre una factura (total - NC activas)' })
+  saldoDisponible(@Param('facturaId', ParseIntPipe) facturaId: number) {
+    return this.svc.getSaldoDisponible(facturaId);
+  }
+
   @Get(':id/pdf')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Generar PDF de nota de crédito E34' })

@@ -51,6 +51,33 @@ export class NotasDebitoService {
 
   // ─── CRUD ─────────────────────────────────────────────────────────────────────
 
+  async getBalance(facturaId: number): Promise<{
+    totalOriginal: number; ndEmitidas: number; balanceActual: number; moneda: string;
+  }> {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const [factura] = await this.ds.query<any[]>(
+      `SELECT total::numeric, COALESCE(moneda,'DOP') AS moneda
+       FROM facturas WHERE id = $1 AND "empresaId" = $2 AND "isActive" = true`,
+      [facturaId, empresaId],
+    );
+    if (!factura) throw new NotFoundException(`Factura #${facturaId} no encontrada`);
+    const [{ ndEmitidas }] = await this.ds.query<{ ndEmitidas: string }[]>(
+      `SELECT COALESCE(SUM(total), 0)::numeric AS "ndEmitidas"
+       FROM notas_debito
+       WHERE "facturaOriginalId" = $1 AND "empresaId" = $2
+         AND estado != 'anulada' AND "isActive" = true`,
+      [facturaId, empresaId],
+    );
+    const totalOriginal = +Number(factura.total).toFixed(2);
+    const ndEmitidasNum = +Number(ndEmitidas).toFixed(2);
+    return {
+      totalOriginal,
+      ndEmitidas: ndEmitidasNum,
+      balanceActual: +(totalOriginal + ndEmitidasNum).toFixed(2),
+      moneda: factura.moneda,
+    };
+  }
+
   async crear(dto: CreateNDDto, usuarioId: number) {
     const empresaId = this.tenantSvc.getEmpresaId();
 

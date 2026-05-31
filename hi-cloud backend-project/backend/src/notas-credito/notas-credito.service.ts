@@ -52,6 +52,29 @@ export class NotasCreditoService {
 
   // ─── CRUD ─────────────────────────────────────────────────────────────────────
 
+  async getSaldoDisponible(facturaId: number): Promise<{
+    totalFactura: number; ncEmitidas: number; saldoDisponible: number; moneda: string;
+  }> {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const [factura] = await this.ds.query<any[]>(
+      `SELECT total::numeric, COALESCE(moneda,'DOP') AS moneda
+       FROM facturas WHERE id = $1 AND "empresaId" = $2 AND "isActive" = true`,
+      [facturaId, empresaId],
+    );
+    if (!factura) throw new NotFoundException(`Factura #${facturaId} no encontrada`);
+    const [{ ncEmitidas }] = await this.ds.query<{ ncEmitidas: string }[]>(
+      `SELECT COALESCE(SUM(total), 0)::numeric AS "ncEmitidas"
+       FROM notas_credito
+       WHERE "facturaOriginalId" = $1 AND "empresaId" = $2
+         AND estado != 'anulada' AND "isActive" = true`,
+      [facturaId, empresaId],
+    );
+    const totalFactura    = +Number(factura.total).toFixed(2);
+    const ncEmitidasNum   = +Number(ncEmitidas).toFixed(2);
+    const saldoDisponible = +Math.max(totalFactura - ncEmitidasNum, 0).toFixed(2);
+    return { totalFactura, ncEmitidas: ncEmitidasNum, saldoDisponible, moneda: factura.moneda };
+  }
+
   async crear(dto: CreateNotaCreditoDto, usuarioId: number) {
     const empresaId = this.tenantSvc.getEmpresaId();
     const numero    = await this.generarNumero();
@@ -65,6 +88,19 @@ export class NotasCreditoService {
 
     const subtotal = detalles.reduce((s, d) => s + d.subtotal, 0);
     const iva      = detalles.reduce((s, d) => s + d.iva,      0);
+    const totalNC  = +(subtotal + iva).toFixed(2);
+
+    // Validar saldo disponible cuando referencia una factura
+    if (dto.facturaOriginalId) {
+      const saldo = await this.getSaldoDisponible(dto.facturaOriginalId);
+      if (totalNC > saldo.saldoDisponible + 0.005) {
+        throw new BadRequestException(
+          `El monto de la NC (${totalNC.toFixed(2)} ${saldo.moneda}) excede el saldo disponible ` +
+          `de la factura (${saldo.saldoDisponible.toFixed(2)} ${saldo.moneda}). ` +
+          `Ya existen NC activas por ${saldo.ncEmitidas.toFixed(2)}.`,
+        );
+      }
+    }
 
     const nc = this.ncRepo.create({
       empresaId,

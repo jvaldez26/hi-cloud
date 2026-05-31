@@ -65,6 +65,13 @@ export class NotasDebitoController {
   @ApiOperation({ summary: 'Listar notas de débito con paginación' })
   listar(@Query() pagination: PaginationDto) { return this.svc.listar(pagination); }
 
+  @Get('factura/:facturaId/balance')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
+  @ApiOperation({ summary: 'Balance de ND sobre una factura (total original + ND activas)' })
+  balance(@Param('facturaId', ParseIntPipe) facturaId: number) {
+    return this.svc.getBalance(facturaId);
+  }
+
   @Get(':id/pdf')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Generar PDF de nota de débito E33' })
