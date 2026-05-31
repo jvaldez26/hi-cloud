@@ -63,6 +63,8 @@ export class CxCService {
       fechaVencimiento,
       diasVencimiento,
       userId,
+      moneda:    (factura as any).moneda    ?? 'DOP',
+      tipoCambio: Number((factura as any).tipoCambio ?? 1),
     });
 
     return this.cxcRepository.save(cxc);
@@ -106,6 +108,8 @@ export class CxCService {
         referencia:  dto.referencia,
         notas:       dto.notas,
         userId,
+        moneda:      cuenta.moneda    ?? 'DOP',
+        tipoCambio:  Number(dto.tipoCambio ?? cuenta.tipoCambio ?? 1),
       }));
 
       await cxcRepo.update(id, {

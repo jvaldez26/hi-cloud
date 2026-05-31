@@ -28,6 +28,14 @@ export class PagoCobrado extends BaseEntity {
   @Column({ type: 'text', nullable: true })
   notas?: string;
 
+  /** Moneda del pago (hereda de la CxC) */
+  @Column({ length: 3, default: 'DOP' })
+  moneda!: string;
+
+  /** Tasa de cambio al momento del pago */
+  @Column({ type: 'decimal', precision: 10, scale: 4, default: 1 })
+  tipoCambio!: number;
+
   @ManyToOne(() => User)
   @JoinColumn({ name: 'userId' })
   user!: User;

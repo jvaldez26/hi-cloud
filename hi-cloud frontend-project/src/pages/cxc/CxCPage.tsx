@@ -117,6 +117,7 @@ export default function CxCPage() {
     { key: 'cliente',         label: 'Cliente',     defaultVisible: true  },
     { key: 'montoOriginal',   label: 'Total',       defaultVisible: false },
     { key: 'montoPendiente',  label: 'Pendiente',   defaultVisible: true  },
+    { key: 'moneda',          label: 'Moneda',      defaultVisible: true  },
     { key: 'fechaVencimiento',label: 'Vencimiento', defaultVisible: true  },
     { key: 'estado',          label: 'Estado',      defaultVisible: true  },
   ];
@@ -133,14 +134,20 @@ export default function CxCPage() {
     },
     {
       title: 'Total', key: 'montoOriginal', dataIndex: 'montoOriginal', width: 120, align: 'right' as const, isAmount: true,
-      render: (v: number) => fmt.money(v),
+      render: (v: number, r: any) => fmt.moneyM(v, r.moneda),
     },
-    // Cobrado omitido — disponible en historial de cobros (ojo)
     {
       title: 'Pendiente', key: 'montoPendiente', dataIndex: 'montoPendiente', width: 120, align: 'right' as const,
-      render: (v: number) => (
-        <Text strong style={{ color: v > 0 ? '#dc2626' : '#059669' }}>{fmt.money(v)}</Text>
+      render: (v: number, r: any) => (
+        <Text strong style={{ color: v > 0 ? '#dc2626' : '#059669' }}>{fmt.moneyM(v, r.moneda)}</Text>
       ),
+    },
+    {
+      title: 'Moneda', key: 'moneda', dataIndex: 'moneda', width: 68,
+      render: (v: any) => {
+        const m = v || 'DOP';
+        return <Tag color={m === 'DOP' ? 'default' : 'gold'} style={{ fontSize: 11, fontWeight: 600, margin: 0, fontFamily: 'monospace' }}>{m}</Tag>;
+      },
     },
     {
       title: 'Vencimiento', key: 'fechaVencimiento', dataIndex: 'fechaVencimiento', width: 110,
@@ -238,7 +245,7 @@ export default function CxCPage() {
         </Row>
 
         <Table
-          columns={filterColumns(columns)} dataSource={rows} rowKey="id"
+          columns={filterColumns(columns as any) as any} dataSource={rows} rowKey="id"
           loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
           pagination={{
@@ -268,7 +275,7 @@ export default function CxCPage() {
             pagination={false}
             columns={[
               { title: 'Fecha',  dataIndex: 'fecha', width: 100, render: (v: string) => dayjs(v).format('DD/MM/YYYY') },
-              { title: 'Monto',  dataIndex: 'monto', width: 120, align: 'right' as const, render: (v: number) => <Text strong style={{ color: '#059669' }}>{fmt.money(v)}</Text> },
+              { title: 'Monto',  dataIndex: 'monto', width: 120, align: 'right' as const, render: (v: number, r: any) => <Text strong style={{ color: '#059669' }}>{fmt.moneyM(v, r?.moneda ?? (pagoRow as any)?.moneda)}</Text> },
               { title: 'Método', dataIndex: 'metodoPago', width: 110, render: (v: string) => <Tag>{v}</Tag> },
               { title: 'Ref.',   dataIndex: 'referencia', ellipsis: true, render: (v: string) => v ?? '—' },
             ]}
@@ -276,7 +283,7 @@ export default function CxCPage() {
               <Table.Summary.Row style={{ fontWeight: 700 }}>
                 <Table.Summary.Cell index={0}>Total</Table.Summary.Cell>
                 <Table.Summary.Cell index={1} align="right">
-                  <Text strong style={{ color: '#059669' }}>{fmt.money(histPagos.reduce((a, p) => a + Number(p.monto), 0))}</Text>
+                  <Text strong style={{ color: '#059669' }}>{fmt.moneyM(histPagos.reduce((a, p) => a + Number(p.monto), 0), (pagoRow as any)?.moneda)}</Text>
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={2} colSpan={2} />
               </Table.Summary.Row>
@@ -311,15 +318,15 @@ export default function CxCPage() {
             <Row gutter={8} style={{ marginTop: 10 }}>
               <Col xs={24} sm={8}>
                 <Text type="secondary" style={{ fontSize: 11 }}>Total</Text>
-                <div><Text style={{ fontSize: 13 }}>{fmt.money(pagoRow.montoOriginal)}</Text></div>
+                <div><Text style={{ fontSize: 13 }}>{fmt.moneyM(pagoRow.montoOriginal, (pagoRow as any)?.moneda)}</Text></div>
               </Col>
               <Col xs={24} sm={8}>
                 <Text type="secondary" style={{ fontSize: 11 }}>Cobrado</Text>
-                <div><Text style={{ fontSize: 13, color: '#059669' }}>{fmt.money(pagoRow.montoPagado)}</Text></div>
+                <div><Text style={{ fontSize: 13, color: '#059669' }}>{fmt.moneyM(pagoRow.montoPagado, (pagoRow as any)?.moneda)}</Text></div>
               </Col>
               <Col xs={24} sm={8}>
                 <Text type="secondary" style={{ fontSize: 11 }}>Pendiente</Text>
-                <div><Text strong style={{ fontSize: 13, color: '#dc2626' }}>{fmt.money(pagoRow.montoPendiente)}</Text></div>
+                <div><Text strong style={{ fontSize: 13, color: '#dc2626' }}>{fmt.moneyM(pagoRow.montoPendiente, (pagoRow as any)?.moneda)}</Text></div>
               </Col>
             </Row>
             {pagoRow.fechaVencimiento && (

@@ -46,6 +46,14 @@ export class CuentaPorCobrar extends TenantBaseEntity {
   @Column({ type: 'enum', enum: EstadoCuenta, default: EstadoCuenta.PENDIENTE })
   estado!: EstadoCuenta;
 
+  /** Moneda de la factura original (DOP, USD, etc.) */
+  @Column({ length: 3, default: 'DOP' })
+  moneda!: string;
+
+  /** Tasa de cambio al momento de emisión de la factura */
+  @Column({ type: 'decimal', precision: 10, scale: 4, default: 1 })
+  tipoCambio!: number;
+
   @ManyToOne(() => User)
   @JoinColumn({ name: 'userId' })
   user!: User;
