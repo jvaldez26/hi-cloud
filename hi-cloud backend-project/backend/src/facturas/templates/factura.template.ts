@@ -78,9 +78,9 @@ export interface FacturaPDFItem {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function money(n: number | undefined | null): string {
-  if (n == null) return 'RD$ 0.00';
-  return 'RD$ ' + Number(n).toLocaleString('es-DO', {
+function moneyWithSimbolo(n: number | undefined | null, simbolo: string): string {
+  if (n == null) return `${simbolo} 0.00`;
+  return `${simbolo} ` + Number(n).toLocaleString('es-DO', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
@@ -139,6 +139,9 @@ function ecfTipoTitulo(tipo?: string): string {
 // ── Generador ─────────────────────────────────────────────────────────────────
 
 export function generarHTMLFactura(d: FacturaPDFData): string {
+  const simbolo = d.moneda === 'USD' ? 'US$' : d.moneda === 'EUR' ? '€' : 'RD$';
+  const money = (n: number | undefined | null) => moneyWithSimbolo(n, simbolo);
+
   const DARK    = '#111111';
   const GRAY    = '#555555';
   const GREEN   = '#16a34a';
@@ -396,6 +399,11 @@ export function generarHTMLFactura(d: FacturaPDFData): string {
       </div>
       ${d.montoEnLetras
         ? `<div style="font-size:7.5px;color:#888;text-align:right;font-style:italic;margin-top:3px;">${esc(d.montoEnLetras)}</div>`
+        : ''}
+      ${d.moneda !== 'DOP' && d.tipoCambio && d.tipoCambio > 1
+        ? `<div style="font-size:7.5px;color:#888;text-align:right;margin-top:4px;">` +
+          `Tasa de cambio: RD$ ${Number(d.tipoCambio).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} por ${d.moneda} 1` +
+          `</div>`
         : ''}
     </div>
   </div>
