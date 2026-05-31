@@ -328,6 +328,16 @@ function EstadosFinancieros() {
   const { data: balance }    = useQuery({ queryKey: ['balance', hasta],              queryFn: () => contabilidadApi.balanceGeneral(hasta) });
   const { data: resultados } = useQuery({ queryKey: ['resultados', rDesde, rHasta], queryFn: () => contabilidadApi.estadoResultados(rDesde, rHasta) });
 
+  // Cuentas bancarias en USD para nota de conversión
+  const { data: bancosRaw } = useQuery<any[]>({
+    queryKey: ['bancos-contab'],
+    queryFn: () => import('../../api/client').then(({ default: api }) =>
+      api.get('/bancos').then((r: any) => r.data?.data ?? r.data)
+    ),
+    select: (d) => (Array.isArray(d) ? d : (d as any)?.data ?? []).filter((b: any) => b.moneda && b.moneda !== 'DOP'),
+    staleTime: 300_000,
+  });
+
   const chartData = resultados ? [
     { name: 'Ingresos', value: resultados.ingresos?.total ?? 0, fill: '#52c41a' },
     { name: 'Costos',   value: resultados.totalGastos ?? 0,     fill: '#ff7a45' },
@@ -388,6 +398,24 @@ function EstadosFinancieros() {
                 </Tag>
                 Activos: {fmt.money(balance.ecuacion?.activos ?? 0)} = Pasivos + Patrimonio: {fmt.money(balance.ecuacion?.pasivosYPatrimonio ?? 0)}
               </Card>
+              {/* Nota de moneda funcional */}
+              <div style={{ fontSize: 11, color: token.colorTextTertiary, marginTop: 8, padding: '6px 8px', background: token.colorFillAlter, borderRadius: 6 }}>
+                <strong>Moneda funcional:</strong> Todos los importes en Pesos Dominicanos (DOP). Los saldos en moneda extranjera fueron convertidos a DOP al tipo de cambio vigente en la fecha de cada transacción.
+              </div>
+              {/* Cuentas bancarias en USD */}
+              {bancosRaw && bancosRaw.length > 0 && (
+                <div style={{ marginTop: 10, padding: '8px 12px', border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8 }}>
+                  <Typography.Text strong style={{ fontSize: 12 }}>Cuentas en Divisas</Typography.Text>
+                  {bancosRaw.map((b: any) => (
+                    <Row justify="space-between" key={b.id} style={{ marginTop: 4 }}>
+                      <Typography.Text style={{ fontSize: 12 }}>{b.banco} — {b.numeroCuenta}</Typography.Text>
+                      <Typography.Text strong style={{ fontSize: 12, color: '#b45309' }}>
+                        {b.moneda} {Number(b.saldo).toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+                      </Typography.Text>
+                    </Row>
+                  ))}
+                </div>
+              )}
             </>
           )}
         </Card>
