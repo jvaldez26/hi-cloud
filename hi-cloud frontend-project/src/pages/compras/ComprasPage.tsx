@@ -175,12 +175,12 @@ export default function ComprasPage() {
     { key: 'folio',     label: 'Folio',        defaultVisible: true  },
     { key: 'fecha',     label: 'Fecha',        defaultVisible: true  },
     { key: 'proveedor', label: 'Proveedor',    defaultVisible: true  },
-    { key: 'ncf',       label: 'NCF Proveedor',defaultVisible: true  },
+    { key: 'ncf',       label: 'NCF Proveedor',defaultVisible: false },
     { key: 'tipoPago',  label: 'Tipo Pago',    defaultVisible: true  },
     { key: 'moneda',    label: 'Moneda',       defaultVisible: true  },
     { key: 'total',     label: 'Total',        defaultVisible: true  },
     { key: 'estado',    label: 'Estado',       defaultVisible: true  },
-    { key: 'ecf',       label: 'e-CF',         defaultVisible: false },
+    { key: 'ecf',       label: 'e-CF',         defaultVisible: true  },
   ];
   const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('compras', COLS_DEF);
 
@@ -233,12 +233,33 @@ export default function ComprasPage() {
       ),
     },
     {
-      title: 'e-CF', key: 'ecf', width: 120,
+      title: 'e-CF', key: 'ecf', width: 160,
       render: (_: unknown, r: Compra) => {
-        const ecfNum   = (r as any).ecfNumero;
-        const ecfEst   = (r as any).ecfEstado;
-        if (!ecfNum) return null;
-        return <EcfBadge estado={(ecfEst ?? 'pendiente') as EstadoEcf} encf={ecfNum} small />;
+        const ecfNum = (r as any).ecfNumero;
+        const ecfEst = (r as any).ecfEstado;
+        const ncfProv = (r as any).numeroFacturaProveedor;
+
+        // E41 propio emitido → mostrar con badge DGII
+        if (ecfNum) {
+          return (
+            <div>
+              <EcfBadge estado={(ecfEst ?? 'pendiente') as EstadoEcf} encf={ecfNum} small />
+            </div>
+          );
+        }
+
+        // NCF del proveedor como referencia secundaria
+        if (ncfProv) {
+          return (
+            <div>
+              <Text type="secondary" style={{ fontSize: 10 }}>NCF Prov.</Text>
+              <br />
+              <Text code style={{ fontSize: 11 }}>{ncfProv}</Text>
+            </div>
+          );
+        }
+
+        return <Text type="secondary">—</Text>;
       },
     },
     {

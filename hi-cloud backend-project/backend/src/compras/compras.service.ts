@@ -153,12 +153,37 @@ export class ComprasService {
     if (desde)       qb.andWhere('c.fecha >= :desde',            { desde });
     if (hasta)       qb.andWhere('c.fecha <= :hasta',            { hasta });
 
-    const [data, total] = await qb
+    const [rawData, total] = await qb
       .orderBy('c.fecha', 'DESC')
       .addOrderBy('c.createdAt', 'DESC')
       .skip((page - 1) * limit)
       .take(Math.min(limit, 100))
       .getManyAndCount();
+
+    // Enriquecer con e-CF (E41) emitido para cada compra
+    const ids = rawData.map(c => c.id);
+    let ecfMap: Record<number, { numero: string; estadoDGII: string }> = {};
+    if (ids.length > 0) {
+      const ecfs = await this.ds.query<{ documentoOrigenId: number; numero: string; estadoDGII: string }[]>(
+        `SELECT "documentoOrigenId", numero, "estadoDGII"
+         FROM ecf
+         WHERE "documentoOrigenTipo" = 'COMPRA'
+           AND "documentoOrigenId" = ANY($1::int[])
+           AND "empresaId" = $2
+           AND "isActive" = true
+         ORDER BY id DESC`,
+        [ids, empresaId],
+      );
+      for (const e of ecfs) {
+        if (!ecfMap[e.documentoOrigenId]) ecfMap[e.documentoOrigenId] = e;
+      }
+    }
+
+    const data = rawData.map(c => ({
+      ...c,
+      ecfNumero:  ecfMap[c.id]?.numero     ?? null,
+      ecfEstado:  ecfMap[c.id]?.estadoDGII ?? null,
+    }));
 
     return {
       data,
