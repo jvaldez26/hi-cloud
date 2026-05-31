@@ -98,12 +98,18 @@ export function buildE41(input: ECFBuildInput): MSellerPayload {
   if (montoExento > 0) totales['MontoExento'] = montoExento;  // solo si hay items exentos
   totales['MontoTotal'] = montoTotal;
 
-  // Totales de retenciones (sum desde items para cuadratura DGII)
-  // Solo se incluyen en Totales si hay retenciones reales (> 0)
-  const totalItbisRet = f2(items.reduce((s, it) => s + Number((it as any).Retencion?.MontoITBISRetenido ?? 0), 0));
-  const totalIsrRet   = f2(items.reduce((s, it) => s + Number((it as any).Retencion?.MontoISRRetenido   ?? 0), 0));
-  if (totalItbisRet > 0) totales['TotalITBISRetenido'] = totalItbisRet;
-  if (totalIsrRet   > 0) totales['TotalISRRetencion']  = totalIsrRet;
+  // Totales de retenciones — SIEMPRE incluidos para cuadratura DGII
+  // Retencion está en cada item (obligatoria), así que Totales también los requiere.
+  // Valor explícito con toFixed(2): nunca tag vacío, siempre 0.00 o el monto real.
+  const totalItbisRet = parseFloat(
+    items.reduce((s, it) => s + Number((it as any).Retencion?.MontoITBISRetenido ?? 0), 0).toFixed(2),
+  );
+  const totalIsrRet = parseFloat(
+    items.reduce((s, it) => s + Number((it as any).Retencion?.MontoISRRetenido   ?? 0), 0).toFixed(2),
+  );
+  // Incluir siempre — cuadratura exacta con suma de items (aunque sea 0.00)
+  totales['TotalITBISRetenido'] = totalItbisRet;
+  totales['TotalISRRetencion']  = totalIsrRet;
 
   return {
     ECF: {
