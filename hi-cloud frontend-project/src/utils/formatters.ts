@@ -34,6 +34,14 @@ export const fmt = {
     return new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'DOP' }).format(isNaN(val) ? 0 : val);
   },
 
+  /** Igual que money() pero respeta la moneda de la factura (DOP → RD$, USD → US$, etc.) */
+  moneyM: (n: any, moneda?: string) => {
+    const val = Number(n);
+    const m   = moneda || 'DOP';
+    const simb = m === 'USD' ? 'US$' : m === 'EUR' ? '€' : 'RD$';
+    return simb + ' ' + new Intl.NumberFormat('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(isNaN(val) ? 0 : val);
+  },
+
   number: (n: number) =>
     new Intl.NumberFormat('es-DO').format(n),
 

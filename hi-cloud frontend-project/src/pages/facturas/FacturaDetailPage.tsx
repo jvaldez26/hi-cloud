@@ -82,12 +82,12 @@ export default function FacturaDetailPage() {
     { title: '#',          key: 'idx',           width: 40, render: (_: any, __: any, i: number) => i + 1 },
     { title: 'Descripción',dataIndex: 'descripcion', ellipsis: true },
     { title: 'Cant.',      dataIndex: 'cantidad',    width: 70, render: (v: number) => fmt.number(v) },
-    { title: 'Precio Unit.',dataIndex: 'precioUnitario', width: 120, render: (v: number) => fmt.money(v) },
+    { title: 'Precio Unit.',dataIndex: 'precioUnitario', width: 120, render: (v: number) => fmt.moneyM(v, (factura as any)?.moneda) },
     { title: 'ITBIS %',    dataIndex: 'porcentajeIva',  width: 70, render: (v: number) => `${v}%` },
-    { title: 'Subtotal',   dataIndex: 'subtotal',    width: 120, render: (v: number) => fmt.money(v) },
-    { title: 'ITBIS',      dataIndex: 'importeIva',  width: 100, render: (v: number) => fmt.money(v) },
+    { title: 'Subtotal',   dataIndex: 'subtotal',    width: 120, render: (v: number) => fmt.moneyM(v, (factura as any)?.moneda) },
+    { title: 'ITBIS',      dataIndex: 'importeIva',  width: 100, render: (v: number) => fmt.moneyM(v, (factura as any)?.moneda) },
     { title: 'Total',      dataIndex: 'total',       width: 120,
-      render: (v: number) => <strong>{fmt.money(v)}</strong> },
+      render: (v: number) => <strong>{fmt.moneyM(v, (factura as any)?.moneda)}</strong> },
   ];
 
   return (
@@ -265,9 +265,9 @@ export default function FacturaDetailPage() {
                 <Table.Summary fixed>
                   <Table.Summary.Row>
                     <Table.Summary.Cell index={0} colSpan={5} align="right"><Text strong>Totales:</Text></Table.Summary.Cell>
-                    <Table.Summary.Cell index={1}><Text strong>{fmt.money(factura.subtotal)}</Text></Table.Summary.Cell>
-                    <Table.Summary.Cell index={2}><Text strong>{fmt.money(factura.iva)}</Text></Table.Summary.Cell>
-                    <Table.Summary.Cell index={3}><Text strong style={{ color: '#1677ff' }}>{fmt.money(factura.total)}</Text></Table.Summary.Cell>
+                    <Table.Summary.Cell index={1}><Text strong>{fmt.moneyM(factura.subtotal, (factura as any)?.moneda)}</Text></Table.Summary.Cell>
+                    <Table.Summary.Cell index={2}><Text strong>{fmt.moneyM(factura.iva, (factura as any)?.moneda)}</Text></Table.Summary.Cell>
+                    <Table.Summary.Cell index={3}><Text strong style={{ color: '#1677ff' }}>{fmt.moneyM(factura.total, (factura as any)?.moneda)}</Text></Table.Summary.Cell>
                   </Table.Summary.Row>
                 </Table.Summary>
               )} />
@@ -278,10 +278,10 @@ export default function FacturaDetailPage() {
         <Col xs={24} lg={8}>
           <Card title="Resumen financiero" style={{ marginBottom: 16 }}>
             <Space direction="vertical" style={{ width: '100%' }} size={16}>
-              <Statistic title="Subtotal (sin ITBIS)" value={factura.subtotal} formatter={v => fmt.money(Number(v))} />
-              <Statistic title="ITBIS" value={factura.iva} formatter={v => fmt.money(Number(v))} valueStyle={{ color: '#fa8c16' }} />
+              <Statistic title="Subtotal (sin ITBIS)" value={factura.subtotal} formatter={v => fmt.moneyM(Number(v), (factura as any)?.moneda)} />
+              <Statistic title="ITBIS" value={factura.iva} formatter={v => fmt.moneyM(Number(v), (factura as any)?.moneda)} valueStyle={{ color: '#fa8c16' }} />
               <Statistic title="TOTAL A PAGAR" value={factura.total}
-                formatter={v => fmt.money(Number(v))}
+                formatter={v => fmt.moneyM(Number(v), (factura as any)?.moneda)}
                 valueStyle={{ color: '#1677ff', fontSize: 22 }} />
             </Space>
           </Card>
