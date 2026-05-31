@@ -62,6 +62,8 @@ export class CxPService {
       fechaVencimiento,
       diasVencimiento,
       userId,
+      moneda:    (compra as any).moneda    ?? 'DOP',
+      tipoCambio: Number((compra as any).tipoCambio ?? 1),
     });
 
     return this.cxpRepository.save(cxp);
@@ -91,6 +93,11 @@ export class CxPService {
     const nuevoPendiente = Number((Number(cuenta.montoOriginal) - nuevoPagado).toFixed(2));
     const nuevoEstado    = nuevoPendiente <= 0 ? EstadoCuenta.PAGADA : EstadoCuenta.PAGADA_PARCIAL;
 
+    const moneda   = (cuenta as any).moneda    ?? 'DOP';
+    const tasaOrig = Number((cuenta as any).tipoCambio ?? 1);
+    const tasaHoy  = Number(dto.tipoCambio ?? tasaOrig);
+    const montoDOP = moneda !== 'DOP' ? parseFloat((dto.monto * tasaHoy).toFixed(2)) : dto.monto;
+
     const pago = this.pagoRepository.create({
       cuentaPorPagarId: id,
       monto:       dto.monto,
@@ -99,6 +106,8 @@ export class CxPService {
       referencia:  dto.referencia,
       notas:       dto.notas,
       userId,
+      moneda,
+      tipoCambio: tasaHoy,
     });
     await this.pagoRepository.save(pago);
 
@@ -115,15 +124,21 @@ export class CxPService {
       this.logger.log(`Compra #${cuenta.compraId} marcada como PAGADA`);
     }
 
-    // Asiento contable: Proveedores / Bancos
-    await this.asientosService.asientoPago(dto.monto, id, userId).catch(err =>
-      this.logger.error(`Error asiento pago CxP #${id}: ${err?.message ?? err}`),
-    );
+    // Asiento contable: Proveedores / Bancos (con diferencia cambiaria si aplica)
+    if (moneda !== 'DOP') {
+      await this.asientosService.asientoPagoME(dto.monto, moneda, tasaHoy, tasaOrig, id, userId).catch(err =>
+        this.logger.error(`Error asiento pago ME CxP #${id}: ${err?.message ?? err}`),
+      );
+    } else {
+      await this.asientosService.asientoPago(dto.monto, id, userId).catch(err =>
+        this.logger.error(`Error asiento pago CxP #${id}: ${err?.message ?? err}`),
+      );
+    }
 
-    // Retiro bancario automático
+    // Retiro bancario automático (montoDOP para tesorería)
     await this.tesoreriaService.registrarMovimientoAutomatico(
       TipoMovimientoBancario.RETIRO,
-      dto.monto,
+      montoDOP,
       `Pago CxP #${id} — ${dto.referencia ?? dto.metodoPago}`,
       OrigenMovimiento.PAGO_CXP,
       id,

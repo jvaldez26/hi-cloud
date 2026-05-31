@@ -259,6 +259,51 @@ export class AsientosAutomaticosService {
   }
 
   // ──────────────────────────────────────────────────────────────────
+  // Pago CxP en moneda extranjera con diferencia cambiaria
+  // CRÉDITO BANCOS    = montoME * tasaHoy (DOP reales pagados)
+  // DÉBITO PROVEEDORES = montoME * tasaOrig (DOP en libros al crear CxP)
+  // Diferencia → GANANCIA_CAMBIARIA o PÉRDIDA_CAMBIARIA
+  // ──────────────────────────────────────────────────────────────────
+
+  async asientoPagoME(
+    montoME:  number,
+    moneda:   string,
+    tasaHoy:  number,
+    tasaOrig: number,
+    cxpId:    number,
+    userId:   number,
+  ): Promise<void> {
+    const montoReal = parseFloat((montoME * tasaHoy).toFixed(2));
+    const montoLib  = parseFloat((montoME * tasaOrig).toFixed(2));
+    const diff      = parseFloat((montoLib - montoReal).toFixed(2)); // positivo = ganancia (pagamos menos DOP)
+
+    const lineas: { codigo: string; descripcion: string; debe: number; haber: number }[] = [
+      { codigo: COD.PROVEEDORES, descripcion: `Cancelación CxP #${cxpId}`,       debe: montoLib,  haber: 0        },
+      { codigo: COD.BANCOS,      descripcion: `Pago ${moneda} CxP #${cxpId}`,    debe: 0,         haber: montoReal },
+    ];
+
+    if (diff > 0.005) {
+      lineas.push({ codigo: COD.GANANCIA_CAMBIARIA, descripcion: `Ganancia cambiaria CxP #${cxpId} (${moneda})`, debe: 0,    haber: diff });
+    } else if (diff < -0.005) {
+      lineas.push({ codigo: COD.PERDIDA_CAMBIARIA,  descripcion: `Pérdida cambiaria CxP #${cxpId} (${moneda})`,  debe: -diff, haber: 0   });
+    }
+
+    try {
+      await this._crearAsientoContabilizado({
+        descripcion:     `Pago ${moneda} CxP #${cxpId}`,
+        tipoOrigen:      TipoOrigenAsiento.PAGO,
+        referenciaId:    cxpId,
+        referenciaFolio: `CXP-${cxpId}`,
+        userId,
+        lineas,
+      });
+      this.logger.log(`Asiento pago ME CxP #${cxpId} — diff cambiaria: ${diff} RD$`);
+    } catch (err) {
+      this.logger.error(`Error asiento pago ME CxP #${cxpId}: ${(err as Error).message}`);
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────
   // Recibo de cobro sin CxC → Caja/Banco / Clientes
   // Para efectivo: DÉBITO Caja. Para el resto: DÉBITO Bancos.
   // ──────────────────────────────────────────────────────────────────

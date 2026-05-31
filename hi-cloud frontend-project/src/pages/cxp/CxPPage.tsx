@@ -5,7 +5,7 @@ import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Table, Button, Tag, Space, Modal, Form, InputNumber, Select, Input,
   Typography, message, Card, Row, Col, Statistic, DatePicker, theme, Tooltip,
-  Divider, Drawer,
+  Divider, Drawer, Alert,
 } from 'antd';
 import {
   DollarOutlined, SearchOutlined, FileExcelOutlined,
@@ -26,6 +26,11 @@ const { RangePicker } = DatePicker;
 const { Option } = Select;
 
 const ESTADOS_CXP = ['pendiente', 'pagada_parcial', 'pagada', 'vencida', 'anulada'];
+
+const fmtMon = (v: number, moneda = 'DOP') => {
+  const sym = moneda === 'USD' ? 'US$' : moneda === 'EUR' ? '€' : 'RD$';
+  return `${sym} ${(v ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
 
 export default function CxPPage() {
   const { token } = theme.useToken();
@@ -65,8 +70,8 @@ export default function CxPPage() {
   });
 
   const pagoMut = useMutation({
-    mutationFn: ({ id, monto, metodoPago, ref, fechaPago }: { id: number; monto: number; metodoPago: MetodoPago; ref?: string; fechaPago?: string }) =>
-      cxpApi.registrarPago(id, monto, metodoPago, ref, fechaPago),
+    mutationFn: ({ id, monto, metodoPago, ref, fechaPago, tipoCambio }: { id: number; monto: number; metodoPago: MetodoPago; ref?: string; fechaPago?: string; tipoCambio?: number }) =>
+      cxpApi.registrarPago(id, monto, metodoPago, ref, fechaPago, tipoCambio),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['cxp'] });
       qc.invalidateQueries({ queryKey: ['cxp-resumen'] });
@@ -105,6 +110,7 @@ export default function CxPPage() {
   const COLS_DEF = [
     { key: 'folio',           label: 'Compra',      defaultVisible: true  },
     { key: 'proveedor',       label: 'Proveedor',   defaultVisible: true  },
+    { key: 'moneda',          label: 'Moneda',      defaultVisible: true  },
     { key: 'montoOriginal',   label: 'Total',       defaultVisible: false },
     { key: 'montoPendiente',  label: 'Pendiente',   defaultVisible: true  },
     { key: 'fechaVencimiento',label: 'Vencimiento', defaultVisible: true  },
@@ -122,14 +128,21 @@ export default function CxPPage() {
       render: (v: string) => <Text style={{ fontSize: 13 }}>{v ?? '—'}</Text>,
     },
     {
+      title: 'Moneda', key: 'moneda', dataIndex: 'moneda', width: 72,
+      render: (v: string) => {
+        const m = v ?? 'DOP';
+        return <Tag color={m === 'USD' ? 'gold' : m === 'EUR' ? 'purple' : 'default'} style={{ fontSize: 11, fontWeight: 600, margin: 0, fontFamily: 'monospace' }}>{m}</Tag>;
+      },
+    },
+    {
       title: 'Total', key: 'montoOriginal', dataIndex: 'montoOriginal', width: 120, align: 'right' as const, isAmount: true,
-      render: (v: number) => fmt.money(v),
+      render: (v: number, r: any) => fmtMon(v, r.moneda),
     },
     // Pagado omitido — disponible en historial de pagos (ojo)
     {
       title: 'Pendiente', key: 'montoPendiente', dataIndex: 'montoPendiente', width: 120, align: 'right' as const,
-      render: (v: number) => (
-        <Text strong style={{ color: v > 0 ? '#dc2626' : '#059669' }}>{fmt.money(v)}</Text>
+      render: (v: number, r: any) => (
+        <Text strong style={{ color: v > 0 ? '#dc2626' : '#059669' }}>{fmtMon(v, r.moneda)}</Text>
       ),
     },
     {
@@ -226,7 +239,7 @@ export default function CxPPage() {
         </Row>
 
         <Table
-          columns={filterColumns(columns)} dataSource={rows} rowKey="id"
+          columns={filterColumns(columns as any) as any} dataSource={rows} rowKey="id"
           loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
           pagination={{
@@ -258,7 +271,7 @@ export default function CxPPage() {
             pagination={false}
             columns={[
               { title: 'Fecha',  dataIndex: 'fecha', width: 100, render: (v: string) => dayjs(v).format('DD/MM/YYYY') },
-              { title: 'Monto',  dataIndex: 'monto', width: 120, align: 'right' as const, render: (v: number) => <Text strong style={{ color: '#dc2626' }}>{fmt.money(v)}</Text> },
+              { title: 'Monto',  dataIndex: 'monto', width: 120, align: 'right' as const, render: (v: number, r: any) => <Text strong style={{ color: '#dc2626' }}>{fmtMon(v, r.moneda)}</Text> },
               { title: 'Método', dataIndex: 'metodoPago', width: 110, render: (v: string) => <Tag>{v}</Tag> },
               { title: 'Ref.',   dataIndex: 'referencia', ellipsis: true, render: (v: string) => v ?? '—' },
             ]}
@@ -292,19 +305,22 @@ export default function CxPPage() {
             <br />
             <Text type="secondary" style={{ fontSize: 12, fontFamily: 'monospace' }}>
               {(pagoRow as any).compra?.folio ?? '—'}
+              {(pagoRow as any).moneda && (pagoRow as any).moneda !== 'DOP' && (
+                <Tag color="gold" style={{ marginLeft: 8, fontSize: 10 }}>{(pagoRow as any).moneda}</Tag>
+              )}
             </Text>
             <Row gutter={8} style={{ marginTop: 10 }}>
               <Col xs={24} sm={8}>
                 <Text type="secondary" style={{ fontSize: 11 }}>Total</Text>
-                <div><Text style={{ fontSize: 13 }}>{fmt.money(pagoRow.montoOriginal)}</Text></div>
+                <div><Text style={{ fontSize: 13 }}>{fmtMon(Number(pagoRow.montoOriginal), (pagoRow as any).moneda)}</Text></div>
               </Col>
               <Col xs={24} sm={8}>
                 <Text type="secondary" style={{ fontSize: 11 }}>Pagado</Text>
-                <div><Text style={{ fontSize: 13, color: '#059669' }}>{fmt.money(pagoRow.montoPagado)}</Text></div>
+                <div><Text style={{ fontSize: 13, color: '#059669' }}>{fmtMon(Number(pagoRow.montoPagado), (pagoRow as any).moneda)}</Text></div>
               </Col>
               <Col xs={24} sm={8}>
                 <Text type="secondary" style={{ fontSize: 11 }}>Pendiente</Text>
-                <div><Text strong style={{ fontSize: 13, color: '#dc2626' }}>{fmt.money(pagoRow.montoPendiente)}</Text></div>
+                <div><Text strong style={{ fontSize: 13, color: '#dc2626' }}>{fmtMon(Number(pagoRow.montoPendiente), (pagoRow as any).moneda)}</Text></div>
               </Col>
             </Row>
             {pagoRow.fechaVencimiento && (
@@ -323,17 +339,21 @@ export default function CxPPage() {
         <Form
           form={form}
           layout="vertical"
-          onFinish={v => pagoId && pagoMut.mutate({ id: pagoId, monto: v.monto, metodoPago: v.metodoPago, ref: v.referencia, fechaPago: v.fechaPago?.format('YYYY-MM-DD') })}
+          onFinish={v => pagoId && pagoMut.mutate({ id: pagoId, monto: v.monto, metodoPago: v.metodoPago, ref: v.referencia, fechaPago: v.fechaPago?.format('YYYY-MM-DD'), tipoCambio: v.tipoCambio ? Number(v.tipoCambio) : undefined })}
         >
+          {(pagoRow as any)?.moneda && (pagoRow as any).moneda !== 'DOP' && (
+            <Alert type="info" showIcon style={{ marginBottom: 12 }}
+              message={`Moneda: ${(pagoRow as any).moneda} — el monto se ingresa en ${(pagoRow as any).moneda}`} />
+          )}
           <Row gutter={12}>
             <Col xs={24} sm={12}>
-              <Form.Item name="monto" label="Monto a pagar" rules={[{ required: true, message: 'Ingresa un monto' }]}>
+              <Form.Item name="monto" label={`Monto a pagar${(pagoRow as any)?.moneda && (pagoRow as any).moneda !== 'DOP' ? ` (${(pagoRow as any).moneda})` : ''}`} rules={[{ required: true, message: 'Ingresa un monto' }]}>
                 <InputNumber
                   style={{ width: '100%' }}
                   min={0.01}
                   max={pagoRow ? Number(pagoRow.montoPendiente) : undefined}
                   precision={2}
-                  addonBefore="RD$"
+                  addonBefore={(pagoRow as any)?.moneda === 'USD' ? 'US$' : (pagoRow as any)?.moneda === 'EUR' ? '€' : 'RD$'}
                   formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
                   parser={(v: any) => v?.replace(/,/g, '')}
                   size="large"
@@ -346,6 +366,34 @@ export default function CxPPage() {
               </Form.Item>
             </Col>
           </Row>
+          {(pagoRow as any)?.moneda && (pagoRow as any).moneda !== 'DOP' && (
+            <Form.Item noStyle shouldUpdate={(p, c) => p.monto !== c.monto || p.tipoCambio !== c.tipoCambio}>
+              {({ getFieldValue }) => {
+                const monto = Number(getFieldValue('monto') ?? 0);
+                const tasa  = Number(getFieldValue('tipoCambio') ?? (pagoRow as any)?.tipoCambio ?? 1);
+                const dop   = fmtMon(monto * tasa, 'DOP');
+                return (
+                  <Row gutter={12} style={{ marginBottom: 16 }}>
+                    <Col xs={24} sm={12}>
+                      <Form.Item name="tipoCambio" label="Tasa de cambio del día (RD$)">
+                        <InputNumber
+                          style={{ width: '100%' }}
+                          min={1} precision={4}
+                          addonBefore="RD$" addonAfter={`por ${(pagoRow as any).moneda} 1`}
+                          defaultValue={Number((pagoRow as any)?.tipoCambio ?? 1)}
+                        />
+                      </Form.Item>
+                    </Col>
+                    <Col xs={24} sm={12}>
+                      <Form.Item label="Equivalente en RD$">
+                        <Text strong style={{ fontSize: 15, color: token.colorPrimary }}>{dop}</Text>
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                );
+              }}
+            </Form.Item>
+          )}
           <Form.Item name="metodoPago" label="Método de pago" rules={[{ required: true, message: 'Selecciona un método' }]}>
             <Select size="large">
               {[

@@ -29,4 +29,8 @@ export class RegistrarPagoRealizadoDto {
   @IsOptional()
   @IsDateString()
   fechaPago?: string;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 4 })
+  tipoCambio?: number;
 }

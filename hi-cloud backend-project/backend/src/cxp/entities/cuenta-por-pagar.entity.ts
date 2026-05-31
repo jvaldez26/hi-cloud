@@ -46,6 +46,14 @@ export class CuentaPorPagar extends TenantBaseEntity {
   @Column({ type: 'enum', enum: EstadoCuenta, default: EstadoCuenta.PENDIENTE })
   estado!: EstadoCuenta;
 
+  /** Moneda de la CxP (hereda de la compra) */
+  @Column({ length: 3, default: 'DOP' })
+  moneda!: string;
+
+  /** Tasa de cambio al momento de registrar la compra */
+  @Column({ type: 'decimal', precision: 10, scale: 4, default: 1 })
+  tipoCambio!: number;
+
   @ManyToOne(() => User)
   @JoinColumn({ name: 'userId' })
   user!: User;

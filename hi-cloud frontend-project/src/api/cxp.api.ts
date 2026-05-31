@@ -17,6 +17,6 @@ export const cxpApi = {
   resumen: () =>
     api.get('/cxp/resumen').then(r => r.data.data),
 
-  registrarPago: (id: number, monto: number, metodoPago: MetodoPago, referencia?: string, fechaPago?: string) =>
-    api.post(`/cxp/${id}/pago`, { monto, metodoPago, referencia, fechaPago }).then(r => r.data),
+  registrarPago: (id: number, monto: number, metodoPago: MetodoPago, referencia?: string, fechaPago?: string, tipoCambio?: number) =>
+    api.post(`/cxp/${id}/pago`, { monto, metodoPago, referencia, fechaPago, tipoCambio }).then(r => r.data),
 };
