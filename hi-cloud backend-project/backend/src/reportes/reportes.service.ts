@@ -501,11 +501,14 @@ export class ReportesService {
     const rows = await this.dataSource.query<{
       folio: string; fecha: string; rnc: string; proveedor: string;
       numeroFacturaProv: string; subtotal: string; itbis: string; total: string;
+      moneda: string; tipoCambio: string;
     }[]>(
       `SELECT c.folio, c.fecha::text,
               p.rnc, p.nombre AS proveedor,
               COALESCE(c."numeroFacturaProveedor",'') AS "numeroFacturaProv",
-              c.subtotal::text, c.itbis::text, c.total::text
+              c.subtotal::text, c.itbis::text, c.total::text,
+              COALESCE(c.moneda,'DOP') AS moneda,
+              COALESCE(c."tipoCambio", 1)::text AS "tipoCambio"
        FROM compras c
        JOIN proveedores p ON p.id = c."proveedorId"
        WHERE c."isActive" = true AND c."empresaId" = $3
@@ -516,8 +519,14 @@ export class ReportesService {
       [dto.mes, dto.anio, this.eid],
     );
 
-    const totalItbis = rows.reduce((a, r) => a + Number(r.itbis), 0);
-    const totalMonto = rows.reduce((a, r) => a + Number(r.total), 0);
+    // Convertir a DOP usando la tasa de emisión (DGII requiere RD$)
+    const toRD = (v: string, moneda: string, tasa: string) => {
+      const n = Number(v); const t = Number(tasa);
+      return moneda === 'DOP' ? n : parseFloat((n * t).toFixed(2));
+    };
+
+    const totalItbis = rows.reduce((a, r) => a + toRD(r.itbis, r.moneda, r.tipoCambio), 0);
+    const totalMonto = rows.reduce((a, r) => a + toRD(r.total, r.moneda, r.tipoCambio), 0);
 
     return {
       tipo: '606',
@@ -534,9 +543,12 @@ export class ReportesService {
         rncProveedor:      r.rnc,
         nombreProveedor:   r.proveedor,
         numCFProveedor:    r.numeroFacturaProv,
-        montoGravado:      Number(r.subtotal),
-        itbis:             Number(r.itbis),
-        total:             Number(r.total),
+        moneda:            r.moneda,
+        tasaCambio:        Number(r.tipoCambio),
+        montoGravado:      toRD(r.subtotal, r.moneda, r.tipoCambio),
+        montoGravadoME:    r.moneda !== 'DOP' ? Number(r.subtotal) : undefined,
+        itbis:             toRD(r.itbis, r.moneda, r.tipoCambio),
+        total:             toRD(r.total, r.moneda, r.tipoCambio),
       })),
     };
   }
