@@ -85,4 +85,12 @@ export class Compra extends TenantBaseEntity {
   /** Fecha de vencimiento del crédito (fecha + diasCredito) */
   @Column({ type: 'date', nullable: true })
   fechaVencimiento?: Date;
+
+  /** Moneda de la compra (DOP, USD, EUR) */
+  @Column({ length: 3, nullable: true, default: 'DOP' })
+  moneda?: string;
+
+  /** Tasa de cambio al momento de registrar la compra */
+  @Column({ type: 'decimal', precision: 10, scale: 4, nullable: true, default: 1 })
+  tipoCambio?: number;
 }
