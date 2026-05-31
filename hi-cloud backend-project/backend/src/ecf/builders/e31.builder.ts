@@ -82,6 +82,16 @@ export function buildE31(input: ECFBuildInput): MSellerPayload {
   }
   // MontoExento SOLO si hay items exentos (E31 no debe tenerlos normalmente)
   if (montoExento > 0) totales['MontoExento'] = montoExento;
+
+  // Retenciones (E31 agente de retención) — orden correcto DGII: después de TotalITBIS
+  const factData = factura as any;
+  if (factData?.aplicaRetenciones) {
+    const retItbis = f2(Number(factData.montoRetencionItbis ?? 0));
+    const retIsr   = f2(Number(factData.montoRetencionIsr   ?? 0));
+    if (retItbis > 0) totales['TotalITBISRetenido'] = retItbis;
+    if (retIsr   > 0) totales['TotalISRRetencion']  = retIsr;
+  }
+
   totales['MontoTotal'] = montoTotal;
 
   // ── PASO 3: OtraMoneda calculada DESDE los items en moneda original ──────────

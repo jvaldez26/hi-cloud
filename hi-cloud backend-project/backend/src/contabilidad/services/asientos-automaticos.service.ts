@@ -137,7 +137,29 @@ export class AsientosAutomaticosService {
     iva: number,
     folio: string,
     userId: number,
+    retenciones?: { retItbis?: number; retIsr?: number; netoCobrar?: number },
   ): Promise<void> {
+    const retItbis   = retenciones?.retItbis   ?? 0;
+    const retIsr     = retenciones?.retIsr     ?? 0;
+    const neto       = retenciones?.netoCobrar ?? total;
+
+    // DR: CxC por el neto (total bruto - retenciones)
+    // DR: ITBIS Retenido a Recuperar (si aplica) — activo corriente
+    // DR: ISR Retenido a Recuperar (si aplica)   — activo corriente
+    // CR: Ventas (subtotal)
+    // CR: ITBIS por Pagar (iva total)
+    const lineas: { codigo: string; descripcion: string; debe: number; haber: number }[] = [
+      { codigo: COD.CLIENTES,        descripcion: `Cta. por cobrar ${folio}`, debe: neto,    haber: 0 },
+      { codigo: COD.VENTAS,          descripcion: `Ingreso por venta ${folio}`, debe: 0,     haber: subtotal },
+      { codigo: COD.ITBIS_POR_PAGAR, descripcion: `ITBIS débito fiscal ${folio}`, debe: 0,  haber: iva },
+    ];
+    if (retItbis > 0) {
+      lineas.push({ codigo: '1.1.4.02', descripcion: `ITBIS retenido a recuperar ${folio}`, debe: retItbis, haber: 0 });
+    }
+    if (retIsr > 0) {
+      lineas.push({ codigo: '1.1.4.03', descripcion: `ISR retenido a recuperar ${folio}`, debe: retIsr, haber: 0 });
+    }
+
     try {
       await this._crearAsientoContabilizado({
         descripcion:     `Venta según factura ${folio}`,
@@ -145,11 +167,7 @@ export class AsientosAutomaticosService {
         referenciaId:    facturaId,
         referenciaFolio: folio,
         userId,
-        lineas: [
-          { codigo: COD.CLIENTES,        descripcion: `Cta. por cobrar ${folio}`, debe: total,    haber: 0 },
-          { codigo: COD.VENTAS,          descripcion: `Ingreso por venta ${folio}`, debe: 0,      haber: subtotal },
-          { codigo: COD.ITBIS_POR_PAGAR, descripcion: `ITBIS débito fiscal ${folio}`, debe: 0,   haber: iva },
-        ],
+        lineas,
       });
       this.logger.log(`Asiento factura ${folio} generado`);
     } catch (err) {

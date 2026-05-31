@@ -8,6 +8,7 @@ import {
   IsDateString,
   IsInt,
   IsEnum,
+  IsBoolean,
   Min,
   Max,
   ArrayMinSize,
@@ -98,4 +99,19 @@ export class CreateFacturaDto {
   @IsInt()
   @Min(0)
   diasCredito?: number;
+
+  @IsOptional() @IsBoolean()
+  aplicaRetenciones?: boolean;
+
+  @IsOptional() @IsBoolean()
+  retieneItbis?: boolean;
+
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(100)
+  porcentajeRetencionItbis?: number;
+
+  @IsOptional() @IsBoolean()
+  retieneIsr?: boolean;
+
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(100)
+  porcentajeRetencionIsr?: number;
 }

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Form, Input, Button, Card, Row, Col, Typography, Select,
-         DatePicker, Table, InputNumber, Space, Divider, message, Tag, Alert, Modal, theme, Spin } from 'antd';
+         DatePicker, Table, InputNumber, Space, Divider, message, Tag, Alert, Modal, theme, Spin, Checkbox } from 'antd';
 import { PlusOutlined, DeleteOutlined, ArrowLeftOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -40,6 +40,12 @@ export default function FacturaFormPage() {
   const [tipoPago,    setTipoPago]    = useState<'CONTADO' | 'CREDITO'>('CONTADO');
   const [diasCredito, setDiasCredito] = useState(30);
   const [clienteSeleccionado, setClienteSeleccionado] = useState<Cliente | null>(null);
+  // Retenciones (solo E31)
+  const [aplicaRetenciones, setAplicaRetenciones] = useState(false);
+  const [retieneItbis,      setRetieneItbis]       = useState(false);
+  const [pctRetItbis,       setPctRetItbis]        = useState(30);
+  const [retieneIsr,        setRetieneIsr]         = useState(false);
+  const [pctRetIsr,         setPctRetIsr]          = useState(10);
   const [modalAnticipo, setModalAnticipo] = useState<{ facturaId: number; clienteId: number } | null>(null);
   const [formAnticipo] = Form.useForm();
   const navigate = useNavigate();
@@ -181,6 +187,11 @@ export default function FacturaFormPage() {
   const iva      = lineas.reduce((s, l) => s + l.precioUnitario * l.cantidad * (l.porcentajeIva / 100), 0);
   const total    = subtotal + iva;
 
+  // Cálculo retenciones E31
+  const montoRetItbisForm  = (tipoNcf === 'E31' && aplicaRetenciones && retieneItbis) ? Number((iva  * pctRetItbis / 100).toFixed(2)) : 0;
+  const montoRetIsrForm    = (tipoNcf === 'E31' && aplicaRetenciones && retieneIsr)   ? Number((subtotal * pctRetIsr   / 100).toFixed(2)) : 0;
+  const netoCobrarForm     = Number((total - montoRetItbisForm - montoRetIsrForm).toFixed(2));
+
   // ── Handlers ────────────────────────────────────────────────────────────────
   const onClienteChange = (clienteId: number) => {
     const cli = clientes?.data.find((c: Cliente) => c.id === clienteId) ?? null;
@@ -242,6 +253,14 @@ export default function FacturaFormPage() {
       tipoCambio:      values.tipoCambio ?? 1,
       tipoPago,
       diasCredito:     tipoPago === 'CREDITO' ? diasCredito : 0,
+      // Retenciones E31
+      ...(tipoNcf === 'E31' && aplicaRetenciones ? {
+        aplicaRetenciones: true,
+        retieneItbis,
+        porcentajeRetencionItbis: pctRetItbis,
+        retieneIsr,
+        porcentajeRetencionIsr:   pctRetIsr,
+      } : {}),
     } as any;
 
     if (editMode) {
@@ -526,6 +545,58 @@ export default function FacturaFormPage() {
             pagination={false} size="small" scroll={{ x: 'max-content' }} />
         </Card>
 
+        {/* ── Retenciones E31 ─────────────────────────────────────────── */}
+        {tipoNcf === 'E31' && (
+          <Card style={{ marginBottom: 16 }}>
+            <Checkbox
+              checked={aplicaRetenciones}
+              onChange={e => { setAplicaRetenciones(e.target.checked); if (!e.target.checked) { setRetieneItbis(false); setRetieneIsr(false); } }}>
+              <Text strong>Aplica Retenciones</Text>
+              <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>(agente de retención DGII)</Text>
+            </Checkbox>
+            {aplicaRetenciones && (
+              <div style={{ marginTop: 12, padding: '12px 16px', background: token.colorWarningBg, border: `1px solid ${token.colorWarningBorder}`, borderRadius: 8 }}>
+                <Row gutter={[24, 8]}>
+                  <Col xs={24} sm={12}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                      <Checkbox checked={retieneItbis} onChange={e => setRetieneItbis(e.target.checked)}>
+                        Retener ITBIS
+                      </Checkbox>
+                      {retieneItbis && (
+                        <InputNumber min={0} max={100} precision={2} value={pctRetItbis}
+                          onChange={v => setPctRetItbis(v ?? 30)} addonAfter="%" style={{ width: 110 }} />
+                      )}
+                    </div>
+                    {retieneItbis && (
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        Monto: <Text strong style={{ color: '#d97706' }}>-{fmt.money(montoRetItbisForm)}</Text>
+                        &nbsp;({pctRetItbis}% de {fmt.money(iva)})
+                      </Text>
+                    )}
+                  </Col>
+                  <Col xs={24} sm={12}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                      <Checkbox checked={retieneIsr} onChange={e => setRetieneIsr(e.target.checked)}>
+                        Retener ISR
+                      </Checkbox>
+                      {retieneIsr && (
+                        <InputNumber min={0} max={100} precision={2} value={pctRetIsr}
+                          onChange={v => setPctRetIsr(v ?? 10)} addonAfter="%" style={{ width: 110 }} />
+                      )}
+                    </div>
+                    {retieneIsr && (
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        Monto: <Text strong style={{ color: '#d97706' }}>-{fmt.money(montoRetIsrForm)}</Text>
+                        &nbsp;({pctRetIsr}% de {fmt.money(subtotal)})
+                      </Text>
+                    )}
+                  </Col>
+                </Row>
+              </div>
+            )}
+          </Card>
+        )}
+
         {/* ── Totales ────────────────────────────────────────────────────── */}
         <Card>
           <Row justify="end">
@@ -541,9 +612,30 @@ export default function FacturaFormPage() {
                 </Row>
                 <Divider style={{ margin: '8px 0' }} />
                 <Row justify="space-between" style={{ marginBottom: 4 }}>
-                  <Text style={{ fontSize: 16 }}>Total</Text>
+                  <Text style={{ fontSize: 16 }}>{(montoRetItbisForm > 0 || montoRetIsrForm > 0) ? 'Total factura' : 'Total'}</Text>
                   <Text strong style={{ fontSize: 20, color: '#1677ff' }}>{fmt.money(total)}</Text>
                 </Row>
+                {montoRetItbisForm > 0 && (
+                  <Row justify="space-between">
+                    <Text type="secondary" style={{ fontSize: 13 }}>(-) Retención ITBIS ({pctRetItbis}%)</Text>
+                    <Text style={{ color: '#d97706' }}>-{fmt.money(montoRetItbisForm)}</Text>
+                  </Row>
+                )}
+                {montoRetIsrForm > 0 && (
+                  <Row justify="space-between">
+                    <Text type="secondary" style={{ fontSize: 13 }}>(-) Retención ISR ({pctRetIsr}%)</Text>
+                    <Text style={{ color: '#d97706' }}>-{fmt.money(montoRetIsrForm)}</Text>
+                  </Row>
+                )}
+                {(montoRetItbisForm > 0 || montoRetIsrForm > 0) && (
+                  <>
+                    <Divider style={{ margin: '6px 0' }} />
+                    <Row justify="space-between" style={{ marginBottom: 4 }}>
+                      <Text style={{ fontSize: 15, fontWeight: 700, color: '#059669' }}>NETO A COBRAR</Text>
+                      <Text strong style={{ fontSize: 18, color: '#059669' }}>{fmt.money(netoCobrarForm)}</Text>
+                    </Row>
+                  </>
+                )}
 
                 {/* Comprobante seleccionado */}
                 {tipoInfo && (

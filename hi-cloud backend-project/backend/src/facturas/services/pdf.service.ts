@@ -191,6 +191,11 @@ export class PDFService {
       totalGeneral,
       montoEnLetras:       this.numLetras.numeroALetras(totalGeneral),
       qrBase64,
+      // Retenciones
+      aplicaRetenciones:    (factura as any).aplicaRetenciones === true,
+      montoRetencionItbis:  Number((factura as any).montoRetencionItbis ?? 0),
+      montoRetencionIsr:    Number((factura as any).montoRetencionIsr   ?? 0),
+      netoCobrar:           Number((factura as any).netoCobrar ?? totalGeneral),
     };
 
     return { data, logoBuf };

@@ -112,6 +112,16 @@ export class FacturasService {
       ? (() => { const d = new Date(); d.setDate(d.getDate() + diasCred); return d; })()
       : undefined;
 
+    // Retenciones (solo E31, campo aplicaRetenciones)
+    const aplicaRetenciones   = dto.aplicaRetenciones ?? false;
+    const retieneItbis        = aplicaRetenciones && (dto.retieneItbis ?? false);
+    const pctRetItbis         = dto.porcentajeRetencionItbis ?? 30;
+    const retieneIsr          = aplicaRetenciones && (dto.retieneIsr ?? false);
+    const pctRetIsr           = dto.porcentajeRetencionIsr ?? 10;
+    const montoRetItbis       = retieneItbis ? Number((ivaFactura * pctRetItbis / 100).toFixed(2)) : 0;
+    const montoRetIsr         = retieneIsr   ? Number((subtotalFactura * pctRetIsr / 100).toFixed(2)) : 0;
+    const netoCobrar          = Number((totalDOP - montoRetItbis - montoRetIsr).toFixed(2));
+
     const factura = this.facturaRepository.create({
       folio,
       fecha: new Date(dto.fecha),
@@ -132,6 +142,14 @@ export class FacturasService {
       tipoPago,
       diasCredito:     diasCred,
       fechaVencimiento: fechaVenc,
+      aplicaRetenciones,
+      retieneItbis,
+      porcentajeRetencionItbis: pctRetItbis,
+      montoRetencionItbis: montoRetItbis,
+      retieneIsr,
+      porcentajeRetencionIsr: pctRetIsr,
+      montoRetencionIsr: montoRetIsr,
+      netoCobrar,
     });
 
     let savedFactura: Factura;
@@ -530,6 +548,7 @@ export class FacturasService {
       const diasCred  = Number((factura as any).diasCredito ?? 0);
       if (esCredito) {
         const dias = diasCred > 0 ? diasCred : 30;
+        // Si hay retenciones la CxC es por el netoCobrar (no el total bruto)
         await this.cxcService.crear(factura.id, factura.usuarioId, dias);
         if (diasCred > 0) {
           const fv = new Date();
@@ -539,6 +558,10 @@ export class FacturasService {
       }
 
       // 3. Asiento contable — no bloquear emisión si la empresa no tiene cuentas configuradas
+      const aplicaRet   = (factura as any).aplicaRetenciones === true;
+      const retItbis    = aplicaRet ? Number((factura as any).montoRetencionItbis ?? 0) : 0;
+      const retIsr      = aplicaRet ? Number((factura as any).montoRetencionIsr   ?? 0) : 0;
+      const netoCobrar  = aplicaRet ? Number((factura as any).netoCobrar ?? factura.total) : Number(factura.total);
       await this.asientosService.asientoFacturaEmitida(
         factura.id,
         Number(factura.total),
@@ -546,6 +569,7 @@ export class FacturasService {
         Number(factura.iva),
         factura.folio,
         factura.usuarioId,
+        aplicaRet ? { retItbis, retIsr, netoCobrar } : undefined,
       ).catch((err: unknown) => {
         this.logger.warn(
           `[Factura] asientoFacturaEmitida para ${factura.folio} falló (no bloquea emisión): ` +

@@ -7,6 +7,11 @@
 export interface FacturaPDFData {
   // Factura
   numero:             string;
+  // Retenciones (E31)
+  aplicaRetenciones?: boolean;
+  montoRetencionItbis?: number;
+  montoRetencionIsr?:   number;
+  netoCobrar?:          number;
   fechaEmision:       string;
   fechaVencimiento?:  string;
   tipo:               'CONTADO' | 'CRÉDITO';
@@ -244,6 +249,8 @@ export function generarHTMLFactura(d: FacturaPDFData): string {
     ['Subtotal General',   money(d.subtotalGeneral)],
     ...(d.descuentoTotal > 0 ? [['Descuento', `-${money(d.descuentoTotal)}`] as [string, string]] : []),
     ['ITBIS Total (18%)',  money(d.itbisTotal)],
+    ...(d.aplicaRetenciones && (d.montoRetencionItbis ?? 0) > 0 ? [['(-) Retención ITBIS', `-${money(d.montoRetencionItbis)}`] as [string, string]] : []),
+    ...(d.aplicaRetenciones && (d.montoRetencionIsr ?? 0) > 0   ? [['(-) Retención ISR',   `-${money(d.montoRetencionIsr)}`]   as [string, string]] : []),
   ];
 
   // BUG5: Sin border-bottom entre subtotales — solo la línea antes del TOTAL GENERAL
@@ -397,6 +404,13 @@ export function generarHTMLFactura(d: FacturaPDFData): string {
         <span style="font-size:14px;font-weight:900;color:${DARK};
                      font-family:monospace;">${money(d.totalGeneral)}</span>
       </div>
+      ${d.aplicaRetenciones && (d.netoCobrar ?? 0) > 0
+        ? `<div style="display:flex;justify-content:space-between;align-items:baseline;
+                padding:6px 0;border-top:2px solid #059669;margin-top:2px;">
+            <span style="font-size:11px;font-weight:700;color:#059669;">NETO A COBRAR (después de retenciones):</span>
+            <span style="font-size:14px;font-weight:900;color:#059669;font-family:monospace;">${money(d.netoCobrar)}</span>
+           </div>`
+        : ''}
       ${d.montoEnLetras
         ? `<div style="font-size:7.5px;color:#888;text-align:right;font-style:italic;margin-top:3px;">${esc(d.montoEnLetras)}</div>`
         : ''}
