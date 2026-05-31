@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Card, Row, Col, Typography, Statistic, Table, Tag, Button,
-         Space, DatePicker, Spin, Divider, Progress, Empty } from 'antd';
+         Space, DatePicker, Spin, Divider, Progress, Empty, Tabs } from 'antd';
 import { ArrowLeftOutlined, PrinterOutlined, DownloadOutlined, FilePdfOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -22,6 +22,10 @@ const estadoCuentaApi = {
   },
 };
 
+function fmtMon(v: number, moneda = 'DOP') {
+  return fmt.moneyM(v, moneda);
+}
+
 export default function EstadoCuentaPage() {
   const { id }    = useParams<{ id: string }>();
   const navigate  = useNavigate();
@@ -39,47 +43,105 @@ export default function EstadoCuentaPage() {
   const handleExportar = () => {
     if (!data) return;
     const filas = data.facturas.map((f: any) => ({
-      'Folio':           f.folio,
-      'Fecha':           f.fecha,
-      'Estado':          f.estado,
-      'Total':           f.total,
-      'Pagado':          f.montoPagado,
-      'Pendiente':       f.montoPendiente,
+      'Folio':    f.folio,
+      'Fecha':    f.fecha,
+      'Estado':   f.estado,
+      'Moneda':   f.moneda ?? 'DOP',
+      'Total':    fmtMon(f.total, f.moneda),
+      'Pagado':   fmtMon(f.montoPagado, f.moneda),
+      'Pendiente':fmtMon(f.montoPendiente, f.moneda),
     }));
     exportarExcel(filas, `Estado-Cuenta-${data.cliente?.nombre}-${dayjs().format('YYYY-MM-DD')}`);
   };
 
   if (isLoading) return <Spin size="large" style={{ display: 'block', margin: '80px auto' }} />;
 
-  const resumen = data?.resumen;
-  const pctCobrado = resumen?.totalFacturado > 0
-    ? Math.round((resumen.totalCobrado / resumen.totalFacturado) * 100)
-    : 0;
+  const resumenPorMoneda: Record<string, any> = data?.resumenPorMoneda ?? (data?.resumen ? { DOP: data.resumen } : {});
+  const monedas = Object.keys(resumenPorMoneda);
+  const hasMixed = monedas.length > 1;
 
   const facturaCols = [
-    { title: 'Folio',      dataIndex: 'folio',           width: 150,
+    { title: 'Folio',    dataIndex: 'folio',    width: 130,
       render: (v: string) => <Text code style={{ fontSize: 11 }}>{v}</Text> },
-    { title: 'Fecha',      dataIndex: 'fecha',           width: 100, render: (v: string) => fmt.date(v) },
-    { title: 'Estado',     dataIndex: 'estado',          width: 100,
+    { title: 'Fecha',    dataIndex: 'fecha',    width: 100, render: (v: string) => fmt.date(v) },
+    { title: 'Estado',   dataIndex: 'estado',   width: 100,
       render: (v: string) => <Tag color={estadoColor[v]}>{v.toUpperCase()}</Tag> },
-    { title: 'Total',      dataIndex: 'total',           width: 120, render: (v: number) => fmt.money(v) },
-    { title: 'Cobrado',    dataIndex: 'montoPagado',     width: 120, render: (v: number) => fmt.money(v) },
-    { title: 'Pendiente',  dataIndex: 'montoPendiente',  width: 120,
-      render: (v: number) => (
+    { title: 'Moneda',   dataIndex: 'moneda',   width: 80,
+      render: (v: string) => (
+        <Tag color={v === 'USD' ? 'gold' : v === 'EUR' ? 'purple' : 'blue'}>{v ?? 'DOP'}</Tag>
+      )},
+    { title: 'Total',    dataIndex: 'total',    width: 120,
+      render: (v: number, row: any) => fmtMon(v, row.moneda) },
+    { title: 'Cobrado',  dataIndex: 'montoPagado', width: 120,
+      render: (v: number, row: any) => fmtMon(v, row.moneda) },
+    { title: 'Pendiente',dataIndex: 'montoPendiente', width: 120,
+      render: (v: number, row: any) => (
         <Text strong style={{ color: v > 0 ? '#dc2626' : '#059669' }}>
-          {fmt.money(v)}
+          {fmtMon(v, row.moneda)}
         </Text>
       )},
   ];
 
   const cobroCols = [
-    { title: 'Fecha',      dataIndex: 'fecha',      width: 100, render: (v: string) => fmt.date(v) },
-    { title: 'Método',     dataIndex: 'metodoPago', width: 120,
+    { title: 'Fecha',     dataIndex: 'fecha',      width: 100, render: (v: string) => fmt.date(v) },
+    { title: 'Método',    dataIndex: 'metodoPago', width: 120,
       render: (v: string) => <Tag style={{ textTransform: 'capitalize' }}>{v}</Tag> },
-    { title: 'Referencia', dataIndex: 'referencia', ellipsis: true },
-    { title: 'Monto',      dataIndex: 'monto',      width: 120,
-      render: (v: number) => <Text strong style={{ color: '#059669' }}>{fmt.money(v)}</Text> },
+    { title: 'Moneda',    dataIndex: 'moneda',     width: 80,
+      render: (v: string) => (
+        <Tag color={v === 'USD' ? 'gold' : v === 'EUR' ? 'purple' : 'blue'}>{v ?? 'DOP'}</Tag>
+      )},
+    { title: 'Referencia',dataIndex: 'referencia', ellipsis: true },
+    { title: 'Monto',     dataIndex: 'monto',      width: 120,
+      render: (v: number, row: any) => (
+        <Text strong style={{ color: '#059669' }}>{fmtMon(v, row.moneda)}</Text>
+      )},
   ];
+
+  const kpiCards = (m: string) => {
+    const r = resumenPorMoneda[m] ?? {};
+    return [
+      { title: 'Total Facturado',   value: r.totalFacturado   ?? 0, color: '#1677ff',  moneda: m },
+      { title: 'Total Cobrado',     value: r.totalCobrado     ?? 0, color: '#059669',  moneda: m },
+      { title: 'Saldo Pendiente',   value: r.saldoPendiente   ?? 0, color: (r.saldoPendiente ?? 0) > 0 ? '#dc2626' : '#059669', moneda: m },
+      { title: 'Facturas',          value: r.cantidadFacturas ?? 0, money: false },
+    ];
+  };
+
+  const summaryRowForMoneda = (m: string) => {
+    const r = resumenPorMoneda[m] ?? {};
+    return (
+      <Table.Summary.Row key={m}>
+        <Table.Summary.Cell index={0} colSpan={4} align="right">
+          <Text strong>Totales {m}:</Text>
+        </Table.Summary.Cell>
+        <Table.Summary.Cell index={1}>
+          <Text strong>{fmtMon(r.totalFacturado ?? 0, m)}</Text>
+        </Table.Summary.Cell>
+        <Table.Summary.Cell index={2}>
+          <Text strong style={{ color: '#059669' }}>{fmtMon(r.totalCobrado ?? 0, m)}</Text>
+        </Table.Summary.Cell>
+        <Table.Summary.Cell index={3}>
+          <Text strong style={{ color: '#dc2626' }}>{fmtMon(r.saldoPendiente ?? 0, m)}</Text>
+        </Table.Summary.Cell>
+      </Table.Summary.Row>
+    );
+  };
+
+  const kpiContent = (m: string) => (
+    <Row gutter={[16, 16]}>
+      {kpiCards(m).map((k, i) => (
+        <Col xs={12} sm={6} key={k.title}>
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}>
+            <Card>
+              <Statistic title={k.title} value={k.value}
+                formatter={v => k.money === false ? v : fmtMon(Number(v), m)}
+                valueStyle={{ color: k.color }} />
+            </Card>
+          </motion.div>
+        </Col>
+      ))}
+    </Row>
+  );
 
   return (
     <div>
@@ -108,7 +170,7 @@ export default function EstadoCuentaPage() {
                 if (rango?.[0]) params.set('fechaDesde', rango[0].format('YYYY-MM-DD'));
                 if (rango?.[1]) params.set('fechaHasta', rango[1].format('YYYY-MM-DD'));
                 const res = await fetch(`/api/v1/clientes/${id}/estado-cuenta/pdf?${params}`, {
-      credentials: 'include',
+                  credentials: 'include',
                   headers: { 'X-Empresa-ID': eid },
                 });
                 if (!res.ok) { alert('Error generando PDF'); return; }
@@ -129,84 +191,95 @@ export default function EstadoCuentaPage() {
         <Empty description="Sin datos" />
       ) : (
         <>
-          {/* ── KPIs ── */}
-          <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
-            {[
-              { title: 'Total Facturado',   value: resumen?.totalFacturado,   color: '#1677ff' },
-              { title: 'Total Cobrado',     value: resumen?.totalCobrado,     color: '#059669' },
-              { title: 'Saldo Pendiente',   value: resumen?.saldoPendiente,   color: resumen?.saldoPendiente > 0 ? '#dc2626' : '#059669' },
-              { title: 'Facturas',          value: resumen?.cantidadFacturas, money: false },
-            ].map((k, i) => (
-              <Col xs={12} sm={6} key={k.title}>
-                <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}>
-                  <Card>
-                    <Statistic title={k.title} value={k.value ?? 0}
-                      formatter={v => k.money === false ? v : fmt.money(Number(v))}
-                      valueStyle={{ color: k.color }} />
-                  </Card>
-                </motion.div>
-              </Col>
-            ))}
-          </Row>
+          {/* ── KPIs por moneda ── */}
+          {hasMixed ? (
+            <Tabs
+              style={{ marginBottom: 20 }}
+              items={monedas.map(m => ({
+                key: m,
+                label: m === 'USD' ? '🇺🇸 US$ Dólares' : m === 'EUR' ? '🇪🇺 € Euros' : '🇩🇴 RD$ Pesos',
+                children: kpiContent(m),
+              }))}
+            />
+          ) : (
+            <div style={{ marginBottom: 20 }}>
+              {kpiContent(monedas[0] ?? 'DOP')}
+            </div>
+          )}
 
-          {/* ── Progreso de cobro ── */}
+          {/* ── Progreso de cobro por moneda ── */}
           <Card style={{ marginBottom: 16 }}>
             <Text strong>Porcentaje cobrado</Text>
-            <Progress
-              percent={pctCobrado}
-              strokeColor={pctCobrado >= 90 ? '#059669' : pctCobrado >= 50 ? '#f59e0b' : '#dc2626'}
-              style={{ marginTop: 8 }}
-              format={p => `${p}% (${fmt.money(resumen?.totalCobrado ?? 0)} / ${fmt.money(resumen?.totalFacturado ?? 0)})`}
-            />
+            {monedas.map(m => {
+              const r = resumenPorMoneda[m] ?? {};
+              const pct = r.totalFacturado > 0 ? Math.round((r.totalCobrado / r.totalFacturado) * 100) : 0;
+              return (
+                <div key={m} style={{ marginTop: 8 }}>
+                  {hasMixed && (
+                    <Text type="secondary" style={{ fontSize: 12, marginBottom: 4, display: 'block' }}>{m}</Text>
+                  )}
+                  <Progress
+                    percent={pct}
+                    strokeColor={pct >= 90 ? '#059669' : pct >= 50 ? '#f59e0b' : '#dc2626'}
+                    format={p => `${p}% (${fmtMon(r.totalCobrado ?? 0, m)} / ${fmtMon(r.totalFacturado ?? 0, m)})`}
+                  />
+                </div>
+              );
+            })}
           </Card>
 
           {/* ── Facturas ── */}
           <Card title="Historial de facturas" style={{ marginBottom: 16 }}>
-            {data.facturas.length === 0
+            {(data.facturas ?? []).length === 0
               ? <Empty description="Sin facturas en el período" />
-              : <Table columns={facturaCols} dataSource={data.facturas} rowKey="folio"
+              : <Table
+                  columns={facturaCols as any}
+                  dataSource={data.facturas}
+                  rowKey="folio"
                   size="small"
-        scroll={{ x: 'max-content' }} pagination={{ pageSize: 10, showSizeChanger: false }}
+                  scroll={{ x: 'max-content' }}
+                  pagination={{ pageSize: 10, showSizeChanger: false }}
                   summary={() => (
                     <Table.Summary>
-                      <Table.Summary.Row>
-                        <Table.Summary.Cell index={0} colSpan={3} align="right">
-                          <Text strong>Totales:</Text>
-                        </Table.Summary.Cell>
-                        <Table.Summary.Cell index={1}>
-                          <Text strong>{fmt.money(resumen?.totalFacturado ?? 0)}</Text>
-                        </Table.Summary.Cell>
-                        <Table.Summary.Cell index={2}>
-                          <Text strong style={{ color: '#059669' }}>{fmt.money(resumen?.totalCobrado ?? 0)}</Text>
-                        </Table.Summary.Cell>
-                        <Table.Summary.Cell index={3}>
-                          <Text strong style={{ color: '#dc2626' }}>{fmt.money(resumen?.saldoPendiente ?? 0)}</Text>
-                        </Table.Summary.Cell>
-                      </Table.Summary.Row>
+                      {monedas.map(m => summaryRowForMoneda(m))}
                     </Table.Summary>
-                  )} />
+                  )}
+                />
             }
           </Card>
 
+          <Divider />
+
           {/* ── Cobros ── */}
           <Card title="Cobros registrados">
-            {data.cobros.length === 0
+            {(data.cobros ?? []).length === 0
               ? <Empty description="Sin cobros registrados en el período" />
-              : <Table columns={cobroCols} dataSource={data.cobros} rowKey={(_, i) => i!}
-                  size="small" pagination={{ pageSize: 10, showSizeChanger: false }}
+              : <Table
+                  columns={cobroCols as any}
+                  dataSource={data.cobros}
+                  rowKey={(_, i) => i!}
+                  size="small"
+                  scroll={{ x: 'max-content' }}
+                  pagination={{ pageSize: 10, showSizeChanger: false }}
                   summary={() => (
-                    <Table.Summary.Row>
-                      <Table.Summary.Cell index={0} colSpan={3} align="right">
-                        <Text strong>Total cobrado:</Text>
-                      </Table.Summary.Cell>
-                      <Table.Summary.Cell index={1}>
-                        <Text strong style={{ color: '#059669' }}>
-                          {fmt.money(resumen?.totalCobrado ?? 0)}
-                        </Text>
-                      </Table.Summary.Cell>
-                    </Table.Summary.Row>
-                  )} 
-        scroll={{ x: 'max-content' }} />
+                    <Table.Summary>
+                      {monedas.map(m => {
+                        const cobrosMon = (data.cobros ?? []).filter((c: any) => (c.moneda ?? 'DOP') === m);
+                        const totalCobM = cobrosMon.reduce((s: number, c: any) => s + Number(c.monto), 0);
+                        return (
+                          <Table.Summary.Row key={m}>
+                            <Table.Summary.Cell index={0} colSpan={4} align="right">
+                              <Text strong>Total cobrado {m}:</Text>
+                            </Table.Summary.Cell>
+                            <Table.Summary.Cell index={1}>
+                              <Text strong style={{ color: '#059669' }}>{fmtMon(totalCobM, m)}</Text>
+                            </Table.Summary.Cell>
+                          </Table.Summary.Row>
+                        );
+                      })}
+                    </Table.Summary>
+                  )}
+                />
             }
           </Card>
         </>

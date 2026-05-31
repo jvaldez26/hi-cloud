@@ -127,19 +127,19 @@ export class ClientesService {
     const empresaId = this.tenantService.getEmpresaId();
     const cliente   = await this.findOne(id);
 
-    // Usar parámetros posicionales para evitar SQL injection
     const facturasParams: unknown[] = [id, empresaId];
     let fechaWhere = '';
     if (fechaDesde) { fechaWhere += ` AND f.fecha >= $${facturasParams.push(fechaDesde)}`; }
     if (fechaHasta) { fechaWhere += ` AND f.fecha <= $${facturasParams.push(fechaHasta)}`; }
 
-    const facturas = await this.dataSource.query<{
-      folio: string; fecha: string; estado: string;
+    const facturasRaw = await this.dataSource.query<{
+      folio: string; fecha: string; estado: string; moneda: string;
       total: string; montoPagado: string; montoPendiente: string;
     }[]>(
       `SELECT f.folio, f.fecha::text, f.estado,
+              COALESCE(f.moneda, 'DOP') AS moneda,
               f.total::text,
-              COALESCE(cxc."montoPagado", 0)::text    AS "montoPagado",
+              COALESCE(cxc."montoPagado", 0)::text         AS "montoPagado",
               COALESCE(cxc."montoPendiente", f.total)::text AS "montoPendiente"
        FROM facturas f
        LEFT JOIN cuentas_por_cobrar cxc ON cxc."facturaId" = f.id
@@ -149,10 +149,12 @@ export class ClientesService {
       facturasParams,
     );
 
-    const cobros = await this.dataSource.query<{
-      fecha: string; monto: string; metodoPago: string; referencia: string;
+    const cobrosRaw = await this.dataSource.query<{
+      fecha: string; monto: string; metodoPago: string; referencia: string; moneda: string;
     }[]>(
-      `SELECT p.fecha::text, p.monto::text, p."metodoPago", COALESCE(p.referencia,'') AS referencia
+      `SELECT p.fecha::text, p.monto::text, p."metodoPago",
+              COALESCE(p.referencia,'') AS referencia,
+              COALESCE(p.moneda, 'DOP') AS moneda
        FROM pagos_cobrados p
        JOIN cuentas_por_cobrar cxc ON cxc.id = p."cuentaPorCobrarId"
        WHERE cxc."clienteId" = $1 AND cxc."empresaId" = $2 AND p."isActive" = true
@@ -160,29 +162,45 @@ export class ClientesService {
       [id, empresaId],
     );
 
-    const totalFacturado = facturas.reduce((s, f) => s + Number(f.total), 0);
-    const totalCobrado   = cobros.reduce((s, c) => s + Number(c.monto), 0);
-    const saldoPendiente = facturas.reduce((s, f) => s + Number(f.montoPendiente), 0);
+    // Resumen separado por moneda
+    const resumenPorMoneda: Record<string, {
+      totalFacturado: number; totalCobrado: number; saldoPendiente: number; cantidadFacturas: number;
+    }> = {};
+
+    for (const f of facturasRaw) {
+      const m = f.moneda ?? 'DOP';
+      if (!resumenPorMoneda[m]) resumenPorMoneda[m] = { totalFacturado: 0, totalCobrado: 0, saldoPendiente: 0, cantidadFacturas: 0 };
+      resumenPorMoneda[m].totalFacturado  += Number(f.total);
+      resumenPorMoneda[m].totalCobrado    += Number(f.montoPagado);
+      resumenPorMoneda[m].saldoPendiente  += Number(f.montoPendiente);
+      resumenPorMoneda[m].cantidadFacturas++;
+    }
+
+    // resumen legacy (solo DOP) para compatibilidad con PDF
+    const rDOP = resumenPorMoneda['DOP'] ?? { totalFacturado: 0, totalCobrado: 0, saldoPendiente: 0, cantidadFacturas: 0 };
 
     return {
       cliente: { id: cliente.id, nombre: cliente.nombre, rfc: cliente.rfc },
       periodo: { desde: fechaDesde ?? 'inicio', hasta: fechaHasta ?? 'hoy' },
-      facturas: facturas.map(f => ({
-        folio: f.folio, fecha: f.fecha, estado: f.estado,
+      facturas: facturasRaw.map(f => ({
+        folio: f.folio, fecha: f.fecha, estado: f.estado, moneda: f.moneda ?? 'DOP',
         total: Number(f.total), montoPagado: Number(f.montoPagado),
         montoPendiente: Number(f.montoPendiente),
       })),
-      cobros: cobros.map(c => ({
+      cobros: cobrosRaw.map(c => ({
         fecha: c.fecha, monto: Number(c.monto),
-        metodoPago: c.metodoPago, referencia: c.referencia,
+        metodoPago: c.metodoPago, referencia: c.referencia, moneda: c.moneda ?? 'DOP',
       })),
-      resumen: { totalFacturado, totalCobrado, saldoPendiente, cantidadFacturas: facturas.length },
+      resumen:          { ...rDOP },
+      resumenPorMoneda,
     };
   }
 
   async generarEstadoCuentaPdf(data: any): Promise<{ buffer: Buffer; filename: string }> {
-    const fmtM = (v: number) =>
-      'RD$ ' + Number(v ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmtMoney = (v: number, moneda = 'DOP') => {
+      const sym = moneda === 'USD' ? 'US$' : moneda === 'EUR' ? '€' : 'RD$';
+      return `${sym} ${Number(v ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    };
     const fmtD = (d: string) =>
       d ? new Date(d).toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
 
@@ -201,7 +219,10 @@ export class ClientesService {
       const BLUE = '#1a56db';
       const DARK = '#111111';
       const GRAY = '#555555';
-      const r    = data.resumen ?? {};
+
+      const resumenPorMoneda: Record<string, any> = data.resumenPorMoneda ?? { DOP: data.resumen ?? {} };
+      const monedas = Object.keys(resumenPorMoneda);
+      const totalFacturasCount = (data.facturas ?? []).length;
 
       let y = 30;
 
@@ -227,34 +248,41 @@ export class ClientesService {
       // Separador azul
       doc.rect(PL, y, W, 3).fill(BLUE); y += 10;
 
-      // ── Tarjetas resumen ─────────────────────────────────────────────────────
+      // ── Tarjetas resumen (una fila por moneda) ───────────────────────────────
 
-      const cardW = (W - 16) / 3;
-      const cards = [
-        { label: 'Total Facturado', value: fmtM(r.totalFacturado ?? 0), color: BLUE   },
-        { label: 'Total Cobrado',   value: fmtM(r.totalCobrado ?? 0),   color: '#059669' },
-        { label: 'Saldo Pendiente', value: fmtM(r.saldoPendiente ?? 0), color: (r.saldoPendiente ?? 0) > 0 ? '#dc2626' : '#059669' },
-      ];
-      cards.forEach((card, i) => {
-        const cx = PL + i * (cardW + 8);
-        doc.rect(cx, y, cardW, 40).fill('#f8fafc').stroke('#e2e8f0');
-        doc.fillColor(GRAY).font('Helvetica').fontSize(8).text(card.label, cx + 8, y + 7, { width: cardW - 16 });
-        doc.fillColor(card.color).font('Helvetica-Bold').fontSize(13).text(card.value, cx + 8, y + 18, { width: cardW - 16 });
-      });
-      y += 52;
+      for (const m of monedas) {
+        const r = resumenPorMoneda[m];
+        const cardW = (W - 16) / 3;
+        const monedaLabel = m === 'DOP' ? 'Pesos (DOP)' : m === 'USD' ? 'Dólares (USD)' : m;
+        doc.fillColor(GRAY).font('Helvetica').fontSize(7.5).text(monedaLabel, PL, y); y += 9;
+        const cards = [
+          { label: 'Total Facturado', value: fmtMoney(r.totalFacturado ?? 0, m), color: BLUE },
+          { label: 'Total Cobrado',   value: fmtMoney(r.totalCobrado   ?? 0, m), color: '#059669' },
+          { label: 'Saldo Pendiente', value: fmtMoney(r.saldoPendiente ?? 0, m), color: (r.saldoPendiente ?? 0) > 0 ? '#dc2626' : '#059669' },
+        ];
+        cards.forEach((card, i) => {
+          const cx = PL + i * (cardW + 8);
+          doc.rect(cx, y, cardW, 40).fill('#f8fafc').stroke('#e2e8f0');
+          doc.fillColor(GRAY).font('Helvetica').fontSize(8).text(card.label, cx + 8, y + 7, { width: cardW - 16 });
+          doc.fillColor(card.color).font('Helvetica-Bold').fontSize(12).text(card.value, cx + 8, y + 19, { width: cardW - 16 });
+        });
+        y += 48;
+      }
+      y += 4;
 
       // ── Tabla Facturas ───────────────────────────────────────────────────────
 
       doc.fillColor(DARK).font('Helvetica-Bold').fontSize(8.5)
-        .text(`FACTURAS (${r.cantidadFacturas ?? 0})`, PL, y); y += 12;
+        .text(`FACTURAS (${totalFacturasCount})`, PL, y); y += 12;
 
       const fCols = [
-        { h: 'Folio',     w: 80,  a: 'left'  as const },
-        { h: 'Fecha',     w: 65,  a: 'center' as const },
-        { h: 'Estado',    w: 65,  a: 'center' as const },
-        { h: 'Total',     w: 90,  a: 'right'  as const },
-        { h: 'Cobrado',   w: 90,  a: 'right'  as const },
-        { h: 'Pendiente', w: W - 80 - 65 - 65 - 90 - 90, a: 'right' as const },
+        { h: 'Folio',     w: 75,  a: 'left'   as const },
+        { h: 'Fecha',     w: 60,  a: 'center'  as const },
+        { h: 'Estado',    w: 60,  a: 'center'  as const },
+        { h: 'Moneda',    w: 42,  a: 'center'  as const },
+        { h: 'Total',     w: 85,  a: 'right'   as const },
+        { h: 'Cobrado',   w: 85,  a: 'right'   as const },
+        { h: 'Pendiente', w: W - 75 - 60 - 60 - 42 - 85 - 85, a: 'right' as const },
       ];
       doc.rect(PL, y, W, 18).fill(BLUE);
       let hx = PL;
@@ -277,17 +305,20 @@ export class ClientesService {
           .strokeColor('#e8e8e8').lineWidth(0.5).stroke();
         doc.lineWidth(1);
         let rx = PL;
+        const fMon = (f.moneda as string) ?? 'DOP';
         const cells = [
-          { t: f.folio,                              w: fCols[0].w, a: 'left'  as const },
-          { t: fmtD(f.fecha),                        w: fCols[1].w, a: 'center' as const },
-          { t: (f.estado ?? '').toUpperCase(),        w: fCols[2].w, a: 'center' as const },
-          { t: fmtM(f.total),                        w: fCols[3].w, a: 'right'  as const },
-          { t: fmtM(f.montoPagado),                  w: fCols[4].w, a: 'right'  as const },
-          { t: fmtM(f.montoPendiente),               w: fCols[5].w, a: 'right'  as const },
+          { t: f.folio,                         w: fCols[0].w, a: 'left'   as const },
+          { t: fmtD(f.fecha),                   w: fCols[1].w, a: 'center' as const },
+          { t: (f.estado ?? '').toUpperCase(),   w: fCols[2].w, a: 'center' as const },
+          { t: fMon,                             w: fCols[3].w, a: 'center' as const },
+          { t: fmtMoney(f.total, fMon),          w: fCols[4].w, a: 'right'  as const },
+          { t: fmtMoney(f.montoPagado, fMon),    w: fCols[5].w, a: 'right'  as const },
+          { t: fmtMoney(f.montoPendiente, fMon), w: fCols[6].w, a: 'right'  as const },
         ];
-        cells.forEach(cell => {
-          const isP = cell === cells[5] && Number(f.montoPendiente) > 0;
-          doc.fillColor(isP ? '#dc2626' : DARK).font('Helvetica').fontSize(8)
+        cells.forEach((cell, ci) => {
+          const isP = ci === 6 && Number(f.montoPendiente) > 0;
+          const isUSD = ci === 3 && fMon !== 'DOP';
+          doc.fillColor(isP ? '#dc2626' : isUSD ? '#b45309' : DARK).font('Helvetica').fontSize(8)
             .text(cell.t, rx + 3, y + 4, { width: cell.w - 6, align: cell.a, ellipsis: true });
           rx += cell.w;
         });
@@ -327,7 +358,7 @@ export class ClientesService {
             { t: fmtD(c.fecha),    w: cCols[0].w, a: 'center' as const },
             { t: c.metodoPago,     w: cCols[1].w, a: 'left'   as const },
             { t: c.referencia||'—',w: cCols[2].w, a: 'left'   as const },
-            { t: fmtM(c.monto),    w: cCols[3].w, a: 'right'  as const },
+            { t: fmtMoney(c.monto, c.moneda ?? 'DOP'), w: cCols[3].w, a: 'right' as const },
           ].forEach(cell => {
             doc.fillColor(cell === ([...[]].at(-1) as any) ? '#059669' : DARK).font('Helvetica').fontSize(8)
               .text(cell.t, rx2 + 3, y + 4, { width: cell.w - 6, align: cell.a, ellipsis: true });
