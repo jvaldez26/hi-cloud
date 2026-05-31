@@ -14,11 +14,18 @@ const { Title } = Typography;
 
 interface Linea { key: string; productoId?: number; descripcion?: string; cantidad: number; precioUnitario: number; porcentajeItbis: number; }
 
+const fmtMon = (v: number, moneda = 'DOP') => {
+  const sym = moneda === 'USD' ? 'US$' : moneda === 'EUR' ? '€' : 'RD$';
+  return `${sym} ${v.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
+
 export default function CompraFormPage() {
   const [form] = Form.useForm();
   const [lineas, setLineas] = useState<Linea[]>([{ key: '1', cantidad: 1, precioUnitario: 0, porcentajeItbis: 18 }]);
   const [tipoPago, setTipoPago]     = useState<'contado' | 'credito'>('credito');
   const [diasCredito, setDiasCredito] = useState(30);
+  const [moneda, setMoneda]         = useState<'DOP' | 'USD' | 'EUR'>('DOP');
+  const [tipoCambio, setTipoCambio] = useState<number>(1);
   const navigate = useNavigate();
   const qc = useQueryClient();
 
@@ -49,6 +56,21 @@ export default function CompraFormPage() {
     return fechaVal.add(diasCredito, 'day');
   })();
 
+  const handleMonedaChange = async (m: 'DOP' | 'USD' | 'EUR') => {
+    setMoneda(m);
+    if (m !== 'DOP') {
+      try {
+        const eid = localStorage.getItem('empresaId') ?? '';
+        const res = await fetch(`/api/v1/divisas/tasa-publica/${m}`, { credentials: 'include', headers: { 'X-Empresa-ID': eid } });
+        const data = await res.json();
+        const tasa = data?.data?.tasaVenta ?? data?.tasaVenta;
+        if (tasa) setTipoCambio(Number(tasa));
+      } catch { /* mantiene tipoCambio actual */ }
+    } else {
+      setTipoCambio(1);
+    }
+  };
+
   const handleSubmit = (values: { proveedorId: number; fecha: dayjs.Dayjs; numeroFacturaProveedor?: string; notas?: string }) => {
     const detalles: CompraDetallePayload[] = lineas.map(l => ({
       productoId: l.productoId!, descripcion: l.descripcion,
@@ -62,7 +84,9 @@ export default function CompraFormPage() {
       numeroFacturaProveedor: values.numeroFacturaProveedor,
       tipoPago,
       diasCredito: tipoPago === 'credito' ? diasCredito : undefined,
-    });
+      moneda,
+      tipoCambio: moneda !== 'DOP' ? tipoCambio : undefined,
+    } as any);
   };
 
   const lineaCols = [
@@ -92,7 +116,7 @@ export default function CompraFormPage() {
         <InputNumber min={0} max={100} value={r.porcentajeItbis} style={{ width:'100%' }}
           onChange={v => { const u=[...lineas]; u[idx].porcentajeItbis=v??18; setLineas(u); }} />
       )},
-    { title: 'Subtotal', key: 'sub', width: 110, render: (_: unknown, r: Linea) => fmt.money(r.precioUnitario * r.cantidad) },
+    { title: 'Subtotal', key: 'sub', width: 110, render: (_: unknown, r: Linea) => fmtMon(r.precioUnitario * r.cantidad, moneda) },
     { title: '', key: 'del', width: 50, render: (_: unknown, _r: Linea, idx: number) => (
         <Button type="text" danger icon={<DeleteOutlined />} onClick={() => setLineas(lineas.filter((_, i) => i !== idx))} />
       )},
@@ -123,6 +147,27 @@ export default function CompraFormPage() {
                 <Input placeholder="B01-00000001" />
               </Form.Item>
             </Col>
+            <Col xs={12} sm={3}>
+              <Form.Item label="Moneda">
+                <Select value={moneda} onChange={handleMonedaChange} style={{ width: '100%' }}>
+                  <Select.Option value="DOP">DOP (Pesos)</Select.Option>
+                  <Select.Option value="USD">USD (Dólares)</Select.Option>
+                  <Select.Option value="EUR">EUR (Euros)</Select.Option>
+                </Select>
+              </Form.Item>
+            </Col>
+            {moneda !== 'DOP' && (
+              <Col xs={12} sm={3}>
+                <Form.Item label={`Tasa (RD$ por ${moneda} 1)`}>
+                  <InputNumber
+                    value={tipoCambio} min={1} precision={4}
+                    style={{ width: '100%' }}
+                    onChange={v => setTipoCambio(v ?? 1)}
+                    addonBefore="RD$"
+                  />
+                </Form.Item>
+              </Col>
+            )}
             <Col xs={12} sm={3}>
               <Form.Item label="Tipo de pago" required>
                 <Select value={tipoPago} onChange={v => setTipoPago(v)} style={{ width: '100%' }}>
@@ -169,13 +214,19 @@ export default function CompraFormPage() {
           <Row justify="end">
             <Col xs={24} sm={10}>
               <Space direction="vertical" style={{ width: '100%' }}>
-                <Row justify="space-between"><span>Subtotal:</span><strong>{fmt.money(subtotal)}</strong></Row>
-                <Row justify="space-between"><span>ITBIS (18%):</span><strong>{fmt.money(itbis)}</strong></Row>
+                <Row justify="space-between"><span>Subtotal:</span><strong>{fmtMon(subtotal, moneda)}</strong></Row>
+                <Row justify="space-between"><span>ITBIS (18%):</span><strong>{fmtMon(itbis, moneda)}</strong></Row>
                 <Divider style={{ margin: '8px 0' }} />
                 <Row justify="space-between">
                   <span style={{ fontSize: 16 }}>Total:</span>
-                  <strong style={{ fontSize: 18, color: '#1677ff' }}>{fmt.money(total)}</strong>
+                  <strong style={{ fontSize: 18, color: '#1677ff' }}>{fmtMon(total, moneda)}</strong>
                 </Row>
+                {moneda !== 'DOP' && tipoCambio > 1 && (
+                  <Row justify="space-between" style={{ color: '#888', fontSize: 12 }}>
+                    <span>Equivalente RD$:</span>
+                    <span>{fmtMon(total * tipoCambio, 'DOP')}</span>
+                  </Row>
+                )}
                 <Button type="primary" htmlType="submit" block size="large" loading={createMut.isPending}>
                   Crear Orden de Compra
                 </Button>

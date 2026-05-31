@@ -177,6 +177,7 @@ export default function ComprasPage() {
     { key: 'proveedor', label: 'Proveedor',    defaultVisible: true  },
     { key: 'ncf',       label: 'NCF Proveedor',defaultVisible: true  },
     { key: 'tipoPago',  label: 'Tipo Pago',    defaultVisible: true  },
+    { key: 'moneda',    label: 'Moneda',       defaultVisible: true  },
     { key: 'total',     label: 'Total',        defaultVisible: true  },
     { key: 'estado',    label: 'Estado',       defaultVisible: true  },
     { key: 'ecf',       label: 'e-CF',         defaultVisible: false },
@@ -209,8 +210,19 @@ export default function ComprasPage() {
       ),
     },
     {
+      title: 'Moneda', key: 'moneda', dataIndex: 'moneda', width: 72,
+      render: (v: string) => {
+        const m = v || 'DOP';
+        return <Tag color={m === 'USD' ? 'gold' : m === 'EUR' ? 'purple' : 'default'} style={{ fontSize: 11, fontWeight: 600, margin: 0, fontFamily: 'monospace' }}>{m}</Tag>;
+      },
+    },
+    {
       title: 'Total', key: 'total', dataIndex: 'total', width: 110, align: 'right' as const,
-      render: (v: number) => <Text strong style={{ color: token.colorPrimary }}>{fmt.money(v)}</Text>,
+      render: (v: number, r: any) => {
+        const m = (r as any).moneda ?? 'DOP';
+        const sym = m === 'USD' ? 'US$' : m === 'EUR' ? '€' : 'RD$';
+        return <Text strong style={{ color: token.colorPrimary }}>{sym} {Number(v).toLocaleString('es-DO', { minimumFractionDigits: 2 })}</Text>;
+      },
     },
     {
       title: 'Estado', key: 'estado', dataIndex: 'estado', width: 90,
@@ -328,7 +340,7 @@ export default function ComprasPage() {
 
 
       <Table
-        columns={filterColumns(columns)} dataSource={rows} rowKey="id"
+        columns={filterColumns(columns as any) as any} dataSource={rows} rowKey="id"
         loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
         onRow={r => ({ style: { cursor: 'pointer' }, onDoubleClick: () => navigate(`/compras/${r.id}`) })}
