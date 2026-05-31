@@ -164,12 +164,14 @@ export class MultiEmpresaService {
       }
 
       return filtradas.map((a) => ({
-        empresaId:   a.empresaId,
-        nombre:      a.empresa.nombre,
-        rnc:         a.empresa.rnc,
-        rol:         a.rol,
-        isPrincipal: a.isPrincipal,
-        plan:        planMap[a.empresaId] ?? null,
+        empresaId:          a.empresaId,
+        nombre:             a.empresa.nombre,
+        rnc:                a.empresa.rnc,
+        rol:                a.rol,
+        isPrincipal:        a.isPrincipal,
+        plan:               planMap[a.empresaId] ?? null,
+        estadoAprobacion:   (a.empresa as any).estadoAprobacion  ?? 'aprobada',
+        motivoRechazo:      (a.empresa as any).motivoRechazo     ?? null,
       }));
     }
 
@@ -283,6 +285,14 @@ export class MultiEmpresaService {
 
     if (!acceso) {
       throw new ForbiddenException(`Sin acceso a empresa #${empresaId}`);
+    }
+
+    const estado = (acceso.empresa as any).estadoAprobacion ?? 'aprobada';
+    if (estado === 'pendiente') {
+      throw new ForbiddenException('Esta empresa está pendiente de aprobación por el administrador');
+    }
+    if (estado === 'rechazada') {
+      throw new ForbiddenException('Esta empresa fue rechazada. Contacta al administrador para más información');
     }
 
     return {

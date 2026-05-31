@@ -93,18 +93,8 @@ export default function EcfResultModal({ encf, onClose }: Props) {
             <Alert
               type="info" showIcon icon={<Spin size="small" />}
               style={{ marginBottom: 12 }}
-              message={
-                ecf.estadoDGII === 'enviado' && ecf.trackId
-                  ? 'Recibido por MSeller — verificando aceptación DGII'
-                  : ecf.estadoDGII === 'enviado'
-                  ? 'Enviado a MSeller — esperando confirmación de recepción'
-                  : 'Enviando a MSeller…'
-              }
-              description={
-                ecf.estadoDGII === 'enviado' && ecf.trackId
-                  ? 'El documento fue recibido. Se actualizará automáticamente cuando la DGII procese la respuesta.'
-                  : 'El comprobante fue enviado. Verificando confirmación automáticamente…'
-              }
+              message="Procesando en DGII"
+              description="El comprobante fue enviado. Verificando confirmación automáticamente…"
             />
           )}
 
