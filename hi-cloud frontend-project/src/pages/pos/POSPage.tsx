@@ -3319,6 +3319,8 @@ export default function POSPage() {
   const barcodeRef = useRef<HTMLInputElement>(null);
   const [showPago,           setShowPago]           = useState(false);
   const [metodoPago,         setMetodoPago]         = useState<MetodoPago>('efectivo');
+  const [monedaPOS,          setMonedaPOS]          = useState<'DOP' | 'USD'>('DOP');
+  const [tasaCambioPOS,      setTasaCambioPOS]      = useState<number>(1);
   const [montoRecibido,      setMontoRecibido]      = useState(0);
   const [tipoPagoPos,        setTipoPagoPos]        = useState<'CONTADO' | 'CREDITO'>('CONTADO');
   const [propinaValor,       setPropinaValor]       = useState<string>('');
@@ -3664,6 +3666,8 @@ export default function POSPage() {
         vendedorId,
         nombreVendedor: vendedor?.nombre,
         sucursalId,
+        moneda:      monedaPOS,
+        tipoCambio:  monedaPOS !== 'DOP' ? tasaCambioPOS : undefined,
         detalles: cart.map(i => ({
           productoId:     i.produto.id,
           cantidad:       i.cantidad,
@@ -4381,6 +4385,11 @@ export default function POSPage() {
               </div>
             </div>
             <div style={{ fontSize: 28, fontWeight: 800, color: '#fff', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{fmt.money(totalAPagar)}</div>
+            {monedaPOS === 'USD' && tasaCambioPOS > 1 && (
+              <div style={{ fontSize: 13, color: '#FCD34D', marginTop: 2, fontWeight: 700 }}>
+                US$ {(totalAPagar / tasaCambioPOS).toFixed(2)} @ RD$ {tasaCambioPOS.toFixed(2)}
+              </div>
+            )}
             {propinaMontoCalc > 0 && (
               <div style={{ fontSize: 11, color: '#FCD34D', marginTop: 2 }}>
                 Total factura {fmt.money(totalEfectivo)} + Propina {fmt.money(propinaMontoCalc)}
@@ -4432,6 +4441,46 @@ export default function POSPage() {
                 ) : (
                   <span style={{ color: '#DC2626', fontWeight: 600 }}>⚠ Selecciona un cliente para venta a crédito</span>
                 )}
+              </div>
+            )}
+          </div>
+
+          {/* Moneda de la venta (DOP / USD) */}
+          <div style={{ flexShrink: 0, padding: '8px 16px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+            <div style={{ fontSize: 9, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 5 }}>Moneda</div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {(['DOP', 'USD'] as const).map(m => {
+                const act = monedaPOS === m;
+                return (
+                  <button key={m} onClick={async () => {
+                    setMonedaPOS(m);
+                    if (m !== 'DOP') {
+                      try {
+                        const eid = localStorage.getItem('empresaId') ?? '';
+                        const res = await fetch(`/api/v1/divisas/tasa-publica/${m}`, { credentials: 'include', headers: { 'X-Empresa-ID': eid } });
+                        const d = await res.json();
+                        const tasa = d?.data?.tasaVenta ?? d?.tasaVenta;
+                        if (tasa) setTasaCambioPOS(Number(tasa));
+                      } catch { /* mantiene tasa actual */ }
+                    } else {
+                      setTasaCambioPOS(1);
+                    }
+                  }}
+                    style={{ flex: 1, height: 30, borderRadius: 7, border: act ? `1.5px solid ${m === 'USD' ? '#FCD34D' : '#86EFAC'}` : '1.5px solid #E2E8F0',
+                      background: act ? (m === 'USD' ? '#FFFBEB' : '#F0FDF4') : '#fff', cursor: 'pointer',
+                      fontSize: 12, fontWeight: 700, color: act ? (m === 'USD' ? '#B45309' : '#15803D') : '#475569', outline: 'none' }}>
+                    {m === 'USD' ? '🇺🇸 US$' : '🇩🇴 RD$'}
+                  </button>
+                );
+              })}
+            </div>
+            {monedaPOS === 'USD' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, fontSize: 11, color: '#92400E' }}>
+                <span>Tasa:</span>
+                <input type="number" min={1} step={0.01} value={tasaCambioPOS}
+                  onChange={e => setTasaCambioPOS(Math.max(1, Number(e.target.value)))}
+                  style={{ width: 70, height: 24, border: '1px solid #FCD34D', borderRadius: 5, textAlign: 'center', fontSize: 11, fontWeight: 700, color: '#92400E', outline: 'none', background: '#FFFBEB' }} />
+                <span>RD$ / US$1 → US$ {(totalAPagar / tasaCambioPOS).toFixed(2)}</span>
               </div>
             )}
           </div>
