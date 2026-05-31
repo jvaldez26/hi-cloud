@@ -3322,6 +3322,7 @@ export default function POSPage() {
   const [monedaPOS,          setMonedaPOS]          = useState<'DOP' | 'USD'>('DOP');
   const [tasaCambioPOS,      setTasaCambioPOS]      = useState<number>(1);
   const [montoRecibido,      setMontoRecibido]      = useState(0);
+  const montoInputRef = useRef<HTMLInputElement>(null);
   const [tipoPagoPos,        setTipoPagoPos]        = useState<'CONTADO' | 'CREDITO'>('CONTADO');
   const [propinaValor,       setPropinaValor]       = useState<string>('');
   const [propinaTipo,        setPropinaTipo]        = useState<'%' | 'fijo'>('%');
@@ -3339,6 +3340,14 @@ export default function POSPage() {
   const [ecfEncf,            setEcfEncf]            = useState<string>('');
   const searchRef = useRef<any>(null);
   const { pendingCount, isSyncing, enqueue, sync } = useOfflineQueue();
+
+  // Autofocus en campo de monto al abrir panel de cobro en efectivo
+  useEffect(() => {
+    if (showPago && metodoPago === 'efectivo' && tipoPagoPos === 'CONTADO') {
+      const t = setTimeout(() => montoInputRef.current?.focus(), 120);
+      return () => clearTimeout(t);
+    }
+  }, [showPago, metodoPago, tipoPagoPos]);
 
   // Offline detection
   useEffect(() => {
@@ -4663,9 +4672,19 @@ export default function POSPage() {
               <>
                 <div style={{ flexShrink: 0, display: 'flex', alignItems: 'baseline', gap: 4, borderBottom: '2px solid #3B82F6', paddingBottom: 4, marginBottom: 5 }}>
                   <span style={{ fontSize: 12, color: '#94A3B8', fontWeight: 500 }}>RD$</span>
-                  <span style={{ flex: 1, textAlign: 'right', fontSize: 22, fontWeight: 700, color: '#0F172A', fontVariantNumeric: 'tabular-nums' }}>
-                    {montoRecibido > 0 ? montoRecibido.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : <span style={{ color: '#CBD5E1', fontWeight: 400, fontSize: 16 }}>0.00</span>}
-                  </span>
+                  <input
+                    ref={montoInputRef}
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    value={montoRecibido === 0 ? '' : montoRecibido}
+                    placeholder="0.00"
+                    onChange={e => setMontoRecibido(Math.max(0, Number(e.target.value) || 0))}
+                    onFocus={e => e.target.select()}
+                    style={{ flex: 1, textAlign: 'right', fontSize: 22, fontWeight: 700, color: '#0F172A',
+                      fontVariantNumeric: 'tabular-nums', background: 'transparent', border: 'none',
+                      outline: 'none', width: '100%', WebkitAppearance: 'none', MozAppearance: 'textfield' as any }}
+                  />
                 </div>
                 <div style={{ flexShrink: 0, display: 'flex', gap: 4, marginBottom: 5 }}>
                   {[200, 500, 1000, 2000].map(a => (
@@ -4690,11 +4709,29 @@ export default function POSPage() {
           {/* Footer */}
           <div style={{ flexShrink: 0, padding: '6px 16px 14px', background: '#fff', borderTop: '1px solid #F1F5F9' }}>
             <AnimatePresence>
+              {/* Cambio */}
               {metodoPago === 'efectivo' && montoRecibido >= totalEfectivo && cambio > 0 && (
                 <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} style={{ overflow: 'hidden', marginBottom: 5 }}>
                   <div style={{ background: '#F0FDF4', border: '1px solid #86EFAC', borderRadius: 7, padding: '5px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: 10, fontWeight: 700, color: '#15803D', textTransform: 'uppercase' }}>Cambio · recibido {fmt.money(montoRecibido)}</span>
                     <span style={{ fontSize: 15, fontWeight: 800, color: '#15803D', fontVariantNumeric: 'tabular-nums' }}>{fmt.money(cambio)}</span>
+                  </div>
+                </motion.div>
+              )}
+              {/* Monto exacto */}
+              {metodoPago === 'efectivo' && montoRecibido > 0 && Math.abs(montoRecibido - totalAPagar) < 0.01 && (
+                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} style={{ overflow: 'hidden', marginBottom: 5 }}>
+                  <div style={{ background: '#F0FDF4', border: '1px solid #86EFAC', borderRadius: 7, padding: '5px 10px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#15803D' }}>✓ Monto exacto</span>
+                  </div>
+                </motion.div>
+              )}
+              {/* Falta */}
+              {metodoPago === 'efectivo' && montoRecibido > 0 && montoRecibido < totalAPagar - 0.01 && (
+                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} style={{ overflow: 'hidden', marginBottom: 5 }}>
+                  <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 7, padding: '5px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: '#DC2626', textTransform: 'uppercase' }}>Falta para completar</span>
+                    <span style={{ fontSize: 15, fontWeight: 800, color: '#DC2626', fontVariantNumeric: 'tabular-nums' }}>{fmt.money(totalAPagar - montoRecibido)}</span>
                   </div>
                 </motion.div>
               )}
