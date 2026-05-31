@@ -243,6 +243,7 @@ export default function NotasDebitoPage() {
     { key: 'f',   label: 'Fecha',         defaultVisible: true  },
     { key: 'c',   label: 'Cliente',       defaultVisible: true  },
     { key: 'fof', label: 'Fact. Original',defaultVisible: true  },
+    { key: 'mon', label: 'Moneda',        defaultVisible: true  },
     { key: 't',   label: 'Total',         defaultVisible: true  },
     { key: 'e',   label: 'Estado',        defaultVisible: true  },
     { key: 'ecf', label: 'e-CF',          defaultVisible: false },
@@ -295,6 +296,13 @@ export default function NotasDebitoPage() {
             { title: 'Fecha', dataIndex: 'fecha', key: 'f', width: 100, render: (v: string) => <Text style={{ fontSize: 12 }}>{v}</Text> },
             { title: 'Cliente', key: 'c', ellipsis: true, render: (_: any, r: any) => <Text strong style={{ fontSize: 13 }}>{r.cliente?.nombre ?? '—'}</Text> },
             { title: 'Fact. Original', dataIndex: 'facturaOriginalFolio', key: 'fof', width: 130, render: (v: string) => v ? <Text style={{ fontFamily: 'monospace', fontSize: 12 }}>{v}</Text> : <Text type="secondary">—</Text> },
+            {
+              title: 'Moneda', dataIndex: 'moneda', key: 'mon', width: 68,
+              render: (v: any) => {
+                const m = v || 'DOP';
+                return <Tag color={m === 'DOP' ? 'default' : 'gold'} style={{ fontSize: 11, fontWeight: 600, margin: 0, fontFamily: 'monospace' }}>{m}</Tag>;
+              },
+            },
             { title: 'Total', dataIndex: 'total', key: 't', width: 120, align: 'right' as const, render: (v: number) => <Text strong style={{ color: '#d97706' }}>+{fmt(v)}</Text> },
             { title: 'Estado', dataIndex: 'estado', key: 'e', width: 100, render: (v: string) => <Tag color={ESTADO_CONFIG[v]?.color} style={{ margin: 0, fontSize: 11 }}>{ESTADO_CONFIG[v]?.label}</Tag> },
             { title: 'e-CF', key: 'ecf', width: 120, render: (_: any, r: any) => r.ecfNumero

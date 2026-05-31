@@ -283,6 +283,7 @@ export default function NotasCreditoPage() {
     { key: 'f',   label: 'Fecha',        defaultVisible: true  },
     { key: 'c',   label: 'Cliente',      defaultVisible: true  },
     { key: 't',   label: 'Total',        defaultVisible: true  },
+    { key: 'mon', label: 'Moneda',       defaultVisible: true  },
     { key: 'fof', label: 'Factura orig.',defaultVisible: true  },
     { key: 'e',   label: 'Estado',       defaultVisible: true  },
   ];
@@ -350,6 +351,13 @@ export default function NotasCreditoPage() {
             {
               title: 'Total', dataIndex: 'total', key: 't', align: 'right' as const, width: 110,
               render: (v: any) => <Text strong style={{ color: token.colorError, whiteSpace: 'nowrap' }}>{fmt(v)}</Text>,
+            },
+            {
+              title: 'Moneda', dataIndex: 'moneda', key: 'mon', width: 68,
+              render: (v: any) => {
+                const m = v || 'DOP';
+                return <Tag color={m === 'DOP' ? 'default' : 'gold'} style={{ fontSize: 11, fontWeight: 600, margin: 0, fontFamily: 'monospace' }}>{m}</Tag>;
+              },
             },
             {
               title: 'Factura orig.', dataIndex: 'facturaOriginalFolio', key: 'fof', width: 160,
