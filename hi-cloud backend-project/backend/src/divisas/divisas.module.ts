@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { DivisasController } from './divisas.controller';
 import { DivisasService } from './divisas.service';
 import { TasaCambio } from './entities/tasa-cambio.entity';
+// DataSource is globally provided by TypeOrmModule.forRoot in AppModule
 
 @Module({
   imports: [TypeOrmModule.forFeature([TasaCambio])],

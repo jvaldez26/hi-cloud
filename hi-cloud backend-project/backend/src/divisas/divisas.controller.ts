@@ -81,4 +81,17 @@ export class DivisasController {
   ) {
     return this.svc.convertir(Number(monto), moneda, (tipo as 'venta' | 'compra') ?? 'venta');
   }
+
+  @Get('tasa-publica/:moneda')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @ApiOperation({ summary: 'Tasa global obtenida del Banco Central (sin contexto de empresa)' })
+  tasaPublica(@Param('moneda') moneda: string) {
+    return this.svc.getTasaPublica(moneda);
+  }
+
+  @Post('bcrd/sync')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Forzar sincronización de tasa BCRD ahora (admin)' })
+  bcrdSync() { return this.svc.ejecutarCronManual(); }
 }
