@@ -182,7 +182,20 @@ export default function EstadoCuentaPage() {
               }}>
               Descargar PDF
             </Button>
-            <Button icon={<PrinterOutlined />} onClick={() => window.print()}>Imprimir</Button>
+            <Button icon={<PrinterOutlined />} onClick={async () => {
+                const eid = localStorage.getItem('empresaId') ?? '';
+                const params = new URLSearchParams();
+                if (rango?.[0]) params.set('fechaDesde', rango[0].format('YYYY-MM-DD'));
+                if (rango?.[1]) params.set('fechaHasta', rango[1].format('YYYY-MM-DD'));
+                const res = await fetch(`/api/v1/clientes/${id}/estado-cuenta/pdf?${params}`, {
+                  credentials: 'include',
+                  headers: { 'X-Empresa-ID': eid },
+                });
+                if (!res.ok) { alert('Error generando PDF'); return; }
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                window.open(url, '_blank');
+              }}>Imprimir</Button>
           </Space>
         </Col>
       </Row>
