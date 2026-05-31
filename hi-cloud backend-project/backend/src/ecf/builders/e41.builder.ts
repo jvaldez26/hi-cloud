@@ -36,20 +36,26 @@ export function buildE41(input: ECFBuildInput): MSellerPayload {
   const pctIsr          = f2(Number(compraData?.porcentajeRetencionIsr ?? 10));
 
   // PASO 1: construir items
+  // Retencion es OBLIGATORIA en E41 y debe ir ANTES de NombreItem (minOccurs=1 en XSD)
   const items = detalles.map((d: any, idx: number) => {
     const pct      = parseFloat(String(d.porcentajeIva ?? 18));
     const indFact  = pct >= 18 ? 1 : pct >= 16 ? 2 : 4;
     const subtotal = f2(Number(d.subtotal));
     const iva      = f2(Number(d.importeIva ?? d.iva ?? 0));
 
-    // Retención ITBIS por item (proporcional)
+    // Retención por item — 0.00 si no aplica (bloque siempre presente)
     const retenItbisItem = retieneItbis && iva > 0 ? f2(iva * pctItbis / 100) : 0;
-    // Retención ISR por item (sobre el subtotal)
-    const retenIsrItem   = retieneIsr ? f2(subtotal * pctIsr / 100) : 0;
+    const retenIsrItem   = retieneIsr   ? f2(subtotal * pctIsr / 100)          : 0;
 
-    const item: Record<string, unknown> = {
-      NumeroLinea:            idx + 1,
-      IndicadorFacturacion:   indFact,
+    return {
+      NumeroLinea:          idx + 1,
+      IndicadorFacturacion: indFact,
+      // Retencion ANTES de NombreItem — orden obligatorio XSD E41
+      Retencion: {
+        IndicadorAgenteRetencionoPercepcion: 1,
+        MontoITBISRetenido: parseFloat(retenItbisItem.toFixed(2)),
+        MontoISRRetenido:   parseFloat(retenIsrItem.toFixed(2)),
+      },
       NombreItem:             d.descripcion,
       IndicadorBienoServicio: 1,
       CantidadItem:           Number(d.cantidad),
@@ -57,16 +63,6 @@ export function buildE41(input: ECFBuildInput): MSellerPayload {
       PrecioUnitarioItem:     f2(Number(d.precioUnitario)),
       MontoItem:              subtotal,
     };
-
-    if (retenItbisItem > 0 || retenIsrItem > 0) {
-      item['Retencion'] = {
-        IndicadorAgenteRetencionoPercepcion: 1,
-        ...(retenItbisItem > 0 ? { MontoITBISRetenido: retenItbisItem } : {}),
-        ...(retenIsrItem   > 0 ? { MontoISRRetenido:   retenIsrItem   } : {}),
-      };
-    }
-
-    return item;
   });
 
   // PASO 2: calcular totales DESDE los items
@@ -103,14 +99,11 @@ export function buildE41(input: ECFBuildInput): MSellerPayload {
   totales['MontoTotal'] = montoTotal;
 
   // Totales de retenciones (sum desde items para cuadratura DGII)
-  if (retieneItbis) {
-    const totalItbisRet = f2(items.reduce((s, it: any) => s + Number((it['Retencion'] as any)?.MontoITBISRetenido ?? 0), 0));
-    if (totalItbisRet > 0) totales['TotalITBISRetenido'] = totalItbisRet;
-  }
-  if (retieneIsr) {
-    const totalIsrRet = f2(items.reduce((s, it: any) => s + Number((it['Retencion'] as any)?.MontoISRRetenido ?? 0), 0));
-    if (totalIsrRet > 0) totales['TotalISRRetencion'] = totalIsrRet;
-  }
+  // Solo se incluyen en Totales si hay retenciones reales (> 0)
+  const totalItbisRet = f2(items.reduce((s, it) => s + Number((it as any).Retencion?.MontoITBISRetenido ?? 0), 0));
+  const totalIsrRet   = f2(items.reduce((s, it) => s + Number((it as any).Retencion?.MontoISRRetenido   ?? 0), 0));
+  if (totalItbisRet > 0) totales['TotalITBISRetenido'] = totalItbisRet;
+  if (totalIsrRet   > 0) totales['TotalISRRetencion']  = totalIsrRet;
 
   return {
     ECF: {
@@ -121,7 +114,7 @@ export function buildE41(input: ECFBuildInput): MSellerPayload {
           encf,
           fechaVencSec,
           indicadorMontoGravado: 0,
-          tipoIngresos:          '01',
+          // TipoIngresos eliminado — inválido en E41 (error XSD código 3)
           tipoPago:              2,
           fechaLimitePago:       fechaLimite,
         }),
