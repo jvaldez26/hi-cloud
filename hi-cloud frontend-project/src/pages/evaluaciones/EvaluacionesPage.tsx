@@ -104,10 +104,10 @@ export default function EvaluacionesPage() {
     { title: 'Período',  dataIndex: 'periodo',  width: 110, render: (v: string) => <Tag>{v}</Tag> },
     { title: 'Semestre', dataIndex: 'semestre', width: 80 },
     { title: 'Calificación', dataIndex: 'calificacionGeneral', width: 130,
-      render: (v: number) => v ? (
+      render: (v: any) => v != null && v !== '' ? (
         <Space>
-          <Text strong style={{ color: NOTA_COLOR(v), fontSize: 16 }}>{v?.toFixed(1)}</Text>
-          <Tag color={NOTA_COLOR(v)} style={{ fontSize: 10 }}>{NOTA_LABEL(v)}</Tag>
+          <Text strong style={{ color: NOTA_COLOR(Number(v)), fontSize: 16 }}>{Number(v).toFixed(1)}</Text>
+          <Tag color={NOTA_COLOR(Number(v))} style={{ fontSize: 10 }}>{NOTA_LABEL(Number(v))}</Tag>
         </Space>
       ) : '—' },
     { title: 'Estado', dataIndex: 'estado', width: 120,
@@ -216,14 +216,14 @@ export default function EvaluacionesPage() {
                   </div>
                   <div style={{ width: 200 }}>
                     <Progress
-                      percent={(emp.promedio / 5) * 100}
-                      format={() => `${emp.promedio}/5`}
-                      strokeColor={NOTA_COLOR(emp.promedio)}
+                      percent={(Number(emp.promedio) / 5) * 100}
+                      format={() => `${Number(emp.promedio).toFixed(1)}/5`}
+                      strokeColor={NOTA_COLOR(Number(emp.promedio))}
                       size="small"
                     />
                   </div>
-                  <Tag color={NOTA_COLOR(emp.promedio)} style={{ minWidth: 80, textAlign: 'center' }}>
-                    {NOTA_LABEL(emp.promedio)}
+                  <Tag color={NOTA_COLOR(Number(emp.promedio))} style={{ minWidth: 80, textAlign: 'center' }}>
+                    {NOTA_LABEL(Number(emp.promedio))}
                   </Tag>
                 </div>
               ))}
