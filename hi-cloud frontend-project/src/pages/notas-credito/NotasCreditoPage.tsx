@@ -21,6 +21,7 @@ import dayjs from 'dayjs';
 import api from '../../api/client';
 import { ecfApi } from '../../api/ecf.api';
 import EcfResultModal from '../../components/ui/EcfResultModal';
+import EcfBadge, { type EstadoEcf } from '../../components/ui/EcfBadge';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -302,6 +303,7 @@ export default function NotasCreditoPage() {
     { key: 'mon', label: 'Moneda',       defaultVisible: true  },
     { key: 'fof', label: 'Factura orig.',defaultVisible: true  },
     { key: 'e',   label: 'Estado',       defaultVisible: true  },
+    { key: 'ecf', label: 'e-CF',         defaultVisible: true  },
   ];
   const { visibleColumns, updateVisibility, filterColumns: fcNC } = useColumnVisibility('notas-credito', COLS_DEF);
 
@@ -382,6 +384,15 @@ export default function NotasCreditoPage() {
             {
               title: 'Estado', dataIndex: 'estado', key: 'e', width: 100,
               render: (v: any) => <Tag color={ESTADO_CONFIG[v]?.color}>{ESTADO_CONFIG[v]?.label}</Tag>,
+            },
+            {
+              title: 'e-CF', key: 'ecf', width: 140,
+              render: (_: any, r: any) => {
+                if (r.ecfNumero) {
+                  return <EcfBadge estado={(r.ecf?.estadoDGII ?? r.ecfEstado ?? 'enviado') as EstadoEcf} encf={r.ecfNumero} small />;
+                }
+                return <Text type="secondary" style={{ fontSize: 11 }}>—</Text>;
+              },
             },
             {
               title: '', key: 'acc', width: 72, align: 'right' as const,

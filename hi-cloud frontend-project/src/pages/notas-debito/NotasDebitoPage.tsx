@@ -20,6 +20,7 @@ import dayjs from 'dayjs';
 import api from '../../api/client';
 import { ecfApi } from '../../api/ecf.api';
 import EcfResultModal from '../../components/ui/EcfResultModal';
+import EcfBadge, { type EstadoEcf } from '../../components/ui/EcfBadge';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -262,7 +263,7 @@ export default function NotasDebitoPage() {
     { key: 'mon', label: 'Moneda',        defaultVisible: true  },
     { key: 't',   label: 'Total',         defaultVisible: true  },
     { key: 'e',   label: 'Estado',        defaultVisible: true  },
-    { key: 'ecf', label: 'e-CF',          defaultVisible: false },
+    { key: 'ecf', label: 'e-CF',          defaultVisible: true  },
   ];
   const { visibleColumns, updateVisibility, filterColumns: fcND } = useColumnVisibility('notas-debito', COLS_DEF);
 
@@ -321,9 +322,15 @@ export default function NotasDebitoPage() {
             },
             { title: 'Total', dataIndex: 'total', key: 't', width: 120, align: 'right' as const, render: (v: number, r: any) => <Text strong style={{ color: '#d97706' }}>+{fmtMon(v, r.moneda)}</Text> },
             { title: 'Estado', dataIndex: 'estado', key: 'e', width: 100, render: (v: string) => <Tag color={ESTADO_CONFIG[v]?.color} style={{ margin: 0, fontSize: 11 }}>{ESTADO_CONFIG[v]?.label}</Tag> },
-            { title: 'e-CF', key: 'ecf', width: 120, render: (_: any, r: any) => r.ecfNumero
-                ? <Text style={{ fontFamily: 'monospace', fontSize: 11, color: '#059669' }}>{r.ecfNumero}</Text>
-                : <Text type="secondary" style={{ fontSize: 11 }}>—</Text> },
+            {
+              title: 'e-CF', key: 'ecf', width: 140,
+              render: (_: any, r: any) => {
+                if (r.ecfNumero) {
+                  return <EcfBadge estado={(r.ecf?.estadoDGII ?? r.ecfEstado ?? 'enviado') as EstadoEcf} encf={r.ecfNumero} small />;
+                }
+                return <Text type="secondary" style={{ fontSize: 11 }}>—</Text>;
+              },
+            },
             { title: '', key: 'acc', width: 220,
               render: (_: any, r: any) => (
                 <TableActions
