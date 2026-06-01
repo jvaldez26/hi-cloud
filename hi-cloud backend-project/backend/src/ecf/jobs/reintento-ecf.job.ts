@@ -66,11 +66,12 @@ export class ReintentoECFJob {
    * reintentos enviaba en bloque a MSeller quemando secuencias.
    * El rescate manual se hace vía POST /ecf/ejecutar-reintentos (admin only).
    *
-   * Cron original: '* /30 * * * *'
-   * Reemplazado por: '0 3 31 2 *' (nunca — 31 de febrero no existe)
+   * Cron válido mínimo: '0 0 1 1 *' (1 enero a medianoche) + return inmediato.
    */
-  @Cron('0 3 31 2 *', { name: 'rescate-contingencia-ecf' })
+  @Cron('0 0 1 1 *', { name: 'rescate-contingencia-ecf' })
   async rescatarContingencia(): Promise<void> {
+    // DESHABILITADO — no hacer nada para evitar reenvíos masivos accidentales
+    return;
     const hace48h = new Date(Date.now() - 48 * 60 * 60_000);
 
     const enContingencia = await this.ecfRepo.find({
