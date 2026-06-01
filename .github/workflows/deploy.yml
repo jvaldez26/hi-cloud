@@ -312,14 +312,15 @@ jobs:
                 .catch(err => { console.error('  ❌ Migración falló:', err.message); process.exit(1); });
             " || { echo '❌ Migraciones fallaron — deploy abortado'; exit 1; }
 
-            # Reiniciar backend con el nuevo código
+            # Recargar backend con zero-downtime (reload mantiene el proceso vivo,
+            # evita que los JWTs en tránsito sean invalidados por un kill+start)
             if ! pm2 list | grep -q hicloud-backend; then
               pm2 start /home/ubuntu/hicloud/backend-current/dist/main.js \
                 --name hicloud-backend \
                 --cwd /home/ubuntu/hicloud/backend-current \
                 --interpreter node
             else
-              pm2 restart hicloud-backend --update-env
+              pm2 reload hicloud-backend --update-env
             fi
             pm2 save
             sleep 20

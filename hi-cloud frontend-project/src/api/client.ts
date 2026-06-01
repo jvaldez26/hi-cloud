@@ -121,6 +121,10 @@ apiClient.interceptors.response.use(
       localStorage.removeItem('mis_empresas');
       localStorage.removeItem('hicloud-sidebar-group');
       if (!onPublicPage) {
+        sessionStorage.setItem(
+          'login_error',
+          'Tu sesión ha expirado. Por favor inicia sesión de nuevo.',
+        );
         window.location.replace('/login');
       }
       return Promise.reject(err);
