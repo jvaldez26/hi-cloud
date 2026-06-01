@@ -293,9 +293,15 @@ h1, h2, h3, h4, h5, h6,
 }
 
 /* ── Prevenir scroll horizontal global ────────────────────────────────────────── */
-html, body, #root {
-  overflow-x: hidden;
+/* NOTA: overflow-x: hidden en html/body rompe flex: 1 en iOS Safari (bug conocido).
+   Se usa overflow-x: clip que no crea un scroll container y es compatible con iOS 16+.
+   En el AppLayout el scroll se controla a nivel de #main-content. */
+body {
+  overflow-x: clip;
   max-width: 100vw;
+}
+#root {
+  min-width: 0;
 }
 
 /* ── Padding de contenido reducido en mobile ──────────────────────────────────── */

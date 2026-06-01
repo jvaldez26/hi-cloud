@@ -1862,10 +1862,10 @@ export default function AppLayout() {
     <>
       <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} />
 
-      {/* Layout SPA: contenido en height:100vh overflow:hidden — el scroll
-          ocurre en #main-content, nunca en el body. Esto evita saltos de
-          posición al navegar y hace que ScrollToTop funcione con certeza. */}
-      <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+      {/* Layout SPA: el scroll ocurre en #main-content, nunca en el body.
+          overflow: 'clip' en lugar de 'hidden' — en iOS Safari, overflow:hidden
+          en un flex container rompe el cálculo de flex:1 de los hijos. */}
+      <div style={{ display: 'flex', height: '100dvh', overflow: 'clip', minWidth: 0 }}>
 
         {/* ══ SIDEBAR + FLYOUT — envueltos en el proveedor de tema ══ */}
         <SidebarCtx.Provider value={C}>
@@ -1944,7 +1944,7 @@ export default function AppLayout() {
         </SidebarCtx.Provider>
 
         {/* ══ CONTENIDO PRINCIPAL ════════════════════════════════════ */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'clip' }}>
 
           {/* ── Mini-topbar mobile (solo en pantallas pequeñas) ──────── */}
           {isMobile && (
