@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
@@ -73,6 +73,30 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['ecf-list'] }); message.success('Reenvío exitoso'); },
     onError: (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error al reenviar'),
   });
+
+  // Consultar estado real en MSeller → luego recargar lista
+  const sincMut = useMutation({
+    mutationFn: ecfApi.consultarEstados,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ecf-list'] });
+      message.success('Estados actualizados desde MSeller');
+    },
+    onError: (e: any) =>
+      message.warning((e as any)?.response?.data?.message ?? 'MSeller no respondió — intenta de nuevo en unos segundos'),
+  });
+
+  // Auto-sync al cargar si hay e-CFs en estado "enviado" (una sola vez por montaje)
+  const autoSyncDone = useRef(false);
+  useEffect(() => {
+    if (autoSyncDone.current) return;
+    const items: any[] = data?.data ?? [];
+    const hayEnviados  = items.some((e: any) => e.estadoDGII === 'enviado' || e.estadoDGII === 'pendiente_envio');
+    if (hayEnviados) {
+      autoSyncDone.current = true;
+      sincMut.mutate();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
 
   const handleVerXML = async (numero: string) => {
     try {
@@ -153,7 +177,14 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
         <Col xs={24} sm="auto">
           <Space size={2} wrap>
             <ColumnToggle columns={ECF_COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
-            <RefreshByKeyButton queryKey={['ecf-list']} />
+            <Tooltip title="Consultar estado real en MSeller y actualizar">
+              <Button
+                icon={<ReloadOutlined spin={sincMut.isPending || isFetching} />}
+                size="small"
+                loading={sincMut.isPending}
+                onClick={() => sincMut.mutate()}
+              />
+            </Tooltip>
             <VideoTutorialButton />
           </Space>
         </Col>

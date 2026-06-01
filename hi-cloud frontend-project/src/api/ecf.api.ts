@@ -57,6 +57,10 @@ export const ecfApi = {
   reenviar: (numero: string) =>
     api.post(`/ecf/${numero}/reenviar`).then(r => r.data.data),
 
+  /** Fuerza consulta inmediata de estados a MSeller para todos los e-CFs enviados */
+  consultarEstados: () =>
+    api.post('/ecf/consultar-estados').then(r => r.data),
+
   actualizarEstado: (numero: string, body: { estadoDGII: string; xmlRespuesta?: string }) =>
     api.patch(`/ecf/${numero}/estado`, body).then(r => r.data.data),
 
