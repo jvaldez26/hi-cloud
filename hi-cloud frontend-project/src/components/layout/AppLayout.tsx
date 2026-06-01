@@ -1863,9 +1863,16 @@ export default function AppLayout() {
       <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} />
 
       {/* Layout SPA: el scroll ocurre en #main-content, nunca en el body.
-          overflow: 'clip' en lugar de 'hidden' — en iOS Safari, overflow:hidden
-          en un flex container rompe el cálculo de flex:1 de los hijos. */}
-      <div style={{ display: 'flex', height: '100dvh', overflow: 'clip', minWidth: 0 }}>
+          SIN overflow en el flex wrapper — cualquier valor que no sea 'visible'
+          (hidden, clip, auto) crea un BFC en iOS Safari que rompe flex:1.
+          height: -webkit-fill-available como fallback para Safari < 15.4 que
+          no reconoce dvh y lo interpreta como 0. */}
+      <div style={{
+        display:    'flex',
+        height:     '100dvh',
+        minHeight:  '-webkit-fill-available',
+        position:   'relative',
+      }}>
 
         {/* ══ SIDEBAR + FLYOUT — envueltos en el proveedor de tema ══ */}
         <SidebarCtx.Provider value={C}>
@@ -1943,8 +1950,12 @@ export default function AppLayout() {
 
         </SidebarCtx.Provider>
 
-        {/* ══ CONTENIDO PRINCIPAL ════════════════════════════════════ */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'clip' }}>
+        {/* ══ CONTENIDO PRINCIPAL ════════════════════════════════════
+            width:0 + flex:1 = fix canónico iOS Safari para que flex:1
+            calcule el ancho desde el espacio disponible, no desde el
+            contenido intrínseco. Sin width:0 el browser usa el max-content
+            del hijo como base y puede dar 0px al contenedor. */}
+        <div style={{ flex: 1, width: 0, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
 
           {/* ── Mini-topbar mobile (solo en pantallas pequeñas) ──────── */}
           {isMobile && (
@@ -1979,7 +1990,7 @@ export default function AppLayout() {
           {/* Único área scrollable — scroll siempre aquí, nunca en el body */}
           <div
             id="main-content"
-            style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: isMobile ? 12 : 20 }}
+            style={{ flex: 1, width: 0, minWidth: 0, overflowY: 'auto', overflowX: 'hidden', padding: isMobile ? 12 : 20 }}
           >
             <Suspense fallback={<ContentLoader />}>
               <PageTransition>
