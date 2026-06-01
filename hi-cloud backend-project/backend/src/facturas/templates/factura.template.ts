@@ -182,14 +182,17 @@ export function generarHTMLFactura(d: FacturaPDFData): string {
     ...(d.vendedorNombre  ? [['Vendedor',        esc(d.vendedorNombre)]  as [string, string]] : []),
     ['Moneda',             esc(d.moneda)],
     ['Tipo de Factura',    esc(d.condicionPago ?? d.tipo)],
+    ...(d.diasCredito     ? [['Plazo',            `${d.diasCredito} días`] as [string, string]] : []),
+    ...(d.fechaVencimiento? [['Vence',            dateFmt(d.fechaVencimiento)] as [string, string]] : []),
     ...(d.sucursalNombre  ? [['Sucursal',         esc(d.sucursalNombre)]  as [string, string]] : []),
     ['Fecha Emisión',      dateFmt(d.fechaEmision)],
   ];
 
+  // line-height compacto: las filas se ven como bloque, no flotando separadas
   const infoRowsHtml = infoRowDefs.map(([label, val]) =>
-    `<div style="display:flex;justify-content:flex-end;gap:4px;font-size:9px;line-height:1.95;">` +
-    `<span style="color:${GRAY};">${label}:</span>` +
-    `<span style="color:${DARK};font-weight:700;">${val}</span>` +
+    `<div style="display:flex;justify-content:flex-end;gap:6px;font-size:9px;line-height:1.4;margin-bottom:1px;">` +
+    `<span style="color:${GRAY};white-space:nowrap;">${label}:</span>` +
+    `<span style="color:${DARK};font-weight:700;white-space:nowrap;">${val}</span>` +
     `</div>`
   ).join('');
 
@@ -348,15 +351,18 @@ export function generarHTMLFactura(d: FacturaPDFData): string {
   ══════════════════════════════════════════════════════════════════ -->
   <div style="border:1px solid ${BORDER};padding:9px 14px;margin-bottom:14px;">
     <div style="font-size:8px;font-weight:700;text-transform:uppercase;
-                letter-spacing:.5px;color:${DARK};margin-bottom:6px;">Datos del Cliente</div>
+                letter-spacing:.5px;color:${DARK};margin-bottom:5px;">Datos del Cliente</div>
     <div style="font-size:9.5px;color:${GRAY};margin-bottom:2px;">
-      RNC o Cédula: <strong style="color:${DARK};">${esc(d.clienteRNC || '—')}</strong>
+      RNC o Cédula: <strong style="color:${DARK};font-family:monospace;">${esc(d.clienteRNC || '—')}</strong>
     </div>
-    <div style="font-size:9.5px;color:${GRAY};">
+    <div style="font-size:9.5px;color:${GRAY};margin-bottom:2px;">
       Nombre o Razón Social: <strong style="color:${DARK};">${esc(d.clienteNombre)}</strong>
     </div>
-    ${d.clienteDireccion
-      ? `<div style="font-size:8.5px;color:#888;margin-top:3px;">${esc(d.clienteDireccion)}${d.clienteCiudad ? ', ' + esc(d.clienteCiudad) : ''}</div>`
+    ${d.clienteIdentificadorExtranjero
+      ? `<div style="font-size:8.5px;color:${GRAY};margin-bottom:1px;">ID Extranjero: <strong style="color:${DARK};font-family:monospace;">${esc(d.clienteIdentificadorExtranjero)}</strong></div>`
+      : ''}
+    ${d.clienteDireccion?.trim()
+      ? `<div style="font-size:8.5px;color:#888;margin-top:2px;">${esc(d.clienteDireccion.trim())}${d.clienteCiudad ? ', ' + esc(d.clienteCiudad) : ''}</div>`
       : ''}
   </div>
 
