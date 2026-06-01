@@ -1,4 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { useRncLookup } from '../../hooks/useRncLookup';
+import RncBadge from '../../components/ui/RncBadge';
 import { useNavigate } from 'react-router-dom';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
@@ -45,6 +47,16 @@ export default function ClientesPage() {
   const [portalUrl,     setPortalUrl]     = useState('');
   const [form]                          = Form.useForm<ClientePayload>();
   const qc = useQueryClient();
+  const rnc = useRncLookup();
+
+  // Autocompletar nombre desde DGII cuando se encuentra el RNC
+  useEffect(() => {
+    if (rnc.datos?.encontrado && rnc.datos?.nombre) {
+      if (!form.getFieldValue('nombre')) {
+        form.setFieldsValue({ nombre: rnc.datos.nombre });
+      }
+    }
+  }, [rnc.datos, form]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['clientes', page, search],
@@ -90,7 +102,7 @@ export default function ClientesPage() {
 
   const openCreate = () => { setEditing(null); form.resetFields(); setOpen(true); };
   const openEdit   = (c: Cliente) => { setEditing(c); form.setFieldsValue({ ...c, diasCredito: (c as any).diasCredito ?? 30 }); setOpen(true); };
-  const closeModal = () => { setOpen(false); setEditing(null); form.resetFields(); };
+  const closeModal = () => { setOpen(false); setEditing(null); form.resetFields(); rnc.limpiar(); };
   const handleSubmit = (values: ClientePayload) => {
     if (editing) updateMut.mutate({ id: editing.id, body: values });
     else         createMut.mutate(values);
@@ -339,23 +351,27 @@ export default function ClientesPage() {
                 {({ getFieldValue }) => {
                   const tieneIdExt = !!getFieldValue('identificadorExtranjero');
                   return (
-                    <Form.Item name="rfc" label="RNC / Cédula"
-                      rules={[
-                        { required: !tieneIdExt, message: 'El RNC o Cédula es requerido (o ingrese Identificador Extranjero)' },
-                        {
-                          validator: (_, v) => {
-                            if (!v) return Promise.resolve();
-                            return /^\d{9}$|^\d{11}$/.test(v)
-                              ? Promise.resolve()
-                              : Promise.reject('RNC debe tener 9 dígitos o Cédula debe tener 11 dígitos');
+                    <>
+                      <Form.Item name="rfc" label="RNC / Cédula"
+                        rules={[
+                          { required: !tieneIdExt, message: 'El RNC o Cédula es requerido (o ingrese Identificador Extranjero)' },
+                          {
+                            validator: (_, v) => {
+                              if (!v) return Promise.resolve();
+                              return /^\d{9}$|^\d{11}$/.test(v)
+                                ? Promise.resolve()
+                                : Promise.reject('RNC debe tener 9 dígitos o Cédula debe tener 11 dígitos');
+                            },
                           },
-                        },
-                      ]}>
-                      <Input
-                        placeholder={tieneIdExt ? '(opcional para clientes extranjeros)' : '9 dígitos (RNC) u 11 dígitos (Cédula)'}
-                        maxLength={11}
-                      />
-                    </Form.Item>
+                        ]}>
+                        <Input
+                          placeholder={tieneIdExt ? '(opcional para clientes extranjeros)' : '9 dígitos (RNC) u 11 dígitos (Cédula)'}
+                          maxLength={11}
+                          onChange={e => rnc.consultarDebounced(e.target.value.replace(/\D/g, ''))}
+                        />
+                      </Form.Item>
+                      <RncBadge datos={rnc.datos} loading={rnc.loading} />
+                    </>
                   );
                 }}
               </Form.Item>

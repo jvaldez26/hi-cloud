@@ -1,4 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { useRncLookup } from '../../hooks/useRncLookup';
+import RncBadge from '../../components/ui/RncBadge';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { DetailDrawer } from '../../components/ui/DetailDrawer';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
@@ -32,6 +34,16 @@ export default function ProveedoresPage() {
   const [editing,        setEditing]        = useState<Proveedor | null>(null);
   const [detalleProveedor, setDetalleProveedor] = useState<Proveedor | null>(null);
   const [form] = Form.useForm<ProveedorPayload>();
+  const rnc = useRncLookup();
+
+  // Autocompletar nombre desde DGII cuando se encuentra el RNC
+  useEffect(() => {
+    if (rnc.datos?.encontrado && rnc.datos?.nombre) {
+      if (!form.getFieldValue('nombre')) {
+        form.setFieldsValue({ nombre: rnc.datos.nombre });
+      }
+    }
+  }, [rnc.datos, form]);
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -57,7 +69,7 @@ export default function ProveedoresPage() {
 
   const openCreate = () => { setEditing(null); form.resetFields(); setOpen(true); };
   const openEdit   = (p: Proveedor) => { setEditing(p); form.setFieldsValue(p); setOpen(true); };
-  const closeModal = () => { setOpen(false); setEditing(null); form.resetFields(); };
+  const closeModal = () => { setOpen(false); setEditing(null); form.resetFields(); rnc.limpiar(); };
   const handleSubmit = (v: ProveedorPayload) =>
     editing ? updateMut.mutate({ id: editing.id, body: v }) : createMut.mutate(v);
 
@@ -192,10 +204,16 @@ export default function ProveedoresPage() {
                 {({ getFieldValue }) => {
                   const informal = getFieldValue('esInformal');
                   return (
-                    <Form.Item name="rnc" label="RNC"
-                      rules={informal ? [] : [{ required: true }, { pattern: /^\d{9}$|^\d{11}$/, message: '9 u 11 dígitos' }]}>
-                      <Input placeholder="130000001" maxLength={11} disabled={informal} />
-                    </Form.Item>
+                    <>
+                      <Form.Item name="rnc" label="RNC"
+                        rules={informal ? [] : [{ required: true }, { pattern: /^\d{9}$|^\d{11}$/, message: '9 u 11 dígitos' }]}>
+                        <Input
+                          placeholder="130000001" maxLength={11} disabled={informal}
+                          onChange={e => rnc.consultarDebounced(e.target.value.replace(/\D/g, ''))}
+                        />
+                      </Form.Item>
+                      {!informal && <RncBadge datos={rnc.datos} loading={rnc.loading} />}
+                    </>
                   );
                 }}
               </Form.Item>

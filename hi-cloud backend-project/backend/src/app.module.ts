@@ -77,6 +77,7 @@ import { PeriodoContableModule } from './periodo-contable/periodo-contable.modul
 import { ReportesFinancierosModule } from './reportes-financieros/reportes-financieros.module';
 import { DocumentosModule } from './documentos/documentos.module';
 import { SucursalesModule } from './sucursales/sucursales.module';
+import { RncModule } from './rnc/rnc.module';
 import { PreFacturaModule } from './pre-factura/pre-factura.module';
 import { ConduceModule } from './conduce/conduce.module';
 import { CajaChicaModule } from './caja-chica/caja-chica.module';
@@ -250,6 +251,7 @@ import { PagosSuscripcionModule }        from './pagos-suscripcion/pagos-suscrip
     ReportesFinancierosModule,
     DocumentosModule,
     SucursalesModule,
+    RncModule,
     HealthModule,
     PreFacturaModule,
     ConduceModule,
