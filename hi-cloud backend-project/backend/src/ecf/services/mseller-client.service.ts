@@ -36,6 +36,18 @@ export interface MSellerEstadoResponse {
   details?: unknown;
 }
 
+export interface MSellerBatchStatusItem {
+  ecf:    string;
+  status: string;   // 'Aceptado' | 'Rechazado' | 'Aceptado Condicional' | 'Enviado' | 'En Proceso'
+  found:  boolean;
+  data?:  Record<string, unknown>;
+}
+
+export interface MSellerBatchStatusResponse {
+  total:   number;
+  results: MSellerBatchStatusItem[];
+}
+
 interface TokenCacheEntry {
   idToken:      string;
   accessToken:  string;
@@ -251,6 +263,50 @@ export class MSellerClientService {
    * Consulta el estado de un documento enviado usando su internalTrackId.
    * Usado por el job de polling para documentos en estado ENVIADO.
    */
+  /**
+   * Consulta el estado de múltiples e-CFs en un solo request (POST batch).
+   * Usa los eNCF directamente — NO requiere trackId.
+   * Endpoint: POST /{entorno}/documentos-ecf/status/batch
+   */
+  async consultarBatch(
+    ecfNumeros: string[],
+    empresaId:  number,
+  ): Promise<MSellerBatchStatusResponse> {
+    const { idToken, apiKey, baseUrl, envPath } = await this.getIdToken(empresaId);
+    const url = `${baseUrl}/${envPath}/documentos-ecf/status/batch`;
+
+    this.logger.log(`MSeller batch status: ${ecfNumeros.length} e-CFs [empresa #${empresaId}]`);
+    this.logger.debug(`Batch eNCFs: ${ecfNumeros.join(', ')}`);
+
+    try {
+      const resp = await firstValueFrom(
+        this.http.post<MSellerBatchStatusResponse>(
+          url,
+          { ecfs: ecfNumeros },
+          {
+            timeout: 30_000,
+            headers: {
+              'Content-Type':  'application/json',
+              'Authorization': `Bearer ${idToken}`,
+              'X-API-KEY':     apiKey,
+            },
+          },
+        ),
+      );
+
+      this.logger.log(`MSeller batch status OK: total=${resp.data.total}`);
+      for (const r of resp.data.results ?? []) {
+        this.logger.debug(`  [batch] ecf=${r.ecf} status="${r.status}" found=${r.found}`);
+      }
+      return resp.data;
+    } catch (err: any) {
+      const status = err?.response?.status;
+      const msg    = err?.response?.data?.message ?? err?.message;
+      this.logger.warn(`Error consultarBatch MSeller [${status ?? 'timeout'}]: ${msg}`);
+      throw new EcfComunicacionError(`Error batch status MSeller [${status ?? 'timeout'}]: ${msg}`);
+    }
+  }
+
   async consultarEstado(
     trackId:   string,
     empresaId: number,

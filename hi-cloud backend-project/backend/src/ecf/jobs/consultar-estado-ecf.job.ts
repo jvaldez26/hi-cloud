@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThan } from 'typeorm';
+import { Repository } from 'typeorm';
 import { ECF, EstadoDGII } from '../entities/ecf.entity';
 import { EcfEvento, TipoEcfEvento } from '../entities/ecf-evento.entity';
 import { MSellerClientService } from '../services/mseller-client.service';
@@ -17,13 +17,22 @@ const MINUTOS_SIN_RESPUESTA = 10;  // esperar 10 min antes de primer intento
  */
 const DIAS_MAX_POLLING = 3;
 
-/** Mapeo de estados MSeller → EstadoDGII interno. */
+/**
+ * Mapeo de estados MSeller → EstadoDGII interno.
+ * Batch usa texto con capitalización mixta: "Aceptado", "Rechazado", etc.
+ * GET individual devuelve mayúsculas: "ACEPTADO". Se normaliza a UPPER antes de mapear.
+ */
 const MSELLER_ESTADO_MAP: Record<string, EstadoDGII> = {
-  ACEPTADO:   EstadoDGII.ACEPTADO,
-  RECHAZADO:  EstadoDGII.RECHAZADO,
-  OBSERVADO:  EstadoDGII.OBSERVADO,
-  PROCESANDO: EstadoDGII.ENVIADO,   // aún procesando, mantener
-  RECIBIDO:   EstadoDGII.ENVIADO,   // recibido pero no procesado
+  // Respuestas definitivas (batch y GET)
+  'ACEPTADO':             EstadoDGII.ACEPTADO,
+  'RECHAZADO':            EstadoDGII.RECHAZADO,
+  'OBSERVADO':            EstadoDGII.OBSERVADO,
+  'ACEPTADO CONDICIONAL': EstadoDGII.OBSERVADO,   // mapea a OBSERVADO (condicional)
+  // Respuestas en tránsito (mantener como ENVIADO)
+  'PROCESANDO':           EstadoDGII.ENVIADO,
+  'RECIBIDO':             EstadoDGII.ENVIADO,
+  'ENVIADO':              EstadoDGII.ENVIADO,
+  'EN PROCESO':           EstadoDGII.ENVIADO,
 };
 
 /**
@@ -62,106 +71,114 @@ export class ConsultarEstadoECFJob {
     const corte   = new Date(Date.now() - MINUTOS_SIN_RESPUESTA * 60_000);
     const maxAge  = new Date(Date.now() - DIAS_MAX_POLLING * 24 * 60 * 60_000);
 
-    // Paso 1: Marcar como contingencia los comprobantes con más de DIAS_MAX_POLLING días
-    //         sin respuesta. MSeller notifica vía webhook; si no llegó en 3 días,
-    //         no llegará por polling tampoco.
+    // Paso 1: Marcar como contingencia los comprobantes > DIAS_MAX_POLLING días sin respuesta
     const viejos = await this.ecfRepo
       .createQueryBuilder('ecf')
       .where('ecf.estadoDGII = :estado', { estado: EstadoDGII.ENVIADO })
-      .andWhere('ecf.trackId IS NOT NULL')
-      .andWhere('ecf.respuestaDgii IS NULL')
       .andWhere('ecf.isActive = true')
       .andWhere('ecf.createdAt < :maxAge', { maxAge })
       .getMany();
 
+    for (const ecf of viejos) {
+      await this.ecfRepo.update(ecf.id, {
+        estadoDGII:    EstadoDGII.CONTINGENCIA,
+        respuestaDgii: {
+          status:  'CONTINGENCIA',
+          message: `Sin respuesta de MSeller tras ${DIAS_MAX_POLLING} días. ` +
+                   `Verificar estado en portal DGII.`,
+        } as any,
+      });
+      await this.logEvento(ecf.id, TipoEcfEvento.ESTADO_CAMBIADO, {
+        de: EstadoDGII.ENVIADO, a: EstadoDGII.CONTINGENCIA, via: 'timeout',
+      }, `Sin respuesta de MSeller tras ${DIAS_MAX_POLLING} días`);
+      this.logger.warn(`e-CF ${ecf.numero} → CONTINGENCIA (timeout ${DIAS_MAX_POLLING}d)`);
+    }
     if (viejos.length > 0) {
-      this.logger.warn(
-        `ConsultarEstadoECF: ${viejos.length} comprobante(s) en ENVIADO > ${DIAS_MAX_POLLING} días ` +
-        `sin respuesta de MSeller → marcando como contingencia`,
-      );
-      for (const ecf of viejos) {
-        await this.ecfRepo.update(ecf.id, {
-          estadoDGII:    EstadoDGII.CONTINGENCIA,
-          respuestaDgii: {
-            status:  'CONTINGENCIA',
-            message: `Sin respuesta de MSeller tras ${DIAS_MAX_POLLING} días. ` +
-                     `Verificar estado en portal DGII. TrackId: ${ecf.trackId}`,
-          } as any,
-        });
-        await this.logEvento(ecf.id, TipoEcfEvento.ESTADO_CAMBIADO, {
-          de:  EstadoDGII.ENVIADO,
-          a:   EstadoDGII.CONTINGENCIA,
-          via: 'timeout',
-          diasTranscurridos: DIAS_MAX_POLLING,
-        }, `Sin respuesta de MSeller tras ${DIAS_MAX_POLLING} días — verificar en portal DGII`);
-        this.logger.warn(`e-CF ${ecf.numero} → CONTINGENCIA (timeout ${DIAS_MAX_POLLING}d)`);
-      }
+      this.logger.warn(`${viejos.length} comprobante(s) → CONTINGENCIA por timeout`);
     }
 
-    // Paso 2: Consultar por polling los comprobantes recientes (< DIAS_MAX_POLLING días)
+    // Paso 2: Consultar via batch los comprobantes ENVIADOS recientes
     const qb = this.ecfRepo
       .createQueryBuilder('ecf')
       .where('ecf.estadoDGII = :estado', { estado: EstadoDGII.ENVIADO })
-      .andWhere('ecf.trackId IS NOT NULL')
-      .andWhere('ecf.respuestaDgii IS NULL')
       .andWhere('ecf.isActive = true')
-      .andWhere('ecf.createdAt >= :maxAge', { maxAge });  // solo recientes
+      .andWhere('ecf.createdAt >= :maxAge', { maxAge });
 
     if (!force) {
       qb.andWhere('ecf.updatedAt < :corte', { corte });
     }
 
-    const enviados = await qb.take(20).getMany();
-
+    const enviados = await qb.take(50).getMany();
     if (enviados.length === 0) return;
 
-    this.logger.log(`ConsultarEstadoECF: ${enviados.length} comprobante(s) a consultar`);
+    this.logger.log(`ConsultarEstadoECF: ${enviados.length} comprobante(s) a consultar (batch)`);
 
+    // Agrupar por empresa y consultar en batches de 50
+    const porEmpresa = new Map<number, ECF[]>();
     for (const ecf of enviados) {
-      await this.consultarUno(ecf);
+      if (!ecf.empresaId) continue;
+      if (!porEmpresa.has(ecf.empresaId)) porEmpresa.set(ecf.empresaId, []);
+      porEmpresa.get(ecf.empresaId)!.push(ecf);
+    }
+
+    for (const [empresaId, ecfs] of porEmpresa) {
+      await this.consultarBatch(ecfs, empresaId);
     }
   }
 
-  private async consultarUno(ecf: ECF): Promise<void> {
-    const { id, numero, trackId, empresaId } = ecf;
-    if (!trackId || !empresaId) return;
+  private async consultarBatch(ecfs: ECF[], empresaId: number): Promise<void> {
+    const numeros = ecfs.map(e => e.numero);
+    let response: Awaited<ReturnType<MSellerClientService['consultarBatch']>>;
 
     try {
-      const resp = await this.mseller.consultarEstado(trackId, empresaId);
-      const estado = MSELLER_ESTADO_MAP[resp.status?.toUpperCase()] ?? EstadoDGII.ENVIADO;
+      response = await this.mseller.consultarBatch(numeros, empresaId);
+    } catch (err: any) {
+      this.logger.warn(`consultarBatch empresaId=${empresaId}: ${(err as Error).message}`);
+      return;
+    }
 
-      if (estado === EstadoDGII.ENVIADO) {
-        // DGII aún procesa — nada que hacer, volvemos en el próximo ciclo
-        this.logger.debug(`e-CF ${numero} aún procesando (${resp.status})`);
-        return;
+    const ecfMap = new Map(ecfs.map(e => [e.numero, e]));
+
+    for (const resultado of response.results ?? []) {
+      this.logger.debug(
+        `[batch] ecf=${resultado.ecf} status="${resultado.status}" found=${resultado.found}`,
+      );
+
+      if (!resultado.found) {
+        this.logger.warn(`e-CF no encontrado en MSeller: ${resultado.ecf}`);
+        continue;
       }
 
-      // Actualizar estado definitivo
-      await this.ecfRepo.update(id, {
-        estadoDGII:          estado,
-        respuestaDgii:       resp as any,
-        fechaUso:            estado === EstadoDGII.ACEPTADO ? new Date() : undefined,
+      const ecf = ecfMap.get(resultado.ecf);
+      if (!ecf) {
+        this.logger.warn(`e-CF ${resultado.ecf} no encontrado en BD local`);
+        continue;
+      }
+
+      const estadoKey = resultado.status?.toUpperCase() ?? '';
+      const nuevoEstado = MSELLER_ESTADO_MAP[estadoKey] ?? EstadoDGII.ENVIADO;
+
+      if (nuevoEstado === EstadoDGII.ENVIADO) {
+        this.logger.debug(`e-CF ${resultado.ecf} aún procesando (${resultado.status})`);
+        continue;
+      }
+
+      await this.ecfRepo.update(ecf.id, {
+        estadoDGII:    nuevoEstado,
+        respuestaDgii: resultado.data as any ?? { status: resultado.status },
+        fechaUso:      nuevoEstado === EstadoDGII.ACEPTADO ? new Date() : undefined,
       });
 
-      await this.logEvento(id, TipoEcfEvento.RESPUESTA_RECIBIDA, {
-        estadoMSeller: resp.status,
-        estadoInterno: estado,
-        trackId,
+      await this.logEvento(ecf.id, TipoEcfEvento.RESPUESTA_RECIBIDA, {
+        estadoMSeller: resultado.status,
+        estadoInterno: nuevoEstado,
+        via:           'batch',
+      });
+      await this.logEvento(ecf.id, TipoEcfEvento.ESTADO_CAMBIADO, {
+        de: EstadoDGII.ENVIADO, a: nuevoEstado,
       });
 
-      await this.logEvento(id, TipoEcfEvento.ESTADO_CAMBIADO, {
-        de: EstadoDGII.ENVIADO,
-        a:  estado,
-      }, resp.message);
-
-      this.logger.log(`e-CF ${numero} → ${estado} (DGII respondió vía polling)`);
-
-    } catch (err: any) {
-      const msg = (err as Error).message ?? '';
-      // 403/401: problema de credenciales MSeller — loguear a nivel debug
-      // para no llenar los logs (el job reintentará en el próximo ciclo de 5 min)
-      const nivel = msg.includes('403') || msg.includes('401') ? 'debug' : 'warn';
-      this.logger[nivel](`Error consultando estado ${numero}: ${msg}`);
+      this.logger.log(`e-CF ${resultado.ecf}: ENVIADO → ${nuevoEstado} (batch)`);
     }
   }
 
