@@ -163,9 +163,12 @@ export class ConsultarEstadoECFJob {
         continue;
       }
 
+      const batchData = resultado.data as any;
       await this.ecfRepo.update(ecf.id, {
         estadoDGII:    nuevoEstado,
-        respuestaDgii: resultado.data as any ?? { status: resultado.status },
+        respuestaDgii: batchData ?? { status: resultado.status },
+        // Guardar QR url del comprobante aceptado si viene en la respuesta batch
+        ...(batchData?.qr_url    ? { qrUrl: batchData.qr_url }       : {}),
         fechaUso:      nuevoEstado === EstadoDGII.ACEPTADO ? new Date() : undefined,
       });
 

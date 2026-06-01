@@ -40,6 +40,79 @@ const estadoDGIIIcon: Record<string, React.ReactNode> = {
   condicionado:    <WarningOutlined />,
 };
 
+// ── Componente: Respuesta DGII parseada ──────────────────────────────────────
+function DgiiResponseSection({ respuestaDgii, estadoDGII }: { respuestaDgii?: any; estadoDGII?: string }) {
+  if (!respuestaDgii) return null;
+
+  // La respuestaDgii puede venir del batch (tiene dgiiResponse) o del webhook
+  const dgiiRaw: unknown[] = respuestaDgii?.dgiiResponse ?? [];
+  // Si no hay dgiiResponse, intentar usar la respuesta directa
+  const parsed = dgiiRaw.length > 0
+    ? dgiiRaw.map((item) => {
+        try { return typeof item === 'string' ? JSON.parse(item) : item; }
+        catch { return null; }
+      }).filter(Boolean)
+    : [respuestaDgii];
+
+  // Buscar la respuesta final (la que tiene estado o mensajes)
+  const respFinal = parsed.find((r: any) => r?.estado || r?.mensajes) ?? parsed[parsed.length - 1] as any;
+  if (!respFinal) return null;
+
+  const mensajes: Array<{ codigo?: number; valor?: string }> = respFinal?.mensajes ?? [];
+  const esRechazado   = estadoDGII === 'rechazado';
+  const esCondicional = estadoDGII === 'observado' || estadoDGII === 'condicionado';
+
+  return (
+    <Card
+      size="small"
+      title={<Text strong>📋 Respuesta DGII</Text>}
+      style={{ marginTop: 0, borderColor: esRechazado ? '#fca5a5' : esCondicional ? '#fde68a' : '#bbf7d0' }}
+      styles={{ header: { background: esRechazado ? '#fef2f2' : esCondicional ? '#fffbeb' : '#f0fdf4' } }}
+    >
+      <Descriptions size="small" column={1} bordered={false}>
+        {respFinal.trackId && (
+          <Descriptions.Item label="Track ID DGII">
+            <Text code style={{ fontSize: 11 }}>{respFinal.trackId}</Text>
+          </Descriptions.Item>
+        )}
+        {respFinal.estado && (
+          <Descriptions.Item label="Estado DGII">{respFinal.estado}</Descriptions.Item>
+        )}
+        {respFinal.fechaRecepcion && (
+          <Descriptions.Item label="Fecha recepción">{respFinal.fechaRecepcion}</Descriptions.Item>
+        )}
+        {respFinal.secuenciaUtilizada !== undefined && (
+          <Descriptions.Item label="Secuencia utilizada">
+            <Tag color={respFinal.secuenciaUtilizada ? 'red' : 'green'}>
+              {respFinal.secuenciaUtilizada ? 'Sí — secuencia quemada' : 'No'}
+            </Tag>
+          </Descriptions.Item>
+        )}
+      </Descriptions>
+
+      {mensajes.length > 0 && (
+        <div style={{ marginTop: 10 }}>
+          <Text strong style={{ color: esRechazado ? '#dc2626' : '#d97706', fontSize: 13 }}>
+            {esRechazado ? '❌ Errores:' : '⚠️ Advertencias:'}
+          </Text>
+          <ul style={{ marginTop: 6, paddingLeft: 20 }}>
+            {mensajes.map((m, i) => (
+              <li key={i} style={{ marginBottom: 4, color: esRechazado ? '#dc2626' : '#92400e', fontSize: 13 }}>
+                {m.codigo && <Text code style={{ fontSize: 11, marginRight: 6 }}>{m.codigo}</Text>}
+                {m.valor}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {mensajes.length === 0 && estadoDGII === 'aceptado' && (
+        <Alert type="success" showIcon message="✅ Aceptado sin observaciones" style={{ marginTop: 8 }} />
+      )}
+    </Card>
+  );
+}
+
 // ── Tab: Lista de e-CFs ───────────────────────────────────────────────────────
 const ECF_COLS_DEF = [
   { key: 'numero',     label: 'e-NCF',        defaultVisible: true  },
@@ -132,6 +205,10 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
           items={[
             { key: 'xml', label: 'Ver XML / diagnóstico', icon: <DownloadOutlined />,
               onClick: () => handleVerXML(r.numero) },
+            ...(['rechazado', 'observado', 'condicionado', 'aceptado'].includes(r.estadoDGII) && r.respuestaDgii
+              ? [{ key: 'dgii', label: 'Ver respuesta DGII', icon: <CheckCircleOutlined />,
+                   onClick: () => setDetail(r) }]
+              : []),
             ...(['pendiente_envio', 'rechazado'].includes(r.estadoDGII) && r.intentosEnvio < 5
               ? [{ key: 'reenviar', label: 'Reenviar a proveedor e-CF', icon: <SendOutlined />,
                    onClick: () => reenviarMut.mutate(r.numero) }]
@@ -195,31 +272,37 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
         pagination={{ total: data?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }} />
 
       {/* Detalle e-CF */}
-      <Drawer title={`e-CF: ${detail?.numero}`} open={!!detail} onClose={() => setDetail(null)} width={600}>
+      <Drawer title={<Space><Text strong>{detail?.numero}</Text><Tag color={estadoDGIIColor[detail?.estadoDGII] ?? 'default'}>{detail?.estadoDGII?.replace(/_/g,' ').toUpperCase()}</Tag></Space>}
+        open={!!detail} onClose={() => setDetail(null)} width={600}>
         {detail && (
-          <Descriptions bordered column={1} size="small">
-            <Descriptions.Item label="Número e-CF">
-              <Text code strong>{detail.numero}</Text>
-            </Descriptions.Item>
-            <Descriptions.Item label="Tipo">{detail.tipoECF?.codigo} — {detail.tipoECF?.descripcion}</Descriptions.Item>
-            <Descriptions.Item label="Estado DGII">
-              <Tag color={estadoDGIIColor[detail.estadoDGII] ?? 'default'}>
-                {detail.estadoDGII?.replace(/_/g,' ').toUpperCase()}
-              </Tag>
-            </Descriptions.Item>
-            <Descriptions.Item label="Documento asociado">{detail.factura?.folio ?? 'Sin documento'}</Descriptions.Item>
-            <Descriptions.Item label="Código de seguridad"><Text code>{detail.codigoSeguridad}</Text></Descriptions.Item>
-            <Descriptions.Item label="Track ID tu proveedor e-CF">
-              <Text code style={{ fontSize: 11 }}>{detail.trackId ?? '—'}</Text>
-            </Descriptions.Item>
-            <Descriptions.Item label="Intentos de envío">{detail.intentosEnvio}</Descriptions.Item>
-            {detail.errorEnvio && (
-              <Descriptions.Item label="Último error">
-                <Alert type="error" message={detail.errorEnvio} showIcon />
+          <>
+            <Descriptions bordered column={1} size="small" style={{ marginBottom: 16 }}>
+              <Descriptions.Item label="Número e-CF">
+                <Text code strong>{detail.numero}</Text>
               </Descriptions.Item>
-            )}
-            <Descriptions.Item label="Creado">{fmt.date(detail.createdAt)}</Descriptions.Item>
-          </Descriptions>
+              <Descriptions.Item label="Tipo">{detail.tipoECF?.codigo} — {detail.tipoECF?.descripcion}</Descriptions.Item>
+              <Descriptions.Item label="Estado DGII">
+                <Tag color={estadoDGIIColor[detail.estadoDGII] ?? 'default'} icon={estadoDGIIIcon[detail.estadoDGII]}>
+                  {detail.estadoDGII?.replace(/_/g,' ').toUpperCase()}
+                </Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="Documento asociado">{detail.factura?.folio ?? 'Sin documento'}</Descriptions.Item>
+              <Descriptions.Item label="Código de seguridad"><Text code>{detail.codigoSeguridad}</Text></Descriptions.Item>
+              <Descriptions.Item label="Track ID proveedor e-CF">
+                <Text code style={{ fontSize: 11 }}>{detail.trackId ?? '—'}</Text>
+              </Descriptions.Item>
+              <Descriptions.Item label="Intentos de envío">{detail.intentosEnvio}</Descriptions.Item>
+              {detail.errorEnvio && (
+                <Descriptions.Item label="Último error">
+                  <Alert type="error" message={detail.errorEnvio} showIcon />
+                </Descriptions.Item>
+              )}
+              <Descriptions.Item label="Creado">{fmt.date(detail.createdAt)}</Descriptions.Item>
+            </Descriptions>
+
+            {/* ── Respuesta DGII ── */}
+            <DgiiResponseSection respuestaDgii={detail.respuestaDgii} estadoDGII={detail.estadoDGII} />
+          </>
         )}
       </Drawer>
 
