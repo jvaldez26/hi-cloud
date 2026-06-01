@@ -77,4 +77,8 @@ export class Conduce extends TenantBaseEntity {
 
   @Column({ nullable: true })
   sucursalId?: number;
+
+  /** Almacén del que sale la mercancía (para descontar stock al entregar) */
+  @Column({ nullable: true })
+  almacenId?: number;
 }

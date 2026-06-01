@@ -31,6 +31,7 @@ interface CreateConduceDto {
   vehiculo?:              string;
   notas?:                 string;
   sucursalId?:            number;
+  almacenId?:             number;
   detalles:               DetalleConduceDto[];
 }
 
@@ -73,6 +74,7 @@ export class ConduceService {
       vehiculo:               dto.vehiculo,
       notas:                  dto.notas,
       sucursalId:             dto.sucursalId,
+      almacenId:              dto.almacenId,
       detalles: dto.detalles.map(d => ({
         descripcion:    d.descripcion,
         productoId:     d.productoId,

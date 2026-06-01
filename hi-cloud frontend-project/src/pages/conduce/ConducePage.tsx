@@ -33,12 +33,14 @@ const ESTADO_CONFIG: Record<string, { color: string; label: string; step: number
 export default function ConducePage() {
   const qc = useQueryClient();
   const { token } = theme.useToken();
-  const [search,        setSearch]        = useState('');
-  const [page,          setPage]          = useState(1);
-  const [modalCrear,    setModalCrear]    = useState(false);
-  const [modalDetalle,  setModalDetalle]  = useState<any>(null);
-  const [modalEntrega,  setModalEntrega]  = useState<{ id: number; tipo: 'entregado' | 'devuelto' } | null>(null);
-  const [pdfPending,    setPdfPending]    = useState<number | null>(null);
+  const [search,          setSearch]          = useState('');
+  const [page,            setPage]            = useState(1);
+  const [modalCrear,      setModalCrear]      = useState(false);
+  const [modalDetalle,    setModalDetalle]    = useState<any>(null);
+  const [modalEntrega,    setModalEntrega]    = useState<{ id: number; tipo: 'entregado' | 'devuelto' } | null>(null);
+  const [pdfPending,      setPdfPending]      = useState<number | null>(null);
+  const [clienteIdSel,    setClienteIdSel]    = useState<number | null>(null);
+  const [facturasCliente, setFacturasCliente] = useState<any[]>([]);
   const [formCrear]   = Form.useForm();
   const [formEntrega] = Form.useForm();
 
@@ -51,6 +53,43 @@ export default function ConducePage() {
     queryKey: ['productos-select'],
     queryFn:  () => api.get('/productos?limit=200').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
   });
+
+  const { data: almacenes = [] } = useQuery<any[]>({
+    queryKey: ['almacenes-select'],
+    queryFn:  () => api.get('/almacenes').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
+  });
+
+  // Cargar facturas del cliente seleccionado (solo emitidas/pagadas con detalles)
+  const cargarFacturasCliente = async (cid: number) => {
+    try {
+      const r = await api.get(`/facturas?clienteId=${cid}&limit=50`);
+      const d = (r as any).data?.data ?? (r as any).data;
+      const lista = Array.isArray(d) ? d : (d?.data ?? []);
+      setFacturasCliente(lista.filter((f: any) => ['emitida','pagada'].includes(f.estado)));
+    } catch { setFacturasCliente([]); }
+  };
+
+  // Al seleccionar una factura → autocargar sus ítems en el form de conduce
+  const cargarItemsDeFactura = async (facturaId: number) => {
+    try {
+      const r  = await api.get(`/facturas/${facturaId}`);
+      const fac = (r as any).data?.data ?? (r as any).data;
+      const items = (fac?.detalles ?? []).map((d: any) => ({
+        productoId:   d.productoId,
+        descripcion:  d.descripcion,
+        cantidad:     Number(d.cantidad),
+        unidadMedida: (productos as any[]).find(p => p.id === d.productoId)?.unidadMedida ?? 'PZA',
+      }));
+      if (items.length > 0) {
+        formCrear.setFieldsValue({ detalles: items });
+        // Autocompletar dirección del cliente si está vacía
+        const cli = clientes.find((c: any) => c.id === clienteIdSel);
+        if (cli?.direccion && !formCrear.getFieldValue('direccionEntrega')) {
+          formCrear.setFieldsValue({ direccionEntrega: cli.direccion, ciudad: cli.ciudad });
+        }
+      }
+    } catch { message.warning('No se pudieron cargar los productos de la factura'); }
+  };
 
   const { data: resumen = [] } = useQuery<any[]>({
     queryKey: ['conduces-resumen'],
@@ -237,7 +276,7 @@ export default function ConducePage() {
       <Modal
         title="Nuevo Conduce"
         open={modalCrear}
-        onCancel={() => { setModalCrear(false); formCrear.resetFields(); }}
+        onCancel={() => { setModalCrear(false); formCrear.resetFields(); setClienteIdSel(null); setFacturasCliente([]); }}
         onOk={() => formCrear.submit()}
         confirmLoading={crear.isPending}
         okText="Generar Conduce"
@@ -250,11 +289,48 @@ export default function ConducePage() {
             fechaEntregaProgramada: v.fechaEntregaProgramada?.format('YYYY-MM-DD'),
             detalles: (v.detalles ?? []).map((d: any) => ({ ...d, cantidad: Number(d.cantidad) })),
           })}>
+
+          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 12 }}>
+            Número: <Text code>CON-XXXX</Text> (se asignará automáticamente al generar)
+          </Text>
+
           <Row gutter={12}>
             <Col xs={24} sm={12}>
               <Form.Item name="clienteId" label="Cliente" rules={[{ required: true }]}>
-                <Select showSearch optionFilterProp="children" placeholder="Seleccionar cliente">
+                <Select showSearch optionFilterProp="children" placeholder="Seleccionar cliente"
+                  onChange={(cid: number) => {
+                    setClienteIdSel(cid);
+                    formCrear.setFieldsValue({ facturaId: undefined });
+                    setFacturasCliente([]);
+                    cargarFacturasCliente(cid);
+                    // Autocompletar dirección del cliente
+                    const cli = clientes.find((c: any) => c.id === cid);
+                    if (cli?.direccion) formCrear.setFieldsValue({ direccionEntrega: cli.direccion, ciudad: cli.ciudad, telefonoContacto: cli.telefono });
+                  }}>
                   {clientes.map((c: any) => <Option key={c.id} value={c.id}>{c.nombre}</Option>)}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="facturaId" label="Factura de Origen (opcional)">
+                <Select allowClear showSearch optionFilterProp="children"
+                  placeholder={clienteIdSel ? (facturasCliente.length ? 'Seleccionar factura' : 'Sin facturas emitidas') : 'Selecciona cliente primero'}
+                  disabled={!clienteIdSel}
+                  onChange={(fid: number | undefined) => { if (fid) cargarItemsDeFactura(fid); }}>
+                  {facturasCliente.map((f: any) => (
+                    <Option key={f.id} value={f.id}>
+                      {f.folio} — {f.cliente?.nombre ?? ''} — {f.total ? `RD$${Number(f.total).toLocaleString('es-DO', { minimumFractionDigits: 2 })}` : ''}
+                    </Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={12}>
+            <Col xs={24} sm={12}>
+              <Form.Item name="almacenId" label="Almacén de Salida">
+                <Select allowClear placeholder="Almacén principal (opcional)">
+                  {almacenes.map((a: any) => <Option key={a.id} value={a.id}>{a.nombre}</Option>)}
                 </Select>
               </Form.Item>
             </Col>
@@ -282,28 +358,40 @@ export default function ConducePage() {
             <Col xs={24} sm={12}><Form.Item name="vehiculo" label="Vehículo / Placa"><Input placeholder="Ej. E-123456" /></Form.Item></Col>
           </Row>
 
-          <Divider orientation="left">Mercancía a Despachar</Divider>
+          <Divider orientation="left">
+            <Space>
+              Mercancía a Despachar
+              <Text type="secondary" style={{ fontSize: 11, fontWeight: 400 }}>
+                (se pre-llena desde la factura seleccionada)
+              </Text>
+            </Space>
+          </Divider>
 
           <Form.List name="detalles">
             {(fields, { add, remove }) => (
               <>
                 {fields.map(({ key, name }) => (
                   <Row gutter={8} key={key} align="middle" style={{ marginBottom: 8 }}>
-                    <Col xs={24} sm={8}>
+                    <Col xs={24} sm={7}>
                       <Form.Item name={[name, 'productoId']} noStyle>
-                        <Select showSearch optionFilterProp="children" placeholder="Producto" style={{ width: '100%' }}
+                        <Select showSearch optionFilterProp="children" placeholder="Producto (opcional)" style={{ width: '100%' }} allowClear
                           onChange={(pid) => {
-                            const prod = productos.find((p: any) => p.id === pid);
-                            if (prod) { const ds = formCrear.getFieldValue('detalles'); ds[name] = { ...ds[name], descripcion: prod.nombre, unidadMedida: prod.unidadMedida }; formCrear.setFieldsValue({ detalles: ds }); }
+                            if (!pid) return;
+                            const prod = (productos as any[]).find((p: any) => p.id === pid);
+                            if (prod) { const ds = formCrear.getFieldValue('detalles'); ds[name] = { ...ds[name], descripcion: prod.nombre, unidadMedida: prod.unidadMedida ?? 'PZA' }; formCrear.setFieldsValue({ detalles: ds }); }
                           }}>
-                          {productos.map((p: any) => <Option key={p.id} value={p.id}>{p.nombre}</Option>)}
+                          {(productos as any[]).map((p: any) => <Option key={p.id} value={p.id}>{p.nombre}</Option>)}
                         </Select>
                       </Form.Item>
                     </Col>
-                    <Col xs={24} sm={8}><Form.Item name={[name, 'descripcion']} noStyle rules={[{ required: true, message: '' }]}><Input placeholder="Descripción*" /></Form.Item></Col>
-                    <Col xs={12} sm={3}><Form.Item name={[name, 'cantidad']} noStyle rules={[{ required: true }]}><InputNumber min={0.01} placeholder="Cant." style={{ width: '100%' }} /></Form.Item></Col>
-                    <Col xs={12} sm={3}><Form.Item name={[name, 'unidadMedida']} noStyle><Input placeholder="PZA" /></Form.Item></Col>
-                    <Col xs={12} sm={2}>{fields.length > 1 && <Button type="link" danger onClick={() => remove(name)} icon={<DeleteOutlined />} />}</Col>
+                    <Col xs={24} sm={8}><Form.Item name={[name, 'descripcion']} noStyle rules={[{ required: true, message: '' }]}><Input placeholder="Descripción *" /></Form.Item></Col>
+                    <Col xs={8} sm={3}><Form.Item name={[name, 'cantidad']} noStyle rules={[{ required: true }]}>
+                      <InputNumber min={0.01} precision={2} placeholder="Cant." style={{ width: '100%' }} />
+                    </Form.Item></Col>
+                    <Col xs={8} sm={3}><Form.Item name={[name, 'unidadMedida']} noStyle>
+                      <Input placeholder="PZA" />
+                    </Form.Item></Col>
+                    <Col xs={8} sm={1}>{fields.length > 1 && <Button type="link" danger size="small" onClick={() => remove(name)} icon={<DeleteOutlined />} />}</Col>
                   </Row>
                 ))}
                 <Button type="dashed" onClick={() => add()} icon={<PlusOutlined />} block>Agregar ítem</Button>
