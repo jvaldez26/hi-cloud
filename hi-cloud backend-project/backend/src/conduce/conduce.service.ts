@@ -95,7 +95,8 @@ export class ConduceService {
 
     const qb = this.conduceRepo
       .createQueryBuilder('c')
-      .leftJoinAndSelect('c.cliente', 'cl')
+      .leftJoinAndSelect('c.cliente',  'cl')
+      .leftJoinAndSelect('c.detalles', 'd')
       .where('c.empresaId = :eid', { eid: empresaId })
       .andWhere('c.isActive = :a',  { a: true });
 
