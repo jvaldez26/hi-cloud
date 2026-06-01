@@ -143,9 +143,23 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
 
   const reenviarMut = useMutation({
     mutationFn: ecfApi.reenviar,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['ecf-list'] }); message.success('Reenvío exitoso'); },
-    onError: (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error al reenviar'),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['ecf-list'] }); message.success('Reenvío iniciado — el e-CF será procesado en breve'); },
+    onError: (e: any) => {
+      const msg = e?.response?.data?.message ?? (e as any)?.friendlyMessage ?? 'Error al reenviar';
+      message.error(msg, 8);
+    },
   });
+
+  const handleReenviar = (r: any) => {
+    Modal.confirm({
+      title: `Reenviar e-CF ${r.numero}`,
+      content: `¿Confirmas reenviar este comprobante a MSeller? El e-CF ${r.numero} en estado "${r.estadoDGII?.replace(/_/g,' ').toUpperCase()}" será enviado individualmente.`,
+      okText: 'Sí, reenviar',
+      cancelText: 'Cancelar',
+      okButtonProps: { danger: true },
+      onOk: () => reenviarMut.mutate(r.numero),
+    });
+  };
 
   // Consultar estado real en MSeller → luego recargar lista
   const sincMut = useMutation({
@@ -209,9 +223,9 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
               ? [{ key: 'dgii', label: 'Ver respuesta DGII', icon: <CheckCircleOutlined />,
                    onClick: () => setDetail(r) }]
               : []),
-            ...(['pendiente_envio', 'rechazado'].includes(r.estadoDGII) && r.intentosEnvio < 5
-              ? [{ key: 'reenviar', label: 'Reenviar a proveedor e-CF', icon: <SendOutlined />,
-                   onClick: () => reenviarMut.mutate(r.numero) }]
+            ...(r.estadoDGII === 'pendiente_envio' && r.intentosEnvio < 5
+              ? [{ key: 'reenviar', label: 'Reenviar a MSeller', icon: <SendOutlined />,
+                   onClick: () => handleReenviar(r) }]
               : []),
           ]}
         />

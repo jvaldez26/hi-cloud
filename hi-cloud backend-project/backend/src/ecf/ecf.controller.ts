@@ -12,6 +12,8 @@ import {
   HttpStatus,
   UseGuards,
   Res,
+  BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import type { Response } from 'express';
@@ -374,8 +376,30 @@ export class ECFController {
   @Post(':numero/reenviar')
   @HttpCode(HttpStatus.OK)
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)
-  @ApiOperation({ summary: 'Reintentar envío a MSeller para un e-CF pendiente o rechazado' })
-  reenviar(@Param('numero') numero: string) {
+  @ApiOperation({ summary: 'Reenviar UN e-CF específico a MSeller (no dispara el job masivo)' })
+  async reenviar(@Param('numero') numero: string) {
+    const ecf = await this.ecfService.getECFByNumero(numero);
+
+    if (ecf.estadoDGII === 'aceptado') {
+      throw new BadRequestException('El e-CF ya fue aceptado por la DGII');
+    }
+    if (ecf.estadoDGII === 'rechazado') {
+      throw new BadRequestException(
+        `El e-CF fue rechazado — la secuencia ${numero} fue quemada. ` +
+        `Para volver a emitir, hazlo desde el documento original (Factura, Compra, etc.) ` +
+        `para que use una nueva secuencia.`,
+      );
+    }
+
+    // Para ECFs con jsonEnviado (path MSeller) → procesarUno del job directamente (NO el cron masivo)
+    if (ecf.jsonEnviado) {
+      const logger = new Logger('ECFController.reenviar');
+      logger.log(`Reenvío manual individual: ${numero} (${ecf.estadoDGII})`);
+      await this.reintentoJob.procesarUno(ecf as any);
+      return this.ecfService.getECFByNumero(numero);
+    }
+
+    // Path legacy (xml) — solo para ECFs muy antiguos
     return this.ecfService.reintentarEnvio(numero);
   }
 

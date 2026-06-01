@@ -61,11 +61,15 @@ export class ReintentoECFJob {
   }
 
   /**
-   * Cada 30 minutos intenta rescatar e-CF en CONTINGENCIA que tengan < 48 horas.
-   * Los resetea a PENDIENTE_ENVIO con intentosEnvio = 0 para que el job principal
-   * los reintente cuando MSeller/DGII vuelva a estar disponible.
+   * DESHABILITADO — causaba reenvío masivo no intencional al mover ECFs de
+   * CONTINGENCIA → PENDIENTE_ENVIO automáticamente, que luego el cron de
+   * reintentos enviaba en bloque a MSeller quemando secuencias.
+   * El rescate manual se hace vía POST /ecf/ejecutar-reintentos (admin only).
+   *
+   * Cron original: '* /30 * * * *'
+   * Reemplazado por: '0 3 31 2 *' (nunca — 31 de febrero no existe)
    */
-  @Cron('*/30 * * * *', { name: 'rescate-contingencia-ecf' })
+  @Cron('0 3 31 2 *', { name: 'rescate-contingencia-ecf' })
   async rescatarContingencia(): Promise<void> {
     const hace48h = new Date(Date.now() - 48 * 60 * 60_000);
 
@@ -130,7 +134,8 @@ export class ReintentoECFJob {
     }
   }
 
-  private async procesarUno(ecf: ECF): Promise<void> {
+  /** Público para que el controller de reenvío manual pueda llamarlo directamente. */
+  async procesarUno(ecf: ECF): Promise<void> {
     const { id, numero, empresaId, intentosEnvio, jsonEnviado } = ecf;
 
     this.logger.log(`Reintentando e-CF ${numero} (intento ${intentosEnvio + 1}/${MAX_INTENTOS})`);
