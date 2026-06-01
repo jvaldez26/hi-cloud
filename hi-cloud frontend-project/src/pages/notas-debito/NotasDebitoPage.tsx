@@ -9,7 +9,7 @@ import {
   message, Divider, theme, Alert, AutoComplete, Spin, Checkbox,
 } from 'antd';
 import {
-  FileTextOutlined, PlusOutlined, CheckCircleOutlined,
+  FileTextOutlined, PlusOutlined, CheckCircleOutlined, WhatsAppOutlined,
   CloseCircleOutlined, DeleteOutlined, EyeOutlined,
   FileExcelOutlined, MailOutlined, AuditOutlined,
   SearchOutlined, CheckCircleFilled, PrinterOutlined, LoadingOutlined,
@@ -343,6 +343,19 @@ export default function NotasDebitoPage() {
                     { key: 'email', label: 'Enviar email', icon: <MailOutlined />,
                       disabled: r.estado !== 'emitida',
                       onClick: () => { setEmailNota(r); setEmailDest(r.cliente?.email ?? ''); } },
+                    ...(r.estado === 'emitida' ? [{
+                      key: 'whatsapp',
+                      label: 'Enviar por WhatsApp',
+                      icon: <WhatsAppOutlined style={{ color: '#25D366' }} />,
+                      onClick: () => {
+                        api.get(`/comunicaciones/whatsapp/nota-debito/${r.id}`)
+                          .then((res: any) => {
+                            const d = res.data?.data ?? res.data;
+                            if (d?.link) window.open(d.link, '_blank', 'noopener,noreferrer');
+                          })
+                          .catch(() => message.error('Error al generar link de WhatsApp'));
+                      },
+                    }] : []),
                     ...(r.estado === 'borrador' ? [
                       { key: 'emitir', label: 'Emitir nota', icon: <CheckCircleOutlined />, onClick: () => emitir.mutate(r.id) },
                     ] : []),

@@ -8,7 +8,7 @@ import {
   DatePicker, InputNumber, Space, Typography, Statistic, Popconfirm,
   message, Divider, theme, Alert, AutoComplete, Spin, Checkbox,
 } from 'antd';
-import { SearchOutlined, CheckCircleFilled, WarningOutlined } from '@ant-design/icons';
+import { SearchOutlined, CheckCircleFilled, WarningOutlined, WhatsAppOutlined } from '@ant-design/icons';
 import {
   FileTextOutlined, PlusOutlined, CheckCircleOutlined,
   CloseCircleOutlined, DeleteOutlined, EyeOutlined,
@@ -22,6 +22,7 @@ import api from '../../api/client';
 import { ecfApi } from '../../api/ecf.api';
 import EcfResultModal from '../../components/ui/EcfResultModal';
 import EcfBadge, { type EstadoEcf } from '../../components/ui/EcfBadge';
+import WhatsAppButton from '../../components/ui/WhatsAppButton';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -412,6 +413,19 @@ export default function NotasCreditoPage() {
                       key: 'email',
                       label: 'Enviar por email',
                       onClick: () => { setEmailNota(r); setEmailDest(r.cliente?.email ?? ''); },
+                    } : null,
+                    r.estado === 'emitida' ? {
+                      key: 'whatsapp',
+                      label: 'Enviar por WhatsApp',
+                      icon: <WhatsAppOutlined style={{ color: '#25D366' }} />,
+                      onClick: () => {
+                        api.get(`/comunicaciones/whatsapp/nota-credito/${r.id}`)
+                          .then((res: any) => {
+                            const d = res.data?.data ?? res.data;
+                            if (d?.link) window.open(d.link, '_blank', 'noopener,noreferrer');
+                          })
+                          .catch(() => message.error('Error al generar link de WhatsApp'));
+                      },
                     } : null,
                     r.estado === 'borrador' ? {
                       key: 'emitir',

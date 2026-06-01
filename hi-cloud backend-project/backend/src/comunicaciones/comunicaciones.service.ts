@@ -8,6 +8,8 @@ import { CuentaPorCobrar } from '../cxc/entities/cuenta-por-cobrar.entity';
 import { Cotizacion } from '../cotizaciones/entities/cotizacion.entity';
 import { Conduce } from '../conduce/entities/conduce.entity';
 import { Empresa } from '../configuracion/entities/empresa.entity';
+import { NotaCredito } from '../notas-credito/entities/nota-credito.entity';
+import { NotaDebito } from '../notas-debito/entities/nota-debito.entity';
 
 export interface MensajeWhatsApp {
   texto:   string;
@@ -28,6 +30,8 @@ export class ComunicacionesService {
     @InjectRepository(Cotizacion)       private cotizRepo:    Repository<Cotizacion>,
     @InjectRepository(Conduce)          private conduceRepo:  Repository<Conduce>,
     @InjectRepository(Empresa)          private empresaRepo:  Repository<Empresa>,
+    @InjectRepository(NotaCredito)      private ncRepo:       Repository<NotaCredito>,
+    @InjectRepository(NotaDebito)       private ndRepo:       Repository<NotaDebito>,
     private tenantSvc: TenantService,
   ) {}
 
@@ -184,6 +188,68 @@ export class ComunicacionesService {
     ].filter(Boolean).join('\n');
 
     return this.buildLink(texto, cliente?.telefono ?? conduce.telefonoContacto);
+  }
+
+  // ─── Mensajes para Notas de Crédito (E34) ────────────────────────────────────
+
+  async mensajeNotaCredito(ncId: number, apiBaseUrl?: string) {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const nc        = await this.ncRepo.findOne({
+      where:     { id: ncId, empresaId },
+      relations: ['cliente'],
+    });
+    if (!nc) throw new NotFoundException('Nota de crédito no encontrada');
+
+    const empresa = await this.getEmpresaNombre(empresaId);
+    const cliente = (nc as any).cliente;
+    const linkPdf = apiBaseUrl ? `${apiBaseUrl}/notas-credito/${ncId}/pdf` : '';
+
+    const texto = [
+      `Estimado/a *${cliente?.nombre ?? 'Cliente'}*,`,
+      '',
+      `Le informamos que hemos emitido una *Nota de Crédito ${nc.numero}*`,
+      `por un monto de *${FMT_DOP(Number(nc.total))}*.`,
+      nc.facturaOriginalFolio ? `Factura relacionada: *${nc.facturaOriginalFolio}*` : '',
+      '',
+      linkPdf ? `📎 Descargar NC: ${linkPdf}` : '',
+      '',
+      `Para consultas estamos a su disposición.`,
+      '',
+      `_${empresa}_`,
+    ].filter(Boolean).join('\n');
+
+    return this.buildLink(texto, cliente?.telefono);
+  }
+
+  // ─── Mensajes para Notas de Débito (E33) ─────────────────────────────────────
+
+  async mensajeNotaDebito(ndId: number, apiBaseUrl?: string) {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const nd        = await this.ndRepo.findOne({
+      where:     { id: ndId, empresaId },
+      relations: ['cliente'],
+    });
+    if (!nd) throw new NotFoundException('Nota de débito no encontrada');
+
+    const empresa = await this.getEmpresaNombre(empresaId);
+    const cliente = (nd as any).cliente;
+    const linkPdf = apiBaseUrl ? `${apiBaseUrl}/notas-debito/${ndId}/pdf` : '';
+
+    const texto = [
+      `Estimado/a *${cliente?.nombre ?? 'Cliente'}*,`,
+      '',
+      `Le informamos que hemos emitido una *Nota de Débito ${nd.numero}*`,
+      `por un monto adicional de *${FMT_DOP(Number(nd.total))}*.`,
+      nd.facturaOriginalFolio ? `Factura relacionada: *${nd.facturaOriginalFolio}*` : '',
+      '',
+      linkPdf ? `📎 Descargar ND: ${linkPdf}` : '',
+      '',
+      `Para consultas estamos a su disposición.`,
+      '',
+      `_${empresa}_`,
+    ].filter(Boolean).join('\n');
+
+    return this.buildLink(texto, cliente?.telefono);
   }
 
   // ─── Plantillas personalizables ──────────────────────────────────────────────

@@ -1,10 +1,21 @@
 import { useState } from 'react';
-import { Button, Tooltip, message } from 'antd';
-import { WhatsAppOutlined } from '@ant-design/icons';
+import { Button, Tooltip, Modal, Input, message, Space } from 'antd';
+import { WhatsAppOutlined, SendOutlined } from '@ant-design/icons';
+import { Typography } from 'antd';
 import api from '../../api/client';
 
+const { Text } = Typography;
+
+type TipoDocumento =
+  | 'factura'
+  | 'cotizacion'
+  | 'conduce'
+  | 'cxc'
+  | 'nota-credito'
+  | 'nota-debito';
+
 interface Props {
-  tipo:       'factura' | 'cotizacion' | 'conduce' | 'cxc';
+  tipo:       TipoDocumento;
   id:         number;
   size?:      'small' | 'middle' | 'large';
   ghost?:     boolean;
@@ -16,93 +27,166 @@ interface Props {
   folio?:     string;
 }
 
+const ENDPOINT: Record<TipoDocumento, string> = {
+  'factura':      (id: number) => `/comunicaciones/whatsapp/factura/${id}`,
+  'cotizacion':   (id: number) => `/comunicaciones/whatsapp/cotizacion/${id}`,
+  'conduce':      (id: number) => `/comunicaciones/whatsapp/conduce/${id}`,
+  'cxc':          (id: number) => `/comunicaciones/whatsapp/cxc/${id}`,
+  'nota-credito': (id: number) => `/comunicaciones/whatsapp/nota-credito/${id}`,
+  'nota-debito':  (id: number) => `/comunicaciones/whatsapp/nota-debito/${id}`,
+} as any;
+
+function getEndpoint(tipo: TipoDocumento, id: number): string {
+  const fn = (ENDPOINT as any)[tipo];
+  return typeof fn === 'function' ? fn(id) : fn;
+}
+
+const PDF_ENDPOINT: Partial<Record<TipoDocumento, (id: number) => string>> = {
+  'factura':      id => `/facturas/${id}/pdf`,
+  'cotizacion':   id => `/cotizaciones/${id}/pdf`,
+  'nota-credito': id => `/notas-credito/${id}/pdf`,
+  'nota-debito':  id => `/notas-debito/${id}/pdf`,
+};
+
 export default function WhatsAppButton({
   tipo, id, size = 'small', ghost = false, label, onlyIcon = false, sendPdf = false, folio,
 }: Props) {
-  const [loading, setLoading] = useState(false);
+  const [loading,      setLoading]      = useState(false);
+  const [modalOpen,    setModalOpen]    = useState(false);
+  const [telefono,     setTelefono]     = useState('');
+  const [mensajeEdit,  setMensajeEdit]  = useState('');
+  const [waLink,       setWaLink]       = useState('');
 
-  const handleClick = async () => {
+  const abrirModal = async () => {
     setLoading(true);
     try {
-      // 1. Obtener texto + link wa.me del backend
-      const endpoint: Record<typeof tipo, string> = {
-        factura:    `/comunicaciones/whatsapp/factura/${id}`,
-        cotizacion: `/comunicaciones/whatsapp/cotizacion/${id}`,
-        conduce:    `/comunicaciones/whatsapp/conduce/${id}`,
-        cxc:        `/comunicaciones/whatsapp/cxc/${id}`,
-      };
-      const res     = await api.get(endpoint[tipo]);
-      const payload = (res as any).data;
-      const data: { link: string; texto: string; numero?: string } = payload?.data ?? payload;
+      const res = await api.get(getEndpoint(tipo, id));
+      const data: { link: string; texto: string; numero?: string } =
+        (res as any).data?.data ?? (res as any).data;
 
-      if (!data?.link) {
-        message.warning('No se pudo generar el link de WhatsApp');
-        return;
-      }
+      if (!data?.link) { message.warning('No se pudo generar el link de WhatsApp'); return; }
 
-      // 2. Si sendPdf y es factura, intentar compartir el PDF
-      if (sendPdf && tipo === 'factura') {
-        const eid = localStorage.getItem('empresaId') ?? '';
-        const pdfRes = await fetch(`/api/v1/facturas/${id}/pdf`, {
-          credentials: 'include',
-          headers: { 'X-Empresa-ID': eid },
-        });
-
-        if (pdfRes.ok) {
-          const blob     = await pdfRes.blob();
-          const filename = folio ? `${folio}.pdf` : `factura-${id}.pdf`;
-          const file     = new File([blob], filename, { type: 'application/pdf' });
-
-          // Móvil: API nativa de compartir — abre directamente WhatsApp con el PDF adjunto
-          if (navigator.canShare?.({ files: [file] })) {
-            await navigator.share({ files: [file], text: data.texto });
-            return;
-          }
-
-          // Escritorio: descargar el PDF y abrir WhatsApp Web simultáneamente
-          const url  = URL.createObjectURL(blob);
-          const a    = document.createElement('a');
-          a.href     = url;
-          a.download = filename;
-          a.click();
-          URL.revokeObjectURL(url);
-          // Pequeño delay para que el PDF descargue antes de que el foco cambie
-          setTimeout(() => window.open(data.link, '_blank', 'noopener,noreferrer'), 600);
-          message.success('PDF descargado. Adjúntalo en el chat de WhatsApp que se abrió.');
-          return;
-        }
-        // Si el PDF falla, caer al envío de solo texto
-      }
-
-      // 3. Fallback / comportamiento por defecto: solo link de texto
-      window.open(data.link, '_blank', 'noopener,noreferrer');
-
-    } catch (err: any) {
-      // navigator.share lanza AbortError si el usuario cancela — no es un error real
-      if (err?.name !== 'AbortError') {
-        message.error('Error al compartir por WhatsApp');
-      }
+      setTelefono(data.numero ?? '');
+      setMensajeEdit(data.texto);
+      setWaLink(data.link);
+      setModalOpen(true);
+    } catch {
+      message.error('Error al preparar el mensaje de WhatsApp');
     } finally {
       setLoading(false);
     }
   };
 
+  const enviar = async () => {
+    // Reconstruir link con número y texto editados
+    const num = telefono.replace(/\D/g, '');
+    const numFmt = num
+      ? (num.startsWith('1809') || num.startsWith('1829') || num.startsWith('1849')
+          ? num
+          : num.startsWith('1') ? num : `1${num}`)
+      : '';
+    const link = numFmt
+      ? `https://wa.me/${numFmt}?text=${encodeURIComponent(mensajeEdit)}`
+      : `https://wa.me/?text=${encodeURIComponent(mensajeEdit)}`;
+
+    // Si sendPdf y tiene PDF, intentar compartir/descargar
+    const pdfFn = PDF_ENDPOINT[tipo];
+    if (sendPdf && pdfFn) {
+      try {
+        const eid    = localStorage.getItem('empresaId') ?? '';
+        const pdfRes = await fetch(`/api/v1${pdfFn(id)}`, {
+          credentials: 'include',
+          headers: { 'X-Empresa-ID': eid },
+        });
+        if (pdfRes.ok) {
+          const blob     = await pdfRes.blob();
+          const filename = folio ? `${folio}.pdf` : `documento-${id}.pdf`;
+          const file     = new File([blob], filename, { type: 'application/pdf' });
+          if (navigator.canShare?.({ files: [file] })) {
+            await navigator.share({ files: [file], text: mensajeEdit });
+            setModalOpen(false);
+            return;
+          }
+          // Escritorio: descarga + abre WhatsApp
+          const url = URL.createObjectURL(blob);
+          const a   = document.createElement('a');
+          a.href = url; a.download = filename; a.click();
+          URL.revokeObjectURL(url);
+          setTimeout(() => window.open(link, '_blank', 'noopener,noreferrer'), 600);
+          message.success('PDF descargado. Adjúntalo en WhatsApp.');
+          setModalOpen(false);
+          return;
+        }
+      } catch (err: any) {
+        if (err?.name === 'AbortError') { setModalOpen(false); return; }
+      }
+    }
+
+    window.open(link, '_blank', 'noopener,noreferrer');
+    setModalOpen(false);
+  };
+
   return (
-    <Tooltip title={onlyIcon ? 'Compartir por WhatsApp' : undefined}>
-      <Button
-        size={size}
-        ghost={ghost}
-        loading={loading}
-        onClick={handleClick}
-        icon={<WhatsAppOutlined />}
-        style={{
-          color:       '#25D366',
-          borderColor: '#25D366',
-          background:  ghost ? 'transparent' : undefined,
-        }}
+    <>
+      <Tooltip title={onlyIcon ? 'Enviar por WhatsApp' : undefined}>
+        <Button
+          size={size} ghost={ghost} loading={loading}
+          onClick={abrirModal}
+          icon={<WhatsAppOutlined />}
+          style={{ color: '#25D366', borderColor: '#25D366', background: ghost ? 'transparent' : undefined }}
+        >
+          {!onlyIcon && (label ?? 'WhatsApp')}
+        </Button>
+      </Tooltip>
+
+      <Modal
+        open={modalOpen}
+        onCancel={() => setModalOpen(false)}
+        footer={null}
+        title={<Space><WhatsAppOutlined style={{ color: '#25D366', fontSize: 18 }} /><span>Enviar por WhatsApp</span></Space>}
+        width={480}
+        destroyOnClose
       >
-        {!onlyIcon && (label ?? 'WhatsApp')}
-      </Button>
-    </Tooltip>
+        <div style={{ marginBottom: 14 }}>
+          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+            Teléfono del destinatario
+          </Text>
+          <Input
+            value={telefono}
+            onChange={e => setTelefono(e.target.value)}
+            placeholder="+1 (809) 000-0000"
+            prefix={<WhatsAppOutlined style={{ color: '#25D366' }} />}
+            size="large"
+          />
+          <Text type="secondary" style={{ fontSize: 11 }}>
+            Incluye código de país. Ej: 8091234567 → se formatea automáticamente.
+          </Text>
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+            Mensaje (editable)
+          </Text>
+          <Input.TextArea
+            value={mensajeEdit}
+            onChange={e => setMensajeEdit(e.target.value)}
+            rows={6}
+            style={{ fontFamily: 'monospace', fontSize: 12 }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <Button onClick={() => setModalOpen(false)}>Cancelar</Button>
+          <Button
+            type="primary"
+            icon={<SendOutlined />}
+            onClick={enviar}
+            style={{ background: '#25D366', borderColor: '#25D366' }}
+          >
+            Enviar por WhatsApp
+          </Button>
+        </div>
+      </Modal>
+    </>
   );
 }

@@ -51,6 +51,24 @@ export class ComunicacionesController {
     return this.svc.recordatorioCxC(id);
   }
 
+  @Get('whatsapp/nota-credito/:id')
+  @ApiOperation({ summary: 'Genera link wa.me para compartir una Nota de Crédito E34' })
+  mensajeNotaCredito(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('apiBaseUrl') apiBaseUrl?: string,
+  ) {
+    return this.svc.mensajeNotaCredito(id, apiBaseUrl);
+  }
+
+  @Get('whatsapp/nota-debito/:id')
+  @ApiOperation({ summary: 'Genera link wa.me para compartir una Nota de Débito E33' })
+  mensajeNotaDebito(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('apiBaseUrl') apiBaseUrl?: string,
+  ) {
+    return this.svc.mensajeNotaDebito(id, apiBaseUrl);
+  }
+
   @Get('cxc-pendientes')
   @ApiOperation({ summary: 'Lista CxC pendientes/vencidas para enviar recordatorios masivos' })
   listaCxCPendientes() { return this.svc.listaCxCPendientes(); }
