@@ -299,11 +299,20 @@ h1, h2, h3, h4, h5, h6,
   min-width: 0;
 }
 
-/* ── Fix móvil: asegurar que #main-content tenga ancho completo en iOS ─────────── */
+/* ── Fix móvil iOS Safari: los divs raíz de página no heredan ancho sin width explícito ── */
+/* FacturasPage usa <Card> (tiene width:100% en antd), pero la mayoría de páginas usan
+   <div style="padding:24px"> sin width — en iOS Safari ese div colapsa a 0px. */
 @media (max-width: 768px) {
   #main-content {
     min-width: 0 !important;
     max-width: 100% !important;
+  }
+  /* Div raíz de página: forzar ancho completo */
+  #main-content > div {
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
   }
 }
 
