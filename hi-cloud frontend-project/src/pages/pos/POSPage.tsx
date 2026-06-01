@@ -3343,10 +3343,10 @@ export default function POSPage() {
   const searchRef = useRef<any>(null);
   const { pendingCount, isSyncing, enqueue, sync } = useOfflineQueue();
 
-  // Autocompletar razón social desde DGII cuando se consulta el RNC del comprador
+  // Autocompletar/sustituir razón social desde DGII cuando se consulta el RNC del comprador
   useEffect(() => {
     if (rncDGII.datos?.encontrado && rncDGII.datos?.nombre) {
-      if (!razonSocialComp) setRazonSocialComp(rncDGII.datos.nombre);
+      setRazonSocialComp(rncDGII.datos.nombre);  // siempre sustituye aunque haya texto previo
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rncDGII.datos]);
