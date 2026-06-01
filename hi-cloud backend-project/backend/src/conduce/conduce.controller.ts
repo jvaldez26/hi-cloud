@@ -40,6 +40,7 @@ class CreateConduceDto {
   @IsOptional() @IsString()                          vehiculo?: string;
   @IsOptional() @IsString()                          notas?: string;
   @IsOptional() @IsInt() @Type(() => Number)         sucursalId?: number;
+  @IsOptional() @IsInt() @Type(() => Number)         almacenId?: number;
   @IsArray() @ValidateNested({ each: true }) @Type(() => DetalleConduceDto)
   detalles!: DetalleConduceDto[];
 }
