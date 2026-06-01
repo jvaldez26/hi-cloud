@@ -4421,115 +4421,124 @@ export default function POSPage() {
             )}
           </div>
 
-          {/* Tipo de cobro: Contado / Crédito */}
-          <div style={{ flexShrink: 0, padding: '10px 16px 8px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
-            <div style={{ fontSize: 9, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 6 }}>Tipo de cobro</div>
-            <div style={{ display: 'flex', gap: 6, marginBottom: tipoPagoPos === 'CREDITO' ? 10 : 0 }}>
-              {([
-                { key: 'CONTADO', icon: '💵', label: 'Contado',  color: '#15803D', bg: '#F0FDF4', border: '#86EFAC' },
-                { key: 'CREDITO', icon: '📋', label: 'Crédito',  color: '#0F3460', bg: '#EEF2FF', border: '#A5B4FC' },
-              ] as const).map(t => {
-                const act = tipoPagoPos === t.key;
-                return (
-                  <button key={t.key} onClick={() => setTipoPagoPos(t.key)}
-                    style={{ flex: 1, height: 34, borderRadius: 7, border: act ? `1.5px solid ${t.border}` : '1.5px solid #E2E8F0',
-                      background: act ? t.bg : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center',
-                      justifyContent: 'center', gap: 4, outline: 'none', transition: 'all 0.12s' }}>
-                    <span style={{ fontSize: 12 }}>{t.icon}</span>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: act ? t.color : '#475569' }}>{t.label}</span>
-                  </button>
-                );
-              })}
+          {/* ── Controles compactos: Tipo · Moneda · Método (fila 1 + fila 2) ── */}
+          <div style={{ flexShrink: 0, padding: '6px 12px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+
+            {/* Fila 1: Tipo de cobro + Moneda en la misma línea */}
+            <div style={{ display: 'flex', gap: 6, marginBottom: 5 }}>
+              {/* Tipo de cobro */}
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 8, fontWeight: 600, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 3 }}>Pago</div>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {([
+                    { key: 'CONTADO', icon: '💵', label: 'Contado', color: '#15803D', bg: '#F0FDF4', border: '#86EFAC' },
+                    { key: 'CREDITO', icon: '📋', label: 'Crédito', color: '#0F3460', bg: '#EEF2FF', border: '#A5B4FC' },
+                  ] as const).map(t => {
+                    const act = tipoPagoPos === t.key;
+                    return (
+                      <button key={t.key} onClick={() => setTipoPagoPos(t.key)}
+                        style={{ flex: 1, height: 26, borderRadius: 6, border: act ? `1.5px solid ${t.border}` : '1.5px solid #E2E8F0',
+                          background: act ? t.bg : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center',
+                          justifyContent: 'center', gap: 3, outline: 'none', transition: 'all 0.12s' }}>
+                        <span style={{ fontSize: 11 }}>{t.icon}</span>
+                        <span style={{ fontSize: 10, fontWeight: 600, color: act ? t.color : '#475569' }}>{t.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Moneda */}
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 8, fontWeight: 600, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 3 }}>Moneda</div>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {(['DOP', 'USD'] as const).map(m => {
+                    const act = monedaPOS === m;
+                    return (
+                      <button key={m} onClick={async () => {
+                        setMonedaPOS(m);
+                        if (m !== 'DOP') {
+                          try {
+                            const eid = localStorage.getItem('empresaId') ?? '';
+                            const res = await fetch(`/api/v1/divisas/tasa-publica/${m}`, { credentials: 'include', headers: { 'X-Empresa-ID': eid } });
+                            const d = await res.json();
+                            const tasa = d?.data?.tasaVenta ?? d?.tasaVenta;
+                            if (tasa) setTasaCambioPOS(Number(tasa));
+                          } catch { /* mantiene tasa */ }
+                        } else { setTasaCambioPOS(1); }
+                      }}
+                        style={{ flex: 1, height: 26, borderRadius: 6, border: act ? `1.5px solid ${m === 'USD' ? '#FCD34D' : '#86EFAC'}` : '1.5px solid #E2E8F0',
+                          background: act ? (m === 'USD' ? '#FFFBEB' : '#F0FDF4') : '#fff', cursor: 'pointer',
+                          fontSize: 10, fontWeight: 700, color: act ? (m === 'USD' ? '#B45309' : '#15803D') : '#475569', outline: 'none' }}>
+                        {m === 'USD' ? '🇺🇸 US$' : '🇩🇴 RD$'}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
-            {/* Campos extra para crédito */}
+
+            {/* Tasa USD (solo si USD activo) */}
+            {monedaPOS === 'USD' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5, fontSize: 10, color: '#92400E' }}>
+                <span>Tasa:</span>
+                <input type="number" min={1} step={0.01} value={tasaCambioPOS}
+                  onChange={e => setTasaCambioPOS(Math.max(1, Number(e.target.value)))}
+                  style={{ width: 60, height: 22, border: '1px solid #FCD34D', borderRadius: 5, textAlign: 'center', fontSize: 10, fontWeight: 700, color: '#92400E', outline: 'none', background: '#FFFBEB' }} />
+                <span>RD$/US$1 → US$ {(totalAPagar / tasaCambioPOS).toFixed(2)}</span>
+              </div>
+            )}
+
+            {/* Crédito: días */}
             {tipoPagoPos === 'CREDITO' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: clienteId ? '#EEF2FF' : '#FEF2F2',
-                borderRadius: 8, border: `1px solid ${clienteId ? '#A5B4FC' : '#FECACA'}`, fontSize: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', background: clienteId ? '#EEF2FF' : '#FEF2F2',
+                borderRadius: 7, border: `1px solid ${clienteId ? '#A5B4FC' : '#FECACA'}`, fontSize: 11, marginBottom: 4 }}>
                 {clienteId ? (
                   <>
-                    <span style={{ color: '#4338CA', fontWeight: 600 }}>📋 Crédito</span>
-                    <span style={{ color: '#4338CA' }}>·</span>
+                    <span style={{ color: '#4338CA', fontWeight: 600 }}>📋</span>
                     <input type="number" min={1} max={365} value={diasCreditoPos}
                       onChange={e => setDiasCreditoPos(Math.max(1, Math.min(365, Number(e.target.value))))}
-                      style={{ width: 52, height: 26, border: '1px solid #A5B4FC', borderRadius: 5, textAlign: 'center',
-                        fontSize: 12, fontWeight: 700, color: '#3730A3', outline: 'none', background: '#EEF2FF' }} />
-                    <span style={{ color: '#6B7280' }}>días · vence {
+                      style={{ width: 46, height: 22, border: '1px solid #A5B4FC', borderRadius: 5, textAlign: 'center',
+                        fontSize: 11, fontWeight: 700, color: '#3730A3', outline: 'none', background: '#EEF2FF' }} />
+                    <span style={{ color: '#6B7280', fontSize: 10 }}>días · vence {
                       new Date(Date.now() + diasCreditoPos * 86400000).toLocaleDateString('es-DO', { day: '2-digit', month: 'short' })
                     }</span>
                   </>
                 ) : (
-                  <span style={{ color: '#DC2626', fontWeight: 600 }}>⚠ Selecciona un cliente para venta a crédito</span>
+                  <span style={{ color: '#DC2626', fontWeight: 600, fontSize: 10 }}>⚠ Selecciona un cliente para crédito</span>
                 )}
               </div>
             )}
-          </div>
 
-          {/* Moneda de la venta (DOP / USD) */}
-          <div style={{ flexShrink: 0, padding: '8px 16px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
-            <div style={{ fontSize: 9, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 5 }}>Moneda</div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {(['DOP', 'USD'] as const).map(m => {
-                const act = monedaPOS === m;
-                return (
-                  <button key={m} onClick={async () => {
-                    setMonedaPOS(m);
-                    if (m !== 'DOP') {
-                      try {
-                        const eid = localStorage.getItem('empresaId') ?? '';
-                        const res = await fetch(`/api/v1/divisas/tasa-publica/${m}`, { credentials: 'include', headers: { 'X-Empresa-ID': eid } });
-                        const d = await res.json();
-                        const tasa = d?.data?.tasaVenta ?? d?.tasaVenta;
-                        if (tasa) setTasaCambioPOS(Number(tasa));
-                      } catch { /* mantiene tasa actual */ }
-                    } else {
-                      setTasaCambioPOS(1);
-                    }
-                  }}
-                    style={{ flex: 1, height: 30, borderRadius: 7, border: act ? `1.5px solid ${m === 'USD' ? '#FCD34D' : '#86EFAC'}` : '1.5px solid #E2E8F0',
-                      background: act ? (m === 'USD' ? '#FFFBEB' : '#F0FDF4') : '#fff', cursor: 'pointer',
-                      fontSize: 12, fontWeight: 700, color: act ? (m === 'USD' ? '#B45309' : '#15803D') : '#475569', outline: 'none' }}>
-                    {m === 'USD' ? '🇺🇸 US$' : '🇩🇴 RD$'}
-                  </button>
-                );
-              })}
-            </div>
-            {monedaPOS === 'USD' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, fontSize: 11, color: '#92400E' }}>
-                <span>Tasa:</span>
-                <input type="number" min={1} step={0.01} value={tasaCambioPOS}
-                  onChange={e => setTasaCambioPOS(Math.max(1, Number(e.target.value)))}
-                  style={{ width: 70, height: 24, border: '1px solid #FCD34D', borderRadius: 5, textAlign: 'center', fontSize: 11, fontWeight: 700, color: '#92400E', outline: 'none', background: '#FFFBEB' }} />
-                <span>RD$ / US$1 → US$ {(totalAPagar / tasaCambioPOS).toFixed(2)}</span>
-              </div>
+            {/* Fila 2: Método de pago (solo contado) */}
+            {tipoPagoPos === 'CONTADO' && (
+              <>
+                <div style={{ fontSize: 8, fontWeight: 600, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 3 }}>Método</div>
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                  {(([
+                    { key: 'efectivo',      icon: '💵', label: 'Efectivo',  color: '#15803D', bg: '#F0FDF4', border: '#86EFAC', flag: 'posEfectivo'       },
+                    { key: 'tarjeta',       icon: '💳', label: 'Tarjeta',   color: '#1D4ED8', bg: '#EFF6FF', border: '#93C5FD', flag: 'posTarjetaCredito'  },
+                    { key: 'transferencia', icon: '🏦', label: 'Transfer.', color: '#6D28D9', bg: '#F5F3FF', border: '#C4B5FD', flag: 'posTransferencia'   },
+                    { key: 'cheque',        icon: '📄', label: 'Cheque',    color: '#B45309', bg: '#FFFBEB', border: '#FCD34D', flag: 'posCheque'          },
+                    { key: 'vale',          icon: '🎫', label: 'Vale',      color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE', flag: 'posVale'            },
+                  ] as const).filter(m =>
+                    posConf[m.flag] !== false && (posConf[m.flag] === true || ['posEfectivo','posTarjetaCredito','posTransferencia'].includes(m.flag))
+                  )).map(m => {
+                    const act = metodoPago === m.key;
+                    return (
+                      <button key={m.key} onClick={() => setMetodoPago(m.key as MetodoPago)}
+                        style={{ flex: 1, minWidth: 52, height: 26, borderRadius: 6, border: act ? `1.5px solid ${m.border}` : '1.5px solid #E2E8F0',
+                          background: act ? m.bg : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center',
+                          justifyContent: 'center', gap: 3, outline: 'none', transition: 'all 0.12s' }}>
+                        <span style={{ fontSize: 11 }}>{m.icon}</span>
+                        <span style={{ fontSize: 10, fontWeight: 600, color: act ? m.color : '#475569' }}>{m.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
             )}
           </div>
-
-          {/* Método de pago — solo visible en contado */}
-          {tipoPagoPos === 'CONTADO' && (
-          <div style={{ flexShrink: 0, padding: '10px 16px 8px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
-            <div style={{ fontSize: 9, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 5 }}>Método de pago</div>
-            <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-              {(([
-                { key: 'efectivo',      icon: '💵', label: 'Efectivo',  color: '#15803D', bg: '#F0FDF4', border: '#86EFAC', flag: 'posEfectivo'       },
-                { key: 'tarjeta',       icon: '💳', label: 'Tarjeta',   color: '#1D4ED8', bg: '#EFF6FF', border: '#93C5FD', flag: 'posTarjetaCredito'  },
-                { key: 'transferencia', icon: '🏦', label: 'Transfer.', color: '#6D28D9', bg: '#F5F3FF', border: '#C4B5FD', flag: 'posTransferencia'   },
-                { key: 'cheque',        icon: '📄', label: 'Cheque',    color: '#B45309', bg: '#FFFBEB', border: '#FCD34D', flag: 'posCheque'          },
-                { key: 'vale',          icon: '🎫', label: 'Vale',      color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE', flag: 'posVale'            },
-              ] as const).filter(m =>
-                // Mostrar si el flag es true, o si no está definido (default true para efectivo/tarjeta/transferencia)
-                posConf[m.flag] !== false && (posConf[m.flag] === true || ['posEfectivo','posTarjetaCredito','posTransferencia'].includes(m.flag))
-              )).map(m => {
-                const act = metodoPago === m.key;
-                return (
-                  <button key={m.key} onClick={() => setMetodoPago(m.key as MetodoPago)} style={{ flex: 1, minWidth: 60, height: 34, borderRadius: 7, border: act ? `1.5px solid ${m.border}` : '1.5px solid #E2E8F0', background: act ? m.bg : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, outline: 'none', transition: 'all 0.12s' }}>
-                    <span style={{ fontSize: 12 }}>{m.icon}</span>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: act ? m.color : '#475569' }}>{m.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          )}
 
           {/* ── Propina (solo si posPropinaActiva = true y CONTADO) ─────── */}
           {propinaActiva && (
