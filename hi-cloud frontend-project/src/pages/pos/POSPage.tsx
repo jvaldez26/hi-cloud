@@ -1,4 +1,5 @@
 ﻿import { useState, useCallback, useEffect, useRef, createContext, useContext } from 'react';
+import { useRncLookup } from '../../hooks/useRncLookup';
 import QRCode from 'qrcode';
 import { Select, Modal, Badge, Empty, Spin, Tooltip, message, Avatar, Popover, Input, Button } from 'antd';
 import { SearchOutlined, ShoppingCartOutlined, CheckCircleOutlined, DisconnectOutlined, LogoutOutlined, PrinterOutlined, LockOutlined, UserSwitchOutlined, SwapOutlined, EyeOutlined, EyeInvisibleOutlined } from '@ant-design/icons';
@@ -3334,12 +3335,21 @@ export default function POSPage() {
   // e-CF: datos del comprador y estado del loader
   const [rncComprador,       setRncComprador]       = useState('');
   const [razonSocialComp,    setRazonSocialComp]    = useState('');
+  const rncDGII = useRncLookup();
   const [numeroOrdenCompra,  setNumeroOrdenCompra]  = useState('');
   const [guardarRncPerfil,   setGuardarRncPerfil]   = useState(false);
   const [ecfStatus,          setEcfStatus]          = useState<'idle'|'loading'|'ok'|'pendiente'>('idle');
   const [ecfEncf,            setEcfEncf]            = useState<string>('');
   const searchRef = useRef<any>(null);
   const { pendingCount, isSyncing, enqueue, sync } = useOfflineQueue();
+
+  // Autocompletar razón social desde DGII cuando se consulta el RNC del comprador
+  useEffect(() => {
+    if (rncDGII.datos?.encontrado && rncDGII.datos?.nombre) {
+      if (!razonSocialComp) setRazonSocialComp(rncDGII.datos.nombre);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rncDGII.datos]);
 
   // Autofocus en campo de monto al abrir panel de cobro en efectivo
   useEffect(() => {
@@ -4605,11 +4615,33 @@ export default function POSPage() {
                   <input
                     placeholder={tipoNcf === 'E32' ? 'RNC o Cédula (9 u 11 dígitos) *' : 'RNC del comprador (9 dígitos) *'}
                     value={rncComprador}
-                    onChange={e => setRncComprador(e.target.value.replace(/\D/g, ''))}
+                    onChange={e => {
+                      const v = e.target.value.replace(/\D/g, '');
+                      setRncComprador(v);
+                      rncDGII.consultarDebounced(v);
+                    }}
                     maxLength={11}
                     autoFocus={tipoNcf !== 'E32'}
-                    style={{ width: '100%', padding: '6px 10px', borderRadius: 7, border: `1.5px solid ${necesitaRnc && rncComprador.length > 0 && !rncValido ? '#FCA5A5' : '#E2E8F0'}`, fontSize: 13, fontFamily: 'monospace', outline: 'none', letterSpacing: 2, marginBottom: 5, boxSizing: 'border-box', background: '#fff' }}
+                    style={{ width: '100%', padding: '6px 10px', borderRadius: 7, border: `1.5px solid ${necesitaRnc && rncComprador.length > 0 && !rncValido ? '#FCA5A5' : rncDGII.datos?.encontrado ? '#86EFAC' : '#E2E8F0'}`, fontSize: 13, fontFamily: 'monospace', outline: 'none', letterSpacing: 2, marginBottom: 3, boxSizing: 'border-box', background: '#fff' }}
                   />
+
+                  {/* Feedback DGII */}
+                  {rncDGII.loading && (
+                    <div style={{ fontSize: 10, color: '#64748B', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span style={{ display: 'inline-block', width: 10, height: 10, border: '2px solid #94A3B8', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
+                      Consultando DGII…
+                    </div>
+                  )}
+                  {rncDGII.datos?.encontrado && !rncDGII.loading && (
+                    <div style={{ fontSize: 11, color: '#059669', marginBottom: 4, fontWeight: 600 }}>
+                      ✓ {rncDGII.datos.nombre}
+                      {rncDGII.datos.estado && rncDGII.datos.estado !== 'ACTIVO' && (
+                        <span style={{ marginLeft: 6, color: rncDGII.datos.estado.includes('BAJA') ? '#DC2626' : '#D97706', fontWeight: 400 }}>
+                          ({rncDGII.datos.estado})
+                        </span>
+                      )}
+                    </div>
+                  )}
 
                   {/* Razón Social — E31/E44/E45 */}
                   {tipoNcf !== 'E32' && (
