@@ -153,7 +153,7 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
   const handleReenviar = (r: any) => {
     Modal.confirm({
       title: `Reenviar e-CF ${r.numero}`,
-      content: `¿Confirmas reenviar este comprobante a MSeller? El e-CF ${r.numero} en estado "${r.estadoDGII?.replace(/_/g,' ').toUpperCase()}" será enviado individualmente.`,
+      content: `¿Confirmas reenviar este comprobante? El e-CF ${r.numero} en estado "${r.estadoDGII?.replace(/_/g,' ').toUpperCase()}" será enviado individualmente.`,
       okText: 'Sí, reenviar',
       cancelText: 'Cancelar',
       okButtonProps: { danger: true },
@@ -166,10 +166,10 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
     mutationFn: ecfApi.consultarEstados,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['ecf-list'] });
-      message.success('Estados actualizados desde MSeller');
+      message.success('Estados actualizados desde DGII');
     },
     onError: (e: any) =>
-      message.warning((e as any)?.response?.data?.message ?? 'MSeller no respondió — intenta de nuevo en unos segundos'),
+      message.warning((e as any)?.response?.data?.message ?? 'El servicio fiscal no respondió — intenta de nuevo en unos segundos'),
   });
 
   // Auto-sync al cargar si hay e-CFs en estado "enviado" (una sola vez por montaje)
@@ -224,7 +224,7 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
                    onClick: () => setDetail(r) }]
               : []),
             ...(r.estadoDGII === 'pendiente_envio' && r.intentosEnvio < 5
-              ? [{ key: 'reenviar', label: 'Reenviar a MSeller', icon: <SendOutlined />,
+              ? [{ key: 'reenviar', label: 'Reenviar a DGII', icon: <SendOutlined />,
                    onClick: () => handleReenviar(r) }]
               : []),
           ]}
@@ -268,7 +268,7 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
         <Col xs={24} sm="auto">
           <Space size={2} wrap>
             <ColumnToggle columns={ECF_COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
-            <Tooltip title="Consultar estado real en MSeller y actualizar">
+            <Tooltip title="Consultar estado real en DGII y actualizar">
               <Button
                 icon={<ReloadOutlined spin={sincMut.isPending || isFetching} />}
                 size="small"

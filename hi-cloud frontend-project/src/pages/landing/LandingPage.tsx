@@ -254,8 +254,8 @@ function mapPlanApi(p: any) {
 }
 
 const FAQ_DATA = [
-  { q: '¿HiCloud me certifica ante la DGII?', a: 'HiCloud se conecta con tu proveedor e-CF (MSeller u otro) ya certificado ante la DGII. El proceso de certificación lo realizas con tu proveedor e-CF en 4 pasos sencillos.' },
-  { q: '¿Necesito una cuenta en MSeller?', a: 'Sí. HiCloud se integra con MSeller y otros proveedores certificados DGII. MSeller ofrece 200 documentos gratis al mes para empezar.' },
+  { q: '¿HiCloud me certifica ante la DGII?', a: 'HiCloud incluye integración nativa con el sistema de facturación electrónica certificado ante la DGII. El proceso de activación se completa en minutos desde el panel de configuración.' },
+  { q: '¿Necesito configurar algo para la facturación electrónica?', a: 'Sí. Solo necesitas ingresar tus credenciales e-CF en la configuración fiscal de HiCloud y cargar tus secuencias DGII. Nuestro equipo de soporte te guía en cada paso.' },
   { q: '¿Qué pasa con mis datos si cancelo?', a: 'Tus datos son tuyos. Puedes exportar toda tu información en cualquier momento. Realizamos backups diarios en AWS S3 en la región us-east-2.' },
   { q: '¿Puedo migrar desde mi sistema actual?', a: 'Sí. Ofrecemos importación masiva de clientes, productos y proveedores desde Excel/CSV. El equipo de soporte te acompaña durante la migración.' },
   { q: '¿Funciona en móvil?', a: 'Sí. HiCloud es 100% responsive. El POS funciona perfectamente en tablet y móvil, incluyendo modo offline para ventas sin conexión.' },
@@ -671,9 +671,9 @@ export default function LandingPage() {
           </FadeIn>
           <div className="ecf-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 24 }}>
             {[
-              { n: '01', title: 'Configura tu empresa', desc: 'Agrega tu RNC, conecta tus credenciales de MSeller y carga tus secuencias DGII. Todo en minutos.', color: '#42A5F5' },
+              { n: '01', title: 'Configura tu empresa', desc: 'Agrega tu RNC, activa tu configuración de facturación electrónica y carga tus secuencias DGII. Todo en minutos.', color: '#42A5F5' },
               { n: '02', title: 'Emite desde cualquier módulo', desc: 'Facturas, POS, compras — todos generan el e-CF automáticamente al confirmar la operación.', color: '#00BFA5' },
-              { n: '03', title: 'DGII confirma en segundos', desc: 'El comprobante llega a la DGII vía MSeller. Recibes el eNCF con código QR de validación.', color: '#A78BFA' },
+              { n: '03', title: 'DGII confirma en segundos', desc: 'El comprobante llega a la DGII automáticamente. Recibes el eNCF con código QR de validación.', color: '#A78BFA' },
             ].map((s, i) => (
               <FadeIn key={s.n} delay={i * 0.12}>
                 <div style={{ background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 16, padding: 28, position: 'relative' }}>

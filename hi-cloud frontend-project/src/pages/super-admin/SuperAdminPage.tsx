@@ -610,7 +610,7 @@ function EcfConfigTab({
                   <div style={{ color: C.txt2, fontSize: 11 }}>{r.rncEmisor}</div>
                 </div>
               )},
-              { title: 'Email MSeller', dataIndex: 'msellerEmail', render: (v: string) => <span style={{ color: C.txt2, fontSize: 12 }}>{v}</span> },
+              { title: 'Email e-CF', dataIndex: 'msellerEmail', render: (v: string) => <span style={{ color: C.txt2, fontSize: 12 }}>{v}</span> },
               { title: 'Modo', dataIndex: 'modo', render: (v: string) => (
                 <Tag color={v === 'PRODUCCION' ? 'green' : v === 'CERTIFICACION' ? 'blue' : 'orange'}>{v}</Tag>
               )},
@@ -679,13 +679,13 @@ function EcfConfigTab({
               />
             </Form.Item>
           )}
-          <Form.Item name="msellerEmail" label="Email MSeller" rules={[{ required: true, type: 'email' }]}>
+          <Form.Item name="msellerEmail" label="Email e-CF" rules={[{ required: true, type: 'email' }]}>
             <Input placeholder="usuario@empresa.com" />
           </Form.Item>
-          <Form.Item name="msellerPassword" label={formModal?.id ? 'Contraseña MSeller (dejar vacío para no cambiar)' : 'Contraseña MSeller'} rules={[{ required: !formModal?.id }]}>
+          <Form.Item name="msellerPassword" label={formModal?.id ? 'Contraseña e-CF (dejar vacío para no cambiar)' : 'Contraseña e-CF'} rules={[{ required: !formModal?.id }]}>
             <Input.Password />
           </Form.Item>
-          <Form.Item name="msellerApiKey" label={formModal?.id ? 'API Key MSeller (dejar vacío para no cambiar)' : 'API Key MSeller'} rules={[{ required: !formModal?.id }]}>
+          <Form.Item name="msellerApiKey" label={formModal?.id ? 'API Key e-CF (dejar vacío para no cambiar)' : 'API Key e-CF'} rules={[{ required: !formModal?.id }]}>
             <Input.Password />
           </Form.Item>
           <Form.Item name="modo" label="Modo" initialValue="TEST">

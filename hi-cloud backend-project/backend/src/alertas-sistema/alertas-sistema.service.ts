@@ -267,7 +267,7 @@ export class AlertasSistemaService {
       if (n > 0) out.push({
         id: 'ecf-atascados', tipo: 'ecf', severidad: 'media',
         titulo: 'Comprobantes sin enviar a DGII',
-        descripcion: `${n} e-CF(s) llevan más de 10 minutos sin confirmación de MSeller.`,
+        descripcion: `${n} e-CF(s) llevan más de 10 minutos sin confirmación de la DGII.`,
         cantidad: n, ruta: '/ecf', emoji: '⏳',
       });
     } catch (err: unknown) {
