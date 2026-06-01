@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Button, Card, Descriptions, Table, Tag, Row, Col, Typography,
          Statistic, Space, Spin, Steps, message, Popconfirm, Modal, Input, Tooltip, theme } from 'antd';
-import { ArrowLeftOutlined, SendOutlined, MailOutlined, WhatsAppOutlined, FilePdfOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, SendOutlined, MailOutlined, FilePdfOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons';
+import WhatsAppButton from '../../components/ui/WhatsAppButton';
 import EcfSeccion from '../../components/ui/EcfSeccion';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -46,15 +47,6 @@ export default function FacturaDetailPage() {
 
   const [emailOpen,    setEmailOpen]    = useState(false);
   const [emailDestino, setEmailDestino] = useState('');
-  const [waOpen,       setWaOpen]       = useState(false);
-  const [waTelefono,   setWaTelefono]   = useState('');
-
-  const waMut = useMutation({
-    mutationFn: () =>
-      api.post(`/notificaciones/factura/${id}/whatsapp`, { telefono: waTelefono }).then(r => r.data?.data ?? r.data),
-    onSuccess: () => { setWaOpen(false); message.success(`Factura enviada por WhatsApp a ${waTelefono}`); },
-    onError: (e: any) => message.error(e?.response?.data?.errors?.[0] ?? 'Error al enviar WhatsApp'),
-  });
 
   const emailMut = useMutation({
     mutationFn: () =>
@@ -177,15 +169,12 @@ export default function FacturaDetailPage() {
             >
               Email
             </Button>
-            <Button
-              icon={<WhatsAppOutlined style={{ color: '#25D366' }} />}
-              onClick={() => {
-                setWaTelefono((factura as any).cliente?.telefono ?? '');
-                setWaOpen(true);
-              }}
-            >
-              WhatsApp
-            </Button>
+            <WhatsAppButton
+              tipo="factura"
+              id={Number(id)}
+              folio={factura.folio}
+              sendPdf
+            />
             {siguientes.map(sig => (
               <Popconfirm key={sig}
                 title={`¿Cambiar estado a "${sig.toUpperCase()}"?`}
@@ -328,37 +317,6 @@ export default function FacturaDetailPage() {
         </Row>
       </Modal>
 
-      {/* Modal WhatsApp */}
-      <Modal
-        title={<><WhatsAppOutlined style={{ color: '#25D366', marginRight: 8 }} />Enviar por WhatsApp</>}
-        open={waOpen}
-        onCancel={() => setWaOpen(false)}
-        footer={null}
-        width={420}
-      >
-        <p>Se enviará el resumen de <strong>{factura.folio}</strong> al número de WhatsApp indicado.</p>
-        <Input
-          placeholder="+1 829-555-0000"
-          value={waTelefono}
-          onChange={e => setWaTelefono(e.target.value)}
-          size="large"
-          style={{ marginBottom: 16 }}
-        />
-        <Row justify="end" gutter={8}>
-          <Col><Button onClick={() => setWaOpen(false)}>Cancelar</Button></Col>
-          <Col>
-            <Button
-              style={{ background: '#25D366', border: 'none', color: '#fff' }}
-              icon={<WhatsAppOutlined />}
-              loading={waMut.isPending}
-              disabled={waTelefono.length < 8}
-              onClick={() => waMut.mutate()}
-            >
-              Enviar WhatsApp
-            </Button>
-          </Col>
-        </Row>
-      </Modal>
     </div>
   );
 }
