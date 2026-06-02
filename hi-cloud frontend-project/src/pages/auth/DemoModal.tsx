@@ -79,7 +79,7 @@ export default function DemoModal({ open, onClose }: Props) {
               <Text style={{ color: '#fff', fontWeight: 700 }}>H</Text>
             </div>
             <div>
-              <Text strong style={{ display: 'block' }}>Solicitar Demo Gratuita</Text>
+              <Text strong style={{ display: 'block' }}>Agendar Demo</Text>
               <Text type="secondary" style={{ fontSize: 12 }}>Sin costo · Sin tarjeta · Respuesta en 24 h</Text>
             </div>
           </div>
@@ -113,6 +113,10 @@ export default function DemoModal({ open, onClose }: Props) {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: step === 0 ? 20 : -20 }}
             transition={{ duration: 0.2 }}>
+
+            <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 16, lineHeight: 1.5 }}>
+              Un miembro de nuestro equipo se pondrá en contacto contigo para mostrarte el sistema en vivo y responder tus preguntas.
+            </Text>
 
             <Steps current={step} size="small" style={{ marginBottom: 20 }}
               items={[
@@ -204,6 +208,16 @@ export default function DemoModal({ open, onClose }: Props) {
                 )}
               </Col>
             </Row>
+            {/* Link a registro directo */}
+            <div style={{ borderTop: '1px solid #f0f0f0', marginTop: 16, paddingTop: 14, textAlign: 'center' }}>
+              <Text type="secondary" style={{ fontSize: 12 }}>¿Prefieres explorar por tu cuenta?&nbsp;</Text>
+              <a href="/registrar" style={{ fontSize: 12, fontWeight: 600 }}>
+                Crea tu empresa gratis ahora
+              </a>
+              <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 2 }}>
+                Sin tarjeta · Acceso inmediato · 15 días gratis
+              </Text>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
