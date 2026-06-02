@@ -1,7 +1,7 @@
-﻿import { useState } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { Form, Input, Button, Typography, Alert, Checkbox } from 'antd';
 import { UserOutlined, LockOutlined, RocketOutlined, ArrowLeftOutlined } from '@ant-design/icons';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '../../store/auth.store';
 import { useThemeStore } from '../../store/theme.store';
@@ -48,10 +48,26 @@ export default function LoginPage() {
   const [codigoTOTP,    setCodigoTOTP]    = useState('');
   const { login } = useAuthStore();
   const navigate  = useNavigate();
+  const [searchParams] = useSearchParams();
 
-  // Leer mensaje de empresa suspendida si viene del interceptor
+  // Mensajes de error: interceptor HTTP (sesión) o Google OAuth
   const mensajeSuspension = sessionStorage.getItem('login_error') ?? '';
-  const [error, setError] = useState(mensajeSuspension);
+  const GOOGLE_ERRORS: Record<string, { msg: string; link?: { to: string; label: string } }> = {
+    google_no_account: {
+      msg: 'No encontramos una cuenta con ese email de Google. ¿Eres nuevo?',
+      link: { to: '/registrar', label: 'Crear cuenta gratis →' },
+    },
+    google_no_company: {
+      msg: 'Tu cuenta de Google no tiene una empresa activa. Inicia sesión con email y contraseña para configurar tu empresa.',
+    },
+    google_failed: {
+      msg: 'Error al iniciar sesión con Google. Inténtalo de nuevo o usa tu email y contraseña.',
+    },
+  };
+  const googleErrorCode = searchParams.get('error') ?? '';
+  const googleErrorInfo = GOOGLE_ERRORS[googleErrorCode];
+  const initialError = mensajeSuspension || (googleErrorInfo?.msg ?? '');
+  const [error, setError] = useState(initialError);
   if (mensajeSuspension) sessionStorage.removeItem('login_error');
 
   const reenviarVerificacion = async () => {
@@ -175,8 +191,18 @@ export default function LoginPage() {
           backdropFilter: 'blur(12px)',
         }}>
           {error && (
-            <Alert message={error} type="error" showIcon
-              style={{ marginBottom: 16, borderRadius: 8 }} />
+            <Alert type="error" showIcon style={{ marginBottom: 16, borderRadius: 8 }}
+              message={
+                <span>
+                  {error}
+                  {googleErrorInfo?.link && (
+                    <>{' '}<Link to={googleErrorInfo.link.to} style={{ fontWeight: 700 }}>
+                      {googleErrorInfo.link.label}
+                    </Link></>
+                  )}
+                </span>
+              }
+            />
           )}
 
           {correoNoVerif && (

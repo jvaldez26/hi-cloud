@@ -367,11 +367,6 @@ export class AuthController {
     try {
       const googleUser = req.user as any;
 
-      // Cuenta nueva → queda PENDIENTE hasta aprobación del Super Admin
-      if (googleUser?.accountStatus === 'pendiente') {
-        return (res as any).redirect(`${frontendUrl}/pending-approval`);
-      }
-
       // Aprobado pero sin contraseña configurada → generar token de setup y redirigir
       if (googleUser?.passwordConfigured === false) {
         const rawToken = await this.authService.generarSetupToken(googleUser.id);
@@ -379,7 +374,6 @@ export class AuthController {
       }
 
       const loginData = await this.authService.buildLoginResponse(req.user as User);
-      // S-41: token en cookie httpOnly, NO en la URL
       this.setAuthCookie(res as any, loginData.accessToken);
       const params = new URLSearchParams({
         empresaId: String(loginData.empresaActual ?? ''),
@@ -387,12 +381,16 @@ export class AuthController {
         email:     loginData.user.email,
         role:      loginData.user.role,
       });
-      // Si el usuario no tiene empresa → informar al frontend para redirigir al setup
-      if (!loginData.empresaActual) {
-        params.set('sinEmpresa', 'true');
-      }
       return (res as any).redirect(`${frontendUrl}/auth/callback?${params.toString()}`);
-    } catch {
+    } catch (err: any) {
+      // Errores semánticos de Google OAuth → redirigir con código específico
+      const code = err?.message;
+      if (code === 'NO_ACCOUNT') {
+        return (res as any).redirect(`${frontendUrl}/login?error=google_no_account`);
+      }
+      if (code === 'NO_COMPANY') {
+        return (res as any).redirect(`${frontendUrl}/login?error=google_no_company`);
+      }
       return (res as any).redirect(`${frontendUrl}/login?error=google_failed`);
     }
   }

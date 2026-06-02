@@ -32,12 +32,10 @@ export default function GoogleCallbackPage() {
 
     // S-23: el backend seteó la cookie httpOnly — llamamos /auth/me
     // para obtener los datos reales del usuario (id correcto, empresas, etc.)
-    const empresaId  = params.get('empresaId');
-    const sinEmpresa = params.get('sinEmpresa') === 'true' || !empresaId;
+    // Si el usuario no tiene cuenta/empresa el backend redirigió a /login?error=...
+    // y este componente no se ejecutaría — llegamos aquí solo con usuarios válidos.
 
     // SEGURIDAD: limpiar empresaId del localStorage al hacer login con Google.
-    // Si hay un empresaId de sesión anterior (de otro usuario o empresa incorrecta),
-    // AppLayout usará la lógica isPrincipal para seleccionar la empresa correcta.
     localStorage.removeItem('empresaId');
     localStorage.removeItem('mis_empresas');
 
@@ -46,15 +44,10 @@ export default function GoogleCallbackPage() {
         const user = r.data?.data?.user ?? r.data?.user ?? r.data;
         if (!user?.id) throw new Error('Sin usuario');
 
-        // No pasar empresaId del URL — dejar que AppLayout seleccione por isPrincipal
-        // para evitar que una empresa de otro tenant quede como activa
         login(user, null, []);
 
         if (user.role === 'super_admin') {
           navigate('/super-admin', { replace: true });
-        } else if (sinEmpresa) {
-          // Usuario nuevo con Google o sin empresa → ir directo a crear empresa
-          navigate('/onboarding/empresa', { replace: true });
         } else {
           navigate('/dashboard', { replace: true });
         }

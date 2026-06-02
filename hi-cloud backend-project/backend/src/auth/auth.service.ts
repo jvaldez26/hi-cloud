@@ -625,7 +625,13 @@ export class AuthService implements OnModuleInit {
 
   // ─── Google OAuth ─────────────────────────────────────────────────────────────
 
-  /** Busca o crea un usuario a partir del perfil de Google */
+  /**
+   * Google OAuth: SOLO login para usuarios existentes con empresa activa.
+   * NO crea usuarios nuevos — deben registrarse con email/contraseña primero.
+   * Errores retornados como UnauthorizedException con código semántico:
+   *   'NO_ACCOUNT'  → no existe cuenta con ese email/googleId
+   *   'NO_COMPANY'  → existe cuenta pero sin empresa asignada
+   */
   async findOrCreateFromGoogle(data: {
     email: string; googleId: string; nombre: string;
   }): Promise<User> {
@@ -633,45 +639,35 @@ export class AuthService implements OnModuleInit {
     let user = await this.userRepository.findOne({
       where: { googleId: data.googleId } as any,
     });
-    if (user) return user;
 
-    // 2. Buscar por email (cuenta local existente → vincular)
-    user = await this.userRepository.findOne({ where: { email: data.email } });
-    if (user) {
-      const updates: Record<string, any> = { googleId: data.googleId, provider: 'GOOGLE' };
-      // SEGURIDAD: NO promover a ADMIN si no tiene empresa.
-      // ADMIN global ve TODAS las empresas del sistema via /auth/mis-empresas.
-      // El rol ADMIN se asigna cuando el Super Admin aprueba la cuenta.
-      // Un usuario sin empresa debe quedarse en VIEWER hasta la aprobación.
-      await this.userRepository.update(user.id, updates as any);
-      return { ...user, ...updates } as User;
+    // 2. Buscar por email (cuenta local existente → vincular Google ID)
+    if (!user) {
+      user = await this.userRepository.findOne({ where: { email: data.email } });
+      if (user) {
+        // Vincular Google ID si aún no estaba vinculado
+        await this.userRepository.update(user.id, {
+          googleId: data.googleId, provider: 'GOOGLE',
+        } as any);
+        user = { ...user, googleId: data.googleId, provider: 'GOOGLE' } as User;
+      }
     }
 
-    // 3. Crear cuenta nueva — queda en PENDIENTE hasta aprobación del Super Admin
-    // SEGURIDAD: role=VIEWER hasta que se apruebe y se cree su empresa.
-    // role=ADMIN se asigna en aprobarRegistro() cuando el Super Admin activa la cuenta.
-    // Si se crea con ADMIN, el endpoint /auth/mis-empresas lo trata como "admin global"
-    // y le devuelve TODAS las empresas del sistema → violación de aislamiento de datos.
-    const pw = await bcrypt.hash(randomBytes(32).toString('hex'), 12);
-    const newUser = this.userRepository.create({
-      nombre:             data.nombre,
-      email:              data.email,
-      password:           pw,
-      googleId:           data.googleId,
-      provider:           'GOOGLE',
-      role:               UserRole.VIEWER, // VIEWER hasta aprobación — evita ver todas las empresas
-      emailVerifiedAt:    new Date(),      // Google ya verificó el email
-      accountStatus:      'pendiente',     // Requiere aprobación del Super Admin
-      passwordConfigured: false,           // Configurará contraseña tras la aprobación
-    } as any);
-    const saved = await this.userRepository.save(newUser) as unknown as User;
+    // 3. Sin cuenta → bloquear (Google OAuth solo para usuarios registrados)
+    if (!user) {
+      this.logger.warn(`[GOOGLE] Login denegado — email sin cuenta: ${data.email}`);
+      throw new UnauthorizedException('NO_ACCOUNT');
+    }
 
-    // Notificar a los Super Admins (non-fatal)
-    this.notificarAdminsPendiente(data.nombre, data.email).catch(err =>
-      this.logger.warn(`[GOOGLE] No se pudo notificar a admins: ${err?.message}`),
-    );
+    // 4. Sin empresa → bloquear (debe configurarla con email/contraseña)
+    const tieneEmpresa = await this.ueRepository.count({
+      where: { userId: user.id, isActive: true },
+    });
+    if (tieneEmpresa === 0) {
+      this.logger.warn(`[GOOGLE] Login denegado — sin empresa: ${data.email} (userId=${user.id})`);
+      throw new UnauthorizedException('NO_COMPANY');
+    }
 
-    return saved;
+    return user;
   }
 
   async marcarTourCompletado(userId: number): Promise<void> {
