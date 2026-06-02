@@ -15,6 +15,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
 import { EmailService } from '../notificaciones/services/email.service';
+import { TenantService } from '../tenant/tenant.service';
 
 class CreateTicketDto {
   @IsString()                       asunto!:      string;
@@ -41,7 +42,42 @@ export class PortalController {
     private dataSource: DataSource,
     private emailService: EmailService,
     private configService: ConfigService,
+    private tenantService: TenantService,
   ) {}
+
+  // ── Gestión de tickets (ADMIN) — DEBEN ir ANTES de las rutas :token/* ───────
+  // Express/NestJS matchea rutas en orden de definición; si :token/tickets se
+  // define antes, 'admin' matchea como :token y el handler admin nunca se alcanza.
+
+  @Get('admin/tickets')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Listar todos los tickets de soporte del tenant (admin)' })
+  async getAllTickets() {
+    const empresaId = this.tenantService.getEmpresaId();
+    return this.ticketRepository.find({
+      where: { isActive: true, empresaId } as any,
+      order: { prioridad: 'ASC', createdAt: 'DESC' },
+    });
+  }
+
+  @Patch('admin/tickets/:id/responder')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Responder ticket y cambiar estado' })
+  async responderTicket(@Param('id') id: string, @Body() dto: ResponderTicketDto) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const ticket = await this.ticketRepository.findOne({
+      where: { id: Number(id), isActive: true, empresaId } as any,
+    });
+    if (!ticket) throw new NotFoundException(`Ticket #${id} no encontrado`);
+    await this.ticketRepository.update(Number(id), {
+      respuesta:      dto.respuesta,
+      fechaRespuesta: new Date(),
+      estado:         dto.estado ?? EstadoTicket.RESUELTO,
+    } as any);
+    return this.ticketRepository.findOne({ where: { id: Number(id) } });
+  }
 
   // ── Generar / obtener token del portal (requiere auth) ──────────────────────
   @Post('cliente/:clienteId/activar')
@@ -221,34 +257,6 @@ export class PortalController {
       where: { clienteId: cliente.id, empresaId: cliente.empresaId, isActive: true },
       order: { createdAt: 'DESC' },
     });
-  }
-
-  // ── Gestión de tickets (requiere auth de empleado) ───────────────────────
-
-  @Get('admin/tickets')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  @ApiOperation({ summary: 'Listar todos los tickets de soporte (admin)' })
-  async getAllTickets() {
-    return this.ticketRepository.find({
-      where: { isActive: true },
-      order: { prioridad: 'ASC', createdAt: 'DESC' },
-    });
-  }
-
-  @Patch('admin/tickets/:id/responder')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  @ApiOperation({ summary: 'Responder ticket y cambiar estado' })
-  async responderTicket(@Param('id') id: string, @Body() dto: ResponderTicketDto) {
-    const ticket = await this.ticketRepository.findOne({ where: { id: Number(id), isActive: true } });
-    if (!ticket) throw new NotFoundException(`Ticket #${id} no encontrado`);
-    await this.ticketRepository.update(Number(id), {
-      respuesta:      dto.respuesta,
-      fechaRespuesta: new Date(),
-      estado:         dto.estado ?? EstadoTicket.RESUELTO,
-    } as any);
-    return this.ticketRepository.findOne({ where: { id: Number(id) } });
   }
 
   private async validarToken(token: string): Promise<Cliente> {
