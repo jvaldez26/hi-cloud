@@ -15,7 +15,7 @@ import { configuracionApi } from '../../api/configuracion.api';
 import { useQueryClient } from '@tanstack/react-query';
 import { facturasApi } from '../../api/facturas.api';
 import { fmt } from '../../utils/formatters';
-import { imprimirElemento } from '../../utils/printUtils';
+import { imprimirElemento, imprimirReciboTermico } from '../../utils/printUtils';
 import { useThemeStore } from '../../store/theme.store';
 import { useOfflineQueue } from '../../hooks/useOfflineQueue';
 import { useSupervisor } from '../../hooks/useSupervisor';
@@ -424,206 +424,122 @@ function CartRow({ item, onQty, onRemove, onDescuento }: {
   );
 }
 
-// ── Thermal receipt for print ─────────────────────────────────────────────────
-const NCF_LABEL: Record<string, { linea1: string; linea2: string }> = {
-  E32: { linea1: 'FACTURA DE CONSUMO',          linea2: 'ELECTRÓNICA (E32)' },
-  E31: { linea1: 'FACTURA CRÉDITO FISCAL',       linea2: 'ELECTRÓNICA (E31)' },
-  E44: { linea1: 'FACTURA RÉGIMEN ESPECIAL',     linea2: 'ZONA FRANCA (E44)' },
-  E45: { linea1: 'FACTURA GUBERNAMENTAL',        linea2: 'ELECTRÓNICA (E45)' },
+// ── Thermal receipt — HTML puro para impresión directa ───────────────────────
+const NCF_LABEL: Record<string, [string, string]> = {
+  E32: ['FACTURA DE CONSUMO',       'ELECTRÓNICA (E32)'],
+  E31: ['FACTURA CRÉDITO FISCAL',   'ELECTRÓNICA (E31)'],
+  E44: ['FACTURA RÉGIMEN ESPECIAL', 'ZONA FRANCA (E44)'],
+  E45: ['FACTURA GUBERNAMENTAL',    'ELECTRÓNICA (E45)'],
 };
-
 const RNC_GENERICOS_TICKET = new Set(['000000000', '00000000000', '']);
 
-// Helpers de presentación (definidos fuera del componente — sin hooks)
-const R: React.CSSProperties = { fontFamily: '"Courier New",Courier,monospace', fontSize: 12, color: '#000', background: '#fff', lineHeight: 1.45 };
-const HR = ({ dbl }: { dbl?: boolean }) => (
-  <div style={{ borderTop: dbl ? '2px solid #000' : '1px dashed #888', margin: '5px 0' }} />
-);
-function RRow({ label, value, bold, large }: { label: string; value: string; bold?: boolean; large?: boolean }) {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 4, marginBottom: 2, fontSize: large ? 14 : 12 }}>
-      <span>{label}</span>
-      <span style={{ fontWeight: bold || large ? 700 : undefined, textAlign: 'right' }}>{value}</span>
-    </div>
-  );
+function esc(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function ThermalReceipt({ sale }: { sale: Sale }) {
+function buildReciboTermicoHTML(sale: Sale, qrDataUrl: string | null): string {
+  const ahora   = dayjs();
+  const fmt     = (n: number) => `RD$${n.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const row     = (l: string, v: string) => `<div class="row"><span>${esc(l)}</span><span>${esc(v)}</span></div>`;
+  const rowBold = (l: string, v: string) => `<div class="row bold"><span>${esc(l)}</span><span>${esc(v)}</span></div>`;
+  const line    = () => '<div class="line"></div>';
+  const dbl     = () => '<div class="dbl"></div>';
+
   const tipoCode = sale.tipoNcf ?? 'E32';
-  const ncf      = NCF_LABEL[tipoCode] ?? { linea1: 'FACTURA ELECTRÓNICA', linea2: `(${tipoCode})` };
+  const [ncfL1, ncfL2] = NCF_LABEL[tipoCode] ?? ['FACTURA ELECTRÓNICA', `(${esc(tipoCode)})`];
   const esExento = tipoCode === 'E44';
-  const ahora    = dayjs();
-
-  // Generar QR code como data URL desde qrUrl de tu proveedor e-CF/DGII
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
-  useEffect(() => {
-    if (!sale.qrUrl || sale.ecfPendiente) { setQrDataUrl(null); return; }
-    QRCode.toDataURL(sale.qrUrl, { width: 140, margin: 1, color: { dark: '#000000', light: '#ffffff' } })
-      .then(setQrDataUrl)
-      .catch(() => setQrDataUrl(null));
-  }, [sale.qrUrl, sale.ecfPendiente]);
-
-  // Mostrar sección COMPRADOR solo cuando hay RNC real (no 000000000)
   const mostrarComprador = !!(sale.rncComprador && !RNC_GENERICOS_TICKET.has(sale.rncComprador));
+  const metodoLabel = METODOS.find(m => m.key === sale.metodo)?.label ?? 'Pago';
+  const pagoMostrar = sale.pagoRecibido ?? (sale.metodo === 'efectivo' && sale.cambio > 0 ? sale.total + sale.cambio : sale.total);
 
-  const moneda = (n: number) => `RD$${n.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const itemsHtml = sale.items.map(item => {
+    const sub = item.precio * item.cantidad * (1 - item.descuento / 100);
+    const nom = item.produto.nombre.length > 26 ? item.produto.nombre.slice(0, 25) + '…' : item.produto.nombre;
+    return `<div class="row"><span>${esc(nom)} ×${item.cantidad}</span><span>${sub.toFixed(2)}</span></div>`;
+  }).join('');
 
-  return (
-    <div style={{ ...R, width: '100%', maxWidth: 320, padding: '8px 6px' }}>
+  const compradorHtml = mostrarComprador ? `
+    ${line()}
+    <div class="bold">COMPRADOR:</div>
+    <div>RNC: ${esc(sale.rncComprador ?? '')}</div>
+    ${sale.razonSocial ? `<div>${esc(sale.razonSocial)}</div>` : ''}` : '';
 
-      {/* ── ENCABEZADO EMPRESA ─────────────────────────────────────── */}
-      <div style={{ textAlign: 'center', marginBottom: 4 }}>
-        <div style={{ fontSize: 16, fontWeight: 900, letterSpacing: 1 }}>
-          {sale.empresaNombreComercial || 'NOMBRE EMPRESA'}
-        </div>
-        <div style={{ fontSize: 10 }}>República Dominicana</div>
-      </div>
-      {sale.empresaRnc && (
-        <div style={{ fontSize: 11 }}>RNC Emisor: {sale.empresaRnc}</div>
-      )}
-      {sale.empresaDireccion && (
-        <div style={{ fontSize: 11, wordBreak: 'break-word' }}>{sale.empresaDireccion}</div>
-      )}
-      {sale.empresaTelefono && (
-        <div style={{ fontSize: 11 }}>Tel: {sale.empresaTelefono}</div>
-      )}
+  let ecfHtml = '';
+  if (sale.encf) {
+    ecfHtml = `${line()}
+    ${row('e-NCF:', sale.encf)}
+    ${row('Fecha:', sale.ecfFecha ?? ahora.format('DD-MM-YYYY HH:mm:ss'))}
+    ${sale.securityCode ? row('Cód.Seg.:', sale.securityCode) : ''}
+    ${line()}
+    ${qrDataUrl && !sale.ecfPendiente
+      ? `<div class="center"><img src="${qrDataUrl}" width="130" height="130" alt="QR DGII"></div>
+         <div class="center small">Escanea para verificar en DGII</div>`
+      : '<div class="center small">Verifica en: dgii.gov.do</div>'}
+    ${sale.ecfPendiente ? `${line()}<div class="center box"><div class="bold">&#9888; COMPROBANTE EN PROCESO</div><div>DE VALIDACIÓN DGII</div><div class="small">Será enviado cuando sea procesado.</div></div>` : ''}`;
+  } else {
+    ecfHtml = `<div class="center box"><div class="bold">&#9888; COMPROBANTE EN PROCESO</div><div>DE VALIDACIÓN DGII</div></div>`;
+  }
 
-      <HR dbl />
+  return `<!DOCTYPE html>
+<html lang="es"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=302,initial-scale=1,shrink-to-fit=no">
+<title>Recibo ${esc(sale.folio)}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html{width:72mm}
+body{font-family:'Courier New',Courier,monospace;font-size:12pt;line-height:1.45;
+  width:72mm;margin:0 auto;color:#000;background:#fff;
+  -webkit-font-smoothing:none;font-smooth:never}
+.center{text-align:center}
+.bold{font-weight:bold}
+.large{font-size:14pt;font-weight:bold}
+.xlarge{font-size:16pt;font-weight:bold}
+.small{font-size:9pt}
+.row{display:flex;justify-content:space-between;gap:4px;margin:1px 0}
+.row span:first-child{flex:1;overflow:hidden}
+.row span:last-child{text-align:right;white-space:nowrap}
+.line{border-top:1px dashed #000;margin:4px 0}
+.dbl{border-top:2px solid #000;margin:4px 0}
+.box{border:1px dashed #000;padding:3px 2px;margin:3px 0}
+img{display:block;margin:4px auto}
+@page{size:80mm auto;margin:2mm}
+@media print{html,body{width:72mm}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style></head><body>
 
-      {/* ── TIPO DE COMPROBANTE ────────────────────────────────────── */}
-      <div style={{ textAlign: 'center', marginBottom: 4 }}>
-        <div style={{ fontSize: 13, fontWeight: 900 }}>{ncf.linea1}</div>
-        <div style={{ fontSize: 12, fontWeight: 700 }}>{ncf.linea2}</div>
-      </div>
+<div class="center xlarge">${esc(sale.empresaNombreComercial ?? 'NOMBRE EMPRESA')}</div>
+<div class="center small">República Dominicana</div>
+${sale.empresaRnc ? `<div>RNC Emisor: ${esc(sale.empresaRnc)}</div>` : ''}
+${sale.empresaDireccion ? `<div class="small">${esc(sale.empresaDireccion)}</div>` : ''}
+${sale.empresaTelefono ? `<div>Tel: ${esc(sale.empresaTelefono)}</div>` : ''}
+${dbl()}
+<div class="center bold">${esc(ncfL1)}</div>
+<div class="center bold">${esc(ncfL2)}</div>
+${line()}
+${row('Fecha:', ahora.format('DD/MM/YYYY'))}
+${row('Hora:', ahora.format('HH:mm:ss'))}
+${rowBold('Factura:', sale.folio)}
+${sale.cajero ? row('Cajero:', sale.cajero) : ''}
+${compradorHtml}
+${line()}
+<div class="row bold"><span>DESCRIPCIÓN</span><span>TOTAL</span></div>
+${line()}
+${itemsHtml}
+${line()}
+${row('Subtotal:', fmt(sale.subtotal))}
+${row(esExento ? 'ITBIS (Exento ZF):' : 'ITBIS (18%):', esExento ? 'RD$0.00' : fmt(sale.iva))}
+${(sale.propina ?? 0) > 0 ? row('Propina:', fmt(sale.propina!)) : ''}
+${dbl()}
+<div class="row xlarge bold"><span>TOTAL:</span><span>${fmt(sale.total)}</span></div>
+${line()}
+${row(`${esc(metodoLabel)}:`, fmt(pagoMostrar))}
+${sale.metodo === 'credito' && sale.diasCredito ? row('Plazo:', `${sale.diasCredito} días`) : ''}
+${sale.metodo === 'efectivo' && sale.cambio > 0 ? rowBold('CAMBIO:', fmt(sale.cambio)) : ''}
+${ecfHtml}
+${dbl()}
+<div class="center">&#161;Gracias por su preferencia!</div>
 
-      <HR />
-
-      {/* ── META DE LA VENTA ──────────────────────────────────────── */}
-      <RRow label="Fecha:"   value={ahora.format('DD/MM/YYYY')} />
-      <RRow label="Hora:"    value={ahora.format('HH:mm:ss')} />
-      <RRow label="Factura:" value={sale.folio} bold />
-      {sale.cajero && <RRow label="Cajero:" value={sale.cajero} />}
-
-      {/* ── DATOS DEL COMPRADOR (solo E31/E44/E45 o E32 ≥250K con RNC) ── */}
-      {mostrarComprador && (
-        <>
-          <HR />
-          <div style={{ fontSize: 11, fontWeight: 900 }}>COMPRADOR:</div>
-          <div style={{ fontSize: 11 }}>RNC: <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{sale.rncComprador}</span></div>
-          {sale.razonSocial && <div style={{ fontSize: 11 }}>{sale.razonSocial}</div>}
-        </>
-      )}
-
-      <HR />
-
-      {/* ── ITEMS ────────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, fontWeight: 700, marginBottom: 3 }}>
-        <span style={{ flex: 1 }}>DESCRIPCIÓN</span>
-        <span style={{ width: 28, textAlign: 'right' }}>CANT</span>
-        <span style={{ width: 60, textAlign: 'right' }}>TOTAL</span>
-      </div>
-      <HR />
-      {sale.items.map((item, i) => {
-        const sub = item.precio * item.cantidad * (1 - item.descuento / 100);
-        const nom = item.produto.nombre.length > 22
-          ? item.produto.nombre.substring(0, 21) + '…'
-          : item.produto.nombre;
-        return (
-          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 3 }}>
-            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nom}</span>
-            <span style={{ width: 28, textAlign: 'right' }}>{item.cantidad}</span>
-            <span style={{ width: 60, textAlign: 'right', fontWeight: 600 }}>
-              {sub.toFixed(2)}
-            </span>
-          </div>
-        );
-      })}
-      <HR />
-
-      {/* ── TOTALES ───────────────────────────────────────────────── */}
-      <RRow label="Subtotal:" value={moneda(sale.subtotal)} />
-      <RRow label={esExento ? 'ITBIS (Exento ZF):' : 'ITBIS (18%):'} value={esExento ? 'RD$0.00' : moneda(sale.iva)} />
-      {(sale.propina ?? 0) > 0 && (
-        <RRow label="Propina:" value={moneda(sale.propina!)} />
-      )}
-      {esExento && (
-        <div style={{ fontSize: 9, color: '#555', marginBottom: 3, paddingLeft: 4 }}>
-          (Exento de ITBIS - Zona Franca)
-        </div>
-      )}
-      <HR dbl />
-      <RRow label="TOTAL:" value={moneda(sale.total)} bold large />
-      <HR />
-
-      {/* ── FORMA DE PAGO ─────────────────────────────────────────── */}
-      <RRow
-        label={`${METODOS.find(m => m.key === sale.metodo)?.label ?? 'Pago'}:`}
-        value={moneda(sale.pagoRecibido ?? (sale.metodo === 'efectivo' && sale.cambio > 0 ? sale.total + sale.cambio : sale.total))}
-      />
-      {sale.metodo === 'credito' && (
-        <RRow label="Plazo:" value={sale.diasCredito ? `${sale.diasCredito} días` : '—'} />
-      )}
-      {sale.metodo === 'efectivo' && sale.cambio > 0 && (
-        <RRow label="CAMBIO:" value={moneda(sale.cambio)} bold large />
-      )}
-      <HR />
-
-      {/* ── e-CF ──────────────────────────────────────────────────── */}
-      {sale.encf ? (
-        <>
-          <RRow label="e-NCF:" value={sale.encf} bold />
-          <RRow label="Fecha:" value={sale.ecfFecha ?? ahora.format('DD-MM-YYYY HH:mm:ss')} />
-          {sale.securityCode && <RRow label="Cód.Seg.:" value={sale.securityCode} bold />}
-          <HR />
-
-          {/* QR Code — genera imagen desde qrUrl de tu proveedor e-CF/DGII */}
-          {qrDataUrl && !sale.ecfPendiente ? (
-            <>
-              <div style={{ textAlign: 'center', margin: '4px 0' }}>
-                <img
-                  src={qrDataUrl}
-                  alt="QR DGII"
-                  style={{ width: 130, height: 130, display: 'block', margin: '0 auto' }}
-                />
-              </div>
-              <div style={{ textAlign: 'center', fontSize: 10, color: '#444', marginBottom: 2 }}>
-                Escanea para verificar en DGII
-              </div>
-            </>
-          ) : (
-            <div style={{ textAlign: 'center', fontSize: 10, color: '#444' }}>
-              Verifica en: dgii.gov.do
-            </div>
-          )}
-
-          {/* Aviso pendiente de confirmación DGII */}
-          {sale.ecfPendiente && (
-            <>
-              <HR />
-              <div style={{ textAlign: 'center', fontSize: 11, border: '1px dashed #888', padding: '4px 2px', borderRadius: 3 }}>
-                <div style={{ fontWeight: 700 }}>⚠ COMPROBANTE EN PROCESO</div>
-                <div>DE VALIDACIÓN DGII</div>
-                <div style={{ fontSize: 10, marginTop: 2, color: '#555' }}>
-                  Su comprobante electrónico será<br />
-                  enviado cuando sea procesado.
-                </div>
-              </div>
-            </>
-          )}
-        </>
-      ) : (
-        <div style={{ textAlign: 'center', fontSize: 11, border: '1px dashed #888', padding: '4px 2px', borderRadius: 3 }}>
-          <div style={{ fontWeight: 700 }}>⚠ COMPROBANTE EN PROCESO</div>
-          <div>DE VALIDACIÓN DGII</div>
-        </div>
-      )}
-
-      <HR dbl />
-      <div style={{ textAlign: 'center', fontSize: 11, marginTop: 2 }}>
-        ¡Gracias por su preferencia!
-      </div>
-    </div>
-  );
+</body></html>`;
 }
 
 const ECF_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -1305,6 +1221,14 @@ function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir }: {
   const intervalRef  = useRef<ReturnType<typeof setInterval>  | null>(null);
   const printTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // QR generado aquí para incluirlo en el HTML antes de imprimir
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!sale?.qrUrl || sale.ecfPendiente) { setQrDataUrl(null); return; }
+    QRCode.toDataURL(sale.qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' })
+      .then(setQrDataUrl).catch(() => setQrDataUrl(null));
+  }, [sale?.qrUrl, sale?.ecfPendiente]);
+
   const cancelarContador = useCallback(() => {
     if (printTimerRef.current) { clearTimeout(printTimerRef.current);  printTimerRef.current  = null; }
     if (intervalRef.current)   { clearInterval(intervalRef.current);   intervalRef.current    = null; }
@@ -1313,7 +1237,6 @@ function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir }: {
   useEffect(() => {
     if (!sale) return;
     setCountdown(10);
-
     intervalRef.current = setInterval(() => setCountdown(c => {
       if (c <= 1) {
         if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
@@ -1322,24 +1245,22 @@ function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir }: {
       }
       return c - 1;
     }), 1000);
-
     return cancelarContador;
   }, [sale]);
 
-  // Auto-imprimir al abrir el modal si la configuración lo indica
+  // Auto-imprimir: esperar 400ms para que el QR esté listo
   useEffect(() => {
     if (!sale || !autoImprimir) return;
-    // Pequeño delay para que el DOM del recibo esté listo
     const t = setTimeout(() => {
       cancelarContador();
-      imprimirElemento(RECEIPT_ID, '80mm auto', onNueva);
-    }, 300);
+      imprimirReciboTermico(buildReciboTermicoHTML(sale, qrDataUrl), onNueva);
+    }, 400);
     return () => clearTimeout(t);
   }, [sale?.folio, autoImprimir]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePrint = () => {
     cancelarContador();
-    imprimirElemento(RECEIPT_ID, '80mm auto', onNueva);
+    imprimirReciboTermico(buildReciboTermicoHTML(sale!, qrDataUrl), onNueva);
   };
 
 
@@ -2640,20 +2561,8 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion }: {
   const [anulando,      setAnulando]      = useState<number | null>(null);
   const [imprimiendo,   setImprimiendo]   = useState<number | null>(null);
   const [cambEstado,    setCambEstado]    = useState<number | null>(null);
-  const [saleTermico,    setSaleTermico]    = useState<Sale | null>(null);
   const [genericDoc,     setGenericDoc]     = useState<GenericDocData | null>(null);
-  const PANEL_RECEIPT_ID  = 'hc-pos-panel-receipt';
   const PANEL_GENERIC_ID  = 'hc-pos-panel-generic';
-
-  // Imprimir recibo de factura (Sale)
-  useEffect(() => {
-    if (!saleTermico) return;
-    const t = setTimeout(() => {
-      imprimirElemento(PANEL_RECEIPT_ID, '80mm auto');
-      setTimeout(() => setSaleTermico(null), 2000);
-    }, 150);
-    return () => clearTimeout(t);
-  }, [saleTermico]);
 
   // Imprimir documento genérico (cotización, conduce, etc.)
   useEffect(() => {
@@ -2741,7 +2650,14 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion }: {
           empresaNombreComercial: empInfo.nombre, empresaRnc: empInfo.rnc,
           empresaDireccion: empInfo.direccion, empresaTelefono: empInfo.telefono,
         };
-        setSaleTermico(sale); return;
+        // Generar QR antes de construir el HTML
+        let qrDUrl: string | null = null;
+        if (f.ecf?.qrUrl && f.ecf?.numero) {
+          try { qrDUrl = await QRCode.toDataURL(f.ecf.qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' }); }
+          catch { /* sin QR */ }
+        }
+        imprimirReciboTermico(buildReciboTermicoHTML(sale, qrDUrl));
+        return;
       }
 
       // ── Para todos los demás: construir GenericThermalDoc ──────────
@@ -3096,10 +3012,6 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion }: {
         )}
       </div>
 
-      {/* Recibo térmico oculto — facturas */}
-      <div id={PANEL_RECEIPT_ID} style={{ display: 'none' }}>
-        {saleTermico && <ThermalReceipt sale={saleTermico} />}
-      </div>
       {/* Recibo térmico genérico — cotizaciones, conduce, recibos, etc. */}
       <div id={PANEL_GENERIC_ID} style={{ display: 'none' }}>
         {genericDoc && <GenericThermalDoc doc={genericDoc} />}
@@ -3975,11 +3887,6 @@ export default function POSPage() {
       background: palette.bg, fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
       color: palette.text, overflow: 'hidden',
     }}>
-      {/* Hidden receipt for printing */}
-      <div id={RECEIPT_ID} style={{ display: 'none' }}>
-        {sale && <ThermalReceipt sale={sale} />}
-      </div>
-
       <ModalAperturaTurno open={!turnoAbierto} vendedores={vendedores} sucursales={sucursales}
         onAbrir={(m, vid, sid) => {
           // Primero guardar vendedorId en localStorage y estado para que

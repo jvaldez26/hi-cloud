@@ -51,6 +51,38 @@ export function imprimirHtml(html: string): void {
   setTimeout(() => { if (!pw.closed) doPrint(); }, 800);
 }
 
+// ── Imprimir recibo térmico POS (HTML puro, sin blob URL) ────────────────────
+// Usa document.write para evitar la rasterización que causa texto borroso con blob URLs.
+
+export function imprimirReciboTermico(html: string, onDone?: () => void): void {
+  const pw = window.open('', '_blank', 'width=320,height=640,toolbar=0,menubar=0,location=0,scrollbars=yes');
+  if (!pw) {
+    // Fallback iframe oculto si el popup está bloqueado
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:0;height:0;border:none';
+    document.body.appendChild(iframe);
+    const idoc = iframe.contentDocument;
+    if (idoc) { idoc.open(); idoc.write(html); idoc.close(); }
+    iframe.contentWindow?.print();
+    const cleanup = () => { try { document.body.removeChild(iframe); } catch { /* noop */ } onDone?.(); };
+    iframe.contentWindow?.addEventListener('afterprint', cleanup, { once: true });
+    setTimeout(cleanup, 60_000);
+    return;
+  }
+
+  pw.document.open();
+  pw.document.write(html);
+  pw.document.close();
+  pw.focus();
+
+  // Esperar render completo antes de llamar print()
+  setTimeout(() => {
+    pw.print();
+    pw.addEventListener('afterprint', () => { pw.close(); onDone?.(); }, { once: true });
+    setTimeout(() => { try { pw.close(); onDone?.(); } catch { /* noop */ } }, 60_000);
+  }, 400);
+}
+
 // ── Imprimir elemento HTML (recibos térmicos POS) ─────────────────────────────
 
 export function imprimirElemento(elementId: string, pageSize = '80mm auto', onDone?: () => void): void {
