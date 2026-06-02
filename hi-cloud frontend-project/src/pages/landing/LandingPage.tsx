@@ -561,21 +561,13 @@ export default function LandingPage() {
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
             className="hero-ctas"
             style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 12 }}>
-            <button onClick={openDemo}
+            <button onClick={() => navigate('/registrar')}
               style={{ background: 'linear-gradient(135deg,#00BFA5,#009688)', color: '#fff', border: 'none',
                 fontSize: 16, fontWeight: 700, padding: '14px 28px', borderRadius: 10, cursor: 'pointer',
                 boxShadow: '0 4px 20px rgba(0,191,165,.45)', transition: 'all .2s' }}
               onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 28px rgba(0,191,165,.55)'; }}
               onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,191,165,.45)'; }}>
-              Solicitar acceso gratis →
-            </button>
-            <button onClick={() => navigate('/login')}
-              style={{ background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.22)',
-                color: '#fff', fontSize: 15, fontWeight: 600, padding: '14px 24px', borderRadius: 10,
-                cursor: 'pointer', transition: 'background .15s' }}
-              onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,.18)')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,.1)')}>
-              Ver demo en vivo
+              Probar gratis 15 días →
             </button>
           </motion.div>
         </div>
@@ -753,11 +745,11 @@ export default function LandingPage() {
               ¿Listo para modernizar tu negocio?
             </h2>
             <p style={{ color: 'rgba(255,255,255,.62)', fontSize: 17, maxWidth: 520, margin: '0 auto 36px' }}>
-              Solicita tu demo gratuita. Nuestro equipo te contacta en menos de 24 horas.
+              Crea tu cuenta gratis. Todos los módulos incluidos, sin tarjeta de crédito.
             </p>
             <button
               className="cta-final-btn"
-              onClick={openDemo}
+              onClick={() => navigate('/registrar')}
               style={{
                 background: 'linear-gradient(135deg,#00BFA5,#009688)', color: '#fff', border: 'none',
                 fontSize: 18, fontWeight: 700, padding: '16px 40px', borderRadius: 12, cursor: 'pointer',
@@ -766,10 +758,10 @@ export default function LandingPage() {
               onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 10px 32px rgba(0,191,165,.55)'; }}
               onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = '0 6px 24px rgba(0,191,165,.45)'; }}
             >
-              Agendar Demo →
+              Probar gratis 15 días →
             </button>
             <p style={{ color: 'rgba(255,255,255,.35)', fontSize: 13, marginTop: 16 }}>
-              Sin compromiso · Sin tarjeta de crédito · Respuesta en 24h
+              Sin compromiso · Sin tarjeta de crédito · Cancela cuando quieras
             </p>
           </FadeIn>
         </div>
@@ -806,7 +798,7 @@ export default function LandingPage() {
             {/* Producto */}
             <div>
               <h4 style={{ color: '#fff', fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 16 }}>Producto</h4>
-              {['Características', 'Precios', 'e-CF DGII', 'Documentación', 'Agendar Demo'].map(l => (
+              {['Características', 'Precios', 'e-CF DGII', 'Documentación'].map(l => (
                 <p key={l} style={{ margin: '0 0 10px' }}>
                   <a href="#" onClick={e => { e.preventDefault(); openDemo(); }}
                     style={{ color: 'rgba(255,255,255,.55)', fontSize: 13, textDecoration: 'none', transition: 'color .15s' }}
