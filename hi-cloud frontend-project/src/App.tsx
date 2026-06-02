@@ -120,6 +120,7 @@ const GeneradorReportesPage       = lazy(() => import('./pages/generador-reporte
 const ContactosPage               = lazy(() => import('./pages/contactos/ContactosPage'));
 const AprobacionesPage            = lazy(() => import('./pages/aprobaciones/AprobacionesPage'));
 const FidelidadPage               = lazy(() => import('./pages/fidelidad/FidelidadPage'));
+const TicketsSoportePage          = lazy(() => import('./pages/soporte/TicketsSoportePage'));
 const CuotasPage                  = lazy(() => import('./pages/cuotas/CuotasPage'));
 const RecibosCobrosPage           = lazy(() => import('./pages/recibos-cobro/RecibosCobrosPage'));
 const BalanceComprobacionPage     = lazy(() => import('./pages/balance-comprobacion/BalanceComprobacionPage'));
@@ -577,6 +578,7 @@ export default function App() {
                     <Route path="/contactos"              element={<ContactosPage />} />
                     <Route path="/aprobaciones"           element={<AprobacionesPage />} />
                     <Route path="/fidelidad"              element={<FidelidadPage />} />
+                    <Route path="/soporte/tickets"        element={<TicketsSoportePage />} />
                     <Route path="/cuotas"                 element={<CuotasPage />} />
                     <Route path="/recibos-cobro"          element={<RecibosCobrosPage />} />
                     <Route path="/balance-comprobacion"   element={<BalanceComprobacionPage />} />
