@@ -242,23 +242,26 @@ function ProductCard({ produto, onAdd }: { produto: Prod; onAdd: (p: Prod) => vo
   const stock    = Number(produto.stock);
 
   const cat   = (produto as any).categoria as string | undefined;
-  const color = cardColor(cat ?? produto.nombre, isDark);
+  const color = cardColor(cat ?? produto.nombre, isDark); // solo se usa para el ícono
   const icon  = categoryIcon(cat);
 
   const stockColor = sinStock ? C.red : stockBajo ? C.orange : C.green;
   const stockBg    = sinStock ? C.red+'22' : stockBajo ? C.orange+'22' : C.green+'22';
   const unidad     = (produto as any).unidadMedida ?? 'unidad';
+  // Stock display: entero si la unidad es discreta, 1 decimal si es continua
+  const unidadEsEntera = /^(unidad|und|pza|pieza|piezas|u)$/i.test(unidad.trim());
+  const stockDisplay   = sinStock ? '0' : unidadEsEntera ? String(Math.floor(stock)) : stock.toFixed(1);
 
   return (
     <motion.div
-      whileHover={!sinStock ? { y: -2, boxShadow: `0 8px 24px ${color.accent}33` } : {}}
+      whileHover={!sinStock ? { y: -2, boxShadow: `0 8px 24px rgba(59,130,246,.18)` } : {}}
       whileTap={!sinStock ? { scale: 0.96 } : {}}
       onClick={() => !sinStock && onAdd(produto)}
       style={{
         cursor:       sinStock ? 'not-allowed' : 'pointer',
         borderRadius: 14,
-        background:   color.bg,
-        border:       `1px solid ${color.accent}30`,
+        background:   C.card,
+        border:       `1px solid ${C.border}`,
         overflow:     'hidden',
         opacity:      sinStock ? 0.6 : 1,
         position:     'relative',
@@ -276,7 +279,7 @@ function ProductCard({ produto, onAdd }: { produto: Prod; onAdd: (p: Prod) => vo
         padding: '2px 7px', border: `1px solid ${stockColor}44`,
         fontVariantNumeric: 'tabular-nums',
       }}>
-        {sinStock ? '0' : stock}
+        {stockDisplay}
       </div>
 
       {/* Área del ícono */}
@@ -312,7 +315,7 @@ function ProductCard({ produto, onAdd }: { produto: Prod; onAdd: (p: Prod) => vo
         {/* Precio + botón + */}
         <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 800, color: color.accent, lineHeight: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: C.blue, lineHeight: 1 }}>
               {fmt.money(Number(produto.precio))}
             </div>
             <div style={{ fontSize: 9, color: isDark ? '#475569' : '#94A3B8', marginTop: 1 }}>
@@ -325,9 +328,7 @@ function ProductCard({ produto, onAdd }: { produto: Prod; onAdd: (p: Prod) => vo
             disabled={sinStock}
             style={{
               width: 24, height: 24, borderRadius: '50%', border: 'none',
-              background: sinStock ? (isDark ? '#1E293B' : '#E2E8F0')
-                        : stockBajo ? C.orange
-                        : color.accent,
+              background: sinStock ? (isDark ? '#1E293B' : '#E2E8F0') : '#3B82F6',
               color: '#fff',
               fontSize: 16, fontWeight: 700, cursor: sinStock ? 'not-allowed' : 'pointer',
               outline: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -1588,7 +1589,7 @@ function POSNotaCreditoModal({ open, onClose, palette }: {
 
 type PanelId = 'items' | 'inventario' | 'facturas' | 'pre-facturas' | 'cotizaciones' | 'conduce'
              | 'despacho' | 'clientes' | 'recibos-cobro' | 'anticipos'
-             | 'notas-credito' | 'gastos' | 'cierre-caja';
+             | 'notas-credito' | 'gastos' | 'cierre-caja' | 'ventas-hoy';
 
 // ── Helpers de panel ─────────────────────────────────────────────────────────
 
@@ -2340,6 +2341,107 @@ function CierreField({ label, value, editable, onChange, highlight }:
   );
 }
 
+// ── Ventas de Hoy ─────────────────────────────────────────────────────────────
+function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }) {
+  const hoy        = dayjs().format('YYYY-MM-DD');
+  const vendedorId = localStorage.getItem('pos_vendedor_id');
+  const url        = `/facturas?desde=${hoy}&hasta=${hoy}&limit=100${vendedorId ? `&vendedorId=${vendedorId}` : ''}`;
+
+  const { data: raw, isLoading, refetch } = useQuery<any>({
+    queryKey: ['pos-ventas-hoy', hoy, vendedorId],
+    queryFn:  () => api.get(url).then(r => r.data?.data ?? r.data),
+    staleTime: 60_000,
+  });
+
+  const ventas: any[] = Array.isArray(raw?.data) ? raw.data : (Array.isArray(raw) ? raw : []);
+  const totalDia = ventas.reduce((s: number, v: any) => s + Number(v.total ?? 0), 0);
+
+  const handleReimprimir = async (id: number, folio: string) => {
+    const empresa = await api.get('/configuracion/empresa')
+      .then(x => x.data?.data ?? x.data).catch(() => ({}));
+    const f = await api.get(`/facturas/${id}`).then(r => r.data?.data ?? r.data);
+    const sale: Sale = {
+      folio: f.folio, total: Number(f.total ?? 0), cambio: 0,
+      metodo: f.notas?.includes('Tarjeta') ? 'tarjeta' : f.notas?.includes('Transferencia') ? 'transferencia' : 'efectivo',
+      items: (f.detalles ?? []).map((d: any) => ({
+        produto: { id: d.productoId, nombre: d.descripcion, precio: Number(d.precioUnitario),
+                   stock: 999, porcentajeIva: Number(d.porcentajeIva ?? 18), codigo: '', categoria: '', unidadMedida: '' } as any,
+        cantidad: Number(d.cantidad), precio: Number(d.precioUnitario), descuento: 0,
+      })),
+      cliente: f.cliente?.nombre, iva: Number(f.iva ?? 0), subtotal: Number(f.subtotal ?? 0),
+      facturaId: f.id, tipoNcf: f.tipoNcf ?? 'E32',
+      encf: f.ecf?.numero, ecfPendiente: !f.ecf?.numero,
+      securityCode: f.ecf?.codigoSeguridad, qrUrl: f.ecf?.qrUrl,
+      rncComprador: f.cliente?.rncReceptor, razonSocial: f.cliente?.nombre,
+      cajero: f.usuario?.nombre ?? f.nombreVendedor,
+      empresaNombreComercial: empresa.razonSocial ?? empresa.nombre,
+      empresaRnc: empresa.rnc, empresaDireccion: empresa.direccion, empresaTelefono: empresa.telefono,
+    };
+    let qrDUrl: string | null = null;
+    if (f.ecf?.qrUrl && f.ecf?.numero) {
+      try { qrDUrl = await QRCode.toDataURL(f.ecf.qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' }); }
+      catch { /* sin QR */ }
+    }
+    imprimirReciboTermico(buildReciboTermicoHTML(sale, qrDUrl));
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* Header */}
+      <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+        <button onClick={onVolver} style={{ background: 'none', border: 'none', color: C.textSub, cursor: 'pointer', fontSize: 18, outline: 'none', lineHeight: 1, padding: 0 }}>←</button>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>Ventas de Hoy</div>
+          <div style={{ fontSize: 11, color: C.textSub }}>{dayjs().format('DD/MM/YYYY')}</div>
+        </div>
+        <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+          <div style={{ fontSize: 11, color: C.textSub }}>Total acumulado</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: C.green }}>{`RD$${totalDia.toLocaleString('es-DO', { minimumFractionDigits: 2 })}`}</div>
+        </div>
+      </div>
+
+      {/* Lista */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+        {isLoading ? (
+          <div style={{ padding: 24, textAlign: 'center', color: C.textSub }}>Cargando...</div>
+        ) : ventas.length === 0 ? (
+          <div style={{ padding: 32, textAlign: 'center', color: C.textMuted, fontSize: 13 }}>No hay ventas hoy</div>
+        ) : ventas.map((v: any) => (
+          <div key={v.id} style={{ padding: '10px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>
+                {v.folio} · <span style={{ fontWeight: 400, color: C.textSub }}>{v.cliente?.nombre ?? 'Consumidor Final'}</span>
+              </div>
+              <div style={{ fontSize: 11, color: C.textSub, marginTop: 2 }}>
+                {v.createdAt ? dayjs(v.createdAt).format('HH:mm') : '—'} · {v.metodoPago ?? v.tipoPago ?? 'Efectivo'}
+                {v.tipoNcf ? ` · ${v.tipoNcf}` : ''}
+              </div>
+            </div>
+            <div style={{ textAlign: 'right', flexShrink: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.blue }}>{`RD$${Number(v.total ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`}</div>
+              <div style={{ fontSize: 10, color: v.estado === 'pagada' ? C.green : C.orange, fontWeight: 600, marginTop: 2 }}>{v.estado?.toUpperCase()}</div>
+            </div>
+            <button
+              onClick={() => handleReimprimir(v.id, v.folio)}
+              title="Reimprimir recibo"
+              style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${C.border2}`,
+                background: C.card, color: C.textSub, cursor: 'pointer', fontSize: 14, outline: 'none',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              🖨
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ padding: '10px 16px', borderTop: `1px solid ${C.border}`, flexShrink: 0 }}>
+        <button onClick={() => refetch()} style={{ width: '100%', height: 36, borderRadius: 8, border: `1px solid ${C.border2}`, background: C.card, color: C.textSub, cursor: 'pointer', fontSize: 13, outline: 'none' }}>
+          🔄 Actualizar
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void }) {
   const qc = useQueryClient();
   const [nota,     setNota]     = useState('');
@@ -2548,6 +2650,7 @@ const PANEL_TITLES: Record<PanelId, { label: string; icon: string }> = {
   'notas-credito':  { label: 'Notas de Crédito',  icon: '📝' },
   'gastos':         { label: 'Gastos',            icon: '💸' },
   'cierre-caja':    { label: 'Cierre de Caja',    icon: '🏧' },
+  'ventas-hoy':     { label: 'Ventas de Hoy',     icon: '🗓️' },
 };
 
 function POSPanel({ panel, palette, onVolver, confirmarAnulacion }: {
@@ -2862,6 +2965,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion }: {
   };
 
   // Despachar a componentes especializados — DESPUÉS de todos los hooks
+  if (panel === 'ventas-hoy')   return <POSVentasHoyPanel  C={C} onVolver={onVolver} />;
   if (panel === 'inventario')   return <POSInventarioPanel C={C} onVolver={onVolver} />;
   if (panel === 'clientes')     return <POSClientesPanel   C={C} onVolver={onVolver} />;
   if (panel === 'cierre-caja')  return <POSCierreCajaPanel C={C} onVolver={onVolver} />;
@@ -3032,6 +3136,7 @@ const NAV_ITEMS: Array<{ id: PanelId | 'menu'; label: string; icon: string }> = 
 ];
 
 const MENU_EXTRAS: Array<{ label: string; icon: string; panel: PanelId }> = [
+  { label: 'Ventas de Hoy',    icon: '🗓️', panel: 'ventas-hoy' },
   { label: 'Despacho',         icon: '📦', panel: 'despacho' },
   { label: 'Clientes',         icon: '👤', panel: 'clientes' },
   { label: 'Recibos de Cobro', icon: '🧾', panel: 'recibos-cobro' },
@@ -3199,6 +3304,9 @@ export default function POSPage() {
   const [turnoAbierto,  setTurnoAbierto]  = useState(() => Boolean(sessionStorage.getItem('pos_turno')));
   const [search,        setSearch]        = useState('');
   const [categoriaTab,  setCategoriaTab]  = useState<string>('__all__');
+  // Descuento global del carrito
+  const [descGlobal,     setDescGlobal]     = useState('');
+  const [descGlobalTipo, setDescGlobalTipo] = useState<'pct' | 'fijo'>('pct');
   const [cart,          setCart]          = useState<CartItem[]>(() => {
     try {
       const guardado = localStorage.getItem('pos-carrito-activo');
@@ -3251,7 +3359,10 @@ export default function POSPage() {
   const [guardarRncPerfil,   setGuardarRncPerfil]   = useState(false);
   const [ecfStatus,          setEcfStatus]          = useState<'idle'|'loading'|'ok'|'pendiente'>('idle');
   const [ecfEncf,            setEcfEncf]            = useState<string>('');
-  const searchRef = useRef<any>(null);
+  const searchRef         = useRef<any>(null);
+  const lastKeyTimeRef    = useRef<number>(0);
+  const fastCharCountRef  = useRef<number>(0);
+  const [scanFlash, setScanFlash] = useState(false);
   const { pendingCount, isSyncing, enqueue, sync } = useOfflineQueue();
 
   // Autocompletar/sustituir razón social desde DGII cuando se consulta el RNC del comprador
@@ -3400,6 +3511,7 @@ export default function POSPage() {
 
   // Helper: restablecer al consumidor final (en lugar de undefined)
   const resetCliente = () => setClienteId(consumidorFinalId);
+  const resetDescGlobal = () => { setDescGlobal(''); setDescGlobalTipo('pct'); };
 
   // Auto-seleccionar "Consumidor Final" como cliente por defecto al cargar
   useEffect(() => {
@@ -3420,10 +3532,19 @@ export default function POSPage() {
   // Totals
   const subtotal   = cart.reduce((s, i) => s + i.precio * i.cantidad * (1 - i.descuento / 100), 0);
   const iva        = cart.reduce((s, i) => { const sub = i.precio * i.cantidad * (1 - i.descuento / 100); return s + sub * (Number((i.produto as any).porcentajeIva) / 100); }, 0);
-  const total      = subtotal + iva;
+  // Descuento global — se aplica sobre el subtotal (antes del ITBIS, base imponible)
+  const descGlobalVal   = Math.max(0, parseFloat(descGlobal) || 0);
+  const descGlobalMonto = descGlobalTipo === 'pct'
+    ? subtotal * descGlobalVal / 100
+    : Math.min(descGlobalVal, subtotal);
+  const subtotalConDesc = subtotal - descGlobalMonto;
+  // ITBIS se recalcula sobre el subtotal descontado (proporcional por ítem)
+  const descRatio      = subtotal > 0 ? subtotalConDesc / subtotal : 1;
+  const ivaConDesc     = iva * descRatio;
+  const total          = subtotalConDesc + ivaConDesc;
   // E44 (Zona Franca): ITBIS = 0 — Opción B: precio base sin ITBIS
-  const ivaEfectivo   = tipoNcf === 'E44' ? 0 : iva;
-  const totalEfectivo = tipoNcf === 'E44' ? subtotal : total;
+  const ivaEfectivo   = tipoNcf === 'E44' ? 0 : ivaConDesc;
+  const totalEfectivo = tipoNcf === 'E44' ? subtotalConDesc : total;
   const totalItems    = cart.reduce((s, i) => s + i.cantidad, 0);
 
   // Config POS — leída aquí para que propina y cambio puedan usarla
@@ -3708,7 +3829,7 @@ export default function POSPage() {
       setShowPago(false);
       setRncComprador(''); setRazonSocialComp(''); setNumeroOrdenCompra(''); setGuardarRncPerfil(false);
       setCart([]); resetCliente(); setVendedorId(undefined); setMontoRecibido(0);
-      setTipoPagoPos('CONTADO'); setDiasCreditoPos(30); setPropinaValor('');
+      setTipoPagoPos('CONTADO'); setDiasCreditoPos(30); setPropinaValor(''); resetDescGlobal();
       qc.invalidateQueries({ queryKey: ['pos-panel', 'facturas'] });
       qc.refetchQueries({    queryKey: ['pos-panel', 'facturas'] });
     },
@@ -3994,11 +4115,34 @@ export default function POSPage() {
               {/* Search */}
               <div style={{ flex: 1, position: 'relative' }}>
                 <SearchOutlined style={{ position:'absolute', left:11, top:'50%', transform:'translateY(-50%)', color: C.textSub, fontSize:14, zIndex:1 }} />
-                <input ref={searchRef} value={search} onChange={e=>setSearch(e.target.value)}
+                <input ref={searchRef} value={search}
+                  onChange={e => {
+                    const now = Date.now();
+                    const diff = now - lastKeyTimeRef.current;
+                    lastKeyTimeRef.current = now;
+                    fastCharCountRef.current = diff < 80 ? fastCharCountRef.current + 1 : 1;
+                    setSearch(e.target.value);
+                  }}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && fastCharCountRef.current >= 7 && search.trim().length >= 5) {
+                      e.preventDefault();
+                      const code = search.trim();
+                      fastCharCountRef.current = 0;
+                      setSearch('');
+                      handleBarcode(code).then(() => {
+                        setScanFlash(true);
+                        setTimeout(() => setScanFlash(false), 600);
+                      }).catch(() => {});
+                    } else if (e.key === 'Enter') {
+                      fastCharCountRef.current = 0;
+                    }
+                  }}
                   placeholder="Buscar producto... (F2)"
                   style={{ width:'100%', height:38, paddingLeft:34, paddingRight:search?30:12,
-                    background: C.card, border:`1px solid ${C.border}`,
-                    borderRadius:10, color:C.text, fontSize:13, outline:'none', boxSizing:'border-box' }} />
+                    background: scanFlash ? (C===darkC ? '#064e3b' : '#d1fae5') : C.card,
+                    border:`1px solid ${scanFlash ? '#10B981' : C.border}`,
+                    borderRadius:10, color:C.text, fontSize:13, outline:'none', boxSizing:'border-box',
+                    transition: 'background 0.2s, border-color 0.2s' }} />
                 {search && (
                   <button onClick={()=>setSearch('')} style={{ position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',
                     background:'none',border:'none',color:C.textSub,cursor:'pointer',fontSize:14,outline:'none' }}>✕</button>
@@ -4231,6 +4375,37 @@ export default function POSPage() {
             )}
           </div>
 
+          {/* Descuento global — entre carrito y totales */}
+          {cart.length > 0 && (
+            <div style={{ padding: '8px 14px', borderTop: `1px solid ${C.border}`, background: C.bg, flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 11, color: C.textSub, flexShrink: 0 }}>Descuento</span>
+                {/* Toggle % / RD$ */}
+                <button
+                  onClick={() => setDescGlobalTipo(t => t === 'pct' ? 'fijo' : 'pct')}
+                  style={{ height: 24, padding: '0 7px', borderRadius: 6,
+                    border: `1px solid ${C.border2}`, background: C.card,
+                    color: descGlobal ? C.orange : C.textSub, fontSize: 11, fontWeight: 700,
+                    cursor: 'pointer', outline: 'none', flexShrink: 0 }}>
+                  {descGlobalTipo === 'pct' ? '%' : 'RD$'}
+                </button>
+                <input
+                  type="number" min="0"
+                  max={descGlobalTipo === 'pct' ? 100 : undefined}
+                  value={descGlobal}
+                  onChange={e => setDescGlobal(e.target.value)}
+                  placeholder={descGlobalTipo === 'pct' ? '0' : '0.00'}
+                  style={{ flex: 1, height: 28, borderRadius: 7, border: `1px solid ${descGlobal ? C.orange : C.border}`,
+                    background: C.card, color: C.text, fontSize: 12, padding: '0 8px', outline: 'none' }} />
+                {descGlobal && (
+                  <span style={{ fontSize: 11, color: C.orange, fontWeight: 700, flexShrink: 0 }}>
+                    −{fmt.money(descGlobalMonto)}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Totals + checkout — siempre visible al fondo, contenido condicional */}
           <div style={{ padding: cart.length > 0 ? '14px' : '10px 14px', borderTop: `1px solid ${C.border}`, flexShrink: 0, background: C.totalsBg }}>
           {cart.length > 0 && (<>
@@ -4238,18 +4413,24 @@ export default function POSPage() {
                 <span style={{ fontSize: 12, color: C.textSub }}>Subtotal</span>
                 <span style={{ fontSize: 12, color: C.text }}>{fmt.money(subtotal)}</span>
               </div>
+              {descGlobalMonto > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                  <span style={{ fontSize: 12, color: C.orange }}>Descuento</span>
+                  <span style={{ fontSize: 12, color: C.orange, fontWeight: 600 }}>−{fmt.money(descGlobalMonto)}</span>
+                </div>
+              )}
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
                 <span style={{ fontSize: 12, color: C.textSub }}>
                   {tipoNcf === 'E44' ? 'ITBIS (Exento)' : 'ITBIS (18%)'}
                 </span>
                 <span style={{ fontSize: 12, color: tipoNcf === 'E44' ? C.green : C.text }}>
-                  {tipoNcf === 'E44' ? 'RD$ 0.00' : fmt.money(iva)}
+                  {tipoNcf === 'E44' ? 'RD$ 0.00' : fmt.money(ivaConDesc)}
                 </span>
               </div>
               {tipoNcf === 'E44' && (
                 <div style={{ fontSize: 10, color: C.green, marginBottom: 3, display: 'flex', alignItems: 'center', gap: 4 }}>
                   <span style={{ background: C.green+'22', border: `1px solid ${C.green}44`, borderRadius: 4, padding: '1px 6px', fontWeight: 700 }}>EXENTO DE ITBIS</span>
-                  <span>−{fmt.money(iva)}</span>
+                  <span>−{fmt.money(ivaConDesc)}</span>
                 </div>
               )}
               <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${C.border}`, paddingTop: 10, marginBottom: 8 }}>

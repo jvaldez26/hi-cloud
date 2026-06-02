@@ -254,11 +254,11 @@ export class FacturasService {
   }
 
   async findAll(pagination: PaginationDto & {
-    estado?: string; desde?: string; hasta?: string; clienteId?: number;
+    estado?: string; desde?: string; hasta?: string; clienteId?: number; vendedorId?: number;
   }) {
     const empresaId = this.tenantService.getEmpresaId();
     const { limit = 10, page = 1, search, estado, desde, hasta, clienteId,
-            tipoPago, tipoNcf, montoMin, montoMax } = pagination as any;
+            tipoPago, tipoNcf, montoMin, montoMax, vendedorId } = pagination as any;
 
     // La entidad Factura solo tiene `ecfId` como columna plana — sin @ManyToOne.
     // Cargamos las facturas primero, luego enriquecemos con datos ECF en una
@@ -281,8 +281,9 @@ export class FacturasService {
     if (hasta)     qb.andWhere('f.fecha <= :hasta', { hasta });
     if (tipoPago)  qb.andWhere('f."tipoPago" = :tipoPago', { tipoPago });
     if (tipoNcf)   qb.andWhere('f."tipoNcf" = :tipoNcf', { tipoNcf });
-    if (montoMin != null) qb.andWhere('f.total >= :montoMin', { montoMin });
-    if (montoMax != null) qb.andWhere('f.total <= :montoMax', { montoMax });
+    if (montoMin != null)  qb.andWhere('f.total >= :montoMin', { montoMin });
+    if (montoMax != null)  qb.andWhere('f.total <= :montoMax', { montoMax });
+    if (vendedorId != null) qb.andWhere('f."vendedorId" = :vendedorId', { vendedorId });
 
     const [data, total] = await qb
       .orderBy('f.fecha', 'DESC')

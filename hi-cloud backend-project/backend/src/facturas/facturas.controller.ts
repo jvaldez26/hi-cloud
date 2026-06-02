@@ -53,6 +53,9 @@ class FacturasFilterDto extends PaginationDto {
 
   @IsOptional() @Type(() => Number)
   montoMax?: number;
+
+  @IsOptional() @IsInt() @Type(() => Number)
+  vendedorId?: number;
 }
 
 class CambiarEstadoDto {
