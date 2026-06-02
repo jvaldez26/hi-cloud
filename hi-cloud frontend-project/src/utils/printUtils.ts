@@ -55,7 +55,7 @@ export function imprimirHtml(html: string): void {
 // Usa document.write para evitar la rasterización que causa texto borroso con blob URLs.
 
 export function imprimirReciboTermico(html: string, onDone?: () => void): void {
-  const pw = window.open('', '_blank', 'width=320,height=640,toolbar=0,menubar=0,location=0,scrollbars=yes');
+  const pw = window.open('', '_blank', 'width=360,height=640,toolbar=0,menubar=0,location=0,scrollbars=yes');
   if (!pw) {
     // Fallback iframe oculto si el popup está bloqueado
     const iframe = document.createElement('iframe');

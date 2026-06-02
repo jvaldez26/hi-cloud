@@ -483,28 +483,28 @@ function buildReciboTermicoHTML(sale: Sale, qrDataUrl: string | null): string {
   return `<!DOCTYPE html>
 <html lang="es"><head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=302,initial-scale=1,shrink-to-fit=no">
+<meta name="viewport" content="width=280,initial-scale=1,shrink-to-fit=no">
 <title>Recibo ${esc(sale.folio)}</title>
 <style>
-*{margin:0;padding:0;box-sizing:border-box}
-html{width:72mm}
-body{font-family:'Courier New',Courier,monospace;font-size:12pt;line-height:1.45;
-  width:72mm;margin:0 auto;color:#000;background:#fff;
+*{margin:0;padding:0;box-sizing:border-box;max-width:100%;overflow-wrap:break-word}
+html{width:74mm}
+body{font-family:'Courier New',Courier,monospace;font-size:11pt;line-height:1.45;
+  width:74mm;margin:0;padding:0 3mm;color:#000;background:#fff;
   -webkit-font-smoothing:none;font-smooth:never}
 .center{text-align:center}
 .bold{font-weight:bold}
-.large{font-size:14pt;font-weight:bold}
-.xlarge{font-size:16pt;font-weight:bold}
+.large{font-size:13pt;font-weight:bold}
+.xlarge{font-size:15pt;font-weight:bold}
 .small{font-size:9pt}
-.row{display:flex;justify-content:space-between;gap:4px;margin:1px 0}
+.row{display:flex;justify-content:space-between;gap:4px;margin:1px 0;width:100%}
 .row span:first-child{flex:1;overflow:hidden}
 .row span:last-child{text-align:right;white-space:nowrap}
 .line{border-top:1px dashed #000;margin:4px 0}
 .dbl{border-top:2px solid #000;margin:4px 0}
 .box{border:1px dashed #000;padding:3px 2px;margin:3px 0}
 img{display:block;margin:4px auto}
-@page{size:80mm auto;margin:2mm}
-@media print{html,body{width:72mm}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+@page{size:80mm auto;margin:3mm 0}
+@media print{html,body{width:74mm}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 </style></head><body>
 
 <div class="center xlarge">${esc(sale.empresaNombreComercial ?? 'NOMBRE EMPRESA')}</div>
