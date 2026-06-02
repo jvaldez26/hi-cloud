@@ -429,6 +429,67 @@ export class TesoreriaService {
   }
 
   // ──────────────────────────────────────────────────────────────────
+  // Dashboard widget de Tesorería
+  // ──────────────────────────────────────────────────────────────────
+
+  async getDashboard() {
+    const eid = this.eid;
+
+    const cuentas = await this.cuentaRepository.find({
+      where: { isActive: true, isActiva: true, empresaId: eid } as any,
+      order: { moneda: 'ASC', banco: 'ASC' },
+    });
+
+    const balanceTotal = cuentas.reduce((sum, c) => sum + Number(c.saldo), 0);
+
+    // Movimientos de hoy
+    const movsHoy = await this.movimientoRepository
+      .createQueryBuilder('m')
+      .where('m.isActive = true')
+      .andWhere('m.empresaId = :eid', { eid })
+      .andWhere('DATE(m.fecha) = CURRENT_DATE')
+      .orderBy('m.createdAt', 'DESC')
+      .take(20)
+      .getMany();
+
+    // Movimientos de los últimos 7 días (sin incluir hoy)
+    const movsSemana = await this.movimientoRepository
+      .createQueryBuilder('m')
+      .where('m.isActive = true')
+      .andWhere('m.empresaId = :eid', { eid })
+      .andWhere('DATE(m.fecha) >= CURRENT_DATE - INTERVAL \'7 days\'')
+      .andWhere('DATE(m.fecha) < CURRENT_DATE')
+      .orderBy('m.fecha', 'DESC')
+      .take(20)
+      .getMany();
+
+    const toActividad = (m: MovimientoBancario) => ({
+      descripcion: m.descripcion,
+      monto:       Number(m.monto),
+      tipo:        TIPOS_ENTRADA.includes(m.tipo) ? 'ingreso' : 'egreso',
+      fecha:       m.fecha,
+      hora:        (m as any).createdAt
+        ? new Date((m as any).createdAt).toTimeString().slice(0, 5)
+        : undefined,
+    });
+
+    return {
+      cuentas: cuentas.map(c => ({
+        id:     c.id,
+        nombre: c.banco,
+        tipo:   c.tipoCuenta,
+        saldo:  Number(c.saldo),
+        moneda: c.moneda,
+      })),
+      balanceTotal,
+      actividad: {
+        hoy:    movsHoy.map(toActividad),
+        semana: movsSemana.map(toActividad),
+      },
+    };
+  }
+
+  // ──────────────────────────────────────────────────────────────────
   // Reportes de Tesorería
   // ──────────────────────────────────────────────────────────────────
 

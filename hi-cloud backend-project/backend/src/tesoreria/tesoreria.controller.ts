@@ -36,6 +36,15 @@ import { User } from '../users/users.entity';
 export class TesoreriaController {
   constructor(private tesoreriaService: TesoreriaService) {}
 
+  // ── Dashboard widget ───────────────────────────────────────────────────────
+
+  @Get('dashboard')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @ApiOperation({ summary: 'Widget de tesorería para el Dashboard: cuentas, balance y actividad reciente' })
+  getDashboard() {
+    return this.tesoreriaService.getDashboard();
+  }
+
   // ── Resumen ────────────────────────────────────────────────────────────────
 
   @Get('resumen')

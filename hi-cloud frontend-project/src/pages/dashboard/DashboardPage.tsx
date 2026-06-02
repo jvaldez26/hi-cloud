@@ -156,10 +156,10 @@ function DashboardAdmin() {
   const mesActual  = dayjs().month() + 1;
   const anioActual = dayjs().year();
 
-  // Cuentas bancarias
-  const { data: bancosRaw } = useQuery<any>({
+  // Widget tesorería: cuentas + balance + actividad financiera
+  const { data: tesoreriaRaw } = useQuery<any>({
     queryKey: ['bancos-dashboard'],
-    queryFn:  () => api.get('/bancos').then((r: any) => r.data?.data ?? r.data),
+    queryFn:  () => api.get('/tesoreria/dashboard').then((r: any) => r.data?.data ?? r.data),
     staleTime: 120_000,
   });
 
@@ -170,7 +170,7 @@ function DashboardAdmin() {
     staleTime: 120_000,
   });
 
-  // Actividad (audit log)
+  // Actividad (audit log — se mantiene para otros usos futuros)
   const { data: auditRaw } = useQuery<any>({
     queryKey: ['actividad-cf'],
     queryFn:  () => api.get('/auditoria?limit=12').then((r: any) => r.data?.data ?? r.data),
@@ -195,17 +195,16 @@ function DashboardAdmin() {
   });
 
   // Normalizar datos
-  const bancos   = Array.isArray(bancosRaw?.data) ? bancosRaw.data : (Array.isArray(bancosRaw) ? bancosRaw : []);
-  const auditLogs = Array.isArray(auditRaw?.data) ? auditRaw.data : (Array.isArray(auditRaw) ? auditRaw : []);
-  const facturas  = Array.isArray(factPendRaw) ? factPendRaw : [];
+  const bancos      = tesoreriaRaw?.cuentas ?? [];
+  const balanceBancos = tesoreriaRaw?.balanceTotal ?? 0;
+  const actHoy    = tesoreriaRaw?.actividad?.hoy    ?? [];
+  const actSemana = tesoreriaRaw?.actividad?.semana ?? [];
+
+  const auditLogs   = Array.isArray(auditRaw?.data) ? auditRaw.data : (Array.isArray(auditRaw) ? auditRaw : []);
+  const facturas    = Array.isArray(factPendRaw) ? factPendRaw : [];
   const gastosAnual = Array.isArray(gastosAnualRaw) ? gastosAnualRaw : (gastosAnualRaw?.data ?? []);
 
-  const balanceBancos = bancos.reduce((s: number, b: any) => s + Number(b.saldo ?? b.balance ?? b.saldoActual ?? 0), 0);
-
-  // Actividad agrupada
-  const ahora     = dayjs();
-  const actHoy    = auditLogs.filter((l: any) => dayjs(l.createdAt).isSame(ahora, 'day'));
-  const actSemana = auditLogs.filter((l: any) => !dayjs(l.createdAt).isSame(ahora, 'day') && dayjs(l.createdAt).isAfter(ahora.startOf('week')));
+  const ahora = dayjs();
 
   // Antigüedad CxC
   const { data: antiguedadCxC, refetch: refetchCxC } = useQuery<any>({
@@ -303,13 +302,13 @@ function DashboardAdmin() {
                       <DollarOutlined style={{ color: '#FFF', fontSize: 16 }} />
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 500 }}>{b.nombre ?? b.name ?? 'Cuenta'}</div>
+                      <div style={{ fontSize: 13, fontWeight: 500 }}>{b.nombre ?? 'Cuenta'}</div>
                       <div style={{ fontSize: 11, color: token.colorTextTertiary }}>
-                        {b.tipo ?? b.type ?? 'Cuenta'} · Actualizado
+                        {b.tipo ?? 'corriente'} · {b.moneda ?? 'DOP'}
                       </div>
                     </div>
                     <Text style={{ fontSize: 13, fontWeight: 500 }}>
-                      {fmt.money(Number(b.saldo ?? b.balance ?? b.saldoActual ?? 0))}
+                      {fmt.money(Number(b.saldo ?? 0))}
                     </Text>
                   </div>
                 ))
@@ -356,12 +355,19 @@ function DashboardAdmin() {
                     <Text style={{ fontSize: 12, color: token.colorTextTertiary }}>Hoy</Text>
                     <div style={{ height: 1, background: token.colorBorderSecondary, margin: '4px 0 8px' }} />
                     {actHoy.slice(0, 5).map((l: any, i: number) => (
-                      <div key={i} style={{ display: 'flex', gap: 10, padding: '4px 0' }}>
-                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#0EA5E9', flexShrink: 0, marginTop: 5 }} />
-                        <div>
-                          <Text style={{ fontSize: 12 }}>{l.descripcion ?? l.accion ?? '—'}</Text>
+                      <div key={i} style={{ display: 'flex', gap: 10, padding: '4px 0', alignItems: 'flex-start' }}>
+                        <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, marginTop: 5,
+                          background: l.tipo === 'ingreso' ? '#10B981' : '#EF4444' }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 4 }}>
+                            <Text style={{ fontSize: 12 }}>{l.descripcion ?? '—'}</Text>
+                            <Text style={{ fontSize: 12, fontWeight: 600, flexShrink: 0,
+                              color: l.tipo === 'ingreso' ? '#10B981' : '#EF4444' }}>
+                              {l.tipo === 'ingreso' ? '+' : '-'}RD${Number(l.monto).toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+                            </Text>
+                          </div>
                           <div style={{ fontSize: 10, color: token.colorTextTertiary }}>
-                            {dayjs(l.createdAt).format('HH:mm')} · {l.userName ?? ''}
+                            {l.hora ?? dayjs(l.fecha).format('HH:mm')}
                           </div>
                         </div>
                       </div>
@@ -373,12 +379,19 @@ function DashboardAdmin() {
                     <Text style={{ fontSize: 12, color: token.colorTextTertiary }}>Esta semana</Text>
                     <div style={{ height: 1, background: token.colorBorderSecondary, margin: '4px 0 8px' }} />
                     {actSemana.slice(0, 5).map((l: any, i: number) => (
-                      <div key={i} style={{ display: 'flex', gap: 10, padding: '4px 0' }}>
-                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: token.colorBorderSecondary, flexShrink: 0, marginTop: 5 }} />
-                        <div>
-                          <Text style={{ fontSize: 12 }}>{l.descripcion ?? l.accion ?? '—'}</Text>
+                      <div key={i} style={{ display: 'flex', gap: 10, padding: '4px 0', alignItems: 'flex-start' }}>
+                        <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, marginTop: 5,
+                          background: l.tipo === 'ingreso' ? '#10B981' : '#EF4444' }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 4 }}>
+                            <Text style={{ fontSize: 12 }}>{l.descripcion ?? '—'}</Text>
+                            <Text style={{ fontSize: 12, fontWeight: 600, flexShrink: 0,
+                              color: l.tipo === 'ingreso' ? '#10B981' : '#EF4444' }}>
+                              {l.tipo === 'ingreso' ? '+' : '-'}RD${Number(l.monto).toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+                            </Text>
+                          </div>
                           <div style={{ fontSize: 10, color: token.colorTextTertiary }}>
-                            {dayjs(l.createdAt).format('DD/MM')} · {l.userName ?? ''}
+                            {dayjs(l.fecha).format('DD/MM')}
                           </div>
                         </div>
                       </div>
