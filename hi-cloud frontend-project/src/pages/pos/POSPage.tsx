@@ -483,13 +483,14 @@ function buildReciboTermicoHTML(sale: Sale, qrDataUrl: string | null): string {
   return `<!DOCTYPE html>
 <html lang="es"><head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=280,initial-scale=1,shrink-to-fit=no">
+<meta name="viewport" content="width=302,initial-scale=1,shrink-to-fit=no">
 <title>Recibo ${esc(sale.folio)}</title>
 <style>
-*{margin:0;padding:0;box-sizing:border-box;max-width:100%;overflow-wrap:break-word}
-html,body{width:76mm}
+*{margin:0;padding:0;box-sizing:border-box;overflow-wrap:break-word}
+html{margin:0;padding:0;width:80mm}
 body{font-family:'Courier New',Courier,monospace;font-size:11pt;line-height:1.45;
-  margin:0 auto;padding:0 2mm;color:#000;background:#fff;
+  width:80mm;margin:0;padding:3mm;
+  color:#000;background:#fff;
   -webkit-font-smoothing:none;font-smooth:never}
 .center{text-align:center}
 .bold{font-weight:bold}
@@ -503,8 +504,8 @@ body{font-family:'Courier New',Courier,monospace;font-size:11pt;line-height:1.45
 .dbl{border-top:2px solid #000;margin:4px 0}
 .box{border:1px dashed #000;padding:3px 2px;margin:3px 0}
 img{display:block;margin:4px auto}
-@page{size:80mm auto;margin:3mm 0mm}
-@media print{html,body{width:76mm}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+@page{size:80mm auto;margin:0}
+@media print{html,body{width:80mm}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 </style></head><body>
 
 <div class="center xlarge">${esc(sale.empresaNombreComercial ?? 'NOMBRE EMPRESA')}</div>
