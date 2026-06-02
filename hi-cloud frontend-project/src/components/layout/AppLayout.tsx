@@ -1460,10 +1460,12 @@ export default function AppLayout() {
   // empresaActivaNum: usa state; si es null (aún sincronizando) cae a localStorage.
   const empresaActivaNum = empresaActiva
     ?? (localStorage.getItem('empresaId') ? Number(localStorage.getItem('empresaId')) : null);
+  const empresaActivaData = (misEmpresas as any[]).find((e: any) => e.empresaId === empresaActivaNum);
   const empresaNombre =
-    (misEmpresas as any[]).find((e: any) => e.empresaId === empresaActivaNum)?.nombre ??
+    empresaActivaData?.nombre ??
     (misEmpresas as any[])[0]?.nombre ??
     '';
+  const empresaEsPendiente = empresaActivaData?.estadoAprobacion === 'pendiente';
   const empresasFiltradas = (misEmpresas as any[]).filter((e: any) =>
     e.nombre?.toLowerCase().includes(busquedaEmpresa.toLowerCase())
   );
@@ -1561,12 +1563,20 @@ export default function AppLayout() {
             {(empresaNombre || 'HI').slice(0, 2).toUpperCase()}
           </div>
           {!collapsed && (
-            <span style={{
-              fontSize: 12.5, fontWeight: 500, color: C.text,
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-              {empresaNombre || 'Mi Empresa'}
-            </span>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <span style={{
+                fontSize: 12.5, fontWeight: 500, color: C.text,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                display: 'block',
+              }}>
+                {empresaNombre || 'Mi Empresa'}
+              </span>
+              {empresaEsPendiente && (
+                <span style={{ fontSize: 9, fontWeight: 700, color: '#f59e0b', display: 'block', lineHeight: 1.2 }}>
+                  ⏳ En revisión
+                </span>
+              )}
+            </div>
           )}
         </div>
         {!collapsed && (

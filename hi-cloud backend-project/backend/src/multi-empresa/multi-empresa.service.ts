@@ -288,18 +288,24 @@ export class MultiEmpresaService {
     }
 
     const estado = (acceso.empresa as any).estadoAprobacion ?? 'aprobada';
-    if (estado === 'pendiente') {
-      throw new ForbiddenException('Esta empresa está pendiente de aprobación por el administrador');
-    }
+    // Rechazadas: acceso bloqueado totalmente
     if (estado === 'rechazada') {
       throw new ForbiddenException('Esta empresa fue rechazada. Contacta al administrador para más información');
+    }
+    // Pendientes: el propietario (isPrincipal) puede cambiar a la empresa para ver
+    // su nombre en el sidebar. Las APIs de datos siguen devolviendo datos vacíos
+    // porque la empresa aún no tiene operaciones registradas.
+    // Otros usuarios no propietarios no pueden acceder a una empresa pendiente.
+    if (estado === 'pendiente' && !acceso.isPrincipal) {
+      throw new ForbiddenException('Esta empresa está pendiente de aprobación por el administrador');
     }
 
     return {
       empresaId,
-      empresaNombre: acceso.empresa.nombre,
-      rnc:           acceso.empresa.rnc,
-      rol:           acceso.rol,
+      empresaNombre:    acceso.empresa.nombre,
+      rnc:              acceso.empresa.rnc,
+      rol:              acceso.rol,
+      estadoAprobacion: estado,  // frontend lo usa para mostrar el banner
     };
   }
 

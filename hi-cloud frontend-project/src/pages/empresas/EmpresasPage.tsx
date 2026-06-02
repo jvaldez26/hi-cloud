@@ -68,19 +68,32 @@ export default function EmpresasPage() {
 
   const crearEmpresa = useMutation({
     mutationFn: (dto: any) => api.post('/multi-empresa', dto),
-    onSuccess: () => {
+    onSuccess: async (res: any) => {
+      const nueva = res.data?.data ?? res.data;
       qc.invalidateQueries({ queryKey: ['mis-empresas'] });
       setModalCrear(false);
       formCrear.resetFields();
+
+      // Cambiar contexto a la nueva empresa para que aparezca en el sidebar.
+      // El backend ahora permite el switch aunque esté pendiente (isPrincipal=true).
+      const nuevaId = nueva?.id ?? nueva?.empresaId;
+      if (nuevaId) {
+        try {
+          await api.post('/auth/cambiar-empresa', { empresaId: nuevaId });
+          localStorage.setItem('empresaId', String(nuevaId));
+        } catch { /* si falla el switch, no bloquear — el usuario ve el modal igual */ }
+      }
+
       Modal.success({
         title: '✅ Solicitud enviada exitosamente',
         content: (
           <div>
             <p>Tu solicitud fue enviada. Un administrador revisará tu empresa y recibirás un email cuando sea aprobada.</p>
-            <p style={{ color: '#6b7280', fontSize: 13 }}>Tiempo estimado de respuesta: 1-2 días hábiles.</p>
+            <p style={{ color: '#6b7280', fontSize: 13 }}>Tu empresa ya aparece en el sidebar como <strong>pendiente de aprobación</strong>.</p>
           </div>
         ),
         okText: 'Entendido',
+        onOk: () => window.location.reload(),
       });
     },
     onError: (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error al enviar solicitud'),
