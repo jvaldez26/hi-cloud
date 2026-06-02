@@ -108,6 +108,8 @@ interface Sale {
   notas?:                  string;   // incluye "Crédito X días" para ventas a crédito
   diasCredito?:            number;
   clienteId?:              number;   // para pre-llenar conduce
+  // Descuento global (sobre subtotal)
+  descuentoGlobal?:        number;
   // Propina (opcional)
   propina?:                number;
   // Emisor
@@ -454,9 +456,14 @@ function buildReciboTermicoHTML(sale: Sale, qrDataUrl: string | null): string {
   const pagoMostrar = sale.pagoRecibido ?? (sale.metodo === 'efectivo' && sale.cambio > 0 ? sale.total + sale.cambio : sale.total);
 
   const itemsHtml = sale.items.map(item => {
-    const sub = item.precio * item.cantidad * (1 - item.descuento / 100);
-    const nom = item.produto.nombre.length > 26 ? item.produto.nombre.slice(0, 25) + '…' : item.produto.nombre;
-    return `<div class="row"><span>${esc(nom)} ×${item.cantidad}</span><span>${sub.toFixed(2)}</span></div>`;
+    const precioBase = item.precio * item.cantidad;
+    const sub        = precioBase * (1 - item.descuento / 100);
+    const nom        = item.produto.nombre.length > 26 ? item.produto.nombre.slice(0, 25) + '…' : item.produto.nombre;
+    const itemLine   = `<div class="row"><span>${esc(nom)} ×${item.cantidad}</span><span>${sub.toFixed(2)}</span></div>`;
+    const descLine   = item.descuento > 0
+      ? `<div class="row small"><span>  Descuento (${item.descuento}%)</span><span>-${(precioBase - sub).toFixed(2)}</span></div>`
+      : '';
+    return itemLine + descLine;
   }).join('');
 
   const compradorHtml = mostrarComprador ? `
@@ -529,14 +536,17 @@ ${line()}
 ${itemsHtml}
 ${line()}
 ${row('Subtotal:', fmt(sale.subtotal))}
+${(sale.descuentoGlobal ?? 0) > 0 ? row('Descuento:', `-${fmt(sale.descuentoGlobal!)}`) : ''}
 ${row(esExento ? 'ITBIS (Exento ZF):' : 'ITBIS (18%):', esExento ? 'RD$0.00' : fmt(sale.iva))}
 ${(sale.propina ?? 0) > 0 ? row('Propina:', fmt(sale.propina!)) : ''}
 ${dbl()}
 <div class="row xlarge bold"><span>TOTAL:</span><span>${fmt(sale.total)}</span></div>
 ${line()}
-${row(`${esc(metodoLabel)}:`, fmt(pagoMostrar))}
+${sale.metodo === 'efectivo'
+  ? row('PAGADO:', fmt(pagoMostrar))
+  : row(`${esc(metodoLabel)}:`, fmt(pagoMostrar))}
 ${sale.metodo === 'credito' && sale.diasCredito ? row('Plazo:', `${sale.diasCredito} días`) : ''}
-${sale.metodo === 'efectivo' && sale.cambio > 0 ? rowBold('CAMBIO:', fmt(sale.cambio)) : ''}
+${Number(sale.cambio) > 0 ? rowBold('CAMBIO:', fmt(Number(sale.cambio))) : ''}
 ${ecfHtml}
 ${dbl()}
 <div class="center">&#161;Gracias por su preferencia!</div>
@@ -3811,6 +3821,7 @@ export default function POSPage() {
         cliente:                 clientes?.data.find((c: Cliente) => c.id === clienteId)?.nombre,
         iva:                     ivaEfectivo,
         subtotal,
+        descuentoGlobal:         descGlobalMonto > 0 ? descGlobalMonto : undefined,
         facturaId:               factura.id > 0 ? factura.id : undefined,
         tipoNcf,
         encf:                    encfFinal,
