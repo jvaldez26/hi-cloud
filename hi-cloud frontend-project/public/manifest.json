@@ -10,25 +10,23 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/icons/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    },
-    {
       "src": "/icons/icon-192.png",
       "sizes": "192x192",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "/icons/icon-512.png",
       "sizes": "512x512",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ],
-  "categories": ["business", "finance", "productivity"],
+  "categories": [
+    "business",
+    "finance",
+    "productivity"
+  ],
   "lang": "es-DO",
   "dir": "ltr",
   "prefer_related_applications": false,
@@ -44,35 +42,59 @@
       "short_name": "POS",
       "url": "/pos",
       "description": "Abrir punto de venta",
-      "icons": [{ "src": "/icons/icon.svg", "sizes": "any" }]
+      "icons": [
+        {
+          "src": "/icons/icon.svg",
+          "sizes": "any"
+        }
+      ]
     },
     {
       "name": "Nueva Factura",
       "short_name": "Facturar",
       "url": "/facturas/nueva",
       "description": "Crear nueva factura e-CF",
-      "icons": [{ "src": "/icons/icon.svg", "sizes": "any" }]
+      "icons": [
+        {
+          "src": "/icons/icon.svg",
+          "sizes": "any"
+        }
+      ]
     },
     {
       "name": "Dashboard",
       "short_name": "Dashboard",
       "url": "/dashboard",
       "description": "Ver métricas del día",
-      "icons": [{ "src": "/icons/icon.svg", "sizes": "any" }]
+      "icons": [
+        {
+          "src": "/icons/icon.svg",
+          "sizes": "any"
+        }
+      ]
     },
     {
       "name": "Caja Diaria",
       "short_name": "Caja",
       "url": "/caja",
       "description": "Gestionar caja del día",
-      "icons": [{ "src": "/icons/icon.svg", "sizes": "any" }]
+      "icons": [
+        {
+          "src": "/icons/icon.svg",
+          "sizes": "any"
+        }
+      ]
     }
   ],
   "related_applications": [],
   "file_handlers": [
     {
       "action": "/facturas",
-      "accept": { "application/pdf": [".pdf"] }
+      "accept": {
+        "application/pdf": [
+          ".pdf"
+        ]
+      }
     }
   ]
 }
