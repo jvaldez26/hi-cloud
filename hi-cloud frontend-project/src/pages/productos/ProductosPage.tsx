@@ -470,13 +470,20 @@ function ProductosCatalogo() {
     { title: 'Nombre',    key: 'nombre', dataIndex: 'nombre',   ellipsis: true, mobileTitle: true,
       render: (v: string, r: Producto) => (
         <Space>
-          <Avatar size={28} style={{ background: avatarColor(r.nombre), fontSize: 12, borderRadius: 4, flexShrink: 0 }} shape="square">{v.charAt(0).toUpperCase()}</Avatar>
+          <Tooltip title={r.tipo === 'servicio' ? 'Servicio' : 'Producto'}>
+            <Avatar size={28}
+              style={{ background: r.tipo === 'servicio' ? '#10B981' : avatarColor(r.nombre), fontSize: 12, borderRadius: 4, flexShrink: 0 }}
+              shape="square">
+              {r.tipo === 'servicio' ? 'S' : v.charAt(0).toUpperCase()}
+            </Avatar>
+          </Tooltip>
           <Text style={{ fontSize: 13 }}>{v}</Text>
         </Space>
       )},
     { title: 'Precio',    key: 'precio', dataIndex: 'precio',   width: 115, isAmount: true, render: (v: number) => fmt.money(v) },
     { title: 'Stock', key: 'stock', dataIndex: 'stock', width: 90,
       render: (v: number, r: Producto) => {
+        if (r.tipo === 'servicio') return <Text type="secondary">—</Text>;
         const bajo = v <= r.stockMinimo;
         return <Space size={4}>{bajo && <Tooltip title="Stock bajo"><WarningOutlined style={{ color: '#ff4d4f' }} /></Tooltip>}<Text style={{ color: bajo ? '#ff4d4f' : undefined }}>{fmt.number(v)}</Text></Space>;
       } },
@@ -537,7 +544,7 @@ function ProductosCatalogo() {
       <Table columns={filterColumns(columns)} dataSource={rows} rowKey="id"
         loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
-        rowClassName={(r: Producto) => r.stock <= r.stockMinimo ? 'ant-table-row-danger' : ''}
+        rowClassName={(r: Producto) => r.tipo !== 'servicio' && r.stock <= r.stockMinimo ? 'ant-table-row-danger' : ''}
         pagination={{ total: data?.meta.total, pageSize: 10, current: page,
                       onChange: setPage, showTotal: t => `${t} productos`, showSizeChanger: false }} />
 
