@@ -28,10 +28,12 @@ export class ProductosService {
     const empresaId = this.tenantService.getEmpresaId();
     await this.limitesService.verificarLimiteProductos(empresaId);
 
-    const existing = await this.productoRepository.findOne({
-      where: { codigo: dto.codigo, empresaId, isActive: true },
-    });
-    if (existing) throw new ConflictException(`Código ${dto.codigo} ya existe en esta empresa`);
+    const [byCodigo, byNombre] = await Promise.all([
+      this.productoRepository.findOne({ where: { codigo: dto.codigo, empresaId, isActive: true } }),
+      this.productoRepository.findOne({ where: { nombre: dto.nombre, empresaId, isActive: true } }),
+    ]);
+    if (byCodigo) throw new ConflictException(`Ya existe un producto con el código '${dto.codigo}'`);
+    if (byNombre) throw new ConflictException(`Ya existe un producto con el nombre '${dto.nombre}'`);
 
     const producto = this.productoRepository.create({ ...dto, empresaId });
     const saved = await this.productoRepository.save(producto);
@@ -104,12 +106,35 @@ export class ProductosService {
       const codExists = await this.productoRepository.findOne({
         where: { codigo: dto.codigo, empresaId, isActive: true },
       });
-      if (codExists) throw new ConflictException(`Código ${dto.codigo} ya existe`);
+      if (codExists) throw new ConflictException(`Ya existe un producto con el código '${dto.codigo}'`);
+    }
+
+    if (dto.nombre && dto.nombre !== producto.nombre) {
+      const nomExists = await this.productoRepository
+        .createQueryBuilder('p')
+        .where('p.nombre = :nombre', { nombre: dto.nombre })
+        .andWhere('p.empresaId = :empresaId', { empresaId })
+        .andWhere('p.isActive = :active', { active: true })
+        .andWhere('p.id != :id', { id })
+        .getOne();
+      if (nomExists) throw new ConflictException(`Ya existe un producto con el nombre '${dto.nombre}'`);
     }
 
     await this.productoRepository.update(id, dto);
     this.realtimeService.notify(empresaId, 'producto', 'updated', id);
     return this.findOne(id);
+  }
+
+  async checkDuplicado(campo: 'codigo' | 'nombre', valor: string, excludeId?: number): Promise<{ disponible: boolean }> {
+    const empresaId = this.tenantService.getEmpresaId();
+    const qb = this.productoRepository
+      .createQueryBuilder('p')
+      .where(`p.${campo} = :valor`, { valor })
+      .andWhere('p.empresaId = :empresaId', { empresaId })
+      .andWhere('p.isActive = :active', { active: true });
+    if (excludeId) qb.andWhere('p.id != :excludeId', { excludeId });
+    const found = await qb.getOne();
+    return { disponible: !found };
   }
 
   async ajustarStock(id: number, cantidad: number) {

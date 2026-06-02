@@ -51,6 +51,17 @@ export class ProductosController {
     return this.productosService.findStockBajo();
   }
 
+  @Get('check-duplicado')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Verificar si código o nombre ya existe (para validación en tiempo real)' })
+  checkDuplicado(
+    @Query('campo') campo: 'codigo' | 'nombre',
+    @Query('valor') valor: string,
+    @Query('excludeId') excludeId?: string,
+  ) {
+    return this.productosService.checkDuplicado(campo, valor, excludeId ? Number(excludeId) : undefined);
+  }
+
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Obtener producto por ID' })

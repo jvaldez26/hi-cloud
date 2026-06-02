@@ -410,6 +410,7 @@ function ProductosCatalogo() {
   const [form]                      = Form.useForm<ProductoPayload>();
   const tipoWatch = Form.useWatch('tipo', form) ?? 'producto';
   const esServicio = tipoWatch === 'servicio';
+  const [fieldErrors, setFieldErrors] = useState<{ codigo?: string; nombre?: string }>({});
   const qc = useQueryClient();
 
   const puedeCrear    = useCanDo('productos:crear');
@@ -424,28 +425,36 @@ function ProductosCatalogo() {
   const categorias = [...new Set((data?.data ?? []).map((p: Producto) => p.categoria).filter(Boolean))] as string[];
   const rows = categoria ? (data?.data ?? []).filter((p: Producto) => p.categoria === categoria) : (data?.data ?? []);
 
+  // Parsear error del backend y asignarlo al campo correspondiente
+  const handleApiError = (e: any, fallback: string) => {
+    const msg: string = e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? e?.message ?? fallback;
+    if (msg.includes("código '")) {
+      setFieldErrors(prev => ({ ...prev, codigo: msg }));
+    } else if (msg.includes("nombre '")) {
+      setFieldErrors(prev => ({ ...prev, nombre: msg }));
+    } else {
+      message.error(msg, 6);
+    }
+  };
+
   const createMut = useMutation({
     mutationFn: productosApi.create,
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['productos'] }); closeModal(); message.success('Producto creado'); },
-    onError:   (e: any) => {
-      const msg = e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? e?.message ?? 'Error al crear producto';
-      console.error('[ProductosCatalogo] crear error:', e?.response?.data ?? e);
-      message.error(msg, 6);
-    },
+    onError:   (e: any) => handleApiError(e, 'Error al crear producto'),
   });
   const updateMut = useMutation({
     mutationFn: ({ id, body }: { id: number; body: Partial<ProductoPayload> }) => productosApi.update(id, body),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['productos'] }); closeModal(); message.success('Actualizado'); },
-    onError:   (e: any) => { message.error(e?.response?.data?.message ?? 'Error al actualizar producto', 6); },
+    onError:   (e: any) => handleApiError(e, 'Error al actualizar producto'),
   });
   const deleteMut = useMutation({
     mutationFn: productosApi.remove,
     onSuccess:  () => { qc.invalidateQueries({ queryKey: ['productos'] }); message.success('Eliminado'); },
   });
 
-  const openCreate = () => { setEditing(null); form.resetFields(); setPreview(''); setOpen(true); };
-  const openEdit   = (p: Producto) => { setEditing(p); form.setFieldsValue(p); setPreview(p.imagenUrl ?? ''); setOpen(true); };
-  const closeModal = () => { setOpen(false); setEditing(null); form.resetFields(); setPreview(''); };
+  const openCreate = () => { setEditing(null); form.resetFields(); setPreview(''); setFieldErrors({}); setOpen(true); };
+  const openEdit   = (p: Producto) => { setEditing(p); form.setFieldsValue(p); setPreview(p.imagenUrl ?? ''); setFieldErrors({}); setOpen(true); };
+  const closeModal = () => { setOpen(false); setEditing(null); form.resetFields(); setPreview(''); setFieldErrors({}); };
   const handleSubmit = (values: ProductoPayload) => {
     const payload: ProductoPayload = { ...values };
     if (values.tipo === 'servicio') {
@@ -567,10 +576,44 @@ function ProductosCatalogo() {
 
           <Row gutter={16}>
             <Col xs={24} sm={8}>
-              <Form.Item name="codigo" label="Código" rules={[{ required: true }]}><Input /></Form.Item>
+              <Form.Item name="codigo" label="Código" rules={[{ required: true }]}
+                validateStatus={fieldErrors.codigo ? 'error' : undefined}
+                help={fieldErrors.codigo}>
+                <Input
+                  onChange={() => setFieldErrors(prev => ({ ...prev, codigo: undefined }))}
+                  onBlur={async e => {
+                    const val = e.target.value.trim();
+                    if (!val) return;
+                    try {
+                      const qs = editing ? `&excludeId=${editing.id}` : '';
+                      const r = await api.get(`/productos/check-duplicado?campo=codigo&valor=${encodeURIComponent(val)}${qs}`);
+                      if (!(r.data?.data ?? r.data)?.disponible) {
+                        setFieldErrors(prev => ({ ...prev, codigo: `Ya existe un producto con el código '${val}'` }));
+                      }
+                    } catch { /* sin feedback si falla el check */ }
+                  }}
+                />
+              </Form.Item>
             </Col>
             <Col xs={24} sm={16}>
-              <Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input /></Form.Item>
+              <Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}
+                validateStatus={fieldErrors.nombre ? 'error' : undefined}
+                help={fieldErrors.nombre}>
+                <Input
+                  onChange={() => setFieldErrors(prev => ({ ...prev, nombre: undefined }))}
+                  onBlur={async e => {
+                    const val = e.target.value.trim();
+                    if (!val) return;
+                    try {
+                      const qs = editing ? `&excludeId=${editing.id}` : '';
+                      const r = await api.get(`/productos/check-duplicado?campo=nombre&valor=${encodeURIComponent(val)}${qs}`);
+                      if (!(r.data?.data ?? r.data)?.disponible) {
+                        setFieldErrors(prev => ({ ...prev, nombre: `Ya existe un producto con el nombre '${val}'` }));
+                      }
+                    } catch { /* sin feedback si falla el check */ }
+                  }}
+                />
+              </Form.Item>
             </Col>
             <Col xs={24} sm={8}>
               <Form.Item name="precio" label="Precio (RD$)" rules={[{ required: true }]}>
