@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Card, Row, Col, Typography, Statistic, Table, Tag, Button,
          Space, Spin, Progress, Alert, Empty, Form, Input, Select,
-         message, Tabs, Modal, Descriptions, theme } from 'antd';
+         message, Tabs, Modal, Descriptions, theme, Tooltip } from 'antd';
 import { DownloadOutlined, FileTextOutlined, CheckCircleOutlined,
-         CustomerServiceOutlined, PlusOutlined } from '@ant-design/icons';
+         CustomerServiceOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -37,6 +37,8 @@ export default function ClientPortalPage() {
   const { token: themeToken } = theme.useToken();
   const { token } = useParams<{ token: string }>();
   const [downloading, setDownloading] = useState<number | null>(null);
+  const [refreshing,  setRefreshing]  = useState(false);
+  const qc = useQueryClient();
 
   const { data: cliente, isLoading: loadCliente, isError } = useQuery({
     queryKey: ['portal-cliente', token],
@@ -47,6 +49,16 @@ export default function ClientPortalPage() {
 
   const { data: facturas,    isLoading: loadFacturas }    = useQuery({ queryKey: ['portal-facturas', token],    queryFn: () => portalApi.getFacturas(token!),     enabled: !!token && !!cliente });
   const { data: estadoCuenta, isLoading: loadCuenta }     = useQuery({ queryKey: ['portal-cuenta', token],      queryFn: () => portalApi.getEstadoCuenta(token!), enabled: !!token && !!cliente });
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await qc.invalidateQueries({ queryKey: ['portal-cliente',  token] });
+    await qc.invalidateQueries({ queryKey: ['portal-facturas', token] });
+    await qc.invalidateQueries({ queryKey: ['portal-cuenta',   token] });
+    await qc.invalidateQueries({ queryKey: ['portal-tickets',  token] });
+    setRefreshing(false);
+    message.success('Datos actualizados', 2);
+  };
 
   const handleDescargar = async (facturaId: number, folio: string) => {
     setDownloading(facturaId);
@@ -98,10 +110,30 @@ export default function ClientPortalPage() {
               <Text style={{ color: 'rgba(255,255,255,.7)', display: 'block', fontSize: 12 }}>Portal del Cliente</Text>
             </div>
           </div>
-          <Title level={3} style={{ color: '#fff', margin: 0 }}>
-            Bienvenido, {cliente.nombre}
-          </Title>
-          {cliente.rfc && <Text style={{ color: 'rgba(255,255,255,.8)' }}>RNC/Cédula: {cliente.rfc}</Text>}
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+            <div>
+              <Title level={3} style={{ color: '#fff', margin: 0 }}>
+                Bienvenido, {cliente.nombre}
+              </Title>
+              {cliente.rfc && <Text style={{ color: 'rgba(255,255,255,.8)' }}>RNC/Cédula: {cliente.rfc}</Text>}
+            </div>
+            <Tooltip title="Actualizar datos">
+              <Button
+                icon={<ReloadOutlined spin={refreshing} />}
+                onClick={handleRefresh}
+                loading={refreshing}
+                style={{
+                  background: 'rgba(255,255,255,.15)',
+                  border: '1px solid rgba(255,255,255,.3)',
+                  color: '#fff',
+                  borderRadius: 8,
+                  flexShrink: 0,
+                }}
+              >
+                Actualizar
+              </Button>
+            </Tooltip>
+          </div>
         </div>
       </div>
 
