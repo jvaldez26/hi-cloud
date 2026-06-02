@@ -1300,7 +1300,7 @@ function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir }: {
   autoImprimir?: boolean;
 }) {
   const C = useC();
-  const [countdown, setCountdown] = useState(15);
+  const [countdown, setCountdown] = useState(10);
   const intervalRef  = useRef<ReturnType<typeof setInterval>  | null>(null);
   const printTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1311,7 +1311,7 @@ function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir }: {
 
   useEffect(() => {
     if (!sale) return;
-    setCountdown(15);
+    setCountdown(10);
 
     intervalRef.current = setInterval(() => setCountdown(c => {
       if (c <= 1) {
@@ -1331,17 +1331,14 @@ function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir }: {
     // Pequeño delay para que el DOM del recibo esté listo
     const t = setTimeout(() => {
       cancelarContador();
-      imprimirElemento(RECEIPT_ID, '80mm auto');
-      window.addEventListener('afterprint', onNueva, { once: true });
+      imprimirElemento(RECEIPT_ID, '80mm auto', onNueva);
     }, 300);
     return () => clearTimeout(t);
   }, [sale?.folio, autoImprimir]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePrint = () => {
     cancelarContador();
-    imprimirElemento(RECEIPT_ID, '80mm auto');
-    // afterprint se dispara al cerrar el diálogo (imprima o cancele)
-    window.addEventListener('afterprint', onNueva, { once: true });
+    imprimirElemento(RECEIPT_ID, '80mm auto', onNueva);
   };
 
 

@@ -53,7 +53,7 @@ export function imprimirHtml(html: string): void {
 
 // ── Imprimir elemento HTML (recibos térmicos POS) ─────────────────────────────
 
-export function imprimirElemento(elementId: string, pageSize = '80mm auto'): void {
+export function imprimirElemento(elementId: string, pageSize = '80mm auto', onDone?: () => void): void {
   const el = document.getElementById(elementId);
   if (!el) { console.warn(`[imprimirElemento] #${elementId} no encontrado`); return; }
   const content = el.innerHTML;
@@ -67,7 +67,7 @@ export function imprimirElemento(elementId: string, pageSize = '80mm auto'): voi
   const blob2 = new Blob([receiptHtml], { type: 'text/html' });
   const url2  = URL.createObjectURL(blob2);
   const pw    = window.open(url2, '_blank', 'width=420,height=700,scrollbars=yes');
-  if (!pw) { _imprimirConCSS(elementId, pageSize); URL.revokeObjectURL(url2); return; }
+  if (!pw) { _imprimirConCSS(elementId, pageSize); URL.revokeObjectURL(url2); onDone?.(); return; }
 
   // Flag para evitar doble impresión: onload + setTimeout se pueden disparar juntos
   let printed = false;
@@ -76,8 +76,8 @@ export function imprimirElemento(elementId: string, pageSize = '80mm auto'): voi
     printed = true;
     pw.focus();
     pw.print();
-    pw.addEventListener('afterprint', () => pw.close());
-    setTimeout(() => { try { pw.close(); } catch { /* noop */ } }, 60_000);
+    pw.addEventListener('afterprint', () => { pw.close(); onDone?.(); });
+    setTimeout(() => { try { pw.close(); onDone?.(); } catch { /* noop */ } }, 60_000);
   };
 
   pw.onload = doPrint;
