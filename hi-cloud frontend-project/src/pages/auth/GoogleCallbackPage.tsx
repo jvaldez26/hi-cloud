@@ -54,7 +54,7 @@ export default function GoogleCallbackPage() {
           navigate('/super-admin', { replace: true });
         } else if (sinEmpresa) {
           // Usuario nuevo con Google o sin empresa → ir directo a crear empresa
-          navigate('/mis-empresas', { replace: true });
+          navigate('/onboarding/empresa', { replace: true });
         } else {
           navigate('/dashboard', { replace: true });
         }

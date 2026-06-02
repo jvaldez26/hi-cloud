@@ -56,6 +56,8 @@ const ResetPasswordPage         = lazy(() => import('./pages/auth/ResetPasswordP
 const VerificarCorreoPage       = lazy(() => import('./pages/auth/VerificarCorreoPage'));
 const GoogleCallbackPage        = lazy(() => import('./pages/auth/GoogleCallbackPage'));
 const PendingApprovalPage       = lazy(() => import('./pages/auth/PendingApprovalPage'));
+const OnboardingEmpresaPage     = lazy(() => import('./pages/auth/OnboardingEmpresaPage'));
+const PendingEmpresaPage        = lazy(() => import('./pages/auth/PendingEmpresaPage'));
 const SetupPasswordPage         = lazy(() => import('./pages/auth/SetupPasswordPage'));
 const FacturasRecurrentesPage   = lazy(() => import('./pages/facturas/FacturasRecurrentesPage'));
 const RetencionesPage           = lazy(() => import('./pages/retenciones/RetencionesPage'));
@@ -233,7 +235,8 @@ export default function App() {
     const publicPaths = ['/login', '/registrar', '/recuperar-contrasena',
                          '/restablecer', '/verificar-correo', '/portal/',
                          '/invitacion/', '/precios', '/auth/callback',
-                         '/pending-approval', '/setup-password'];
+                         '/pending-approval', '/setup-password',
+                         '/onboarding/empresa', '/pending-empresa'];
     const onPublicPage = window.location.pathname === '/' ||
                          publicPaths.some(p => window.location.pathname.startsWith(p));
     if (!savedUser && onPublicPage) {
@@ -420,6 +423,8 @@ export default function App() {
                   <Route path="/verificar-correo"        element={<VerificarCorreoPage />} />
                   <Route path="/auth/callback"           element={<GoogleCallbackPage />} />
                   <Route path="/pending-approval"        element={<PendingApprovalPage />} />
+                  <Route path="/onboarding/empresa"      element={<OnboardingEmpresaPage />} />
+                  <Route path="/pending-empresa"         element={<PendingEmpresaPage />} />
                   <Route path="/setup-password"          element={<SetupPasswordPage />} />
                   {/* Portal del cliente — PÚBLICO */}
                   <Route path="/portal/:token"           element={<ClientPortalPage />} />
