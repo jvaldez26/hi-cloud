@@ -60,9 +60,13 @@ export function imprimirElemento(elementId: string, pageSize = '80mm auto', onDo
   if (!content.trim()) { console.warn(`[imprimirElemento] #${elementId} está vacío`); return; }
 
   const receiptHtml = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Recibo</title>
-<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#fff}
+<style>
+*{margin:0;padding:0;box-sizing:border-box;transform:none!important;-webkit-transform:none!important}
+body{background:#fff;font-family:'Courier New',Courier,monospace;font-size:12px;line-height:1.4;
+  -webkit-font-smoothing:none;-moz-osx-font-smoothing:unset;font-smooth:never;color:#000}
 @page{margin:3mm;size:${pageSize}}
-@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style>
 </head><body>${content}</body></html>`;
   const blob2 = new Blob([receiptHtml], { type: 'text/html' });
   const url2  = URL.createObjectURL(blob2);

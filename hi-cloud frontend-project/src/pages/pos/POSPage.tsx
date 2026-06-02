@@ -89,6 +89,7 @@ interface Sale {
   folio:                   string;
   total:                   number;
   cambio:                  number;
+  pagoRecibido?:           number;  // monto que entregó el cliente (efectivo)
   metodo:                  string;
   items:                   CartItem[];
   cliente?:                string;
@@ -434,13 +435,13 @@ const NCF_LABEL: Record<string, { linea1: string; linea2: string }> = {
 const RNC_GENERICOS_TICKET = new Set(['000000000', '00000000000', '']);
 
 // Helpers de presentación (definidos fuera del componente — sin hooks)
-const R: React.CSSProperties = { fontFamily: '"Courier New",Courier,monospace', fontSize: 11, color: '#000', background: '#fff', lineHeight: 1.45 };
+const R: React.CSSProperties = { fontFamily: '"Courier New",Courier,monospace', fontSize: 12, color: '#000', background: '#fff', lineHeight: 1.45 };
 const HR = ({ dbl }: { dbl?: boolean }) => (
   <div style={{ borderTop: dbl ? '2px solid #000' : '1px dashed #888', margin: '5px 0' }} />
 );
 function RRow({ label, value, bold, large }: { label: string; value: string; bold?: boolean; large?: boolean }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 4, marginBottom: 2, fontSize: large ? 13 : 11 }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 4, marginBottom: 2, fontSize: large ? 14 : 12 }}>
       <span>{label}</span>
       <span style={{ fontWeight: bold || large ? 700 : undefined, textAlign: 'right' }}>{value}</span>
     </div>
@@ -472,27 +473,27 @@ function ThermalReceipt({ sale }: { sale: Sale }) {
 
       {/* ── ENCABEZADO EMPRESA ─────────────────────────────────────── */}
       <div style={{ textAlign: 'center', marginBottom: 4 }}>
-        <div style={{ fontSize: 15, fontWeight: 900, letterSpacing: 1 }}>
+        <div style={{ fontSize: 16, fontWeight: 900, letterSpacing: 1 }}>
           {sale.empresaNombreComercial || 'NOMBRE EMPRESA'}
         </div>
-        <div style={{ fontSize: 9 }}>República Dominicana</div>
+        <div style={{ fontSize: 10 }}>República Dominicana</div>
       </div>
       {sale.empresaRnc && (
-        <div style={{ fontSize: 10 }}>RNC Emisor: {sale.empresaRnc}</div>
+        <div style={{ fontSize: 11 }}>RNC Emisor: {sale.empresaRnc}</div>
       )}
       {sale.empresaDireccion && (
-        <div style={{ fontSize: 10, wordBreak: 'break-word' }}>{sale.empresaDireccion}</div>
+        <div style={{ fontSize: 11, wordBreak: 'break-word' }}>{sale.empresaDireccion}</div>
       )}
       {sale.empresaTelefono && (
-        <div style={{ fontSize: 10 }}>Tel: {sale.empresaTelefono}</div>
+        <div style={{ fontSize: 11 }}>Tel: {sale.empresaTelefono}</div>
       )}
 
       <HR dbl />
 
       {/* ── TIPO DE COMPROBANTE ────────────────────────────────────── */}
       <div style={{ textAlign: 'center', marginBottom: 4 }}>
-        <div style={{ fontSize: 12, fontWeight: 900 }}>{ncf.linea1}</div>
-        <div style={{ fontSize: 11, fontWeight: 700 }}>{ncf.linea2}</div>
+        <div style={{ fontSize: 13, fontWeight: 900 }}>{ncf.linea1}</div>
+        <div style={{ fontSize: 12, fontWeight: 700 }}>{ncf.linea2}</div>
       </div>
 
       <HR />
@@ -507,16 +508,16 @@ function ThermalReceipt({ sale }: { sale: Sale }) {
       {mostrarComprador && (
         <>
           <HR />
-          <div style={{ fontSize: 10, fontWeight: 900 }}>COMPRADOR:</div>
-          <div style={{ fontSize: 10 }}>RNC: <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{sale.rncComprador}</span></div>
-          {sale.razonSocial && <div style={{ fontSize: 10 }}>{sale.razonSocial}</div>}
+          <div style={{ fontSize: 11, fontWeight: 900 }}>COMPRADOR:</div>
+          <div style={{ fontSize: 11 }}>RNC: <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{sale.rncComprador}</span></div>
+          {sale.razonSocial && <div style={{ fontSize: 11 }}>{sale.razonSocial}</div>}
         </>
       )}
 
       <HR />
 
       {/* ── ITEMS ────────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, fontWeight: 700, marginBottom: 3 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, fontWeight: 700, marginBottom: 3 }}>
         <span style={{ flex: 1 }}>DESCRIPCIÓN</span>
         <span style={{ width: 28, textAlign: 'right' }}>CANT</span>
         <span style={{ width: 60, textAlign: 'right' }}>TOTAL</span>
@@ -524,11 +525,11 @@ function ThermalReceipt({ sale }: { sale: Sale }) {
       <HR />
       {sale.items.map((item, i) => {
         const sub = item.precio * item.cantidad * (1 - item.descuento / 100);
-        const nom = item.produto.nombre.length > 20
-          ? item.produto.nombre.substring(0, 19) + '…'
+        const nom = item.produto.nombre.length > 22
+          ? item.produto.nombre.substring(0, 21) + '…'
           : item.produto.nombre;
         return (
-          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, marginBottom: 3 }}>
+          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 3 }}>
             <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nom}</span>
             <span style={{ width: 28, textAlign: 'right' }}>{item.cantidad}</span>
             <span style={{ width: 60, textAlign: 'right', fontWeight: 600 }}>
@@ -557,13 +558,13 @@ function ThermalReceipt({ sale }: { sale: Sale }) {
       {/* ── FORMA DE PAGO ─────────────────────────────────────────── */}
       <RRow
         label={`${METODOS.find(m => m.key === sale.metodo)?.label ?? 'Pago'}:`}
-        value={sale.metodo === 'efectivo' && sale.cambio > 0 ? moneda(sale.total + sale.cambio) : moneda(sale.total)}
+        value={moneda(sale.pagoRecibido ?? (sale.metodo === 'efectivo' && sale.cambio > 0 ? sale.total + sale.cambio : sale.total))}
       />
       {sale.metodo === 'credito' && (
         <RRow label="Plazo:" value={sale.diasCredito ? `${sale.diasCredito} días` : '—'} />
       )}
       {sale.metodo === 'efectivo' && sale.cambio > 0 && (
-        <RRow label="Cambio:" value={moneda(sale.cambio)} bold />
+        <RRow label="CAMBIO:" value={moneda(sale.cambio)} bold large />
       )}
       <HR />
 
@@ -585,12 +586,12 @@ function ThermalReceipt({ sale }: { sale: Sale }) {
                   style={{ width: 130, height: 130, display: 'block', margin: '0 auto' }}
                 />
               </div>
-              <div style={{ textAlign: 'center', fontSize: 9, color: '#444', marginBottom: 2 }}>
+              <div style={{ textAlign: 'center', fontSize: 10, color: '#444', marginBottom: 2 }}>
                 Escanea para verificar en DGII
               </div>
             </>
           ) : (
-            <div style={{ textAlign: 'center', fontSize: 9, color: '#444' }}>
+            <div style={{ textAlign: 'center', fontSize: 10, color: '#444' }}>
               Verifica en: dgii.gov.do
             </div>
           )}
@@ -599,10 +600,10 @@ function ThermalReceipt({ sale }: { sale: Sale }) {
           {sale.ecfPendiente && (
             <>
               <HR />
-              <div style={{ textAlign: 'center', fontSize: 10, border: '1px dashed #888', padding: '4px 2px', borderRadius: 3 }}>
+              <div style={{ textAlign: 'center', fontSize: 11, border: '1px dashed #888', padding: '4px 2px', borderRadius: 3 }}>
                 <div style={{ fontWeight: 700 }}>⚠ COMPROBANTE EN PROCESO</div>
                 <div>DE VALIDACIÓN DGII</div>
-                <div style={{ fontSize: 9, marginTop: 2, color: '#555' }}>
+                <div style={{ fontSize: 10, marginTop: 2, color: '#555' }}>
                   Su comprobante electrónico será<br />
                   enviado cuando sea procesado.
                 </div>
@@ -611,14 +612,14 @@ function ThermalReceipt({ sale }: { sale: Sale }) {
           )}
         </>
       ) : (
-        <div style={{ textAlign: 'center', fontSize: 10, border: '1px dashed #888', padding: '4px 2px', borderRadius: 3 }}>
+        <div style={{ textAlign: 'center', fontSize: 11, border: '1px dashed #888', padding: '4px 2px', borderRadius: 3 }}>
           <div style={{ fontWeight: 700 }}>⚠ COMPROBANTE EN PROCESO</div>
           <div>DE VALIDACIÓN DGII</div>
         </div>
       )}
 
       <HR dbl />
-      <div style={{ textAlign: 'center', fontSize: 10, marginTop: 2 }}>
+      <div style={{ textAlign: 'center', fontSize: 11, marginTop: 2 }}>
         ¡Gracias por su preferencia!
       </div>
     </div>
@@ -3763,6 +3764,7 @@ export default function POSPage() {
         folio:                   factura.folio,
         total:                   totalAPagar,
         cambio,
+        pagoRecibido:            metodoPago === 'efectivo' && montoRecibido > 0 ? montoRecibido : undefined,
         propina:                 propinaMontoCalc > 0 ? propinaMontoCalc : undefined,
         metodo:                  tipoPagoPos === 'CREDITO' ? 'credito' : metodoPago,
         notas:                   tipoPagoPos === 'CREDITO' ? `Crédito ${diasCreditoPos} días` : undefined,
