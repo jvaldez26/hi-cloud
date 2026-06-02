@@ -74,6 +74,14 @@ export class MultiEmpresaService {
     asignacion.isPrincipal = true;
     await this.usuarioEmpresaRepo.save(asignacion);
 
+    // Si el creador era VIEWER (registro Google pendiente sin empresa),
+    // promoverlo a ADMIN ahora que tiene su empresa.
+    // Esto permite que /auth/mis-empresas funcione correctamente.
+    await this.usuarioRepo.update(
+      { id: adminId, role: UserRole.VIEWER },
+      { role: UserRole.ADMIN },
+    );
+
     // Crear sucursal principal por defecto
     await this.sucursalRepo.save(
       this.sucursalRepo.create({

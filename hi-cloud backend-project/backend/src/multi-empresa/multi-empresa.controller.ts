@@ -56,8 +56,10 @@ export class MultiEmpresaController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Crear nueva empresa (tenant) en el sistema' })
+  // Sin restricción de rol: cualquier usuario autenticado puede crear su primera empresa.
+  // Un usuario VIEWER sin empresa debe poder solicitarla (queda en PENDIENTE_APROBACION).
+  // Si ya tiene empresas y quiere más, el servicio puede restringirlo.
+  @ApiOperation({ summary: 'Crear nueva empresa (tenant) — permitido para usuarios sin empresa' })
   createEmpresa(@Body() dto: CreateEmpresaTenantDto, @GetUser() admin: User) {
     return this.multiEmpresaService.createEmpresaConAdmin(dto, admin.id);
   }
