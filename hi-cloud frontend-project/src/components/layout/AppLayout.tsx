@@ -148,6 +148,7 @@ const MENU_CATEGORIES: MenuCategory[] = [
       { path: '/anticipos-cliente',    label: 'Anticipos de Clientes' },
       { path: '/fidelidad',            label: 'Fidelidad & Puntos' },
       { path: '/conduces',             label: 'Conduces / Entregas' },
+      { path: '/soporte/tickets',      label: '🎫 Tickets de Soporte' },
     ],
   },
 
@@ -390,6 +391,7 @@ const PATH_ROLES: Record<string, string[]> = {
   '/recibos-cobro':         ADMIN_CONT,
   '/conduces':              ADMIN_CONT,
   '/fidelidad':             ADMIN_CONT,
+  '/soporte/tickets':       ADMIN_CONT,
   '/cuotas':                ADMIN_CONT,
   '/credito-cliente':       ADMIN_CONT,
   '/anticipos-cliente':     ADMIN_CONT,
@@ -1295,6 +1297,7 @@ export default function AppLayout() {
       '/anticipos-cliente':      () => import('../../pages/anticipos-cliente/AnticiposClientePage'),
       '/fidelidad':              () => import('../../pages/fidelidad/FidelidadPage'),
       '/conduces':               () => import('../../pages/conduce/ConducePage'),
+      '/soporte/tickets':        () => import('../../pages/soporte/TicketsSoportePage'),
       // ── Compras & Gastos ─────────────────────────────────────────
       '/solicitudes-compra':     () => import('../../pages/solicitudes-compra/SolicitudesCompraPage'),
       '/compras':                () => import('../../pages/compras/ComprasPage'),

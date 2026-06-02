@@ -7,12 +7,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { IsString, IsOptional, IsEnum } from 'class-validator';
 import { Repository, DataSource } from 'typeorm';
 import { randomBytes } from 'crypto';
+import { ConfigService } from '@nestjs/config';
 import { Cliente } from '../clientes/entities/cliente.entity';
 import { TicketSoporte, EstadoTicket, PrioridadTicket, CategoriaTicket } from './ticket-soporte.entity';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
+import { EmailService } from '../notificaciones/services/email.service';
 
 class CreateTicketDto {
   @IsString()                       asunto!:      string;
@@ -37,6 +39,8 @@ export class PortalController {
     @InjectRepository(TicketSoporte)
     private ticketRepository: Repository<TicketSoporte>,
     private dataSource: DataSource,
+    private emailService: EmailService,
+    private configService: ConfigService,
   ) {}
 
   // ── Generar / obtener token del portal (requiere auth) ──────────────────────
@@ -161,13 +165,52 @@ export class PortalController {
     const cliente = await this.validarToken(token);
     const ticket  = this.ticketRepository.create({
       ...dto,
-      clienteId:    cliente.id,
+      clienteId:     cliente.id,
       clienteNombre: cliente.nombre,
-      portalToken:  token,
-      estado:       EstadoTicket.ABIERTO,
-      empresaId:    cliente.empresaId,
+      portalToken:   token,
+      estado:        EstadoTicket.ABIERTO,
+      empresaId:     cliente.empresaId,
     });
-    return this.ticketRepository.save(ticket);
+    const saved = await this.ticketRepository.save(ticket);
+
+    // Notificar al admin por email (no bloquear la respuesta si falla)
+    const adminEmail = this.configService.get<string>('NOTIF_ADMIN_EMAIL', '');
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL', 'https://hicloudrd.com');
+    if (adminEmail) {
+      const prioridadLabel = { baja: 'Baja', media: 'Media', alta: 'Alta' }[saved.prioridad] ?? saved.prioridad;
+      const categoriaLabel = {
+        soporte_tecnico: 'Soporte Técnico', facturacion: 'Facturación',
+        devolucion: 'Devolución', consulta: 'Consulta', otro: 'Otro',
+      }[saved.categoria] ?? saved.categoria;
+      const html = `
+        <div style="font-family:sans-serif;max-width:560px;margin:0 auto">
+          <h2 style="color:#1a56db">🎫 Nuevo ticket de soporte</h2>
+          <table style="width:100%;border-collapse:collapse">
+            <tr><td style="padding:6px;color:#555;width:130px">Cliente:</td>
+                <td style="padding:6px;font-weight:700">${saved.clienteNombre ?? '—'}</td></tr>
+            <tr><td style="padding:6px;color:#555">Asunto:</td>
+                <td style="padding:6px;font-weight:700">${saved.asunto}</td></tr>
+            <tr><td style="padding:6px;color:#555">Categoría:</td>
+                <td style="padding:6px">${categoriaLabel}</td></tr>
+            <tr><td style="padding:6px;color:#555">Prioridad:</td>
+                <td style="padding:6px"><strong style="color:${saved.prioridad === 'alta' ? '#dc2626' : saved.prioridad === 'media' ? '#d97706' : '#16a34a'}">${prioridadLabel}</strong></td></tr>
+            <tr><td style="padding:6px;color:#555;vertical-align:top">Descripción:</td>
+                <td style="padding:6px;white-space:pre-wrap">${saved.descripcion}</td></tr>
+          </table>
+          <p style="margin-top:20px">
+            <a href="${frontendUrl}/soporte/tickets" style="background:#1a56db;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">
+              Ver y responder en el panel →
+            </a>
+          </p>
+        </div>`;
+      this.emailService.enviar({
+        to: adminEmail,
+        subject: `[Ticket #${saved.id}] ${saved.asunto} — ${saved.clienteNombre ?? 'Cliente'}`,
+        html,
+      }).catch((err: Error) => this.logger.warn(`Email ticket #${saved.id}: ${err.message}`));
+    }
+
+    return saved;
   }
 
   @Get(':token/tickets')
