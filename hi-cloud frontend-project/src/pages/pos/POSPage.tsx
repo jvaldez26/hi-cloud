@@ -3334,6 +3334,9 @@ export default function POSPage() {
   const { data: vendedores = [] } = useQuery<any[]>({
     queryKey: ['vendedores-sel'],
     queryFn:  () => api.get('/vendedores').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
+    staleTime: 5 * 60_000,
+    retry: 3,
+    retryDelay: 1_000,
   });
   // Usuarios activos de la empresa con email — para Cambiar Usuario
   const { data: usuariosEmpresa = [] } = useQuery<any[]>({
@@ -3774,8 +3777,15 @@ export default function POSPage() {
 
   // User info
   const empresaNombre = localStorage.getItem('empresa_nombre') || localStorage.getItem('empresaNombre') || 'HiCloud ERP';
-  const cajeroNombre  = vendedores.find((v: any) => v.id === vendedorId)?.nombre
-                        || localStorage.getItem('user_name') || localStorage.getItem('nombre') || 'Cajero';
+  const cajeroNombreResuelto = vendedores.find((v: any) => v.id === vendedorId)?.nombre;
+  // Cachear en localStorage cuando se resuelve para que persista si vendedores se vacía
+  useEffect(() => {
+    if (cajeroNombreResuelto) localStorage.setItem('pos_cajero_nombre', cajeroNombreResuelto);
+  }, [cajeroNombreResuelto]);
+  const cajeroNombre = cajeroNombreResuelto
+    || localStorage.getItem('pos_cajero_nombre')
+    || user?.nombre
+    || 'Cajero';
 
   // ── Desbloquear pantalla (verifica contra backend) ─────────────────────────
   const desbloquearPantalla = async () => {
