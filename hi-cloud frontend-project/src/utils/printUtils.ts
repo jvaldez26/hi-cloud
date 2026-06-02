@@ -59,18 +59,38 @@ export function imprimirElemento(elementId: string, pageSize = '80mm auto', onDo
   const content = el.innerHTML;
   if (!content.trim()) { console.warn(`[imprimirElemento] #${elementId} está vacío`); return; }
 
-  const receiptHtml = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Recibo</title>
+  // Derivar ancho en mm del pageSize para ajustar viewport y popup al papel exacto.
+  // Sin esto el navegador escala el contenido al imprimir → texto borroso.
+  const mmMatch = pageSize.match(/^(\d+(\.\d+)?)mm/);
+  const mmWidth = mmMatch ? parseFloat(mmMatch[1]) : 80;
+  const pxWidth = Math.round(mmWidth * 3.7795); // 1 mm = 3.7795 px a 96 dpi
+
+  const receiptHtml = `<!DOCTYPE html><html lang="es"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=${pxWidth},initial-scale=1,shrink-to-fit=no">
+<title>Recibo</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;transform:none!important;-webkit-transform:none!important}
-body{background:#fff;font-family:'Courier New',Courier,monospace;font-size:12px;line-height:1.4;
-  -webkit-font-smoothing:none;-moz-osx-font-smoothing:unset;font-smooth:never;color:#000}
-@page{margin:3mm;size:${pageSize}}
-@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+html{width:${mmWidth}mm}
+body{
+  width:${mmWidth}mm;max-width:${mmWidth}mm;
+  background:#fff;
+  font-family:'Courier New',Courier,monospace;
+  font-size:12px;line-height:1.4;
+  -webkit-font-smoothing:none;-moz-osx-font-smoothing:unset;font-smooth:never;
+  color:#000
+}
+@page{margin:2mm;size:${pageSize}}
+@media print{
+  html,body{width:${mmWidth}mm}
+  body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
 </style>
 </head><body>${content}</body></html>`;
   const blob2 = new Blob([receiptHtml], { type: 'text/html' });
   const url2  = URL.createObjectURL(blob2);
-  const pw    = window.open(url2, '_blank', 'width=420,height=700,scrollbars=yes');
+  // Popup con ancho exacto al papel + 18px de scrollbar para evitar reflow
+  const pw    = window.open(url2, '_blank', `width=${pxWidth + 18},height=700,scrollbars=yes`);
   if (!pw) { _imprimirConCSS(elementId, pageSize); URL.revokeObjectURL(url2); onDone?.(); return; }
 
   // Flag para evitar doble impresión: onload + setTimeout se pueden disparar juntos
