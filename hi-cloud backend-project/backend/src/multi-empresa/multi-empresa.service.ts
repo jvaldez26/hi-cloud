@@ -216,18 +216,20 @@ export class MultiEmpresaService {
       return this.usuarioEmpresaRepo.findOne({ where: { id: yaAsignado.id } });
     }
 
-    if (dto.isPrincipal) {
-      await this.usuarioEmpresaRepo.update(
-        { userId: dto.userId, isPrincipal: true },
-        { isPrincipal: false },
-      );
-    }
+    // SEGURIDAD: Al invitar a un usuario a otra empresa, NUNCA desplazar su
+    // empresa propia (la que él creó, isPrincipal=true). Esto evita que aceptar
+    // una invitación mezcle el contexto de tenant del usuario invitado.
+    // Solo se asigna isPrincipal=true si el usuario no tiene ninguna empresa propia.
+    const tienePrincipal = await this.usuarioEmpresaRepo.count({
+      where: { userId: dto.userId, isPrincipal: true, isActive: true },
+    });
+    const asignarPrincipal = (dto.isPrincipal ?? false) && tienePrincipal === 0;
 
     const asignacion = this.usuarioEmpresaRepo.create({
       userId:      dto.userId,
       empresaId,
       rol:         dto.rol,
-      isPrincipal: dto.isPrincipal ?? false,
+      isPrincipal: asignarPrincipal,
     });
 
     return this.usuarioEmpresaRepo.save(asignacion);

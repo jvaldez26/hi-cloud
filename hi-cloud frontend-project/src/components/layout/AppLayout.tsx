@@ -1189,12 +1189,19 @@ export default function AppLayout() {
   // Auto-seleccionar empresa si:
   // a) No hay empresaId en localStorage, O
   // b) El empresaId en localStorage no coincide con ninguna empresa disponible
+  // SEGURIDAD: preferir la empresa PROPIA del usuario (isPrincipal=true, aprobada)
+  // sobre cualquier empresa donde fue INVITADO, para evitar mezcla de tenants
   useEffect(() => {
     if (misEmpresas.length === 0) return;
     const stored = localStorage.getItem('empresaId');
     const estaEnLista = stored && (misEmpresas as any[]).some((e: any) => e.empresaId === Number(stored));
     if (!stored || !estaEnLista) {
-      cambiarEmpresa((misEmpresas as any[])[0].empresaId);
+      // Preferir empresa propia (isPrincipal=true, aprobada) como primera selección
+      const propia = (misEmpresas as any[]).find(
+        (e: any) => e.isPrincipal && e.estadoAprobacion !== 'rechazada',
+      );
+      const primera = propia ?? (misEmpresas as any[])[0];
+      cambiarEmpresa(primera.empresaId);
     }
   }, [misEmpresas, cambiarEmpresa]);
 
@@ -1461,9 +1468,12 @@ export default function AppLayout() {
   const empresaActivaNum = empresaActiva
     ?? (localStorage.getItem('empresaId') ? Number(localStorage.getItem('empresaId')) : null);
   const empresaActivaData = (misEmpresas as any[]).find((e: any) => e.empresaId === empresaActivaNum);
+  // Fallback: preferir la empresa propia (isPrincipal=true) sobre cualquier otra
+  // para evitar que una empresa donde el usuario fue INVITADO aparezca primero
+  const empresaPrincipal = (misEmpresas as any[]).find((e: any) => e.isPrincipal) ?? (misEmpresas as any[])[0];
   const empresaNombre =
     empresaActivaData?.nombre ??
-    (misEmpresas as any[])[0]?.nombre ??
+    empresaPrincipal?.nombre ??
     '';
   const empresaEsPendiente = empresaActivaData?.estadoAprobacion === 'pendiente';
   const empresasFiltradas = (misEmpresas as any[]).filter((e: any) =>
