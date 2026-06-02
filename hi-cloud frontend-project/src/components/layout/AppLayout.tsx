@@ -1475,6 +1475,20 @@ export default function AppLayout() {
     empresaActivaData?.nombre ??
     empresaPrincipal?.nombre ??
     '';
+
+  // Cachear nombre en localStorage para evitar flash "Mi Empresa" al recargar.
+  // window.location.reload() vacía el cache en memoria de React Query; con este
+  // cache el sidebar muestra el nombre correcto desde el primer render.
+  const [empresaNombreCached] = useState<string>(
+    () => localStorage.getItem('hc_empresa_nombre') ?? '',
+  );
+  useEffect(() => {
+    if (empresaNombre) localStorage.setItem('hc_empresa_nombre', empresaNombre);
+  }, [empresaNombre]);
+
+  // Nombre a mostrar: dato real → cache localStorage → fallback solo si query ya cargó
+  const empresaNombreDisplay = empresaNombre || empresaNombreCached || (empresasLoaded ? 'Mi Empresa' : '');
+
   const empresaEsPendiente = empresaActivaData?.estadoAprobacion === 'pendiente';
   const empresasFiltradas = (misEmpresas as any[]).filter((e: any) =>
     e.nombre?.toLowerCase().includes(busquedaEmpresa.toLowerCase())
@@ -1560,17 +1574,17 @@ export default function AppLayout() {
           {/* Avatar con iniciales */}
           <div
             onClick={collapsed ? () => setCollapsedPersisted(false) : undefined}
-            title={collapsed ? (empresaNombre || 'Mi Empresa') : undefined}
+            title={collapsed ? (empresaNombreDisplay || undefined) : undefined}
             style={{
               width: 28, height: 28, borderRadius: 6, flexShrink: 0,
-              background: getEmpresaColor(empresaNombre || 'H'),
+              background: getEmpresaColor(empresaNombreDisplay || 'H'),
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: 11, fontWeight: 700, color: '#FFFFFF',
               cursor: collapsed ? 'pointer' : 'default',
               userSelect: 'none',
             }}
           >
-            {(empresaNombre || 'HI').slice(0, 2).toUpperCase()}
+            {(empresaNombreDisplay || 'HI').slice(0, 2).toUpperCase()}
           </div>
           {!collapsed && (
             <div style={{ minWidth: 0, flex: 1 }}>
@@ -1579,7 +1593,7 @@ export default function AppLayout() {
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 display: 'block',
               }}>
-                {empresaNombre || 'Mi Empresa'}
+                {empresaNombreDisplay}
               </span>
               {empresaEsPendiente && (
                 <span style={{ fontSize: 9, fontWeight: 700, color: '#f59e0b', display: 'block', lineHeight: 1.2 }}>
