@@ -49,8 +49,10 @@ export class TenantMiddleware implements NestMiddleware {
   async use(req: Request & { empresaId?: number; cookies?: Record<string, string> }, _res: Response, next: NextFunction) {
     const path = req.path;
 
-    // Skip tenant validation for public/system routes
-    if (RUTAS_SIN_TENANT.some(r => path.includes(r))) {
+    // Skip tenant validation for public/system routes.
+    // Excepción: /portal/admin/* requiere auth y necesita contexto de tenant.
+    const skipTenant = RUTAS_SIN_TENANT.some(r => path.includes(r)) && !path.includes('/portal/admin');
+    if (skipTenant) {
       return next();
     }
 
