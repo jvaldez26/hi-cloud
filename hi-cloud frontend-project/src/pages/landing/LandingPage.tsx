@@ -157,7 +157,7 @@ function Navbar({ onDemo }: { onDemo: () => void }) {
             cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,191,165,.35)', transition: 'all .15s' }}
           onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 18px rgba(0,191,165,.45)'; }}
           onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = '0 4px 14px rgba(0,191,165,.35)'; }}>
-          Demo gratis →
+          Agendar Demo →
         </button>
 
         {/* Mobile hamburger */}
@@ -190,7 +190,7 @@ function Navbar({ onDemo }: { onDemo: () => void }) {
             <button onClick={() => { onDemo(); setMopen(false); }}
               style={{ marginTop: 8, width: '100%', background: 'linear-gradient(135deg,#00BFA5,#009688)', border: 'none',
                 color: '#fff', fontSize: 14, fontWeight: 700, padding: '12px', borderRadius: 8, cursor: 'pointer' }}>
-              Demo gratis →
+              Agendar Demo →
             </button>
           </motion.div>
         )}
@@ -766,7 +766,7 @@ export default function LandingPage() {
               onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 10px 32px rgba(0,191,165,.55)'; }}
               onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = '0 6px 24px rgba(0,191,165,.45)'; }}
             >
-              Solicitar Demo Gratuita →
+              Agendar Demo →
             </button>
             <p style={{ color: 'rgba(255,255,255,.35)', fontSize: 13, marginTop: 16 }}>
               Sin compromiso · Sin tarjeta de crédito · Respuesta en 24h
@@ -806,7 +806,7 @@ export default function LandingPage() {
             {/* Producto */}
             <div>
               <h4 style={{ color: '#fff', fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 16 }}>Producto</h4>
-              {['Características', 'Precios', 'e-CF DGII', 'Documentación', 'Demo'].map(l => (
+              {['Características', 'Precios', 'e-CF DGII', 'Documentación', 'Agendar Demo'].map(l => (
                 <p key={l} style={{ margin: '0 0 10px' }}>
                   <a href="#" onClick={e => { e.preventDefault(); openDemo(); }}
                     style={{ color: 'rgba(255,255,255,.55)', fontSize: 13, textDecoration: 'none', transition: 'color .15s' }}
