@@ -162,14 +162,36 @@ function homeForRole(role?: string): string {
   return '/dashboard';
 }
 
+/** Pantalla de carga de aplicación — visible durante la hidratación de sesión.
+ *  Muestra el logo centrado en fondo oscuro para evitar el "white flash". */
+function AppLoader() {
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', minHeight: '100vh',
+      background: '#0d1117', gap: 16,
+    }}>
+      <img src="/logo-hicloud.png" alt="HiCloud ERP"
+        style={{ height: 48, objectFit: 'contain', opacity: 0.9 }} />
+      <div style={{
+        width: 24, height: 24, borderRadius: '50%',
+        border: '2.5px solid rgba(26,86,219,.2)',
+        borderTopColor: '#1a56db',
+        animation: 'spin 0.75s linear infinite',
+      }} />
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
+
 // Ruta raíz: landing para visitantes, dashboard para autenticados.
 function PublicHome() {
   const { hydrated }  = useAuthStore();
   const isAuth = useAuthStore((s) => s.isAuth());
   const user   = useAuthStore((s) => s.user);
 
-  // Mientras se verifica la sesión → no redirigir todavía
-  if (!hydrated) return null;
+  // Mientras se verifica la sesión → spinner, no pantalla en blanco
+  if (!hydrated) return <AppLoader />;
 
   if (isAuth) {
     return <Navigate to={homeForRole(user?.role)} replace />;
@@ -179,8 +201,11 @@ function PublicHome() {
 
 // Rutas del ERP normal — BLOQUEADAS para super_admin y empleado
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { hydrated } = useAuthStore();
   const isAuth = useAuthStore((s) => s.isAuth());
   const user   = useAuthStore((s) => s.user);
+  // Esperar hydratación antes de redirigir — evita flash de /login durante carga inicial
+  if (!hydrated) return <AppLoader />;
   if (!isAuth) return <Navigate to="/login" replace />;
   if (user?.role === 'super_admin') return <Navigate to="/super-admin" replace />;
   if (user?.role === 'empleado')    return <Navigate to="/portal-empleado" replace />;
@@ -189,16 +214,21 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 /** Evita que un usuario autenticado vea páginas públicas (login, registro). */
 function GuestRoute({ children }: { children: React.ReactNode }) {
+  const { hydrated } = useAuthStore();
   const isAuth = useAuthStore((s) => s.isAuth());
   const user   = useAuthStore((s) => s.user);
+  // Esperar hydratación antes de decidir — evita mostrar login cuando el usuario está autenticado
+  if (!hydrated) return <AppLoader />;
   if (!isAuth) return <>{children}</>;
   return <Navigate to={homeForRole(user?.role)} replace />;
 }
 
 // Panel exclusivo del Super Admin — solo accesible con role === 'super_admin'
 function SuperAdminRoute({ children }: { children: React.ReactNode }) {
+  const { hydrated } = useAuthStore();
   const user   = useAuthStore((s) => s.user);
   const isAuth = useAuthStore((s) => s.isAuth());
+  if (!hydrated) return <AppLoader />;
   if (!isAuth) return <Navigate to="/login" replace />;
   if (user?.role !== 'super_admin') return <Navigate to={homeForRole(user?.role)} replace />;
   return <>{children}</>;
@@ -206,8 +236,10 @@ function SuperAdminRoute({ children }: { children: React.ReactNode }) {
 
 // Portal exclusivo del Empleado — solo role === 'empleado' (o admin/contador para pruebas)
 function EmpleadoRoute({ children }: { children: React.ReactNode }) {
+  const { hydrated } = useAuthStore();
   const isAuth = useAuthStore((s) => s.isAuth());
   const user   = useAuthStore((s) => s.user);
+  if (!hydrated) return <AppLoader />;
   if (!isAuth) return <Navigate to="/login" replace />;
   // Admin y contador pueden ver el portal desde el ERP — no bloqueamos
   if (user?.role === 'super_admin') return <Navigate to="/super-admin" replace />;
