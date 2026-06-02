@@ -489,7 +489,7 @@ function buildReciboTermicoHTML(sale: Sale, qrDataUrl: string | null): string {
 *{margin:0;padding:0;box-sizing:border-box;overflow-wrap:break-word}
 html{margin:0;padding:0;width:80mm}
 body{font-family:'Courier New',Courier,monospace;font-size:11pt;line-height:1.45;
-  width:80mm;margin:0;padding:3mm;
+  width:80mm;margin:0;padding:3mm 5mm;
   color:#000;background:#fff;
   -webkit-font-smoothing:none;font-smooth:never}
 .center{text-align:center}
