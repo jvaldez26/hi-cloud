@@ -639,19 +639,19 @@ export class AuthService implements OnModuleInit {
     user = await this.userRepository.findOne({ where: { email: data.email } });
     if (user) {
       const updates: Record<string, any> = { googleId: data.googleId, provider: 'GOOGLE' };
-      // Si el usuario quedó como VIEWER sin empresa (registro Google incompleto),
-      // promoverlo a ADMIN para que pueda completar la creación de su empresa.
-      if ((user as any).role === UserRole.VIEWER || (user as any).role === 'viewer') {
-        const sinEmpresa = await this.ueRepository.count({
-          where: { userId: user.id, isActive: true },
-        });
-        if (sinEmpresa === 0) updates.role = UserRole.ADMIN;
-      }
+      // SEGURIDAD: NO promover a ADMIN si no tiene empresa.
+      // ADMIN global ve TODAS las empresas del sistema via /auth/mis-empresas.
+      // El rol ADMIN se asigna cuando el Super Admin aprueba la cuenta.
+      // Un usuario sin empresa debe quedarse en VIEWER hasta la aprobación.
       await this.userRepository.update(user.id, updates as any);
       return { ...user, ...updates } as User;
     }
 
     // 3. Crear cuenta nueva — queda en PENDIENTE hasta aprobación del Super Admin
+    // SEGURIDAD: role=VIEWER hasta que se apruebe y se cree su empresa.
+    // role=ADMIN se asigna en aprobarRegistro() cuando el Super Admin activa la cuenta.
+    // Si se crea con ADMIN, el endpoint /auth/mis-empresas lo trata como "admin global"
+    // y le devuelve TODAS las empresas del sistema → violación de aislamiento de datos.
     const pw = await bcrypt.hash(randomBytes(32).toString('hex'), 12);
     const newUser = this.userRepository.create({
       nombre:             data.nombre,
@@ -659,7 +659,7 @@ export class AuthService implements OnModuleInit {
       password:           pw,
       googleId:           data.googleId,
       provider:           'GOOGLE',
-      role:               UserRole.ADMIN,
+      role:               UserRole.VIEWER, // VIEWER hasta aprobación — evita ver todas las empresas
       emailVerifiedAt:    new Date(),      // Google ya verificó el email
       accountStatus:      'pendiente',     // Requiere aprobación del Super Admin
       passwordConfigured: false,           // Configurará contraseña tras la aprobación
