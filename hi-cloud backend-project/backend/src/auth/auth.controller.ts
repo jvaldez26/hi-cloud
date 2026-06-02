@@ -367,6 +367,12 @@ export class AuthController {
     try {
       const googleUser = req.user as any;
 
+      // Error semántico desde la estrategia (NO_ACCOUNT / NO_COMPANY)
+      if (googleUser?._googleError) {
+        const code = googleUser._googleError;
+        return (res as any).redirect(`${frontendUrl}/login?error=${code}`);
+      }
+
       // Aprobado pero sin contraseña configurada → generar token de setup y redirigir
       if (googleUser?.passwordConfigured === false) {
         const rawToken = await this.authService.generarSetupToken(googleUser.id);

@@ -32,8 +32,12 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
       });
 
       done(null, user);
-    } catch (err) {
-      done(err as Error, undefined);
+    } catch (err: any) {
+      // Pasar el código de error como objeto-usuario para que el controller
+      // pueda hacer redirect. Si pasamos el error a done() el AuthGuard retorna
+      // JSON 401 antes de que el controller pueda interceptarlo.
+      const code = err?.message ?? 'google_failed';
+      done(null, { _googleError: code } as any);
     }
   }
 }
