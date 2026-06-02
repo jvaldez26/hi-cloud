@@ -111,6 +111,10 @@ export class InventarioService {
 
   async registrarSalida(productoId: number, cantidad: number, userId: number, motivo?: string, referencia?: string) {
     const producto = await this.obtenerProducto(productoId);
+
+    // Los servicios no tienen inventario físico — omitir movimiento de stock
+    if ((producto as any).tipo === 'servicio') return null;
+
     const cantidadAnterior = Number(producto.stock);
 
     if (cantidadAnterior < cantidad) {

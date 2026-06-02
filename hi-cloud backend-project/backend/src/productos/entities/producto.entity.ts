@@ -6,6 +6,9 @@ import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 @Entity('productos')
 @Index(['empresaId', 'isActive'])
 export class Producto extends TenantBaseEntity {
+  @Column({ length: 10, default: 'producto' })
+  tipo!: string;  // 'producto' | 'servicio'
+
   @Column({ length: 30 })
   codigo!: string;
 

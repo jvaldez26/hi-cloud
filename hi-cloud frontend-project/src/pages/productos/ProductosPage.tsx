@@ -6,7 +6,7 @@ import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Table, Button, Input, Space, Tag, Modal, Form, Row, Col,
          Typography, Popconfirm, message, Card, InputNumber,
          Image, Avatar, Tooltip, Upload, Select, Tabs, Divider,
-         Badge, InputNumber as AntInputNumber, Alert, Switch } from 'antd';
+         Badge, InputNumber as AntInputNumber, Alert, Switch, Segmented } from 'antd';
 import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
          WarningOutlined, PictureOutlined, UploadOutlined, LinkOutlined,
          FileExcelOutlined, BarcodeOutlined, AppstoreOutlined,
@@ -408,6 +408,8 @@ function ProductosCatalogo() {
   const [preview,    setPreview]    = useState('');
   const [uploading,  setUploading]  = useState(false);
   const [form]                      = Form.useForm<ProductoPayload>();
+  const tipoWatch = Form.useWatch('tipo', form) ?? 'producto';
+  const esServicio = tipoWatch === 'servicio';
   const qc = useQueryClient();
 
   const puedeCrear    = useCanDo('productos:crear');
@@ -445,8 +447,13 @@ function ProductosCatalogo() {
   const openEdit   = (p: Producto) => { setEditing(p); form.setFieldsValue(p); setPreview(p.imagenUrl ?? ''); setOpen(true); };
   const closeModal = () => { setOpen(false); setEditing(null); form.resetFields(); setPreview(''); };
   const handleSubmit = (values: ProductoPayload) => {
-    if (editing) updateMut.mutate({ id: editing.id, body: values });
-    else         createMut.mutate(values);
+    const payload: ProductoPayload = { ...values };
+    if (values.tipo === 'servicio') {
+      payload.stock = undefined;
+      payload.stockMinimo = undefined;
+    }
+    if (editing) updateMut.mutate({ id: editing.id, body: payload });
+    else         createMut.mutate(payload);
   };
 
   const COLS_DEF = [
@@ -537,8 +544,20 @@ function ProductosCatalogo() {
       <Modal title={editing ? 'Editar producto' : 'Nuevo producto'}
         open={open} onCancel={closeModal} footer={null} width="min(700px, 95vw)">
         <Form form={form} layout="vertical" onFinish={handleSubmit}
-          initialValues={{ unidadMedida: 'PZA', porcentajeIva: 18, stock: 0, stockMinimo: 0 }}>
+          initialValues={{ tipo: 'producto', unidadMedida: 'PZA', porcentajeIva: 18, stock: 0, stockMinimo: 0 }}>
           <UomMedidaSelector />
+
+          {/* Tipo: Producto / Servicio */}
+          <Form.Item name="tipo" label="Tipo" style={{ marginBottom: 16 }}>
+            <Segmented
+              options={[
+                { label: '📦 Producto', value: 'producto' },
+                { label: '⚙️ Servicio', value: 'servicio' },
+              ]}
+              block
+            />
+          </Form.Item>
+
           <Row gutter={16}>
             <Col xs={24} sm={8}>
               <Form.Item name="codigo" label="Código" rules={[{ required: true }]}><Input /></Form.Item>
@@ -561,16 +580,20 @@ function ProductosCatalogo() {
                 <UomSelect />
               </Form.Item>
             </Col>
-            <Col xs={24} sm={8}>
-              <Form.Item name="stock" label="Stock">
-                <InputNumber style={{ width: '100%' }} min={0} precision={0} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={8}>
-              <Form.Item name="stockMinimo" label="Stock mínimo">
-                <InputNumber style={{ width: '100%' }} min={0} precision={0} />
-              </Form.Item>
-            </Col>
+            {!esServicio && (
+              <Col xs={24} sm={8}>
+                <Form.Item name="stock" label="Stock">
+                  <InputNumber style={{ width: '100%' }} min={0} precision={0} />
+                </Form.Item>
+              </Col>
+            )}
+            {!esServicio && (
+              <Col xs={24} sm={8}>
+                <Form.Item name="stockMinimo" label="Stock mínimo">
+                  <InputNumber style={{ width: '100%' }} min={0} precision={0} />
+                </Form.Item>
+              </Col>
+            )}
             <Col xs={24} sm={8}>
               <Form.Item name="categoria" label="Categoría"><Input /></Form.Item>
             </Col>

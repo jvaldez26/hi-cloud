@@ -68,6 +68,7 @@ export interface Cliente {
 // ── Productos ─────────────────────────────────────────────────────────────────
 export interface Producto {
   id:              number;
+  tipo?:           string;   // 'producto' | 'servicio'
   codigo:          string;
   nombre:          string;
   descripcion?:    string;

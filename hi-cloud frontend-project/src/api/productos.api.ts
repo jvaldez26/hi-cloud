@@ -2,6 +2,7 @@ import api from './client';
 import type { ApiResponse, PaginatedData, Producto } from '../types';
 
 export interface ProductoPayload {
+  tipo?: string;   // 'producto' | 'servicio'
   codigo: string; nombre: string; precio: number;
   unidadMedida?: string; porcentajeIva?: number;
   stock?: number; stockMinimo?: number; categoria?: string;

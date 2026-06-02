@@ -7,9 +7,15 @@ import {
   Min,
   Max,
   MaxLength,
+  IsIn,
 } from 'class-validator';
 
 export class CreateProductoDto {
+  @IsOptional()
+  @IsString()
+  @IsIn(['producto', 'servicio'])
+  tipo?: string;
+
   @IsString()
   @IsNotEmpty()
   @MaxLength(30)
