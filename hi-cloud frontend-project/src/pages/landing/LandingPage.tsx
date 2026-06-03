@@ -298,22 +298,22 @@ const PLANES_LANDING = [
   {
     clave: 'emprendedor', nombre: 'EMPRENDEDOR', precio: 29, precioAnual: 26.10,
     limite: 'RD$125,000', usuarios: 2, color: '#374151', border: '#6B7280', popular: false,
-    features: ['Factura electrónica e-CF DGII gratuita', 'Ingresos hasta RD$125,000/mes', '2 usuarios incluidos', 'Todos los módulos', 'Multi-empresa', 'Soporte 24/7 gratis'],
+    features: ['Factura electrónica e-CF DGII gratuita', 'Ingresos hasta RD$125,000/mes', '2 usuarios incluidos', 'Todos los módulos', 'Multi-empresa', 'Portal de clientes', 'Soporte 24/7 gratis'],
   },
   {
     clave: 'pyme', nombre: 'PYME', precio: 59, precioAnual: 53.10,
     limite: 'RD$500,000', usuarios: 3, color: '#047857', border: '#10B981', popular: false,
-    features: ['Factura electrónica e-CF DGII gratuita', 'Ingresos hasta RD$500,000/mes', '3 usuarios incluidos', 'Todos los módulos', 'Multi-empresa', 'Soporte 24/7 gratis'],
+    features: ['Factura electrónica e-CF DGII gratuita', 'Ingresos hasta RD$500,000/mes', '3 usuarios incluidos', 'Todos los módulos', 'Multi-empresa', 'Portal de clientes', 'Soporte 24/7 gratis'],
   },
   {
     clave: 'pro', nombre: 'PRO', precio: 89, precioAnual: 80.10,
     limite: 'RD$1,250,000', usuarios: 4, color: '#0d9488', border: '#14B8A6', popular: true,
-    features: ['Factura electrónica e-CF DGII gratuita', 'Ingresos hasta RD$1,250,000/mes', '4 usuarios incluidos', 'Todos los módulos', 'Multi-empresa', 'Soporte 24/7 gratis'],
+    features: ['Factura electrónica e-CF DGII gratuita', 'Ingresos hasta RD$1,250,000/mes', '4 usuarios incluidos', 'Todos los módulos', 'Multi-empresa', 'Portal de clientes', 'Soporte 24/7 gratis'],
   },
   {
     clave: 'plus', nombre: 'PLUS', precio: 129, precioAnual: 116.10,
     limite: 'RD$6,250,000', usuarios: 10, color: '#4F46E5', border: '#818CF8', popular: false,
-    features: ['Factura electrónica e-CF DGII gratuita', 'Ingresos hasta RD$6,250,000/mes', '10 usuarios incluidos', 'Todos los módulos', 'Multi-empresa', 'Soporte 24/7 + Asistente IA'],
+    features: ['Factura electrónica e-CF DGII gratuita', 'Ingresos hasta RD$6,250,000/mes', '10 usuarios incluidos', 'Todos los módulos', 'Multi-empresa', 'Portal de clientes', 'Soporte 24/7 + Asistente IA'],
   },
 ];
 
@@ -330,6 +330,7 @@ const TABLA_COMPARATIVA = [
   { feature: 'CRM / Proyectos',               vals: [true, true, true, true] },
   { feature: 'Reportes DGII 606/607',         vals: [true, true, true, true] },
   { feature: 'Multi-sucursal',                vals: [true, true, true, true] },
+  { feature: 'Portal de clientes',            vals: [true, true, true, true] },
   { feature: 'Soporte 24/7',                  vals: [true, true, true, true] },
   { feature: 'Asistente IA',                  vals: [false, false, false, true] },
 ];
