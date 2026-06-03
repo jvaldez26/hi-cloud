@@ -3640,7 +3640,9 @@ export default function POSPage() {
       const idx = prev.findIndex(i => i.produto.id === produto.id);
       if (idx >= 0) {
         const u = [...prev];
-        if (u[idx].cantidad < Number(produto.stock)) u[idx].cantidad++;
+        const esServicio = (produto as any).tipo === 'servicio';
+        // Servicios no tienen límite de stock; productos físicos respetan el stock disponible
+        if (esServicio || u[idx].cantidad < Number(produto.stock)) u[idx].cantidad++;
         return u;
       }
       return [{ produto, cantidad: 1, precio: precioBase, descuento: 0 }, ...prev];
@@ -3708,15 +3710,30 @@ export default function POSPage() {
 
   // handleScannerInput: usa API call fresca para evitar el cache stale del scanner
   const handleScannerInput = useCallback(async (code: string) => {
-    const trimmed = code.trim();
+    // Fix D: limpiar Enter/CR que algunos scanners adjuntan al código
+    const trimmed = code.replace(/[\r\n]/g, '').trim();
+    console.log('[SCANNER] código recibido:', JSON.stringify(code), '→ trimmed:', trimmed);
     if (!trimmed) return;
     try {
-      const result = await productosApi.list(1, 5, trimmed);
-      const list: Prod[] = result?.data ?? [];
-      // Buscar coincidencia exacta por código de barras
+      const result = await productosApi.list(1, 10, trimmed);
+      console.log('[SCANNER] API response:', result);
+
+      // Fix B: normalizar estructura de respuesta
+      const rawList = Array.isArray(result)
+        ? result
+        : Array.isArray((result as any)?.data)
+          ? (result as any).data
+          : Array.isArray((result as any)?.items)
+            ? (result as any).items
+            : [];
+      const list: Prod[] = rawList;
+      console.log('[SCANNER] productos en lista:', list.length, list.map((p: any) => ({ codigo: p.codigo, nombre: p.nombre })));
+
+      // Fix A: comparación robusta — trim + toString en ambos lados
       const exact = list.find((p: any) =>
-        p.codigo?.toLowerCase() === trimmed.toLowerCase()
+        p.codigo?.toString().trim().toLowerCase() === trimmed.toLowerCase()
       ) ?? (list.length === 1 ? list[0] : null);
+      console.log('[SCANNER] producto encontrado:', exact ? (exact as any).nombre : 'NINGUNO');
 
       if (exact) {
         const esServicio = (exact as any).tipo === 'servicio';
@@ -3724,14 +3741,17 @@ export default function POSPage() {
           message.warning(`${exact.nombre}: sin stock`, 2);
           return;
         }
-        await addToCart(exact);
+        // Fix C: pasar objeto completo verificando campos mínimos requeridos por addToCart
+        console.log('[SCANNER] ejecutando addToCart con:', { id: exact.id, nombre: exact.nombre, precio: exact.precio, stock: exact.stock });
+        addToCart(exact);
         message.success(`✓ ${exact.nombre}`, 1.5);
         setScanFlash(true);
         setTimeout(() => setScanFlash(false), 700);
       } else {
         message.error(`Código "${trimmed}" no encontrado`, 2);
       }
-    } catch {
+    } catch (err: any) {
+      console.error('[SCANNER] error:', err);
       message.error(`Error al buscar código: ${trimmed}`, 2);
     } finally {
       setTimeout(() => searchRef.current?.focus(), 50);
@@ -4181,11 +4201,15 @@ export default function POSPage() {
                   }}
                   onKeyDown={e => {
                     if (e.key === 'Enter') {
-                      const isScan = fastCharCountRef.current >= 5 && search.trim().length >= 4;
+                      // CRÍTICO: usar e.target.value (DOM real) en lugar de `search` (estado React stale)
+                      // El scanner envía chars tan rápido que React no ha re-renderizado con el nuevo valor
+                      const domValue = (e.target as HTMLInputElement).value;
+                      const isScan = fastCharCountRef.current >= 5 && domValue.trim().length >= 4;
+                      console.log('[SCANNER] Enter detectado — fastCount:', fastCharCountRef.current, 'domValue:', domValue, 'isScan:', isScan);
                       fastCharCountRef.current = 0;
                       if (isScan) {
                         e.preventDefault();
-                        const code = search.trim();
+                        const code = domValue;
                         setSearch('');
                         handleScannerInput(code);
                       }
