@@ -63,7 +63,10 @@ export default function ClientPortalPage() {
   const handleDescargar = async (facturaId: number, folio: string) => {
     setDownloading(facturaId);
     try {
-      await descargarPDFDesdeURL(`/api/v1/facturas/${facturaId}/pdf`, `${folio}.pdf`);
+      // Usar endpoint del portal (autenticado con portalToken, no JWT de admin)
+      await descargarPDFDesdeURL(`/api/v1/portal/${token}/facturas/${facturaId}/pdf`, `${folio}.pdf`);
+    } catch (err: any) {
+      message.error(`No se pudo descargar el PDF: ${err?.message ?? 'Error desconocido'}`, 4);
     } finally {
       setDownloading(null);
     }

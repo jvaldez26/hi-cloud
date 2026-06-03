@@ -1,15 +1,18 @@
 import {
-  Controller, Get, Post, Patch, Body, Param,
+  Controller, Get, Post, Patch, Body, Param, Res,
   HttpCode, HttpStatus, NotFoundException, Logger, UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsString, IsOptional, IsEnum } from 'class-validator';
 import { Repository, DataSource } from 'typeorm';
+import type { Response } from 'express';
 import { randomBytes } from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import { Cliente } from '../clientes/entities/cliente.entity';
 import { TicketSoporte, EstadoTicket, PrioridadTicket, CategoriaTicket } from './ticket-soporte.entity';
+import { Factura } from '../facturas/entities/factura.entity';
+import { PDFService } from '../facturas/services/pdf.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -39,10 +42,13 @@ export class PortalController {
     private clienteRepository: Repository<Cliente>,
     @InjectRepository(TicketSoporte)
     private ticketRepository: Repository<TicketSoporte>,
+    @InjectRepository(Factura)
+    private facturaRepository: Repository<Factura>,
     private dataSource: DataSource,
     private emailService: EmailService,
     private configService: ConfigService,
     private tenantService: TenantService,
+    private pdfService: PDFService,
   ) {}
 
   // ── Gestión de tickets (ADMIN) — DEBEN ir ANTES de las rutas :token/* ───────
@@ -293,6 +299,33 @@ export class PortalController {
       where: { clienteId: cliente.id, empresaId: cliente.empresaId, isActive: true },
       order: { createdAt: 'DESC' },
     });
+  }
+
+  @Get(':token/facturas/:id/pdf')
+  @ApiOperation({ summary: 'Descargar PDF de factura desde el portal del cliente (PÚBLICO con token)' })
+  async descargarPDFPortal(
+    @Param('token') token: string,
+    @Param('id') id: string,
+    @Res() res: Response,
+  ) {
+    const cliente = await this.validarToken(token);
+
+    const factura = await this.facturaRepository.findOne({
+      where: {
+        id:          Number(id),
+        clienteId:   cliente.id,
+        empresaId:   cliente.empresaId,
+        isActive:    true,
+      },
+      relations: ['detalles', 'cliente', 'usuario'],
+    });
+    if (!factura) throw new NotFoundException(`Factura #${id} no encontrada o no pertenece a este cliente`);
+
+    const { buffer, filename } = await this.pdfService.generarPDFDesdeEntidad(factura, cliente.empresaId);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', buffer.length);
+    res.end(buffer);
   }
 
   private async validarToken(token: string): Promise<Cliente> {
