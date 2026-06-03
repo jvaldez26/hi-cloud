@@ -3372,12 +3372,11 @@ export default function POSPage() {
   const [ecfStatus,          setEcfStatus]          = useState<'idle'|'loading'|'ok'|'pendiente'>('idle');
   const [ecfEncf,            setEcfEncf]            = useState<string>('');
   const searchRef         = useRef<any>(null);
-  const lastKeyTimeRef    = useRef<number>(0);   // mantenido por compat con código existente
-  const fastCharCountRef  = useRef<number>(0);   // mantenido por compat con código existente
-  // Buffer de scanner — acumula chars en refs (independiente del ciclo de render)
-  const scanBufferRef     = useRef<string>('');
-  const scanStartRef      = useRef<number>(0);   // timestamp del primer char del scan actual
-  const scanCountRef      = useRef<number>(0);   // chars rápidos acumulados
+  const lastKeyTimeRef    = useRef<number>(0);
+  const fastCharCountRef  = useRef<number>(0);
+  // Scanner HID — buffer en refs independiente del DOM y del ciclo de render de React
+  const scanBuffer        = useRef<string>('');
+  const scanTimer         = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [scanFlash, setScanFlash] = useState(false);
   const { pendingCount, isSyncing, enqueue, sync } = useOfflineQueue();
 
@@ -3695,7 +3694,7 @@ export default function POSPage() {
   };
 
   // Búsqueda por código de barras → agrega al carrito directamente
-  // handleBarcode: búsqueda en cache local para el campo de código de barras separado
+  // handleBarcode: búsqueda en cache local (campo barcode separado — no scanner)
   const handleBarcode = useCallback(async (code: string) => {
     const trimmed = code.trim();
     if (!trimmed) return;
@@ -3703,7 +3702,7 @@ export default function POSPage() {
       p.codigo?.toLowerCase() === trimmed.toLowerCase() || String(p.id) === trimmed
     );
     if (found) {
-      await addToCart(found as Prod);
+      addToCart(found as Prod);
       setBarcodeInput('');
       message.success(`${(found as any).nombre} agregado`, 1);
     } else {
@@ -3712,111 +3711,83 @@ export default function POSPage() {
     }
   }, [produtos, addToCart]);
 
-  // handleScannerInput: usa API call fresca para evitar el cache stale del scanner
-  const handleScannerInput = useCallback(async (code: string) => {
-    // Fix D: limpiar Enter/CR que algunos scanners adjuntan al código
-    const trimmed = code.replace(/[\r\n]/g, '').trim();
-    console.log('[SCANNER] código recibido:', JSON.stringify(code), '→ trimmed:', trimmed);
-    if (!trimmed) return;
-    try {
-      const result = await productosApi.list(1, 10, trimmed);
-      console.log('[SCANNER] API response:', result);
-
-      // Fix B: normalizar estructura de respuesta
-      const rawList = Array.isArray(result)
-        ? result
-        : Array.isArray((result as any)?.data)
-          ? (result as any).data
-          : Array.isArray((result as any)?.items)
-            ? (result as any).items
-            : [];
-      const list: Prod[] = rawList;
-      console.log('[SCANNER] productos en lista:', list.length, list.map((p: any) => ({ codigo: p.codigo, nombre: p.nombre })));
-
-      // Fix A: comparación robusta — trim + toString en ambos lados
-      const exact = list.find((p: any) =>
-        p.codigo?.toString().trim().toLowerCase() === trimmed.toLowerCase()
-      ) ?? (list.length === 1 ? list[0] : null);
-      console.log('[SCANNER] producto encontrado:', exact ? (exact as any).nombre : 'NINGUNO');
-
-      if (exact) {
-        const esServicio = (exact as any).tipo === 'servicio';
-        if (!esServicio && Number(exact.stock) <= 0) {
-          message.warning(`${exact.nombre}: sin stock`, 2);
-          return;
-        }
-        // Fix C: pasar objeto completo verificando campos mínimos requeridos por addToCart
-        console.log('[SCANNER] ejecutando addToCart con:', { id: exact.id, nombre: exact.nombre, precio: exact.precio, stock: exact.stock });
-        addToCart(exact);
-        message.success(`✓ ${exact.nombre}`, 1.5);
-        setScanFlash(true);
-        setTimeout(() => setScanFlash(false), 700);
-      } else {
-        message.error(`Código "${trimmed}" no encontrado`, 2);
-      }
-    } catch (err: any) {
-      console.error('[SCANNER] error:', err);
-      message.error(`Error al buscar código: ${trimmed}`, 2);
-    } finally {
-      setTimeout(() => searchRef.current?.focus(), 50);
-    }
-  }, [addToCart]);
-
-  // Listener global de scanner — captura keydown en document para no depender del foco
-  // El scanner envía Enter como evento separado; si el input perdió el foco en ese instante
-  // el onKeyDown del input no dispararía. Este listener lo captura en cualquier caso.
+  // ── SCANNER HID — listener global con buffer + timeout 500ms ─────────────────
+  // Patrón probado: el scanner envía chars al input PERO el Enter final llega
+  // como evento del document. El buffer acumula en refs para no depender del DOM.
   useEffect(() => {
-    const onDocKeyDown = (e: KeyboardEvent) => {
-      // Solo actuar cuando el panel de ítems está visible y no hay modal abierto
-      const modalOpen = document.querySelector('.ant-modal-root .ant-modal-wrap[style*="display: block"]');
-      if (modalOpen) return;
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      const target  = e.target as HTMLElement;
+      const isModal = !!target.closest('.ant-modal');
+      const tag     = target.tagName;
 
-      const now = Date.now();
+      // Ignorar si el foco está en un input dentro de un modal
+      if (isModal) return;
+      // Ignorar inputs que no sean el de búsqueda del POS (ej: campos de cobro)
+      if ((tag === 'INPUT' || tag === 'TEXTAREA') && target !== searchRef.current) return;
 
       if (e.key === 'Enter') {
-        const codigo   = scanBufferRef.current.trim().replace(/[\r\n]/g, '');
-        const elapsed  = now - scanStartRef.current;
-        const isScan   = scanCountRef.current >= 5 && elapsed < 200 && codigo.length >= 4;
+        const codigo = scanBuffer.current.trim();
+        if (scanTimer.current) clearTimeout(scanTimer.current);
+        scanBuffer.current = '';
 
-        console.log('[SCANNER-DOC] Enter — buffer:', JSON.stringify(scanBufferRef.current),
-          'count:', scanCountRef.current, 'elapsed:', elapsed, 'isScan:', isScan);
-
-        // Limpiar buffer siempre
-        scanBufferRef.current  = '';
-        scanCountRef.current   = 0;
-        scanStartRef.current   = 0;
-
-        if (isScan) {
+        if (codigo.length >= 4) {
           e.preventDefault();
           e.stopPropagation();
           setSearch('');
-          handleScannerInput(codigo);
+
+          // fetch directo con credentials — NO React Query cache
+          fetch(`/api/v1/productos?search=${encodeURIComponent(codigo)}&limit=5`, {
+            credentials: 'include',
+          })
+            .then(r => r.json())
+            .then(res => {
+              const lista: any[] = Array.isArray(res)
+                ? res
+                : Array.isArray(res?.data?.data)
+                  ? res.data.data
+                  : Array.isArray(res?.data)
+                    ? res.data
+                    : [];
+
+              const producto = lista.find(
+                (p: any) => p.codigo?.toString().trim() === codigo.trim()
+              ) ?? (lista.length === 1 ? lista[0] : null);
+
+              if (producto) {
+                const esServicio = producto.tipo === 'servicio';
+                if (!esServicio && Number(producto.stock) <= 0) {
+                  message.warning(`${producto.nombre}: sin stock`, 2);
+                  return;
+                }
+                addToCart(producto as Prod);
+                message.success(`✓ ${producto.nombre}`, 1);
+                setScanFlash(true);
+                setTimeout(() => setScanFlash(false), 600);
+              } else {
+                message.error(`Código ${codigo} no encontrado`, 2);
+              }
+            })
+            .catch((err: Error) => message.error(`Error buscando código: ${err.message}`, 2))
+            .finally(() => setTimeout(() => searchRef.current?.focus(), 50));
         }
         return;
       }
 
-      // Acumular solo caracteres imprimibles (1 char = imprimible, no teclas de control)
-      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        const diff = now - lastKeyTimeRef.current;
-        lastKeyTimeRef.current = now;
-
-        if (diff < 100) {
-          // Char rápido → sigue siendo scan
-          if (scanCountRef.current === 0) scanStartRef.current = now;
-          scanBufferRef.current += e.key;
-          scanCountRef.current  += 1;
-        } else {
-          // Char lento → reiniciar buffer (es tipeo manual)
-          scanBufferRef.current  = e.key;
-          scanCountRef.current   = 1;
-          scanStartRef.current   = now;
-        }
+      // Acumular caracteres imprimibles en el buffer
+      if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        scanBuffer.current += e.key;
+        // Limpiar buffer si pasan más de 500ms sin Enter (fue tipeo, no scan)
+        if (scanTimer.current) clearTimeout(scanTimer.current);
+        scanTimer.current = setTimeout(() => { scanBuffer.current = ''; }, 500);
       }
     };
 
-    document.addEventListener('keydown', onDocKeyDown, true); // capture phase
-    return () => document.removeEventListener('keydown', onDocKeyDown, true);
-  }, [handleScannerInput]);
+    document.addEventListener('keydown', handleGlobalKeyDown, true); // capture: true
+    return () => {
+      document.removeEventListener('keydown', handleGlobalKeyDown, true);
+      if (scanTimer.current) clearTimeout(scanTimer.current);
+    };
+  }, [addToCart]);
 
   // Hold sales
   const parkSale = () => {
