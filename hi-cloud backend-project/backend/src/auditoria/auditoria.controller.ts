@@ -18,7 +18,7 @@ import { TenantService } from '../tenant/tenant.service';
 @ApiTags('Auditoría y Logs')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.SUPER_ADMIN)
+@Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.CONTADOR)
 @Controller('auditoria')
 export class AuditoriaController {
   constructor(
