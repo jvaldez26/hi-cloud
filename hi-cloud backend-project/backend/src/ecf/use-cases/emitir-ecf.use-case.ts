@@ -218,19 +218,31 @@ export class EmitirECFUseCase {
           `Proporcione infoReferencia manualmente.`,
         );
       }
-      // Aceptar ECF en cualquier estado activo, incluido RECHAZADO — el NCF ya fue asignado
-      // y DGII lo tiene en registro. NC/ND sobre rechazados son válidas para corrección.
+      // Solo aceptar ECF con estados activos — RECHAZADO excluido intencionalmente:
+      // una factura rechazada por DGII no puede ser referenciada en NC/ND.
       const ecfOriginal = await this.ecfRepo.findOne({
         where: [
           { facturaId: facturaOrigId, estadoDGII: EstadoDGII.ACEPTADO,       empresaId },
           { facturaId: facturaOrigId, estadoDGII: EstadoDGII.ENVIADO,         empresaId },
           { facturaId: facturaOrigId, estadoDGII: EstadoDGII.PENDIENTE_ENVIO, empresaId },
           { facturaId: facturaOrigId, estadoDGII: EstadoDGII.OBSERVADO,       empresaId },
-          { facturaId: facturaOrigId, estadoDGII: EstadoDGII.RECHAZADO,       empresaId },
         ],
         order: { createdAt: 'DESC' },
       });
-      if (!ecfOriginal) throw new EcfNcfReferenciadoError(facturaOrigId);
+      if (!ecfOriginal) {
+        // Verificar si existe un e-CF rechazado para dar un mensaje más claro
+        const ecfRechazado = await this.ecfRepo.findOne({
+          where: { facturaId: facturaOrigId, estadoDGII: EstadoDGII.RECHAZADO, empresaId },
+          order: { createdAt: 'DESC' },
+        });
+        if (ecfRechazado) {
+          throw new BadRequestException(
+            `No se puede emitir NC/ND: el e-CF ${ecfRechazado.numero} de la factura original fue RECHAZADO por DGII. ` +
+            `Corrija y reenvíe la factura original antes de emitir la nota.`,
+          );
+        }
+        throw new EcfNcfReferenciadoError(facturaOrigId);
+      }
 
       const facturaOrig = await this.facturaRepo.findOne({ where: { id: facturaOrigId, empresaId } });
 
