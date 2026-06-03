@@ -3774,11 +3774,15 @@ export default function POSPage() {
         if (scanBuffer.current.length === 0) console.log('[SCAN] inicio buffer...');
         scanBuffer.current += e.key;
         if (scanTimer.current) clearTimeout(scanTimer.current);
+        // Si en 400ms no llega más input → procesar como scan (scanner sin Enter)
         scanTimer.current = setTimeout(() => {
-          if (scanBuffer.current.length > 0)
-            console.log('[SCAN] timeout 500ms, buffer limpiado:', JSON.stringify(scanBuffer.current));
+          const codigo = scanBuffer.current.trim();
           scanBuffer.current = '';
-        }, 500);
+          console.log('[SCAN] timeout → procesar:', JSON.stringify(codigo), 'len:', codigo.length);
+          if (codigo.length >= 4) {
+            procesarScan(codigo);
+          }
+        }, 400);
       }
     };
 
