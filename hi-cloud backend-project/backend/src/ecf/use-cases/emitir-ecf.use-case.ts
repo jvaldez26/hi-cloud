@@ -218,13 +218,15 @@ export class EmitirECFUseCase {
           `Proporcione infoReferencia manualmente.`,
         );
       }
-      // Aceptar ECF en cualquier estado activo (no solo ACEPTADO) — el eNCF ya fue emitido
+      // Aceptar ECF en cualquier estado activo, incluido RECHAZADO — el NCF ya fue asignado
+      // y DGII lo tiene en registro. NC/ND sobre rechazados son válidas para corrección.
       const ecfOriginal = await this.ecfRepo.findOne({
         where: [
           { facturaId: facturaOrigId, estadoDGII: EstadoDGII.ACEPTADO,       empresaId },
           { facturaId: facturaOrigId, estadoDGII: EstadoDGII.ENVIADO,         empresaId },
           { facturaId: facturaOrigId, estadoDGII: EstadoDGII.PENDIENTE_ENVIO, empresaId },
           { facturaId: facturaOrigId, estadoDGII: EstadoDGII.OBSERVADO,       empresaId },
+          { facturaId: facturaOrigId, estadoDGII: EstadoDGII.RECHAZADO,       empresaId },
         ],
         order: { createdAt: 'DESC' },
       });
