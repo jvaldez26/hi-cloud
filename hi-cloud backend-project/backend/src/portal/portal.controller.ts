@@ -71,11 +71,47 @@ export class PortalController {
       where: { id: Number(id), isActive: true, empresaId } as any,
     });
     if (!ticket) throw new NotFoundException(`Ticket #${id} no encontrado`);
+
+    const estadoFinal = dto.estado ?? EstadoTicket.RESUELTO;
     await this.ticketRepository.update(Number(id), {
       respuesta:      dto.respuesta,
       fechaRespuesta: new Date(),
-      estado:         dto.estado ?? EstadoTicket.RESUELTO,
+      estado:         estadoFinal,
     } as any);
+
+    // Notificar al cliente por email si tiene correo registrado
+    const cliente = await this.clienteRepository.findOne({
+      where: { id: ticket.clienteId, isActive: true },
+    });
+    if (cliente?.email) {
+      const estadoLabel: Record<string, string> = {
+        en_proceso: 'En proceso', resuelto: 'Resuelto', cerrado: 'Cerrado',
+      };
+      const frontendUrl = this.configService.get<string>('FRONTEND_URL', 'https://hicloudrd.com');
+      const html = `
+        <div style="font-family:sans-serif;max-width:540px;margin:0 auto">
+          <h2 style="color:#1a56db">✅ Tu ticket ha sido respondido</h2>
+          <p>Hola <strong>${cliente.nombre}</strong>,</p>
+          <p>Tu ticket <strong>#${ticket.id} — ${ticket.asunto}</strong> fue atendido.</p>
+          <table style="width:100%;border-collapse:collapse;margin:12px 0">
+            <tr><td style="padding:6px;color:#555;width:110px">Estado:</td>
+                <td style="padding:6px;font-weight:700">${estadoLabel[estadoFinal] ?? estadoFinal}</td></tr>
+            <tr><td style="padding:6px;color:#555;vertical-align:top">Respuesta:</td>
+                <td style="padding:6px;white-space:pre-wrap">${dto.respuesta}</td></tr>
+          </table>
+          <p style="margin-top:16px">
+            <a href="${frontendUrl}/portal/${ticket.portalToken}" style="background:#1a56db;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">
+              Ver mi portal →
+            </a>
+          </p>
+        </div>`;
+      this.emailService.enviar({
+        to: cliente.email,
+        subject: `Re: [Ticket #${ticket.id}] ${ticket.asunto}`,
+        html,
+      }).catch((err: Error) => this.logger.warn(`Email respuesta ticket #${ticket.id} a cliente: ${err.message}`));
+    }
+
     return this.ticketRepository.findOne({ where: { id: Number(id) } });
   }
 

@@ -3499,7 +3499,7 @@ export default function POSPage() {
     if (categoriaTab !== '__all__') list = list.filter(p => p.categoria === categoriaTab);
     // Filtro stock
     if (filtroStock === 'con-stock')  list = list.filter(p => Number(p.stock) > 0);
-    if (filtroStock === 'sin-stock')  list = list.filter(p => Number(p.stock) <= 0);
+    if (filtroStock === 'sin-stock')  list = list.filter(p => (p as any).tipo !== 'servicio' && Number(p.stock) <= 0);
     if (filtroStock === 'bajo')       list = list.filter(p => Number(p.stock) > 0 && Number(p.stock) <= Number(p.stockMinimo ?? 3));
     // Ordenar
     list = [...list].sort((a, b) => {

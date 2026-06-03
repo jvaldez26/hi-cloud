@@ -473,6 +473,56 @@ export class TesoreriaService {
         : undefined,
     });
 
+    // Ventas y gastos del día desde facturas y gastos (actividad financiera real)
+    const mgr = this.movimientoRepository.manager;
+
+    const [factHoy, gastHoy, factSemana, gastSemana] = await Promise.all([
+      mgr.query<any[]>(
+        `SELECT CONCAT('Venta — ', f.folio) AS descripcion, f.total::float AS monto,
+                'ingreso' AS tipo, f."createdAt" AS fecha,
+                TO_CHAR(f."createdAt", 'HH24:MI') AS hora
+         FROM facturas f
+         WHERE f."empresaId" = $1 AND f."isActive" = true
+           AND f.estado NOT IN ('borrador','cancelada')
+           AND DATE(f."createdAt") = CURRENT_DATE
+         ORDER BY f."createdAt" DESC LIMIT 20`, [eid],
+      ),
+      mgr.query<any[]>(
+        `SELECT COALESCE(g.descripcion, 'Gasto') AS descripcion, g.total::float AS monto,
+                'egreso' AS tipo, g."createdAt" AS fecha,
+                TO_CHAR(g."createdAt", 'HH24:MI') AS hora
+         FROM gastos g
+         WHERE g."empresaId" = $1 AND g."isActive" = true
+           AND DATE(g."createdAt") = CURRENT_DATE
+         ORDER BY g."createdAt" DESC LIMIT 10`, [eid],
+      ),
+      mgr.query<any[]>(
+        `SELECT CONCAT('Venta — ', f.folio) AS descripcion, f.total::float AS monto,
+                'ingreso' AS tipo, f."createdAt" AS fecha, NULL AS hora
+         FROM facturas f
+         WHERE f."empresaId" = $1 AND f."isActive" = true
+           AND f.estado NOT IN ('borrador','cancelada')
+           AND DATE(f."createdAt") >= CURRENT_DATE - INTERVAL '7 days'
+           AND DATE(f."createdAt") < CURRENT_DATE
+         ORDER BY f."createdAt" DESC LIMIT 20`, [eid],
+      ),
+      mgr.query<any[]>(
+        `SELECT COALESCE(g.descripcion, 'Gasto') AS descripcion, g.total::float AS monto,
+                'egreso' AS tipo, g."createdAt" AS fecha, NULL AS hora
+         FROM gastos g
+         WHERE g."empresaId" = $1 AND g."isActive" = true
+           AND DATE(g."createdAt") >= CURRENT_DATE - INTERVAL '7 days'
+           AND DATE(g."createdAt") < CURRENT_DATE
+         ORDER BY g."createdAt" DESC LIMIT 10`, [eid],
+      ),
+    ]).catch(() => [[], [], [], []]) as [any[], any[], any[], any[]];
+
+    const sortByFecha = (a: any, b: any) =>
+      new Date(b.fecha).getTime() - new Date(a.fecha).getTime();
+
+    const actHoy    = [...movsHoy.map(toActividad),    ...factHoy,    ...gastHoy]   .sort(sortByFecha).slice(0, 20);
+    const actSemana = [...movsSemana.map(toActividad), ...factSemana, ...gastSemana].sort(sortByFecha).slice(0, 20);
+
     return {
       cuentas: cuentas.map(c => ({
         id:     c.id,
@@ -483,8 +533,8 @@ export class TesoreriaService {
       })),
       balanceTotal,
       actividad: {
-        hoy:    movsHoy.map(toActividad),
-        semana: movsSemana.map(toActividad),
+        hoy:    actHoy,
+        semana: actSemana,
       },
     };
   }
