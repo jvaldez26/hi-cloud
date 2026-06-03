@@ -3712,82 +3712,82 @@ export default function POSPage() {
   }, [produtos, addToCart]);
 
   // ── SCANNER HID — listener global con buffer + timeout 500ms ─────────────────
-  // Patrón probado: el scanner envía chars al input PERO el Enter final llega
-  // como evento del document. El buffer acumula en refs para no depender del DOM.
+  const procesarScan = useCallback((codigo: string) => {
+    const trimmed = codigo.replace(/[\r\n]/g, '').trim();
+    if (!trimmed) return;
+    console.log('[SCAN] procesarScan código:', trimmed);
+    setSearch('');
+    api.get(`/productos?search=${encodeURIComponent(trimmed)}&limit=5`)
+      .then((r: any) => {
+        const raw = r.data?.data ?? r.data;
+        const lista: any[] = Array.isArray(raw?.data) ? raw.data : Array.isArray(raw) ? raw : [];
+        console.log('[SCAN] lista:', lista.length, lista.map((p: any) => p.codigo));
+        const producto = lista.find(
+          (p: any) => p.codigo?.toString().trim() === trimmed
+        ) ?? (lista.length === 1 ? lista[0] : null);
+        console.log('[SCAN] producto:', producto?.nombre ?? 'NO ENCONTRADO');
+        if (producto) {
+          const esServicio = (producto as any).tipo === 'servicio';
+          if (!esServicio && Number(producto.stock) <= 0) {
+            message.warning(`${producto.nombre}: sin stock`, 2);
+            return;
+          }
+          console.log('[SCAN] llamando addToCart id:', producto.id);
+          addToCart(producto as Prod);
+          message.success(`✓ ${producto.nombre}`, 1);
+          setScanFlash(true);
+          setTimeout(() => setScanFlash(false), 600);
+        } else {
+          message.error(`Código ${trimmed} no encontrado`, 2);
+        }
+      })
+      .catch((err: any) => {
+        console.error('[SCAN] error API:', err?.response?.status, err?.message);
+        message.error(`Error buscando: ${err?.message}`, 2);
+      })
+      .finally(() => setTimeout(() => searchRef.current?.focus(), 50));
+  }, [addToCart]);
+
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       const target  = e.target as HTMLElement;
       const isModal = !!target.closest('.ant-modal');
       const tag     = target.tagName;
 
-      // Ignorar si el foco está en un input dentro de un modal
       if (isModal) return;
-      // Ignorar inputs que no sean el de búsqueda del POS (ej: campos de cobro)
       if ((tag === 'INPUT' || tag === 'TEXTAREA') && target !== searchRef.current) return;
 
       if (e.key === 'Enter') {
         const codigo = scanBuffer.current.trim();
         if (scanTimer.current) clearTimeout(scanTimer.current);
         scanBuffer.current = '';
-
+        console.log('[SCAN] Enter → buffer:', JSON.stringify(codigo), 'len:', codigo.length);
         if (codigo.length >= 4) {
           e.preventDefault();
           e.stopPropagation();
-          setSearch('');
-
-          // fetch directo con credentials — NO React Query cache
-          fetch(`/api/v1/productos?search=${encodeURIComponent(codigo)}&limit=5`, {
-            credentials: 'include',
-          })
-            .then(r => r.json())
-            .then(res => {
-              const lista: any[] = Array.isArray(res)
-                ? res
-                : Array.isArray(res?.data?.data)
-                  ? res.data.data
-                  : Array.isArray(res?.data)
-                    ? res.data
-                    : [];
-
-              const producto = lista.find(
-                (p: any) => p.codigo?.toString().trim() === codigo.trim()
-              ) ?? (lista.length === 1 ? lista[0] : null);
-
-              if (producto) {
-                const esServicio = producto.tipo === 'servicio';
-                if (!esServicio && Number(producto.stock) <= 0) {
-                  message.warning(`${producto.nombre}: sin stock`, 2);
-                  return;
-                }
-                addToCart(producto as Prod);
-                message.success(`✓ ${producto.nombre}`, 1);
-                setScanFlash(true);
-                setTimeout(() => setScanFlash(false), 600);
-              } else {
-                message.error(`Código ${codigo} no encontrado`, 2);
-              }
-            })
-            .catch((err: Error) => message.error(`Error buscando código: ${err.message}`, 2))
-            .finally(() => setTimeout(() => searchRef.current?.focus(), 50));
+          procesarScan(codigo);
         }
         return;
       }
 
-      // Acumular caracteres imprimibles en el buffer
       if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        if (scanBuffer.current.length === 0) console.log('[SCAN] inicio buffer...');
         scanBuffer.current += e.key;
-        // Limpiar buffer si pasan más de 500ms sin Enter (fue tipeo, no scan)
         if (scanTimer.current) clearTimeout(scanTimer.current);
-        scanTimer.current = setTimeout(() => { scanBuffer.current = ''; }, 500);
+        scanTimer.current = setTimeout(() => {
+          if (scanBuffer.current.length > 0)
+            console.log('[SCAN] timeout 500ms, buffer limpiado:', JSON.stringify(scanBuffer.current));
+          scanBuffer.current = '';
+        }, 500);
       }
     };
 
-    document.addEventListener('keydown', handleGlobalKeyDown, true); // capture: true
+    document.addEventListener('keydown', handleGlobalKeyDown, true);
     return () => {
       document.removeEventListener('keydown', handleGlobalKeyDown, true);
       if (scanTimer.current) clearTimeout(scanTimer.current);
     };
-  }, [addToCart]);
+  }, [procesarScan]);
 
   // Hold sales
   const parkSale = () => {
@@ -4234,6 +4234,12 @@ export default function POSPage() {
                     background:'none',border:'none',color:C.textSub,cursor:'pointer',fontSize:14,outline:'none' }}>✕</button>
                 )}
               </div>
+              {/* ── TEST SCANNER (temporal diagnóstico) ── */}
+              <button
+                onClick={() => { const code = search.trim() || '7453068234154'; console.log('[TEST] procesarScan manual:', code); procesarScan(code); }}
+                style={{ height:38, padding:'0 10px', borderRadius:10, border:'2px solid #f59e0b', background:'#fef3c7', color:'#92400e', fontSize:11, fontWeight:700, cursor:'pointer', outline:'none', flexShrink:0, whiteSpace:'nowrap' }}>
+                🔍 TEST
+              </button>
               {/* ── Botón FILTRAR ── */}
               <div style={{ position:'relative' }}>
                 <button
