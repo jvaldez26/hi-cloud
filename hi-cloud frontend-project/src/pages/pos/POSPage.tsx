@@ -1396,23 +1396,33 @@ function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir }: {
 
 // ── Modal Nota de Crédito POS ────────────────────────────────────────────────
 
+const CODIGOS_MOD_POS = [
+  { value: '1', label: 'Código 1: Anulación total',             desc: 'Anula completamente la factura original ante la DGII.' },
+  { value: '2', label: 'Código 2: Corrección de texto',         desc: 'Corrige datos descriptivos sin afectar montos.' },
+  { value: '3', label: 'Código 3: Devolución / Ajuste montos',  desc: 'Devuelve mercancía o acredita un monto parcial o total.' },
+  { value: '4', label: 'Código 4: Reemplazo por contingencia',  desc: 'Reemplaza un comprobante emitido en modo contingencia.' },
+];
+
 function POSNotaCreditoModal({ open, onClose, palette }: {
   open: boolean; onClose: () => void; palette: Palette;
 }) {
   const C  = palette;
   const qc = useQueryClient();
-  const [tipo,       setTipo]       = useState<'descuento'|'devolucion'>('devolucion');
-  const [clienteId,  setClienteId]  = useState<number|null>(null);
-  const [facturaRef, setFacturaRef] = useState('');
-  const [facturaData,setFacturaData]= useState<any>(null);
-  const [monto,      setMonto]      = useState('');
-  const [porcentaje, setPorcentaje] = useState('');
-  const [notas,      setNotas]      = useState('');
-  const [inclIVA,    setInclIVA]    = useState(true);
-  const [esEfectivo, setEsEfectivo] = useState(false);
-  const [aplicarFac, setAplicarFac] = useState(true);
-  const [buscando,   setBuscando]   = useState(false);
-  const [devolver,   setDevolver]   = useState<Record<number,number>>({});
+  const [tipo,        setTipo]        = useState<'descuento'|'devolucion'>('devolucion');
+  const [codigoMod,   setCodigoMod]   = useState('3');
+  const [clienteId,   setClienteId]   = useState<number|null>(null);
+  const [facturaRef,  setFacturaRef]  = useState('');
+  const [facturaData, setFacturaData] = useState<any>(null);
+  const [saldoNC,     setSaldoNC]     = useState<any>(null);
+  const [fecha,       setFecha]       = useState(dayjs().format('YYYY-MM-DD'));
+  const [notas,       setNotas]       = useState('');
+  const [inclIVA,     setInclIVA]     = useState(true);
+  const [sinItbis,    setSinItbis]    = useState(false);
+  const [esEfectivo,  setEsEfectivo]  = useState(false);
+  const [aplicarFac,  setAplicarFac]  = useState(true);
+  const [buscando,    setBuscando]    = useState(false);
+  const [devolver,    setDevolver]    = useState<Record<number,number>>({});
+  const [precioEdit,  setPrecioEdit]  = useState<Record<number,string>>({});
 
   const { data: clientes } = useQuery<any>({
     queryKey: ['pos-clientes-nc'],
@@ -1424,58 +1434,86 @@ function POSNotaCreditoModal({ open, onClose, palette }: {
   const buscarFactura = async () => {
     if (!facturaRef.trim()) return;
     setBuscando(true);
+    setSaldoNC(null);
     try {
       const r = await api.get(`/facturas?search=${encodeURIComponent(facturaRef.trim())}&limit=1`);
       const d = r.data?.data ?? r.data;
       const rows = d?.data ?? d ?? [];
       if (rows.length > 0) {
-        // Cargar la factura completa con detalles
         const full = await api.get(`/facturas/${rows[0].id}`);
         const f = full.data?.data ?? full.data;
         setFacturaData(f);
         if (f.clienteId) setClienteId(f.clienteId);
-        // Inicializar devolución con cantidad máxima
         const devInit: Record<number,number> = {};
-        (f.detalles ?? []).forEach((d: any) => { devInit[d.id] = Number(d.cantidad); });
+        const precInit: Record<number,string> = {};
+        (f.detalles ?? []).forEach((det: any) => {
+          devInit[det.id]  = Number(det.cantidad);
+          precInit[det.id] = String(Number(det.precioUnitario));
+        });
         setDevolver(devInit);
+        setPrecioEdit(precInit);
+        // Cargar saldo disponible para NC
+        try {
+          const sr = await api.get(`/notas-credito/por-factura/${f.id}/saldo-disponible`);
+          setSaldoNC(sr.data?.data ?? sr.data);
+        } catch { /* no crítico */ }
       } else {
         message.warning('Factura no encontrada');
       }
-    } catch { message.error('Error al buscar factura'); }
-    finally { setBuscando(false); }
+    } catch (err: any) {
+      message.error(err?.response?.data?.message ?? 'Error al buscar factura');
+    } finally { setBuscando(false); }
   };
+
+  // Calcular subtotal y total de la NC en tiempo real
+  const subtotalNC = (() => {
+    if (!facturaData?.detalles) return 0;
+    return facturaData.detalles
+      .filter((d: any) => (devolver[d.id] ?? 0) > 0)
+      .reduce((s: number, d: any) => s + (Number(precioEdit[d.id] ?? d.precioUnitario) * (devolver[d.id] ?? 0)), 0);
+  })();
+  const itbisNC  = sinItbis ? 0 : subtotalNC * 0.18;
+  const totalNC  = subtotalNC + itbisNC;
+  const saldoDisponible = saldoNC ? saldoNC.saldoDisponible : Number(facturaData?.total ?? 0);
 
   const guardarMut = useMutation({
     mutationFn: async () => {
       if (!clienteId) throw new Error('Selecciona un cliente');
-      if (!facturaData?.id) throw new Error('Busca la factura de origen');
+      if (!facturaData?.id) throw new Error('Busca la factura de origen primero');
+      if (!codigoMod)  throw new Error('Selecciona el Código de Modificación DGII');
 
-      const montoFinal = monto ? Number(monto) :
-        facturaData ? Number(facturaData.total) * (Number(porcentaje||100) / 100) : 0;
+      // Validar que no supere el saldo disponible
+      if (codigoMod !== '1' && totalNC > saldoDisponible + 0.005) {
+        throw new Error(`El monto a acreditar (${fmt.money(totalNC)}) supera el saldo disponible (${fmt.money(saldoDisponible)})`);
+      }
 
-      const detalles = tipo === 'devolucion' && facturaData?.detalles
-        ? facturaData.detalles
+      const detalles = codigoMod === '1'
+        ? [{ descripcion: `Anulación total de ${facturaData.folio}`, cantidad: 1,
+             precioUnitario: Number(facturaData.subtotal) || Number(facturaData.total),
+             porcentajeIva: sinItbis ? 0 : undefined }]
+        : facturaData.detalles
             .filter((d: any) => (devolver[d.id] ?? 0) > 0)
             .map((d: any) => ({
               productoId: d.productoId, descripcion: d.descripcion,
               cantidad: devolver[d.id] ?? 0,
-              precioUnitario: Number(d.precioUnitario),
-              porcentajeIva: inclIVA ? (Number(d.porcentajeIva) || 18) : 0,
-            }))
-        : [{ descripcion: tipo === 'descuento' ? 'Descuento posterior' : 'Devolución',
-             cantidad: 1, precioUnitario: montoFinal,
-             porcentajeIva: inclIVA ? 18 : 0 }];
+              precioUnitario: Number(precioEdit[d.id] ?? d.precioUnitario),
+              porcentajeIva: sinItbis ? 0 : (Number(d.porcentajeIva) || 18),
+            }));
+
+      if (detalles.length === 0) throw new Error('Selecciona al menos un ítem a acreditar');
 
       // Paso 1: Crear NC (estado BORRADOR)
       const ncRes = await api.post('/notas-credito', {
         clienteId,
-        fecha: dayjs().format('YYYY-MM-DD'),
+        fecha,
         tipoNcf: 'E34',
         facturaOriginalId: facturaData.id,
         facturaOriginalFolio: facturaData.folio,
         motivo: tipo === 'descuento' ? 'descuento_otorgado' : 'devolucion',
         descripcionMotivo: notas || (tipo === 'descuento' ? 'Descuento posterior otorgado' : 'Devolución de mercancía'),
         notas,
+        moneda: facturaData.moneda ?? 'DOP',
+        tipoCambio: facturaData.tipoCambio ? Number(facturaData.tipoCambio) : 1,
         detalles,
       });
       const nc = ncRes.data?.data ?? ncRes.data;
@@ -1485,133 +1523,227 @@ function POSNotaCreditoModal({ open, onClose, palette }: {
       await api.patch(`/notas-credito/${nc.id}/emitir`);
 
       // Paso 3: Generar e-CF E34 y enviar a MSeller/DGII
-      await api.post(`/ecf/nota-credito/${nc.id}/emitir`, {
-        codigoModificacion: tipo === 'descuento' ? '2' : '3',
-      });
+      await api.post(`/ecf/nota-credito/${nc.id}/emitir`, { codigoModificacion: codigoMod });
 
       return nc;
     },
     onSuccess: () => {
-      message.success('Nota de Crédito emitida y e-CF generado ✓');
+      message.success('Nota de Crédito emitida y e-CF E34 generado ✓');
       qc.invalidateQueries({ queryKey: ['pos-panel', 'notas-credito'] });
       qc.refetchQueries({ queryKey: ['pos-panel', 'notas-credito'] });
       onClose();
-      setFacturaData(null); setFacturaRef(''); setMonto(''); setPorcentaje('');
-      setNotas(''); setClienteId(null); setDevolver({});
+      setFacturaData(null); setFacturaRef(''); setSaldoNC(null);
+      setNotas(''); setClienteId(null); setDevolver({}); setPrecioEdit({});
+      setCodigoMod('3'); setFecha(dayjs().format('YYYY-MM-DD'));
     },
     onError: (e: any) => message.error(e?.response?.data?.message ?? e?.message ?? 'Error al emitir NC'),
   });
 
+  const isDark = C === darkC;
+  const bg     = isDark ? '#1E293B' : '#fff';
+  const border = isDark ? '#334155' : '#E2E8F0';
+  const txt    = isDark ? '#F1F5F9' : '#1E293B';
+  const sub    = isDark ? '#94A3B8' : '#64748B';
+  const inputS: React.CSSProperties = { width:'100%', height:38, padding:'0 10px', borderRadius:8, border:`1px solid ${border}`, fontSize:13, outline:'none', background: isDark?'#0F172A':bg, color:txt, boxSizing:'border-box' };
+  const labelS: React.CSSProperties = { fontSize:11, fontWeight:700, color:sub, textTransform:'uppercase', letterSpacing:'0.4px', display:'block', marginBottom:4 };
+
   const ToggleBtn = ({ active, onClick, label }: { active:boolean; onClick:()=>void; label:string }) => (
     <button onClick={onClick} style={{
-      padding: '6px 12px', borderRadius: 20, border: `1px solid ${active ? '#F59E0B' : '#E2E8F0'}`,
-      background: active ? '#FFF7ED' : '#fff', color: active ? '#D97706' : '#64748B',
-      fontSize: 12, fontWeight: active ? 700 : 500, cursor: 'pointer', outline: 'none',
-    }}>{active ? '✓ ' : ''}{label}</button>
+      padding:'5px 11px', borderRadius:20, border:`1px solid ${active?'#F59E0B':border}`,
+      background: active?(isDark?'#422006':'#FFF7ED'):(isDark?'#0F172A':bg),
+      color: active?'#D97706':sub, fontSize:12, fontWeight:active?700:500, cursor:'pointer', outline:'none',
+    }}>{active?'✓ ':''}{label}</button>
   );
 
   if (!open) return null;
 
+  const ecfOrig = facturaData?.ecf ?? facturaData?.ecfNumero;
+  const tipoEcfOrig = facturaData?.tipoNcf ?? 'E32';
+
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.4)' }} />
-      <div style={{
-        position: 'relative', background: '#fff', borderRadius: 16, width: 520,
-        maxHeight: '90vh', display: 'flex', flexDirection: 'column',
-        boxShadow: '0 20px 60px rgba(0,0,0,.3)', overflow: 'hidden',
-      }}>
+    <div style={{ position:'fixed', inset:0, zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center' }}>
+      <div onClick={onClose} style={{ position:'absolute', inset:0, background:'rgba(0,0,0,.5)' }} />
+      <div style={{ position:'relative', background:bg, borderRadius:16, width:560, maxHeight:'92vh',
+        display:'flex', flexDirection:'column', boxShadow:'0 20px 60px rgba(0,0,0,.4)', overflow:'hidden' }}>
+
         {/* Header */}
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid #F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 17, fontWeight: 700, color: '#1E293B' }}>Nota de Crédito</span>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#94A3B8', outline: 'none' }}>✕</button>
+        <div style={{ padding:'14px 20px', borderBottom:`1px solid ${border}`, display:'flex', alignItems:'center', justifyContent:'space-between', background: isDark?'#0F172A':bg }}>
+          <span style={{ fontSize:16, fontWeight:700, color:txt }}>📝 Nueva Nota de Crédito — e-CF E34</span>
+          <button onClick={onClose} style={{ background:'none', border:'none', fontSize:18, cursor:'pointer', color:sub, outline:'none' }}>✕</button>
         </div>
 
-        {/* Scrollable content */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
-          {/* Tipo tabs */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
-            {(['descuento','devolucion'] as const).map(t => (
-              <button key={t} onClick={() => setTipo(t)} style={{
-                padding: '8px 0', borderRadius: 20, border: `1px solid ${tipo===t?'#F59E0B':'#E2E8F0'}`,
-                background: tipo===t?'#FFF7ED':'#fff', color: tipo===t?'#D97706':'#64748B',
-                fontSize: 13, fontWeight: tipo===t?700:500, cursor: 'pointer', outline: 'none', textTransform: 'capitalize',
-              }}>{t === 'descuento' ? 'Descuento' : 'Devolución'}</button>
-            ))}
+        {/* Content */}
+        <div style={{ flex:1, overflowY:'auto', padding:'16px 20px', display:'flex', flexDirection:'column', gap:12 }}>
+
+          {/* Tipo Descuento / Devolución */}
+          <div>
+            <span style={labelS}>Tipo</span>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+              {(['descuento','devolucion'] as const).map(t => (
+                <button key={t} onClick={() => setTipo(t)} style={{
+                  padding:'8px 0', borderRadius:10, border:`1px solid ${tipo===t?'#F59E0B':border}`,
+                  background: tipo===t?(isDark?'#422006':'#FFF7ED'):(isDark?'#0F172A':bg),
+                  color:tipo===t?'#D97706':sub, fontSize:13, fontWeight:tipo===t?700:500, cursor:'pointer', outline:'none',
+                }}>{t==='descuento'?'Descuento':'Devolución'}</button>
+              ))}
+            </div>
           </div>
 
-          {/* Cliente */}
-          <select value={clienteId??''} onChange={e=>setClienteId(e.target.value?Number(e.target.value):null)}
-            style={{ width:'100%', height:40, padding:'0 12px', borderRadius:8, border:'1px solid #E2E8F0', fontSize:13, marginBottom:10, outline:'none', background:'#fff', color: clienteId?'#1E293B':'#94A3B8' }}>
-            <option value="">Buscar Cliente</option>
-            {(clientes??[]).map((c:any)=><option key={c.id} value={c.id}>{c.nombre}</option>)}
-          </select>
-
-          {/* Factura search */}
-          <div style={{ display:'flex', gap:6, marginBottom:10 }}>
-            <input value={facturaRef} onChange={e=>setFacturaRef(e.target.value)}
-              onKeyDown={e=>e.key==='Enter'&&buscarFactura()}
-              placeholder="Factura" style={{ flex:1, height:40, padding:'0 12px', borderRadius:8, border:'1px solid #E2E8F0', fontSize:13, outline:'none' }} />
-            <button onClick={buscarFactura} disabled={buscando} style={{
-              width:40, height:40, borderRadius:8, border:'1px solid #2563EB', background:'#EFF6FF',
-              color:'#2563EB', cursor:'pointer', outline:'none', fontSize:18 }}>
-              {buscando ? '⏳' : '🔍'}
-            </button>
+          {/* Código de Modificación DGII */}
+          <div>
+            <span style={labelS}>Código de Modificación DGII *</span>
+            <select value={codigoMod} onChange={e=>setCodigoMod(e.target.value)} style={inputS}>
+              {CODIGOS_MOD_POS.map(c=><option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
+            <span style={{ fontSize:11, color:'#0EA5E9', marginTop:3, display:'block' }}>
+              {CODIGOS_MOD_POS.find(c=>c.value===codigoMod)?.desc}
+            </span>
           </div>
 
-          {/* Monto + porcentaje */}
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:10 }}>
-            <input type="number" value={monto} onChange={e=>setMonto(e.target.value)}
-              placeholder="Monto" style={{ height:40, padding:'0 12px 0 40px', borderRadius:8, border:'1px solid #E2E8F0', fontSize:13, outline:'none', textAlign:'right', background:'#F8FAFC' }} />
-            <input type="number" min="0" max="100" value={porcentaje} onChange={e=>setPorcentaje(e.target.value)}
-              placeholder="%" style={{ height:40, padding:'0 12px', borderRadius:8, border:'1px solid #E2E8F0', fontSize:13, outline:'none', textAlign:'right' }} />
+          {/* Factura de origen */}
+          <div>
+            <span style={labelS}>Factura Original *</span>
+            <div style={{ display:'flex', gap:6 }}>
+              <input value={facturaRef} onChange={e=>setFacturaRef(e.target.value)}
+                onKeyDown={e=>e.key==='Enter'&&buscarFactura()}
+                placeholder="Folio de factura (ej: FAC-201)" style={{ ...inputS, flex:1 }} />
+              <button onClick={buscarFactura} disabled={buscando} style={{
+                width:40, height:38, borderRadius:8, border:`1px solid #2563EB`, background:'#EFF6FF',
+                color:'#2563EB', cursor:'pointer', outline:'none', fontSize:18, flexShrink:0 }}>
+                {buscando?'⏳':'🔍'}
+              </button>
+            </div>
           </div>
 
-          {/* Toggles */}
-          <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:12 }}>
-            <ToggleBtn active={inclIVA}    onClick={()=>setInclIVA(v=>!v)}    label="Incluir Impuestos" />
+          {/* Panel verde — Documento original cargado */}
+          {facturaData && (
+            <div style={{ background: isDark?'#052e16':'#F0FDF4', border:`1px solid ${isDark?'#166534':'#BBF7D0'}`, borderRadius:10, padding:'12px 14px' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8 }}>
+                <span style={{ color:'#16A34A', fontWeight:700, fontSize:13 }}>✓ Documento original cargado</span>
+                <span style={{ background:'#DCFCE7', color:'#16A34A', padding:'1px 8px', borderRadius:12, fontSize:11, fontWeight:700 }}>{tipoEcfOrig}</span>
+              </div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
+                <div>
+                  <span style={{ ...labelS, color: isDark?'#86EFAC':'#166534' }}>Cliente</span>
+                  <span style={{ fontSize:13, fontWeight:600, color:txt }}>{facturaData.cliente?.nombre ?? 'Consumidor Final'}</span>
+                </div>
+                <div>
+                  <span style={{ ...labelS, color: isDark?'#86EFAC':'#166534' }}>eNCF Original (ref. DGII)</span>
+                  <span style={{ fontSize:13, fontWeight:600, color:'#2563EB' }}>{facturaData.ecf?.numero ?? ecfOrig ?? '—'}</span>
+                </div>
+                <div>
+                  <span style={{ ...labelS, color: isDark?'#86EFAC':'#166534' }}>Fecha</span>
+                  <span style={{ fontSize:12, color:txt }}>{facturaData.fecha ? dayjs(facturaData.fecha).format('DD/MM/YYYY') : '—'}</span>
+                </div>
+                <div style={{ display:'flex', gap:12 }}>
+                  <div><span style={{ ...labelS, color: isDark?'#86EFAC':'#166534' }}>Subtotal</span><span style={{ fontSize:12, color:txt }}>{fmt.money(Number(facturaData.subtotal??0))}</span></div>
+                  <div><span style={{ ...labelS, color: isDark?'#86EFAC':'#166534' }}>ITBIS</span><span style={{ fontSize:12, color:txt }}>{fmt.money(Number(facturaData.iva??0))}</span></div>
+                  <div><span style={{ ...labelS, color: isDark?'#86EFAC':'#166534' }}>Total</span><span style={{ fontSize:13, fontWeight:700, color:'#16A34A' }}>{fmt.money(Number(facturaData.total??0))}</span></div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Panel azul — Balance NC */}
+          {saldoNC && (
+            <div style={{ background: isDark?'#0c1a2e':'#EFF6FF', border:`1px solid ${isDark?'#1e40af':'#BFDBFE'}`, borderRadius:10, padding:'10px 14px' }}>
+              <span style={{ fontWeight:700, fontSize:12, color: isDark?'#93C5FD':'#1D4ED8', display:'block', marginBottom:6 }}>📊 Balance NC — {facturaData?.folio}</span>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8 }}>
+                <div><span style={labelS}>Total original</span><span style={{ fontSize:13, color:txt }}>{fmt.money(saldoNC.totalFactura)}</span></div>
+                <div><span style={labelS}>NC emitidas</span><span style={{ fontSize:13, color:'#DC2626' }}>-{fmt.money(saldoNC.ncEmitidas)}</span></div>
+                <div><span style={labelS}>Saldo disponible</span><span style={{ fontSize:13, fontWeight:700, color:'#16A34A' }}>{fmt.money(saldoNC.saldoDisponible)}</span></div>
+              </div>
+            </div>
+          )}
+
+          {/* Fecha */}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+            <div>
+              <span style={labelS}>Fecha *</span>
+              <input type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={inputS} />
+            </div>
+            <div>
+              <span style={labelS}>Descripción / Notas</span>
+              <input value={notas} onChange={e=>setNotas(e.target.value)} placeholder="Detalle adicional..." style={inputS} />
+            </div>
+          </div>
+
+          {/* Toggles opciones */}
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
             <ToggleBtn active={esEfectivo} onClick={()=>setEsEfectivo(v=>!v)} label="Es Efectivo" />
             <ToggleBtn active={aplicarFac} onClick={()=>setAplicarFac(v=>!v)} label="Aplicar a Factura" />
           </div>
 
-          {/* Notas */}
-          <textarea value={notas} onChange={e=>setNotas(e.target.value)} placeholder="Notas" rows={3}
-            style={{ width:'100%', padding:'8px 12px', borderRadius:8, border:'1px solid #E2E8F0', fontSize:13, resize:'vertical', outline:'none', boxSizing:'border-box', marginBottom:12 }} />
-
-          {/* Detalles de la factura */}
-          {facturaData?.detalles?.length > 0 && tipo === 'devolucion' && (
+          {/* Ítems a acreditar */}
+          {facturaData?.detalles?.length > 0 && codigoMod !== '1' && (
             <div>
-              <div style={{ fontSize:13, fontWeight:700, color:'#1E293B', marginBottom:8 }}>Detalles de la Factura</div>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
+                <span style={{ fontSize:13, fontWeight:700, color:txt }}>Ítems a acreditar</span>
+                <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:sub, cursor:'pointer' }}>
+                  <input type="checkbox" checked={sinItbis} onChange={e=>setSinItbis(e.target.checked)} style={{ cursor:'pointer' }} />
+                  No aplica ITBIS
+                </label>
+              </div>
               <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
-                <thead><tr style={{ background:'#F8FAFC' }}>
-                  {['Id','Item','Cantidad','Precio Total','Devolver'].map(h=>(
-                    <th key={h} style={{ padding:'7px 10px', textAlign:'left', color:'#64748B', fontWeight:600, fontSize:11, borderBottom:'1px solid #E2E8F0' }}>{h}</th>
+                <thead><tr style={{ background: isDark?'#0F172A':'#F8FAFC' }}>
+                  {['Descripción','Cant.','P. Unit.','Devolver'].map(h=>(
+                    <th key={h} style={{ padding:'6px 8px', textAlign:'left', color:sub, fontWeight:600, fontSize:11, borderBottom:`1px solid ${border}` }}>{h}</th>
                   ))}
                 </tr></thead>
                 <tbody>{facturaData.detalles.map((det:any)=>(
-                  <tr key={det.id} style={{ borderBottom:'1px solid #F1F5F9' }}>
-                    <td style={{ padding:'7px 10px', color:'#94A3B8', fontSize:11 }}>{det.id}</td>
-                    <td style={{ padding:'7px 10px', fontWeight:500 }}>{det.descripcion}</td>
-                    <td style={{ padding:'7px 10px', textAlign:'center' }}>{Number(det.cantidad).toFixed(0)}</td>
-                    <td style={{ padding:'7px 10px', textAlign:'right', color:'#059669', fontWeight:600 }}>{fmt.money(det.precioUnitario*det.cantidad)}</td>
-                    <td style={{ padding:'7px 10px' }}>
+                  <tr key={det.id} style={{ borderBottom:`1px solid ${isDark?'#1E293B':'#F1F5F9'}` }}>
+                    <td style={{ padding:'6px 8px', fontWeight:500, color:txt }}>{det.descripcion}</td>
+                    <td style={{ padding:'6px 8px', textAlign:'center', color:sub }}>{Number(det.cantidad).toFixed(0)}</td>
+                    <td style={{ padding:'6px 8px' }}>
+                      <input type="number" min="0" value={precioEdit[det.id]??det.precioUnitario}
+                        onChange={e=>setPrecioEdit(p=>({...p,[det.id]:e.target.value}))}
+                        style={{ width:70, height:26, textAlign:'right', borderRadius:6, border:`1px solid ${border}`, fontSize:12, outline:'none', background: isDark?'#0F172A':bg, color:txt, padding:'0 4px' }} />
+                    </td>
+                    <td style={{ padding:'6px 8px' }}>
                       <input type="number" min="0" max={det.cantidad} value={devolver[det.id]??0}
-                        onChange={e=>setDevolver(p=>({...p,[det.id]:Number(e.target.value)}))}
-                        style={{ width:60, height:28, textAlign:'center', borderRadius:6, border:'1px solid #E2E8F0', fontSize:12, outline:'none' }} />
+                        onChange={e=>setDevolver(p=>({...p,[det.id]:Math.min(Number(e.target.value),Number(det.cantidad))}))}
+                        style={{ width:60, height:26, textAlign:'center', borderRadius:6, border:`1px solid ${border}`, fontSize:12, outline:'none', background: isDark?'#0F172A':bg, color:txt, padding:'0 4px' }} />
                     </td>
                   </tr>
                 ))}</tbody>
               </table>
+
+              {/* Resumen */}
+              {subtotalNC > 0 && (
+                <div style={{ marginTop:10, background: isDark?'#0F172A':'#F8FAFC', borderRadius:8, padding:'10px 12px', border:`1px solid ${border}` }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:sub, marginBottom:3 }}>
+                    <span>Factura original:</span><span style={{ fontWeight:600, color:txt }}>{fmt.money(Number(facturaData.total??0))}</span>
+                  </div>
+                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#DC2626', marginBottom:3 }}>
+                    <span>Monto a acreditar (subtotal):</span><span style={{ fontWeight:600 }}>-{fmt.money(subtotalNC)}</span>
+                  </div>
+                  {!sinItbis && (
+                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#DC2626', marginBottom:6 }}>
+                      <span>ITBIS a revertir (18%):</span><span style={{ fontWeight:600 }}>-{fmt.money(itbisNC)}</span>
+                    </div>
+                  )}
+                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, fontWeight:700, borderTop:`1px solid ${border}`, paddingTop:6 }}>
+                    <span style={{ color:txt }}>Saldo pendiente del cliente:</span>
+                    <span style={{ color: (saldoNC?.saldoDisponible??Number(facturaData.total??0)) - totalNC <= 0.01 ? '#16A34A' : '#2563EB' }}>
+                      {fmt.money(Math.max(0, (saldoNC?.saldoDisponible??Number(facturaData.total??0)) - totalNC))}
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div style={{ padding:'12px 20px', borderTop:'1px solid #F1F5F9' }}>
+        <div style={{ padding:'12px 20px', borderTop:`1px solid ${border}`, background: isDark?'#0F172A':bg, display:'flex', gap:8 }}>
+          <button onClick={onClose} style={{ flex:1, height:42, borderRadius:10, border:`1px solid ${border}`, background:'transparent', color:sub, fontWeight:600, fontSize:14, cursor:'pointer', outline:'none' }}>
+            Cancelar
+          </button>
           <button onClick={()=>guardarMut.mutate()} disabled={guardarMut.isPending}
-            style={{ width:'100%', height:46, borderRadius:10, border:'none',
-              background: guardarMut.isPending ? '#94A3B8' : '#059669',
-              color:'#fff', fontWeight:700, fontSize:15, cursor: guardarMut.isPending?'not-allowed':'pointer' }}>
-            {guardarMut.isPending ? 'Emitiendo NC...' : 'Grabar'}
+            style={{ flex:2, height:42, borderRadius:10, border:'none',
+              background: guardarMut.isPending?'#94A3B8':'#2563EB',
+              color:'#fff', fontWeight:700, fontSize:14, cursor:guardarMut.isPending?'not-allowed':'pointer' }}>
+            {guardarMut.isPending ? '⏳ Emitiendo NC...' : '📝 Crear en Borrador y Emitir'}
           </button>
         </div>
       </div>
