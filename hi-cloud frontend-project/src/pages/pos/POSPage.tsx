@@ -4238,12 +4238,6 @@ export default function POSPage() {
                     background:'none',border:'none',color:C.textSub,cursor:'pointer',fontSize:14,outline:'none' }}>✕</button>
                 )}
               </div>
-              {/* ── TEST SCANNER (temporal diagnóstico) ── */}
-              <button
-                onClick={() => { const code = search.trim() || '7453068234154'; console.log('[TEST] procesarScan manual:', code); procesarScan(code); }}
-                style={{ height:38, padding:'0 10px', borderRadius:10, border:'2px solid #f59e0b', background:'#fef3c7', color:'#92400e', fontSize:11, fontWeight:700, cursor:'pointer', outline:'none', flexShrink:0, whiteSpace:'nowrap' }}>
-                🔍 TEST
-              </button>
               {/* ── Botón FILTRAR ── */}
               <div style={{ position:'relative' }}>
                 <button
