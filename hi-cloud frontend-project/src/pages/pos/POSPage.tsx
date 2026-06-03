@@ -3372,8 +3372,12 @@ export default function POSPage() {
   const [ecfStatus,          setEcfStatus]          = useState<'idle'|'loading'|'ok'|'pendiente'>('idle');
   const [ecfEncf,            setEcfEncf]            = useState<string>('');
   const searchRef         = useRef<any>(null);
-  const lastKeyTimeRef    = useRef<number>(0);
-  const fastCharCountRef  = useRef<number>(0);
+  const lastKeyTimeRef    = useRef<number>(0);   // mantenido por compat con código existente
+  const fastCharCountRef  = useRef<number>(0);   // mantenido por compat con código existente
+  // Buffer de scanner — acumula chars en refs (independiente del ciclo de render)
+  const scanBufferRef     = useRef<string>('');
+  const scanStartRef      = useRef<number>(0);   // timestamp del primer char del scan actual
+  const scanCountRef      = useRef<number>(0);   // chars rápidos acumulados
   const [scanFlash, setScanFlash] = useState(false);
   const { pendingCount, isSyncing, enqueue, sync } = useOfflineQueue();
 
@@ -3757,6 +3761,62 @@ export default function POSPage() {
       setTimeout(() => searchRef.current?.focus(), 50);
     }
   }, [addToCart]);
+
+  // Listener global de scanner — captura keydown en document para no depender del foco
+  // El scanner envía Enter como evento separado; si el input perdió el foco en ese instante
+  // el onKeyDown del input no dispararía. Este listener lo captura en cualquier caso.
+  useEffect(() => {
+    const onDocKeyDown = (e: KeyboardEvent) => {
+      // Solo actuar cuando el panel de ítems está visible y no hay modal abierto
+      const modalOpen = document.querySelector('.ant-modal-root .ant-modal-wrap[style*="display: block"]');
+      if (modalOpen) return;
+
+      const now = Date.now();
+
+      if (e.key === 'Enter') {
+        const codigo   = scanBufferRef.current.trim().replace(/[\r\n]/g, '');
+        const elapsed  = now - scanStartRef.current;
+        const isScan   = scanCountRef.current >= 5 && elapsed < 200 && codigo.length >= 4;
+
+        console.log('[SCANNER-DOC] Enter — buffer:', JSON.stringify(scanBufferRef.current),
+          'count:', scanCountRef.current, 'elapsed:', elapsed, 'isScan:', isScan);
+
+        // Limpiar buffer siempre
+        scanBufferRef.current  = '';
+        scanCountRef.current   = 0;
+        scanStartRef.current   = 0;
+
+        if (isScan) {
+          e.preventDefault();
+          e.stopPropagation();
+          setSearch('');
+          handleScannerInput(codigo);
+        }
+        return;
+      }
+
+      // Acumular solo caracteres imprimibles (1 char = imprimible, no teclas de control)
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const diff = now - lastKeyTimeRef.current;
+        lastKeyTimeRef.current = now;
+
+        if (diff < 100) {
+          // Char rápido → sigue siendo scan
+          if (scanCountRef.current === 0) scanStartRef.current = now;
+          scanBufferRef.current += e.key;
+          scanCountRef.current  += 1;
+        } else {
+          // Char lento → reiniciar buffer (es tipeo manual)
+          scanBufferRef.current  = e.key;
+          scanCountRef.current   = 1;
+          scanStartRef.current   = now;
+        }
+      }
+    };
+
+    document.addEventListener('keydown', onDocKeyDown, true); // capture phase
+    return () => document.removeEventListener('keydown', onDocKeyDown, true);
+  }, [handleScannerInput]);
 
   // Hold sales
   const parkSale = () => {
@@ -4191,30 +4251,7 @@ export default function POSPage() {
               <div style={{ flex: 1, position: 'relative' }}>
                 <SearchOutlined style={{ position:'absolute', left:11, top:'50%', transform:'translateY(-50%)', color: C.textSub, fontSize:14, zIndex:1 }} />
                 <input ref={searchRef} value={search}
-                  onChange={e => {
-                    const now = Date.now();
-                    const diff = now - lastKeyTimeRef.current;
-                    lastKeyTimeRef.current = now;
-                    // diff < 100ms entre chars → input rápido (scanner)
-                    fastCharCountRef.current = diff < 100 ? fastCharCountRef.current + 1 : 1;
-                    setSearch(e.target.value);
-                  }}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') {
-                      // CRÍTICO: usar e.target.value (DOM real) en lugar de `search` (estado React stale)
-                      // El scanner envía chars tan rápido que React no ha re-renderizado con el nuevo valor
-                      const domValue = (e.target as HTMLInputElement).value;
-                      const isScan = fastCharCountRef.current >= 5 && domValue.trim().length >= 4;
-                      console.log('[SCANNER] Enter detectado — fastCount:', fastCharCountRef.current, 'domValue:', domValue, 'isScan:', isScan);
-                      fastCharCountRef.current = 0;
-                      if (isScan) {
-                        e.preventDefault();
-                        const code = domValue;
-                        setSearch('');
-                        handleScannerInput(code);
-                      }
-                    }
-                  }}
+                  onChange={e => setSearch(e.target.value)}
                   placeholder="Buscar producto... (F2)"
                   style={{ width:'100%', height:38, paddingLeft:34, paddingRight:search?30:12,
                     background: scanFlash ? (C===darkC ? '#064e3b' : '#d1fae5') : C.card,
