@@ -239,20 +239,21 @@ function categoryIcon(cat?: string): string {
 function ProductCard({ produto, onAdd }: { produto: Prod; onAdd: (p: Prod) => void }) {
   const C        = useC();
   const isDark   = C === darkC;
-  const sinStock = Number(produto.stock) <= 0;
-  const stockBajo= !sinStock && Number(produto.stock) <= Number((produto as any).stockMinimo ?? 3);
+  const esServicio = (produto as any).tipo === 'servicio';
+  const sinStock = !esServicio && Number(produto.stock) <= 0;  // servicios nunca tienen "sin stock"
+  const stockBajo= !esServicio && !sinStock && Number(produto.stock) <= Number((produto as any).stockMinimo ?? 3);
   const stock    = Number(produto.stock);
 
   const cat   = (produto as any).categoria as string | undefined;
   const color = cardColor(cat ?? produto.nombre, isDark); // solo se usa para el ícono
   const icon  = categoryIcon(cat);
 
-  const stockColor = sinStock ? C.red : stockBajo ? C.orange : C.green;
-  const stockBg    = sinStock ? C.red+'22' : stockBajo ? C.orange+'22' : C.green+'22';
+  const stockColor = esServicio ? C.blue : sinStock ? C.red : stockBajo ? C.orange : C.green;
+  const stockBg    = esServicio ? C.blue+'22' : sinStock ? C.red+'22' : stockBajo ? C.orange+'22' : C.green+'22';
   const unidad     = (produto as any).unidadMedida ?? 'unidad';
-  // Stock display: entero si la unidad es discreta, 1 decimal si es continua
+  // Stock display: entero si la unidad es discreta, 1 decimal si es continua; servicios muestran '∞'
   const unidadEsEntera = /^(unidad|und|pza|pieza|piezas|u)$/i.test(unidad.trim());
-  const stockDisplay   = sinStock ? '0' : unidadEsEntera ? String(Math.floor(stock)) : stock.toFixed(1);
+  const stockDisplay   = esServicio ? '∞' : sinStock ? '0' : unidadEsEntera ? String(Math.floor(stock)) : stock.toFixed(1);
 
   return (
     <motion.div
@@ -381,10 +382,11 @@ function CartRow({ item, onQty, onRemove, onDescuento }: {
               cursor: item.cantidad <= 1 ? 'not-allowed' : 'pointer',
               fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', outline: 'none' }}>−</button>
           <span style={{ width: 30, textAlign: 'center', fontSize: 13, fontWeight: 700, color: C.text }}>{item.cantidad}</span>
-          <button onClick={() => onQty(1)} disabled={item.cantidad >= Number(item.produto.stock)}
+          <button onClick={() => onQty(1)}
+            disabled={(item.produto as any).tipo !== 'servicio' && item.cantidad >= Number(item.produto.stock)}
             style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${C.border2}`, background: 'transparent',
-              color: item.cantidad >= Number(item.produto.stock) ? C.textMuted : C.text,
-              cursor: item.cantidad >= Number(item.produto.stock) ? 'not-allowed' : 'pointer',
+              color: (item.produto as any).tipo !== 'servicio' && item.cantidad >= Number(item.produto.stock) ? C.textMuted : C.text,
+              cursor: (item.produto as any).tipo !== 'servicio' && item.cantidad >= Number(item.produto.stock) ? 'not-allowed' : 'pointer',
               fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', outline: 'none' }}>+</button>
 
           <div style={{ flex: 1 }} />
