@@ -1447,6 +1447,9 @@ function POSNotaCreditoModal({ open, onClose, palette }: {
 
   const guardarMut = useMutation({
     mutationFn: async () => {
+      if (!clienteId) throw new Error('Selecciona un cliente');
+      if (!facturaData?.id) throw new Error('Busca la factura de origen');
+
       const montoFinal = monto ? Number(monto) :
         facturaData ? Number(facturaData.total) * (Number(porcentaje||100) / 100) : 0;
 
@@ -1457,29 +1460,46 @@ function POSNotaCreditoModal({ open, onClose, palette }: {
               productoId: d.productoId, descripcion: d.descripcion,
               cantidad: devolver[d.id] ?? 0,
               precioUnitario: Number(d.precioUnitario),
+              porcentajeIva: inclIVA ? (Number(d.porcentajeIva) || 18) : 0,
             }))
         : [{ descripcion: tipo === 'descuento' ? 'Descuento posterior' : 'Devolución',
-             cantidad: 1, precioUnitario: montoFinal }];
+             cantidad: 1, precioUnitario: montoFinal,
+             porcentajeIva: inclIVA ? 18 : 0 }];
 
-      return api.post('/notas-credito', {
-        clienteId: clienteId ?? undefined,
+      // Paso 1: Crear NC (estado BORRADOR)
+      const ncRes = await api.post('/notas-credito', {
+        clienteId,
         fecha: dayjs().format('YYYY-MM-DD'),
         tipoNcf: 'E34',
-        facturaOriginalId: facturaData?.id,
-        facturaOriginalFolio: facturaData?.folio,
-        codigoModificacion: tipo === 'descuento' ? '2' : '3',
+        facturaOriginalId: facturaData.id,
+        facturaOriginalFolio: facturaData.folio,
+        motivo: tipo === 'descuento' ? 'descuento_otorgado' : 'devolucion',
         descripcionMotivo: notas || (tipo === 'descuento' ? 'Descuento posterior otorgado' : 'Devolución de mercancía'),
+        notas,
         detalles,
       });
+      const nc = ncRes.data?.data ?? ncRes.data;
+      if (!nc?.id) throw new Error('No se pudo crear la Nota de Crédito');
+
+      // Paso 2: Emitir NC (BORRADOR → EMITIDA)
+      await api.patch(`/notas-credito/${nc.id}/emitir`);
+
+      // Paso 3: Generar e-CF E34 y enviar a MSeller/DGII
+      await api.post(`/ecf/nota-credito/${nc.id}/emitir`, {
+        codigoModificacion: tipo === 'descuento' ? '2' : '3',
+      });
+
+      return nc;
     },
     onSuccess: () => {
-      message.success('Nota de Crédito emitida');
-      qc.invalidateQueries({ queryKey: ['pos-panel', 'notas-credito'] }); qc.refetchQueries({ queryKey: ['pos-panel', 'notas-credito'] });
+      message.success('Nota de Crédito emitida y e-CF generado ✓');
+      qc.invalidateQueries({ queryKey: ['pos-panel', 'notas-credito'] });
+      qc.refetchQueries({ queryKey: ['pos-panel', 'notas-credito'] });
       onClose();
       setFacturaData(null); setFacturaRef(''); setMonto(''); setPorcentaje('');
       setNotas(''); setClienteId(null); setDevolver({});
     },
-    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al emitir NC'),
+    onError: (e: any) => message.error(e?.response?.data?.message ?? e?.message ?? 'Error al emitir NC'),
   });
 
   const ToggleBtn = ({ active, onClick, label }: { active:boolean; onClick:()=>void; label:string }) => (
