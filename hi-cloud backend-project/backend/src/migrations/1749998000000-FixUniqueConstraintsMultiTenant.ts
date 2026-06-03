@@ -32,10 +32,12 @@ export class FixUniqueConstraintsMultiTenant1749998000000 implements MigrationIn
     ];
 
     for (const { tabla, indiceViejo, camposClave } of fixes) {
-      // 1. Eliminar el índice único global
-      await queryRunner.query(`DROP INDEX IF EXISTS "${indiceViejo}"`);
+      // 1. Eliminar el CONSTRAINT único global (no DROP INDEX — son constraints de TypeORM)
+      await queryRunner.query(
+        `ALTER TABLE "${tabla}" DROP CONSTRAINT IF EXISTS "${indiceViejo}"`,
+      );
 
-      // 2. Crear índice único compuesto con empresaId
+      // 2. Crear índice único compuesto con empresaId (por tenant, solo registros activos)
       const nuevoIndice = `UQ_mt_${tabla}_${camposClave.replace(/[^a-z0-9]/gi, '')}`;
       await queryRunner.query(`
         CREATE UNIQUE INDEX IF NOT EXISTS "${nuevoIndice}"
@@ -71,7 +73,7 @@ export class FixUniqueConstraintsMultiTenant1749998000000 implements MigrationIn
       const nuevoIndice = `UQ_mt_${tabla}_${camposClave.replace(/[^a-z0-9]/gi, '')}`;
       await queryRunner.query(`DROP INDEX IF EXISTS "${nuevoIndice}"`);
       await queryRunner.query(
-        `CREATE UNIQUE INDEX "${indiceViejo}" ON "${tabla}" (${camposClave})`,
+        `ALTER TABLE "${tabla}" ADD CONSTRAINT "${indiceViejo}" UNIQUE (${camposClave})`,
       );
     }
   }
