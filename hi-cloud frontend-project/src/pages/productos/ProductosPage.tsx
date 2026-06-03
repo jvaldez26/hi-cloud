@@ -417,6 +417,15 @@ function ProductosCatalogo() {
   const puedeEditar   = useCanDo('productos:editar');
   const puedeEliminar = useCanDo('productos:eliminar');
 
+  // Almacenes del tenant — se cargan solo cuando el modal está abierto
+  const { data: almacenesRaw = [] } = useQuery<any[]>({
+    queryKey: ['almacenes-lista'],
+    queryFn:  () => api.get('/almacenes').then((r: any) => r.data?.data ?? r.data ?? []),
+    staleTime: 5 * 60_000,
+    enabled:   open,
+  });
+  const almacenes: { id: number; nombre: string }[] = almacenesRaw;
+
   const { data, isLoading } = useQuery({
     queryKey: ['productos', page, search, categoria],
     queryFn:  () => productosApi.list(page, 15, search),
@@ -452,8 +461,18 @@ function ProductosCatalogo() {
     onSuccess:  () => { qc.invalidateQueries({ queryKey: ['productos'] }); message.success('Eliminado'); },
   });
 
-  const openCreate = () => { setEditing(null); form.resetFields(); setPreview(''); setFieldErrors({}); setOpen(true); };
-  const openEdit   = (p: Producto) => { setEditing(p); form.setFieldsValue(p); setPreview(p.imagenUrl ?? ''); setFieldErrors({}); setOpen(true); };
+  const openCreate = () => {
+    setEditing(null); form.resetFields(); setPreview(''); setFieldErrors({});
+    // Auto-seleccionar almacén si hay exactamente uno
+    if (almacenes.length === 1) form.setFieldValue('almacenId', almacenes[0].id);
+    setOpen(true);
+  };
+  const openEdit = (p: Producto) => {
+    setEditing(p); form.setFieldsValue(p); setPreview(p.imagenUrl ?? ''); setFieldErrors({});
+    // Si solo hay un almacén y no tiene almacenId asignado, auto-seleccionarlo
+    if (almacenes.length === 1 && !(p as any).almacenId) form.setFieldValue('almacenId', almacenes[0].id);
+    setOpen(true);
+  };
   const closeModal = () => { setOpen(false); setEditing(null); form.resetFields(); setPreview(''); setFieldErrors({}); };
   const handleSubmit = (values: ProductoPayload) => {
     const payload: ProductoPayload = { ...values };
@@ -647,6 +666,29 @@ function ProductosCatalogo() {
             <Col xs={24} sm={8}>
               <Form.Item name="categoria" label="Categoría"><Input /></Form.Item>
             </Col>
+
+            {/* Almacén — solo para productos físicos */}
+            {!esServicio && (
+              <Col xs={24} sm={almacenes.length === 0 ? 24 : 16}>
+                {almacenes.length === 0 ? (
+                  <Form.Item label="Almacén">
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      No hay almacenes configurados.{' '}
+                      <a href="/almacenes" target="_blank" rel="noopener noreferrer">Crear almacén →</a>
+                    </Text>
+                  </Form.Item>
+                ) : (
+                  <Form.Item name="almacenId" label="Almacén"
+                    extra={almacenes.length === 1 ? undefined : 'Almacén donde se registrará el stock inicial'}>
+                    <Select
+                      placeholder="Seleccionar almacén"
+                      allowClear={almacenes.length > 1}
+                      options={almacenes.map(a => ({ value: a.id, label: a.nombre }))}
+                    />
+                  </Form.Item>
+                )}
+              </Col>
+            )}
 
             {/* Imagen — subir archivo o URL */}
             <Col span={24}>

@@ -4,11 +4,13 @@ import {
   IsOptional,
   IsNumber,
   IsPositive,
+  IsInt,
   Min,
   Max,
   MaxLength,
   IsIn,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class CreateProductoDto {
   @IsOptional()
@@ -73,4 +75,9 @@ export class CreateProductoDto {
   @IsOptional()
   @IsString()
   imagenUrl?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  almacenId?: number;   // Almacén donde inicializar el stock al crear/actualizar
 }

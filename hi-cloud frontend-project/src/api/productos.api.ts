@@ -7,6 +7,7 @@ export interface ProductoPayload {
   unidadMedida?: string; porcentajeIva?: number;
   stock?: number; stockMinimo?: number; categoria?: string;
   descripcion?: string; imagenUrl?: string;
+  almacenId?: number;
 }
 
 export const productosApi = {
