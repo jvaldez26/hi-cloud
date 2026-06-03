@@ -3571,6 +3571,15 @@ export default function POSPage() {
   // Cambio basado en totalAPagar (incluye propina)
   const cambio           = metodoPago === 'efectivo' ? Math.max(0, montoRecibido - totalAPagar) : 0;
 
+  // Auto-foco en el input de búsqueda cuando el panel de ítems está activo
+  // (mantiene el foco para escaneo continuo con scanner HID)
+  useEffect(() => {
+    if (panelActivo === 'items' && !showPago && !pantallaBloqueada) {
+      const t = setTimeout(() => searchRef.current?.focus(), 100);
+      return () => clearTimeout(t);
+    }
+  }, [panelActivo, showPago, pantallaBloqueada]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -3680,6 +3689,7 @@ export default function POSPage() {
   };
 
   // Búsqueda por código de barras → agrega al carrito directamente
+  // handleBarcode: búsqueda en cache local para el campo de código de barras separado
   const handleBarcode = useCallback(async (code: string) => {
     const trimmed = code.trim();
     if (!trimmed) return;
@@ -3695,6 +3705,38 @@ export default function POSPage() {
       setBarcodeInput('');
     }
   }, [produtos, addToCart]);
+
+  // handleScannerInput: usa API call fresca para evitar el cache stale del scanner
+  const handleScannerInput = useCallback(async (code: string) => {
+    const trimmed = code.trim();
+    if (!trimmed) return;
+    try {
+      const result = await productosApi.list(1, 5, trimmed);
+      const list: Prod[] = result?.data ?? [];
+      // Buscar coincidencia exacta por código de barras
+      const exact = list.find((p: any) =>
+        p.codigo?.toLowerCase() === trimmed.toLowerCase()
+      ) ?? (list.length === 1 ? list[0] : null);
+
+      if (exact) {
+        const esServicio = (exact as any).tipo === 'servicio';
+        if (!esServicio && Number(exact.stock) <= 0) {
+          message.warning(`${exact.nombre}: sin stock`, 2);
+          return;
+        }
+        await addToCart(exact);
+        message.success(`✓ ${exact.nombre}`, 1.5);
+        setScanFlash(true);
+        setTimeout(() => setScanFlash(false), 700);
+      } else {
+        message.error(`Código "${trimmed}" no encontrado`, 2);
+      }
+    } catch {
+      message.error(`Error al buscar código: ${trimmed}`, 2);
+    } finally {
+      setTimeout(() => searchRef.current?.focus(), 50);
+    }
+  }, [addToCart]);
 
   // Hold sales
   const parkSale = () => {
@@ -4133,21 +4175,20 @@ export default function POSPage() {
                     const now = Date.now();
                     const diff = now - lastKeyTimeRef.current;
                     lastKeyTimeRef.current = now;
-                    fastCharCountRef.current = diff < 80 ? fastCharCountRef.current + 1 : 1;
+                    // diff < 100ms entre chars → input rápido (scanner)
+                    fastCharCountRef.current = diff < 100 ? fastCharCountRef.current + 1 : 1;
                     setSearch(e.target.value);
                   }}
                   onKeyDown={e => {
-                    if (e.key === 'Enter' && fastCharCountRef.current >= 7 && search.trim().length >= 5) {
-                      e.preventDefault();
-                      const code = search.trim();
+                    if (e.key === 'Enter') {
+                      const isScan = fastCharCountRef.current >= 5 && search.trim().length >= 4;
                       fastCharCountRef.current = 0;
-                      setSearch('');
-                      handleBarcode(code).then(() => {
-                        setScanFlash(true);
-                        setTimeout(() => setScanFlash(false), 600);
-                      }).catch(() => {});
-                    } else if (e.key === 'Enter') {
-                      fastCharCountRef.current = 0;
+                      if (isScan) {
+                        e.preventDefault();
+                        const code = search.trim();
+                        setSearch('');
+                        handleScannerInput(code);
+                      }
                     }
                   }}
                   placeholder="Buscar producto... (F2)"
