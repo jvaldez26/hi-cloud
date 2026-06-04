@@ -99,12 +99,13 @@ export class GastosService {
       .skip((page - 1) * limit).take(limit)
       .getManyAndCount();
 
-    // Cargar e-CF asociados por documentoOrigenId
+    // Cargar e-CF asociados (número + código seguridad + fecha) por documentoOrigenId
     const ids = data.map(g => g.id);
-    let ecfMap: Record<number, string> = {};
+    let ecfMap: Record<number, { numero: string; codigoSeguridad?: string; fechaUso?: string }> = {};
     if (ids.length > 0) {
       const ecfRows: any[] = await this.repo.manager.query(
-        `SELECT "documentoOrigenId", numero FROM ecf
+        `SELECT "documentoOrigenId", numero, "codigoSeguridad", "fechaUso"
+         FROM ecf
          WHERE "documentoOrigenId" = ANY($1)
            AND "documentoOrigenTipo" = 'GASTO'
            AND "isActive" = true
@@ -112,11 +113,22 @@ export class GastosService {
         [ids],
       );
       for (const e of ecfRows) {
-        if (!ecfMap[e.documentoOrigenId]) ecfMap[e.documentoOrigenId] = e.numero;
+        if (!ecfMap[e.documentoOrigenId]) {
+          ecfMap[e.documentoOrigenId] = {
+            numero:          e.numero,
+            codigoSeguridad: e.codigoSeguridad ?? undefined,
+            fechaUso:        e.fechaUso ? String(e.fechaUso).substring(0, 10) : undefined,
+          };
+        }
       }
     }
 
-    const enriched = data.map(g => ({ ...g, ecfNumero: ecfMap[g.id] ?? null }));
+    const enriched = data.map(g => ({
+      ...g,
+      ecfNumero:          ecfMap[g.id]?.numero          ?? null,
+      ecfCodigoSeguridad: ecfMap[g.id]?.codigoSeguridad ?? null,
+      ecfFecha:           ecfMap[g.id]?.fechaUso        ?? null,
+    }));
     return { data: enriched, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
   }
 

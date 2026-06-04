@@ -2763,9 +2763,9 @@ ${cajero ? row('Cajero:', cajero) : ''}
 <div style="margin:2px 0"><span class="bold">Categoría:</span> ${e(catLabel)}</div>
 <div class="line"></div>
 
-${g.proveedor  ? row('Proveedor:',  g.proveedor)   : ''}
-${g.rncProveedor ? row('RNC Prov.:', g.rncProveedor) : ''}
-${g.comprobante  ? row('NCF:',       g.comprobante)  : ''}
+${g.proveedor    ? row('Proveedor:',     g.proveedor)    : ''}
+${g.rncProveedor  ? row('RNC Prov.:',     g.rncProveedor) : ''}
+${g.comprobante   ? row('NCF recibido:',  g.comprobante)  : ''}
 ${(g.proveedor||g.rncProveedor||g.comprobante) ? '<div class="line"></div>' : ''}
 
 ${row('Monto:', fmtM(Number(g.monto??0)))}
@@ -2773,6 +2773,11 @@ ${row('ITBIS:', fmtM(Number(g.itbis??0)))}
 <div class="dbl"></div>
 ${rowB('TOTAL:', fmtM(Number(g.total??0)))}
 <div class="dbl"></div>
+${g.ecfNumero ? `<div class="center bold small">&#8212; COMPROBANTE FISCAL &#8212;</div>
+${row('e-NCF E43:', g.ecfNumero)}
+${g.ecfFecha           ? row('Fecha ECF:',  g.ecfFecha)          : ''}
+${g.ecfCodigoSeguridad ? row('Cód. Seg.:',  g.ecfCodigoSeguridad): ''}
+<div class="dbl"></div>` : ''}
 <div class="center small">Registrado en HiCloud ERP</div>
 
 </body></html>`;
