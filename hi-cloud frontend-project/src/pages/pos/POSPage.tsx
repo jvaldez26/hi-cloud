@@ -2112,7 +2112,8 @@ function POSConducePanel({ C, onVolver, initClienteId, initFacturaId }: {
 
 function POSClientesPanel({ C, onVolver }: { C: Palette; onVolver: () => void }) {
   const qc = useQueryClient();
-  const [form, setForm] = useState(false);
+  const [form,      setForm]      = useState(false);
+  const [editando,  setEditando]  = useState<any>(null);  // cliente que se está editando
   const [f, setF] = useState({ nombre:'', telefono:'', email:'', rnc:'', empresa:'' });
   const [busq, setBusq] = useState('');
   const { datos: rncDatos, loading: rncLoading, consultarDebounced, limpiar: limpiarRnc } = useRncLookup();
@@ -2122,6 +2123,8 @@ function POSClientesPanel({ C, onVolver }: { C: Palette; onVolver: () => void })
       .then(r=>{ const d=r.data?.data??r.data; return d?.data??d??[]; }),
     staleTime: 30_000,
   });
+  const resetForm = () => { setForm(false); setEditando(null); setF({ nombre:'',telefono:'',email:'',rnc:'',empresa:'' }); limpiarRnc(); };
+
   const crearMut = useMutation({
     mutationFn: () => api.post('/clientes', {
       nombre:      f.nombre.trim(),
@@ -2130,12 +2133,39 @@ function POSClientesPanel({ C, onVolver }: { C: Palette; onVolver: () => void })
       rfc:         f.rnc.trim() || undefined,
       razonSocial: f.empresa    || undefined,
     }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['pos-clientes'] }); setForm(false); setF({ nombre:'',telefono:'',email:'',rnc:'',empresa:'' }); limpiarRnc(); message.success('Cliente registrado'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['pos-clientes'] }); resetForm(); message.success('Cliente registrado'); },
     onError: (e: any) => {
       const msg = e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error al guardar';
       message.error(Array.isArray(msg) ? msg[0] : msg, 5);
     },
   });
+
+  const actualizarMut = useMutation({
+    mutationFn: () => api.patch(`/clientes/${editando.id}`, {
+      nombre:      f.nombre.trim(),
+      telefono:    f.telefono   || undefined,
+      email:       f.email      || undefined,
+      rfc:         f.rnc.trim() || undefined,
+      razonSocial: f.empresa    || undefined,
+    }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['pos-clientes'] }); resetForm(); message.success('Cliente actualizado'); },
+    onError: (e: any) => {
+      const msg = e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error al actualizar';
+      message.error(Array.isArray(msg) ? msg[0] : msg, 5);
+    },
+  });
+
+  const abrirEditar = (c: any) => {
+    setEditando(c);
+    setF({ nombre: c.nombre||'', telefono: c.telefono||'', email: c.email||'',
+           rnc: c.rncReceptor||c.rfc||'', empresa: c.razonSocial||'' });
+    setForm(true);
+    limpiarRnc();
+  };
+
+  const isPending = editando ? actualizarMut.isPending : crearMut.isPending;
+  const guardar   = () => editando ? actualizarMut.mutate() : crearMut.mutate();
+
   const inp = (key: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF(p => ({ ...p, [key]: e.target.value }));
 
   // Cuando llegan datos de DGII, autocompletar nombre y empresa
@@ -2154,7 +2184,8 @@ function POSClientesPanel({ C, onVolver }: { C: Palette; onVolver: () => void })
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <PanelHeader title="Clientes" icon="👤" C={C} onVolver={onVolver}
-        onNuevo={() => setForm(v => !v)} labelNuevo={form ? 'Ver lista' : 'Nuevo'} />
+        onNuevo={() => { if (form) resetForm(); else setForm(true); }}
+        labelNuevo={form ? 'Ver lista' : 'Nuevo'} />
       {form ? (
         <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
           <div style={{ maxWidth: 480, color: C.text }}>
@@ -2203,12 +2234,27 @@ function POSClientesPanel({ C, onVolver }: { C: Palette; onVolver: () => void })
                   fontSize: 13, outline: 'none', boxSizing: 'border-box' as const, marginBottom: 12 }}
               />
             </div>
-            <button onClick={() => crearMut.mutate()} disabled={crearMut.isPending || !f.nombre.trim()}
-              style={{ width: '100%', height: 44, borderRadius: 10, border: 'none',
-                background: !f.nombre.trim() ? '#ccc' : '#059669', color: '#fff',
-                fontWeight: 700, fontSize: 15, cursor: !f.nombre.trim() ? 'not-allowed' : 'pointer' }}>
-              {crearMut.isPending ? 'Guardando...' : 'Grabar'}
-            </button>
+            {editando && (
+              <div style={{ fontSize: 12, color: C.blue, fontWeight: 600, marginBottom: 12,
+                background: C.blue + '15', padding: '6px 12px', borderRadius: 8, border: `1px solid ${C.blue}30` }}>
+                ✏️ Editando: {editando.nombre}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8 }}>
+              {editando && (
+                <button onClick={resetForm}
+                  style={{ flex: 1, height: 44, borderRadius: 10, border: `1px solid ${C.border}`,
+                    background: 'transparent', color: C.textSub, fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
+                  Cancelar
+                </button>
+              )}
+              <button onClick={guardar} disabled={isPending || !f.nombre.trim()}
+                style={{ flex: 2, height: 44, borderRadius: 10, border: 'none',
+                  background: !f.nombre.trim() ? '#ccc' : editando ? C.blue : '#059669', color: '#fff',
+                  fontWeight: 700, fontSize: 15, cursor: !f.nombre.trim() ? 'not-allowed' : 'pointer' }}>
+                {isPending ? 'Guardando...' : editando ? 'Actualizar' : 'Grabar'}
+              </button>
+            </div>
           </div>
         </div>
       ) : (
@@ -2223,16 +2269,25 @@ function POSClientesPanel({ C, onVolver }: { C: Palette; onVolver: () => void })
              (data??[]).length===0 ? <Empty style={{marginTop:40}} description={<span style={{color:C.textSub}}>Sin clientes</span>}/> : (
               <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
                 <thead><tr style={{background:C.card,position:'sticky',top:0}}>
-                  {['Nombre','RNC/Cédula','Teléfono','Email'].map(h=>(
+                  {['Nombre','RNC/Cédula','Teléfono',''].map(h=>(
                     <th key={h} style={{padding:'8px 12px',textAlign:'left',color:C.textSub,fontWeight:600,fontSize:11,borderBottom:`1px solid ${C.border}`}}>{h}</th>
                   ))}
                 </tr></thead>
                 <tbody>{(data??[]).map((c:any,i:number)=>(
                   <tr key={c.id} style={{borderBottom:`1px solid ${C.border}`,background:i%2===0?'transparent':C.card}}>
-                    <td style={{padding:'8px 12px',color:C.text,fontWeight:600}}>{c.nombre}</td>
+                    <td style={{padding:'8px 12px',color:C.text,fontWeight:600}}>
+                      <div>{c.nombre}</div>
+                      {c.email && <div style={{fontSize:10,color:C.textSub}}>{c.email}</div>}
+                    </td>
                     <td style={{padding:'8px 12px',color:C.textSub,fontFamily:'monospace',fontSize:11}}>{c.rncReceptor||c.rfc||'—'}</td>
                     <td style={{padding:'8px 12px',color:C.textSub}}>{c.telefono||'—'}</td>
-                    <td style={{padding:'8px 12px',color:C.textSub,fontSize:11}}>{c.email||'—'}</td>
+                    <td style={{padding:'6px 8px',textAlign:'right'}}>
+                      <button onClick={() => abrirEditar(c)}
+                        style={{ background:'none', border:`1px solid ${C.border}`, borderRadius:6,
+                          color:C.textSub, padding:'3px 10px', fontSize:11, cursor:'pointer' }}>
+                        ✏️ Editar
+                      </button>
+                    </td>
                   </tr>
                 ))}</tbody>
               </table>
