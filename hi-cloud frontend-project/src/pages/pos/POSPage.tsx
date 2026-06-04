@@ -3445,6 +3445,8 @@ export default function POSPage() {
   const [pwDesbloqueo,        setPwDesbloqueo]        = useState('');
   const [errDesbloqueo,       setErrDesbloqueo]       = useState('');
   const [desbloqueando,       setDesbloqueando]       = useState(false);
+  const [intentosFallidos,    setIntentosFallidos]    = useState(0);
+  const [bloqueadoHasta,      setBloqueadoHasta]      = useState<number>(0);
   // ── Modo supervisor (configurable por tenant) ─────────────────────────────
   const supervisor = useSupervisor();
   // ── Modal supervisor (legacy — se mantiene para el botón manual del TopBar) ─
@@ -4173,14 +4175,33 @@ export default function POSPage() {
   // ── Desbloquear pantalla (verifica contra backend) ─────────────────────────
   const desbloquearPantalla = async () => {
     if (!pwDesbloqueo.trim()) { setErrDesbloqueo('Ingresa tu contraseña'); return; }
+    // Bloqueo temporal tras 3 intentos fallidos
+    if (bloqueadoHasta > Date.now()) {
+      const seg = Math.ceil((bloqueadoHasta - Date.now()) / 1000);
+      setErrDesbloqueo(`Demasiados intentos. Espera ${seg}s o llama a tu supervisor.`);
+      return;
+    }
     setDesbloqueando(true); setErrDesbloqueo('');
     try {
       await api.post('/auth/verificar-password', { password: pwDesbloqueo });
+      // Éxito → limpiar contadores y desbloquear
       sessionStorage.removeItem('pos_bloqueado');
       setPantallaBloqueada(false); setPwDesbloqueo('');
+      setIntentosFallidos(0); setBloqueadoHasta(0);
     } catch (e: any) {
-      setErrDesbloqueo(e?.response?.data?.errors?.[0] ?? 'Contraseña incorrecta');
+      // 400 = contraseña incorrecta (NO cierra sesión)
+      // 401 = sesión realmente expirada (el interceptor lo maneja)
+      const nuevoConteo = intentosFallidos + 1;
+      setIntentosFallidos(nuevoConteo);
       setPwDesbloqueo('');
+      if (nuevoConteo >= 3) {
+        setBloqueadoHasta(Date.now() + 30_000);
+        setErrDesbloqueo('Demasiados intentos fallidos. Espera 30 segundos o llama a tu supervisor.');
+        setIntentosFallidos(0);
+      } else {
+        const msg = e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Contraseña incorrecta';
+        setErrDesbloqueo(`${msg} (intento ${nuevoConteo}/3)`);
+      }
     } finally { setDesbloqueando(false); }
   };
 

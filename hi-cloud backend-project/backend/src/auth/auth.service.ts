@@ -744,9 +744,14 @@ export class AuthService implements OnModuleInit {
   /** POS Screen Lock: verifica que la contraseña coincide con la del usuario autenticado. */
   async verificarPassword(email: string, password: string): Promise<{ ok: true }> {
     const user = await this.usersService.findByEmailForAuth(email);
-    if (!user) throw new UnauthorizedException('Credenciales inválidas');
+    // 401 solo si el usuario no existe (token inválido) — jamás por contraseña incorrecta
+    if (!user) throw new UnauthorizedException('Usuario no encontrado');
     const valida = await bcrypt.compare(password, user.password!);
-    if (!valida) throw new UnauthorizedException('Contraseña incorrecta');
+    // 400 Bad Request para contraseña incorrecta — el interceptor de 401 NO hace logout
+    if (!valida) {
+      this.logger.warn(`[POS-Lock] Intento fallido de desbloqueo para ${email}`);
+      throw new BadRequestException('Contraseña incorrecta');
+    }
     return { ok: true };
   }
 
