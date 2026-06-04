@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Form, Input, Button, Typography, Alert, Checkbox } from 'antd';
+import { Form, Input, Button, Typography, Alert, Checkbox, ConfigProvider, theme as antTheme } from 'antd';
 import { UserOutlined, LockOutlined, RocketOutlined } from '@ant-design/icons';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, useInView } from 'framer-motion';
@@ -228,8 +228,23 @@ export default function LoginPage() {
       </div>
 
       {/* ── LADO DERECHO — FORMULARIO ────────────────────────────────────── */}
+      {/* ConfigProvider con defaultAlgorithm fuerza tema claro en este panel
+          independientemente del tema oscuro global de la aplicación */}
+      <ConfigProvider theme={{
+        algorithm: antTheme.defaultAlgorithm,
+        token: {
+          colorBgContainer:   '#F8FAFC',
+          colorBgElevated:    '#FFFFFF',
+          colorText:          '#0F172A',
+          colorTextPlaceholder: '#94A3B8',
+          colorBorder:        '#CBD5E1',
+          colorPrimary:       '#2563EB',
+          borderRadius:       10,
+          controlHeight:      48,
+        },
+      }}>
       <div className="login-right" style={{
-        width:'50%', background:rightBg, display:'flex',
+        width:'50%', background:'#FFFFFF', display:'flex',
         alignItems:'center', justifyContent:'center',
         padding:'24px 16px', overflowY:'auto',
       }}>
@@ -310,7 +325,6 @@ export default function LoginPage() {
                   prefix={<UserOutlined style={{ color:'#64748B' }} />}
                   placeholder="usuario@empresa.com"
                   autoComplete="email" type="email"
-                  style={{ background:'#F8FAFC', borderColor:'#CBD5E1', color:'#0F172A', height:48, borderRadius:10, borderWidth:1.5 }}
                 />
               </Form.Item>
 
@@ -328,7 +342,6 @@ export default function LoginPage() {
                   prefix={<LockOutlined style={{ color:'#64748B' }} />}
                   placeholder="••••••••"
                   autoComplete={recordarPassword ? 'current-password' : 'new-password'}
-                  style={{ background:'#F8FAFC', borderColor:'#CBD5E1', color:'#0F172A', height:48, borderRadius:10, borderWidth:1.5 }}
                 />
               </Form.Item>
 
@@ -400,6 +413,7 @@ export default function LoginPage() {
           </div>
         </motion.div>
       </div>
+      </ConfigProvider>
 
       <DemoModal open={demoOpen} onClose={() => setDemoOpen(false)} />
     </div>
