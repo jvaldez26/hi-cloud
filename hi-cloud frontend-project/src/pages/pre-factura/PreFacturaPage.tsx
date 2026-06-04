@@ -169,26 +169,35 @@ export default function PreFacturaPage() {
     }
   };
 
-  const abrirEditar = (pf: any) => {
+  const abrirEditar = async (pf: any) => {
     setEditandoPF(pf);
     setModalCrear(true);
-    // Pre-cargar el form después de que el modal se monte
-    setTimeout(() => {
-      formCrear.setFieldsValue({
-        clienteId:        pf.clienteId,
-        fecha:            pf.fecha ? require('dayjs')(pf.fecha) : null,
-        fechaVencimiento: pf.fechaVencimiento ? require('dayjs')(pf.fechaVencimiento) : null,
-        notas:            pf.notas,
-        vendedorId:       pf.vendedorId,
-        detalles:         (pf.detalles ?? []).map((d: any) => ({
-          productoId:     d.productoId,
-          descripcion:    d.descripcion,
-          cantidad:       Number(d.cantidad),
-          precioUnitario: Number(d.precioUnitario),
-          porcentajeIva:  Number(d.porcentajeIva ?? 18),
-        })),
-      });
-    }, 50);
+    // Cargar la pre-factura completa (con detalles) desde el backend
+    // La tabla solo trae datos básicos sin detalles
+    try {
+      const r = await api.get(`/pre-facturas/${pf.id}`);
+      const full = r.data?.data ?? r.data;
+      setEditandoPF(full);
+      setTimeout(() => {
+        formCrear.setFieldsValue({
+          clienteId:        full.clienteId ?? full.cliente?.id,
+          tipoNcf:          full.tipoNcf,
+          fecha:            full.fecha ? require('dayjs')(full.fecha) : null,
+          fechaVencimiento: full.fechaVencimiento ? require('dayjs')(full.fechaVencimiento) : null,
+          notas:            full.notas,
+          vendedorId:       full.vendedorId,
+          detalles:         (full.detalles ?? []).map((d: any) => ({
+            productoId:     d.productoId,
+            descripcion:    d.descripcion,
+            cantidad:       Number(d.cantidad),
+            precioUnitario: Number(d.precioUnitario),
+            porcentajeIva:  Number(d.porcentajeIva ?? 18),
+          })),
+        });
+      }, 50);
+    } catch (e: any) {
+      message.error(`Error al cargar la pre-factura: ${e?.message ?? 'Intente de nuevo'}`);
+    }
   };
 
   const imprimirPDF = async (item: any) => {
@@ -362,7 +371,7 @@ export default function PreFacturaPage() {
 
       {/* ── Modal Crear ──────────────────────────────────────────────────── */}
       <Modal
-        title={editandoPF ? `Editar Pre-Factura ${editandoPF.numero}` : 'Nueva Pre-Factura'}
+        title={editandoPF ? `Editar Pre-Factura ${editandoPF.folio ?? editandoPF.numero ?? ''}` : 'Nueva Pre-Factura'}
         open={modalCrear}
         onCancel={() => { setModalCrear(false); setEditandoPF(null); formCrear.resetFields(); }}
         onOk={() => formCrear.submit()}
