@@ -122,7 +122,7 @@ export class PreFacturaService {
     const empresaId = this.tenantSvc.getEmpresaId();
     const pf = await this.pfRepo.findOne({
       where:     { id, empresaId, isActive: true },
-      relations: ['cliente', 'detalles'],        // garantizar que detalles siempre llegan
+      relations: ['cliente'],   // detalles se carga por eager:true en la entidad
     });
     if (!pf) throw new NotFoundException(`Pre-Factura #${id} no encontrada`);
     return pf;
