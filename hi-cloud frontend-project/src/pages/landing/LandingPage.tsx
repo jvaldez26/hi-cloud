@@ -782,8 +782,8 @@ export default function LandingPage() {
               <p style={{ fontSize: 13, lineHeight: 1.6, margin: 0 }}>El ERP para PYMEs dominicanas. Facturación electrónica nativa con la DGII.</p>
               <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
                 {[
-                  { label: 'WhatsApp', href: 'https://wa.me/18095550000' },
-                  { label: 'Email',    href: 'mailto:hola@hicloudrd.com' },
+                  { label: 'WhatsApp', href: 'https://wa.me/18093081713' },
+                  { label: 'Email',    href: 'mailto:soporte@hicloudrd.com' },
                 ].map(s => (
                   <a key={s.label} href={s.href} target="_blank" rel="noopener noreferrer"
                     style={{ background: 'rgba(255,255,255,.08)', color: 'rgba(255,255,255,.7)',
