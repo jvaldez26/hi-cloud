@@ -89,12 +89,12 @@ export default function LoginPage() {
     } finally { setLoading(false); }
   };
 
-  // Colores del lado derecho según tema
-  const rightBg     = isDark ? '#0f172a' : '#FFFFFF';
-  const rightText   = isDark ? '#f1f5f9' : '#111827';
-  const rightSub    = isDark ? '#94a3b8' : '#6B7280';
-  const rightBorder = isDark ? '#1e293b' : '#E5E7EB';
-  const rightCard   = isDark ? '#1e293b' : '#F8FAFC';
+  // Lado derecho siempre claro (diseño fixed, independiente del tema)
+  const rightBg     = '#FFFFFF';
+  const rightText   = '#0F172A';
+  const rightSub    = '#64748B';
+  const rightBorder = '#CBD5E1';
+  const rightCard   = '#F8FAFC';
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', fontFamily: "'Inter',-apple-system,sans-serif" }}>
@@ -108,21 +108,25 @@ export default function LoginPage() {
           .login-logo-mobile{display:block!important}
           .login-right-inner{padding:32px 24px!important}
         }
-        /* Inputs lado derecho */
+        /* Inputs lado derecho — siempre claro */
         .login-input .ant-input,
         .login-input .ant-input-affix-wrapper {
-          background:${rightCard}!important;
-          border:1px solid rgba(255,255,255,0.2)!important;
-          color:${rightText}!important; border-radius:10px!important; height:48px!important;
+          background:#F8FAFC!important;
+          border:1.5px solid #CBD5E1!important;
+          color:#0F172A!important; border-radius:10px!important; height:48px!important;
+          width:100%!important; box-sizing:border-box!important;
         }
         .login-input .ant-input:focus,
         .login-input .ant-input-affix-wrapper-focused {
-          border-color:#2563EB!important; box-shadow:0 0 0 2px rgba(37,99,235,.2)!important;
+          border-color:#2563EB!important; box-shadow:0 0 0 3px rgba(37,99,235,.15)!important;
         }
-        .login-input .ant-input::placeholder { color:${rightSub}!important; }
-        .login-input .ant-form-item-label label { color:${rightSub}!important; font-size:13px!important; font-weight:500!important; }
-        .login-input .ant-checkbox-wrapper { color:${rightSub}!important; font-size:13px!important; }
+        .login-input .ant-input::placeholder { color:#94A3B8!important; }
+        .login-input .ant-form-item-label label { color:#1E3A8A!important; font-size:13px!important; font-weight:600!important; }
+        .login-input .ant-checkbox-wrapper { color:#64748B!important; font-size:13px!important; }
         .login-input .ant-form-item { margin-bottom:18px!important; }
+        .login-input { width:100%!important; box-sizing:border-box!important; }
+        .login-input .ant-form-item-control-input { width:100%!important; }
+        .login-right-inner { box-sizing:border-box!important; }
       `}</style>
 
       {/* ── LADO IZQUIERDO ──────────────────────────────────────────────── */}
@@ -140,10 +144,11 @@ export default function LoginPage() {
         <motion.div initial={{ opacity:0, y:30 }} animate={{ opacity:1, y:0 }} transition={{ duration:.7 }}
           style={{ maxWidth:440, width:'100%', position:'relative', zIndex:1 }}>
 
-          {/* Logo — con filtro para hacerlo blanco sobre fondo azul */}
-          <img src="/logo-hicloud.png" alt="HiCloud ERP"
+          {/* Logo — SVG transparente, visible sobre fondo azul */}
+          <img src="/logo-hicloud.svg" alt="HiCloud ERP"
             style={{ height:52, width:'auto', filter:'brightness(0) invert(1)', marginBottom:28, display:'block',
-              objectFit:'contain' }} />
+              objectFit:'contain', background:'transparent' }}
+            onError={e => { (e.target as HTMLImageElement).src = '/logo-hicloud.png'; }} />
 
           <h1 style={{ color:'#fff', fontSize:30, fontWeight:800, margin:'0 0 12px', lineHeight:1.2 }}>
             El ERP para PYMEs<br />dominicanas
@@ -211,7 +216,7 @@ export default function LoginPage() {
       }}>
         <motion.div className="login-right-inner"
           initial={{ opacity:0, x:20 }} animate={{ opacity:1, x:0 }} transition={{ duration:.5, delay:.1 }}
-          style={{ width:'100%', maxWidth:420, padding:'40px 32px' }}>
+          style={{ width:'100%', maxWidth:420, padding:'40px 32px', boxSizing:'border-box' }}>
 
           {/* Logo móvil — visible solo en <768px */}
           <div className="login-logo-mobile" style={{ textAlign:'center', marginBottom:28, display:'none' }}>
@@ -220,10 +225,10 @@ export default function LoginPage() {
           </div>
 
           <div style={{ marginBottom:32 }}>
-            <h2 style={{ color:rightText, fontSize:32, fontWeight:800, margin:'0 0 8px', letterSpacing:'-0.5px' }}>
+            <h2 style={{ color:'#1E3A8A', fontSize:32, fontWeight:800, margin:'0 0 8px', letterSpacing:'-0.5px' }}>
               Bienvenido de nuevo
             </h2>
-            <p style={{ color:'#94a3b8', fontSize:14, margin:0 }}>
+            <p style={{ color:'#64748B', fontSize:14, margin:0 }}>
               Inicia sesión en tu cuenta
             </p>
           </div>
