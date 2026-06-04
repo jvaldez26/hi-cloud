@@ -1165,6 +1165,10 @@ export default function AppLayout() {
   const cambiarEmpresa = useCallback(async (id: number) => {
     setEmpresaActiva(id);
     localStorage.setItem('empresaId', String(id));
+    // Al cambiar de empresa, limpiar cache del POS para que el nuevo contexto
+    // no herede el cajero/vendedor de la empresa anterior
+    localStorage.removeItem('pos_cajero_nombre');
+    localStorage.removeItem('pos_vendedor_id');
     // Renovar JWT con el nuevo empresaId — el TenantMiddleware lee empresaId
     // ÚNICAMENTE del payload del JWT, no del header X-Empresa-ID.
     try {

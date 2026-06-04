@@ -4214,8 +4214,10 @@ export default function POSPage() {
     if (!usuario?.email) { setErrCambio('Usuario inválido'); setCambiandoUser(false); return; }
     try {
       await api.post('/auth/login', { email: usuario.email, password: pwCambio });
-      // Login exitoso → limpiar bloqueo y recargar con el nuevo usuario
+      // Login exitoso → limpiar datos del cajero anterior y recargar
       sessionStorage.removeItem('pos_bloqueado');
+      localStorage.removeItem('pos_cajero_nombre');
+      localStorage.removeItem('pos_vendedor_id');
       setModalCambiarUser(false);
       window.location.reload();
     } catch (e: any) {
