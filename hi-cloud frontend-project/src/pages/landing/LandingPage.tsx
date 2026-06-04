@@ -48,19 +48,6 @@ function CountUp({ to, suffix = '' }: { to: number; suffix?: string }) {
 }
 
 // ── Navbar ─────────────────────────────────────────────────────────────────────
-function ThemeToggleBtn() {
-  const { isDark, toggle } = useThemeStore();
-  return (
-    <button onClick={toggle} title={isDark ? 'Modo claro' : 'Modo oscuro'}
-      style={{ background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.12)', borderRadius: 8,
-        padding: '7px 10px', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center' }}>
-      {isDark
-        ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-        : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>}
-    </button>
-  );
-}
-
 function Navbar({ onDemo }: { onDemo: () => void }) {
   const [scrolled, setScrolled] = useState(false);
   const [mopen,    setMopen]    = useState(false);
@@ -100,7 +87,6 @@ function Navbar({ onDemo }: { onDemo: () => void }) {
         ))}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <ThemeToggleBtn />
         <button onClick={() => navigate('/login')} className="nav-cta-hide"
           style={{ background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.12)',
             color: '#fff', fontSize: 13, fontWeight: 500, padding: '7px 16px', borderRadius: 8, cursor: 'pointer' }}>
