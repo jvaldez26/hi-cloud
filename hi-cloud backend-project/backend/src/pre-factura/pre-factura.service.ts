@@ -120,10 +120,16 @@ export class PreFacturaService {
 
   async findOne(id: number) {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const pf = await this.pfRepo.findOne({
-      where:     { id, empresaId, isActive: true },
-      relations: ['cliente'],   // detalles se carga por eager:true en la entidad
-    });
+    // QueryBuilder con leftJoinAndSelect explícito — igual que listar().
+    // findOne+relations y eager:true no funcionan con @TenantScoped.
+    const pf = await this.pfRepo
+      .createQueryBuilder('pf')
+      .leftJoinAndSelect('pf.cliente',  'cliente')
+      .leftJoinAndSelect('pf.detalles', 'detalles')
+      .where('pf.id = :id',          { id })
+      .andWhere('pf.empresaId = :eid', { eid: empresaId })
+      .andWhere('pf.isActive = :a',    { a: true })
+      .getOne();
     if (!pf) throw new NotFoundException(`Pre-Factura #${id} no encontrada`);
     return pf;
   }
