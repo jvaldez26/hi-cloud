@@ -108,24 +108,43 @@ export default function LoginPage() {
           .login-logo-mobile{display:block!important}
           .login-right-inner{padding:32px 24px!important}
         }
-        /* Inputs lado derecho — siempre claro */
-        .login-input .ant-input,
-        .login-input .ant-input-affix-wrapper {
-          background:#F8FAFC!important;
+        /* Sobrescribir variables CSS de Ant Design v5 para el panel de login */
+        .login-panel {
+          --ant-color-bg-container: #F8FAFC !important;
+          --ant-color-bg-elevated: #FFFFFF !important;
+          --ant-color-text: #0F172A !important;
+          --ant-color-text-placeholder: #94A3B8 !important;
+          --ant-color-border: #CBD5E1 !important;
+          --ant-color-primary: #2563EB !important;
+          --ant-color-primary-hover: #1D4ED8 !important;
+          --ant-color-fill-alter: #F8FAFC !important;
+          --ant-input-color-bg-container: #F8FAFC !important;
+        }
+        /* Selectores específicos Ant Design v5 */
+        .login-panel .ant-input,
+        .login-panel .ant-input-affix-wrapper {
+          background-color:#F8FAFC!important; background:#F8FAFC!important;
           border:1.5px solid #CBD5E1!important;
           color:#0F172A!important; border-radius:10px!important; height:48px!important;
           width:100%!important; box-sizing:border-box!important;
         }
-        .login-input .ant-input:focus,
-        .login-input .ant-input-affix-wrapper-focused {
-          border-color:#2563EB!important; box-shadow:0 0 0 3px rgba(37,99,235,.15)!important;
+        .login-panel .ant-input-affix-wrapper:hover { border-color:#94A3B8!important; }
+        .login-panel .ant-input-affix-wrapper-focused,
+        .login-panel .ant-input:focus {
+          border-color:#2563EB!important;
+          box-shadow:0 0 0 3px rgba(37,99,235,.1)!important;
         }
-        .login-input .ant-input::placeholder { color:#94A3B8!important; }
-        .login-input .ant-form-item-label label { color:#1E3A8A!important; font-size:13px!important; font-weight:600!important; }
-        .login-input .ant-checkbox-wrapper { color:#64748B!important; font-size:13px!important; }
-        .login-input .ant-form-item { margin-bottom:18px!important; }
-        .login-input { width:100%!important; box-sizing:border-box!important; }
-        .login-input .ant-form-item-control-input { width:100%!important; }
+        .login-panel .ant-input::placeholder,
+        .login-panel .ant-input-affix-wrapper input::placeholder { color:#94A3B8!important; }
+        .login-panel .ant-input-prefix svg,
+        .login-panel .ant-input-prefix { color:#64748B!important; }
+        .login-panel .ant-input-suffix,
+        .login-panel .ant-input-password-icon { color:#64748B!important; }
+        .login-panel .ant-form-item-label > label { color:#1E3A8A!important; font-size:13px!important; font-weight:600!important; }
+        .login-panel .ant-checkbox-inner { background:#fff!important; border-color:#CBD5E1!important; }
+        .login-panel .ant-checkbox-checked .ant-checkbox-inner { background:#2563EB!important; border-color:#2563EB!important; }
+        .login-panel .ant-checkbox-wrapper span { color:#374151!important; font-size:13px!important; }
+        .login-panel .ant-form-item { margin-bottom:18px!important; }
         .login-right-inner { box-sizing:border-box!important; }
       `}</style>
 
@@ -283,32 +302,40 @@ export default function LoginPage() {
           )}
 
           {/* Formulario principal */}
-          <div className="login-input" style={{ display: pending2FA ? 'none' : undefined }}>
+          <div className="login-panel" style={{ display: pending2FA ? 'none' : undefined }}>
             <Form layout="vertical" onFinish={onFinish} size="large">
               <Form.Item name="email" label="Correo electrónico"
                 rules={[{ required:true, message:'El correo es requerido' },{ type:'email', message:'Correo inválido' }]}>
-                <Input prefix={<UserOutlined style={{ color:rightSub }} />}
-                  placeholder="usuario@empresa.com" autoComplete="email" type="email" />
+                <Input
+                  prefix={<UserOutlined style={{ color:'#64748B' }} />}
+                  placeholder="usuario@empresa.com"
+                  autoComplete="email" type="email"
+                  style={{ background:'#F8FAFC', borderColor:'#CBD5E1', color:'#0F172A', height:48, borderRadius:10, borderWidth:1.5 }}
+                />
               </Form.Item>
 
               <Form.Item name="password"
                 label={
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', width:'100%' }}>
-                    <span>Contraseña</span>
-                    <Link to="/recuperar-contrasena" style={{ color:'#2563EB', fontSize:12, fontWeight:500, marginLeft:'auto' }}>
+                    <span style={{ color:'#1E3A8A', fontWeight:600 }}>Contraseña</span>
+                    <Link to="/recuperar-contrasena" style={{ color:'#2563EB', fontSize:12, fontWeight:500 }}>
                       ¿Olvidaste tu contraseña?
                     </Link>
                   </div>
                 }
                 rules={[{ required:true, message:'La contraseña es requerida' }]}>
-                <Input.Password prefix={<LockOutlined style={{ color:rightSub }} />}
+                <Input.Password
+                  prefix={<LockOutlined style={{ color:'#64748B' }} />}
                   placeholder="••••••••"
-                  autoComplete={recordarPassword ? 'current-password' : 'new-password'} />
+                  autoComplete={recordarPassword ? 'current-password' : 'new-password'}
+                  style={{ background:'#F8FAFC', borderColor:'#CBD5E1', color:'#0F172A', height:48, borderRadius:10, borderWidth:1.5 }}
+                />
               </Form.Item>
 
               <div style={{ marginBottom:22, marginTop:-4 }}>
                 <Checkbox checked={recordarPassword}
-                  onChange={e => { setRecordarPassword(e.target.checked); localStorage.setItem('hicloud_recordar_pw', String(e.target.checked)); }}>
+                  onChange={e => { setRecordarPassword(e.target.checked); localStorage.setItem('hicloud_recordar_pw', String(e.target.checked)); }}
+                  style={{ color:'#374151' }}>
                   Recordar contraseña en este dispositivo
                 </Checkbox>
               </div>
