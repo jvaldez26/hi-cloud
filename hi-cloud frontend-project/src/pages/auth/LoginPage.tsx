@@ -108,38 +108,39 @@ export default function LoginPage() {
           .login-logo-mobile{display:block!important}
           .login-right-inner{padding:32px 24px!important}
         }
-        /* Sobrescribir variables CSS de Ant Design v5 para el panel de login */
-        .login-panel {
-          --ant-color-bg-container: #F8FAFC !important;
-          --ant-color-bg-elevated: #FFFFFF !important;
-          --ant-color-text: #0F172A !important;
-          --ant-color-text-placeholder: #94A3B8 !important;
-          --ant-color-border: #CBD5E1 !important;
-          --ant-color-primary: #2563EB !important;
-          --ant-color-primary-hover: #1D4ED8 !important;
-          --ant-color-fill-alter: #F8FAFC !important;
-          --ant-input-color-bg-container: #F8FAFC !important;
-        }
-        /* Selectores específicos Ant Design v5 */
-        .login-panel .ant-input,
+        /* Fix doble borde: solo el wrapper tiene background/border, el input interno es transparente */
         .login-panel .ant-input-affix-wrapper {
-          background-color:#F8FAFC!important; background:#F8FAFC!important;
+          background:#F8FAFC!important;
           border:1.5px solid #CBD5E1!important;
-          color:#0F172A!important; border-radius:10px!important; height:48px!important;
-          width:100%!important; box-sizing:border-box!important;
+          border-radius:10px!important;
+          height:48px!important;
+          padding:0 12px!important;
+          box-shadow:none!important;
         }
         .login-panel .ant-input-affix-wrapper:hover { border-color:#94A3B8!important; }
-        .login-panel .ant-input-affix-wrapper-focused,
-        .login-panel .ant-input:focus {
+        .login-panel .ant-input-affix-wrapper-focused {
           border-color:#2563EB!important;
-          box-shadow:0 0 0 3px rgba(37,99,235,.1)!important;
+          box-shadow:0 0 0 2px rgba(37,99,235,.12)!important;
+        }
+        /* Input interno: TRANSPARENTE para evitar el doble */
+        .login-panel .ant-input-affix-wrapper .ant-input,
+        .login-panel .ant-input-affix-wrapper input {
+          background:transparent!important;
+          color:#0F172A!important;
+          border:none!important;
+          box-shadow:none!important;
+          height:100%!important;
+        }
+        /* Input sin wrapper (edge case) */
+        .login-panel .ant-input:not(.ant-input-affix-wrapper .ant-input) {
+          background:#F8FAFC!important;
+          border:1.5px solid #CBD5E1!important;
+          border-radius:10px!important; height:48px!important; color:#0F172A!important;
         }
         .login-panel .ant-input::placeholder,
-        .login-panel .ant-input-affix-wrapper input::placeholder { color:#94A3B8!important; }
-        .login-panel .ant-input-prefix svg,
-        .login-panel .ant-input-prefix { color:#64748B!important; }
-        .login-panel .ant-input-suffix,
-        .login-panel .ant-input-password-icon { color:#64748B!important; }
+        .login-panel input::placeholder { color:#94A3B8!important; }
+        .login-panel .ant-input-prefix { color:#64748B!important; margin-right:8px!important; }
+        .login-panel .ant-input-suffix { color:#64748B!important; }
         .login-panel .ant-form-item-label > label { color:#1E3A8A!important; font-size:13px!important; font-weight:600!important; }
         .login-panel .ant-checkbox-inner { background:#fff!important; border-color:#CBD5E1!important; }
         .login-panel .ant-checkbox-checked .ant-checkbox-inner { background:#2563EB!important; border-color:#2563EB!important; }
