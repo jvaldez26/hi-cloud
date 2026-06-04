@@ -2714,6 +2714,186 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
   );
 }
 
+// ── Panel Gastos (formulario completo igual que módulo admin) ─────────────────
+function POSGastosPanel({ C, onVolver }: { C: Palette; onVolver: () => void }) {
+  const qc = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+  const [busq,     setBusq]     = useState('');
+  const [f, setF] = useState({
+    fecha: dayjs().format('YYYY-MM-DD'),
+    categoria: '', descripcion: '', monto: '',
+    itbis: '', proveedor: '', rncProveedor: '', comprobante: '',
+  });
+
+  // Categorías desde la misma API que el módulo admin
+  const { data: categorias = [] } = useQuery<any[]>({
+    queryKey: ['gasto-cats'],
+    queryFn: () => api.get('/gastos/categorias').then(r => r.data?.data ?? r.data ?? []),
+    staleTime: 5 * 60_000,
+    enabled: showForm,
+  });
+
+  const { data: gastos = [], isLoading, refetch } = useQuery<any[]>({
+    queryKey: ['pos-gastos', busq],
+    queryFn: () => api.get(`/gastos?limit=30${busq ? `&search=${encodeURIComponent(busq)}` : ''}`)
+      .then(r => { const d = r.data?.data ?? r.data; return d?.data ?? d ?? []; }),
+    staleTime: 30_000,
+  });
+
+  const catInfo   = (categorias as any[]).find((c: any) => c.value === f.categoria);
+  const generaE43 = catInfo?.generaE43 === true;
+
+  const crearMut = useMutation({
+    mutationFn: () => {
+      const monto = Number(f.monto);
+      const itbis = f.itbis ? Number(f.itbis) : 0;
+      return api.post('/gastos', {
+        fecha:        f.fecha,
+        categoria:    f.categoria,
+        descripcion:  f.descripcion.trim(),
+        monto,
+        itbis,
+        proveedor:    f.proveedor  || undefined,
+        rncProveedor: f.rncProveedor || undefined,
+        comprobante:  f.comprobante  || undefined,
+      });
+    },
+    onSuccess: () => {
+      message.success('Gasto registrado ✓');
+      qc.invalidateQueries({ queryKey: ['pos-gastos'] });
+      qc.invalidateQueries({ queryKey: ['gastos'] });
+      refetch();
+      setShowForm(false);
+      setF({ fecha: dayjs().format('YYYY-MM-DD'), categoria:'', descripcion:'', monto:'', itbis:'', proveedor:'', rncProveedor:'', comprobante:'' });
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al registrar gasto'),
+  });
+
+  const inp = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF(p => ({ ...p, [k]: e.target.value }));
+  const inputS: React.CSSProperties = { width:'100%', height:36, padding:'0 10px', borderRadius:8, border:`1px solid ${C.border}`, background:C.card, color:C.text, fontSize:13, outline:'none', boxSizing:'border-box' };
+  const labelS: React.CSSProperties = { fontSize:11, fontWeight:700, color:C.textSub, display:'block', marginBottom:3 };
+  const canSubmit = f.categoria && f.descripcion.trim() && Number(f.monto) > 0;
+
+  return (
+    <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+      <PanelHeader title="Gastos" icon="💸" C={C} onVolver={onVolver}
+        onNuevo={() => setShowForm(v => !v)} labelNuevo={showForm ? 'Ver lista' : 'Registrar gasto'} />
+
+      {showForm ? (
+        <div style={{ flex:1, overflowY:'auto', padding:16 }}>
+          <div style={{ maxWidth:480, color:C.text }}>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
+              {/* Fecha */}
+              <div>
+                <span style={labelS}>Fecha *</span>
+                <input type="date" value={f.fecha} onChange={inp('fecha')} style={inputS} />
+              </div>
+              {/* Categoría */}
+              <div>
+                <span style={labelS}>Categoría *</span>
+                <select value={f.categoria} onChange={e => setF(p => ({ ...p, categoria: e.target.value }))}
+                  style={{ ...inputS, appearance:'auto' as any }}>
+                  <option value="">Seleccionar...</option>
+                  {(categorias as any[]).map((c: any) => (
+                    <option key={c.value} value={c.value}>{c.icon} {c.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Descripción */}
+            <div style={{ marginBottom:10 }}>
+              <span style={labelS}>Descripción *</span>
+              <input value={f.descripcion} onChange={inp('descripcion')} placeholder="Descripción del gasto"
+                style={inputS} maxLength={300} />
+            </div>
+
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
+              {/* Monto */}
+              <div>
+                <span style={labelS}>Monto RD$ *</span>
+                <input type="number" value={f.monto} onChange={inp('monto')} placeholder="0.00"
+                  min="0" step="0.01" style={{ ...inputS, textAlign:'right' }} />
+              </div>
+              {/* ITBIS */}
+              {!generaE43 && (
+                <div>
+                  <span style={labelS}>ITBIS RD$ <span style={{ fontWeight:400, color:C.textSub }}>(opcional)</span></span>
+                  <input type="number" value={f.itbis} onChange={inp('itbis')} placeholder="0.00"
+                    min="0" step="0.01" style={{ ...inputS, textAlign:'right' }} />
+                </div>
+              )}
+            </div>
+
+            {!generaE43 && (
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
+                <div>
+                  <span style={labelS}>Proveedor</span>
+                  <input value={f.proveedor} onChange={inp('proveedor')} placeholder="Nombre del proveedor" style={inputS} />
+                </div>
+                <div>
+                  <span style={labelS}>RNC Proveedor</span>
+                  <input value={f.rncProveedor} onChange={inp('rncProveedor')} placeholder="9 dígitos"
+                    maxLength={9} style={inputS} />
+                </div>
+              </div>
+            )}
+
+            <div style={{ marginBottom:14 }}>
+              <span style={labelS}>{generaE43 ? 'Referencia' : 'No. Comprobante (NCF recibido)'}</span>
+              <input value={f.comprobante} onChange={inp('comprobante')}
+                placeholder={generaE43 ? 'Referencia o número' : 'E310000000001 o referencia'}
+                style={inputS} />
+            </div>
+
+            {generaE43 && (
+              <div style={{ background: C.blue + '15', border:`1px solid ${C.blue}30`, borderRadius:8, padding:'8px 12px', marginBottom:14, fontSize:12, color:C.blue }}>
+                💡 Esta categoría genera un e-CF E43 (Gastos Menores) automáticamente.
+              </div>
+            )}
+
+            <button onClick={() => crearMut.mutate()} disabled={crearMut.isPending || !canSubmit}
+              style={{ width:'100%', height:44, borderRadius:10, border:'none',
+                background: !canSubmit ? '#ccc' : '#DC2626', color:'#fff',
+                fontWeight:700, fontSize:15, cursor: !canSubmit ? 'not-allowed' : 'pointer' }}>
+              {crearMut.isPending ? 'Registrando...' : 'Registrar gasto'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div style={{ padding:'10px 14px', borderBottom:`1px solid ${C.border}` }}>
+            <input value={busq} onChange={e => setBusq(e.target.value)} placeholder="Buscar gasto..."
+              style={{ width:'100%', height:34, padding:'0 12px', background:C.card,
+                border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontSize:12, outline:'none', boxSizing:'border-box' }} />
+          </div>
+          <div style={{ flex:1, overflowY:'auto', scrollbarWidth:'thin' }}>
+            {isLoading ? <div style={{ textAlign:'center', padding:40 }}><Spin/></div>
+             : (gastos.length === 0 ? <Empty style={{ marginTop:40 }} description={<span style={{ color:C.textSub }}>Sin gastos registrados</span>} />
+             : (
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                <thead><tr style={{ background:C.card, position:'sticky', top:0 }}>
+                  {['Descripción','Categoría','Total','Fecha'].map(h => (
+                    <th key={h} style={{ padding:'8px 12px', textAlign:'left', color:C.textSub, fontWeight:600, fontSize:11, borderBottom:`1px solid ${C.border}` }}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>{gastos.map((g: any, i: number) => (
+                  <tr key={g.id} style={{ borderBottom:`1px solid ${C.border}`, background:i%2===0?'transparent':C.card }}>
+                    <td style={{ padding:'8px 12px', color:C.text }}>{g.descripcion}</td>
+                    <td style={{ padding:'8px 12px', color:C.textSub, fontSize:11 }}>{g.categoria?.replace(/_/g,' ')}</td>
+                    <td style={{ padding:'8px 12px', fontWeight:700, color:C.red }}>{fmt.money(g.total??0)}</td>
+                    <td style={{ padding:'8px 12px', color:C.textSub, fontSize:11 }}>{g.fecha?.substring(0,10)??'—'}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void }) {
   const qc = useQueryClient();
   const [nota,     setNota]     = useState('');
@@ -3242,6 +3422,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion }: {
   if (panel === 'clientes')     return <POSClientesPanel   C={C} onVolver={onVolver} />;
   if (panel === 'cierre-caja')  return <POSCierreCajaPanel C={C} onVolver={onVolver} />;
   if (panel === 'conduce')      return <POSConducePanel    C={C} onVolver={onVolver} />;
+  if (panel === 'gastos')       return <POSGastosPanel     C={C} onVolver={onVolver} />;
   if (panel === 'recibos-cobro' || panel === 'anticipos')
     return <POSReciboAnticipoPanel tipo={panel as 'recibos-cobro'|'anticipos'} C={C} onVolver={onVolver} />;
 
