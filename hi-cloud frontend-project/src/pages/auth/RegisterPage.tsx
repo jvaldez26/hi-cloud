@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { Form, Input, Button, Typography, Alert, Steps,
-         Row, Col, Select, message } from 'antd';
+         Row, Col, Select, message, ConfigProvider, theme as antTheme } from 'antd';
 import { UserOutlined, LockOutlined, BuildOutlined, RocketOutlined, CheckOutlined } from '@ant-design/icons';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -191,38 +191,33 @@ export default function RegisterPage() {
         </motion.div>
       </div>
 
-      {/* Panel derecho — Formulario */}
+      {/* Panel derecho — Formulario SIEMPRE CLARO */}
+      <ConfigProvider theme={{ algorithm: antTheme.defaultAlgorithm, token: { colorBgContainer:'#FFFFFF', colorText:'#0F172A', colorBorder:'#CBD5E1', colorPrimary:'#2563EB', borderRadius:10, controlHeight:48 } }}>
       <div className="reg-right" style={{
         width: 480, display: 'flex', flexDirection: 'column',
         justifyContent: 'center', padding: '48px 40px',
-        background: '#111827',
-        borderLeft: '1px solid rgba(255,255,255,.06)',
+        background: '#FFFFFF',
+        borderLeft: '1px solid #E5E7EB',
         overflowY: 'auto',
       }}>
         <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .4 }}>
-          {/* Marca: solo visible en mobile (panel izquierdo oculto) */}
+          {/* Marca: solo visible en mobile */}
           <Link to="/" className="reg-mobile-brand" style={{ alignItems: 'center', gap: 10, textDecoration: 'none', marginBottom: 28 }}>
-            <div style={{
-              width: 36, height: 36, borderRadius: 9,
-              background: 'linear-gradient(135deg,#1a56db,#0ea5e9)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 16, fontWeight: 700, color: '#fff', flexShrink: 0,
-            }}>H</div>
-            <Text strong style={{ color: '#fff', fontSize: 18 }}>HiCloud ERP</Text>
+            <img src="/logo-hicloud.png" alt="HiCloud ERP" style={{ height: 36, width: 'auto', borderRadius: 8 }} />
           </Link>
 
-          <Title level={3} style={{ color: '#fff', marginBottom: 4 }}>Crear cuenta</Title>
-          <Text style={{ color: 'rgba(255,255,255,.4)', display: 'block', marginBottom: 20 }}>
+          <Title level={3} style={{ color: '#0F172A', marginBottom: 4 }}>Crear cuenta</Title>
+          <Text style={{ color: '#6B7280', display: 'block', marginBottom: 20 }}>
             ¿Ya tienes cuenta?{' '}
-            <Link to="/login" style={{ color: '#60a5fa' }}>Iniciar sesión</Link>
+            <Link to="/login" style={{ color: '#2563EB' }}>Iniciar sesión</Link>
           </Text>
 
           {step < 3 && (
             <Steps current={step} size="small" style={{ marginBottom: 24 }}
               items={[
-                { title: <Text style={{ color: '#fff', fontSize: 11 }}>Cuenta</Text> },
-                { title: <Text style={{ color: '#fff', fontSize: 11 }}>Plan</Text> },
-                { title: <Text style={{ color: '#fff', fontSize: 11 }}>Empresa</Text> },
+                { title: <Text style={{ color: '#374151', fontSize: 11 }}>Cuenta</Text> },
+                { title: <Text style={{ color: '#374151', fontSize: 11 }}>Plan</Text> },
+                { title: <Text style={{ color: '#374151', fontSize: 11 }}>Empresa</Text> },
               ]} />
           )}
 
@@ -252,23 +247,23 @@ export default function RegisterPage() {
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   margin: '0 auto 20px', fontSize: 32, border: '2px solid rgba(245,158,11,.3)',
                 }}>⏳</div>
-                <Title level={4} style={{ color: '#fff', marginBottom: 8 }}>¡Solicitud recibida!</Title>
-                <Text style={{ color: 'rgba(255,255,255,.6)', display: 'block', marginBottom: 4 }}>
+                <Title level={4} style={{ color: '#0F172A', marginBottom: 8 }}>¡Solicitud recibida!</Title>
+                <Text style={{ color: '#6B7280', display: 'block', marginBottom: 4 }}>
                   Tu cuenta fue creada para:
                 </Text>
-                <Text strong style={{ color: '#60a5fa', display: 'block', marginBottom: 16 }}>
+                <Text strong style={{ color: '#2563EB', display: 'block', marginBottom: 16 }}>
                   {emailRegistrado}
                 </Text>
                 <div style={{
-                  background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.25)',
+                  background: '#FFFBEB', border: '1px solid #FCD34D',
                   borderRadius: 10, padding: '14px 16px', marginBottom: 16, textAlign: 'left',
                 }}>
-                  <Text style={{ color: '#f59e0b', fontWeight: 700, fontSize: 13, display: 'block', marginBottom: 6 }}>
+                  <Text style={{ color: '#D97706', fontWeight: 700, fontSize: 13, display: 'block', marginBottom: 6 }}>
                     ⏰ Pendiente de aprobación
                   </Text>
-                  <Text style={{ color: 'rgba(255,255,255,.6)', fontSize: 13 }}>
+                  <Text style={{ color: '#374151', fontSize: 13 }}>
                     Nuestro equipo revisará tu solicitud y recibirás un email en{' '}
-                    <strong style={{ color: 'rgba(255,255,255,.85)' }}>menos de 24 horas</strong>.
+                    <strong style={{ color: '#111827' }}>menos de 24 horas</strong>.
                     Al ser aprobada, podrás iniciar sesión y comenzar tu prueba gratuita.
                   </Text>
                 </div>
@@ -291,34 +286,34 @@ export default function RegisterPage() {
               /* ── PASO 1: Datos personales ────────────────────────────── */
               <motion.div key="step0" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}>
                 <Form form={form1} layout="vertical">
-                  <Form.Item name="nombre" label={<Text style={{ color: 'rgba(255,255,255,.7)', fontSize: 13 }}>Nombre completo</Text>}
+                  <Form.Item name="nombre" label={<Text style={{ color: '#1E3A8A', fontSize: 13, fontWeight: 600 }}>Nombre completo</Text>}
                     rules={[
                       { required: true, message: 'El nombre es requerido' },
                       { min: 2,   message: 'Mínimo 2 caracteres' },
                       { max: 200, message: 'Máximo 200 caracteres' },
                     ]}>
-                    <Input prefix={<UserOutlined style={{ color: 'rgba(255,255,255,.3)' }} />}
+                    <Input prefix={<UserOutlined style={{ color: '#64748B' }} />}
                       placeholder="Juan Pérez" size="large"
-                      style={{ background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.12)', color: '#fff', borderRadius: 8 }} />
+                      style={{ background: '#F8FAFC', border: '1.5px solid #CBD5E1', color: '#0F172A', borderRadius: 8 }} />
                   </Form.Item>
-                  <Form.Item name="email" label={<Text style={{ color: 'rgba(255,255,255,.7)', fontSize: 13 }}>Correo electrónico</Text>}
+                  <Form.Item name="email" label={<Text style={{ color: '#1E3A8A', fontSize: 13, fontWeight: 600 }}>Correo electrónico</Text>}
                     rules={[
                       { required: true, message: 'El correo es requerido' },
                       { type: 'email',  message: 'Correo inválido' },
                     ]}>
-                    <Input prefix={<UserOutlined style={{ color: 'rgba(255,255,255,.3)' }} />}
+                    <Input prefix={<UserOutlined style={{ color: '#64748B' }} />}
                       placeholder="juan@empresa.com" size="large"
-                      style={{ background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.12)', color: '#fff', borderRadius: 8 }} />
+                      style={{ background: '#F8FAFC', border: '1.5px solid #CBD5E1', color: '#0F172A', borderRadius: 8 }} />
                   </Form.Item>
-                  <Form.Item name="password" label={<Text style={{ color: 'rgba(255,255,255,.7)', fontSize: 13 }}>Contraseña</Text>}
+                  <Form.Item name="password" label={<Text style={{ color: '#1E3A8A', fontSize: 13, fontWeight: 600 }}>Contraseña</Text>}
                     rules={[
                       { required: true, message: 'La contraseña es requerida' },
                       { min: 8,  message: 'Mínimo 8 caracteres' },
                       { pattern: /(?=.*[A-Z])(?=.*[a-z])(?=.*\d)/, message: 'Debe tener mayúscula, minúscula y número' },
                     ]}>
-                    <Input.Password prefix={<LockOutlined style={{ color: 'rgba(255,255,255,.3)' }} />}
+                    <Input.Password prefix={<LockOutlined style={{ color: '#64748B' }} />}
                       placeholder="Mínimo 8 caracteres" size="large"
-                      style={{ background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.12)', color: '#fff', borderRadius: 8 }} />
+                      style={{ background: '#F8FAFC', border: '1.5px solid #CBD5E1', color: '#0F172A', borderRadius: 8 }} />
                   </Form.Item>
                   <Button type="primary" block size="large" onClick={handleStep1}
                     style={{ height: 48, background: 'linear-gradient(135deg,#1a56db,#0ea5e9)', border: 'none', borderRadius: 10, fontWeight: 600 }}>
@@ -330,7 +325,7 @@ export default function RegisterPage() {
             ) : step === 1 ? (
               /* ── PASO 2: Selección de plan ───────────────────────────── */
               <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-                <Text style={{ color: 'rgba(255,255,255,.5)', fontSize: 13, display: 'block', marginBottom: 16 }}>
+                <Text style={{ color: '#6B7280', fontSize: 13, display: 'block', marginBottom: 16 }}>
                   Elige el plan para tu prueba gratuita de 15 días. Puedes cambiarlo después.
                 </Text>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
@@ -339,9 +334,9 @@ export default function RegisterPage() {
                       onClick={() => setPlanElegido(p.clave)}
                       style={{
                         cursor: 'pointer',
-                        border: `2px solid ${planElegido === p.clave ? p.borderColor : 'rgba(255,255,255,.1)'}`,
+                        border: `2px solid ${planElegido === p.clave ? p.borderColor : '#E5E7EB'}`,
                         borderRadius: 10, padding: '12px 16px',
-                        background: planElegido === p.clave ? `${p.color}22` : 'rgba(255,255,255,.03)',
+                        background: planElegido === p.clave ? `${p.color}15` : '#F9FAFB',
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                         transition: 'all .2s', position: 'relative',
                       }}>
@@ -353,13 +348,13 @@ export default function RegisterPage() {
                         }}>MÁS POPULAR</span>
                       )}
                       <div>
-                        <Text strong style={{ color: '#fff', fontSize: 14 }}>{p.nombre}</Text>
-                        <Text style={{ color: 'rgba(255,255,255,.45)', fontSize: 12, display: 'block' }}>
+                        <Text strong style={{ color: '#111827', fontSize: 14 }}>{p.nombre}</Text>
+                        <Text style={{ color: '#6B7280', fontSize: 12, display: 'block' }}>
                           {p.limite} · {p.usuarios} usuarios
                         </Text>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <Text strong style={{ color: planElegido === p.clave ? p.borderColor : 'rgba(255,255,255,.5)', fontSize: 15 }}>
+                        <Text strong style={{ color: planElegido === p.clave ? p.borderColor : '#374151', fontSize: 15 }}>
                           US${p.precio}/mes
                         </Text>
                         {planElegido === p.clave && (
@@ -375,13 +370,13 @@ export default function RegisterPage() {
                     </div>
                   ))}
                 </div>
-                <Text style={{ color: 'rgba(255,255,255,.3)', fontSize: 11, display: 'block', marginBottom: 16 }}>
+                <Text style={{ color: '#9CA3AF', fontSize: 11, display: 'block', marginBottom: 16 }}>
                   Todos los planes incluyen todos los módulos. La diferencia está en los límites de ingresos y usuarios.
                 </Text>
                 <Row gutter={8}>
                   <Col xs={10}>
                     <Button block size="large" onClick={handleBackToStep0}
-                      style={{ height: 44, background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.15)', color: '#fff', borderRadius: 10 }}>
+                      style={{ height: 44, background: '#F1F5F9', border: '1px solid #CBD5E1', color: '#374151', borderRadius: 10 }}>
                       ← Atrás
                     </Button>
                   </Col>
@@ -398,28 +393,28 @@ export default function RegisterPage() {
               /* ── PASO 3: Datos de empresa ─────────────────────────────── */
               <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
                 <Form form={form2} layout="vertical">
-                  <Form.Item name="empresa" label={<Text style={{ color: 'rgba(255,255,255,.7)', fontSize: 13 }}>Nombre de la empresa</Text>}
+                  <Form.Item name="empresa" label={<Text style={{ color: '#1E3A8A', fontSize: 13, fontWeight: 600 }}>Nombre de la empresa</Text>}
                     rules={[
                       { required: true, message: 'El nombre de la empresa es requerido' },
                       { max: 200, message: 'Máximo 200 caracteres' },
                     ]}>
-                    <Input prefix={<BuildOutlined style={{ color: 'rgba(255,255,255,.3)' }} />}
+                    <Input prefix={<BuildOutlined style={{ color: '#64748B' }} />}
                       placeholder="Mi Empresa S.R.L." size="large"
-                      style={{ background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.12)', color: '#fff', borderRadius: 8 }} />
+                      style={{ background: '#F8FAFC', border: '1.5px solid #CBD5E1', color: '#0F172A', borderRadius: 8 }} />
                   </Form.Item>
                   <Row gutter={12}>
                     <Col xs={24} sm={14}>
-                      <Form.Item name="rnc" label={<Text style={{ color: 'rgba(255,255,255,.7)', fontSize: 13 }}>RNC</Text>}
+                      <Form.Item name="rnc" label={<Text style={{ color: '#1E3A8A', fontSize: 13, fontWeight: 600 }}>RNC</Text>}
                         rules={[
                           { required: true, message: 'El RNC es requerido' },
                           { pattern: /^\d{9}$|^\d{11}$/, message: '9 u 11 dígitos' },
                         ]}>
                         <Input placeholder="101234567" size="large"
-                          style={{ background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.12)', color: '#fff', borderRadius: 8 }} />
+                          style={{ background: '#F8FAFC', border: '1.5px solid #CBD5E1', color: '#0F172A', borderRadius: 8 }} />
                       </Form.Item>
                     </Col>
                     <Col xs={24} sm={10}>
-                      <Form.Item name="pais" label={<Text style={{ color: 'rgba(255,255,255,.7)', fontSize: 13 }}>País</Text>} initialValue="República Dominicana">
+                      <Form.Item name="pais" label={<Text style={{ color: '#1E3A8A', fontSize: 13, fontWeight: 600 }}>País</Text>} initialValue="República Dominicana">
                         <Select size="large" options={PAISES.map(p => ({ value: p, label: p }))} style={{ borderRadius: 8 }} />
                       </Form.Item>
                     </Col>
@@ -427,7 +422,7 @@ export default function RegisterPage() {
                   <Row gutter={8}>
                     <Col xs={10}>
                       <Button block size="large" onClick={handleBackToStep1}
-                        style={{ height: 48, background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.15)', color: '#fff', borderRadius: 10 }}>
+                        style={{ height: 48, background: '#F1F5F9', border: '1px solid #CBD5E1', color: '#374151', borderRadius: 10 }}>
                         ← Atrás
                       </Button>
                     </Col>
@@ -444,11 +439,12 @@ export default function RegisterPage() {
             )}
           </AnimatePresence>
 
-          <Text style={{ color: 'rgba(255,255,255,.2)', fontSize: 11, textAlign: 'center', display: 'block', marginTop: 20 }}>
+          <Text style={{ color: '#9CA3AF', fontSize: 11, textAlign: 'center', display: 'block', marginTop: 20 }}>
             Al registrarte aceptas los Términos de Uso y la Política de Privacidad de HiCloud ERP.
           </Text>
         </motion.div>
       </div>
+      </ConfigProvider>
 
       {/* ── CSS responsivo ── */}
       <style>{`
