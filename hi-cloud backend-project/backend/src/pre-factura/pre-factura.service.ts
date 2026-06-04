@@ -101,8 +101,10 @@ export class PreFacturaService {
 
     const qb = this.pfRepo
       .createQueryBuilder('pf')
-      .leftJoinAndSelect('pf.cliente',  'c')
-      .leftJoinAndSelect('pf.detalles', 'd')   // QueryBuilder ignora eager:true; join explícito necesario
+      .leftJoinAndSelect('pf.cliente', 'c')
+      // detalles NO se cargan en el listado para evitar paginación incorrecta
+      // con getManyAndCount() + leftJoin one-to-many. El visor y la edición
+      // usan GET /pre-facturas/:id (findOne) que sí carga detalles.
       .where('pf.empresaId = :eid', { eid: empresaId })
       .andWhere('pf.isActive = :a',  { a: true });
 

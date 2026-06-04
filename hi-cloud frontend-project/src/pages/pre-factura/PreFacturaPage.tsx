@@ -319,7 +319,15 @@ export default function PreFacturaPage() {
               title: '', key: 'acciones', width: 72, align: 'right' as const,
               render: (_: any, r: any) => (
                 <TableActions
-                  onView={() => setModalDetalle(r)}
+                  onView={async () => {
+                    // Cargar pre-factura completa (con detalles) igual que el modal de edición
+                    try {
+                      const resp = await api.get(`/pre-facturas/${r.id}`);
+                      setModalDetalle(resp.data?.data ?? resp.data);
+                    } catch {
+                      setModalDetalle(r); // fallback al objeto de tabla si falla
+                    }
+                  }}
                   viewLabel="Ver detalle"
                   items={[
                     {
