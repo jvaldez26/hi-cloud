@@ -2714,11 +2714,77 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
   );
 }
 
+// ── Recibo térmico de gasto ──────────────────────────────────────────────────
+function buildGastoReciboHTML(g: any, empresaNombre: string, empresaRnc: string, cajero: string): string {
+  const e   = (s: string) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const fmtM = (n: number) => `RD$${Number(n??0).toLocaleString('es-DO',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  const ahora = dayjs();
+  const row   = (l: string, v: string) => `<div class="row"><span>${e(l)}</span><span>${e(v)}</span></div>`;
+  const rowB  = (l: string, v: string) => `<div class="row bold"><span>${e(l)}</span><span>${e(v)}</span></div>`;
+  const numGasto = `GAS-${String(g.id??0).padStart(5,'0')}`;
+  const catLabel = (g.categoria??'').replace(/_/g,' ').replace(/\b\w/g,(c:string)=>c.toUpperCase());
+
+  return `<!DOCTYPE html><html lang="es"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=302,initial-scale=1,shrink-to-fit=no">
+<title>Gasto ${e(numGasto)}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;overflow-wrap:break-word}
+html,body{width:80mm;margin:0}
+body{font-family:'Courier New',Courier,monospace;font-size:11pt;line-height:1.45;
+  width:80mm;padding:3mm 5mm;color:#000;background:#fff;
+  -webkit-font-smoothing:none;font-smooth:never}
+.center{text-align:center}
+.bold{font-weight:bold}
+.large{font-size:13pt;font-weight:bold}
+.small{font-size:9pt}
+.row{display:flex;justify-content:space-between;gap:4px;margin:1px 0;width:100%}
+.row span:first-child{flex:1;overflow:hidden}
+.row span:last-child{text-align:right;white-space:nowrap}
+.line{border-top:1px dashed #000;margin:4px 0}
+.dbl{border-top:2px solid #000;margin:4px 0}
+@page{size:80mm auto;margin:0}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style></head><body>
+
+<div class="center bold large">${e(empresaNombre)}</div>
+${empresaRnc ? `<div class="center small">RNC: ${e(empresaRnc)}</div>` : ''}
+<div class="dbl"></div>
+<div class="center bold">COMPROBANTE DE GASTO</div>
+<div class="dbl"></div>
+
+${row('No.:',    numGasto)}
+${row('Fecha:',  ahora.format('DD/MM/YYYY'))}
+${row('Hora:',   ahora.format('hh:mm a'))}
+${cajero ? row('Cajero:', cajero) : ''}
+<div class="line"></div>
+
+<div style="margin:2px 0"><span class="bold">Descripción:</span> ${e(g.descripcion??'')}</div>
+<div style="margin:2px 0"><span class="bold">Categoría:</span> ${e(catLabel)}</div>
+<div class="line"></div>
+
+${g.proveedor  ? row('Proveedor:',  g.proveedor)   : ''}
+${g.rncProveedor ? row('RNC Prov.:', g.rncProveedor) : ''}
+${g.comprobante  ? row('NCF:',       g.comprobante)  : ''}
+${(g.proveedor||g.rncProveedor||g.comprobante) ? '<div class="line"></div>' : ''}
+
+${row('Monto:', fmtM(Number(g.monto??0)))}
+${row('ITBIS:', fmtM(Number(g.itbis??0)))}
+<div class="dbl"></div>
+${rowB('TOTAL:', fmtM(Number(g.total??0)))}
+<div class="dbl"></div>
+<div class="center small">Registrado en HiCloud ERP</div>
+
+</body></html>`;
+}
+
 // ── Panel Gastos (formulario completo igual que módulo admin) ─────────────────
 function POSGastosPanel({ C, onVolver }: { C: Palette; onVolver: () => void }) {
   const qc = useQueryClient();
-  const [showForm, setShowForm] = useState(false);
-  const [busq,     setBusq]     = useState('');
+  const user = useAuthStore(s => s.user);
+  const [showForm,    setShowForm]    = useState(false);
+  const [busq,        setBusq]        = useState('');
+  const [imprimiendo, setImprimiendo] = useState<number|null>(null);
   const [f, setF] = useState({
     fecha: dayjs().format('YYYY-MM-DD'),
     categoria: '', descripcion: '', monto: '',
@@ -2742,6 +2808,24 @@ function POSGastosPanel({ C, onVolver }: { C: Palette; onVolver: () => void }) {
 
   const catInfo   = (categorias as any[]).find((c: any) => c.value === f.categoria);
   const generaE43 = catInfo?.generaE43 === true;
+
+  const imprimirGasto = async (g: any) => {
+    setImprimiendo(g.id);
+    try {
+      const empRes = await api.get('/configuracion/empresa').then(r => r.data?.data ?? r.data).catch(() => ({}));
+      const html   = buildGastoReciboHTML(
+        g,
+        empRes.razonSocial ?? empRes.nombre ?? 'Mi Empresa',
+        empRes.rnc ?? '',
+        user?.nombre ?? localStorage.getItem('pos_cajero_nombre') ?? '',
+      );
+      imprimirReciboTermico(html);
+    } catch (err: any) {
+      message.error(`Error al imprimir: ${err?.message}`, 2);
+    } finally {
+      setImprimiendo(null);
+    }
+  };
 
   const crearMut = useMutation({
     mutationFn: () => {
@@ -2873,7 +2957,7 @@ function POSGastosPanel({ C, onVolver }: { C: Palette; onVolver: () => void }) {
              : (
               <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
                 <thead><tr style={{ background:C.card, position:'sticky', top:0 }}>
-                  {['Descripción','Categoría','Total','Fecha'].map(h => (
+                  {['Descripción','Categoría','Total','Fecha',''].map(h => (
                     <th key={h} style={{ padding:'8px 12px', textAlign:'left', color:C.textSub, fontWeight:600, fontSize:11, borderBottom:`1px solid ${C.border}` }}>{h}</th>
                   ))}
                 </tr></thead>
@@ -2883,6 +2967,15 @@ function POSGastosPanel({ C, onVolver }: { C: Palette; onVolver: () => void }) {
                     <td style={{ padding:'8px 12px', color:C.textSub, fontSize:11 }}>{g.categoria?.replace(/_/g,' ')}</td>
                     <td style={{ padding:'8px 12px', fontWeight:700, color:C.red }}>{fmt.money(g.total??0)}</td>
                     <td style={{ padding:'8px 12px', color:C.textSub, fontSize:11 }}>{g.fecha?.substring(0,10)??'—'}</td>
+                    <td style={{ padding:'6px 8px', textAlign:'right' }}>
+                      <button onClick={() => imprimirGasto(g)} title="Imprimir recibo"
+                        disabled={imprimiendo === g.id}
+                        style={{ background:'none', border:`1px solid ${C.border}`, borderRadius:6,
+                          color: imprimiendo===g.id ? C.textMuted : C.textSub,
+                          padding:'3px 8px', fontSize:14, cursor:'pointer', outline:'none' }}>
+                        {imprimiendo === g.id ? '⏳' : '🖨'}
+                      </button>
+                    </td>
                   </tr>
                 ))}</tbody>
               </table>
