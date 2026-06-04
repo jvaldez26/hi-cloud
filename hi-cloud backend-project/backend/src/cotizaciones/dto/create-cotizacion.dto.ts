@@ -49,4 +49,7 @@ export class CreateCotizacionDto {
 
   @IsOptional() @IsString()
   nombreVendedor?: string;
+
+  @IsOptional() @IsInt() @IsPositive()
+  sucursalId?: number;
 }

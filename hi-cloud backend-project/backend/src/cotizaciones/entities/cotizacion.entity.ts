@@ -70,6 +70,9 @@ export class Cotizacion extends TenantBaseEntity {
   @Column({ length: 150, nullable: true })
   nombreVendedor?: string;
 
+  @Column({ nullable: true })
+  sucursalId?: number;
+
   @Column({ type: 'text', nullable: true })
   notas?: string;
 
