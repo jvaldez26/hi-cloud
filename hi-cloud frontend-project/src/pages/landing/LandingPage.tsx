@@ -87,8 +87,6 @@ function Navbar({ onDemo }: { onDemo: () => void }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
         onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
         <img src="/logo-hicloud.png" alt="HiCloud ERP" style={{ height: 40, width: 'auto', objectFit: 'contain' }} />
-        <span style={{ background: '#10B981', color: '#fff', fontSize: 9, fontWeight: 800,
-          padding: '2px 7px', borderRadius: 4, letterSpacing: '0.8px' }}>BETA</span>
       </div>
       <div className="nav-desktop" style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
         {links.map(l => (
@@ -217,8 +215,8 @@ const TESTIMONIOS = [
 ];
 
 const FAQ_DATA = [
-  { q: '¿HiCloud está certificado ante la DGII?', a: 'HiCloud incluye integración nativa con MSeller, proveedor certificado ante la DGII. El proceso de activación se completa en minutos desde el panel de configuración.' },
-  { q: '¿Qué necesito para empezar con facturación electrónica?', a: 'Solo tus credenciales de MSeller y las secuencias e-CF de la DGII. Nuestro equipo de soporte te guía paso a paso en la activación.' },
+  { q: '¿HiCloud está certificado ante la DGII?', a: 'HiCloud incluye integración nativa con la DGII a través de nuestra plataforma fiscal certificada. El proceso de activación se completa en minutos desde el panel de configuración.' },
+  { q: '¿Qué necesito para empezar con facturación electrónica?', a: 'Solo tus credenciales de facturación electrónica y las secuencias e-CF de la DGII. Nuestro equipo de soporte te guía paso a paso en la activación.' },
   { q: '¿Qué pasa con mis datos si cancelo?', a: 'Tus datos son tuyos. Puedes exportar toda tu información en cualquier momento. Realizamos backups diarios en AWS S3.' },
   { q: '¿Puedo migrar desde mi sistema actual?', a: 'Sí. Ofrecemos importación masiva de clientes, productos y proveedores desde Excel/CSV. El soporte te acompaña durante la migración sin costo adicional.' },
   { q: '¿Funciona en móvil y tablet?', a: 'Sí. HiCloud es 100% responsive. El POS funciona perfectamente en tablet y móvil, incluyendo modo offline para ventas sin conexión a internet.' },
@@ -581,7 +579,7 @@ export default function LandingPage() {
                 <div style={{ fontSize: 13, fontWeight: 700, color: '#10B981', letterSpacing: '0.5px',
                   marginBottom: 20, textTransform: 'uppercase' }}>Con HiCloud ERP</div>
                 {[
-                  'e-CF automático, aceptado por MSeller/DGII',
+                  'e-CF automático, aceptado por la DGII',
                   'Todo integrado: ventas, inventario, contabilidad',
                   'Dashboard con métricas en tiempo real',
                   'Reportes 606/607/608 en un clic',
@@ -647,14 +645,14 @@ export default function LandingPage() {
                 Cumplimiento DGII garantizado
               </h2>
               <p style={{ color: 'rgba(255,255,255,.55)', fontSize: 16, maxWidth: 580, margin: '0 auto 16px' }}>
-                Somos el único ERP dominicano con e-CF nativo integrado con MSeller.
+                Somos el único ERP dominicano con e-CF nativo integrado con la DGII.
                 Tus facturas llegan a la DGII en segundos, sin intervención manual.
               </p>
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8,
                 background: 'rgba(16,185,129,.12)', border: '1px solid rgba(16,185,129,.3)',
                 padding: '8px 18px', borderRadius: 8 }}>
                 <span style={{ color: '#10B981', fontSize: 14 }}>✓</span>
-                <span style={{ color: '#6EE7B7', fontSize: 13, fontWeight: 600 }}>Integración certificada con MSeller / DGII</span>
+                <span style={{ color: '#6EE7B7', fontSize: 13, fontWeight: 600 }}>Integración certificada con la DGII</span>
               </div>
             </div>
           </FadeIn>
