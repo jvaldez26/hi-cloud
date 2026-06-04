@@ -76,7 +76,8 @@ export class PreFacturaService {
     const subtotal = detalles.reduce((s, d) => s + d.subtotal, 0);
     const iva      = detalles.reduce((s, d) => s + d.iva,      0);
 
-    const pf = this.pfRepo.create({
+    // Guardar cabecera SIN cascade (cascade falla silenciosamente con @TenantScoped)
+    const saved = await this.pfRepo.save(this.pfRepo.create({
       empresaId,
       folio,
       fecha:            dto.fecha as unknown as Date,
@@ -89,11 +90,16 @@ export class PreFacturaService {
       subtotal:         +subtotal.toFixed(2),
       iva:              +iva.toFixed(2),
       total:            +(subtotal + iva).toFixed(2),
-      // empresaId en cada detalle es crítico para que @TenantScoped no los filtre
-      detalles: detalles.map(d => ({ ...d, empresaId })) as unknown as PreFacturaDetalle[],
-    });
+    }));
 
-    return this.pfRepo.save(pf);
+    // Guardar detalles explícitamente con empresaId del tenant
+    await this.pfDetRepo.save(
+      this.pfDetRepo.create(
+        detalles.map(d => ({ ...d, preFacturaId: saved.id, empresaId }))
+      ),
+    );
+
+    return this.findOne(saved.id);
   }
 
   async listar(pagination: PaginationDto, estado?: EstadoPreFactura) {
@@ -153,18 +159,29 @@ export class PreFacturaService {
 
     if (dto.detalles) {
       const empresaId = this.tenantSvc.getEmpresaId();
+      // Eliminar detalles viejos y guardar los nuevos explícitamente
       await this.pfDetRepo.delete({ preFacturaId: id });
       const detalles = this.calcularDetalles(dto.detalles);
       const subtotal = detalles.reduce((s, d) => s + d.subtotal, 0);
       const iva      = detalles.reduce((s, d) => s + d.iva, 0);
+      // Actualizar cabecera sin detalles en cascade
       await this.pfRepo.update(id, {
-        ...dto,
-        // empresaId en cada detalle evita que @TenantScoped los filtre
-        detalles: detalles.map(d => ({ ...d, empresaId })) as unknown as PreFacturaDetalle[],
+        clienteId:        (dto as any).clienteId,
+        tipoNcf:          (dto as any).tipoNcf,
+        fecha:            (dto as any).fecha,
+        fechaVencimiento: (dto as any).fechaVencimiento,
+        notas:            (dto as any).notas,
+        vendedorId:       (dto as any).vendedorId,
         subtotal: +subtotal.toFixed(2),
         iva:      +iva.toFixed(2),
         total:    +(subtotal + iva).toFixed(2),
       } as any);
+      // Guardar detalles explícitamente con empresaId
+      await this.pfDetRepo.save(
+        this.pfDetRepo.create(
+          detalles.map(d => ({ ...d, preFacturaId: id, empresaId }))
+        ),
+      );
     } else {
       await this.pfRepo.update(id, dto as any);
     }
