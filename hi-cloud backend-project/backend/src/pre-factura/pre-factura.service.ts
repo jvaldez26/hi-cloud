@@ -122,17 +122,25 @@ export class PreFacturaService {
 
   async findOne(id: number) {
     const empresaId = this.tenantSvc.getEmpresaId();
-    // QueryBuilder con leftJoinAndSelect explícito — igual que listar().
-    // findOne+relations y eager:true no funcionan con @TenantScoped.
+
+    // 1. Cargar pre-factura con cliente (leftJoin no aplica TenantScoped a join)
     const pf = await this.pfRepo
       .createQueryBuilder('pf')
-      .leftJoinAndSelect('pf.cliente',  'cliente')
-      .leftJoinAndSelect('pf.detalles', 'detalles')
-      .where('pf.id = :id',          { id })
+      .leftJoinAndSelect('pf.cliente', 'cliente')
+      .where('pf.id = :id',           { id })
       .andWhere('pf.empresaId = :eid', { eid: empresaId })
       .andWhere('pf.isActive = :a',    { a: true })
       .getOne();
     if (!pf) throw new NotFoundException(`Pre-Factura #${id} no encontrada`);
+
+    // 2. Cargar detalles con query SQL directa para evitar filtro @TenantScoped
+    // que vacía el array cuando se carga via leftJoinAndSelect o eager:true
+    const detalles = await this.ds.query<PreFacturaDetalle[]>(
+      `SELECT * FROM pre_factura_detalles WHERE "preFacturaId" = $1 ORDER BY id ASC`,
+      [id],
+    );
+    (pf as any).detalles = detalles;
+
     return pf;
   }
 
