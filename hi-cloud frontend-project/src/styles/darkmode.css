@@ -74,6 +74,29 @@ body {
   color: var(--hc-text) !important;
 }
 
+/* ── Reset explícito en modo claro — contrarresta los !important del dark ─── */
+/* Sin estas reglas, al volver al modo claro los inputs pueden quedar oscuros  */
+[data-theme="light"] .ant-input,
+[data-theme="light"] .ant-input-affix-wrapper,
+[data-theme="light"] .ant-input-password,
+[data-theme="light"] .ant-select-selector,
+[data-theme="light"] .ant-picker,
+[data-theme="light"] .ant-input-number,
+[data-theme="light"] .ant-input-number-input,
+[data-theme="light"] .ant-input-group-addon {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+[data-theme="light"] .ant-input::placeholder,
+[data-theme="light"] .ant-input-affix-wrapper input::placeholder {
+  color: #94a3b8 !important;
+}
+
+[data-theme="light"] .ant-select-selection-placeholder {
+  color: #94a3b8 !important;
+}
+
 /* ── Cards ────────────────────────────────────────────────────────────────── */
 [data-theme="dark"] .ant-card {
   background: var(--hc-bg-card);
