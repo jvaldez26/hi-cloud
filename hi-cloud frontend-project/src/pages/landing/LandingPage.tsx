@@ -1,83 +1,62 @@
-﻿import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, useInView, AnimatePresence } from 'framer-motion';
 import { useThemeStore } from '../../store/theme.store';
 import DemoModal from '../auth/DemoModal';
 
-// ── Paleta dinámica (light/dark) ─────────────────────────────────────────────
+// ── Paleta ─────────────────────────────────────────────────────────────────────
 function buildPalette(isDark: boolean) {
   return {
-    // En modo oscuro: navy profundo. En modo claro: azul corporativo (hero sigue siendo de color).
-    dark:    isDark ? '#0A1628'  : '#1565C0',
-    darkAlt: isDark ? '#0d1f3c'  : '#1854D8',
-    primary: '#1565C0',
-    accent:  '#00BFA5',
-    accentD: '#009688',
-    text:    isDark ? '#E6EDF3' : '#1A1A1A',
-    muted:   isDark ? '#8B949E' : '#64748B',
-    gray:    isDark ? '#0D1117' : '#F5F7FA',
-    border:  isDark ? '#30363D' : '#E2E8F0',
-    white:   isDark ? '#161B22' : '#FFFFFF',
-    // Fondo absoluto de página (para el <div> raíz)
-    pageBg:  isDark ? '#0D1117' : '#FFFFFF',
-    // Footer: oscuro siempre, pero más suave en light
-    footer:  isDark ? '#060E1A' : '#0A1628',
+    bg:      isDark ? '#0A0A0A' : '#FFFFFF',
+    bgAlt:   isDark ? '#111111' : '#F8FAFC',
+    bgCard:  isDark ? '#161616' : '#FFFFFF',
+    border:  isDark ? '#222222' : '#E5E7EB',
+    text:    isDark ? '#F9FAFB' : '#111827',
+    muted:   isDark ? '#9CA3AF' : '#6B7280',
+    blue:    '#1E3A8A',
+    blueL:   isDark ? '#3B5FC0' : '#2563EB',
+    green:   '#10B981',
+    greenL:  '#059669',
+    footer:  '#050505',
   };
 }
 
-// Alias estático para subcomponentes que no necesitan reactividad al tema
-// (Navbar siempre es dark por diseño; FAQ, eCF sections son sobre fondos oscuros)
-const L = buildPalette(false);
-
-// ── Fade in al scroll ────────────────────────────────────────────────────────────
-function FadeIn({ children, delay = 0, y = 24 }: { children: React.ReactNode; delay?: number; y?: number }) {
+// ── Utilidades ─────────────────────────────────────────────────────────────────
+function FadeIn({ children, delay = 0, y = 20 }: { children: React.ReactNode; delay?: number; y?: number }) {
   const ref = useRef(null);
-  const inView = useInView(ref, { once: true, margin: '-60px' });
+  const inView = useInView(ref, { once: true, margin: '-50px' });
   return (
-    <motion.div ref={ref} initial={{ opacity: 0, y }} animate={inView ? { opacity: 1, y: 0 } : {}}
-      transition={{ duration: 0.55, delay, ease: 'easeOut' }}>
+    <motion.div ref={ref} initial={{ opacity: 0, y }}
+      animate={inView ? { opacity: 1, y: 0 } : {}}
+      transition={{ duration: 0.5, delay, ease: [0.25, 0.46, 0.45, 0.94] }}>
       {children}
     </motion.div>
   );
 }
 
-// ── CountUp animado ──────────────────────────────────────────────────────────────
 function CountUp({ to, suffix = '' }: { to: number; suffix?: string }) {
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
   const [n, setN] = useState(0);
   useEffect(() => {
     if (!inView) return;
-    let cur = 0;
-    const step = to / 50;
-    const t = setInterval(() => {
-      cur += step;
-      if (cur >= to) { setN(to); clearInterval(t); } else setN(Math.floor(cur));
-    }, 20);
+    let cur = 0; const step = to / 60;
+    const t = setInterval(() => { cur += step; if (cur >= to) { setN(to); clearInterval(t); } else setN(Math.floor(cur)); }, 16);
     return () => clearInterval(t);
   }, [inView, to]);
   return <span ref={ref}>{n.toLocaleString('es-DO')}{suffix}</span>;
 }
 
-// ── Navbar ───────────────────────────────────────────────────────────────────────
+// ── Navbar ─────────────────────────────────────────────────────────────────────
 function ThemeToggleBtn() {
   const { isDark, toggle } = useThemeStore();
   return (
-    <button
-      onClick={toggle}
-      aria-label={isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
-      title={isDark ? 'Modo claro' : 'Modo oscuro'}
-      style={{
-        background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.18)',
-        borderRadius: 8, padding: '7px 10px', cursor: 'pointer',
-        color: '#fff', display: 'flex', alignItems: 'center', transition: 'all .15s',
-      }}
-      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,.2)')}
-      onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,.1)')}>
+    <button onClick={toggle} title={isDark ? 'Modo claro' : 'Modo oscuro'}
+      style={{ background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.12)', borderRadius: 8,
+        padding: '7px 10px', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center' }}>
       {isDark
-        ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-        : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-      }
+        ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>}
     </button>
   );
 }
@@ -85,96 +64,66 @@ function ThemeToggleBtn() {
 function Navbar({ onDemo }: { onDemo: () => void }) {
   const [scrolled, setScrolled] = useState(false);
   const [mopen,    setMopen]    = useState(false);
-  const navigate  = useNavigate();
-
+  const navigate = useNavigate();
   useEffect(() => {
-    const fn = () => setScrolled(window.scrollY > 40);
+    const fn = () => setScrolled(window.scrollY > 30);
     window.addEventListener('scroll', fn);
     return () => window.removeEventListener('scroll', fn);
   }, []);
-
-  const scrollTo = (id: string) => {
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
-    setMopen(false);
-  };
-
-  const navLinks = [
+  const scrollTo = (id: string) => { document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }); setMopen(false); };
+  const links = [
     { label: 'Características', id: 'caracteristicas' },
     { label: 'Precios',         id: 'precios' },
     { label: 'e-CF',            id: 'ecf' },
     { label: 'FAQ',             id: 'faq' },
   ];
-
   return (
-    <nav style={{
-      position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000,
-      background: scrolled ? 'rgba(10,22,40,.97)' : 'transparent',
-      backdropFilter: scrolled ? 'blur(16px)' : 'none',
-      borderBottom: scrolled ? '1px solid rgba(255,255,255,.08)' : 'none',
-      transition: 'all .3s', padding: '0 clamp(16px,4vw,48px)', height: 64,
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    }}>
-      {/* Logo */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', flexShrink: 0 }}
+    <nav style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000, height: 64,
+      background: scrolled ? 'rgba(5,5,5,.95)' : 'transparent',
+      backdropFilter: scrolled ? 'blur(20px)' : 'none',
+      borderBottom: scrolled ? '1px solid rgba(255,255,255,.06)' : 'none',
+      transition: 'all .25s', padding: '0 clamp(16px,4vw,48px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
         onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-        <img src="/logo-hicloud.png" alt="HiCloud ERP"
-          style={{ height: 44, width: 'auto', objectFit: 'contain',
-            filter: 'drop-shadow(0 2px 8px rgba(0,170,255,0.35))' }} />
-        <span style={{ background: '#00BFA5', color: '#fff', fontSize: 9, fontWeight: 700,
-          padding: '1px 6px', borderRadius: 4, letterSpacing: '0.5px' }}>BETA</span>
+        <img src="/logo-hicloud.png" alt="HiCloud ERP" style={{ height: 40, width: 'auto', objectFit: 'contain' }} />
+        <span style={{ background: '#10B981', color: '#fff', fontSize: 9, fontWeight: 800,
+          padding: '2px 7px', borderRadius: 4, letterSpacing: '0.8px' }}>BETA</span>
       </div>
-
-      {/* Desktop links */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, ['@media(max-width:768px)' as any]: { display: 'none' } }}
-        className="nav-desktop">
-        {navLinks.map(l => (
+      <div className="nav-desktop" style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        {links.map(l => (
           <button key={l.id} onClick={() => scrollTo(l.id)}
-            style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.75)',
-              fontSize: 14, cursor: 'pointer', padding: '6px 12px', borderRadius: 6,
-              transition: 'color .15s' }}
+            style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.65)', fontSize: 14,
+              cursor: 'pointer', padding: '6px 14px', borderRadius: 6, transition: 'color .15s' }}
             onMouseEnter={e => (e.currentTarget.style.color = '#fff')}
-            onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,.75)')}>
+            onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,.65)')}>
             {l.label}
           </button>
         ))}
       </div>
-
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <ThemeToggleBtn />
-        <button onClick={() => window.open('/login', '_blank')}
-          className="nav-cta-hide"
-          style={{ background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.2)',
-            color: '#fff', fontSize: 13, fontWeight: 600, padding: '7px 16px', borderRadius: 8,
-            cursor: 'pointer', transition: 'all .15s' }}
-          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,.18)')}
-          onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,.1)')}>
+        <button onClick={() => navigate('/login')} className="nav-cta-hide"
+          style={{ background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.12)',
+            color: '#fff', fontSize: 13, fontWeight: 500, padding: '7px 16px', borderRadius: 8, cursor: 'pointer' }}>
           Iniciar sesión
         </button>
-        <button onClick={onDemo}
-          className="nav-cta-hide"
-          style={{ background: 'linear-gradient(135deg,#00BFA5,#009688)', border: 'none',
-            color: '#fff', fontSize: 13, fontWeight: 700, padding: '8px 18px', borderRadius: 8,
-            cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,191,165,.35)', transition: 'all .15s' }}
-          onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 18px rgba(0,191,165,.45)'; }}
-          onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = '0 4px 14px rgba(0,191,165,.35)'; }}>
+        <button onClick={onDemo} className="nav-cta-hide"
+          style={{ background: '#10B981', border: 'none', color: '#fff', fontSize: 13, fontWeight: 700,
+            padding: '8px 18px', borderRadius: 8, cursor: 'pointer' }}>
           Agendar Demo →
         </button>
-
-        {/* Mobile hamburger */}
         <button onClick={() => setMopen(v => !v)} className="nav-hamburger"
-          style={{ background: 'none', border: 'none', color: '#fff', fontSize: 22, cursor: 'pointer',
-            display: 'none', padding: 4 }}>
+          style={{ background: 'none', border: 'none', color: '#fff', fontSize: 22, cursor: 'pointer', display: 'none', padding: 4 }}>
           {mopen ? '✕' : '☰'}
         </button>
       </div>
-
-      {/* Mobile menu */}
       <AnimatePresence>
         {mopen && (
           <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
-            style={{ position: 'absolute', top: 64, left: 0, right: 0, background: 'rgba(10,22,40,.98)',
-              borderBottom: '1px solid rgba(255,255,255,.1)', padding: '12px 24px 20px' }}>
-            {navLinks.map(l => (
+            style={{ position: 'absolute', top: 64, left: 0, right: 0, background: 'rgba(5,5,5,.98)',
+              borderBottom: '1px solid rgba(255,255,255,.08)', padding: '12px 24px 20px' }}>
+            {links.map(l => (
               <button key={l.id} onClick={() => scrollTo(l.id)}
                 style={{ display: 'block', width: '100%', background: 'none', border: 'none',
                   color: 'rgba(255,255,255,.8)', fontSize: 16, textAlign: 'left',
@@ -182,13 +131,12 @@ function Navbar({ onDemo }: { onDemo: () => void }) {
                 {l.label}
               </button>
             ))}
-            <button onClick={() => { window.open('/login', '_blank'); setMopen(false); }}
-              style={{ marginTop: 16, width: '100%', background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.2)',
-                color: '#fff', fontSize: 14, fontWeight: 600, padding: '12px', borderRadius: 8, cursor: 'pointer' }}>
-              Iniciar sesión
-            </button>
+            <button onClick={() => { navigate('/login'); setMopen(false); }}
+              style={{ marginTop: 16, width: '100%', background: 'rgba(255,255,255,.07)',
+                border: '1px solid rgba(255,255,255,.12)', color: '#fff', fontSize: 14, fontWeight: 500,
+                padding: '12px', borderRadius: 8, cursor: 'pointer' }}>Iniciar sesión</button>
             <button onClick={() => { onDemo(); setMopen(false); }}
-              style={{ marginTop: 8, width: '100%', background: 'linear-gradient(135deg,#00BFA5,#009688)', border: 'none',
+              style={{ marginTop: 8, width: '100%', background: '#10B981', border: 'none',
                 color: '#fff', fontSize: 14, fontWeight: 700, padding: '12px', borderRadius: 8, cursor: 'pointer' }}>
               Agendar Demo →
             </button>
@@ -199,119 +147,46 @@ function Navbar({ onDemo }: { onDemo: () => void }) {
   );
 }
 
-// ── Data ─────────────────────────────────────────────────────────────────────────
-
-const FEATURES = [
-  { icon: '⚡', title: 'e-CF Automático',    desc: 'E31-E47 en tiempo real. Comprobantes aceptados por DGII al instante, sin pasos manuales.' },
-  { icon: '🛒', title: 'POS + e-CF',         desc: 'Vende y emite comprobante en menos de 30 segundos. Funciona sin conexión.' },
-  { icon: '📊', title: 'Reportes DGII',       desc: '606, 607, 608 automáticos. Archivos TXT listos para el portal DGII en un clic.' },
-  { icon: '📄', title: 'Facturación',         desc: 'Facturas, cotizaciones, notas de crédito y débito. Flujo completo de ventas.' },
-  { icon: '📦', title: 'Inventario',          desc: 'Stock en tiempo real con alertas. Trazabilidad de lotes y seriales.' },
-  { icon: '👥', title: 'Clientes y CRM',      desc: 'Historial completo, estado de cuenta, cuentas por cobrar automáticas.' },
-  { icon: '🛍️', title: 'Compras',             desc: 'Órdenes de compra con e-CF E41. Cuentas por pagar automatizadas.' },
-  { icon: '🏢', title: 'Multi-empresa',       desc: 'Una plataforma para todas tus empresas con aislamiento completo de datos.' },
-  { icon: '☁️', title: 'Backups S3',          desc: 'Copias de seguridad diarias en AWS S3. Restauración en menos de 30 minutos.' },
+// ── Data ───────────────────────────────────────────────────────────────────────
+const MODULES = [
+  { icon: '🧾', title: 'Facturación e-CF E31-E47',    desc: 'Todos los tipos de comprobante. Aceptados por DGII en segundos.' },
+  { icon: '🖥️', title: 'Punto de Venta (POS)',         desc: 'Vende y emite e-CF en menos de 30s. Offline, scanner y táctil.' },
+  { icon: '📦', title: 'Inventario multi-almacén',     desc: 'Stock en tiempo real, alertas y trazabilidad de lotes.' },
+  { icon: '📊', title: 'Contabilidad automática',      desc: 'Asientos generados al facturar. Balance y estado de resultados.' },
+  { icon: '👥', title: 'Nómina y TSS',                 desc: 'Cálculo automático de ISR, AFP, ARS y TSS. Ley 87-01.' },
+  { icon: '📋', title: 'Reportes DGII 606/607/608',    desc: 'Archivos TXT oficiales con un clic. Siempre validados.' },
+  { icon: '💰', title: 'Cuentas por cobrar/pagar',     desc: 'Flujo de efectivo claro. Cobros y pagos al día.' },
+  { icon: '🏢', title: 'Multi-empresa',                desc: 'Maneja varias RNCs desde un solo login. Datos aislados.' },
+  { icon: '📱', title: 'Desde cualquier dispositivo',  desc: '100% web. Funciona en móvil, tablet y desktop.' },
 ];
 
 const ECF_TYPES = [
-  { code: 'E31', name: 'Crédito Fiscal',         color: '#1565C0' },
-  { code: 'E32', name: 'Consumo',                color: '#6B7280' },
-  { code: 'E33', name: 'Nota de Débito',         color: '#7C3AED' },
-  { code: 'E34', name: 'Nota de Crédito',        color: '#DC2626' },
-  { code: 'E41', name: 'Compras',                color: '#059669' },
-  { code: 'E43', name: 'Gastos Menores',         color: '#D97706' },
-  { code: 'E44', name: 'Zona Franca',            color: '#0891B2' },
-  { code: 'E45', name: 'Gubernamental',          color: '#7C3AED' },
-  { code: 'E46', name: 'Exportaciones',          color: '#BE185D' },
-  { code: 'E47', name: 'Pagos al Exterior',      color: '#9333EA' },
+  { code: 'E31', name: 'Crédito Fiscal',    color: '#2563EB' },
+  { code: 'E32', name: 'Consumo',           color: '#6B7280' },
+  { code: 'E33', name: 'Nota de Débito',    color: '#7C3AED' },
+  { code: 'E34', name: 'Nota de Crédito',   color: '#DC2626' },
+  { code: 'E41', name: 'Compras',           color: '#059669' },
+  { code: 'E43', name: 'Gastos Menores',    color: '#D97706' },
+  { code: 'E44', name: 'Zona Franca',       color: '#0891B2' },
+  { code: 'E45', name: 'Gubernamental',     color: '#7C3AED' },
+  { code: 'E46', name: 'Exportaciones',     color: '#BE185D' },
+  { code: 'E47', name: 'Pagos al Exterior', color: '#9333EA' },
 ];
 
-// Colores y configuración visual por clave de plan
-const PLAN_VISUAL: Record<string, { color: string; highlight: boolean; badge?: string; cta: string }> = {
-  basico:      { color: L.primary,  highlight: false, cta: 'Solicitar Demo' },
-  profesional: { color: '#00BFA5',  highlight: true,  badge: 'MÁS POPULAR', cta: 'Empezar' },
-  empresarial: { color: '#7C3AED',  highlight: false, cta: 'Contactar' },
-};
-
-// Convierte los datos de la API al formato de la landing
-function mapPlanApi(p: any) {
-  const v = PLAN_VISUAL[p.clave] ?? { color: L.primary, highlight: false, cta: 'Solicitar Demo' };
-  const usuarios = p.maxUsuarios === -1 ? 'Usuarios ilimitados' : `${p.maxUsuarios} usuarios`;
-  const facturas = p.maxFacturasMes === -1 ? 'Facturas ilimitadas' : `${p.maxFacturasMes} facturas/mes`;
-  const features = [
-    usuarios,
-    facturas,
-    'Todos los módulos',
-    'e-CF E31-E47 incluido',
-    'Backups S3 automáticos',
-    p.soporte ? `Soporte: ${p.soporte}` : 'Soporte incluido',
-  ];
-  const precio = Number(p.precio);
-  const precioFmt = precio === 0 ? 'Gratis'
-    : `RD$${precio.toLocaleString('es-DO')}`;
-
-  return { ...v, clave: p.clave, name: p.nombre, price: precioFmt, period: precio > 0 ? '/mes' : '', features };
-}
-
-const FAQ_DATA = [
-  { q: '¿HiCloud me certifica ante la DGII?', a: 'HiCloud incluye integración nativa con el sistema de facturación electrónica certificado ante la DGII. El proceso de activación se completa en minutos desde el panel de configuración.' },
-  { q: '¿Necesito configurar algo para la facturación electrónica?', a: 'Sí. Solo necesitas ingresar tus credenciales e-CF en la configuración fiscal de HiCloud y cargar tus secuencias DGII. Nuestro equipo de soporte te guía en cada paso.' },
-  { q: '¿Qué pasa con mis datos si cancelo?', a: 'Tus datos son tuyos. Puedes exportar toda tu información en cualquier momento. Realizamos backups diarios en AWS S3 en la región us-east-2.' },
-  { q: '¿Puedo migrar desde mi sistema actual?', a: 'Sí. Ofrecemos importación masiva de clientes, productos y proveedores desde Excel/CSV. El equipo de soporte te acompaña durante la migración.' },
-  { q: '¿Funciona en móvil?', a: 'Sí. HiCloud es 100% responsive. El POS funciona perfectamente en tablet y móvil, incluyendo modo offline para ventas sin conexión.' },
-  { q: '¿Cuánto tiempo toma implementarlo?', a: 'Una PYME típica está operando en 1-3 días. Para empresas más complejas con varios usuarios y flujos, de 1 a 2 semanas.' },
-  { q: '¿Los reportes 606/607/608 son automáticos?', a: 'Sí. HiCloud genera los archivos TXT oficiales en el formato exacto del portal DGII con un solo clic, incluyendo validaciones previas.' },
-  { q: '¿Puedo manejar varias empresas?', a: 'Sí. HiCloud es multi-empresa con aislamiento total de datos. Puedes cambiar entre empresas desde el mismo login.' },
-];
-
-// ── Sección FAQ ──────────────────────────────────────────────────────────────────
-function FAQItem({ q, a }: { q: string; a: string }) {
-  const [open, setOpen] = useState(false);
-  const { isDark } = useThemeStore();
-  const P = buildPalette(isDark);
-  return (
-    <div style={{ borderBottom: `1px solid ${P.border}`, padding: '0' }}>
-      <button onClick={() => setOpen(v => !v)} style={{
-        width: '100%', background: 'none', border: 'none', textAlign: 'left',
-        padding: '18px 0', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16,
-      }}>
-        <span style={{ fontSize: 15, fontWeight: 600, color: P.text }}>{q}</span>
-        <span style={{ fontSize: 18, color: P.primary, flexShrink: 0, transition: 'transform .2s',
-          transform: open ? 'rotate(45deg)' : 'none' }}>+</span>
-      </button>
-      <AnimatePresence>
-        {open && (
-          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22 }}
-            style={{ overflow: 'hidden' }}>
-            <p style={{ margin: '0 0 18px', color: P.muted, fontSize: 14, lineHeight: 1.7 }}>{a}</p>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-// ── Sección de precios ────────────────────────────────────────────────────────────
-
-const PLANES_LANDING = [
-  {
-    clave: 'emprendedor', nombre: 'EMPRENDEDOR', precio: 29, precioAnual: 26.10,
+const PLANES = [
+  { clave: 'emprendedor', nombre: 'EMPRENDEDOR', precio: 29, precioAnual: 26.10,
     limite: 'RD$125,000', usuarios: 2, color: '#374151', border: '#6B7280', popular: false,
     features: ['Factura electrónica e-CF DGII gratuita', 'Ingresos hasta RD$125,000/mes', '2 usuarios incluidos', 'Todos los módulos', 'Multi-empresa', 'Portal de clientes', 'Soporte 24/7 gratis'],
   },
-  {
-    clave: 'pyme', nombre: 'PYME', precio: 59, precioAnual: 53.10,
+  { clave: 'pyme', nombre: 'PYME', precio: 59, precioAnual: 53.10,
     limite: 'RD$500,000', usuarios: 3, color: '#047857', border: '#10B981', popular: false,
     features: ['Factura electrónica e-CF DGII gratuita', 'Ingresos hasta RD$500,000/mes', '3 usuarios incluidos', 'Todos los módulos', 'Multi-empresa', 'Portal de clientes', 'Soporte 24/7 gratis'],
   },
-  {
-    clave: 'pro', nombre: 'PRO', precio: 89, precioAnual: 80.10,
+  { clave: 'pro', nombre: 'PRO', precio: 89, precioAnual: 80.10,
     limite: 'RD$1,250,000', usuarios: 4, color: '#0d9488', border: '#14B8A6', popular: true,
     features: ['Factura electrónica e-CF DGII gratuita', 'Ingresos hasta RD$1,250,000/mes', '4 usuarios incluidos', 'Todos los módulos', 'Multi-empresa', 'Portal de clientes', 'Soporte 24/7 gratis'],
   },
-  {
-    clave: 'plus', nombre: 'PLUS', precio: 129, precioAnual: 116.10,
+  { clave: 'plus', nombre: 'PLUS', precio: 129, precioAnual: 116.10,
     limite: 'RD$6,250,000', usuarios: 10, color: '#4F46E5', border: '#818CF8', popular: false,
     features: ['Factura electrónica e-CF DGII gratuita', 'Ingresos hasta RD$6,250,000/mes', '10 usuarios incluidos', 'Todos los módulos', 'Multi-empresa', 'Portal de clientes', 'Soporte 24/7 + Asistente IA'],
   },
@@ -325,627 +200,669 @@ const TABLA_COMPARATIVA = [
   { feature: 'Compras y proveedores',         vals: [true, true, true, true] },
   { feature: 'Inventario completo',           vals: [true, true, true, true] },
   { feature: 'Contabilidad general',          vals: [true, true, true, true] },
-  { feature: 'CxC / CxP',                     vals: [true, true, true, true] },
-  { feature: 'Nómina y RRHH',                 vals: [true, true, true, true] },
-  { feature: 'CRM / Proyectos',               vals: [true, true, true, true] },
-  { feature: 'Reportes DGII 606/607',         vals: [true, true, true, true] },
-  { feature: 'Multi-sucursal',                vals: [true, true, true, true] },
-  { feature: 'Portal de clientes',            vals: [true, true, true, true] },
-  { feature: 'Soporte 24/7',                  vals: [true, true, true, true] },
-  { feature: 'Asistente IA',                  vals: [false, false, false, true] },
+  { feature: 'CxC / CxP',                    vals: [true, true, true, true] },
+  { feature: 'Nómina y RRHH',                vals: [true, true, true, true] },
+  { feature: 'CRM / Proyectos',              vals: [true, true, true, true] },
+  { feature: 'Reportes DGII 606/607',        vals: [true, true, true, true] },
+  { feature: 'Multi-sucursal',               vals: [true, true, true, true] },
+  { feature: 'Portal de clientes',           vals: [true, true, true, true] },
+  { feature: 'Soporte 24/7',                 vals: [true, true, true, true] },
+  { feature: 'Asistente IA',                 vals: [false, false, false, true] },
 ];
+
+const TESTIMONIOS = [
+  { nombre: 'María Rodríguez', empresa: 'Ferretería El Constructor', sector: 'Retail', quote: 'En 2 días estábamos facturando electrónicamente. El soporte es excepcional y el sistema es muy fácil de usar.' },
+  { nombre: 'Carlos Méndez', empresa: 'Distribuidora Norte SRL', sector: 'Distribución', quote: 'Los reportes 606/607 que antes tomaban horas ahora los genero en segundos. HiCloud cambió la forma en que manejamos el negocio.' },
+  { nombre: 'Ana Jiménez', empresa: 'Clínica Vida Sana', sector: 'Salud', quote: 'El multi-empresa nos permite manejar nuestras dos clínicas desde un solo lugar. Excelente inversión.' },
+];
+
+const FAQ_DATA = [
+  { q: '¿HiCloud está certificado ante la DGII?', a: 'HiCloud incluye integración nativa con MSeller, proveedor certificado ante la DGII. El proceso de activación se completa en minutos desde el panel de configuración.' },
+  { q: '¿Qué necesito para empezar con facturación electrónica?', a: 'Solo tus credenciales de MSeller y las secuencias e-CF de la DGII. Nuestro equipo de soporte te guía paso a paso en la activación.' },
+  { q: '¿Qué pasa con mis datos si cancelo?', a: 'Tus datos son tuyos. Puedes exportar toda tu información en cualquier momento. Realizamos backups diarios en AWS S3.' },
+  { q: '¿Puedo migrar desde mi sistema actual?', a: 'Sí. Ofrecemos importación masiva de clientes, productos y proveedores desde Excel/CSV. El soporte te acompaña durante la migración sin costo adicional.' },
+  { q: '¿Funciona en móvil y tablet?', a: 'Sí. HiCloud es 100% responsive. El POS funciona perfectamente en tablet y móvil, incluyendo modo offline para ventas sin conexión a internet.' },
+  { q: '¿Cuánto tiempo toma implementarlo?', a: 'Una PYME típica está operando en 1-3 días. Para empresas más grandes con múltiples usuarios y flujos, de 1 a 2 semanas.' },
+  { q: '¿Los reportes 606/607/608 son automáticos?', a: 'Sí. HiCloud genera los archivos TXT oficiales en el formato exacto del portal DGII con un clic, incluyendo validaciones previas para evitar errores.' },
+  { q: '¿Puedo manejar varias empresas con el mismo usuario?', a: 'Sí. HiCloud es multi-empresa con aislamiento total de datos. Cambias entre empresas desde el mismo login sin cerrar sesión.' },
+];
+
+function FAQItem({ q, a }: { q: string; a: string }) {
+  const [open, setOpen] = useState(false);
+  const { isDark } = useThemeStore();
+  const P = buildPalette(isDark);
+  return (
+    <div style={{ borderBottom: `1px solid ${P.border}` }}>
+      <button onClick={() => setOpen(v => !v)}
+        style={{ width: '100%', background: 'none', border: 'none', textAlign: 'left',
+          padding: '20px 0', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
+        <span style={{ fontSize: 15, fontWeight: 600, color: P.text }}>{q}</span>
+        <span style={{ fontSize: 20, color: P.blueL, flexShrink: 0, transform: open ? 'rotate(45deg)' : 'none', transition: 'transform .2s', lineHeight: 1 }}>+</span>
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }} style={{ overflow: 'hidden' }}>
+            <p style={{ paddingBottom: 20, margin: 0, color: P.muted, fontSize: 14, lineHeight: 1.7 }}>{a}</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 function PreciosSection({ navigate }: { navigate: (to: string) => void }) {
   const [anual,     setAnual]     = useState(false);
   const [tablaBien, setTablaBien] = useState(false);
-  const { isDark }  = useThemeStore();
-  const P           = buildPalette(isDark);
+  const { isDark } = useThemeStore();
+  const P = buildPalette(isDark);
 
   return (
-    <section id="precios" style={{ padding: 'clamp(60px,8vw,96px) clamp(16px,5vw,80px)', background: P.gray }}>
-      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+    <section id="precios" style={{ padding: 'clamp(60px,8vw,96px) clamp(16px,5vw,80px)', background: P.bgAlt }}>
+      <div style={{ maxWidth: 1080, margin: '0 auto' }}>
         <FadeIn>
           <div style={{ textAlign: 'center', marginBottom: 48 }}>
-            <span style={{ display: 'inline-block', background: 'rgba(21,101,192,.1)', color: P.primary, fontSize: 12, fontWeight: 700, padding: '4px 14px', borderRadius: 20, marginBottom: 16, letterSpacing: '0.5px' }}>
+            <span style={{ background: P.blueL + '18', color: P.blueL, fontSize: 12, fontWeight: 700,
+              padding: '4px 14px', borderRadius: 20, letterSpacing: '0.5px', display: 'inline-block', marginBottom: 16 }}>
               PLANES Y PRECIOS
             </span>
-            <h2 style={{ fontSize: 'clamp(24px,4vw,40px)', fontWeight: 800, marginBottom: 12, letterSpacing: '-0.02em', color: P.text }}>
-              Impulsa tu pyme desde <span style={{ color: P.primary }}>USD $29/mes</span>
+            <h2 style={{ fontSize: 'clamp(28px,4vw,40px)', fontWeight: 800, color: P.text, margin: '0 0 16px' }}>
+              Precio justo para cada etapa
             </h2>
-            <p style={{ color: P.muted, fontSize: 16, maxWidth: 560, margin: '0 auto 24px' }}>
-              Prueba cualquier plan gratis 15 días, sin tarjeta de crédito. Todos incluyen todos los módulos.
+            <p style={{ color: P.muted, fontSize: 16, maxWidth: 520, margin: '0 auto 28px' }}>
+              Sin sorpresas. Sin comisiones por transacción. Cancela cuando quieras.
             </p>
-            {/* Toggle mensual / anual */}
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 12, background: P.white, border: `1px solid ${P.border}`, borderRadius: 30, padding: '6px 8px' }}>
-              <button onClick={() => setAnual(false)} style={{
-                padding: '7px 20px', borderRadius: 24, border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, transition: 'all .2s',
-                background: !anual ? P.primary : 'transparent', color: !anual ? '#fff' : P.muted,
-              }}>Mensual</button>
-              <button onClick={() => setAnual(true)} style={{
-                padding: '7px 20px', borderRadius: 24, border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, transition: 'all .2s',
-                background: anual ? P.primary : 'transparent', color: anual ? '#fff' : P.muted,
-                display: 'flex', alignItems: 'center', gap: 6,
-              }}>
-                Anual
-                <span style={{ background: '#10B981', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 10 }}>-10%</span>
-              </button>
+            {/* Toggle mensual/anual */}
+            <div style={{ display: 'inline-flex', background: P.bgCard, border: `1px solid ${P.border}`, borderRadius: 10, padding: 4, gap: 4 }}>
+              {[{ v: false, l: 'Mensual' }, { v: true, l: 'Anual -10%' }].map(({ v, l }) => (
+                <button key={l} onClick={() => setAnual(v)}
+                  style={{ padding: '7px 18px', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, transition: 'all .15s',
+                    background: anual === v ? '#10B981' : 'transparent',
+                    color: anual === v ? '#fff' : P.muted }}>
+                  {l}
+                </button>
+              ))}
             </div>
           </div>
         </FadeIn>
 
-        {/* 4 tarjetas */}
-        <div className="pricing-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 20, alignItems: 'end', marginBottom: 40 }}>
-          {PLANES_LANDING.map((p, i) => {
-            const precio = anual ? p.precioAnual : p.precio;
-            return (
-              <FadeIn key={p.clave} delay={i * 0.08}>
-                <div className={p.popular ? 'pricing-popular' : ''} style={{
-                  background: p.popular ? P.dark : P.white,
-                  border: `2px solid ${p.popular ? p.border : P.border}`,
-                  borderRadius: 18, padding: '28px 24px', position: 'relative',
-                  boxShadow: p.popular ? '0 20px 48px rgba(0,0,0,.18)' : '0 2px 12px rgba(0,0,0,.06)',
-                  transform: p.popular ? 'scale(1.04)' : 'none',
-                }}>
-                  {p.popular && (
-                    <div style={{ position: 'absolute', top: -14, left: '50%', transform: 'translateX(-50%)', background: p.color, color: '#fff', fontSize: 11, fontWeight: 800, padding: '4px 16px', borderRadius: 20, whiteSpace: 'nowrap' }}>
-                      MÁS POPULAR
-                    </div>
-                  )}
-                  <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 800, color: p.popular ? '#fff' : P.text, letterSpacing: '0.03em' }}>{p.nombre}</h3>
-                  <div style={{ marginBottom: 4 }}>
-                    <span style={{ fontSize: 40, fontWeight: 900, color: p.color }}>US${precio.toFixed(2)}</span>
-                    <span style={{ color: p.popular ? 'rgba(255,255,255,.5)' : P.muted, fontSize: 13 }}>/mes</span>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 20 }}>
+          {PLANES.map((p, i) => (
+            <FadeIn key={p.clave} delay={i * 0.07}>
+              <div style={{ position: 'relative', background: P.bgCard,
+                border: `1px solid ${p.popular ? p.border : P.border}`,
+                borderRadius: 16, padding: '28px 24px', height: '100%',
+                boxShadow: p.popular ? `0 0 0 2px ${p.border}40, 0 8px 32px ${p.border}20` : 'none',
+                display: 'flex', flexDirection: 'column' }}>
+                {p.popular && (
+                  <div style={{ position: 'absolute', top: -13, left: '50%', transform: 'translateX(-50%)',
+                    background: p.border, color: '#fff', fontSize: 11, fontWeight: 800,
+                    padding: '4px 16px', borderRadius: 20, letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>
+                    ⭐ MÁS ELEGIDO
                   </div>
-                  {anual && (
-                    <div style={{ marginBottom: 8 }}>
-                      <span style={{ background: '#10B981', color: '#fff', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 8 }}>Pago anual</span>
-                    </div>
-                  )}
-                  <div style={{ marginBottom: 16, padding: '8px 0', borderTop: `1px solid ${p.popular ? 'rgba(255,255,255,.1)' : P.border}` }}>
-                    {p.features.map(f => (
-                      <p key={f} style={{ margin: '0 0 8px', display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, color: p.popular ? 'rgba(255,255,255,.8)' : P.text }}>
-                        <span style={{ color: p.color, fontWeight: 700, flexShrink: 0, fontSize: 14 }}>✓</span>{f}
-                      </p>
-                    ))}
+                )}
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: p.border, marginBottom: 8, letterSpacing: '0.5px' }}>{p.nombre}</div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                    <span style={{ fontSize: 36, fontWeight: 800, color: P.text }}>
+                      US${anual ? p.precioAnual.toFixed(0) : p.precio}
+                    </span>
+                    <span style={{ color: P.muted, fontSize: 13 }}>/mes</span>
                   </div>
-                  <button
-                    onClick={() => navigate(`/registrar?plan=${p.clave}`)}
-                    style={{
-                      width: '100%',
-                      background: p.popular ? p.color : 'transparent',
-                      border: `2px solid ${p.color}`,
-                      color: p.popular ? '#fff' : p.color,
-                      fontSize: 14, fontWeight: 700, padding: '11px', borderRadius: 10, cursor: 'pointer', transition: 'all .15s',
-                    }}
-                    onMouseEnter={e => { if (!p.popular) { e.currentTarget.style.background = p.color; e.currentTarget.style.color = '#fff'; }}}
-                    onMouseLeave={e => { if (!p.popular) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = p.color; }}}>
-                    Probar gratis 15 días
-                  </button>
+                  <div style={{ fontSize: 12, color: P.muted, marginTop: 4 }}>Ingresos hasta {p.limite}/mes</div>
                 </div>
-              </FadeIn>
-            );
-          })}
+                <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 24px', flex: 1 }}>
+                  {p.features.map(f => (
+                    <li key={f} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 10, fontSize: 13, color: P.muted }}>
+                      <span style={{ color: '#10B981', flexShrink: 0, marginTop: 1 }}>✓</span> {f}
+                    </li>
+                  ))}
+                </ul>
+                <button onClick={() => navigate('/registrar')}
+                  style={{ width: '100%', padding: '12px', borderRadius: 10, border: `1px solid ${p.popular ? p.border : P.border}`,
+                    background: p.popular ? p.border : 'transparent',
+                    color: p.popular ? '#fff' : P.text, fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                  Probar gratis 15 días →
+                </button>
+              </div>
+            </FadeIn>
+          ))}
         </div>
 
-        {/* Tabla comparativa expandible */}
-        <FadeIn>
-          <div style={{ textAlign: 'center', marginBottom: tablaBien ? 24 : 0 }}>
-            <button
-              onClick={() => setTablaBien(!tablaBien)}
-              style={{ background: 'transparent', border: `1px solid ${P.border}`, color: P.muted, fontSize: 14, padding: '9px 20px', borderRadius: 8, cursor: 'pointer', transition: 'all .15s' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = P.primary; (e.currentTarget as HTMLButtonElement).style.color = P.primary; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = P.border; (e.currentTarget as HTMLButtonElement).style.color = P.muted; }}>
-              {tablaBien ? '▲ Ocultar' : '▼ Compara nuestros planes'}
+        {/* Tabla comparativa */}
+        <FadeIn delay={0.3}>
+          <div style={{ textAlign: 'center', marginTop: 40 }}>
+            <button onClick={() => setTablaBien(v => !v)}
+              style={{ background: 'none', border: `1px solid ${P.border}`, color: P.muted,
+                padding: '10px 24px', borderRadius: 8, cursor: 'pointer', fontSize: 14 }}>
+              {tablaBien ? '▲ Ocultar comparación' : '▼ Ver comparación completa'}
             </button>
           </div>
-          {tablaBien && (
-            <div style={{ overflowX: 'auto', marginTop: 16 }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-                <thead>
-                  <tr>
-                    <th style={{ textAlign: 'left', padding: '12px 16px', color: P.muted, fontWeight: 600, borderBottom: `2px solid ${P.border}` }}>Característica</th>
-                    {PLANES_LANDING.map(p => (
-                      <th key={p.clave} style={{ textAlign: 'center', padding: '12px 16px', color: p.popular ? p.color : P.text, fontWeight: 800, borderBottom: `2px solid ${P.border}` }}>
-                        {p.nombre}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {TABLA_COMPARATIVA.map((row, i) => (
-                    <tr key={row.feature} style={{ background: i % 2 === 0 ? P.gray : P.white }}>
-                      <td style={{ padding: '10px 16px', color: P.text, fontWeight: 500 }}>{row.feature}</td>
-                      {row.vals.map((v, j) => (
-                        <td key={j} style={{ textAlign: 'center', padding: '10px 16px', color: P.text }}>
-                          {typeof v === 'boolean'
-                            ? (v ? <span style={{ color: '#10B981', fontWeight: 700 }}>✓</span> : <span style={{ color: isDark ? '#4B5563' : '#D1D5DB' }}>—</span>)
-                            : <span style={{ fontWeight: 600 }}>{v}</span>
-                          }
-                        </td>
+          <AnimatePresence>
+            {tablaBien && (
+              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.3 }} style={{ overflow: 'hidden', marginTop: 24 }}>
+                <div style={{ overflowX: 'auto', borderRadius: 12, border: `1px solid ${P.border}` }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ background: P.bgAlt }}>
+                        <th style={{ padding: '14px 16px', textAlign: 'left', color: P.muted, fontWeight: 600, borderBottom: `1px solid ${P.border}` }}>Característica</th>
+                        {PLANES.map(p => (
+                          <th key={p.clave} style={{ padding: '14px 16px', textAlign: 'center', color: p.border, fontWeight: 700, borderBottom: `1px solid ${P.border}` }}>{p.nombre}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {TABLA_COMPARATIVA.map((row, i) => (
+                        <tr key={i} style={{ background: i % 2 === 0 ? P.bgCard : P.bgAlt }}>
+                          <td style={{ padding: '12px 16px', color: P.text, borderBottom: `1px solid ${P.border}` }}>{row.feature}</td>
+                          {row.vals.map((v, j) => (
+                            <td key={j} style={{ padding: '12px 16px', textAlign: 'center', borderBottom: `1px solid ${P.border}`,
+                              color: v === true ? '#10B981' : v === false ? P.border : P.muted }}>
+                              {v === true ? '✓' : v === false ? '—' : String(v)}
+                            </td>
+                          ))}
+                        </tr>
                       ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <p style={{ textAlign: 'center', color: P.muted, fontSize: 12, marginTop: 16 }}>
-                Todos los precios en USD · ITBIS no incluido · Cancela cuando quieras · Sin contratos de permanencia
-              </p>
-            </div>
-          )}
+                    </tbody>
+                  </table>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </FadeIn>
       </div>
     </section>
   );
 }
 
-// ── Landing principal ─────────────────────────────────────────────────────────────
+// ── Landing principal ──────────────────────────────────────────────────────────
 export default function LandingPage() {
-  const [demoOpen, setDemoOpen] = useState(false);
   const navigate = useNavigate();
   const { isDark } = useThemeStore();
   const P = buildPalette(isDark);
-
-  // Planes dinámicos desde la BD
-  const [planesDB, setPlanesDB] = useState<any[]>([]);
-  useEffect(() => {
-    fetch('/api/v1/public/planes')
-      .then(r => r.json())
-      .then(data => {
-        const arr = Array.isArray(data) ? data : (data?.data ?? []);
-        // Mostrar solo basico, profesional, empresarial (excluir trial y enterprise)
-        const visibles = arr.filter((p: any) => ['basico','profesional','empresarial'].includes(p.clave));
-        setPlanesDB(visibles);
-      })
-      .catch(() => { /* usa fallback */ });
-  }, []);
-
-  // Si el fetch falla o todavía carga, usar datos de respaldo
-  const planesRender = planesDB.length > 0
-    ? planesDB.map(mapPlanApi)
-    : [
-        { clave:'basico',      name:'Básico',      price:'RD$1,500', period:'/mes', color:L.primary, highlight:false, cta:'Solicitar Demo',
-          features:['3 usuarios','50 facturas/mes','Todos los módulos','e-CF incluido','Backups S3','Soporte: Documentación'] },
-        { clave:'profesional', name:'Profesional',  price:'RD$3,500', period:'/mes', color:'#00BFA5', highlight:true,  cta:'Empezar',        badge:'MÁS POPULAR',
-          features:['10 usuarios','1000 facturas/mes','Todos los módulos','e-CF incluido','Backups S3','Soporte: Email + Chat'] },
-        { clave:'empresarial', name:'Empresarial',  price:'RD$7,000', period:'/mes', color:'#7C3AED', highlight:false, cta:'Contactar',
-          features:['25 usuarios','5000 facturas/mes','Todos los módulos','e-CF incluido','API access','Soporte: Teléfono'] },
-      ];
-
+  const [demoOpen, setDemoOpen] = useState(false);
   const openDemo = () => setDemoOpen(true);
 
   return (
-    <div style={{ fontFamily: "'Inter', -apple-system, sans-serif", color: P.text, overflowX: 'hidden', background: P.pageBg }}>
+    <div style={{ background: P.bg, color: P.text, fontFamily: "'IBM Plex Sans','Inter',sans-serif", overflowX: 'hidden' }}>
+      <style>{`
+        @media(max-width:768px){
+          .nav-desktop{display:none!important}
+          .nav-cta-hide{display:none!important}
+          .nav-hamburger{display:flex!important}
+          .hero-ctas{flex-direction:column!important;align-items:stretch!important}
+          .stats-grid{grid-template-columns:1fr 1fr!important}
+          .modules-grid{grid-template-columns:1fr!important}
+          .testimonios-grid{grid-template-columns:1fr!important}
+        }
+        @media(max-width:480px){
+          .stats-grid{grid-template-columns:1fr!important}
+          .ecf-grid{grid-template-columns:repeat(3,1fr)!important}
+        }
+        *{box-sizing:border-box}
+      `}</style>
+
       <Navbar onDemo={openDemo} />
 
-      {/* ─── HERO ─────────────────────────────────────────────────────────────── */}
-      <section style={{
-        minHeight: '100vh', background: P.dark,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 'clamp(100px,12vw,140px) clamp(16px,5vw,80px) 80px',
-        textAlign: 'center',
-        backgroundImage: 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(21,101,192,.3), transparent), radial-gradient(ellipse 40% 40% at 80% 60%, rgba(0,191,165,.12), transparent)',
-        position: 'relative', overflow: 'hidden',
-      }}>
-        {/* Grid decorativo */}
-        <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px)', backgroundSize: '60px 60px', pointerEvents: 'none' }} />
+      {/* ─── HERO ─────────────────────────────────────────────────────────── */}
+      <section style={{ minHeight: '100vh', background: '#050505', display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center', padding: 'clamp(100px,12vw,140px) clamp(20px,5vw,64px) clamp(60px,8vw,96px)',
+        textAlign: 'center', position: 'relative', overflow: 'hidden' }}>
+        {/* Grid background */}
+        <div style={{ position: 'absolute', inset: 0, opacity: 0.04,
+          backgroundImage: 'linear-gradient(rgba(255,255,255,.3) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.3) 1px,transparent 1px)',
+          backgroundSize: '64px 64px' }} />
+        {/* Glow */}
+        <div style={{ position: 'absolute', top: '30%', left: '50%', transform: 'translate(-50%,-50%)',
+          width: 700, height: 400, background: 'radial-gradient(ellipse at center,rgba(30,58,138,.35) 0%,transparent 70%)',
+          pointerEvents: 'none' }} />
 
-        <div style={{ maxWidth: 820, position: 'relative' }}>
-          <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(0,191,165,.15)', border: '1px solid rgba(0,191,165,.3)', color: '#00BFA5', fontSize: 12, fontWeight: 700, padding: '6px 14px', borderRadius: 20, marginBottom: 24, letterSpacing: '0.5px' }}>
-              🇩🇴 &nbsp;HECHO PARA REPÚBLICA DOMINICANA · LEY 32-23
-            </span>
-          </motion.div>
+        <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7 }}
+          style={{ position: 'relative', zIndex: 1, maxWidth: 760 }}>
+          {/* Badge */}
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,.06)',
+            border: '1px solid rgba(255,255,255,.12)', borderRadius: 100, padding: '6px 16px',
+            fontSize: 13, color: 'rgba(255,255,255,.7)', marginBottom: 32, backdropFilter: 'blur(8px)' }}>
+            🇩🇴 El ERP hecho para República Dominicana
+          </div>
 
-          <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.1 }}
-            style={{ fontSize: 'clamp(32px,5.5vw,58px)', fontWeight: 800, color: '#fff', lineHeight: 1.15, letterSpacing: '-0.03em', margin: '0 0 20px' }}>
-            El ERP con Facturación<br />
-            <span style={{ background: 'linear-gradient(90deg,#00BFA5,#42A5F5)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-              Electrónica Nativa
-            </span><br />para PYMEs Dominicanas
-          </motion.h1>
+          <h1 style={{ fontSize: 'clamp(36px,6vw,72px)', fontWeight: 800, lineHeight: 1.1,
+            color: '#fff', margin: '0 0 24px', letterSpacing: '-1px' }}>
+            Factura electrónica,<br />
+            <span style={{ color: '#10B981' }}>contabilidad y POS.</span><br />
+            Todo en uno. 100% DGII.
+          </h1>
 
-          <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.2 }}
-            style={{ fontSize: 'clamp(16px,2.2vw,19px)', color: 'rgba(255,255,255,.72)', maxWidth: 620, margin: '0 auto 32px', lineHeight: 1.65 }}>
-            Gestiona tu negocio completo y emite comprobantes electrónicos (e-CF) automáticamente desde un solo sistema. Cumple con la DGII sin complicaciones.
-          </motion.p>
+          <p style={{ fontSize: 'clamp(16px,2vw,20px)', color: 'rgba(255,255,255,.55)',
+            lineHeight: 1.65, maxWidth: 600, margin: '0 auto 40px' }}>
+            HiCloud ERP fue construido desde cero para las PYMEs dominicanas.
+            e-CF nativo, reportes 606/607/608, nómina con TSS y más.
+          </p>
 
-          {/* Badges */}
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.35 }}
-            style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginBottom: 36 }}>
-            {['✅ Certificado DGII', '📋 Ley 32-23', '⚡ e-CF en tiempo real', '🔒 AWS Cloud', '🛒 POS incluido'].map(b => (
-              <span key={b} style={{ background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.14)',
-                color: 'rgba(255,255,255,.8)', fontSize: 12, padding: '5px 12px', borderRadius: 20 }}>{b}</span>
-            ))}
-          </motion.div>
-
-          {/* CTAs */}
-          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
-            className="hero-ctas"
-            style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 12 }}>
+          <div className="hero-ctas" style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 24 }}>
             <button onClick={() => navigate('/registrar')}
-              style={{ background: 'linear-gradient(135deg,#00BFA5,#009688)', color: '#fff', border: 'none',
-                fontSize: 16, fontWeight: 700, padding: '14px 28px', borderRadius: 10, cursor: 'pointer',
-                boxShadow: '0 4px 20px rgba(0,191,165,.45)', transition: 'all .2s' }}
-              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 28px rgba(0,191,165,.55)'; }}
-              onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,191,165,.45)'; }}>
+              style={{ background: '#10B981', border: 'none', color: '#fff', fontSize: 17, fontWeight: 700,
+                padding: '16px 36px', borderRadius: 12, cursor: 'pointer',
+                boxShadow: '0 4px 24px rgba(16,185,129,.35)', transition: 'all .2s' }}
+              onMouseEnter={e => { e.currentTarget.style.background = '#059669'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = '#10B981'; e.currentTarget.style.transform = ''; }}>
               Probar gratis 15 días →
             </button>
-          </motion.div>
+            <button onClick={openDemo}
+              style={{ background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.15)',
+                color: '#fff', fontSize: 16, fontWeight: 600, padding: '16px 32px', borderRadius: 12, cursor: 'pointer' }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,.12)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,.07)')}>
+              Agendar demo
+            </button>
+          </div>
+
+          <p style={{ color: 'rgba(255,255,255,.3)', fontSize: 13 }}>
+            Sin tarjeta de crédito · Sin compromiso · Cancela cuando quieras
+          </p>
+        </motion.div>
+
+        {/* Dashboard mockup */}
+        <motion.div initial={{ opacity: 0, y: 60 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, delay: 0.3 }}
+          style={{ position: 'relative', zIndex: 1, marginTop: 64, width: '100%', maxWidth: 900 }}>
+          <div style={{ background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)',
+            borderRadius: 16, padding: '24px 24px 0', boxShadow: '0 40px 100px rgba(0,0,0,.6)' }}>
+            {/* Fake browser bar */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 20 }}>
+              {['#FF5F57','#FFBD2E','#28C840'].map(c => (
+                <div key={c} style={{ width: 12, height: 12, borderRadius: '50%', background: c }} />
+              ))}
+              <div style={{ marginLeft: 10, background: 'rgba(255,255,255,.06)', borderRadius: 6, padding: '4px 14px',
+                fontSize: 12, color: 'rgba(255,255,255,.3)', flex: 1 }}>app.hicloudrd.com/dashboard</div>
+            </div>
+            {/* Mini dashboard preview */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 16 }}>
+              {[
+                { label: 'Ventas del mes', val: 'RD$487,250', change: '+12%', color: '#10B981' },
+                { label: 'Facturas emitidas', val: '234', change: '+8%', color: '#2563EB' },
+                { label: 'e-CF pendientes', val: '0', change: '100% OK', color: '#10B981' },
+                { label: 'Por cobrar', val: 'RD$45,800', change: '3 clientes', color: '#F59E0B' },
+              ].map(s => (
+                <div key={s.label} style={{ background: 'rgba(255,255,255,.04)', borderRadius: 10,
+                  padding: '16px', border: '1px solid rgba(255,255,255,.06)' }}>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)', marginBottom: 8 }}>{s.label}</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: '#fff', marginBottom: 4 }}>{s.val}</div>
+                  <div style={{ fontSize: 11, color: s.color }}>{s.change}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ height: 120, background: 'rgba(255,255,255,.03)', borderRadius: '8px 8px 0 0',
+              border: '1px solid rgba(255,255,255,.06)', borderBottom: 'none', overflow: 'hidden', position: 'relative' }}>
+              {/* Fake chart bars */}
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, padding: '16px 20px', height: '100%' }}>
+                {[40,65,50,80,70,95,60,85,75,90,55,100].map((h, i) => (
+                  <div key={i} style={{ flex: 1, background: i === 11 ? '#10B981' : 'rgba(37,99,235,.4)',
+                    borderRadius: '4px 4px 0 0', height: `${h}%`, minWidth: 0 }} />
+                ))}
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      </section>
+
+      {/* ─── SOCIAL PROOF ────────────────────────────────────────────────── */}
+      <section style={{ background: isDark ? '#0A0A0A' : '#F8FAFC', padding: 'clamp(40px,6vw,64px) clamp(16px,5vw,80px)',
+        borderTop: `1px solid ${P.border}`, borderBottom: `1px solid ${P.border}` }}>
+        <div style={{ maxWidth: 1080, margin: '0 auto', textAlign: 'center' }}>
+          <p style={{ color: P.muted, fontSize: 13, fontWeight: 600, letterSpacing: '1px',
+            textTransform: 'uppercase', marginBottom: 32 }}>
+            USADO POR EMPRESAS DOMINICANAS EN
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 'clamp(24px,4vw,56px)', flexWrap: 'wrap', marginBottom: 48 }}>
+            {['🏪 Retail', '⚙️ Servicios', '🚚 Distribución', '🏗️ Construcción', '🏥 Salud'].map(s => (
+              <span key={s} style={{ fontSize: 'clamp(14px,2vw,17px)', color: P.muted, fontWeight: 500 }}>{s}</span>
+            ))}
+          </div>
+          <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 32 }}>
+            {[
+              { to: 120, suffix: '+', label: 'Empresas activas' },
+              { to: 50000, suffix: '+', label: 'Facturas electrónicas emitidas' },
+              { to: 99, suffix: '.9%', label: 'Uptime garantizado' },
+            ].map(s => (
+              <FadeIn key={s.label}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 'clamp(32px,5vw,52px)', fontWeight: 800, color: P.text }}>
+                    <CountUp to={s.to} suffix={s.suffix} />
+                  </div>
+                  <div style={{ color: P.muted, fontSize: 14, marginTop: 6 }}>{s.label}</div>
+                </div>
+              </FadeIn>
+            ))}
+          </div>
         </div>
       </section>
 
-      {/* ─── BANNER DE URGENCIA ──────────────────────────────────────────────── */}
-      <section style={{ background: 'linear-gradient(135deg,#B45309,#D97706)', padding: '16px 24px', textAlign: 'center' }}>
-        <div className="banner-inner" style={{ margin: 0, color: '#fff', fontSize: 'clamp(13px,2vw,15px)', fontWeight: 600 }}>
-          <span>⏰ <strong>DGII:</strong> Plazo hasta el 15 de noviembre 2026 para pequeños y micro contribuyentes.
-          HiCloud te pone en operación en menos de una semana.</span>
-          <button onClick={openDemo} className="banner-btn" style={{ marginLeft: 12, background: 'rgba(255,255,255,.2)', border: '1px solid rgba(255,255,255,.4)',
-            color: '#fff', fontSize: 13, fontWeight: 700, padding: '6px 14px', borderRadius: 6, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-            Empezar ahora →
-          </button>
-        </div>
-      </section>
-
-      {/* ─── PROBLEMA → SOLUCIÓN ─────────────────────────────────────────────── */}
-      <section style={{ padding: 'clamp(60px,8vw,96px) clamp(16px,5vw,80px)', background: P.gray }}>
-        <div style={{ maxWidth: 1080, margin: '0 auto' }}>
+      {/* ─── PROBLEMA → SOLUCIÓN ─────────────────────────────────────────── */}
+      <section style={{ padding: 'clamp(60px,8vw,96px) clamp(16px,5vw,80px)', background: P.bg }}>
+        <div style={{ maxWidth: 960, margin: '0 auto' }}>
           <FadeIn>
-            <h2 style={{ textAlign: 'center', fontSize: 'clamp(24px,4vw,38px)', fontWeight: 800, marginBottom: 48, letterSpacing: '-0.02em', color: P.text }}>
-              ¿Sigues usando <span style={{ color: '#DC2626' }}>Excel para facturar</span>?
+            <h2 style={{ textAlign: 'center', fontSize: 'clamp(26px,4vw,40px)', fontWeight: 800,
+              color: P.text, marginBottom: 56 }}>
+              ¿Cansado de manejar tu negocio en Excel?
             </h2>
           </FadeIn>
-          <div className="problem-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 24 }}>
-            <FadeIn delay={0.1}>
-              <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 16, padding: 28 }}>
-                <div style={{ fontSize: 22, marginBottom: 16, fontWeight: 700, color: '#DC2626' }}>❌ El dolor hoy</div>
-                {['Usando Excel o facturación desconectada', 'Sistema de inventario separado del POS', 'Generando el 606/607 manualmente', 'Sin saber si tu e-CF fue aceptado por DGII', 'Pagando por 3-4 sistemas diferentes'].map(t => (
-                  <p key={t} style={{ margin: '0 0 8px', color: '#991B1B', fontSize: 14, display: 'flex', gap: 8 }}>
-                    <span>✗</span><span>{t}</span>
-                  </p>
-                ))}
-              </div>
-            </FadeIn>
-            <FadeIn delay={0.2}>
-              <div style={{ background: '#F0FDF4', border: '1px solid #86EFAC', borderRadius: 16, padding: 28 }}>
-                <div style={{ fontSize: 22, marginBottom: 16, fontWeight: 700, color: '#059669' }}>✅ Con HiCloud</div>
-                {['Todo integrado en una sola plataforma', 'e-CF automático desde cualquier módulo', '606/607/608 con un clic — listo para DGII', 'Estado del comprobante en tiempo real', 'Un solo precio — todo incluido'].map(t => (
-                  <p key={t} style={{ margin: '0 0 8px', color: '#065F46', fontSize: 14, display: 'flex', gap: 8 }}>
-                    <span>✓</span><span>{t}</span>
-                  </p>
-                ))}
-              </div>
-            </FadeIn>
-          </div>
-        </div>
-      </section>
-
-      {/* ─── CARACTERÍSTICAS ─────────────────────────────────────────────────── */}
-      <section id="caracteristicas" style={{ padding: 'clamp(60px,8vw,96px) clamp(16px,5vw,80px)', background: P.white }}>
-        <div style={{ maxWidth: 1080, margin: '0 auto' }}>
-          <FadeIn>
-            <div style={{ textAlign: 'center', marginBottom: 56 }}>
-              <h2 style={{ fontSize: 'clamp(24px,4vw,38px)', fontWeight: 800, marginBottom: 12, letterSpacing: '-0.02em', color: P.text }}>
-                Todo lo que necesita tu PYME
-              </h2>
-              <p style={{ color: P.muted, fontSize: 17, maxWidth: 540, margin: '0 auto' }}>
-                Módulos integrados que trabajan juntos. Sin plugins, sin integraciones rotas.
-              </p>
-            </div>
-          </FadeIn>
-          <div className="features-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 20 }}>
-            {FEATURES.map((f, i) => (
-              <FadeIn key={f.title} delay={i * 0.06}>
-                <div style={{ background: P.gray, border: `1px solid ${P.border}`, borderRadius: 14, padding: '22px 24px',
-                  transition: 'all .2s', cursor: 'default' }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-3px)'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 24px rgba(0,0,0,.08)'; (e.currentTarget as HTMLDivElement).style.borderColor = P.primary; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = ''; (e.currentTarget as HTMLDivElement).style.boxShadow = ''; (e.currentTarget as HTMLDivElement).style.borderColor = P.border; }}>
-                  <div style={{ fontSize: 28, marginBottom: 12 }}>{f.icon}</div>
-                  <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 700 }}>{f.title}</h3>
-                  <p style={{ margin: 0, color: P.muted, fontSize: 14, lineHeight: 1.6 }}>{f.desc}</p>
-                </div>
-              </FadeIn>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ─── CÓMO FUNCIONA EL e-CF ───────────────────────────────────────────── */}
-      <section id="ecf" style={{ padding: 'clamp(60px,8vw,96px) clamp(16px,5vw,80px)', background: P.dark, color: '#fff' }}>
-        <div style={{ maxWidth: 1080, margin: '0 auto' }}>
-          <FadeIn>
-            <div style={{ textAlign: 'center', marginBottom: 56 }}>
-              <h2 style={{ fontSize: 'clamp(24px,4vw,38px)', fontWeight: 800, marginBottom: 12 }}>
-                e-CF en 3 pasos simples
-              </h2>
-              <p style={{ color: 'rgba(255,255,255,.6)', fontSize: 17 }}>
-                Desde cero hasta tu primer comprobante aceptado por la DGII.
-              </p>
-            </div>
-          </FadeIn>
-          <div className="ecf-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 24 }}>
-            {[
-              { n: '01', title: 'Configura tu empresa', desc: 'Agrega tu RNC, activa tu configuración de facturación electrónica y carga tus secuencias DGII. Todo en minutos.', color: '#42A5F5' },
-              { n: '02', title: 'Emite desde cualquier módulo', desc: 'Facturas, POS, compras — todos generan el e-CF automáticamente al confirmar la operación.', color: '#00BFA5' },
-              { n: '03', title: 'DGII confirma en segundos', desc: 'El comprobante llega a la DGII automáticamente. Recibes el eNCF con código QR de validación.', color: '#A78BFA' },
-            ].map((s, i) => (
-              <FadeIn key={s.n} delay={i * 0.12}>
-                <div style={{ background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 16, padding: 28, position: 'relative' }}>
-                  <div style={{ fontSize: 48, fontWeight: 900, color: s.color, opacity: 0.25, position: 'absolute', top: 16, right: 20, lineHeight: 1, fontFamily: 'monospace' }}>{s.n}</div>
-                  <div style={{ width: 42, height: 42, borderRadius: 12, background: s.color + '22', border: `1px solid ${s.color}44`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 800, color: s.color, marginBottom: 16 }}>
-                    {s.n}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 32, alignItems: 'center' }}>
+            {/* Problemas */}
+            <div>
+              <FadeIn delay={0.1}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#EF4444', letterSpacing: '0.5px',
+                  marginBottom: 20, textTransform: 'uppercase' }}>Antes de HiCloud</div>
+                {[
+                  'Facturas manuales que la DGII rechaza',
+                  'Contabilidad separada del inventario',
+                  'Sin visibilidad real de tu negocio',
+                  'Reportes 606 que toman horas',
+                  'POS y facturación desconectados',
+                ].map(p => (
+                  <div key={p} style={{ display: 'flex', gap: 12, alignItems: 'flex-start',
+                    marginBottom: 16, padding: '12px 16px', background: isDark ? '#1a0a0a' : '#FEF2F2',
+                    borderRadius: 10, border: '1px solid rgba(239,68,68,.15)' }}>
+                    <span style={{ color: '#EF4444', fontSize: 16, flexShrink: 0 }}>✗</span>
+                    <span style={{ fontSize: 14, color: P.text }}>{p}</span>
                   </div>
-                  <h3 style={{ margin: '0 0 10px', fontSize: 18, fontWeight: 700 }}>{s.title}</h3>
-                  <p style={{ margin: 0, color: 'rgba(255,255,255,.62)', fontSize: 14, lineHeight: 1.65 }}>{s.desc}</p>
+                ))}
+              </FadeIn>
+            </div>
+
+            {/* Flecha */}
+            <FadeIn delay={0.2}>
+              <div style={{ textAlign: 'center', fontSize: 32, color: '#10B981' }}>→</div>
+            </FadeIn>
+
+            {/* Soluciones */}
+            <div>
+              <FadeIn delay={0.3}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#10B981', letterSpacing: '0.5px',
+                  marginBottom: 20, textTransform: 'uppercase' }}>Con HiCloud ERP</div>
+                {[
+                  'e-CF automático, aceptado por MSeller/DGII',
+                  'Todo integrado: ventas, inventario, contabilidad',
+                  'Dashboard con métricas en tiempo real',
+                  'Reportes 606/607/608 en un clic',
+                  'POS + facturación en el mismo sistema',
+                ].map(s => (
+                  <div key={s} style={{ display: 'flex', gap: 12, alignItems: 'flex-start',
+                    marginBottom: 16, padding: '12px 16px', background: isDark ? '#0a1a0a' : '#F0FDF4',
+                    borderRadius: 10, border: '1px solid rgba(16,185,129,.15)' }}>
+                    <span style={{ color: '#10B981', fontSize: 16, flexShrink: 0 }}>✓</span>
+                    <span style={{ fontSize: 14, color: P.text }}>{s}</span>
+                  </div>
+                ))}
+              </FadeIn>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── MÓDULOS ─────────────────────────────────────────────────────── */}
+      <section id="caracteristicas" style={{ padding: 'clamp(60px,8vw,96px) clamp(16px,5vw,80px)', background: P.bgAlt }}>
+        <div style={{ maxWidth: 1080, margin: '0 auto' }}>
+          <FadeIn>
+            <div style={{ textAlign: 'center', marginBottom: 56 }}>
+              <span style={{ background: P.blueL + '18', color: P.blueL, fontSize: 12, fontWeight: 700,
+                padding: '4px 14px', borderRadius: 20, letterSpacing: '0.5px', display: 'inline-block', marginBottom: 16 }}>
+                MÓDULOS
+              </span>
+              <h2 style={{ fontSize: 'clamp(26px,4vw,40px)', fontWeight: 800, color: P.text, margin: '0 0 16px' }}>
+                Todo lo que necesita tu empresa
+              </h2>
+              <p style={{ color: P.muted, fontSize: 16, maxWidth: 480, margin: '0 auto' }}>
+                Sin módulos adicionales. Sin costos ocultos. Todo incluido desde el primer día.
+              </p>
+            </div>
+          </FadeIn>
+          <div className="modules-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16 }}>
+            {MODULES.map((m, i) => (
+              <FadeIn key={m.title} delay={i * 0.05}>
+                <div style={{ background: P.bgCard, border: `1px solid ${P.border}`, borderRadius: 14,
+                  padding: '24px 20px', transition: 'border-color .2s' }}
+                  onMouseEnter={e => (e.currentTarget.style.borderColor = P.blueL)}
+                  onMouseLeave={e => (e.currentTarget.style.borderColor = P.border)}>
+                  <div style={{ fontSize: 28, marginBottom: 12 }}>{m.icon}</div>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, color: P.text, margin: '0 0 8px' }}>{m.title}</h3>
+                  <p style={{ fontSize: 13, color: P.muted, margin: 0, lineHeight: 1.6 }}>{m.desc}</p>
+                </div>
+              </FadeIn>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ─── DGII SECTION ─────────────────────────────────────────────── */}
+      <section id="ecf" style={{ padding: 'clamp(60px,8vw,96px) clamp(16px,5vw,80px)', background: '#050A18' }}>
+        <div style={{ maxWidth: 1080, margin: '0 auto' }}>
+          <FadeIn>
+            <div style={{ textAlign: 'center', marginBottom: 56 }}>
+              <span style={{ background: 'rgba(37,99,235,.2)', color: '#60A5FA', fontSize: 12, fontWeight: 700,
+                padding: '4px 14px', borderRadius: 20, letterSpacing: '0.5px', display: 'inline-block', marginBottom: 16 }}>
+                CUMPLIMIENTO FISCAL
+              </span>
+              <h2 style={{ fontSize: 'clamp(26px,4vw,40px)', fontWeight: 800, color: '#fff', margin: '0 0 20px' }}>
+                Cumplimiento DGII garantizado
+              </h2>
+              <p style={{ color: 'rgba(255,255,255,.55)', fontSize: 16, maxWidth: 580, margin: '0 auto 16px' }}>
+                Somos el único ERP dominicano con e-CF nativo integrado con MSeller.
+                Tus facturas llegan a la DGII en segundos, sin intervención manual.
+              </p>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8,
+                background: 'rgba(16,185,129,.12)', border: '1px solid rgba(16,185,129,.3)',
+                padding: '8px 18px', borderRadius: 8 }}>
+                <span style={{ color: '#10B981', fontSize: 14 }}>✓</span>
+                <span style={{ color: '#6EE7B7', fontSize: 13, fontWeight: 600 }}>Integración certificada con MSeller / DGII</span>
+              </div>
+            </div>
+          </FadeIn>
+
+          <div className="ecf-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12 }}>
+            {ECF_TYPES.map((e, i) => (
+              <FadeIn key={e.code} delay={i * 0.04}>
+                <div style={{ background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)',
+                  borderRadius: 12, padding: '18px 12px', textAlign: 'center',
+                  transition: 'all .2s' }}
+                  onMouseEnter={el => { el.currentTarget.style.background = `${e.color}15`; el.currentTarget.style.borderColor = `${e.color}40`; }}
+                  onMouseLeave={el => { el.currentTarget.style.background = 'rgba(255,255,255,.04)'; el.currentTarget.style.borderColor = 'rgba(255,255,255,.08)'; }}>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: e.color, marginBottom: 6 }}>{e.code}</div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,.45)', lineHeight: 1.4 }}>{e.name}</div>
                 </div>
               </FadeIn>
             ))}
           </div>
 
-          {/* Tipos de e-CF */}
           <FadeIn delay={0.3}>
-            <div style={{ marginTop: 56, textAlign: 'center' }}>
-              <p style={{ color: 'rgba(255,255,255,.5)', fontSize: 13, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 20 }}>
-                Todos los tipos oficiales DGII — Ley 32-23 compliant
-              </p>
-              <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 10 }}>
-                {ECF_TYPES.map(t => (
-                  <span key={t.code} style={{ background: t.color + '22', border: `1px solid ${t.color}44`,
-                    borderRadius: 8, padding: '7px 14px', fontSize: 13 }}>
-                    <span style={{ color: t.color, fontWeight: 800, fontFamily: 'monospace' }}>{t.code}</span>
-                    <span style={{ color: 'rgba(255,255,255,.6)', marginLeft: 8 }}>{t.name}</span>
-                  </span>
-                ))}
-              </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 24, marginTop: 48 }}>
+              {[
+                { icon: '⚡', title: 'Envío instantáneo', desc: 'Tu factura llega a la DGII en menos de 5 segundos.' },
+                { icon: '🔒', title: 'Firma digital incluida', desc: 'Certificado de firma automático. Sin configuración extra.' },
+                { icon: '📋', title: '606/607/608 en un clic', desc: 'Archivos TXT listos para el portal DGII, validados.' },
+                { icon: '🔄', title: 'Reintentos automáticos', desc: 'Si falla la conexión, el sistema reintenta solo. Sin pérdida de datos.' },
+              ].map(f => (
+                <div key={f.title} style={{ background: 'rgba(255,255,255,.04)', borderRadius: 12, padding: '20px' }}>
+                  <div style={{ fontSize: 24, marginBottom: 12 }}>{f.icon}</div>
+                  <h4 style={{ fontSize: 14, fontWeight: 700, color: '#fff', margin: '0 0 8px' }}>{f.title}</h4>
+                  <p style={{ fontSize: 13, color: 'rgba(255,255,255,.45)', margin: 0, lineHeight: 1.6 }}>{f.desc}</p>
+                </div>
+              ))}
             </div>
           </FadeIn>
         </div>
       </section>
 
-      {/* ─── MÉTRICAS ────────────────────────────────────────────────────────── */}
-      <section style={{ padding: 'clamp(40px,6vw,64px) clamp(16px,5vw,80px)', background: L.primary }}>
-        <div className="metrics-grid" style={{ maxWidth: 900, margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 32, textAlign: 'center' }}>
-          {[
-            { label: 'Facturas emitidas', value: 69,   suffix: '+' },
-            { label: 'Tipos de e-CF',     value: 10,   suffix: '' },
-            { label: 'Módulos activos',   value: 90,   suffix: '+' },
-            { label: 'Uptime garantizado',value: 99,   suffix: '%' },
-          ].map(m => (
-            <FadeIn key={m.label}>
-              <div>
-                <div style={{ fontSize: 'clamp(36px,5vw,52px)', fontWeight: 900, color: '#fff', lineHeight: 1 }}>
-                  <CountUp to={m.value} suffix={m.suffix} />
-                </div>
-                <div style={{ color: 'rgba(255,255,255,.7)', fontSize: 14, marginTop: 6 }}>{m.label}</div>
-              </div>
-            </FadeIn>
-          ))}
-        </div>
-      </section>
-
-      {/* ─── PLANES ──────────────────────────────────────────────────────────── */}
+      {/* ─── PRECIOS ─────────────────────────────────────────────────────── */}
       <PreciosSection navigate={navigate} />
 
-      {/* ─── FAQ ─────────────────────────────────────────────────────────────── */}
-      <section id="faq" style={{ padding: 'clamp(60px,8vw,96px) clamp(16px,5vw,80px)', background: P.white }}>
-        <div style={{ maxWidth: 720, margin: '0 auto' }}>
+      {/* ─── TESTIMONIOS ─────────────────────────────────────────────────── */}
+      <section style={{ padding: 'clamp(60px,8vw,96px) clamp(16px,5vw,80px)', background: P.bg }}>
+        <div style={{ maxWidth: 1080, margin: '0 auto' }}>
           <FadeIn>
-            <h2 style={{ textAlign: 'center', fontSize: 'clamp(24px,4vw,36px)', fontWeight: 800, marginBottom: 44, letterSpacing: '-0.02em', color: P.text }}>
-              Preguntas frecuentes
-            </h2>
+            <div style={{ textAlign: 'center', marginBottom: 48 }}>
+              <h2 style={{ fontSize: 'clamp(26px,4vw,38px)', fontWeight: 800, color: P.text, margin: '0 0 12px' }}>
+                Lo que dicen nuestros clientes
+              </h2>
+              <p style={{ color: P.muted, fontSize: 16 }}>Empresas dominicanas que ya digitalizaron su operación</p>
+            </div>
           </FadeIn>
-          {FAQ_DATA.map(item => <FAQItem key={item.q} q={item.q} a={item.a} />)}
+          <div className="testimonios-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 20 }}>
+            {TESTIMONIOS.map((t, i) => (
+              <FadeIn key={t.nombre} delay={i * 0.1}>
+                <div style={{ background: P.bgCard, border: `1px solid ${P.border}`, borderRadius: 16, padding: '28px 24px',
+                  display: 'flex', flexDirection: 'column', height: '100%' }}>
+                  <p style={{ fontSize: 15, color: P.text, lineHeight: 1.7, margin: '0 0 24px', flex: 1 }}>
+                    "{t.quote}"
+                  </p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{ width: 44, height: 44, borderRadius: '50%', background: `hsl(${i * 120},50%,45%)`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 18, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+                      {t.nombre.charAt(0)}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: P.text }}>{t.nombre}</div>
+                      <div style={{ fontSize: 12, color: P.muted }}>{t.empresa} · {t.sector}</div>
+                    </div>
+                  </div>
+                </div>
+              </FadeIn>
+            ))}
+          </div>
         </div>
       </section>
 
-      {/* ─── CTA FINAL ───────────────────────────────────────────────────────── */}
-      <section id="demo-form" style={{ padding: 'clamp(60px,8vw,96px) clamp(16px,5vw,80px)', background: P.dark }}>
-        <div style={{ maxWidth: 640, margin: '0 auto', textAlign: 'center' }}>
+      {/* ─── FAQ ─────────────────────────────────────────────────────────── */}
+      <section id="faq" style={{ padding: 'clamp(60px,8vw,96px) clamp(16px,5vw,80px)', background: P.bgAlt }}>
+        <div style={{ maxWidth: 720, margin: '0 auto' }}>
           <FadeIn>
-            <h2 style={{ fontSize: 'clamp(26px,4vw,42px)', fontWeight: 800, color: '#fff', marginBottom: 16, letterSpacing: '-0.02em' }}>
-              ¿Listo para modernizar tu negocio?
+            <div style={{ textAlign: 'center', marginBottom: 48 }}>
+              <h2 style={{ fontSize: 'clamp(26px,4vw,38px)', fontWeight: 800, color: P.text, margin: '0 0 12px' }}>
+                Preguntas frecuentes
+              </h2>
+              <p style={{ color: P.muted, fontSize: 16 }}>Todo lo que necesitas saber antes de empezar</p>
+            </div>
+          </FadeIn>
+          <div style={{ background: P.bgCard, border: `1px solid ${P.border}`, borderRadius: 16, padding: '0 24px' }}>
+            {FAQ_DATA.map((item, i) => (
+              <FadeIn key={i} delay={i * 0.04}>
+                <FAQItem q={item.q} a={item.a} />
+              </FadeIn>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ─── CTA FINAL ───────────────────────────────────────────────────── */}
+      <section style={{ padding: 'clamp(60px,8vw,96px) clamp(16px,5vw,80px)', background: '#050505', textAlign: 'center' }}>
+        <div style={{ maxWidth: 640, margin: '0 auto', position: 'relative' }}>
+          <div style={{ position: 'absolute', inset: '-40%', background: 'radial-gradient(ellipse at center,rgba(16,185,129,.12) 0%,transparent 70%)', pointerEvents: 'none' }} />
+          <FadeIn>
+            <h2 style={{ fontSize: 'clamp(28px,5vw,52px)', fontWeight: 800, color: '#fff', margin: '0 0 20px', position: 'relative' }}>
+              Empieza hoy.<br />
+              <span style={{ color: '#10B981' }}>Tu primera factura en menos de 10 minutos.</span>
             </h2>
-            <p style={{ color: 'rgba(255,255,255,.62)', fontSize: 17, maxWidth: 520, margin: '0 auto 36px' }}>
-              Crea tu cuenta gratis. Todos los módulos incluidos, sin tarjeta de crédito.
+            <p style={{ color: 'rgba(255,255,255,.45)', fontSize: 17, marginBottom: 40, position: 'relative' }}>
+              Sin configuraciones complejas. Sin instalaciones. Sin tarjeta de crédito.
             </p>
-            <button
-              className="cta-final-btn"
-              onClick={() => navigate('/registrar')}
-              style={{
-                background: 'linear-gradient(135deg,#00BFA5,#009688)', color: '#fff', border: 'none',
-                fontSize: 18, fontWeight: 700, padding: '16px 40px', borderRadius: 12, cursor: 'pointer',
-                boxShadow: '0 6px 24px rgba(0,191,165,.45)', transition: 'all .2s',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 10px 32px rgba(0,191,165,.55)'; }}
-              onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = '0 6px 24px rgba(0,191,165,.45)'; }}
-            >
+            <button onClick={() => navigate('/registrar')}
+              style={{ background: '#10B981', border: 'none', color: '#fff', fontSize: 18, fontWeight: 700,
+                padding: '18px 44px', borderRadius: 12, cursor: 'pointer', position: 'relative',
+                boxShadow: '0 8px 32px rgba(16,185,129,.35)', transition: 'all .2s' }}
+              onMouseEnter={e => { e.currentTarget.style.background = '#059669'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = '#10B981'; e.currentTarget.style.transform = ''; }}>
               Probar gratis 15 días →
             </button>
-            <p style={{ color: 'rgba(255,255,255,.35)', fontSize: 13, marginTop: 16 }}>
+            <p style={{ color: 'rgba(255,255,255,.25)', fontSize: 13, marginTop: 20, position: 'relative' }}>
               Sin compromiso · Sin tarjeta de crédito · Cancela cuando quieras
             </p>
           </FadeIn>
         </div>
       </section>
 
-      {/* ─── FOOTER ──────────────────────────────────────────────────────────── */}
-      <footer style={{ background: P.footer, padding: 'clamp(40px,6vw,64px) clamp(16px,5vw,80px) 24px', color: 'rgba(255,255,255,.55)' }}>
+      {/* ─── FOOTER ──────────────────────────────────────────────────────── */}
+      <footer style={{ background: '#050505', borderTop: '1px solid rgba(255,255,255,.06)',
+        padding: 'clamp(40px,6vw,64px) clamp(16px,5vw,80px) 28px', color: 'rgba(255,255,255,.45)' }}>
         <div style={{ maxWidth: 1080, margin: '0 auto' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 40, marginBottom: 48 }}>
-            {/* Logo + tagline */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 40, marginBottom: 48 }}>
             <div>
-              <div style={{ marginBottom: 12 }}>
-                <img src="/logo-hicloud.png" alt="HiCloud ERP"
-                  style={{ height: 48, width: 'auto', objectFit: 'contain',
-                    filter: 'drop-shadow(0 2px 6px rgba(0,170,255,0.3))' }} />
+              <div style={{ marginBottom: 14 }}>
+                <img src="/logo-hicloud.png" alt="HiCloud ERP" style={{ height: 44, width: 'auto', objectFit: 'contain' }} />
               </div>
-              <p style={{ fontSize: 13, lineHeight: 1.6, margin: 0 }}>El ERP para PYMEs dominicanas. Facturación electrónica nativa con la DGII.</p>
-              <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-                {[
-                  { label: 'WhatsApp', href: 'https://wa.me/18093081713' },
-                  { label: 'Email',    href: 'mailto:soporte@hicloudrd.com' },
-                ].map(s => (
-                  <a key={s.label} href={s.href} target="_blank" rel="noopener noreferrer"
-                    style={{ background: 'rgba(255,255,255,.08)', color: 'rgba(255,255,255,.7)',
-                      fontSize: 12, padding: '5px 12px', borderRadius: 6, textDecoration: 'none', transition: 'background .15s' }}
-                    onMouseEnter={e => ((e.currentTarget as HTMLAnchorElement).style.background = 'rgba(255,255,255,.15)')}
-                    onMouseLeave={e => ((e.currentTarget as HTMLAnchorElement).style.background = 'rgba(255,255,255,.08)')}>
-                    {s.label}
-                  </a>
-                ))}
+              <p style={{ fontSize: 13, lineHeight: 1.6, margin: '0 0 20px' }}>El ERP para PYMEs dominicanas. Facturación electrónica nativa con la DGII.</p>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <a href="https://wa.me/18093081713" target="_blank" rel="noopener noreferrer"
+                  style={{ background: 'rgba(255,255,255,.07)', color: 'rgba(255,255,255,.65)',
+                    fontSize: 12, padding: '6px 12px', borderRadius: 6, textDecoration: 'none' }}>
+                  💚 WhatsApp
+                </a>
+                <a href="mailto:soporte@hicloudrd.com"
+                  style={{ background: 'rgba(255,255,255,.07)', color: 'rgba(255,255,255,.65)',
+                    fontSize: 12, padding: '6px 12px', borderRadius: 6, textDecoration: 'none' }}>
+                  📧 Email
+                </a>
               </div>
             </div>
 
-            {/* Producto */}
             <div>
-              <h4 style={{ color: '#fff', fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 16 }}>Producto</h4>
-              {['Características', 'Precios', 'e-CF DGII', 'Documentación'].map(l => (
+              <h4 style={{ color: '#fff', fontSize: 12, fontWeight: 700, textTransform: 'uppercase',
+                letterSpacing: '0.8px', marginBottom: 16 }}>Producto</h4>
+              {[{ l: 'Características', id: 'caracteristicas' }, { l: 'Precios', id: 'precios' },
+                { l: 'e-CF DGII', id: 'ecf' }, { l: 'Documentación', id: 'faq' }].map(({ l, id }) => (
                 <p key={l} style={{ margin: '0 0 10px' }}>
-                  <a href="#" onClick={e => { e.preventDefault(); openDemo(); }}
-                    style={{ color: 'rgba(255,255,255,.55)', fontSize: 13, textDecoration: 'none', transition: 'color .15s' }}
-                    onMouseEnter={e => ((e.currentTarget as HTMLAnchorElement).style.color = '#fff')}
-                    onMouseLeave={e => ((e.currentTarget as HTMLAnchorElement).style.color = 'rgba(255,255,255,.55)')}>
+                  <button onClick={() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })}
+                    style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.45)', fontSize: 13,
+                      cursor: 'pointer', padding: 0, textAlign: 'left' }}
+                    onMouseEnter={e => (e.currentTarget.style.color = '#fff')}
+                    onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,.45)')}>
                     {l}
-                  </a>
+                  </button>
                 </p>
               ))}
             </div>
 
-            {/* Legal */}
             <div>
-              <h4 style={{ color: '#fff', fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 16 }}>Legal</h4>
+              <h4 style={{ color: '#fff', fontSize: 12, fontWeight: 700, textTransform: 'uppercase',
+                letterSpacing: '0.8px', marginBottom: 16 }}>Legal</h4>
               {['Términos de uso', 'Privacidad', 'Cookies', 'SLA'].map(l => (
                 <p key={l} style={{ margin: '0 0 10px' }}>
-                  <a href="#" style={{ color: 'rgba(255,255,255,.55)', fontSize: 13, textDecoration: 'none', transition: 'color .15s' }}
+                  <a href="#" style={{ color: 'rgba(255,255,255,.45)', fontSize: 13, textDecoration: 'none' }}
                     onMouseEnter={e => ((e.currentTarget as HTMLAnchorElement).style.color = '#fff')}
-                    onMouseLeave={e => ((e.currentTarget as HTMLAnchorElement).style.color = 'rgba(255,255,255,.55)')}>
+                    onMouseLeave={e => ((e.currentTarget as HTMLAnchorElement).style.color = 'rgba(255,255,255,.45)')}>
                     {l}
                   </a>
                 </p>
               ))}
+            </div>
+
+            <div>
+              <h4 style={{ color: '#fff', fontSize: 12, fontWeight: 700, textTransform: 'uppercase',
+                letterSpacing: '0.8px', marginBottom: 16 }}>Contacto</h4>
+              <p style={{ margin: '0 0 10px', fontSize: 13 }}>
+                <a href="https://wa.me/18093081713" target="_blank" rel="noopener noreferrer"
+                  style={{ color: 'rgba(255,255,255,.45)', textDecoration: 'none' }}>
+                  💚 809-308-1713
+                </a>
+              </p>
+              <p style={{ margin: '0 0 10px', fontSize: 13 }}>
+                <a href="mailto:soporte@hicloudrd.com"
+                  style={{ color: 'rgba(255,255,255,.45)', textDecoration: 'none' }}>
+                  📧 soporte@hicloudrd.com
+                </a>
+              </p>
             </div>
           </div>
 
-          <div className="footer-bottom" style={{ borderTop: '1px solid rgba(255,255,255,.08)', paddingTop: 24, display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 12, fontSize: 12 }}>
+          <div style={{ borderTop: '1px solid rgba(255,255,255,.06)', paddingTop: 24,
+            display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 12, fontSize: 12 }}>
             <span>© 2026 HiCloud ERP — República Dominicana 🇩🇴</span>
             <span>Desarrollado con ❤️ en RD</span>
           </div>
         </div>
       </footer>
 
-      {/* CSS responsivo completo */}
-      <style>{`
-        /* ── Hamburger oculto por defecto (desktop) ── */
-        .nav-hamburger { display: none !important; }
-
-        /* ═══════════════════════════════════════════════════
-           MOBILE  ≤ 768 px
-        ═══════════════════════════════════════════════════ */
-        @media (max-width: 768px) {
-          /* Nav: ocultar links + botones CTA, mostrar hamburger */
-          .nav-desktop  { display: none !important; }
-          .nav-cta-hide { display: none !important; }
-          .nav-hamburger { display: flex !important; }
-
-          /* Pricing: quitar scale del card popular */
-          .pricing-popular { transform: none !important; }
-
-          /* Pricing grid: 2 columnas en tablet-ish */
-          .pricing-grid {
-            grid-template-columns: repeat(2, 1fr) !important;
-          }
-
-          /* Footer bottom: centrado */
-          .footer-bottom {
-            flex-direction: column !important;
-            align-items: center !important;
-            text-align: center !important;
-          }
-        }
-
-        /* ═══════════════════════════════════════════════════
-           MOBILE  ≤ 600 px  — banner wrap
-        ═══════════════════════════════════════════════════ */
-        @media (max-width: 600px) {
-          /* Banner: apilar texto + botón en columna */
-          .banner-inner {
-            display: flex !important;
-            flex-direction: column !important;
-            align-items: center !important;
-            gap: 10px !important;
-          }
-          .banner-btn {
-            margin-left: 0 !important;
-            width: 100%;
-            max-width: 260px;
-            text-align: center;
-          }
-        }
-
-        /* ═══════════════════════════════════════════════════
-           MOBILE  ≤ 540 px  — pricing 1 col
-        ═══════════════════════════════════════════════════ */
-        @media (max-width: 540px) {
-          .pricing-grid {
-            grid-template-columns: 1fr !important;
-          }
-        }
-
-        /* ═══════════════════════════════════════════════════
-           MOBILE  ≤ 480 px  — hero, CTA, metrics, features
-        ═══════════════════════════════════════════════════ */
-        @media (max-width: 480px) {
-          /* Hero CTAs: botones full-width apilados */
-          .hero-ctas {
-            flex-direction: column !important;
-            align-items: stretch !important;
-            padding: 0 4px;
-          }
-          .hero-ctas button {
-            width: 100% !important;
-            text-align: center !important;
-          }
-
-          /* CTA final: full-width */
-          .cta-final-btn {
-            width: 100% !important;
-            padding: 14px 20px !important;
-            font-size: 16px !important;
-          }
-
-          /* Métricas: 2 columnas en lugar de 4 */
-          .metrics-grid {
-            grid-template-columns: repeat(2, 1fr) !important;
-            gap: 24px !important;
-          }
-        }
-
-        /* ═══════════════════════════════════════════════════
-           MOBILE  ≤ 360 px  — grids 1 col para pantallas tiny
-        ═══════════════════════════════════════════════════ */
-        @media (max-width: 360px) {
-          /* Forzar 1 columna en grids que aún podrían desbordar */
-          .problem-grid,
-          .features-grid,
-          .ecf-grid {
-            grid-template-columns: 1fr !important;
-          }
-        }
-
-        /* ── Estilos base para banner-inner (flex en cualquier ancho) ── */
-        .banner-inner {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          flex-wrap: wrap;
-          gap: 6px;
-          line-height: 1.7;
-        }
-      `}</style>
-
-      {/* Modal de demo — compartido por todos los CTA de la landing */}
       <DemoModal open={demoOpen} onClose={() => setDemoOpen(false)} />
     </div>
   );
 }
-
