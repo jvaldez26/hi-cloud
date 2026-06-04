@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { TableActions } from '../../components/ui/TableActions';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
@@ -170,35 +170,40 @@ export default function PreFacturaPage() {
   };
 
   const abrirEditar = async (pf: any) => {
-    setEditandoPF(pf);
+    formCrear.resetFields();
+    setEditandoPF(null);   // limpiar primero para que el useEffect detecte el cambio
     setModalCrear(true);
-    // Cargar la pre-factura completa (con detalles) desde el backend
-    // La tabla solo trae datos básicos sin detalles
     try {
       const r = await api.get(`/pre-facturas/${pf.id}`);
       const full = r.data?.data ?? r.data;
-      setEditandoPF(full);
-      setTimeout(() => {
-        formCrear.setFieldsValue({
-          clienteId:        full.clienteId ?? full.cliente?.id,
-          tipoNcf:          full.tipoNcf,
-          fecha:            full.fecha ? require('dayjs')(full.fecha) : null,
-          fechaVencimiento: full.fechaVencimiento ? require('dayjs')(full.fechaVencimiento) : null,
-          notas:            full.notas,
-          vendedorId:       full.vendedorId,
-          detalles:         (full.detalles ?? []).map((d: any) => ({
-            productoId:     d.productoId,
-            descripcion:    d.descripcion,
-            cantidad:       Number(d.cantidad),
-            precioUnitario: Number(d.precioUnitario),
-            porcentajeIva:  Number(d.porcentajeIva ?? 18),
-          })),
-        });
-      }, 50);
+      setEditandoPF(full);  // el useEffect llenará el form al detectar este cambio
     } catch (e: any) {
       message.error(`Error al cargar la pre-factura: ${e?.message ?? 'Intente de nuevo'}`);
     }
   };
+
+  // Llenar el formulario cuando editandoPF cambia (después del fetch completo)
+  // useEffect garantiza que corre DESPUÉS del render, con el form ya montado
+  useEffect(() => {
+    if (!editandoPF || !modalCrear) return;
+    formCrear.setFieldsValue({
+      clienteId:        editandoPF.clienteId ?? editandoPF.cliente?.id,
+      tipoNcf:          editandoPF.tipoNcf ?? 'E32',
+      fecha:            editandoPF.fecha ? require('dayjs')(editandoPF.fecha) : null,
+      fechaVencimiento: editandoPF.fechaVencimiento ? require('dayjs')(editandoPF.fechaVencimiento) : null,
+      notas:            editandoPF.notas ?? '',
+      vendedorId:       editandoPF.vendedorId ?? undefined,
+      detalles:         (editandoPF.detalles ?? []).length > 0
+        ? editandoPF.detalles.map((d: any) => ({
+            productoId:     d.productoId ?? undefined,
+            descripcion:    d.descripcion,
+            cantidad:       Number(d.cantidad),
+            precioUnitario: Number(d.precioUnitario),
+            porcentajeIva:  Number(d.porcentajeIva ?? 18),
+          }))
+        : [{}],
+    });
+  }, [editandoPF, modalCrear]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const imprimirPDF = async (item: any) => {
     setPdfPending(item.id);
@@ -378,7 +383,6 @@ export default function PreFacturaPage() {
         confirmLoading={crear.isPending || actualizar.isPending}
         okText={editandoPF ? 'Guardar cambios' : 'Crear'}
         width={700}
-        destroyOnClose
       >
         <Form
           form={formCrear}
