@@ -89,7 +89,8 @@ export class PreFacturaService {
       subtotal:         +subtotal.toFixed(2),
       iva:              +iva.toFixed(2),
       total:            +(subtotal + iva).toFixed(2),
-      detalles:         detalles as unknown as PreFacturaDetalle[],
+      // empresaId en cada detalle es crítico para que @TenantScoped no los filtre
+      detalles: detalles.map(d => ({ ...d, empresaId })) as unknown as PreFacturaDetalle[],
     });
 
     return this.pfRepo.save(pf);
@@ -151,13 +152,15 @@ export class PreFacturaService {
     }
 
     if (dto.detalles) {
+      const empresaId = this.tenantSvc.getEmpresaId();
       await this.pfDetRepo.delete({ preFacturaId: id });
       const detalles = this.calcularDetalles(dto.detalles);
       const subtotal = detalles.reduce((s, d) => s + d.subtotal, 0);
       const iva      = detalles.reduce((s, d) => s + d.iva, 0);
       await this.pfRepo.update(id, {
         ...dto,
-        detalles: detalles as unknown as PreFacturaDetalle[],
+        // empresaId en cada detalle evita que @TenantScoped los filtre
+        detalles: detalles.map(d => ({ ...d, empresaId })) as unknown as PreFacturaDetalle[],
         subtotal: +subtotal.toFixed(2),
         iva:      +iva.toFixed(2),
         total:    +(subtotal + iva).toFixed(2),
