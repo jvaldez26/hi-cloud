@@ -189,8 +189,8 @@ export default function PreFacturaPage() {
     formCrear.setFieldsValue({
       clienteId:        editandoPF.clienteId ?? editandoPF.cliente?.id,
       tipoNcf:          editandoPF.tipoNcf ?? 'E32',
-      fecha:            editandoPF.fecha ? require('dayjs')(editandoPF.fecha) : null,
-      fechaVencimiento: editandoPF.fechaVencimiento ? require('dayjs')(editandoPF.fechaVencimiento) : null,
+      fecha:            editandoPF.fecha ? dayjs(editandoPF.fecha) : null,
+      fechaVencimiento: editandoPF.fechaVencimiento ? dayjs(editandoPF.fechaVencimiento) : null,
       notas:            editandoPF.notas ?? '',
       vendedorId:       editandoPF.vendedorId ?? undefined,
       detalles:         (editandoPF.detalles ?? []).length > 0
