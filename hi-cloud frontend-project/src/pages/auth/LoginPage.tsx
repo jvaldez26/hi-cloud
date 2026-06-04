@@ -164,11 +164,13 @@ export default function LoginPage() {
         <motion.div initial={{ opacity:0, y:30 }} animate={{ opacity:1, y:0 }} transition={{ duration:.7 }}
           style={{ maxWidth:440, width:'100%', position:'relative', zIndex:1 }}>
 
-          {/* Logo — SVG transparente, visible sobre fondo azul */}
-          <img src="/logo-hicloud.svg" alt="HiCloud ERP"
-            style={{ height:52, width:'auto', filter:'brightness(0) invert(1)', marginBottom:28, display:'block',
-              objectFit:'contain', background:'transparent' }}
-            onError={e => { (e.target as HTMLImageElement).src = '/logo-hicloud.png'; }} />
+          {/* Logo — en contenedor blanco redondeado (PNG con fondo opaco blanco) */}
+          <div style={{ background:'#fff', borderRadius:14, padding:'10px 18px',
+            display:'inline-flex', alignItems:'center', marginBottom:28,
+            boxShadow:'0 2px 12px rgba(0,0,0,.15)' }}>
+            <img src="/logo-hicloud.png" alt="HiCloud ERP"
+              style={{ height:40, width:'auto', display:'block', objectFit:'contain' }} />
+          </div>
 
           <h1 style={{ color:'#fff', fontSize:30, fontWeight:800, margin:'0 0 12px', lineHeight:1.2 }}>
             El ERP para PYMEs<br />dominicanas
@@ -256,7 +258,7 @@ export default function LoginPage() {
           {/* Logo móvil — visible solo en <768px */}
           <div className="login-logo-mobile" style={{ textAlign:'center', marginBottom:28, display:'none' }}>
             <img src="/logo-hicloud.png" alt="HiCloud ERP"
-              style={{ height:48, width:'auto', display:'inline-block' }} />
+              style={{ height:48, width:'auto', display:'inline-block', borderRadius:10 }} />
           </div>
 
           <div style={{ marginBottom:32 }}>
