@@ -2115,6 +2115,7 @@ function POSClientesPanel({ C, onVolver }: { C: Palette; onVolver: () => void })
   const [form, setForm] = useState(false);
   const [f, setF] = useState({ nombre:'', telefono:'', email:'', rnc:'', empresa:'' });
   const [busq, setBusq] = useState('');
+  const { datos: rncDatos, loading: rncLoading, consultarDebounced, limpiar: limpiarRnc } = useRncLookup();
   const { data, isLoading } = useQuery<any>({
     queryKey: ['pos-clientes', busq],
     queryFn: () => api.get(`/clientes?limit=40${busq?'&search='+encodeURIComponent(busq):''}`)
@@ -2126,16 +2127,30 @@ function POSClientesPanel({ C, onVolver }: { C: Palette; onVolver: () => void })
       nombre:      f.nombre.trim(),
       telefono:    f.telefono   || undefined,
       email:       f.email      || undefined,
-      rfc:         f.rnc.trim() || undefined,   // campo correcto del DTO
-      razonSocial: f.empresa    || undefined,   // empresa → razonSocial en la entidad
+      rfc:         f.rnc.trim() || undefined,
+      razonSocial: f.empresa    || undefined,
     }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['pos-clientes'] }); setForm(false); setF({ nombre:'',telefono:'',email:'',rnc:'',empresa:'' }); message.success('Cliente registrado'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['pos-clientes'] }); setForm(false); setF({ nombre:'',telefono:'',email:'',rnc:'',empresa:'' }); limpiarRnc(); message.success('Cliente registrado'); },
     onError: (e: any) => {
       const msg = e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error al guardar';
       message.error(Array.isArray(msg) ? msg[0] : msg, 5);
     },
   });
   const inp = (key: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF(p => ({ ...p, [key]: e.target.value }));
+
+  // Cuando llegan datos de DGII, autocompletar nombre y empresa
+  useEffect(() => {
+    if (!rncDatos?.encontrado) return;
+    setF(p => ({
+      ...p,
+      nombre:  p.nombre  || rncDatos.nombre          || '',
+      empresa: p.empresa || rncDatos.nombreComercial  || rncDatos.nombre || '',
+    }));
+  }, [rncDatos]);
+
+  const rncOk    = rncDatos?.encontrado === true;
+  const rncError = rncDatos?.encontrado === false;
+
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <PanelHeader title="Clientes" icon="👤" C={C} onVolver={onVolver}
@@ -2147,9 +2162,47 @@ function POSClientesPanel({ C, onVolver }: { C: Palette; onVolver: () => void })
               <PanelInput C={C} label="Nombre *" placeholder="Nombre del cliente" value={f.nombre} onChange={inp('nombre')} />
               <PanelInput C={C} label="Teléfono" placeholder="Teléfono" value={f.telefono} onChange={inp('telefono')} />
               <PanelInput C={C} label="Correo electrónico" placeholder="correo@email.com" value={f.email} onChange={inp('email')} />
-              <PanelInput C={C} label="RNC / Cédula" placeholder="RNC o Cédula" value={f.rnc} onChange={inp('rnc')} />
+              {/* RNC / Cédula con consulta DGII (Mega Plus) */}
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, marginBottom: 4 }}>
+                  RNC / Cédula
+                  {rncLoading && <span style={{ marginLeft: 6, color: C.blue, fontSize: 10 }}>Consultando DGII...</span>}
+                  {rncOk    && <span style={{ marginLeft: 6, color: C.green, fontSize: 10 }}>✓ Verificado</span>}
+                  {rncError && <span style={{ marginLeft: 6, color: C.orange, fontSize: 10 }}>No encontrado</span>}
+                </div>
+                <input
+                  value={f.rnc}
+                  onChange={e => {
+                    const val = e.target.value.replace(/\D/g, '').slice(0, 11);
+                    setF(p => ({ ...p, rnc: val }));
+                    consultarDebounced(val);
+                  }}
+                  placeholder="RNC (9) o Cédula (11)"
+                  maxLength={11}
+                  style={{ width: '100%', height: 38, padding: '0 10px', borderRadius: 8,
+                    border: `1px solid ${rncOk ? C.green : rncError ? C.orange : C.border}`,
+                    background: C.card, color: C.text, fontSize: 13, outline: 'none', boxSizing: 'border-box' as const }}
+                />
+              </div>
             </div>
-            <PanelInput C={C} label="Empresa / Compañía" placeholder="Nombre de la empresa" value={f.empresa} onChange={inp('empresa')} />
+            {/* Empresa con badge si autocompleted */}
+            <div style={{ marginTop: 0 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, marginBottom: 4 }}>
+                Empresa / Compañía
+                {rncOk && f.empresa && (
+                  <span style={{ marginLeft: 6, background: C.green + '22', color: C.green,
+                    fontSize: 10, padding: '1px 6px', borderRadius: 4 }}>Autocompletado DGII</span>
+                )}
+              </div>
+              <input
+                value={f.empresa}
+                onChange={inp('empresa')}
+                placeholder="Nombre de la empresa"
+                style={{ width: '100%', height: 38, padding: '0 10px', borderRadius: 8,
+                  border: `1px solid ${C.border}`, background: C.card, color: C.text,
+                  fontSize: 13, outline: 'none', boxSizing: 'border-box' as const, marginBottom: 12 }}
+              />
+            </div>
             <button onClick={() => crearMut.mutate()} disabled={crearMut.isPending || !f.nombre.trim()}
               style={{ width: '100%', height: 44, borderRadius: 10, border: 'none',
                 background: !f.nombre.trim() ? '#ccc' : '#059669', color: '#fff',
