@@ -23,7 +23,7 @@ export default function CompraFormPage() {
   const [form] = Form.useForm();
   const { token } = theme.useToken();
   const [lineas, setLineas] = useState<Linea[]>([{ key: '1', cantidad: 1, precioUnitario: 0, porcentajeItbis: 18 }]);
-  const [tipoPago, setTipoPago]         = useState<'contado' | 'credito'>('credito');
+  const [tipoPago, setTipoPago]         = useState<'contado' | 'credito'>('contado');
   const [diasCredito, setDiasCredito]   = useState(30);
   const [moneda, setMoneda]             = useState<'DOP' | 'USD' | 'EUR'>('DOP');
   const [tipoCambio, setTipoCambio]     = useState<number>(1);
