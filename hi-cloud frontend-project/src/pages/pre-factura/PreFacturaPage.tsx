@@ -247,11 +247,11 @@ export default function PreFacturaPage() {
 
       {/* ── Cabecera ─────────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <FileTextOutlined style={{ fontSize: 28, color: token.colorPrimary }} />
-          <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: 1 }}>
+          <FileTextOutlined style={{ fontSize: 28, color: token.colorPrimary, flexShrink: 0 }} />
+          <div style={{ minWidth: 0 }}>
             <Title level={3} style={{ margin: 0 }}>Pre-Facturas</Title>
-            <Text type="secondary">Facturas proforma · Aprobación → Conversión a factura oficial</Text>
+            <Text type="secondary" style={{ display: 'block', whiteSpace: 'normal' }}>Facturas proforma · Aprobación → Conversión a factura oficial</Text>
           </div>
         </div>
         <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>

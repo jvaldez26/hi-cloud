@@ -316,6 +316,25 @@ h1, h2, h3, h4, h5, h6,
   }
 }
 
+/* ── iOS Safari: texto vertical (letra por letra) en flex items ─────────────── */
+/* CAUSA: flex items tienen min-width:auto por spec. En iOS Safari, cuando un
+   flex container space-between se estrecha, los items internos colapsan a 0px
+   y el texto se renderiza vertical. Afecta +60 módulos con headers inline-flex.
+   Sin !important → respeta estilos inline específicos; no-op en elementos block
+   (ya tienen min-width:0 por defecto). Portales antd (dropdowns, modals)
+   se renderizan fuera de #main-content → no afectados. */
+#main-content div,
+#main-content span {
+  min-width: 0;
+}
+/* Subtítulos largos: asegurar wrap en vez de overflow */
+#main-content h1, #main-content h2, #main-content h3,
+#main-content h4, #main-content h5,
+#main-content p {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
 /* ── Padding de contenido reducido en mobile ──────────────────────────────────── */
 @media (max-width: 768px) {
   #main-content {
