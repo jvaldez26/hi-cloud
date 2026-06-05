@@ -66,7 +66,33 @@
     />
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Spinner inicial: visible antes de que React hidrate.
+           React lo reemplaza automáticamente al montar. -->
+      <div id="app-loader" style="
+        position:fixed;inset:0;display:flex;
+        align-items:center;justify-content:center;
+        background:#ffffff;z-index:9999;
+      ">
+        <style>
+          .hc-dots{display:flex;gap:8px;align-items:center}
+          .hc-dot{width:10px;height:10px;border-radius:50%;animation:hc-bounce 1.2s ease-in-out infinite}
+          .hc-dot:nth-child(1){background:#93c5fd;animation-delay:0s}
+          .hc-dot:nth-child(2){background:#60a5fa;animation-delay:.2s}
+          .hc-dot:nth-child(3){background:#3b82f6;animation-delay:.4s}
+          @keyframes hc-bounce{0%,80%,100%{transform:scale(.7);opacity:.5}40%{transform:scale(1.2);opacity:1}}
+        </style>
+        <div class="hc-dots">
+          <div class="hc-dot"></div>
+          <div class="hc-dot"></div>
+          <div class="hc-dot"></div>
+        </div>
+      </div>
+    </div>
+    <!-- Ajustar fondo del loader al modo oscuro (antes de que React hidrate) -->
+    <script>
+      (function(){try{var s=localStorage.getItem('hicloud-theme');if(s&&JSON.parse(s).state&&JSON.parse(s).state.isDark===true){var l=document.getElementById('app-loader');if(l)l.style.background='#0d1117';}}catch(e){}}());
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

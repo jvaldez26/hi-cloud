@@ -48,3 +48,15 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <App />
   </React.StrictMode>,
 );
+
+// El loader HTML se reemplaza automáticamente cuando React monta #root.
+// Este cleanup es defensa extra por si el nodo persiste en algún edge case.
+const _hideLoader = () => {
+  const l = document.getElementById('app-loader');
+  if (l) { l.style.opacity = '0'; setTimeout(() => l.remove(), 300); }
+};
+if (document.readyState === 'complete') {
+  setTimeout(_hideLoader, 400);
+} else {
+  window.addEventListener('load', () => setTimeout(_hideLoader, 400));
+}

@@ -162,24 +162,23 @@ function homeForRole(role?: string): string {
   return '/dashboard';
 }
 
-/** Pantalla de carga de aplicación — visible durante la hidratación de sesión.
- *  Muestra el logo centrado en fondo oscuro para evitar el "white flash". */
+/** Pantalla de carga durante hidratación — mismos dots que index.html para
+ *  transición imperceptible del loader HTML al loader React. */
 function AppLoader() {
   return (
     <div style={{
-      display: 'flex', flexDirection: 'column', alignItems: 'center',
-      justifyContent: 'center', minHeight: '100vh',
-      background: '#0d1117', gap: 16,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      minHeight: '100vh', background: 'var(--hc-bg-page, #ffffff)',
     }}>
-      <img src="/logo-hicloud.png" alt="HiCloud ERP"
-        style={{ height: 48, objectFit: 'contain', opacity: 0.9 }} />
-      <div style={{
-        width: 24, height: 24, borderRadius: '50%',
-        border: '2.5px solid rgba(26,86,219,.2)',
-        borderTopColor: '#1a56db',
-        animation: 'spin 0.75s linear infinite',
-      }} />
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes hc-b{0%,80%,100%{transform:scale(.7);opacity:.5}40%{transform:scale(1.2);opacity:1}}
+        .hc-d{width:10px;height:10px;border-radius:50%;animation:hc-b 1.2s ease-in-out infinite}
+      `}</style>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div className="hc-d" style={{ background: '#93c5fd', animationDelay: '0s' }} />
+        <div className="hc-d" style={{ background: '#60a5fa', animationDelay: '.2s' }} />
+        <div className="hc-d" style={{ background: '#3b82f6', animationDelay: '.4s' }} />
+      </div>
     </div>
   );
 }
@@ -438,7 +437,7 @@ export default function App() {
           <BrowserRouter>
             <ScrollToTop />
             <ErrorBoundary>
-              <Suspense fallback={<PageLoader />}>
+              <Suspense fallback={null}>
                 <Routes>
                   {/* ── Super Admin — layout propio sin sidebar de empresa ── */}
                   <Route path="/super-admin" element={<SuperAdminRoute><SuperAdminPage /></SuperAdminRoute>} />
