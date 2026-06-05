@@ -17,21 +17,61 @@ const PLANES = [
     clave: 'emprendedor', nombre: 'EMPRENDEDOR',
     precio: 29, limite: 'RD$125,000/mes', usuarios: 2,
     color: '#374151', borderColor: '#6B7280',
+    accentColor: '#10B981',
+    features: [
+      'Factura electrónica e-CF DGII gratuita',
+      'Ingresos hasta RD$125,000/mes',
+      '2 usuarios incluidos',
+      'Todos los módulos del ERP',
+      'Multi-empresa',
+      'Portal de clientes',
+      'Soporte 24/7 gratis',
+    ],
   },
   {
     clave: 'pyme', nombre: 'PYME',
     precio: 59, limite: 'RD$500,000/mes', usuarios: 3,
     color: '#047857', borderColor: '#10B981',
+    accentColor: '#10B981', popular: false,
+    features: [
+      'Factura electrónica e-CF DGII gratuita',
+      'Ingresos hasta RD$500,000/mes',
+      '3 usuarios incluidos',
+      'Todos los módulos del ERP',
+      'Multi-empresa',
+      'Portal de clientes',
+      'Soporte 24/7 gratis',
+    ],
   },
   {
     clave: 'pro', nombre: 'PRO',
     precio: 89, limite: 'RD$1,250,000/mes', usuarios: 4,
     color: '#0d9488', borderColor: '#14B8A6', popular: true,
+    accentColor: '#14B8A6',
+    features: [
+      'Factura electrónica e-CF DGII gratuita',
+      'Ingresos hasta RD$1,250,000/mes',
+      '4 usuarios incluidos',
+      'Todos los módulos del ERP',
+      'Multi-empresa',
+      'Portal de clientes',
+      'Soporte 24/7 gratis',
+    ],
   },
   {
     clave: 'plus', nombre: 'PLUS',
     precio: 129, limite: 'RD$6,250,000/mes', usuarios: 10,
     color: '#4F46E5', borderColor: '#818CF8',
+    accentColor: '#818CF8',
+    features: [
+      'Factura electrónica e-CF DGII gratuita',
+      'Ingresos hasta RD$6,250,000/mes',
+      '10 usuarios incluidos',
+      'Todos los módulos del ERP',
+      'Multi-empresa',
+      'Portal de clientes',
+      'Soporte 24/7 + Asistente IA',
+    ],
   },
 ];
 
@@ -162,30 +202,61 @@ export default function RegisterPage() {
             Todos incluyen todos los módulos sin excepción.
           </Text>
 
-          {[
-            '✅ e-CF DGII habilitado desde el día 1',
-            '✅ Todos los módulos incluidos en todos los planes',
-            '✅ Datos seguros con backup diario en AWS',
-            '✅ Soporte 24/7 incluido sin costo adicional',
-          ].map(f => (
-            <div key={f} style={{ marginBottom: 10 }}>
-              <Text style={{ color: 'rgba(255,255,255,.65)', fontSize: 14 }}>{f}</Text>
-            </div>
-          ))}
+          {/* Contenido estático para pasos 0 y 2 */}
+          {step !== 1 && (
+            <>
+              {[
+                '✅ e-CF DGII habilitado desde el día 1',
+                '✅ Todos los módulos incluidos en todos los planes',
+                '✅ Datos seguros con backup diario en AWS',
+                '✅ Soporte 24/7 incluido sin costo adicional',
+              ].map(f => (
+                <div key={f} style={{ marginBottom: 10 }}>
+                  <Text style={{ color: 'rgba(255,255,255,.65)', fontSize: 14 }}>{f}</Text>
+                </div>
+              ))}
+            </>
+          )}
 
+          {/* Paso 1: features dinámicos del plan seleccionado */}
           {step === 1 && (
-            <motion.div
-              initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-              style={{ marginTop: 32, background: 'rgba(255,255,255,.07)', borderRadius: 12, padding: 16 }}>
-              <Text style={{ color: '#10B981', fontWeight: 700, fontSize: 12, display: 'block', marginBottom: 8 }}>
-                PLAN SELECCIONADO
-              </Text>
-              <Text style={{ color: '#fff', fontWeight: 700, fontSize: 18 }}>
-                {planSeleccionado.nombre} — US${planSeleccionado.precio}/mes
-              </Text>
-              <Text style={{ color: 'rgba(255,255,255,.5)', fontSize: 13, display: 'block', marginTop: 4 }}>
-                {planSeleccionado.limite} · {planSeleccionado.usuarios} usuarios
-              </Text>
+            <motion.div key={planSeleccionado.clave}
+              initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}>
+              {/* Badge del plan */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+                <div style={{
+                  background: planSeleccionado.borderColor, color: '#fff',
+                  fontSize: 12, fontWeight: 800, padding: '4px 14px', borderRadius: 20,
+                }}>
+                  {planSeleccionado.nombre}
+                </div>
+                {planSeleccionado.popular && (
+                  <div style={{
+                    background: 'rgba(255,255,255,.15)', color: '#fff',
+                    fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
+                    border: '1px solid rgba(255,255,255,.2)',
+                  }}>⭐ MÁS POPULAR</div>
+                )}
+              </div>
+              {/* Precio y límite */}
+              <div style={{ marginBottom: 24 }}>
+                <Text style={{ color: '#fff', fontWeight: 800, fontSize: 32, display: 'block' }}>
+                  US${planSeleccionado.precio}<span style={{ fontSize: 16, fontWeight: 400, color: 'rgba(255,255,255,.6)' }}>/mes</span>
+                </Text>
+                <Text style={{ color: 'rgba(255,255,255,.5)', fontSize: 13, display: 'block', marginTop: 4 }}>
+                  {planSeleccionado.limite} · {planSeleccionado.usuarios} usuarios
+                </Text>
+              </div>
+              {/* Features del plan */}
+              <div>
+                {(planSeleccionado as any).features?.map((f: string) => (
+                  <div key={f} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
+                    <span style={{ color: planSeleccionado.borderColor, fontSize: 16, flexShrink: 0, marginTop: 1 }}>✓</span>
+                    <Text style={{ color: 'rgba(255,255,255,.8)', fontSize: 14, lineHeight: 1.5 }}>{f}</Text>
+                  </div>
+                ))}
+              </div>
             </motion.div>
           )}
         </motion.div>
