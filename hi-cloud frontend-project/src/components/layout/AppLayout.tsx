@@ -2032,7 +2032,7 @@ export default function AppLayout() {
             id="main-content"
             style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: isMobile ? 12 : 20 }}
           >
-            <Suspense fallback={<ContentLoader />}>
+            <Suspense fallback={null}>
               <PageTransition>
                 <Outlet />
               </PageTransition>
