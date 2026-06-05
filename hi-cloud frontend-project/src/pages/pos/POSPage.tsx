@@ -3863,7 +3863,20 @@ export default function POSPage() {
   const [cart,          setCart]          = useState<CartItem[]>(() => {
     try {
       const guardado = localStorage.getItem('pos-carrito-activo');
-      return guardado ? JSON.parse(guardado) : [];
+      if (!guardado) return [];
+      const data = JSON.parse(guardado);
+      // Formato legado (array sin empresaId) → limpiar por seguridad multi-tenant
+      if (Array.isArray(data)) {
+        localStorage.removeItem('pos-carrito-activo');
+        return [];
+      }
+      // Validar que el carrito pertenece a la empresa activa actual
+      const empresaIdActual = localStorage.getItem('empresaId');
+      if (!empresaIdActual || String(data.empresaId) !== String(empresaIdActual)) {
+        localStorage.removeItem('pos-carrito-activo');
+        return [];
+      }
+      return Array.isArray(data.items) ? data.items : [];
     } catch { return []; }
   });
   const [menuNavAbierto, setMenuNavAbierto] = useState(false);
@@ -4145,9 +4158,12 @@ export default function POSPage() {
     return () => window.removeEventListener('keydown', handler);
   }, [cart, total, totalEfectivo]);
 
-  // Persistir carrito en localStorage para sobrevivir navegación fuera del POS
+  // Persistir carrito en localStorage — incluye empresaId para validación multi-tenant
   useEffect(() => {
-    try { localStorage.setItem('pos-carrito-activo', JSON.stringify(cart)); }
+    try {
+      const empresaId = localStorage.getItem('empresaId');
+      localStorage.setItem('pos-carrito-activo', JSON.stringify({ empresaId, items: cart }));
+    }
     catch { /* quota exceeded — ignorar */ }
   }, [cart]);
 

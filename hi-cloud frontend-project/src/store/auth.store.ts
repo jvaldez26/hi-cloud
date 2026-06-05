@@ -68,6 +68,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     localStorage.removeItem('pos_cajero_nombre');
     localStorage.removeItem('pos_vendedor_id');
     localStorage.removeItem('hc_empresa_nombre');
+    // SEGURIDAD MULTI-TENANT: limpiar carrito activo para que no sobreviva entre empresas
+    localStorage.removeItem('pos-carrito-activo');
+    sessionStorage.removeItem('pos_turno');
+    sessionStorage.removeItem('pos_bloqueado');
     set({ user: null, empresaActual: null, empresas: [], hydrated: true });
     _onLogout?.();
   },
@@ -76,7 +80,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   cambiarEmpresa: (empresaId) => {
     localStorage.setItem('empresaId', String(empresaId));
-    set(state => ({ empresaActual: empresaId }));
+    set(() => ({ empresaActual: empresaId }));
   },
 
   getEmpresaActual: () => {

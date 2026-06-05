@@ -1166,9 +1166,13 @@ export default function AppLayout() {
     setEmpresaActiva(id);
     localStorage.setItem('empresaId', String(id));
     // Al cambiar de empresa, limpiar cache del POS para que el nuevo contexto
-    // no herede el cajero/vendedor de la empresa anterior
+    // no herede el cajero/vendedor ni el carrito de la empresa anterior
     localStorage.removeItem('pos_cajero_nombre');
     localStorage.removeItem('pos_vendedor_id');
+    // SEGURIDAD MULTI-TENANT: el carrito pertenece a la empresa anterior
+    localStorage.removeItem('pos-carrito-activo');
+    sessionStorage.removeItem('pos_turno');
+    sessionStorage.removeItem('pos_bloqueado');
     // Renovar JWT con el nuevo empresaId — el TenantMiddleware lee empresaId
     // ÚNICAMENTE del payload del JWT, no del header X-Empresa-ID.
     try {
