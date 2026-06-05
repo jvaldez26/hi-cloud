@@ -147,10 +147,19 @@ apiClient.interceptors.response.use(
       );
 
       if (otraEmpresaActiva) {
-        // Tiene otras empresas → redirigir al dashboard (AppLayout auto-seleccionará la activa)
-        if (!window.location.pathname.startsWith('/dashboard')) {
-          window.location.replace('/dashboard');
-        }
+        // Tiene otras empresas → actualizar JWT con la empresa activa ANTES de redirigir.
+        // Si no se actualiza el JWT, el auto-select del AppLayout dispararía otro reload
+        // (ve localStorage sin empresaId y llama cambiarEmpresa → doble recarga).
+        const newId = String(otraEmpresaActiva.empresaId);
+        localStorage.setItem('empresaId', newId);
+        try {
+          await fetch(`${API_URL}/auth/cambiar-empresa`, {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ empresaId: Number(newId) }),
+          });
+        } catch { /* si falla, el JWT se actualizará en el próximo ciclo */ }
+        window.location.replace('/dashboard');
       } else {
         // Sin otras empresas activas → logout con mensaje
         localStorage.removeItem('auth_user');

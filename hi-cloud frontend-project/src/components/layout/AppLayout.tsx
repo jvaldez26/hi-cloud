@@ -1192,6 +1192,10 @@ export default function AppLayout() {
     }
   }, [misEmpresas, empresaActiva]);
 
+  // Guard: evita doble invocación en React.StrictMode (o re-renders rápidos)
+  // que causaría doble window.location.reload()
+  const _autoSelectFired = useRef(false);
+
   // Auto-seleccionar empresa si:
   // a) No hay empresaId en localStorage, O
   // b) El empresaId en localStorage no coincide con ninguna empresa disponible
@@ -1202,6 +1206,8 @@ export default function AppLayout() {
     const stored = localStorage.getItem('empresaId');
     const estaEnLista = stored && (misEmpresas as any[]).some((e: any) => e.empresaId === Number(stored));
     if (!stored || !estaEnLista) {
+      if (_autoSelectFired.current) return;
+      _autoSelectFired.current = true;
       // Preferir empresa propia (isPrincipal=true, aprobada) como primera selección
       const propia = (misEmpresas as any[]).find(
         (e: any) => e.isPrincipal && e.estadoAprobacion !== 'rechazada',

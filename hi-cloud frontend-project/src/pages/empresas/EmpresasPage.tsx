@@ -93,7 +93,7 @@ export default function EmpresasPage() {
           </div>
         ),
         okText: 'Entendido',
-        onOk: () => window.location.reload(),
+        onOk: () => qc.invalidateQueries({ queryKey: ['mis-empresas'] }),
       });
     },
     onError: (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error al enviar solicitud'),
