@@ -4,19 +4,28 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { usePlanGuard } from '../../hooks/usePlan';
 import ModuloBloqueado from '../../components/ui/ModuloBloqueado';
-import { Table, Card, Row, Col, Typography, Tag, Select,
-         Space, Badge, Tabs, Input, theme } from 'antd';
-import { SearchOutlined, WarningOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import {
+  Table, Card, Row, Col, Typography, Tag, Select, Space, Badge,
+  Tabs, Input, theme, Modal, Tooltip, Button, message as antMessage,
+} from 'antd';
+import {
+  SearchOutlined, WarningOutlined, CheckCircleOutlined,
+  EyeOutlined, CopyOutlined,
+} from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  Tooltip as ReTooltip, ResponsiveContainer,
+} from 'recharts';
 import { auditoriaApi } from '../../api/auditoria.api';
 import { fmt } from '../../utils/formatters';
+import { useAuthStore } from '../../store/auth.store';
 
 const { Title, Text } = Typography;
 
 const accionColor: Record<string, string> = {
   create: 'green', update: 'blue', delete: 'red',
-  login: 'cyan', logout: 'default', error: 'red', read: 'default',
+  login: 'cyan', logout: 'orange', error: 'red', read: 'default',
 };
 
 const accionIcon: Record<string, string> = {
@@ -24,12 +33,206 @@ const accionIcon: Record<string, string> = {
   login: '🔑', logout: '🚪', error: '❌', read: '👁️',
 };
 
+const isErrorLog  = (r: any) => r.accion === 'error' || !r.exitoso || (r.statusCode && r.statusCode >= 400);
+const isLogoutLog = (r: any) => r.accion === 'logout' && r.exitoso !== false;
+
+/** Modal de detalle completo de un evento de auditoría */
+function DetalleModal({
+  log, onClose, isSuperAdmin,
+}: {
+  log: any;
+  onClose: () => void;
+  isSuperAdmin: boolean;
+}) {
+  const { token } = theme.useToken();
+  const isErr = isErrorLog(log);
+
+  const tecnico: Record<string, any> = {};
+  if (log.ruta)       tecnico.ruta       = log.ruta;
+  if (log.metodo)     tecnico.metodo     = log.metodo;
+  if (log.statusCode) tecnico.statusCode = log.statusCode;
+  if (log.duracionMs) tecnico.duracionMs = `${log.duracionMs} ms`;
+  if (log.userAgent)  tecnico.userAgent  = log.userAgent;
+  if (log.entidad)    tecnico.entidad    = log.entidad;
+  if (log.entidadId)  tecnico.entidadId  = log.entidadId;
+  if (log.valorAnterior) {
+    try { tecnico.valorAnterior = JSON.parse(log.valorAnterior); }
+    catch { tecnico.valorAnterior = log.valorAnterior; }
+  }
+  if (log.valorNuevo) {
+    try { tecnico.valorNuevo = JSON.parse(log.valorNuevo); }
+    catch { tecnico.valorNuevo = log.valorNuevo; }
+  }
+  if (isSuperAdmin) {
+    if (log.userId)    tecnico.userId    = log.userId;
+    if (log.userRole)  tecnico.userRole  = log.userRole;
+    if (log.empresaId) tecnico.empresaId = log.empresaId;
+  }
+
+  const jsonStr     = JSON.stringify(tecnico, null, 2);
+  const hasTecnico  = Object.keys(tecnico).length > 0;
+
+  const label: React.CSSProperties = {
+    fontSize: 11, fontWeight: 700, color: token.colorTextTertiary,
+    textTransform: 'uppercase', letterSpacing: '0.05em',
+    display: 'block', marginBottom: 3,
+  };
+  const value: React.CSSProperties = {
+    fontSize: 13, color: token.colorText, display: 'block', marginBottom: 10,
+  };
+  const section: React.CSSProperties = {
+    background: token.colorBgLayout,
+    borderRadius: 8, padding: '12px 16px', marginBottom: 12,
+    border: `1px solid ${token.colorBorderSecondary}`,
+  };
+
+  return (
+    <Modal
+      open
+      title={
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 18 }}>{isErr ? '❌' : '📋'}</span>
+          <span>Detalle del Evento</span>
+          {isErr && <Tag color="error" style={{ marginLeft: 4, fontWeight: 600 }}>ERROR</Tag>}
+        </span>
+      }
+      onCancel={onClose}
+      footer={null}
+      width={660}
+      destroyOnClose
+    >
+      {/* Info principal */}
+      <div style={section}>
+        <Row gutter={[16, 0]}>
+          <Col span={12}>
+            <span style={label}>Fecha</span>
+            <span style={value}>{fmt.dateTime(log.createdAt)}</span>
+          </Col>
+          <Col span={12}>
+            <span style={label}>IP</span>
+            <span style={{ ...value, fontFamily: 'monospace' }}>{log.ipAddress ?? '—'}</span>
+          </Col>
+          <Col span={12}>
+            <span style={label}>Usuario</span>
+            <span style={value}>
+              {log.userName ?? <em style={{ color: token.colorTextTertiary }}>no autenticado</em>}
+              {log.userRole && (
+                <Text type="secondary" style={{ fontSize: 11, marginLeft: 6 }}>
+                  ({log.userRole})
+                </Text>
+              )}
+            </span>
+          </Col>
+          <Col span={12}>
+            <span style={label}>HTTP Status</span>
+            <span style={{
+              ...value, fontWeight: 700,
+              color: log.statusCode >= 400 ? '#EF4444'
+                   : log.statusCode >= 200 ? '#10B981'
+                   : token.colorText,
+            }}>
+              {log.statusCode ?? '—'}
+            </span>
+          </Col>
+          <Col span={12}>
+            <span style={label}>Módulo</span>
+            <div style={{ marginBottom: 10 }}>
+              <Tag>{log.modulo?.toUpperCase()}</Tag>
+            </div>
+          </Col>
+          <Col span={12}>
+            <span style={label}>Acción</span>
+            <div style={{ marginBottom: 10 }}>
+              <Tag color={accionColor[log.accion]}>
+                {accionIcon[log.accion]} {log.accion?.toUpperCase()}
+              </Tag>
+            </div>
+          </Col>
+          {(log.ruta || log.metodo) && (
+            <Col span={24}>
+              <span style={label}>Endpoint</span>
+              <span style={{ ...value, fontFamily: 'monospace', fontSize: 12 }}>
+                {log.metodo && (
+                  <Tag style={{ marginRight: 6, fontFamily: 'monospace', fontSize: 11 }}>
+                    {log.metodo}
+                  </Tag>
+                )}
+                {log.ruta}
+              </span>
+            </Col>
+          )}
+          {log.duracionMs != null && (
+            <Col span={12}>
+              <span style={label}>Duración</span>
+              <span style={value}>{log.duracionMs} ms</span>
+            </Col>
+          )}
+        </Row>
+      </div>
+
+      {/* Descripción completa */}
+      <div style={section}>
+        <span style={label}>Descripción</span>
+        <Text style={{
+          display: 'block', fontSize: 13, lineHeight: 1.7,
+          color: isErr ? '#EF4444' : token.colorText,
+          whiteSpace: 'pre-wrap',
+        }}>
+          {log.descripcion}
+        </Text>
+      </div>
+
+      {/* Detalle técnico JSON */}
+      {hasTecnico && (
+        <div style={{ ...section, marginBottom: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <span style={label}>
+              Detalle técnico (JSON)
+              {!isSuperAdmin && (
+                <Text type="secondary" style={{ fontSize: 10, marginLeft: 6, textTransform: 'none', fontWeight: 400 }}>
+                  — solo campos técnicos básicos
+                </Text>
+              )}
+            </span>
+            <Button
+              size="small"
+              icon={<CopyOutlined />}
+              onClick={() => {
+                navigator.clipboard.writeText(jsonStr);
+                antMessage.success('JSON copiado al portapapeles');
+              }}
+            >
+              Copiar JSON
+            </Button>
+          </div>
+          <pre style={{
+            background: token.colorBgContainer,
+            border: `1px solid ${token.colorBorderSecondary}`,
+            borderRadius: 6, padding: '10px 14px',
+            fontSize: 11.5, lineHeight: 1.65, margin: 0,
+            maxHeight: 300, overflowY: 'auto',
+            fontFamily: "'JetBrains Mono','Fira Code','Cascadia Code','Courier New',monospace",
+            color: token.colorText,
+            whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+          }}>
+            {jsonStr}
+          </pre>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 function LogsTab({ filtroExitoso }: { filtroExitoso?: boolean }) {
   const { token } = theme.useToken();
-  const [page,   setPage]   = useState(1);
-  const [accion, setAccion] = useState<string | undefined>();
-  const [modulo, setModulo] = useState<string | undefined>();
-  const [search, setSearch] = useState('');
+  const [page,      setPage]      = useState(1);
+  const [accion,    setAccion]    = useState<string | undefined>();
+  const [modulo,    setModulo]    = useState<string | undefined>();
+  const [search,    setSearch]    = useState('');
+  const [detallLog, setDetallLog] = useState<any>(null);
+
+  const user         = useAuthStore(s => s.user);
+  const isSuperAdmin = user?.role === 'super_admin';
 
   const { data, isLoading } = useQuery({
     queryKey: ['audit-logs', page, accion, modulo, filtroExitoso],
@@ -44,10 +247,10 @@ function LogsTab({ filtroExitoso }: { filtroExitoso?: boolean }) {
 
   const COLS_DEF = [
     { key: 'createdAt',   label: 'Fecha',       defaultVisible: true  },
-    { key: 'accion',      label: 'Acción',      defaultVisible: true  },
-    { key: 'modulo',      label: 'Módulo',      defaultVisible: true  },
-    { key: 'descripcion', label: 'Descripción', defaultVisible: true  },
     { key: 'userName',    label: 'Usuario',     defaultVisible: true  },
+    { key: 'modulo',      label: 'Módulo',      defaultVisible: true  },
+    { key: 'accion',      label: 'Acción',      defaultVisible: true  },
+    { key: 'descripcion', label: 'Descripción', defaultVisible: true  },
     { key: 'ipAddress',   label: 'IP',          defaultVisible: false },
     { key: 'exitoso',     label: 'Estado',      defaultVisible: true  },
     { key: 'duracionMs',  label: 'ms',          defaultVisible: false },
@@ -55,35 +258,116 @@ function LogsTab({ filtroExitoso }: { filtroExitoso?: boolean }) {
   const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('auditoria', COLS_DEF);
 
   const cols = [
-    { title: 'Fecha',    dataIndex: 'createdAt',   width: 130,
-      render: (v: string) => <Text style={{ fontSize: 12 }}>{fmt.dateTime(v)}</Text> },
-    { title: 'Acción',   dataIndex: 'accion',      width: 90,
-      render: (v: string) => <Tag color={accionColor[v]}>{accionIcon[v]} {v?.toUpperCase()}</Tag> },
-    { title: 'Módulo',   dataIndex: 'modulo',      width: 100,
-      render: (v: string) => <Tag style={{ textTransform: 'capitalize' }}>{v}</Tag> },
-    { title: 'Descripción', dataIndex: 'descripcion', ellipsis: true },
-    { title: 'Usuario',  dataIndex: 'userName',    width: 120 },
-    { title: 'IP',       dataIndex: 'ipAddress',   width: 110,
-      render: (v: string) => <Text type="secondary" style={{ fontSize: 11 }}>{v ?? '—'}</Text> },
-    { title: 'Estado',   dataIndex: 'exitoso',     width: 80,
-      render: (v: boolean) => v
-        ? <Badge status="success" text="OK" />
-        : <Badge status="error" text="Error" /> },
-    { title: 'ms',       dataIndex: 'duracionMs',  width: 70,
-      render: (v: number) => <Text type="secondary" style={{ fontSize: 11 }}>{v ?? '—'}</Text> },
+    {
+      title: 'Fecha', dataIndex: 'createdAt', key: 'createdAt', width: 130,
+      render: (v: string) => <Text style={{ fontSize: 12 }}>{fmt.dateTime(v)}</Text>,
+    },
+    {
+      title: 'Usuario', dataIndex: 'userName', key: 'userName', width: 120,
+      render: (v: string, r: any) => (
+        <div>
+          <Text style={{ fontSize: 12 }}>{v ?? <em style={{ color: token.colorTextTertiary }}>—</em>}</Text>
+          {r.userRole && (
+            <Text type="secondary" style={{ display: 'block', fontSize: 10 }}>{r.userRole}</Text>
+          )}
+        </div>
+      ),
+    },
+    {
+      title: 'Módulo', dataIndex: 'modulo', key: 'modulo', width: 100,
+      render: (v: string) => <Tag style={{ textTransform: 'capitalize' }}>{v}</Tag>,
+    },
+    {
+      title: 'Acción', dataIndex: 'accion', key: 'accion', width: 90,
+      render: (v: string) => <Tag color={accionColor[v]}>{accionIcon[v]} {v?.toUpperCase()}</Tag>,
+    },
+    {
+      title: 'Descripción', dataIndex: 'descripcion', key: 'descripcion', ellipsis: true,
+      render: (v: string, r: any) => (
+        <Tooltip title={v} placement="topLeft" mouseEnterDelay={0.5}>
+          <span
+            style={{
+              cursor: 'pointer',
+              color: isErrorLog(r) ? '#EF4444' : token.colorText,
+            }}
+            onClick={() => setDetallLog(r)}
+          >
+            {v}
+          </span>
+        </Tooltip>
+      ),
+    },
+    {
+      title: 'IP', dataIndex: 'ipAddress', key: 'ipAddress', width: 110,
+      render: (v: string) => (
+        <Text type="secondary" style={{ fontSize: 11 }}>{v ?? '—'}</Text>
+      ),
+    },
+    {
+      title: 'Estado', dataIndex: 'exitoso', key: 'exitoso', width: 80,
+      render: (v: boolean, r: any) =>
+        v ? <Badge status="success" text="OK" />
+          : <Badge status="error" text={
+              <span style={{ color: '#EF4444', fontWeight: 600 }}>
+                {r.statusCode ? `${r.statusCode}` : 'Error'}
+              </span>
+            } />,
+    },
+    {
+      title: 'ms', dataIndex: 'duracionMs', key: 'duracionMs', width: 70,
+      render: (v: number) => (
+        <Text type="secondary" style={{ fontSize: 11 }}>{v ?? '—'}</Text>
+      ),
+    },
   ];
+
+  // Columna de detalle — siempre visible, no sujeta a toggle
+  const colDetalle = {
+    title: '',
+    key: '_detalle',
+    width: 44,
+    fixed: 'right' as const,
+    render: (_: any, r: any) => (
+      <Tooltip title="Ver detalle completo">
+        <Button
+          size="small"
+          type="text"
+          icon={<EyeOutlined />}
+          onClick={() => setDetallLog(r)}
+          style={{
+            color: isErrorLog(r) ? '#EF4444' : token.colorTextTertiary,
+          }}
+        />
+      </Tooltip>
+    ),
+  };
 
   return (
     <>
+      <style>{`
+        .audit-row-error > td { background: rgba(239,68,68,0.05) !important; }
+        .audit-row-logout > td { background: rgba(245,158,11,0.04) !important; }
+        [data-theme="dark"] .audit-row-error > td { background: rgba(239,68,68,0.08) !important; }
+        [data-theme="dark"] .audit-row-logout > td { background: rgba(245,158,11,0.07) !important; }
+      `}</style>
+
       <Row gutter={[12, 12]} align="middle" style={{ marginBottom: 12 }}>
         <Col>
-          <Select placeholder="Acción" allowClear style={{ width: 140 }} onChange={setAccion}
+          <Select
+            placeholder="Acción" allowClear style={{ width: 140 }}
+            onChange={setAccion}
             options={['create','update','delete','login','logout','error','read']
-              .map(v => ({ value: v, label: `${accionIcon[v]} ${v.toUpperCase()}` }))} />
+              .map(v => ({ value: v, label: `${accionIcon[v]} ${v.toUpperCase()}` }))}
+          />
         </Col>
         <Col>
-          <Input prefix={<SearchOutlined />} placeholder="Módulo (facturas, clientes...)" style={{ width: 220 }}
-            onChange={e => setModulo(e.target.value || undefined)} allowClear />
+          <Input
+            prefix={<SearchOutlined />}
+            placeholder="Módulo (facturas, clientes...)"
+            style={{ width: 220 }}
+            onChange={e => setModulo(e.target.value || undefined)}
+            allowClear
+          />
         </Col>
         <Col>
           <Input
@@ -96,12 +380,40 @@ function LogsTab({ filtroExitoso }: { filtroExitoso?: boolean }) {
           />
         </Col>
         <Col>
-          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <ColumnToggle
+            columns={COLS_DEF}
+            visibleColumns={visibleColumns}
+            onChange={updateVisibility}
+          />
         </Col>
       </Row>
-      <Table columns={filterColumns(cols)} dataSource={logsfiltrados} rowKey="id" loading={isLoading} size="small"
+
+      <Table
+        columns={[...filterColumns(cols), colDetalle]}
+        dataSource={logsfiltrados}
+        rowKey="id"
+        loading={isLoading}
+        size="small"
         scroll={{ x: 'max-content' }}
-        pagination={{ total: data?.meta?.total, pageSize: 20, current: page, onChange: setPage, showSizeChanger: false }} />
+        rowClassName={(r: any) =>
+          isErrorLog(r) ? 'audit-row-error' : isLogoutLog(r) ? 'audit-row-logout' : ''
+        }
+        pagination={{
+          total: data?.meta?.total,
+          pageSize: 20,
+          current: page,
+          onChange: setPage,
+          showSizeChanger: false,
+        }}
+      />
+
+      {detallLog && (
+        <DetalleModal
+          log={detallLog}
+          onClose={() => setDetallLog(null)}
+          isSuperAdmin={isSuperAdmin}
+        />
+      )}
     </>
   );
 }
@@ -132,7 +444,6 @@ export default function AuditoriaPage() {
         </Space>
       </div>
 
-      {/* Gráficas */}
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={24} md={12}>
           <Card title="Acciones este mes" size="small">
@@ -141,7 +452,7 @@ export default function AuditoriaPage() {
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis type="number" tick={{ fontSize: 11 }} />
                 <YAxis dataKey="name" type="category" width={80} tick={{ fontSize: 11 }} />
-                <Tooltip />
+                <ReTooltip />
                 <Bar dataKey="cantidad" fill="#1677ff" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -154,7 +465,7 @@ export default function AuditoriaPage() {
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis type="number" tick={{ fontSize: 11 }} />
                 <YAxis dataKey="name" type="category" width={90} tick={{ fontSize: 11 }} />
-                <Tooltip />
+                <ReTooltip />
                 <Bar dataKey="cantidad" fill="#52c41a" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -163,10 +474,13 @@ export default function AuditoriaPage() {
       </Row>
 
       <Card>
-        <Tabs defaultActiveKey="todos" items={[
-          { key: 'todos',   label: '📋 Todos los eventos',   children: <LogsTab /> },
-          { key: 'errores', label: <><WarningOutlined /> Solo errores</>, children: <LogsTab filtroExitoso={false} /> },
-        ]} />
+        <Tabs
+          defaultActiveKey="todos"
+          items={[
+            { key: 'todos',   label: '📋 Todos los eventos',                         children: <LogsTab /> },
+            { key: 'errores', label: <><WarningOutlined /> Solo errores</>,           children: <LogsTab filtroExitoso={false} /> },
+          ]}
+        />
       </Card>
     </div>
   );
