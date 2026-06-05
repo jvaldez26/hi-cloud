@@ -48,7 +48,7 @@ class CreateNCDto {
 @ApiBearerAuth('access-token')
 @ApiHeader({ name: 'X-Empresa-ID', required: true })
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN, UserRole.CONTADOR)
+@Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
 @Controller('notas-credito')
 export class NotasCreditoController {
   constructor(
@@ -58,30 +58,30 @@ export class NotasCreditoController {
   private readonly logger = new Logger(NotasCreditoController.name);
 
   @Get('resumen')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   resumen() { return this.svc.resumen(); }
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Listar notas de crédito con paginación' })
   listar(@Query() pagination: PaginationDto) { return this.svc.listar(pagination); }
 
   @Get('por-factura/:facturaId')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Notas de crédito asociadas a una factura específica' })
   porFactura(@Param('facturaId', ParseIntPipe) facturaId: number) {
     return this.svc.porFactura(facturaId);
   }
 
   @Get('por-factura/:facturaId/saldo-disponible')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Saldo disponible para NC sobre una factura (total - NC activas)' })
   saldoDisponible(@Param('facturaId', ParseIntPipe) facturaId: number) {
     return this.svc.getSaldoDisponible(facturaId);
   }
 
   @Get(':id/pdf')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Generar PDF de nota de crédito E34' })
   async pdf(@Param('id', ParseIntPipe) id: number, @Res() res: Response) {
     try {
@@ -97,7 +97,7 @@ export class NotasCreditoController {
   }
 
   @Get(':id')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   findOne(@Param('id', ParseIntPipe) id: number) { return this.svc.findOne(id); }
 
   @Post()

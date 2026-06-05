@@ -41,7 +41,7 @@ class CreateGastoDto {
 @ApiTags('Gastos Operativos')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN, UserRole.CONTADOR)
+@Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
 @Controller('gastos')
 export class GastosController {
   constructor(
