@@ -3037,6 +3037,7 @@ function AuditoriaTab({ C }: { C: any }) {
   const [accion,     setAccion]     = useState<string | undefined>();
   const [diasRango,  setDiasRango]  = useState<number | null>(30);
   const [pagAud,     setPagAud]     = useState(1);
+  const [detallLog,  setDetallLog]  = useState<any>(null);
 
   // Fechas calculadas a partir del rango seleccionado
   const { fechaDesde, fechaHasta } = useMemo(() => {
@@ -3148,6 +3149,10 @@ function AuditoriaTab({ C }: { C: any }) {
       </div>
 
       {/* Tabla — solo lectura */}
+      <style>{`
+        .sa-audit-error > td { background: rgba(239,68,68,0.07) !important; }
+        .sa-audit-logout > td { background: rgba(245,158,11,0.06) !important; }
+      `}</style>
       <div style={{ background: C.card, borderRadius: 12, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
         <Table
           dataSource={eventos}
@@ -3155,6 +3160,13 @@ function AuditoriaTab({ C }: { C: any }) {
           loading={isLoading}
           size="small"
           scroll={{ x: 900 }}
+          rowClassName={(r: any) =>
+            (r.accion === 'error' || !r.exitoso || (r.statusCode && r.statusCode >= 400))
+              ? 'sa-audit-error'
+              : r.accion === 'logout'
+              ? 'sa-audit-logout'
+              : ''
+          }
           pagination={{
             current: pagAud, pageSize: 50, total,
             onChange: p => setPagAud(p),
@@ -3180,7 +3192,16 @@ function AuditoriaTab({ C }: { C: any }) {
             { title: 'Acción', dataIndex: 'accion', key: 'a', width: 90,
               render: (v: any) => <Tag color={ACCION_COLOR[v] ?? 'default'} style={{ fontSize: 10 }}>{v}</Tag> },
             { title: 'Descripción', dataIndex: 'descripcion', key: 'd', ellipsis: true,
-              render: (v: any) => <span style={{ fontSize: 12, color: C.txt2 }}>{v ?? '—'}</span> },
+              render: (v: any, r: any) => (
+                <Tooltip title={v} placement="topLeft" mouseEnterDelay={0.5}>
+                  <span
+                    style={{ fontSize: 12, color: (r.accion === 'error' || !r.exitoso) ? C.red : C.txt2, cursor: 'pointer' }}
+                    onClick={() => setDetallLog(r)}
+                  >
+                    {v ?? '—'}
+                  </span>
+                </Tooltip>
+              )},
             { title: 'IP', dataIndex: 'ipAddress', key: 'ip', width: 120,
               render: (v: any) => <span style={{ fontSize: 11, fontFamily: 'monospace', color: C.txt2 }}>{v ?? '—'}</span> },
             { title: 'Status', dataIndex: 'statusCode', key: 's', width: 70, align: 'center' as const,
@@ -3189,12 +3210,167 @@ function AuditoriaTab({ C }: { C: any }) {
                   {v ?? '—'}
                 </span>
               )},
+            { title: '', key: '_ver', width: 40, fixed: 'right' as const,
+              render: (_: any, r: any) => (
+                <Tooltip title="Ver detalle">
+                  <button
+                    onClick={() => setDetallLog(r)}
+                    style={{
+                      background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px',
+                      color: (r.accion === 'error' || !r.exitoso) ? C.red : C.txt2,
+                      borderRadius: 4, display: 'flex', alignItems: 'center',
+                    }}
+                  >
+                    <Eye size={14} />
+                  </button>
+                </Tooltip>
+              )},
           ]}
         />
       </div>
       <div style={{ fontSize: 11, color: C.txt2, marginTop: 6, textAlign: 'right' }}>
         🔒 Solo lectura — los registros de auditoría no pueden modificarse ni eliminarse
       </div>
+
+      {/* Modal de detalle */}
+      {detallLog && (() => {
+        const r = detallLog;
+        const isErr = r.accion === 'error' || !r.exitoso || (r.statusCode && r.statusCode >= 400);
+        const tecnico: Record<string, any> = {};
+        if (r.ruta)           tecnico.ruta        = r.ruta;
+        if (r.metodo)         tecnico.metodo      = r.metodo;
+        if (r.statusCode)     tecnico.statusCode  = r.statusCode;
+        if (r.duracionMs)     tecnico.duracionMs  = `${r.duracionMs} ms`;
+        if (r.userAgent)      tecnico.userAgent   = r.userAgent;
+        if (r.entidad)        tecnico.entidad     = r.entidad;
+        if (r.entidadId)      tecnico.entidadId   = r.entidadId;
+        if (r.userId)         tecnico.userId      = r.userId;
+        if (r.userRole)       tecnico.userRole    = r.userRole;
+        if (r.empresaId)      tecnico.empresaId   = r.empresaId;
+        if (r.valorAnterior) {
+          try { tecnico.valorAnterior = JSON.parse(r.valorAnterior); }
+          catch { tecnico.valorAnterior = r.valorAnterior; }
+        }
+        if (r.valorNuevo) {
+          try { tecnico.valorNuevo = JSON.parse(r.valorNuevo); }
+          catch { tecnico.valorNuevo = r.valorNuevo; }
+        }
+        const jsonStr = JSON.stringify(tecnico, null, 2);
+        const hasTecnico = Object.keys(tecnico).length > 0;
+
+        const lbl: React.CSSProperties = {
+          fontSize: 10, fontWeight: 700, color: C.txt2,
+          textTransform: 'uppercase', letterSpacing: '0.05em',
+          display: 'block', marginBottom: 3,
+        };
+        const val: React.CSSProperties = {
+          fontSize: 13, color: C.txt, display: 'block', marginBottom: 10,
+        };
+        const sec: React.CSSProperties = {
+          background: C.bg, borderRadius: 8, padding: '12px 16px',
+          border: `1px solid ${C.border}`, marginBottom: 12,
+        };
+
+        return (
+          <Modal
+            open
+            title={
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8, color: C.txt }}>
+                <span style={{ fontSize: 18 }}>{isErr ? '❌' : '📋'}</span>
+                <span>Detalle del Evento</span>
+                {isErr && <Tag color="error" style={{ fontWeight: 600 }}>ERROR</Tag>}
+              </span>
+            }
+            onCancel={() => setDetallLog(null)}
+            footer={null}
+            width={660}
+            destroyOnClose
+          >
+            <div style={sec}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
+                <div>
+                  <span style={lbl}>Fecha</span>
+                  <span style={{ ...val, fontFamily: 'monospace', fontSize: 12 }}>
+                    {r.createdAt ? new Date(r.createdAt).toLocaleString('es-DO') : '—'}
+                  </span>
+                </div>
+                <div>
+                  <span style={lbl}>IP</span>
+                  <span style={{ ...val, fontFamily: 'monospace' }}>{r.ipAddress ?? '—'}</span>
+                </div>
+                <div>
+                  <span style={lbl}>Usuario</span>
+                  <span style={val}>
+                    {r.userName ?? <em style={{ color: C.txt2 }}>no autenticado</em>}
+                    {r.userRole && <span style={{ fontSize: 10, color: C.txt2, marginLeft: 6 }}>({r.userRole})</span>}
+                  </span>
+                </div>
+                <div>
+                  <span style={lbl}>HTTP Status</span>
+                  <span style={{ ...val, fontWeight: 700, color: r.statusCode >= 400 ? C.red : C.green }}>
+                    {r.statusCode ?? '—'}
+                  </span>
+                </div>
+                <div>
+                  <span style={lbl}>Módulo</span>
+                  <div style={{ marginBottom: 10 }}>
+                    <Tag style={{ fontSize: 10, textTransform: 'uppercase' }}>{r.modulo}</Tag>
+                  </div>
+                </div>
+                <div>
+                  <span style={lbl}>Acción</span>
+                  <div style={{ marginBottom: 10 }}>
+                    <Tag color={ACCION_COLOR[r.accion] ?? 'default'} style={{ fontSize: 10 }}>{r.accion}</Tag>
+                  </div>
+                </div>
+                {(r.ruta || r.metodo) && (
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <span style={lbl}>Endpoint</span>
+                    <span style={{ ...val, fontFamily: 'monospace', fontSize: 12 }}>
+                      {r.metodo && <Tag style={{ marginRight: 6, fontFamily: 'monospace', fontSize: 10 }}>{r.metodo}</Tag>}
+                      {r.ruta}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={sec}>
+              <span style={lbl}>Descripción</span>
+              <span style={{ display: 'block', fontSize: 13, lineHeight: 1.7,
+                color: isErr ? C.red : C.txt, whiteSpace: 'pre-wrap' }}>
+                {r.descripcion}
+              </span>
+            </div>
+
+            {hasTecnico && (
+              <div style={{ ...sec, marginBottom: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <span style={lbl}>Detalle técnico (JSON)</span>
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(jsonStr); message.success('JSON copiado'); }}
+                    style={{
+                      padding: '3px 10px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
+                      border: `1px solid ${C.border}`, background: 'transparent', color: C.txt2, outline: 'none',
+                    }}
+                  >
+                    Copiar JSON
+                  </button>
+                </div>
+                <pre style={{
+                  background: C.card, border: `1px solid ${C.border}`, borderRadius: 6,
+                  padding: '10px 14px', fontSize: 11.5, lineHeight: 1.65, margin: 0,
+                  maxHeight: 300, overflowY: 'auto',
+                  fontFamily: "'JetBrains Mono','Fira Code','Cascadia Code','Courier New',monospace",
+                  color: C.txt, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                }}>
+                  {jsonStr}
+                </pre>
+              </div>
+            )}
+          </Modal>
+        );
+      })()}
     </div>
   );
 }
