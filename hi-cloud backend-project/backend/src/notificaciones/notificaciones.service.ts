@@ -1017,7 +1017,7 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
     const r = rows[0];
 
     const detRows = await this.dataSource.query<any[]>(
-      `SELECT descripcion, cantidad::text, "precioUnitario"::text, total::text, "porcentajeIva"::text
+      `SELECT descripcion, cantidad::text, "precioUnitario"::text, total::text, "porcentajeItbis"::text
        FROM compra_detalles
        WHERE "compraId" = $1 AND "isActive" = true
        ORDER BY id`,
@@ -1034,7 +1034,7 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
         <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;font-size:13px">${d.descripcion}</td>
         <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:13px">${Number(d.cantidad).toLocaleString('es-DO')}</td>
         <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px">${fmtMoney(d.precioUnitario)}</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:13px;color:#6b7280">${Number(d.porcentajeIva)}%</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:13px;color:#6b7280">${Number(d.porcentajeItbis)}%</td>
         <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px;font-weight:700">${fmtMoney(d.total)}</td>
       </tr>`,
     ).join('');
