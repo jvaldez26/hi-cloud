@@ -164,12 +164,18 @@ export default function LoginPage() {
         <motion.div initial={{ opacity:0, y:30 }} animate={{ opacity:1, y:0 }} transition={{ duration:.7 }}
           style={{ maxWidth:440, width:'100%', position:'relative', zIndex:1 }}>
 
-          {/* Logo — en contenedor blanco redondeado (PNG con fondo opaco blanco) */}
-          <div style={{ background:'#fff', borderRadius:14, padding:'10px 18px',
-            display:'inline-flex', alignItems:'center', marginBottom:28,
-            boxShadow:'0 2px 12px rgba(0,0,0,.15)' }}>
-            <img src="/logo-hicloud.png" alt="HiCloud ERP"
-              style={{ height:40, width:'auto', display:'block', objectFit:'contain' }} />
+          {/* Logo en contenedor blanco + texto HiCloud ERP */}
+          <div style={{ marginBottom:32 }}>
+            <div style={{ background:'#fff', borderRadius:20, width:120, height:120,
+              display:'flex', alignItems:'center', justifyContent:'center',
+              boxShadow:'0 4px 20px rgba(0,0,0,.2)', marginBottom:16 }}>
+              <img src="/logo-hicloud.png" alt="HiCloud ERP"
+                style={{ width:100, height:'auto', display:'block', objectFit:'contain' }} />
+            </div>
+            <div style={{ color:'#fff', fontSize:'1.4rem', fontWeight:700,
+              letterSpacing:'0.5px', lineHeight:1 }}>
+              HiCloud ERP
+            </div>
           </div>
 
           <h1 style={{ color:'#fff', fontSize:30, fontWeight:800, margin:'0 0 12px', lineHeight:1.2 }}>
