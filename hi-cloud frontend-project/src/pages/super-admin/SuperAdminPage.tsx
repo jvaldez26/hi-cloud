@@ -250,7 +250,7 @@ function SolicitudesTab({ C, solicitudes, isLoading, onRefresh }:
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
         <h3 style={{ color: C.txt, margin: 0, fontWeight: 700 }}>
           Solicitudes de activación
           {solicitudes.filter(s => s.estado === 'pendiente').length > 0 && (
@@ -416,7 +416,7 @@ function PruebasTab({ C, pruebas, isLoading, onRefresh }:
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
         <h3 style={{ color: C.txt, margin: 0, fontWeight: 700 }}>Empresas en período de prueba ({pruebas.length})</h3>
         <Button size="small" onClick={onRefresh}>Actualizar</Button>
       </div>
@@ -587,7 +587,7 @@ function EcfConfigTab({
 
       {/* Lista de configuraciones */}
       <div style={{ background: C.card, borderRadius: 12, border: `1px solid ${C.border}`, padding: 20 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
           <h3 style={{ color: C.txt, fontWeight: 700, fontSize: 15, margin: 0 }}>Configuraciones e-CF por Empresa</h3>
           <Button type="primary" size="small" loading={!!checkingId}
             onClick={() => { form.resetFields(); setFormModal({}); }}>
@@ -1887,7 +1887,7 @@ export default function SuperAdminPage() {
       <div style={{ padding: '28px 32px', maxWidth: 1600, margin: '0 auto' }}>
 
         {/* ── TÍTULO + ACCIONES ─────────────────────────────────────────────── */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
           <div>
             <h1 style={{ color: C.txt, fontWeight: 800, fontSize: 22, margin: 0 }}>
               Administración Global

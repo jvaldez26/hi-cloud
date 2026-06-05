@@ -436,7 +436,7 @@ export default function AuditoriaPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
         <Title level={4} style={{ margin: 0 }}>Auditoría y Logs del Sistema</Title>
         <Space size={2}>
           <RefreshByKeyButton queryKey={['audit-logs']} />

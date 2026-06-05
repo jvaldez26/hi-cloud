@@ -53,7 +53,7 @@ export default function ReportesPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
         <Title level={4} style={{ margin: 0 }}>Reportes y Análisis</Title>
         <span style={{ display: 'flex', gap: 2 }}>
           <RefreshByKeyButton queryKey={['reportes']} />

@@ -246,22 +246,22 @@ export default function PreFacturaPage() {
     <div style={{ padding: '24px', width: '100%', boxSizing: 'border-box', minWidth: 0 }}>
 
       {/* ── Cabecera ─────────────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: 1 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: '200px', flex: 1 }}>
           <FileTextOutlined style={{ fontSize: 28, color: token.colorPrimary, flexShrink: 0 }} />
           <div style={{ minWidth: 0 }}>
             <Title level={3} style={{ margin: 0 }}>Pre-Facturas</Title>
             <Text type="secondary" style={{ display: 'block', whiteSpace: 'normal' }}>Facturas proforma · Aprobación → Conversión a factura oficial</Text>
           </div>
         </div>
-        <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+        <span style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap', flexShrink: 0 }}>
           <Input
             placeholder="Buscar por número o cliente..."
             prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(1); }}
             allowClear
-            style={{ width: 220 }}
+            style={{ width: 'clamp(140px, 30vw, 220px)' }}
           />
           <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
           <RefreshByKeyButton queryKey={['pre-facturas']} />

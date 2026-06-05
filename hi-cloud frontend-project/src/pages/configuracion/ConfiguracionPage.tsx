@@ -1103,7 +1103,7 @@ function SeccionUsuarios({ empresaId }: { empresaId: number }) {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
         <Text strong>Miembros activos ({miembros.length})</Text>
         <Button type="primary" icon={<UserAddOutlined />} onClick={() => setModalInvitar(true)}>
           Invitar usuario
