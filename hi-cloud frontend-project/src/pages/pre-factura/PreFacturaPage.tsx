@@ -243,7 +243,7 @@ export default function PreFacturaPage() {
   // ─── Render ───────────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ padding: '24px' }}>
+    <div style={{ padding: '24px', width: '100%', boxSizing: 'border-box', minWidth: 0 }}>
 
       {/* ── Cabecera ─────────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>

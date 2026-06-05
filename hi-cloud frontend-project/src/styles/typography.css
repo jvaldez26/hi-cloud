@@ -316,23 +316,36 @@ h1, h2, h3, h4, h5, h6,
   }
 }
 
-/* ── iOS Safari: texto vertical (letra por letra) en flex items ─────────────── */
-/* CAUSA: flex items tienen min-width:auto por spec. En iOS Safari, cuando un
-   flex container space-between se estrecha, los items internos colapsan a 0px
-   y el texto se renderiza vertical. Afecta +60 módulos con headers inline-flex.
-   Sin !important → respeta estilos inline específicos; no-op en elementos block
-   (ya tienen min-width:0 por defecto). Portales antd (dropdowns, modals)
-   se renderizan fuera de #main-content → no afectados. */
+/* ── iOS Safari: texto vertical (letra por letra) — fix definitivo ──────────── */
+/* CAUSA: en iOS Safari, flex items con min-width:auto colapsan a 0px ancho
+   cuando el contenedor se estrecha → texto se renderiza letra por letra en vertical.
+   Afecta >60 módulos con headers inline-flex (no usan Row/Col de antd).
+   PageTransition (motion.div) setea width:100% inline → soluciona el nivel 1.
+   Estas reglas cubren niveles 2-4+ de anidamiento. */
+
+/* Nivel 1 (motion.div de PageTransition) — ya tiene inline style width:100%  */
+/* Nivel 2 (div raíz de página, e.g. <div padding:24px>) */
+#main-content > div > div {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
+
+/* Niveles 3+ (flex containers anidados) — solo min-width para no romper layouts flex */
 #main-content div,
 #main-content span {
-  min-width: 0;
+  min-width: 0 !important;
 }
-/* Subtítulos largos: asegurar wrap en vez de overflow */
+
+/* Títulos y texto: siempre horizontal, wrapping correcto */
 #main-content h1, #main-content h2, #main-content h3,
 #main-content h4, #main-content h5,
-#main-content p {
-  min-width: 0;
-  overflow-wrap: break-word;
+#main-content p, #main-content .ant-typography {
+  min-width: 0 !important;
+  overflow-wrap: break-word !important;
+  word-break: normal !important;
+  white-space: normal !important;
 }
 
 /* ── Padding de contenido reducido en mobile ──────────────────────────────────── */
