@@ -37,24 +37,11 @@
     <meta property="og:type" content="website" />
     <title>HiCloud ERP</title>
 
-    <!-- ── Fix crítico iOS Safari: texto vertical (letras apiladas) ──────
-         Cargado en HTML directamente (mode:navigate → siempre red, nunca SW cache).
-         Garantiza el fix independientemente del estado del CSS bundle cacheado. -->
+    <!-- ── Fix iOS Safari: div raíz de página con ancho explícito ─────────
+         Solo reglas quirúrgicas — selectores amplios div/span rompen tablas antd. -->
     <style>
-      /* Flex items con min-width:auto colapsan a 0px en iOS Safari
-         cuando el contenedor se estrecha → texto vertical letra a letra. */
       #root, #main-content { min-width: 0; width: 100%; }
       #main-content > div  { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; }
-      #main-content div,
-      #main-content span   { min-width: 0; }
-      #main-content h1, #main-content h2, #main-content h3,
-      #main-content h4, #main-content h5,
-      #main-content p, #main-content .ant-typography {
-        min-width: 0;
-        white-space: normal;
-        overflow-wrap: break-word;
-        word-break: normal;
-      }
     </style>
 
     <!-- ── Inter + Plus Jakarta Sans ───────────────────────────────────── -->
