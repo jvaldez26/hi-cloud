@@ -228,136 +228,140 @@ export class CuotasService {
 
     const fmtDate = (s?: string | null): string => {
       if (!s) return '—';
-      const [y, m, day] = String(s).split('-');
-      return `${day}/${m}/${y}`;
+      const [, m, day] = String(s).split('-');
+      return `${day}/${m}/${String(s).split('-')[0]}`;
     };
 
-    // Papel térmico 80mm = 226.77 pt  (1 mm = 2.8346 pt)
-    const PW  = 226.77;  // page width (80 mm)
-    const MAR = 8;       // margen lateral (≈ 3 mm)
-    const CW  = PW - MAR * 2; // ancho de contenido
-
     return new Promise<Buffer>((resolve, reject) => {
+      // Mismas dimensiones que generarReciboPOSPDF en factura-pdf.helper.ts
+      const TW = 200;
+      const doc = new PDFDocument({ size: [TW, 800], margin: 0, compress: true });
       const chunks: Buffer[] = [];
-      const doc = new PDFDocument({
-        size:   [PW, 800],   // alto provisional — PDFKit no soporta altura dinámica,
-        margin: MAR,         // pero la impresora térmica ignora el alto del PDF
-        info:   { Title: `Comprobante Cuota #${d.cuota.numeroCuota} — ${d.plan.numero}` },
-      });
 
       doc.on('data',  (c: Buffer) => chunks.push(c));
       doc.on('end',   () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
-      const sep = (bold = false) => {
-        doc.moveDown(0.3);
-        doc
-          .moveTo(MAR, doc.y)
-          .lineTo(PW - MAR, doc.y)
-          .lineWidth(bold ? 1.2 : 0.4)
-          .stroke('#000000');
-        doc.moveDown(0.4);
+      const PL = 8;
+      const PR = TW - 8;
+      const W  = PR - PL;   // 184 pt
+      let y    = 10;
+
+      const center = (text: string, fontSize: number, font = 'Helvetica', color = '#000') => {
+        doc.fillColor(color).font(font).fontSize(fontSize)
+           .text(text, PL, y, { width: W, align: 'center' });
+        y += fontSize + 3;
       };
 
-      const row = (label: string, value: string, valBold = false) => {
-        const y = doc.y;
-        doc.font('Helvetica').fontSize(7).text(label, MAR, y, { width: CW * 0.55 });
-        doc.font(valBold ? 'Helvetica-Bold' : 'Helvetica').fontSize(7)
-           .text(value, MAR, y, { width: CW, align: 'right' });
-        doc.y = doc.y + 1;
+      const sepDash = () => {
+        doc.moveTo(PL, y).lineTo(PR, y).strokeColor('#ccc').lineWidth(0.5).stroke();
+        y += 6;
+      };
+
+      const sepSolid = () => {
+        doc.moveTo(PL, y).lineTo(PR, y).strokeColor('#000').lineWidth(1).stroke();
+        y += 6;
+      };
+
+      // label izquierda, valor derecha — igual que totRow() en el recibo POS
+      const row = (lbl: string, val: string, bold = false) => {
+        const font = bold ? 'Helvetica-Bold' : 'Helvetica';
+        const size = bold ? 9 : 8;
+        doc.fillColor('#000').font(font).fontSize(size);
+        doc.text(lbl, PL, y, { width: W * 0.6 });
+        doc.text(val, PL + W * 0.5, y, { width: W * 0.5, align: 'right' });
+        y += size + 4;
       };
 
       // ── Encabezado empresa ──────────────────────────────────
-      doc.fontSize(10).font('Helvetica-Bold')
-         .text(d.empresa.nombre ?? '', { align: 'center', width: CW });
-
-      if (d.empresa.rnc) {
-        doc.fontSize(7).font('Helvetica')
-           .text(`RNC: ${d.empresa.rnc}`, { align: 'center', width: CW });
-      }
+      center(d.empresa.nombre ?? '', 11, 'Helvetica-Bold');
+      if (d.empresa.rnc)      center(`RNC: ${d.empresa.rnc}`, 8);
+      if (d.empresa.telefono) center(d.empresa.telefono, 8);
       if (d.empresa.direccion) {
         const dir = d.empresa.ciudad
           ? `${d.empresa.direccion}, ${d.empresa.ciudad}`
           : d.empresa.direccion;
-        doc.fontSize(6).text(dir, { align: 'center', width: CW });
-      }
-      if (d.empresa.telefono) {
-        doc.fontSize(6).text(`Tel: ${d.empresa.telefono}`, { align: 'center', width: CW });
+        center(dir, 7);
       }
 
-      sep();
+      y += 4;
+      sepDash();
 
       // ── Título ──────────────────────────────────────────────
-      doc.fontSize(8).font('Helvetica-Bold')
-         .text('COMPROBANTE DE PAGO DE CUOTA', { align: 'center', width: CW });
-
-      sep();
+      center('COMPROBANTE DE PAGO DE CUOTA', 9, 'Helvetica-Bold');
+      y += 2;
+      sepSolid();
 
       // ── Identificación ──────────────────────────────────────
       row('No. Comprobante:', `COMP-${String(d.cuota.id).padStart(6, '0')}`, true);
-      row('Fecha emisión:', fmtDate(fechaHoyRD()), true);
+      row('Fecha emisión:', fmtDate(fechaHoyRD()));
 
-      sep();
+      y += 2;
+      sepDash();
 
       // ── Plan de pago ────────────────────────────────────────
-      doc.fontSize(7).font('Helvetica-Bold').text('PLAN DE PAGO', { width: CW });
-      doc.moveDown(0.2);
+      doc.fillColor('#000').font('Helvetica-Bold').fontSize(7)
+         .text('PLAN DE PAGO', PL, y, { width: W });
+      y += 10;
 
       row('Número:', d.plan.numero, true);
       row('Cliente:', d.plan.clienteNombre ?? '—');
       if (d.plan.facturaFolio) row('Factura ref.:', d.plan.facturaFolio);
 
-      sep();
+      y += 2;
+      sepDash();
 
       // ── Detalle de la cuota ──────────────────────────────────
-      doc.fontSize(7).font('Helvetica-Bold')
-         .text(`CUOTA #${d.cuota.numeroCuota} DE ${d.plan.numeroCuotas}`, { width: CW });
-      doc.moveDown(0.2);
+      doc.fillColor('#000').font('Helvetica-Bold').fontSize(7)
+         .text(`CUOTA #${d.cuota.numeroCuota} DE ${d.plan.numeroCuotas}`, PL, y, { width: W });
+      y += 10;
 
-      row('Fecha vencimiento:', fmtDate(d.cuota.fechaVencimiento));
+      row('Vencimiento:', fmtDate(d.cuota.fechaVencimiento));
       row('Fecha de pago:', fmtDate(d.cuota.fechaPago), true);
       if (d.cuota.referenciaPago) row('Referencia:', d.cuota.referenciaPago);
 
-      sep();
+      y += 2;
+      sepDash();
 
       // ── Desglose ────────────────────────────────────────────
-      doc.fontSize(7).font('Helvetica-Bold').text('DESGLOSE', { width: CW });
-      doc.moveDown(0.2);
+      doc.fillColor('#000').font('Helvetica-Bold').fontSize(7)
+         .text('DESGLOSE', PL, y, { width: W });
+      y += 10;
 
-      row('Capital:', fmtMoney(d.capital), true);
+      row('Capital:', fmtMoney(d.capital));
       if (d.interes > 0) {
-        row(`Intereses (${Number(d.plan.tasaInteresMensual)}% mens.):`, fmtMoney(d.interes), true);
+        row(`Intereses (${Number(d.plan.tasaInteresMensual)}% m.):`, fmtMoney(d.interes));
       }
 
-      sep(true);
+      y += 4;
+      sepSolid();
+      y -= 2;
 
       // ── Total pagado ─────────────────────────────────────────
-      const totalY = doc.y;
-      doc.font('Helvetica-Bold').fontSize(7).text('TOTAL PAGADO:', MAR, totalY, { width: CW * 0.55 });
-      doc.font('Helvetica-Bold').fontSize(10)
-         .text(fmtMoney(Number(d.cuota.montoPagado ?? d.cuota.monto)), MAR, totalY, { width: CW, align: 'right' });
-      doc.moveDown(0.5);
+      doc.fillColor('#000').font('Helvetica-Bold').fontSize(8)
+         .text('TOTAL PAGADO:', PL, y, { width: W, align: 'center' });
+      y += 12;
+      doc.fillColor('#000').font('Helvetica-Bold').fontSize(12)
+         .text(fmtMoney(Number(d.cuota.montoPagado ?? d.cuota.monto)), PL, y, { width: W, align: 'center' });
+      y += 17;
 
-      sep(true);
+      sepSolid();
 
       // ── Saldo pendiente ──────────────────────────────────────
-      row('Saldo pendiente:', fmtMoney(d.saldoPendiente), true);
+      row('Saldo pendiente:', fmtMoney(d.saldoPendiente));
       row('Cuotas restantes:', `${d.cuotasRestantes} de ${d.plan.numeroCuotas}`);
 
       // ── Footer ───────────────────────────────────────────────
-      doc.moveDown(0.8);
-      doc
-        .moveTo(MAR, doc.y)
-        .lineTo(PW - MAR, doc.y)
-        .lineWidth(0.4)
-        .stroke('#000000');
-      doc.moveDown(0.4);
+      y += 4;
+      sepDash();
 
-      doc.fontSize(6).fillColor('#444444')
-         .text('Constancia de pago. Conserve este comprobante.', { align: 'center', width: CW })
-         .moveDown(0.2)
-         .text('HiCloud ERP · hicloudrd.com', { align: 'center', width: CW });
+      center('Constancia de pago de cuota.', 7);
+      center('Conserve este comprobante.', 7);
+      y += 2;
+      center('HiCloud ERP · hicloudrd.com', 7, 'Helvetica', '#888888');
 
+      // Altura dinámica — igual que generarReciboPOSPDF
+      doc.page.height = y + 20;
       doc.end();
     });
   }
