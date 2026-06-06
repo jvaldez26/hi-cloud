@@ -13,7 +13,7 @@ import {
   ReloadOutlined, DownloadOutlined, SendOutlined,
   WarningOutlined, CheckCircleOutlined, CloseCircleOutlined,
   ClockCircleOutlined, PlusOutlined, EditOutlined, StopOutlined, SearchOutlined,
-  CalendarOutlined,
+  CalendarOutlined, CopyOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ecfApi } from '../../api/ecf.api';
@@ -188,9 +188,14 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
   const handleVerXML = async (numero: string) => {
     try {
       const xml = await ecfApi.getXml(numero);
+      if (!xml) {
+        message.warning('Este e-CF no tiene XML guardado (emitido antes del registro de XML)');
+        return;
+      }
       setXmlModal({ numero, xml });
-    } catch {
-      message.error('XML no disponible');
+    } catch (e: any) {
+      const msg = e?.response?.data?.message ?? e?.message ?? 'Error al obtener el XML';
+      message.error(msg);
     }
   };
 
@@ -320,13 +325,61 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
         )}
       </Drawer>
 
-      {/* XML Modal */}
-      <Modal title={`XML — ${xmlModal?.numero}`} open={!!xmlModal} onCancel={() => setXmlModal(null)}
-        footer={<Button onClick={() => setXmlModal(null)}>Cerrar</Button>} width={720}>
-        <pre style={{ background: '#f5f5f5', padding: 12, borderRadius: 6, overflow: 'auto',
-                      maxHeight: 480, fontSize: 11, fontFamily: 'monospace' }}>
-          {xmlModal?.xml}
-        </pre>
+      {/* XML / Diagnóstico Modal */}
+      <Modal
+        title={<span style={{ fontFamily: 'monospace', fontSize: 13 }}>XML — {xmlModal?.numero}</span>}
+        open={!!xmlModal}
+        onCancel={() => setXmlModal(null)}
+        width={760}
+        footer={
+          <Space>
+            <Button
+              icon={<CopyOutlined />}
+              onClick={() => {
+                if (xmlModal?.xml) {
+                  navigator.clipboard.writeText(xmlModal.xml);
+                  message.success('XML copiado al portapapeles');
+                }
+              }}
+            >
+              Copiar XML
+            </Button>
+            <Button
+              icon={<DownloadOutlined />}
+              onClick={() => {
+                if (!xmlModal?.xml) return;
+                const blob = new Blob([xmlModal.xml], { type: 'application/xml' });
+                const url  = URL.createObjectURL(blob);
+                const a    = document.createElement('a');
+                a.href = url; a.download = `${xmlModal.numero}.xml`;
+                a.click(); URL.revokeObjectURL(url);
+              }}
+            >
+              Descargar .xml
+            </Button>
+            <Button onClick={() => setXmlModal(null)}>Cerrar</Button>
+          </Space>
+        }
+      >
+        {xmlModal?.xml ? (
+          <pre style={{
+            background: '#0f172a', color: '#e2e8f0',
+            padding: '12px 16px', borderRadius: 8,
+            overflow: 'auto', maxHeight: 500,
+            fontSize: 11, lineHeight: 1.6,
+            fontFamily: "'JetBrains Mono','Fira Code','Cascadia Code','Courier New',monospace",
+            margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+          }}>
+            {xmlModal.xml}
+          </pre>
+        ) : (
+          <Alert
+            type="warning"
+            showIcon
+            message="XML no disponible"
+            description="Este e-CF no tiene XML almacenado. Puede haber sido emitido antes de que se activara el registro de XML, o el estado del documento no genera XML."
+          />
+        )}
       </Modal>
     </>
   );

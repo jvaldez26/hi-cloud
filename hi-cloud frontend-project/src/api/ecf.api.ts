@@ -51,8 +51,9 @@ export const ecfApi = {
     });
   },
 
+  // El endpoint /xml usa @Res() bypass → envía texto crudo, no JSON envuelto
   getXml: (numero: string) =>
-    api.get(`/ecf/${numero}/xml`).then(r => r.data.data),
+    api.get(`/ecf/${numero}/xml`, { responseType: 'text' }).then(r => r.data as string),
 
   reenviar: (numero: string) =>
     api.post(`/ecf/${numero}/reenviar`).then(r => r.data.data),
