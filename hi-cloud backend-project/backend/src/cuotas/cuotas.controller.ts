@@ -73,20 +73,6 @@ export class CuotasController {
     return this.svc.listar(clienteId ? Number(clienteId) : undefined);
   }
 
-  @Get('cuota/:cuotaId/comprobante')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
-  @ApiOperation({ summary: 'Generar comprobante PDF de una cuota pagada' })
-  async comprobante(
-    @Param('cuotaId', ParseIntPipe) cuotaId: number,
-    @Res() res: Response,
-  ) {
-    const { buffer, filename } = await this.svc.generarComprobantePDF(cuotaId);
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
-    res.setHeader('Content-Length', buffer.length);
-    res.end(buffer);
-  }
-
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
   findOne(@Param('id', ParseIntPipe) id: number) { return this.svc.findOne(id); }
@@ -106,5 +92,31 @@ export class CuotasController {
     @Query('referencia') referencia?: string,
   ) {
     return this.svc.pagarCuota(id, referencia);
+  }
+}
+
+// ─── Comprobante PDF bajo /planes-pago/:planId/cuotas/:cuotaId/comprobante ─────
+
+@ApiTags('Cuotas / Planes de Pago')
+@ApiBearerAuth('access-token')
+@ApiHeader({ name: 'X-Empresa-ID', required: true })
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
+@Controller('planes-pago')
+export class PlanesPagoController {
+  constructor(private readonly svc: CuotasService) {}
+
+  @Get(':planId/cuotas/:cuotaId/comprobante')
+  @ApiOperation({ summary: 'Generar comprobante PDF (A4) de una cuota pagada' })
+  async comprobante(
+    @Param('planId',   ParseIntPipe) planId:   number,
+    @Param('cuotaId',  ParseIntPipe) cuotaId:  number,
+    @Res() res: Response,
+  ) {
+    const { buffer, filename } = await this.svc.generarComprobantePDF(planId, cuotaId);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+    res.setHeader('Content-Length', buffer.length);
+    res.end(buffer);
   }
 }

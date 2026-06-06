@@ -108,12 +108,13 @@ export default function CuotasPage() {
     onError: (e: any) => message.error(e?.response?.data?.errors?.[0] ?? 'Error al registrar pago'),
   });
 
-  const handleComprobante = async (cuotaId: number) => {
+  const handleComprobante = async (planId: number, cuotaId: number) => {
     setComprobanteLoading(cuotaId);
     try {
-      const response = await api.get(`/cuotas/cuota/${cuotaId}/comprobante`, {
-        responseType: 'blob',
-      });
+      const response = await api.get(
+        `/planes-pago/${planId}/cuotas/${cuotaId}/comprobante`,
+        { responseType: 'blob' },
+      );
       const blob = new Blob([(response as any).data], { type: 'application/pdf' });
       const url  = URL.createObjectURL(blob);
       window.open(url, '_blank');
@@ -243,7 +244,7 @@ export default function CuotasPage() {
                               size="small"
                               icon={<PrinterOutlined />}
                               loading={comprobanteLoading === r.id}
-                              onClick={() => handleComprobante(r.id)}
+                              onClick={() => handleComprobante(planDetalle.id, r.id)}
                             />
                           </Tooltip>
                         );
