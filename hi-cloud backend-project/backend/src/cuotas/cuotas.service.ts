@@ -232,162 +232,131 @@ export class CuotasService {
       return `${day}/${m}/${y}`;
     };
 
+    // Papel térmico 80mm = 226.77 pt  (1 mm = 2.8346 pt)
+    const PW  = 226.77;  // page width (80 mm)
+    const MAR = 8;       // margen lateral (≈ 3 mm)
+    const CW  = PW - MAR * 2; // ancho de contenido
+
     return new Promise<Buffer>((resolve, reject) => {
       const chunks: Buffer[] = [];
       const doc = new PDFDocument({
-        size: 'A4',
-        margin: 50,
-        info: { Title: `Comprobante Cuota #${d.cuota.numeroCuota} — ${d.plan.numero}` },
+        size:   [PW, 800],   // alto provisional — PDFKit no soporta altura dinámica,
+        margin: MAR,         // pero la impresora térmica ignora el alto del PDF
+        info:   { Title: `Comprobante Cuota #${d.cuota.numeroCuota} — ${d.plan.numero}` },
       });
 
       doc.on('data',  (c: Buffer) => chunks.push(c));
       doc.on('end',   () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
-      const L = 50;
-      const R = 545;
-
       const sep = (bold = false) => {
-        doc.moveDown(0.4);
+        doc.moveDown(0.3);
         doc
-          .moveTo(L, doc.y)
-          .lineTo(R, doc.y)
-          .lineWidth(bold ? 1.5 : 0.5)
-          .stroke(bold ? '#000000' : '#aaaaaa');
-        doc.moveDown(0.6);
+          .moveTo(MAR, doc.y)
+          .lineTo(PW - MAR, doc.y)
+          .lineWidth(bold ? 1.2 : 0.4)
+          .stroke('#000000');
+        doc.moveDown(0.4);
+      };
+
+      const row = (label: string, value: string, valBold = false) => {
+        const y = doc.y;
+        doc.font('Helvetica').fontSize(7).text(label, MAR, y, { width: CW * 0.55 });
+        doc.font(valBold ? 'Helvetica-Bold' : 'Helvetica').fontSize(7)
+           .text(value, MAR, y, { width: CW, align: 'right' });
+        doc.y = doc.y + 1;
       };
 
       // ── Encabezado empresa ──────────────────────────────────
-      doc.fontSize(16).font('Helvetica-Bold')
-         .text(d.empresa.nombre ?? '', { align: 'center' });
+      doc.fontSize(10).font('Helvetica-Bold')
+         .text(d.empresa.nombre ?? '', { align: 'center', width: CW });
 
       if (d.empresa.rnc) {
-        doc.fontSize(10).font('Helvetica')
-           .text(`RNC: ${d.empresa.rnc}`, { align: 'center' });
+        doc.fontSize(7).font('Helvetica')
+           .text(`RNC: ${d.empresa.rnc}`, { align: 'center', width: CW });
       }
       if (d.empresa.direccion) {
         const dir = d.empresa.ciudad
           ? `${d.empresa.direccion}, ${d.empresa.ciudad}`
           : d.empresa.direccion;
-        doc.fontSize(9).text(dir, { align: 'center' });
+        doc.fontSize(6).text(dir, { align: 'center', width: CW });
       }
       if (d.empresa.telefono) {
-        doc.fontSize(9).text(`Tel: ${d.empresa.telefono}`, { align: 'center' });
+        doc.fontSize(6).text(`Tel: ${d.empresa.telefono}`, { align: 'center', width: CW });
       }
 
       sep();
 
       // ── Título ──────────────────────────────────────────────
-      doc.fontSize(14).font('Helvetica-Bold')
-         .text('COMPROBANTE DE PAGO DE CUOTA', { align: 'center' });
+      doc.fontSize(8).font('Helvetica-Bold')
+         .text('COMPROBANTE DE PAGO DE CUOTA', { align: 'center', width: CW });
 
       sep();
 
       // ── Identificación ──────────────────────────────────────
-      doc.fontSize(10).font('Helvetica')
-         .text('No. Comprobante:', { continued: true })
-         .font('Helvetica-Bold')
-         .text(`COMP-${String(d.cuota.id).padStart(6, '0')}`, { align: 'right' });
-
-      doc.font('Helvetica')
-         .text('Fecha emisión:', { continued: true })
-         .font('Helvetica-Bold')
-         .text(fmtDate(fechaHoyRD()), { align: 'right' });
+      row('No. Comprobante:', `COMP-${String(d.cuota.id).padStart(6, '0')}`, true);
+      row('Fecha emisión:', fmtDate(fechaHoyRD()), true);
 
       sep();
 
       // ── Plan de pago ────────────────────────────────────────
-      doc.fontSize(10).font('Helvetica-Bold').text('PLAN DE PAGO');
-      doc.moveDown(0.25);
+      doc.fontSize(7).font('Helvetica-Bold').text('PLAN DE PAGO', { width: CW });
+      doc.moveDown(0.2);
 
-      doc.font('Helvetica')
-         .text('Número:', { continued: true })
-         .font('Helvetica-Bold')
-         .text(d.plan.numero, { align: 'right' });
-
-      doc.font('Helvetica')
-         .text('Cliente:', { continued: true })
-         .text(d.plan.clienteNombre ?? '—', { align: 'right' });
-
-      if (d.plan.facturaFolio) {
-        doc.text('Factura ref.:', { continued: true })
-           .text(d.plan.facturaFolio, { align: 'right' });
-      }
+      row('Número:', d.plan.numero, true);
+      row('Cliente:', d.plan.clienteNombre ?? '—');
+      if (d.plan.facturaFolio) row('Factura ref.:', d.plan.facturaFolio);
 
       sep();
 
       // ── Detalle de la cuota ──────────────────────────────────
-      doc.fontSize(10).font('Helvetica-Bold')
-         .text(`CUOTA #${d.cuota.numeroCuota} DE ${d.plan.numeroCuotas}`);
-      doc.moveDown(0.25);
+      doc.fontSize(7).font('Helvetica-Bold')
+         .text(`CUOTA #${d.cuota.numeroCuota} DE ${d.plan.numeroCuotas}`, { width: CW });
+      doc.moveDown(0.2);
 
-      doc.font('Helvetica')
-         .text('Fecha vencimiento:', { continued: true })
-         .font('Helvetica-Bold')
-         .text(fmtDate(d.cuota.fechaVencimiento), { align: 'right' });
-
-      doc.font('Helvetica')
-         .text('Fecha de pago:', { continued: true })
-         .font('Helvetica-Bold')
-         .text(fmtDate(d.cuota.fechaPago), { align: 'right' });
-
-      if (d.cuota.referenciaPago) {
-        doc.font('Helvetica')
-           .text('Referencia pago:', { continued: true })
-           .text(d.cuota.referenciaPago, { align: 'right' });
-      }
+      row('Fecha vencimiento:', fmtDate(d.cuota.fechaVencimiento));
+      row('Fecha de pago:', fmtDate(d.cuota.fechaPago), true);
+      if (d.cuota.referenciaPago) row('Referencia:', d.cuota.referenciaPago);
 
       sep();
 
       // ── Desglose ────────────────────────────────────────────
-      doc.fontSize(10).font('Helvetica-Bold').text('DESGLOSE');
-      doc.moveDown(0.25);
+      doc.fontSize(7).font('Helvetica-Bold').text('DESGLOSE', { width: CW });
+      doc.moveDown(0.2);
 
-      doc.font('Helvetica')
-         .text('Capital:', { continued: true })
-         .font('Helvetica-Bold')
-         .text(fmtMoney(d.capital), { align: 'right' });
-
+      row('Capital:', fmtMoney(d.capital), true);
       if (d.interes > 0) {
-        doc.font('Helvetica')
-           .text(`Intereses (${Number(d.plan.tasaInteresMensual)}% mens.):`, { continued: true })
-           .font('Helvetica-Bold')
-           .text(fmtMoney(d.interes), { align: 'right' });
+        row(`Intereses (${Number(d.plan.tasaInteresMensual)}% mens.):`, fmtMoney(d.interes), true);
       }
 
       sep(true);
 
       // ── Total pagado ─────────────────────────────────────────
-      doc.fontSize(13).font('Helvetica-Bold')
-         .text('TOTAL PAGADO:', { continued: true })
-         .text(fmtMoney(Number(d.cuota.montoPagado ?? d.cuota.monto)), { align: 'right' });
+      const totalY = doc.y;
+      doc.font('Helvetica-Bold').fontSize(7).text('TOTAL PAGADO:', MAR, totalY, { width: CW * 0.55 });
+      doc.font('Helvetica-Bold').fontSize(10)
+         .text(fmtMoney(Number(d.cuota.montoPagado ?? d.cuota.monto)), MAR, totalY, { width: CW, align: 'right' });
+      doc.moveDown(0.5);
 
       sep(true);
 
       // ── Saldo pendiente ──────────────────────────────────────
-      doc.fontSize(10).font('Helvetica')
-         .text('Saldo pendiente:', { continued: true })
-         .font('Helvetica-Bold')
-         .text(fmtMoney(d.saldoPendiente), { align: 'right' });
-
-      doc.font('Helvetica')
-         .text('Cuotas restantes:', { continued: true })
-         .text(`${d.cuotasRestantes} de ${d.plan.numeroCuotas}`, { align: 'right' });
+      row('Saldo pendiente:', fmtMoney(d.saldoPendiente), true);
+      row('Cuotas restantes:', `${d.cuotasRestantes} de ${d.plan.numeroCuotas}`);
 
       // ── Footer ───────────────────────────────────────────────
-      doc.moveDown(2);
+      doc.moveDown(0.8);
       doc
-        .moveTo(L, doc.y)
-        .lineTo(R, doc.y)
-        .lineWidth(0.5)
-        .stroke('#aaaaaa');
-      doc.moveDown(0.5);
+        .moveTo(MAR, doc.y)
+        .lineTo(PW - MAR, doc.y)
+        .lineWidth(0.4)
+        .stroke('#000000');
+      doc.moveDown(0.4);
 
-      doc.fontSize(8).fillColor('#666666')
-         .text('Este documento es constancia del pago de la cuota indicada.', { align: 'center' })
-         .text('Conserve este comprobante para sus registros.', { align: 'center' })
-         .moveDown(0.3)
-         .text('HiCloud ERP · hicloudrd.com', { align: 'center' });
+      doc.fontSize(6).fillColor('#444444')
+         .text('Constancia de pago. Conserve este comprobante.', { align: 'center', width: CW })
+         .moveDown(0.2)
+         .text('HiCloud ERP · hicloudrd.com', { align: 'center', width: CW });
 
       doc.end();
     });
