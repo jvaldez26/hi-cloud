@@ -114,15 +114,24 @@ export default function CuotasPage() {
       const response = await api.get(`/cuotas/cuota/${cuotaId}/comprobante`, {
         responseType: 'blob',
       });
-      // Abre el PDF en nueva pestaña para que el usuario lo imprima
-      // desde el visor PDF o lo guarde y envíe a la impresora térmica
       const blob = new Blob([(response as any).data], { type: 'application/pdf' });
       const url  = URL.createObjectURL(blob);
       window.open(url, '_blank');
-      // Liberar memoria tras 2 minutos
       setTimeout(() => URL.revokeObjectURL(url), 120_000);
-    } catch {
-      message.error('Error al generar comprobante de pago');
+    } catch (e: any) {
+      let errorMsg = 'Error al generar comprobante de pago';
+      try {
+        const data = e?.response?.data;
+        if (data instanceof Blob) {
+          const text = await data.text();
+          const json = JSON.parse(text);
+          const msg  = json?.message || (Array.isArray(json?.errors) && json.errors[0]);
+          if (msg) errorMsg = String(msg);
+        } else if (e?.friendlyMessage) {
+          errorMsg = e.friendlyMessage;
+        }
+      } catch { /* ignorar error al parsear */ }
+      message.error(errorMsg);
     } finally {
       setComprobanteLoading(null);
     }
