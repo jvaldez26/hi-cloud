@@ -1,7 +1,8 @@
 import {
-  Controller, Get, Post, Patch, Body, Param, Query,
+  Controller, Get, Post, Patch, Body, Param, Query, Res,
   ParseIntPipe, UseGuards, HttpCode, HttpStatus,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiHeader } from '@nestjs/swagger';
 import {
   IsInt, IsPositive, IsNumber, IsOptional, IsString, IsDateString, Min,
@@ -91,5 +92,19 @@ export class CuotasController {
     @Query('referencia') referencia?: string,
   ) {
     return this.svc.pagarCuota(id, referencia);
+  }
+
+  @Get('cuota/:cuotaId/comprobante')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
+  @ApiOperation({ summary: 'Generar comprobante PDF de una cuota pagada' })
+  async comprobante(
+    @Param('cuotaId', ParseIntPipe) cuotaId: number,
+    @Res() res: Response,
+  ) {
+    const { buffer, filename } = await this.svc.generarComprobantePDF(cuotaId);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+    res.setHeader('Content-Length', buffer.length);
+    res.end(buffer);
   }
 }

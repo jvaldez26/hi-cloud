@@ -5,12 +5,12 @@ import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/Tab
 import { TableActions } from '../../components/ui/TableActions';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
-  DatePicker, InputNumber, Space, Typography,
+  DatePicker, InputNumber, Space, Typography, Tooltip,
   message, Tabs, Progress, Alert, Divider, theme,
 } from 'antd';
 import {
   CreditCardOutlined, PlusOutlined, CheckCircleOutlined, CalculatorOutlined,
-  WarningOutlined, FileExcelOutlined, SearchOutlined,
+  WarningOutlined, FileExcelOutlined, SearchOutlined, PrinterOutlined,
 } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -52,6 +52,7 @@ export default function CuotasPage() {
   const [planSel,    setPlanSel]    = useState<any>(null);
   const [formCrear]  = Form.useForm();
   const [simular, setSimular]       = useState({ capital: 100000, tasa: 3, cuotas: 12, resultado: null as any });
+  const [comprobanteLoading, setComprobanteLoading] = useState<number | null>(null);
 
   const { data: resumen } = useQuery<any>({
     queryKey: ['cuotas-resumen'],
@@ -106,6 +107,28 @@ export default function CuotasPage() {
     },
     onError: (e: any) => message.error(e?.response?.data?.errors?.[0] ?? 'Error al registrar pago'),
   });
+
+  const handleComprobante = async (cuotaId: number) => {
+    setComprobanteLoading(cuotaId);
+    try {
+      const response = await api.get(`/cuotas/cuota/${cuotaId}/comprobante`, {
+        responseType: 'blob',
+      });
+      const blob = new Blob([(response as any).data], { type: 'application/pdf' });
+      const url  = URL.createObjectURL(blob);
+      const win  = window.open(url, '_blank');
+      if (win) {
+        win.addEventListener('load', () => {
+          try { win.print(); } catch { /* el usuario puede imprimir manualmente */ }
+          setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        });
+      }
+    } catch {
+      message.error('Error al generar comprobante de pago');
+    } finally {
+      setComprobanteLoading(null);
+    }
+  };
 
   const handleSimular = async () => {
     const r = await api.get(`/cuotas/simular?capital=${simular.capital}&tasa=${simular.tasa}&cuotas=${simular.cuotas}`);
@@ -204,22 +227,39 @@ export default function CuotasPage() {
                   },
                   { title: 'Pagado', dataIndex: 'fechaPago', key: 'fp', render: v => v ?? '—' },
                   {
-                    title: '', key: 'acc', width: 72, align: 'right' as const,
-                    render: (_: any, r: any) => r.estado === 'pendiente' ? (
-                      <TableActions
-                        onView={() => {}}
-                        viewLabel="Ver cuota"
-                        items={[
-                          { key: 'pagar', label: 'Registrar pago', icon: <CheckCircleOutlined />,
-                            onClick: () => Modal.confirm({
-                              title: '¿Registrar pago de esta cuota?',
-                              okText: 'Confirmar',
-                              cancelText: 'Cancelar',
-                              onOk: () => pagarCuota.mutate(r.id),
-                            }) },
-                        ]}
-                      />
-                    ) : null,
+                    title: '', key: 'acc', width: 80, align: 'right' as const,
+                    render: (_: any, r: any) => {
+                      if (r.estado === 'pagada') {
+                        return (
+                          <Tooltip title="Imprimir comprobante">
+                            <Button
+                              size="small"
+                              icon={<PrinterOutlined />}
+                              loading={comprobanteLoading === r.id}
+                              onClick={() => handleComprobante(r.id)}
+                            />
+                          </Tooltip>
+                        );
+                      }
+                      if (r.estado === 'pendiente') {
+                        return (
+                          <TableActions
+                            onView={() => {}}
+                            viewLabel="Ver cuota"
+                            items={[
+                              { key: 'pagar', label: 'Registrar pago', icon: <CheckCircleOutlined />,
+                                onClick: () => Modal.confirm({
+                                  title: '¿Registrar pago de esta cuota?',
+                                  okText: 'Confirmar',
+                                  cancelText: 'Cancelar',
+                                  onOk: () => pagarCuota.mutate(r.id),
+                                }) },
+                            ]}
+                          />
+                        );
+                      }
+                      return null;
+                    },
                   },
                 ]}
               />
