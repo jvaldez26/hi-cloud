@@ -19,4 +19,7 @@ export const cxcApi = {
 
   registrarPago: (id: number, monto: number, metodoPago: MetodoPago, referencia?: string, fechaPago?: string, tipoCambio?: number) =>
     api.post(`/cxc/${id}/pago`, { monto, metodoPago, referencia, fechaPago, tipoCambio }).then(r => r.data),
+
+  aging: () =>
+    api.get('/cxc/aging').then(r => r.data.data ?? r.data),
 };

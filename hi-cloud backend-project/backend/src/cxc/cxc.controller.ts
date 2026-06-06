@@ -60,6 +60,13 @@ export class CxCController {
     return this.cxcService.getCuentasPorCliente(clienteId, filtro);
   }
 
+  @Get('aging')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Antigüedad de saldos agrupada por cliente' })
+  getAging() {
+    return this.cxcService.getAging();
+  }
+
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Detalle de una cuenta por cobrar' })

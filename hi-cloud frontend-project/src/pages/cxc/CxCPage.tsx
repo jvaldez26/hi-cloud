@@ -5,11 +5,11 @@ import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
   Table, Button, Tag, Space, Modal, Form, InputNumber, Select, Input,
   Typography, message, Card, Row, Col, Statistic, DatePicker, theme, Tooltip,
-  Drawer, Divider, Alert,
+  Drawer, Divider, Alert, Tabs,
 } from 'antd';
 import {
   DollarOutlined, SearchOutlined, FileExcelOutlined,
-  WhatsAppOutlined, FilterOutlined, HistoryOutlined,
+  WhatsAppOutlined, FilterOutlined, HistoryOutlined, ClockCircleOutlined,
 } from '@ant-design/icons';
 import { TableActions } from '../../components/ui/TableActions';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -31,6 +31,7 @@ const ESTADOS_CXC = ['pendiente', 'pagada_parcial', 'pagada', 'vencida', 'anulad
 export default function CxCPage() {
   const { token }        = theme.useToken();
   const puedeCobrar      = useCanDo('cxc:cobrar');   // admin, contador, vendedor
+  const [tabActivo, setTabActivo] = useState('cuentas');
   const [estado,  setEstado]  = useState<string | undefined>();
   const [search,  setSearch]  = useState('');
   const [rango,   setRango]   = useState<[Dayjs, Dayjs] | null>(null);
@@ -40,6 +41,12 @@ export default function CxCPage() {
   const [histId,   setHistId]  = useState<number | null>(null);
   const [form]                = Form.useForm();
   const qc = useQueryClient();
+
+  const { data: agingData = [], isLoading: loadingAging } = useQuery<any[]>({
+    queryKey: ['cxc-aging'],
+    queryFn:  cxcApi.aging,
+    enabled:  tabActivo === 'aging',
+  });
 
   const hayFiltros = !!(search || estado || rango);
 
@@ -185,8 +192,81 @@ export default function CxCPage() {
     },
   ];
 
+  // ─── Aging helpers ─────────────────────────────────────────────────────────
+  const AGING_COLS = [
+    { key: 'corriente', label: '0-30 días',   color: '#059669' },
+    { key: 'dias30',    label: '31-60 días',  color: '#d97706' },
+    { key: 'dias60',    label: '61-90 días',  color: '#ea580c' },
+    { key: 'dias90',    label: '91-120 días', color: '#dc2626' },
+    { key: 'masde120',  label: '+120 días',   color: '#7f1d1d' },
+  ] as const;
+
+  const agingTotals = agingData.reduce((acc: any, r: any) => {
+    AGING_COLS.forEach(c => { acc[c.key] = (acc[c.key] ?? 0) + r[c.key]; });
+    acc.total = (acc.total ?? 0) + r.total;
+    return acc;
+  }, {} as Record<string, number>);
+
+  const agingColumns = [
+    {
+      title: 'Cliente', key: 'nombre', width: 200, ellipsis: true,
+      render: (_: unknown, r: any) => (
+        <div>
+          <div style={{ fontWeight: 600, fontSize: 13 }}>{r.cliente?.nombre}</div>
+          {r.cliente?.rnc && <div style={{ fontSize: 11, color: token.colorTextSecondary }}>RNC: {r.cliente.rnc}</div>}
+        </div>
+      ),
+    },
+    ...AGING_COLS.map(col => ({
+      title: <span style={{ color: col.color, fontWeight: 700 }}>{col.label}</span>,
+      key: col.key,
+      dataIndex: col.key,
+      width: 105,
+      align: 'right' as const,
+      render: (v: number) => v > 0
+        ? <Text style={{ color: col.color, fontWeight: 700, fontFamily: 'monospace', fontSize: 11 }}>{fmt.money(v)}</Text>
+        : <span style={{ color: token.colorTextQuaternary }}>—</span>,
+    })),
+    {
+      title: 'Total', key: 'total', dataIndex: 'total', width: 130, align: 'right' as const,
+      render: (v: number) => <Text strong style={{ fontFamily: 'monospace', fontSize: 12 }}>{fmt.money(v)}</Text>,
+    },
+    {
+      title: '', key: 'rec', width: 72, align: 'right' as const,
+      render: (_: unknown, r: any) => (
+        <Tooltip title="Recordatorio WhatsApp">
+          <Button size="small" icon={<WhatsAppOutlined />} style={{ color: '#25d366', borderColor: '#25d366' }}
+            onClick={() => {
+              const msg = encodeURIComponent(`Estimado/a ${r.cliente.nombre}, le recordamos que tiene un saldo pendiente de ${fmt.money(r.total)} con nuestra empresa. Por favor comuníquese con nosotros para coordinar el pago. Gracias.`);
+              window.open(`https://wa.me/?text=${msg}`, '_blank', 'noopener,noreferrer');
+            }} />
+        </Tooltip>
+      ),
+    },
+  ];
+
+  const handleAgingExcel = () => {
+    const filas = agingData.map((r: any) => ({
+      'Cliente':     r.cliente.nombre,
+      'RNC':         r.cliente.rnc ?? '',
+      '0-30 días':  r.corriente,
+      '31-60 días': r.dias30,
+      '61-90 días': r.dias60,
+      '91-120 días':r.dias90,
+      '+120 días':  r.masde120,
+      'Total':       r.total,
+    }));
+    exportarExcel(filas, `Aging-CxC-${dayjs().format('YYYY-MM-DD')}`);
+    message.success(`${filas.length} clientes exportados`);
+  };
+
   return (
     <div>
+      <Tabs activeKey={tabActivo} onChange={setTabActivo}
+        items={[{
+          key: 'cuentas',
+          label: <Space><DollarOutlined />Cuentas por Cobrar</Space>,
+          children: (
       <Card>
         {/* Header + filtros */}
         <Row justify="space-between" align="middle" gutter={[0, 8]} style={{ marginBottom: 12 }}>
@@ -255,6 +335,53 @@ export default function CxCPage() {
           }}
         />
       </Card>
+          ),
+        }, {
+          key: 'aging',
+          label: <Space><ClockCircleOutlined />Antigüedad de Saldos</Space>,
+          children: (
+      <Card>
+        <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
+          <Col>
+            <Title level={4} style={{ margin: 0 }}>Antigüedad de Saldos</Title>
+            <Text type="secondary" style={{ fontSize: 12 }}>Saldos pendientes clasificados por antigüedad de la deuda</Text>
+          </Col>
+          <Col>
+            <Space>
+              <Button icon={<FileExcelOutlined />} onClick={handleAgingExcel} disabled={agingData.length === 0}>Excel</Button>
+              <RefreshByKeyButton queryKey={['cxc-aging']} />
+            </Space>
+          </Col>
+        </Row>
+        <Table
+          dataSource={agingData}
+          columns={agingColumns as any}
+          rowKey={(r: any) => r.cliente.nombre}
+          loading={loadingAging}
+          size="small"
+          scroll={{ x: 'max-content' }}
+          pagination={false}
+          summary={() => agingData.length > 0 ? (
+            <Table.Summary.Row style={{ fontWeight: 700 }}>
+              <Table.Summary.Cell index={0}><Text strong>TOTALES</Text></Table.Summary.Cell>
+              {AGING_COLS.map((col, i) => (
+                <Table.Summary.Cell key={col.key} index={i + 1} align="right">
+                  <Text strong style={{ color: col.color, fontFamily: 'monospace', fontSize: 11 }}>
+                    {(agingTotals[col.key] ?? 0) > 0 ? fmt.money(agingTotals[col.key]) : '—'}
+                  </Text>
+                </Table.Summary.Cell>
+              ))}
+              <Table.Summary.Cell index={AGING_COLS.length + 1} align="right">
+                <Text strong style={{ fontFamily: 'monospace' }}>{fmt.money(agingTotals.total ?? 0)}</Text>
+              </Table.Summary.Cell>
+              <Table.Summary.Cell index={AGING_COLS.length + 2} />
+            </Table.Summary.Row>
+          ) : undefined}
+        />
+      </Card>
+          ),
+        }]}
+      />
 
       {/* Drawer historial de cobros */}
       <Drawer

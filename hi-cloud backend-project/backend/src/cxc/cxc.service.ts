@@ -305,6 +305,43 @@ export class CxCService {
   }
 
   // ──────────────────────────────────────────────────────────────────
+  // Antigüedad de saldos (aging)
+  // ──────────────────────────────────────────────────────────────────
+
+  async getAging() {
+    const empresaId = this.tenantService.getEmpresaId();
+    const rows: any[] = await this.dataSource.query(
+      `SELECT
+         c.nombre,
+         c."rncReceptor",
+         SUM(CASE WHEN CURRENT_DATE - cxc."fechaEmision" <= 30   THEN cxc."montoPendiente" ELSE 0 END) AS corriente,
+         SUM(CASE WHEN CURRENT_DATE - cxc."fechaEmision" BETWEEN 31 AND  60 THEN cxc."montoPendiente" ELSE 0 END) AS dias30,
+         SUM(CASE WHEN CURRENT_DATE - cxc."fechaEmision" BETWEEN 61 AND  90 THEN cxc."montoPendiente" ELSE 0 END) AS dias60,
+         SUM(CASE WHEN CURRENT_DATE - cxc."fechaEmision" BETWEEN 91 AND 120 THEN cxc."montoPendiente" ELSE 0 END) AS dias90,
+         SUM(CASE WHEN CURRENT_DATE - cxc."fechaEmision" > 120              THEN cxc."montoPendiente" ELSE 0 END) AS masde120,
+         SUM(cxc."montoPendiente") AS total
+       FROM cuentas_por_cobrar cxc
+       JOIN clientes c ON c.id = cxc."clienteId"
+       WHERE cxc."empresaId" = $1
+         AND cxc."montoPendiente" > 0
+         AND cxc.estado NOT IN ('pagada', 'anulada')
+       GROUP BY c.id, c.nombre, c."rncReceptor"
+       ORDER BY total DESC`,
+      [empresaId],
+    );
+
+    return rows.map(r => ({
+      cliente:  { nombre: r.nombre, rnc: r.rncReceptor ?? null },
+      corriente: Number(r.corriente),
+      dias30:    Number(r.dias30),
+      dias60:    Number(r.dias60),
+      dias90:    Number(r.dias90),
+      masde120:  Number(r.masde120),
+      total:     Number(r.total),
+    }));
+  }
+
+  // ──────────────────────────────────────────────────────────────────
   // Cron jobs
   // ──────────────────────────────────────────────────────────────────
 
