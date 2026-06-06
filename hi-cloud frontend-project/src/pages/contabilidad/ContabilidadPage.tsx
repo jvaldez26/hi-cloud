@@ -6,8 +6,9 @@ import { usePlanGuard } from '../../hooks/usePlan';
 import ModuloBloqueado from '../../components/ui/ModuloBloqueado';
 import { Table, Tag, Button, Card, Row, Col, Typography, Statistic,
          Space, Modal, Form, Input, InputNumber, Select, DatePicker, message,
-         Descriptions, Collapse, Drawer, theme } from 'antd';
-import { PlusOutlined, CheckOutlined, EyeOutlined, SearchOutlined, FileExcelOutlined } from '@ant-design/icons';
+         Descriptions, Collapse, Drawer, theme, Tabs, Segmented } from 'antd';
+import { PlusOutlined, CheckOutlined, EyeOutlined, SearchOutlined, FileExcelOutlined,
+         FilePdfOutlined, BarChartOutlined, BookOutlined, AuditOutlined } from '@ant-design/icons';
 import { TableActions } from '../../components/ui/TableActions';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -324,6 +325,15 @@ function EstadosFinancieros() {
   const [hasta,  setHasta]  = useState(dayjs().format('YYYY-MM-DD'));
   const [rDesde, setRDesde] = useState(dayjs().startOf('year').format('YYYY-MM-DD'));
   const [rHasta, setRHasta] = useState(dayjs().format('YYYY-MM-DD'));
+  const [periodo, setPeriodo] = useState<string>('anio');
+
+  const aplicarPeriodo = (val: string) => {
+    setPeriodo(val);
+    const hoy = dayjs();
+    if (val === 'mes')       { setRDesde(hoy.startOf('month').format('YYYY-MM-DD')); setRHasta(hoy.format('YYYY-MM-DD')); }
+    if (val === 'trimestre') { const m = Math.floor(hoy.month() / 3) * 3; setRDesde(hoy.month(m).startOf('month').format('YYYY-MM-DD')); setRHasta(hoy.format('YYYY-MM-DD')); }
+    if (val === 'anio')      { setRDesde(hoy.startOf('year').format('YYYY-MM-DD')); setRHasta(hoy.format('YYYY-MM-DD')); }
+  };
 
   const { data: balance }    = useQuery({ queryKey: ['balance', hasta],              queryFn: () => contabilidadApi.balanceGeneral(hasta) });
   const { data: resultados } = useQuery({ queryKey: ['resultados', rDesde, rHasta], queryFn: () => contabilidadApi.estadoResultados(rDesde, rHasta) });
@@ -344,10 +354,38 @@ function EstadosFinancieros() {
     { name: 'Utilidad', value: Math.abs(resultados.utilidadNeta ?? 0), fill: resultados.utilidadNeta >= 0 ? '#1677ff' : '#ff4d4f' },
   ] : [];
 
+  const handleExcelBalance = () => {
+    if (!balance) return;
+    const filas = [
+      ...((balance.activos?.detalle ?? []).map((c: any) => ({ Sección: 'Activo', Cuenta: c.nombre, Saldo: Number(c.saldo) }))),
+      ...((balance.pasivos?.detalle ?? []).map((c: any) => ({ Sección: 'Pasivo', Cuenta: c.nombre, Saldo: Number(c.saldo) }))),
+      ...((balance.patrimonio?.detalle ?? []).map((c: any) => ({ Sección: 'Patrimonio', Cuenta: c.nombre, Saldo: Number(c.saldo) }))),
+    ];
+    exportarExcel(filas, `BalanceGeneral-${hasta}`);
+    message.success('Balance exportado');
+  };
+
+  const handleExcelResultados = () => {
+    if (!resultados) return;
+    const filas = [
+      ...((resultados.ingresos?.detalle ?? []).map((c: any) => ({ Sección: 'Ingreso', Cuenta: c.nombre, Monto: Number(c.saldo) }))),
+      ...((resultados.costos?.detalle ?? []).map((c: any) => ({ Sección: 'Costo', Cuenta: c.nombre, Monto: Number(c.saldo) }))),
+      ...((resultados.gastos?.detalle ?? []).map((c: any) => ({ Sección: 'Gasto', Cuenta: c.nombre, Monto: Number(c.saldo) }))),
+      { Sección: 'RESULTADO', Cuenta: resultados.situacion === 'UTILIDAD' ? 'Utilidad Neta' : 'Pérdida Neta', Monto: Number(resultados.utilidadNeta ?? 0) },
+    ];
+    exportarExcel(filas, `EstadoResultados-${rDesde}-${rHasta}`);
+    message.success('Estado de resultados exportado');
+  };
+
   return (
     <Row gutter={[16, 16]}>
       <Col xs={24} lg={14}>
-        <Card title="Balance General" extra={<Input type="date" value={hasta} onChange={e => setHasta(e.target.value)} style={{ width: 160 }} />}>
+        <Card title="Balance General" extra={
+          <Space size={4}>
+            <Input type="date" value={hasta} onChange={e => setHasta(e.target.value)} style={{ width: 145 }} />
+            <Button icon={<FileExcelOutlined />} size="small" onClick={handleExcelBalance} disabled={!balance}>Excel</Button>
+          </Space>
+        }>
           {balance && (
             <>
               <Row gutter={[16, 8]}>
@@ -422,13 +460,25 @@ function EstadosFinancieros() {
       </Col>
       <Col xs={24} lg={10}>
         <Card title="Estado de Resultados"
-          extra={
-            <Space size={4}>
-              <Input type="date" value={rDesde} onChange={e => setRDesde(e.target.value)} style={{ width: 130 }} />
-              <span>→</span>
-              <Input type="date" value={rHasta} onChange={e => setRHasta(e.target.value)} style={{ width: 130 }} />
-            </Space>
-          }>
+          extra={<Button icon={<FileExcelOutlined />} size="small" onClick={handleExcelResultados} disabled={!resultados}>Excel</Button>}
+        >
+          <Space wrap style={{ marginBottom: 12 }}>
+            <Segmented value={periodo} onChange={aplicarPeriodo}
+              options={[
+                { label: 'Este mes',       value: 'mes' },
+                { label: 'Trimestre',      value: 'trimestre' },
+                { label: 'Este año',       value: 'anio' },
+                { label: 'Personalizado',  value: 'personalizado' },
+              ]}
+            />
+            {periodo === 'personalizado' && (
+              <Space size={4}>
+                <Input type="date" value={rDesde} onChange={e => setRDesde(e.target.value)} style={{ width: 130 }} />
+                <span>→</span>
+                <Input type="date" value={rHasta} onChange={e => setRHasta(e.target.value)} style={{ width: 130 }} />
+              </Space>
+            )}
+          </Space>
           {resultados && (
             <>
               <Row gutter={[8, 8]}>
@@ -604,8 +654,37 @@ export default function ContabilidadPage() {
 
   return (
     <div>
-      <Title level={4} style={{ marginBottom: 16 }}>Asientos Contables</Title>
-      <Asientos />
+      <Tabs
+        defaultActiveKey="asientos"
+        destroyInactiveTabPane={false}
+        items={[
+          {
+            key: 'asientos',
+            label: <Space><AuditOutlined />Asientos</Space>,
+            children: <Asientos />,
+          },
+          {
+            key: 'estados',
+            label: <Space><BarChartOutlined />Estados Financieros</Space>,
+            children: <EstadosFinancieros />,
+          },
+          {
+            key: 'comprobacion',
+            label: <Space><CheckOutlined />Balance Comprobación</Space>,
+            children: <BalanceComprobacion />,
+          },
+          {
+            key: 'mayor',
+            label: <Space><BookOutlined />Libro Mayor</Space>,
+            children: <LibroMayor />,
+          },
+          {
+            key: 'plan',
+            label: <Space>Plan de Cuentas</Space>,
+            children: <PlanCuentas />,
+          },
+        ]}
+      />
     </div>
   );
 }
