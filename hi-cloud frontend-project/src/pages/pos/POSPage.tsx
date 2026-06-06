@@ -4495,7 +4495,7 @@ export default function POSPage() {
       });
       setShowPago(false);
       setRncComprador(''); setRazonSocialComp(''); setNumeroOrdenCompra(''); setGuardarRncPerfil(false);
-      setCart([]); resetCliente(); setVendedorId(undefined); setMontoRecibido(0);
+      setCart([]); resetCliente(); setMontoRecibido(0);
       setTipoPagoPos('CONTADO'); setDiasCreditoPos(30); setPropinaValor(''); resetDescGlobal();
       qc.invalidateQueries({ queryKey: ['pos-panel', 'facturas'] });
       qc.refetchQueries({    queryKey: ['pos-panel', 'facturas'] });
@@ -4558,7 +4558,7 @@ export default function POSPage() {
         // Navegar al panel recién creado para que el usuario vea el resultado
         setPanelActivo(panelKey as PanelId);
       }
-      setCart([]); resetCliente(); setVendedorId(undefined);
+      setCart([]); resetCliente();
     },
     onError: (e: any) => message.error(e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error al crear documento'),
   });
