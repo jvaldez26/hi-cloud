@@ -279,69 +279,121 @@ export class CuotasService {
 <head>
 <meta charset="UTF-8"/>
 <style>
-  @page { margin: 0; size: 80mm auto; }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+  /* ── Papel térmico 80mm — sin márgenes, ancho exacto ── */
+  @page {
+    margin: 0;
+    size: 80mm auto;
+  }
+  *, *::before, *::after {
+    margin: 0; padding: 0;
+    box-sizing: border-box;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
   body {
-    font-family: Arial, Helvetica, sans-serif;
-    font-size: 11px;
-    color: #1a1a1a;
+    font-family: Arial, 'Helvetica Neue', sans-serif;
+    font-size: 9pt;
+    color: #000;
     background: #fff;
-    width: 72mm;
-    padding: 4mm 4mm 6mm;
+    width: 80mm;
+    padding: 3mm 4mm 6mm;
+    overflow: hidden;
   }
+
+  /* ── Utilidades ── */
   .center { text-align: center; }
-  .logo   { max-height: 48px; max-width: 100px; margin-bottom: 4px; }
-  .empresa-nombre { font-size: 13px; font-weight: bold; line-height: 1.3; }
-  .empresa-sub    { font-size: 10px; color: #555; margin-top: 1px; }
-  .sep-solid  { border: none; border-top: 1.5px solid #222; margin: 5px 0; }
-  .sep-dashed { border: none; border-top: 1px dashed #aaa; margin: 5px 0; }
-  .title-bar {
-    text-align: center; font-size: 11px; font-weight: bold;
-    letter-spacing: 0.5px; background: #1e3a5f; color: #fff;
-    padding: 5px 4px; margin: 4px -4mm; border-radius: 0;
+  .bold   { font-weight: 700; }
+
+  /* ── Encabezado empresa ── */
+  .logo        { max-height: 14mm; max-width: 28mm; display: block; margin: 0 auto 1.5mm; }
+  .emp-nombre  { font-size: 11pt; font-weight: 700; line-height: 1.25; }
+  .emp-sub     { font-size: 7.5pt; margin-top: 0.5mm; }
+
+  /* ── Separadores ── */
+  .ln-thick  { border: none; border-top: 1.5pt solid #000; margin: 2mm 0; }
+  .ln-thin   { border: none; border-top: 0.5pt solid #000; margin: 1.5mm 0; }
+  .ln-dash   { border: none; border-top: 0.5pt dashed #666; margin: 1.5mm 0; }
+
+  /* ── Título del documento ── */
+  .doc-title {
+    text-align: center;
+    font-size: 9pt;
+    font-weight: 700;
+    letter-spacing: 0.3pt;
+    padding: 1.5mm 0;
   }
-  .section { margin: 5px 0; }
-  .sec-label { font-size: 9px; font-weight: bold; color: #666; text-transform: uppercase;
-               letter-spacing: 0.4px; margin-bottom: 3px; border-bottom: 1px dotted #ccc;
-               padding-bottom: 2px; }
-  .row { display: flex; justify-content: space-between; margin-bottom: 2px; }
-  .lbl { color: #555; flex-shrink: 0; margin-right: 6px; }
-  .val { font-weight: 500; text-align: right; }
+
+  /* ── Secciones ── */
+  .sec-header {
+    font-size: 7pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3pt;
+    border-bottom: 0.5pt solid #000;
+    padding-bottom: 0.8mm;
+    margin-bottom: 1.5mm;
+  }
+  .section { margin: 2mm 0; }
+
+  /* ── Filas label / valor ── */
+  .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 2mm;
+    margin-bottom: 1.2mm;
+  }
+  .lbl { font-size: 8pt; color: #333; flex-shrink: 0; }
+  .val { font-size: 8pt; font-weight: 600; text-align: right; word-break: break-word; }
+
+  /* ── Bloque TOTAL ── */
   .total-box {
-    display: flex; justify-content: space-between; align-items: center;
-    background: #1e3a5f; color: #fff; padding: 6px 8px;
-    border-radius: 4px; margin: 6px 0;
+    border-top: 1.5pt solid #000;
+    border-bottom: 1.5pt solid #000;
+    padding: 2mm 0;
+    margin: 2mm 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
   }
-  .total-lbl { font-size: 11px; font-weight: bold; }
-  .total-val { font-size: 14px; font-weight: bold; }
+  .total-lbl { font-size: 10pt; font-weight: 700; }
+  .total-val { font-size: 13pt; font-weight: 700; }
+
+  /* ── Bloque saldo ── */
   .saldo-box {
-    background: #eff6ff; border: 1px solid #bcd4f0; border-radius: 4px;
-    padding: 5px 8px; margin: 4px 0;
+    border: 0.5pt solid #000;
+    padding: 1.5mm 2mm;
+    margin: 1.5mm 0;
   }
-  .paid-date { color: #16a34a; font-weight: 600; }
-  .footer { text-align: center; margin-top: 8px; padding-top: 6px; border-top: 1px solid #ddd; }
-  .footer-note { font-size: 9px; color: #777; line-height: 1.5; }
-  .footer-brand { font-size: 10px; font-weight: bold; color: #1e3a5f; margin-top: 4px; }
+  .saldo-lbl { font-size: 8pt; }
+  .saldo-val { font-size: 9pt; font-weight: 700; }
+
+  /* ── Pie ── */
+  .footer { text-align: center; margin-top: 3mm; padding-top: 2mm; border-top: 0.5pt solid #000; }
+  .footer-note  { font-size: 7pt; line-height: 1.5; color: #333; }
+  .footer-brand { font-size: 8pt; font-weight: 700; margin-top: 1.5mm; }
 </style>
 </head>
 <body>
-  <!-- ENCABEZADO EMPRESA -->
-  <div class="center" style="padding-bottom:5px">
+
+  <!-- ── ENCABEZADO EMPRESA ── -->
+  <div class="center">
     ${d.logoDataUrl ? `<img src="${d.logoDataUrl}" class="logo" alt="Logo"/>` : ''}
-    <div class="empresa-nombre">${d.empresa.nombre ?? 'Empresa'}</div>
-    ${d.empresa.nombreComercial ? `<div class="empresa-sub">${d.empresa.nombreComercial}</div>` : ''}
-    <div class="empresa-sub">RNC: ${d.empresa.rnc ?? '—'}</div>
-    ${d.empresa.direccion ? `<div class="empresa-sub">${d.empresa.direccion}</div>` : ''}
-    ${d.empresa.ciudad ? `<div class="empresa-sub">${d.empresa.ciudad}</div>` : ''}
+    <div class="emp-nombre">${d.empresa.nombre ?? ''}</div>
+    ${d.empresa.nombreComercial ? `<div class="emp-sub">${d.empresa.nombreComercial}</div>` : ''}
+    <div class="emp-sub">RNC: ${d.empresa.rnc ?? '—'}</div>
+    ${d.empresa.direccion ? `<div class="emp-sub">${d.empresa.direccion}${d.empresa.ciudad ? `, ${d.empresa.ciudad}` : ''}</div>` : ''}
   </div>
 
-  <div class="title-bar">COMPROBANTE DE PAGO DE CUOTA</div>
+  <hr class="ln-thick"/>
+  <div class="doc-title">COMPROBANTE DE PAGO DE CUOTA</div>
+  <hr class="ln-thick"/>
 
-  <!-- IDENTIFICACIÓN -->
+  <!-- ── IDENTIFICACIÓN ── -->
   <div class="section">
     <div class="row">
       <span class="lbl">No. Comprobante:</span>
-      <span class="val" style="font-family:monospace">COMP-${d.cuota.id}</span>
+      <span class="val">COMP-${String(d.cuota.id).padStart(6, '0')}</span>
     </div>
     <div class="row">
       <span class="lbl">Fecha emisión:</span>
@@ -349,14 +401,14 @@ export class CuotasService {
     </div>
   </div>
 
-  <hr class="sep-dashed"/>
+  <hr class="ln-dash"/>
 
-  <!-- PLAN DE PAGO -->
+  <!-- ── PLAN DE PAGO ── -->
   <div class="section">
-    <div class="sec-label">Plan de Pago</div>
+    <div class="sec-header">Plan de Pago</div>
     <div class="row">
       <span class="lbl">Número:</span>
-      <span class="val" style="font-family:monospace;font-weight:700">${d.plan.numero}</span>
+      <span class="val bold">${d.plan.numero}</span>
     </div>
     <div class="row">
       <span class="lbl">Cliente:</span>
@@ -365,22 +417,22 @@ export class CuotasService {
     ${d.plan.facturaFolio ? `
     <div class="row">
       <span class="lbl">Factura ref.:</span>
-      <span class="val" style="font-family:monospace">${d.plan.facturaFolio}</span>
+      <span class="val">${d.plan.facturaFolio}</span>
     </div>` : ''}
   </div>
 
-  <hr class="sep-dashed"/>
+  <hr class="ln-dash"/>
 
-  <!-- CUOTA -->
+  <!-- ── CUOTA ── -->
   <div class="section">
-    <div class="sec-label">Cuota #${d.cuota.numeroCuota} de ${d.plan.numeroCuotas}</div>
+    <div class="sec-header">Cuota #${d.cuota.numeroCuota} de ${d.plan.numeroCuotas}</div>
     <div class="row">
       <span class="lbl">Vencimiento:</span>
       <span class="val">${fmtDate(d.cuota.fechaVencimiento)}</span>
     </div>
     <div class="row">
       <span class="lbl">Fecha de pago:</span>
-      <span class="val paid-date">${fmtDate(d.cuota.fechaPago)}</span>
+      <span class="val bold">${fmtDate(d.cuota.fechaPago)}</span>
     </div>
     ${d.cuota.referenciaPago ? `
     <div class="row">
@@ -389,11 +441,11 @@ export class CuotasService {
     </div>` : ''}
   </div>
 
-  <hr class="sep-dashed"/>
+  <hr class="ln-dash"/>
 
-  <!-- DESGLOSE -->
+  <!-- ── DESGLOSE ── -->
   <div class="section">
-    <div class="sec-label">Desglose</div>
+    <div class="sec-header">Desglose</div>
     <div class="row">
       <span class="lbl">Capital:</span>
       <span class="val">${fmt(d.capital)}</span>
@@ -405,34 +457,35 @@ export class CuotasService {
     </div>` : ''}
   </div>
 
-  <!-- TOTAL -->
+  <!-- ── TOTAL ── -->
   <div class="total-box">
     <span class="total-lbl">TOTAL PAGADO</span>
     <span class="total-val">${fmt(Number(d.cuota.montoPagado ?? d.cuota.monto))}</span>
   </div>
 
-  <!-- SALDO PENDIENTE -->
+  <!-- ── SALDO PENDIENTE ── -->
   <div class="saldo-box">
     <div class="row">
-      <span class="lbl" style="font-weight:600;font-size:11px">Saldo pendiente:</span>
-      <span class="val" style="font-size:12px;color:#1e3a5f;font-weight:700">${fmt(d.saldoPendiente)}</span>
+      <span class="saldo-lbl">Saldo pendiente:</span>
+      <span class="saldo-val">${fmt(d.saldoPendiente)}</span>
     </div>
-    <div class="row" style="margin-top:2px">
+    <div class="row" style="margin-top:0.8mm">
       <span class="lbl">Cuotas restantes:</span>
       <span class="val">${d.cuotasRestantes} de ${d.plan.numeroCuotas}</span>
     </div>
   </div>
 
-  <!-- PIE -->
+  <!-- ── PIE ── -->
   <div class="footer">
     <div class="footer-note">
       Este documento es constancia del pago<br/>
       de la cuota indicada. Conserve este<br/>
       comprobante para sus registros.
     </div>
-    ${d.usuarioNombre ? `<div class="footer-note" style="margin-top:4px">Responsable: ${d.usuarioNombre}</div>` : ''}
-    <div class="footer-brand">HiCloud ERP · hicloudrd.com</div>
+    ${d.usuarioNombre ? `<div class="footer-note" style="margin-top:1.5mm">Responsable: ${d.usuarioNombre}</div>` : ''}
+    <div class="footer-brand">HiCloud ERP &middot; hicloudrd.com</div>
   </div>
+
 </body>
 </html>`;
   }

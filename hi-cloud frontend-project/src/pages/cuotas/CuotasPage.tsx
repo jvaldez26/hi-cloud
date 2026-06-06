@@ -114,15 +114,13 @@ export default function CuotasPage() {
       const response = await api.get(`/cuotas/cuota/${cuotaId}/comprobante`, {
         responseType: 'blob',
       });
+      // Abre el PDF en nueva pestaña para que el usuario lo imprima
+      // desde el visor PDF o lo guarde y envíe a la impresora térmica
       const blob = new Blob([(response as any).data], { type: 'application/pdf' });
       const url  = URL.createObjectURL(blob);
-      const win  = window.open(url, '_blank');
-      if (win) {
-        win.addEventListener('load', () => {
-          try { win.print(); } catch { /* el usuario puede imprimir manualmente */ }
-          setTimeout(() => URL.revokeObjectURL(url), 60_000);
-        });
-      }
+      window.open(url, '_blank');
+      // Liberar memoria tras 2 minutos
+      setTimeout(() => URL.revokeObjectURL(url), 120_000);
     } catch {
       message.error('Error al generar comprobante de pago');
     } finally {
