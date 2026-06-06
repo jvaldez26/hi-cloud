@@ -706,30 +706,41 @@ export class ECFService implements OnModuleInit {
     // Si hay XML guardado, devolverlo.
     if (ecf.xml) return ecf.xml;
 
-    // Si fue rechazado por MSeller, devolver el JSON enviado como texto
-    // para que el usuario pueda inspeccionarlo.
-    if (ecf.estadoDGII === EstadoDGII.RECHAZADO && ecf.jsonEnviado) {
+    // Flujo MSeller (nuevo): no genera XML local — devolver jsonEnviado como diagnóstico
+    // Aplica a TODOS los estados (aceptado, rechazado, observado, etc.)
+    if (ecf.jsonEnviado) {
       const jsonStr = typeof ecf.jsonEnviado === 'string'
         ? ecf.jsonEnviado
         : JSON.stringify(ecf.jsonEnviado, null, 2);
 
-      const motivo = (ecf.respuestaMSeller as any)?.detalle ?? 'Sin detalle de rechazo';
-      return `<!-- e-CF RECHAZADO — No se generó XML firmado
-     Motivo: ${motivo}
-     Estado: ${ecf.estadoDGII}
-     Error: ${ecf.errorEnvio ?? 'N/A'}
-     Fecha último intento: ${ecf.ultimoIntentoEnvio?.toISOString() ?? 'N/A'}
--->
+      const respuestaStr = ecf.respuestaMSeller
+        ? JSON.stringify(ecf.respuestaMSeller, null, 2)
+        : 'Sin respuesta registrada';
 
-<!-- JSON enviado a MSeller (para diagnóstico): -->
-${jsonStr}`;
+      return `/* ── Diagnóstico e-CF ${numero} ──────────────────────────────
+   Estado DGII : ${ecf.estadoDGII}
+   Tipo e-CF   : ${(ecf as any).tipoECF?.codigo ?? 'N/A'}
+   Fecha emis. : ${ecf.createdAt?.toISOString() ?? 'N/A'}
+   Último int. : ${ecf.ultimoIntentoEnvio?.toISOString() ?? 'N/A'}
+   Intentos    : ${ecf.intentosEnvio ?? 0}
+   Error envío : ${ecf.errorEnvio ?? 'Ninguno'}
+
+   NOTA: e-CF emitido vía API MSeller (formato JSON, no XML local).
+   Se muestra el JSON enviado a MSeller y su respuesta para diagnóstico.
+───────────────────────────────────────────────────────────────── */
+
+// ── JSON enviado a MSeller ──
+${jsonStr}
+
+// ── Respuesta MSeller ──
+${respuestaStr}`;
     }
 
-    // Pendiente de envío / en proceso
+    // Sin XML ni JSON diagnóstico — estado temprano o doc no procesado
     throw new NotFoundException(
       `XML del e-CF ${numero} no disponible. ` +
       `Estado: ${ecf.estadoDGII}. ` +
-      (ecf.errorEnvio ? `Error: ${ecf.errorEnvio}` : 'El documento está pendiente de envío.'),
+      (ecf.errorEnvio ? `Error: ${ecf.errorEnvio}` : 'El documento no tiene datos de diagnóstico aún.'),
     );
   }
 

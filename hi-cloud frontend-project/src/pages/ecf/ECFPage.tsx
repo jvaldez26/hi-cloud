@@ -194,7 +194,13 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
       }
       setXmlModal({ numero, xml });
     } catch (e: any) {
-      const msg = e?.response?.data?.message ?? e?.message ?? 'Error al obtener el XML';
+      // responseType:'text' hace que e.response.data sea string — parsear para extraer message
+      let msg = e?.message ?? 'Error al obtener el XML';
+      try {
+        const body = typeof e?.response?.data === 'string'
+          ? JSON.parse(e.response.data) : e?.response?.data;
+        if (body?.message) msg = body.message;
+      } catch { /* body no es JSON válido */ }
       message.error(msg);
     }
   };
