@@ -83,4 +83,19 @@ export const inventarioApi = {
 
   actualizarEstadoSerial: (id: number, body: { estado: string; facturaId?: number; clienteId?: number; fechaVenta?: string; notas?: string }) =>
     api.patch(`/inventario/seriales/${id}/estado`, body).then(r => r.data.data),
+
+  // ── Solicitudes de Ajuste ───────────────────────────────────────────────────
+  createSolicitudAjuste: (body: { productoId: number; cantidadNueva: number; motivo: string }) =>
+    api.post('/inventario/solicitudes-ajuste', body).then(r => r.data.data),
+
+  getSolicitudesAjuste: (estado?: string) => {
+    const params = estado ? `?estado=${estado}` : '';
+    return api.get(`/inventario/solicitudes-ajuste${params}`).then(r => r.data.data);
+  },
+
+  aprobarSolicitudAjuste: (id: number) =>
+    api.patch(`/inventario/solicitudes-ajuste/${id}/aprobar`).then(r => r.data.data),
+
+  rechazarSolicitudAjuste: (id: number, motivoRechazo: string) =>
+    api.patch(`/inventario/solicitudes-ajuste/${id}/rechazar`, { motivoRechazo }).then(r => r.data.data),
 };

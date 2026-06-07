@@ -12,6 +12,7 @@ import { Movimiento, TipoMovimiento } from './entities/movimiento.entity';
 import { LoteProducto, EstadoLote } from './entities/lote-producto.entity';
 import { SerialProducto, EstadoSerial } from './entities/serial-producto.entity';
 import { Producto } from '../productos/entities/producto.entity';
+import { SolicitudAjuste, EstadoSolicitudAjuste } from './entities/solicitud-ajuste.entity';
 import { RegistrarEntradaDto } from './dto/registrar-entrada.dto';
 import { RegistrarSalidaDto } from './dto/registrar-salida.dto';
 import { RegistrarAjusteDto } from './dto/registrar-ajuste.dto';
@@ -34,6 +35,8 @@ export class InventarioService {
     private loteRepository: Repository<LoteProducto>,
     @InjectRepository(SerialProducto)
     private serialRepository: Repository<SerialProducto>,
+    @InjectRepository(SolicitudAjuste)
+    private solicitudAjusteRepository: Repository<SolicitudAjuste>,
     @InjectDataSource() private ds: DataSource,
     private realtimeService: RealtimeService,
     private tenantService: TenantService,
@@ -429,6 +432,64 @@ export class InventarioService {
 
     if (productoId) qb.andWhere('s.productoId = :pid', { pid: productoId });
     return qb.groupBy('s.estado').getRawMany();
+  }
+
+  // ── Solicitudes de Ajuste de Inventario ────────────────────────────────────
+
+  async createSolicitudAjuste(dto: { productoId: number; cantidadNueva: number; motivo: string }, userId: number) {
+    const empresaId = this.tenantService.getEmpresaId();
+    await this.obtenerProducto(dto.productoId);
+    const solicitud = this.solicitudAjusteRepository.create({
+      productoId: dto.productoId,
+      cantidadNueva: dto.cantidadNueva,
+      motivo: dto.motivo,
+      userId,
+      estado: EstadoSolicitudAjuste.PENDIENTE,
+      empresaId,
+    });
+    return this.solicitudAjusteRepository.save(solicitud);
+  }
+
+  async getSolicitudesAjuste(estado?: string) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const qb = this.solicitudAjusteRepository
+      .createQueryBuilder('s')
+      .leftJoinAndSelect('s.producto', 'producto')
+      .leftJoinAndSelect('s.user', 'usuario')
+      .where('s.empresaId = :eid', { eid: empresaId })
+      .andWhere('s.isActive = true');
+
+    if (estado) qb.andWhere('s.estado = :estado', { estado });
+
+    return qb.orderBy('s.createdAt', 'DESC').getMany();
+  }
+
+  async aprobarSolicitudAjuste(id: number, adminId: number) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const solicitud = await this.solicitudAjusteRepository.findOne({
+      where: { id, empresaId, isActive: true },
+    });
+    if (!solicitud) throw new NotFoundException(`Solicitud #${id} no encontrada`);
+    if (solicitud.estado !== EstadoSolicitudAjuste.PENDIENTE) {
+      throw new BadRequestException(`La solicitud ya está ${solicitud.estado}`);
+    }
+
+    await this.registrarAjuste(solicitud.productoId, Number(solicitud.cantidadNueva), adminId, solicitud.motivo);
+    await this.solicitudAjusteRepository.update(id, { estado: EstadoSolicitudAjuste.APROBADA, adminId });
+    return { message: 'Ajuste aprobado y aplicado' };
+  }
+
+  async rechazarSolicitudAjuste(id: number, adminId: number, motivoRechazo: string) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const solicitud = await this.solicitudAjusteRepository.findOne({
+      where: { id, empresaId, isActive: true },
+    });
+    if (!solicitud) throw new NotFoundException(`Solicitud #${id} no encontrada`);
+    if (solicitud.estado !== EstadoSolicitudAjuste.PENDIENTE) {
+      throw new BadRequestException(`La solicitud ya está ${solicitud.estado}`);
+    }
+    await this.solicitudAjusteRepository.update(id, { estado: EstadoSolicitudAjuste.RECHAZADA, adminId, motivoRechazo });
+    return { message: 'Solicitud rechazada' };
   }
 
   // ── Cron: alerta de stock mínimo (7 AM hora RD, todos los días) ────────────

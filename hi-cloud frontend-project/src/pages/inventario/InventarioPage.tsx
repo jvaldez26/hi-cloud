@@ -14,6 +14,7 @@ import {
   FileExcelOutlined, FilterOutlined, WarningOutlined,
   PlusOutlined, BarcodeOutlined, InboxOutlined,
   ExclamationCircleOutlined, CheckCircleOutlined,
+  EditOutlined, CloseCircleOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -624,6 +625,118 @@ function SerialesTab() {
   );
 }
 
+// ── Solicitudes de Ajuste ──────────────────────────────────────────────────────
+function SolicitudesAjusteTab() {
+  const [open, setOpen]           = useState(false);
+  const [rechazando, setRechazando] = useState<any>(null);
+  const [form]                    = Form.useForm();
+  const [formRechazo]             = Form.useForm();
+  const qc                        = useQueryClient();
+
+  const { data: productos } = useQuery({
+    queryKey: ['productos-lista'],
+    queryFn: () => productosApi.list(1, 200),
+  });
+
+  const { data: solicitudes, isFetching } = useQuery({
+    queryKey: ['solicitudes-ajuste'],
+    queryFn: () => inventarioApi.getSolicitudesAjuste(),
+  });
+
+  const pendientes = (solicitudes ?? []).filter((s: any) => s.estado === 'pendiente').length;
+
+  const crearMut = useMutation({
+    mutationFn: inventarioApi.createSolicitudAjuste,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['solicitudes-ajuste'] }); setOpen(false); form.resetFields(); message.success('Solicitud enviada — pendiente de aprobación ADMIN'); },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al crear solicitud'),
+  });
+
+  const aprobarMut = useMutation({
+    mutationFn: inventarioApi.aprobarSolicitudAjuste,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['solicitudes-ajuste'] }); qc.invalidateQueries({ queryKey: ['productos'] }); message.success('Ajuste aprobado y aplicado al inventario'); },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al aprobar'),
+  });
+
+  const rechazarMut = useMutation({
+    mutationFn: ({ id, motivoRechazo }: { id: number; motivoRechazo: string }) =>
+      inventarioApi.rechazarSolicitudAjuste(id, motivoRechazo),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['solicitudes-ajuste'] }); setRechazando(null); formRechazo.resetFields(); message.success('Solicitud rechazada'); },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al rechazar'),
+  });
+
+  const estadoColor: Record<string, string> = { pendiente: 'orange', aprobada: 'green', rechazada: 'red' };
+
+  const cols = [
+    { title: 'Producto',     render: (_: any, r: any) => r.producto?.nombre ?? '-', width: 200 },
+    { title: 'Stock Actual', render: (_: any, r: any) => r.producto?.stock ?? '-', align: 'center' as const },
+    { title: 'Cant. Nueva',  dataIndex: 'cantidadNueva', align: 'center' as const, render: (v: number) => <b>{v}</b> },
+    { title: 'Motivo',       dataIndex: 'motivo', ellipsis: true },
+    { title: 'Solicitado por', render: (_: any, r: any) => r.user ? `${r.user.firstName ?? ''} ${r.user.lastName ?? ''}`.trim() || r.user.email : '-', width: 160 },
+    { title: 'Fecha',        dataIndex: 'createdAt', render: (v: string) => dayjs(v).format('DD/MM/YY HH:mm'), width: 130 },
+    { title: 'Estado',       dataIndex: 'estado', render: (v: string) => <Tag color={estadoColor[v]}>{v.toUpperCase()}</Tag>, width: 110 },
+    { title: 'Motivo Rechazo', dataIndex: 'motivoRechazo', ellipsis: true },
+    {
+      title: 'Acciones', width: 160,
+      render: (_: any, r: any) => r.estado === 'pendiente' ? (
+        <Space>
+          <Popconfirm title="¿Aprobar y aplicar este ajuste?" onConfirm={() => aprobarMut.mutate(r.id)}>
+            <Button size="small" type="primary" icon={<CheckCircleOutlined />}>Aprobar</Button>
+          </Popconfirm>
+          <Button size="small" danger icon={<CloseCircleOutlined />} onClick={() => setRechazando(r)}>Rechazar</Button>
+        </Space>
+      ) : null,
+    },
+  ];
+
+  return (
+    <>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        {pendientes > 0 && <Alert type="warning" showIcon message={`${pendientes} solicitud(es) pendiente(s) de aprobación`} style={{ flex: 1, marginRight: 12 }} />}
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>Nueva Solicitud</Button>
+      </div>
+      <Table
+        columns={cols}
+        dataSource={solicitudes ?? []}
+        rowKey="id"
+        loading={isFetching}
+        size="small"
+        scroll={{ x: 'max-content' }}
+        pagination={{ pageSize: 20 }}
+        rowClassName={(r: any) => r.estado === 'pendiente' ? 'ant-table-row-selected' : ''}
+      />
+      {/* Modal nueva solicitud */}
+      <Modal title="Solicitar Ajuste de Inventario" open={open} onCancel={() => { setOpen(false); form.resetFields(); }}
+        onOk={() => form.validateFields().then(v => crearMut.mutate(v))} okText="Enviar Solicitud" confirmLoading={crearMut.isPending}>
+        <Alert type="info" showIcon message="Los ajustes requieren aprobación del ADMIN antes de aplicarse." style={{ marginBottom: 16 }} />
+        <Form form={form} layout="vertical">
+          <Form.Item name="productoId" label="Producto" rules={[{ required: true }]}>
+            <Select showSearch optionFilterProp="label"
+              options={(productos?.data ?? []).map((p: any) => ({
+                value: p.id, label: `${p.nombre}${p.referencia ? ` (${p.referencia})` : ''} — Stock: ${p.stock}`,
+              }))} />
+          </Form.Item>
+          <Form.Item name="cantidadNueva" label="Nueva cantidad en stock" rules={[{ required: true }]}>
+            <InputNumber style={{ width: '100%' }} min={0} step={1} />
+          </Form.Item>
+          <Form.Item name="motivo" label="Motivo del ajuste" rules={[{ required: true }]}>
+            <Input.TextArea rows={3} placeholder="Ej: Conteo físico reveló diferencia, merma por daño..." />
+          </Form.Item>
+        </Form>
+      </Modal>
+      {/* Modal rechazo */}
+      <Modal title="Rechazar Solicitud" open={!!rechazando} onCancel={() => { setRechazando(null); formRechazo.resetFields(); }}
+        onOk={() => formRechazo.validateFields().then(v => rechazarMut.mutate({ id: rechazando.id, motivoRechazo: v.motivoRechazo }))}
+        okText="Rechazar" okButtonProps={{ danger: true }} confirmLoading={rechazarMut.isPending}>
+        <Form form={formRechazo} layout="vertical">
+          <Form.Item name="motivoRechazo" label="Motivo del rechazo" rules={[{ required: true }]}>
+            <Input.TextArea rows={3} />
+          </Form.Item>
+        </Form>
+      </Modal>
+    </>
+  );
+}
+
 // ── Page principal ─────────────────────────────────────────────────────────────
 export default function InventarioPage() {
   const { data: alertas } = useQuery({
@@ -646,6 +759,7 @@ export default function InventarioPage() {
               </>
             ),                                                               children: <LotesTab /> },
           { key: 'seriales',    label: <><BarcodeOutlined /> Seriales</>,    children: <SerialesTab /> },
+          { key: 'ajustes',     label: <><EditOutlined /> Solicitudes Ajuste</>, children: <SolicitudesAjusteTab /> },
         ]} />
       </Card>
     </div>

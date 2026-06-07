@@ -206,4 +206,46 @@ export class InventarioController {
   ) {
     return this.inventarioService.actualizarEstadoSerial(id, dto);
   }
+
+  // ── Solicitudes de Ajuste ──────────────────────────────────────────────────
+
+  @Post('solicitudes-ajuste')
+  @HttpCode(HttpStatus.CREATED)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Solicitar ajuste de inventario (requiere aprobación de ADMIN)' })
+  createSolicitudAjuste(
+    @Body() dto: RegistrarAjusteDto,
+    @GetUser() usuario: User,
+  ) {
+    return this.inventarioService.createSolicitudAjuste(dto, usuario.id);
+  }
+
+  @Get('solicitudes-ajuste')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Listar solicitudes de ajuste. Filtrar por estado (?estado=pendiente)' })
+  @ApiQuery({ name: 'estado', required: false, example: 'pendiente' })
+  getSolicitudesAjuste(@Query('estado') estado?: string) {
+    return this.inventarioService.getSolicitudesAjuste(estado);
+  }
+
+  @Patch('solicitudes-ajuste/:id/aprobar')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Aprobar solicitud de ajuste y aplicar el cambio de stock (solo ADMIN)' })
+  aprobarSolicitudAjuste(
+    @Param('id', ParseIntPipe) id: number,
+    @GetUser() usuario: User,
+  ) {
+    return this.inventarioService.aprobarSolicitudAjuste(id, usuario.id);
+  }
+
+  @Patch('solicitudes-ajuste/:id/rechazar')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Rechazar solicitud de ajuste (solo ADMIN)' })
+  rechazarSolicitudAjuste(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: { motivoRechazo: string },
+    @GetUser() usuario: User,
+  ) {
+    return this.inventarioService.rechazarSolicitudAjuste(id, usuario.id, dto.motivoRechazo ?? '');
+  }
 }
