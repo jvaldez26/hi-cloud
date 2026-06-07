@@ -15,6 +15,8 @@ import { NominaPeriodo, EstadoNomina } from './entities/nomina-periodo.entity';
 import { NominaLinea } from './entities/nomina-linea.entity';
 import { NominaNovedadEmpleado, TipoNovedad } from './entities/nomina-novedad.entity';
 import { ContratoLaboral, EstadoContrato } from './entities/contrato-laboral.entity';
+import { PrestamoEmpleado, EstadoPrestamo } from './entities/prestamo-empleado.entity';
+import { AnticipoNomina, EstadoAnticipo } from './entities/anticipo-nomina.entity';
 import { CreateEmpleadoDto } from './dto/create-empleado.dto';
 import { UpdateEmpleadoDto } from './dto/update-empleado.dto';
 import { CreateNominaPeriodoDto } from './dto/create-nomina-periodo.dto';
@@ -47,6 +49,10 @@ export class NominaService {
     private novedadRepository: Repository<NominaNovedadEmpleado>,
     @InjectRepository(ContratoLaboral)
     private contratoRepository: Repository<ContratoLaboral>,
+    @InjectRepository(PrestamoEmpleado)
+    private prestamoRepository: Repository<PrestamoEmpleado>,
+    @InjectRepository(AnticipoNomina)
+    private anticipoRepository: Repository<AnticipoNomina>,
     private calculos:         NominaCalculosService,
     private asientosService:  AsientosAutomaticosService,
     private tesoreriaService: TesoreriaService,
@@ -1265,5 +1271,149 @@ export class NominaService {
       novedadesPendientes,
       generadoEn: new Date().toISOString(),
     };
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Préstamos a Empleados
+  // ──────────────────────────────────────────────────────────────────
+
+  async createPrestamo(dto: {
+    empleadoId: number;
+    monto: number;
+    cuotas: number;
+    fechaDesembolso: string;
+    descripcion?: string;
+  }) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const empleado = await this.empleadoRepository.findOne({
+      where: { id: dto.empleadoId, empresaId, isActive: true },
+    });
+    if (!empleado) throw new NotFoundException(`Empleado #${dto.empleadoId} no encontrado`);
+
+    const montoMensual = Math.ceil((dto.monto / dto.cuotas) * 100) / 100;
+
+    const prestamo = this.prestamoRepository.create({
+      empleadoId: dto.empleadoId,
+      monto: dto.monto,
+      cuotas: dto.cuotas,
+      cuotasPagadas: 0,
+      montoMensual,
+      saldoPendiente: dto.monto,
+      fechaDesembolso: new Date(dto.fechaDesembolso),
+      descripcion: dto.descripcion,
+      estado: EstadoPrestamo.ACTIVO,
+      empresaId,
+    });
+    return this.prestamoRepository.save(prestamo);
+  }
+
+  async getPrestamos(empleadoId?: number) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const qb = this.prestamoRepository
+      .createQueryBuilder('p')
+      .where('p.empresaId = :eid', { eid: empresaId })
+      .andWhere('p.isActive = true');
+
+    if (empleadoId) qb.andWhere('p.empleadoId = :eid2', { eid2: empleadoId });
+
+    return qb
+      .orderBy('p.createdAt', 'DESC')
+      .getMany();
+  }
+
+  async registrarCuotaPrestamo(prestamoId: number) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const prestamo = await this.prestamoRepository.findOne({
+      where: { id: prestamoId, empresaId, isActive: true },
+    });
+    if (!prestamo) throw new NotFoundException(`Préstamo #${prestamoId} no encontrado`);
+    if (prestamo.estado !== EstadoPrestamo.ACTIVO) {
+      throw new BadRequestException(`El préstamo ya está ${prestamo.estado}`);
+    }
+
+    const nuevasCuotas = prestamo.cuotasPagadas + 1;
+    const nuevoSaldo = Math.max(0, Number(prestamo.saldoPendiente) - Number(prestamo.montoMensual));
+    const nuevoEstado = nuevasCuotas >= prestamo.cuotas || nuevoSaldo <= 0
+      ? EstadoPrestamo.SALDADO
+      : EstadoPrestamo.ACTIVO;
+
+    await this.prestamoRepository.update(prestamoId, {
+      cuotasPagadas: nuevasCuotas,
+      saldoPendiente: nuevoSaldo,
+      estado: nuevoEstado,
+    });
+
+    return this.prestamoRepository.findOneOrFail({ where: { id: prestamoId } });
+  }
+
+  async anularPrestamo(prestamoId: number) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const prestamo = await this.prestamoRepository.findOne({
+      where: { id: prestamoId, empresaId, isActive: true },
+    });
+    if (!prestamo) throw new NotFoundException(`Préstamo #${prestamoId} no encontrado`);
+    if (prestamo.estado === EstadoPrestamo.SALDADO) {
+      throw new BadRequestException('No se puede anular un préstamo ya saldado');
+    }
+    await this.prestamoRepository.update(prestamoId, { estado: EstadoPrestamo.ANULADO });
+    return { message: 'Préstamo anulado correctamente' };
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Anticipos de Nómina
+  // ──────────────────────────────────────────────────────────────────
+
+  async createAnticipo(dto: {
+    empleadoId: number;
+    monto: number;
+    periodoDescontar: string;
+    descripcion?: string;
+  }) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const empleado = await this.empleadoRepository.findOne({
+      where: { id: dto.empleadoId, empresaId, isActive: true },
+    });
+    if (!empleado) throw new NotFoundException(`Empleado #${dto.empleadoId} no encontrado`);
+
+    if (!/^\d{4}-\d{2}$/.test(dto.periodoDescontar)) {
+      throw new BadRequestException('periodoDescontar debe tener formato YYYY-MM');
+    }
+
+    const anticipo = this.anticipoRepository.create({
+      empleadoId: dto.empleadoId,
+      monto: dto.monto,
+      periodoDescontar: dto.periodoDescontar,
+      descripcion: dto.descripcion,
+      estado: EstadoAnticipo.PENDIENTE,
+      empresaId,
+    });
+    return this.anticipoRepository.save(anticipo);
+  }
+
+  async getAnticipos(empleadoId?: number) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const qb = this.anticipoRepository
+      .createQueryBuilder('a')
+      .where('a.empresaId = :eid', { eid: empresaId })
+      .andWhere('a.isActive = true');
+
+    if (empleadoId) qb.andWhere('a.empleadoId = :eid2', { eid2: empleadoId });
+
+    return qb
+      .orderBy('a.createdAt', 'DESC')
+      .getMany();
+  }
+
+  async anularAnticipo(anticipoId: number) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const anticipo = await this.anticipoRepository.findOne({
+      where: { id: anticipoId, empresaId, isActive: true },
+    });
+    if (!anticipo) throw new NotFoundException(`Anticipo #${anticipoId} no encontrado`);
+    if (anticipo.estado !== EstadoAnticipo.PENDIENTE) {
+      throw new BadRequestException(`El anticipo ya está ${anticipo.estado}`);
+    }
+    await this.anticipoRepository.update(anticipoId, { estado: EstadoAnticipo.ANULADO });
+    return { message: 'Anticipo anulado correctamente' };
   }
 }

@@ -77,6 +77,21 @@ class UpdateContratoDto {
   @IsOptional() @IsString()  fechaFin?:  string;
 }
 
+class CreatePrestamoDto {
+  @IsInt() @IsPositive()            empleadoId!:      number;
+  @IsNumber() @Min(0.01)            monto!:           number;
+  @IsInt() @Min(1)                  cuotas!:          number;
+  @IsString()                       fechaDesembolso!: string;
+  @IsOptional() @IsString()         descripcion?:     string;
+}
+
+class CreateAnticipoDto {
+  @IsInt() @IsPositive()            empleadoId!:       number;
+  @IsNumber() @Min(0.01)            monto!:            number;
+  @IsString()                       periodoDescontar!: string;
+  @IsOptional() @IsString()         descripcion?:      string;
+}
+
 @ApiTags('Nómina y Recursos Humanos')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -426,5 +441,62 @@ export class NominaController {
   @ApiOperation({ summary: 'Anular período de nómina (solo ADMIN, no aplica a pagadas)' })
   anularPeriodo(@Param('id', ParseIntPipe) id: number) {
     return this.nominaService.anularPeriodo(id);
+  }
+
+  // ── Préstamos ──────────────────────────────────────────────────────────────
+
+  @Post('prestamos')
+  @HttpCode(HttpStatus.CREATED)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Registrar préstamo a empleado' })
+  createPrestamo(@Body() dto: CreatePrestamoDto) {
+    return this.nominaService.createPrestamo(dto);
+  }
+
+  @Get('prestamos')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Listar préstamos. Filtrar por empleado (?empleadoId=)' })
+  @ApiQuery({ name: 'empleadoId', required: false })
+  getPrestamos(@Query('empleadoId') empleadoId?: string) {
+    return this.nominaService.getPrestamos(empleadoId ? Number(empleadoId) : undefined);
+  }
+
+  @Patch('prestamos/:id/cuota')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Registrar pago de una cuota del préstamo' })
+  registrarCuotaPrestamo(@Param('id', ParseIntPipe) id: number) {
+    return this.nominaService.registrarCuotaPrestamo(id);
+  }
+
+  @Patch('prestamos/:id/anular')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Anular préstamo activo' })
+  anularPrestamo(@Param('id', ParseIntPipe) id: number) {
+    return this.nominaService.anularPrestamo(id);
+  }
+
+  // ── Anticipos ──────────────────────────────────────────────────────────────
+
+  @Post('anticipos')
+  @HttpCode(HttpStatus.CREATED)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Registrar anticipo de nómina a empleado' })
+  createAnticipo(@Body() dto: CreateAnticipoDto) {
+    return this.nominaService.createAnticipo(dto);
+  }
+
+  @Get('anticipos')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Listar anticipos. Filtrar por empleado (?empleadoId=)' })
+  @ApiQuery({ name: 'empleadoId', required: false })
+  getAnticipos(@Query('empleadoId') empleadoId?: string) {
+    return this.nominaService.getAnticipos(empleadoId ? Number(empleadoId) : undefined);
+  }
+
+  @Patch('anticipos/:id/anular')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Anular anticipo pendiente' })
+  anularAnticipo(@Param('id', ParseIntPipe) id: number) {
+    return this.nominaService.anularAnticipo(id);
   }
 }

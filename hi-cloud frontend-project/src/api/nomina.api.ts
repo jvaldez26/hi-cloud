@@ -189,4 +189,35 @@ export const nominaApi = {
        .then(r => r.data.data),
 
   resumen: () => api.get('/nomina/resumen').then(r => r.data.data),
+
+  // ── Préstamos ─────────────────────────────────────────────────────────────
+  prestamos: (empleadoId?: number) => {
+    const params = empleadoId ? `?empleadoId=${empleadoId}` : '';
+    return api.get(`/nomina/prestamos${params}`).then(r => r.data.data);
+  },
+
+  createPrestamo: (body: {
+    empleadoId: number; monto: number; cuotas: number;
+    fechaDesembolso: string; descripcion?: string;
+  }) => api.post('/nomina/prestamos', body).then(r => r.data.data),
+
+  registrarCuotaPrestamo: (id: number) =>
+    api.patch(`/nomina/prestamos/${id}/cuota`).then(r => r.data.data),
+
+  anularPrestamo: (id: number) =>
+    api.patch(`/nomina/prestamos/${id}/anular`).then(r => r.data.data),
+
+  // ── Anticipos ─────────────────────────────────────────────────────────────
+  anticipos: (empleadoId?: number) => {
+    const params = empleadoId ? `?empleadoId=${empleadoId}` : '';
+    return api.get(`/nomina/anticipos${params}`).then(r => r.data.data);
+  },
+
+  createAnticipo: (body: {
+    empleadoId: number; monto: number;
+    periodoDescontar: string; descripcion?: string;
+  }) => api.post('/nomina/anticipos', body).then(r => r.data.data),
+
+  anularAnticipo: (id: number) =>
+    api.patch(`/nomina/anticipos/${id}/anular`).then(r => r.data.data),
 };

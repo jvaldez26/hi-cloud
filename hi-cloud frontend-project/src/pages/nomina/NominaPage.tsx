@@ -14,7 +14,7 @@ import {
   PlusOutlined, EyeOutlined, CheckOutlined, DollarOutlined,
   UserOutlined, FileExcelOutlined, SearchOutlined, FilePdfOutlined,
   BankOutlined, FileTextOutlined, ThunderboltOutlined, CloseCircleOutlined,
-  MailOutlined, LinkOutlined,
+  MailOutlined, LinkOutlined, CreditCardOutlined, ClockCircleOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { nominaApi, type EmpleadoPayload, type PeriodoPayload, type NovedadPayload, type ContratoPayload } from '../../api/nomina.api';
@@ -978,6 +978,202 @@ function PeriodosTab() {
   );
 }
 
+// ── Préstamos ──────────────────────────────────────────────────────────────────
+function PrestamosTab() {
+  const [open, setOpen]   = useState(false);
+  const [form]            = Form.useForm();
+  const qc                = useQueryClient();
+
+  const { data: empleados } = useQuery({
+    queryKey: ['nomina-empleados-activos'],
+    queryFn: () => nominaApi.empleados(1, 200, '', 'activo'),
+  });
+
+  const { data: prestamos, isFetching } = useQuery({
+    queryKey: ['nomina-prestamos'],
+    queryFn: () => nominaApi.prestamos(),
+  });
+
+  const crearMut = useMutation({
+    mutationFn: nominaApi.createPrestamo,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['nomina-prestamos'] }); setOpen(false); form.resetFields(); message.success('Préstamo registrado'); },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al registrar préstamo'),
+  });
+
+  const cuotaMut = useMutation({
+    mutationFn: nominaApi.registrarCuotaPrestamo,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['nomina-prestamos'] }); message.success('Cuota registrada'); },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al registrar cuota'),
+  });
+
+  const anularMut = useMutation({
+    mutationFn: nominaApi.anularPrestamo,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['nomina-prestamos'] }); message.success('Préstamo anulado'); },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al anular préstamo'),
+  });
+
+  const estadoColor: Record<string, string> = { activo: 'blue', saldado: 'green', anulado: 'red' };
+
+  const cols = [
+    { title: 'Empleado', dataIndex: ['empleado'], render: (e: any) => e ? `${e.nombre} ${e.apellido}` : '-', width: 200 },
+    { title: 'Monto',    dataIndex: 'monto',         render: (v: number) => fmt.money(v), align: 'right' as const },
+    { title: 'Cuotas',   render: (_: any, r: any)  => `${r.cuotasPagadas}/${r.cuotas}`, align: 'center' as const },
+    { title: 'Mensual',  dataIndex: 'montoMensual',  render: (v: number) => fmt.money(v), align: 'right' as const },
+    { title: 'Saldo',    dataIndex: 'saldoPendiente',render: (v: number) => fmt.money(v), align: 'right' as const },
+    { title: 'Desembolso', dataIndex: 'fechaDesembolso', render: (v: string) => dayjs(v).format('DD/MM/YYYY') },
+    { title: 'Estado',   dataIndex: 'estado', render: (v: string) => <Tag color={estadoColor[v]}>{v.toUpperCase()}</Tag> },
+    {
+      title: 'Acciones', width: 160,
+      render: (_: any, r: any) => r.estado === 'activo' ? (
+        <Space>
+          <Popconfirm title="¿Registrar pago de una cuota?" onConfirm={() => cuotaMut.mutate(r.id)}>
+            <Button size="small" type="primary" icon={<CheckOutlined />}>Cuota</Button>
+          </Popconfirm>
+          <Popconfirm title="¿Anular este préstamo?" onConfirm={() => anularMut.mutate(r.id)}>
+            <Button size="small" danger icon={<CloseCircleOutlined />}>Anular</Button>
+          </Popconfirm>
+        </Space>
+      ) : null,
+    },
+  ];
+
+  return (
+    <>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>Nuevo Préstamo</Button>
+      </div>
+      <Table
+        columns={cols}
+        dataSource={prestamos ?? []}
+        rowKey="id"
+        loading={isFetching}
+        size="small"
+        scroll={{ x: 'max-content' }}
+        pagination={{ pageSize: 20 }}
+      />
+      <Modal title="Registrar Préstamo" open={open} onCancel={() => { setOpen(false); form.resetFields(); }}
+        onOk={() => form.validateFields().then(v => crearMut.mutate(v))} okText="Registrar" confirmLoading={crearMut.isPending}>
+        <Form form={form} layout="vertical">
+          <Form.Item name="empleadoId" label="Empleado" rules={[{ required: true }]}>
+            <Select showSearch optionFilterProp="label"
+              options={(empleados?.data ?? []).map((e: any) => ({
+                value: e.id, label: `${e.nombre} ${e.apellido}`,
+              }))} />
+          </Form.Item>
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item name="monto" label="Monto (RD$)" rules={[{ required: true }]}>
+                <InputNumber style={{ width: '100%' }} min={0.01} step={100} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="cuotas" label="Cuotas" rules={[{ required: true }]}>
+                <InputNumber style={{ width: '100%' }} min={1} max={120} precision={0} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name="fechaDesembolso" label="Fecha de desembolso" rules={[{ required: true }]}>
+            <Input type="date" />
+          </Form.Item>
+          <Form.Item name="descripcion" label="Motivo / Descripción">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+        </Form>
+      </Modal>
+    </>
+  );
+}
+
+// ── Anticipos ──────────────────────────────────────────────────────────────────
+function AnticiposTab() {
+  const [open, setOpen] = useState(false);
+  const [form]          = Form.useForm();
+  const qc              = useQueryClient();
+
+  const { data: empleados } = useQuery({
+    queryKey: ['nomina-empleados-activos'],
+    queryFn: () => nominaApi.empleados(1, 200, '', 'activo'),
+  });
+
+  const { data: anticipos, isFetching } = useQuery({
+    queryKey: ['nomina-anticipos'],
+    queryFn: () => nominaApi.anticipos(),
+  });
+
+  const crearMut = useMutation({
+    mutationFn: nominaApi.createAnticipo,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['nomina-anticipos'] }); setOpen(false); form.resetFields(); message.success('Anticipo registrado'); },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al registrar anticipo'),
+  });
+
+  const anularMut = useMutation({
+    mutationFn: nominaApi.anularAnticipo,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['nomina-anticipos'] }); message.success('Anticipo anulado'); },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al anular anticipo'),
+  });
+
+  const estadoColor: Record<string, string> = { pendiente: 'orange', descontado: 'green', anulado: 'red' };
+
+  const cols = [
+    { title: 'Empleado',    dataIndex: ['empleado'], render: (e: any) => e ? `${e.nombre} ${e.apellido}` : '-', width: 200 },
+    { title: 'Monto',       dataIndex: 'monto',           render: (v: number) => fmt.money(v), align: 'right' as const },
+    { title: 'Período',     dataIndex: 'periodoDescontar', width: 110 },
+    { title: 'Descripción', dataIndex: 'descripcion',     ellipsis: true },
+    { title: 'Estado',      dataIndex: 'estado', render: (v: string) => <Tag color={estadoColor[v]}>{v.toUpperCase()}</Tag> },
+    {
+      title: 'Acciones', width: 100,
+      render: (_: any, r: any) => r.estado === 'pendiente' ? (
+        <Popconfirm title="¿Anular este anticipo?" onConfirm={() => anularMut.mutate(r.id)}>
+          <Button size="small" danger icon={<CloseCircleOutlined />}>Anular</Button>
+        </Popconfirm>
+      ) : null,
+    },
+  ];
+
+  return (
+    <>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>Nuevo Anticipo</Button>
+      </div>
+      <Table
+        columns={cols}
+        dataSource={anticipos ?? []}
+        rowKey="id"
+        loading={isFetching}
+        size="small"
+        scroll={{ x: 'max-content' }}
+        pagination={{ pageSize: 20 }}
+      />
+      <Modal title="Registrar Anticipo de Nómina" open={open} onCancel={() => { setOpen(false); form.resetFields(); }}
+        onOk={() => form.validateFields().then(v => crearMut.mutate(v))} okText="Registrar" confirmLoading={crearMut.isPending}>
+        <Form form={form} layout="vertical">
+          <Form.Item name="empleadoId" label="Empleado" rules={[{ required: true }]}>
+            <Select showSearch optionFilterProp="label"
+              options={(empleados?.data ?? []).map((e: any) => ({
+                value: e.id, label: `${e.nombre} ${e.apellido}`,
+              }))} />
+          </Form.Item>
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item name="monto" label="Monto (RD$)" rules={[{ required: true }]}>
+                <InputNumber style={{ width: '100%' }} min={0.01} step={100} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="periodoDescontar" label="Período a descontar (YYYY-MM)" rules={[{ required: true, pattern: /^\d{4}-\d{2}$/, message: 'Formato YYYY-MM' }]}>
+                <Input placeholder={dayjs().format('YYYY-MM')} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name="descripcion" label="Descripción / Motivo">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+        </Form>
+      </Modal>
+    </>
+  );
+}
+
 // ── Page principal ─────────────────────────────────────────────────────────────
 export default function NominaPage() {
   const { data: resumen } = useQuery({ queryKey: ['nomina-resumen'], queryFn: nominaApi.resumen });
@@ -1001,6 +1197,8 @@ export default function NominaPage() {
             ),                                                                   children: <NovedadesTab /> },
           { key: 'contratos',  label: <><FileTextOutlined /> Contratos Laborales</>, children: <ContratosTab /> },
           { key: 'periodos',   label: <><DollarOutlined />  Períodos de Nómina</>,  children: <PeriodosTab /> },
+          { key: 'prestamos',  label: <><CreditCardOutlined /> Préstamos</>,         children: <PrestamosTab /> },
+          { key: 'anticipos',  label: <><ClockCircleOutlined /> Anticipos</>,        children: <AnticiposTab /> },
         ]} />
       </Card>
     </div>

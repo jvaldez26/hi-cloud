@@ -9,6 +9,8 @@ import { NominaPeriodo } from './entities/nomina-periodo.entity';
 import { NominaLinea } from './entities/nomina-linea.entity';
 import { NominaNovedadEmpleado } from './entities/nomina-novedad.entity';
 import { ContratoLaboral } from './entities/contrato-laboral.entity';
+import { PrestamoEmpleado } from './entities/prestamo-empleado.entity';
+import { AnticipoNomina } from './entities/anticipo-nomina.entity';
 import { ContabilidadModule } from '../contabilidad/contabilidad.module';
 import { TesoreriaModule } from '../tesoreria/tesoreria.module';
 import { NotificacionesModule } from '../notificaciones/notificaciones.module';
@@ -21,6 +23,8 @@ import { NotificacionesModule } from '../notificaciones/notificaciones.module';
       NominaLinea,
       NominaNovedadEmpleado,
       ContratoLaboral,
+      PrestamoEmpleado,
+      AnticipoNomina,
     ]),
     ContabilidadModule,
     TesoreriaModule,
