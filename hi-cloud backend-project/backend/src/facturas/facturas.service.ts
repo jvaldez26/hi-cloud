@@ -107,6 +107,33 @@ export class FacturasService {
     const totalOriginal = moneda !== 'DOP' ? +(totalDOP / tipoCambio).toFixed(2) : undefined;
 
     const tipoPago   = dto.tipoPago?.toUpperCase() === 'CREDITO' ? 'CREDITO' : 'CONTADO';
+
+    // Validar límite de crédito antes de crear la factura
+    if (tipoPago === 'CREDITO' && dto.clienteId) {
+      const [clienteRow] = await this.dataSource.query<{ limiteCredito: string }[]>(
+        `SELECT "limiteCredito" FROM clientes WHERE id = $1 AND "empresaId" = $2`,
+        [dto.clienteId, empresaId],
+      );
+      const limiteCredito = Number(clienteRow?.limiteCredito ?? 0);
+      if (limiteCredito > 0) {
+        const [saldoRow] = await this.dataSource.query<{ saldo: string }[]>(
+          `SELECT COALESCE(SUM("montoPendiente"), 0) AS saldo
+           FROM cuentas_por_cobrar
+           WHERE "clienteId" = $1 AND "empresaId" = $2
+             AND estado NOT IN ('pagada','anulada') AND "montoPendiente" > 0`,
+          [dto.clienteId, empresaId],
+        );
+        const saldoPendiente = Number(saldoRow?.saldo ?? 0);
+        if (saldoPendiente + totalDOP > limiteCredito) {
+          throw new BadRequestException(
+            `Límite de crédito excedido. Límite: RD$${limiteCredito.toLocaleString('es-DO')}, ` +
+            `Saldo pendiente: RD$${saldoPendiente.toLocaleString('es-DO')}, ` +
+            `Esta factura: RD$${totalDOP.toLocaleString('es-DO')}`,
+          );
+        }
+      }
+    }
+
     const diasCred   = tipoPago === 'CREDITO' ? (dto.diasCredito ?? 30) : 0;
     const fechaVenc  = tipoPago === 'CREDITO'
       ? (() => { const d = new Date(); d.setDate(d.getDate() + diasCred); return d; })()

@@ -6,9 +6,13 @@ import { Movimiento } from './entities/movimiento.entity';
 import { LoteProducto } from './entities/lote-producto.entity';
 import { SerialProducto } from './entities/serial-producto.entity';
 import { Producto } from '../productos/entities/producto.entity';
+import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Movimiento, Producto, LoteProducto, SerialProducto])],
+  imports: [
+    TypeOrmModule.forFeature([Movimiento, Producto, LoteProducto, SerialProducto]),
+    NotificacionesModule,
+  ],
   controllers: [InventarioController],
   providers: [InventarioService],
   exports: [InventarioService],

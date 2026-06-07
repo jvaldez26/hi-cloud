@@ -3,9 +3,11 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, LessThanOrEqual, MoreThanOrEqual, DataSource } from 'typeorm';
+import { Cron } from '@nestjs/schedule';
 import { Movimiento, TipoMovimiento } from './entities/movimiento.entity';
 import { LoteProducto, EstadoLote } from './entities/lote-producto.entity';
 import { SerialProducto, EstadoSerial } from './entities/serial-producto.entity';
@@ -17,9 +19,12 @@ import { PaginationDto } from '../common/dto/pagination.dto';
 import { RealtimeService } from '../realtime/realtime.service';
 import { TenantService } from '../tenant/tenant.service';
 import { fechaHoyRD } from '../common/utils/fecha-local.util';
+import { EmailService } from '../notificaciones/services/email.service';
 
 @Injectable()
 export class InventarioService {
+  private readonly logger = new Logger(InventarioService.name);
+
   constructor(
     @InjectRepository(Movimiento)
     private movimientoRepository: Repository<Movimiento>,
@@ -32,6 +37,7 @@ export class InventarioService {
     @InjectDataSource() private ds: DataSource,
     private realtimeService: RealtimeService,
     private tenantService: TenantService,
+    private emailService: EmailService,
   ) {}
 
   /**
@@ -423,5 +429,99 @@ export class InventarioService {
 
     if (productoId) qb.andWhere('s.productoId = :pid', { pid: productoId });
     return qb.groupBy('s.estado').getRawMany();
+  }
+
+  // ── Cron: alerta de stock mínimo (7 AM hora RD, todos los días) ────────────
+
+  @Cron('0 7 * * *', { timeZone: 'America/Santo_Domingo' })
+  async alertarStockMinimo() {
+    try {
+      // Productos bajo mínimo agrupados por empresa
+      const rows = await this.ds.query<{
+        empresaId: number; empresaNombre: string;
+        productoNombre: string; referencia: string | null;
+        stock: number; stockMinimo: number;
+      }[]>(`
+        SELECT
+          p."empresaId",
+          e.nombre AS "empresaNombre",
+          p.nombre AS "productoNombre",
+          p.referencia,
+          p.stock,
+          p."stockMinimo"
+        FROM productos p
+        JOIN empresas e ON e.id = p."empresaId"
+        WHERE p."isActive"   = true
+          AND p."stockMinimo" > 0
+          AND p.stock <= p."stockMinimo"
+        ORDER BY p."empresaId", p.nombre
+      `);
+
+      if (!rows.length) return;
+
+      // Agrupar por empresa
+      const porEmpresa = new Map<number, typeof rows>();
+      for (const r of rows) {
+        if (!porEmpresa.has(r.empresaId)) porEmpresa.set(r.empresaId, []);
+        porEmpresa.get(r.empresaId)!.push(r);
+      }
+
+      for (const [empresaId, productos] of porEmpresa) {
+        // Obtener emails de admins de esta empresa
+        const admins = await this.ds.query<{ email: string }[]>(`
+          SELECT u.email
+          FROM usuarios_empresas ue
+          JOIN users u ON u.id = ue."usuarioId"
+          WHERE ue."empresaId" = $1
+            AND ue."isActive"  = true
+            AND u."isActive"   = true
+            AND u.role         = 'admin'
+            AND u.email IS NOT NULL
+          LIMIT 5
+        `, [empresaId]);
+
+        if (!admins.length) continue;
+
+        const filas = productos.map(p => `
+          <tr>
+            <td style="padding:6px 12px;border-bottom:1px solid #f0f0f0">${p.productoNombre}${p.referencia ? ` (${p.referencia})` : ''}</td>
+            <td style="padding:6px 12px;border-bottom:1px solid #f0f0f0;text-align:center;color:${p.stock === 0 ? '#dc2626' : '#d97706'};font-weight:600">${p.stock}</td>
+            <td style="padding:6px 12px;border-bottom:1px solid #f0f0f0;text-align:center">${p.stockMinimo}</td>
+          </tr>`).join('');
+
+        const html = `
+          <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+            <h2 style="background:#1d4ed8;color:#fff;padding:16px 24px;margin:0">
+              ⚠️ Alerta de Stock Mínimo — ${productos[0].empresaNombre}
+            </h2>
+            <p style="padding:16px 24px 0">
+              Los siguientes productos han alcanzado o están por debajo de su stock mínimo:
+            </p>
+            <table style="width:100%;border-collapse:collapse;margin:0 24px;width:calc(100% - 48px)">
+              <thead>
+                <tr style="background:#f8fafc">
+                  <th style="padding:8px 12px;text-align:left">Producto</th>
+                  <th style="padding:8px 12px;text-align:center">Stock Actual</th>
+                  <th style="padding:8px 12px;text-align:center">Stock Mínimo</th>
+                </tr>
+              </thead>
+              <tbody>${filas}</tbody>
+            </table>
+            <p style="padding:16px 24px;color:#6b7280;font-size:13px">
+              Ingresa a HiCloud ERP → Inventario para gestionar las órdenes de compra.
+            </p>
+          </div>`;
+
+        await this.emailService.enviar({
+          to: admins.map(a => a.email),
+          subject: `⚠️ ${productos.length} producto(s) bajo stock mínimo — ${productos[0].empresaNombre}`,
+          html,
+        });
+
+        this.logger.log(`[StockCron] Alerta enviada a ${admins.length} admin(s) de empresa ${empresaId} — ${productos.length} producto(s)`);
+      }
+    } catch (err: any) {
+      this.logger.error('[StockCron] Error en alerta de stock mínimo', err?.stack ?? err?.message);
+    }
   }
 }
