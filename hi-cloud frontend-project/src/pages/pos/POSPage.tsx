@@ -1235,12 +1235,10 @@ function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir }: {
   const intervalRef  = useRef<ReturnType<typeof setInterval>  | null>(null);
   const printTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // QR generado aquí para incluirlo en el HTML antes de imprimir.
-  // undefined = cargando, null = no hay QR (o falló), string = QR listo
-  const [qrDataUrl, setQrDataUrl] = useState<string | null | undefined>(undefined);
+  // QR generado aquí para incluirlo en el HTML del botón de impresión manual
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const autoPrintedFolioRef = useRef<string | null>(null);
   useEffect(() => {
-    setQrDataUrl(undefined); // reset al cambiar de venta — indica "cargando"
     if (!sale?.qrUrl || sale.ecfPendiente) { setQrDataUrl(null); return; }
     QRCode.toDataURL(sale.qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' })
       .then(setQrDataUrl).catch(() => setQrDataUrl(null));
@@ -1265,24 +1263,28 @@ function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir }: {
     return cancelarContador;
   }, [sale]);
 
-  // Auto-imprimir: esperar a que qrDataUrl esté resuelto (no undefined) antes de imprimir.
-  // autoPrintedFolioRef evita imprimir más de una vez por venta cuando qrDataUrl cambia de
-  // undefined → null/string y re-dispara este effect.
+  // Auto-imprimir: el QR se genera dentro del effect para evitar condiciones de carrera
+  // con el state qrDataUrl — si se dependiera del state, el setQrDataUrl() del QR effect
+  // cancelaría el setTimeout antes de que dispare (cleanup de react al cambiar deps).
   useEffect(() => {
     if (!sale || !autoImprimir) return;
-    if (qrDataUrl === undefined) return; // QR aún cargando — esperar
-    if (autoPrintedFolioRef.current === sale.folio) return; // ya imprimimos esta venta
+    if (autoPrintedFolioRef.current === sale.folio) return;
     autoPrintedFolioRef.current = sale.folio;
-    const t = setTimeout(() => {
+    let cancelled = false;
+    const qrPromise: Promise<string | null> = sale.qrUrl && !sale.ecfPendiente
+      ? QRCode.toDataURL(sale.qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' }).catch(() => null)
+      : Promise.resolve(null);
+    qrPromise.then(qr => {
+      if (cancelled) return;
       cancelarContador();
-      imprimirReciboTermico(buildReciboTermicoHTML(sale, qrDataUrl), onNueva);
-    }, 400);
-    return () => clearTimeout(t);
-  }, [sale?.folio, autoImprimir, qrDataUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+      imprimirReciboTermico(buildReciboTermicoHTML(sale, qr), onNueva);
+    });
+    return () => { cancelled = true; };
+  }, [sale?.folio, autoImprimir]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePrint = () => {
     cancelarContador();
-    imprimirReciboTermico(buildReciboTermicoHTML(sale!, qrDataUrl ?? null), onNueva);
+    imprimirReciboTermico(buildReciboTermicoHTML(sale!, qrDataUrl), onNueva);
   };
 
 
