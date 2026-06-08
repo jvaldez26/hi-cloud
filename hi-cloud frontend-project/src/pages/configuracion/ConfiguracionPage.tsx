@@ -777,9 +777,12 @@ function SeccionFacturacion({ empresa, onSaved }: { empresa: any; onSaved: () =>
           { name: 'factMostrarOC',       label: 'Mostrar N.° de orden de compra' },
         ].map(t => (
           <Col xs={12} sm={8} key={t.name}>
-            <Form.Item name={t.name} valuePropName="checked" style={{ marginBottom: 4 }}>
-              <Switch size="small" /> <Text style={{ marginLeft: 8 }}>{t.label}</Text>
-            </Form.Item>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <Form.Item name={t.name} valuePropName="checked" style={{ marginBottom: 0 }}>
+                <Switch size="small" />
+              </Form.Item>
+              <Text style={{ fontSize: 13 }}>{t.label}</Text>
+            </div>
           </Col>
         ))}
       </Row>
