@@ -2002,7 +2002,7 @@ export default function AppLayout() {
             <div style={{
               background:  '#1E3A8A',
               padding:     '0 16px',
-              height:       52,
+              height:       56,
               display:     'flex',
               alignItems:  'center',
               justifyContent: 'space-between',

@@ -18,6 +18,7 @@ html {
   font-size:   16px;
   -webkit-font-smoothing:  antialiased;
   -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
   text-rendering:          optimizeLegibility;
   font-feature-settings:   "cv02", "cv03", "cv04", "cv11";
 }
@@ -358,5 +359,18 @@ h1, h2, h3, h4, h5, h6,
   }
   .ant-statistic-title {
     font-size: 11px !important;
+  }
+}
+
+/* ── iOS safe area: padding inferior para iPhone con notch/Dynamic Island ─────── */
+/* viewport-fit=cover activa env() — sin esto el contenido queda bajo la home bar */
+#root {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ── Bottom nav (Fase 4): espacio para la barra de navegación inferior ─────────── */
+@media (max-width: 768px) {
+  .has-bottom-nav #main-content {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important;
   }
 }
