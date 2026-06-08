@@ -18,10 +18,10 @@ export class CreateProductoDto {
   @IsIn(['producto', 'servicio'])
   tipo?: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MaxLength(30)
-  codigo: string;
+  codigo?: string;
 
   @IsString()
   @IsNotEmpty()

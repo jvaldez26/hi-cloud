@@ -485,6 +485,7 @@ function ProductosCatalogo() {
     const itbis  = values.porcentajeIva ?? 18;
     const pBase  = precioConItbis ? precioInput / (1 + itbis / 100) : precioInput;
     const payload: ProductoPayload = { ...values, precio: pBase };
+    if (!payload.codigo) delete (payload as any).codigo; // no enviar cadena vacía
     if (values.tipo === 'servicio') {
       payload.stock = undefined;
       payload.stockMinimo = undefined;
