@@ -4398,17 +4398,43 @@ export default function POSPage() {
         })),
       };
 
-      // Si offline → encolar localmente
-      if (!navigator.onLine) {
+      // Función helper para encolar offline y devolver resultado fake
+      const toOffline = async () => {
         const offlineId = await enqueue(payload);
         return {
           id:    -1,
           folio: `POS-OFFLINE-${offlineId.slice(-6).toUpperCase()}`,
           _offline: true,
         } as any;
-      }
+      };
 
-      const factura = await facturasApi.create(payload);
+      // Si offline → encolar localmente inmediatamente
+      if (!navigator.onLine) return toOffline();
+
+      // Timeout de 8s con AbortController — cuando hay WiFi sin internet el SW puede
+      // interceptar el fetch y colgar indefinidamente sin nunca resolver la promesa.
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), 8000);
+
+      let factura: any;
+      try {
+        factura = await (api.post('/facturas', payload, { signal: controller.signal }) as Promise<any>)
+          .then((r: any) => r.data.data);
+        clearTimeout(tid);
+      } catch (createErr: any) {
+        clearTimeout(tid);
+        const isNetworkErr =
+          createErr?.code === 'ERR_CANCELED'  ||  // axios AbortController
+          createErr?.name === 'CanceledError' ||
+          createErr?.code === 'ERR_NETWORK'   ||  // sin internet
+          createErr?.code === 'ECONNABORTED'  ||  // timeout TCP
+          createErr?.name === 'AbortError'    ||  // fetch nativo abortado
+          createErr?.response?.data?.offline === true ||  // SW 503
+          createErr?.response?.status === 503 ||
+          !navigator.onLine;
+        if (isNetworkErr) return toOffline();
+        throw createErr; // error real del servidor (4xx, 500) → onError
+      }
 
       // Emitir desde POS (síncrono 8s — la venta no se bloquea si tu proveedor e-CF falla)
       setEcfStatus('loading');
