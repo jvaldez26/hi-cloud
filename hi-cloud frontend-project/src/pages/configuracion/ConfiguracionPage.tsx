@@ -1337,12 +1337,12 @@ function SeccionNotificaciones({ empresa, onSaved }: { empresa: any; onSaved: ()
         {toggles.map(t => (
           <Col xs={24} sm={12} key={t.name}>
             <Card size="small" style={{ marginBottom: 0 }}>
-              <Form.Item name={t.name} valuePropName="checked" style={{ margin: 0 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text>{t.label}</Text>
-                  <Switch />
-                </div>
-              </Form.Item>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text>{t.label}</Text>
+                <Form.Item name={t.name} valuePropName="checked" style={{ margin: 0 }}>
+                  <Switch size="small" />
+                </Form.Item>
+              </div>
             </Card>
           </Col>
         ))}
