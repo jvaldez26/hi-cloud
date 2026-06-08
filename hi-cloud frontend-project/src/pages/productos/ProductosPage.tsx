@@ -483,7 +483,9 @@ function ProductosCatalogo() {
   const handleSubmit = (values: ProductoPayload) => {
     if (precioInput <= 0) { message.error('El precio es requerido'); return; }
     const itbis  = values.porcentajeIva ?? 18;
-    const pBase  = precioConItbis ? precioInput / (1 + itbis / 100) : precioInput;
+    const pBase  = precioConItbis
+      ? Math.round((precioInput / (1 + itbis / 100)) * 100) / 100
+      : precioInput;
     const payload: ProductoPayload = { ...values, precio: pBase };
     if (!payload.codigo) delete (payload as any).codigo; // no enviar cadena vacía
     if (values.tipo === 'servicio') {
