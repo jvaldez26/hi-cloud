@@ -630,8 +630,9 @@ function ProductosCatalogo() {
                 <Input
                   onChange={() => setFieldErrors(prev => ({ ...prev, codigo: undefined }))}
                   onBlur={async e => {
-                    const val = e.target.value?.trim() ?? '';
-                    if (!val || val === 'undefined' || val === 'null') return;
+                    const raw = e.target.value;
+                    const val = (raw == null || raw === 'undefined' || raw === 'null') ? '' : raw.trim();
+                    if (!val || val.length === 0) return;
                     const nonce = dupCheckNonce.current;
                     try {
                       const qs = editing ? `&excludeId=${editing.id}` : '';
