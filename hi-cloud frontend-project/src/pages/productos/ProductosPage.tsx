@@ -487,7 +487,7 @@ function ProductosCatalogo() {
     };
     form.setFieldsValue(safeValues);
     setPreview(p.imagenUrl ?? ''); setFieldErrors({});
-    setPrecioInput(p.precio ?? 0); setPrecioConItbis(false);
+    setPrecioInput(Number(p.precio) || 0); setPrecioConItbis(false);
     if (almacenes.length === 1 && !(p as any).almacenId) form.setFieldValue('almacenId', almacenes[0].id);
     setOpen(true);
   };
@@ -500,8 +500,8 @@ function ProductosCatalogo() {
     if (precioInput <= 0) { message.error('El precio es requerido'); return; }
     const itbis  = values.porcentajeIva ?? 18;
     const pBase  = precioConItbis
-      ? Math.round((precioInput / (1 + itbis / 100)) * 100) / 100
-      : precioInput;
+      ? Math.round((Number(precioInput) / (1 + itbis / 100)) * 100) / 100
+      : Number(precioInput);
     const payload: ProductoPayload = { ...values, precio: pBase };
     // no enviar cadena vacía ni valores basura
     if (!payload.codigo || payload.codigo === 'undefined' || payload.codigo === 'null') delete (payload as any).codigo;
@@ -672,8 +672,8 @@ function ProductosCatalogo() {
               {/* ── Precio con toggle "Con ITBIS" ── */}
               {(() => {
                 const pBase  = precioConItbis
-                  ? Math.round((precioInput / (1 + itbisWatch / 100)) * 100) / 100
-                  : precioInput;
+                  ? Math.round((Number(precioInput) / (1 + itbisWatch / 100)) * 100) / 100
+                  : Number(precioInput);
                 const mItbis = Math.round((pBase * (itbisWatch / 100)) * 100) / 100;
                 const pFinal = Math.round((pBase + mItbis) * 100) / 100;
                 return (
