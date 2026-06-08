@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { DetailDrawer } from '../../components/ui/DetailDrawer';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
@@ -414,6 +414,9 @@ function ProductosCatalogo() {
   const [fieldErrors,      setFieldErrors]      = useState<{ codigo?: string; nombre?: string }>({});
   const [precioConItbis,   setPrecioConItbis]   = useState(false);
   const [precioInput,      setPrecioInput]       = useState(0);
+  // Nonce para cancelar checks async de duplicados que quedaron pendientes
+  // al cerrar/abrir el modal (evita race condition que muestra error de producto anterior)
+  const dupCheckNonce = useRef(0);
   const qc = useQueryClient();
 
   const puedeCrear    = useCanDo('productos:crear');
@@ -465,18 +468,21 @@ function ProductosCatalogo() {
   });
 
   const openCreate = () => {
+    dupCheckNonce.current++;  // invalida cualquier check async pendiente
     setEditing(null); form.resetFields(); setPreview(''); setFieldErrors({});
     setPrecioInput(0); setPrecioConItbis(false);
     if (almacenes.length === 1) form.setFieldValue('almacenId', almacenes[0].id);
     setOpen(true);
   };
   const openEdit = (p: Producto) => {
+    dupCheckNonce.current++;  // invalida cualquier check async pendiente
     setEditing(p); form.setFieldsValue(p); setPreview(p.imagenUrl ?? ''); setFieldErrors({});
     setPrecioInput(p.precio ?? 0); setPrecioConItbis(false);
     if (almacenes.length === 1 && !(p as any).almacenId) form.setFieldValue('almacenId', almacenes[0].id);
     setOpen(true);
   };
   const closeModal = () => {
+    dupCheckNonce.current++;  // invalida cualquier check async pendiente
     setOpen(false); setEditing(null); form.resetFields(); setPreview(''); setFieldErrors({});
     setPrecioInput(0); setPrecioConItbis(false);
   };
@@ -616,9 +622,11 @@ function ProductosCatalogo() {
                   onBlur={async e => {
                     const val = e.target.value?.trim() ?? '';
                     if (!val || val === 'undefined' || val === 'null') return;
+                    const nonce = dupCheckNonce.current;
                     try {
                       const qs = editing ? `&excludeId=${editing.id}` : '';
                       const r = await api.get(`/productos/check-duplicado?campo=codigo&valor=${encodeURIComponent(val)}${qs}`);
+                      if (dupCheckNonce.current !== nonce) return; // modal cambió — descartar
                       if (!(r.data?.data ?? r.data)?.disponible) {
                         setFieldErrors(prev => ({ ...prev, codigo: `Ya existe un producto con el código '${val}'` }));
                       }
@@ -636,9 +644,11 @@ function ProductosCatalogo() {
                   onBlur={async e => {
                     const val = e.target.value.trim();
                     if (!val) return;
+                    const nonce = dupCheckNonce.current;
                     try {
                       const qs = editing ? `&excludeId=${editing.id}` : '';
                       const r = await api.get(`/productos/check-duplicado?campo=nombre&valor=${encodeURIComponent(val)}${qs}`);
+                      if (dupCheckNonce.current !== nonce) return; // modal cambió — descartar
                       if (!(r.data?.data ?? r.data)?.disponible) {
                         setFieldErrors(prev => ({ ...prev, nombre: `Ya existe un producto con el nombre '${val}'` }));
                       }
