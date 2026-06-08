@@ -469,14 +469,24 @@ function ProductosCatalogo() {
 
   const openCreate = () => {
     dupCheckNonce.current++;  // invalida cualquier check async pendiente
-    setEditing(null); form.resetFields(); setPreview(''); setFieldErrors({});
+    setEditing(null); form.resetFields(); form.setFieldValue('codigo', ''); setPreview(''); setFieldErrors({});
     setPrecioInput(0); setPrecioConItbis(false);
     if (almacenes.length === 1) form.setFieldValue('almacenId', almacenes[0].id);
     setOpen(true);
   };
   const openEdit = (p: Producto) => {
     dupCheckNonce.current++;  // invalida cualquier check async pendiente
-    setEditing(p); form.setFieldsValue(p); setPreview(p.imagenUrl ?? ''); setFieldErrors({});
+    setEditing(p);
+    const safeValues = {
+      ...p,
+      codigo:      p.codigo      ?? '',
+      nombre:      p.nombre      ?? '',
+      categoria:   p.categoria   ?? '',
+      descripcion: p.descripcion ?? '',
+      imagenUrl:   p.imagenUrl   ?? '',
+    };
+    form.setFieldsValue(safeValues);
+    setPreview(p.imagenUrl ?? ''); setFieldErrors({});
     setPrecioInput(p.precio ?? 0); setPrecioConItbis(false);
     if (almacenes.length === 1 && !(p as any).almacenId) form.setFieldValue('almacenId', almacenes[0].id);
     setOpen(true);

@@ -59,6 +59,9 @@ export class ProductosController {
     @Query('valor') valor: string,
     @Query('excludeId') excludeId?: string,
   ) {
+    if (!valor || valor === 'undefined' || valor === 'null' || valor.trim().length < 1) {
+      return { data: { disponible: true } };
+    }
     return this.productosService.checkDuplicado(campo, valor, excludeId ? Number(excludeId) : undefined);
   }
 
