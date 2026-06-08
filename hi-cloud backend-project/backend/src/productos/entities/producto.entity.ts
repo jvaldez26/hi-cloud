@@ -9,8 +9,8 @@ export class Producto extends TenantBaseEntity {
   @Column({ length: 10, default: 'producto' })
   tipo!: string;  // 'producto' | 'servicio'
 
-  @Column({ length: 30 })
-  codigo!: string;
+  @Column({ length: 30, nullable: true })
+  codigo?: string | null;
 
   @Column({ length: 200 })
   nombre!: string;

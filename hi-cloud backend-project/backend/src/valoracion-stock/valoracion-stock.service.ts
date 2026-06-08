@@ -72,7 +72,7 @@ export class ValoracionStockService {
       const costoPromedio  = Number((p as any).costoPromedio ?? 0);
       return {
         productoId:    p.id,
-        codigo:        p.codigo,
+        codigo:        p.codigo ?? '',
         nombre:        p.nombre,
         categoria:     p.categoria,
         stock,

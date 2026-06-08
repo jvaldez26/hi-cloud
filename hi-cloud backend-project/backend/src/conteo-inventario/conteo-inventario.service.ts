@@ -66,7 +66,7 @@ export class ConteoInventarioService {
     const lineas = productos.map(p => ({
       conteoId:          conteo.id,
       productoId:        p.id,
-      productoCodigo:    p.codigo,
+      productoCodigo:    p.codigo ?? undefined,
       productoNombre:    p.nombre,
       categoriaProducto: p.categoria,
       cantidadSistema:   Number(p.stock),
