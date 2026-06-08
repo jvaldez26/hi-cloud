@@ -1403,18 +1403,18 @@ function SeccionSeguridad({ empresa, onSaved }: { empresa: any; onSaved: () => v
           </Form.Item>
         </Col>
         <Col xs={24}>
-          <Form.Item name="auditoriaActiva" valuePropName="checked">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Form.Item name="auditoriaActiva" valuePropName="checked" style={{ marginBottom: 0 }}>
               <Switch />
-              <div>
-                <Text strong>Registro de auditoría activo</Text>
-                <br />
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  Registra quién hace qué en el sistema (quién editó una factura, cambió un precio, etc.)
-                </Text>
-              </div>
+            </Form.Item>
+            <div>
+              <Text strong>Registro de auditoría activo</Text>
+              <br />
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                Registra quién hace qué en el sistema (quién editó una factura, cambió un precio, etc.)
+              </Text>
             </div>
-          </Form.Item>
+          </div>
         </Col>
       </Row>
 
