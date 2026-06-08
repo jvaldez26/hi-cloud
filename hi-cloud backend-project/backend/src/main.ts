@@ -53,6 +53,10 @@ async function bootstrap() {
 
   const app = await NestFactory.create(AppModule);
 
+  // Confiar en el proxy Nginx para que req.ip refleje la IP real del cliente.
+  // Sin esto req.ip siempre es 127.0.0.1 y el throttler bloquea a todos juntos.
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+
   // ── Cookie parser — necesario para leer access_token de cookie httpOnly ──
   app.use(cookieParser());
 

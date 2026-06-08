@@ -2,7 +2,8 @@ import { Module, NestModule, MiddlewareConsumer, RequestMethod } from '@nestjs/c
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CacheModule } from '@nestjs/cache-manager';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { CustomThrottlerGuard } from './common/guards/custom-throttler.guard';
 import { QueuesModule } from './queues/queues.module';
 import { S3Module }     from './common/s3/s3.module';
 import { BrowserModule } from './common/browser.module';
@@ -296,7 +297,7 @@ import { PagosSuscripcionModule }        from './pagos-suscripcion/pagos-suscrip
   controllers: [AppController],
   providers: [
     AppService,
-    { provide: APP_GUARD,       useClass: ThrottlerGuard   },
+    { provide: APP_GUARD,       useClass: CustomThrottlerGuard },
     { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
   ],
 })
