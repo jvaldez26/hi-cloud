@@ -33,6 +33,8 @@ import PageTransition    from '../ui/PageTransition';
 import PlanBanner        from '../ui/PlanBanner';
 import OnboardingTour    from '../ui/OnboardingTour';
 import HelpCenter        from '../ui/HelpCenter';
+import BottomNav         from './BottomNav';
+import PwaInstallBanner  from '../ui/PwaInstallBanner';
 import { useRealtime, useRealtimeStatus } from '../../hooks/useRealtime';
 import { useAlertas }    from '../../hooks/useAlertas';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
@@ -1282,6 +1284,16 @@ export default function AppLayout() {
   const isMobile  = useMobile();
   const isTablet  = useTablet();
 
+  // Clase en body para que el CSS reserve espacio al BottomNav en mobile
+  useEffect(() => {
+    if (isMobile) {
+      document.body.classList.add('has-bottom-nav');
+    } else {
+      document.body.classList.remove('has-bottom-nav');
+    }
+    return () => document.body.classList.remove('has-bottom-nav');
+  }, [isMobile]);
+
   const handleNavigate = useCallback((path: string) => {
     navigate(path);
     closePanel();
@@ -2030,7 +2042,11 @@ export default function AppLayout() {
           {/* Único área scrollable — scroll siempre aquí, nunca en el body */}
           <div
             id="main-content"
-            style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: isMobile ? 12 : 20 }}
+            style={{
+              flex: 1, overflowY: 'auto', overflowX: 'hidden',
+              padding: isMobile ? 12 : 20,
+              paddingBottom: isMobile ? 'calc(72px + env(safe-area-inset-bottom, 0px))' : 20,
+            }}
           >
             <Suspense fallback={null}>
               <PageTransition>
@@ -2043,6 +2059,12 @@ export default function AppLayout() {
 
       <OnboardingTour />
       <HelpCenter open={helpOpen} onClose={() => setHelpOpen(false)} />
+
+      {/* ── Bottom navigation (solo mobile) ─────────────────────────── */}
+      {isMobile && <BottomNav />}
+
+      {/* ── PWA install banner (solo mobile, primera visita) ─────────── */}
+      {isMobile && <PwaInstallBanner />}
 
       {/* ── Modal Opciones de Menú ───────────────────────────────── */}
       <Modal
