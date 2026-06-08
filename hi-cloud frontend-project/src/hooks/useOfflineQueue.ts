@@ -116,12 +116,6 @@ export function useOfflineQueue() {
       const pending = (await dbGetAll()).filter(s => s.status === 'pending');
       // JWT está en httpOnly cookie — se envía automáticamente con credentials: 'include'
 
-      const empresaId = localStorage.getItem('empresaId') ?? '';
-      const headers   = {
-        'Content-Type': 'application/json',
-        'X-Empresa-ID': empresaId,
-      };
-
       for (const sale of pending) {
         // Marcar como syncing
         await dbPut({ ...sale, status: 'syncing' });
@@ -132,21 +126,20 @@ export function useOfflineQueue() {
           const res = await fetch('/api/v1/facturas', {
             method:      'POST',
             credentials: 'include',
-            headers,
+            headers:     { 'Content-Type': 'application/json' },
             body:        JSON.stringify(sale.payload),
           });
 
           if (!res.ok) throw new Error(await res.text());
           const factura = (await res.json()).data;
 
-          // Emitir via POS (dispara ECF + asiento contable)
-          // Fire-and-forget: el job de reintentos ECF cubre cualquier fallo
-          fetch(`/api/v1/facturas/${factura.id}/emitir-pos`, {
+          // Emitir factura
+          await fetch(`/api/v1/facturas/${factura.id}/estado`, {
             method:      'PATCH',
             credentials: 'include',
-            headers,
+            headers:     { 'Content-Type': 'application/json' },
             body:        JSON.stringify({ estado: 'emitida' }),
-          }).catch(() => {/* ECF retry job handles failures */});
+          });
 
           await dbDelete(sale.id);
         } catch (err: any) {

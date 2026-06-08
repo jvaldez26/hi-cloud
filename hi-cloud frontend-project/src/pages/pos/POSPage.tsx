@@ -3984,15 +3984,8 @@ export default function POSPage() {
       return api.get(`/caja/hoy?vendedorId=${vendedorId}`).then(r => {
         const d = r.data?.data ?? r.data;
         const caja = Array.isArray(d) ? d.find((c: any) => c.estado === 'abierta') ?? null : d;
-        const result = caja?.estado === 'abierta' ? caja : null;
-        // Guardar en localStorage para que esté disponible offline
-        if (result) localStorage.setItem('pos_caja_cache', JSON.stringify(result));
-        return result;
-      }).catch(() => {
-        // Error de red: usar caché local para no bloquear cobro offline
-        const cached = localStorage.getItem('pos_caja_cache');
-        return cached ? JSON.parse(cached) : null;
-      });
+        return caja?.estado === 'abierta' ? caja : null;
+      }).catch(() => null);
     },
     refetchInterval:      10_000,
     refetchOnWindowFocus: true,
@@ -4405,43 +4398,17 @@ export default function POSPage() {
         })),
       };
 
-      // Función helper para encolar offline y devolver resultado fake
-      const toOffline = async () => {
+      // Si offline → encolar localmente
+      if (!navigator.onLine) {
         const offlineId = await enqueue(payload);
         return {
           id:    -1,
           folio: `POS-OFFLINE-${offlineId.slice(-6).toUpperCase()}`,
           _offline: true,
         } as any;
-      };
-
-      // Si offline → encolar localmente inmediatamente
-      if (!navigator.onLine) return toOffline();
-
-      // Timeout de 8s con AbortController — cuando hay WiFi sin internet el SW puede
-      // interceptar el fetch y colgar indefinidamente sin nunca resolver la promesa.
-      const controller = new AbortController();
-      const tid = setTimeout(() => controller.abort(), 8000);
-
-      let factura: any;
-      try {
-        factura = await (api.post('/facturas', payload, { signal: controller.signal }) as Promise<any>)
-          .then((r: any) => r.data.data);
-        clearTimeout(tid);
-      } catch (createErr: any) {
-        clearTimeout(tid);
-        const isNetworkErr =
-          createErr?.code === 'ERR_CANCELED'  ||  // axios AbortController
-          createErr?.name === 'CanceledError' ||
-          createErr?.code === 'ERR_NETWORK'   ||  // sin internet
-          createErr?.code === 'ECONNABORTED'  ||  // timeout TCP
-          createErr?.name === 'AbortError'    ||  // fetch nativo abortado
-          createErr?.response?.data?.offline === true ||  // SW 503
-          createErr?.response?.status === 503 ||
-          !navigator.onLine;
-        if (isNetworkErr) return toOffline();
-        throw createErr; // error real del servidor (4xx, 500) → onError
       }
+
+      const factura = await facturasApi.create(payload);
 
       // Emitir desde POS (síncrono 8s — la venta no se bloquea si tu proveedor e-CF falla)
       setEcfStatus('loading');
@@ -4727,8 +4694,7 @@ export default function POSPage() {
   const necesitaRnc  = tipoExigeRnc && !clienteTieneRNC;
   const rncValido    = clienteTieneRNC || /^\d{9}$|^\d{11}$/.test(rncComprador);
   const canPay       = tipoPagoPos === 'CREDITO' || metodoPago !== 'efectivo' || montoRecibido >= totalAPagar;
-  // Offline: no se puede verificar la caja → permitir cobro (se guarda en IndexedDB)
-  const cajaAbierta  = isOffline || cajaActivaHoy?.estado === 'abierta';
+  const cajaAbierta  = cajaActivaHoy?.estado === 'abierta';
   // Crédito requiere cliente real seleccionado (no consumidor final por defecto)
   const clienteParaCredito = tipoPagoPos === 'CONTADO' || clienteId != null;
   const canCheckout  = canPay && (!tipoExigeRnc || rncValido) && cajaAbierta && clienteParaCredito;
@@ -5577,18 +5543,7 @@ export default function POSPage() {
                 </motion.div>
               )}
             </AnimatePresence>
-            {/* Banner modo sin conexión */}
-            {isOffline && (
-              <div style={{ background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 8,
-                padding: '8px 12px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 16 }}>📶</span>
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#92400E' }}>Modo sin conexión</div>
-                  <div style={{ fontSize: 11, color: '#B45309' }}>La venta se guardará localmente y se sincronizará al reconectar</div>
-                </div>
-              </div>
-            )}
-            {!cajaAbierta && !isOffline && (
+            {!cajaAbierta && (
               <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8,
                 padding: '8px 12px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 16 }}>🔒</span>
@@ -5599,21 +5554,19 @@ export default function POSPage() {
               </div>
             )}
             <Tooltip
-              title={!cajaAbierta && !isOffline ? 'Debes abrir la caja diaria antes de facturar' : necesitaRnc && !rncValido ? 'Ingresa el RNC del comprador para continuar' : ''}
+              title={!cajaAbierta ? 'Debes abrir la caja diaria antes de facturar' : necesitaRnc && !rncValido ? 'Ingresa el RNC del comprador para continuar' : ''}
             >
               <motion.button whileTap={{ scale: canCheckout ? 0.97 : 1 }}
                 onClick={() => { if (canCheckout) ventaMut.mutate(); }}
                 disabled={ventaMut.isPending || !canCheckout}
-                style={{ width: '100%', height: 46, borderRadius: 11, border: 'none', background: !canCheckout ? '#D1D5DB' : isOffline ? 'linear-gradient(135deg,#D97706,#F59E0B)' : 'linear-gradient(135deg,#059669,#10B981)', color: !canCheckout ? '#9CA3AF' : '#fff', fontSize: 14, fontWeight: 700, cursor: !canCheckout ? 'not-allowed' : 'pointer', boxShadow: !canCheckout ? 'none' : isOffline ? '0 4px 14px rgba(217,119,6,.35)' : '0 4px 14px rgba(16,185,129,.35)', outline: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, letterSpacing: '0.2px' }}>
+                style={{ width: '100%', height: 46, borderRadius: 11, border: 'none', background: !canCheckout ? '#D1D5DB' : 'linear-gradient(135deg,#059669,#10B981)', color: !canCheckout ? '#9CA3AF' : '#fff', fontSize: 14, fontWeight: 700, cursor: !canCheckout ? 'not-allowed' : 'pointer', boxShadow: !canCheckout ? 'none' : '0 4px 14px rgba(16,185,129,.35)', outline: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, letterSpacing: '0.2px' }}>
                 {ventaMut.isPending
                   ? (<><span style={{ fontSize: 16 }}>⏳</span>
                       {ecfStatus === 'loading'
                         ? 'Enviando comprobante a DGII...'
                         : 'Procesando venta...'}
                      </>)
-                  : isOffline
-                    ? (<><span style={{ fontSize: 16 }}>💾</span> Guardar offline · {fmt.money(totalEfectivo)}</>)
-                    : (<><span style={{ fontSize: 16 }}>✓</span> Confirmar cobro · {fmt.money(totalEfectivo)}</>)}
+                  : (<><span style={{ fontSize: 16 }}>✓</span> Confirmar cobro · {fmt.money(totalEfectivo)}</>)}
               </motion.button>
             </Tooltip>
           </div>
