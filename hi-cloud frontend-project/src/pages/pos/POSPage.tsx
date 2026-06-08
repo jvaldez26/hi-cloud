@@ -1235,9 +1235,12 @@ function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir }: {
   const intervalRef  = useRef<ReturnType<typeof setInterval>  | null>(null);
   const printTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // QR generado aquí para incluirlo en el HTML antes de imprimir
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  // QR generado aquí para incluirlo en el HTML antes de imprimir.
+  // undefined = cargando, null = no hay QR (o falló), string = QR listo
+  const [qrDataUrl, setQrDataUrl] = useState<string | null | undefined>(undefined);
+  const autoPrintedFolioRef = useRef<string | null>(null);
   useEffect(() => {
+    setQrDataUrl(undefined); // reset al cambiar de venta — indica "cargando"
     if (!sale?.qrUrl || sale.ecfPendiente) { setQrDataUrl(null); return; }
     QRCode.toDataURL(sale.qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' })
       .then(setQrDataUrl).catch(() => setQrDataUrl(null));
@@ -1262,19 +1265,24 @@ function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir }: {
     return cancelarContador;
   }, [sale]);
 
-  // Auto-imprimir: esperar 400ms para que el QR esté listo
+  // Auto-imprimir: esperar a que qrDataUrl esté resuelto (no undefined) antes de imprimir.
+  // autoPrintedFolioRef evita imprimir más de una vez por venta cuando qrDataUrl cambia de
+  // undefined → null/string y re-dispara este effect.
   useEffect(() => {
     if (!sale || !autoImprimir) return;
+    if (qrDataUrl === undefined) return; // QR aún cargando — esperar
+    if (autoPrintedFolioRef.current === sale.folio) return; // ya imprimimos esta venta
+    autoPrintedFolioRef.current = sale.folio;
     const t = setTimeout(() => {
       cancelarContador();
       imprimirReciboTermico(buildReciboTermicoHTML(sale, qrDataUrl), onNueva);
     }, 400);
     return () => clearTimeout(t);
-  }, [sale?.folio, autoImprimir]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sale?.folio, autoImprimir, qrDataUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePrint = () => {
     cancelarContador();
-    imprimirReciboTermico(buildReciboTermicoHTML(sale!, qrDataUrl), onNueva);
+    imprimirReciboTermico(buildReciboTermicoHTML(sale!, qrDataUrl ?? null), onNueva);
   };
 
 
