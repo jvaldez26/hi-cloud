@@ -10,7 +10,7 @@ import { Table, Button, Input, Space, Tag, Modal, Form, Row, Col,
 import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
          WarningOutlined, PictureOutlined, UploadOutlined, LinkOutlined,
          FileExcelOutlined, BarcodeOutlined, AppstoreOutlined,
-         CloseOutlined } from '@ant-design/icons';
+         CloseOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import { TableActions } from '../../components/ui/TableActions';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -408,9 +408,12 @@ function ProductosCatalogo() {
   const [preview,    setPreview]    = useState('');
   const [uploading,  setUploading]  = useState(false);
   const [form]                      = Form.useForm<ProductoPayload>();
-  const tipoWatch = Form.useWatch('tipo', form) ?? 'producto';
+  const tipoWatch  = Form.useWatch('tipo',          form) ?? 'producto';
+  const itbisWatch = Form.useWatch('porcentajeIva', form) ?? 18;
   const esServicio = tipoWatch === 'servicio';
-  const [fieldErrors, setFieldErrors] = useState<{ codigo?: string; nombre?: string }>({});
+  const [fieldErrors,      setFieldErrors]      = useState<{ codigo?: string; nombre?: string }>({});
+  const [precioConItbis,   setPrecioConItbis]   = useState(false);
+  const [precioInput,      setPrecioInput]       = useState(0);
   const qc = useQueryClient();
 
   const puedeCrear    = useCanDo('productos:crear');
@@ -463,19 +466,25 @@ function ProductosCatalogo() {
 
   const openCreate = () => {
     setEditing(null); form.resetFields(); setPreview(''); setFieldErrors({});
-    // Auto-seleccionar almacén si hay exactamente uno
+    setPrecioInput(0); setPrecioConItbis(false);
     if (almacenes.length === 1) form.setFieldValue('almacenId', almacenes[0].id);
     setOpen(true);
   };
   const openEdit = (p: Producto) => {
     setEditing(p); form.setFieldsValue(p); setPreview(p.imagenUrl ?? ''); setFieldErrors({});
-    // Si solo hay un almacén y no tiene almacenId asignado, auto-seleccionarlo
+    setPrecioInput(p.precio ?? 0); setPrecioConItbis(false);
     if (almacenes.length === 1 && !(p as any).almacenId) form.setFieldValue('almacenId', almacenes[0].id);
     setOpen(true);
   };
-  const closeModal = () => { setOpen(false); setEditing(null); form.resetFields(); setPreview(''); setFieldErrors({}); };
+  const closeModal = () => {
+    setOpen(false); setEditing(null); form.resetFields(); setPreview(''); setFieldErrors({});
+    setPrecioInput(0); setPrecioConItbis(false);
+  };
   const handleSubmit = (values: ProductoPayload) => {
-    const payload: ProductoPayload = { ...values };
+    if (precioInput <= 0) { message.error('El precio es requerido'); return; }
+    const itbis  = values.porcentajeIva ?? 18;
+    const pBase  = precioConItbis ? precioInput / (1 + itbis / 100) : precioInput;
+    const payload: ProductoPayload = { ...values, precio: pBase };
     if (values.tipo === 'servicio') {
       payload.stock = undefined;
       payload.stockMinimo = undefined;
@@ -635,9 +644,94 @@ function ProductosCatalogo() {
               </Form.Item>
             </Col>
             <Col xs={24} sm={8}>
-              <Form.Item name="precio" label="Precio (RD$)" rules={[{ required: true }]}>
-                <InputNumber style={{ width: '100%' }} min={0.01} precision={2} />
-              </Form.Item>
+              {/* ── Precio con toggle "Con ITBIS" ── */}
+              {(() => {
+                const pBase   = precioConItbis ? precioInput / (1 + itbisWatch / 100) : precioInput;
+                const mItbis  = pBase * (itbisWatch / 100);
+                const pFinal  = pBase + mItbis;
+                return (
+                  <Form.Item
+                    label={
+                      <span>
+                        Precio (RD$){' '}
+                        <Tooltip title="Si tu proveedor te da el precio con ITBIS incluido, activa 'Con ITBIS' y el sistema calculará el precio base automáticamente. El sistema siempre guarda y factura el precio SIN ITBIS.">
+                          <QuestionCircleOutlined style={{ color: '#9CA3AF', marginLeft: 4 }} />
+                        </Tooltip>
+                      </span>
+                    }
+                    required
+                  >
+                    <Space.Compact style={{ width: '100%' }}>
+                      <InputNumber
+                        style={{ width: 'calc(100% - 120px)' }}
+                        value={precioInput || undefined}
+                        onChange={v => setPrecioInput(Number(v) || 0)}
+                        formatter={v => v ? `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''}
+                        parser={v => (v ?? '').replace(/,/g, '') as any}
+                        min={0}
+                        precision={2}
+                        placeholder="0.00"
+                      />
+                      <Button
+                        type={precioConItbis ? 'primary' : 'default'}
+                        onClick={() => setPrecioConItbis(p => !p)}
+                        style={{ width: 120 }}
+                        title={precioConItbis
+                          ? 'Click para indicar que el precio NO incluye ITBIS'
+                          : 'Click si el precio YA incluye ITBIS'}
+                      >
+                        {precioConItbis ? '✓ Con ITBIS' : 'Sin ITBIS'}
+                      </Button>
+                    </Space.Compact>
+                    {precioInput > 0 && itbisWatch > 0 && (
+                      <div style={{
+                        marginTop: 6, padding: '6px 10px',
+                        background: precioConItbis ? '#EFF6FF' : '#F0FDF4',
+                        border: `1px solid ${precioConItbis ? '#BFDBFE' : '#BBF7D0'}`,
+                        borderRadius: 6, fontSize: 12,
+                      }}>
+                        {precioConItbis ? (
+                          <>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <span style={{ color: '#6B7280' }}>Precio sin ITBIS:</span>
+                              <span style={{ fontWeight: 600, color: '#1D4ED8' }}>
+                                RD${pBase.toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <span style={{ color: '#6B7280' }}>ITBIS ({itbisWatch}%):</span>
+                              <span style={{ color: '#6B7280' }}>
+                                RD${mItbis.toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #BFDBFE', marginTop: 4, paddingTop: 4 }}>
+                              <span style={{ color: '#6B7280' }}>Se guardará como precio base:</span>
+                              <span style={{ fontWeight: 700, color: '#1D4ED8' }}>
+                                RD${pBase.toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <span style={{ color: '#6B7280' }}>ITBIS ({itbisWatch}%):</span>
+                              <span style={{ color: '#6B7280' }}>
+                                +RD${mItbis.toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <span style={{ color: '#6B7280' }}>Precio final al cliente:</span>
+                              <span style={{ fontWeight: 600, color: '#16A34A' }}>
+                                RD${pFinal.toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </Form.Item>
+                );
+              })()}
             </Col>
             <Col xs={24} sm={8}>
               <Form.Item name="porcentajeIva" label="ITBIS %">
