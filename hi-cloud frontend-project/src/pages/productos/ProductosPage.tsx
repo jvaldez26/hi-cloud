@@ -487,7 +487,8 @@ function ProductosCatalogo() {
       ? Math.round((precioInput / (1 + itbis / 100)) * 100) / 100
       : precioInput;
     const payload: ProductoPayload = { ...values, precio: pBase };
-    if (!payload.codigo) delete (payload as any).codigo; // no enviar cadena vacía
+    // no enviar cadena vacía ni valores basura
+    if (!payload.codigo || payload.codigo === 'undefined' || payload.codigo === 'null') delete (payload as any).codigo;
     if (values.tipo === 'servicio') {
       payload.stock = undefined;
       payload.stockMinimo = undefined;
@@ -613,8 +614,8 @@ function ProductosCatalogo() {
                 <Input
                   onChange={() => setFieldErrors(prev => ({ ...prev, codigo: undefined }))}
                   onBlur={async e => {
-                    const val = e.target.value.trim();
-                    if (!val) return;
+                    const val = e.target.value?.trim() ?? '';
+                    if (!val || val === 'undefined' || val === 'null') return;
                     try {
                       const qs = editing ? `&excludeId=${editing.id}` : '';
                       const r = await api.get(`/productos/check-duplicado?campo=codigo&valor=${encodeURIComponent(val)}${qs}`);
