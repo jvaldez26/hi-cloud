@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useMobile } from '../../hooks/useMediaQuery';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { TableActions } from '../../components/ui/TableActions';
 import { DetailDrawer } from '../../components/ui/DetailDrawer';
@@ -42,7 +43,8 @@ function avatarColor(name: string) {
 }
 
 export default function CajaPage() {
-  const { token } = theme.useToken();
+  const { token }  = theme.useToken();
+  const isMobile   = useMobile();
   const [cerrarTarget, setCerrarTarget] = useState<{
     id: number; nombre: string;
     saldoEsperado: number; saldoApertura: number;
@@ -222,14 +224,20 @@ h2{text-align:center;font-size:16px;margin:0 0 4px}
             <RefreshByKeyButton queryKey={['caja-hoy']} />
             <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <VideoTutorialButton />
-            <Button type="primary" icon={<UnlockOutlined />} onClick={() => {
-              setOpenAbrir(true);
-              form.setFieldsValue({
-                saldoApertura: 0,
-                vendedorId: esAdmin ? undefined : user?.id,
-                notas: undefined,
-              });
-            }}>
+            <Button
+              type="primary"
+              icon={<UnlockOutlined />}
+              size={isMobile ? 'large' : 'middle'}
+              block={isMobile}
+              onClick={() => {
+                setOpenAbrir(true);
+                form.setFieldsValue({
+                  saldoApertura: 0,
+                  vendedorId: esAdmin ? undefined : user?.id,
+                  notas: undefined,
+                });
+              }}
+            >
               Abrir caja
             </Button>
           </Space>

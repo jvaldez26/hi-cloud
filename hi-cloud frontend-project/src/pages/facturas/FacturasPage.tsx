@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { useMobile } from '../../hooks/useMediaQuery';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -12,7 +13,7 @@ import {
   CheckCircleOutlined, CloseCircleOutlined, DeleteOutlined,
   FilePdfOutlined, LoadingOutlined, ReloadOutlined, SearchOutlined,
   FileExcelOutlined, FilterOutlined, CopyOutlined, ControlOutlined,
-  EditOutlined, MailOutlined,
+  EditOutlined, MailOutlined, FileTextOutlined, RightOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -80,6 +81,7 @@ export default function FacturasPage() {
   const { token } = theme.useToken();
   const navigate  = useNavigate();
   const qc        = useQueryClient();
+  const isMobile  = useMobile();
 
   // Permisos del rol activo
   const puedeCrear    = useCanDo('facturas:crear');
@@ -591,28 +593,95 @@ export default function FacturasPage() {
         )}
       </Modal>
 
-      {/* ── Tabla — scroll interno para que la página no desborde ── */}
-      <Table
-        columns={filterColumns(columns)}
-        dataSource={resumen}
-        rowKey="id"
-        loading={isLoading}
-        size="small"
-        scroll={{ x: 'max-content' }}
-        onRow={r => ({
-          style: { cursor: 'pointer' },
-          onDoubleClick: () => navigate(`/facturas/${r.id}`),
-        })}
-        pagination={{
-          total:         data?.meta.total,
-          pageSize:      15,
-          current:       page,
-          onChange:      (p) => setPage(p),
-          showTotal:     (t) => `${t.toLocaleString('es-DO')} facturas`,
-          showSizeChanger: false,
-          size:          'small',
-        }}
-      />
+      {/* ── Vista mobile: cards ── */}
+      {isMobile ? (
+        <div>
+          {isLoading ? (
+            <div style={{ padding: 24, textAlign: 'center' }}><span>Cargando...</span></div>
+          ) : resumen.length === 0 ? (
+            <div style={{ padding: 32, textAlign: 'center', color: token.colorTextSecondary }}>
+              Sin facturas
+            </div>
+          ) : (
+            resumen.map((f) => (
+              <div
+                key={f.id}
+                onClick={() => navigate(`/facturas/${f.id}`)}
+                style={{
+                  border: `1px solid ${token.colorBorderSecondary}`,
+                  borderRadius: 10, padding: '12px 14px', marginBottom: 10,
+                  background: token.colorBgContainer, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 12,
+                }}
+              >
+                <div style={{
+                  width: 40, height: 40, borderRadius: 8, background: '#EFF6FF',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                }}>
+                  <FileTextOutlined style={{ color: '#0EA5E9', fontSize: 18 }} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
+                    <Text strong style={{ fontSize: 13 }} ellipsis>
+                      {(f as any).cliente?.nombre ?? 'Consumidor Final'}
+                    </Text>
+                    <Text strong style={{ fontSize: 13, color: token.colorPrimary, flexShrink: 0 }}>
+                      {fmt.moneyM(Number(f.total ?? 0), (f as any).moneda)}
+                    </Text>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 3 }}>
+                    <Text style={{ fontSize: 11, fontFamily: 'monospace', color: token.colorTextSecondary }}>
+                      {f.folio}
+                    </Text>
+                    <Text style={{ fontSize: 11, color: token.colorTextTertiary }}>
+                      {f.fecha ? dayjs(f.fecha).format('DD/MM/YY') : ''}
+                    </Text>
+                    <Tag
+                      color={estadoColor[f.estado]}
+                      style={{ fontSize: 10, margin: 0, padding: '0 6px' }}
+                    >
+                      {f.estado?.toUpperCase()}
+                    </Tag>
+                  </div>
+                </div>
+                <RightOutlined style={{ color: token.colorTextTertiary, flexShrink: 0 }} />
+              </div>
+            ))
+          )}
+          {data?.meta && (
+            <div style={{ textAlign: 'center', padding: '8px 0' }}>
+              <Space>
+                <Button size="small" disabled={page === 1} onClick={() => setPage(p => p - 1)}>‹ Anterior</Button>
+                <Text style={{ fontSize: 12 }}>{page} / {Math.ceil((data.meta.total ?? 0) / 15)}</Text>
+                <Button size="small" disabled={page * 15 >= (data.meta.total ?? 0)} onClick={() => setPage(p => p + 1)}>Siguiente ›</Button>
+              </Space>
+            </div>
+          )}
+        </div>
+      ) : (
+        /* ── Tabla — scroll interno para que la página no desborde ── */
+        <Table
+          columns={filterColumns(columns)}
+          dataSource={resumen}
+          rowKey="id"
+          loading={isLoading}
+          size="small"
+          scroll={{ x: 'max-content' }}
+          onRow={r => ({
+            style: { cursor: 'pointer' },
+            onDoubleClick: () => navigate(`/facturas/${r.id}`),
+          })}
+          pagination={{
+            total:         data?.meta.total,
+            pageSize:      15,
+            current:       page,
+            onChange:      (p) => setPage(p),
+            showTotal:     (t) => `${t.toLocaleString('es-DO')} facturas`,
+            showSizeChanger: false,
+            size:          'small',
+          }}
+        />
+      )}
     </Card>
   );
 }

@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { useMobile } from '../../hooks/useMediaQuery';
 import { useRncLookup } from '../../hooks/useRncLookup';
 import RncBadge from '../../components/ui/RncBadge';
 import { useNavigate } from 'react-router-dom';
@@ -33,6 +34,7 @@ const SECTORES = ['Comercio', 'Servicios', 'Manufactura', 'Construcción', 'Salu
 export default function ClientesPage() {
   const navigate    = useNavigate();
   const { token }   = theme.useToken();
+  const isMobile    = useMobile();
 
   const puedeCrear        = useCanDo('clientes:crear');
   const puedeEliminar     = useCanDo('clientes:eliminar');
@@ -234,16 +236,69 @@ export default function ClientesPage() {
         </Col>
       </Row>
 
-      <Table
-        columns={filterColumns(columns)} dataSource={data?.data ?? []} rowKey="id"
-        loading={isLoading} size="small"
-        scroll={{ x: 'max-content' }}
-        pagination={{
-          total: data?.meta.total, pageSize: 15, current: page,
-          onChange: setPage, showTotal: t => `${t.toLocaleString('es-DO')} clientes`,
-          showSizeChanger: false, size: 'small',
-        }}
-      />
+      {isMobile ? (
+        <div>
+          {(data?.data ?? []).map((c: Cliente) => (
+            <div
+              key={c.id}
+              style={{
+                border: `1px solid ${token.colorBorderSecondary}`,
+                borderRadius: 10, padding: '12px 14px', marginBottom: 10,
+                background: token.colorBgContainer,
+                display: 'flex', alignItems: 'center', gap: 12,
+              }}
+            >
+              <Avatar
+                size={42}
+                style={{ background: token.colorPrimary, flexShrink: 0, fontWeight: 600 }}
+              >
+                {c.nombre.charAt(0).toUpperCase()}
+              </Avatar>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Text strong style={{ fontSize: 14 }}>{c.nombre}</Text>
+                {c.rfc && <div><Text style={{ fontSize: 11, color: token.colorTextSecondary }}>{c.rfc}</Text></div>}
+                {c.telefono && (
+                  <div><Text style={{ fontSize: 11, color: token.colorTextTertiary }}>
+                    <PhoneOutlined style={{ marginRight: 4 }} />{c.telefono}
+                  </Text></div>
+                )}
+              </div>
+              <Space size={4}>
+                <Button
+                  size="small"
+                  icon={<EyeOutlined />}
+                  onClick={() => navigate(`/clientes/${c.id}/estado-cuenta`)}
+                />
+                <Button
+                  size="small"
+                  icon={<EditOutlined />}
+                  onClick={() => openEdit(c)}
+                />
+              </Space>
+            </div>
+          ))}
+          {data?.meta && (
+            <div style={{ textAlign: 'center', padding: '8px 0' }}>
+              <Space>
+                <Button size="small" disabled={page === 1} onClick={() => setPage(p => p - 1)}>‹ Anterior</Button>
+                <Text style={{ fontSize: 12 }}>{page} / {Math.ceil((data.meta.total ?? 0) / 15)}</Text>
+                <Button size="small" disabled={page * 15 >= (data.meta.total ?? 0)} onClick={() => setPage(p => p + 1)}>Siguiente ›</Button>
+              </Space>
+            </div>
+          )}
+        </div>
+      ) : (
+        <Table
+          columns={filterColumns(columns)} dataSource={data?.data ?? []} rowKey="id"
+          loading={isLoading} size="small"
+          scroll={{ x: 'max-content' }}
+          pagination={{
+            total: data?.meta.total, pageSize: 15, current: page,
+            onChange: setPage, showTotal: t => `${t.toLocaleString('es-DO')} clientes`,
+            showSizeChanger: false, size: 'small',
+          }}
+        />
+      )}
 
       {/* Modal: Portal del cliente */}
       <Modal

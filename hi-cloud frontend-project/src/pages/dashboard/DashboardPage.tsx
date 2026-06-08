@@ -4,6 +4,7 @@ import {
   LineChartOutlined, BarChartOutlined, DownloadOutlined,
 } from '@ant-design/icons';
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useMobile } from '../../hooks/useMediaQuery';
 import { useQueryClient } from '@tanstack/react-query';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -107,6 +108,7 @@ function DashboardAdmin() {
   const navigate  = useNavigate();
   const { token } = theme.useToken();
   const qc        = useQueryClient();
+  const isMobile  = useMobile();
   const [grupoAbierto,  setGrupoAbierto]  = useState(true);
   const [chartTipo,     setChartTipo]     = useState<'line' | 'bar'>('line');
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -462,7 +464,7 @@ function DashboardAdmin() {
             </div>
             {/* Gráfico */}
             <div ref={chartContainerRef} style={{ padding: '0 8px 16px' }}>
-              <ResponsiveContainer width="100%" height={240}>
+              <ResponsiveContainer width="100%" height={isMobile ? 200 : 240}>
                 {chartTipo === 'line' ? (
                   <LineChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: 10 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke={token.colorBorderSecondary} vertical={false} />
@@ -586,7 +588,7 @@ function DashboardAdmin() {
       {/* ══ Fila 2: Antigüedad CxC | Antigüedad CxP | Resumen Gastos ══ */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(3, 1fr)',
+        gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
         gap: 16,
         marginTop: 16,
       }}
