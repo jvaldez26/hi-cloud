@@ -604,7 +604,7 @@ function ProductosCatalogo() {
 
           <Row gutter={16}>
             <Col xs={24} sm={8}>
-              <Form.Item name="codigo" label="Código" rules={[{ required: true }]}
+              <Form.Item name="codigo" label="Código"
                 validateStatus={fieldErrors.codigo ? 'error' : undefined}
                 help={fieldErrors.codigo}>
                 <Input
