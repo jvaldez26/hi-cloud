@@ -2,7 +2,7 @@ import {
   Injectable, NotFoundException, BadRequestException, Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, IsNull } from 'typeorm';
+import { Repository, DataSource, IsNull, Not } from 'typeorm';
 import { CierreCaja, EstadoCierre } from './entities/cierre-caja.entity';
 import { TenantService } from '../tenant/tenant.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -365,7 +365,7 @@ export class CajaService {
 
   async getHistorial(page = 1, limit = 20, vendedorId?: number) {
     const empresaId = this.tenantService.getEmpresaId();
-    const where: any = { empresaId };
+    const where: any = { empresaId, estado: Not(EstadoCierre.ABIERTA) };
     if (vendedorId !== undefined) {
       where.vendedorId = vendedorId === 0 ? IsNull() : vendedorId;
     }

@@ -56,6 +56,7 @@ export default function CajaPage() {
   const [detalleCierre, setDetalleCierre] = useState<any>(null);
   const [saldoFisicoInput, setSaldoFisicoInput] = useState<number>(0);
   const [openAbrir, setOpenAbrir] = useState(false);
+  const [histPage, setHistPage] = useState(1);
   const [form]       = Form.useForm();
   const [formAnular] = Form.useForm();
   const qc = useQueryClient();
@@ -91,8 +92,8 @@ export default function CajaPage() {
   });
 
   const { data: historial } = useQuery({
-    queryKey: ['caja-hist'],
-    queryFn:  () => cajaApi.historial(),
+    queryKey: ['caja-hist', histPage],
+    queryFn:  () => cajaApi.historial(histPage),
   });
 
   const mes  = dayjs().month() + 1;
@@ -142,12 +143,11 @@ export default function CajaPage() {
       ? (cajaData as any).cajas
       : [(cajaData as any)];
 
-  // BUG FIX: El historial solo muestra cierres completados (NO abierta)
-  // Una caja con estado 'abierta' es el turno activo, no un cierre del historial
   const [searchHistorial, setSearchHistorial] = useState('');
 
+  // El backend ya excluye 'abierta' — solo filtro local de búsqueda
   const historialCerrados = useMemo(() => {
-    const base = (historial?.data ?? []).filter((r: any) => r.estado !== 'abierta');
+    const base: any[] = historial?.data ?? [];
     if (!searchHistorial.trim()) return base;
     const q = searchHistorial.toLowerCase();
     return base.filter((r: any) =>
@@ -364,7 +364,14 @@ h2{text-align:center;font-size:16px;margin:0 0 4px}
         <Table size="small" scroll={{ x: 'max-content' }}
           dataSource={historialCerrados}
           rowKey="id"
-          pagination={{ pageSize: 10, showSizeChanger: false }}
+          pagination={{
+            current: histPage,
+            pageSize: 20,
+            total: historial?.meta?.total ?? 0,
+            showTotal: (t: number) => `${t} cierres`,
+            showSizeChanger: false,
+            onChange: (p: number) => { setHistPage(p); setSearchHistorial(''); },
+          }}
           columns={filterColumns([
             { title: 'Fecha',  dataIndex: 'fecha',  width: 100, render: (v: string) => fmt.date(v) },
             {
