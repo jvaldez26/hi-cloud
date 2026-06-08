@@ -10,7 +10,7 @@ import {
   MaxLength,
   IsIn,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 
 export class CreateProductoDto {
   @IsOptional()
@@ -19,6 +19,10 @@ export class CreateProductoDto {
   tipo?: string;
 
   @IsOptional()
+  @Transform(({ value }) => {
+    if (!value || value === 'undefined' || value === 'null' || !String(value).trim()) return undefined;
+    return String(value).trim();
+  })
   @IsString()
   @MaxLength(30)
   codigo?: string;

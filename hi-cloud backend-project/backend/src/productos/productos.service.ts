@@ -67,12 +67,18 @@ export class ProductosService {
     const empresaId = this.tenantService.getEmpresaId();
     await this.limitesService.verificarLimiteProductos(empresaId);
 
-    const [byCodigo, byNombre] = await Promise.all([
-      this.productoRepository.findOne({ where: { codigo: dto.codigo, empresaId, isActive: true } }),
-      this.productoRepository.findOne({ where: { nombre: dto.nombre, empresaId, isActive: true } }),
-    ]);
-    if (byCodigo) throw new ConflictException(`Ya existe un producto con el código '${dto.codigo}'`);
+    // Sanitizar código: undefined/null/vacío/string-literal → undefined para no hacer query con valor basura
+    if (!dto.codigo || dto.codigo === 'undefined' || dto.codigo === 'null' || !dto.codigo.trim()) {
+      dto.codigo = undefined;
+    }
+
+    const byNombre = await this.productoRepository.findOne({ where: { nombre: dto.nombre, empresaId, isActive: true } });
     if (byNombre) throw new ConflictException(`Ya existe un producto con el nombre '${dto.nombre}'`);
+
+    if (dto.codigo) {
+      const byCodigo = await this.productoRepository.findOne({ where: { codigo: dto.codigo, empresaId, isActive: true } });
+      if (byCodigo) throw new ConflictException(`Ya existe un producto con el código '${dto.codigo}'`);
+    }
 
     const { almacenId, ...productoData } = dto;
     const producto = this.productoRepository.create({ ...productoData, empresaId });
@@ -149,6 +155,11 @@ export class ProductosService {
   async update(id: number, dto: UpdateProductoDto) {
     const empresaId = this.tenantService.getEmpresaId();
     const producto  = await this.findOne(id);
+
+    // Sanitizar código: undefined/null/vacío/string-literal → undefined
+    if (dto.codigo !== undefined && (!dto.codigo || dto.codigo === 'undefined' || dto.codigo === 'null' || !dto.codigo.trim())) {
+      dto.codigo = undefined;
+    }
 
     if (dto.codigo && dto.codigo !== producto.codigo) {
       const codExists = await this.productoRepository.findOne({
