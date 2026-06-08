@@ -899,9 +899,12 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
           { name: 'posVale',           label: 'Vale / cortesía' },
         ].map(t => (
           <Col xs={12} sm={8} key={t.name}>
-            <Form.Item name={t.name} valuePropName="checked" style={{ marginBottom: 4 }}>
-              <Switch size="small" /> <Text style={{ marginLeft: 8 }}>{t.label}</Text>
-            </Form.Item>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <Form.Item name={t.name} valuePropName="checked" style={{ marginBottom: 0 }}>
+                <Switch size="small" />
+              </Form.Item>
+              <Text style={{ fontSize: 13 }}>{t.label}</Text>
+            </div>
           </Col>
         ))}
       </Row>
@@ -909,9 +912,12 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
       <Divider orientation="left" orientationMargin={0}>Comportamiento</Divider>
       <Row gutter={[16, 8]}>
         <Col xs={24} sm={12}>
-          <Form.Item name="posPropinaActiva" valuePropName="checked" style={{ marginBottom: 4 }}>
-            <Switch size="small" /> <Text style={{ marginLeft: 8 }}>Propina activada</Text>
-          </Form.Item>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <Form.Item name="posPropinaActiva" valuePropName="checked" style={{ marginBottom: 0 }}>
+              <Switch size="small" />
+            </Form.Item>
+            <Text style={{ fontSize: 13 }}>Propina activada</Text>
+          </div>
         </Col>
         {propinaActiva && (
           <Col xs={24} sm={8}>
@@ -921,20 +927,28 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
           </Col>
         )}
         <Col xs={24} sm={12}>
-          <Form.Item name="posImpresionAuto" valuePropName="checked" style={{ marginBottom: 4 }}>
-            <Switch size="small" /> <Text style={{ marginLeft: 8 }}>Imprimir ticket automáticamente al cerrar venta</Text>
-          </Form.Item>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <Form.Item name="posImpresionAuto" valuePropName="checked" style={{ marginBottom: 0 }}>
+              <Switch size="small" />
+            </Form.Item>
+            <Text style={{ fontSize: 13 }}>Imprimir ticket automáticamente al cerrar venta</Text>
+          </div>
         </Col>
         <Col xs={24} sm={12}>
-          <Form.Item name="posConfirmarAnulacion" valuePropName="checked" style={{ marginBottom: 4 }}>
-            <Switch size="small" /> <Text style={{ marginLeft: 8 }}>Pedir confirmación antes de anular venta</Text>
-          </Form.Item>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <Form.Item name="posConfirmarAnulacion" valuePropName="checked" style={{ marginBottom: 0 }}>
+              <Switch size="small" />
+            </Form.Item>
+            <Text style={{ fontSize: 13 }}>Pedir confirmación antes de anular venta</Text>
+          </div>
         </Col>
         <Col xs={24} sm={12}>
-          <Form.Item name="posModoContingencia" valuePropName="checked" style={{ marginBottom: 4 }}>
-            <Switch size="small" style={{ background: modoContingencia ? '#faad14' : undefined }} />
-            <Text style={{ marginLeft: 8 }}>Modo contingencia</Text>
-          </Form.Item>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <Form.Item name="posModoContingencia" valuePropName="checked" style={{ marginBottom: 0 }}>
+              <Switch size="small" style={{ background: modoContingencia ? '#faad14' : undefined }} />
+            </Form.Item>
+            <Text style={{ fontSize: 13 }}>Modo contingencia</Text>
+          </div>
         </Col>
         <Col xs={24} sm={10}>
           <Form.Item name="posCedulaMonto" label="Requerir cédula en ventas mayores a">
