@@ -44,6 +44,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     if (exception instanceof HttpException) {
       status = exception.getStatus();
       const res = exception.getResponse();
+      let extra: Record<string, unknown> | undefined;
       if (typeof res === 'string') {
         message = res;
       } else if (typeof res === 'object' && res !== null) {
@@ -58,8 +59,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
         } else {
           message = exception.message;
         }
+        // Preservar campos extra del body (ej: remainingSeconds para bloqueo de login)
+        const { message: _m, statusCode: _s, error: _e, mensaje: _mj, ...rest } = resObj;
+        if (Object.keys(rest).length > 0) extra = rest;
       }
-      return this.send(response, request, status, message);
+      return this.send(response, request, status, message, extra);
     }
 
     // ── Errores de PostgreSQL (código de error estándar) ─────────────
@@ -125,14 +129,16 @@ export class HttpExceptionFilter implements ExceptionFilter {
     request: Request,
     status: number,
     message: string | string[],
+    extra?: Record<string, unknown>,
   ) {
     response.status(status).json({
-      success:   false,
+      success:    false,
       statusCode: status,
       timestamp:  new Date().toISOString(),
       path:       request.url,
       method:     request.method,
       errors:     Array.isArray(message) ? message : [message],
+      ...extra,
     });
   }
 }

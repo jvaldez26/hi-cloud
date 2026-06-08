@@ -5,7 +5,7 @@ import {
 import type { Request, Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { IsEmail, IsString, MinLength, MaxLength, Matches, IsInt, IsPositive } from 'class-validator';
-import { Throttle } from '@nestjs/throttler';
+import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
@@ -93,10 +93,17 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 10, ttl: 60_000 } }) // 10 intentos por minuto por IP
+  @SkipThrottle() // bloqueo progresivo propio por email+IP vía LoginAttemptsService
   @ApiOperation({ summary: 'Iniciar sesión — setea cookies httpOnly access_token + refresh_token' })
   async login(@Body() dto: LoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    const data = await this.authService.login(dto);
+    // Leer IP real del cliente (Nginx propaga X-Real-IP configurado como $remote_addr)
+    const ip = (
+      (req.headers['x-real-ip'] as string | undefined)?.trim()
+      ?? (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim()
+      ?? req.ip
+      ?? 'unknown'
+    );
+    const data = await this.authService.login(dto, ip);
 
     // Si 2FA está activo → guardar token temporal y pedir código TOTP
     if ('requiresTwoFactor' in data && data.requiresTwoFactor) {

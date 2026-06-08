@@ -8,6 +8,8 @@
   ForbiddenException,
   NotFoundException,
   Logger,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
@@ -27,6 +29,7 @@ import { ContabilidadService } from '../contabilidad/services/contabilidad.servi
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { UserRole } from '../users/enums/user-role.enum';
+import { LoginAttemptsService } from './login-attempts.service';
 
 @Injectable()
 export class AuthService implements OnModuleInit {
@@ -49,6 +52,7 @@ export class AuthService implements OnModuleInit {
     private sucursalRepository: Repository<Sucursal>,
     private contabilidadService: ContabilidadService,
     @InjectDataSource() private dataSource: DataSource,
+    private loginAttempts: LoginAttemptsService,
   ) {}
 
   async onModuleInit() {
@@ -248,33 +252,75 @@ export class AuthService implements OnModuleInit {
 
   // ─── Login ───────────────────────────────────────────────────────────────────
 
-  async login(dto: LoginDto) {
-    const user = await this.usersService.findByEmailForAuth(dto.email);
-    if (!user || !user.isActive) throw new UnauthorizedException('Credenciales inválidas');
+  async login(dto: LoginDto, ip: string) {
+    // 1. Verificar bloqueo activo antes de cualquier consulta a BD
+    const blockStatus = await this.loginAttempts.isBlocked(dto.email, ip);
+    if (blockStatus.blocked) {
+      const tiempo = this.loginAttempts.formatTime(blockStatus.remainingSeconds!);
+      throw new HttpException(
+        {
+          message:          `Cuenta temporalmente bloqueada. Intenta de nuevo en ${tiempo}.`,
+          remainingSeconds: blockStatus.remainingSeconds,
+          error:            'Too Many Requests',
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
 
-    const isValid = await bcrypt.compare(dto.password, user.password);
-    if (!isValid) throw new UnauthorizedException('Credenciales inválidas');
+    // 2. Buscar usuario y verificar contraseña
+    const user        = await this.usersService.findByEmailForAuth(dto.email);
+    const isValid     = user?.isActive
+      ? await bcrypt.compare(dto.password, user.password)
+      : false;
 
-    // Cuenta pendiente de aprobación del Super Admin
+    // 3. Credenciales inválidas (usuario inexistente, inactivo o contraseña incorrecta)
+    if (!user || !user.isActive || !isValid) {
+      const attempts    = await this.loginAttempts.increment(dto.email, ip);
+      const blockSecs   = await this.loginAttempts.block(dto.email, ip, attempts);
+
+      if (blockSecs > 0) {
+        const tiempo = this.loginAttempts.formatTime(blockSecs);
+        this.logger.warn(`[LOGIN] Cuenta bloqueada ${tiempo} — email:${dto.email} ip:${ip} intentos:${attempts}`);
+        throw new HttpException(
+          {
+            message:          `Demasiados intentos fallidos. Cuenta bloqueada por ${tiempo}.`,
+            remainingSeconds: blockSecs,
+            error:            'Too Many Requests',
+          },
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+
+      this.logger.warn(`[LOGIN] Intento fallido #${attempts} — email:${dto.email} ip:${ip}`);
+      const restantes = Math.max(0, 3 - attempts);
+      if (restantes > 0) {
+        throw new UnauthorizedException(
+          `Credenciales incorrectas. ${restantes} intento(s) antes del bloqueo temporal.`,
+        );
+      }
+      throw new UnauthorizedException('Credenciales incorrectas.');
+    }
+
+    // 4. Cuenta pendiente de aprobación del Super Admin
     if ((user as any).accountStatus === 'pendiente') {
       throw new ForbiddenException('CUENTA_PENDIENTE');
     }
 
-    // Usuario Google aprobado pero sin contraseña configurada — debe usar el link del email
+    // 5. Usuario Google aprobado pero sin contraseña configurada
     if ((user as any).passwordConfigured === false) {
       throw new ForbiddenException('CONTRASEÑA_NO_CONFIGURADA');
     }
 
-    // S-40: No revelar si el usuario existe — mensaje genérico en ambos casos.
-    // Si el correo no está verificado, reenviar email en background (UX amigable)
-    // y devolver el mismo error que credenciales inválidas.
+    // 6. S-40: Si el correo no está verificado, reenviar email y usar mensaje genérico
     if (!user.emailVerifiedAt) {
       this.sendVerificationEmail(user.id, user.email, user.nombre).catch(() => null);
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
-    // Si 2FA está activo → devolver indicador + token temporal en lugar del JWT completo
+    // 7. Si 2FA está activo → devolver indicador + token temporal
     if (user.twoFactorEnabled) {
+      // Resetear contador: la contraseña ya fue verificada correctamente
+      await this.loginAttempts.reset(dto.email, ip);
       const pending2FAToken = this.jwtService.sign(
         { sub: user.id, tfa: 1 },
         { expiresIn: '5m' },
@@ -282,14 +328,16 @@ export class AuthService implements OnModuleInit {
       return { requiresTwoFactor: true as const, pending2FAToken };
     }
 
+    // 8. Login exitoso — resetear contador de intentos
+    await this.loginAttempts.reset(dto.email, ip);
+
     // Desplazar sesión anterior: nuevo sessionToken + revocar refresh tokens previos
     const sessionToken = await this.initNewSession(user.id);
-    (user as any).sessionToken = sessionToken;  // propagar al buildToken
+    (user as any).sessionToken = sessionToken;
 
-    const empresaId    = await this.getEmpresaPrincipal(user.id);
-    const accessToken  = this.buildToken(user, empresaId);
+    const empresaId   = await this.getEmpresaPrincipal(user.id);
+    const accessToken = this.buildToken(user, empresaId);
 
-    // Lista de empresas del usuario
     const empresas = await this.ueRepository.find({
       where: { userId: user.id, isActive: true },
       relations: ['empresa'],
@@ -300,8 +348,6 @@ export class AuthService implements OnModuleInit {
       message: 'Login exitoso',
       accessToken,
       empresaActual: empresaId ?? null,
-      // Filtrar empresas suspendidas (empresa.isActive = false) para que no
-      // aparezcan en el selector del frontend y el usuario no intente acceder.
       empresas: empresas
         .filter(e => e.empresa?.isActive !== false)
         .map(e => ({

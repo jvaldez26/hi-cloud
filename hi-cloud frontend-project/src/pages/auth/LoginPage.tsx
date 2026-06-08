@@ -30,12 +30,14 @@ export default function LoginPage() {
   const [recordarPassword, setRecordarPassword] = useState<boolean>(
     () => localStorage.getItem('hicloud_recordar_pw') === 'true',
   );
-  const [correoNoVerif, setCorreoNoVerif] = useState(false);
-  const [emailIngresado,setEmailIngresado]= useState('');
-  const [reenviando,    setReenviando]    = useState(false);
-  const [reenviado,     setReenviado]     = useState(false);
-  const [pending2FA,    setPending2FA]    = useState(false);
-  const [codigoTOTP,    setCodigoTOTP]    = useState('');
+  const [correoNoVerif,  setCorreoNoVerif]  = useState(false);
+  const [emailIngresado, setEmailIngresado] = useState('');
+  const [reenviando,     setReenviando]     = useState(false);
+  const [reenviado,      setReenviado]      = useState(false);
+  const [pending2FA,     setPending2FA]     = useState(false);
+  const [codigoTOTP,     setCodigoTOTP]     = useState('');
+  const [blockCountdown, setBlockCountdown] = useState(0);
+  const blockIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { login } = useAuthStore();
   const { isDark } = useThemeStore();
   const navigate  = useNavigate();
@@ -53,6 +55,26 @@ export default function LoginPage() {
   const [error, setError] = useState(initialError);
   if (mensajeSuspension) sessionStorage.removeItem('login_error');
 
+  // Limpia el interval al desmontar para evitar memory leaks
+  useEffect(() => {
+    return () => { if (blockIntervalRef.current) clearInterval(blockIntervalRef.current); };
+  }, []);
+
+  const startBlockCountdown = (seconds: number) => {
+    if (blockIntervalRef.current) clearInterval(blockIntervalRef.current);
+    setBlockCountdown(seconds);
+    blockIntervalRef.current = setInterval(() => {
+      setBlockCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(blockIntervalRef.current!);
+          blockIntervalRef.current = null;
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
   const reenviarVerificacion = async () => {
     setReenviando(true);
     try { await authApi.resendVerification(emailIngresado); }
@@ -61,6 +83,7 @@ export default function LoginPage() {
   };
 
   const onFinish = async (values: { email: string; password: string }) => {
+    if (blockCountdown > 0) return; // bloqueo activo — no enviar
     setLoading(true); setError(''); setCorreoNoVerif(false); setReenviado(false);
     setEmailIngresado(values.email);
     try {
@@ -70,8 +93,18 @@ export default function LoginPage() {
       login((data as any).user, (data as any).empresaActual, (data as any).empresas ?? []);
       navigate((data as any).user?.role === 'super_admin' ? '/super-admin' : '/dashboard');
     } catch (e: unknown) {
-      const msg = (e as any)?.response?.data?.errors?.[0] ?? 'Credenciales inválidas';
-      if (msg === 'CORREO_NO_VERIFICADO') setCorreoNoVerif(true); else setError(msg);
+      const responseData   = (e as any)?.response?.data;
+      const msg            = responseData?.errors?.[0] ?? 'Credenciales inválidas';
+      const remainingSecs  = responseData?.remainingSeconds as number | undefined;
+
+      if (msg === 'CORREO_NO_VERIFICADO') {
+        setCorreoNoVerif(true);
+      } else {
+        setError(msg);
+        if (remainingSecs && remainingSecs > 0) {
+          startBlockCountdown(remainingSecs);
+        }
+      }
     } finally { setLoading(false); }
   };
 
@@ -292,6 +325,26 @@ export default function LoginPage() {
               )} />
           )}
 
+          {blockCountdown > 0 && (
+            <div style={{
+              background: '#FEF2F2', border: '1px solid #FECACA',
+              borderRadius: 10, padding: '14px 16px', marginBottom: 16, textAlign: 'center',
+            }}>
+              <div style={{ color: '#DC2626', fontWeight: 700, fontSize: 14, marginBottom: 4 }}>
+                🔒 Cuenta temporalmente bloqueada
+              </div>
+              <div style={{ color: '#EF4444', fontSize: 13 }}>
+                Podrás intentar de nuevo en{' '}
+                <strong>
+                  {blockCountdown >= 60
+                    ? `${Math.floor(blockCountdown / 60)}:${String(blockCountdown % 60).padStart(2, '0')} min`
+                    : `${blockCountdown} segundos`
+                  }
+                </strong>
+              </div>
+            </div>
+          )}
+
           {/* 2FA */}
           {pending2FA && (
             <div>
@@ -356,13 +409,19 @@ export default function LoginPage() {
                 </Checkbox>
               </div>
 
-              <Button type="primary" htmlType="submit" block loading={loading}
-                style={{ height:50, background:'#2563EB', border:'none', borderRadius:10,
-                  fontSize:15, fontWeight:700, boxShadow:'0 4px 20px rgba(37,99,235,.4)',
-                  transition:'all .15s' }}
-                onMouseEnter={(e:any) => { e.currentTarget.style.background='#1d4ed8'; }}
-                onMouseLeave={(e:any) => { e.currentTarget.style.background='#2563EB'; }}>
-                {loading ? 'Iniciando sesión…' : 'Iniciar sesión'}
+              <Button type="primary" htmlType="submit" block
+                loading={loading && blockCountdown === 0}
+                disabled={blockCountdown > 0}
+                style={{ height:50, background: blockCountdown > 0 ? '#9CA3AF' : '#2563EB',
+                  border:'none', borderRadius:10, fontSize:15, fontWeight:700,
+                  boxShadow: blockCountdown > 0 ? 'none' : '0 4px 20px rgba(37,99,235,.4)',
+                  transition:'all .15s', cursor: blockCountdown > 0 ? 'not-allowed' : 'pointer' }}
+                onMouseEnter={(e:any) => { if (blockCountdown === 0) e.currentTarget.style.background='#1d4ed8'; }}
+                onMouseLeave={(e:any) => { if (blockCountdown === 0) e.currentTarget.style.background='#2563EB'; }}>
+                {blockCountdown > 0
+                  ? `Bloqueado — espera ${blockCountdown >= 60 ? `${Math.floor(blockCountdown/60)}:${String(blockCountdown%60).padStart(2,'0')} min` : `${blockCountdown}s`}`
+                  : loading ? 'Iniciando sesión…' : 'Iniciar sesión'
+                }
               </Button>
             </Form>
 
