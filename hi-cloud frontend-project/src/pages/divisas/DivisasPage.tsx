@@ -67,7 +67,7 @@ export default function DivisasPage() {
   const convertir = async () => {
     try {
       const r = await api.get(`/divisas/convertir?monto=${convertiendo.monto}&moneda=${convertiendo.moneda}&tipo=venta`);
-      setConvertiendo(prev => ({ ...prev, resultado: (r as any).data }));
+      const d = (r as any).data; setConvertiendo(prev => ({ ...prev, resultado: d?.data ?? d }));
     } catch { message.error('Sin tasa disponible para esta moneda'); }
   };
 
