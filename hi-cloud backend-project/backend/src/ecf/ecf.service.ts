@@ -4,7 +4,10 @@ import {
   BadRequestException,
   Logger,
   OnModuleInit,
+  Inject,
 } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThanOrEqual, DataSource } from 'typeorm';
 import { TenantService } from '../tenant/tenant.service';
@@ -58,6 +61,7 @@ export class ECFService implements OnModuleInit {
     private configService: ConfigService,
     private tenantService: TenantService,
     private dataSource: DataSource,
+    @Inject(CACHE_MANAGER) private cache: Cache,
   ) {}
 
   // ──────────────────────────────────────────────────────────────────
@@ -696,6 +700,7 @@ export class ECFService implements OnModuleInit {
       ],
       relations: ['tipoECF'],
       order: { ultimoIntentoEnvio: 'DESC' },
+      take: 200,
     });
   }
 
@@ -783,8 +788,12 @@ ${respuestaStr}`;
   // Tipos e-CF (solo lectura para UI)
   // ──────────────────────────────────────────────────────────────────
 
-  getTipos(): Promise<TipoECF[]> {
-    return this.tipoECFRepository.find({ where: { isActive: true } });
+  async getTipos(): Promise<TipoECF[]> {
+    const cached = await this.cache.get<TipoECF[]>('ecf_tipos');
+    if (cached) return cached;
+    const tipos = await this.tipoECFRepository.find({ where: { isActive: true } });
+    await this.cache.set('ecf_tipos', tipos, 86_400_000); // 24h — datos regulatorios estáticos
+    return tipos;
   }
 
 }
