@@ -1,6 +1,6 @@
 import {
   IsString, IsNotEmpty, IsOptional, IsEmail,
-  MaxLength, Matches, IsBoolean,
+  MaxLength, Matches, IsBoolean, IsInt, Min,
 } from 'class-validator';
 
 export class CreateProveedorDto {
@@ -38,6 +38,26 @@ export class CreateProveedorDto {
   @IsString({ message: 'El nombre del contacto debe ser texto' })
   @MaxLength(100, { message: 'El contacto no puede superar 100 caracteres' })
   contacto?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  categoria?: string;
+
+  @IsOptional()
+  @IsInt({ message: 'Los días de pago deben ser un número entero' })
+  @Min(0)
+  diasPago?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  banco?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  cuentaBancaria?: string;
 
   @IsOptional()
   @IsString({ message: 'Las notas deben ser texto' })
