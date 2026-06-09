@@ -377,12 +377,17 @@ export default function LandingPage() {
           .nav-hamburger{display:flex!important}
           .hero-ctas{flex-direction:column!important;align-items:stretch!important}
           .stats-grid{grid-template-columns:1fr 1fr!important}
-          .modules-grid{grid-template-columns:1fr!important}
+          .modules-grid{grid-template-columns:1fr 1fr!important}
           .testimonios-grid{grid-template-columns:1fr!important}
+          .hero-dash-grid{grid-template-columns:1fr 1fr!important;gap:8px!important}
+          .prob-sol-grid{flex-direction:column!important;gap:16px!important}
+          .prob-sol-arrow{transform:rotate(90deg);font-size:24px!important}
         }
         @media(max-width:480px){
           .stats-grid{grid-template-columns:1fr!important}
-          .ecf-grid{grid-template-columns:repeat(3,1fr)!important}
+          .modules-grid{grid-template-columns:1fr!important}
+          .ecf-grid{grid-template-columns:repeat(2,1fr)!important}
+          .hero-dash-grid{grid-template-columns:1fr 1fr!important}
         }
         *{box-sizing:border-box}
       `}</style>
@@ -461,18 +466,18 @@ export default function LandingPage() {
                 fontSize: 12, color: 'rgba(255,255,255,.3)', flex: 1 }}>app.hicloudrd.com/dashboard</div>
             </div>
             {/* Mini dashboard preview */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 16 }}>
+            <div className="hero-dash-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 16 }}>
               {[
-                { label: 'Ventas del mes', val: 'RD$487,250', change: '+12%', color: '#10B981' },
-                { label: 'Facturas emitidas', val: '234', change: '+8%', color: '#2563EB' },
-                { label: 'e-CF pendientes', val: '0', change: '100% OK', color: '#10B981' },
-                { label: 'Por cobrar', val: 'RD$45,800', change: '3 clientes', color: '#F59E0B' },
+                { label: 'Ventas del mes', val: 'RD$487K', change: '+12%', color: '#10B981' },
+                { label: 'Facturas', val: '234', change: '+8%', color: '#2563EB' },
+                { label: 'e-CF pend.', val: '0', change: '100% OK', color: '#10B981' },
+                { label: 'Por cobrar', val: 'RD$45K', change: '3 clientes', color: '#F59E0B' },
               ].map(s => (
                 <div key={s.label} style={{ background: 'rgba(255,255,255,.04)', borderRadius: 10,
-                  padding: '16px', border: '1px solid rgba(255,255,255,.06)' }}>
-                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)', marginBottom: 8 }}>{s.label}</div>
-                  <div style={{ fontSize: 20, fontWeight: 700, color: '#fff', marginBottom: 4 }}>{s.val}</div>
-                  <div style={{ fontSize: 11, color: s.color }}>{s.change}</div>
+                  padding: 'clamp(8px,2vw,16px)', border: '1px solid rgba(255,255,255,.06)', minWidth: 0 }}>
+                  <div style={{ fontSize: 'clamp(9px,1.5vw,11px)', color: 'rgba(255,255,255,.4)', marginBottom: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.label}</div>
+                  <div style={{ fontSize: 'clamp(13px,2.5vw,20px)', fontWeight: 700, color: '#fff', marginBottom: 4 }}>{s.val}</div>
+                  <div style={{ fontSize: 'clamp(9px,1.5vw,11px)', color: s.color }}>{s.change}</div>
                 </div>
               ))}
             </div>
@@ -531,9 +536,9 @@ export default function LandingPage() {
               ¿Cansado de manejar tu negocio en Excel?
             </h2>
           </FadeIn>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 32, alignItems: 'center' }}>
+          <div className="prob-sol-grid" style={{ display: 'flex', gap: 32, alignItems: 'center' }}>
             {/* Problemas */}
-            <div>
+            <div style={{ flex: 1 }}>
               <FadeIn delay={0.1}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: '#EF4444', letterSpacing: '0.5px',
                   marginBottom: 20, textTransform: 'uppercase' }}>Antes de HiCloud</div>
@@ -556,11 +561,11 @@ export default function LandingPage() {
 
             {/* Flecha */}
             <FadeIn delay={0.2}>
-              <div style={{ textAlign: 'center', fontSize: 32, color: '#10B981' }}>→</div>
+              <div className="prob-sol-arrow" style={{ textAlign: 'center', fontSize: 32, color: '#10B981', flexShrink: 0 }}>→</div>
             </FadeIn>
 
             {/* Soluciones */}
-            <div>
+            <div style={{ flex: 1 }}>
               <FadeIn delay={0.3}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: '#10B981', letterSpacing: '0.5px',
                   marginBottom: 20, textTransform: 'uppercase' }}>Con HiCloud ERP</div>
