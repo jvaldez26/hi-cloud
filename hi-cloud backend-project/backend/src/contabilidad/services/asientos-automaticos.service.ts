@@ -623,6 +623,34 @@ export class AsientosAutomaticosService {
   // sin duplicar la lógica de numeración y persistencia.
   // ──────────────────────────────────────────────────────────────────
 
+  // ──────────────────────────────────────────────────────────────────
+  // Orden de mantenimiento completada → Gasto (D) / Proveedores (H)
+  // ──────────────────────────────────────────────────────────────────
+
+  async asientoMantenimiento(
+    ordenId: number,
+    costo:   number,
+    numero:  string,
+    userId:  number,
+  ): Promise<void> {
+    try {
+      await this._crearAsientoContabilizado({
+        descripcion:     `Gasto mantenimiento ${numero}`,
+        tipoOrigen:      TipoOrigenAsiento.AJUSTE,
+        referenciaId:    ordenId,
+        referenciaFolio: numero,
+        userId,
+        lineas: [
+          { codigo: '6.1.2.04',       descripcion: `Gasto mantenimiento ${numero}`, debe: costo, haber: 0 },
+          { codigo: COD.PROVEEDORES,   descripcion: `CxP mantenimiento ${numero}`,   debe: 0,     haber: costo },
+        ],
+      });
+      this.logger.log(`Asiento mantenimiento ${numero}: ${costo.toFixed(2)}`);
+    } catch (err) {
+      this.logger.error(`Error asiento mantenimiento ${numero}: ${(err as Error).message}`);
+    }
+  }
+
   /**
    * Crea un asiento contabilizado con líneas de cuentas arbitrarias.
    * Retorna el AsientoContable creado, o null si alguna cuenta no existe.

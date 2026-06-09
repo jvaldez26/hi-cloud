@@ -70,6 +70,9 @@ export class OrdenMantenimiento extends BaseEntity {
   @Column({ type: 'text', nullable: true })
   observaciones?: string;
 
+  @Column({ type: 'jsonb', nullable: true })
+  repuestosUsados?: { descripcion: string; costo: number }[];
+
   @Column({ nullable: true })
   usuarioId?: number;
 }

@@ -5,7 +5,9 @@ import {
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import {
   IsString, IsOptional, IsEnum, IsNumber, IsInt, IsPositive, IsDateString, Min,
+  IsArray, ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { MantenimientoService } from './mantenimiento.service';
 import { EstadoMantenimiento, TipoMantenimiento, PrioridadMantenimiento } from './entities/orden-mantenimiento.entity';
 import { PaginationDto } from '../common/dto/pagination.dto';
@@ -26,10 +28,19 @@ class CreateOrdenDto {
   @IsOptional() @IsString()                 tecnico?:         string;
 }
 
+class RepuestoUsadoDto {
+  @IsString()               descripcion!: string;
+  @IsNumber() @Min(0)       costo!:       number;
+}
+
 class CompletarOrdenDto {
-  @IsOptional() @IsNumber() @Min(0)         costoReal?:       number;
-  @IsOptional() @IsString()                 observaciones?:   string;
-  @IsOptional() @IsString()                 tecnico?:         string;
+  @IsOptional() @IsNumber() @Min(0)         costoReal?:            number;
+  @IsOptional() @IsString()                 observaciones?:        string;
+  @IsOptional() @IsString()                 tecnico?:              string;
+  @IsOptional() @IsDateString()             fechaRealizada?:       string;
+  @IsOptional() @IsDateString()             proximoMantenimiento?: string;
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => RepuestoUsadoDto)
+  repuestosUsados?: RepuestoUsadoDto[];
 }
 
 class CreateProgramaDto {
@@ -66,8 +77,12 @@ export class MantenimientoController {
   ) { return this.svc.listarOrdenes(pagination, estado, activoId ? Number(activoId) : undefined); }
 
   @Patch('ordenes/:id/completar')
-  completar(@Param('id', ParseIntPipe) id: number, @Body() dto: CompletarOrdenDto) {
-    return this.svc.completarOrden(id, dto);
+  completar(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CompletarOrdenDto,
+    @GetUser() user: User,
+  ) {
+    return this.svc.completarOrden(id, dto, user.id);
   }
 
   @Patch('ordenes/:id/cancelar')

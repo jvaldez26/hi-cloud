@@ -7,11 +7,11 @@ import { TableActions } from '../../components/ui/TableActions';
 import {
   Card, Row, Col, Typography, Table, Tag, Button,
   Space, Modal, Form, Input, Select, DatePicker, InputNumber,
-  Tabs, message, Badge, Tooltip, theme,
+  Tabs, message, Badge, Tooltip, theme, Checkbox, Divider,
 } from 'antd';
 import {
   PlusOutlined, CheckOutlined, StopOutlined, ToolOutlined, FileExcelOutlined,
-  WarningOutlined, CalendarOutlined, ClockCircleOutlined, SearchOutlined,
+  WarningOutlined, CalendarOutlined, ClockCircleOutlined, SearchOutlined, DeleteOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
@@ -60,9 +60,10 @@ export default function MantenimientoPage() {
   const [search,       setSearch]       = useState('');
   const [estadoF,      setEstadoF]      = useState<string | undefined>();
   const [pageOrd,      setPageOrd]      = useState(1);
-  const [ordenModal,   setOrdenModal]   = useState(false);
-  const [completModal, setCompletModal] = useState<any>(null);
-  const [progModal,    setProgModal]    = useState(false);
+  const [ordenModal,        setOrdenModal]        = useState(false);
+  const [completModal,      setCompletModal]      = useState<any>(null);
+  const [progModal,         setProgModal]         = useState(false);
+  const [requiereRepuestos, setRequiereRepuestos] = useState(false);
   const [formOrd]  = Form.useForm();
   const [formComp] = Form.useForm();
   const [formProg] = Form.useForm();
@@ -96,7 +97,12 @@ export default function MantenimientoPage() {
 
   const completarMut = useMutation({
     mutationFn: ({ id, data }: any) => mntApi.completar(id, data),
-    onSuccess: () => { inv(); setCompletModal(null); message.success('Orden completada'); },
+    onSuccess: () => {
+      inv();
+      setCompletModal(null);
+      setRequiereRepuestos(false);
+      message.success('Orden completada');
+    },
   });
 
   const cancelarMut = useMutation({
@@ -143,12 +149,12 @@ export default function MantenimientoPage() {
     { title: '', key: 'actions', width: 72, align: 'right' as const,
       render: (_: any, r: any) => (
         <TableActions
-          onView={() => { setCompletModal(r); formComp.resetFields(); }}
+          onView={() => { setCompletModal(r); formComp.resetFields(); formComp.setFieldsValue({ fechaRealizada: dayjs() }); setRequiereRepuestos(false); }}
           viewLabel="Completar"
           items={[
             ...(r.estado === 'programado' || r.estado === 'en_proceso' ? [{
               key: 'completar', label: 'Completar', icon: <CheckOutlined />,
-              onClick: () => { setCompletModal(r); formComp.resetFields(); },
+              onClick: () => { setCompletModal(r); formComp.resetFields(); formComp.setFieldsValue({ fechaRealizada: dayjs() }); setRequiereRepuestos(false); },
             }] : []),
             ...(r.estado === 'programado' ? [
               { type: 'divider' as const },
@@ -322,21 +328,107 @@ export default function MantenimientoPage() {
       </Modal>
 
       {/* Modal completar */}
-      <Modal title={`Completar: ${completModal?.numero}`} open={!!completModal}
-        onCancel={() => setCompletModal(null)} footer={null} width={440}>
-        <Form form={formComp} layout="vertical"
-          onFinish={v => completarMut.mutate({ id: completModal.id, data: v })}>
-          <Form.Item name="costoReal" label="Costo real (RD$)">
-            <InputNumber style={{ width: '100%' }} min={0} precision={2} />
-          </Form.Item>
+      <Modal
+        title={`Completar: ${completModal?.numero}`}
+        open={!!completModal}
+        onCancel={() => { setCompletModal(null); setRequiereRepuestos(false); }}
+        footer={null}
+        width={560}
+      >
+        <Form
+          form={formComp}
+          layout="vertical"
+          initialValues={{ fechaRealizada: dayjs() }}
+          onFinish={v => {
+            const data = {
+              costoReal:            v.costoReal,
+              tecnico:              v.tecnico,
+              observaciones:        v.observaciones,
+              fechaRealizada:       v.fechaRealizada?.format('YYYY-MM-DD'),
+              proximoMantenimiento: v.proximoMantenimiento?.format('YYYY-MM-DD'),
+              repuestosUsados:      requiereRepuestos ? (v.repuestosUsados ?? []) : undefined,
+            };
+            completarMut.mutate({ id: completModal.id, data });
+          }}
+        >
+          <Row gutter={12}>
+            <Col xs={24} sm={12}>
+              <Form.Item name="fechaRealizada" label="Fecha de realización">
+                <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="costoReal" label="Costo real (RD$)">
+                <InputNumber style={{ width: '100%' }} min={0} precision={2} />
+              </Form.Item>
+            </Col>
+          </Row>
           <Form.Item name="tecnico" label="Técnico que realizó"><Input /></Form.Item>
-          <Form.Item name="observaciones" label="Observaciones"><Input.TextArea rows={3} /></Form.Item>
-          <Row justify="end" gutter={8}>
-            <Col><Button onClick={() => setCompletModal(null)}>Cancelar</Button></Col>
-            <Col><Button type="primary" htmlType="submit" style={{ background: '#10b981', border: 'none' }}
-              loading={completarMut.isPending} icon={<CheckOutlined />}>
-              Marcar completado
-            </Button></Col>
+          <Form.Item name="proximoMantenimiento" label="Próximo mantenimiento (opcional)">
+            <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY"
+              placeholder="Dejar vacío para calcular automáticamente" />
+          </Form.Item>
+          <Form.Item name="observaciones" label="Observaciones"><Input.TextArea rows={2} /></Form.Item>
+
+          <Divider style={{ margin: '8px 0' }} />
+
+          <Form.Item>
+            <Checkbox
+              checked={requiereRepuestos}
+              onChange={e => setRequiereRepuestos(e.target.checked)}
+            >
+              ¿Se utilizaron repuestos?
+            </Checkbox>
+          </Form.Item>
+
+          {requiereRepuestos && (
+            <Form.Item label="Repuestos utilizados">
+              <Form.List name="repuestosUsados">
+                {(fields, { add, remove }) => (
+                  <>
+                    {fields.map(({ key, name }) => (
+                      <Row key={key} gutter={8} align="middle" style={{ marginBottom: 8 }}>
+                        <Col flex="auto">
+                          <Form.Item name={[name, 'descripcion']} noStyle rules={[{ required: true, message: 'Descripción requerida' }]}>
+                            <Input placeholder="Descripción del repuesto" />
+                          </Form.Item>
+                        </Col>
+                        <Col style={{ width: 130 }}>
+                          <Form.Item name={[name, 'costo']} noStyle rules={[{ required: true, message: 'Costo requerido' }]}>
+                            <InputNumber placeholder="Costo RD$" min={0} precision={2} style={{ width: '100%' }} />
+                          </Form.Item>
+                        </Col>
+                        <Col>
+                          <Button type="text" danger icon={<DeleteOutlined />} onClick={() => remove(name)} />
+                        </Col>
+                      </Row>
+                    ))}
+                    <Button type="dashed" onClick={() => add()} icon={<PlusOutlined />} block size="small">
+                      Agregar repuesto
+                    </Button>
+                  </>
+                )}
+              </Form.List>
+            </Form.Item>
+          )}
+
+          <Row justify="end" gutter={8} style={{ marginTop: 8 }}>
+            <Col>
+              <Button onClick={() => { setCompletModal(null); setRequiereRepuestos(false); }}>
+                Cancelar
+              </Button>
+            </Col>
+            <Col>
+              <Button
+                type="primary"
+                htmlType="submit"
+                style={{ background: '#10b981', border: 'none' }}
+                loading={completarMut.isPending}
+                icon={<CheckOutlined />}
+              >
+                Marcar completado
+              </Button>
+            </Col>
           </Row>
         </Form>
       </Modal>

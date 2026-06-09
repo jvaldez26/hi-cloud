@@ -69,6 +69,9 @@ export class ActivoFijo extends TenantBaseEntity {
   @Column({ type: 'text', nullable: true })
   notas?: string;
 
+  @Column({ type: 'date', nullable: true })
+  fechaUltimoMantenimiento?: Date;
+
   @ManyToOne(() => User)
   @JoinColumn({ name: 'userId' })
   user!: User;
