@@ -483,8 +483,21 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function buildReciboTermicoHTML(sale: Sale, qrDataUrl: string | null, mostrarEcf = true): string {
-  const ahora   = dayjs();
+const IMPRESORA_CONFIG: Record<string, { width: string; fontSize: string; paddingLR: string }> = {
+  '58mm':   { width: '58mm',  fontSize: '10pt', paddingLR: '3mm' },
+  '80mm':   { width: '80mm',  fontSize: '11pt', paddingLR: '5mm' },
+  'carta':  { width: '210mm', fontSize: '12pt', paddingLR: '15mm' },
+  'ninguna':{ width: '80mm',  fontSize: '11pt', paddingLR: '5mm' },
+};
+
+function buildReciboTermicoHTML(
+  sale: Sale,
+  qrDataUrl: string | null,
+  cfg: { mostrarEcf?: boolean; tipoImpresora?: string; mensajeTicket?: string; politicaDev?: string } = {},
+): string {
+  const { mostrarEcf = true, tipoImpresora = '80mm', mensajeTicket, politicaDev } = cfg;
+  const prn   = IMPRESORA_CONFIG[tipoImpresora] ?? IMPRESORA_CONFIG['80mm'];
+  const ahora = dayjs();
   const fmt     = (n: number) => `RD$${n.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const row     = (l: string, v: string) => `<div class="row"><span>${esc(l)}</span><span>${esc(v)}</span></div>`;
   const rowBold = (l: string, v: string) => `<div class="row bold"><span>${esc(l)}</span><span>${esc(v)}</span></div>`;
@@ -540,9 +553,9 @@ function buildReciboTermicoHTML(sale: Sale, qrDataUrl: string | null, mostrarEcf
 <title>Recibo ${esc(sale.folio)}</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;overflow-wrap:break-word}
-html{margin:0;padding:0;width:80mm}
-body{font-family:'Courier New',Courier,monospace;font-size:11pt;line-height:1.45;
-  width:80mm;margin:0;padding:3mm 5mm;
+html{margin:0;padding:0;width:${prn.width}}
+body{font-family:'Courier New',Courier,monospace;font-size:${prn.fontSize};line-height:1.45;
+  width:${prn.width};margin:0;padding:3mm ${prn.paddingLR};
   color:#000;background:#fff;
   -webkit-font-smoothing:none;font-smooth:never}
 .center{text-align:center}
@@ -557,8 +570,8 @@ body{font-family:'Courier New',Courier,monospace;font-size:11pt;line-height:1.45
 .dbl{border-top:2px solid #000;margin:4px 0}
 .box{border:1px dashed #000;padding:3px 2px;margin:3px 0}
 img{display:block;margin:4px auto}
-@page{size:80mm auto;margin:0}
-@media print{html,body{width:80mm}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+@page{size:${prn.width} auto;margin:0}
+@media print{html,body{width:${prn.width}}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 </style></head><body>
 
 <div class="center xlarge">${esc(sale.empresaNombreComercial ?? 'NOMBRE EMPRESA')}</div>
@@ -595,7 +608,10 @@ ${Number(sale.cambio) > 0 ? rowBold('CAMBIO:', fmt(Number(sale.cambio))) : ''}
 ${ecfHtml}
 ${dbl()}
 ${tieneModificados ? `${line()}<div class="small">* Precio modificado en venta</div>` : ''}
-<div class="center">&#161;Gracias por su preferencia!</div>
+${mensajeTicket?.trim() ? `${line()}<div style="text-align:center;white-space:pre-wrap;word-break:break-word;">${esc(mensajeTicket.trim())}</div>` : ''}
+${politicaDev?.trim() ? `${line()}<div class="small"><strong>POLÍTICA DE DEVOLUCIONES:</strong><br/>${esc(politicaDev.trim())}</div>` : ''}
+${line()}
+<div class="center">— Gracias por su compra —</div>
 
 </body></html>`;
 }
@@ -1268,12 +1284,13 @@ function GenericThermalDoc({ doc }: { doc: GenericDocData }) {
 }
 
 // ── Modal éxito post-venta ────────────────────────────────────────────────────
-function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir, mostrarEcf = true }: {
+function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir, mostrarEcf = true, posConfig = {} }: {
   sale: Sale | null;
   onNueva: () => void;
   onCrearConduce?: () => void;
   autoImprimir?: boolean;
   mostrarEcf?: boolean;
+  posConfig?: { tipoImpresora?: string; mensajeTicket?: string; politicaDev?: string };
 }) {
   const C = useC();
   const [countdown, setCountdown] = useState(10);
@@ -1322,14 +1339,14 @@ function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir, mostrarEcf = 
     qrPromise.then(qr => {
       if (cancelled) return;
       cancelarContador();
-      imprimirReciboTermico(buildReciboTermicoHTML(sale, qr, mostrarEcf), onNueva);
+      imprimirReciboTermico(buildReciboTermicoHTML(sale, qr, { mostrarEcf, ...posConfig }), onNueva);
     });
     return () => { cancelled = true; };
   }, [sale?.folio, autoImprimir]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePrint = () => {
     cancelarContador();
-    imprimirReciboTermico(buildReciboTermicoHTML(sale!, qrDataUrl, mostrarEcf), onNueva);
+    imprimirReciboTermico(buildReciboTermicoHTML(sale!, qrDataUrl, { mostrarEcf, ...posConfig }), onNueva);
   };
 
 
@@ -2709,7 +2726,12 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
       try { qrDUrl = await QRCode.toDataURL(f.ecf.qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' }); }
       catch { /* sin QR */ }
     }
-    imprimirReciboTermico(buildReciboTermicoHTML(sale, qrDUrl));
+    const empConf = (empresa.configuracion ?? {}) as any;
+    imprimirReciboTermico(buildReciboTermicoHTML(sale, qrDUrl, {
+      tipoImpresora: empConf.posTipoImpresora,
+      mensajeTicket: empConf.posMensajeTicket,
+      politicaDev:   empConf.posPoliticaDev,
+    }));
   };
 
   return (
@@ -3367,7 +3389,12 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           try { qrDUrl = await QRCode.toDataURL(f.ecf.qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' }); }
           catch { /* sin QR */ }
         }
-        imprimirReciboTermico(buildReciboTermicoHTML(sale, qrDUrl));
+        const empConfPanel = (empresa.configuracion ?? {}) as any;
+        imprimirReciboTermico(buildReciboTermicoHTML(sale, qrDUrl, {
+          tipoImpresora: empConfPanel.posTipoImpresora,
+          mensajeTicket: empConfPanel.posMensajeTicket,
+          politicaDev:   empConfPanel.posPoliticaDev,
+        }));
         return;
       }
 
@@ -4828,7 +4855,12 @@ export default function POSPage() {
       <ModalExito sale={sale} onNueva={() => setSale(null)}
         onCrearConduce={() => { setSale(null); setPanelActivo('conduce'); }}
         autoImprimir={empresa?.configuracion?.posImpresionAuto === true}
-        mostrarEcf={posConf.posMostrarEcfEnRecibo !== false} />
+        mostrarEcf={posConf.posMostrarEcfEnRecibo !== false}
+        posConfig={{
+          tipoImpresora: posConf.posTipoImpresora as string | undefined,
+          mensajeTicket: posConf.posMensajeTicket as string | undefined,
+          politicaDev:   posConf.posPoliticaDev   as string | undefined,
+        }} />
       <POSNotaCreditoModal open={showNotaCredito} onClose={() => setShowNotaCredito(false)} palette={palette} />
 
       {/* Indicador de ventas offline pendientes */}
