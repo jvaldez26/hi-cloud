@@ -13,7 +13,7 @@ import * as path   from 'path';
 @Injectable()
 export class S3Service {
   private readonly logger = new Logger(S3Service.name);
-  private client: S3Client | null = null;
+  private client: S3Client;
   private bucket: string;
   private region: string;
   private enabled: boolean;
@@ -23,11 +23,13 @@ export class S3Service {
     this.bucket  = config.get<string>('AWS_S3_BUCKET', '');
     this.enabled = !!this.bucket;
 
+    // El cliente siempre se crea — usa el rol IAM del EC2 automáticamente
+    this.client = new S3Client({ region: this.region });
+
     if (this.enabled) {
-      this.client = new S3Client({ region: this.region });
-      this.logger.log(`S3 habilitado — bucket: ${this.bucket}`);
+      this.logger.log(`S3 habilitado — bucket principal: ${this.bucket}`);
     } else {
-      this.logger.warn('S3 no configurado (AWS_S3_BUCKET vacío) — archivos no se suben');
+      this.logger.warn('AWS_S3_BUCKET vacío — upload() sin bucketOverride retornará null');
     }
   }
 
@@ -35,31 +37,33 @@ export class S3Service {
 
   /**
    * Sube un archivo a S3 y retorna la URL pública.
-   * Si S3 no está configurado, retorna null.
+   * bucketOverride permite usar un bucket distinto al configurado en AWS_S3_BUCKET.
    */
   async upload(
-    buffer:      Buffer,
+    buffer:       Buffer,
     originalName: string,
-    contentType: string,
-    folder = 'uploads',
-    empresaId?: number,
+    contentType:  string,
+    folder        = 'uploads',
+    empresaId?:   number,
+    bucketOverride?: string,
   ): Promise<string | null> {
-    if (!this.client || !this.bucket) return null;
+    const bucket = bucketOverride ?? this.bucket;
+    if (!bucket) return null;
 
-    const ext      = path.extname(originalName).toLowerCase();
-    const hash     = crypto.randomBytes(8).toString('hex');
-    const key      = `${folder}/${empresaId ? empresaId + '/' : ''}${hash}${ext}`;
+    const ext  = path.extname(originalName).toLowerCase();
+    const hash = crypto.randomBytes(8).toString('hex');
+    const key  = `${folder}/${empresaId ? empresaId + '/' : ''}${hash}${ext}`;
 
     await this.client.send(new PutObjectCommand({
-      Bucket:       this.bucket,
+      Bucket:       bucket,
       Key:          key,
       Body:         buffer,
       ContentType:  contentType,
-      CacheControl: 'public, max-age=31536000', // 1 año para assets estáticos
+      CacheControl: 'public, max-age=31536000',
     }));
 
-    const url = `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}`;
-    this.logger.log(`Archivo subido a S3: ${key}`);
+    const url = `https://${bucket}.s3.${this.region}.amazonaws.com/${key}`;
+    this.logger.log(`Archivo subido a S3: ${key} (bucket: ${bucket})`);
     return url;
   }
 

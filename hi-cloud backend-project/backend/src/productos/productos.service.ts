@@ -4,6 +4,7 @@ import {
   ConflictException,
   BadRequestException,
   Logger,
+  OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
@@ -16,9 +17,14 @@ import { PaginationDto } from '../common/dto/pagination.dto';
 import { TenantService } from '../tenant/tenant.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { LimitesService } from '../suscripciones/limites.service';
+import { S3Service } from '../common/s3/s3.service';
+
+// Bucket dedicado para imágenes de productos
+const IMAGENES_BUCKET = 'hicloud-backups-966448715183';
+const IMAGENES_FOLDER = 'imagenes/productos';
 
 @Injectable()
-export class ProductosService {
+export class ProductosService implements OnModuleInit {
   private readonly logger = new Logger(ProductosService.name);
 
   constructor(
@@ -28,10 +34,80 @@ export class ProductosService {
     private almacenRepository:  Repository<Almacen>,
     @InjectRepository(StockAlmacen)
     private stockAlmacenRepository: Repository<StockAlmacen>,
-    private tenantService:  TenantService,
+    private tenantService:   TenantService,
     private realtimeService: RealtimeService,
-    private limitesService: LimitesService,
+    private limitesService:  LimitesService,
+    private s3Service:       S3Service,
   ) {}
+
+  async onModuleInit() {
+    // Migrar imágenes base64 existentes a S3 (operación idempotente, 1 vez)
+    try {
+      await this.migrateBase64ImagesToS3();
+    } catch (err: unknown) {
+      this.logger.warn(`Migración base64→S3 saltada: ${(err as Error).message}`);
+    }
+  }
+
+  private async migrateBase64ImagesToS3(): Promise<void> {
+    const productos = await this.productoRepository
+      .createQueryBuilder('p')
+      .where("p.\"imagenUrl\" LIKE 'data:image%'")
+      .select(['p.id', 'p.nombre', 'p.imagenUrl', 'p.empresaId'])
+      .getMany();
+
+    if (productos.length === 0) return;
+
+    this.logger.log(`Migrando ${productos.length} imagen(es) base64 → S3...`);
+
+    for (const producto of productos) {
+      try {
+        const { buffer, ext, mimetype } = this.parseBase64(producto.imagenUrl!);
+        const url = await this.s3Service.upload(
+          buffer,
+          `producto-${producto.id}.${ext}`,
+          mimetype,
+          IMAGENES_FOLDER,
+          producto.empresaId,
+          IMAGENES_BUCKET,
+        );
+        if (url) {
+          await this.productoRepository.update(producto.id, { imagenUrl: url });
+          this.logger.log(`Producto #${producto.id} (${producto.nombre}): imagen → ${url}`);
+        }
+      } catch (err: unknown) {
+        this.logger.warn(`Producto #${producto.id}: error migrando imagen — ${(err as Error).message}`);
+      }
+    }
+  }
+
+  private parseBase64(dataUrl: string): { buffer: Buffer; mimetype: string; ext: string } {
+    const match = dataUrl.match(/^data:(image\/[a-z+]+);base64,(.+)$/);
+    if (!match) throw new BadRequestException('Formato base64 inválido — se esperaba data:image/...;base64,...');
+    const [, mimetype, data] = match;
+    const buffer = Buffer.from(data, 'base64');
+    const ext = mimetype.split('/')[1].replace('jpeg', 'jpg').replace('svg+xml', 'svg');
+    return { buffer, mimetype, ext };
+  }
+
+  /** Sube imagen de producto a S3 desde un Buffer (multipart upload) */
+  async subirImagen(id: number, buffer: Buffer, mimetype: string): Promise<string> {
+    const empresaId = this.tenantService.getEmpresaId();
+    await this.findOne(id); // valida que el producto existe y pertenece al tenant
+    const ext = mimetype.split('/')[1].replace('jpeg', 'jpg');
+    const url = await this.s3Service.upload(
+      buffer,
+      `producto-${id}.${ext}`,
+      mimetype,
+      IMAGENES_FOLDER,
+      empresaId,
+      IMAGENES_BUCKET,
+    );
+    if (!url) throw new BadRequestException('S3 no disponible — configura AWS_REGION y rol IAM en EC2');
+    await this.productoRepository.update(id, { imagenUrl: url });
+    this.realtimeService.notify(empresaId, 'producto', 'updated', id);
+    return url;
+  }
 
   // Inicializa o actualiza stock_almacen para un producto en un almacén dado.
   private async sincronizarStockAlmacen(
@@ -188,6 +264,20 @@ export class ProductosService {
         .andWhere('p.id != :id', { id })
         .getOne();
       if (nomExists) throw new ConflictException(`Ya existe un producto con el nombre '${dto.nombre}'`);
+    }
+
+    // Si viene base64 en imagenUrl, subirla a S3 antes de guardar
+    if (dto.imagenUrl?.startsWith('data:image')) {
+      try {
+        const { buffer, ext, mimetype } = this.parseBase64(dto.imagenUrl);
+        const url = await this.s3Service.upload(
+          buffer, `producto-${id}.${ext}`, mimetype,
+          IMAGENES_FOLDER, empresaId, IMAGENES_BUCKET,
+        );
+        if (url) dto.imagenUrl = url;
+      } catch (err: unknown) {
+        this.logger.warn(`Producto #${id}: base64 no subido a S3 — ${(err as Error).message}`);
+      }
     }
 
     const { almacenId, ...updateData } = dto as any;

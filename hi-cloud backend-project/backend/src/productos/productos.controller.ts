@@ -11,7 +11,11 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { ProductosService } from './productos.service';
 import { CreateProductoDto } from './dto/create-producto.dto';
@@ -77,6 +81,26 @@ export class ProductosController {
   @ApiOperation({ summary: 'Buscar producto por código' })
   findByCodigo(@Param('codigo') codigo: string) {
     return this.productosService.findByCodigo(codigo);
+  }
+
+  @Post(':id/imagen')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Subir imagen del producto a S3 (multipart/form-data, campo "file", máx 2MB)' })
+  @UseInterceptors(FileInterceptor('file', {
+    limits: { fileSize: 2 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      if (/^image\/(jpeg|png|webp|gif)$/.test(file.mimetype)) cb(null, true);
+      else cb(new BadRequestException('Solo imágenes JPG, PNG, WEBP o GIF'), false);
+    },
+  }))
+  async subirImagen(
+    @Param('id', ParseIntPipe) id: number,
+    @UploadedFile() file: { buffer: Buffer; mimetype: string; originalname: string; size: number },
+  ) {
+    if (!file) throw new BadRequestException('Campo "file" requerido');
+    const url = await this.productosService.subirImagen(id, file.buffer, file.mimetype);
+    return { url };
   }
 
   @Patch(':id')
