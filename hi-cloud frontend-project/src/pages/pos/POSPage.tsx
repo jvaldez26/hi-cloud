@@ -483,7 +483,7 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function buildReciboTermicoHTML(sale: Sale, qrDataUrl: string | null): string {
+function buildReciboTermicoHTML(sale: Sale, qrDataUrl: string | null, mostrarEcf = true): string {
   const ahora   = dayjs();
   const fmt     = (n: number) => `RD$${n.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const row     = (l: string, v: string) => `<div class="row"><span>${esc(l)}</span><span>${esc(v)}</span></div>`;
@@ -518,7 +518,7 @@ function buildReciboTermicoHTML(sale: Sale, qrDataUrl: string | null): string {
     ${sale.razonSocial ? `<div>${esc(sale.razonSocial)}</div>` : ''}` : '';
 
   let ecfHtml = '';
-  if (sale.encf) {
+  if (sale.encf && mostrarEcf) {
     ecfHtml = `${line()}
     ${row('e-NCF:', sale.encf)}
     ${row('Fecha:', sale.ecfFecha ?? ahora.format('DD-MM-YYYY HH:mm:ss'))}
@@ -1268,11 +1268,12 @@ function GenericThermalDoc({ doc }: { doc: GenericDocData }) {
 }
 
 // ── Modal éxito post-venta ────────────────────────────────────────────────────
-function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir }: {
+function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir, mostrarEcf = true }: {
   sale: Sale | null;
   onNueva: () => void;
   onCrearConduce?: () => void;
   autoImprimir?: boolean;
+  mostrarEcf?: boolean;
 }) {
   const C = useC();
   const [countdown, setCountdown] = useState(10);
@@ -1321,14 +1322,14 @@ function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir }: {
     qrPromise.then(qr => {
       if (cancelled) return;
       cancelarContador();
-      imprimirReciboTermico(buildReciboTermicoHTML(sale, qr), onNueva);
+      imprimirReciboTermico(buildReciboTermicoHTML(sale, qr, mostrarEcf), onNueva);
     });
     return () => { cancelled = true; };
   }, [sale?.folio, autoImprimir]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePrint = () => {
     cancelarContador();
-    imprimirReciboTermico(buildReciboTermicoHTML(sale!, qrDataUrl), onNueva);
+    imprimirReciboTermico(buildReciboTermicoHTML(sale!, qrDataUrl, mostrarEcf), onNueva);
   };
 
 
@@ -3257,12 +3258,13 @@ const PANEL_TITLES: Record<PanelId, { label: string; icon: string }> = {
   'ventas-hoy':     { label: 'Ventas de Hoy',     icon: '🗓️' },
 };
 
-function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnularFacturas }: {
+function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnularFacturas, tiempoLimiteAnular }: {
   panel:              PanelId;
   palette:            Palette;
   onVolver:           () => void;
-  confirmarAnulacion?:   boolean;
+  confirmarAnulacion?:     boolean;
   permitirAnularFacturas?: boolean;
+  tiempoLimiteAnular?:     number;   // minutos; 0 = sin límite
 }) {
   const C  = palette;
   const qc = useQueryClient();
@@ -3700,6 +3702,14 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
                           ) : (
                             <button
                               onClick={() => {
+                                // Verificar límite de tiempo para anulación
+                                if (tiempoLimiteAnular && tiempoLimiteAnular > 0 && row.createdAt) {
+                                  const mins = dayjs().diff(dayjs(row.createdAt), 'minute');
+                                  if (mins > tiempoLimiteAnular) {
+                                    message.error(`No se puede anular — han transcurrido más de ${tiempoLimiteAnular} minutos`);
+                                    return;
+                                  }
+                                }
                                 // Si confirmarAnulacion = false → anular directo sin modal de confirmación
                                 if (confirmarAnulacion === false) {
                                   anularMutation.mutate({ id: row.id, mod: panel });
@@ -4154,9 +4164,23 @@ export default function POSPage() {
     || clienteSeleccionado.nombre?.toLowerCase().includes('consumidor')
     || ['00000000000', '000000000', ''].includes(rncCliente);
 
-  // Totals
-  const subtotal   = cart.reduce((s, i) => s + i.precio * i.cantidad * (1 - i.descuento / 100), 0);
-  const iva        = cart.reduce((s, i) => { const sub = i.precio * i.cantidad * (1 - i.descuento / 100); return s + sub * (Number((i.produto as any).porcentajeIva) / 100); }, 0);
+  // Totals — si posPrecioIncluyeItbis, el precio ya lleva ITBIS incluido
+  const precioIncluyeItbis = (empresa?.configuracion as any)?.posPrecioIncluyeItbis === true;
+  const subtotal = cart.reduce((s, i) => {
+    const linea = i.precio * i.cantidad * (1 - i.descuento / 100);
+    if (precioIncluyeItbis) {
+      const pct = Number((i.produto as any).porcentajeIva ?? 0) / 100;
+      return pct > 0 ? s + linea / (1 + pct) : s + linea;
+    }
+    return s + linea;
+  }, 0);
+  const iva = cart.reduce((s, i) => {
+    const linea = i.precio * i.cantidad * (1 - i.descuento / 100);
+    const pct   = Number((i.produto as any).porcentajeIva ?? 0) / 100;
+    return precioIncluyeItbis
+      ? s + linea * pct / (1 + pct)
+      : s + linea * pct;
+  }, 0);
   // Descuento global — se aplica sobre el subtotal (antes del ITBIS, base imponible)
   const descGlobalVal   = Math.max(0, parseFloat(descGlobal) || 0);
   const descGlobalMonto = descGlobalTipo === 'pct'
@@ -4803,7 +4827,8 @@ export default function POSPage() {
         onCancelar={() => navigate('/dashboard')} />
       <ModalExito sale={sale} onNueva={() => setSale(null)}
         onCrearConduce={() => { setSale(null); setPanelActivo('conduce'); }}
-        autoImprimir={empresa?.configuracion?.posImpresionAuto === true} />
+        autoImprimir={empresa?.configuracion?.posImpresionAuto === true}
+        mostrarEcf={posConf.posMostrarEcfEnRecibo !== false} />
       <POSNotaCreditoModal open={showNotaCredito} onClose={() => setShowNotaCredito(false)} palette={palette} />
 
       {/* Indicador de ventas offline pendientes */}
@@ -4867,6 +4892,7 @@ export default function POSPage() {
             onVolver={() => setPanelActivo('items')}
             confirmarAnulacion={posConf.posConfirmarAnulacion !== false}
             permitirAnularFacturas={posConf.posPermitirAnularFacturas !== false}
+            tiempoLimiteAnular={typeof posConf.posTiempoLimiteAnular === 'number' ? posConf.posTiempoLimiteAnular : 0}
           />
         )}
         {panelActivo === 'items' && (<>
@@ -5194,6 +5220,15 @@ export default function POSPage() {
                     if (posConf.posRequerirCliente === true && !clienteId) {
                       message.error('Debe seleccionar un cliente para continuar');
                       return;
+                    }
+                    if (posConf.posBloquearFueraHorario === true) {
+                      const inicio = String(posConf.posHorarioInicio ?? '08:00');
+                      const fin    = String(posConf.posHorarioFin ?? '20:00');
+                      const ahora  = dayjs().format('HH:mm');
+                      if (ahora < inicio || ahora > fin) {
+                        message.error(`POS bloqueado fuera de horario permitido (${inicio} – ${fin})`);
+                        return;
+                      }
                     }
                     const montoMax = typeof posConf.posMontoMaximoSinSupervisor === 'number'
                       ? posConf.posMontoMaximoSinSupervisor : 0;
