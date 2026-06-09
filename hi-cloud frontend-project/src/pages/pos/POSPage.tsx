@@ -237,7 +237,9 @@ function categoryIcon(cat?: string): string {
   return '📦';
 }
 
-function ProductCard({ produto, onAdd }: { produto: Prod; onAdd: (p: Prod) => void }) {
+function ProductCard({ produto, onAdd, mostrarStock = true, permitirStockNegativo = false }: {
+  produto: Prod; onAdd: (p: Prod) => void; mostrarStock?: boolean; permitirStockNegativo?: boolean;
+}) {
   const C        = useC();
   const isDark   = C === darkC;
   const esServicio = (produto as any).tipo === 'servicio';
@@ -258,16 +260,16 @@ function ProductCard({ produto, onAdd }: { produto: Prod; onAdd: (p: Prod) => vo
 
   return (
     <motion.div
-      whileHover={!sinStock ? { y: -2, boxShadow: `0 8px 24px rgba(59,130,246,.18)` } : {}}
-      whileTap={!sinStock ? { scale: 0.96 } : {}}
-      onClick={() => !sinStock && onAdd(produto)}
+      whileHover={(!sinStock || permitirStockNegativo) ? { y: -2, boxShadow: `0 8px 24px rgba(59,130,246,.18)` } : {}}
+      whileTap={(!sinStock || permitirStockNegativo) ? { scale: 0.96 } : {}}
+      onClick={() => (!sinStock || permitirStockNegativo) && onAdd(produto)}
       style={{
-        cursor:       sinStock ? 'not-allowed' : 'pointer',
+        cursor:       (sinStock && !permitirStockNegativo) ? 'not-allowed' : 'pointer',
         borderRadius: 14,
         background:   C.card,
         border:       `1px solid ${C.border}`,
         overflow:     'hidden',
-        opacity:      sinStock ? 0.6 : 1,
+        opacity:      (sinStock && !permitirStockNegativo) ? 0.6 : 1,
         position:     'relative',
         display:      'flex', flexDirection: 'column',
         height:       148,
@@ -282,6 +284,7 @@ function ProductCard({ produto, onAdd }: { produto: Prod; onAdd: (p: Prod) => vo
         fontSize: 10, fontWeight: 800, borderRadius: 10,
         padding: '2px 7px', border: `1px solid ${stockColor}44`,
         fontVariantNumeric: 'tabular-nums',
+        display: mostrarStock ? undefined : 'none',
       }}>
         {stockDisplay}
       </div>
@@ -348,9 +351,9 @@ function ProductCard({ produto, onAdd }: { produto: Prod; onAdd: (p: Prod) => vo
 }
 
 // ── Cart row ──────────────────────────────────────────────────────────────────
-function CartRow({ item, onQty, onRemove, onDescuento, onPrecio, permitirModificarPrecio }: {
+function CartRow({ item, onQty, onRemove, onDescuento, onPrecio, permitirModificarPrecio, permitirDescuentos = true }: {
   item: CartItem; onQty: (d: number) => void; onRemove: () => void; onDescuento: (p: number) => void;
-  onPrecio?: (p: number) => void; permitirModificarPrecio?: boolean;
+  onPrecio?: (p: number) => void; permitirModificarPrecio?: boolean; permitirDescuentos?: boolean;
 }) {
   const C = useC();
   const [descFocus,    setDescFocus]    = useState(false);
@@ -429,8 +432,8 @@ function CartRow({ item, onQty, onRemove, onDescuento, onPrecio, permitirModific
 
           <div style={{ flex: 1 }} />
 
-          {/* Descuento — aparece solo si >0 o en foco */}
-          {showDesc ? (
+          {/* Descuento — aparece solo si permitirDescuentos y si >0 o en foco */}
+          {permitirDescuentos && showDesc ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
               <input type="number" value={item.descuento} min={0} max={100}
                 onChange={e => onDescuento(Math.min(100, Math.max(0, Number(e.target.value))))}
@@ -444,7 +447,7 @@ function CartRow({ item, onQty, onRemove, onDescuento, onPrecio, permitirModific
                   textAlign: 'center', fontSize: 11, fontWeight: 700, outline: 'none', padding: '0 2px' }} />
               <span style={{ fontSize: 10, color: item.descuento > 0 ? C.orange : C.textMuted, fontWeight: 600 }}>%</span>
             </div>
-          ) : (
+          ) : permitirDescuentos ? (
             <Tooltip title="Aplicar descuento">
               <button onClick={() => setDescFocus(true)}
                 style={{ height: 24, padding: '0 7px', borderRadius: 6,
@@ -454,7 +457,7 @@ function CartRow({ item, onQty, onRemove, onDescuento, onPrecio, permitirModific
                 <span style={{ fontSize: 12 }}>%</span>
               </button>
             </Tooltip>
-          )}
+          ) : null}
 
           {/* Eliminar */}
           <button onClick={onRemove}
@@ -3254,11 +3257,12 @@ const PANEL_TITLES: Record<PanelId, { label: string; icon: string }> = {
   'ventas-hoy':     { label: 'Ventas de Hoy',     icon: '🗓️' },
 };
 
-function POSPanel({ panel, palette, onVolver, confirmarAnulacion }: {
+function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnularFacturas }: {
   panel:              PanelId;
   palette:            Palette;
   onVolver:           () => void;
-  confirmarAnulacion?: boolean;   // posConfirmarAnulacion de la config (default true)
+  confirmarAnulacion?:   boolean;
+  permitirAnularFacturas?: boolean;
 }) {
   const C  = palette;
   const qc = useQueryClient();
@@ -3680,7 +3684,8 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion }: {
                           )
                         )}
                         {/* Anular */}
-                        {!yaAnulado && puedeAnular(row) && panel !== 'despacho' && (
+                        {!yaAnulado && puedeAnular(row) && panel !== 'despacho' &&
+                          (panel !== 'facturas' || permitirAnularFacturas !== false) && (
                           anulando === row.id ? (
                             <span style={{ fontSize: 11, color: C.textSub }}>
                               <button onClick={() => { anularMutation.mutate({ id: row.id, mod: panel }); }}
@@ -4168,8 +4173,10 @@ export default function POSPage() {
   const totalItems    = cart.reduce((s, i) => s + i.cantidad, 0);
 
   // Config POS — leída aquí para que propina y cambio puedan usarla
-  const posConf          = (empresa?.configuracion ?? {}) as Record<string, unknown>;
-  const propinaActiva    = posConf.posPropinaActiva === true && tipoPagoPos === 'CONTADO';
+  const posConf                  = (empresa?.configuracion ?? {}) as Record<string, unknown>;
+  const posPermitirStockNegativo = posConf.posPermitirStockNegativo === true;
+  const posDescuentoMaximo       = typeof posConf.posDescuentoMaximo === 'number' ? posConf.posDescuentoMaximo : 100;
+  const propinaActiva            = posConf.posPropinaActiva === true && tipoPagoPos === 'CONTADO';
   const propinaDefPct    = typeof posConf.posPorcentajePropina === 'number' ? posConf.posPorcentajePropina : 10;
   const propinaNum       = propinaActiva ? (Number(propinaValor) || 0) : 0;
   const propinaMontoCalc = propinaActiva && propinaNum > 0
@@ -4245,6 +4252,13 @@ export default function POSPage() {
   // Add to cart — agrega inmediatamente al precio base, luego actualiza en background
   const addToCart = useCallback((produto: Prod) => {
     const precioBase = Number(produto.precio);
+    const esServicio = (produto as any).tipo === 'servicio';
+    const sinStock   = !esServicio && Number(produto.stock) <= 0;
+
+    if (sinStock && !posPermitirStockNegativo) {
+      message.error('Stock insuficiente — no hay unidades disponibles');
+      return;
+    }
 
     // 1. Agregar al carrito de forma inmediata (sin esperar API)
     setCart(prev => {
@@ -4285,7 +4299,7 @@ export default function POSPage() {
         }
       })
       .catch(() => { precioCache.current.set(cacheKey, null); });
-  }, [clienteId]);
+  }, [clienteId, posPermitirStockNegativo]);
 
   const updateQty          = (idx: number, delta: number) => setCart(prev => { const u=[...prev]; u[idx].cantidad = Math.min(Number(u[idx].produto.stock), Math.max(1, u[idx].cantidad + delta)); return u; });
   const removeItem         = (idx: number) => setCart(p => p.filter((_, i) => i !== idx));
@@ -4294,6 +4308,11 @@ export default function POSPage() {
     setCart(prev => prev.map((it, i) => i === idx ? { ...it, precio: nuevoPrecio, precioModificado: true } : it));
   };
   const setDescuento = async (idx: number, pct: number) => {
+    // Verificar descuento máximo configurado
+    if (posDescuentoMaximo < 100 && pct > posDescuentoMaximo) {
+      message.error(`Descuento máximo permitido: ${posDescuentoMaximo}%`);
+      return;
+    }
     // Si el modo supervisor está activo y el descuento supera el máximo → pedir autorización
     if (supervisor.supervisorModeEnabled && pct > supervisor.maxDiscountPercent) {
       const ok = await supervisor.requireSupervisor(
@@ -4340,7 +4359,7 @@ export default function POSPage() {
         console.log('[SCAN] producto:', producto?.nombre ?? 'NO ENCONTRADO');
         if (producto) {
           const esServicio = (producto as any).tipo === 'servicio';
-          if (!esServicio && Number(producto.stock) <= 0) {
+          if (!esServicio && Number(producto.stock) <= 0 && !posPermitirStockNegativo) {
             message.warning(`${producto.nombre}: sin stock`, 2);
             return;
           }
@@ -4847,6 +4866,7 @@ export default function POSPage() {
             palette={palette}
             onVolver={() => setPanelActivo('items')}
             confirmarAnulacion={posConf.posConfirmarAnulacion !== false}
+            permitirAnularFacturas={posConf.posPermitirAnularFacturas !== false}
           />
         )}
         {panelActivo === 'items' && (<>
@@ -5007,7 +5027,9 @@ export default function POSPage() {
             ) : (
               <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))', gap:10 }}>
                 {productosFiltrados.map((p: any) => (
-                  <ProductCard key={p.id} produto={p} onAdd={addToCart} />
+                  <ProductCard key={p.id} produto={p} onAdd={addToCart}
+                    mostrarStock={posConf.posMostrarStock !== false}
+                    permitirStockNegativo={posPermitirStockNegativo} />
                 ))}
               </div>
             )}
@@ -5094,14 +5116,15 @@ export default function POSPage() {
                     onRemove={() => removeItem(idx)}
                     onDescuento={p => setDescuento(idx, p)}
                     onPrecio={p => actualizarPrecioItem(idx, p)}
-                    permitirModificarPrecio={posConf.posModificarPrecio === true} />
+                    permitirModificarPrecio={posConf.posModificarPrecio === true}
+                    permitirDescuentos={posConf.posPermitirDescuentos !== false} />
                 ))}
               </AnimatePresence>
             )}
           </div>
 
           {/* Descuento global — entre carrito y totales */}
-          {cart.length > 0 && (
+          {cart.length > 0 && posConf.posPermitirDescuentos !== false && (
             <div style={{ padding: '8px 14px', borderTop: `1px solid ${C.border}`, background: C.bg, flexShrink: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ fontSize: 11, color: C.textSub, flexShrink: 0 }}>Descuento</span>
@@ -5167,7 +5190,24 @@ export default function POSPage() {
               {/* Botón de acción principal */}
               {modoFacturacion === 'factura' || modoFacturacion === 'valor-fiscal' ? (
                 <motion.button whileTap={{ scale: 0.97 }}
-                  onClick={() => { setMontoRecibido(totalEfectivo); if (posConf.posPropinaActiva === true) setPropinaValor(String(propinaDefPct)); setShowPago(true); }}
+                  onClick={async () => {
+                    if (posConf.posRequerirCliente === true && !clienteId) {
+                      message.error('Debe seleccionar un cliente para continuar');
+                      return;
+                    }
+                    const montoMax = typeof posConf.posMontoMaximoSinSupervisor === 'number'
+                      ? posConf.posMontoMaximoSinSupervisor : 0;
+                    if (montoMax > 0 && totalEfectivo > montoMax) {
+                      const ok = await supervisor.requireSupervisor(
+                        `Venta de ${fmt.money(totalEfectivo)}`,
+                        `Monto máximo sin supervisor: ${fmt.money(montoMax)}`,
+                      );
+                      if (!ok) return;
+                    }
+                    setMontoRecibido(totalEfectivo);
+                    if (posConf.posPropinaActiva === true) setPropinaValor(String(propinaDefPct));
+                    setShowPago(true);
+                  }}
                   style={{ width: '100%', height: 52, borderRadius: 12, border: 'none',
                     background: 'linear-gradient(135deg,#059669,#10B981)', color: '#fff',
                     fontSize: 16, fontWeight: 700, cursor: 'pointer', outline: 'none',

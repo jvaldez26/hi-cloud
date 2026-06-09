@@ -841,10 +841,25 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
       posPropinaActiva:     conf.posPropinaActiva ?? false,
       posPorcentajePropina: conf.posPorcentajePropina ?? 10,
       posCedulaMonto:       conf.posCedulaMonto ?? 50000,
-      posImpresionAuto:       conf.posImpresionAuto ?? false,
-      posConfirmarAnulacion:  conf.posConfirmarAnulacion ?? true,
-      posModoContingencia:    conf.posModoContingencia ?? false,
-      posModificarPrecio:     conf.posModificarPrecio ?? false,
+      posImpresionAuto:            conf.posImpresionAuto ?? false,
+      posConfirmarAnulacion:       conf.posConfirmarAnulacion ?? true,
+      posModoContingencia:         conf.posModoContingencia ?? false,
+      posModificarPrecio:          conf.posModificarPrecio ?? false,
+      posPermitirStockNegativo:    conf.posPermitirStockNegativo ?? false,
+      posRequerirCliente:          conf.posRequerirCliente ?? false,
+      posPermitirDescuentos:       conf.posPermitirDescuentos ?? true,
+      posDescuentoMaximo:          conf.posDescuentoMaximo ?? 100,
+      posMostrarStock:             conf.posMostrarStock ?? true,
+      posPermitirUsd:              conf.posPermitirUsd ?? false,
+      posMontoMaximoSinSupervisor: conf.posMontoMaximoSinSupervisor ?? 0,
+      posPermitirAnularFacturas:   conf.posPermitirAnularFacturas ?? true,
+      posTiempoLimiteAnular:       conf.posTiempoLimiteAnular ?? 0,
+      posBloquearFueraHorario:     conf.posBloquearFueraHorario ?? false,
+      posHorarioInicio:            conf.posHorarioInicio ?? '08:00',
+      posHorarioFin:               conf.posHorarioFin ?? '20:00',
+      posEcfAutomatico:            conf.posEcfAutomatico ?? true,
+      posMostrarEcfEnRecibo:       conf.posMostrarEcfEnRecibo ?? true,
+      posPrecioIncluyeItbis:       conf.posPrecioIncluyeItbis ?? false,
     });
   }, [empresa]);
 
@@ -854,8 +869,10 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
     onError: (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error'),
   });
 
-  const propinaActiva = Form.useWatch('posPropinaActiva', form);
-  const modoContingencia = Form.useWatch('posModoContingencia', form);
+  const propinaActiva         = Form.useWatch('posPropinaActiva',         form);
+  const modoContingencia      = Form.useWatch('posModoContingencia',      form);
+  const bloquearFueraHorario  = Form.useWatch('posBloquearFueraHorario',  form);
+  const permitirDescuentos    = Form.useWatch('posPermitirDescuentos',    form);
 
   return (
     <Form form={form} layout="vertical" onFinish={v => mut.mutate(v)}>
@@ -964,12 +981,133 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
             </Text>
           </div>
         </Col>
+        <Col xs={24} sm={12}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <Form.Item name="posPermitirStockNegativo" valuePropName="checked" style={{ marginBottom: 0 }}>
+              <Switch size="small" />
+            </Form.Item>
+            <Text style={{ fontSize: 13 }}>Permitir ventas cuando el stock es 0</Text>
+          </div>
+        </Col>
+        <Col xs={24} sm={12}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <Form.Item name="posRequerirCliente" valuePropName="checked" style={{ marginBottom: 0 }}>
+              <Switch size="small" />
+            </Form.Item>
+            <Text style={{ fontSize: 13 }}>Requerir cliente en todas las ventas</Text>
+          </div>
+        </Col>
+        <Col xs={24} sm={12}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <Form.Item name="posPermitirDescuentos" valuePropName="checked" style={{ marginBottom: 0 }}>
+              <Switch size="small" />
+            </Form.Item>
+            <Text style={{ fontSize: 13 }}>Permitir aplicar descuentos en el carrito</Text>
+          </div>
+        </Col>
+        {permitirDescuentos !== false && (
+          <Col xs={24} sm={10}>
+            <Form.Item name="posDescuentoMaximo" label="Descuento máximo permitido (%)">
+              <InputNumber style={{ width: '100%' }} min={0} max={100} addonAfter="%" />
+            </Form.Item>
+          </Col>
+        )}
+        <Col xs={24} sm={12}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <Form.Item name="posMostrarStock" valuePropName="checked" style={{ marginBottom: 0 }}>
+              <Switch size="small" />
+            </Form.Item>
+            <Text style={{ fontSize: 13 }}>Mostrar badge de stock en tarjetas de productos</Text>
+          </div>
+        </Col>
+        <Col xs={24} sm={12}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <Form.Item name="posPermitirUsd" valuePropName="checked" style={{ marginBottom: 0 }}>
+              <Switch size="small" />
+            </Form.Item>
+            <Text style={{ fontSize: 13 }}>Habilitar ventas en USD</Text>
+          </div>
+        </Col>
         <Col xs={24} sm={10}>
           <Form.Item name="posCedulaMonto" label="Requerir cédula en ventas mayores a">
             <InputNumber style={{ width: '100%' }} min={0} step={1000} addonAfter="DOP"
               formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
               parser={(v: any) => v?.replace(/,/g, '')} />
           </Form.Item>
+        </Col>
+      </Row>
+
+      <Divider orientation="left" orientationMargin={0}>Restricciones de venta</Divider>
+      <Row gutter={[16, 8]}>
+        <Col xs={24} sm={12}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <Form.Item name="posPermitirAnularFacturas" valuePropName="checked" style={{ marginBottom: 0 }}>
+              <Switch size="small" />
+            </Form.Item>
+            <Text style={{ fontSize: 13 }}>Permitir anular facturas desde el POS</Text>
+          </div>
+        </Col>
+        <Col xs={24} sm={10}>
+          <Form.Item name="posTiempoLimiteAnular" label="Tiempo límite para anular (minutos, 0 = sin límite)">
+            <InputNumber style={{ width: '100%' }} min={0} step={5} addonAfter="min" />
+          </Form.Item>
+        </Col>
+        <Col xs={24} sm={10}>
+          <Form.Item name="posMontoMaximoSinSupervisor" label="Monto máximo sin supervisor (0 = sin límite)">
+            <InputNumber style={{ width: '100%' }} min={0} step={500} addonAfter="DOP"
+              formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+              parser={(v: any) => v?.replace(/,/g, '')} />
+          </Form.Item>
+        </Col>
+        <Col xs={24} sm={12}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <Form.Item name="posBloquearFueraHorario" valuePropName="checked" style={{ marginBottom: 0 }}>
+              <Switch size="small" />
+            </Form.Item>
+            <Text style={{ fontSize: 13 }}>Bloquear POS fuera del horario configurado</Text>
+          </div>
+        </Col>
+        {bloquearFueraHorario && (
+          <>
+            <Col xs={12} sm={6}>
+              <Form.Item name="posHorarioInicio" label="Horario inicio">
+                <Input type="time" />
+              </Form.Item>
+            </Col>
+            <Col xs={12} sm={6}>
+              <Form.Item name="posHorarioFin" label="Horario fin">
+                <Input type="time" />
+              </Form.Item>
+            </Col>
+          </>
+        )}
+      </Row>
+
+      <Divider orientation="left" orientationMargin={0}>Fiscal POS</Divider>
+      <Row gutter={[16, 8]}>
+        <Col xs={24} sm={12}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <Form.Item name="posEcfAutomatico" valuePropName="checked" style={{ marginBottom: 0 }}>
+              <Switch size="small" />
+            </Form.Item>
+            <Text style={{ fontSize: 13 }}>Generar e-CF automáticamente al cobrar</Text>
+          </div>
+        </Col>
+        <Col xs={24} sm={12}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <Form.Item name="posMostrarEcfEnRecibo" valuePropName="checked" style={{ marginBottom: 0 }}>
+              <Switch size="small" />
+            </Form.Item>
+            <Text style={{ fontSize: 13 }}>Imprimir número e-CF en el recibo térmico</Text>
+          </div>
+        </Col>
+        <Col xs={24} sm={12}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <Form.Item name="posPrecioIncluyeItbis" valuePropName="checked" style={{ marginBottom: 0 }}>
+              <Switch size="small" />
+            </Form.Item>
+            <Text style={{ fontSize: 13 }}>Los precios mostrados en el POS incluyen ITBIS</Text>
+          </div>
         </Col>
       </Row>
 
