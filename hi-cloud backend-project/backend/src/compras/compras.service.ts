@@ -50,8 +50,12 @@ export class ComprasService {
     let subtotalCompra = 0;
     let itbisCompra = 0;
 
+    const productoIds = dto.detalles.map(d => d.productoId);
+    const productosMap = await this.productosService.findByIds(productoIds);
+
     for (const item of dto.detalles) {
-      const producto = await this.productosService.findOne(item.productoId);
+      const producto = productosMap.get(item.productoId);
+      if (!producto) throw new NotFoundException(`Producto #${item.productoId} no encontrado`);
       const porcentajeItbis = item.porcentajeItbis ?? ITBIS_DEFAULT;
       const subtotal = Number(item.precioUnitario) * item.cantidad;
       const importeItbis = Number((subtotal * (porcentajeItbis / 100)).toFixed(2));

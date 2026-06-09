@@ -6,7 +6,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { Producto } from './entities/producto.entity';
 import { Almacen } from '../almacenes/entities/almacen.entity';
 import { StockAlmacen } from '../almacenes/entities/stock-almacen.entity';
@@ -130,6 +130,17 @@ export class ProductosService {
     });
     if (!producto) throw new NotFoundException(`Producto #${id} no encontrado`);
     return producto;
+  }
+
+  async findByIds(ids: number[]): Promise<Map<number, Producto>> {
+    if (ids.length === 0) return new Map();
+    const empresaId = this.tenantService.getEmpresaId();
+    const productos = await this.productoRepository.find({
+      where: { id: In(ids), empresaId, isActive: true },
+    });
+    const map = new Map<number, Producto>();
+    for (const p of productos) map.set(p.id, p);
+    return map;
   }
 
   async findByCodigo(codigo: string) {

@@ -74,10 +74,11 @@ export class FacturasService {
     let subtotalFactura = 0;
     let ivaFactura = 0;
 
+    const productoIds = dto.detalles.map(d => d.productoId).filter((id): id is number => id != null);
+    const productosMap = await this.productosService.findByIds(productoIds);
+
     for (const item of dto.detalles) {
-      const producto = item.productoId
-        ? await this.productosService.findOne(item.productoId)
-        : null;
+      const producto = item.productoId ? (productosMap.get(item.productoId) ?? null) : null;
       const porcentajeIva = item.porcentajeIva ?? (producto ? Number(producto.porcentajeIva) : 18);
       const subtotal = Number(item.precioUnitario) * item.cantidad;
       const importeIva = subtotal * (porcentajeIva / 100);
@@ -216,10 +217,11 @@ export class FacturasService {
     let subtotalFactura = 0;
     let ivaFactura = 0;
 
+    const productoIds = dto.detalles.map(d => d.productoId).filter((id): id is number => id != null);
+    const productosMap = await this.productosService.findByIds(productoIds);
+
     for (const item of dto.detalles) {
-      const producto = item.productoId
-        ? await this.productosService.findOne(item.productoId)
-        : null;
+      const producto = item.productoId ? (productosMap.get(item.productoId) ?? null) : null;
       const porcentajeIva = item.porcentajeIva ?? (producto ? Number(producto.porcentajeIva) : 18);
       const subtotal    = Number(item.precioUnitario) * item.cantidad;
       const importeIva  = subtotal * (porcentajeIva / 100);
