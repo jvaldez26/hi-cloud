@@ -72,10 +72,11 @@ const useC = () => useContext(ThemeCtx);
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
 interface CartItem {
-  produto:   Prod;
-  cantidad:  number;
-  precio:    number;
-  descuento: number;
+  produto:          Prod;
+  cantidad:         number;
+  precio:           number;
+  descuento:        number;
+  precioModificado?: boolean;
 }
 
 interface ParkedSale {
@@ -347,13 +348,21 @@ function ProductCard({ produto, onAdd }: { produto: Prod; onAdd: (p: Prod) => vo
 }
 
 // ── Cart row ──────────────────────────────────────────────────────────────────
-function CartRow({ item, onQty, onRemove, onDescuento }: {
+function CartRow({ item, onQty, onRemove, onDescuento, onPrecio, permitirModificarPrecio }: {
   item: CartItem; onQty: (d: number) => void; onRemove: () => void; onDescuento: (p: number) => void;
+  onPrecio?: (p: number) => void; permitirModificarPrecio?: boolean;
 }) {
   const C = useC();
-  const [descFocus, setDescFocus] = useState(false);
+  const [descFocus,    setDescFocus]    = useState(false);
+  const [precioDraft,  setPrecioDraft]  = useState<string | null>(null);
   const sub = item.precio * item.cantidad * (1 - item.descuento / 100);
   const showDesc = descFocus || item.descuento > 0;
+
+  const confirmarPrecio = (raw: string) => {
+    const v = parseFloat(raw.replace(/[^0-9.]/g, ''));
+    if (v > 0) onPrecio?.(v);
+    setPrecioDraft(null);
+  };
 
   return (
     <motion.div layout initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
@@ -365,9 +374,38 @@ function CartRow({ item, onQty, onRemove, onDescuento }: {
             <span style={{ fontSize: 12, fontWeight: 600, color: C.text, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {item.produto.nombre}
             </span>
-            <span style={{ fontSize: 11, color: C.textSub }}>
-              {fmt.money(item.precio)} × PZA
-              {item.descuento > 0 && <span style={{ marginLeft: 5, color: C.orange, fontWeight: 700 }}>−{item.descuento}%</span>}
+            <span style={{ fontSize: 11, color: C.textSub, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+              {permitirModificarPrecio ? (
+                precioDraft !== null ? (
+                  <input
+                    type="number"
+                    autoFocus
+                    value={precioDraft}
+                    min={0.01}
+                    step={0.01}
+                    style={{ width: 88, fontSize: 11, borderRadius: 4,
+                      border: `1px solid ${C.blue}`, background: 'transparent',
+                      color: C.text, textAlign: 'right', padding: '1px 4px', outline: 'none' }}
+                    onChange={e => setPrecioDraft(e.target.value)}
+                    onBlur={e => confirmarPrecio(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') confirmarPrecio((e.target as HTMLInputElement).value);
+                      if (e.key === 'Escape') setPrecioDraft(null);
+                    }}
+                  />
+                ) : (
+                  <span onClick={() => setPrecioDraft(String(item.precio))}
+                    style={{ cursor: 'pointer', borderBottom: `1px dashed ${C.blue}`, paddingBottom: 1 }}
+                    title="Click para editar precio">
+                    {fmt.money(item.precio)} ✏
+                  </span>
+                )
+              ) : (
+                <span>{fmt.money(item.precio)}</span>
+              )}
+              <span>× PZA</span>
+              {item.descuento > 0 && <span style={{ color: C.orange, fontWeight: 700 }}>−{item.descuento}%</span>}
+              {item.precioModificado && <span style={{ color: C.orange, fontSize: 10 }}>✎</span>}
             </span>
           </div>
           <span style={{ color: C.blue, fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap' }}>{fmt.money(sub)}</span>
@@ -457,11 +495,13 @@ function buildReciboTermicoHTML(sale: Sale, qrDataUrl: string | null): string {
   const metodoLabel = METODOS.find(m => m.key === sale.metodo)?.label ?? 'Pago';
   const pagoMostrar = sale.pagoRecibido ?? (sale.metodo === 'efectivo' && sale.cambio > 0 ? sale.total + sale.cambio : sale.total);
 
+  const tieneModificados = sale.items.some(i => i.precioModificado);
   const itemsHtml = sale.items.map(item => {
     const precioBase = item.precio * item.cantidad;
     const sub        = precioBase * (1 - item.descuento / 100);
     const nom        = item.produto.nombre.length > 26 ? item.produto.nombre.slice(0, 25) + '…' : item.produto.nombre;
-    const itemLine   = `<div class="row"><span>${esc(nom)} ×${item.cantidad}</span><span>${sub.toFixed(2)}</span></div>`;
+    const modMark    = item.precioModificado ? ' *' : '';
+    const itemLine   = `<div class="row"><span>${esc(nom + modMark)} ×${item.cantidad}</span><span>${sub.toFixed(2)}</span></div>`;
     const descLine   = item.descuento > 0
       ? `<div class="row small"><span>  Descuento (${item.descuento}%)</span><span>-${(precioBase - sub).toFixed(2)}</span></div>`
       : '';
@@ -551,6 +591,7 @@ ${sale.metodo === 'credito' && sale.diasCredito ? row('Plazo:', `${sale.diasCred
 ${Number(sale.cambio) > 0 ? rowBold('CAMBIO:', fmt(Number(sale.cambio))) : ''}
 ${ecfHtml}
 ${dbl()}
+${tieneModificados ? `${line()}<div class="small">* Precio modificado en venta</div>` : ''}
 <div class="center">&#161;Gracias por su preferencia!</div>
 
 </body></html>`;
@@ -4246,8 +4287,12 @@ export default function POSPage() {
       .catch(() => { precioCache.current.set(cacheKey, null); });
   }, [clienteId]);
 
-  const updateQty    = (idx: number, delta: number) => setCart(prev => { const u=[...prev]; u[idx].cantidad = Math.min(Number(u[idx].produto.stock), Math.max(1, u[idx].cantidad + delta)); return u; });
-  const removeItem   = (idx: number) => setCart(p => p.filter((_, i) => i !== idx));
+  const updateQty          = (idx: number, delta: number) => setCart(prev => { const u=[...prev]; u[idx].cantidad = Math.min(Number(u[idx].produto.stock), Math.max(1, u[idx].cantidad + delta)); return u; });
+  const removeItem         = (idx: number) => setCart(p => p.filter((_, i) => i !== idx));
+  const actualizarPrecioItem = (idx: number, nuevoPrecio: number) => {
+    if (nuevoPrecio <= 0) return;
+    setCart(prev => prev.map((it, i) => i === idx ? { ...it, precio: nuevoPrecio, precioModificado: true } : it));
+  };
   const setDescuento = async (idx: number, pct: number) => {
     // Si el modo supervisor está activo y el descuento supera el máximo → pedir autorización
     if (supervisor.supervisorModeEnabled && pct > supervisor.maxDiscountPercent) {
@@ -5047,7 +5092,9 @@ export default function POSPage() {
                   <CartRow key={item.produto.id} item={item}
                     onQty={d => updateQty(idx, d)}
                     onRemove={() => removeItem(idx)}
-                    onDescuento={p => setDescuento(idx, p)} />
+                    onDescuento={p => setDescuento(idx, p)}
+                    onPrecio={p => actualizarPrecioItem(idx, p)}
+                    permitirModificarPrecio={posConf.posModificarPrecio === true} />
                 ))}
               </AnimatePresence>
             )}

@@ -841,9 +841,10 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
       posPropinaActiva:     conf.posPropinaActiva ?? false,
       posPorcentajePropina: conf.posPorcentajePropina ?? 10,
       posCedulaMonto:       conf.posCedulaMonto ?? 50000,
-      posImpresionAuto:     conf.posImpresionAuto ?? false,
-      posConfirmarAnulacion:conf.posConfirmarAnulacion ?? true,
-      posModoContingencia:  conf.posModoContingencia ?? false,
+      posImpresionAuto:       conf.posImpresionAuto ?? false,
+      posConfirmarAnulacion:  conf.posConfirmarAnulacion ?? true,
+      posModoContingencia:    conf.posModoContingencia ?? false,
+      posModificarPrecio:     conf.posModificarPrecio ?? false,
     });
   }, [empresa]);
 
@@ -948,6 +949,19 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
               <Switch size="small" style={{ background: modoContingencia ? '#faad14' : undefined }} />
             </Form.Item>
             <Text style={{ fontSize: 13 }}>Modo contingencia</Text>
+          </div>
+        </Col>
+        <Col xs={24} sm={12}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Form.Item name="posModificarPrecio" valuePropName="checked" style={{ marginBottom: 0 }}>
+                <Switch size="small" />
+              </Form.Item>
+              <Text style={{ fontSize: 13 }}>Permitir modificar precio en venta</Text>
+            </div>
+            <Text type="secondary" style={{ fontSize: 11, marginLeft: 36 }}>
+              Permite al cajero editar el precio unitario de cada producto directamente en el carrito.
+            </Text>
           </div>
         </Col>
         <Col xs={24} sm={10}>
