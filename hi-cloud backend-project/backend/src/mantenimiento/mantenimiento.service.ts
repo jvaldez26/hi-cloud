@@ -33,11 +33,13 @@ export class MantenimientoService {
   // ── Órdenes de mantenimiento ──────────────────────────────────────────────
 
   async crearOrden(dto: any, userId: number) {
+    const empresaId = this.tenantService.getEmpresaId();
     const numero = await this.generarNumero();
     return this.ordenRepo.save(this.ordenRepo.create({
       ...dto,
       numero,
       userId,
+      empresaId,
       fechaProgramada: new Date(dto.fechaProgramada),
     }));
   }
@@ -60,7 +62,8 @@ export class MantenimientoService {
   }
 
   async completarOrden(id: number, dto: { costoReal?: number; observaciones?: string; tecnico?: string }) {
-    const o = await this.ordenRepo.findOne({ where: { id } });
+    const empresaId = this.tenantService.getEmpresaId();
+    const o = await this.ordenRepo.findOne({ where: { id, empresaId } });
     if (!o) throw new NotFoundException(`Orden #${id} no encontrada`);
 
     await this.ordenRepo.update(id, {
@@ -86,6 +89,9 @@ export class MantenimientoService {
   }
 
   async cancelarOrden(id: number) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const o = await this.ordenRepo.findOne({ where: { id, empresaId } });
+    if (!o) throw new NotFoundException(`Orden #${id} no encontrada`);
     await this.ordenRepo.update(id, { estado: EstadoMantenimiento.CANCELADO });
     return { ok: true };
   }
@@ -93,10 +99,12 @@ export class MantenimientoService {
   // ── Programas de mantenimiento preventivo ────────────────────────────────
 
   async crearPrograma(dto: any) {
+    const empresaId = this.tenantService.getEmpresaId();
     const proxima = new Date();
     proxima.setDate(proxima.getDate() + (dto.frecuenciaDias ?? 30));
     return this.progRepo.save(this.progRepo.create({
       ...dto,
+      empresaId,
       proximoMantenimiento: proxima,
     }));
   }
@@ -117,21 +125,23 @@ export class MantenimientoService {
   // ── Dashboard ─────────────────────────────────────────────────────────────
 
   async getDashboard() {
-    const hoy      = new Date();
-    const en7      = new Date(hoy); en7.setDate(hoy.getDate() + 7);
-    const en30     = new Date(hoy); en30.setDate(hoy.getDate() + 30);
+    const hoy       = new Date();
+    const en7       = new Date(hoy); en7.setDate(hoy.getDate() + 7);
+    const en30      = new Date(hoy); en30.setDate(hoy.getDate() + 30);
+    const empresaId = this.tenantService.getEmpresaId();
 
     const [programados, enProceso, completados, vencidos, proximos7, costoMes] = await Promise.all([
-      this.ordenRepo.count({ where: { isActive: true, estado: EstadoMantenimiento.PROGRAMADO } }),
-      this.ordenRepo.count({ where: { isActive: true, estado: EstadoMantenimiento.EN_PROCESO } }),
-      this.ordenRepo.count({ where: { isActive: true, estado: EstadoMantenimiento.COMPLETADO } }),
-      this.ordenRepo.count({ where: { isActive: true, estado: EstadoMantenimiento.VENCIDO } }),
-      this.ordenRepo.count({ where: { isActive: true, estado: EstadoMantenimiento.PROGRAMADO,
+      this.ordenRepo.count({ where: { isActive: true, empresaId, estado: EstadoMantenimiento.PROGRAMADO } }),
+      this.ordenRepo.count({ where: { isActive: true, empresaId, estado: EstadoMantenimiento.EN_PROCESO } }),
+      this.ordenRepo.count({ where: { isActive: true, empresaId, estado: EstadoMantenimiento.COMPLETADO } }),
+      this.ordenRepo.count({ where: { isActive: true, empresaId, estado: EstadoMantenimiento.VENCIDO } }),
+      this.ordenRepo.count({ where: { isActive: true, empresaId, estado: EstadoMantenimiento.PROGRAMADO,
         fechaProgramada: Between(hoy, en7) } }),
       this.ordenRepo
         .createQueryBuilder('o')
         .select('COALESCE(SUM(o.costoReal), 0)', 'total')
-        .where('o.estado = :e', { e: EstadoMantenimiento.COMPLETADO })
+        .where('o.empresaId = :eid', { eid: empresaId })
+        .andWhere('o.estado = :e', { e: EstadoMantenimiento.COMPLETADO })
         .andWhere('o.fechaRealizada >= :inicio', {
           inicio: new Date(hoy.getFullYear(), hoy.getMonth(), 1),
         })
@@ -139,14 +149,14 @@ export class MantenimientoService {
     ]);
 
     const proximasProgramas = await this.progRepo.find({
-      where: { isActive: true, habilitado: true, proximoMantenimiento: LessThanOrEqual(en30) },
+      where: { isActive: true, habilitado: true, empresaId, proximoMantenimiento: LessThanOrEqual(en30) },
       relations: ['activo'],
       order: { proximoMantenimiento: 'ASC' },
       take: 5,
     });
 
     const criticas = await this.ordenRepo.find({
-      where: { isActive: true, estado: EstadoMantenimiento.PROGRAMADO,
+      where: { isActive: true, empresaId, estado: EstadoMantenimiento.PROGRAMADO,
                prioridad: PrioridadMantenimiento.CRITICA },
       relations: ['activo'],
       order: { fechaProgramada: 'ASC' },
