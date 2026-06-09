@@ -7,7 +7,7 @@ import { TableActions } from '../../components/ui/TableActions';
 import {
   Card, Row, Col, Typography, Table, Tag, Button,
   Space, Modal, Form, Input, Select, DatePicker, InputNumber,
-  Tabs, message, Badge, Tooltip, theme, Checkbox, Divider,
+  Tabs, message, Badge, Tooltip, theme, Checkbox, Divider, Descriptions,
 } from 'antd';
 import {
   PlusOutlined, CheckOutlined, StopOutlined, ToolOutlined, FileExcelOutlined,
@@ -62,6 +62,7 @@ export default function MantenimientoPage() {
   const [pageOrd,      setPageOrd]      = useState(1);
   const [ordenModal,        setOrdenModal]        = useState(false);
   const [completModal,      setCompletModal]      = useState<any>(null);
+  const [visorModal,        setVisorModal]        = useState<any>(null);
   const [progModal,         setProgModal]         = useState(false);
   const [requiereRepuestos, setRequiereRepuestos] = useState(false);
   const [formOrd]  = Form.useForm();
@@ -103,6 +104,7 @@ export default function MantenimientoPage() {
       setRequiereRepuestos(false);
       message.success('Orden completada');
     },
+    onError: (e: any) => message.error(e?.friendlyMessage ?? e?.message ?? 'Error al completar la orden'),
   });
 
   const cancelarMut = useMutation({
@@ -149,8 +151,18 @@ export default function MantenimientoPage() {
     { title: '', key: 'actions', width: 72, align: 'right' as const,
       render: (_: any, r: any) => (
         <TableActions
-          onView={() => { setCompletModal(r); formComp.resetFields(); formComp.setFieldsValue({ fechaRealizada: dayjs() }); setRequiereRepuestos(false); }}
-          viewLabel="Completar"
+          onView={() => {
+            const esTerminada = r.estado === 'completado' || r.estado === 'cancelado' || r.estado === 'vencido';
+            if (esTerminada) {
+              setVisorModal(r);
+            } else {
+              setCompletModal(r);
+              formComp.resetFields();
+              formComp.setFieldsValue({ fechaRealizada: dayjs() });
+              setRequiereRepuestos(false);
+            }
+          }}
+          viewLabel={r.estado === 'completado' || r.estado === 'cancelado' || r.estado === 'vencido' ? 'Ver detalle' : 'Completar'}
           items={[
             ...(r.estado === 'programado' || r.estado === 'en_proceso' ? [{
               key: 'completar', label: 'Completar', icon: <CheckOutlined />,
@@ -431,6 +443,46 @@ export default function MantenimientoPage() {
             </Col>
           </Row>
         </Form>
+      </Modal>
+
+      {/* Modal visor — detalle de orden */}
+      <Modal
+        title={`Orden ${visorModal?.numero}`}
+        open={!!visorModal}
+        onCancel={() => setVisorModal(null)}
+        footer={<Button onClick={() => setVisorModal(null)}>Cerrar</Button>}
+        width={560}
+      >
+        {visorModal && (
+          <Descriptions column={2} bordered size="small">
+            <Descriptions.Item label="Activo" span={2}>{visorModal.activo?.descripcion ?? '—'}</Descriptions.Item>
+            <Descriptions.Item label="Tipo">
+              {TIPO_MNT.find(t => t.value === visorModal.tipo)?.label ?? visorModal.tipo}
+            </Descriptions.Item>
+            <Descriptions.Item label="Prioridad">
+              {(() => { const p = PRIORIDAD.find(x => x.value === visorModal.prioridad); return <Tag color={p?.color}>{p?.label ?? visorModal.prioridad}</Tag>; })()}
+            </Descriptions.Item>
+            <Descriptions.Item label="Estado" span={2}>
+              {(() => { const s = ESTADO_MNT[visorModal.estado] ?? { label: visorModal.estado, color: 'default' }; return <Tag color={s.color}>{s.label}</Tag>; })()}
+            </Descriptions.Item>
+            <Descriptions.Item label="Fecha programada">{fmt.date(visorModal.fechaProgramada)}</Descriptions.Item>
+            <Descriptions.Item label="Fecha realizada">{visorModal.fechaRealizada ? fmt.date(visorModal.fechaRealizada) : '—'}</Descriptions.Item>
+            <Descriptions.Item label="Costo estimado">{visorModal.costoEstimado ? fmt.money(visorModal.costoEstimado) : '—'}</Descriptions.Item>
+            <Descriptions.Item label="Costo real">{visorModal.costoReal ? fmt.money(visorModal.costoReal) : '—'}</Descriptions.Item>
+            <Descriptions.Item label="Técnico" span={2}>{visorModal.tecnico ?? '—'}</Descriptions.Item>
+            <Descriptions.Item label="Descripción" span={2}>{visorModal.descripcion}</Descriptions.Item>
+            {visorModal.observaciones && (
+              <Descriptions.Item label="Observaciones" span={2}>{visorModal.observaciones}</Descriptions.Item>
+            )}
+            {visorModal.repuestosUsados?.length > 0 && (
+              <Descriptions.Item label="Repuestos usados" span={2}>
+                {visorModal.repuestosUsados.map((rep: any, i: number) => (
+                  <div key={i}>{rep.descripcion} — {fmt.money(rep.costo)}</div>
+                ))}
+              </Descriptions.Item>
+            )}
+          </Descriptions>
+        )}
       </Modal>
 
       {/* Modal programa preventivo */}

@@ -82,6 +82,13 @@ export class MantenimientoService {
     return { data, meta: { total, page, limit } };
   }
 
+  async findOrdenById(id: number) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const o = await this.ordenRepo.findOne({ where: { id, empresaId }, relations: ['activo'] });
+    if (!o) throw new NotFoundException(`Orden #${id} no encontrada`);
+    return o;
+  }
+
   async completarOrden(id: number, dto: CompletarOrdenDto, userId: number) {
     const empresaId = this.tenantService.getEmpresaId();
     const o = await this.ordenRepo.findOne({ where: { id, empresaId } });

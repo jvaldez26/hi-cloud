@@ -34,11 +34,11 @@ class RepuestoUsadoDto {
 }
 
 class CompletarOrdenDto {
-  @IsOptional() @IsNumber() @Min(0)         costoReal?:            number;
-  @IsOptional() @IsString()                 observaciones?:        string;
-  @IsOptional() @IsString()                 tecnico?:              string;
-  @IsOptional() @IsDateString()             fechaRealizada?:       string;
-  @IsOptional() @IsDateString()             proximoMantenimiento?: string;
+  @IsOptional() @IsNumber() @Min(0) @Type(() => Number) costoReal?:            number;
+  @IsOptional() @IsString()                             observaciones?:        string;
+  @IsOptional() @IsString()                             tecnico?:              string;
+  @IsOptional() @IsDateString()                         fechaRealizada?:       string;
+  @IsOptional() @IsDateString()                         proximoMantenimiento?: string;
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => RepuestoUsadoDto)
   repuestosUsados?: RepuestoUsadoDto[];
 }
@@ -67,6 +67,11 @@ export class MantenimientoController {
   @HttpCode(HttpStatus.CREATED)
   crearOrden(@Body() dto: CreateOrdenDto, @GetUser() user: User) {
     return this.svc.crearOrden(dto, user.id);
+  }
+
+  @Get('ordenes/:id')
+  findOrden(@Param('id', ParseIntPipe) id: number) {
+    return this.svc.findOrdenById(id);
   }
 
   @Get('ordenes')
