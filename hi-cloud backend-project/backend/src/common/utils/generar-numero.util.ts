@@ -1,37 +1,30 @@
 import { DataSource } from 'typeorm';
 
 /**
- * Genera el siguiente número secuencial para una empresa.
- *
- * NOTA: FOR UPDATE no es compatible con funciones de agregación en PostgreSQL.
- * La protección contra duplicados se delega a la constraint UNIQUE de cada tabla.
- * Si hay colisión (race condition extrema) el caller recibe un 23505 y puede reintentar.
+ * Genera el siguiente número secuencial de forma atómica usando contadores_secuencia.
+ * El INSERT ... ON CONFLICT DO UPDATE de PostgreSQL garantiza que dos requests
+ * concurrentes nunca obtengan el mismo número (elimina la race condition del MAX()).
  *
  * @example
- *   const folio = await generarNumeroSecuencial(ds, 'facturas', 'folio', '^FAC-[0-9]+$', 'FAC-', 5, empresaId);
- *   // → 'FAC-00101'
+ *   const folio = await generarNumeroSecuencial(ds, 'facturas', 'folio', '^FAC-[0-9]+$', 'FAC-', 1, empresaId);
+ *   // → 'FAC-302'
  */
 export async function generarNumeroSecuencial(
-  dataSource: DataSource,
-  tabla: string,
-  columna: string,
-  regex: string,
-  prefijo: string,
-  longitudNumero: number,
-  empresaId: number,
+  dataSource:     DataSource,
+  _tabla:         string,   // conservado para compatibilidad — ya no se usa
+  _columna:       string,
+  _regex:         string,
+  prefijo:        string,
+  _longitudNumero: number,
+  empresaId:      number,
 ): Promise<string> {
-  const [row] = await dataSource.query<{ maxNum: number | null }[]>(`
-    SELECT MAX(
-      CASE WHEN "${columna}" ~ $1
-           THEN CAST(SUBSTRING("${columna}" FROM ${prefijo.length + 1}) AS INTEGER)
-           ELSE 100
-      END
-    ) AS "maxNum"
-    FROM "${tabla}"
-    WHERE "empresaId" = $2
-      AND "isActive" = true
-  `, [regex, empresaId]);
+  // 'FAC-' → 'FAC',  'NC-' → 'NC',  'CONT-' → 'CONT'
+  const tipo = prefijo.endsWith('-') ? prefijo.slice(0, -1) : prefijo;
 
-  const next = Math.max(101, (row?.maxNum ?? 100) + 1);
-  return `${prefijo}${String(next).padStart(longitudNumero, '0')}`;
+  const [row] = await dataSource.query<{ numero: number }[]>(
+    `SELECT siguiente_numero_secuencia($1, $2) AS numero`,
+    [empresaId, tipo],
+  );
+
+  return `${prefijo}${row.numero}`;
 }

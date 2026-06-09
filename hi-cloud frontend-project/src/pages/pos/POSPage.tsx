@@ -4625,7 +4625,15 @@ export default function POSPage() {
       qc.invalidateQueries({ queryKey: ['pos-panel', 'facturas'] });
       qc.refetchQueries({    queryKey: ['pos-panel', 'facturas'] });
     },
-    onError: (e: any) => { setEcfStatus('idle'); message.error(e?.response?.data?.errors?.[0] ?? 'Error al procesar la venta'); },
+    onError: (e: any) => {
+      setEcfStatus('idle');
+      const msg: string = e?.response?.data?.errors?.[0] ?? e?.response?.data?.message ?? '';
+      if (msg.toLowerCase().includes('duplicate') || msg.toLowerCase().includes('already exists') || msg.toLowerCase().includes('23505')) {
+        message.error('Error al generar el número de factura. Intente nuevamente.', 5);
+      } else {
+        message.error(msg || 'Error al procesar la venta');
+      }
+    },
   });
 
   // ── Mutación para modos alternativos (sin cobro) ────────────────────────────

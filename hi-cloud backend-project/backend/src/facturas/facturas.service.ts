@@ -47,22 +47,13 @@ export class FacturasService {
     @InjectDataSource() private dataSource: DataSource,
   ) {}
 
-  /**
-   * Genera el siguiente folio de factura.
-   * FOR UPDATE no es compatible con MAX() en PostgreSQL — se delega la protección
-   * contra duplicados a la constraint UNIQUE de la tabla facturas.
-   */
   private async generarFolio(): Promise<string> {
     const empresaId = this.tenantService.getEmpresaId();
-    const [row] = await this.dataSource.query<{ maxNum: number | null }[]>(`
-      SELECT MAX(CASE WHEN folio ~ '^FAC-[0-9]+$'
-                      THEN CAST(SUBSTRING(folio FROM 5) AS INTEGER)
-                      ELSE 100 END) AS "maxNum"
-      FROM facturas
-      WHERE "empresaId" = $1 AND "isActive" = true
-    `, [empresaId]);
-    const next = Math.max(101, (row?.maxNum ?? 100) + 1);
-    return `FAC-${next}`;
+    const [row] = await this.dataSource.query<{ numero: number }[]>(
+      `SELECT siguiente_numero_secuencia($1, 'FAC') AS numero`,
+      [empresaId],
+    );
+    return `FAC-${row.numero}`;
   }
 
   async create(dto: CreateFacturaDto, usuario: User) {
