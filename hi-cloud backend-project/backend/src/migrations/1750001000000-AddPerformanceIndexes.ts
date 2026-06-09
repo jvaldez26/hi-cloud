@@ -11,7 +11,7 @@ export class AddPerformanceIndexes1750001000000 implements MigrationInterface {
     `);
     await queryRunner.query(`
       CREATE INDEX IF NOT EXISTS idx_ecf_empresa_fecha
-        ON ecf ("empresaId", "fechaEmision" DESC)
+        ON ecf ("empresaId", "createdAt" DESC)
     `);
 
     // Facturas — filtrar por cliente dentro de empresa
