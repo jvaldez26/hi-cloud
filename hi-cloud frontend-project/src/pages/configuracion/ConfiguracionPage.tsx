@@ -528,6 +528,16 @@ function SeccionBranding({ empresa, onSaved }: { empresa: any; onSaved: () => vo
     onError: (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error al subir logo'),
   });
 
+  const removeLogoMut = useMutation({
+    mutationFn: () => configuracionApi.removeLogo(),
+    onSuccess: () => {
+      setLogoPreview(null);
+      qc.invalidateQueries({ queryKey: ['empresa'] });
+      message.success('Logo eliminado');
+    },
+    onError: (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error al eliminar logo'),
+  });
+
   const uploadFaviconMut = useMutation({
     mutationFn: (file: File) => configuracionApi.uploadFavicon(file),
     onSuccess: (d: any) => {
@@ -578,15 +588,30 @@ function SeccionBranding({ empresa, onSaved }: { empresa: any; onSaved: () => vo
                   ? <img src={logoPreview} alt="Logo" style={{ maxHeight: 64, maxWidth: '80%', objectFit: 'contain' }} />
                   : <Text type="secondary" style={{ fontSize: 12 }}>Sin logo</Text>}
               </div>
-              <Upload
-                showUploadList={false}
-                accept="image/jpeg,image/png,image/svg+xml,image/webp"
-                beforeUpload={beforeUploadLogo}
-              >
-                <Button icon={<UploadOutlined />} loading={uploadLogoMut.isPending} size="small">
-                  Subir logo (PNG/SVG, máx 2MB)
-                </Button>
-              </Upload>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+                <Upload
+                  showUploadList={false}
+                  accept="image/jpeg,image/png,image/svg+xml,image/webp"
+                  beforeUpload={beforeUploadLogo}
+                >
+                  <Button icon={<UploadOutlined />} loading={uploadLogoMut.isPending} size="small">
+                    Subir logo (PNG/SVG, máx 2MB)
+                  </Button>
+                </Upload>
+                {logoPreview && (
+                  <Popconfirm
+                    title="¿Eliminar el logo de la empresa?"
+                    onConfirm={() => removeLogoMut.mutate()}
+                    okText="Sí, eliminar"
+                    cancelText="Cancelar"
+                    okButtonProps={{ danger: true }}
+                  >
+                    <Button danger size="small" icon={<DeleteOutlined />} loading={removeLogoMut.isPending}>
+                      Quitar logo
+                    </Button>
+                  </Popconfirm>
+                )}
+              </div>
               <Text type="secondary" style={{ fontSize: 11, textAlign: 'center' }}>
                 Se muestra en la barra superior del sistema y en el encabezado de facturas.
               </Text>

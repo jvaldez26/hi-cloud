@@ -17,6 +17,9 @@ export const configuracionApi = {
     }).then(r => r.data.data);
   },
 
+  removeLogo: () =>
+    api.patch('/configuracion/empresa', { logo: null }).then(r => r.data.data),
+
   uploadFavicon: (file: File) => {
     const fd = new FormData(); fd.append('file', file);
     return api.post('/configuracion/empresa/upload-favicon', fd, {
