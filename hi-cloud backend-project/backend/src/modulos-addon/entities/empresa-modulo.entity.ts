@@ -1,10 +1,7 @@
 import {
   Entity, PrimaryGeneratedColumn, Column,
   CreateDateColumn, UpdateDateColumn,
-  ManyToOne, JoinColumn,
 } from 'typeorm';
-import { Empresa } from '../../configuracion/entities/empresa.entity';
-import { ModuloAddon } from './modulo-addon.entity';
 
 @Entity('empresa_modulos')
 export class EmpresaModulo {
@@ -37,12 +34,4 @@ export class EmpresaModulo {
 
   @UpdateDateColumn()
   updatedAt!: Date;
-
-  @ManyToOne(() => Empresa, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'empresaId' })
-  empresa!: Empresa;
-
-  @ManyToOne(() => ModuloAddon, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'moduloCodigo', referencedColumnName: 'codigo' })
-  modulo!: ModuloAddon;
 }

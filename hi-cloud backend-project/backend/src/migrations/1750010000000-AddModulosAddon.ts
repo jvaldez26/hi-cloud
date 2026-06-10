@@ -7,7 +7,7 @@ export class AddModulosAddon1750010000000 implements MigrationInterface {
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS modulos_addon (
         id              SERIAL PRIMARY KEY,
-        codigo          VARCHAR(50) NOT NULL UNIQUE,
+        codigo          VARCHAR(50) NOT NULL,
         nombre          VARCHAR(100) NOT NULL,
         descripcion     TEXT,
         "isActive"      BOOLEAN NOT NULL DEFAULT true,
@@ -17,24 +17,48 @@ export class AddModulosAddon1750010000000 implements MigrationInterface {
     `);
 
     await queryRunner.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'uq_modulos_addon_codigo'
+        ) THEN
+          ALTER TABLE modulos_addon ADD CONSTRAINT uq_modulos_addon_codigo UNIQUE (codigo);
+        END IF;
+      END $$
+    `);
+
+    await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS empresa_modulos (
         id                  SERIAL PRIMARY KEY,
-        "empresaId"         INTEGER NOT NULL REFERENCES empresa(id) ON DELETE CASCADE,
-        "moduloCodigo"      VARCHAR(50) NOT NULL REFERENCES modulos_addon(codigo) ON DELETE CASCADE,
+        "empresaId"         INTEGER NOT NULL,
+        "moduloCodigo"      VARCHAR(50) NOT NULL,
         activo              BOOLEAN NOT NULL DEFAULT true,
         "fechaActivacion"   TIMESTAMP NOT NULL DEFAULT NOW(),
         "fechaVencimiento"  TIMESTAMP,
-        "activadoPor"       INTEGER REFERENCES users(id),
+        "activadoPor"       INTEGER,
         notas               TEXT,
         "createdAt"         TIMESTAMP NOT NULL DEFAULT NOW(),
-        "updatedAt"         TIMESTAMP NOT NULL DEFAULT NOW(),
-        CONSTRAINT uq_empresa_modulo UNIQUE ("empresaId", "moduloCodigo")
+        "updatedAt"         TIMESTAMP NOT NULL DEFAULT NOW()
       )
     `);
 
     await queryRunner.query(`
-      CREATE INDEX IF NOT EXISTS idx_empresa_modulos_empresa ON empresa_modulos ("empresaId");
-      CREATE INDEX IF NOT EXISTS idx_empresa_modulos_activo  ON empresa_modulos ("empresaId", activo);
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'uq_empresa_modulo'
+        ) THEN
+          ALTER TABLE empresa_modulos ADD CONSTRAINT uq_empresa_modulo UNIQUE ("empresaId", "moduloCodigo");
+        END IF;
+      END $$
+    `);
+
+    await queryRunner.query(`
+      CREATE INDEX IF NOT EXISTS idx_empresa_modulos_empresa ON empresa_modulos ("empresaId")
+    `);
+
+    await queryRunner.query(`
+      CREATE INDEX IF NOT EXISTS idx_empresa_modulos_activo ON empresa_modulos ("empresaId", activo)
     `);
 
     await queryRunner.query(`
