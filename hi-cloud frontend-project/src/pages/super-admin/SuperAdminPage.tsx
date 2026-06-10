@@ -1003,10 +1003,7 @@ function ModulosAddonTab() {
             {
               title: 'Empresa', key: 'empresa',
               render: (_: any, r: any) => (
-                <div>
-                  <span style={{ color: C.txt, fontWeight: 600 }}>#{r.empresaId}</span>
-                  <span style={{ color: C.txt2, marginLeft: 6 }}>{r.empresaNombre}</span>
-                </div>
+                <span style={{ color: C.txt, fontWeight: 600 }}>{r.empresaNombre}</span>
               ),
             },
             {
