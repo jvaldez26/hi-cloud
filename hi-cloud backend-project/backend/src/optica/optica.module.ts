@@ -8,6 +8,7 @@ import { RecetaOptica } from './entities/receta-optica.entity';
 import { OrdenTrabajoOptica } from './entities/orden-trabajo-optica.entity';
 import { ReclamacionArs } from './entities/reclamacion-ars.entity';
 import { OpticaService } from './optica.service';
+import { RecetaPdfService } from './receta-pdf.service';
 import { OpticaController } from './optica.controller';
 
 @Module({
@@ -22,7 +23,7 @@ import { OpticaController } from './optica.controller';
       ReclamacionArs,
     ]),
   ],
-  providers: [OpticaService],
+  providers: [OpticaService, RecetaPdfService],
   controllers: [OpticaController],
   exports: [OpticaService],
 })

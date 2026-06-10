@@ -1,7 +1,8 @@
 import {
   Controller, Get, Post, Patch, Delete, Body, Param, Query,
-  ParseIntPipe, UseGuards, Logger,
+  ParseIntPipe, UseGuards, Logger, Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiHeader } from '@nestjs/swagger';
 import {
   IsString, IsOptional, IsInt, IsPositive, IsNumber, Min,
@@ -14,6 +15,7 @@ import { ModuloAddonGuard } from '../modulos-addon/guards/modulo-addon.guard';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 import { User } from '../users/users.entity';
 import { OpticaService } from './optica.service';
+import { RecetaPdfService } from './receta-pdf.service';
 
 // ── DTOs ─────────────────────────────────────────────────────────────────────
 
@@ -220,7 +222,10 @@ const OPTICA_GUARDS = [JwtAuthGuard, TenantGuard, ModuloAddonGuard('optica')];
 export class OpticaController {
   private readonly logger = new Logger(OpticaController.name);
 
-  constructor(private readonly svc: OpticaService) {}
+  constructor(
+    private readonly svc: OpticaService,
+    private readonly recetaPdf: RecetaPdfService,
+  ) {}
 
   // ── Dashboard ──────────────────────────────────────────────────────────────
 
@@ -355,6 +360,18 @@ export class OpticaController {
   @ApiOperation({ summary: 'Actualizar receta óptica' })
   actualizarReceta(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateRecetaDto) {
     return this.svc.actualizarReceta(id, dto);
+  }
+
+  @Get('recetas/:id/pdf')
+  @ApiOperation({ summary: 'Generar PDF de receta óptica' })
+  async getPdfReceta(@Param('id', ParseIntPipe) id: number, @Res() res: Response) {
+    const pdf = await this.recetaPdf.generarPdfReceta(id);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="receta-optica-${id}.pdf"`,
+      'Content-Length': String(pdf.length),
+    });
+    res.end(pdf);
   }
 
   // ── Órdenes de Trabajo ─────────────────────────────────────────────────────
