@@ -351,26 +351,32 @@ export class CxCService {
 
   async generarPDFdePago(pagoId: number): Promise<Buffer> {
     const empresaId = this.tenantService.getEmpresaId();
-    const rows = await this.dataSource.query<any[]>(`
-      SELECT
-        p.id, p.monto, p.fecha, p."metodoPago", p.referencia, p.notas, p.moneda, p."tipoCambio",
-        cxc."montoPendiente" AS "montoPendiente",
-        f.folio,
-        cl.nombre AS "clienteNombre", cl."rncReceptor" AS "clienteRnc",
-        cl.telefono AS "clienteTel", cl.email AS "clienteEmail", cl.direccion AS "clienteDir",
-        e.nombre AS "empresaNombre", e.rnc AS "empresaRnc",
-        e.direccion AS "empresaDireccion", e.ciudad AS "empresaCiudad",
-        e.telefono AS "empresaTelefono", e.email AS "empresaEmail",
-        e.logo AS "empresaLogo", e.color AS "empresaColor",
-        u.nombre AS "cajeroNombre"
-      FROM pagos_cobrados p
-      JOIN cuentas_por_cobrar cxc ON cxc.id = p."cuentaPorCobrarId"
-      JOIN facturas f ON f.id = cxc."facturaId"
-      JOIN clientes cl ON cl.id = cxc."clienteId"
-      JOIN empresa e ON e.id = f."empresaId"
-      LEFT JOIN users u ON u.id = p."userId"
-      WHERE p.id = $1 AND f."empresaId" = $2 AND p."isActive" = true
-    `, [pagoId, empresaId]);
+    let rows: any[];
+    try {
+      rows = await this.dataSource.query<any[]>(`
+        SELECT
+          p.id, p.monto, p.fecha, p."metodoPago", p.referencia, p.notas, p.moneda, p."tipoCambio",
+          cxc."montoPendiente" AS "montoPendiente",
+          f.folio,
+          cl.nombre AS "clienteNombre", cl."rncReceptor" AS "clienteRnc",
+          cl.telefono AS "clienteTel", cl.email AS "clienteEmail", cl.direccion AS "clienteDir",
+          e.nombre AS "empresaNombre", e.rnc AS "empresaRnc",
+          e.direccion AS "empresaDireccion", e.ciudad AS "empresaCiudad",
+          e.telefono AS "empresaTelefono", e.email AS "empresaEmail",
+          e.logo AS "empresaLogo",
+          u.nombre AS "cajeroNombre"
+        FROM pagos_cobrados p
+        JOIN cuentas_por_cobrar cxc ON cxc.id = p."cuentaPorCobrarId"
+        JOIN facturas f ON f.id = cxc."facturaId"
+        JOIN clientes cl ON cl.id = cxc."clienteId"
+        JOIN empresa e ON e.id = f."empresaId"
+        LEFT JOIN users u ON u.id = p."userId"
+        WHERE p.id = $1 AND f."empresaId" = $2 AND p."isActive" = true
+      `, [pagoId, empresaId]);
+    } catch (err: any) {
+      this.logger.error(`generarPDFdePago SQL error — pago #${pagoId}: ${err.message}`, err.stack);
+      throw err;
+    }
 
     if (!rows.length) throw new NotFoundException(`Pago #${pagoId} no encontrado`);
     const r = rows[0];
@@ -393,7 +399,6 @@ export class CxCService {
         telefono:  r.empresaTelefono,
         email:     r.empresaEmail,
         logo:      r.empresaLogo,
-        color:     r.empresaColor,
       },
       participante: {
         label:  'Recibido de',
