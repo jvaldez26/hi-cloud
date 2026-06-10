@@ -1,6 +1,6 @@
 import {
   Controller, Post, Get, Patch, Body, Param, ParseIntPipe,
-  HttpCode, HttpStatus, UseGuards, Req, Res,
+  HttpCode, HttpStatus, UseGuards, Req, Res, BadRequestException,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
@@ -189,6 +189,14 @@ export class AuthController {
     return this.authService.verificarPassword(usuario.email, body.password);
   }
 
+  @Get('supervisores')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Listar supervisores disponibles del tenant (ADMIN/CONTADOR)' })
+  async listarSupervisores(@GetUser() cajero: User) {
+    return this.authService.listarSupervisores((cajero as any).empresaId);
+  }
+
   @Post('verificar-supervisor')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
@@ -196,12 +204,14 @@ export class AuthController {
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Verificar credenciales de supervisor (admin/contador del mismo tenant)' })
   async verificarSupervisor(
-    @Body() body: { email: string; password: string; action?: string; detail?: string },
+    @Body() body: { supervisorId?: number; email?: string; password: string; action?: string; detail?: string },
     @GetUser() cajero: User,
     @Req() req: Request,
   ) {
+    const identifier = body.supervisorId ?? body.email;
+    if (!identifier) throw new BadRequestException('Se requiere supervisorId o email');
     return this.authService.verificarSupervisor(
-      body.email, body.password,
+      identifier, body.password,
       cajero.id, (cajero as any).empresaId,
       body.action, body.detail,
     );

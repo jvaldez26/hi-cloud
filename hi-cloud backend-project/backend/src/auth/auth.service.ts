@@ -805,29 +805,45 @@ export class AuthService implements OnModuleInit {
    * Verifica credenciales de un supervisor (admin/contador/super_admin del mismo tenant).
    * Registra la autorización en pos_supervisor_log para auditoría.
    */
+  async listarSupervisores(empresaId: number): Promise<{ id: number; nombre: string; role: string }[]> {
+    return this.dataSource.query<any[]>(`
+      SELECT u.id, u.nombre, u.role
+      FROM users u
+      JOIN usuario_empresa ue ON ue."userId" = u.id
+      WHERE ue."empresaId" = $1
+        AND ue."isActive" = true
+        AND u."isActive" = true
+        AND u.role IN ('admin', 'contador', 'super_admin')
+      ORDER BY u.nombre ASC
+    `, [empresaId]);
+  }
+
   async verificarSupervisor(
-    supervisorEmail: string,
+    supervisorRef: string | number,  // email (string) o id (number)
     supervisorPassword: string,
     cajeroId: number,
     empresaId: number,
     action?: string,
     detail?: string,
   ): Promise<{ ok: true; nombre: string; role: string }> {
+    const byId = typeof supervisorRef === 'number';
     // Buscar supervisor en el mismo tenant con rol autorizado
     const rows = await this.dataSource.query<any[]>(`
       SELECT u.id, u.nombre, u.email, u.password, u.role
       FROM users u
       JOIN usuario_empresa ue ON ue."userId" = u.id
-      WHERE LOWER(u.email) = LOWER($1)
+      WHERE ${byId ? 'u.id = $1' : 'LOWER(u.email) = LOWER($1)'}
         AND ue."empresaId" = $2
         AND ue."isActive" = true
         AND u."isActive" = true
         AND u.role IN ('admin', 'contador', 'super_admin')
       LIMIT 1
-    `, [supervisorEmail, empresaId]);
+    `, [supervisorRef, empresaId]);
 
     const sup = rows[0];
-    if (!sup) throw new UnauthorizedException('No se encontró supervisor con ese correo en esta empresa');
+    if (!sup) throw new UnauthorizedException(
+      byId ? 'Usuario no autorizado como supervisor' : 'No se encontró supervisor con ese correo en esta empresa',
+    );
 
     const valida = await bcrypt.compare(supervisorPassword, sup.password);
     if (!valida) throw new UnauthorizedException('Contraseña incorrecta');
