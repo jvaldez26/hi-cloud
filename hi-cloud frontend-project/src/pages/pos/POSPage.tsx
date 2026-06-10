@@ -5921,7 +5921,9 @@ export default function POSPage() {
                     setSupError(e?.response?.data?.message ?? 'Credenciales inválidas');
                   } finally { setVerificandoSupNuevo(false); }
                 }}
-                autoComplete="new-password" />
+                autoComplete="new-password"
+                data-form-type="other"
+                data-lpignore="true" />
             </div>
             {supError && <div style={{ color: '#EF4444', fontSize: 12 }}>{supError}</div>}
             <button
