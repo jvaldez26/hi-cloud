@@ -748,6 +748,51 @@ export class OpticaService {
     return row;
   }
 
+  // ── ESTADÍSTICAS ──────────────────────────────────────────────────────────
+
+  async getEstadisticas() {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const [citasPorMes, ingresosPorMes, pacientesNuevosPorMes, topDiagnosticos] = await Promise.all([
+      this.ds.query<any[]>(
+        `SELECT TO_CHAR(DATE_TRUNC('month', "fechaHora"), 'YYYY-MM') AS mes,
+                COUNT(*)::int AS total,
+                COUNT(*) FILTER (WHERE estado = 'completada')::int AS completadas,
+                COUNT(*) FILTER (WHERE estado = 'cancelada')::int AS canceladas
+         FROM op_citas
+         WHERE "empresaId" = $1 AND "fechaHora" >= NOW() - INTERVAL '6 months'
+         GROUP BY mes ORDER BY mes`,
+        [empresaId],
+      ),
+      this.ds.query<any[]>(
+        `SELECT TO_CHAR(DATE_TRUNC('month', fecha), 'YYYY-MM') AS mes,
+                COALESCE(SUM(total), 0)::numeric AS totalIngresos,
+                COUNT(*)::int AS totalOrdenes
+         FROM op_ordenes_trabajo
+         WHERE "empresaId" = $1 AND fecha >= NOW() - INTERVAL '6 months'
+           AND estado != 'cancelada'
+         GROUP BY mes ORDER BY mes`,
+        [empresaId],
+      ),
+      this.ds.query<any[]>(
+        `SELECT TO_CHAR(DATE_TRUNC('month', "createdAt"), 'YYYY-MM') AS mes,
+                COUNT(*)::int AS total
+         FROM op_pacientes
+         WHERE "empresaId" = $1 AND "createdAt" >= NOW() - INTERVAL '6 months'
+         GROUP BY mes ORDER BY mes`,
+        [empresaId],
+      ),
+      this.ds.query<any[]>(
+        `SELECT diagnostico, COUNT(*)::int AS total
+         FROM op_consultas
+         WHERE "empresaId" = $1 AND diagnostico IS NOT NULL AND diagnostico != ''
+           AND fecha >= NOW() - INTERVAL '12 months'
+         GROUP BY diagnostico ORDER BY total DESC LIMIT 8`,
+        [empresaId],
+      ),
+    ]);
+    return { citasPorMes, ingresosPorMes, pacientesNuevosPorMes, topDiagnosticos };
+  }
+
   // ── HISTORIAL PACIENTE ─────────────────────────────────────────────────────
 
   async getHistorialPaciente(pacienteId: number) {

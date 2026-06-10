@@ -4,7 +4,8 @@ const d = (r: any) => r.data?.data ?? r.data;
 
 export const opticaApi = {
   // Dashboard
-  dashboard: () => api.get('/optica/dashboard').then(d),
+  dashboard:      () => api.get('/optica/dashboard').then(d),
+  estadisticas:   () => api.get('/optica/estadisticas').then(d),
 
   // Pacientes
   pacientes: (params?: { page?: number; limit?: number; search?: string }) =>

@@ -233,6 +233,10 @@ export class OpticaController {
   @ApiOperation({ summary: 'Resumen y métricas del módulo óptica' })
   getDashboard() { return this.svc.getDashboard(); }
 
+  @Get('estadisticas')
+  @ApiOperation({ summary: 'Estadísticas históricas: citas, ingresos, pacientes, diagnósticos' })
+  getEstadisticas() { return this.svc.getEstadisticas(); }
+
   // ── Pacientes ──────────────────────────────────────────────────────────────
 
   @Get('pacientes')
