@@ -12,7 +12,8 @@ export function useModuloAddon(codigo: string) {
 
   return {
     activo: data?.activo ?? false,
-    isLoading: isLoading || isFetching,
+    isLoading,
+    isFetching,
     isError,
     refetch,
   };
