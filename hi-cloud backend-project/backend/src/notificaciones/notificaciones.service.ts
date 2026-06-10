@@ -698,7 +698,7 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
        JOIN facturas f ON f.id = cxc."facturaId"
        JOIN clientes c ON c.id = cxc."clienteId"
        LEFT JOIN pagos_cobrados p ON p."cuentaPorCobrarId" = cxc.id AND p."isActive" = true
-       LEFT JOIN empresas e ON e.id = f."empresaId"
+       LEFT JOIN empresa e ON e.id = f."empresaId"
        WHERE cxc."clienteId" = $1 AND cxc."isActive" = true
          AND cxc.estado IN ('pendiente','pagada_parcial')
        GROUP BY f.folio, f.fecha, f.total, cxc."montoPendiente",
