@@ -137,7 +137,15 @@ const WmsPage                     = lazy(() => import('./pages/wms/WmsPage'));
 const DistribucionCostosPage      = lazy(() => import('./pages/distribucion-costos/DistribucionCostosPage'));
 const UomPage                     = lazy(() => import('./pages/uom/UomPage'));
 const MiSuscripcionPage           = lazy(() => import('./pages/suscripcion/MiSuscripcionPage'));
-const OpticaModuloNoDisponible    = lazy(() => import('./pages/optica/ModuloNoDisponiblePage'));
+const OpticaLayout                = lazy(() => import('./pages/optica/OpticaLayout'));
+const OpticaDashboardPage         = lazy(() => import('./pages/optica/OpticaDashboardPage'));
+const PacientesOpticaPage         = lazy(() => import('./pages/optica/PacientesOpticaPage'));
+const MedicosOpticaPage           = lazy(() => import('./pages/optica/MedicosOpticaPage'));
+const AgendaOpticaPage            = lazy(() => import('./pages/optica/AgendaOpticaPage'));
+const ConsultasOpticaPage         = lazy(() => import('./pages/optica/ConsultasOpticaPage'));
+const RecetasOpticaPage           = lazy(() => import('./pages/optica/RecetasOpticaPage'));
+const OrdenesTrabajoOpticaPage    = lazy(() => import('./pages/optica/OrdenesTrabajoOpticaPage'));
+const ReclamacionesArsPage        = lazy(() => import('./pages/optica/ReclamacionesArsPage'));
 dayjs.locale('es');
 
 export const qc = new QueryClient({
@@ -596,8 +604,16 @@ export default function App() {
                     {/* /super-admin está definida fuera del AppLayout */}
 
                     {/* ── Módulo Óptica (add-on) ── */}
-                    <Route path="/optica"         element={<OpticaModuloNoDisponible />} />
-                    <Route path="/optica/*"        element={<OpticaModuloNoDisponible />} />
+                    <Route path="/optica" element={<OpticaLayout />}>
+                      <Route index                  element={<OpticaDashboardPage />} />
+                      <Route path="pacientes"        element={<PacientesOpticaPage />} />
+                      <Route path="medicos"          element={<MedicosOpticaPage />} />
+                      <Route path="agenda"           element={<AgendaOpticaPage />} />
+                      <Route path="consultas"        element={<ConsultasOpticaPage />} />
+                      <Route path="recetas"          element={<RecetasOpticaPage />} />
+                      <Route path="ordenes"          element={<OrdenesTrabajoOpticaPage />} />
+                      <Route path="ars"              element={<ReclamacionesArsPage />} />
+                    </Route>
                   </Route>
 
                   <Route path="*" element={<Navigate to="/" replace />} />

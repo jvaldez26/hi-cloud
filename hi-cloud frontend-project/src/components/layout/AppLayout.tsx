@@ -285,8 +285,10 @@ const MENU_CATEGORIES: MenuCategory[] = [
     items: [
       { path: '/optica',           label: 'Panel Óptica' },
       { path: '/optica/pacientes', label: 'Pacientes' },
+      { path: '/optica/medicos',   label: 'Médicos' },
       { path: '/optica/agenda',    label: 'Agenda' },
       { path: '/optica/consultas', label: 'Consultas' },
+      { path: '/optica/recetas',   label: 'Recetas' },
       { path: '/optica/ordenes',   label: 'Órdenes de Trabajo' },
       { path: '/optica/ars',       label: 'Reclamaciones ARS' },
     ],
@@ -424,8 +426,10 @@ const PATH_ROLES: Record<string, string[]> = {
   // ── Módulos Add-on ────────────────────────────────────────────────────────
   '/optica':                ADMIN_CONT,
   '/optica/pacientes':      ADMIN_CONT,
+  '/optica/medicos':        ADMIN_CONT,
   '/optica/agenda':         ADMIN_CONT,
   '/optica/consultas':      ADMIN_CONT,
+  '/optica/recetas':        ADMIN_CONT,
   '/optica/ordenes':        ADMIN_CONT,
   '/optica/ars':            ADMIN_CONT,
 };
