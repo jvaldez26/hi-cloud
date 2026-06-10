@@ -119,6 +119,7 @@ import { AtributosProductoModule }       from './atributos-producto/atributos-pr
 import { DistribucionCostosModule }      from './distribucion-costos/distribucion-costos.module';
 import { UomModule }                     from './uom/uom.module';
 import { PagosSuscripcionModule }        from './pagos-suscripcion/pagos-suscripcion.module';
+import { ModulosAddonModule }            from './modulos-addon/modulos-addon.module';
 
 @Module({
   imports: [
@@ -293,6 +294,7 @@ import { PagosSuscripcionModule }        from './pagos-suscripcion/pagos-suscrip
     DistribucionCostosModule,
     UomModule,
     PagosSuscripcionModule,
+    ModulosAddonModule,
   ],
   controllers: [AppController],
   providers: [

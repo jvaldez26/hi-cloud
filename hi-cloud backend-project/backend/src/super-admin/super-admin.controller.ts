@@ -12,6 +12,7 @@ import { SuperAdminGuard }   from './super-admin.guard';
 import { SuscripcionesService } from '../suscripciones/suscripciones.service';
 import { BackupService } from './backup.service';
 import { ContabilidadService } from '../contabilidad/services/contabilidad.service';
+import { ModulosAddonService } from '../modulos-addon/modulos-addon.service';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 import type { User } from '../users/users.entity';
 
@@ -90,6 +91,17 @@ class RechazarRegistroDto {
   motivo?: string;
 }
 
+class GestionModuloDto {
+  @IsString() @IsNotEmpty()
+  codigo!: string;
+
+  @IsOptional() @IsString()
+  fechaVencimiento?: string;
+
+  @IsOptional() @IsString()
+  notas?: string;
+}
+
 class BackupAlertDto {
   @IsString() @IsNotEmpty() mensaje!: string;
   @IsOptional() @IsString() tipo?: string;
@@ -116,6 +128,7 @@ export class SuperAdminController {
     private suscSvc:          SuscripcionesService,
     private backupSvc:        BackupService,
     private contabilidadSvc:  ContabilidadService,
+    private modulosSvc:       ModulosAddonService,
   ) {}
 
   @Get('metricas')
@@ -489,6 +502,41 @@ export class SuperAdminController {
   @ApiOperation({ summary: 'Sincronizar plan de cuentas — agrega cuentas faltantes a empresas existentes sin borrar las configuradas' })
   sincronizarPlanCuentas(@Body() dto: SincronizarPlanCuentasDto) {
     return this.contabilidadSvc.sincronizarPlanCuentasTodas(dto.empresaId);
+  }
+
+  // ── Módulos Add-on ────────────────────────────────────────────────────────
+
+  @Get('modulos')
+  @ApiOperation({ summary: 'Listar todos los módulos add-on disponibles' })
+  listarModulosAddon() {
+    return this.modulosSvc.listarModulos();
+  }
+
+  @Get('empresas/:id/modulos')
+  @ApiOperation({ summary: 'Listar módulos activados para una empresa' })
+  getModulosEmpresa(@Param('id', ParseIntPipe) id: number) {
+    return this.modulosSvc.getModulosEmpresa(id);
+  }
+
+  @Post('empresas/:id/modulos/activar')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Activar un módulo add-on para una empresa' })
+  activarModulo(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: GestionModuloDto,
+    @GetUser() admin: User,
+  ) {
+    return this.modulosSvc.activarModulo(id, dto.codigo, admin.id, dto.fechaVencimiento, dto.notas);
+  }
+
+  @Post('empresas/:id/modulos/desactivar')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Desactivar un módulo add-on de una empresa' })
+  desactivarModulo(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: Pick<GestionModuloDto, 'codigo'>,
+  ) {
+    return this.modulosSvc.desactivarModulo(id, dto.codigo);
   }
 
   // ── Facturas Recurrentes — Diagnóstico y Reparación ────────────────────────

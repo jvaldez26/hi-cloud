@@ -10,6 +10,7 @@ import { BackupRegistro }       from './entities/backup-registro.entity';
 import { SuscripcionesModule }  from '../suscripciones/suscripciones.module';
 import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 import { ContabilidadModule }   from '../contabilidad/contabilidad.module';
+import { ModulosAddonModule }   from '../modulos-addon/modulos-addon.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { ContabilidadModule }   from '../contabilidad/contabilidad.module';
     SuscripcionesModule,
     NotificacionesModule,
     ContabilidadModule,
+    ModulosAddonModule,
     TypeOrmModule.forFeature([BackupRegistro]),
     JwtModule.registerAsync({
       imports: [ConfigModule],

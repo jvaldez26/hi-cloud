@@ -137,6 +137,7 @@ const WmsPage                     = lazy(() => import('./pages/wms/WmsPage'));
 const DistribucionCostosPage      = lazy(() => import('./pages/distribucion-costos/DistribucionCostosPage'));
 const UomPage                     = lazy(() => import('./pages/uom/UomPage'));
 const MiSuscripcionPage           = lazy(() => import('./pages/suscripcion/MiSuscripcionPage'));
+const OpticaModuloNoDisponible    = lazy(() => import('./pages/optica/ModuloNoDisponiblePage'));
 dayjs.locale('es');
 
 export const qc = new QueryClient({
@@ -593,6 +594,10 @@ export default function App() {
                     <Route path="/asistente"          element={<AsistentePage />} />
                     <Route path="/demo-requests"      element={<DemoRequestsPage />} />
                     {/* /super-admin está definida fuera del AppLayout */}
+
+                    {/* ── Módulo Óptica (add-on) ── */}
+                    <Route path="/optica"         element={<OpticaModuloNoDisponible />} />
+                    <Route path="/optica/*"        element={<OpticaModuloNoDisponible />} />
                   </Route>
 
                   <Route path="*" element={<Navigate to="/" replace />} />
