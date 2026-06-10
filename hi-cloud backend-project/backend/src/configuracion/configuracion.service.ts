@@ -201,13 +201,15 @@ export class ConfiguracionService implements OnModuleInit {
     return this.getEmpresa();
   }
 
-  /** Configuración del POS almacenada en empresa.configuracion (JSONB) */
+  /** Configuración del modo supervisor — lee claves planas (escritas por ConfiguracionPage vía updateEmpresa).
+   *  Fallback a .pos para compatibilidad con entradas antiguas creadas por updatePosConfig. */
   async getPosConfig(): Promise<{ supervisorModeEnabled: boolean; maxDiscountPercent: number }> {
     const empresa = await this.getEmpresa();
-    const pos = (empresa.configuracion as any)?.pos ?? {};
+    const conf = (empresa.configuracion ?? {}) as any;
+    const pos  = conf.pos ?? {};
     return {
-      supervisorModeEnabled: pos.supervisorModeEnabled ?? false,
-      maxDiscountPercent:    pos.maxDiscountPercent    ?? 10,
+      supervisorModeEnabled: conf.supervisorModeEnabled ?? pos.supervisorModeEnabled ?? false,
+      maxDiscountPercent:    conf.maxDiscountPercent    ?? pos.maxDiscountPercent    ?? 10,
     };
   }
 

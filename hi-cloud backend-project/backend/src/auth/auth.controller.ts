@@ -179,6 +179,7 @@ export class AuthController {
   @Post('verificar-password')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 10, ttl: 300_000 } }) // 10 intentos por 5 min por IP
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Verificar contraseña del usuario autenticado (POS screen lock)' })
   async verificarPassword(
@@ -191,6 +192,7 @@ export class AuthController {
   @Post('verificar-supervisor')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 5, ttl: 300_000 } }) // 5 intentos por 5 min por IP — brute-force guard
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Verificar credenciales de supervisor (admin/contador del mismo tenant)' })
   async verificarSupervisor(

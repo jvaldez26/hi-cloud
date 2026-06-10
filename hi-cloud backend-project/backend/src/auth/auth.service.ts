@@ -839,7 +839,7 @@ export class AuthService implements OnModuleInit {
       VALUES ($1, $2, $3, $4, $5, $6, NOW())
       ON CONFLICT DO NOTHING
     `, [empresaId, cajeroId, sup.id, sup.nombre, action ?? 'SUPERVISOR_LOGIN', detail ?? ''])
-      .catch(() => {}); // log no debe bloquear
+      .catch(err => this.logger.warn(`pos_supervisor_log: ${(err as Error).message}`));
 
     return { ok: true, nombre: sup.nombre, role: sup.role };
   }

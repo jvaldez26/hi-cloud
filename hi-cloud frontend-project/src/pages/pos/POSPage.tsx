@@ -4893,7 +4893,7 @@ export default function POSPage() {
         ecfOnline={ecfOnline ?? null}
         supervisorActiveBadge={supervisor.supervisorActive ? supervisor.supervisorName : undefined}
         onBloquear={() => { sessionStorage.setItem('pos_bloqueado', 'true'); setPantallaBloqueada(true); setPwDesbloqueo(''); setErrDesbloqueo(''); }}
-        onSupervisor={() => { setModalSupervisor(true); setPwSupervisor(''); setErrSupervisor(''); }}
+        onSupervisor={() => supervisor.openSupervisorModal('Activar modo supervisor')}
         onCambiarUsuario={() => { setModalCambiarUser(true); setCambiarUserId(undefined); setPwCambio(''); setErrCambio(''); }}
         onExit={salirDelPOS} />
 

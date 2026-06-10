@@ -852,6 +852,8 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
       posMostrarStock:             conf.posMostrarStock ?? true,
       posPermitirUsd:              conf.posPermitirUsd ?? false,
       posMontoMaximoSinSupervisor: conf.posMontoMaximoSinSupervisor ?? 0,
+      supervisorModeEnabled:       conf.supervisorModeEnabled ?? false,
+      maxDiscountPercent:          conf.maxDiscountPercent ?? 10,
       posPermitirAnularFacturas:   conf.posPermitirAnularFacturas ?? true,
       posTiempoLimiteAnular:       conf.posTiempoLimiteAnular ?? 0,
       posBloquearFueraHorario:     conf.posBloquearFueraHorario ?? false,
@@ -873,6 +875,7 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
   const modoContingencia      = Form.useWatch('posModoContingencia',      form);
   const bloquearFueraHorario  = Form.useWatch('posBloquearFueraHorario',  form);
   const permitirDescuentos    = Form.useWatch('posPermitirDescuentos',    form);
+  const supervisorActivo      = Form.useWatch('supervisorModeEnabled',    form);
 
   return (
     <Form form={form} layout="vertical" onFinish={v => mut.mutate(v)}>
@@ -1052,8 +1055,28 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
             <InputNumber style={{ width: '100%' }} min={0} step={5} addonAfter="min" />
           </Form.Item>
         </Col>
+        <Col xs={24}>
+          <Divider orientation="left" orientationMargin={0}>Modo Supervisor</Divider>
+        </Col>
+        <Col xs={24} sm={12}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <Form.Item name="supervisorModeEnabled" valuePropName="checked" style={{ marginBottom: 0 }}>
+              <Switch size="small" />
+            </Form.Item>
+            <Text style={{ fontSize: 13 }}>Requerir autorización de supervisor para acciones privilegiadas</Text>
+          </div>
+        </Col>
+        {supervisorActivo && (
+          <>
+            <Col xs={24} sm={10}>
+              <Form.Item name="maxDiscountPercent" label="Descuento máximo sin supervisor">
+                <InputNumber style={{ width: '100%' }} min={0} max={100} addonAfter="%" />
+              </Form.Item>
+            </Col>
+          </>
+        )}
         <Col xs={24} sm={10}>
-          <Form.Item name="posMontoMaximoSinSupervisor" label="Monto máximo sin supervisor (0 = sin límite)">
+          <Form.Item name="posMontoMaximoSinSupervisor" label="Monto máximo por venta sin supervisor (0 = sin límite)">
             <InputNumber style={{ width: '100%' }} min={0} step={500} addonAfter="DOP"
               formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
               parser={(v: any) => v?.replace(/,/g, '')} />
