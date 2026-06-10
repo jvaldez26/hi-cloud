@@ -79,4 +79,27 @@ export class ModulosAddonService {
     const empresaId = this.tenantSvc.getEmpresaId();
     return this.checkModuloActivo(empresaId, codigo);
   }
+
+  async getActivacionesGlobal() {
+    const [activaciones, modulos] = await Promise.all([
+      this.ds.query<any[]>(`
+        SELECT em."empresaId", e.nombre AS "empresaNombre",
+               em."moduloCodigo", ma.nombre AS "moduloNombre",
+               em.activo, em."fechaActivacion", em."fechaVencimiento",
+               em.notas, u.nombre AS "activadoPorNombre"
+        FROM empresa_modulos em
+        JOIN empresa e ON e.id = em."empresaId"
+        JOIN modulos_addon ma ON ma.codigo = em."moduloCodigo"
+        LEFT JOIN users u ON u.id = em."activadoPor"
+        WHERE em.activo = true
+        ORDER BY em."fechaActivacion" DESC
+      `),
+      this.listarModulos(),
+    ]);
+    const resumen = modulos.map((m: any) => ({
+      ...m,
+      empresasActivas: activaciones.filter((a: any) => a.moduloCodigo === m.codigo).length,
+    }));
+    return { resumen, activaciones };
+  }
 }

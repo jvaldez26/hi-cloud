@@ -845,6 +845,204 @@ function PlanesEditor({ C }: { C: typeof SA_DARK }) {
   );
 }
 
+// ── Módulos Add-on por empresa (panel dentro del modal de detalle) ─────────────
+
+const MODULO_ICONS: Record<string, string> = { optica: '👓', hotel: '🏨', clinica: '🏥' };
+
+function ModulosEmpresaPanel({ empresaId }: { empresaId: number }) {
+  const C = useSaTheme();
+  const { data: disponibles = [], isLoading: loadDis } = useQuery({
+    queryKey: ['sa-modulos-disponibles'],
+    queryFn:  () => api.get('/admin/modulos').then(xd),
+    staleTime: 5 * 60_000,
+  });
+  const { data: modulosEmpresa = [], isLoading: loadEmp, refetch } = useQuery({
+    queryKey: ['sa-modulos-empresa', empresaId],
+    queryFn:  () => api.get(`/admin/empresas/${empresaId}/modulos`).then(xd),
+    enabled:  !!empresaId,
+    staleTime: 10_000,
+  });
+  const toggleMut = useMutation({
+    mutationFn: ({ codigo, activo }: { codigo: string; activo: boolean }) =>
+      activo
+        ? api.post(`/admin/empresas/${empresaId}/modulos/activar`,    { codigo })
+        : api.post(`/admin/empresas/${empresaId}/modulos/desactivar`, { codigo }),
+    onSuccess: () => { refetch(); message.success('Módulo actualizado'); },
+    onError:   (e: any) => message.error(e?.response?.data?.message ?? 'Error al actualizar módulo'),
+  });
+
+  if (loadDis || loadEmp) return <div style={{ textAlign: 'center', padding: 24 }}><Spin /></div>;
+  if ((disponibles as any[]).length === 0) {
+    return <Empty description={<span style={{ color: C.txt2 }}>No hay módulos disponibles</span>} />;
+  }
+
+  return (
+    <div>
+      {(disponibles as any[]).map((modulo: any) => {
+        const activacion = (modulosEmpresa as any[]).find((m: any) => m.moduloCodigo === modulo.codigo);
+        const activo     = activacion?.activo ?? false;
+        const icon       = MODULO_ICONS[modulo.codigo] ?? '🧩';
+        return (
+          <div key={modulo.codigo} style={{
+            background: C.bg, borderRadius: 10, padding: '14px 18px', marginBottom: 10,
+            border: `1px solid ${activo ? C.green + '66' : C.border}`,
+            borderLeft: `4px solid ${activo ? C.green : C.border}`,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flex: 1, minWidth: 0 }}>
+                <span style={{ fontSize: 26, flexShrink: 0, lineHeight: 1.2 }}>{icon}</span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ color: C.txt, fontWeight: 700, fontSize: 14 }}>{modulo.nombre}</div>
+                  <div style={{ color: C.txt2, fontSize: 12, marginTop: 2 }}>{modulo.descripcion}</div>
+                  {activacion?.fechaActivacion && (
+                    <div style={{ color: C.txt2, fontSize: 11, marginTop: 4 }}>
+                      Activado: {fmtFecha(activacion.fechaActivacion)}
+                      {activacion.fechaVencimiento && ` · Vence: ${fmtFecha(activacion.fechaVencimiento)}`}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                <span style={{
+                  background: activo ? `${C.green}22` : C.border,
+                  color: activo ? C.green : C.txt2,
+                  border: `1px solid ${activo ? `${C.green}55` : C.border}`,
+                  borderRadius: 20, padding: '3px 10px', fontSize: 11, fontWeight: 700,
+                }}>
+                  {activo ? '● Activo' : '○ Inactivo'}
+                </span>
+                <Button
+                  size="small"
+                  type={activo ? 'default' : 'primary'}
+                  danger={activo}
+                  loading={toggleMut.isPending}
+                  onClick={() => toggleMut.mutate({ codigo: modulo.codigo, activo: !activo })}
+                  style={!activo ? { background: C.green, borderColor: C.green, color: '#fff' } : undefined}
+                >
+                  {activo ? 'Desactivar' : 'Activar'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Tab global Módulos Add-on ─────────────────────────────────────────────────
+
+function ModulosAddonTab() {
+  const C = useSaTheme();
+  const [filtroModulo, setFiltroModulo] = useState<string | undefined>();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['sa-modulos-global'],
+    queryFn:  () => api.get('/admin/modulos/activaciones').then(xd),
+    staleTime: 30_000,
+  });
+
+  const resumen      = (data as any)?.resumen      ?? [];
+  const activaciones = (data as any)?.activaciones ?? [];
+
+  const filtradas = filtroModulo
+    ? (activaciones as any[]).filter((a: any) => a.moduloCodigo === filtroModulo)
+    : activaciones;
+
+  return (
+    <div>
+      {/* Tarjetas resumen por módulo */}
+      <div style={{ display: 'flex', gap: 14, marginBottom: 20, flexWrap: 'wrap' }}>
+        {(resumen as any[]).map((m: any) => (
+          <div key={m.codigo}
+            onClick={() => setFiltroModulo(filtroModulo === m.codigo ? undefined : m.codigo)}
+            style={{
+              background: C.card, borderRadius: 10, padding: '16px 20px', minWidth: 180,
+              border: `1px solid ${filtroModulo === m.codigo ? C.gold : C.border}`,
+              borderTop: `3px solid ${m.empresasActivas > 0 ? C.green : C.border}`,
+              cursor: 'pointer', opacity: filtroModulo && filtroModulo !== m.codigo ? 0.5 : 1,
+              transition: 'all .15s',
+            }}>
+            <div style={{ fontSize: 26, marginBottom: 6 }}>{MODULO_ICONS[m.codigo] ?? '🧩'}</div>
+            <div style={{ color: C.txt, fontWeight: 700, fontSize: 14 }}>{m.nombre}</div>
+            <div style={{ color: m.empresasActivas > 0 ? C.green : C.txt2, fontSize: 26, fontWeight: 800, margin: '4px 0' }}>
+              {m.empresasActivas}
+            </div>
+            <div style={{ color: C.txt2, fontSize: 12 }}>empresas activas</div>
+          </div>
+        ))}
+        {(resumen as any[]).length === 0 && !isLoading && (
+          <div style={{ color: C.txt2, fontSize: 13 }}>No hay módulos add-on configurados.</div>
+        )}
+      </div>
+
+      {/* Filtro activo */}
+      {filtroModulo && (
+        <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button onClick={() => setFiltroModulo(undefined)}
+            style={{ background: C.border, border: 'none', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', color: C.txt2, fontSize: 12 }}>
+            × Limpiar filtro
+          </button>
+          <span style={{ color: C.txt2, fontSize: 12 }}>
+            Mostrando: {(resumen as any[]).find((m: any) => m.codigo === filtroModulo)?.nombre}
+          </span>
+        </div>
+      )}
+
+      {/* Tabla de activaciones */}
+      <div style={{ background: C.card, borderRadius: 12, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
+        <Table
+          size="small"
+          loading={isLoading}
+          rowKey={(r: any) => `${r.empresaId}-${r.moduloCodigo}`}
+          dataSource={filtradas as any[]}
+          pagination={{ pageSize: 20, showTotal: t => `${t} activaciones` }}
+          scroll={{ x: 780 }}
+          locale={{ emptyText: <span style={{ color: C.txt2 }}>Ninguna empresa tiene módulos activos</span> }}
+          columns={[
+            {
+              title: 'Empresa', key: 'empresa',
+              render: (_: any, r: any) => (
+                <div>
+                  <span style={{ color: C.txt, fontWeight: 600 }}>#{r.empresaId}</span>
+                  <span style={{ color: C.txt2, marginLeft: 6 }}>{r.empresaNombre}</span>
+                </div>
+              ),
+            },
+            {
+              title: 'Módulo', key: 'modulo', width: 160,
+              render: (_: any, r: any) => (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span>{MODULO_ICONS[r.moduloCodigo] ?? '🧩'}</span>
+                  <span style={{ color: C.txt }}>{r.moduloNombre}</span>
+                </span>
+              ),
+            },
+            {
+              title: 'F. Activación', dataIndex: 'fechaActivacion', width: 120,
+              render: (v: string) => <span style={{ color: C.txt2, fontSize: 12 }}>{fmtFecha(v)}</span>,
+            },
+            {
+              title: 'Vencimiento', dataIndex: 'fechaVencimiento', width: 130,
+              render: (v: string) => v
+                ? <span style={{ color: C.txt2, fontSize: 12 }}>{fmtFecha(v)}</span>
+                : <span style={{ color: C.txt2, fontSize: 12 }}>Sin vencimiento</span>,
+            },
+            {
+              title: 'Activado por', dataIndex: 'activadoPorNombre', width: 150,
+              render: (v: string) => <span style={{ color: C.txt2 }}>{v ?? '—'}</span>,
+            },
+            {
+              title: 'Notas', dataIndex: 'notas', ellipsis: true,
+              render: (v: string) => v ? <span style={{ color: C.txt2, fontSize: 12 }}>{v}</span> : null,
+            },
+          ]}
+        />
+      </div>
+    </div>
+  );
+}
+
 // ── DemosTab ──────────────────────────────────────────────────────────────────
 
 function DemosTab({ C }: { C: SaTheme }) {
@@ -2031,6 +2229,7 @@ export default function SuperAdminPage() {
             {[
               { key: 'metricas',      icon: <BarChart2 size={15} />,  label: 'Métricas MRR' },
               { key: 'ecf',           icon: <FileText size={15} />,   label: 'e-CF Config' },
+              { key: 'modulos',       icon: <span style={{ fontSize: 15 }}>🧩</span>, label: 'Módulos Add-on' },
               { key: 'herramientas',  icon: <Settings size={15} />,   label: 'Herramientas' },
               { key: 'config',        icon: <Settings size={15} />,   label: 'Configuración' },
             ].map(t => {
@@ -2451,6 +2650,11 @@ export default function SuperAdminPage() {
               />
             )}
 
+            {/* ── TAB MÓDULOS ADD-ON ────────────────────────────────────────── */}
+            {tab === 'modulos' && (
+              <ModulosAddonTab />
+            )}
+
             {/* ── TAB SOLICITUDES ───────────────────────────────────────────── */}
             {tab === 'solicitudes' && (
               <SolicitudesTab
@@ -2682,57 +2886,79 @@ export default function SuperAdminPage() {
               </div>
             </div>
 
-            <div style={{ padding: 28 }}>
+            <div style={{ padding: '0 28px 28px' }}>
               {loadDetalle ? (
                 <div style={{ textAlign: 'center', padding: 32 }}><Spin /></div>
               ) : (
-                <>
-                  {/* Info */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14, marginBottom: 24 }}>
-                    {[
-                      { label: 'RNC', value: detalleEmpresa.rnc },
-                      { label: 'Usuarios', value: detalleEmpresa.usuarios ?? 0 },
-                      { label: 'Facturas este mes', value: detalleEmpresa.facturasMes ?? 0 },
-                      { label: 'Suscripción/mes', value: PLAN_MRR_USD[detalleEmpresa.plan] > 0 ? fmtUsd(PLAN_MRR_USD[detalleEmpresa.plan]) : 'Gratis (Trial)' },
-                      { label: 'Fecha registro', value: fmtFecha(detalleEmpresa.fechaRegistro) },
-                      { label: 'Estado suscripción', value: detalleEmpresa.estadoSuscripcion?.toUpperCase() ?? '—' },
-                    ].map(f => (
-                      <div key={f.label} style={{
-                        background: C.bg, borderRadius: 8, padding: '10px 14px',
-                        border: `1px solid ${C.border}`,
-                      }}>
-                        <div style={{ color: C.txt2, fontSize: 11, marginBottom: 3 }}>{f.label}</div>
-                        <div style={{ color: C.txt, fontWeight: 600, fontSize: 14 }}>{f.value}</div>
-                      </div>
-                    ))}
-                  </div>
+                <Tabs
+                  defaultActiveKey="datos"
+                  size="small"
+                  style={{ marginTop: 0 }}
+                  items={[
+                    {
+                      key: 'datos',
+                      label: 'Datos',
+                      children: (
+                        <div style={{ paddingTop: 16 }}>
+                          {/* Info */}
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14, marginBottom: 24 }}>
+                            {[
+                              { label: 'RNC', value: detalleEmpresa.rnc },
+                              { label: 'Usuarios', value: detalleEmpresa.usuarios ?? 0 },
+                              { label: 'Facturas este mes', value: detalleEmpresa.facturasMes ?? 0 },
+                              { label: 'Suscripción/mes', value: PLAN_MRR_USD[detalleEmpresa.plan] > 0 ? fmtUsd(PLAN_MRR_USD[detalleEmpresa.plan]) : 'Gratis (Trial)' },
+                              { label: 'Fecha registro', value: fmtFecha(detalleEmpresa.fechaRegistro) },
+                              { label: 'Estado suscripción', value: detalleEmpresa.estadoSuscripcion?.toUpperCase() ?? '—' },
+                            ].map(f => (
+                              <div key={f.label} style={{
+                                background: C.bg, borderRadius: 8, padding: '10px 14px',
+                                border: `1px solid ${C.border}`,
+                              }}>
+                                <div style={{ color: C.txt2, fontSize: 11, marginBottom: 3 }}>{f.label}</div>
+                                <div style={{ color: C.txt, fontWeight: 600, fontSize: 14 }}>{f.value}</div>
+                              </div>
+                            ))}
+                          </div>
 
-                  {/* Acciones */}
-                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                    <button
-                      onClick={() => { setDetalleEmpresa(null); setModalPlan(detalleEmpresa); setPlanSel(detalleEmpresa.plan ?? 'profesional'); setMeses(1); }}
-                      style={{ ...btnStyle(C.purple, false, true), padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Edit2 size={14} /> Cambiar plan
-                    </button>
-                    <button
-                      onClick={() => { setDetalleEmpresa(null); setModalMsg(detalleEmpresa); }}
-                      style={{ ...btnStyle(C.gold, false, true), padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Send size={14} /> Enviar mensaje
-                    </button>
-                    {detalleEmpresa.isActive
-                      ? <Popconfirm title="¿Suspender esta empresa?" okText="Sí" cancelText="No"
-                          onConfirm={() => { suspenderMut.mutate(detalleEmpresa.id); setDetalleEmpresa(null); }}>
-                          <button style={{ ...btnStyle(C.red, false, true), padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <PauseCircle size={14} /> Suspender
-                          </button>
-                        </Popconfirm>
-                      : <button onClick={() => { activarMut.mutate(detalleEmpresa.id); setDetalleEmpresa(null); }}
-                          style={{ ...btnStyle(C.green, false, true), padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <PlayCircle size={14} /> Activar
-                        </button>
-                    }
-                  </div>
-                </>
+                          {/* Acciones */}
+                          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                            <button
+                              onClick={() => { setDetalleEmpresa(null); setModalPlan(detalleEmpresa); setPlanSel(detalleEmpresa.plan ?? 'profesional'); setMeses(1); }}
+                              style={{ ...btnStyle(C.purple, false, true), padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <Edit2 size={14} /> Cambiar plan
+                            </button>
+                            <button
+                              onClick={() => { setDetalleEmpresa(null); setModalMsg(detalleEmpresa); }}
+                              style={{ ...btnStyle(C.gold, false, true), padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <Send size={14} /> Enviar mensaje
+                            </button>
+                            {detalleEmpresa.isActive
+                              ? <Popconfirm title="¿Suspender esta empresa?" okText="Sí" cancelText="No"
+                                  onConfirm={() => { suspenderMut.mutate(detalleEmpresa.id); setDetalleEmpresa(null); }}>
+                                  <button style={{ ...btnStyle(C.red, false, true), padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <PauseCircle size={14} /> Suspender
+                                  </button>
+                                </Popconfirm>
+                              : <button onClick={() => { activarMut.mutate(detalleEmpresa.id); setDetalleEmpresa(null); }}
+                                  style={{ ...btnStyle(C.green, false, true), padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <PlayCircle size={14} /> Activar
+                                </button>
+                            }
+                          </div>
+                        </div>
+                      ),
+                    },
+                    {
+                      key: 'modulos',
+                      label: '🧩 Módulos Add-on',
+                      children: (
+                        <div style={{ paddingTop: 16 }}>
+                          <ModulosEmpresaPanel empresaId={detalleEmpresa.id} />
+                        </div>
+                      ),
+                    },
+                  ]}
+                />
               )}
             </div>
           </>

@@ -512,6 +512,12 @@ export class SuperAdminController {
     return this.modulosSvc.listarModulos();
   }
 
+  @Get('modulos/activaciones')
+  @ApiOperation({ summary: 'Vista global de activaciones de módulos por empresa' })
+  getActivacionesGlobal() {
+    return this.modulosSvc.getActivacionesGlobal();
+  }
+
   @Get('empresas/:id/modulos')
   @ApiOperation({ summary: 'Listar módulos activados para una empresa' })
   getModulosEmpresa(@Param('id', ParseIntPipe) id: number) {
