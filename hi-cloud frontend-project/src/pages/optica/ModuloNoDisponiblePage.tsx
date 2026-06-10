@@ -1,7 +1,11 @@
-import { Button, Result } from 'antd';
-import { EyeOutlined } from '@ant-design/icons';
+import { Button, Result, Space } from 'antd';
+import { EyeOutlined, ReloadOutlined } from '@ant-design/icons';
 
-export default function ModuloNoDisponiblePage() {
+interface Props {
+  onRetry?: () => void;
+}
+
+export default function ModuloNoDisponiblePage({ onRetry }: Props) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
       <Result
@@ -9,13 +13,20 @@ export default function ModuloNoDisponiblePage() {
         title="Módulo Óptica no disponible"
         subTitle="Este módulo no está activo para tu empresa. Contacta a soporte para activarlo."
         extra={
-          <Button
-            type="primary"
-            size="large"
-            href="mailto:soporte@hicloudrd.com?subject=Activar módulo Óptica"
-          >
-            Contactar soporte
-          </Button>
+          <Space>
+            {onRetry && (
+              <Button icon={<ReloadOutlined />} onClick={() => onRetry()}>
+                Verificar acceso
+              </Button>
+            )}
+            <Button
+              type="primary"
+              size="large"
+              href="mailto:soporte@hicloudrd.com?subject=Activar módulo Óptica"
+            >
+              Contactar soporte
+            </Button>
+          </Space>
         }
       />
     </div>

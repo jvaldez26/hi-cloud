@@ -4,7 +4,7 @@ import { useModuloAddon } from '../../hooks/useModuloAddon';
 import ModuloNoDisponiblePage from './ModuloNoDisponiblePage';
 
 export default function OpticaLayout() {
-  const { activo, isLoading } = useModuloAddon('optica');
+  const { activo, isLoading, refetch } = useModuloAddon('optica');
 
   if (isLoading) {
     return (
@@ -14,7 +14,7 @@ export default function OpticaLayout() {
     );
   }
 
-  if (!activo) return <ModuloNoDisponiblePage />;
+  if (!activo) return <ModuloNoDisponiblePage onRetry={refetch} />;
 
   return <Outlet />;
 }
