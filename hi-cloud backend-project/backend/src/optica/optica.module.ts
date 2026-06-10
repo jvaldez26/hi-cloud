@@ -10,6 +10,7 @@ import { ReclamacionArs } from './entities/reclamacion-ars.entity';
 import { OpticaService } from './optica.service';
 import { RecetaPdfService } from './receta-pdf.service';
 import { OpticaController } from './optica.controller';
+import { PreFacturaModule } from '../pre-factura/pre-factura.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { OpticaController } from './optica.controller';
       OrdenTrabajoOptica,
       ReclamacionArs,
     ]),
+    PreFacturaModule,
   ],
   providers: [OpticaService, RecetaPdfService],
   controllers: [OpticaController],
