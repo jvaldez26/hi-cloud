@@ -59,10 +59,10 @@ export class RecetaOptica {
   @Column({ type: 'decimal', precision: 5, scale: 1, nullable: true })
   dipCerca!: number | null;
 
-  @Column({ length: 100, nullable: true })
+  @Column({ type: 'varchar', length: 100, nullable: true })
   marcaContacto!: string | null;
 
-  @Column({ length: 100, nullable: true })
+  @Column({ type: 'varchar', length: 100, nullable: true })
   tipoContacto!: string | null;
 
   @Column({ type: 'text', nullable: true })

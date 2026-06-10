@@ -20,7 +20,7 @@ export class ReclamacionArs {
   @Column({ length: 100 })
   arsNombre!: string;
 
-  @Column({ length: 50, nullable: true })
+  @Column({ type: 'varchar', length: 50, nullable: true })
   arsNumeroAfiliado!: string | null;
 
   @Column({ type: 'int', nullable: true })

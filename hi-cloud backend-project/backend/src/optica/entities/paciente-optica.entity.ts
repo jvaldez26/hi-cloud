@@ -17,25 +17,25 @@ export class PacienteOptica {
   @Column({ length: 100 })
   apellido!: string;
 
-  @Column({ length: 20, nullable: true })
+  @Column({ type: 'varchar', length: 20, nullable: true })
   cedula!: string | null;
 
   @Column({ type: 'date', nullable: true })
   fechaNacimiento!: string | null;
 
-  @Column({ length: 10, nullable: true })
+  @Column({ type: 'varchar', length: 10, nullable: true })
   genero!: string | null;
 
-  @Column({ length: 20, nullable: true })
+  @Column({ type: 'varchar', length: 20, nullable: true })
   telefono!: string | null;
 
-  @Column({ length: 150, nullable: true })
+  @Column({ type: 'varchar', length: 150, nullable: true })
   email!: string | null;
 
   @Column({ type: 'text', nullable: true })
   direccion!: string | null;
 
-  @Column({ length: 100, nullable: true })
+  @Column({ type: 'varchar', length: 100, nullable: true })
   ocupacion!: string | null;
 
   @Column({ type: 'text', nullable: true })

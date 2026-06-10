@@ -20,13 +20,13 @@ export class MedicoOptica {
   @Column({ length: 100, default: 'Optometría' })
   especialidad!: string;
 
-  @Column({ length: 50, nullable: true })
+  @Column({ type: 'varchar', length: 50, nullable: true })
   exequatur!: string | null;
 
-  @Column({ length: 20, nullable: true })
+  @Column({ type: 'varchar', length: 20, nullable: true })
   telefono!: string | null;
 
-  @Column({ length: 150, nullable: true })
+  @Column({ type: 'varchar', length: 150, nullable: true })
   email!: string | null;
 
   @Column({ default: true })

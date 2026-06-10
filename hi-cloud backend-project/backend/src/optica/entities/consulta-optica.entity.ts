@@ -29,10 +29,10 @@ export class ConsultaOptica {
   @Column({ type: 'text', nullable: true })
   motivoConsulta!: string | null;
 
-  @Column({ length: 20, nullable: true })
+  @Column({ type: 'varchar', length: 20, nullable: true })
   agudezaVisualOD!: string | null;
 
-  @Column({ length: 20, nullable: true })
+  @Column({ type: 'varchar', length: 20, nullable: true })
   agudezaVisualOI!: string | null;
 
   @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true })
