@@ -10,7 +10,9 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { CxCService } from './cxc.service';
 import { RegistrarPagoCobradoDto } from './dto/registrar-pago-cobrado.dto';
@@ -79,6 +81,22 @@ export class CxCController {
   @ApiOperation({ summary: 'Historial de cobros de una cuenta' })
   getPagos(@Param('id', ParseIntPipe) id: number) {
     return this.cxcService.getPagos(id);
+  }
+
+  @Get('pagos/:pagoId/pdf')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Generar recibo PDF de un cobro registrado' })
+  async getPagoPDF(
+    @Param('pagoId', ParseIntPipe) pagoId: number,
+    @Res() res: Response,
+  ) {
+    const pdf = await this.cxcService.generarPDFdePago(pagoId);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="recibo-pago-${pagoId}.pdf"`,
+      'Content-Length': String(pdf.length),
+    });
+    res.end(pdf);
   }
 
   @Post(':id/pago')

@@ -22,4 +22,7 @@ export const cxcApi = {
 
   aging: () =>
     api.get('/cxc/aging').then(r => r.data.data ?? r.data),
+
+  getPagoPDF: (pagoId: number) =>
+    api.get(`/cxc/pagos/${pagoId}/pdf`, { responseType: 'blob' }).then(r => r.data as Blob),
 };

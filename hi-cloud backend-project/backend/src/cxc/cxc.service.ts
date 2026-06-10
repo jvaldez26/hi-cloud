@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, LessThan, DataSource } from 'typeorm';
+import { generarDocumentoPDF } from '../common/pdf/doc-pdf.helper';
+import type { DocData } from '../common/doc.template';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { AsientosAutomaticosService } from '../contabilidad/services/asientos-automaticos.service';
 import { TesoreriaService } from '../tesoreria/tesoreria.service';
@@ -95,12 +97,13 @@ export class CxCService {
     const nuevoEstado    = nuevoPendiente <= 0 ? EstadoCuenta.PAGADA : EstadoCuenta.PAGADA_PARCIAL;
 
     // Transacción atómica: pago + actualización CxC + factura en una sola operación
+    let ultimoPagoId = 0;
     await this.dataSource.transaction(async (em) => {
       const pagoRepo  = em.getRepository(PagoCobrado);
       const cxcRepo   = em.getRepository(CuentaPorCobrar);
       const factRepo  = em.getRepository(Factura);
 
-      await pagoRepo.save(pagoRepo.create({
+      const nuevoPago = await pagoRepo.save(pagoRepo.create({
         cuentaPorCobrarId: id,
         monto:       dto.monto,
         fecha:       dto.fechaPago ? new Date(dto.fechaPago) : new Date(),
@@ -111,6 +114,7 @@ export class CxCService {
         moneda:      cuenta.moneda    ?? 'DOP',
         tipoCambio:  Number(dto.tipoCambio ?? cuenta.tipoCambio ?? 1),
       }));
+      ultimoPagoId = nuevoPago.id;
 
       await cxcRepo.update(id, {
         montoPagado:    nuevoPagado,
@@ -156,7 +160,7 @@ export class CxCService {
       this.realtimeService.notify(eid, 'cxc',     'updated', id);
       this.realtimeService.notify(eid, 'factura',  'updated', cuentaFinal.facturaId);
     }
-    return cuentaFinal;
+    return { ...cuentaFinal, ultimoPagoId };
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -339,6 +343,89 @@ export class CxCService {
       masde120:  Number(r.masde120),
       total:     Number(r.total),
     }));
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // PDF recibo de pago
+  // ──────────────────────────────────────────────────────────────────
+
+  async generarPDFdePago(pagoId: number): Promise<Buffer> {
+    const empresaId = this.tenantService.getEmpresaId();
+    const rows = await this.dataSource.query<any[]>(`
+      SELECT
+        p.id, p.monto, p.fecha, p."metodoPago", p.referencia, p.notas, p.moneda, p."tipoCambio",
+        cxc."montoPendiente" AS "montoPendiente",
+        f.folio,
+        cl.nombre AS "clienteNombre", cl."rncReceptor" AS "clienteRnc",
+        cl.telefono AS "clienteTel", cl.email AS "clienteEmail", cl.direccion AS "clienteDir",
+        e.nombre AS "empresaNombre", e.rnc AS "empresaRnc",
+        e.direccion AS "empresaDireccion", e.ciudad AS "empresaCiudad",
+        e.telefono AS "empresaTelefono", e.email AS "empresaEmail",
+        e.logo AS "empresaLogo", e.color AS "empresaColor",
+        u.nombre AS "cajeroNombre"
+      FROM pagos_cobrados p
+      JOIN cuentas_por_cobrar cxc ON cxc.id = p."cuentaPorCobrarId"
+      JOIN facturas f ON f.id = cxc."facturaId"
+      JOIN clientes cl ON cl.id = cxc."clienteId"
+      JOIN empresa e ON e.id = f."empresaId"
+      LEFT JOIN users u ON u.id = p."userId"
+      WHERE p.id = $1 AND f."empresaId" = $2 AND p."isActive" = true
+    `, [pagoId, empresaId]);
+
+    if (!rows.length) throw new NotFoundException(`Pago #${pagoId} no encontrado`);
+    const r = rows[0];
+
+    const fechaStr = r.fecha instanceof Date
+      ? r.fecha.toISOString().split('T')[0]
+      : String(r.fecha).split('T')[0];
+
+    const pendienteTrasCobro = Math.max(0, Number(r.montoPendiente) - Number(r.monto));
+
+    const data: DocData = {
+      tipo:   'RECIBO DE PAGO',
+      numero: `REC-${String(r.id).padStart(6, '0')}`,
+      fecha:  fechaStr,
+      empresa: {
+        nombre:    r.empresaNombre,
+        rnc:       r.empresaRnc   ?? '',
+        direccion: r.empresaDireccion ?? '',
+        ciudad:    r.empresaCiudad,
+        telefono:  r.empresaTelefono,
+        email:     r.empresaEmail,
+        logo:      r.empresaLogo,
+        color:     r.empresaColor,
+      },
+      participante: {
+        label:  'Recibido de',
+        nombre: r.clienteNombre,
+        rnc:    r.clienteRnc,
+        dir:    r.clienteDir,
+        tel:    r.clienteTel,
+        email:  r.clienteEmail,
+      },
+      campos: [
+        { label: 'Factura',    valor: r.folio },
+        { label: 'Método',     valor: r.metodoPago },
+        ...(r.referencia ? [{ label: 'Referencia', valor: r.referencia }] : []),
+        ...(r.moneda !== 'DOP' ? [
+          { label: 'Moneda', valor: r.moneda },
+          { label: 'Tasa',   valor: `RD$ ${r.tipoCambio}` },
+        ] : []),
+        { label: 'Cobrado por', valor: r.cajeroNombre ?? 'Sistema' },
+      ],
+      items: [{
+        descripcion: `Cobro sobre factura ${r.folio}`,
+        importe:     Number(r.monto),
+      }],
+      totales: [
+        { label: 'Monto cobrado',      valor: Number(r.monto), bold: true },
+        ...(pendienteTrasCobro > 0 ? [{ label: 'Pendiente restante', valor: pendienteTrasCobro }] : []),
+      ],
+      notas: r.notas ?? undefined,
+      pie:   'Este recibo es válido como comprobante de pago parcial o total.',
+    };
+
+    return generarDocumentoPDF(data);
   }
 
   // ──────────────────────────────────────────────────────────────────

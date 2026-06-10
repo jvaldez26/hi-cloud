@@ -9,7 +9,7 @@ import {
 } from 'antd';
 import {
   DollarOutlined, SearchOutlined, FileExcelOutlined,
-  WhatsAppOutlined, FilterOutlined, HistoryOutlined, ClockCircleOutlined,
+  WhatsAppOutlined, FilterOutlined, HistoryOutlined, ClockCircleOutlined, PrinterOutlined,
 } from '@ant-design/icons';
 import { TableActions } from '../../components/ui/TableActions';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -76,11 +76,21 @@ export default function CxCPage() {
   const pagoMut = useMutation({
     mutationFn: ({ id, monto, metodoPago, ref, fechaPago, tipoCambio }: { id: number; monto: number; metodoPago: MetodoPago; ref?: string; fechaPago?: string; tipoCambio?: number }) =>
       cxcApi.registrarPago(id, monto, metodoPago, ref, fechaPago, tipoCambio),
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       qc.invalidateQueries({ queryKey: ['cxc'] });
       qc.invalidateQueries({ queryKey: ['cxc-resumen'] });
       setPagoId(null); setPagoRow(null); form.resetFields();
       message.success('Cobro registrado');
+      const nuevoId: number | undefined = data?.data?.ultimoPagoId ?? data?.ultimoPagoId;
+      if (nuevoId) {
+        Modal.confirm({
+          title: 'Cobro registrado',
+          content: '¿Deseas imprimir el recibo de pago?',
+          okText: 'Imprimir',
+          cancelText: 'No',
+          onOk: () => imprimirPagoCobrado(nuevoId),
+        });
+      }
     },
     onError: (e: any) => {
       const msg = e?.response?.data?.message
@@ -109,6 +119,16 @@ export default function CxCPage() {
     exportarExcel(filas, `CxC-${dayjs().format('YYYY-MM-DD')}`);
     message.success(`${filas.length} cuentas exportadas`);
   }, [estado]);
+
+  const imprimirPagoCobrado = (pagoId: number) => {
+    cxcApi.getPagoPDF(pagoId)
+      .then(blob => {
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank', 'noopener,noreferrer');
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      })
+      .catch(() => message.error('No se pudo generar el recibo'));
+  };
 
   const abrirWhatsApp = (r: CuentaPorCobrar) => {
     api.get(`/comunicaciones/whatsapp/cxc/${r.id}`).then((res: any) => {
@@ -405,6 +425,14 @@ export default function CxCPage() {
               { title: 'Monto',  dataIndex: 'monto', width: 120, align: 'right' as const, render: (v: number, r: any) => <Text strong style={{ color: '#059669' }}>{fmt.moneyM(v, r?.moneda ?? (pagoRow as any)?.moneda)}</Text> },
               { title: 'Método', dataIndex: 'metodoPago', width: 110, render: (v: string) => <Tag>{v}</Tag> },
               { title: 'Ref.',   dataIndex: 'referencia', ellipsis: true, render: (v: string) => v ?? '—' },
+              {
+                title: '', key: 'print', width: 44, align: 'center' as const,
+                render: (_: unknown, r: any) => (
+                  <Tooltip title="Imprimir recibo">
+                    <Button size="small" icon={<PrinterOutlined />} onClick={() => imprimirPagoCobrado(r.id)} />
+                  </Tooltip>
+                ),
+              },
             ]}
             summary={() => histPagos.length > 1 ? (
               <Table.Summary.Row style={{ fontWeight: 700 }}>
