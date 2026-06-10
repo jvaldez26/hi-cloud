@@ -120,6 +120,7 @@ import { DistribucionCostosModule }      from './distribucion-costos/distribucio
 import { UomModule }                     from './uom/uom.module';
 import { PagosSuscripcionModule }        from './pagos-suscripcion/pagos-suscripcion.module';
 import { ModulosAddonModule }            from './modulos-addon/modulos-addon.module';
+import { OpticaModule }                 from './optica/optica.module';
 
 @Module({
   imports: [
@@ -295,6 +296,7 @@ import { ModulosAddonModule }            from './modulos-addon/modulos-addon.mod
     UomModule,
     PagosSuscripcionModule,
     ModulosAddonModule,
+    OpticaModule,
   ],
   controllers: [AppController],
   providers: [
