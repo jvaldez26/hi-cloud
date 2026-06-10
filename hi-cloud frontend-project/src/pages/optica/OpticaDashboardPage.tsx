@@ -6,6 +6,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { opticaApi } from '../../api/optica.api';
 import { fmt } from '../../utils/formatters';
+import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
 
@@ -34,8 +35,14 @@ export default function OpticaDashboardPage() {
   const proxCols = [
     { title: 'N°', dataIndex: 'numero', width: 110 },
     { title: 'Paciente', dataIndex: 'pacienteNombre', ellipsis: true },
-    { title: 'Fecha', dataIndex: 'fecha', width: 110, render: (v: string) => fmt.date(v) },
-    { title: 'Hora', dataIndex: 'hora', width: 80, render: (v: string) => v?.slice(0, 5) ?? '—' },
+    {
+      title: 'Fecha', dataIndex: 'fechaHora', width: 110,
+      render: (v: string) => v ? fmt.date(v) : '—',
+    },
+    {
+      title: 'Hora', dataIndex: 'fechaHora', width: 80, key: 'hora',
+      render: (v: string) => v ? dayjs(v).format('HH:mm') : '—',
+    },
     {
       title: 'Estado', dataIndex: 'estado', width: 110,
       render: (v: string) => (

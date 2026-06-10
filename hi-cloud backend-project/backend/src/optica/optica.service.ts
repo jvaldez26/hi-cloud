@@ -748,6 +748,55 @@ export class OpticaService {
     return row;
   }
 
+  // ── HISTORIAL PACIENTE ─────────────────────────────────────────────────────
+
+  async getHistorialPaciente(pacienteId: number) {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const paciente = await this.pacienteOr404(empresaId, pacienteId);
+    const [citas, consultas, recetas, ordenes, reclamaciones] = await Promise.all([
+      this.ds.query<any[]>(
+        `SELECT c.*,
+                m.nombre || ' ' || m.apellido AS "medicoNombre"
+         FROM op_citas c
+         LEFT JOIN op_medicos m ON m.id = c."medicoId" AND m."empresaId" = c."empresaId"
+         WHERE c."pacienteId" = $1 AND c."empresaId" = $2
+         ORDER BY c."fechaHora" DESC LIMIT 50`,
+        [pacienteId, empresaId],
+      ),
+      this.ds.query<any[]>(
+        `SELECT c.*,
+                m.nombre || ' ' || m.apellido AS "medicoNombre"
+         FROM op_consultas c
+         LEFT JOIN op_medicos m ON m.id = c."medicoId" AND m."empresaId" = c."empresaId"
+         WHERE c."pacienteId" = $1 AND c."empresaId" = $2
+         ORDER BY c.fecha DESC LIMIT 50`,
+        [pacienteId, empresaId],
+      ),
+      this.ds.query<any[]>(
+        `SELECT r.*,
+                m.nombre || ' ' || m.apellido AS "medicoNombre"
+         FROM op_recetas r
+         LEFT JOIN op_medicos m ON m.id = r."medicoId" AND m."empresaId" = r."empresaId"
+         WHERE r."pacienteId" = $1 AND r."empresaId" = $2
+         ORDER BY r.fecha DESC LIMIT 50`,
+        [pacienteId, empresaId],
+      ),
+      this.ds.query<any[]>(
+        `SELECT * FROM op_ordenes_trabajo
+         WHERE "pacienteId" = $1 AND "empresaId" = $2
+         ORDER BY fecha DESC LIMIT 50`,
+        [pacienteId, empresaId],
+      ),
+      this.ds.query<any[]>(
+        `SELECT * FROM op_reclamaciones_ars
+         WHERE "pacienteId" = $1 AND "empresaId" = $2
+         ORDER BY fecha DESC LIMIT 50`,
+        [pacienteId, empresaId],
+      ),
+    ]);
+    return { paciente, citas, consultas, recetas, ordenes, reclamaciones };
+  }
+
   // ── DASHBOARD ──────────────────────────────────────────────────────────────
 
   async getDashboard() {

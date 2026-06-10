@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Card, Button, Table, Typography, Row, Col, Modal, Form, Input,
-  Select, message, Tag, Space, theme, DatePicker, TimePicker,
+  Select, message, Tag, Space, theme, DatePicker,
 } from 'antd';
 import { PlusOutlined, SearchOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -27,9 +27,9 @@ const ESTADO_COLOR: Record<string, string> = {
 
 export default function AgendaOpticaPage() {
   const { token } = theme.useToken();
-  const [open, setOpen]         = useState(false);
-  const [editing, setEditing]   = useState<any>(null);
-  const [search, setSearch]     = useState('');
+  const [open, setOpen]           = useState(false);
+  const [editing, setEditing]     = useState<any>(null);
+  const [search, setSearch]       = useState('');
   const [filtroEstado, setFiltro] = useState<string | undefined>(undefined);
   const [form] = Form.useForm();
   const qc = useQueryClient();
@@ -67,8 +67,7 @@ export default function AgendaOpticaPage() {
     setEditing(r);
     form.setFieldsValue({
       ...r,
-      fecha: r.fecha ? dayjs(r.fecha) : null,
-      hora:  r.hora  ? dayjs(`2000-01-01T${r.hora}`) : null,
+      fechaHora: r.fechaHora ? dayjs(r.fechaHora) : null,
     });
     setOpen(true);
   };
@@ -78,8 +77,7 @@ export default function AgendaOpticaPage() {
     mutationFn: (v: any) => {
       const body = {
         ...v,
-        fecha: v.fecha?.format('YYYY-MM-DD'),
-        hora:  v.hora?.format('HH:mm') ?? null,
+        fechaHora: v.fechaHora?.toISOString() ?? null,
       };
       return editing ? opticaApi.actualizarCita(editing.id, body) : opticaApi.crearCita(body);
     },
@@ -98,9 +96,15 @@ export default function AgendaOpticaPage() {
       title: 'Paciente', key: 'pac', ellipsis: true,
       render: (_: any, r: any) => r.pacienteNombre ?? '—',
     },
-    { title: 'Fecha', dataIndex: 'fecha', width: 110, render: (v: string) => fmt.date(v) },
-    { title: 'Hora', dataIndex: 'hora', width: 80, render: (v: string) => v?.slice(0, 5) ?? '—' },
-    { title: 'Tipo', dataIndex: 'tipoCita', width: 120, render: (v: any) => v ?? '—' },
+    {
+      title: 'Fecha', dataIndex: 'fechaHora', width: 110,
+      render: (v: string) => v ? fmt.date(v) : '—',
+    },
+    {
+      title: 'Hora', dataIndex: 'fechaHora', width: 80, key: 'hora',
+      render: (v: string) => v ? dayjs(v).format('HH:mm') : '—',
+    },
+    { title: 'Tipo', dataIndex: 'tipo', width: 130, render: (v: any) => v ?? '—' },
     {
       title: 'Estado', dataIndex: 'estado', width: 110,
       render: (v: string) => (
@@ -185,22 +189,32 @@ export default function AgendaOpticaPage() {
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
-              <Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}>
-                <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+              <Form.Item name="fechaHora" label="Fecha y hora" rules={[{ required: true }]}>
+                <DatePicker
+                  showTime={{ format: 'HH:mm', minuteStep: 15 }}
+                  style={{ width: '100%' }}
+                  format="DD/MM/YYYY HH:mm"
+                />
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
-              <Form.Item name="hora" label="Hora">
-                <TimePicker style={{ width: '100%' }} format="HH:mm" minuteStep={15} />
+              <Form.Item name="duracionMinutos" label="Duración (min)">
+                <Select allowClear options={[
+                  { value: 15, label: '15 min' },
+                  { value: 30, label: '30 min' },
+                  { value: 45, label: '45 min' },
+                  { value: 60, label: '1 hora' },
+                  { value: 90, label: '1.5 horas' },
+                ]} />
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
-              <Form.Item name="tipoCita" label="Tipo de cita">
+              <Form.Item name="tipo" label="Tipo de cita">
                 <Select allowClear options={[
                   { value: 'consulta_general', label: 'Consulta general' },
-                  { value: 'control', label: 'Control' },
-                  { value: 'entrega_lentes', label: 'Entrega de lentes' },
-                  { value: 'urgencia', label: 'Urgencia' },
+                  { value: 'control',          label: 'Control' },
+                  { value: 'entrega_lentes',   label: 'Entrega de lentes' },
+                  { value: 'urgencia',         label: 'Urgencia' },
                 ]} />
               </Form.Item>
             </Col>

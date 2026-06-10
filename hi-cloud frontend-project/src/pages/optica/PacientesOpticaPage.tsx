@@ -1,9 +1,10 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Card, Button, Table, Typography, Row, Col, Modal, Form, Input,
   Select, message, Tag, Space, theme, DatePicker,
 } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined, FileTextOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { opticaApi } from '../../api/optica.api';
 import { TableActions } from '../../components/ui/TableActions';
@@ -15,6 +16,7 @@ const { Title } = Typography;
 
 export default function PacientesOpticaPage() {
   const { token } = theme.useToken();
+  const nav = useNavigate();
   const [open, setOpen]       = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [search, setSearch]   = useState('');
@@ -81,9 +83,10 @@ export default function PacientesOpticaPage() {
       title: '', key: 'acc', width: 72, align: 'right' as const,
       render: (_: any, r: any) => (
         <TableActions
-          onView={() => openEdit(r)}
-          viewLabel="Editar"
+          onView={() => nav(`/optica/pacientes/${r.id}`)}
+          viewLabel="Ver ficha"
           items={[
+            { key: 'edit', label: 'Editar', icon: <EditOutlined />, onClick: () => openEdit(r) },
             {
               key: 'del', label: 'Eliminar', icon: <DeleteOutlined />, danger: true,
               onClick: () => { if (window.confirm('¿Eliminar este paciente?')) delMut.mutate(r.id); },

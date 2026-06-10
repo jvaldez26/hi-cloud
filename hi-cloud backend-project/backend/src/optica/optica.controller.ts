@@ -247,6 +247,10 @@ export class OpticaController {
   @ApiOperation({ summary: 'Crear paciente' })
   crearPaciente(@Body() dto: CreatePacienteDto) { return this.svc.crearPaciente(dto); }
 
+  @Get('pacientes/:id/historial')
+  @ApiOperation({ summary: 'Historial completo de un paciente' })
+  getHistorialPaciente(@Param('id', ParseIntPipe) id: number) { return this.svc.getHistorialPaciente(id); }
+
   @Get('pacientes/:id')
   @ApiOperation({ summary: 'Obtener paciente' })
   obtenerPaciente(@Param('id', ParseIntPipe) id: number) { return this.svc.obtenerPaciente(id); }

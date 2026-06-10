@@ -10,6 +10,7 @@ export const opticaApi = {
   pacientes: (params?: { page?: number; limit?: number; search?: string }) =>
     api.get('/optica/pacientes', { params }).then(d),
   paciente:         (id: number)     => api.get(`/optica/pacientes/${id}`).then(d),
+  historialPaciente: (id: number)    => api.get(`/optica/pacientes/${id}/historial`).then(d),
   crearPaciente:    (b: any)         => api.post('/optica/pacientes', b).then(d),
   actualizarPaciente: (id: number, b: any) => api.patch(`/optica/pacientes/${id}`, b).then(d),
   eliminarPaciente: (id: number)     => api.delete(`/optica/pacientes/${id}`).then(d),
