@@ -7,6 +7,7 @@ import { ConsultaOptica } from './entities/consulta-optica.entity';
 import { RecetaOptica } from './entities/receta-optica.entity';
 import { OrdenTrabajoOptica } from './entities/orden-trabajo-optica.entity';
 import { ReclamacionArs } from './entities/reclamacion-ars.entity';
+import { InventarioOptica } from './entities/inventario-optica.entity';
 import { OpticaService } from './optica.service';
 import { RecetaPdfService } from './receta-pdf.service';
 import { OpticaController } from './optica.controller';
@@ -22,6 +23,7 @@ import { PreFacturaModule } from '../pre-factura/pre-factura.module';
       RecetaOptica,
       OrdenTrabajoOptica,
       ReclamacionArs,
+      InventarioOptica,
     ]),
     PreFacturaModule,
   ],

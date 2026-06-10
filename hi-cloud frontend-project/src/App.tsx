@@ -147,6 +147,7 @@ const RecetasOpticaPage           = lazy(() => import('./pages/optica/RecetasOpt
 const OrdenesTrabajoOpticaPage    = lazy(() => import('./pages/optica/OrdenesTrabajoOpticaPage'));
 const ReclamacionesArsPage        = lazy(() => import('./pages/optica/ReclamacionesArsPage'));
 const FichaPacientePage           = lazy(() => import('./pages/optica/FichaPacientePage'));
+const InventarioOpticaPage        = lazy(() => import('./pages/optica/InventarioOpticaPage'));
 dayjs.locale('es');
 
 export const qc = new QueryClient({
@@ -615,6 +616,7 @@ export default function App() {
                       <Route path="recetas"          element={<RecetasOpticaPage />} />
                       <Route path="ordenes"          element={<OrdenesTrabajoOpticaPage />} />
                       <Route path="ars"              element={<ReclamacionesArsPage />} />
+                      <Route path="inventario"       element={<InventarioOpticaPage />} />
                     </Route>
                   </Route>
 

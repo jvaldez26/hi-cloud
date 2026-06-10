@@ -7,8 +7,9 @@ import {
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, TableOutlined, AppstoreOutlined,
-  DollarOutlined,
+  DollarOutlined, ClockCircleOutlined,
 } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { opticaApi } from '../../api/optica.api';
 import { clientesApi } from '../../api/clientes.api';
@@ -265,6 +266,16 @@ function KanbanView({ ordenes, moveMut, openEdit, openFacturar }: any) {
                       <Text style={{ fontSize: 11, color: '#f5222d' }}>Saldo: {fmt.money(o.balance)}</Text>
                     ) : null}
                   </Row>
+                  {o.fechaEntrega && (() => {
+                    const diff = dayjs(o.fechaEntrega).diff(dayjs(), 'day');
+                    const color = diff < 0 ? '#f5222d' : diff === 0 ? '#fa8c16' : diff <= 2 ? '#faad14' : token.colorTextSecondary;
+                    const label = diff < 0 ? `Vencida hace ${Math.abs(diff)}d` : diff === 0 ? 'Entrega hoy' : `Entrega en ${diff}d`;
+                    return (
+                      <Text style={{ fontSize: 10, color, display: 'block', marginTop: 2 }}>
+                        <ClockCircleOutlined style={{ marginRight: 2 }} />{label}
+                      </Text>
+                    );
+                  })()}
                   <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                     {ESTADOS.indexOf(estado) < ESTADOS.length - 1 && (
                       <Button
@@ -332,6 +343,15 @@ function TablaView({ ordenes, isLoading, search, setSearch, filtroEstado, setFil
       render: (v: any) => v && Number(v) > 0
         ? <span style={{ color: '#f5222d' }}>{fmt.money(v)}</span>
         : '—',
+    },
+    {
+      title: 'Entrega', dataIndex: 'fechaEntrega', width: 110,
+      render: (v: string) => {
+        if (!v) return '—';
+        const diff = dayjs(v).diff(dayjs(), 'day');
+        const color = diff < 0 ? '#f5222d' : diff <= 1 ? '#fa8c16' : undefined;
+        return <span style={color ? { color } : {}}>{fmt.date(v)}</span>;
+      },
     },
     {
       title: 'Factura', dataIndex: 'facturaId', width: 90, align: 'center' as const,

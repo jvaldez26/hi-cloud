@@ -290,7 +290,8 @@ const MENU_CATEGORIES: MenuCategory[] = [
       { path: '/optica/consultas', label: 'Consultas' },
       { path: '/optica/recetas',   label: 'Recetas' },
       { path: '/optica/ordenes',   label: 'Órdenes de Trabajo' },
-      { path: '/optica/ars',       label: 'Reclamaciones ARS' },
+      { path: '/optica/ars',        label: 'Reclamaciones ARS' },
+      { path: '/optica/inventario', label: 'Inventario' },
     ],
   },
 ];
@@ -432,6 +433,7 @@ const PATH_ROLES: Record<string, string[]> = {
   '/optica/recetas':        ADMIN_CONT,
   '/optica/ordenes':        ADMIN_CONT,
   '/optica/ars':            ADMIN_CONT,
+  '/optica/inventario':    ADMIN_CONT,
 };
 
 function rolPuedeVerRuta(path: string, role: string): boolean {

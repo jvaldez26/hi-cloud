@@ -928,4 +928,145 @@ export class OpticaService {
     );
     return { ...stats, citasProximas };
   }
+
+  // ── INVENTARIO ─────────────────────────────────────────────────────────────
+
+  async listarInventario(page = 1, limit = 50, tipo?: string, search?: string) {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const offset    = (page - 1) * limit;
+    const conds: string[] = [`i."empresaId" = $1`, `i.activo = true`];
+    const params: any[]   = [empresaId];
+    let p = 2;
+    if (tipo)   { conds.push(`i.tipo = $${p++}`);  params.push(tipo); }
+    if (search) { conds.push(`(i.marca ILIKE $${p} OR i.modelo ILIKE $${p} OR i.codigo ILIKE $${p})`); params.push(`%${search}%`); p++; }
+
+    const where = conds.join(' AND ');
+    const [total, data] = await Promise.all([
+      this.ds.query<any[]>(`SELECT COUNT(*)::int AS cnt FROM op_inventario i WHERE ${where}`, params),
+      this.ds.query<any[]>(
+        `SELECT * FROM op_inventario i WHERE ${where} ORDER BY i.marca, i.modelo LIMIT $${p} OFFSET $${p+1}`,
+        [...params, limit, offset],
+      ),
+    ]);
+    return { total: total[0]?.cnt ?? 0, page, limit, data };
+  }
+
+  async crearInventario(dto: any) {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const [row] = await this.ds.query<any[]>(
+      `INSERT INTO op_inventario
+         ("empresaId", tipo, codigo, marca, modelo, color, material, genero,
+          precio, costo, "stockActual", "stockMinimo", descripcion)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       RETURNING *`,
+      [empresaId, dto.tipo ?? 'montura', dto.codigo ?? null, dto.marca ?? null,
+       dto.modelo ?? null, dto.color ?? null, dto.material ?? null, dto.genero ?? null,
+       dto.precio ?? 0, dto.costo ?? 0, dto.stockActual ?? 0, dto.stockMinimo ?? 5,
+       dto.descripcion ?? null],
+    );
+    return row;
+  }
+
+  async actualizarInventario(id: number, dto: any) {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const fields: string[] = [];
+    const params: any[]    = [];
+    let p = 1;
+    const updatable = ['tipo','codigo','marca','modelo','color','material','genero',
+                       'precio','costo','stockActual','stockMinimo','descripcion','activo'];
+    for (const key of updatable) {
+      if (dto[key] !== undefined) { fields.push(`"${key}" = $${p++}`); params.push(dto[key]); }
+    }
+    if (!fields.length) throw new NotFoundException('Sin campos para actualizar');
+    fields.push(`"updatedAt" = NOW()`);
+    params.push(id, empresaId);
+    const [row] = await this.ds.query<any[]>(
+      `UPDATE op_inventario SET ${fields.join(', ')} WHERE id = $${p++} AND "empresaId" = $${p} RETURNING *`,
+      params,
+    );
+    if (!row) throw new NotFoundException(`Item inventario #${id} no encontrado`);
+    return row;
+  }
+
+  async ajustarStock(id: number, delta: number, motivo?: string) {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const [row] = await this.ds.query<any[]>(
+      `UPDATE op_inventario
+       SET "stockActual" = GREATEST(0, "stockActual" + $1), "updatedAt" = NOW()
+       WHERE id = $2 AND "empresaId" = $3 RETURNING *`,
+      [delta, id, empresaId],
+    );
+    if (!row) throw new NotFoundException(`Item inventario #${id} no encontrado`);
+    this.logger.log(`Inventario #${id}: stock ajustado ${delta > 0 ? '+' : ''}${delta}${motivo ? ` — ${motivo}` : ''}`);
+    return row;
+  }
+
+  async eliminarInventario(id: number) {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    await this.ds.query(
+      `UPDATE op_inventario SET activo = false, "updatedAt" = NOW() WHERE id = $1 AND "empresaId" = $2`,
+      [id, empresaId],
+    );
+    return { ok: true };
+  }
+
+  async resumenInventario() {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const rows = await this.ds.query<any[]>(
+      `SELECT
+         tipo,
+         COUNT(*)::int                                AS total,
+         SUM("stockActual")::int                     AS stockTotal,
+         SUM(CASE WHEN "stockActual" <= "stockMinimo" THEN 1 ELSE 0 END)::int AS bajosStock,
+         ROUND(SUM(precio * "stockActual")::numeric, 2) AS valorInventario
+       FROM op_inventario
+       WHERE "empresaId" = $1 AND activo = true
+       GROUP BY tipo ORDER BY tipo`,
+      [empresaId],
+    );
+    return rows;
+  }
+
+  // ── REPORTE ARS ───────────────────────────────────────────────────────────
+
+  async getReporteArs(desde?: string, hasta?: string, arsNombre?: string) {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const conds: string[] = [`r."empresaId" = $1`];
+    const params: any[]   = [empresaId];
+    let p = 2;
+    if (desde)     { conds.push(`r.fecha >= $${p++}`);           params.push(desde); }
+    if (hasta)     { conds.push(`r.fecha <= $${p++}`);           params.push(hasta); }
+    if (arsNombre) { conds.push(`r."arsNombre" ILIKE $${p++}`);  params.push(`%${arsNombre}%`); }
+
+    const where = conds.join(' AND ');
+    const [reclamaciones, resumen] = await Promise.all([
+      this.ds.query<any[]>(
+        `SELECT r.*,
+                p.nombre || ' ' || p.apellido AS "pacienteNombre",
+                p.cedula AS "pacienteCedula"
+         FROM op_reclamaciones_ars r
+         LEFT JOIN op_pacientes p ON p.id = r."pacienteId" AND p."empresaId" = r."empresaId"
+         WHERE ${where}
+         ORDER BY r.fecha DESC, r."arsNombre"`,
+        params,
+      ),
+      this.ds.query<any[]>(
+        `SELECT
+           "arsNombre",
+           COUNT(*)::int                                       AS total,
+           SUM(CASE WHEN estado = 'aprobada' THEN 1 ELSE 0 END)::int  AS aprobadas,
+           SUM(CASE WHEN estado = 'rechazada' THEN 1 ELSE 0 END)::int AS rechazadas,
+           SUM(CASE WHEN estado IN ('borrador','enviada') THEN 1 ELSE 0 END)::int AS pendientes,
+           ROUND(COALESCE(SUM("montoReclamado"),0)::numeric, 2)  AS totalReclamado,
+           ROUND(COALESCE(SUM("montoCubierto"),0)::numeric, 2)   AS totalCubierto,
+           ROUND(COALESCE(SUM("montoPaciente"),0)::numeric, 2)   AS totalPaciente
+         FROM op_reclamaciones_ars r
+         WHERE ${where}
+         GROUP BY "arsNombre"
+         ORDER BY "arsNombre"`,
+        params,
+      ),
+    ]);
+    return { reclamaciones, resumen };
+  }
 }

@@ -201,6 +201,28 @@ class FacturarOtDto {
   @IsOptional() @IsString() tipoNcf?: string;
 }
 
+class CreateInventarioDto {
+  @IsOptional() @IsString() tipo?: string;
+  @IsOptional() @IsString() codigo?: string;
+  @IsOptional() @IsString() marca?: string;
+  @IsOptional() @IsString() modelo?: string;
+  @IsOptional() @IsString() color?: string;
+  @IsOptional() @IsString() material?: string;
+  @IsOptional() @IsString() genero?: string;
+  @IsOptional() @IsNumber() @Min(0) @Type(() => Number) precio?: number;
+  @IsOptional() @IsNumber() @Min(0) @Type(() => Number) costo?: number;
+  @IsOptional() @IsInt() @Min(0) @Type(() => Number) stockActual?: number;
+  @IsOptional() @IsInt() @Min(0) @Type(() => Number) stockMinimo?: number;
+  @IsOptional() @IsString() descripcion?: string;
+}
+class UpdateInventarioDto extends CreateInventarioDto {
+  @IsOptional() @IsBoolean() activo?: boolean;
+}
+class AjustarStockDto {
+  @IsInt() @Type(() => Number) delta!: number;
+  @IsOptional() @IsString() motivo?: string;
+}
+
 class UpdateReclamacionArsDto {
   @IsOptional() @IsString()  arsNumeroAfiliado?: string;
   @IsOptional() @IsInt() @Type(() => Number) consultaId?: number;
@@ -432,6 +454,14 @@ export class OpticaController {
     @Query('estado') estado?: string,
   ) { return this.svc.listarReclamacionesArs(page, limit, estado); }
 
+  @Get('reclamaciones-ars/reporte')
+  @ApiOperation({ summary: 'Reporte de reclamaciones ARS (resumen + detalle)' })
+  getReporteArs(
+    @Query('desde') desde?: string,
+    @Query('hasta') hasta?: string,
+    @Query('arsNombre') arsNombre?: string,
+  ) { return this.svc.getReporteArs(desde, hasta, arsNombre); }
+
   @Post('reclamaciones-ars')
   @ApiOperation({ summary: 'Crear reclamación ARS' })
   crearReclamacionArs(@Body() dto: CreateReclamacionArsDto) { return this.svc.crearReclamacionArs(dto); }
@@ -445,4 +475,39 @@ export class OpticaController {
   actualizarReclamacionArs(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateReclamacionArsDto) {
     return this.svc.actualizarReclamacionArs(id, dto);
   }
+
+  // ── Inventario ─────────────────────────────────────────────────────────────
+
+  @Get('inventario/resumen')
+  @ApiOperation({ summary: 'Resumen de inventario óptico por tipo' })
+  resumenInventario() { return this.svc.resumenInventario(); }
+
+  @Get('inventario')
+  @ApiOperation({ summary: 'Listar inventario óptico' })
+  listarInventario(
+    @Query('page', new ParseIntPipe({ optional: true })) page?: number,
+    @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
+    @Query('tipo') tipo?: string,
+    @Query('search') search?: string,
+  ) { return this.svc.listarInventario(page, limit, tipo, search); }
+
+  @Post('inventario')
+  @ApiOperation({ summary: 'Crear ítem de inventario' })
+  crearInventario(@Body() dto: CreateInventarioDto) { return this.svc.crearInventario(dto); }
+
+  @Patch('inventario/:id')
+  @ApiOperation({ summary: 'Actualizar ítem de inventario' })
+  actualizarInventario(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateInventarioDto) {
+    return this.svc.actualizarInventario(id, dto);
+  }
+
+  @Post('inventario/:id/ajustar-stock')
+  @ApiOperation({ summary: 'Ajustar stock de un ítem (+/-)' })
+  ajustarStock(@Param('id', ParseIntPipe) id: number, @Body() dto: AjustarStockDto) {
+    return this.svc.ajustarStock(id, dto.delta, dto.motivo);
+  }
+
+  @Delete('inventario/:id')
+  @ApiOperation({ summary: 'Dar de baja ítem de inventario (soft delete)' })
+  eliminarInventario(@Param('id', ParseIntPipe) id: number) { return this.svc.eliminarInventario(id); }
 }

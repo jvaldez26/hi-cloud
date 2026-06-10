@@ -60,4 +60,16 @@ export const opticaApi = {
   reclamacion:           (id: number) => api.get(`/optica/reclamaciones-ars/${id}`).then(d),
   crearReclamacion:      (b: any)     => api.post('/optica/reclamaciones-ars', b).then(d),
   actualizarReclamacion: (id: number, b: any) => api.patch(`/optica/reclamaciones-ars/${id}`, b).then(d),
+  reporteArs: (params?: { desde?: string; hasta?: string; arsNombre?: string }) =>
+    api.get('/optica/reclamaciones-ars/reporte', { params }).then(d),
+
+  // Inventario
+  inventarioResumen:   () => api.get('/optica/inventario/resumen').then(d),
+  inventario: (params?: { page?: number; limit?: number; tipo?: string; search?: string }) =>
+    api.get('/optica/inventario', { params }).then(d),
+  crearInventario:      (b: any)          => api.post('/optica/inventario', b).then(d),
+  actualizarInventario: (id: number, b: any) => api.patch(`/optica/inventario/${id}`, b).then(d),
+  ajustarStock:         (id: number, delta: number, motivo?: string) =>
+    api.post(`/optica/inventario/${id}/ajustar-stock`, { delta, motivo }).then(d),
+  eliminarInventario:   (id: number)      => api.delete(`/optica/inventario/${id}`).then(d),
 };
