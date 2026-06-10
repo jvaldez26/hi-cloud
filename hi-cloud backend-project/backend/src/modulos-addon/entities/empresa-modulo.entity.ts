@@ -23,7 +23,7 @@ export class EmpresaModulo {
   @Column({ type: 'timestamp', nullable: true })
   fechaVencimiento!: Date | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'int', nullable: true })
   activadoPor!: number | null;
 
   @Column({ type: 'text', nullable: true })
