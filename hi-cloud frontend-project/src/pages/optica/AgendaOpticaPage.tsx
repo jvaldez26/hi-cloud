@@ -2,13 +2,14 @@ import { useState } from 'react';
 import {
   Card, Button, Table, Typography, Row, Col, Modal, Form, Input,
   Select, message, Tag, Space, theme, DatePicker, Tabs, Badge,
-  List, Drawer,
+  List, Drawer, Tooltip,
 } from 'antd';
-import { PlusOutlined, SearchOutlined, TableOutlined, CalendarOutlined } from '@ant-design/icons';
+import { PlusOutlined, SearchOutlined, TableOutlined, CalendarOutlined, MedicineBoxOutlined } from '@ant-design/icons';
 import { Calendar } from 'antd';
 import type { Dayjs } from 'dayjs';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { opticaApi } from '../../api/optica.api';
+import { useNavigate } from 'react-router-dom';
 import { TableActions } from '../../components/ui/TableActions';
 import { RefreshByKeyButton } from '../../components/ui/TableToolbar';
 import { fmt } from '../../utils/formatters';
@@ -38,6 +39,7 @@ function TablaView({
   citas, isLoading, search, setSearch, filtroEstado, setFiltro, token,
   openEdit, openCreate,
 }: any) {
+  const nav = useNavigate();
   const rows = citas.filter((c: any) =>
     `${c.pacienteNombre ?? ''} ${c.numero ?? ''}`.toLowerCase().includes(search.toLowerCase())
   );
@@ -54,6 +56,17 @@ function TablaView({
       title: 'Estado', dataIndex: 'estado', width: 110,
       render: (v: string) => (
         <Tag color={ESTADO_COLOR[v] ?? 'default'}>{v?.replace('_', ' ') ?? '—'}</Tag>
+      ),
+    },
+    {
+      title: '', key: 'consulta', width: 50, align: 'center' as const,
+      render: (_: any, r: any) => (
+        <Tooltip title="Crear consulta desde esta cita">
+          <Button
+            size="small" type="link" icon={<MedicineBoxOutlined />}
+            onClick={() => nav(`/optica/consultas?citaId=${r.id}&pacienteId=${r.pacienteId}`)}
+          />
+        </Tooltip>
       ),
     },
     {

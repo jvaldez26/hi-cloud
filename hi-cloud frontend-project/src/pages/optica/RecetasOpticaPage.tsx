@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Card, Button, Table, Typography, Row, Col, Modal, Form, Input,
-  Select, message, Space, theme, InputNumber, Divider,
+  Select, message, Space, theme, InputNumber, Divider, Tooltip,
 } from 'antd';
-import { PlusOutlined, FilePdfOutlined, SearchOutlined } from '@ant-design/icons';
+import { PlusOutlined, FilePdfOutlined, SearchOutlined, ToolOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { opticaApi } from '../../api/optica.api';
 import { TableActions } from '../../components/ui/TableActions';
@@ -14,6 +15,8 @@ const { Title } = Typography;
 
 export default function RecetasOpticaPage() {
   const { token } = theme.useToken();
+  const nav = useNavigate();
+  const [searchParams] = useSearchParams();
   const [open, setOpen]       = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [pdfLoading, setPdfLoading] = useState<number | null>(null);
@@ -44,6 +47,24 @@ export default function RecetasOpticaPage() {
 
   const pacienteOpts = pacientes.map((p: any) => ({ value: p.id, label: `${p.nombre} ${p.apellido}` }));
   const medicoOpts   = medicos.map((m: any) => ({ value: m.id, label: `Dr(a). ${m.nombre} ${m.apellido}` }));
+
+  // Prefill desde URL params (quick-link desde consulta)
+  useEffect(() => {
+    const pacienteId  = searchParams.get('pacienteId');
+    const consultaId  = searchParams.get('consultaId');
+    if (pacienteId) {
+      setEditing(null);
+      form.resetFields();
+      form.setFieldsValue({
+        pacienteId:  Number(pacienteId),
+        vigenciaAnos: 1,
+        tipo: 'lentes_oftalmicos',
+        ...(consultaId ? { consultaId: Number(consultaId) } : {}),
+      });
+      setOpen(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const openCreate = () => { setEditing(null); form.resetFields(); form.setFieldsValue({ vigenciaAnos: 1, tipo: 'lentes_oftalmicos' }); setOpen(true); };
   const openEdit   = (r: any) => { setEditing(r); form.setFieldsValue(r); setOpen(true); };
@@ -106,6 +127,17 @@ export default function RecetasOpticaPage() {
           onClick={() => downloadPdf(r.id)}
           type="link"
         />
+      ),
+    },
+    {
+      title: '', key: 'ot', width: 50, align: 'center' as const,
+      render: (_: any, r: any) => (
+        <Tooltip title="Crear orden de trabajo desde esta receta">
+          <Button
+            size="small" type="link" icon={<ToolOutlined />}
+            onClick={() => nav(`/optica/ordenes?pacienteId=${r.pacienteId}&recetaId=${r.id}`)}
+          />
+        </Tooltip>
       ),
     },
     {
@@ -206,6 +238,7 @@ export default function RecetasOpticaPage() {
               </Form.Item>
             </Col>
           </Row>
+          <Form.Item name="consultaId" hidden><InputNumber /></Form.Item>
 
           {gradRow('OD', 'Ojo Derecho (OD)')}
           {gradRow('OI', 'Ojo Izquierdo (OI)')}

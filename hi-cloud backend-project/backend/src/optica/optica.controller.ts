@@ -196,6 +196,11 @@ class CreateReclamacionArsDto {
   @IsOptional() @IsNumber() @Min(0) @Type(() => Number) montoPaciente?: number;
   @IsOptional() @IsString() observaciones?: string;
 }
+class FacturarOtDto {
+  @IsInt() @IsPositive() @Type(() => Number) clienteId!: number;
+  @IsOptional() @IsString() tipoNcf?: string;
+}
+
 class UpdateReclamacionArsDto {
   @IsOptional() @IsString()  arsNumeroAfiliado?: string;
   @IsOptional() @IsInt() @Type(() => Number) consultaId?: number;
@@ -398,6 +403,14 @@ export class OpticaController {
   crearOrdenTrabajo(@Body() dto: CreateOrdenTrabajoDto, @GetUser() user: User) {
     return this.svc.crearOrdenTrabajo(dto, user.id);
   }
+
+  @Post('ordenes-trabajo/:id/facturar')
+  @ApiOperation({ summary: 'Generar pre-factura ERP desde una orden de trabajo' })
+  facturarOrdenTrabajo(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: FacturarOtDto,
+    @GetUser() user: User,
+  ) { return this.svc.facturarOrdenTrabajo(id, dto.clienteId, user.id, dto.tipoNcf); }
 
   @Get('ordenes-trabajo/:id')
   @ApiOperation({ summary: 'Obtener orden de trabajo' })

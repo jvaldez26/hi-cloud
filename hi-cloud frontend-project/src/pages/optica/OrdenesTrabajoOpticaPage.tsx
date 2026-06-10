@@ -1,11 +1,17 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Card, Button, Table, Typography, Row, Col, Modal, Form, Input,
   Select, message, Space, theme, InputNumber, Tag, Tabs, Badge,
+  Tooltip,
 } from 'antd';
-import { PlusOutlined, SearchOutlined, TableOutlined, AppstoreOutlined } from '@ant-design/icons';
+import {
+  PlusOutlined, SearchOutlined, TableOutlined, AppstoreOutlined,
+  DollarOutlined,
+} from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { opticaApi } from '../../api/optica.api';
+import { clientesApi } from '../../api/clientes.api';
 import { TableActions } from '../../components/ui/TableActions';
 import { RefreshByKeyButton } from '../../components/ui/TableToolbar';
 import { fmt } from '../../utils/formatters';
@@ -30,6 +36,79 @@ const ESTADO_COLOR: Record<string, string> = {
 const KANBAN_HEADER: Record<string, string> = {
   pendiente: '#fa8c16', en_proceso: '#1677ff', lista: '#13c2c2', entregada: '#52c41a',
 };
+
+const TIPO_NCF_OPS = [
+  { value: 'B01', label: 'B01 — Crédito fiscal' },
+  { value: 'B02', label: 'B02 — Consumidor final' },
+  { value: 'B14', label: 'B14 — Régimen especial' },
+  { value: 'B15', label: 'B15 — Gubernamental' },
+  { value: 'E31', label: 'E31 — Electrónico crédito' },
+  { value: 'E32', label: 'E32 — Electrónico consumidor' },
+];
+
+// ── Modal Facturar OT ─────────────────────────────────────────────────────────
+
+function FacturarModal({ open, ot, onClose, onSuccess }: {
+  open: boolean; ot: any; onClose: () => void; onSuccess: (pf: any) => void;
+}) {
+  const [form] = Form.useForm();
+  const [clienteSearch, setClienteSearch] = useState('');
+
+  const { data: clientesData, isFetching: clientesFetching } = useQuery({
+    queryKey: ['clientes-search', clienteSearch],
+    queryFn: () => clientesApi.list(1, 50, clienteSearch),
+    enabled: open,
+    staleTime: 10_000,
+  });
+
+  const facturarMut = useMutation({
+    mutationFn: (v: any) => opticaApi.facturarOrden(ot.id, v.clienteId, v.tipoNcf),
+    onSuccess: (pf) => {
+      message.success('Pre-factura generada correctamente');
+      form.resetFields();
+      onSuccess(pf);
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al facturar'),
+  });
+
+  const clienteOpts = ((clientesData as any)?.data ?? clientesData ?? []).map((c: any) => ({
+    value: c.id, label: `${c.nombre}${c.rncReceptor ? ` — ${c.rncReceptor}` : ''}`,
+  }));
+
+  return (
+    <Modal
+      title={`Generar pre-factura — OT ${ot?.numero ?? ''}`}
+      open={open} onCancel={onClose} footer={null} width={460}
+    >
+      <Form form={form} layout="vertical" onFinish={(v) => facturarMut.mutate(v)}
+        initialValues={{ tipoNcf: 'E32' }}
+      >
+        <Form.Item name="clienteId" label="Cliente ERP" rules={[{ required: true, message: 'Selecciona el cliente' }]}>
+          <Select
+            showSearch
+            filterOption={false}
+            onSearch={setClienteSearch}
+            loading={clientesFetching}
+            options={clienteOpts}
+            placeholder="Buscar cliente..."
+            notFoundContent={clientesFetching ? 'Buscando...' : 'Sin resultados'}
+          />
+        </Form.Item>
+        <Form.Item name="tipoNcf" label="Tipo NCF">
+          <Select options={TIPO_NCF_OPS} />
+        </Form.Item>
+        <Row justify="end" gutter={8}>
+          <Col><Button onClick={onClose}>Cancelar</Button></Col>
+          <Col>
+            <Button type="primary" htmlType="submit" loading={facturarMut.isPending} icon={<DollarOutlined />}>
+              Generar pre-factura
+            </Button>
+          </Col>
+        </Row>
+      </Form>
+    </Modal>
+  );
+}
 
 // ── Shared modal de edición ───────────────────────────────────────────────────
 
@@ -134,7 +213,7 @@ function OrdenModal({ open, editing, form, pacienteOpts, saveMut, onClose }: any
 
 // ── Vista Kanban ──────────────────────────────────────────────────────────────
 
-function KanbanView({ ordenes, moveMut, openEdit }: any) {
+function KanbanView({ ordenes, moveMut, openEdit, openFacturar }: any) {
   const { token } = theme.useToken();
 
   const byEstado = ESTADOS.reduce<Record<string, any[]>>((acc, est) => {
@@ -186,23 +265,33 @@ function KanbanView({ ordenes, moveMut, openEdit }: any) {
                       <Text style={{ fontSize: 11, color: '#f5222d' }}>Saldo: {fmt.money(o.balance)}</Text>
                     ) : null}
                   </Row>
-                  {/* Botones de avance rápido de estado */}
-                  {estado !== 'entregada' && (
-                    <div style={{ marginTop: 6, display: 'flex', gap: 4 }}>
-                      {ESTADOS.indexOf(estado) < ESTADOS.length - 1 && (
+                  <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                    {ESTADOS.indexOf(estado) < ESTADOS.length - 1 && (
+                      <Button
+                        size="small" type="primary" ghost
+                        style={{ fontSize: 10, padding: '0 6px', height: 20 }}
+                        onClick={e => { e.stopPropagation(); moveMut.mutate({ id: o.id, estado: ESTADOS[ESTADOS.indexOf(estado) + 1] }); }}
+                        loading={moveMut.isPending}
+                      >
+                        → {ESTADO_LABEL[ESTADOS[ESTADOS.indexOf(estado) + 1]]}
+                      </Button>
+                    )}
+                    {(estado === 'lista' || estado === 'entregada') && !o.facturaId && (
+                      <Tooltip title="Generar pre-factura ERP">
                         <Button
-                          size="small"
-                          type="primary"
-                          ghost
+                          size="small" type="default"
+                          icon={<DollarOutlined />}
                           style={{ fontSize: 10, padding: '0 6px', height: 20 }}
-                          onClick={e => { e.stopPropagation(); moveMut.mutate({ id: o.id, estado: ESTADOS[ESTADOS.indexOf(estado) + 1] }); }}
-                          loading={moveMut.isPending}
-                        >
-                          → {ESTADO_LABEL[ESTADOS[ESTADOS.indexOf(estado) + 1]]}
-                        </Button>
-                      )}
-                    </div>
-                  )}
+                          onClick={e => { e.stopPropagation(); openFacturar(o); }}
+                        />
+                      </Tooltip>
+                    )}
+                    {o.facturaId && (
+                      <Tag color="green" style={{ fontSize: 10, height: 20, lineHeight: '18px', margin: 0 }}>
+                        Facturado
+                      </Tag>
+                    )}
+                  </div>
                 </Card>
               ))}
               {byEstado[estado].length === 0 && (
@@ -220,7 +309,7 @@ function KanbanView({ ordenes, moveMut, openEdit }: any) {
 
 // ── Vista tabla ───────────────────────────────────────────────────────────────
 
-function TablaView({ ordenes, isLoading, search, setSearch, filtroEstado, setFiltro, token, openEdit }: any) {
+function TablaView({ ordenes, isLoading, search, setSearch, filtroEstado, setFiltro, token, openEdit, openFacturar }: any) {
   const rows = ordenes.filter((o: any) =>
     `${o.pacienteNombre ?? ''} ${o.numero ?? ''}`.toLowerCase().includes(search.toLowerCase())
   );
@@ -245,9 +334,24 @@ function TablaView({ ordenes, isLoading, search, setSearch, filtroEstado, setFil
         : '—',
     },
     {
-      title: '', key: 'acc', width: 72, align: 'right' as const,
+      title: 'Factura', dataIndex: 'facturaId', width: 90, align: 'center' as const,
+      render: (v: any) => v ? <Tag color="green">Facturado</Tag> : '—',
+    },
+    {
+      title: '', key: 'acc', width: 100, align: 'right' as const,
       render: (_: any, r: any) => (
-        <TableActions onView={() => openEdit(r)} viewLabel="Editar" items={[]} />
+        <TableActions
+          onView={() => openEdit(r)}
+          viewLabel="Editar"
+          items={!r.facturaId && (r.estado === 'lista' || r.estado === 'entregada') ? [
+            {
+              key: 'facturar',
+              label: 'Facturar',
+              icon: <DollarOutlined />,
+              onClick: () => openFacturar(r),
+            },
+          ] : []}
+        />
       ),
     },
   ];
@@ -281,12 +385,32 @@ function TablaView({ ordenes, isLoading, search, setSearch, filtroEstado, setFil
 
 export default function OrdenesTrabajoOpticaPage() {
   const { token } = theme.useToken();
+  const nav = useNavigate();
+  const [searchParams] = useSearchParams();
+
   const [open, setOpen]           = useState(false);
   const [editing, setEditing]     = useState<any>(null);
   const [search, setSearch]       = useState('');
   const [filtroEstado, setFiltro] = useState<string | undefined>(undefined);
+  const [facturarOt, setFacturarOt] = useState<any>(null);
   const [form] = Form.useForm();
   const qc = useQueryClient();
+
+  // Prefill desde URL params (quick-link desde receta)
+  useEffect(() => {
+    const pacienteId = searchParams.get('pacienteId');
+    const recetaId   = searchParams.get('recetaId');
+    if (pacienteId) {
+      setEditing(null);
+      form.resetFields();
+      form.setFieldsValue({
+        pacienteId: Number(pacienteId),
+        ...(recetaId ? { recetaId: Number(recetaId) } : {}),
+      });
+      setOpen(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { data: ordenesData, isLoading } = useQuery({
     queryKey: ['optica-ordenes', filtroEstado],
@@ -327,6 +451,18 @@ export default function OrdenesTrabajoOpticaPage() {
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
   });
 
+  const handleFacturarSuccess = (pf: any) => {
+    setFacturarOt(null);
+    qc.invalidateQueries({ queryKey: ['optica-ordenes'] });
+    Modal.confirm({
+      title: 'Pre-factura generada',
+      content: `Se creó la pre-factura ${pf.folio ?? '#' + pf.id}. ¿Deseas ir a verla ahora?`,
+      okText: 'Ver pre-factura',
+      cancelText: 'Quedarme aquí',
+      onOk: () => nav('/pre-facturas'),
+    });
+  };
+
   return (
     <div>
       <Title level={4} style={{ marginBottom: 16 }}>Órdenes de Trabajo</Title>
@@ -343,7 +479,12 @@ export default function OrdenesTrabajoOpticaPage() {
             {
               key: 'kanban',
               label: <Space><AppstoreOutlined />Kanban</Space>,
-              children: <KanbanView ordenes={ordenes} moveMut={moveMut} openEdit={openEdit} />,
+              children: (
+                <KanbanView
+                  ordenes={ordenes} moveMut={moveMut}
+                  openEdit={openEdit} openFacturar={(o: any) => setFacturarOt(o)}
+                />
+              ),
             },
             {
               key: 'tabla',
@@ -354,6 +495,7 @@ export default function OrdenesTrabajoOpticaPage() {
                   search={search} setSearch={setSearch}
                   filtroEstado={filtroEstado} setFiltro={setFiltro}
                   token={token} openEdit={openEdit}
+                  openFacturar={(o: any) => setFacturarOt(o)}
                 />
               ),
             },
@@ -365,6 +507,15 @@ export default function OrdenesTrabajoOpticaPage() {
         open={open} editing={editing} form={form}
         pacienteOpts={pacienteOpts} saveMut={saveMut} onClose={closeModal}
       />
+
+      {facturarOt && (
+        <FacturarModal
+          open={!!facturarOt}
+          ot={facturarOt}
+          onClose={() => setFacturarOt(null)}
+          onSuccess={handleFacturarSuccess}
+        />
+      )}
     </div>
   );
 }

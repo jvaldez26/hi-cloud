@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Card, Button, Table, Typography, Row, Col, Modal, Form, Input,
-  Select, message, Space, theme, InputNumber, Divider,
+  Select, message, Space, theme, InputNumber, Divider, Tooltip,
 } from 'antd';
-import { PlusOutlined, SearchOutlined } from '@ant-design/icons';
+import { PlusOutlined, SearchOutlined, FileTextOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { opticaApi } from '../../api/optica.api';
 import { TableActions } from '../../components/ui/TableActions';
@@ -14,6 +15,8 @@ const { Title } = Typography;
 
 export default function ConsultasOpticaPage() {
   const { token } = theme.useToken();
+  const nav = useNavigate();
+  const [searchParams] = useSearchParams();
   const [open, setOpen]       = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [search, setSearch]   = useState('');
@@ -44,6 +47,22 @@ export default function ConsultasOpticaPage() {
   const pacienteOpts = pacientes.map((p: any) => ({ value: p.id, label: `${p.nombre} ${p.apellido}` }));
   const medicoOpts   = medicos.map((m: any) => ({ value: m.id, label: `Dr(a). ${m.nombre} ${m.apellido}` }));
 
+  // Prefill desde URL params (quick-link desde cita)
+  useEffect(() => {
+    const pacienteId = searchParams.get('pacienteId');
+    const citaId     = searchParams.get('citaId');
+    if (pacienteId) {
+      setEditing(null);
+      form.resetFields();
+      form.setFieldsValue({
+        pacienteId: Number(pacienteId),
+        ...(citaId ? { citaId: Number(citaId) } : {}),
+      });
+      setOpen(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const openCreate = () => { setEditing(null); form.resetFields(); setOpen(true); };
   const openEdit   = (r: any) => { setEditing(r); form.setFieldsValue(r); setOpen(true); };
   const closeModal = () => { setOpen(false); form.resetFields(); setEditing(null); };
@@ -68,6 +87,17 @@ export default function ConsultasOpticaPage() {
     {
       title: 'Costo', dataIndex: 'costoConsulta', width: 100, align: 'right' as const,
       render: (v: any) => v ? fmt.money(v) : '—',
+    },
+    {
+      title: '', key: 'quick', width: 50, align: 'center' as const,
+      render: (_: any, r: any) => (
+        <Tooltip title="Crear receta desde esta consulta">
+          <Button
+            size="small" type="link" icon={<FileTextOutlined />}
+            onClick={() => nav(`/optica/recetas?pacienteId=${r.pacienteId}&consultaId=${r.id}`)}
+          />
+        </Tooltip>
+      ),
     },
     {
       title: '', key: 'acc', width: 72, align: 'right' as const,

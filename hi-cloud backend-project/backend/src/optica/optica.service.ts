@@ -3,6 +3,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { TenantService } from '../tenant/tenant.service';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
+import { PreFacturaService } from '../pre-factura/pre-factura.service';
 
 // ── DTOs ─────────────────────────────────────────────────────────────────────
 
@@ -82,6 +83,7 @@ export class OpticaService {
   constructor(
     @InjectDataSource() private readonly ds: DataSource,
     private readonly tenantSvc: TenantService,
+    private readonly preFacturaSvc: PreFacturaService,
   ) {}
 
   // ── helpers ────────────────────────────────────────────────────────────────
@@ -746,6 +748,63 @@ export class OpticaService {
       params,
     );
     return row;
+  }
+
+  // ── FACTURACIÓN ───────────────────────────────────────────────────────────
+
+  async facturarOrdenTrabajo(id: number, clienteId: number, usuarioId: number, tipoNcf?: string) {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const [ot] = await this.ds.query<any[]>(
+      `SELECT ot.*,
+              p.nombre || ' ' || p.apellido AS "pacienteNombre"
+       FROM op_ordenes_trabajo ot
+       LEFT JOIN op_pacientes p ON p.id = ot."pacienteId" AND p."empresaId" = ot."empresaId"
+       WHERE ot.id = $1 AND ot."empresaId" = $2`,
+      [id, empresaId],
+    );
+    if (!ot) throw new NotFoundException(`Orden de trabajo #${id} no encontrada`);
+
+    // Construir ítems de la pre-factura a partir de los datos de la OT
+    const detalles: any[] = [];
+    if (ot.tipoLente || ot.materialLente) {
+      detalles.push({
+        descripcion:    `Lentes${ot.tipoLente ? ` ${ot.tipoLente}` : ''}${ot.materialLente ? ` (${ot.materialLente})` : ''}${ot.tratamientoLente ? ` — ${ot.tratamientoLente}` : ''}`,
+        cantidad:       1,
+        precioUnitario: Number(ot.subtotal ?? ot.total ?? 0),
+        porcentajeIva:  0,
+      });
+    }
+    if ((ot.marcaMontura || ot.tipoMontura) && !detalles.length) {
+      detalles.push({
+        descripcion:    `Montura${ot.tipoMontura ? ` ${ot.tipoMontura}` : ''}${ot.marcaMontura ? ` — ${ot.marcaMontura}` : ''}`,
+        cantidad:       1,
+        precioUnitario: Number(ot.subtotal ?? ot.total ?? 0),
+        porcentajeIva:  0,
+      });
+    }
+    if (!detalles.length) {
+      detalles.push({
+        descripcion:    `Orden de trabajo óptica #${ot.numero} — ${ot.pacienteNombre}`,
+        cantidad:       1,
+        precioUnitario: Number(ot.total ?? 0),
+        porcentajeIva:  0,
+      });
+    }
+
+    const fecha = new Date().toISOString().slice(0, 10);
+    const preFactura = await this.preFacturaSvc.crear(
+      { clienteId, fecha, tipoNcf: tipoNcf ?? 'E32', detalles,
+        notas: `Generada desde OT óptica #${ot.numero} — ${ot.pacienteNombre}` },
+      usuarioId,
+    );
+
+    // Marcar la OT con el ID de la pre-factura generada
+    await this.ds.query(
+      `UPDATE op_ordenes_trabajo SET "facturaId" = $1, "updatedAt" = NOW() WHERE id = $2 AND "empresaId" = $3`,
+      [preFactura.id, id, empresaId],
+    );
+
+    return preFactura;
   }
 
   // ── ESTADÍSTICAS ──────────────────────────────────────────────────────────

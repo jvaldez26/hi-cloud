@@ -51,6 +51,8 @@ export const opticaApi = {
   orden:           (id: number)      => api.get(`/optica/ordenes-trabajo/${id}`).then(d),
   crearOrden:      (b: any)          => api.post('/optica/ordenes-trabajo', b).then(d),
   actualizarOrden: (id: number, b: any) => api.patch(`/optica/ordenes-trabajo/${id}`, b).then(d),
+  facturarOrden:   (id: number, clienteId: number, tipoNcf?: string) =>
+    api.post(`/optica/ordenes-trabajo/${id}/facturar`, { clienteId, tipoNcf }).then(d),
 
   // Reclamaciones ARS
   reclamaciones: (params?: { page?: number; limit?: number; estado?: string }) =>
