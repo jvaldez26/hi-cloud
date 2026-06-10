@@ -351,9 +351,10 @@ function ProductCard({ produto, onAdd, mostrarStock = true, permitirStockNegativ
 }
 
 // ── Cart row ──────────────────────────────────────────────────────────────────
-function CartRow({ item, onQty, onRemove, onDescuento, onPrecio, permitirModificarPrecio, permitirDescuentos = true }: {
+function CartRow({ item, onQty, onRemove, onDescuento, onPrecio, permitirModificarPrecio, permitirDescuentos = true, requireSupervisor }: {
   item: CartItem; onQty: (d: number) => void; onRemove: () => void; onDescuento: (p: number) => void;
   onPrecio?: (p: number) => void; permitirModificarPrecio?: boolean; permitirDescuentos?: boolean;
+  requireSupervisor?: (action: string, detail?: string) => Promise<boolean>;
 }) {
   const C = useC();
   const [descFocus,    setDescFocus]    = useState(false);
@@ -397,7 +398,13 @@ function CartRow({ item, onQty, onRemove, onDescuento, onPrecio, permitirModific
                     }}
                   />
                 ) : (
-                  <span onClick={() => setPrecioDraft(String(item.precio))}
+                  <span onClick={async () => {
+                      if (requireSupervisor) {
+                        const ok = await requireSupervisor('Modificar precio', `Producto: ${item.produto.nombre} — Precio actual: ${fmt.money(item.precio)}`);
+                        if (!ok) return;
+                      }
+                      setPrecioDraft(String(item.precio));
+                    }}
                     style={{ cursor: 'pointer', borderBottom: `1px dashed ${C.blue}`, paddingBottom: 1 }}
                     title="Click para editar precio">
                     {fmt.money(item.precio)} ✏
@@ -1475,8 +1482,9 @@ const CODIGOS_MOD_POS = [
   { value: '4', label: 'Código 4: Reemplazo por contingencia',  desc: 'Reemplaza un comprobante emitido en modo contingencia.' },
 ];
 
-function POSNotaCreditoModal({ open, onClose, palette }: {
+function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
   open: boolean; onClose: () => void; palette: Palette;
+  requireSupervisor?: (action: string, detail?: string) => Promise<boolean>;
 }) {
   const C  = palette;
   const qc = useQueryClient();
@@ -1811,7 +1819,13 @@ function POSNotaCreditoModal({ open, onClose, palette }: {
           <button onClick={onClose} style={{ flex:1, height:42, borderRadius:10, border:`1px solid ${border}`, background:'transparent', color:sub, fontWeight:600, fontSize:14, cursor:'pointer', outline:'none' }}>
             Cancelar
           </button>
-          <button onClick={()=>guardarMut.mutate()} disabled={guardarMut.isPending}
+          <button onClick={async () => {
+              if (esEfectivo && requireSupervisor) {
+                const ok = await requireSupervisor('Devolución en efectivo', `NC sobre ${facturaData?.folio ?? ''}`);
+                if (!ok) return;
+              }
+              guardarMut.mutate();
+            }} disabled={guardarMut.isPending}
             style={{ flex:2, height:42, borderRadius:10, border:'none',
               background: guardarMut.isPending?'#94A3B8':'#2563EB',
               color:'#fff', fontWeight:700, fontSize:14, cursor:guardarMut.isPending?'not-allowed':'pointer' }}>
@@ -3280,13 +3294,14 @@ const PANEL_TITLES: Record<PanelId, { label: string; icon: string }> = {
   'ventas-hoy':     { label: 'Ventas de Hoy',     icon: '🗓️' },
 };
 
-function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnularFacturas, tiempoLimiteAnular }: {
+function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnularFacturas, tiempoLimiteAnular, requireSupervisor }: {
   panel:              PanelId;
   palette:            Palette;
   onVolver:           () => void;
   confirmarAnulacion?:     boolean;
   permitirAnularFacturas?: boolean;
   tiempoLimiteAnular?:     number;   // minutos; 0 = sin límite
+  requireSupervisor?:      (action: string, detail?: string) => Promise<boolean>;
 }) {
   const C  = palette;
   const qc = useQueryClient();
@@ -3728,7 +3743,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
                             </span>
                           ) : (
                             <button
-                              onClick={() => {
+                              onClick={async () => {
                                 // Verificar límite de tiempo para anulación
                                 if (tiempoLimiteAnular && tiempoLimiteAnular > 0 && row.createdAt) {
                                   const mins = dayjs().diff(dayjs(row.createdAt), 'minute');
@@ -3736,6 +3751,13 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
                                     message.error(`No se puede anular — han transcurrido más de ${tiempoLimiteAnular} minutos`);
                                     return;
                                   }
+                                }
+                                if (requireSupervisor) {
+                                  const ok = await requireSupervisor(
+                                    `Anular ${panel === 'facturas' ? 'factura' : 'documento'}`,
+                                    `ID: ${row.id} — Monto: ${(row as any).total ?? (row as any).monto ?? ''}`,
+                                  );
+                                  if (!ok) return;
                                 }
                                 // Si confirmarAnulacion = false → anular directo sin modal de confirmación
                                 if (confirmarAnulacion === false) {
@@ -4869,7 +4891,8 @@ export default function POSPage() {
           mensajeTicket: posConf.posMensajeTicket as string | undefined,
           politicaDev:   posConf.posPoliticaDev   as string | undefined,
         }} />
-      <POSNotaCreditoModal open={showNotaCredito} onClose={() => setShowNotaCredito(false)} palette={palette} />
+      <POSNotaCreditoModal open={showNotaCredito} onClose={() => setShowNotaCredito(false)} palette={palette}
+        requireSupervisor={supervisor.supervisorModeEnabled ? supervisor.requireSupervisor : undefined} />
 
       {/* Indicador de ventas offline pendientes */}
       {pendingCount > 0 && (
@@ -4933,6 +4956,7 @@ export default function POSPage() {
             confirmarAnulacion={posConf.posConfirmarAnulacion !== false}
             permitirAnularFacturas={posConf.posPermitirAnularFacturas !== false}
             tiempoLimiteAnular={typeof posConf.posTiempoLimiteAnular === 'number' ? posConf.posTiempoLimiteAnular : 0}
+            requireSupervisor={supervisor.supervisorModeEnabled ? supervisor.requireSupervisor : undefined}
           />
         )}
         {panelActivo === 'items' && (<>
@@ -5183,7 +5207,8 @@ export default function POSPage() {
                     onDescuento={p => setDescuento(idx, p)}
                     onPrecio={p => actualizarPrecioItem(idx, p)}
                     permitirModificarPrecio={posConf.posModificarPrecio === true}
-                    permitirDescuentos={posConf.posPermitirDescuentos !== false} />
+                    permitirDescuentos={posConf.posPermitirDescuentos !== false}
+                    requireSupervisor={supervisor.supervisorModeEnabled && posConf.posModificarPrecio === true ? supervisor.requireSupervisor : undefined} />
                 ))}
               </AnimatePresence>
             )}
