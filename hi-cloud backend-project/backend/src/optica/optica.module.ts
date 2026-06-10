@@ -7,6 +7,8 @@ import { ConsultaOptica } from './entities/consulta-optica.entity';
 import { RecetaOptica } from './entities/receta-optica.entity';
 import { OrdenTrabajoOptica } from './entities/orden-trabajo-optica.entity';
 import { ReclamacionArs } from './entities/reclamacion-ars.entity';
+import { OpticaService } from './optica.service';
+import { OpticaController } from './optica.controller';
 
 @Module({
   imports: [
@@ -20,6 +22,8 @@ import { ReclamacionArs } from './entities/reclamacion-ars.entity';
       ReclamacionArs,
     ]),
   ],
-  exports: [TypeOrmModule],
+  providers: [OpticaService],
+  controllers: [OpticaController],
+  exports: [OpticaService],
 })
 export class OpticaModule {}
