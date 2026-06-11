@@ -858,10 +858,16 @@ export class OpticaService {
       });
     }
 
+    const abono   = Number(ot.abono   ?? 0);
+    const balance = Number(ot.balance ?? 0);
+    const notasPago = balance > 0
+      ? `Adelanto recibido: RD$${abono.toFixed(2)}. Saldo pendiente al momento de entrega: RD$${balance.toFixed(2)}.`
+      : `Cancelado en su totalidad. Adelanto recibido: RD$${abono.toFixed(2)}.`;
+    const notasFactura = `Generada desde OT óptica #${ot.numero} — ${ot.pacienteNombre}. ${notasPago}`;
+
     const fecha = new Date().toISOString().slice(0, 10);
     const preFactura = await this.preFacturaSvc.crear(
-      { clienteId, fecha, tipoNcf: tipoNcf ?? 'E32', detalles,
-        notas: `Generada desde OT óptica #${ot.numero} — ${ot.pacienteNombre}` },
+      { clienteId, fecha, tipoNcf: tipoNcf ?? 'E32', detalles, notas: notasFactura },
       usuarioId,
     );
 
