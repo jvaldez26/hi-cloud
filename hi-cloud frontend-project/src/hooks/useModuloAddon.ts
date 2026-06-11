@@ -6,7 +6,7 @@ export function useModuloAddon(codigo: string) {
     queryKey: ['modulo-addon', codigo],
     queryFn: () => modulosAddonApi.check(codigo),
     staleTime: 0,
-    gcTime: 0,
+    gcTime: 5 * 60_000,
     retry: 1,
   });
 
