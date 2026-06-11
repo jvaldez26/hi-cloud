@@ -65,6 +65,7 @@ export interface UpdateOrdenTrabajoDto extends Partial<Omit<CreateOrdenTrabajoDt
 
 export interface CreateReclamacionArsDto {
   pacienteId: number; arsNombre: string; arsNumeroAfiliado?: string;
+  arsNumeroAutorizacion?: string;
   consultaId?: number; recetaId?: number; ordenTrabajoId?: number;
   fecha: string;
   montoReclamado?: number; montoCubierto?: number; montoPaciente?: number;
@@ -697,10 +698,12 @@ export class OpticaService {
     const [row] = await this.ds.query<any[]>(
       `INSERT INTO op_reclamaciones_ars
          ("empresaId", numero, "pacienteId", "arsNombre", "arsNumeroAfiliado",
+          "arsNumeroAutorizacion",
           "consultaId","recetaId","ordenTrabajoId",fecha,estado,
           "montoReclamado","montoCubierto","montoPaciente",observaciones)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
       [empresaId, numero, dto.pacienteId, dto.arsNombre, dto.arsNumeroAfiliado ?? null,
+       dto.arsNumeroAutorizacion ?? null,
        dto.consultaId ?? null, dto.recetaId ?? null, dto.ordenTrabajoId ?? null,
        dto.fecha, 'borrador',
        dto.montoReclamado ?? 0, dto.montoCubierto ?? 0, dto.montoPaciente ?? 0,
@@ -729,8 +732,9 @@ export class OpticaService {
     const sets: string[] = [];
     const params: any[] = [];
     const add = (col: string, val: any) => { params.push(val); sets.push(`"${col}" = $${params.length}`); };
-    if (dto.arsNumeroAfiliado !== undefined) add('arsNumeroAfiliado', dto.arsNumeroAfiliado);
-    if (dto.consultaId !== undefined)        add('consultaId', dto.consultaId);
+    if (dto.arsNumeroAfiliado !== undefined)      add('arsNumeroAfiliado', dto.arsNumeroAfiliado);
+    if (dto.arsNumeroAutorizacion !== undefined)  add('arsNumeroAutorizacion', dto.arsNumeroAutorizacion);
+    if (dto.consultaId !== undefined)             add('consultaId', dto.consultaId);
     if (dto.recetaId !== undefined)          add('recetaId', dto.recetaId);
     if (dto.ordenTrabajoId !== undefined)    add('ordenTrabajoId', dto.ordenTrabajoId);
     if (dto.fecha !== undefined)             add('fecha', dto.fecha);

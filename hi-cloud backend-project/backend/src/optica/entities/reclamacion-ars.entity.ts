@@ -23,6 +23,9 @@ export class ReclamacionArs {
   @Column({ type: 'varchar', length: 50, nullable: true })
   arsNumeroAfiliado!: string | null;
 
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  arsNumeroAutorizacion!: string | null;
+
   @Column({ type: 'int', nullable: true })
   consultaId!: number | null;
 

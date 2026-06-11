@@ -160,7 +160,7 @@ export default function ReclamacionesArsPage() {
   const pacienteOpts = pacientes.map((p: any) => ({ value: p.id, label: `${p.nombre} ${p.apellido}` }));
 
   const openCreate = () => { setEditing(null); form.resetFields(); setOpen(true); };
-  const openEdit   = (r: any) => { setEditing(r); form.setFieldsValue(r); setOpen(true); };
+  const openEdit   = (r: any) => { setEditing(r); form.setFieldsValue({ ...r, fecha: r.fecha ? dayjs(r.fecha) : null }); setOpen(true); };
   const closeModal = () => { setOpen(false); form.resetFields(); setEditing(null); };
 
   const saveMut = useMutation({
@@ -189,7 +189,7 @@ export default function ReclamacionesArsPage() {
       render: (v: any) => v ? fmt.money(v) : '—',
     },
     {
-      title: 'Aprobado', dataIndex: 'montoAprobado', width: 110, align: 'right' as const,
+      title: 'Cubierto', dataIndex: 'montoCubierto', width: 110, align: 'right' as const,
       render: (v: any) => v ? fmt.money(v) : '—',
     },
     {
@@ -256,7 +256,7 @@ export default function ReclamacionesArsPage() {
         footer={null}
         width={640}
       >
-        <Form form={form} layout="vertical" onFinish={(v) => saveMut.mutate(v)}>
+        <Form form={form} layout="vertical" onFinish={(v) => saveMut.mutate({ ...v, fecha: v.fecha ? v.fecha.format('YYYY-MM-DD') : undefined })}>
           <Row gutter={12}>
             <Col xs={24} sm={12}>
               <Form.Item name="pacienteId" label="Paciente" rules={[{ required: true }]}>
@@ -283,6 +283,12 @@ export default function ReclamacionesArsPage() {
                 <Input />
               </Form.Item>
             </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="fecha" label="Fecha" rules={[{ required: true, message: 'Requerida' }]}
+                initialValue={dayjs()}>
+                <DatePicker style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
             {editing && (
               <Col xs={24} sm={12}>
                 <Form.Item name="estado" label="Estado">
@@ -296,12 +302,12 @@ export default function ReclamacionesArsPage() {
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
-              <Form.Item name="montoAprobado" label="Monto aprobado">
+              <Form.Item name="montoCubierto" label="Monto cubierto (ARS)">
                 <InputNumber style={{ width: '100%' }} min={0} precision={2} prefix="$" />
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
-              <Form.Item name="montoPagado" label="Monto pagado">
+              <Form.Item name="montoPaciente" label="Monto paciente">
                 <InputNumber style={{ width: '100%' }} min={0} precision={2} prefix="$" />
               </Form.Item>
             </Col>

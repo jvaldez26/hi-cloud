@@ -187,6 +187,7 @@ class CreateReclamacionArsDto {
   @IsInt() @IsPositive() @Type(() => Number) pacienteId!: number;
   @IsString()                                arsNombre!: string;
   @IsOptional() @IsString()                  arsNumeroAfiliado?: string;
+  @IsOptional() @IsString()                  arsNumeroAutorizacion?: string;
   @IsOptional() @IsInt() @Type(() => Number) consultaId?: number;
   @IsOptional() @IsInt() @Type(() => Number) recetaId?: number;
   @IsOptional() @IsInt() @Type(() => Number) ordenTrabajoId?: number;
@@ -225,6 +226,7 @@ class AjustarStockDto {
 
 class UpdateReclamacionArsDto {
   @IsOptional() @IsString()  arsNumeroAfiliado?: string;
+  @IsOptional() @IsString()  arsNumeroAutorizacion?: string;
   @IsOptional() @IsInt() @Type(() => Number) consultaId?: number;
   @IsOptional() @IsInt() @Type(() => Number) recetaId?: number;
   @IsOptional() @IsInt() @Type(() => Number) ordenTrabajoId?: number;
