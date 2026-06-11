@@ -2075,7 +2075,7 @@ export default function AppLayout() {
               paddingBottom: isMobile ? 'calc(72px + env(safe-area-inset-bottom, 0px))' : 20,
             }}
           >
-            <Suspense fallback={null}>
+            <Suspense fallback={<ContentLoader />}>
               <PageTransition>
                 <Outlet />
               </PageTransition>
