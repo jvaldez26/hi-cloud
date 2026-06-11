@@ -29,6 +29,11 @@ interface UseSupervisorReturn {
    * @returns true si se puede proceder, false si se cancela.
    */
   requireSupervisor: (action: string, detail?: string) => Promise<boolean>;
+  /**
+   * Como requireSupervisor pero sin verificar supervisorModeEnabled.
+   * Usar para acciones críticas que SIEMPRE requieren autorización.
+   */
+  requireSupervisorForced: (action: string, detail?: string) => Promise<boolean>;
   /** Abre el modal programáticamente */
   openSupervisorModal: (action: string, detail?: string) => void;
   /** Limpiar sesión de supervisor */
@@ -84,6 +89,17 @@ export function useSupervisor(): UseSupervisorReturn {
     });
   }, [supervisorModeEnabled, supervisorActive]);
 
+  // Siempre solicita autorización independientemente de supervisorModeEnabled.
+  // Para acciones críticas como Cierre de Caja.
+  const requireSupervisorForced = useCallback(async (action: string, detail?: string): Promise<boolean> => {
+    if (supervisorActive) return true;
+
+    return new Promise<boolean>(resolve => {
+      resolveRef.current = resolve;
+      setPendingAction({ action, detail });
+    });
+  }, [supervisorActive]);
+
   return {
     supervisorModeEnabled,
     maxDiscountPercent,
@@ -91,6 +107,7 @@ export function useSupervisor(): UseSupervisorReturn {
     supervisorActive,
     supervisorName,
     requireSupervisor,
+    requireSupervisorForced,
     openSupervisorModal,
     clearSupervisor,
     resolveModal,

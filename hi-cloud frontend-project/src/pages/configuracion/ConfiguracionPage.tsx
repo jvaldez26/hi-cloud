@@ -879,6 +879,8 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
       posMontoMaximoSinSupervisor: conf.posMontoMaximoSinSupervisor ?? 0,
       supervisorModeEnabled:       conf.supervisorModeEnabled ?? false,
       maxDiscountPercent:          conf.maxDiscountPercent ?? 10,
+      posSupervisorCierreCaja:     conf.posSupervisorCierreCaja !== false,
+      posSupervisorGastos:         conf.posSupervisorGastos !== false,
       posPermitirAnularFacturas:   conf.posPermitirAnularFacturas ?? true,
       posTiempoLimiteAnular:       conf.posTiempoLimiteAnular ?? 0,
       posBloquearFueraHorario:     conf.posBloquearFueraHorario ?? false,
@@ -1098,8 +1100,24 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
                 <InputNumber style={{ width: '100%' }} min={0} max={100} addonAfter="%" />
               </Form.Item>
             </Col>
+            <Col xs={24} sm={12}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <Form.Item name="posSupervisorGastos" valuePropName="checked" style={{ marginBottom: 0 }}>
+                  <Switch size="small" />
+                </Form.Item>
+                <Text style={{ fontSize: 13 }}>Requerir supervisor para Gastos</Text>
+              </div>
+            </Col>
           </>
         )}
+        <Col xs={24} sm={12}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <Form.Item name="posSupervisorCierreCaja" valuePropName="checked" style={{ marginBottom: 0 }}>
+              <Switch size="small" />
+            </Form.Item>
+            <Text style={{ fontSize: 13 }}>Requerir supervisor para Cierre de Caja</Text>
+          </div>
+        </Col>
         <Col xs={24} sm={10}>
           <Form.Item name="posMontoMaximoSinSupervisor" label="Monto máximo por venta sin supervisor (0 = sin límite)">
             <InputNumber style={{ width: '100%' }} min={0} step={500} addonAfter="DOP"

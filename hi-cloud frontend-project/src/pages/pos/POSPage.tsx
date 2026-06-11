@@ -5142,9 +5142,18 @@ export default function POSPage() {
           menuAbierto={menuNavAbierto}
           panelActivo={panelActivo}
           onMenuToggle={() => setMenuNavAbierto(v => !v)}
-          onPanelChange={(p) => {
-            if ((p as string) === 'nueva-nc') { setShowNotaCredito(true); setMenuNavAbierto(false); }
-            else { setPanelActivo(p); setMenuNavAbierto(false); }
+          onPanelChange={async (p) => {
+            if ((p as string) === 'nueva-nc') { setShowNotaCredito(true); setMenuNavAbierto(false); return; }
+            if (p === 'cierre-caja' && posConf.posSupervisorCierreCaja !== false) {
+              const fecha = new Date().toLocaleString('es', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+              const ok = await supervisor.requireSupervisorForced('Cierre de Caja', fecha);
+              if (!ok) return;
+            }
+            if (p === 'gastos' && supervisor.supervisorModeEnabled && posConf.posSupervisorGastos !== false) {
+              const ok = await supervisor.requireSupervisor('Gastos');
+              if (!ok) return;
+            }
+            setPanelActivo(p); setMenuNavAbierto(false);
           }}
           onNavigate={(ruta) => { setMenuNavAbierto(false); navigate(ruta); }}
         />
@@ -5848,12 +5857,21 @@ export default function POSPage() {
     >
       {supervisor.pendingAction && (
         <div>
-          {/* Banner de acción */}
-          <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 8,
-            padding: '8px 12px', marginBottom: 16, fontSize: 12, color: '#92400E' }}>
-            <strong>Acción:</strong> {supervisor.pendingAction.action}
-            {supervisor.pendingAction.detail && <> — {supervisor.pendingAction.detail}</>}
-          </div>
+          {/* Banner de acción — rojo para Cierre de Caja, amarillo para el resto */}
+          {(() => {
+            const isCierre = supervisor.pendingAction?.action === 'Cierre de Caja';
+            return (
+              <div style={{
+                background: isCierre ? '#FEF2F2' : '#FFFBEB',
+                border: `1px solid ${isCierre ? '#FECACA' : '#FCD34D'}`,
+                borderRadius: 8, padding: '8px 12px', marginBottom: 16,
+                fontSize: 12, color: isCierre ? '#991B1B' : '#92400E',
+              }}>
+                <strong>Acción:</strong> {supervisor.pendingAction.action}
+                {supervisor.pendingAction.detail && <> — {supervisor.pendingAction.detail}</>}
+              </div>
+            );
+          })()}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {/* Selector de supervisor */}
             <div>
