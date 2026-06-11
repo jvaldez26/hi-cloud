@@ -3,11 +3,12 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Card, Button, Table, Typography, Row, Col, Modal, Form, Input,
   Select, message, Space, theme, InputNumber, Tag, Tabs, Badge,
-  Tooltip, DatePicker,
+  Tooltip, DatePicker, Descriptions,
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, TableOutlined, AppstoreOutlined,
-  DollarOutlined, ClockCircleOutlined,
+  DollarOutlined, ClockCircleOutlined, CheckCircleOutlined,
+  GiftOutlined, PrinterOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -37,7 +38,12 @@ const ESTADO_COLOR: Record<string, string> = {
 const KANBAN_HEADER: Record<string, string> = {
   pendiente: '#fa8c16', en_proceso: '#1677ff', lista: '#13c2c2', entregada: '#52c41a',
 };
-
+const METODO_PAGO_OPS = [
+  { value: 'efectivo',      label: 'Efectivo'      },
+  { value: 'tarjeta',       label: 'Tarjeta'       },
+  { value: 'transferencia', label: 'Transferencia' },
+  { value: 'cheque',        label: 'Cheque'        },
+];
 const TIPO_NCF_OPS = [
   { value: 'B01', label: 'B01 — Crédito fiscal' },
   { value: 'B02', label: 'B02 — Consumidor final' },
@@ -46,6 +52,198 @@ const TIPO_NCF_OPS = [
   { value: 'E31', label: 'E31 — Electrónico crédito' },
   { value: 'E32', label: 'E32 — Electrónico consumidor' },
 ];
+
+// ── Modal Recibo de Entrega ───────────────────────────────────────────────────
+
+function ReciboEntregaModal({ open, data, onClose }: { open: boolean; data: any; onClose: () => void }) {
+  if (!data) return null;
+  const { ot, montoCobrado, metodoPago } = data;
+  const abonoAnterior = Number(ot.total ?? 0) - Number(ot.balance ?? 0);
+
+  const handlePrint = () => {
+    const content = document.getElementById('recibo-entrega-print');
+    if (!content) return;
+    const w = window.open('', '_blank');
+    if (!w) return;
+    w.document.write(`<html><head><title>Recibo Entrega ${ot.numero}</title>
+      <style>body{font-family:Arial,sans-serif;padding:20px;max-width:400px;margin:0 auto}
+      h2,h3{text-align:center;margin:4px 0}hr{border:1px solid #000}
+      table{width:100%;border-collapse:collapse}
+      td{padding:4px 0}td:last-child{text-align:right}
+      .total{font-weight:bold;font-size:16px}.footer{text-align:center;margin-top:16px;font-size:12px}
+      </style></head><body>`);
+    w.document.write(content.innerHTML);
+    w.document.write('</body></html>');
+    w.document.close();
+    w.print();
+  };
+
+  return (
+    <Modal
+      title="Recibo de Entrega"
+      open={open}
+      onCancel={onClose}
+      footer={[
+        <Button key="print" icon={<PrinterOutlined />} onClick={handlePrint}>Imprimir</Button>,
+        <Button key="close" type="primary" onClick={onClose}>Cerrar</Button>,
+      ]}
+      width={420}
+    >
+      <div id="recibo-entrega-print">
+        <div style={{ textAlign: 'center', marginBottom: 12 }}>
+          <h2 style={{ margin: '0 0 4px' }}>RECIBO DE ENTREGA</h2>
+          <h3 style={{ margin: 0, color: '#555' }}>{ot.numero}</h3>
+          <div style={{ marginTop: 4, color: '#888', fontSize: 13 }}>{dayjs().format('DD/MM/YYYY HH:mm')}</div>
+        </div>
+        <hr style={{ borderColor: '#ddd' }} />
+        <Descriptions size="small" column={1} style={{ marginTop: 12 }}>
+          <Descriptions.Item label="Paciente">{ot.pacienteNombre ?? '—'}</Descriptions.Item>
+          <Descriptions.Item label="Laboratorio">{ot.laboratorio ?? '—'}</Descriptions.Item>
+          <Descriptions.Item label="Tipo de lente">{ot.tipoLente ?? '—'}</Descriptions.Item>
+        </Descriptions>
+        <hr style={{ borderColor: '#ddd', margin: '8px 0' }} />
+        <Descriptions size="small" column={1}>
+          <Descriptions.Item label="Total orden">
+            <Text strong>{fmt.money(ot.total ?? 0)}</Text>
+          </Descriptions.Item>
+          <Descriptions.Item label="Abono anterior">
+            {fmt.money(abonoAnterior)}
+          </Descriptions.Item>
+          <Descriptions.Item label="Cobrado en entrega">
+            <Text strong style={{ color: '#1677ff' }}>{fmt.money(montoCobrado)}</Text>
+          </Descriptions.Item>
+          <Descriptions.Item label="Método de pago">
+            {METODO_PAGO_OPS.find(m => m.value === metodoPago)?.label ?? metodoPago}
+          </Descriptions.Item>
+          <Descriptions.Item label="Balance final">
+            <Text strong style={{ color: '#52c41a' }}>RD$0.00 ✓</Text>
+          </Descriptions.Item>
+        </Descriptions>
+        <div style={{ textAlign: 'center', marginTop: 16, fontSize: 12, color: '#888' }}>
+          ¡Gracias por su preferencia!
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Modal Entregar OT ─────────────────────────────────────────────────────────
+
+function EntregarModal({ open, ot, onClose, onSuccess }: {
+  open: boolean; ot: any; onClose: () => void; onSuccess: (result: any) => void;
+}) {
+  const { token } = theme.useToken();
+  const [form] = Form.useForm();
+  const qc = useQueryClient();
+
+  const balance    = Number(ot?.balance ?? 0);
+  const saldoCero  = balance <= 0;
+
+  const entregarMut = useMutation({
+    mutationFn: (v: any) => opticaApi.entregarOrden(ot.id, v),
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ['optica-ordenes'] });
+      qc.invalidateQueries({ queryKey: ['optica-dashboard'] });
+      message.success('Entrega registrada');
+      form.resetFields();
+      onSuccess(result);
+    },
+    onError: (e: any) => {
+      const msg = e?.response?.data?.message;
+      message.error(Array.isArray(msg) ? msg.join(', ') : msg ?? 'Error al registrar entrega');
+    },
+  });
+
+  const onOpen = () => {
+    form.setFieldsValue({ montoCobrado: balance, metodoPago: 'efectivo' });
+  };
+
+  const confirmarSaldoCero = () => {
+    entregarMut.mutate({ montoCobrado: 0, metodoPago: 'efectivo' });
+  };
+
+  return (
+    <Modal
+      title={`Registrar Entrega — ${ot?.numero ?? ''}`}
+      open={open} onCancel={onClose} footer={null} width={480}
+      afterOpenChange={v => v && onOpen()}
+    >
+      {/* Resumen de la OT */}
+      <div style={{
+        background: token.colorFillTertiary,
+        borderRadius: token.borderRadiusLG,
+        padding: '12px 16px',
+        marginBottom: 20,
+      }}>
+        <Row gutter={[8, 4]}>
+          <Col span={12}>
+            <Text type="secondary" style={{ fontSize: 12 }}>Paciente</Text>
+            <div><Text strong>{ot?.pacienteNombre ?? '—'}</Text></div>
+          </Col>
+          <Col span={12}>
+            <Text type="secondary" style={{ fontSize: 12 }}>Total orden</Text>
+            <div><Text strong>{fmt.money(ot?.total ?? 0)}</Text></div>
+          </Col>
+          <Col span={12}>
+            <Text type="secondary" style={{ fontSize: 12 }}>Adelanto pagado</Text>
+            <div><Text>{fmt.money(Number(ot?.total ?? 0) - balance)}</Text></div>
+          </Col>
+          <Col span={12}>
+            <Text type="secondary" style={{ fontSize: 12 }}>Saldo pendiente</Text>
+            <div>
+              <Text strong style={{ color: balance > 0 ? '#f5222d' : '#52c41a', fontSize: 16 }}>
+                {balance > 0 ? fmt.money(balance) : <><CheckCircleOutlined /> Pagado</>}
+              </Text>
+            </div>
+          </Col>
+        </Row>
+      </div>
+
+      {saldoCero ? (
+        <>
+          <Text type="secondary">Esta orden no tiene saldo pendiente. Al confirmar se marcará como Entregada.</Text>
+          <Row justify="end" gutter={8} style={{ marginTop: 20 }}>
+            <Col><Button onClick={onClose}>Cancelar</Button></Col>
+            <Col>
+              <Button type="primary" icon={<GiftOutlined />}
+                onClick={confirmarSaldoCero} loading={entregarMut.isPending}>
+                Confirmar Entrega
+              </Button>
+            </Col>
+          </Row>
+        </>
+      ) : (
+        <Form form={form} layout="vertical" onFinish={v => entregarMut.mutate(v)}>
+          <Row gutter={12}>
+            <Col xs={24} sm={12}>
+              <Form.Item name="montoCobrado" label="Monto a cobrar" rules={[{ required: true }]}>
+                <InputNumber style={{ width: '100%' }} min={0} precision={2} prefix="$" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="metodoPago" label="Método de pago" rules={[{ required: true }]}>
+                <Select options={METODO_PAGO_OPS} />
+              </Form.Item>
+            </Col>
+            <Col xs={24}>
+              <Form.Item name="notas" label="Notas (opcional)">
+                <Input.TextArea rows={2} placeholder="Observaciones sobre la entrega..." />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row justify="end" gutter={8}>
+            <Col><Button onClick={onClose}>Cancelar</Button></Col>
+            <Col>
+              <Button type="primary" htmlType="submit" icon={<GiftOutlined />} loading={entregarMut.isPending}>
+                Confirmar Entrega
+              </Button>
+            </Col>
+          </Row>
+        </Form>
+      )}
+    </Modal>
+  );
+}
 
 // ── Modal Facturar OT ─────────────────────────────────────────────────────────
 
@@ -222,7 +420,7 @@ function OrdenModal({ open, editing, form, pacienteOpts, saveMut, onClose }: any
 
 // ── Vista Kanban ──────────────────────────────────────────────────────────────
 
-function KanbanView({ ordenes, moveMut, openEdit, openFacturar }: any) {
+function KanbanView({ ordenes, moveMut, openEdit, openFacturar, openEntregar }: any) {
   const { token } = theme.useToken();
 
   const byEstado = ESTADOS.reduce<Record<string, any[]>>((acc, est) => {
@@ -270,8 +468,10 @@ function KanbanView({ ordenes, moveMut, openEdit, openFacturar }: any) {
                     {o.total ? (
                       <Text style={{ fontSize: 11 }}>{fmt.money(o.total)}</Text>
                     ) : null}
-                    {o.balance > 0 ? (
+                    {Number(o.balance) > 0 ? (
                       <Text style={{ fontSize: 11, color: '#f5222d' }}>Saldo: {fmt.money(o.balance)}</Text>
+                    ) : o.total ? (
+                      <Text style={{ fontSize: 11, color: '#52c41a' }}><CheckCircleOutlined /> Pagado</Text>
                     ) : null}
                   </Row>
                   {o.fechaEntrega && (() => {
@@ -285,7 +485,7 @@ function KanbanView({ ordenes, moveMut, openEdit, openFacturar }: any) {
                     );
                   })()}
                   <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                    {ESTADOS.indexOf(estado) < ESTADOS.length - 1 && (
+                    {ESTADOS.indexOf(estado) < ESTADOS.length - 1 && estado !== 'lista' && (
                       <Button
                         size="small" type="primary" ghost
                         style={{ fontSize: 10, padding: '0 6px', height: 20 }}
@@ -293,6 +493,16 @@ function KanbanView({ ordenes, moveMut, openEdit, openFacturar }: any) {
                         loading={moveMut.isPending}
                       >
                         → {ESTADO_LABEL[ESTADOS[ESTADOS.indexOf(estado) + 1]]}
+                      </Button>
+                    )}
+                    {estado === 'lista' && (
+                      <Button
+                        size="small" type="primary"
+                        icon={<GiftOutlined />}
+                        style={{ fontSize: 10, padding: '0 6px', height: 20 }}
+                        onClick={e => { e.stopPropagation(); openEntregar(o); }}
+                      >
+                        Entregar
                       </Button>
                     )}
                     {(estado === 'lista' || estado === 'entregada') && !o.facturaId && (
@@ -328,7 +538,7 @@ function KanbanView({ ordenes, moveMut, openEdit, openFacturar }: any) {
 
 // ── Vista tabla ───────────────────────────────────────────────────────────────
 
-function TablaView({ ordenes, isLoading, search, setSearch, filtroEstado, setFiltro, token, openEdit, openFacturar }: any) {
+function TablaView({ ordenes, isLoading, search, setSearch, filtroEstado, setFiltro, token, openEdit, openFacturar, openEntregar }: any) {
   const rows = ordenes.filter((o: any) =>
     `${o.pacienteNombre ?? ''} ${o.numero ?? ''}`.toLowerCase().includes(search.toLowerCase())
   );
@@ -347,14 +557,18 @@ function TablaView({ ordenes, isLoading, search, setSearch, filtroEstado, setFil
       render: (v: any) => v ? fmt.money(v) : '—',
     },
     {
-      title: 'Saldo', dataIndex: 'balance', width: 110, align: 'right' as const,
-      render: (v: any) => v && Number(v) > 0
-        ? <span style={{ color: '#f5222d' }}>{fmt.money(v)}</span>
-        : '—',
+      title: 'Saldo', dataIndex: 'balance', width: 120, align: 'right' as const,
+      render: (v: any, r: any) => {
+        const bal = Number(v ?? 0);
+        if (bal > 0) return <span style={{ color: '#f5222d', fontWeight: 600 }}>{fmt.money(bal)}</span>;
+        if (r.total) return <span style={{ color: '#52c41a' }}><CheckCircleOutlined /> Pagado</span>;
+        return '—';
+      },
     },
     {
       title: 'Entrega', dataIndex: 'fechaEntrega', width: 110,
-      render: (v: string) => {
+      render: (v: string, r: any) => {
+        if (r.estado === 'entregada' && v) return <span style={{ color: '#52c41a' }}>{fmt.date(v)}</span>;
         if (!v) return '—';
         const diff = dayjs(v).diff(dayjs(), 'day');
         const color = diff < 0 ? '#f5222d' : diff <= 1 ? '#fa8c16' : undefined;
@@ -366,21 +580,27 @@ function TablaView({ ordenes, isLoading, search, setSearch, filtroEstado, setFil
       render: (v: any) => v ? <Tag color="green">Facturado</Tag> : '—',
     },
     {
-      title: '', key: 'acc', width: 100, align: 'right' as const,
-      render: (_: any, r: any) => (
-        <TableActions
-          onView={() => openEdit(r)}
-          viewLabel="Editar"
-          items={!r.facturaId && (r.estado === 'lista' || r.estado === 'entregada') ? [
-            {
-              key: 'facturar',
-              label: 'Facturar',
-              icon: <DollarOutlined />,
-              onClick: () => openFacturar(r),
-            },
-          ] : []}
-        />
-      ),
+      title: '', key: 'acc', width: 120, align: 'right' as const,
+      render: (_: any, r: any) => {
+        const items: any[] = [];
+        if (r.estado !== 'entregada' && r.estado !== 'cancelada') {
+          items.push({
+            key: 'entregar',
+            label: 'Registrar Entrega',
+            icon: <GiftOutlined />,
+            onClick: () => openEntregar(r),
+          });
+        }
+        if (!r.facturaId && (r.estado === 'lista' || r.estado === 'entregada')) {
+          items.push({
+            key: 'facturar',
+            label: 'Facturar',
+            icon: <DollarOutlined />,
+            onClick: () => openFacturar(r),
+          });
+        }
+        return <TableActions onView={() => openEdit(r)} viewLabel="Editar" items={items} />;
+      },
     },
   ];
 
@@ -416,11 +636,13 @@ export default function OrdenesTrabajoOpticaPage() {
   const nav = useNavigate();
   const [searchParams] = useSearchParams();
 
-  const [open, setOpen]           = useState(false);
-  const [editing, setEditing]     = useState<any>(null);
-  const [search, setSearch]       = useState('');
-  const [filtroEstado, setFiltro] = useState<string | undefined>(undefined);
-  const [facturarOt, setFacturarOt] = useState<any>(null);
+  const [open, setOpen]               = useState(false);
+  const [editing, setEditing]         = useState<any>(null);
+  const [search, setSearch]           = useState('');
+  const [filtroEstado, setFiltro]     = useState<string | undefined>(undefined);
+  const [facturarOt, setFacturarOt]   = useState<any>(null);
+  const [entregarOt, setEntregarOt]   = useState<any>(null);
+  const [reciboData, setReciboData]   = useState<any>(null);
   const [form] = Form.useForm();
   const qc = useQueryClient();
 
@@ -503,6 +725,11 @@ export default function OrdenesTrabajoOpticaPage() {
     });
   };
 
+  const handleEntregarSuccess = (result: any) => {
+    setReciboData({ ot: entregarOt, montoCobrado: result.montoCobrado, metodoPago: result.metodoPago });
+    setEntregarOt(null);
+  };
+
   return (
     <div>
       <Title level={4} style={{ marginBottom: 16 }}>Órdenes de Trabajo</Title>
@@ -522,7 +749,9 @@ export default function OrdenesTrabajoOpticaPage() {
               children: (
                 <KanbanView
                   ordenes={ordenes} moveMut={moveMut}
-                  openEdit={openEdit} openFacturar={(o: any) => setFacturarOt(o)}
+                  openEdit={openEdit}
+                  openFacturar={(o: any) => setFacturarOt(o)}
+                  openEntregar={(o: any) => setEntregarOt(o)}
                 />
               ),
             },
@@ -536,6 +765,7 @@ export default function OrdenesTrabajoOpticaPage() {
                   filtroEstado={filtroEstado} setFiltro={setFiltro}
                   token={token} openEdit={openEdit}
                   openFacturar={(o: any) => setFacturarOt(o)}
+                  openEntregar={(o: any) => setEntregarOt(o)}
                 />
               ),
             },
@@ -556,6 +786,21 @@ export default function OrdenesTrabajoOpticaPage() {
           onSuccess={handleFacturarSuccess}
         />
       )}
+
+      {entregarOt && (
+        <EntregarModal
+          open={!!entregarOt}
+          ot={entregarOt}
+          onClose={() => setEntregarOt(null)}
+          onSuccess={handleEntregarSuccess}
+        />
+      )}
+
+      <ReciboEntregaModal
+        open={!!reciboData}
+        data={reciboData}
+        onClose={() => setReciboData(null)}
+      />
     </div>
   );
 }

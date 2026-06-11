@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { TenantService } from '../tenant/tenant.service';
@@ -707,6 +707,29 @@ export class OpticaService {
       params,
     );
     return row;
+  }
+
+  async entregarOrdenTrabajo(id: number, dto: { montoCobrado: number; metodoPago: string; notas?: string }) {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const ot = await this.otOr404(empresaId, id);
+    if (ot.estado === 'entregada') throw new BadRequestException('Esta orden ya fue entregada');
+    if (ot.estado === 'cancelada') throw new BadRequestException('No se puede entregar una orden cancelada');
+    const balance = Number(ot.balance ?? 0);
+    if (dto.montoCobrado < balance) {
+      throw new BadRequestException(
+        `El monto cobrado (${dto.montoCobrado}) es menor al saldo pendiente (${balance})`,
+      );
+    }
+    const nuevoBalance = Math.max(0, balance - dto.montoCobrado);
+    const nuevoAbono   = Number(ot.abono ?? 0) + dto.montoCobrado;
+    const [row] = await this.ds.query<any[]>(
+      `UPDATE op_ordenes_trabajo
+       SET estado = 'entregada', "fechaEntrega" = NOW()::date,
+           abono = $1, balance = $2, "updatedAt" = NOW()
+       WHERE id = $3 AND "empresaId" = $4 RETURNING *`,
+      [nuevoAbono, nuevoBalance, id, empresaId],
+    );
+    return { ...row, montoCobrado: dto.montoCobrado, metodoPago: dto.metodoPago };
   }
 
   // ── RECLAMACIONES ARS ──────────────────────────────────────────────────────

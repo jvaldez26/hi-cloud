@@ -239,6 +239,13 @@ class FacturarOtDto {
   @IsOptional() @IsString() tipoNcf?: string;
 }
 
+class EntregarOtDto {
+  @IsNumber({}, { message: 'El monto cobrado debe ser un número' })
+  @Min(0) @Type(() => Number) montoCobrado!: number;
+  @IsString({ message: 'El método de pago es requerido' }) metodoPago!: string;
+  @IsOptional() @IsString() notas?: string;
+}
+
 class CreateInventarioDto {
   @IsOptional() @IsString() tipo?: string;
   @IsOptional() @IsString() codigo?: string;
@@ -476,6 +483,12 @@ export class OpticaController {
   @Get('ordenes-trabajo/:id')
   @ApiOperation({ summary: 'Obtener orden de trabajo' })
   obtenerOrdenTrabajo(@Param('id', ParseIntPipe) id: number) { return this.svc.obtenerOrdenTrabajo(id); }
+
+  @Patch('ordenes-trabajo/:id/entregar')
+  @ApiOperation({ summary: 'Registrar entrega y cobro de saldo de orden de trabajo' })
+  entregarOrdenTrabajo(@Param('id', ParseIntPipe) id: number, @Body() dto: EntregarOtDto) {
+    return this.svc.entregarOrdenTrabajo(id, dto);
+  }
 
   @Patch('ordenes-trabajo/:id')
   @ApiOperation({ summary: 'Actualizar orden de trabajo' })
