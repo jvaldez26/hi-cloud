@@ -1428,6 +1428,16 @@ export default function AppLayout() {
       '/importacion':            () => import('../../pages/importacion/ImportacionPage'),
       '/documentos':             () => import('../../pages/documentos/DocumentosPage'),
       '/contactos':              () => import('../../pages/contactos/ContactosPage'),
+      // ── Módulo Óptica (add-on) ───────────────────────────────────
+      '/optica':                 () => import('../../pages/optica/OpticaLayout').then(() => import('../../pages/optica/OpticaDashboardPage')),
+      '/optica/pacientes':       () => import('../../pages/optica/OpticaLayout').then(() => import('../../pages/optica/PacientesOpticaPage')),
+      '/optica/medicos':         () => import('../../pages/optica/OpticaLayout').then(() => import('../../pages/optica/MedicosOpticaPage')),
+      '/optica/agenda':          () => import('../../pages/optica/OpticaLayout').then(() => import('../../pages/optica/AgendaOpticaPage')),
+      '/optica/consultas':       () => import('../../pages/optica/OpticaLayout').then(() => import('../../pages/optica/ConsultasOpticaPage')),
+      '/optica/recetas':         () => import('../../pages/optica/OpticaLayout').then(() => import('../../pages/optica/RecetasOpticaPage')),
+      '/optica/ordenes':         () => import('../../pages/optica/OpticaLayout').then(() => import('../../pages/optica/OrdenesTrabajoOpticaPage')),
+      '/optica/ars':             () => import('../../pages/optica/OpticaLayout').then(() => import('../../pages/optica/ReclamacionesArsPage')),
+      '/optica/inventario':      () => import('../../pages/optica/OpticaLayout').then(() => import('../../pages/optica/InventarioOpticaPage')),
     };
     map[path]?.();
   }, []);
@@ -2075,7 +2085,7 @@ export default function AppLayout() {
               paddingBottom: isMobile ? 'calc(72px + env(safe-area-inset-bottom, 0px))' : 20,
             }}
           >
-            <Suspense fallback={<ContentLoader />}>
+            <Suspense fallback={null}>
               <PageTransition>
                 <Outlet />
               </PageTransition>
