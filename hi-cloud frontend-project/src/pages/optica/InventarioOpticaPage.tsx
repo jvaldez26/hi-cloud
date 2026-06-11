@@ -41,7 +41,10 @@ function AjusteStockModal({ open, item, onClose, onSuccess }: any) {
       form.resetFields();
       onSuccess();
     },
-    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
+    onError: (e: any) => {
+      const msg = e?.response?.data?.message;
+      message.error(Array.isArray(msg) ? msg.join(', ') : msg ?? 'Error al ajustar stock');
+    },
   });
 
   return (
@@ -84,7 +87,10 @@ function ItemModal({ open, editing, onClose, onSuccess }: any) {
       form.resetFields();
       onSuccess();
     },
-    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
+    onError: (e: any) => {
+      const msg = e?.response?.data?.message;
+      message.error(Array.isArray(msg) ? msg.join(', ') : msg ?? 'Error al guardar ítem');
+    },
   });
 
   const onOpen = () => {
@@ -208,7 +214,10 @@ export default function InventarioOpticaPage() {
       qc.invalidateQueries({ queryKey: ['optica-inventario-resumen'] });
       message.success('Ítem dado de baja');
     },
-    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
+    onError: (e: any) => {
+      const msg = e?.response?.data?.message;
+      message.error(Array.isArray(msg) ? msg.join(', ') : msg ?? 'Error al dar de baja ítem');
+    },
   });
 
   const cols = [

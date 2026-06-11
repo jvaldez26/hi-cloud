@@ -54,13 +54,19 @@ export default function PacientesOpticaPage() {
       message.success(editing ? 'Paciente actualizado' : 'Paciente creado');
       closeModal();
     },
-    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
+    onError: (e: any) => {
+      const msg = e?.response?.data?.message;
+      message.error(Array.isArray(msg) ? msg.join(', ') : msg ?? 'Error al guardar paciente');
+    },
   });
 
   const delMut = useMutation({
     mutationFn: (id: number) => opticaApi.eliminarPaciente(id),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['optica-pacientes'] }); message.success('Paciente eliminado'); },
-    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
+    onError: (e: any) => {
+      const msg = e?.response?.data?.message;
+      message.error(Array.isArray(msg) ? msg.join(', ') : msg ?? 'Error al eliminar paciente');
+    },
   });
 
   const cols = [

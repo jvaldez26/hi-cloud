@@ -20,8 +20,8 @@ import { RecetaPdfService } from './receta-pdf.service';
 // ── DTOs ─────────────────────────────────────────────────────────────────────
 
 class CreatePacienteDto {
-  @IsString()             nombre!: string;
-  @IsString()             apellido!: string;
+  @IsString({ message: 'El nombre es requerido' })             nombre!: string;
+  @IsString({ message: 'El apellido es requerido' })           apellido!: string;
   @IsOptional() @IsString() cedula?: string;
   @IsOptional() @IsDateString() fechaNacimiento?: string;
   @IsOptional() @IsString() genero?: string;
@@ -47,8 +47,8 @@ class UpdatePacienteDto {
 }
 
 class CreateMedicoDto {
-  @IsString()             nombre!: string;
-  @IsString()             apellido!: string;
+  @IsString({ message: 'El nombre es requerido' })             nombre!: string;
+  @IsString({ message: 'El apellido es requerido' })           apellido!: string;
   @IsOptional() @IsString() especialidad?: string;
   @IsOptional() @IsString() exequatur?: string;
   @IsOptional() @IsString() telefono?: string;
@@ -59,9 +59,9 @@ class CreateMedicoDto {
 class UpdateMedicoDto extends CreateMedicoDto {}
 
 class CreateCitaDto {
-  @IsInt() @IsPositive() @Type(() => Number) pacienteId!: number;
+  @IsInt({ message: 'El paciente es requerido' }) @IsPositive() @Type(() => Number) pacienteId!: number;
   @IsOptional() @IsInt() @Type(() => Number) medicoId?: number;
-  @IsDateString()                             fechaHora!: string;
+  @IsDateString({}, { message: 'La fecha y hora es requerida' }) fechaHora!: string;
   @IsOptional() @IsInt() @Min(5) @Type(() => Number) duracionMinutos?: number;
   @IsOptional() @IsString() tipo?: string;
   @IsOptional() @IsString() motivoConsulta?: string;
@@ -78,10 +78,10 @@ class UpdateCitaDto {
 }
 
 class CreateConsultaDto {
-  @IsInt() @IsPositive() @Type(() => Number) pacienteId!: number;
+  @IsInt({ message: 'El paciente es requerido' }) @IsPositive() @Type(() => Number) pacienteId!: number;
   @IsOptional() @IsInt() @Type(() => Number) medicoId?: number;
   @IsOptional() @IsInt() @Type(() => Number) citaId?: number;
-  @IsDateString()                             fecha!: string;
+  @IsDateString({}, { message: 'La fecha de la consulta es requerida' }) fecha!: string;
   @IsOptional() @IsString() motivoConsulta?: string;
   @IsOptional() @IsString() agudezaVisualOD?: string;
   @IsOptional() @IsString() agudezaVisualOI?: string;
@@ -137,10 +137,10 @@ class UpdateConsultaDto {
 }
 
 class CreateRecetaDto {
-  @IsInt() @IsPositive() @Type(() => Number) pacienteId!: number;
+  @IsInt({ message: 'El paciente es requerido' }) @IsPositive() @Type(() => Number) pacienteId!: number;
   @IsOptional() @IsInt() @Type(() => Number) medicoId?: number;
   @IsOptional() @IsInt() @Type(() => Number) consultaId?: number;
-  @IsDateString()                             fecha!: string;
+  @IsDateString({}, { message: 'La fecha de la receta es requerida' }) fecha!: string;
   @IsOptional() @IsString() tipo?: string;
   @IsOptional() @IsNumber() @Type(() => Number) esferaOD?: number;
   @IsOptional() @IsNumber() @Type(() => Number) cilindroOD?: number;
@@ -180,9 +180,9 @@ class UpdateRecetaDto {
 }
 
 class CreateOrdenTrabajoDto {
-  @IsInt() @IsPositive() @Type(() => Number) pacienteId!: number;
+  @IsInt({ message: 'El paciente es requerido' }) @IsPositive() @Type(() => Number) pacienteId!: number;
   @IsOptional() @IsInt() @Type(() => Number) recetaId?: number;
-  @IsDateString()                             fecha!: string;
+  @IsDateString({}, { message: 'La fecha de la orden es requerida' }) fecha!: string;
   @IsOptional() @IsString() tipoLente?: string;
   @IsOptional() @IsString() materialLente?: string;
   @IsOptional() @IsString() tratamientoLente?: string;
@@ -221,14 +221,14 @@ class UpdateOrdenTrabajoDto {
 }
 
 class CreateReclamacionArsDto {
-  @IsInt() @IsPositive() @Type(() => Number) pacienteId!: number;
-  @IsString()                                arsNombre!: string;
+  @IsInt({ message: 'El paciente es requerido' }) @IsPositive() @Type(() => Number) pacienteId!: number;
+  @IsString({ message: 'El nombre de la ARS es requerido' })   arsNombre!: string;
   @IsOptional() @IsString()                  arsNumeroAfiliado?: string;
   @IsOptional() @IsString()                  arsNumeroAutorizacion?: string;
   @IsOptional() @IsInt() @Type(() => Number) consultaId?: number;
   @IsOptional() @IsInt() @Type(() => Number) recetaId?: number;
   @IsOptional() @IsInt() @Type(() => Number) ordenTrabajoId?: number;
-  @IsDateString()                             fecha!: string;
+  @IsDateString({}, { message: 'La fecha de la reclamación es requerida' }) fecha!: string;
   @IsOptional() @IsNumber() @Min(0) @Type(() => Number) montoReclamado?: number;
   @IsOptional() @IsNumber() @Min(0) @Type(() => Number) montoCubierto?: number;
   @IsOptional() @IsNumber() @Min(0) @Type(() => Number) montoPaciente?: number;

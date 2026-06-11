@@ -343,7 +343,10 @@ export default function AgendaOpticaPage() {
       message.success(editing ? 'Cita actualizada' : 'Cita creada');
       closeModal();
     },
-    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
+    onError: (e: any) => {
+      const msg = e?.response?.data?.message;
+      message.error(Array.isArray(msg) ? msg.join(', ') : msg ?? 'Error al guardar cita');
+    },
   });
 
   return (

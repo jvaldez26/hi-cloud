@@ -41,13 +41,19 @@ export default function MedicosOpticaPage() {
       message.success(editing ? 'Médico actualizado' : 'Médico creado');
       closeModal();
     },
-    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
+    onError: (e: any) => {
+      const msg = e?.response?.data?.message;
+      message.error(Array.isArray(msg) ? msg.join(', ') : msg ?? 'Error al guardar médico');
+    },
   });
 
   const delMut = useMutation({
     mutationFn: (id: number) => opticaApi.eliminarMedico(id),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['optica-medicos'] }); message.success('Médico eliminado'); },
-    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
+    onError: (e: any) => {
+      const msg = e?.response?.data?.message;
+      message.error(Array.isArray(msg) ? msg.join(', ') : msg ?? 'Error al eliminar médico');
+    },
   });
 
   const cols = [

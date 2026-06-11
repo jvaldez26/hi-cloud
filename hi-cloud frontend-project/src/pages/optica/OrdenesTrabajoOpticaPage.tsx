@@ -69,7 +69,10 @@ function FacturarModal({ open, ot, onClose, onSuccess }: {
       form.resetFields();
       onSuccess(pf);
     },
-    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al facturar'),
+    onError: (e: any) => {
+      const msg = e?.response?.data?.message;
+      message.error(Array.isArray(msg) ? msg.join(', ') : msg ?? 'Error al generar pre-factura');
+    },
   });
 
   const clienteOpts = ((clientesData as any)?.data ?? clientesData ?? []).map((c: any) => ({
@@ -482,7 +485,10 @@ export default function OrdenesTrabajoOpticaPage() {
       qc.invalidateQueries({ queryKey: ['optica-ordenes'] });
       qc.invalidateQueries({ queryKey: ['optica-dashboard'] });
     },
-    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
+    onError: (e: any) => {
+      const msg = e?.response?.data?.message;
+      message.error(Array.isArray(msg) ? msg.join(', ') : msg ?? 'Error al actualizar estado');
+    },
   });
 
   const handleFacturarSuccess = (pf: any) => {
