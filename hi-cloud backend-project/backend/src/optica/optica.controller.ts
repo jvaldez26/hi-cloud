@@ -109,6 +109,8 @@ class CreateConsultaDto {
 }
 class UpdateConsultaDto {
   @IsOptional() @IsInt() @Type(() => Number) medicoId?: number;
+  @IsOptional() @IsInt() @Type(() => Number) pacienteId?: number;
+  @IsOptional() @IsInt() @Type(() => Number) citaId?: number;
   @IsOptional() @IsDateString()               fecha?: string;
   @IsOptional() @IsString() motivoConsulta?: string;
   @IsOptional() @IsString() agudezaVisualOD?: string;

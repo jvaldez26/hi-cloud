@@ -6,16 +6,17 @@ import { TenantService } from '../tenant/tenant.service';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const PDFDocument = require('pdfkit') as typeof import('pdfkit');
 
-function fmtFecha(s: string): string {
+function fmtFecha(s: string | Date): string {
   try {
-    const d = new Date(s + (s.includes('T') ? '' : 'T12:00:00'));
-    if (isNaN(d.getTime())) return s;
+    const iso = s instanceof Date ? s.toISOString() : String(s);
+    const d = new Date(iso + (iso.includes('T') ? '' : 'T12:00:00'));
+    if (isNaN(d.getTime())) return String(s);
     return [
-      String(d.getDate()).padStart(2, '0'),
-      String(d.getMonth() + 1).padStart(2, '0'),
-      d.getFullYear(),
+      String(d.getUTCDate()).padStart(2, '0'),
+      String(d.getUTCMonth() + 1).padStart(2, '0'),
+      d.getUTCFullYear(),
     ].join('/');
-  } catch { return s; }
+  } catch { return String(s); }
 }
 
 function fmtGrad(v: number | null): string {

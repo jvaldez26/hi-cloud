@@ -45,7 +45,9 @@ export interface CreateConsultaDto {
   refEsferaOI?: number; refCilindroOI?: number; refEjeOI?: number; refAdicionOI?: number;
   observaciones?: string;
 }
-export interface UpdateConsultaDto extends Partial<Omit<CreateConsultaDto, 'pacienteId'>> {}
+export interface UpdateConsultaDto extends Partial<Omit<CreateConsultaDto, 'pacienteId'>> {
+  pacienteId?: number;
+}
 
 export interface CreateRecetaDto {
   pacienteId: number; medicoId?: number; consultaId?: number;
@@ -477,6 +479,8 @@ export class OpticaService {
     const params: any[] = [];
     const add = (col: string, val: any) => { params.push(val); sets.push(`"${col}" = $${params.length}`); };
     if (dto.medicoId !== undefined)        add('medicoId', dto.medicoId);
+    if (dto.pacienteId !== undefined)      add('pacienteId', dto.pacienteId);
+    if (dto.citaId !== undefined)          add('citaId', dto.citaId);
     if (dto.fecha !== undefined)           add('fecha', dto.fecha);
     if (dto.motivoConsulta !== undefined)  add('motivoConsulta', dto.motivoConsulta);
     if (dto.agudezaVisualOD !== undefined) add('agudezaVisualOD', dto.agudezaVisualOD);
