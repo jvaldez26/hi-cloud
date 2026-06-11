@@ -30,6 +30,7 @@ export interface CreateCitaDto {
 }
 export interface UpdateCitaDto extends Partial<Omit<CreateCitaDto, 'pacienteId'>> {
   estado?: string;
+  pacienteId?: number;
 }
 
 export interface CreateConsultaDto {
@@ -58,7 +59,9 @@ export interface CreateRecetaDto {
   marcaContacto?: string; tipoContacto?: string;
   instrucciones?: string; vigenciaAnos?: number; notas?: string;
 }
-export interface UpdateRecetaDto extends Partial<Omit<CreateRecetaDto, 'pacienteId'>> {}
+export interface UpdateRecetaDto extends Partial<Omit<CreateRecetaDto, 'pacienteId'>> {
+  pacienteId?: number;
+}
 
 export interface CreateOrdenTrabajoDto {
   pacienteId: number; recetaId?: number; fecha: string;
@@ -70,6 +73,7 @@ export interface CreateOrdenTrabajoDto {
 }
 export interface UpdateOrdenTrabajoDto extends Partial<Omit<CreateOrdenTrabajoDto, 'pacienteId'>> {
   estado?: string; facturaId?: number; balance?: number;
+  pacienteId?: number;
 }
 
 export interface CreateReclamacionArsDto {
@@ -82,6 +86,7 @@ export interface CreateReclamacionArsDto {
 }
 export interface UpdateReclamacionArsDto extends Partial<Omit<CreateReclamacionArsDto, 'pacienteId' | 'arsNombre'>> {
   estado?: string; motivoRechazo?: string;
+  pacienteId?: number; arsNombre?: string;
 }
 
 // ── Service ──────────────────────────────────────────────────────────────────
@@ -377,6 +382,7 @@ export class OpticaService {
     const params: any[] = [];
     const add = (col: string, val: any) => { params.push(val); sets.push(`"${col}" = $${params.length}`); };
     if (dto.medicoId !== undefined)        add('medicoId', dto.medicoId);
+    if (dto.pacienteId !== undefined)      add('pacienteId', dto.pacienteId);
     if (dto.fechaHora !== undefined)       add('fechaHora', dto.fechaHora);
     if (dto.duracionMinutos !== undefined) add('duracionMinutos', dto.duracionMinutos);
     if (dto.tipo !== undefined)            add('tipo', dto.tipo);
@@ -586,6 +592,8 @@ export class OpticaService {
     const params: any[] = [];
     const add = (col: string, val: any) => { params.push(val); sets.push(`"${col}" = $${params.length}`); };
     if (dto.medicoId !== undefined)     add('medicoId', dto.medicoId);
+    if (dto.pacienteId !== undefined)   add('pacienteId', dto.pacienteId);
+    if (dto.consultaId !== undefined)   add('consultaId', dto.consultaId);
     if (dto.fecha !== undefined)        add('fecha', dto.fecha);
     if (dto.tipo !== undefined)         add('tipo', dto.tipo);
     if (dto.esferaOD !== undefined)     add('esferaOD', dto.esferaOD);
@@ -686,6 +694,9 @@ export class OpticaService {
     const params: any[] = [];
     const add = (col: string, val: any) => { params.push(val); sets.push(`"${col}" = $${params.length}`); };
     if (dto.estado !== undefined)           add('estado', dto.estado);
+    if (dto.pacienteId !== undefined)       add('pacienteId', dto.pacienteId);
+    if (dto.recetaId !== undefined)         add('recetaId', dto.recetaId);
+    if (dto.fecha !== undefined)            add('fecha', dto.fecha);
     if (dto.tipoLente !== undefined)        add('tipoLente', dto.tipoLente);
     if (dto.materialLente !== undefined)    add('materialLente', dto.materialLente);
     if (dto.tratamientoLente !== undefined) add('tratamientoLente', dto.tratamientoLente);
@@ -799,6 +810,8 @@ export class OpticaService {
     const sets: string[] = [];
     const params: any[] = [];
     const add = (col: string, val: any) => { params.push(val); sets.push(`"${col}" = $${params.length}`); };
+    if (dto.pacienteId !== undefined)             add('pacienteId', dto.pacienteId);
+    if (dto.arsNombre !== undefined)              add('arsNombre', dto.arsNombre);
     if (dto.arsNumeroAfiliado !== undefined)      add('arsNumeroAfiliado', dto.arsNumeroAfiliado);
     if (dto.arsNumeroAutorizacion !== undefined)  add('arsNumeroAutorizacion', dto.arsNumeroAutorizacion);
     if (dto.consultaId !== undefined)             add('consultaId', dto.consultaId);

@@ -69,6 +69,7 @@ class CreateCitaDto {
 }
 class UpdateCitaDto {
   @IsOptional() @IsInt() @Type(() => Number) medicoId?: number;
+  @IsOptional() @IsInt() @Type(() => Number) pacienteId?: number;
   @IsOptional() @IsDateString()               fechaHora?: string;
   @IsOptional() @IsInt() @Min(5) @Type(() => Number) duracionMinutos?: number;
   @IsOptional() @IsString() tipo?: string;
@@ -162,6 +163,8 @@ class CreateRecetaDto {
 }
 class UpdateRecetaDto {
   @IsOptional() @IsInt() @Type(() => Number) medicoId?: number;
+  @IsOptional() @IsInt() @Type(() => Number) pacienteId?: number;
+  @IsOptional() @IsInt() @Type(() => Number) consultaId?: number;
   @IsOptional() @IsDateString()               fecha?: string;
   @IsOptional() @IsString() tipo?: string;
   @IsOptional() @IsNumber() @Type(() => Number) esferaOD?: number;
@@ -203,6 +206,9 @@ class CreateOrdenTrabajoDto {
 }
 class UpdateOrdenTrabajoDto {
   @IsOptional() @IsString() estado?: string;
+  @IsOptional() @IsInt() @Type(() => Number) pacienteId?: number;
+  @IsOptional() @IsInt() @Type(() => Number) recetaId?: number;
+  @IsOptional() @IsDateString() fecha?: string;
   @IsOptional() @IsString() tipoLente?: string;
   @IsOptional() @IsString() materialLente?: string;
   @IsOptional() @IsString() tratamientoLente?: string;
@@ -271,6 +277,8 @@ class AjustarStockDto {
 }
 
 class UpdateReclamacionArsDto {
+  @IsOptional() @IsInt() @Type(() => Number) pacienteId?: number;
+  @IsOptional() @IsString() arsNombre?: string;
   @IsOptional() @IsString()  arsNumeroAfiliado?: string;
   @IsOptional() @IsString()  arsNumeroAutorizacion?: string;
   @IsOptional() @IsInt() @Type(() => Number) consultaId?: number;
