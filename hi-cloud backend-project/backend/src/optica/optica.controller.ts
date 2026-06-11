@@ -52,6 +52,8 @@ class CreateMedicoDto {
   @IsOptional() @IsString() exequatur?: string;
   @IsOptional() @IsString() telefono?: string;
   @IsOptional() @IsString() email?: string;
+  @IsOptional() @IsString() direccion?: string;
+  @IsOptional() @IsString() notas?: string;
 }
 class UpdateMedicoDto extends CreateMedicoDto {}
 

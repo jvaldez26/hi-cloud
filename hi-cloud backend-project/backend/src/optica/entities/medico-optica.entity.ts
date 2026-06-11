@@ -29,6 +29,12 @@ export class MedicoOptica {
   @Column({ type: 'varchar', length: 150, nullable: true })
   email!: string | null;
 
+  @Column({ type: 'varchar', length: 200, nullable: true })
+  direccion!: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  notas!: string | null;
+
   @Column({ default: true })
   isActive!: boolean;
 

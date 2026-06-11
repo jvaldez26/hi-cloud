@@ -19,6 +19,7 @@ export interface CreateMedicoDto {
   nombre: string; apellido: string;
   especialidad?: string; exequatur?: string;
   telefono?: string; email?: string;
+  direccion?: string; notas?: string;
 }
 export interface UpdateMedicoDto extends Partial<CreateMedicoDto> {}
 
@@ -249,11 +250,12 @@ export class OpticaService {
     const empresaId = this.tenantSvc.getEmpresaId();
     const [row] = await this.ds.query<any[]>(
       `INSERT INTO op_medicos
-         ("empresaId", nombre, apellido, especialidad, exequatur, telefono, email)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+         ("empresaId", nombre, apellido, especialidad, exequatur, telefono, email, direccion, notas)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
       [empresaId, dto.nombre, dto.apellido,
        dto.especialidad ?? 'Optometría', dto.exequatur ?? null,
-       dto.telefono ?? null, dto.email ?? null],
+       dto.telefono ?? null, dto.email ?? null,
+       dto.direccion ?? null, dto.notas ?? null],
     );
     return row;
   }
@@ -275,6 +277,8 @@ export class OpticaService {
     if (dto.exequatur !== undefined)    add('exequatur', dto.exequatur);
     if (dto.telefono !== undefined)     add('telefono', dto.telefono);
     if (dto.email !== undefined)        add('email', dto.email);
+    if (dto.direccion !== undefined)    add('direccion', dto.direccion);
+    if (dto.notas !== undefined)        add('notas', dto.notas);
     if (!sets.length) return this.medicoOr404(empresaId, id);
     params.push(id, empresaId);
     const [row] = await this.ds.query<any[]>(
