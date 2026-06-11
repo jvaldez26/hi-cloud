@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Card, Button, Table, Typography, Row, Col, Modal, Form, Input,
-  Select, message, Space, theme, InputNumber, Divider, Tooltip,
+  Select, message, Space, theme, InputNumber, Divider, Tooltip, DatePicker,
 } from 'antd';
+import dayjs from 'dayjs';
 import { PlusOutlined, SearchOutlined, FileTextOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { opticaApi } from '../../api/optica.api';
@@ -56,6 +57,7 @@ export default function ConsultasOpticaPage() {
       form.resetFields();
       form.setFieldsValue({
         pacienteId: Number(pacienteId),
+        fecha: dayjs(),
         ...(citaId ? { citaId: Number(citaId) } : {}),
       });
       setOpen(true);
@@ -63,19 +65,27 @@ export default function ConsultasOpticaPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const openCreate = () => { setEditing(null); form.resetFields(); setOpen(true); };
-  const openEdit   = (r: any) => { setEditing(r); form.setFieldsValue(r); setOpen(true); };
+  const openCreate = () => { setEditing(null); form.resetFields(); form.setFieldValue('fecha', dayjs()); setOpen(true); };
+  const openEdit   = (r: any) => { setEditing(r); form.setFieldsValue({ ...r, fecha: r.fecha ? dayjs(r.fecha) : dayjs() }); setOpen(true); };
   const closeModal = () => { setOpen(false); form.resetFields(); setEditing(null); };
 
   const saveMut = useMutation({
-    mutationFn: (v: any) =>
-      editing ? opticaApi.actualizarConsulta(editing.id, v) : opticaApi.crearConsulta(v),
+    mutationFn: (v: any) => {
+      const payload = {
+        ...v,
+        fecha: v.fecha ? dayjs(v.fecha).format('YYYY-MM-DD') : dayjs().format('YYYY-MM-DD'),
+      };
+      return editing ? opticaApi.actualizarConsulta(editing.id, payload) : opticaApi.crearConsulta(payload);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['optica-consultas'] });
       message.success(editing ? 'Consulta actualizada' : 'Consulta creada');
       closeModal();
     },
-    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
+    onError: (e: any) => {
+      const msg = e?.response?.data?.message;
+      message.error(Array.isArray(msg) ? msg.join(', ') : msg ?? 'Error al guardar consulta');
+    },
   });
 
   const cols = [
@@ -160,6 +170,12 @@ export default function ConsultasOpticaPage() {
             <Col xs={24} sm={12}>
               <Form.Item name="medicoId" label="Médico">
                 <Select showSearch optionFilterProp="label" options={medicoOpts} allowClear />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="fecha" label="Fecha" rules={[{ required: true, message: 'Selecciona la fecha' }]}
+                initialValue={dayjs()}>
+                <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>

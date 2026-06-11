@@ -13,7 +13,7 @@ export interface CreatePacienteDto {
   telefono?: string; email?: string; direccion?: string;
   ocupacion?: string; notas?: string;
 }
-export interface UpdatePacienteDto extends Partial<CreatePacienteDto> {}
+export interface UpdatePacienteDto extends Partial<CreatePacienteDto> { isActive?: boolean; }
 
 export interface CreateMedicoDto {
   nombre: string; apellido: string;
@@ -39,6 +39,11 @@ export interface CreateConsultaDto {
   presionOcularOD?: number; presionOcularOI?: number;
   hallazgos?: string; diagnostico?: string;
   tratamiento?: string; proximaCita?: string; notas?: string;
+  costoConsulta?: number;
+  avOdLejos?: string; avOiLejos?: string; avOdCerca?: string; avOiCerca?: string;
+  refEsferaOD?: number; refCilindroOD?: number; refEjeOD?: number; refAdicionOD?: number;
+  refEsferaOI?: number; refCilindroOI?: number; refEjeOI?: number; refAdicionOI?: number;
+  observaciones?: string;
 }
 export interface UpdateConsultaDto extends Partial<Omit<CreateConsultaDto, 'pacienteId'>> {}
 
@@ -56,9 +61,10 @@ export interface UpdateRecetaDto extends Partial<Omit<CreateRecetaDto, 'paciente
 export interface CreateOrdenTrabajoDto {
   pacienteId: number; recetaId?: number; fecha: string;
   tipoLente?: string; materialLente?: string; tratamientoLente?: string;
-  colorMontura?: string; marcaMontura?: string; modeloMontura?: string;
+  tipoMontura?: string; colorMontura?: string; marcaMontura?: string; modeloMontura?: string;
+  laboratorio?: string;
   subtotal?: number; itbis?: number; total?: number; abono?: number;
-  notas?: string; fechaEntrega?: string;
+  notas?: string; observaciones?: string; fechaEntrega?: string;
 }
 export interface UpdateOrdenTrabajoDto extends Partial<Omit<CreateOrdenTrabajoDto, 'pacienteId'>> {
   estado?: string; facturaId?: number; balance?: number;
@@ -215,6 +221,7 @@ export class OpticaService {
     if (dto.direccion !== undefined)       add('direccion', dto.direccion);
     if (dto.ocupacion !== undefined)       add('ocupacion', dto.ocupacion);
     if (dto.notas !== undefined)           add('notas', dto.notas);
+    if (dto.isActive !== undefined)        add('isActive', dto.isActive);
     if (!sets.length) return this.pacienteOr404(empresaId, id);
     params.push(id, empresaId);
     const [row] = await this.ds.query<any[]>(
@@ -417,14 +424,24 @@ export class OpticaService {
          ("empresaId", numero, "pacienteId", "medicoId", "citaId", fecha,
           "motivoConsulta", "agudezaVisualOD", "agudezaVisualOI",
           "presionOcularOD", "presionOcularOI",
-          hallazgos, diagnostico, tratamiento, "proximaCita", notas)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+          hallazgos, diagnostico, tratamiento, "proximaCita", notas,
+          "costoConsulta", "avOdLejos", "avOiLejos", "avOdCerca", "avOiCerca",
+          "refEsferaOD", "refCilindroOD", "refEjeOD", "refAdicionOD",
+          "refEsferaOI", "refCilindroOI", "refEjeOI", "refAdicionOI",
+          observaciones)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
+               $17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30) RETURNING *`,
       [empresaId, numero, dto.pacienteId, dto.medicoId ?? null, dto.citaId ?? null,
        dto.fecha, dto.motivoConsulta ?? null,
        dto.agudezaVisualOD ?? null, dto.agudezaVisualOI ?? null,
        dto.presionOcularOD ?? null, dto.presionOcularOI ?? null,
        dto.hallazgos ?? null, dto.diagnostico ?? null, dto.tratamiento ?? null,
-       dto.proximaCita ?? null, dto.notas ?? null],
+       dto.proximaCita ?? null, dto.notas ?? null,
+       dto.costoConsulta ?? 0, dto.avOdLejos ?? null, dto.avOiLejos ?? null,
+       dto.avOdCerca ?? null, dto.avOiCerca ?? null,
+       dto.refEsferaOD ?? null, dto.refCilindroOD ?? null, dto.refEjeOD ?? null, dto.refAdicionOD ?? null,
+       dto.refEsferaOI ?? null, dto.refCilindroOI ?? null, dto.refEjeOI ?? null, dto.refAdicionOI ?? null,
+       dto.observaciones ?? null],
     );
     // Si viene de una cita, marcarla como completada
     if (dto.citaId) {
@@ -471,6 +488,20 @@ export class OpticaService {
     if (dto.tratamiento !== undefined)     add('tratamiento', dto.tratamiento);
     if (dto.proximaCita !== undefined)     add('proximaCita', dto.proximaCita);
     if (dto.notas !== undefined)           add('notas', dto.notas);
+    if (dto.costoConsulta !== undefined)   add('costoConsulta', dto.costoConsulta);
+    if (dto.avOdLejos !== undefined)       add('avOdLejos', dto.avOdLejos);
+    if (dto.avOiLejos !== undefined)       add('avOiLejos', dto.avOiLejos);
+    if (dto.avOdCerca !== undefined)       add('avOdCerca', dto.avOdCerca);
+    if (dto.avOiCerca !== undefined)       add('avOiCerca', dto.avOiCerca);
+    if (dto.refEsferaOD !== undefined)     add('refEsferaOD', dto.refEsferaOD);
+    if (dto.refCilindroOD !== undefined)   add('refCilindroOD', dto.refCilindroOD);
+    if (dto.refEjeOD !== undefined)        add('refEjeOD', dto.refEjeOD);
+    if (dto.refAdicionOD !== undefined)    add('refAdicionOD', dto.refAdicionOD);
+    if (dto.refEsferaOI !== undefined)     add('refEsferaOI', dto.refEsferaOI);
+    if (dto.refCilindroOI !== undefined)   add('refCilindroOI', dto.refCilindroOI);
+    if (dto.refEjeOI !== undefined)        add('refEjeOI', dto.refEjeOI);
+    if (dto.refAdicionOI !== undefined)    add('refAdicionOI', dto.refAdicionOI);
+    if (dto.observaciones !== undefined)   add('observaciones', dto.observaciones);
     if (!sets.length) return this.consultaOr404(empresaId, id);
     params.push(id, empresaId);
     const [row] = await this.ds.query<any[]>(
@@ -614,16 +645,18 @@ export class OpticaService {
       `INSERT INTO op_ordenes_trabajo
          ("empresaId", numero, "pacienteId", "recetaId", fecha, estado,
           "tipoLente","materialLente","tratamientoLente",
-          "colorMontura","marcaMontura","modeloMontura",
+          "tipoMontura","colorMontura","marcaMontura","modeloMontura",
+          laboratorio,
           subtotal, itbis, total, abono, balance,
-          notas, "fechaEntrega", "createdBy")
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING *`,
+          notas, observaciones, "fechaEntrega", "createdBy")
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) RETURNING *`,
       [empresaId, numero, dto.pacienteId, dto.recetaId ?? null,
        dto.fecha, 'pendiente',
        dto.tipoLente ?? null, dto.materialLente ?? null, dto.tratamientoLente ?? null,
-       dto.colorMontura ?? null, dto.marcaMontura ?? null, dto.modeloMontura ?? null,
+       dto.tipoMontura ?? null, dto.colorMontura ?? null, dto.marcaMontura ?? null, dto.modeloMontura ?? null,
+       dto.laboratorio ?? null,
        subtotal, itbis, total, abono, balance,
-       dto.notas ?? null, dto.fechaEntrega ?? null, userId],
+       dto.notas ?? null, dto.observaciones ?? null, dto.fechaEntrega ?? null, userId],
     );
     return row;
   }
@@ -652,9 +685,11 @@ export class OpticaService {
     if (dto.tipoLente !== undefined)        add('tipoLente', dto.tipoLente);
     if (dto.materialLente !== undefined)    add('materialLente', dto.materialLente);
     if (dto.tratamientoLente !== undefined) add('tratamientoLente', dto.tratamientoLente);
+    if (dto.tipoMontura !== undefined)      add('tipoMontura', dto.tipoMontura);
     if (dto.colorMontura !== undefined)     add('colorMontura', dto.colorMontura);
     if (dto.marcaMontura !== undefined)     add('marcaMontura', dto.marcaMontura);
     if (dto.modeloMontura !== undefined)    add('modeloMontura', dto.modeloMontura);
+    if (dto.laboratorio !== undefined)      add('laboratorio', dto.laboratorio);
     if (dto.subtotal !== undefined)         add('subtotal', dto.subtotal);
     if (dto.itbis !== undefined)            add('itbis', dto.itbis);
     if (dto.total !== undefined)            add('total', dto.total);
@@ -662,6 +697,7 @@ export class OpticaService {
     if (dto.balance !== undefined)          add('balance', dto.balance);
     if (dto.facturaId !== undefined)        add('facturaId', dto.facturaId);
     if (dto.notas !== undefined)            add('notas', dto.notas);
+    if (dto.observaciones !== undefined)    add('observaciones', dto.observaciones);
     if (dto.fechaEntrega !== undefined)     add('fechaEntrega', dto.fechaEntrega);
     if (!sets.length) return this.otOr404(empresaId, id);
     params.push(id, empresaId);

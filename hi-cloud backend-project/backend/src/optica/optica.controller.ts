@@ -43,6 +43,7 @@ class UpdatePacienteDto {
   @IsOptional() @IsString() direccion?: string;
   @IsOptional() @IsString() ocupacion?: string;
   @IsOptional() @IsString() notas?: string;
+  @IsOptional() @IsBoolean() isActive?: boolean;
 }
 
 class CreateMedicoDto {
@@ -91,6 +92,20 @@ class CreateConsultaDto {
   @IsOptional() @IsString() tratamiento?: string;
   @IsOptional() @IsDateString() proximaCita?: string;
   @IsOptional() @IsString() notas?: string;
+  @IsOptional() @IsNumber() @Min(0) @Type(() => Number) costoConsulta?: number;
+  @IsOptional() @IsString() avOdLejos?: string;
+  @IsOptional() @IsString() avOiLejos?: string;
+  @IsOptional() @IsString() avOdCerca?: string;
+  @IsOptional() @IsString() avOiCerca?: string;
+  @IsOptional() @IsNumber() @Type(() => Number) refEsferaOD?: number;
+  @IsOptional() @IsNumber() @Type(() => Number) refCilindroOD?: number;
+  @IsOptional() @IsNumber() @Type(() => Number) refEjeOD?: number;
+  @IsOptional() @IsNumber() @Type(() => Number) refAdicionOD?: number;
+  @IsOptional() @IsNumber() @Type(() => Number) refEsferaOI?: number;
+  @IsOptional() @IsNumber() @Type(() => Number) refCilindroOI?: number;
+  @IsOptional() @IsNumber() @Type(() => Number) refEjeOI?: number;
+  @IsOptional() @IsNumber() @Type(() => Number) refAdicionOI?: number;
+  @IsOptional() @IsString() observaciones?: string;
 }
 class UpdateConsultaDto {
   @IsOptional() @IsInt() @Type(() => Number) medicoId?: number;
@@ -105,6 +120,20 @@ class UpdateConsultaDto {
   @IsOptional() @IsString() tratamiento?: string;
   @IsOptional() @IsDateString() proximaCita?: string;
   @IsOptional() @IsString() notas?: string;
+  @IsOptional() @IsNumber() @Min(0) @Type(() => Number) costoConsulta?: number;
+  @IsOptional() @IsString() avOdLejos?: string;
+  @IsOptional() @IsString() avOiLejos?: string;
+  @IsOptional() @IsString() avOdCerca?: string;
+  @IsOptional() @IsString() avOiCerca?: string;
+  @IsOptional() @IsNumber() @Type(() => Number) refEsferaOD?: number;
+  @IsOptional() @IsNumber() @Type(() => Number) refCilindroOD?: number;
+  @IsOptional() @IsNumber() @Type(() => Number) refEjeOD?: number;
+  @IsOptional() @IsNumber() @Type(() => Number) refAdicionOD?: number;
+  @IsOptional() @IsNumber() @Type(() => Number) refEsferaOI?: number;
+  @IsOptional() @IsNumber() @Type(() => Number) refCilindroOI?: number;
+  @IsOptional() @IsNumber() @Type(() => Number) refEjeOI?: number;
+  @IsOptional() @IsNumber() @Type(() => Number) refAdicionOI?: number;
+  @IsOptional() @IsString() observaciones?: string;
 }
 
 class CreateRecetaDto {
@@ -157,14 +186,17 @@ class CreateOrdenTrabajoDto {
   @IsOptional() @IsString() tipoLente?: string;
   @IsOptional() @IsString() materialLente?: string;
   @IsOptional() @IsString() tratamientoLente?: string;
+  @IsOptional() @IsString() tipoMontura?: string;
   @IsOptional() @IsString() colorMontura?: string;
   @IsOptional() @IsString() marcaMontura?: string;
   @IsOptional() @IsString() modeloMontura?: string;
+  @IsOptional() @IsString() laboratorio?: string;
   @IsOptional() @IsNumber() @Min(0) @Type(() => Number) subtotal?: number;
   @IsOptional() @IsNumber() @Min(0) @Type(() => Number) itbis?: number;
   @IsOptional() @IsNumber() @Min(0) @Type(() => Number) total?: number;
   @IsOptional() @IsNumber() @Min(0) @Type(() => Number) abono?: number;
   @IsOptional() @IsString() notas?: string;
+  @IsOptional() @IsString() observaciones?: string;
   @IsOptional() @IsDateString() fechaEntrega?: string;
 }
 class UpdateOrdenTrabajoDto {
@@ -172,9 +204,11 @@ class UpdateOrdenTrabajoDto {
   @IsOptional() @IsString() tipoLente?: string;
   @IsOptional() @IsString() materialLente?: string;
   @IsOptional() @IsString() tratamientoLente?: string;
+  @IsOptional() @IsString() tipoMontura?: string;
   @IsOptional() @IsString() colorMontura?: string;
   @IsOptional() @IsString() marcaMontura?: string;
   @IsOptional() @IsString() modeloMontura?: string;
+  @IsOptional() @IsString() laboratorio?: string;
   @IsOptional() @IsNumber() @Min(0) @Type(() => Number) subtotal?: number;
   @IsOptional() @IsNumber() @Min(0) @Type(() => Number) itbis?: number;
   @IsOptional() @IsNumber() @Min(0) @Type(() => Number) total?: number;
@@ -182,6 +216,7 @@ class UpdateOrdenTrabajoDto {
   @IsOptional() @IsNumber() @Min(0) @Type(() => Number) balance?: number;
   @IsOptional() @IsInt() @Type(() => Number) facturaId?: number;
   @IsOptional() @IsString() notas?: string;
+  @IsOptional() @IsString() observaciones?: string;
   @IsOptional() @IsDateString() fechaEntrega?: string;
 }
 

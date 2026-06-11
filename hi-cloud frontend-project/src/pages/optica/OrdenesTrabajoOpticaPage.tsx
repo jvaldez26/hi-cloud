@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Card, Button, Table, Typography, Row, Col, Modal, Form, Input,
   Select, message, Space, theme, InputNumber, Tag, Tabs, Badge,
-  Tooltip,
+  Tooltip, DatePicker,
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, TableOutlined, AppstoreOutlined,
@@ -131,6 +131,11 @@ function OrdenModal({ open, editing, form, pacienteOpts, saveMut, onClose }: any
               <InputNumber style={{ width: '100%' }} min={1} />
             </Form.Item>
           </Col>
+          <Col xs={24} sm={12}>
+            <Form.Item name="fecha" label="Fecha" rules={[{ required: true, message: 'Selecciona la fecha' }]}>
+              <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+            </Form.Item>
+          </Col>
           {editing && (
             <Col xs={24} sm={12}>
               <Form.Item name="estado" label="Estado">
@@ -189,7 +194,7 @@ function OrdenModal({ open, editing, form, pacienteOpts, saveMut, onClose }: any
             </Form.Item>
           </Col>
           <Col xs={24} sm={12}>
-            <Form.Item name="anticipo" label="Anticipo">
+            <Form.Item name="abono" label="Anticipo">
               <InputNumber style={{ width: '100%' }} min={0} precision={2} prefix="$" />
             </Form.Item>
           </Col>
@@ -425,6 +430,7 @@ export default function OrdenesTrabajoOpticaPage() {
       form.resetFields();
       form.setFieldsValue({
         pacienteId: Number(pacienteId),
+        fecha: dayjs(),
         ...(recetaId ? { recetaId: Number(recetaId) } : {}),
       });
       setOpen(true);
@@ -445,20 +451,28 @@ export default function OrdenesTrabajoOpticaPage() {
   const pacientes = (pacientesData?.data ?? pacientesData ?? []) as any[];
   const pacienteOpts = pacientes.map((p: any) => ({ value: p.id, label: `${p.nombre} ${p.apellido}` }));
 
-  const openCreate = () => { setEditing(null); form.resetFields(); setOpen(true); };
-  const openEdit   = (r: any) => { setEditing(r); form.setFieldsValue(r); setOpen(true); };
+  const openCreate = () => { setEditing(null); form.resetFields(); form.setFieldValue('fecha', dayjs()); setOpen(true); };
+  const openEdit   = (r: any) => { setEditing(r); form.setFieldsValue({ ...r, fecha: r.fecha ? dayjs(r.fecha) : dayjs() }); setOpen(true); };
   const closeModal = () => { setOpen(false); form.resetFields(); setEditing(null); };
 
   const saveMut = useMutation({
-    mutationFn: (v: any) =>
-      editing ? opticaApi.actualizarOrden(editing.id, v) : opticaApi.crearOrden(v),
+    mutationFn: (v: any) => {
+      const payload = {
+        ...v,
+        fecha: v.fecha ? dayjs(v.fecha).format('YYYY-MM-DD') : dayjs().format('YYYY-MM-DD'),
+      };
+      return editing ? opticaApi.actualizarOrden(editing.id, payload) : opticaApi.crearOrden(payload);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['optica-ordenes'] });
       qc.invalidateQueries({ queryKey: ['optica-dashboard'] });
       message.success(editing ? 'Orden actualizada' : 'Orden creada');
       closeModal();
     },
-    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
+    onError: (e: any) => {
+      const msg = e?.response?.data?.message;
+      message.error(Array.isArray(msg) ? msg.join(', ') : msg ?? 'Error al guardar orden');
+    },
   });
 
   const moveMut = useMutation({

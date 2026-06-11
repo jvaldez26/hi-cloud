@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Card, Button, Table, Typography, Row, Col, Modal, Form, Input,
-  Select, message, Space, theme, InputNumber, Divider, Tooltip,
+  Select, message, Space, theme, InputNumber, Divider, Tooltip, DatePicker,
 } from 'antd';
+import dayjs from 'dayjs';
 import { PlusOutlined, FilePdfOutlined, SearchOutlined, ToolOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { opticaApi } from '../../api/optica.api';
@@ -59,6 +60,7 @@ export default function RecetasOpticaPage() {
         pacienteId:  Number(pacienteId),
         vigenciaAnos: 1,
         tipo: 'lentes_oftalmicos',
+        fecha: dayjs(),
         ...(consultaId ? { consultaId: Number(consultaId) } : {}),
       });
       setOpen(true);
@@ -66,19 +68,27 @@ export default function RecetasOpticaPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const openCreate = () => { setEditing(null); form.resetFields(); form.setFieldsValue({ vigenciaAnos: 1, tipo: 'lentes_oftalmicos' }); setOpen(true); };
-  const openEdit   = (r: any) => { setEditing(r); form.setFieldsValue(r); setOpen(true); };
+  const openCreate = () => { setEditing(null); form.resetFields(); form.setFieldsValue({ vigenciaAnos: 1, tipo: 'lentes_oftalmicos', fecha: dayjs() }); setOpen(true); };
+  const openEdit   = (r: any) => { setEditing(r); form.setFieldsValue({ ...r, fecha: r.fecha ? dayjs(r.fecha) : dayjs() }); setOpen(true); };
   const closeModal = () => { setOpen(false); form.resetFields(); setEditing(null); };
 
   const saveMut = useMutation({
-    mutationFn: (v: any) =>
-      editing ? opticaApi.actualizarReceta(editing.id, v) : opticaApi.crearReceta(v),
+    mutationFn: (v: any) => {
+      const payload = {
+        ...v,
+        fecha: v.fecha ? dayjs(v.fecha).format('YYYY-MM-DD') : dayjs().format('YYYY-MM-DD'),
+      };
+      return editing ? opticaApi.actualizarReceta(editing.id, payload) : opticaApi.crearReceta(payload);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['optica-recetas'] });
       message.success(editing ? 'Receta actualizada' : 'Receta creada');
       closeModal();
     },
-    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
+    onError: (e: any) => {
+      const msg = e?.response?.data?.message;
+      message.error(Array.isArray(msg) ? msg.join(', ') : msg ?? 'Error al guardar receta');
+    },
   });
 
   const downloadPdf = async (id: number) => {
@@ -235,6 +245,12 @@ export default function RecetasOpticaPage() {
             <Col xs={24} sm={12}>
               <Form.Item name="vigenciaAnos" label="Vigencia (años)" rules={[{ required: true }]}>
                 <InputNumber style={{ width: '100%' }} min={1} max={5} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="fecha" label="Fecha" rules={[{ required: true, message: 'Selecciona la fecha' }]}
+                initialValue={dayjs()}>
+                <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
               </Form.Item>
             </Col>
           </Row>
