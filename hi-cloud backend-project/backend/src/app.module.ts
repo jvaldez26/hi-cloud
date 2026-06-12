@@ -122,6 +122,7 @@ import { PagosSuscripcionModule }        from './pagos-suscripcion/pagos-suscrip
 import { ModulosAddonModule }            from './modulos-addon/modulos-addon.module';
 import { OpticaModule }                 from './optica/optica.module';
 import { TallerModule }                 from './taller/taller.module';
+import { ClinicaModule }               from './clinica/clinica.module';
 
 @Module({
   imports: [
@@ -299,6 +300,7 @@ import { TallerModule }                 from './taller/taller.module';
     ModulosAddonModule,
     OpticaModule,
     TallerModule,
+    ClinicaModule,
   ],
   controllers: [AppController],
   providers: [
