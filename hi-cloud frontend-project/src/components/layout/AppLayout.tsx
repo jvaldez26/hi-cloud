@@ -1094,6 +1094,7 @@ const GRUPOS_MENU = [
   { key: 'sistema',    label: 'Sistema',                 obligatorio: false },
 ];
 const TODOS_GRUPOS_KEYS = GRUPOS_MENU.map(g => g.key);
+const ADDON_IDS = ['clinica', 'taller', 'optica', 'farmacia'];
 
 // ── AppLayout principal ───────────────────────────────────────────────────────
 export default function AppLayout() {
@@ -1231,17 +1232,43 @@ export default function AppLayout() {
 
   const cancelarMenu = () => { setMenuTemp(menuActivos); setModalMenu(false); };
 
+  const { data: _misModulosRes } = useQuery<{ modulos: string[] }>({
+    queryKey: ['mis-modulos-addon'],
+    queryFn: () => api.get('/modulos/mis-modulos').then((r: any) => r.data?.data ?? r.data),
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
+  });
+  const modulosActivos: string[] = _misModulosRes?.modulos ?? [];
+
   // Categorías filtradas: oculta /super-admin para usuarios normales,
-  // oculta rutas por rol, y aplica preferencias del menú del usuario
-  const categoriasFiltradas = MENU_CATEGORIES
-    .filter(cat => menuActivos.includes(cat.id) || !TODOS_GRUPOS_KEYS.includes(cat.id))
-    .map(cat => ({
-      ...cat,
-      items: cat.items.filter(item =>
-        (item.path !== '/super-admin' || esSuperAdmin) &&
-        rolPuedeVerRuta(item.path, userRole)
-      ),
-  })).filter(cat => cat.items.length > 0);
+  // oculta rutas por rol, aplica preferencias del menú del usuario, y
+  // sólo muestra módulos add-on activos en empresa_modulos para la empresa actual.
+  const categoriasFiltradas = (() => {
+    const base = MENU_CATEGORIES
+      .filter(cat => {
+        if (ADDON_IDS.includes(cat.id)) return modulosActivos.includes(cat.id);
+        return menuActivos.includes(cat.id) || !TODOS_GRUPOS_KEYS.includes(cat.id);
+      })
+      .map(cat => ({
+        ...cat,
+        items: cat.items.filter(item =>
+          (item.path !== '/super-admin' || esSuperAdmin) &&
+          rolPuedeVerRuta(item.path, userRole)
+        ),
+      }))
+      .filter(cat => cat.items.length > 0);
+
+    // Asignar sectionLabel 'MÓDULOS ADD-ON' solo al primer add-on visible
+    let firstAddonSeen = false;
+    return base.map(cat => {
+      if (!ADDON_IDS.includes(cat.id)) return cat;
+      if (!firstAddonSeen) {
+        firstAddonSeen = true;
+        return { ...cat, sectionLabel: 'MÓDULOS ADD-ON' };
+      }
+      return { ...cat, sectionLabel: undefined };
+    });
+  })();
 
   // Paleta activa del sidebar según el modo de tema
   const C = isDark ? sidebarDark : sidebarLight;

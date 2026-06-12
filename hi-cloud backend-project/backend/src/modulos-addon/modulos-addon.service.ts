@@ -80,6 +80,17 @@ export class ModulosAddonService {
     return this.checkModuloActivo(empresaId, codigo);
   }
 
+  async getMisModulosActivos(): Promise<string[]> {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const rows = await this.ds.query<any[]>(
+      `SELECT "moduloCodigo" FROM empresa_modulos
+       WHERE "empresaId" = $1 AND activo = true
+         AND ("fechaVencimiento" IS NULL OR "fechaVencimiento" > NOW())`,
+      [empresaId],
+    );
+    return rows.map((r: any) => r.moduloCodigo);
+  }
+
   async getActivacionesGlobal() {
     const [activaciones, modulos] = await Promise.all([
       this.ds.query<any[]>(`

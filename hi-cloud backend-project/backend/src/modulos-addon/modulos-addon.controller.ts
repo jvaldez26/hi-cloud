@@ -17,6 +17,13 @@ export class ModulosAddonController {
     return this.svc.listarModulos();
   }
 
+  @Get('mis-modulos')
+  @ApiOperation({ summary: 'Módulos add-on activos para la empresa actual' })
+  async misModulos() {
+    const modulos = await this.svc.getMisModulosActivos();
+    return { modulos };
+  }
+
   @Get('check/:codigo')
   @ApiOperation({ summary: 'Verificar si la empresa actual tiene activo un módulo add-on' })
   async check(@Param('codigo') codigo: string) {
