@@ -121,6 +121,7 @@ import { UomModule }                     from './uom/uom.module';
 import { PagosSuscripcionModule }        from './pagos-suscripcion/pagos-suscripcion.module';
 import { ModulosAddonModule }            from './modulos-addon/modulos-addon.module';
 import { OpticaModule }                 from './optica/optica.module';
+import { TallerModule }                 from './taller/taller.module';
 
 @Module({
   imports: [
@@ -297,6 +298,7 @@ import { OpticaModule }                 from './optica/optica.module';
     PagosSuscripcionModule,
     ModulosAddonModule,
     OpticaModule,
+    TallerModule,
   ],
   controllers: [AppController],
   providers: [
