@@ -513,6 +513,9 @@ export class RestauranteService {
       `UPDATE rs_comandas SET estado='en_cocina', "updatedAt"=NOW() WHERE id=$1 AND "empresaId"=$2`,
       [comandaId, empresaId],
     );
+    // Descontar inventario (fire-and-forget)
+    this._descontarInventario(comandaId, empresaId)
+      .catch(err => this.logger.error('Error descontando inventario', err));
     this.logger.log(`Comanda #${comandaId} enviada a cocina`);
     return { ok: true, itemsActualizados: resultado.rowCount ?? resultado };
   }
@@ -552,6 +555,10 @@ export class RestauranteService {
     // Actualizar turno activo (fire-and-forget)
     this._actualizarTurnoActivo(empresaId, total, dto.metodoPago, propina, comanda.descuento ?? 0)
       .catch(err => this.logger.error('Error actualizando turno', err));
+
+    // Asiento contable (fire-and-forget)
+    this._crearAsientoVentaRestaurante(empresaId, comandaId, comanda.numero, total, itbis, baseItbis, dto.metodoPago)
+      .catch(err => this.logger.error('Error asiento contable restaurante', err));
 
     return this.obtenerComanda(comandaId);
   }
@@ -768,42 +775,111 @@ export class RestauranteService {
 
   // ── REPORTES ──────────────────────────────────────────────────────────────
 
-  async reporteVentas(desde: string, hasta: string) {
+  async reporteVentas(desde: string, hasta: string, tipo = 'ventas') {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const [ventas] = await this.ds.query<any[]>(
-      `SELECT COUNT(*)::int AS comandas, COALESCE(SUM(total),0)::numeric AS totalVentas,
-              COALESCE(SUM(propina),0)::numeric AS totalPropinas,
-              COALESCE(SUM(descuento),0)::numeric AS totalDescuentos,
-              COALESCE(AVG(total),0)::numeric AS ticketPromedio
+
+    if (tipo === 'menu') return this._reporteMenu(empresaId, desde, hasta);
+    if (tipo === 'delivery') return this._reporteDelivery(empresaId, desde, hasta);
+    if (tipo === 'propinas') return this._reportePropinas(empresaId, desde, hasta);
+
+    // tipo === 'ventas' (default)
+    const [kpis] = await this.ds.query<any[]>(
+      `SELECT COUNT(*)::int AS "totalComandas",
+              COALESCE(SUM(total),0)::numeric AS "totalVentas",
+              COALESCE(SUM(itbis),0)::numeric AS "itbisTotal",
+              COALESCE(SUM(propina),0)::numeric AS "totalPropinas",
+              COALESCE(SUM(descuento),0)::numeric AS "totalDescuentos",
+              COALESCE(AVG(total),0)::numeric AS "ticketPromedio"
        FROM rs_comandas WHERE "empresaId"=$1 AND estado='cobrada'
              AND "fechaCierre"::date BETWEEN $2 AND $3`,
       [empresaId, desde, hasta],
     );
-    const porMetodoPago = await this.ds.query<any[]>(
-      `SELECT "metodoPago", COUNT(*)::int AS cantidad, COALESCE(SUM(total),0)::numeric AS total
+    const filas = await this.ds.query<any[]>(
+      `SELECT "fechaCierre"::date AS periodo,
+              COUNT(*)::int AS comandas,
+              COALESCE(SUM(total),0)::numeric AS ventas,
+              COALESCE(AVG(total),0)::numeric AS "ticketPromedio",
+              COALESCE(SUM(total) FILTER(WHERE "metodoPago"='efectivo'),0)::numeric AS efectivo,
+              COALESCE(SUM(total) FILTER(WHERE "metodoPago"='tarjeta'),0)::numeric AS tarjeta,
+              COALESCE(SUM(total) FILTER(WHERE "metodoPago"='transferencia'),0)::numeric AS transferencia
        FROM rs_comandas WHERE "empresaId"=$1 AND estado='cobrada'
              AND "fechaCierre"::date BETWEEN $2 AND $3
-       GROUP BY "metodoPago"`,
+       GROUP BY "fechaCierre"::date ORDER BY periodo`,
       [empresaId, desde, hasta],
     );
-    const platosMasVendidos = await this.ds.query<any[]>(
-      `SELECT mi.nombre, SUM(ci.cantidad)::int AS vendidos, COALESCE(SUM(ci.total),0)::numeric AS ingresos
-       FROM rs_comanda_items ci JOIN rs_menu_items mi ON mi.id=ci."menuItemId"
+    return { kpis, filas, columnas: [] };
+  }
+
+  private async _reporteMenu(empresaId: number, desde: string, hasta: string) {
+    const [kpis] = await this.ds.query<any[]>(
+      `SELECT COUNT(DISTINCT mi.id)::int AS "platosVendidos",
+              COALESCE(SUM(ci.cantidad),0)::int AS "itemsTotales",
+              COALESCE(SUM(ci.total),0)::numeric AS "totalIngresos"
+       FROM rs_comanda_items ci
+       JOIN rs_menu_items mi ON mi.id=ci."menuItemId"
+       JOIN rs_comandas c ON c.id=ci."comandaId"
+       WHERE c."empresaId"=$1 AND c.estado='cobrada' AND c."fechaCierre"::date BETWEEN $2 AND $3
+             AND ci.cancelado=false`,
+      [empresaId, desde, hasta],
+    );
+    const filas = await this.ds.query<any[]>(
+      `SELECT mi.nombre, cat.nombre AS "categoriaNombre",
+              SUM(ci.cantidad)::int AS vendidos,
+              COALESCE(SUM(ci.total),0)::numeric AS ingresos,
+              COALESCE(SUM(ci.cantidad * COALESCE(mi.costo,0)),0)::numeric AS "costoTotal",
+              CASE WHEN SUM(ci.total)>0
+                   THEN ROUND(((SUM(ci.total) - SUM(ci.cantidad * COALESCE(mi.costo,0)))/SUM(ci.total)*100)::numeric,1)
+                   ELSE NULL END AS margen
+       FROM rs_comanda_items ci
+       JOIN rs_menu_items mi ON mi.id=ci."menuItemId"
+       LEFT JOIN rs_categorias_menu cat ON cat.id=mi."categoriaId"
        JOIN rs_comandas c ON c.id=ci."comandaId"
        WHERE c."empresaId"=$1 AND c.estado='cobrada' AND c."fechaCierre"::date BETWEEN $2 AND $3
              AND ci.cancelado=false
-       GROUP BY mi.id, mi.nombre ORDER BY vendidos DESC LIMIT 20`,
+       GROUP BY mi.id, mi.nombre, cat.nombre ORDER BY vendidos DESC`,
       [empresaId, desde, hasta],
     );
-    const porMesero = await this.ds.query<any[]>(
-      `SELECT "meseroNombre", COUNT(*)::int AS comandas, COALESCE(SUM(total),0)::numeric AS ventas,
-              COALESCE(SUM(propina),0)::numeric AS propinas
-       FROM rs_comandas WHERE "empresaId"=$1 AND estado='cobrada'
-             AND "fechaCierre"::date BETWEEN $2 AND $3
-       GROUP BY "meseroNombre" ORDER BY ventas DESC`,
+    return { kpis, filas, columnas: [] };
+  }
+
+  private async _reporteDelivery(empresaId: number, desde: string, hasta: string) {
+    const [kpis] = await this.ds.query<any[]>(
+      `SELECT COUNT(*)::int AS "pedidosDelivery",
+              COUNT(*) FILTER(WHERE estado='entregado')::int AS entregados,
+              COUNT(*) FILTER(WHERE estado='cancelado')::int AS cancelados,
+              COALESCE(SUM(total) FILTER(WHERE estado='entregado'),0)::numeric AS "ventasDelivery"
+       FROM rs_pedidos_delivery WHERE "empresaId"=$1 AND "createdAt"::date BETWEEN $2 AND $3`,
       [empresaId, desde, hasta],
     );
-    return { resumen: ventas, porMetodoPago, platosMasVendidos, porMesero };
+    const filas = await this.ds.query<any[]>(
+      `SELECT id, numero, "clienteNombre", telefono, total, estado, "repartidorNombre",
+              "createdAt" AS fecha
+       FROM rs_pedidos_delivery
+       WHERE "empresaId"=$1 AND "createdAt"::date BETWEEN $2 AND $3
+       ORDER BY "createdAt" DESC LIMIT 200`,
+      [empresaId, desde, hasta],
+    );
+    return { kpis, filas, columnas: [] };
+  }
+
+  private async _reportePropinas(empresaId: number, desde: string, hasta: string) {
+    const [kpis] = await this.ds.query<any[]>(
+      `SELECT COALESCE(SUM(monto),0)::numeric AS "totalPropinas",
+              COALESCE(AVG(monto),0)::numeric AS "propinaPromedio",
+              COUNT(*)::int AS total
+       FROM rs_propinas WHERE "empresaId"=$1 AND "createdAt"::date BETWEEN $2 AND $3`,
+      [empresaId, desde, hasta],
+    );
+    const filas = await this.ds.query<any[]>(
+      `SELECT p."meseroNombre", COUNT(*)::int AS comandas,
+              COALESCE(SUM(p.monto),0)::numeric AS "totalPropinas",
+              COALESCE(AVG(p.monto),0)::numeric AS promedio
+       FROM rs_propinas p
+       WHERE p."empresaId"=$1 AND p."createdAt"::date BETWEEN $2 AND $3
+       GROUP BY p."meseroNombre" ORDER BY "totalPropinas" DESC`,
+      [empresaId, desde, hasta],
+    );
+    return { kpis, filas, columnas: [] };
   }
 
   // ── PRIVADO ───────────────────────────────────────────────────────────────
@@ -833,5 +909,75 @@ export class RestauranteService {
        WHERE id=$4`,
       [total, propina, descuento, turno.id],
     );
+  }
+
+  // ── ERP: Descontar inventario al enviar a cocina ─────────────────────────
+  private async _descontarInventario(comandaId: number, empresaId: number) {
+    const items = await this.ds.query<any[]>(
+      `SELECT ci.cantidad, mi."productoId"
+       FROM rs_comanda_items ci
+       JOIN rs_menu_items mi ON mi.id = ci."menuItemId"
+       WHERE ci."comandaId"=$1 AND ci."empresaId"=$2
+             AND mi."productoId" IS NOT NULL AND ci.cancelado=false`,
+      [comandaId, empresaId],
+    );
+    for (const item of items) {
+      await this.ds.query(
+        `UPDATE productos SET stock=GREATEST(0, stock-$1)
+         WHERE id=$2 AND "empresaId"=$3`,
+        [item.cantidad, item.productoId, empresaId],
+      );
+    }
+    if (items.length > 0) this.logger.log(`Inventario descontado: ${items.length} items comanda #${comandaId}`);
+  }
+
+  // ── ERP: Asiento contable al cobrar comanda ───────────────────────────────
+  private async _crearAsientoVentaRestaurante(
+    empresaId: number, comandaId: number, comandaNum: string,
+    total: number, itbis: number, neto: number, metodoPago: string,
+  ) {
+    // Obtener IDs de cuentas por código estándar DR
+    const codCaja    = metodoPago === 'efectivo' ? '1.1.1.02' : '1.1.1.03';
+    const codVentas  = '4.1.1.01';
+    const codItbis   = '2.1.2.01';
+
+    const cuentas = await this.ds.query<any[]>(
+      `SELECT id, codigo FROM cuentas_contables
+       WHERE "empresaId"=$1 AND codigo IN ($2,$3,$4) AND "isActive"=true`,
+      [empresaId, codCaja, codVentas, codItbis],
+    );
+    if (cuentas.length < 3) { this.logger.warn(`Asiento restaurante omitido — cuentas incompletas`); return; }
+
+    const byCode = (c: string) => cuentas.find((cc: any) => cc.codigo === c)?.id;
+    const cajaId   = byCode(codCaja);
+    const ventasId = byCode(codVentas);
+    const itbisId  = byCode(codItbis);
+    if (!cajaId || !ventasId || !itbisId) { this.logger.warn(`Asiento restaurante omitido — cuentas no encontradas`); return; }
+
+    const numero = await generarNumeroSecuencial(this.ds, 'asientos_contables', 'numero', '^ASI-[0-9]+$', 'ASI-', 5, empresaId);
+
+    const [asiento] = await this.ds.query<any[]>(
+      `INSERT INTO asientos_contables
+         ("empresaId", numero, fecha, descripcion, "tipoOrigen", "referenciaId", "referenciaFolio",
+          estado, "totalDebe", "totalHaber", "userId", "createdAt", "updatedAt")
+       VALUES ($1,$2,NOW(),$3,'manual',$4,$5,'contabilizado',$6,$6,1,NOW(),NOW()) RETURNING id`,
+      [empresaId, numero, `Venta restaurante ${comandaNum}`, comandaId, comandaNum, total],
+    );
+    if (!asiento) return;
+
+    await this.ds.query(
+      `INSERT INTO asiento_lineas ("empresaId","asientoId","cuentaContableId",descripcion,debe,haber,"createdAt","updatedAt")
+       VALUES
+         ($1,$2,$3,$4,$5,0,NOW(),NOW()),
+         ($1,$2,$6,$7,0,$8,NOW(),NOW()),
+         ($1,$2,$9,$10,0,$11,NOW(),NOW())`,
+      [
+        empresaId, asiento.id,
+        cajaId,   `Cobro comanda ${comandaNum}`, total,
+        ventasId, `Venta restaurante ${comandaNum}`, neto,
+        itbisId,  `ITBIS comanda ${comandaNum}`, itbis,
+      ],
+    );
+    this.logger.log(`Asiento contable ${numero} creado para comanda ${comandaNum}`);
   }
 }

@@ -306,8 +306,12 @@ export class RestauranteController {
 
   // ── REPORTES ──────────────────────────────────────────────────────────────
   @Get('reportes/ventas')
-  @ApiOperation({ summary: 'Reporte de ventas por período' })
-  reporteVentas(@Query('desde') desde: string, @Query('hasta') hasta: string) {
-    return this.svc.reporteVentas(desde, hasta);
+  @ApiOperation({ summary: 'Reportes del restaurante por período y tipo' })
+  reporteVentas(
+    @Query('desde') desde: string,
+    @Query('hasta') hasta: string,
+    @Query('tipo') tipo: string,
+  ) {
+    return this.svc.reporteVentas(desde, hasta, tipo ?? 'ventas');
   }
 }
