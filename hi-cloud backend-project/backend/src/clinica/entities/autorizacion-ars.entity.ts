@@ -4,18 +4,18 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeor
 export class AutorizacionArs {
   @PrimaryGeneratedColumn() id!: number;
   @Column() empresaId!: number;
-  @Column({ length: 20, nullable: true }) numero!: string | null;
+  @Column({ length: 20, nullable: true }) numero?: string;
   @Column() pacienteId!: number;
   @Column({ type: 'int', nullable: true }) medicoId!: number | null;
-  @Column({ length: 100 }) arsNombre!: string;
-  @Column({ length: 50, nullable: true }) arsNumeroAfiliado!: string | null;
-  @Column({ length: 100, nullable: true }) tipoServicio!: string | null;
+  @Column({ length: 100 }) arsNombre?: string;
+  @Column({ length: 50, nullable: true }) arsNumeroAfiliado?: string;
+  @Column({ length: 100, nullable: true }) tipoServicio?: string;
   @Column({ type: 'text', nullable: true }) descripcion!: string | null;
-  @Column({ length: 100, nullable: true }) codigoAutorizacion!: string | null;
+  @Column({ length: 100, nullable: true }) codigoAutorizacion?: string;
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true }) montoAutorizado!: number | null;
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true }) montoCubierto!: number | null;
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true }) montoPaciente!: number | null;
-  @Column({ length: 30, default: 'pendiente' }) estado!: string;
+  @Column({ length: 30, default: 'pendiente' }) estado?: string;
   @Column({ type: 'date', nullable: true }) fechaSolicitud!: string | null;
   @Column({ type: 'date', nullable: true }) fechaRespuesta!: string | null;
   @Column({ type: 'text', nullable: true }) observaciones!: string | null;

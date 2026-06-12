@@ -17,5 +17,5 @@ export class SignosVitales {
   @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true }) talla!: number | null;
   @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true }) imc!: number | null;
   @Column({ type: 'decimal', precision: 6, scale: 2, nullable: true }) glucosa!: number | null;
-  @Column({ length: 100, nullable: true }) registradoPor!: string | null;
+  @Column({ length: 100, nullable: true }) registradoPor?: string;
 }

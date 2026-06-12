@@ -9,7 +9,7 @@ export class SalaEspera {
   @Column({ type: 'timestamp', default: () => 'NOW()' }) horaLlegada!: Date;
   @Column({ type: 'timestamp', nullable: true }) horaLlamada!: Date | null;
   @Column({ type: 'timestamp', nullable: true }) horaAtencion!: Date | null;
-  @Column({ length: 20, default: 'esperando' }) estado!: string;
+  @Column({ length: 20, default: 'esperando' }) estado?: string;
   @Column({ type: 'int', nullable: true }) turno!: number | null;
   @Column({ type: 'text', nullable: true }) notas!: string | null;
 }

@@ -4,7 +4,7 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeor
 export class Receta {
   @PrimaryGeneratedColumn() id!: number;
   @Column() empresaId!: number;
-  @Column({ length: 20, nullable: true }) numero!: string | null;
+  @Column({ length: 20, nullable: true }) numero?: string;
   @Column() pacienteId!: number;
   @Column() medicoId!: number;
   @Column({ type: 'int', nullable: true }) consultaId!: number | null;

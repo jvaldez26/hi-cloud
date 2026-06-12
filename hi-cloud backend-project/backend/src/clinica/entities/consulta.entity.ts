@@ -4,12 +4,12 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeor
 export class Consulta {
   @PrimaryGeneratedColumn() id!: number;
   @Column() empresaId!: number;
-  @Column({ length: 20, nullable: true }) numero!: string | null;
+  @Column({ length: 20, nullable: true }) numero?: string;
   @Column() pacienteId!: number;
   @Column() medicoId!: number;
   @Column({ type: 'int', nullable: true }) citaId!: number | null;
   @Column({ type: 'timestamp', default: () => 'NOW()' }) fecha!: Date;
-  @Column({ length: 50, nullable: true }) tipoCita!: string | null;
+  @Column({ length: 50, nullable: true }) tipoCita?: string;
   @Column({ type: 'text' }) motivoConsulta!: string;
   @Column({ type: 'text', nullable: true }) enfermedadActual!: string | null;
   @Column({ type: 'decimal', precision: 4, scale: 1, nullable: true }) temperatura!: number | null;
@@ -23,7 +23,7 @@ export class Consulta {
   @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true }) imc!: number | null;
   @Column({ type: 'text', nullable: true }) examenFisico!: string | null;
   @Column({ type: 'text', nullable: true }) diagnosticoPrincipal!: string | null;
-  @Column({ length: 500, nullable: true }) diagnosticosCIE10!: string | null;
+  @Column({ length: 500, nullable: true }) diagnosticosCIE10?: string;
   @Column({ type: 'text', nullable: true }) diagnosticosDescripcion!: string | null;
   @Column({ type: 'text', nullable: true }) planTratamiento!: string | null;
   @Column({ type: 'text', nullable: true }) indicaciones!: string | null;

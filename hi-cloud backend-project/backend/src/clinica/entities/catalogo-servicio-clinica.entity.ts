@@ -4,10 +4,10 @@ import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
 export class CatalogoServicioClinica {
   @PrimaryGeneratedColumn() id!: number;
   @Column() empresaId!: number;
-  @Column({ length: 50, nullable: true }) codigo!: string | null;
-  @Column({ length: 200 }) nombre!: string;
+  @Column({ length: 50, nullable: true }) codigo?: string;
+  @Column({ length: 200 }) nombre?: string;
   @Column({ type: 'text', nullable: true }) descripcion!: string | null;
-  @Column({ length: 100, nullable: true }) especialidad!: string | null;
+  @Column({ length: 100, nullable: true }) especialidad?: string;
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true }) precio!: number | null;
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true }) precioArs!: number | null;
   @Column({ default: 30 }) duracionMinutos!: number;
