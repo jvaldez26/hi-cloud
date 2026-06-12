@@ -37,7 +37,7 @@ export default function LotesPage() {
   });
 
   const crear = useMutation({
-    mutationFn: (b: any) => farmaciaApi.crearLote({ ...b, fechaVencimiento: b.fechaVencimiento?.format('YYYY-MM-DD'), fechaFabricacion: b.fechaFabricacion?.format('YYYY-MM-DD') }),
+    mutationFn: (b: any) => farmaciaApi.crearLote({ ...b, fechaVencimiento: b.fechaVencimiento?.format('YYYY-MM-DD'), fechaFabricacion: b.fechaFabricacion?.format('YYYY-MM-DD'), fechaCompra: b.fechaCompra?.format('YYYY-MM-DD') }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['farmacia-lotes'] });
       qc.invalidateQueries({ queryKey: ['farmacia-medicamentos'] });
@@ -157,6 +157,12 @@ export default function LotesPage() {
           </Form.Item>
           <Form.Item name="cantidadInicial" label="Cantidad" rules={[{ required: true }]}>
             <InputNumber style={{ width: '100%' }} min={1} />
+          </Form.Item>
+          <Form.Item name="proveedorId" label="Proveedor (ID)">
+            <InputNumber style={{ width: '100%' }} min={1} placeholder="ID del proveedor" />
+          </Form.Item>
+          <Form.Item name="fechaCompra" label="Fecha de compra">
+            <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
           </Form.Item>
           <Form.Item name="precioCompra" label="Precio Compra">
             <InputNumber style={{ width: '100%' }} min={0} prefix="RD$" precision={2} />

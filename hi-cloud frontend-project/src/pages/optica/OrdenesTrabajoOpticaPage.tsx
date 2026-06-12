@@ -337,6 +337,11 @@ function OrdenModal({ open, editing, form, pacienteOpts, saveMut, onClose }: any
               <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
             </Form.Item>
           </Col>
+          <Col xs={24} sm={12}>
+            <Form.Item name="fechaEntrega" label="Fecha entrega estimada">
+              <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+            </Form.Item>
+          </Col>
           {editing && (
             <Col xs={24} sm={12}>
               <Form.Item name="estado" label="Estado">
@@ -351,6 +356,11 @@ function OrdenModal({ open, editing, form, pacienteOpts, saveMut, onClose }: any
           </Col>
           <Col xs={24} sm={12}>
             <Form.Item name="marcaMontura" label="Marca">
+              <Input />
+            </Form.Item>
+          </Col>
+          <Col xs={24} sm={12}>
+            <Form.Item name="modeloMontura" label="Modelo">
               <Input />
             </Form.Item>
           </Col>
@@ -401,6 +411,11 @@ function OrdenModal({ open, editing, form, pacienteOpts, saveMut, onClose }: any
           </Col>
           <Col xs={24}>
             <Form.Item name="observaciones" label="Observaciones">
+              <Input.TextArea rows={2} />
+            </Form.Item>
+          </Col>
+          <Col xs={24}>
+            <Form.Item name="notas" label="Notas">
               <Input.TextArea rows={2} />
             </Form.Item>
           </Col>
@@ -677,7 +692,7 @@ export default function OrdenesTrabajoOpticaPage() {
   const pacienteOpts = pacientes.map((p: any) => ({ value: p.id, label: `${p.nombre} ${p.apellido}` }));
 
   const openCreate = () => { setEditing(null); form.resetFields(); form.setFieldValue('fecha', dayjs()); setOpen(true); };
-  const openEdit   = (r: any) => { setEditing(r); form.setFieldsValue({ ...r, fecha: r.fecha ? dayjs(r.fecha) : dayjs() }); setOpen(true); };
+  const openEdit   = (r: any) => { setEditing(r); form.setFieldsValue({ ...r, fecha: r.fecha ? dayjs(r.fecha) : dayjs(), fechaEntrega: r.fechaEntrega ? dayjs(r.fechaEntrega) : undefined }); setOpen(true); };
   const closeModal = () => { setOpen(false); form.resetFields(); setEditing(null); };
 
   const saveMut = useMutation({
@@ -685,6 +700,7 @@ export default function OrdenesTrabajoOpticaPage() {
       const payload = {
         ...v,
         fecha: v.fecha ? dayjs(v.fecha).format('YYYY-MM-DD') : dayjs().format('YYYY-MM-DD'),
+        fechaEntrega: v.fechaEntrega ? dayjs(v.fechaEntrega).format('YYYY-MM-DD') : undefined,
       };
       return editing ? opticaApi.actualizarOrden(editing.id, payload) : opticaApi.crearOrden(payload);
     },

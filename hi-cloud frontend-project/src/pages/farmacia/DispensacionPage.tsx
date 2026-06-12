@@ -1,12 +1,13 @@
 import { useState, useRef } from 'react';
 import {
   Row, Col, Input, Button, Table, Card, Form, Select, InputNumber,
-  Typography, Divider, Tag, Space, Modal, message,
+  Typography, Divider, Tag, Space, Modal, message, DatePicker,
 } from 'antd';
 import {
   ShoppingCartOutlined, DeleteOutlined, PrinterOutlined,
   SearchOutlined, BarcodeOutlined, MedicineBoxOutlined,
 } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { farmaciaApi } from '../../api/farmacia.api';
 
@@ -45,6 +46,8 @@ export default function DispensacionPage() {
   const [descuentoGlobal, setDescuentoGlobal] = useState(0);
   const [montoCubierto, setMontoCubierto] = useState(0);
   const [farmaceutico, setFarmaceutico] = useState('');
+  const [recetaFecha, setRecetaFecha] = useState<any>(null);
+  const [notas, setNotas] = useState('');
   const [modalMed, setModalMed] = useState(false);
   const [selectedMed, setSelectedMed] = useState<any>(null);
   const [cantForm] = Form.useForm();
@@ -61,7 +64,7 @@ export default function DispensacionPage() {
       qc.invalidateQueries({ queryKey: ['farmacia-dashboard'] });
       setCart([]);
       setClienteNombre(''); setClienteCedula(''); setRecetaMedico(''); setRecetaNumero('');
-      setArsNombre(''); setArsAfiliado(''); setAutorizacionArs(''); setMontoCubierto(0); setDescuentoGlobal(0);
+      setArsNombre(''); setArsAfiliado(''); setAutorizacionArs(''); setMontoCubierto(0); setDescuentoGlobal(0); setRecetaFecha(null); setNotas('');
       // Abrir PDF en nueva pestaña
       const blob = await farmaciaApi.pdfDispensacion(disp.id).then(r => r.data);
       const url = URL.createObjectURL(blob);
@@ -126,6 +129,7 @@ export default function DispensacionPage() {
       clienteCedula: clienteCedula || null,
       recetaMedico: recetaMedico || null,
       recetaNumero: recetaNumero || null,
+      recetaFecha: recetaFecha ? dayjs(recetaFecha).format('YYYY-MM-DD') : null,
       arsNombre: arsNombre || null,
       arsNumeroAfiliado: arsAfiliado || null,
       autorizacionArs: autorizacionArs || null,
@@ -133,6 +137,7 @@ export default function DispensacionPage() {
       descuento: descuentoGlobal,
       montoCubierto,
       metodoPago,
+      notas: notas || null,
       items: cart.map(i => ({
         medicamentoId: i.medicamentoId,
         cantidad: i.cantidad,
@@ -217,10 +222,12 @@ export default function DispensacionPage() {
               <Col span={12}><Input placeholder="Cédula" value={clienteCedula} onChange={e => setClienteCedula(e.target.value)} style={{ marginBottom: 8 }} /></Col>
               <Col span={12}><Input placeholder="Médico de receta" value={recetaMedico} onChange={e => setRecetaMedico(e.target.value)} style={{ marginBottom: 8 }} /></Col>
               <Col span={12}><Input placeholder="N° Receta" value={recetaNumero} onChange={e => setRecetaNumero(e.target.value)} style={{ marginBottom: 8 }} /></Col>
+              <Col span={12}><DatePicker placeholder="Fecha receta" value={recetaFecha} onChange={setRecetaFecha} format="DD/MM/YYYY" style={{ width: '100%', marginBottom: 8 }} /></Col>
               <Col span={12}><Input placeholder="ARS / Seguro" value={arsNombre} onChange={e => setArsNombre(e.target.value)} style={{ marginBottom: 8 }} /></Col>
               <Col span={12}><Input placeholder="N° Afiliado ARS" value={arsAfiliado} onChange={e => setArsAfiliado(e.target.value)} style={{ marginBottom: 8 }} /></Col>
               <Col span={12}><Input placeholder="Autorización ARS" value={autorizacionArs} onChange={e => setAutorizacionArs(e.target.value)} style={{ marginBottom: 8 }} /></Col>
               <Col span={12}><Input placeholder="Farmacéutico" value={farmaceutico} onChange={e => setFarmaceutico(e.target.value)} style={{ marginBottom: 8 }} /></Col>
+              <Col span={24}><Input.TextArea placeholder="Notas adicionales" value={notas} onChange={e => setNotas(e.target.value)} rows={2} style={{ marginBottom: 8 }} /></Col>
             </Row>
           </Card>
         </Col>

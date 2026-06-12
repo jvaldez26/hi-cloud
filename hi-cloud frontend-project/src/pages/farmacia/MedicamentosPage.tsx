@@ -168,6 +168,9 @@ export default function MedicamentosPage() {
             <Form.Item name="precioArs" label="Precio ARS" style={{ width: 140 }}>
               <InputNumber style={{ width: '100%' }} min={0} prefix="RD$" precision={2} />
             </Form.Item>
+            <Form.Item name="margenGanancia" label="Margen %" style={{ width: 130 }}>
+              <InputNumber style={{ width: '100%' }} min={0} max={100} precision={2} />
+            </Form.Item>
             <Form.Item name="stockMinimo" label="Stock Mínimo" style={{ width: 130 }}>
               <InputNumber style={{ width: '100%' }} min={0} />
             </Form.Item>
@@ -175,6 +178,11 @@ export default function MedicamentosPage() {
               <InputNumber style={{ width: '100%' }} min={0} />
             </Form.Item>
           </Space>
+
+          <Divider orientation="left" plain>Enlace ERP (opcional)</Divider>
+          <Form.Item name="productoId" label="Producto ERP (ID)">
+            <InputNumber style={{ width: 160 }} min={1} placeholder="ID del producto en ERP" />
+          </Form.Item>
 
           <Divider orientation="left" plain>Controles</Divider>
           <Space size={24} wrap>

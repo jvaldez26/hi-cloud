@@ -66,7 +66,7 @@ export default function ConsultasOpticaPage() {
   }, []);
 
   const openCreate = () => { setEditing(null); form.resetFields(); form.setFieldValue('fecha', dayjs()); setOpen(true); };
-  const openEdit   = (r: any) => { setEditing(r); form.setFieldsValue({ ...r, fecha: r.fecha ? dayjs(r.fecha) : dayjs() }); setOpen(true); };
+  const openEdit   = (r: any) => { setEditing(r); form.setFieldsValue({ ...r, fecha: r.fecha ? dayjs(r.fecha) : dayjs(), proximaCita: r.proximaCita ? dayjs(r.proximaCita) : undefined }); setOpen(true); };
   const closeModal = () => { setOpen(false); form.resetFields(); setEditing(null); };
 
   const saveMut = useMutation({
@@ -74,6 +74,7 @@ export default function ConsultasOpticaPage() {
       const payload = {
         ...v,
         fecha: v.fecha ? dayjs(v.fecha).format('YYYY-MM-DD') : dayjs().format('YYYY-MM-DD'),
+        proximaCita: v.proximaCita ? dayjs(v.proximaCita).format('YYYY-MM-DD') : undefined,
       };
       return editing ? opticaApi.actualizarConsulta(editing.id, payload) : opticaApi.crearConsulta(payload);
     },
@@ -158,7 +159,7 @@ export default function ConsultasOpticaPage() {
         open={open}
         onCancel={closeModal}
         footer={null}
-        width={680}
+        width={860}
       >
         <Form form={form} layout="vertical" onFinish={(v) => saveMut.mutate(v)}>
           <Row gutter={12}>
@@ -183,6 +184,11 @@ export default function ConsultasOpticaPage() {
                 <InputNumber style={{ width: '100%' }} min={1} />
               </Form.Item>
             </Col>
+            <Col xs={24}>
+              <Form.Item name="motivoConsulta" label="Motivo de consulta">
+                <Input.TextArea rows={2} />
+              </Form.Item>
+            </Col>
             <Col xs={24} sm={12}>
               <Form.Item name="costoConsulta" label="Costo consulta">
                 <InputNumber style={{ width: '100%' }} min={0} precision={2} prefix="$" />
@@ -195,10 +201,11 @@ export default function ConsultasOpticaPage() {
           </Divider>
           <Row gutter={12}>
             {[
+              ['agudezaVisualOD', 'AV OD'], ['agudezaVisualOI', 'AV OI'],
               ['avOdLejos', 'AV OD Lejos'], ['avOiLejos', 'AV OI Lejos'],
               ['avOdCerca', 'AV OD Cerca'], ['avOiCerca', 'AV OI Cerca'],
             ].map(([name, label]) => (
-              <Col xs={12} sm={6} key={name}>
+              <Col xs={12} sm={4} key={name}>
                 <Form.Item name={name} label={label}>
                   <Input placeholder="20/20" />
                 </Form.Item>
@@ -238,6 +245,22 @@ export default function ConsultasOpticaPage() {
             ))}
           </Row>
 
+          <Divider orientation="left" orientationMargin={0} style={{ fontSize: 13 }}>
+            Presión intraocular
+          </Divider>
+          <Row gutter={12}>
+            <Col xs={12} sm={6}>
+              <Form.Item name="presionOcularOD" label="PIO OD (mmHg)">
+                <InputNumber style={{ width: '100%' }} min={0} precision={1} />
+              </Form.Item>
+            </Col>
+            <Col xs={12} sm={6}>
+              <Form.Item name="presionOcularOI" label="PIO OI (mmHg)">
+                <InputNumber style={{ width: '100%' }} min={0} precision={1} />
+              </Form.Item>
+            </Col>
+          </Row>
+
           <Row gutter={12}>
             <Col xs={24}>
               <Form.Item name="diagnostico" label="Diagnóstico">
@@ -246,6 +269,21 @@ export default function ConsultasOpticaPage() {
             </Col>
             <Col xs={24}>
               <Form.Item name="tratamiento" label="Tratamiento">
+                <Input.TextArea rows={2} />
+              </Form.Item>
+            </Col>
+            <Col xs={24}>
+              <Form.Item name="hallazgos" label="Hallazgos">
+                <Input.TextArea rows={2} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="proximaCita" label="Próxima cita">
+                <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+              </Form.Item>
+            </Col>
+            <Col xs={24}>
+              <Form.Item name="notas" label="Notas">
                 <Input.TextArea rows={2} />
               </Form.Item>
             </Col>

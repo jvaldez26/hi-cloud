@@ -177,8 +177,11 @@ export default function RecepcionesPage() {
           <Form.Item name="fechaVencimiento" rules={[{ required: true }]}>
             <DatePicker placeholder="Vence" format="DD/MM/YYYY" style={{ width: 120 }} />
           </Form.Item>
+          <Form.Item name="cantidadOrdenada">
+            <InputNumber placeholder="Cant. ord." min={1} style={{ width: 100 }} />
+          </Form.Item>
           <Form.Item name="cantidadRecibida" rules={[{ required: true }]}>
-            <InputNumber placeholder="Cant." min={1} style={{ width: 80 }} />
+            <InputNumber placeholder="Cant. rec." min={1} style={{ width: 100 }} />
           </Form.Item>
           <Form.Item name="precioCompra">
             <InputNumber placeholder="P.Compra" min={0} precision={2} style={{ width: 100 }} />

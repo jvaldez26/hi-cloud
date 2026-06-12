@@ -272,6 +272,16 @@ export default function ReclamacionesArsPage() {
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
+              <Form.Item name="consultaId" label="Consulta (ID)">
+                <InputNumber style={{ width: '100%' }} min={1} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="recetaId" label="Receta (ID)">
+                <InputNumber style={{ width: '100%' }} min={1} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
               <Form.Item name="arsNombre" label="Nombre ARS" rules={[{ required: true }]}>
                 <Input placeholder="ARS Salud Segura, ARS Universal..." />
               </Form.Item>
