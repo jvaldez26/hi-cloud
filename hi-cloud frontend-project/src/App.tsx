@@ -182,6 +182,15 @@ const FarmaciaNarcoticoPage       = lazy(() => import('./pages/farmacia/Narcotic
 const FarmaciaDevolucionesPage    = lazy(() => import('./pages/farmacia/DevolucionesPage'));
 const FarmaciaArsPage             = lazy(() => import('./pages/farmacia/ArsPage'));
 const FarmaciaReportesPage        = lazy(() => import('./pages/farmacia/ReportesPage'));
+const RestauranteDashboard        = lazy(() => import('./pages/restaurante/RestauranteDashboard'));
+const MapaMesasPage               = lazy(() => import('./pages/restaurante/MapaMesasPage'));
+const ComandaPage                 = lazy(() => import('./pages/restaurante/ComandaPage'));
+const KDSPage                     = lazy(() => import('./pages/restaurante/KDSPage'));
+const DeliveryPage                = lazy(() => import('./pages/restaurante/DeliveryPage'));
+const ReservacionesPage           = lazy(() => import('./pages/restaurante/ReservacionesPage'));
+const MenuRsPage                  = lazy(() => import('./pages/restaurante/MenuPage'));
+const TurnosPage                  = lazy(() => import('./pages/restaurante/TurnosPage'));
+const ReportesRsPage              = lazy(() => import('./pages/restaurante/ReportesPage'));
 dayjs.locale('es');
 
 export const qc = new QueryClient({
@@ -695,6 +704,16 @@ export default function App() {
                       <Route path="ars"                 element={<FarmaciaArsPage />} />
                       <Route path="reportes"            element={<FarmaciaReportesPage />} />
                     </Route>
+
+                    <Route path="/restaurante"              element={<RestauranteDashboard />} />
+                    <Route path="/restaurante/mesas"        element={<MapaMesasPage />} />
+                    <Route path="/restaurante/comanda/:id"  element={<ComandaPage />} />
+                    <Route path="/restaurante/kds"          element={<KDSPage />} />
+                    <Route path="/restaurante/delivery"     element={<DeliveryPage />} />
+                    <Route path="/restaurante/reservaciones" element={<ReservacionesPage />} />
+                    <Route path="/restaurante/menu"         element={<MenuRsPage />} />
+                    <Route path="/restaurante/turnos"       element={<TurnosPage />} />
+                    <Route path="/restaurante/reportes"     element={<ReportesRsPage />} />
                   </Route>
 
                   <Route path="*" element={<Navigate to="/" replace />} />

@@ -124,6 +124,7 @@ import { OpticaModule }                 from './optica/optica.module';
 import { TallerModule }                 from './taller/taller.module';
 import { ClinicaModule }               from './clinica/clinica.module';
 import { FarmaciaModule }              from './farmacia/farmacia.module';
+import { RestauranteModule }           from './restaurante/restaurante.module';
 
 @Module({
   imports: [
@@ -303,6 +304,7 @@ import { FarmaciaModule }              from './farmacia/farmacia.module';
     TallerModule,
     ClinicaModule,
     FarmaciaModule,
+    RestauranteModule,
   ],
   controllers: [AppController],
   providers: [
