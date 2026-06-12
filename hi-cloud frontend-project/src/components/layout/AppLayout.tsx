@@ -1269,6 +1269,8 @@ export default function AppLayout() {
       return { ...cat, sectionLabel: undefined };
     });
   })();
+  const addonCats   = categoriasFiltradas.filter(cat => ADDON_IDS.includes(cat.id));
+  const regularCats = categoriasFiltradas.filter(cat => !ADDON_IDS.includes(cat.id));
 
   // Paleta activa del sidebar según el modo de tema
   const C = isDark ? sidebarDark : sidebarLight;
@@ -1851,6 +1853,48 @@ export default function AppLayout() {
           ))}
         </div>
 
+        {/* Módulos add-on activos — justo después de PRINCIPAL */}
+        {addonCats.map(cat => (
+          <div key={cat.id} style={{ marginBottom: 2 }}>
+            {cat.sectionLabel && !collapsed && (
+              <div style={{
+                padding: '14px 18px 4px',
+                fontSize: 9, fontWeight: 600,
+                textTransform: 'uppercase',
+                letterSpacing: '0.8px',
+                color: C.textCategory,
+              }}>
+                {cat.sectionLabel}
+              </div>
+            )}
+            {cat.sectionLabel && collapsed && (
+              <div style={{ height: 1, background: C.separator, margin: '8px 10px' }} />
+            )}
+            {collapsed ? (
+              <CategoryBtnCollapsed
+                category={cat}
+                activePath={activePath}
+                isActive={activePanel?.id === cat.id}
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  togglePanel(cat.id, rect.top);
+                }}
+              />
+            ) : (
+              <CategoryAccordion
+                category={cat}
+                activePath={activePath}
+                isOpen={openCategories === cat.id}
+                onToggle={() => toggleCategory(cat.id)}
+                onNavigate={handleNavigate}
+                planActual={planActual}
+                onLocked={handleLocked}
+                onHoverItem={prefetchRoute}
+              />
+            )}
+          </div>
+        ))}
+
         {/* Separador */}
         <div style={{
           height:     1,
@@ -1861,7 +1905,7 @@ export default function AppLayout() {
         {/* Categorías:
             – Expandido → accordion inline con separadores de sección
             – Colapsado → ícono que abre panel flyout              */}
-        {categoriasFiltradas.map(cat => (
+        {regularCats.map(cat => (
           <div key={cat.id} style={{ marginBottom: 2 }}>
             {/* Label de sección (OPERACIONES / GESTIÓN) */}
             {cat.sectionLabel && !collapsed && (
