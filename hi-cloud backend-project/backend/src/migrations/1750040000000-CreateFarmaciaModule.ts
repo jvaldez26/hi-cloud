@@ -6,10 +6,9 @@ export class CreateFarmaciaModule1750040000000 implements MigrationInterface {
   async up(qr: QueryRunner): Promise<void> {
     // ── Registrar módulo ────────────────────────────────────────────────────
     await qr.query(`
-      INSERT INTO modulos_addon (codigo, nombre, descripcion, precio_mensual, icono)
+      INSERT INTO modulos_addon (codigo, nombre, descripcion)
       VALUES ('farmacia', 'Módulo Farmacia',
-        'Gestión completa para farmacias: medicamentos, lotes, vencimientos, dispensación de recetas, control narcóticos, ARS y facturación',
-        49.00, '💊')
+        'Gestión completa para farmacias: medicamentos, lotes, vencimientos, dispensación de recetas, control narcóticos, ARS y facturación')
       ON CONFLICT (codigo) DO NOTHING
     `);
 
