@@ -493,6 +493,21 @@ export default function ClientesPage() {
               </Form.Item>
             </Col>
             <Col xs={24} sm={8}>
+              <Form.Item name="estado" label="Provincia">
+                <Input />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={6}>
+              <Form.Item name="codigoPostal" label="Cód. Postal">
+                <Input maxLength={10} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={10}>
+              <Form.Item name="razonSocial" label="Razón Social (DGII)">
+                <Input placeholder="Nombre oficial en DGII" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={8}>
               <Form.Item name="sector" label="Sector Económico">
                 <Select allowClear>
                   {SECTORES.map(s => <Option key={s} value={s}>{s}</Option>)}
