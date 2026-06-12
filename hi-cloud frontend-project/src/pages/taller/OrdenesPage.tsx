@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Card, Table, Button, Input, Select, DatePicker, Modal, Form,
-  Tag, Space, Typography, message, Segmented, Row, Col, Tooltip,
+  Tag, Space, Typography, message, Segmented, Checkbox,
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, EyeOutlined, ToolOutlined,
@@ -259,6 +259,25 @@ export default function OrdenesPage() {
               <DatePicker style={{ width: '100%' }} />
             </Form.Item>
           </div>
+          <Form.Item name="nivelCombustible" label="Nivel de combustible">
+            <Select allowClear>
+              {['vacío','1/4','1/2','3/4','lleno'].map(v => (
+                <Select.Option key={v} value={v}>{v}</Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+          <Form.Item name="diagnosticoInicial" label="Diagnóstico inicial">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+          <Form.Item label="Condición del vehículo al ingreso">
+            <Space wrap>
+              <Form.Item name="tieneRayones" valuePropName="checked" noStyle><Checkbox>Rayones</Checkbox></Form.Item>
+              <Form.Item name="tieneGolpes" valuePropName="checked" noStyle><Checkbox>Golpes</Checkbox></Form.Item>
+              <Form.Item name="tieneDocumentos" valuePropName="checked" noStyle><Checkbox>Documentos</Checkbox></Form.Item>
+              <Form.Item name="tieneGato" valuePropName="checked" noStyle><Checkbox>Gato</Checkbox></Form.Item>
+              <Form.Item name="tieneHerramientas" valuePropName="checked" noStyle><Checkbox>Herramientas</Checkbox></Form.Item>
+            </Space>
+          </Form.Item>
           <Form.Item name="observacionesIngreso" label="Observaciones">
             <Input.TextArea rows={2} />
           </Form.Item>

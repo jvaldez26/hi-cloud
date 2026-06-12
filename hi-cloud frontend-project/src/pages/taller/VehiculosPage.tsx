@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Card, Table, Button, Input, Modal, Form, Select, InputNumber,
-  Space, Tag, Typography, Popconfirm, message, Tabs,
+  Space, Tag, Typography, Switch, message,
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, CarOutlined, EditOutlined, EyeOutlined,
@@ -177,6 +177,21 @@ export default function VehiculosPage() {
           <Form.Item name="observaciones" label="Observaciones">
             <Input.TextArea rows={2} />
           </Form.Item>
+          {editingId && (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
+                <Form.Item name="kilometrajeUltimoServicio" label="Km último servicio">
+                  <InputNumber style={{ width: '100%' }} min={0} />
+                </Form.Item>
+                <Form.Item name="proximoServicioKm" label="Próximo servicio (Km)">
+                  <InputNumber style={{ width: '100%' }} min={0} />
+                </Form.Item>
+              </div>
+              <Form.Item name="isActive" label="Activo" valuePropName="checked">
+                <Switch />
+              </Form.Item>
+            </>
+          )}
         </Form>
       </Modal>
     </div>

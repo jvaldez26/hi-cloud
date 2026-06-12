@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   Card, Tabs, Button, Tag, Typography, Descriptions, Spin, Space, Select,
   Table, Modal, Form, Input, InputNumber, message, Popconfirm, Steps, Divider,
-  Row, Col, Statistic,
+  Row, Col, Statistic, Checkbox,
 } from 'antd';
 import {
   ArrowLeftOutlined, FilePdfOutlined, PrinterOutlined, CheckOutlined,
@@ -314,6 +314,13 @@ export default function OrdenDetallePage() {
           <Form.Item name="descripcion" label="Descripción" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
+          <Form.Item name="categoria" label="Categoría">
+            <Select allowClear>
+              {['Motor','Frenos','Suspensión','Eléctrico','Transmisión','A/C','Llantas','Carrocería','Preventivo','Otro'].map(c => (
+                <Select.Option key={c} value={c}>{c}</Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
             <Form.Item name="precioUnitario" label="Precio unitario" rules={[{ required: true }]}>
               <InputNumber style={{ width: '100%' }} min={0} prefix="RD$" />
@@ -323,6 +330,12 @@ export default function OrdenDetallePage() {
             </Form.Item>
             <Form.Item name="horasEstimadas" label="Horas estimadas">
               <InputNumber style={{ width: '100%' }} min={0} step={0.5} />
+            </Form.Item>
+            <Form.Item name="horasReales" label="Horas reales">
+              <InputNumber style={{ width: '100%' }} min={0} step={0.5} />
+            </Form.Item>
+            <Form.Item name="descuento" label="Descuento (%)">
+              <InputNumber style={{ width: '100%' }} min={0} max={100} step={5} />
             </Form.Item>
             <Form.Item name="tecnicoId" label="Técnico">
               <Select allowClear placeholder="Asignar técnico">
@@ -358,13 +371,26 @@ export default function OrdenDetallePage() {
             <Form.Item name="marca" label="Marca">
               <Input />
             </Form.Item>
+            <Form.Item name="costoUnitario" label="Costo unitario">
+              <InputNumber style={{ width: '100%' }} min={0} prefix="RD$" />
+            </Form.Item>
             <Form.Item name="precioUnitario" label="Precio unitario" rules={[{ required: true }]}>
               <InputNumber style={{ width: '100%' }} min={0} prefix="RD$" />
             </Form.Item>
             <Form.Item name="cantidad" label="Cantidad" initialValue={1}>
               <InputNumber style={{ width: '100%' }} min={1} />
             </Form.Item>
+            <Form.Item name="descuento" label="Descuento (%)">
+              <InputNumber style={{ width: '100%' }} min={0} max={100} step={5} />
+            </Form.Item>
           </div>
+          <Form.Item name="origen" label="Origen del repuesto">
+            <Select allowClear>
+              {['almacen','compra_directa','garantia','cliente'].map(o => (
+                <Select.Option key={o} value={o}>{o.replace('_', ' ')}</Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
           <Form.Item name="notas" label="Notas">
             <Input.TextArea rows={2} />
           </Form.Item>
@@ -414,6 +440,14 @@ export default function OrdenDetallePage() {
               ))}
             </Select>
           </Form.Item>
+          <Space>
+            <Form.Item name="requiereAtencionInmediata" valuePropName="checked" noStyle>
+              <Checkbox>Requiere atención inmediata</Checkbox>
+            </Form.Item>
+            <Form.Item name="incluidoEnPresupuesto" valuePropName="checked" noStyle>
+              <Checkbox>Incluido en presupuesto</Checkbox>
+            </Form.Item>
+          </Space>
         </Form>
       </Modal>
 
