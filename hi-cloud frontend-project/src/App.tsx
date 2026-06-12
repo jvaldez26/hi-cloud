@@ -655,8 +655,8 @@ export default function App() {
                       <Route path="catalogo"            element={<CatalogoPage />} />
                       <Route path="reportes"            element={<TallerReportesPage />} />
                     </Route>
-                  </Route>
 
+                    {/* ── Módulo Clínica (add-on) ── */}
                     <Route path="/clinica" element={<ClinicaLayout />}>
                       <Route index                   element={<ClinicaDashboard />} />
                       <Route path="pacientes"        element={<ClinicaPacientesPage />} />
@@ -672,6 +672,7 @@ export default function App() {
                       <Route path="catalogo"         element={<ClinicaCatalogoPage />} />
                       <Route path="reportes"         element={<ClinicaReportesPage />} />
                     </Route>
+                  </Route>
 
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
