@@ -148,6 +148,16 @@ const OrdenesTrabajoOpticaPage    = lazy(() => import('./pages/optica/OrdenesTra
 const ReclamacionesArsPage        = lazy(() => import('./pages/optica/ReclamacionesArsPage'));
 const FichaPacientePage           = lazy(() => import('./pages/optica/FichaPacientePage'));
 const InventarioOpticaPage        = lazy(() => import('./pages/optica/InventarioOpticaPage'));
+const TallerLayout                = lazy(() => import('./pages/taller/TallerLayout'));
+const TallerDashboardPage         = lazy(() => import('./pages/taller/TallerDashboardPage'));
+const VehiculosPage               = lazy(() => import('./pages/taller/VehiculosPage'));
+const VehiculoDetallePage         = lazy(() => import('./pages/taller/VehiculoDetallePage'));
+const OrdenesPage                 = lazy(() => import('./pages/taller/OrdenesPage'));
+const OrdenDetallePage            = lazy(() => import('./pages/taller/OrdenDetallePage'));
+const TecnicosPage                = lazy(() => import('./pages/taller/TecnicosPage'));
+const AgendaTallerPage            = lazy(() => import('./pages/taller/AgendaTallerPage'));
+const CatalogoPage                = lazy(() => import('./pages/taller/CatalogoPage'));
+const TallerReportesPage          = lazy(() => import('./pages/taller/ReportesPage'));
 dayjs.locale('es');
 
 export const qc = new QueryClient({
@@ -617,6 +627,19 @@ export default function App() {
                       <Route path="ordenes"          element={<OrdenesTrabajoOpticaPage />} />
                       <Route path="ars"              element={<ReclamacionesArsPage />} />
                       <Route path="inventario"       element={<InventarioOpticaPage />} />
+                    </Route>
+
+                    {/* ── Módulo Taller Mecánico (add-on) ── */}
+                    <Route path="/taller" element={<TallerLayout />}>
+                      <Route index                      element={<TallerDashboardPage />} />
+                      <Route path="vehiculos"           element={<VehiculosPage />} />
+                      <Route path="vehiculos/:id"        element={<VehiculoDetallePage />} />
+                      <Route path="ordenes"             element={<OrdenesPage />} />
+                      <Route path="ordenes/:id"          element={<OrdenDetallePage />} />
+                      <Route path="tecnicos"            element={<TecnicosPage />} />
+                      <Route path="agenda"              element={<AgendaTallerPage />} />
+                      <Route path="catalogo"            element={<CatalogoPage />} />
+                      <Route path="reportes"            element={<TallerReportesPage />} />
                     </Route>
                   </Route>
 

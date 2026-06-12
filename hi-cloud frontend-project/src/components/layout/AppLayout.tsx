@@ -17,7 +17,7 @@ import {
   Boxes, Briefcase, Users, BarChart3, Settings, ChevronDown,
   Menu, HelpCircle, Building2, CreditCard, Receipt,
   FileText, BookOpen, PieChart, Database, Truck,
-  UserCheck, Calculator, Shield, Bell, Globe,
+  UserCheck, Calculator, Shield, Bell, Globe, Wrench,
   Factory, Target, Banknote, ClipboardList, Tags,
   X, Lock, ChevronLeft, ChevronRight, MoreHorizontal,
   type LucideIcon,
@@ -281,7 +281,19 @@ const MENU_CATEGORIES: MenuCategory[] = [
 
   // ─── MÓDULOS ADD-ON ──────────────────────────────────────────────────────────
   {
-    id: 'optica', label: 'Óptica', Icon: Globe, sectionLabel: 'MÓDULOS ADD-ON',
+    id: 'taller', label: 'Taller Mecánico', Icon: Wrench, sectionLabel: 'MÓDULOS ADD-ON',
+    items: [
+      { path: '/taller',           label: 'Panel Taller' },
+      { path: '/taller/ordenes',   label: 'Órdenes de Servicio' },
+      { path: '/taller/vehiculos', label: 'Vehículos' },
+      { path: '/taller/tecnicos',  label: 'Técnicos' },
+      { path: '/taller/agenda',    label: 'Agenda' },
+      { path: '/taller/catalogo',  label: 'Catálogo' },
+      { path: '/taller/reportes',  label: 'Reportes' },
+    ],
+  },
+  {
+    id: 'optica', label: 'Óptica', Icon: Globe,
     items: [
       { path: '/optica',           label: 'Panel Óptica' },
       { path: '/optica/pacientes', label: 'Pacientes' },
@@ -425,6 +437,13 @@ const PATH_ROLES: Record<string, string[]> = {
   '/pos':                   ADMIN_CONT_VEND,   // POS permitido para vendedor
 
   // ── Módulos Add-on ────────────────────────────────────────────────────────
+  '/taller':                ADMIN_CONT,
+  '/taller/ordenes':        ADMIN_CONT,
+  '/taller/vehiculos':      ADMIN_CONT,
+  '/taller/tecnicos':       ADMIN_CONT,
+  '/taller/agenda':         ADMIN_CONT,
+  '/taller/catalogo':       ADMIN_CONT,
+  '/taller/reportes':       ADMIN_CONT,
   '/optica':                ADMIN_CONT,
   '/optica/pacientes':      ADMIN_CONT,
   '/optica/medicos':        ADMIN_CONT,
@@ -1428,6 +1447,14 @@ export default function AppLayout() {
       '/importacion':            () => import('../../pages/importacion/ImportacionPage'),
       '/documentos':             () => import('../../pages/documentos/DocumentosPage'),
       '/contactos':              () => import('../../pages/contactos/ContactosPage'),
+      // ── Módulo Taller Mecánico (add-on) ─────────────────────────
+      '/taller':                 () => import('../../pages/taller/TallerLayout').then(() => import('../../pages/taller/TallerDashboardPage')),
+      '/taller/ordenes':         () => import('../../pages/taller/TallerLayout').then(() => import('../../pages/taller/OrdenesPage')),
+      '/taller/vehiculos':       () => import('../../pages/taller/TallerLayout').then(() => import('../../pages/taller/VehiculosPage')),
+      '/taller/tecnicos':        () => import('../../pages/taller/TallerLayout').then(() => import('../../pages/taller/TecnicosPage')),
+      '/taller/agenda':          () => import('../../pages/taller/TallerLayout').then(() => import('../../pages/taller/AgendaTallerPage')),
+      '/taller/catalogo':        () => import('../../pages/taller/TallerLayout').then(() => import('../../pages/taller/CatalogoPage')),
+      '/taller/reportes':        () => import('../../pages/taller/TallerLayout').then(() => import('../../pages/taller/ReportesPage')),
       // ── Módulo Óptica (add-on) ───────────────────────────────────
       '/optica':                 () => import('../../pages/optica/OpticaLayout').then(() => import('../../pages/optica/OpticaDashboardPage')),
       '/optica/pacientes':       () => import('../../pages/optica/OpticaLayout').then(() => import('../../pages/optica/PacientesOpticaPage')),
