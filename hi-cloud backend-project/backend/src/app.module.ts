@@ -123,6 +123,7 @@ import { ModulosAddonModule }            from './modulos-addon/modulos-addon.mod
 import { OpticaModule }                 from './optica/optica.module';
 import { TallerModule }                 from './taller/taller.module';
 import { ClinicaModule }               from './clinica/clinica.module';
+import { FarmaciaModule }              from './farmacia/farmacia.module';
 
 @Module({
   imports: [
@@ -301,6 +302,7 @@ import { ClinicaModule }               from './clinica/clinica.module';
     OpticaModule,
     TallerModule,
     ClinicaModule,
+    FarmaciaModule,
   ],
   controllers: [AppController],
   providers: [

@@ -172,6 +172,16 @@ const ClinicaArsPage              = lazy(() => import('./pages/clinica/ArsPage')
 const ClinicaMedicosPage          = lazy(() => import('./pages/clinica/MedicosPage'));
 const ClinicaCatalogoPage         = lazy(() => import('./pages/clinica/CatalogoPage'));
 const ClinicaReportesPage         = lazy(() => import('./pages/clinica/ReportesPage'));
+const FarmaciaLayout              = lazy(() => import('./pages/farmacia/FarmaciaLayout'));
+const FarmaciaDashboard           = lazy(() => import('./pages/farmacia/FarmaciaDashboard'));
+const FarmaciaDispensacionPage    = lazy(() => import('./pages/farmacia/DispensacionPage'));
+const FarmaciaMedicamentosPage    = lazy(() => import('./pages/farmacia/MedicamentosPage'));
+const FarmaciaLotesPage           = lazy(() => import('./pages/farmacia/LotesPage'));
+const FarmaciaRecepcionesPage     = lazy(() => import('./pages/farmacia/RecepcionesPage'));
+const FarmaciaNarcoticoPage       = lazy(() => import('./pages/farmacia/NarcoticoPage'));
+const FarmaciaDevolucionesPage    = lazy(() => import('./pages/farmacia/DevolucionesPage'));
+const FarmaciaArsPage             = lazy(() => import('./pages/farmacia/ArsPage'));
+const FarmaciaReportesPage        = lazy(() => import('./pages/farmacia/ReportesPage'));
 dayjs.locale('es');
 
 export const qc = new QueryClient({
@@ -671,6 +681,19 @@ export default function App() {
                       <Route path="medicos"          element={<ClinicaMedicosPage />} />
                       <Route path="catalogo"         element={<ClinicaCatalogoPage />} />
                       <Route path="reportes"         element={<ClinicaReportesPage />} />
+                    </Route>
+
+                    {/* ── Módulo Farmacia (add-on) ── */}
+                    <Route path="/farmacia" element={<FarmaciaLayout />}>
+                      <Route index                      element={<FarmaciaDashboard />} />
+                      <Route path="dispensacion"        element={<FarmaciaDispensacionPage />} />
+                      <Route path="medicamentos"        element={<FarmaciaMedicamentosPage />} />
+                      <Route path="lotes"               element={<FarmaciaLotesPage />} />
+                      <Route path="recepciones"         element={<FarmaciaRecepcionesPage />} />
+                      <Route path="narcoticos"          element={<FarmaciaNarcoticoPage />} />
+                      <Route path="devoluciones"        element={<FarmaciaDevolucionesPage />} />
+                      <Route path="ars"                 element={<FarmaciaArsPage />} />
+                      <Route path="reportes"            element={<FarmaciaReportesPage />} />
                     </Route>
                   </Route>
 

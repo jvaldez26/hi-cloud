@@ -17,7 +17,7 @@ import {
   Boxes, Briefcase, Users, BarChart3, Settings, ChevronDown,
   Menu, HelpCircle, Building2, CreditCard, Receipt,
   FileText, BookOpen, PieChart, Database, Truck,
-  UserCheck, Calculator, Shield, Bell, Globe, Wrench, Stethoscope,
+  UserCheck, Calculator, Shield, Bell, Globe, Wrench, Stethoscope, Pill,
   Factory, Target, Banknote, ClipboardList, Tags,
   X, Lock, ChevronLeft, ChevronRight, MoreHorizontal,
   type LucideIcon,
@@ -323,6 +323,20 @@ const MENU_CATEGORIES: MenuCategory[] = [
       { path: '/optica/inventario', label: 'Inventario' },
     ],
   },
+  {
+    id: 'farmacia', label: 'Farmacia', Icon: Pill,
+    items: [
+      { path: '/farmacia',               label: 'Panel Farmacia' },
+      { path: '/farmacia/dispensacion',  label: 'Dispensación POS' },
+      { path: '/farmacia/medicamentos',  label: 'Medicamentos' },
+      { path: '/farmacia/lotes',         label: 'Lotes / Vencimientos' },
+      { path: '/farmacia/recepciones',   label: 'Recepciones' },
+      { path: '/farmacia/narcoticos',    label: 'Narcóticos / Psicotrópicos' },
+      { path: '/farmacia/devoluciones',  label: 'Devoluciones' },
+      { path: '/farmacia/ars',           label: 'Reclamaciones ARS' },
+      { path: '/farmacia/reportes',      label: 'Reportes' },
+    ],
+  },
 ];
 
 // ── Orden de jerarquía de planes ─────────────────────────────────────────────
@@ -482,6 +496,15 @@ const PATH_ROLES: Record<string, string[]> = {
   '/optica/ordenes':        ADMIN_CONT,
   '/optica/ars':            ADMIN_CONT,
   '/optica/inventario':    ADMIN_CONT,
+  '/farmacia':                  ADMIN_CONT,
+  '/farmacia/dispensacion':     ADMIN_CONT,
+  '/farmacia/medicamentos':     ADMIN_CONT,
+  '/farmacia/lotes':            ADMIN_CONT,
+  '/farmacia/recepciones':      ADMIN_CONT,
+  '/farmacia/narcoticos':       ADMIN_CONT,
+  '/farmacia/devoluciones':     ADMIN_CONT,
+  '/farmacia/ars':              ADMIN_CONT,
+  '/farmacia/reportes':         ADMIN_CONT,
 };
 
 function rolPuedeVerRuta(path: string, role: string): boolean {
@@ -1508,6 +1531,16 @@ export default function AppLayout() {
       '/optica/ordenes':         () => import('../../pages/optica/OpticaLayout').then(() => import('../../pages/optica/OrdenesTrabajoOpticaPage')),
       '/optica/ars':             () => import('../../pages/optica/OpticaLayout').then(() => import('../../pages/optica/ReclamacionesArsPage')),
       '/optica/inventario':      () => import('../../pages/optica/OpticaLayout').then(() => import('../../pages/optica/InventarioOpticaPage')),
+      // ── Módulo Farmacia (add-on) ─────────────────────────────────
+      '/farmacia':               () => import('../../pages/farmacia/FarmaciaLayout').then(() => import('../../pages/farmacia/FarmaciaDashboard')),
+      '/farmacia/dispensacion':  () => import('../../pages/farmacia/DispensacionPage'),
+      '/farmacia/medicamentos':  () => import('../../pages/farmacia/MedicamentosPage'),
+      '/farmacia/lotes':         () => import('../../pages/farmacia/LotesPage'),
+      '/farmacia/recepciones':   () => import('../../pages/farmacia/RecepcionesPage'),
+      '/farmacia/narcoticos':    () => import('../../pages/farmacia/NarcoticoPage'),
+      '/farmacia/devoluciones':  () => import('../../pages/farmacia/DevolucionesPage'),
+      '/farmacia/ars':           () => import('../../pages/farmacia/ArsPage'),
+      '/farmacia/reportes':      () => import('../../pages/farmacia/ReportesPage'),
     };
     map[path]?.();
   }, []);
