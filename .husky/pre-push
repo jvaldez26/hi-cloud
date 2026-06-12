@@ -7,6 +7,26 @@ echo "────────────────────────�
 echo "   (Este check tarda ~25s — nunca omitirlo)"
 echo ""
 
+# ── Validación de entidades TypeORM (evita DataTypeNotSupportedError en deploy) ─
+# TypeORM 0.3.28 requiere metadata type=String para inferir varchar.
+# string | null emite metadata Object → TypeORM falla en producción aunque el TS compile OK.
+# Patrón correcto: `campo?: string` (no `campo!: string | null`)
+ENTITY_DIR="hi-cloud backend-project/backend/src"
+ENTITY_BAD=$(grep -rn "!: string | null" "$ENTITY_DIR" --include="*.entity.ts" 2>/dev/null || true)
+if [ -n "$ENTITY_BAD" ]; then
+  echo "❌ ERROR: Entidades con patrón incompatible con TypeORM 0.3.28 encontradas:"
+  echo ""
+  echo "$ENTITY_BAD"
+  echo ""
+  echo "   SOLUCIÓN: Cambiar '!: string | null' → '?: string' en columnas sin type: 'varchar' explícito."
+  echo "   Ejemplo MALO:  @Column({ length: 100, nullable: true }) nombre!: string | null;"
+  echo "   Ejemplo BUENO: @Column({ length: 100, nullable: true }) nombre?: string;"
+  echo ""
+  echo "   Alternativa: agregar type: 'varchar' explícito al @Column()"
+  echo ""
+  exit 1
+fi
+
 # ── Frontend build (el más crítico — es lo que ve el usuario) ─────
 cd "hi-cloud frontend-project"
 if ! npm run build 2>&1; then

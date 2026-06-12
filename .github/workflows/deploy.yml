@@ -62,6 +62,22 @@ jobs:
           cache: 'npm'
           cache-dependency-path: 'hi-cloud backend-project/backend/package-lock.json'
 
+      - name: Validar entidades TypeORM
+        working-directory: 'hi-cloud backend-project/backend'
+        run: |
+          # DataTypeNotSupportedError: columnas "!: string | null" sin type explícito generan
+          # metadata Object en lugar de String — TypeORM 0.3.28 rechaza eso en producción.
+          # Este check falla el CI antes del deploy si el patrón incorrecto está presente.
+          BAD=$(grep -rn "!: string | null" src --include="*.entity.ts" 2>/dev/null || true)
+          if [ -n "$BAD" ]; then
+            echo "❌ Entidades con tipo incompatible con TypeORM 0.3.28:"
+            echo "$BAD"
+            echo ""
+            echo "SOLUCIÓN: Cambiar '!: string | null' → '?: string' en la entidad."
+            exit 1
+          fi
+          echo "✅ Entidades OK"
+
       - name: Build
         working-directory: 'hi-cloud backend-project/backend'
         run: npm ci && npm run build
@@ -309,8 +325,17 @@ jobs:
                   else { console.log('  ✅ Migraciones aplicadas:', migs.map(m=>m.name).join(', ')); }
                   process.exit(0);
                 })
-                .catch(err => { console.error('  ❌ Migración falló:', err.message); process.exit(1); });
-            " || { echo '❌ Migraciones fallaron — deploy abortado'; exit 1; }
+                .catch(err => {
+                  console.error('  ❌ Migración falló:', err.message);
+                  if (err.message && err.message.includes('DataTypeNotSupportedError')) {
+                    console.error('');
+                    console.error('  DIAGNÓSTICO: Error de tipo en entidad TypeORM.');
+                    console.error('  Columnas con "!: string | null" sin type explícito generan metadata Object.');
+                    console.error('  SOLUCIÓN: Cambiar a "?: string" en la entidad o agregar type: "varchar".');
+                  }
+                  process.exit(1);
+                });
+            " || { echo '❌ Migraciones fallaron — deploy abortado. Ver log arriba para diagnóstico.'; exit 1; }
 
             # Recargar backend con zero-downtime (reload mantiene el proceso vivo,
             # evita que los JWTs en tránsito sean invalidados por un kill+start)
