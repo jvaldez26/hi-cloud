@@ -65,18 +65,40 @@ jobs:
       - name: Validar entidades TypeORM
         working-directory: 'hi-cloud backend-project/backend'
         run: |
-          # DataTypeNotSupportedError: columnas "!: string | null" sin type explícito generan
-          # metadata Object en lugar de String — TypeORM 0.3.28 rechaza eso en producción.
-          # Este check falla el CI antes del deploy si el patrón incorrecto está presente.
-          BAD=$(grep -rn "!: string | null" src --include="*.entity.ts" 2>/dev/null || true)
-          if [ -n "$BAD" ]; then
-            echo "❌ Entidades con tipo incompatible con TypeORM 0.3.28:"
-            echo "$BAD"
-            echo ""
-            echo "SOLUCIÓN: Cambiar '!: string | null' → '?: string' en la entidad."
-            exit 1
-          fi
-          echo "✅ Entidades OK"
+          # DataTypeNotSupportedError: columnas @Column sin type explícito + "!: string | null"
+          # generan metadata Object → TypeORM 0.3.28 rechaza en producción aunque TS compile OK.
+          # Columnas con type: 'text', type: 'date', etc. están BIEN — solo detectar las sin type.
+          node -e "
+            const fs = require('fs');
+            const path = require('path');
+            function walk(dir) {
+              let r = [];
+              for (const f of fs.readdirSync(dir)) {
+                const fp = path.join(dir, f);
+                if (fs.statSync(fp).isDirectory()) r = r.concat(walk(fp));
+                else if (f.endsWith('.entity.ts')) r.push(fp);
+              }
+              return r;
+            }
+            const bad = [];
+            for (const file of walk('src')) {
+              const lines = fs.readFileSync(file, 'utf8').split('\n');
+              for (let i = 1; i < lines.length; i++) {
+                const prev = lines[i-1].trim();
+                const curr = lines[i].trim();
+                if (curr.includes('!: string | null') && prev.startsWith('@Column(') && !prev.includes('type:')) {
+                  bad.push(file + ':' + (i+1) + ': ' + curr);
+                }
+              }
+            }
+            if (bad.length > 0) {
+              console.error('❌ Entidades con tipo incompatible con TypeORM 0.3.28 (sin type explícito):');
+              bad.forEach(b => console.error(' ', b));
+              console.error('SOLUCIÓN: Cambiar a \"?: string\" o agregar type: \"varchar\" al @Column()');
+              process.exit(1);
+            }
+            console.log('✅ Entidades OK');
+          "
 
       - name: Build
         working-directory: 'hi-cloud backend-project/backend'

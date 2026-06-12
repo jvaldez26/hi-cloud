@@ -9,20 +9,50 @@ echo ""
 
 # ── Validación de entidades TypeORM (evita DataTypeNotSupportedError en deploy) ─
 # TypeORM 0.3.28 requiere metadata type=String para inferir varchar.
-# string | null emite metadata Object → TypeORM falla en producción aunque el TS compile OK.
-# Patrón correcto: `campo?: string` (no `campo!: string | null`)
+# "!: string | null" sin type explícito → metadata Object → falla en producción.
+# Columnas con type: 'text', type: 'date', type: 'int', etc. están BIEN.
+# Solo es un problema cuando @Column({ length: xxx }) sin type: implícitamente
+# intenta inferir varchar pero recibe metadata Object.
 ENTITY_DIR="hi-cloud backend-project/backend/src"
-ENTITY_BAD=$(grep -rn "!: string | null" "$ENTITY_DIR" --include="*.entity.ts" 2>/dev/null || true)
-if [ -n "$ENTITY_BAD" ]; then
-  echo "❌ ERROR: Entidades con patrón incompatible con TypeORM 0.3.28 encontradas:"
+# Buscar entidades con `@Column({` sin type: seguidas de `!: string | null`
+BAD=$(node -e "
+const fs = require('fs');
+const path = require('path');
+function walk(dir) {
+  let results = [];
+  for (const f of fs.readdirSync(dir)) {
+    const fp = path.join(dir, f);
+    if (fs.statSync(fp).isDirectory()) results = results.concat(walk(fp));
+    else if (f.endsWith('.entity.ts')) results.push(fp);
+  }
+  return results;
+}
+const files = walk('$ENTITY_DIR');
+const bad = [];
+for (const file of files) {
+  const lines = fs.readFileSync(file, 'utf8').split('\n');
+  for (let i = 1; i < lines.length; i++) {
+    const prev = lines[i-1].trim();
+    const curr = lines[i].trim();
+    if (curr.includes('!: string | null') && prev.startsWith('@Column(') && !prev.includes(\"type:\")) {
+      bad.push(file + ':' + (i+1) + ': ' + curr + '  ← @Column sin type explícito');
+    }
+  }
+}
+if (bad.length > 0) { console.log(bad.join('\n')); process.exit(1); }
+" 2>&1 || true)
+
+if echo "$BAD" | grep -q "@Column sin type explícito"; then
+  echo "❌ ERROR: Entidades con patrón incompatible con TypeORM 0.3.28:"
   echo ""
-  echo "$ENTITY_BAD"
+  echo "$BAD"
   echo ""
-  echo "   SOLUCIÓN: Cambiar '!: string | null' → '?: string' en columnas sin type: 'varchar' explícito."
+  echo "   SOLUCIÓN: Cambiar '!: string | null' → '?: string' en columnas sin type explícito."
   echo "   Ejemplo MALO:  @Column({ length: 100, nullable: true }) nombre!: string | null;"
   echo "   Ejemplo BUENO: @Column({ length: 100, nullable: true }) nombre?: string;"
   echo ""
-  echo "   Alternativa: agregar type: 'varchar' explícito al @Column()"
+  echo "   Con type explícito sí está permitido:"
+  echo "   @Column({ type: 'text', nullable: true }) descripcion!: string | null; // OK"
   echo ""
   exit 1
 fi
