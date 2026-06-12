@@ -158,6 +158,20 @@ const TecnicosPage                = lazy(() => import('./pages/taller/TecnicosPa
 const AgendaTallerPage            = lazy(() => import('./pages/taller/AgendaTallerPage'));
 const CatalogoPage                = lazy(() => import('./pages/taller/CatalogoPage'));
 const TallerReportesPage          = lazy(() => import('./pages/taller/ReportesPage'));
+const ClinicaLayout               = lazy(() => import('./pages/clinica/ClinicaLayout'));
+const ClinicaDashboard            = lazy(() => import('./pages/clinica/DashboardPage'));
+const ClinicaPacientesPage        = lazy(() => import('./pages/clinica/PacientesPage'));
+const ClinicaPacienteDetalle      = lazy(() => import('./pages/clinica/PacienteDetallePage'));
+const ClinicaAgendaPage           = lazy(() => import('./pages/clinica/AgendaPage'));
+const ClinicaSalaEsperaPage       = lazy(() => import('./pages/clinica/SalaEsperaPage'));
+const ClinicaConsultaPage         = lazy(() => import('./pages/clinica/ConsultaPage'));
+const ClinicaRecetasPage          = lazy(() => import('./pages/clinica/RecetasPage'));
+const ClinicaLaboratorioPage      = lazy(() => import('./pages/clinica/LaboratorioPage'));
+const ClinicaProcedimientosPage   = lazy(() => import('./pages/clinica/ProcedimientosPage'));
+const ClinicaArsPage              = lazy(() => import('./pages/clinica/ArsPage'));
+const ClinicaMedicosPage          = lazy(() => import('./pages/clinica/MedicosPage'));
+const ClinicaCatalogoPage         = lazy(() => import('./pages/clinica/CatalogoPage'));
+const ClinicaReportesPage         = lazy(() => import('./pages/clinica/ReportesPage'));
 dayjs.locale('es');
 
 export const qc = new QueryClient({
@@ -642,6 +656,22 @@ export default function App() {
                       <Route path="reportes"            element={<TallerReportesPage />} />
                     </Route>
                   </Route>
+
+                    <Route path="/clinica" element={<ClinicaLayout />}>
+                      <Route index                   element={<ClinicaDashboard />} />
+                      <Route path="pacientes"        element={<ClinicaPacientesPage />} />
+                      <Route path="pacientes/:id"    element={<ClinicaPacienteDetalle />} />
+                      <Route path="agenda"           element={<ClinicaAgendaPage />} />
+                      <Route path="sala-espera"      element={<ClinicaSalaEsperaPage />} />
+                      <Route path="consultas"        element={<ClinicaConsultaPage />} />
+                      <Route path="recetas"          element={<ClinicaRecetasPage />} />
+                      <Route path="laboratorio"      element={<ClinicaLaboratorioPage />} />
+                      <Route path="procedimientos"   element={<ClinicaProcedimientosPage />} />
+                      <Route path="ars"              element={<ClinicaArsPage />} />
+                      <Route path="medicos"          element={<ClinicaMedicosPage />} />
+                      <Route path="catalogo"         element={<ClinicaCatalogoPage />} />
+                      <Route path="reportes"         element={<ClinicaReportesPage />} />
+                    </Route>
 
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>

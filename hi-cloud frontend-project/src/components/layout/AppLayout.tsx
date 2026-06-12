@@ -17,7 +17,7 @@ import {
   Boxes, Briefcase, Users, BarChart3, Settings, ChevronDown,
   Menu, HelpCircle, Building2, CreditCard, Receipt,
   FileText, BookOpen, PieChart, Database, Truck,
-  UserCheck, Calculator, Shield, Bell, Globe, Wrench,
+  UserCheck, Calculator, Shield, Bell, Globe, Wrench, Stethoscope,
   Factory, Target, Banknote, ClipboardList, Tags,
   X, Lock, ChevronLeft, ChevronRight, MoreHorizontal,
   type LucideIcon,
@@ -281,7 +281,24 @@ const MENU_CATEGORIES: MenuCategory[] = [
 
   // ─── MÓDULOS ADD-ON ──────────────────────────────────────────────────────────
   {
-    id: 'taller', label: 'Taller Mecánico', Icon: Wrench, sectionLabel: 'MÓDULOS ADD-ON',
+    id: 'clinica', label: 'Clínica / Consultorio', Icon: Stethoscope, sectionLabel: 'MÓDULOS ADD-ON',
+    items: [
+      { path: '/clinica',              label: 'Panel Clínica' },
+      { path: '/clinica/pacientes',    label: 'Pacientes' },
+      { path: '/clinica/agenda',       label: 'Agenda' },
+      { path: '/clinica/sala-espera',  label: 'Sala de Espera' },
+      { path: '/clinica/consultas',    label: 'Consultas' },
+      { path: '/clinica/recetas',      label: 'Recetas' },
+      { path: '/clinica/laboratorio',  label: 'Laboratorio' },
+      { path: '/clinica/procedimientos', label: 'Procedimientos' },
+      { path: '/clinica/ars',          label: 'ARS' },
+      { path: '/clinica/medicos',      label: 'Médicos' },
+      { path: '/clinica/catalogo',     label: 'Catálogo' },
+      { path: '/clinica/reportes',     label: 'Reportes' },
+    ],
+  },
+  {
+    id: 'taller', label: 'Taller Mecánico', Icon: Wrench,
     items: [
       { path: '/taller',           label: 'Panel Taller' },
       { path: '/taller/ordenes',   label: 'Órdenes de Servicio' },
@@ -437,6 +454,18 @@ const PATH_ROLES: Record<string, string[]> = {
   '/pos':                   ADMIN_CONT_VEND,   // POS permitido para vendedor
 
   // ── Módulos Add-on ────────────────────────────────────────────────────────
+  '/clinica':                   ADMIN_CONT,
+  '/clinica/pacientes':         ADMIN_CONT,
+  '/clinica/agenda':            ADMIN_CONT,
+  '/clinica/sala-espera':       ADMIN_CONT,
+  '/clinica/consultas':         ADMIN_CONT,
+  '/clinica/recetas':           ADMIN_CONT,
+  '/clinica/laboratorio':       ADMIN_CONT,
+  '/clinica/procedimientos':    ADMIN_CONT,
+  '/clinica/ars':               ADMIN_CONT,
+  '/clinica/medicos':           ADMIN_CONT,
+  '/clinica/catalogo':          ADMIN_CONT,
+  '/clinica/reportes':          ADMIN_CONT,
   '/taller':                ADMIN_CONT,
   '/taller/ordenes':        ADMIN_CONT,
   '/taller/vehiculos':      ADMIN_CONT,
@@ -1447,6 +1476,20 @@ export default function AppLayout() {
       '/importacion':            () => import('../../pages/importacion/ImportacionPage'),
       '/documentos':             () => import('../../pages/documentos/DocumentosPage'),
       '/contactos':              () => import('../../pages/contactos/ContactosPage'),
+      // ── Módulo Taller Mecánico (add-on) ─────────────────────────
+      // ── Módulo Clínica / Consultorio (add-on) ────────────────────────
+      '/clinica':                () => import('../../pages/clinica/ClinicaLayout').then(() => import('../../pages/clinica/DashboardPage')),
+      '/clinica/pacientes':      () => import('../../pages/clinica/PacientesPage'),
+      '/clinica/agenda':         () => import('../../pages/clinica/AgendaPage'),
+      '/clinica/sala-espera':    () => import('../../pages/clinica/SalaEsperaPage'),
+      '/clinica/consultas':      () => import('../../pages/clinica/ConsultaPage'),
+      '/clinica/recetas':        () => import('../../pages/clinica/RecetasPage'),
+      '/clinica/laboratorio':    () => import('../../pages/clinica/LaboratorioPage'),
+      '/clinica/procedimientos': () => import('../../pages/clinica/ProcedimientosPage'),
+      '/clinica/ars':            () => import('../../pages/clinica/ArsPage'),
+      '/clinica/medicos':        () => import('../../pages/clinica/MedicosPage'),
+      '/clinica/catalogo':       () => import('../../pages/clinica/CatalogoPage'),
+      '/clinica/reportes':       () => import('../../pages/clinica/ReportesPage'),
       // ── Módulo Taller Mecánico (add-on) ─────────────────────────
       '/taller':                 () => import('../../pages/taller/TallerLayout').then(() => import('../../pages/taller/TallerDashboardPage')),
       '/taller/ordenes':         () => import('../../pages/taller/TallerLayout').then(() => import('../../pages/taller/OrdenesPage')),
