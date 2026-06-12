@@ -8,41 +8,44 @@ echo "   (Este check tarda ~25s — nunca omitirlo)"
 echo ""
 
 # ── Validación de entidades TypeORM (evita DataTypeNotSupportedError en deploy) ─
-# TypeORM 0.3.28 requiere metadata type=String para inferir varchar.
-# "!: string | null" sin type explícito → metadata Object → falla en producción.
-# Columnas con type: 'text', type: 'date', type: 'int', etc. están BIEN.
-# Solo es un problema cuando @Column({ length: xxx }) sin type: implícitamente
-# intenta inferir varchar pero recibe metadata Object.
+# TypeORM 0.3.28 requiere type explícito cuando el campo usa !: string | null
+# (genera metadata Object, no String). Columnas con type: 'text'/'date'/'varchar' están BIEN.
+# SOLO peligroso: @Column({ length: xxx }) sin ningún type: seguido de !: string | null.
 ENTITY_DIR="hi-cloud backend-project/backend/src"
-# Buscar entidades con `@Column({` sin type: seguidas de `!: string | null`
 BAD=$(node -e "
 const fs = require('fs');
 const path = require('path');
 function walk(dir) {
-  let results = [];
+  let r = [];
   for (const f of fs.readdirSync(dir)) {
     const fp = path.join(dir, f);
-    if (fs.statSync(fp).isDirectory()) results = results.concat(walk(fp));
-    else if (f.endsWith('.entity.ts')) results.push(fp);
+    if (fs.statSync(fp).isDirectory()) r = r.concat(walk(fp));
+    else if (f.endsWith('.entity.ts')) r.push(fp);
   }
-  return results;
+  return r;
 }
-const files = walk('$ENTITY_DIR');
 const bad = [];
-for (const file of files) {
+for (const file of walk('$ENTITY_DIR')) {
   const lines = fs.readFileSync(file, 'utf8').split('\n');
-  for (let i = 1; i < lines.length; i++) {
-    const prev = lines[i-1].trim();
-    const curr = lines[i].trim();
-    if (curr.includes('!: string | null') && prev.startsWith('@Column(') && !prev.includes(\"type:\")) {
-      bad.push(file + ':' + (i+1) + ': ' + curr + '  ← @Column sin type explícito');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // Patrón inline: @Column({...}) field!: string | null;  en la misma línea
+    if (line.includes('!: string | null') && line.includes('@Column(') && !line.includes('type:')) {
+      bad.push(file + ':' + (i+1) + ': ' + line.trim() + '  ← falta type: explícito');
+    }
+    // Patrón multi-línea: @Column({...}) en línea anterior sin type:
+    if (i > 0 && line.includes('!: string | null') && !line.includes('@Column(')) {
+      const prev = lines[i-1].trim();
+      if (prev.startsWith('@Column(') && !prev.includes('type:')) {
+        bad.push(file + ':' + (i+1) + ': ' + line.trim() + '  ← falta type: en @Column anterior');
+      }
     }
   }
 }
 if (bad.length > 0) { console.log(bad.join('\n')); process.exit(1); }
 " 2>&1 || true)
 
-if echo "$BAD" | grep -q "@Column sin type explícito"; then
+if echo "$BAD" | grep -q "falta type:"; then
   echo "❌ ERROR: Entidades con patrón incompatible con TypeORM 0.3.28:"
   echo ""
   echo "$BAD"

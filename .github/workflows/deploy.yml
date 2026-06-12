@@ -83,18 +83,25 @@ jobs:
             const bad = [];
             for (const file of walk('src')) {
               const lines = fs.readFileSync(file, 'utf8').split('\n');
-              for (let i = 1; i < lines.length; i++) {
-                const prev = lines[i-1].trim();
-                const curr = lines[i].trim();
-                if (curr.includes('!: string | null') && prev.startsWith('@Column(') && !prev.includes('type:')) {
-                  bad.push(file + ':' + (i+1) + ': ' + curr);
+              for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                // Inline: @Column({...}) field!: string | null; en una sola línea sin type:
+                if (line.includes('!: string | null') && line.includes('@Column(') && !line.includes('type:')) {
+                  bad.push(file + ':' + (i+1) + ': ' + line.trim());
+                }
+                // Multi-línea: @Column en línea anterior sin type:
+                if (i > 0 && line.includes('!: string | null') && !line.includes('@Column(')) {
+                  const prev = lines[i-1].trim();
+                  if (prev.startsWith('@Column(') && !prev.includes('type:')) {
+                    bad.push(file + ':' + (i+1) + ': ' + line.trim());
+                  }
                 }
               }
             }
             if (bad.length > 0) {
               console.error('❌ Entidades con tipo incompatible con TypeORM 0.3.28 (sin type explícito):');
               bad.forEach(b => console.error(' ', b));
-              console.error('SOLUCIÓN: Cambiar a \"?: string\" o agregar type: \"varchar\" al @Column()');
+              console.error('SOLUCIÓN: Cambiar a \"?: string\" o agregar type: en el @Column()');
               process.exit(1);
             }
             console.log('✅ Entidades OK');
