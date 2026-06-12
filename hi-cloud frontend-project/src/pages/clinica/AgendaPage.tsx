@@ -84,7 +84,7 @@ export default function AgendaPage() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <Title level={4} style={{ margin: 0 }}>Agenda</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setModal(true); }}>Nueva Cita</Button>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); form.setFieldsValue({ fecha: dayjs(fecha) }); setModal(true); }}>Nueva Cita</Button>
       </div>
 
       <Card size="small" style={{ marginBottom: 16 }}>
