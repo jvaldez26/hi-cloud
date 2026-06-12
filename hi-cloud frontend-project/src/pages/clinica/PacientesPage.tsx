@@ -91,11 +91,27 @@ export default function PacientesPage() {
         <Col span={12}><Form.Item name="grupoSanguineo" label="Grupo Sanguíneo"><Input /></Form.Item></Col>
       </Row>
       <Row gutter={12}>
+        <Col span={12}><Form.Item name="telefonoEmergencia" label="Tel. Emergencia"><Input /></Form.Item></Col>
+        <Col span={12}><Form.Item name="contactoEmergencia" label="Contacto Emergencia"><Input /></Form.Item></Col>
+      </Row>
+      <Row gutter={12}>
         <Col span={12}><Form.Item name="arsNombre" label="ARS Nombre"><Input /></Form.Item></Col>
         <Col span={12}><Form.Item name="arsNumeroAfiliado" label="No. Afiliado ARS"><Input /></Form.Item></Col>
       </Row>
+      <Row gutter={12}>
+        <Col span={12}><Form.Item name="arsTipo" label="Tipo ARS">
+          <Select allowClear>
+            <Option value="prepagada">Prepagada</Option>
+            <Option value="subsidiada">Subsidiada</Option>
+            <Option value="contributiva">Contributiva</Option>
+          </Select>
+        </Form.Item></Col>
+        <Col span={12}><Form.Item name="arsPlan" label="Plan ARS"><Input /></Form.Item></Col>
+      </Row>
       <Form.Item name="alergias" label="Alergias"><Input.TextArea rows={2} /></Form.Item>
+      <Form.Item name="medicamentosActuales" label="Medicamentos Actuales"><Input.TextArea rows={2} /></Form.Item>
       <Form.Item name="antecedentesPersonales" label="Antecedentes Personales"><Input.TextArea rows={2} /></Form.Item>
+      <Form.Item name="antecedentesFamiliares" label="Antecedentes Familiares"><Input.TextArea rows={2} /></Form.Item>
       <Form.Item name="direccion" label="Dirección"><Input /></Form.Item>
     </>
   );

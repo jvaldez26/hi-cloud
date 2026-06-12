@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Table, Button, Space, Tag, Typography, Modal, Form, Select, DatePicker, Input, InputNumber, message, Row, Col } from 'antd';
+import { Table, Button, Space, Tag, Typography, Modal, Form, Select, DatePicker, Input, InputNumber, AutoComplete, message, Row, Col } from 'antd';
 import { PlusOutlined, EditOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { clinicaApi } from '../../api/clinica.api';
@@ -116,9 +116,12 @@ export default function ArsPage() {
                 <Select allowClear>{medicos.map((m: any) => <Option key={m.id} value={m.id}>{m.nombre} {m.apellidos}</Option>)}</Select>
               </Form.Item>
               <Form.Item name="arsNombre" label="ARS" rules={[{ required: true }]}>
-                <Select mode="tags" placeholder="Seleccionar o escribir ARS" style={{ width: '100%' }}>
-                  {ARS_COMUNES.map(a => <Option key={a} value={a}>{a}</Option>)}
-                </Select>
+                <AutoComplete
+                  options={ARS_COMUNES.map(a => ({ value: a }))}
+                  placeholder="Seleccionar o escribir ARS"
+                  filterOption={(input, opt) => (opt?.value ?? '').toLowerCase().includes(input.toLowerCase())}
+                  style={{ width: '100%' }}
+                />
               </Form.Item>
               <Form.Item name="arsNumeroAfiliado" label="No. Afiliado"><Input /></Form.Item>
               <Form.Item name="tipoServicio" label="Tipo de Servicio">
