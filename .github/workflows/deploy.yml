@@ -356,12 +356,6 @@ jobs:
                 })
                 .catch(err => {
                   console.error('  ❌ Migración falló:', err.message);
-                  if (err.message && err.message.includes('DataTypeNotSupportedError')) {
-                    console.error('');
-                    console.error('  DIAGNÓSTICO: Error de tipo en entidad TypeORM.');
-                    console.error('  Columnas con "!: string | null" sin type explícito generan metadata Object.');
-                    console.error('  SOLUCIÓN: Cambiar a "?: string" en la entidad o agregar type: "varchar".');
-                  }
                   process.exit(1);
                 });
             " || { echo '❌ Migraciones fallaron — deploy abortado. Ver log arriba para diagnóstico.'; exit 1; }
