@@ -2,6 +2,8 @@ import { Injectable, NotFoundException, ConflictException } from '@nestjs/common
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { Sucursal } from '../configuracion/entities/sucursal.entity';
+import { Almacen } from '../almacenes/entities/almacen.entity';
+import { StockAlmacen } from '../almacenes/entities/stock-almacen.entity';
 import { TenantService } from '../tenant/tenant.service';
 import { LimitesService } from '../suscripciones/limites.service';
 
@@ -23,6 +25,10 @@ export class SucursalesService {
   constructor(
     @InjectRepository(Sucursal)
     private sucursalRepo: Repository<Sucursal>,
+    @InjectRepository(Almacen)
+    private almacenRepo:  Repository<Almacen>,
+    @InjectRepository(StockAlmacen)
+    private stockRepo:    Repository<StockAlmacen>,
     private dataSource:   DataSource,
     private tenantSvc:    TenantService,
     private limitesSvc:   LimitesService,
@@ -99,5 +105,44 @@ export class SucursalesService {
     if (s.esPrincipal) throw new ConflictException('No puedes eliminar la sucursal principal');
     await this.sucursalRepo.update(id, { isActive: false });
     return { ok: true, mensaje: `Sucursal "${s.nombre}" eliminada` };
+  }
+
+  async getInventario(id: number) {
+    const sucursal  = await this.findOne(id);
+    const empresaId = this.tenantSvc.getEmpresaId();
+
+    // Almacenes que pertenecen a esta sucursal (por sucursalId) o son su almacén principal
+    const qb = this.almacenRepo
+      .createQueryBuilder('a')
+      .where('a."empresaId" = :empresaId', { empresaId })
+      .andWhere('a.activo = true');
+
+    if ((sucursal as any).almacenPrincipalId) {
+      qb.andWhere('(a."sucursalId" = :id OR a.id = :pid)', {
+        id,
+        pid: (sucursal as any).almacenPrincipalId,
+      });
+    } else {
+      qb.andWhere('a."sucursalId" = :id', { id });
+    }
+
+    const almacenes = await qb.orderBy('a.id', 'ASC').getMany();
+
+    // Deduplicar (si el almacén principal ya tiene sucursalId = id aparece dos veces)
+    const seen    = new Set<number>();
+    const unicos  = almacenes.filter(a => { if (seen.has(a.id)) return false; seen.add(a.id); return true; });
+
+    const almacenesConStock = await Promise.all(
+      unicos.map(async (alm) => {
+        const productos = await this.stockRepo.find({
+          where:  { almacenId: alm.id, empresaId },
+          order:  { productoId: 'ASC' },
+        });
+        const bajosMinimo = productos.filter(p => Number(p.stock) <= Number(p.stockMinimo)).length;
+        return { ...alm, productos, totalProductos: productos.length, bajosMinimo };
+      }),
+    );
+
+    return { sucursal, almacenes: almacenesConStock };
   }
 }

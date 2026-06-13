@@ -61,6 +61,11 @@ export class SucursalesController {
   @ApiOperation({ summary: 'Detalle de una sucursal' })
   findOne(@Param('id', ParseIntPipe) id: number) { return this.svc.findOne(id); }
 
+  @Get(':id/inventario')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @ApiOperation({ summary: 'Almacenes y stock de productos de una sucursal' })
+  getInventario(@Param('id', ParseIntPipe) id: number) { return this.svc.getInventario(id); }
+
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @Roles(UserRole.ADMIN)

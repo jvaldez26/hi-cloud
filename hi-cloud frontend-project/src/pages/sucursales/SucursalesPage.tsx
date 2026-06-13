@@ -1,14 +1,16 @@
-﻿import { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
-  Card, Row, Col, Button, Table, Tag, Modal, Form, Input,
+  Card, Row, Col, Button, Tag, Modal, Form, Input,
   Space, Typography, Popconfirm, message, Avatar, Tooltip,
-  Switch, theme, Select,
+  Switch, theme, Select, Drawer, Table, Divider, Statistic,
+  Empty,
 } from 'antd';
 import {
   BankOutlined, PlusOutlined, EditOutlined, DeleteOutlined,
   StarOutlined, StarFilled, PhoneOutlined, MailOutlined,
-  EnvironmentOutlined, UserOutlined, FileExcelOutlined, SearchOutlined,
+  EnvironmentOutlined, FileExcelOutlined, SearchOutlined,
+  InboxOutlined, WarningOutlined, CheckCircleOutlined,
 } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -26,6 +28,9 @@ export default function SucursalesPage() {
   const [editando, setEditando]         = useState<any>(null);
   const [form] = Form.useForm();
 
+  // Inventario drawer
+  const [drawerSuc, setDrawerSuc] = useState<any>(null);
+
   const { data: sucursales = [], isLoading } = useQuery<any[]>({
     queryKey: ['sucursales'],
     queryFn:  () => api.get('/sucursales').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
@@ -34,6 +39,12 @@ export default function SucursalesPage() {
   const { data: almacenes = [] } = useQuery<any[]>({
     queryKey: ['almacenes-sel'],
     queryFn:  () => api.get('/almacenes?limit=200').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
+  });
+
+  const { data: inventario, isFetching: cargandoInv } = useQuery<any>({
+    queryKey: ['sucursal-inventario', drawerSuc?.id],
+    queryFn:  () => api.get(`/sucursales/${drawerSuc.id}/inventario`).then((r: any) => r.data?.data ?? r.data),
+    enabled:  !!drawerSuc?.id,
   });
 
   const onErr = (e: any, fallback: string) =>
@@ -91,6 +102,51 @@ export default function SucursalesPage() {
 
   const principal = sucursales.find((s: any) => s.esPrincipal);
 
+  // Columnas tabla de productos en drawer
+  const colsProductos = [
+    {
+      title: 'Producto',
+      key: 'producto',
+      render: (_: any, row: any) => (
+        <Space direction="vertical" size={0}>
+          <Text strong style={{ fontSize: 13 }}>{row.producto?.nombre ?? `#${row.productoId}`}</Text>
+          {row.producto?.codigo && <Text type="secondary" style={{ fontSize: 11 }}>{row.producto.codigo}</Text>}
+        </Space>
+      ),
+    },
+    {
+      title: 'Stock actual',
+      dataIndex: 'stock',
+      key: 'stock',
+      width: 110,
+      align: 'right' as const,
+      render: (v: any, row: any) => {
+        const bajo = Number(v) <= Number(row.stockMinimo);
+        return (
+          <Text strong style={{ color: bajo ? '#ef4444' : '#059669', fontSize: 14 }}>
+            {Number(v).toFixed(2)}
+          </Text>
+        );
+      },
+    },
+    {
+      title: 'Mínimo',
+      dataIndex: 'stockMinimo',
+      key: 'stockMinimo',
+      width: 90,
+      align: 'right' as const,
+      render: (v: any) => <Text type="secondary">{Number(v).toFixed(2)}</Text>,
+    },
+    {
+      title: 'Estado',
+      key: 'estado',
+      width: 90,
+      render: (_: any, row: any) => Number(row.stock) <= Number(row.stockMinimo)
+        ? <Tag icon={<WarningOutlined />} color="error">Bajo</Tag>
+        : <Tag icon={<CheckCircleOutlined />} color="success">OK</Tag>,
+    },
+  ];
+
   return (
     <div style={{ padding: '24px' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
@@ -103,7 +159,6 @@ export default function SucursalesPage() {
         </div>
         <Space>
           <Button icon={<FileExcelOutlined />} onClick={() => {
-            const { data: sData } = ({ data: sucursales });
             const filas = (sucursales ?? []).map((s: any) => ({
               'Código':      s.codigo ?? '',
               'Nombre':      s.nombre ?? '',
@@ -173,9 +228,19 @@ export default function SucursalesPage() {
               </Space>
             </Col>
             <Col>
-              <Tag style={{ background: 'rgba(255,255,255,.2)', borderColor: 'transparent', color: '#fff' }}>
-                {principal.codigo}
-              </Tag>
+              <Space>
+                <Tag style={{ background: 'rgba(255,255,255,.2)', borderColor: 'transparent', color: '#fff' }}>
+                  {principal.codigo}
+                </Tag>
+                <Button
+                  size="small"
+                  icon={<InboxOutlined />}
+                  style={{ background: 'rgba(255,255,255,.2)', borderColor: 'transparent', color: '#fff' }}
+                  onClick={() => setDrawerSuc(principal)}
+                >
+                  Inventario
+                </Button>
+              </Space>
             </Col>
           </Row>
         </Card>
@@ -194,6 +259,9 @@ export default function SucursalesPage() {
                   border: suc.esPrincipal ? `2px solid ${color}` : '1px solid #e5e7eb',
                 }}
                 actions={[
+                  <Tooltip title="Ver inventario">
+                    <InboxOutlined onClick={() => setDrawerSuc(suc)} />
+                  </Tooltip>,
                   <Tooltip title="Editar">
                     <EditOutlined onClick={() => abrirEditar(suc)} />
                   </Tooltip>,
@@ -340,6 +408,97 @@ export default function SucursalesPage() {
           </Form.Item>
         </Form>
       </Modal>
+
+      {/* Drawer inventario por sucursal */}
+      <Drawer
+        title={
+          <Space>
+            <InboxOutlined style={{ color: '#1a56db' }} />
+            <span>Inventario — {drawerSuc?.nombre}</span>
+            {drawerSuc?.codigo && <Tag>{drawerSuc.codigo}</Tag>}
+          </Space>
+        }
+        open={!!drawerSuc}
+        onClose={() => setDrawerSuc(null)}
+        width={760}
+        loading={cargandoInv}
+      >
+        {inventario && (
+          <>
+            {/* Resumen rápido */}
+            <Row gutter={16} style={{ marginBottom: 20 }}>
+              <Col span={8}>
+                <Statistic
+                  title="Almacenes"
+                  value={inventario.almacenes?.length ?? 0}
+                  prefix={<InboxOutlined />}
+                />
+              </Col>
+              <Col span={8}>
+                <Statistic
+                  title="Total productos"
+                  value={inventario.almacenes?.reduce((s: number, a: any) => s + (a.totalProductos ?? 0), 0) ?? 0}
+                />
+              </Col>
+              <Col span={8}>
+                <Statistic
+                  title="Bajos de mínimo"
+                  value={inventario.almacenes?.reduce((s: number, a: any) => s + (a.bajosMinimo ?? 0), 0) ?? 0}
+                  valueStyle={{ color: '#ef4444' }}
+                  prefix={<WarningOutlined />}
+                />
+              </Col>
+            </Row>
+
+            {/* Un bloque por almacén */}
+            {inventario.almacenes?.length === 0 && (
+              <Empty description="Esta sucursal no tiene almacenes asignados. Asigna un almacén principal en la configuración de la sucursal." />
+            )}
+
+            {inventario.almacenes?.map((alm: any, idx: number) => (
+              <div key={alm.id}>
+                {idx > 0 && <Divider />}
+                <div style={{ marginBottom: 12 }}>
+                  <Space align="center">
+                    <Text strong style={{ fontSize: 15 }}>
+                      📦 {alm.codigo ? `${alm.codigo} — ${alm.nombre}` : alm.nombre}
+                    </Text>
+                    <Tag color="blue">{alm.totalProductos} productos</Tag>
+                    {alm.bajosMinimo > 0 && (
+                      <Tag color="error" icon={<WarningOutlined />}>{alm.bajosMinimo} bajo mínimo</Tag>
+                    )}
+                  </Space>
+                  {alm.ciudad && (
+                    <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
+                      <EnvironmentOutlined style={{ marginRight: 4 }} />{alm.ciudad}
+                    </div>
+                  )}
+                </div>
+
+                {alm.productos?.length === 0 ? (
+                  <Empty
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    description="Sin movimientos de stock en este almacén aún"
+                    style={{ margin: '12px 0' }}
+                  />
+                ) : (
+                  <Table
+                    dataSource={alm.productos}
+                    columns={colsProductos}
+                    rowKey="id"
+                    size="small"
+                    pagination={{ pageSize: 10, showSizeChanger: false, hideOnSinglePage: true }}
+                    scroll={{ x: 'max-content' }}
+                    rowClassName={(row: any) =>
+                      Number(row.stock) <= Number(row.stockMinimo) ? 'ant-table-row-danger' : ''
+                    }
+                  />
+                )}
+              </div>
+            ))}
+          </>
+        )}
+      </Drawer>
     </div>
   );
 }
