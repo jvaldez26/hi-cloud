@@ -30,9 +30,31 @@ export class AlmacenesService {
   }
 
   async listar(sucursalId?: number) {
-    const where: any = { isActive: true, activo: true, empresaId: this.tenantService.getEmpresaId() };
-    if (sucursalId !== undefined) where.sucursalId = sucursalId;
-    return this.almRepo.find({ where, order: { nombre: 'ASC' } });
+    const empresaId = this.tenantService.getEmpresaId();
+    if (sucursalId !== undefined) {
+      // Buscar por AMBAS relaciones:
+      // 1. almacen.sucursalId (relación directa nueva)
+      // 2. sucursales.almacenPrincipalId → almacen.id (relación original en la entidad Sucursal)
+      return this.almRepo.manager.query(
+        `SELECT DISTINCT a.* FROM almacenes a
+         WHERE a."empresaId" = $1
+           AND a."isActive" = true
+           AND a."activo" = true
+           AND (
+             a."sucursalId" = $2
+             OR a.id IN (
+               SELECT "almacenPrincipalId" FROM sucursales
+               WHERE id = $2 AND "almacenPrincipalId" IS NOT NULL
+             )
+           )
+         ORDER BY a.nombre ASC`,
+        [empresaId, sucursalId],
+      );
+    }
+    return this.almRepo.find({
+      where: { isActive: true, activo: true, empresaId },
+      order: { nombre: 'ASC' },
+    });
   }
 
   async findById(id: number): Promise<Almacen> {

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { DetailDrawer } from '../../components/ui/DetailDrawer';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
@@ -420,6 +421,7 @@ function ProductosCatalogo() {
   const dupCheckNonce = useRef(0);
   const qc = useQueryClient();
 
+  const navigate      = useNavigate();
   const puedeCrear    = useCanDo('productos:crear');
   const puedeEditar   = useCanDo('productos:editar');
   const puedeEliminar = useCanDo('productos:eliminar');
@@ -856,7 +858,12 @@ function ProductosCatalogo() {
                   <Form.Item label="Almacén">
                     <Text type="secondary" style={{ fontSize: 12 }}>
                       {sucursalSeleccionada ? 'Esta sucursal no tiene almacenes. ' : 'No hay almacenes configurados. '}
-                      <a href="/almacenes" target="_blank" rel="noopener noreferrer">Crear almacén →</a>
+                      <a
+                        onClick={() => navigate(sucursalSeleccionada
+                          ? `/almacenes?sucursalId=${sucursalSeleccionada}`
+                          : '/almacenes')}
+                        style={{ cursor: 'pointer' }}
+                      >Crear almacén →</a>
                     </Text>
                   </Form.Item>
                 ) : (
