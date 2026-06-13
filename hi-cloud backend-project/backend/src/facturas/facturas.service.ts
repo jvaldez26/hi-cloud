@@ -336,9 +336,21 @@ export class FacturasService {
       }
     }
 
+    // Enriquecer con nombre de sucursal (query liviana — evita join innecesario)
+    const sucursalIds = [...new Set((data as any[]).map((f: any) => f.sucursalId).filter(Boolean))] as number[];
+    let sucursalNombreMap: Record<number, string> = {};
+    if (sucursalIds.length > 0) {
+      const sRows: { id: number; nombre: string }[] = await this.facturaRepository.manager.query(
+        `SELECT id, nombre FROM sucursales WHERE id = ANY($1)`,
+        [sucursalIds],
+      );
+      for (const s of sRows) sucursalNombreMap[s.id] = s.nombre;
+    }
+
     const enriched = data.map((f: any) => ({
       ...f,
-      ecf: ecfByFacturaId[f.id] ?? null,
+      ecf:            ecfByFacturaId[f.id] ?? null,
+      sucursalNombre: sucursalNombreMap[f.sucursalId] ?? null,
     }));
 
     return {

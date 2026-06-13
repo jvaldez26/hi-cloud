@@ -197,14 +197,25 @@ export class ProductosService implements OnModuleInit {
     return saved;
   }
 
-  async findAll(pagination: PaginationDto) {
-    const empresaId        = this.tenantService.getEmpresaId();
+  async findAll(pagination: PaginationDto, incluirSinStock = false) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const almacenId = this.tenantService.getAlmacenId() ?? undefined;
     const { limit = 10, page = 1, search } = pagination;
 
     const qb = this.productoRepository
       .createQueryBuilder('producto')
       .where('producto.empresaId = :empresaId', { empresaId })
       .andWhere('producto.isActive = :active', { active: true });
+
+    // Si hay almacén activo en el JWT y no se pide ver todos → filtrar por stock en ese almacén
+    if (almacenId && !incluirSinStock) {
+      qb.innerJoin(
+        'stock_almacen',
+        'sa',
+        'sa."productoId" = producto.id AND sa."almacenId" = :almacenId AND sa.stock > 0',
+        { almacenId },
+      );
+    }
 
     if (search) {
       qb.andWhere(
@@ -218,6 +229,19 @@ export class ProductosService implements OnModuleInit {
       .skip((page - 1) * limit)
       .take(Math.min(limit, 100))
       .getManyAndCount();
+
+    // Reemplazar stock global por stock del almacén activo
+    if (almacenId && data.length > 0) {
+      const ids = data.map(p => p.id);
+      const stocks = await this.stockAlmacenRepository.find({
+        where: { productoId: In(ids), almacenId } as any,
+      });
+      const stockMap = new Map(stocks.map(s => [s.productoId, Number(s.stock)]));
+      return {
+        data: data.map(p => ({ ...p, stock: stockMap.get(p.id) ?? 0 })),
+        meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+      };
+    }
 
     return {
       data,

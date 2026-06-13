@@ -3939,6 +3939,7 @@ export default function POSPage() {
   const C            = palette;
   const qc           = useQueryClient();
   const user         = useAuthStore(s => s.user);
+  const almacenActual = useAuthStore(s => s.almacenActual);
 
   // ── Bloqueo de pantalla ────────────────────────────────────────────────────
   const [pantallaBloqueada,   setPantallaBloqueada]   = useState(() =>
@@ -4120,8 +4121,9 @@ export default function POSPage() {
   });
 
   // Queries
+  // almacenActual en queryKey → invalida automáticamente al cambiar sucursal
   const { data: produtos, isLoading, refetch: refetchProductos } = useQuery({
-    queryKey: ['pos-products', search],
+    queryKey: ['pos-products', search, almacenActual],
     queryFn:  () => productosApi.list(1, 120, search),
     refetchInterval: 30_000,   // FIX 1: refrescar catálogo cada 30s
     staleTime: 20_000,

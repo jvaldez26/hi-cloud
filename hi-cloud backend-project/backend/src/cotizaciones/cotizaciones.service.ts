@@ -92,6 +92,7 @@ export class CotizacionesService {
         condicionesPago:  dto.condicionesPago,
         vendedorId:       (dto as any).vendedorId,
         nombreVendedor:   (dto as any).nombreVendedor,
+        sucursalId:       this.tenantService.getSucursalId() ?? undefined,
         subtotal:         Number(subtotal.toFixed(2)),
         iva:              Number(iva.toFixed(2)),
         total:            Number((subtotal + iva).toFixed(2)),
@@ -109,11 +110,14 @@ export class CotizacionesService {
 
   async findAll(pagination: PaginationDto) {
     const { limit = 10, page = 1, search } = pagination;
+    const sucursalId = this.tenantService.getSucursalId();
     const qb = this.cotizacionRepository
       .createQueryBuilder('c')
       .leftJoinAndSelect('c.cliente', 'cliente')
       .where('c.empresaId = :eid', { eid: this.tenantService.getEmpresaId() })
       .andWhere('c.isActive = :a', { a: true });
+
+    if (sucursalId) qb.andWhere('c.sucursalId = :sid', { sid: sucursalId });
 
     if (search) qb.andWhere(
       '(c.numero ILIKE :s OR cliente.nombre ILIKE :s)', { s: `%${search}%` },
@@ -176,19 +180,20 @@ export class CotizacionesService {
     const m      = String(now.getMonth() + 1).padStart(2, '0');
     const folio  = `FAC-${y}${m}-${String(count + 1).padStart(4, '0')}`;
 
-    // Crear factura
+    // Crear factura — hereda sucursalId de la cotización (no del JWT activo)
     const factura = await this.facturaRepository.save(
       this.facturaRepository.create({
-        empresaId: this.tenantService.getEmpresaId(),
+        empresaId:  this.tenantService.getEmpresaId(),
         folio,
-        fecha:    now,
-        estado:   FacturaEstado.BORRADOR,
-        clienteId: cot.clienteId,
-        usuarioId: usuario.id,
-        notas:    cot.notas ?? `Convertida desde cotización ${cot.numero}`,
-        subtotal: Number(cot.subtotal),
-        iva:      Number(cot.iva),
-        total:    Number(cot.total),
+        fecha:      now,
+        estado:     FacturaEstado.BORRADOR,
+        clienteId:  cot.clienteId,
+        usuarioId:  usuario.id,
+        notas:      cot.notas ?? `Convertida desde cotización ${cot.numero}`,
+        subtotal:   Number(cot.subtotal),
+        iva:        Number(cot.iva),
+        total:      Number(cot.total),
+        sucursalId: (cot as any).sucursalId ?? undefined,
       }),
     );
 
