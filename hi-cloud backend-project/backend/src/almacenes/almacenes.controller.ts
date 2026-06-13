@@ -50,7 +50,9 @@ export class AlmacenesController {
   crear(@Body() dto: CreateAlmacenDto) { return this.svc.crear(dto); }
 
   @Get()
-  listar() { return this.svc.listar(); }
+  listar(@Query('sucursalId') sucursalId?: string) {
+    return this.svc.listar(sucursalId ? Number(sucursalId) : undefined);
+  }
 
   @Get(':id/stock')
   @ApiOperation({ summary: 'Stock de todos los productos en este almacén' })

@@ -11,6 +11,7 @@ import { Repository, In } from 'typeorm';
 import { Producto } from './entities/producto.entity';
 import { Almacen } from '../almacenes/entities/almacen.entity';
 import { StockAlmacen } from '../almacenes/entities/stock-almacen.entity';
+import { Movimiento, TipoMovimiento } from '../inventario/entities/movimiento.entity';
 import { CreateProductoDto } from './dto/create-producto.dto';
 import { UpdateProductoDto } from './dto/update-producto.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
@@ -34,6 +35,8 @@ export class ProductosService implements OnModuleInit {
     private almacenRepository:  Repository<Almacen>,
     @InjectRepository(StockAlmacen)
     private stockAlmacenRepository: Repository<StockAlmacen>,
+    @InjectRepository(Movimiento)
+    private movimientoRepository: Repository<Movimiento>,
     private tenantService:   TenantService,
     private realtimeService: RealtimeService,
     private limitesService:  LimitesService,
@@ -170,6 +173,24 @@ export class ProductosService implements OnModuleInit {
       await this.sincronizarStockAlmacen(saved.id, empresaId, dto.stock!, almacenId).catch(
         (err: Error) => this.logger.warn(`stock_almacen no sincronizado en producto #${saved.id}: ${err.message}`),
       );
+      // Loguear movimiento de entrada inicial en inventario
+      if (almacenId) {
+        const userId = this.tenantService.getUserId() ?? 0;
+        await this.movimientoRepository.save(
+          this.movimientoRepository.create({
+            tipo:             TipoMovimiento.ENTRADA,
+            productoId:       saved.id,
+            cantidad:         dto.stock!,
+            cantidadAnterior: 0,
+            cantidadNueva:    dto.stock!,
+            motivo:           'Stock inicial al crear producto',
+            referencia:       saved.codigo ?? undefined,
+            userId,
+            almacenId,
+            empresaId,
+          } as any),
+        ).catch((err: Error) => this.logger.warn(`movimiento inicial no registrado para producto #${saved.id}: ${err.message}`));
+      }
     }
 
     this.realtimeService.notify(empresaId, 'producto', 'created', saved.id);

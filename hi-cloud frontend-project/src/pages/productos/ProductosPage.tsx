@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { DetailDrawer } from '../../components/ui/DetailDrawer';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
@@ -18,6 +18,7 @@ import { productosApi, type ProductoPayload } from '../../api/productos.api';
 import { atributosApi } from '../../api/atributos.api';
 import api from '../../api/client';
 import { useCanDo } from '../../hooks/useCanDo';
+import { useAuthStore } from '../../store/auth.store';
 import { exportarInventario } from '../../utils/exportExcel';
 import type { Producto } from '../../types';
 import { fmt } from '../../utils/formatters';
@@ -423,14 +424,40 @@ function ProductosCatalogo() {
   const puedeEditar   = useCanDo('productos:editar');
   const puedeEliminar = useCanDo('productos:eliminar');
 
-  // Almacenes del tenant — se cargan solo cuando el modal está abierto
+  const { sucursalActual: sucursalJwt, almacenActual: almacenJwt, user, empresaActual } = useAuthStore();
+  const [sucursalSeleccionada, setSucursalSeleccionada] = useState<number | undefined>(undefined);
+
+  // Sucursales accesibles — comparte caché con AppLayout
+  const { data: sucursales = [] } = useQuery<any[]>({
+    queryKey: ['mis-sucursales', user?.id, empresaActual],
+    queryFn:  () => api.get('/auth/mis-sucursales').then((r: any) => r.data?.data ?? r.data ?? []),
+    staleTime: 60_000,
+    enabled:   open && !!user && !!empresaActual,
+  });
+
+  // Almacenes filtrados por sucursal seleccionada — se cargan solo cuando el modal está abierto
   const { data: almacenesRaw = [] } = useQuery<any[]>({
-    queryKey: ['almacenes-lista'],
-    queryFn:  () => api.get('/almacenes').then((r: any) => r.data?.data ?? r.data ?? []),
+    queryKey: ['almacenes-lista', sucursalSeleccionada],
+    queryFn:  () => api.get(
+      sucursalSeleccionada ? `/almacenes?sucursalId=${sucursalSeleccionada}` : '/almacenes'
+    ).then((r: any) => r.data?.data ?? r.data ?? []),
     staleTime: 5 * 60_000,
     enabled:   open,
   });
   const almacenes: { id: number; nombre: string }[] = almacenesRaw;
+
+  // Auto-seleccionar almacén cuando carga la lista (ej: al cambiar sucursal)
+  useEffect(() => {
+    if (!open || editing) return;
+    const alreadySet = form.getFieldValue('almacenId');
+    if (alreadySet) return;
+    const aid = almacenJwt ? Number(almacenJwt) : undefined;
+    if (almacenes.length === 1) {
+      form.setFieldValue('almacenId', almacenes[0].id);
+    } else if (aid && almacenes.some((a: any) => a.id === aid)) {
+      form.setFieldValue('almacenId', aid);
+    }
+  }, [almacenes]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['productos', page, search, categoria],
@@ -471,7 +498,14 @@ function ProductosCatalogo() {
     dupCheckNonce.current++;  // invalida cualquier check async pendiente
     setEditing(null); form.resetFields(); form.setFieldValue('codigo', ''); setPreview(''); setFieldErrors({});
     setPrecioInput(0); setPrecioConItbis(false);
-    if (almacenes.length === 1) form.setFieldValue('almacenId', almacenes[0].id);
+    // Pre-seleccionar sucursal del JWT si el usuario tiene asignada una
+    const sid = sucursalJwt ? Number(sucursalJwt) : undefined;
+    if (sid) {
+      (form as any).setFieldValue('sucursalId', sid);
+      setSucursalSeleccionada(sid);
+    } else {
+      setSucursalSeleccionada(undefined);
+    }
     setOpen(true);
   };
   const openEdit = (p: Producto) => {
@@ -488,6 +522,7 @@ function ProductosCatalogo() {
     form.setFieldsValue(safeValues);
     setPreview(p.imagenUrl ?? ''); setFieldErrors({});
     setPrecioInput(Number(p.precio) || 0); setPrecioConItbis(false);
+    setSucursalSeleccionada(undefined);
     if (almacenes.length === 1 && !(p as any).almacenId) form.setFieldValue('almacenId', almacenes[0].id);
     setOpen(true);
   };
@@ -495,9 +530,15 @@ function ProductosCatalogo() {
     dupCheckNonce.current++;  // invalida cualquier check async pendiente
     setOpen(false); setEditing(null); form.resetFields(); setPreview(''); setFieldErrors({});
     setPrecioInput(0); setPrecioConItbis(false);
+    setSucursalSeleccionada(undefined);
   };
   const handleSubmit = (values: ProductoPayload) => {
     if (precioInput <= 0) { message.error('El precio es requerido'); return; }
+    // Validar almacén si hay stock inicial (solo al crear)
+    if (!editing && values.tipo !== 'servicio' && (values.stock ?? 0) > 0 && !(values as any).almacenId) {
+      message.error('Debes seleccionar un almacén para registrar el stock inicial');
+      return;
+    }
     const itbis  = values.porcentajeIva ?? 18;
     const pBase  = precioConItbis
       ? Math.round((Number(precioInput) / (1 + itbis / 100)) * 100) / 100
@@ -505,6 +546,8 @@ function ProductosCatalogo() {
     const payload: ProductoPayload = { ...values, precio: pBase };
     // no enviar cadena vacía ni valores basura
     if (!payload.codigo || payload.codigo === 'undefined' || payload.codigo === 'null') delete (payload as any).codigo;
+    // sucursalId es solo para filtrar almacenes en la UI — no va al backend (producto pertenece a empresa, no sucursal)
+    delete (payload as any).sucursalId;
     if (values.tipo === 'servicio') {
       payload.stock = undefined;
       payload.stockMinimo = undefined;
@@ -789,13 +832,30 @@ function ProductosCatalogo() {
               <Form.Item name="categoria" label="Categoría"><Input /></Form.Item>
             </Col>
 
+            {/* Sucursal — solo cuando el usuario tiene acceso a varias */}
+            {!esServicio && sucursales.length > 1 && (
+              <Col xs={24} sm={8}>
+                <Form.Item name="sucursalId" label="Sucursal">
+                  <Select
+                    placeholder="Seleccionar sucursal"
+                    allowClear
+                    options={sucursales.map((s: any) => ({ value: s.id, label: s.nombre }))}
+                    onChange={(val) => {
+                      form.setFieldValue('almacenId', undefined);
+                      setSucursalSeleccionada(val ?? undefined);
+                    }}
+                  />
+                </Form.Item>
+              </Col>
+            )}
+
             {/* Almacén — solo para productos físicos */}
             {!esServicio && (
               <Col xs={24} sm={almacenes.length === 0 ? 24 : 16}>
                 {almacenes.length === 0 ? (
                   <Form.Item label="Almacén">
                     <Text type="secondary" style={{ fontSize: 12 }}>
-                      No hay almacenes configurados.{' '}
+                      {sucursalSeleccionada ? 'Esta sucursal no tiene almacenes. ' : 'No hay almacenes configurados. '}
                       <a href="/almacenes" target="_blank" rel="noopener noreferrer">Crear almacén →</a>
                     </Text>
                   </Form.Item>
@@ -803,9 +863,10 @@ function ProductosCatalogo() {
                   <Form.Item name="almacenId" label="Almacén"
                     extra={almacenes.length === 1 ? undefined : 'Almacén donde se registrará el stock inicial'}>
                     <Select
-                      placeholder="Seleccionar almacén"
+                      placeholder={sucursales.length > 1 && !sucursalSeleccionada ? 'Primero selecciona una sucursal' : 'Seleccionar almacén'}
+                      disabled={sucursales.length > 1 && !sucursalSeleccionada}
                       allowClear={almacenes.length > 1}
-                      options={almacenes.map(a => ({ value: a.id, label: a.nombre }))}
+                      options={almacenes.map((a: any) => ({ value: a.id, label: a.nombre }))}
                     />
                   </Form.Item>
                 )}
