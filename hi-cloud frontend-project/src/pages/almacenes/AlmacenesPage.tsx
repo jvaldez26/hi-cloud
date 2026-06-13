@@ -86,6 +86,10 @@ export default function AlmacenesPage() {
 
   const { data: resumen }    = useQuery({ queryKey: ['alm-resumen'], queryFn: almApi.resumen });
   const { data: almacenes }  = useQuery({ queryKey: ['alm-list'],    queryFn: almApi.listar });
+  const { data: sucursales } = useQuery({
+    queryKey: ['sucursales'],
+    queryFn:  () => api.get('/auth/mis-sucursales').then(r => r.data?.data ?? []),
+  });
   const { data: stock, isLoading: loadStock } = useQuery({
     queryKey: ['alm-stock', almSeleccionado?.id],
     queryFn:  () => almApi.stock(almSeleccionado!.id),
@@ -488,6 +492,14 @@ export default function AlmacenesPage() {
           <Row gutter={12}>
             <Col xs={24} sm={16}><Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input /></Form.Item></Col>
             <Col xs={24} sm={8}><Form.Item name="codigo" label="Código corto" tooltip="Ej: ALM01, BDG-A — se usa para auto-generar códigos de ubicación WMS"><Input placeholder="ALM01" maxLength={20} /></Form.Item></Col>
+            {Array.isArray(sucursales) && sucursales.length > 0 && (
+              <Col span={24}>
+                <Form.Item name="sucursalId" label="Sucursal" tooltip="Vincular este almacén a una sucursal para el filtrado de stock por sucursal">
+                  <Select allowClear placeholder="Sin sucursal asignada"
+                    options={sucursales.map((s: any) => ({ value: s.id, label: s.nombre }))} />
+                </Form.Item>
+              </Col>
+            )}
             <Col xs={24} sm={14}><Form.Item name="direccion" label="Dirección"><Input /></Form.Item></Col>
             <Col xs={24} sm={10}><Form.Item name="ciudad" label="Ciudad"><Input /></Form.Item></Col>
             <Col xs={24} sm={12}><Form.Item name="responsable" label="Responsable"><Input /></Form.Item></Col>

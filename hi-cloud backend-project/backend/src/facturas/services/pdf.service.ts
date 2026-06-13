@@ -173,7 +173,12 @@ export class PDFService {
       empresaPieFactura:    empresa.configuracion?.pieFactura          as string | undefined,
       empresaTerminos:      empresa.configuracion?.terminosCondiciones as string | undefined,
       vendedorNombre:      factura.nombreVendedor,
-      sucursalNombre:      undefined,
+      sucursalNombre:      (factura as any).sucursalId
+        ? await this.facturaRepo.manager.query(
+            'SELECT nombre FROM sucursales WHERE id = $1 LIMIT 1',
+            [(factura as any).sucursalId],
+          ).then((r: any[]) => r[0]?.nombre ?? undefined)
+        : undefined,
       clienteNombre:                  factura.cliente?.nombre || 'Consumidor Final',
       clienteRNC:                     factura.cliente?.rncReceptor || factura.cliente?.rfc,
       clienteIdentificadorExtranjero: (factura.cliente as any)?.identificadorExtranjero,

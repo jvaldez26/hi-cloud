@@ -321,6 +321,12 @@ export class CotizacionesService {
       empresaSitioWeb:   factConf.factMostrarWeb      !== false ? empresa.sitioWeb : undefined,
       empresaPie:        empresa.configuracion?.pieFactura as string | undefined,
       vendedorNombre:    cot.nombreVendedor,
+      sucursalNombre:    (cot as any).sucursalId
+        ? await this.cotizacionRepository.manager.query(
+            'SELECT nombre FROM sucursales WHERE id = $1 LIMIT 1',
+            [(cot as any).sucursalId],
+          ).then((r: any[]) => r[0]?.nombre ?? undefined)
+        : undefined,
       clienteNombre:     cot.cliente?.nombre || 'Consumidor Final',
       clienteRNC:        (cot.cliente as any)?.rncReceptor || (cot.cliente as any)?.rfc,
       clienteDireccion:  cot.cliente?.direccion,

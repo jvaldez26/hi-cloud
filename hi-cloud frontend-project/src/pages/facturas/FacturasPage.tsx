@@ -232,13 +232,14 @@ export default function FacturasPage() {
   const hayFiltros = !!(search || estado || rango || clienteId || tipoPago || tipoNcf || montoMin || montoMax);
 
   const COLS_DEF = [
-    { key: 'folio',   label: 'Folio',   defaultVisible: true  },
-    { key: 'fecha',   label: 'Fecha',   defaultVisible: true  },
-    { key: 'cliente', label: 'Cliente', defaultVisible: true  },
-    { key: 'total',   label: 'Total',   defaultVisible: true  },
-    { key: 'moneda',  label: 'Moneda',  defaultVisible: true  },
-    { key: 'estado',  label: 'Estado',  defaultVisible: true  },
-    { key: 'ecf',     label: 'e-CF',    defaultVisible: true  },
+    { key: 'folio',    label: 'Folio',    defaultVisible: true  },
+    { key: 'fecha',    label: 'Fecha',    defaultVisible: true  },
+    { key: 'cliente',  label: 'Cliente',  defaultVisible: true  },
+    { key: 'total',    label: 'Total',    defaultVisible: true  },
+    { key: 'moneda',   label: 'Moneda',   defaultVisible: true  },
+    { key: 'estado',   label: 'Estado',   defaultVisible: true  },
+    { key: 'sucursal', label: 'Sucursal', defaultVisible: false },
+    { key: 'ecf',      label: 'e-CF',     defaultVisible: true  },
   ];
   const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('facturas', COLS_DEF);
 
@@ -294,6 +295,16 @@ export default function FacturasPage() {
           {v.toUpperCase()}
         </Tag>
       ),
+    },
+    // ── Sucursal ───────────────────────────────────────────────────────────────
+    {
+      title: 'Sucursal', key: 'sucursal', width: 120, ellipsis: true,
+      render: (_: unknown, r: Factura) => {
+        const nombre = (r as any).sucursalNombre;
+        return nombre
+          ? <Text style={{ fontSize: 12 }}>{nombre}</Text>
+          : <Text type="secondary" style={{ fontSize: 11 }}>—</Text>;
+      },
     },
     // ── e-CF — badge compacto + botón emitir/reenviar ─────────────────────────
     {

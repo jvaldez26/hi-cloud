@@ -57,8 +57,9 @@ export interface DocumentoPDFData {
   empresaSitioWeb?:  string;
   /** Texto en el pie de página (se usa empresaPie si existe) */
   empresaPie?:       string;
-  // ── Vendedor ───────────────────────────────────────────────────────────────
+  // ── Vendedor / Sucursal ────────────────────────────────────────────────────
   vendedorNombre?:   string;
+  sucursalNombre?:   string;
   // ── Cliente ────────────────────────────────────────────────────────────────
   clienteNombre:     string;
   clienteRNC?:       string;
@@ -222,6 +223,7 @@ export async function generarDocumentoPDFFactura(
     // Info rows: label (gris) + valor (bold oscuro), ambos alineados a la derecha
     const infoRows: Array<[string, string]> = [
       ...(d.vendedorNombre  ? [['Vendedor',      d.vendedorNombre]  as [string, string]] : []),
+      ...(d.sucursalNombre  ? [['Sucursal',      d.sucursalNombre]  as [string, string]] : []),
       ...(d.condicionesPago ? [['Cond. de Pago', d.condicionesPago] as [string, string]] : []),
       ['Fecha Emisión',        fmtF(d.fecha)],
     ];
