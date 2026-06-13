@@ -12,7 +12,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiHeader } from '@nestjs/swagger';
-import { IsEnum } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsPositive } from 'class-validator';
+import { Type } from 'class-transformer';
 import { MultiEmpresaService } from './multi-empresa.service';
 import {
   AsignarUsuarioEmpresaDto,
@@ -29,6 +30,11 @@ import { User } from '../users/users.entity';
 class CambiarRolDto {
   @IsEnum(UserRole)
   rol!: UserRole;
+}
+
+class AsignarSucursalDto {
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number)
+  sucursalId?: number | null;
 }
 
 @ApiTags('Multi-empresa')
@@ -135,6 +141,17 @@ export class MultiEmpresaController {
     @GetUser() solicitante: User,
   ) {
     return this.multiEmpresaService.cambiarRolUsuario(empresaId, userId, dto.rol, solicitante.id);
+  }
+
+  @Patch(':empresaId/usuarios/:userId/sucursal')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Asignar sucursal a un usuario en una empresa' })
+  asignarSucursal(
+    @Param('empresaId', ParseIntPipe) empresaId: number,
+    @Param('userId',    ParseIntPipe) userId:    number,
+    @Body() dto: AsignarSucursalDto,
+  ) {
+    return this.multiEmpresaService.asignarSucursalUsuario(empresaId, userId, dto.sucursalId ?? null);
   }
 
   @Delete(':empresaId/usuarios/:userId')

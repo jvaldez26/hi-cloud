@@ -12,6 +12,7 @@ import {
   UserAddOutlined, MailOutlined, DeleteOutlined, CrownOutlined,
   TeamOutlined, ClockCircleOutlined, CheckCircleOutlined,
   CloseCircleOutlined, ReloadOutlined, CopyOutlined, SearchOutlined,
+  BankOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -36,22 +37,22 @@ const ESTADO_INV: Record<string, { label: string; color: string }> = {
 };
 
 const equipoApi = {
-  miembros:   (empresaId: number) => api.get(`/multi-empresa/${empresaId}/usuarios`).then(r => r.data?.data ?? r.data),
-  invitaciones:(empresaId: number)=> api.get(`/invitaciones/empresa/${empresaId}`).then(r => r.data?.data ?? r.data),
-  invitar:    (body: any)          => api.post('/invitaciones', body).then(r => r.data?.data ?? r.data),
-  cancelarInv:(id: number)         => api.delete(`/invitaciones/${id}`).then(r => r.data?.data ?? r.data),
-  cambiarRol: (empresaId: number, userId: number, rol: string) =>
+  miembros:    (empresaId: number) => api.get(`/multi-empresa/${empresaId}/usuarios`).then(r => r.data?.data ?? r.data),
+  invitaciones:(empresaId: number) => api.get(`/invitaciones/empresa/${empresaId}`).then(r => r.data?.data ?? r.data),
+  invitar:     (body: any)         => api.post('/invitaciones', body).then(r => r.data?.data ?? r.data),
+  cancelarInv: (id: number)        => api.delete(`/invitaciones/${id}`).then(r => r.data?.data ?? r.data),
+  cambiarRol:  (empresaId: number, userId: number, rol: string) =>
     api.patch(`/multi-empresa/${empresaId}/usuarios/${userId}`, { rol }).then(r => r.data?.data ?? r.data),
-  remover:    (empresaId: number, userId: number) =>
+  asignarSucursal: (empresaId: number, userId: number, sucursalId: number | null) =>
+    api.patch(`/multi-empresa/${empresaId}/usuarios/${userId}/sucursal`, { sucursalId }).then(r => r.data?.data ?? r.data),
+  remover:     (empresaId: number, userId: number) =>
     api.delete(`/multi-empresa/${empresaId}/usuarios/${userId}`).then(r => r.data?.data ?? r.data),
 };
 
-// Obtiene empresaId desde el header o local storage
 function getEmpresaId(): number {
   return Number(localStorage.getItem('empresaId') ?? 1);
 }
 
-// ── Tarjeta de rol ────────────────────────────────────────────────────────────
 function RolCard({ rol, selected, onSelect }: {
   rol: string; selected: boolean; onSelect: () => void;
 }) {
@@ -78,9 +79,11 @@ export default function EquipoPage() {
   const [search, setSearch]         = useState('');
   const [invModal,   setInvModal]   = useState(false);
   const [rolModal,   setRolModal]   = useState<{ userId: number; rolActual: string } | null>(null);
+  const [sucModal,   setSucModal]   = useState<{ userId: number; nombre: string; sucursalActual: number | null } | null>(null);
   const [rolForm]                   = Form.useForm();
   const [invForm]                   = Form.useForm();
   const [rolSeleccionado, setRol]   = useState('viewer');
+  const [sucursalSel, setSucursalSel] = useState<number | null>(null);
   const qc = useQueryClient();
 
   const { data: miembros,    isLoading: loadM } = useQuery({
@@ -91,6 +94,11 @@ export default function EquipoPage() {
   const { data: invitaciones, isLoading: loadI } = useQuery({
     queryKey: ['equipo-invs', empresaId],
     queryFn:  () => equipoApi.invitaciones(empresaId),
+  });
+
+  const { data: sucursales = [] } = useQuery<any[]>({
+    queryKey: ['sucursales'],
+    queryFn:  () => api.get('/sucursales').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
   });
 
   const inv = () => {
@@ -109,7 +117,6 @@ export default function EquipoPage() {
       if (emailOk) {
         message.success('Invitación enviada por email ✉️');
       } else if (enlace) {
-        // Email no configurado — mostrar modal con el enlace para copiar
         Modal.info({
           title: '✅ Invitación creada — comparte el enlace',
           width: 520,
@@ -160,6 +167,17 @@ export default function EquipoPage() {
     onError: (e: any) => message.error(e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error al cambiar el rol'),
   });
 
+  const asignarSucursalMut = useMutation({
+    mutationFn: ({ userId, sucursalId }: { userId: number; sucursalId: number | null }) =>
+      equipoApi.asignarSucursal(empresaId, userId, sucursalId),
+    onSuccess: () => {
+      inv();
+      setSucModal(null);
+      message.success('Sucursal asignada. El usuario debe volver a iniciar sesión para actualizar su JWT.');
+    },
+    onError: (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error al asignar sucursal'),
+  });
+
   const removerMut = useMutation({
     mutationFn: (userId: number) => equipoApi.remover(empresaId, userId),
     onSuccess: () => { inv(); message.success('Usuario removido'); },
@@ -167,7 +185,6 @@ export default function EquipoPage() {
 
   const miembrosData = miembros ?? [];
   const invsData     = (invitaciones ?? []).filter((i: any) => i.estado === 'pendiente');
-  const totalActivos = miembrosData.filter((m: any) => m.user?.isActive !== false).length;
 
   const miembrosFiltrados = useMemo(() =>
     miembrosData.filter((m: any) =>
@@ -178,6 +195,7 @@ export default function EquipoPage() {
   const COLS_DEF = [
     { key: 'user',        label: 'Usuario',           defaultVisible: true  },
     { key: 'rol',         label: 'Rol',               defaultVisible: true  },
+    { key: 'sucursal',    label: 'Sucursal',          defaultVisible: true  },
     { key: 'estado',      label: 'Estado',            defaultVisible: true  },
     { key: 'isPrincipal', label: 'Empresa principal', defaultVisible: false },
   ];
@@ -200,7 +218,7 @@ export default function EquipoPage() {
       ),
     },
     {
-      title: 'Rol', dataIndex: 'rol', width: 160,
+      title: 'Rol', dataIndex: 'rol', key: 'rol', width: 160,
       render: (v: string) => {
         const info = ROL_INFO[v];
         return info ? (
@@ -211,13 +229,22 @@ export default function EquipoPage() {
       },
     },
     {
+      title: 'Sucursal', key: 'sucursal', width: 180,
+      render: (_: any, r: any) => {
+        const suc = sucursales.find((s: any) => s.id === r.sucursalId);
+        return suc
+          ? <Tag icon={<BankOutlined />} color="blue">{suc.nombre}</Tag>
+          : <Tag color="default" style={{ color: '#94a3b8' }}>Sin asignar</Tag>;
+      },
+    },
+    {
       title: 'Estado', key: 'estado', width: 100,
       render: (_: any, r: any) => r.user?.isActive !== false
         ? <Badge status="success" text="Activo" />
         : <Badge status="default" text="Inactivo" />,
     },
     {
-      title: 'Empresa principal', dataIndex: 'isPrincipal', width: 140,
+      title: 'Empresa principal', dataIndex: 'isPrincipal', key: 'isPrincipal', width: 140,
       render: (v: boolean) => v ? <Tag color="blue">Principal</Tag> : <Tag>Adicional</Tag>,
     },
     {
@@ -228,6 +255,7 @@ export default function EquipoPage() {
           viewLabel="Cambiar rol"
           items={[
             { key: 'rol', label: 'Cambiar rol', icon: <CrownOutlined />, onClick: () => { setRolModal({ userId: r.userId, rolActual: r.rol }); setRol(r.rol); } },
+            { key: 'sucursal', label: 'Asignar sucursal', icon: <BankOutlined />, onClick: () => { setSucModal({ userId: r.userId, nombre: r.user?.nombre ?? '?', sucursalActual: r.sucursalId ?? null }); setSucursalSel(r.sucursalId ?? null); } },
             { type: 'divider' as const },
             { key: 'remover', label: 'Remover del equipo', danger: true, icon: <DeleteOutlined />, onClick: () => removerMut.mutate(r.userId) },
           ]}
@@ -323,7 +351,7 @@ export default function EquipoPage() {
         style={{ marginBottom: 16 }}>
         <Table columns={fcEquipo(colsMiembros)} dataSource={miembrosFiltrados}
           rowKey="userId" loading={loadM} size="small"
-        scroll={{ x: 'max-content' }} pagination={false} />
+          scroll={{ x: 'max-content' }} pagination={false} />
       </Card>
 
       {/* Invitaciones pendientes */}
@@ -337,7 +365,7 @@ export default function EquipoPage() {
         }>
           <Table columns={colsInvs} dataSource={invsData}
             rowKey="id" loading={loadI} size="small"
-        scroll={{ x: 'max-content' }} pagination={false} />
+            scroll={{ x: 'max-content' }} pagination={false} />
         </Card>
       )}
 
@@ -385,7 +413,7 @@ export default function EquipoPage() {
               {Object.keys(ROL_INFO).map(rol => (
                 <Col xs={24} sm={12} key={rol}>
                   <RolCard rol={rol} selected={rolSeleccionado === rol}
-                    onSelect={() => setRol(rol)}  />
+                    onSelect={() => setRol(rol)} />
                 </Col>
               ))}
             </Row>
@@ -418,7 +446,7 @@ export default function EquipoPage() {
               {Object.keys(ROL_INFO).map(rol => (
                 <Col xs={24} sm={12} key={rol}>
                   <RolCard rol={rol} selected={rolSeleccionado === rol}
-                    onSelect={() => setRol(rol)}  />
+                    onSelect={() => setRol(rol)} />
                 </Col>
               ))}
             </Row>
@@ -431,6 +459,52 @@ export default function EquipoPage() {
               </Button>
             </Col>
           </Row>
+        </Form>
+      </Modal>
+
+      {/* ── Modal asignar sucursal ── */}
+      <Modal
+        title={<Space><BankOutlined />Asignar sucursal — {sucModal?.nombre}</Space>}
+        open={!!sucModal}
+        onCancel={() => setSucModal(null)}
+        onOk={() => sucModal && asignarSucursalMut.mutate({ userId: sucModal.userId, sucursalId: sucursalSel })}
+        confirmLoading={asignarSucursalMut.isPending}
+        okText="Guardar"
+        width={440}
+      >
+        <Alert
+          style={{ marginBottom: 16 }}
+          type="info" showIcon
+          message="La sucursal determina qué almacén usa el usuario al facturar y registrar compras. El usuario debe cerrar sesión e iniciar nuevamente para que el JWT se actualice."
+        />
+        <Form layout="vertical">
+          <Form.Item label="Sucursal asignada">
+            <Select
+              allowClear
+              placeholder="Sin sucursal asignada (usa la principal)"
+              value={sucursalSel ?? undefined}
+              onChange={v => setSucursalSel(v ?? null)}
+              options={sucursales.map((s: any) => ({
+                value: s.id,
+                label: s.esPrincipal ? `${s.nombre} ⭐ (Principal)` : s.nombre,
+              }))}
+              style={{ width: '100%' }}
+            />
+          </Form.Item>
+          {sucursalSel && (() => {
+            const suc = sucursales.find((s: any) => s.id === sucursalSel);
+            return suc?.almacenPrincipalId ? (
+              <Alert
+                type="success" showIcon
+                message={`Almacén que se asignará automáticamente: ID ${suc.almacenPrincipalId}`}
+              />
+            ) : (
+              <Alert
+                type="warning" showIcon
+                message="Esta sucursal no tiene almacén principal asignado. El JWT no incluirá almacenId. Configura el almacén principal en la página de Sucursales."
+              />
+            );
+          })()}
         </Form>
       </Modal>
     </div>

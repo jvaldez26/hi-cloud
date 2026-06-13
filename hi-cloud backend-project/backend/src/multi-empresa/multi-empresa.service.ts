@@ -265,6 +265,16 @@ export class MultiEmpresaService {
     return this.usuarioEmpresaRepo.findOne({ where: { id: asignacion.id }, relations: ['user'] });
   }
 
+  async asignarSucursalUsuario(empresaId: number, userId: number, sucursalId: number | null) {
+    const asignacion = await this.usuarioEmpresaRepo.findOne({
+      where: { empresaId, userId, isActive: true },
+    });
+    if (!asignacion) throw new NotFoundException(`El usuario #${userId} no pertenece a esta empresa`);
+
+    await this.usuarioEmpresaRepo.update(asignacion.id, { sucursalId: sucursalId ?? undefined } as any);
+    return this.usuarioEmpresaRepo.findOne({ where: { id: asignacion.id }, relations: ['user'] });
+  }
+
   async removerUsuario(empresaId: number, userId: number) {
     const asignacion = await this.usuarioEmpresaRepo.findOne({
       where: { empresaId, userId, isActive: true },

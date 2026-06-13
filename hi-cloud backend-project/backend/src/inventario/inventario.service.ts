@@ -114,11 +114,13 @@ export class InventarioService {
     motivo?: string,
     referencia?: string,
     empresaId?: number,
+    almacenId?: number,
   ): Promise<Movimiento> {
     const movimiento = this.movimientoRepository.create({
       tipo, productoId, cantidad, cantidadAnterior, cantidadNueva,
       motivo, referencia, userId,
       ...(empresaId ? { empresaId } : {}),
+      ...(almacenId ? { almacenId } : {}),
     });
     return this.movimientoRepository.save(movimiento);
   }
@@ -138,7 +140,7 @@ export class InventarioService {
       await this.syncStockAlmacen(producto.empresaId, productoId, cantidadNueva, Number(producto.stockMinimo), almacenId);
     }
 
-    return this.persistirMovimiento(TipoMovimiento.ENTRADA, productoId, cantidad, cantidadAnterior, cantidadNueva, userId, motivo, referencia, producto.empresaId);
+    return this.persistirMovimiento(TipoMovimiento.ENTRADA, productoId, cantidad, cantidadAnterior, cantidadNueva, userId, motivo, referencia, producto.empresaId, almacenId);
   }
 
   async registrarSalida(productoId: number, cantidad: number, userId: number, motivo?: string, referencia?: string, almacenId?: number) {
@@ -162,7 +164,7 @@ export class InventarioService {
       await this.syncStockAlmacen(producto.empresaId, productoId, cantidadNueva, Number(producto.stockMinimo), almacenId);
     }
 
-    return this.persistirMovimiento(TipoMovimiento.SALIDA, productoId, cantidad, cantidadAnterior, cantidadNueva, userId, motivo, referencia, producto.empresaId);
+    return this.persistirMovimiento(TipoMovimiento.SALIDA, productoId, cantidad, cantidadAnterior, cantidadNueva, userId, motivo, referencia, producto.empresaId, almacenId);
   }
 
   async registrarDevolucion(productoId: number, cantidad: number, userId: number, motivo?: string, referencia?: string, almacenId?: number) {
@@ -176,7 +178,7 @@ export class InventarioService {
       await this.syncStockAlmacen(producto.empresaId, productoId, cantidadNueva, Number(producto.stockMinimo), almacenId);
     }
 
-    return this.persistirMovimiento(TipoMovimiento.DEVOLUCION, productoId, cantidad, cantidadAnterior, cantidadNueva, userId, motivo, referencia, producto.empresaId);
+    return this.persistirMovimiento(TipoMovimiento.DEVOLUCION, productoId, cantidad, cantidadAnterior, cantidadNueva, userId, motivo, referencia, producto.empresaId, almacenId);
   }
 
   async registrarAjuste(productoId: number, cantidadNueva: number, userId: number, motivo: string) {

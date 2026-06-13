@@ -47,4 +47,7 @@ export class Movimiento extends TenantBaseEntity {
 
   @Column()
   userId!: number;
+
+  @Column({ nullable: true })
+  almacenId?: number;
 }
