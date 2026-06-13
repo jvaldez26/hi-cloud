@@ -31,4 +31,8 @@ export class Almacen extends BaseEntity {
 
   @Column({ type: 'text', nullable: true })
   descripcion?: string;
+
+  /** Sucursal a la que pertenece este almacén */
+  @Column({ nullable: true })
+  sucursalId?: number;
 }

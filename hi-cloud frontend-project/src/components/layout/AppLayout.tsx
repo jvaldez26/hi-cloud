@@ -1327,7 +1327,12 @@ export default function AppLayout() {
     // Renovar JWT con el nuevo empresaId — el TenantMiddleware lee empresaId
     // ÚNICAMENTE del payload del JWT, no del header X-Empresa-ID.
     try {
-      await api.post('/auth/cambiar-empresa', { empresaId: id });
+      const res = await api.post('/auth/cambiar-empresa', { empresaId: id });
+      const resData = (res as any)?.data?.data ?? (res as any)?.data;
+      if (resData?.almacenActual)  localStorage.setItem('almacenId',  String(resData.almacenActual));
+      else                         localStorage.removeItem('almacenId');
+      if (resData?.sucursalActual) localStorage.setItem('sucursalId', String(resData.sucursalActual));
+      else                         localStorage.removeItem('sucursalId');
     } catch {
       // Si falla (empresa inválida / sin acceso), limpiar localStorage para
       // que la lógica de redirección maneje el estado correctamente y NO loop

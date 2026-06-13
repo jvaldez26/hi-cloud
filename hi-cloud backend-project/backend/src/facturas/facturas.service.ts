@@ -548,6 +548,7 @@ export class FacturasService {
       };
 
       // 1. Salida de inventario — no bloquear emisión si falla (ej. stock ya ajustado manualmente)
+      const almacenIdCtx = this.tenantService.getAlmacenId() ?? undefined;
       for (const detalle of factura.detalles) {
         if (!detalle.productoId) continue;
         await this.inventarioService.registrarSalida(
@@ -556,6 +557,7 @@ export class FacturasService {
           factura.usuarioId,
           `Factura emitida: ${factura.folio}`,
           factura.folio,
+          almacenIdCtx,
         ).catch((err: unknown) => {
           this.logger.warn(
             `[Factura] registrarSalida para ${factura.folio} falló (no bloquea emisión): ` +

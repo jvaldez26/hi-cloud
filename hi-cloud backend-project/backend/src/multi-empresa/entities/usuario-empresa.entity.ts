@@ -25,4 +25,8 @@ export class UsuarioEmpresa extends BaseEntity {
 
   @Column({ default: false })
   isPrincipal!: boolean;
+
+  /** Sucursal asignada al usuario dentro de esta empresa */
+  @Column({ nullable: true })
+  sucursalId?: number;
 }

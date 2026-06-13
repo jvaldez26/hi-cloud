@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { Form, Input, Button, Card, Row, Col, Typography, Select,
-         DatePicker, Table, InputNumber, Space, Divider, message, Tag, Alert, Checkbox, theme } from 'antd';
-import { PlusOutlined, DeleteOutlined, ArrowLeftOutlined } from '@ant-design/icons';
+         DatePicker, Table, InputNumber, Space, Divider, message, Tag, Alert, Checkbox, theme, Tooltip } from 'antd';
+import { PlusOutlined, DeleteOutlined, ArrowLeftOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { comprasApi, type CompraDetallePayload } from '../../api/compras.api';
 import { proveedoresApi } from '../../api/proveedores.api';
 import { productosApi } from '../../api/productos.api';
+import api from '../../api/client';
 import { fmt } from '../../utils/formatters';
 import dayjs from 'dayjs';
 
@@ -35,8 +36,15 @@ export default function CompraFormPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
 
+  const defaultAlmacenId = (() => { try { const v = localStorage.getItem('almacenId'); return v ? Number(v) : undefined; } catch { return undefined; } })();
+  const [almacenId, setAlmacenId] = useState<number | undefined>(defaultAlmacenId);
+
   const { data: proveedores } = useQuery({ queryKey: ['proveedores-sel'], queryFn: () => proveedoresApi.list(1, 200) });
   const { data: productos }   = useQuery({ queryKey: ['productos-sel'],   queryFn: () => productosApi.list(1, 200) });
+  const { data: almacenes = [] } = useQuery<any[]>({
+    queryKey: ['almacenes-sel'],
+    queryFn:  () => api.get('/almacenes?limit=200').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
+  });
 
   // Detectar si el proveedor seleccionado es informal
   const proveedorSel = (proveedores?.data ?? []).find((p: any) => p.id === proveedorSelId);
@@ -103,6 +111,7 @@ export default function CompraFormPage() {
       diasCredito: tipoPago === 'credito' ? diasCredito : undefined,
       moneda,
       tipoCambio: moneda !== 'DOP' ? tipoCambio : undefined,
+      almacenId: almacenId ?? undefined,
       ...(esInformal && retieneItbis ? { retieneItbis: true, porcentajeRetencionItbis: pctItbis } : {}),
       ...(esInformal && retieneIsr   ? { retieneIsr:   true, porcentajeRetencionIsr:   pctIsr   } : {}),
     } as any);
@@ -169,6 +178,31 @@ export default function CompraFormPage() {
             <Col xs={12} sm={4}>
               <Form.Item name="numeroFacturaProveedor" label="NCF Proveedor">
                 <Input placeholder="B01-00000001" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={7}>
+              <Form.Item
+                label={
+                  <Space size={4}>
+                    Almacén destino
+                    <Tooltip title="Almacén donde se recibirá la mercancía. Se usa para actualizar el stock por almacén.">
+                      <InfoCircleOutlined style={{ color: '#6b7280', fontSize: 13 }} />
+                    </Tooltip>
+                  </Space>
+                }
+              >
+                <Select
+                  allowClear
+                  placeholder="Almacén destino..."
+                  value={almacenId}
+                  onChange={(v) => setAlmacenId(v ?? undefined)}
+                  showSearch
+                  filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
+                  options={almacenes.map((a: any) => ({
+                    value: a.id,
+                    label: a.codigo ? `${a.codigo} — ${a.nombre}` : a.nombre,
+                  }))}
+                />
               </Form.Item>
             </Col>
             <Col xs={12} sm={3}>

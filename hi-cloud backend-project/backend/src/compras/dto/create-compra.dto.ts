@@ -87,6 +87,9 @@ export class CreateCompraDto {
   @Type(() => Number)
   tipoCambio?: number;
 
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number)
+  almacenId?: number;
+
   @IsOptional() @IsBoolean()
   retieneItbis?: boolean;
 

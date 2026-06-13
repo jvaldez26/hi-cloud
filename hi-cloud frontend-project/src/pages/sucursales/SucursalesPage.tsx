@@ -3,7 +3,7 @@ import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/Tab
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input,
   Space, Typography, Popconfirm, message, Avatar, Tooltip,
-  Switch, theme,
+  Switch, theme, Select,
 } from 'antd';
 import {
   BankOutlined, PlusOutlined, EditOutlined, DeleteOutlined,
@@ -29,6 +29,11 @@ export default function SucursalesPage() {
   const { data: sucursales = [], isLoading } = useQuery<any[]>({
     queryKey: ['sucursales'],
     queryFn:  () => api.get('/sucursales').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
+  });
+
+  const { data: almacenes = [] } = useQuery<any[]>({
+    queryKey: ['almacenes-sel'],
+    queryFn:  () => api.get('/almacenes?limit=200').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
   });
 
   const onErr = (e: any, fallback: string) =>
@@ -236,6 +241,15 @@ export default function SucursalesPage() {
                   {suc.email && (
                     <div><MailOutlined style={{ marginRight: 6 }} />{suc.email}</div>
                   )}
+                  {suc.almacenPrincipalId && (() => {
+                    const alm = almacenes.find((a: any) => a.id === suc.almacenPrincipalId);
+                    return alm ? (
+                      <div style={{ marginTop: 4, color: '#6b7280' }}>
+                        <span style={{ marginRight: 6 }}>📦</span>
+                        {alm.codigo ? `${alm.codigo} — ${alm.nombre}` : alm.nombre}
+                      </div>
+                    ) : null;
+                  })()}
                   {suc.notas && (
                     <div style={{ marginTop: 8, color: '#9ca3af', fontStyle: 'italic' }}>{suc.notas}</div>
                   )}
@@ -305,6 +319,18 @@ export default function SucursalesPage() {
           </Row>
           <Form.Item name="email" label="Email">
             <Input placeholder="sucursal@empresa.com" />
+          </Form.Item>
+          <Form.Item name="almacenPrincipalId" label="Almacén principal">
+            <Select
+              allowClear
+              placeholder="Seleccionar almacén de inventario..."
+              showSearch
+              filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
+              options={almacenes.map((a: any) => ({
+                value: a.id,
+                label: a.codigo ? `${a.codigo} — ${a.nombre}` : a.nombre,
+              }))}
+            />
           </Form.Item>
           <Form.Item name="esPrincipal" valuePropName="checked" label="¿Es la sucursal principal?">
             <Switch />

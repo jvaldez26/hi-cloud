@@ -62,10 +62,10 @@ export class TenantMiddleware implements NestMiddleware {
 
     try {
       const secret  = this.config.get<string>('JWT_SECRET');
-      const payload = this.jwtSvc.verify<{ sub: number; role: string; empresaId?: number }>(
-        token,
-        { secret },
-      );
+      const payload = this.jwtSvc.verify<{
+        sub: number; role: string; empresaId?: number;
+        sucursalId?: number; almacenId?: number;
+      }>(token, { secret });
 
       const userId   = payload.sub;
       const userRole = payload.role;
@@ -107,6 +107,9 @@ export class TenantMiddleware implements NestMiddleware {
       this.tenantSvc.setEmpresaId(empresaId);
       this.tenantSvc.setUserId(userId);
       req.empresaId = empresaId;
+
+      if (payload.sucursalId) this.tenantSvc.setSucursalId(payload.sucursalId);
+      if (payload.almacenId)  this.tenantSvc.setAlmacenId(payload.almacenId);
 
     } catch (err) {
       if (err instanceof ForbiddenException) return next(err);

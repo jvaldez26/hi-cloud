@@ -6,15 +6,16 @@ import { TenantService } from '../tenant/tenant.service';
 import { LimitesService } from '../suscripciones/limites.service';
 
 interface CreateSucursalDto {
-  codigo:        string;
-  nombre:        string;
-  direccion?:    string;
-  ciudad?:       string;
-  telefono?:     string;
-  email?:        string;
-  esPrincipal?:  boolean;
-  responsableId?: number;
-  notas?:        string;
+  codigo:               string;
+  nombre:               string;
+  direccion?:           string;
+  ciudad?:              string;
+  telefono?:            string;
+  email?:               string;
+  esPrincipal?:         boolean;
+  responsableId?:       number;
+  notas?:               string;
+  almacenPrincipalId?:  number;
 }
 
 @Injectable()

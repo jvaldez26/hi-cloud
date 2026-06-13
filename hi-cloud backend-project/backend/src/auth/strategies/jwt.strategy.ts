@@ -14,6 +14,8 @@ export interface JwtPayload {
   email:         string;
   role:          string;
   empresaId?:    number | null;
+  sucursalId?:   number | null;
+  almacenId?:    number | null;
   jti?:          string;         // S-27: JWT ID para blacklist
   exp?:          number;
   roleVersion?:  number;         // S-31: versión de rol para invalidación rápida

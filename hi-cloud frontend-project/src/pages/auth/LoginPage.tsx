@@ -90,7 +90,7 @@ export default function LoginPage() {
       const data = await authApi.login(values.email, values.password);
       if (!data) throw new Error('Sin respuesta');
       if ((data as any).requiresTwoFactor) { setPending2FA(true); setLoading(false); return; }
-      login((data as any).user, (data as any).empresaActual, (data as any).empresas ?? []);
+      login((data as any).user, (data as any).empresaActual, (data as any).empresas ?? [], (data as any).almacenActual ?? null, (data as any).sucursalActual ?? null);
       navigate((data as any).user?.role === 'super_admin' ? '/super-admin' : '/dashboard');
     } catch (e: unknown) {
       const responseData   = (e as any)?.response?.data;
@@ -114,7 +114,7 @@ export default function LoginPage() {
     try {
       const data = await authApi.complete2FALogin(codigoTOTP);
       if (!data) throw new Error('Sin respuesta');
-      login((data as any).user, (data as any).empresaActual, (data as any).empresas ?? []);
+      login((data as any).user, (data as any).empresaActual, (data as any).empresas ?? [], (data as any).almacenActual ?? null, (data as any).sucursalActual ?? null);
       navigate((data as any).user?.role === 'super_admin' ? '/super-admin' : '/dashboard');
     } catch (e: unknown) {
       const msg = (e as any)?.response?.data?.errors?.[0] ?? 'Código incorrecto';

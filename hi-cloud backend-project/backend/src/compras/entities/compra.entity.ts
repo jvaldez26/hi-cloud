@@ -58,6 +58,10 @@ export class Compra extends TenantBaseEntity {
   @Column({ nullable: true })
   sucursalId?: number;
 
+  /** Almacén destino donde se recibirá la mercancía */
+  @Column({ nullable: true })
+  almacenId?: number;
+
   @Column({ type: 'text', nullable: true })
   notas?: string;
 

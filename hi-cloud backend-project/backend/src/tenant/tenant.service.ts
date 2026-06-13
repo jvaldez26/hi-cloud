@@ -5,9 +5,11 @@ import { ClsService } from 'nestjs-cls';
 import { SKIP_TENANT_KEY, SKIP_TENANT_CALLER } from './tenant.subscriber';
 import { TenantAwareRepository } from './tenant-aware.repository';
 
-const TENANT_KEY = 'empresaId';
-const USER_KEY   = 'userId';
-const ROL_KEY    = 'rolEmpresa';
+const TENANT_KEY   = 'empresaId';
+const USER_KEY     = 'userId';
+const ROL_KEY      = 'rolEmpresa';
+const SUCURSAL_KEY = 'sucursalId';
+const ALMACEN_KEY  = 'almacenId';
 
 @Injectable()
 export class TenantService {
@@ -31,11 +33,16 @@ export class TenantService {
     return this.cls.get<number>(TENANT_KEY) ?? null;
   }
 
-  setEmpresaId(id: number): void { this.cls.set(TENANT_KEY, id); }
-  getUserId(): number | null     { return this.cls.get<number>(USER_KEY) ?? null; }
-  setUserId(id: number): void    { this.cls.set(USER_KEY, id); }
+  setEmpresaId(id: number): void  { this.cls.set(TENANT_KEY, id); }
+  getUserId(): number | null      { return this.cls.get<number>(USER_KEY) ?? null; }
+  setUserId(id: number): void     { this.cls.set(USER_KEY, id); }
   getRolEmpresa(): string | null  { return this.cls.get<string>(ROL_KEY) ?? null; }
   setRolEmpresa(rol: string): void { this.cls.set(ROL_KEY, rol); }
+
+  getSucursalId(): number | null  { return this.cls.get<number>(SUCURSAL_KEY) ?? null; }
+  setSucursalId(id: number): void { this.cls.set(SUCURSAL_KEY, id); }
+  getAlmacenId(): number | null   { return this.cls.get<number>(ALMACEN_KEY) ?? null; }
+  setAlmacenId(id: number): void  { this.cls.set(ALMACEN_KEY, id); }
 
   // ── QB helper tenant-aware ────────────────────────────────────────────────
 

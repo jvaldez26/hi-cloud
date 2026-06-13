@@ -98,6 +98,8 @@ export class ComprasService {
     const totalBruto            = Number((subtotalCompra + itbisCompra).toFixed(2));
     const netoPagar             = Number((totalBruto - montoRetencionItbis - montoRetencionIsr).toFixed(2));
 
+    const almacenIdCtx = this.tenantService.getAlmacenId() ?? undefined;
+
     const compra = this.compraRepository.create({
       empresaId,
       folio,
@@ -121,9 +123,10 @@ export class ComprasService {
       porcentajeRetencionIsr: pctIsr,
       montoRetencionIsr,
       netoPagar,
-    });
+      almacenId:              dto.almacenId ?? almacenIdCtx,
+    } as any);
 
-    const savedCompra = await this.compraRepository.save(compra);
+    const savedCompra = (await this.compraRepository.save(compra as any)) as unknown as Compra;
 
     const detalles = this.detalleRepository.create(
       detallesData.map((d) => ({ ...d, compraId: savedCompra.id })),
@@ -222,7 +225,8 @@ export class ComprasService {
     }
 
     if (estado === CompraEstado.RECIBIDA) {
-      // 1. Registrar entrada en inventario
+      // 1. Registrar entrada en inventario — usar almacén de la compra o el del contexto
+      const almacenIdCompra = (compra as any).almacenId ?? this.tenantService.getAlmacenId() ?? undefined;
       for (const detalle of compra.detalles) {
         await this.inventarioService.registrarEntrada(
           detalle.productoId,
@@ -230,6 +234,7 @@ export class ComprasService {
           compra.usuarioId,
           `Compra recibida: ${compra.folio}`,
           compra.folio,
+          almacenIdCompra,
         );
       }
 
@@ -257,6 +262,7 @@ export class ComprasService {
     }
 
     if (estado === CompraEstado.CANCELADA && compra.estado === CompraEstado.RECIBIDA) {
+      const almacenIdCompra = (compra as any).almacenId ?? this.tenantService.getAlmacenId() ?? undefined;
       for (const detalle of compra.detalles) {
         await this.inventarioService.registrarDevolucion(
           detalle.productoId,
@@ -264,6 +270,7 @@ export class ComprasService {
           compra.usuarioId,
           `Cancelación compra: ${compra.folio}`,
           compra.folio,
+          almacenIdCompra,
         );
       }
     }

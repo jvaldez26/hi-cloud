@@ -45,28 +45,51 @@ export class InventarioService {
 
   /**
    * Sincroniza stock_almacen con el nuevo stock del producto.
-   * Asigna al almacén "principal" de la empresa (el de menor id).
+   * Si targetAlmacenId se provee, actualiza ese almacén específico.
+   * Si no, asigna al almacén principal de la empresa (el de menor id).
    * No lanza error si no hay almacenes — el stock global sigue funcionando.
    */
-  private async syncStockAlmacen(empresaId: number, productoId: number, nuevoStock: number, stockMinimo: number) {
-    await this.ds.query(`
-      INSERT INTO stock_almacen (
-        "empresaId", "almacenId", "productoId", stock, "stockMinimo", "isActive", "createdAt", "updatedAt"
-      )
-      SELECT $1, a.id, $2, $3, $4, true, NOW(), NOW()
-      FROM almacenes a
-      WHERE a."empresaId" = $1
-        AND a."isActive"  = true
-        AND a.activo      = true
-      ORDER BY a.id ASC
-      LIMIT 1
-      ON CONFLICT ("almacenId", "productoId") DO UPDATE SET
-        stock       = EXCLUDED.stock,
-        "stockMinimo"= EXCLUDED."stockMinimo",
-        "updatedAt" = NOW()
-    `, [empresaId, productoId, Math.max(0, nuevoStock), stockMinimo ?? 0]).catch(() => {
-      // No bloquear el movimiento si la tabla stock_almacen no existe aún
-    });
+  private async syncStockAlmacen(
+    empresaId: number,
+    productoId: number,
+    nuevoStock: number,
+    stockMinimo: number,
+    targetAlmacenId?: number,
+  ) {
+    const stockSafe = Math.max(0, nuevoStock);
+    const minSafe   = stockMinimo ?? 0;
+
+    if (targetAlmacenId) {
+      await this.ds.query(`
+        INSERT INTO stock_almacen (
+          "empresaId", "almacenId", "productoId", stock, "stockMinimo", "isActive", "createdAt", "updatedAt"
+        )
+        VALUES ($1, $2, $3, $4, $5, true, NOW(), NOW())
+        ON CONFLICT ("almacenId", "productoId") DO UPDATE SET
+          stock        = EXCLUDED.stock,
+          "stockMinimo"= EXCLUDED."stockMinimo",
+          "updatedAt"  = NOW()
+      `, [empresaId, targetAlmacenId, productoId, stockSafe, minSafe]).catch(() => {});
+    } else {
+      await this.ds.query(`
+        INSERT INTO stock_almacen (
+          "empresaId", "almacenId", "productoId", stock, "stockMinimo", "isActive", "createdAt", "updatedAt"
+        )
+        SELECT $1, a.id, $2, $3, $4, true, NOW(), NOW()
+        FROM almacenes a
+        WHERE a."empresaId" = $1
+          AND a."isActive"  = true
+          AND a.activo      = true
+        ORDER BY a.id ASC
+        LIMIT 1
+        ON CONFLICT ("almacenId", "productoId") DO UPDATE SET
+          stock        = EXCLUDED.stock,
+          "stockMinimo"= EXCLUDED."stockMinimo",
+          "updatedAt"  = NOW()
+      `, [empresaId, productoId, stockSafe, minSafe]).catch(() => {
+        // No bloquear el movimiento si la tabla stock_almacen no existe aún
+      });
+    }
   }
 
   // ──────────────────────────────────────────────────────────
@@ -104,7 +127,7 @@ export class InventarioService {
   // Operaciones básicas de inventario
   // ──────────────────────────────────────────────────────────
 
-  async registrarEntrada(productoId: number, cantidad: number, userId: number, motivo?: string, referencia?: string) {
+  async registrarEntrada(productoId: number, cantidad: number, userId: number, motivo?: string, referencia?: string, almacenId?: number) {
     const producto = await this.obtenerProducto(productoId);
     const cantidadAnterior = Number(producto.stock);
     const cantidadNueva = Number((cantidadAnterior + cantidad).toFixed(4));
@@ -112,13 +135,13 @@ export class InventarioService {
     await this.productoRepository.update(productoId, { stock: cantidadNueva });
     if (producto.empresaId) {
       this.realtimeService.notify(producto.empresaId, 'producto', 'updated', productoId);
-      await this.syncStockAlmacen(producto.empresaId, productoId, cantidadNueva, Number(producto.stockMinimo));
+      await this.syncStockAlmacen(producto.empresaId, productoId, cantidadNueva, Number(producto.stockMinimo), almacenId);
     }
 
     return this.persistirMovimiento(TipoMovimiento.ENTRADA, productoId, cantidad, cantidadAnterior, cantidadNueva, userId, motivo, referencia, producto.empresaId);
   }
 
-  async registrarSalida(productoId: number, cantidad: number, userId: number, motivo?: string, referencia?: string) {
+  async registrarSalida(productoId: number, cantidad: number, userId: number, motivo?: string, referencia?: string, almacenId?: number) {
     const producto = await this.obtenerProducto(productoId);
 
     // Los servicios no tienen inventario físico — omitir movimiento de stock
@@ -136,13 +159,13 @@ export class InventarioService {
     await this.productoRepository.update(productoId, { stock: cantidadNueva });
     if (producto.empresaId) {
       this.realtimeService.notify(producto.empresaId, 'producto', 'updated', productoId);
-      await this.syncStockAlmacen(producto.empresaId, productoId, cantidadNueva, Number(producto.stockMinimo));
+      await this.syncStockAlmacen(producto.empresaId, productoId, cantidadNueva, Number(producto.stockMinimo), almacenId);
     }
 
     return this.persistirMovimiento(TipoMovimiento.SALIDA, productoId, cantidad, cantidadAnterior, cantidadNueva, userId, motivo, referencia, producto.empresaId);
   }
 
-  async registrarDevolucion(productoId: number, cantidad: number, userId: number, motivo?: string, referencia?: string) {
+  async registrarDevolucion(productoId: number, cantidad: number, userId: number, motivo?: string, referencia?: string, almacenId?: number) {
     const producto = await this.obtenerProducto(productoId);
     const cantidadAnterior = Number(producto.stock);
     const cantidadNueva = Number((cantidadAnterior + cantidad).toFixed(4));
@@ -150,7 +173,7 @@ export class InventarioService {
     await this.productoRepository.update(productoId, { stock: cantidadNueva });
     if (producto.empresaId) {
       this.realtimeService.notify(producto.empresaId, 'producto', 'updated', productoId);
-      await this.syncStockAlmacen(producto.empresaId, productoId, cantidadNueva, Number(producto.stockMinimo));
+      await this.syncStockAlmacen(producto.empresaId, productoId, cantidadNueva, Number(producto.stockMinimo), almacenId);
     }
 
     return this.persistirMovimiento(TipoMovimiento.DEVOLUCION, productoId, cantidad, cantidadAnterior, cantidadNueva, userId, motivo, referencia, producto.empresaId);

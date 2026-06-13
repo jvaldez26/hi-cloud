@@ -38,6 +38,9 @@ class CreateSucursalDto {
 
   @IsOptional() @IsString()
   notas?: string;
+
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number)
+  almacenPrincipalId?: number;
 }
 
 @ApiTags('Sucursales')

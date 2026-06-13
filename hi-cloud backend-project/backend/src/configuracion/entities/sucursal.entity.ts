@@ -40,4 +40,8 @@ export class Sucursal extends TenantBaseEntity {
 
   @Column({ type: 'text', nullable: true })
   notas?: string;
+
+  /** Almacén principal asignado a esta sucursal para control de inventario */
+  @Column({ nullable: true })
+  almacenPrincipalId?: number;
 }

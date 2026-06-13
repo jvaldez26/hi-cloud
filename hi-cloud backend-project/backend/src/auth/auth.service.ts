@@ -126,18 +126,52 @@ export class AuthService implements OnModuleInit {
     return primera?.empresaId;
   }
 
-  private buildToken(user: User, empresaId?: number): string {
+  private buildToken(user: User, empresaId?: number, sucursalId?: number, almacenId?: number): string {
     // S-27: jti único por token — permite revocación individual en blacklist
     // S-31: roleVersion en JWT para detectar cambios de rol sin ir a BD en cada request
     return this.jwtService.sign({
       sub:          user.id,
       email:        user.email,
       role:         user.role,
-      empresaId:    empresaId ?? null,
+      empresaId:    empresaId  ?? null,
+      sucursalId:   sucursalId ?? null,
+      almacenId:    almacenId  ?? null,
       jti:          randomUUID(),
       sessionToken: user.sessionToken ?? undefined,
       roleVersion:  (user as any).roleVersion ?? 1,
     });
+  }
+
+  /** Resuelve sucursalId y almacenId para el contexto del usuario en una empresa */
+  private async resolverContextoSucursal(
+    userId: number,
+    empresaId: number,
+  ): Promise<{ sucursalId?: number; almacenId?: number }> {
+    try {
+      // Buscar la sucursal asignada al usuario en esta empresa
+      const ue = await this.ueRepository.findOne({
+        where: { userId, empresaId, isActive: true },
+      });
+      const sucursalId: number | undefined = (ue as any)?.sucursalId ?? undefined;
+
+      let sucursal: Sucursal | null = null;
+
+      if (sucursalId) {
+        sucursal = await this.sucursalRepository.findOne({ where: { id: sucursalId, isActive: true } });
+      } else {
+        // Fallback: sucursal principal de la empresa
+        sucursal = await this.sucursalRepository.findOne({
+          where: { empresaId, esPrincipal: true, isActive: true },
+        });
+      }
+
+      if (!sucursal) return {};
+
+      const almacenId: number | undefined = (sucursal as any).almacenPrincipalId ?? undefined;
+      return { sucursalId: sucursal.id, almacenId };
+    } catch {
+      return {};
+    }
   }
 
   // ─── Register ────────────────────────────────────────────────────────────────
@@ -335,8 +369,11 @@ export class AuthService implements OnModuleInit {
     const sessionToken = await this.initNewSession(user.id);
     (user as any).sessionToken = sessionToken;
 
-    const empresaId   = await this.getEmpresaPrincipal(user.id);
-    const accessToken = this.buildToken(user, empresaId);
+    const empresaId = await this.getEmpresaPrincipal(user.id);
+    const { sucursalId, almacenId } = empresaId
+      ? await this.resolverContextoSucursal(user.id, empresaId)
+      : { sucursalId: undefined, almacenId: undefined };
+    const accessToken = this.buildToken(user, empresaId, sucursalId, almacenId);
 
     const empresas = await this.ueRepository.find({
       where: { userId: user.id, isActive: true },
@@ -347,7 +384,9 @@ export class AuthService implements OnModuleInit {
     return {
       message: 'Login exitoso',
       accessToken,
-      empresaActual: empresaId ?? null,
+      empresaActual:  empresaId   ?? null,
+      sucursalActual: sucursalId  ?? null,
+      almacenActual:  almacenId   ?? null,
       empresas: empresas
         .filter(e => e.empresa?.isActive !== false)
         .map(e => ({
@@ -382,12 +421,15 @@ export class AuthService implements OnModuleInit {
 
     const user = await this.userRepository.findOneBy({ id: userId });
     if (!user) throw new NotFoundException('Usuario no encontrado');
-    const accessToken = this.buildToken(user, empresaId);
+    const { sucursalId, almacenId } = await this.resolverContextoSucursal(userId, empresaId);
+    const accessToken = this.buildToken(user, empresaId, sucursalId, almacenId);
 
     return {
-      message:       `Empresa activa cambiada a #${empresaId}`,
+      message:        `Empresa activa cambiada a #${empresaId}`,
       accessToken,
-      empresaActual: empresaId,
+      empresaActual:  empresaId,
+      sucursalActual: sucursalId ?? null,
+      almacenActual:  almacenId  ?? null,
     };
   }
 
