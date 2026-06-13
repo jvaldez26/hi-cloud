@@ -149,6 +149,7 @@ export class CajaService {
           empresaId,
           vendedorId:     vendedorId    ?? undefined,
           vendedorNombre: vendedorNombre ?? undefined,
+          sucursalId:     this.tenantService.getSucursalId() ?? undefined,
         }),
       );
       this.realtimeService.notify(empresaId, 'caja', 'created', nueva.id);
@@ -364,8 +365,10 @@ export class CajaService {
   // ── Historial (filtrado por empresa) ─────────────────────────────────────
 
   async getHistorial(page = 1, limit = 20, vendedorId?: number) {
-    const empresaId = this.tenantService.getEmpresaId();
+    const empresaId  = this.tenantService.getEmpresaId();
+    const sucursalId = this.tenantService.getSucursalId();
     const where: any = { empresaId, estado: Not(EstadoCierre.ABIERTA) };
+    if (sucursalId) where.sucursalId = sucursalId;
     if (vendedorId !== undefined) {
       where.vendedorId = vendedorId === 0 ? IsNull() : vendedorId;
     }

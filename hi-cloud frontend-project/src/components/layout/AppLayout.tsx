@@ -4,7 +4,7 @@ import {
   Layout, Avatar, Dropdown, Typography, Badge, Space,
   Button, Tooltip, theme, Select, Tag, Modal, Input, Divider, Checkbox, message,
 } from 'antd';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
 import {
   LogoutOutlined, UserOutlined, BellOutlined,
@@ -1150,6 +1150,7 @@ export default function AppLayout() {
   const [mobileOpen,      setMobileOpen]      = useState(false);
   const [modalEmpresa,    setModalEmpresa]    = useState(false);
   const [busquedaEmpresa, setBusquedaEmpresa] = useState('');
+  const [modalSucursal,   setModalSucursal]   = useState(false);
   // Modal de upgrade cuando se hace click en módulo bloqueado
   const [upgradeModal, setUpgradeModal] = useState<{ label: string; planMinimo: PlanTipo } | null>(null);
 
@@ -1187,6 +1188,7 @@ export default function AppLayout() {
   const { total: totalAlertas, criticas: alertasCriticas, alertas } = useAlertas();
   const { status: pushStatus, subscribe: pushSubscribe, unsubscribe: pushUnsub } = usePushNotifications();
   const { user, logout }                = useAuthStore();
+  const queryClient                     = useQueryClient();
 
   // ── Guard de ruta por rol ──────────────────────────────────────────────────
   // Si el usuario navega directamente a una URL restringida, redirigir al dashboard
@@ -1313,6 +1315,33 @@ export default function AppLayout() {
     refetchOnWindowFocus: true,
     retry: false,                 // no reintentar en error — evita enmascarar fallos
   });
+  const sucursalActualId = useAuthStore(s => s.sucursalActual);
+  const setSucursalStore  = useAuthStore(s => s.setSucursalActual);
+  const { data: misSucursales = [] } = useQuery<any[]>({
+    queryKey: ['mis-sucursales', user?.id, empresaActiva],
+    queryFn:  () => api.get('/auth/mis-sucursales').then(r => r.data?.data ?? r.data ?? []),
+    enabled:  !!user && !!empresaActiva,
+    staleTime: 60_000,
+  });
+  const sucursalNombreDisplay = (misSucursales as any[]).find(s => s.id === sucursalActualId)?.nombre ?? '';
+
+  const cambiarSucursal = useCallback(async (id: number) => {
+    try {
+      const res = await api.post('/auth/cambiar-sucursal', { sucursalId: id });
+      const resData = (res as any)?.data?.data ?? (res as any)?.data;
+      if (resData?.sucursalActual) {
+        localStorage.setItem('sucursalId', String(resData.sucursalActual));
+        setSucursalStore?.(resData.sucursalActual);
+      }
+      if (resData?.almacenActual) localStorage.setItem('almacenId', String(resData.almacenActual));
+      else localStorage.removeItem('almacenId');
+      message.success(resData?.message ?? 'Sucursal cambiada');
+      queryClient.clear();
+    } catch (e: any) {
+      message.error(e?.response?.data?.message ?? 'Error al cambiar sucursal');
+    }
+  }, [setSucursalStore]);
+
   const cambiarEmpresa = useCallback(async (id: number) => {
     setEmpresaActiva(id);
     localStorage.setItem('empresaId', String(id));
@@ -1820,6 +1849,19 @@ export default function AppLayout() {
               }}>
                 {empresaNombreDisplay}
               </span>
+              {sucursalNombreDisplay && (
+                <span
+                  onClick={(misSucursales as any[]).length > 1 ? () => setModalSucursal(true) : undefined}
+                  style={{
+                    fontSize: 10.5, color: C.textCategory, display: 'block', lineHeight: 1.3,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    cursor: (misSucursales as any[]).length > 1 ? 'pointer' : 'default',
+                  }}
+                  title={(misSucursales as any[]).length > 1 ? 'Cambiar sucursal' : sucursalNombreDisplay}
+                >
+                  📍 {sucursalNombreDisplay}
+                </span>
+              )}
               {empresaEsPendiente && (
                 <span style={{ fontSize: 9, fontWeight: 700, color: '#f59e0b', display: 'block', lineHeight: 1.2 }}>
                   ⏳ En revisión
@@ -2469,6 +2511,63 @@ export default function AppLayout() {
             <LogoutOutlined style={{ color: '#6B7280' }} />
             Salir
           </button>
+        </div>
+      </Modal>
+
+      {/* ── Modal cambiar sucursal ────────────────────────────────── */}
+      <Modal
+        title="Cambiar Sucursal"
+        open={modalSucursal}
+        onCancel={() => setModalSucursal(false)}
+        footer={null}
+        width={380}
+        centered
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {(misSucursales as any[]).map((suc: any) => {
+            const esActiva = suc.id === sucursalActualId;
+            return (
+              <div
+                key={suc.id}
+                onClick={async () => { setModalSucursal(false); await cambiarSucursal(suc.id); }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
+                  background: esActiva ? '#EFF6FF' : 'transparent',
+                  marginBottom: 2, transition: 'background 0.15s',
+                }}
+                onMouseEnter={e => { if (!esActiva) (e.currentTarget as HTMLElement).style.background = '#F8FAFC'; }}
+                onMouseLeave={e => { if (!esActiva) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+              >
+                <span style={{ fontSize: 18 }}>📍</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{
+                    fontSize: 14, fontWeight: esActiva ? 500 : 400, color: '#111827',
+                    display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {suc.nombre}
+                  </span>
+                  {suc.esPrincipal && (
+                    <span style={{ fontSize: 11, color: '#6B7280' }}>Principal</span>
+                  )}
+                </div>
+                <div style={{
+                  width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
+                  border: `2px solid ${esActiva ? '#0EA5E9' : '#D1D5DB'}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {esActiva && (
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#0EA5E9' }} />
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {(misSucursales as any[]).length === 0 && (
+            <div style={{ textAlign: 'center', padding: '20px 0', color: '#9CA3AF', fontSize: 13 }}>
+              Sin sucursales disponibles
+            </div>
+          )}
         </div>
       </Modal>
 

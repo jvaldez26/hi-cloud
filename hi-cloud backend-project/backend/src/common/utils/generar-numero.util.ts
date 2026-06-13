@@ -17,9 +17,10 @@ export async function generarNumeroSecuencial(
   prefijo:        string,
   _longitudNumero: number,
   empresaId:      number,
+  tipoOverride?:  string,   // permite clave de secuencia diferente al prefijo (ej: 'COM_S2')
 ): Promise<string> {
-  // 'FAC-' → 'FAC',  'NC-' → 'NC',  'CONT-' → 'CONT'
-  const tipo = prefijo.endsWith('-') ? prefijo.slice(0, -1) : prefijo;
+  // Permite sobreescribir la clave de secuencia sin cambiar el prefijo de display
+  const tipo = tipoOverride ?? (prefijo.endsWith('-') ? prefijo.slice(0, -1) : prefijo);
 
   const [row] = await dataSource.query<{ numero: number }[]>(
     `SELECT siguiente_numero_secuencia($1, $2) AS numero`,

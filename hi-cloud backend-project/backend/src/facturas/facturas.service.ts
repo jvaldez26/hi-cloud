@@ -48,10 +48,13 @@ export class FacturasService {
   ) {}
 
   private async generarFolio(): Promise<string> {
-    const empresaId = this.tenantService.getEmpresaId();
+    const empresaId  = this.tenantService.getEmpresaId();
+    const sucursalId = this.tenantService.getSucursalId();
+    // Si hay sucursal activa, usar secuencia independiente por sucursal
+    const tipo = sucursalId ? `FAC_S${sucursalId}` : 'FAC';
     const [row] = await this.dataSource.query<{ numero: number }[]>(
-      `SELECT siguiente_numero_secuencia($1, 'FAC') AS numero`,
-      [empresaId],
+      `SELECT siguiente_numero_secuencia($1, $2) AS numero`,
+      [empresaId, tipo],
     );
     return `FAC-${row.numero}`;
   }
@@ -151,7 +154,7 @@ export class FacturasService {
       tipoNcf:        dto.tipoNcf ?? 'E32',
       vendedorId:     dto.vendedorId,
       nombreVendedor: dto.nombreVendedor,
-      sucursalId:     dto.sucursalId,
+      sucursalId:     this.tenantService.getSucursalId() ?? dto.sucursalId ?? undefined,
       moneda,
       tipoCambio,
       totalOriginal,
@@ -276,7 +279,8 @@ export class FacturasService {
   async findAll(pagination: PaginationDto & {
     estado?: string; desde?: string; hasta?: string; clienteId?: number; vendedorId?: number;
   }) {
-    const empresaId = this.tenantService.getEmpresaId();
+    const empresaId  = this.tenantService.getEmpresaId();
+    const sucursalId = this.tenantService.getSucursalId();
     const { limit = 10, page = 1, search, estado, desde, hasta, clienteId,
             tipoPago, tipoNcf, montoMin, montoMax, vendedorId } = pagination as any;
 
@@ -288,6 +292,8 @@ export class FacturasService {
       .leftJoinAndSelect('f.cliente', 'cliente')
       .where('f.empresaId = :empresaId', { empresaId })
       .andWhere('f.isActive = :active', { active: true });
+
+    if (sucursalId) qb.andWhere('f.sucursalId = :sucursalId', { sucursalId });
 
     if (search) {
       qb.andWhere(

@@ -26,6 +26,9 @@ export class CierreCaja {
   @Column({ type: 'varchar', length: 120, nullable: true })
   vendedorNombre?: string;
 
+  @Column({ type: 'int', nullable: true })
+  sucursalId?: number;
+
   @Column({ type: 'enum', enum: EstadoCierre, default: EstadoCierre.ABIERTA })
   estado!: EstadoCierre;
 

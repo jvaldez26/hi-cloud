@@ -26,10 +26,11 @@ interface AuthState {
   login:            (user: AuthUser, empresaActual?: number | null, empresas?: EmpresaItem[], almacenActual?: number | null, sucursalActual?: number | null) => void;
   logout:           () => void;
   isAuth:           () => boolean;
-  cambiarEmpresa:   (empresaId: number) => void;
-  getEmpresaActual: () => EmpresaItem | undefined;
-  setHydrated:      (v: boolean) => void;
-  updateUser:       (partial: Partial<AuthUser>) => void;
+  cambiarEmpresa:    (empresaId: number) => void;
+  setSucursalActual: (sucursalId: number) => void;
+  getEmpresaActual:  () => EmpresaItem | undefined;
+  setHydrated:       (v: boolean) => void;
+  updateUser:        (partial: Partial<AuthUser>) => void;
 }
 
 // Solo guardamos info de UI (NO el token — ahora vive en cookie httpOnly)
@@ -94,6 +95,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   cambiarEmpresa: (empresaId) => {
     localStorage.setItem('empresaId', String(empresaId));
     set(() => ({ empresaActual: empresaId }));
+  },
+
+  setSucursalActual: (sucursalId) => {
+    localStorage.setItem('sucursalId', String(sucursalId));
+    set(() => ({ sucursalActual: sucursalId }));
   },
 
   getEmpresaActual: () => {

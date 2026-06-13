@@ -39,8 +39,12 @@ export class ComprasService {
   ) {}
 
   private async generarFolio(): Promise<string> {
-    const empresaId = this.tenantService.getEmpresaId();
-    return generarNumeroSecuencial(this.ds, 'compras', 'folio', '^COM-[0-9]+$', 'COM-', 1, empresaId);
+    const empresaId  = this.tenantService.getEmpresaId();
+    const sucursalId = this.tenantService.getSucursalId();
+    // Secuencia independiente por sucursal cuando hay contexto de sucursal activo
+    const prefijo = 'COM-';
+    const tipo    = sucursalId ? `COM_S${sucursalId}` : 'COM';
+    return generarNumeroSecuencial(this.ds, 'compras', 'folio', '^COM-[0-9]+$', prefijo, 1, empresaId, tipo);
   }
 
   async create(dto: CreateCompraDto, usuario: User) {
@@ -124,6 +128,7 @@ export class ComprasService {
       montoRetencionIsr,
       netoPagar,
       almacenId:              dto.almacenId ?? almacenIdCtx,
+      sucursalId:             this.tenantService.getSucursalId() ?? undefined,
     } as any);
 
     const savedCompra = (await this.compraRepository.save(compra as any)) as unknown as Compra;
@@ -140,7 +145,8 @@ export class ComprasService {
   async findAll(pagination: PaginationDto & {
     estado?: string; desde?: string; hasta?: string; proveedorId?: number;
   }) {
-    const empresaId = this.tenantService.getEmpresaId();
+    const empresaId  = this.tenantService.getEmpresaId();
+    const sucursalId = this.tenantService.getSucursalId();
     const { limit = 10, page = 1, search, estado, desde, hasta, proveedorId } = pagination;
 
     const qb = this.compraRepository
@@ -148,6 +154,8 @@ export class ComprasService {
       .leftJoinAndSelect('c.proveedor', 'proveedor')
       .where('c.empresaId = :empresaId', { empresaId })
       .andWhere('c.isActive = :active', { active: true });
+
+    if (sucursalId) qb.andWhere('c.sucursalId = :sucursalId', { sucursalId });
 
     if (search) {
       qb.andWhere(

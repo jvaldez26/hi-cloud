@@ -4014,8 +4014,10 @@ export default function POSPage() {
     return v ? Number(v) : undefined;
   });
   const [sucursalId,    setSucursalId]    = useState<number | undefined>(() => {
-    const v = localStorage.getItem('pos_sucursal_id');
-    return v ? Number(v) : undefined;
+    // Usar la sucursal del JWT/auth como fuente de verdad; fallback a la local del POS
+    const global = localStorage.getItem('sucursalId');
+    const local  = localStorage.getItem('pos_sucursal_id');
+    return global ? Number(global) : (local ? Number(local) : undefined);
   });
   const [modoFacturacion,    setModoFacturacion]    = useState<ModoFacturacion>('factura');
   const [showNotaCredito,    setShowNotaCredito]    = useState(false);
@@ -4887,6 +4889,7 @@ export default function POSPage() {
           }
           if (sid) {
             setSucursalId(sid);
+            localStorage.setItem('sucursalId', String(sid));
             localStorage.setItem('pos_sucursal_id', String(sid));
           }
         }}

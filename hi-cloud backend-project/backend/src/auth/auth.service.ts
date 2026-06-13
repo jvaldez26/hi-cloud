@@ -433,6 +433,75 @@ export class AuthService implements OnModuleInit {
     };
   }
 
+  // ─── Cambiar sucursal activa ──────────────────────────────────────────────────
+
+  async cambiarSucursal(userId: number, userRole: string, empresaId: number, sucursalId: number) {
+    // Verificar que la sucursal pertenece a la empresa del usuario
+    const sucursal = await this.sucursalRepository.findOne({
+      where: { id: sucursalId, empresaId, isActive: true },
+    });
+    if (!sucursal) {
+      throw new ForbiddenException(`Sucursal #${sucursalId} no encontrada en esta empresa`);
+    }
+
+    // Usuarios no-admin solo pueden usar su sucursal asignada
+    if (userRole !== UserRole.ADMIN && userRole !== UserRole.SUPER_ADMIN) {
+      const ue = await this.ueRepository.findOne({ where: { userId, empresaId, isActive: true } });
+      const asignada: number | undefined = (ue as any)?.sucursalId;
+      if (asignada && asignada !== sucursalId) {
+        throw new ForbiddenException('No tienes acceso a esta sucursal');
+      }
+    }
+
+    const user = await this.userRepository.findOneBy({ id: userId });
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+
+    const almacenId: number | undefined = (sucursal as any).almacenPrincipalId ?? undefined;
+    const accessToken = this.buildToken(user, empresaId, sucursal.id, almacenId);
+
+    return {
+      message:        `Sucursal activa cambiada a "${sucursal.nombre}"`,
+      accessToken,
+      sucursalActual: sucursal.id,
+      almacenActual:  almacenId ?? null,
+      sucursalNombre: sucursal.nombre,
+    };
+  }
+
+  // ─── Mis sucursales ───────────────────────────────────────────────────────────
+
+  async misSucursales(userId: number, userRole: string, empresaId: number) {
+    // Admins pueden ver y cambiar a cualquier sucursal de la empresa
+    if (userRole === UserRole.ADMIN || userRole === UserRole.SUPER_ADMIN) {
+      const sucursales = await this.sucursalRepository.find({
+        where: { empresaId, isActive: true },
+        order: { esPrincipal: 'DESC', nombre: 'ASC' },
+      });
+      return sucursales.map(s => ({
+        id: s.id,
+        nombre: s.nombre,
+        esPrincipal: s.esPrincipal,
+        almacenPrincipalId: (s as any).almacenPrincipalId ?? null,
+      }));
+    }
+
+    // Otros roles: solo su sucursal asignada
+    const ue = await this.ueRepository.findOne({ where: { userId, empresaId, isActive: true } });
+    const sucursalId: number | undefined = (ue as any)?.sucursalId;
+    if (!sucursalId) {
+      // Sin sucursal asignada → devolver sucursal principal
+      const principal = await this.sucursalRepository.findOne({
+        where: { empresaId, esPrincipal: true, isActive: true },
+      });
+      if (!principal) return [];
+      return [{ id: principal.id, nombre: principal.nombre, esPrincipal: true, almacenPrincipalId: (principal as any).almacenPrincipalId ?? null }];
+    }
+
+    const sucursal = await this.sucursalRepository.findOne({ where: { id: sucursalId, isActive: true } });
+    if (!sucursal) return [];
+    return [{ id: sucursal.id, nombre: sucursal.nombre, esPrincipal: sucursal.esPrincipal, almacenPrincipalId: (sucursal as any).almacenPrincipalId ?? null }];
+  }
+
   // ─── Mis empresas ─────────────────────────────────────────────────────────────
 
   async misEmpresas(userId: number, isGlobalAdmin = false) {

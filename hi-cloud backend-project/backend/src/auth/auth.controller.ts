@@ -24,6 +24,11 @@ class CambiarEmpresaDto {
   empresaId: number;
 }
 
+class CambiarSucursalDto {
+  @IsInt() @IsPositive()
+  sucursalId: number;
+}
+
 class ForgotPasswordDto {
   @IsEmail()
   email: string;
@@ -283,6 +288,31 @@ export class AuthController {
     this.setAuthCookie(res, data.accessToken);
     const { accessToken: _tok, ...safe } = data;
     return safe;
+  }
+
+  @Post('cambiar-sucursal')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Cambiar sucursal activa — genera nuevo token con sucursalId y almacenId actualizados' })
+  async cambiarSucursal(
+    @GetUser() user: User,
+    @Body() dto: CambiarSucursalDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const data = await this.authService.cambiarSucursal(
+      user.id, user.role, (user as any).empresaId, dto.sucursalId,
+    );
+    this.setAuthCookie(res, data.accessToken);
+    const { accessToken: _tok, ...safe } = data;
+    return safe;
+  }
+
+  @Get('mis-sucursales')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Sucursales accesibles para el usuario autenticado' })
+  misSucursales(@GetUser() user: User) {
+    return this.authService.misSucursales(user.id, user.role, (user as any).empresaId);
   }
 
   @Get('mis-empresas')
