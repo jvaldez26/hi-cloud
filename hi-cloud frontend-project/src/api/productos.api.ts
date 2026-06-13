@@ -11,9 +11,10 @@ export interface ProductoPayload {
 }
 
 export const productosApi = {
-  list: (p = 1, limit = 10, search = '') =>
-    api.get<ApiResponse<PaginatedData<Producto>>>(`/productos?page=${p}&limit=${limit}&search=${search}`)
-       .then(r => r.data.data),
+  list: (p = 1, limit = 10, search = '', incluirSinStock = false) =>
+    api.get<ApiResponse<PaginatedData<Producto>>>(
+      `/productos?page=${p}&limit=${limit}&search=${search}${incluirSinStock ? '&incluirSinStock=true' : ''}`,
+    ).then(r => r.data.data),
 
   getOne: (id: number) =>
     api.get<ApiResponse<Producto>>(`/productos/${id}`).then(r => r.data.data),

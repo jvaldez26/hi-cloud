@@ -175,7 +175,7 @@ function VariantesTab() {
   const [form] = Form.useForm();
   const qc = useQueryClient();
 
-  const { data: productos } = useQuery({ queryKey: ['productos-var'], queryFn: () => productosApi.list(1, 500) });
+  const { data: productos } = useQuery({ queryKey: ['productos-var'], queryFn: () => productosApi.list(1, 500, '', true) });
   const { data: atributos } = useQuery({ queryKey: ['atributos'], queryFn: atributosApi.listar });
   const { data: variantes, isLoading } = useQuery({
     queryKey: ['variantes', productoId],
@@ -463,7 +463,7 @@ function ProductosCatalogo() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['productos', page, search, categoria],
-    queryFn:  () => productosApi.list(page, 15, search),
+    queryFn:  () => productosApi.list(page, 15, search, true),
   });
 
   const categorias = [...new Set((data?.data ?? []).map((p: Producto) => p.categoria).filter(Boolean))] as string[];
