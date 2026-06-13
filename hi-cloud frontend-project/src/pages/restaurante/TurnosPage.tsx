@@ -58,7 +58,7 @@ export default function TurnosPage() {
       title: 'Cierre', dataIndex: 'fechaCierre', width: 150,
       render: (v: string) => v ? new Date(v).toLocaleString('es-DO', { dateStyle: 'short', timeStyle: 'short' }) : '—',
     },
-    { title: 'Cajero', dataIndex: 'cajeroNombre', ellipsis: true },
+    { title: 'Cajero', dataIndex: 'usuarioNombre', ellipsis: true },
     {
       title: 'Estado', dataIndex: 'estado', width: 90,
       render: (v: string) => <Tag color={v === 'abierto' ? 'green' : 'default'}>{v.toUpperCase()}</Tag>,
@@ -138,7 +138,7 @@ export default function TurnosPage() {
         okText="Abrir turno"
       >
         <Form form={form} layout="vertical" size="small">
-          <Form.Item name="cajeroNombre" label="Nombre del cajero" rules={[{ required: true }]}><Input /></Form.Item>
+          <Form.Item name="usuarioNombre" label="Nombre del cajero" rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item name="fondoInicial" label="Fondo inicial (RD$)">
             <Select defaultValue="0">
               <Option value={0}>Sin fondo</Option>

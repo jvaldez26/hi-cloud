@@ -54,7 +54,7 @@ export default function ReservacionesPage() {
     setEditId(record.id);
     form.setFieldsValue({
       ...record,
-      fechaHora: dayjs(record.fechaHora),
+      fechaHora: dayjs(`${record.fecha}T${record.hora}`),
     });
     setModal(true);
   };
@@ -62,8 +62,10 @@ export default function ReservacionesPage() {
   const cols = [
     { title: 'Número', dataIndex: 'numero', width: 100 },
     {
-      title: 'Fecha / Hora', dataIndex: 'fechaHora', width: 150,
-      render: (v: string) => new Date(v).toLocaleString('es-DO', { dateStyle: 'short', timeStyle: 'short' }),
+      title: 'Fecha / Hora', key: 'fechaHora', width: 150,
+      render: (_: any, r: any) => r.fecha && r.hora
+        ? new Date(`${r.fecha}T${r.hora}`).toLocaleString('es-DO', { dateStyle: 'short', timeStyle: 'short' })
+        : '—',
     },
     { title: 'Cliente', dataIndex: 'clienteNombre', ellipsis: true },
     { title: 'Teléfono', dataIndex: 'clienteTelefono', width: 120 },
@@ -72,7 +74,7 @@ export default function ReservacionesPage() {
       title: 'Estado', dataIndex: 'estado', width: 110,
       render: (v: string) => <Tag color={ESTADO_COLOR[v]}>{v.replace(/_/g, ' ')}</Tag>,
     },
-    { title: 'Notas', dataIndex: 'notasEspeciales', ellipsis: true },
+    { title: 'Notas', dataIndex: 'notas', ellipsis: true },
     {
       title: 'Acciones', key: 'act', width: 180,
       render: (_: any, r: any) => (
@@ -143,7 +145,7 @@ export default function ReservacionesPage() {
               {(areas as any[]).map((a: any) => <Option key={a.id} value={a.id}>{a.nombre}</Option>)}
             </Select>
           </Form.Item>
-          <Form.Item name="ocasion" label="Ocasión">
+          <Form.Item name="ocasionEspecial" label="Ocasión">
             <Select allowClear>
               <Option value="cumpleanos">Cumpleaños</Option>
               <Option value="aniversario">Aniversario</Option>
@@ -151,7 +153,7 @@ export default function ReservacionesPage() {
               <Option value="otro">Otro</Option>
             </Select>
           </Form.Item>
-          <Form.Item name="notasEspeciales" label="Notas especiales">
+          <Form.Item name="notas" label="Notas especiales">
             <Input.TextArea rows={2} />
           </Form.Item>
         </Form>

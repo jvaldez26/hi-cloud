@@ -94,8 +94,8 @@ export class RestaurantePdfService {
     }).catch(err => { this.logger.error('Error generando ticket cocina PDF', err); throw err; });
   }
 
-  async generarCierreTurno(data: { turno: any; resumen: any }): Promise<Buffer> {
-    const { turno, resumen } = data;
+  async generarCierreTurno(data: { turno: any; totalComandas?: number; [key: string]: any }): Promise<Buffer> {
+    const { turno, totalComandas } = data;
     return this.buildBuffer((doc) => {
       doc.fontSize(13).font('Helvetica-Bold').text('CIERRE DE TURNO', { align: 'center' });
       doc.fontSize(9).font('Helvetica').text(`Turno: ${turno.numero}`, { align: 'center' });
@@ -121,9 +121,8 @@ export class RestaurantePdfService {
         row('Diferencia:', `RD$${Number(turno.diferencia ?? 0).toFixed(2)}`);
         this.separator(doc);
       }
-      if (resumen) {
-        row('Comandas totales:', resumen.total ?? 0);
-        row('Cobradas:', resumen.cobradas ?? 0);
+      if (totalComandas !== undefined) {
+        row('Comandas cobradas:', totalComandas);
       }
       if (turno.notas) { doc.moveDown(0.5); doc.text(`Notas: ${turno.notas}`); }
     }).catch(err => { this.logger.error('Error generando cierre turno PDF', err); throw err; });

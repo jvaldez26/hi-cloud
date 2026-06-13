@@ -332,14 +332,24 @@ export class RestauranteService {
   async crearReservacion(dto: any) {
     const empresaId = this.tenantSvc.getEmpresaId();
     const numero = await generarNumeroSecuencial(this.ds, '', '', '', 'RES-', 1, empresaId);
+    // Soportar fechaHora (ISO) o fecha+hora separados
+    let fecha = dto.fecha;
+    let hora  = dto.hora;
+    if (dto.fechaHora) {
+      const dt = new Date(dto.fechaHora);
+      fecha = dt.toISOString().split('T')[0];
+      hora  = dt.toTimeString().slice(0, 8);
+    }
     const [res] = await this.ds.query<any[]>(
       `INSERT INTO rs_reservaciones
         ("empresaId",numero,"clienteNombre","clienteTelefono","clienteEmail","clienteId",
          fecha,hora,"numPersonas","mesaId","ocasionEspecial","peticionesEspeciales",notas)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
       [empresaId, numero, dto.clienteNombre, dto.clienteTelefono ?? null, dto.clienteEmail ?? null,
-       dto.clienteId ?? null, dto.fecha, dto.hora, dto.numPersonas, dto.mesaId ?? null,
-       dto.ocasionEspecial ?? null, dto.peticionesEspeciales ?? null, dto.notas ?? null],
+       dto.clienteId ?? null, fecha, hora, dto.numPersonas, dto.mesaId ?? null,
+       dto.ocasionEspecial ?? dto.ocasion ?? null,
+       dto.peticionesEspeciales ?? null,
+       dto.notas ?? dto.notasEspeciales ?? null],
     );
     if (dto.mesaId) {
       await this.ds.query(`UPDATE rs_mesas SET estado='reservada' WHERE id=$1 AND "empresaId"=$2`, [dto.mesaId, empresaId]);
@@ -352,10 +362,21 @@ export class RestauranteService {
     const cols: Record<string, string> = {
       estado: 'estado', notas: 'notas', mesaId: '"mesaId"',
       clienteNombre: '"clienteNombre"', clienteTelefono: '"clienteTelefono"',
+      clienteEmail: '"clienteEmail"', numPersonas: '"numPersonas"',
+      ocasionEspecial: '"ocasionEspecial"', peticionesEspeciales: '"peticionesEspeciales"',
     };
+    // Normalizar aliases del frontend
+    if (dto.notasEspeciales !== undefined) dto.notas = dto.notas ?? dto.notasEspeciales;
+    if (dto.ocasion !== undefined) dto.ocasionEspecial = dto.ocasionEspecial ?? dto.ocasion;
     const sets: string[] = []; const params: any[] = [id, empresaId];
     for (const [k, col] of Object.entries(cols)) {
       if (dto[k] !== undefined) { params.push(dto[k]); sets.push(`${col}=$${params.length}`); }
+    }
+    // Soporte para fechaHora combinada
+    if (dto.fechaHora) {
+      const dt = new Date(dto.fechaHora);
+      params.push(dt.toISOString().split('T')[0]); sets.push(`fecha=$${params.length}`);
+      params.push(dt.toTimeString().slice(0, 8));   sets.push(`hora=$${params.length}`);
     }
     if (!sets.length) return;
     const [res] = await this.ds.query<any[]>(
@@ -653,42 +674,35 @@ export class RestauranteService {
 
   // ── DELIVERY ──────────────────────────────────────────────────────────────
 
-  async listarDelivery(estado?: string, page = 1, limit = 30) {
+  async listarDelivery(estado?: string, page = 1, limit = 50) {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const offset = (page - 1) * limit;
     const params: any[] = [empresaId];
     let where = `WHERE d."empresaId"=$1`;
     if (estado) { params.push(estado); where += ` AND d.estado=$${params.length}`; }
-    const [{ total }] = await this.ds.query<any[]>(`SELECT COUNT(*)::int AS total FROM rs_pedidos_delivery d ${where}`, params);
-    params.push(limit, offset);
-    const data = await this.ds.query<any[]>(
-      `SELECT d.*,
-              COALESCE(
-                (SELECT json_agg(ci ORDER BY ci.id) FROM (
-                  SELECT i.*, mi.nombre AS "itemNombre" FROM rs_comanda_items i
-                  JOIN rs_menu_items mi ON mi.id=i."menuItemId"
-                  WHERE i."comandaId"=d."comandaId"
-                ) ci),
-                '[]'::json
-              ) AS items
+    return this.ds.query<any[]>(
+      `SELECT d.*
        FROM rs_pedidos_delivery d
-       ${where} ORDER BY d."fechaPedido" DESC LIMIT $${params.length-1} OFFSET $${params.length}`,
+       ${where} ORDER BY d."fechaPedido" DESC LIMIT ${limit}`,
       params,
     );
-    return { data, total, page, limit };
   }
 
   async crearDelivery(dto: any) {
     const empresaId = this.tenantSvc.getEmpresaId();
     const numero = await generarNumeroSecuencial(this.ds, '', '', '', 'DEL-', 1, empresaId);
+    // Normalizar aliases del frontend
+    const telefono     = dto.clienteTelefono ?? dto.telefono ?? '';
+    const referencias  = dto.referenciasDireccion ?? dto.referencias ?? null;
+    const notas        = dto.notas ?? dto.instruccionesEspeciales ?? null;
+    const total        = Number(dto.total ?? 0);
     const [pedido] = await this.ds.query<any[]>(
       `INSERT INTO rs_pedidos_delivery
         ("empresaId",numero,"clienteNombre","clienteTelefono","clienteEmail","clienteId",
-         "direccionEntrega","referenciasDireccion","metodoPago","costoEnvio",notas)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-      [empresaId, numero, dto.clienteNombre, dto.clienteTelefono, dto.clienteEmail ?? null,
-       dto.clienteId ?? null, dto.direccionEntrega, dto.referenciasDireccion ?? null,
-       dto.metodoPago ?? null, dto.costoEnvio ?? 0, dto.notas ?? null],
+         "direccionEntrega","referenciasDireccion","metodoPago","costoEnvio",total,notas)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      [empresaId, numero, dto.clienteNombre, telefono, dto.clienteEmail ?? null,
+       dto.clienteId ?? null, dto.direccionEntrega, referencias,
+       dto.metodoPago ?? null, dto.costoEnvio ?? 0, total, notas],
     );
     return pedido;
   }
@@ -718,12 +732,16 @@ export class RestauranteService {
   async listarTurnos(page = 1, limit = 20) {
     const empresaId = this.tenantSvc.getEmpresaId();
     const offset = (page - 1) * limit;
-    const [{ total }] = await this.ds.query<any[]>(`SELECT COUNT(*)::int AS total FROM rs_turnos WHERE "empresaId"=$1`, [empresaId]);
-    const data = await this.ds.query<any[]>(
-      `SELECT * FROM rs_turnos WHERE "empresaId"=$1 ORDER BY "fechaApertura" DESC LIMIT $2 OFFSET $3`,
+    return this.ds.query<any[]>(
+      `SELECT t.*,
+              (SELECT COUNT(*)::int FROM rs_comandas c
+               WHERE c."empresaId"=$1 AND c.estado='cobrada'
+                     AND c."fechaCierre" >= t."fechaApertura"
+                     AND (t."fechaCierre" IS NULL OR c."fechaCierre" <= t."fechaCierre")
+              ) AS "totalComandas"
+       FROM rs_turnos t WHERE t."empresaId"=$1 ORDER BY t."fechaApertura" DESC LIMIT $2 OFFSET $3`,
       [empresaId, limit, offset],
     );
-    return { data, total, page, limit };
   }
 
   async abrirTurno(dto: any) {
@@ -770,7 +788,15 @@ export class RestauranteService {
              AND "fechaApertura" >= $2 AND ("fechaCierre" <= $3 OR estado != 'cobrada')`,
       [empresaId, turno.fechaApertura, turno.fechaCierre ?? new Date()],
     );
-    return { turno, resumen: comandas[0] };
+    return {
+      turno,
+      totalVentas:    Number(turno.totalVentas    ?? 0),
+      efectivo:       Number(turno.totalEfectivo  ?? 0),
+      tarjeta:        Number(turno.totalTarjeta   ?? 0),
+      transferencia:  Number(turno.totalTransferencia ?? 0),
+      totalPropinas:  Number(turno.totalPropinas  ?? 0),
+      totalComandas:  Number(comandas[0]?.cobradas ?? 0),
+    };
   }
 
   // ── REPORTES ──────────────────────────────────────────────────────────────

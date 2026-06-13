@@ -33,7 +33,7 @@ export default function DeliveryPage() {
 
   const { data: pedidos = [], isLoading } = useQuery({
     queryKey: ['restaurante-delivery'],
-    queryFn: () => restauranteApi.listarDelivery({ activo: true }),
+    queryFn: () => restauranteApi.listarDelivery(),
     refetchInterval: 20_000,
   });
 
@@ -91,7 +91,7 @@ export default function DeliveryPage() {
                         <Text style={{ fontSize: 11, color: '#888' }}>{new Date(p.createdAt).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' })}</Text>
                       </div>
                       <Text style={{ fontSize: 12, display: 'block' }}>{p.clienteNombre}</Text>
-                      {p.telefono && <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>{p.telefono}</Text>}
+                      {p.clienteTelefono && <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>{p.clienteTelefono}</Text>}
                       {p.direccionEntrega && (
                         <Text type="secondary" style={{ fontSize: 10, display: 'block' }} ellipsis>📍 {p.direccionEntrega}</Text>
                       )}
@@ -142,10 +142,10 @@ export default function DeliveryPage() {
       >
         <Form form={form} layout="vertical" size="small">
           <Form.Item name="clienteNombre" label="Cliente" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item name="telefono" label="Teléfono"><Input /></Form.Item>
+          <Form.Item name="clienteTelefono" label="Teléfono"><Input /></Form.Item>
           <Form.Item name="direccionEntrega" label="Dirección" rules={[{ required: true }]}><Input.TextArea rows={2} /></Form.Item>
-          <Form.Item name="referencias" label="Referencias"><Input placeholder="Casa azul, frente al parque..." /></Form.Item>
-          <Form.Item name="instruccionesEspeciales" label="Instrucciones especiales"><Input.TextArea rows={2} /></Form.Item>
+          <Form.Item name="referenciasDireccion" label="Referencias"><Input placeholder="Casa azul, frente al parque..." /></Form.Item>
+          <Form.Item name="notas" label="Instrucciones especiales"><Input.TextArea rows={2} /></Form.Item>
           <Divider style={{ margin: '8px 0' }} />
           <Form.Item name="metodoPago" label="Método de pago" rules={[{ required: true }]}>
             <Select>
