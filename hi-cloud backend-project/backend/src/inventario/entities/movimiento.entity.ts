@@ -9,6 +9,9 @@ export enum TipoMovimiento {
   SALIDA     = 'salida',
   AJUSTE     = 'ajuste',
   DEVOLUCION = 'devolucion',
+  SALIDA_TRANSFERENCIA      = 'salida_transferencia',
+  ENTRADA_TRANSFERENCIA     = 'entrada_transferencia',
+  CANCELACION_TRANSFERENCIA = 'cancelacion_transferencia',
 }
 
 @TenantScoped()

@@ -10,6 +10,7 @@ import {
 import {
   PlusOutlined, DeleteOutlined, SwapOutlined,
   InboxOutlined, WarningOutlined, CheckOutlined, FileExcelOutlined, CloseCircleOutlined,
+  CheckCircleOutlined,
 } from '@ant-design/icons';
 import { TableActions } from '../../components/ui/TableActions';
 import { exportarExcel } from '../../utils/exportExcel';
@@ -31,12 +32,14 @@ const almApi = {
     api.get(`/almacenes/transferencias?page=${p}${almId ? `&almacenId=${almId}` : ''}`).then(r => r.data?.data ?? r.data),
   crearTransf: (b: any)          => api.post('/almacenes/transferencias', b).then(r => r.data?.data ?? r.data),
   confirmar:   (id: number)      => api.patch(`/almacenes/transferencias/${id}/confirmar`).then(r => r.data?.data ?? r.data),
+  recibir:     (id: number)      => api.patch(`/almacenes/transferencias/${id}/recibir`).then(r => r.data?.data ?? r.data),
   cancelar:    (id: number)      => api.patch(`/almacenes/transferencias/${id}/cancelar`).then(r => r.data?.data ?? r.data),
   productos:   ()                => api.get('/productos?limit=200').then(r => r.data?.data?.data ?? r.data?.data ?? []),
 };
 
 const ESTADO_TRANSF: Record<string, { label: string; color: string }> = {
-  borrador:    { label: 'Borrador',    color: 'default' },
+  pendiente:   { label: 'Pendiente',   color: 'warning' },
+  borrador:    { label: 'Pendiente',   color: 'warning' },  // backwards compat
   en_transito: { label: 'En tránsito', color: 'processing' },
   completada:  { label: 'Completada',  color: 'success' },
   cancelada:   { label: 'Cancelada',   color: 'error' },
@@ -116,8 +119,14 @@ export default function AlmacenesPage() {
 
   const confirmarMut = useMutation({
     mutationFn: almApi.confirmar,
-    onSuccess: () => { inv(); message.success('Transferencia confirmada — stock actualizado'); },
-    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Stock insuficiente'),
+    onSuccess: () => { inv(); message.success('Transferencia en tránsito — stock descontado del origen'); },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al confirmar'),
+  });
+
+  const recibirMut = useMutation({
+    mutationFn: almApi.recibir,
+    onSuccess: () => { inv(); message.success('Transferencia completada — stock recibido en destino'); },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al recibir'),
   });
 
   const cancelarMut = useMutation({
@@ -217,25 +226,46 @@ export default function AlmacenesPage() {
         const s = ESTADO_TRANSF[v] ?? { label: v, color: 'default' };
         return <Tag color={s.color}>{s.label}</Tag>;
       }},
-    { title: '', key: 'actions', width: 72, align: 'right' as const,
+    { title: '', key: 'actions', width: 100, align: 'right' as const,
       render: (_: any, r: any) => (
         <TableActions
           items={[
-            ...(r.estado === 'borrador' ? [{
+            ...((r.estado === 'pendiente' || r.estado === 'borrador') ? [{
               key: 'confirmar',
-              label: 'Confirmar',
+              label: 'Confirmar → En tránsito',
               icon: <CheckOutlined />,
-              onClick: () => confirmarMut.mutate(r.id),
+              onClick: () => Modal.confirm({
+                title: '¿Confirmar transferencia?',
+                content: 'Se descontará el stock del almacén origen.',
+                okText: 'Confirmar',
+                cancelText: 'Volver',
+                onOk: () => confirmarMut.mutate(r.id),
+              }),
             }] : []),
-            ...((r.estado === 'borrador' || r.estado === 'en_transito') ? [{
+            ...(r.estado === 'en_transito' ? [{
+              key: 'recibir',
+              label: 'Marcar como Recibida',
+              icon: <CheckCircleOutlined />,
+              onClick: () => Modal.confirm({
+                title: '¿Marcar transferencia como recibida?',
+                content: 'Se sumará el stock al almacén destino.',
+                okText: 'Confirmar recepción',
+                cancelText: 'Volver',
+                onOk: () => recibirMut.mutate(r.id),
+              }),
+            }] : []),
+            ...((r.estado === 'pendiente' || r.estado === 'borrador' || r.estado === 'en_transito') ? [{
               key: 'cancelar',
               label: 'Cancelar transferencia',
               danger: true,
               icon: <CloseCircleOutlined />,
               onClick: () => Modal.confirm({
                 title: '¿Cancelar transferencia?',
-                okText: 'Confirmar',
-                cancelText: 'Cancelar',
+                content: r.estado === 'en_transito'
+                  ? 'Se revertirá el stock al almacén origen.'
+                  : 'La transferencia quedará cancelada sin afectar el stock.',
+                okText: 'Cancelar transferencia',
+                cancelText: 'Volver',
                 okButtonProps: { danger: true },
                 onOk: () => cancelarMut.mutate(r.id),
               }),

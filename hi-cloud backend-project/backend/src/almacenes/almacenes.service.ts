@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
@@ -6,15 +6,19 @@ import { Almacen } from './entities/almacen.entity';
 import { StockAlmacen } from './entities/stock-almacen.entity';
 import { TransferenciaAlmacen, EstadoTransferencia } from './entities/transferencia.entity';
 import { Producto } from '../productos/entities/producto.entity';
+import { Movimiento, TipoMovimiento } from '../inventario/entities/movimiento.entity';
 import { TenantService } from '../tenant/tenant.service';
 
 @Injectable()
 export class AlmacenesService {
+  private readonly logger = new Logger(AlmacenesService.name);
+
   constructor(
     @InjectRepository(Almacen)              private almRepo:  Repository<Almacen>,
     @InjectRepository(StockAlmacen)         private stockRepo: Repository<StockAlmacen>,
     @InjectRepository(TransferenciaAlmacen) private transRepo: Repository<TransferenciaAlmacen>,
     @InjectRepository(Producto)             private prodRepo:  Repository<Producto>,
+    @InjectRepository(Movimiento)           private movRepo:   Repository<Movimiento>,
     private dataSource: DataSource,
     private tenantService: TenantService,
   ) {}
@@ -81,8 +85,6 @@ export class AlmacenesService {
     const almacenes = await this.listar();
     if (almacenes.length === 0) return [];
 
-    // Fix N+1: una sola query para todo el stock de la empresa
-    // en lugar de una query por almacén
     const almacenIds = almacenes.map(a => a.id);
     const todosItems = await this.stockRepo
       .createQueryBuilder('s')
@@ -92,7 +94,6 @@ export class AlmacenesService {
       .andWhere('s.isActive = true')
       .getMany();
 
-    // Agrupar en memoria por almacenId
     const itemsByAlmacen = new Map<number, typeof todosItems>();
     for (const item of todosItems) {
       const list = itemsByAlmacen.get(item.almacenId) ?? [];
@@ -121,7 +122,7 @@ export class AlmacenesService {
   }
 
   async crearTransferencia(dto: any, userId: number) {
-    const [origen, destino] = await Promise.all([
+    const [origen] = await Promise.all([
       this.findById(dto.almacenOrigenId),
       this.findById(dto.almacenDestinoId),
     ]);
@@ -134,9 +135,9 @@ export class AlmacenesService {
       where: { almacenId: dto.almacenOrigenId, productoId: dto.productoId },
     });
 
-    if (!stockOrigen || Number(stockOrigen.stock) < dto.cantidad) {
+    if (!stockOrigen || Number(stockOrigen.stock) < Number(dto.cantidad)) {
       throw new BadRequestException(
-        `Stock insuficiente en ${origen.nombre}: disponible=${stockOrigen?.stock ?? 0}, requerido=${dto.cantidad}`,
+        `Stock insuficiente en ${origen.nombre}. Disponible: ${stockOrigen?.stock ?? 0} unidades, Solicitado: ${dto.cantidad} unidades`,
       );
     }
 
@@ -144,7 +145,7 @@ export class AlmacenesService {
     return this.transRepo.save(this.transRepo.create({
       numero, ...dto,
       fecha:      new Date(dto.fecha ?? new Date()),
-      estado:     EstadoTransferencia.BORRADOR,
+      estado:     EstadoTransferencia.PENDIENTE,
       empresaId:  this.tenantService.getEmpresaId(),
       usuarioId:  userId,
     }));
@@ -169,19 +170,40 @@ export class AlmacenesService {
     return { data, meta: { total, page, limit } };
   }
 
-  async confirmarTransferencia(id: number) {
-    const t = await this.transRepo.findOne({
-      where: { id, empresaId: this.tenantService.getEmpresaId() },
-      relations: ['producto'],
-    });
+  /**
+   * CONFIRMAR: PENDIENTE → EN_TRANSITO
+   * Descuenta stock del almacén origen.
+   * NO mueve al destino todavía.
+   */
+  async confirmarTransferencia(id: number, userId: number) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const t = await this.transRepo.findOne({ where: { id, empresaId } });
     if (!t) throw new NotFoundException(`Transferencia #${id} no encontrada`);
-    if (t.estado !== EstadoTransferencia.BORRADOR) {
-      throw new BadRequestException(`La transferencia ya está ${t.estado}`);
+
+    const esPendiente = t.estado === EstadoTransferencia.PENDIENTE
+                     || t.estado === EstadoTransferencia.BORRADOR;
+    if (!esPendiente) {
+      throw new BadRequestException(
+        `Solo se pueden confirmar transferencias Pendientes (estado actual: '${t.estado}')`,
+      );
     }
 
     await this.dataSource.transaction(async (em) => {
       const stockRepo = em.getRepository(StockAlmacen);
       const transRepo = em.getRepository(TransferenciaAlmacen);
+      const movRepo   = em.getRepository(Movimiento);
+
+      // Re-validar stock al confirmar (puede haber cambiado desde la creación)
+      const stockOrigen = await stockRepo.findOne({
+        where: { almacenId: t.almacenOrigenId, productoId: t.productoId },
+      });
+      const cantAnterior = Number(stockOrigen?.stock ?? 0);
+
+      if (cantAnterior < Number(t.cantidad)) {
+        throw new BadRequestException(
+          `Stock insuficiente en almacén #${t.almacenOrigenId}. Disponible: ${cantAnterior}, Solicitado: ${Number(t.cantidad)}`,
+        );
+      }
 
       // Descontar del origen
       await stockRepo.decrement(
@@ -189,9 +211,57 @@ export class AlmacenesService {
         'stock', Number(t.cantidad),
       );
 
-      // Incrementar en destino (upsert)
-      const dest = await stockRepo.findOne({ where: { almacenId: t.almacenDestinoId, productoId: t.productoId } });
-      if (dest) {
+      const cantNueva = cantAnterior - Number(t.cantidad);
+
+      // Trazabilidad
+      await movRepo.save(movRepo.create({
+        tipo:             TipoMovimiento.SALIDA_TRANSFERENCIA,
+        productoId:       t.productoId,
+        cantidad:         Number(t.cantidad),
+        cantidadAnterior: cantAnterior,
+        cantidadNueva:    cantNueva,
+        motivo:           `Transferencia ${t.numero}: almacén #${t.almacenOrigenId} → #${t.almacenDestinoId}`,
+        referencia:       t.numero,
+        userId,
+        almacenId:        t.almacenOrigenId,
+        empresaId,
+      }));
+
+      await transRepo.update(id, { estado: EstadoTransferencia.EN_TRANSITO });
+    });
+
+    return this.transRepo.findOne({ where: { id } }) as Promise<TransferenciaAlmacen>;
+  }
+
+  /**
+   * RECIBIR: EN_TRANSITO → COMPLETADA
+   * Suma stock al almacén destino.
+   */
+  async recibirTransferencia(id: number, userId: number) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const t = await this.transRepo.findOne({ where: { id, empresaId } });
+    if (!t) throw new NotFoundException(`Transferencia #${id} no encontrada`);
+
+    if (t.estado !== EstadoTransferencia.EN_TRANSITO) {
+      throw new BadRequestException(
+        `Solo se pueden recibir transferencias En Tránsito (estado actual: '${t.estado}')`,
+      );
+    }
+
+    await this.dataSource.transaction(async (em) => {
+      const stockRepo = em.getRepository(StockAlmacen);
+      const transRepo = em.getRepository(TransferenciaAlmacen);
+      const movRepo   = em.getRepository(Movimiento);
+
+      // Stock actual en destino antes de sumar
+      const stockDestino = await stockRepo.findOne({
+        where: { almacenId: t.almacenDestinoId, productoId: t.productoId },
+      });
+      const cantAnterior = Number(stockDestino?.stock ?? 0);
+      const cantNueva    = cantAnterior + Number(t.cantidad);
+
+      // Upsert stock en destino
+      if (stockDestino) {
         await stockRepo.increment(
           { almacenId: t.almacenDestinoId, productoId: t.productoId },
           'stock', Number(t.cantidad),
@@ -201,8 +271,23 @@ export class AlmacenesService {
           almacenId:  t.almacenDestinoId,
           productoId: t.productoId,
           stock:      Number(t.cantidad),
+          empresaId,
         }));
       }
+
+      // Trazabilidad
+      await movRepo.save(movRepo.create({
+        tipo:             TipoMovimiento.ENTRADA_TRANSFERENCIA,
+        productoId:       t.productoId,
+        cantidad:         Number(t.cantidad),
+        cantidadAnterior: cantAnterior,
+        cantidadNueva:    cantNueva,
+        motivo:           `Transferencia ${t.numero}: almacén #${t.almacenOrigenId} → #${t.almacenDestinoId}`,
+        referencia:       t.numero,
+        userId,
+        almacenId:        t.almacenDestinoId,
+        empresaId,
+      }));
 
       await transRepo.update(id, { estado: EstadoTransferencia.COMPLETADA });
     });
@@ -210,12 +295,60 @@ export class AlmacenesService {
     return this.transRepo.findOne({ where: { id } }) as Promise<TransferenciaAlmacen>;
   }
 
-  async cancelarTransferencia(id: number) {
-    const t = await this.transRepo.findOne({ where: { id } });
-    if (!t) throw new NotFoundException();
-    if (t.estado === EstadoTransferencia.COMPLETADA)
+  /**
+   * CANCELAR: PENDIENTE/EN_TRANSITO → CANCELADA
+   * Si estaba EN_TRANSITO: devuelve stock al origen.
+   */
+  async cancelarTransferencia(id: number, userId: number) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const t = await this.transRepo.findOne({ where: { id, empresaId } });
+    if (!t) throw new NotFoundException(`Transferencia #${id} no encontrada`);
+
+    if (t.estado === EstadoTransferencia.COMPLETADA) {
       throw new BadRequestException('No se puede cancelar una transferencia completada');
-    await this.transRepo.update(id, { estado: EstadoTransferencia.CANCELADA });
+    }
+    if (t.estado === EstadoTransferencia.CANCELADA) {
+      throw new BadRequestException('La transferencia ya está cancelada');
+    }
+
+    if (t.estado === EstadoTransferencia.EN_TRANSITO) {
+      // Revertir stock al origen
+      await this.dataSource.transaction(async (em) => {
+        const stockRepo = em.getRepository(StockAlmacen);
+        const transRepo = em.getRepository(TransferenciaAlmacen);
+        const movRepo   = em.getRepository(Movimiento);
+
+        const stockOrigen = await stockRepo.findOne({
+          where: { almacenId: t.almacenOrigenId, productoId: t.productoId },
+        });
+        const cantAnterior = Number(stockOrigen?.stock ?? 0);
+        const cantNueva    = cantAnterior + Number(t.cantidad);
+
+        await stockRepo.increment(
+          { almacenId: t.almacenOrigenId, productoId: t.productoId },
+          'stock', Number(t.cantidad),
+        );
+
+        await movRepo.save(movRepo.create({
+          tipo:             TipoMovimiento.CANCELACION_TRANSFERENCIA,
+          productoId:       t.productoId,
+          cantidad:         Number(t.cantidad),
+          cantidadAnterior: cantAnterior,
+          cantidadNueva:    cantNueva,
+          motivo:           `Cancelación ${t.numero} — stock revertido al origen (#${t.almacenOrigenId})`,
+          referencia:       t.numero,
+          userId,
+          almacenId:        t.almacenOrigenId,
+          empresaId,
+        }));
+
+        await transRepo.update(id, { estado: EstadoTransferencia.CANCELADA });
+      });
+    } else {
+      // PENDIENTE/BORRADOR — sin movimiento de stock
+      await this.transRepo.update(id, { estado: EstadoTransferencia.CANCELADA });
+    }
+
     return { ok: true };
   }
 }

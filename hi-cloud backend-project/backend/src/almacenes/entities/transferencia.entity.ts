@@ -5,7 +5,8 @@ import { Producto } from '../../productos/entities/producto.entity';
 import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum EstadoTransferencia {
-  BORRADOR   = 'borrador',
+  PENDIENTE  = 'pendiente',
+  BORRADOR   = 'borrador',    // backwards compat — existentes migrados a PENDIENTE
   EN_TRANSITO= 'en_transito',
   COMPLETADA = 'completada',
   CANCELADA  = 'cancelada',
@@ -44,7 +45,7 @@ export class TransferenciaAlmacen extends BaseEntity {
   @Column({ type: 'decimal', precision: 12, scale: 4 })
   cantidad!: number;
 
-  @Column({ type: 'enum', enum: EstadoTransferencia, default: EstadoTransferencia.BORRADOR })
+  @Column({ type: 'enum', enum: EstadoTransferencia, default: EstadoTransferencia.PENDIENTE })
   estado!: EstadoTransferencia;
 
   @Column({ type: 'date' })

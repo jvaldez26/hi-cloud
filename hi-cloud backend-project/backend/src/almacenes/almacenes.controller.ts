@@ -94,13 +94,20 @@ export class AlmacenesController {
   }
 
   @Patch('transferencias/:id/confirmar')
-  @ApiOperation({ summary: 'Confirmar transferencia (descuenta origen, suma destino)' })
-  confirmar(@Param('id', ParseIntPipe) id: number) {
-    return this.svc.confirmarTransferencia(id);
+  @ApiOperation({ summary: 'Confirmar: PENDIENTE → EN_TRANSITO (descuenta stock origen)' })
+  confirmar(@Param('id', ParseIntPipe) id: number, @GetUser() user: User) {
+    return this.svc.confirmarTransferencia(id, user.id);
+  }
+
+  @Patch('transferencias/:id/recibir')
+  @ApiOperation({ summary: 'Recibir: EN_TRANSITO → COMPLETADA (suma stock destino)' })
+  recibir(@Param('id', ParseIntPipe) id: number, @GetUser() user: User) {
+    return this.svc.recibirTransferencia(id, user.id);
   }
 
   @Patch('transferencias/:id/cancelar')
-  cancelar(@Param('id', ParseIntPipe) id: number) {
-    return this.svc.cancelarTransferencia(id);
+  @ApiOperation({ summary: 'Cancelar transferencia (revierte stock si estaba EN_TRANSITO)' })
+  cancelar(@Param('id', ParseIntPipe) id: number, @GetUser() user: User) {
+    return this.svc.cancelarTransferencia(id, user.id);
   }
 }
