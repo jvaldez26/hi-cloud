@@ -456,7 +456,8 @@ export default function AlmacenesPage() {
         onCancel={() => setCrearModal(false)} footer={null} width={480}>
         <Form form={formAlm} layout="vertical" onFinish={v => crearMut.mutate(v)}>
           <Row gutter={12}>
-            <Col span={24}><Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input /></Form.Item></Col>
+            <Col xs={24} sm={16}><Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input /></Form.Item></Col>
+            <Col xs={24} sm={8}><Form.Item name="codigo" label="Código corto" tooltip="Ej: ALM01, BDG-A — se usa para auto-generar códigos de ubicación WMS"><Input placeholder="ALM01" maxLength={20} /></Form.Item></Col>
             <Col xs={24} sm={14}><Form.Item name="direccion" label="Dirección"><Input /></Form.Item></Col>
             <Col xs={24} sm={10}><Form.Item name="ciudad" label="Ciudad"><Input /></Form.Item></Col>
             <Col xs={24} sm={12}><Form.Item name="responsable" label="Responsable"><Input /></Form.Item></Col>

@@ -2,7 +2,7 @@ import {
   Injectable, NotFoundException, BadRequestException, ConflictException, Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { UbicacionAlmacen, TipoUbicacion } from './entities/ubicacion-almacen.entity';
 import { OrdenPicking, EstadoPicking, TipoOrdenPicking } from './entities/orden-picking.entity';
 import { OrdenPickingLinea, EstadoLineaPicking } from './entities/orden-picking-linea.entity';
@@ -22,6 +22,7 @@ export class WmsService {
     private lineaRepo: Repository<OrdenPickingLinea>,
     private tenantService: TenantService,
     private inventarioSvc: InventarioService,
+    private ds: DataSource,
   ) {}
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -58,22 +59,54 @@ export class WmsService {
 
   async getUbicaciones(almacenId?: number, tipo?: TipoUbicacion) {
     const empresaId = this.tenantService.getEmpresaId();
-    const qb = this.ubicRepo.createQueryBuilder('u')
-      .leftJoinAndSelect('u.almacen', 'a')
-      .where('u.empresaId = :eid', { eid: empresaId })
-      .andWhere('u.isActive = true')
-      .andWhere('u.activa = true');
-    if (almacenId) qb.andWhere('u.almacenId = :aid', { aid: almacenId });
-    if (tipo)      qb.andWhere('u.tipo = :tipo', { tipo });
-    return qb.orderBy('u.pasillo', 'ASC').addOrderBy('u.estante', 'ASC').addOrderBy('u.nivel', 'ASC').getMany();
+    const params: (string | number)[] = [empresaId];
+    let where = `u."empresaId"=$1 AND u."isActive"=true AND u.activa=true`;
+
+    if (almacenId) {
+      params.push(almacenId);
+      where += ` AND u."almacenId"=$${params.length}`;
+    }
+    if (tipo) {
+      params.push(tipo);
+      where += ` AND u.tipo=$${params.length}`;
+    }
+
+    const rows = await this.ds.query<any[]>(
+      `SELECT u.*,
+              a.nombre          AS "_almacenNombre",
+              a.codigo          AS "_almacenCodigo",
+              a.id              AS "_almacenId",
+              COALESCE(
+                (SELECT SUM(l."cantidadSolicitada")
+                 FROM wms_lineas_picking l
+                 JOIN wms_ordenes_picking o ON o.id = l."ordenId"
+                 WHERE l."ubicacionId" = u.id
+                   AND l."isActive" = true
+                   AND o."isActive" = true
+                   AND o.estado NOT IN ('cancelada','despachada')
+                ), 0)::numeric  AS "unidadesPendientes"
+       FROM wms_ubicaciones u
+       LEFT JOIN almacenes a ON a.id = u."almacenId"
+       WHERE ${where}
+       ORDER BY u.pasillo ASC NULLS LAST, u.estante ASC NULLS LAST, u.nivel ASC NULLS LAST`,
+      params,
+    );
+
+    return rows.map(r => ({
+      ...r,
+      almacen: { id: r._almacenId, nombre: r._almacenNombre, codigo: r._almacenCodigo },
+    }));
   }
 
   async updateUbicacion(id: number, dto: Partial<UbicacionAlmacen>) {
     const empresaId = this.tenantService.getEmpresaId();
     const u = await this.ubicRepo.findOne({ where: { id, empresaId, isActive: true } });
     if (!u) throw new NotFoundException(`Ubicación #${id} no encontrada`);
-    await this.ubicRepo.update(id, dto as any);
-    return this.ubicRepo.findOne({ where: { id } });
+
+    const { almacenId: _a, empresaId: _e, isActive: _i, ...safe } = dto as any;
+    await this.ubicRepo.update(id, safe);
+    const updated = await this.ubicRepo.findOne({ where: { id } });
+    return updated;
   }
 
   async deleteUbicacion(id: number) {
@@ -105,21 +138,42 @@ export class WmsService {
     }>;
   }) {
     const empresaId = this.tenantService.getEmpresaId();
-    const numero    = await this.nextNumero();
+
+    // ── Validar stock disponible por producto en el almacén ──────────────────
+    for (const linea of dto.lineas) {
+      const stockRows = await this.ds.query<any[]>(
+        `SELECT stock FROM stock_almacen
+         WHERE "almacenId"=$1 AND "productoId"=$2 AND "isActive"=true LIMIT 1`,
+        [dto.almacenId, linea.productoId],
+      );
+      const disponible = Number(stockRows[0]?.stock ?? 0);
+      if (disponible < linea.cantidadSolicitada) {
+        const [prod] = await this.ds.query<any[]>(
+          `SELECT nombre, codigo FROM productos WHERE id=$1 LIMIT 1`,
+          [linea.productoId],
+        );
+        const nombre = prod ? `${prod.codigo} — ${prod.nombre}` : `Producto #${linea.productoId}`;
+        throw new BadRequestException(
+          `Stock insuficiente para "${nombre}": disponible ${disponible}, solicitado ${linea.cantidadSolicitada}`,
+        );
+      }
+    }
+
+    const numero = await this.nextNumero();
 
     const orden = await this.ordenRepo.save(
       this.ordenRepo.create({
         numero,
-        tipo:            dto.tipo ?? TipoOrdenPicking.SALIDA_VENTA,
-        almacenId:       dto.almacenId,
-        facturaId:       dto.facturaId,
-        transferId:      dto.transferId,
-        prioridad:       dto.prioridad ?? 2,
-        destinatario:    dto.destinatario,
+        tipo:             dto.tipo ?? TipoOrdenPicking.SALIDA_VENTA,
+        almacenId:        dto.almacenId,
+        facturaId:        dto.facturaId,
+        transferId:       dto.transferId,
+        prioridad:        dto.prioridad ?? 2,
+        destinatario:     dto.destinatario,
         direccionEntrega: dto.direccionEntrega,
-        observaciones:   dto.observaciones,
-        creadoPorId:     dto.creadoPorId,
-        estado:          EstadoPicking.BORRADOR,
+        observaciones:    dto.observaciones,
+        creadoPorId:      dto.creadoPorId,
+        estado:           EstadoPicking.BORRADOR,
         empresaId,
       }),
     );
@@ -130,18 +184,31 @@ export class WmsService {
       if (l.ubicacionId) {
         const ubic = await this.ubicRepo.findOne({ where: { id: l.ubicacionId } });
         ubicacionCodigo = ubic?.codigo;
+      } else {
+        // Sugerir la primera ubicación de tipo picking en el almacén
+        const rows = await this.ds.query<any[]>(
+          `SELECT id, codigo FROM wms_ubicaciones
+           WHERE "almacenId"=$1 AND "empresaId"=$2 AND tipo='picking'
+             AND "isActive"=true AND activa=true
+           ORDER BY id ASC LIMIT 1`,
+          [dto.almacenId, empresaId],
+        );
+        if (rows[0]) {
+          l = { ...l, ubicacionId: rows[0].id };
+          ubicacionCodigo = rows[0].codigo;
+        }
       }
       return this.lineaRepo.create({
-        ordenId:           orden.id,
-        productoId:        l.productoId,
-        ubicacionId:       l.ubicacionId,
+        ordenId:            orden.id,
+        productoId:         l.productoId,
+        ubicacionId:        l.ubicacionId,
         ubicacionCodigo,
         cantidadSolicitada: l.cantidadSolicitada,
-        cantidadPickeada:  0,
-        loteId:            l.loteId,
-        numeroSerie:       l.numeroSerie,
-        estado:            EstadoLineaPicking.PENDIENTE,
-        orden_linea:       idx + 1,
+        cantidadPickeada:   0,
+        loteId:             l.loteId,
+        numeroSerie:        l.numeroSerie,
+        estado:             EstadoLineaPicking.PENDIENTE,
+        orden_linea:        idx + 1,
         empresaId,
       });
     }));
@@ -252,9 +319,9 @@ export class WmsService {
     }
 
     await this.ordenRepo.update(id, {
-      estado:           EstadoPicking.DESPACHADA,
-      fechaDespachado:  new Date(),
-      observaciones:    dto.observaciones ?? o.observaciones,
+      estado:          EstadoPicking.DESPACHADA,
+      fechaDespachado: new Date(),
+      observaciones:   dto.observaciones ?? o.observaciones,
     } as any);
 
     // Descontar inventario por cada línea pickeada — no bloquear si falla
@@ -278,6 +345,17 @@ export class WmsService {
         });
     }
 
+    // Si tiene facturaId, actualizar estado entrega (fire-and-forget)
+    if (o.facturaId) {
+      this.ds.query(
+        `UPDATE facturas SET "estadoEntrega"='entregada', "fechaEntrega"=NOW()
+         WHERE id=$1 AND "estadoEntrega" != 'entregada'`,
+        [o.facturaId],
+      ).catch((err: unknown) => {
+        this.logger.warn(`[WMS] No se pudo actualizar entrega factura #${o.facturaId}: ${err}`);
+      });
+    }
+
     return this.findOrdenById(id);
   }
 
@@ -295,12 +373,10 @@ export class WmsService {
   async generarRutaRecogida(id: number) {
     const orden = await this.findOrdenById(id);
 
-    // Ordenar líneas por pasillo → estante → nivel → posición
     const lineasOrdenadas = [...orden.lineas].sort((a, b) =>
       (a.ubicacionCodigo ?? 'zzz').localeCompare(b.ubicacionCodigo ?? 'zzz'),
     );
 
-    // Actualizar orden_linea
     await Promise.all(lineasOrdenadas.map((l, idx) =>
       this.lineaRepo.update(l.id, { orden_linea: idx + 1 } as any),
     ));
@@ -334,10 +410,53 @@ export class WmsService {
       .orderBy('"ordenes"', 'DESC')
       .getRawMany();
 
-    // Urgentes pendientes
+    // Urgentes pendientes (no despachadas ni canceladas)
     const urgentes = await this.ordenRepo.count({
       where: { empresaId, prioridad: 1, isActive: true } as any,
     });
+
+    // ── Estadísticas de ubicaciones ───────────────────────────────────────
+    const [ubiStats] = await this.ds.query<any[]>(
+      `SELECT COUNT(*)::int                                    AS total,
+              COUNT(*) FILTER(WHERE activa=true)::int          AS activas,
+              COALESCE(SUM(
+                (SELECT COUNT(*) FROM wms_lineas_picking l
+                 JOIN wms_ordenes_picking o ON o.id = l."ordenId"
+                 WHERE l."ubicacionId" = u.id
+                   AND l."isActive"=true AND o."isActive"=true
+                   AND o.estado NOT IN ('cancelada','despachada'))
+              ),0)::int AS "enUso"
+       FROM wms_ubicaciones u
+       WHERE u."empresaId"=$1 AND u."isActive"=true`,
+      [empresaId],
+    );
+
+    // ── Stock bajo por almacén (top 10) ───────────────────────────────────
+    const stockBajo = await this.ds.query<any[]>(
+      `SELECT p.nombre, p.codigo,
+              sa.stock::numeric         AS stock,
+              sa."stockMinimo"::numeric AS "stockMinimo",
+              a.nombre                  AS almacen
+       FROM stock_almacen sa
+       JOIN productos p  ON p.id  = sa."productoId"
+       JOIN almacenes a  ON a.id  = sa."almacenId"
+       WHERE sa."empresaId"=$1 AND sa."isActive"=true
+         AND sa."stockMinimo" > 0 AND sa.stock <= sa."stockMinimo"
+       ORDER BY (sa.stock::numeric / NULLIF(sa."stockMinimo"::numeric, 0)) ASC
+       LIMIT 10`,
+      [empresaId],
+    );
+
+    // ── Últimas 5 órdenes despachadas ─────────────────────────────────────
+    const ultimasDespachadas = await this.ordenRepo
+      .createQueryBuilder('o')
+      .leftJoinAndSelect('o.almacen', 'a')
+      .where('o.empresaId = :eid', { eid: empresaId })
+      .andWhere('o.isActive = true')
+      .andWhere('o.estado = :est', { est: EstadoPicking.DESPACHADA })
+      .orderBy('o.fechaDespachado', 'DESC')
+      .take(5)
+      .getMany();
 
     return {
       resumen: { borrador, asignadas, enProceso, empacadas, despachadas },
@@ -348,6 +467,13 @@ export class WmsService {
       })),
       urgentes,
       pendienteDespacho: empacadas,
+      ubicaciones: {
+        total:   ubiStats?.total   ?? 0,
+        activas: ubiStats?.activas ?? 0,
+        enUso:   ubiStats?.enUso   ?? 0,
+      },
+      stockBajo,
+      ultimasDespachadas,
     };
   }
 }

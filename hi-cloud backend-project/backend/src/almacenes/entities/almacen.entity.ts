@@ -11,6 +11,9 @@ export class Almacen extends BaseEntity {
   @Column({ length: 100 })
   nombre!: string;
 
+  @Column({ length: 20, nullable: true })
+  codigo?: string;
+
   @Column({ length: 200, nullable: true })
   direccion?: string;
 
