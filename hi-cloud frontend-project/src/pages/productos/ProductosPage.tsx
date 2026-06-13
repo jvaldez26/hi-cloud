@@ -195,7 +195,7 @@ function VariantesTab() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['variantes', productoId] }); message.success('Eliminada'); },
   });
 
-  const prodOpts = (productos?.data ?? []).map((p: any) => ({ value: p.id, label: `${p.codigo} — ${p.nombre}` }));
+  const prodOpts = (productos?.data ?? []).map((p: any) => ({ value: p.id, label: p.codigo ? `${p.codigo} — ${p.nombre}` : p.nombre }));
   const productoSeleccionado = (productos?.data ?? []).find((p: any) => p.id === productoId);
 
   const cols = [
@@ -628,6 +628,7 @@ function ProductosCatalogo() {
                 validateStatus={fieldErrors.codigo ? 'error' : undefined}
                 help={fieldErrors.codigo}>
                 <Input
+                  placeholder="Se generará automáticamente"
                   onChange={() => setFieldErrors(prev => ({ ...prev, codigo: undefined }))}
                   onBlur={async e => {
                     const raw = e.target.value;

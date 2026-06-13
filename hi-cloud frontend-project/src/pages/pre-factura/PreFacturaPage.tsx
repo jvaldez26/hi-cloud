@@ -436,7 +436,7 @@ export default function PreFacturaPage() {
                   optionFilterProp="label"
                   options={vendedores.map((v: any) => ({
                     value: v.id,
-                    label: `${v.codigo} — ${v.nombre}`,
+                    label: v.codigo ? `${v.codigo} — ${v.nombre}` : v.nombre,
                   }))}
                 />
               </Form.Item>

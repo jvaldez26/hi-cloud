@@ -286,7 +286,7 @@ export default function FacturaFormPage() {
         <Select style={{ width: '100%' }} placeholder="Seleccionar..." showSearch
           value={r.productoId}
           filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
-          options={productos?.data.map(p => ({ value: p.id, label: `${p.codigo} — ${p.nombre}` }))}
+          options={productos?.data.map(p => ({ value: p.id, label: p.codigo ? `${p.codigo} — ${p.nombre}` : p.nombre }))}
           onChange={(v) => onProductoChange(v, idx)} />
       ),
     },
@@ -430,7 +430,7 @@ export default function FacturaFormPage() {
                   optionFilterProp="label"
                   options={vendedores.map((v: any) => ({
                     value: v.id,
-                    label: `${v.codigo} — ${v.nombre}`,
+                    label: v.codigo ? `${v.codigo} — ${v.nombre}` : v.nombre,
                   }))} />
               </Form.Item>
             </Col>

@@ -70,7 +70,7 @@ export default function PreciosEspecialesPage() {
     { title: 'Producto', key: 'prod', ellipsis: true,
       render: (_: any, r: any) => {
         const p = productos?.data.find((x: any) => x.id === r.productoId);
-        return p ? `${p.codigo} — ${p.nombre}` : `#${r.productoId}`;
+        return p ? (p.codigo ? `${p.codigo} — ${p.nombre}` : p.nombre) : `#${r.productoId}`;
       }},
     { title: 'Aplica a', key: 'aplica', width: 140,
       render: (_: any, r: any) => {
@@ -164,7 +164,7 @@ export default function PreciosEspecialesPage() {
             <Col span={24}>
               <Form.Item name="productoId" label="Producto" rules={[{ required: true }]}>
                 <Select showSearch filterOption={(i, o) => String(o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
-                  options={productos?.data.map((p: any) => ({ value: p.id, label: `${p.codigo} — ${p.nombre} (${fmt.money(p.precio)})` }))} />
+                  options={productos?.data.map((p: any) => ({ value: p.id, label: p.codigo ? `${p.codigo} — ${p.nombre} (${fmt.money(p.precio)})` : `${p.nombre} (${fmt.money(p.precio)})` }))} />
               </Form.Item>
             </Col>
 

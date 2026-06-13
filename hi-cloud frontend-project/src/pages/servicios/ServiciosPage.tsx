@@ -471,7 +471,7 @@ export default function ServiciosPage() {
                 <Select
                   showSearch allowClear
                   filterOption={(i, o) => String(o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
-                  options={productos?.data.map((p: any) => ({ value: p.id, label: `${p.codigo} — ${p.nombre}` }))}
+                  options={productos?.data.map((p: any) => ({ value: p.id, label: p.codigo ? `${p.codigo} — ${p.nombre}` : p.nombre }))}
                   onChange={(id: number) => {
                     const p = productos?.data.find((x: any) => x.id === id);
                     if (p) { formDetalle.setFieldsValue({ descripcion: p.nombre, precioUnitario: Number(p.precio) }); }

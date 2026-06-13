@@ -159,6 +159,11 @@ export class ProductosService implements OnModuleInit {
     const { almacenId, ...productoData } = dto;
     const producto = this.productoRepository.create({ ...productoData, empresaId });
     const saved = await this.productoRepository.save(producto);
+    if (!saved.codigo) {
+      const generado = `PROD-${String(saved.id).padStart(4, '0')}`;
+      await this.productoRepository.update(saved.id, { codigo: generado });
+      saved.codigo = generado;
+    }
 
     // Registrar stock inicial en stock_almacen (solo para productos físicos con stock)
     if (dto.tipo !== 'servicio' && (dto.stock ?? 0) > 0) {

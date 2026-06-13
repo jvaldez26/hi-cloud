@@ -82,7 +82,7 @@ function PlanesTab() {
   ];
 
   const colsLineas = [
-    { title: 'Producto', key: 'prod', ellipsis: true, render: (_: any, r: any) => `${r.producto?.codigo} — ${r.producto?.nombre}` },
+    { title: 'Producto', key: 'prod', ellipsis: true, render: (_: any, r: any) => r.producto ? (r.producto.codigo ? `${r.producto.codigo} — ${r.producto.nombre}` : r.producto.nombre) : '' },
     { title: 'Tend.', dataIndex: 'tendencia', width: 90,
       render: (v: string) => <Tooltip title={v}>{TENDENCIA_ICON[v] ?? '—'}</Tooltip> },
     { title: 'Prom. 3m', dataIndex: 'ventaPromedio3m', width: 90, render: (v: number) => fmt.number(v) },

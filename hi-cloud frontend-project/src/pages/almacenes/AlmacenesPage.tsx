@@ -485,7 +485,7 @@ export default function AlmacenesPage() {
             </Form.Item></Col>
             <Col span={24}><Form.Item name="productoId" label="Producto" rules={[{ required: true }]}>
               <Select showSearch filterOption={(i, o) => String(o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
-                options={(productos ?? []).map((p: any) => ({ value: p.id, label: `${p.codigo} — ${p.nombre}` }))} />
+                options={(productos ?? []).map((p: any) => ({ value: p.id, label: p.codigo ? `${p.codigo} — ${p.nombre}` : p.nombre }))} />
             </Form.Item></Col>
             <Col xs={24} sm={12}><Form.Item name="cantidad" label="Cantidad" rules={[{ required: true }]}>
               <InputNumber style={{ width: '100%' }} min={0.001} step={1} />

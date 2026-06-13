@@ -122,7 +122,7 @@ export default function CotizacionFormPage() {
       render: (_: any, _r: Linea, idx: number) => (
         <Select style={{ width: '100%' }} showSearch placeholder="Buscar..."
           filterOption={(i, o) => String(o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
-          options={productos?.data.map(p => ({ value: p.id, label: `${p.codigo} — ${p.nombre}` }))}
+          options={productos?.data.map(p => ({ value: p.id, label: p.codigo ? `${p.codigo} — ${p.nombre}` : p.nombre }))}
           onChange={v => onProductoChange(v, idx)} />
       )},
     { title: 'Descripción', key: 'desc', width: 180,
@@ -199,7 +199,7 @@ export default function CotizacionFormPage() {
                   optionFilterProp="label"
                   options={vendedores.map((v: any) => ({
                     value: v.id,
-                    label: `${v.codigo} — ${v.nombre}`,
+                    label: v.codigo ? `${v.codigo} — ${v.nombre}` : v.nombre,
                   }))}
                 />
               </Form.Item>

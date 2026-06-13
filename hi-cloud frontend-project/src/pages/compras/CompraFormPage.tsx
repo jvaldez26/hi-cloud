@@ -122,7 +122,7 @@ export default function CompraFormPage() {
       render: (_: unknown, _r: Linea, idx: number) => (
         <Select style={{ width: '100%' }} showSearch placeholder="Buscar..."
           filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
-          options={productos?.data.map(p => ({ value: p.id, label: `${p.codigo} — ${p.nombre}` }))}
+          options={productos?.data.map(p => ({ value: p.id, label: p.codigo ? `${p.codigo} — ${p.nombre}` : p.nombre }))}
           onChange={(v) => onProductoChange(v, idx)} />
       )},
     { title: 'Descripción', key: 'desc', width: 170,

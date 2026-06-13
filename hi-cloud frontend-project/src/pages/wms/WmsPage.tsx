@@ -66,7 +66,7 @@ function DashboardTab() {
   const { data, isLoading } = useQuery({ queryKey: ['wms-dash'], queryFn: wmsApi.dashboard });
 
   const colsStockBajo = [
-    { title: 'Producto', key: 'prod', render: (_: any, r: any) => `${r.codigo} — ${r.nombre}`, ellipsis: true },
+    { title: 'Producto', key: 'prod', render: (_: any, r: any) => r.codigo ? `${r.codigo} — ${r.nombre}` : r.nombre, ellipsis: true },
     { title: 'Almacén', dataIndex: 'almacen', width: 130 },
     { title: 'Stock', dataIndex: 'stock', width: 80,
       render: (v: number) => <Text strong style={{ color: '#ef4444' }}>{Number(v).toFixed(2)}</Text> },
@@ -560,7 +560,7 @@ function OrdenesPickingTab({ almacenes, productos, clientes }: {
                         showSearch
                         placeholder="Buscar producto por nombre o código..."
                         filterOption={(i, o) => String(o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
-                        options={productos.map((p: any) => ({ value: p.id, label: `${p.codigo ?? ''} — ${p.nombre}` }))}
+                        options={productos.map((p: any) => ({ value: p.id, label: p.codigo ? `${p.codigo} — ${p.nombre}` : p.nombre }))}
                         style={{ width: '100%' }}
                       />
                     </Form.Item>

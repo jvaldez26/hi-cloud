@@ -415,7 +415,7 @@ export default function ManufacturaPage() {
     onError: (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error'),
   });
 
-  const prodOpts = productos?.data.map((p: any) => ({ value: p.id, label: `${p.codigo} — ${p.nombre}` })) ?? [];
+  const prodOpts = productos?.data.map((p: any) => ({ value: p.id, label: p.codigo ? `${p.codigo} — ${p.nombre}` : p.nombre })) ?? [];
 
   const colsLM = [
     { title: 'Código',       dataIndex: 'codigo',         width: 100, render: (v: string) => <Text code>{v}</Text> },
@@ -598,7 +598,7 @@ export default function ManufacturaPage() {
               pagination={false}
               columns={[
                 { title: 'Producto', key: 'prod', ellipsis: true,
-                  render: (_: any, r: any) => `${r.producto?.codigo} — ${r.producto?.nombre}` },
+                  render: (_: any, r: any) => r.producto ? (r.producto.codigo ? `${r.producto.codigo} — ${r.producto.nombre}` : r.producto.nombre) : '' },
                 { title: 'Cantidad', dataIndex: 'cantidad', width: 90 },
                 { title: 'Unidad',   dataIndex: 'unidad',   width: 80 },
                 { title: 'Stock',    key: 'stock', width: 90,
@@ -671,7 +671,7 @@ export default function ManufacturaPage() {
                 border: `1px solid ${c.suficiente ? '#86efac' : '#fca5a5'}`,
               }}>
                 <div>
-                  <Text strong style={{ fontSize: 13 }}>{c.codigo} — {c.nombre}</Text>
+                  <Text strong style={{ fontSize: 13 }}>{c.codigo ? `${c.codigo} — ${c.nombre}` : c.nombre}</Text>
                   <br />
                   <Text type="secondary" style={{ fontSize: 11 }}>
                     Requerido: {Number(c.requerido).toFixed(2)} {c.unidad}
@@ -717,7 +717,7 @@ export default function ManufacturaPage() {
           initialValues={{ cantidadPlanificada: 1 }}
           onFinish={v => crearOPMut.mutate({ ...v })}>
           <Form.Item name="listaId" label="Fórmula (BOM)" rules={[{ required: true }]}>
-            <Select options={(lms ?? []).map((l: any) => ({ value: l.id, label: `${l.codigo} — ${l.nombre}` }))} />
+            <Select options={(lms ?? []).map((l: any) => ({ value: l.id, label: l.codigo ? `${l.codigo} — ${l.nombre}` : l.nombre }))} />
           </Form.Item>
           <Row gutter={12}>
             <Col xs={24} sm={10}><Form.Item name="cantidadPlanificada" label="Cantidad a producir" rules={[{ required: true }]}>
