@@ -45,4 +45,5 @@ export const SECTORES_EMPRESARIALES: SectorEmpresarial[] = [
   { value: 'club',                label: 'Club / Centro Recreativo',     addon: null },
   { value: 'celulares',           label: 'Tienda de Celulares',          addon: null },
   { value: 'entretenimiento',     label: 'Centro de Entretenimiento',    addon: null },
+  { value: 'otro',                label: '🔧 Otro (especificar)',         addon: null },
 ];

@@ -83,6 +83,7 @@ export default function RegisterPage() {
   const [step,  setStep]  = useState(0);
   const [form1] = Form.useForm();
   const [form2] = Form.useForm();
+  const sectorSeleccionado = Form.useWatch('sectorEmpresarial', form2);
   const [emailRegistrado,  setEmailRegistrado]  = useState('');
   const [planElegido,      setPlanElegido]       = useState(planPreseleccionado);
   const [valoresPaso1,     setValoresPaso1]      = useState<{ nombre: string; email: string; password: string } | null>(null);
@@ -144,9 +145,12 @@ export default function RegisterPage() {
     try {
       await form2.validateFields();
       const v1 = valoresPaso1 ?? (form1.getFieldsValue() as { nombre: string; email: string; password: string });
-      const v2 = form2.getFieldsValue() as { empresa: string; rnc: string; pais: string; telefono?: string; sectorEmpresarial?: string };
+      const v2 = form2.getFieldsValue() as { empresa: string; rnc: string; pais: string; telefono?: string; sectorEmpresarial?: string; sectorPersonalizado?: string };
       if (!v1.nombre || !v1.email || !v1.password) { setStep(0); return; }
-      registerMut.mutate({ ...v1, ...v2 });
+      const sectorFinal = v2.sectorEmpresarial === 'otro'
+        ? `otro: ${v2.sectorPersonalizado}`
+        : v2.sectorEmpresarial;
+      registerMut.mutate({ ...v1, ...v2, sectorEmpresarial: sectorFinal });
     } catch { /* antd handles */ }
   };
 
@@ -516,6 +520,18 @@ export default function RegisterPage() {
                       suffixIcon={<ShopOutlined style={{ color: '#64748B' }} />}
                     />
                   </Form.Item>
+                  {sectorSeleccionado === 'otro' && (
+                    <Form.Item name="sectorPersonalizado"
+                      rules={[{ required: true, message: 'Describe tu tipo de negocio' }]}>
+                      <Input
+                        placeholder="Ej: Taller de bicicletas, Consultoría ambiental..."
+                        maxLength={100}
+                        autoFocus
+                        size="large"
+                        style={{ background: '#F8FAFC', border: '1.5px solid #CBD5E1', color: '#0F172A', borderRadius: 8 }}
+                      />
+                    </Form.Item>
+                  )}
                   <Row gutter={8}>
                     <Col xs={10}>
                       <Button block size="large" onClick={handleBackToStep1}
