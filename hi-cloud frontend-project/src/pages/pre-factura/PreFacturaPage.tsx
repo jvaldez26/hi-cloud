@@ -16,6 +16,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import api from '../../api/client';
+import { useAuthStore } from '../../store/auth.store';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -44,6 +45,7 @@ const ESTADO_TOKEN: Record<string, { bg: string; border: string }> = {
 export default function PreFacturaPage() {
   const qc = useQueryClient();
   const { token } = theme.useToken();
+  const sucursalActual = useAuthStore(s => s.sucursalActual);
 
   const [search,        setSearch]        = useState('');
   const [page,          setPage]          = useState(1);
@@ -58,6 +60,8 @@ export default function PreFacturaPage() {
   const [formRechazar] = Form.useForm();
 
   // ─── Queries ─────────────────────────────────────────────────────────────────
+
+  const { data: sucursales = [] } = useQuery<any[]>({ queryKey: ['mis-sucursales'], queryFn: () => api.get('/auth/mis-sucursales').then((r: any) => r.data?.data ?? r.data ?? []) });
 
   const { data: clientes = [] } = useQuery<any[]>({
     queryKey: ['clientes-select'],
@@ -185,6 +189,12 @@ export default function PreFacturaPage() {
   // Llenar el formulario cuando editandoPF cambia (después del fetch completo)
   // useEffect garantiza que corre DESPUÉS del render, con el form ya montado
   useEffect(() => {
+    if (!modalCrear || editandoPF) return;
+    if (sucursales.length === 1) formCrear.setFieldValue('sucursalId', sucursales[0].id);
+    else if (sucursalActual) formCrear.setFieldValue('sucursalId', sucursalActual);
+  }, [sucursales, sucursalActual, modalCrear, editandoPF]);
+
+  useEffect(() => {
     if (!editandoPF || !modalCrear) return;
     formCrear.setFieldsValue({
       clienteId:        editandoPF.clienteId ?? editandoPF.cliente?.id,
@@ -193,6 +203,7 @@ export default function PreFacturaPage() {
       fechaVencimiento: editandoPF.fechaVencimiento ? dayjs(editandoPF.fechaVencimiento) : null,
       notas:            editandoPF.notas ?? '',
       vendedorId:       editandoPF.vendedorId ?? undefined,
+      sucursalId:       editandoPF.sucursalId ?? undefined,
       detalles:         (editandoPF.detalles ?? []).length > 0
         ? editandoPF.detalles.map((d: any) => ({
             productoId:     d.productoId ?? undefined,
@@ -427,7 +438,7 @@ export default function PreFacturaPage() {
                 </Select>
               </Form.Item>
             </Col>
-            <Col xs={24} sm={10}>
+            <Col xs={24} sm={sucursales.length > 1 ? 7 : 10}>
               <Form.Item name="vendedorId" label="Vendedor">
                 <Select
                   allowClear
@@ -441,7 +452,12 @@ export default function PreFacturaPage() {
                 />
               </Form.Item>
             </Col>
-            <Col xs={24} sm={8}>
+            <Col xs={24} sm={7} style={{ display: sucursales.length > 1 ? undefined : 'none' }}>
+              <Form.Item name="sucursalId" label="Sucursal" rules={[{ required: sucursales.length > 1, message: 'Selecciona una sucursal' }]}>
+                <Select placeholder="Seleccionar sucursal" options={sucursales.map((s: any) => ({ value: s.id, label: s.nombre }))} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={sucursales.length > 1 ? 7 : 8}>
               <Form.Item name="notas" label="Notas / Condiciones">
                 <Input placeholder="Condiciones de pago, validez de la oferta..." />
               </Form.Item>

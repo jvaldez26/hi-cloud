@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
@@ -17,6 +17,7 @@ import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import api from '../../api/client';
+import { useAuthStore } from '../../store/auth.store';
 import WhatsAppButton from '../../components/ui/WhatsAppButton';
 import PrintButton from '../../components/ui/PrintButton';
 
@@ -33,6 +34,7 @@ const ESTADO_CONFIG: Record<string, { color: string; label: string; step: number
 export default function ConducePage() {
   const qc = useQueryClient();
   const { token } = theme.useToken();
+  const sucursalActual = useAuthStore(s => s.sucursalActual);
   const [search,          setSearch]          = useState('');
   const [page,            setPage]            = useState(1);
   const [modalCrear,      setModalCrear]      = useState(false);
@@ -58,6 +60,7 @@ export default function ConducePage() {
     queryKey: ['almacenes-select'],
     queryFn:  () => api.get('/almacenes').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
   });
+  const { data: sucursales = [] } = useQuery<any[]>({ queryKey: ['mis-sucursales'], queryFn: () => api.get('/auth/mis-sucursales').then((r: any) => r.data?.data ?? r.data ?? []) });
 
   // Cargar facturas del cliente seleccionado (solo emitidas/pagadas con detalles)
   const cargarFacturasCliente = async (cid: number) => {
@@ -100,6 +103,12 @@ export default function ConducePage() {
     queryKey: ['conduces', page, search],
     queryFn:  () => api.get(`/conduces?page=${page}&limit=50${search ? `&search=${encodeURIComponent(search)}` : ''}`).then((r: any) => r.data?.data ?? r.data),
   });
+
+  useEffect(() => {
+    if (!modalCrear) return;
+    if (sucursales.length === 1) formCrear.setFieldValue('sucursalId', sucursales[0].id);
+    else if (sucursalActual) formCrear.setFieldValue('sucursalId', sucursalActual);
+  }, [sucursales, sucursalActual, modalCrear]);
 
   const onErr = (e: any, fallback: string) => message.error((e as any)?.friendlyMessage ?? fallback);
 
@@ -355,7 +364,12 @@ export default function ConducePage() {
           </Row>
           <Row gutter={12}>
             <Col xs={24} sm={12}><Form.Item name="conductor" label="Conductor"><Input placeholder="Nombre del conductor" /></Form.Item></Col>
-            <Col xs={24} sm={12}><Form.Item name="vehiculo" label="Vehículo / Placa"><Input placeholder="Ej. E-123456" /></Form.Item></Col>
+            <Col xs={24} sm={sucursales.length > 1 ? 6 : 12}><Form.Item name="vehiculo" label="Vehículo / Placa"><Input placeholder="Ej. E-123456" /></Form.Item></Col>
+            <Col xs={24} sm={6} style={{ display: sucursales.length > 1 ? undefined : 'none' }}>
+              <Form.Item name="sucursalId" label="Sucursal" rules={[{ required: sucursales.length > 1, message: 'Selecciona una sucursal' }]}>
+                <Select placeholder="Seleccionar sucursal" options={sucursales.map((s: any) => ({ value: s.id, label: s.nombre }))} />
+              </Form.Item>
+            </Col>
           </Row>
 
           <Divider orientation="left">

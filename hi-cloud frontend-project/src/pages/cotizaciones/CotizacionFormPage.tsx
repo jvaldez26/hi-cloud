@@ -9,6 +9,7 @@ import { clientesApi } from '../../api/clientes.api';
 import { productosApi } from '../../api/productos.api';
 import { fmt } from '../../utils/formatters';
 import api from '../../api/client';
+import { useAuthStore } from '../../store/auth.store';
 import dayjs from 'dayjs';
 
 const { Title } = Typography;
@@ -28,9 +29,11 @@ export default function CotizacionFormPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
 
+  const sucursalActual = useAuthStore(s => s.sucursalActual);
   const { data: clientes  } = useQuery({ queryKey: ['clientes-sel'],  queryFn: () => clientesApi.list(1, 100) });
   const { data: productos } = useQuery({ queryKey: ['productos-sel'], queryFn: () => productosApi.list(1, 200) });
   const { data: vendedores = [] } = useQuery<any[]>({ queryKey: ['vendedores-sel'], queryFn: () => api.get('/vendedores').then((r: any) => r.data?.data?.data ?? r.data?.data ?? []) });
+  const { data: sucursales = [] } = useQuery<any[]>({ queryKey: ['mis-sucursales'], queryFn: () => api.get('/auth/mis-sucursales').then((r: any) => r.data?.data ?? r.data ?? []) });
 
   // Cargar datos existentes al editar
   const { data: cotExistente, isLoading: loadingCot } = useQuery({
@@ -38,6 +41,13 @@ export default function CotizacionFormPage() {
     queryFn:  () => cotizacionesApi.getOne(Number(id)),
     enabled:  esEditar,
   });
+
+  useEffect(() => {
+    if (!esEditar) {
+      if (sucursales.length === 1) form.setFieldValue('sucursalId', sucursales[0].id);
+      else if (sucursalActual) form.setFieldValue('sucursalId', sucursalActual);
+    }
+  }, [sucursales, sucursalActual, esEditar]);
 
   useEffect(() => {
     if (cotExistente && esEditar) {
@@ -48,6 +58,7 @@ export default function CotizacionFormPage() {
         condicionesPago: cotExistente.condicionesPago,
         notas:           cotExistente.notas,
         vendedorId:      cotExistente.vendedorId,
+        sucursalId:      (cotExistente as any).sucursalId,
       });
       if (cotExistente.detalles?.length) {
         setLineas(cotExistente.detalles.map((d: any, i: number) => ({
@@ -106,6 +117,7 @@ export default function CotizacionFormPage() {
       notas:           values.notas,
       vendedorId:      values.vendedorId,
       nombreVendedor:  vendedor?.nombre,
+      sucursalId:      (values as any).sucursalId ?? sucursalActual,
       detalles,
     };
     if (esEditar) {
@@ -204,7 +216,12 @@ export default function CotizacionFormPage() {
                 />
               </Form.Item>
             </Col>
-            <Col xs={24} sm={12}>
+            <Col xs={24} sm={12} style={{ display: sucursales.length > 1 ? undefined : 'none' }}>
+              <Form.Item name="sucursalId" label="Sucursal" rules={[{ required: sucursales.length > 1, message: 'Selecciona una sucursal' }]}>
+                <Select placeholder="Seleccionar sucursal" options={sucursales.map((s: any) => ({ value: s.id, label: s.nombre }))} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={24}>
               <Form.Item name="notas" label="Notas / Términos y condiciones">
                 <Input.TextArea rows={1} placeholder="Precios sujetos a variación. Oferta válida hasta la fecha indicada." />
               </Form.Item>

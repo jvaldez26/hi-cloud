@@ -128,7 +128,7 @@ export class ComprasService {
       montoRetencionIsr,
       netoPagar,
       almacenId:              dto.almacenId ?? almacenIdCtx,
-      sucursalId:             this.tenantService.getSucursalId() ?? undefined,
+      sucursalId:             (dto as any).sucursalId ?? this.tenantService.getSucursalId() ?? undefined,
     } as any);
 
     const savedCompra = (await this.compraRepository.save(compra as any)) as unknown as Compra;

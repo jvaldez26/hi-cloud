@@ -92,7 +92,7 @@ export class CotizacionesService {
         condicionesPago:  dto.condicionesPago,
         vendedorId:       (dto as any).vendedorId,
         nombreVendedor:   (dto as any).nombreVendedor,
-        sucursalId:       this.tenantService.getSucursalId() ?? undefined,
+        sucursalId:       (dto as any).sucursalId ?? this.tenantService.getSucursalId() ?? undefined,
         subtotal:         Number(subtotal.toFixed(2)),
         iva:              Number(iva.toFixed(2)),
         total:            Number((subtotal + iva).toFixed(2)),

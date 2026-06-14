@@ -8,6 +8,7 @@ import { facturasApi, type FacturaDetallePayload } from '../../api/facturas.api'
 import { clientesApi } from '../../api/clientes.api';
 import { productosApi } from '../../api/productos.api';
 import api from '../../api/client';
+import { useAuthStore } from '../../store/auth.store';
 import { fmt } from '../../utils/formatters';
 import { TIPOS_NCF } from '../../components/ui/NCFSelector';
 import type { Cliente } from '../../types';
@@ -62,10 +63,12 @@ export default function FacturaFormPage() {
     queryFn:  () => productosApi.list(1, 200),
   });
 
+  const sucursalActual = useAuthStore(s => s.sucursalActual);
   const { data: vendedores = [] } = useQuery<any[]>({
     queryKey: ['vendedores-sel'],
     queryFn:  () => api.get('/vendedores').then((r: any) => r.data?.data?.data ?? r.data?.data ?? []),
   });
+  const { data: sucursales = [] } = useQuery<any[]>({ queryKey: ['mis-sucursales'], queryFn: () => api.get('/auth/mis-sucursales').then((r: any) => r.data?.data ?? r.data ?? []) });
 
   // ── Carga de factura existente (modo edición) ──────────────────────────────
   const { data: facturaEdit, isLoading: loadingEdit } = useQuery({
@@ -87,6 +90,7 @@ export default function FacturaFormPage() {
       vendedorId: (facturaEdit as any).vendedorId,
       moneda:     (facturaEdit as any).moneda ?? 'DOP',
       tipoCambio: (facturaEdit as any).tipoCambio,
+      sucursalId: (facturaEdit as any).sucursalId,
     });
 
     // Estados controlados
@@ -107,6 +111,13 @@ export default function FacturaFormPage() {
       })));
     }
   }, [facturaEdit, form]);
+
+  // Auto-seleccionar sucursal en modo creación
+  useEffect(() => {
+    if (editMode) return;
+    if (sucursales.length === 1) form.setFieldValue('sucursalId', sucursales[0].id);
+    else if (sucursalActual) form.setFieldValue('sucursalId', sucursalActual);
+  }, [sucursales, sucursalActual, editMode]);
 
   // Poblar clienteSeleccionado cuando ambos datos estén disponibles
   useEffect(() => {
@@ -249,6 +260,7 @@ export default function FacturaFormPage() {
       notas:           values.notas,
       vendedorId:      values.vendedorId,
       nombreVendedor:  vendedor?.nombre,
+      sucursalId:      (values as any).sucursalId ?? sucursalActual,
       moneda:          values.moneda ?? 'DOP',
       tipoCambio:      values.tipoCambio ?? 1,
       tipoPago,
@@ -424,7 +436,7 @@ export default function FacturaFormPage() {
                 <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
               </Form.Item>
             </Col>
-            <Col xs={12} sm={8}>
+            <Col xs={12} sm={sucursales.length > 1 ? 5 : 8}>
               <Form.Item name="vendedorId" label="Vendedor">
                 <Select allowClear showSearch placeholder="Sin vendedor asignado"
                   optionFilterProp="label"
@@ -432,6 +444,11 @@ export default function FacturaFormPage() {
                     value: v.id,
                     label: v.codigo ? `${v.codigo} — ${v.nombre}` : v.nombre,
                   }))} />
+              </Form.Item>
+            </Col>
+            <Col xs={12} sm={6} style={{ display: sucursales.length > 1 ? undefined : 'none' }}>
+              <Form.Item name="sucursalId" label="Sucursal" rules={[{ required: sucursales.length > 1, message: 'Selecciona una sucursal' }]}>
+                <Select placeholder="Seleccionar sucursal" options={sucursales.map((s: any) => ({ value: s.id, label: s.nombre }))} />
               </Form.Item>
             </Col>
           </Row>

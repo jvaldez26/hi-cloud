@@ -154,7 +154,7 @@ export class FacturasService {
       tipoNcf:        dto.tipoNcf ?? 'E32',
       vendedorId:     dto.vendedorId,
       nombreVendedor: dto.nombreVendedor,
-      sucursalId:     this.tenantService.getSucursalId() ?? dto.sucursalId ?? undefined,
+      sucursalId:     dto.sucursalId ?? this.tenantService.getSucursalId() ?? undefined,
       moneda,
       tipoCambio,
       totalOriginal,

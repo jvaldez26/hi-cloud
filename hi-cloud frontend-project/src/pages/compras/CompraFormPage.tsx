@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Form, Input, Button, Card, Row, Col, Typography, Select,
          DatePicker, Table, InputNumber, Space, Divider, message, Tag, Alert, Checkbox, theme, Tooltip } from 'antd';
 import { PlusOutlined, DeleteOutlined, ArrowLeftOutlined, InfoCircleOutlined } from '@ant-design/icons';
@@ -8,6 +8,7 @@ import { comprasApi, type CompraDetallePayload } from '../../api/compras.api';
 import { proveedoresApi } from '../../api/proveedores.api';
 import { productosApi } from '../../api/productos.api';
 import api from '../../api/client';
+import { useAuthStore } from '../../store/auth.store';
 import { fmt } from '../../utils/formatters';
 import dayjs from 'dayjs';
 
@@ -23,6 +24,7 @@ const fmtMon = (v: number, moneda = 'DOP') => {
 export default function CompraFormPage() {
   const [form] = Form.useForm();
   const { token } = theme.useToken();
+  const sucursalActual = useAuthStore(s => s.sucursalActual);
   const [lineas, setLineas] = useState<Linea[]>([{ key: '1', cantidad: 1, precioUnitario: 0, porcentajeItbis: 18 }]);
   const [tipoPago, setTipoPago]         = useState<'contado' | 'credito'>('contado');
   const [diasCredito, setDiasCredito]   = useState(30);
@@ -45,12 +47,18 @@ export default function CompraFormPage() {
     queryKey: ['almacenes-sel'],
     queryFn:  () => api.get('/almacenes?limit=200').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
   });
+  const { data: sucursales = [] } = useQuery<any[]>({ queryKey: ['mis-sucursales'], queryFn: () => api.get('/auth/mis-sucursales').then((r: any) => r.data?.data ?? r.data ?? []) });
 
   // Detectar si el proveedor seleccionado es informal
   const proveedorSel = (proveedores?.data ?? []).find((p: any) => p.id === proveedorSelId);
   const esInformal   = proveedorSel
     ? (!proveedorSel.rnc || proveedorSel.rnc === '000000000' || (proveedorSel as any).esInformal === true)
     : false;
+
+  useEffect(() => {
+    if (sucursales.length === 1) form.setFieldValue('sucursalId', sucursales[0].id);
+    else if (sucursalActual) form.setFieldValue('sucursalId', sucursalActual);
+  }, [sucursales, sucursalActual]);
 
   const createMut = useMutation({
     mutationFn: comprasApi.create,
@@ -112,6 +120,7 @@ export default function CompraFormPage() {
       moneda,
       tipoCambio: moneda !== 'DOP' ? tipoCambio : undefined,
       almacenId: almacenId ?? undefined,
+      sucursalId: (values as any).sucursalId ?? sucursalActual,
       ...(esInformal && retieneItbis ? { retieneItbis: true, porcentajeRetencionItbis: pctItbis } : {}),
       ...(esInformal && retieneIsr   ? { retieneIsr:   true, porcentajeRetencionIsr:   pctIsr   } : {}),
     } as any);
@@ -242,8 +251,13 @@ export default function CompraFormPage() {
                 </Form.Item>
               </Col>
             )}
-            <Col xs={24} sm={4}>
+            <Col xs={24} sm={sucursales.length > 1 ? 3 : 4}>
               <Form.Item name="notas" label="Notas"><Input.TextArea rows={1} /></Form.Item>
+            </Col>
+            <Col xs={24} sm={sucursales.length > 1 ? 5 : 0} style={{ display: sucursales.length > 1 ? undefined : 'none' }}>
+              <Form.Item name="sucursalId" label="Sucursal" rules={[{ required: sucursales.length > 1, message: 'Selecciona una sucursal' }]}>
+                <Select placeholder="Seleccionar sucursal" options={sucursales.map((s: any) => ({ value: s.id, label: s.nombre }))} />
+              </Form.Item>
             </Col>
           </Row>
           {tipoPago === 'credito' && fechaVencimientoCalc && (
