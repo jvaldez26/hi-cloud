@@ -663,7 +663,7 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
   const [cambiandoSucursal,    setCambiandoSucursal]    = useState(false);
   const { data: sucursales = [] } = useQuery<{ id: number; nombre: string; esPrincipal: boolean }[]>({
     queryKey: ['mis-sucursales'],
-    queryFn: () => api.get('/auth/mis-sucursales').then(r => r.data),
+    queryFn: () => api.get('/auth/mis-sucursales').then((r: any) => r.data?.data ?? r.data ?? []),
     staleTime: 5 * 60 * 1000,
   });
   const sucursalNombre = sucursales.find(s => s.id === sucursalActual)?.nombre;
