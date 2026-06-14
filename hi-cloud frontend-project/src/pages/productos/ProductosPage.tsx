@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { DetailDrawer } from '../../components/ui/DetailDrawer';
@@ -401,9 +401,11 @@ function UomMedidaSelector() {
 
 // ── Catálogo de Productos (extraído como sub-componente) ───────────────────────
 function ProductosCatalogo() {
-  const [search,     setSearch]     = useState('');
-  const [categoria,  setCategoria]  = useState<string | undefined>();
-  const [page,       setPage]       = useState(1);
+  const [search,         setSearch]         = useState('');
+  const [categoria,      setCategoria]      = useState<string | undefined>();
+  const [page,           setPage]           = useState(1);
+  const [sucursalFiltro, setSucursalFiltro] = useState<number | undefined>();
+  const [estadoStock,    setEstadoStock]    = useState('todos');
   const [open,       setOpen]       = useState(false);
   const [editing,          setEditing]          = useState<Producto | null>(null);
   const [detalleProducto,  setDetalleProducto]  = useState<Producto | null>(null);
@@ -429,12 +431,12 @@ function ProductosCatalogo() {
   const { sucursalActual: sucursalJwt, almacenActual: almacenJwt, user, empresaActual } = useAuthStore();
   const [sucursalSeleccionada, setSucursalSeleccionada] = useState<number | undefined>(undefined);
 
-  // Sucursales accesibles — comparte caché con AppLayout
+  // Sucursales accesibles — usadas tanto en el form como en los filtros del catálogo
   const { data: sucursales = [] } = useQuery<any[]>({
     queryKey: ['mis-sucursales', user?.id, empresaActual],
     queryFn:  () => api.get('/auth/mis-sucursales').then((r: any) => r.data?.data ?? r.data ?? []),
     staleTime: 60_000,
-    enabled:   open && !!user && !!empresaActual,
+    enabled:   !!user && !!empresaActual,
   });
 
   // Almacenes filtrados por sucursal seleccionada — se cargan solo cuando el modal está abierto
@@ -447,6 +449,14 @@ function ProductosCatalogo() {
     enabled:   open,
   });
   const almacenes: { id: number; nombre: string }[] = almacenesRaw;
+
+  // Todos los almacenes sin filtro — para columnas dinámicas y filtro por sucursal del catálogo
+  const { data: almacenesTodos = [] } = useQuery<any[]>({
+    queryKey: ['almacenes-todos'],
+    queryFn:  () => api.get('/almacenes').then((r: any) => r.data?.data ?? r.data ?? []),
+    staleTime: 5 * 60_000,
+    enabled: !!user && !!empresaActual,
+  });
 
   // Auto-seleccionar almacén cuando carga la lista (ej: al cambiar sucursal)
   useEffect(() => {
@@ -467,7 +477,41 @@ function ProductosCatalogo() {
   });
 
   const categorias = [...new Set((data?.data ?? []).map((p: Producto) => p.categoria).filter(Boolean))] as string[];
-  const rows = categoria ? (data?.data ?? []).filter((p: Producto) => p.categoria === categoria) : (data?.data ?? []);
+
+  // Mapa almacenId → sucursalId para el filtro local de sucursal
+  const almacenSucursalMap = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const alm of almacenesTodos) {
+      if (alm.sucursalId) m.set(Number(alm.id), Number(alm.sucursalId));
+    }
+    for (const s of sucursales) {
+      if (s.almacenPrincipalId) m.set(Number(s.almacenPrincipalId), Number(s.id));
+    }
+    return m;
+  }, [almacenesTodos, sucursales]);
+
+  const rows = useMemo(() => {
+    let r: any[] = categoria
+      ? (data?.data ?? []).filter((p: Producto) => p.categoria === categoria)
+      : (data?.data ?? []);
+    if (sucursalFiltro) {
+      r = r.filter((p: any) => {
+        const spa: any[] = p.stockPorAlmacen ?? [];
+        return spa.some((s: any) => almacenSucursalMap.get(Number(s.almacenId)) === sucursalFiltro);
+      });
+    }
+    if (estadoStock !== 'todos') {
+      r = r.filter((p: any) => {
+        if (p.tipo === 'servicio') return true;
+        const total = (p.stockPorAlmacen ?? []).reduce((acc: number, s: any) => acc + Number(s.cantidad), 0);
+        if (estadoStock === 'sin')  return total === 0;
+        if (estadoStock === 'bajo') return total > 0 && total <= Number(p.stockMinimo);
+        if (estadoStock === 'ok')   return total > Number(p.stockMinimo);
+        return true;
+      });
+    }
+    return r;
+  }, [data, categoria, sucursalFiltro, estadoStock, almacenSucursalMap]);
 
   // Parsear error del backend y asignarlo al campo correspondiente
   const handleApiError = (e: any, fallback: string) => {
@@ -562,12 +606,38 @@ function ProductosCatalogo() {
     { key: 'codigo',    label: 'Código',    defaultVisible: false },
     { key: 'nombre',    label: 'Nombre',    defaultVisible: true  },
     { key: 'precio',    label: 'Precio',    defaultVisible: true  },
-    { key: 'stock',     label: 'Stock',     defaultVisible: true  },
     { key: 'categoria', label: 'Categoría', defaultVisible: true  },
   ];
   const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('productos', COLS_DEF);
 
-  const columns = [
+  // Columnas dinámicas de stock — una por almacén activo de la empresa
+  const stockCols: any[] = almacenesTodos.length > 0
+    ? almacenesTodos.map((alm: any) => ({
+        title: alm.nombre,
+        key: `alm-${alm.id}`,
+        width: 90,
+        render: (_: unknown, r: Producto) => {
+          if (r.tipo === 'servicio') return <Text type="secondary">—</Text>;
+          const spa = (r as any).stockPorAlmacen as { almacenId: number; cantidad: number }[] | undefined;
+          const v = Number(spa?.find((s: any) => Number(s.almacenId) === alm.id)?.cantidad ?? 0);
+          const bajo = v > 0 && v <= Number(r.stockMinimo);
+          return (
+            <Text style={{ color: v === 0 ? '#9CA3AF' : bajo ? '#f59e0b' : '#059669', fontWeight: bajo || v === 0 ? 500 : undefined }}>
+              {fmt.number(v)}
+            </Text>
+          );
+        },
+      }))
+    : [{
+        title: 'Stock', key: 'stock', dataIndex: 'stock', width: 90,
+        render: (v: number, r: Producto) => {
+          if (r.tipo === 'servicio') return <Text type="secondary">—</Text>;
+          const bajo = v <= r.stockMinimo;
+          return <Space size={4}>{bajo && <Tooltip title="Stock bajo"><WarningOutlined style={{ color: '#ff4d4f' }} /></Tooltip>}<Text style={{ color: bajo ? '#ff4d4f' : undefined }}>{fmt.number(v)}</Text></Space>;
+        },
+      }];
+
+  const columns: any[] = [
     { title: 'Código',    key: 'codigo', dataIndex: 'codigo',   width: 100, mobileHide: true },
     { title: 'Nombre',    key: 'nombre', dataIndex: 'nombre',   ellipsis: true, mobileTitle: true,
       render: (v: string, r: Producto) => (
@@ -583,12 +653,7 @@ function ProductosCatalogo() {
         </Space>
       )},
     { title: 'Precio',    key: 'precio', dataIndex: 'precio',   width: 115, isAmount: true, render: (v: number) => fmt.money(v) },
-    { title: 'Stock', key: 'stock', dataIndex: 'stock', width: 90,
-      render: (v: number, r: Producto) => {
-        if (r.tipo === 'servicio') return <Text type="secondary">—</Text>;
-        const bajo = v <= r.stockMinimo;
-        return <Space size={4}>{bajo && <Tooltip title="Stock bajo"><WarningOutlined style={{ color: '#ff4d4f' }} /></Tooltip>}<Text style={{ color: bajo ? '#ff4d4f' : undefined }}>{fmt.number(v)}</Text></Space>;
-      } },
+    ...(stockCols as any),
     { title: 'Categoría', key: 'categoria', dataIndex: 'categoria', ellipsis: true, mobileHide: true, render: (v: string) => v ? <Tag>{v}</Tag> : '—' },
     // ITBIS% y Mín. omitidos — disponibles al editar el producto
     { title: '', key: 'actions', width: 80, isActions: true,
@@ -625,6 +690,17 @@ function ProductosCatalogo() {
             <Select placeholder="Categoría" value={categoria} onChange={v => setCategoria(v)} allowClear style={{ width: 150 }}>
               {categorias.map(c => <Select.Option key={c} value={c}>{c}</Select.Option>)}
             </Select>
+            {sucursales.length > 1 && (
+              <Select placeholder="Sucursal" value={sucursalFiltro} onChange={v => setSucursalFiltro(v)} allowClear style={{ width: 140 }}>
+                {sucursales.map((s: any) => <Select.Option key={s.id} value={s.id}>{s.nombre}</Select.Option>)}
+              </Select>
+            )}
+            <Select value={estadoStock} onChange={v => setEstadoStock(v)} style={{ width: 130 }}>
+              <Select.Option value="todos">Todos</Select.Option>
+              <Select.Option value="ok">Stock OK</Select.Option>
+              <Select.Option value="bajo">Stock Bajo</Select.Option>
+              <Select.Option value="sin">Sin Stock</Select.Option>
+            </Select>
             <Button icon={<FileExcelOutlined />} onClick={() => {
               exportarInventario(rows);
               message.success(`${rows.length} productos exportados`);
@@ -643,10 +719,15 @@ function ProductosCatalogo() {
         </Col>
       </Row>
 
-      <Table columns={filterColumns(columns)} dataSource={rows} rowKey="id"
+      <Table columns={filterColumns(columns) as any} dataSource={rows} rowKey="id"
         loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
-        rowClassName={(r: Producto) => r.tipo !== 'servicio' && r.stock <= r.stockMinimo ? 'ant-table-row-danger' : ''}
+        rowClassName={(r: Producto) => {
+          if (r.tipo === 'servicio') return '';
+          const spa = (r as any).stockPorAlmacen as { cantidad: number }[] | undefined;
+          const total = spa ? spa.reduce((acc, s) => acc + Number(s.cantidad), 0) : r.stock;
+          return total <= r.stockMinimo ? 'ant-table-row-danger' : '';
+        }}
         pagination={{ total: data?.meta.total, pageSize: 10, current: page,
                       onChange: setPage, showTotal: t => `${t} productos`, showSizeChanger: false }} />
 

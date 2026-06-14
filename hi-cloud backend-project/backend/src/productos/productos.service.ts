@@ -230,7 +230,37 @@ export class ProductosService implements OnModuleInit {
       .take(Math.min(limit, 100))
       .getManyAndCount();
 
-    // Reemplazar stock global por stock del almacén activo
+    // Modo admin — catálogo completo con stock desglosado por almacén
+    if (incluirSinStock && data.length > 0) {
+      const ids = data.map(p => p.id);
+      const stocks: any[] = await this.productoRepository.manager.query(
+        `SELECT sa."productoId", sa.stock, sa."almacenId", a.nombre AS "almacenNombre"
+         FROM stock_almacen sa
+         INNER JOIN almacenes a ON a.id = sa."almacenId"
+         WHERE sa."productoId" = ANY($1)
+           AND sa."empresaId" = $2
+           AND sa."isActive" = true
+           AND a."isActive" = true
+         ORDER BY a.nombre ASC`,
+        [ids, empresaId],
+      );
+      const stockMap = new Map<number, any[]>();
+      for (const s of stocks) {
+        const pid = Number(s.productoId);
+        if (!stockMap.has(pid)) stockMap.set(pid, []);
+        stockMap.get(pid)!.push({
+          almacenId: Number(s.almacenId),
+          almacen:   s.almacenNombre,
+          cantidad:  Number(s.stock),
+        });
+      }
+      return {
+        data: data.map(p => ({ ...p, stockPorAlmacen: stockMap.get(p.id) ?? [] })),
+        meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+      };
+    }
+
+    // Modo POS/Facturas — reemplazar stock global por stock del almacén activo
     if (almacenId && data.length > 0) {
       const ids = data.map(p => p.id);
       const stocks = await this.stockAlmacenRepository.find({
