@@ -115,6 +115,7 @@ interface Sale {
   propina?:                number;
   // Emisor
   cajero?:                 string;
+  sucursalNombre?:         string;
   empresaNombreComercial?: string;
   empresaRnc?:             string;
   empresaDireccion?:       string;
@@ -477,6 +478,13 @@ function CartRow({ item, onQty, onRemove, onDescuento, onPrecio, permitirModific
   );
 }
 
+// ── Helper: obtiene nombre de sucursal activa del cache de React Query ───────
+function sucursalNombreFromCache(qcClient: any): string | undefined {
+  const lista: any[] = qcClient.getQueryData?.(['mis-sucursales']) ?? [];
+  const sid = useAuthStore.getState().sucursalActual;
+  return lista.find((s: any) => s.id === sid)?.nombre;
+}
+
 // ── Thermal receipt — HTML puro para impresión directa ───────────────────────
 const NCF_LABEL: Record<string, [string, string]> = {
   E32: ['FACTURA DE CONSUMO',       'ELECTRÓNICA (E32)'],
@@ -594,6 +602,7 @@ ${row('Fecha:', ahora.format('DD/MM/YYYY'))}
 ${row('Hora:', ahora.format('HH:mm:ss'))}
 ${rowBold('Factura:', sale.folio)}
 ${sale.cajero ? row('Cajero:', sale.cajero) : ''}
+${sale.sucursalNombre ? row('Sucursal:', sale.sucursalNombre) : ''}
 ${compradorHtml}
 ${line()}
 <div class="row bold"><span>DESCRIPCIÓN</span><span>TOTAL</span></div>
@@ -2788,6 +2797,7 @@ function CierreField({ label, value, editable, onChange, highlight }:
 function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }) {
   const hoy        = dayjs().format('YYYY-MM-DD');
   const vendedorId = localStorage.getItem('pos_vendedor_id');
+  const qc         = useQueryClient();
   const url        = `/facturas?desde=${hoy}&hasta=${hoy}&limit=100${vendedorId ? `&vendedorId=${vendedorId}` : ''}`;
 
   const { data: raw, isLoading, refetch } = useQuery<any>({
@@ -2817,6 +2827,7 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
       securityCode: f.ecf?.codigoSeguridad, qrUrl: f.ecf?.qrUrl,
       rncComprador: f.cliente?.rncReceptor, razonSocial: f.cliente?.nombre,
       cajero: f.usuario?.nombre ?? f.nombreVendedor,
+      sucursalNombre: (f as any).sucursal?.nombre ?? sucursalNombreFromCache(qc),
       empresaNombreComercial: empresa.razonSocial ?? empresa.nombre,
       empresaRnc: empresa.rnc, empresaDireccion: empresa.direccion, empresaTelefono: empresa.telefono,
     };
@@ -3480,6 +3491,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           rncComprador: f.cliente?.rncReceptor || f.cliente?.rfc,
           razonSocial:  f.cliente?.nombre,
           cajero: f.usuario?.nombre ?? f.nombreVendedor,
+          sucursalNombre: (f as any).sucursal?.nombre ?? sucursalNombreFromCache(qc),
           empresaNombreComercial: empInfo.nombre, empresaRnc: empInfo.rnc,
           empresaDireccion: empInfo.direccion, empresaTelefono: empInfo.telefono,
         };
@@ -4023,7 +4035,7 @@ export default function POSPage() {
   const palette      = isDark ? darkC : lightC;
   const C            = palette;
   const qc           = useQueryClient();
-  const user         = useAuthStore(s => s.user);
+  const user          = useAuthStore(s => s.user);
   const almacenActual = useAuthStore(s => s.almacenActual);
 
   // ── Bloqueo de pantalla ────────────────────────────────────────────────────
@@ -4733,6 +4745,7 @@ export default function POSPage() {
         securityCode,
         qrUrl,
         cajero:                  cajeroNombre,
+        sucursalNombre:          sucursalNombreFromCache(qc),
         empresaNombreComercial:  empresa?.nombre ?? empresaNombre,
         empresaRnc:              empresa?.rnc ?? undefined,
         empresaDireccion:        empresa?.direccion ?? undefined,
