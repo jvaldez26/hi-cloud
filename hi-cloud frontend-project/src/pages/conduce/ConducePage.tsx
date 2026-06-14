@@ -35,6 +35,7 @@ export default function ConducePage() {
   const qc = useQueryClient();
   const { token } = theme.useToken();
   const sucursalActual = useAuthStore(s => s.sucursalActual);
+  const empresaActual  = useAuthStore(s => s.empresaActual);
   const [search,          setSearch]          = useState('');
   const [page,            setPage]            = useState(1);
   const [modalCrear,      setModalCrear]      = useState(false);
@@ -60,7 +61,7 @@ export default function ConducePage() {
     queryKey: ['almacenes-select'],
     queryFn:  () => api.get('/almacenes').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
   });
-  const { data: sucursales = [] } = useQuery<any[]>({ queryKey: ['mis-sucursales'], queryFn: () => api.get('/auth/mis-sucursales').then((r: any) => r.data?.data ?? r.data ?? []) });
+  const { data: sucursales = [] } = useQuery<any[]>({ queryKey: ['mis-sucursales', empresaActual], queryFn: () => api.get('/auth/mis-sucursales').then((r: any) => r.data?.data ?? r.data ?? []) });
 
   // Cargar facturas del cliente seleccionado (solo emitidas/pagadas con detalles)
   const cargarFacturasCliente = async (cid: number) => {

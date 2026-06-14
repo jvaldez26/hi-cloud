@@ -64,11 +64,12 @@ export default function FacturaFormPage() {
   });
 
   const sucursalActual = useAuthStore(s => s.sucursalActual);
+  const empresaActual  = useAuthStore(s => s.empresaActual);
   const { data: vendedores = [] } = useQuery<any[]>({
     queryKey: ['vendedores-sel'],
     queryFn:  () => api.get('/vendedores').then((r: any) => r.data?.data?.data ?? r.data?.data ?? []),
   });
-  const { data: sucursales = [] } = useQuery<any[]>({ queryKey: ['mis-sucursales'], queryFn: () => api.get('/auth/mis-sucursales').then((r: any) => r.data?.data ?? r.data ?? []) });
+  const { data: sucursales = [] } = useQuery<any[]>({ queryKey: ['mis-sucursales', empresaActual], queryFn: () => api.get('/auth/mis-sucursales').then((r: any) => r.data?.data ?? r.data ?? []) });
 
   // ── Carga de factura existente (modo edición) ──────────────────────────────
   const { data: facturaEdit, isLoading: loadingEdit } = useQuery({

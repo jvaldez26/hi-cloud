@@ -25,6 +25,7 @@ export default function CompraFormPage() {
   const [form] = Form.useForm();
   const { token } = theme.useToken();
   const sucursalActual = useAuthStore(s => s.sucursalActual);
+  const empresaActual  = useAuthStore(s => s.empresaActual);
   const [lineas, setLineas] = useState<Linea[]>([{ key: '1', cantidad: 1, precioUnitario: 0, porcentajeItbis: 18 }]);
   const [tipoPago, setTipoPago]         = useState<'contado' | 'credito'>('contado');
   const [diasCredito, setDiasCredito]   = useState(30);
@@ -47,7 +48,7 @@ export default function CompraFormPage() {
     queryKey: ['almacenes-sel'],
     queryFn:  () => api.get('/almacenes?limit=200').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
   });
-  const { data: sucursales = [] } = useQuery<any[]>({ queryKey: ['mis-sucursales'], queryFn: () => api.get('/auth/mis-sucursales').then((r: any) => r.data?.data ?? r.data ?? []) });
+  const { data: sucursales = [] } = useQuery<any[]>({ queryKey: ['mis-sucursales', empresaActual], queryFn: () => api.get('/auth/mis-sucursales').then((r: any) => r.data?.data ?? r.data ?? []) });
 
   // Detectar si el proveedor seleccionado es informal
   const proveedorSel = (proveedores?.data ?? []).find((p: any) => p.id === proveedorSelId);

@@ -143,6 +143,7 @@ export class FacturasService {
     const montoRetItbis       = retieneItbis ? Number((ivaFactura * pctRetItbis / 100).toFixed(2)) : 0;
     const montoRetIsr         = retieneIsr   ? Number((subtotalFactura * pctRetIsr / 100).toFixed(2)) : 0;
     const netoCobrar          = Number((totalDOP - montoRetItbis - montoRetIsr).toFixed(2));
+    const sucursalId          = await this.tenantService.resolveSucursalId(dto.sucursalId);
 
     const factura = this.facturaRepository.create({
       folio,
@@ -154,7 +155,7 @@ export class FacturasService {
       tipoNcf:        dto.tipoNcf ?? 'E32',
       vendedorId:     dto.vendedorId,
       nombreVendedor: dto.nombreVendedor,
-      sucursalId:     dto.sucursalId ?? this.tenantService.getSucursalId() ?? undefined,
+      sucursalId,
       moneda,
       tipoCambio,
       totalOriginal,

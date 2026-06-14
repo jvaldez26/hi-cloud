@@ -480,7 +480,8 @@ function CartRow({ item, onQty, onRemove, onDescuento, onPrecio, permitirModific
 
 // ── Helper: obtiene nombre de sucursal activa del cache de React Query ───────
 function sucursalNombreFromCache(qcClient: any): string | undefined {
-  const lista: any[] = qcClient.getQueryData?.(['mis-sucursales']) ?? [];
+  const empresaActual = useAuthStore.getState().empresaActual;
+  const lista: any[] = qcClient.getQueryData?.(['mis-sucursales', empresaActual]) ?? [];
   const sid = useAuthStore.getState().sucursalActual;
   return lista.find((s: any) => s.id === sid)?.nombre
     ?? localStorage.getItem('pos_sucursal_nombre') ?? undefined;
@@ -668,11 +669,12 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
 
   // ── Cambiar sucursal ─────────────────────────────────────────────────────────
   const { sucursalActual, setSucursalActual, setAlmacenActual } = useAuthStore();
+  const empresaActual = useAuthStore(s => s.empresaActual);
   const qc = useQueryClient();
   const [modalCambiarSucursal, setModalCambiarSucursal] = useState(false);
   const [cambiandoSucursal,    setCambiandoSucursal]    = useState(false);
   const { data: sucursales = [] } = useQuery<{ id: number; nombre: string; esPrincipal: boolean }[]>({
-    queryKey: ['mis-sucursales'],
+    queryKey: ['mis-sucursales', empresaActual],
     queryFn: () => api.get('/auth/mis-sucursales').then((r: any) => r.data?.data ?? r.data ?? []),
     staleTime: 5 * 60 * 1000,
   });

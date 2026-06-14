@@ -46,6 +46,7 @@ export default function PreFacturaPage() {
   const qc = useQueryClient();
   const { token } = theme.useToken();
   const sucursalActual = useAuthStore(s => s.sucursalActual);
+  const empresaActual  = useAuthStore(s => s.empresaActual);
 
   const [search,        setSearch]        = useState('');
   const [page,          setPage]          = useState(1);
@@ -61,7 +62,7 @@ export default function PreFacturaPage() {
 
   // ─── Queries ─────────────────────────────────────────────────────────────────
 
-  const { data: sucursales = [] } = useQuery<any[]>({ queryKey: ['mis-sucursales'], queryFn: () => api.get('/auth/mis-sucursales').then((r: any) => r.data?.data ?? r.data ?? []) });
+  const { data: sucursales = [] } = useQuery<any[]>({ queryKey: ['mis-sucursales', empresaActual], queryFn: () => api.get('/auth/mis-sucursales').then((r: any) => r.data?.data ?? r.data ?? []) });
 
   const { data: clientes = [] } = useQuery<any[]>({
     queryKey: ['clientes-select'],

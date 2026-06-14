@@ -30,10 +30,11 @@ export default function CotizacionFormPage() {
   const qc = useQueryClient();
 
   const sucursalActual = useAuthStore(s => s.sucursalActual);
+  const empresaActual  = useAuthStore(s => s.empresaActual);
   const { data: clientes  } = useQuery({ queryKey: ['clientes-sel'],  queryFn: () => clientesApi.list(1, 100) });
   const { data: productos } = useQuery({ queryKey: ['productos-sel'], queryFn: () => productosApi.list(1, 200) });
   const { data: vendedores = [] } = useQuery<any[]>({ queryKey: ['vendedores-sel'], queryFn: () => api.get('/vendedores').then((r: any) => r.data?.data?.data ?? r.data?.data ?? []) });
-  const { data: sucursales = [] } = useQuery<any[]>({ queryKey: ['mis-sucursales'], queryFn: () => api.get('/auth/mis-sucursales').then((r: any) => r.data?.data ?? r.data ?? []) });
+  const { data: sucursales = [] } = useQuery<any[]>({ queryKey: ['mis-sucursales', empresaActual], queryFn: () => api.get('/auth/mis-sucursales').then((r: any) => r.data?.data ?? r.data ?? []) });
 
   // Cargar datos existentes al editar
   const { data: cotExistente, isLoading: loadingCot } = useQuery({

@@ -78,7 +78,8 @@ export class CotizacionesService {
       });
     }
 
-    const numero = await this.generarNumero();
+    const numero     = await this.generarNumero();
+    const sucursalId = await this.tenantService.resolveSucursalId((dto as any).sucursalId);
     const cot = await this.cotizacionRepository.save(
       this.cotizacionRepository.create({
         numero,
@@ -92,7 +93,7 @@ export class CotizacionesService {
         condicionesPago:  dto.condicionesPago,
         vendedorId:       (dto as any).vendedorId,
         nombreVendedor:   (dto as any).nombreVendedor,
-        sucursalId:       (dto as any).sucursalId ?? this.tenantService.getSucursalId() ?? undefined,
+        sucursalId,
         subtotal:         Number(subtotal.toFixed(2)),
         iva:              Number(iva.toFixed(2)),
         total:            Number((subtotal + iva).toFixed(2)),

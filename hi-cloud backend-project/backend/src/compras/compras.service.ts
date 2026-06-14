@@ -80,8 +80,9 @@ export class ComprasService {
       });
     }
 
-    const folio     = await this.generarFolio();
-    const empresaId = this.tenantService.getEmpresaId();
+    const folio      = await this.generarFolio();
+    const empresaId  = this.tenantService.getEmpresaId();
+    const sucursalId = await this.tenantService.resolveSucursalId((dto as any).sucursalId);
 
     const tipoPago    = dto.tipoPago ?? 'credito';
     const diasCredito = dto.diasCredito ?? 30;
@@ -128,7 +129,7 @@ export class ComprasService {
       montoRetencionIsr,
       netoPagar,
       almacenId:              dto.almacenId ?? almacenIdCtx,
-      sucursalId:             (dto as any).sucursalId ?? this.tenantService.getSucursalId() ?? undefined,
+      sucursalId,
     } as any);
 
     const savedCompra = (await this.compraRepository.save(compra as any)) as unknown as Compra;

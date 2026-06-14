@@ -147,6 +147,29 @@ export class TenantService {
     return new TenantAwareRepository(repo, this.cls, this.dataSource);
   }
 
+  /**
+   * Resuelve el sucursalId final a usar al crear un documento.
+   * Si dto provee uno, verifica que pertenezca a la empresa del JWT.
+   * Si no es válido (e.g. cache obsoleta del form), cae al sucursalId del JWT.
+   */
+  async resolveSucursalId(dtoSucursalId?: number | null): Promise<number | undefined> {
+    const jwtSucursalId = this.getSucursalId();
+    if (!dtoSucursalId) return jwtSucursalId ?? undefined;
+    const empresaId = this.getEmpresaId();
+    const rows: unknown[] = await this.dataSource.query(
+      `SELECT 1 FROM sucursales WHERE id = $1 AND "empresaId" = $2 AND "isActive" = true LIMIT 1`,
+      [dtoSucursalId, empresaId],
+    );
+    if (!rows.length) {
+      this.logger.warn(
+        `[SucursalId] dto.sucursalId=${dtoSucursalId} no pertenece a empresa ${empresaId}; ` +
+        `usando JWT sucursalId=${jwtSucursalId}`,
+      );
+      return jwtSucursalId ?? undefined;
+    }
+    return dtoSucursalId;
+  }
+
   /** Expone ClsService para TenantAwareRepository (solo uso interno del módulo). */
   get clsService(): ClsService { return this.cls; }
 }
