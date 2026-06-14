@@ -21,6 +21,7 @@ import { ProductosService } from './productos.service';
 import { CreateProductoDto } from './dto/create-producto.dto';
 import { UpdateProductoDto } from './dto/update-producto.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
+import { ListProductosQueryDto } from './dto/list-productos-query.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -44,11 +45,9 @@ export class ProductosController {
   @Get()
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Listar productos con paginación. Cuando hay almacenId en JWT, retorna solo productos con stock en ese almacén.' })
-  findAll(
-    @Query() pagination: PaginationDto,
-    @Query('incluirSinStock') incluirSinStock?: string,
-  ) {
-    return this.productosService.findAll(pagination, incluirSinStock === 'true');
+  findAll(@Query() query: ListProductosQueryDto) {
+    const { incluirSinStock, ...pagination } = query;
+    return this.productosService.findAll(pagination as PaginationDto, incluirSinStock === true);
   }
 
   @Get('stock-bajo')
