@@ -48,13 +48,13 @@ export class FacturasService {
   ) {}
 
   private async generarFolio(): Promise<string> {
-    const empresaId  = this.tenantService.getEmpresaId();
-    const sucursalId = this.tenantService.getSucursalId();
-    // Si hay sucursal activa, usar secuencia independiente por sucursal
-    const tipo = sucursalId ? `FAC_S${sucursalId}` : 'FAC';
+    const empresaId = this.tenantService.getEmpresaId();
+    // Siempre usar secuencia única 'FAC' por empresa.
+    // FAC_S${sucursalId} fue eliminado porque comparte el prefijo 'FAC-'
+    // con la serie principal y causa colisiones de folio único (empresaId, folio).
     const [row] = await this.dataSource.query<{ numero: number }[]>(
       `SELECT siguiente_numero_secuencia($1, $2) AS numero`,
-      [empresaId, tipo],
+      [empresaId, 'FAC'],
     );
     return `FAC-${row.numero}`;
   }
