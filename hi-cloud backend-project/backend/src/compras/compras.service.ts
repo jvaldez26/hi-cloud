@@ -155,7 +155,7 @@ export class ComprasService {
       .where('c.empresaId = :empresaId', { empresaId })
       .andWhere('c.isActive = :active', { active: true });
 
-    if (sucursalId) qb.andWhere('c.sucursalId = :sucursalId', { sucursalId });
+    if (sucursalId) qb.andWhere('(c.sucursalId = :sucursalId OR c.sucursalId IS NULL)', { sucursalId });
 
     if (search) {
       qb.andWhere(

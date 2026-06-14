@@ -293,7 +293,7 @@ export class FacturasService {
       .where('f.empresaId = :empresaId', { empresaId })
       .andWhere('f.isActive = :active', { active: true });
 
-    if (sucursalId) qb.andWhere('f.sucursalId = :sucursalId', { sucursalId });
+    if (sucursalId) qb.andWhere('(f.sucursalId = :sucursalId OR f.sucursalId IS NULL)', { sucursalId });
 
     if (search) {
       qb.andWhere(

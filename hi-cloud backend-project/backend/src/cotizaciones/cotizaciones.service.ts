@@ -117,7 +117,7 @@ export class CotizacionesService {
       .where('c.empresaId = :eid', { eid: this.tenantService.getEmpresaId() })
       .andWhere('c.isActive = :a', { a: true });
 
-    if (sucursalId) qb.andWhere('c.sucursalId = :sid', { sid: sucursalId });
+    if (sucursalId) qb.andWhere('(c.sucursalId = :sid OR c.sucursalId IS NULL)', { sid: sucursalId });
 
     if (search) qb.andWhere(
       '(c.numero ILIKE :s OR cliente.nombre ILIKE :s)', { s: `%${search}%` },
