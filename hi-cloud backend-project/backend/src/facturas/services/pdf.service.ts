@@ -283,12 +283,20 @@ export class PDFService {
     const fechaHora = now.toLocaleDateString('es-DO') + ' ' +
       now.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });
 
+    const sucursalNombreRecibo: string | undefined = (factura as any).sucursalId
+      ? await this.facturaRepo.manager.query(
+          'SELECT nombre FROM sucursales WHERE id = $1 LIMIT 1',
+          [(factura as any).sucursalId],
+        ).then((r: any[]) => r[0]?.nombre ?? undefined)
+      : undefined;
+
     const data: ReciboPOSData = {
       empresaNombre:   empresa.razonSocial || empresa.nombre || 'Mi Empresa',
       empresaRNC:      empresa.rnc || '',
       empresaTelefono: empresa.telefono,
       empresaWeb:      empresa.sitioWeb,
       vendedor:        factura.nombreVendedor,
+      sucursal:        sucursalNombreRecibo,
       fechaHora,
       numero:          factura.folio,
       ecfNumero:       ecf?.numero,

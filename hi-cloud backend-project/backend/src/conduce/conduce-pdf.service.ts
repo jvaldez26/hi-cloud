@@ -50,6 +50,13 @@ export class ConducePDFService {
     const estadoLabel = ESTADO_LABEL[cond.estado] ?? cond.estado;
     const estadoHex   = ESTADO_HEX[cond.estado]   ?? '#2563eb';
 
+    const sucursalNombre: string | undefined = (cond as any).sucursalId
+      ? await this.repo.manager.query(
+          'SELECT nombre FROM sucursales WHERE id = $1 LIMIT 1',
+          [(cond as any).sucursalId],
+        ).then((r: any[]) => r[0]?.nombre ?? undefined)
+      : undefined;
+
     const buffer = await new Promise<Buffer>((resolve, reject) => {
       const doc = new PDFDocument({ size: 'LETTER', margin: 50, compress: true });
       const chunks: Buffer[] = [];
@@ -131,6 +138,7 @@ export class ConducePDFService {
       if (cond.contactoEntrega)        infoRows.push(['Contacto', cond.contactoEntrega + (cond.telefonoContacto ? '  ' + cond.telefonoContacto : '')]);
       if (cond.conductor)              infoRows.push(['Conductor', cond.conductor]);
       if (cond.vehiculo)               infoRows.push(['Vehículo',  cond.vehiculo]);
+      if (sucursalNombre)              infoRows.push(['Sucursal',  sucursalNombre]);
 
       for (const [label, val] of infoRows) {
         doc.font('Helvetica-Bold').fontSize(8).fillColor('#6b7280')

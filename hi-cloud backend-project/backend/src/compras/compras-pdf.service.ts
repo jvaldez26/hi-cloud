@@ -48,6 +48,13 @@ export class ComprasPdfService {
       [compraId, empresaId],
     ).then(r => r[0] ?? null);
 
+    const sucursalNombre: string | undefined = (compra as any).sucursalId
+      ? await this.ds.query<any[]>(
+          'SELECT nombre FROM sucursales WHERE id = $1 LIMIT 1',
+          [(compra as any).sucursalId],
+        ).then(r => r[0]?.nombre ?? undefined)
+      : undefined;
+
     const esInformal = !proveedor.rnc || proveedor.rnc === '000000000' || proveedor.esInformal === true;
 
     if (esInformal && ecf?.numero) {
@@ -82,6 +89,7 @@ export class ComprasPdfService {
         ...((compra as any).usuario?.nombre
           ? [{ label: 'Elaborado por', valor: (compra as any).usuario.nombre }]
           : []),
+        ...(sucursalNombre ? [{ label: 'Sucursal', valor: sucursalNombre }] : []),
       ],
       items: (compra.detalles ?? []).map((d: any) => {
         const sub  = Number(d.precioUnitario) * Number(d.cantidad);

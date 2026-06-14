@@ -67,6 +67,13 @@ export class PreFacturaPDFService {
     const subtotalGravado = items.filter(i => i.itbisPct > 0).reduce((s, i) => s + i.subtotal, 0);
     const subtotalExento  = items.filter(i => i.itbisPct === 0).reduce((s, i) => s + i.subtotal, 0);
 
+    const sucursalNombre: string | undefined = (pf as any).sucursalId
+      ? await this.repo.manager.query(
+          'SELECT nombre FROM sucursales WHERE id = $1 LIMIT 1',
+          [(pf as any).sucursalId],
+        ).then((r: any[]) => r[0]?.nombre ?? undefined)
+      : undefined;
+
     const factConf = (empresa.configuracion ?? {}) as Record<string, unknown>;
 
     // Subtítulo que incluye tipo NCF si existe
@@ -91,6 +98,7 @@ export class PreFacturaPDFService {
       empresaSitioWeb:  factConf.factMostrarWeb      !== false ? empresa.sitioWeb : undefined,
       empresaPie:       empresa.configuracion?.pieFactura as string | undefined,
       vendedorNombre:   pf.nombreVendedor,
+      sucursalNombre,
       clienteNombre:    (pf as any).cliente?.nombre || 'Consumidor Final',
       clienteRNC:       (pf as any).cliente?.rncReceptor || (pf as any).cliente?.rfc,
       clienteDireccion: (pf as any).cliente?.direccion,
