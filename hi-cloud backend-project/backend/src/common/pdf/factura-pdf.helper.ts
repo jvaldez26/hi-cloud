@@ -506,6 +506,7 @@ export async function generarReciboPOSPDF(d: ReciboPOSData): Promise<Buffer> {
     center(d.numero, 11, 'Helvetica-Bold');
     center(d.fechaHora, 8);
     if (d.vendedor)  center('Atendido por: ' + d.vendedor, 7);
+    if (d.sucursal)  center('Sucursal: ' + d.sucursal, 7);
     if (d.ecfNumero) center('e-NCF: ' + d.ecfNumero, 7);
 
     y += 4;
