@@ -4,8 +4,9 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import {
-  IsString, IsOptional, IsNumber, IsInt, IsPositive, IsDateString, Min,
+  IsString, IsOptional, IsNumber, IsInt, IsPositive, IsDateString, Min, MaxLength,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { AlmacenesService } from './almacenes.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -15,12 +16,14 @@ import { UserRole } from '../users/enums/user-role.enum';
 import { User } from '../users/users.entity';
 
 class CreateAlmacenDto {
-  @IsString()                            nombre!:       string;
-  @IsOptional() @IsString()              direccion?:    string;
-  @IsOptional() @IsString()              ciudad?:       string;
-  @IsOptional() @IsString()              responsable?:  string;
-  @IsOptional() @IsString()              telefono?:     string;
-  @IsOptional() @IsString()              descripcion?:  string;
+  @IsString()                                              nombre!:       string;
+  @IsOptional() @IsString() @MaxLength(20)                 codigo?:       string;
+  @IsOptional() @IsString()                                direccion?:    string;
+  @IsOptional() @IsString()                                ciudad?:       string;
+  @IsOptional() @IsString()                                responsable?:  string;
+  @IsOptional() @IsString()                                telefono?:     string;
+  @IsOptional() @IsString()                                descripcion?:  string;
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number) sucursalId?:   number;
 }
 
 class CreateTransferenciaDto {
