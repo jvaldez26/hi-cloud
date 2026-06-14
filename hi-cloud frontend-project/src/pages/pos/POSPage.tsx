@@ -672,7 +672,7 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
     setCambiandoSucursal(true);
     try {
       const res = await api.post('/auth/cambiar-sucursal', { sucursalId });
-      const data = res.data;
+      const data = res.data?.data ?? res.data;
       setSucursalActual(data.sucursalActual);
       setAlmacenActual(data.almacenActual ?? null);
       qc.clear();
