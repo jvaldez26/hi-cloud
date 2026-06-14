@@ -25,6 +25,7 @@ import { User } from '../users/users.entity';
 import { UsuarioEmpresa } from '../multi-empresa/entities/usuario-empresa.entity';
 import { Empresa } from '../configuracion/entities/empresa.entity';
 import { Sucursal } from '../configuracion/entities/sucursal.entity';
+import { Almacen } from '../almacenes/entities/almacen.entity';
 import { ContabilidadService } from '../contabilidad/services/contabilidad.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -218,21 +219,39 @@ export class AuthService implements OnModuleInit {
         });
         const empresaId = empresaResult.identifiers[0].id as number;
 
-        await qr.manager.insert(UsuarioEmpresa, {
-          userId:      user.id,
-          empresaId,
-          rol:         UserRole.ADMIN,
-          isPrincipal: true,
-          isActive:    true,
-        });
-
-        await qr.manager.insert(Sucursal, {
+        // Crear Sucursal Principal y capturar su ID
+        const sucursalInsert = await qr.manager.insert(Sucursal, {
           empresaId,
           codigo:      'PRIN',
           nombre:      'Sucursal Principal',
           ciudad:      'Santo Domingo',
           esPrincipal: true,
           isActive:    true,
+        });
+        const sucursalId = sucursalInsert.identifiers[0].id as number;
+
+        // Crear Almacén Principal vinculado a la sucursal
+        const almacenInsert = await qr.manager.insert(Almacen, {
+          empresaId,
+          codigo:     'MAIN',
+          nombre:     'Almacén Principal',
+          ciudad:     'Santo Domingo',
+          activo:     true,
+          sucursalId,
+        });
+        const almacenId = almacenInsert.identifiers[0].id as number;
+
+        // Vincular almacén ↔ sucursal (bidireccional)
+        await qr.manager.update(Sucursal, { id: sucursalId }, { almacenPrincipalId: almacenId } as any);
+
+        // Asignar sucursal al usuario creador
+        await qr.manager.insert(UsuarioEmpresa, {
+          userId:      user.id,
+          empresaId,
+          rol:         UserRole.ADMIN,
+          isPrincipal: true,
+          isActive:    true,
+          sucursalId,
         });
 
         // Crear suscripción PRUEBA con el plan elegido — el reloj de 15 días empieza aquí
