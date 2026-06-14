@@ -1,0 +1,48 @@
+export interface SectorEmpresarial {
+  value: string;
+  label: string;
+  addon: string | null;
+}
+
+export const SECTORES_EMPRESARIALES: SectorEmpresarial[] = [
+  { value: 'optica',              label: 'Óptica',                       addon: 'optica' },
+  { value: 'taller_mecanico',     label: 'Taller Mecánico',              addon: 'taller' },
+  { value: 'clinica',             label: 'Clínica / Consultorio',        addon: 'clinica' },
+  { value: 'farmacia',            label: 'Farmacia',                     addon: 'farmacia' },
+  { value: 'restaurante',         label: 'Restaurante',                  addon: 'restaurante' },
+  { value: 'servicios_prof',      label: 'Servicios Profesionales',      addon: null },
+  { value: 'hotel',               label: 'Hotel / Hospedaje',            addon: 'hotel' },
+  { value: 'odontologia',         label: 'Odontología',                  addon: 'clinica' },
+  { value: 'centro_educativo',    label: 'Centro Educativo',             addon: null },
+  { value: 'venta_vehiculos',     label: 'Venta de Vehículos',           addon: null },
+  { value: 'construccion',        label: 'Construcción',                 addon: null },
+  { value: 'distribucion',        label: 'Distribución / Logística',     addon: null },
+  { value: 'salon_belleza',       label: 'Salón de Belleza / Spa',       addon: null },
+  { value: 'veterinaria',         label: 'Veterinaria',                  addon: 'clinica' },
+  { value: 'gimnasio',            label: 'Gimnasio / Fitness',           addon: null },
+  { value: 'almacen',             label: 'Almacén / Bodega',             addon: null },
+  { value: 'ferreteria',          label: 'Ferretería',                   addon: null },
+  { value: 'boutique',            label: 'Boutique / Moda',              addon: null },
+  { value: 'imprenta',            label: 'Imprenta / Diseño',            addon: null },
+  { value: 'prestamista',         label: 'Prestamista / Financiera',     addon: null },
+  { value: 'agencia_viajes',      label: 'Agencia de Viajes',            addon: null },
+  { value: 'bienes_raices',       label: 'Bienes Raíces',                addon: null },
+  { value: 'agencia_publicidad',  label: 'Agencia de Publicidad',        addon: null },
+  { value: 'academia',            label: 'Academia / Tutorías',          addon: null },
+  { value: 'panaderia',           label: 'Panadería / Repostería',       addon: null },
+  { value: 'taller_electronica',  label: 'Taller de Electrónica',        addon: null },
+  { value: 'lavanderia',          label: 'Lavandería',                   addon: null },
+  { value: 'eventos',             label: 'Eventos / Catering',           addon: null },
+  { value: 'supermercado',        label: 'Supermercado / Colmado',       addon: null },
+  { value: 'laboratorio',         label: 'Laboratorio Clínico',          addon: 'clinica' },
+  { value: 'transporte',          label: 'Transporte / Taxi',            addon: null },
+  { value: 'ti_software',         label: 'Empresa de TI / Software',     addon: null },
+  { value: 'taller_arte',         label: 'Taller de Arte / Manualidades', addon: null },
+  { value: 'fotografia',          label: 'Estudio Fotográfico',          addon: null },
+  { value: 'limpieza',            label: 'Empresa de Limpieza',          addon: null },
+  { value: 'seguridad',           label: 'Seguridad Privada',            addon: null },
+  { value: 'agro',                label: 'Agro / Finca',                 addon: null },
+  { value: 'club',                label: 'Club / Centro Recreativo',     addon: null },
+  { value: 'celulares',           label: 'Tienda de Celulares',          addon: null },
+  { value: 'entretenimiento',     label: 'Centro de Entretenimiento',    addon: null },
+];

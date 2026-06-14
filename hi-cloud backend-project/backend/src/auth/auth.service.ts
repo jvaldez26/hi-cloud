@@ -216,6 +216,8 @@ export class AuthService implements OnModuleInit {
           moneda:      'DOP',
           zonaHoraria: 'America/Santo_Domingo',
           isActive:    true,
+          telefono:    dto.telefono,
+          sector:      dto.sectorEmpresarial,
         });
         const empresaId = empresaResult.identifiers[0].id as number;
 
@@ -277,7 +279,11 @@ export class AuthService implements OnModuleInit {
       }
 
       // Notificar a los Super Admins del nuevo registro pendiente (post-commit)
-      this.notificarAdminsPendiente(user.nombre, user.email).catch(err =>
+      this.notificarAdminsPendiente(user.nombre, user.email, {
+        empresaNombre:     dto.empresaNombre,
+        telefono:          dto.telefono,
+        sectorEmpresarial: dto.sectorEmpresarial,
+      }).catch(err =>
         this.logger.warn(`No se pudo notificar a admins: ${err?.message}`),
       );
 
@@ -1044,13 +1050,29 @@ export class AuthService implements OnModuleInit {
   // ─── Notificación de registro pendiente ───────────────────────────────────
 
   /** Envía email a todos los Super Admins cuando un nuevo usuario se registra. */
-  async notificarAdminsPendiente(nombre: string, email: string): Promise<void> {
+  async notificarAdminsPendiente(
+    nombre: string,
+    email: string,
+    empresa?: { empresaNombre?: string; telefono?: string; sectorEmpresarial?: string },
+  ): Promise<void> {
     const admins = await this.dataSource.query<any[]>(
       `SELECT email, nombre FROM users WHERE role = 'super_admin' AND "isActive" = true LIMIT 10`,
     );
     if (!admins.length) return;
 
     const frontendUrl = process.env['FRONTEND_URL'] ?? 'https://hicloudrd.com';
+    const empresaRows = empresa?.empresaNombre ? `
+      <tr><td style="color:#6b7280;font-size:13px;padding:4px 0">Empresa:</td><td style="font-weight:700">${empresa.empresaNombre}</td></tr>
+      ${empresa.telefono ? `<tr><td style="color:#6b7280;font-size:13px;padding:4px 0">Teléfono:</td><td style="font-weight:700">${empresa.telefono}</td></tr>` : ''}
+      ${empresa.sectorEmpresarial ? `<tr><td style="color:#6b7280;font-size:13px;padding:4px 0">Sector:</td><td style="font-weight:700">${empresa.sectorEmpresarial}</td></tr>` : ''}
+    ` : '';
+
+    this.logger.log(
+      `🆕 NUEVA EMPRESA: ${empresa?.empresaNombre ?? 'N/A'} | ` +
+      `Sector: ${empresa?.sectorEmpresarial ?? 'N/A'} | ` +
+      `Tel: ${empresa?.telefono ?? 'N/A'}`,
+    );
+
     const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 <style>body{font-family:'Inter',sans-serif;background:#f5f5f5;margin:0;padding:20px}
@@ -1065,6 +1087,7 @@ export class AuthService implements OnModuleInit {
     <table style="background:#f9fafb;border-radius:8px;padding:16px;width:100%;margin:16px 0">
       <tr><td style="color:#6b7280;font-size:13px;padding:4px 0">Nombre:</td><td style="font-weight:700">${nombre}</td></tr>
       <tr><td style="color:#6b7280;font-size:13px;padding:4px 0">Email:</td><td style="font-weight:700">${email}</td></tr>
+      ${empresaRows}
     </table>
     <p style="text-align:center;margin:28px 0">
       <a href="${frontendUrl}/super-admin" class="btn">Revisar en el panel →</a>

@@ -25,6 +25,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { demoApi, ESTADO_DEMO_LABEL, ESTADO_DEMO_COLOR } from '../../api/demo.api';
 import CobrosPage from './CobrosPage';
+import { SECTORES_EMPRESARIALES } from '../../constants/sectores';
 
 /** Wrapper con contexto de color del Super Admin — respeta modo oscuro */
 function CobrosAdminPanel() {
@@ -1684,6 +1685,29 @@ export default function SuperAdminPage() {
         );
       },
     },
+    // ── TELÉFONO ──────────────────────────────────────────────────────────────
+    { title: 'Teléfono', key: 'telefono', width: 120,
+      render: (_: any, r: any) => (
+        <span style={{ color: C.txt2, fontSize: 12 }}>{r.telefono ?? '—'}</span>
+      ),
+    },
+    // ── SECTOR ───────────────────────────────────────────────────────────────
+    { title: 'Sector', key: 'sector', width: 160,
+      render: (_: any, r: any) => {
+        const s = SECTORES_EMPRESARIALES.find(x => x.value === r.sector);
+        if (!s && !r.sector) return <span style={{ color: C.txt2, fontSize: 12 }}>—</span>;
+        return (
+          <div>
+            <Tag color="blue" style={{ fontSize: 11, marginBottom: s?.addon ? 2 : 0 }}>
+              {s?.label ?? r.sector}
+            </Tag>
+            {s?.addon && (
+              <Tag color="green" style={{ fontSize: 10 }}>💡 {s.addon}</Tag>
+            )}
+          </div>
+        );
+      },
+    },
     // ── ACCIONES: Eye + Dropdown ───────────────────────────────────────────────
     {
       title: '', key: 'acc', width: 80, fixed: 'right' as const,
@@ -2906,6 +2930,7 @@ export default function SuperAdminPage() {
                               { label: 'Suscripción/mes', value: PLAN_MRR_USD[detalleEmpresa.plan] > 0 ? fmtUsd(PLAN_MRR_USD[detalleEmpresa.plan]) : 'Gratis (Trial)' },
                               { label: 'Fecha registro', value: fmtFecha(detalleEmpresa.fechaRegistro) },
                               { label: 'Estado suscripción', value: detalleEmpresa.estadoSuscripcion?.toUpperCase() ?? '—' },
+                              { label: 'Teléfono', value: detalleEmpresa.telefono ?? '—' },
                             ].map(f => (
                               <div key={f.label} style={{
                                 background: C.bg, borderRadius: 8, padding: '10px 14px',
@@ -2916,6 +2941,20 @@ export default function SuperAdminPage() {
                               </div>
                             ))}
                           </div>
+                          {detalleEmpresa.sector && (() => {
+                            const s = SECTORES_EMPRESARIALES.find(x => x.value === detalleEmpresa.sector);
+                            return (
+                              <div style={{ background: C.bg, borderRadius: 8, padding: '10px 14px', border: `1px solid ${C.border}`, marginBottom: 14 }}>
+                                <div style={{ color: C.txt2, fontSize: 11, marginBottom: 6 }}>Sector empresarial</div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                  <Tag color="blue">{s?.label ?? detalleEmpresa.sector}</Tag>
+                                  {s?.addon && (
+                                    <Tag color="green">💡 Add-on sugerido: <strong>{s.addon}</strong></Tag>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })()}
 
                           {/* Acciones */}
                           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>

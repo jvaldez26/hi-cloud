@@ -1,7 +1,8 @@
 import { useState, useRef } from 'react';
 import { Form, Input, Button, Typography, Alert, Steps,
          Row, Col, Select, message, ConfigProvider, theme as antTheme } from 'antd';
-import { UserOutlined, LockOutlined, BuildOutlined, RocketOutlined, CheckOutlined } from '@ant-design/icons';
+import { UserOutlined, LockOutlined, BuildOutlined, RocketOutlined, CheckOutlined, PhoneOutlined, ShopOutlined } from '@ant-design/icons';
+import { SECTORES_EMPRESARIALES } from '../../constants/sectores';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMutation } from '@tanstack/react-query';
@@ -90,12 +91,14 @@ export default function RegisterPage() {
   const registerMut = useMutation({
     mutationFn: async (values: {
       nombre: string; email: string; password: string;
-      empresa: string; rnc: string;
+      empresa: string; rnc: string; telefono?: string; sectorEmpresarial?: string;
     }) => {
       await authApi.register(
         values.nombre, values.email, values.password,
         values.empresa, values.rnc,
         planElegido,
+        values.telefono,
+        values.sectorEmpresarial,
       );
       return values.email;
     },
@@ -141,7 +144,7 @@ export default function RegisterPage() {
     try {
       await form2.validateFields();
       const v1 = valoresPaso1 ?? (form1.getFieldsValue() as { nombre: string; email: string; password: string });
-      const v2 = form2.getFieldsValue() as { empresa: string; rnc: string; pais: string };
+      const v2 = form2.getFieldsValue() as { empresa: string; rnc: string; pais: string; telefono?: string; sectorEmpresarial?: string };
       if (!v1.nombre || !v1.email || !v1.password) { setStep(0); return; }
       registerMut.mutate({ ...v1, ...v2 });
     } catch { /* antd handles */ }
@@ -490,6 +493,29 @@ export default function RegisterPage() {
                       </Form.Item>
                     </Col>
                   </Row>
+                  <Form.Item name="telefono"
+                    label={<Text style={{ color: '#1E3A8A', fontSize: 13, fontWeight: 600 }}>Teléfono de la empresa</Text>}
+                    rules={[{ required: true, message: 'El teléfono es requerido' }]}>
+                    <Input prefix={<PhoneOutlined style={{ color: '#64748B' }} />}
+                      placeholder="809-000-0000" size="large" maxLength={15}
+                      style={{ background: '#F8FAFC', border: '1.5px solid #CBD5E1', color: '#0F172A', borderRadius: 8 }} />
+                  </Form.Item>
+                  <Form.Item name="sectorEmpresarial"
+                    label={<Text style={{ color: '#1E3A8A', fontSize: 13, fontWeight: 600 }}>Sector empresarial</Text>}
+                    rules={[{ required: true, message: 'Selecciona el sector de tu empresa' }]}
+                    extra={<Text style={{ fontSize: 11, color: '#94A3B8' }}>Esto nos ayuda a configurar el sistema para tu negocio</Text>}>
+                    <Select
+                      showSearch
+                      size="large"
+                      placeholder="Busca o selecciona tu sector..."
+                      optionFilterProp="label"
+                      filterOption={(input, option) =>
+                        (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                      }
+                      options={SECTORES_EMPRESARIALES.map(s => ({ value: s.value, label: s.label }))}
+                      suffixIcon={<ShopOutlined style={{ color: '#64748B' }} />}
+                    />
+                  </Form.Item>
                   <Row gutter={8}>
                     <Col xs={10}>
                       <Button block size="large" onClick={handleBackToStep1}

@@ -43,4 +43,14 @@ export class RegisterDto {
   @IsString()
   @MaxLength(20)
   planElegido?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  telefono?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  sectorEmpresarial?: string;
 }

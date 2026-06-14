@@ -33,12 +33,16 @@ export const authApi = {
     nombre: string, email: string, password: string,
     empresaNombre?: string, empresaRnc?: string,
     planElegido?: string,
+    telefono?: string,
+    sectorEmpresarial?: string,
   ) => {
     const res = await api.post('/auth/register', {
       nombre, email, password,
-      ...(empresaNombre && { empresaNombre }),
-      ...(empresaRnc    && { empresaRnc }),
-      ...(planElegido   && { planElegido }),
+      ...(empresaNombre      && { empresaNombre }),
+      ...(empresaRnc         && { empresaRnc }),
+      ...(planElegido        && { planElegido }),
+      ...(telefono           && { telefono }),
+      ...(sectorEmpresarial  && { sectorEmpresarial }),
     });
     return res.data;
   },
