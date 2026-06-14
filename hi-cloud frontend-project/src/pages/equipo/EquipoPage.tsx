@@ -101,6 +101,14 @@ export default function EquipoPage() {
     queryFn:  () => api.get('/sucursales').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
   });
 
+  const { data: almacenesMap = {} } = useQuery<Record<number, string>>({
+    queryKey: ['almacenes-todos'],
+    queryFn:  () => api.get('/almacenes').then((r: any) => {
+      const arr: any[] = r.data?.data ?? r.data ?? [];
+      return Object.fromEntries(arr.map((a: any) => [a.id, a.nombre]));
+    }),
+  });
+
   const inv = () => {
     qc.invalidateQueries({ queryKey: ['equipo-miembros'] });
     qc.invalidateQueries({ queryKey: ['equipo-invs'] });
@@ -493,15 +501,16 @@ export default function EquipoPage() {
           </Form.Item>
           {sucursalSel && (() => {
             const suc = sucursales.find((s: any) => s.id === sucursalSel);
-            return suc?.almacenPrincipalId ? (
+            const almNombre = suc?.almacenPrincipalId ? (almacenesMap[suc.almacenPrincipalId] ?? `#${suc.almacenPrincipalId}`) : null;
+            return almNombre ? (
               <Alert
                 type="success" showIcon
-                message={`Almacén que se asignará automáticamente: ID ${suc.almacenPrincipalId}`}
+                message={`Almacén principal de esta sucursal: "${almNombre}"`}
               />
             ) : (
               <Alert
                 type="warning" showIcon
-                message="Esta sucursal no tiene almacén principal asignado. El JWT no incluirá almacenId. Configura el almacén principal en la página de Sucursales."
+                message="Esta sucursal no tiene almacén principal. El JWT no incluirá almacenId. Configura el almacén principal en la página de Sucursales."
               />
             );
           })()}

@@ -271,7 +271,18 @@ export class MultiEmpresaService {
     });
     if (!asignacion) throw new NotFoundException(`El usuario #${userId} no pertenece a esta empresa`);
 
-    await this.usuarioEmpresaRepo.update(asignacion.id, { sucursalId: sucursalId ?? undefined } as any);
+    if (sucursalId !== null) {
+      const sucursal = await this.sucursalRepo.findOne({
+        where: { id: sucursalId, empresaId, isActive: true },
+      });
+      if (!sucursal) throw new BadRequestException(`La sucursal #${sucursalId} no pertenece a esta empresa`);
+    }
+
+    // Raw SQL para manejar correctamente tanto NULL como valores enteros
+    await this.usuarioEmpresaRepo.manager.query(
+      'UPDATE usuario_empresa SET "sucursalId" = $1 WHERE id = $2',
+      [sucursalId, asignacion.id],
+    );
     return this.usuarioEmpresaRepo.findOne({ where: { id: asignacion.id }, relations: ['user'] });
   }
 
