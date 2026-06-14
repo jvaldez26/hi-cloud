@@ -482,7 +482,8 @@ function CartRow({ item, onQty, onRemove, onDescuento, onPrecio, permitirModific
 function sucursalNombreFromCache(qcClient: any): string | undefined {
   const lista: any[] = qcClient.getQueryData?.(['mis-sucursales']) ?? [];
   const sid = useAuthStore.getState().sucursalActual;
-  return lista.find((s: any) => s.id === sid)?.nombre;
+  return lista.find((s: any) => s.id === sid)?.nombre
+    ?? localStorage.getItem('pos_sucursal_nombre') ?? undefined;
 }
 
 // ── Thermal receipt — HTML puro para impresión directa ───────────────────────
@@ -676,6 +677,9 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
     staleTime: 5 * 60 * 1000,
   });
   const sucursalNombre = sucursales.find(s => s.id === sucursalActual)?.nombre;
+  useEffect(() => {
+    if (sucursalNombre) localStorage.setItem('pos_sucursal_nombre', sucursalNombre);
+  }, [sucursalNombre]);
 
   async function handleCambiarSucursal(sucursalId: number) {
     setCambiandoSucursal(true);
@@ -684,6 +688,7 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
       const data = res.data?.data ?? res.data;
       setSucursalActual(data.sucursalActual);
       setAlmacenActual(data.almacenActual ?? null);
+      if (data.sucursalNombre) localStorage.setItem('pos_sucursal_nombre', data.sucursalNombre);
       qc.clear();
       setModalCambiarSucursal(false);
       message.success(`Sucursal activa: ${data.sucursalNombre}`);
