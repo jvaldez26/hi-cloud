@@ -28,6 +28,7 @@ interface AuthState {
   isAuth:           () => boolean;
   cambiarEmpresa:    (empresaId: number) => void;
   setSucursalActual: (sucursalId: number) => void;
+  setAlmacenActual:  (almacenId: number | null) => void;
   getEmpresaActual:  () => EmpresaItem | undefined;
   setHydrated:       (v: boolean) => void;
   updateUser:        (partial: Partial<AuthUser>) => void;
@@ -100,6 +101,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   setSucursalActual: (sucursalId) => {
     localStorage.setItem('sucursalId', String(sucursalId));
     set(() => ({ sucursalActual: sucursalId }));
+  },
+
+  setAlmacenActual: (almacenId) => {
+    if (almacenId != null) localStorage.setItem('almacenId', String(almacenId));
+    else localStorage.removeItem('almacenId');
+    set(() => ({ almacenActual: almacenId }));
   },
 
   getEmpresaActual: () => {

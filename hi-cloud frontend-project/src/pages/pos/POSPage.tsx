@@ -2,7 +2,7 @@
 import { useRncLookup } from '../../hooks/useRncLookup';
 import QRCode from 'qrcode';
 import { Select, Modal, Badge, Empty, Spin, Tooltip, message, Avatar, Popover, Input, Button } from 'antd';
-import { SearchOutlined, ShoppingCartOutlined, CheckCircleOutlined, DisconnectOutlined, LogoutOutlined, PrinterOutlined, LockOutlined, UserSwitchOutlined, SwapOutlined, EyeOutlined, EyeInvisibleOutlined } from '@ant-design/icons';
+import { SearchOutlined, ShoppingCartOutlined, CheckCircleOutlined, DisconnectOutlined, LogoutOutlined, PrinterOutlined, LockOutlined, UserSwitchOutlined, SwapOutlined, EyeOutlined, EyeInvisibleOutlined, ShopOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../../store/auth.store';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -656,6 +656,35 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
   const ecfColors  = ECF_COLORS[tipoNcf] ?? ECF_COLORS.E32;
   const esFactura  = modoFacturacion === 'factura' || modoFacturacion === 'valor-fiscal';
 
+  // ── Cambiar sucursal ─────────────────────────────────────────────────────────
+  const { sucursalActual, setSucursalActual, setAlmacenActual } = useAuthStore();
+  const qc = useQueryClient();
+  const [modalCambiarSucursal, setModalCambiarSucursal] = useState(false);
+  const [cambiandoSucursal,    setCambiandoSucursal]    = useState(false);
+  const { data: sucursales = [] } = useQuery<{ id: number; nombre: string; esPrincipal: boolean }[]>({
+    queryKey: ['mis-sucursales'],
+    queryFn: () => api.get('/auth/mis-sucursales').then(r => r.data),
+    staleTime: 5 * 60 * 1000,
+  });
+  const sucursalNombre = sucursales.find(s => s.id === sucursalActual)?.nombre;
+
+  async function handleCambiarSucursal(sucursalId: number) {
+    setCambiandoSucursal(true);
+    try {
+      const res = await api.post('/auth/cambiar-sucursal', { sucursalId });
+      const data = res.data;
+      setSucursalActual(data.sucursalActual);
+      setAlmacenActual(data.almacenActual ?? null);
+      qc.clear();
+      setModalCambiarSucursal(false);
+      message.success(`Sucursal activa: ${data.sucursalNombre}`);
+    } catch (err: any) {
+      message.error(err?.response?.data?.message ?? 'Error al cambiar sucursal');
+    } finally {
+      setCambiandoSucursal(false);
+    }
+  }
+
   return (
     <div style={{
       height: 52, flexShrink: 0,
@@ -859,6 +888,28 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
               {[
                 { icon: <UserSwitchOutlined />, label: 'Supervisor', sub: 'Privilegios de supervisor', action: () => { setShowOpcionesMenu(false); onSupervisor(); } },
                 { icon: <SwapOutlined />, label: 'Cambiar Usuario', sub: 'Intercambiar Usuario', action: () => { setShowOpcionesMenu(false); onCambiarUsuario(); } },
+              ].map(item => (
+                <button key={item.label} onClick={item.action} style={{ width: '100%', padding: '9px 16px', border: 'none', borderBottom: '1px solid #F8FAFC', background: '#fff', cursor: 'pointer', outline: 'none', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12, transition: 'background .12s' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = '#F8FAFC')}
+                  onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>
+                  <span style={{ fontSize: 16, color: '#6B7280' }}>{item.icon}</span>
+                  <div><div style={{ fontSize: 13, fontWeight: 500, color: '#111827' }}>{item.label}</div><div style={{ fontSize: 11, color: '#9CA3AF' }}>{item.sub}</div></div>
+                </button>
+              ))}
+              {/* Sucursal activa — siempre visible; botón "Cambiar" solo si hay >1 */}
+              <div style={{ width: '100%', padding: '9px 16px', borderBottom: '1px solid #F8FAFC', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ fontSize: 16, color: '#6B7280' }}><ShopOutlined /></span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: '#111827' }}>Sucursal</div>
+                  <div style={{ fontSize: 11, color: '#9CA3AF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sucursalNombre ?? '—'}</div>
+                </div>
+                {sucursales.length > 1 && (
+                  <button onClick={() => { setShowOpcionesMenu(false); setModalCambiarSucursal(true); }} style={{ flexShrink: 0, fontSize: 11, color: '#3B82F6', background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 4, padding: '2px 8px', cursor: 'pointer' }}>
+                    Cambiar →
+                  </button>
+                )}
+              </div>
+              {[
                 { icon: <LockOutlined />, label: 'Bloquear pantalla', sub: 'Bloquear pantalla con clave', action: () => { setShowOpcionesMenu(false); onBloquear(); } },
               ].map(item => (
                 <button key={item.label} onClick={item.action} style={{ width: '100%', padding: '9px 16px', border: 'none', borderBottom: '1px solid #F8FAFC', background: '#fff', cursor: 'pointer', outline: 'none', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12, transition: 'background .12s' }}
@@ -878,6 +929,40 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
           </>
         )}
       </div>
+
+      {/* Modal: seleccionar sucursal */}
+      <Modal
+        open={modalCambiarSucursal}
+        onCancel={() => { if (!cambiandoSucursal) setModalCambiarSucursal(false); }}
+        title={<span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><ShopOutlined style={{ color: '#3B82F6' }} /> Cambiar sucursal</span>}
+        footer={null}
+        width={360}
+      >
+        {cambiandoSucursal ? (
+          <div style={{ textAlign: 'center', padding: '24px 0' }}><Spin /></div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 8 }}>
+            {sucursales.map(s => {
+              const isActual = s.id === sucursalActual;
+              return (
+                <button
+                  key={s.id}
+                  disabled={isActual}
+                  onClick={() => handleCambiarSucursal(s.id)}
+                  style={{ width: '100%', padding: '10px 14px', border: `1px solid ${isActual ? '#BFDBFE' : '#E2E8F0'}`, borderRadius: 8, background: isActual ? '#EFF6FF' : '#fff', cursor: isActual ? 'default' : 'pointer', outline: 'none', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10, transition: 'background .12s' }}
+                  onMouseEnter={e => { if (!isActual) (e.currentTarget as HTMLButtonElement).style.background = '#F8FAFC'; }}
+                  onMouseLeave={e => { if (!isActual) (e.currentTarget as HTMLButtonElement).style.background = '#fff'; }}
+                >
+                  <ShopOutlined style={{ fontSize: 16, color: isActual ? '#3B82F6' : '#6B7280' }} />
+                  <span style={{ flex: 1, fontSize: 14, fontWeight: isActual ? 600 : 400, color: isActual ? '#1D4ED8' : '#111827' }}>{s.nombre}</span>
+                  {isActual && <span style={{ fontSize: 11, color: '#3B82F6', background: '#DBEAFE', borderRadius: 4, padding: '1px 6px' }}>Activa</span>}
+                  {s.esPrincipal && !isActual && <span style={{ fontSize: 11, color: '#6B7280', background: '#F3F4F6', borderRadius: 4, padding: '1px 6px' }}>Principal</span>}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
