@@ -676,7 +676,8 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
     queryFn: () => api.get('/auth/mis-sucursales').then((r: any) => r.data?.data ?? r.data ?? []),
     staleTime: 5 * 60 * 1000,
   });
-  const sucursalNombre = sucursales.find(s => s.id === sucursalActual)?.nombre;
+  const sucursalNombre = sucursales.find(s => s.id === sucursalActual)?.nombre
+    ?? localStorage.getItem('pos_sucursal_nombre') ?? undefined;
   useEffect(() => {
     if (sucursalNombre) localStorage.setItem('pos_sucursal_nombre', sucursalNombre);
   }, [sucursalNombre]);
