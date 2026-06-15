@@ -517,9 +517,9 @@ const IMPRESORA_CONFIG: Record<string, { width: string; fontSize: string; paddin
 function buildReciboTermicoHTML(
   sale: Sale,
   qrDataUrl: string | null,
-  cfg: { mostrarEcf?: boolean; tipoImpresora?: string; mensajeTicket?: string; politicaDev?: string } = {},
+  cfg: { mostrarEcf?: boolean; tipoImpresora?: string; mensajeTicket?: string; politicaDev?: string; tipoDoc?: 'PRE-FACTURA' | 'COTIZACIÓN'; validezDias?: number } = {},
 ): string {
-  const { mostrarEcf = true, tipoImpresora = '80mm', mensajeTicket, politicaDev } = cfg;
+  const { mostrarEcf = true, tipoImpresora = '80mm', mensajeTicket, politicaDev, tipoDoc, validezDias } = cfg;
   const prn   = IMPRESORA_CONFIG[tipoImpresora] ?? IMPRESORA_CONFIG['80mm'];
   const ahora = dayjs();
   const fmt     = (n: number) => `RD$${n.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -529,7 +529,9 @@ function buildReciboTermicoHTML(
   const dbl     = () => '<div class="dbl"></div>';
 
   const tipoCode = sale.tipoNcf ?? 'E32';
-  const [ncfL1, ncfL2] = NCF_LABEL[tipoCode] ?? ['FACTURA ELECTRÓNICA', `(${esc(tipoCode)})`];
+  const [ncfL1, ncfL2] = tipoDoc
+    ? [tipoDoc, tipoDoc === 'PRE-FACTURA' ? 'Documento No Fiscal' : 'No válida como comprobante fiscal']
+    : (NCF_LABEL[tipoCode] ?? ['FACTURA ELECTRÓNICA', `(${esc(tipoCode)})`]);
   const esExento = tipoCode === 'E44';
   const mostrarComprador = !!(sale.rncComprador && !RNC_GENERICOS_TICKET.has(sale.rncComprador));
   const metodoLabel = METODOS.find(m => m.key === sale.metodo)?.label ?? 'Pago';
@@ -555,8 +557,9 @@ function buildReciboTermicoHTML(
     ${sale.razonSocial ? `<div>${esc(sale.razonSocial)}</div>` : ''}` : '';
 
   let ecfHtml = '';
-  if (sale.encf && mostrarEcf) {
-    ecfHtml = `${line()}
+  if (!tipoDoc) {
+    if (sale.encf && mostrarEcf) {
+      ecfHtml = `${line()}
     ${row('e-NCF:', sale.encf)}
     ${row('Fecha:', sale.ecfFecha ?? ahora.format('DD-MM-YYYY HH:mm:ss'))}
     ${sale.securityCode ? row('Cód.Seg.:', sale.securityCode) : ''}
@@ -566,8 +569,9 @@ function buildReciboTermicoHTML(
          <div class="center small">Escanea para verificar en DGII</div>`
       : '<div class="center small">Verifica en: dgii.gov.do</div>'}
     ${sale.ecfPendiente ? `${line()}<div class="center box"><div class="bold">&#9888; COMPROBANTE EN PROCESO</div><div>DE VALIDACIÓN DGII</div><div class="small">Será enviado cuando sea procesado.</div></div>` : ''}`;
-  } else {
-    ecfHtml = `<div class="center box"><div class="bold">&#9888; COMPROBANTE EN PROCESO</div><div>DE VALIDACIÓN DGII</div></div>`;
+    } else {
+      ecfHtml = `<div class="center box"><div class="bold">&#9888; COMPROBANTE EN PROCESO</div><div>DE VALIDACIÓN DGII</div></div>`;
+    }
   }
 
   const MODO_INFO: Record<string, { icono: string; label: string }> = {
@@ -579,6 +583,21 @@ function buildReciboTermicoHTML(
   };
   const modoInfo = sale.modoContexto && sale.modoContexto !== 'general'
     ? MODO_INFO[sale.modoContexto] : null;
+
+  const pagoHtml = tipoDoc === 'COTIZACIÓN'
+    ? row('Validez:', `${validezDias ?? 30} días`)
+    : tipoDoc === 'PRE-FACTURA'
+    ? row('Estado:', 'PENDIENTE DE PAGO')
+    : [
+        sale.metodo === 'efectivo' ? row('PAGADO:', fmt(pagoMostrar)) : row(`${esc(metodoLabel)}:`, fmt(pagoMostrar)),
+        sale.metodo === 'credito' && sale.diasCredito ? row('Plazo:', `${sale.diasCredito} días`) : '',
+        Number(sale.cambio) > 0 ? rowBold('CAMBIO:', fmt(Number(sale.cambio))) : '',
+      ].join('\n');
+  const footerHtml = tipoDoc === 'PRE-FACTURA'
+    ? '<div class="center bold">** DOCUMENTO NO FISCAL **</div><div class="center small">Presente este ticket para pagar</div>'
+    : tipoDoc === 'COTIZACIÓN'
+    ? '<div class="center bold">** COTIZACIÓN — NO ES FACTURA **</div>'
+    : '<div class="center">— Gracias por su compra —</div>';
 
   return `<!DOCTYPE html>
 <html lang="es"><head>
@@ -619,7 +638,7 @@ ${dbl()}
 ${line()}
 ${row('Fecha:', ahora.format('DD/MM/YYYY'))}
 ${row('Hora:', ahora.format('HH:mm:ss'))}
-${rowBold('Factura:', sale.folio)}
+${rowBold(tipoDoc ? `${tipoDoc}:` : 'Factura:', sale.folio)}
 ${sale.cajero ? row('Cajero:', sale.cajero) : ''}
 ${sale.sucursalNombre ? row('Sucursal:', sale.sucursalNombre) : ''}
 ${modoInfo ? `${row('Módulo:', modoInfo.icono + ' ' + modoInfo.label)}` : ''}
@@ -636,18 +655,14 @@ ${(sale.propina ?? 0) > 0 ? row('Propina:', fmt(sale.propina!)) : ''}
 ${dbl()}
 <div class="row xlarge bold"><span>TOTAL:</span><span>${fmt(sale.total)}</span></div>
 ${line()}
-${sale.metodo === 'efectivo'
-  ? row('PAGADO:', fmt(pagoMostrar))
-  : row(`${esc(metodoLabel)}:`, fmt(pagoMostrar))}
-${sale.metodo === 'credito' && sale.diasCredito ? row('Plazo:', `${sale.diasCredito} días`) : ''}
-${Number(sale.cambio) > 0 ? rowBold('CAMBIO:', fmt(Number(sale.cambio))) : ''}
+${pagoHtml}
 ${ecfHtml}
 ${dbl()}
 ${tieneModificados ? `${line()}<div class="small">* Precio modificado en venta</div>` : ''}
 ${mensajeTicket?.trim() ? `${line()}<div style="text-align:center;white-space:pre-wrap;word-break:break-word;">${esc(mensajeTicket.trim())}</div>` : ''}
 ${politicaDev?.trim() ? `${line()}<div class="small"><strong>POLÍTICA DE DEVOLUCIONES:</strong><br/>${esc(politicaDev.trim())}</div>` : ''}
 ${line()}
-<div class="center">— Gracias por su compra —</div>
+${footerHtml}
 
 </body></html>`;
 }
@@ -3578,15 +3593,41 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
         return;
       }
 
-      // ── Pre-Facturas y Cotizaciones → recibo térmico 80mm del servidor ──
+      // ── Pre-Facturas y Cotizaciones → mismo HTML térmico que facturas (sin ECF) ──
       if (panel === 'pre-facturas' || panel === 'cotizaciones') {
-        const ep = panel === 'pre-facturas'
-          ? `/pre-facturas/${id}/recibo-pdf`
-          : `/cotizaciones/${id}/recibo-pdf`;
-        const res = await api.get(ep, { responseType: 'blob' });
-        const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
-        window.open(url, '_blank');
-        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        const ep2 = panel === 'pre-facturas' ? `/pre-facturas/${id}` : `/cotizaciones/${id}`;
+        const doc = await api.get(ep2).then(r => r.data?.data ?? r.data);
+        const tipoDoc: 'PRE-FACTURA' | 'COTIZACIÓN' = panel === 'pre-facturas' ? 'PRE-FACTURA' : 'COTIZACIÓN';
+        const docSale: Sale = {
+          folio:                   doc.folio ?? doc.numero ?? folio,
+          total:                   Number(doc.total ?? 0),
+          cambio:                  0,
+          metodo:                  'efectivo',
+          items:                   (doc.detalles ?? []).map((d: any) => ({
+            produto:   { id: d.productoId ?? 0, nombre: d.descripcion, precio: Number(d.precioUnitario),
+                         stock: 999, porcentajeIva: Number(d.porcentajeIva ?? 18),
+                         codigo: '', categoria: '', unidadMedida: '' } as any,
+            cantidad:  Number(d.cantidad),
+            precio:    Number(d.precioUnitario),
+            descuento: 0,
+          })),
+          iva:                     Number(doc.iva ?? 0),
+          subtotal:                Number(doc.subtotal ?? 0),
+          rncComprador:            doc.cliente?.rncReceptor ?? doc.cliente?.rfc,
+          razonSocial:             doc.cliente?.nombre,
+          cajero:                  doc.nombreVendedor ?? doc.vendedorNombre,
+          sucursalNombre:          doc.sucursal?.nombre ?? sucursalNombreFromCache(qc),
+          empresaNombreComercial:  empInfo.nombre,
+          empresaRnc:              empInfo.rnc,
+          empresaDireccion:        empInfo.direccion,
+          empresaTelefono:         empInfo.telefono,
+        };
+        const empConfPanel = (empresa.configuracion ?? {}) as any;
+        imprimirReciboTermico(buildReciboTermicoHTML(docSale, null, {
+          tipoImpresora: empConfPanel.posTipoImpresora,
+          tipoDoc,
+          validezDias:   doc.validezDias,
+        }));
         return;
       }
 
