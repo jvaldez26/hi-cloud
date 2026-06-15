@@ -6,7 +6,7 @@ import { ECF, EstadoDGII } from '../entities/ecf.entity';
 import { EcfEvento, TipoEcfEvento } from '../entities/ecf-evento.entity';
 import { MSellerClientService } from '../services/mseller-client.service';
 
-const MINUTOS_SIN_RESPUESTA = 10;  // esperar 10 min antes de primer intento
+const MINUTOS_SIN_RESPUESTA = 2;   // esperar 2 min antes de primer intento
 
 /**
  * Días máximos antes de marcar un ENVIADO como contingencia.
@@ -56,7 +56,7 @@ export class ConsultarEstadoECFJob {
     private readonly mseller: MSellerClientService,
   ) {}
 
-  @Cron('*/5 * * * *', { name: 'consultar-estado-ecf' }) // cada 5 min (antes era cada 1 min)
+  @Cron('*/2 * * * *', { name: 'consultar-estado-ecf' }) // cada 2 min
   async run(force = false): Promise<void> {
     if (this.running) return;
     this.running = true;
