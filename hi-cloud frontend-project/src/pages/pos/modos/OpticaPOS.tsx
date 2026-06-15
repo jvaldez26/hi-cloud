@@ -46,7 +46,20 @@ export default function OpticaPOS({ palette, addToCart, onContextoLoaded }: Modo
     const od: any = ordenDetalle;
 
     const items: any[] = od.items ?? od.productos ?? od.lineas ?? [];
-    const total = Number(od.total ?? od.totalFinal ?? od.montoPendiente ?? 0);
+
+    // Derivar IVA del OT desde sus campos financieros (respeta exención)
+    const otItbis    = Number(od.itbis ?? 0);
+    const otSubtotal = Number(od.subtotal ?? 0);
+    const otTotal    = Number(od.total ?? od.totalFinal ?? od.montoPendiente ?? 0);
+    // subtotal efectivo: si no viene separado, lo calculamos restando el ITBIS al total
+    const subtotalEfectivo = otSubtotal > 0 ? otSubtotal : Math.max(0, otTotal - otItbis);
+    // % IVA: 0 si exento (itbis=0), de lo contrario derivado del ratio almacenado
+    const otPorcentajeIva = (subtotalEfectivo > 0 && otItbis > 0)
+      ? Math.round((otItbis / subtotalEfectivo) * 100)
+      : 0;
+    // precio del carrito = subtotal pre-ITBIS para que el POS aplique el % correctamente
+    const precioCarrito = subtotalEfectivo > 0 ? subtotalEfectivo : otTotal;
+
     let cargados = 0;
 
     if (items.length > 0) {
@@ -54,29 +67,32 @@ export default function OpticaPOS({ palette, addToCart, onContextoLoaded }: Modo
         const precio = Number(item.precioVenta ?? item.precio ?? item.subtotal ?? 0);
         const cant = Number(item.cantidad ?? 1);
         if (precio > 0) {
+          // IVA del ítem si tiene campo propio, si no hereda del OT padre
+          const ivaItem = item.iva !== undefined     ? Number(item.iva)
+                        : item.porcentajeIva !== undefined ? Number(item.porcentajeIva)
+                        : otPorcentajeIva;
           for (let i = 0; i < cant; i++) {
             addToCart({
-              // productoId del item solo si es un producto real del catálogo (>0 y razonable)
               id: (item.productoId && item.productoId > 0 && item.productoId < 1_000_000) ? item.productoId : 0,
               nombre: item.nombre ?? item.descripcion ?? 'Producto óptico',
               precio,
               stock: 99,
               tipo: 'servicio',
-              porcentajeIva: Number(item.iva ?? item.porcentajeIva ?? 18),
+              porcentajeIva: ivaItem,
               codigo: `OT-${od.numero ?? od.id}-L${item.id}`,
             } as any);
           }
           cargados++;
         }
       });
-    } else if (total > 0) {
+    } else if (otTotal > 0) {
       addToCart({
-        id: 0,  // ID 0 = servicio sin producto del catálogo (se envía productoId: undefined al backend)
+        id: 0,
         nombre: `Orden Óptica OT-${od.numero ?? od.id}${od.pacienteNombre ? ' — ' + od.pacienteNombre : ''}`,
-        precio: total,
+        precio: precioCarrito,    // subtotal pre-ITBIS (0% si exenta)
         stock: 99,
         tipo: 'servicio',
-        porcentajeIva: 18,
+        porcentajeIva: otPorcentajeIva,  // respeta exención del OT
         codigo: `OT-${od.numero ?? od.id}`,
       } as any);
       cargados = 1;
