@@ -1,12 +1,13 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { Form, Input, Button, Typography, Alert, Steps,
-         Row, Col, Select, message, ConfigProvider, theme as antTheme } from 'antd';
-import { UserOutlined, LockOutlined, BuildOutlined, RocketOutlined, CheckOutlined, PhoneOutlined, ShopOutlined } from '@ant-design/icons';
+         Row, Col, Select, message, ConfigProvider, theme as antTheme, Spin } from 'antd';
+import { UserOutlined, LockOutlined, BuildOutlined, RocketOutlined, CheckOutlined, PhoneOutlined, ShopOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import { SECTORES_EMPRESARIALES } from '../../constants/sectores';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMutation } from '@tanstack/react-query';
 import { authApi } from '../../api/auth.api';
+import api from '../../api/client';
 import { useThemeStore } from '../../store/theme.store';
 
 const { Title, Text } = Typography;
@@ -84,6 +85,31 @@ export default function RegisterPage() {
   const [form1] = Form.useForm();
   const [form2] = Form.useForm();
   const sectorSeleccionado = Form.useWatch('sectorEmpresarial', form2);
+
+  const [rncLoading,  setRncLoading]  = useState(false);
+  const [rncDatos,    setRncDatos]    = useState<{ encontrado: boolean; nombre?: string; nombreComercial?: string; estado?: string } | null>(null);
+  const rncDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const consultarRnc = useCallback(async (rnc: string) => {
+    if (rncDebounceRef.current) clearTimeout(rncDebounceRef.current);
+    setRncDatos(null);
+    if (!rnc || !/^\d{9}$|^\d{11}$/.test(rnc)) return;
+    rncDebounceRef.current = setTimeout(async () => {
+      setRncLoading(true);
+      try {
+        const res = await api.get(`/rnc/publico?rnc=${encodeURIComponent(rnc)}`);
+        const datos = res.data?.data ?? res.data;
+        setRncDatos(datos);
+        if (datos?.encontrado && datos.nombre) {
+          form2.setFieldValue('empresa', datos.nombre);
+        }
+      } catch {
+        setRncDatos({ encontrado: false });
+      } finally {
+        setRncLoading(false);
+      }
+    }, 600);
+  }, [form2]);
   const [emailRegistrado,  setEmailRegistrado]  = useState('');
   const [planElegido,      setPlanElegido]       = useState(planPreseleccionado);
   const [valoresPaso1,     setValoresPaso1]      = useState<{ nombre: string; email: string; password: string } | null>(null);
@@ -471,23 +497,24 @@ export default function RegisterPage() {
               /* ── PASO 3: Datos de empresa ─────────────────────────────── */
               <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
                 <Form form={form2} layout="vertical">
-                  <Form.Item name="empresa" label={<Text style={{ color: '#1E3A8A', fontSize: 13, fontWeight: 600 }}>Nombre de la empresa</Text>}
-                    rules={[
-                      { required: true, message: 'El nombre de la empresa es requerido' },
-                      { max: 200, message: 'Máximo 200 caracteres' },
-                    ]}>
-                    <Input prefix={<BuildOutlined style={{ color: '#64748B' }} />}
-                      placeholder="Mi Empresa S.R.L." size="large"
-                      style={{ background: '#F8FAFC', border: '1.5px solid #CBD5E1', color: '#0F172A', borderRadius: 8 }} />
-                  </Form.Item>
                   <Row gutter={12}>
                     <Col xs={24} sm={14}>
                       <Form.Item name="rnc" label={<Text style={{ color: '#1E3A8A', fontSize: 13, fontWeight: 600 }}>RNC</Text>}
                         rules={[
                           { required: true, message: 'El RNC es requerido' },
                           { pattern: /^\d{9}$|^\d{11}$/, message: '9 u 11 dígitos' },
-                        ]}>
-                        <Input placeholder="101234567" size="large"
+                        ]}
+                        extra={rncLoading ? (
+                          <span style={{ fontSize: 11, color: '#6366f1' }}><Spin size="small" /> Consultando DGII...</span>
+                        ) : rncDatos?.encontrado ? (
+                          <span style={{ fontSize: 11, color: '#10b981' }}><CheckCircleOutlined /> {rncDatos.estado ?? 'Verificado'}</span>
+                        ) : rncDatos?.encontrado === false ? (
+                          <span style={{ fontSize: 11, color: '#ef4444' }}><CloseCircleOutlined /> RNC no encontrado en DGII</span>
+                        ) : null}>
+                        <Input
+                          placeholder="101234567" size="large"
+                          maxLength={11}
+                          onChange={e => consultarRnc(e.target.value.replace(/\D/g, ''))}
                           style={{ background: '#F8FAFC', border: '1.5px solid #CBD5E1', color: '#0F172A', borderRadius: 8 }} />
                       </Form.Item>
                     </Col>
@@ -497,6 +524,15 @@ export default function RegisterPage() {
                       </Form.Item>
                     </Col>
                   </Row>
+                  <Form.Item name="empresa" label={<Text style={{ color: '#1E3A8A', fontSize: 13, fontWeight: 600 }}>Nombre de la empresa</Text>}
+                    rules={[
+                      { required: true, message: 'El nombre de la empresa es requerido' },
+                      { max: 200, message: 'Máximo 200 caracteres' },
+                    ]}>
+                    <Input prefix={<BuildOutlined style={{ color: '#64748B' }} />}
+                      placeholder="Mi Empresa S.R.L." size="large"
+                      style={{ background: '#F8FAFC', border: '1.5px solid #CBD5E1', color: '#0F172A', borderRadius: 8 }} />
+                  </Form.Item>
                   <Form.Item name="telefono"
                     label={<Text style={{ color: '#1E3A8A', fontSize: 13, fontWeight: 600 }}>Teléfono de la empresa</Text>}
                     rules={[{ required: true, message: 'El teléfono es requerido' }]}>
