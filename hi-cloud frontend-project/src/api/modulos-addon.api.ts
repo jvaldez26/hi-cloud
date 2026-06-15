@@ -7,6 +7,9 @@ export const modulosAddonApi = {
   check: (codigo: string) =>
     api.get<any>(`/modulos/check/${codigo}`).then(r => (r.data?.data ?? r.data) as { codigo: string; activo: boolean }),
 
+  misModulos: () =>
+    api.get<any>('/modulos/mis-modulos').then(r => (r.data?.data ?? r.data) as { modulos: string[] }),
+
   // Super Admin
   getModulosEmpresa: (empresaId: number) =>
     api.get(`/admin/empresas/${empresaId}/modulos`).then(r => r.data),

@@ -22,6 +22,7 @@ import { useSupervisor } from '../../hooks/useSupervisor';
 import type { Producto, Cliente } from '../../types';
 import dayjs from 'dayjs';
 import { useModuloAddon } from '../../hooks/useModuloAddon';
+import { modulosAddonApi } from '../../api/modulos-addon.api';
 import { tallerApi } from '../../api/taller.api';
 import { opticaApi } from '../../api/optica.api';
 import { clinicaApi } from '../../api/clinica.api';
@@ -779,9 +780,8 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
         )}
       </div>
 
-      {/* ── Selector de modo de contexto (solo si hay más de 1 modo disponible) ── */}
-      {modosPOS.length > 1 && (
-        <div style={{ position: 'relative', flexShrink: 0 }}>
+      {/* ── Selector de modo de contexto ── */}
+      <div style={{ position: 'relative', flexShrink: 0 }}>
           <button onClick={() => { setShowModoContexto(v => !v); setShowModoMenu(false); setShowNcfMenu(false); }} style={{
             height: 32, padding: '0 10px', borderRadius: 8,
             border: `1px solid ${modoContexto !== 'general' ? 'rgba(16,185,129,.6)' : 'rgba(255,255,255,.22)'}`,
@@ -816,7 +816,6 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
             </>
           )}
         </div>
-      )}
 
       {/* ── Badge e-CF (solo cuando es factura) ── */}
       {esFactura && (
@@ -4220,20 +4219,25 @@ export default function POSPage() {
   const [ecfStatus,          setEcfStatus]          = useState<'idle'|'loading'|'ok'|'pendiente'>('idle');
   const [ecfEncf,            setEcfEncf]            = useState<string>('');
 
-  // ── Módulos add-on disponibles en el POS ──────────────────────────────────
-  const addonRestaurante = useModuloAddon('RESTAURANTE');
-  const addonTaller      = useModuloAddon('TALLER');
-  const addonFarmacia    = useModuloAddon('FARMACIA');
-  const addonOptica      = useModuloAddon('OPTICA');
-  const addonClinica     = useModuloAddon('CLINICA');
+  // ── Módulos add-on disponibles en el POS (una sola llamada) ──────────────
+  const { data: misModulosData } = useQuery({
+    queryKey: ['mis-modulos-pos'],
+    queryFn: () => modulosAddonApi.misModulos(),
+    staleTime: 5 * 60_000,
+    gcTime:    10 * 60_000,
+  });
+  const misModulos: string[] = Array.isArray((misModulosData as any)?.modulos)
+    ? (misModulosData as any).modulos
+    : Array.isArray(misModulosData) ? (misModulosData as any) : [];
+  const hasAddon = (cod: string) => misModulos.some(m => m.toUpperCase() === cod.toUpperCase());
 
   const MODOS_POS = [
     { codigo: 'general',     label: 'General',     icono: '🏪' },
-    ...(addonRestaurante.activo ? [{ codigo: 'restaurante', label: 'Restaurante', icono: '🍽️' }] : []),
-    ...(addonTaller.activo      ? [{ codigo: 'taller',      label: 'Taller',      icono: '🔧' }] : []),
-    ...(addonFarmacia.activo    ? [{ codigo: 'farmacia',    label: 'Farmacia',    icono: '💊' }] : []),
-    ...(addonOptica.activo      ? [{ codigo: 'optica',      label: 'Óptica',      icono: '👓' }] : []),
-    ...(addonClinica.activo     ? [{ codigo: 'clinica',     label: 'Clínica',     icono: '🏥' }] : []),
+    ...(hasAddon('RESTAURANTE') ? [{ codigo: 'restaurante', label: 'Restaurante', icono: '🍽️' }] : []),
+    ...(hasAddon('TALLER')      ? [{ codigo: 'taller',      label: 'Taller',      icono: '🔧' }] : []),
+    ...(hasAddon('FARMACIA')    ? [{ codigo: 'farmacia',    label: 'Farmacia',    icono: '💊' }] : []),
+    ...(hasAddon('OPTICA')      ? [{ codigo: 'optica',      label: 'Óptica',      icono: '👓' }] : []),
+    ...(hasAddon('CLINICA')     ? [{ codigo: 'clinica',     label: 'Clínica',     icono: '🏥' }] : []),
   ];
 
   const [modoContexto, setModoContexto] = useState<string>(() => {
