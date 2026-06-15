@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Row, Col, Card, Button, Select, Input, InputNumber, Modal, Form,
-  Typography, Tag, Space, Divider, message, Spin, Badge, Switch,
+  Typography, Tag, Space, Divider, message, Spin, Badge, Switch, Popconfirm,
 } from 'antd';
 import {
   PlusOutlined, MinusOutlined, DeleteOutlined,
@@ -88,7 +88,7 @@ export default function ComandaPage() {
   if (loadingComanda) return <Spin style={{ margin: '40px auto', display: 'block' }} />;
   if (!comanda) return <div>Comanda no encontrada</div>;
 
-  const items: any[] = comanda.items ?? [];
+  const items: any[] = (comanda.items ?? []).filter((i: any) => !i.cancelado);
   const subtotal = Number(comanda.subtotal ?? 0);
   const itbis = subtotal * 0.18;
 
@@ -176,13 +176,24 @@ export default function ComandaPage() {
                       <Text style={{ fontSize: 12, color: '#1677ff', whiteSpace: 'nowrap' }}>
                         RD${Number(item.total ?? 0).toFixed(2)}
                       </Text>
-                      {item.estadoCocina === 'pendiente' && (
+                      {item.estadoCocina === 'pendiente' ? (
                         <Button
                           size="small"
                           danger
                           icon={<DeleteOutlined />}
                           onClick={() => cancelarItem.mutate({ itemId: item.id })}
                         />
+                      ) : item.estadoCocina !== 'entregado' && (
+                        <Popconfirm
+                          title="Ítem en cocina"
+                          description="Este ítem ya fue enviado a cocina. ¿Cancelarlo de todas formas?"
+                          onConfirm={() => cancelarItem.mutate({ itemId: item.id })}
+                          okText="Sí, cancelar"
+                          okButtonProps={{ danger: true }}
+                          cancelText="No"
+                        >
+                          <Button size="small" danger icon={<DeleteOutlined />} />
+                        </Popconfirm>
                       )}
                     </div>
                   </div>
