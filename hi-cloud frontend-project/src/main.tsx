@@ -9,10 +9,14 @@ import 'dayjs/locale/es-do';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
 import localizedFormat from 'dayjs/plugin/localizedFormat';
 import relativeTime from 'dayjs/plugin/relativeTime';
+import weekday from 'dayjs/plugin/weekday';
+import localeData from 'dayjs/plugin/localeData';
 
 dayjs.extend(customParseFormat);
 dayjs.extend(localizedFormat);
 dayjs.extend(relativeTime);
+dayjs.extend(weekday);
+dayjs.extend(localeData);
 dayjs.locale('es-do');
 
 // ── Service Worker (PWA) — solo en producción ────────────────────────────────

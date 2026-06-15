@@ -52,9 +52,11 @@ export default function ReservacionesPage() {
 
   const abrirEditar = (record: any) => {
     setEditId(record.id);
+    const fecha = dayjs(record.fecha).format('YYYY-MM-DD');
+    const hora = String(record.hora).slice(0, 5);
     form.setFieldsValue({
       ...record,
-      fechaHora: dayjs(`${record.fecha}T${record.hora}`),
+      fechaHora: dayjs(`${fecha}T${hora}`),
     });
     setModal(true);
   };
@@ -63,9 +65,13 @@ export default function ReservacionesPage() {
     { title: 'Número', dataIndex: 'numero', width: 100 },
     {
       title: 'Fecha / Hora', key: 'fechaHora', width: 150,
-      render: (_: any, r: any) => r.fecha && r.hora
-        ? new Date(`${r.fecha}T${r.hora}`).toLocaleString('es-DO', { dateStyle: 'short', timeStyle: 'short' })
-        : '—',
+      render: (_: any, r: any) => {
+        if (!r.fecha || !r.hora) return '—';
+        const fecha = dayjs(r.fecha).format('YYYY-MM-DD');
+        const hora = String(r.hora).slice(0, 5);
+        const d = dayjs(`${fecha}T${hora}`);
+        return d.isValid() ? d.format('DD/MM/YYYY HH:mm') : '—';
+      },
     },
     { title: 'Cliente', dataIndex: 'clienteNombre', ellipsis: true },
     { title: 'Teléfono', dataIndex: 'clienteTelefono', width: 120 },
