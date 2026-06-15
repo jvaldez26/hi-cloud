@@ -21,6 +21,7 @@ import { useOfflineQueue } from '../../hooks/useOfflineQueue';
 import { useSupervisor } from '../../hooks/useSupervisor';
 import type { Producto, Cliente } from '../../types';
 import dayjs from 'dayjs';
+import { useModuloAddon } from '../../hooks/useModuloAddon';
 
 // ── Alias type ────────────────────────────────────────────────────────────────
 type Prod = Producto;
@@ -650,18 +651,23 @@ const ATAJOS_POS = [
 
 // ── Top bar ───────────────────────────────────────────────────────────────────
 function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, onSupervisor, onCambiarUsuario, supervisorActiveBadge,
-  modoFacturacion, onModoChange, tipoNcf, onTipoNcfChange, ecfOnline }: {
+  modoFacturacion, onModoChange, tipoNcf, onTipoNcfChange, ecfOnline,
+  modosPOS, modoContexto, onModoContextoChange }: {
   empresaNombre: string; cajeroNombre: string; isOffline: boolean; onExit: () => void;
   onBloquear: () => void; onSupervisor: () => void; onCambiarUsuario: () => void;
   modoFacturacion: ModoFacturacion; onModoChange: (m: ModoFacturacion) => void;
   tipoNcf: string; onTipoNcfChange: (t: string) => void;
   ecfOnline: boolean | null;
   supervisorActiveBadge?: string;
+  modosPOS: { codigo: string; label: string; icono: string }[];
+  modoContexto: string;
+  onModoContextoChange: (m: string) => void;
 }) {
   const C = useC();
   const [showModoMenu,     setShowModoMenu]     = useState(false);
   const [showNcfMenu,      setShowNcfMenu]      = useState(false);
   const [showOpcionesMenu, setShowOpcionesMenu] = useState(false);
+  const [showModoContexto, setShowModoContexto] = useState(false);
   const [showAtalhos,  setShowAtalhos]    = useState(false);
   const modoActual = MODOS_FACTURACION.find(m => m.id === modoFacturacion)!;
   const ecfColors  = ECF_COLORS[tipoNcf] ?? ECF_COLORS.E32;
@@ -756,6 +762,45 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
           </>
         )}
       </div>
+
+      {/* ── Selector de modo de contexto (solo si hay más de 1 modo disponible) ── */}
+      {modosPOS.length > 1 && (
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          <button onClick={() => { setShowModoContexto(v => !v); setShowModoMenu(false); setShowNcfMenu(false); }} style={{
+            height: 32, padding: '0 10px', borderRadius: 8,
+            border: `1px solid ${modoContexto !== 'general' ? 'rgba(16,185,129,.6)' : 'rgba(255,255,255,.22)'}`,
+            background: modoContexto !== 'general' ? 'rgba(16,185,129,.2)' : (showModoContexto ? 'rgba(255,255,255,.18)' : 'rgba(255,255,255,.08)'),
+            color: '#fff', cursor: 'pointer', outline: 'none',
+            display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600,
+          }}>
+            <span style={{ fontSize: 15 }}>{modosPOS.find(m => m.codigo === modoContexto)?.icono ?? '🏪'}</span>
+            <span>{modosPOS.find(m => m.codigo === modoContexto)?.label ?? 'General'}</span>
+            <span style={{ fontSize: 9, opacity: 0.6 }}>▼</span>
+          </button>
+          {showModoContexto && (
+            <>
+              <div onClick={() => setShowModoContexto(false)} style={{ position: 'fixed', inset: 0, zIndex: 500 }} />
+              <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 501,
+                background: '#fff', border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden',
+                minWidth: 210, boxShadow: '0 8px 24px rgba(0,0,0,.18)' }}>
+                {modosPOS.map((modo, i) => (
+                  <button key={modo.codigo} onClick={() => { onModoContextoChange(modo.codigo); setShowModoContexto(false); }}
+                    style={{ width: '100%', padding: '10px 14px', border: 'none',
+                      borderBottom: i < modosPOS.length - 1 ? '1px solid #F1F5F9' : 'none',
+                      background: modoContexto === modo.codigo ? '#F0FDF4' : '#fff',
+                      color: modoContexto === modo.codigo ? '#059669' : '#1E293B',
+                      cursor: 'pointer', outline: 'none', textAlign: 'left',
+                      display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: 18, width: 24, textAlign: 'center' }}>{modo.icono}</span>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{modo.label}</div>
+                    {modoContexto === modo.codigo && <span style={{ marginLeft: 'auto', color: '#059669' }}>✓</span>}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {/* ── Badge e-CF (solo cuando es factura) ── */}
       {esFactura && (
@@ -4157,6 +4202,26 @@ export default function POSPage() {
   const [guardarRncPerfil,   setGuardarRncPerfil]   = useState(false);
   const [ecfStatus,          setEcfStatus]          = useState<'idle'|'loading'|'ok'|'pendiente'>('idle');
   const [ecfEncf,            setEcfEncf]            = useState<string>('');
+
+  // ── Módulos add-on disponibles en el POS ──────────────────────────────────
+  const addonRestaurante = useModuloAddon('RESTAURANTE');
+  const addonTaller      = useModuloAddon('TALLER');
+  const addonFarmacia    = useModuloAddon('FARMACIA');
+  const addonOptica      = useModuloAddon('OPTICA');
+  const addonClinica     = useModuloAddon('CLINICA');
+
+  const MODOS_POS = [
+    { codigo: 'general',     label: 'General',     icono: '🏪' },
+    ...(addonRestaurante.activo ? [{ codigo: 'restaurante', label: 'Restaurante', icono: '🍽️' }] : []),
+    ...(addonTaller.activo      ? [{ codigo: 'taller',      label: 'Taller',      icono: '🔧' }] : []),
+    ...(addonFarmacia.activo    ? [{ codigo: 'farmacia',    label: 'Farmacia',    icono: '💊' }] : []),
+    ...(addonOptica.activo      ? [{ codigo: 'optica',      label: 'Óptica',      icono: '👓' }] : []),
+    ...(addonClinica.activo     ? [{ codigo: 'clinica',     label: 'Clínica',     icono: '🏥' }] : []),
+  ];
+
+  const [modoContexto, setModoContexto] = useState<string>(() => {
+    return localStorage.getItem('pos_modo_contexto') ?? 'general';
+  });
   const searchRef         = useRef<any>(null);
   const lastKeyTimeRef    = useRef<number>(0);
   const fastCharCountRef  = useRef<number>(0);
@@ -4314,6 +4379,15 @@ export default function POSPage() {
   // Helper: restablecer al consumidor final (en lugar de undefined)
   const resetCliente = () => setClienteId(consumidorFinalId);
   const resetDescGlobal = () => { setDescGlobal(''); setDescGlobalTipo('pct'); };
+
+  const cambiarModoContexto = useCallback((modo: string) => {
+    setCart([]);
+    setClienteId(consumidorFinalId);
+    setDescGlobal('');
+    setDescGlobalTipo('pct');
+    setModoContexto(modo);
+    localStorage.setItem('pos_modo_contexto', modo);
+  }, [consumidorFinalId]);
 
   // Auto-seleccionar "Consumidor Final" como cliente por defecto al cargar
   useEffect(() => {
@@ -5038,7 +5112,10 @@ export default function POSPage() {
         onBloquear={() => { sessionStorage.setItem('pos_bloqueado', 'true'); setPantallaBloqueada(true); setPwDesbloqueo(''); setErrDesbloqueo(''); }}
         onSupervisor={() => supervisor.openSupervisorModal('Activar modo supervisor')}
         onCambiarUsuario={() => { setModalCambiarUser(true); setCambiarUserId(undefined); setPwCambio(''); setErrCambio(''); }}
-        onExit={salirDelPOS} />
+        onExit={salirDelPOS}
+        modosPOS={MODOS_POS}
+        modoContexto={modoContexto}
+        onModoContextoChange={cambiarModoContexto} />
 
       {/* Tab bar mobile — cambia entre productos y carrito */}
       {isMobile && (
@@ -5080,6 +5157,13 @@ export default function POSPage() {
           />
         )}
         {panelActivo === 'items' && (<>
+          {modoContexto !== 'general' ? (
+            <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:16 }}>
+              <div style={{ fontSize:56 }}>{MODOS_POS.find(m => m.codigo === modoContexto)?.icono ?? '🏪'}</div>
+              <div style={{ fontSize:18, fontWeight:700, color:C.text }}>{MODOS_POS.find(m => m.codigo === modoContexto)?.label}</div>
+              <div style={{ fontSize:13, color:C.textSub }}>Panel en desarrollo — próximamente disponible</div>
+            </div>
+          ) : (<>
 
           {/* ── Barra superior modernizada ─────────────────────────────── */}
           <div style={{ padding: '10px 14px 0', flexShrink: 0, borderBottom: `1px solid ${C.border}` }}>
@@ -5244,6 +5328,7 @@ export default function POSPage() {
               </div>
             )}
           </div>
+        </>)}
         </>)}
         </div>{/* /center productos */}
 
