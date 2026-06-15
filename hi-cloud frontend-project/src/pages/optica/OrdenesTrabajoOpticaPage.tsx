@@ -53,6 +53,116 @@ const TIPO_NCF_OPS = [
   { value: 'E32', label: 'E32 — Electrónico consumidor' },
 ];
 
+// ── Imprimir OT ──────────────────────────────────────────────────────────────
+
+function imprimirOT(ot: any) {
+  const w = window.open('', '_blank');
+  if (!w) return;
+  const dt = (v: any) => v ? dayjs(v).format('DD/MM/YYYY') : '—';
+  const mn = (v: any) => `RD$${Number(v ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const fila = (l: string, v: any) => (v && v !== '—') ? `<tr><td>${l}</td><td>${v}</td></tr>` : '';
+
+  const itbis    = Number(ot.itbis   ?? 0);
+  const subtotal = Number(ot.subtotal ?? 0);
+  const total    = Number(ot.total    ?? 0);
+  const abono    = Number(ot.abono    ?? 0);
+  const balance  = Number(ot.balance  ?? 0);
+
+  w.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
+  <title>OT ${ot.numero}</title>
+  <style>
+    *{box-sizing:border-box}
+    body{font-family:Arial,sans-serif;padding:28px 32px;max-width:680px;margin:0 auto;font-size:13px;color:#222}
+    .hdr{text-align:center;margin-bottom:14px}
+    .hdr h1{font-size:20px;margin:0 0 4px;letter-spacing:1px}
+    .hdr h2{font-size:14px;margin:0 0 4px;color:#555}
+    hr{border:none;border-top:1px solid #ccc;margin:10px 0}
+    hr.thick{border-top:2px solid #333}
+    .sec{margin:12px 0}
+    .sec-t{font-weight:bold;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#666;border-bottom:1px solid #ddd;padding-bottom:3px;margin-bottom:7px}
+    table.d{width:100%;border-collapse:collapse}
+    table.d td{padding:3px 0;vertical-align:top}
+    table.d td:first-child{color:#666;width:42%}
+    table.d td:last-child{font-weight:500}
+    table.t{width:100%;border-collapse:collapse;margin-top:4px}
+    table.t td{padding:4px 8px}
+    table.t td:last-child{text-align:right}
+    .tr-tot td{font-weight:bold;font-size:15px;border-top:2px solid #333;padding-top:6px}
+    .tr-sal td{color:#c00;font-weight:bold}
+    .tr-pag td{color:#1a7a1a}
+    .sigs{display:flex;gap:48px;margin-top:48px}
+    .sig{flex:1;text-align:center;font-size:12px;color:#555}
+    .sig-l{border-top:1px solid #555;margin:30px 16px 6px}
+    @media print{@page{margin:18mm 15mm}}
+  </style></head><body>
+
+  <div class="hdr">
+    <h1>ORDEN DE TRABAJO ÓPTICA</h1>
+    <h2>${ot.numero}</h2>
+    <div>Fecha: ${dt(ot.fecha)} &nbsp;|&nbsp; Estado: ${ESTADO_LABEL[ot.estado] ?? ot.estado}</div>
+  </div>
+  <hr class="thick">
+
+  <div class="sec">
+    <div class="sec-t">Paciente</div>
+    <table class="d">
+      ${fila('Paciente:', ot.pacienteNombre)}
+      ${fila('Entrega estimada:', dt(ot.fechaEntrega))}
+    </table>
+  </div>
+
+  <div class="sec">
+    <div class="sec-t">Lentes</div>
+    <table class="d">
+      ${fila('Tipo:', ot.tipoLente)}
+      ${fila('Material:', ot.materialLente)}
+      ${fila('Tratamiento:', ot.tratamientoLente)}
+      ${fila('Laboratorio:', ot.laboratorio)}
+    </table>
+  </div>
+
+  <div class="sec">
+    <div class="sec-t">Montura</div>
+    <table class="d">
+      ${fila('Tipo:', ot.tipoMontura)}
+      ${fila('Marca:', ot.marcaMontura)}
+      ${fila('Modelo:', ot.modeloMontura)}
+      ${fila('Color:', ot.colorMontura)}
+    </table>
+  </div>
+
+  ${(ot.observaciones || ot.notas) ? `
+  <div class="sec">
+    <div class="sec-t">Observaciones / Notas</div>
+    ${ot.observaciones ? `<p style="margin:4px 0">${ot.observaciones}</p>` : ''}
+    ${ot.notas        ? `<p style="margin:4px 0">${ot.notas}</p>`         : ''}
+  </div>` : ''}
+
+  <hr class="thick">
+
+  <div class="sec">
+    <div class="sec-t">Resumen financiero</div>
+    <table class="t">
+      ${subtotal > 0 ? `<tr><td>Subtotal:</td><td>${mn(subtotal)}</td></tr>` : ''}
+      <tr><td>ITBIS:</td><td>${itbis > 0 ? mn(itbis) : 'Exento'}</td></tr>
+      <tr class="tr-tot"><td>TOTAL:</td><td>${mn(total)}</td></tr>
+      ${abono > 0 ? `<tr><td>Anticipo pagado:</td><td>${mn(abono)}</td></tr>` : ''}
+      ${balance > 0
+        ? `<tr class="tr-sal"><td>Saldo pendiente:</td><td>${mn(balance)}</td></tr>`
+        : total > 0 ? `<tr class="tr-pag"><td>Estado de pago:</td><td>&#10003; Pagado</td></tr>` : ''}
+    </table>
+  </div>
+
+  <div class="sigs">
+    <div class="sig"><div class="sig-l"></div>Firma del cliente</div>
+    <div class="sig"><div class="sig-l"></div>Técnico / Óptico</div>
+  </div>
+
+  <script>window.onload=function(){window.print()}</script>
+  </body></html>`);
+  w.document.close();
+}
+
 // ── Modal Recibo de Entrega ───────────────────────────────────────────────────
 
 function ReciboEntregaModal({ open, data, onClose }: { open: boolean; data: any; onClose: () => void }) {
@@ -314,7 +424,7 @@ function FacturarModal({ open, ot, onClose, onSuccess }: {
 
 // ── Shared modal de edición ───────────────────────────────────────────────────
 
-function OrdenModal({ open, editing, form, pacienteOpts, saveMut, onClose }: any) {
+function OrdenModal({ open, editing, form, pacienteOpts, saveMut, onClose, onPrint }: any) {
   return (
     <Modal
       title={editing ? 'Editar Orden de Trabajo' : 'Nueva Orden de Trabajo'}
@@ -420,12 +530,21 @@ function OrdenModal({ open, editing, form, pacienteOpts, saveMut, onClose }: any
             </Form.Item>
           </Col>
         </Row>
-        <Row justify="end" gutter={8}>
-          <Col><Button onClick={onClose}>Cancelar</Button></Col>
+        <Row justify="space-between" gutter={8} style={{ marginTop: 4 }}>
           <Col>
-            <Button type="primary" htmlType="submit" loading={saveMut.isPending}>
-              {editing ? 'Guardar cambios' : 'Crear orden'}
-            </Button>
+            {editing && (
+              <Button icon={<PrinterOutlined />} onClick={() => onPrint?.(editing)}>
+                Imprimir OT
+              </Button>
+            )}
+          </Col>
+          <Col>
+            <Space>
+              <Button onClick={onClose}>Cancelar</Button>
+              <Button type="primary" htmlType="submit" loading={saveMut.isPending}>
+                {editing ? 'Guardar cambios' : 'Crear orden'}
+              </Button>
+            </Space>
           </Col>
         </Row>
       </Form>
@@ -435,7 +554,7 @@ function OrdenModal({ open, editing, form, pacienteOpts, saveMut, onClose }: any
 
 // ── Vista Kanban ──────────────────────────────────────────────────────────────
 
-function KanbanView({ ordenes, moveMut, openEdit, openFacturar, openEntregar }: any) {
+function KanbanView({ ordenes, moveMut, openEdit, openFacturar, openEntregar, openPrint }: any) {
   const { token } = theme.useToken();
 
   const byEstado = ESTADOS.reduce<Record<string, any[]>>((acc, est) => {
@@ -535,6 +654,14 @@ function KanbanView({ ordenes, moveMut, openEdit, openFacturar, openEntregar }: 
                         Facturado
                       </Tag>
                     )}
+                    <Tooltip title="Imprimir OT">
+                      <Button
+                        size="small"
+                        icon={<PrinterOutlined />}
+                        style={{ fontSize: 10, padding: '0 6px', height: 20 }}
+                        onClick={e => { e.stopPropagation(); openPrint(o); }}
+                      />
+                    </Tooltip>
                   </div>
                 </Card>
               ))}
@@ -553,7 +680,7 @@ function KanbanView({ ordenes, moveMut, openEdit, openFacturar, openEntregar }: 
 
 // ── Vista tabla ───────────────────────────────────────────────────────────────
 
-function TablaView({ ordenes, isLoading, search, setSearch, filtroEstado, setFiltro, token, openEdit, openFacturar, openEntregar }: any) {
+function TablaView({ ordenes, isLoading, search, setSearch, filtroEstado, setFiltro, token, openEdit, openFacturar, openEntregar, openPrint }: any) {
   const rows = ordenes.filter((o: any) =>
     `${o.pacienteNombre ?? ''} ${o.numero ?? ''}`.toLowerCase().includes(search.toLowerCase())
   );
@@ -614,6 +741,12 @@ function TablaView({ ordenes, isLoading, search, setSearch, filtroEstado, setFil
             onClick: () => openFacturar(r),
           });
         }
+        items.push({
+          key: 'print',
+          label: 'Imprimir OT',
+          icon: <PrinterOutlined />,
+          onClick: () => openPrint(r),
+        });
         return <TableActions onView={() => openEdit(r)} viewLabel="Editar" items={items} />;
       },
     },
@@ -768,6 +901,7 @@ export default function OrdenesTrabajoOpticaPage() {
                   openEdit={openEdit}
                   openFacturar={(o: any) => setFacturarOt(o)}
                   openEntregar={(o: any) => setEntregarOt(o)}
+                  openPrint={imprimirOT}
                 />
               ),
             },
@@ -782,6 +916,7 @@ export default function OrdenesTrabajoOpticaPage() {
                   token={token} openEdit={openEdit}
                   openFacturar={(o: any) => setFacturarOt(o)}
                   openEntregar={(o: any) => setEntregarOt(o)}
+                  openPrint={imprimirOT}
                 />
               ),
             },
@@ -792,6 +927,7 @@ export default function OrdenesTrabajoOpticaPage() {
       <OrdenModal
         open={open} editing={editing} form={form}
         pacienteOpts={pacienteOpts} saveMut={saveMut} onClose={closeModal}
+        onPrint={imprimirOT}
       />
 
       {facturarOt && (
