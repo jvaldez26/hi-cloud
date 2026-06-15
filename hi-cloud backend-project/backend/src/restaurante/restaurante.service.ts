@@ -96,9 +96,9 @@ export class RestauranteService {
   async crearArea(dto: any) {
     const empresaId = this.tenantSvc.getEmpresaId();
     const [area] = await this.ds.query<any[]>(
-      `INSERT INTO rs_areas ("empresaId", nombre, descripcion, "capacidadTotal", orden)
-       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-      [empresaId, dto.nombre, dto.descripcion ?? null, dto.capacidadTotal ?? null, dto.orden ?? 0],
+      `INSERT INTO rs_areas ("empresaId", nombre, descripcion, "capacidadTotal", orden, color)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [empresaId, dto.nombre, dto.descripcion ?? null, dto.capacidadTotal ?? null, dto.orden ?? 0, dto.color ?? '#3b82f6'],
     );
     return area;
   }
@@ -111,12 +111,31 @@ export class RestauranteService {
     if (dto.descripcion !== undefined)    { params.push(dto.descripcion);     sets.push(`descripcion=$${params.length}`); }
     if (dto.capacidadTotal !== undefined) { params.push(dto.capacidadTotal);  sets.push(`"capacidadTotal"=$${params.length}`); }
     if (dto.orden !== undefined)          { params.push(dto.orden);           sets.push(`orden=$${params.length}`); }
+    if (dto.color !== undefined)          { params.push(dto.color);           sets.push(`color=$${params.length}`); }
     if (dto.isActive !== undefined)       { params.push(dto.isActive);        sets.push(`"isActive"=$${params.length}`); }
     if (!sets.length) return this.ds.query(`SELECT * FROM rs_areas WHERE id=$1 AND "empresaId"=$2`, [id, empresaId]);
     const [area] = await this.ds.query<any[]>(
       `UPDATE rs_areas SET ${sets.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *`, params,
     );
     return area;
+  }
+
+  async eliminarArea(id: number) {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const [check] = await this.ds.query<any[]>(
+      `SELECT COUNT(*)::int AS num FROM rs_mesas WHERE "areaId"=$1 AND "isActive"=true`,
+      [id],
+    );
+    if (check.num > 0) {
+      throw new BadRequestException(
+        `No puedes eliminar esta área porque tiene ${check.num} mesa(s) asignada(s). Elimina o reasigna las mesas primero.`,
+      );
+    }
+    await this.ds.query(
+      `UPDATE rs_areas SET "isActive"=false WHERE id=$1 AND "empresaId"=$2`,
+      [id, empresaId],
+    );
+    return { ok: true };
   }
 
   // ── MESAS ────────────────────────────────────────────────────────────────

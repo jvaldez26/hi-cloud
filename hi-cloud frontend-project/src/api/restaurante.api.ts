@@ -10,6 +10,7 @@ export const restauranteApi = {
   listarAreas:           ()                              => api.get('/restaurante/areas').then(d),
   crearArea:             (b: any)                        => api.post('/restaurante/areas', b).then(d),
   actualizarArea:        (id: number, b: any)            => api.patch(`/restaurante/areas/${id}`, b).then(d),
+  eliminarArea:          (id: number)                    => api.delete(`/restaurante/areas/${id}`).then(d),
 
   // Mesas
   mapaMesas:             ()                              => api.get('/restaurante/mesas/mapa').then(d),

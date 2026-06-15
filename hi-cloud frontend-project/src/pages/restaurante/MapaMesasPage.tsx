@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Card, Tabs, Modal, Form, InputNumber, Input, Select, Button, Typography, Tag, Spin, message } from 'antd';
+import { Card, Tabs, Modal, Form, InputNumber, Input, Select, Button, Typography, Tag, Spin, message, Empty } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { restauranteApi } from '../../api/restaurante.api';
@@ -69,7 +69,16 @@ export default function MapaMesasPage() {
 
   const tabItems = (mapa as any[]).map((area: any) => ({
     key: String(area.id),
-    label: `${area.nombre} (${area.mesas?.length ?? 0})`,
+    label: (
+      <span>
+        <span style={{
+          display: 'inline-block', width: 10, height: 10,
+          borderRadius: '50%', background: area.color ?? '#3b82f6',
+          marginRight: 6, verticalAlign: 'middle',
+        }} />
+        {area.nombre} ({area.mesas?.length ?? 0})
+      </span>
+    ),
     children: (
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, padding: 8 }}>
         {(area.mesas ?? []).map((mesa: any) => (
@@ -164,9 +173,33 @@ export default function MapaMesasPage() {
       >
         <Form form={formMesa} layout="vertical" size="small" initialValues={{ capacidad: 4, forma: 'cuadrada' }}>
           <Form.Item name="areaId" label="Área" rules={[{ required: true }]}>
-            <Select placeholder="Seleccionar área">
-              {(areas as any[]).map((a: any) => <Option key={a.id} value={a.id}>{a.nombre}</Option>)}
-            </Select>
+            {(areas as any[]).length === 0 ? (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description={
+                  <span style={{ fontSize: 12 }}>
+                    No hay áreas creadas.{' '}
+                    <a onClick={() => { setModalNuevaMesa(false); navigate('/restaurante/panel'); }}>
+                      Crear área →
+                    </a>
+                  </span>
+                }
+                style={{ margin: '8px 0' }}
+              />
+            ) : (
+              <Select placeholder="Seleccionar área">
+                {(areas as any[]).map((a: any) => (
+                  <Option key={a.id} value={a.id}>
+                    <span style={{
+                      display: 'inline-block', width: 12, height: 12,
+                      borderRadius: '50%', background: a.color ?? '#3b82f6',
+                      marginRight: 8, verticalAlign: 'middle',
+                    }} />
+                    {a.nombre}
+                  </Option>
+                ))}
+              </Select>
+            )}
           </Form.Item>
           <Form.Item name="numero" label="Número/Código" rules={[{ required: true }]}>
             <Input placeholder="M-01, B-05, T-03" />

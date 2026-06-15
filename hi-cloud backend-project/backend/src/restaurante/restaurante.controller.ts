@@ -39,6 +39,12 @@ export class RestauranteController {
     return this.svc.actualizarArea(id, dto);
   }
 
+  @Delete('areas/:id')
+  @ApiOperation({ summary: 'Eliminar área/zona (solo si no tiene mesas)' })
+  eliminarArea(@Param('id', ParseIntPipe) id: number) {
+    return this.svc.eliminarArea(id);
+  }
+
   // ── MESAS ─────────────────────────────────────────────────────────────────
   @Get('mesas/mapa')
   @ApiOperation({ summary: 'Mapa visual de todas las mesas por área' })
