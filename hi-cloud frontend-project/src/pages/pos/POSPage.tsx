@@ -1467,6 +1467,96 @@ function GenericThermalDoc({ doc }: { doc: GenericDocData }) {
   );
 }
 
+// ── Recibo térmico genérico (conduce, cobro, anticipo, notas crédito/débito) ──
+function buildDocTermicoHTML(
+  gd: GenericDocData,
+  cfg: { tipoImpresora?: string } = {},
+): string {
+  const { tipoImpresora = '80mm' } = cfg;
+  const prn  = IMPRESORA_CONFIG[tipoImpresora] ?? IMPRESORA_CONFIG['80mm'];
+  const fmt  = (n: number) => `RD$${n.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const row  = (l: string, v: string) => `<div class="row"><span>${esc(l)}</span><span>${esc(v)}</span></div>`;
+  const line = () => '<div class="line"></div>';
+  const dbl  = () => '<div class="dbl"></div>';
+  const e    = gd.empresa ?? {};
+  const tipo = gd.tipo;
+
+  const hasTotals = gd.items.some(i => i.total !== undefined);
+  const hasCant   = gd.items.some(i => i.cant  !== undefined);
+
+  const itemsHtml = gd.items.map(item => {
+    const nom = (item.desc ?? '').length > 26 ? (item.desc ?? '').slice(0, 25) + '…' : (item.desc ?? '');
+    if (hasTotals) {
+      const qtyStr   = item.cant !== undefined && item.cant > 0 ? ` ×${item.cant}` : '';
+      const totalStr = item.total !== undefined ? item.total.toFixed(2) : '';
+      return `<div class="row"><span>${esc(nom + qtyStr)}</span><span>${totalStr}</span></div>`;
+    }
+    const qtyStr = item.cant !== undefined ? ` — ${item.cant}` : '';
+    return `<div>${esc(nom + qtyStr)}</div>`;
+  }).join('');
+
+  const footerHtml =
+      tipo.includes('CONDUCE')  ? '<div class="center bold">** DOCUMENTO DE DESPACHO **</div>'
+    : tipo.includes('ANTICIPO') ? '<div class="center bold">** RECIBO DE ANTICIPO **</div><div class="center small">Documento interno de pago</div>'
+    : tipo.includes('COBRO')    ? '<div class="center bold">** RECIBO DE COBRO **</div><div class="center small">Documento interno de pago</div>'
+    : tipo.includes('CRÉDITO')  ? '<div class="center bold">** NOTA DE CRÉDITO **</div>'
+    : tipo.includes('DÉBITO')   ? '<div class="center bold">** NOTA DE DÉBITO **</div>'
+    : tipo.includes('GASTO')    ? '<div class="center bold">** COMPROBANTE DE GASTO **</div>'
+    :                             '<div class="center small">Documento no fiscal</div>';
+
+  return `<!DOCTYPE html>
+<html lang="es"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=302,initial-scale=1,shrink-to-fit=no">
+<title>${esc(tipo)} ${esc(gd.numero)}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;overflow-wrap:break-word}
+html{margin:0;padding:0;width:${prn.width}}
+body{font-family:'Courier New',Courier,monospace;font-size:${prn.fontSize};line-height:1.45;
+  width:${prn.width};margin:0;padding:3mm ${prn.paddingLR};
+  color:#000;background:#fff;-webkit-font-smoothing:none;font-smooth:never}
+.center{text-align:center}
+.bold{font-weight:bold}
+.xlarge{font-size:15pt;font-weight:bold}
+.small{font-size:9pt}
+.row{display:flex;justify-content:space-between;gap:4px;margin:1px 0;width:100%}
+.row span:first-child{flex:1;overflow:hidden}
+.row span:last-child{text-align:right;white-space:nowrap}
+.line{border-top:1px dashed #000;margin:4px 0}
+.dbl{border-top:2px solid #000;margin:4px 0}
+@page{size:${prn.width} auto;margin:0}
+@media print{html,body{width:${prn.width}}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style></head><body>
+
+${e.nombre    ? `<div class="center xlarge">${esc(e.nombre)}</div>`    : ''}
+<div class="center small">República Dominicana</div>
+${e.rnc       ? `<div>RNC Emisor: ${esc(e.rnc)}</div>`                : ''}
+${e.direccion ? `<div class="small">${esc(e.direccion)}</div>`         : ''}
+${e.telefono  ? `<div>Tel: ${esc(e.telefono)}</div>`                   : ''}
+${dbl()}
+<div class="center bold">${esc(tipo)}</div>
+${line()}
+${row('Número:', gd.numero)}
+${row('Fecha:',  gd.fecha)}
+${gd.cliente    ? row('Cliente:', gd.cliente)    : ''}
+${gd.rncCliente ? row('RNC:',     gd.rncCliente) : ''}
+${gd.nota1      ? `<div class="small">${esc(gd.nota1)}</div>` : ''}
+${line()}
+<div class="row bold"><span>DESCRIPCIÓN</span>${hasTotals ? '<span>TOTAL</span>' : hasCant ? '<span>CANT</span>' : ''}</div>
+${line()}
+${itemsHtml}
+${dbl()}
+${gd.subtotal !== undefined                        ? row('Subtotal:',    fmt(gd.subtotal)) : ''}
+${gd.itbis    !== undefined && gd.itbis > 0        ? row('ITBIS (18%):', fmt(gd.itbis))   : ''}
+${gd.total    !== undefined ? `<div class="row xlarge bold"><span>TOTAL:</span><span>${fmt(gd.total)}</span></div>` : ''}
+${line()}
+${gd.nota2 ? `<div class="small">${esc(gd.nota2)}</div>\n${line()}` : ''}
+${gd.notas ? `<div class="small">Nota: ${esc(gd.notas)}</div>\n${line()}` : ''}
+${footerHtml}
+
+</body></html>`;
+}
+
 // ── Modal éxito post-venta ────────────────────────────────────────────────────
 function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir, mostrarEcf = true, posConfig = {} }: {
   sale: Sale | null;
@@ -2190,21 +2280,34 @@ function POSConducePanel({ C, onVolver, initClienteId, initFacturaId }: {
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
   });
 
-  const imprimirPDF = async (id: number, numero: string) => {
+  const imprimirTermico = async (id: number) => {
     setImprimiendo(id);
     try {
-      const eid = localStorage.getItem('empresaId') ?? '';
-      const res = await fetch(`/api/v1/conduces/${id}/pdf`, {
-        credentials: 'include', headers: { 'X-Empresa-ID': eid },
-      });
-      if (!res.ok) { message.error('Error al generar PDF'); return; }
-      const blob = await res.blob();
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `${numero}.pdf`;
-      a.click();
-      URL.revokeObjectURL(a.href);
-    } finally { setImprimiendo(null); }
+      const [docRes, empRes] = await Promise.all([
+        api.get(`/conduces/${id}`).then(r => r.data?.data ?? r.data),
+        api.get('/configuracion/empresa').then(r => r.data?.data ?? r.data).catch(() => ({})),
+      ]);
+      const empInfo = {
+        nombre:    empRes.razonSocial ?? empRes.nombre,
+        rnc:       empRes.rnc,
+        direccion: empRes.direccion,
+        telefono:  empRes.telefono,
+      };
+      const gd: GenericDocData = {
+        tipo:    'CONDUCE',
+        numero:  docRes.numero ?? String(id),
+        fecha:   String(docRes.fecha ?? '').substring(0, 10),
+        empresa: empInfo,
+        cliente: docRes.cliente?.nombre,
+        items:   (docRes.detalles ?? []).map((d: any) => ({ desc: d.descripcion, cant: Number(d.cantidad) })),
+        nota1:   docRes.direccionEntrega ? `Entrega: ${docRes.direccionEntrega}` : undefined,
+        nota2:   docRes.contactoEntrega  ? `Contacto: ${docRes.contactoEntrega}` : undefined,
+        notas:   docRes.notas,
+      };
+      const empConf = (empRes.configuracion ?? {}) as any;
+      imprimirReciboTermico(buildDocTermicoHTML(gd, { tipoImpresora: empConf.posTipoImpresora }));
+    } catch { message.error('Error al imprimir conduce'); }
+    finally   { setImprimiendo(null); }
   };
 
   const canCreate = !!fClienteId && !!fDireccion.trim() && fItems.some(i => i.desc.trim());
@@ -2331,8 +2434,8 @@ function POSConducePanel({ C, onVolver, initClienteId, initFacturaId }: {
                           </td>
                           <td style={{ padding: '8px 8px' }}>
                             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' as const }}>
-                              <button onClick={() => imprimirPDF(r.id, r.numero)} disabled={imprimiendo === r.id}
-                                title="Descargar PDF"
+                              <button onClick={() => imprimirTermico(r.id)} disabled={imprimiendo === r.id}
+                                title="Imprimir recibo térmico"
                                 style={{ background: 'none', border: `1px solid ${C.border2}`, borderRadius: 5,
                                   color: C.blue, cursor: 'pointer', padding: '3px 6px', fontSize: 12 }}>
                                 {imprimiendo === r.id ? '⏳' : '🖨️'}
@@ -2567,6 +2670,35 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
   const qc = useQueryClient();
   const esAnticipo = tipo === 'anticipos';
   const METODOS_PAGO = ['Efectivo','Tarjeta','Cheque','Transferencia','Depósito'];
+  const [imprimiendoId, setImprimiendoId] = useState<number|null>(null);
+
+  const imprimirTermicoRecibo = async (id: number, r: any) => {
+    setImprimiendoId(id);
+    try {
+      const empRes = await api.get('/configuracion/empresa')
+        .then(x => x.data?.data ?? x.data).catch(() => ({}));
+      const empInfo = {
+        nombre:    empRes.razonSocial ?? empRes.nombre,
+        rnc:       empRes.rnc,
+        direccion: empRes.direccion,
+        telefono:  empRes.telefono,
+      };
+      const tipoDoc = esAnticipo ? 'ANTICIPO' : 'RECIBO DE COBRO';
+      const gd: GenericDocData = {
+        tipo:    tipoDoc,
+        numero:  r.numero ?? String(id),
+        fecha:   String(r.fecha ?? '').substring(0, 10),
+        empresa: empInfo,
+        cliente: r.clienteNombre ?? r.cliente?.nombre,
+        items:   [{ desc: r.concepto ?? tipoDoc, total: Number(r.monto ?? 0) }],
+        total:   Number(r.monto ?? 0),
+        nota1:   `Método: ${r.tipoPago ?? r.metodoPago ?? '—'}`,
+      };
+      const empConf = (empRes.configuracion ?? {}) as any;
+      imprimirReciboTermico(buildDocTermicoHTML(gd, { tipoImpresora: empConf.posTipoImpresora }));
+    } catch { /* silencio */ }
+    finally { setImprimiendoId(null); }
+  };
   const [form, setForm]           = useState(false);
   const [busqCliente, setBusqCliente] = useState('');
   const [clienteId, setClienteId] = useState<number|null>(null);
@@ -2808,8 +2940,8 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
             <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
               <thead><tr style={{background:C.card,position:'sticky',top:0}}>
                 {(esAnticipo
-                  ? ['Número','Cliente','Monto','Pendiente','Estado']
-                  : ['Número','Cliente','Monto','Método']
+                  ? ['Número','Cliente','Monto','Pendiente','Estado','']
+                  : ['Número','Cliente','Monto','Método','']
                 ).map(h=>(
                   <th key={h} style={{padding:'8px 12px',textAlign:'left',color:C.textSub,fontWeight:600,fontSize:11,borderBottom:`1px solid ${C.border}`}}>{h}</th>
                 ))}
@@ -2835,6 +2967,15 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
                   ) : (
                     <td style={{padding:'8px 12px',color:C.textSub,fontSize:11}}>{r.tipoPago||r.metodoPago||'—'}</td>
                   )}
+                  <td style={{padding:'4px 8px',textAlign:'right'}}>
+                    <button onClick={() => imprimirTermicoRecibo(r.id, r)}
+                      disabled={imprimiendoId === r.id}
+                      title="Imprimir recibo térmico"
+                      style={{background:'none',border:`1px solid ${C.border2}`,borderRadius:5,
+                        color:C.blue,cursor:'pointer',padding:'3px 6px',fontSize:12}}>
+                      {imprimiendoId === r.id ? '⏳' : '🖨️'}
+                    </button>
+                  </td>
                 </tr>
               ))}</tbody>
             </table>
@@ -3694,8 +3835,21 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           subtotal: Number(doc.subtotal??0), itbis: Number(doc.iva??0), total: Number(doc.total??0),
           nota1: doc.facturaOriginalFolio ? `Ref. factura: ${doc.facturaOriginalFolio}` : undefined,
         };
+      } else if ((panel as string) === 'notas-debito') {
+        gd = {
+          tipo: 'NOTA DE DÉBITO', numero: doc.numero ?? String(doc.id),
+          fecha: String(doc.fecha ?? '').substring(0,10),
+          empresa: empInfo,
+          cliente: doc.cliente?.nombre, rncCliente: doc.cliente?.rncReceptor,
+          items: (doc.detalles ?? []).map((d: any) => ({
+            desc: d.descripcion, cant: Number(d.cantidad),
+            precio: Number(d.precioUnitario), total: Number(d.total??0),
+          })),
+          subtotal: Number(doc.subtotal??0), itbis: Number(doc.iva??0), total: Number(doc.total??0),
+          nota1: doc.facturaOriginalFolio ? `Ref. factura: ${doc.facturaOriginalFolio}` : undefined,
+        };
       } else {
-        // cotizaciones, pre-facturas (fallback genérico)
+        // cotizaciones, pre-facturas (fallback genérico — nunca deberían llegar aquí)
         const tipoLabel = (panel as string) === 'cotizaciones' ? 'COTIZACIÓN' : 'PRE-FACTURA';
         gd = {
           tipo: tipoLabel, numero: doc.numero ?? doc.folio ?? String(doc.id),
@@ -3711,7 +3865,8 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
         };
       }
 
-      setGenericDoc(gd);
+      const empConfPanel = (empresa.configuracion ?? {}) as any;
+      imprimirReciboTermico(buildDocTermicoHTML(gd, { tipoImpresora: empConfPanel.posTipoImpresora }));
     } catch (e: any) {
       message.error('Error al imprimir: ' + (e.message ?? ''));
     } finally {
