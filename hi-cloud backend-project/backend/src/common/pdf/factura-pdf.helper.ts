@@ -474,7 +474,12 @@ export async function generarFacturaPDF(
 
 import type { ReciboPOSData } from '../../facturas/templates/recibo-termico.template';
 
-export async function generarReciboPOSPDF(d: ReciboPOSData): Promise<Buffer> {
+export type TipoReciboTermico = 'RECIBO DE COMPRA' | 'PRE-FACTURA' | 'COTIZACIÓN';
+
+export async function generarReciboPOSPDF(
+  d: ReciboPOSData,
+  tipo: TipoReciboTermico = 'RECIBO DE COMPRA',
+): Promise<Buffer> {
   return new Promise<Buffer>((resolve, reject) => {
     const TW  = 200;
     const doc = new PDFDocument({ size: [TW, 800], margin: 0, compress: true });
@@ -495,19 +500,19 @@ export async function generarReciboPOSPDF(d: ReciboPOSData): Promise<Buffer> {
     };
 
     center(d.empresaNombre.toUpperCase(), 11, 'Helvetica-Bold');
-    if (d.empresaRNC)     center('RNC: ' + d.empresaRNC,   8);
+    if (d.empresaRNC)      center('RNC: ' + d.empresaRNC,  8);
     if (d.empresaTelefono) center(d.empresaTelefono,        8);
-    if (d.empresaWeb)     center(d.empresaWeb,              7);
+    if (d.empresaWeb)      center(d.empresaWeb,             7);
 
     y += 4;
     doc.moveTo(PL, y).lineTo(PR, y).strokeColor('#ccc').lineWidth(0.5).stroke(); y += 6;
 
-    center('RECIBO DE COMPRA', 10, 'Helvetica-Bold');
+    center(tipo, 10, 'Helvetica-Bold');
     center(d.numero, 11, 'Helvetica-Bold');
     center(d.fechaHora, 8);
     if (d.vendedor)  center('Atendido por: ' + d.vendedor, 7);
     if (d.sucursal)  center('Sucursal: ' + d.sucursal, 7);
-    if (d.ecfNumero) center('e-NCF: ' + d.ecfNumero, 7);
+    if (d.ecfNumero && tipo === 'RECIBO DE COMPRA') center('e-NCF: ' + d.ecfNumero, 7);
 
     y += 4;
     doc.moveTo(PL, y).lineTo(PR, y).strokeColor('#000').lineWidth(1).stroke(); y += 4;
@@ -545,7 +550,7 @@ export async function generarReciboPOSPDF(d: ReciboPOSData): Promise<Buffer> {
     y += 4;
     doc.moveTo(PL, y).lineTo(PR, y).strokeColor('#ccc').lineWidth(0.5).stroke(); y += 6;
 
-    if (d.qrBase64) {
+    if (d.qrBase64 && tipo === 'RECIBO DE COMPRA') {
       try {
         const qrBuf = Buffer.from(d.qrBase64, 'base64');
         const qrS   = W * 0.7;
@@ -554,7 +559,15 @@ export async function generarReciboPOSPDF(d: ReciboPOSData): Promise<Buffer> {
       } catch { /* sin QR */ }
     }
 
-    center('¡Gracias por su compra!', 8);
+    if (tipo === 'PRE-FACTURA') {
+      center('** DOCUMENTO NO FISCAL **', 8, 'Helvetica-Bold');
+      center('Presente este ticket para pagar', 7);
+    } else if (tipo === 'COTIZACIÓN') {
+      center('** COTIZACIÓN - NO ES FACTURA **', 8, 'Helvetica-Bold');
+      center(`Válida por ${(d as any).validezDias ?? 30} días`, 7);
+    } else {
+      center('¡Gracias por su compra!', 8);
+    }
     center('HiCloud ERP', 7, 'Helvetica', '#888');
 
     doc.page.height = y + 20;

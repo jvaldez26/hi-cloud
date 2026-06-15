@@ -4,6 +4,8 @@ import {
 } from '@nestjs/common';
 import type { DocumentoPDFData, DocumentoPDFItem } from '../common/pdf/documento-pdf.helper';
 import { generarDocumentoPDFFactura } from '../common/pdf/documento-pdf.helper';
+import { generarReciboPOSPDF } from '../common/pdf/factura-pdf.helper';
+import type { ReciboPOSData } from '../facturas/templates/recibo-termico.template';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, LessThan, In, DataSource } from 'typeorm';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
@@ -346,6 +348,50 @@ export class CotizacionesService {
 
     const buffer = await generarDocumentoPDFFactura(data, logoBuf);
     return { buffer, filename: `${cot.numero}.pdf` };
+  }
+
+  async generarReciboTermico(id: number): Promise<{ buffer: Buffer; filename: string }> {
+    const cot = await this.findById(id);
+
+    const empresa = await this.cotizacionRepository.manager
+      .query('SELECT * FROM empresa WHERE id = $1 LIMIT 1', [cot.empresaId])
+      .then((r: any[]) => r[0] || {});
+
+    const sucursalNombre: string | undefined = (cot as any).sucursalId
+      ? await this.cotizacionRepository.manager.query(
+          'SELECT nombre FROM sucursales WHERE id = $1 LIMIT 1',
+          [(cot as any).sucursalId],
+        ).then((r: any[]) => r[0]?.nombre ?? undefined)
+      : undefined;
+
+    const now = new Date();
+    const fechaHora = now.toLocaleDateString('es-DO') + ' ' +
+      now.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });
+
+    const data: ReciboPOSData & { validezDias?: number } = {
+      empresaNombre:   empresa.razonSocial || empresa.nombre || 'Mi Empresa',
+      empresaRNC:      empresa.rnc || '',
+      empresaTelefono: empresa.telefono,
+      empresaWeb:      empresa.sitioWeb,
+      vendedor:        cot.nombreVendedor,
+      sucursal:        sucursalNombre,
+      fechaHora,
+      numero:          cot.numero,
+      metodoPago:      cot.condicionesPago ?? 'POR CONFIRMAR',
+      validezDias:     cot.validezDias ?? 30,
+      items: (cot.detalles || []).map(d => ({
+        descripcion: d.descripcion,
+        cantidad:    Number(d.cantidad),
+        precio:      Number(d.precioUnitario),
+        total:       Number(d.total ?? Number(d.precioUnitario) * Number(d.cantidad) * 1.18),
+      })),
+      subtotal: Number(cot.subtotal ?? 0),
+      itbis:    Number(cot.iva      ?? 0),
+      total:    Number(cot.total    ?? 0),
+    };
+
+    const buffer = await generarReciboPOSPDF(data, 'COTIZACIÓN');
+    return { buffer, filename: `recibo-${cot.numero}.pdf` };
   }
 
   // ──────────────────────────────────────────────────────────────────

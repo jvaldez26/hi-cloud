@@ -90,6 +90,22 @@ export class PreFacturaController {
     }
   }
 
+  @Get(':id/recibo-pdf')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @ApiOperation({ summary: 'Recibo térmico 80mm de pre-factura (POS)' })
+  async reciboPdf(@Param('id', ParseIntPipe) id: number, @Res() res: Response) {
+    try {
+      const { buffer, filename } = await this.pdfSvc.generarReciboTermico(id);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+      res.setHeader('Content-Length', buffer.length);
+      res.end(buffer);
+    } catch (e: any) {
+      this.logger.error(`[ReciboPDF PreFact] ${e?.message ?? e}`);
+      res.status(500).json({ message: e?.message ?? 'Error generando recibo' });
+    }
+  }
+
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Detalle completo de una pre-factura' })

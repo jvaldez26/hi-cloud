@@ -3578,6 +3578,18 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
         return;
       }
 
+      // ── Pre-Facturas y Cotizaciones → recibo térmico 80mm del servidor ──
+      if (panel === 'pre-facturas' || panel === 'cotizaciones') {
+        const ep = panel === 'pre-facturas'
+          ? `/pre-facturas/${id}/recibo-pdf`
+          : `/cotizaciones/${id}/recibo-pdf`;
+        const res = await api.get(ep, { responseType: 'blob' });
+        const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+        window.open(url, '_blank');
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        return;
+      }
+
       // ── Para todos los demás: construir GenericThermalDoc ──────────
       const apiMap: Record<string, string> = {
         cotizaciones:    `/cotizaciones/${id}`,
@@ -3642,8 +3654,8 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           nota1: doc.facturaOriginalFolio ? `Ref. factura: ${doc.facturaOriginalFolio}` : undefined,
         };
       } else {
-        // cotizaciones, pre-facturas
-        const tipoLabel = panel === 'cotizaciones' ? 'COTIZACIÓN' : 'PRE-FACTURA';
+        // cotizaciones, pre-facturas (fallback genérico)
+        const tipoLabel = (panel as string) === 'cotizaciones' ? 'COTIZACIÓN' : 'PRE-FACTURA';
         gd = {
           tipo: tipoLabel, numero: doc.numero ?? doc.folio ?? String(doc.id),
           fecha: String(doc.fecha ?? '').substring(0,10),

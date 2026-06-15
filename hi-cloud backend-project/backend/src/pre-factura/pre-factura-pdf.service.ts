@@ -5,6 +5,8 @@ import { PreFactura } from './entities/pre-factura.entity';
 import { TenantService } from '../tenant/tenant.service';
 import type { DocumentoPDFData, DocumentoPDFItem } from '../common/pdf/documento-pdf.helper';
 import { generarDocumentoPDFFactura } from '../common/pdf/documento-pdf.helper';
+import { generarReciboPOSPDF } from '../common/pdf/factura-pdf.helper';
+import type { ReciboPOSData } from '../facturas/templates/recibo-termico.template';
 
 const ESTADO_COLOR: Record<string, string> = {
   borrador:   'orange',
@@ -117,5 +119,53 @@ export class PreFacturaPDFService {
 
     const buffer = await generarDocumentoPDFFactura(data, logoBuf);
     return { buffer, filename: `${pf.folio}.pdf` };
+  }
+
+  async generarReciboTermico(id: number): Promise<{ buffer: Buffer; filename: string }> {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const pf = await this.repo.findOne({
+      where: { id, empresaId, isActive: true },
+      relations: ['cliente', 'detalles'],
+    });
+    if (!pf) throw new NotFoundException(`Pre-Factura #${id} no encontrada`);
+
+    const empresa = await this.repo.manager
+      .query('SELECT * FROM empresa WHERE id = $1 AND "isActive" = true LIMIT 1', [empresaId])
+      .then((r: any[]) => r[0] || {});
+
+    const sucursalNombre: string | undefined = (pf as any).sucursalId
+      ? await this.repo.manager.query(
+          'SELECT nombre FROM sucursales WHERE id = $1 LIMIT 1',
+          [(pf as any).sucursalId],
+        ).then((r: any[]) => r[0]?.nombre ?? undefined)
+      : undefined;
+
+    const now = new Date();
+    const fechaHora = now.toLocaleDateString('es-DO') + ' ' +
+      now.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });
+
+    const data: ReciboPOSData = {
+      empresaNombre:   empresa.razonSocial || empresa.nombre || 'Mi Empresa',
+      empresaRNC:      empresa.rnc || '',
+      empresaTelefono: empresa.telefono,
+      empresaWeb:      empresa.sitioWeb,
+      vendedor:        pf.nombreVendedor,
+      sucursal:        sucursalNombre,
+      fechaHora,
+      numero:          pf.folio,
+      metodoPago:      'PENDIENTE',
+      items: ((pf as any).detalles ?? []).map((d: any) => ({
+        descripcion: d.descripcion,
+        cantidad:    Number(d.cantidad),
+        precio:      Number(d.precioUnitario),
+        total:       Number(d.total ?? Number(d.precioUnitario) * Number(d.cantidad) * 1.18),
+      })),
+      subtotal: Number(pf.subtotal ?? 0),
+      itbis:    Number(pf.iva      ?? 0),
+      total:    Number(pf.total    ?? 0),
+    };
+
+    const buffer = await generarReciboPOSPDF(data, 'PRE-FACTURA');
+    return { buffer, filename: `recibo-${pf.folio}.pdf` };
   }
 }
