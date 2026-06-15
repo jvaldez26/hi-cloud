@@ -105,13 +105,14 @@ export default function RestaurantePOS({ palette }: ModoPOSProps) {
 
   const cobrarMut = useMutation({
     mutationFn: (b: any) => restauranteApi.cobrarComanda(mesaSel!.comandaActualId, b),
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       invalidateMapa();
       qc.removeQueries({ queryKey: ['pos-rs-comanda', mesaSel?.comandaActualId] });
       setModalCobro(false);
       setMesaSel(null);
       formCobro.resetFields();
-      message.success('Comanda cobrada exitosamente');
+      const folio = data?.facturaFolio ?? data?.data?.facturaFolio;
+      message.success(folio ? `Factura ${folio} generada ✓` : 'Comanda cobrada exitosamente');
     },
     onError: () => message.error('Error cobrando comanda'),
   });

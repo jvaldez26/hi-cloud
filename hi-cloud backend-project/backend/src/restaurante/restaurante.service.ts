@@ -561,46 +561,153 @@ export class RestauranteService {
   }
 
   async cobrarComanda(comandaId: number, dto: any) {
-    const empresaId = this.tenantSvc.getEmpresaId();
+    const empresaId  = this.tenantSvc.getEmpresaId();
+    const userId     = this.tenantSvc.getUserId();
+    const sucursalId = this.tenantSvc.getSucursalId();
+
     const comanda = await this.obtenerComanda(comandaId);
     if (comanda.estado === 'cobrada') throw new BadRequestException('Comanda ya cobrada');
 
-    const propina = Number(dto.propina ?? 0);
-    const subtotal = Number(comanda.subtotal);
+    const propina   = Number(dto.propina ?? 0);
+    const subtotal  = Number(comanda.subtotal);
     const descuento = Number(comanda.descuento ?? 0);
     const baseItbis = subtotal - descuento;
-    const itbis = baseItbis * 0.18;
-    const total = baseItbis + itbis + propina;
+    const itbis     = +( baseItbis * 0.18).toFixed(2);
+    const total     = +(baseItbis + itbis + propina).toFixed(2);
 
-    await this.ds.query(
-      `UPDATE rs_comandas SET estado='cobrada', "metodoPago"=$1, propina=$2, itbis=$3, total=$4,
-              "fechaCierre"=NOW(), "updatedAt"=NOW()
-       WHERE id=$5 AND "empresaId"=$6`,
-      [dto.metodoPago, propina, itbis, total, comandaId, empresaId],
-    );
-    // Liberar mesa → limpieza
-    await this.ds.query(
-      `UPDATE rs_mesas SET estado='limpieza', "comandaActualId"=NULL WHERE id=$1 AND "empresaId"=$2`,
-      [comanda.mesaId, empresaId],
-    );
-    // Propina en tabla
+    const qr = this.ds.createQueryRunner();
+    await qr.connect();
+    await qr.startTransaction();
+
+    let facturaId: number;
+    let facturaFolio: string;
+
+    try {
+      // 1. Folio secuencial (nunca MAX+1)
+      const folioRows = await qr.query(
+        `SELECT siguiente_numero_secuencia($1, 'FAC') AS numero`,
+        [empresaId],
+      ) as { numero: number }[];
+      facturaFolio = `FAC-${folioRows[0].numero}`;
+
+      // 2. Items de la comanda con nombre del menú
+      const items: any[] = await qr.query(
+        `SELECT ci.cantidad, ci."precioUnitario", ci.descuento,
+                COALESCE(ci.total, ci."precioUnitario"*ci.cantidad - ci.descuento) AS total,
+                COALESCE(mi.nombre, 'Item') AS nombre
+         FROM rs_comanda_items ci
+         LEFT JOIN rs_menu_items mi ON mi.id = ci."menuItemId"
+         WHERE ci."comandaId" = $1 AND ci.cancelado = false AND ci."empresaId" = $2
+         ORDER BY ci.id`,
+        [comandaId, empresaId],
+      );
+
+      // 3. Calcular totales de factura (sin propina)
+      let subtotalFac = 0;
+      let ivaFac      = 0;
+      type Detalle = { nombre: string; precioUnit: number; qty: number; sub: number; iva: number };
+      const detalles: Detalle[] = [];
+
+      for (const item of items) {
+        const sub = +(Number(item.total)).toFixed(2);
+        const iva = +(sub * 0.18).toFixed(2);
+        subtotalFac += sub;
+        ivaFac      += iva;
+        detalles.push({
+          nombre:    String(item.nombre).substring(0, 200),
+          precioUnit: Number(item.precioUnitario),
+          qty:        Number(item.cantidad),
+          sub,
+          iva,
+        });
+      }
+
+      if (descuento > 0) {
+        const dIva = +(descuento * 0.18).toFixed(2);
+        subtotalFac -= descuento;
+        ivaFac      -= dIva;
+        detalles.push({ nombre: 'Descuento', precioUnit: -descuento, qty: 1, sub: -descuento, iva: -dIva });
+      }
+
+      subtotalFac = +subtotalFac.toFixed(2);
+      ivaFac      = +ivaFac.toFixed(2);
+      const totalFac = +(subtotalFac + ivaFac).toFixed(2);
+
+      // 4. Insertar factura
+      const facturaRows = await qr.query(`
+        INSERT INTO facturas (
+          folio, fecha, estado, "empresaId", "usuarioId", "sucursalId", "clienteId",
+          subtotal, iva, total, "tipoPago", "diasCredito", "tipoNcf",
+          moneda, "tipoCambio", "aplicaRetenciones",
+          "retieneItbis", "porcentajeRetencionItbis", "montoRetencionItbis",
+          "retieneIsr",   "porcentajeRetencionIsr",   "montoRetencionIsr",
+          "netoCobrar", "isActive", "createdAt", "updatedAt"
+        ) VALUES (
+          $1, NOW(), 'emitida', $2, $3, $4, $5,
+          $6, $7, $8, 'CONTADO', 0, 'E32',
+          'DOP', 1, false,
+          false, 30, 0,
+          false, 10, 0,
+          $8, true, NOW(), NOW()
+        ) RETURNING id`,
+        [facturaFolio, empresaId, userId ?? 0, sucursalId ?? null, comanda.clienteId ?? null,
+         subtotalFac, ivaFac, totalFac],
+      ) as { id: number }[];
+      facturaId = facturaRows[0].id;
+
+      // 5. Insertar detalles
+      for (const det of detalles) {
+        await qr.query(`
+          INSERT INTO factura_detalles (
+            "facturaId", "productoId", descripcion, "precioUnitario",
+            cantidad, "porcentajeIva", subtotal, "importeIva", total,
+            "isActive", "createdAt", "updatedAt"
+          ) VALUES ($1, NULL, $2, $3, $4, 18, $5, $6, $7, true, NOW(), NOW())`,
+          [facturaId, det.nombre, det.precioUnit, det.qty, det.sub, det.iva, +(det.sub + det.iva).toFixed(2)],
+        );
+      }
+
+      // 6. Actualizar comanda con facturaId
+      await qr.query(
+        `UPDATE rs_comandas
+         SET estado='cobrada', "metodoPago"=$1, propina=$2, itbis=$3, total=$4,
+             "facturaId"=$5, "fechaCierre"=NOW(), "updatedAt"=NOW()
+         WHERE id=$6 AND "empresaId"=$7`,
+        [dto.metodoPago, propina, itbis, total, facturaId, comandaId, empresaId],
+      );
+
+      // 7. Liberar mesa
+      await qr.query(
+        `UPDATE rs_mesas SET estado='limpieza', "comandaActualId"=NULL WHERE id=$1 AND "empresaId"=$2`,
+        [comanda.mesaId, empresaId],
+      );
+
+      await qr.commitTransaction();
+    } catch (err) {
+      await qr.rollbackTransaction();
+      throw err;
+    } finally {
+      await qr.release();
+    }
+
+    // Fire-and-forget post-commit
     if (propina > 0) {
-      await this.ds.query(
+      this.ds.query(
         `INSERT INTO rs_propinas ("empresaId","comandaId","meseroId","meseroNombre",monto,porcentaje,"metodoPago")
          VALUES ($1,$2,$3,$4,$5,$6,$7)`,
         [empresaId, comandaId, comanda.meseroId ?? null, comanda.meseroNombre ?? null,
          propina, dto.porcentajePropina ?? null, dto.metodoPago],
       ).catch(err => this.logger.error('Error registrando propina', err));
     }
-    // Actualizar turno activo (fire-and-forget)
+
     this._actualizarTurnoActivo(empresaId, total, dto.metodoPago, propina, comanda.descuento ?? 0)
       .catch(err => this.logger.error('Error actualizando turno', err));
 
-    // Asiento contable (fire-and-forget)
     this._crearAsientoVentaRestaurante(empresaId, comandaId, comanda.numero, total, itbis, baseItbis, dto.metodoPago)
       .catch(err => this.logger.error('Error asiento contable restaurante', err));
 
-    return this.obtenerComanda(comandaId);
+    this.logger.log(`Comanda #${comandaId} cobrada → Factura ${facturaFolio}`);
+    return { ...await this.obtenerComanda(comandaId), facturaFolio, facturaId };
   }
 
   async dividirCuenta(comandaId: number, divisiones: { items: number[] }[]) {
