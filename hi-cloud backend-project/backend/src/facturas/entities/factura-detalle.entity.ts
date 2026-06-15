@@ -19,6 +19,9 @@ export class FacturaDetalle extends BaseEntity {
   @Column({ nullable: true })
   productoId?: number;
 
+  @Column({ nullable: true })
+  opticaInventarioId?: number;
+
   @Column({ length: 200 })
   descripcion!: string;
 

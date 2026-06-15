@@ -2,7 +2,9 @@
 import type { ApiResponse, PaginatedData, Factura, FacturaEstado } from '../types';
 
 export interface FacturaDetallePayload {
-  productoId?: number; cantidad: number; precioUnitario: number; descripcion?: string;
+  productoId?: number;
+  opticaInventarioId?: number;
+  cantidad: number; precioUnitario: number; descripcion?: string;
   porcentajeIva?: number;
 }
 

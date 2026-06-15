@@ -66,6 +66,8 @@ export const opticaApi = {
     api.get('/optica/reclamaciones-ars/reporte', { params }).then(d),
 
   // Inventario
+  inventarioPOSCatalogo: () =>
+    api.get('/optica/inventario/pos-catalogo').then(r => r.data?.data ?? r.data ?? []),
   inventarioResumen:   () => api.get('/optica/inventario/resumen').then(d),
   inventario: (params?: { page?: number; limit?: number; tipo?: string; search?: string }) =>
     api.get('/optica/inventario', { params }).then(d),

@@ -23,6 +23,11 @@ export class CreateFacturaDetalleDto {
   productoId?: number;
 
   @IsOptional()
+  @IsInt()
+  @IsPositive()
+  opticaInventarioId?: number;
+
+  @IsOptional()
   @IsString() @MaxLength(2000)
   descripcion?: string;
 

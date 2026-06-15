@@ -4965,10 +4965,11 @@ export default function POSPage() {
         moneda:      monedaPOS,
         tipoCambio:  monedaPOS !== 'DOP' ? tasaCambioPOS : undefined,
         detalles: cart.map(i => ({
-          productoId:     i.produto.id > 0 ? i.produto.id : undefined,
-          cantidad:       i.cantidad,
-          precioUnitario: i.precio * (1 - i.descuento / 100),
-          descripcion:    i.produto.nombre,
+          productoId:          i.produto.id > 0 ? i.produto.id : undefined,
+          opticaInventarioId:  (i.produto as any).opticaInventarioId ?? undefined,
+          cantidad:            i.cantidad,
+          precioUnitario:      i.precio * (1 - i.descuento / 100),
+          descripcion:         i.produto.nombre,
           // E44 (Zona Franca): ITBIS = 0 en todos los ítems
           ...(tipoNcf === 'E44' ? { porcentajeIva: 0 } : {}),
         })),
@@ -5112,11 +5113,12 @@ export default function POSPage() {
   const modoAltMut = useMutation({
     mutationFn: async () => {
       const detalles = cart.map(i => ({
-        productoId:     i.produto.id > 0 ? i.produto.id : undefined,
-        descripcion:    i.produto.nombre,
-        cantidad:       i.cantidad,
-        precioUnitario: i.precio * (1 - i.descuento / 100),
-        porcentajeIva:  Number((i.produto as any).porcentajeIva ?? 18),
+        productoId:         i.produto.id > 0 ? i.produto.id : undefined,
+        opticaInventarioId: (i.produto as any).opticaInventarioId ?? undefined,
+        descripcion:        i.produto.nombre,
+        cantidad:           i.cantidad,
+        precioUnitario:     i.precio * (1 - i.descuento / 100),
+        porcentajeIva:      Number((i.produto as any).porcentajeIva ?? 18),
       }));
       const base = {
         clienteId: clienteId ?? undefined,

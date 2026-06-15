@@ -540,6 +540,10 @@ export class OpticaController {
 
   // ── Inventario ─────────────────────────────────────────────────────────────
 
+  @Get('inventario/pos-catalogo')
+  @ApiOperation({ summary: 'Catálogo de inventario óptico para el POS' })
+  getCatalogoPos() { return this.svc.getCatalogoPOS(); }
+
   @Get('inventario/resumen')
   @ApiOperation({ summary: 'Resumen de inventario óptico por tipo' })
   resumenInventario() { return this.svc.resumenInventario(); }

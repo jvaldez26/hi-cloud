@@ -83,6 +83,7 @@ export class FacturasService {
 
       detalles.push({
         productoId: producto ? item.productoId : undefined,
+        opticaInventarioId: item.opticaInventarioId ?? undefined,
         descripcion: item.descripcion || producto?.nombre || 'Servicio',
         precioUnitario: item.precioUnitario,
         cantidad: item.cantidad,
@@ -226,10 +227,11 @@ export class FacturasService {
       ivaFactura      += importeIva;
 
       detalles.push({
-        productoId:     producto ? item.productoId : undefined,
-        descripcion:    item.descripcion || producto?.nombre || 'Servicio',
-        precioUnitario: item.precioUnitario,
-        cantidad:       item.cantidad,
+        productoId:          producto ? item.productoId : undefined,
+        opticaInventarioId:  item.opticaInventarioId ?? undefined,
+        descripcion:         item.descripcion || producto?.nombre || 'Servicio',
+        precioUnitario:      item.precioUnitario,
+        cantidad:            item.cantidad,
         porcentajeIva,
         subtotal,
         importeIva,
@@ -565,6 +567,20 @@ export class FacturasService {
         otraMoneda:          otraMoneda as any,
         datosComprador,
       };
+
+      // 1a. Descontar stock de inventario óptico si aplica
+      for (const detalle of factura.detalles) {
+        if (!(detalle as any).opticaInventarioId) continue;
+        await this.dataSource.query(
+          `UPDATE op_inventario SET "stockActual" = GREATEST(0, "stockActual" - $1), "updatedAt" = NOW() WHERE id = $2`,
+          [Number(detalle.cantidad), (detalle as any).opticaInventarioId],
+        ).catch((err: unknown) => {
+          this.logger.warn(
+            `[Factura] descuento stock óptico id=${(detalle as any).opticaInventarioId} falló (no bloquea emisión): ` +
+            `${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
+      }
 
       // 1. Salida de inventario — no bloquear emisión si falla (ej. stock ya ajustado manualmente)
       const almacenIdCtx = this.tenantService.getAlmacenId() ?? undefined;

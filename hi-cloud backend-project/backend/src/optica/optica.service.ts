@@ -1100,6 +1100,28 @@ export class OpticaService {
     return { ok: true };
   }
 
+  async getCatalogoPOS() {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const items = await this.ds.query<any[]>(
+      `SELECT id, tipo, codigo, marca, modelo, color, material, genero, precio, "stockActual", descripcion
+       FROM op_inventario
+       WHERE "empresaId" = $1 AND activo = true AND "stockActual" > 0
+       ORDER BY tipo, marca, modelo`,
+      [empresaId],
+    );
+    return items.map(item => ({
+      id:                 item.id,
+      opticaInventarioId: item.id,
+      nombre:             [item.marca, item.modelo].filter(Boolean).join(' ') || item.descripcion || `${item.tipo} óptico`,
+      descripcion:        [item.tipo, item.color, item.material].filter(Boolean).join(' | '),
+      codigo:             item.codigo,
+      precio:             Number(item.precio),
+      stock:              Number(item.stockActual),
+      tipo:               item.tipo,
+      esOpticaInventario: true,
+    }));
+  }
+
   async resumenInventario() {
     const empresaId = this.tenantSvc.getEmpresaId();
     const rows = await this.ds.query<any[]>(
