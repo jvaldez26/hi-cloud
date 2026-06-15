@@ -350,6 +350,24 @@ const MENU_CATEGORIES: MenuCategory[] = [
       { path: '/restaurante/reportes',     label: 'Reportes' },
     ],
   },
+  {
+    id: 'gimnasio', label: 'Gimnasio', Icon: Target,
+    items: [
+      { path: '/gimnasio',                 label: 'Panel Gimnasio' },
+      { path: '/gimnasio/acceso',          label: 'Control de Acceso' },
+      { path: '/gimnasio/miembros',        label: 'Miembros' },
+      { path: '/gimnasio/membresias',      label: 'Membresias' },
+      { path: '/gimnasio/clases',          label: 'Clases' },
+      { path: '/gimnasio/entrenadores',    label: 'Entrenadores' },
+      { path: '/gimnasio/rutinas',         label: 'Rutinas' },
+      { path: '/gimnasio/progreso',        label: 'Progreso' },
+      { path: '/gimnasio/accesos',         label: 'Historial Accesos' },
+      { path: '/gimnasio/lockers',         label: 'Lockers' },
+      { path: '/gimnasio/nutricion',       label: 'Nutricion' },
+      { path: '/gimnasio/tienda',          label: 'Tienda' },
+      { path: '/gimnasio/reportes',        label: 'Reportes' },
+    ],
+  },
 ];
 
 // ── Orden de jerarquía de planes ─────────────────────────────────────────────
@@ -527,6 +545,19 @@ const PATH_ROLES: Record<string, string[]> = {
   '/restaurante/menu':          ADMIN_CONT,
   '/restaurante/turnos':        ADMIN_CONT,
   '/restaurante/reportes':      ADMIN_CONT,
+  '/gimnasio':                  ADMIN_CONT,
+  '/gimnasio/acceso':           ADMIN_CONT,
+  '/gimnasio/miembros':         ADMIN_CONT,
+  '/gimnasio/membresias':       ADMIN_CONT,
+  '/gimnasio/clases':           ADMIN_CONT,
+  '/gimnasio/entrenadores':     ADMIN_CONT,
+  '/gimnasio/rutinas':          ADMIN_CONT,
+  '/gimnasio/progreso':         ADMIN_CONT,
+  '/gimnasio/accesos':          ADMIN_CONT,
+  '/gimnasio/lockers':          ADMIN_CONT,
+  '/gimnasio/nutricion':        ADMIN_CONT,
+  '/gimnasio/tienda':           ADMIN_CONT,
+  '/gimnasio/reportes':         ADMIN_CONT,
 };
 
 function rolPuedeVerRuta(path: string, role: string): boolean {
@@ -1116,7 +1147,7 @@ const GRUPOS_MENU = [
   { key: 'sistema',    label: 'Sistema',                 obligatorio: false },
 ];
 const TODOS_GRUPOS_KEYS = GRUPOS_MENU.map(g => g.key);
-const ADDON_IDS = ['clinica', 'taller', 'optica', 'farmacia', 'restaurante'];
+const ADDON_IDS = ['clinica', 'taller', 'optica', 'farmacia', 'restaurante', 'gimnasio'];
 
 // ── AppLayout principal ───────────────────────────────────────────────────────
 export default function AppLayout() {

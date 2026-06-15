@@ -191,6 +191,20 @@ const ReservacionesPage           = lazy(() => import('./pages/restaurante/Reser
 const MenuRsPage                  = lazy(() => import('./pages/restaurante/MenuPage'));
 const TurnosPage                  = lazy(() => import('./pages/restaurante/TurnosPage'));
 const ReportesRsPage              = lazy(() => import('./pages/restaurante/ReportesPage'));
+const GimnasioLayout              = lazy(() => import('./pages/gimnasio/GimnasioLayout'));
+const GimnasioDashboard           = lazy(() => import('./pages/gimnasio/GimnasioDashboard'));
+const ControlAccesoPage           = lazy(() => import('./pages/gimnasio/ControlAccesoPage'));
+const MiembrosGimnasioPage        = lazy(() => import('./pages/gimnasio/MiembrosPage'));
+const MembresiasPage              = lazy(() => import('./pages/gimnasio/MembresiasPage'));
+const ClasesGimnasioPage          = lazy(() => import('./pages/gimnasio/ClasesPage'));
+const EntrenadoresPage            = lazy(() => import('./pages/gimnasio/EntrenadoresPage'));
+const RutinasPage                 = lazy(() => import('./pages/gimnasio/RutinasPage'));
+const ProgresoPage                = lazy(() => import('./pages/gimnasio/ProgresoPage'));
+const AccesosGimnasioPage         = lazy(() => import('./pages/gimnasio/AccesosPage'));
+const LockersPage                 = lazy(() => import('./pages/gimnasio/LockersPage'));
+const NutricionPage               = lazy(() => import('./pages/gimnasio/NutricionPage'));
+const TiendaGimnasioPage          = lazy(() => import('./pages/gimnasio/TiendaPage'));
+const GimnasioReportesPage        = lazy(() => import('./pages/gimnasio/GimnasioReportesPage'));
 dayjs.locale('es');
 
 export const qc = new QueryClient({
@@ -714,6 +728,22 @@ export default function App() {
                     <Route path="/restaurante/menu"         element={<MenuRsPage />} />
                     <Route path="/restaurante/turnos"       element={<TurnosPage />} />
                     <Route path="/restaurante/reportes"     element={<ReportesRsPage />} />
+
+                    <Route path="/gimnasio" element={<GimnasioLayout />}>
+                      <Route index                    element={<GimnasioDashboard />} />
+                      <Route path="acceso"            element={<ControlAccesoPage />} />
+                      <Route path="miembros"          element={<MiembrosGimnasioPage />} />
+                      <Route path="membresias"        element={<MembresiasPage />} />
+                      <Route path="clases"            element={<ClasesGimnasioPage />} />
+                      <Route path="entrenadores"      element={<EntrenadoresPage />} />
+                      <Route path="rutinas"           element={<RutinasPage />} />
+                      <Route path="progreso"          element={<ProgresoPage />} />
+                      <Route path="accesos"           element={<AccesosGimnasioPage />} />
+                      <Route path="lockers"           element={<LockersPage />} />
+                      <Route path="nutricion"         element={<NutricionPage />} />
+                      <Route path="tienda"            element={<TiendaGimnasioPage />} />
+                      <Route path="reportes"          element={<GimnasioReportesPage />} />
+                    </Route>
                   </Route>
 
                   <Route path="*" element={<Navigate to="/" replace />} />

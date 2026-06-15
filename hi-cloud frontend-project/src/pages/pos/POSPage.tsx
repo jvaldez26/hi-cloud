@@ -26,7 +26,7 @@ import { modulosAddonApi } from '../../api/modulos-addon.api';
 import { tallerApi } from '../../api/taller.api';
 import { opticaApi } from '../../api/optica.api';
 import { clinicaApi } from '../../api/clinica.api';
-import { RestaurantePOS, TallerPOS, FarmaciaPOS, OpticaPOS, ClinicaPOS } from './modos';
+import { RestaurantePOS, TallerPOS, FarmaciaPOS, OpticaPOS, ClinicaPOS, GimnasioPOS } from './modos';
 
 // ── Alias type ────────────────────────────────────────────────────────────────
 type Prod = Producto;
@@ -4446,6 +4446,7 @@ export default function POSPage() {
     ...(hasAddon('FARMACIA')    ? [{ codigo: 'farmacia',    label: 'Farmacia',    icono: '💊' }] : []),
     ...(hasAddon('OPTICA')      ? [{ codigo: 'optica',      label: 'Óptica',      icono: '👓' }] : []),
     ...(hasAddon('CLINICA')     ? [{ codigo: 'clinica',     label: 'Clínica',     icono: '🏥' }] : []),
+    ...(hasAddon('GIMNASIO')    ? [{ codigo: 'gimnasio',    label: 'Gimnasio',    icono: '🏋️' }] : []),
   ];
 
   const [modoContexto, setModoContexto] = useState<string>(() => {
@@ -5427,6 +5428,8 @@ export default function POSPage() {
           ) : modoContexto === 'clinica' ? (
             <ClinicaPOS palette={palette} addToCart={addToCart} empresaId={String(localStorage.getItem('empresaId') ?? '')} onContextoLoaded={setContextoActualId}
               precioConsultaDefault={Number(posConf.posPrecioConsultaClinica ?? 0) || undefined} />
+          ) : modoContexto === 'gimnasio' ? (
+            <GimnasioPOS palette={palette} addToCart={addToCart} empresaId={String(localStorage.getItem('empresaId') ?? '')} />
           ) : (<>
 
           {/* ── Barra superior modernizada ─────────────────────────────── */}
