@@ -10,7 +10,7 @@ const ESTADO_COLOR: Record<string, string> = {
   en_proceso: '#3b82f6', recibida: '#f59e0b',
 };
 
-export default function OpticaPOS({ palette, addToCart }: ModoPOSProps) {
+export default function OpticaPOS({ palette, addToCart, onContextoLoaded }: ModoPOSProps) {
   const C = palette;
   const [search, setSearch] = useState('');
   const [ordenSel, setOrdenSel] = useState<any>(null);
@@ -82,6 +82,7 @@ export default function OpticaPOS({ palette, addToCart }: ModoPOSProps) {
     }
 
     if (cargados > 0) {
+      onContextoLoaded?.(od.id);
       message.success(`OT-${od.numero ?? od.id} cargada al carrito (${cargados} ítem${cargados > 1 ? 's' : ''})`);
       setOrdenSel(null);
     } else {

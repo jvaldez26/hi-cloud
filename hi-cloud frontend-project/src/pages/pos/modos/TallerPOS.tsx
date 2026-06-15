@@ -9,7 +9,7 @@ const ESTADO_COLOR: Record<string, string> = {
   para_cobrar: '#f59e0b', listo: '#10b981', en_proceso: '#3b82f6', pendiente: '#94a3b8',
 };
 
-export default function TallerPOS({ palette, addToCart }: ModoPOSProps) {
+export default function TallerPOS({ palette, addToCart, onContextoLoaded }: ModoPOSProps) {
   const C = palette;
   const [search, setSearch]                   = useState('');
   const [ordenSelSel, setOrdenSelSel]         = useState<any>(null);
@@ -72,6 +72,7 @@ export default function TallerPOS({ palette, addToCart }: ModoPOSProps) {
     });
 
     if (cargados > 0) {
+      onContextoLoaded?.(od.id);
       message.success(`${cargados} ítem(s) cargado(s) al carrito desde OS ${od.numero}`);
       setOrdenSelSel(null);
     } else {

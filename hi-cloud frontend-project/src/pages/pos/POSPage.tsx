@@ -22,6 +22,9 @@ import { useSupervisor } from '../../hooks/useSupervisor';
 import type { Producto, Cliente } from '../../types';
 import dayjs from 'dayjs';
 import { useModuloAddon } from '../../hooks/useModuloAddon';
+import { tallerApi } from '../../api/taller.api';
+import { opticaApi } from '../../api/optica.api';
+import { clinicaApi } from '../../api/clinica.api';
 import { RestaurantePOS, TallerPOS, FarmaciaPOS, OpticaPOS, ClinicaPOS } from './modos';
 
 // ── Alias type ────────────────────────────────────────────────────────────────
@@ -122,6 +125,7 @@ interface Sale {
   empresaRnc?:             string;
   empresaDireccion?:       string;
   empresaTelefono?:        string;
+  modoContexto?:           string;
 }
 
 type MetodoPago = 'efectivo' | 'tarjeta' | 'transferencia' | 'credito' | 'cheque' | 'vale';
@@ -565,6 +569,16 @@ function buildReciboTermicoHTML(
     ecfHtml = `<div class="center box"><div class="bold">&#9888; COMPROBANTE EN PROCESO</div><div>DE VALIDACIÓN DGII</div></div>`;
   }
 
+  const MODO_INFO: Record<string, { icono: string; label: string }> = {
+    restaurante: { icono: '🍽️', label: 'Restaurante' },
+    taller:      { icono: '🔧', label: 'Taller'      },
+    farmacia:    { icono: '💊', label: 'Farmacia'     },
+    optica:      { icono: '👓', label: 'Óptica'       },
+    clinica:     { icono: '🏥', label: 'Clínica'      },
+  };
+  const modoInfo = sale.modoContexto && sale.modoContexto !== 'general'
+    ? MODO_INFO[sale.modoContexto] : null;
+
   return `<!DOCTYPE html>
 <html lang="es"><head>
 <meta charset="UTF-8">
@@ -607,6 +621,7 @@ ${row('Hora:', ahora.format('HH:mm:ss'))}
 ${rowBold('Factura:', sale.folio)}
 ${sale.cajero ? row('Cajero:', sale.cajero) : ''}
 ${sale.sucursalNombre ? row('Sucursal:', sale.sucursalNombre) : ''}
+${modoInfo ? `${row('Módulo:', modoInfo.icono + ' ' + modoInfo.label)}` : ''}
 ${compradorHtml}
 ${line()}
 <div class="row bold"><span>DESCRIPCIÓN</span><span>TOTAL</span></div>
@@ -4192,6 +4207,7 @@ export default function POSPage() {
   const [propinaTipo,        setPropinaTipo]        = useState<'%' | 'fijo'>('%');
   const [diasCreditoPos,     setDiasCreditoPos]     = useState(30);
   const [sale,               setSale]               = useState<Sale | null>(null);
+  const [contextoActualId,   setContextoActualId]   = useState<number | null>(null);
   const [tipoNcf,            setTipoNcf]            = useState('E32');
   const [ventasEnEspera,     setVentasEnEspera]     = useState<ParkedSale[]>([]);
   const [isOffline,          setIsOffline]          = useState(!navigator.onLine);
@@ -4440,6 +4456,14 @@ export default function POSPage() {
 
   // Config POS — leída aquí para que propina y cambio puedan usarla
   const posConf                  = (empresa?.configuracion ?? {}) as Record<string, unknown>;
+  // Aplicar modo por defecto desde configuración si no hay preferencia guardada
+  const posModoPorDefecto = (posConf.posModoPorDefecto as string | undefined) ?? 'general';
+  useEffect(() => {
+    if (!localStorage.getItem('pos_modo_contexto') && posModoPorDefecto !== 'general') {
+      setModoContexto(posModoPorDefecto);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posModoPorDefecto]);
   const posPermitirStockNegativo = posConf.posPermitirStockNegativo === true;
   const posDescuentoMaximo       = typeof posConf.posDescuentoMaximo === 'number' ? posConf.posDescuentoMaximo : 100;
   const propinaActiva            = posConf.posPropinaActiva === true && tipoPagoPos === 'CONTADO';
@@ -4833,11 +4857,31 @@ export default function POSPage() {
         empresaRnc:              empresa?.rnc ?? undefined,
         empresaDireccion:        empresa?.direccion ?? undefined,
         empresaTelefono:         empresa?.telefono ?? undefined,
+        modoContexto,
       });
       setShowPago(false);
       setRncComprador(''); setRazonSocialComp(''); setNumeroOrdenCompra(''); setGuardarRncPerfil(false);
       setCart([]); resetCliente(); setMontoRecibido(0);
       setTipoPagoPos('CONTADO'); setDiasCreditoPos(30); setPropinaValor(''); resetDescGlobal();
+
+      // ── Acciones post-cobro por modo de contexto ───────────────────────────
+      if (contextoActualId) {
+        if (modoContexto === 'taller') {
+          tallerApi.actualizarOrden(contextoActualId, { estado: 'entregada' })
+            .then(() => qc.invalidateQueries({ queryKey: ['pos-taller-ordenes'] }))
+            .catch((e: any) => console.error('[POS Taller post-cobro]', e));
+        } else if (modoContexto === 'optica') {
+          opticaApi.entregarOrden(contextoActualId, { montoCobrado: totalAPagar, metodoPago })
+            .then(() => qc.invalidateQueries({ queryKey: ['pos-optica-ordenes'] }))
+            .catch((e: any) => console.error('[POS Óptica post-cobro]', e));
+        } else if (modoContexto === 'clinica') {
+          clinicaApi.cambiarEstadoCita(contextoActualId, 'atendida')
+            .then(() => qc.invalidateQueries({ queryKey: ['pos-clinica-citas'] }))
+            .catch((e: any) => console.error('[POS Clínica post-cobro]', e));
+        }
+        setContextoActualId(null);
+      }
+
       qc.invalidateQueries({ queryKey: ['pos-panel', 'facturas'] });
       qc.refetchQueries({    queryKey: ['pos-panel', 'facturas'] });
     },
@@ -5161,13 +5205,14 @@ export default function POSPage() {
           {modoContexto === 'restaurante' ? (
             <RestaurantePOS palette={palette} addToCart={addToCart} empresaId={String(localStorage.getItem('empresaId') ?? '')} />
           ) : modoContexto === 'taller' ? (
-            <TallerPOS palette={palette} addToCart={addToCart} empresaId={String(localStorage.getItem('empresaId') ?? '')} />
+            <TallerPOS palette={palette} addToCart={addToCart} empresaId={String(localStorage.getItem('empresaId') ?? '')} onContextoLoaded={setContextoActualId} />
           ) : modoContexto === 'farmacia' ? (
             <FarmaciaPOS palette={palette} addToCart={addToCart} empresaId={String(localStorage.getItem('empresaId') ?? '')} />
           ) : modoContexto === 'optica' ? (
-            <OpticaPOS palette={palette} addToCart={addToCart} empresaId={String(localStorage.getItem('empresaId') ?? '')} />
+            <OpticaPOS palette={palette} addToCart={addToCart} empresaId={String(localStorage.getItem('empresaId') ?? '')} onContextoLoaded={setContextoActualId} />
           ) : modoContexto === 'clinica' ? (
-            <ClinicaPOS palette={palette} addToCart={addToCart} empresaId={String(localStorage.getItem('empresaId') ?? '')} />
+            <ClinicaPOS palette={palette} addToCart={addToCart} empresaId={String(localStorage.getItem('empresaId') ?? '')} onContextoLoaded={setContextoActualId}
+              precioConsultaDefault={Number(posConf.posPrecioConsultaClinica ?? 0) || undefined} />
           ) : (<>
 
           {/* ── Barra superior modernizada ─────────────────────────────── */}

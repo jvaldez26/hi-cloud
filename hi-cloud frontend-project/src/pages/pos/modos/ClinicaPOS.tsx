@@ -21,7 +21,7 @@ function getTodayISO() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-export default function ClinicaPOS({ palette, addToCart }: ModoPOSProps) {
+export default function ClinicaPOS({ palette, addToCart, onContextoLoaded, precioConsultaDefault }: ModoPOSProps) {
   const C = palette;
   const [preciosOverride, setPreciosOverride] = useState<Record<number, string>>({});
   const today = getTodayISO();
@@ -37,7 +37,7 @@ export default function ClinicaPOS({ palette, addToCart }: ModoPOSProps) {
   const citas = todasCitas.filter((c: any) => c.estado !== 'cancelada');
 
   const handleAgregarConsulta = (cita: any) => {
-    const precioRaw = preciosOverride[cita.id] ?? cita.monto ?? cita.precio ?? cita.montoCobro ?? cita.tarifaConsulta ?? '';
+    const precioRaw = preciosOverride[cita.id] ?? cita.monto ?? cita.precio ?? cita.montoCobro ?? cita.tarifaConsulta ?? precioConsultaDefault ?? '';
     const precio = Number(precioRaw);
 
     if (!precioRaw || precio <= 0) {
@@ -58,6 +58,7 @@ export default function ClinicaPOS({ palette, addToCart }: ModoPOSProps) {
       porcentajeIva: 0,
       codigo: `CITA-${cita.id}`,
     } as any);
+    onContextoLoaded?.(cita.id);
     message.success(`Consulta de ${paciente} agregada al carrito`);
   };
 
@@ -95,7 +96,7 @@ export default function ClinicaPOS({ palette, addToCart }: ModoPOSProps) {
           citas.map((cita: any) => {
             const estadoKey = cita.estado ?? 'pendiente';
             const colors = ESTADO_COLOR[estadoKey] ?? ESTADO_COLOR.pendiente;
-            const precioActual = preciosOverride[cita.id] ?? String(cita.monto ?? cita.precio ?? cita.montoCobro ?? cita.tarifaConsulta ?? '');
+            const precioActual = preciosOverride[cita.id] ?? String(cita.monto ?? cita.precio ?? cita.montoCobro ?? cita.tarifaConsulta ?? precioConsultaDefault ?? '');
             const paciente = cita.pacienteNombre ?? cita.paciente?.nombre ?? 'Paciente sin nombre';
             const medico = cita.medicoNombre ?? cita.medico?.nombre ?? '';
             const hora = cita.hora ?? cita.horaInicio ?? '';

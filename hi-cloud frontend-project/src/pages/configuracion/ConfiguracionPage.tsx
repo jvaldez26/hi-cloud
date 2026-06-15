@@ -889,6 +889,8 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
       posEcfAutomatico:            conf.posEcfAutomatico ?? true,
       posMostrarEcfEnRecibo:       conf.posMostrarEcfEnRecibo ?? true,
       posPrecioIncluyeItbis:       conf.posPrecioIncluyeItbis ?? false,
+      posModoPorDefecto:           conf.posModoPorDefecto ?? 'general',
+      posPrecioConsultaClinica:    conf.posPrecioConsultaClinica ?? 0,
     });
   }, [empresa]);
 
@@ -1174,6 +1176,29 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
             </Form.Item>
             <Text style={{ fontSize: 13 }}>Los precios mostrados en el POS incluyen ITBIS</Text>
           </div>
+        </Col>
+      </Row>
+
+      <Divider orientation="left" orientationMargin={0}>Modos de Contexto</Divider>
+      <Row gutter={[16, 8]}>
+        <Col xs={24} sm={8}>
+          <Form.Item name="posModoPorDefecto" label="Modo por defecto al abrir POS">
+            <Select>
+              <Option value="general">🏪 General</Option>
+              <Option value="restaurante">🍽️ Restaurante</Option>
+              <Option value="taller">🔧 Taller</Option>
+              <Option value="farmacia">💊 Farmacia</Option>
+              <Option value="optica">👓 Óptica</Option>
+              <Option value="clinica">🏥 Clínica</Option>
+            </Select>
+          </Form.Item>
+        </Col>
+        <Col xs={24} sm={8}>
+          <Form.Item name="posPrecioConsultaClinica" label="Precio por defecto de consulta (Clínica)">
+            <InputNumber style={{ width: '100%' }} min={0} step={100} addonBefore="RD$"
+              formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+              parser={(v: any) => v?.replace(/,/g, '')} />
+          </Form.Item>
         </Col>
       </Row>
 
