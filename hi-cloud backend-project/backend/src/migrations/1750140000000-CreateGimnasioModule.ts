@@ -5,10 +5,9 @@ export class CreateGimnasioModule1750140000000 implements MigrationInterface {
 
   public async up(qr: QueryRunner): Promise<void> {
     await qr.query(`
-      INSERT INTO modulos_addon (codigo, nombre, descripcion, "precioMensual", icono)
+      INSERT INTO modulos_addon (codigo, nombre, descripcion)
       VALUES ('gimnasio', 'Módulo Gimnasio / Fitness Center',
-        'Gestión completa para gimnasios: membresías, clases, entrenadores, control de acceso, rutinas, nutrición y facturación automática',
-        39.00, '🏋️')
+        'Gestión completa para gimnasios: membresías, clases, entrenadores, control de acceso, rutinas, nutrición y facturación automática')
       ON CONFLICT (codigo) DO NOTHING;
     `);
 
