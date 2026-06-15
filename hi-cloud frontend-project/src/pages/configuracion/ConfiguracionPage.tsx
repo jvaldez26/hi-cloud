@@ -8,8 +8,9 @@ import {
   SaveOutlined, UserAddOutlined, DeleteOutlined, ReloadOutlined,
   MailOutlined, UploadOutlined, CheckCircleOutlined, WarningOutlined,
   InfoCircleOutlined, LockOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
-  BellOutlined,
+  BellOutlined, BankOutlined,
 } from '@ant-design/icons';
+import api from '../../api/client';
 import {
   Building2, MapPin, Palette, FileText, Monitor, ReceiptText,
   Users, ShieldCheck, Bell, Lock, PieChart, Activity,
@@ -1190,6 +1191,7 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
               <Option value="farmacia">💊 Farmacia</Option>
               <Option value="optica">👓 Óptica</Option>
               <Option value="clinica">🏥 Clínica</Option>
+              <Option value="gimnasio">🏋️ Gimnasio</Option>
             </Select>
           </Form.Item>
         </Col>
@@ -1319,6 +1321,8 @@ function SeccionUsuarios({ empresaId }: { empresaId: number }) {
   const qc = useQueryClient();
   const [modalInvitar, setModalInvitar] = useState(false);
   const [formInv] = Form.useForm();
+  const [sucModal, setSucModal] = useState<{ userId: number; nombre: string; sucursalActual: number | null } | null>(null);
+  const [sucursalSel, setSucursalSel] = useState<number | null>(null);
 
   const { data: miembros = [], isLoading: loadMiembros } = useQuery<any[]>({
     queryKey: ['equipo-config', empresaId],
@@ -1329,6 +1333,10 @@ function SeccionUsuarios({ empresaId }: { empresaId: number }) {
     queryKey: ['invitaciones-config', empresaId],
     queryFn:  () => configuracionApi.getInvitaciones(empresaId),
     enabled: !!empresaId,
+  });
+  const { data: sucursales = [] } = useQuery<any[]>({
+    queryKey: ['sucursales-config'],
+    queryFn:  () => configuracionApi.getSucursales(),
   });
 
   const invitar = useMutation({
@@ -1357,6 +1365,17 @@ function SeccionUsuarios({ empresaId }: { empresaId: number }) {
   const cancelarInv = useMutation({
     mutationFn: (id: number) => configuracionApi.cancelarInvitacion(id),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['invitaciones-config'] }); message.success('Invitación cancelada'); },
+  });
+
+  const asignarSucursal = useMutation({
+    mutationFn: ({ userId, sucursalId }: { userId: number; sucursalId: number | null }) =>
+      api.patch(`/multi-empresa/${empresaId}/usuarios/${userId}/sucursal`, { sucursalId }).then((r: any) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['equipo-config'] });
+      setSucModal(null);
+      message.success('Sucursal asignada correctamente');
+    },
+    onError: (e: any) => message.error((e as any)?.response?.data?.message ?? 'Error al asignar sucursal'),
   });
 
   const pendientes = (invitaciones as any[]).filter((i: any) => i.estado === 'pendiente');
@@ -1411,15 +1430,35 @@ function SeccionUsuarios({ empresaId }: { empresaId: number }) {
             ),
           },
           {
-            title: 'Acciones', width: 80, align: 'center' as const,
+            title: 'Sucursal', width: 180,
+            render: (_: any, r: any) => {
+              const suc = (sucursales as any[]).find((s: any) => s.id === r.sucursalId);
+              return suc
+                ? <Tag icon={<BankOutlined />} color="blue">{suc.nombre}</Tag>
+                : <Tag color="default" style={{ color: '#94a3b8' }}>Sin asignar</Tag>;
+            },
+          },
+          {
+            title: 'Acciones', width: 110, align: 'center' as const,
             render: (_: any, r: any) => (
-              <Popconfirm
-                title="¿Remover usuario de la empresa?"
-                onConfirm={() => remover.mutate(r.userId ?? r.user?.id)}
-                okText="Sí, remover" okButtonProps={{ danger: true }}
-              >
-                <Button type="text" danger icon={<DeleteOutlined />} size="small" />
-              </Popconfirm>
+              <Space size={4}>
+                <Tooltip title="Asignar sucursal">
+                  <Button
+                    type="text" icon={<BankOutlined />} size="small"
+                    onClick={() => {
+                      setSucModal({ userId: r.userId ?? r.user?.id, nombre: r.user?.nombre ?? r.nombre ?? '?', sucursalActual: r.sucursalId ?? null });
+                      setSucursalSel(r.sucursalId ?? null);
+                    }}
+                  />
+                </Tooltip>
+                <Popconfirm
+                  title="¿Remover usuario de la empresa?"
+                  onConfirm={() => remover.mutate(r.userId ?? r.user?.id)}
+                  okText="Sí, remover" okButtonProps={{ danger: true }}
+                >
+                  <Button type="text" danger icon={<DeleteOutlined />} size="small" />
+                </Popconfirm>
+              </Space>
             ),
           },
         ]}
@@ -1473,6 +1512,31 @@ function SeccionUsuarios({ empresaId }: { empresaId: number }) {
           />
         </>
       )}
+
+      <Modal
+        title={`Asignar sucursal — ${sucModal?.nombre ?? ''}`}
+        open={!!sucModal}
+        onCancel={() => setSucModal(null)}
+        onOk={() => sucModal && asignarSucursal.mutate({ userId: sucModal.userId, sucursalId: sucursalSel })}
+        okText="Guardar"
+        confirmLoading={asignarSucursal.isPending}
+        destroyOnClose
+      >
+        <Select
+          style={{ width: '100%' }}
+          value={sucursalSel}
+          onChange={(v: number | null) => setSucursalSel(v)}
+          allowClear
+          placeholder="Sin sucursal asignada"
+        >
+          {(sucursales as any[]).map((s: any) => (
+            <Option key={s.id} value={s.id}>{s.nombre}</Option>
+          ))}
+        </Select>
+        <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 8 }}>
+          Al asignar una sucursal, el usuario deberá volver a iniciar sesión para que el cambio tome efecto en el POS.
+        </Text>
+      </Modal>
 
       <Modal
         title="Invitar usuario"

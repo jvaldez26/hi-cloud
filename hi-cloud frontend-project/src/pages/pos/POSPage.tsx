@@ -580,6 +580,7 @@ function buildReciboTermicoHTML(
     farmacia:    { icono: '💊', label: 'Farmacia'     },
     optica:      { icono: '👓', label: 'Óptica'       },
     clinica:     { icono: '🏥', label: 'Clínica'      },
+    gimnasio:    { icono: '🏋️', label: 'Gimnasio'    },
   };
   const modoInfo = sale.modoContexto && sale.modoContexto !== 'general'
     ? MODO_INFO[sale.modoContexto] : null;
