@@ -82,7 +82,7 @@ export class FacturasService {
       ivaFactura += importeIva;
 
       detalles.push({
-        productoId: item.productoId,
+        productoId: producto ? item.productoId : undefined,
         descripcion: item.descripcion || producto?.nombre || 'Servicio',
         precioUnitario: item.precioUnitario,
         cantidad: item.cantidad,
@@ -226,7 +226,7 @@ export class FacturasService {
       ivaFactura      += importeIva;
 
       detalles.push({
-        productoId:     item.productoId,
+        productoId:     producto ? item.productoId : undefined,
         descripcion:    item.descripcion || producto?.nombre || 'Servicio',
         precioUnitario: item.precioUnitario,
         cantidad:       item.cantidad,
