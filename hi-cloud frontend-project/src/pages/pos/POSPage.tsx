@@ -22,6 +22,7 @@ import { useSupervisor } from '../../hooks/useSupervisor';
 import type { Producto, Cliente } from '../../types';
 import dayjs from 'dayjs';
 import { useModuloAddon } from '../../hooks/useModuloAddon';
+import { RestaurantePOS, TallerPOS, FarmaciaPOS, OpticaPOS, ClinicaPOS } from './modos';
 
 // ── Alias type ────────────────────────────────────────────────────────────────
 type Prod = Producto;
@@ -5157,12 +5158,16 @@ export default function POSPage() {
           />
         )}
         {panelActivo === 'items' && (<>
-          {modoContexto !== 'general' ? (
-            <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:16 }}>
-              <div style={{ fontSize:56 }}>{MODOS_POS.find(m => m.codigo === modoContexto)?.icono ?? '🏪'}</div>
-              <div style={{ fontSize:18, fontWeight:700, color:C.text }}>{MODOS_POS.find(m => m.codigo === modoContexto)?.label}</div>
-              <div style={{ fontSize:13, color:C.textSub }}>Panel en desarrollo — próximamente disponible</div>
-            </div>
+          {modoContexto === 'restaurante' ? (
+            <RestaurantePOS palette={palette} addToCart={addToCart} empresaId={String(localStorage.getItem('empresaId') ?? '')} />
+          ) : modoContexto === 'taller' ? (
+            <TallerPOS palette={palette} addToCart={addToCart} empresaId={String(localStorage.getItem('empresaId') ?? '')} />
+          ) : modoContexto === 'farmacia' ? (
+            <FarmaciaPOS palette={palette} addToCart={addToCart} empresaId={String(localStorage.getItem('empresaId') ?? '')} />
+          ) : modoContexto === 'optica' ? (
+            <OpticaPOS palette={palette} addToCart={addToCart} empresaId={String(localStorage.getItem('empresaId') ?? '')} />
+          ) : modoContexto === 'clinica' ? (
+            <ClinicaPOS palette={palette} addToCart={addToCart} empresaId={String(localStorage.getItem('empresaId') ?? '')} />
           ) : (<>
 
           {/* ── Barra superior modernizada ─────────────────────────────── */}
