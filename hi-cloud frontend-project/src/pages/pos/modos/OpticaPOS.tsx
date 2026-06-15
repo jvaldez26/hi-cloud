@@ -56,11 +56,12 @@ export default function OpticaPOS({ palette, addToCart, onContextoLoaded }: Modo
         if (precio > 0) {
           for (let i = 0; i < cant; i++) {
             addToCart({
-              id: item.productoId ?? item.id + 3_000_000,
+              // productoId del item solo si es un producto real del catálogo (>0 y razonable)
+              id: (item.productoId && item.productoId > 0 && item.productoId < 1_000_000) ? item.productoId : 0,
               nombre: item.nombre ?? item.descripcion ?? 'Producto óptico',
               precio,
               stock: 99,
-              tipo: 'producto',
+              tipo: 'servicio',
               porcentajeIva: Number(item.iva ?? item.porcentajeIva ?? 18),
               codigo: `OT-${od.numero ?? od.id}-L${item.id}`,
             } as any);
@@ -70,7 +71,7 @@ export default function OpticaPOS({ palette, addToCart, onContextoLoaded }: Modo
       });
     } else if (total > 0) {
       addToCart({
-        id: od.id + 3_500_000,
+        id: 0,  // ID 0 = servicio sin producto del catálogo (se envía productoId: undefined al backend)
         nombre: `Orden Óptica OT-${od.numero ?? od.id}${od.pacienteNombre ? ' — ' + od.pacienteNombre : ''}`,
         precio: total,
         stock: 99,

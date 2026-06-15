@@ -4965,7 +4965,7 @@ export default function POSPage() {
         moneda:      monedaPOS,
         tipoCambio:  monedaPOS !== 'DOP' ? tasaCambioPOS : undefined,
         detalles: cart.map(i => ({
-          productoId:     i.produto.id,
+          productoId:     i.produto.id > 0 ? i.produto.id : undefined,
           cantidad:       i.cantidad,
           precioUnitario: i.precio * (1 - i.descuento / 100),
           descripcion:    i.produto.nombre,
@@ -5112,7 +5112,7 @@ export default function POSPage() {
   const modoAltMut = useMutation({
     mutationFn: async () => {
       const detalles = cart.map(i => ({
-        productoId:     i.produto.id,
+        productoId:     i.produto.id > 0 ? i.produto.id : undefined,
         descripcion:    i.produto.nombre,
         cantidad:       i.cantidad,
         precioUnitario: i.precio * (1 - i.descuento / 100),
