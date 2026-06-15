@@ -30,5 +30,6 @@ import { ModulosAddonModule } from '../modulos-addon/modulos-addon.module';
   ],
   controllers: [RestauranteController],
   providers: [RestauranteService, RestaurantePdfService],
+  exports: [RestauranteService],
 })
 export class RestauranteModule {}

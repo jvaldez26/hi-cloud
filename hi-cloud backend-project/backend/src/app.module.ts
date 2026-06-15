@@ -125,6 +125,7 @@ import { TallerModule }                 from './taller/taller.module';
 import { ClinicaModule }               from './clinica/clinica.module';
 import { FarmaciaModule }              from './farmacia/farmacia.module';
 import { RestauranteModule }           from './restaurante/restaurante.module';
+import { PosContextoModule }          from './pos-contexto/pos-contexto.module';
 
 @Module({
   imports: [
@@ -305,6 +306,7 @@ import { RestauranteModule }           from './restaurante/restaurante.module';
     ClinicaModule,
     FarmaciaModule,
     RestauranteModule,
+    PosContextoModule,
   ],
   controllers: [AppController],
   providers: [
