@@ -195,6 +195,7 @@ const GimnasioLayout              = lazy(() => import('./pages/gimnasio/Gimnasio
 const GimnasioDashboard           = lazy(() => import('./pages/gimnasio/GimnasioDashboard'));
 const ControlAccesoPage           = lazy(() => import('./pages/gimnasio/ControlAccesoPage'));
 const MiembrosGimnasioPage        = lazy(() => import('./pages/gimnasio/MiembrosPage'));
+const FichaMiembroPage            = lazy(() => import('./pages/gimnasio/FichaMiembroPage'));
 const MembresiasPage              = lazy(() => import('./pages/gimnasio/MembresiasPage'));
 const ClasesGimnasioPage          = lazy(() => import('./pages/gimnasio/ClasesPage'));
 const EntrenadoresPage            = lazy(() => import('./pages/gimnasio/EntrenadoresPage'));
@@ -733,6 +734,7 @@ export default function App() {
                       <Route index                    element={<GimnasioDashboard />} />
                       <Route path="acceso"            element={<ControlAccesoPage />} />
                       <Route path="miembros"          element={<MiembrosGimnasioPage />} />
+                      <Route path="miembros/:id"      element={<FichaMiembroPage />} />
                       <Route path="membresias"        element={<MembresiasPage />} />
                       <Route path="clases"            element={<ClasesGimnasioPage />} />
                       <Route path="entrenadores"      element={<EntrenadoresPage />} />
