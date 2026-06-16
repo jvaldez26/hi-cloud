@@ -4453,8 +4453,26 @@ export default function POSPage() {
   ];
 
   const [modoContexto, setModoContexto] = useState<string>(() => {
-    return localStorage.getItem('pos_modo_contexto') ?? 'general';
+    const eid = localStorage.getItem('empresaId') ?? '';
+    return localStorage.getItem(`pos_modo_contexto_${eid}`) ?? 'general';
   });
+
+  // Validar modo contra módulos activos cuando cargan — evita modo óptica/restaurante
+  // en empresas que no tienen esos módulos (bug de contaminación entre empresas/usuarios)
+  useEffect(() => {
+    if (!misModulosData || modoContexto === 'general') return;
+    const mods: string[] = Array.isArray((misModulosData as any)?.modulos)
+      ? (misModulosData as any).modulos
+      : Array.isArray(misModulosData) ? (misModulosData as any) : [];
+    const tieneModulo = mods.some(m => m.toUpperCase() === modoContexto.toUpperCase());
+    if (!tieneModulo) {
+      const eid = localStorage.getItem('empresaId') ?? '';
+      setModoContexto('general');
+      localStorage.setItem(`pos_modo_contexto_${eid}`, 'general');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [misModulosData]);
+
   const searchRef         = useRef<any>(null);
   const lastKeyTimeRef    = useRef<number>(0);
   const fastCharCountRef  = useRef<number>(0);
@@ -4619,7 +4637,8 @@ export default function POSPage() {
     setDescGlobal('');
     setDescGlobalTipo('pct');
     setModoContexto(modo);
-    localStorage.setItem('pos_modo_contexto', modo);
+    const eid = localStorage.getItem('empresaId') ?? '';
+    localStorage.setItem(`pos_modo_contexto_${eid}`, modo);
   }, [consumidorFinalId]);
 
   // Auto-seleccionar "Consumidor Final" como cliente por defecto al cargar
@@ -4675,7 +4694,8 @@ export default function POSPage() {
   // Aplicar modo por defecto desde configuración si no hay preferencia guardada
   const posModoPorDefecto = (posConf.posModoPorDefecto as string | undefined) ?? 'general';
   useEffect(() => {
-    if (!localStorage.getItem('pos_modo_contexto') && posModoPorDefecto !== 'general') {
+    const eid = localStorage.getItem('empresaId') ?? '';
+    if (!localStorage.getItem(`pos_modo_contexto_${eid}`) && posModoPorDefecto !== 'general') {
       setModoContexto(posModoPorDefecto);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
