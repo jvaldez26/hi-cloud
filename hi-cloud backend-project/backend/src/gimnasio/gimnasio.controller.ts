@@ -304,6 +304,11 @@ export class GimnasioController {
     return this.svc.getLockers(this.empresaId, estado);
   }
 
+  @Post('lockers')
+  createLocker(@Body() body: any) {
+    return this.svc.createLocker(body, this.empresaId);
+  }
+
   @Post('lockers/asignar')
   asignarLocker(@Body() body: any) {
     return this.svc.asignarLocker(body, this.empresaId);
@@ -312,6 +317,16 @@ export class GimnasioController {
   @Patch('lockers/:id/liberar')
   liberarLocker(@Param('id', ParseIntPipe) id: number) {
     return this.svc.liberarLocker(id, this.empresaId);
+  }
+
+  @Patch('lockers/:id')
+  updateLocker(@Param('id', ParseIntPipe) id: number, @Body() body: any) {
+    return this.svc.updateLocker(id, body, this.empresaId);
+  }
+
+  @Delete('lockers/:id')
+  deleteLocker(@Param('id', ParseIntPipe) id: number) {
+    return this.svc.deleteLocker(id, this.empresaId);
   }
 
   // ── NUTRICION ────────────────────────────────────────────────────────────────
@@ -353,5 +368,20 @@ export class GimnasioController {
   @Post('tienda/venta')
   ventaTienda(@Body() body: any) {
     return this.svc.ventaTienda(body, this.empresaId);
+  }
+
+  @Post('tienda/productos')
+  createProductoTienda(@Body() body: any) {
+    return this.svc.createProductoTienda(body, this.empresaId);
+  }
+
+  @Patch('tienda/productos/:id')
+  updateProductoTienda(@Param('id', ParseIntPipe) id: number, @Body() body: any) {
+    return this.svc.updateProductoTienda(id, body, this.empresaId);
+  }
+
+  @Delete('tienda/productos/:id')
+  deleteProductoTienda(@Param('id', ParseIntPipe) id: number) {
+    return this.svc.deleteProductoTienda(id, this.empresaId);
   }
 }

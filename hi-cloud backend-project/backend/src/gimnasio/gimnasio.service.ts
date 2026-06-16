@@ -789,6 +789,35 @@ export class GimnasioService {
     return row;
   }
 
+  async createLocker(data: any, empresaId: number) {
+    const [row] = await this.ds.query<any[]>(
+      `INSERT INTO gm_lockers ("empresaId", numero, area, "precioMes")
+       VALUES ($1,$2,$3,$4) RETURNING *`,
+      [empresaId, data.numero, data.area ?? null, data.precioMes ?? 0],
+    );
+    return row;
+  }
+
+  async updateLocker(id: number, data: any, empresaId: number) {
+    const fields: string[] = [];
+    const args: any[] = [empresaId, id];
+    if (data.numero    !== undefined) { fields.push(`numero=$${args.length + 1}`);      args.push(data.numero); }
+    if (data.area      !== undefined) { fields.push(`area=$${args.length + 1}`);        args.push(data.area); }
+    if (data.estado    !== undefined) { fields.push(`estado=$${args.length + 1}`);      args.push(data.estado); }
+    if (data.precioMes !== undefined) { fields.push(`"precioMes"=$${args.length + 1}`); args.push(data.precioMes); }
+    if (!fields.length) throw new BadRequestException('Sin campos para actualizar');
+    const [row] = await this.ds.query<any[]>(
+      `UPDATE gm_lockers SET ${fields.join(',')} WHERE "empresaId"=$1 AND id=$2 AND "isActive"=true RETURNING *`,
+      args,
+    );
+    if (!row) throw new NotFoundException(`Locker #${id} no encontrado`);
+    return row;
+  }
+
+  async deleteLocker(id: number, empresaId: number) {
+    await this.ds.query(`UPDATE gm_lockers SET "isActive"=false WHERE id=$1 AND "empresaId"=$2`, [id, empresaId]);
+  }
+
   // ── NUTRICION ────────────────────────────────────────────────────────────────
 
   async getPlanesNutricionales(empresaId: number, miembroId?: number) {
@@ -856,6 +885,34 @@ export class GimnasioService {
       resultados.push({ producto: prod.nombre, cantidad: item.cantidad, total: prod.precio * item.cantidad });
     }
     return { ok: true, items: resultados };
+  }
+
+  async createProductoTienda(data: any, empresaId: number) {
+    const [row] = await this.ds.query<any[]>(
+      `INSERT INTO gm_productos_tienda ("empresaId", nombre, descripcion, categoria, precio, stock)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [empresaId, data.nombre, data.descripcion ?? null, data.categoria ?? null, data.precio ?? 0, data.stock ?? 0],
+    );
+    return row;
+  }
+
+  async updateProductoTienda(id: number, data: any, empresaId: number) {
+    const fields: string[] = [];
+    const args: any[] = [empresaId, id];
+    for (const [k, col] of Object.entries({ nombre: 'nombre', descripcion: 'descripcion', categoria: 'categoria', precio: 'precio', stock: 'stock' })) {
+      if ((data as any)[k] !== undefined) { fields.push(`${col}=$${args.length + 1}`); args.push((data as any)[k]); }
+    }
+    if (!fields.length) throw new BadRequestException('Sin campos para actualizar');
+    const [row] = await this.ds.query<any[]>(
+      `UPDATE gm_productos_tienda SET ${fields.join(',')} WHERE "empresaId"=$1 AND id=$2 AND "isActive"=true RETURNING *`,
+      args,
+    );
+    if (!row) throw new NotFoundException(`Producto #${id} no encontrado`);
+    return row;
+  }
+
+  async deleteProductoTienda(id: number, empresaId: number) {
+    await this.ds.query(`UPDATE gm_productos_tienda SET "isActive"=false WHERE id=$1 AND "empresaId"=$2`, [id, empresaId]);
   }
 
   // ── DASHBOARD ────────────────────────────────────────────────────────────────

@@ -72,6 +72,9 @@ export const gimnasioApi = {
 
   // Lockers
   getLockers: (estado?: string) => api.get('/gimnasio/lockers', { params: { estado } }).then(r => r.data?.data ?? r.data),
+  createLocker: (body: any) => api.post('/gimnasio/lockers', body).then(r => r.data?.data ?? r.data),
+  updateLocker: (id: number, body: any) => api.patch(`/gimnasio/lockers/${id}`, body).then(r => r.data?.data ?? r.data),
+  deleteLocker: (id: number) => api.delete(`/gimnasio/lockers/${id}`).then(r => r.data?.data ?? r.data),
   asignarLocker: (body: any) => api.post('/gimnasio/lockers/asignar', body).then(r => r.data?.data ?? r.data),
   liberarLocker: (id: number) => api.patch(`/gimnasio/lockers/${id}/liberar`).then(r => r.data?.data ?? r.data),
 
@@ -83,6 +86,9 @@ export const gimnasioApi = {
   // Tienda
   getTienda: () => api.get('/gimnasio/tienda').then(r => r.data?.data ?? r.data),
   ventaTienda: (body: any) => api.post('/gimnasio/tienda/venta', body).then(r => r.data?.data ?? r.data),
+  createProductoTienda: (body: any) => api.post('/gimnasio/tienda/productos', body).then(r => r.data?.data ?? r.data),
+  updateProductoTienda: (id: number, body: any) => api.patch(`/gimnasio/tienda/productos/${id}`, body).then(r => r.data?.data ?? r.data),
+  deleteProductoTienda: (id: number) => api.delete(`/gimnasio/tienda/productos/${id}`).then(r => r.data?.data ?? r.data),
 
   // Dashboard
   getDashboard: () => api.get('/gimnasio/dashboard').then(r => r.data?.data ?? r.data),
