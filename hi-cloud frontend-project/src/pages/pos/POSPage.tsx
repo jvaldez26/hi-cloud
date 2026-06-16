@@ -3655,6 +3655,9 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
   const [anulando,      setAnulando]      = useState<number | null>(null);
   const [imprimiendo,   setImprimiendo]   = useState<number | null>(null);
   const [cambEstado,    setCambEstado]    = useState<number | null>(null);
+  const [cobrarPF,      setCobrarPF]      = useState<{ id: number; folio: string; total: number; cliente: string } | null>(null);
+  const [cobrarPFMetodo, setCobrarPFMetodo] = useState<string>('Efectivo');
+  const [cobrarPFMonto,  setCobrarPFMonto]  = useState<string>('');
   const [genericDoc,     setGenericDoc]     = useState<GenericDocData | null>(null);
   const PANEL_GENERIC_ID  = 'hc-pos-panel-generic';
 
@@ -3688,6 +3691,45 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
     onError: (e: any) => {
       message.error(e?.response?.data?.message ?? 'No se pudo anular');
       setAnulando(null);
+    },
+  });
+
+  // ── Cobrar Pre-Factura desde POS ─────────────────────────────────────────────
+  const cobrarPFMut = useMutation({
+    mutationFn: async ({ id, metodoPago }: { id: number; metodoPago: string }) =>
+      api.post(`/pre-facturas/${id}/cobrar-pos`, { metodoPago }).then(r => r.data?.data ?? r.data),
+    onSuccess: async (data: { facturaId: number; folio: string }) => {
+      message.success(`Factura ${data.folio} generada`);
+      setCobrarPF(null); setCobrarPFMonto(''); setCobrarPFMetodo('Efectivo');
+      qc.invalidateQueries({ queryKey: ['pos-panel', 'pre-facturas'] });
+      qc.refetchQueries({    queryKey: ['pos-panel', 'pre-facturas'] });
+      qc.invalidateQueries({ queryKey: ['pos-panel', 'facturas'] });
+      // Imprimir recibo de la factura generada
+      if (data.facturaId) {
+        try {
+          const empRes = await api.get('/configuracion/empresa').then(x => x.data?.data ?? x.data).catch(() => ({}));
+          const f = await api.get(`/facturas/${data.facturaId}`).then(r => r.data?.data ?? r.data);
+          const metodo = f.notas?.includes('Tarjeta') ? 'tarjeta' : f.notas?.includes('Transferencia') ? 'transferencia' : 'efectivo';
+          const saleObj: Sale = {
+            folio: f.folio, total: Number(f.total ?? 0), cambio: 0, metodo,
+            items: (f.detalles ?? []).map((d: any) => ({
+              produto: { id: d.productoId, nombre: d.descripcion, precio: Number(d.precioUnitario), stock: 999, porcentajeIva: Number(d.porcentajeIva ?? 18), codigo: '', categoria: '', unidadMedida: '' } as any,
+              cantidad: Number(d.cantidad), precio: Number(d.precioUnitario), descuento: 0,
+            })),
+            cliente: f.cliente?.nombre, iva: Number(f.iva ?? 0), subtotal: Number(f.subtotal ?? 0),
+            facturaId: f.id, tipoNcf: f.tipoNcf ?? 'E32',
+            encf: f.ecf?.numero, ecfPendiente: !f.ecf?.numero,
+            securityCode: f.ecf?.codigoSeguridad, qrUrl: f.ecf?.qrUrl,
+            rncComprador: f.cliente?.rncReceptor || f.cliente?.rfc, razonSocial: f.cliente?.nombre,
+            cajero: f.usuario?.nombre, sucursalNombre: (f as any).sucursal?.nombre,
+            empresaNombreComercial: empRes.razonSocial ?? empRes.nombre, empresaRnc: empRes.rnc,
+          };
+          imprimirReciboTermico(buildReciboTermicoHTML(saleObj, null, {}));
+        } catch { /* error de impresión no bloquea */ }
+      }
+    },
+    onError: (e: any) => {
+      message.error(e?.response?.data?.message ?? 'Error al cobrar pre-factura');
     },
   });
 
@@ -3960,7 +4002,11 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
       { label: 'Folio',    key: 'folio',    render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue }}>{v}</span> },
       { label: 'Cliente',  key: 'cliente',  render: (_,r) => r.cliente?.nombre ?? '—' },
       { label: 'Total',    key: 'total',    render: (v) => <span style={{ fontWeight: 700, color: C.orange }}>{fmt.money(v)}</span> },
-      { label: 'Estado',   key: 'estado',   render: (v) => <span style={{ fontSize: 10, fontWeight: 700, color: v==='aprobada'?C.green:v==='enviada'?C.blue:C.textSub }}>{v?.toUpperCase()}</span> },
+      { label: 'Estado',   key: 'estado',   render: (v: string) => {
+        const est = (v ?? '').toLowerCase();
+        const colMap: Record<string, string> = { convertida: C.green, aprobada: C.green, enviada: C.blue, borrador: C.orange, rechazada: C.red };
+        return <span style={{ fontSize: 10, fontWeight: 700, color: colMap[est] ?? C.textSub }}>{est === 'convertida' ? '✓ CONVERTIDA' : v?.toUpperCase()}</span>;
+      }},
     ],
     cotizaciones: [
       { label: 'Número',   key: 'numero',   render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue }}>{v}</span> },
@@ -4081,6 +4127,20 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
                     ))}
                     {true && (
                       <td style={{ padding: '6px 14px', verticalAlign: 'middle', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        {/* Cobrar Pre-Factura */}
+                        {panel === 'pre-facturas' && !['convertida', 'rechazada'].includes((row.estado ?? '').toLowerCase()) && (
+                          <button
+                            onClick={() => {
+                              const clienteNombre = row.cliente?.nombre ?? row.clienteNombre ?? 'Consumidor Final';
+                              setCobrarPF({ id: row.id, folio, total: Number(row.total ?? 0), cliente: clienteNombre });
+                              setCobrarPFMetodo('Efectivo'); setCobrarPFMonto(String(Number(row.total ?? 0).toFixed(2)));
+                            }}
+                            title="Cobrar pre-factura"
+                            style={{ background: '#16a34a', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', padding: '4px 10px', fontSize: 12, fontWeight: 700, marginRight: 6 }}
+                          >
+                            ⚡ Cobrar
+                          </button>
+                        )}
                         {/* Imprimir */}
                         <button
                           onClick={() => handleImprimir(row.id, folio)}
@@ -4186,6 +4246,56 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
       <div id={PANEL_GENERIC_ID} style={{ display: 'none' }}>
         {genericDoc && <GenericThermalDoc doc={genericDoc} />}
       </div>
+
+      {/* ── Modal cobrar Pre-Factura ────────────────────────────────────────── */}
+      {cobrarPF && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,.55)' }}
+          onClick={(e) => { if (e.target === e.currentTarget) { setCobrarPF(null); setCobrarPFMonto(''); } }}>
+          <div style={{ background: C.card, borderRadius: 16, padding: 28, width: 360, maxWidth: '92vw', boxShadow: '0 8px 40px rgba(0,0,0,.3)' }}>
+            <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4, color: C.text }}>Cobrar Pre-Factura</div>
+            <div style={{ fontSize: 13, color: C.textSub, marginBottom: 16 }}>{cobrarPF.folio} · {cobrarPF.cliente}</div>
+            <div style={{ background: C.bg, borderRadius: 10, padding: '10px 14px', marginBottom: 18, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ color: C.textSub, fontSize: 13 }}>Total</span>
+              <span style={{ fontSize: 22, fontWeight: 800, color: C.green }}>RD${Number(cobrarPF.total).toLocaleString('es-DO', { minimumFractionDigits: 2 })}</span>
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: C.textSub, marginBottom: 6 }}>Método de pago</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {(['Efectivo', 'Tarjeta', 'Transferencia'] as const).map(m => (
+                  <button key={m} onClick={() => setCobrarPFMetodo(m)}
+                    style={{ flex: 1, padding: '8px 4px', borderRadius: 8, border: `2px solid ${cobrarPFMetodo === m ? C.green : C.border2}`, background: cobrarPFMetodo === m ? '#dcfce7' : C.card, color: cobrarPFMetodo === m ? '#15803d' : C.text, cursor: 'pointer', fontSize: 12, fontWeight: cobrarPFMetodo === m ? 700 : 400 }}>
+                    {m}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {cobrarPFMetodo === 'Efectivo' && (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 12, color: C.textSub, marginBottom: 6 }}>Monto recibido</div>
+                <input type="number" min="0" step="0.01" value={cobrarPFMonto}
+                  onChange={e => setCobrarPFMonto(e.target.value)}
+                  style={{ width: '100%', padding: '10px 12px', border: `1px solid ${C.border2}`, borderRadius: 8, fontSize: 16, background: C.bg, color: C.text, outline: 'none', boxSizing: 'border-box' }} />
+                {cobrarPFMonto && Number(cobrarPFMonto) >= cobrarPF.total && (
+                  <div style={{ marginTop: 6, fontSize: 14, color: C.green, fontWeight: 700 }}>
+                    Cambio: RD${(Number(cobrarPFMonto) - cobrarPF.total).toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+                  </div>
+                )}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+              <button onClick={() => { setCobrarPF(null); setCobrarPFMonto(''); }}
+                style={{ flex: 1, padding: '11px 0', borderRadius: 9, border: `1px solid ${C.border2}`, background: 'none', color: C.textSub, cursor: 'pointer', fontSize: 14 }}>
+                Cancelar
+              </button>
+              <button disabled={cobrarPFMut.isPending}
+                onClick={() => cobrarPFMut.mutate({ id: cobrarPF.id, metodoPago: cobrarPFMetodo })}
+                style={{ flex: 2, padding: '11px 0', borderRadius: 9, border: 'none', background: cobrarPFMut.isPending ? '#9ca3af' : '#16a34a', color: '#fff', cursor: cobrarPFMut.isPending ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 700 }}>
+                {cobrarPFMut.isPending ? 'Procesando...' : '⚡ Confirmar Cobro'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

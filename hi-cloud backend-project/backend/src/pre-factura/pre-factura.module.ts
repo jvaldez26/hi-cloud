@@ -6,9 +6,10 @@ import { PreFacturaPDFService } from './pre-factura-pdf.service';
 import { PreFactura } from './entities/pre-factura.entity';
 import { PreFacturaDetalle } from './entities/pre-factura-detalle.entity';
 import { Factura } from '../facturas/entities/factura.entity';
+import { FacturasModule } from '../facturas/facturas.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([PreFactura, PreFacturaDetalle, Factura])],
+  imports: [TypeOrmModule.forFeature([PreFactura, PreFacturaDetalle, Factura]), FacturasModule],
   controllers: [PreFacturaController],
   providers: [PreFacturaService, PreFacturaPDFService],
   exports: [PreFacturaService],

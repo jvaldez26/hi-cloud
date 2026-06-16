@@ -48,6 +48,10 @@ class ConvertirDto {
   @IsOptional() @IsString() tipoNcf?: string;
 }
 
+class CobrarPosDto {
+  @IsString() metodoPago!: string;
+}
+
 @ApiTags('Pre-Facturas')
 @ApiBearerAuth('access-token')
 @ApiHeader({ name: 'X-Empresa-ID', description: 'ID de la empresa activa', required: true })
@@ -149,6 +153,17 @@ export class PreFacturaController {
     @Body() dto: ConvertirDto,
   ) {
     return this.svc.convertirAFactura(id, user.id, dto.tipoNcf);
+  }
+
+  @Post(':id/cobrar-pos')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Cobrar pre-factura desde POS: convierte a factura + ECF + stock' })
+  cobrarDesdePos(
+    @Param('id', ParseIntPipe) id: number,
+    @GetUser() user: User,
+    @Body() dto: CobrarPosDto,
+  ) {
+    return this.svc.cobrarDesdePos(id, user.id, dto);
   }
 
   @Delete(':id')

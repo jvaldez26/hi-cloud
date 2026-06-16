@@ -1,5 +1,5 @@
 import {
-  Injectable, NotFoundException, BadRequestException, ConflictException,
+  Injectable, NotFoundException, BadRequestException, ConflictException, Logger,
 } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
@@ -9,6 +9,7 @@ import { PreFacturaDetalle } from './entities/pre-factura-detalle.entity';
 import { Factura, FacturaEstado } from '../facturas/entities/factura.entity';
 import { TenantService } from '../tenant/tenant.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
+import { FacturasService } from '../facturas/facturas.service';
 
 interface DetalleDto {
   productoId?: number;
@@ -31,12 +32,15 @@ interface CreatePreFacturaDto {
 
 @Injectable()
 export class PreFacturaService {
+  private readonly logger = new Logger(PreFacturaService.name);
+
   constructor(
     @InjectRepository(PreFactura)       private pfRepo:       Repository<PreFactura>,
     @InjectRepository(PreFacturaDetalle) private pfDetRepo:    Repository<PreFacturaDetalle>,
     @InjectRepository(Factura)          private facturaRepo:  Repository<Factura>,
     private tenantSvc: TenantService,
     @InjectDataSource() private ds: DataSource,
+    private facturasService: FacturasService,
   ) {}
 
   // ─── Folio ────────────────────────────────────────────────────────────────────
@@ -283,6 +287,77 @@ export class PreFacturaService {
     }
     await this.pfRepo.update(id, { isActive: false });
     return { ok: true };
+  }
+
+  // ─── Cobrar desde POS ─────────────────────────────────────────────────────────
+  // Convierte la pre-factura a factura oficial con ECF + descuento de stock.
+  // Acepta pre-facturas en cualquier estado activo (no CONVERTIDA/RECHAZADA).
+
+  async cobrarDesdePos(id: number, usuarioId: number, dto: { metodoPago: string }) {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const pf = await this.findOne(id);
+
+    if ([EstadoPreFactura.CONVERTIDA, EstadoPreFactura.RECHAZADA].includes(pf.estado)) {
+      throw new BadRequestException('Esta pre-factura no puede cobrarse en su estado actual');
+    }
+
+    // Folio atómico vía función de secuencia (nunca MAX+1)
+    const [row] = await this.ds.query<{ numero: number }[]>(
+      `SELECT siguiente_numero_secuencia($1, $2) AS numero`,
+      [empresaId, 'FAC'],
+    );
+    const folio = `FAC-${row.numero}`;
+
+    // Crear factura en BORRADOR + marcar preFactura CONVERTIDA (transacción atómica)
+    const savedFactura = await this.ds.transaction(async (manager) => {
+      const f = manager.create(Factura, {
+        empresaId,
+        folio,
+        fecha:      new Date(),
+        estado:     FacturaEstado.BORRADOR,
+        clienteId:  pf.clienteId,
+        usuarioId,
+        vendedorId: usuarioId,
+        sucursalId: pf.sucursalId ?? undefined,
+        subtotal:   Number(pf.subtotal),
+        iva:        Number(pf.iva),
+        total:      Number(pf.total),
+        tipoNcf:    pf.tipoNcf ?? 'E32',
+        notas:      dto.metodoPago,
+        detalles:   (pf.detalles ?? []).map(det => ({
+          productoId:     det.productoId,
+          descripcion:    det.descripcion,
+          cantidad:       Math.round(Number(det.cantidad)),
+          precioUnitario: Number(det.precioUnitario),
+          porcentajeIva:  Number(det.porcentajeIva),
+          subtotal:       Number(det.subtotal),
+          importeIva:     Number(det.iva),
+          total:          Number(det.total),
+        })) as any,
+      });
+      const saved = await manager.save(f);
+      await manager.update(PreFactura, id, {
+        estado:    EstadoPreFactura.CONVERTIDA,
+        facturaId: saved.id,
+      });
+      return saved;
+    });
+
+    // Emitir: ECF + descuento de stock + asiento contable (modoSincrono=true → 8s timeout)
+    await this.facturasService.cambiarEstado(
+      savedFactura.id,
+      FacturaEstado.EMITIDA,
+      true,
+    ).catch(err => {
+      // Si falla la emisión (ej: sin caja abierta), la factura queda en BORRADOR
+      // y puede emitirse manualmente desde el panel de Facturas.
+      this.logger.warn(
+        `[cobrarDesdePos] emisión falló para ${folio}: ${err?.message ?? err}`,
+      );
+      throw err; // re-throw para informar al frontend
+    });
+
+    return { facturaId: savedFactura.id, folio };
   }
 
   async resumen() {
