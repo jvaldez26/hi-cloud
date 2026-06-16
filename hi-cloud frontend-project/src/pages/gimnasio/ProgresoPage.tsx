@@ -29,10 +29,10 @@ export default function ProgresoPage() {
     { title: 'Fecha', dataIndex: 'fecha', render: (v: string) => v ? new Date(v).toLocaleDateString('es-DO') : '' },
     { title: 'Miembro', dataIndex: 'miembroNombre' },
     { title: 'Peso (kg)', dataIndex: 'peso' },
-    { title: 'IMC', dataIndex: 'imc', render: (v: number) => v != null ? Number(v).toFixed(2) : '' },
-    { title: '% Grasa', dataIndex: 'porcentajeGrasa', render: (v: number) => v != null ? `${v}%` : '' },
-    { title: 'Masa Muscular', dataIndex: 'masaMuscular', render: (v: number) => v != null ? `${v} kg` : '' },
     { title: 'Talla (cm)', dataIndex: 'talla' },
+    { title: 'IMC', dataIndex: 'imc', render: (v: number) => v != null ? Number(v).toFixed(2) : '' },
+    { title: '% Grasa', dataIndex: 'grasaCorporal', render: (v: number) => v != null ? `${v}%` : '' },
+    { title: 'Masa Muscular', dataIndex: 'masaMuscular', render: (v: number) => v != null ? `${v} kg` : '' },
   ];
 
   return (
@@ -62,12 +62,12 @@ export default function ProgresoPage() {
           <Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}><DatePicker style={{ width: '100%' }} /></Form.Item>
           <Form.Item name="peso" label="Peso (kg)"><InputNumber style={{ width: '100%' }} min={0} step={0.1} /></Form.Item>
           <Form.Item name="talla" label="Talla (cm)"><InputNumber style={{ width: '100%' }} min={0} /></Form.Item>
-          <Form.Item name="porcentajeGrasa" label="% Grasa Corporal"><InputNumber style={{ width: '100%' }} min={0} max={100} step={0.1} /></Form.Item>
+          <Form.Item name="grasaCorporal" label="% Grasa Corporal"><InputNumber style={{ width: '100%' }} min={0} max={100} step={0.1} /></Form.Item>
           <Form.Item name="masaMuscular" label="Masa Muscular (kg)"><InputNumber style={{ width: '100%' }} min={0} step={0.1} /></Form.Item>
-          <Form.Item name="masaOsea" label="Masa Osea (kg)"><InputNumber style={{ width: '100%' }} min={0} step={0.1} /></Form.Item>
           <Form.Item name="cintura" label="Cintura (cm)"><InputNumber style={{ width: '100%' }} min={0} /></Form.Item>
           <Form.Item name="cadera" label="Cadera (cm)"><InputNumber style={{ width: '100%' }} min={0} /></Form.Item>
-          <Form.Item name="notas" label="Notas"><Input.TextArea rows={2} /></Form.Item>
+          <Form.Item name="pecho" label="Pecho (cm)"><InputNumber style={{ width: '100%' }} min={0} /></Form.Item>
+          <Form.Item name="observaciones" label="Observaciones"><Input.TextArea rows={2} /></Form.Item>
         </Form>
       </Modal>
     </div>

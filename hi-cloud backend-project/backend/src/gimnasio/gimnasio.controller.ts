@@ -267,7 +267,8 @@ export class GimnasioController {
 
   @Get('progreso')
   getProgreso(@Query() q: any) {
-    return this.svc.getProgreso(this.empresaId, Number(q.miembroId));
+    const miembroId = q.miembroId ? Number(q.miembroId) : undefined;
+    return this.svc.getProgreso(this.empresaId, miembroId);
   }
 
   @Post('progreso')

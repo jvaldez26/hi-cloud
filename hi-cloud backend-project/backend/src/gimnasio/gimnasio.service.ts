@@ -651,10 +651,20 @@ export class GimnasioService {
 
   // ── PROGRESO ────────────────────────────────────────────────────────────────
 
-  async getProgreso(empresaId: number, miembroId: number) {
+  async getProgreso(empresaId: number, miembroId?: number) {
+    if (miembroId && !isNaN(miembroId)) {
+      return this.ds.query<any[]>(
+        `SELECT p.*, m.nombre as "miembroNombre" FROM gm_progreso p
+         JOIN gm_miembros m ON m.id=p."miembroId"
+         WHERE p."empresaId"=$1 AND p."miembroId"=$2 ORDER BY p.fecha DESC`,
+        [empresaId, miembroId],
+      );
+    }
     return this.ds.query<any[]>(
-      `SELECT * FROM gm_progreso WHERE "empresaId"=$1 AND "miembroId"=$2 ORDER BY fecha DESC`,
-      [empresaId, miembroId],
+      `SELECT p.*, m.nombre as "miembroNombre" FROM gm_progreso p
+       JOIN gm_miembros m ON m.id=p."miembroId"
+       WHERE p."empresaId"=$1 ORDER BY p.fecha DESC LIMIT 200`,
+      [empresaId],
     );
   }
 
