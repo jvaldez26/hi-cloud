@@ -4452,6 +4452,8 @@ export default function POSPage() {
   const [guardarRncPerfil,   setGuardarRncPerfil]   = useState(false);
   const [ecfStatus,          setEcfStatus]          = useState<'idle'|'loading'|'ok'|'pendiente'>('idle');
   const [ecfEncf,            setEcfEncf]            = useState<string>('');
+  const printWinRef      = useRef<Window | null>(null); // ventana pre-abierta para auto-imprimir en tablets
+  const autoYaPrintedRef = useRef(false);
 
   // ── Módulos add-on disponibles en el POS (una sola llamada) ──────────────
   const { data: misModulosData } = useQuery({
@@ -5087,7 +5089,7 @@ export default function POSPage() {
       const ecfFecha     = ecfResult?.ecf?.ultimoIntentoEnvio
         ? dayjs(ecfResult.ecf.ultimoIntentoEnvio).format('DD-MM-YYYY HH:mm:ss')
         : dayjs().format('DD-MM-YYYY HH:mm:ss');
-      setSale({
+      const saleObj: Sale = {
         folio:                   factura.folio,
         total:                   totalAPagar,
         cambio,
@@ -5118,7 +5120,27 @@ export default function POSPage() {
         empresaDireccion:        empresa?.direccion ?? undefined,
         empresaTelefono:         empresa?.telefono ?? undefined,
         modoContexto,
-      });
+      };
+      // Auto-imprimir con ventana pre-abierta — mantiene el gesto del usuario en tablets iOS/Android
+      if (printWinRef.current && !printWinRef.current.closed) {
+        const pw = printWinRef.current;
+        printWinRef.current = null;
+        autoYaPrintedRef.current = true;
+        const _mostrarEcf = posConf.posMostrarEcfEnRecibo !== false;
+        const _pCfg = { tipoImpresora: posConf.posTipoImpresora as string | undefined, mensajeTicket: posConf.posMensajeTicket as string | undefined, politicaDev: posConf.posPoliticaDev as string | undefined };
+        const doprint = (qr: string | null) => {
+          const html = buildReciboTermicoHTML(saleObj, qr, { mostrarEcf: _mostrarEcf, ..._pCfg });
+          if (pw.closed) { imprimirReciboTermico(html); return; }
+          pw.document.open(); pw.document.write(html); pw.document.close(); pw.focus();
+          setTimeout(() => { pw.print(); pw.addEventListener('afterprint', () => pw.close(), { once: true }); setTimeout(() => { try { pw.close(); } catch { /* noop */ } }, 60_000); }, 400);
+        };
+        if (qrUrl && !saleObj.ecfPendiente) {
+          QRCode.toDataURL(qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' }).then(doprint).catch(() => doprint(null));
+        } else {
+          doprint(null);
+        }
+      }
+      setSale(saleObj);
       setShowPago(false);
       setRncComprador(''); setRazonSocialComp(''); setNumeroOrdenCompra(''); setGuardarRncPerfil(false);
       setCart([]); resetCliente(); setMontoRecibido(0);
@@ -5146,6 +5168,7 @@ export default function POSPage() {
       qc.refetchQueries({    queryKey: ['pos-panel', 'facturas'] });
     },
     onError: (e: any) => {
+      if (printWinRef.current && !printWinRef.current.closed) { printWinRef.current.close(); printWinRef.current = null; autoYaPrintedRef.current = false; }
       setEcfStatus('idle');
       const msg: string = e?.response?.data?.errors?.[0] ?? e?.response?.data?.message ?? '';
       if (msg.toLowerCase().includes('duplicate') || msg.toLowerCase().includes('already exists') || msg.toLowerCase().includes('23505')) {
@@ -5394,7 +5417,7 @@ export default function POSPage() {
         onCancelar={() => navigate('/dashboard')} />
       <ModalExito sale={sale} onNueva={() => setSale(null)}
         onCrearConduce={() => { setSale(null); setPanelActivo('conduce'); }}
-        autoImprimir={empresa?.configuracion?.posImpresionAuto === true}
+        autoImprimir={empresa?.configuracion?.posImpresionAuto === true && !autoYaPrintedRef.current}
         mostrarEcf={posConf.posMostrarEcfEnRecibo !== false}
         posConfig={{
           tipoImpresora: posConf.posTipoImpresora as string | undefined,
@@ -6291,7 +6314,15 @@ export default function POSPage() {
               title={!cajaAbierta ? 'Debes abrir la caja diaria antes de facturar' : necesitaRnc && !rncValido ? 'Ingresa el RNC del comprador para continuar' : ''}
             >
               <motion.button whileTap={{ scale: canCheckout ? 0.97 : 1 }}
-                onClick={() => { if (canCheckout) ventaMut.mutate(); }}
+                onClick={() => {
+                  if (!canCheckout) return;
+                  if (empresa?.configuracion?.posImpresionAuto === true) {
+                    autoYaPrintedRef.current = false;
+                    const pw = window.open('', '_blank', 'width=360,height=640,toolbar=0,menubar=0,location=0,scrollbars=yes');
+                    if (pw) { pw.document.write('<html><head><title>Procesando venta...</title></head><body style="font-family:monospace;padding:20px;text-align:center">Procesando venta...</body></html>'); printWinRef.current = pw; }
+                  }
+                  ventaMut.mutate();
+                }}
                 disabled={ventaMut.isPending || !canCheckout}
                 style={{ width: '100%', height: 46, borderRadius: 11, border: 'none', background: !canCheckout ? '#D1D5DB' : 'linear-gradient(135deg,#059669,#10B981)', color: !canCheckout ? '#9CA3AF' : '#fff', fontSize: 14, fontWeight: 700, cursor: !canCheckout ? 'not-allowed' : 'pointer', boxShadow: !canCheckout ? 'none' : '0 4px 14px rgba(16,185,129,.35)', outline: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, letterSpacing: '0.2px' }}>
                 {ventaMut.isPending
