@@ -4,12 +4,11 @@ export class CreateServiciosProModule1750060000000 implements MigrationInterface
   public async up(queryRunner: QueryRunner): Promise<void> {
     // ── Parte 0: Registrar módulo ────────────────────────────────────────────
     await queryRunner.query(`
-      INSERT INTO modulos_addon (codigo, nombre, descripcion, icono)
+      INSERT INTO modulos_addon (codigo, nombre, descripcion)
       VALUES (
         'servicios_pro',
         'Módulo Servicios Profesionales',
-        'Gestión completa para firmas de servicios: proyectos, contratos, time tracking, honorarios, expedientes y facturación por horas',
-        '💼'
+        'Gestión completa para firmas de servicios: proyectos, contratos, time tracking, honorarios, expedientes y facturación por horas'
       )
       ON CONFLICT (codigo) DO NOTHING
     `);
@@ -225,6 +224,7 @@ export class CreateServiciosProModule1750060000000 implements MigrationInterface
         itbis                 DECIMAL(12,2) DEFAULT 0,
         total                 DECIMAL(12,2) DEFAULT 0,
         estado                VARCHAR(20) DEFAULT 'borrador',
+        "fechaPago"           DATE,
         "fechaEnvio"          DATE,
         "fechaVencimiento"    DATE,
         "facturaId"           INTEGER REFERENCES facturas(id),
@@ -264,6 +264,9 @@ export class CreateServiciosProModule1750060000000 implements MigrationInterface
         "horasUsadas"    DECIMAL(10,2) DEFAULT 0,
         "horasRestantes" DECIMAL(10,2),
         estado           VARCHAR(20) DEFAULT 'pendiente',
+        "fechaPago"      DATE,
+        "metodoPago"     VARCHAR(50),
+        referencia       VARCHAR(200),
         "facturaId"      INTEGER REFERENCES facturas(id),
         "createdAt"      TIMESTAMP DEFAULT NOW()
       )
