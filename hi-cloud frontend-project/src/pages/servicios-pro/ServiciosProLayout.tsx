@@ -3,7 +3,7 @@ import { Outlet, NavLink, useLocation } from 'react-router-dom';
 const TABS = [
   { path: '/servicios-pro',              label: '📊 Panel',        end: true },
   { path: '/servicios-pro/expedientes',  label: '📁 Expedientes' },
-  { path: '/servicios-pro/tiempo',       label: '⏱️ Time Tracker' },
+  { path: '/servicios-pro/time-tracker',  label: '⏱️ Time Tracker' },
   { path: '/servicios-pro/tareas',       label: '📋 Tareas' },
   { path: '/servicios-pro/reuniones',    label: '📅 Reuniones' },
   { path: '/servicios-pro/contratos',    label: '📄 Contratos' },
