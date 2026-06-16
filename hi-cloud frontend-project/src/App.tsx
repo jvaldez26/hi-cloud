@@ -206,6 +206,19 @@ const LockersPage                 = lazy(() => import('./pages/gimnasio/LockersP
 const NutricionPage               = lazy(() => import('./pages/gimnasio/NutricionPage'));
 const TiendaGimnasioPage          = lazy(() => import('./pages/gimnasio/TiendaPage'));
 const GimnasioReportesPage        = lazy(() => import('./pages/gimnasio/GimnasioReportesPage'));
+// Servicios Profesionales
+const ServiciosProLayout          = lazy(() => import('./pages/servicios-pro/ServiciosProLayout'));
+const ServiciosProDashboard       = lazy(() => import('./pages/servicios-pro/ServiciosProDashboard'));
+const ExpedientesPage             = lazy(() => import('./pages/servicios-pro/ExpedientesPage'));
+const ExpedienteDetallePage       = lazy(() => import('./pages/servicios-pro/ExpedienteDetallePage'));
+const TimeTrackerPage             = lazy(() => import('./pages/servicios-pro/TimeTrackerPage'));
+const SpTareasPage                = lazy(() => import('./pages/servicios-pro/TareasPage'));
+const ReunionesPage               = lazy(() => import('./pages/servicios-pro/ReunionesPage'));
+const SpContratosPage             = lazy(() => import('./pages/servicios-pro/ContratosPage'));
+const HonorariosPage              = lazy(() => import('./pages/servicios-pro/HonorariosPage'));
+const RetainersPage               = lazy(() => import('./pages/servicios-pro/RetainersPage'));
+const SpProfesionalesPage         = lazy(() => import('./pages/servicios-pro/ProfesionalesPage'));
+const SpReportesPage              = lazy(() => import('./pages/servicios-pro/ReportesPage'));
 dayjs.locale('es');
 
 export const qc = new QueryClient({
@@ -745,6 +758,20 @@ export default function App() {
                       <Route path="nutricion"         element={<NutricionPage />} />
                       <Route path="tienda"            element={<TiendaGimnasioPage />} />
                       <Route path="reportes"          element={<GimnasioReportesPage />} />
+                    </Route>
+
+                    <Route path="/servicios-pro" element={<ServiciosProLayout />}>
+                      <Route index                          element={<ServiciosProDashboard />} />
+                      <Route path="expedientes"             element={<ExpedientesPage />} />
+                      <Route path="expedientes/:id"         element={<ExpedienteDetallePage />} />
+                      <Route path="time-tracker"            element={<TimeTrackerPage />} />
+                      <Route path="tareas"                  element={<SpTareasPage />} />
+                      <Route path="reuniones"               element={<ReunionesPage />} />
+                      <Route path="contratos"               element={<SpContratosPage />} />
+                      <Route path="honorarios"              element={<HonorariosPage />} />
+                      <Route path="retainers"               element={<RetainersPage />} />
+                      <Route path="profesionales"           element={<SpProfesionalesPage />} />
+                      <Route path="reportes"                element={<SpReportesPage />} />
                     </Route>
                   </Route>
 

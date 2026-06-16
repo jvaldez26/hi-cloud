@@ -368,6 +368,21 @@ const MENU_CATEGORIES: MenuCategory[] = [
       { path: '/gimnasio/reportes',        label: 'Reportes' },
     ],
   },
+  {
+    id: 'servicios_pro', label: 'Servicios Profesionales', Icon: Briefcase,
+    items: [
+      { path: '/servicios-pro',                  label: 'Panel' },
+      { path: '/servicios-pro/expedientes',      label: 'Expedientes' },
+      { path: '/servicios-pro/time-tracker',     label: 'Time Tracker' },
+      { path: '/servicios-pro/tareas',           label: 'Tareas' },
+      { path: '/servicios-pro/reuniones',        label: 'Reuniones' },
+      { path: '/servicios-pro/contratos',        label: 'Contratos' },
+      { path: '/servicios-pro/honorarios',       label: 'Honorarios' },
+      { path: '/servicios-pro/retainers',        label: 'Retainers' },
+      { path: '/servicios-pro/profesionales',    label: 'Profesionales' },
+      { path: '/servicios-pro/reportes',         label: 'Reportes' },
+    ],
+  },
 ];
 
 // ── Orden de jerarquía de planes ─────────────────────────────────────────────
@@ -558,6 +573,16 @@ const PATH_ROLES: Record<string, string[]> = {
   '/gimnasio/nutricion':        ADMIN_CONT,
   '/gimnasio/tienda':           ADMIN_CONT,
   '/gimnasio/reportes':         ADMIN_CONT,
+  '/servicios-pro':                  ADMIN_CONT,
+  '/servicios-pro/expedientes':      ADMIN_CONT,
+  '/servicios-pro/time-tracker':     ADMIN_CONT,
+  '/servicios-pro/tareas':           ADMIN_CONT,
+  '/servicios-pro/reuniones':        ADMIN_CONT,
+  '/servicios-pro/contratos':        ADMIN_CONT,
+  '/servicios-pro/honorarios':       ADMIN_CONT,
+  '/servicios-pro/retainers':        ADMIN_CONT,
+  '/servicios-pro/profesionales':    ADMIN_CONT,
+  '/servicios-pro/reportes':         ADMIN_CONT,
 };
 
 function rolPuedeVerRuta(path: string, role: string): boolean {
@@ -1147,7 +1172,7 @@ const GRUPOS_MENU = [
   { key: 'sistema',    label: 'Sistema',                 obligatorio: false },
 ];
 const TODOS_GRUPOS_KEYS = GRUPOS_MENU.map(g => g.key);
-const ADDON_IDS = ['clinica', 'taller', 'optica', 'farmacia', 'restaurante', 'gimnasio'];
+const ADDON_IDS = ['clinica', 'taller', 'optica', 'farmacia', 'restaurante', 'gimnasio', 'servicios_pro'];
 
 // ── AppLayout principal ───────────────────────────────────────────────────────
 export default function AppLayout() {
