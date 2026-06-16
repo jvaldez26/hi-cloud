@@ -3721,7 +3721,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
             encf: f.ecf?.numero, ecfPendiente: !f.ecf?.numero,
             securityCode: f.ecf?.codigoSeguridad, qrUrl: f.ecf?.qrUrl,
             rncComprador: f.cliente?.rncReceptor || f.cliente?.rfc, razonSocial: f.cliente?.nombre,
-            cajero: f.usuario?.nombre, sucursalNombre: (f as any).sucursal?.nombre,
+            cajero: f.usuario?.nombre, sucursalNombre: (f as any).sucursal?.nombre ?? sucursalNombreFromCache(qc),
             empresaNombreComercial: empRes.razonSocial ?? empRes.nombre, empresaRnc: empRes.rnc,
             empresaDireccion: empRes.direccion, empresaTelefono: empRes.telefono,
           };

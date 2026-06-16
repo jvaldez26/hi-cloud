@@ -145,12 +145,20 @@ export class PreFacturaService {
     if (!pf) throw new NotFoundException(`Pre-Factura #${id} no encontrada`);
 
     // 2. Cargar detalles con query SQL directa para evitar filtro @TenantScoped
-    // que vacía el array cuando se carga via leftJoinAndSelect o eager:true
     const detalles = await this.ds.query<PreFacturaDetalle[]>(
       `SELECT * FROM pre_factura_detalles WHERE "preFacturaId" = $1 ORDER BY id ASC`,
       [id],
     );
     (pf as any).detalles = detalles;
+
+    // 3. Cargar nombre de sucursal (no hay @ManyToOne en la entidad)
+    if ((pf as any).sucursalId) {
+      const [suc] = await this.ds.query<{ nombre: string }[]>(
+        `SELECT nombre FROM sucursales WHERE id = $1 LIMIT 1`,
+        [(pf as any).sucursalId],
+      ).catch(() => []);
+      if (suc) (pf as any).sucursal = { nombre: suc.nombre };
+    }
 
     return pf;
   }
