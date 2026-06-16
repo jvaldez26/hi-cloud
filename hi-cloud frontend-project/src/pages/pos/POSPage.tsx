@@ -3723,8 +3723,19 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
             rncComprador: f.cliente?.rncReceptor || f.cliente?.rfc, razonSocial: f.cliente?.nombre,
             cajero: f.usuario?.nombre, sucursalNombre: (f as any).sucursal?.nombre,
             empresaNombreComercial: empRes.razonSocial ?? empRes.nombre, empresaRnc: empRes.rnc,
+            empresaDireccion: empRes.direccion, empresaTelefono: empRes.telefono,
           };
-          imprimirReciboTermico(buildReciboTermicoHTML(saleObj, null, {}));
+          let qrDUrl: string | null = null;
+          if (f.ecf?.qrUrl && f.ecf?.numero) {
+            try { qrDUrl = await QRCode.toDataURL(f.ecf.qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' }); }
+            catch { /* sin QR */ }
+          }
+          const empConf = (empRes.configuracion ?? {}) as any;
+          imprimirReciboTermico(buildReciboTermicoHTML(saleObj, qrDUrl, {
+            tipoImpresora: empConf.posTipoImpresora,
+            mensajeTicket: empConf.posMensajeTicket,
+            politicaDev:   empConf.posPoliticaDev,
+          }));
         } catch { /* error de impresión no bloquea */ }
       }
     },
