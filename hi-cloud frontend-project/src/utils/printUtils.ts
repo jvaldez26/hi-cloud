@@ -51,38 +51,67 @@ export function imprimirHtml(html: string): void {
   setTimeout(() => { if (!pw.closed) doPrint(); }, 800);
 }
 
-// ── Imprimir recibo térmico POS (HTML puro, sin blob URL) ────────────────────
-// Usa document.write para evitar la rasterización que causa texto borroso con blob URLs.
+// ── Imprimir recibo térmico POS ───────────────────────────────────────────────
+// Usa document.write (no blob URL) para evitar rasterización/texto borroso.
+// Fallback: overlay en la página actual + window.print() — no requiere popup
+// ni gesto del usuario, funciona en Android/iOS desde cualquier contexto async.
 
 export function imprimirReciboTermico(html: string, onDone?: () => void): void {
   const pw = window.open('', '_blank', 'width=360,height=640,toolbar=0,menubar=0,location=0,scrollbars=yes');
   if (!pw) {
-    // Fallback iframe visible a pantalla completa cuando el popup está bloqueado (tablet/iOS/Android)
-    const iframe = document.createElement('iframe');
-    iframe.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:none;z-index:2147483647;background:#fff';
-    document.body.appendChild(iframe);
-    const idoc = iframe.contentDocument;
-    if (idoc) { idoc.open(); idoc.write(html); idoc.close(); }
-    const cleanup = () => { try { document.body.removeChild(iframe); } catch { /* noop */ } onDone?.(); };
-    iframe.contentWindow?.addEventListener('afterprint', cleanup, { once: true });
-    setTimeout(() => {
-      iframe.contentWindow?.print();
-      setTimeout(cleanup, 60_000);
-    }, 400);
+    // popup bloqueado (Android/iOS Chrome por defecto) → overlay en página actual
+    _reciboOverlay(html, onDone);
     return;
   }
-
   pw.document.open();
   pw.document.write(html);
   pw.document.close();
   pw.focus();
-
-  // Esperar render completo antes de llamar print()
   setTimeout(() => {
     pw.print();
     pw.addEventListener('afterprint', () => { pw.close(); onDone?.(); }, { once: true });
     setTimeout(() => { try { pw.close(); onDone?.(); } catch { /* noop */ } }, 60_000);
   }, 400);
+}
+
+// Imprime el recibo inyectando su contenido como overlay en la página actual y
+// llamando window.print(). No usa window.open() — funciona en Android sin permisos
+// de popup. window.print() sí puede llamarse desde setTimeout/async en Android Chrome.
+function _reciboOverlay(html: string, onDone?: () => void): void {
+  // Extraer <style> y <body> del HTML completo del recibo
+  const cssMatch  = html.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
+  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  const receiptCss  = cssMatch  ? cssMatch[1]  : '';
+  const bodyContent = bodyMatch ? bodyMatch[1] : html;
+
+  // Overlay pantalla completa con el contenido del recibo
+  const overlay = document.createElement('div');
+  overlay.id = '__hc-po';
+  overlay.innerHTML = bodyContent;
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;overflow:auto;background:#fff';
+  document.body.appendChild(overlay);
+
+  // Inyectar los estilos del recibo (incluye @page size 80mm, body font/width)
+  // más reglas de impresión para ocultar el resto de la app al imprimir
+  const styleEl = document.createElement('style');
+  styleEl.id = '__hc-ps';
+  styleEl.textContent = receiptCss + `
+    @media print{
+      html,body{visibility:hidden!important}
+      #__hc-po{visibility:visible!important;position:static!important;display:block!important}
+      #__hc-po *{visibility:visible!important}
+    }`;
+  document.head.appendChild(styleEl);
+
+  const cleanup = () => {
+    try { if (document.body.contains(overlay))  document.body.removeChild(overlay);  } catch { /* noop */ }
+    try { if (document.head.contains(styleEl)) document.head.removeChild(styleEl); } catch { /* noop */ }
+    onDone?.();
+  };
+
+  window.addEventListener('afterprint', cleanup, { once: true });
+  // 400 ms para que el overlay renderice antes de abrir el diálogo de impresión
+  setTimeout(() => { window.print(); setTimeout(cleanup, 60_000); }, 400);
 }
 
 // ── Imprimir elemento HTML (recibos térmicos POS) ─────────────────────────────
