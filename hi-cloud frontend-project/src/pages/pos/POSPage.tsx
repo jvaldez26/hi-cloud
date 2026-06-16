@@ -4205,7 +4205,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
                             title="Cobrar pre-factura"
                             style={{ background: '#16a34a', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', padding: '4px 10px', fontSize: 12, fontWeight: 700, marginRight: 6 }}
                           >
-                            ⚡ Cobrar
+                            Cobrar
                           </button>
                         )}
                         {/* Cobrar Cotización */}
@@ -4219,7 +4219,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
                             title="Cobrar cotización"
                             style={{ background: '#16a34a', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', padding: '4px 10px', fontSize: 12, fontWeight: 700, marginRight: 6 }}
                           >
-                            ⚡ Cobrar
+                            Cobrar
                           </button>
                         )}
                         {/* Imprimir */}
@@ -4371,7 +4371,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
               <button disabled={cobrarPFMut.isPending}
                 onClick={() => cobrarPFMut.mutate({ id: cobrarPF.id, metodoPago: cobrarPFMetodo })}
                 style={{ flex: 2, padding: '11px 0', borderRadius: 9, border: 'none', background: cobrarPFMut.isPending ? '#9ca3af' : '#16a34a', color: '#fff', cursor: cobrarPFMut.isPending ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 700 }}>
-                {cobrarPFMut.isPending ? 'Procesando...' : '⚡ Confirmar Cobro'}
+                {cobrarPFMut.isPending ? 'Procesando...' : 'Confirmar Cobro'}
               </button>
             </div>
           </div>
@@ -4421,7 +4421,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
               <button disabled={cobrarCotMut.isPending}
                 onClick={() => cobrarCotMut.mutate({ id: cobrarCot.id, metodoPago: cobrarCotMetodo })}
                 style={{ flex: 2, padding: '11px 0', borderRadius: 9, border: 'none', background: cobrarCotMut.isPending ? '#9ca3af' : '#16a34a', color: '#fff', cursor: cobrarCotMut.isPending ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 700 }}>
-                {cobrarCotMut.isPending ? 'Procesando...' : '⚡ Confirmar Cobro'}
+                {cobrarCotMut.isPending ? 'Procesando...' : 'Confirmar Cobro'}
               </button>
             </div>
           </div>
