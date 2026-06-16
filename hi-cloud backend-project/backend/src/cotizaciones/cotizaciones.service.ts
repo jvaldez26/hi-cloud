@@ -19,6 +19,7 @@ import { PaginationDto } from '../common/dto/pagination.dto';
 import { TenantService } from '../tenant/tenant.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { User } from '../users/users.entity';
+import { FacturasService } from '../facturas/facturas.service';
 
 @Injectable()
 export class CotizacionesService {
@@ -36,6 +37,7 @@ export class CotizacionesService {
     private tenantService:    TenantService,
     private realtimeService:  RealtimeService,
     @InjectDataSource() private dataSource: DataSource,
+    private facturasService:  FacturasService,
   ) {}
 
   // ──────────────────────────────────────────────────────────────────
@@ -227,6 +229,79 @@ export class CotizacionesService {
     this.realtimeService.notify(this.tenantService.getEmpresaId(), 'cotizacion', 'updated', id);
     this.realtimeService.notify(this.tenantService.getEmpresaId(), 'factura',    'created');
     return this.findById(id);
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Cobrar desde POS — convierte cotización a factura PAGADA directo
+  // Acepta BORRADOR y ENVIADA (no requiere estado ACEPTADA).
+  // Sin vendedorId para saltarse el check de caja en cambiarEstado.
+  // ──────────────────────────────────────────────────────────────────
+
+  async cobrarDesdePos(id: number, usuarioId: number, dto: { metodoPago: string }) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const cot = await this.findById(id);
+
+    if ([CotizacionEstado.CONVERTIDA, CotizacionEstado.RECHAZADA, CotizacionEstado.VENCIDA].includes(cot.estado)) {
+      throw new BadRequestException('Esta cotización no puede cobrarse en su estado actual');
+    }
+
+    // Folio atómico vía función de secuencia (nunca MAX+1)
+    const [row] = await this.dataSource.query<{ numero: number }[]>(
+      `SELECT siguiente_numero_secuencia($1, $2) AS numero`,
+      [empresaId, 'FAC'],
+    );
+    const folio = `FAC-${row.numero}`;
+
+    // Crear factura BORRADOR + marcar cotización CONVERTIDA (transacción atómica).
+    // Sin vendedorId: skip al check de caja en cambiarEstado (conversión no es venta POS directa).
+    const savedFactura = await this.dataSource.transaction(async (manager) => {
+      const f = manager.create(Factura, {
+        empresaId,
+        folio,
+        fecha:      new Date(),
+        estado:     FacturaEstado.BORRADOR,
+        clienteId:  cot.clienteId,
+        usuarioId,
+        sucursalId: (cot as any).sucursalId ?? undefined,
+        subtotal:   Number(cot.subtotal),
+        iva:        Number(cot.iva),
+        total:      Number(cot.total),
+        tipoNcf:    'E32',
+        notas:      dto.metodoPago,
+        detalles:   cot.detalles.map(det => ({
+          productoId:     det.productoId,
+          descripcion:    det.descripcion,
+          cantidad:       Math.round(Number(det.cantidad)),
+          precioUnitario: Number(det.precioUnitario),
+          porcentajeIva:  Number(det.porcentajeIva),
+          subtotal:       Number(det.subtotal),
+          importeIva:     Number(det.importeIva),
+          total:          Number(det.total),
+        })) as any,
+      });
+      const saved = await manager.save(f);
+      await manager.update(Cotizacion, id, {
+        estado:    CotizacionEstado.CONVERTIDA,
+        facturaId: saved.id,
+      });
+      return saved;
+    });
+
+    // Emitir: ECF + stock + asiento (BORRADOR → PAGADA para contado).
+    await this.facturasService.cambiarEstado(
+      savedFactura.id,
+      FacturaEstado.EMITIDA,
+      true,
+    ).catch(async (err) => {
+      this.logger.error(
+        `[cobrarDesdePos COT] cambiarEstado falló para ${folio}: ${err?.message ?? err}`,
+      );
+      await this.facturaRepository.update(savedFactura.id, { estado: FacturaEstado.EMITIDA }).catch(() => {});
+    });
+
+    this.realtimeService.notify(empresaId, 'cotizacion', 'updated', id);
+    this.realtimeService.notify(empresaId, 'factura', 'created');
+    return { facturaId: savedFactura.id, folio };
   }
 
   async remove(id: number) {

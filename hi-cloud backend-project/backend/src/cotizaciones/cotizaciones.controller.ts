@@ -4,7 +4,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
-import { IsEnum } from 'class-validator';
+import { IsEnum, IsString } from 'class-validator';
 import { CotizacionesService } from './cotizaciones.service';
 import { CreateCotizacionDto } from './dto/create-cotizacion.dto';
 import { CotizacionEstado } from './entities/cotizacion.entity';
@@ -19,6 +19,10 @@ import { User } from '../users/users.entity';
 class CambiarEstadoDto {
   @IsEnum(CotizacionEstado)
   estado: CotizacionEstado;
+}
+
+class CobrarPosDto {
+  @IsString() metodoPago!: string;
 }
 
 @ApiTags('Cotizaciones')
@@ -86,6 +90,18 @@ export class CotizacionesController {
     @GetUser() usuario: User,
   ) {
     return this.cotizacionesService.convertirAFactura(id, usuario);
+  }
+
+  @Post(':id/cobrar-pos')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: '⚡ Cobrar cotización desde POS: convierte a factura PAGADA + ECF + stock' })
+  cobrarDesdePos(
+    @Param('id', ParseIntPipe) id: number,
+    @GetUser() usuario: User,
+    @Body() dto: CobrarPosDto,
+  ) {
+    return this.cotizacionesService.cobrarDesdePos(id, usuario.id, dto);
   }
 
   @Get(':id/pdf')

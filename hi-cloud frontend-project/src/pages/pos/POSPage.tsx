@@ -3658,6 +3658,9 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
   const [cobrarPF,      setCobrarPF]      = useState<{ id: number; folio: string; total: number; cliente: string } | null>(null);
   const [cobrarPFMetodo, setCobrarPFMetodo] = useState<string>('Efectivo');
   const [cobrarPFMonto,  setCobrarPFMonto]  = useState<string>('');
+  const [cobrarCot,      setCobrarCot]      = useState<{ id: number; numero: string; total: number; cliente: string } | null>(null);
+  const [cobrarCotMetodo, setCobrarCotMetodo] = useState<string>('Efectivo');
+  const [cobrarCotMonto,  setCobrarCotMonto]  = useState<string>('');
   const [genericDoc,     setGenericDoc]     = useState<GenericDocData | null>(null);
   const PANEL_GENERIC_ID  = 'hc-pos-panel-generic';
 
@@ -3741,6 +3744,55 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
     },
     onError: (e: any) => {
       message.error(e?.response?.data?.message ?? 'Error al cobrar pre-factura');
+    },
+  });
+
+  // ── Cobrar Cotización desde POS ───────────────────────────────────────────────
+  const cobrarCotMut = useMutation({
+    mutationFn: async ({ id, metodoPago }: { id: number; metodoPago: string }) =>
+      api.post(`/cotizaciones/${id}/cobrar-pos`, { metodoPago }).then(r => r.data?.data ?? r.data),
+    onSuccess: async (data: { facturaId: number; folio: string }) => {
+      message.success(`Factura ${data.folio} generada`);
+      setCobrarCot(null); setCobrarCotMonto(''); setCobrarCotMetodo('Efectivo');
+      qc.invalidateQueries({ queryKey: ['pos-panel', 'cotizaciones'] });
+      qc.refetchQueries({    queryKey: ['pos-panel', 'cotizaciones'] });
+      qc.invalidateQueries({ queryKey: ['pos-panel', 'facturas'] });
+      if (data.facturaId) {
+        try {
+          const empRes = await api.get('/configuracion/empresa').then(x => x.data?.data ?? x.data).catch(() => ({}));
+          const f = await api.get(`/facturas/${data.facturaId}`).then(r => r.data?.data ?? r.data);
+          const metodo = f.notas?.includes('Tarjeta') ? 'tarjeta' : f.notas?.includes('Transferencia') ? 'transferencia' : 'efectivo';
+          const saleObj: Sale = {
+            folio: f.folio, total: Number(f.total ?? 0), cambio: 0, metodo,
+            items: (f.detalles ?? []).map((d: any) => ({
+              produto: { id: d.productoId, nombre: d.descripcion, precio: Number(d.precioUnitario), stock: 999, porcentajeIva: Number(d.porcentajeIva ?? 18), codigo: '', categoria: '', unidadMedida: '' } as any,
+              cantidad: Number(d.cantidad), precio: Number(d.precioUnitario), descuento: 0,
+            })),
+            cliente: f.cliente?.nombre, iva: Number(f.iva ?? 0), subtotal: Number(f.subtotal ?? 0),
+            facturaId: f.id, tipoNcf: f.tipoNcf ?? 'E32',
+            encf: f.ecf?.numero, ecfPendiente: !f.ecf?.numero,
+            securityCode: f.ecf?.codigoSeguridad, qrUrl: f.ecf?.qrUrl,
+            rncComprador: f.cliente?.rncReceptor || f.cliente?.rfc, razonSocial: f.cliente?.nombre,
+            cajero: f.usuario?.nombre, sucursalNombre: (f as any).sucursal?.nombre ?? sucursalNombreFromCache(qc),
+            empresaNombreComercial: empRes.razonSocial ?? empRes.nombre, empresaRnc: empRes.rnc,
+            empresaDireccion: empRes.direccion, empresaTelefono: empRes.telefono,
+          };
+          let qrDUrl: string | null = null;
+          if (f.ecf?.qrUrl && f.ecf?.numero) {
+            try { qrDUrl = await QRCode.toDataURL(f.ecf.qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' }); }
+            catch { /* sin QR */ }
+          }
+          const empConf = (empRes.configuracion ?? {}) as any;
+          imprimirReciboTermico(buildReciboTermicoHTML(saleObj, qrDUrl, {
+            tipoImpresora: empConf.posTipoImpresora,
+            mensajeTicket: empConf.posMensajeTicket,
+            politicaDev:   empConf.posPoliticaDev,
+          }));
+        } catch { /* error de impresión no bloquea */ }
+      }
+    },
+    onError: (e: any) => {
+      message.error(e?.response?.data?.message ?? 'Error al cobrar cotización');
     },
   });
 
@@ -4023,7 +4075,11 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
       { label: 'Número',   key: 'numero',   render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue }}>{v}</span> },
       { label: 'Cliente',  key: 'cliente',  render: (_,r) => r.cliente?.nombre ?? '—' },
       { label: 'Total',    key: 'total',    render: (v) => <span style={{ fontWeight: 700, color: C.orange }}>{fmt.money(v)}</span> },
-      { label: 'Estado',   key: 'estado',   render: (v) => <span style={{ fontSize: 10, fontWeight: 700 }}>{v?.toUpperCase()}</span> },
+      { label: 'Estado',   key: 'estado',   render: (v: string) => {
+        const est = (v ?? '').toLowerCase();
+        const colMap: Record<string, string> = { convertida: C.green, aceptada: C.green, enviada: C.blue, borrador: C.orange, rechazada: C.red, vencida: C.textSub };
+        return <span style={{ fontSize: 10, fontWeight: 700, color: colMap[est] ?? C.textSub }}>{est === 'convertida' ? '✓ CONVERTIDA' : v?.toUpperCase()}</span>;
+      }},
     ],
     conduce: [
       { label: 'Número',    key: 'numero',          render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue }}>{v}</span> },
@@ -4147,6 +4203,20 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
                               setCobrarPFMetodo('Efectivo'); setCobrarPFMonto(String(Number(row.total ?? 0).toFixed(2)));
                             }}
                             title="Cobrar pre-factura"
+                            style={{ background: '#16a34a', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', padding: '4px 10px', fontSize: 12, fontWeight: 700, marginRight: 6 }}
+                          >
+                            ⚡ Cobrar
+                          </button>
+                        )}
+                        {/* Cobrar Cotización */}
+                        {panel === 'cotizaciones' && !['convertida', 'rechazada', 'vencida'].includes((row.estado ?? '').toLowerCase()) && (
+                          <button
+                            onClick={() => {
+                              const clienteNombre = row.cliente?.nombre ?? row.clienteNombre ?? 'Consumidor Final';
+                              setCobrarCot({ id: row.id, numero: row.numero, total: Number(row.total ?? 0), cliente: clienteNombre });
+                              setCobrarCotMetodo('Efectivo'); setCobrarCotMonto(String(Number(row.total ?? 0).toFixed(2)));
+                            }}
+                            title="Cobrar cotización"
                             style={{ background: '#16a34a', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', padding: '4px 10px', fontSize: 12, fontWeight: 700, marginRight: 6 }}
                           >
                             ⚡ Cobrar
@@ -4302,6 +4372,56 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
                 onClick={() => cobrarPFMut.mutate({ id: cobrarPF.id, metodoPago: cobrarPFMetodo })}
                 style={{ flex: 2, padding: '11px 0', borderRadius: 9, border: 'none', background: cobrarPFMut.isPending ? '#9ca3af' : '#16a34a', color: '#fff', cursor: cobrarPFMut.isPending ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 700 }}>
                 {cobrarPFMut.isPending ? 'Procesando...' : '⚡ Confirmar Cobro'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal cobrar Cotización ───────────────────────────────────────────── */}
+      {cobrarCot && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,.55)' }}
+          onClick={(e) => { if (e.target === e.currentTarget) { setCobrarCot(null); setCobrarCotMonto(''); } }}>
+          <div style={{ background: C.card, borderRadius: 16, padding: 28, width: 360, maxWidth: '92vw', boxShadow: '0 8px 40px rgba(0,0,0,.3)' }}>
+            <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4, color: C.text }}>Cobrar Cotización</div>
+            <div style={{ fontSize: 13, color: C.textSub, marginBottom: 16 }}>{cobrarCot.numero} · {cobrarCot.cliente}</div>
+            <div style={{ background: C.bg, borderRadius: 10, padding: '10px 14px', marginBottom: 18, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ color: C.textSub, fontSize: 13 }}>Total</span>
+              <span style={{ fontSize: 22, fontWeight: 800, color: C.green }}>RD${Number(cobrarCot.total).toLocaleString('es-DO', { minimumFractionDigits: 2 })}</span>
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: C.textSub, marginBottom: 6 }}>Método de pago</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {(['Efectivo', 'Tarjeta', 'Transferencia'] as const).map(m => (
+                  <button key={m} onClick={() => setCobrarCotMetodo(m)}
+                    style={{ flex: 1, padding: '8px 4px', borderRadius: 8, border: `2px solid ${cobrarCotMetodo === m ? C.green : C.border2}`, background: cobrarCotMetodo === m ? '#dcfce7' : C.card, color: cobrarCotMetodo === m ? '#15803d' : C.text, cursor: 'pointer', fontSize: 12, fontWeight: cobrarCotMetodo === m ? 700 : 400 }}>
+                    {m}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {cobrarCotMetodo === 'Efectivo' && (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 12, color: C.textSub, marginBottom: 6 }}>Monto recibido</div>
+                <input type="number" min="0" step="0.01" value={cobrarCotMonto}
+                  onChange={e => setCobrarCotMonto(e.target.value)}
+                  style={{ width: '100%', padding: '10px 12px', border: `1px solid ${C.border2}`, borderRadius: 8, fontSize: 16, background: C.bg, color: C.text, outline: 'none', boxSizing: 'border-box' }} />
+                {cobrarCotMonto && Number(cobrarCotMonto) >= cobrarCot.total && (
+                  <div style={{ marginTop: 6, fontSize: 14, color: C.green, fontWeight: 700 }}>
+                    Cambio: RD${(Number(cobrarCotMonto) - cobrarCot.total).toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+                  </div>
+                )}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+              <button onClick={() => { setCobrarCot(null); setCobrarCotMonto(''); }}
+                style={{ flex: 1, padding: '11px 0', borderRadius: 9, border: `1px solid ${C.border2}`, background: 'none', color: C.textSub, cursor: 'pointer', fontSize: 14 }}>
+                Cancelar
+              </button>
+              <button disabled={cobrarCotMut.isPending}
+                onClick={() => cobrarCotMut.mutate({ id: cobrarCot.id, metodoPago: cobrarCotMetodo })}
+                style={{ flex: 2, padding: '11px 0', borderRadius: 9, border: 'none', background: cobrarCotMut.isPending ? '#9ca3af' : '#16a34a', color: '#fff', cursor: cobrarCotMut.isPending ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 700 }}>
+                {cobrarCotMut.isPending ? 'Procesando...' : '⚡ Confirmar Cobro'}
               </button>
             </div>
           </div>
