@@ -4312,8 +4312,10 @@ export default function POSPage() {
   const palette      = isDark ? darkC : lightC;
   const C            = palette;
   const qc           = useQueryClient();
-  const user          = useAuthStore(s => s.user);
-  const almacenActual = useAuthStore(s => s.almacenActual);
+  const user               = useAuthStore(s => s.user);
+  const almacenActual      = useAuthStore(s => s.almacenActual);
+  const setSucursalActualPOS = useAuthStore(s => s.setSucursalActual);
+  const setAlmacenActualPOS  = useAuthStore(s => s.setAlmacenActual);
 
   // ── Bloqueo de pantalla ────────────────────────────────────────────────────
   const [pantallaBloqueada,   setPantallaBloqueada]   = useState(() =>
@@ -5317,24 +5319,34 @@ export default function POSPage() {
       color: palette.text, overflow: 'hidden',
     }}>
       <ModalAperturaTurno open={!turnoAbierto} vendedores={vendedores} sucursales={sucursales}
-        onAbrir={(m, vid, sid) => {
-          // Primero guardar vendedorId en localStorage y estado para que
-          // las queries lo lean correctamente en el siguiente ciclo
+        onAbrir={async (m, vid, sid) => {
           if (vid) {
             setVendedorId(vid);
             localStorage.setItem('pos_vendedor_id', String(vid));
           }
+          if (sid) {
+            try {
+              const res = await api.post('/auth/cambiar-sucursal', { sucursalId: sid });
+              const data = res.data?.data ?? res.data;
+              setSucursalActualPOS(data.sucursalActual ?? sid);
+              setAlmacenActualPOS(data.almacenActual ?? null);
+              if (data.sucursalNombre) localStorage.setItem('pos_sucursal_nombre', data.sucursalNombre);
+              const sucId = data.sucursalActual ?? sid;
+              setSucursalId(sucId);
+              localStorage.setItem('sucursalId', String(sucId));
+              localStorage.setItem('pos_sucursal_id', String(sucId));
+              qc.clear();
+            } catch (err: any) {
+              message.error(err?.response?.data?.message ?? 'Error al cambiar sucursal');
+              setSucursalId(sid);
+              localStorage.setItem('sucursalId', String(sid));
+              localStorage.setItem('pos_sucursal_id', String(sid));
+            }
+          }
           setTurnoAbierto(true);
           sessionStorage.setItem('pos_turno', '1');
           qc.invalidateQueries({ queryKey: ['pos-caja-hoy'] });
-          qc.invalidateQueries({ queryKey: ['pos-caja-abierta', vid] });
-          if (vid) {
-          }
-          if (sid) {
-            setSucursalId(sid);
-            localStorage.setItem('sucursalId', String(sid));
-            localStorage.setItem('pos_sucursal_id', String(sid));
-          }
+          if (vid) qc.invalidateQueries({ queryKey: ['pos-caja-abierta', vid] });
         }}
         onCancelar={() => navigate('/dashboard')} />
       <ModalExito sale={sale} onNueva={() => setSale(null)}
