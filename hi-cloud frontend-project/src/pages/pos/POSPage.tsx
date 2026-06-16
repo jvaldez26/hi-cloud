@@ -3035,38 +3035,61 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
   const totalDia = ventas.reduce((s: number, v: any) => s + Number(v.total ?? 0), 0);
 
   const handleReimprimir = async (id: number, folio: string) => {
-    const empresa = await api.get('/configuracion/empresa')
-      .then(x => x.data?.data ?? x.data).catch(() => ({}));
-    const f = await api.get(`/facturas/${id}`).then(r => r.data?.data ?? r.data);
-    const sale: Sale = {
-      folio: f.folio, total: Number(f.total ?? 0), cambio: 0,
-      metodo: f.notas?.includes('Tarjeta') ? 'tarjeta' : f.notas?.includes('Transferencia') ? 'transferencia' : 'efectivo',
-      items: (f.detalles ?? []).map((d: any) => ({
-        produto: { id: d.productoId, nombre: d.descripcion, precio: Number(d.precioUnitario),
-                   stock: 999, porcentajeIva: Number(d.porcentajeIva ?? 18), codigo: '', categoria: '', unidadMedida: '' } as any,
-        cantidad: Number(d.cantidad), precio: Number(d.precioUnitario), descuento: 0,
-      })),
-      cliente: f.cliente?.nombre, iva: Number(f.iva ?? 0), subtotal: Number(f.subtotal ?? 0),
-      facturaId: f.id, tipoNcf: f.tipoNcf ?? 'E32',
-      encf: f.ecf?.numero, ecfPendiente: !f.ecf?.numero,
-      securityCode: f.ecf?.codigoSeguridad, qrUrl: f.ecf?.qrUrl,
-      rncComprador: f.cliente?.rncReceptor, razonSocial: f.cliente?.nombre,
-      cajero: f.usuario?.nombre ?? f.nombreVendedor,
-      sucursalNombre: (f as any).sucursal?.nombre ?? sucursalNombreFromCache(qc),
-      empresaNombreComercial: empresa.razonSocial ?? empresa.nombre,
-      empresaRnc: empresa.rnc, empresaDireccion: empresa.direccion, empresaTelefono: empresa.telefono,
-    };
-    let qrDUrl: string | null = null;
-    if (f.ecf?.qrUrl && f.ecf?.numero) {
-      try { qrDUrl = await QRCode.toDataURL(f.ecf.qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' }); }
-      catch { /* sin QR */ }
+    // Abrir ventana ANTES del await — mantiene el contexto de gesto del usuario en tablets iOS/Android
+    const printWin = window.open('', '_blank', 'width=360,height=640,toolbar=0,menubar=0,location=0,scrollbars=yes');
+    if (printWin) {
+      printWin.document.write('<html><head><title>Cargando...</title></head><body style="font-family:monospace;padding:20px;text-align:center">Cargando recibo...</body></html>');
     }
-    const empConf = (empresa.configuracion ?? {}) as any;
-    imprimirReciboTermico(buildReciboTermicoHTML(sale, qrDUrl, {
-      tipoImpresora: empConf.posTipoImpresora,
-      mensajeTicket: empConf.posMensajeTicket,
-      politicaDev:   empConf.posPoliticaDev,
-    }));
+    try {
+      const empresa = await api.get('/configuracion/empresa')
+        .then(x => x.data?.data ?? x.data).catch(() => ({}));
+      const f = await api.get(`/facturas/${id}`).then(r => r.data?.data ?? r.data);
+      const sale: Sale = {
+        folio: f.folio, total: Number(f.total ?? 0), cambio: 0,
+        metodo: f.notas?.includes('Tarjeta') ? 'tarjeta' : f.notas?.includes('Transferencia') ? 'transferencia' : 'efectivo',
+        items: (f.detalles ?? []).map((d: any) => ({
+          produto: { id: d.productoId, nombre: d.descripcion, precio: Number(d.precioUnitario),
+                     stock: 999, porcentajeIva: Number(d.porcentajeIva ?? 18), codigo: '', categoria: '', unidadMedida: '' } as any,
+          cantidad: Number(d.cantidad), precio: Number(d.precioUnitario), descuento: 0,
+        })),
+        cliente: f.cliente?.nombre, iva: Number(f.iva ?? 0), subtotal: Number(f.subtotal ?? 0),
+        facturaId: f.id, tipoNcf: f.tipoNcf ?? 'E32',
+        encf: f.ecf?.numero, ecfPendiente: !f.ecf?.numero,
+        securityCode: f.ecf?.codigoSeguridad, qrUrl: f.ecf?.qrUrl,
+        rncComprador: f.cliente?.rncReceptor, razonSocial: f.cliente?.nombre,
+        cajero: f.usuario?.nombre ?? f.nombreVendedor,
+        sucursalNombre: (f as any).sucursal?.nombre ?? sucursalNombreFromCache(qc),
+        empresaNombreComercial: empresa.razonSocial ?? empresa.nombre,
+        empresaRnc: empresa.rnc, empresaDireccion: empresa.direccion, empresaTelefono: empresa.telefono,
+      };
+      let qrDUrl: string | null = null;
+      if (f.ecf?.qrUrl && f.ecf?.numero) {
+        try { qrDUrl = await QRCode.toDataURL(f.ecf.qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' }); }
+        catch { /* sin QR */ }
+      }
+      const empConf = (empresa.configuracion ?? {}) as any;
+      const html = buildReciboTermicoHTML(sale, qrDUrl, {
+        tipoImpresora: empConf.posTipoImpresora,
+        mensajeTicket: empConf.posMensajeTicket,
+        politicaDev:   empConf.posPoliticaDev,
+      });
+      if (printWin && !printWin.closed) {
+        printWin.document.open();
+        printWin.document.write(html);
+        printWin.document.close();
+        printWin.focus();
+        setTimeout(() => {
+          printWin.print();
+          printWin.addEventListener('afterprint', () => printWin.close(), { once: true });
+          setTimeout(() => { try { printWin.close(); } catch { /* noop */ } }, 60_000);
+        }, 400);
+      } else {
+        imprimirReciboTermico(html);
+      }
+    } catch {
+      if (printWin && !printWin.closed) printWin.close();
+      message.error('Error al reimprimir');
+    }
   };
 
   return (

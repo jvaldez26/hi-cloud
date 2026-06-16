@@ -57,16 +57,18 @@ export function imprimirHtml(html: string): void {
 export function imprimirReciboTermico(html: string, onDone?: () => void): void {
   const pw = window.open('', '_blank', 'width=360,height=640,toolbar=0,menubar=0,location=0,scrollbars=yes');
   if (!pw) {
-    // Fallback iframe oculto si el popup está bloqueado
+    // Fallback iframe visible a pantalla completa cuando el popup está bloqueado (tablet/iOS/Android)
     const iframe = document.createElement('iframe');
-    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:0;height:0;border:none';
+    iframe.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:none;z-index:2147483647;background:#fff';
     document.body.appendChild(iframe);
     const idoc = iframe.contentDocument;
     if (idoc) { idoc.open(); idoc.write(html); idoc.close(); }
-    iframe.contentWindow?.print();
     const cleanup = () => { try { document.body.removeChild(iframe); } catch { /* noop */ } onDone?.(); };
     iframe.contentWindow?.addEventListener('afterprint', cleanup, { once: true });
-    setTimeout(cleanup, 60_000);
+    setTimeout(() => {
+      iframe.contentWindow?.print();
+      setTimeout(cleanup, 60_000);
+    }, 400);
     return;
   }
 
