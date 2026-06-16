@@ -3035,8 +3035,10 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
   const totalDia = ventas.reduce((s: number, v: any) => s + Number(v.total ?? 0), 0);
 
   const handleReimprimir = async (id: number, folio: string) => {
-    // Abrir ventana ANTES del await — mantiene el contexto de gesto del usuario en tablets iOS/Android
-    const printWin = window.open('', '_blank', 'width=360,height=640,toolbar=0,menubar=0,location=0,scrollbars=yes');
+    // En móvil/tablet la app BT intercepta la pestaña antes de document.write() → about:blank.
+    // En móvil usamos overlay+window.print() directo (imprimirReciboTermico lo detecta solo).
+    const _esMovilReimpr = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
+    const printWin = _esMovilReimpr ? null : window.open('', '_blank', 'width=360,height=640,toolbar=0,menubar=0,location=0,scrollbars=yes');
     if (printWin) {
       printWin.document.write('<html><head><title>Cargando...</title></head><body style="font-family:monospace;padding:20px;text-align:center">Cargando recibo...</body></html>');
     }
@@ -6318,8 +6320,12 @@ export default function POSPage() {
                   if (!canCheckout) return;
                   if (empresa?.configuracion?.posImpresionAuto === true) {
                     autoYaPrintedRef.current = false;
-                    const pw = window.open('', '_blank', 'width=360,height=640,toolbar=0,menubar=0,location=0,scrollbars=yes');
-                    if (pw) { pw.document.write('<html><head><title>Procesando venta...</title></head><body style="font-family:monospace;padding:20px;text-align:center">Procesando venta...</body></html>'); printWinRef.current = pw; }
+                    // En móvil no abrir popup — imprimirReciboTermico usará overlay+window.print()
+                    const _esMovilPago = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
+                    if (!_esMovilPago) {
+                      const pw = window.open('', '_blank', 'width=360,height=640,toolbar=0,menubar=0,location=0,scrollbars=yes');
+                      if (pw) { pw.document.write('<html><head><title>Procesando venta...</title></head><body style="font-family:monospace;padding:20px;text-align:center">Procesando venta...</body></html>'); printWinRef.current = pw; }
+                    }
                   }
                   ventaMut.mutate();
                 }}

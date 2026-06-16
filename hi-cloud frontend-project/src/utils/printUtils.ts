@@ -57,21 +57,26 @@ export function imprimirHtml(html: string): void {
 // ni gesto del usuario, funciona en Android/iOS desde cualquier contexto async.
 
 export function imprimirReciboTermico(html: string, onDone?: () => void): void {
-  const pw = window.open('', '_blank', 'width=360,height=640,toolbar=0,menubar=0,location=0,scrollbars=yes');
-  if (!pw) {
-    // popup bloqueado (Android/iOS Chrome por defecto) → overlay en página actual
-    _reciboOverlay(html, onDone);
-    return;
+  // En Android/tablet la app de impresión BT intercepta window.open() antes de
+  // que document.write() cargue el contenido → la pestaña queda en about:blank.
+  // En móvil: usar overlay + window.print() directamente (sí llega al contenido).
+  const esMovil = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
+  if (!esMovil) {
+    const pw = window.open('', '_blank', 'width=360,height=640,toolbar=0,menubar=0,location=0,scrollbars=yes');
+    if (pw) {
+      pw.document.open();
+      pw.document.write(html);
+      pw.document.close();
+      pw.focus();
+      setTimeout(() => {
+        pw.print();
+        pw.addEventListener('afterprint', () => { pw.close(); onDone?.(); }, { once: true });
+        setTimeout(() => { try { pw.close(); onDone?.(); } catch { /* noop */ } }, 60_000);
+      }, 400);
+      return;
+    }
   }
-  pw.document.open();
-  pw.document.write(html);
-  pw.document.close();
-  pw.focus();
-  setTimeout(() => {
-    pw.print();
-    pw.addEventListener('afterprint', () => { pw.close(); onDone?.(); }, { once: true });
-    setTimeout(() => { try { pw.close(); onDone?.(); } catch { /* noop */ } }, 60_000);
-  }, 400);
+  _reciboOverlay(html, onDone);
 }
 
 // Imprime el recibo inyectando su contenido como overlay en la página actual y
