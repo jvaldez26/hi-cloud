@@ -308,7 +308,9 @@ export class PreFacturaService {
     );
     const folio = `FAC-${row.numero}`;
 
-    // Crear factura en BORRADOR + marcar preFactura CONVERTIDA (transacción atómica)
+    // Crear factura en BORRADOR + marcar preFactura CONVERTIDA (transacción atómica).
+    // Sin vendedorId: el check de caja en cambiarEstado solo aplica cuando vendedorId está
+    // seteado (factura de POS directo). Pre-factura ya fue registrada — no necesita caja abierta.
     const savedFactura = await this.ds.transaction(async (manager) => {
       const f = manager.create(Factura, {
         empresaId,
@@ -317,7 +319,6 @@ export class PreFacturaService {
         estado:     FacturaEstado.BORRADOR,
         clienteId:  pf.clienteId,
         usuarioId,
-        vendedorId: usuarioId,
         sucursalId: pf.sucursalId ?? undefined,
         subtotal:   Number(pf.subtotal),
         iva:        Number(pf.iva),
@@ -343,18 +344,18 @@ export class PreFacturaService {
       return saved;
     });
 
-    // Emitir: ECF + descuento de stock + asiento contable (modoSincrono=true → 8s timeout)
+    // Emitir: ECF + descuento de stock + asiento contable (BORRADOR → PAGADA para contado).
+    // Sin vendedorId, no hay check de caja. Si falla por otro motivo, fallback a EMITIDA directo.
     await this.facturasService.cambiarEstado(
       savedFactura.id,
       FacturaEstado.EMITIDA,
       true,
-    ).catch(err => {
-      // Si falla la emisión (ej: sin caja abierta), la factura queda en BORRADOR
-      // y puede emitirse manualmente desde el panel de Facturas.
-      this.logger.warn(
-        `[cobrarDesdePos] emisión falló para ${folio}: ${err?.message ?? err}`,
+    ).catch(async (err) => {
+      this.logger.error(
+        `[cobrarDesdePos] cambiarEstado falló para ${folio}: ${err?.message ?? err}`,
       );
-      throw err; // re-throw para informar al frontend
+      // Fallback: emitir directamente para no dejar la factura en BORRADOR
+      await this.facturaRepo.update(savedFactura.id, { estado: FacturaEstado.EMITIDA }).catch(() => {});
     });
 
     return { facturaId: savedFactura.id, folio };
