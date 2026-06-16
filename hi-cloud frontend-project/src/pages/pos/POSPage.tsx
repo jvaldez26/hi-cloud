@@ -6116,7 +6116,7 @@ export default function POSPage() {
                     fontSize: 16, fontWeight: 700, cursor: 'pointer', outline: 'none',
                     boxShadow: '0 4px 16px rgba(16,185,129,.4)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                  ⚡ Cobrar {fmt.money(totalEfectivo)}
+                  Cobrar {fmt.money(totalEfectivo)}
                   <span style={{ fontSize: 10, opacity: 0.7, background: 'rgba(0,0,0,.25)', borderRadius: 4, padding: '1px 6px' }}>F9</span>
                 </motion.button>
               ) : (
@@ -6145,7 +6145,7 @@ export default function POSPage() {
                   background: C.border2, color: C.textMuted,
                   fontSize: 15, fontWeight: 700, cursor: 'not-allowed', outline: 'none',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: 0.45 }}>
-                ⚡ Cobrar
+                Cobrar
                 <span style={{ fontSize: 10, background: 'rgba(0,0,0,.12)', borderRadius: 4, padding: '1px 6px' }}>F9</span>
               </motion.button>
             )}
