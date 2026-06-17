@@ -142,14 +142,31 @@ export class ProFormaService {
     };
   }
 
-  async findOne(id: number): Promise<ProForma> {
+  async findOne(id: number): Promise<any> {
     const empresaId = this.tenantSvc.getEmpresaId();
     const pf = await this.pfRepo.findOne({
       where: { id, empresaId, isActive: true },
       relations: ['items'],
     });
     if (!pf) throw new NotFoundException(`Pro Forma #${id} no encontrada`);
-    return pf;
+
+    const extra: Record<string, string | null> = { clienteNombre: null, sucursalNombre: null };
+
+    if (pf.clienteId) {
+      const [cli] = await this.ds.query<{ nombre: string }[]>(
+        `SELECT nombre FROM clientes WHERE id = $1 LIMIT 1`, [pf.clienteId],
+      ).catch(() => []);
+      if (cli) extra.clienteNombre = cli.nombre;
+    }
+
+    if (pf.sucursalId) {
+      const [suc] = await this.ds.query<{ nombre: string }[]>(
+        `SELECT nombre FROM sucursales WHERE id = $1 LIMIT 1`, [pf.sucursalId],
+      ).catch(() => []);
+      if (suc) extra.sucursalNombre = suc.nombre;
+    }
+
+    return Object.assign(pf, extra);
   }
 
   async eliminar(id: number): Promise<{ ok: boolean }> {

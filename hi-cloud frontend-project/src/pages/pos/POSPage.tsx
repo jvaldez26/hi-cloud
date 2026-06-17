@@ -516,7 +516,7 @@ const IMPRESORA_CONFIG: Record<string, { width: string; fontSize: string; paddin
 function buildReciboTermicoHTML(
   sale: Sale,
   qrDataUrl: string | null,
-  cfg: { mostrarEcf?: boolean; tipoImpresora?: string; mensajeTicket?: string; politicaDev?: string; tipoDoc?: 'PRE-FACTURA' | 'COTIZACIÓN'; validezDias?: number } = {},
+  cfg: { mostrarEcf?: boolean; tipoImpresora?: string; mensajeTicket?: string; politicaDev?: string; tipoDoc?: 'PRE-FACTURA' | 'COTIZACIÓN' | 'PRO-FORMA'; validezDias?: number } = {},
 ): string {
   const { mostrarEcf = true, tipoImpresora = '80mm', mensajeTicket, politicaDev, tipoDoc, validezDias } = cfg;
   const prn   = IMPRESORA_CONFIG[tipoImpresora] ?? IMPRESORA_CONFIG['80mm'];
@@ -529,7 +529,7 @@ function buildReciboTermicoHTML(
 
   const tipoCode = sale.tipoNcf ?? 'E32';
   const [ncfL1, ncfL2] = tipoDoc
-    ? [tipoDoc, tipoDoc === 'PRE-FACTURA' ? 'Documento No Fiscal' : 'No válida como comprobante fiscal']
+    ? [tipoDoc, tipoDoc === 'PRE-FACTURA' ? 'Documento No Fiscal' : tipoDoc === 'PRO-FORMA' ? 'Presupuesto Informativo · Sin NCF' : 'No válida como comprobante fiscal']
     : (NCF_LABEL[tipoCode] ?? ['FACTURA ELECTRÓNICA', `(${esc(tipoCode)})`]);
   const esExento = tipoCode === 'E44';
   const mostrarComprador = !!(sale.rncComprador && !RNC_GENERICOS_TICKET.has(sale.rncComprador));
@@ -584,7 +584,7 @@ function buildReciboTermicoHTML(
   const modoInfo = sale.modoContexto && sale.modoContexto !== 'general'
     ? MODO_INFO[sale.modoContexto] : null;
 
-  const pagoHtml = tipoDoc === 'COTIZACIÓN'
+  const pagoHtml = tipoDoc === 'COTIZACIÓN' || tipoDoc === 'PRO-FORMA'
     ? row('Validez:', `${validezDias ?? 30} días`)
     : tipoDoc === 'PRE-FACTURA'
     ? row('Estado:', 'PENDIENTE DE PAGO')
@@ -597,6 +597,8 @@ function buildReciboTermicoHTML(
     ? '<div class="center bold">** DOCUMENTO NO FISCAL **</div><div class="center small">Presente este ticket para pagar</div>'
     : tipoDoc === 'COTIZACIÓN'
     ? '<div class="center bold">** COTIZACIÓN — NO ES FACTURA **</div>'
+    : tipoDoc === 'PRO-FORMA'
+    ? '<div class="center bold">** PRO FORMA — NO ES FACTURA **</div><div class="center small">No válida como comprobante fiscal</div>'
     : '<div class="center">— Gracias por su compra —</div>';
 
   return `<!DOCTYPE html>
@@ -3905,6 +3907,40 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
         return;
       }
 
+      // ── Pro Formas → recibo térmico (sin ECF, sin pago) ────────────
+      if (panel === 'pro-formas') {
+        const doc = await api.get(`/pro-formas/${id}`).then(r => r.data?.data ?? r.data);
+        const pfSale: Sale = {
+          folio:                   doc.numero ?? folio,
+          total:                   Number(doc.total ?? 0),
+          cambio:                  0,
+          metodo:                  'efectivo',
+          items:                   (doc.items ?? []).map((i: any) => ({
+            produto:   { id: i.productoId ?? 0, nombre: i.descripcion, precio: Number(i.precio),
+                         stock: 999, porcentajeIva: Number(i.porcentajeItbis ?? 18),
+                         codigo: '', categoria: '', unidadMedida: '' } as any,
+            cantidad:  Number(i.cantidad),
+            precio:    Number(i.precio),
+            descuento: 0,
+          })),
+          iva:                     Number(doc.itbis ?? 0),
+          subtotal:                Number(doc.subtotal ?? 0),
+          razonSocial:             doc.clienteNombre,
+          sucursalNombre:          doc.sucursalNombre ?? sucursalNombreFromCache(qc),
+          empresaNombreComercial:  empInfo.nombre,
+          empresaRnc:              empInfo.rnc,
+          empresaDireccion:        empInfo.direccion,
+          empresaTelefono:         empInfo.telefono,
+        };
+        const empConfPanel = (empresa.configuracion ?? {}) as any;
+        imprimirReciboTermico(buildReciboTermicoHTML(pfSale, null, {
+          tipoImpresora: empConfPanel.posTipoImpresora,
+          tipoDoc:       'PRO-FORMA',
+          validezDias:   doc.validezDias,
+        }));
+        return;
+      }
+
       // ── Para todos los demás: construir GenericThermalDoc ──────────
       const apiMap: Record<string, string> = {
         cotizaciones:    `/cotizaciones/${id}`,
@@ -3916,11 +3952,6 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
         gastos:          `/gastos/${id}`,
         'notas-debito':  `/notas-debito/${id}`,
       };
-      // Pro Formas: abrir PDF en nueva ventana
-      if (panel === 'pro-formas') {
-        window.open(`${api.defaults.baseURL}/pro-formas/${id}/pdf`, '_blank');
-        return;
-      }
       const ep = apiMap[panel];
       if (!ep) { message.info('Impresión no disponible para este módulo'); return; }
       const doc = await api.get(ep).then(r => r.data?.data ?? r.data);
