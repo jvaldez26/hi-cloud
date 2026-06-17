@@ -217,7 +217,7 @@ export class ComprasService {
     return compra;
   }
 
-  async cambiarEstado(id: number, estado: CompraEstado) {
+  async cambiarEstado(id: number, estado: CompraEstado, notas?: string) {
     const compra = await this.findOne(id);
 
     const transiciones: Record<CompraEstado, CompraEstado[]> = {
@@ -285,7 +285,9 @@ export class ComprasService {
       }
     }
 
-    await this.compraRepository.update(id, { estado });
+    const updatePayload: Partial<Compra> = { estado };
+    if (notas !== undefined) updatePayload.notas = notas;
+    await this.compraRepository.update(id, updatePayload);
     this.realtimeService.notify(this.tenantService.getEmpresaId(), 'compra', 'updated', id);
     return this.findOne(id);
   }

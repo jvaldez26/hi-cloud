@@ -2420,8 +2420,9 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
     if (!recibirData) return;
     setRecibiendo(true);
     try {
-      if (notasRecibir.trim()) await api.patch(`/compras/${recibirData.id}`, { notas: notasRecibir });
-      await api.patch(`/compras/${recibirData.id}/estado`, { estado: 'recibida' });
+      const body: Record<string, unknown> = { estado: 'recibida' };
+      if (notasRecibir.trim()) body.notas = notasRecibir;
+      await api.patch(`/compras/${recibirData.id}/estado`, body);
       qc.invalidateQueries({ queryKey: ['compras-pos'] });
       qc.invalidateQueries({ queryKey: ['pos-productos'] });
       qc.invalidateQueries({ queryKey: ['productos-catalogo'] });
@@ -2544,7 +2545,11 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
                           </button>
                         </>)}
                         {isEnviada && (<>
-                          <button onClick={() => { setRecibirData(c); setNotasRecibir(c.notas ?? ''); }}
+                          <button onClick={async () => {
+                            const full = await api.get(`/compras/${c.id}`).then(r => r.data?.data ?? r.data);
+                            setRecibirData(full);
+                            setNotasRecibir((full as any).notas ?? '');
+                          }}
                             style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, border: 'none',
                               background: C.green, color: '#fff', cursor: 'pointer' }}>
                             Recibir

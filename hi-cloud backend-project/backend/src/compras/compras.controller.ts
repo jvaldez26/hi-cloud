@@ -39,6 +39,9 @@ class ComprasFilterDto extends PaginationDto {
 class CambiarEstadoDto {
   @IsEnum(CompraEstado)
   estado: CompraEstado;
+
+  @IsOptional() @IsString()
+  notas?: string;
 }
 
 @ApiTags('Compras')
@@ -60,7 +63,7 @@ export class ComprasController {
   }
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Listar compras con paginación y filtros' })
   findAll(@Query() pagination: ComprasFilterDto) {
     return this.comprasService.findAll(pagination);
@@ -74,14 +77,14 @@ export class ComprasController {
   }
 
   @Get(':id')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Obtener compra por ID con detalles' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.comprasService.findOne(id);
   }
 
   @Patch(':id/estado')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({
     summary:
       'Cambiar estado — RECIBIDA aumenta stock, CANCELADA desde RECIBIDA lo revierte',
@@ -90,7 +93,7 @@ export class ComprasController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CambiarEstadoDto,
   ) {
-    return this.comprasService.cambiarEstado(id, dto.estado);
+    return this.comprasService.cambiarEstado(id, dto.estado, dto.notas);
   }
 
   @Delete(':id')
