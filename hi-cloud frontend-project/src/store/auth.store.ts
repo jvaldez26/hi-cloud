@@ -16,18 +16,20 @@ interface EmpresaItem {
 }
 
 interface AuthState {
-  user:           AuthUser | null;
-  empresaActual:  number | null;
-  empresas:       EmpresaItem[];
-  almacenActual:  number | null;
-  sucursalActual: number | null;
-  hydrated:       boolean;   // true = ya llamamos GET /auth/me
+  user:            AuthUser | null;
+  empresaActual:   number | null;
+  empresas:        EmpresaItem[];
+  almacenActual:   number | null;
+  sucursalActual:  number | null;
+  sucursalNombre:  string | null;
+  hydrated:        boolean;   // true = ya llamamos GET /auth/me
 
-  login:            (user: AuthUser, empresaActual?: number | null, empresas?: EmpresaItem[], almacenActual?: number | null, sucursalActual?: number | null) => void;
-  logout:           () => void;
-  isAuth:           () => boolean;
+  login:             (user: AuthUser, empresaActual?: number | null, empresas?: EmpresaItem[], almacenActual?: number | null, sucursalActual?: number | null, sucursalNombre?: string | null) => void;
+  logout:            () => void;
+  isAuth:            () => boolean;
   cambiarEmpresa:    (empresaId: number) => void;
   setSucursalActual: (sucursalId: number) => void;
+  setSucursalNombre: (nombre: string | null) => void;
   setAlmacenActual:  (almacenId: number | null) => void;
   getEmpresaActual:  () => EmpresaItem | undefined;
   setHydrated:       (v: boolean) => void;
@@ -35,21 +37,23 @@ interface AuthState {
 }
 
 // Solo guardamos info de UI (NO el token — ahora vive en cookie httpOnly)
-const savedUser      = (() => { try { return localStorage.getItem('auth_user'); } catch { return null; } })();
-const savedEmpresa   = (() => { try { return localStorage.getItem('empresaId'); } catch { return null; } })();
-const savedEmpresas  = (() => { try { return localStorage.getItem('mis_empresas'); } catch { return null; } })();
-const savedAlmacen   = (() => { try { return localStorage.getItem('almacenId'); } catch { return null; } })();
-const savedSucursal  = (() => { try { return localStorage.getItem('sucursalId'); } catch { return null; } })();
+const savedUser          = (() => { try { return localStorage.getItem('auth_user'); } catch { return null; } })();
+const savedEmpresa       = (() => { try { return localStorage.getItem('empresaId'); } catch { return null; } })();
+const savedEmpresas      = (() => { try { return localStorage.getItem('mis_empresas'); } catch { return null; } })();
+const savedAlmacen       = (() => { try { return localStorage.getItem('almacenId'); } catch { return null; } })();
+const savedSucursal      = (() => { try { return localStorage.getItem('sucursalId'); } catch { return null; } })();
+const savedSucursalNom   = (() => { try { return localStorage.getItem('sucursalNombre'); } catch { return null; } })();
 
 export const useAuthStore = create<AuthState>((set, get) => ({
-  user:          savedUser     ? (JSON.parse(savedUser) as AuthUser) : null,
-  empresaActual: savedEmpresa  ? Number(savedEmpresa) : null,
-  empresas:      savedEmpresas ? (JSON.parse(savedEmpresas) as EmpresaItem[]) : [],
-  almacenActual: savedAlmacen  ? Number(savedAlmacen) : null,
+  user:           savedUser     ? (JSON.parse(savedUser) as AuthUser) : null,
+  empresaActual:  savedEmpresa  ? Number(savedEmpresa) : null,
+  empresas:       savedEmpresas ? (JSON.parse(savedEmpresas) as EmpresaItem[]) : [],
+  almacenActual:  savedAlmacen  ? Number(savedAlmacen) : null,
   sucursalActual: savedSucursal ? Number(savedSucursal) : null,
-  hydrated:      false,
+  sucursalNombre: savedSucursalNom ?? null,
+  hydrated:       false,
 
-  login: (user, empresaActual, empresas = [], almacenActual?, sucursalActual?) => {
+  login: (user, empresaActual, empresas = [], almacenActual?, sucursalActual?, sucursalNombre?) => {
     // Token NO se guarda — está en cookie httpOnly, JS no puede verlo
     localStorage.setItem('auth_user', JSON.stringify(user));
 
@@ -61,12 +65,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       localStorage.removeItem('mis_empresas');
     }
 
-    if (almacenActual)  localStorage.setItem('almacenId',   String(almacenActual));
-    else                localStorage.removeItem('almacenId');
-    if (sucursalActual) localStorage.setItem('sucursalId',  String(sucursalActual));
-    else                localStorage.removeItem('sucursalId');
+    if (almacenActual)   localStorage.setItem('almacenId',      String(almacenActual));
+    else                 localStorage.removeItem('almacenId');
+    if (sucursalActual)  localStorage.setItem('sucursalId',     String(sucursalActual));
+    else                 localStorage.removeItem('sucursalId');
+    if (sucursalNombre)  localStorage.setItem('sucursalNombre', sucursalNombre);
+    else                 localStorage.removeItem('sucursalNombre');
 
-    set({ user, empresaActual: empresaActual ?? null, empresas, almacenActual: almacenActual ?? null, sucursalActual: sucursalActual ?? null, hydrated: true });
+    set({ user, empresaActual: empresaActual ?? null, empresas, almacenActual: almacenActual ?? null, sucursalActual: sucursalActual ?? null, sucursalNombre: sucursalNombre ?? null, hydrated: true });
   },
 
   logout: () => {
@@ -78,6 +84,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     localStorage.removeItem('mis_empresas');
     localStorage.removeItem('almacenId');
     localStorage.removeItem('sucursalId');
+    localStorage.removeItem('sucursalNombre');
     localStorage.removeItem('hicloud-sidebar-group');  // estado accordion (legacy)
     // Limpiar estado del POS para que el próximo usuario no vea datos del anterior
     localStorage.removeItem('pos_cajero_nombre');
@@ -101,6 +108,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   setSucursalActual: (sucursalId) => {
     localStorage.setItem('sucursalId', String(sucursalId));
     set(() => ({ sucursalActual: sucursalId }));
+  },
+
+  setSucursalNombre: (nombre) => {
+    if (nombre) localStorage.setItem('sucursalNombre', nombre);
+    else        localStorage.removeItem('sucursalNombre');
+    set(() => ({ sucursalNombre: nombre }));
   },
 
   setAlmacenActual: (almacenId) => {

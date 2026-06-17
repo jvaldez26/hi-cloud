@@ -143,11 +143,11 @@ export class AuthService implements OnModuleInit {
     });
   }
 
-  /** Resuelve sucursalId y almacenId para el contexto del usuario en una empresa */
+  /** Resuelve sucursalId, almacenId y sucursalNombre para el contexto del usuario en una empresa */
   private async resolverContextoSucursal(
     userId: number,
     empresaId: number,
-  ): Promise<{ sucursalId?: number; almacenId?: number }> {
+  ): Promise<{ sucursalId?: number; almacenId?: number; sucursalNombre?: string }> {
     try {
       // Buscar la sucursal asignada al usuario en esta empresa
       const ue = await this.ueRepository.findOne({
@@ -169,7 +169,7 @@ export class AuthService implements OnModuleInit {
       if (!sucursal) return {};
 
       const almacenId: number | undefined = (sucursal as any).almacenPrincipalId ?? undefined;
-      return { sucursalId: sucursal.id, almacenId };
+      return { sucursalId: sucursal.id, almacenId, sucursalNombre: sucursal.nombre };
     } catch {
       return {};
     }
@@ -395,9 +395,9 @@ export class AuthService implements OnModuleInit {
     (user as any).sessionToken = sessionToken;
 
     const empresaId = await this.getEmpresaPrincipal(user.id);
-    const { sucursalId, almacenId } = empresaId
+    const { sucursalId, almacenId, sucursalNombre } = empresaId
       ? await this.resolverContextoSucursal(user.id, empresaId)
-      : { sucursalId: undefined, almacenId: undefined };
+      : { sucursalId: undefined, almacenId: undefined, sucursalNombre: undefined };
     const accessToken = this.buildToken(user, empresaId, sucursalId, almacenId);
 
     const empresas = await this.ueRepository.find({
@@ -409,9 +409,10 @@ export class AuthService implements OnModuleInit {
     return {
       message: 'Login exitoso',
       accessToken,
-      empresaActual:  empresaId   ?? null,
-      sucursalActual: sucursalId  ?? null,
-      almacenActual:  almacenId   ?? null,
+      empresaActual:  empresaId      ?? null,
+      sucursalActual: sucursalId     ?? null,
+      almacenActual:  almacenId      ?? null,
+      sucursalNombre: sucursalNombre ?? null,
       empresas: empresas
         .filter(e => e.empresa?.isActive !== false)
         .map(e => ({
@@ -446,15 +447,16 @@ export class AuthService implements OnModuleInit {
 
     const user = await this.userRepository.findOneBy({ id: userId });
     if (!user) throw new NotFoundException('Usuario no encontrado');
-    const { sucursalId, almacenId } = await this.resolverContextoSucursal(userId, empresaId);
+    const { sucursalId, almacenId, sucursalNombre } = await this.resolverContextoSucursal(userId, empresaId);
     const accessToken = this.buildToken(user, empresaId, sucursalId, almacenId);
 
     return {
       message:        `Empresa activa cambiada a #${empresaId}`,
       accessToken,
       empresaActual:  empresaId,
-      sucursalActual: sucursalId ?? null,
-      almacenActual:  almacenId  ?? null,
+      sucursalActual: sucursalId     ?? null,
+      almacenActual:  almacenId      ?? null,
+      sucursalNombre: sucursalNombre ?? null,
     };
   }
 

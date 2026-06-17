@@ -1371,15 +1371,20 @@ export default function AppLayout() {
     refetchOnWindowFocus: true,
     retry: false,                 // no reintentar en error — evita enmascarar fallos
   });
-  const sucursalActualId = useAuthStore(s => s.sucursalActual);
-  const setSucursalStore  = useAuthStore(s => s.setSucursalActual);
+  const sucursalActualId   = useAuthStore(s => s.sucursalActual);
+  const setSucursalStore   = useAuthStore(s => s.setSucursalActual);
+  const sucursalNombreStore = useAuthStore(s => s.sucursalNombre);
+  const setSucursalNombre  = useAuthStore(s => s.setSucursalNombre);
   const { data: misSucursales = [] } = useQuery<any[]>({
     queryKey: ['mis-sucursales', user?.id, empresaActiva],
     queryFn:  () => api.get('/auth/mis-sucursales').then(r => r.data?.data ?? r.data ?? []),
     enabled:  !!user && !!empresaActiva,
     staleTime: 60_000,
   });
-  const sucursalNombreDisplay = (misSucursales as any[]).find(s => s.id === sucursalActualId)?.nombre ?? '';
+  // El nombre viene del store (localStorage) para ser inmediato al refrescar.
+  // Cuando misSucursales carga, actualiza el store si el nombre cambió.
+  const sucursalNombreFromList = (misSucursales as any[]).find(s => s.id === sucursalActualId)?.nombre as string | undefined;
+  const sucursalNombreDisplay  = sucursalNombreStore ?? sucursalNombreFromList ?? '';
 
   const cambiarSucursal = useCallback(async (id: number) => {
     try {
@@ -1389,6 +1394,8 @@ export default function AppLayout() {
         localStorage.setItem('sucursalId', String(resData.sucursalActual));
         setSucursalStore?.(resData.sucursalActual);
       }
+      if (resData?.sucursalNombre) setSucursalNombre?.(resData.sucursalNombre);
+      else setSucursalNombre?.(null);
       if (resData?.almacenActual) localStorage.setItem('almacenId', String(resData.almacenActual));
       else localStorage.removeItem('almacenId');
       message.success(resData?.message ?? 'Sucursal cambiada');
@@ -1414,10 +1421,12 @@ export default function AppLayout() {
     try {
       const res = await api.post('/auth/cambiar-empresa', { empresaId: id });
       const resData = (res as any)?.data?.data ?? (res as any)?.data;
-      if (resData?.almacenActual)  localStorage.setItem('almacenId',  String(resData.almacenActual));
-      else                         localStorage.removeItem('almacenId');
-      if (resData?.sucursalActual) localStorage.setItem('sucursalId', String(resData.sucursalActual));
-      else                         localStorage.removeItem('sucursalId');
+      if (resData?.almacenActual)   localStorage.setItem('almacenId',      String(resData.almacenActual));
+      else                          localStorage.removeItem('almacenId');
+      if (resData?.sucursalActual)  localStorage.setItem('sucursalId',     String(resData.sucursalActual));
+      else                          localStorage.removeItem('sucursalId');
+      if (resData?.sucursalNombre)  localStorage.setItem('sucursalNombre', resData.sucursalNombre);
+      else                          localStorage.removeItem('sucursalNombre');
     } catch {
       // Si falla (empresa inválida / sin acceso), limpiar localStorage para
       // que la lógica de redirección maneje el estado correctamente y NO loop
