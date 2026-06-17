@@ -32,16 +32,18 @@ const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
 const { Option } = Select;
 
-const ESTADOS_COMPRA: CompraEstado[] = ['borrador', 'recibida', 'pagada', 'cancelada'];
+const ESTADOS_COMPRA: CompraEstado[] = ['borrador', 'enviada', 'recibida', 'pagada', 'cancelada'];
 
 const TRANSICIONES: Record<CompraEstado, CompraEstado[]> = {
-  borrador:  ['recibida', 'cancelada'],
+  borrador:  ['enviada', 'recibida', 'cancelada'],
+  enviada:   ['recibida', 'cancelada'],
   recibida:  ['pagada',   'cancelada'],
   pagada:    [],
   cancelada: [],
 };
 
 const TRANS_LABEL: Record<string, string> = {
+  enviada:  '📤 Marcar enviada',
   recibida: '📦 Recibir mercancía',
   pagada:   '✅ Marcar pagada',
   cancelada: '❌ Cancelar',

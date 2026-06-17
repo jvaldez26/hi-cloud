@@ -221,9 +221,10 @@ export class ComprasService {
     const compra = await this.findOne(id);
 
     const transiciones: Record<CompraEstado, CompraEstado[]> = {
-      [CompraEstado.BORRADOR]: [CompraEstado.RECIBIDA, CompraEstado.CANCELADA],
+      [CompraEstado.BORRADOR]: [CompraEstado.ENVIADA, CompraEstado.RECIBIDA, CompraEstado.CANCELADA],
+      [CompraEstado.ENVIADA]:  [CompraEstado.RECIBIDA, CompraEstado.CANCELADA],
       [CompraEstado.RECIBIDA]: [CompraEstado.PAGADA, CompraEstado.CANCELADA],
-      [CompraEstado.PAGADA]: [],
+      [CompraEstado.PAGADA]:   [],
       [CompraEstado.CANCELADA]: [],
     };
 

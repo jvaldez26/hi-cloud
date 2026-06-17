@@ -2139,7 +2139,7 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
 
 type PanelId = 'items' | 'inventario' | 'facturas' | 'pre-facturas' | 'cotizaciones' | 'conduce'
              | 'despacho' | 'clientes' | 'recibos-cobro' | 'anticipos'
-             | 'notas-credito' | 'gastos' | 'cierre-caja' | 'ventas-hoy' | 'pro-formas';
+             | 'notas-credito' | 'gastos' | 'cierre-caja' | 'ventas-hoy' | 'pro-formas' | 'compras';
 
 // ── Helpers de panel ─────────────────────────────────────────────────────────
 
@@ -2188,9 +2188,25 @@ function PanelSelect({ label, children, C: _C, ...props }: { label?: string; C?:
   );
 }
 
-// ── Panel Inventario — catálogo de productos ──────────────────────────────────
-function POSInventarioPanel({ C, onVolver }: { C: Palette; onVolver: () => void }) {
+// ── Panel Inventario — catálogo de productos con CRUD supervisado ─────────────
+function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
+  C: Palette;
+  onVolver: () => void;
+  requireSupervisor?: (action: string, detail?: string) => Promise<boolean>;
+}) {
+  const qc = useQueryClient();
   const [busq, setBusq] = useState('');
+  const [showForm, setShowForm]     = useState(false);
+  const [editingProd, setEditingProd] = useState<any>(null);
+  const [saving, setSaving]         = useState(false);
+  const [fNombre,    setFNombre]    = useState('');
+  const [fCodigo,    setFCodigo]    = useState('');
+  const [fPrecio,    setFPrecio]    = useState('');
+  const [fItbis,     setFItbis]     = useState('18');
+  const [fStock,     setFStock]     = useState('0');
+  const [fStockMin,  setFStockMin]  = useState('0');
+  const [fCategoria, setFCategoria] = useState('');
+
   const { data, isLoading } = useQuery<any>({
     queryKey: ['pos-productos', busq],
     queryFn: () => api.get(`/productos?limit=50${busq ? '&search='+encodeURIComponent(busq) : ''}`)
@@ -2198,9 +2214,58 @@ function POSInventarioPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
     staleTime: 30_000,
   });
   const productos = data ?? [];
+
+  const openForm = (prod?: any) => {
+    setEditingProd(prod ?? null);
+    setFNombre(prod?.nombre ?? '');
+    setFCodigo(prod?.codigo ?? '');
+    setFPrecio(prod ? String(prod.precio ?? '') : '');
+    setFItbis(String(prod?.porcentajeIva ?? 18));
+    setFStock(String(prod?.stock ?? 0));
+    setFStockMin(String(prod?.stockMinimo ?? 0));
+    setFCategoria(prod?.categoria ?? '');
+    setShowForm(true);
+  };
+
+  const handleNuevo = async () => {
+    if (requireSupervisor) { const ok = await requireSupervisor('Nuevo producto'); if (!ok) return; }
+    openForm();
+  };
+
+  const handleEditar = async (prod: any) => {
+    if (requireSupervisor) { const ok = await requireSupervisor('Editar producto', prod.nombre); if (!ok) return; }
+    openForm(prod);
+  };
+
+  const handleSave = async () => {
+    if (!fNombre.trim() || !fPrecio.trim()) { message.error('Nombre y precio son obligatorios'); return; }
+    setSaving(true);
+    try {
+      const body = {
+        nombre: fNombre.trim(), codigo: fCodigo.trim() || undefined,
+        precio: Number(fPrecio), porcentajeIva: Number(fItbis),
+        stock: Number(fStock), stockMinimo: Number(fStockMin),
+        categoria: fCategoria.trim() || undefined, tipo: 'producto',
+      };
+      if (editingProd) {
+        await api.patch(`/productos/${editingProd.id}`, body);
+        message.success('Producto actualizado');
+      } else {
+        await api.post('/productos', body);
+        message.success('Producto creado');
+      }
+      qc.invalidateQueries({ queryKey: ['pos-productos'] });
+      qc.invalidateQueries({ queryKey: ['productos-catalogo'] });
+      setShowForm(false);
+    } catch (e: any) {
+      message.error(e?.response?.data?.message ?? 'Error al guardar producto');
+    } finally { setSaving(false); }
+  };
+
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <PanelHeader title="Inventario" icon="📦" C={C} onVolver={onVolver} />
+      <PanelHeader title="Inventario" icon="📦" C={C} onVolver={onVolver}
+        onNuevo={handleNuevo} labelNuevo="Nuevo Producto" />
       <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}` }}>
         <div style={{ position: 'relative' }}>
           <SearchOutlined style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: C.textSub, fontSize: 13 }} />
@@ -2214,7 +2279,7 @@ function POSInventarioPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
          productos.length === 0 ? <Empty style={{ marginTop: 40 }} description={<span style={{ color: C.textSub }}>Sin productos</span>} /> : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead><tr style={{ background: C.card, position: 'sticky', top: 0 }}>
-              {['Código','Nombre','Precio','ITBIS%','Stock','Mín.','Categoría'].map(h => (
+              {['Código','Nombre','Precio','ITBIS%','Stock','Mín.','Categoría',''].map(h => (
                 <th key={h} style={{ padding: '8px 12px', textAlign: 'left', color: C.textSub,
                   fontWeight: 600, fontSize: 11, borderBottom: `1px solid ${C.border}` }}>{h}</th>
               ))}
@@ -2230,11 +2295,350 @@ function POSInventarioPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
                 <td style={{ padding: '8px 12px', color: Number(p.stock) <= Number(p.stockMinimo||0) ? C.red : C.text, fontWeight: 700 }}>{p.stock}</td>
                 <td style={{ padding: '8px 12px', color: C.textSub }}>{p.stockMinimo ?? '—'}</td>
                 <td style={{ padding: '8px 12px', color: C.textSub, fontSize: 11 }}>{p.categoria ?? '—'}</td>
+                <td style={{ padding: '4px 8px', textAlign: 'right' }}>
+                  <button onClick={() => handleEditar(p)}
+                    style={{ background: 'none', border: `1px solid ${C.border}`, borderRadius: 6,
+                      color: C.textSub, cursor: 'pointer', fontSize: 12, padding: '3px 8px' }}>
+                    ✏️
+                  </button>
+                </td>
               </tr>
             ))}</tbody>
           </table>
         )}
       </div>
+
+      {/* Modal — formulario de producto */}
+      {showForm && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,0.6)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: C.card, width: '100%', maxWidth: 420, borderRadius: 12,
+            display: 'flex', flexDirection: 'column', overflow: 'hidden', maxHeight: '92vh' }}>
+            <div style={{ padding: '14px 18px', borderBottom: `1px solid ${C.border}`,
+              display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontWeight: 700, fontSize: 15, color: C.text, flex: 1 }}>
+                {editingProd ? 'Editar Producto' : 'Nuevo Producto'}
+              </span>
+              <button onClick={() => setShowForm(false)} style={{ background: 'none', border: 'none',
+                color: C.textSub, cursor: 'pointer', fontSize: 18, padding: 4, lineHeight: 1 }}>✕</button>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px' }}>
+              <PanelInput C={C} label="Nombre *" value={fNombre}
+                onChange={e => setFNombre(e.target.value)} placeholder="Nombre del producto" />
+              <PanelInput C={C} label="Código" value={fCodigo}
+                onChange={e => setFCodigo(e.target.value)} placeholder="Código (opcional)" />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <PanelInput C={C} label="Precio *" type="number" min="0" step="0.01"
+                  value={fPrecio} onChange={e => setFPrecio(e.target.value)} />
+                <PanelInput C={C} label="ITBIS %" type="number" min="0" max="100"
+                  value={fItbis} onChange={e => setFItbis(e.target.value)} />
+                <PanelInput C={C} label="Stock" type="number" min="0"
+                  value={fStock} onChange={e => setFStock(e.target.value)} />
+                <PanelInput C={C} label="Stock Mín." type="number" min="0"
+                  value={fStockMin} onChange={e => setFStockMin(e.target.value)} />
+              </div>
+              <PanelInput C={C} label="Categoría" value={fCategoria}
+                onChange={e => setFCategoria(e.target.value)} placeholder="Categoría (opcional)" />
+            </div>
+            <div style={{ padding: '12px 18px', borderTop: `1px solid ${C.border}`, display: 'flex', gap: 8 }}>
+              <button onClick={() => setShowForm(false)}
+                style={{ flex: 1, height: 40, borderRadius: 8, border: `1px solid ${C.border}`,
+                  background: 'transparent', color: C.text, cursor: 'pointer', fontSize: 13 }}>
+                Cancelar
+              </button>
+              <button onClick={handleSave} disabled={saving}
+                style={{ flex: 2, height: 40, borderRadius: 8, border: 'none',
+                  background: saving ? '#9ca3af' : C.green, color: '#fff',
+                  cursor: saving ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 700 }}>
+                {saving ? 'Guardando...' : editingProd ? 'Guardar Cambios' : 'Crear Producto'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Panel Compras (Órdenes de Compra) ────────────────────────────────────────
+function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForced }: {
+  C: Palette;
+  onVolver: () => void;
+  supervisorActive: boolean;
+  requireSupervisorForced: (action: string, detail?: string) => Promise<boolean>;
+}) {
+  const qc       = useQueryClient();
+  const navigate = useNavigate();
+  const [busq,         setBusq]         = useState('');
+  const [estadoFiltro, setEstadoFiltro] = useState('');
+  const [recibirData,  setRecibirData]  = useState<any>(null);
+  const [notasRecibir, setNotasRecibir] = useState('');
+  const [recibiendo,   setRecibiendo]   = useState(false);
+  const [pendingEnviar, setPendingEnviar] = useState<number | null>(null);
+  const [pendingCancel, setPendingCancel] = useState<number | null>(null);
+
+  // Fetch compras — disabled until supervisor is active
+  const { data: comprasData, isLoading, refetch } = useQuery<any>({
+    queryKey: ['compras-pos', busq, estadoFiltro],
+    enabled:  supervisorActive,
+    queryFn:  () => {
+      const params = new URLSearchParams({ page: '1', limit: '50' });
+      if (busq)         params.set('search', busq);
+      if (estadoFiltro) params.set('estado', estadoFiltro);
+      return api.get(`/compras?${params}`).then(r => {
+        const d = r.data?.data ?? r.data;
+        return d?.data ?? d ?? [];
+      });
+    },
+    staleTime: 15_000,
+  });
+  const compras = comprasData ?? [];
+
+  const handleEnviar = async (compra: any) => {
+    setPendingEnviar(compra.id);
+    try {
+      await api.patch(`/compras/${compra.id}/estado`, { estado: 'enviada' });
+      qc.invalidateQueries({ queryKey: ['compras-pos'] });
+      message.success('Orden enviada al proveedor');
+    } catch (e: any) {
+      message.error(e?.response?.data?.message ?? 'Error al enviar orden');
+    } finally { setPendingEnviar(null); }
+  };
+
+  const handleCancelar = async (compra: any) => {
+    setPendingCancel(compra.id);
+    try {
+      await api.patch(`/compras/${compra.id}/estado`, { estado: 'cancelada' });
+      qc.invalidateQueries({ queryKey: ['compras-pos'] });
+      message.success('Orden cancelada');
+    } catch (e: any) {
+      message.error(e?.response?.data?.message ?? 'Error al cancelar');
+    } finally { setPendingCancel(null); }
+  };
+
+  const handleRecibir = async () => {
+    if (!recibirData) return;
+    setRecibiendo(true);
+    try {
+      if (notasRecibir.trim()) await api.patch(`/compras/${recibirData.id}`, { notas: notasRecibir });
+      await api.patch(`/compras/${recibirData.id}/estado`, { estado: 'recibida' });
+      qc.invalidateQueries({ queryKey: ['compras-pos'] });
+      qc.invalidateQueries({ queryKey: ['pos-productos'] });
+      qc.invalidateQueries({ queryKey: ['productos-catalogo'] });
+      message.success('Mercancía recibida y stock actualizado');
+      setRecibirData(null); setNotasRecibir('');
+    } catch (e: any) {
+      message.error(e?.response?.data?.message ?? 'Error al recibir mercancía');
+    } finally { setRecibiendo(false); }
+  };
+
+  const ESTADO_CFG: Record<string, { label: string; color: string }> = {
+    borrador:  { label: 'BORRADOR',  color: C.textSub },
+    enviada:   { label: 'ENVIADA',   color: C.blue    },
+    recibida:  { label: 'RECIBIDA',  color: C.green   },
+    pagada:    { label: 'PAGADA',    color: C.green   },
+    cancelada: { label: 'CANCELADA', color: C.red     },
+  };
+
+  // Locked screen when supervisor is not active
+  if (!supervisorActive) {
+    return (
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <PanelHeader title="Compras" icon="🛒" C={C} onVolver={onVolver} />
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+          justifyContent: 'center', gap: 16, padding: 24, textAlign: 'center' }}>
+          <div style={{ fontSize: 48, lineHeight: 1 }}>🔒</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Módulo Restringido</div>
+          <div style={{ fontSize: 13, color: C.textSub }}>
+            Órdenes de Compra requiere autorización de supervisor
+          </div>
+          <button onClick={async () => { await requireSupervisorForced('Órdenes de Compra'); refetch(); }}
+            style={{ padding: '10px 28px', borderRadius: 8, border: 'none',
+              background: C.blue, color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700 }}>
+            Activar Supervisor
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <PanelHeader title="Órdenes de Compra" icon="🛒" C={C} onVolver={onVolver}
+        onNuevo={() => navigate('/compras/nuevo')} labelNuevo="Nueva OC" />
+
+      {/* Filtros */}
+      <div style={{ padding: '8px 14px', borderBottom: `1px solid ${C.border}`, display: 'flex', gap: 8 }}>
+        <div style={{ flex: 1, position: 'relative' }}>
+          <SearchOutlined style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: C.textSub, fontSize: 12 }} />
+          <input value={busq} onChange={e => setBusq(e.target.value)} placeholder="Buscar proveedor o N°..."
+            style={{ width: '100%', height: 34, paddingLeft: 28, background: C.card, border: `1px solid ${C.border}`,
+              borderRadius: 8, color: C.text, fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
+        </div>
+        <select value={estadoFiltro} onChange={e => setEstadoFiltro(e.target.value)}
+          style={{ height: 34, padding: '0 10px', borderRadius: 8, border: `1px solid ${C.border}`,
+            background: C.card, color: C.text, fontSize: 12, cursor: 'pointer' }}>
+          <option value="">Todos los estados</option>
+          <option value="borrador">Borrador</option>
+          <option value="enviada">Enviada</option>
+          <option value="recibida">Recibida</option>
+          <option value="cancelada">Cancelada</option>
+        </select>
+      </div>
+
+      {/* Lista */}
+      <div style={{ flex: 1, overflowY: 'auto', scrollbarWidth: 'thin' }}>
+        {isLoading ? (
+          <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
+        ) : compras.length === 0 ? (
+          <Empty style={{ marginTop: 40 }} description={<span style={{ color: C.textSub }}>Sin órdenes de compra</span>} />
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr style={{ background: C.card, position: 'sticky', top: 0, zIndex: 2 }}>
+                {['N°','Proveedor','Total','Estado','Fecha','Acciones'].map(h => (
+                  <th key={h} style={{ padding: '8px 10px', textAlign: 'left', color: C.textSub,
+                    fontWeight: 600, fontSize: 11, borderBottom: `1px solid ${C.border}`, whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {compras.map((c: any, i: number) => {
+                const cfg   = ESTADO_CFG[c.estado] ?? { label: c.estado.toUpperCase(), color: C.textSub };
+                const isBorrador  = c.estado === 'borrador';
+                const isEnviada   = c.estado === 'enviada';
+                const isTerminada = ['recibida','pagada','cancelada'].includes(c.estado);
+                return (
+                  <tr key={c.id} style={{ borderBottom: `1px solid ${C.border}`, background: i%2===0?'transparent':C.card }}>
+                    <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontSize: 11, color: C.blue }}>{c.folio}</td>
+                    <td style={{ padding: '8px 10px', color: C.text, fontWeight: 600, maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {c.proveedor?.nombre ?? `#${c.proveedorId}`}
+                    </td>
+                    <td style={{ padding: '8px 10px', color: C.green, fontWeight: 700 }}>{fmt.money(c.total)}</td>
+                    <td style={{ padding: '8px 10px' }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: cfg.color,
+                        background: cfg.color + '22', padding: '2px 7px', borderRadius: 4 }}>
+                        {cfg.label}
+                      </span>
+                    </td>
+                    <td style={{ padding: '8px 10px', color: C.textSub, whiteSpace: 'nowrap' }}>
+                      {String(c.fecha).substring(0, 10)}
+                    </td>
+                    <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        {isBorrador && (<>
+                          <button onClick={() => handleEnviar(c)} disabled={pendingEnviar === c.id}
+                            style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, border: 'none',
+                              background: C.blue, color: '#fff', cursor: pendingEnviar === c.id ? 'not-allowed' : 'pointer' }}>
+                            Enviar
+                          </button>
+                          <button onClick={() => navigate(`/compras/${c.id}`)}
+                            style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6,
+                              border: `1px solid ${C.border}`, background: 'transparent', color: C.text, cursor: 'pointer' }}>
+                            Editar
+                          </button>
+                          <button onClick={() => handleCancelar(c)} disabled={pendingCancel === c.id}
+                            style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, border: 'none',
+                              background: C.red + 'cc', color: '#fff', cursor: pendingCancel === c.id ? 'not-allowed' : 'pointer' }}>
+                            ✕
+                          </button>
+                        </>)}
+                        {isEnviada && (<>
+                          <button onClick={() => { setRecibirData(c); setNotasRecibir(c.notas ?? ''); }}
+                            style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, border: 'none',
+                              background: C.green, color: '#fff', cursor: 'pointer' }}>
+                            Recibir
+                          </button>
+                          <button onClick={() => handleCancelar(c)} disabled={pendingCancel === c.id}
+                            style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, border: 'none',
+                              background: C.red + 'cc', color: '#fff', cursor: pendingCancel === c.id ? 'not-allowed' : 'pointer' }}>
+                            ✕
+                          </button>
+                        </>)}
+                        {isTerminada && (
+                          <button onClick={() => navigate(`/compras/${c.id}`)}
+                            style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6,
+                              border: `1px solid ${C.border}`, background: 'transparent', color: C.textSub, cursor: 'pointer' }}>
+                            Ver
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Modal — Recibir Mercancía */}
+      {recibirData && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,0.6)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: C.card, width: '100%', maxWidth: 480, borderRadius: 12,
+            display: 'flex', flexDirection: 'column', overflow: 'hidden', maxHeight: '88vh' }}>
+            <div style={{ padding: '14px 18px', borderBottom: `1px solid ${C.border}`,
+              display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontWeight: 700, fontSize: 15, color: C.text, flex: 1 }}>
+                Recibir Mercancía — {recibirData.folio}
+              </span>
+              <button onClick={() => { setRecibirData(null); setNotasRecibir(''); }}
+                style={{ background: 'none', border: 'none', color: C.textSub, cursor: 'pointer', fontSize: 18, padding: 4, lineHeight: 1 }}>✕</button>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '14px 18px' }}>
+              <div style={{ fontSize: 12, color: C.textSub, marginBottom: 10 }}>
+                Proveedor: <strong style={{ color: C.text }}>{recibirData.proveedor?.nombre ?? '—'}</strong>
+              </div>
+              {/* Items de la compra */}
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: C.text, marginBottom: 6 }}>Artículos a recibir:</div>
+                {(recibirData.detalles ?? []).map((d: any, idx: number) => (
+                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '7px 10px', background: C.bg, borderRadius: 6, marginBottom: 4 }}>
+                    <span style={{ fontSize: 12, color: C.text, flex: 1 }}>
+                      {d.producto?.nombre ?? `Producto #${d.productoId}`}
+                    </span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: C.green, marginLeft: 12 }}>
+                      × {d.cantidad}
+                    </span>
+                  </div>
+                ))}
+                {(!recibirData.detalles || recibirData.detalles.length === 0) && (
+                  <div style={{ fontSize: 12, color: C.textSub, textAlign: 'center', padding: 12 }}>
+                    Sin artículos registrados
+                  </div>
+                )}
+              </div>
+              {/* Notas */}
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: C.text }}>Notas de recepción</div>
+                <textarea value={notasRecibir} onChange={e => setNotasRecibir(e.target.value)}
+                  rows={3} placeholder="Observaciones sobre la recepción..."
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: `1px solid ${C.border2}`,
+                    fontSize: 12, background: C.inputBg, color: C.text, resize: 'vertical',
+                    boxSizing: 'border-box', outline: 'none' }} />
+              </div>
+              <div style={{ fontSize: 11, color: C.textSub, background: C.bg, padding: '8px 12px', borderRadius: 6 }}>
+                Al confirmar, el stock de cada artículo se actualizará en el almacén destino.
+              </div>
+            </div>
+            <div style={{ padding: '12px 18px', borderTop: `1px solid ${C.border}`, display: 'flex', gap: 8 }}>
+              <button onClick={() => { setRecibirData(null); setNotasRecibir(''); }}
+                style={{ flex: 1, height: 40, borderRadius: 8, border: `1px solid ${C.border}`,
+                  background: 'transparent', color: C.text, cursor: 'pointer', fontSize: 13 }}>
+                Cancelar
+              </button>
+              <button onClick={handleRecibir} disabled={recibiendo}
+                style={{ flex: 2, height: 40, borderRadius: 8, border: 'none',
+                  background: recibiendo ? '#9ca3af' : C.green, color: '#fff',
+                  cursor: recibiendo ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 700 }}>
+                {recibiendo ? 'Procesando...' : 'Confirmar Recepción'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -3674,16 +4078,19 @@ const PANEL_TITLES: Record<PanelId, { label: string; icon: string }> = {
   'cierre-caja':    { label: 'Cierre de Caja',    icon: '🏧' },
   'ventas-hoy':     { label: 'Ventas de Hoy',     icon: '🗓️' },
   'pro-formas':     { label: 'Pro Formas',         icon: '📋' },
+  'compras':        { label: 'Órdenes de Compra',  icon: '🛍️' },
 };
 
-function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnularFacturas, tiempoLimiteAnular, requireSupervisor }: {
+function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnularFacturas, tiempoLimiteAnular, requireSupervisor, supervisorActive, requireSupervisorForced }: {
   panel:              PanelId;
   palette:            Palette;
   onVolver:           () => void;
   confirmarAnulacion?:     boolean;
   permitirAnularFacturas?: boolean;
-  tiempoLimiteAnular?:     number;   // minutos; 0 = sin límite
+  tiempoLimiteAnular?:     number;
   requireSupervisor?:      (action: string, detail?: string) => Promise<boolean>;
+  supervisorActive?:       boolean;
+  requireSupervisorForced?: (action: string, detail?: string) => Promise<boolean>;
 }) {
   const C  = palette;
   const qc = useQueryClient();
@@ -4214,13 +4621,17 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
 
   // Despachar a componentes especializados — DESPUÉS de todos los hooks
   if (panel === 'ventas-hoy')   return <POSVentasHoyPanel  C={C} onVolver={onVolver} />;
-  if (panel === 'inventario')   return <POSInventarioPanel C={C} onVolver={onVolver} />;
+  if (panel === 'inventario')   return <POSInventarioPanel C={C} onVolver={onVolver} requireSupervisor={requireSupervisor} />;
   if (panel === 'clientes')     return <POSClientesPanel   C={C} onVolver={onVolver} />;
   if (panel === 'cierre-caja')  return <POSCierreCajaPanel C={C} onVolver={onVolver} />;
   if (panel === 'conduce')      return <POSConducePanel    C={C} onVolver={onVolver} />;
   if (panel === 'gastos')       return <POSGastosPanel     C={C} onVolver={onVolver} />;
   if (panel === 'recibos-cobro' || panel === 'anticipos')
     return <POSReciboAnticipoPanel tipo={panel as 'recibos-cobro'|'anticipos'} C={C} onVolver={onVolver} />;
+  if (panel === 'compras')
+    return <POSComprasPanel C={C} onVolver={onVolver}
+      supervisorActive={supervisorActive ?? false}
+      requireSupervisorForced={requireSupervisorForced ?? (async () => true)} />;
 
   const cols  = (colsConfig as any)[panel] ?? [];
   const title = PANEL_TITLES[panel];
@@ -4524,12 +4935,13 @@ const NAV_ITEMS: Array<{ id: PanelId | 'menu'; label: string; icon: string }> = 
   { id: 'facturas',     label: 'Facturas',   icon: '📄' },
   { id: 'pre-facturas', label: 'Pre-Fact.',  icon: '📋' },
   { id: 'cotizaciones', label: 'Cotizac.',   icon: '💬' },
-  { id: 'conduce',      label: 'Conduce',    icon: '🚚' },
+  { id: 'compras',      label: 'Compras',    icon: '🛍️' },
   { id: 'menu',         label: 'Menú',       icon: '⋮'  },
 ];
 
 const MENU_EXTRAS: Array<{ label: string; icon: string; panel: PanelId }> = [
   { label: 'Ventas de Hoy',    icon: '🗓️', panel: 'ventas-hoy' },
+  { label: 'Conduce',          icon: '🚚', panel: 'conduce' },
   { label: 'Despacho',         icon: '📦', panel: 'despacho' },
   { label: 'Clientes',         icon: '👤', panel: 'clientes' },
   { label: 'Recibos de Cobro', icon: '🧾', panel: 'recibos-cobro' },
@@ -4739,7 +5151,7 @@ export default function POSPage() {
     const saved = localStorage.getItem('pos_panel_activo') as PanelId | null;
     const VALID: PanelId[] = ['items','inventario','facturas','pre-facturas','cotizaciones',
       'conduce','despacho','clientes','recibos-cobro','anticipos',
-      'notas-credito','gastos','cierre-caja','ventas-hoy','pro-formas'];
+      'notas-credito','gastos','cierre-caja','ventas-hoy','pro-formas','compras'];
     return saved && VALID.includes(saved) ? saved : 'items';
   });
   const setPanelActivo = useCallback((p: PanelId) => {
@@ -5838,6 +6250,8 @@ export default function POSPage() {
             permitirAnularFacturas={posConf.posPermitirAnularFacturas !== false}
             tiempoLimiteAnular={typeof posConf.posTiempoLimiteAnular === 'number' ? posConf.posTiempoLimiteAnular : 0}
             requireSupervisor={supervisor.supervisorModeEnabled ? supervisor.requireSupervisor : undefined}
+            supervisorActive={supervisor.supervisorActive}
+            requireSupervisorForced={supervisor.requireSupervisorForced}
           />
         )}
         {panelActivo === 'items' && (<>

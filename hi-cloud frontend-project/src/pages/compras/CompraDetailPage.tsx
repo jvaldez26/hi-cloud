@@ -13,16 +13,18 @@ import EcfSeccion from '../../components/ui/EcfSeccion';
 
 const { Title, Text } = Typography;
 
-const ESTADOS_ORDEN: CompraEstado[] = ['borrador', 'recibida', 'pagada'];
+const ESTADOS_ORDEN: CompraEstado[] = ['borrador', 'enviada', 'recibida', 'pagada'];
 
 const TRANSICIONES: Record<CompraEstado, CompraEstado[]> = {
-  borrador:  ['recibida', 'cancelada'],
+  borrador:  ['enviada', 'recibida', 'cancelada'],
+  enviada:   ['recibida', 'cancelada'],
   recibida:  ['pagada',   'cancelada'],
   pagada:    [],
   cancelada: [],
 };
 
 const TRANS_LABEL: Record<string, string> = {
+  enviada:   '📤 Marcar enviada',
   recibida:  '📦 Marcar recibida',
   pagada:    '✅ Marcar pagada',
   cancelada: '✗ Cancelar',

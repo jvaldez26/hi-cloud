@@ -111,7 +111,7 @@ export interface Factura {
 }
 
 // ── Compras ───────────────────────────────────────────────────────────────────
-export type CompraEstado = 'borrador' | 'recibida' | 'pagada' | 'cancelada';
+export type CompraEstado = 'borrador' | 'enviada' | 'recibida' | 'pagada' | 'cancelada';
 
 export interface Proveedor {
   id:        number;
