@@ -684,7 +684,7 @@ const ATAJOS_POS = [
 ];
 
 // ── Top bar ───────────────────────────────────────────────────────────────────
-function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, onSupervisor, onCambiarUsuario, supervisorActiveBadge,
+function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, onSupervisor, onCambiarUsuario, supervisorActiveBadge, onDesactivarSupervisor,
   modoFacturacion, onModoChange, tipoNcf, onTipoNcfChange, ecfOnline,
   modosPOS, modoContexto, onModoContextoChange }: {
   empresaNombre: string; cajeroNombre: string; isOffline: boolean; onExit: () => void;
@@ -693,6 +693,7 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
   tipoNcf: string; onTipoNcfChange: (t: string) => void;
   ecfOnline: boolean | null;
   supervisorActiveBadge?: string;
+  onDesactivarSupervisor?: () => void;
   modosPOS: { codigo: string; label: string; icono: string }[];
   modoContexto: string;
   onModoContextoChange: (m: string) => void;
@@ -703,6 +704,14 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
   const [showOpcionesMenu, setShowOpcionesMenu] = useState(false);
   const [showModoContexto, setShowModoContexto] = useState(false);
   const [showAtalhos,  setShowAtalhos]    = useState(false);
+
+  // ESC cierra el modo supervisor
+  useEffect(() => {
+    if (!supervisorActiveBadge || !onDesactivarSupervisor) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onDesactivarSupervisor(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [supervisorActiveBadge, onDesactivarSupervisor]);
   const modoActual = MODOS_FACTURACION.find(m => m.id === modoFacturacion)!;
   const ecfColors  = ECF_COLORS[tipoNcf] ?? ECF_COLORS.E32;
   const esFactura  = modoFacturacion === 'factura';
@@ -958,13 +967,23 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
       </div>
       {/* Badge supervisor activo */}
       {supervisorActiveBadge && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#F59E0B22',
-          border: '1px solid #F59E0B55', borderRadius: 6, padding: '3px 8px', flexShrink: 0 }}>
-          <span style={{ fontSize: 10 }}>🛡</span>
-          <span style={{ fontSize: 10, fontWeight: 700, color: '#F59E0B', whiteSpace: 'nowrap' }}>
-            SUP: {supervisorActiveBadge}
-          </span>
-        </div>
+        <Tooltip title="Modo supervisor activo — presiona ESC o × para salir">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#F59E0B22',
+            border: '1px solid #F59E0B55', borderRadius: 6, padding: '3px 8px', flexShrink: 0 }}>
+            <span style={{ fontSize: 10 }}>🛡</span>
+            <span style={{ fontSize: 10, fontWeight: 700, color: '#F59E0B', whiteSpace: 'nowrap' }}>
+              SUP: {supervisorActiveBadge}
+            </span>
+            {onDesactivarSupervisor && (
+              <button
+                onClick={onDesactivarSupervisor}
+                title="Salir del modo supervisor"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 0 2px',
+                  color: '#F59E0B', fontSize: 11, lineHeight: 1, display: 'flex', alignItems: 'center' }}
+              >×</button>
+            )}
+          </div>
+        </Tooltip>
       )}
       {/* ── Menú de opciones (candado) ── */}
       <div style={{ position: 'relative', flexShrink: 0 }}>
@@ -5748,6 +5767,7 @@ export default function POSPage() {
         tipoNcf={tipoNcf} onTipoNcfChange={setTipoNcf}
         ecfOnline={ecfOnline ?? null}
         supervisorActiveBadge={supervisor.supervisorActive ? supervisor.supervisorName : undefined}
+        onDesactivarSupervisor={supervisor.supervisorActive ? () => { supervisor.clearSupervisor(); message.info('Modo supervisor desactivado'); } : undefined}
         onBloquear={() => { sessionStorage.setItem('pos_bloqueado', 'true'); setPantallaBloqueada(true); setPwDesbloqueo(''); setErrDesbloqueo(''); }}
         onSupervisor={() => supervisor.openSupervisorModal('Activar modo supervisor')}
         onCambiarUsuario={() => { setModalCambiarUser(true); setCambiarUserId(undefined); setPwCambio(''); setErrCambio(''); }}
