@@ -4724,7 +4724,17 @@ export default function POSPage() {
     } catch { return []; }
   });
   const [menuNavAbierto, setMenuNavAbierto] = useState(false);
-  const [panelActivo,    setPanelActivo]    = useState<PanelId>('items');
+  const [panelActivo, _setPanelActivo] = useState<PanelId>(() => {
+    const saved = localStorage.getItem('pos_panel_activo') as PanelId | null;
+    const VALID: PanelId[] = ['items','inventario','facturas','pre-facturas','cotizaciones',
+      'conduce','despacho','clientes','recibos-cobro','anticipos',
+      'notas-credito','gastos','cierre-caja','ventas-hoy','pro-formas'];
+    return saved && VALID.includes(saved) ? saved : 'items';
+  });
+  const setPanelActivo = useCallback((p: PanelId) => {
+    localStorage.setItem('pos_panel_activo', p);
+    _setPanelActivo(p);
+  }, []);
   const isMobile                           = useMobile();
   const [mobileTab, setMobileTab]          = useState<'productos' | 'carrito'>('productos');
   const [clienteId,     setClienteId]     = useState<number | undefined>();
