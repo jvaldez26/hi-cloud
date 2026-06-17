@@ -373,6 +373,23 @@ export class EmitirECFUseCase {
         securityCode: respuesta.securityCode,
       });
 
+      // ── Anulación total (código 1): marcar factura original como CANCELADA ──
+      if (
+        documentoOrigenTipo === DocumentoOrigenTipo.NOTA_CREDITO &&
+        infoReferencia?.CodigoModificacion === '1'
+      ) {
+        const nc = await this.notaCreditoRepo.findOne({ where: { id: documentoOrigenId, empresaId } });
+        if (nc?.facturaOriginalId) {
+          await this.facturaRepo.update(
+            { id: nc.facturaOriginalId, empresaId },
+            { estado: 'cancelada' as any },
+          ).catch(err =>
+            this.logger.error(`[EmitirECF] No se pudo cancelar FAC #${nc.facturaOriginalId}: ${err?.message}`),
+          );
+          this.logger.log(`[EmitirECF] NC código 1 → Factura #${nc.facturaOriginalId} marcada CANCELADA`);
+        }
+      }
+
       const ecfFinal = await this.ecfRepo.findOne({ where: { id: ecfSaved.id }, relations: ['tipoECF'] });
       this.logger.log(`EmitirECF OK | ${encf} | trackId=${respuesta.internalTrackId} | estado=ENVIADO`);
 

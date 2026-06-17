@@ -128,6 +128,7 @@ import { RestauranteModule }           from './restaurante/restaurante.module';
 import { PosContextoModule }          from './pos-contexto/pos-contexto.module';
 import { GimnasioModule }             from './gimnasio/gimnasio.module';
 import { ServiciosProModule }         from './servicios-pro/servicios-pro.module';
+import { ProFormaModule }             from './pro-forma/pro-forma.module';
 
 @Module({
   imports: [
@@ -311,6 +312,7 @@ import { ServiciosProModule }         from './servicios-pro/servicios-pro.module
     PosContextoModule,
     GimnasioModule,
     ServiciosProModule,
+    ProFormaModule,
   ],
   controllers: [AppController],
   providers: [

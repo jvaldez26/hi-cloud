@@ -131,15 +131,14 @@ interface Sale {
 
 type MetodoPago = 'efectivo' | 'tarjeta' | 'transferencia' | 'credito' | 'cheque' | 'vale';
 
-type ModoFacturacion = 'factura' | 'valor-fiscal' | 'pro-forma' | 'pre-factura' | 'conduce' | 'cotizacion';
+type ModoFacturacion = 'factura' | 'pro-forma' | 'pre-factura' | 'conduce' | 'cotizacion';
 
 const MODOS_FACTURACION: Array<{ id: ModoFacturacion; label: string; icon: string; desc: string }> = [
-  { id: 'factura',      label: 'Factura',       icon: '📄', desc: 'Factura electrónica con NCF' },
-  { id: 'valor-fiscal', label: 'Valor Fiscal',  icon: '🏛️', desc: 'Factura para uso interno fiscal' },
-  { id: 'pro-forma',    label: 'Pro Forma',     icon: '📋', desc: 'Cotización formal no fiscal' },
-  { id: 'pre-factura',  label: 'Pre-Factura',   icon: '📝', desc: 'Documento previo a factura' },
-  { id: 'conduce',      label: 'Conduce',       icon: '🚚', desc: 'Nota de entrega / remisión' },
-  { id: 'cotizacion',   label: 'Cotización',    icon: '💬', desc: 'Presupuesto al cliente' },
+  { id: 'factura',     label: 'Factura',     icon: '📄', desc: 'Factura electrónica con NCF' },
+  { id: 'pro-forma',   label: 'Pro Forma',   icon: '📋', desc: 'Presupuesto informativo (sin NCF)' },
+  { id: 'pre-factura', label: 'Pre-Factura', icon: '📝', desc: 'Documento previo a factura' },
+  { id: 'conduce',     label: 'Conduce',     icon: '🚚', desc: 'Nota de entrega / remisión' },
+  { id: 'cotizacion',  label: 'Cotización',  icon: '💬', desc: 'Presupuesto al cliente' },
 ];
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -704,7 +703,7 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
   const [showAtalhos,  setShowAtalhos]    = useState(false);
   const modoActual = MODOS_FACTURACION.find(m => m.id === modoFacturacion)!;
   const ecfColors  = ECF_COLORS[tipoNcf] ?? ECF_COLORS.E32;
-  const esFactura  = modoFacturacion === 'factura' || modoFacturacion === 'valor-fiscal';
+  const esFactura  = modoFacturacion === 'factura';
 
   // ── Cambiar sucursal ─────────────────────────────────────────────────────────
   const { sucursalActual, setSucursalActual, setAlmacenActual } = useAuthStore();
@@ -749,7 +748,8 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
     }}>
       {/* Logo + empresa */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-        <div style={{ width: 34, height: 34, background: 'rgba(255,255,255,0.18)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>🏪</div>
+        <img src="/logo-hicloud.png" alt="HiCloud" style={{ width: 34, height: 34, borderRadius: 8, objectFit: 'contain', background: 'rgba(255,255,255,0.18)' }}
+          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display='none'; }} />
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#F1F5F9', lineHeight: 1, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Punto de Venta</div>
           <div style={{ fontSize: 10, color: '#94A3B8', lineHeight: 1, marginTop: 2 }}>{empresaNombre}</div>
@@ -2107,7 +2107,7 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
 
 type PanelId = 'items' | 'inventario' | 'facturas' | 'pre-facturas' | 'cotizaciones' | 'conduce'
              | 'despacho' | 'clientes' | 'recibos-cobro' | 'anticipos'
-             | 'notas-credito' | 'gastos' | 'cierre-caja' | 'ventas-hoy';
+             | 'notas-credito' | 'gastos' | 'cierre-caja' | 'ventas-hoy' | 'pro-formas';
 
 // ── Helpers de panel ─────────────────────────────────────────────────────────
 
@@ -3638,6 +3638,7 @@ const PANEL_TITLES: Record<PanelId, { label: string; icon: string }> = {
   'gastos':         { label: 'Gastos',            icon: '💸' },
   'cierre-caja':    { label: 'Cierre de Caja',    icon: '🏧' },
   'ventas-hoy':     { label: 'Ventas de Hoy',     icon: '🗓️' },
+  'pro-formas':     { label: 'Pro Formas',         icon: '📋' },
 };
 
 function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnularFacturas, tiempoLimiteAnular, requireSupervisor }: {
@@ -3684,6 +3685,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
       if (mod === 'conduce' || mod === 'despacho') return api.delete(`/conduces/${id}`);
       if (mod === 'notas-credito')   return api.patch(`/notas-credito/${id}/anular`);
       if (mod === 'gastos')          return api.delete(`/gastos/${id}`);
+      if (mod === 'pro-formas')      return api.delete(`/pro-formas/${id}`);
       throw new Error('Módulo no soporta anulación');
     },
     onSuccess: () => {
@@ -3914,6 +3916,11 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
         gastos:          `/gastos/${id}`,
         'notas-debito':  `/notas-debito/${id}`,
       };
+      // Pro Formas: abrir PDF en nueva ventana
+      if (panel === 'pro-formas') {
+        window.open(`${api.defaults.baseURL}/pro-formas/${id}/pdf`, '_blank');
+        return;
+      }
       const ep = apiMap[panel];
       if (!ep) { message.info('Impresión no disponible para este módulo'); return; }
       const doc = await api.get(ep).then(r => r.data?.data ?? r.data);
@@ -4012,6 +4019,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
     if (panel === 'facturas')       return estado === 'emitida' || estado === 'pagada';
     if (panel === 'pre-facturas')   return !['convertida', 'anulada', 'rechazada'].includes(estado);
     if (panel === 'cotizaciones')   return !['convertida', 'rechazada', 'anulada'].includes(estado);
+    if ((panel as string) === 'pro-formas') return true;
     // FIX 3: conduces — permitir cambio de estado en cualquier estado no final
     if ((panel as string) === 'conduce' || (panel as string) === 'despacho') return estado !== 'entregado' && estado !== 'devuelto';
     if ((panel as string) === 'notas-credito') return estado === 'emitida';
@@ -4035,6 +4043,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
         'notas-credito':  `/notas-credito?limit=30${s}`,
         gastos:           `/gastos?limit=30${s}`,
         'cierre-caja':    `/caja/cierres?limit=20${s}`,
+        'pro-formas':     `/pro-formas?limit=30${s}`,
       };
       const url = endpoints[panel];
       if (!url) return [];
@@ -4059,7 +4068,11 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
       { label: 'Folio',    key: 'folio',    render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue }}>{v}</span> },
       { label: 'Cliente',  key: 'cliente',  render: (_,r) => r.cliente?.nombre ?? '—' },
       { label: 'Total',    key: 'total',    render: (v) => <span style={{ fontWeight: 700, color: C.green }}>{fmt.money(v)}</span> },
-      { label: 'Estado',   key: 'estado',   render: (v) => <span style={{ fontSize: 10, fontWeight: 700, color: v==='pagada'?C.green:v==='emitida'?C.blue:C.textSub }}>{v?.toUpperCase()}</span> },
+      { label: 'Estado',   key: 'estado',   render: (v: string) => {
+        const colMap: Record<string,string> = { pagada: C.green, emitida: C.blue, cancelada: C.red };
+        const label = v === 'cancelada' ? 'ANULADA' : v?.toUpperCase();
+        return <span style={{ fontSize: 10, fontWeight: 700, color: colMap[v] ?? C.textSub }}>{label}</span>;
+      }},
     ],
     'pre-facturas': [
       { label: 'Folio',    key: 'folio',    render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue }}>{v}</span> },
@@ -4122,6 +4135,16 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
       { label: 'Apertura',  key: 'montoApertura', render: (v) => fmt.money(v ?? 0) },
       { label: 'Ventas',    key: 'totalVentas',   render: (v) => <span style={{ fontWeight: 700, color: C.green }}>{fmt.money(v ?? 0)}</span> },
       { label: 'Cierre',    key: 'montoCierre',   render: (v) => fmt.money(v ?? 0) },
+    ],
+    'pro-formas': [
+      { label: 'Número',      key: 'numero',          render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue }}>{v}</span> },
+      { label: 'Cliente',     key: 'clienteNombre',   render: (v) => v ?? '—' },
+      { label: 'Total',       key: 'total',           render: (v) => <span style={{ fontWeight: 700, color: C.blue }}>{fmt.money(v)}</span> },
+      { label: 'Válida hasta', key: 'fechaVencimiento', render: (v) => v ? String(v).substring(0,10) : '—' },
+      { label: 'Estado',      key: 'estado',          render: (v: string) => {
+        const colMap: Record<string,string> = { ACTIVA: C.green, VENCIDA: C.textSub };
+        return <span style={{ fontSize: 10, fontWeight: 700, color: colMap[v] ?? C.textSub }}>{v}</span>;
+      }},
     ],
   };
 
@@ -4447,6 +4470,7 @@ const MENU_EXTRAS: Array<{ label: string; icon: string; panel: PanelId }> = [
   { label: 'Clientes',         icon: '👤', panel: 'clientes' },
   { label: 'Recibos de Cobro', icon: '🧾', panel: 'recibos-cobro' },
   { label: 'Anticipos',        icon: '💰', panel: 'anticipos' },
+  { label: 'Pro Formas',        icon: '📋', panel: 'pro-formas' },
   { label: 'Notas de Crédito', icon: '📝', panel: 'notas-credito' },
   { label: 'Nueva NC',         icon: '➕', panel: 'nueva-nc' as any },
   { label: 'Gastos',           icon: '💸', panel: 'gastos' },
@@ -4995,7 +5019,7 @@ export default function POSPage() {
       if (e.key === 'F2') { e.preventDefault(); searchRef.current?.focus(); }
       if (e.key === 'F9' && cart.length > 0) {
         e.preventDefault();
-        if (modoFacturacion === 'factura' || modoFacturacion === 'valor-fiscal') {
+        if (modoFacturacion === 'factura') {
           setMontoRecibido(totalEfectivo);
           if (posConf.posPropinaActiva === true) setPropinaValor(String(propinaDefPct));
           setShowPago(true);
@@ -5442,8 +5466,11 @@ export default function POSPage() {
         notas: `POS · ${MODOS_FACTURACION.find(m => m.id === modoFacturacion)?.label}`,
       };
 
-      if (modoFacturacion === 'cotizacion' || modoFacturacion === 'pro-forma') {
+      if (modoFacturacion === 'cotizacion') {
         return api.post('/cotizaciones', { ...base, validezDias: 30 });
+      }
+      if (modoFacturacion === 'pro-forma') {
+        return api.post('/pro-formas', { ...base, validezDias: 30 });
       }
       if (modoFacturacion === 'pre-factura') {
         return api.post('/pre-facturas', { ...base, tipoNcf: tipoNcf });
@@ -5464,11 +5491,10 @@ export default function POSPage() {
       message.success(`${modo?.icon} ${modo?.label} creada exitosamente`);
       // Invalidar el panel correspondiente para que se actualice automáticamente
       const panelMap: Record<string, string> = {
-        'cotizacion':   'cotizaciones',
-        'pro-forma':    'cotizaciones',
-        'pre-factura':  'pre-facturas',
-        'conduce':      'conduce',
-        'valor-fiscal': 'facturas',
+        'cotizacion':  'cotizaciones',
+        'pro-forma':   'pro-formas',
+        'pre-factura': 'pre-facturas',
+        'conduce':     'conduce',
       };
       const panelKey = panelMap[modoFacturacion];
       if (panelKey) {
@@ -6082,7 +6108,7 @@ export default function POSPage() {
 
 
               {/* Botón de acción principal */}
-              {modoFacturacion === 'factura' || modoFacturacion === 'valor-fiscal' ? (
+              {modoFacturacion === 'factura' ? (
                 <motion.button whileTap={{ scale: 0.97 }}
                   onClick={async () => {
                     if (posConf.posRequerirCliente === true && !clienteId) {
