@@ -63,7 +63,7 @@ export class ComprasController {
   }
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Listar compras con paginación y filtros' })
   findAll(@Query() pagination: ComprasFilterDto) {
     return this.comprasService.findAll(pagination);
@@ -77,14 +77,14 @@ export class ComprasController {
   }
 
   @Get(':id')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Obtener compra por ID con detalles' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.comprasService.findOne(id);
   }
 
   @Patch(':id/estado')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({
     summary:
       'Cambiar estado — RECIBIDA aumenta stock, CANCELADA desde RECIBIDA lo revierte',

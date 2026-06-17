@@ -31,28 +31,28 @@ export class ReportesController {
   }
 
   @Get('kpis')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'KPIs completos: ventas, compras, alertas, top clientes/productos' })
   getKPIs() {
     return this.reportesService.getKPIs();
   }
 
   @Get('dashboard/antiguedad-cobrar')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Antigüedad de CxC por rangos de días vencidos' })
   getAntiguedadCobrar() {
     return this.reportesService.getAntiguedadCobrar();
   }
 
   @Get('dashboard/antiguedad-pagar')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Antigüedad de CxP por rangos de días vencidos' })
   getAntiguedadPagar() {
     return this.reportesService.getAntiguedadPagar();
   }
 
   @Get('dashboard/resumen-gastos')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Resumen de gastos del mes actual agrupados por categoría' })
   getResumenGastos() {
     return this.reportesService.getResumenGastos();
@@ -61,7 +61,7 @@ export class ReportesController {
   // ── Ventas ─────────────────────────────────────────────────────────────────
 
   @Get('ventas')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Ventas del período con totales y desglose por estado' })
   @ApiQuery({ name: 'fechaDesde', required: true, example: '2026-01-01' })
   @ApiQuery({ name: 'fechaHasta', required: true, example: '2026-12-31' })
@@ -70,21 +70,21 @@ export class ReportesController {
   }
 
   @Get('ventas/por-cliente')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Ranking de clientes por ventas en el período' })
   getVentasPorCliente(@Query() dto: FiltroFechaDto) {
     return this.reportesService.getVentasPorCliente(dto);
   }
 
   @Get('ventas/por-producto')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Ranking de productos más vendidos en el período' })
   getVentasPorProducto(@Query() dto: FiltroFechaDto) {
     return this.reportesService.getVentasPorProducto(dto);
   }
 
   @Get('ventas/por-dia')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Ventas diarias del mes (datos para gráfica de barras)' })
   @ApiQuery({ name: 'mes',  required: true, example: 5 })
   @ApiQuery({ name: 'anio', required: true, example: 2026 })
@@ -93,7 +93,7 @@ export class ReportesController {
   }
 
   @Get('facturas-pendientes')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Facturas emitidas pendientes de cobro con días transcurridos' })
   getFacturasPendientes() {
     return this.reportesService.getFacturasPendientes();
@@ -102,21 +102,21 @@ export class ReportesController {
   // ── Compras ────────────────────────────────────────────────────────────────
 
   @Get('compras')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Compras del período con totales e ITBIS pagado' })
   getComprasPorPeriodo(@Query() dto: FiltroFechaDto) {
     return this.reportesService.getComprasPorPeriodo(dto);
   }
 
   @Get('compras/por-proveedor')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Ranking de proveedores por compras en el período' })
   getComprasPorProveedor(@Query() dto: FiltroFechaDto) {
     return this.reportesService.getComprasPorProveedor(dto);
   }
 
   @Get('compras/por-dia')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Compras diarias del mes (datos para gráfica)' })
   getComprasPorDia(@Query() dto: FiltroMesAnioDto) {
     return this.reportesService.getComprasPorDia(dto);
@@ -125,28 +125,28 @@ export class ReportesController {
   // ── Fiscal / DGII ──────────────────────────────────────────────────────────
 
   @Get('fiscal/606')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Formato 606 DGII — Reporte de compras para declaración fiscal' })
   getReporte606(@Query() dto: FiltroMesAnioDto) {
     return this.reportesService.getReporte606(dto);
   }
 
   @Get('fiscal/607')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Formato 607 DGII — Comprobantes anulados del período' })
   getReporte607(@Query() dto: FiltroMesAnioDto) {
     return this.reportesService.getReporte607(dto);
   }
 
   @Get('fiscal/itbis')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Balance ITBIS: cobrado en ventas vs pagado en compras' })
   getReporteITBIS(@Query() dto: FiltroMesAnioDto) {
     return this.reportesService.getReporteITBIS(dto);
   }
 
   @Get('fiscal/ecf')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'e-CFs del mes por estado DGII (pendiente/aceptado/rechazado)' })
   getECFsPorEstado(@Query() dto: FiltroMesAnioDto) {
     return this.reportesService.getECFsPorEstado(dto);
@@ -167,14 +167,14 @@ export class ReportesController {
   }
 
   @Get('inventario/movimientos')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Movimientos de inventario del período: entradas vs salidas' })
   getMovimientosPorPeriodo(@Query() dto: FiltroFechaDto) {
     return this.reportesService.getMovimientosPorPeriodo(dto);
   }
 
   @Get('inventario/valor')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Valor total del inventario al costo por categoría' })
   getValorInventario() {
     return this.reportesService.getValorInventario();

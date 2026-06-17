@@ -9,7 +9,7 @@ import { UserRole } from '../users/enums/user-role.enum';
 @ApiTags('KPI Dashboard Ejecutivo')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN, UserRole.CONTADOR)
+@Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
 @Controller('kpi')
 export class KpiController {
   constructor(private svc: KpiService) {}

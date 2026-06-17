@@ -111,7 +111,7 @@ export class CajaController {
   }
 
   @Get('historial')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Historial de cierres (todos o por ?vendedorId)' })
   getHistorial(
     @Query('page')       page?:       number,
@@ -123,7 +123,7 @@ export class CajaController {
   }
 
   @Get('resumen')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Resumen mensual de caja' })
   getResumen(
     @Query('mes')  mes:  number,

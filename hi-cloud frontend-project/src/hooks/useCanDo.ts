@@ -19,7 +19,7 @@ const PERMISOS: Record<string, UserRole[]> = {
   'facturas:eliminar': ['admin'],
   'facturas:pdf':      ['vendedor', 'contador', 'admin'],
   'facturas:anular':   ['contador', 'admin'],
-  'facturas:emitir_ecf': ['contador', 'admin'],
+  'facturas:emitir_ecf': ['vendedor', 'contador', 'admin'],
   'facturas:duplicar': ['vendedor', 'contador', 'admin'],
 
   // ── Clientes ─────────────────────────────────────────────────────────────────
@@ -27,7 +27,7 @@ const PERMISOS: Record<string, UserRole[]> = {
   'clientes:crear':         ['vendedor', 'contador', 'admin'],
   'clientes:editar':        ['vendedor', 'contador', 'admin'],
   'clientes:eliminar':      ['admin'],
-  'clientes:estado_cuenta': ['contador', 'admin'],
+  'clientes:estado_cuenta': ['vendedor', 'contador', 'admin'],
 
   // ── Productos ────────────────────────────────────────────────────────────────
   'productos:ver':      ['viewer', 'vendedor', 'contador', 'admin'],
@@ -52,8 +52,8 @@ const PERMISOS: Record<string, UserRole[]> = {
 
   // ── Reportes ─────────────────────────────────────────────────────────────────
   'reportes:ventas':     ['vendedor', 'contador', 'admin'],
-  'reportes:financiero': ['contador', 'admin'],
-  'reportes:dgii':       ['contador', 'admin'],
+  'reportes:financiero': ['vendedor', 'contador', 'admin'],
+  'reportes:dgii':       ['vendedor', 'contador', 'admin'],
   'reportes:inventario': ['vendedor', 'contador', 'admin'],
 
   // ── Declaraciones ────────────────────────────────────────────────────────────
@@ -71,10 +71,10 @@ const PERMISOS: Record<string, UserRole[]> = {
   'caja:abrir':  ['vendedor', 'contador', 'admin'],
   'caja:cerrar': ['vendedor', 'contador', 'admin'],
   'caja:anular': ['contador', 'admin'],
-  'caja:ver':    ['contador', 'admin'],
+  'caja:ver':    ['vendedor', 'contador', 'admin'],
 
   // ── e-CF ─────────────────────────────────────────────────────────────────────
-  'ecf:ver':    ['contador', 'admin'],
+  'ecf:ver':    ['vendedor', 'contador', 'admin'],
   'ecf:emitir': ['vendedor', 'contador', 'admin'],
 };
 

@@ -58,7 +58,7 @@ export class ProductosController {
   }
 
   @Get('check-duplicado')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Verificar si código o nombre ya existe (para validación en tiempo real)' })
   checkDuplicado(
     @Query('campo') campo: 'codigo' | 'nombre',

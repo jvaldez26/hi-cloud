@@ -10,7 +10,7 @@ import { AnalyticsService } from './analytics.service';
 @ApiBearerAuth('access-token')
 @ApiHeader({ name: 'X-Empresa-ID', required: true })
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
+@Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
 @Controller('analytics')
 export class AnalyticsController {
   constructor(private readonly svc: AnalyticsService) {}

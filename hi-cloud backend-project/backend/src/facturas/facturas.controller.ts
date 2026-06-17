@@ -125,7 +125,7 @@ export class FacturasController {
   }
 
   @Get('resumen')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Resumen de facturas por estado' })
   resumen() {
     return this.facturasService.resumenPorEstado();
@@ -153,7 +153,7 @@ export class FacturasController {
   }
 
   @Patch(':id/estado')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Cambiar estado de la factura' })
   cambiarEstado(
     @Param('id', ParseIntPipe) id: number,
@@ -227,7 +227,7 @@ export class FacturasController {
    */
   @Post(':id/emitir-ecf')
   @HttpCode(HttpStatus.OK)
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({
     summary: 'Emitir e-CF para una factura EMITIDA/PAGADA sin comprobante',
   })

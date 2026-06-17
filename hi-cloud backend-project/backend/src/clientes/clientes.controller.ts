@@ -54,7 +54,7 @@ export class ClientesController {
   }
 
   @Get(':id/estado-cuenta')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Estado de cuenta: facturas, cobros y saldo del cliente' })
   getEstadoCuenta(
     @Param('id', ParseIntPipe) id: number,
@@ -65,7 +65,7 @@ export class ClientesController {
   }
 
   @Get(':id/estado-cuenta/pdf')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Descargar Estado de Cuenta del cliente en PDF' })
   async getEstadoCuentaPdf(
     @Param('id', ParseIntPipe) id: number,
