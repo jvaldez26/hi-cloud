@@ -686,7 +686,7 @@ const ATAJOS_POS = [
 // ── Top bar ───────────────────────────────────────────────────────────────────
 function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, onSupervisor, onCambiarUsuario, supervisorActiveBadge, onDesactivarSupervisor,
   modoFacturacion, onModoChange, tipoNcf, onTipoNcfChange, ecfOnline,
-  modosPOS, modoContexto, onModoContextoChange }: {
+  modosPOS, modoContexto, onModoContextoChange, requireSupervisor }: {
   empresaNombre: string; cajeroNombre: string; isOffline: boolean; onExit: () => void;
   onBloquear: () => void; onSupervisor: () => void; onCambiarUsuario: () => void;
   modoFacturacion: ModoFacturacion; onModoChange: (m: ModoFacturacion) => void;
@@ -694,6 +694,7 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
   ecfOnline: boolean | null;
   supervisorActiveBadge?: string;
   onDesactivarSupervisor?: () => void;
+  requireSupervisor?: (action: string) => Promise<boolean>;
   modosPOS: { codigo: string; label: string; icono: string }[];
   modoContexto: string;
   onModoContextoChange: (m: string) => void;
@@ -1018,7 +1019,17 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
                   <div style={{ fontSize: 11, color: '#9CA3AF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sucursalNombre ?? '—'}</div>
                 </div>
                 {sucursales.length > 1 && (
-                  <button onClick={() => { setShowOpcionesMenu(false); setModalCambiarSucursal(true); }} style={{ flexShrink: 0, fontSize: 11, color: '#3B82F6', background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 4, padding: '2px 8px', cursor: 'pointer' }}>
+                  <button
+                    onClick={async () => {
+                      setShowOpcionesMenu(false);
+                      if (requireSupervisor) {
+                        const ok = await requireSupervisor('Cambiar sucursal');
+                        if (!ok) return;
+                      }
+                      setModalCambiarSucursal(true);
+                    }}
+                    style={{ flexShrink: 0, fontSize: 11, color: '#3B82F6', background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 4, padding: '2px 8px', cursor: 'pointer' }}
+                  >
                     Cambiar →
                   </button>
                 )}
@@ -5784,6 +5795,7 @@ export default function POSPage() {
         onBloquear={() => { sessionStorage.setItem('pos_bloqueado', 'true'); setPantallaBloqueada(true); setPwDesbloqueo(''); setErrDesbloqueo(''); }}
         onSupervisor={() => supervisor.openSupervisorModal('Activar modo supervisor')}
         onCambiarUsuario={() => { setModalCambiarUser(true); setCambiarUserId(undefined); setPwCambio(''); setErrCambio(''); }}
+        requireSupervisor={supervisor.supervisorModeEnabled ? supervisor.requireSupervisor : undefined}
         onExit={salirDelPOS}
         modosPOS={MODOS_POS}
         modoContexto={modoContexto}
