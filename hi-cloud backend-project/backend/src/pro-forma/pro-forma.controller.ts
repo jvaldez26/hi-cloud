@@ -24,11 +24,13 @@ class ItemDto {
 }
 
 class CreateProFormaDto {
-  @IsOptional() @IsInt() clienteId?: number;
-  @IsOptional() @IsInt() sucursalId?: number;
-  @IsOptional() @IsInt() vendedorId?: number;
+  @IsOptional() @IsInt()    clienteId?: number;
+  @IsOptional() @IsInt()    sucursalId?: number;
+  @IsOptional() @IsInt()    vendedorId?: number;
   @IsOptional() @IsString() notas?: string;
   @IsOptional() @IsNumber() validezDias?: number;
+  @IsOptional() @IsString() fecha?: string;
+  @IsOptional() @IsString() nombreVendedor?: string;
   @IsArray() @ValidateNested({ each: true }) @Type(() => ItemDto) detalles!: ItemDto[];
 }
 
