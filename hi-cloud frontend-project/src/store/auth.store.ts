@@ -87,6 +87,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     localStorage.removeItem('sucursalNombre');
     localStorage.removeItem('hicloud-sidebar-group');  // estado accordion (legacy)
     // Limpiar estado del POS para que el próximo usuario no vea datos del anterior
+    localStorage.removeItem('pos_supervisor');   // sesión de supervisor
     localStorage.removeItem('pos_cajero_nombre');
     localStorage.removeItem('pos_vendedor_id');
     localStorage.removeItem('hc_empresa_nombre');

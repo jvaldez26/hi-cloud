@@ -5,7 +5,8 @@
  * Si supervisorModeEnabled = true → solicita credenciales de admin para
  * acciones que superen el umbral configurado (ej: descuento > maxDiscountPercent).
  *
- * Sesión de supervisor activa por 5 minutos para no pedir en cada acción.
+ * La sesión persiste en localStorage hasta que el usuario la cierra
+ * explícitamente (ESC o badge ×). Expira automáticamente a las 8 horas.
  */
 import { useState, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -36,12 +37,31 @@ interface UseSupervisorReturn {
   requireSupervisorForced: (action: string, detail?: string) => Promise<boolean>;
   /** Abre el modal programáticamente */
   openSupervisorModal: (action: string, detail?: string) => void;
-  /** Limpiar sesión de supervisor */
+  /** Limpiar sesión de supervisor (ESC / badge ×) */
   clearSupervisor: () => void;
   /** Resolver pendiente (llamado desde el modal) */
   resolveModal: (result: boolean, nombre?: string, role?: string) => void;
   /** Estado del modal: null = cerrado */
   pendingAction: { action: string; detail?: string } | null;
+}
+
+const STORAGE_KEY   = 'pos_supervisor';
+const SESSION_MS    = 8 * 60 * 60_000; // 8 horas
+
+function loadSessionFromStorage(): SupervisorSession | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const session: SupervisorSession = JSON.parse(raw);
+    if (!session.until || session.until <= Date.now()) {
+      localStorage.removeItem(STORAGE_KEY);
+      return null;
+    }
+    return session;
+  } catch {
+    localStorage.removeItem(STORAGE_KEY);
+    return null;
+  }
 }
 
 export function useSupervisor(): UseSupervisorReturn {
@@ -54,14 +74,19 @@ export function useSupervisor(): UseSupervisorReturn {
   const supervisorModeEnabled: boolean = posConfig?.supervisorModeEnabled ?? false;
   const maxDiscountPercent:    number  = posConfig?.maxDiscountPercent    ?? 10;
 
-  const [supervisorSession, setSupervisorSession] = useState<SupervisorSession | null>(null);
+  // Inicializar desde localStorage para sobrevivir F5
+  const [supervisorSession, setSupervisorSession] = useState<SupervisorSession | null>(loadSessionFromStorage);
   const [pendingAction, setPendingAction] = useState<{ action: string; detail?: string } | null>(null);
   const resolveRef = useRef<((result: boolean) => void) | null>(null);
 
   const supervisorActive = supervisorSession !== null && supervisorSession.until > Date.now();
   const supervisorName   = supervisorActive ? supervisorSession!.nombre : '';
 
-  const clearSupervisor = useCallback(() => setSupervisorSession(null), []);
+  // Limpiar sesión — también borra localStorage (llamado por ESC / badge ×)
+  const clearSupervisor = useCallback(() => {
+    setSupervisorSession(null);
+    localStorage.removeItem(STORAGE_KEY);
+  }, []);
 
   const openSupervisorModal = useCallback((action: string, detail?: string) => {
     setPendingAction({ action, detail });
@@ -70,8 +95,14 @@ export function useSupervisor(): UseSupervisorReturn {
   const resolveModal = useCallback((result: boolean, nombre?: string, role?: string) => {
     setPendingAction(null);
     if (result && nombre) {
-      // Activar sesión de supervisor por 5 minutos
-      setSupervisorSession({ nombre, role: role ?? 'admin', until: Date.now() + 5 * 60_000 });
+      // Sesión activa 8 horas; persiste en localStorage para sobrevivir F5
+      const session: SupervisorSession = {
+        nombre,
+        role:  role ?? 'admin',
+        until: Date.now() + SESSION_MS,
+      };
+      setSupervisorSession(session);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
     }
     resolveRef.current?.(result);
     resolveRef.current = null;
