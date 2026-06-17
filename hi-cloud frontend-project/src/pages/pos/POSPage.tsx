@@ -7125,6 +7125,12 @@ export default function POSPage() {
             onPressEnter={desbloquearPantalla}
             autoFocus
             autoComplete="new-password"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            data-form-type="other"
+            data-lpignore="true"
+            data-1p-ignore
             size="large"
             style={{ borderRadius: 8, background: 'rgba(255,255,255,.15)', border: errDesbloqueo ? '1px solid #EF4444' : '1px solid rgba(255,255,255,.3)', color: '#fff' }}
             iconRender={v => v ? <EyeOutlined style={{ color: 'rgba(255,255,255,.6)' }} /> : <EyeInvisibleOutlined style={{ color: 'rgba(255,255,255,.6)' }} />}
@@ -7148,7 +7154,9 @@ export default function POSPage() {
       <p style={{ color: '#6B7280', fontSize: 13, marginBottom: 12 }}>Ingresa tu contraseña para acceder a funciones privilegiadas.</p>
       <Input.Password placeholder="Contraseña de supervisor" value={pwSupervisor}
         onChange={e => { setPwSupervisor(e.target.value); setErrSupervisor(''); }}
-        onPressEnter={verificarSupervisor} autoFocus autoComplete="new-password" />
+        onPressEnter={verificarSupervisor} autoFocus
+        autoComplete="new-password" autoCorrect="off" autoCapitalize="off" spellCheck={false}
+        data-form-type="other" data-lpignore="true" data-1p-ignore />
       {errSupervisor && <div style={{ color: '#EF4444', fontSize: 12, marginTop: 4 }}>{errSupervisor}</div>}
       <button onClick={verificarSupervisor} disabled={verificandoSup}
         style={{ width: '100%', marginTop: 12, padding: '10px 0', background: '#F59E0B', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 14 }}>
@@ -7234,6 +7242,8 @@ export default function POSPage() {
             <div>
               <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Contraseña</div>
               <Input.Password placeholder="Contraseña del supervisor" value={supPassword}
+                autoComplete="new-password" autoCorrect="off" autoCapitalize="off" spellCheck={false}
+                data-form-type="other" data-lpignore="true" data-1p-ignore
                 onChange={e => { setSupPassword(e.target.value); setSupError(''); }}
                 onPressEnter={async () => {
                   if (!supId || !supPassword) { setSupError('Selecciona un supervisor e ingresa su contraseña'); return; }
@@ -7251,10 +7261,7 @@ export default function POSPage() {
                   } catch (e: any) {
                     setSupError(e?.response?.data?.message ?? 'Credenciales inválidas');
                   } finally { setVerificandoSupNuevo(false); }
-                }}
-                autoComplete="new-password"
-                data-form-type="other"
-                data-lpignore="true" />
+                }} />
             </div>
             {supError && <div style={{ color: '#EF4444', fontSize: 12 }}>{supError}</div>}
             <button
@@ -7312,6 +7319,13 @@ export default function POSPage() {
           onChange={e => { setPwCambio(e.target.value); setErrCambio(''); }}
           onPressEnter={ejecutarCambioUsuario}
           autoFocus={!!cambiarUserId}
+          autoComplete="new-password"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          data-form-type="other"
+          data-lpignore="true"
+          data-1p-ignore
         />
         {errCambio && <div style={{ color: '#EF4444', fontSize: 12, marginTop: 4 }}>{errCambio}</div>}
       </div>
