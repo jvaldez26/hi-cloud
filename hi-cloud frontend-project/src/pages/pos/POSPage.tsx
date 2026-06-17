@@ -3173,7 +3173,7 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
 }
 
 // ── Recibo térmico de gasto ──────────────────────────────────────────────────
-function buildGastoReciboHTML(g: any, empresaNombre: string, empresaRnc: string, cajero: string): string {
+function buildGastoReciboHTML(g: any, empresaNombre: string, empresaRnc: string, cajero: string, sucursalNombre?: string): string {
   const e   = (s: string) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const fmtM = (n: number) => `RD$${Number(n??0).toLocaleString('es-DO',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
   const ahora = dayjs();
@@ -3215,6 +3215,7 @@ ${row('No.:',    numGasto)}
 ${row('Fecha:',  ahora.format('DD/MM/YYYY'))}
 ${row('Hora:',   ahora.format('hh:mm a'))}
 ${cajero ? row('Cajero:', cajero) : ''}
+${sucursalNombre ? row('Sucursal:', sucursalNombre) : ''}
 <div class="line"></div>
 
 <div style="margin:2px 0"><span class="bold">Descripción:</span> ${e(g.descripcion??'')}</div>
@@ -3281,6 +3282,7 @@ function POSGastosPanel({ C, onVolver }: { C: Palette; onVolver: () => void }) {
         empRes.razonSocial ?? empRes.nombre ?? 'Mi Empresa',
         empRes.rnc ?? '',
         user?.nombre ?? localStorage.getItem('pos_cajero_nombre') ?? '',
+        sucursalNombreFromCache(qc),
       );
       imprimirReciboTermico(html);
     } catch (err: any) {
