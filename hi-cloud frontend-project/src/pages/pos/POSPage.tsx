@@ -7177,7 +7177,7 @@ export default function POSPage() {
       footer={null} width={420} destroyOnClose
     >
       {supervisor.pendingAction && (
-        <div>
+        <form autoComplete="off" onSubmit={e => e.preventDefault()}>
           {/* Banner de acción — rojo para Cierre de Caja, amarillo para el resto */}
           {(() => {
             const isCierre = supervisor.pendingAction?.action === 'Cierre de Caja';
@@ -7265,6 +7265,7 @@ export default function POSPage() {
             </div>
             {supError && <div style={{ color: '#EF4444', fontSize: 12 }}>{supError}</div>}
             <button
+              type="button"
               disabled={verificandoSupNuevo || !supId || !supPassword}
               onClick={async () => {
                 if (!supId || !supPassword) { setSupError('Selecciona un supervisor e ingresa su contraseña'); return; }
@@ -7289,7 +7290,7 @@ export default function POSPage() {
               {verificandoSupNuevo ? 'Verificando...' : 'Autorizar'}
             </button>
           </div>
-        </div>
+        </form>
       )}
     </Modal>
 
