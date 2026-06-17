@@ -44,10 +44,13 @@ export class GastosService {
     const fecha = new Date(dto.fecha);
     const periodo = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
 
+    const sucursalId = this.tenantService.getSucursalId() ?? undefined;
+
     const gasto = await this.repo.save(
       this.repo.create({
         ...dto,
         empresaId: this.tenantService.getEmpresaId(),
+        sucursalId,
         itbis,
         total,
         periodo,
@@ -84,8 +87,15 @@ export class GastosService {
   async listar(pagination: PaginationDto, mes?: number, anio?: number, categoria?: CategoriaGasto) {
     const { limit = 10, page = 1, search } = pagination;
 
-    const empresaId = this.tenantService.getEmpresaId();
-    const qb = this.repo.createQueryBuilder('g').where('g.empresaId = :eid', { eid: empresaId }).andWhere('g.isActive = :a', { a: true });
+    const empresaId  = this.tenantService.getEmpresaId();
+    const sucursalId = this.tenantService.getSucursalId();
+
+    const qb = this.repo.createQueryBuilder('g')
+      .where('g.empresaId = :eid', { eid: empresaId })
+      .andWhere('g.isActive = :a', { a: true });
+
+    // Si el JWT tiene sucursalId → filtrar por sucursal; si no (admin sin sucursal) → mostrar todos
+    if (sucursalId) qb.andWhere('g.sucursalId = :sid', { sid: sucursalId });
 
     if (mes && anio) {
       const periodo = `${anio}-${String(mes).padStart(2, '0')}`;

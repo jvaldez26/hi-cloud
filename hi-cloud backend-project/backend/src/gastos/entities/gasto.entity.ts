@@ -74,4 +74,7 @@ export class Gasto extends TenantBaseEntity {
 
   @Column()
   userId!: number;
+
+  @Column({ nullable: true })
+  sucursalId?: number;
 }

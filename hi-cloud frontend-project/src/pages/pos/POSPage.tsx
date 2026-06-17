@@ -3246,6 +3246,7 @@ ${g.ecfCodigoSeguridad ? row('Cód. Seg.:',  g.ecfCodigoSeguridad): ''}
 function POSGastosPanel({ C, onVolver }: { C: Palette; onVolver: () => void }) {
   const qc = useQueryClient();
   const user = useAuthStore(s => s.user);
+  const sucursalActual = useAuthStore(s => s.sucursalActual);
   const [showForm,    setShowForm]    = useState(false);
   const [busq,        setBusq]        = useState('');
   const [imprimiendo, setImprimiendo] = useState<number|null>(null);
@@ -3264,7 +3265,7 @@ function POSGastosPanel({ C, onVolver }: { C: Palette; onVolver: () => void }) {
   });
 
   const { data: gastos = [], isLoading, refetch } = useQuery<any[]>({
-    queryKey: ['pos-gastos', busq],
+    queryKey: ['pos-gastos', busq, sucursalActual],
     queryFn: () => api.get(`/gastos?limit=30${busq ? `&search=${encodeURIComponent(busq)}` : ''}`)
       .then(r => { const d = r.data?.data ?? r.data; return d?.data ?? d ?? []; }),
     staleTime: 30_000,
