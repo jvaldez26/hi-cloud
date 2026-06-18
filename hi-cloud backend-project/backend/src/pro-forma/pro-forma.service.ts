@@ -102,7 +102,8 @@ export class ProFormaService {
   }
 
   async listar(pagination: PaginationDto) {
-    const empresaId = this.tenantSvc.getEmpresaId();
+    const empresaId  = this.tenantSvc.getEmpresaId();
+    const sucursalId = this.tenantSvc.getSucursalId();
     const { limit = 20, page = 1, search } = pagination;
 
     // Actualizar VENCIDAS automáticamente
@@ -116,6 +117,9 @@ export class ProFormaService {
       .leftJoinAndSelect('pf.items', 'items')
       .where('pf.empresaId = :eid', { eid: empresaId })
       .andWhere('pf.isActive = true');
+
+    // Filtrar por sucursal del JWT (igual que facturas): las sin sucursal son visibles a todas
+    if (sucursalId) qb.andWhere('(pf.sucursalId = :sid OR pf.sucursalId IS NULL)', { sid: sucursalId });
 
     if (search) qb.andWhere('pf.numero ILIKE :s', { s: `%${search}%` });
 
