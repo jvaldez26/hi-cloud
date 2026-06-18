@@ -72,6 +72,9 @@ export class NotaCredito extends TenantBaseEntity {
   estado!: EstadoNotaCredito;
 
   @Column({ nullable: true })
+  sucursalId?: number;
+
+  @Column({ nullable: true })
   vendedorId?: number;
 
   @Column({ length: 150, nullable: true })

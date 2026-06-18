@@ -102,6 +102,8 @@ export class NotasCreditoService {
       }
     }
 
+    const sucursalId = this.tenantSvc.getSucursalId();
+
     const nc = this.ncRepo.create({
       empresaId,
       numero,
@@ -110,6 +112,7 @@ export class NotasCreditoService {
       facturaOriginalId:      dto.facturaOriginalId,
       facturaOriginalFolio:   dto.facturaOriginalFolio,
       clienteId:              dto.clienteId,
+      sucursalId:             sucursalId ?? undefined,
       usuarioId,
       motivo:                 (dto.motivo ?? MotivoNotaCredito.DEVOLUCION) as any,
       descripcionMotivo:      dto.descripcionMotivo,
@@ -128,7 +131,8 @@ export class NotasCreditoService {
   }
 
   async listar(pagination: PaginationDto) {
-    const empresaId = this.tenantSvc.getEmpresaId();
+    const empresaId  = this.tenantSvc.getEmpresaId();
+    const sucursalId = this.tenantSvc.getSucursalId();
     const { limit = 10, page = 1, search } = pagination;
 
     const qb = this.ncRepo
@@ -137,6 +141,8 @@ export class NotasCreditoService {
       .leftJoinAndSelect('nc.detalles', 'd')
       .where('nc.empresaId = :eid', { eid: empresaId })
       .andWhere('nc.isActive = :a',  { a: true });
+
+    if (sucursalId) qb.andWhere('(nc.sucursalId = :sid OR nc.sucursalId IS NULL)', { sid: sucursalId });
 
     if (search) qb.andWhere('(nc.numero ILIKE :s OR c.nombre ILIKE :s)', { s: `%${search}%` });
 
