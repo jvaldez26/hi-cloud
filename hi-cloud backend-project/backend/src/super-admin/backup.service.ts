@@ -91,9 +91,15 @@ export class BackupService {
 
   // ── URL de descarga temporal (15 min) ────────────────────────────────────
 
-  async getDownloadUrl(id: number): Promise<string | null> {
+  async getDownloadUrl(id: number, requestedBy?: number): Promise<string | null> {
     const backup = await this.repo.findOne({ where: { id } });
     if (!backup?.s3Key || !this.s3) return null;
+
+    // B-05: audit log — registrar quién descargó qué backup y cuándo
+    this.logger.log(
+      `[Backup] Descarga autorizada: id=${id} key=${backup.s3Key} ` +
+      `by=userId:${requestedBy ?? 'unknown'}`,
+    );
 
     const cmd = new GetObjectCommand({ Bucket: this.bucket, Key: backup.s3Key });
     return getSignedUrl(this.s3, cmd, { expiresIn: 900 });

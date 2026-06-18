@@ -1,5 +1,6 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiHeader } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -15,6 +16,7 @@ const INICIO = () => `${new Date().getFullYear()}-01-01`;
 @ApiHeader({ name: 'X-Empresa-ID', required: true })
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
+@Throttle({ default: { limit: 30, ttl: 60_000 } }) // B-06: máx 30 reportes/min por IP
 @Controller('reportes-gen')
 export class GeneradorReportesController {
   constructor(private readonly svc: GeneradorReportesService) {}

@@ -354,8 +354,8 @@ export class SuperAdminController {
 
   @Get('backups/:id/download')
   @ApiOperation({ summary: 'URL de descarga temporal del backup (15 min)' })
-  async downloadBackup(@Param('id', ParseIntPipe) id: number, @Res() res: Response) {
-    const url = await this.backupSvc.getDownloadUrl(id);
+  async downloadBackup(@Param('id', ParseIntPipe) id: number, @Res() res: Response, @GetUser() user: any) {
+    const url = await this.backupSvc.getDownloadUrl(id, user?.id);
     if (!url) {
       (res as any).status(404).json({ message: 'Backup no encontrado o S3 no configurado' });
       return;

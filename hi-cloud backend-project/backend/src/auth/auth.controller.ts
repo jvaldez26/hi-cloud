@@ -256,6 +256,11 @@ export class AuthController {
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Cerrar sesión en todos los dispositivos' })
   async logoutAll(@GetUser() user: User, @Res({ passthrough: true }) res: Response) {
+    // B-02: revocar también el access token actual para que no siga siendo válido
+    const jti = (user as any).jti;
+    const exp = (user as any).exp;
+    if (jti && exp) await this.blacklistSvc.blacklist(jti, exp);
+
     await this.refreshTokenSvc.revocarTodos(user.id);
     res.clearCookie('access_token', this.cookieOptions());
     res.clearCookie('refresh_token', { ...this.cookieOptions(), path: '/api/v1/auth/refresh' });
