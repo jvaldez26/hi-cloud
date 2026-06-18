@@ -5,9 +5,11 @@ import {
   ConflictException,
   BadRequestException,
   Logger,
+  Inject,
 } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { UsuarioEmpresa } from './entities/usuario-empresa.entity';
 import { Empresa } from '../configuracion/entities/empresa.entity';
 import { Sucursal } from '../configuracion/entities/sucursal.entity';
@@ -20,6 +22,7 @@ import {
 import { UserRole } from '../users/enums/user-role.enum';
 import { ContabilidadService } from '../contabilidad/services/contabilidad.service';
 import { EmailService }        from '../notificaciones/services/email.service';
+import { invalidateMembresiaCache } from '../auth/guards/roles.guard';
 
 @Injectable()
 export class MultiEmpresaService {
@@ -37,6 +40,7 @@ export class MultiEmpresaService {
     private contabilidadSvc:    ContabilidadService,
     private emailSvc:           EmailService,
     @InjectDataSource() private ds: DataSource,
+    @Inject(CACHE_MANAGER) private cacheManager: any,
   ) {}
 
   // ──────────────────────────────────────────────────────────────────
@@ -293,6 +297,8 @@ export class MultiEmpresaService {
     if (!asignacion) throw new NotFoundException('Asignación no encontrada');
 
     await this.usuarioEmpresaRepo.update(asignacion.id, { isActive: false });
+    // B-03: invalidar cache de membresía para que el RolesGuard detecte la remoción en ≤30s
+    await invalidateMembresiaCache(this.cacheManager, userId, empresaId);
     return { message: `Usuario #${userId} removido de empresa #${empresaId}` };
   }
 
