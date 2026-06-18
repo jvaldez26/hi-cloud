@@ -2466,7 +2466,7 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <PanelHeader title="Órdenes de Compra" icon="🛒" C={C} onVolver={onVolver}
-        onNuevo={() => navigate('/compras/nuevo')} labelNuevo="Nueva OC" />
+        onNuevo={() => navigate('/compras/nueva')} labelNuevo="Nueva OC" />
 
       {/* Filtros */}
       <div style={{ padding: '8px 14px', borderBottom: `1px solid ${C.border}`, display: 'flex', gap: 8 }}>
