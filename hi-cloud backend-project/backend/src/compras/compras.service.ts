@@ -39,12 +39,10 @@ export class ComprasService {
   ) {}
 
   private async generarFolio(): Promise<string> {
-    const empresaId  = this.tenantService.getEmpresaId();
-    const sucursalId = this.tenantService.getSucursalId();
-    // Secuencia independiente por sucursal cuando hay contexto de sucursal activo
-    const prefijo = 'COM-';
-    const tipo    = sucursalId ? `COM_S${sucursalId}` : 'COM';
-    return generarNumeroSecuencial(this.ds, 'compras', 'folio', '^COM-[0-9]+$', prefijo, 1, empresaId, tipo);
+    const empresaId = this.tenantService.getEmpresaId();
+    const prefijo   = 'COM-';
+    // Secuencia única por empresa — no por sucursal — para evitar colisión de folios
+    return generarNumeroSecuencial(this.ds, 'compras', 'folio', '^COM-[0-9]+$', prefijo, 1, empresaId, 'COM');
   }
 
   async create(dto: CreateCompraDto, usuario: User) {
