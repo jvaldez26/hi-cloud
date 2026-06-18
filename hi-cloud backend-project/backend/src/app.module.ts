@@ -175,8 +175,9 @@ import { ProFormaModule }             from './pro-forma/pro-forma.module';
           ssl: useSSL ? (() => {
             const certVal = process.env.DB_CA_CERT;
             if (!certVal) {
-              // Sin cert: cifrado sin verificación (aceptable en desarrollo)
-              return { rejectUnauthorized: false };
+              // A-06: en producción sin cert se mantiene rejectUnauthorized: true
+              // para rechazar certificados no firmados. En dev se acepta sin cert.
+              return { rejectUnauthorized: isProd };
             }
             // S-25: soporta ruta de archivo (/path/to/cert.pem) o contenido base64
             const { existsSync, readFileSync } = require('fs');

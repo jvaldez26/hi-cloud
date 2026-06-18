@@ -5,12 +5,14 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { UserRole } from '../users/enums/user-role.enum';
 import { extractJwtFromRequest } from '../auth/utils/extract-jwt.util';
+import { TokenBlacklistService } from '../auth/token-blacklist.service';
 
 @Injectable()
 export class SuperAdminGuard implements CanActivate {
   constructor(
-    private jwtService:    JwtService,
-    private configService: ConfigService,
+    private jwtService:         JwtService,
+    private configService:      ConfigService,
+    private blacklistSvc:       TokenBlacklistService,
     // @Optional → permite instanciar sin DI container (tests unitarios)
     @Optional() @InjectDataSource() private ds: DataSource | null,
   ) {}
@@ -27,6 +29,11 @@ export class SuperAdminGuard implements CanActivate {
       });
     } catch {
       throw new UnauthorizedException('Token inválido o expirado');
+    }
+
+    // A-02: verificar que el JTI no ha sido revocado (logout previo)
+    if (await this.blacklistSvc.isBlacklisted(payload.jti)) {
+      throw new UnauthorizedException('Token revocado');
     }
 
     if (payload.role !== UserRole.SUPER_ADMIN) {

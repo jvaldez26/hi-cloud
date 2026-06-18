@@ -48,12 +48,14 @@ export class CotizacionesController {
   }
 
   @Get()
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Listar cotizaciones con paginación' })
   findAll(@Query() pagination: PaginationDto) {
     return this.cotizacionesService.findAll(pagination);
   }
 
   @Get(':id')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Detalle completo de una cotización' })
   findById(@Param('id', ParseIntPipe) id: number) {
     return this.cotizacionesService.findById(id);

@@ -14,7 +14,7 @@
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
-import { randomUUID, randomBytes } from 'crypto';
+import { randomUUID, randomBytes, createHash } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import { UsersService } from '../users/users.service';
 import { TokenBlacklistService } from './token-blacklist.service';
@@ -690,10 +690,12 @@ export class AuthService implements OnModuleInit {
 
   async sendVerificationEmail(userId: number, email: string, nombre: string): Promise<void> {
     const token   = randomBytes(32).toString('hex');
-    const expires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
+    // A-03: guardar hash SHA-256 en BD — el token plano solo viaja por email
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+    const expires   = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
 
     await this.userRepository.update(userId, {
-      emailVerificationToken:   token,
+      emailVerificationToken:   tokenHash,
       emailVerificationExpires: expires,
     } as any);
 
@@ -728,8 +730,10 @@ export class AuthService implements OnModuleInit {
   }
 
   async verifyEmail(token: string): Promise<{ message: string }> {
+    // A-03: el token en BD es un hash SHA-256 — comparar siempre con hash
+    const tokenHash = createHash('sha256').update(token).digest('hex');
     const user = await this.userRepository.findOne({
-      where: { emailVerificationToken: token } as any,
+      where: { emailVerificationToken: tokenHash } as any,
       // email y nombre incluidos — necesarios para el email de bienvenida
       select: ['id', 'nombre', 'email', 'emailVerifiedAt', 'emailVerificationExpires', 'isActive'] as any,
     });
@@ -745,11 +749,10 @@ export class AuthService implements OnModuleInit {
       throw new BadRequestException('El enlace ha expirado. Solicita un nuevo correo de verificación.');
     }
 
-    // No anulamos emailVerificationToken — si el endpoint se llama dos veces
-    // (StrictMode, SW reload), la segunda llamada encontrará al usuario,
-    // verá emailVerifiedAt ya establecido y devolverá éxito silencioso.
+    // A-04: anular token después del primer uso — previene reutilización
     await this.userRepository.update(user.id, {
       emailVerifiedAt:          new Date(),
+      emailVerificationToken:   null,
       emailVerificationExpires: null,
     } as any);
 

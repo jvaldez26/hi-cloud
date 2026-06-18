@@ -82,16 +82,17 @@ export class AnalyticsService {
 
   async ventasTendencia(meses = 12) {
     const empresaId = this.eid;
+    const mesesSafe = Math.max(1, Math.min(60, Math.trunc(Number(meses)) || 12));
     const rows = await this.ds.query<{ periodo: string; total: string; cantidad: string }[]>(`
       SELECT TO_CHAR(fecha, 'YYYY-MM') AS periodo,
              COALESCE(SUM(total), 0)::text AS total,
              COUNT(id)::text AS cantidad
       FROM facturas
       WHERE "empresaId" = $1 AND estado IN ('emitida','pagada') AND "isActive" = true
-        AND fecha >= NOW() - INTERVAL '${meses} months'
+        AND fecha >= NOW() - ($2 * INTERVAL '1 month')
       GROUP BY TO_CHAR(fecha, 'YYYY-MM')
       ORDER BY periodo ASC
-    `, [empresaId]);
+    `, [empresaId, mesesSafe]);
     return rows.map(r => ({ periodo: r.periodo, total: +r.total, cantidad: +r.cantidad }));
   }
 
@@ -221,15 +222,16 @@ export class AnalyticsService {
 
   async horasPico(meses = 3) {
     const empresaId = this.eid;
+    const mesesSafe = Math.max(1, Math.min(60, Math.trunc(Number(meses)) || 3));
     return this.ds.query<{ dia: string; hora: string; cantidad: string }[]>(`
       SELECT TO_CHAR("createdAt", 'D') AS dia,
              TO_CHAR("createdAt", 'HH24') AS hora,
              COUNT(id)::text AS cantidad
       FROM facturas
       WHERE "empresaId" = $1 AND "isActive" = true AND estado IN ('emitida','pagada')
-        AND "createdAt" >= NOW() - INTERVAL '${meses} months'
+        AND "createdAt" >= NOW() - ($2 * INTERVAL '1 month')
       GROUP BY 1,2 ORDER BY cantidad DESC LIMIT 50
-    `, [empresaId]).then(rows => rows.map(r => ({
+    `, [empresaId, mesesSafe]).then(rows => rows.map(r => ({
       dia:      ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'][Number(r.dia) - 1] ?? r.dia,
       hora:     `${r.hora}:00`,
       cantidad: +r.cantidad,

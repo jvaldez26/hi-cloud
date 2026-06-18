@@ -2,15 +2,16 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { SuperAdminController } from './super-admin.controller';
-import { SuperAdminService }    from './super-admin.service';
-import { SuperAdminGuard }      from './super-admin.guard';
-import { BackupService }        from './backup.service';
-import { BackupRegistro }       from './entities/backup-registro.entity';
-import { SuscripcionesModule }  from '../suscripciones/suscripciones.module';
-import { NotificacionesModule } from '../notificaciones/notificaciones.module';
-import { ContabilidadModule }   from '../contabilidad/contabilidad.module';
-import { ModulosAddonModule }   from '../modulos-addon/modulos-addon.module';
+import { SuperAdminController }  from './super-admin.controller';
+import { SuperAdminService }     from './super-admin.service';
+import { SuperAdminGuard }       from './super-admin.guard';
+import { BackupService }         from './backup.service';
+import { BackupRegistro }        from './entities/backup-registro.entity';
+import { TokenBlacklistService } from '../auth/token-blacklist.service';
+import { SuscripcionesModule }   from '../suscripciones/suscripciones.module';
+import { NotificacionesModule }  from '../notificaciones/notificaciones.module';
+import { ContabilidadModule }    from '../contabilidad/contabilidad.module';
+import { ModulosAddonModule }    from '../modulos-addon/modulos-addon.module';
 
 @Module({
   imports: [
@@ -27,7 +28,7 @@ import { ModulosAddonModule }   from '../modulos-addon/modulos-addon.module';
     }),
   ],
   controllers: [SuperAdminController],
-  providers:   [SuperAdminService, SuperAdminGuard, BackupService],
+  providers:   [SuperAdminService, SuperAdminGuard, BackupService, TokenBlacklistService],
   exports:     [SuperAdminGuard, JwtModule],
 })
 export class SuperAdminModule {}
