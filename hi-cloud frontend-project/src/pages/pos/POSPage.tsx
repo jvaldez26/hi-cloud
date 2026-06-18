@@ -27,6 +27,7 @@ import { tallerApi } from '../../api/taller.api';
 import { opticaApi } from '../../api/optica.api';
 import { clinicaApi } from '../../api/clinica.api';
 import { RestaurantePOS, TallerPOS, FarmaciaPOS, OpticaPOS, ClinicaPOS, GimnasioPOS } from './modos';
+import CompraFormInner from '../compras/CompraFormInner';
 
 // ── Alias type ────────────────────────────────────────────────────────────────
 type Prod = Producto;
@@ -2376,6 +2377,7 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
   const [recibiendo,   setRecibiendo]   = useState(false);
   const [pendingEnviar, setPendingEnviar] = useState<number | null>(null);
   const [pendingCancel, setPendingCancel] = useState<number | null>(null);
+  const [modalNuevaOC,  setModalNuevaOC]  = useState(false);
 
   // Fetch compras — disabled until supervisor is active
   const { data: comprasData, isLoading, refetch } = useQuery<any>({
@@ -2466,7 +2468,7 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <PanelHeader title="Órdenes de Compra" icon="🛒" C={C} onVolver={onVolver}
-        onNuevo={() => navigate('/compras/nueva')} labelNuevo="Nueva OC" />
+        onNuevo={() => setModalNuevaOC(true)} labelNuevo="Nueva OC" />
 
       {/* Filtros */}
       <div style={{ padding: '8px 14px', borderBottom: `1px solid ${C.border}`, display: 'flex', gap: 8 }}>
@@ -2576,6 +2578,29 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
           </table>
         )}
       </div>
+
+      {/* Modal — Nueva Orden de Compra */}
+      <Modal
+        title="Nueva Orden de Compra"
+        open={modalNuevaOC}
+        onCancel={() => setModalNuevaOC(false)}
+        footer={null}
+        width={960}
+        destroyOnClose
+        style={{ top: 20 }}
+        styles={{ body: { maxHeight: 'calc(100vh - 120px)', overflowY: 'auto', padding: '16px 24px' } }}
+      >
+        {modalNuevaOC && (
+          <CompraFormInner
+            onSuccess={() => {
+              qc.invalidateQueries({ queryKey: ['compras-pos'] });
+              setModalNuevaOC(false);
+              message.success('Orden de compra creada');
+            }}
+            onCancel={() => setModalNuevaOC(false)}
+          />
+        )}
+      </Modal>
 
       {/* Modal — Recibir Mercancía */}
       {recibirData && (
