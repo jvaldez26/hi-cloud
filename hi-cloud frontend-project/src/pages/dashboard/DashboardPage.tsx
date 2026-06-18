@@ -28,9 +28,12 @@ function DashboardVendedor() {
   const navigate  = useNavigate();
   const { token } = theme.useToken();
 
+  const desde = periodo.startOf('month').format('YYYY-MM-DD');
+  const hasta  = periodo.endOf('month').format('YYYY-MM-DD');
+
   const { data: misFacturas, isLoading: loadFact } = useQuery<any>({
     queryKey: ['mis-facturas-dash', mes, anio],
-    queryFn:  () => api.get(`/facturas?limit=8&mes=${mes}&anio=${anio}`).then((r: any) => r.data?.data ?? r.data),
+    queryFn:  () => api.get(`/facturas?limit=8&desde=${desde}&hasta=${hasta}`).then((r: any) => r.data?.data ?? r.data),
     staleTime: 60_000,
   });
   const { data: misCotizaciones, isLoading: loadCot } = useQuery<any>({
