@@ -29,6 +29,6 @@ import { ModulosAddonModule }    from '../modulos-addon/modulos-addon.module';
   ],
   controllers: [SuperAdminController],
   providers:   [SuperAdminService, SuperAdminGuard, BackupService, TokenBlacklistService],
-  exports:     [SuperAdminGuard, JwtModule],
+  exports:     [SuperAdminGuard, JwtModule, TokenBlacklistService],
 })
 export class SuperAdminModule {}

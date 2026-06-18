@@ -41,7 +41,8 @@ import { ReintentoECFJob }       from './jobs/reintento-ecf.job';
 import { ConsultarEstadoECFJob } from './jobs/consultar-estado-ecf.job';
 
 // Guards
-import { SuperAdminGuard } from '../super-admin/super-admin.guard';
+import { SuperAdminGuard }       from '../super-admin/super-admin.guard';
+import { TokenBlacklistService } from '../auth/token-blacklist.service';
 
 @Module({
   imports: [
@@ -77,6 +78,7 @@ import { SuperAdminGuard } from '../super-admin/super-admin.guard';
     ConsultarEstadoECFJob,
     // Guards
     SuperAdminGuard,
+    TokenBlacklistService,
   ],
   exports: [
     ECFService,
