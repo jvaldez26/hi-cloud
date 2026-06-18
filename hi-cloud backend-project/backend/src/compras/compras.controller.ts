@@ -56,35 +56,35 @@ export class ComprasController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Crear orden de compra (calcula ITBIS 18% automáticamente)' })
   create(@Body() dto: CreateCompraDto, @GetUser() usuario: User) {
     return this.comprasService.create(dto, usuario);
   }
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Listar compras con paginación y filtros' })
   findAll(@Query() pagination: ComprasFilterDto) {
     return this.comprasService.findAll(pagination);
   }
 
   @Get('resumen')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Resumen de compras por estado con totales de ITBIS' })
   resumen() {
     return this.comprasService.resumenPorEstado();
   }
 
   @Get(':id')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Obtener compra por ID con detalles' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.comprasService.findOne(id);
   }
 
   @Patch(':id/estado')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({
     summary:
       'Cambiar estado — RECIBIDA aumenta stock, CANCELADA desde RECIBIDA lo revierte',
