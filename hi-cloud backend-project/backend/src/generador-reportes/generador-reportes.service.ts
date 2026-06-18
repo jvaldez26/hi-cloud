@@ -14,7 +14,12 @@ export class GeneradorReportesService {
   // ─── Ventas por período ───────────────────────────────────────────────────────
 
   async ventasPorPeriodo(desde: string, hasta: string, agrupar: 'dia' | 'semana' | 'mes' = 'mes') {
-    const fmt = agrupar === 'dia' ? 'YYYY-MM-DD' : agrupar === 'semana' ? 'IYYY-IW' : 'YYYY-MM';
+    const FORMATOS: Record<'dia' | 'semana' | 'mes', string> = {
+      dia:    'YYYY-MM-DD',
+      semana: 'IYYY-IW',
+      mes:    'YYYY-MM',
+    };
+    const fmt = FORMATOS[agrupar] ?? FORMATOS.mes;
     return this.ds.query(`
       SELECT
         TO_CHAR(f.fecha, '${fmt}') AS periodo,

@@ -456,9 +456,15 @@ export class ContabilidadService implements OnModuleInit {
       order: { codigo: 'ASC' },
     });
 
-    const fechaFiltroDesde = fechaDesde ? `AND a.fecha >= '${fechaDesde}'` : '';
-    const fechaFiltroHasta = fechaHasta ? `AND a.fecha <= '${fechaHasta}'` : '';
-    const empresaFiltro    = empresaId  ? `AND a."empresaId" = ${empresaId}` : '';
+    const params: (string | number)[] = [];
+    const conditions: string[] = [
+      `a.estado = 'contabilizado'`,
+      `a."isActive" = true`,
+      `l."isActive" = true`,
+    ];
+    if (fechaDesde) { params.push(fechaDesde); conditions.push(`a.fecha >= $${params.length}`); }
+    if (fechaHasta) { params.push(fechaHasta); conditions.push(`a.fecha <= $${params.length}`); }
+    if (empresaId)  { params.push(empresaId);  conditions.push(`a."empresaId" = $${params.length}`); }
 
     const saldos = await this.lineaRepository.query(
       `SELECT l."cuentaContableId",
@@ -466,12 +472,9 @@ export class ContabilidadService implements OnModuleInit {
               COALESCE(SUM(l.haber), 0) AS "totalHaber"
        FROM asiento_lineas l
        JOIN asientos_contables a ON a.id = l."asientoId"
-       WHERE a.estado = 'contabilizado'
-         AND a."isActive" = true
-         AND l."isActive" = true
-         ${fechaFiltroDesde} ${fechaFiltroHasta}
-         ${empresaFiltro}
+       WHERE ${conditions.join(' AND ')}
        GROUP BY l."cuentaContableId"`,
+      params,
     ) as { cuentaContableId: number; totalDebe: string; totalHaber: string }[];
 
     const mapaS = new Map(saldos.map((s) => [s.cuentaContableId, s]));

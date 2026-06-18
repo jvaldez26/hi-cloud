@@ -42,8 +42,12 @@ export class LicitacionesService {
   }
 
   async listar(pagination: PaginationDto, estado?: EstadoLicitacion) {
+    const empresaId = this.tenantService.getEmpresaId();
     const { limit = 10, page = 1, search } = pagination;
-    const qb = this.repo.createQueryBuilder('l').where('l.isActive = true');
+    const qb = this.repo
+      .createQueryBuilder('l')
+      .where('l.isActive = true')
+      .andWhere('l.empresaId = :eid', { eid: empresaId });
 
     if (estado)  qb.andWhere('l.estado = :e',   { e: estado });
     if (search)  qb.andWhere('(l.titulo ILIKE :s OR l.entidadConvocante ILIKE :s)', { s: `%${search}%` });

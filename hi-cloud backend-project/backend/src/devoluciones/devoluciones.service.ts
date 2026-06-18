@@ -112,12 +112,14 @@ export class DevolucionesService {
   // ─── Listar ───────────────────────────────────────────────────────────────────
 
   async findAll(pagination: PaginationDto) {
+    const empresaId = this.tenantService.getEmpresaId();
     const { limit = 10, page = 1, search } = pagination;
     const qb = this.devRepository
       .createQueryBuilder('d')
       .leftJoinAndSelect('d.cliente', 'cliente')
       .leftJoinAndSelect('d.factura', 'factura')
-      .where('d.isActive = :a', { a: true });
+      .where('d.isActive = :a', { a: true })
+      .andWhere('d.empresaId = :eid', { eid: empresaId });
 
     if (search) qb.andWhere(
       '(d.numero ILIKE :s OR cliente.nombre ILIKE :s OR factura.folio ILIKE :s)',
@@ -133,8 +135,9 @@ export class DevolucionesService {
   }
 
   async findById(id: number) {
+    const empresaId = this.tenantService.getEmpresaId();
     const d = await this.devRepository.findOne({
-      where: { id, isActive: true },
+      where: { id, isActive: true, empresaId } as any,
       relations: ['cliente', 'factura', 'detalles', 'detalles.producto', 'user'],
     });
     if (!d) throw new NotFoundException(`Devolución #${id} no encontrada`);
