@@ -2361,6 +2361,155 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
   );
 }
 
+// ── Modal detalle OC (dentro del POS) ────────────────────────────────────────
+function POSCompraDetailModal({ id, onClose, onRecibir, onRefresh }: {
+  id: number;
+  onClose: () => void;
+  onRecibir: (compra: any) => void;
+  onRefresh: () => void;
+}) {
+  const qc = useQueryClient();
+  const { data: compra, isLoading } = useQuery<any>({
+    queryKey: ['compra-pos-detail', id],
+    queryFn: () => api.get(`/compras/${id}`).then(r => r.data?.data ?? r.data),
+    enabled: !!id,
+  });
+
+  const [pendingEstado, setPendingEstado] = useState<string | null>(null);
+
+  const cambiarEstado = async (estado: string) => {
+    setPendingEstado(estado);
+    try {
+      await api.patch(`/compras/${id}/estado`, { estado });
+      qc.invalidateQueries({ queryKey: ['compra-pos-detail', id] });
+      qc.invalidateQueries({ queryKey: ['compras-pos'] });
+      onRefresh();
+      message.success(`Orden marcada como ${estado}`);
+      if (estado === 'cancelada') onClose();
+    } catch (e: any) {
+      message.error(e?.response?.data?.message ?? 'Error al cambiar estado');
+    } finally { setPendingEstado(null); }
+  };
+
+  const fmt2 = (v: number) => `RD$ ${Number(v).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
+
+  if (isLoading) return (
+    <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
+  );
+  if (!compra) return <div style={{ padding: 16, color: '#ef4444' }}>No se encontró la orden</div>;
+
+  const estado = compra.estado as string;
+  const isBorrador = estado === 'borrador';
+  const isEnviada  = estado === 'enviada';
+
+  const ESTADO_COLOR: Record<string, string> = {
+    borrador: '#6b7280', enviada: '#3b82f6', recibida: '#10b981',
+    pagada: '#059669', cancelada: '#ef4444',
+  };
+
+  return (
+    <div style={{ fontSize: 13 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16,
+        padding: '10px 0', borderBottom: '1px solid #f0f0f0' }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>{compra.folio}</div>
+          <div style={{ color: '#6b7280', fontSize: 12 }}>
+            {compra.proveedor?.nombre ?? `Proveedor #${compra.proveedorId}`} · {String(compra.fecha).substring(0, 10)}
+          </div>
+        </div>
+        <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 6,
+          background: (ESTADO_COLOR[estado] ?? '#6b7280') + '22', color: ESTADO_COLOR[estado] ?? '#6b7280' }}>
+          {estado.toUpperCase()}
+        </span>
+      </div>
+
+      {/* Items */}
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontWeight: 600, marginBottom: 8, color: '#374151' }}>Artículos</div>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead>
+            <tr style={{ background: '#f9fafb' }}>
+              {['Producto', 'Cant.', 'Precio', 'ITBIS %', 'Total'].map(h => (
+                <th key={h} style={{ padding: '6px 10px', textAlign: 'left', color: '#6b7280',
+                  fontWeight: 600, borderBottom: '1px solid #e5e7eb' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {(compra.detalles ?? []).map((d: any, i: number) => (
+              <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                <td style={{ padding: '7px 10px' }}>{d.descripcion ?? d.producto?.nombre ?? `#${d.productoId}`}</td>
+                <td style={{ padding: '7px 10px' }}>{d.cantidad}</td>
+                <td style={{ padding: '7px 10px' }}>{fmt2(d.precioUnitario)}</td>
+                <td style={{ padding: '7px 10px' }}>{d.porcentajeItbis ?? 18}%</td>
+                <td style={{ padding: '7px 10px', fontWeight: 600 }}>{fmt2(d.total ?? d.precioUnitario * d.cantidad)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Totales */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+        <div style={{ minWidth: 220 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', color: '#6b7280' }}>
+            <span>Subtotal</span><span>{fmt2(compra.subtotal ?? 0)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', color: '#6b7280' }}>
+            <span>ITBIS</span><span>{fmt2(compra.itbis ?? 0)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0',
+            borderTop: '1px solid #e5e7eb', fontWeight: 700, fontSize: 15 }}>
+            <span>Total</span><span style={{ color: '#1677ff' }}>{fmt2(compra.total ?? 0)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Notas */}
+      {compra.notas && (
+        <div style={{ padding: '8px 12px', background: '#fafafa', borderRadius: 6,
+          border: '1px solid #e5e7eb', marginBottom: 16, color: '#374151', fontSize: 12 }}>
+          <strong>Notas:</strong> {compra.notas}
+        </div>
+      )}
+
+      {/* Acciones */}
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <Button onClick={onClose}>Cerrar</Button>
+        {isBorrador && (
+          <>
+            <Button danger loading={pendingEstado === 'cancelada'}
+              onClick={() => cambiarEstado('cancelada')}>
+              Cancelar OC
+            </Button>
+            <Button type="primary" loading={pendingEstado === 'enviada'}
+              onClick={() => cambiarEstado('enviada')}>
+              Enviar al Proveedor
+            </Button>
+          </>
+        )}
+        {isEnviada && (
+          <>
+            <Button danger loading={pendingEstado === 'cancelada'}
+              onClick={() => cambiarEstado('cancelada')}>
+              Cancelar OC
+            </Button>
+            <Button type="primary" style={{ background: '#10b981' }}
+              onClick={async () => {
+                const full = await api.get(`/compras/${id}`).then(r => r.data?.data ?? r.data);
+                onClose();
+                onRecibir(full);
+              }}>
+              Recibir Mercancía
+            </Button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Panel Compras (Órdenes de Compra) ────────────────────────────────────────
 function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForced }: {
   C: Palette;
@@ -2369,7 +2518,6 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
   requireSupervisorForced: (action: string, detail?: string) => Promise<boolean>;
 }) {
   const qc       = useQueryClient();
-  const navigate = useNavigate();
   const [busq,         setBusq]         = useState('');
   const [estadoFiltro, setEstadoFiltro] = useState('');
   const [recibirData,  setRecibirData]  = useState<any>(null);
@@ -2378,6 +2526,7 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
   const [pendingEnviar, setPendingEnviar] = useState<number | null>(null);
   const [pendingCancel, setPendingCancel] = useState<number | null>(null);
   const [modalNuevaOC,  setModalNuevaOC]  = useState(false);
+  const [detailOCId,    setDetailOCId]    = useState<number | null>(null);
 
   // Fetch compras — disabled until supervisor is active
   const { data: comprasData, isLoading, refetch } = useQuery<any>({
@@ -2535,7 +2684,7 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
                               background: C.blue, color: '#fff', cursor: pendingEnviar === c.id ? 'not-allowed' : 'pointer' }}>
                             Enviar
                           </button>
-                          <button onClick={() => navigate(`/compras/${c.id}`)}
+                          <button onClick={() => setDetailOCId(c.id)}
                             style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6,
                               border: `1px solid ${C.border}`, background: 'transparent', color: C.text, cursor: 'pointer' }}>
                             Editar
@@ -2563,7 +2712,7 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
                           </button>
                         </>)}
                         {isTerminada && (
-                          <button onClick={() => navigate(`/compras/${c.id}`)}
+                          <button onClick={() => setDetailOCId(c.id)}
                             style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6,
                               border: `1px solid ${C.border}`, background: 'transparent', color: C.textSub, cursor: 'pointer' }}>
                             Ver
@@ -2578,6 +2727,30 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
           </table>
         )}
       </div>
+
+      {/* Modal — Detalle / Editar OC */}
+      <Modal
+        title={detailOCId ? `Orden de Compra` : ''}
+        open={detailOCId !== null}
+        onCancel={() => setDetailOCId(null)}
+        footer={null}
+        width={780}
+        destroyOnClose
+        style={{ top: 30 }}
+      >
+        {detailOCId !== null && (
+          <POSCompraDetailModal
+            id={detailOCId}
+            onClose={() => setDetailOCId(null)}
+            onRefresh={() => qc.invalidateQueries({ queryKey: ['compras-pos'] })}
+            onRecibir={(compra) => {
+              setDetailOCId(null);
+              setRecibirData(compra);
+              setNotasRecibir(compra.notas ?? '');
+            }}
+          />
+        )}
+      </Modal>
 
       {/* Modal — Nueva Orden de Compra */}
       <Modal
