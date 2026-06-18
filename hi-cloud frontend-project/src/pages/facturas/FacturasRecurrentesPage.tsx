@@ -116,7 +116,12 @@ export default function FacturasRecurrentesPage() {
     mutationFn: recurrenteApi.ejecutar,
     onSuccess: (updated) => {
       qc.invalidateQueries({ queryKey: ['recurrentes'] });
-      message.success(`✅ Factura generada. Total generadas: ${updated?.totalGeneradas ?? '?'}`);
+      const folio = updated?.folio ?? 'nueva';
+      if (updated?.emailEnviado) {
+        message.success(`Factura ${folio} generada y enviada a ${updated.emailDestino}`, 8);
+      } else {
+        message.warning(`Factura ${folio} generada. El cliente no tiene email registrado.`, 8);
+      }
     },
     onError: (e: any) => message.error(
       e?.response?.data?.errors?.[0] ?? e?.response?.data?.message ?? 'Error al generar',

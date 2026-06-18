@@ -464,6 +464,7 @@ export class FacturasRecurrentesService {
     );
 
     // Enviar email al cliente (non-blocking, no falla la generación)
+    const clienteEmail = rec.cliente?.email ?? null;
     if (rec.empresaId) {
       const facturaConRelaciones = await this.facturaRepository.findOne({
         where: { id: factura.id },
@@ -476,6 +477,11 @@ export class FacturasRecurrentesService {
       }
     }
 
-    return this.findById(id);
+    const recurrente = await this.findById(id);
+    return Object.assign(recurrente, {
+      folio,
+      emailEnviado: !!clienteEmail,
+      emailDestino: clienteEmail,
+    });
   }
 }
