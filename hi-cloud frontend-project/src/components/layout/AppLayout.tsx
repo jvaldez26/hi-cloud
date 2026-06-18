@@ -138,6 +138,7 @@ const MENU_CATEGORIES: MenuCategory[] = [
       { path: '/facturas',             label: 'Facturas' },
       { path: '/cotizaciones',         label: 'Cotizaciones' },
       { path: '/pre-facturas',         label: 'Pre-Facturas' },
+      { path: '/pro-formas',           label: 'Pro Formas' },
       { path: '/facturas-recurrentes', label: 'Facturación Recurrente' },
       { path: '/notas-credito',        label: 'Notas de Crédito' },
       { path: '/notas-debito',         label: 'Notas de Débito' },
@@ -490,6 +491,7 @@ const PATH_ROLES: Record<string, string[]> = {
 
   // ── Admin + Contador + Vendedor ─────────────────────────────────────────
   '/pre-facturas':          ADMIN_CONT_VEND,
+  '/pro-formas':            ADMIN_CONT_VEND,
   '/notas-credito':         ADMIN_CONT_VEND,
   '/notas-debito':          ADMIN_CONT,
   '/devoluciones':          ADMIN_CONT,
@@ -1545,6 +1547,7 @@ export default function AppLayout() {
       '/facturas-recurrentes':   () => import('../../pages/facturas/FacturasRecurrentesPage'),
       '/cotizaciones':           () => import('../../pages/cotizaciones/CotizacionesPage'),
       '/pre-facturas':           () => import('../../pages/pre-factura/PreFacturaPage'),
+      '/pro-formas':             () => import('../../pages/pro-formas/ProFormasPage'),
       '/notas-credito':          () => import('../../pages/notas-credito/NotasCreditoPage'),
       '/notas-debito':           () => import('../../pages/notas-debito/NotasDebitoPage'),
       '/devoluciones':           () => import('../../pages/devoluciones/DevolucionesPage'),

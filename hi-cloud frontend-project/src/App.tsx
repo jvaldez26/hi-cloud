@@ -99,6 +99,7 @@ const ReportesFinancierosPage     = lazy(() => import('./pages/reportes-financie
 const DocumentosPage              = lazy(() => import('./pages/documentos/DocumentosPage'));
 const SucursalesPage              = lazy(() => import('./pages/sucursales/SucursalesPage'));
 const PreFacturaPage              = lazy(() => import('./pages/pre-factura/PreFacturaPage'));
+const ProFormasPage               = lazy(() => import('./pages/pro-formas/ProFormasPage'));
 const ConducePage                 = lazy(() => import('./pages/conduce/ConducePage'));
 const CajaChicaPage               = lazy(() => import('./pages/caja-chica/CajaChicaPage'));
 const VendedoresPage              = lazy(() => import('./pages/vendedores/VendedoresPage'));
@@ -637,6 +638,7 @@ export default function App() {
                     <Route path="/documentos"              element={<DocumentosPage />} />
                     <Route path="/sucursales"              element={<SucursalesPage />} />
                     <Route path="/pre-facturas"            element={<PreFacturaPage />} />
+                    <Route path="/pro-formas"              element={<ProFormasPage />} />
                     <Route path="/conduces"               element={<ConducePage />} />
                     <Route path="/caja-chica"             element={<CajaChicaPage />} />
                     <Route path="/vendedores"              element={<VendedoresPage />} />

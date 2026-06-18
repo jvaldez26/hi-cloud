@@ -169,6 +169,57 @@ export class ProFormaService {
     return Object.assign(pf, extra);
   }
 
+  async actualizar(id: number, dto: CreateProFormaDto): Promise<any> {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const pf = await this.findOne(id);
+
+    const validezDias = dto.validezDias ?? pf.validezDias ?? 30;
+    const fechaVenc = new Date();
+    fechaVenc.setDate(fechaVenc.getDate() + validezDias);
+
+    const itemsData = (dto.detalles ?? []).map(d => {
+      const pct      = d.porcentajeIva ?? 18;
+      const subtotal = +(Number(d.cantidad) * Number(d.precioUnitario)).toFixed(2);
+      const itbis    = +(subtotal * pct / 100).toFixed(2);
+      return { pct, subtotal, itbis, ...d };
+    });
+
+    const subtotal = itemsData.reduce((s, i) => s + i.subtotal, 0);
+    const itbis    = itemsData.reduce((s, i) => s + i.itbis, 0);
+    const total    = +(subtotal + itbis).toFixed(2);
+
+    await this.pfRepo.update({ id }, {
+      clienteId:        dto.clienteId  ?? pf.clienteId,
+      sucursalId:       dto.sucursalId ?? pf.sucursalId,
+      vendedorId:       dto.vendedorId ?? pf.vendedorId,
+      notas:            dto.notas ?? pf.notas,
+      validezDias,
+      fechaVencimiento: fechaVenc,
+      subtotal:         +subtotal.toFixed(2),
+      itbis:            +itbis.toFixed(2),
+      total,
+    } as any);
+
+    if (itemsData.length > 0) {
+      await this.itemRepo.delete({ proFormaId: id } as any);
+      await this.itemRepo.save(
+        this.itemRepo.create(itemsData.map(i => ({
+          empresaId,
+          proFormaId:      id,
+          productoId:      i.productoId,
+          descripcion:     i.descripcion,
+          cantidad:        Number(i.cantidad),
+          precio:          Number(i.precioUnitario),
+          porcentajeItbis: i.pct,
+          itbis:           i.itbis,
+          subtotal:        i.subtotal,
+        }))),
+      );
+    }
+
+    return this.findOne(id);
+  }
+
   async eliminar(id: number): Promise<{ ok: boolean }> {
     await this.findOne(id);
     await this.pfRepo.update({ id }, { isActive: false } as any);

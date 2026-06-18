@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Delete, Body, Param,
+  Controller, Get, Post, Patch, Delete, Body, Param,
   Query, ParseIntPipe, HttpCode, HttpStatus, UseGuards, Res,
 } from '@nestjs/common';
 import type { Response } from 'express';
@@ -61,6 +61,13 @@ export class ProFormaController {
   @ApiOperation({ summary: 'Detalle de una Pro Forma' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.svc.findOne(id);
+  }
+
+  @Patch(':id')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Actualizar Pro Forma (solo ACTIVA)' })
+  actualizar(@Param('id', ParseIntPipe) id: number, @Body() dto: CreateProFormaDto) {
+    return this.svc.actualizar(id, dto as any);
   }
 
   @Delete(':id')
