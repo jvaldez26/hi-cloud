@@ -1,3 +1,4 @@
+import * as Joi from 'joi';
 import { Module, NestModule, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -132,7 +133,36 @@ import { ProFormaModule }             from './pro-forma/pro-forma.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      // A-NEW-02: validar variables críticas al arranque — la app no inicia si faltan
+      validationSchema: Joi.object({
+        NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
+        // JWT — crítico: sin esta variable los tokens no se pueden firmar ni verificar
+        JWT_SECRET: Joi.string().min(32).required(),
+        JWT_EXPIRES_IN:         Joi.string().default('15m'),
+        JWT_REFRESH_EXPIRES_IN: Joi.string().default('7d'),
+        // Base de datos
+        DB_HOST:     Joi.string().default('localhost'),
+        DB_PORT:     Joi.number().default(5432),
+        DB_USERNAME: Joi.string().default('postgres'),
+        DB_PASSWORD: Joi.string().allow('').default(''),
+        DB_NAME:     Joi.string().default('hicloud'),
+        DB_SSL:      Joi.string().valid('true', 'false').default('false'),
+        DB_CA_CERT:  Joi.string().optional(),
+        // Redis (opcional en dev — fallback in-memory)
+        REDIS_URL: Joi.string().uri().optional(),
+        // SMTP (opcionales — algunos envíos pueden deshabilitarse)
+        SMTP_HOST: Joi.string().optional(),
+        SMTP_USER: Joi.string().optional(),
+        SMTP_PASS: Joi.string().optional(),
+        SMTP_PORT: Joi.number().optional(),
+      }),
+      validationOptions: {
+        allowUnknown: true,   // permitir otras vars de entorno (AWS, S3, etc.)
+        abortEarly:   false,  // mostrar TODOS los errores, no solo el primero
+      },
+    }),
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
     QueuesModule,

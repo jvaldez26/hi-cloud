@@ -86,7 +86,10 @@ export class ImportacionController {
 
   @Post('proveedores')
   @HttpCode(HttpStatus.OK)
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file', {
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: ImportacionController.CSV_FILTER,
+  }))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Importar proveedores desde archivo CSV (máx 5MB)' })
   importarProveedores(@UploadedFile() file: { buffer: Buffer; originalname: string }) {

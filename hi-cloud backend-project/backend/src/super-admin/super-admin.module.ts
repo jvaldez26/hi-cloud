@@ -24,7 +24,11 @@ import { ModulosAddonModule }    from '../modulos-addon/modulos-addon.module';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject:  [ConfigService],
-      useFactory: (cfg: ConfigService) => ({ secret: cfg.get<string>('JWT_SECRET') }),
+      useFactory: (cfg: ConfigService) => {
+        const secret = cfg.get<string>('JWT_SECRET');
+        if (!secret) throw new Error('JWT_SECRET requerido (super-admin.module)');
+        return { secret };
+      },
     }),
   ],
   controllers: [SuperAdminController],

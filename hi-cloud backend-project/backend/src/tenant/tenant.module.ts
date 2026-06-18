@@ -21,9 +21,11 @@ import { Empresa } from '../configuracion/entities/empresa.entity';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject:  [ConfigService],
-      useFactory: (cfg: ConfigService) => ({
-        secret: cfg.get<string>('JWT_SECRET'),
-      }),
+      useFactory: (cfg: ConfigService) => {
+        const secret = cfg.get<string>('JWT_SECRET');
+        if (!secret) throw new Error('JWT_SECRET requerido (tenant.module)');
+        return { secret };
+      },
     }),
   ],
   providers: [TenantService, TenantMiddleware, TenantGuard, TenantSubscriber],

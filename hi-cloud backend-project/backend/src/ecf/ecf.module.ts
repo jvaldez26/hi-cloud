@@ -56,7 +56,11 @@ import { TokenBlacklistService } from '../auth/token-blacklist.service';
     SuscripcionesModule,
     JwtModule.registerAsync({
       imports:    [ConfigModule],
-      useFactory: (cfg: ConfigService) => ({ secret: cfg.get<string>('JWT_SECRET') }),
+      useFactory: (cfg: ConfigService) => {
+        const secret = cfg.get<string>('JWT_SECRET');
+        if (!secret) throw new Error('JWT_SECRET requerido (ecf.module)');
+        return { secret };
+      },
       inject:     [ConfigService],
     }),
   ],
