@@ -108,7 +108,8 @@ export class NotasCreditoController {
   }
 
   @Patch(':id/emitir')
-  @ApiOperation({ summary: 'Emitir nota de crédito' })
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Emitir nota de crédito (e-CF E34)' })
   emitir(@Param('id', ParseIntPipe) id: number) { return this.svc.emitir(id); }
 
   @Patch(':id/anular')
@@ -117,6 +118,7 @@ export class NotasCreditoController {
   anular(@Param('id', ParseIntPipe) id: number) { return this.svc.anular(id); }
 
   @Delete(':id')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Eliminar nota en BORRADOR' })
   eliminar(@Param('id', ParseIntPipe) id: number) { return this.svc.eliminar(id); }
 }

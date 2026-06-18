@@ -66,7 +66,19 @@ async function bootstrap() {
 
   // ── Helmet — CSP permisivo solo en dev (Swagger), estricto en prod ──
   app.use(helmet({
-    contentSecurityPolicy:     isDev ? false : undefined,
+    contentSecurityPolicy: isDev ? false : {
+      directives: {
+        defaultSrc:  ["'self'"],
+        scriptSrc:   ["'self'"],
+        styleSrc:    ["'self'", "'unsafe-inline'"],
+        imgSrc:      ["'self'", 'data:', 'https:'],
+        connectSrc:  ["'self'"],
+        fontSrc:     ["'self'", 'https:'],
+        objectSrc:   ["'none'"],
+        frameAncestors: ["'none'"],
+        upgradeInsecureRequests: [],
+      },
+    },
     crossOriginEmbedderPolicy: isDev ? false : undefined,
     // HSTS: forzar HTTPS por 1 año en producción
     strictTransportSecurity: isProd
@@ -112,8 +124,9 @@ async function bootstrap() {
 
   app.enableCors({
     origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-      // Sin Origin: servidor-a-servidor (nginx proxy, health checks, scripts)
-      // Se permiten siempre — el Origin solo aplica a requests de browsers
+      // Sin Origin: nginx proxy, health checks, scripts internas — no browsers.
+      // Los browsers siempre envían Origin; requests sin Origin son internos
+      // y no sujetos a CORS (CORS solo es enforced por browsers). Permitir.
       if (!origin) return callback(null, true);
       if (allowedOrigins.includes(origin)) return callback(null, true);
       callback(new Error(`CORS: origen no permitido → ${origin}`));

@@ -1,22 +1,20 @@
-import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import { Injectable, CanActivate, ExecutionContext, UnauthorizedException, Inject } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { UserRole } from '../../users/enums/user-role.enum';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 import { User } from '../../users/users.entity';
 
-// S-31: cache en memoria con TTL 30s — evita ir a BD en cada request
-// pero detecta cambios de rol en máx 30 segundos
-interface CacheEntry { version: number; role: string; cachedAt: number }
-const roleCache = new Map<number, CacheEntry>();
-const CACHE_TTL = 30_000; // 30 segundos
+const CACHE_TTL_MS = 30; // segundos
 
 @Injectable()
 export class RolesGuard implements CanActivate {
   constructor(
-    private reflector:         Reflector,
-    @InjectDataSource() private ds: DataSource,  // DataSource disponible globalmente sin @InjectRepository
+    private reflector:           Reflector,
+    @InjectDataSource() private ds: DataSource,
+    @Inject(CACHE_MANAGER) private cacheManager: any,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -49,12 +47,12 @@ export class RolesGuard implements CanActivate {
   }
 
   private async getCachedRoleInfo(userId: number): Promise<{ version: number; role: string }> {
-    const cached = roleCache.get(userId);
-    if (cached && Date.now() - cached.cachedAt < CACHE_TTL) {
-      return { version: cached.version, role: cached.role };
-    }
+    // M-03: usar CACHE_MANAGER (Redis en prod, in-memory en dev) en lugar de
+    // Map local — correcto en despliegues multi-instancia PM2
+    const cacheKey = `role:${userId}`;
+    const cached = (await this.cacheManager.get(cacheKey)) as { version: number; role: string } | undefined;
+    if (cached) return cached;
 
-    // Consulta directa via DataSource — no requiere @InjectRepository en cada módulo
     const rows = await this.ds.query<{ role: string; roleVersion: number }[]>(
       `SELECT role, "roleVersion" FROM users WHERE id = $1 AND "isActive" = true LIMIT 1`,
       [userId],
@@ -62,17 +60,13 @@ export class RolesGuard implements CanActivate {
 
     if (!rows[0]) return { version: 0, role: '' };
 
-    const entry: CacheEntry = {
-      version:  rows[0].roleVersion ?? 1,
-      role:     rows[0].role,
-      cachedAt: Date.now(),
-    };
-    roleCache.set(userId, entry);
-    return { version: entry.version, role: entry.role };
+    const data = { version: rows[0].roleVersion ?? 1, role: rows[0].role };
+    await this.cacheManager.set(cacheKey, data, CACHE_TTL_MS);
+    return data;
   }
 }
 
 /** Invalida la entrada de caché para un usuario (llamar al cambiar el rol). */
-export function invalidateRoleCache(userId: number): void {
-  roleCache.delete(userId);
+export async function invalidateRoleCache(cacheManager: any, userId: number): Promise<void> {
+  await cacheManager.del(`role:${userId}`);
 }

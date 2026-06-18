@@ -147,7 +147,15 @@ export class AuthController {
     if (!pendingToken) {
       throw new (require('@nestjs/common').UnauthorizedException)('Sesión 2FA expirada. Inicia sesión de nuevo.');
     }
-    const data = await this.authService.completarLogin2FA(pendingToken, body.codigo);
+
+    let data: any;
+    try {
+      data = await this.authService.completarLogin2FA(pendingToken, body.codigo);
+    } catch (err) {
+      // M-07: limpiar cookie temporal en cualquier fallo para forzar re-autenticación
+      res.clearCookie('2fa_pending');
+      throw err;
+    }
 
     // Limpiar cookie temporal y emitir JWT completo
     res.clearCookie('2fa_pending');

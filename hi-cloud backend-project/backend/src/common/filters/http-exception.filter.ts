@@ -72,18 +72,19 @@ export class HttpExceptionFilter implements ExceptionFilter {
       switch (pgErr.code) {
         case '23505': // unique_violation
           status  = HttpStatus.CONFLICT;
-          message = pgErr.detail
+          // M-04: pgErr.detail puede contener valores de datos — solo loguear, no exponer en prod
+          this.logger.warn(`UniqueViolation [${request.method} ${request.url}]: ${pgErr.detail}`);
+          message = (process.env.NODE_ENV !== 'production' && pgErr.detail)
             ? `Registro duplicado: ${pgErr.detail.replace(/[()]/g, '')}`
             : 'Ya existe un registro con esos datos';
-          this.logger.warn(`UniqueViolation [${request.method} ${request.url}]: ${pgErr.detail}`);
           return this.send(response, request, status, message);
 
         case '23503': // foreign_key_violation
           status  = HttpStatus.BAD_REQUEST;
-          message = pgErr.detail
+          this.logger.warn(`ForeignKeyViolation [${request.method} ${request.url}]: ${pgErr.detail}`);
+          message = (process.env.NODE_ENV !== 'production' && pgErr.detail)
             ? `Referencia inválida: ${pgErr.detail.replace(/[()]/g, '')}`
             : 'El registro relacionado no existe';
-          this.logger.warn(`ForeignKeyViolation [${request.method} ${request.url}]: ${pgErr.detail}`);
           return this.send(response, request, status, message);
 
         case '23502': // not_null_violation
