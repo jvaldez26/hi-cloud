@@ -36,7 +36,7 @@ export class ProductosController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Crear producto' })
   create(@Body() dto: CreateProductoDto) {
     return this.productosService.create(dto);
@@ -106,7 +106,7 @@ export class ProductosController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Actualizar producto' })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateProductoDto) {
     return this.productosService.update(id, dto);

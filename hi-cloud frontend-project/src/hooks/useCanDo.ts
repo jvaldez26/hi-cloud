@@ -31,8 +31,8 @@ const PERMISOS: Record<string, UserRole[]> = {
 
   // ── Productos ────────────────────────────────────────────────────────────────
   'productos:ver':      ['viewer', 'vendedor', 'contador', 'admin'],
-  'productos:crear':    ['contador', 'admin'],
-  'productos:editar':   ['contador', 'admin'],
+  'productos:crear':    ['vendedor', 'contador', 'admin'],
+  'productos:editar':   ['vendedor', 'contador', 'admin'],
   'productos:eliminar': ['admin'],
   'productos:stock':    ['vendedor', 'contador', 'admin'],
   'productos:stock_bajo': ['vendedor', 'contador', 'admin'],
