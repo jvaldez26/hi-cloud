@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button, Modal, Form, Input, Select, message, Typography, Space } from 'antd';
-import { LockOutlined, SendOutlined } from '@ant-design/icons';
+import { LockOutlined, SendOutlined, LogoutOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { suscripcionesApi } from '../../api/suscripciones.api';
 
@@ -114,6 +114,17 @@ export default function SuspensionScreen({ planActual = 'emprendedor', fechaVenc
         <Text style={{ color: '#475569', fontSize: 12 }}>
           Un asesor te contactará en menos de 24 horas
         </Text>
+
+        <div style={{ marginTop: 24, borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 16 }}>
+          <Button
+            type="text"
+            icon={<LogoutOutlined />}
+            onClick={() => { localStorage.clear(); sessionStorage.clear(); window.location.href = '/login'; }}
+            style={{ color: '#94a3b8', fontSize: 13 }}
+          >
+            Cerrar sesión
+          </Button>
+        </div>
       </div>
 
       {/* Modal de solicitud */}

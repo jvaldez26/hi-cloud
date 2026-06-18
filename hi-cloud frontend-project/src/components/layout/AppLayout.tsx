@@ -1212,16 +1212,6 @@ export default function AppLayout() {
 
   const { plan: planActual, suspendida, suscripcion } = usePlan();
 
-  // Mostrar pantalla de suspensión cuando la empresa está suspendida
-  if (suspendida) {
-    return (
-      <SuspensionScreen
-        planActual={suscripcion?.plan}
-        fechaVencimiento={suscripcion?.fechaFinPrueba ?? suscripcion?.fechaVencimiento}
-      />
-    );
-  }
-
   const handleLocked = (item: SubItem, planMinimo: PlanTipo) => {
     setUpgradeModal({ label: item.label, planMinimo });
   };
@@ -1246,12 +1236,7 @@ export default function AppLayout() {
   const { user, logout }                = useAuthStore();
   const queryClient                     = useQueryClient();
 
-  // ── Guard de ruta por rol ──────────────────────────────────────────────────
-  // Si el usuario navega directamente a una URL restringida, redirigir al dashboard
   const currentUserRole = user?.role ?? 'viewer';
-  if (user && !rolPuedeVerRuta(activePath, currentUserRole)) {
-    return <Navigate to="/dashboard" replace />;
-  }
   const { isDark, toggle: toggleTheme } = useThemeStore();
   const { token }                       = theme.useToken();
   const navigate                        = useNavigate();
@@ -2254,6 +2239,19 @@ export default function AppLayout() {
       </div>
     </div>
   );
+
+  // ── Guards (después de todos los hooks para no violar la regla de orden) ──
+  if (suspendida) {
+    return (
+      <SuspensionScreen
+        planActual={suscripcion?.plan}
+        fechaVencimiento={suscripcion?.fechaFinPrueba ?? suscripcion?.fechaVencimiento}
+      />
+    );
+  }
+  if (user && !rolPuedeVerRuta(activePath, currentUserRole)) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   // ── Modo POS: pantalla completa sin sidebar ni header ───────────────
   const isPOS = activePath === '/pos' || activePath.startsWith('/pos/');

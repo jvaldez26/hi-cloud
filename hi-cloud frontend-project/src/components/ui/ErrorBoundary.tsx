@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button, Result } from 'antd';
+import { Button, Result, Space } from 'antd';
 
 interface State { hasError: boolean; error?: Error }
 
@@ -31,9 +31,17 @@ export class ErrorBoundary extends React.Component<
             title="Algo salió mal"
             subTitle={this.state.error?.message ?? 'Error inesperado. Recarga la página.'}
             extra={
-              <Button type="primary" onClick={() => this.setState({ hasError: false })}>
-                Intentar de nuevo
-              </Button>
+              <Space>
+                <Button onClick={() => this.setState({ hasError: false })}>
+                  Intentar de nuevo
+                </Button>
+                <Button
+                  danger
+                  onClick={() => { localStorage.clear(); window.location.href = '/login'; }}
+                >
+                  Cerrar sesión
+                </Button>
+              </Space>
             }
           />
         </div>
