@@ -6,6 +6,7 @@ import { User } from './users.entity';
 import { UserRole } from './enums/user-role.enum';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
+import { TenantService } from '../tenant/tenant.service';
 
 @Injectable()
 export class UsersService implements OnModuleInit {
@@ -14,6 +15,7 @@ export class UsersService implements OnModuleInit {
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    private tenantService: TenantService,
   ) {}
 
   async onModuleInit() {
@@ -64,10 +66,22 @@ export class UsersService implements OnModuleInit {
   async findAll(pagination: PaginationDto) {
     const { limit = 10, page = 1, search } = pagination;
 
+    // B-01: ADMIN solo ve usuarios de su empresa; super_admin ve todos
+    let empresaId: number | null = null;
+    try { empresaId = this.tenantService.getEmpresaId(); } catch { /* super_admin sin contexto */ }
+
     const qb = this.userRepository
       .createQueryBuilder('user')
       .select(['user.id', 'user.nombre', 'user.email', 'user.role', 'user.isActive', 'user.createdAt'])
       .where('user.isActive = :active', { active: true });
+
+    if (empresaId) {
+      qb.innerJoin(
+        'usuario_empresa', 'ue',
+        'ue."userId" = user.id AND ue."empresaId" = :eid AND ue."isActive" = true',
+        { eid: empresaId },
+      );
+    }
 
     if (search) {
       qb.andWhere('(user.nombre ILIKE :s OR user.email ILIKE :s)', { s: `%${search}%` });
