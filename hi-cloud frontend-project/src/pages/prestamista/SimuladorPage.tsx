@@ -13,7 +13,13 @@ export default function SimuladorPage() {
   const [resultado, setResultado] = useState<any>(null);
 
   const simular = useMutation({
-    mutationFn: (vals: any) => prestamistalApi.simular(vals),
+    mutationFn: (vals: any) => prestamistalApi.simular({
+      principal: vals.principal,
+      tasaInteresMensual: vals.tasaInteresMensual,
+      plazoMeses: vals.plazoMeses,
+      metodoAmortizacion: vals.metodoAmortizacion,
+      fechaPrimerPago: vals.fechaPrimerPago?.format('YYYY-MM-DD'),
+    }),
     onSuccess: (d: any) => setResultado(d),
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al simular'),
   });
@@ -38,13 +44,13 @@ export default function SimuladorPage() {
               <Form.Item name="principal" label="Monto del Préstamo" rules={[{ required: true }]}>
                 <InputNumber style={{ width: '100%' }} prefix="RD$" min={1} />
               </Form.Item>
-              <Form.Item name="tasaMensualPct" label="Tasa de Interés Mensual (%)" rules={[{ required: true }]}>
+              <Form.Item name="tasaInteresMensual" label="Tasa de Interés Mensual (%)" rules={[{ required: true }]}>
                 <InputNumber style={{ width: '100%' }} min={0.01} max={100} precision={3} addonAfter="%" />
               </Form.Item>
               <Form.Item name="plazoMeses" label="Plazo (meses)" rules={[{ required: true }]}>
                 <InputNumber style={{ width: '100%' }} min={1} max={360} />
               </Form.Item>
-              <Form.Item name="metodo" label="Método de Amortización" initialValue="frances">
+              <Form.Item name="metodoAmortizacion" label="Método de Amortización" initialValue="frances">
                 <Select>
                   <Option value="frances">Francés (cuota fija)</Option>
                   <Option value="aleman">Alemán (capital fijo)</Option>
