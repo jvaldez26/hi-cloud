@@ -60,6 +60,18 @@ if echo "$BAD" | grep -q "falta type:"; then
   exit 1
 fi
 
+# ── Security pattern check (patrones de vulnerabilidad conocidos) ────
+cd "hi-cloud backend-project/backend"
+if ! bash scripts/security-check.sh; then
+  echo ""
+  echo "❌ PROBLEMAS DE SEGURIDAD DETECTADOS"
+  echo "   Corrige los errores antes de hacer push."
+  echo "   Ver detalles arriba."
+  echo ""
+  exit 1
+fi
+cd "../.."
+
 # ── Frontend build (el más crítico — es lo que ve el usuario) ─────
 cd "hi-cloud frontend-project"
 if ! npm run build 2>&1; then
