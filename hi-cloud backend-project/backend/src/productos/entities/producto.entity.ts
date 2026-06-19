@@ -24,6 +24,12 @@ export class Producto extends TenantBaseEntity {
   @Column({ type: 'decimal', precision: 12, scale: 2 })
   precio!: number;
 
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  precio2?: number;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  precio3?: number;
+
   @Column({ type: 'decimal', precision: 5, scale: 2, default: 18 })
   porcentajeIva!: number;
 

@@ -78,12 +78,15 @@ const ThemeCtx = createContext<Palette>(darkC);
 const useC = () => useContext(ThemeCtx);
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
+type PrecioLista = 'precio1' | 'precio2' | 'precio3';
+
 interface CartItem {
   produto:          Prod;
   cantidad:         number;
   precio:           number;
   descuento:        number;
   precioModificado?: boolean;
+  precioLista?:     PrecioLista;  // qué lista de precio está aplicada
 }
 
 interface ParkedSale {
@@ -359,9 +362,10 @@ function ProductCard({ produto, onAdd, mostrarStock = true, permitirStockNegativ
 }
 
 // ── Cart row ──────────────────────────────────────────────────────────────────
-function CartRow({ item, onQty, onRemove, onDescuento, onPrecio, permitirModificarPrecio, permitirDescuentos = true, requireSupervisor }: {
+function CartRow({ item, onQty, onRemove, onDescuento, onPrecio, onLista, permitirModificarPrecio, permitirDescuentos = true, requireSupervisor }: {
   item: CartItem; onQty: (d: number) => void; onRemove: () => void; onDescuento: (p: number) => void;
-  onPrecio?: (p: number) => void; permitirModificarPrecio?: boolean; permitirDescuentos?: boolean;
+  onPrecio?: (p: number) => void; onLista?: (lista: PrecioLista) => void;
+  permitirModificarPrecio?: boolean; permitirDescuentos?: boolean;
   requireSupervisor?: (action: string, detail?: string) => Promise<boolean>;
 }) {
   const C = useC();
@@ -444,6 +448,30 @@ function CartRow({ item, onQty, onRemove, onDescuento, onPrecio, permitirModific
               color: (item.produto as any).tipo !== 'servicio' && item.cantidad >= Number(item.produto.stock) ? C.textMuted : C.text,
               cursor: (item.produto as any).tipo !== 'servicio' && item.cantidad >= Number(item.produto.stock) ? 'not-allowed' : 'pointer',
               fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', outline: 'none' }}>+</button>
+
+          {/* Selector de lista de precios — solo si el producto tiene precio2 o precio3 */}
+          {(item.produto.precio2 || item.produto.precio3) && onLista && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 1, marginLeft: 4,
+              background: 'rgba(255,255,255,.06)', borderRadius: 6, padding: 2, border: `1px solid rgba(255,255,255,.1)` }}>
+              {([
+                { key: 'precio1' as PrecioLista, label: 'P1', val: item.produto.precio },
+                ...(item.produto.precio2 ? [{ key: 'precio2' as PrecioLista, label: 'P2', val: item.produto.precio2 }] : []),
+                ...(item.produto.precio3 ? [{ key: 'precio3' as PrecioLista, label: 'P3', val: item.produto.precio3 }] : []),
+              ]).map(({ key, label, val }) => {
+                const activo = (item.precioLista ?? 'precio1') === key;
+                return (
+                  <Tooltip key={key} title={`${label}: ${fmt.money(Number(val))}`}>
+                    <button onClick={() => onLista(key)} style={{
+                      height: 20, padding: '0 6px', borderRadius: 4, border: 'none', cursor: 'pointer', outline: 'none',
+                      background: activo ? C.blue : 'transparent',
+                      color: activo ? '#fff' : C.textMuted,
+                      fontSize: 10, fontWeight: activo ? 700 : 500, transition: 'all .15s',
+                    }}>{label}</button>
+                  </Tooltip>
+                );
+              })}
+            </div>
+          )}
 
           <div style={{ flex: 1 }} />
 
@@ -687,7 +715,8 @@ const ATAJOS_POS = [
 // ── Top bar ───────────────────────────────────────────────────────────────────
 function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, onSupervisor, onCambiarUsuario, supervisorActiveBadge, onDesactivarSupervisor,
   modoFacturacion, onModoChange, tipoNcf, onTipoNcfChange, ecfOnline,
-  modosPOS, modoContexto, onModoContextoChange, requireSupervisor }: {
+  modosPOS, modoContexto, onModoContextoChange, requireSupervisor,
+  listaGlobal, onListaGlobalChange }: {
   empresaNombre: string; cajeroNombre: string; isOffline: boolean; onExit: () => void;
   onBloquear: () => void; onSupervisor: () => void; onCambiarUsuario: () => void;
   modoFacturacion: ModoFacturacion; onModoChange: (m: ModoFacturacion) => void;
@@ -699,6 +728,8 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
   modosPOS: { codigo: string; label: string; icono: string }[];
   modoContexto: string;
   onModoContextoChange: (m: string) => void;
+  listaGlobal: PrecioLista;
+  onListaGlobalChange: (l: PrecioLista) => void;
 }) {
   const C = useC();
   const [showModoMenu,     setShowModoMenu]     = useState(false);
@@ -889,6 +920,32 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
       )}
 
       <div style={{ flex: 1 }} />
+
+      {/* ── Selector global de lista de precios ── */}
+      <Tooltip title="Lista de precios activa — se aplica a todos los productos al agregar al carrito">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0,
+          background: listaGlobal !== 'precio1' ? 'rgba(234,179,8,.12)' : 'rgba(255,255,255,.06)',
+          borderRadius: 7, padding: 3,
+          border: `1px solid ${listaGlobal !== 'precio1' ? 'rgba(234,179,8,.4)' : 'rgba(255,255,255,.12)'}` }}>
+          {([
+            { key: 'precio1' as PrecioLista, label: 'P1', tip: 'Detalle' },
+            { key: 'precio2' as PrecioLista, label: 'P2', tip: 'Mayorista' },
+            { key: 'precio3' as PrecioLista, label: 'P3', tip: 'Especial' },
+          ]).map(({ key, label, tip }) => {
+            const activo = listaGlobal === key;
+            return (
+              <button key={key} onClick={() => onListaGlobalChange(key)}
+                title={tip}
+                style={{ height: 22, padding: '0 8px', borderRadius: 5, border: 'none', cursor: 'pointer', outline: 'none',
+                  background: activo ? (key === 'precio1' ? '#3B82F6' : '#EAB308') : 'transparent',
+                  color: activo ? '#fff' : '#94A3B8',
+                  fontSize: 11, fontWeight: activo ? 700 : 500, transition: 'all .15s' }}>
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </Tooltip>
 
       {/* ── Indicador tu proveedor e-CF / DGII ── */}
       <Tooltip title={
@@ -5330,6 +5387,8 @@ export default function POSPage() {
   // Descuento global del carrito
   const [descGlobal,     setDescGlobal]     = useState('');
   const [descGlobalTipo, setDescGlobalTipo] = useState<'pct' | 'fijo'>('pct');
+  // Lista de precios global — se aplica al carrito completo y a nuevos items
+  const [listaGlobal, setListaGlobal] = useState<PrecioLista>('precio1');
   const [cart,          setCart]          = useState<CartItem[]>(() => {
     try {
       const guardado = localStorage.getItem('pos-carrito-activo');
@@ -5777,7 +5836,11 @@ export default function POSPage() {
         if (esServicio || u[idx].cantidad < Number(produto.stock)) u[idx].cantidad++;
         return u;
       }
-      return [{ produto, cantidad: 1, precio: precioBase, descuento: 0 }, ...prev];
+      const precioConLista =
+        listaGlobal === 'precio2' && (produto as any).precio2 ? Number((produto as any).precio2) :
+        listaGlobal === 'precio3' && (produto as any).precio3 ? Number((produto as any).precio3) :
+        precioBase;
+      return [{ produto, cantidad: 1, precio: precioConLista, descuento: 0, precioLista: listaGlobal }, ...prev];
     });
 
     // 2. Si hay cliente, consultar precio especial en background y actualizar
@@ -5806,13 +5869,36 @@ export default function POSPage() {
         }
       })
       .catch(() => { precioCache.current.set(cacheKey, null); });
-  }, [clienteId, posPermitirStockNegativo]);
+  }, [clienteId, posPermitirStockNegativo, listaGlobal]);
 
   const updateQty          = (idx: number, delta: number) => setCart(prev => { const u=[...prev]; u[idx].cantidad = Math.min(Number(u[idx].produto.stock), Math.max(1, u[idx].cantidad + delta)); return u; });
   const removeItem         = (idx: number) => setCart(p => p.filter((_, i) => i !== idx));
   const actualizarPrecioItem = (idx: number, nuevoPrecio: number) => {
     if (nuevoPrecio <= 0) return;
     setCart(prev => prev.map((it, i) => i === idx ? { ...it, precio: nuevoPrecio, precioModificado: true } : it));
+  };
+  const cambiarListaItem = (idx: number, lista: PrecioLista) => {
+    setCart(prev => prev.map((it, i) => {
+      if (i !== idx) return it;
+      const p = it.produto;
+      const nuevoPrecio =
+        lista === 'precio2' && p.precio2 ? Number(p.precio2) :
+        lista === 'precio3' && p.precio3 ? Number(p.precio3) :
+        Number(p.precio);
+      return { ...it, precioLista: lista, precio: nuevoPrecio, precioModificado: false };
+    }));
+  };
+
+  const aplicarListaGlobal = (lista: PrecioLista) => {
+    setListaGlobal(lista);
+    setCart(prev => prev.map(it => {
+      const p = it.produto;
+      const nuevoPrecio =
+        lista === 'precio2' && p.precio2 ? Number(p.precio2) :
+        lista === 'precio3' && p.precio3 ? Number(p.precio3) :
+        Number(p.precio);
+      return { ...it, precioLista: lista, precio: nuevoPrecio, precioModificado: false };
+    }));
   };
   const setDescuento = async (idx: number, pct: number) => {
     // Verificar descuento máximo configurado
@@ -6414,7 +6500,9 @@ export default function POSPage() {
         onExit={salirDelPOS}
         modosPOS={MODOS_POS}
         modoContexto={modoContexto}
-        onModoContextoChange={cambiarModoContexto} />
+        onModoContextoChange={cambiarModoContexto}
+        listaGlobal={listaGlobal}
+        onListaGlobalChange={aplicarListaGlobal} />
 
       {/* Tab bar mobile — cambia entre productos y carrito */}
       {isMobile && (
@@ -6728,6 +6816,7 @@ export default function POSPage() {
                     onRemove={() => removeItem(idx)}
                     onDescuento={p => setDescuento(idx, p)}
                     onPrecio={p => actualizarPrecioItem(idx, p)}
+                    onLista={lista => cambiarListaItem(idx, lista)}
                     permitirModificarPrecio={posConf.posModificarPrecio === true}
                     permitirDescuentos={posConf.posPermitirDescuentos !== false}
                     requireSupervisor={supervisor.supervisorModeEnabled && posConf.posModificarPrecio === true ? supervisor.requireSupervisor : undefined} />

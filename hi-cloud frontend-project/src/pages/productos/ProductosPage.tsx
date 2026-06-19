@@ -418,6 +418,8 @@ function ProductosCatalogo() {
   const [fieldErrors,      setFieldErrors]      = useState<{ codigo?: string; nombre?: string }>({});
   const [precioConItbis,   setPrecioConItbis]   = useState(false);
   const [precioInput,      setPrecioInput]       = useState(0);
+  const [precio2Input,     setPrecio2Input]      = useState<number | null>(null);
+  const [precio3Input,     setPrecio3Input]      = useState<number | null>(null);
   // Nonce para cancelar checks async de duplicados que quedaron pendientes
   // al cerrar/abrir el modal (evita race condition que muestra error de producto anterior)
   const dupCheckNonce = useRef(0);
@@ -543,7 +545,7 @@ function ProductosCatalogo() {
   const openCreate = () => {
     dupCheckNonce.current++;  // invalida cualquier check async pendiente
     setEditing(null); form.resetFields(); form.setFieldValue('codigo', ''); setPreview(''); setFieldErrors({});
-    setPrecioInput(0); setPrecioConItbis(false);
+    setPrecioInput(0); setPrecioConItbis(false); setPrecio2Input(null); setPrecio3Input(null);
     // Pre-seleccionar sucursal del JWT si el usuario tiene asignada una
     const sid = sucursalJwt ? Number(sucursalJwt) : undefined;
     if (sid) {
@@ -568,6 +570,8 @@ function ProductosCatalogo() {
     form.setFieldsValue(safeValues);
     setPreview(p.imagenUrl ?? ''); setFieldErrors({});
     setPrecioInput(Number(p.precio) || 0); setPrecioConItbis(false);
+    setPrecio2Input(p.precio2 != null ? Number(p.precio2) : null);
+    setPrecio3Input(p.precio3 != null ? Number(p.precio3) : null);
     setSucursalSeleccionada(undefined);
     if (almacenes.length === 1 && !(p as any).almacenId) form.setFieldValue('almacenId', almacenes[0].id);
     setOpen(true);
@@ -575,7 +579,7 @@ function ProductosCatalogo() {
   const closeModal = () => {
     dupCheckNonce.current++;  // invalida cualquier check async pendiente
     setOpen(false); setEditing(null); form.resetFields(); setPreview(''); setFieldErrors({});
-    setPrecioInput(0); setPrecioConItbis(false);
+    setPrecioInput(0); setPrecioConItbis(false); setPrecio2Input(null); setPrecio3Input(null);
     setSucursalSeleccionada(undefined);
   };
   const handleSubmit = (values: ProductoPayload) => {
@@ -589,7 +593,12 @@ function ProductosCatalogo() {
     const pBase  = precioConItbis
       ? Math.round((Number(precioInput) / (1 + itbis / 100)) * 100) / 100
       : Number(precioInput);
-    const payload: ProductoPayload = { ...values, precio: pBase };
+    const payload: ProductoPayload = {
+      ...values,
+      precio: pBase,
+      precio2: precio2Input != null && precio2Input > 0 ? precio2Input : null,
+      precio3: precio3Input != null && precio3Input > 0 ? precio3Input : null,
+    };
     // no enviar cadena vacía ni valores basura
     if (!payload.codigo || payload.codigo === 'undefined' || payload.codigo === 'null') delete (payload as any).codigo;
     // sucursalId es solo para filtrar almacenes en la UI — no va al backend (producto pertenece a empresa, no sucursal)
@@ -886,6 +895,40 @@ function ProductosCatalogo() {
                   </Form.Item>
                 );
               })()}
+            </Col>
+            <Col xs={24} sm={8}>
+              <Form.Item
+                label={<span>Precio 2 <span style={{ fontWeight: 400, color: '#9CA3AF', fontSize: 11 }}>(Mayorista — opcional)</span></span>}
+              >
+                <InputNumber
+                  style={{ width: '100%' }}
+                  value={precio2Input ?? undefined}
+                  onChange={v => setPrecio2Input(v != null ? Number(v) : null)}
+                  formatter={v => v ? `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''}
+                  parser={v => (v ?? '').replace(/,/g, '') as any}
+                  min={0}
+                  precision={2}
+                  placeholder="Opcional"
+                  prefix="RD$"
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={8}>
+              <Form.Item
+                label={<span>Precio 3 <span style={{ fontWeight: 400, color: '#9CA3AF', fontSize: 11 }}>(Especial — opcional)</span></span>}
+              >
+                <InputNumber
+                  style={{ width: '100%' }}
+                  value={precio3Input ?? undefined}
+                  onChange={v => setPrecio3Input(v != null ? Number(v) : null)}
+                  formatter={v => v ? `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''}
+                  parser={v => (v ?? '').replace(/,/g, '') as any}
+                  min={0}
+                  precision={2}
+                  placeholder="Opcional"
+                  prefix="RD$"
+                />
+              </Form.Item>
             </Col>
             <Col xs={24} sm={8}>
               <Form.Item name="porcentajeIva" label="ITBIS %">

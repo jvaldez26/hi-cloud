@@ -74,6 +74,8 @@ export interface Producto {
   descripcion?:    string;
   unidadMedida:    string;
   precio:          number;
+  precio2?:        number | null;
+  precio3?:        number | null;
   porcentajeIva:   number;
   stock:           number;
   stockMinimo:     number;
