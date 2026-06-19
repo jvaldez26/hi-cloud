@@ -131,6 +131,7 @@ import { GimnasioModule }             from './gimnasio/gimnasio.module';
 import { ServiciosProModule }         from './servicios-pro/servicios-pro.module';
 import { ProFormaModule }             from './pro-forma/pro-forma.module';
 import { PrestamistatModule }         from './prestamista/prestamista.module';
+import { AgroModule }               from './agro/agro.module';
 
 @Module({
   imports: [
@@ -346,6 +347,7 @@ import { PrestamistatModule }         from './prestamista/prestamista.module';
     ServiciosProModule,
     ProFormaModule,
     PrestamistatModule,
+    AgroModule,
   ],
   controllers: [AppController],
   providers: [

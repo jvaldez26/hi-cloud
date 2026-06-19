@@ -232,6 +232,18 @@ const DetallePrestamo             = lazy(() => import('./pages/prestamista/Detal
 const SimuladorPage               = lazy(() => import('./pages/prestamista/SimuladorPage'));
 const CobranzaPage                = lazy(() => import('./pages/prestamista/CobranzaPage'));
 const ReportesPrestamistaPage     = lazy(() => import('./pages/prestamista/ReportesPrestamistaPage'));
+// Agro / Finca
+const AgroDashboard               = lazy(() => import('./pages/agro/AgroDashboard'));
+const FincasPage                  = lazy(() => import('./pages/agro/FincasPage'));
+const ParcelasPage                = lazy(() => import('./pages/agro/ParcelasPage'));
+const CiclosPage                  = lazy(() => import('./pages/agro/CiclosPage'));
+const CicloDetallePage            = lazy(() => import('./pages/agro/CicloDetallePage'));
+const CosechasPage                = lazy(() => import('./pages/agro/CosechasPage'));
+const GanaderiaPage               = lazy(() => import('./pages/agro/GanaderiaPage'));
+const AnimalDetallePage           = lazy(() => import('./pages/agro/AnimalDetallePage'));
+const InsumosPage                 = lazy(() => import('./pages/agro/InsumosPage'));
+const MaquinariaPage              = lazy(() => import('./pages/agro/MaquinariaPage'));
+const AgroReportesPage            = lazy(() => import('./pages/agro/ReportesPage'));
 dayjs.locale('es');
 
 export const qc = new QueryClient({
@@ -803,6 +815,19 @@ export default function App() {
                       <Route path="cobranza"            element={<CobranzaPage />} />
                       <Route path="reportes"            element={<ReportesPrestamistaPage />} />
                     </Route>
+
+                    {/* ── Módulo Agro / Finca (add-on) ── */}
+                    <Route path="/agro"                 element={<AgroDashboard />} />
+                    <Route path="/agro/fincas"          element={<FincasPage />} />
+                    <Route path="/agro/parcelas"        element={<ParcelasPage />} />
+                    <Route path="/agro/ciclos"          element={<CiclosPage />} />
+                    <Route path="/agro/ciclos/:id"      element={<CicloDetallePage />} />
+                    <Route path="/agro/cosechas"        element={<CosechasPage />} />
+                    <Route path="/agro/ganaderia"       element={<GanaderiaPage />} />
+                    <Route path="/agro/ganaderia/:id"   element={<AnimalDetallePage />} />
+                    <Route path="/agro/insumos"         element={<InsumosPage />} />
+                    <Route path="/agro/maquinaria"      element={<MaquinariaPage />} />
+                    <Route path="/agro/reportes"        element={<AgroReportesPage />} />
                   </Route>
 
                   <Route path="*" element={<Navigate to="/" replace />} />

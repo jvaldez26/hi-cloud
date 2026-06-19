@@ -19,7 +19,7 @@ import {
   FileText, BookOpen, PieChart, Database, Truck,
   UserCheck, Calculator, Shield, Bell, Globe, Wrench, Stethoscope, Pill,
   Factory, Target, Banknote, ClipboardList, Tags,
-  X, Lock, ChevronLeft, ChevronRight, MoreHorizontal, UtensilsCrossed, Landmark,
+  X, Lock, ChevronLeft, ChevronRight, MoreHorizontal, UtensilsCrossed, Landmark, Sprout,
   type LucideIcon,
 } from 'lucide-react';
 import { usePlan, type PlanTipo } from '../../hooks/usePlan';
@@ -397,6 +397,20 @@ const MENU_CATEGORIES: MenuCategory[] = [
       { path: '/prestamista/reportes',      label: 'Reportes' },
     ],
   },
+  {
+    id: 'agro', label: 'Agro / Finca', Icon: Sprout,
+    items: [
+      { path: '/agro',              label: 'Panel' },
+      { path: '/agro/fincas',       label: 'Fincas' },
+      { path: '/agro/parcelas',     label: 'Parcelas' },
+      { path: '/agro/ciclos',       label: 'Ciclos' },
+      { path: '/agro/cosechas',     label: 'Cosechas' },
+      { path: '/agro/ganaderia',    label: 'Ganadería' },
+      { path: '/agro/insumos',      label: 'Insumos' },
+      { path: '/agro/maquinaria',   label: 'Maquinaria' },
+      { path: '/agro/reportes',     label: 'Reportes' },
+    ],
+  },
 ];
 
 // ── Orden de jerarquía de planes ─────────────────────────────────────────────
@@ -606,6 +620,17 @@ const PATH_ROLES: Record<string, string[]> = {
   '/prestamista/cobranza':           ADMIN_CONT,
   '/prestamista/productos':          ADMIN_CONT,
   '/prestamista/reportes':           ADMIN_CONT,
+  '/agro':                           ADMIN_CONT,
+  '/agro/fincas':                    ADMIN_CONT,
+  '/agro/parcelas':                  ADMIN_CONT,
+  '/agro/ciclos':                    ADMIN_CONT,
+  '/agro/ciclos/:id':                ADMIN_CONT,
+  '/agro/cosechas':                  ADMIN_CONT,
+  '/agro/ganaderia':                 ADMIN_CONT,
+  '/agro/ganaderia/:id':             ADMIN_CONT,
+  '/agro/insumos':                   ADMIN_CONT,
+  '/agro/maquinaria':                ADMIN_CONT,
+  '/agro/reportes':                  ADMIN_CONT,
 };
 
 function rolPuedeVerRuta(path: string, role: string): boolean {
@@ -1195,7 +1220,7 @@ const GRUPOS_MENU = [
   { key: 'sistema',    label: 'Sistema',                 obligatorio: false },
 ];
 const TODOS_GRUPOS_KEYS = GRUPOS_MENU.map(g => g.key);
-const ADDON_IDS = ['clinica', 'taller', 'optica', 'farmacia', 'restaurante', 'gimnasio', 'servicios_pro', 'prestamista'];
+const ADDON_IDS = ['clinica', 'taller', 'optica', 'farmacia', 'restaurante', 'gimnasio', 'servicios_pro', 'prestamista', 'agro'];
 
 // ── AppLayout principal ───────────────────────────────────────────────────────
 export default function AppLayout() {
