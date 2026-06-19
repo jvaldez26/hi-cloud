@@ -362,10 +362,13 @@ export default function App() {
       api.get('/auth/me')
         .then((r) => {
           const user = r.data?.data?.user ?? r.data?.user ?? r.data;
-          const empresaId   = localStorage.getItem('empresaId');
-          const empresasRaw = localStorage.getItem('mis_empresas');
-          const empresas    = empresasRaw ? JSON.parse(empresasRaw) : [];
-          login(user, empresaId ? Number(empresaId) : null, empresas);
+          const empresaId      = localStorage.getItem('empresaId');
+          const empresasRaw    = localStorage.getItem('mis_empresas');
+          const empresas       = empresasRaw ? JSON.parse(empresasRaw) : [];
+          const sucursalId     = localStorage.getItem('sucursalId');
+          const sucursalNombre = localStorage.getItem('sucursalNombre');
+          login(user, empresaId ? Number(empresaId) : null, empresas,
+                null, sucursalId ? Number(sucursalId) : null, sucursalNombre);
         })
         .catch(() => {
           // Cookie inválida o expirada — limpiar estado
