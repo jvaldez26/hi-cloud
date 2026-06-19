@@ -130,6 +130,7 @@ import { PosContextoModule }          from './pos-contexto/pos-contexto.module';
 import { GimnasioModule }             from './gimnasio/gimnasio.module';
 import { ServiciosProModule }         from './servicios-pro/servicios-pro.module';
 import { ProFormaModule }             from './pro-forma/pro-forma.module';
+import { PrestamistatModule }         from './prestamista/prestamista.module';
 
 @Module({
   imports: [
@@ -344,6 +345,7 @@ import { ProFormaModule }             from './pro-forma/pro-forma.module';
     GimnasioModule,
     ServiciosProModule,
     ProFormaModule,
+    PrestamistatModule,
   ],
   controllers: [AppController],
   providers: [
