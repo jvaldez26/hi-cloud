@@ -19,7 +19,7 @@ import {
   FileText, BookOpen, PieChart, Database, Truck,
   UserCheck, Calculator, Shield, Bell, Globe, Wrench, Stethoscope, Pill,
   Factory, Target, Banknote, ClipboardList, Tags,
-  X, Lock, ChevronLeft, ChevronRight, MoreHorizontal, UtensilsCrossed,
+  X, Lock, ChevronLeft, ChevronRight, MoreHorizontal, UtensilsCrossed, Landmark,
   type LucideIcon,
 } from 'lucide-react';
 import { usePlan, type PlanTipo } from '../../hooks/usePlan';
@@ -384,6 +384,19 @@ const MENU_CATEGORIES: MenuCategory[] = [
       { path: '/servicios-pro/reportes',         label: 'Reportes' },
     ],
   },
+  {
+    id: 'prestamista', label: 'Prestamista / Financiera', Icon: Landmark,
+    items: [
+      { path: '/prestamista',               label: 'Panel' },
+      { path: '/prestamista/deudores',      label: 'Deudores' },
+      { path: '/prestamista/solicitudes',   label: 'Solicitudes' },
+      { path: '/prestamista/prestamos',     label: 'Préstamos' },
+      { path: '/prestamista/simulador',     label: 'Simulador' },
+      { path: '/prestamista/cobranza',      label: 'Cobranza' },
+      { path: '/prestamista/productos',     label: 'Productos' },
+      { path: '/prestamista/reportes',      label: 'Reportes' },
+    ],
+  },
 ];
 
 // ── Orden de jerarquía de planes ─────────────────────────────────────────────
@@ -585,6 +598,14 @@ const PATH_ROLES: Record<string, string[]> = {
   '/servicios-pro/retainers':        ADMIN_CONT,
   '/servicios-pro/profesionales':    ADMIN_CONT,
   '/servicios-pro/reportes':         ADMIN_CONT,
+  '/prestamista':                    ADMIN_CONT,
+  '/prestamista/deudores':           ADMIN_CONT,
+  '/prestamista/solicitudes':        ADMIN_CONT,
+  '/prestamista/prestamos':          ADMIN_CONT,
+  '/prestamista/simulador':          ADMIN_CONT,
+  '/prestamista/cobranza':           ADMIN_CONT,
+  '/prestamista/productos':          ADMIN_CONT,
+  '/prestamista/reportes':           ADMIN_CONT,
 };
 
 function rolPuedeVerRuta(path: string, role: string): boolean {
@@ -1174,7 +1195,7 @@ const GRUPOS_MENU = [
   { key: 'sistema',    label: 'Sistema',                 obligatorio: false },
 ];
 const TODOS_GRUPOS_KEYS = GRUPOS_MENU.map(g => g.key);
-const ADDON_IDS = ['clinica', 'taller', 'optica', 'farmacia', 'restaurante', 'gimnasio', 'servicios_pro'];
+const ADDON_IDS = ['clinica', 'taller', 'optica', 'farmacia', 'restaurante', 'gimnasio', 'servicios_pro', 'prestamista'];
 
 // ── AppLayout principal ───────────────────────────────────────────────────────
 export default function AppLayout() {

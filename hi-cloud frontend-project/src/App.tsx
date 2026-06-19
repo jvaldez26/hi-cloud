@@ -220,6 +220,18 @@ const HonorariosPage              = lazy(() => import('./pages/servicios-pro/Hon
 const RetainersPage               = lazy(() => import('./pages/servicios-pro/RetainersPage'));
 const SpProfesionalesPage         = lazy(() => import('./pages/servicios-pro/ProfesionalesPage'));
 const SpReportesPage              = lazy(() => import('./pages/servicios-pro/ReportesPage'));
+// Prestamista / Financiera
+const PrestamistalLayout          = lazy(() => import('./pages/prestamista/PrestamistalLayout'));
+const DashboardPrestamistaPage    = lazy(() => import('./pages/prestamista/DashboardPrestamistaPage'));
+const DeudoresPage                = lazy(() => import('./pages/prestamista/DeudoresPage'));
+const FichaDeudorPage             = lazy(() => import('./pages/prestamista/FichaDeudorPage'));
+const ProductosPrestamoPage       = lazy(() => import('./pages/prestamista/ProductosPrestamoPage'));
+const SolicitudesPage             = lazy(() => import('./pages/prestamista/SolicitudesPage'));
+const PrestamosPage               = lazy(() => import('./pages/prestamista/PrestamosPage'));
+const DetallePrestamo             = lazy(() => import('./pages/prestamista/DetallePrestamo'));
+const SimuladorPage               = lazy(() => import('./pages/prestamista/SimuladorPage'));
+const CobranzaPage                = lazy(() => import('./pages/prestamista/CobranzaPage'));
+const ReportesPrestamistaPage     = lazy(() => import('./pages/prestamista/ReportesPrestamistaPage'));
 dayjs.locale('es');
 
 export const qc = new QueryClient({
@@ -777,6 +789,19 @@ export default function App() {
                       <Route path="retainers"               element={<RetainersPage />} />
                       <Route path="profesionales"           element={<SpProfesionalesPage />} />
                       <Route path="reportes"                element={<SpReportesPage />} />
+                    </Route>
+
+                    <Route path="/prestamista" element={<PrestamistalLayout />}>
+                      <Route index                      element={<DashboardPrestamistaPage />} />
+                      <Route path="deudores"            element={<DeudoresPage />} />
+                      <Route path="deudores/:id"        element={<FichaDeudorPage />} />
+                      <Route path="productos"           element={<ProductosPrestamoPage />} />
+                      <Route path="solicitudes"         element={<SolicitudesPage />} />
+                      <Route path="prestamos"           element={<PrestamosPage />} />
+                      <Route path="prestamos/:id"       element={<DetallePrestamo />} />
+                      <Route path="simulador"           element={<SimuladorPage />} />
+                      <Route path="cobranza"            element={<CobranzaPage />} />
+                      <Route path="reportes"            element={<ReportesPrestamistaPage />} />
                     </Route>
                   </Route>
 

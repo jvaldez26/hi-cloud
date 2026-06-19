@@ -1,0 +1,115 @@
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Table, Button, Card, Row, Col, Statistic, Tag, Modal, Form, Input, Select, DatePicker, message, theme } from 'antd';
+import { useNavigate } from 'react-router-dom';
+import { Eye, Plus } from 'lucide-react';
+import { prestamistalApi } from '../../api/prestamista.api';
+
+const { Option } = Select;
+const fmt = (n: any) => `RD$ ${Number(n ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
+
+export default function CobranzaPage() {
+  const { token: C } = theme.useToken();
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const [gestionOpen, setGestionOpen] = useState(false);
+  const [selectedPrestamo, setSelectedPrestamo] = useState<any>(null);
+  const [formGestion] = Form.useForm();
+
+  const { data: resumen } = useQuery({
+    queryKey: ['prestamista-cobranza-resumen'],
+    queryFn: prestamistalApi.getResumenCobranza,
+    refetchInterval: 120_000,
+  });
+
+  const { data: cartera = [], isLoading } = useQuery({
+    queryKey: ['prestamista-cartera-vencida'],
+    queryFn: () => prestamistalApi.getCarteraVencida(),
+  });
+
+  const registrarGestion = useMutation({
+    mutationFn: (vals: any) => prestamistalApi.registrarGestion({ prestamoId: selectedPrestamo?.id, ...vals }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['prestamista-cartera-vencida'] });
+      setGestionOpen(false);
+      formGestion.resetFields();
+      message.success('Gestión registrada');
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al registrar gestión'),
+  });
+
+  const openGestion = (row: any) => {
+    setSelectedPrestamo(row);
+    setGestionOpen(true);
+  };
+
+  const cols = [
+    { title: 'Préstamo', dataIndex: 'numero', width: 120 },
+    { title: 'Deudor', dataIndex: 'deudorNombre' },
+    { title: 'Teléfono', dataIndex: 'deudorTelefono', width: 110 },
+    { title: 'Saldo Capital', dataIndex: 'saldoCapital', render: fmt },
+    { title: 'Saldo Mora', dataIndex: 'saldoMora', render: (v: any) => <span style={{ color: '#ff4d4f' }}>{fmt(v)}</span> },
+    { title: 'Saldo Total', dataIndex: 'saldoTotal', render: fmt },
+    { title: 'Días Mora', dataIndex: 'diasMoraActual', render: (v: any) => <Tag color={v > 90 ? 'red' : v > 30 ? 'orange' : 'blue'}>{v}</Tag> },
+    { title: 'Cuotas Vencidas', dataIndex: 'cuotasVencidas', render: (v: any) => <Tag color="red">{v}</Tag> },
+    { title: 'Última Gestión', dataIndex: 'ultimaGestion', render: (v: string) => v?.slice(0, 10) ?? '—' },
+    {
+      title: '', key: 'acc', width: 130,
+      render: (_: any, r: any) => (
+        <div style={{ display: 'flex', gap: 4 }}>
+          <Button size="small" icon={<Eye size={13} />} onClick={() => navigate(`/prestamista/prestamos/${r.id}`)} />
+          <Button size="small" icon={<Plus size={13} />} onClick={() => openGestion(r)}>Gestión</Button>
+        </div>
+      ),
+    },
+  ];
+
+  const rs = resumen ?? {};
+
+  return (
+    <div style={{ padding: 24 }}>
+      <h2 style={{ marginBottom: 16, color: C.colorText }}>Cobranza — Cartera Vencida</h2>
+
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+        <Col xs={12} md={4}><Card size="small"><Statistic title="Préstamos Morosos" value={Number(rs.totalMorosos ?? 0)} valueStyle={{ color: C.colorWarning }} /></Card></Col>
+        <Col xs={12} md={4}><Card size="small"><Statistic title="Préstamos Vencidos" value={Number(rs.totalVencidos ?? 0)} valueStyle={{ color: C.colorError }} /></Card></Col>
+        <Col xs={12} md={5}><Card size="small"><Statistic title="Saldo Mora Total" value={fmt(rs.saldoMoraTotal)} valueStyle={{ color: C.colorError, fontSize: 14 }} /></Card></Col>
+        <Col xs={12} md={5}><Card size="small"><Statistic title="Cartera Vencida" value={fmt(rs.carteraVencidaTotal)} valueStyle={{ fontSize: 14 }} /></Card></Col>
+        <Col xs={12} md={6}><Card size="small"><Statistic title="Índice de Morosidad" value={`${rs.indiceMorosidad ?? 0}%`} valueStyle={{ color: C.colorWarning, fontSize: 14 }} /></Card></Col>
+      </Row>
+
+      <Table dataSource={(cartera as any[]).map((r: any) => ({ ...r, key: r.id }))} columns={cols}
+        loading={isLoading} scroll={{ x: 'max-content' }} size="small" />
+
+      <Modal title={`Registrar Gestión — ${selectedPrestamo?.deudorNombre ?? ''}`} open={gestionOpen}
+        onCancel={() => { setGestionOpen(false); formGestion.resetFields(); }}
+        onOk={() => formGestion.validateFields().then(v => registrarGestion.mutate(v))} okText="Registrar" confirmLoading={registrarGestion.isPending}>
+        <Form form={formGestion} layout="vertical" style={{ paddingTop: 8 }}>
+          <Form.Item name="tipoGestion" label="Tipo de Gestión" rules={[{ required: true }]}>
+            <Select>
+              <Option value="llamada">Llamada telefónica</Option>
+              <Option value="visita">Visita domiciliaria</Option>
+              <Option value="mensaje">Mensaje / WhatsApp</Option>
+              <Option value="carta">Carta / Notificación</Option>
+              <Option value="acuerdo_pago">Acuerdo de pago</Option>
+              <Option value="judicial">Acción judicial</Option>
+            </Select>
+          </Form.Item>
+          <Form.Item name="resultado" label="Resultado">
+            <Select allowClear>
+              <Option value="contactado">Contactado — promesa de pago</Option>
+              <Option value="no_contactado">No contactado</Option>
+              <Option value="pago_parcial">Realizó pago parcial</Option>
+              <Option value="negativa">Se negó a pagar</Option>
+              <Option value="acuerdo">Acuerdo alcanzado</Option>
+            </Select>
+          </Form.Item>
+          <Form.Item name="fechaProximaGestion" label="Fecha Próxima Gestión">
+            <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
+          </Form.Item>
+          <Form.Item name="notas" label="Notas" rules={[{ required: true }]}><Input.TextArea rows={3} /></Form.Item>
+        </Form>
+      </Modal>
+    </div>
+  );
+}
