@@ -55,4 +55,17 @@ export const prestamistalApi = {
   pdfAmortizacion: (prestamoId: number) => `${api.defaults.baseURL}${base}/pdf/amortizacion/${prestamoId}`,
   pdfRecibo:       (pagoId: number)     => `${api.defaults.baseURL}${base}/pdf/recibo/${pagoId}`,
   pdfEstadoCuenta: (deudorId: number)   => `${api.defaults.baseURL}${base}/pdf/estado-cuenta/${deudorId}`,
+
+  // Reportes CSV — descarga autenticada via axios → Blob → click
+  descargarReporte: async (tipo: string, nombreArchivo: string, params?: Record<string, any>) => {
+    const res = await api.get(`${base}/reportes/${tipo}`, { params, responseType: 'blob' });
+    const url = URL.createObjectURL(new Blob([res.data], { type: 'text/csv;charset=utf-8;' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${nombreArchivo}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
 };

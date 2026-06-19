@@ -12,6 +12,7 @@ export enum TipoOrigenAsiento {
   PAGO          = 'pago',
   AJUSTE        = 'ajuste',
   MANUFACTURA   = 'manufactura',
+  PRESTAMISTA   = 'prestamista',
 }
 
 export enum EstadoAsiento {

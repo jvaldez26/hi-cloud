@@ -1,12 +1,16 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { AsientosAutomaticosService } from '../../contabilidad/services/asientos-automaticos.service';
 
 @Injectable()
 export class PagosService {
   private readonly logger = new Logger(PagosService.name);
 
-  constructor(@InjectDataSource() private readonly ds: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly ds: DataSource,
+    private readonly asientos: AsientosAutomaticosService,
+  ) {}
 
   private r2(n: number) { return Math.round(Number(n) * 100) / 100; }
 
@@ -146,6 +150,14 @@ export class PagosService {
         [data.montoPagado, prestamo.deudorId, empresaId],
       );
     }
+
+    // Asiento contable fire-and-forget
+    this.asientos.asientoPagoPrestamo(
+      pago.id, numero, prestamo.numero,
+      data.metodoPago ?? 'transferencia',
+      aplicadoCapital, aplicadoInteres, aplicadoMora,
+      data.userId ?? 0,
+    ).catch(err => this.logger.error(`Asiento pago ${numero}: ${err.message}`));
 
     return { pago, cuotasAfectadas, saldos: { saldoCapital, saldoInteres, saldoMora, saldoTotal } };
   }

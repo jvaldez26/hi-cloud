@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { TenantModule } from '../tenant/tenant.module';
+import { ContabilidadModule } from '../contabilidad/contabilidad.module';
 
 import { PrDeudor } from './entities/pr-deudor.entity';
 import { PrProductoPrestamo } from './entities/pr-producto-prestamo.entity';
@@ -34,6 +35,8 @@ import { DashboardPrestamistaService } from './dashboard/dashboard.service';
 import { DashboardPrestamistaController } from './dashboard/dashboard.controller';
 import { PrestamistaPdfService } from './pdf/prestamista-pdf.service';
 import { PdfPrestamistaController } from './pdf/pdf.controller';
+import { ReportesPrestamistaService } from './reportes/reportes.service';
+import { ReportesController } from './reportes/reportes.controller';
 
 @Module({
   imports: [
@@ -50,6 +53,7 @@ import { PdfPrestamistaController } from './pdf/pdf.controller';
       PrRefinanciamiento,
     ]),
     TenantModule,
+    ContabilidadModule,
   ],
   providers: [
     DeudoresService,
@@ -63,6 +67,7 @@ import { PdfPrestamistaController } from './pdf/pdf.controller';
     RefinanciamientoService,
     DashboardPrestamistaService,
     PrestamistaPdfService,
+    ReportesPrestamistaService,
   ],
   controllers: [
     DeudoresController,
@@ -75,6 +80,7 @@ import { PdfPrestamistaController } from './pdf/pdf.controller';
     RefinanciamientoController,
     DashboardPrestamistaController,
     PdfPrestamistaController,
+    ReportesController,
   ],
   exports: [DeudoresService, PrestamosService],
 })

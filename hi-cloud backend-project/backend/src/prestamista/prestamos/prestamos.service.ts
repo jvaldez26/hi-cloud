@@ -2,12 +2,16 @@ import { Injectable, NotFoundException, BadRequestException, Logger } from '@nes
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { calcularAmortizacion } from '../utils/amortizacion.util';
+import { AsientosAutomaticosService } from '../../contabilidad/services/asientos-automaticos.service';
 
 @Injectable()
 export class PrestamosService {
   private readonly logger = new Logger(PrestamosService.name);
 
-  constructor(@InjectDataSource() private readonly ds: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly ds: DataSource,
+    private readonly asientos: AsientosAutomaticosService,
+  ) {}
 
   private async orFail(empresaId: number, id: number) {
     const [row] = await this.ds.query<any[]>(
@@ -129,6 +133,12 @@ export class PrestamosService {
         [data.solicitudId, empresaId],
       );
     }
+
+    // Asiento contable fire-and-forget
+    this.asientos.asientoDesembolsoPrestamo(
+      prestamo.id, numero, Number(data.montoPrincipal),
+      data.formaPago ?? 'transferencia', data.userId ?? 0,
+    ).catch(err => this.logger.error(`Asiento desembolso ${numero}: ${err.message}`));
 
     return this.findOne(empresaId, prestamo.id);
   }

@@ -666,4 +666,75 @@ export class AsientosAutomaticosService {
   }): Promise<import('../entities/asiento-contable.entity').AsientoContable | null> {
     return this._crearAsientoContabilizado(params);
   }
+
+  // ──────────────────────────────────────────────────────────────────
+  // PRESTAMISTA: Desembolso de préstamo
+  // Cartera de Crédito (D) / Bancos o Caja (H)
+  // ──────────────────────────────────────────────────────────────────
+  async asientoDesembolsoPrestamo(
+    prestamoId:   number,
+    numero:       string,
+    monto:        number,
+    formaPago:    string,
+    userId:       number,
+  ): Promise<void> {
+    const cuentaHaber = formaPago === 'efectivo' ? COD.CAJA : COD.BANCOS;
+    try {
+      await this._crearAsientoContabilizado({
+        descripcion:     `Desembolso préstamo ${numero}`,
+        tipoOrigen:      TipoOrigenAsiento.PRESTAMISTA,
+        referenciaId:    prestamoId,
+        referenciaFolio: numero,
+        userId,
+        lineas: [
+          { codigo: '1.1.2.10', descripcion: `Cartera crédito ${numero}`,  debe: monto, haber: 0     },
+          { codigo: cuentaHaber, descripcion: `Desembolso préstamo ${numero}`, debe: 0, haber: monto },
+        ],
+      });
+      this.logger.log(`Asiento desembolso préstamo ${numero} generado`);
+    } catch (err) {
+      this.logger.error(`Error asiento desembolso ${numero}: ${(err as Error).message}`);
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // PRESTAMISTA: Pago recibido
+  // Bancos/Caja (D) / Cartera de Crédito + Intereses + Mora (H)
+  // ──────────────────────────────────────────────────────────────────
+  async asientoPagoPrestamo(
+    pagoId:         number,
+    numeroPago:     string,
+    numeroPrestamo: string,
+    formaPago:      string,
+    capitalAplicado:  number,
+    interesAplicado:  number,
+    moraAplicada:     number,
+    userId:         number,
+  ): Promise<void> {
+    const totalPago = capitalAplicado + interesAplicado + moraAplicada;
+    if (totalPago <= 0) return;
+    const cuentaDebito = formaPago === 'efectivo' ? COD.CAJA : COD.BANCOS;
+    const lineas: Array<{ codigo: string; descripcion: string; debe: number; haber: number }> = [
+      { codigo: cuentaDebito, descripcion: `Pago recibido ${numeroPago}`, debe: totalPago, haber: 0 },
+    ];
+    if (capitalAplicado > 0)
+      lineas.push({ codigo: '1.1.2.10', descripcion: `Capital préstamo ${numeroPrestamo}`, debe: 0, haber: capitalAplicado });
+    if (interesAplicado > 0)
+      lineas.push({ codigo: '4.1.2.01', descripcion: `Intereses préstamo ${numeroPrestamo}`, debe: 0, haber: interesAplicado });
+    if (moraAplicada > 0)
+      lineas.push({ codigo: '4.1.2.02', descripcion: `Mora préstamo ${numeroPrestamo}`, debe: 0, haber: moraAplicada });
+    try {
+      await this._crearAsientoContabilizado({
+        descripcion:     `Pago préstamo ${numeroPago} — ${numeroPrestamo}`,
+        tipoOrigen:      TipoOrigenAsiento.PRESTAMISTA,
+        referenciaId:    pagoId,
+        referenciaFolio: numeroPago,
+        userId,
+        lineas,
+      });
+      this.logger.log(`Asiento pago ${numeroPago} generado`);
+    } catch (err) {
+      this.logger.error(`Error asiento pago ${numeroPago}: ${(err as Error).message}`);
+    }
+  }
 }
