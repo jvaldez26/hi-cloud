@@ -17,15 +17,17 @@ export default function PrestamosPage() {
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm();
 
-  const { data = [], isLoading } = useQuery({
+  const { data: prestamosResp, isLoading } = useQuery({
     queryKey: ['prestamista-prestamos', estado],
     queryFn: () => prestamistalApi.getPrestamos(estado ? { estado } : {}),
   });
+  const prestamosData: any[] = (prestamosResp as any)?.data ?? prestamosResp ?? [];
 
-  const { data: solicitudes = [] } = useQuery({
+  const { data: solicitudesResp } = useQuery({
     queryKey: ['prestamista-solicitudes-aprobadas'],
     queryFn: () => prestamistalApi.getSolicitudes({ estado: 'aprobada' }),
   });
+  const solicitudes: any[] = (solicitudesResp as any)?.data ?? solicitudesResp ?? [];
 
   const crear = useMutation({
     mutationFn: (vals: any) => prestamistalApi.crearPrestamo(vals),
@@ -66,7 +68,7 @@ export default function PrestamosPage() {
         {['al_dia', 'moroso', 'vencido', 'pagado', 'cancelado', 'refinanciado'].map(e => <Option key={e} value={e}>{e.replace('_', ' ')}</Option>)}
       </Select>
 
-      <Table dataSource={(data as any[]).map((r: any) => ({ ...r, key: r.id }))} columns={cols}
+      <Table dataSource={prestamosData.map((r: any) => ({ ...r, key: r.id }))} columns={cols}
         loading={isLoading} scroll={{ x: 'max-content' }} />
 
       <Modal title="Nuevo Préstamo (Desembolso)" open={open} onCancel={() => { setOpen(false); form.resetFields(); }}
@@ -74,7 +76,7 @@ export default function PrestamosPage() {
         <Form form={form} layout="vertical" style={{ paddingTop: 8 }}>
           <Form.Item name="solicitudId" label="Solicitud Aprobada" rules={[{ required: true }]}>
             <Select showSearch optionFilterProp="children" placeholder="Seleccionar solicitud aprobada">
-              {(solicitudes as any[]).map((s: any) => (
+              {solicitudes.map((s: any) => (
                 <Option key={s.id} value={s.id}>
                   {s.numero} — {s.deudorNombre} — {fmt(s.montoAprobado ?? s.montoSolicitado)}
                 </Option>

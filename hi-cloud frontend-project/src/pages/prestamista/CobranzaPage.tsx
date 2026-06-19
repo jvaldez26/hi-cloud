@@ -22,10 +22,11 @@ export default function CobranzaPage() {
     refetchInterval: 120_000,
   });
 
-  const { data: cartera = [], isLoading } = useQuery({
+  const { data: carteraResp, isLoading } = useQuery({
     queryKey: ['prestamista-cartera-vencida'],
     queryFn: () => prestamistalApi.getCarteraVencida(),
   });
+  const cartera: any[] = (carteraResp as any)?.data ?? carteraResp ?? [];
 
   const registrarGestion = useMutation({
     mutationFn: (vals: any) => prestamistalApi.registrarGestion({ prestamoId: selectedPrestamo?.id, ...vals }),

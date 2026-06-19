@@ -22,10 +22,11 @@ export default function SolicitudesPage() {
   const [form] = Form.useForm();
   const [formDecision] = Form.useForm();
 
-  const { data = [], isLoading } = useQuery({
+  const { data: solicitudesResp, isLoading } = useQuery({
     queryKey: ['prestamista-solicitudes', estado],
     queryFn: () => prestamistalApi.getSolicitudes(estado ? { estado } : {}),
   });
+  const data: any[] = (solicitudesResp as any)?.data ?? solicitudesResp ?? [];
 
   const { data: deudores = [] } = useQuery({
     queryKey: ['prestamista-deudores-select'],
