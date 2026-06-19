@@ -765,7 +765,7 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
           onError={(e) => { (e.currentTarget as HTMLImageElement).style.display='none'; }} />
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#F1F5F9', lineHeight: 1, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Punto de Venta</div>
-          <div style={{ fontSize: 10, color: '#94A3B8', lineHeight: 1, marginTop: 2 }}>{empresaNombre}</div>
+          <div style={{ fontSize: 11, color: '#CBD5E1', lineHeight: 1, marginTop: 2 }}>{empresaNombre}</div>
         </div>
       </div>
 
@@ -780,7 +780,7 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
         }}>
           <span style={{ fontSize: 15 }}>{modoActual.icon}</span>
           <span>{modoActual.label}</span>
-          <span style={{ fontSize: 9, opacity: 0.6 }}>▼</span>
+          <span style={{ fontSize: 10, opacity: 0.75 }}>▼</span>
         </button>
         {showModoMenu && (
           <>
@@ -820,7 +820,7 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
           }}>
             <span style={{ fontSize: 15 }}>{modosPOS.find(m => m.codigo === modoContexto)?.icono ?? '🏪'}</span>
             <span>{modosPOS.find(m => m.codigo === modoContexto)?.label ?? 'General'}</span>
-            <span style={{ fontSize: 9, opacity: 0.6 }}>▼</span>
+            <span style={{ fontSize: 10, opacity: 0.75 }}>▼</span>
           </button>
           {showModoContexto && (
             <>
@@ -854,10 +854,10 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
               background: ecfColors.bg, border: `1px solid ${ecfColors.border}`,
               display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ fontSize: 11, fontWeight: 800, color: ecfColors.text, fontFamily: 'monospace', letterSpacing: '0.5px' }}>{tipoNcf}</span>
-            <span style={{ fontSize: 10, color: ecfColors.text, opacity: 0.8 }}>
+            <span style={{ fontSize: 11, color: ecfColors.text, opacity: 0.9 }}>
               {NCF_OPTS.find(o => o.code === tipoNcf)?.label}
             </span>
-            <span style={{ fontSize: 8, color: ecfColors.text, opacity: 0.6 }}>▼</span>
+            <span style={{ fontSize: 9, color: ecfColors.text, opacity: 0.7 }}>▼</span>
           </button>
           {showNcfMenu && (
             <>
@@ -904,7 +904,7 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
             background: isOffline || ecfOnline === false ? '#EF4444' : ecfOnline === null ? '#F59E0B' : '#10B981',
             boxShadow: isOffline || ecfOnline === false ? '0 0 4px #EF4444' : ecfOnline === null ? '0 0 4px #F59E0B' : '0 0 5px #10B981',
             display: 'inline-block' }} />
-          <span style={{ fontSize: 10, fontWeight: 600,
+          <span style={{ fontSize: 11, fontWeight: 600,
             color: isOffline || ecfOnline === false ? '#FCA5A5' : ecfOnline === null ? '#FDE68A' : '#6EE7B7' }}>
             {isOffline ? 'Offline' : ecfOnline === false ? 'Contingencia' : 'DGII Online'}
           </span>
@@ -959,9 +959,9 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
           {cajeroNombre.charAt(0).toUpperCase()}
         </Avatar>
         <div>
-          <div style={{ fontSize: 9, color: '#94A3B8', lineHeight: 1, textTransform: 'uppercase',
+          <div style={{ fontSize: 10, color: '#CBD5E1', lineHeight: 1, textTransform: 'uppercase',
             letterSpacing: '0.5px', marginBottom: 1 }}>Cajero</div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#F1F5F9', lineHeight: 1,
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#F1F5F9', lineHeight: 1,
             maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {cajeroNombre}
           </div>
