@@ -1,7 +1,17 @@
 import React from 'react';
 import { Button, Result, Space } from 'antd';
 
-interface State { hasError: boolean; error?: Error }
+interface State { hasError: boolean; error?: Error; isChunkError: boolean }
+
+function isChunkLoadError(error: Error): boolean {
+  const msg = error?.message ?? '';
+  return (
+    msg.includes('Failed to fetch dynamically imported module') ||
+    msg.includes('Loading chunk') ||
+    msg.includes('Importing a module script failed') ||
+    msg.includes('error loading dynamically imported module')
+  );
+}
 
 export class ErrorBoundary extends React.Component<
   { children: React.ReactNode; fallback?: React.ReactNode },
@@ -9,31 +19,44 @@ export class ErrorBoundary extends React.Component<
 > {
   constructor(props: any) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { hasError: false, isChunkError: false };
   }
 
   static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
+    return { hasError: true, error, isChunkError: isChunkLoadError(error) };
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error('[ErrorBoundary]', error, info);
   }
 
+  private handleRetry = () => {
+    if (this.state.isChunkError) {
+      // Chunk hashes cambiaron en el último deploy — hard reload para obtener el nuevo HTML
+      window.location.reload();
+    } else {
+      this.setState({ hasError: false, isChunkError: false });
+    }
+  };
+
   render() {
     if (this.state.hasError) {
       if (this.props.fallback) return this.props.fallback;
+
+      const subTitle = this.state.isChunkError
+        ? 'La aplicación fue actualizada. Recarga la página para continuar.'
+        : (this.state.error?.message ?? 'Error inesperado. Recarga la página.');
 
       return (
         <div style={{ padding: 40 }}>
           <Result
             status="500"
             title="Algo salió mal"
-            subTitle={this.state.error?.message ?? 'Error inesperado. Recarga la página.'}
+            subTitle={subTitle}
             extra={
               <Space>
-                <Button onClick={() => this.setState({ hasError: false })}>
-                  Intentar de nuevo
+                <Button onClick={this.handleRetry}>
+                  {this.state.isChunkError ? 'Recargar página' : 'Intentar de nuevo'}
                 </Button>
                 <Button
                   danger
