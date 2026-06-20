@@ -159,7 +159,7 @@ export default function LotesPage() {
         size="small"
         loading={isLoading}
         scroll={{ x: 'max-content' }}
-        rowClassName={(r) => {
+        rowClassName={(r: any) => {
           const dias = r.diasRestantes;
           if (dias <= 0) return 'ant-table-row-danger';
           if (dias <= 15) return 'ant-table-row-warning';
