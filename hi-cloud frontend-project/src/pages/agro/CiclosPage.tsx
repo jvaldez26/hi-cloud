@@ -1,9 +1,25 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Table, Button, Modal, Form, Input, InputNumber, Select, DatePicker, message, theme, Tag, Space } from 'antd';
-import { Plus, Eye } from 'lucide-react';
+import { PlusOutlined, FileExcelOutlined, EyeOutlined } from '@ant-design/icons';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 import { useNavigate } from 'react-router-dom';
 import { agroApi } from '../../api/agro.api';
+
+const COLS_DEF = [
+  { key: 'numero',              label: 'N°',            defaultVisible: true  },
+  { key: 'cu',                  label: 'Cultivo',       defaultVisible: true  },
+  { key: 'p',                   label: 'Parcela',       defaultVisible: true  },
+  { key: 'fs',                  label: 'Siembra',       defaultVisible: true  },
+  { key: 'fe',                  label: 'Est. Cosecha',  defaultVisible: true  },
+  { key: 'dt',                  label: 'Días',          defaultVisible: false },
+  { key: 'dc',                  label: 'Para cosechar', defaultVisible: false },
+  { key: 'ct',                  label: 'Costo',         defaultVisible: true  },
+  { key: 'estado',              label: 'Estado',        defaultVisible: true  },
+];
 
 export default function CiclosPage() {
   const { token: C } = theme.useToken();
@@ -12,6 +28,7 @@ export default function CiclosPage() {
   const [modal, setModal] = useState(false);
   const [form] = Form.useForm();
   const [estado, setEstado] = useState<string | undefined>();
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('agro-ciclos', COLS_DEF);
 
   const { data: resp, isLoading } = useQuery({
     queryKey: ['agro-ciclos', estado],
@@ -20,7 +37,7 @@ export default function CiclosPage() {
   const ciclos: any[] = (resp as any)?.data ?? resp ?? [];
 
   const { data: parcelas = [] } = useQuery({ queryKey: ['agro-parcelas'], queryFn: () => agroApi.getParcelas() });
-  const { data: cultivos = [] } = useQuery({ queryKey: ['agro-cultivos'], queryFn: () => agroApi.getCultivos() });
+  const { data: cultivos  = [] } = useQuery({ queryKey: ['agro-cultivos'], queryFn: () => agroApi.getCultivos() });
 
   const crear = useMutation({
     mutationFn: (vals: any) => agroApi.crearCiclo({
@@ -28,7 +45,7 @@ export default function CiclosPage() {
       fechaSiembra: vals.fechaSiembra?.format('YYYY-MM-DD'),
       fechaEstimadaCosecha: vals.fechaEstimadaCosecha?.format('YYYY-MM-DD'),
     }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['agro-ciclos'] }); setModal(false); message.success('Ciclo creado'); form.resetFields(); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['agro-ciclos'] }); setModal(false); form.resetFields(); message.success('Ciclo creado'); },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al crear ciclo'),
   });
 
@@ -36,35 +53,63 @@ export default function CiclosPage() {
     planificado: 'default', sembrado: 'blue', en_crecimiento: 'green', cosechado: 'gold', cerrado: 'purple',
   };
 
+  const cols = [
+    { title: 'N°',           key: 'numero',  dataIndex: 'numero', width: 100 },
+    { title: 'Cultivo',      key: 'cu',      render: (_: any, r: any) => `${r.cultivoNombre}${r.cultivoVariedad ? ` (${r.cultivoVariedad})` : ''}` },
+    { title: 'Parcela',      key: 'p',       dataIndex: 'parcelaNombre' },
+    { title: 'Siembra',      key: 'fs',      dataIndex: 'fechaSiembra',        render: (v: string) => v ? String(v).split('T')[0] : '-' },
+    { title: 'Est. Cosecha', key: 'fe',      dataIndex: 'fechaEstimadaCosecha', render: (v: string) => v ? String(v).split('T')[0] : '-' },
+    { title: 'Días',         key: 'dt',      dataIndex: 'diasTranscurridos',   render: (v: any) => v ?? '-' },
+    { title: 'Para cosechar',key: 'dc',      dataIndex: 'diasParaCosecha',     render: (v: any) => v != null ? `${v}d` : '-' },
+    { title: 'Costo',        key: 'ct',      dataIndex: 'costoTotal',          render: (v: any) => `RD$${Number(v).toLocaleString('es-DO')}` },
+    { title: 'Estado',       key: 'estado',  dataIndex: 'estado',              render: (v: string) => <Tag color={estadoColor[v] ?? 'default'}>{v}</Tag> },
+    { title: '', key: 'acc', render: (_: any, r: any) => <Button size="small" icon={<EyeOutlined />} onClick={() => navigate(`/agro/ciclos/${r.id}`)}>Ver</Button> },
+  ];
+
+  const exportar = () => {
+    const rows = ciclos.map((r: any) => ({
+      'N°':            r.numero,
+      'Cultivo':       `${r.cultivoNombre}${r.cultivoVariedad ? ` (${r.cultivoVariedad})` : ''}`,
+      'Parcela':       r.parcelaNombre ?? '',
+      'Siembra':       r.fechaSiembra ? String(r.fechaSiembra).split('T')[0] : '',
+      'Est. Cosecha':  r.fechaEstimadaCosecha ? String(r.fechaEstimadaCosecha).split('T')[0] : '',
+      'Días':          r.diasTranscurridos ?? '',
+      'Para Cosechar': r.diasParaCosecha ?? '',
+      'Costo Total':   Number(r.costoTotal ?? 0),
+      'Estado':        r.estado,
+    }));
+    exportarExcel(rows, `Ciclos-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${rows.length} ciclos exportados`);
+  };
+
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <h2 style={{ color: C.colorText, margin: 0 }}>Ciclos de Producción</h2>
-        <Space>
-          <Select placeholder="Filtrar estado" allowClear style={{ width: 160 }}
-            onChange={setEstado} value={estado}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+          <Select placeholder="Estado" allowClear style={{ width: 150 }} onChange={setEstado} value={estado}
             options={[
               { value: 'planificado', label: 'Planificado' }, { value: 'sembrado', label: 'Sembrado' },
               { value: 'en_crecimiento', label: 'En Crecimiento' }, { value: 'cosechado', label: 'Cosechado' },
               { value: 'cerrado', label: 'Cerrado' },
             ]} />
-          <Button type="primary" icon={<Plus size={14} />} onClick={() => { form.resetFields(); setModal(true); }}>Nuevo Ciclo</Button>
-        </Space>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+            <RefreshByKeyButton queryKey={['agro-ciclos', estado]} />
+            <VideoTutorialButton />
+            <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setModal(true); }}>
+              Nuevo Ciclo
+            </Button>
+          </div>
+        </div>
       </div>
 
-      <Table loading={isLoading} dataSource={ciclos} rowKey="id" scroll={{ x: 'max-content' }}
-        columns={[
-          { title: 'N°', dataIndex: 'numero', key: 'n', width: 100 },
-          { title: 'Cultivo', key: 'cu', render: (_: any, r: any) => `${r.cultivoNombre}${r.cultivoVariedad ? ` (${r.cultivoVariedad})` : ''}` },
-          { title: 'Parcela', dataIndex: 'parcelaNombre', key: 'p' },
-          { title: 'Siembra', dataIndex: 'fechaSiembra', key: 'fs', render: (v: string) => v ? String(v).split('T')[0] : '-' },
-          { title: 'Est. Cosecha', dataIndex: 'fechaEstimadaCosecha', key: 'fe', render: (v: string) => v ? String(v).split('T')[0] : '-' },
-          { title: 'Días', dataIndex: 'diasTranscurridos', key: 'dt', render: (v: any) => v ?? '-' },
-          { title: 'Para cosechar', dataIndex: 'diasParaCosecha', key: 'dc', render: (v: any) => v != null ? `${v}d` : '-' },
-          { title: 'Costo', dataIndex: 'costoTotal', key: 'ct', render: (v: any) => `RD$${Number(v).toLocaleString('es-DO')}` },
-          { title: 'Estado', dataIndex: 'estado', key: 'est', render: (v: string) => <Tag color={estadoColor[v] ?? 'default'}>{v}</Tag> },
-          { title: '', key: 'acc', render: (_: any, r: any) => <Button size="small" icon={<Eye size={12} />} onClick={() => navigate(`/agro/ciclos/${r.id}`)}>Ver</Button> },
-        ]} />
+      <Table loading={isLoading} dataSource={ciclos} rowKey="id"
+        scroll={{ x: 'max-content' }} size="small"
+        columns={filterColumns(cols as any)}
+        pagination={{ showTotal: t => `${t} ciclos`, showSizeChanger: false }} />
 
       <Modal open={modal} title="Nuevo Ciclo de Producción" onCancel={() => setModal(false)}
         onOk={() => form.validateFields().then(v => crear.mutate(v))} confirmLoading={crear.isPending} width={600}>

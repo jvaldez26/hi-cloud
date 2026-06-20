@@ -1,14 +1,31 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Table, Button, Modal, Form, Input, InputNumber, Select, DatePicker, message, theme, Tag } from 'antd';
-import { Plus, Edit } from 'lucide-react';
+import { PlusOutlined, FileExcelOutlined } from '@ant-design/icons';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 import { agroApi } from '../../api/agro.api';
+
+const COLS_DEF = [
+  { key: 'nombre',  label: 'Nombre',        defaultVisible: true  },
+  { key: 'tipo',    label: 'Tipo',          defaultVisible: true  },
+  { key: 'marca',   label: 'Marca',         defaultVisible: false },
+  { key: 'modelo',  label: 'Modelo',        defaultVisible: false },
+  { key: 'anio',    label: 'Año',           defaultVisible: false },
+  { key: 'ch',      label: 'Costo/Hora',    defaultVisible: true  },
+  { key: 'cd',      label: 'Costo/Día',     defaultVisible: false },
+  { key: 'estado',  label: 'Estado',        defaultVisible: true  },
+  { key: 'pm',      label: 'Prox. Mant.',   defaultVisible: true  },
+];
 
 export default function MaquinariaPage() {
   const { token: C } = theme.useToken();
   const qc = useQueryClient();
   const [modal, setModal] = useState<{ open: boolean; item?: any }>({ open: false });
   const [form] = Form.useForm();
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('agro-maquinaria', COLS_DEF);
 
   const { data: maquinaria = [], isLoading } = useQuery({ queryKey: ['agro-maquinaria'], queryFn: () => agroApi.getMaquinaria() });
 
@@ -18,30 +35,59 @@ export default function MaquinariaPage() {
       fechaCompra: vals.fechaCompra?.format('YYYY-MM-DD'),
       proximoMantenimiento: vals.proximoMantenimiento?.format('YYYY-MM-DD'),
     }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['agro-maquinaria'] }); setModal({ open: false }); message.success('Guardado'); form.resetFields(); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['agro-maquinaria'] }); setModal({ open: false }); form.resetFields(); message.success('Guardado'); },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
   });
 
+  const cols = [
+    { title: 'Nombre',     key: 'nombre',  dataIndex: 'nombre' },
+    { title: 'Tipo',       key: 'tipo',    dataIndex: 'tipo',   render: (v: string) => <Tag>{v}</Tag> },
+    { title: 'Marca',      key: 'marca',   dataIndex: 'marca' },
+    { title: 'Modelo',     key: 'modelo',  dataIndex: 'modelo' },
+    { title: 'Año',        key: 'anio',    dataIndex: 'anio' },
+    { title: 'Costo/Hora', key: 'ch',      dataIndex: 'costoPorHora',         render: (v: any) => v ? `RD$${Number(v).toLocaleString('es-DO')}` : '-' },
+    { title: 'Costo/Día',  key: 'cd',      dataIndex: 'costoPorDia',          render: (v: any) => v ? `RD$${Number(v).toLocaleString('es-DO')}` : '-' },
+    { title: 'Estado',     key: 'estado',  dataIndex: 'estado',               render: (v: string) => <Tag color={v === 'disponible' ? 'green' : v === 'en_uso' ? 'blue' : 'orange'}>{v}</Tag> },
+    { title: 'Prox. Mant.',key: 'pm',      dataIndex: 'proximoMantenimiento', render: (v: string) => v ? String(v).split('T')[0] : '-' },
+    { title: '', key: 'acc', render: (_: any, r: any) => <Button size="small" onClick={() => { form.setFieldsValue(r); setModal({ open: true, item: r }); }}>Editar</Button> },
+  ];
+
+  const exportar = () => {
+    const rows = (maquinaria as any[]).map((r: any) => ({
+      'Nombre':       r.nombre,
+      'Tipo':         r.tipo,
+      'Marca':        r.marca ?? '',
+      'Modelo':       r.modelo ?? '',
+      'Año':          r.anio ?? '',
+      'Costo/Hora':   Number(r.costoPorHora ?? 0),
+      'Costo/Día':    Number(r.costoPorDia ?? 0),
+      'Estado':       r.estado,
+      'Prox. Mant.':  r.proximoMantenimiento ? String(r.proximoMantenimiento).split('T')[0] : '',
+    }));
+    exportarExcel(rows, `Maquinaria-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${rows.length} equipos exportados`);
+  };
+
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <h2 style={{ color: C.colorText, margin: 0 }}>Maquinaria y Equipos</h2>
-        <Button type="primary" icon={<Plus size={14} />} onClick={() => { form.resetFields(); setModal({ open: true }); }}>Nueva Maquinaria</Button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['agro-maquinaria']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setModal({ open: true }); }}>
+            Nueva Maquinaria
+          </Button>
+        </div>
       </div>
 
-      <Table loading={isLoading} dataSource={maquinaria as any[]} rowKey="id" scroll={{ x: 'max-content' }}
-        columns={[
-          { title: 'Nombre', dataIndex: 'nombre', key: 'n' },
-          { title: 'Tipo', dataIndex: 'tipo', key: 't', render: (v: string) => <Tag>{v}</Tag> },
-          { title: 'Marca', dataIndex: 'marca', key: 'm' },
-          { title: 'Modelo', dataIndex: 'modelo', key: 'mo' },
-          { title: 'Año', dataIndex: 'anio', key: 'a' },
-          { title: 'Costo/Hora', key: 'ch', render: (_: any, r: any) => r.costoPorHora ? `RD$${Number(r.costoPorHora).toLocaleString('es-DO')}` : '-' },
-          { title: 'Costo/Día', key: 'cd', render: (_: any, r: any) => r.costoPorDia ? `RD$${Number(r.costoPorDia).toLocaleString('es-DO')}` : '-' },
-          { title: 'Estado', dataIndex: 'estado', key: 'est', render: (v: string) => <Tag color={v === 'disponible' ? 'green' : v === 'en_uso' ? 'blue' : 'orange'}>{v}</Tag> },
-          { title: 'Prox. Mant.', dataIndex: 'proximoMantenimiento', key: 'pm', render: (v: string) => v ? String(v).split('T')[0] : '-' },
-          { title: '', key: 'acc', render: (_: any, r: any) => <Button size="small" icon={<Edit size={12} />} onClick={() => { form.setFieldsValue(r); setModal({ open: true, item: r }); }}>Editar</Button> },
-        ]} />
+      <Table loading={isLoading} dataSource={maquinaria as any[]} rowKey="id"
+        scroll={{ x: 'max-content' }} size="small"
+        columns={filterColumns(cols as any)}
+        pagination={{ showTotal: t => `${t} equipos`, showSizeChanger: false }} />
 
       <Modal open={modal.open} title={modal.item ? 'Editar Maquinaria' : 'Nueva Maquinaria'} onCancel={() => setModal({ open: false })}
         onOk={() => form.validateFields().then(v => save.mutate(v))} confirmLoading={save.isPending} width={600}>
