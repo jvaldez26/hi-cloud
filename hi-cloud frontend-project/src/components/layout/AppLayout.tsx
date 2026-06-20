@@ -451,7 +451,7 @@ const PATH_ROLES: Record<string, string[]> = {
   '/sucursales':         ADMIN,
   '/aprobaciones':       ADMIN,
   '/importacion':        ADMIN,
-  '/auditoria':          ['super_admin'],  // solo super admin
+  '/auditoria':          ADMIN_CONT,
 
   // ── Admin + Contador ──────────────────────────────────────────────────────
   '/compras':               ADMIN_CONT,
