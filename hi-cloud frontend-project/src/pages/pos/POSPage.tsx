@@ -5925,18 +5925,21 @@ export default function POSPage() {
     }));
   };
   const setDescuentoMonto = async (idx: number, monto: number) => {
-    const precio = cart[idx]?.precio ?? 0;
-    const pct    = precio > 0 ? (monto / precio) * 100 : 0;
-    // Verificar descuento máximo configurado (en %)
+    const precio       = cart[idx]?.precio ?? 0;
+    const nombreItem   = cart[idx]?.produto.nombre ?? 'ítem';
+    const pct          = precio > 0 ? (monto / precio) * 100 : 0;
+    // Verificar descuento máximo configurado (en % internamente, mostrar RD$ al usuario)
     if (posDescuentoMaximo < 100 && pct > posDescuentoMaximo) {
-      message.error(`Descuento máximo permitido: ${posDescuentoMaximo}% (RD$${(precio * posDescuentoMaximo / 100).toFixed(2)})`);
+      const maxMonto = precio * posDescuentoMaximo / 100;
+      message.error(`Descuento máximo: RD$${maxMonto.toFixed(2)} para este producto`);
       return;
     }
     // Si el modo supervisor está activo y el descuento supera el máximo → pedir autorización
     if (supervisor.supervisorModeEnabled && pct > supervisor.maxDiscountPercent) {
+      const maxMonto = precio * supervisor.maxDiscountPercent / 100;
       const ok = await supervisor.requireSupervisor(
-        `Descuento de RD$${monto.toFixed(2)} (${pct.toFixed(1)}%)`,
-        `Máximo permitido sin supervisor: ${supervisor.maxDiscountPercent}%`,
+        `Descuento de RD$${monto.toFixed(2)} en ${nombreItem}`,
+        `Máximo permitido sin supervisor: RD$${maxMonto.toFixed(2)}`,
       );
       if (!ok) return; // cancelado
     }
