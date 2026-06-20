@@ -59,7 +59,7 @@ export class AuditoriaService {
       .createQueryBuilder('l')
       .orderBy('l.createdAt', 'DESC');
 
-    if (empresaId) qb.andWhere('(l.empresaId = :eid OR l.empresaId IS NULL)', { eid: empresaId });
+    if (empresaId) qb.andWhere('l.empresaId = :eid', { eid: empresaId });
     if (accion)     qb.andWhere('l.accion = :accion', { accion });
     if (modulo)     qb.andWhere('l.modulo ILIKE :mod', { mod: `%${modulo}%` });
     if (userId)     qb.andWhere('l.userId = :uid', { uid: userId });
@@ -94,7 +94,7 @@ export class AuditoriaService {
       .select('DISTINCT l.modulo', 'modulo')
       .orderBy('l.modulo', 'ASC');
 
-    if (empresaId) qb.andWhere('(l.empresaId = :eid OR l.empresaId IS NULL)', { eid: empresaId });
+    if (empresaId) qb.andWhere('l.empresaId = :eid', { eid: empresaId });
 
     const rows = await qb.getRawMany<{ modulo: string }>();
     return rows.map(r => r.modulo).filter(Boolean);
@@ -116,7 +116,7 @@ export class AuditoriaService {
 
     // Helper para aplicar el filtro de empresa a cualquier query builder
     const withEmpresa = (qb: ReturnType<typeof this.logRepository.createQueryBuilder>) => {
-      if (empresaId) qb.andWhere('(l.empresaId = :eid OR l.empresaId IS NULL)', { eid: empresaId });
+      if (empresaId) qb.andWhere('l.empresaId = :eid', { eid: empresaId });
       return qb;
     };
 
@@ -217,7 +217,7 @@ export class AuditoriaService {
       .take(limite);
 
     if (empresaId) {
-      qb.andWhere('(l.empresaId = :eid OR l.empresaId IS NULL)', { eid: empresaId });
+      qb.andWhere('l.empresaId = :eid', { eid: empresaId });
     }
 
     return qb.getMany();
