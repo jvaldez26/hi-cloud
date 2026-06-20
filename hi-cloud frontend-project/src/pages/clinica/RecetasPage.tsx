@@ -1,20 +1,36 @@
 import { useState } from 'react';
 import { Table, Button, Space, Typography, Modal, Form, Select, DatePicker, Input, message, Divider, InputNumber } from 'antd';
-import { PlusOutlined, FilePdfOutlined, MinusCircleOutlined } from '@ant-design/icons';
+import { PlusOutlined, FilePdfOutlined, MinusCircleOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { clinicaApi } from '../../api/clinica.api';
 import { fmt as fmtObj } from '../../utils/formatters';
 import dayjs from 'dayjs';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 const fmt = (v: any) => fmtObj.date(v);
 
 const { Title } = Typography;
 const { Option } = Select;
+
+const COLS_DEF = [
+  { key: 'numero', label: 'N°', defaultVisible: true },
+  { key: 'fecha', label: 'Fecha', defaultVisible: true },
+  { key: 'pac', label: 'Paciente', defaultVisible: true },
+  { key: 'medicoNombre', label: 'Médico', defaultVisible: true },
+  { key: 'diagnostico', label: 'Diagnóstico', defaultVisible: true },
+  { key: 'fechaVencimiento', label: 'Vence', defaultVisible: false },
+  { key: 'act', label: 'Acciones', defaultVisible: true },
+];
 
 export default function RecetasPage() {
   const qc = useQueryClient();
   const [page, setPage] = useState(1);
   const [modal, setModal] = useState(false);
   const [form] = Form.useForm();
+
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('clinica-recetas', COLS_DEF);
 
   const { data, isLoading } = useQuery({
     queryKey: ['clinica-recetas', page],
@@ -39,13 +55,26 @@ export default function RecetasPage() {
     window.open(URL.createObjectURL(blob), '_blank');
   };
 
+  const exportar = () => {
+    const filas = (data?.data ?? []).map((r: any) => ({
+      'N°': r.numero,
+      'Fecha': r.fecha,
+      'Paciente': `${r.pacienteNombre} ${r.pacienteApellidos}`,
+      'Médico': r.medicoNombre,
+      'Diagnóstico': r.diagnostico ?? '',
+      'Vence': r.fechaVencimiento ?? '',
+    }));
+    exportarExcel(filas, `Recetas-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   const cols = [
-    { title: 'N°', dataIndex: 'numero', width: 120 },
-    { title: 'Fecha', dataIndex: 'fecha', width: 100, render: fmt },
+    { title: 'N°', dataIndex: 'numero', key: 'numero', width: 120 },
+    { title: 'Fecha', dataIndex: 'fecha', key: 'fecha', width: 100, render: fmt },
     { title: 'Paciente', key: 'pac', ellipsis: true, render: (_: any, r: any) => `${r.pacienteNombre} ${r.pacienteApellidos}` },
-    { title: 'Médico', dataIndex: 'medicoNombre', ellipsis: true },
-    { title: 'Diagnóstico', dataIndex: 'diagnostico', ellipsis: true, render: (v: any) => v ?? '—' },
-    { title: 'Vence', dataIndex: 'fechaVencimiento', width: 100, render: (v: any) => v ? fmt(v) : '—' },
+    { title: 'Médico', dataIndex: 'medicoNombre', key: 'medicoNombre', ellipsis: true },
+    { title: 'Diagnóstico', dataIndex: 'diagnostico', key: 'diagnostico', ellipsis: true, render: (v: any) => v ?? '—' },
+    { title: 'Vence', dataIndex: 'fechaVencimiento', key: 'fechaVencimiento', width: 100, render: (v: any) => v ? fmt(v) : '—' },
     {
       title: 'Acciones', key: 'act', width: 100,
       render: (_: any, r: any) => (
@@ -56,13 +85,20 @@ export default function RecetasPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>Recetas Médicas</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setModal(true); }}>Nueva Receta</Button>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+        <h2 style={{ margin: 0 }}>Recetas Médicas</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['clinica-recetas']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setModal(true); }}>Nueva Receta</Button>
+        </div>
       </div>
 
       <Table
-        columns={cols}
+        columns={filterColumns(cols as any)}
         dataSource={data?.data ?? []}
         rowKey="id"
         loading={isLoading}

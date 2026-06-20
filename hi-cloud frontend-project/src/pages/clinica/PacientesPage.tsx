@@ -1,15 +1,30 @@
 import { useState } from 'react';
 import { Table, Button, Input, Space, Tag, Typography, Modal, Form, Select, DatePicker, message, Row, Col } from 'antd';
-import { PlusOutlined, SearchOutlined, EditOutlined, EyeOutlined } from '@ant-design/icons';
+import { PlusOutlined, SearchOutlined, EditOutlined, EyeOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { clinicaApi } from '../../api/clinica.api';
 import { useNavigate } from 'react-router-dom';
 import { fmt as fmtObj } from '../../utils/formatters';
 import dayjs from 'dayjs';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 const fmt = (v: any) => fmtObj.date(v);
 
 const { Title } = Typography;
 const { Option } = Select;
+
+const COLS_DEF = [
+  { key: 'codigo', label: 'Código', defaultVisible: true },
+  { key: 'nombre', label: 'Nombre', defaultVisible: true },
+  { key: 'cedula', label: 'Cédula', defaultVisible: true },
+  { key: 'telefono', label: 'Teléfono', defaultVisible: true },
+  { key: 'arsNombre', label: 'ARS', defaultVisible: true },
+  { key: 'fechaNacimiento', label: 'Fecha Nac.', defaultVisible: false },
+  { key: 'isActive', label: 'Estado', defaultVisible: true },
+  { key: 'act', label: 'Acciones', defaultVisible: true },
+];
 
 export default function PacientesPage() {
   const qc = useQueryClient();
@@ -19,6 +34,8 @@ export default function PacientesPage() {
   const [modal, setModal] = useState<'crear' | 'editar' | null>(null);
   const [selected, setSelected] = useState<any>(null);
   const [form] = Form.useForm();
+
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('clinica-pacientes', COLS_DEF);
 
   const { data, isLoading } = useQuery({
     queryKey: ['clinica-pacientes', page, search],
@@ -43,15 +60,29 @@ export default function PacientesPage() {
     setModal('editar');
   };
 
+  const exportar = () => {
+    const filas = (data?.data ?? []).map((r: any) => ({
+      'Código': r.codigo,
+      'Nombre': `${r.nombre} ${r.apellidos ?? ''}`,
+      'Cédula': r.cedula,
+      'Teléfono': r.telefono,
+      'ARS': r.arsNombre ?? '',
+      'Fecha Nac.': r.fechaNacimiento,
+      'Estado': r.isActive ? 'Activo' : 'Inactivo',
+    }));
+    exportarExcel(filas, `Pacientes-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   const cols = [
-    { title: 'Código', dataIndex: 'codigo', width: 100 },
+    { title: 'Código', dataIndex: 'codigo', key: 'codigo', width: 100 },
     { title: 'Nombre', key: 'nombre', render: (_: any, r: any) => `${r.nombre} ${r.apellidos ?? ''}`, ellipsis: true },
-    { title: 'Cédula', dataIndex: 'cedula', width: 120 },
-    { title: 'Teléfono', dataIndex: 'telefono', width: 120 },
-    { title: 'ARS', dataIndex: 'arsNombre', width: 120, render: (v: any) => v ?? '—' },
-    { title: 'Fecha Nac.', dataIndex: 'fechaNacimiento', width: 110, render: fmt },
+    { title: 'Cédula', dataIndex: 'cedula', key: 'cedula', width: 120 },
+    { title: 'Teléfono', dataIndex: 'telefono', key: 'telefono', width: 120 },
+    { title: 'ARS', dataIndex: 'arsNombre', key: 'arsNombre', width: 120, render: (v: any) => v ?? '—' },
+    { title: 'Fecha Nac.', dataIndex: 'fechaNacimiento', key: 'fechaNacimiento', width: 110, render: fmt },
     {
-      title: 'Estado', dataIndex: 'isActive', width: 80,
+      title: 'Estado', dataIndex: 'isActive', key: 'isActive', width: 80,
       render: (v: boolean) => <Tag color={v ? 'green' : 'default'}>{v ? 'Activo' : 'Inactivo'}</Tag>,
     },
     {
@@ -118,9 +149,16 @@ export default function PacientesPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>Pacientes</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setModal('crear'); }}>Nuevo Paciente</Button>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+        <h2 style={{ margin: 0 }}>Pacientes</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['clinica-pacientes']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setModal('crear'); }}>Nuevo Paciente</Button>
+        </div>
       </div>
 
       <Input.Search
@@ -133,7 +171,7 @@ export default function PacientesPage() {
       />
 
       <Table
-        columns={cols}
+        columns={filterColumns(cols as any)}
         dataSource={data?.data ?? []}
         rowKey="id"
         loading={isLoading}

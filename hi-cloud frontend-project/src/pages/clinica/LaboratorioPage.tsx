@@ -1,14 +1,29 @@
 import { useState } from 'react';
 import { Table, Button, Space, Tag, Typography, Modal, Form, Select, DatePicker, Input, message, Switch, Divider } from 'antd';
-import { PlusOutlined, FilePdfOutlined, CheckOutlined } from '@ant-design/icons';
+import { PlusOutlined, FilePdfOutlined, CheckOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { clinicaApi } from '../../api/clinica.api';
 import { fmt as fmtObj } from '../../utils/formatters';
 import dayjs from 'dayjs';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 const fmt = (v: any) => fmtObj.date(v);
 
 const { Title } = Typography;
 const { Option } = Select;
+
+const COLS_DEF = [
+  { key: 'numero', label: 'N°', defaultVisible: true },
+  { key: 'fecha', label: 'Fecha', defaultVisible: true },
+  { key: 'pac', label: 'Paciente', defaultVisible: true },
+  { key: 'medicoNombre', label: 'Médico', defaultVisible: true },
+  { key: 'laboratorioNombre', label: 'Laboratorio', defaultVisible: true },
+  { key: 'urgente', label: 'Urgente', defaultVisible: true },
+  { key: 'estado', label: 'Estado', defaultVisible: true },
+  { key: 'act', label: 'Acciones', defaultVisible: true },
+];
 
 const ESTADO_COLOR: Record<string, string> = {
   pendiente: 'orange', en_proceso: 'blue', resultados_recibidos: 'green', completado: 'cyan',
@@ -31,6 +46,8 @@ export default function LaboratorioPage() {
   const [selected, setSelected] = useState<any>(null);
   const [form] = Form.useForm();
   const [resForm] = Form.useForm();
+
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('clinica-lab', COLS_DEF);
 
   const { data, isLoading } = useQuery({
     queryKey: ['clinica-lab', page, estado],
@@ -64,18 +81,32 @@ export default function LaboratorioPage() {
     setModal('resultados');
   };
 
+  const exportar = () => {
+    const filas = (data?.data ?? []).map((r: any) => ({
+      'N°': r.numero,
+      'Fecha': r.fecha,
+      'Paciente': `${r.pacienteNombre} ${r.pacienteApellidos}`,
+      'Médico': r.medicoNombre,
+      'Laboratorio': r.laboratorioNombre ?? '',
+      'Urgente': r.urgente ? 'Sí' : 'No',
+      'Estado': r.estado,
+    }));
+    exportarExcel(filas, `Laboratorio-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   const cols = [
-    { title: 'N°', dataIndex: 'numero', width: 120 },
-    { title: 'Fecha', dataIndex: 'fecha', width: 100, render: fmt },
+    { title: 'N°', dataIndex: 'numero', key: 'numero', width: 120 },
+    { title: 'Fecha', dataIndex: 'fecha', key: 'fecha', width: 100, render: fmt },
     { title: 'Paciente', key: 'pac', ellipsis: true, render: (_: any, r: any) => `${r.pacienteNombre} ${r.pacienteApellidos}` },
-    { title: 'Médico', dataIndex: 'medicoNombre', ellipsis: true },
-    { title: 'Laboratorio', dataIndex: 'laboratorioNombre', ellipsis: true, render: (v: any) => v ?? '—' },
+    { title: 'Médico', dataIndex: 'medicoNombre', key: 'medicoNombre', ellipsis: true },
+    { title: 'Laboratorio', dataIndex: 'laboratorioNombre', key: 'laboratorioNombre', ellipsis: true, render: (v: any) => v ?? '—' },
     {
-      title: 'Urgente', dataIndex: 'urgente', width: 80,
+      title: 'Urgente', dataIndex: 'urgente', key: 'urgente', width: 80,
       render: (v: boolean) => v ? <Tag color="red">URGENTE</Tag> : null,
     },
     {
-      title: 'Estado', dataIndex: 'estado', width: 160,
+      title: 'Estado', dataIndex: 'estado', key: 'estado', width: 160,
       render: (v: string) => <Tag color={ESTADO_COLOR[v] ?? 'default'}>{v?.replace(/_/g, ' ')}</Tag>,
     },
     {
@@ -93,9 +124,16 @@ export default function LaboratorioPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>Órdenes de Laboratorio</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setModal('crear'); }}>Nueva Orden</Button>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+        <h2 style={{ margin: 0 }}>Órdenes de Laboratorio</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['clinica-lab']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setModal('crear'); }}>Nueva Orden</Button>
+        </div>
       </div>
 
       <Space style={{ marginBottom: 16 }}>
@@ -105,7 +143,7 @@ export default function LaboratorioPage() {
       </Space>
 
       <Table
-        columns={cols}
+        columns={filterColumns(cols as any)}
         dataSource={data?.data ?? []}
         rowKey="id"
         loading={isLoading}

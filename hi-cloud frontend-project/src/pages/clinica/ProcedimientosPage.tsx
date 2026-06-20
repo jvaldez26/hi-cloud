@@ -1,15 +1,31 @@
 import { useState } from 'react';
 import { Table, Button, Space, Tag, Typography, Modal, Form, Select, DatePicker, Input, InputNumber, message } from 'antd';
-import { PlusOutlined, EditOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { clinicaApi } from '../../api/clinica.api';
 import { fmt as fmtObj } from '../../utils/formatters';
 import dayjs from 'dayjs';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 const fmt = (v: any) => fmtObj.date(v);
 const fmtMoney = (v: any) => fmtObj.money(v);
 
 const { Title } = Typography;
 const { Option } = Select;
+
+const COLS_DEF = [
+  { key: 'numero', label: 'N°', defaultVisible: true },
+  { key: 'fecha', label: 'Fecha', defaultVisible: true },
+  { key: 'nombre', label: 'Nombre', defaultVisible: true },
+  { key: 'pac', label: 'Paciente', defaultVisible: true },
+  { key: 'medicoNombre', label: 'Médico', defaultVisible: true },
+  { key: 'sala', label: 'Sala', defaultVisible: false },
+  { key: 'costo', label: 'Costo', defaultVisible: true },
+  { key: 'estado', label: 'Estado', defaultVisible: true },
+  { key: 'act', label: 'Acciones', defaultVisible: true },
+];
 
 const ESTADO_COLOR: Record<string, string> = {
   programado: 'blue', en_progreso: 'orange', completado: 'green', cancelado: 'red',
@@ -22,6 +38,8 @@ export default function ProcedimientosPage() {
   const [modal, setModal] = useState<'crear' | 'editar' | null>(null);
   const [selected, setSelected] = useState<any>(null);
   const [form] = Form.useForm();
+
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('clinica-procedimientos', COLS_DEF);
 
   const { data, isLoading } = useQuery({
     queryKey: ['clinica-procedimientos', page, estado],
@@ -49,16 +67,31 @@ export default function ProcedimientosPage() {
     setModal('editar');
   };
 
+  const exportar = () => {
+    const filas = (data?.data ?? []).map((r: any) => ({
+      'N°': r.numero,
+      'Fecha': r.fecha,
+      'Nombre': r.nombre,
+      'Paciente': `${r.pacienteNombre} ${r.pacienteApellidos}`,
+      'Médico': r.medicoNombre,
+      'Sala': r.sala ?? '',
+      'Costo': r.costo ?? '',
+      'Estado': r.estado,
+    }));
+    exportarExcel(filas, `Procedimientos-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   const cols = [
-    { title: 'N°', dataIndex: 'numero', width: 120 },
-    { title: 'Fecha', dataIndex: 'fecha', width: 100, render: fmt },
-    { title: 'Nombre', dataIndex: 'nombre', ellipsis: true },
+    { title: 'N°', dataIndex: 'numero', key: 'numero', width: 120 },
+    { title: 'Fecha', dataIndex: 'fecha', key: 'fecha', width: 100, render: fmt },
+    { title: 'Nombre', dataIndex: 'nombre', key: 'nombre', ellipsis: true },
     { title: 'Paciente', key: 'pac', ellipsis: true, render: (_: any, r: any) => `${r.pacienteNombre} ${r.pacienteApellidos}` },
-    { title: 'Médico', dataIndex: 'medicoNombre', ellipsis: true },
-    { title: 'Sala', dataIndex: 'sala', width: 80, render: (v: any) => v ?? '—' },
-    { title: 'Costo', dataIndex: 'costo', width: 110, render: (v: any) => v ? fmtMoney(v) : '—' },
+    { title: 'Médico', dataIndex: 'medicoNombre', key: 'medicoNombre', ellipsis: true },
+    { title: 'Sala', dataIndex: 'sala', key: 'sala', width: 80, render: (v: any) => v ?? '—' },
+    { title: 'Costo', dataIndex: 'costo', key: 'costo', width: 110, render: (v: any) => v ? fmtMoney(v) : '—' },
     {
-      title: 'Estado', dataIndex: 'estado', width: 110,
+      title: 'Estado', dataIndex: 'estado', key: 'estado', width: 110,
       render: (v: string) => <Tag color={ESTADO_COLOR[v] ?? 'default'}>{v?.replace(/_/g, ' ')}</Tag>,
     },
     {
@@ -129,11 +162,18 @@ export default function ProcedimientosPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>Procedimientos</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); form.setFieldsValue({ estado: 'programado', fecha: dayjs() }); setModal('crear'); }}>
-          Nuevo Procedimiento
-        </Button>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+        <h2 style={{ margin: 0 }}>Procedimientos</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['clinica-procedimientos']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); form.setFieldsValue({ estado: 'programado', fecha: dayjs() }); setModal('crear'); }}>
+            Nuevo Procedimiento
+          </Button>
+        </div>
       </div>
 
       <Space style={{ marginBottom: 16 }}>
@@ -143,7 +183,7 @@ export default function ProcedimientosPage() {
       </Space>
 
       <Table
-        columns={cols}
+        columns={filterColumns(cols as any)}
         dataSource={data?.data ?? []}
         rowKey="id"
         loading={isLoading}

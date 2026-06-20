@@ -1,12 +1,28 @@
 import { useState } from 'react';
 import { Card, Button, Select, Tag, Space, Typography, Modal, Form, DatePicker, TimePicker, Input, message, Table } from 'antd';
-import { PlusOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons';
+import { PlusOutlined, LeftOutlined, RightOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { clinicaApi } from '../../api/clinica.api';
 import dayjs from 'dayjs';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 
 const { Title } = Typography;
 const { Option } = Select;
+
+const COLS_DEF = [
+  { key: 'hora', label: 'Hora', defaultVisible: true },
+  { key: 'numero', label: 'N°', defaultVisible: true },
+  { key: 'pac', label: 'Paciente', defaultVisible: true },
+  { key: 'medicoNombre', label: 'Médico', defaultVisible: true },
+  { key: 'especialidad', label: 'Especialidad', defaultVisible: false },
+  { key: 'tipoCita', label: 'Tipo', defaultVisible: true },
+  { key: 'motivo', label: 'Motivo', defaultVisible: false },
+  { key: 'estado', label: 'Estado', defaultVisible: true },
+  { key: 'act', label: 'Acciones', defaultVisible: true },
+];
 
 const ESTADO_COLOR: Record<string, string> = {
   programada: 'blue', confirmada: 'cyan', en_sala: 'orange',
@@ -19,6 +35,8 @@ export default function AgendaPage() {
   const [medicoId, setMedicoId] = useState<number | undefined>();
   const [modal, setModal] = useState(false);
   const [form] = Form.useForm();
+
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('clinica-agenda', COLS_DEF);
 
   const { data: medicos = [] } = useQuery({ queryKey: ['clinica-medicos'], queryFn: () => clinicaApi.listarMedicos() });
 
@@ -48,16 +66,31 @@ export default function AgendaPage() {
   const avanzar = () => setFecha(dayjs(fecha).add(1, 'day').format('YYYY-MM-DD'));
   const retroceder = () => setFecha(dayjs(fecha).subtract(1, 'day').format('YYYY-MM-DD'));
 
+  const exportar = () => {
+    const filas = (data?.data ?? []).map((r: any) => ({
+      'Hora': r.hora,
+      'N°': r.numero,
+      'Paciente': `${r.pacienteNombre} ${r.pacienteApellidos}`,
+      'Médico': r.medicoNombre,
+      'Especialidad': r.especialidad ?? '',
+      'Tipo Cita': r.tipoCita ?? '',
+      'Motivo': r.motivo ?? '',
+      'Estado': r.estado,
+    }));
+    exportarExcel(filas, `Agenda-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   const cols = [
-    { title: 'Hora', dataIndex: 'hora', width: 70 },
-    { title: 'N°', dataIndex: 'numero', width: 110 },
+    { title: 'Hora', dataIndex: 'hora', key: 'hora', width: 70 },
+    { title: 'N°', dataIndex: 'numero', key: 'numero', width: 110 },
     { title: 'Paciente', key: 'pac', ellipsis: true, render: (_: any, r: any) => `${r.pacienteNombre} ${r.pacienteApellidos}` },
-    { title: 'Médico', dataIndex: 'medicoNombre', ellipsis: true },
-    { title: 'Especialidad', dataIndex: 'especialidad', ellipsis: true },
-    { title: 'Tipo', dataIndex: 'tipoCita', width: 110, render: (v: any) => v ?? '—' },
-    { title: 'Motivo', dataIndex: 'motivo', ellipsis: true, render: (v: any) => v ?? '—' },
+    { title: 'Médico', dataIndex: 'medicoNombre', key: 'medicoNombre', ellipsis: true },
+    { title: 'Especialidad', dataIndex: 'especialidad', key: 'especialidad', ellipsis: true },
+    { title: 'Tipo', dataIndex: 'tipoCita', key: 'tipoCita', width: 110, render: (v: any) => v ?? '—' },
+    { title: 'Motivo', dataIndex: 'motivo', key: 'motivo', ellipsis: true, render: (v: any) => v ?? '—' },
     {
-      title: 'Estado', dataIndex: 'estado', width: 120,
+      title: 'Estado', dataIndex: 'estado', key: 'estado', width: 120,
       render: (v: string) => <Tag color={ESTADO_COLOR[v] ?? 'default'}>{v?.replace(/_/g, ' ')}</Tag>,
     },
     {
@@ -82,9 +115,16 @@ export default function AgendaPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>Agenda</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); form.setFieldsValue({ fecha: dayjs(fecha) }); setModal(true); }}>Nueva Cita</Button>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+        <h2 style={{ margin: 0 }}>Agenda</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['clinica-citas']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); form.setFieldsValue({ fecha: dayjs(fecha) }); setModal(true); }}>Nueva Cita</Button>
+        </div>
       </div>
 
       <Card size="small" style={{ marginBottom: 16 }}>
@@ -114,7 +154,7 @@ export default function AgendaPage() {
       </Card>
 
       <Table
-        columns={cols}
+        columns={filterColumns(cols as any)}
         dataSource={data?.data ?? []}
         rowKey="id"
         loading={isLoading}

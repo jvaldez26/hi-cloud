@@ -1,15 +1,32 @@
 import { useState } from 'react';
 import { Table, Button, Space, Tag, Typography, Modal, Form, Select, DatePicker, Input, InputNumber, AutoComplete, message, Row, Col } from 'antd';
-import { PlusOutlined, EditOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { clinicaApi } from '../../api/clinica.api';
 import { fmt as fmtObj } from '../../utils/formatters';
 import dayjs from 'dayjs';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 const fmt = (v: any) => fmtObj.date(v);
 const fmtMoney = (v: any) => fmtObj.money(v);
 
 const { Title } = Typography;
 const { Option } = Select;
+
+const COLS_DEF = [
+  { key: 'numero', label: 'N°', defaultVisible: true },
+  { key: 'createdAt', label: 'Fecha', defaultVisible: true },
+  { key: 'pac', label: 'Paciente', defaultVisible: true },
+  { key: 'arsNombre', label: 'ARS', defaultVisible: true },
+  { key: 'tipoServicio', label: 'Tipo Servicio', defaultVisible: true },
+  { key: 'montoAutorizado', label: 'Monto Aut.', defaultVisible: true },
+  { key: 'montoCubierto', label: 'Cubierto', defaultVisible: false },
+  { key: 'montoPaciente', label: 'Paciente Paga', defaultVisible: false },
+  { key: 'estado', label: 'Estado', defaultVisible: true },
+  { key: 'act', label: 'Acciones', defaultVisible: true },
+];
 
 const ESTADO_COLOR: Record<string, string> = {
   pendiente: 'orange', aprobado: 'green', rechazado: 'red', parcial: 'gold',
@@ -24,6 +41,8 @@ export default function ArsPage() {
   const [modal, setModal] = useState<'crear' | 'editar' | null>(null);
   const [selected, setSelected] = useState<any>(null);
   const [form] = Form.useForm();
+
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('clinica-ars', COLS_DEF);
 
   const { data, isLoading } = useQuery({
     queryKey: ['clinica-ars', page, estado],
@@ -51,17 +70,33 @@ export default function ArsPage() {
     setModal('editar');
   };
 
+  const exportar = () => {
+    const filas = (data?.data ?? []).map((r: any) => ({
+      'N°': r.numero,
+      'Fecha': r.createdAt,
+      'Paciente': `${r.pacienteNombre} ${r.pacienteApellidos}`,
+      'ARS': r.arsNombre,
+      'Tipo Servicio': r.tipoServicio ?? '',
+      'Monto Autorizado': r.montoAutorizado ?? '',
+      'Monto Cubierto': r.montoCubierto ?? '',
+      'Paciente Paga': r.montoPaciente ?? '',
+      'Estado': r.estado,
+    }));
+    exportarExcel(filas, `ARS-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   const cols = [
-    { title: 'N°', dataIndex: 'numero', width: 120 },
-    { title: 'Fecha', dataIndex: 'createdAt', width: 100, render: fmt },
+    { title: 'N°', dataIndex: 'numero', key: 'numero', width: 120 },
+    { title: 'Fecha', dataIndex: 'createdAt', key: 'createdAt', width: 100, render: fmt },
     { title: 'Paciente', key: 'pac', ellipsis: true, render: (_: any, r: any) => `${r.pacienteNombre} ${r.pacienteApellidos}` },
-    { title: 'ARS', dataIndex: 'arsNombre', ellipsis: true },
-    { title: 'Tipo Servicio', dataIndex: 'tipoServicio', ellipsis: true, render: (v: any) => v ?? '—' },
-    { title: 'Monto Aut.', dataIndex: 'montoAutorizado', width: 110, render: (v: any) => v ? fmtMoney(v) : '—' },
-    { title: 'Cubierto', dataIndex: 'montoCubierto', width: 100, render: (v: any) => v ? fmtMoney(v) : '—' },
-    { title: 'Paciente Paga', dataIndex: 'montoPaciente', width: 110, render: (v: any) => v ? fmtMoney(v) : '—' },
+    { title: 'ARS', dataIndex: 'arsNombre', key: 'arsNombre', ellipsis: true },
+    { title: 'Tipo Servicio', dataIndex: 'tipoServicio', key: 'tipoServicio', ellipsis: true, render: (v: any) => v ?? '—' },
+    { title: 'Monto Aut.', dataIndex: 'montoAutorizado', key: 'montoAutorizado', width: 110, render: (v: any) => v ? fmtMoney(v) : '—' },
+    { title: 'Cubierto', dataIndex: 'montoCubierto', key: 'montoCubierto', width: 100, render: (v: any) => v ? fmtMoney(v) : '—' },
+    { title: 'Paciente Paga', dataIndex: 'montoPaciente', key: 'montoPaciente', width: 110, render: (v: any) => v ? fmtMoney(v) : '—' },
     {
-      title: 'Estado', dataIndex: 'estado', width: 100,
+      title: 'Estado', dataIndex: 'estado', key: 'estado', width: 100,
       render: (v: string) => <Tag color={ESTADO_COLOR[v] ?? 'default'}>{v}</Tag>,
     },
     {
@@ -72,11 +107,18 @@ export default function ArsPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>Autorizaciones ARS</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); form.setFieldsValue({ fechaSolicitud: dayjs() }); setModal('crear'); }}>
-          Nueva Solicitud
-        </Button>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+        <h2 style={{ margin: 0 }}>Autorizaciones ARS</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['clinica-ars']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); form.setFieldsValue({ fechaSolicitud: dayjs() }); setModal('crear'); }}>
+            Nueva ARS
+          </Button>
+        </div>
       </div>
 
       <Space style={{ marginBottom: 16 }}>
@@ -86,7 +128,7 @@ export default function ArsPage() {
       </Space>
 
       <Table
-        columns={cols}
+        columns={filterColumns(cols as any)}
         dataSource={data?.data ?? []}
         rowKey="id"
         loading={isLoading}

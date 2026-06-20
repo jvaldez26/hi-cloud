@@ -3,6 +3,7 @@ import { Card, Table, Tag, Button, Space, Typography, Modal, Form, Select, Input
 import { PlusOutlined, ReloadOutlined, UserOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { clinicaApi } from '../../api/clinica.api';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -107,13 +108,16 @@ export default function SalaEsperaPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>Sala de Espera</Title>
-        <Space>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+        <h2 style={{ margin: 0 }}>Sala de Espera</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <RefreshByKeyButton queryKey={['clinica-sala-espera-full']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
           <Text type="secondary" style={{ fontSize: 12 }}>Actualiza en {timer}s</Text>
           <Button icon={<ReloadOutlined />} onClick={() => { refetch(); setTimer(30); }}>Actualizar</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setModal(true); }}>Registrar Llegada</Button>
-        </Space>
+        </div>
       </div>
 
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>

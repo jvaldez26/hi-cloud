@@ -1,11 +1,26 @@
 import { useState } from 'react';
 import { Table, Button, Space, Tag, Typography, Modal, Form, Select, Input, InputNumber, message } from 'antd';
-import { PlusOutlined, EditOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { clinicaApi } from '../../api/clinica.api';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 
 const { Title } = Typography;
 const { Option } = Select;
+
+const COLS_DEF = [
+  { key: 'nom', label: 'Nombre', defaultVisible: true },
+  { key: 'especialidad', label: 'Especialidad', defaultVisible: true },
+  { key: 'exequatur', label: 'Exequatur', defaultVisible: true },
+  { key: 'telefono', label: 'Teléfono', defaultVisible: true },
+  { key: 'email', label: 'Email', defaultVisible: false },
+  { key: 'tarifaConsulta', label: 'Tarifa Consulta', defaultVisible: true },
+  { key: 'isActive', label: 'Estado', defaultVisible: true },
+  { key: 'act', label: 'Acciones', defaultVisible: true },
+];
 
 const ESPECIALIDADES = [
   'Medicina General','Medicina Interna','Pediatría','Cardiología','Dermatología',
@@ -21,6 +36,8 @@ export default function MedicosPage() {
   const [modal, setModal] = useState<'crear' | 'editar' | null>(null);
   const [selected, setSelected] = useState<any>(null);
   const [form] = Form.useForm();
+
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('clinica-medicos', COLS_DEF);
 
   const { data = [], isLoading } = useQuery({
     queryKey: ['clinica-medicos'],
@@ -40,6 +57,20 @@ export default function MedicosPage() {
   });
 
   const openEditar = (r: any) => { setSelected(r); form.setFieldsValue(r); setModal('editar'); };
+
+  const exportar = () => {
+    const filas = (data ?? []).map((r: any) => ({
+      'Nombre': `${r.nombre} ${r.apellidos ?? ''}`,
+      'Especialidad': r.especialidad ?? '',
+      'Exequatur': r.exequatur ?? '',
+      'Teléfono': r.telefono ?? '',
+      'Email': r.email ?? '',
+      'Tarifa Consulta': r.tarifaConsulta ?? '',
+      'Estado': r.isActive !== false ? 'Activo' : 'Inactivo',
+    }));
+    exportarExcel(filas, `Medicos-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
 
   const cols = [
     { title: 'Nombre', key: 'nom', render: (_: any, r: any) => `${r.nombre} ${r.apellidos ?? ''}`, ellipsis: true },
@@ -86,13 +117,20 @@ export default function MedicosPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>Médicos</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setModal('crear'); }}>Nuevo Médico</Button>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+        <h2 style={{ margin: 0 }}>Médicos</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['clinica-medicos']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setModal('crear'); }}>Nuevo Médico</Button>
+        </div>
       </div>
 
       <Table
-        columns={cols}
+        columns={filterColumns(cols as any)}
         dataSource={data}
         rowKey="id"
         loading={isLoading}

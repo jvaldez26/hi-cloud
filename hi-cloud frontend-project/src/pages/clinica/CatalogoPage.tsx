@@ -1,13 +1,29 @@
 import { useState } from 'react';
 import { Table, Button, Space, Tag, Typography, Modal, Form, Select, Input, InputNumber, message, Switch } from 'antd';
-import { PlusOutlined, EditOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { clinicaApi } from '../../api/clinica.api';
 import { fmt as fmtObj } from '../../utils/formatters';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 const fmtMoney = (v: any) => fmtObj.money(v);
 
 const { Title } = Typography;
 const { Option } = Select;
+
+const COLS_DEF = [
+  { key: 'codigo', label: 'Código', defaultVisible: true },
+  { key: 'nombre', label: 'Nombre', defaultVisible: true },
+  { key: 'especialidad', label: 'Especialidad', defaultVisible: true },
+  { key: 'precio', label: 'Precio', defaultVisible: true },
+  { key: 'precioArs', label: 'Precio ARS', defaultVisible: false },
+  { key: 'duracionMinutos', label: 'Duración', defaultVisible: false },
+  { key: 'requiereAutorizacion', label: 'Req. Autorización', defaultVisible: true },
+  { key: 'isActive', label: 'Estado', defaultVisible: true },
+  { key: 'act', label: 'Acciones', defaultVisible: true },
+];
 
 const ESPECIALIDADES = [
   'Medicina General','Medicina Interna','Pediatría','Cardiología','Dermatología',
@@ -21,6 +37,8 @@ export default function CatalogoPage() {
   const [modal, setModal] = useState<'crear' | 'editar' | null>(null);
   const [selected, setSelected] = useState<any>(null);
   const [form] = Form.useForm();
+
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('clinica-catalogo', COLS_DEF);
 
   const { data = [], isLoading } = useQuery({
     queryKey: ['clinica-catalogo', especialidad],
@@ -41,19 +59,34 @@ export default function CatalogoPage() {
 
   const openEditar = (r: any) => { setSelected(r); form.setFieldsValue(r); setModal('editar'); };
 
+  const exportar = () => {
+    const filas = (data ?? []).map((r: any) => ({
+      'Código': r.codigo ?? '',
+      'Nombre': r.nombre,
+      'Especialidad': r.especialidad ?? '',
+      'Precio': r.precio ?? '',
+      'Precio ARS': r.precioArs ?? '',
+      'Duración (min)': r.duracionMinutos ?? 30,
+      'Req. Autorización': r.requiereAutorizacion ? 'Sí' : 'No',
+      'Estado': r.isActive !== false ? 'Activo' : 'Inactivo',
+    }));
+    exportarExcel(filas, `Catalogo-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   const cols = [
-    { title: 'Código', dataIndex: 'codigo', width: 100, render: (v: any) => v ?? '—' },
-    { title: 'Nombre', dataIndex: 'nombre', ellipsis: true },
-    { title: 'Especialidad', dataIndex: 'especialidad', ellipsis: true, render: (v: any) => v ?? '—' },
-    { title: 'Precio', dataIndex: 'precio', width: 110, render: (v: any) => v ? fmtMoney(v) : '—' },
-    { title: 'Precio ARS', dataIndex: 'precioArs', width: 110, render: (v: any) => v ? fmtMoney(v) : '—' },
-    { title: 'Duración', dataIndex: 'duracionMinutos', width: 90, render: (v: any) => `${v ?? 30} min` },
+    { title: 'Código', dataIndex: 'codigo', key: 'codigo', width: 100, render: (v: any) => v ?? '—' },
+    { title: 'Nombre', dataIndex: 'nombre', key: 'nombre', ellipsis: true },
+    { title: 'Especialidad', dataIndex: 'especialidad', key: 'especialidad', ellipsis: true, render: (v: any) => v ?? '—' },
+    { title: 'Precio', dataIndex: 'precio', key: 'precio', width: 110, render: (v: any) => v ? fmtMoney(v) : '—' },
+    { title: 'Precio ARS', dataIndex: 'precioArs', key: 'precioArs', width: 110, render: (v: any) => v ? fmtMoney(v) : '—' },
+    { title: 'Duración', dataIndex: 'duracionMinutos', key: 'duracionMinutos', width: 90, render: (v: any) => `${v ?? 30} min` },
     {
-      title: 'Req. Autorización', dataIndex: 'requiereAutorizacion', width: 130,
+      title: 'Req. Autorización', dataIndex: 'requiereAutorizacion', key: 'requiereAutorizacion', width: 130,
       render: (v: boolean) => v ? <Tag color="orange">Sí</Tag> : <Tag color="green">No</Tag>,
     },
     {
-      title: 'Estado', dataIndex: 'isActive', width: 80,
+      title: 'Estado', dataIndex: 'isActive', key: 'isActive', width: 80,
       render: (v: boolean) => <Tag color={v !== false ? 'green' : 'default'}>{v !== false ? 'Activo' : 'Inactivo'}</Tag>,
     },
     {
@@ -94,11 +127,18 @@ export default function CatalogoPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>Catálogo de Servicios</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); form.setFieldsValue({ duracionMinutos: 30, requiereAutorizacion: false, isActive: true }); setModal('crear'); }}>
-          Nuevo Servicio
-        </Button>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+        <h2 style={{ margin: 0 }}>Catálogo de Servicios</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['clinica-catalogo']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); form.setFieldsValue({ duracionMinutos: 30, requiereAutorizacion: false, isActive: true }); setModal('crear'); }}>
+            Nuevo
+          </Button>
+        </div>
       </div>
 
       <Space style={{ marginBottom: 16 }}>
@@ -108,7 +148,7 @@ export default function CatalogoPage() {
       </Space>
 
       <Table
-        columns={cols}
+        columns={filterColumns(cols as any)}
         dataSource={data}
         rowKey="id"
         loading={isLoading}
