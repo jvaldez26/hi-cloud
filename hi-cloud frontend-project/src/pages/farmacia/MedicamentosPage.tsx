@@ -1,16 +1,34 @@
 import { useState } from 'react';
 import {
   Table, Button, Input, Modal, Form, InputNumber, Select, Switch,
-  Space, Tag, Typography, Tooltip, Divider,
+  Space, Tag, Typography, Tooltip, Divider, message,
 } from 'antd';
 import {
-  PlusOutlined, EditOutlined, SearchOutlined, MedicineBoxOutlined,
+  PlusOutlined, EditOutlined, SearchOutlined, MedicineBoxOutlined, FileExcelOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { farmaciaApi } from '../../api/farmacia.api';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 
 const { Title } = Typography;
 const { Option } = Select;
+
+const COLS_DEF = [
+  { key: 'codigo', label: 'Código', defaultVisible: true },
+  { key: 'nombreGenerico', label: 'Nombre Genérico', defaultVisible: true },
+  { key: 'nombreComercial', label: 'Nombre Comercial', defaultVisible: false },
+  { key: 'concentracion', label: 'Concentración', defaultVisible: true },
+  { key: 'forma', label: 'Forma', defaultVisible: true },
+  { key: 'categoria', label: 'Categoría', defaultVisible: true },
+  { key: 'stockActual', label: 'Stock', defaultVisible: true },
+  { key: 'precioVenta', label: 'Precio Venta', defaultVisible: true },
+  { key: 'requiereReceta', label: 'Receta', defaultVisible: false },
+  { key: 'esNarcotico', label: 'Narc.', defaultVisible: false },
+  { key: 'actions', label: 'Acciones', defaultVisible: true },
+];
 
 const CATEGORIAS = ['Analgésico', 'Antibiótico', 'Antihipertensivo', 'Antidiabético', 'Antiinflamatorio', 'Vitamina', 'Gastrointestinal', 'Respiratorio', 'Dermatológico', 'Otro'];
 const FORMAS = ['Tableta', 'Cápsula', 'Jarabe', 'Suspensión', 'Inyectable', 'Crema', 'Gotas', 'Supositorio', 'Parche', 'Inhalador'];
@@ -24,6 +42,7 @@ export default function MedicamentosPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [form] = Form.useForm();
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('farmacia-medicamentos', COLS_DEF);
 
   const { data, isLoading } = useQuery({
     queryKey: ['farmacia-medicamentos', page, search, categoria],
@@ -48,19 +67,19 @@ export default function MedicamentosPage() {
   };
 
   const columns = [
-    { title: 'Código', dataIndex: 'codigo', width: 90 },
-    { title: 'Nombre Genérico', dataIndex: 'nombreGenerico', ellipsis: true },
-    { title: 'Nombre Comercial', dataIndex: 'nombreComercial', ellipsis: true },
-    { title: 'Concentración', dataIndex: 'concentracion', width: 120 },
-    { title: 'Forma', dataIndex: 'forma', width: 100 },
-    { title: 'Categoría', dataIndex: 'categoria', width: 130 },
-    { title: 'Stock', dataIndex: 'stockActual', width: 80, render: (v: number, r: any) => {
+    { title: 'Código', dataIndex: 'codigo', key: 'codigo', width: 90 },
+    { title: 'Nombre Genérico', dataIndex: 'nombreGenerico', key: 'nombreGenerico', ellipsis: true },
+    { title: 'Nombre Comercial', dataIndex: 'nombreComercial', key: 'nombreComercial', ellipsis: true },
+    { title: 'Concentración', dataIndex: 'concentracion', key: 'concentracion', width: 120 },
+    { title: 'Forma', dataIndex: 'forma', key: 'forma', width: 100 },
+    { title: 'Categoría', dataIndex: 'categoria', key: 'categoria', width: 130 },
+    { title: 'Stock', dataIndex: 'stockActual', key: 'stockActual', width: 80, render: (v: number, r: any) => {
       const color = v === 0 ? 'error' : v <= r.stockMinimo ? 'warning' : 'success';
       return <Tag color={color}>{v}</Tag>;
     }},
-    { title: 'Precio Venta', dataIndex: 'precioVenta', width: 110, render: (v: number) => `RD$ ${Number(v ?? 0).toFixed(2)}` },
-    { title: 'Receta', dataIndex: 'requiereReceta', width: 70, render: (v: boolean) => v ? <Tag color="orange">Sí</Tag> : null },
-    { title: 'Narc.', dataIndex: 'esNarcotico', width: 65, render: (v: boolean) => v ? <Tag color="red">Sí</Tag> : null },
+    { title: 'Precio Venta', dataIndex: 'precioVenta', key: 'precioVenta', width: 110, render: (v: number) => `RD$ ${Number(v ?? 0).toFixed(2)}` },
+    { title: 'Receta', dataIndex: 'requiereReceta', key: 'requiereReceta', width: 70, render: (v: boolean) => v ? <Tag color="orange">Sí</Tag> : null },
+    { title: 'Narc.', dataIndex: 'esNarcotico', key: 'esNarcotico', width: 65, render: (v: boolean) => v ? <Tag color="red">Sí</Tag> : null },
     {
       title: '', key: 'actions', width: 50,
       render: (_: any, r: any) => (
@@ -71,15 +90,39 @@ export default function MedicamentosPage() {
     },
   ];
 
+  const exportar = () => {
+    const filas = (data?.data ?? []).map((r: any) => ({
+      'Código': r.codigo,
+      'Nombre Genérico': r.nombreGenerico,
+      'Nombre Comercial': r.nombreComercial ?? '',
+      'Concentración': r.concentracion ?? '',
+      'Forma': r.forma ?? '',
+      'Categoría': r.categoria ?? '',
+      'Stock': r.stockActual,
+      'Precio Venta': r.precioVenta,
+      'Requiere Receta': r.requiereReceta ? 'Sí' : 'No',
+      'Narcótico': r.esNarcotico ? 'Sí' : 'No',
+    }));
+    exportarExcel(filas, `Medicamentos-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={3} style={{ margin: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+        <h2 style={{ margin: 0 }}>
           <MedicineBoxOutlined style={{ marginRight: 8 }} />Medicamentos
-        </Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditId(null); form.resetFields(); setModalOpen(true); }}>
-          Nuevo
-        </Button>
+        </h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['farmacia-medicamentos']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditId(null); form.resetFields(); setModalOpen(true); }}>
+            Nuevo Medicamento
+          </Button>
+        </div>
       </div>
 
       <Space style={{ marginBottom: 16 }} wrap>
@@ -97,7 +140,7 @@ export default function MedicamentosPage() {
 
       <Table
         dataSource={data?.data ?? []}
-        columns={columns}
+        columns={filterColumns(columns as any)}
         rowKey="id"
         size="small"
         loading={isLoading}

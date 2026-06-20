@@ -3,17 +3,32 @@ import {
   Card, Table, Button, Modal, Form, Input, InputNumber,
   Switch, Space, Tag, Typography, message,
 } from 'antd';
-import { PlusOutlined, EditOutlined, UserOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, UserOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { tallerApi } from '../../api/taller.api';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 
 const { Title } = Typography;
+
+const COLS_DEF = [
+  { key: 'nombre', label: 'Nombre', defaultVisible: true },
+  { key: 'especialidad', label: 'Especialidad', defaultVisible: true },
+  { key: 'telefono', label: 'Teléfono', defaultVisible: true },
+  { key: 'email', label: 'Email', defaultVisible: false },
+  { key: 'tarifaHora', label: 'Tarifa/hora', defaultVisible: true },
+  { key: 'isActive', label: 'Estado', defaultVisible: true },
+  { key: 'acc', label: 'Acciones', defaultVisible: true },
+];
 
 export default function TecnicosPage() {
   const qc = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form] = Form.useForm();
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('taller-tecnicos', COLS_DEF);
 
   const { data: tecnicos = [], isLoading } = useQuery({
     queryKey: ['taller-tecnicos'],
@@ -46,16 +61,16 @@ export default function TecnicosPage() {
   };
 
   const columns = [
-    { title: 'Nombre', dataIndex: 'nombre', render: (v: string) => <><UserOutlined style={{ marginRight: 6 }} />{v}</> },
-    { title: 'Especialidad', dataIndex: 'especialidad', render: (v: any) => v ?? '—' },
-    { title: 'Teléfono', dataIndex: 'telefono', render: (v: any) => v ?? '—' },
-    { title: 'Email', dataIndex: 'email', render: (v: any) => v ?? '—' },
+    { title: 'Nombre', dataIndex: 'nombre', key: 'nombre', render: (v: string) => <><UserOutlined style={{ marginRight: 6 }} />{v}</> },
+    { title: 'Especialidad', dataIndex: 'especialidad', key: 'especialidad', render: (v: any) => v ?? '—' },
+    { title: 'Teléfono', dataIndex: 'telefono', key: 'telefono', render: (v: any) => v ?? '—' },
+    { title: 'Email', dataIndex: 'email', key: 'email', render: (v: any) => v ?? '—' },
     {
-      title: 'Tarifa/hora', dataIndex: 'tarifaHora',
+      title: 'Tarifa/hora', dataIndex: 'tarifaHora', key: 'tarifaHora',
       render: (v: any) => v ? `RD$ ${Number(v).toLocaleString('es-DO', { minimumFractionDigits: 2 })}` : '—',
     },
     {
-      title: 'Estado', dataIndex: 'isActive',
+      title: 'Estado', dataIndex: 'isActive', key: 'isActive',
       render: (v: boolean) => <Tag color={v ? 'green' : 'default'}>{v ? 'Activo' : 'Inactivo'}</Tag>,
     },
     {
@@ -66,16 +81,36 @@ export default function TecnicosPage() {
     },
   ];
 
+  const exportar = () => {
+    const filas = (tecnicos as any[]).map((r: any) => ({
+      'Nombre': r.nombre,
+      'Especialidad': r.especialidad ?? '',
+      'Teléfono': r.telefono ?? '',
+      'Email': r.email ?? '',
+      'Tarifa/hora': r.tarifaHora ?? '',
+      'Estado': r.isActive ? 'Activo' : 'Inactivo',
+    }));
+    exportarExcel(filas, `Tecnicos-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}><UserOutlined style={{ marginRight: 8 }} />Técnicos</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openNew}>Nuevo Técnico</Button>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+        <h2 style={{ margin: 0 }}><UserOutlined style={{ marginRight: 8 }} />Técnicos</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['taller-tecnicos']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={openNew}>Nuevo Técnico</Button>
+        </div>
       </div>
       <Card>
         <Table
           dataSource={tecnicos as any[]}
-          columns={columns}
+          columns={filterColumns(columns as any)}
           rowKey="id"
           loading={isLoading}
           size="small"

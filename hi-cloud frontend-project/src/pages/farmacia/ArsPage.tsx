@@ -1,14 +1,32 @@
 import { useState } from 'react';
 import {
   Table, Button, Modal, Form, Input, InputNumber, DatePicker, Select,
-  Tag, Typography, Space,
+  Tag, Typography, Space, message,
 } from 'antd';
-import { PlusOutlined, EditOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { farmaciaApi } from '../../api/farmacia.api';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 
 const { Title } = Typography;
+
+const COLS_DEF = [
+  { key: 'numero', label: 'N° Reclamación', defaultVisible: true },
+  { key: 'arsNombre', label: 'ARS', defaultVisible: true },
+  { key: 'periodoDesde', label: 'Período Desde', defaultVisible: true },
+  { key: 'periodoHasta', label: 'Período Hasta', defaultVisible: true },
+  { key: 'cantidadDispensaciones', label: 'Dispensaciones', defaultVisible: false },
+  { key: 'montoTotal', label: 'Monto Total', defaultVisible: true },
+  { key: 'montoCubierto', label: 'Cubierto', defaultVisible: true },
+  { key: 'estado', label: 'Estado', defaultVisible: true },
+  { key: 'fechaEnvio', label: 'Fecha Envío', defaultVisible: false },
+  { key: 'fechaPago', label: 'Fecha Pago', defaultVisible: false },
+  { key: 'actions', label: 'Acciones', defaultVisible: true },
+];
 
 const ESTADOS_ARS = ['pendiente', 'enviada', 'pagada', 'rechazada'];
 
@@ -21,6 +39,7 @@ export default function ArsPage() {
   const [editModal, setEditModal] = useState(false);
   const [form] = Form.useForm();
   const [editForm] = Form.useForm();
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('farmacia-ars', COLS_DEF);
 
   const { data, isLoading } = useQuery({
     queryKey: ['farmacia-ars', page, estado],
@@ -58,22 +77,22 @@ export default function ArsPage() {
   };
 
   const cols = [
-    { title: 'N° Reclamación', dataIndex: 'numero', width: 140 },
-    { title: 'ARS', dataIndex: 'arsNombre', width: 160 },
-    { title: 'Período Desde', dataIndex: 'periodoDesde', width: 110, render: (v: string) => v ? new Date(v).toLocaleDateString('es-DO') : '-' },
-    { title: 'Período Hasta', dataIndex: 'periodoHasta', width: 110, render: (v: string) => v ? new Date(v).toLocaleDateString('es-DO') : '-' },
-    { title: 'Dispensaciones', dataIndex: 'cantidadDispensaciones', width: 120 },
-    { title: 'Monto Total', dataIndex: 'montoTotal', width: 120, render: (v: number) => v ? `RD$ ${Number(v).toFixed(2)}` : '-' },
-    { title: 'Cubierto', dataIndex: 'montoCubierto', width: 120, render: (v: number) => v ? `RD$ ${Number(v).toFixed(2)}` : '-' },
+    { title: 'N° Reclamación', dataIndex: 'numero', key: 'numero', width: 140 },
+    { title: 'ARS', dataIndex: 'arsNombre', key: 'arsNombre', width: 160 },
+    { title: 'Período Desde', dataIndex: 'periodoDesde', key: 'periodoDesde', width: 110, render: (v: string) => v ? new Date(v).toLocaleDateString('es-DO') : '-' },
+    { title: 'Período Hasta', dataIndex: 'periodoHasta', key: 'periodoHasta', width: 110, render: (v: string) => v ? new Date(v).toLocaleDateString('es-DO') : '-' },
+    { title: 'Dispensaciones', dataIndex: 'cantidadDispensaciones', key: 'cantidadDispensaciones', width: 120 },
+    { title: 'Monto Total', dataIndex: 'montoTotal', key: 'montoTotal', width: 120, render: (v: number) => v ? `RD$ ${Number(v).toFixed(2)}` : '-' },
+    { title: 'Cubierto', dataIndex: 'montoCubierto', key: 'montoCubierto', width: 120, render: (v: number) => v ? `RD$ ${Number(v).toFixed(2)}` : '-' },
     {
-      title: 'Estado', dataIndex: 'estado', width: 100,
+      title: 'Estado', dataIndex: 'estado', key: 'estado', width: 100,
       render: (v: string) => {
         const colors: Record<string, string> = { pendiente: 'orange', enviada: 'blue', pagada: 'green', rechazada: 'red' };
         return <Tag color={colors[v] ?? 'default'}>{v}</Tag>;
       },
     },
-    { title: 'Fecha Envío', dataIndex: 'fechaEnvio', width: 110, render: (v: string) => v ? new Date(v).toLocaleDateString('es-DO') : '-' },
-    { title: 'Fecha Pago', dataIndex: 'fechaPago', width: 110, render: (v: string) => v ? new Date(v).toLocaleDateString('es-DO') : '-' },
+    { title: 'Fecha Envío', dataIndex: 'fechaEnvio', key: 'fechaEnvio', width: 110, render: (v: string) => v ? new Date(v).toLocaleDateString('es-DO') : '-' },
+    { title: 'Fecha Pago', dataIndex: 'fechaPago', key: 'fechaPago', width: 110, render: (v: string) => v ? new Date(v).toLocaleDateString('es-DO') : '-' },
     {
       title: '', key: 'actions', width: 50,
       render: (_: any, r: any) => (
@@ -82,13 +101,37 @@ export default function ArsPage() {
     },
   ];
 
+  const exportar = () => {
+    const filas = (data?.data ?? []).map((r: any) => ({
+      'N° Reclamación': r.numero,
+      'ARS': r.arsNombre,
+      'Período Desde': r.periodoDesde ? new Date(r.periodoDesde).toLocaleDateString('es-DO') : '',
+      'Período Hasta': r.periodoHasta ? new Date(r.periodoHasta).toLocaleDateString('es-DO') : '',
+      'Dispensaciones': r.cantidadDispensaciones ?? 0,
+      'Monto Total': r.montoTotal ?? 0,
+      'Cubierto': r.montoCubierto ?? 0,
+      'Estado': r.estado,
+      'Fecha Envío': r.fechaEnvio ? new Date(r.fechaEnvio).toLocaleDateString('es-DO') : '',
+      'Fecha Pago': r.fechaPago ? new Date(r.fechaPago).toLocaleDateString('es-DO') : '',
+    }));
+    exportarExcel(filas, `ARS-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={3} style={{ margin: 0 }}>Reclamaciones ARS</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setModalOpen(true); }}>
-          Nueva Reclamación
-        </Button>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+        <h2 style={{ margin: 0 }}>Reclamaciones ARS</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['farmacia-ars']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setModalOpen(true); }}>
+            Nueva ARS
+          </Button>
+        </div>
       </div>
 
       <Space style={{ marginBottom: 16 }}>
@@ -103,7 +146,7 @@ export default function ArsPage() {
 
       <Table
         dataSource={data?.data ?? []}
-        columns={cols}
+        columns={filterColumns(cols as any)}
         rowKey="id"
         size="small"
         loading={isLoading}

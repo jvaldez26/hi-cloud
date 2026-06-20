@@ -5,11 +5,13 @@ import {
 } from 'antd';
 import {
   ShoppingCartOutlined, DeleteOutlined, PrinterOutlined,
-  SearchOutlined, BarcodeOutlined, MedicineBoxOutlined,
+  SearchOutlined, BarcodeOutlined, MedicineBoxOutlined, FileExcelOutlined, PlusOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { farmaciaApi } from '../../api/farmacia.api';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { exportarExcel } from '../../utils/exportExcel';
 
 const { Title, Text } = Typography;
 
@@ -165,12 +167,32 @@ export default function DispensacionPage() {
     },
   ];
 
+  const exportarCarrito = () => {
+    const filas = cart.map((r: any) => ({
+      'Medicamento': `${r.nombreGenerico} ${r.concentracion ?? ''}`,
+      'Cantidad': r.cantidad,
+      'Precio Unitario': r.precioUnitario,
+      'Descuento %': r.descuento,
+      'Total': r.total,
+    }));
+    exportarExcel(filas, `Dispensacion-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} ítems exportados`);
+  };
+
   return (
     <div style={{ padding: 24 }}>
-      <Title level={3} style={{ marginBottom: 16 }}>
-        <ShoppingCartOutlined style={{ marginRight: 8 }} />
-        Dispensación — POS
-      </Title>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+        <h2 style={{ margin: 0 }}>
+          <ShoppingCartOutlined style={{ marginRight: 8 }} />Dispensación — POS
+        </h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportarCarrito}>Excel</Button>
+          <RefreshByKeyButton queryKey={['farmacia-dispensacion']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCart([])}>Nueva Dispensación</Button>
+        </div>
+      </div>
 
       <Row gutter={16}>
         {/* Panel izquierdo: búsqueda */}
