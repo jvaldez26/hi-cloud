@@ -17,6 +17,12 @@ export enum AccionAuditoria {
   ERROR  = 'error',
 }
 
+export enum NivelAuditoria {
+  CRITICO    = 'CRITICO',
+  IMPORTANTE = 'IMPORTANTE',
+  NORMAL     = 'NORMAL',
+}
+
 @Entity('audit_logs')
 export class AuditLog {
   @PrimaryGeneratedColumn()
@@ -78,6 +84,10 @@ export class AuditLog {
   @Index()
   @Column({ nullable: true })
   empresaId?: number;
+
+  @Index()
+  @Column({ length: 20, default: NivelAuditoria.NORMAL })
+  nivel!: string;
 
   @Index()
   @CreateDateColumn()

@@ -10,6 +10,7 @@ export interface CreateAuditLogDto {
   userRole?:     string;
   empresaId?:    number;
   accion:        AccionAuditoria;
+  nivel?:        string;
   modulo:        string;
   entidad?:      string;
   entidadId?:    string;
@@ -51,7 +52,7 @@ export class AuditoriaService {
   // ──────────────────────────────────────────────────────────────────
 
   async getLogs(filtro: FiltroAuditoriaDto, empresaId?: number) {
-    const { limit = 50, page = 1, accion, modulo, userId, fechaDesde, fechaHasta, exitoso } = filtro;
+    const { limit = 50, page = 1, accion, modulo, userId, fechaDesde, fechaHasta, exitoso, nivel, niveles } = filtro;
     const search = (filtro as any).search as string | undefined;
 
     const qb = this.logRepository
@@ -65,6 +66,11 @@ export class AuditoriaService {
     if (fechaDesde) qb.andWhere('l.createdAt >= :desde', { desde: new Date(fechaDesde) });
     if (fechaHasta) qb.andWhere('l.createdAt <= :hasta', { hasta: new Date(fechaHasta + 'T23:59:59') });
     if (exitoso !== undefined) qb.andWhere('l.exitoso = :exitoso', { exitoso });
+    if (nivel)     qb.andWhere('l.nivel = :nivel', { nivel });
+    if (niveles) {
+      const lista = niveles.split(',').map(n => n.trim()).filter(Boolean);
+      if (lista.length > 0) qb.andWhere('l.nivel IN (:...nivelesArr)', { nivelesArr: lista });
+    }
     if (search?.trim()) {
       const s = `%${search.trim()}%`;
       qb.andWhere(

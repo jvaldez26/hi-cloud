@@ -4,7 +4,7 @@ import {
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { PaginationDto } from '../../common/dto/pagination.dto';
-import { AccionAuditoria } from '../entities/audit-log.entity';
+import { AccionAuditoria, NivelAuditoria } from '../entities/audit-log.entity';
 
 export class FiltroAuditoriaDto extends PaginationDto {
   @IsOptional() @IsEnum(AccionAuditoria)
@@ -27,5 +27,16 @@ export class FiltroAuditoriaDto extends PaginationDto {
   @Transform(({ value }) => value === 'true' || value === true)
   exitoso?: boolean;
 
-  // search heredado de PaginationDto — usado para búsqueda en descripcion/userName/modulo/ruta
+  /** Nivel único: CRITICO | IMPORTANTE | NORMAL */
+  @IsOptional() @IsEnum(NivelAuditoria)
+  nivel?: NivelAuditoria;
+
+  /**
+   * Niveles múltiples separados por coma: "CRITICO,IMPORTANTE"
+   * El frontend puede pasar este param para filtrar por varios niveles a la vez.
+   */
+  @IsOptional() @IsString()
+  niveles?: string;
+
+  // search heredado de PaginationDto — búsqueda en descripcion/userName/modulo/ruta
 }

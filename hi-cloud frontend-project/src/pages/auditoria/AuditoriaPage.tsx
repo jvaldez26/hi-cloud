@@ -25,12 +25,18 @@ const { Title, Text } = Typography;
 
 const accionColor: Record<string, string> = {
   create: 'green', update: 'blue', delete: 'red',
-  login: 'cyan', logout: 'orange', error: 'red', read: 'default',
+  login: 'cyan', logout: 'orange', error: 'red', read: 'default', export: 'purple',
 };
 
 const accionIcon: Record<string, string> = {
   create: '➕', update: '✏️', delete: '🗑️',
-  login: '🔑', logout: '🚪', error: '❌', read: '👁️',
+  login: '🔑', logout: '🚪', error: '❌', read: '👁️', export: '📤',
+};
+
+const NIVEL_CONFIG: Record<string, { color: string; label: string; bg: string }> = {
+  CRITICO:    { color: 'red',     label: 'Crítico',    bg: 'rgba(239,68,68,0.07)'  },
+  IMPORTANTE: { color: 'orange',  label: 'Importante', bg: 'rgba(245,158,11,0.07)' },
+  NORMAL:     { color: 'default', label: 'Normal',     bg: 'transparent'           },
 };
 
 const isErrorLog  = (r: any) => r.accion === 'error' || !r.exitoso || (r.statusCode && r.statusCode >= 400);
@@ -71,6 +77,7 @@ function DetalleModal({
 
   const jsonStr     = JSON.stringify(tecnico, null, 2);
   const hasTecnico  = Object.keys(tecnico).length > 0;
+  const nivelCfg    = NIVEL_CONFIG[log.nivel] ?? NIVEL_CONFIG.NORMAL;
 
   const label: React.CSSProperties = {
     fontSize: 11, fontWeight: 700, color: token.colorTextTertiary,
@@ -93,7 +100,8 @@ function DetalleModal({
         <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 18 }}>{isErr ? '❌' : '📋'}</span>
           <span>Detalle del Evento</span>
-          {isErr && <Tag color="error" style={{ marginLeft: 4, fontWeight: 600 }}>ERROR</Tag>}
+          {log.nivel && <Tag color={nivelCfg.color}>{nivelCfg.label}</Tag>}
+          {isErr && <Tag color="error" style={{ fontWeight: 600 }}>ERROR</Tag>}
         </span>
       }
       onCancel={onClose}
@@ -223,20 +231,29 @@ function DetalleModal({
   );
 }
 
-function LogsTab({ filtroExitoso }: { filtroExitoso?: boolean }) {
+function LogsTab({
+  filtroExitoso,
+  nivelesDefault,
+}: {
+  filtroExitoso?: boolean;
+  nivelesDefault?: string[];
+}) {
   const { token } = theme.useToken();
-  const [page,      setPage]      = useState(1);
-  const [accion,    setAccion]    = useState<string | undefined>();
-  const [modulo,    setModulo]    = useState<string | undefined>();
-  const [search,    setSearch]    = useState('');
-  const [detallLog, setDetallLog] = useState<any>(null);
+  const [page,       setPage]       = useState(1);
+  const [accion,     setAccion]     = useState<string | undefined>();
+  const [modulo,     setModulo]     = useState<string | undefined>();
+  const [search,     setSearch]     = useState('');
+  const [detallLog,  setDetallLog]  = useState<any>(null);
+  const [nivelesSel, setNivelesSel] = useState<string[]>(nivelesDefault ?? []);
 
   const user         = useAuthStore(s => s.user);
   const isSuperAdmin = user?.role === 'super_admin';
 
+  const nivelesParam = nivelesSel.length > 0 ? nivelesSel.join(',') : undefined;
+
   const { data, isLoading } = useQuery({
-    queryKey: ['audit-logs', page, accion, modulo, filtroExitoso],
-    queryFn:  () => auditoriaApi.logs(page, 20, accion, modulo, filtroExitoso),
+    queryKey: ['audit-logs', page, accion, modulo, filtroExitoso, nivelesParam],
+    queryFn:  () => auditoriaApi.logs(page, 20, accion, modulo, filtroExitoso, nivelesParam),
   });
 
   const logsfiltrados = useMemo(() =>
@@ -246,6 +263,7 @@ function LogsTab({ filtroExitoso }: { filtroExitoso?: boolean }) {
     ), [data, search]);
 
   const COLS_DEF = [
+    { key: 'nivel',       label: 'Nivel',       defaultVisible: true  },
     { key: 'createdAt',   label: 'Fecha',       defaultVisible: true  },
     { key: 'userName',    label: 'Usuario',     defaultVisible: true  },
     { key: 'modulo',      label: 'Módulo',      defaultVisible: true  },
@@ -255,9 +273,18 @@ function LogsTab({ filtroExitoso }: { filtroExitoso?: boolean }) {
     { key: 'exitoso',     label: 'Estado',      defaultVisible: true  },
     { key: 'duracionMs',  label: 'ms',          defaultVisible: false },
   ];
-  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('auditoria', COLS_DEF);
+  const sufijo = nivelesDefault?.join('-') ?? 'todos';
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility(`auditoria-${sufijo}`, COLS_DEF);
 
   const cols = [
+    {
+      title: 'Nivel', dataIndex: 'nivel', key: 'nivel', width: 100,
+      render: (v: string) => {
+        const cfg = NIVEL_CONFIG[v] ?? NIVEL_CONFIG.NORMAL;
+        if (v === 'NORMAL') return <Tag>{cfg.label}</Tag>;
+        return <Tag color={cfg.color}>{cfg.label}</Tag>;
+      },
+    },
     {
       title: 'Fecha', dataIndex: 'createdAt', key: 'createdAt', width: 130,
       render: (v: string) => <Text style={{ fontSize: 12 }}>{fmt.dateTime(v)}</Text>,
@@ -288,7 +315,12 @@ function LogsTab({ filtroExitoso }: { filtroExitoso?: boolean }) {
           <span
             style={{
               cursor: 'pointer',
-              color: isErrorLog(r) ? '#EF4444' : token.colorText,
+              color: isErrorLog(r)
+                ? '#EF4444'
+                : r.nivel === 'CRITICO'
+                  ? '#dc2626'
+                  : token.colorText,
+              fontWeight: r.nivel === 'CRITICO' ? 600 : undefined,
             }}
             onClick={() => setDetallLog(r)}
           >
@@ -321,7 +353,6 @@ function LogsTab({ filtroExitoso }: { filtroExitoso?: boolean }) {
     },
   ];
 
-  // Columna de detalle — siempre visible, no sujeta a toggle
   const colDetalle = {
     title: '',
     key: '_detalle',
@@ -335,7 +366,11 @@ function LogsTab({ filtroExitoso }: { filtroExitoso?: boolean }) {
           icon={<EyeOutlined />}
           onClick={() => setDetallLog(r)}
           style={{
-            color: isErrorLog(r) ? '#EF4444' : token.colorTextTertiary,
+            color: isErrorLog(r)
+              ? '#EF4444'
+              : r.nivel === 'CRITICO'
+                ? '#dc2626'
+                : token.colorTextTertiary,
           }}
         />
       </Tooltip>
@@ -345,18 +380,37 @@ function LogsTab({ filtroExitoso }: { filtroExitoso?: boolean }) {
   return (
     <>
       <style>{`
-        .audit-row-error > td { background: rgba(239,68,68,0.05) !important; }
-        .audit-row-logout > td { background: rgba(245,158,11,0.04) !important; }
-        [data-theme="dark"] .audit-row-error > td { background: rgba(239,68,68,0.08) !important; }
-        [data-theme="dark"] .audit-row-logout > td { background: rgba(245,158,11,0.07) !important; }
+        .audit-row-critico   > td { background: rgba(239,68,68,0.06) !important; }
+        .audit-row-importante > td { background: rgba(245,158,11,0.05) !important; }
+        .audit-row-error     > td { background: rgba(239,68,68,0.08) !important; }
+        .audit-row-logout    > td { background: rgba(245,158,11,0.04) !important; }
+        [data-theme="dark"] .audit-row-critico   > td { background: rgba(239,68,68,0.10) !important; }
+        [data-theme="dark"] .audit-row-importante > td { background: rgba(245,158,11,0.09) !important; }
+        [data-theme="dark"] .audit-row-error     > td { background: rgba(239,68,68,0.12) !important; }
+        [data-theme="dark"] .audit-row-logout    > td { background: rgba(245,158,11,0.07) !important; }
       `}</style>
 
-      <Row gutter={[12, 12]} align="middle" style={{ marginBottom: 12 }}>
+      <Row gutter={[12, 12]} align="middle" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
+        <Col>
+          <Select
+            mode="multiple"
+            value={nivelesSel}
+            onChange={v => { setNivelesSel(v); setPage(1); }}
+            placeholder="Nivel de importancia"
+            style={{ minWidth: 220 }}
+            maxTagCount="responsive"
+            allowClear
+          >
+            <Select.Option value="CRITICO">🔴 Crítico</Select.Option>
+            <Select.Option value="IMPORTANTE">🟠 Importante</Select.Option>
+            <Select.Option value="NORMAL">⚪ Normal</Select.Option>
+          </Select>
+        </Col>
         <Col>
           <Select
             placeholder="Acción" allowClear style={{ width: 140 }}
             onChange={setAccion}
-            options={['create','update','delete','login','logout','error','read']
+            options={['create','update','delete','login','logout','error','export']
               .map(v => ({ value: v, label: `${accionIcon[v]} ${v.toUpperCase()}` }))}
           />
         </Col>
@@ -364,14 +418,14 @@ function LogsTab({ filtroExitoso }: { filtroExitoso?: boolean }) {
           <Input
             prefix={<SearchOutlined />}
             placeholder="Módulo (facturas, clientes...)"
-            style={{ width: 220 }}
+            style={{ width: 200 }}
             onChange={e => setModulo(e.target.value || undefined)}
             allowClear
           />
         </Col>
         <Col>
           <Input
-            placeholder="Buscar por usuario o acción..."
+            placeholder="Buscar por usuario o descripción..."
             prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(1); }}
@@ -395,15 +449,20 @@ function LogsTab({ filtroExitoso }: { filtroExitoso?: boolean }) {
         loading={isLoading}
         size="small"
         scroll={{ x: 'max-content' }}
-        rowClassName={(r: any) =>
-          isErrorLog(r) ? 'audit-row-error' : isLogoutLog(r) ? 'audit-row-logout' : ''
-        }
+        rowClassName={(r: any) => {
+          if (isErrorLog(r))        return 'audit-row-error';
+          if (r.nivel === 'CRITICO')    return 'audit-row-critico';
+          if (r.nivel === 'IMPORTANTE') return 'audit-row-importante';
+          if (isLogoutLog(r))       return 'audit-row-logout';
+          return '';
+        }}
         pagination={{
           total: data?.meta?.total,
           pageSize: 20,
           current: page,
           onChange: setPage,
           showSizeChanger: false,
+          showTotal: t => `${t} eventos`,
         }}
       />
 
@@ -475,10 +534,23 @@ export default function AuditoriaPage() {
 
       <Card>
         <Tabs
-          defaultActiveKey="todos"
+          defaultActiveKey="importantes"
           items={[
-            { key: 'todos',   label: '📋 Todos los eventos',                         children: <LogsTab /> },
-            { key: 'errores', label: <><WarningOutlined /> Solo errores</>,           children: <LogsTab filtroExitoso={false} /> },
+            {
+              key: 'importantes',
+              label: '🔴 Crítico + Importante',
+              children: <LogsTab nivelesDefault={['CRITICO', 'IMPORTANTE']} />,
+            },
+            {
+              key: 'todos',
+              label: '📋 Todos los eventos',
+              children: <LogsTab />,
+            },
+            {
+              key: 'errores',
+              label: <><WarningOutlined /> Solo errores</>,
+              children: <LogsTab filtroExitoso={false} />,
+            },
           ]}
         />
       </Card>
