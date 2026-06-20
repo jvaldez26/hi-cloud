@@ -4,14 +4,17 @@ import {
   Select, message, Tag, Space, theme, DatePicker, Tabs, Badge,
   List, Drawer, Tooltip,
 } from 'antd';
-import { PlusOutlined, SearchOutlined, TableOutlined, CalendarOutlined, MedicineBoxOutlined } from '@ant-design/icons';
+import { PlusOutlined, SearchOutlined, TableOutlined, CalendarOutlined, MedicineBoxOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { Calendar } from 'antd';
 import type { Dayjs } from 'dayjs';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { opticaApi } from '../../api/optica.api';
 import { useNavigate } from 'react-router-dom';
 import { TableActions } from '../../components/ui/TableActions';
-import { RefreshByKeyButton } from '../../components/ui/TableToolbar';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 import { fmt } from '../../utils/formatters';
 import dayjs from 'dayjs';
 
@@ -35,9 +38,19 @@ const BADGE_STATUS: Record<string, any> = {
 
 // ── Vista tabla ───────────────────────────────────────────────────────────────
 
+const COLS_DEF = [
+  { key: 'numero', label: 'N°', defaultVisible: true },
+  { key: 'pac', label: 'Paciente', defaultVisible: true },
+  { key: 'fechaHora', label: 'Fecha / Hora', defaultVisible: true },
+  { key: 'tipo', label: 'Tipo', defaultVisible: true },
+  { key: 'estado', label: 'Estado', defaultVisible: true },
+  { key: 'consulta', label: 'Consulta', defaultVisible: true },
+  { key: 'acc', label: 'Acciones', defaultVisible: true },
+];
+
 function TablaView({
   citas, isLoading, search, setSearch, filtroEstado, setFiltro, token,
-  openEdit, openCreate,
+  openEdit, openCreate, filterColumns, visibleColumns, updateVisibility, exportar,
 }: any) {
   const nav = useNavigate();
   const rows = citas.filter((c: any) =>
@@ -79,29 +92,29 @@ function TablaView({
 
   return (
     <>
-      <Row justify="space-between" gutter={[8, 8]} style={{ marginBottom: 12 }}>
-        <Col>
-          <Space wrap>
-            <Input
-              placeholder="Buscar..."
-              prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
-              value={search} onChange={e => setSearch(e.target.value)}
-              allowClear style={{ width: 220 }}
-            />
-            <Select
-              placeholder="Estado" allowClear value={filtroEstado}
-              onChange={v => setFiltro(v)} options={ESTADO_OPS} style={{ width: 150 }}
-            />
-          </Space>
-        </Col>
-        <Col>
-          <Space>
-            <RefreshByKeyButton queryKey={['optica-citas']} />
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Nueva cita</Button>
-          </Space>
-        </Col>
-      </Row>
-      <Table columns={cols} dataSource={rows} rowKey="id" loading={isLoading}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+        <Space wrap>
+          <Input
+            placeholder="Buscar..."
+            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+            value={search} onChange={e => setSearch(e.target.value)}
+            allowClear style={{ width: 220 }}
+          />
+          <Select
+            placeholder="Estado" allowClear value={filtroEstado}
+            onChange={v => setFiltro(v)} options={ESTADO_OPS} style={{ width: 150 }}
+          />
+        </Space>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['optica-citas']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Nueva cita</Button>
+        </div>
+      </div>
+      <Table columns={filterColumns(cols as any)} dataSource={rows} rowKey="id" loading={isLoading}
         size="small" scroll={{ x: 'max-content' }} pagination={{ pageSize: 20 }} />
     </>
   );
@@ -304,6 +317,8 @@ export default function AgendaOpticaPage() {
   const [form] = Form.useForm();
   const qc = useQueryClient();
 
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('optica-citas', COLS_DEF);
+
   const { data: citasData, isLoading } = useQuery({
     queryKey: ['optica-citas', filtroEstado],
     queryFn: () => opticaApi.citas({ limit: 500, estado: filtroEstado }),
@@ -349,6 +364,18 @@ export default function AgendaOpticaPage() {
     },
   });
 
+  const exportar = () => {
+    const filas = citas.map((r: any) => ({
+      'N°': r.numero ?? '',
+      'Paciente': r.pacienteNombre ?? '',
+      'Fecha / Hora': r.fechaHora ? `${fmt.date(r.fechaHora)} ${dayjs(r.fechaHora).format('HH:mm')}` : '',
+      'Tipo': r.tipo ?? '',
+      'Estado': r.estado ?? '',
+    }));
+    exportarExcel(filas, `Citas-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   return (
     <div>
       <Title level={4} style={{ marginBottom: 16 }}>Agenda de Citas</Title>
@@ -365,6 +392,8 @@ export default function AgendaOpticaPage() {
                   search={search} setSearch={setSearch}
                   filtroEstado={filtroEstado} setFiltro={setFiltro}
                   token={token} openEdit={openEdit} openCreate={openCreate}
+                  filterColumns={filterColumns} visibleColumns={visibleColumns}
+                  updateVisibility={updateVisibility} exportar={exportar}
                 />
               ),
             },

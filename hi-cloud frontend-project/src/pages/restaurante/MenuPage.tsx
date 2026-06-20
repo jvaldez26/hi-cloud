@@ -3,12 +3,28 @@ import {
   Table, Button, Input, Modal, Form, InputNumber, Select, Switch,
   Space, Tag, Typography, Tabs, message,
 } from 'antd';
-import { PlusOutlined, EditOutlined, SearchOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, SearchOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { restauranteApi } from '../../api/restaurante.api';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 
 const { Title } = Typography;
 const { Option } = Select;
+
+const COLS_DEF = [
+  { key: 'codigo', label: 'Código', defaultVisible: true },
+  { key: 'nombre', label: 'Nombre', defaultVisible: true },
+  { key: 'categoriaNombre', label: 'Categoría', defaultVisible: true },
+  { key: 'precio', label: 'Precio', defaultVisible: true },
+  { key: 'costo', label: 'Costo', defaultVisible: false },
+  { key: 'tiempoPreparacionMin', label: 'Min', defaultVisible: false },
+  { key: 'disponible', label: 'Disponible', defaultVisible: true },
+  { key: 'disponibleParaDelivery', label: 'Delivery', defaultVisible: true },
+  { key: 'act', label: 'Acciones', defaultVisible: true },
+];
 
 export default function MenuPage() {
   const qc = useQueryClient();
@@ -19,6 +35,7 @@ export default function MenuPage() {
   const [modalCat, setModalCat] = useState(false);
   const [form] = Form.useForm();
   const [formCat] = Form.useForm();
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('restaurante-menu', COLS_DEF);
 
   const { data: categorias = [] } = useQuery({
     queryKey: ['restaurante-categorias'],
@@ -73,14 +90,33 @@ export default function MenuPage() {
     },
   ];
 
+  const exportar = () => {
+    const filas = (menu as any[]).map((r: any) => ({
+      'Código': r.codigo ?? '',
+      'Nombre': r.nombre ?? '',
+      'Categoría': r.categoriaNombre ?? '',
+      'Precio': r.precio ?? 0,
+      'Costo': r.costo ?? 0,
+      'Disponible': r.disponible ? 'Sí' : 'No',
+      'Delivery': r.disponibleParaDelivery ? 'Sí' : 'No',
+    }));
+    exportarExcel(filas, `Menu-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <Title level={4} style={{ margin: 0 }}>🍴 Gestión del Menú</Title>
-        <Space>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['restaurante-menu-admin']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
           <Button icon={<PlusOutlined />} onClick={() => setModalCat(true)}>Nueva Categoría</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditId(null); form.resetFields(); setModalItem(true); }}>Nuevo Ítem</Button>
-        </Space>
+        </div>
       </div>
 
       <Space style={{ marginBottom: 12 }} wrap>
@@ -98,7 +134,7 @@ export default function MenuPage() {
 
       <Table
         dataSource={menu as any[]}
-        columns={colsMenu}
+        columns={filterColumns(colsMenu as any)}
         rowKey="id"
         loading={isLoading}
         size="small"

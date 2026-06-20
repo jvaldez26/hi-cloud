@@ -3,13 +3,25 @@ import {
   Card, Button, Table, Typography, Row, Col, Modal, Form, Input,
   message, Space, theme,
 } from 'antd';
-import { PlusOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, SearchOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { opticaApi } from '../../api/optica.api';
 import { TableActions } from '../../components/ui/TableActions';
-import { RefreshByKeyButton } from '../../components/ui/TableToolbar';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 
 const { Title } = Typography;
+
+const COLS_DEF = [
+  { key: 'nombre', label: 'Nombre', defaultVisible: true },
+  { key: 'especialidad', label: 'Especialidad', defaultVisible: true },
+  { key: 'exequatur', label: 'Exequatur', defaultVisible: true },
+  { key: 'telefono', label: 'Teléfono', defaultVisible: true },
+  { key: 'email', label: 'Email', defaultVisible: false },
+  { key: 'acc', label: 'Acciones', defaultVisible: true },
+];
 
 export default function MedicosOpticaPage() {
   const { token } = theme.useToken();
@@ -18,6 +30,7 @@ export default function MedicosOpticaPage() {
   const [search, setSearch]   = useState('');
   const [form] = Form.useForm();
   const qc = useQueryClient();
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('optica-medicos', COLS_DEF);
 
   const { data, isLoading } = useQuery({
     queryKey: ['optica-medicos'],
@@ -82,33 +95,45 @@ export default function MedicosOpticaPage() {
     },
   ];
 
+  const exportar = () => {
+    const filas = ((data as any[]) ?? []).map((r: any) => ({
+      'Nombre': `Dr(a). ${r.nombre} ${r.apellido}`,
+      'Especialidad': r.especialidad ?? '',
+      'Exequatur': r.exequatur ?? '',
+      'Teléfono': r.telefono ?? '',
+      'Email': r.email ?? '',
+    }));
+    exportarExcel(filas, `Medicos-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   return (
     <div>
       <Title level={4} style={{ marginBottom: 16 }}>Médicos / Optometristas</Title>
       <Card>
-        <Row justify="space-between" style={{ marginBottom: 12 }}>
-          <Col>
-            <Input
-              placeholder="Buscar por nombre, especialidad..."
-              prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              allowClear
-              style={{ width: 280 }}
-            />
-          </Col>
-          <Col>
-            <Space>
-              <RefreshByKeyButton queryKey={['optica-medicos']} />
-              <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-                Nuevo médico
-              </Button>
-            </Space>
-          </Col>
-        </Row>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+          <Input
+            placeholder="Buscar por nombre, especialidad..."
+            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            allowClear
+            style={{ width: 280 }}
+          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+            <RefreshByKeyButton queryKey={['optica-medicos']} />
+            <VideoTutorialButton />
+            <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+              Nuevo médico
+            </Button>
+          </div>
+        </div>
 
         <Table
-          columns={cols}
+          columns={filterColumns(cols as any)}
           dataSource={rows}
           rowKey="id"
           loading={isLoading}

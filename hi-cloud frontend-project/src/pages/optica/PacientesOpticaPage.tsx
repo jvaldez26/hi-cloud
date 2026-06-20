@@ -4,15 +4,28 @@ import {
   Card, Button, Table, Typography, Row, Col, Modal, Form, Input,
   Select, message, Tag, Space, theme, DatePicker,
 } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined, FileTextOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined, FileTextOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { opticaApi } from '../../api/optica.api';
 import { TableActions } from '../../components/ui/TableActions';
-import { RefreshByKeyButton } from '../../components/ui/TableToolbar';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 import { fmt } from '../../utils/formatters';
 import dayjs from 'dayjs';
 
 const { Title } = Typography;
+
+const COLS_DEF = [
+  { key: 'nombre', label: 'Nombre', defaultVisible: true },
+  { key: 'cedula', label: 'Cédula', defaultVisible: true },
+  { key: 'telefono', label: 'Teléfono', defaultVisible: true },
+  { key: 'email', label: 'Email', defaultVisible: true },
+  { key: 'fechaNacimiento', label: 'Nac.', defaultVisible: false },
+  { key: 'isActive', label: 'Estado', defaultVisible: true },
+  { key: 'acc', label: 'Acciones', defaultVisible: true },
+];
 
 export default function PacientesOpticaPage() {
   const { token } = theme.useToken();
@@ -22,6 +35,7 @@ export default function PacientesOpticaPage() {
   const [search, setSearch]   = useState('');
   const [form] = Form.useForm();
   const qc = useQueryClient();
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('optica-pacientes', COLS_DEF);
 
   const { data, isLoading } = useQuery({
     queryKey: ['optica-pacientes'],
@@ -103,33 +117,46 @@ export default function PacientesOpticaPage() {
     },
   ];
 
+  const exportar = () => {
+    const filas = (data?.data ?? data ?? []).map((r: any) => ({
+      'Nombre': `${r.nombre} ${r.apellido}`,
+      'Cédula': r.cedula ?? '',
+      'Teléfono': r.telefono ?? '',
+      'Email': r.email ?? '',
+      'Fecha Nacimiento': r.fechaNacimiento ?? '',
+      'Estado': r.isActive ? 'Activo' : 'Inactivo',
+    }));
+    exportarExcel(filas, `Pacientes-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   return (
     <div>
       <Title level={4} style={{ marginBottom: 16 }}>Pacientes</Title>
       <Card>
-        <Row justify="space-between" style={{ marginBottom: 12 }}>
-          <Col>
-            <Input
-              placeholder="Buscar por nombre, cédula o teléfono..."
-              prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              allowClear
-              style={{ width: 280 }}
-            />
-          </Col>
-          <Col>
-            <Space>
-              <RefreshByKeyButton queryKey={['optica-pacientes']} />
-              <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-                Nuevo paciente
-              </Button>
-            </Space>
-          </Col>
-        </Row>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+          <Input
+            placeholder="Buscar por nombre, cédula o teléfono..."
+            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            allowClear
+            style={{ width: 280 }}
+          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+            <RefreshByKeyButton queryKey={['optica-pacientes']} />
+            <VideoTutorialButton />
+            <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+              Nuevo paciente
+            </Button>
+          </div>
+        </div>
 
         <Table
-          columns={cols}
+          columns={filterColumns(cols as any)}
           dataSource={rows}
           rowKey="id"
           loading={isLoading}

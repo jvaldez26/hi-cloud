@@ -4,15 +4,29 @@ import {
   Select, message, Space, theme, InputNumber, Tag, Drawer, DatePicker,
   Statistic,
 } from 'antd';
-import { PlusOutlined, SearchOutlined, BarChartOutlined } from '@ant-design/icons';
+import { PlusOutlined, SearchOutlined, BarChartOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { opticaApi } from '../../api/optica.api';
 import { TableActions } from '../../components/ui/TableActions';
-import { RefreshByKeyButton } from '../../components/ui/TableToolbar';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 import { fmt } from '../../utils/formatters';
 
 const { Title } = Typography;
+
+const COLS_DEF = [
+  { key: 'numero', label: 'N°', defaultVisible: true },
+  { key: 'pac', label: 'Paciente', defaultVisible: true },
+  { key: 'arsNombre', label: 'ARS', defaultVisible: true },
+  { key: 'arsNumeroAfiliado', label: 'Afiliado', defaultVisible: false },
+  { key: 'estado', label: 'Estado', defaultVisible: true },
+  { key: 'montoReclamado', label: 'Monto', defaultVisible: true },
+  { key: 'montoCubierto', label: 'Cubierto', defaultVisible: true },
+  { key: 'acc', label: 'Acciones', defaultVisible: true },
+];
 
 const ESTADO_OPS = [
   { value: 'pendiente',  label: 'Pendiente'  },
@@ -141,6 +155,8 @@ export default function ReclamacionesArsPage() {
   const [form] = Form.useForm();
   const qc = useQueryClient();
 
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('optica-reclamaciones', COLS_DEF);
+
   const { data: reclamacionesData, isLoading } = useQuery({
     queryKey: ['optica-reclamaciones', filtroEstado],
     queryFn: () => opticaApi.reclamaciones({ limit: 200, estado: filtroEstado }),
@@ -203,46 +219,60 @@ export default function ReclamacionesArsPage() {
     },
   ];
 
+  const exportar = () => {
+    const filas = reclamaciones.map((r: any) => ({
+      'N°': r.numero ?? '',
+      'Paciente': r.pacienteNombre ?? '',
+      'ARS': r.arsNombre ?? '',
+      'Afiliado': r.arsNumeroAfiliado ?? '',
+      'Estado': r.estado ?? '',
+      'Monto Reclamado': r.montoReclamado ?? 0,
+      'Monto Cubierto': r.montoCubierto ?? 0,
+    }));
+    exportarExcel(filas, `Reclamaciones-ARS-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   return (
     <div>
       <Title level={4} style={{ marginBottom: 16 }}>Reclamaciones ARS</Title>
       <Card>
-        <Row justify="space-between" gutter={[8, 8]} style={{ marginBottom: 12 }}>
-          <Col>
-            <Space wrap>
-              <Input
-                placeholder="Buscar por paciente, ARS o N°..."
-                prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                allowClear
-                style={{ width: 260 }}
-              />
-              <Select
-                placeholder="Filtrar estado"
-                allowClear
-                value={filtroEstado}
-                onChange={v => setFiltro(v)}
-                options={ESTADO_OPS}
-                style={{ width: 150 }}
-              />
-            </Space>
-          </Col>
-          <Col>
-            <Space>
-              <RefreshByKeyButton queryKey={['optica-reclamaciones']} />
-              <Button icon={<BarChartOutlined />} onClick={() => setReporte(true)}>
-                Reporte
-              </Button>
-              <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-                Nueva reclamación
-              </Button>
-            </Space>
-          </Col>
-        </Row>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+          <Space wrap>
+            <Input
+              placeholder="Buscar por paciente, ARS o N°..."
+              prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              allowClear
+              style={{ width: 260 }}
+            />
+            <Select
+              placeholder="Filtrar estado"
+              allowClear
+              value={filtroEstado}
+              onChange={v => setFiltro(v)}
+              options={ESTADO_OPS}
+              style={{ width: 150 }}
+            />
+          </Space>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+            <RefreshByKeyButton queryKey={['optica-reclamaciones']} />
+            <VideoTutorialButton />
+            <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+            <Button icon={<BarChartOutlined />} onClick={() => setReporte(true)}>
+              Reporte
+            </Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+              Nueva reclamación
+            </Button>
+          </div>
+        </div>
 
         <Table
-          columns={cols}
+          columns={filterColumns(cols as any)}
           dataSource={rows}
           rowKey="id"
           loading={isLoading}

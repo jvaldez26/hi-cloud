@@ -3,12 +3,27 @@ import {
   Table, Button, Card, Modal, Form, Input, Select, Tag, Space,
   Typography, Statistic, Row, Col, Divider, message, Alert,
 } from 'antd';
-import { PlayCircleOutlined, StopOutlined, PrinterOutlined } from '@ant-design/icons';
+import { PlayCircleOutlined, StopOutlined, PrinterOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { restauranteApi } from '../../api/restaurante.api';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
+
+const COLS_DEF = [
+  { key: 'numero', label: 'Número', defaultVisible: true },
+  { key: 'fechaApertura', label: 'Apertura', defaultVisible: true },
+  { key: 'fechaCierre', label: 'Cierre', defaultVisible: true },
+  { key: 'usuarioNombre', label: 'Cajero', defaultVisible: true },
+  { key: 'estado', label: 'Estado', defaultVisible: true },
+  { key: 'totalVentas', label: 'Ventas', defaultVisible: true },
+  { key: 'totalComandas', label: 'Comandas', defaultVisible: true },
+  { key: 'act', label: 'Acciones', defaultVisible: true },
+];
 
 export default function TurnosPage() {
   const qc = useQueryClient();
@@ -16,6 +31,8 @@ export default function TurnosPage() {
   const [modalCerrar, setModalCerrar] = useState<any>(null);
   const [form] = Form.useForm();
   const [formCierre] = Form.useForm();
+
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('restaurante-turnos', COLS_DEF);
 
   const { data: turnos = [], isLoading } = useQuery({
     queryKey: ['restaurante-turnos'],
@@ -89,18 +106,39 @@ export default function TurnosPage() {
     },
   ];
 
+  const exportar = () => {
+    const filas = (turnos as any[]).map((r: any) => ({
+      'Número': r.numero ?? '',
+      'Apertura': r.fechaApertura ? new Date(r.fechaApertura).toLocaleString('es-DO') : '',
+      'Cierre': r.fechaCierre ? new Date(r.fechaCierre).toLocaleString('es-DO') : '',
+      'Cajero': r.usuarioNombre ?? '',
+      'Estado': r.estado ?? '',
+      'Ventas': r.totalVentas ?? 0,
+      'Comandas': r.totalComandas ?? 0,
+    }));
+    exportarExcel(filas, `Turnos-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <Title level={4} style={{ margin: 0 }}>⏱️ Turnos</Title>
-        <Button
-          type="primary"
-          icon={<PlayCircleOutlined />}
-          disabled={!!turnoActivo}
-          onClick={() => setModalAbrir(true)}
-        >
-          Abrir Turno
-        </Button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['restaurante-turnos']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button
+            type="primary"
+            icon={<PlayCircleOutlined />}
+            disabled={!!turnoActivo}
+            onClick={() => setModalAbrir(true)}
+          >
+            Abrir Turno
+          </Button>
+        </div>
       </div>
 
       {turnoActivo && resumen && (
@@ -120,7 +158,7 @@ export default function TurnosPage() {
 
       <Table
         dataSource={turnos as any[]}
-        columns={cols}
+        columns={filterColumns(cols as any)}
         rowKey="id"
         loading={isLoading}
         size="small"

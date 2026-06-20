@@ -3,13 +3,28 @@ import {
   Table, Button, Modal, Form, Input, InputNumber, Select, DatePicker,
   Tag, Space, Typography, message, Popconfirm,
 } from 'antd';
-import { PlusOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
+import { PlusOutlined, CheckOutlined, CloseOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { restauranteApi } from '../../api/restaurante.api';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 import dayjs from 'dayjs';
 
 const { Title } = Typography;
 const { Option } = Select;
+
+const COLS_DEF = [
+  { key: 'numero', label: 'Número', defaultVisible: true },
+  { key: 'fechaHora', label: 'Fecha / Hora', defaultVisible: true },
+  { key: 'clienteNombre', label: 'Cliente', defaultVisible: true },
+  { key: 'clienteTelefono', label: 'Teléfono', defaultVisible: true },
+  { key: 'numPersonas', label: 'Personas', defaultVisible: true },
+  { key: 'estado', label: 'Estado', defaultVisible: true },
+  { key: 'notas', label: 'Notas', defaultVisible: false },
+  { key: 'act', label: 'Acciones', defaultVisible: true },
+];
 
 const ESTADO_COLOR: Record<string, string> = {
   pendiente: 'default', confirmada: 'blue', sentada: 'green', cancelada: 'error', no_show: 'warning',
@@ -21,6 +36,8 @@ export default function ReservacionesPage() {
   const [editId, setEditId] = useState<number | null>(null);
   const [form] = Form.useForm();
   const [filtroFecha, setFiltroFecha] = useState<any>(null);
+
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('restaurante-reservaciones', COLS_DEF);
 
   const { data: reservaciones = [], isLoading } = useQuery({
     queryKey: ['restaurante-reservaciones', filtroFecha?.format('YYYY-MM-DD')],
@@ -102,11 +119,36 @@ export default function ReservacionesPage() {
     },
   ];
 
+  const exportar = () => {
+    const filas = (reservaciones as any[]).map((r: any) => {
+      const fecha = r.fecha ? dayjs(r.fecha).format('YYYY-MM-DD') : '';
+      const hora = r.hora ? String(r.hora).slice(0, 5) : '';
+      return {
+        'Número': r.numero ?? '',
+        'Fecha / Hora': fecha && hora ? `${fecha} ${hora}` : '',
+        'Cliente': r.clienteNombre ?? '',
+        'Teléfono': r.clienteTelefono ?? '',
+        'Personas': r.numPersonas ?? '',
+        'Estado': r.estado ?? '',
+        'Notas': r.notas ?? '',
+      };
+    });
+    exportarExcel(filas, `Reservaciones-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <Title level={4} style={{ margin: 0 }}>📅 Reservaciones</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditId(null); form.resetFields(); setModal(true); }}>Nueva Reservación</Button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['restaurante-reservaciones']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditId(null); form.resetFields(); setModal(true); }}>Nueva Reservación</Button>
+        </div>
       </div>
 
       <Space style={{ marginBottom: 12 }}>
@@ -119,7 +161,7 @@ export default function ReservacionesPage() {
 
       <Table
         dataSource={reservaciones as any[]}
-        columns={cols}
+        columns={filterColumns(cols as any)}
         rowKey="id"
         loading={isLoading}
         size="small"

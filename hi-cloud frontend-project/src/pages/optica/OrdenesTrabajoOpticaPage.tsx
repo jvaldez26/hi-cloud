@@ -8,14 +8,17 @@ import {
 import {
   PlusOutlined, SearchOutlined, TableOutlined, AppstoreOutlined,
   DollarOutlined, ClockCircleOutlined, CheckCircleOutlined,
-  GiftOutlined, PrinterOutlined,
+  GiftOutlined, PrinterOutlined, FileExcelOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { opticaApi } from '../../api/optica.api';
 import { clientesApi } from '../../api/clientes.api';
 import { TableActions } from '../../components/ui/TableActions';
-import { RefreshByKeyButton } from '../../components/ui/TableToolbar';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 import { fmt } from '../../utils/formatters';
 
 const { Title, Text } = Typography;
@@ -51,6 +54,19 @@ const TIPO_NCF_OPS = [
   { value: 'B15', label: 'B15 — Gubernamental' },
   { value: 'E31', label: 'E31 — Electrónico crédito' },
   { value: 'E32', label: 'E32 — Electrónico consumidor' },
+];
+
+const COLS_DEF = [
+  { key: 'numero', label: 'N°', defaultVisible: true },
+  { key: 'pac', label: 'Paciente', defaultVisible: true },
+  { key: 'estado', label: 'Estado', defaultVisible: true },
+  { key: 'tipoLente', label: 'Lente', defaultVisible: true },
+  { key: 'laboratorio', label: 'Laboratorio', defaultVisible: false },
+  { key: 'total', label: 'Total', defaultVisible: true },
+  { key: 'balance', label: 'Saldo', defaultVisible: true },
+  { key: 'fechaEntrega', label: 'Entrega', defaultVisible: true },
+  { key: 'facturaId', label: 'Factura', defaultVisible: false },
+  { key: 'acc', label: 'Acciones', defaultVisible: true },
 ];
 
 // ── Imprimir OT ──────────────────────────────────────────────────────────────
@@ -680,7 +696,7 @@ function KanbanView({ ordenes, moveMut, openEdit, openFacturar, openEntregar, op
 
 // ── Vista tabla ───────────────────────────────────────────────────────────────
 
-function TablaView({ ordenes, isLoading, search, setSearch, filtroEstado, setFiltro, token, openEdit, openFacturar, openEntregar, openPrint }: any) {
+function TablaView({ ordenes, isLoading, search, setSearch, filtroEstado, setFiltro, token, openEdit, openFacturar, openEntregar, openPrint, filterColumns, visibleColumns, updateVisibility, exportar }: any) {
   const rows = ordenes.filter((o: any) =>
     `${o.pacienteNombre ?? ''} ${o.numero ?? ''}`.toLowerCase().includes(search.toLowerCase())
   );
@@ -754,24 +770,27 @@ function TablaView({ ordenes, isLoading, search, setSearch, filtroEstado, setFil
 
   return (
     <>
-      <Row justify="space-between" gutter={[8, 8]} style={{ marginBottom: 12 }}>
-        <Col>
-          <Space wrap>
-            <Input
-              placeholder="Buscar..."
-              prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
-              value={search} onChange={e => setSearch(e.target.value)}
-              allowClear style={{ width: 220 }}
-            />
-            <Select
-              placeholder="Estado" allowClear value={filtroEstado}
-              onChange={v => setFiltro(v)} options={ESTADO_OPS} style={{ width: 150 }}
-            />
-          </Space>
-        </Col>
-        <Col><RefreshByKeyButton queryKey={['optica-ordenes']} /></Col>
-      </Row>
-      <Table columns={cols} dataSource={rows} rowKey="id" loading={isLoading}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+        <Space wrap>
+          <Input
+            placeholder="Buscar..."
+            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+            value={search} onChange={e => setSearch(e.target.value)}
+            allowClear style={{ width: 220 }}
+          />
+          <Select
+            placeholder="Estado" allowClear value={filtroEstado}
+            onChange={v => setFiltro(v)} options={ESTADO_OPS} style={{ width: 150 }}
+          />
+        </Space>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['optica-ordenes']} />
+          <VideoTutorialButton />
+        </div>
+      </div>
+      <Table columns={filterColumns(cols as any)} dataSource={rows} rowKey="id" loading={isLoading}
         size="small" scroll={{ x: 'max-content' }} pagination={{ pageSize: 20 }} />
     </>
   );
@@ -823,6 +842,8 @@ export default function OrdenesTrabajoOpticaPage() {
   const ordenes   = (ordenesData?.data ?? ordenesData ?? []) as any[];
   const pacientes = (pacientesData?.data ?? pacientesData ?? []) as any[];
   const pacienteOpts = pacientes.map((p: any) => ({ value: p.id, label: `${p.nombre} ${p.apellido}` }));
+
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('optica-ordenes', COLS_DEF);
 
   const openCreate = () => { setEditing(null); form.resetFields(); form.setFieldValue('fecha', dayjs()); setOpen(true); };
   const openEdit   = (r: any) => { setEditing(r); form.setFieldsValue({ ...r, fecha: r.fecha ? dayjs(r.fecha) : dayjs(), fechaEntrega: r.fechaEntrega ? dayjs(r.fechaEntrega) : undefined }); setOpen(true); };
@@ -879,6 +900,21 @@ export default function OrdenesTrabajoOpticaPage() {
     setEntregarOt(null);
   };
 
+  const exportar = () => {
+    const filas = ordenes.map((r: any) => ({
+      'N°': r.numero ?? '',
+      'Paciente': r.pacienteNombre ?? '',
+      'Estado': ESTADO_LABEL[r.estado] ?? r.estado ?? '',
+      'Lente': r.tipoLente ?? '',
+      'Laboratorio': r.laboratorio ?? '',
+      'Total': r.total ?? 0,
+      'Saldo': r.balance ?? 0,
+      'Entrega': r.fechaEntrega ?? '',
+    }));
+    exportarExcel(filas, `Ordenes-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   return (
     <div>
       <Title level={4} style={{ marginBottom: 16 }}>Órdenes de Trabajo</Title>
@@ -917,6 +953,8 @@ export default function OrdenesTrabajoOpticaPage() {
                   openFacturar={(o: any) => setFacturarOt(o)}
                   openEntregar={(o: any) => setEntregarOt(o)}
                   openPrint={imprimirOT}
+                  filterColumns={filterColumns} visibleColumns={visibleColumns}
+                  updateVisibility={updateVisibility} exportar={exportar}
                 />
               ),
             },
