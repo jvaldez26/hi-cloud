@@ -942,8 +942,12 @@ function ProductosCatalogo() {
             </Col>
             {!esServicio && (
               <Col xs={24} sm={8}>
-                <Form.Item name="stock" label="Stock">
-                  <InputNumber style={{ width: '100%' }} min={0} precision={0} />
+                <Form.Item
+                  name="stock"
+                  label={editing ? 'Stock actual' : 'Stock inicial'}
+                  help={editing ? 'El stock se ajusta mediante movimientos de inventario' : undefined}
+                >
+                  <InputNumber style={{ width: '100%' }} min={0} precision={0} disabled={!!editing} />
                 </Form.Item>
               </Col>
             )}

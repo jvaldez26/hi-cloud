@@ -2299,12 +2299,13 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
     if (!fNombre.trim() || !fPrecio.trim()) { message.error('Nombre y precio son obligatorios'); return; }
     setSaving(true);
     try {
-      const body = {
+      const body: Record<string, unknown> = {
         nombre: fNombre.trim(), codigo: fCodigo.trim() || undefined,
         precio: Number(fPrecio), porcentajeIva: Number(fItbis),
-        stock: Number(fStock), stockMinimo: Number(fStockMin),
+        stockMinimo: Number(fStockMin),
         categoria: fCategoria.trim() || undefined, tipo: 'producto',
       };
+      if (!editingProd) body.stock = Number(fStock);
       if (editingProd) {
         await api.patch(`/productos/${editingProd.id}`, body);
         message.success('Producto actualizado');
@@ -2390,8 +2391,24 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
                   value={fPrecio} onChange={e => setFPrecio(e.target.value)} />
                 <PanelInput C={C} label="ITBIS %" type="number" min="0" max="100"
                   value={fItbis} onChange={e => setFItbis(e.target.value)} />
-                <PanelInput C={C} label="Stock" type="number" min="0"
-                  value={fStock} onChange={e => setFStock(e.target.value)} />
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: C.text }}>
+                    {editingProd ? 'Stock actual' : 'Stock'}
+                  </div>
+                  <input type="number" min="0" value={fStock}
+                    onChange={e => setFStock(e.target.value)}
+                    disabled={!!editingProd}
+                    style={{ width: '100%', height: 38, padding: '0 12px', borderRadius: 8,
+                      border: `1px solid ${C.border2}`, fontSize: 13, boxSizing: 'border-box',
+                      background: editingProd ? C.border : C.inputBg,
+                      color: editingProd ? C.textSub : C.text, cursor: editingProd ? 'not-allowed' : 'text',
+                      outline: 'none' }} />
+                  {editingProd && (
+                    <div style={{ fontSize: 11, color: C.textSub, marginTop: 3 }}>
+                      El stock se ajusta mediante movimientos de inventario
+                    </div>
+                  )}
+                </div>
                 <PanelInput C={C} label="Stock Mín." type="number" min="0"
                   value={fStockMin} onChange={e => setFStockMin(e.target.value)} />
               </div>

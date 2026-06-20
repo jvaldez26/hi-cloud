@@ -360,15 +360,9 @@ export class ProductosService implements OnModuleInit {
       }
     }
 
-    const { almacenId, ...updateData } = dto as any;
+    // stock se ignora en update — solo modificable mediante movimientos de inventario
+    const { almacenId, stock: _stock, ...updateData } = dto as any;
     await this.productoRepository.update(id, updateData);
-
-    // Sincronizar stock_almacen si se indicó almacén y el producto tiene stock
-    if (almacenId && dto.tipo !== 'servicio' && dto.stock != null) {
-      await this.sincronizarStockAlmacen(id, empresaId, dto.stock, almacenId).catch(
-        (err: Error) => this.logger.warn(`stock_almacen no sincronizado en producto #${id}: ${err.message}`),
-      );
-    }
 
     this.realtimeService.notify(empresaId, 'producto', 'updated', id);
     return this.findOne(id);
