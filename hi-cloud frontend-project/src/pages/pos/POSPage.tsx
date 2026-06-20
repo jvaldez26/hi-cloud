@@ -6086,6 +6086,8 @@ export default function POSPage() {
           cantidad:            i.cantidad,
           precioUnitario:      i.precio * (1 - i.descuento / 100),
           descripcion:         i.produto.nombre,
+          descuentoPct:        i.descuento,
+          precioOriginal:      i.descuento > 0 ? i.precio : undefined,
           // E44 (Zona Franca): ITBIS = 0 en todos los ítems
           ...(tipoNcf === 'E44' ? { porcentajeIva: 0 } : {}),
         })),

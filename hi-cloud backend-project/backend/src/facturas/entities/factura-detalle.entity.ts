@@ -42,4 +42,10 @@ export class FacturaDetalle extends BaseEntity {
 
   @Column({ type: 'decimal', precision: 12, scale: 2 })
   total!: number;
+
+  @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
+  descuentoPct!: number;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  precioOriginal?: number;
 }

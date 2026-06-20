@@ -91,6 +91,8 @@ export class FacturasService {
         subtotal,
         importeIva,
         total,
+        descuentoPct:   item.descuentoPct  ?? 0,
+        precioOriginal: item.precioOriginal ?? undefined,
       });
     }
 
@@ -236,6 +238,8 @@ export class FacturasService {
         subtotal,
         importeIva,
         total,
+        descuentoPct:        item.descuentoPct  ?? 0,
+        precioOriginal:      item.precioOriginal ?? undefined,
       });
     }
 

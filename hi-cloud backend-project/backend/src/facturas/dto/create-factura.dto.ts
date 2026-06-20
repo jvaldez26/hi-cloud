@@ -45,6 +45,17 @@ export class CreateFacturaDetalleDto {
   @Min(0)
   @Max(100)
   porcentajeIva?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100)
+  descuentoPct?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsPositive()
+  precioOriginal?: number;
 }
 
 export class CreateFacturaDto {
