@@ -256,11 +256,18 @@ function LogsTab({
     queryFn:  () => auditoriaApi.logs(page, 20, accion, modulo, filtroExitoso, nivelesParam),
   });
 
-  const logsfiltrados = useMemo(() =>
-    (data?.data ?? []).filter((i: any) =>
-      String(i.userName ?? '').toLowerCase().includes(search.toLowerCase()) ||
-      String(i.descripcion ?? '').toLowerCase().includes(search.toLowerCase())
-    ), [data, search]);
+  const logsfiltrados = useMemo(() => {
+    let list: any[] = data?.data ?? [];
+    if (filtroExitoso !== undefined) {
+      list = list.filter((i: any) => Boolean(i.exitoso) === filtroExitoso);
+    }
+    if (!search) return list;
+    const q = search.toLowerCase();
+    return list.filter((i: any) =>
+      String(i.userName ?? '').toLowerCase().includes(q) ||
+      String(i.descripcion ?? '').toLowerCase().includes(q)
+    );
+  }, [data, search, filtroExitoso]);
 
   const COLS_DEF = [
     { key: 'nivel',       label: 'Nivel',       defaultVisible: true  },

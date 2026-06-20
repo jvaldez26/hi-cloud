@@ -23,8 +23,12 @@ export class FiltroAuditoriaDto extends PaginationDto {
   fechaHasta?: string;
 
   @IsOptional()
+  @Transform(({ value }) => {
+    if (value === 'false' || value === false) return false;
+    if (value === 'true'  || value === true)  return true;
+    return undefined;
+  })
   @IsBoolean()
-  @Transform(({ value }) => value === 'true' || value === true)
   exitoso?: boolean;
 
   /** Nivel único: CRITICO | IMPORTANTE | NORMAL */
