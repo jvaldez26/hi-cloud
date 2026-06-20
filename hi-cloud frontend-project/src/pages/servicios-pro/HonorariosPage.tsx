@@ -1,16 +1,35 @@
 import { useState } from 'react';
 import { Table, Button, Modal, Form, Input, Select, DatePicker, Tag, message, Dropdown, Space, Statistic, Card, Row, Col } from 'antd';
-import { PlusOutlined, EllipsisOutlined, FilePdfOutlined, DollarOutlined } from '@ant-design/icons';
+import { PlusOutlined, EllipsisOutlined, FilePdfOutlined, DollarOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { serviciosProApi } from '../../api/servicios-pro.api';
 import dayjs from 'dayjs';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 
 const ESTADO_COLOR: Record<string, string> = { pendiente: 'orange', pagada: 'green', cancelada: 'red', vencida: 'magenta' };
+
+const COLS_DEF = [
+  { key: 'numero', label: 'Número', defaultVisible: true },
+  { key: 'expediente', label: 'Expediente', defaultVisible: true },
+  { key: 'cliente', label: 'Cliente', defaultVisible: true },
+  { key: 'estado', label: 'Estado', defaultVisible: true },
+  { key: 'horasTotales', label: 'Horas', defaultVisible: true },
+  { key: 'subtotal', label: 'Subtotal', defaultVisible: false },
+  { key: 'gastosTotal', label: 'Gastos', defaultVisible: false },
+  { key: 'total', label: 'TOTAL', defaultVisible: true },
+  { key: 'fechaEmision', label: 'Fecha', defaultVisible: true },
+  { key: 'fechaVencimiento', label: 'Vence', defaultVisible: true },
+  { key: 'acc', label: 'Acciones', defaultVisible: true },
+];
 
 export default function HonorariosPage() {
   const [modalGen, setModalGen] = useState(false);
   const [formGen] = Form.useForm();
   const qc = useQueryClient();
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('sp-honorarios', COLS_DEF);
 
   const { data = [], isLoading } = useQuery({ queryKey: ['sp-honorarios'], queryFn: () => serviciosProApi.getHonorarios({}) });
   const arr = Array.isArray(data) ? data : [];
@@ -32,17 +51,34 @@ export default function HonorariosPage() {
   const totalPendiente = arr.filter((h: any) => h.estado === 'pendiente').reduce((s: number, h: any) => s + Number(h.total ?? 0), 0);
   const totalPagado    = arr.filter((h: any) => h.estado === 'pagada').reduce((s: number, h: any) => s + Number(h.total ?? 0), 0);
 
+  const exportar = () => {
+    const filas = arr.map((r: any) => ({
+      'Número': r.numero,
+      'Expediente': r.expedienteNombre ?? '',
+      'Cliente': r.clienteNombre ?? '',
+      'Estado': r.estado,
+      'Horas': r.horasTotales,
+      'Subtotal': r.subtotal,
+      'Gastos': r.gastosTotal,
+      'Total': r.total,
+      'Fecha': r.fechaEmision ? dayjs(r.fechaEmision).format('DD/MM/YYYY') : '',
+      'Vence': r.fechaVencimiento ? dayjs(r.fechaVencimiento).format('DD/MM/YYYY') : '',
+    }));
+    exportarExcel(filas, `Honorarios-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   const columns = [
-    { title: 'Número', dataIndex: 'numero', width: 110 },
-    { title: 'Expediente', render: (_: any, r: any) => r.expedienteNombre ?? '—' },
-    { title: 'Cliente', render: (_: any, r: any) => r.clienteNombre ?? '—' },
-    { title: 'Estado', dataIndex: 'estado', render: (v: string) => <Tag color={ESTADO_COLOR[v] ?? 'default'}>{v}</Tag> },
-    { title: 'Horas', dataIndex: 'horasTotales', render: (v: number) => v ? `${Number(v).toFixed(2)}h` : '' },
-    { title: 'Subtotal', dataIndex: 'subtotal', render: (v: number) => v ? `RD$${Number(v).toLocaleString('es-DO', { minimumFractionDigits: 2 })}` : '' },
-    { title: 'Gastos', dataIndex: 'gastosTotal', render: (v: number) => v ? `RD$${Number(v).toLocaleString('es-DO', { minimumFractionDigits: 2 })}` : '' },
-    { title: 'TOTAL', dataIndex: 'total', render: (v: number) => <strong style={{ color: '#1d4ed8' }}>RD${Number(v ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}</strong> },
-    { title: 'Fecha', dataIndex: 'fechaEmision', render: (v: string) => v ? dayjs(v).format('DD/MM/YYYY') : '' },
-    { title: 'Vence', dataIndex: 'fechaVencimiento', render: (v: string) => v ? dayjs(v).format('DD/MM/YYYY') : '' },
+    { key: 'numero', title: 'Número', dataIndex: 'numero', width: 110 },
+    { key: 'expediente', title: 'Expediente', render: (_: any, r: any) => r.expedienteNombre ?? '—' },
+    { key: 'cliente', title: 'Cliente', render: (_: any, r: any) => r.clienteNombre ?? '—' },
+    { key: 'estado', title: 'Estado', dataIndex: 'estado', render: (v: string) => <Tag color={ESTADO_COLOR[v] ?? 'default'}>{v}</Tag> },
+    { key: 'horasTotales', title: 'Horas', dataIndex: 'horasTotales', render: (v: number) => v ? `${Number(v).toFixed(2)}h` : '' },
+    { key: 'subtotal', title: 'Subtotal', dataIndex: 'subtotal', render: (v: number) => v ? `RD$${Number(v).toLocaleString('es-DO', { minimumFractionDigits: 2 })}` : '' },
+    { key: 'gastosTotal', title: 'Gastos', dataIndex: 'gastosTotal', render: (v: number) => v ? `RD$${Number(v).toLocaleString('es-DO', { minimumFractionDigits: 2 })}` : '' },
+    { key: 'total', title: 'TOTAL', dataIndex: 'total', render: (v: number) => <strong style={{ color: '#1d4ed8' }}>RD${Number(v ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}</strong> },
+    { key: 'fechaEmision', title: 'Fecha', dataIndex: 'fechaEmision', render: (v: string) => v ? dayjs(v).format('DD/MM/YYYY') : '' },
+    { key: 'fechaVencimiento', title: 'Vence', dataIndex: 'fechaVencimiento', render: (v: string) => v ? dayjs(v).format('DD/MM/YYYY') : '' },
     {
       title: '', key: 'acc', width: 90,
       render: (_: any, r: any) => (
@@ -62,9 +98,16 @@ export default function HonorariosPage() {
 
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <h2 style={{ margin: 0 }}>💰 Honorarios</h2>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalGen(true)}>Generar Honorario</Button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['sp-honorarios']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalGen(true)}>Registrar Honorario</Button>
+        </div>
       </div>
 
       <Row gutter={16} style={{ marginBottom: 16 }}>
@@ -76,7 +119,7 @@ export default function HonorariosPage() {
         </Col>
       </Row>
 
-      <Table dataSource={arr} columns={columns} rowKey="id" loading={isLoading} scroll={{ x: 'max-content' }} size="small" />
+      <Table dataSource={arr} columns={filterColumns(columns as any)} rowKey="id" loading={isLoading} scroll={{ x: 'max-content' }} size="small" />
 
       <Modal open={modalGen} title="Generar Honorario de Expediente"
         onCancel={() => { setModalGen(false); formGen.resetFields(); }}

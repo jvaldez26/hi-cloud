@@ -1,12 +1,28 @@
 import { useState } from 'react';
 import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, Tag, message, Dropdown, Space } from 'antd';
-import { PlusOutlined, EllipsisOutlined, DollarOutlined } from '@ant-design/icons';
+import { PlusOutlined, EllipsisOutlined, DollarOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { serviciosProApi } from '../../api/servicios-pro.api';
 import dayjs from 'dayjs';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 
 const ESTADO_COLOR: Record<string, string> = { activo: 'green', pausado: 'orange', cancelado: 'red' };
 const PERIODICIDAD = ['mensual','trimestral','semestral','anual'];
+
+const COLS_DEF = [
+  { key: 'expediente', label: 'Expediente', defaultVisible: true },
+  { key: 'cliente', label: 'Cliente', defaultVisible: true },
+  { key: 'estado', label: 'Estado', defaultVisible: true },
+  { key: 'periodicidad', label: 'Periodicidad', defaultVisible: true },
+  { key: 'montoMensual', label: 'Monto mensual', defaultVisible: true },
+  { key: 'horasIncluidas', label: 'Horas incluidas', defaultVisible: true },
+  { key: 'fechaInicio', label: 'Inicio', defaultVisible: true },
+  { key: 'fechaFin', label: 'Fin', defaultVisible: true },
+  { key: 'acc', label: 'Acciones', defaultVisible: true },
+];
 
 export default function RetainersPage() {
   const [modalOpen, setModalOpen] = useState(false);
@@ -15,6 +31,7 @@ export default function RetainersPage() {
   const [form] = Form.useForm();
   const [formPago] = Form.useForm();
   const qc = useQueryClient();
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('sp-retainers', COLS_DEF);
 
   const { data = [], isLoading } = useQuery({ queryKey: ['sp-retainers'], queryFn: () => serviciosProApi.getRetainers({}) });
   const arr = Array.isArray(data) ? data : [];
@@ -46,15 +63,30 @@ export default function RetainersPage() {
     setModalOpen(true);
   };
 
+  const exportar = () => {
+    const filas = arr.map((r: any) => ({
+      'Expediente': r.expedienteNombre ?? '',
+      'Cliente': r.clienteNombre ?? '',
+      'Estado': r.estado,
+      'Periodicidad': r.periodicidad,
+      'Monto mensual': r.montoMensual,
+      'Horas incluidas': r.horasIncluidas,
+      'Inicio': r.fechaInicio ? dayjs(r.fechaInicio).format('DD/MM/YYYY') : '',
+      'Fin': r.fechaFin ? dayjs(r.fechaFin).format('DD/MM/YYYY') : '',
+    }));
+    exportarExcel(filas, `Retainers-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   const columns = [
-    { title: 'Expediente', render: (_: any, r: any) => <span style={{ fontWeight: 600 }}>{r.expedienteNombre ?? '—'}</span> },
-    { title: 'Cliente', render: (_: any, r: any) => r.clienteNombre ?? '—' },
-    { title: 'Estado', dataIndex: 'estado', render: (v: string) => <Tag color={ESTADO_COLOR[v] ?? 'default'}>{v}</Tag> },
-    { title: 'Periodicidad', dataIndex: 'periodicidad' },
-    { title: 'Monto mensual', dataIndex: 'montoMensual', render: (v: number) => `RD$${Number(v ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}` },
-    { title: 'Horas incluidas', dataIndex: 'horasIncluidas', render: (v: number) => v ? `${v}h` : '—' },
-    { title: 'Inicio', dataIndex: 'fechaInicio', render: (v: string) => v ? dayjs(v).format('DD/MM/YYYY') : '' },
-    { title: 'Fin', dataIndex: 'fechaFin', render: (v: string) => v ? dayjs(v).format('DD/MM/YYYY') : '' },
+    { key: 'expediente', title: 'Expediente', render: (_: any, r: any) => <span style={{ fontWeight: 600 }}>{r.expedienteNombre ?? '—'}</span> },
+    { key: 'cliente', title: 'Cliente', render: (_: any, r: any) => r.clienteNombre ?? '—' },
+    { key: 'estado', title: 'Estado', dataIndex: 'estado', render: (v: string) => <Tag color={ESTADO_COLOR[v] ?? 'default'}>{v}</Tag> },
+    { key: 'periodicidad', title: 'Periodicidad', dataIndex: 'periodicidad' },
+    { key: 'montoMensual', title: 'Monto mensual', dataIndex: 'montoMensual', render: (v: number) => `RD$${Number(v ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}` },
+    { key: 'horasIncluidas', title: 'Horas incluidas', dataIndex: 'horasIncluidas', render: (v: number) => v ? `${v}h` : '—' },
+    { key: 'fechaInicio', title: 'Inicio', dataIndex: 'fechaInicio', render: (v: string) => v ? dayjs(v).format('DD/MM/YYYY') : '' },
+    { key: 'fechaFin', title: 'Fin', dataIndex: 'fechaFin', render: (v: string) => v ? dayjs(v).format('DD/MM/YYYY') : '' },
     {
       title: '', key: 'acc', width: 80,
       render: (_: any, r: any) => (
@@ -70,12 +102,19 @@ export default function RetainersPage() {
 
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <h2 style={{ margin: 0 }}>🔄 Retainers</h2>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditId(null); form.resetFields(); setModalOpen(true); }}>Nuevo Retainer</Button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['sp-retainers']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditId(null); form.resetFields(); setModalOpen(true); }}>Nuevo Retainer</Button>
+        </div>
       </div>
 
-      <Table dataSource={arr} columns={columns} rowKey="id" loading={isLoading} scroll={{ x: 'max-content' }} size="small" />
+      <Table dataSource={arr} columns={filterColumns(columns as any)} rowKey="id" loading={isLoading} scroll={{ x: 'max-content' }} size="small" />
 
       {/* Modal crear/editar */}
       <Modal open={modalOpen} title={editId ? 'Editar Retainer' : 'Nuevo Retainer'}

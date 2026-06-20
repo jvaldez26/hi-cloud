@@ -1,12 +1,26 @@
 import { useState } from 'react';
 import { Table, Button, Tag, Space, Modal, Form, Input, Select, DatePicker, message, Row, Col } from 'antd';
-import { PlusOutlined, EyeOutlined, EditOutlined } from '@ant-design/icons';
+import { PlusOutlined, EyeOutlined, EditOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { gimnasioApi } from '../../api/gimnasio.api';
 import dayjs from 'dayjs';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 
 const ESTADO_COLOR: Record<string, string> = { activo: 'green', inactivo: 'default', suspendido: 'orange', vencido: 'red' };
+
+const COLS_DEF = [
+  { key: 'numero', label: 'Numero', defaultVisible: true },
+  { key: 'nombre', label: 'Nombre', defaultVisible: true },
+  { key: 'cedula', label: 'Cedula', defaultVisible: true },
+  { key: 'telefono', label: 'Telefono', defaultVisible: true },
+  { key: 'objetivo', label: 'Objetivo', defaultVisible: true },
+  { key: 'estado', label: 'Estado', defaultVisible: true },
+  { key: 'acciones', label: 'Acciones', defaultVisible: true },
+];
 
 export default function MiembrosPage() {
   const [search, setSearch] = useState('');
@@ -22,6 +36,20 @@ export default function MiembrosPage() {
     queryFn: () => gimnasioApi.getMiembros({ search, estado }),
   });
   const miembros = Array.isArray(data) ? data : data?.data ?? [];
+
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('gimnasio-miembros', COLS_DEF);
+
+  const exportar = () => {
+    const filas = (data?.data ?? data ?? []).map((r: any) => ({
+      'Numero': r.numero,
+      'Nombre': `${r.nombre ?? ''} ${r.apellidos ?? ''}`.trim(),
+      'Cedula': r.cedula,
+      'Telefono': r.telefono,
+      'Objetivo': r.objetivo,
+      'Estado': r.estado,
+    }));
+    exportarExcel(filas, 'Miembros');
+  };
 
   const crearMut = useMutation({
     mutationFn: (body: any) => editando ? gimnasioApi.actualizarMiembro(editando.id, body) : gimnasioApi.crearMiembro(body),
@@ -40,14 +68,14 @@ export default function MiembrosPage() {
   };
 
   const columns = [
-    { title: 'Numero', dataIndex: 'numero', width: 100 },
-    { title: 'Nombre', dataIndex: 'nombre', render: (v: string, r: any) => `${v} ${r.apellidos ?? ''}`.trim() },
-    { title: 'Cedula', dataIndex: 'cedula' },
-    { title: 'Telefono', dataIndex: 'telefono' },
-    { title: 'Objetivo', dataIndex: 'objetivo' },
-    { title: 'Estado', dataIndex: 'estado', render: (v: string) => <Tag color={ESTADO_COLOR[v] ?? 'default'}>{v}</Tag> },
+    { key: 'numero', title: 'Numero', dataIndex: 'numero', width: 100 },
+    { key: 'nombre', title: 'Nombre', dataIndex: 'nombre', render: (v: string, r: any) => `${v} ${r.apellidos ?? ''}`.trim() },
+    { key: 'cedula', title: 'Cedula', dataIndex: 'cedula' },
+    { key: 'telefono', title: 'Telefono', dataIndex: 'telefono' },
+    { key: 'objetivo', title: 'Objetivo', dataIndex: 'objetivo' },
+    { key: 'estado', title: 'Estado', dataIndex: 'estado', render: (v: string) => <Tag color={ESTADO_COLOR[v] ?? 'default'}>{v}</Tag> },
     {
-      title: 'Acciones', render: (_: any, r: any) => (
+      key: 'acciones', title: 'Acciones', render: (_: any, r: any) => (
         <Space>
           <Button icon={<EyeOutlined />} size="small" onClick={() => navigate(`/gimnasio/miembros/${r.id}`)}>Ficha</Button>
           <Button icon={<EditOutlined />} size="small" onClick={() => openEditar(r)}>Editar</Button>
@@ -58,9 +86,16 @@ export default function MiembrosPage() {
 
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <h2 style={{ margin: 0 }}>Miembros</h2>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditando(null); form.resetFields(); setModalOpen(true); }}>Nuevo Miembro</Button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['gimnasio-miembros']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditando(null); form.resetFields(); setModalOpen(true); }}>Nuevo Miembro</Button>
+        </div>
       </div>
       <Row gutter={8} style={{ marginBottom: 16 }}>
         <Col xs={24} md={12}><Input.Search placeholder="Buscar nombre, cedula, numero..." value={search} onChange={e => setSearch(e.target.value)} /></Col>
@@ -70,7 +105,7 @@ export default function MiembrosPage() {
           </Select>
         </Col>
       </Row>
-      <Table dataSource={miembros} columns={columns} rowKey="id" loading={isLoading} scroll={{ x: 'max-content' }} />
+      <Table dataSource={miembros} columns={filterColumns(columns as any)} rowKey="id" loading={isLoading} scroll={{ x: 'max-content' }} />
       <Modal
         open={modalOpen}
         title={editando ? 'Editar Miembro' : 'Nuevo Miembro'}

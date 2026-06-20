@@ -1,10 +1,14 @@
 import { useState } from 'react';
 import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, Tag, message, Space, Dropdown } from 'antd';
-import { PlusOutlined, EllipsisOutlined } from '@ant-design/icons';
+import { PlusOutlined, EllipsisOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { serviciosProApi } from '../../api/servicios-pro.api';
 import api from '../../api/client';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 
 const TIPOS = ['caso_legal','proyecto','consultoria','auditoria','diseno','ingenieria','otro'];
 const ESTADOS = ['borrador','activo','pausado','completado','cancelado'];
@@ -14,6 +18,18 @@ const PRIORIDADES = ['baja','normal','alta','urgente'];
 const ESTADO_COLOR: Record<string, string> = {
   activo: 'green', borrador: 'default', pausado: 'orange', completado: 'blue', cancelado: 'red',
 };
+
+const COLS_DEF = [
+  { key: 'numero', label: 'Número', defaultVisible: true },
+  { key: 'nombre', label: 'Nombre', defaultVisible: true },
+  { key: 'clienteNombre', label: 'Cliente', defaultVisible: true },
+  { key: 'profesionalNombre', label: 'Responsable', defaultVisible: true },
+  { key: 'estado', label: 'Estado', defaultVisible: true },
+  { key: 'tipoFacturacion', label: 'Tipo Facturación', defaultVisible: true },
+  { key: 'fechaInicio', label: 'Inicio', defaultVisible: true },
+  { key: 'totalHorasRegistradas', label: 'Horas', defaultVisible: true },
+  { key: 'acciones', label: 'Acciones', defaultVisible: true },
+];
 
 export default function ExpedientesPage() {
   const [modalOpen, setModalOpen] = useState(false);
@@ -27,6 +43,7 @@ export default function ExpedientesPage() {
     queryKey: ['sp-expedientes', filtroEstado],
     queryFn: () => serviciosProApi.getExpedientes({ estado: filtroEstado }),
   });
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('sp-expedientes', COLS_DEF);
 
   const { data: profesionalesData = [] } = useQuery({
     queryKey: ['sp-profesionales-sel'],
@@ -59,18 +76,33 @@ export default function ExpedientesPage() {
     setModalOpen(true);
   };
 
+  const exportar = () => {
+    const filas = (Array.isArray(data) ? data : []).map((r: any) => ({
+      'Número': r.numero,
+      'Nombre': r.nombre,
+      'Cliente': r.clienteNombre,
+      'Responsable': r.profesionalNombre ? `${r.profesionalNombre} ${r.profesionalApellidos ?? ''}`.trim() : '',
+      'Estado': r.estado,
+      'Tipo Facturación': r.tipoFacturacion?.replace(/_/g, ' ') ?? '',
+      'Inicio': r.fechaInicio ? new Date(r.fechaInicio).toLocaleDateString('es-DO') : '',
+      'Horas': r.totalHorasRegistradas,
+    }));
+    exportarExcel(filas, `Expedientes-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   const columns = [
-    { title: 'Número', dataIndex: 'numero', width: 100 },
-    { title: 'Nombre', dataIndex: 'nombre', render: (v: string, row: any) => (
+    { title: 'Número', key: 'numero', dataIndex: 'numero', width: 100 },
+    { title: 'Nombre', key: 'nombre', dataIndex: 'nombre', render: (v: string, row: any) => (
       <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#1d4ed8', fontWeight: 600, textAlign: 'left', fontSize: 13 }}
         onClick={() => navigate(`/servicios-pro/expedientes/${row.id}`)}>{v}</button>
     )},
-    { title: 'Cliente', dataIndex: 'clienteNombre' },
-    { title: 'Responsable', dataIndex: 'profesionalNombre', render: (v: string, row: any) => v ? `${v} ${row.profesionalApellidos ?? ''}`.trim() : '—' },
-    { title: 'Estado', dataIndex: 'estado', render: (v: string) => <Tag color={ESTADO_COLOR[v] ?? 'default'}>{v}</Tag> },
-    { title: 'Tipo Facturación', dataIndex: 'tipoFacturacion', render: (v: string) => v?.replace(/_/g, ' ') ?? '—' },
-    { title: 'Inicio', dataIndex: 'fechaInicio', render: (v: string) => v ? new Date(v).toLocaleDateString('es-DO') : '' },
-    { title: 'Horas', dataIndex: 'totalHorasRegistradas', render: (v: number) => v != null ? `${Number(v).toFixed(1)}h` : '' },
+    { title: 'Cliente', key: 'clienteNombre', dataIndex: 'clienteNombre' },
+    { title: 'Responsable', key: 'profesionalNombre', dataIndex: 'profesionalNombre', render: (v: string, row: any) => v ? `${v} ${row.profesionalApellidos ?? ''}`.trim() : '—' },
+    { title: 'Estado', key: 'estado', dataIndex: 'estado', render: (v: string) => <Tag color={ESTADO_COLOR[v] ?? 'default'}>{v}</Tag> },
+    { title: 'Tipo Facturación', key: 'tipoFacturacion', dataIndex: 'tipoFacturacion', render: (v: string) => v?.replace(/_/g, ' ') ?? '—' },
+    { title: 'Inicio', key: 'fechaInicio', dataIndex: 'fechaInicio', render: (v: string) => v ? new Date(v).toLocaleDateString('es-DO') : '' },
+    { title: 'Horas', key: 'totalHorasRegistradas', dataIndex: 'totalHorasRegistradas', render: (v: number) => v != null ? `${Number(v).toFixed(1)}h` : '' },
     {
       title: '', key: 'acciones', width: 50,
       render: (_: any, row: any) => (
@@ -86,19 +118,24 @@ export default function ExpedientesPage() {
 
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <h2 style={{ margin: 0 }}>📁 Expedientes</h2>
-        <Space>
-          <Select placeholder="Filtrar por estado" allowClear style={{ width: 160 }} value={filtroEstado} onChange={v => setFiltroEstado(v)}>
-            {ESTADOS.map(e => <Select.Option key={e} value={e}>{e}</Select.Option>)}
-          </Select>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditId(null); form.resetFields(); setModalOpen(true); }}>
-            Nuevo Expediente
-          </Button>
-        </Space>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['sp-expedientes']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditId(null); form.resetFields(); setModalOpen(true); }}>Nuevo Expediente</Button>
+        </div>
+      </div>
+      <div style={{ marginBottom: 16 }}>
+        <Select placeholder="Filtrar por estado" allowClear style={{ width: 160 }} value={filtroEstado} onChange={v => setFiltroEstado(v)}>
+          {ESTADOS.map(e => <Select.Option key={e} value={e}>{e}</Select.Option>)}
+        </Select>
       </div>
 
-      <Table dataSource={Array.isArray(data) ? data : []} columns={columns} rowKey="id" loading={isLoading} scroll={{ x: 'max-content' }} size="small" />
+      <Table dataSource={Array.isArray(data) ? data : []} columns={filterColumns(columns as any)} rowKey="id" loading={isLoading} scroll={{ x: 'max-content' }} size="small" />
 
       <Modal open={modalOpen} title={editId ? 'Editar Expediente' : 'Nuevo Expediente'}
         onCancel={() => { setModalOpen(false); form.resetFields(); setEditId(null); }}

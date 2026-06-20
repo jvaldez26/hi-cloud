@@ -1,9 +1,22 @@
 import { useState, useEffect } from 'react';
 import { Button, Card, Form, Select, DatePicker, InputNumber, Input, Table, message, Tag, Alert } from 'antd';
-import { PlusOutlined, PlayCircleOutlined, StopOutlined } from '@ant-design/icons';
+import { PlusOutlined, PlayCircleOutlined, StopOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { serviciosProApi } from '../../api/servicios-pro.api';
 import dayjs from 'dayjs';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
+
+const COLS_DEF = [
+  { key: 'expediente', label: 'Expediente', defaultVisible: true },
+  { key: 'profesional', label: 'Profesional', defaultVisible: true },
+  { key: 'horas', label: 'Horas', defaultVisible: true },
+  { key: 'descripcion', label: 'Descripción', defaultVisible: true },
+  { key: 'monto', label: 'Monto', defaultVisible: true },
+  { key: 'facturable', label: 'Facturable', defaultVisible: true },
+];
 
 function formatDuracion(ms: number): string {
   const h = Math.floor(ms / 3600000);
@@ -69,6 +82,8 @@ export default function TimeTrackerPage() {
     onError: (e: any) => message.error(e.response?.data?.message ?? 'Error'),
   });
 
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('sp-time', COLS_DEF);
+
   const { data: tiempoHoy = [] } = useQuery({
     queryKey: ['sp-tiempo-hoy'],
     queryFn: () => serviciosProApi.getTiempo({ desde: dayjs().format('YYYY-MM-DD'), hasta: dayjs().format('YYYY-MM-DD') }),
@@ -81,9 +96,39 @@ export default function TimeTrackerPage() {
     ? tiempoHoy.reduce((s: number, t: any) => s + Number(t.monto ?? 0), 0)
     : 0;
 
+  const exportar = () => {
+    const filas = (Array.isArray(tiempoHoy) ? tiempoHoy : []).map((r: any) => ({
+      'Expediente': `${r.expedienteNumero ?? ''} — ${r.expedienteNombre ?? ''}`,
+      'Profesional': `${r.profesionalNombre ?? ''} ${r.profesionalApellidos ?? ''}`.trim(),
+      'Horas': r.horas,
+      'Descripción': r.descripcion,
+      'Monto': r.monto,
+      'Facturable': r.facturable ? 'Si' : 'No',
+    }));
+    exportarExcel(filas, `TimeTracker-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
+  const colsTiempo = [
+    { title: 'Expediente', key: 'expediente', render: (_: any, r: any) => `${r.expedienteNumero ?? ''} — ${r.expedienteNombre ?? ''}` },
+    { title: 'Profesional', key: 'profesional', render: (_: any, r: any) => `${r.profesionalNombre ?? ''} ${r.profesionalApellidos ?? ''}`.trim() },
+    { title: 'Horas', key: 'horas', dataIndex: 'horas', render: (v: number) => `${Number(v).toFixed(2)}h`, width: 80 },
+    { title: 'Descripción', key: 'descripcion', dataIndex: 'descripcion' },
+    { title: 'Monto', key: 'monto', dataIndex: 'monto', render: (v: number) => v ? `RD$${Number(v).toLocaleString('es-DO', { minimumFractionDigits: 2 })}` : '' },
+    { title: 'Facturable', key: 'facturable', dataIndex: 'facturable', render: (v: boolean) => <Tag color={v ? 'blue' : 'default'}>{v ? '✓' : '—'}</Tag>, width: 80 },
+  ];
+
   return (
     <div style={{ padding: 24 }}>
-      <h2 style={{ margin: '0 0 16px' }}>⏱️ Time Tracker</h2>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+        <h2 style={{ margin: 0 }}>⏱️ Time Tracker</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['sp-tiempo-hoy']} />
+          <VideoTutorialButton />
+        </div>
+      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
         {/* Timer en tiempo real */}
@@ -166,14 +211,7 @@ export default function TimeTrackerPage() {
       {/* Historial del día */}
       <Card title={`📋 Hoy — ${totalHorasHoy.toFixed(2)}h · RD$${totalMontoHoy.toLocaleString('es-DO', { minimumFractionDigits: 2 })}`}>
         <Table dataSource={Array.isArray(tiempoHoy) ? tiempoHoy : []} rowKey="id" size="small" scroll={{ x: 'max-content' }} pagination={false}
-          columns={[
-            { title: 'Expediente', render: (_: any, r: any) => `${r.expedienteNumero ?? ''} — ${r.expedienteNombre ?? ''}` },
-            { title: 'Profesional', render: (_: any, r: any) => `${r.profesionalNombre ?? ''} ${r.profesionalApellidos ?? ''}`.trim() },
-            { title: 'Horas', dataIndex: 'horas', render: (v: number) => `${Number(v).toFixed(2)}h`, width: 80 },
-            { title: 'Descripción', dataIndex: 'descripcion' },
-            { title: 'Monto', dataIndex: 'monto', render: (v: number) => v ? `RD$${Number(v).toLocaleString('es-DO', { minimumFractionDigits: 2 })}` : '' },
-            { title: 'Facturable', dataIndex: 'facturable', render: (v: boolean) => <Tag color={v ? 'blue' : 'default'}>{v ? '✓' : '—'}</Tag>, width: 80 },
-          ]} />
+          columns={filterColumns(colsTiempo as any)} />
       </Card>
     </div>
   );

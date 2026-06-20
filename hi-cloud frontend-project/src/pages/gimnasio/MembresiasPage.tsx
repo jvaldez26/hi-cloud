@@ -1,10 +1,25 @@
 import { useState } from 'react';
 import { Table, Button, Tag, Space, Modal, Form, Input, Select, DatePicker, message, Popconfirm } from 'antd';
-import { PlusOutlined, ReloadOutlined, PauseOutlined, PlayCircleOutlined } from '@ant-design/icons';
+import { PlusOutlined, ReloadOutlined, PauseOutlined, PlayCircleOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { gimnasioApi } from '../../api/gimnasio.api';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 
 const ESTADO_COLOR: Record<string, string> = { activa: 'green', vencida: 'red', congelada: 'blue', suspendida: 'orange', cancelada: 'default' };
+
+const COLS_DEF = [
+  { key: 'numero', label: 'Numero', defaultVisible: true },
+  { key: 'miembroNombre', label: 'Miembro', defaultVisible: true },
+  { key: 'planNombre', label: 'Plan', defaultVisible: true },
+  { key: 'fechaInicio', label: 'Inicio', defaultVisible: true },
+  { key: 'fechaFin', label: 'Fin', defaultVisible: true },
+  { key: 'estado', label: 'Estado', defaultVisible: true },
+  { key: 'total', label: 'Total', defaultVisible: true },
+  { key: 'acciones', label: 'Acciones', defaultVisible: true },
+];
 
 export default function MembresiasPage() {
   const [estadoFiltro, setEstadoFiltro] = useState('');
@@ -23,6 +38,21 @@ export default function MembresiasPage() {
 
   const { data: miembrosData } = useQuery({ queryKey: ['gimnasio-miembros-sel'], queryFn: () => gimnasioApi.getMiembros({ limit: 500 }) });
   const miembros = Array.isArray(miembrosData) ? miembrosData : miembrosData?.data ?? [];
+
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('gimnasio-membresias', COLS_DEF);
+
+  const exportar = () => {
+    const filas = (memData?.data ?? memData ?? []).map((r: any) => ({
+      'Numero': r.numero,
+      'Miembro': r.miembroNombre,
+      'Plan': r.planNombre,
+      'Inicio': r.fechaInicio ? new Date(r.fechaInicio).toLocaleDateString('es-DO') : '',
+      'Fin': r.fechaFin ? new Date(r.fechaFin).toLocaleDateString('es-DO') : '',
+      'Estado': r.estado,
+      'Total': r.total,
+    }));
+    exportarExcel(filas, 'Membresias');
+  };
 
   const crearMut = useMutation({
     mutationFn: (body: any) => gimnasioApi.crearMembresia(body),
@@ -49,15 +79,15 @@ export default function MembresiasPage() {
   });
 
   const columns = [
-    { title: 'Numero', dataIndex: 'numero', width: 100 },
-    { title: 'Miembro', dataIndex: 'miembroNombre' },
-    { title: 'Plan', dataIndex: 'planNombre' },
-    { title: 'Inicio', dataIndex: 'fechaInicio', render: (v: string) => v ? new Date(v).toLocaleDateString('es-DO') : '' },
-    { title: 'Fin', dataIndex: 'fechaFin', render: (v: string) => v ? new Date(v).toLocaleDateString('es-DO') : '' },
-    { title: 'Estado', dataIndex: 'estado', render: (v: string) => <Tag color={ESTADO_COLOR[v] ?? 'default'}>{v}</Tag> },
-    { title: 'Total', dataIndex: 'total', render: (v: number) => v != null ? `RD$${Number(v).toLocaleString('es-DO', { minimumFractionDigits: 2 })}` : '' },
+    { key: 'numero', title: 'Numero', dataIndex: 'numero', width: 100 },
+    { key: 'miembroNombre', title: 'Miembro', dataIndex: 'miembroNombre' },
+    { key: 'planNombre', title: 'Plan', dataIndex: 'planNombre' },
+    { key: 'fechaInicio', title: 'Inicio', dataIndex: 'fechaInicio', render: (v: string) => v ? new Date(v).toLocaleDateString('es-DO') : '' },
+    { key: 'fechaFin', title: 'Fin', dataIndex: 'fechaFin', render: (v: string) => v ? new Date(v).toLocaleDateString('es-DO') : '' },
+    { key: 'estado', title: 'Estado', dataIndex: 'estado', render: (v: string) => <Tag color={ESTADO_COLOR[v] ?? 'default'}>{v}</Tag> },
+    { key: 'total', title: 'Total', dataIndex: 'total', render: (v: number) => v != null ? `RD$${Number(v).toLocaleString('es-DO', { minimumFractionDigits: 2 })}` : '' },
     {
-      title: 'Acciones', render: (_: any, r: any) => (
+      key: 'acciones', title: 'Acciones', render: (_: any, r: any) => (
         <Space>
           <Popconfirm title="Renovar membresia?" onConfirm={() => renovarMut.mutate(r.id)} okText="Si" cancelText="No">
             <Button icon={<ReloadOutlined />} size="small">Renovar</Button>
@@ -79,16 +109,23 @@ export default function MembresiasPage() {
 
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <h2 style={{ margin: 0 }}>Membresias</h2>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setModalOpen(true); }}>Nueva Membresia</Button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['gimnasio-membresias']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setModalOpen(true); }}>Nueva Membresía</Button>
+        </div>
       </div>
       <div style={{ marginBottom: 16 }}>
         <Select style={{ width: 180 }} placeholder="Filtrar por estado" allowClear value={estadoFiltro || undefined} onChange={v => setEstadoFiltro(v ?? '')}>
           {['activa', 'vencida', 'congelada', 'suspendida', 'cancelada'].map(e => <Select.Option key={e} value={e}>{e}</Select.Option>)}
         </Select>
       </div>
-      <Table dataSource={membresias} columns={columns} rowKey="id" loading={isLoading} scroll={{ x: 'max-content' }} />
+      <Table dataSource={membresias} columns={filterColumns(columns as any)} rowKey="id" loading={isLoading} scroll={{ x: 'max-content' }} />
       <Modal
         open={modalOpen}
         title="Nueva Membresia"

@@ -1,8 +1,22 @@
 import { useState } from 'react';
 import { Table, Button, Modal, Form, Select, Input, InputNumber, message } from 'antd';
-import { PlusOutlined, FilePdfOutlined } from '@ant-design/icons';
+import { PlusOutlined, FilePdfOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { gimnasioApi } from '../../api/gimnasio.api';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
+
+const COLS_DEF = [
+  { key: 'nombre', label: 'Nombre', defaultVisible: true },
+  { key: 'miembroNombre', label: 'Miembro', defaultVisible: true },
+  { key: 'caloriasObjetivo', label: 'Calorias Objetivo', defaultVisible: true },
+  { key: 'proteinasGramos', label: 'Proteinas (g)', defaultVisible: true },
+  { key: 'carbohidratosGramos', label: 'Carbos (g)', defaultVisible: true },
+  { key: 'grasasGramos', label: 'Grasas (g)', defaultVisible: true },
+  { key: 'acciones', label: 'Acciones', defaultVisible: true },
+];
 
 export default function NutricionPage() {
   const [miembroFiltro, setMiembroFiltro] = useState<number | undefined>();
@@ -18,6 +32,21 @@ export default function NutricionPage() {
 
   const { data: miembrosData } = useQuery({ queryKey: ['gimnasio-miembros-sel'], queryFn: () => gimnasioApi.getMiembros({ limit: 500 }) });
   const miembros = Array.isArray(miembrosData) ? miembrosData : miembrosData?.data ?? [];
+
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('gimnasio-nutricion', COLS_DEF);
+
+  const exportar = () => {
+    const filas = (Array.isArray(data) ? data : []).map((r: any) => ({
+      'Nombre': r.nombre,
+      'Miembro': r.miembroNombre,
+      'Calorias Objetivo': r.caloriasObjetivo,
+      'Proteinas (g)': r.proteinasGramos,
+      'Carbos (g)': r.carbohidratosGramos,
+      'Grasas (g)': r.grasasGramos,
+    }));
+    exportarExcel(filas, `Nutricion-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
 
   const crearMut = useMutation({
     mutationFn: (body: any) => gimnasioApi.crearNutricion(body),
@@ -36,14 +65,14 @@ export default function NutricionPage() {
   };
 
   const columns = [
-    { title: 'Nombre', dataIndex: 'nombre' },
-    { title: 'Miembro', dataIndex: 'miembroNombre' },
-    { title: 'Calorias Objetivo', dataIndex: 'caloriasObjetivo', render: (v: number) => v != null ? `${v} kcal` : '' },
-    { title: 'Proteinas (g)', dataIndex: 'proteinasGramos' },
-    { title: 'Carbos (g)', dataIndex: 'carbohidratosGramos' },
-    { title: 'Grasas (g)', dataIndex: 'grasasGramos' },
+    { key: 'nombre', title: 'Nombre', dataIndex: 'nombre' },
+    { key: 'miembroNombre', title: 'Miembro', dataIndex: 'miembroNombre' },
+    { key: 'caloriasObjetivo', title: 'Calorias Objetivo', dataIndex: 'caloriasObjetivo', render: (v: number) => v != null ? `${v} kcal` : '' },
+    { key: 'proteinasGramos', title: 'Proteinas (g)', dataIndex: 'proteinasGramos' },
+    { key: 'carbohidratosGramos', title: 'Carbos (g)', dataIndex: 'carbohidratosGramos' },
+    { key: 'grasasGramos', title: 'Grasas (g)', dataIndex: 'grasasGramos' },
     {
-      title: 'Acciones', render: (_: any, r: any) => (
+      key: 'acciones', title: 'Acciones', render: (_: any, r: any) => (
         <Button icon={<FilePdfOutlined />} size="small" onClick={() => verPdf(r.id)}>PDF</Button>
       )
     },
@@ -51,9 +80,16 @@ export default function NutricionPage() {
 
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <h2 style={{ margin: 0 }}>Planes Nutricionales</h2>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setModalOpen(true); }}>Nuevo Plan</Button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['gimnasio-nutricion']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setModalOpen(true); }}>Nuevo Plan</Button>
+        </div>
       </div>
       <div style={{ marginBottom: 16 }}>
         <Select style={{ width: 250 }} placeholder="Filtrar por miembro" allowClear showSearch optionFilterProp="children"
@@ -61,7 +97,7 @@ export default function NutricionPage() {
           {miembros.map((m: any) => <Select.Option key={m.id} value={m.id}>{m.nombre} {m.apellidos ?? ''}</Select.Option>)}
         </Select>
       </div>
-      <Table dataSource={planes} columns={columns} rowKey="id" loading={isLoading} scroll={{ x: 'max-content' }} />
+      <Table dataSource={planes} columns={filterColumns(columns as any)} rowKey="id" loading={isLoading} scroll={{ x: 'max-content' }} />
       <Modal open={modalOpen} title="Nuevo Plan Nutricional"
         onCancel={() => { setModalOpen(false); form.resetFields(); }}
         onOk={() => form.validateFields().then(v => crearMut.mutate(v))}

@@ -1,10 +1,24 @@
 import { useState } from 'react';
 import { Table, Button, Space, Modal, Form, Input, Select, InputNumber, message, Tabs } from 'antd';
-import { PlusOutlined, EditOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { gimnasioApi } from '../../api/gimnasio.api';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 
 const DIAS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
+
+const COLS_DEF = [
+  { key: 'nombre', label: 'Nombre', defaultVisible: true },
+  { key: 'tipo', label: 'Tipo', defaultVisible: true },
+  { key: 'categoria', label: 'Categoria', defaultVisible: true },
+  { key: 'capacidad', label: 'Capacidad', defaultVisible: true },
+  { key: 'duracionMinutos', label: 'Duracion (min)', defaultVisible: true },
+  { key: 'costo', label: 'Costo', defaultVisible: true },
+  { key: 'acciones', label: 'Acciones', defaultVisible: true },
+];
 
 export default function ClasesPage() {
   const [modalClaseOpen, setModalClaseOpen] = useState(false);
@@ -13,6 +27,20 @@ export default function ClasesPage() {
   const [formClase] = Form.useForm();
   const [formSchedule] = Form.useForm();
   const qc = useQueryClient();
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('gimnasio-clases', COLS_DEF);
+
+  const exportar = () => {
+    const filas = (Array.isArray(clasesData) ? clasesData : []).map((r: any) => ({
+      'Nombre': r.nombre,
+      'Tipo': r.tipo,
+      'Categoria': r.categoria,
+      'Capacidad': r.capacidad,
+      'Duracion (min)': r.duracionMinutos,
+      'Costo': r.costo,
+    }));
+    exportarExcel(filas, `Clases-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
 
   const { data: clasesData, isLoading: loadingClases } = useQuery({ queryKey: ['gimnasio-clases'], queryFn: gimnasioApi.getClases });
   const clases = Array.isArray(clasesData) ? clasesData : [];
@@ -36,14 +64,14 @@ export default function ClasesPage() {
   });
 
   const colClases = [
-    { title: 'Nombre', dataIndex: 'nombre' },
-    { title: 'Tipo', dataIndex: 'tipo' },
-    { title: 'Categoria', dataIndex: 'categoria' },
-    { title: 'Capacidad', dataIndex: 'capacidad' },
-    { title: 'Duracion (min)', dataIndex: 'duracionMinutos' },
-    { title: 'Costo', dataIndex: 'costo', render: (v: number) => v != null ? `RD$${Number(v).toLocaleString('es-DO', { minimumFractionDigits: 2 })}` : 'Incluida' },
+    { key: 'nombre', title: 'Nombre', dataIndex: 'nombre' },
+    { key: 'tipo', title: 'Tipo', dataIndex: 'tipo' },
+    { key: 'categoria', title: 'Categoria', dataIndex: 'categoria' },
+    { key: 'capacidad', title: 'Capacidad', dataIndex: 'capacidad' },
+    { key: 'duracionMinutos', title: 'Duracion (min)', dataIndex: 'duracionMinutos' },
+    { key: 'costo', title: 'Costo', dataIndex: 'costo', render: (v: number) => v != null ? `RD$${Number(v).toLocaleString('es-DO', { minimumFractionDigits: 2 })}` : 'Incluida' },
     {
-      title: 'Acciones', render: (_: any, r: any) => (
+      key: 'acciones', title: 'Acciones', render: (_: any, r: any) => (
         <Button icon={<EditOutlined />} size="small" onClick={() => { setEditandoClase(r); formClase.setFieldsValue(r); setModalClaseOpen(true); }}>Editar</Button>
       )
     },
@@ -60,7 +88,15 @@ export default function ClasesPage() {
 
   return (
     <div style={{ padding: 24 }}>
-      <h2 style={{ marginBottom: 24 }}>Clases</h2>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+        <h2 style={{ margin: 0 }}>Clases</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['gimnasio-clases']} />
+          <VideoTutorialButton />
+        </div>
+      </div>
       <Tabs
         items={[
           {
@@ -70,7 +106,7 @@ export default function ClasesPage() {
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
                   <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditandoClase(null); formClase.resetFields(); setModalClaseOpen(true); }}>Nueva Clase</Button>
                 </div>
-                <Table dataSource={clases} columns={colClases} rowKey="id" loading={loadingClases} scroll={{ x: 'max-content' }} />
+                <Table dataSource={clases} columns={filterColumns(colClases as any)} rowKey="id" loading={loadingClases} scroll={{ x: 'max-content' }} />
               </>
             )
           },

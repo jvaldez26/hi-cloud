@@ -1,11 +1,27 @@
 import { useState } from 'react';
 import { Table, Button, Modal, Form, Input, Select, DatePicker, TimePicker, InputNumber, Tag, message, Dropdown } from 'antd';
-import { PlusOutlined, EllipsisOutlined } from '@ant-design/icons';
+import { PlusOutlined, EllipsisOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { serviciosProApi } from '../../api/servicios-pro.api';
 import dayjs from 'dayjs';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 
 const TIPO_COLOR: Record<string, string> = { interna: 'default', cliente: 'blue', tribunal: 'red', virtual: 'cyan', otro: 'default' };
+
+const COLS_DEF = [
+  { key: 'titulo', label: 'Título', defaultVisible: true },
+  { key: 'expediente', label: 'Expediente', defaultVisible: true },
+  { key: 'tipo', label: 'Tipo', defaultVisible: true },
+  { key: 'fecha', label: 'Fecha', defaultVisible: true },
+  { key: 'hora', label: 'Hora', defaultVisible: true },
+  { key: 'duracionMin', label: 'Duración', defaultVisible: true },
+  { key: 'lugar', label: 'Lugar/URL', defaultVisible: false },
+  { key: 'profesional', label: 'Profesional', defaultVisible: true },
+  { key: 'acc', label: 'Acciones', defaultVisible: true },
+];
 
 export default function ReunionesPage() {
   const [modalOpen, setModalOpen] = useState(false);
@@ -14,6 +30,7 @@ export default function ReunionesPage() {
   const qc = useQueryClient();
 
   const { data = [], isLoading } = useQuery({ queryKey: ['sp-reuniones'], queryFn: () => serviciosProApi.getReuniones({}) });
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('sp-reuniones', COLS_DEF);
   const { data: expedientes = [] } = useQuery({ queryKey: ['sp-expedientes'], queryFn: () => serviciosProApi.getExpedientes({ estado: 'activo' }) });
   const { data: profesionales = [] } = useQuery({ queryKey: ['sp-profesionales-sel'], queryFn: serviciosProApi.getProfesionales });
 
@@ -33,15 +50,30 @@ export default function ReunionesPage() {
     setModalOpen(true);
   };
 
+  const exportar = () => {
+    const filas = (Array.isArray(data) ? data : []).map((r: any) => ({
+      'Título': r.titulo,
+      'Expediente': r.expedienteNombre ?? '',
+      'Tipo': r.tipo,
+      'Fecha': r.fecha ? dayjs(r.fecha).format('DD/MM/YYYY') : '',
+      'Hora': r.hora ? r.hora.slice(0, 5) : '',
+      'Duración (min)': r.duracionMin,
+      'Lugar/URL': r.lugar,
+      'Profesional': r.profesionalNombre ? `${r.profesionalNombre} ${r.profesionalApellidos ?? ''}`.trim() : '',
+    }));
+    exportarExcel(filas, `Reuniones-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   const columns = [
-    { title: 'Título', dataIndex: 'titulo', render: (v: string) => <span style={{ fontWeight: 600 }}>{v}</span> },
-    { title: 'Expediente', render: (_: any, r: any) => r.expedienteNombre ?? '—' },
-    { title: 'Tipo', dataIndex: 'tipo', render: (v: string) => <Tag color={TIPO_COLOR[v] ?? 'default'}>{v}</Tag> },
-    { title: 'Fecha', dataIndex: 'fecha', render: (v: string) => v ? dayjs(v).format('DD/MM/YYYY') : '' },
-    { title: 'Hora', dataIndex: 'hora', render: (v: string) => v ? v.slice(0, 5) : '' },
-    { title: 'Duración', dataIndex: 'duracionMin', render: (v: number) => v ? `${v} min` : '' },
-    { title: 'Lugar/URL', dataIndex: 'lugar', render: (v: string) => v?.startsWith('http') ? <a href={v} target="_blank" rel="noreferrer">Link</a> : (v ?? '') },
-    { title: 'Profesional', render: (_: any, r: any) => r.profesionalNombre ? `${r.profesionalNombre} ${r.profesionalApellidos ?? ''}`.trim() : '—' },
+    { title: 'Título', key: 'titulo', dataIndex: 'titulo', render: (v: string) => <span style={{ fontWeight: 600 }}>{v}</span> },
+    { title: 'Expediente', key: 'expediente', render: (_: any, r: any) => r.expedienteNombre ?? '—' },
+    { title: 'Tipo', key: 'tipo', dataIndex: 'tipo', render: (v: string) => <Tag color={TIPO_COLOR[v] ?? 'default'}>{v}</Tag> },
+    { title: 'Fecha', key: 'fecha', dataIndex: 'fecha', render: (v: string) => v ? dayjs(v).format('DD/MM/YYYY') : '' },
+    { title: 'Hora', key: 'hora', dataIndex: 'hora', render: (v: string) => v ? v.slice(0, 5) : '' },
+    { title: 'Duración', key: 'duracionMin', dataIndex: 'duracionMin', render: (v: number) => v ? `${v} min` : '' },
+    { title: 'Lugar/URL', key: 'lugar', dataIndex: 'lugar', render: (v: string) => v?.startsWith('http') ? <a href={v} target="_blank" rel="noreferrer">Link</a> : (v ?? '') },
+    { title: 'Profesional', key: 'profesional', render: (_: any, r: any) => r.profesionalNombre ? `${r.profesionalNombre} ${r.profesionalApellidos ?? ''}`.trim() : '—' },
     {
       title: '', key: 'acc', width: 50,
       render: (_: any, r: any) => (
@@ -54,12 +86,19 @@ export default function ReunionesPage() {
 
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <h2 style={{ margin: 0 }}>📅 Reuniones</h2>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditId(null); form.resetFields(); setModalOpen(true); }}>Nueva Reunión</Button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['sp-reuniones']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditId(null); form.resetFields(); setModalOpen(true); }}>Nueva Reunión</Button>
+        </div>
       </div>
 
-      <Table dataSource={Array.isArray(data) ? data : []} columns={columns} rowKey="id" loading={isLoading} scroll={{ x: 'max-content' }} size="small" />
+      <Table dataSource={Array.isArray(data) ? data : []} columns={filterColumns(columns as any)} rowKey="id" loading={isLoading} scroll={{ x: 'max-content' }} size="small" />
 
       <Modal open={modalOpen} title={editId ? 'Editar Reunión' : 'Nueva Reunión'}
         onCancel={() => { setModalOpen(false); form.resetFields(); setEditId(null); }}

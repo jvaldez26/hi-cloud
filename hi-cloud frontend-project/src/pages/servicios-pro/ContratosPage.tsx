@@ -1,18 +1,35 @@
 import { useState } from 'react';
 import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, Tag, message, Dropdown, Space } from 'antd';
-import { PlusOutlined, EllipsisOutlined, FilePdfOutlined } from '@ant-design/icons';
+import { PlusOutlined, EllipsisOutlined, FilePdfOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { serviciosProApi } from '../../api/servicios-pro.api';
 import dayjs from 'dayjs';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 
 const ESTADO_COLOR: Record<string, string> = { borrador: 'default', enviado: 'orange', firmado: 'green', cancelado: 'red' };
 const TIPOS = ['honorarios','servicios','nda','acuerdo_pago','otro'];
+
+const COLS_DEF = [
+  { key: 'numero', label: 'Número', defaultVisible: true },
+  { key: 'titulo', label: 'Título', defaultVisible: true },
+  { key: 'expediente', label: 'Expediente', defaultVisible: true },
+  { key: 'estado', label: 'Estado', defaultVisible: true },
+  { key: 'tipo', label: 'Tipo', defaultVisible: true },
+  { key: 'valor', label: 'Monto', defaultVisible: true },
+  { key: 'fechaInicio', label: 'Inicio', defaultVisible: true },
+  { key: 'fechaVencimiento', label: 'Vence', defaultVisible: true },
+  { key: 'acciones', label: 'Acciones', defaultVisible: true },
+];
 
 export default function ContratosPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [form] = Form.useForm();
   const qc = useQueryClient();
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('sp-contratos', COLS_DEF);
 
   const { data = [], isLoading } = useQuery({ queryKey: ['sp-contratos'], queryFn: () => serviciosProApi.getContratos({}) });
   const { data: expedientes = [] } = useQuery({ queryKey: ['sp-expedientes'], queryFn: () => serviciosProApi.getExpedientes({ estado: 'activo' }) });
@@ -40,15 +57,30 @@ export default function ContratosPage() {
     setModalOpen(true);
   };
 
+  const exportar = () => {
+    const filas = (Array.isArray(data) ? data : []).map((r: any) => ({
+      'Número': r.numero,
+      'Título': r.titulo,
+      'Expediente': r.expedienteNombre ?? '',
+      'Estado': r.estado,
+      'Tipo': r.tipo,
+      'Monto': r.valor,
+      'Inicio': r.fechaInicio ? dayjs(r.fechaInicio).format('DD/MM/YYYY') : '',
+      'Vence': r.fechaVencimiento ? dayjs(r.fechaVencimiento).format('DD/MM/YYYY') : '',
+    }));
+    exportarExcel(filas, `Contratos-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   const columns = [
-    { title: 'Número', dataIndex: 'numero', width: 110 },
-    { title: 'Título', dataIndex: 'titulo', render: (v: string, r: any) => <span style={{ fontWeight: 600 }}>{v}</span> },
-    { title: 'Expediente', render: (_: any, r: any) => r.expedienteNombre ?? '—' },
-    { title: 'Estado', dataIndex: 'estado', render: (v: string) => <Tag color={ESTADO_COLOR[v] ?? 'default'}>{v}</Tag> },
-    { title: 'Tipo', dataIndex: 'tipo', render: (v: string) => v?.replace(/_/g, ' ') ?? '' },
-    { title: 'Monto', dataIndex: 'valor', render: (v: number) => v ? `RD$${Number(v).toLocaleString('es-DO', { minimumFractionDigits: 2 })}` : '' },
-    { title: 'Inicio', dataIndex: 'fechaInicio', render: (v: string) => v ? dayjs(v).format('DD/MM/YYYY') : '' },
-    { title: 'Vence', dataIndex: 'fechaVencimiento', render: (v: string) => v ? dayjs(v).format('DD/MM/YYYY') : '' },
+    { key: 'numero', title: 'Número', dataIndex: 'numero', width: 110 },
+    { key: 'titulo', title: 'Título', dataIndex: 'titulo', render: (v: string, r: any) => <span style={{ fontWeight: 600 }}>{v}</span> },
+    { key: 'expediente', title: 'Expediente', render: (_: any, r: any) => r.expedienteNombre ?? '—' },
+    { key: 'estado', title: 'Estado', dataIndex: 'estado', render: (v: string) => <Tag color={ESTADO_COLOR[v] ?? 'default'}>{v}</Tag> },
+    { key: 'tipo', title: 'Tipo', dataIndex: 'tipo', render: (v: string) => v?.replace(/_/g, ' ') ?? '' },
+    { key: 'valor', title: 'Monto', dataIndex: 'valor', render: (v: number) => v ? `RD$${Number(v).toLocaleString('es-DO', { minimumFractionDigits: 2 })}` : '' },
+    { key: 'fechaInicio', title: 'Inicio', dataIndex: 'fechaInicio', render: (v: string) => v ? dayjs(v).format('DD/MM/YYYY') : '' },
+    { key: 'fechaVencimiento', title: 'Vence', dataIndex: 'fechaVencimiento', render: (v: string) => v ? dayjs(v).format('DD/MM/YYYY') : '' },
     {
       title: '', key: 'acciones', width: 80,
       render: (_: any, r: any) => (
@@ -67,12 +99,19 @@ export default function ContratosPage() {
 
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <h2 style={{ margin: 0 }}>📄 Contratos</h2>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditId(null); form.resetFields(); setModalOpen(true); }}>Nuevo Contrato</Button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['sp-contratos']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditId(null); form.resetFields(); setModalOpen(true); }}>Nuevo Contrato</Button>
+        </div>
       </div>
 
-      <Table dataSource={Array.isArray(data) ? data : []} columns={columns} rowKey="id" loading={isLoading} scroll={{ x: 'max-content' }} size="small" />
+      <Table dataSource={Array.isArray(data) ? data : []} columns={filterColumns(columns as any)} rowKey="id" loading={isLoading} scroll={{ x: 'max-content' }} size="small" />
 
       <Modal open={modalOpen} title={editId ? 'Editar Contrato' : 'Nuevo Contrato'}
         onCancel={() => { setModalOpen(false); form.resetFields(); setEditId(null); }}

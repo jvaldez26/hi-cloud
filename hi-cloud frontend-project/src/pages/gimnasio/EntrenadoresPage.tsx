@@ -1,8 +1,21 @@
 import { useState } from 'react';
 import { Table, Button, Modal, Form, Input, InputNumber, message } from 'antd';
-import { PlusOutlined, EditOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { gimnasioApi } from '../../api/gimnasio.api';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
+
+const COLS_DEF = [
+  { key: 'nombre', label: 'Nombre', defaultVisible: true },
+  { key: 'especialidad', label: 'Especialidad', defaultVisible: true },
+  { key: 'certificaciones', label: 'Certificaciones', defaultVisible: true },
+  { key: 'tarifaSesion', label: 'Tarifa Sesion', defaultVisible: true },
+  { key: 'tarifaMes', label: 'Tarifa Mes', defaultVisible: true },
+  { key: 'acciones', label: 'Acciones', defaultVisible: true },
+];
 
 export default function EntrenadoresPage() {
   const [modalOpen, setModalOpen] = useState(false);
@@ -13,6 +26,19 @@ export default function EntrenadoresPage() {
   const { data, isLoading } = useQuery({ queryKey: ['gimnasio-entrenadores'], queryFn: gimnasioApi.getEntrenadores });
   const entrenadores = Array.isArray(data) ? data : [];
 
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('gimnasio-entrenadores', COLS_DEF);
+
+  const exportar = () => {
+    const filas = (Array.isArray(data) ? data : []).map((r: any) => ({
+      'Nombre': r.nombre,
+      'Especialidad': r.especialidad,
+      'Certificaciones': r.certificaciones,
+      'Tarifa Sesion': r.tarifaSesion,
+      'Tarifa Mes': r.tarifaMes,
+    }));
+    exportarExcel(filas, 'Entrenadores');
+  };
+
   const guardarMut = useMutation({
     mutationFn: (body: any) => editando ? gimnasioApi.actualizarEntrenador(editando.id, body) : gimnasioApi.crearEntrenador(body),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['gimnasio-entrenadores'] }); message.success('Entrenador guardado'); setModalOpen(false); form.resetFields(); setEditando(null); },
@@ -20,13 +46,13 @@ export default function EntrenadoresPage() {
   });
 
   const columns = [
-    { title: 'Nombre', dataIndex: 'nombre' },
-    { title: 'Especialidad', dataIndex: 'especialidad' },
-    { title: 'Certificaciones', dataIndex: 'certificaciones' },
-    { title: 'Tarifa Sesion', dataIndex: 'tarifaSesion', render: (v: number) => v != null ? `RD$${Number(v).toLocaleString('es-DO', { minimumFractionDigits: 2 })}` : '' },
-    { title: 'Tarifa Mes', dataIndex: 'tarifaMes', render: (v: number) => v != null ? `RD$${Number(v).toLocaleString('es-DO', { minimumFractionDigits: 2 })}` : '' },
+    { key: 'nombre', title: 'Nombre', dataIndex: 'nombre' },
+    { key: 'especialidad', title: 'Especialidad', dataIndex: 'especialidad' },
+    { key: 'certificaciones', title: 'Certificaciones', dataIndex: 'certificaciones' },
+    { key: 'tarifaSesion', title: 'Tarifa Sesion', dataIndex: 'tarifaSesion', render: (v: number) => v != null ? `RD$${Number(v).toLocaleString('es-DO', { minimumFractionDigits: 2 })}` : '' },
+    { key: 'tarifaMes', title: 'Tarifa Mes', dataIndex: 'tarifaMes', render: (v: number) => v != null ? `RD$${Number(v).toLocaleString('es-DO', { minimumFractionDigits: 2 })}` : '' },
     {
-      title: 'Acciones', render: (_: any, r: any) => (
+      key: 'acciones', title: 'Acciones', render: (_: any, r: any) => (
         <Button icon={<EditOutlined />} size="small" onClick={() => { setEditando(r); form.setFieldsValue(r); setModalOpen(true); }}>Editar</Button>
       )
     },
@@ -34,11 +60,18 @@ export default function EntrenadoresPage() {
 
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <h2 style={{ margin: 0 }}>Entrenadores</h2>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditando(null); form.resetFields(); setModalOpen(true); }}>Nuevo Entrenador</Button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['gimnasio-entrenadores']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditando(null); form.resetFields(); setModalOpen(true); }}>Nuevo Entrenador</Button>
+        </div>
       </div>
-      <Table dataSource={entrenadores} columns={columns} rowKey="id" loading={isLoading} scroll={{ x: 'max-content' }} />
+      <Table dataSource={entrenadores} columns={filterColumns(columns as any)} rowKey="id" loading={isLoading} scroll={{ x: 'max-content' }} />
       <Modal open={modalOpen} title={editando ? 'Editar Entrenador' : 'Nuevo Entrenador'}
         onCancel={() => { setModalOpen(false); form.resetFields(); setEditando(null); }}
         onOk={() => form.validateFields().then(v => guardarMut.mutate(v))}

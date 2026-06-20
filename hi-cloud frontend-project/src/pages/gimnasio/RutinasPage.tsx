@@ -1,8 +1,23 @@
 import { useState } from 'react';
 import { Table, Button, Tag, Space, Modal, Form, Input, Select, InputNumber, message } from 'antd';
-import { PlusOutlined, FilePdfOutlined, EditOutlined } from '@ant-design/icons';
+import { PlusOutlined, FilePdfOutlined, EditOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { gimnasioApi } from '../../api/gimnasio.api';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
+
+const COLS_DEF = [
+  { key: 'nombre', label: 'Nombre', defaultVisible: true },
+  { key: 'miembroNombre', label: 'Miembro', defaultVisible: true },
+  { key: 'entrenadorNombre', label: 'Entrenador', defaultVisible: true },
+  { key: 'objetivo', label: 'Objetivo', defaultVisible: true },
+  { key: 'nivel', label: 'Nivel', defaultVisible: true },
+  { key: 'duracionSemanas', label: 'Semanas', defaultVisible: true },
+  { key: 'activa', label: 'Activa', defaultVisible: true },
+  { key: 'acciones', label: 'Acciones', defaultVisible: true },
+];
 
 export default function RutinasPage() {
   const [miembroFiltro, setMiembroFiltro] = useState<number | undefined>();
@@ -10,6 +25,21 @@ export default function RutinasPage() {
   const [editando, setEditando] = useState<any>(null);
   const [form] = Form.useForm();
   const qc = useQueryClient();
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('gimnasio-rutinas', COLS_DEF);
+
+  const exportar = () => {
+    const filas = (Array.isArray(data) ? data : []).map((r: any) => ({
+      'Nombre': r.nombre,
+      'Miembro': r.miembroNombre,
+      'Entrenador': r.entrenadorNombre,
+      'Objetivo': r.objetivo,
+      'Nivel': r.nivel,
+      'Semanas': r.duracionSemanas,
+      'Activa': r.activa ? 'Si' : 'No',
+    }));
+    exportarExcel(filas, `Rutinas-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
 
   const { data, isLoading } = useQuery({
     queryKey: ['gimnasio-rutinas', miembroFiltro],
@@ -40,15 +70,15 @@ export default function RutinasPage() {
   };
 
   const columns = [
-    { title: 'Nombre', dataIndex: 'nombre' },
-    { title: 'Miembro', dataIndex: 'miembroNombre' },
-    { title: 'Entrenador', dataIndex: 'entrenadorNombre' },
-    { title: 'Objetivo', dataIndex: 'objetivo' },
-    { title: 'Nivel', dataIndex: 'nivel' },
-    { title: 'Semanas', dataIndex: 'duracionSemanas' },
-    { title: 'Activa', dataIndex: 'activa', render: (v: boolean) => v ? <Tag color="green">Si</Tag> : <Tag>No</Tag> },
+    { key: 'nombre', title: 'Nombre', dataIndex: 'nombre' },
+    { key: 'miembroNombre', title: 'Miembro', dataIndex: 'miembroNombre' },
+    { key: 'entrenadorNombre', title: 'Entrenador', dataIndex: 'entrenadorNombre' },
+    { key: 'objetivo', title: 'Objetivo', dataIndex: 'objetivo' },
+    { key: 'nivel', title: 'Nivel', dataIndex: 'nivel' },
+    { key: 'duracionSemanas', title: 'Semanas', dataIndex: 'duracionSemanas' },
+    { key: 'activa', title: 'Activa', dataIndex: 'activa', render: (v: boolean) => v ? <Tag color="green">Si</Tag> : <Tag>No</Tag> },
     {
-      title: 'Acciones', render: (_: any, r: any) => (
+      key: 'acciones', title: 'Acciones', render: (_: any, r: any) => (
         <Space>
           <Button icon={<FilePdfOutlined />} size="small" onClick={() => verPdf(r.id)}>PDF</Button>
           <Button icon={<EditOutlined />} size="small" onClick={() => { setEditando(r); form.setFieldsValue(r); setModalOpen(true); }}>Editar</Button>
@@ -59,9 +89,15 @@ export default function RutinasPage() {
 
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <h2 style={{ margin: 0 }}>Rutinas</h2>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditando(null); form.resetFields(); setModalOpen(true); }}>Nueva Rutina</Button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditando(null); form.resetFields(); setModalOpen(true); }}>Nueva Rutina</Button>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['gimnasio-rutinas']} />
+          <VideoTutorialButton />
+        </div>
       </div>
       <div style={{ marginBottom: 16 }}>
         <Select style={{ width: 250 }} placeholder="Filtrar por miembro" allowClear showSearch optionFilterProp="children"
@@ -69,7 +105,7 @@ export default function RutinasPage() {
           {miembros.map((m: any) => <Select.Option key={m.id} value={m.id}>{m.nombre} {m.apellidos ?? ''}</Select.Option>)}
         </Select>
       </div>
-      <Table dataSource={rutinas} columns={columns} rowKey="id" loading={isLoading} scroll={{ x: 'max-content' }} />
+      <Table dataSource={rutinas} columns={filterColumns(columns as any)} rowKey="id" loading={isLoading} scroll={{ x: 'max-content' }} />
       <Modal open={modalOpen} title={editando ? 'Editar Rutina' : 'Nueva Rutina'}
         onCancel={() => { setModalOpen(false); form.resetFields(); setEditando(null); }}
         onOk={() => form.validateFields().then(v => guardarMut.mutate(v))}

@@ -1,10 +1,24 @@
 import { useState } from 'react';
 import { Table, Button, Modal, Form, Input, Select, InputNumber, Tag, message, Switch, Dropdown } from 'antd';
-import { PlusOutlined, EllipsisOutlined } from '@ant-design/icons';
+import { PlusOutlined, EllipsisOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { serviciosProApi } from '../../api/servicios-pro.api';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 
 const ESPECIALIDADES = ['derecho_civil','derecho_penal','derecho_corporativo','contabilidad','auditoria','consultoria','ingenieria_civil','ingenieria_sistemas','arquitectura','otro'];
+
+const COLS_DEF = [
+  { key: 'nombre', label: 'Nombre', defaultVisible: true },
+  { key: 'cargo', label: 'Cargo', defaultVisible: true },
+  { key: 'especialidad', label: 'Especialidad', defaultVisible: true },
+  { key: 'tarifaHora', label: 'Tarifa/hora', defaultVisible: true },
+  { key: 'telefono', label: 'Tel.', defaultVisible: true },
+  { key: 'isActive', label: 'Activo', defaultVisible: true },
+  { key: 'acc', label: 'Acciones', defaultVisible: true },
+];
 
 export default function ProfesionalesPage() {
   const [modalOpen, setModalOpen] = useState(false);
@@ -14,6 +28,7 @@ export default function ProfesionalesPage() {
 
   const { data = [], isLoading } = useQuery({ queryKey: ['sp-profesionales'], queryFn: serviciosProApi.getProfesionales });
   const arr = Array.isArray(data) ? data : [];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('sp-profesionales', COLS_DEF);
 
   const crearMut = useMutation({
     mutationFn: (body: any) => editId ? serviciosProApi.actualizarProfesional(editId, body) : serviciosProApi.crearProfesional(body),
@@ -32,20 +47,33 @@ export default function ProfesionalesPage() {
     setModalOpen(true);
   };
 
+  const exportar = () => {
+    const filas = arr.map((r: any) => ({
+      'Nombre': `${r.nombre ?? ''} ${r.apellidos ?? ''}`.trim(),
+      'Cargo': r.cargo,
+      'Especialidad': r.especialidad?.replace(/_/g, ' ') ?? '',
+      'Tarifa/hora': r.tarifaHora,
+      'Teléfono': r.telefono,
+      'Activo': r.isActive ? 'Si' : 'No',
+    }));
+    exportarExcel(filas, `Profesionales-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   const columns = [
     {
-      title: 'Nombre', render: (_: any, r: any) => (
+      title: 'Nombre', key: 'nombre', render: (_: any, r: any) => (
         <div>
           <div style={{ fontWeight: 600 }}>{r.nombre} {r.apellidos ?? ''}</div>
           <div style={{ fontSize: 11, color: '#6b7280' }}>{r.email ?? ''}</div>
         </div>
       )
     },
-    { title: 'Cargo', dataIndex: 'cargo' },
-    { title: 'Especialidad', dataIndex: 'especialidad', render: (v: string) => v?.replace(/_/g, ' ') ?? '' },
-    { title: 'Tarifa/hora', dataIndex: 'tarifaHora', render: (v: number) => v ? `RD$${Number(v).toLocaleString('es-DO')}` : '' },
-    { title: 'Tel.', dataIndex: 'telefono' },
-    { title: 'Activo', dataIndex: 'isActive', render: (v: boolean) => <Tag color={v ? 'green' : 'default'}>{v ? 'Activo' : 'Inactivo'}</Tag> },
+    { title: 'Cargo', key: 'cargo', dataIndex: 'cargo' },
+    { title: 'Especialidad', key: 'especialidad', dataIndex: 'especialidad', render: (v: string) => v?.replace(/_/g, ' ') ?? '' },
+    { title: 'Tarifa/hora', key: 'tarifaHora', dataIndex: 'tarifaHora', render: (v: number) => v ? `RD$${Number(v).toLocaleString('es-DO')}` : '' },
+    { title: 'Tel.', key: 'telefono', dataIndex: 'telefono' },
+    { title: 'Activo', key: 'isActive', dataIndex: 'isActive', render: (v: boolean) => <Tag color={v ? 'green' : 'default'}>{v ? 'Activo' : 'Inactivo'}</Tag> },
     {
       title: '', key: 'acc', width: 50,
       render: (_: any, r: any) => (
@@ -58,12 +86,19 @@ export default function ProfesionalesPage() {
 
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <h2 style={{ margin: 0 }}>👥 Profesionales</h2>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditId(null); form.resetFields(); setModalOpen(true); }}>Nuevo Profesional</Button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['sp-profesionales']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditId(null); form.resetFields(); setModalOpen(true); }}>Nuevo Profesional</Button>
+        </div>
       </div>
 
-      <Table dataSource={arr} columns={columns} rowKey="id" loading={isLoading} scroll={{ x: 'max-content' }} size="small" />
+      <Table dataSource={arr} columns={filterColumns(columns as any)} rowKey="id" loading={isLoading} scroll={{ x: 'max-content' }} size="small" />
 
       <Modal open={modalOpen} title={editId ? 'Editar Profesional' : 'Nuevo Profesional'}
         onCancel={() => { setModalOpen(false); form.resetFields(); setEditId(null); }}
