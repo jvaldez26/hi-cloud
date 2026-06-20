@@ -5,13 +5,30 @@ import {
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, CarOutlined, EditOutlined, EyeOutlined,
+  FileExcelOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { tallerApi } from '../../api/taller.api';
 import { fmt } from '../../utils/formatters';
 import { useNavigate } from 'react-router-dom';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 
 const { Title } = Typography;
+
+const COLS_DEF = [
+  { key: 'placa', label: 'Placa', defaultVisible: true },
+  { key: 'marca', label: 'Marca', defaultVisible: true },
+  { key: 'modelo', label: 'Modelo', defaultVisible: true },
+  { key: 'anio', label: 'Año', defaultVisible: true },
+  { key: 'color', label: 'Color', defaultVisible: true },
+  { key: 'propietarioNombre', label: 'Propietario', defaultVisible: true },
+  { key: 'propietarioTelefono', label: 'Teléfono', defaultVisible: false },
+  { key: 'kilometrajeActual', label: 'Km actual', defaultVisible: true },
+  { key: 'acc', label: 'Acciones', defaultVisible: true },
+];
 
 export default function VehiculosPage() {
   const qc = useQueryClient();
@@ -21,6 +38,7 @@ export default function VehiculosPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form] = Form.useForm();
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('taller-vehiculos', COLS_DEF);
 
   const { data, isLoading } = useQuery({
     queryKey: ['taller-vehiculos', page, search],
@@ -53,14 +71,14 @@ export default function VehiculosPage() {
   };
 
   const columns = [
-    { title: 'Placa', dataIndex: 'placa', width: 110, render: (v: string) => <Tag color="blue">{v}</Tag> },
-    { title: 'Marca', dataIndex: 'marca', width: 110 },
-    { title: 'Modelo', dataIndex: 'modelo', width: 120 },
-    { title: 'Año', dataIndex: 'anio', width: 70 },
-    { title: 'Color', dataIndex: 'color', width: 90, render: (v: any) => v ?? '—' },
-    { title: 'Propietario', dataIndex: 'propietarioNombre', ellipsis: true, render: (v: any) => v ?? '—' },
-    { title: 'Teléfono', dataIndex: 'propietarioTelefono', width: 130, render: (v: any) => v ?? '—' },
-    { title: 'Km actual', dataIndex: 'kilometrajeActual', width: 110, render: (v: any) => v ? Number(v).toLocaleString() : '—' },
+    { title: 'Placa', dataIndex: 'placa', key: 'placa', width: 110, render: (v: string) => <Tag color="blue">{v}</Tag> },
+    { title: 'Marca', dataIndex: 'marca', key: 'marca', width: 110 },
+    { title: 'Modelo', dataIndex: 'modelo', key: 'modelo', width: 120 },
+    { title: 'Año', dataIndex: 'anio', key: 'anio', width: 70 },
+    { title: 'Color', dataIndex: 'color', key: 'color', width: 90, render: (v: any) => v ?? '—' },
+    { title: 'Propietario', dataIndex: 'propietarioNombre', key: 'propietarioNombre', ellipsis: true, render: (v: any) => v ?? '—' },
+    { title: 'Teléfono', dataIndex: 'propietarioTelefono', key: 'propietarioTelefono', width: 130, render: (v: any) => v ?? '—' },
+    { title: 'Km actual', dataIndex: 'kilometrajeActual', key: 'kilometrajeActual', width: 110, render: (v: any) => v ? Number(v).toLocaleString() : '—' },
     {
       title: 'Acciones', key: 'acc', width: 120,
       render: (_: any, r: any) => (
@@ -72,11 +90,33 @@ export default function VehiculosPage() {
     },
   ];
 
+  const exportar = () => {
+    const filas = (data?.data ?? []).map((r: any) => ({
+      'Placa': r.placa,
+      'Marca': r.marca,
+      'Modelo': r.modelo,
+      'Año': r.anio,
+      'Color': r.color ?? '',
+      'Propietario': r.propietarioNombre ?? '',
+      'Teléfono': r.propietarioTelefono ?? '',
+      'Km actual': r.kilometrajeActual ?? '',
+    }));
+    exportarExcel(filas, `Vehiculos-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}><CarOutlined style={{ marginRight: 8 }} />Vehículos</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openNew}>Nuevo Vehículo</Button>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+        <h2 style={{ margin: 0 }}><CarOutlined style={{ marginRight: 8 }} />Vehículos</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['taller-vehiculos']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={openNew}>Registrar Vehículo</Button>
+        </div>
       </div>
 
       <Card>
@@ -90,7 +130,7 @@ export default function VehiculosPage() {
         />
         <Table
           dataSource={data?.data ?? []}
-          columns={columns}
+          columns={filterColumns(columns as any)}
           rowKey="id"
           loading={isLoading}
           size="small"

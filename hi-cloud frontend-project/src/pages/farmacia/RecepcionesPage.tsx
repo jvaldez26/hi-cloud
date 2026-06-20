@@ -3,12 +3,26 @@ import {
   Table, Button, Modal, Form, Input, InputNumber, DatePicker, Select,
   Tag, Typography, Space, Divider, message,
 } from 'antd';
-import { PlusOutlined, CheckCircleOutlined, EyeOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, CheckCircleOutlined, EyeOutlined, DeleteOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { farmaciaApi } from '../../api/farmacia.api';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 
 const { Title } = Typography;
+
+const COLS_DEF = [
+  { key: 'numero', label: 'N° Recepción', defaultVisible: true },
+  { key: 'fecha', label: 'Fecha', defaultVisible: true },
+  { key: 'proveedorNombre', label: 'Proveedor', defaultVisible: true },
+  { key: 'facturaProveedor', label: 'Factura', defaultVisible: true },
+  { key: 'total', label: 'Total', defaultVisible: true },
+  { key: 'estado', label: 'Estado', defaultVisible: true },
+  { key: 'actions', label: 'Acciones', defaultVisible: true },
+];
 
 interface RecItem {
   medicamentoId: number; nombreGenerico?: string; numeroLote: string;
@@ -24,6 +38,7 @@ export default function RecepcionesPage() {
   const [items, setItems] = useState<RecItem[]>([]);
   const [form] = Form.useForm();
   const [itemForm] = Form.useForm();
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('farmacia-recepciones', COLS_DEF);
 
   const { data: medsData } = useQuery({
     queryKey: ['farmacia-medicamentos-select'],
@@ -74,13 +89,13 @@ export default function RecepcionesPage() {
   };
 
   const cols = [
-    { title: 'N° Recepción', dataIndex: 'numero', width: 130 },
-    { title: 'Fecha', dataIndex: 'fecha', width: 110, render: (v: string) => new Date(v).toLocaleDateString('es-DO') },
-    { title: 'Proveedor', dataIndex: 'proveedorNombre', render: (v: string) => v ?? '-' },
-    { title: 'Factura', dataIndex: 'facturaProveedor', width: 130 },
-    { title: 'Total', dataIndex: 'total', width: 110, render: (v: number) => `RD$ ${Number(v ?? 0).toFixed(2)}` },
+    { title: 'N° Recepción', dataIndex: 'numero', key: 'numero', width: 130 },
+    { title: 'Fecha', dataIndex: 'fecha', key: 'fecha', width: 110, render: (v: string) => new Date(v).toLocaleDateString('es-DO') },
+    { title: 'Proveedor', dataIndex: 'proveedorNombre', key: 'proveedorNombre', render: (v: string) => v ?? '-' },
+    { title: 'Factura', dataIndex: 'facturaProveedor', key: 'facturaProveedor', width: 130 },
+    { title: 'Total', dataIndex: 'total', key: 'total', width: 110, render: (v: number) => `RD$ ${Number(v ?? 0).toFixed(2)}` },
     {
-      title: 'Estado', dataIndex: 'estado', width: 110,
+      title: 'Estado', dataIndex: 'estado', key: 'estado', width: 110,
       render: (v: string) => <Tag color={v === 'confirmada' ? 'green' : 'orange'}>{v}</Tag>,
     },
     {
@@ -101,6 +116,19 @@ export default function RecepcionesPage() {
     },
   ];
 
+  const exportar = () => {
+    const filas = (data?.data ?? []).map((r: any) => ({
+      'N° Recepción': r.numero,
+      'Fecha': r.fecha ? new Date(r.fecha).toLocaleDateString('es-DO') : '',
+      'Proveedor': r.proveedorNombre ?? '',
+      'Factura': r.facturaProveedor ?? '',
+      'Total': r.total ?? 0,
+      'Estado': r.estado,
+    }));
+    exportarExcel(filas, `Recepciones-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   const itemCols = [
     { title: 'Medicamento', dataIndex: 'nombreGenerico' },
     { title: 'Lote', dataIndex: 'numeroLote', width: 120 },
@@ -117,16 +145,23 @@ export default function RecepcionesPage() {
 
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={3} style={{ margin: 0 }}>Recepciones de Mercancía</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setItems([]); setModalOpen(true); }}>
-          Nueva Recepción
-        </Button>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+        <h2 style={{ margin: 0 }}>Recepciones de Mercancía</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['farmacia-recepciones']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setItems([]); setModalOpen(true); }}>
+            Nueva Recepción
+          </Button>
+        </div>
       </div>
 
       <Table
         dataSource={data?.data ?? []}
-        columns={cols}
+        columns={filterColumns(cols as any)}
         rowKey="id"
         size="small"
         loading={isLoading}

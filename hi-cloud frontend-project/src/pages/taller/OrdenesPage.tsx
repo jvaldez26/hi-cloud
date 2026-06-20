@@ -5,7 +5,7 @@ import {
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, EyeOutlined, ToolOutlined,
-  UnorderedListOutlined, AppstoreOutlined,
+  UnorderedListOutlined, AppstoreOutlined, FileExcelOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { tallerApi } from '../../api/taller.api';
@@ -14,9 +14,24 @@ const fmt = (v: any) => fmtObj.date(v);
 import { useNavigate } from 'react-router-dom';
 import { theme } from 'antd';
 import dayjs from 'dayjs';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
+
+const COLS_DEF = [
+  { key: 'numero', label: 'N°', defaultVisible: true },
+  { key: 'v', label: 'Vehículo', defaultVisible: true },
+  { key: 'estado', label: 'Estado', defaultVisible: true },
+  { key: 'prioridad', label: 'Prior.', defaultVisible: true },
+  { key: 'tecnicoNombre', label: 'Técnico', defaultVisible: true },
+  { key: 'total', label: 'Total', defaultVisible: true },
+  { key: 'fechaIngreso', label: 'Ingreso', defaultVisible: false },
+  { key: 'acc', label: 'Acciones', defaultVisible: true },
+];
 
 const ESTADO_COLOR: Record<string, string> = {
   recibido: 'default', diagnostico: 'processing', aprobado: 'warning',
@@ -85,6 +100,7 @@ export default function OrdenesPage() {
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
   const [form] = Form.useForm();
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('taller-ordenes', COLS_DEF);
 
   const { data, isLoading } = useQuery({
     queryKey: ['taller-ordenes', page, search, estado, fechas],
@@ -114,25 +130,25 @@ export default function OrdenesPage() {
   const allOrdenes = data?.data ?? [];
 
   const columns = [
-    { title: 'N°', dataIndex: 'numero', width: 110 },
+    { title: 'N°', dataIndex: 'numero', key: 'numero', width: 110 },
     {
       title: 'Vehículo', key: 'v',
       render: (r: any) => <><Tag color="blue">{r.placa}</Tag> {r.marca} {r.modelo} {r.anio ?? ''}</>,
     },
     {
-      title: 'Estado', dataIndex: 'estado',
+      title: 'Estado', dataIndex: 'estado', key: 'estado',
       render: (v: string) => <Tag color={ESTADO_COLOR[v] ?? 'default'}>{v?.toUpperCase().replace('_', ' ')}</Tag>,
     },
     {
-      title: 'Prior.', dataIndex: 'prioridad', width: 90,
+      title: 'Prior.', dataIndex: 'prioridad', key: 'prioridad', width: 90,
       render: (v: string) => <Tag color={PRIORIDAD_COLOR[v] ?? 'default'}>{v?.toUpperCase()}</Tag>,
     },
-    { title: 'Técnico', dataIndex: 'tecnicoNombre', ellipsis: true, render: (v: any) => v ?? '—' },
+    { title: 'Técnico', dataIndex: 'tecnicoNombre', key: 'tecnicoNombre', ellipsis: true, render: (v: any) => v ?? '—' },
     {
-      title: 'Total', dataIndex: 'total',
+      title: 'Total', dataIndex: 'total', key: 'total',
       render: (v: any) => `RD$ ${Number(v ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`,
     },
-    { title: 'Ingreso', dataIndex: 'fechaIngreso', width: 110, render: (v: any) => fmt(v) },
+    { title: 'Ingreso', dataIndex: 'fechaIngreso', key: 'fechaIngreso', width: 110, render: (v: any) => fmt(v) },
     {
       title: '', key: 'acc', width: 60,
       render: (_: any, r: any) => (
@@ -141,11 +157,27 @@ export default function OrdenesPage() {
     },
   ];
 
+  const exportar = () => {
+    const filas = allOrdenes.map((r: any) => ({
+      'N°': r.numero,
+      'Placa': r.placa,
+      'Marca': r.marca,
+      'Modelo': r.modelo,
+      'Estado': r.estado,
+      'Prioridad': r.prioridad,
+      'Técnico': r.tecnicoNombre ?? '',
+      'Total': r.total ?? 0,
+      'Ingreso': r.fechaIngreso ?? '',
+    }));
+    exportarExcel(filas, `Ordenes-Taller-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}><ToolOutlined style={{ marginRight: 8 }} />Órdenes de Servicio</Title>
-        <Space>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+        <h2 style={{ margin: 0 }}><ToolOutlined style={{ marginRight: 8 }} />Órdenes de Servicio</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Segmented
             value={view}
             onChange={v => setView(v as any)}
@@ -154,10 +186,15 @@ export default function OrdenesPage() {
               { value: 'kanban', icon: <AppstoreOutlined /> },
             ]}
           />
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['taller-ordenes']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
             Nueva Orden
           </Button>
-        </Space>
+        </div>
       </div>
 
       <Card>
@@ -194,7 +231,7 @@ export default function OrdenesPage() {
         {view === 'list' ? (
           <Table
             dataSource={allOrdenes}
-            columns={columns}
+            columns={filterColumns(columns as any)}
             rowKey="id"
             loading={isLoading}
             size="small"

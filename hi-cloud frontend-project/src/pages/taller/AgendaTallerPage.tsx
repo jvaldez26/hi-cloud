@@ -3,16 +3,31 @@ import {
   Card, Table, Button, DatePicker, Select, Modal, Form, Input,
   TimePicker, InputNumber, Tag, Space, Typography, message,
 } from 'antd';
-import { PlusOutlined, CalendarOutlined, EditOutlined } from '@ant-design/icons';
+import { PlusOutlined, CalendarOutlined, EditOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { tallerApi } from '../../api/taller.api';
 import dayjs from 'dayjs';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 
 const { Title } = Typography;
 const ESTADO_COLOR: Record<string, string> = {
   programada: 'blue', confirmada: 'cyan', completada: 'green',
   cancelada: 'red', no_asistio: 'default',
 };
+
+const COLS_DEF = [
+  { key: 'hora', label: 'Hora', defaultVisible: true },
+  { key: 'numero', label: 'N°', defaultVisible: true },
+  { key: 'v', label: 'Vehículo', defaultVisible: true },
+  { key: 'tipoServicio', label: 'Servicio', defaultVisible: true },
+  { key: 'tecnicoNombre', label: 'Técnico', defaultVisible: true },
+  { key: 'duracionMinutos', label: 'Duración', defaultVisible: false },
+  { key: 'estado', label: 'Estado', defaultVisible: true },
+  { key: 'acc', label: 'Acciones', defaultVisible: true },
+];
 
 export default function AgendaTallerPage() {
   const qc = useQueryClient();
@@ -21,6 +36,7 @@ export default function AgendaTallerPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form] = Form.useForm();
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('taller-agenda', COLS_DEF);
 
   const { data: citas = [], isLoading } = useQuery({
     queryKey: ['taller-citas', fecha, tecnicoId],
@@ -67,17 +83,17 @@ export default function AgendaTallerPage() {
   };
 
   const columns = [
-    { title: 'Hora', dataIndex: 'hora', width: 80 },
-    { title: 'N°', dataIndex: 'numero', width: 110, render: (v: any) => v ?? '—' },
+    { title: 'Hora', dataIndex: 'hora', key: 'hora', width: 80 },
+    { title: 'N°', dataIndex: 'numero', key: 'numero', width: 110, render: (v: any) => v ?? '—' },
     {
       title: 'Vehículo', key: 'v',
       render: (r: any) => r.placa ? `${r.placa} — ${r.marca ?? ''} ${r.modelo ?? ''}` : '—',
     },
-    { title: 'Servicio', dataIndex: 'tipoServicio', ellipsis: true, render: (v: any) => v ?? '—' },
-    { title: 'Técnico', dataIndex: 'tecnicoNombre', render: (v: any) => v ?? '—' },
-    { title: 'Duración', dataIndex: 'duracionMinutos', width: 90, render: (v: any) => `${v} min` },
+    { title: 'Servicio', dataIndex: 'tipoServicio', key: 'tipoServicio', ellipsis: true, render: (v: any) => v ?? '—' },
+    { title: 'Técnico', dataIndex: 'tecnicoNombre', key: 'tecnicoNombre', render: (v: any) => v ?? '—' },
+    { title: 'Duración', dataIndex: 'duracionMinutos', key: 'duracionMinutos', width: 90, render: (v: any) => `${v} min` },
     {
-      title: 'Estado', dataIndex: 'estado',
+      title: 'Estado', dataIndex: 'estado', key: 'estado',
       render: (v: string) => <Tag color={ESTADO_COLOR[v] ?? 'default'}>{v?.toUpperCase()}</Tag>,
     },
     {
@@ -88,13 +104,35 @@ export default function AgendaTallerPage() {
     },
   ];
 
+  const exportar = () => {
+    const filas = (citas as any[]).map((r: any) => ({
+      'Hora': r.hora,
+      'N°': r.numero ?? '',
+      'Placa': r.placa ?? '',
+      'Vehículo': r.placa ? `${r.placa} — ${r.marca ?? ''} ${r.modelo ?? ''}` : '',
+      'Servicio': r.tipoServicio ?? '',
+      'Técnico': r.tecnicoNombre ?? '',
+      'Duración (min)': r.duracionMinutos,
+      'Estado': r.estado,
+    }));
+    exportarExcel(filas, `Agenda-Taller-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+        <h2 style={{ margin: 0 }}>
           <CalendarOutlined style={{ marginRight: 8 }} />Agenda Taller
-        </Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openNew}>Nueva Cita</Button>
+        </h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['taller-agenda']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={openNew}>Nueva Cita</Button>
+        </div>
       </div>
 
       <Card>
@@ -118,7 +156,7 @@ export default function AgendaTallerPage() {
         </Space>
         <Table
           dataSource={citas as any[]}
-          columns={columns}
+          columns={filterColumns(columns as any)}
           rowKey="id"
           loading={isLoading}
           size="small"

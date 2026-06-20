@@ -3,17 +3,32 @@ import {
   Card, Table, Button, Modal, Form, Input, InputNumber,
   Switch, Tag, Typography, message, Select, Space,
 } from 'antd';
-import { PlusOutlined, EditOutlined, UnorderedListOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, UnorderedListOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { tallerApi } from '../../api/taller.api';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 
 const { Title } = Typography;
+
+const COLS_DEF = [
+  { key: 'nombre', label: 'Nombre', defaultVisible: true },
+  { key: 'categoria', label: 'Categoría', defaultVisible: true },
+  { key: 'descripcion', label: 'Descripción', defaultVisible: false },
+  { key: 'precioBase', label: 'Precio base', defaultVisible: true },
+  { key: 'horasEstimadas', label: 'Horas est.', defaultVisible: true },
+  { key: 'isActive', label: 'Estado', defaultVisible: true },
+  { key: 'acc', label: 'Acciones', defaultVisible: true },
+];
 
 export default function CatalogoPage() {
   const qc = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form] = Form.useForm();
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('taller-catalogo', COLS_DEF);
 
   const { data: catalogo = [], isLoading } = useQuery({
     queryKey: ['taller-catalogo'],
@@ -46,19 +61,19 @@ export default function CatalogoPage() {
   };
 
   const columns = [
-    { title: 'Nombre', dataIndex: 'nombre' },
-    { title: 'Categoría', dataIndex: 'categoria', width: 130, render: (v: any) => v ?? '—' },
-    { title: 'Descripción', dataIndex: 'descripcion', ellipsis: true, render: (v: any) => v ?? '—' },
+    { title: 'Nombre', dataIndex: 'nombre', key: 'nombre' },
+    { title: 'Categoría', dataIndex: 'categoria', key: 'categoria', width: 130, render: (v: any) => v ?? '—' },
+    { title: 'Descripción', dataIndex: 'descripcion', key: 'descripcion', ellipsis: true, render: (v: any) => v ?? '—' },
     {
-      title: 'Precio base', dataIndex: 'precioBase', width: 130,
+      title: 'Precio base', dataIndex: 'precioBase', key: 'precioBase', width: 130,
       render: (v: any) => v ? `RD$ ${Number(v).toLocaleString('es-DO', { minimumFractionDigits: 2 })}` : '—',
     },
     {
-      title: 'Horas est.', dataIndex: 'horasEstimadas', width: 100,
+      title: 'Horas est.', dataIndex: 'horasEstimadas', key: 'horasEstimadas', width: 100,
       render: (v: any) => v ? `${v} h` : '—',
     },
     {
-      title: 'Estado', dataIndex: 'isActive', width: 90,
+      title: 'Estado', dataIndex: 'isActive', key: 'isActive', width: 90,
       render: (v: boolean) => <Tag color={v ? 'green' : 'default'}>{v ? 'Activo' : 'Inactivo'}</Tag>,
     },
     {
@@ -69,18 +84,38 @@ export default function CatalogoPage() {
     },
   ];
 
+  const exportar = () => {
+    const filas = (catalogo as any[]).map((r: any) => ({
+      'Nombre': r.nombre,
+      'Categoría': r.categoria ?? '',
+      'Descripción': r.descripcion ?? '',
+      'Precio base': r.precioBase ?? '',
+      'Horas estimadas': r.horasEstimadas ?? '',
+      'Estado': r.isActive ? 'Activo' : 'Inactivo',
+    }));
+    exportarExcel(filas, `Catalogo-Servicios-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+        <h2 style={{ margin: 0 }}>
           <UnorderedListOutlined style={{ marginRight: 8 }} />Catálogo de Servicios
-        </Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openNew}>Nuevo servicio</Button>
+        </h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['taller-catalogo']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={openNew}>Nuevo Servicio</Button>
+        </div>
       </div>
       <Card>
         <Table
           dataSource={catalogo as any[]}
-          columns={columns}
+          columns={filterColumns(columns as any)}
           rowKey="id"
           loading={isLoading}
           size="small"
