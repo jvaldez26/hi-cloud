@@ -84,7 +84,7 @@ interface CartItem {
   produto:          Prod;
   cantidad:         number;
   precio:           number;
-  descuento:        number;
+  descuentoMonto:   number;
   precioModificado?: boolean;
   precioLista?:     PrecioLista;  // qué lista de precio está aplicada
 }
@@ -363,7 +363,7 @@ function ProductCard({ produto, onAdd, mostrarStock = true, permitirStockNegativ
 
 // ── Cart row ──────────────────────────────────────────────────────────────────
 function CartRow({ item, onQty, onRemove, onDescuento, onPrecio, onLista, permitirModificarPrecio, permitirDescuentos = true, requireSupervisor }: {
-  item: CartItem; onQty: (d: number) => void; onRemove: () => void; onDescuento: (p: number) => void;
+  item: CartItem; onQty: (d: number) => void; onRemove: () => void; onDescuento: (monto: number) => void;
   onPrecio?: (p: number) => void; onLista?: (lista: PrecioLista) => void;
   permitirModificarPrecio?: boolean; permitirDescuentos?: boolean;
   requireSupervisor?: (action: string, detail?: string) => Promise<boolean>;
@@ -371,8 +371,8 @@ function CartRow({ item, onQty, onRemove, onDescuento, onPrecio, onLista, permit
   const C = useC();
   const [descFocus,    setDescFocus]    = useState(false);
   const [precioDraft,  setPrecioDraft]  = useState<string | null>(null);
-  const sub = item.precio * item.cantidad * (1 - item.descuento / 100);
-  const showDesc = descFocus || item.descuento > 0;
+  const sub = (item.precio - item.descuentoMonto) * item.cantidad;
+  const showDesc = descFocus || item.descuentoMonto > 0;
 
   const confirmarPrecio = (raw: string) => {
     const v = parseFloat(raw.replace(/[^0-9.]/g, ''));
@@ -426,7 +426,7 @@ function CartRow({ item, onQty, onRemove, onDescuento, onPrecio, onLista, permit
                 <span>{fmt.money(item.precio)}</span>
               )}
               <span>× PZA</span>
-              {item.descuento > 0 && <span style={{ color: C.orange, fontWeight: 700 }}>−{item.descuento}%</span>}
+              {item.descuentoMonto > 0 && <span style={{ color: C.orange, fontWeight: 700 }}>−{fmt.money(item.descuentoMonto)}</span>}
               {item.precioModificado && <span style={{ color: C.orange, fontSize: 10 }}>✎</span>}
             </span>
           </div>
@@ -475,23 +475,23 @@ function CartRow({ item, onQty, onRemove, onDescuento, onPrecio, onLista, permit
 
           <div style={{ flex: 1 }} />
 
-          {/* Descuento — aparece solo si permitirDescuentos y si >0 o en foco */}
+          {/* Descuento por monto (RD$) — aparece si permitirDescuentos y si >0 o en foco */}
           {permitirDescuentos && showDesc ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <input type="number" value={item.descuento} min={0} max={100}
-                onChange={e => onDescuento(Math.min(100, Math.max(0, Number(e.target.value))))}
+              <span style={{ fontSize: 10, color: item.descuentoMonto > 0 ? C.orange : C.textMuted, fontWeight: 600 }}>-$</span>
+              <input type="number" value={item.descuentoMonto} min={0} max={item.precio} step={0.01}
+                onChange={e => onDescuento(Math.min(item.precio, Math.max(0, Number(e.target.value))))}
                 onFocus={() => setDescFocus(true)}
                 onBlur={() => setDescFocus(false)}
-                autoFocus={descFocus && item.descuento === 0}
-                style={{ width: 44, height: 24, borderRadius: 6,
-                  border: `1px solid ${item.descuento > 0 ? C.orange : C.border2}`,
-                  background: item.descuento > 0 ? C.orange + '11' : 'rgba(255,255,255,.05)',
-                  color: item.descuento > 0 ? C.orange : C.text,
+                autoFocus={descFocus && item.descuentoMonto === 0}
+                style={{ width: 62, height: 24, borderRadius: 6,
+                  border: `1px solid ${item.descuentoMonto > 0 ? C.orange : C.border2}`,
+                  background: item.descuentoMonto > 0 ? C.orange + '11' : 'rgba(255,255,255,.05)',
+                  color: item.descuentoMonto > 0 ? C.orange : C.text,
                   textAlign: 'center', fontSize: 11, fontWeight: 700, outline: 'none', padding: '0 2px' }} />
-              <span style={{ fontSize: 10, color: item.descuento > 0 ? C.orange : C.textMuted, fontWeight: 600 }}>%</span>
             </div>
           ) : permitirDescuentos ? (
-            <Tooltip title="Aplicar descuento">
+            <Tooltip title="Aplicar descuento en RD$">
               <button onClick={() => setDescFocus(true)}
                 style={{ height: 24, padding: '0 7px', borderRadius: 6,
                   border: `1px solid ${C.border2}`, background: 'transparent',
@@ -567,13 +567,12 @@ function buildReciboTermicoHTML(
 
   const tieneModificados = sale.items.some(i => i.precioModificado);
   const itemsHtml = sale.items.map(item => {
-    const precioBase = item.precio * item.cantidad;
-    const sub        = precioBase * (1 - item.descuento / 100);
+    const sub        = (item.precio - item.descuentoMonto) * item.cantidad;
     const nom        = item.produto.nombre.length > 26 ? item.produto.nombre.slice(0, 25) + '…' : item.produto.nombre;
     const modMark    = item.precioModificado ? ' *' : '';
     const itemLine   = `<div class="row"><span>${esc(nom + modMark)} ×${item.cantidad}</span><span>${sub.toFixed(2)}</span></div>`;
-    const descLine   = item.descuento > 0
-      ? `<div class="row small"><span>  Descuento (${item.descuento}%)</span><span>-${(precioBase - sub).toFixed(2)}</span></div>`
+    const descLine   = item.descuentoMonto > 0
+      ? `<div class="row small"><span>  Desc: -RD$${item.descuentoMonto.toFixed(2)} (de ${item.precio.toFixed(2)})</span><span>-${(item.descuentoMonto * item.cantidad).toFixed(2)}</span></div>`
       : '';
     return itemLine + descLine;
   }).join('');
@@ -1748,7 +1747,7 @@ function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir, mostrarEcf = 
             {sale.items.map((item, idx) => (
               <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
                 <span style={{ color: C.text }}>{item.produto.nombre.substring(0, 22)} ×{item.cantidad}</span>
-                <span style={{ fontWeight: 600, color: C.text }}>{fmt.money(item.precio * item.cantidad * (1 - item.descuento / 100))}</span>
+                <span style={{ fontWeight: 600, color: C.text }}>{fmt.money((item.precio - item.descuentoMonto) * item.cantidad)}</span>
               </div>
             ))}
           </div>
@@ -3773,7 +3772,7 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
         items: (f.detalles ?? []).map((d: any) => ({
           produto: { id: d.productoId, nombre: d.descripcion, precio: Number(d.precioUnitario),
                      stock: 999, porcentajeIva: Number(d.porcentajeIva ?? 18), codigo: '', categoria: '', unidadMedida: '' } as any,
-          cantidad: Number(d.cantidad), precio: Number(d.precioUnitario), descuento: 0,
+          cantidad: Number(d.cantidad), precio: Number(d.precioUnitario), descuentoMonto: 0,
         })),
         cliente: f.cliente?.nombre, iva: Number(f.iva ?? 0), subtotal: Number(f.subtotal ?? 0),
         facturaId: f.id, tipoNcf: f.tipoNcf ?? 'E32',
@@ -4446,7 +4445,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
             folio: f.folio, total: Number(f.total ?? 0), cambio: 0, metodo,
             items: (f.detalles ?? []).map((d: any) => ({
               produto: { id: d.productoId, nombre: d.descripcion, precio: Number(d.precioUnitario), stock: 999, porcentajeIva: Number(d.porcentajeIva ?? 18), codigo: '', categoria: '', unidadMedida: '' } as any,
-              cantidad: Number(d.cantidad), precio: Number(d.precioUnitario), descuento: 0,
+              cantidad: Number(d.cantidad), precio: Number(d.precioUnitario), descuentoMonto: 0,
             })),
             cliente: f.cliente?.nombre, iva: Number(f.iva ?? 0), subtotal: Number(f.subtotal ?? 0),
             facturaId: f.id, tipoNcf: f.tipoNcf ?? 'E32',
@@ -4495,7 +4494,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
             folio: f.folio, total: Number(f.total ?? 0), cambio: 0, metodo,
             items: (f.detalles ?? []).map((d: any) => ({
               produto: { id: d.productoId, nombre: d.descripcion, precio: Number(d.precioUnitario), stock: 999, porcentajeIva: Number(d.porcentajeIva ?? 18), codigo: '', categoria: '', unidadMedida: '' } as any,
-              cantidad: Number(d.cantidad), precio: Number(d.precioUnitario), descuento: 0,
+              cantidad: Number(d.cantidad), precio: Number(d.precioUnitario), descuentoMonto: 0,
             })),
             cliente: f.cliente?.nombre, iva: Number(f.iva ?? 0), subtotal: Number(f.subtotal ?? 0),
             facturaId: f.id, tipoNcf: f.tipoNcf ?? 'E32',
@@ -4566,7 +4565,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           items:       (f.detalles??[]).map((d: any) => ({
             produto:   { id: d.productoId, nombre: d.descripcion, precio: Number(d.precioUnitario),
                          stock: 999, porcentajeIva: Number(d.porcentajeIva??18), codigo:'', categoria:'', unidadMedida:'' } as any,
-            cantidad: Number(d.cantidad), precio: Number(d.precioUnitario), descuento: 0,
+            cantidad: Number(d.cantidad), precio: Number(d.precioUnitario), descuentoMonto: 0,
           })),
           cliente:   f.cliente?.nombre, iva: Number(f.iva??0), subtotal: Number(f.subtotal??0),
           facturaId: f.id, tipoNcf: f.tipoNcf ?? 'E32',
@@ -4610,7 +4609,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
                          codigo: '', categoria: '', unidadMedida: '' } as any,
             cantidad:  Number(d.cantidad),
             precio:    Number(d.precioUnitario),
-            descuento: 0,
+            descuentoMonto: 0,
           })),
           iva:                     Number(doc.iva ?? 0),
           subtotal:                Number(doc.subtotal ?? 0),
@@ -4646,7 +4645,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
                          codigo: '', categoria: '', unidadMedida: '' } as any,
             cantidad:  Number(i.cantidad),
             precio:    Number(i.precio),
-            descuento: 0,
+            descuentoMonto: 0,
           })),
           iva:                     Number(doc.itbis ?? 0),
           subtotal:                Number(doc.subtotal ?? 0),
@@ -5725,7 +5724,7 @@ export default function POSPage() {
   // Totals — si posPrecioIncluyeItbis, el precio ya lleva ITBIS incluido
   const precioIncluyeItbis = (empresa?.configuracion as any)?.posPrecioIncluyeItbis === true;
   const subtotal = cart.reduce((s, i) => {
-    const linea = i.precio * i.cantidad * (1 - i.descuento / 100);
+    const linea = (i.precio - i.descuentoMonto) * i.cantidad;
     if (precioIncluyeItbis) {
       const pct = Number((i.produto as any).porcentajeIva ?? 0) / 100;
       return pct > 0 ? s + linea / (1 + pct) : s + linea;
@@ -5733,7 +5732,7 @@ export default function POSPage() {
     return s + linea;
   }, 0);
   const iva = cart.reduce((s, i) => {
-    const linea = i.precio * i.cantidad * (1 - i.descuento / 100);
+    const linea = (i.precio - i.descuentoMonto) * i.cantidad;
     const pct   = Number((i.produto as any).porcentajeIva ?? 0) / 100;
     return precioIncluyeItbis
       ? s + linea * pct / (1 + pct)
@@ -5865,7 +5864,7 @@ export default function POSPage() {
         listaGlobal === 'precio2' && (produto as any).precio2 ? Number((produto as any).precio2) :
         listaGlobal === 'precio3' && (produto as any).precio3 ? Number((produto as any).precio3) :
         precioBase;
-      return [{ produto, cantidad: 1, precio: precioConLista, descuento: 0, precioLista: listaGlobal }, ...prev];
+      return [{ produto, cantidad: 1, precio: precioConLista, descuentoMonto: 0, precioLista: listaGlobal }, ...prev];
     });
 
     // 2. Si hay cliente, consultar precio especial en background y actualizar
@@ -5925,21 +5924,23 @@ export default function POSPage() {
       return { ...it, precioLista: lista, precio: nuevoPrecio, precioModificado: false };
     }));
   };
-  const setDescuento = async (idx: number, pct: number) => {
-    // Verificar descuento máximo configurado
+  const setDescuentoMonto = async (idx: number, monto: number) => {
+    const precio = cart[idx]?.precio ?? 0;
+    const pct    = precio > 0 ? (monto / precio) * 100 : 0;
+    // Verificar descuento máximo configurado (en %)
     if (posDescuentoMaximo < 100 && pct > posDescuentoMaximo) {
-      message.error(`Descuento máximo permitido: ${posDescuentoMaximo}%`);
+      message.error(`Descuento máximo permitido: ${posDescuentoMaximo}% (RD$${(precio * posDescuentoMaximo / 100).toFixed(2)})`);
       return;
     }
     // Si el modo supervisor está activo y el descuento supera el máximo → pedir autorización
     if (supervisor.supervisorModeEnabled && pct > supervisor.maxDiscountPercent) {
       const ok = await supervisor.requireSupervisor(
-        `Descuento del ${pct}%`,
+        `Descuento de RD$${monto.toFixed(2)} (${pct.toFixed(1)}%)`,
         `Máximo permitido sin supervisor: ${supervisor.maxDiscountPercent}%`,
       );
       if (!ok) return; // cancelado
     }
-    setCart(p => { const u=[...p]; u[idx].descuento = pct; return u; });
+    setCart(p => { const u=[...p]; u[idx].descuentoMonto = monto; return u; });
   };
 
   // Búsqueda por código de barras → agrega al carrito directamente
@@ -6084,10 +6085,10 @@ export default function POSPage() {
           productoId:          i.produto.id > 0 ? i.produto.id : undefined,
           opticaInventarioId:  (i.produto as any).opticaInventarioId ?? undefined,
           cantidad:            i.cantidad,
-          precioUnitario:      i.precio * (1 - i.descuento / 100),
+          precioUnitario:      i.precio - i.descuentoMonto,
           descripcion:         i.produto.nombre,
-          descuentoPct:        i.descuento,
-          precioOriginal:      i.descuento > 0 ? i.precio : undefined,
+          descuentoMonto:      i.descuentoMonto,
+          precioOriginal:      i.descuentoMonto > 0 ? i.precio : undefined,
           // E44 (Zona Franca): ITBIS = 0 en todos los ítems
           ...(tipoNcf === 'E44' ? { porcentajeIva: 0 } : {}),
         })),
@@ -6258,7 +6259,9 @@ export default function POSPage() {
         opticaInventarioId: (i.produto as any).opticaInventarioId ?? undefined,
         descripcion:        i.produto.nombre,
         cantidad:           i.cantidad,
-        precioUnitario:     i.precio * (1 - i.descuento / 100),
+        precioUnitario:     i.precio - i.descuentoMonto,
+        descuentoMonto:     i.descuentoMonto,
+        precioOriginal:     i.descuentoMonto > 0 ? i.precio : undefined,
         porcentajeIva:      Number((i.produto as any).porcentajeIva ?? 18),
       }));
       const base = {
@@ -6857,7 +6860,7 @@ export default function POSPage() {
                   <CartRow key={item.produto.id} item={item}
                     onQty={d => updateQty(idx, d)}
                     onRemove={() => removeItem(idx)}
-                    onDescuento={p => setDescuento(idx, p)}
+                    onDescuento={p => setDescuentoMonto(idx, p)}
                     onPrecio={p => actualizarPrecioItem(idx, p)}
                     onLista={lista => cambiarListaItem(idx, lista)}
                     permitirModificarPrecio={posConf.posModificarPrecio === true}

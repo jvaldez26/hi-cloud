@@ -75,6 +75,7 @@ export interface FacturaPDFItem {
   unidadMedida?:   string;
   precioUnitario:  number;
   descuentoPct:    number;
+  descuentoMonto?: number;
   subtotal:        number;
   itbisPct:        number;
   importeItbis:    number;
@@ -198,7 +199,9 @@ export function generarHTMLFactura(d: FacturaPDFData): string {
 
   // ── Filas de productos ────────────────────────────────────────────────────
   const itemRows = d.items.map(item => {
-    const descVal = item.descuentoPct > 0 ? `${item.descuentoPct}%` : '-';
+    const descVal = (item.descuentoMonto ?? 0) > 0
+      ? money(item.descuentoMonto!)
+      : item.descuentoPct > 0 ? `${item.descuentoPct}%` : '-';
     const itbisVal = item.itbisPct === 0
       ? `<span style="font-size:7.5px;background:#D1FAE5;color:${GREEN};padding:1px 4px;border-radius:2px;font-weight:700;">EXENTO</span>`
       : money(item.importeItbis);

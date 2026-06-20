@@ -112,6 +112,7 @@ export class PDFService {
         unidadMedida:   (d as any).producto?.unidadMedida ?? 'UN',
         precioUnitario: Number(d.precioUnitario),
         descuentoPct:   Number(d.descuentoPct ?? 0),
+        descuentoMonto: Number(d.descuentoMonto ?? 0),
         subtotal,
         itbisPct,
         importeItbis:   impIva,

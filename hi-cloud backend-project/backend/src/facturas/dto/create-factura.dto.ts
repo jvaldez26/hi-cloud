@@ -54,6 +54,11 @@ export class CreateFacturaDetalleDto {
 
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  descuentoMonto?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
   precioOriginal?: number;
 }

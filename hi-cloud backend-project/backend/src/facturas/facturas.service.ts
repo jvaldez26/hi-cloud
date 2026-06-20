@@ -92,6 +92,7 @@ export class FacturasService {
         importeIva,
         total,
         descuentoPct:   item.descuentoPct  ?? 0,
+        descuentoMonto: item.descuentoMonto ?? 0,
         precioOriginal: item.precioOriginal ?? undefined,
       });
     }
@@ -239,6 +240,7 @@ export class FacturasService {
         importeIva,
         total,
         descuentoPct:        item.descuentoPct  ?? 0,
+        descuentoMonto:      item.descuentoMonto ?? 0,
         precioOriginal:      item.precioOriginal ?? undefined,
       });
     }
