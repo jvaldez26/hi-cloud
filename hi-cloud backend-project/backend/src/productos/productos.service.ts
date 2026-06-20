@@ -207,14 +207,15 @@ export class ProductosService implements OnModuleInit {
       .where('producto.empresaId = :empresaId', { empresaId })
       .andWhere('producto.isActive = :active', { active: true });
 
-    // Si hay almacén activo en el JWT y no se pide ver todos → filtrar por stock en ese almacén
+    // Si hay almacén activo en el JWT y no se pide ver todos → filtrar por stock en ese almacén.
+    // Los servicios (tipo='servicio') no tienen stock_almacen y siempre se incluyen.
     if (almacenId && !incluirSinStock) {
-      qb.innerJoin(
+      qb.leftJoin(
         'stock_almacen',
         'sa',
-        'sa."productoId" = producto.id AND sa."almacenId" = :almacenId AND sa.stock > 0',
+        'sa."productoId" = producto.id AND sa."almacenId" = :almacenId',
         { almacenId },
-      );
+      ).andWhere("(producto.tipo = 'servicio' OR sa.stock > 0)");
     }
 
     if (search) {
