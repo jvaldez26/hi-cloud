@@ -656,7 +656,15 @@ body{font-family:'Courier New',Courier,monospace;font-size:${prn.fontSize};line-
 img{display:block;margin:4px auto}
 @page{size:${prn.width} auto;margin:0}
 @media print{html,body{width:${prn.width}}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-</style></head><body>
+</style>
+<script>
+window.addEventListener('load',function(){setTimeout(function(){window.print()},350)});
+window.addEventListener('afterprint',function(){setTimeout(function(){
+  try{window.close()}catch(e){}
+  setTimeout(function(){if(!window.closed){document.body.innerHTML='<div style="text-align:center;padding:40px;font-family:sans-serif"><h2 style="color:#059669">&#10003; Impresión lista</h2><p style="margin-top:8px;color:#666">Puede cerrar esta ventana</p></div>'}},600)
+},300)});
+</script>
+</head><body>
 
 <div class="center xlarge">${esc(sale.empresaNombreComercial ?? 'NOMBRE EMPRESA')}</div>
 <div class="center small">República Dominicana</div>
@@ -6191,7 +6199,9 @@ export default function POSPage() {
           const html = buildReciboTermicoHTML(saleObj, qr, { mostrarEcf: _mostrarEcf, ..._pCfg });
           if (pw.closed) { imprimirReciboTermico(html); return; }
           pw.document.open(); pw.document.write(html); pw.document.close(); pw.focus();
-          setTimeout(() => { pw.print(); pw.addEventListener('afterprint', () => pw.close(), { once: true }); setTimeout(() => { try { pw.close(); } catch { /* noop */ } }, 60_000); }, 400);
+          // El HTML del recibo auto-imprime en load y cierra en afterprint.
+          pw.addEventListener('afterprint', () => { try { pw.close(); } catch { /* noop */ } }, { once: true });
+          setTimeout(() => { try { if (!pw.closed) pw.close(); } catch { /* noop */ } }, 30_000);
         };
         if (qrUrl && !saleObj.ecfPendiente) {
           QRCode.toDataURL(qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' }).then(doprint).catch(() => doprint(null));

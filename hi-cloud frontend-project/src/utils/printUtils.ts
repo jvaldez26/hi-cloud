@@ -68,11 +68,11 @@ export function imprimirReciboTermico(html: string, onDone?: () => void): void {
       pw.document.write(html);
       pw.document.close();
       pw.focus();
-      setTimeout(() => {
-        pw.print();
-        pw.addEventListener('afterprint', () => { pw.close(); onDone?.(); }, { once: true });
-        setTimeout(() => { try { pw.close(); onDone?.(); } catch { /* noop */ } }, 60_000);
-      }, 400);
+      // El HTML del recibo ya incluye window.print() en load y window.close() en afterprint.
+      // Solo registramos el listener para llamar onDone() cuando se cierre.
+      pw.addEventListener('afterprint', () => { pw.close(); onDone?.(); }, { once: true });
+      // Fallback: si afterprint nunca dispara (PDF virtual, cancelación rápida)
+      setTimeout(() => { try { if (!pw.closed) { pw.close(); onDone?.(); } } catch { /* noop */ } }, 30_000);
       return;
     }
   }
