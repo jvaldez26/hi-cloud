@@ -74,5 +74,5 @@ export const configuracionApi = {
 
   // ── Auditoría reciente (solo lectura) ──────────────────────────────────────
   getAuditoriaReciente: () =>
-    api.get('/auditoria?limit=20').then(r => r.data?.data?.data ?? r.data?.data ?? r.data).catch(() => []),
+    api.get('/auditoria?limit=20&niveles=CRITICO,IMPORTANTE').then(r => r.data?.data?.data ?? r.data?.data ?? r.data).catch(() => []),
 };

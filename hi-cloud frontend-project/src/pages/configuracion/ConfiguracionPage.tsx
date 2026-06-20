@@ -1811,7 +1811,7 @@ function SeccionAuditoria() {
   return (
     <div>
       <Alert type="info" showIcon
-        message="Muestra los últimos 20 eventos. Para ver el historial completo ve al módulo Auditoría."
+        message="Muestra las últimas 20 acciones críticas e importantes. Para ver el historial completo ve al módulo Auditoría."
         style={{ marginBottom: 16 }}
         action={<Button size="small" href="/auditoria">Ir a Auditoría</Button>}
       />
@@ -1822,15 +1822,29 @@ function SeccionAuditoria() {
         dataSource={logs}
         rowKey="id"
         pagination={false}
-        locale={{ emptyText: 'Sin eventos recientes' }}
+        locale={{ emptyText: 'Sin acciones críticas/importantes recientes' }}
         columns={[
           {
             title: 'Fecha', dataIndex: 'createdAt', width: 140,
             render: (v: string) => new Date(v).toLocaleString('es-DO', { dateStyle: 'short', timeStyle: 'short' }),
           },
-          { title: 'Usuario', dataIndex: 'usuarioNombre', width: 160 },
-          { title: 'Acción', dataIndex: 'accion', width: 120 },
-          { title: 'Módulo', dataIndex: 'modulo', width: 120 },
+          {
+            title: 'Nivel', dataIndex: 'nivel', width: 100,
+            render: (v: string) => {
+              if (v === 'CRITICO')    return <Tag color="red">Crítico</Tag>;
+              if (v === 'IMPORTANTE') return <Tag color="orange">Importante</Tag>;
+              return <Tag>Normal</Tag>;
+            },
+          },
+          { title: 'Usuario', dataIndex: 'userName', width: 160 },
+          {
+            title: 'Acción', dataIndex: 'accion', width: 120,
+            render: (v: string) => {
+              const c: Record<string, string> = { create: 'green', update: 'blue', delete: 'red', login: 'cyan', logout: 'orange', error: 'red' };
+              return <Tag color={c[v]}>{v?.toUpperCase()}</Tag>;
+            },
+          },
+          { title: 'Módulo', dataIndex: 'modulo', width: 110, render: (v: string) => <Tag>{v}</Tag> },
           { title: 'Detalle', dataIndex: 'descripcion', ellipsis: true },
         ]}
       />
