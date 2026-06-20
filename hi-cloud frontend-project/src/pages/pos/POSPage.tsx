@@ -1,7 +1,7 @@
 ﻿import { useState, useCallback, useEffect, useRef, createContext, useContext } from 'react';
 import { useRncLookup } from '../../hooks/useRncLookup';
 import QRCode from 'qrcode';
-import { Select, Modal, Badge, Empty, Spin, Tooltip, message, Avatar, Popover, Input, Button } from 'antd';
+import { Select, Modal, Badge, Empty, Spin, Tooltip, message, Avatar, Popover, Input, Button, Segmented } from 'antd';
 import { SearchOutlined, ShoppingCartOutlined, CheckCircleOutlined, DisconnectOutlined, LogoutOutlined, PrinterOutlined, LockOutlined, UserSwitchOutlined, SwapOutlined, EyeOutlined, EyeInvisibleOutlined, ShopOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../../store/auth.store';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -2264,6 +2264,7 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
   const [showForm, setShowForm]     = useState(false);
   const [editingProd, setEditingProd] = useState<any>(null);
   const [saving, setSaving]         = useState(false);
+  const [fTipo,      setFTipo]      = useState<'producto'|'servicio'>('producto');
   const [fNombre,    setFNombre]    = useState('');
   const [fCodigo,    setFCodigo]    = useState('');
   const [fPrecio,    setFPrecio]    = useState('');
@@ -2282,6 +2283,7 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
 
   const openForm = (prod?: any) => {
     setEditingProd(prod ?? null);
+    setFTipo((prod?.tipo ?? 'producto') as 'producto'|'servicio');
     setFNombre(prod?.nombre ?? '');
     setFCodigo(prod?.codigo ?? '');
     setFPrecio(prod ? String(prod.precio ?? '') : '');
@@ -2306,19 +2308,21 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
     if (!fNombre.trim() || !fPrecio.trim()) { message.error('Nombre y precio son obligatorios'); return; }
     setSaving(true);
     try {
+      const esServicio = fTipo === 'servicio';
       const body: Record<string, unknown> = {
         nombre: fNombre.trim(), codigo: fCodigo.trim() || undefined,
         precio: Number(fPrecio), porcentajeIva: Number(fItbis),
-        stockMinimo: Number(fStockMin),
-        categoria: fCategoria.trim() || undefined, tipo: 'producto',
+        stockMinimo: esServicio ? 0 : Number(fStockMin),
+        categoria: fCategoria.trim() || undefined, tipo: fTipo,
       };
-      if (!editingProd) body.stock = Number(fStock);
+      if (!editingProd && !esServicio) body.stock = Number(fStock);
+      const tipoLabel = esServicio ? 'Servicio' : 'Producto';
       if (editingProd) {
         await api.patch(`/productos/${editingProd.id}`, body);
-        message.success('Producto actualizado');
+        message.success(`${tipoLabel} actualizado`);
       } else {
         await api.post('/productos', body);
-        message.success('Producto creado');
+        message.success(`${tipoLabel} creado`);
       }
       qc.invalidateQueries({ queryKey: ['pos-productos'] });
       qc.invalidateQueries({ queryKey: ['productos-catalogo'] });
@@ -2345,7 +2349,7 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
          productos.length === 0 ? <Empty style={{ marginTop: 40 }} description={<span style={{ color: C.textSub }}>Sin productos</span>} /> : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead><tr style={{ background: C.card, position: 'sticky', top: 0 }}>
-              {['Código','Nombre','Precio','ITBIS%','Stock','Mín.','Categoría',''].map(h => (
+              {['Tipo','Código','Nombre','Precio','ITBIS%','Stock','Mín.','Categoría',''].map(h => (
                 <th key={h} style={{ padding: '8px 12px', textAlign: 'left', color: C.textSub,
                   fontWeight: 600, fontSize: 11, borderBottom: `1px solid ${C.border}` }}>{h}</th>
               ))}
@@ -2354,12 +2358,21 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
               <tr key={p.id} style={{ borderBottom: `1px solid ${C.border}`, background: i%2===0?'transparent':C.card }}
                 onMouseEnter={e=>(e.currentTarget.style.background=C.sidebarHov)}
                 onMouseLeave={e=>(e.currentTarget.style.background=i%2===0?'transparent':C.card)}>
+                <td style={{ padding: '8px 12px' }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
+                    background: p.tipo === 'servicio' ? '#dbeafe' : '#dcfce7',
+                    color: p.tipo === 'servicio' ? '#1d4ed8' : '#15803d' }}>
+                    {p.tipo === 'servicio' ? '⚙️ SVC' : '📦 PRD'}
+                  </span>
+                </td>
                 <td style={{ padding: '8px 12px', color: C.textSub, fontFamily: 'monospace', fontSize: 11 }}>{p.codigo}</td>
                 <td style={{ padding: '8px 12px', color: C.text, fontWeight: 600 }}>{p.nombre}</td>
                 <td style={{ padding: '8px 12px', color: C.green, fontWeight: 700 }}>{fmt.money(p.precio)}</td>
                 <td style={{ padding: '8px 12px', color: C.textSub }}>{p.porcentajeIva ?? 18}%</td>
-                <td style={{ padding: '8px 12px', color: Number(p.stock) <= Number(p.stockMinimo||0) ? C.red : C.text, fontWeight: 700 }}>{p.stock}</td>
-                <td style={{ padding: '8px 12px', color: C.textSub }}>{p.stockMinimo ?? '—'}</td>
+                <td style={{ padding: '8px 12px', color: p.tipo === 'servicio' ? C.textMuted : (Number(p.stock) <= Number(p.stockMinimo||0) ? C.red : C.text), fontWeight: 700 }}>
+                  {p.tipo === 'servicio' ? '∞' : p.stock}
+                </td>
+                <td style={{ padding: '8px 12px', color: C.textSub }}>{p.tipo === 'servicio' ? '—' : (p.stockMinimo ?? '—')}</td>
                 <td style={{ padding: '8px 12px', color: C.textSub, fontSize: 11 }}>{p.categoria ?? '—'}</td>
                 <td style={{ padding: '4px 8px', textAlign: 'right' }}>
                   <button onClick={() => handleEditar(p)}
@@ -2383,14 +2396,30 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
             <div style={{ padding: '14px 18px', borderBottom: `1px solid ${C.border}`,
               display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontWeight: 700, fontSize: 15, color: C.text, flex: 1 }}>
-                {editingProd ? 'Editar Producto' : 'Nuevo Producto'}
+                {editingProd
+                  ? `Editar ${fTipo === 'servicio' ? 'Servicio' : 'Producto'}`
+                  : `Nuevo ${fTipo === 'servicio' ? 'Servicio' : 'Producto'}`}
               </span>
               <button onClick={() => setShowForm(false)} style={{ background: 'none', border: 'none',
                 color: C.textSub, cursor: 'pointer', fontSize: 18, padding: 4, lineHeight: 1 }}>✕</button>
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px' }}>
+              {/* Selector tipo */}
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, color: C.text }}>Tipo</div>
+                <Segmented
+                  value={fTipo}
+                  onChange={v => setFTipo(v as 'producto'|'servicio')}
+                  options={[
+                    { label: '📦 Producto', value: 'producto' },
+                    { label: '⚙️ Servicio', value: 'servicio' },
+                  ]}
+                  block
+                />
+              </div>
               <PanelInput C={C} label="Nombre *" value={fNombre}
-                onChange={e => setFNombre(e.target.value)} placeholder="Nombre del producto" />
+                onChange={e => setFNombre(e.target.value)}
+                placeholder={fTipo === 'servicio' ? 'Nombre del servicio' : 'Nombre del producto'} />
               <PanelInput C={C} label="Código" value={fCodigo}
                 onChange={e => setFCodigo(e.target.value)} placeholder="Código (opcional)" />
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -2398,26 +2427,30 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
                   value={fPrecio} onChange={e => setFPrecio(e.target.value)} />
                 <PanelInput C={C} label="ITBIS %" type="number" min="0" max="100"
                   value={fItbis} onChange={e => setFItbis(e.target.value)} />
-                <div style={{ marginBottom: 12 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: C.text }}>
-                    {editingProd ? 'Stock actual' : 'Stock'}
-                  </div>
-                  <input type="number" min="0" value={fStock}
-                    onChange={e => setFStock(e.target.value)}
-                    disabled={!!editingProd}
-                    style={{ width: '100%', height: 38, padding: '0 12px', borderRadius: 8,
-                      border: `1px solid ${C.border2}`, fontSize: 13, boxSizing: 'border-box',
-                      background: editingProd ? C.border : C.inputBg,
-                      color: editingProd ? C.textSub : C.text, cursor: editingProd ? 'not-allowed' : 'text',
-                      outline: 'none' }} />
-                  {editingProd && (
-                    <div style={{ fontSize: 11, color: C.textSub, marginTop: 3 }}>
-                      El stock se ajusta mediante movimientos de inventario
+                {fTipo !== 'servicio' && (
+                  <>
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: C.text }}>
+                        {editingProd ? 'Stock actual' : 'Stock'}
+                      </div>
+                      <input type="number" min="0" value={fStock}
+                        onChange={e => setFStock(e.target.value)}
+                        disabled={!!editingProd}
+                        style={{ width: '100%', height: 38, padding: '0 12px', borderRadius: 8,
+                          border: `1px solid ${C.border2}`, fontSize: 13, boxSizing: 'border-box',
+                          background: editingProd ? C.border : C.inputBg,
+                          color: editingProd ? C.textSub : C.text, cursor: editingProd ? 'not-allowed' : 'text',
+                          outline: 'none' }} />
+                      {editingProd && (
+                        <div style={{ fontSize: 11, color: C.textSub, marginTop: 3 }}>
+                          El stock se ajusta mediante movimientos de inventario
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-                <PanelInput C={C} label="Stock Mín." type="number" min="0"
-                  value={fStockMin} onChange={e => setFStockMin(e.target.value)} />
+                    <PanelInput C={C} label="Stock Mín." type="number" min="0"
+                      value={fStockMin} onChange={e => setFStockMin(e.target.value)} />
+                  </>
+                )}
               </div>
               <PanelInput C={C} label="Categoría" value={fCategoria}
                 onChange={e => setFCategoria(e.target.value)} placeholder="Categoría (opcional)" />
@@ -2432,7 +2465,9 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
                 style={{ flex: 2, height: 40, borderRadius: 8, border: 'none',
                   background: saving ? '#9ca3af' : C.green, color: '#fff',
                   cursor: saving ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 700 }}>
-                {saving ? 'Guardando...' : editingProd ? 'Guardar Cambios' : 'Crear Producto'}
+                {saving ? 'Guardando...' : editingProd
+                  ? 'Guardar Cambios'
+                  : `Crear ${fTipo === 'servicio' ? 'Servicio' : 'Producto'}`}
               </button>
             </div>
           </div>
