@@ -6437,6 +6437,20 @@ export default function POSPage() {
   const clienteParaCredito = tipoPagoPos === 'CONTADO' || clienteId != null;
   const canCheckout  = canPay && (!tipoExigeRnc || rncValido) && cajaAbierta && clienteParaCredito;
 
+  // Enter / NumpadEnter confirma el cobro cuando el modal de pago está abierto
+  useEffect(() => {
+    if (!showPago) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' && e.code !== 'NumpadEnter') return;
+      if ((e.target as HTMLElement).tagName === 'TEXTAREA') return;
+      e.preventDefault();
+      if (!canCheckout || ventaMut.isPending) return;
+      ventaMut.mutate();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [showPago, canCheckout, ventaMut.isPending]);
+
   return (
     <ThemeCtx.Provider value={palette}>
     <div style={{
@@ -7403,7 +7417,7 @@ export default function POSPage() {
                         ? 'Enviando comprobante a DGII...'
                         : 'Procesando venta...'}
                      </>)
-                  : (<><span style={{ fontSize: 16 }}>✓</span> Confirmar cobro · {fmt.money(totalEfectivo)}</>)}
+                  : (<><span style={{ fontSize: 16 }}>✓</span> Confirmar cobro · {fmt.money(totalEfectivo)}<span style={{ fontSize: 11, opacity: 0.65, marginLeft: 8 }}>(Enter)</span></>)}
               </motion.button>
             </Tooltip>
           </div>
