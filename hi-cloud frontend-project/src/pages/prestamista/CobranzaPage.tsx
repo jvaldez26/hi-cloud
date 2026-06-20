@@ -3,10 +3,27 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Table, Button, Card, Row, Col, Statistic, Tag, Modal, Form, Input, Select, DatePicker, message, theme } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { Eye, Plus } from 'lucide-react';
+import { FileExcelOutlined } from '@ant-design/icons';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 import { prestamistalApi } from '../../api/prestamista.api';
 
 const { Option } = Select;
 const fmt = (n: any) => `RD$ ${Number(n ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
+
+const COLS_DEF = [
+  { key: 'numero', label: 'Préstamo', defaultVisible: true },
+  { key: 'deudorNombre', label: 'Deudor', defaultVisible: true },
+  { key: 'deudorTelefono', label: 'Teléfono', defaultVisible: true },
+  { key: 'saldoCapital', label: 'Saldo Capital', defaultVisible: true },
+  { key: 'saldoMora', label: 'Saldo Mora', defaultVisible: true },
+  { key: 'saldoTotal', label: 'Saldo Total', defaultVisible: true },
+  { key: 'diasMoraActual', label: 'Días Mora', defaultVisible: true },
+  { key: 'cuotasVencidas', label: 'Cuotas Vencidas', defaultVisible: true },
+  { key: 'ultimaGestion', label: 'Última Gestión', defaultVisible: false },
+];
 
 export default function CobranzaPage() {
   const { token: C } = theme.useToken();
@@ -15,6 +32,7 @@ export default function CobranzaPage() {
   const [gestionOpen, setGestionOpen] = useState(false);
   const [selectedPrestamo, setSelectedPrestamo] = useState<any>(null);
   const [formGestion] = Form.useForm();
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('prestamista-cobranza', COLS_DEF);
 
   const { data: resumen } = useQuery({
     queryKey: ['prestamista-cobranza-resumen'],
@@ -45,15 +63,15 @@ export default function CobranzaPage() {
   };
 
   const cols = [
-    { title: 'Préstamo', dataIndex: 'numero', width: 120 },
-    { title: 'Deudor', dataIndex: 'deudorNombre' },
-    { title: 'Teléfono', dataIndex: 'deudorTelefono', width: 110 },
-    { title: 'Saldo Capital', dataIndex: 'saldoCapital', render: fmt },
-    { title: 'Saldo Mora', dataIndex: 'saldoMora', render: (v: any) => <span style={{ color: '#ff4d4f' }}>{fmt(v)}</span> },
-    { title: 'Saldo Total', dataIndex: 'saldoTotal', render: fmt },
-    { title: 'Días Mora', dataIndex: 'diasMoraActual', render: (v: any) => <Tag color={v > 90 ? 'red' : v > 30 ? 'orange' : 'blue'}>{v}</Tag> },
-    { title: 'Cuotas Vencidas', dataIndex: 'cuotasVencidas', render: (v: any) => <Tag color="red">{v}</Tag> },
-    { title: 'Última Gestión', dataIndex: 'ultimaGestion', render: (v: string) => v?.slice(0, 10) ?? '—' },
+    { title: 'Préstamo', dataIndex: 'numero', key: 'numero', width: 120 },
+    { title: 'Deudor', dataIndex: 'deudorNombre', key: 'deudorNombre' },
+    { title: 'Teléfono', dataIndex: 'deudorTelefono', key: 'deudorTelefono', width: 110 },
+    { title: 'Saldo Capital', dataIndex: 'saldoCapital', key: 'saldoCapital', render: fmt },
+    { title: 'Saldo Mora', dataIndex: 'saldoMora', key: 'saldoMora', render: (v: any) => <span style={{ color: '#ff4d4f' }}>{fmt(v)}</span> },
+    { title: 'Saldo Total', dataIndex: 'saldoTotal', key: 'saldoTotal', render: fmt },
+    { title: 'Días Mora', dataIndex: 'diasMoraActual', key: 'diasMoraActual', render: (v: any) => <Tag color={v > 90 ? 'red' : v > 30 ? 'orange' : 'blue'}>{v}</Tag> },
+    { title: 'Cuotas Vencidas', dataIndex: 'cuotasVencidas', key: 'cuotasVencidas', render: (v: any) => <Tag color="red">{v}</Tag> },
+    { title: 'Última Gestión', dataIndex: 'ultimaGestion', key: 'ultimaGestion', render: (v: string) => v?.slice(0, 10) ?? '—' },
     {
       title: '', key: 'acc', width: 130,
       render: (_: any, r: any) => (
@@ -65,11 +83,35 @@ export default function CobranzaPage() {
     },
   ];
 
+  const exportar = () => {
+    const filas = (cartera as any[]).map((r: any) => ({
+      'Préstamo': r.numero,
+      'Deudor': r.deudorNombre,
+      'Teléfono': r.deudorTelefono,
+      'Saldo Capital': r.saldoCapital,
+      'Saldo Mora': r.saldoMora,
+      'Saldo Total': r.saldoTotal,
+      'Días Mora': r.diasMoraActual,
+      'Cuotas Vencidas': r.cuotasVencidas,
+      'Última Gestión': r.ultimaGestion?.slice(0, 10) ?? '',
+    }));
+    exportarExcel(filas, `Cobranza-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   const rs = resumen ?? {};
 
   return (
     <div style={{ padding: 24 }}>
-      <h2 style={{ marginBottom: 16, color: C.colorText }}>Cobranza — Cartera Vencida</h2>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+        <h2 style={{ margin: 0, color: C.colorText }}>Cobranza — Cartera Vencida</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['prestamista-cartera-vencida']} />
+          <VideoTutorialButton />
+        </div>
+      </div>
 
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={12} md={4}><Card size="small"><Statistic title="Préstamos Morosos" value={Number(rs.totalMorosos ?? 0)} valueStyle={{ color: C.colorWarning }} /></Card></Col>
@@ -79,7 +121,7 @@ export default function CobranzaPage() {
         <Col xs={12} md={6}><Card size="small"><Statistic title="Índice de Morosidad" value={`${rs.indiceMorosidad ?? 0}%`} valueStyle={{ color: C.colorWarning, fontSize: 14 }} /></Card></Col>
       </Row>
 
-      <Table dataSource={(cartera as any[]).map((r: any) => ({ ...r, key: r.id }))} columns={cols}
+      <Table dataSource={(cartera as any[]).map((r: any) => ({ ...r, key: r.id }))} columns={filterColumns(cols as any)}
         loading={isLoading} scroll={{ x: 'max-content' }} size="small" />
 
       <Modal title={`Registrar Gestión — ${selectedPrestamo?.deudorNombre ?? ''}`} open={gestionOpen}

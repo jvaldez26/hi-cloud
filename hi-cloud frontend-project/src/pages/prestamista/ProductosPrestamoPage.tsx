@@ -2,9 +2,24 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Table, Button, Modal, Form, Input, InputNumber, Switch, Select, Tag, message, theme } from 'antd';
 import { Plus } from 'lucide-react';
+import { FileExcelOutlined } from '@ant-design/icons';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 import { prestamistalApi } from '../../api/prestamista.api';
 
 const { Option } = Select;
+
+const COLS_DEF = [
+  { key: 'nombre', label: 'Nombre', defaultVisible: true },
+  { key: 'tasaInteresMensual', label: 'Tasa Mensual', defaultVisible: true },
+  { key: 'metodoAmortizacion', label: 'Método', defaultVisible: true },
+  { key: 'plazo', label: 'Plazo (meses)', defaultVisible: true },
+  { key: 'porcentajeMora', label: 'Mora %', defaultVisible: true },
+  { key: 'diasGracia', label: 'Días Gracia', defaultVisible: false },
+  { key: 'isActive', label: 'Activo', defaultVisible: true },
+];
 
 export default function ProductosPrestamoPage() {
   const { token: C } = theme.useToken();
@@ -12,6 +27,7 @@ export default function ProductosPrestamoPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [form] = Form.useForm();
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('prestamista-productos', COLS_DEF);
 
   const { data = [], isLoading } = useQuery({
     queryKey: ['prestamista-productos'],
@@ -33,24 +49,46 @@ export default function ProductosPrestamoPage() {
   };
 
   const cols = [
-    { title: 'Nombre', dataIndex: 'nombre' },
-    { title: 'Tasa Mensual', dataIndex: 'tasaInteresMensual', render: (v: any) => `${v}%` },
-    { title: 'Método', dataIndex: 'metodoAmortizacion', render: (v: string) => <Tag>{v}</Tag> },
+    { title: 'Nombre', dataIndex: 'nombre', key: 'nombre' },
+    { title: 'Tasa Mensual', dataIndex: 'tasaInteresMensual', key: 'tasaInteresMensual', render: (v: any) => `${v}%` },
+    { title: 'Método', dataIndex: 'metodoAmortizacion', key: 'metodoAmortizacion', render: (v: string) => <Tag>{v}</Tag> },
     { title: 'Plazo (meses)', key: 'plazo', render: (_: any, r: any) => `${r.plazoMinimoMeses ?? '—'} - ${r.plazoMaximoMeses ?? '—'}` },
-    { title: 'Mora %', dataIndex: 'porcentajeMora', render: (v: any) => `${v}%` },
-    { title: 'Días Gracia', dataIndex: 'diasGracia' },
-    { title: 'Activo', dataIndex: 'isActive', render: (v: boolean) => <Tag color={v ? 'green' : 'default'}>{v ? 'Sí' : 'No'}</Tag> },
+    { title: 'Mora %', dataIndex: 'porcentajeMora', key: 'porcentajeMora', render: (v: any) => `${v}%` },
+    { title: 'Días Gracia', dataIndex: 'diasGracia', key: 'diasGracia' },
+    { title: 'Activo', dataIndex: 'isActive', key: 'isActive', render: (v: boolean) => <Tag color={v ? 'green' : 'default'}>{v ? 'Sí' : 'No'}</Tag> },
     { title: '', key: 'acc', width: 80, render: (_: any, r: any) => <Button size="small" onClick={() => openForm(r)}>Editar</Button> },
   ];
 
+  const exportar = () => {
+    const filas = (data as any[]).map((r: any) => ({
+      'Nombre': r.nombre,
+      'Tasa Mensual (%)': r.tasaInteresMensual,
+      'Método Amortización': r.metodoAmortizacion,
+      'Plazo Mín (meses)': r.plazoMinimoMeses,
+      'Plazo Máx (meses)': r.plazoMaximoMeses,
+      'Mora %': r.porcentajeMora,
+      'Días Gracia': r.diasGracia,
+      'Activo': r.isActive ? 'Sí' : 'No',
+    }));
+    exportarExcel(filas, `ProductosPrestamo-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <h2 style={{ margin: 0, color: C.colorText }}>Productos de Préstamo</h2>
-        <Button type="primary" icon={<Plus size={15} />} onClick={() => openForm()}>Nuevo Producto</Button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['prestamista-productos']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button type="primary" icon={<Plus size={15} />} onClick={() => openForm()}>Nuevo Producto</Button>
+        </div>
       </div>
 
-      <Table dataSource={(data as any[]).map((r: any) => ({ ...r, key: r.id }))} columns={cols}
+      <Table dataSource={(data as any[]).map((r: any) => ({ ...r, key: r.id }))} columns={filterColumns(cols as any)}
         loading={isLoading} scroll={{ x: 'max-content' }} pagination={false} />
 
       <Modal title={editing ? 'Editar Producto' : 'Nuevo Producto'} open={open}

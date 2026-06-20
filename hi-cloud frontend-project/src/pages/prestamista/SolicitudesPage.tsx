@@ -2,6 +2,11 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Table, Button, Select, Tag, Modal, Form, Input, InputNumber, DatePicker, message, Descriptions, theme } from 'antd';
 import { Plus, Eye } from 'lucide-react';
+import { FileExcelOutlined } from '@ant-design/icons';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 import { prestamistalApi } from '../../api/prestamista.api';
 
 const { Option } = Select;
@@ -10,6 +15,16 @@ const estadoColor: Record<string, string> = {
   pendiente: 'blue', aprobada: 'green', rechazada: 'red', desembolsada: 'purple', cancelada: 'default',
 };
 const fmt = (n: any) => `RD$ ${Number(n ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
+
+const COLS_DEF = [
+  { key: 'numero', label: 'Número', defaultVisible: true },
+  { key: 'deudorNombre', label: 'Deudor', defaultVisible: true },
+  { key: 'productoNombre', label: 'Producto', defaultVisible: true },
+  { key: 'montoSolicitado', label: 'Monto', defaultVisible: true },
+  { key: 'plazoMeses', label: 'Plazo', defaultVisible: true },
+  { key: 'estado', label: 'Estado', defaultVisible: true },
+  { key: 'fechaSolicitud', label: 'Fecha', defaultVisible: true },
+];
 
 export default function SolicitudesPage() {
   const { token: C } = theme.useToken();
@@ -21,6 +36,7 @@ export default function SolicitudesPage() {
   const [decidirOpen, setDecidirOpen] = useState(false);
   const [form] = Form.useForm();
   const [formDecision] = Form.useForm();
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('prestamista-solicitudes', COLS_DEF);
 
   const { data: solicitudesResp, isLoading } = useQuery({
     queryKey: ['prestamista-solicitudes', estado],
@@ -63,13 +79,13 @@ export default function SolicitudesPage() {
   };
 
   const cols = [
-    { title: 'Número', dataIndex: 'numero', width: 120 },
-    { title: 'Deudor', dataIndex: 'deudorNombre' },
-    { title: 'Producto', dataIndex: 'productoNombre' },
-    { title: 'Monto', dataIndex: 'montoSolicitado', render: fmt },
-    { title: 'Plazo', dataIndex: 'plazoMeses', render: (v: any) => `${v} meses` },
-    { title: 'Estado', dataIndex: 'estado', render: (v: string) => <Tag color={estadoColor[v] ?? 'default'}>{v}</Tag> },
-    { title: 'Fecha', dataIndex: 'fechaSolicitud', render: (v: string) => v?.slice(0, 10) },
+    { title: 'Número', dataIndex: 'numero', key: 'numero', width: 120 },
+    { title: 'Deudor', dataIndex: 'deudorNombre', key: 'deudorNombre' },
+    { title: 'Producto', dataIndex: 'productoNombre', key: 'productoNombre' },
+    { title: 'Monto', dataIndex: 'montoSolicitado', key: 'montoSolicitado', render: fmt },
+    { title: 'Plazo', dataIndex: 'plazoMeses', key: 'plazoMeses', render: (v: any) => `${v} meses` },
+    { title: 'Estado', dataIndex: 'estado', key: 'estado', render: (v: string) => <Tag color={estadoColor[v] ?? 'default'}>{v}</Tag> },
+    { title: 'Fecha', dataIndex: 'fechaSolicitud', key: 'fechaSolicitud', render: (v: string) => v?.slice(0, 10) },
     {
       title: '', key: 'acc', width: 100,
       render: (_: any, r: any) => (
@@ -78,18 +94,39 @@ export default function SolicitudesPage() {
     },
   ];
 
+  const exportar = () => {
+    const filas = (data as any[]).map((r: any) => ({
+      'Número': r.numero,
+      'Deudor': r.deudorNombre,
+      'Producto': r.productoNombre,
+      'Monto Solicitado': r.montoSolicitado,
+      'Plazo (meses)': r.plazoMeses,
+      'Estado': r.estado,
+      'Fecha': r.fechaSolicitud?.slice(0, 10),
+    }));
+    exportarExcel(filas, `Solicitudes-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <h2 style={{ margin: 0, color: C.colorText }}>Solicitudes de Préstamo</h2>
-        <Button type="primary" icon={<Plus size={15} />} onClick={() => setOpen(true)}>Nueva Solicitud</Button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['prestamista-solicitudes']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button type="primary" icon={<Plus size={15} />} onClick={() => setOpen(true)}>Nueva Solicitud</Button>
+        </div>
       </div>
 
       <Select style={{ marginBottom: 16, minWidth: 160 }} placeholder="Filtrar por estado" allowClear value={estado} onChange={setEstado}>
         {['pendiente', 'aprobada', 'rechazada', 'desembolsada', 'cancelada'].map(e => <Option key={e} value={e}>{e}</Option>)}
       </Select>
 
-      <Table dataSource={(data as any[]).map((r: any) => ({ ...r, key: r.id }))} columns={cols}
+      <Table dataSource={(data as any[]).map((r: any) => ({ ...r, key: r.id }))} columns={filterColumns(cols as any)}
         loading={isLoading} scroll={{ x: 'max-content' }} />
 
       {/* Modal nueva solicitud */}

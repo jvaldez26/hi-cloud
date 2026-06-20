@@ -1,7 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Tabs, Table, Tag, Button, Descriptions, Statistic, Row, Col, Spin, theme } from 'antd';
+import { Card, Tabs, Table, Tag, Button, Descriptions, Statistic, Row, Col, Spin, message, theme } from 'antd';
 import { ArrowLeft, FileText } from 'lucide-react';
+import { FileExcelOutlined } from '@ant-design/icons';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { exportarExcel } from '../../utils/exportExcel';
 import { prestamistalApi } from '../../api/prestamista.api';
 
 const fmt = (n: any) => `RD$ ${Number(n ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
@@ -29,6 +32,19 @@ export default function FichaDeudorPage() {
   if (!deudor) return <div style={{ padding: 24 }}>Deudor no encontrado</div>;
 
   const prestamos: any[] = deudor.prestamos ?? [];
+
+  const exportarPrestamos = () => {
+    const filas = prestamos.map((r: any) => ({
+      'N°': r.numero,
+      'Capital': r.montoPrincipal,
+      'Saldo': r.saldoTotal,
+      'Estado': r.estado,
+      'Desembolso': r.fechaDesembolso?.slice(0, 10),
+      'Vencimiento': r.fechaVencimiento?.slice(0, 10),
+    }));
+    exportarExcel(filas, `Prestamos-Deudor-${deudor.numero}-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
 
   return (
     <div style={{ padding: 24 }}>
@@ -78,24 +94,31 @@ export default function FichaDeudorPage() {
           key: 'prestamos',
           label: `Préstamos (${prestamos.length})`,
           children: (
-            <Table
-              dataSource={prestamos.map((r: any) => ({ ...r, key: r.id }))}
-              scroll={{ x: 'max-content' }} size="small"
-              columns={[
-                { title: 'N°', dataIndex: 'numero', width: 110 },
-                { title: 'Capital', dataIndex: 'montoPrincipal', render: fmt },
-                { title: 'Saldo', dataIndex: 'saldoTotal', render: fmt },
-                { title: 'Estado', dataIndex: 'estado', render: (v: string) => <Tag color={estadoColor[v] ?? 'default'}>{v}</Tag> },
-                { title: 'Desembolso', dataIndex: 'fechaDesembolso', render: (v: string) => v?.slice(0, 10) },
-                { title: 'Vencimiento', dataIndex: 'fechaVencimiento', render: (v: string) => v?.slice(0, 10) },
-                {
-                  title: '', key: 'acc', width: 80,
-                  render: (_: any, r: any) => (
-                    <Button size="small" icon={<FileText size={13} />} onClick={() => navigate(`/prestamista/prestamos/${r.id}`)}>Ver</Button>
-                  ),
-                },
-              ]}
-            />
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 8, gap: 2 }}>
+                <Button icon={<FileExcelOutlined />} onClick={exportarPrestamos}>Excel</Button>
+                <RefreshByKeyButton queryKey={['prestamista-deudor']} />
+                <VideoTutorialButton />
+              </div>
+              <Table
+                dataSource={prestamos.map((r: any) => ({ ...r, key: r.id }))}
+                scroll={{ x: 'max-content' }} size="small"
+                columns={[
+                  { title: 'N°', dataIndex: 'numero', width: 110 },
+                  { title: 'Capital', dataIndex: 'montoPrincipal', render: fmt },
+                  { title: 'Saldo', dataIndex: 'saldoTotal', render: fmt },
+                  { title: 'Estado', dataIndex: 'estado', render: (v: string) => <Tag color={estadoColor[v] ?? 'default'}>{v}</Tag> },
+                  { title: 'Desembolso', dataIndex: 'fechaDesembolso', render: (v: string) => v?.slice(0, 10) },
+                  { title: 'Vencimiento', dataIndex: 'fechaVencimiento', render: (v: string) => v?.slice(0, 10) },
+                  {
+                    title: '', key: 'acc', width: 80,
+                    render: (_: any, r: any) => (
+                      <Button size="small" icon={<FileText size={13} />} onClick={() => navigate(`/prestamista/prestamos/${r.id}`)}>Ver</Button>
+                    ),
+                  },
+                ]}
+              />
+            </div>
           ),
         },
         {

@@ -6,6 +6,9 @@ import {
   Modal, Form, InputNumber, DatePicker, Select, Input, message, Progress, theme
 } from 'antd';
 import { ArrowLeft, FileText, DollarSign, Plus } from 'lucide-react';
+import { FileExcelOutlined } from '@ant-design/icons';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { exportarExcel } from '../../utils/exportExcel';
 import { prestamistalApi } from '../../api/prestamista.api';
 
 const { Option } = Select;
@@ -84,6 +87,37 @@ export default function DetallePrestamo() {
   const pctPagado = prestamo.montoPrincipal > 0 ? Math.round((pagado / Number(prestamo.montoPrincipal)) * 100) : 0;
   const activo = !['pagado', 'cancelado', 'refinanciado'].includes(prestamo.estado);
 
+  const exportarCuotas = () => {
+    const filas = cuotas.map((r: any) => ({
+      '#': r.numeroCuota,
+      'Vencimiento': r.fechaVencimiento?.slice(0, 10),
+      'Capital': r.capitalCuota,
+      'Interés': r.interesCuota,
+      'Cuota Total': r.cuotaTotal,
+      'Capital Pagado': r.capitalPagado,
+      'Interés Pagado': r.interesPagado,
+      'Mora': r.moraGenerada,
+      'Días Mora': r.diasMora,
+      'Estado': r.estado,
+    }));
+    exportarExcel(filas, `Cuotas-${prestamo.numero}-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} cuotas exportadas`);
+  };
+
+  const exportarPagos = () => {
+    const filas = (pagos as any[]).map((r: any) => ({
+      'Número': r.numero,
+      'Fecha': r.fechaPago?.slice(0, 10),
+      'Total Pagado': r.montoPagado,
+      'Capital': r.capitalAplicado,
+      'Interés': r.interesAplicado,
+      'Mora': r.moraAplicada,
+      'Forma Pago': r.formaPago,
+    }));
+    exportarExcel(filas, `Pagos-${prestamo.numero}-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} pagos exportados`);
+  };
+
   return (
     <div style={{ padding: 24 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
@@ -140,45 +174,59 @@ export default function DetallePrestamo() {
           key: 'cuotas',
           label: `Cuotas (${cuotas.length})`,
           children: (
-            <Table
-              dataSource={cuotas.map((r: any) => ({ ...r, key: r.id }))}
-              scroll={{ x: 'max-content' }} size="small"
-              columns={[
-                { title: '#', dataIndex: 'numeroCuota', width: 50 },
-                { title: 'Vencimiento', dataIndex: 'fechaVencimiento', render: (v: string) => v?.slice(0, 10) },
-                { title: 'Capital', dataIndex: 'capitalCuota', render: fmt },
-                { title: 'Interés', dataIndex: 'interesCuota', render: fmt },
-                { title: 'Cuota Total', dataIndex: 'cuotaTotal', render: fmt },
-                { title: 'Capital Pag.', dataIndex: 'capitalPagado', render: fmt },
-                { title: 'Interés Pag.', dataIndex: 'interesPagado', render: fmt },
-                { title: 'Mora', dataIndex: 'moraGenerada', render: (v: any) => <span style={{ color: Number(v) > 0 ? '#ff4d4f' : undefined }}>{fmt(v)}</span> },
-                { title: 'Días Mora', dataIndex: 'diasMora', render: (v: any) => v > 0 ? <Tag color="red">{v}</Tag> : 0 },
-                { title: 'Estado', dataIndex: 'estado', render: (v: string) => <Tag color={cuotaColor[v] ?? 'default'}>{v?.replace('_', ' ')}</Tag> },
-              ]}
-            />
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 8, gap: 2 }}>
+                <Button icon={<FileExcelOutlined />} onClick={exportarCuotas}>Excel</Button>
+                <RefreshByKeyButton queryKey={['prestamista-prestamo']} />
+                <VideoTutorialButton />
+              </div>
+              <Table
+                dataSource={cuotas.map((r: any) => ({ ...r, key: r.id }))}
+                scroll={{ x: 'max-content' }} size="small"
+                columns={[
+                  { title: '#', dataIndex: 'numeroCuota', width: 50 },
+                  { title: 'Vencimiento', dataIndex: 'fechaVencimiento', render: (v: string) => v?.slice(0, 10) },
+                  { title: 'Capital', dataIndex: 'capitalCuota', render: fmt },
+                  { title: 'Interés', dataIndex: 'interesCuota', render: fmt },
+                  { title: 'Cuota Total', dataIndex: 'cuotaTotal', render: fmt },
+                  { title: 'Capital Pag.', dataIndex: 'capitalPagado', render: fmt },
+                  { title: 'Interés Pag.', dataIndex: 'interesPagado', render: fmt },
+                  { title: 'Mora', dataIndex: 'moraGenerada', render: (v: any) => <span style={{ color: Number(v) > 0 ? '#ff4d4f' : undefined }}>{fmt(v)}</span> },
+                  { title: 'Días Mora', dataIndex: 'diasMora', render: (v: any) => v > 0 ? <Tag color="red">{v}</Tag> : 0 },
+                  { title: 'Estado', dataIndex: 'estado', render: (v: string) => <Tag color={cuotaColor[v] ?? 'default'}>{v?.replace('_', ' ')}</Tag> },
+                ]}
+              />
+            </div>
           ),
         },
         {
           key: 'pagos',
           label: `Pagos (${(pagos as any[]).length})`,
           children: (
-            <Table
-              dataSource={(pagos as any[]).map((r: any) => ({ ...r, key: r.id }))}
-              scroll={{ x: 'max-content' }} size="small"
-              columns={[
-                { title: 'Número', dataIndex: 'numero', width: 110 },
-                { title: 'Fecha', dataIndex: 'fechaPago', render: (v: string) => v?.slice(0, 10) },
-                { title: 'Total Pagado', dataIndex: 'montoPagado', render: fmt },
-                { title: 'Capital', dataIndex: 'capitalAplicado', render: fmt },
-                { title: 'Interés', dataIndex: 'interesAplicado', render: fmt },
-                { title: 'Mora', dataIndex: 'moraAplicada', render: fmt },
-                { title: 'Forma Pago', dataIndex: 'formaPago' },
-                {
-                  title: '', key: 'pdf', width: 70,
-                  render: (_: any, r: any) => <Button size="small" icon={<FileText size={13} />} onClick={() => window.open(prestamistalApi.pdfRecibo(r.id), '_blank')} />,
-                },
-              ]}
-            />
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 8, gap: 2 }}>
+                <Button icon={<FileExcelOutlined />} onClick={exportarPagos}>Excel</Button>
+                <RefreshByKeyButton queryKey={['prestamista-pagos']} />
+                <VideoTutorialButton />
+              </div>
+              <Table
+                dataSource={(pagos as any[]).map((r: any) => ({ ...r, key: r.id }))}
+                scroll={{ x: 'max-content' }} size="small"
+                columns={[
+                  { title: 'Número', dataIndex: 'numero', width: 110 },
+                  { title: 'Fecha', dataIndex: 'fechaPago', render: (v: string) => v?.slice(0, 10) },
+                  { title: 'Total Pagado', dataIndex: 'montoPagado', render: fmt },
+                  { title: 'Capital', dataIndex: 'capitalAplicado', render: fmt },
+                  { title: 'Interés', dataIndex: 'interesAplicado', render: fmt },
+                  { title: 'Mora', dataIndex: 'moraAplicada', render: fmt },
+                  { title: 'Forma Pago', dataIndex: 'formaPago' },
+                  {
+                    title: '', key: 'pdf', width: 70,
+                    render: (_: any, r: any) => <Button size="small" icon={<FileText size={13} />} onClick={() => window.open(prestamistalApi.pdfRecibo(r.id), '_blank')} />,
+                  },
+                ]}
+              />
+            </div>
           ),
         },
         {

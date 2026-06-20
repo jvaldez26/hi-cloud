@@ -3,11 +3,26 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Table, Button, Input, Select, Modal, Form, InputNumber, Tag, Space, Tooltip, message, theme } from 'antd';
 import { UserPlus, Search, FileText } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { FileExcelOutlined } from '@ant-design/icons';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 import { prestamistalApi } from '../../api/prestamista.api';
 
 const { Option } = Select;
 
 const riesgoColor: Record<string, string> = { bajo: 'green', medio: 'blue', alto: 'orange', critico: 'red' };
+
+const COLS_DEF = [
+  { key: 'numero', label: 'N°', defaultVisible: true },
+  { key: 'nombre', label: 'Nombre', defaultVisible: true },
+  { key: 'cedula', label: 'Cédula', defaultVisible: true },
+  { key: 'telefono', label: 'Teléfono', defaultVisible: true },
+  { key: 'prestamosActivos', label: 'Préstamos', defaultVisible: true },
+  { key: 'nivelRiesgo', label: 'Riesgo', defaultVisible: true },
+  { key: 'estado', label: 'Estado', defaultVisible: true },
+];
 
 export default function DeudoresPage() {
   const { token: C } = theme.useToken();
@@ -18,6 +33,7 @@ export default function DeudoresPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [form] = Form.useForm();
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('prestamista-deudores', COLS_DEF);
 
   const { data, isLoading } = useQuery({
     queryKey: ['prestamista-deudores', page, search],
@@ -39,13 +55,13 @@ export default function DeudoresPage() {
   };
 
   const cols = [
-    { title: 'N°', dataIndex: 'numero', width: 90 },
+    { title: 'N°', dataIndex: 'numero', key: 'numero', width: 90 },
     { title: 'Nombre', key: 'nombre', render: (_: any, r: any) => `${r.nombre} ${r.apellidos ?? ''}` },
-    { title: 'Cédula', dataIndex: 'cedula', width: 120 },
-    { title: 'Teléfono', dataIndex: 'telefono', width: 120 },
-    { title: 'Préstamos', dataIndex: 'prestamosActivos', width: 90, align: 'center' as const },
-    { title: 'Riesgo', dataIndex: 'nivelRiesgo', width: 90, render: (v: string) => <Tag color={riesgoColor[v] ?? 'default'}>{v}</Tag> },
-    { title: 'Estado', dataIndex: 'estado', width: 90, render: (v: string) => <Tag color={v === 'activo' ? 'green' : 'red'}>{v}</Tag> },
+    { title: 'Cédula', dataIndex: 'cedula', key: 'cedula', width: 120 },
+    { title: 'Teléfono', dataIndex: 'telefono', key: 'telefono', width: 120 },
+    { title: 'Préstamos', dataIndex: 'prestamosActivos', key: 'prestamosActivos', width: 90, align: 'center' as const },
+    { title: 'Riesgo', dataIndex: 'nivelRiesgo', key: 'nivelRiesgo', width: 90, render: (v: string) => <Tag color={riesgoColor[v] ?? 'default'}>{v}</Tag> },
+    { title: 'Estado', dataIndex: 'estado', key: 'estado', width: 90, render: (v: string) => <Tag color={v === 'activo' ? 'green' : 'red'}>{v}</Tag> },
     {
       title: '', key: 'acc', width: 100,
       render: (_: any, r: any) => (
@@ -57,11 +73,32 @@ export default function DeudoresPage() {
     },
   ];
 
+  const exportar = () => {
+    const filas = (data?.data ?? []).map((r: any) => ({
+      'N°': r.numero,
+      'Nombre': `${r.nombre} ${r.apellidos ?? ''}`,
+      'Cédula': r.cedula,
+      'Teléfono': r.telefono,
+      'Préstamos Activos': r.prestamosActivos,
+      'Riesgo': r.nivelRiesgo,
+      'Estado': r.estado,
+    }));
+    exportarExcel(filas, `Deudores-${new Date().toISOString().split('T')[0]}`);
+    message.success(`${filas.length} registros exportados`);
+  };
+
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <h2 style={{ margin: 0, color: C.colorText }}>Deudores</h2>
-        <Button type="primary" icon={<UserPlus size={15} />} onClick={() => openForm()}>Nuevo Deudor</Button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <RefreshByKeyButton queryKey={['prestamista-deudores']} />
+          <VideoTutorialButton />
+          <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 4px' }} />
+          <Button type="primary" icon={<UserPlus size={15} />} onClick={() => openForm()}>Nuevo Deudor</Button>
+        </div>
       </div>
 
       <Input prefix={<Search size={14} />} placeholder="Buscar por nombre, cédula..." value={search}
@@ -69,7 +106,7 @@ export default function DeudoresPage() {
 
       <Table
         dataSource={(data?.data ?? []).map((r: any) => ({ ...r, key: r.id }))}
-        columns={cols} loading={isLoading} scroll={{ x: 'max-content' }}
+        columns={filterColumns(cols as any)} loading={isLoading} scroll={{ x: 'max-content' }}
         pagination={{ current: page, pageSize: 20, total: data?.total ?? 0, onChange: setPage, showTotal: t => `${t} deudores` }}
       />
 
