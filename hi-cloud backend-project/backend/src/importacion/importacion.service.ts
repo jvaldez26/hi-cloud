@@ -42,17 +42,17 @@ export class ImportacionService {
 
   getPlantillaClientes(): string {
     return [
-      'nombre,rfc,email,telefono,direccion,ciudad,regimenFiscal',
-      'Empresa Ejemplo S.R.L.,101234567,empresa@email.com,809-555-0000,Av. Principal #1,Santo Domingo,',
-      'Cliente Individual,00112345678,cliente@email.com,809-555-0001,Calle 1 #2,Santiago,',
+      'nombre,rnc,email,telefono,direccion,ciudad',
+      'Empresa Ejemplo S.R.L.,101234567,empresa@email.com,809-555-0000,Av. Principal #1,Santo Domingo',
+      'Juan Pérez,00112345678,juan@email.com,809-555-0001,Calle 1 #2,Santiago',
     ].join('\n');
   }
 
   getPlantillaProductos(): string {
     return [
-      'codigo,nombre,precio,porcentajeIva,unidadMedida,stockMinimo,categoria,descripcion',
-      'PROD001,Producto Ejemplo,1500.00,18,PZA,5,General,Descripción del producto',
-      'SERV001,Servicio Ejemplo,2500.00,18,HR,0,Servicios,Descripción del servicio',
+      'codigo,nombre,precio,porcentajeIva,unidadMedida,stockMinimo,categoria,descripcion,tipo',
+      'PROD001,Producto Ejemplo,1500.00,18,PZA,5,General,Descripción del producto,producto',
+      'SERV001,Servicio Ejemplo,2500.00,18,HR,0,Servicios,Descripción del servicio,servicio',
     ].join('\n');
   }
 
@@ -61,21 +61,26 @@ export class ImportacionService {
   // ──────────────────────────────────────────────────────────────────
 
   async importarClientes(buffer: Buffer): Promise<ImportResult> {
-    const filas   = this.parsearCSV(buffer);
+    const empresaId = this.tenantService.getEmpresaId();
+    const filas     = this.parsearCSV(buffer);
     const result: ImportResult = { total: 0, exitosos: 0, errores: 0, detalles: [] };
 
     if (filas.length < 2) {
       throw new BadRequestException('El archivo debe tener encabezado y al menos una fila de datos');
     }
 
-    const headers = filas[0].map(h => h.toLowerCase());
-    const required = ['nombre', 'rfc'];
-    const missing  = required.filter(r => !headers.includes(r));
-    if (missing.length) {
-      throw new BadRequestException(`Columnas requeridas faltantes: ${missing.join(', ')}`);
+    const headers = filas[0].map(h => h.toLowerCase().replace(/\s/g, ''));
+    // Aceptar columna "rnc" o "rfc" para compatibilidad
+    const tieneRnc = headers.includes('rnc') || headers.includes('rfc');
+    if (!headers.includes('nombre') || !tieneRnc) {
+      throw new BadRequestException('Columnas requeridas faltantes: nombre, rnc');
     }
 
-    const idx = (name: string) => headers.indexOf(name);
+    const idx = (name: string) => {
+      const i = headers.indexOf(name);
+      return i >= 0 ? i : -1;
+    };
+    const idxRnc = idx('rnc') >= 0 ? idx('rnc') : idx('rfc');
 
     for (let i = 1; i < filas.length; i++) {
       result.total++;
@@ -83,30 +88,33 @@ export class ImportacionService {
       const fNum = i + 1;
 
       try {
-        const nombre = fila[idx('nombre')];
-        const rfc    = fila[idx('rfc')];
+        const nombre = fila[idx('nombre')]?.trim();
+        const rnc    = fila[idxRnc]?.replace(/\D/g, '');
 
-        if (!nombre || !rfc) throw new Error('nombre y rfc son obligatorios');
+        if (!nombre) throw new Error('nombre es obligatorio');
         if (nombre.length > 200) throw new Error('nombre muy largo (máx 200 chars)');
+        if (!rnc || (rnc.length !== 9 && rnc.length !== 11)) {
+          throw new Error('RNC/Cédula debe tener 9 dígitos (empresa) u 11 dígitos (persona)');
+        }
 
-        // Verificar si ya existe
-        const existe = await this.clienteRepository.findOne({ where: { rfc } });
+        // Duplicado estricto por empresa
+        const existe = await this.clienteRepository.findOne({ where: { rfc: rnc, empresaId } });
         if (existe) {
           result.errores++;
-          result.detalles.push({ fila: fNum, error: `RFC ${rfc} ya existe`, estado: 'error' });
+          result.detalles.push({ fila: fNum, error: `RNC/Cédula ${rnc} ya existe en esta empresa`, estado: 'error' });
           continue;
         }
 
         await this.clienteRepository.save(
           this.clienteRepository.create({
+            empresaId,
             nombre,
-            rfc,
-            email:        fila[idx('email')]    || undefined,
-            telefono:     fila[idx('telefono')] || undefined,
-            direccion:    fila[idx('direccion')]|| undefined,
-            ciudad:       fila[idx('ciudad')]   || undefined,
-            regimenFiscal:fila[idx('regimenfiscal')] || undefined,
-          }),
+            rfc:      rnc,
+            email:    idx('email')    >= 0 ? (fila[idx('email')]    || undefined) : undefined,
+            telefono: idx('telefono') >= 0 ? (fila[idx('telefono')] || undefined) : undefined,
+            direccion:idx('direccion')>= 0 ? (fila[idx('direccion')]|| undefined) : undefined,
+            ciudad:   idx('ciudad')   >= 0 ? (fila[idx('ciudad')]   || undefined) : undefined,
+          } as any),
         );
 
         result.exitosos++;
@@ -117,7 +125,7 @@ export class ImportacionService {
       }
     }
 
-    this.logger.log(`Importación clientes: ${result.exitosos} ok, ${result.errores} errores`);
+    this.logger.log(`[Import Clientes] empresa=${empresaId}: ${result.exitosos} ok, ${result.errores} errores`);
     return result;
   }
 
@@ -126,21 +134,22 @@ export class ImportacionService {
   // ──────────────────────────────────────────────────────────────────
 
   async importarProductos(buffer: Buffer): Promise<ImportResult> {
-    const filas   = this.parsearCSV(buffer);
+    const empresaId = this.tenantService.getEmpresaId();
+    const filas     = this.parsearCSV(buffer);
     const result: ImportResult = { total: 0, exitosos: 0, errores: 0, detalles: [] };
 
     if (filas.length < 2) {
       throw new BadRequestException('El archivo debe tener encabezado y al menos una fila de datos');
     }
 
-    const headers = filas[0].map(h => h.toLowerCase());
+    const headers = filas[0].map(h => h.toLowerCase().replace(/\s/g, ''));
     const required = ['codigo', 'nombre', 'precio'];
     const missing  = required.filter(r => !headers.includes(r));
     if (missing.length) {
       throw new BadRequestException(`Columnas requeridas faltantes: ${missing.join(', ')}`);
     }
 
-    const idx = (name: string) => headers.indexOf(name);
+    const idx = (name: string) => headers.indexOf(name.toLowerCase());
 
     for (let i = 1; i < filas.length; i++) {
       result.total++;
@@ -148,34 +157,39 @@ export class ImportacionService {
       const fNum = i + 1;
 
       try {
-        const codigo = fila[idx('codigo')];
-        const nombre = fila[idx('nombre')];
+        const codigo = fila[idx('codigo')]?.trim();
+        const nombre = fila[idx('nombre')]?.trim();
         const precio = parseFloat(fila[idx('precio')]);
 
         if (!codigo || !nombre) throw new Error('codigo y nombre son obligatorios');
         if (isNaN(precio) || precio < 0) throw new Error('precio inválido');
 
-        const existe = await this.productoRepository.findOne({ where: { codigo } });
+        // Duplicado estricto por empresa
+        const existe = await this.productoRepository.findOne({ where: { codigo, empresaId } });
         if (existe) {
           result.errores++;
-          result.detalles.push({ fila: fNum, error: `Código ${codigo} ya existe`, estado: 'error' });
+          result.detalles.push({ fila: fNum, error: `Código ${codigo} ya existe en esta empresa`, estado: 'error' });
           continue;
         }
 
-        const pIva = idx('porcentajeiva') >= 0 ? parseFloat(fila[idx('porcentajeiva')]) : 18;
-        const sMin = idx('stockminimo')   >= 0 ? parseInt(fila[idx('stockminimo')])     : 0;
+        const pIva  = idx('porcentajeiva') >= 0 ? parseFloat(fila[idx('porcentajeiva')]) : 18;
+        const sMin  = idx('stockminimo')   >= 0 ? parseInt(fila[idx('stockminimo')])     : 0;
+        const tipoRaw = idx('tipo') >= 0 ? fila[idx('tipo')]?.toLowerCase().trim() : 'producto';
+        const tipo  = tipoRaw === 'servicio' ? 'servicio' : 'producto';
 
         await this.productoRepository.save(
           this.productoRepository.create({
+            empresaId,
             codigo,
             nombre,
             precio,
             porcentajeIva:  isNaN(pIva) ? 18 : pIva,
-            unidadMedida:   fila[idx('unidadmedida')] || 'PZA',
-            stockMinimo:    isNaN(sMin) ? 0  : sMin,
-            categoria:      fila[idx('categoria')]    || undefined,
-            descripcion:    fila[idx('descripcion')]  || undefined,
-          }),
+            unidadMedida:   idx('unidadmedida') >= 0 ? (fila[idx('unidadmedida')] || 'PZA') : 'PZA',
+            stockMinimo:    isNaN(sMin) ? 0 : sMin,
+            categoria:      idx('categoria')   >= 0 ? (fila[idx('categoria')]    || undefined) : undefined,
+            descripcion:    idx('descripcion') >= 0 ? (fila[idx('descripcion')]  || undefined) : undefined,
+            tipo,
+          } as any),
         );
 
         result.exitosos++;
@@ -186,7 +200,7 @@ export class ImportacionService {
       }
     }
 
-    this.logger.log(`Importación productos: ${result.exitosos} ok, ${result.errores} errores`);
+    this.logger.log(`[Import Productos] empresa=${empresaId}: ${result.exitosos} ok, ${result.errores} errores`);
     return result;
   }
 
@@ -235,7 +249,7 @@ export class ImportacionService {
         const existe = await this.proveedorRepository.findOne({ where: { rnc, empresaId } });
         if (existe) {
           result.errores++;
-          result.detalles.push({ fila: fNum, error: `RNC ${rnc} ya existe`, estado: 'error' });
+          result.detalles.push({ fila: fNum, error: `RNC ${rnc} ya existe en esta empresa`, estado: 'error' });
           continue;
         }
 
@@ -246,11 +260,11 @@ export class ImportacionService {
             empresaId,
             nombre,
             rnc,
-            telefono:  fila[idx('telefono')]  || undefined,
-            email:     fila[idx('email')]     || undefined,
-            direccion: fila[idx('direccion')] || undefined,
-            contacto:  fila[idx('contacto')]  || undefined,
-            categoria: fila[idx('categoria')] || undefined,
+            telefono:  idx('telefono')  >= 0 ? (fila[idx('telefono')]  || undefined) : undefined,
+            email:     idx('email')     >= 0 ? (fila[idx('email')]     || undefined) : undefined,
+            direccion: idx('direccion') >= 0 ? (fila[idx('direccion')] || undefined) : undefined,
+            contacto:  idx('contacto')  >= 0 ? (fila[idx('contacto')]  || undefined) : undefined,
+            categoria: idx('categoria') >= 0 ? (fila[idx('categoria')] || undefined) : undefined,
             diasPago:  !isNaN(diasPago!) ? diasPago : undefined,
           }),
         );
@@ -263,7 +277,7 @@ export class ImportacionService {
       }
     }
 
-    this.logger.log(`Importación proveedores: ${result.exitosos} ok, ${result.errores} errores`);
+    this.logger.log(`[Import Proveedores] empresa=${empresaId}: ${result.exitosos} ok, ${result.errores} errores`);
     return result;
   }
 }

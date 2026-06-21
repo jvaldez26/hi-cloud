@@ -137,7 +137,7 @@ export default function ImportacionPage() {
             <ImportCard
               tipo="clientes"
               title="Importar Clientes desde CSV"
-              campos={['nombre', 'rfc', 'email', 'telefono', 'direccion', 'ciudad', 'regimenFiscal']}
+              campos={['nombre', 'rnc', 'email', 'telefono', 'direccion', 'ciudad']}
             />
           ),
         },
@@ -148,7 +148,7 @@ export default function ImportacionPage() {
             <ImportCard
               tipo="productos"
               title="Importar Productos / Catálogo desde CSV"
-              campos={['codigo', 'nombre', 'precio', 'porcentajeIva', 'unidadMedida', 'stockMinimo', 'categoria', 'descripcion']}
+              campos={['codigo', 'nombre', 'precio', 'porcentajeIva', 'unidadMedida', 'stockMinimo', 'categoria', 'descripcion', 'tipo']}
             />
           ),
         },
