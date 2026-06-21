@@ -29,11 +29,12 @@ export class ImportacionService {
   // ──────────────────────────────────────────────────────────────────
 
   private parsearCSV(buffer: Buffer): string[][] {
-    const texto  = buffer.toString('utf-8');
+    const texto  = buffer.toString('utf-8').replace(/^﻿/, ''); // quitar BOM si hay
     const lineas = texto.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
     return lineas
       .map(l => l.split(',').map(c => c.trim().replace(/^"|"$/g, '')))
-      .filter(l => l.some(c => c.length > 0));
+      .filter(l => l.some(c => c.length > 0))
+      .filter(l => !l[0].toLowerCase().startsWith('sep=')); // saltar directiva sep= de Excel
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -42,18 +43,20 @@ export class ImportacionService {
 
   getPlantillaClientes(): string {
     return [
+      'sep=,',
       'nombre,rnc,email,telefono,direccion,ciudad',
       'Empresa Ejemplo S.R.L.,101234567,empresa@email.com,809-555-0000,Av. Principal #1,Santo Domingo',
-      'Juan Pérez,00112345678,juan@email.com,809-555-0001,Calle 1 #2,Santiago',
-    ].join('\n');
+      'Juan Perez,00112345678,juan@email.com,809-555-0001,Calle 1 #2,Santiago',
+    ].join('\r\n');
   }
 
   getPlantillaProductos(): string {
     return [
+      'sep=,',
       'codigo,nombre,precio,porcentajeIva,unidadMedida,stockMinimo,categoria,descripcion,tipo',
-      'PROD001,Producto Ejemplo,1500.00,18,PZA,5,General,Descripción del producto,producto',
-      'SERV001,Servicio Ejemplo,2500.00,18,HR,0,Servicios,Descripción del servicio,servicio',
-    ].join('\n');
+      'PROD001,Producto Ejemplo,1500.00,18,PZA,5,General,Descripcion del producto,producto',
+      'SERV001,Servicio Ejemplo,2500.00,18,HR,0,Servicios,Descripcion del servicio,servicio',
+    ].join('\r\n');
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -210,10 +213,11 @@ export class ImportacionService {
 
   getPlantillaProveedores(): string {
     return [
+      'sep=,',
       'nombre,rnc,telefono,email,direccion,contacto,categoria,diasPago',
-      'Proveedor Ejemplo S.R.L.,101234567,809-555-0000,proveedor@email.com,Av. Principal #1,Juan Pérez,Materia prima,30',
-      'Servicios Generales,00112345678,829-555-0001,info@servicios.com,Calle 2 #5,María López,Servicios,15',
-    ].join('\n');
+      'Proveedor Ejemplo S.R.L.,101234567,809-555-0000,proveedor@email.com,Av. Principal #1,Juan Perez,Materia prima,30',
+      'Servicios Generales,00112345678,829-555-0001,info@servicios.com,Calle 2 #5,Maria Lopez,Servicios,15',
+    ].join('\r\n');
   }
 
   async importarProveedores(buffer: Buffer): Promise<ImportResult> {
