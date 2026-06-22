@@ -158,15 +158,14 @@ export default function RecibosCobrosPage() {
     queryFn:  () => api.get('/clientes?limit=200').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
   });
 
-  // Facturas pendientes del cliente seleccionado
+  // Facturas con saldo pendiente del cliente seleccionado
   const clienteIdWatch = Form.useWatch('clienteId', form);
   const { data: facturasCliente = [], isFetching: loadingFacturas } = useQuery<any[]>({
-    queryKey: ['facturas-pendientes-cliente', clienteIdWatch],
+    queryKey: ['facturas-pendientes-cobro', clienteIdWatch],
     queryFn:  () =>
-      api.get(`/facturas?clienteId=${clienteIdWatch}&limit=200`).then((r: any) => {
-        const d   = r.data?.data ?? r.data;
-        const arr = Array.isArray(d) ? d : (d?.data ?? []);
-        return arr.filter((f: any) => f.estado !== 'pagada' && f.estado !== 'anulada');
+      api.get(`/facturas/pendientes-cobro${clienteIdWatch ? `?clienteId=${clienteIdWatch}` : ''}`).then((r: any) => {
+        const d = r.data?.data ?? r.data;
+        return Array.isArray(d) ? d : [];
       }),
     enabled: !!clienteIdWatch,
     staleTime: 0,
@@ -542,10 +541,9 @@ export default function RecibosCobrosPage() {
                 form.setFieldValue('facturaFolio', f?.numero ?? f?.folio ?? undefined);
                 const m: 'DOP' | 'USD' = f?.moneda === 'USD' ? 'USD' : 'DOP';
                 setMonedaForm(m);
-                // Prellenar monto con el saldo pendiente de la factura
+                // Prellenar monto con el saldo pendiente real de la CxC
                 if (f) {
-                  const pendiente = f.cxcPendiente ?? f.total ?? 0;
-                  form.setFieldValue('monto', Number(pendiente));
+                  form.setFieldValue('monto', Number(f.saldo ?? f.total ?? 0));
                 }
               }}
             >
@@ -558,7 +556,7 @@ export default function RecibosCobrosPage() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{f.numero ?? f.folio}</span>
                     <span style={{ color: '#10B981', fontSize: 12, whiteSpace: 'nowrap' }}>
-                      {fmt(Number(f.total ?? 0), f.moneda)}
+                      Saldo: {fmt(Number(f.saldo ?? f.total ?? 0), f.moneda)}
                     </span>
                   </div>
                 </Option>

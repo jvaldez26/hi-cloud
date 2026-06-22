@@ -145,6 +145,14 @@ export class FacturasController {
     return this.facturasService.buscarParaNota(q ?? '', tipo);
   }
 
+  @Get('pendientes-cobro')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @ApiOperation({ summary: 'Facturas con saldo pendiente de cobro (para selector en Recibos)' })
+  getPendientesCobro(@Query('clienteId') clienteId?: string) {
+    const cid = clienteId ? parseInt(clienteId, 10) : undefined;
+    return this.facturasService.getPendientesCobro(cid);
+  }
+
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Obtener factura por ID con detalles' })

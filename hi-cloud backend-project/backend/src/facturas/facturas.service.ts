@@ -895,4 +895,53 @@ export class FacturasService {
       .groupBy('f.estado')
       .getRawMany();
   }
+
+  /**
+   * Facturas con saldo pendiente de cobro (para selector en Recibos de Cobro).
+   * Consulta cuentas_por_cobrar para obtener montoPendiente real.
+   */
+  async getPendientesCobro(clienteId?: number): Promise<any[]> {
+    const empresaId  = this.tenantService.getEmpresaId();
+    const sucursalId = this.tenantService.getSucursalId();
+
+    const params: any[] = [empresaId];
+    let idx = 2;
+
+    let sql = `
+      SELECT
+        f.id,
+        f.folio          AS numero,
+        f.total,
+        cxc."montoPendiente" AS saldo,
+        cxc."montoPagado",
+        f.moneda,
+        f."clienteId",
+        f."sucursalId",
+        c.nombre         AS "clienteNombre"
+      FROM cuentas_por_cobrar cxc
+      JOIN facturas f ON f.id = cxc."facturaId"
+      LEFT JOIN clientes c ON c.id = f."clienteId"
+      WHERE cxc."empresaId" = $1
+        AND cxc."isActive"  = true
+        AND cxc."montoPendiente" > 0
+        AND cxc.estado NOT IN ('pagada', 'anulada')
+        AND f."isActive" = true
+    `;
+
+    if (clienteId) {
+      sql += ` AND f."clienteId" = $${idx}`;
+      params.push(clienteId);
+      idx++;
+    }
+
+    if (sucursalId) {
+      sql += ` AND (f."sucursalId" = $${idx} OR f."sucursalId" IS NULL)`;
+      params.push(sucursalId);
+      idx++;
+    }
+
+    sql += ` ORDER BY f.fecha DESC, f."createdAt" DESC LIMIT 200`;
+
+    return this.dataSource.query(sql, params);
+  }
 }
