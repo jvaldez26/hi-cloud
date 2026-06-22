@@ -148,7 +148,7 @@ export default function ImportacionPage() {
             <ImportCard
               tipo="productos"
               title="Importar Productos / Catálogo desde CSV"
-              campos={['codigo', 'nombre', 'precio', 'porcentajeIva', 'unidadMedida', 'stockMinimo', 'categoria', 'descripcion', 'tipo']}
+              campos={['codigo', 'nombre', 'precio', 'precio2', 'precio3', 'porcentajeItbis', 'unidadMedida', 'stock', 'stockMinimo', 'categoria', 'descripcion', 'tipo', 'almacen']}
             />
           ),
         },

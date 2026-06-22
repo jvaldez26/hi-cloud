@@ -41,10 +41,14 @@ export class ImportacionController {
 
   // ── Importaciones ───────────────────────────────────────────────────────────
 
-  private static readonly CSV_FILTER = (_: any, file: { mimetype: string }, cb: any) => {
-    const MIME_PERMITIDOS = ['text/csv', 'application/vnd.ms-excel', 'text/plain'];
-    if (!MIME_PERMITIDOS.includes(file.mimetype)) {
-      return cb(new BadRequestException('Solo se permiten archivos CSV'), false);
+  private static readonly CSV_FILTER = (_: any, file: { mimetype: string; originalname: string }, cb: any) => {
+    const MIME_PERMITIDOS = [
+      'text/csv', 'text/plain', 'text/comma-separated-values', 'application/csv',
+      'application/vnd.ms-excel', 'application/octet-stream',
+    ];
+    const esCSV = MIME_PERMITIDOS.includes(file.mimetype) || file.originalname?.toLowerCase().endsWith('.csv');
+    if (!esCSV) {
+      return cb(new BadRequestException('Solo se permiten archivos CSV (.csv)'), false);
     }
     cb(null, true);
   };

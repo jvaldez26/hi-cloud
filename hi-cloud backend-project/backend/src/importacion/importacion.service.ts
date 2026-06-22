@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { Cliente }   from '../clientes/entities/cliente.entity';
 import { Producto }  from '../productos/entities/producto.entity';
 import { Proveedor } from '../proveedores/entities/proveedor.entity';
@@ -21,6 +21,7 @@ export class ImportacionService {
     @InjectRepository(Cliente)   private clienteRepository:   Repository<Cliente>,
     @InjectRepository(Producto)  private productoRepository:  Repository<Producto>,
     @InjectRepository(Proveedor) private proveedorRepository: Repository<Proveedor>,
+    @InjectDataSource()          private ds: DataSource,
     private tenantService: TenantService,
   ) {}
 
@@ -53,9 +54,9 @@ export class ImportacionService {
   getPlantillaProductos(): string {
     return [
       'sep=,',
-      'codigo,nombre,precio,porcentajeIva,unidadMedida,stockMinimo,categoria,descripcion,tipo',
-      'PROD001,Producto Ejemplo,1500.00,18,PZA,5,General,Descripcion del producto,producto',
-      'SERV001,Servicio Ejemplo,2500.00,18,HR,0,Servicios,Descripcion del servicio,servicio',
+      'codigo,nombre,precio,precio2,precio3,porcentajeItbis,unidadMedida,stock,stockMinimo,categoria,descripcion,tipo,almacen',
+      'PROD001,Producto Ejemplo,1500.00,1400.00,1300.00,18,PZA,50,5,General,Descripcion del producto,producto,Principal',
+      'SERV001,Servicio Ejemplo,2500.00,,,18,HR,0,0,Servicios,Descripcion del servicio,servicio,',
     ].join('\r\n');
   }
 
@@ -138,6 +139,7 @@ export class ImportacionService {
 
   async importarProductos(buffer: Buffer): Promise<ImportResult> {
     const empresaId = this.tenantService.getEmpresaId();
+    const userId    = this.tenantService.getUserId() ?? 1;
     const filas     = this.parsearCSV(buffer);
     const result: ImportResult = { total: 0, exitosos: 0, errores: 0, detalles: [] };
 
@@ -146,7 +148,7 @@ export class ImportacionService {
     }
 
     const headers = filas[0].map(h => h.toLowerCase().replace(/\s/g, ''));
-    const required = ['codigo', 'nombre', 'precio'];
+    const required = ['nombre', 'precio'];
     const missing  = required.filter(r => !headers.includes(r));
     if (missing.length) {
       throw new BadRequestException(`Columnas requeridas faltantes: ${missing.join(', ')}`);
@@ -154,50 +156,107 @@ export class ImportacionService {
 
     const idx = (name: string) => headers.indexOf(name.toLowerCase());
 
+    // Acepta porcentajeItbis o porcentajeIva (compatibilidad)
+    const idxItbis = idx('porcentajeitbis') >= 0 ? idx('porcentajeitbis') : idx('porcentajeiva');
+
     for (let i = 1; i < filas.length; i++) {
       result.total++;
       const fila = filas[i];
       const fNum = i + 1;
 
       try {
-        const codigo = fila[idx('codigo')]?.trim();
+        const codigo = idx('codigo') >= 0 ? fila[idx('codigo')]?.trim() || undefined : undefined;
         const nombre = fila[idx('nombre')]?.trim();
         const precio = parseFloat(fila[idx('precio')]);
 
-        if (!codigo || !nombre) throw new Error('codigo y nombre son obligatorios');
+        if (!nombre) throw new Error('nombre es obligatorio');
         if (isNaN(precio) || precio < 0) throw new Error('precio inválido');
 
-        // Duplicado estricto por empresa
-        const existe = await this.productoRepository.findOne({ where: { codigo, empresaId } });
-        if (existe) {
-          result.errores++;
-          result.detalles.push({ fila: fNum, error: `Código ${codigo} ya existe en esta empresa`, estado: 'error' });
-          continue;
+        // Duplicado estricto por empresa (solo si tiene código)
+        if (codigo) {
+          const existe = await this.productoRepository.findOne({ where: { codigo, empresaId } });
+          if (existe) {
+            result.errores++;
+            result.detalles.push({ fila: fNum, error: `Código ${codigo} ya existe en esta empresa`, estado: 'error' });
+            continue;
+          }
         }
 
-        const pIva  = idx('porcentajeiva') >= 0 ? parseFloat(fila[idx('porcentajeiva')]) : 18;
-        const sMin  = idx('stockminimo')   >= 0 ? parseInt(fila[idx('stockminimo')])     : 0;
-        const tipoRaw = idx('tipo') >= 0 ? fila[idx('tipo')]?.toLowerCase().trim() : 'producto';
-        const tipo  = tipoRaw === 'servicio' ? 'servicio' : 'producto';
+        const pItbis    = idxItbis >= 0 ? parseFloat(fila[idxItbis]) : 18;
+        const sMin      = idx('stockminimo')   >= 0 ? parseFloat(fila[idx('stockminimo')])   : 0;
+        const tipoRaw   = idx('tipo') >= 0 ? fila[idx('tipo')]?.toLowerCase().trim() : 'producto';
+        const tipo      = tipoRaw === 'servicio' ? 'servicio' : 'producto';
 
-        await this.productoRepository.save(
+        const p2Raw = idx('precio2') >= 0 ? fila[idx('precio2')] : '';
+        const p3Raw = idx('precio3') >= 0 ? fila[idx('precio3')] : '';
+        const precio2 = p2Raw?.trim() ? parseFloat(p2Raw) : undefined;
+        const precio3 = p3Raw?.trim() ? parseFloat(p3Raw) : undefined;
+
+        const stockInicial  = tipo === 'servicio' ? 0 : (idx('stock') >= 0 ? parseFloat(fila[idx('stock')]) || 0 : 0);
+        const almacenNombre = idx('almacen') >= 0 ? fila[idx('almacen')]?.trim() || '' : '';
+
+        const producto = await this.productoRepository.save(
           this.productoRepository.create({
             empresaId,
-            codigo,
+            codigo:       codigo ?? null,
             nombre,
             precio,
-            porcentajeIva:  isNaN(pIva) ? 18 : pIva,
-            unidadMedida:   idx('unidadmedida') >= 0 ? (fila[idx('unidadmedida')] || 'PZA') : 'PZA',
-            stockMinimo:    isNaN(sMin) ? 0 : sMin,
-            categoria:      idx('categoria')   >= 0 ? (fila[idx('categoria')]    || undefined) : undefined,
-            descripcion:    idx('descripcion') >= 0 ? (fila[idx('descripcion')]  || undefined) : undefined,
+            precio2:      !isNaN(precio2!) ? precio2 : undefined,
+            precio3:      !isNaN(precio3!) ? precio3 : undefined,
+            porcentajeIva: isNaN(pItbis) ? 18 : pItbis,
+            unidadMedida: idx('unidadmedida') >= 0 ? (fila[idx('unidadmedida')] || 'PZA') : 'PZA',
+            stockMinimo:  isNaN(sMin) ? 0 : sMin,
+            categoria:    idx('categoria')   >= 0 ? (fila[idx('categoria')]    || undefined) : undefined,
+            descripcion:  idx('descripcion') >= 0 ? (fila[idx('descripcion')]  || undefined) : undefined,
             tipo,
+            stock: 0,
           } as any),
-        );
+        ) as unknown as Producto;
+
+        // Registrar stock inicial en almacén (solo productos con stock > 0)
+        if (tipo === 'producto' && stockInicial > 0) {
+          let almacenId: number | null = null;
+
+          if (almacenNombre) {
+            const rows = await this.ds.query(
+              `SELECT id FROM almacenes WHERE "empresaId" = $1 AND LOWER(nombre) = LOWER($2) AND "isActive" = true LIMIT 1`,
+              [empresaId, almacenNombre],
+            );
+            if (rows.length) almacenId = rows[0].id;
+          }
+
+          if (!almacenId) {
+            const rows = await this.ds.query(
+              `SELECT id FROM almacenes WHERE "empresaId" = $1 AND "isActive" = true ORDER BY id ASC LIMIT 1`,
+              [empresaId],
+            );
+            if (rows.length) almacenId = rows[0].id;
+          }
+
+          if (almacenId) {
+            await this.ds.query(`
+              INSERT INTO stock_almacen (
+                "empresaId", "almacenId", "productoId", stock, "stockMinimo", "isActive", "createdAt", "updatedAt"
+              ) VALUES ($1, $2, $3, $4, $5, true, NOW(), NOW())
+              ON CONFLICT ("almacenId", "productoId") DO UPDATE SET
+                stock = EXCLUDED.stock, "updatedAt" = NOW()
+            `, [empresaId, almacenId, producto.id, stockInicial, isNaN(sMin) ? 0 : sMin]);
+
+            await this.productoRepository.update(producto.id, { stock: stockInicial });
+
+            await this.ds.query(`
+              INSERT INTO movimientos_inventario (
+                "empresaId", "productoId", tipo, cantidad, "cantidadAnterior", "cantidadNueva",
+                motivo, "almacenId", "userId", "isActive", "createdAt", "updatedAt"
+              ) VALUES ($1, $2, 'entrada', $3, 0, $3, $4, $5, $6, true, NOW(), NOW())
+            `, [empresaId, producto.id, stockInicial, 'Stock inicial por importación CSV', almacenId, userId]);
+          }
+        }
 
         result.exitosos++;
         result.detalles.push({ fila: fNum, estado: 'ok' });
       } catch (err) {
+        this.logger.error(`[Import Productos] fila ${fNum}: ${(err as Error).message}`);
         result.errores++;
         result.detalles.push({ fila: fNum, error: (err as Error).message, estado: 'error' });
       }
