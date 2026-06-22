@@ -36,6 +36,7 @@ class CreateReciboDto {
   @IsOptional() @IsInt() @Type(() => Number)                 cxcId?: number;
   @IsOptional() @IsString()                                  referencia?: string;
   @IsOptional() @IsString()                                  notas?: string;
+  @IsOptional() @IsString()                                  moneda?: string;
   @IsOptional()                                              registrarExcedente?: boolean;
   @IsOptional() @IsInt() @Type(() => Number)                 vendedorId?: number;
 }
