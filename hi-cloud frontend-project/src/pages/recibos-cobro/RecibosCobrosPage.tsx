@@ -22,8 +22,10 @@ import { exportarExcel } from '../../utils/exportExcel';
 const { Title, Text } = Typography;
 const { Option } = Select;
 
-const fmt = (v: number) =>
-  new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'DOP', minimumFractionDigits: 2 }).format(v ?? 0);
+const fmt = (v: number, moneda = 'DOP') =>
+  moneda === 'USD'
+    ? `US$${(v ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'DOP', minimumFractionDigits: 2 }).format(v ?? 0);
 
 const METODOS = [
   { value: 'efectivo',      label: '💵 Efectivo' },
@@ -61,7 +63,7 @@ function ReciboImprimible({ recibo, empresa }: { recibo: any; empresa?: any }) {
       {recibo.facturaFolio && <div style={S.row}><span>Factura ref.:</span><span>{recibo.facturaFolio}</span></div>}
       {recibo.referencia   && <div style={S.row}><span>Referencia:</span><span>{recibo.referencia}</span></div>}
       <div style={S.dash} />
-      <div style={S.large}>{fmt(recibo.monto)}</div>
+      <div style={S.large}>{fmt(recibo.monto, recibo.moneda)}</div>
       <div style={{ ...S.center, fontSize: 11, marginTop: 2 }}>Forma de pago: {metodo?.label ?? recibo.metodoPago}</div>
       <div style={S.dash} />
       <div style={{ ...S.center, fontSize: 10, marginTop: 6 }}>
@@ -98,6 +100,7 @@ export default function RecibosCobrosPage() {
   const [detalleRecibo,    setDetalleRecibo]     = useState<any>(null);
   const [motivoAnulacion,     setMotivoAnulacion]     = useState('');
   const [pendienteExcedente,  setPendienteExcedente]  = useState<{ dto: any; excedente: number; pendiente: number } | null>(null);
+  const [monedaForm,          setMonedaForm]          = useState<'DOP' | 'USD'>('DOP');
   const [form] = Form.useForm();
 
   const anularMut = useMutation({
@@ -326,7 +329,7 @@ export default function RecibosCobrosPage() {
             { title: 'Concepto', dataIndex: 'concepto', key: 'co', ellipsis: true },
             {
               title: 'Monto', dataIndex: 'monto', key: 'mo', align: 'right' as const,
-              render: (v: any) => <Text strong style={{ color: token.colorSuccess, fontSize: 14 }}>{fmt(v)}</Text>,
+              render: (v: any, r: any) => <Text strong style={{ color: token.colorSuccess, fontSize: 14 }}>{fmt(v, r.moneda)}</Text>,
             },
             {
               title: '', key: 'acciones', width: 72, align: 'right' as const, fixed: 'right' as const,
@@ -408,7 +411,7 @@ export default function RecibosCobrosPage() {
             <Descriptions.Item label="Referencia">{detalleRecibo.referencia ?? '—'}</Descriptions.Item>
             <Descriptions.Item label="Monto">
               <Text strong style={{ color: token.colorSuccess, fontSize: 16 }}>
-                {fmt(Number(detalleRecibo.monto))}
+                {fmt(Number(detalleRecibo.monto), detalleRecibo.moneda)}
               </Text>
             </Descriptions.Item>
             <Descriptions.Item label="Cajero">{detalleRecibo.nombreUsuario ?? '—'}</Descriptions.Item>
@@ -458,7 +461,7 @@ export default function RecibosCobrosPage() {
       <Modal
         title={<Space><CheckCircleOutlined style={{ color: token.colorSuccess }} />Nuevo Recibo de Cobro</Space>}
         open={modalCrear}
-        onCancel={() => { setModalCrear(false); form.resetFields(); }}
+        onCancel={() => { setModalCrear(false); form.resetFields(); setMonedaForm('DOP'); }}
         onOk={() => form.submit()}
         confirmLoading={crear.isPending}
         okText="Emitir Recibo"
@@ -472,6 +475,7 @@ export default function RecibosCobrosPage() {
             ...v,
             fecha:         v.fecha?.format('YYYY-MM-DD'),
             monto:         Number(v.monto),
+            moneda:        monedaForm,
             clienteNombre: clientes.find((c: any) => c.id === v.clienteId)?.nombre,
             facturaId:     v.facturaId ?? undefined,
             facturaFolio:  v.facturaFolio ?? undefined,
@@ -482,7 +486,8 @@ export default function RecibosCobrosPage() {
               optionFilterProp="children"
               placeholder="Seleccionar cliente"
               onChange={() => {
-                form.setFieldsValue({ facturaId: undefined, facturaFolio: undefined });
+                form.setFieldsValue({ facturaId: undefined, facturaFolio: undefined, monto: undefined });
+                setMonedaForm('DOP');
               }}
             >
               {clientes.map((c: any) => <Option key={c.id} value={c.id}>{c.nombre}</Option>)}
@@ -502,8 +507,8 @@ export default function RecibosCobrosPage() {
               </Form.Item>
             </Col>
           </Row>
-          <Form.Item name="monto" label="Monto Recibido (RD$)" rules={[{ required: true }]}>
-            <InputNumber min={0.01} precision={2} style={{ width: '100%' }} prefix="RD$" size="large" />
+          <Form.Item name="monto" label={`Monto Recibido (${monedaForm === 'USD' ? 'US$' : 'RD$'})`} rules={[{ required: true }]}>
+            <InputNumber min={0.01} precision={2} style={{ width: '100%' }} prefix={monedaForm === 'USD' ? 'US$' : 'RD$'} size="large" />
           </Form.Item>
           <Form.Item
             name="vendedorId"
@@ -535,6 +540,13 @@ export default function RecibosCobrosPage() {
               onChange={(val) => {
                 const f = facturasCliente.find((x: any) => x.id === val);
                 form.setFieldValue('facturaFolio', f?.numero ?? f?.folio ?? undefined);
+                const m: 'DOP' | 'USD' = f?.moneda === 'USD' ? 'USD' : 'DOP';
+                setMonedaForm(m);
+                // Prellenar monto con el saldo pendiente de la factura
+                if (f) {
+                  const pendiente = f.cxcPendiente ?? f.total ?? 0;
+                  form.setFieldValue('monto', Number(pendiente));
+                }
               }}
             >
               {facturasCliente.map((f: any) => (
@@ -546,7 +558,7 @@ export default function RecibosCobrosPage() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{f.numero ?? f.folio}</span>
                     <span style={{ color: '#10B981', fontSize: 12, whiteSpace: 'nowrap' }}>
-                      {fmt(Number(f.total ?? 0))}
+                      {fmt(Number(f.total ?? 0), f.moneda)}
                     </span>
                   </div>
                 </Option>

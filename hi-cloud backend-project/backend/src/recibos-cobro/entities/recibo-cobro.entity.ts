@@ -61,4 +61,8 @@ export class ReciboCobro extends TenantBaseEntity {
 
   @Column({ type: 'text', nullable: true })
   notas?: string;
+
+  // Moneda de la factura de referencia (heredada al crear el recibo)
+  @Column({ length: 3, default: 'DOP' })
+  moneda!: string;
 }

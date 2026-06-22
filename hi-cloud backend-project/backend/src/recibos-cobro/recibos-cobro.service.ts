@@ -28,6 +28,7 @@ interface CreateReciboDto {
   cxcId?:              number;
   referencia?:         string;
   notas?:              string;
+  moneda?:             string; // heredada de la factura; default 'DOP'
   // vendedorId del POS (para asociar al cierre de caja correcto)
   vendedorId?:         number;
   nombreUsuario?:      string;
@@ -106,6 +107,13 @@ export class RecibosCobrosService {
     const empresaId = this.tenantSvc.getEmpresaId();
     const monto     = Number(dto.monto);
 
+    // ── 0. Resolver moneda: si hay facturaId, heredarla de la factura ─
+    let moneda = dto.moneda ?? 'DOP';
+    if (dto.facturaId) {
+      const factura = await this.facturaRepo.findOne({ where: { id: dto.facturaId, empresaId } });
+      if (factura?.moneda) moneda = factura.moneda;
+    }
+
     // ── 1. Resolver CxC asociada ────────────────────────────────────
     let cxc: CuentaPorCobrar | null = null;
 
@@ -144,6 +152,7 @@ export class RecibosCobrosService {
         ...dto,
         empresaId,
         numero,
+        moneda,
         cajaDiariaId: cajaDiariaId ?? undefined,
         usuarioId,
         cxcId: cxc?.id ?? dto.cxcId,

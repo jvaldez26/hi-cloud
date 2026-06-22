@@ -47,12 +47,13 @@ export class ReciboPDFService {
       },
       campos: [
         { label: 'Método de Pago', valor: METODO_LABEL[rec.metodoPago as string] ?? (rec.metodoPago as string) },
+        { label: 'Moneda', valor: rec.moneda === 'USD' ? 'Dólares Americanos (USD)' : 'Pesos Dominicanos (DOP)' },
         ...(rec.facturaFolio  ? [{ label: 'Factura Aplicada', valor: rec.facturaFolio, mono: true }] : []),
         ...(rec.referencia    ? [{ label: 'Referencia', valor: rec.referencia }]          : []),
         ...(rec.nombreUsuario ? [{ label: 'Atendido por', valor: rec.nombreUsuario }]     : []),
       ],
-      items:   [{ descripcion: rec.concepto, importe: Number(rec.monto) }],
-      totales: [{ label: 'Total Recibido', valor: Number(rec.monto), bold: true }],
+      items:   [{ descripcion: rec.concepto + (rec.moneda === 'USD' ? ` — US$${Number(rec.monto).toFixed(2)}` : ''), importe: Number(rec.monto) }],
+      totales: [{ label: `Total Recibido (${rec.moneda ?? 'DOP'})`, valor: Number(rec.monto), bold: true }],
       notas:   rec.notas ?? undefined,
       pie: 'Este recibo certifica que el cliente realizó el pago indicado. Consérvelo como comprobante. HiCloud ERP · República Dominicana',
     };
