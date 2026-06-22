@@ -7,6 +7,8 @@ import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import { fechaHoyRD, mesHoyRD } from '../common/utils/fecha-local.util';
 import { ReciboCobro, MetodoPagoRecibo } from './entities/recibo-cobro.entity';
 import { CuentaPorCobrar } from '../cxc/entities/cuenta-por-cobrar.entity';
+import { PagoCobrado } from '../cxc/entities/pago-cobrado.entity';
+import { MetodoPago } from '../common/enums/metodo-pago.enum';
 import { Factura, FacturaEstado } from '../facturas/entities/factura.entity';
 import { AnticipoCliente, EstadoAnticipo } from '../anticipos-cliente/entities/anticipo-cliente.entity';
 import { EstadoCuenta } from '../common/enums/estado-cuenta.enum';
@@ -44,6 +46,8 @@ export class RecibosCobrosService {
     private repo: Repository<ReciboCobro>,
     @InjectRepository(CuentaPorCobrar)
     private cxcRepo: Repository<CuentaPorCobrar>,
+    @InjectRepository(PagoCobrado)
+    private pagoRepo: Repository<PagoCobrado>,
     @InjectRepository(Factura)
     private facturaRepo: Repository<Factura>,
     @InjectRepository(AnticipoCliente)
@@ -168,13 +172,39 @@ export class RecibosCobrosService {
       const nuevoPendiente = Number((Number(cxc.montoOriginal) - nuevoPagado).toFixed(2));
       const nuevoEstado    = nuevoPendiente <= 0 ? EstadoCuenta.PAGADA : EstadoCuenta.PAGADA_PARCIAL;
 
+      // Mapeo MetodoPagoRecibo → MetodoPago (depósito no existe en MetodoPago)
+      const METODO_MAP: Record<string, MetodoPago> = {
+        efectivo:      MetodoPago.EFECTIVO,
+        transferencia: MetodoPago.TRANSFERENCIA,
+        cheque:        MetodoPago.CHEQUE,
+        tarjeta:       MetodoPago.TARJETA,
+        deposito:      MetodoPago.TRANSFERENCIA,
+        otro:          MetodoPago.OTRO,
+      };
+
       await this.dataSource.transaction(async (em) => {
+        // 1. Registrar pago en pagos_cobrados → alimenta el historial de cobros
+        const pagoRepo = em.getRepository(PagoCobrado);
+        await pagoRepo.save(pagoRepo.create({
+          cuentaPorCobrarId: cxc!.id,
+          monto:      montoParaCxc,
+          fecha:      dto.fecha ? new Date(dto.fecha) : new Date(),
+          metodoPago: METODO_MAP[dto.metodoPago] ?? MetodoPago.OTRO,
+          referencia: dto.referencia,
+          notas:      `Recibo ${recibo.numero}${dto.notas ? ' — ' + dto.notas : ''}`,
+          userId:     usuarioId,
+          moneda,
+          tipoCambio: 1,
+        }));
+
+        // 2. Actualizar saldos de CxC
         await em.getRepository(CuentaPorCobrar).update(cxc!.id, {
           montoPagado:    nuevoPagado,
           montoPendiente: nuevoPendiente,
           estado:         nuevoEstado as any,
         });
 
+        // 3. Marcar factura como PAGADA si el saldo quedó en 0
         if (nuevoEstado === EstadoCuenta.PAGADA && cxc!.facturaId) {
           await em.getRepository(Factura).update(cxc!.facturaId, {
             estado: FacturaEstado.PAGADA,
