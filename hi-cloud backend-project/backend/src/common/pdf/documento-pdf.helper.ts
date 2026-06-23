@@ -388,7 +388,7 @@ export async function generarDocumentoPDFFactura(
     doc.lineWidth(1);
     ty += 8;
 
-    const totalLabel = d.tipo === 'COTIZACIÓN' ? 'TOTAL COTIZACIÓN:' : 'TOTAL PRE-FACTURA:';
+    const totalLabel = d.tipo === 'COTIZACIÓN' ? 'TOTAL COTIZACIÓN:' : d.tipo === 'PRO FORMA' ? 'TOTAL PRO FORMA:' : 'TOTAL PRE-FACTURA:';
     doc.fillColor(DARK).font('Helvetica-Bold').fontSize(11)
       .text(totalLabel, totX, ty, { width: labelW2, align: 'left' });
     doc.fillColor(DARK).font('Helvetica-Bold').fontSize(13.5)

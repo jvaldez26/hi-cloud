@@ -272,14 +272,14 @@ export class ProFormaService {
     const subtotalExento  = items.filter(i => i.itbisPct === 0).reduce((s, i) => s + i.subtotal, 0);
 
     const fechaVencStr = pf.fechaVencimiento
-      ? String(pf.fechaVencimiento).substring(0, 10)
+      ? new Date(pf.fechaVencimiento).toISOString().substring(0, 10)
       : undefined;
 
     const data: DocumentoPDFData = {
       tipo:             'PRO FORMA',
       tipoSub:          'Presupuesto informativo · No válido como comprobante fiscal · Sin NCF',
       numero:           pf.numero,
-      fecha:            String(pf.fechaEmision).substring(0, 10),
+      fecha:            new Date(pf.fechaEmision).toISOString().substring(0, 10),
       fechaVencimiento: fechaVencStr,
       validezDias:      pf.validezDias,
       estado:           pf.estado,
