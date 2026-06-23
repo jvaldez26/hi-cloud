@@ -526,6 +526,7 @@ function sucursalNombreFromCache(qcClient: any): string | undefined {
 const NCF_LABEL: Record<string, [string, string]> = {
   E32: ['FACTURA DE CONSUMO',       'ELECTRÓNICA (E32)'],
   E31: ['FACTURA CRÉDITO FISCAL',   'ELECTRÓNICA (E31)'],
+  E34: ['NOTA DE CRÉDITO',          'ELECTRÓNICA (E34)'],
   E44: ['FACTURA RÉGIMEN ESPECIAL', 'ZONA FRANCA (E44)'],
   E45: ['FACTURA GUBERNAMENTAL',    'ELECTRÓNICA (E45)'],
 };
@@ -1972,11 +1973,13 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
       await api.patch(`/notas-credito/${nc.id}/emitir`);
 
       // Paso 3: Generar e-CF E34 y enviar a MSeller/DGII
-      await api.post(`/ecf/nota-credito/${nc.id}/emitir`, { codigoModificacion: codigoMod });
+      const ecfRes    = await api.post(`/ecf/nota-credito/${nc.id}/emitir`, { codigoModificacion: codigoMod });
+      const ecfResult = ecfRes.data?.data ?? ecfRes.data;
 
-      return nc;
+      return { nc, ecfResult, detalles };
     },
-    onSuccess: () => {
+    onSuccess: async (result: any) => {
+      const { nc, ecfResult, detalles: det } = result ?? {};
       message.success('Nota de Crédito emitida y e-CF E34 generado ✓');
       qc.invalidateQueries({ queryKey: ['pos-panel', 'notas-credito'] });
       qc.refetchQueries({ queryKey: ['pos-panel', 'notas-credito'] });
@@ -1984,6 +1987,48 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
       setFacturaData(null); setFacturaRef(''); setSaldoNC(null);
       setNotas(''); setClienteId(null); setDevolver({}); setPrecioEdit({});
       setCodigoMod('3'); setFecha(dayjs().format('YYYY-MM-DD'));
+      // Imprimir recibo térmico con datos fiscales E34
+      try {
+        const empRes  = await api.get('/configuracion/empresa').then(r => r.data?.data ?? r.data).catch(() => ({}));
+        const empConf = (empRes.configuracion ?? {}) as any;
+        const estadoEcf: string = ecfResult?.estado ?? '';
+        const ecfPendiente = ['pendiente_envio', 'pendiente', 'contingencia'].includes(estadoEcf);
+        const ncSubtotal   = Number(nc?.subtotal ?? 0) || (det ?? []).reduce((s: number, d: any) => s + Number(d.precioUnitario) * Number(d.cantidad), 0);
+        const saleNC: Sale = {
+          folio:                  nc?.folio ?? '—',
+          total:                  Number(nc?.total ?? 0),
+          cambio:                 0,
+          metodo:                 'credito',
+          items:                  (det ?? []).map((d: any) => ({
+            produto:         { nombre: d.descripcion } as any,
+            precio:          Number(d.precioUnitario),
+            cantidad:        Number(d.cantidad),
+            descuentoMonto:  0,
+          })),
+          iva:                    Number(nc?.iva ?? 0),
+          subtotal:               ncSubtotal,
+          facturaId:              nc?.id,
+          tipoNcf:                'E34',
+          encf:                   ecfResult?.encf,
+          ecfPendiente,
+          qrUrl:                  ecfResult?.qrUrl ?? null,
+          securityCode:           ecfResult?.securityCode,
+          ecfFecha:               dayjs().format('DD/MM/YYYY HH:mm'),
+          empresaNombreComercial: empRes.razonSocial ?? empRes.nombre,
+          empresaRnc:             empRes.rnc,
+          empresaDireccion:       empRes.direccion,
+          empresaTelefono:        empRes.telefono,
+        };
+        const qrDUrl = ecfResult?.qrUrl && !ecfPendiente
+          ? await QRCode.toDataURL(ecfResult.qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' }).catch(() => null)
+          : null;
+        imprimirReciboTermico(buildReciboTermicoHTML(saleNC, qrDUrl, {
+          mostrarEcf:    true,
+          tipoImpresora: empConf.posTipoImpresora,
+          mensajeTicket: empConf.posMensajeTicket,
+          politicaDev:   empConf.posPoliticaDev,
+        }));
+      } catch { /* impresión no crítica */ }
     },
     onError: (e: any) => message.error(e?.response?.data?.message ?? e?.message ?? 'Error al emitir NC'),
   });
