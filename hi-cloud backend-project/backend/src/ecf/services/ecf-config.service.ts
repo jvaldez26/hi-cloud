@@ -25,6 +25,10 @@ const MSELLER_ENV_PATH: Record<ModoEcf, string> = {
   [ModoEcf.PRODUCCION]:    'eCF',
 };
 
+/** Fallos consecutivos del botón Test por empresa (in-memory, se resetea en success). */
+const testFailCounts = new Map<number, number>();
+const MAX_TEST_FAILS = 3; // pre-activa CB antes de que Cognito bloquee
+
 @Injectable()
 export class EcfConfigService {
   private readonly logger = new Logger(EcfConfigService.name);
@@ -139,6 +143,18 @@ export class EcfConfigService {
     ambiente: string;
     mensaje: string;
   }> {
+    // ── Circuit breaker: rechazar si la cuenta ya está bloqueada ──────────────
+    if (await this.isEmpresaBloqueada(empresaId)) {
+      const cfg0 = await this.configRepo.findOne({ where: { empresaId } });
+      const msRestantes = cfg0?.bloqueadoHasta
+        ? Math.max(0, Math.ceil((new Date(cfg0.bloqueadoHasta).getTime() - Date.now()) / 60_000))
+        : 30;
+      throw new BadRequestException(
+        `La cuenta MSeller está temporalmente bloqueada por intentos fallidos. ` +
+        `Espera ${msRestantes} minuto(s) antes de volver a intentar.`,
+      );
+    }
+
     const cfg = await this.obtenerPorEmpresa(empresaId);
 
     if (!cfg.msellerEmail || !cfg.msellerPasswordEnc || !cfg.msellerApiKeyEnc) {
@@ -164,6 +180,8 @@ export class EcfConfigService {
         throw new BadRequestException('MSeller no devolvió idToken — credenciales incorrectas.');
       }
 
+      // Éxito → resetear contador de fallos
+      testFailCounts.delete(empresaId);
       this.logger.log(`Test MSeller OK para empresa #${empresaId} en ${envPath}`);
       return {
         ok:       true,
@@ -172,12 +190,19 @@ export class EcfConfigService {
         mensaje:  `Conexión exitosa con MSeller en modo ${cfg.modo}.`,
       };
     } catch (err: any) {
-      const status  = err?.response?.status;
-      const resData = err?.response?.data;
+      // No re-manejar si fue el BadRequestException del circuit breaker de arriba
+      if (err?.constructor?.name === 'BadRequestException' && !err?.response?.data) {
+        throw err;
+      }
+
+      const status  = err?.status ?? err?.response?.status;
+      const resData = err?.response?.data ?? err?.response;
+
       // Loguear el body completo de MSeller para diagnóstico
       this.logger.warn(
         `Test MSeller FALLÓ para empresa #${empresaId}: [${status}] body=${JSON.stringify(resData)} msg=${err?.message}`,
       );
+
       // Extraer mensaje legible — MSeller puede usar distintos campos
       const detail =
         resData?.message ??
@@ -187,8 +212,30 @@ export class EcfConfigService {
         err?.message ??
         'Error desconocido';
 
+      // Incrementar contador de fallos consecutivos
+      const fallos = (testFailCounts.get(empresaId) ?? 0) + 1;
+      testFailCounts.set(empresaId, fallos);
+
+      // Pre-activar circuit breaker si detecta bloqueo de Cognito o si alcanza el límite
+      const esBloqueoCognito = typeof detail === 'string' && detail.toLowerCase().includes('password attempts exceeded');
+      if (esBloqueoCognito || fallos >= MAX_TEST_FAILS) {
+        const hasta = new Date(Date.now() + 30 * 60_000);
+        await this.setBloqueadoHasta(empresaId, hasta);
+        testFailCounts.delete(empresaId);
+        const razon = esBloqueoCognito
+          ? 'Cognito reportó cuenta bloqueada'
+          : `${fallos} intentos fallidos consecutivos`;
+        this.logger.warn(`[CircuitBreaker] Empresa #${empresaId}: ${razon} — bloqueada 30 min`);
+      }
+
+      // Mensaje claro con advertencia de bloqueo
+      const fallosRestantes = MAX_TEST_FAILS - (testFailCounts.get(empresaId) ?? 0);
+      const advertencia = fallosRestantes > 0 && fallosRestantes < MAX_TEST_FAILS
+        ? ` ⚠️ ${fallosRestantes} intento(s) más y la cuenta se bloqueará temporalmente.`
+        : '';
+
       throw new BadRequestException(
-        `Error al conectar con MSeller (${status ?? 'timeout'}): ${detail}`,
+        `Credenciales MSeller incorrectas — verifica usuario y contraseña.${advertencia} (${detail})`,
       );
     }
   }

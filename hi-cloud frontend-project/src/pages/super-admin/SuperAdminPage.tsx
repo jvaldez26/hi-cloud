@@ -555,8 +555,19 @@ function EcfConfigTab({
       const r = await ecfConfigApi.testConexion(empresaId) as any;
       message.success(`✅ ${r.mensaje}`);
     } catch (e: any) {
-      message.error((e as any)?.friendlyMessage ?? 'Conexión fallida');
-    } finally { setTestingId(null); }
+      const msg = (e as any)?.friendlyMessage
+        ?? (e as any)?.response?.data?.message
+        ?? (e as any)?.response?.data?.errors?.[0]
+        ?? 'Conexión fallida';
+      const esBloqueada = msg.toLowerCase().includes('bloqueada') || msg.toLowerCase().includes('bloquead');
+      if (esBloqueada) {
+        message.warning(msg, 6);
+      } else {
+        message.error(msg, 6);
+      }
+    } finally {
+      setTestingId(null);
+    }
   };
 
   // Calcular estado e-CF de cada empresa
@@ -623,14 +634,26 @@ function EcfConfigTab({
                   {r.activo ? '● Activo' : '● Inactivo'}
                 </span>
               )},
-              { title: 'Acciones', key: 'acc', render: (_: any, r: any) => (
+              { title: 'Acciones', key: 'acc', render: (_: any, r: any) => {
+                const bloqueadaHasta = r.bloqueadoHasta ? new Date(r.bloqueadoHasta) : null;
+                const estaBloqueada  = bloqueadaHasta ? bloqueadaHasta > new Date() : false;
+                const minRestantes   = estaBloqueada && bloqueadaHasta
+                  ? Math.max(1, Math.ceil((bloqueadaHasta.getTime() - Date.now()) / 60_000))
+                  : 0;
+                return (
                 <Space size={4}>
                   <Button size="small" onClick={() => { form.setFieldsValue({ ...r, msellerPassword: '', msellerApiKey: '' }); setFormModal(r); }}>
                     Editar
                   </Button>
-                  <Button size="small" loading={testingId === r.empresaId} onClick={() => testConexion(r.empresaId)}>
-                    Test
-                  </Button>
+                  {estaBloqueada ? (
+                    <Tooltip title={`Cuenta bloqueada por Cognito — espera ~${minRestantes} min`}>
+                      <Button size="small" disabled>🔒 Bloqueado</Button>
+                    </Tooltip>
+                  ) : (
+                    <Button size="small" loading={testingId === r.empresaId} onClick={() => testConexion(r.empresaId)}>
+                      Test
+                    </Button>
+                  )}
                   <Button size="small" onClick={() => setSeqModal(r.empresaId)}>
                     Secuencias
                   </Button>
@@ -645,7 +668,8 @@ function EcfConfigTab({
                     </Button>
                   </Popconfirm>
                 </Space>
-              )},
+                );
+              }},
             ]}
           />
         )}
