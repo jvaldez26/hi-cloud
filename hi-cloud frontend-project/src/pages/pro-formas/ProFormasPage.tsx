@@ -6,8 +6,13 @@ import {
 import {
   FileTextOutlined, PlusOutlined, DeleteOutlined, EyeOutlined,
   PrinterOutlined, EditOutlined, SearchOutlined, MinusCircleOutlined,
+  FileExcelOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { exportarExcel } from '../../utils/exportExcel';
 import api from '../../api/client';
 import { useAuthStore } from '../../store/auth.store';
 
@@ -210,27 +215,38 @@ export default function ProFormasPage() {
     }
   };
 
+  // ─── Visibilidad de columnas ─────────────────────────────────────────────────
+
+  const COLS_DEF = [
+    { key: 'numero',           label: 'Número',       defaultVisible: true  },
+    { key: 'clienteNombre',    label: 'Cliente',      defaultVisible: true  },
+    { key: 'total',            label: 'Total',        defaultVisible: true  },
+    { key: 'fechaVencimiento', label: 'Válida hasta', defaultVisible: true  },
+    { key: 'estado',           label: 'Estado',       defaultVisible: true  },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('pro-formas', COLS_DEF);
+
   // ─── Columnas de tabla ───────────────────────────────────────────────────────
 
-  const columns = [
+  const columns = filterColumns([
     {
-      title: 'Número', dataIndex: 'numero', width: 110,
+      title: 'Número', key: 'numero', dataIndex: 'numero', width: 110,
       render: (v: string) => <span style={{ fontFamily: 'monospace', fontWeight: 600, color: token.colorPrimary }}>{v}</span>,
     },
     {
-      title: 'Cliente', dataIndex: 'clienteNombre',
+      title: 'Cliente', key: 'clienteNombre', dataIndex: 'clienteNombre',
       render: (v: string) => v ?? <Text type="secondary">—</Text>,
     },
     {
-      title: 'Total', dataIndex: 'total', align: 'right' as const,
+      title: 'Total', key: 'total', dataIndex: 'total', align: 'right' as const,
       render: (v: number) => <span style={{ fontWeight: 700 }}>{fmt(v)}</span>,
     },
     {
-      title: 'Válida hasta', dataIndex: 'fechaVencimiento',
+      title: 'Válida hasta', key: 'fechaVencimiento', dataIndex: 'fechaVencimiento',
       render: (v: string) => v ? String(v).substring(0, 10) : '—',
     },
     {
-      title: 'Estado', dataIndex: 'estado', width: 100,
+      title: 'Estado', key: 'estado', dataIndex: 'estado', width: 100,
       render: (v: string) => <Tag color={ESTADO_COLOR[v] ?? 'default'}>{v}</Tag>,
     },
     {
@@ -257,7 +273,7 @@ export default function ProFormasPage() {
         </Space>
       ),
     },
-  ];
+  ]);
 
   // ─── Render ──────────────────────────────────────────────────────────────────
 
@@ -274,9 +290,25 @@ export default function ProFormasPage() {
           </Text>
         </Col>
         <Col>
-          <Button type="primary" icon={<PlusOutlined />} onClick={abrirNueva}>
-            + Nueva Pro Forma
-          </Button>
+          <Space wrap>
+            <Button icon={<FileExcelOutlined />} onClick={() => {
+              const filas = rows.map((p: any) => ({
+                'Número':       p.numero ?? '',
+                'Cliente':      p.clienteNombre ?? 'Consumidor Final',
+                'Total':        Number(p.total ?? 0),
+                'Válida hasta': p.fechaVencimiento ? String(p.fechaVencimiento).substring(0, 10) : '',
+                'Estado':       p.estado ?? '',
+              }));
+              exportarExcel(filas, `ProFormas-${new Date().toISOString().split('T')[0]}`);
+              message.success(`${filas.length} pro formas exportadas`);
+            }}>Excel</Button>
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+            <RefreshByKeyButton queryKey={['pro-formas']} />
+            <VideoTutorialButton />
+            <Button type="primary" icon={<PlusOutlined />} onClick={abrirNueva}>
+              + Nueva Pro Forma
+            </Button>
+          </Space>
         </Col>
       </Row>
 
@@ -316,6 +348,7 @@ export default function ProFormasPage() {
           rowKey="id"
           loading={isLoading}
           size="small"
+          scroll={{ x: 'max-content' }}
           pagination={{
             current: page,
             pageSize: 50,
