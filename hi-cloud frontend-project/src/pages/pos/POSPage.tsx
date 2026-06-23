@@ -5514,6 +5514,9 @@ export default function POSPage() {
   const [propinaTipo,        setPropinaTipo]        = useState<'%' | 'fijo'>('%');
   const [diasCreditoPos,     setDiasCreditoPos]     = useState(30);
   const [sale,               setSale]               = useState<Sale | null>(null);
+  const [idsRecientes, setIdsRecientes] = useState<number[]>(() => {
+    try { const eid = localStorage.getItem('empresaId') ?? ''; return JSON.parse(localStorage.getItem(`pos_recientes_${eid}`) ?? '[]'); } catch { return []; }
+  });
   const [contextoActualId,   setContextoActualId]   = useState<number | null>(null);
   const [tipoNcf,            setTipoNcf]            = useState('E32');
   const [ventasEnEspera,     setVentasEnEspera]     = useState<ParkedSale[]>([]);
@@ -5718,6 +5721,12 @@ export default function POSPage() {
     });
     return list;
   })();
+
+  // Últimos 12 productos facturados (persistido en localStorage por empresa)
+  const productosRecientes = idsRecientes
+    .map(id => ((produtos?.data ?? []) as any[]).find((p: any) => p.id === id))
+    .filter(Boolean)
+    .slice(0, 12) as any[];
 
   // Obtiene el id del consumidor final de la lista de clientes
   const consumidorFinalId = clientes?.data?.find((c: Cliente) =>
@@ -6271,6 +6280,13 @@ export default function POSPage() {
         }
       }
       setSale(saleObj);
+      // Persistir los últimos 12 productos facturados por empresa
+      const _eid = localStorage.getItem('empresaId') ?? '';
+      const _nuevosIds = saleObj.items.map((i: CartItem) => i.produto.id as number);
+      const _prevIds: number[] = (() => { try { return JSON.parse(localStorage.getItem(`pos_recientes_${_eid}`) ?? '[]'); } catch { return []; } })();
+      const _merged = [..._nuevosIds, ..._prevIds.filter((id: number) => !_nuevosIds.includes(id))].slice(0, 12);
+      localStorage.setItem(`pos_recientes_${_eid}`, JSON.stringify(_merged));
+      setIdsRecientes(_merged);
       setShowPago(false);
       setRncComprador(''); setRazonSocialComp(''); setNumeroOrdenCompra(''); setGuardarRncPerfil(false);
       setCart([]); resetCliente(); setMontoRecibido(0);
@@ -6803,9 +6819,13 @@ export default function POSPage() {
             {/* Fila 2: conteo + categorías */}
             <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
               <span style={{ fontSize:12, color:C.textSub, whiteSpace:'nowrap', flexShrink:0 }}>
-                <b style={{color:C.text}}>{productosFiltrados.length}</b> productos
+                {!search && categoriaTab === '__all__' && filtroStock === 'todos' && productosRecientes.length > 0
+                  ? <><b style={{color:C.text}}>{productosRecientes.length}</b> recientes</>
+                  : <><b style={{color:C.text}}>{productosFiltrados.length}</b> productos</>
+                }
                 {categoriaTab !== '__all__' && <> · <span style={{color:C.blue}}>{categoriaTab}</span></>}
-                {categoriaTab === '__all__' && <> · Todos</>}
+                {categoriaTab === '__all__' && search && <> · Todos</>}
+                {categoriaTab === '__all__' && !search && filtroStock !== 'todos' && <> · Todos</>}
               </span>
               {/* Categorías scroll */}
               <div style={{ flex:1, display:'flex', gap:6, overflowX:'auto', paddingBottom:2, scrollbarWidth:'none' }}>
@@ -6835,17 +6855,31 @@ export default function POSPage() {
               <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:200 }}>
                 <Spin size="large" />
               </div>
-            ) : productosFiltrados.length === 0 ? (
-              <Empty description={<span style={{color:C.textSub}}>Sin productos</span>} style={{marginTop:60}} />
-            ) : (
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))', gap:10 }}>
-                {productosFiltrados.map((p: any) => (
-                  <ProductCard key={p.id} produto={p} onAdd={addToCart}
-                    mostrarStock={posConf.posMostrarStock !== false}
-                    permitirStockNegativo={posPermitirStockNegativo} />
-                ))}
-              </div>
-            )}
+            ) : (() => {
+              // Sin búsqueda + Todos + hay recientes → mostrar solo los 12 últimos facturados
+              const mostrarRecientes = !search && categoriaTab === '__all__' && filtroStock === 'todos' && productosRecientes.length > 0;
+              const lista = mostrarRecientes ? productosRecientes : productosFiltrados;
+              return lista.length === 0 ? (
+                <Empty description={<span style={{color:C.textSub}}>Sin productos</span>} style={{marginTop:60}} />
+              ) : (
+                <>
+                  {mostrarRecientes && (
+                    <div style={{ marginBottom:10 }}>
+                      <span style={{ fontSize:11, color:C.textSub, fontWeight:600, letterSpacing:'0.05em', textTransform:'uppercase' }}>
+                        ⏱ Últimos facturados
+                      </span>
+                    </div>
+                  )}
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))', gap:10 }}>
+                    {lista.map((p: any) => (
+                      <ProductCard key={p.id} produto={p} onAdd={addToCart}
+                        mostrarStock={posConf.posMostrarStock !== false}
+                        permitirStockNegativo={posPermitirStockNegativo} />
+                    ))}
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </>)}
         </>)}
