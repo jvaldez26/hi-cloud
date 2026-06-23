@@ -168,10 +168,21 @@ export class EcfConfigService {
         mensaje:  `Conexión exitosa con MSeller en modo ${cfg.modo}.`,
       };
     } catch (err: any) {
-      const status = err?.response?.status;
-      const detail = err?.response?.data?.message ?? err?.message ?? 'Error desconocido';
+      const status  = err?.response?.status;
+      const resData = err?.response?.data;
+      // Loguear el body completo de MSeller para diagnóstico
+      this.logger.warn(
+        `Test MSeller FALLÓ para empresa #${empresaId}: [${status}] body=${JSON.stringify(resData)} msg=${err?.message}`,
+      );
+      // Extraer mensaje legible — MSeller puede usar distintos campos
+      const detail =
+        resData?.message ??
+        resData?.error ??
+        resData?.errors?.[0] ??
+        (typeof resData === 'string' ? resData : null) ??
+        err?.message ??
+        'Error desconocido';
 
-      this.logger.warn(`Test MSeller FALLÓ para empresa #${empresaId}: [${status}] ${detail}`);
       throw new BadRequestException(
         `Error al conectar con MSeller (${status ?? 'timeout'}): ${detail}`,
       );
