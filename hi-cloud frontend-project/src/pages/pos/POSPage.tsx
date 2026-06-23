@@ -1934,8 +1934,8 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
 
       const detalles = codigoMod === '1'
         ? [{ descripcion: `Anulación total de ${facturaData.folio}`, cantidad: 1,
-             precioUnitario: Number(facturaData.subtotal) || Number(facturaData.total),
-             porcentajeIva: sinItbis ? 0 : undefined }]
+             precioUnitario: Number(facturaData.total),
+             porcentajeIva: 0 }]
         : facturaData.detalles
             .filter((d: any) => (devolver[d.id] ?? 0) > 0)
             .map((d: any) => ({
