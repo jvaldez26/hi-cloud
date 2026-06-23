@@ -217,6 +217,13 @@ apiClient.interceptors.response.use(
       default:  enrichedErr.friendlyMessage = message;
     }
 
+    // Normalizar .message y .response.data.message para que catch blocks que usan
+    // e?.response?.data?.message o e?.message obtengan el mensaje amigable
+    enrichedErr.message = enrichedErr.friendlyMessage;
+    if (enrichedErr.response?.data) {
+      enrichedErr.response.data.message = enrichedErr.friendlyMessage;
+    }
+
     return Promise.reject(enrichedErr);
   },
 );

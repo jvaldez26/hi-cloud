@@ -118,8 +118,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
         `UnhandledError [${request.method} ${request.url}]: ${exception.message}`,
         exception.stack,
       );
-      // Exponer el mensaje real siempre — "Error interno del servidor" no ayuda a diagnosticar
-      message = `Error interno: ${exception.message}`;
+      // En producción nunca exponer detalles internos; en desarrollo sí para facilitar diagnóstico
+      message = process.env.NODE_ENV !== 'production'
+        ? `Error interno: ${exception.message}`
+        : 'Error interno del servidor. Contacte soporte si persiste.';
     }
 
     this.send(response, request, status, message);
