@@ -19,7 +19,11 @@ type TipoImport = 'clientes' | 'productos' | 'proveedores';
 const importApi = {
   importar: (tipo: TipoImport, file: File) => {
     const fd = new FormData(); fd.append('file', file);
-    return api.post(`/importacion/${tipo}`, fd).then((r: any) => r.data?.data ?? r.data) as Promise<ImportResult>;
+    // Sin Content-Type explícito: el browser lo setea con el boundary multipart correcto.
+    // Si se deja el default 'application/json' del cliente, multer no parsea el archivo.
+    return api.post(`/importacion/${tipo}`, fd, {
+      headers: { 'Content-Type': undefined },
+    }).then((r: any) => r.data?.data ?? r.data) as Promise<ImportResult>;
   },
   descargarPlantilla: (tipo: TipoImport) => {
     const link = document.createElement('a');
@@ -43,7 +47,8 @@ function ImportCard({ tipo, title, campos }: { tipo: TipoImport; title: string; 
     },
     onError: (e: any) => {
       setResultado(null);
-      message.error(e?.response?.data?.message ?? e?.message ?? 'Error durante la importación');
+      // El interceptor extrae data.errors[0] en e.friendlyMessage; fallback al mensaje de axios
+      message.error(e?.friendlyMessage ?? e?.response?.data?.errors?.[0] ?? e?.message ?? 'Error durante la importación');
     },
   });
 
