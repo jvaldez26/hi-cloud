@@ -3773,21 +3773,44 @@ function CierreField({ label, value, editable, onChange, highlight }:
   );
 }
 
-// ── Ventas de Hoy ─────────────────────────────────────────────────────────────
+// ── Ganancias / Ventas de Hoy ─────────────────────────────────────────────────
 function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }) {
   const hoy        = dayjs().format('YYYY-MM-DD');
   const vendedorId = localStorage.getItem('pos_vendedor_id');
   const qc         = useQueryClient();
-  const url        = `/facturas?desde=${hoy}&hasta=${hoy}&limit=100${vendedorId ? `&vendedorId=${vendedorId}` : ''}`;
+  const user       = useAuthStore(s => s.user);
+  const esAdmin    = user?.role === 'admin' || user?.role === 'contador';
+  const [tab, setTab] = useState<'hoy' | 'historial'>('hoy');
 
+  // ── Facturas del día (ambos roles — admin para la lista, vendedor para el total)
+  const url = `/facturas?desde=${hoy}&hasta=${hoy}&limit=100${vendedorId ? `&vendedorId=${vendedorId}` : ''}`;
   const { data: raw, isLoading, refetch } = useQuery<any>({
     queryKey: ['pos-ventas-hoy', hoy, vendedorId],
     queryFn:  () => api.get(url).then(r => r.data?.data ?? r.data),
     staleTime: 60_000,
   });
-
   const ventas: any[] = Array.isArray(raw?.data) ? raw.data : (Array.isArray(raw) ? raw : []);
   const totalDia = ventas.reduce((s: number, v: any) => s + Number(v.total ?? 0), 0);
+
+  // ── Ganancias del día (solo admin/contador)
+  const { data: ganData, isLoading: ganLoading, refetch: ganRefetch } = useQuery<any>({
+    queryKey: ['pos-ganancias-dia', hoy],
+    queryFn:  () => api.get(`/reportes/ganancias-dia?fecha=${hoy}`).then(r => r.data?.data ?? r.data),
+    staleTime: 60_000,
+    enabled: esAdmin,
+  });
+
+  // ── Historial últimos 30 días (solo admin/contador, se carga al abrir el tab)
+  const desde30 = dayjs().subtract(29, 'day').format('YYYY-MM-DD');
+  const { data: histData, isLoading: histLoading, refetch: histRefetch } = useQuery<any[]>({
+    queryKey: ['pos-ganancias-historial', desde30, hoy],
+    queryFn:  () => api.get(`/reportes/ganancias-historial?desde=${desde30}&hasta=${hoy}`).then(r => r.data?.data ?? r.data),
+    staleTime: 5 * 60_000,
+    enabled: esAdmin && tab === 'historial',
+  });
+
+  const fmt2 = (n: number) => `RD$${Number(n ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
+  const pct  = (n: number, d: number) => d > 0 ? `${((n / d) * 100).toFixed(1)}%` : '—';
 
   const handleReimprimir = async (id: number, folio: string) => {
     // En móvil/tablet la app BT intercepta la pestaña antes de document.write() → about:blank.
@@ -3849,59 +3872,159 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
     }
   };
 
+  // ── Lista de facturas (compartida entre tabs HOY para admin y único view para vendedor)
+  const listaFacturas = (
+    <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+      {isLoading ? (
+        <div style={{ padding: 24, textAlign: 'center', color: C.textSub }}>Cargando...</div>
+      ) : ventas.length === 0 ? (
+        <div style={{ padding: 32, textAlign: 'center', color: C.textMuted, fontSize: 13 }}>No hay ventas hoy</div>
+      ) : ventas.map((v: any) => (
+        <div key={v.id} style={{ padding: '10px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>
+              {v.folio} · <span style={{ fontWeight: 400, color: C.textSub }}>{v.cliente?.nombre ?? 'Consumidor Final'}</span>
+            </div>
+            <div style={{ fontSize: 11, color: C.textSub, marginTop: 2 }}>
+              {v.createdAt ? dayjs(v.createdAt).format('HH:mm') : '—'} · {v.metodoPago ?? v.tipoPago ?? 'Efectivo'}
+              {v.tipoNcf ? ` · ${v.tipoNcf}` : ''}
+            </div>
+          </div>
+          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: C.blue }}>{fmt2(Number(v.total ?? 0))}</div>
+            <div style={{ fontSize: 10, color: v.estado === 'pagada' ? C.green : C.orange, fontWeight: 600, marginTop: 2 }}>{v.estado?.toUpperCase()}</div>
+          </div>
+          <button onClick={() => handleReimprimir(v.id, v.folio)} title="Reimprimir recibo"
+            style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${C.border2}`,
+              background: C.card, color: C.textSub, cursor: 'pointer', fontSize: 14, outline: 'none',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            🖨
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Header */}
       <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
         <button onClick={onVolver} style={{ background: 'none', border: 'none', color: C.textSub, cursor: 'pointer', fontSize: 18, outline: 'none', lineHeight: 1, padding: 0 }}>←</button>
         <div>
-          <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>Ventas de Hoy</div>
+          <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>{esAdmin ? 'Ganancias de Hoy' : 'Ventas de Hoy'}</div>
           <div style={{ fontSize: 11, color: C.textSub }}>{dayjs().format('DD/MM/YYYY')}</div>
         </div>
         <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
           <div style={{ fontSize: 11, color: C.textSub }}>Total acumulado</div>
-          <div style={{ fontSize: 18, fontWeight: 800, color: C.green }}>{`RD$${totalDia.toLocaleString('es-DO', { minimumFractionDigits: 2 })}`}</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: C.green }}>{fmt2(totalDia)}</div>
         </div>
       </div>
 
-      {/* Lista */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
-        {isLoading ? (
-          <div style={{ padding: 24, textAlign: 'center', color: C.textSub }}>Cargando...</div>
-        ) : ventas.length === 0 ? (
-          <div style={{ padding: 32, textAlign: 'center', color: C.textMuted, fontSize: 13 }}>No hay ventas hoy</div>
-        ) : ventas.map((v: any) => (
-          <div key={v.id} style={{ padding: '10px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>
-                {v.folio} · <span style={{ fontWeight: 400, color: C.textSub }}>{v.cliente?.nombre ?? 'Consumidor Final'}</span>
-              </div>
-              <div style={{ fontSize: 11, color: C.textSub, marginTop: 2 }}>
-                {v.createdAt ? dayjs(v.createdAt).format('HH:mm') : '—'} · {v.metodoPago ?? v.tipoPago ?? 'Efectivo'}
-                {v.tipoNcf ? ` · ${v.tipoNcf}` : ''}
-              </div>
+      {/* Tabs — solo para admin/contador */}
+      {esAdmin && (
+        <div style={{ padding: '8px 16px 0', flexShrink: 0 }}>
+          <Segmented
+            value={tab}
+            onChange={v => setTab(v as 'hoy' | 'historial')}
+            options={[{ label: '📊 Hoy', value: 'hoy' }, { label: '📅 Historial', value: 'historial' }]}
+            block
+            size="small"
+            style={{ marginBottom: 8 }}
+          />
+        </div>
+      )}
+
+      {/* ── Tab HOY (admin: desglose de ganancias + lista) ── */}
+      {(!esAdmin || tab === 'hoy') && (
+        <>
+          {/* Desglose de ganancias (solo admin/contador) */}
+          {esAdmin && (
+            <div style={{ padding: '10px 16px', flexShrink: 0, borderBottom: `1px solid ${C.border}` }}>
+              {ganLoading ? (
+                <div style={{ textAlign: 'center', color: C.textSub, fontSize: 12 }}>Calculando...</div>
+              ) : (
+                <>
+                  {/* Tarjeta ganancia neta */}
+                  <div style={{ background: C.totalsBg, borderRadius: 10, padding: '10px 14px', marginBottom: 8 }}>
+                    <div style={{ fontSize: 11, color: C.textSub, marginBottom: 2 }}>Ganancia neta estimada</div>
+                    <div style={{ fontSize: 22, fontWeight: 800,
+                      color: (ganData?.gananciaNeta ?? 0) >= 0 ? C.green : C.red }}>
+                      {fmt2(ganData?.gananciaNeta ?? 0)}
+                    </div>
+                    <div style={{ fontSize: 11, color: C.textSub, marginTop: 2 }}>
+                      Margen: {pct(ganData?.gananciaNeta ?? 0, ganData?.totalVentas ?? 0)}
+                    </div>
+                  </div>
+                  {/* Desglose */}
+                  {[
+                    { label: 'Ventas (neto s/ITBIS)', val: ganData?.totalVentas ?? 0, color: C.blue },
+                    { label: '− Costo productos',     val: -(ganData?.totalCosto ?? 0), color: C.red },
+                    { label: '− Gastos del día',      val: -(ganData?.totalGastos ?? 0), color: C.red },
+                  ].map(row => (
+                    <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
+                      <span style={{ color: C.textSub }}>{row.label}</span>
+                      <span style={{ fontWeight: 600, color: row.color }}>{fmt2(Math.abs(row.val))}</span>
+                    </div>
+                  ))}
+                  {/* Advertencia productos sin costo */}
+                  {ganData?.gananciaEsParcial && (
+                    <div style={{ marginTop: 8, padding: '6px 10px', background: C === darkC ? 'rgba(234,179,8,0.12)' : '#fef9c3',
+                      borderRadius: 8, border: `1px solid ${C.orange}`, fontSize: 11, color: C.orange }}>
+                      ⚠️ {ganData.advertencia}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
-            <div style={{ textAlign: 'right', flexShrink: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: C.blue }}>{`RD$${Number(v.total ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`}</div>
-              <div style={{ fontSize: 10, color: v.estado === 'pagada' ? C.green : C.orange, fontWeight: 600, marginTop: 2 }}>{v.estado?.toUpperCase()}</div>
-            </div>
-            <button
-              onClick={() => handleReimprimir(v.id, v.folio)}
-              title="Reimprimir recibo"
-              style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${C.border2}`,
-                background: C.card, color: C.textSub, cursor: 'pointer', fontSize: 14, outline: 'none',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              🖨
+          )}
+          {listaFacturas}
+          <div style={{ padding: '10px 16px', borderTop: `1px solid ${C.border}`, flexShrink: 0 }}>
+            <button onClick={() => { refetch(); esAdmin && ganRefetch(); }}
+              style={{ width: '100%', height: 36, borderRadius: 8, border: `1px solid ${C.border2}`, background: C.card, color: C.textSub, cursor: 'pointer', fontSize: 13, outline: 'none' }}>
+              🔄 Actualizar
             </button>
           </div>
-        ))}
-      </div>
+        </>
+      )}
 
-      <div style={{ padding: '10px 16px', borderTop: `1px solid ${C.border}`, flexShrink: 0 }}>
-        <button onClick={() => refetch()} style={{ width: '100%', height: 36, borderRadius: 8, border: `1px solid ${C.border2}`, background: C.card, color: C.textSub, cursor: 'pointer', fontSize: 13, outline: 'none' }}>
-          🔄 Actualizar
-        </button>
-      </div>
+      {/* ── Tab HISTORIAL (solo admin/contador) ── */}
+      {esAdmin && tab === 'historial' && (
+        <>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+            {histLoading ? (
+              <div style={{ padding: 24, textAlign: 'center', color: C.textSub }}>Cargando historial...</div>
+            ) : !histData || histData.length === 0 ? (
+              <div style={{ padding: 32, textAlign: 'center', color: C.textMuted, fontSize: 13 }}>Sin datos en los últimos 30 días</div>
+            ) : (histData as any[]).map((d: any) => {
+              const positiva = d.gananciaNeta >= 0;
+              return (
+                <div key={d.dia} style={{ padding: '10px 16px', borderBottom: `1px solid ${C.border}` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>
+                      {dayjs(d.dia).format('DD MMM YYYY')}
+                    </span>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: positiva ? C.green : C.red }}>
+                      {positiva ? '' : '−'}{fmt2(Math.abs(d.gananciaNeta))}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 12, fontSize: 11, color: C.textSub }}>
+                    <span>Ventas {fmt2(d.ventas)}</span>
+                    <span>Costo {fmt2(d.costo)}</span>
+                    <span>Gastos {fmt2(d.gastos)}</span>
+                    <span>{d.facturas} fact.</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ padding: '10px 16px', borderTop: `1px solid ${C.border}`, flexShrink: 0 }}>
+            <button onClick={() => histRefetch()}
+              style={{ width: '100%', height: 36, borderRadius: 8, border: `1px solid ${C.border2}`, background: C.card, color: C.textSub, cursor: 'pointer', fontSize: 13, outline: 'none' }}>
+              🔄 Actualizar historial
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -4395,7 +4518,7 @@ const PANEL_TITLES: Record<PanelId, { label: string; icon: string }> = {
   'notas-credito':  { label: 'Notas de Crédito',  icon: '📝' },
   'gastos':         { label: 'Gastos',            icon: '💸' },
   'cierre-caja':    { label: 'Cierre de Caja',    icon: '🏧' },
-  'ventas-hoy':     { label: 'Ventas de Hoy',     icon: '🗓️' },
+  'ventas-hoy':     { label: 'Ganancias',           icon: '📈' },
   'pro-formas':     { label: 'Pro Formas',         icon: '📋' },
   'compras':        { label: 'Órdenes de Compra',  icon: '🛍️' },
 };
@@ -5259,7 +5382,7 @@ const NAV_ITEMS: Array<{ id: PanelId | 'menu'; label: string; icon: string }> = 
 ];
 
 const MENU_EXTRAS: Array<{ label: string; icon: string; panel: PanelId }> = [
-  { label: 'Ventas de Hoy',    icon: '🗓️', panel: 'ventas-hoy' },
+  { label: 'Ganancias',         icon: '📈', panel: 'ventas-hoy' },
   { label: 'Conduce',          icon: '🚚', panel: 'conduce' },
   { label: 'Despacho',         icon: '📦', panel: 'despacho' },
   { label: 'Clientes',         icon: '👤', panel: 'clientes' },

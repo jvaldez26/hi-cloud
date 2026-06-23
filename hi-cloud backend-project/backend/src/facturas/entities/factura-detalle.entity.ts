@@ -51,4 +51,9 @@ export class FacturaDetalle extends BaseEntity {
 
   @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
   precioOriginal?: number;
+
+  // Snapshot del costoPromedio del producto al momento de la venta (AVCO).
+  // DEFAULT 0 cuando el producto no tiene costo registrado.
+  @Column({ type: 'decimal', precision: 14, scale: 4, default: 0 })
+  costoUnitario!: number;
 }

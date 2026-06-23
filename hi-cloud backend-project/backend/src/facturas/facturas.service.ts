@@ -94,6 +94,7 @@ export class FacturasService {
         descuentoPct:   item.descuentoPct  ?? 0,
         descuentoMonto: item.descuentoMonto ?? 0,
         precioOriginal: item.precioOriginal ?? undefined,
+        costoUnitario:  Number(producto?.costoPromedio ?? 0),
       });
     }
 

@@ -954,4 +954,141 @@ export class ReportesService {
 
     return { gastos, total, mes };
   }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // GANANCIAS
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /** Ganancias de un día específico: Ventas(neto) - Costo productos - Gastos */
+  async getGananciasDelDia(fecha?: string) {
+    const eid  = this.eid;
+    const sid  = this.tenantService.getSucursalId();
+    // Fecha a usar — 'YYYY-MM-DD', si no viene usa hoy en RD
+    const dia  = fecha
+      ? fecha
+      : new Date().toLocaleDateString('es-DO', {
+          timeZone: 'America/Santo_Domingo',
+          year: 'numeric', month: '2-digit', day: '2-digit',
+        }).split('/').reverse().join('-');  // DD/MM/YYYY → YYYY-MM-DD
+
+    // ── Ventas + costo del día ───────────────────────────────────────────
+    const params: any[] = [eid, dia];
+    if (sid) params.push(sid);
+
+    const [ventasRow] = await this.dataSource.query<{
+      ventas: string; costo: string; numFacturas: string;
+      totalItems: string; itemsSinCosto: string;
+    }[]>(`
+      SELECT
+        COALESCE(SUM(f.subtotal), 0)                                        AS ventas,
+        COALESCE(SUM(fd."costoUnitario" * fd.cantidad), 0)                 AS costo,
+        COUNT(DISTINCT f.id)                                                AS "numFacturas",
+        COUNT(fd.id)                                                        AS "totalItems",
+        COUNT(fd.id) FILTER (
+          WHERE fd."costoUnitario" = 0 AND fd."productoId" IS NOT NULL
+        )                                                                   AS "itemsSinCosto"
+      FROM facturas f
+      LEFT JOIN factura_detalles fd
+        ON fd."facturaId" = f.id AND fd."isActive" = true
+      WHERE f."isActive" = true
+        AND f."empresaId" = $1
+        AND f.estado IN ('emitida','pagada')
+        AND f.fecha = $2
+        ${sid ? 'AND f."sucursalId" = $3' : ''}
+    `, params);
+
+    // ── Gastos del día (sin filtro de sucursal — gastos son por empresa) ─
+    const [gastosRow] = await this.dataSource.query<{ gastos: string }[]>(`
+      SELECT COALESCE(SUM(total), 0) AS gastos
+      FROM gastos
+      WHERE "isActive" = true
+        AND "empresaId" = $1
+        AND DATE(fecha AT TIME ZONE 'America/Santo_Domingo') = $2
+    `, [eid, dia]);
+
+    const totalVentas   = Number(ventasRow?.ventas    ?? 0);
+    const totalCosto    = Number(ventasRow?.costo     ?? 0);
+    const totalGastos   = Number(gastosRow?.gastos    ?? 0);
+    const numFacturas   = Number(ventasRow?.numFacturas   ?? 0);
+    const totalItems    = Number(ventasRow?.totalItems    ?? 0);
+    const itemsSinCosto = Number(ventasRow?.itemsSinCosto ?? 0);
+
+    const gananciaBruta = totalVentas - totalCosto;
+    const gananciaNeta  = gananciaBruta - totalGastos;
+
+    return {
+      fecha: dia,
+      totalVentas,
+      totalCosto,
+      totalGastos,
+      gananciaBruta,
+      gananciaNeta,
+      numFacturas,
+      totalItems,
+      itemsSinCosto,
+      gananciaEsParcial: itemsSinCosto > 0,
+      advertencia: itemsSinCosto > 0
+        ? `${itemsSinCosto} de ${totalItems} líneas vendidas no tienen costo registrado. La ganancia mostrada es estimada.`
+        : null,
+    };
+  }
+
+  /** Historial de ganancias agrupado por día entre dos fechas */
+  async getHistorialGanancias(desde: string, hasta: string) {
+    const eid = this.eid;
+    const sid = this.tenantService.getSucursalId();
+
+    const ventasParams: any[] = [eid, desde, hasta];
+    if (sid) ventasParams.push(sid);
+
+    const ventasPorDia = await this.dataSource.query<{
+      dia: string; ventas: string; costo: string; facturas: string;
+    }[]>(`
+      SELECT
+        f.fecha::text                                          AS dia,
+        COALESCE(SUM(f.subtotal), 0)                         AS ventas,
+        COALESCE(SUM(fd."costoUnitario" * fd.cantidad), 0)  AS costo,
+        COUNT(DISTINCT f.id)                                  AS facturas
+      FROM facturas f
+      LEFT JOIN factura_detalles fd
+        ON fd."facturaId" = f.id AND fd."isActive" = true
+      WHERE f."isActive" = true
+        AND f."empresaId" = $1
+        AND f.estado IN ('emitida','pagada')
+        AND f.fecha BETWEEN $2 AND $3
+        ${sid ? 'AND f."sucursalId" = $4' : ''}
+      GROUP BY f.fecha
+      ORDER BY f.fecha DESC
+    `, ventasParams);
+
+    const gastosPorDia = await this.dataSource.query<{ dia: string; gastos: string }[]>(`
+      SELECT
+        DATE(fecha AT TIME ZONE 'America/Santo_Domingo')::text AS dia,
+        COALESCE(SUM(total), 0)                                AS gastos
+      FROM gastos
+      WHERE "isActive" = true
+        AND "empresaId" = $1
+        AND DATE(fecha AT TIME ZONE 'America/Santo_Domingo') BETWEEN $2 AND $3
+      GROUP BY DATE(fecha AT TIME ZONE 'America/Santo_Domingo')
+    `, [eid, desde, hasta]);
+
+    const gastosMap = new Map(gastosPorDia.map(r => [r.dia, Number(r.gastos)]));
+
+    return ventasPorDia.map(r => {
+      const ventas   = Number(r.ventas);
+      const costo    = Number(r.costo);
+      const gastos   = gastosMap.get(r.dia) ?? 0;
+      const gananciaBruta = ventas - costo;
+      const gananciaNeta  = gananciaBruta - gastos;
+      return {
+        dia: r.dia,
+        ventas,
+        costo,
+        gastos,
+        gananciaBruta,
+        gananciaNeta,
+        facturas: Number(r.facturas),
+      };
+    });
+  }
 }

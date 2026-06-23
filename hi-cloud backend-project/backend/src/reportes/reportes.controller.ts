@@ -179,4 +179,26 @@ export class ReportesController {
   getValorInventario() {
     return this.reportesService.getValorInventario();
   }
+
+  // ── Ganancias ──────────────────────────────────────────────────────────────
+
+  @Get('ganancias-dia')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Ganancia neta del día: Ventas(neto) - Costo productos - Gastos' })
+  @ApiQuery({ name: 'fecha', required: false, example: '2026-06-23', description: 'Fecha YYYY-MM-DD, default: hoy' })
+  getGananciasDia(@Query('fecha') fecha?: string) {
+    return this.reportesService.getGananciasDelDia(fecha);
+  }
+
+  @Get('ganancias-historial')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Historial de ganancias agrupado por día en un rango de fechas' })
+  @ApiQuery({ name: 'desde', required: true, example: '2026-06-01' })
+  @ApiQuery({ name: 'hasta', required: true, example: '2026-06-23' })
+  getGananciasHistorial(
+    @Query('desde') desde: string,
+    @Query('hasta') hasta: string,
+  ) {
+    return this.reportesService.getHistorialGanancias(desde, hasta);
+  }
 }
