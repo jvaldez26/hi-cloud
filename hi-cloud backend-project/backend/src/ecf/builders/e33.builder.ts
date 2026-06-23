@@ -81,18 +81,20 @@ export function buildE33(input: ECFBuildInput): MSellerPayload {
   const totalITBIS = f2(itbis18 + itbis16);
   const total      = f2(montoGravadoTotal + montoExento + totalITBIS);
 
+  // Orden estricto XSD DGII: MontoGravadoXX → MontoExento → ITBISXX → TotalITBISXX → MontoTotal
   const totales: Record<string, unknown> = {};
   if (montoGravadoTotal > 0) {
     totales['MontoGravadoTotal'] = montoGravadoTotal;
     totales['MontoGravadoI1']    = f2(montoGravado18);
-    totales['ITBIS1']            = 18;
-    totales['TotalITBIS']        = totalITBIS;
-    totales['TotalITBIS1']       = f2(itbis18);
   }
-  if (montoGravado16 > 0) {
-    totales['MontoGravadoI2'] = f2(montoGravado16); totales['ITBIS2'] = 16; totales['TotalITBIS2'] = f2(itbis16);
+  if (montoGravado16 > 0) totales['MontoGravadoI2'] = f2(montoGravado16);
+  if (montoExento    > 0) totales['MontoExento']     = f2(montoExento);
+  if (montoGravadoTotal > 0) {
+    totales['ITBIS1']      = 18;
+    totales['TotalITBIS']  = totalITBIS;
+    totales['TotalITBIS1'] = f2(itbis18);
   }
-  if (montoExento > 0) totales['MontoExento'] = montoExento;
+  if (montoGravado16 > 0) { totales['ITBIS2'] = 16; totales['TotalITBIS2'] = f2(itbis16); }
   totales['MontoTotal'] = total;
   // TablaFormasPago obligatoria en E33
   totales['TablaFormasPago'] = { FormaDePago: [{ FormaPago: 1, MontoPago: total.toFixed(2) }] };

@@ -111,17 +111,19 @@ export function buildE34(input: ECFBuildInput): MSellerPayload {
     ? buildTotalesCero()
     : (() => {
         const t: Record<string, unknown> = {};
+        // Orden estricto XSD DGII: MontoGravadoXX → MontoExento → ITBISXX → TotalITBISXX → MontoTotal
         if (montoGravadoTotal > 0) {
           t['MontoGravadoTotal'] = montoGravadoTotal;
           t['MontoGravadoI1']    = f2(montoGravado18);
-          t['ITBIS1']            = 18;
-          t['TotalITBIS']        = totalITBIS;
-          t['TotalITBIS1']       = f2(itbis18);
         }
-        if (montoGravado16 > 0) {
-          t['MontoGravadoI2'] = f2(montoGravado16); t['ITBIS2'] = 16; t['TotalITBIS2'] = f2(itbis16);
+        if (montoGravado16 > 0) t['MontoGravadoI2'] = f2(montoGravado16);
+        if (montoExento    > 0) t['MontoExento']     = f2(montoExento);
+        if (montoGravadoTotal > 0) {
+          t['ITBIS1']      = 18;
+          t['TotalITBIS']  = totalITBIS;
+          t['TotalITBIS1'] = f2(itbis18);
         }
-        if (montoExento > 0) t['MontoExento'] = montoExento;
+        if (montoGravado16 > 0) { t['ITBIS2'] = 16; t['TotalITBIS2'] = f2(itbis16); }
         t['MontoTotal'] = montoTotal;
         return t;
       })();
