@@ -185,7 +185,7 @@ function TwoFactorSection() {
 }
 
 export default function ProfilePage() {
-  const { user, updateUser } = useAuthStore();
+  const { user, updateUser, empresaActual } = useAuthStore();
   const [form]   = Form.useForm();
   const [ok,  setOk]  = useState(false);
   const [err, setErr] = useState('');
@@ -332,6 +332,12 @@ export default function ProfilePage() {
                 <Text type="secondary">ID de usuario:</Text>
                 <Text strong>#{user?.id}</Text>
               </Row>
+              {empresaActual && (
+                <Row justify="space-between">
+                  <Text type="secondary">ID de empresa:</Text>
+                  <Text strong>#{empresaActual}</Text>
+                </Row>
+              )}
               <Row justify="space-between">
                 <Text type="secondary">Rol:</Text>
                 <Text strong style={{ textTransform: 'capitalize' }}>{user?.role}</Text>
