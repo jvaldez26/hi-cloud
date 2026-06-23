@@ -28,7 +28,7 @@ import { UpdateProveedorECFDto } from './dto/update-proveedor-ecf.dto';
 import { EmitirEcfNotaDebitoDto, EmitirEcfNotaCreditoDto } from './dto/emitir-nota-ecf.dto';
 import { EmitirEcfCompraDto, EmitirEcfGastoDto, EmitirEcfPagoExteriorDto, EmitirEcfExportacionDto } from './dto/emitir-compra-ecf.dto';
 import { EmitirECFUseCase } from './use-cases/emitir-ecf.use-case';
-import { DocumentoOrigenTipo } from './entities/ecf.entity';
+import { DocumentoOrigenTipo, EstadoDGII } from './entities/ecf.entity';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -401,6 +401,19 @@ export class ECFController {
 
     // Path legacy (xml) — solo para ECFs muy antiguos
     return this.ecfService.reintentarEnvio(numero);
+  }
+
+  @Post(':numero/consultar-estado')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Consultar estado de UN e-CF en MSeller/DGII y actualizar en BD' })
+  async consultarEstadoUno(@Param('numero') numero: string) {
+    const ecf = await this.ecfService.getECFByNumero(numero);
+    if (ecf.estadoDGII === EstadoDGII.ACEPTADO) {
+      throw new BadRequestException('El e-CF ya fue aceptado por DGII');
+    }
+    await this.consultarJob.consultarUno(ecf as any);
+    return this.ecfService.getECFByNumero(numero);
   }
 
   @Post('ejecutar-reintentos')

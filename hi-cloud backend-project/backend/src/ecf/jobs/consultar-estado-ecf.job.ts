@@ -126,6 +126,12 @@ export class ConsultarEstadoECFJob {
     }
   }
 
+  /** Consulta y actualiza el estado de un único e-CF por número (para uso desde el controller). */
+  async consultarUno(ecf: ECF): Promise<void> {
+    if (!ecf.empresaId) return;
+    await this.consultarBatch([ecf], ecf.empresaId);
+  }
+
   private async consultarBatch(ecfs: ECF[], empresaId: number): Promise<void> {
     const numeros = ecfs.map(e => e.numero);
     let response: Awaited<ReturnType<MSellerClientService['consultarBatch']>>;
@@ -156,7 +162,39 @@ export class ConsultarEstadoECFJob {
       }
 
       const estadoKey = resultado.status?.toUpperCase() ?? '';
-      const nuevoEstado = MSELLER_ESTADO_MAP[estadoKey] ?? EstadoDGII.ENVIADO;
+      let nuevoEstado: EstadoDGII | undefined = MSELLER_ESTADO_MAP[estadoKey];
+
+      // Batch devuelve "Error" → intentar consulta individual por trackId antes de decidir
+      if (estadoKey === 'ERROR') {
+        this.logger.warn(
+          `e-CF ${resultado.ecf} status="Error" batch — data: ${JSON.stringify(resultado.data)}`,
+        );
+        if (ecf.trackId) {
+          try {
+            const ind    = await this.mseller.consultarEstado(ecf.trackId, empresaId);
+            const indKey = ind.status?.toUpperCase() ?? '';
+            nuevoEstado  = MSELLER_ESTADO_MAP[indKey];
+            this.logger.log(
+              `e-CF ${resultado.ecf} consulta individual: "${ind.status}" → ${nuevoEstado ?? 'sin mapeo'}`,
+            );
+          } catch (indErr: any) {
+            this.logger.warn(
+              `e-CF ${resultado.ecf} consulta individual fallida: ${(indErr as Error).message}`,
+            );
+          }
+        }
+        // Si aún sin estado definitivo → RECHAZADO (conservador, evita bucle infinito)
+        if (nuevoEstado === undefined || nuevoEstado === EstadoDGII.ENVIADO) {
+          nuevoEstado = EstadoDGII.RECHAZADO;
+          this.logger.warn(`e-CF ${resultado.ecf} → RECHAZADO (sin confirmación de DGII tras batch Error)`);
+        }
+      }
+
+      // Estado no mapeado (nuevo estado de MSeller no conocido)
+      if (nuevoEstado === undefined) {
+        this.logger.warn(`e-CF ${resultado.ecf} estado desconocido: "${resultado.status}" — sin acción`);
+        continue;
+      }
 
       if (nuevoEstado === EstadoDGII.ENVIADO) {
         this.logger.debug(`e-CF ${resultado.ecf} aún procesando (${resultado.status})`);

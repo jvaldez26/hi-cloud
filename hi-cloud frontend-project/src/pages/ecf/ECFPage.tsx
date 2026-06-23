@@ -13,7 +13,7 @@ import {
   ReloadOutlined, DownloadOutlined, SendOutlined,
   WarningOutlined, CheckCircleOutlined, CloseCircleOutlined,
   ClockCircleOutlined, PlusOutlined, EditOutlined, StopOutlined, SearchOutlined,
-  CalendarOutlined, CopyOutlined,
+  CalendarOutlined, CopyOutlined, SyncOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ecfApi } from '../../api/ecf.api';
@@ -172,6 +172,20 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
       message.warning((e as any)?.response?.data?.message ?? 'El servicio fiscal no respondió — intenta de nuevo en unos segundos'),
   });
 
+  // Consultar estado individual de un e-CF específico
+  const [consultandoId, setConsultandoId] = useState<string | null>(null);
+  const consultarUnoMut = useMutation({
+    mutationFn: (numero: string) => ecfApi.consultarEstadoUno(numero),
+    onMutate: (numero: string) => setConsultandoId(numero),
+    onSettled: () => setConsultandoId(null),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ecf-list'] });
+      message.success('Estado actualizado desde DGII');
+    },
+    onError: (e: any) =>
+      message.error(e?.message ?? 'Error al consultar estado'),
+  });
+
   // Auto-sync al cargar si hay e-CFs en estado "enviado" (una sola vez por montaje)
   const autoSyncDone = useRef(false);
   useEffect(() => {
@@ -237,6 +251,10 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
             ...(r.estadoDGII === 'pendiente_envio' && r.intentosEnvio < 5
               ? [{ key: 'reenviar', label: 'Reenviar a DGII', icon: <SendOutlined />,
                    onClick: () => handleReenviar(r) }]
+              : []),
+            ...(r.estadoDGII === 'enviado'
+              ? [{ key: 'consultar', label: 'Consultar estado en DGII', icon: <SyncOutlined spin={consultandoId === r.numero} />,
+                   onClick: () => consultarUnoMut.mutate(r.numero) }]
               : []),
           ]}
         />

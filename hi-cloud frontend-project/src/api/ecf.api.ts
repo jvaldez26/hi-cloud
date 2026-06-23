@@ -62,6 +62,10 @@ export const ecfApi = {
   consultarEstados: () =>
     api.post('/ecf/consultar-estados').then(r => r.data),
 
+  /** Consulta y actualiza el estado de un e-CF específico en MSeller/DGII */
+  consultarEstadoUno: (numero: string) =>
+    api.post(`/ecf/${numero}/consultar-estado`).then(r => r.data.data ?? r.data),
+
   actualizarEstado: (numero: string, body: { estadoDGII: string; xmlRespuesta?: string }) =>
     api.patch(`/ecf/${numero}/estado`, body).then(r => r.data.data),
 
