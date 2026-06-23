@@ -9,9 +9,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, Not } from 'typeorm';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+import { ConfigService } from '@nestjs/config';
 import { EmpresaEcfConfig, ModoEcf } from '../entities/empresa-ecf-config.entity';
 import { SecuenciaECF } from '../entities/secuencia-ecf.entity';
 import { EcfEncryptionService } from './ecf-encryption.service';
+import { EmailService } from '../../notificaciones/services/email.service';
 import { CreateEmpresaEcfConfigDto } from '../dto/create-empresa-ecf-config.dto';
 import { UpdateEmpresaEcfConfigDto } from '../dto/update-empresa-ecf-config.dto';
 import { CreateSecuenciaAdminDto } from '../dto/create-secuencia-admin.dto';
@@ -37,6 +39,8 @@ export class EcfConfigService {
     private encryption: EcfEncryptionService,
     private http: HttpService,
     private ds: DataSource,
+    private emailSvc: EmailService,
+    private configSvc: ConfigService,
   ) {}
 
   // ── CRUD EmpresaEcfConfig ─────────────────────────────────────────────────
@@ -326,11 +330,32 @@ export class EcfConfigService {
 
   /** Activa el circuit breaker para la empresa hasta la fecha indicada. */
   async setBloqueadoHasta(empresaId: number, hasta: Date): Promise<void> {
+    const cfg = await this.configRepo.findOne({ where: { empresaId } });
     await this.configRepo.update({ empresaId }, { bloqueadoHasta: hasta });
     this.logger.warn(
       `Circuit breaker activado para empresa #${empresaId} — ` +
       `reintentos pausados hasta ${hasta.toISOString()}`,
     );
+
+    // Notificar al Super Admin por email
+    const adminEmail = this.configSvc.get<string>('NOTIF_ADMIN_EMAIL', '');
+    if (adminEmail) {
+      const hastaLocal = hasta.toLocaleString('es-DO', { timeZone: 'America/Santo_Domingo' });
+      await this.emailSvc.enviar({
+        to:      adminEmail,
+        subject: `⚠️ e-CF bloqueado — Empresa #${empresaId} (${cfg?.msellerEmail ?? 'sin email'})`,
+        html: `
+<p>El sistema e-CF detectó que la cuenta MSeller de la empresa <strong>#${empresaId}</strong>
+(${cfg?.msellerEmail ?? 'sin email'}) fue bloqueada por Cognito por intentos fallidos de autenticación.</p>
+<p>Los reintentos automáticos han sido pausados hasta <strong>${hastaLocal}</strong>.</p>
+<ul>
+  <li>Verifica que las credenciales MSeller sean correctas en <em>Super Admin → Configuraciones e-CF</em>.</li>
+  <li>Si la contraseña fue cambiada en el portal MSeller, actualízala en HiCloud.</li>
+  <li>Tras corregir las credenciales, el cron retomará automáticamente al expirar el bloqueo.</li>
+</ul>
+<p style="color:#888;font-size:12px">HiCloud ERP — Alerta automática de circuito e-CF</p>`,
+      }).catch((e: Error) => this.logger.error(`Error enviando alerta circuit breaker: ${e.message}`));
+    }
   }
 
   /** Devuelve true si la empresa tiene el circuit breaker activo en este momento. */

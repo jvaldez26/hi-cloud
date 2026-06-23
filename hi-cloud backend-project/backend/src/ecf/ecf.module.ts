@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { SuscripcionesModule } from '../suscripciones/suscripciones.module';
+import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { HttpModule } from '@nestjs/axios';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -54,6 +55,7 @@ import { TokenBlacklistService } from '../auth/token-blacklist.service';
     HttpModule.register({ timeout: 30_000, maxRedirects: 3 }),
     ConfigModule,
     SuscripcionesModule,
+    NotificacionesModule,
     JwtModule.registerAsync({
       imports:    [ConfigModule],
       useFactory: (cfg: ConfigService) => {
