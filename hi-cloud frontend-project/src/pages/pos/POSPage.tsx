@@ -6942,13 +6942,15 @@ export default function POSPage() {
             {/* Fila 2: conteo + categorías */}
             <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
               <span style={{ fontSize:12, color:C.textSub, whiteSpace:'nowrap', flexShrink:0 }}>
-                {!search && categoriaTab === '__all__' && filtroStock === 'todos' && productosRecientes.length > 0
-                  ? <><b style={{color:C.text}}>{productosRecientes.length}</b> recientes</>
-                  : <><b style={{color:C.text}}>{productosFiltrados.length}</b> productos</>
-                }
+                {(() => {
+                  const vd = !search && categoriaTab === '__all__' && filtroStock === 'todos';
+                  if (vd && productosRecientes.length > 0)
+                    return <><b style={{color:C.text}}>{productosRecientes.length}</b> recientes</>;
+                  if (vd && productosFiltrados.length > 12)
+                    return <><b style={{color:C.text}}>12</b> de {productosFiltrados.length} productos</>;
+                  return <><b style={{color:C.text}}>{productosFiltrados.length}</b> productos</>;
+                })()}
                 {categoriaTab !== '__all__' && <> · <span style={{color:C.blue}}>{categoriaTab}</span></>}
-                {categoriaTab === '__all__' && search && <> · Todos</>}
-                {categoriaTab === '__all__' && !search && filtroStock !== 'todos' && <> · Todos</>}
               </span>
               {/* Categorías scroll */}
               <div style={{ flex:1, display:'flex', gap:6, overflowX:'auto', paddingBottom:2, scrollbarWidth:'none' }}>
@@ -6979,9 +6981,14 @@ export default function POSPage() {
                 <Spin size="large" />
               </div>
             ) : (() => {
-              // Sin búsqueda + Todos + hay recientes → mostrar solo los 12 últimos facturados
-              const mostrarRecientes = !search && categoriaTab === '__all__' && filtroStock === 'todos' && productosRecientes.length > 0;
-              const lista = mostrarRecientes ? productosRecientes : productosFiltrados;
+              const vistaDefecto   = !search && categoriaTab === '__all__' && filtroStock === 'todos';
+              const mostrarRecientes = vistaDefecto && productosRecientes.length > 0;
+              // En vista defecto sin recientes limitamos a 12 — buscar para ver más
+              const lista = mostrarRecientes
+                ? productosRecientes
+                : vistaDefecto
+                  ? productosFiltrados.slice(0, 12)
+                  : productosFiltrados;
               return lista.length === 0 ? (
                 <Empty description={<span style={{color:C.textSub}}>Sin productos</span>} style={{marginTop:60}} />
               ) : (
@@ -7000,6 +7007,12 @@ export default function POSPage() {
                         permitirStockNegativo={posPermitirStockNegativo} />
                     ))}
                   </div>
+                  {/* Hint cuando hay más productos no mostrados */}
+                  {vistaDefecto && !mostrarRecientes && productosFiltrados.length > 12 && (
+                    <div style={{ textAlign:'center', marginTop:14, fontSize:11, color:C.textSub }}>
+                      Busca o filtra por categoría para ver todos ({productosFiltrados.length})
+                    </div>
+                  )}
                 </>
               );
             })()}
