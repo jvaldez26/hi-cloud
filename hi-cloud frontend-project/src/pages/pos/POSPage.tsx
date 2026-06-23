@@ -7025,6 +7025,10 @@ export default function POSPage() {
               const ok = await supervisor.requireSupervisor('Gastos');
               if (!ok) return;
             }
+            if (p === 'ventas-hoy') {
+              const ok = await supervisor.requireSupervisorForced('Ver Ganancias');
+              if (!ok) return;
+            }
             setPanelActivo(p); setMenuNavAbierto(false);
           }}
           onNavigate={(ruta) => { setMenuNavAbierto(false); navigate(ruta); }}
