@@ -260,11 +260,14 @@ export default function NotasCreditoPage() {
       return;
     }
     const { fecha, detalles: _det, ...rest } = values;
+    const _subOrig = Number(facturaOrigen.subtotal) || Number(facturaOrigen.total) || 1;
+    const _ivaOrig = Number(facturaOrigen.iva ?? 0);
+    const _pctOrig = _subOrig > 0.01 ? Math.round(_ivaOrig / _subOrig * 10000) / 100 : 0;
     const detallesLimpios = codigoMod === '1' ? [{
       descripcion:    `Anulación total de ${facturaOrigen.folio}`,
       cantidad:       1,
-      precioUnitario: Number(facturaOrigen.subtotal) || Number(facturaOrigen.total) || 1,
-      porcentajeIva:  sinItbis ? 0 : undefined,
+      precioUnitario: _subOrig,
+      porcentajeIva:  sinItbis ? 0 : _pctOrig,
     }] : (values.detalles ?? []).filter((d: any) => d?.descripcion || d?.productoId).map((d: any) => ({
       descripcion:    String(d.descripcion ?? 'Ítem'),
       cantidad:       Math.max(Number(d.cantidad) || 1, 0.01),

@@ -1932,10 +1932,14 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
         throw new Error(`El monto a acreditar (${fmt.money(totalNC)}) supera el saldo disponible (${fmt.money(saldoDisponible)})`);
       }
 
+      // Calcular porcentaje ITBIS exacto del original para revertirlo sin duplicarlo
+      const _subOrig = Number(facturaData.subtotal) || Number(facturaData.total) || 1;
+      const _ivaOrig = Number(facturaData.iva ?? 0);
+      const _pctOrig = _subOrig > 0.01 ? Math.round(_ivaOrig / _subOrig * 10000) / 100 : 0;
       const detalles = codigoMod === '1'
         ? [{ descripcion: `Anulación total de ${facturaData.folio}`, cantidad: 1,
-             precioUnitario: Number(facturaData.total),
-             porcentajeIva: 0 }]
+             precioUnitario: _subOrig,
+             porcentajeIva: sinItbis ? 0 : _pctOrig }]
         : facturaData.detalles
             .filter((d: any) => (devolver[d.id] ?? 0) > 0)
             .map((d: any) => ({
