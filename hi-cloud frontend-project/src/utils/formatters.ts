@@ -28,6 +28,9 @@ const DATETIME_FMT = new Intl.DateTimeFormat('es-DO', {
   hour12: true,
 });
 
+/** Redondea a 2 decimales de forma segura evitando errores de punto flotante. */
+export const round2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
+
 export const fmt = {
   money: (n: any) => {
     const val = Number(n);

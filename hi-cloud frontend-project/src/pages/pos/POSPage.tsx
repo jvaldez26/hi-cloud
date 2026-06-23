@@ -14,7 +14,7 @@ import { clientesApi } from '../../api/clientes.api';
 import { configuracionApi } from '../../api/configuracion.api';
 import { useQueryClient } from '@tanstack/react-query';
 import { facturasApi } from '../../api/facturas.api';
-import { fmt } from '../../utils/formatters';
+import { fmt, round2 } from '../../utils/formatters';
 import { imprimirElemento, imprimirReciboTermico } from '../../utils/printUtils';
 import { useThemeStore } from '../../store/theme.store';
 import { useOfflineQueue } from '../../hooks/useOfflineQueue';
@@ -5890,31 +5890,31 @@ export default function POSPage() {
 
   // Totals — si posPrecioIncluyeItbis, el precio ya lleva ITBIS incluido
   const precioIncluyeItbis = (empresa?.configuracion as any)?.posPrecioIncluyeItbis === true;
-  const subtotal = cart.reduce((s, i) => {
+  const subtotal = round2(cart.reduce((s, i) => {
     const linea = (i.precio - i.descuentoMonto) * i.cantidad;
     if (precioIncluyeItbis) {
       const pct = Number((i.produto as any).porcentajeIva ?? 0) / 100;
       return pct > 0 ? s + linea / (1 + pct) : s + linea;
     }
     return s + linea;
-  }, 0);
-  const iva = cart.reduce((s, i) => {
+  }, 0));
+  const iva = round2(cart.reduce((s, i) => {
     const linea = (i.precio - i.descuentoMonto) * i.cantidad;
     const pct   = Number((i.produto as any).porcentajeIva ?? 0) / 100;
     return precioIncluyeItbis
       ? s + linea * pct / (1 + pct)
       : s + linea * pct;
-  }, 0);
+  }, 0));
   // Descuento global — se aplica sobre el subtotal (antes del ITBIS, base imponible)
   const descGlobalVal   = Math.max(0, parseFloat(descGlobal) || 0);
-  const descGlobalMonto = descGlobalTipo === 'pct'
+  const descGlobalMonto = round2(descGlobalTipo === 'pct'
     ? subtotal * descGlobalVal / 100
-    : Math.min(descGlobalVal, subtotal);
-  const subtotalConDesc = subtotal - descGlobalMonto;
+    : Math.min(descGlobalVal, subtotal));
+  const subtotalConDesc = round2(subtotal - descGlobalMonto);
   // ITBIS se recalcula sobre el subtotal descontado (proporcional por ítem)
   const descRatio      = subtotal > 0 ? subtotalConDesc / subtotal : 1;
-  const ivaConDesc     = iva * descRatio;
-  const total          = subtotalConDesc + ivaConDesc;
+  const ivaConDesc     = round2(iva * descRatio);
+  const total          = round2(subtotalConDesc + ivaConDesc);
   // E44 (Zona Franca): ITBIS = 0 — Opción B: precio base sin ITBIS
   const ivaEfectivo   = tipoNcf === 'E44' ? 0 : ivaConDesc;
   const totalEfectivo = tipoNcf === 'E44' ? subtotalConDesc : total;
@@ -5941,7 +5941,7 @@ export default function POSPage() {
     : 0;
   const totalAPagar      = +(totalEfectivo + propinaMontoCalc).toFixed(2);
   // Cambio basado en totalAPagar (incluye propina)
-  const cambio           = metodoPago === 'efectivo' ? Math.max(0, montoRecibido - totalAPagar) : 0;
+  const cambio           = metodoPago === 'efectivo' ? round2(Math.max(0, montoRecibido - totalAPagar)) : 0;
 
   // Auto-foco en el input de búsqueda cuando el panel de ítems está activo
   // (mantiene el foco para escaneo continuo con scanner HID)
@@ -5959,7 +5959,7 @@ export default function POSPage() {
       if (e.key === 'F9' && cart.length > 0) {
         e.preventDefault();
         if (modoFacturacion === 'factura') {
-          setMontoRecibido(totalEfectivo);
+          setMontoRecibido(round2(totalEfectivo));
           if (posConf.posPropinaActiva === true) setPropinaValor(String(propinaDefPct));
           setShowPago(true);
         } else {
@@ -7212,7 +7212,7 @@ export default function POSPage() {
                       );
                       if (!ok) return;
                     }
-                    setMontoRecibido(totalEfectivo);
+                    setMontoRecibido(round2(totalEfectivo));
                     if (posConf.posPropinaActiva === true) setPropinaValor(String(propinaDefPct));
                     setShowPago(true);
                   }}
@@ -7602,7 +7602,7 @@ export default function POSPage() {
                   {[200, 500, 1000, 2000].map(a => (
                     <button key={a} onClick={() => setMontoRecibido(a)} style={{ flex: 1, height: 26, borderRadius: 6, border: '1px solid #E2E8F0', background: '#F1F5F9', fontSize: 11, fontWeight: 700, color: '#475569', cursor: 'pointer', outline: 'none' }}>{a >= 1000 ? `${a/1000}K` : a}</button>
                   ))}
-                  <button onClick={() => setMontoRecibido(totalAPagar)} style={{ flex: 1, height: 26, borderRadius: 6, border: '1px solid #86EFAC', background: '#F0FDF4', fontSize: 11, fontWeight: 700, color: '#15803D', cursor: 'pointer', outline: 'none' }}>Exacto</button>
+                  <button onClick={() => setMontoRecibido(round2(totalAPagar))} style={{ flex: 1, height: 26, borderRadius: 6, border: '1px solid #86EFAC', background: '#F0FDF4', fontSize: 11, fontWeight: 700, color: '#15803D', cursor: 'pointer', outline: 'none' }}>Exacto</button>
                 </div>
                 <div style={{ flexShrink: 0, height: 168 }}>
                   <Numpad value={montoRecibido} onChange={setMontoRecibido} />
