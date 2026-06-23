@@ -322,6 +322,27 @@ export class EcfConfigService {
     };
   }
 
+  // ── Circuit breaker ───────────────────────────────────────────────────────
+
+  /** Activa el circuit breaker para la empresa hasta la fecha indicada. */
+  async setBloqueadoHasta(empresaId: number, hasta: Date): Promise<void> {
+    await this.configRepo.update({ empresaId }, { bloqueadoHasta: hasta });
+    this.logger.warn(
+      `Circuit breaker activado para empresa #${empresaId} — ` +
+      `reintentos pausados hasta ${hasta.toISOString()}`,
+    );
+  }
+
+  /** Devuelve true si la empresa tiene el circuit breaker activo en este momento. */
+  async isEmpresaBloqueada(empresaId: number): Promise<boolean> {
+    const cfg = await this.configRepo.findOne({
+      where: { empresaId },
+      select: ['bloqueadoHasta'] as any,
+    });
+    if (!cfg?.bloqueadoHasta) return false;
+    return new Date(cfg.bloqueadoHasta) > new Date();
+  }
+
   // ── Utilidades internas ───────────────────────────────────────────────────
 
   /** Elimina los campos cifrados antes de devolver al cliente. */

@@ -121,7 +121,23 @@ export class ReintentoECFJob {
 
     this.logger.log(`ReintentoECF: ${pendientes.length} comprobante(s) pendientes`);
 
+    // Cache local de circuit breaker por empresa — evita N queries a BD por ciclo
+    const bloqueadaCache = new Map<number, boolean>();
+
     for (const ecf of pendientes) {
+      const empId = ecf.empresaId!;
+
+      // Verificar circuit breaker (consulta BD solo la primera vez por empresa)
+      if (!bloqueadaCache.has(empId)) {
+        bloqueadaCache.set(empId, await this.configSvc.isEmpresaBloqueada(empId));
+      }
+      if (bloqueadaCache.get(empId)) {
+        this.logger.debug(
+          `e-CF ${ecf.numero} saltado — empresa #${empId} en circuit breaker (cuenta Cognito bloqueada)`,
+        );
+        continue;
+      }
+
       // Calcular si ya pasó el tiempo de backoff
       const intentos      = ecf.intentosEnvio;
       const backoffMinIdx = Math.min(intentos - 1, BACKOFF_MIN.length - 1);

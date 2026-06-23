@@ -137,8 +137,24 @@ export class MSellerClientService {
       return { idToken, accessToken, apiKey: creds.apiKey, baseUrl: creds.urlBase, envPath: creds.envPath };
     } catch (err: any) {
       await this.cache.del(CacheKeys.msellerToken(empresaId)); // limpiar caché si falla
-      const status = err?.response?.status;
-      const msg    = err?.response?.data?.message ?? err?.message ?? 'timeout';
+      const status  = err?.response?.status;
+      const resData = err?.response?.data;
+      const msg     = resData?.message ?? resData?.error ?? err?.message ?? 'timeout';
+
+      // Cognito bloquea la cuenta tras varios intentos fallidos → circuit breaker 30 min
+      if (typeof msg === 'string' && msg.toLowerCase().includes('password attempts exceeded')) {
+        const hasta = new Date(Date.now() + 30 * 60_000);
+        try {
+          await this.ecfConfigSvc.setBloqueadoHasta(empresaId, hasta);
+        } catch (cbErr) {
+          this.logger.error(`No se pudo guardar circuit breaker para empresa #${empresaId}: ${cbErr}`);
+        }
+        this.logger.error(
+          `[CircuitBreaker] Empresa #${empresaId} bloqueada por Cognito — ` +
+          `reintentos pausados hasta ${hasta.toISOString()}`,
+        );
+      }
+
       throw new EcfComunicacionError(
         `No se pudo autenticar con MSeller [${status ?? 'timeout'}]: ${msg}`,
       );

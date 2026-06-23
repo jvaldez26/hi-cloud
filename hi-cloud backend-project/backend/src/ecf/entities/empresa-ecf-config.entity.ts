@@ -65,4 +65,8 @@ export class EmpresaEcfConfig extends BaseEntity {
 
   @Column({ default: true })
   activo!: boolean;
+
+  /** Circuit breaker: reintentos pausados hasta esta fecha por bloqueo de Cognito. */
+  @Column({ type: 'timestamp', nullable: true })
+  bloqueadoHasta?: Date;
 }
