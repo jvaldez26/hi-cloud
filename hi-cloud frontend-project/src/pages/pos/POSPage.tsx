@@ -6049,7 +6049,22 @@ export default function POSPage() {
         const codigo = scanBuffer.current.trim();
         if (scanTimer.current) clearTimeout(scanTimer.current);
         scanBuffer.current = '';
-        console.log('[SCAN] Enter → buffer:', JSON.stringify(codigo), 'len:', codigo.length);
+
+        if (target === searchRef.current) {
+          // Distinguir scanner (chars rápidos < 100ms) de tipeo manual (lento)
+          const msSinceLastChar = Date.now() - lastKeyTimeRef.current;
+          const esScanner = fastCharCountRef.current >= 3 && msSinceLastChar < 150;
+          fastCharCountRef.current = 0;
+          if (esScanner && codigo.length >= 4) {
+            e.preventDefault();
+            e.stopPropagation();
+            procesarScan(codigo);
+          }
+          // Si no es scanner → dejar que onKeyDown del input maneje el Enter
+          return;
+        }
+
+        // Enter desde fuera del buscador (scanner con foco en otro lado)
         if (codigo.length >= 4) {
           e.preventDefault();
           e.stopPropagation();
@@ -6059,6 +6074,11 @@ export default function POSPage() {
       }
 
       if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        const now = Date.now();
+        const delta = now - lastKeyTimeRef.current;
+        lastKeyTimeRef.current = now;
+        if (delta < 100) { fastCharCountRef.current++; }
+        else { fastCharCountRef.current = 1; }
         if (scanBuffer.current.length === 0) console.log('[SCAN] inicio buffer...');
         scanBuffer.current += e.key;
         if (scanTimer.current) clearTimeout(scanTimer.current);
@@ -6655,6 +6675,25 @@ export default function POSPage() {
                 <input ref={searchRef} value={search}
                   onChange={e => setSearch(e.target.value)}
                   placeholder="Buscar producto... (F2)"
+                  onKeyDown={e => {
+                    if (e.key !== 'Enter') return;
+                    const q = search.trim();
+                    if (!q) return;
+                    const all = (produtos?.data ?? []) as any[];
+                    const qL = q.toLowerCase();
+                    // 1. Coincidencia exacta por código o código de barras
+                    const exacto = all.find((p: any) =>
+                      p.codigo?.trim().toLowerCase() === qL ||
+                      p.codigoBarras?.trim().toLowerCase() === qL
+                    );
+                    if (exacto) { addToCart(exacto as Prod); setSearch(''); return; }
+                    // 2. Una sola coincidencia en la grilla filtrada → agregar directo
+                    if (productosFiltrados.length === 1) { addToCart(productosFiltrados[0] as Prod); setSearch(''); return; }
+                    // 3. Varias coincidencias → la grilla ya muestra las opciones, no hacer nada
+                    if (productosFiltrados.length > 1) return;
+                    // 4. Cero resultados
+                    message.warning(`No se encontraron productos con "${q}"`, 2);
+                  }}
                   style={{ width:'100%', height:38, paddingLeft:34, paddingRight:search?30:12,
                     background: scanFlash ? (C===darkC ? '#064e3b' : '#d1fae5') : C.card,
                     border:`1px solid ${scanFlash ? '#10B981' : C.border}`,
