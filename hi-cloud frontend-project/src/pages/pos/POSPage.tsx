@@ -6556,12 +6556,9 @@ export default function POSPage() {
     mutationFn: async () => {
       const detalles = cart.map(i => ({
         productoId:         i.produto.id > 0 ? i.produto.id : undefined,
-        opticaInventarioId: (i.produto as any).opticaInventarioId ?? undefined,
         descripcion:        i.produto.nombre,
         cantidad:           i.cantidad,
         precioUnitario:     i.precio - i.descuentoMonto,
-        descuentoMonto:     i.descuentoMonto,
-        precioOriginal:     i.descuentoMonto > 0 ? i.precio : undefined,
         porcentajeIva:      Number((i.produto as any).porcentajeIva ?? 18),
       }));
       const base = {
