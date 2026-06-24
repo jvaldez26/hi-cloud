@@ -116,6 +116,11 @@ export class RecibosCobrosService {
     if (dto.facturaId) {
       const factura = await this.facturaRepo.findOne({ where: { id: dto.facturaId, empresaId } });
       if (factura?.moneda) moneda = factura.moneda;
+      if (factura?.anulacionPendiente) {
+        throw new BadRequestException(
+          'La factura tiene una anulación pendiente de confirmación DGII y no acepta cobros hasta que se resuelva',
+        );
+      }
     }
 
     // ── 1. Resolver CxC asociada ────────────────────────────────────

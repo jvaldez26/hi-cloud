@@ -94,6 +94,14 @@ export class ConsultarEstadoECFJob {
         de: EstadoDGII.ENVIADO, a: EstadoDGII.CONTINGENCIA, via: 'timeout',
       }, `Sin respuesta de MSeller tras ${DIAS_MAX_POLLING} días`);
       this.logger.warn(`e-CF ${ecf.numero} → CONTINGENCIA (timeout ${DIAS_MAX_POLLING}d)`);
+
+      // Si es NC de anulación total, liberar anulacionPendiente de la factura
+      // para no bloquearla indefinidamente mientras se verifica en portal DGII
+      this.efectosNc.aplicarEfectosPorEstado(ecf, EstadoDGII.CONTINGENCIA).catch(err =>
+        this.logger.error(
+          `[ConsultarEstado] Error liberando anulacionPendiente para NC ${ecf.numero}: ${(err as Error).message}`,
+        ),
+      );
     }
     if (viejos.length > 0) {
       this.logger.warn(`${viejos.length} comprobante(s) → CONTINGENCIA por timeout`);
