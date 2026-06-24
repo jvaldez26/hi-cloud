@@ -4872,6 +4872,51 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
         return;
       }
 
+      // ── Notas de Crédito → recibo térmico con datos fiscales E34 ────
+      if (panel === 'notas-credito') {
+        const doc = await api.get(`/notas-credito/${id}`).then(r => r.data?.data ?? r.data);
+        const ncSale: Sale = {
+          folio:                  doc.numero ?? folio,
+          total:                  Number(doc.total ?? 0),
+          cambio:                 0,
+          metodo:                 'credito',
+          items:                  (doc.detalles ?? []).map((d: any) => ({
+            produto:   { id: d.productoId ?? 0, nombre: d.descripcion, precio: Number(d.precioUnitario),
+                         stock: 999, porcentajeIva: Number(d.porcentajeIva ?? 18),
+                         codigo: '', categoria: '', unidadMedida: '' } as any,
+            cantidad:  Number(d.cantidad),
+            precio:    Number(d.precioUnitario),
+            descuentoMonto: 0,
+          })),
+          iva:                    Number(doc.iva ?? 0),
+          subtotal:               Number(doc.subtotal ?? 0),
+          tipoNcf:                'E34',
+          encf:                   doc.ecf?.numero ?? undefined,
+          ecfPendiente:           !doc.ecf?.numero,
+          securityCode:           doc.ecf?.codigoSeguridad,
+          qrUrl:                  doc.ecf?.qrUrl ?? null,
+          rncComprador:           doc.cliente?.rncReceptor ?? doc.cliente?.rfc,
+          razonSocial:            doc.cliente?.nombre,
+          empresaNombreComercial: empInfo.nombre,
+          empresaRnc:             empInfo.rnc,
+          empresaDireccion:       empInfo.direccion,
+          empresaTelefono:        empInfo.telefono,
+        };
+        let qrDUrl: string | null = null;
+        if (doc.ecf?.qrUrl && doc.ecf?.numero) {
+          try { qrDUrl = await QRCode.toDataURL(doc.ecf.qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' }); }
+          catch { /* sin QR */ }
+        }
+        const empConfPanel = (empresa.configuracion ?? {}) as any;
+        imprimirReciboTermico(buildReciboTermicoHTML(ncSale, qrDUrl, {
+          mostrarEcf:    true,
+          tipoImpresora: empConfPanel.posTipoImpresora,
+          mensajeTicket: empConfPanel.posMensajeTicket,
+          politicaDev:   empConfPanel.posPoliticaDev,
+        }));
+        return;
+      }
+
       // ── Para todos los demás: construir GenericThermalDoc ──────────
       const apiMap: Record<string, string> = {
         cotizaciones:    `/cotizaciones/${id}`,
@@ -4879,7 +4924,6 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
         conduce:         `/conduces/${id}`,
         despacho:        `/conduces/${id}`,
         'recibos-cobro': `/recibos-cobro/${id}`,
-        'notas-credito': `/notas-credito/${id}`,
         gastos:          `/gastos/${id}`,
         'notas-debito':  `/notas-debito/${id}`,
       };
@@ -4921,19 +4965,6 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           nota1: `Entrega: ${doc.direccionEntrega ?? '—'}`,
           nota2: doc.contactoEntrega ? `Contacto: ${doc.contactoEntrega}` : undefined,
           notas: doc.notas,
-        };
-      } else if (panel === 'notas-credito') {
-        gd = {
-          tipo: 'NOTA DE CRÉDITO (E34)', numero: doc.numero ?? String(doc.id),
-          fecha: String(doc.fecha ?? '').substring(0,10),
-          empresa: empInfo,
-          cliente: doc.cliente?.nombre, rncCliente: doc.cliente?.rncReceptor,
-          items: (doc.detalles ?? []).map((d: any) => ({
-            desc: d.descripcion, cant: Number(d.cantidad),
-            precio: Number(d.precioUnitario), total: Number(d.total??0),
-          })),
-          subtotal: Number(doc.subtotal??0), itbis: Number(doc.iva??0), total: Number(doc.total??0),
-          nota1: doc.facturaOriginalFolio ? `Ref. factura: ${doc.facturaOriginalFolio}` : undefined,
         };
       } else if ((panel as string) === 'notas-debito') {
         gd = {

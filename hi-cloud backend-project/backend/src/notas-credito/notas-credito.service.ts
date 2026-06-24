@@ -188,7 +188,23 @@ export class NotasCreditoService {
       relations: ['cliente', 'detalles'],
     });
     if (!nc) throw new NotFoundException(`Nota de Crédito #${id} no encontrada`);
-    return nc;
+
+    // Enriquecer con datos ECF para impresión y visualización
+    const [ecfRow] = await this.ncRepo.manager.query<any[]>(
+      `SELECT numero, "estadoDGII", "codigoSeguridad", "qrUrl", "ncfModificado", "codigoModificacion"
+       FROM ecf
+       WHERE "documentoOrigenId"   = $1
+         AND "documentoOrigenTipo" = 'NOTA_CREDITO'
+         AND "isActive"            = true
+       ORDER BY "createdAt" DESC LIMIT 1`,
+      [id],
+    );
+
+    return {
+      ...nc,
+      ecfNumero: ecfRow?.numero ?? null,
+      ecf:       ecfRow ?? null,
+    };
   }
 
   // ─── Ciclo de vida ────────────────────────────────────────────────────────────
