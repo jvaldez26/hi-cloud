@@ -7410,6 +7410,10 @@ export default function POSPage() {
               const ok = await supervisor.requireSupervisorForced('Cierre de Caja', fecha);
               if (!ok) return;
             }
+            if (p === 'inventario' && supervisor.supervisorModeEnabled) {
+              const ok = await supervisor.requireSupervisor('Acceder a Inventario');
+              if (!ok) return;
+            }
             if (p === 'gastos' && supervisor.supervisorModeEnabled && posConf.posSupervisorGastos !== false) {
               const ok = await supervisor.requireSupervisor('Gastos');
               if (!ok) return;
