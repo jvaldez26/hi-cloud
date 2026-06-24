@@ -199,6 +199,7 @@ export class InventarioService {
 
   async getMovimientos(pagination: PaginationDto & { tipo?: string; desde?: string; hasta?: string }) {
     const empresaId = this.tenantService.getEmpresaId();
+    const almacenId = this.tenantService.getAlmacenId();
     const { limit = 10, page = 1, search, tipo, desde, hasta } = pagination;
 
     const qb = this.movimientoRepository
@@ -207,6 +208,9 @@ export class InventarioService {
       .leftJoinAndSelect('m.user', 'usuario')
       .where('m.empresaId = :eid', { eid: empresaId })
       .andWhere('m.isActive = :active', { active: true });
+
+    // H1: filtrar por almacén del JWT cuando el usuario tiene almacén asignado
+    if (almacenId) qb.andWhere('(m.almacenId = :aid OR m.almacenId IS NULL)', { aid: almacenId });
 
     if (search) qb.andWhere('(producto.nombre ILIKE :s OR producto.codigo ILIKE :s OR m.referencia ILIKE :s OR m.motivo ILIKE :s)', { s: `%${search}%` });
     if (tipo)  qb.andWhere('m.tipo = :tipo', { tipo });
@@ -223,10 +227,11 @@ export class InventarioService {
   }
 
   async getMovimientosPorProducto(productoId: number, pagination: PaginationDto) {
+    const empresaId = this.tenantService.getEmpresaId();
     await this.obtenerProducto(productoId);
     const { limit = 20, page = 1 } = pagination;
     const [data, total] = await this.movimientoRepository.findAndCount({
-      where: { productoId, isActive: true },
+      where: { productoId, empresaId, isActive: true },
       relations: ['user'],
       order: { createdAt: 'DESC' },
       skip: (page - 1) * limit,
@@ -251,10 +256,12 @@ export class InventarioService {
   // ──────────────────────────────────────────────────────────
 
   async registrarEntradaDesdeDto(dto: RegistrarEntradaDto, userId: number) {
-    return this.registrarEntrada(dto.productoId, dto.cantidad, userId, dto.motivo, dto.referencia);
+    const almacenId = dto.almacenId ?? this.tenantService.getAlmacenId() ?? undefined;
+    return this.registrarEntrada(dto.productoId, dto.cantidad, userId, dto.motivo, dto.referencia, almacenId);
   }
   async registrarSalidaDesdeDto(dto: RegistrarSalidaDto, userId: number) {
-    return this.registrarSalida(dto.productoId, dto.cantidad, userId, dto.motivo, dto.referencia);
+    const almacenId = dto.almacenId ?? this.tenantService.getAlmacenId() ?? undefined;
+    return this.registrarSalida(dto.productoId, dto.cantidad, userId, dto.motivo, dto.referencia, almacenId);
   }
   async registrarAjusteDesdeDto(dto: RegistrarAjusteDto, userId: number) {
     return this.registrarAjuste(dto.productoId, dto.cantidadNueva, userId, dto.motivo);
@@ -354,7 +361,7 @@ export class InventarioService {
     const lote = await this.loteRepository.findOne({ where: { id, empresaId, isActive: true } });
     if (!lote) throw new NotFoundException(`Lote #${id} no encontrado`);
     await this.loteRepository.update(id, dto as any);
-    return this.loteRepository.findOne({ where: { id } });
+    return this.loteRepository.findOne({ where: { id, empresaId, isActive: true } });
   }
 
   // ──────────────────────────────────────────────────────────
@@ -443,7 +450,7 @@ export class InventarioService {
       notas:      dto.notas ?? serial.notas,
     } as any);
 
-    return this.serialRepository.findOne({ where: { id } });
+    return this.serialRepository.findOne({ where: { id, empresaId, isActive: true } });
   }
 
   async getResumenSeriales(productoId?: number) {

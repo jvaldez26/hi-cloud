@@ -25,4 +25,9 @@ export class RegistrarEntradaDto {
   @IsString()
   @MaxLength(50)
   referencia?: string;
+
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  almacenId?: number;
 }
