@@ -37,8 +37,8 @@ const { Option } = Select;
 const ESTADOS: FacturaEstado[] = ['borrador', 'emitida', 'pagada', 'cancelada'];
 
 const TRANSICIONES: Record<FacturaEstado, FacturaEstado[]> = {
-  borrador:  ['emitida', 'cancelada'],
-  emitida:   ['pagada',  'cancelada'],
+  borrador:  ['emitida'],
+  emitida:   ['pagada'],
   pagada:    [],
   cancelada: [],
 };

@@ -5312,7 +5312,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
                         )}
                         {/* Anular */}
                         {!yaAnulado && puedeAnular(row) && panel !== 'despacho' &&
-                          (panel !== 'facturas' || permitirAnularFacturas !== false) && (
+                          panel !== 'facturas' && (
                           anulando === row.id ? (
                             <span style={{ fontSize: 11, color: C.textSub }}>
                               <button onClick={() => { anularMutation.mutate({ id: row.id, mod: panel }); }}
@@ -5337,7 +5337,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
                                 }
                                 if (requireSupervisor) {
                                   const ok = await requireSupervisor(
-                                    `Anular ${panel === 'facturas' ? 'factura' : 'documento'}`,
+                                    `Anular documento`,
                                     `ID: ${row.id} — Monto: ${(row as any).total ?? (row as any).monto ?? ''}`,
                                   );
                                   if (!ok) return;

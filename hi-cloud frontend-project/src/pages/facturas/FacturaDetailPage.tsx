@@ -15,8 +15,8 @@ const { Title, Text } = Typography;
 
 const ESTADOS: FacturaEstado[] = ['borrador', 'emitida', 'pagada'];
 const TRANSICIONES: Record<FacturaEstado, FacturaEstado[]> = {
-  borrador: ['emitida', 'cancelada'],
-  emitida:  ['pagada',  'cancelada'],
+  borrador: ['emitida'],
+  emitida:  ['pagada'],
   pagada:   [],
   cancelada:[],
 };
