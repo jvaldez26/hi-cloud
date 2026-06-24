@@ -653,7 +653,7 @@ function buildReciboTermicoHTML(
 <style>
 *{margin:0;padding:0;box-sizing:border-box;overflow-wrap:break-word}
 html{margin:0;padding:0;width:${prn.width}}
-body{font-family:'Courier New',Courier,monospace;font-size:${prn.fontSize};line-height:1.45;
+body{font-family:'Courier New',Courier,monospace;font-size:${prn.fontSize};font-weight:bold;line-height:1.45;
   width:${prn.width};margin:0;padding:3mm ${prn.paddingLR};
   color:#000;background:#fff;
   -webkit-font-smoothing:none;font-smooth:never}
@@ -1627,7 +1627,7 @@ function buildDocTermicoHTML(
 <style>
 *{margin:0;padding:0;box-sizing:border-box;overflow-wrap:break-word}
 html{margin:0;padding:0;width:${prn.width}}
-body{font-family:'Courier New',Courier,monospace;font-size:${prn.fontSize};line-height:1.45;
+body{font-family:'Courier New',Courier,monospace;font-size:${prn.fontSize};font-weight:bold;line-height:1.45;
   width:${prn.width};margin:0;padding:3mm ${prn.paddingLR};
   color:#000;background:#fff;-webkit-font-smoothing:none;font-smooth:never}
 .center{text-align:center}
