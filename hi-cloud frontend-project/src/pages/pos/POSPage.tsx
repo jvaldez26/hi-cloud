@@ -14,6 +14,7 @@ import { clientesApi } from '../../api/clientes.api';
 import { configuracionApi } from '../../api/configuracion.api';
 import { useQueryClient } from '@tanstack/react-query';
 import { facturasApi } from '../../api/facturas.api';
+import { inventarioApi } from '../../api/inventario.api';
 import { fmt, round2 } from '../../utils/formatters';
 import { imprimirElemento, imprimirReciboTermico } from '../../utils/printUtils';
 import { useThemeStore } from '../../store/theme.store';
@@ -2328,10 +2329,14 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
   requireSupervisor?: (action: string, detail?: string) => Promise<boolean>;
 }) {
   const qc = useQueryClient();
+  const userRole = useAuthStore(s => s.user?.role);
+  const isAdmin  = userRole === 'admin' || userRole === 'super_admin';
+
+  // ── estados producto CRUD ─────────────────────────────────────────────────
   const [busq, setBusq] = useState('');
-  const [showForm, setShowForm]     = useState(false);
+  const [showForm, setShowForm]       = useState(false);
   const [editingProd, setEditingProd] = useState<any>(null);
-  const [saving, setSaving]         = useState(false);
+  const [saving, setSaving]           = useState(false);
   const [fTipo,      setFTipo]      = useState<'producto'|'servicio'>('producto');
   const [fNombre,    setFNombre]    = useState('');
   const [fCodigo,    setFCodigo]    = useState('');
@@ -2341,6 +2346,16 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
   const [fStockMin,  setFStockMin]  = useState('0');
   const [fCategoria, setFCategoria] = useState('');
 
+  // ── estados movimientos ───────────────────────────────────────────────────
+  const [movLimit, setMovLimit] = useState(20);
+  const [movModal, setMovModal] = useState<{ tipo: 'entrada'|'salida' } | null>(null);
+  const [mSearch,  setMSearch]  = useState('');
+  const [mProd,    setMProd]    = useState<{ id: number; nombre: string } | null>(null);
+  const [mCant,    setMCant]    = useState('');
+  const [mMotivo,  setMMotivo]  = useState('');
+  const [mSaving,  setMSaving]  = useState(false);
+
+  // ── queries ───────────────────────────────────────────────────────────────
   const { data, isLoading } = useQuery<any>({
     queryKey: ['pos-productos', busq],
     queryFn: () => api.get(`/productos?limit=50${busq ? '&search='+encodeURIComponent(busq) : ''}`)
@@ -2349,6 +2364,24 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
   });
   const productos = data ?? [];
 
+  const { data: movData, isLoading: movLoading } = useQuery<any>({
+    queryKey: ['pos-movimientos', movLimit],
+    queryFn:  () => inventarioApi.movimientos(1, movLimit),
+    staleTime: 15_000,
+  });
+  const movimientos = movData?.data ?? [];
+  const movTotal    = movData?.meta?.total ?? 0;
+
+  const { data: mProdData } = useQuery<any>({
+    queryKey: ['pos-mov-prods', mSearch],
+    queryFn:  () => api.get(`/productos?limit=10${mSearch ? '&search='+encodeURIComponent(mSearch) : ''}`)
+      .then(r => { const d = r.data?.data ?? r.data; return d?.data ?? d ?? []; }),
+    enabled:  !!movModal && mSearch.length > 0,
+    staleTime: 15_000,
+  });
+  const mProdOpts: any[] = mProdData ?? [];
+
+  // ── handlers producto ─────────────────────────────────────────────────────
   const openForm = (prod?: any) => {
     setEditingProd(prod ?? null);
     setFTipo((prod?.tipo ?? 'producto') as 'producto'|'servicio');
@@ -2400,6 +2433,35 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
     } finally { setSaving(false); }
   };
 
+  // ── handlers movimientos ──────────────────────────────────────────────────
+  const handleMovModal = (tipo: 'entrada'|'salida') => {
+    if (!isAdmin) { message.warning('Se requiere rol administrador'); return; }
+    setMovModal({ tipo });
+    setMSearch(''); setMProd(null); setMCant(''); setMMotivo('');
+  };
+
+  const handleMovSave = async () => {
+    if (!mProd) { message.error('Selecciona un producto'); return; }
+    const cant = Number(mCant);
+    if (!Number.isInteger(cant) || cant <= 0) { message.error('Cantidad debe ser un entero mayor a 0'); return; }
+    if (!mMotivo.trim()) { message.error('Motivo es obligatorio'); return; }
+    setMSaving(true);
+    try {
+      if (movModal?.tipo === 'entrada') {
+        await inventarioApi.entrada(mProd.id, cant, mMotivo.trim());
+      } else {
+        await inventarioApi.salida(mProd.id, cant, mMotivo.trim());
+      }
+      message.success(`${movModal?.tipo === 'entrada' ? 'Entrada' : 'Salida'} registrada`);
+      qc.invalidateQueries({ queryKey: ['pos-movimientos'] });
+      qc.invalidateQueries({ queryKey: ['pos-productos'] });
+      setMovModal(null);
+    } catch (e: any) {
+      message.error(e?.response?.data?.message ?? 'Error al registrar movimiento');
+    } finally { setMSaving(false); }
+  };
+
+  // ── render ────────────────────────────────────────────────────────────────
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <PanelHeader title="Inventario" icon="📦" C={C} onVolver={onVolver}
@@ -2412,11 +2474,13 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
               borderRadius: 8, color: C.text, fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
         </div>
       </div>
-      <div style={{ flex: 1, overflowY: 'auto', scrollbarWidth: 'thin' }}>
-        {isLoading ? <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div> :
-         productos.length === 0 ? <Empty style={{ marginTop: 40 }} description={<span style={{ color: C.textSub }}>Sin productos</span>} /> : (
+
+      {/* ── Lista de productos (altura limitada) ── */}
+      <div style={{ maxHeight: 300, overflowY: 'auto', scrollbarWidth: 'thin', borderBottom: `2px solid ${C.border}` }}>
+        {isLoading ? <div style={{ textAlign: 'center', padding: 30 }}><Spin /></div> :
+         productos.length === 0 ? <Empty style={{ marginTop: 30 }} description={<span style={{ color: C.textSub }}>Sin productos</span>} /> : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-            <thead><tr style={{ background: C.card, position: 'sticky', top: 0 }}>
+            <thead><tr style={{ background: C.card, position: 'sticky', top: 0, zIndex: 1 }}>
               {['Tipo','Código','Nombre','Precio','ITBIS%','Stock','Mín.','Categoría',''].map(h => (
                 <th key={h} style={{ padding: '8px 12px', textAlign: 'left', color: C.textSub,
                   fontWeight: 600, fontSize: 11, borderBottom: `1px solid ${C.border}` }}>{h}</th>
@@ -2455,6 +2519,90 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
         )}
       </div>
 
+      {/* ── Sección Movimientos ── */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {/* Header movimientos */}
+        <div style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8,
+          borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+          <span style={{ flex: 1, fontWeight: 700, fontSize: 13, color: C.text }}>📋 Movimientos</span>
+          {isAdmin && (
+            <>
+              <button onClick={() => handleMovModal('entrada')}
+                style={{ padding: '4px 12px', borderRadius: 6, border: 'none',
+                  background: '#dcfce7', color: '#15803d', cursor: 'pointer', fontWeight: 700, fontSize: 12 }}>
+                + Entrada
+              </button>
+              <button onClick={() => handleMovModal('salida')}
+                style={{ padding: '4px 12px', borderRadius: 6, border: 'none',
+                  background: '#fee2e2', color: '#dc2626', cursor: 'pointer', fontWeight: 700, fontSize: 12 }}>
+                − Salida
+              </button>
+            </>
+          )}
+        </div>
+
+        {/* Tabla movimientos */}
+        <div style={{ flex: 1, overflowY: 'auto', scrollbarWidth: 'thin' }}>
+          {movLoading ? (
+            <div style={{ textAlign: 'center', padding: 20 }}><Spin size="small" /></div>
+          ) : movimientos.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 20, color: C.textSub, fontSize: 12 }}>Sin movimientos registrados</div>
+          ) : (
+            <>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                <thead><tr style={{ background: C.card }}>
+                  {['Fecha','Tipo','Producto','Cant.','Stock','Motivo'].map(h => (
+                    <th key={h} style={{ padding: '6px 8px', textAlign: 'left', color: C.textSub,
+                      fontWeight: 600, fontSize: 10, borderBottom: `1px solid ${C.border}`,
+                      position: 'sticky', top: 0, background: C.card }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr></thead>
+                <tbody>{movimientos.map((m: any, i: number) => (
+                  <tr key={m.id} style={{ borderBottom: `1px solid ${C.border}`, background: i%2===0?'transparent':C.card }}>
+                    <td style={{ padding: '5px 8px', color: C.textSub, whiteSpace: 'nowrap', fontSize: 10 }}>
+                      {dayjs(m.createdAt).format('DD/MM HH:mm')}
+                    </td>
+                    <td style={{ padding: '5px 8px' }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
+                        background: m.tipo === 'entrada' ? '#dcfce7' : m.tipo === 'salida' ? '#fee2e2' : '#f3f4f6',
+                        color:      m.tipo === 'entrada' ? '#15803d' : m.tipo === 'salida' ? '#dc2626' : '#374151' }}>
+                        {m.tipo.toUpperCase()}
+                      </span>
+                    </td>
+                    <td style={{ padding: '5px 8px', color: C.text, maxWidth: 140,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {m.producto?.nombre ?? `#${m.productoId}`}
+                    </td>
+                    <td style={{ padding: '5px 8px', fontWeight: 700,
+                      color: m.tipo === 'entrada' ? '#16a34a' : '#dc2626' }}>
+                      {m.tipo === 'entrada' ? '+' : '−'}{Number(m.cantidad)}
+                    </td>
+                    <td style={{ padding: '5px 8px', color: C.textSub, whiteSpace: 'nowrap', fontSize: 10 }}>
+                      {Number(m.cantidadAnterior)}→{Number(m.cantidadNueva)}
+                    </td>
+                    <td style={{ padding: '5px 8px', color: C.textSub, maxWidth: 120,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {m.motivo ?? '—'}
+                    </td>
+                  </tr>
+                ))}</tbody>
+              </table>
+              {movimientos.length < movTotal && (
+                <div style={{ textAlign: 'center', padding: '10px 0' }}>
+                  <button onClick={() => setMovLimit(l => l + 20)}
+                    style={{ padding: '5px 18px', borderRadius: 6, border: `1px solid ${C.border}`,
+                      background: 'transparent', color: C.textSub, cursor: 'pointer', fontSize: 12 }}>
+                    Ver más ({movTotal - movimientos.length} pendientes)
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
       {/* Modal — formulario de producto */}
       {showForm && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,0.6)',
@@ -2472,7 +2620,6 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
                 color: C.textSub, cursor: 'pointer', fontSize: 18, padding: 4, lineHeight: 1 }}>✕</button>
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px' }}>
-              {/* Selector tipo */}
               <div style={{ marginBottom: 14 }}>
                 <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, color: C.text }}>Tipo</div>
                 <Segmented
@@ -2536,6 +2683,93 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
                 {saving ? 'Guardando...' : editingProd
                   ? 'Guardar Cambios'
                   : `Crear ${fTipo === 'servicio' ? 'Servicio' : 'Producto'}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal — entrada / salida de stock */}
+      {movModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,0.6)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: C.card, width: '100%', maxWidth: 380, borderRadius: 12, overflow: 'hidden' }}>
+            <div style={{ padding: '14px 18px', borderBottom: `1px solid ${C.border}`,
+              display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontWeight: 700, fontSize: 15, color: C.text, flex: 1 }}>
+                {movModal.tipo === 'entrada' ? '📥 Entrada de Stock' : '📤 Salida de Stock'}
+              </span>
+              <button onClick={() => setMovModal(null)} style={{ background: 'none', border: 'none',
+                color: C.textSub, cursor: 'pointer', fontSize: 18, padding: 4, lineHeight: 1 }}>✕</button>
+            </div>
+            <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {/* Selector de producto */}
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: C.text }}>Producto *</div>
+                {mProd ? (
+                  <div style={{ padding: '9px 12px', border: `1px solid ${C.border2}`, borderRadius: 8,
+                    display: 'flex', alignItems: 'center', gap: 8, background: C.inputBg }}>
+                    <span style={{ flex: 1, color: C.text, fontSize: 13 }}>{mProd.nombre}</span>
+                    <button onClick={() => setMProd(null)} style={{ background: 'none', border: 'none',
+                      color: C.textSub, cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
+                  </div>
+                ) : (
+                  <div style={{ position: 'relative' }}>
+                    <input value={mSearch} onChange={e => setMSearch(e.target.value)}
+                      placeholder="Buscar producto..."
+                      style={{ width: '100%', height: 38, padding: '0 12px', borderRadius: 8,
+                        border: `1px solid ${C.border2}`, background: C.inputBg, color: C.text,
+                        fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+                    {mProdOpts.length > 0 && (
+                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: C.card,
+                        border: `1px solid ${C.border}`, borderRadius: 8, maxHeight: 180,
+                        overflowY: 'auto', zIndex: 100, marginTop: 2 }}>
+                        {mProdOpts.slice(0, 8).map((p: any) => (
+                          <div key={p.id}
+                            onClick={() => { setMProd({ id: p.id, nombre: p.nombre }); setMSearch(''); }}
+                            onMouseEnter={e => (e.currentTarget.style.background = C.sidebarHov)}
+                            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                            style={{ padding: '8px 12px', cursor: 'pointer',
+                              borderBottom: `1px solid ${C.border}`, color: C.text, fontSize: 12 }}>
+                            <strong>{p.nombre}</strong>
+                            {p.tipo !== 'servicio' && (
+                              <span style={{ color: C.textSub, marginLeft: 6 }}>Stock: {p.stock ?? 0}</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Cantidad */}
+              <PanelInput C={C} label="Cantidad *" type="number" min="1" step="1"
+                value={mCant} onChange={e => setMCant(e.target.value)} placeholder="0" />
+
+              {/* Motivo */}
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: C.text }}>Motivo *</div>
+                <input value={mMotivo} onChange={e => setMMotivo(e.target.value)}
+                  placeholder={movModal.tipo === 'entrada'
+                    ? 'Ej: Compra proveedor, devolución cliente...'
+                    : 'Ej: Merma, daño, ajuste...'}
+                  style={{ width: '100%', height: 38, padding: '0 12px', borderRadius: 8,
+                    border: `1px solid ${C.border2}`, background: C.inputBg, color: C.text,
+                    fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+            </div>
+            <div style={{ padding: '12px 18px', borderTop: `1px solid ${C.border}`, display: 'flex', gap: 8 }}>
+              <button onClick={() => setMovModal(null)}
+                style={{ flex: 1, height: 40, borderRadius: 8, border: `1px solid ${C.border}`,
+                  background: 'transparent', color: C.text, cursor: 'pointer', fontSize: 13 }}>
+                Cancelar
+              </button>
+              <button onClick={handleMovSave} disabled={mSaving}
+                style={{ flex: 2, height: 40, borderRadius: 8, border: 'none',
+                  background: mSaving ? '#9ca3af' : movModal.tipo === 'entrada' ? '#16a34a' : '#dc2626',
+                  color: '#fff', cursor: mSaving ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 700 }}>
+                {mSaving ? 'Guardando...' : `Confirmar ${movModal.tipo === 'entrada' ? 'Entrada' : 'Salida'}`}
               </button>
             </div>
           </div>
