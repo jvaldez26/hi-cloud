@@ -7160,7 +7160,7 @@ export default function POSPage() {
             permitirAnularFacturas={posConf.posPermitirAnularFacturas !== false}
             tiempoLimiteAnular={typeof posConf.posTiempoLimiteAnular === 'number' ? posConf.posTiempoLimiteAnular : 0}
             requireSupervisor={supervisor.supervisorModeEnabled ? supervisor.requireSupervisor : undefined}
-            supervisorActive={supervisor.supervisorActive}
+            supervisorActive={supervisor.supervisorActive || !supervisor.supervisorModeEnabled}
             requireSupervisorForced={supervisor.requireSupervisorForced}
           />
         )}
