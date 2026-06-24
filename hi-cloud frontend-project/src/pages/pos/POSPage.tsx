@@ -1,7 +1,7 @@
 ﻿import { useState, useCallback, useEffect, useRef, createContext, useContext } from 'react';
 import { useRncLookup } from '../../hooks/useRncLookup';
 import QRCode from 'qrcode';
-import { Select, Modal, Badge, Empty, Spin, Tooltip, message, Avatar, Popover, Input, Button, Segmented } from 'antd';
+import { Select, Modal, Badge, Empty, Spin, Tooltip, message, Avatar, Popover, Input, Button, Segmented, Tabs } from 'antd';
 import { SearchOutlined, ShoppingCartOutlined, CheckCircleOutlined, DisconnectOutlined, LogoutOutlined, PrinterOutlined, LockOutlined, UserSwitchOutlined, SwapOutlined, EyeOutlined, EyeInvisibleOutlined, ShopOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../../store/auth.store';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -2354,6 +2354,7 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
   const [mCant,    setMCant]    = useState('');
   const [mMotivo,  setMMotivo]  = useState('');
   const [mSaving,  setMSaving]  = useState(false);
+  const [activeTab, setActiveTab] = useState<'productos'|'movimientos'>('productos');
 
   // ── queries ───────────────────────────────────────────────────────────────
   const { data, isLoading } = useQuery<any>({
@@ -2462,148 +2463,187 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
   };
 
   // ── render ────────────────────────────────────────────────────────────────
+  const tabExtra = activeTab === 'productos'
+    ? (
+        <button onClick={handleNuevo}
+          style={{ background: C.green, border: 'none', borderRadius: 8, marginRight: 8,
+            color: '#fff', cursor: 'pointer', padding: '5px 13px', fontSize: 12, fontWeight: 700 }}>
+          + Nuevo Producto
+        </button>
+      )
+    : isAdmin
+      ? (
+          <div style={{ display: 'flex', gap: 6, marginRight: 8 }}>
+            <button onClick={() => handleMovModal('entrada')}
+              style={{ padding: '4px 12px', borderRadius: 6, border: 'none',
+                background: '#dcfce7', color: '#15803d', cursor: 'pointer', fontWeight: 700, fontSize: 12 }}>
+              + Entrada
+            </button>
+            <button onClick={() => handleMovModal('salida')}
+              style={{ padding: '4px 12px', borderRadius: 6, border: 'none',
+                background: '#fee2e2', color: '#dc2626', cursor: 'pointer', fontWeight: 700, fontSize: 12 }}>
+              − Salida
+            </button>
+          </div>
+        )
+      : null;
+
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <PanelHeader title="Inventario" icon="📦" C={C} onVolver={onVolver}
-        onNuevo={handleNuevo} labelNuevo="Nuevo Producto" />
-
-      {/* ── Lista de productos (arriba, altura limitada) ── */}
-      <div style={{ flexShrink: 0 }}>
-        <div style={{ padding: '8px 14px', borderBottom: `1px solid ${C.border}` }}>
-          <div style={{ position: 'relative' }}>
-            <SearchOutlined style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: C.textSub, fontSize: 13 }} />
-            <input value={busq} onChange={e => setBusq(e.target.value)} placeholder="Buscar por código, nombre o categoría..."
-              style={{ width: '100%', height: 34, paddingLeft: 30, background: C.card, border: `1px solid ${C.border}`,
-                borderRadius: 8, color: C.text, fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
-          </div>
-        </div>
-        <div style={{ maxHeight: 220, overflowY: 'auto', scrollbarWidth: 'thin', borderBottom: `2px solid ${C.border}` }}>
-          {isLoading ? <div style={{ textAlign: 'center', padding: 20 }}><Spin size="small" /></div> :
-           productos.length === 0 ? <div style={{ textAlign: 'center', padding: 16, color: C.textSub, fontSize: 12 }}>Sin productos</div> : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-              <thead><tr style={{ background: C.card, position: 'sticky', top: 0, zIndex: 1 }}>
-                {['Tipo','Código','Nombre','Precio','ITBIS%','Stock','Mín.','Categoría',''].map(h => (
-                  <th key={h} style={{ padding: '6px 10px', textAlign: 'left', color: C.textSub,
-                    fontWeight: 600, fontSize: 11, borderBottom: `1px solid ${C.border}` }}>{h}</th>
-                ))}
-              </tr></thead>
-              <tbody>{productos.map((p: any, i: number) => (
-                <tr key={p.id} style={{ borderBottom: `1px solid ${C.border}`, background: i%2===0?'transparent':C.card }}
-                  onMouseEnter={e=>(e.currentTarget.style.background=C.sidebarHov)}
-                  onMouseLeave={e=>(e.currentTarget.style.background=i%2===0?'transparent':C.card)}>
-                  <td style={{ padding: '6px 10px' }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
-                      background: p.tipo === 'servicio' ? '#dbeafe' : '#dcfce7',
-                      color: p.tipo === 'servicio' ? '#1d4ed8' : '#15803d' }}>
-                      {p.tipo === 'servicio' ? '⚙️ SVC' : '📦 PRD'}
-                    </span>
-                  </td>
-                  <td style={{ padding: '6px 10px', color: C.textSub, fontFamily: 'monospace', fontSize: 11 }}>{p.codigo}</td>
-                  <td style={{ padding: '6px 10px', color: C.text, fontWeight: 600 }}>{p.nombre}</td>
-                  <td style={{ padding: '6px 10px', color: C.green, fontWeight: 700 }}>{fmt.money(p.precio)}</td>
-                  <td style={{ padding: '6px 10px', color: C.textSub }}>{p.porcentajeIva ?? 18}%</td>
-                  <td style={{ padding: '6px 10px', color: p.tipo === 'servicio' ? C.textMuted : (Number(p.stock) <= Number(p.stockMinimo||0) ? C.red : C.text), fontWeight: 700 }}>
-                    {p.tipo === 'servicio' ? '∞' : p.stock}
-                  </td>
-                  <td style={{ padding: '6px 10px', color: C.textSub }}>{p.tipo === 'servicio' ? '—' : (p.stockMinimo ?? '—')}</td>
-                  <td style={{ padding: '6px 10px', color: C.textSub, fontSize: 11 }}>{p.categoria ?? '—'}</td>
-                  <td style={{ padding: '4px 8px', textAlign: 'right' }}>
-                    <button onClick={() => handleEditar(p)}
-                      style={{ background: 'none', border: `1px solid ${C.border}`, borderRadius: 6,
-                        color: C.textSub, cursor: 'pointer', fontSize: 12, padding: '3px 8px' }}>
-                      ✏️
-                    </button>
-                  </td>
-                </tr>
-              ))}</tbody>
-            </table>
-          )}
-        </div>
+      {/* Header: botón volver + título */}
+      <div style={{ padding: '10px 14px', flexShrink: 0, borderBottom: `1px solid ${C.border}`,
+        display: 'flex', alignItems: 'center', gap: 10 }}>
+        <button onClick={onVolver} style={{ background: 'none', border: 'none', color: C.blue,
+          cursor: 'pointer', fontSize: 20, lineHeight: 1, padding: 0 }}>←</button>
+        <span style={{ fontSize: 16 }}>📦</span>
+        <span style={{ fontWeight: 700, color: C.text, fontSize: 15 }}>Inventario</span>
       </div>
 
-      {/* ── Sección Movimientos (abajo, flex: 1 — toma el espacio restante) ── */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {/* Header movimientos */}
-        <div style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8,
-          borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
-          <span style={{ flex: 1, fontWeight: 700, fontSize: 13, color: C.text }}>📋 Movimientos</span>
-          {isAdmin && (
-            <>
-              <button onClick={() => handleMovModal('entrada')}
-                style={{ padding: '4px 12px', borderRadius: 6, border: 'none',
-                  background: '#dcfce7', color: '#15803d', cursor: 'pointer', fontWeight: 700, fontSize: 12 }}>
-                + Entrada
-              </button>
-              <button onClick={() => handleMovModal('salida')}
-                style={{ padding: '4px 12px', borderRadius: 6, border: 'none',
-                  background: '#fee2e2', color: '#dc2626', cursor: 'pointer', fontWeight: 700, fontSize: 12 }}>
-                − Salida
-              </button>
-            </>
-          )}
-        </div>
-
-        {/* Tabla movimientos */}
-        <div style={{ flex: 1, overflowY: 'auto', scrollbarWidth: 'thin' }}>
-          {movLoading ? (
-            <div style={{ textAlign: 'center', padding: 20 }}><Spin size="small" /></div>
-          ) : movimientos.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 20, color: C.textSub, fontSize: 12 }}>Sin movimientos registrados</div>
-          ) : (
-            <>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-                <thead><tr style={{ background: C.card }}>
-                  {['Fecha','Tipo','Producto','Cant.','Stock','Motivo'].map(h => (
-                    <th key={h} style={{ padding: '6px 8px', textAlign: 'left', color: C.textSub,
-                      fontWeight: 600, fontSize: 10, borderBottom: `1px solid ${C.border}`,
-                      position: 'sticky', top: 0, background: C.card }}>
-                      {h}
-                    </th>
-                  ))}
-                </tr></thead>
-                <tbody>{movimientos.map((m: any, i: number) => (
-                  <tr key={m.id} style={{ borderBottom: `1px solid ${C.border}`, background: i%2===0?'transparent':C.card }}>
-                    <td style={{ padding: '5px 8px', color: C.textSub, whiteSpace: 'nowrap', fontSize: 10 }}>
-                      {dayjs(m.createdAt).format('DD/MM HH:mm')}
-                    </td>
-                    <td style={{ padding: '5px 8px' }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
-                        background: m.tipo === 'entrada' ? '#dcfce7' : m.tipo === 'salida' ? '#fee2e2' : '#f3f4f6',
-                        color:      m.tipo === 'entrada' ? '#15803d' : m.tipo === 'salida' ? '#dc2626' : '#374151' }}>
-                        {m.tipo.toUpperCase()}
-                      </span>
-                    </td>
-                    <td style={{ padding: '5px 8px', color: C.text, maxWidth: 140,
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {m.producto?.nombre ?? `#${m.productoId}`}
-                    </td>
-                    <td style={{ padding: '5px 8px', fontWeight: 700,
-                      color: m.tipo === 'entrada' ? '#16a34a' : '#dc2626' }}>
-                      {m.tipo === 'entrada' ? '+' : '−'}{Number(m.cantidad)}
-                    </td>
-                    <td style={{ padding: '5px 8px', color: C.textSub, whiteSpace: 'nowrap', fontSize: 10 }}>
-                      {Number(m.cantidadAnterior)}→{Number(m.cantidadNueva)}
-                    </td>
-                    <td style={{ padding: '5px 8px', color: C.textSub, maxWidth: 120,
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {m.motivo ?? '—'}
-                    </td>
-                  </tr>
-                ))}</tbody>
-              </table>
-              {movimientos.length < movTotal && (
-                <div style={{ textAlign: 'center', padding: '10px 0' }}>
-                  <button onClick={() => setMovLimit(l => l + 20)}
-                    style={{ padding: '5px 18px', borderRadius: 6, border: `1px solid ${C.border}`,
-                      background: 'transparent', color: C.textSub, cursor: 'pointer', fontSize: 12 }}>
-                    Ver más ({movTotal - movimientos.length} pendientes)
-                  </button>
+      {/* Tabs */}
+      <Tabs
+        activeKey={activeTab}
+        onChange={key => setActiveTab(key as 'productos'|'movimientos')}
+        tabBarExtraContent={tabExtra}
+        tabBarStyle={{ margin: 0, paddingLeft: 14 }}
+        size="small"
+        style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}
+        items={[
+          {
+            key: 'productos',
+            label: '📦 Productos',
+            children: (
+              <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                {/* buscador */}
+                <div style={{ padding: '6px 14px 8px', borderBottom: `1px solid ${C.border}` }}>
+                  <div style={{ position: 'relative' }}>
+                    <SearchOutlined style={{ position: 'absolute', left: 10, top: '50%',
+                      transform: 'translateY(-50%)', color: C.textSub, fontSize: 13 }} />
+                    <input value={busq} onChange={e => setBusq(e.target.value)}
+                      placeholder="Buscar por código, nombre o categoría..."
+                      style={{ width: '100%', height: 34, paddingLeft: 30, background: C.card,
+                        border: `1px solid ${C.border}`, borderRadius: 8, color: C.text,
+                        fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
+                  </div>
                 </div>
-              )}
-            </>
-          )}
-        </div>
-      </div>
+                {/* tabla */}
+                <div style={{ flex: 1, overflowY: 'auto', scrollbarWidth: 'thin' }}>
+                  {isLoading ? <div style={{ textAlign: 'center', padding: 30 }}><Spin /></div> :
+                   productos.length === 0
+                    ? <Empty style={{ marginTop: 30 }} description={<span style={{ color: C.textSub }}>Sin productos</span>} />
+                    : (
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                        <thead><tr style={{ background: C.card, position: 'sticky', top: 0, zIndex: 1 }}>
+                          {['Tipo','Código','Nombre','Precio','ITBIS%','Stock','Mín.','Categoría',''].map(h => (
+                            <th key={h} style={{ padding: '7px 10px', textAlign: 'left', color: C.textSub,
+                              fontWeight: 600, fontSize: 11, borderBottom: `1px solid ${C.border}` }}>{h}</th>
+                          ))}
+                        </tr></thead>
+                        <tbody>{productos.map((p: any, i: number) => (
+                          <tr key={p.id} style={{ borderBottom: `1px solid ${C.border}`, background: i%2===0?'transparent':C.card }}
+                            onMouseEnter={e=>(e.currentTarget.style.background=C.sidebarHov)}
+                            onMouseLeave={e=>(e.currentTarget.style.background=i%2===0?'transparent':C.card)}>
+                            <td style={{ padding: '7px 10px' }}>
+                              <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
+                                background: p.tipo === 'servicio' ? '#dbeafe' : '#dcfce7',
+                                color: p.tipo === 'servicio' ? '#1d4ed8' : '#15803d' }}>
+                                {p.tipo === 'servicio' ? '⚙️ SVC' : '📦 PRD'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '7px 10px', color: C.textSub, fontFamily: 'monospace', fontSize: 11 }}>{p.codigo}</td>
+                            <td style={{ padding: '7px 10px', color: C.text, fontWeight: 600 }}>{p.nombre}</td>
+                            <td style={{ padding: '7px 10px', color: C.green, fontWeight: 700 }}>{fmt.money(p.precio)}</td>
+                            <td style={{ padding: '7px 10px', color: C.textSub }}>{p.porcentajeIva ?? 18}%</td>
+                            <td style={{ padding: '7px 10px', fontWeight: 700,
+                              color: p.tipo === 'servicio' ? C.textMuted : (Number(p.stock) <= Number(p.stockMinimo||0) ? C.red : C.text) }}>
+                              {p.tipo === 'servicio' ? '∞' : p.stock}
+                            </td>
+                            <td style={{ padding: '7px 10px', color: C.textSub }}>{p.tipo === 'servicio' ? '—' : (p.stockMinimo ?? '—')}</td>
+                            <td style={{ padding: '7px 10px', color: C.textSub, fontSize: 11 }}>{p.categoria ?? '—'}</td>
+                            <td style={{ padding: '4px 8px', textAlign: 'right' }}>
+                              <button onClick={() => handleEditar(p)}
+                                style={{ background: 'none', border: `1px solid ${C.border}`, borderRadius: 6,
+                                  color: C.textSub, cursor: 'pointer', fontSize: 12, padding: '3px 8px' }}>
+                                ✏️
+                              </button>
+                            </td>
+                          </tr>
+                        ))}</tbody>
+                      </table>
+                    )
+                  }
+                </div>
+              </div>
+            ),
+          },
+          {
+            key: 'movimientos',
+            label: '📋 Movimientos',
+            children: (
+              <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                <div style={{ flex: 1, overflowY: 'auto', scrollbarWidth: 'thin' }}>
+                  {movLoading ? (
+                    <div style={{ textAlign: 'center', padding: 20 }}><Spin size="small" /></div>
+                  ) : movimientos.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: 30, color: C.textSub, fontSize: 12 }}>Sin movimientos registrados</div>
+                  ) : (
+                    <>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                        <thead><tr style={{ background: C.card }}>
+                          {['Fecha','Tipo','Producto','Cant.','Stock','Motivo'].map(h => (
+                            <th key={h} style={{ padding: '7px 8px', textAlign: 'left', color: C.textSub,
+                              fontWeight: 600, fontSize: 10, borderBottom: `1px solid ${C.border}`,
+                              position: 'sticky', top: 0, background: C.card }}>
+                              {h}
+                            </th>
+                          ))}
+                        </tr></thead>
+                        <tbody>{movimientos.map((m: any, i: number) => (
+                          <tr key={m.id} style={{ borderBottom: `1px solid ${C.border}`, background: i%2===0?'transparent':C.card }}>
+                            <td style={{ padding: '6px 8px', color: C.textSub, whiteSpace: 'nowrap', fontSize: 10 }}>
+                              {dayjs(m.createdAt).format('DD/MM HH:mm')}
+                            </td>
+                            <td style={{ padding: '6px 8px' }}>
+                              <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
+                                background: m.tipo === 'entrada' ? '#dcfce7' : m.tipo === 'salida' ? '#fee2e2' : '#f3f4f6',
+                                color:      m.tipo === 'entrada' ? '#15803d' : m.tipo === 'salida' ? '#dc2626' : '#374151' }}>
+                                {m.tipo.toUpperCase()}
+                              </span>
+                            </td>
+                            <td style={{ padding: '6px 8px', color: C.text, maxWidth: 140,
+                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {m.producto?.nombre ?? `#${m.productoId}`}
+                            </td>
+                            <td style={{ padding: '6px 8px', fontWeight: 700,
+                              color: m.tipo === 'entrada' ? '#16a34a' : '#dc2626' }}>
+                              {m.tipo === 'entrada' ? '+' : '−'}{Number(m.cantidad)}
+                            </td>
+                            <td style={{ padding: '6px 8px', color: C.textSub, whiteSpace: 'nowrap', fontSize: 10 }}>
+                              {Number(m.cantidadAnterior)}→{Number(m.cantidadNueva)}
+                            </td>
+                            <td style={{ padding: '6px 8px', color: C.textSub, maxWidth: 120,
+                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {m.motivo ?? '—'}
+                            </td>
+                          </tr>
+                        ))}</tbody>
+                      </table>
+                      {movimientos.length < movTotal && (
+                        <div style={{ textAlign: 'center', padding: '10px 0' }}>
+                          <button onClick={() => setMovLimit(l => l + 20)}
+                            style={{ padding: '5px 18px', borderRadius: 6, border: `1px solid ${C.border}`,
+                              background: 'transparent', color: C.textSub, cursor: 'pointer', fontSize: 12 }}>
+                            Ver más ({movTotal - movimientos.length} pendientes)
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            ),
+          },
+        ]}
+      />
 
       {/* Modal — formulario de producto */}
       {showForm && (
