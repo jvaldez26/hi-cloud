@@ -2466,60 +2466,62 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <PanelHeader title="Inventario" icon="📦" C={C} onVolver={onVolver}
         onNuevo={handleNuevo} labelNuevo="Nuevo Producto" />
-      <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}` }}>
-        <div style={{ position: 'relative' }}>
-          <SearchOutlined style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: C.textSub, fontSize: 13 }} />
-          <input value={busq} onChange={e => setBusq(e.target.value)} placeholder="Buscar por código, nombre o categoría..."
-            style={{ width: '100%', height: 36, paddingLeft: 30, background: C.card, border: `1px solid ${C.border}`,
-              borderRadius: 8, color: C.text, fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
+
+      {/* ── Lista de productos (arriba, altura limitada) ── */}
+      <div style={{ flexShrink: 0 }}>
+        <div style={{ padding: '8px 14px', borderBottom: `1px solid ${C.border}` }}>
+          <div style={{ position: 'relative' }}>
+            <SearchOutlined style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: C.textSub, fontSize: 13 }} />
+            <input value={busq} onChange={e => setBusq(e.target.value)} placeholder="Buscar por código, nombre o categoría..."
+              style={{ width: '100%', height: 34, paddingLeft: 30, background: C.card, border: `1px solid ${C.border}`,
+                borderRadius: 8, color: C.text, fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
+          </div>
+        </div>
+        <div style={{ maxHeight: 220, overflowY: 'auto', scrollbarWidth: 'thin', borderBottom: `2px solid ${C.border}` }}>
+          {isLoading ? <div style={{ textAlign: 'center', padding: 20 }}><Spin size="small" /></div> :
+           productos.length === 0 ? <div style={{ textAlign: 'center', padding: 16, color: C.textSub, fontSize: 12 }}>Sin productos</div> : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead><tr style={{ background: C.card, position: 'sticky', top: 0, zIndex: 1 }}>
+                {['Tipo','Código','Nombre','Precio','ITBIS%','Stock','Mín.','Categoría',''].map(h => (
+                  <th key={h} style={{ padding: '6px 10px', textAlign: 'left', color: C.textSub,
+                    fontWeight: 600, fontSize: 11, borderBottom: `1px solid ${C.border}` }}>{h}</th>
+                ))}
+              </tr></thead>
+              <tbody>{productos.map((p: any, i: number) => (
+                <tr key={p.id} style={{ borderBottom: `1px solid ${C.border}`, background: i%2===0?'transparent':C.card }}
+                  onMouseEnter={e=>(e.currentTarget.style.background=C.sidebarHov)}
+                  onMouseLeave={e=>(e.currentTarget.style.background=i%2===0?'transparent':C.card)}>
+                  <td style={{ padding: '6px 10px' }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
+                      background: p.tipo === 'servicio' ? '#dbeafe' : '#dcfce7',
+                      color: p.tipo === 'servicio' ? '#1d4ed8' : '#15803d' }}>
+                      {p.tipo === 'servicio' ? '⚙️ SVC' : '📦 PRD'}
+                    </span>
+                  </td>
+                  <td style={{ padding: '6px 10px', color: C.textSub, fontFamily: 'monospace', fontSize: 11 }}>{p.codigo}</td>
+                  <td style={{ padding: '6px 10px', color: C.text, fontWeight: 600 }}>{p.nombre}</td>
+                  <td style={{ padding: '6px 10px', color: C.green, fontWeight: 700 }}>{fmt.money(p.precio)}</td>
+                  <td style={{ padding: '6px 10px', color: C.textSub }}>{p.porcentajeIva ?? 18}%</td>
+                  <td style={{ padding: '6px 10px', color: p.tipo === 'servicio' ? C.textMuted : (Number(p.stock) <= Number(p.stockMinimo||0) ? C.red : C.text), fontWeight: 700 }}>
+                    {p.tipo === 'servicio' ? '∞' : p.stock}
+                  </td>
+                  <td style={{ padding: '6px 10px', color: C.textSub }}>{p.tipo === 'servicio' ? '—' : (p.stockMinimo ?? '—')}</td>
+                  <td style={{ padding: '6px 10px', color: C.textSub, fontSize: 11 }}>{p.categoria ?? '—'}</td>
+                  <td style={{ padding: '4px 8px', textAlign: 'right' }}>
+                    <button onClick={() => handleEditar(p)}
+                      style={{ background: 'none', border: `1px solid ${C.border}`, borderRadius: 6,
+                        color: C.textSub, cursor: 'pointer', fontSize: 12, padding: '3px 8px' }}>
+                      ✏️
+                    </button>
+                  </td>
+                </tr>
+              ))}</tbody>
+            </table>
+          )}
         </div>
       </div>
 
-      {/* ── Lista de productos (altura limitada) ── */}
-      <div style={{ maxHeight: 300, overflowY: 'auto', scrollbarWidth: 'thin', borderBottom: `2px solid ${C.border}` }}>
-        {isLoading ? <div style={{ textAlign: 'center', padding: 30 }}><Spin /></div> :
-         productos.length === 0 ? <Empty style={{ marginTop: 30 }} description={<span style={{ color: C.textSub }}>Sin productos</span>} /> : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-            <thead><tr style={{ background: C.card, position: 'sticky', top: 0, zIndex: 1 }}>
-              {['Tipo','Código','Nombre','Precio','ITBIS%','Stock','Mín.','Categoría',''].map(h => (
-                <th key={h} style={{ padding: '8px 12px', textAlign: 'left', color: C.textSub,
-                  fontWeight: 600, fontSize: 11, borderBottom: `1px solid ${C.border}` }}>{h}</th>
-              ))}
-            </tr></thead>
-            <tbody>{productos.map((p: any, i: number) => (
-              <tr key={p.id} style={{ borderBottom: `1px solid ${C.border}`, background: i%2===0?'transparent':C.card }}
-                onMouseEnter={e=>(e.currentTarget.style.background=C.sidebarHov)}
-                onMouseLeave={e=>(e.currentTarget.style.background=i%2===0?'transparent':C.card)}>
-                <td style={{ padding: '8px 12px' }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
-                    background: p.tipo === 'servicio' ? '#dbeafe' : '#dcfce7',
-                    color: p.tipo === 'servicio' ? '#1d4ed8' : '#15803d' }}>
-                    {p.tipo === 'servicio' ? '⚙️ SVC' : '📦 PRD'}
-                  </span>
-                </td>
-                <td style={{ padding: '8px 12px', color: C.textSub, fontFamily: 'monospace', fontSize: 11 }}>{p.codigo}</td>
-                <td style={{ padding: '8px 12px', color: C.text, fontWeight: 600 }}>{p.nombre}</td>
-                <td style={{ padding: '8px 12px', color: C.green, fontWeight: 700 }}>{fmt.money(p.precio)}</td>
-                <td style={{ padding: '8px 12px', color: C.textSub }}>{p.porcentajeIva ?? 18}%</td>
-                <td style={{ padding: '8px 12px', color: p.tipo === 'servicio' ? C.textMuted : (Number(p.stock) <= Number(p.stockMinimo||0) ? C.red : C.text), fontWeight: 700 }}>
-                  {p.tipo === 'servicio' ? '∞' : p.stock}
-                </td>
-                <td style={{ padding: '8px 12px', color: C.textSub }}>{p.tipo === 'servicio' ? '—' : (p.stockMinimo ?? '—')}</td>
-                <td style={{ padding: '8px 12px', color: C.textSub, fontSize: 11 }}>{p.categoria ?? '—'}</td>
-                <td style={{ padding: '4px 8px', textAlign: 'right' }}>
-                  <button onClick={() => handleEditar(p)}
-                    style={{ background: 'none', border: `1px solid ${C.border}`, borderRadius: 6,
-                      color: C.textSub, cursor: 'pointer', fontSize: 12, padding: '3px 8px' }}>
-                    ✏️
-                  </button>
-                </td>
-              </tr>
-            ))}</tbody>
-          </table>
-        )}
-      </div>
-
-      {/* ── Sección Movimientos ── */}
+      {/* ── Sección Movimientos (abajo, flex: 1 — toma el espacio restante) ── */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {/* Header movimientos */}
         <div style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8,
