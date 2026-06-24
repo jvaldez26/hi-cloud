@@ -2987,6 +2987,7 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
   const [pendingCancel, setPendingCancel] = useState<number | null>(null);
   const [modalNuevaOC,  setModalNuevaOC]  = useState(false);
   const [detailOCId,    setDetailOCId]    = useState<number | null>(null);
+  const [imprimiendoOC, setImprimiendoOC] = useState<number | null>(null);
 
   // Fetch compras — disabled until supervisor is active
   const { data: comprasData, isLoading, refetch } = useQuery<any>({
@@ -3042,6 +3043,47 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
     } catch (e: any) {
       message.error(e?.response?.data?.message ?? 'Error al recibir mercancía');
     } finally { setRecibiendo(false); }
+  };
+
+  const handleImprimirOC = async (id: number) => {
+    setImprimiendoOC(id);
+    try {
+      const [ocRes, empRes] = await Promise.all([
+        api.get(`/compras/${id}`).then(r => r.data?.data ?? r.data),
+        api.get('/configuracion/empresa').then(r => r.data?.data ?? r.data).catch(() => ({})),
+      ]);
+      const empConf = (empRes.configuracion ?? {}) as any;
+      const gd: GenericDocData = {
+        tipo:    'ORDEN DE COMPRA',
+        numero:  ocRes.folio ?? String(id),
+        fecha:   String(ocRes.fecha ?? '').substring(0, 10),
+        empresa: {
+          nombre:    empRes.razonSocial ?? empRes.nombre,
+          rnc:       empRes.rnc,
+          direccion: empRes.direccion,
+          telefono:  empRes.telefono,
+        },
+        cliente:    ocRes.proveedor?.nombre,
+        rncCliente: ocRes.proveedor?.rnc,
+        items: (ocRes.detalles ?? []).map((d: any) => ({
+          desc:  d.descripcion ?? d.nombre ?? '',
+          cant:  Number(d.cantidad),
+          precio: Number(d.precioUnitario ?? 0),
+          total: Number(d.subtotal ?? d.total ?? 0),
+        })),
+        subtotal: ocRes.subtotal,
+        itbis:    ocRes.iva ?? ocRes.itbis,
+        total:    ocRes.total,
+        nota1:    ocRes.proveedor?.email   ? `Email: ${ocRes.proveedor.email}`   : undefined,
+        nota2:    ocRes.proveedor?.telefono ? `Tel: ${ocRes.proveedor.telefono}` : undefined,
+        notas:    ocRes.notas,
+      };
+      imprimirReciboTermico(buildDocTermicoHTML(gd, { tipoImpresora: empConf.posTipoImpresora }));
+    } catch (e: any) {
+      message.error(e?.response?.data?.message ?? 'Error al imprimir orden de compra');
+    } finally {
+      setImprimiendoOC(null);
+    }
   };
 
   const ESTADO_CFG: Record<string, { label: string; color: string }> = {
@@ -3178,6 +3220,14 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
                             Ver
                           </button>
                         )}
+                        <button onClick={() => handleImprimirOC(c.id)}
+                          disabled={imprimiendoOC === c.id}
+                          title="Imprimir orden de compra"
+                          style={{ fontSize: 13, padding: '3px 7px', borderRadius: 6,
+                            border: `1px solid ${C.border}`, background: 'transparent',
+                            color: C.text, cursor: imprimiendoOC === c.id ? 'not-allowed' : 'pointer' }}>
+                          {imprimiendoOC === c.id ? '…' : '🖨'}
+                        </button>
                       </div>
                     </td>
                   </tr>
