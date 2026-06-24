@@ -2,7 +2,7 @@ import {
   Injectable, NotFoundException, BadRequestException, Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, IsNull, Not } from 'typeorm';
+import { Repository, DataSource, IsNull, Not, Between } from 'typeorm';
 import { CierreCaja, EstadoCierre } from './entities/cierre-caja.entity';
 import { TenantService } from '../tenant/tenant.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -364,13 +364,18 @@ export class CajaService {
 
   // ── Historial (filtrado por empresa) ─────────────────────────────────────
 
-  async getHistorial(page = 1, limit = 20, vendedorId?: number) {
+  async getHistorial(page = 1, limit = 20, vendedorId?: number, mes?: number, anio?: number) {
     const empresaId  = this.tenantService.getEmpresaId();
     const sucursalId = this.tenantService.getSucursalId();
     const where: any = { empresaId, estado: Not(EstadoCierre.ABIERTA) };
     if (sucursalId) where.sucursalId = sucursalId;
     if (vendedorId !== undefined) {
       where.vendedorId = vendedorId === 0 ? IsNull() : vendedorId;
+    }
+    if (mes && anio) {
+      const inicio    = new Date(anio, mes - 1, 1);
+      const fin       = new Date(anio, mes, 0);   // último día del mes
+      where.fecha     = Between(inicio, fin);
     }
 
     const [data, total] = await this.repo.findAndCount({

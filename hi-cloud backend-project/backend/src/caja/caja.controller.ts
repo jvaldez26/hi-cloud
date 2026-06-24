@@ -112,14 +112,18 @@ export class CajaController {
 
   @Get('historial')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  @ApiOperation({ summary: 'Historial de cierres (todos o por ?vendedorId)' })
+  @ApiOperation({ summary: 'Historial de cierres (filtrable por ?vendedorId, ?mes, ?anio)' })
   getHistorial(
-    @Query('page')       page?:       number,
-    @Query('limit')      limit?:      number,
+    @Query('page')       page?:       string,
+    @Query('limit')      limit?:      string,
     @Query('vendedorId') vendedorId?: string,
+    @Query('mes')        mes?:        string,
+    @Query('anio')       anio?:       string,
   ) {
     const vid = vendedorId !== undefined ? Number(vendedorId) : undefined;
-    return this.cajaService.getHistorial(Number(page ?? 1), Number(limit ?? 20), vid);
+    const m   = mes  ? Number(mes)  : undefined;
+    const a   = anio ? Number(anio) : undefined;
+    return this.cajaService.getHistorial(Number(page ?? 1), Number(limit ?? 20), vid, m, a);
   }
 
   @Get('resumen')

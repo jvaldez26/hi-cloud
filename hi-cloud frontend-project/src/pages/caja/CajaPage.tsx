@@ -7,7 +7,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Card, Row, Col, Typography, Statistic, Button, InputNumber,
          Table, Tag, Modal, Form, Input, Select, Space, Alert, Spin, message, Avatar,
-         theme, Drawer, Descriptions, Divider } from 'antd';
+         theme, Drawer, Descriptions, Divider, DatePicker } from 'antd';
 import { UnlockOutlined, LockOutlined, HistoryOutlined,
          RollbackOutlined, WarningOutlined,
          PrinterOutlined, SearchOutlined } from '@ant-design/icons';
@@ -27,7 +27,8 @@ const cajaApi = {
   abrir:     (body: any)                 => api.post('/caja/abrir', body).then(r => r.data?.data),
   cerrar:    (id: number, body: any)     => api.patch(`/caja/${id}/cerrar`, body).then(r => r.data?.data),
   anular:    (id: number, motivo: string) => api.patch(`/caja/${id}/anular`, { motivo }).then(r => r.data?.data),
-  historial: (p = 1)                     => api.get(`/caja/historial?page=${p}`).then(r => r.data?.data),
+  historial: (p = 1, mes?: number, anio?: number) =>
+    api.get(`/caja/historial?page=${p}${mes ? `&mes=${mes}&anio=${anio}` : ''}`).then(r => r.data?.data),
   resumen:   (mes: number, anio: number) => api.get(`/caja/resumen?mes=${mes}&anio=${anio}`).then(r => r.data?.data),
 };
 
@@ -57,6 +58,7 @@ export default function CajaPage() {
   const [saldoFisicoInput, setSaldoFisicoInput] = useState<number>(0);
   const [openAbrir, setOpenAbrir] = useState(false);
   const [histPage, setHistPage] = useState(1);
+  const [histFecha, setHistFecha] = useState(() => dayjs());
   const [form]       = Form.useForm();
   const [formAnular] = Form.useForm();
   const qc = useQueryClient();
@@ -92,8 +94,8 @@ export default function CajaPage() {
   });
 
   const { data: historial } = useQuery({
-    queryKey: ['caja-hist', histPage],
-    queryFn:  () => cajaApi.historial(histPage),
+    queryKey: ['caja-hist', histPage, histFecha.month() + 1, histFecha.year()],
+    queryFn:  () => cajaApi.historial(histPage, histFecha.month() + 1, histFecha.year()),
   });
 
   const mes  = dayjs().month() + 1;
@@ -145,7 +147,7 @@ export default function CajaPage() {
 
   const [searchHistorial, setSearchHistorial] = useState('');
 
-  // El backend ya excluye 'abierta' — solo filtro local de búsqueda
+  // El backend ya excluye 'abierta' y filtra por mes — solo filtro local de texto
   const historialCerrados = useMemo(() => {
     const base: any[] = historial?.data ?? [];
     if (!searchHistorial.trim()) return base;
@@ -345,15 +347,27 @@ h2{text-align:center;font-size:16px;margin:0 0 4px}
       <Card
         title={<><HistoryOutlined /> Historial de Cierres</>}
         extra={
-          <Input
-            placeholder="Buscar por cajero o fecha..."
-            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
-            value={searchHistorial}
-            onChange={e => setSearchHistorial(e.target.value)}
-            allowClear
-            size="small"
-            style={{ width: 220 }}
-          />
+          <Space wrap>
+            <DatePicker
+              picker="month"
+              value={histFecha}
+              onChange={v => { setHistFecha(v ?? dayjs()); setHistPage(1); setSearchHistorial(''); }}
+              format="MMMM YYYY"
+              allowClear={false}
+              size="small"
+              style={{ width: 140 }}
+              disabledDate={d => d.isAfter(dayjs(), 'month')}
+            />
+            <Input
+              placeholder="Buscar cajero..."
+              prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+              value={searchHistorial}
+              onChange={e => setSearchHistorial(e.target.value)}
+              allowClear
+              size="small"
+              style={{ width: 180 }}
+            />
+          </Space>
         }
       >
         {historialCerrados.length === 0 && !isLoading && (
