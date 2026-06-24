@@ -1,14 +1,26 @@
+const TZ_RD = 'America/Santo_Domingo';
+
+function rdParts(d: Date): { dd: string; mm: string; yyyy: string } {
+  // en-CA siempre produce YYYY-MM-DD — determinístico independientemente del locale del servidor
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ_RD, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(d).split('-');
+  return { yyyy: parts[0], mm: parts[1], dd: parts[2] };
+}
+
 export function fmtFecha(d: Date | string | undefined): string {
   const dt = !d ? new Date() : d instanceof Date ? d : new Date(d);
-  const dd = String(dt.getDate()).padStart(2, '0');
-  const mm = String(dt.getMonth() + 1).padStart(2, '0');
-  return `${dd}-${mm}-${dt.getFullYear()}`;
+  const { dd, mm, yyyy } = rdParts(dt);
+  return `${dd}-${mm}-${yyyy}`;
 }
 
 export function addDias(d: Date | string, dias: number): string {
   const dt = d instanceof Date ? new Date(d) : new Date(d);
-  dt.setDate(dt.getDate() + dias);
-  return fmtFecha(dt);
+  const { yyyy, mm, dd } = rdParts(dt);
+  // Anclar al mediodía UTC del día RD para que la aritmética no cruce la medianoche RD (UTC-4)
+  const base = new Date(Date.UTC(Number(yyyy), Number(mm) - 1, Number(dd), 16));
+  base.setUTCDate(base.getUTCDate() + dias);
+  return fmtFecha(base);
 }
 
 export interface TablaFormasPagoEntry {

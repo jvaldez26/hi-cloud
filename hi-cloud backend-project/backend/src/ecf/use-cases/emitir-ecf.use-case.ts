@@ -33,9 +33,11 @@ const TIMEOUT_REGULAR  = 30_000;
 function fmtFechaEcf(d: Date | string | undefined): string {
   if (!d) return '';
   const dt = d instanceof Date ? d : new Date(d);
-  const dd = String(dt.getDate()).padStart(2, '0');
-  const mm = String(dt.getMonth() + 1).padStart(2, '0');
-  return `${dd}-${mm}-${dt.getFullYear()}`;
+  // Formatear en timezone RD — el servidor corre en UTC y a las 8pm RD ya es el día siguiente en UTC
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Santo_Domingo', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(dt).split('-');
+  return `${parts[2]}-${parts[1]}-${parts[0]}`; // DD-MM-YYYY
 }
 
 export interface DatosCompradorECF {
