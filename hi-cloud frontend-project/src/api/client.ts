@@ -220,7 +220,7 @@ apiClient.interceptors.response.use(
     // Normalizar .message y .response.data.message para que catch blocks que usan
     // e?.response?.data?.message o e?.message obtengan el mensaje amigable
     enrichedErr.message = enrichedErr.friendlyMessage;
-    if (enrichedErr.response?.data) {
+    if (enrichedErr.response?.data && typeof enrichedErr.response.data === 'object') {
       enrichedErr.response.data.message = enrichedErr.friendlyMessage;
     }
 
