@@ -119,6 +119,11 @@ interface Sale {
   notas?:                  string;   // incluye "Crédito X días" para ventas a crédito
   diasCredito?:            number;
   clienteId?:              number;   // para pre-llenar conduce
+  // NC — referencia al documento modificado
+  facturaOriginalFolio?:   string;
+  ncfOriginal?:            string;
+  codigoModificacion?:     string;
+  descripcionMotivo?:      string;
   // Descuento global (sobre subtotal)
   descuentoGlobal?:        number;
   // Propina (opcional)
@@ -584,6 +589,15 @@ function buildReciboTermicoHTML(
     <div>RNC: ${esc(sale.rncComprador ?? '')}</div>
     ${sale.razonSocial ? `<div>${esc(sale.razonSocial)}</div>` : ''}` : '';
 
+  const modificaHtml = (sale.facturaOriginalFolio || sale.ncfOriginal || sale.codigoModificacion || sale.descripcionMotivo)
+    ? `${line()}
+    <div class="center bold">── MODIFICA A ──</div>
+    ${sale.facturaOriginalFolio ? row('Factura orig.:', sale.facturaOriginalFolio) : ''}
+    ${sale.ncfOriginal          ? row('e-NCF orig.:',   sale.ncfOriginal)          : ''}
+    ${sale.codigoModificacion   ? row('Cód.Modif.:',    sale.codigoModificacion)   : ''}
+    ${sale.descripcionMotivo    ? `<div class="small">${esc(sale.descripcionMotivo)}</div>` : ''}`
+    : '';
+
   let ecfHtml = '';
   if (!tipoDoc) {
     if (sale.encf && mostrarEcf) {
@@ -682,6 +696,7 @@ ${sale.cajero ? row('Cajero:', sale.cajero) : ''}
 ${sale.sucursalNombre ? row('Sucursal:', sale.sucursalNombre) : ''}
 ${modoInfo ? `${row('Módulo:', modoInfo.icono + ' ' + modoInfo.label)}` : ''}
 ${compradorHtml}
+${modificaHtml}
 ${line()}
 <div class="row bold"><span>DESCRIPCIÓN</span><span>TOTAL</span></div>
 ${line()}
@@ -2014,6 +2029,10 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
           qrUrl:                  ecfResult?.qrUrl ?? null,
           securityCode:           ecfResult?.securityCode,
           ecfFecha:               dayjs().format('DD/MM/YYYY HH:mm'),
+          facturaOriginalFolio:   nc?.facturaOriginalFolio ?? facturaData?.folio,
+          ncfOriginal:            ecfResult?.ncfModificado,
+          codigoModificacion:     ecfResult?.codigoModificacion ? String(ecfResult.codigoModificacion) : codigoMod,
+          descripcionMotivo:      nc?.descripcionMotivo,
           empresaNombreComercial: empRes.razonSocial ?? empRes.nombre,
           empresaRnc:             empRes.rnc,
           empresaDireccion:       empRes.direccion,
@@ -4897,6 +4916,10 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           qrUrl:                  doc.ecf?.qrUrl ?? null,
           rncComprador:           doc.cliente?.rncReceptor ?? doc.cliente?.rfc,
           razonSocial:            doc.cliente?.nombre,
+          facturaOriginalFolio:   doc.facturaOriginalFolio,
+          ncfOriginal:            doc.ecf?.ncfModificado,
+          codigoModificacion:     doc.ecf?.codigoModificacion ? String(doc.ecf.codigoModificacion) : undefined,
+          descripcionMotivo:      doc.descripcionMotivo,
           empresaNombreComercial: empInfo.nombre,
           empresaRnc:             empInfo.rnc,
           empresaDireccion:       empInfo.direccion,
