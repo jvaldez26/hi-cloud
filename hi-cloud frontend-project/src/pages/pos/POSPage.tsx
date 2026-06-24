@@ -608,7 +608,7 @@ function buildReciboTermicoHTML(
     ${sale.securityCode ? row('Cód.Seg.:', sale.securityCode) : ''}
     ${line()}
     ${qrDataUrl && !sale.ecfPendiente
-      ? `<div class="center"><img src="${qrDataUrl}" width="130" height="130" alt="QR DGII"></div>
+      ? `<div class="center"><img src="${qrDataUrl}" style="width:18mm;height:18mm;-webkit-optimize-contrast:crisp-edges" alt="QR DGII"></div>
          <div class="center small">Escanea para verificar en DGII</div>`
       : '<div class="center small">Verifica en: dgii.gov.do</div>'}
     ${sale.ecfPendiente ? `${line()}<div class="center box"><div class="bold">&#9888; COMPROBANTE EN PROCESO</div><div>DE VALIDACIÓN DGII</div><div class="small">Será enviado cuando sea procesado.</div></div>` : ''}`;
@@ -648,7 +648,6 @@ function buildReciboTermicoHTML(
   return `<!DOCTYPE html>
 <html lang="es"><head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=302,initial-scale=1,shrink-to-fit=no">
 <title>Recibo ${esc(sale.folio)}</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;overflow-wrap:break-word}
@@ -661,7 +660,7 @@ body{font-family:'Courier New',Courier,monospace;font-size:${prn.fontSize};line-
 .bold{font-weight:bold}
 .large{font-size:13pt;font-weight:bold}
 .xlarge{font-size:15pt;font-weight:bold}
-.small{font-size:9pt}
+.small{font-size:10pt}
 .row{display:flex;justify-content:space-between;gap:4px;margin:1px 0;width:100%}
 .row span:first-child{flex:1;overflow:hidden}
 .row span:last-child{text-align:right;white-space:nowrap}
@@ -1622,7 +1621,6 @@ function buildDocTermicoHTML(
   return `<!DOCTYPE html>
 <html lang="es"><head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=302,initial-scale=1,shrink-to-fit=no">
 <title>${esc(tipo)} ${esc(gd.numero)}</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;overflow-wrap:break-word}
@@ -1633,7 +1631,7 @@ body{font-family:'Courier New',Courier,monospace;font-size:${prn.fontSize};line-
 .center{text-align:center}
 .bold{font-weight:bold}
 .xlarge{font-size:15pt;font-weight:bold}
-.small{font-size:9pt}
+.small{font-size:10pt}
 .row{display:flex;justify-content:space-between;gap:4px;margin:1px 0;width:100%}
 .row span:first-child{flex:1;overflow:hidden}
 .row span:last-child{text-align:right;white-space:nowrap}
@@ -1691,7 +1689,7 @@ function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir, mostrarEcf = 
   const autoPrintedFolioRef = useRef<string | null>(null);
   useEffect(() => {
     if (!sale?.qrUrl || sale.ecfPendiente) { setQrDataUrl(null); return; }
-    QRCode.toDataURL(sale.qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' })
+    QRCode.toDataURL(sale.qrUrl, { width: 256, margin: 1, errorCorrectionLevel: 'M' })
       .then(setQrDataUrl).catch(() => setQrDataUrl(null));
   }, [sale?.qrUrl, sale?.ecfPendiente]);
 
@@ -1723,7 +1721,7 @@ function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir, mostrarEcf = 
     autoPrintedFolioRef.current = sale.folio;
     let cancelled = false;
     const qrPromise: Promise<string | null> = sale.qrUrl && !sale.ecfPendiente
-      ? QRCode.toDataURL(sale.qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' }).catch(() => null)
+      ? QRCode.toDataURL(sale.qrUrl, { width: 256, margin: 1, errorCorrectionLevel: 'M' }).catch(() => null)
       : Promise.resolve(null);
     qrPromise.then(qr => {
       if (cancelled) return;
