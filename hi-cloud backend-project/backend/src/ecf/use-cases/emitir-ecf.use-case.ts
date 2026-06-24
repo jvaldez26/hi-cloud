@@ -375,7 +375,9 @@ export class EmitirECFUseCase {
         securityCode: respuesta.securityCode,
       });
 
-      // ── Anulación total (código 1): marcar factura original como CANCELADA ──
+      // ── Anulación total (código 1): marcar factura como "anulación en proceso" ──
+      // Los efectos definitivos (cancelar) se aplican SOLO cuando DGII confirma ACEPTADO.
+      // Si DGII rechaza, EcfEfectosNcService revierte el estado provisional.
       if (
         documentoOrigenTipo === DocumentoOrigenTipo.NOTA_CREDITO &&
         infoReferencia?.CodigoModificacion === '1'
@@ -384,11 +386,11 @@ export class EmitirECFUseCase {
         if (nc?.facturaOriginalId) {
           await this.facturaRepo.update(
             { id: nc.facturaOriginalId, empresaId },
-            { estado: 'cancelada' as any },
+            { anulacionPendiente: true },
           ).catch(err =>
-            this.logger.error(`[EmitirECF] No se pudo cancelar FAC #${nc.facturaOriginalId}: ${err?.message}`),
+            this.logger.error(`[EmitirECF] No se pudo marcar anulacionPendiente FAC #${nc.facturaOriginalId}: ${err?.message}`),
           );
-          this.logger.log(`[EmitirECF] NC código 1 → Factura #${nc.facturaOriginalId} marcada CANCELADA`);
+          this.logger.log(`[EmitirECF] NC código 1 → Factura #${nc.facturaOriginalId} anulacionPendiente=true (pendiente DGII)`);
         }
       }
 

@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 import { ECF, EstadoDGII } from '../entities/ecf.entity';
 import { EcfEvento, TipoEcfEvento } from '../entities/ecf-evento.entity';
 import { MSellerClientService } from '../services/mseller-client.service';
+import { EcfEfectosNcService } from '../services/ecf-efectos-nc.service';
 
 const MINUTOS_SIN_RESPUESTA = 2;   // esperar 2 min antes de primer intento
 
@@ -54,6 +55,7 @@ export class ConsultarEstadoECFJob {
     private readonly eventoRepo: Repository<EcfEvento>,
 
     private readonly mseller: MSellerClientService,
+    private readonly efectosNc: EcfEfectosNcService,
   ) {}
 
   @Cron('*/2 * * * *', { name: 'consultar-estado-ecf' }) // cada 2 min
@@ -220,6 +222,11 @@ export class ConsultarEstadoECFJob {
       });
 
       this.logger.log(`e-CF ${resultado.ecf}: ENVIADO → ${nuevoEstado} (batch)`);
+
+      // Aplicar/revertir efectos sobre la factura si es NC de anulación total
+      this.efectosNc.aplicarEfectosPorEstado(ecf, nuevoEstado).catch(err =>
+        this.logger.error(`[ConsultarEstado] Error aplicando efectos NC ${ecf.numero}: ${(err as Error).message}`),
+      );
     }
   }
 

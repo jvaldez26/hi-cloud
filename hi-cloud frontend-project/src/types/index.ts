@@ -97,19 +97,20 @@ export interface FacturaDetalle {
 }
 
 export interface Factura {
-  id:         number;
-  folio:      string;
-  fecha:      string;
-  estado:     FacturaEstado;
-  clienteId:  number;
-  cliente:    Cliente;
-  subtotal:   number;
-  iva:        number;
-  total:      number;
-  tipoNcf?:   string;
-  notas?:     string;
-  isActive:   boolean;
-  createdAt:  string;
+  id:                  number;
+  folio:               string;
+  fecha:               string;
+  estado:              FacturaEstado;
+  clienteId:           number;
+  cliente:             Cliente;
+  subtotal:            number;
+  iva:                 number;
+  total:               number;
+  tipoNcf?:            string;
+  notas?:              string;
+  isActive:            boolean;
+  createdAt:           string;
+  anulacionPendiente?: boolean;
 }
 
 // ── Compras ───────────────────────────────────────────────────────────────────

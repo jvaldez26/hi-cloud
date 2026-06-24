@@ -90,4 +90,8 @@ export class NotaCredito extends TenantBaseEntity {
   /** Tasa de cambio al momento de la factura original */
   @Column({ type: 'decimal', precision: 10, scale: 4, default: 1 })
   tipoCambio!: number;
+
+  /** true después de que los efectos sobre la factura original ya se aplicaron (DGII aceptó) */
+  @Column({ default: false })
+  efectosAplicados!: boolean;
 }

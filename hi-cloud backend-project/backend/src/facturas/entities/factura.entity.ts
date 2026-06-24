@@ -121,4 +121,8 @@ export class Factura extends TenantBaseEntity {
   /** total - retenciones (lo que realmente se cobra / genera CxC) */
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   netoCobrar!: number;
+
+  /** true mientras una NC de anulación total (código 1) espera confirmación de DGII */
+  @Column({ default: false })
+  anulacionPendiente!: boolean;
 }

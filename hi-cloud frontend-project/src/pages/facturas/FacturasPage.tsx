@@ -289,12 +289,10 @@ export default function FacturasPage() {
     },
     // ── Estado ─────────────────────────────────────────────────────────────────
     {
-      title: 'Estado', key: 'estado', dataIndex: 'estado', width: 90,
-      render: (v: FacturaEstado) => (
-        <Tag color={estadoColor[v]} style={{ fontSize: 11, fontWeight: 600, margin: 0 }}>
-          {v.toUpperCase()}
-        </Tag>
-      ),
+      title: 'Estado', key: 'estado', dataIndex: 'estado', width: 120,
+      render: (_: FacturaEstado, r: Factura) => r.anulacionPendiente
+        ? <Tag color="gold" style={{ fontSize: 11, fontWeight: 600, margin: 0 }}>ANULACIÓN PENDIENTE</Tag>
+        : <Tag color={estadoColor[r.estado]} style={{ fontSize: 11, fontWeight: 600, margin: 0 }}>{r.estado.toUpperCase()}</Tag>,
     },
     // ── Sucursal ───────────────────────────────────────────────────────────────
     {

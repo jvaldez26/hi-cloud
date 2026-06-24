@@ -32,7 +32,8 @@ import { EcfEncryptionService } from './services/ecf-encryption.service';
 import { EcfConfigService }     from './services/ecf-config.service';
 import { ENCFGeneratorService } from './services/encf-generator.service';
 import { ECFBuilderService }    from './services/ecf-builder.service';
-import { MSellerClientService } from './services/mseller-client.service';
+import { MSellerClientService }    from './services/mseller-client.service';
+import { EcfEfectosNcService }     from './services/ecf-efectos-nc.service';
 
 // Casos de uso (Fase 4)
 import { EmitirECFUseCase } from './use-cases/emitir-ecf.use-case';
@@ -82,6 +83,8 @@ import { TokenBlacklistService } from '../auth/token-blacklist.service';
     // Fase 4 — Jobs @Cron
     ReintentoECFJob,
     ConsultarEstadoECFJob,
+    // Efectos secundarios de NC sobre facturas
+    EcfEfectosNcService,
     // Guards
     SuperAdminGuard,
     TokenBlacklistService,

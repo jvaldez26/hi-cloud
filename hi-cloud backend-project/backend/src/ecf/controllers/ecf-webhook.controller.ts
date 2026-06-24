@@ -13,6 +13,7 @@ import { ECF, EstadoDGII } from '../entities/ecf.entity';
 import { EcfEvento, TipoEcfEvento } from '../entities/ecf-evento.entity';
 import { EmpresaEcfConfig } from '../entities/empresa-ecf-config.entity';
 import { EcfEncryptionService } from '../services/ecf-encryption.service';
+import { EcfEfectosNcService } from '../services/ecf-efectos-nc.service';
 
 /**
  * Payload que MSeller envía en notificaciones webhook.
@@ -57,6 +58,7 @@ export class EcfWebhookController {
     private readonly configRepo: Repository<EmpresaEcfConfig>,
 
     private readonly encryption: EcfEncryptionService,
+    private readonly efectosNc: EcfEfectosNcService,
   ) {}
 
   @Post(':empresaId')
@@ -180,6 +182,13 @@ export class EcfWebhookController {
     this.logger.log(
       `Webhook procesado | ${comprobante.numero} | ${comprobante.estadoDGII} → ${estadoNuevo} | empresa #${empresaId}`,
     );
+
+    // Aplicar/revertir efectos sobre la factura si es NC de anulación total
+    if (esDefinitivo) {
+      this.efectosNc.aplicarEfectosPorEstado(comprobante, estadoNuevo).catch(err =>
+        this.logger.error(`[Webhook] Error aplicando efectos NC ${comprobante.numero}: ${(err as Error).message}`),
+      );
+    }
 
     return { ok: true, estadoActualizado: estadoNuevo };
   }
