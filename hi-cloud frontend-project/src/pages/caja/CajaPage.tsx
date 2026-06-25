@@ -16,7 +16,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import api from '../../api/client';
 import { fmt } from '../../utils/formatters';
-import { imprimirHtml } from '../../utils/printUtils';
+import { imprimirReciboTermico } from '../../utils/printUtils';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -161,45 +161,102 @@ export default function CajaPage() {
   // Calcular diferencia en tiempo real para el modal de cierre
   const diferenciaCierre = saldoFisicoInput - (cerrarTarget?.saldoEsperado ?? 0);
 
-  const imprimirCierre = (r: any) => {
-    const totalIngresos = (Number(r.ventasEfectivo ?? 0) + Number(r.ventasTarjeta ?? 0) + Number(r.ventasTransferencia ?? 0)).toFixed(2);
-    const diferencia = Number(r.diferencia ?? 0);
-    const difColor = diferencia === 0 ? '#10b981' : diferencia > 0 ? '#3b82f6' : '#ef4444';
-    const difLabel = diferencia === 0 ? '✅ Cuadrado' : diferencia > 0 ? `+${fmt.money(diferencia)} sobrante` : `${fmt.money(diferencia)} faltante`;
-    imprimirHtml(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Cierre de Caja</title>
-<style>body{font-family:'Courier New',monospace;max-width:320px;margin:0 auto;padding:12px;font-size:13px}
-h2{text-align:center;font-size:16px;margin:0 0 4px}
-.center{text-align:center}.sep{border:none;border-top:1px dashed #999;margin:8px 0}
-.row{display:flex;justify-content:space-between;margin:3px 0}
-.total{font-weight:bold;font-size:15px}.difBox{padding:6px;border-radius:4px;text-align:center;font-weight:bold;margin:8px 0}</style>
-</head><body>
-<h2>HiCloud ERP</h2>
-<p class="center">CIERRE DE CAJA</p>
-<hr class="sep">
-<div class="row"><span>Cajero:</span><span>${r.vendedorNombre ?? 'Administrador'}</span></div>
-<div class="row"><span>Fecha:</span><span>${r.fecha}</span></div>
-<div class="row"><span>Estado:</span><span>${r.estado?.toUpperCase()}</span></div>
-<hr class="sep">
-<b>INGRESOS DEL TURNO</b>
-<div class="row"><span>Ventas efectivo:</span><span>${fmt.money(Number(r.ventasEfectivo ?? 0))}</span></div>
-<div class="row"><span>Ventas tarjeta:</span><span>${fmt.money(Number(r.ventasTarjeta ?? 0))}</span></div>
-<div class="row"><span>Ventas transfer.:</span><span>${fmt.money(Number(r.ventasTransferencia ?? 0))}</span></div>
-<div class="row"><span>Cobros recibidos:</span><span>${fmt.money(Number(r.cobrosRecibidos ?? 0))}</span></div>
-<hr class="sep">
-<b>EGRESOS</b>
-<div class="row"><span>Gastos:</span><span>${fmt.money(Number(r.gastosEfectivo ?? 0))}</span></div>
-<div class="row"><span>Retiros:</span><span>${fmt.money(Number(r.retiros ?? 0))}</span></div>
-<hr class="sep">
-<b>CUADRE</b>
-<div class="row"><span>Saldo apertura:</span><span>${fmt.money(Number(r.saldoApertura ?? 0))}</span></div>
-<div class="row"><span>Efectivo esperado:</span><span>${fmt.money(Number(r.saldoCierre ?? 0))}</span></div>
-<div class="row"><span>Efectivo contado:</span><span>${fmt.money(Number(r.saldoFisico ?? 0))}</span></div>
-<div class="difBox" style="background:${difColor}22;color:${difColor};border:1px solid ${difColor}66">${difLabel}</div>
-<div class="row"><span>Total ingresos:</span><span class="total">${fmt.money(Number(totalIngresos))}</span></div>
-<hr class="sep">
-<p class="center" style="font-size:11px">${r.cantidadTransacciones ?? 0} transacciones</p>
-<p class="center" style="font-size:10px;color:#666">${new Date().toLocaleString('es-DO')}</p>
-</body></html>`);
+  const imprimirCierre = async (r: any) => {
+    const empRes = await api.get('/configuracion/empresa')
+      .then(res => res.data?.data ?? res.data)
+      .catch(() => ({}));
+    const empConf   = (empRes.configuracion ?? {}) as any;
+    const tipoImp   = empConf.posTipoImpresora ?? '80mm';
+    const IMP_CFG: Record<string, { width: string; fontSize: string; paddingLR: string }> = {
+      '58mm':    { width: '58mm',  fontSize: '10pt', paddingLR: '3mm' },
+      '80mm':    { width: '80mm',  fontSize: '11pt', paddingLR: '5mm' },
+      'carta':   { width: '210mm', fontSize: '12pt', paddingLR: '15mm' },
+      'ninguna': { width: '80mm',  fontSize: '11pt', paddingLR: '5mm' },
+    };
+    const prn = IMP_CFG[tipoImp] ?? IMP_CFG['80mm'];
+    const esc = (s: string) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const f   = (v: number) => `RD$${v.toLocaleString('es-DO',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+    const line = () => `<div class="sep">--------------------------------</div>`;
+    const row  = (lbl: string, val: string, bold = false) =>
+      `<div class="row${bold?' bold':''}"><span>${esc(lbl)}</span><span>${esc(val)}</span></div>`;
+
+    const totalIngresos = Number(r.ventasEfectivo ?? 0) + Number(r.ventasTarjeta ?? 0) + Number(r.ventasTransferencia ?? 0);
+    const diferencia    = Number(r.diferencia ?? 0);
+    const difLabel = diferencia === 0 ? 'CUADRADO' : diferencia > 0 ? `+${f(diferencia)} SOBRANTE` : `${f(diferencia)} FALTANTE`;
+
+    // Desglose de billetes (si existe)
+    const desgloseBilletes: Record<string,number> = r.desgloseBilletes ?? {};
+    const billetesRows = Object.entries(desgloseBilletes)
+      .filter(([,qty]) => Number(qty) > 0)
+      .map(([den,qty]) => row(`  ${Number(den).toLocaleString()} x${qty}:`, f(Number(den)*Number(qty))))
+      .join('\n');
+    const totalBilletes = Object.entries(desgloseBilletes)
+      .reduce((s,[den,qty]) => s + Number(den)*Number(qty), 0);
+
+    // Desglose de pago (si existe)
+    const PAGO_LABELS: Record<string,string> = {
+      efectivo:'Efectivo', tarjetaCredito:'Tarjeta Crédito', tarjetaDebito:'Tarjeta Débito',
+      cheque:'Cheque', transferencia:'Transferencia', otro:'Otro', deposito:'Depósito', documentos:'Documentos',
+    };
+    const desglosePago: Record<string,string> = r.desglosePago ?? {};
+    const pagoRows = Object.entries(desglosePago)
+      .filter(([,v]) => Number(v) > 0)
+      .map(([k,v]) => row(`  ${PAGO_LABELS[k] ?? k}:`, f(Number(v))))
+      .join('\n');
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+  @media print { @page { size:${prn.width} auto; margin:0; } }
+  body{font-family:'Courier New',Courier,monospace;font-size:${prn.fontSize};font-weight:bold;line-height:1.45;
+    width:${prn.width};margin:0;padding:3mm ${prn.paddingLR};
+    color:#000;background:#fff;-webkit-font-smoothing:none;font-smooth:never}
+  .center{text-align:center}
+  .row{display:flex;justify-content:space-between;gap:4px}
+  .bold{font-weight:900}
+  .sep{color:#000;margin:2px 0}
+  .small{font-size:0.85em}
+  .xlarge{font-size:1.2em;font-weight:900}
+</style></head><body>
+${empRes.razonSocial ?? empRes.nombre ? `<div class="center bold">${esc(empRes.razonSocial ?? empRes.nombre)}</div>` : ''}
+${empRes.rnc        ? `<div class="center small">RNC: ${esc(empRes.rnc)}</div>` : ''}
+${empRes.direccion  ? `<div class="center small">${esc(empRes.direccion)}</div>` : ''}
+${empRes.telefono   ? `<div class="center small">Tel: ${esc(empRes.telefono)}</div>` : ''}
+${line()}
+<div class="center bold" style="font-size:1.1em;letter-spacing:1px">CIERRE DE CAJA</div>
+${line()}
+${row('Cajero:',  r.vendedorNombre ?? 'Administrador')}
+${row('Fecha:',   String(r.fecha ?? '').substring(0, 10))}
+${row('Estado:',  (r.estado ?? '').toUpperCase())}
+${r.cantidadTransacciones != null ? row('Transacciones:', String(r.cantidadTransacciones)) : ''}
+${line()}
+<div class="small bold">INGRESOS DEL TURNO</div>
+${row('Ventas efectivo:',    f(Number(r.ventasEfectivo      ?? 0)))}
+${row('Ventas tarjeta:',     f(Number(r.ventasTarjeta       ?? 0)))}
+${row('Ventas transfer.:',   f(Number(r.ventasTransferencia ?? 0)))}
+${row('Cobros recibidos:',   f(Number(r.cobrosRecibidos     ?? 0)))}
+${Number(r.totalAnticipos ?? 0) > 0 ? row('Anticipos:', f(Number(r.totalAnticipos))) : ''}
+${row('Total ingresos:', f(totalIngresos), true)}
+${line()}
+<div class="small bold">EGRESOS</div>
+${row('Gastos:',  f(Number(r.gastosEfectivo ?? 0)))}
+${row('Retiros:', f(Number(r.retiros        ?? 0)))}
+${line()}
+<div class="small bold">CUADRE</div>
+${row('Apertura:',          f(Number(r.saldoApertura ?? 0)))}
+${row('Efectivo esperado:', f(Number(r.saldoCierre   ?? 0)))}
+${row('Efectivo contado:',  f(Number(r.saldoFisico   ?? 0)))}
+${line()}
+<div class="center xlarge">${esc(difLabel)}</div>
+${billetesRows ? `${line()}<div class="small bold">DESGLOSE DE BILLETES</div>\n${billetesRows}\n${row('Total billetes:', f(totalBilletes), true)}` : ''}
+${pagoRows     ? `${line()}<div class="small bold">DESGLOSE DE PAGO</div>\n${pagoRows}` : ''}
+${r.notas      ? `${line()}<div class="small">Nota: ${esc(r.notas)}</div>` : ''}
+${line()}
+<div class="center bold">** CIERRE DE CAJA **</div>
+<div class="center small">Documento interno</div>
+${line()}
+</body></html>`;
+
+    imprimirReciboTermico(html);
   };
 
   const imprimirPDFCierre = async (r: any) => {
