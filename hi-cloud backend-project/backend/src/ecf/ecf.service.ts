@@ -107,9 +107,9 @@ export class ECFService implements OnModuleInit {
   ): string {
     const tipoNumerico = ecf.tipoECF.codigo.replace('E', '');
     const fechaEmision = this.formatFechaXml(new Date(factura.fecha));
-    const fechaVencSec = new Date(secuencia.fechaVencimiento)
-      .toISOString()
-      .split('T')[0];
+    const fechaVencSec = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Santo_Domingo', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(new Date(secuencia.fechaVencimiento));
 
     const items = factura.detalles
       .map(

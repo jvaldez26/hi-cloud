@@ -199,9 +199,14 @@ export class EmitirECFUseCase {
       .andWhere('s.isAgotada = false')
       .getOne();
 
-    const fechaVencSec = secParaTipo
-      ? new Date(secParaTipo.fechaVencimiento)
-      : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+    // Anclar al mediodía RD (16:00 UTC) para evitar cruce de día por desfase UTC-4
+    const fechaVencSec = (() => {
+      if (!secParaTipo) return new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+      const raw = secParaTipo.fechaVencimiento;
+      const s = raw instanceof Date ? raw.toISOString().substring(0, 10) : String(raw).substring(0, 10);
+      const [y, m, d] = s.split('-').map(Number);
+      return new Date(Date.UTC(y, m - 1, d, 16));
+    })();
 
     // ── 3. GENERAR eNCF (TRANSACCIÓN ATÓMICA) ────────────────────────────────
     const encf = await this.generator.generateNext(empresaId, tipoEcf);
