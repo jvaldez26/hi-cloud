@@ -7594,7 +7594,7 @@ export default function POSPage() {
               const ok = await supervisor.requireSupervisor('Gastos');
               if (!ok) return;
             }
-            if (p === 'ventas-hoy') {
+            if (p === 'ventas-hoy' && supervisor.supervisorModeEnabled) {
               const ok = await supervisor.requireSupervisorForced('Ver Ganancias');
               if (!ok) return;
             }
