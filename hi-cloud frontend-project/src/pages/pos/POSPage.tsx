@@ -4639,9 +4639,12 @@ function POSGastosPanel({ C, onVolver }: { C: Palette; onVolver: () => void }) {
       const qrW      = tipoImp === '58mm' ? 160 : 200;
 
       let qrDataUrl: string | null = null;
-      if (g.ecfNumero && empRes.rnc) {
-        const urlQR = `https://ecf.dgii.gov.do/ECF/ConsultaResultado?RNCEmisor=${encodeURIComponent(empRes.rnc)}&eNCF=${encodeURIComponent(g.ecfNumero)}`
-          + (g.ecfCodigoSeguridad ? `&CodigoSeguridadNCF=${encodeURIComponent(g.ecfCodigoSeguridad)}` : '');
+      if (g.ecfNumero) {
+        // Preferir el qrUrl oficial devuelto por la DGII al emitir el e-CF;
+        // si no existe (e-CF antiguo), construir el URL de consulta manualmente.
+        const urlQR = g.ecfQrUrl
+          ?? (`https://ecf.dgii.gov.do/ECF/ConsultaResultado?RNCEmisor=${encodeURIComponent(empRes.rnc ?? '')}&eNCF=${encodeURIComponent(g.ecfNumero)}`
+             + (g.ecfCodigoSeguridad ? `&CodigoSeguridadNCF=${encodeURIComponent(g.ecfCodigoSeguridad)}` : ''));
         qrDataUrl = await QRCode.toDataURL(urlQR, { width: qrW, margin: 1, color: { dark: '#000000', light: '#ffffff' } })
           .catch(() => null);
       }

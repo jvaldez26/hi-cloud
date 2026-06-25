@@ -111,10 +111,10 @@ export class GastosService {
 
     // Cargar e-CF asociados (número + código seguridad + fecha) por documentoOrigenId
     const ids = data.map(g => g.id);
-    let ecfMap: Record<number, { numero: string; codigoSeguridad?: string; fechaUso?: string }> = {};
+    let ecfMap: Record<number, { numero: string; codigoSeguridad?: string; fechaUso?: string; qrUrl?: string }> = {};
     if (ids.length > 0) {
       const ecfRows: any[] = await this.repo.manager.query(
-        `SELECT "documentoOrigenId", numero, "codigoSeguridad", "fechaUso"
+        `SELECT "documentoOrigenId", numero, "codigoSeguridad", "fechaUso", "qrUrl"
          FROM ecf
          WHERE "documentoOrigenId" = ANY($1)
            AND "documentoOrigenTipo" = 'GASTO'
@@ -128,6 +128,7 @@ export class GastosService {
             numero:          e.numero,
             codigoSeguridad: e.codigoSeguridad ?? undefined,
             fechaUso:        e.fechaUso ? String(e.fechaUso).substring(0, 10) : undefined,
+            qrUrl:           e.qrUrl ?? undefined,
           };
         }
       }
@@ -138,6 +139,7 @@ export class GastosService {
       ecfNumero:          ecfMap[g.id]?.numero          ?? null,
       ecfCodigoSeguridad: ecfMap[g.id]?.codigoSeguridad ?? null,
       ecfFecha:           ecfMap[g.id]?.fechaUso        ?? null,
+      ecfQrUrl:           ecfMap[g.id]?.qrUrl           ?? null,
     }));
     return { data: enriched, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
   }
