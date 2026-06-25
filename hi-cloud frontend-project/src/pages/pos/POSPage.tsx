@@ -2427,14 +2427,17 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
   const [showForm, setShowForm]       = useState(false);
   const [editingProd, setEditingProd] = useState<any>(null);
   const [saving, setSaving]           = useState(false);
-  const [fTipo,      setFTipo]      = useState<'producto'|'servicio'>('producto');
-  const [fNombre,    setFNombre]    = useState('');
-  const [fCodigo,    setFCodigo]    = useState('');
-  const [fPrecio,    setFPrecio]    = useState('');
-  const [fItbis,     setFItbis]     = useState('18');
-  const [fStock,     setFStock]     = useState('0');
-  const [fStockMin,  setFStockMin]  = useState('0');
-  const [fCategoria, setFCategoria] = useState('');
+  const [fTipo,           setFTipo]           = useState<'producto'|'servicio'>('producto');
+  const [fNombre,         setFNombre]         = useState('');
+  const [fCodigo,         setFCodigo]         = useState('');
+  const [fPrecio,         setFPrecio]         = useState('');
+  const [fPrecio2,        setFPrecio2]        = useState('');
+  const [fPrecio3,        setFPrecio3]        = useState('');
+  const [fPrecioConItbis, setFPrecioConItbis] = useState(false);
+  const [fItbis,          setFItbis]          = useState('18');
+  const [fStock,          setFStock]          = useState('0');
+  const [fStockMin,       setFStockMin]       = useState('0');
+  const [fCategoria,      setFCategoria]      = useState('');
 
   // ── estados movimientos ───────────────────────────────────────────────────
   const [movLimit, setMovLimit] = useState(20);
@@ -2479,6 +2482,9 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
     setFNombre(prod?.nombre ?? '');
     setFCodigo(prod?.codigo ?? '');
     setFPrecio(prod ? String(prod.precio ?? '') : '');
+    setFPrecio2(prod?.precio2 != null ? String(prod.precio2) : '');
+    setFPrecio3(prod?.precio3 != null ? String(prod.precio3) : '');
+    setFPrecioConItbis(false);
     setFItbis(String(prod?.porcentajeIva ?? 18));
     setFStock(String(prod?.stock ?? 0));
     setFStockMin(String(prod?.stockMinimo ?? 0));
@@ -2501,9 +2507,15 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
     setSaving(true);
     try {
       const esServicio = fTipo === 'servicio';
+      const itbis  = Number(fItbis) || 0;
+      const pBase  = fPrecioConItbis && itbis > 0
+        ? Math.round(Number(fPrecio) / (1 + itbis / 100) * 100) / 100
+        : Number(fPrecio);
       const body: Record<string, unknown> = {
         nombre: fNombre.trim(), codigo: fCodigo.trim() || undefined,
-        precio: Number(fPrecio), porcentajeIva: Number(fItbis),
+        precio: pBase, porcentajeIva: itbis,
+        precio2: fPrecio2 && Number(fPrecio2) > 0 ? Number(fPrecio2) : null,
+        precio3: fPrecio3 && Number(fPrecio3) > 0 ? Number(fPrecio3) : null,
         stockMinimo: esServicio ? 0 : Number(fStockMin),
         categoria: fCategoria.trim() || undefined, tipo: fTipo,
       };
@@ -2769,11 +2781,60 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
                 placeholder={fTipo === 'servicio' ? 'Nombre del servicio' : 'Nombre del producto'} />
               <PanelInput C={C} label="Código" value={fCodigo}
                 onChange={e => setFCodigo(e.target.value)} placeholder="Código (opcional)" />
+              {/* ── Precios P1 / P2 / P3 ── */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 10 }}>
+                {/* P1 + toggle Sin/Con ITBIS */}
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4, color: C.text }}>
+                    Precio * (RD$)
+                  </div>
+                  <div style={{ display: 'flex' }}>
+                    <input type="number" min="0" step="0.01" value={fPrecio}
+                      onChange={e => setFPrecio(e.target.value)}
+                      style={{ flex: 1, minWidth: 0, height: 36, padding: '0 6px', fontSize: 13,
+                        borderRadius: '8px 0 0 8px', border: `1px solid ${C.border}`, borderRight: 'none',
+                        background: C.inputBg, color: C.text, outline: 'none', boxSizing: 'border-box' }} />
+                    <button type="button" onClick={() => setFPrecioConItbis(v => !v)}
+                      style={{ height: 36, padding: '0 7px', fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap',
+                        borderRadius: '0 8px 8px 0', border: `1px solid ${C.border}`, cursor: 'pointer',
+                        background: fPrecioConItbis ? C.blue : C.card, color: fPrecioConItbis ? '#fff' : C.textSub,
+                        flexShrink: 0 }}>
+                      {fPrecioConItbis ? 'Con ITBIS' : 'Sin ITBIS'}
+                    </button>
+                  </div>
+                  {fPrecioConItbis && Number(fPrecio) > 0 && Number(fItbis) > 0 && (
+                    <div style={{ fontSize: 10, color: C.textSub, marginTop: 3 }}>
+                      Base: {fmt.money(Math.round(Number(fPrecio) / (1 + Number(fItbis) / 100) * 100) / 100)}
+                    </div>
+                  )}
+                </div>
+                {/* P2 */}
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4, color: C.textSub }}>
+                    Precio 2 <span style={{ fontWeight: 400, fontSize: 10 }}>(Mayorista)</span>
+                  </div>
+                  <input type="number" min="0" step="0.01" value={fPrecio2}
+                    onChange={e => setFPrecio2(e.target.value)} placeholder="Opcional"
+                    style={{ width: '100%', height: 36, padding: '0 8px', fontSize: 13,
+                      borderRadius: 8, border: `1px solid ${C.border}`,
+                      background: C.inputBg, color: C.text, outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+                {/* P3 */}
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4, color: C.textSub }}>
+                    Precio 3 <span style={{ fontWeight: 400, fontSize: 10 }}>(Especial)</span>
+                  </div>
+                  <input type="number" min="0" step="0.01" value={fPrecio3}
+                    onChange={e => setFPrecio3(e.target.value)} placeholder="Opcional"
+                    style={{ width: '100%', height: 36, padding: '0 8px', fontSize: 13,
+                      borderRadius: 8, border: `1px solid ${C.border}`,
+                      background: C.inputBg, color: C.text, outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <PanelInput C={C} label="Precio *" type="number" min="0" step="0.01"
-                  value={fPrecio} onChange={e => setFPrecio(e.target.value)} />
                 <PanelInput C={C} label="ITBIS %" type="number" min="0" max="100"
                   value={fItbis} onChange={e => setFItbis(e.target.value)} />
+                <div />{/* espaciador */}
                 {fTipo !== 'servicio' && (
                   <>
                     <div style={{ marginBottom: 12 }}>
