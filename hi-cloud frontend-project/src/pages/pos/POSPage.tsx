@@ -1672,6 +1672,96 @@ ${footerHtml}
 </body></html>`;
 }
 
+// ── Impresión térmica de Cierre de Caja ──────────────────────────────────────
+function buildCierreCajaHTML(params: {
+  empresa:  { nombre?: string; rnc?: string; direccion?: string; telefono?: string };
+  caja:     { numero?: string; id: number; fecha: string; vendedorNombre?: string; cantidadTransacciones?: number };
+  ops:      { efectivoInicial: number; vendidoContado: number; vendidoCredito: number; totalVendido: number; totalRecibos: number; totalAnticipos: number; gastosEfectivo: number; efectivoEnCaja: number };
+  billetes: Record<string, number>;
+  pago:     Record<string, string>;
+  totalBilletes: number;
+  totalFisico:   number;
+  nota?:    string;
+  tipoImpresora?: string;
+}): string {
+  const prn = IMPRESORA_CONFIG[params.tipoImpresora ?? '80mm'] ?? IMPRESORA_CONFIG['80mm'];
+  const esc = (s: string) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const fmt = (v: number) => `RD$${v.toLocaleString('es-DO',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  const line = () => `<div class="sep">--------------------------------</div>`;
+  const row  = (lbl: string, val: string, bold = false) =>
+    `<div class="row${bold?' bold':''}"><span>${esc(lbl)}</span><span>${esc(val)}</span></div>`;
+
+  const emp = params.empresa;
+  const c   = params.caja;
+  const ops = params.ops;
+
+  const billetesRows = Object.entries(params.billetes)
+    .filter(([,qty]) => Number(qty) > 0)
+    .map(([den,qty]) => row(`  ${Number(den).toLocaleString()}  ×${qty}:`, fmt(Number(den)*Number(qty))))
+    .join('\n');
+
+  const PAGO_LABELS: Record<string,string> = {
+    efectivo:'Efectivo', tarjetaCredito:'Tarjeta Crédito', tarjetaDebito:'Tarjeta Débito',
+    cheque:'Cheque', transferencia:'Transferencia', otro:'Otro', deposito:'Depósito', documentos:'Documentos',
+  };
+  const pagoRows = Object.entries(params.pago)
+    .filter(([,v]) => Number(v) > 0)
+    .map(([k,v]) => row(`  ${PAGO_LABELS[k] ?? k}:`, fmt(Number(v))))
+    .join('\n');
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+  @media print { @page { size:${prn.width} auto; margin:0; } }
+  body{font-family:'Courier New',Courier,monospace;font-size:${prn.fontSize};font-weight:bold;line-height:1.45;
+    width:${prn.width};margin:0;padding:3mm ${prn.paddingLR};
+    color:#000;background:#fff;-webkit-font-smoothing:none;font-smooth:never}
+  .center{text-align:center}
+  .row{display:flex;justify-content:space-between;gap:4px}
+  .bold{font-weight:900}
+  .sep{color:#000;margin:2px 0}
+  .small{font-size:0.85em}
+  .xlarge{font-size:1.2em}
+  .title{font-size:1.1em;font-weight:900;text-align:center;letter-spacing:1px;margin:4px 0}
+</style></head><body>
+${emp.nombre ? `<div class="center bold">${esc(emp.nombre)}</div>` : ''}
+${emp.rnc    ? `<div class="center small">RNC: ${esc(emp.rnc)}</div>` : ''}
+${emp.direccion ? `<div class="center small">${esc(emp.direccion)}</div>` : ''}
+${emp.telefono  ? `<div class="center small">Tel: ${esc(emp.telefono)}</div>` : ''}
+${line()}
+<div class="title">CIERRE DE CAJA</div>
+${line()}
+${row('Caja:', c.numero ?? `#${c.id}`)}
+${row('Fecha:', String(c.fecha).substring(0,10))}
+${c.vendedorNombre ? row('Vendedor:', c.vendedorNombre) : ''}
+${c.cantidadTransacciones != null ? row('Transacciones:', String(c.cantidadTransacciones)) : ''}
+${line()}
+<div class="small bold">DESGLOSE DE OPERACIONES</div>
+${row('Efectivo Inicial:', fmt(ops.efectivoInicial))}
+${row('Vendido Contado:', fmt(ops.vendidoContado))}
+${row('Vendido Crédito:', fmt(ops.vendidoCredito))}
+${row('Total Vendido:', fmt(ops.totalVendido), true)}
+${row('Total Recibos:', fmt(ops.totalRecibos))}
+${row('Total Anticipos:', fmt(ops.totalAnticipos))}
+${row('Total Dev. y Des:', fmt(ops.gastosEfectivo))}
+${line()}
+${row('Efectivo en Caja:', fmt(ops.efectivoEnCaja), true)}
+${params.totalBilletes > 0 ? `${line()}
+<div class="small bold">DESGLOSE DE BILLETES</div>
+${billetesRows}
+${row('Total Billetes:', fmt(params.totalBilletes), true)}` : ''}
+${pagoRows ? `${line()}
+<div class="small bold">DESGLOSE DE PAGO</div>
+${pagoRows}` : ''}
+${params.totalFisico > 0 ? `${line()}
+${row('Total Físico:', fmt(params.totalFisico), true)}` : ''}
+${params.nota ? `${line()}<div class="small">Nota: ${esc(params.nota)}</div>` : ''}
+${line()}
+<div class="center bold">** CIERRE DE CAJA **</div>
+<div class="center small">Documento interno</div>
+${line()}
+</body></html>`;
+}
+
 // ── Modal éxito post-venta ────────────────────────────────────────────────────
 function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir, mostrarEcf = true, posConfig = {} }: {
   sale: Sale | null;
@@ -4712,6 +4802,7 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
     efectivo:'', tarjetaCredito:'', tarjetaDebito:'',
     cheque:'', transferencia:'', otro:'', deposito:'', documentos:'',
   });
+  const [imprimiendoCierre, setImprimiendoCierre] = useState(false);
 
   const totalBilletes   = BILLETES_RD.reduce((s,b) => s + (billetes[b]??0)*b, 0);
   const totalDesglosePago = Object.values(pago).reduce((s,v) => s + (Number(v)||0), 0);
@@ -4776,6 +4867,32 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
   const efectivoEnCaja  = efectivoInicial + vendidoContado + totalRecibos;
 
   const grid3: React.CSSProperties = { display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:10 };
+
+  const handleImprimirCierre = async () => {
+    if (!cajaHoy) return;
+    setImprimiendoCierre(true);
+    try {
+      const empRes = await api.get('/configuracion/empresa')
+        .then(r => r.data?.data ?? r.data)
+        .catch(() => ({}));
+      const empConf = (empRes.configuracion ?? {}) as any;
+      imprimirReciboTermico(buildCierreCajaHTML({
+        empresa:  { nombre: empRes.razonSocial ?? empRes.nombre, rnc: empRes.rnc, direccion: empRes.direccion, telefono: empRes.telefono },
+        caja:     { id: cajaHoy.id, numero: cajaHoy.numero, fecha: cajaHoy.fecha, vendedorNombre: cajaHoy.vendedorNombre, cantidadTransacciones: cajaHoy.cantidadTransacciones },
+        ops:      { efectivoInicial, vendidoContado, vendidoCredito, totalVendido, totalRecibos, totalAnticipos: Number(cajaHoy.totalAnticipos ?? 0), gastosEfectivo: Number(cajaHoy.gastosEfectivo ?? 0), efectivoEnCaja },
+        billetes: Object.fromEntries(Object.entries(billetes).map(([k,v]) => [k, Number(v)])),
+        pago,
+        totalBilletes,
+        totalFisico,
+        nota:     nota || undefined,
+        tipoImpresora: empConf.posTipoImpresora,
+      }));
+    } catch (e: any) {
+      message.error(e?.response?.data?.message ?? 'Error al imprimir cierre');
+    } finally {
+      setImprimiendoCierre(false);
+    }
+  };
 
   return (
     <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
@@ -4884,11 +5001,20 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
                 fontSize:13, resize:'vertical', outline:'none', boxSizing:'border-box', background:'#fff' }} />
           </div>
 
-          <button onClick={() => cerrarMut.mutate()} disabled={cerrarMut.isPending}
-            style={{ width:'100%', height:46, borderRadius:10, border:'none',
-              background:'#059669', color:'#fff', fontWeight:700, fontSize:15, cursor:'pointer' }}>
-            {cerrarMut.isPending ? 'Cerrando...' : 'Grabar'}
-          </button>
+          <div style={{ display:'flex', gap:8 }}>
+            <button onClick={handleImprimirCierre} disabled={imprimiendoCierre}
+              style={{ height:46, padding:'0 18px', borderRadius:10,
+                border:`1px solid ${C.border}`, background:'transparent',
+                color:C.text, fontWeight:700, fontSize:15, cursor: imprimiendoCierre ? 'not-allowed' : 'pointer',
+                whiteSpace:'nowrap' }}>
+              {imprimiendoCierre ? '…' : '🖨 Imprimir'}
+            </button>
+            <button onClick={() => cerrarMut.mutate()} disabled={cerrarMut.isPending}
+              style={{ flex:1, height:46, borderRadius:10, border:'none',
+                background:'#059669', color:'#fff', fontWeight:700, fontSize:15, cursor:'pointer' }}>
+              {cerrarMut.isPending ? 'Cerrando...' : 'Grabar'}
+            </button>
+          </div>
         </div>
         )}
       </div>
