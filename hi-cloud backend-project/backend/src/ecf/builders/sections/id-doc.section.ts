@@ -10,6 +10,11 @@ function rdParts(d: Date): { dd: string; mm: string; yyyy: string } {
 
 export function fmtFecha(d: Date | string | undefined): string {
   const dt = !d ? new Date() : d instanceof Date ? d : new Date(d);
+  // Fechas almacenadas como "solo fecha" (medianoche UTC exacta): usar partes UTC
+  // directamente para evitar cruce de día por desfase UTC-4 (00:00Z = 20:00 RD)
+  if (dt.getUTCHours() === 0 && dt.getUTCMinutes() === 0 && dt.getUTCSeconds() === 0 && dt.getUTCMilliseconds() === 0) {
+    return `${String(dt.getUTCDate()).padStart(2,'0')}-${String(dt.getUTCMonth()+1).padStart(2,'0')}-${dt.getUTCFullYear()}`;
+  }
   const { dd, mm, yyyy } = rdParts(dt);
   return `${dd}-${mm}-${yyyy}`;
 }
