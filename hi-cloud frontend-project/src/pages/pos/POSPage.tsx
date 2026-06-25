@@ -4514,46 +4514,60 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
 }
 
 // ── Recibo térmico de gasto ──────────────────────────────────────────────────
-function buildGastoReciboHTML(g: any, empresaNombre: string, empresaRnc: string, cajero: string, sucursalNombre?: string): string {
-  const e   = (s: string) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function buildGastoReciboHTML(
+  g: any,
+  empresaNombre: string,
+  empresaRnc: string,
+  cajero: string,
+  sucursalNombre?: string,
+  qrDataUrl?: string | null,
+  tipoImpresora?: string,
+): string {
+  const IMP_CFG: Record<string,{width:string;fontSize:string;paddingLR:string}> = {
+    '58mm':    { width:'58mm',  fontSize:'10pt', paddingLR:'3mm' },
+    '80mm':    { width:'80mm',  fontSize:'11pt', paddingLR:'5mm' },
+    'carta':   { width:'210mm', fontSize:'12pt', paddingLR:'15mm' },
+    'ninguna': { width:'80mm',  fontSize:'11pt', paddingLR:'5mm' },
+  };
+  const prn = IMP_CFG[tipoImpresora ?? '80mm'] ?? IMP_CFG['80mm'];
+  const e    = (s: string) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const fmtM = (n: number) => `RD$${Number(n??0).toLocaleString('es-DO',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
   const ahora = dayjs();
   const row   = (l: string, v: string) => `<div class="row"><span>${e(l)}</span><span>${e(v)}</span></div>`;
   const rowB  = (l: string, v: string) => `<div class="row bold"><span>${e(l)}</span><span>${e(v)}</span></div>`;
   const numGasto = `GAS-${String(g.id??0).padStart(5,'0')}`;
   const catLabel = (g.categoria??'').replace(/_/g,' ').replace(/\b\w/g,(c:string)=>c.toUpperCase());
+  const qrW = tipoImpresora === '58mm' ? 28 : 34;
 
   return `<!DOCTYPE html><html lang="es"><head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=302,initial-scale=1,shrink-to-fit=no">
 <title>Gasto ${e(numGasto)}</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;overflow-wrap:break-word}
-html,body{width:80mm;margin:0}
-body{font-family:'Courier New',Courier,monospace;font-size:11pt;line-height:1.45;
-  width:80mm;padding:3mm 5mm;color:#000;background:#fff;
+@media print{@page{size:${prn.width} auto;margin:0}}
+html,body{width:${prn.width};margin:0}
+body{font-family:'Courier New',Courier,monospace;font-size:${prn.fontSize};font-weight:bold;line-height:1.45;
+  width:${prn.width};padding:3mm ${prn.paddingLR};color:#000;background:#fff;
   -webkit-font-smoothing:none;font-smooth:never}
 .center{text-align:center}
-.bold{font-weight:bold}
-.large{font-size:13pt;font-weight:bold}
-.small{font-size:9pt}
+.bold{font-weight:900}
+.large{font-size:1.15em;font-weight:900}
+.small{font-size:0.85em}
 .row{display:flex;justify-content:space-between;gap:4px;margin:1px 0;width:100%}
 .row span:first-child{flex:1;overflow:hidden}
 .row span:last-child{text-align:right;white-space:nowrap}
 .line{border-top:1px dashed #000;margin:4px 0}
 .dbl{border-top:2px solid #000;margin:4px 0}
-@page{size:80mm auto;margin:0}
-@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 </style></head><body>
 
-<div class="center bold large">${e(empresaNombre)}</div>
+<div class="center large">${e(empresaNombre)}</div>
 ${empresaRnc ? `<div class="center small">RNC: ${e(empresaRnc)}</div>` : ''}
 <div class="dbl"></div>
 <div class="center bold">COMPROBANTE DE GASTO</div>
 <div class="dbl"></div>
 
 ${row('No.:',    numGasto)}
-${row('Fecha:',  ahora.format('DD/MM/YYYY'))}
+${row('Fecha:',  g.fecha ? String(g.fecha).substring(0,10) : ahora.format('DD/MM/YYYY'))}
 ${row('Hora:',   ahora.format('hh:mm a'))}
 ${cajero ? row('Cajero:', cajero) : ''}
 ${sucursalNombre ? row('Sucursal:', sucursalNombre) : ''}
@@ -4563,9 +4577,9 @@ ${sucursalNombre ? row('Sucursal:', sucursalNombre) : ''}
 <div style="margin:2px 0"><span class="bold">Categoría:</span> ${e(catLabel)}</div>
 <div class="line"></div>
 
-${g.proveedor    ? row('Proveedor:',     g.proveedor)    : ''}
-${g.rncProveedor  ? row('RNC Prov.:',     g.rncProveedor) : ''}
-${g.comprobante   ? row('NCF recibido:',  g.comprobante)  : ''}
+${g.proveedor    ? row('Proveedor:',    g.proveedor)    : ''}
+${g.rncProveedor ? row('RNC Prov.:',    g.rncProveedor) : ''}
+${g.comprobante  ? row('NCF recibido:', g.comprobante)  : ''}
 ${(g.proveedor||g.rncProveedor||g.comprobante) ? '<div class="line"></div>' : ''}
 
 ${row('Monto:', fmtM(Number(g.monto??0)))}
@@ -4577,6 +4591,7 @@ ${g.ecfNumero ? `<div class="center bold small">&#8212; COMPROBANTE FISCAL &#821
 ${row('e-NCF E43:', g.ecfNumero)}
 ${g.ecfFecha           ? row('Fecha ECF:',  g.ecfFecha)          : ''}
 ${g.ecfCodigoSeguridad ? row('Cód. Seg.:',  g.ecfCodigoSeguridad): ''}
+${qrDataUrl ? `<div class="center" style="margin:4px 0"><img src="${qrDataUrl}" style="width:${qrW}mm;height:${qrW}mm"></div>` : ''}
 <div class="dbl"></div>` : ''}
 <div class="center small">Registrado en HiCloud ERP</div>
 
@@ -4618,13 +4633,27 @@ function POSGastosPanel({ C, onVolver }: { C: Palette; onVolver: () => void }) {
   const imprimirGasto = async (g: any) => {
     setImprimiendo(g.id);
     try {
-      const empRes = await api.get('/configuracion/empresa').then(r => r.data?.data ?? r.data).catch(() => ({}));
-      const html   = buildGastoReciboHTML(
+      const empRes   = await api.get('/configuracion/empresa').then(r => r.data?.data ?? r.data).catch(() => ({}));
+      const empConf  = (empRes.configuracion ?? {}) as any;
+      const tipoImp  = empConf.posTipoImpresora as string | undefined;
+      const qrW      = tipoImp === '58mm' ? 160 : 200;
+
+      let qrDataUrl: string | null = null;
+      if (g.ecfNumero && empRes.rnc) {
+        const urlQR = `https://ecf.dgii.gov.do/ECF/ConsultaResultado?RNCEmisor=${encodeURIComponent(empRes.rnc)}&eNCF=${encodeURIComponent(g.ecfNumero)}`
+          + (g.ecfCodigoSeguridad ? `&CodigoSeguridadNCF=${encodeURIComponent(g.ecfCodigoSeguridad)}` : '');
+        qrDataUrl = await QRCode.toDataURL(urlQR, { width: qrW, margin: 1, color: { dark: '#000000', light: '#ffffff' } })
+          .catch(() => null);
+      }
+
+      const html = buildGastoReciboHTML(
         g,
         empRes.razonSocial ?? empRes.nombre ?? 'Mi Empresa',
         empRes.rnc ?? '',
         user?.nombre ?? localStorage.getItem('pos_cajero_nombre') ?? '',
         sucursalNombreFromCache(qc),
+        qrDataUrl,
+        tipoImp,
       );
       imprimirReciboTermico(html);
     } catch (err: any) {
