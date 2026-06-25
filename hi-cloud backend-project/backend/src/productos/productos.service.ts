@@ -159,7 +159,8 @@ export class ProductosService implements OnModuleInit {
       if (byCodigo) throw new ConflictException(`Ya existe un producto con el código '${dto.codigo}'`);
     }
 
-    const { almacenId, ...productoData } = dto;
+    const { almacenId: almacenIdDto, ...productoData } = dto;
+    const almacenId = almacenIdDto ?? this.tenantService.getAlmacenId() ?? undefined;
     const producto = this.productoRepository.create({ ...productoData, empresaId });
     const saved = await this.productoRepository.save(producto);
     if (!saved.codigo) {
