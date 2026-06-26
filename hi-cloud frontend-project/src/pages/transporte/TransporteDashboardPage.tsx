@@ -1,5 +1,5 @@
 import { Row, Col, Card, Statistic, Table, Tag, Typography, Alert, Space } from 'antd';
-import { TruckOutlined, UserOutlined, CarOutlined, WarningOutlined } from '@ant-design/icons';
+import { TruckOutlined, UserOutlined, CarOutlined, WarningOutlined, ToolOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../api/client';
 
@@ -47,33 +47,40 @@ export default function TransporteDashboardPage() {
     <div style={{ padding: 24 }}>
       <Title level={3}><TruckOutlined /> Panel Transporte</Title>
 
+      {/* Fila 1: Flota & Choferes */}
       <Row gutter={[16, 16]}>
         <Col xs={12} sm={6}>
           <Card loading={isLoading}>
-            <Statistic title="Flota Total"      value={data?.flota?.total ?? 0}      prefix={<TruckOutlined />} />
+            <Statistic title="Flota Total"       value={data?.flota?.total ?? 0}      prefix={<TruckOutlined />} />
           </Card>
         </Col>
         <Col xs={12} sm={6}>
           <Card loading={isLoading}>
-            <Statistic title="Operativos"       value={data?.flota?.operativos ?? 0} valueStyle={{ color: '#16a34a' }} prefix={<CarOutlined />} />
+            <Statistic title="Operativos"        value={data?.flota?.operativos ?? 0} valueStyle={{ color: '#16a34a' }} prefix={<CarOutlined />} />
           </Card>
         </Col>
         <Col xs={12} sm={6}>
           <Card loading={isLoading}>
-            <Statistic title="Choferes Activos" value={data?.choferes?.activos ?? 0} prefix={<UserOutlined />} />
+            <Statistic title="En Mantenimiento"  value={data?.flota?.enMantenimiento ?? 0} valueStyle={{ color: data?.flota?.enMantenimiento > 0 ? '#f59e0b' : undefined }} prefix={<ToolOutlined />} />
           </Card>
         </Col>
         <Col xs={12} sm={6}>
           <Card loading={isLoading}>
-            <Statistic title="Viajes Hoy"       value={data?.viajes?.hoy ?? 0} />
+            <Statistic title="Choferes Activos"  value={data?.choferes?.activos ?? 0} prefix={<UserOutlined />} />
           </Card>
         </Col>
       </Row>
 
+      {/* Fila 2: Viajes */}
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
         <Col xs={12} sm={6}>
           <Card loading={isLoading}>
-            <Statistic title="Viajes este Mes"   value={data?.viajes?.mes ?? 0} />
+            <Statistic title="Viajes Hoy"  value={data?.viajes?.hoy ?? 0} />
+          </Card>
+        </Col>
+        <Col xs={12} sm={6}>
+          <Card loading={isLoading}>
+            <Statistic title="Viajes este Mes" value={data?.viajes?.mes ?? 0} />
           </Card>
         </Col>
         <Col xs={12} sm={6}>
@@ -84,6 +91,53 @@ export default function TransporteDashboardPage() {
               precision={2}
               prefix="RD$"
               valueStyle={{ color: '#1677ff' }}
+            />
+          </Card>
+        </Col>
+      </Row>
+
+      {/* Fila 3: Combustible & Mantenimiento */}
+      <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+        <Col xs={12} sm={6}>
+          <Card loading={isLoading}>
+            <Statistic
+              title="Combustible del Mes"
+              value={data?.combustible?.costoMes ?? 0}
+              precision={2}
+              prefix="RD$"
+              valueStyle={{ color: '#dc2626' }}
+              suffix={<ThunderboltOutlined style={{ fontSize: 14 }} />}
+            />
+          </Card>
+        </Col>
+        <Col xs={12} sm={6}>
+          <Card loading={isLoading}>
+            <Statistic
+              title="Galones del Mes"
+              value={data?.combustible?.galonesMes ?? 0}
+              precision={1}
+              suffix="gal"
+            />
+          </Card>
+        </Col>
+        <Col xs={12} sm={6}>
+          <Card loading={isLoading}>
+            <Statistic
+              title="Gasto Mantenimiento"
+              value={data?.mantenimiento?.costoMes ?? 0}
+              precision={2}
+              prefix="RD$"
+              valueStyle={{ color: data?.mantenimiento?.costoMes > 0 ? '#f59e0b' : undefined }}
+              suffix={<ToolOutlined style={{ fontSize: 14 }} />}
+            />
+          </Card>
+        </Col>
+        <Col xs={12} sm={6}>
+          <Card loading={isLoading}>
+            <Statistic
+              title="Mantenimientos del Mes"
+              value={data?.mantenimiento?.cantidadMes ?? 0}
+              prefix={<ToolOutlined />}
             />
           </Card>
         </Col>

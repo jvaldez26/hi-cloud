@@ -23,6 +23,7 @@ type Viaje = {
 
 type Chofer   = { id: number; nombre: string };
 type Vehiculo = { id: number; placa: string; marca: string; modelo: string };
+type Cliente  = { id: number; nombre: string; rfc?: string; razonSocial?: string };
 
 async function fetchViajes(page: number, estado?: string) {
   const params: Record<string, any> = { page, limit: 50 };
@@ -32,6 +33,11 @@ async function fetchViajes(page: number, estado?: string) {
 }
 async function fetchChoferes(): Promise<Chofer[]>   { const { data } = await api.get('/transporte/choferes'); return data; }
 async function fetchVehiculos(): Promise<Vehiculo[]> { const { data } = await api.get('/transporte/vehiculos'); return data; }
+async function fetchClientes(search: string): Promise<Cliente[]> {
+  const { data } = await api.get('/clientes', { params: { search, limit: 50 } });
+  const d = data?.data ?? data;
+  return Array.isArray(d) ? d : (d?.data ?? []);
+}
 
 const ESTADO_COLOR: Record<string, string> = {
   programado:  'blue',
@@ -43,11 +49,12 @@ const ESTADO_COLOR: Record<string, string> = {
 
 export default function ViajesPage() {
   const qc = useQueryClient();
-  const [open,       setOpen]       = useState(false);
-  const [editing,    setEditing]    = useState<Viaje | null>(null);
-  const [estadoFilt, setEstadoFilt] = useState<string | undefined>(undefined);
-  const [page,       setPage]       = useState(1);
-  const [form]                      = Form.useForm();
+  const [open,          setOpen]          = useState(false);
+  const [editing,       setEditing]       = useState<Viaje | null>(null);
+  const [estadoFilt,    setEstadoFilt]    = useState<string | undefined>(undefined);
+  const [page,          setPage]          = useState(1);
+  const [clienteSearch, setClienteSearch] = useState('');
+  const [form]                            = Form.useForm();
 
   const { data: result, isLoading } = useQuery({
     queryKey: ['tr-viajes', page, estadoFilt],
@@ -56,6 +63,10 @@ export default function ViajesPage() {
 
   const { data: choferes  = [] } = useQuery({ queryKey: ['tr-choferes'],  queryFn: fetchChoferes  });
   const { data: vehiculos = [] } = useQuery({ queryKey: ['tr-vehiculos'], queryFn: fetchVehiculos });
+  const { data: clientes  = [] } = useQuery({
+    queryKey: ['clientes-search', clienteSearch],
+    queryFn:  () => fetchClientes(clienteSearch),
+  });
 
   const save = useMutation({
     mutationFn: (vals: any) => editing
@@ -203,8 +214,19 @@ export default function ViajesPage() {
             </Form.Item>
           </Space.Compact>
           <Form.Item name="clienteId" label="Cliente">
-            <Select allowClear showSearch placeholder="Buscar cliente..." optionFilterProp="children">
-              {/* Clientes se cargan via search — en producción usar un ClienteSearchSelect */}
+            <Select
+              allowClear
+              showSearch
+              placeholder="Buscar cliente por nombre o RNC..."
+              filterOption={false}
+              onSearch={val => setClienteSearch(val)}
+              optionFilterProp="label"
+            >
+              {(clientes as Cliente[]).map(c => (
+                <Option key={c.id} value={c.id} label={`${c.nombre} ${c.rfc ?? ''}`}>
+                  {c.nombre}{c.rfc ? ` · ${c.rfc}` : ''}
+                </Option>
+              ))}
             </Select>
           </Form.Item>
           <Space.Compact style={{ width: '100%' }}>

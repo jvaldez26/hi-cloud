@@ -320,14 +320,17 @@ export class TransporteService {
   async getDashboard(empresaId: number) {
     const hoy = new Date().toISOString().substring(0, 10);
     const [
-      totalVehiculos, vehiculosOperativos,
+      totalVehiculos, vehiculosOperativos, vehiculosEnMantenimiento,
       totalChoferes, choferesActivos,
       viajesHoy, viajesMes,
       viajesPorEstado,
       alertasVencimiento,
+      combustibleMes,
+      mantenimientoMes,
     ] = await Promise.all([
       this.ds.query<any[]>(`SELECT COUNT(*) AS total FROM tr_vehiculos WHERE "empresaId"=$1 AND "isActive"=true`, [empresaId]),
       this.ds.query<any[]>(`SELECT COUNT(*) AS total FROM tr_vehiculos WHERE "empresaId"=$1 AND estado='operativo' AND "isActive"=true`, [empresaId]),
+      this.ds.query<any[]>(`SELECT COUNT(*) AS total FROM tr_vehiculos WHERE "empresaId"=$1 AND estado='mantenimiento' AND "isActive"=true`, [empresaId]),
       this.ds.query<any[]>(`SELECT COUNT(*) AS total FROM tr_choferes  WHERE "empresaId"=$1 AND "isActive"=true`, [empresaId]),
       this.ds.query<any[]>(`SELECT COUNT(*) AS total FROM tr_choferes  WHERE "empresaId"=$1 AND estado='activo' AND "isActive"=true`, [empresaId]),
       this.ds.query<any[]>(`SELECT COUNT(*) AS total FROM tr_viajes WHERE "empresaId"=$1 AND fecha=$2`, [empresaId, hoy]),
@@ -345,12 +348,23 @@ export class TransporteService {
         ORDER BY vencimiento ASC
         LIMIT 10
       `, [empresaId, empresaId, empresaId]),
+      this.ds.query<any[]>(
+        `SELECT COALESCE(SUM(total),0) AS costo, COALESCE(SUM(galones),0) AS galones, COUNT(*) AS cargas
+           FROM tr_combustible WHERE "empresaId"=$1 AND fecha >= date_trunc('month', NOW()::date)`,
+        [empresaId],
+      ),
+      this.ds.query<any[]>(
+        `SELECT COALESCE(SUM(costo),0) AS costo, COUNT(*) AS cantidad
+           FROM tr_mantenimiento WHERE "empresaId"=$1 AND fecha >= date_trunc('month', NOW()::date)`,
+        [empresaId],
+      ),
     ]);
 
     return {
       flota: {
-        total:      Number(totalVehiculos[0].total),
-        operativos: Number(vehiculosOperativos[0].total),
+        total:          Number(totalVehiculos[0].total),
+        operativos:     Number(vehiculosOperativos[0].total),
+        enMantenimiento: Number(vehiculosEnMantenimiento[0].total),
       },
       choferes: {
         total:  Number(totalChoferes[0].total),
@@ -361,6 +375,15 @@ export class TransporteService {
         mes:         Number(viajesMes[0].total),
         ingresosMes: Number(viajesMes[0].ingresos),
         porEstado:   viajesPorEstado,
+      },
+      combustible: {
+        costoMes:   Number(combustibleMes[0].costo),
+        galonesMes: Number(combustibleMes[0].galones),
+        cargasMes:  Number(combustibleMes[0].cargas),
+      },
+      mantenimiento: {
+        costoMes:   Number(mantenimientoMes[0].costo),
+        cantidadMes: Number(mantenimientoMes[0].cantidad),
       },
       alertas: alertasVencimiento,
     };
@@ -563,5 +586,102 @@ export class TransporteService {
         LIMIT 20`,
       [empresaId],
     );
+  }
+
+  // ── REPORTES ──────────────────────────────────────────────────────────────
+
+  async reporteViajes(empresaId: number, params: { desde: string; hasta: string; vehiculoId?: number; choferId?: number }) {
+    const vals: any[] = [empresaId, params.desde, params.hasta];
+    let idx = 4;
+    const extra: string[] = [];
+    if (params.vehiculoId) { extra.push(`v."vehiculoId"=$${idx++}`); vals.push(params.vehiculoId); }
+    if (params.choferId)   { extra.push(`v."choferId"=$${idx++}`);   vals.push(params.choferId);   }
+    const extraWhere = extra.length ? ' AND ' + extra.join(' AND ') : '';
+
+    const rows = await this.ds.query<any[]>(
+      `SELECT v.numero, v.fecha, v.origen, v.destino, v.tarifa, v.estado,
+              c.nombre  AS "choferNombre",
+              vh.placa  AS "vehiculoPlaca",
+              vh.marca||' '||vh.modelo AS "vehiculoDescripcion",
+              cl.nombre AS "clienteNombre"
+         FROM tr_viajes v
+         LEFT JOIN tr_choferes  c  ON c.id  = v."choferId"
+         LEFT JOIN tr_vehiculos vh ON vh.id = v."vehiculoId"
+         LEFT JOIN clientes     cl ON cl.id = v."clienteId"
+        WHERE v."empresaId"=$1 AND v.fecha BETWEEN $2 AND $3${extraWhere}
+        ORDER BY v.fecha DESC, v.id DESC`,
+      vals,
+    );
+
+    const totalTarifa = rows.reduce((s, r) => s + Number(r.tarifa ?? 0), 0);
+    const totalViajes = rows.length;
+    return { data: rows, totalViajes, totalTarifa };
+  }
+
+  async reporteCombustible(empresaId: number, params: { desde: string; hasta: string }) {
+    const [detalle, porVehiculo] = await Promise.all([
+      this.ds.query<any[]>(
+        `SELECT c.fecha, c."tipoCombustible", c.galones, c."precioGalon", c.total, c.odometro, c.estacion,
+                v.placa AS "vehiculoPlaca", v.marca||' '||v.modelo AS "vehiculoDescripcion",
+                ch.nombre AS "choferNombre"
+           FROM tr_combustible c
+           LEFT JOIN tr_vehiculos v  ON v.id  = c."vehiculoId"
+           LEFT JOIN tr_choferes  ch ON ch.id = c."choferId"
+          WHERE c."empresaId"=$1 AND c.fecha BETWEEN $2 AND $3
+          ORDER BY c.fecha DESC`,
+        [empresaId, params.desde, params.hasta],
+      ),
+      this.ds.query<any[]>(
+        `SELECT v.placa, v.marca||' '||v.modelo AS vehiculo,
+                COALESCE(SUM(c.total),0)   AS costoTotal,
+                COALESCE(SUM(c.galones),0) AS galonesTotal,
+                COUNT(*)                   AS cargas
+           FROM tr_combustible c
+           JOIN tr_vehiculos v ON v.id = c."vehiculoId"
+          WHERE c."empresaId"=$1 AND c.fecha BETWEEN $2 AND $3
+          GROUP BY v.id, v.placa, v.marca, v.modelo
+          ORDER BY costoTotal DESC`,
+        [empresaId, params.desde, params.hasta],
+      ),
+    ]);
+    const totales = {
+      costoTotal:   detalle.reduce((s, r) => s + Number(r.total ?? 0), 0),
+      galonesTotal: detalle.reduce((s, r) => s + Number(r.galones ?? 0), 0),
+      registros:    detalle.length,
+    };
+    return { detalle, porVehiculo, totales };
+  }
+
+  async reporteMantenimiento(empresaId: number, params: { desde: string; hasta: string }) {
+    const [detalle, porVehiculo] = await Promise.all([
+      this.ds.query<any[]>(
+        `SELECT m.fecha, m.tipo, m.descripcion, m.costo, m.proveedor, m.estado,
+                v.placa AS "vehiculoPlaca", v.marca||' '||v.modelo AS "vehiculoDescripcion"
+           FROM tr_mantenimiento m
+           LEFT JOIN tr_vehiculos v ON v.id = m."vehiculoId"
+          WHERE m."empresaId"=$1 AND m.fecha BETWEEN $2 AND $3
+          ORDER BY m.fecha DESC`,
+        [empresaId, params.desde, params.hasta],
+      ),
+      this.ds.query<any[]>(
+        `SELECT v.placa, v.marca||' '||v.modelo AS vehiculo,
+                COALESCE(SUM(m.costo),0) AS costoTotal,
+                COUNT(*) AS mantenimientos,
+                COUNT(*) FILTER (WHERE m.tipo='preventivo') AS preventivos,
+                COUNT(*) FILTER (WHERE m.tipo='correctivo') AS correctivos,
+                COUNT(*) FILTER (WHERE m.tipo='emergencia') AS emergencias
+           FROM tr_mantenimiento m
+           JOIN tr_vehiculos v ON v.id = m."vehiculoId"
+          WHERE m."empresaId"=$1 AND m.fecha BETWEEN $2 AND $3
+          GROUP BY v.id, v.placa, v.marca, v.modelo
+          ORDER BY costoTotal DESC`,
+        [empresaId, params.desde, params.hasta],
+      ),
+    ]);
+    const totales = {
+      costoTotal:     detalle.reduce((s, r) => s + Number(r.costo ?? 0), 0),
+      mantenimientos: detalle.length,
+    };
+    return { detalle, porVehiculo, totales };
   }
 }

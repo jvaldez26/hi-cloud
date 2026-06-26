@@ -252,6 +252,7 @@ const ChoferesTransportePage      = lazy(() => import('./pages/transporte/Chofer
 const ViajesPage                  = lazy(() => import('./pages/transporte/ViajesPage'));
 const CombustiblePage             = lazy(() => import('./pages/transporte/CombustiblePage'));
 const MantenimientoTransportePage = lazy(() => import('./pages/transporte/MantenimientoTransportePage'));
+const ReportesTransportePage      = lazy(() => import('./pages/transporte/ReportesTransportePage'));
 dayjs.locale('es');
 
 export const qc = new QueryClient({
@@ -845,6 +846,7 @@ export default function App() {
                       <Route path="viajes"            element={<ViajesPage />} />
                       <Route path="combustible"       element={<CombustiblePage />} />
                       <Route path="mantenimiento"     element={<MantenimientoTransportePage />} />
+                      <Route path="reportes"          element={<ReportesTransportePage />} />
                     </Route>
                   </Route>
 

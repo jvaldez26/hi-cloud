@@ -420,6 +420,7 @@ const MENU_CATEGORIES: MenuCategory[] = [
       { path: '/transporte/choferes',       label: 'Choferes' },
       { path: '/transporte/combustible',    label: 'Combustible' },
       { path: '/transporte/mantenimiento',  label: 'Mantenimiento' },
+      { path: '/transporte/reportes',       label: 'Reportes' },
     ],
   },
 ];

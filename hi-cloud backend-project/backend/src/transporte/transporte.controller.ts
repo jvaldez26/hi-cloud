@@ -264,6 +264,37 @@ export class TransporteController {
     return this.svc.deleteCombustible(this.tenantSvc.getEmpresaId(), id);
   }
 
+  // ── Reportes ──────────────────────────────────────────────────────────────
+  @Get('reportes/viajes')
+  reporteViajes(
+    @Query('desde') desde: string,
+    @Query('hasta') hasta: string,
+    @Query('vehiculoId', new DefaultValuePipe(0), PIP) vehiculoId = 0,
+    @Query('choferId',   new DefaultValuePipe(0), PIP) choferId   = 0,
+  ) {
+    return this.svc.reporteViajes(this.tenantSvc.getEmpresaId(), {
+      desde, hasta,
+      vehiculoId: vehiculoId || undefined,
+      choferId:   choferId   || undefined,
+    });
+  }
+
+  @Get('reportes/combustible')
+  reporteCombustible(
+    @Query('desde') desde: string,
+    @Query('hasta') hasta: string,
+  ) {
+    return this.svc.reporteCombustible(this.tenantSvc.getEmpresaId(), { desde, hasta });
+  }
+
+  @Get('reportes/mantenimiento')
+  reporteMantenimiento(
+    @Query('desde') desde: string,
+    @Query('hasta') hasta: string,
+  ) {
+    return this.svc.reporteMantenimiento(this.tenantSvc.getEmpresaId(), { desde, hasta });
+  }
+
   // ── Mantenimiento ─────────────────────────────────────────────────────────
   @Get('mantenimiento')
   listMantenimientos(
