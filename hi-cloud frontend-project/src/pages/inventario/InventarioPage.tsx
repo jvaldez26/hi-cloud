@@ -68,11 +68,7 @@ function MovimientosTab() {
     queryKey: ['inventario', page, filters],
     queryFn:  () => inventarioApi.movimientos(page, 15, filters),
   });
-  const { data: stockBajo = [] } = useQuery<any[]>({
-    queryKey: ['stock-bajo'],
-    queryFn:  inventarioApi.stockBajo,
-  });
-  const { data: productosData } = useQuery({
+const { data: productosData } = useQuery({
     queryKey: ['productos-inv'],
     queryFn:  () => productosApi.list(1, 500),
   });
@@ -156,26 +152,7 @@ function MovimientosTab() {
 
   return (
     <>
-      {stockBajo.length > 0 && (
-        <Alert type="warning" showIcon icon={<WarningOutlined />} style={{ marginBottom: 12 }}
-          message={`${stockBajo.length} producto(s) con stock bajo`}
-          description={
-            <Row gutter={[6, 6]} style={{ marginTop: 4 }}>
-              {stockBajo.slice(0, 12).map((p: any) => (
-                <Col key={p.codigo}>
-                  <Tooltip title={`Stock: ${p.stock} | Mín: ${p.stockMinimo}`}>
-                    <Badge count={p.stock} showZero color={p.stock === 0 ? '#dc2626' : '#d97706'}>
-                      <Tag style={{ cursor: 'default' }}>{p.codigo}</Tag>
-                    </Badge>
-                  </Tooltip>
-                </Col>
-              ))}
-            </Row>
-          }
-        />
-      )}
-
-      <Row justify="space-between" align="middle" style={{ marginBottom: 12 }}>
+<Row justify="space-between" align="middle" style={{ marginBottom: 12 }}>
         <Col>
           <Text type="secondary" style={{ fontSize: 12 }}>{data?.meta?.total?.toLocaleString('es-DO') ?? 0} movimientos{hayFiltros ? ' (filtrados)' : ''}</Text>
         </Col>
