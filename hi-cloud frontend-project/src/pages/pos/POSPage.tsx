@@ -5624,6 +5624,22 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
     },
   });
 
+  // Forzar consulta inmediata de estados ECF cuando hay filas ENVIADO
+  const forcePollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (panel !== 'facturas') return;
+    const hasEnviado = (rows ?? []).some((r: any) => (r.ecf?.estadoDGII ?? '').toLowerCase() === 'enviado');
+    if (!hasEnviado) return;
+    if (forcePollRef.current) return;
+    forcePollRef.current = setTimeout(() => {
+      api.post('/ecf/consultar-estados').catch(() => {});
+      forcePollRef.current = null;
+    }, 800);
+    return () => {
+      if (forcePollRef.current) { clearTimeout(forcePollRef.current); forcePollRef.current = null; }
+    };
+  }, [panel, rows]);
+
   const colsConfig: Record<string, Array<{ label: string; key: string; render?: (v: any, row: any) => React.ReactNode }>> = {
     inventario: [
       { label: 'Producto',  key: 'producto',  render: (_,r) => r.producto?.nombre ?? r.descripcion ?? '—' },
@@ -5647,7 +5663,9 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           ACEPTADO:   { color: '#fff', bg: '#16a34a', label: '✓ ACEPTADO' },
           RECHAZADO:  { color: '#fff', bg: '#dc2626', label: '✗ RECHAZADO' },
           OBSERVADO:  { color: '#fff', bg: '#d97706', label: '⚠ OBSERVADO' },
+          ENVIADO:    { color: '#1e3a5f', bg: '#bfdbfe', label: '⏳ ENVIADO' },
           PENDIENTE:  { color: '#fff', bg: '#6b7280', label: '… PENDIENTE' },
+          PENDIENTE_ENVIO: { color: '#fff', bg: '#6b7280', label: '… PENDIENTE' },
           CONTINGENCIA: { color: '#fff', bg: '#7c3aed', label: '⚡ CONTINGENCIA' },
         };
         const c = cfg[est] ?? { color: C.text, bg: 'transparent', label: est };
