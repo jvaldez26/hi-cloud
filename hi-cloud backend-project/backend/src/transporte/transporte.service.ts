@@ -365,4 +365,203 @@ export class TransporteService {
       alertas: alertasVencimiento,
     };
   }
+
+  // ── COMBUSTIBLE ───────────────────────────────────────────────────────────
+
+  async findAllCombustible(empresaId: number, opts: { vehiculoId?: number; page?: number; limit?: number }) {
+    const page   = Math.max(1, opts.page  ?? 1);
+    const limit  = Math.min(100, opts.limit ?? 50);
+    const offset = (page - 1) * limit;
+
+    const whereParts = [`c."empresaId"=$1`];
+    const vals: any[] = [empresaId];
+    let   idx = 2;
+
+    if (opts.vehiculoId) { whereParts.push(`c."vehiculoId"=$${idx++}`); vals.push(opts.vehiculoId); }
+
+    const where = whereParts.join(' AND ');
+    const [{ total }] = await this.ds.query<{ total: string }[]>(
+      `SELECT COUNT(*) AS total FROM tr_combustible c WHERE ${where}`, vals,
+    );
+
+    const rows = await this.ds.query<any[]>(
+      `SELECT c.*, v.placa AS "vehiculoPlaca", ch.nombre AS "choferNombre"
+         FROM tr_combustible c
+         LEFT JOIN tr_vehiculos v  ON v.id  = c."vehiculoId"
+         LEFT JOIN tr_choferes  ch ON ch.id = c."choferId"
+        WHERE ${where}
+        ORDER BY c.fecha DESC, c.id DESC
+        LIMIT $${idx} OFFSET $${idx + 1}`,
+      [...vals, limit, offset],
+    );
+
+    return { data: rows, total: Number(total), page, limit };
+  }
+
+  async createCombustible(empresaId: number, data: any) {
+    const total = data.total ?? (
+      data.galones && data.precioGalon
+        ? Math.round(Number(data.galones) * Number(data.precioGalon) * 100) / 100
+        : 0
+    );
+    const [row] = await this.ds.query<any[]>(
+      `INSERT INTO tr_combustible
+         ("empresaId","vehiculoId","choferId",fecha,"tipoCombustible",galones,"precioGalon",total,odometro,estacion,notas)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [
+        empresaId, data.vehiculoId ?? null, data.choferId ?? null,
+        data.fecha ?? new Date().toISOString().substring(0, 10),
+        data.tipoCombustible ?? 'gasolina',
+        data.galones ?? null, data.precioGalon ?? null, total,
+        data.odometro ?? null, data.estacion ?? null, data.notas ?? null,
+      ],
+    );
+    return row;
+  }
+
+  async deleteCombustible(empresaId: number, id: number) {
+    const [row] = await this.ds.query<any[]>(
+      `SELECT id FROM tr_combustible WHERE id=$1 AND "empresaId"=$2`, [id, empresaId],
+    );
+    if (!row) throw new NotFoundException(`Registro de combustible #${id} no encontrado`);
+    await this.ds.query(`DELETE FROM tr_combustible WHERE id=$1 AND "empresaId"=$2`, [id, empresaId]);
+    return { message: 'Registro eliminado' };
+  }
+
+  async getCombustibleStats(empresaId: number) {
+    const [mesActual, porVehiculo, porTipo] = await Promise.all([
+      this.ds.query<any[]>(
+        `SELECT COALESCE(SUM(total),0) AS costo, COALESCE(SUM(galones),0) AS galones, COUNT(*) AS cargas
+           FROM tr_combustible
+          WHERE "empresaId"=$1 AND fecha >= date_trunc('month', NOW()::date)`,
+        [empresaId],
+      ),
+      this.ds.query<any[]>(
+        `SELECT v.placa, v.marca||' '||v.modelo AS vehiculo,
+                COALESCE(SUM(c.total),0)   AS costoMes,
+                COALESCE(SUM(c.galones),0) AS galonesMes,
+                COUNT(*)                   AS cargas
+           FROM tr_combustible c
+           JOIN tr_vehiculos v ON v.id = c."vehiculoId"
+          WHERE c."empresaId"=$1 AND c.fecha >= date_trunc('month', NOW()::date)
+          GROUP BY v.id, v.placa, v.marca, v.modelo
+          ORDER BY costoMes DESC`,
+        [empresaId],
+      ),
+      this.ds.query<any[]>(
+        `SELECT "tipoCombustible", COALESCE(SUM(total),0) AS costo, COALESCE(SUM(galones),0) AS galones
+           FROM tr_combustible
+          WHERE "empresaId"=$1 AND fecha >= date_trunc('month', NOW()::date)
+          GROUP BY "tipoCombustible"`,
+        [empresaId],
+      ),
+    ]);
+
+    return {
+      mesActual: {
+        costo:   Number(mesActual[0].costo),
+        galones: Number(mesActual[0].galones),
+        cargas:  Number(mesActual[0].cargas),
+      },
+      porVehiculo,
+      porTipo,
+    };
+  }
+
+  // ── MANTENIMIENTO ─────────────────────────────────────────────────────────
+
+  async findAllMantenimientos(empresaId: number, opts: { vehiculoId?: number; estado?: string; page?: number; limit?: number }) {
+    const page   = Math.max(1, opts.page  ?? 1);
+    const limit  = Math.min(100, opts.limit ?? 50);
+    const offset = (page - 1) * limit;
+
+    const whereParts = [`m."empresaId"=$1`];
+    const vals: any[] = [empresaId];
+    let   idx = 2;
+
+    if (opts.vehiculoId) { whereParts.push(`m."vehiculoId"=$${idx++}`); vals.push(opts.vehiculoId); }
+    if (opts.estado)     { whereParts.push(`m.estado=$${idx++}`);        vals.push(opts.estado);     }
+
+    const where = whereParts.join(' AND ');
+    const [{ total }] = await this.ds.query<{ total: string }[]>(
+      `SELECT COUNT(*) AS total FROM tr_mantenimiento m WHERE ${where}`, vals,
+    );
+
+    const rows = await this.ds.query<any[]>(
+      `SELECT m.*, v.placa AS "vehiculoPlaca", v.marca||' '||v.modelo AS "vehiculoDescripcion"
+         FROM tr_mantenimiento m
+         LEFT JOIN tr_vehiculos v ON v.id = m."vehiculoId"
+        WHERE ${where}
+        ORDER BY m.fecha DESC, m.id DESC
+        LIMIT $${idx} OFFSET $${idx + 1}`,
+      [...vals, limit, offset],
+    );
+
+    return { data: rows, total: Number(total), page, limit };
+  }
+
+  async createMantenimiento(empresaId: number, data: any) {
+    const [row] = await this.ds.query<any[]>(
+      `INSERT INTO tr_mantenimiento
+         ("empresaId","vehiculoId",fecha,tipo,descripcion,costo,proveedor,"odometroActual","proximaFecha","proximoKm",estado,notas)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      [
+        empresaId, data.vehiculoId ?? null,
+        data.fecha ?? new Date().toISOString().substring(0, 10),
+        data.tipo ?? 'preventivo', data.descripcion,
+        Number(data.costo ?? 0), data.proveedor ?? null,
+        data.odometroActual ?? null, data.proximaFecha ?? null, data.proximoKm ?? null,
+        data.estado ?? 'programado', data.notas ?? null,
+      ],
+    );
+    return row;
+  }
+
+  async updateMantenimiento(empresaId: number, id: number, data: any) {
+    const [existing] = await this.ds.query<any[]>(
+      `SELECT id FROM tr_mantenimiento WHERE id=$1 AND "empresaId"=$2`, [id, empresaId],
+    );
+    if (!existing) throw new NotFoundException(`Mantenimiento #${id} no encontrado`);
+
+    const sets: string[] = [];
+    const vals: any[]   = [];
+    let   idx           = 1;
+    const map: Record<string, string> = {
+      vehiculoId: '"vehiculoId"', fecha: 'fecha', tipo: 'tipo', descripcion: 'descripcion',
+      costo: 'costo', proveedor: 'proveedor', odometroActual: '"odometroActual"',
+      proximaFecha: '"proximaFecha"', proximoKm: '"proximoKm"', estado: 'estado', notas: 'notas',
+    };
+    for (const [key, col] of Object.entries(map)) {
+      if (data[key] !== undefined) { sets.push(`${col}=$${idx++}`); vals.push(data[key]); }
+    }
+    if (!sets.length) return existing;
+    sets.push(`"updatedAt"=NOW()`);
+    vals.push(id, empresaId);
+    const [row] = await this.ds.query<any[]>(
+      `UPDATE tr_mantenimiento SET ${sets.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *`,
+      vals,
+    );
+    return row;
+  }
+
+  async deleteMantenimiento(empresaId: number, id: number) {
+    const [row] = await this.ds.query<any[]>(
+      `SELECT id FROM tr_mantenimiento WHERE id=$1 AND "empresaId"=$2`, [id, empresaId],
+    );
+    if (!row) throw new NotFoundException(`Mantenimiento #${id} no encontrado`);
+    await this.ds.query(`DELETE FROM tr_mantenimiento WHERE id=$1 AND "empresaId"=$2`, [id, empresaId]);
+    return { message: 'Mantenimiento eliminado' };
+  }
+
+  async getMantenimientoProgramado(empresaId: number) {
+    return this.ds.query<any[]>(
+      `SELECT m.*, v.placa AS "vehiculoPlaca", v.marca||' '||v.modelo AS "vehiculoDescripcion"
+         FROM tr_mantenimiento m
+         LEFT JOIN tr_vehiculos v ON v.id = m."vehiculoId"
+        WHERE m."empresaId"=$1 AND m.estado IN ('programado','en_proceso')
+        ORDER BY m."proximaFecha" ASC NULLS LAST, m.fecha DESC
+        LIMIT 20`,
+      [empresaId],
+    );
+  }
 }

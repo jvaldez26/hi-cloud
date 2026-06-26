@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { TrChofer }   from './entities/tr-chofer.entity';
-import { TrVehiculo } from './entities/tr-vehiculo.entity';
-import { TrViaje }    from './entities/tr-viaje.entity';
+import { TrChofer }        from './entities/tr-chofer.entity';
+import { TrVehiculo }      from './entities/tr-vehiculo.entity';
+import { TrViaje }         from './entities/tr-viaje.entity';
+import { TrCombustible }   from './entities/tr-combustible.entity';
+import { TrMantenimiento } from './entities/tr-mantenimiento.entity';
 import { TenantModule }      from '../tenant/tenant.module';
 import { FacturasModule }    from '../facturas/facturas.module';
 import { TransporteService }    from './transporte.service';
@@ -10,7 +12,7 @@ import { TransporteController } from './transporte.controller';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([TrChofer, TrVehiculo, TrViaje]),
+    TypeOrmModule.forFeature([TrChofer, TrVehiculo, TrViaje, TrCombustible, TrMantenimiento]),
     TenantModule,
     FacturasModule,
   ],

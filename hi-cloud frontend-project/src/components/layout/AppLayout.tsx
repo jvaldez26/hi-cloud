@@ -414,10 +414,12 @@ const MENU_CATEGORIES: MenuCategory[] = [
   {
     id: 'transporte', label: 'Transporte', Icon: Truck,
     items: [
-      { path: '/transporte',           label: 'Panel' },
-      { path: '/transporte/viajes',    label: 'Viajes' },
-      { path: '/transporte/vehiculos', label: 'Vehículos' },
-      { path: '/transporte/choferes',  label: 'Choferes' },
+      { path: '/transporte',                label: 'Panel' },
+      { path: '/transporte/viajes',         label: 'Viajes' },
+      { path: '/transporte/vehiculos',      label: 'Vehículos' },
+      { path: '/transporte/choferes',       label: 'Choferes' },
+      { path: '/transporte/combustible',    label: 'Combustible' },
+      { path: '/transporte/mantenimiento',  label: 'Mantenimiento' },
     ],
   },
 ];

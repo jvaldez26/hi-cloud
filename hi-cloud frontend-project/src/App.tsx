@@ -250,6 +250,8 @@ const TransporteDashboardPage     = lazy(() => import('./pages/transporte/Transp
 const VehiculosTransportePage     = lazy(() => import('./pages/transporte/VehiculosTransportePage'));
 const ChoferesTransportePage      = lazy(() => import('./pages/transporte/ChoferesTransportePage'));
 const ViajesPage                  = lazy(() => import('./pages/transporte/ViajesPage'));
+const CombustiblePage             = lazy(() => import('./pages/transporte/CombustiblePage'));
+const MantenimientoTransportePage = lazy(() => import('./pages/transporte/MantenimientoTransportePage'));
 dayjs.locale('es');
 
 export const qc = new QueryClient({
@@ -837,10 +839,12 @@ export default function App() {
 
                     {/* ── Módulo Transporte (add-on) ── */}
                     <Route path="/transporte" element={<TransporteLayout />}>
-                      <Route index                   element={<TransporteDashboardPage />} />
-                      <Route path="vehiculos"        element={<VehiculosTransportePage />} />
-                      <Route path="choferes"         element={<ChoferesTransportePage />} />
-                      <Route path="viajes"           element={<ViajesPage />} />
+                      <Route index                    element={<TransporteDashboardPage />} />
+                      <Route path="vehiculos"         element={<VehiculosTransportePage />} />
+                      <Route path="choferes"          element={<ChoferesTransportePage />} />
+                      <Route path="viajes"            element={<ViajesPage />} />
+                      <Route path="combustible"       element={<CombustiblePage />} />
+                      <Route path="mantenimiento"     element={<MantenimientoTransportePage />} />
                     </Route>
                   </Route>
 
