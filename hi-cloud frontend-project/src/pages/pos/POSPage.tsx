@@ -5634,6 +5634,24 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
         const label = v === 'cancelada' ? 'ANULADA' : v?.toUpperCase();
         return <span style={{ fontSize: 10, fontWeight: 700, color: colMap[v] ?? C.textSub }}>{label}</span>;
       }},
+      { label: 'DGII', key: 'ecf', render: (v: any) => {
+        const est: string = (v?.estadoDGII ?? '').toUpperCase();
+        if (!est) return <span style={{ fontSize: 10, color: C.textSub }}>—</span>;
+        const cfg: Record<string, { color: string; bg: string; label: string }> = {
+          ACEPTADO:   { color: '#fff', bg: '#16a34a', label: '✓ ACEPTADO' },
+          RECHAZADO:  { color: '#fff', bg: '#dc2626', label: '✗ RECHAZADO' },
+          OBSERVADO:  { color: '#fff', bg: '#d97706', label: '⚠ OBSERVADO' },
+          PENDIENTE:  { color: '#fff', bg: '#6b7280', label: '… PENDIENTE' },
+          CONTINGENCIA: { color: '#fff', bg: '#7c3aed', label: '⚡ CONTINGENCIA' },
+        };
+        const c = cfg[est] ?? { color: C.text, bg: 'transparent', label: est };
+        return (
+          <span style={{ fontSize: 9, fontWeight: 700, color: c.color, background: c.bg,
+            borderRadius: 4, padding: '2px 6px', whiteSpace: 'nowrap' }}>
+            {c.label}
+          </span>
+        );
+      }},
     ],
     'pre-facturas': [
       { label: 'Folio',    key: 'folio',    render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue }}>{v}</span> },
