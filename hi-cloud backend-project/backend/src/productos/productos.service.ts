@@ -325,8 +325,14 @@ export class ProductosService implements OnModuleInit {
     const empresaId = this.tenantService.getEmpresaId();
     const producto  = await this.findOne(id);
 
-    // Sanitizar código: undefined/null/vacío/string-literal → undefined
-    if (dto.codigo !== undefined && (!dto.codigo || dto.codigo === 'undefined' || dto.codigo === 'null' || !dto.codigo.trim())) {
+    // null explícito = usuario quiere borrar el código → auto-generar uno nuevo
+    if (dto.codigo === null) {
+      const candidato = `PROD-${String(id).padStart(4, '0')}`;
+      const colision  = await this.productoRepository.findOne({ where: { codigo: candidato, empresaId, isActive: true } });
+      dto.codigo = (colision && colision.id !== id) ? `PROD-${String(id).padStart(4, '0')}-${Date.now()}` : candidato;
+    }
+    // Sanitizar código: undefined/vacío/string-literal → undefined (no modificar el código existente)
+    if (dto.codigo !== undefined && dto.codigo !== null && (!dto.codigo || !dto.codigo.trim())) {
       dto.codigo = undefined;
     }
 

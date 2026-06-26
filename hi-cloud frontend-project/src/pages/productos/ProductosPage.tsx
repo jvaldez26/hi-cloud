@@ -599,8 +599,11 @@ function ProductosCatalogo() {
       precio2: precio2Input != null && precio2Input > 0 ? precio2Input : null,
       precio3: precio3Input != null && precio3Input > 0 ? precio3Input : null,
     };
-    // no enviar cadena vacía ni valores basura
-    if (!payload.codigo || payload.codigo === 'undefined' || payload.codigo === 'null') delete (payload as any).codigo;
+    // código vacío al editar = null (señal para auto-generar); al crear = omitir (auto-genera en el backend)
+    if (!payload.codigo || payload.codigo === 'undefined' || payload.codigo === 'null') {
+      if (editing) (payload as any).codigo = null;
+      else delete (payload as any).codigo;
+    }
     // sucursalId es solo para filtrar almacenes en la UI — no va al backend (producto pertenece a empresa, no sucursal)
     delete (payload as any).sucursalId;
     if (values.tipo === 'servicio') {

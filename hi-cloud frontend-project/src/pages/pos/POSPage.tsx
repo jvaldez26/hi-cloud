@@ -2534,7 +2534,7 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
         ? Math.round(Number(fPrecio) / (1 + itbis / 100) * 100) / 100
         : Number(fPrecio);
       const body: Record<string, unknown> = {
-        nombre: fNombre.trim(), codigo: fCodigo.trim() || undefined,
+        nombre: fNombre.trim(), codigo: fCodigo.trim() || (editingProd ? null : undefined),
         precio: pBase, porcentajeIva: itbis,
         precio2: fPrecio2 && Number(fPrecio2) > 0 ? Number(fPrecio2) : null,
         precio3: fPrecio3 && Number(fPrecio3) > 0 ? Number(fPrecio3) : null,

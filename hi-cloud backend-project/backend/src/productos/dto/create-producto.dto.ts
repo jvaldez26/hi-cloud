@@ -20,12 +20,13 @@ export class CreateProductoDto {
 
   @IsOptional()
   @Transform(({ value }) => {
+    if (value === null) return null;  // null = "borrar y auto-generar"
     if (!value || value === 'undefined' || value === 'null' || !String(value).trim()) return undefined;
     return String(value).trim();
   })
   @IsString()
   @MaxLength(30)
-  codigo?: string;
+  codigo?: string | null;
 
   @IsString()
   @IsNotEmpty()
