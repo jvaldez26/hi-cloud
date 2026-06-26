@@ -5616,6 +5616,12 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
     gcTime:          0,
     refetchOnMount: 'always',
     enabled: panel !== 'items',
+    // Polling automático cuando hay facturas con ECF en estado ENVIADO
+    refetchInterval: (query: any) => {
+      if (panel !== 'facturas') return false;
+      const data: any[] = query.state?.data ?? [];
+      return data.some((r: any) => (r.ecf?.estadoDGII ?? '').toLowerCase() === 'enviado') ? 8000 : false;
+    },
   });
 
   const colsConfig: Record<string, Array<{ label: string; key: string; render?: (v: any, row: any) => React.ReactNode }>> = {
