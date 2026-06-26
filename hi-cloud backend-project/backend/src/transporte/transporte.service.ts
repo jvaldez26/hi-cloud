@@ -1,0 +1,368 @@
+import {
+  Injectable, NotFoundException, BadRequestException, Logger,
+} from '@nestjs/common';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
+import { TenantService } from '../tenant/tenant.service';
+import { FacturasService } from '../facturas/facturas.service';
+import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
+import { User } from '../users/users.entity';
+
+@Injectable()
+export class TransporteService {
+  private readonly logger = new Logger(TransporteService.name);
+
+  constructor(
+    @InjectDataSource() private readonly ds: DataSource,
+    private readonly tenantSvc: TenantService,
+    private readonly facturasSvc: FacturasService,
+  ) {}
+
+  // ── HELPERS ────────────────────────────────────────────────────────────────
+
+  private async choferOr404(empresaId: number, id: number) {
+    const [row] = await this.ds.query<any[]>(
+      `SELECT * FROM tr_choferes WHERE id=$1 AND "empresaId"=$2`, [id, empresaId],
+    );
+    if (!row) throw new NotFoundException(`Chofer #${id} no encontrado`);
+    return row;
+  }
+
+  private async vehiculoOr404(empresaId: number, id: number) {
+    const [row] = await this.ds.query<any[]>(
+      `SELECT * FROM tr_vehiculos WHERE id=$1 AND "empresaId"=$2`, [id, empresaId],
+    );
+    if (!row) throw new NotFoundException(`Vehículo #${id} no encontrado`);
+    return row;
+  }
+
+  private async viajeOr404(empresaId: number, id: number) {
+    const [row] = await this.ds.query<any[]>(
+      `SELECT v.*, c.nombre AS "choferNombre", vh.placa AS "vehiculoPlaca",
+              vh.marca AS "vehiculoMarca", vh.modelo AS "vehiculoModelo",
+              cl.nombre AS "clienteNombre"
+         FROM tr_viajes v
+         LEFT JOIN tr_choferes  c  ON c.id  = v."choferId"
+         LEFT JOIN tr_vehiculos vh ON vh.id = v."vehiculoId"
+         LEFT JOIN clientes     cl ON cl.id = v."clienteId"
+        WHERE v.id=$1 AND v."empresaId"=$2`,
+      [id, empresaId],
+    );
+    if (!row) throw new NotFoundException(`Viaje #${id} no encontrado`);
+    return row;
+  }
+
+  // ── CHOFERES ──────────────────────────────────────────────────────────────
+
+  async findAllChoferes(empresaId: number) {
+    return this.ds.query<any[]>(
+      `SELECT c.*,
+              (SELECT COUNT(*) FROM tr_viajes v WHERE v."choferId"=c.id) AS "totalViajes"
+         FROM tr_choferes c
+        WHERE c."empresaId"=$1 AND c."isActive"=true
+        ORDER BY c.nombre`,
+      [empresaId],
+    );
+  }
+
+  async createChofer(empresaId: number, data: any) {
+    const [row] = await this.ds.query<any[]>(
+      `INSERT INTO tr_choferes
+         ("empresaId",nombre,cedula,telefono,email,licencia,"tipoLicencia","vencimientoLicencia",estado,notas)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [
+        empresaId, data.nombre, data.cedula ?? null, data.telefono ?? null,
+        data.email ?? null, data.licencia ?? null, data.tipoLicencia ?? null,
+        data.vencimientoLicencia ?? null, data.estado ?? 'activo', data.notas ?? null,
+      ],
+    );
+    return row;
+  }
+
+  async updateChofer(empresaId: number, id: number, data: any) {
+    await this.choferOr404(empresaId, id);
+    const sets: string[] = [];
+    const vals: any[]   = [];
+    let   idx           = 1;
+    const map: Record<string, string> = {
+      nombre: 'nombre', cedula: 'cedula', telefono: 'telefono', email: 'email',
+      licencia: 'licencia', tipoLicencia: '"tipoLicencia"',
+      vencimientoLicencia: '"vencimientoLicencia"', estado: 'estado', notas: 'notas',
+    };
+    for (const [key, col] of Object.entries(map)) {
+      if (data[key] !== undefined) { sets.push(`${col}=$${idx++}`); vals.push(data[key]); }
+    }
+    if (!sets.length) return this.choferOr404(empresaId, id);
+    sets.push(`"updatedAt"=NOW()`);
+    vals.push(id, empresaId);
+    const [row] = await this.ds.query<any[]>(
+      `UPDATE tr_choferes SET ${sets.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *`,
+      vals,
+    );
+    return row;
+  }
+
+  async deleteChofer(empresaId: number, id: number) {
+    await this.choferOr404(empresaId, id);
+    await this.ds.query(
+      `UPDATE tr_choferes SET "isActive"=false,"updatedAt"=NOW() WHERE id=$1 AND "empresaId"=$2`,
+      [id, empresaId],
+    );
+    return { message: 'Chofer eliminado' };
+  }
+
+  // ── VEHÍCULOS ─────────────────────────────────────────────────────────────
+
+  async findAllVehiculos(empresaId: number) {
+    return this.ds.query<any[]>(
+      `SELECT v.*, c.nombre AS "choferNombre",
+              (SELECT COUNT(*) FROM tr_viajes vj WHERE vj."vehiculoId"=v.id) AS "totalViajes"
+         FROM tr_vehiculos v
+         LEFT JOIN tr_choferes c ON c.id = v."choferId"
+        WHERE v."empresaId"=$1 AND v."isActive"=true
+        ORDER BY v.placa`,
+      [empresaId],
+    );
+  }
+
+  async createVehiculo(empresaId: number, data: any) {
+    const existing = await this.ds.query<any[]>(
+      `SELECT id FROM tr_vehiculos WHERE "empresaId"=$1 AND placa=$2 AND "isActive"=true`,
+      [empresaId, (data.placa as string).toUpperCase()],
+    );
+    if (existing.length) throw new BadRequestException(`La placa ${data.placa} ya está registrada`);
+    const [row] = await this.ds.query<any[]>(
+      `INSERT INTO tr_vehiculos
+         ("empresaId",placa,marca,modelo,anio,tipo,color,capacidad,estado,"choferId",
+          "seguroVencimiento","marbeteVencimiento","inspeccionVencimiento",notas)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+      [
+        empresaId, (data.placa as string).toUpperCase(), data.marca, data.modelo,
+        data.anio ?? null, data.tipo ?? 'camion', data.color ?? null,
+        data.capacidad ?? null, data.estado ?? 'operativo', data.choferId ?? null,
+        data.seguroVencimiento ?? null, data.marbeteVencimiento ?? null,
+        data.inspeccionVencimiento ?? null, data.notas ?? null,
+      ],
+    );
+    return row;
+  }
+
+  async updateVehiculo(empresaId: number, id: number, data: any) {
+    await this.vehiculoOr404(empresaId, id);
+    if (data.placa) {
+      const dup = await this.ds.query<any[]>(
+        `SELECT id FROM tr_vehiculos WHERE "empresaId"=$1 AND placa=$2 AND id<>$3 AND "isActive"=true`,
+        [empresaId, (data.placa as string).toUpperCase(), id],
+      );
+      if (dup.length) throw new BadRequestException(`La placa ${data.placa} ya está en uso`);
+    }
+    const sets: string[] = [];
+    const vals: any[]   = [];
+    let   idx           = 1;
+    const map: Record<string, string> = {
+      placa: 'placa', marca: 'marca', modelo: 'modelo', anio: 'anio', tipo: 'tipo',
+      color: 'color', capacidad: 'capacidad', estado: 'estado', choferId: '"choferId"',
+      seguroVencimiento: '"seguroVencimiento"', marbeteVencimiento: '"marbeteVencimiento"',
+      inspeccionVencimiento: '"inspeccionVencimiento"', notas: 'notas',
+    };
+    for (const [key, col] of Object.entries(map)) {
+      if (data[key] !== undefined) {
+        sets.push(`${col}=$${idx++}`);
+        vals.push(key === 'placa' ? (data[key] as string).toUpperCase() : data[key]);
+      }
+    }
+    if (!sets.length) return this.vehiculoOr404(empresaId, id);
+    sets.push(`"updatedAt"=NOW()`);
+    vals.push(id, empresaId);
+    const [row] = await this.ds.query<any[]>(
+      `UPDATE tr_vehiculos SET ${sets.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *`,
+      vals,
+    );
+    return row;
+  }
+
+  async deleteVehiculo(empresaId: number, id: number) {
+    await this.vehiculoOr404(empresaId, id);
+    await this.ds.query(
+      `UPDATE tr_vehiculos SET "isActive"=false,"updatedAt"=NOW() WHERE id=$1 AND "empresaId"=$2`,
+      [id, empresaId],
+    );
+    return { message: 'Vehículo eliminado' };
+  }
+
+  // ── VIAJES ────────────────────────────────────────────────────────────────
+
+  async findAllViajes(empresaId: number, opts: { estado?: string; page?: number; limit?: number }) {
+    const page  = Math.max(1, opts.page  ?? 1);
+    const limit = Math.min(100, opts.limit ?? 50);
+    const offset = (page - 1) * limit;
+
+    const whereParts = [`v."empresaId"=$1`];
+    const vals: any[] = [empresaId];
+    let   idx = 2;
+
+    if (opts.estado) {
+      whereParts.push(`v.estado=$${idx++}`);
+      vals.push(opts.estado);
+    }
+
+    const where = whereParts.join(' AND ');
+    const [{ total }] = await this.ds.query<{ total: string }[]>(
+      `SELECT COUNT(*) AS total FROM tr_viajes v WHERE ${where}`, vals,
+    );
+
+    const rows = await this.ds.query<any[]>(
+      `SELECT v.*, c.nombre AS "choferNombre", vh.placa AS "vehiculoPlaca",
+              vh.marca || ' ' || vh.modelo AS "vehiculoDescripcion",
+              cl.nombre AS "clienteNombre"
+         FROM tr_viajes v
+         LEFT JOIN tr_choferes  c  ON c.id  = v."choferId"
+         LEFT JOIN tr_vehiculos vh ON vh.id = v."vehiculoId"
+         LEFT JOIN clientes     cl ON cl.id = v."clienteId"
+        WHERE ${where}
+        ORDER BY v.fecha DESC, v.id DESC
+        LIMIT $${idx} OFFSET $${idx + 1}`,
+      [...vals, limit, offset],
+    );
+
+    return { data: rows, total: Number(total), page, limit };
+  }
+
+  async findOneViaje(empresaId: number, id: number) {
+    return this.viajeOr404(empresaId, id);
+  }
+
+  async createViaje(empresaId: number, sucursalId: number | undefined, data: any) {
+    const numero = await generarNumeroSecuencial(
+      this.ds, 'tr_viajes', 'numero', '^VJ-[0-9]+$', 'VJ-', 1, empresaId,
+    );
+    const [row] = await this.ds.query<any[]>(
+      `INSERT INTO tr_viajes
+         ("empresaId","sucursalId",numero,fecha,origen,destino,"clienteId","choferId","vehiculoId",tarifa,estado,notas)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      [
+        empresaId, sucursalId ?? null, numero,
+        data.fecha ?? new Date().toISOString().substring(0, 10),
+        data.origen, data.destino, data.clienteId ?? null,
+        data.choferId ?? null, data.vehiculoId ?? null,
+        Number(data.tarifa ?? 0), data.estado ?? 'programado', data.notas ?? null,
+      ],
+    );
+    return this.viajeOr404(empresaId, row.id);
+  }
+
+  async updateViaje(empresaId: number, id: number, data: any) {
+    const viaje = await this.viajeOr404(empresaId, id);
+    if (viaje.estado === 'facturado' && data.estado && data.estado !== 'facturado') {
+      throw new BadRequestException('No se puede cambiar el estado de un viaje facturado');
+    }
+    const sets: string[] = [];
+    const vals: any[]   = [];
+    let   idx           = 1;
+    const map: Record<string, string> = {
+      fecha: 'fecha', origen: 'origen', destino: 'destino', clienteId: '"clienteId"',
+      choferId: '"choferId"', vehiculoId: '"vehiculoId"', tarifa: 'tarifa',
+      estado: 'estado', notas: 'notas',
+    };
+    for (const [key, col] of Object.entries(map)) {
+      if (data[key] !== undefined) { sets.push(`${col}=$${idx++}`); vals.push(data[key]); }
+    }
+    if (!sets.length) return viaje;
+    sets.push(`"updatedAt"=NOW()`);
+    vals.push(id, empresaId);
+    const [row] = await this.ds.query<any[]>(
+      `UPDATE tr_viajes SET ${sets.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *`,
+      vals,
+    );
+    return this.viajeOr404(empresaId, row.id);
+  }
+
+  async facturarViaje(empresaId: number, id: number, usuario: User) {
+    const viaje = await this.viajeOr404(empresaId, id);
+    if (viaje.estado === 'facturado') {
+      throw new BadRequestException('Este viaje ya fue facturado');
+    }
+    if (viaje.estado !== 'completado') {
+      throw new BadRequestException('Solo se pueden facturar viajes en estado COMPLETADO');
+    }
+
+    const fecha = new Date().toISOString().substring(0, 10);
+    const factura = await this.facturasSvc.create(
+      {
+        fecha,
+        clienteId: viaje.clienteId ?? undefined,
+        tipoNcf: 'E31',
+        notas: `Viaje #${viaje.numero}: ${viaje.origen} → ${viaje.destino}`,
+        tipoPago: 'CONTADO',
+        detalles: [
+          {
+            descripcion: `Servicio de transporte: ${viaje.origen} → ${viaje.destino}`,
+            cantidad: 1,
+            precioUnitario: Number(viaje.tarifa),
+            porcentajeIva: 18,
+          },
+        ],
+      },
+      usuario,
+    );
+
+    await this.ds.query(
+      `UPDATE tr_viajes SET estado='facturado',"facturaId"=$1,"updatedAt"=NOW()
+        WHERE id=$2 AND "empresaId"=$3`,
+      [(factura as any).id, id, empresaId],
+    );
+
+    return { ...viaje, estado: 'facturado', facturaId: (factura as any).id, factura };
+  }
+
+  // ── DASHBOARD ─────────────────────────────────────────────────────────────
+
+  async getDashboard(empresaId: number) {
+    const hoy = new Date().toISOString().substring(0, 10);
+    const [
+      totalVehiculos, vehiculosOperativos,
+      totalChoferes, choferesActivos,
+      viajesHoy, viajesMes,
+      viajesPorEstado,
+      alertasVencimiento,
+    ] = await Promise.all([
+      this.ds.query<any[]>(`SELECT COUNT(*) AS total FROM tr_vehiculos WHERE "empresaId"=$1 AND "isActive"=true`, [empresaId]),
+      this.ds.query<any[]>(`SELECT COUNT(*) AS total FROM tr_vehiculos WHERE "empresaId"=$1 AND estado='operativo' AND "isActive"=true`, [empresaId]),
+      this.ds.query<any[]>(`SELECT COUNT(*) AS total FROM tr_choferes  WHERE "empresaId"=$1 AND "isActive"=true`, [empresaId]),
+      this.ds.query<any[]>(`SELECT COUNT(*) AS total FROM tr_choferes  WHERE "empresaId"=$1 AND estado='activo' AND "isActive"=true`, [empresaId]),
+      this.ds.query<any[]>(`SELECT COUNT(*) AS total FROM tr_viajes WHERE "empresaId"=$1 AND fecha=$2`, [empresaId, hoy]),
+      this.ds.query<any[]>(`SELECT COUNT(*) AS total, COALESCE(SUM(tarifa),0) AS ingresos FROM tr_viajes WHERE "empresaId"=$1 AND fecha>=date_trunc('month',NOW()::date) AND estado NOT IN ('cancelado')`, [empresaId]),
+      this.ds.query<any[]>(`SELECT estado, COUNT(*) AS total FROM tr_viajes WHERE "empresaId"=$1 AND fecha>=date_trunc('month',NOW()::date) GROUP BY estado`, [empresaId]),
+      this.ds.query<any[]>(`
+        SELECT 'seguro' AS tipo, placa, "seguroVencimiento" AS vencimiento
+          FROM tr_vehiculos WHERE "empresaId"=$1 AND "isActive"=true AND "seguroVencimiento" IS NOT NULL AND "seguroVencimiento" <= (NOW() + INTERVAL '30 days')::date
+        UNION ALL
+        SELECT 'marbete' AS tipo, placa, "marbeteVencimiento" AS vencimiento
+          FROM tr_vehiculos WHERE "empresaId"=$1 AND "isActive"=true AND "marbeteVencimiento" IS NOT NULL AND "marbeteVencimiento" <= (NOW() + INTERVAL '30 days')::date
+        UNION ALL
+        SELECT 'licencia' AS tipo, nombre AS placa, "vencimientoLicencia" AS vencimiento
+          FROM tr_choferes WHERE "empresaId"=$1 AND "isActive"=true AND "vencimientoLicencia" IS NOT NULL AND "vencimientoLicencia" <= (NOW() + INTERVAL '30 days')::date
+        ORDER BY vencimiento ASC
+        LIMIT 10
+      `, [empresaId, empresaId, empresaId]),
+    ]);
+
+    return {
+      flota: {
+        total:      Number(totalVehiculos[0].total),
+        operativos: Number(vehiculosOperativos[0].total),
+      },
+      choferes: {
+        total:  Number(totalChoferes[0].total),
+        activos: Number(choferesActivos[0].total),
+      },
+      viajes: {
+        hoy:         Number(viajesHoy[0].total),
+        mes:         Number(viajesMes[0].total),
+        ingresosMes: Number(viajesMes[0].ingresos),
+        porEstado:   viajesPorEstado,
+      },
+      alertas: alertasVencimiento,
+    };
+  }
+}

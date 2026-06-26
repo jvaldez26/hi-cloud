@@ -132,6 +132,7 @@ import { ServiciosProModule }         from './servicios-pro/servicios-pro.module
 import { ProFormaModule }             from './pro-forma/pro-forma.module';
 import { PrestamistatModule }         from './prestamista/prestamista.module';
 import { AgroModule }               from './agro/agro.module';
+import { TransporteModule }         from './transporte/transporte.module';
 
 @Module({
   imports: [
@@ -348,6 +349,7 @@ import { AgroModule }               from './agro/agro.module';
     ProFormaModule,
     PrestamistatModule,
     AgroModule,
+    TransporteModule,
   ],
   controllers: [AppController],
   providers: [

@@ -411,6 +411,15 @@ const MENU_CATEGORIES: MenuCategory[] = [
       { path: '/agro/reportes',     label: 'Reportes' },
     ],
   },
+  {
+    id: 'transporte', label: 'Transporte', Icon: Truck,
+    items: [
+      { path: '/transporte',           label: 'Panel' },
+      { path: '/transporte/viajes',    label: 'Viajes' },
+      { path: '/transporte/vehiculos', label: 'Vehículos' },
+      { path: '/transporte/choferes',  label: 'Choferes' },
+    ],
+  },
 ];
 
 // ── Orden de jerarquía de planes ─────────────────────────────────────────────
@@ -1220,7 +1229,7 @@ const GRUPOS_MENU = [
   { key: 'sistema',    label: 'Sistema',                 obligatorio: false },
 ];
 const TODOS_GRUPOS_KEYS = GRUPOS_MENU.map(g => g.key);
-const ADDON_IDS = ['clinica', 'taller', 'optica', 'farmacia', 'restaurante', 'gimnasio', 'servicios_pro', 'prestamista', 'agro'];
+const ADDON_IDS = ['clinica', 'taller', 'optica', 'farmacia', 'restaurante', 'gimnasio', 'servicios_pro', 'prestamista', 'agro', 'transporte'];
 
 // ── AppLayout principal ───────────────────────────────────────────────────────
 export default function AppLayout() {

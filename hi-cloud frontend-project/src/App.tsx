@@ -244,6 +244,12 @@ const AnimalDetallePage           = lazy(() => import('./pages/agro/AnimalDetall
 const InsumosPage                 = lazy(() => import('./pages/agro/InsumosPage'));
 const MaquinariaPage              = lazy(() => import('./pages/agro/MaquinariaPage'));
 const AgroReportesPage            = lazy(() => import('./pages/agro/ReportesPage'));
+// Transporte
+const TransporteLayout            = lazy(() => import('./pages/transporte/TransporteLayout'));
+const TransporteDashboardPage     = lazy(() => import('./pages/transporte/TransporteDashboardPage'));
+const VehiculosTransportePage     = lazy(() => import('./pages/transporte/VehiculosTransportePage'));
+const ChoferesTransportePage      = lazy(() => import('./pages/transporte/ChoferesTransportePage'));
+const ViajesPage                  = lazy(() => import('./pages/transporte/ViajesPage'));
 dayjs.locale('es');
 
 export const qc = new QueryClient({
@@ -828,6 +834,14 @@ export default function App() {
                     <Route path="/agro/insumos"         element={<InsumosPage />} />
                     <Route path="/agro/maquinaria"      element={<MaquinariaPage />} />
                     <Route path="/agro/reportes"        element={<AgroReportesPage />} />
+
+                    {/* ── Módulo Transporte (add-on) ── */}
+                    <Route path="/transporte" element={<TransporteLayout />}>
+                      <Route index                   element={<TransporteDashboardPage />} />
+                      <Route path="vehiculos"        element={<VehiculosTransportePage />} />
+                      <Route path="choferes"         element={<ChoferesTransportePage />} />
+                      <Route path="viajes"           element={<ViajesPage />} />
+                    </Route>
                   </Route>
 
                   <Route path="*" element={<Navigate to="/" replace />} />
