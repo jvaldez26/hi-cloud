@@ -100,6 +100,9 @@ export default function OrdenesPage() {
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
   const [form] = Form.useForm();
+  const [placaBusq, setPlacaBusq] = useState('');
+  const [vehiculoInfo, setVehiculoInfo] = useState<any>(null);
+  const [buscandoV, setBuscandoV] = useState(false);
   const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('taller-ordenes', COLS_DEF);
 
   const { data, isLoading } = useQuery({
@@ -122,10 +125,26 @@ export default function OrdenesPage() {
       message.success(`Orden ${res.numero} creada`);
       setModalOpen(false);
       form.resetFields();
+      setPlacaBusq(''); setVehiculoInfo(null);
       navigate(`/taller/ordenes/${res.id}`);
     },
     onError: (err: any) => message.error(err?.response?.data?.message ?? 'Error al crear orden'),
   });
+
+  const buscarVehiculo = async (placa: string) => {
+    const p = placa.trim().toUpperCase();
+    if (!p) return;
+    setBuscandoV(true);
+    try {
+      const v = await tallerApi.buscarPlaca(p);
+      setVehiculoInfo(v);
+      form.setFieldValue('vehiculoId', v.id);
+    } catch {
+      setVehiculoInfo(null);
+      form.setFieldValue('vehiculoId', undefined);
+      message.warning(`No se encontró vehículo con placa "${p}"`);
+    } finally { setBuscandoV(false); }
+  };
 
   const allOrdenes = data?.data ?? [];
 
@@ -253,7 +272,7 @@ export default function OrdenesPage() {
       <Modal
         title="Nueva Orden de Servicio"
         open={modalOpen}
-        onCancel={() => { setModalOpen(false); form.resetFields(); }}
+        onCancel={() => { setModalOpen(false); form.resetFields(); setPlacaBusq(''); setVehiculoInfo(null); }}
         onOk={() => form.validateFields().then(vals => crearOrden.mutate({
           ...vals,
           fechaEstimadaEntrega: vals.fechaEstimadaEntrega ? dayjs(vals.fechaEstimadaEntrega).format('YYYY-MM-DD') : undefined,
@@ -263,11 +282,29 @@ export default function OrdenesPage() {
         destroyOnClose
       >
         <Form form={form} layout="vertical">
-          <Form.Item name="placa" label="Placa del vehículo">
-            <Input placeholder="Ej: A234567 — búsqueda automática" style={{ textTransform: 'uppercase' }} />
-          </Form.Item>
-          <Form.Item name="vehiculoId" label="ID Vehículo" rules={[{ required: true, message: 'Requerido' }]}>
-            <Input type="number" placeholder="Ingrese ID del vehículo" />
+          {/* Búsqueda por placa — fuera del form, auto-rellena vehiculoId */}
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>Placa del vehículo</label>
+            <Input.Search
+              value={placaBusq}
+              onChange={e => { setPlacaBusq(e.target.value.toUpperCase()); setVehiculoInfo(null); form.setFieldValue('vehiculoId', undefined); }}
+              onSearch={buscarVehiculo}
+              onPressEnter={() => buscarVehiculo(placaBusq)}
+              placeholder="Ej: A25311 — Enter para buscar"
+              loading={buscandoV}
+              enterButton="Buscar"
+              style={{ textTransform: 'uppercase' }}
+            />
+            {vehiculoInfo && (
+              <div style={{ marginTop: 6, padding: '6px 10px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 6, fontSize: 12 }}>
+                ✅ <strong>{vehiculoInfo.marca} {vehiculoInfo.modelo} {vehiculoInfo.anio ?? ''}</strong>
+                {vehiculoInfo.color ? ` — ${vehiculoInfo.color}` : ''}
+                {vehiculoInfo.propietarioNombre ? ` | ${vehiculoInfo.propietarioNombre}` : ''}
+              </div>
+            )}
+          </div>
+          <Form.Item name="vehiculoId" label="ID Vehículo" rules={[{ required: true, message: 'Busca el vehículo por placa primero' }]} style={{ display: 'none' }}>
+            <Input type="number" />
           </Form.Item>
           <Form.Item name="motivoIngreso" label="Motivo de ingreso" rules={[{ required: true, message: 'Requerido' }]}>
             <Input.TextArea rows={2} />
