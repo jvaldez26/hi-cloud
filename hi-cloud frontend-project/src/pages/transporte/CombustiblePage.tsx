@@ -7,7 +7,7 @@ import {
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import api from '../../api/client';
+import api, { extractList, extractData } from '../../api/client';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -23,12 +23,12 @@ type Chofer   = { id: number; nombre: string };
 async function fetchCombustible(page: number, vehiculoId?: number) {
   const params: Record<string, any> = { page, limit: 50 };
   if (vehiculoId) params.vehiculoId = vehiculoId;
-  const { data } = await api.get('/transporte/combustible', { params });
-  return data as { data: Registro[]; total: number; page: number; limit: number };
+  const r = await api.get('/transporte/combustible', { params });
+  return r.data?.data as { data: Registro[]; total: number; page: number; limit: number };
 }
-async function fetchStats()   { const { data } = await api.get('/transporte/combustible/stats'); return data; }
-async function fetchVehiculos(): Promise<Vehiculo[]> { const { data } = await api.get('/transporte/vehiculos'); return data; }
-async function fetchChoferes(): Promise<Chofer[]>    { const { data } = await api.get('/transporte/choferes');  return data; }
+async function fetchStats()   { return api.get('/transporte/combustible/stats').then(extractData); }
+async function fetchVehiculos(): Promise<Vehiculo[]> { return api.get('/transporte/vehiculos').then(extractList); }
+async function fetchChoferes(): Promise<Chofer[]>    { return api.get('/transporte/choferes').then(extractList); }
 
 const TIPO_COLOR: Record<string, string> = { gasolina: 'orange', diesel: 'blue', gas: 'green' };
 

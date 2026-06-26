@@ -6,7 +6,7 @@ import {
 import { PlusOutlined, EditOutlined, DeleteOutlined, TruckOutlined, WarningOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import api from '../../api/client';
+import api, { extractList } from '../../api/client';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -21,8 +21,8 @@ type Vehiculo = {
 
 type Chofer = { id: number; nombre: string };
 
-async function fetchVehiculos(): Promise<Vehiculo[]>  { const { data } = await api.get('/transporte/vehiculos'); return data; }
-async function fetchChoferes(): Promise<Chofer[]>      { const { data } = await api.get('/transporte/choferes'); return data; }
+async function fetchVehiculos(): Promise<Vehiculo[]>  { return api.get('/transporte/vehiculos').then(extractList); }
+async function fetchChoferes(): Promise<Chofer[]>      { return api.get('/transporte/choferes').then(extractList); }
 
 const ESTADO_COLOR: Record<string, string> = {
   operativo:       'green',

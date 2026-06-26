@@ -9,7 +9,7 @@ import {
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import api from '../../api/client';
+import api, { extractList } from '../../api/client';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -26,11 +26,11 @@ async function fetchMantenimientos(page: number, vehiculoId?: number, estado?: s
   const params: Record<string, any> = { page, limit: 50 };
   if (vehiculoId) params.vehiculoId = vehiculoId;
   if (estado)     params.estado     = estado;
-  const { data } = await api.get('/transporte/mantenimiento', { params });
-  return data as { data: Mant[]; total: number; page: number; limit: number };
+  const r = await api.get('/transporte/mantenimiento', { params });
+  return r.data?.data as { data: Mant[]; total: number; page: number; limit: number };
 }
-async function fetchProgramado() { const { data } = await api.get('/transporte/mantenimiento/programado'); return data as Mant[]; }
-async function fetchVehiculos(): Promise<Vehiculo[]> { const { data } = await api.get('/transporte/vehiculos'); return data; }
+async function fetchProgramado(): Promise<Mant[]> { return api.get('/transporte/mantenimiento/programado').then(extractList); }
+async function fetchVehiculos(): Promise<Vehiculo[]> { return api.get('/transporte/vehiculos').then(extractList); }
 
 const ESTADO_COLOR: Record<string, string> = {
   programado: 'blue', en_proceso: 'orange', completado: 'green', cancelado: 'red',

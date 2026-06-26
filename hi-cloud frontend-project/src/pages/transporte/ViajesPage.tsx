@@ -9,7 +9,7 @@ import {
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import api from '../../api/client';
+import api, { extractList } from '../../api/client';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -28,15 +28,13 @@ type Cliente  = { id: number; nombre: string; rfc?: string; razonSocial?: string
 async function fetchViajes(page: number, estado?: string) {
   const params: Record<string, any> = { page, limit: 50 };
   if (estado) params.estado = estado;
-  const { data } = await api.get('/transporte/viajes', { params });
-  return data as { data: Viaje[]; total: number; page: number; limit: number };
+  const r = await api.get('/transporte/viajes', { params });
+  return r.data?.data as { data: Viaje[]; total: number; page: number; limit: number };
 }
-async function fetchChoferes(): Promise<Chofer[]>   { const { data } = await api.get('/transporte/choferes'); return data; }
-async function fetchVehiculos(): Promise<Vehiculo[]> { const { data } = await api.get('/transporte/vehiculos'); return data; }
+async function fetchChoferes(): Promise<Chofer[]>   { return api.get('/transporte/choferes').then(extractList); }
+async function fetchVehiculos(): Promise<Vehiculo[]> { return api.get('/transporte/vehiculos').then(extractList); }
 async function fetchClientes(search: string): Promise<Cliente[]> {
-  const { data } = await api.get('/clientes', { params: { search, limit: 50 } });
-  const d = data?.data ?? data;
-  return Array.isArray(d) ? d : (d?.data ?? []);
+  return api.get('/clientes', { params: { search, limit: 50 } }).then(extractList);
 }
 
 const ESTADO_COLOR: Record<string, string> = {

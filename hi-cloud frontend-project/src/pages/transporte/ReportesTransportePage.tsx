@@ -26,16 +26,16 @@ const TIPO_COLOR: Record<string, string> = {
 };
 
 async function fetchReporteViajes(desde: string, hasta: string) {
-  const { data } = await api.get('/transporte/reportes/viajes', { params: { desde, hasta } });
-  return data;
+  const r = await api.get('/transporte/reportes/viajes', { params: { desde, hasta } });
+  return r.data?.data;
 }
 async function fetchReporteCombustible(desde: string, hasta: string) {
-  const { data } = await api.get('/transporte/reportes/combustible', { params: { desde, hasta } });
-  return data;
+  const r = await api.get('/transporte/reportes/combustible', { params: { desde, hasta } });
+  return r.data?.data;
 }
 async function fetchReporteMantenimiento(desde: string, hasta: string) {
-  const { data } = await api.get('/transporte/reportes/mantenimiento', { params: { desde, hasta } });
-  return data;
+  const r = await api.get('/transporte/reportes/mantenimiento', { params: { desde, hasta } });
+  return r.data?.data;
 }
 
 export default function ReportesTransportePage() {

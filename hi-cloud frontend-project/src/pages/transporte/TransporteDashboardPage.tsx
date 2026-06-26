@@ -1,13 +1,12 @@
 import { Row, Col, Card, Statistic, Table, Tag, Typography, Alert, Space } from 'antd';
 import { TruckOutlined, UserOutlined, CarOutlined, WarningOutlined, ToolOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
-import api from '../../api/client';
+import api, { extractData } from '../../api/client';
 
 const { Title } = Typography;
 
 async function fetchDashboard() {
-  const { data } = await api.get('/transporte/dashboard');
-  return data;
+  return api.get('/transporte/dashboard').then(extractData);
 }
 
 const ESTADO_COLORS: Record<string, string> = {
