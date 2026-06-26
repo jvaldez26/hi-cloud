@@ -10,6 +10,8 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import api, { extractList } from '../../api/client';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -39,6 +41,17 @@ const TIPO_COLOR: Record<string, string> = {
   preventivo: 'cyan', correctivo: 'orange', emergencia: 'red',
 };
 
+const COLS_DEF = [
+  { key: 'fecha',      label: 'Fecha'       },
+  { key: 'vehiculo',   label: 'Vehículo'    },
+  { key: 'tipo',       label: 'Tipo'        },
+  { key: 'desc',       label: 'Descripción' },
+  { key: 'costo',      label: 'Costo'       },
+  { key: 'proveedor',  label: 'Proveedor',   defaultVisible: false },
+  { key: 'proximo',    label: 'Próx. Mant.', defaultVisible: false },
+  { key: 'estado',     label: 'Estado'      },
+];
+
 export default function MantenimientoPage() {
   const qc = useQueryClient();
   const [open,       setOpen]       = useState(false);
@@ -47,6 +60,8 @@ export default function MantenimientoPage() {
   const [filtroVeh,  setFiltroVeh]  = useState<number | undefined>(undefined);
   const [filtroEst,  setFiltroEst]  = useState<string | undefined>(undefined);
   const [form]                      = Form.useForm();
+
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('tr-mantenimiento', COLS_DEF);
 
   const { data: result,      isLoading } = useQuery({ queryKey: ['tr-mantenimiento', page, filtroVeh, filtroEst], queryFn: () => fetchMantenimientos(page, filtroVeh, filtroEst) });
   const { data: programados = []       } = useQuery({ queryKey: ['tr-mantenimiento-prog'], queryFn: fetchProgramado });
@@ -167,11 +182,12 @@ export default function MantenimientoPage() {
           ))}
         </Select>
         <Button type="primary" icon={<PlusOutlined />} onClick={openNew}>Nuevo Mantenimiento</Button>
+        <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
       </Space>
 
       <Table
         dataSource={result?.data ?? []}
-        columns={columns}
+        columns={filterColumns(columns)}
         rowKey="id"
         loading={isLoading}
         size="small"

@@ -7,6 +7,8 @@ import { PlusOutlined, EditOutlined, DeleteOutlined, TruckOutlined, WarningOutli
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import api, { extractList } from '../../api/client';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -47,11 +49,22 @@ function VencimientoTag({ label, date }: { label: string; date?: string }) {
   );
 }
 
+const COLS_DEF = [
+  { key: 'placa',      label: 'Placa'     },
+  { key: 'vehiculo',   label: 'Vehículo'  },
+  { key: 'tipo',       label: 'Tipo',      defaultVisible: false },
+  { key: 'estado',     label: 'Estado'    },
+  { key: 'chofer',     label: 'Chofer'    },
+  { key: 'capacidad',  label: 'Capacidad', defaultVisible: false },
+];
+
 export default function VehiculosTransportePage() {
   const qc = useQueryClient();
   const [open,    setOpen]    = useState(false);
   const [editing, setEditing] = useState<Vehiculo | null>(null);
   const [form]                = Form.useForm();
+
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('tr-vehiculos', COLS_DEF);
 
   const { data: vehiculos = [], isLoading } = useQuery({ queryKey: ['tr-vehiculos'], queryFn: fetchVehiculos });
   const { data: choferes  = []           } = useQuery({ queryKey: ['tr-choferes'],  queryFn: fetchChoferes  });
@@ -122,14 +135,15 @@ export default function VehiculosTransportePage() {
 
   return (
     <div style={{ padding: 24 }}>
-      <Space style={{ marginBottom: 16 }} align="center">
+      <Space style={{ marginBottom: 16 }} align="center" wrap>
         <Title level={3} style={{ margin: 0 }}><TruckOutlined /> Vehículos</Title>
         <Button type="primary" icon={<PlusOutlined />} onClick={openNew}>Nuevo Vehículo</Button>
+        <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
       </Space>
 
       <Table
         dataSource={vehiculos}
-        columns={columns}
+        columns={filterColumns(columns)}
         rowKey="id"
         loading={isLoading}
         size="small"

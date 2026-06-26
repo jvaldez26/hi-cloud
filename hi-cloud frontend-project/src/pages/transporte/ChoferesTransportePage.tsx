@@ -7,6 +7,8 @@ import { PlusOutlined, EditOutlined, DeleteOutlined, UserOutlined } from '@ant-d
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import api, { extractList } from '../../api/client';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -21,11 +23,22 @@ async function fetchChoferes(): Promise<Chofer[]> { return api.get('/transporte/
 
 const ESTADO_COLOR: Record<string, string> = { activo: 'green', inactivo: 'default', suspendido: 'red' };
 
+const COLS_DEF = [
+  { key: 'nombre',   label: 'Nombre'   },
+  { key: 'cedula',   label: 'Cédula',   defaultVisible: false },
+  { key: 'telefono', label: 'Teléfono' },
+  { key: 'lic',      label: 'Licencia' },
+  { key: 'estado',   label: 'Estado'   },
+  { key: 'viajes',   label: 'Viajes',   defaultVisible: false },
+];
+
 export default function ChoferesTransportePage() {
   const qc = useQueryClient();
   const [open,    setOpen]    = useState(false);
   const [editing, setEditing] = useState<Chofer | null>(null);
   const [form]                = Form.useForm();
+
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('tr-choferes', COLS_DEF);
 
   const { data: choferes = [], isLoading } = useQuery({ queryKey: ['tr-choferes'], queryFn: fetchChoferes });
 
@@ -95,12 +108,13 @@ export default function ChoferesTransportePage() {
 
   return (
     <div style={{ padding: 24 }}>
-      <Space style={{ marginBottom: 16 }} align="center">
+      <Space style={{ marginBottom: 16 }} align="center" wrap>
         <Title level={3} style={{ margin: 0 }}><UserOutlined /> Choferes</Title>
         <Button type="primary" icon={<PlusOutlined />} onClick={openNew}>Nuevo Chofer</Button>
+        <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
       </Space>
 
-      <Table dataSource={choferes} columns={columns} rowKey="id" loading={isLoading} size="small" pagination={{ pageSize: 20 }} />
+      <Table dataSource={choferes} columns={filterColumns(columns)} rowKey="id" loading={isLoading} size="small" pagination={{ pageSize: 20 }} />
 
       <Modal
         open={open}

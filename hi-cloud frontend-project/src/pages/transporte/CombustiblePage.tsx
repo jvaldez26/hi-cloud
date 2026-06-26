@@ -8,6 +8,8 @@ import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import api, { extractList, extractData } from '../../api/client';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -32,12 +34,26 @@ async function fetchChoferes(): Promise<Chofer[]>    { return api.get('/transpor
 
 const TIPO_COLOR: Record<string, string> = { gasolina: 'orange', diesel: 'blue', gas: 'green' };
 
+const COLS_DEF = [
+  { key: 'fecha',     label: 'Fecha'    },
+  { key: 'vehiculo',  label: 'Vehículo' },
+  { key: 'chofer',    label: 'Chofer',   defaultVisible: false },
+  { key: 'tipo',      label: 'Tipo'     },
+  { key: 'galones',   label: 'Galones',  defaultVisible: false },
+  { key: 'precio',    label: 'P/Galón',  defaultVisible: false },
+  { key: 'total',     label: 'Total'    },
+  { key: 'odometro',  label: 'Odómetro', defaultVisible: false },
+  { key: 'estacion',  label: 'Estación', defaultVisible: false },
+];
+
 export default function CombustiblePage() {
   const qc = useQueryClient();
   const [open,       setOpen]       = useState(false);
   const [page,       setPage]       = useState(1);
   const [filtroVeh,  setFiltroVeh]  = useState<number | undefined>(undefined);
   const [form]                      = Form.useForm();
+
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('tr-combustible', COLS_DEF);
 
   const { data: result, isLoading } = useQuery({ queryKey: ['tr-combustible', page, filtroVeh], queryFn: () => fetchCombustible(page, filtroVeh) });
   const { data: stats              } = useQuery({ queryKey: ['tr-combustible-stats'], queryFn: fetchStats });
@@ -129,11 +145,12 @@ export default function CombustiblePage() {
         <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setOpen(true); }}>
           Registrar Carga
         </Button>
+        <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
       </Space>
 
       <Table
         dataSource={result?.data ?? []}
-        columns={columns}
+        columns={filterColumns(columns)}
         rowKey="id"
         loading={isLoading}
         size="small"

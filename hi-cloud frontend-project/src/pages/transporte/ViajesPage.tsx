@@ -10,6 +10,8 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import api, { extractList } from '../../api/client';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -45,6 +47,18 @@ const ESTADO_COLOR: Record<string, string> = {
   facturado:   'purple',
 };
 
+const COLS_DEF = [
+  { key: 'numero',   label: '#'        },
+  { key: 'fecha',    label: 'Fecha'    },
+  { key: 'origen',   label: 'Origen'   },
+  { key: 'destino',  label: 'Destino'  },
+  { key: 'cliente',  label: 'Cliente'  },
+  { key: 'chofer',   label: 'Chofer',   defaultVisible: false },
+  { key: 'vehiculo', label: 'Vehículo', defaultVisible: false },
+  { key: 'tarifa',   label: 'Tarifa'   },
+  { key: 'estado',   label: 'Estado'   },
+];
+
 export default function ViajesPage() {
   const qc = useQueryClient();
   const [open,          setOpen]          = useState(false);
@@ -53,6 +67,8 @@ export default function ViajesPage() {
   const [page,          setPage]          = useState(1);
   const [clienteSearch, setClienteSearch] = useState('');
   const [form]                            = Form.useForm();
+
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('tr-viajes', COLS_DEF);
 
   const { data: result, isLoading } = useQuery({
     queryKey: ['tr-viajes', page, estadoFilt],
@@ -172,11 +188,12 @@ export default function ViajesPage() {
           ))}
         </Select>
         <Button type="primary" icon={<PlusOutlined />} onClick={openNew}>Nuevo Viaje</Button>
+        <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
       </Space>
 
       <Table
         dataSource={result?.data ?? []}
-        columns={columns}
+        columns={filterColumns(columns)}
         rowKey="id"
         loading={isLoading}
         size="small"
