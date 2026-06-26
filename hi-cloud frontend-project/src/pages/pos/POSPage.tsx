@@ -1217,8 +1217,14 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar 
 }) {
   const C = useC();
   const [monto,       setMonto]      = useState(0);
-  const [vendedorId,  setVendedorId] = useState<number | undefined>();
-  const [sucursalSel, setSucursalSel] = useState<number | undefined>();
+  const [vendedorId,  setVendedorId] = useState<number | undefined>(() => {
+    const v = localStorage.getItem('pos_last_vendedor_id');
+    return v ? Number(v) : undefined;
+  });
+  const [sucursalSel, setSucursalSel] = useState<number | undefined>(() => {
+    const s = localStorage.getItem('pos_last_sucursal_id');
+    return s ? Number(s) : undefined;
+  });
   const [t,           setT]          = useState(new Date());
   const [abriendo,    setAbriendo]   = useState(false);
 
@@ -1231,6 +1237,20 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar 
     const id = setInterval(() => setT(new Date()), 1000);
     return () => clearInterval(id);
   }, []);
+
+  // Validar que el vendedor/sucursal guardados sigan existiendo en las listas
+  useEffect(() => {
+    if (vendedores.length > 0 && vendedorId && !vendedores.find((v: any) => v.id === vendedorId)) {
+      setVendedorId(undefined);
+      localStorage.removeItem('pos_last_vendedor_id');
+    }
+  }, [vendedores, vendedorId]);
+  useEffect(() => {
+    if (sucursales.length > 0 && sucursalSel && !sucursales.find((s: any) => s.id === sucursalSel)) {
+      setSucursalSel(undefined);
+      localStorage.removeItem('pos_last_sucursal_id');
+    }
+  }, [sucursales, sucursalSel]);
 
   // Consultar caja del día para este vendedor — se re-ejecuta al cambiar vendedorId
   useEffect(() => {
@@ -1266,6 +1286,8 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar 
   const handleAbrir = async () => {
     if (bloqueado || cargando) return;
     setAbriendo(true);
+    if (vendedorId) localStorage.setItem('pos_last_vendedor_id', String(vendedorId));
+    if (sucursalSel) localStorage.setItem('pos_last_sucursal_id', String(sucursalSel));
     const vendedorSeleccionado = vendedores.find((v: any) => v.id === vendedorId);
     const nombreVendedor       = vendedorSeleccionado?.nombre ?? undefined;
     try {
