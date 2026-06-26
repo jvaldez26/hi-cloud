@@ -248,7 +248,9 @@ export class TransporteService {
         Number(data.tarifa ?? 0), data.estado ?? 'programado', data.notas ?? null,
       ],
     );
-    return this.viajeOr404(empresaId, row.id);
+    const newId: number = row?.id;
+    if (!newId) throw new NotFoundException(`Error al obtener el viaje creado`);
+    return this.viajeOr404(empresaId, newId);
   }
 
   async updateViaje(empresaId: number, id: number, data: any) {
@@ -274,7 +276,8 @@ export class TransporteService {
       `UPDATE tr_viajes SET ${sets.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *`,
       vals,
     );
-    return this.viajeOr404(empresaId, row.id);
+    if (!row) throw new NotFoundException(`Viaje #${id} no encontrado`);
+    return this.viajeOr404(empresaId, id);
   }
 
   async facturarViaje(empresaId: number, id: number, usuario: User) {
