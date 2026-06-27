@@ -54,6 +54,10 @@ export class Producto extends TenantBaseEntity {
   @Column({ type: 'text', nullable: true })
   imagenUrl?: string;
 
+  // Costo de compra / adquisición (manual)
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  costo?: number;
+
   // Costo promedio ponderado (AVCO) — se actualiza al recibir mercancía
   @Column({ type: 'decimal', precision: 14, scale: 4, default: 0 })
   costoPromedio!: number;

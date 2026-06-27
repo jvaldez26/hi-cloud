@@ -76,6 +76,7 @@ export interface Producto {
   precio:          number;
   precio2?:        number | null;
   precio3?:        number | null;
+  costo?:          number | null;
   porcentajeIva:   number;
   stock:           number;
   stockMinimo:     number;

@@ -5,6 +5,7 @@ export interface ProductoPayload {
   tipo?: string;   // 'producto' | 'servicio'
   codigo: string; nombre: string; precio: number;
   precio2?: number | null; precio3?: number | null;
+  costo?: number | null;
   unidadMedida?: string; porcentajeIva?: number;
   stock?: number; stockMinimo?: number; categoria?: string;
   descripcion?: string; imagenUrl?: string;

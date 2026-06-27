@@ -420,6 +420,7 @@ function ProductosCatalogo() {
   const [precioInput,      setPrecioInput]       = useState(0);
   const [precio2Input,     setPrecio2Input]      = useState<number | null>(null);
   const [precio3Input,     setPrecio3Input]      = useState<number | null>(null);
+  const [costoInput,       setCostoInput]        = useState<number | null>(null);
   // Nonce para cancelar checks async de duplicados que quedaron pendientes
   // al cerrar/abrir el modal (evita race condition que muestra error de producto anterior)
   const dupCheckNonce = useRef(0);
@@ -545,7 +546,7 @@ function ProductosCatalogo() {
   const openCreate = () => {
     dupCheckNonce.current++;  // invalida cualquier check async pendiente
     setEditing(null); form.resetFields(); form.setFieldValue('codigo', ''); setPreview(''); setFieldErrors({});
-    setPrecioInput(0); setPrecioConItbis(false); setPrecio2Input(null); setPrecio3Input(null);
+    setPrecioInput(0); setPrecioConItbis(false); setPrecio2Input(null); setPrecio3Input(null); setCostoInput(null);
     // Pre-seleccionar sucursal del JWT si el usuario tiene asignada una
     const sid = sucursalJwt ? Number(sucursalJwt) : undefined;
     if (sid) {
@@ -572,6 +573,7 @@ function ProductosCatalogo() {
     setPrecioInput(Number(p.precio) || 0); setPrecioConItbis(false);
     setPrecio2Input(p.precio2 != null ? Number(p.precio2) : null);
     setPrecio3Input(p.precio3 != null ? Number(p.precio3) : null);
+    setCostoInput(p.costo != null ? Number(p.costo) : null);
     setSucursalSeleccionada(undefined);
     if (almacenes.length === 1 && !(p as any).almacenId) form.setFieldValue('almacenId', almacenes[0].id);
     setOpen(true);
@@ -579,7 +581,7 @@ function ProductosCatalogo() {
   const closeModal = () => {
     dupCheckNonce.current++;  // invalida cualquier check async pendiente
     setOpen(false); setEditing(null); form.resetFields(); setPreview(''); setFieldErrors({});
-    setPrecioInput(0); setPrecioConItbis(false); setPrecio2Input(null); setPrecio3Input(null);
+    setPrecioInput(0); setPrecioConItbis(false); setPrecio2Input(null); setPrecio3Input(null); setCostoInput(null);
     setSucursalSeleccionada(undefined);
   };
   const handleSubmit = (values: ProductoPayload) => {
@@ -598,6 +600,7 @@ function ProductosCatalogo() {
       precio: pBase,
       precio2: precio2Input != null && precio2Input > 0 ? precio2Input : null,
       precio3: precio3Input != null && precio3Input > 0 ? precio3Input : null,
+      costo: costoInput != null && costoInput > 0 ? costoInput : null,
     };
     // código vacío al editar = null (señal para auto-generar); al crear = omitir (auto-genera en el backend)
     if (!payload.codigo || payload.codigo === 'undefined' || payload.codigo === 'null') {
@@ -924,6 +927,23 @@ function ProductosCatalogo() {
                   style={{ width: '100%' }}
                   value={precio3Input ?? undefined}
                   onChange={v => setPrecio3Input(v != null ? Number(v) : null)}
+                  formatter={v => v ? `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''}
+                  parser={v => (v ?? '').replace(/,/g, '') as any}
+                  min={0}
+                  precision={2}
+                  placeholder="Opcional"
+                  prefix="RD$"
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={8}>
+              <Form.Item
+                label={<span>Costo <span style={{ fontWeight: 400, color: '#9CA3AF', fontSize: 11 }}>(Precio de compra — opcional)</span></span>}
+              >
+                <InputNumber
+                  style={{ width: '100%' }}
+                  value={costoInput ?? undefined}
+                  onChange={v => setCostoInput(v != null ? Number(v) : null)}
                   formatter={v => v ? `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''}
                   parser={v => (v ?? '').replace(/,/g, '') as any}
                   min={0}

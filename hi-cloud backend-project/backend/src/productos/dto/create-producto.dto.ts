@@ -59,6 +59,11 @@ export class CreateProductoDto {
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
+  costo?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
   @Max(100)
   porcentajeIva?: number;
 
