@@ -2,15 +2,17 @@ import React, { useState } from 'react';
 import {
   Table, Button, Space, Tag, Modal, Form, Input, Select,
   DatePicker, Typography, message, InputNumber, Checkbox,
-  Spin, Divider, Alert,
+  Spin, Divider, Alert, Drawer, Descriptions, List,
 } from 'antd';
 import {
   PlusOutlined, EditOutlined, FileTextOutlined,
   CheckCircleOutlined, CarOutlined, ShoppingCartOutlined, MinusCircleOutlined,
+  UserOutlined, CarryOutOutlined, TeamOutlined, DollarOutlined,
+  FireOutlined, UnorderedListOutlined, EyeOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import api, { extractList } from '../../api/client';
+import api, { extractList, extractData } from '../../api/client';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 
@@ -22,7 +24,7 @@ type GastoItem = { id?: number; descripcion: string; monto: number };
 type Viaje = {
   id: number; numero: string; fecha: string; origen: string; destino: string;
   clienteId?: number; clienteNombre?: string; choferNombre?: string;
-  vehiculoPlaca?: string; vehiculoDescripcion?: string;
+  vehiculoPlaca?: string; vehiculoMarca?: string; vehiculoModelo?: string; vehiculoDescripcion?: string;
   tarifa: string | number; estado: string; facturaId?: number; notas?: string;
   gastos?: GastoItem[];
 };
@@ -31,7 +33,10 @@ type Chofer   = { id: number; nombre: string };
 type Vehiculo = { id: number; placa: string; marca: string; modelo: string };
 type Cliente  = { id: number; nombre: string; rfc?: string; razonSocial?: string };
 
-type CombItem = { id: number; tipoCombustible: string; galones?: string; total: string; estacion?: string };
+type CombItem = {
+  id: number; tipoCombustible: string; galones?: string; precioGalon?: string;
+  total: string; estacion?: string; odometro?: string; notas?: string; fecha?: string;
+};
 
 type ConfirmState = {
   open:         boolean;
@@ -70,6 +75,7 @@ const ESTADO_COLOR: Record<string, string> = {
   programado: 'blue', en_curso: 'orange', completado: 'green',
   cancelado: 'red',   facturado: 'purple',
 };
+const TIPO_COMB_COLOR: Record<string, string> = { gasolina: 'orange', diesel: 'blue', gas: 'green' };
 
 const COLS_DEF = [
   { key: 'numero',   label: '#'        },
@@ -96,6 +102,7 @@ export default function ViajesPage() {
   const [clienteSearch, setClienteSearch] = useState('');
   const [selectedKeys,  setSelectedKeys]  = useState<number[]>([]);
   const [confirm,       setConfirm]       = useState<ConfirmState>(CONFIRM_CLOSED);
+  const [viewId,        setViewId]        = useState<number | null>(null);
   const [form]                            = Form.useForm();
 
   const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('tr-viajes', COLS_DEF);
@@ -112,6 +119,19 @@ export default function ViajesPage() {
     queryFn:  () => fetchClientes(clienteSearch),
   });
 
+  // Detalle del viaje para el Drawer
+  const { data: viajeDetail, isLoading: loadingDetail } = useQuery<Viaje>({
+    queryKey: ['tr-viaje-detail', viewId],
+    queryFn:  () => api.get(`/transporte/viajes/${viewId}`).then(extractData),
+    enabled:  viewId !== null,
+  });
+  const { data: detailCombs = [] } = useQuery<CombItem[]>({
+    queryKey: ['tr-viaje-combs', viewId],
+    queryFn:  () => api.get('/transporte/combustible', { params: { viajeId: viewId, limit: 50 } })
+                      .then(r => r.data?.data?.data ?? []),
+    enabled:  viewId !== null,
+  });
+
   const save = useMutation({
     mutationFn: (vals: any) => editing
       ? api.put(`/transporte/viajes/${editing.id}`, vals)
@@ -120,6 +140,9 @@ export default function ViajesPage() {
       message.success('Guardado');
       qc.invalidateQueries({ queryKey: ['tr-viajes'] });
       qc.invalidateQueries({ queryKey: ['transporte-dashboard'] });
+      if (editing) {
+        qc.invalidateQueries({ queryKey: ['tr-viaje-detail', editing.id] });
+      }
       closeModal();
     },
     onError: (e: any) => message.error(e.response?.data?.message ?? 'Error al guardar'),
@@ -128,9 +151,10 @@ export default function ViajesPage() {
   const cambiarEstado = useMutation({
     mutationFn: ({ id, estado }: { id: number; estado: string }) =>
       api.put(`/transporte/viajes/${id}`, { estado }),
-    onSuccess: () => {
+    onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ['tr-viajes'] });
       qc.invalidateQueries({ queryKey: ['transporte-dashboard'] });
+      qc.invalidateQueries({ queryKey: ['tr-viaje-detail', vars.id] });
     },
     onError: (e: any) => message.error(e.response?.data?.message ?? 'Error'),
   });
@@ -142,13 +166,14 @@ export default function ViajesPage() {
       message.success(`Factura generada${num ? ` — #${num}` : ''}`);
       qc.invalidateQueries({ queryKey: ['tr-viajes'] });
       qc.invalidateQueries({ queryKey: ['transporte-dashboard'] });
+      if (viewId) qc.invalidateQueries({ queryKey: ['tr-viaje-detail', viewId] });
       setConfirm(CONFIRM_CLOSED);
       setSelectedKeys([]);
     },
     onError: (e: any) => message.error(e.response?.data?.message ?? 'Error al facturar'),
   });
 
-  function openNew()  { setEditing(null);  form.resetFields(); setOpen(true); }
+  function openNew()  { setEditing(null); form.resetFields(); setOpen(true); }
   function openEdit(v: Viaje) {
     setEditing(v);
     form.setFieldsValue({ ...v, tarifa: Number(v.tarifa), fecha: v.fecha ? dayjs(v.fecha) : undefined, gastos: v.gastos ?? [] });
@@ -216,8 +241,21 @@ export default function ViajesPage() {
     s + (v.gastos ?? []).reduce((gs, g) => gs + Number(g.monto), 0), 0);
   const total = subtotalViajes + subtotalComb + subtotalGastos;
 
+  // Viaje visible en el Drawer (prefiere datos frescos del query, fallback a la lista)
+  const drawerViaje: Viaje | undefined = viajeDetail ?? result?.data?.find(v => v.id === viewId);
+
   const columns = [
-    { title: '#',      dataIndex: 'numero',   key: 'numero',   width: 90 },
+    {
+      title: '#', dataIndex: 'numero', key: 'numero', width: 90,
+      render: (v: string, r: Viaje) => (
+        <Button
+          type="link" size="small" style={{ padding: 0, fontWeight: 600 }}
+          onClick={e => { e.stopPropagation(); setViewId(r.id); }}
+        >
+          {v}
+        </Button>
+      ),
+    },
     { title: 'Fecha',  dataIndex: 'fecha',    key: 'fecha',    width: 110, render: (v: string) => v?.substring(0,10) },
     { title: 'Origen', dataIndex: 'origen',   key: 'origen'   },
     { title: 'Destino', dataIndex: 'destino', key: 'destino'  },
@@ -233,9 +271,10 @@ export default function ViajesPage() {
       render: (v: string) => <Tag color={ESTADO_COLOR[v] ?? 'default'}>{v.replace('_',' ').toUpperCase()}</Tag>,
     },
     {
-      title: '', key: 'actions', width: 180,
+      title: '', key: 'actions', width: 170,
       render: (_: any, r: Viaje) => (
-        <Space size={4}>
+        <Space size={4} onClick={e => e.stopPropagation()}>
+          <Button size="small" icon={<EyeOutlined />} onClick={() => setViewId(r.id)} />
           {r.estado === 'programado' && (
             <Button size="small" icon={<CarOutlined />} onClick={() => cambiarEstado.mutate({ id: r.id, estado: 'en_curso' })}>
               Iniciar
@@ -268,6 +307,13 @@ export default function ViajesPage() {
   const selectedTotal = (result?.data ?? [])
     .filter(v => selectedKeys.includes(v.id))
     .reduce((s, v) => s + Number(v.tarifa), 0);
+
+  // Totales del viaje en el drawer
+  const drawerGastos   = drawerViaje?.gastos ?? [];
+  const drawerSubViaje = Number(drawerViaje?.tarifa ?? 0);
+  const drawerSubComb  = detailCombs.reduce((s, c) => s + Number(c.total), 0);
+  const drawerSubGasto = drawerGastos.reduce((s, g) => s + Number(g.monto), 0);
+  const drawerTotal    = drawerSubViaje + drawerSubComb + drawerSubGasto;
 
   return (
     <div style={{ padding: 24 }}>
@@ -312,6 +358,7 @@ export default function ViajesPage() {
         rowSelection={rowSelection}
         loading={isLoading}
         size="small"
+        onRow={r => ({ onClick: () => setViewId(r.id), style: { cursor: 'pointer' } })}
         pagination={{
           current:  page,
           pageSize: result?.limit ?? 50,
@@ -320,6 +367,176 @@ export default function ViajesPage() {
           showTotal: (t) => `${t} viajes`,
         }}
       />
+
+      {/* ── Drawer: visor de viaje ──────────────────────────────────────────── */}
+      <Drawer
+        open={viewId !== null}
+        onClose={() => setViewId(null)}
+        width={420}
+        title={
+          drawerViaje ? (
+            <Space>
+              <Text strong style={{ fontSize: 16 }}>{drawerViaje.numero}</Text>
+              <Tag color={ESTADO_COLOR[drawerViaje.estado] ?? 'default'} style={{ margin: 0 }}>
+                {drawerViaje.estado.replace('_', ' ').toUpperCase()}
+              </Tag>
+            </Space>
+          ) : 'Detalle del Viaje'
+        }
+        extra={
+          drawerViaje && !['facturado','cancelado'].includes(drawerViaje.estado) && (
+            <Button
+              size="small" icon={<EditOutlined />}
+              onClick={() => { openEdit(drawerViaje); }}
+            >
+              Editar
+            </Button>
+          )
+        }
+        styles={{ body: { padding: '16px 20px' } }}
+      >
+        {(loadingDetail && !drawerViaje) ? (
+          <div style={{ textAlign: 'center', paddingTop: 60 }}><Spin /></div>
+        ) : drawerViaje ? (
+          <>
+            {/* Ruta destacada */}
+            <div style={{ background: '#f5f5f5', borderRadius: 8, padding: '14px 16px', marginBottom: 16, textAlign: 'center' }}>
+              <Text type="secondary" style={{ fontSize: 12 }}>{drawerViaje.fecha?.substring(0,10)}</Text>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 6 }}>
+                <div style={{ textAlign: 'right' }}>
+                  <Text strong style={{ fontSize: 15 }}>{drawerViaje.origen}</Text>
+                </div>
+                <div style={{ color: '#999', fontSize: 18 }}>→</div>
+                <div style={{ textAlign: 'left' }}>
+                  <Text strong style={{ fontSize: 15 }}>{drawerViaje.destino}</Text>
+                </div>
+              </div>
+            </div>
+
+            {/* Datos principales */}
+            <Descriptions column={1} size="small" bordered style={{ marginBottom: 16 }}>
+              <Descriptions.Item label={<Space size={4}><UserOutlined />Cliente</Space>}>
+                {drawerViaje.clienteNombre ?? <Text type="secondary">—</Text>}
+              </Descriptions.Item>
+              <Descriptions.Item label={<Space size={4}><TeamOutlined />Chofer</Space>}>
+                {drawerViaje.choferNombre ?? <Text type="secondary">—</Text>}
+              </Descriptions.Item>
+              <Descriptions.Item label={<Space size={4}><CarOutlined />Vehículo</Space>}>
+                {drawerViaje.vehiculoPlaca
+                  ? `${drawerViaje.vehiculoPlaca} · ${drawerViaje.vehiculoMarca ?? ''} ${drawerViaje.vehiculoModelo ?? ''}`.trim()
+                  : <Text type="secondary">—</Text>}
+              </Descriptions.Item>
+              <Descriptions.Item label={<Space size={4}><DollarOutlined />Tarifa</Space>}>
+                <Text strong style={{ color: '#16a34a' }}>{fmt(drawerViaje.tarifa)}</Text>
+              </Descriptions.Item>
+              {drawerViaje.notas && (
+                <Descriptions.Item label="Notas">
+                  <Text type="secondary" style={{ fontSize: 12 }}>{drawerViaje.notas}</Text>
+                </Descriptions.Item>
+              )}
+              {drawerViaje.facturaId && (
+                <Descriptions.Item label={<Space size={4}><FileTextOutlined />Factura</Space>}>
+                  <Tag color="purple">ID #{drawerViaje.facturaId}</Tag>
+                </Descriptions.Item>
+              )}
+            </Descriptions>
+
+            {/* Combustible */}
+            {detailCombs.length > 0 && (
+              <>
+                <Divider orientation="left" style={{ margin: '12px 0 8px', fontSize: 13 }}>
+                  <Space size={4}><FireOutlined style={{ color: '#f97316' }} />Combustible</Space>
+                </Divider>
+                <List
+                  size="small"
+                  dataSource={detailCombs}
+                  renderItem={c => (
+                    <List.Item style={{ padding: '6px 0' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
+                        <Tag color={TIPO_COMB_COLOR[c.tipoCombustible] ?? 'default'} style={{ margin: 0, fontSize: 11 }}>
+                          {c.tipoCombustible.toUpperCase()}
+                        </Tag>
+                        <div style={{ flex: 1, fontSize: 12 }}>
+                          {c.galones ? <span>{Number(c.galones).toFixed(3)} gal</span> : null}
+                          {c.precioGalon ? <Text type="secondary"> · {fmt(c.precioGalon)}/gal</Text> : null}
+                          {c.estacion ? <Text type="secondary"> · {c.estacion}</Text> : null}
+                        </div>
+                        <Text strong style={{ whiteSpace: 'nowrap', fontSize: 13 }}>{fmt(c.total)}</Text>
+                      </div>
+                    </List.Item>
+                  )}
+                />
+              </>
+            )}
+
+            {/* Otros gastos */}
+            {drawerGastos.length > 0 && (
+              <>
+                <Divider orientation="left" style={{ margin: '12px 0 8px', fontSize: 13 }}>
+                  <Space size={4}><UnorderedListOutlined style={{ color: '#6366f1' }} />Otros Gastos</Space>
+                </Divider>
+                <List
+                  size="small"
+                  dataSource={drawerGastos}
+                  renderItem={(g, i) => (
+                    <List.Item key={i} style={{ padding: '6px 0' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 8 }}>
+                        <Tag color="geekblue" style={{ margin: 0, fontSize: 11 }}>GASTO</Tag>
+                        <Text style={{ flex: 1, fontSize: 12 }}>{g.descripcion}</Text>
+                        <Text strong style={{ whiteSpace: 'nowrap', fontSize: 13 }}>{fmt(g.monto)}</Text>
+                      </div>
+                    </List.Item>
+                  )}
+                />
+              </>
+            )}
+
+            {/* Resumen total */}
+            {(detailCombs.length > 0 || drawerGastos.length > 0) && (
+              <>
+                <Divider style={{ margin: '12px 0 8px' }} />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'flex-end' }}>
+                  <div><Text type="secondary" style={{ fontSize: 12 }}>Servicio:&nbsp;</Text><Text style={{ fontSize: 12 }}>{fmt(drawerSubViaje)}</Text></div>
+                  {drawerSubComb > 0 && <div><Text type="secondary" style={{ fontSize: 12 }}>Combustible:&nbsp;</Text><Text style={{ fontSize: 12 }}>{fmt(drawerSubComb)}</Text></div>}
+                  {drawerSubGasto > 0 && <div><Text type="secondary" style={{ fontSize: 12 }}>Gastos:&nbsp;</Text><Text style={{ fontSize: 12 }}>{fmt(drawerSubGasto)}</Text></div>}
+                  <div style={{ marginTop: 4 }}>
+                    <Text strong>Total:&nbsp;</Text>
+                    <Text strong style={{ fontSize: 16, color: '#16a34a' }}>{fmt(drawerTotal)}</Text>
+                  </div>
+                  <Text type="secondary" style={{ fontSize: 11 }}>Exento de ITBIS</Text>
+                </div>
+              </>
+            )}
+
+            {/* Acciones */}
+            {!['facturado','cancelado'].includes(drawerViaje.estado) && (
+              <>
+                <Divider style={{ margin: '16px 0 12px' }} />
+                <Space wrap>
+                  {drawerViaje.estado === 'programado' && (
+                    <Button icon={<CarOutlined />} onClick={() => cambiarEstado.mutate({ id: drawerViaje.id, estado: 'en_curso' })}>
+                      Iniciar viaje
+                    </Button>
+                  )}
+                  {drawerViaje.estado === 'en_curso' && (
+                    <Button type="primary" ghost icon={<CheckCircleOutlined />} onClick={() => cambiarEstado.mutate({ id: drawerViaje.id, estado: 'completado' })}>
+                      Marcar completado
+                    </Button>
+                  )}
+                  {drawerViaje.estado === 'completado' && (
+                    <Button type="primary" icon={<FileTextOutlined />} onClick={() => { abrirFacturar(drawerViaje); }}>
+                      Facturar
+                    </Button>
+                  )}
+                  <Button icon={<CarryOutOutlined />} onClick={() => cambiarEstado.mutate({ id: drawerViaje.id, estado: 'cancelado' })} danger>
+                    Cancelar viaje
+                  </Button>
+                </Space>
+              </>
+            )}
+          </>
+        ) : null}
+      </Drawer>
 
       {/* Modal confirmación facturación */}
       <Modal
@@ -349,7 +566,6 @@ export default function ViajesPage() {
                 const hasSubitems = combs.length > 0 || gastos.length > 0;
                 return (
                   <div key={v.id}>
-                    {/* Fila del viaje */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: hasSubitems ? 'none' : '1px solid #f0f0f0' }}>
                       <Checkbox
                         checked={checked}
@@ -365,7 +581,6 @@ export default function ViajesPage() {
                       </div>
                       <Text strong style={{ whiteSpace: 'nowrap', fontSize: 13 }}>{fmt(v.tarifa)}</Text>
                     </div>
-                    {/* Combustibles del viaje */}
                     {combs.map((c, i) => (
                       <div key={`c-${c.id}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0 4px 28px', background: '#fafafa', borderBottom: i === combs.length - 1 && gastos.length === 0 ? '1px solid #f0f0f0' : 'none' }}>
                         <Tag color="orange" style={{ margin: 0, fontSize: 11 }}>{c.tipoCombustible.toUpperCase()}</Tag>
@@ -375,7 +590,6 @@ export default function ViajesPage() {
                         <Text style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{fmt(c.total)}</Text>
                       </div>
                     ))}
-                    {/* Otros gastos del viaje */}
                     {gastos.map((g, i) => (
                       <div key={`g-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0 4px 28px', background: '#fafafa', borderBottom: i === gastos.length - 1 ? '1px solid #f0f0f0' : 'none' }}>
                         <Tag color="geekblue" style={{ margin: 0, fontSize: 11 }}>GASTO</Tag>
