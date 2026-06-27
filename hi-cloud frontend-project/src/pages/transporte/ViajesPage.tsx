@@ -28,15 +28,28 @@ type Chofer   = { id: number; nombre: string };
 type Vehiculo = { id: number; placa: string; marca: string; modelo: string };
 type Cliente  = { id: number; nombre: string; rfc?: string; razonSocial?: string };
 
+type CombItem = { id: number; tipoCombustible: string; galones?: string; total: string; estacion?: string };
+
 type ConfirmState = {
-  open:        boolean;
-  loading:     boolean;
-  viajes:      Viaje[];
-  checkedKeys: number[];
-  lockedKeys:  number[];
+  open:         boolean;
+  loading:      boolean;
+  viajes:       Viaje[];
+  checkedKeys:  number[];
+  lockedKeys:   number[];
+  combustibles: Record<number, CombItem[]>;
 };
 
-const CONFIRM_CLOSED: ConfirmState = { open: false, loading: false, viajes: [], checkedKeys: [], lockedKeys: [] };
+const CONFIRM_CLOSED: ConfirmState = { open: false, loading: false, viajes: [], checkedKeys: [], lockedKeys: [], combustibles: {} };
+
+async function fetchCombustiblesViajes(viajeIds: number[]): Promise<Record<number, CombItem[]>> {
+  const results = await Promise.all(
+    viajeIds.map(id =>
+      api.get('/transporte/combustible', { params: { viajeId: id, limit: 50 } })
+        .then(r => ({ id, items: (r.data?.data?.data ?? []) as CombItem[] }))
+    )
+  );
+  return Object.fromEntries(results.map(r => [r.id, r.items]));
+}
 
 async function fetchViajes(page: number, estado?: string) {
   const params: Record<string, any> = { page, limit: 50 };
@@ -144,36 +157,44 @@ export default function ViajesPage() {
   }
 
   async function abrirFacturar(viaje: Viaje) {
-    setConfirm({ open: true, loading: true, viajes: [viaje], checkedKeys: [viaje.id], lockedKeys: [viaje.id] });
+    setConfirm({ open: true, loading: true, viajes: [viaje], checkedKeys: [viaje.id], lockedKeys: [viaje.id], combustibles: {} });
     try {
+      const todosViajes: Viaje[] = [viaje];
       if (viaje.clienteId) {
         const otros = await api.get('/transporte/viajes/facturables', {
           params: { clienteId: viaje.clienteId, excluirId: viaje.id },
         }).then(extractList) as Viaje[];
-        const otrosIds = otros.map((v) => v.id);
-        setConfirm({
-          open: true,
-          loading: false,
-          viajes:      [viaje, ...otros],
-          checkedKeys: [viaje.id, ...otrosIds],
-          lockedKeys:  [viaje.id],
-        });
-      } else {
-        setConfirm(prev => ({ ...prev, loading: false }));
+        todosViajes.push(...otros);
       }
+      const ids = todosViajes.map(v => v.id);
+      const combustibles = await fetchCombustiblesViajes(ids);
+      const otrosIds = todosViajes.slice(1).map(v => v.id);
+      setConfirm({
+        open: true, loading: false,
+        viajes:      todosViajes,
+        checkedKeys: [viaje.id, ...otrosIds],
+        lockedKeys:  [viaje.id],
+        combustibles,
+      });
     } catch {
       setConfirm(prev => ({ ...prev, loading: false }));
     }
   }
 
-  function abrirFacturarBatch() {
+  async function abrirFacturarBatch() {
     const rows = result?.data?.filter(v => selectedKeys.includes(v.id)) ?? [];
     const clienteIds = [...new Set(rows.map(v => v.clienteId).filter(Boolean))];
     if (clienteIds.length > 1) {
       message.error('Todos los viajes seleccionados deben ser del mismo cliente');
       return;
     }
-    setConfirm({ open: true, loading: false, viajes: rows, checkedKeys: selectedKeys, lockedKeys: selectedKeys });
+    setConfirm({ open: true, loading: true, viajes: rows, checkedKeys: selectedKeys, lockedKeys: selectedKeys, combustibles: {} });
+    try {
+      const combustibles = await fetchCombustiblesViajes(selectedKeys);
+      setConfirm(prev => ({ ...prev, loading: false, combustibles }));
+    } catch {
+      setConfirm(prev => ({ ...prev, loading: false }));
+    }
   }
 
   function toggleConfirmKey(id: number, checked: boolean) {
@@ -184,8 +205,11 @@ export default function ViajesPage() {
     }));
   }
 
-  const checkedViajes = confirm.viajes.filter(v => confirm.checkedKeys.includes(v.id));
-  const total = checkedViajes.reduce((s, v) => s + Number(v.tarifa), 0);
+  const checkedViajes   = confirm.viajes.filter(v => confirm.checkedKeys.includes(v.id));
+  const subtotalViajes  = checkedViajes.reduce((s, v) => s + Number(v.tarifa), 0);
+  const subtotalComb    = checkedViajes.reduce((s, v) =>
+    s + (confirm.combustibles[v.id] ?? []).reduce((cs, c) => cs + Number(c.total), 0), 0);
+  const total = subtotalViajes + subtotalComb;
 
   const columns = [
     { title: '#',      dataIndex: 'numero',   key: 'numero',   width: 90 },
@@ -312,28 +336,51 @@ export default function ViajesPage() {
                 Se detectaron {confirm.viajes.length} viaje(s) del mismo cliente. Desmarca los que no quieras incluir.
               </Text>
             )}
-            <div style={{ maxHeight: 280, overflowY: 'auto', marginBottom: 12 }}>
-              {confirm.viajes.map(v => (
-                <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f0f0f0' }}>
-                  <Checkbox
-                    checked={confirm.checkedKeys.includes(v.id)}
-                    disabled={confirm.lockedKeys.includes(v.id)}
-                    onChange={e => toggleConfirmKey(v.id, e.target.checked)}
-                  />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <Text strong style={{ fontSize: 13 }}>{v.numero}</Text>
-                    <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>{v.fecha?.substring(0,10)}</Text>
-                    <div style={{ fontSize: 12, color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {v.origen} → {v.destino}
+            <div style={{ maxHeight: 320, overflowY: 'auto', marginBottom: 12 }}>
+              {confirm.viajes.map(v => {
+                const combs = confirm.combustibles[v.id] ?? [];
+                const checked = confirm.checkedKeys.includes(v.id);
+                return (
+                  <div key={v.id}>
+                    {/* Fila del viaje */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: combs.length ? 'none' : '1px solid #f0f0f0' }}>
+                      <Checkbox
+                        checked={checked}
+                        disabled={confirm.lockedKeys.includes(v.id)}
+                        onChange={e => toggleConfirmKey(v.id, e.target.checked)}
+                      />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <Text strong style={{ fontSize: 13 }}>{v.numero}</Text>
+                        <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>{v.fecha?.substring(0,10)}</Text>
+                        <div style={{ fontSize: 12, color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {v.origen} → {v.destino}
+                        </div>
+                      </div>
+                      <Text strong style={{ whiteSpace: 'nowrap', fontSize: 13 }}>{fmt(v.tarifa)}</Text>
                     </div>
+                    {/* Combustibles del viaje */}
+                    {combs.map((c, i) => (
+                      <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0 4px 28px', background: '#fafafa', borderBottom: i === combs.length - 1 ? '1px solid #f0f0f0' : 'none' }}>
+                        <Tag color="orange" style={{ margin: 0, fontSize: 11 }}>{c.tipoCombustible.toUpperCase()}</Tag>
+                        <Text type="secondary" style={{ flex: 1, fontSize: 12 }}>
+                          Combustible{c.galones ? ` — ${Number(c.galones).toFixed(3)} gal` : ''}{c.estacion ? ` · ${c.estacion}` : ''}
+                        </Text>
+                        <Text style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{fmt(c.total)}</Text>
+                      </div>
+                    ))}
                   </div>
-                  <Text strong style={{ whiteSpace: 'nowrap', fontSize: 13 }}>{fmt(v.tarifa)}</Text>
-                </div>
-              ))}
+                );
+              })}
             </div>
             <Divider style={{ margin: '8px 0' }} />
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-              <div><Text type="secondary" style={{ fontSize: 12 }}>Exento de ITBIS (transporte)</Text></div>
+              {subtotalComb > 0 && (
+                <>
+                  <div><Text type="secondary">Servicios de transporte:&nbsp;</Text><Text>{fmt(subtotalViajes)}</Text></div>
+                  <div><Text type="secondary">Combustible:&nbsp;</Text><Text>{fmt(subtotalComb)}</Text></div>
+                </>
+              )}
+              <div><Text type="secondary" style={{ fontSize: 12 }}>Exento de ITBIS</Text></div>
               <div style={{ fontSize: 16 }}>
                 <Text strong>Total:&nbsp;</Text>
                 <Text strong style={{ fontSize: 18 }}>{fmt(total)}</Text>

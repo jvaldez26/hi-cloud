@@ -264,11 +264,13 @@ export class TransporteController {
   @Get('combustible')
   listCombustible(
     @Query('vehiculoId', new DefaultValuePipe(0), PIP) vehiculoId = 0,
+    @Query('viajeId')    viajeIdRaw?: string,
     @Query('page',       new DefaultValuePipe(1),  PIP) page      = 1,
     @Query('limit',      new DefaultValuePipe(50), PIP) limit     = 50,
   ) {
+    const viajeId = viajeIdRaw ? parseInt(viajeIdRaw, 10) : undefined;
     return this.svc.findAllCombustible(this.tenantSvc.getEmpresaId(), {
-      vehiculoId: vehiculoId || undefined, page, limit,
+      vehiculoId: vehiculoId || undefined, viajeId, page, limit,
     });
   }
 

@@ -492,7 +492,7 @@ export class TransporteService {
 
   // ── COMBUSTIBLE ───────────────────────────────────────────────────────────
 
-  async findAllCombustible(empresaId: number, opts: { vehiculoId?: number; page?: number; limit?: number }) {
+  async findAllCombustible(empresaId: number, opts: { vehiculoId?: number; viajeId?: number; page?: number; limit?: number }) {
     const page   = Math.max(1, opts.page  ?? 1);
     const limit  = Math.min(100, opts.limit ?? 50);
     const offset = (page - 1) * limit;
@@ -502,6 +502,7 @@ export class TransporteService {
     let   idx = 2;
 
     if (opts.vehiculoId) { whereParts.push(`c."vehiculoId"=$${idx++}`); vals.push(opts.vehiculoId); }
+    if (opts.viajeId)   { whereParts.push(`c."viajeId"=$${idx++}`);   vals.push(opts.viajeId); }
 
     const where = whereParts.join(' AND ');
     const [{ total }] = await this.ds.query<{ total: string }[]>(
