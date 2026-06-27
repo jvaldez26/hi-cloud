@@ -4,7 +4,7 @@ import {
   DatePicker, Typography, Popconfirm, message, InputNumber,
   Card, Row, Col, Statistic,
 } from 'antd';
-import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import api, { extractList, extractData } from '../../api/client';
@@ -15,7 +15,9 @@ const { Title } = Typography;
 const { Option } = Select;
 
 type Registro = {
-  id: number; fecha: string; vehiculoPlaca?: string; choferNombre?: string;
+  id: number; fecha: string;
+  vehiculoId?: number; vehiculoPlaca?: string;
+  choferId?: number;   choferNombre?: string;
   tipoCombustible: string; galones?: string; precioGalon?: string;
   total: string; odometro?: string; estacion?: string; notas?: string;
   viajeId?: number; viajeNumero?: string;
@@ -60,6 +62,7 @@ const COLS_DEF = [
 export default function CombustiblePage() {
   const qc = useQueryClient();
   const [open,       setOpen]       = useState(false);
+  const [editing,    setEditing]    = useState<Registro | null>(null);
   const [page,       setPage]       = useState(1);
   const [filtroVeh,  setFiltroVeh]  = useState<number | undefined>(undefined);
   const [formVehId,  setFormVehId]  = useState<number | undefined>(undefined);
@@ -78,12 +81,14 @@ export default function CombustiblePage() {
   });
 
   const save = useMutation({
-    mutationFn: (vals: any) => api.post('/transporte/combustible', vals),
+    mutationFn: (vals: any) => editing
+      ? api.put(`/transporte/combustible/${editing.id}`, vals)
+      : api.post('/transporte/combustible', vals),
     onSuccess: () => {
-      message.success('Registro guardado');
+      message.success(editing ? 'Registro actualizado' : 'Registro guardado');
       qc.invalidateQueries({ queryKey: ['tr-combustible'] });
       qc.invalidateQueries({ queryKey: ['tr-combustible-stats'] });
-      setOpen(false); form.resetFields(); setFormVehId(undefined);
+      setOpen(false); setEditing(null); form.resetFields(); setFormVehId(undefined);
     },
     onError: (e: any) => message.error(e.response?.data?.message ?? 'Error'),
   });
@@ -108,6 +113,33 @@ export default function CombustiblePage() {
     });
   }
 
+  function openNew() {
+    setEditing(null);
+    form.resetFields();
+    setFormVehId(undefined);
+    setOpen(true);
+  }
+
+  function openEdit(r: Registro) {
+    setEditing(r);
+    const vehId = r.vehiculoId as unknown as number | undefined;
+    setFormVehId(vehId);
+    form.setFieldsValue({
+      vehiculoId:      vehId,
+      choferId:        r.choferId as unknown as number | undefined,
+      viajeId:         r.viajeId,
+      fecha:           r.fecha ? dayjs(r.fecha) : undefined,
+      tipoCombustible: r.tipoCombustible,
+      galones:         r.galones    ? Number(r.galones)    : undefined,
+      precioGalon:     r.precioGalon ? Number(r.precioGalon) : undefined,
+      total:           r.total      ? Number(r.total)      : undefined,
+      odometro:        r.odometro   ? Number(r.odometro)   : undefined,
+      estacion:        r.estacion,
+      notas:           r.notas,
+    });
+    setOpen(true);
+  }
+
   function handleVehiculoChange(val: number | undefined) {
     setFormVehId(val);
     form.setFieldValue('viajeId', undefined);
@@ -125,11 +157,14 @@ export default function CombustiblePage() {
     { title: 'Odómetro',  dataIndex: 'odometro',       key: 'odometro', render: (v?: string) => v ? `${Number(v).toLocaleString()} km` : '—' },
     { title: 'Estación',  dataIndex: 'estacion',       key: 'estacion', render: (v?: string) => v ?? '—' },
     {
-      title: '', key: 'actions', width: 60,
+      title: '', key: 'actions', width: 80,
       render: (_: any, r: Registro) => (
-        <Popconfirm title="¿Eliminar registro?" onConfirm={() => del.mutate(r.id)} okText="Sí">
-          <Button size="small" danger icon={<DeleteOutlined />} />
-        </Popconfirm>
+        <Space size={4}>
+          <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(r)} />
+          <Popconfirm title="¿Eliminar registro?" onConfirm={() => del.mutate(r.id)} okText="Sí">
+            <Button size="small" danger icon={<DeleteOutlined />} />
+          </Popconfirm>
+        </Space>
       ),
     },
   ];
@@ -165,7 +200,7 @@ export default function CombustiblePage() {
         >
           {vehiculos.map(v => <Option key={v.id} value={v.id}>{v.placa} — {v.marca} {v.modelo}</Option>)}
         </Select>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setFormVehId(undefined); setOpen(true); }}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={openNew}>
           Registrar Carga
         </Button>
         <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
@@ -185,8 +220,8 @@ export default function CombustiblePage() {
 
       <Modal
         open={open}
-        title="Registrar Carga de Combustible"
-        onCancel={() => { setOpen(false); form.resetFields(); setFormVehId(undefined); }}
+        title={editing ? 'Editar Carga de Combustible' : 'Registrar Carga de Combustible'}
+        onCancel={() => { setOpen(false); setEditing(null); form.resetFields(); setFormVehId(undefined); }}
         onOk={() => form.submit()}
         confirmLoading={save.isPending}
         width={520}

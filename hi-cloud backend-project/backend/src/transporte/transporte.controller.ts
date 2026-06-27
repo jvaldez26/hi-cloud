@@ -282,6 +282,11 @@ export class TransporteController {
     return this.svc.createCombustible(this.tenantSvc.getEmpresaId(), dto);
   }
 
+  @Put('combustible/:id')
+  updateCombustible(@Param('id', ParseIntPipe) id: number, @Body() dto: CreateCombustibleDto) {
+    return this.svc.updateCombustible(this.tenantSvc.getEmpresaId(), id, dto);
+  }
+
   @Delete('combustible/:id')
   deleteCombustible(@Param('id', ParseIntPipe) id: number) {
     return this.svc.deleteCombustible(this.tenantSvc.getEmpresaId(), id);

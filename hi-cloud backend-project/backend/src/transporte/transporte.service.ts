@@ -517,6 +517,49 @@ export class TransporteService {
     return row;
   }
 
+  async updateCombustible(empresaId: number, id: number, data: any) {
+    const [existing] = await this.ds.query<any[]>(
+      `SELECT id FROM tr_combustible WHERE id=$1 AND "empresaId"=$2`, [id, empresaId],
+    );
+    if (!existing) throw new NotFoundException(`Registro de combustible #${id} no encontrado`);
+
+    const total = data.total ?? (
+      data.galones && data.precioGalon
+        ? Math.round(Number(data.galones) * Number(data.precioGalon) * 100) / 100
+        : undefined
+    );
+
+    const sets: string[] = [];
+    const vals: any[]    = [];
+    let   idx = 1;
+
+    const fields: Record<string, any> = {
+      vehiculoId:      data.vehiculoId      ?? null,
+      choferId:        data.choferId        ?? null,
+      viajeId:         data.viajeId         ?? null,
+      fecha:           data.fecha,
+      tipoCombustible: data.tipoCombustible,
+      galones:         data.galones         ?? null,
+      precioGalon:     data.precioGalon     ?? null,
+      odometro:        data.odometro        ?? null,
+      estacion:        data.estacion        ?? null,
+      notas:           data.notas           ?? null,
+    };
+    if (total !== undefined) fields['total'] = total;
+
+    for (const [col, val] of Object.entries(fields)) {
+      if (val !== undefined) { sets.push(`"${col}"=$${idx++}`); vals.push(val); }
+    }
+    if (!sets.length) return existing;
+
+    vals.push(id, empresaId);
+    const [row] = await this.ds.query<any[]>(
+      `UPDATE tr_combustible SET ${sets.join(',')} WHERE id=$${idx} AND "empresaId"=$${idx + 1} RETURNING *`,
+      vals,
+    );
+    return row;
+  }
+
   async deleteCombustible(empresaId: number, id: number) {
     const [row] = await this.ds.query<any[]>(
       `SELECT id FROM tr_combustible WHERE id=$1 AND "empresaId"=$2`, [id, empresaId],
