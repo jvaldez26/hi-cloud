@@ -318,6 +318,71 @@ export class TransporteService {
     return { ...viaje, estado: 'facturado', facturaId: (factura as any).id, factura };
   }
 
+  async getViajesFacturables(empresaId: number, clienteId: number, excluirId?: number) {
+    let sql = `SELECT v.id, v.numero, v.fecha, v.origen, v.destino, v.tarifa, v.estado,
+                      v."clienteId", v."facturaId", cl.nombre AS "clienteNombre"
+                 FROM tr_viajes v
+                 LEFT JOIN clientes cl ON cl.id = v."clienteId"
+                WHERE v."empresaId"=$1 AND v."clienteId"=$2
+                  AND v.estado='completado' AND v."facturaId" IS NULL`;
+    const vals: any[] = [empresaId, clienteId];
+    if (excluirId) { sql += ` AND v.id!=$3`; vals.push(excluirId); }
+    sql += ` ORDER BY v.fecha ASC, v.id ASC`;
+    return this.ds.query<any[]>(sql, vals);
+  }
+
+  async facturarLote(empresaId: number, ids: number[], usuario: User) {
+    if (!ids.length) throw new BadRequestException('Debes seleccionar al menos un viaje');
+    if (ids.length > 50) throw new BadRequestException('Máximo 50 viajes por factura');
+
+    const viajes = await this.ds.query<any[]>(
+      `SELECT v.*, cl.nombre AS "clienteNombre" FROM tr_viajes v
+       LEFT JOIN clientes cl ON cl.id = v."clienteId"
+       WHERE v."empresaId"=$1 AND v.id=ANY($2) ORDER BY v.fecha ASC, v.id ASC`,
+      [empresaId, ids],
+    );
+    if (viajes.length !== ids.length)
+      throw new BadRequestException('Algunos viajes no existen o no pertenecen a esta empresa');
+
+    const noFacturables = viajes.filter((v: any) => v.estado !== 'completado' || v.facturaId);
+    if (noFacturables.length)
+      throw new BadRequestException(`Viaje(s) no facturables: ${noFacturables.map((v: any) => v.numero).join(', ')}`);
+
+    const clienteIds = [...new Set(viajes.map((v: any) => v.clienteId))];
+    if (clienteIds.length > 1)
+      throw new BadRequestException('Todos los viajes deben ser del mismo cliente');
+
+    const fecha    = new Date().toISOString().substring(0, 10);
+    const clienteId = viajes[0].clienteId ?? undefined;
+    const numeros  = viajes.map((v: any) => v.numero).join(', ');
+
+    const factura = await this.facturasSvc.create(
+      {
+        fecha,
+        clienteId,
+        tipoNcf: 'E31',
+        notas: `Viajes: ${numeros}`,
+        tipoPago: 'CONTADO',
+        detalles: viajes.map((v: any) => ({
+          descripcion: `Servicio de transporte ${v.numero}: ${v.origen} → ${v.destino}`,
+          cantidad: 1,
+          precioUnitario: Number(v.tarifa),
+          porcentajeIva: 18,
+        })),
+      },
+      usuario,
+    );
+
+    const facturaId = (factura as any).id;
+    await this.ds.query(
+      `UPDATE tr_viajes SET estado='facturado',"facturaId"=$1,"updatedAt"=NOW()
+        WHERE id=ANY($2) AND "empresaId"=$3`,
+      [facturaId, ids, empresaId],
+    );
+
+    return { ...(factura as any), viajes, viajeIds: ids };
+  }
+
   // ── DASHBOARD ─────────────────────────────────────────────────────────────
 
   async getDashboard(empresaId: number) {

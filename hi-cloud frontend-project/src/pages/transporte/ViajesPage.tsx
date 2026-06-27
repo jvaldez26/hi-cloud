@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import {
   Table, Button, Space, Tag, Modal, Form, Input, Select,
-  DatePicker, Typography, Popconfirm, message, InputNumber,
+  DatePicker, Typography, message, InputNumber, Checkbox,
+  Spin, Divider, Alert,
 } from 'antd';
 import {
   PlusOutlined, EditOutlined, FileTextOutlined,
-  CheckCircleOutlined, CarOutlined,
+  CheckCircleOutlined, CarOutlined, ShoppingCartOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -13,19 +14,29 @@ import api, { extractList } from '../../api/client';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 const { Option } = Select;
 
 type Viaje = {
   id: number; numero: string; fecha: string; origen: string; destino: string;
-  clienteNombre?: string; choferNombre?: string; vehiculoPlaca?: string;
-  vehiculoDescripcion?: string; tarifa: string | number; estado: string;
-  facturaId?: number; notas?: string;
+  clienteId?: number; clienteNombre?: string; choferNombre?: string;
+  vehiculoPlaca?: string; vehiculoDescripcion?: string;
+  tarifa: string | number; estado: string; facturaId?: number; notas?: string;
 };
 
 type Chofer   = { id: number; nombre: string };
 type Vehiculo = { id: number; placa: string; marca: string; modelo: string };
 type Cliente  = { id: number; nombre: string; rfc?: string; razonSocial?: string };
+
+type ConfirmState = {
+  open:        boolean;
+  loading:     boolean;
+  viajes:      Viaje[];
+  checkedKeys: number[];
+  lockedKeys:  number[];
+};
+
+const CONFIRM_CLOSED: ConfirmState = { open: false, loading: false, viajes: [], checkedKeys: [], lockedKeys: [] };
 
 async function fetchViajes(page: number, estado?: string) {
   const params: Record<string, any> = { page, limit: 50 };
@@ -40,11 +51,8 @@ async function fetchClientes(search: string): Promise<Cliente[]> {
 }
 
 const ESTADO_COLOR: Record<string, string> = {
-  programado:  'blue',
-  en_curso:    'orange',
-  completado:  'green',
-  cancelado:   'red',
-  facturado:   'purple',
+  programado: 'blue', en_curso: 'orange', completado: 'green',
+  cancelado: 'red',   facturado: 'purple',
 };
 
 const COLS_DEF = [
@@ -59,6 +67,10 @@ const COLS_DEF = [
   { key: 'estado',   label: 'Estado'   },
 ];
 
+function fmt(n: string | number) {
+  return `RD$${Number(n).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
+}
+
 export default function ViajesPage() {
   const qc = useQueryClient();
   const [open,          setOpen]          = useState(false);
@@ -66,6 +78,8 @@ export default function ViajesPage() {
   const [estadoFilt,    setEstadoFilt]    = useState<string | undefined>(undefined);
   const [page,          setPage]          = useState(1);
   const [clienteSearch, setClienteSearch] = useState('');
+  const [selectedKeys,  setSelectedKeys]  = useState<number[]>([]);
+  const [confirm,       setConfirm]       = useState<ConfirmState>(CONFIRM_CLOSED);
   const [form]                            = Form.useForm();
 
   const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('tr-viajes', COLS_DEF);
@@ -105,12 +119,15 @@ export default function ViajesPage() {
     onError: (e: any) => message.error(e.response?.data?.message ?? 'Error'),
   });
 
-  const facturar = useMutation({
-    mutationFn: (id: number) => api.post(`/transporte/viajes/${id}/facturar`),
+  const facturarLote = useMutation({
+    mutationFn: (ids: number[]) => api.post('/transporte/viajes/facturar-lote', { ids }),
     onSuccess: (res: any) => {
-      message.success(`Viaje facturado — Factura #${res.data?.factura?.numero ?? ''}`);
+      const num = res.data?.data?.numero ?? res.data?.numero ?? '';
+      message.success(`Factura generada${num ? ` — #${num}` : ''}`);
       qc.invalidateQueries({ queryKey: ['tr-viajes'] });
       qc.invalidateQueries({ queryKey: ['transporte-dashboard'] });
+      setConfirm(CONFIRM_CLOSED);
+      setSelectedKeys([]);
     },
     onError: (e: any) => message.error(e.response?.data?.message ?? 'Error al facturar'),
   });
@@ -118,18 +135,59 @@ export default function ViajesPage() {
   function openNew()  { setEditing(null);  form.resetFields(); setOpen(true); }
   function openEdit(v: Viaje) {
     setEditing(v);
-    form.setFieldsValue({
-      ...v,
-      tarifa: Number(v.tarifa),
-      fecha:  v.fecha ? dayjs(v.fecha) : undefined,
-    });
+    form.setFieldsValue({ ...v, tarifa: Number(v.tarifa), fecha: v.fecha ? dayjs(v.fecha) : undefined });
     setOpen(true);
   }
   function closeModal() { setOpen(false); form.resetFields(); }
-
   function handleSubmit(vals: any) {
     save.mutate({ ...vals, fecha: vals.fecha ? vals.fecha.format('YYYY-MM-DD') : undefined });
   }
+
+  async function abrirFacturar(viaje: Viaje) {
+    setConfirm({ open: true, loading: true, viajes: [viaje], checkedKeys: [viaje.id], lockedKeys: [viaje.id] });
+    try {
+      if (viaje.clienteId) {
+        const otros = await api.get('/transporte/viajes/facturables', {
+          params: { clienteId: viaje.clienteId, excluirId: viaje.id },
+        }).then(extractList) as Viaje[];
+        const otrosIds = otros.map((v) => v.id);
+        setConfirm({
+          open: true,
+          loading: false,
+          viajes:      [viaje, ...otros],
+          checkedKeys: [viaje.id, ...otrosIds],
+          lockedKeys:  [viaje.id],
+        });
+      } else {
+        setConfirm(prev => ({ ...prev, loading: false }));
+      }
+    } catch {
+      setConfirm(prev => ({ ...prev, loading: false }));
+    }
+  }
+
+  function abrirFacturarBatch() {
+    const rows = result?.data?.filter(v => selectedKeys.includes(v.id)) ?? [];
+    const clienteIds = [...new Set(rows.map(v => v.clienteId).filter(Boolean))];
+    if (clienteIds.length > 1) {
+      message.error('Todos los viajes seleccionados deben ser del mismo cliente');
+      return;
+    }
+    setConfirm({ open: true, loading: false, viajes: rows, checkedKeys: selectedKeys, lockedKeys: selectedKeys });
+  }
+
+  function toggleConfirmKey(id: number, checked: boolean) {
+    if (confirm.lockedKeys.includes(id)) return;
+    setConfirm(prev => ({
+      ...prev,
+      checkedKeys: checked ? [...prev.checkedKeys, id] : prev.checkedKeys.filter(k => k !== id),
+    }));
+  }
+
+  const checkedViajes = confirm.viajes.filter(v => confirm.checkedKeys.includes(v.id));
+  const subtotal = checkedViajes.reduce((s, v) => s + Number(v.tarifa), 0);
+  const itbis    = subtotal * 0.18;
+  const total    = subtotal + itbis;
 
   const columns = [
     { title: '#',      dataIndex: 'numero',   key: 'numero',   width: 90 },
@@ -141,7 +199,7 @@ export default function ViajesPage() {
     { title: 'Vehículo', dataIndex: 'vehiculoDescripcion', key: 'vehiculo', render: (v?: string, r?: Viaje) => r?.vehiculoPlaca ? `${r.vehiculoPlaca} ${v ?? ''}` : '—' },
     {
       title: 'Tarifa', dataIndex: 'tarifa', key: 'tarifa', align: 'right' as const,
-      render: (v: string | number) => `RD$${Number(v).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`,
+      render: (v: string | number) => fmt(v),
     },
     {
       title: 'Estado', dataIndex: 'estado', key: 'estado',
@@ -162,9 +220,9 @@ export default function ViajesPage() {
             </Button>
           )}
           {r.estado === 'completado' && (
-            <Popconfirm title="¿Facturar este viaje?" onConfirm={() => facturar.mutate(r.id)} okText="Sí">
-              <Button size="small" type="primary" icon={<FileTextOutlined />}>Facturar</Button>
-            </Popconfirm>
+            <Button size="small" type="primary" icon={<FileTextOutlined />} onClick={() => abrirFacturar(r)}>
+              Facturar
+            </Button>
           )}
           {!['facturado','cancelado'].includes(r.estado) && (
             <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(r)} />
@@ -173,6 +231,16 @@ export default function ViajesPage() {
       ),
     },
   ];
+
+  const rowSelection = {
+    selectedRowKeys: selectedKeys,
+    onChange: (keys: React.Key[]) => setSelectedKeys(keys as number[]),
+    getCheckboxProps: (r: Viaje) => ({ disabled: r.estado !== 'completado' }),
+  };
+
+  const selectedTotal = (result?.data ?? [])
+    .filter(v => selectedKeys.includes(v.id))
+    .reduce((s, v) => s + Number(v.tarifa), 0);
 
   return (
     <div style={{ padding: 24 }}>
@@ -191,10 +259,30 @@ export default function ViajesPage() {
         <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
       </Space>
 
+      {selectedKeys.length > 0 && (
+        <Alert
+          style={{ marginBottom: 12 }}
+          type="info"
+          message={
+            <Space>
+              <Text>{selectedKeys.length} viaje(s) seleccionado(s) · {fmt(selectedTotal)}</Text>
+              <Button
+                type="primary" size="small" icon={<ShoppingCartOutlined />}
+                onClick={abrirFacturarBatch}
+              >
+                Facturar seleccionados
+              </Button>
+              <Button size="small" onClick={() => setSelectedKeys([])}>Limpiar</Button>
+            </Space>
+          }
+        />
+      )}
+
       <Table
         dataSource={result?.data ?? []}
         columns={filterColumns(columns)}
         rowKey="id"
+        rowSelection={rowSelection}
         loading={isLoading}
         size="small"
         pagination={{
@@ -206,6 +294,59 @@ export default function ViajesPage() {
         }}
       />
 
+      {/* Modal confirmación facturación */}
+      <Modal
+        open={confirm.open}
+        title="Confirmar Facturación"
+        onCancel={() => setConfirm(CONFIRM_CLOSED)}
+        onOk={() => facturarLote.mutate(confirm.checkedKeys)}
+        okText="Generar Factura"
+        confirmLoading={facturarLote.isPending}
+        okButtonProps={{ disabled: confirm.checkedKeys.length === 0 }}
+        width={560}
+      >
+        {confirm.loading ? (
+          <div style={{ textAlign: 'center', padding: 32 }}><Spin tip="Buscando otros viajes..." /></div>
+        ) : (
+          <>
+            {confirm.viajes.length > 1 && (
+              <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
+                Se detectaron {confirm.viajes.length} viaje(s) del mismo cliente. Desmarca los que no quieras incluir.
+              </Text>
+            )}
+            <div style={{ maxHeight: 280, overflowY: 'auto', marginBottom: 12 }}>
+              {confirm.viajes.map(v => (
+                <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f0f0f0' }}>
+                  <Checkbox
+                    checked={confirm.checkedKeys.includes(v.id)}
+                    disabled={confirm.lockedKeys.includes(v.id)}
+                    onChange={e => toggleConfirmKey(v.id, e.target.checked)}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <Text strong style={{ fontSize: 13 }}>{v.numero}</Text>
+                    <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>{v.fecha?.substring(0,10)}</Text>
+                    <div style={{ fontSize: 12, color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {v.origen} → {v.destino}
+                    </div>
+                  </div>
+                  <Text strong style={{ whiteSpace: 'nowrap', fontSize: 13 }}>{fmt(v.tarifa)}</Text>
+                </div>
+              ))}
+            </div>
+            <Divider style={{ margin: '8px 0' }} />
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+              <div><Text type="secondary">Subtotal:&nbsp;</Text><Text>{fmt(subtotal)}</Text></div>
+              <div><Text type="secondary">ITBIS (18%):&nbsp;</Text><Text>{fmt(itbis)}</Text></div>
+              <div style={{ fontSize: 16 }}>
+                <Text strong>Total:&nbsp;</Text>
+                <Text strong style={{ fontSize: 18 }}>{fmt(total)}</Text>
+              </div>
+            </div>
+          </>
+        )}
+      </Modal>
+
+      {/* Modal crear/editar viaje */}
       <Modal
         open={open}
         title={editing ? `Editar Viaje ${editing.numero}` : 'Nuevo Viaje'}
@@ -216,7 +357,7 @@ export default function ViajesPage() {
       >
         <Form form={form} layout="vertical" onFinish={handleSubmit}>
           <Space.Compact style={{ width: '100%' }}>
-            <Form.Item name="fecha"  label="Fecha"  style={{ flex: 1 }}>
+            <Form.Item name="fecha" label="Fecha" style={{ flex: 1 }}>
               <DatePicker style={{ width: '100%' }} />
             </Form.Item>
           </Space.Compact>
@@ -230,11 +371,8 @@ export default function ViajesPage() {
           </Space.Compact>
           <Form.Item name="clienteId" label="Cliente">
             <Select
-              allowClear
-              showSearch
-              placeholder="Buscar cliente por nombre o RNC..."
-              filterOption={false}
-              onSearch={val => setClienteSearch(val)}
+              allowClear showSearch placeholder="Buscar cliente por nombre o RNC..."
+              filterOption={false} onSearch={val => setClienteSearch(val)}
               optionFilterProp="label"
             >
               {(clientes as Cliente[]).map(c => (

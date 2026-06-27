@@ -6,7 +6,7 @@ import {
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import {
   IsString, IsOptional, IsInt, IsNumber, IsEnum, IsDateString,
-  IsPositive, MinLength, Min,
+  IsPositive, MinLength, Min, IsArray, ArrayMinSize,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { JwtAuthGuard }      from '../auth/guards/jwt-auth.guard';
@@ -140,6 +140,12 @@ class UpdateViajeDto {
   @IsOptional() @IsString() notas?: string;
 }
 
+class FacurarLoteDto {
+  @IsArray() @ArrayMinSize(1)
+  @IsInt({ each: true }) @IsPositive({ each: true }) @Type(() => Number)
+  ids!: number[];
+}
+
 // ── CONTROLLER ───────────────────────────────────────────────────────────────
 
 @Controller('transporte')
@@ -208,6 +214,20 @@ export class TransporteController {
     @Query('limit', new DefaultValuePipe(50), PIP) limit = 50,
   ) {
     return this.svc.findAllViajes(this.tenantSvc.getEmpresaId(), { estado, page, limit });
+  }
+
+  @Get('viajes/facturables')
+  viajesFacturables(
+    @Query('clienteId', ParseIntPipe) clienteId: number,
+    @Query('excluirId') excluirIdRaw?: string,
+  ) {
+    const excluirId = excluirIdRaw ? parseInt(excluirIdRaw, 10) : undefined;
+    return this.svc.getViajesFacturables(this.tenantSvc.getEmpresaId(), clienteId, excluirId);
+  }
+
+  @Post('viajes/facturar-lote')
+  facturarLote(@Body() dto: FacurarLoteDto, @GetUser() usuario: User) {
+    return this.svc.facturarLote(this.tenantSvc.getEmpresaId(), dto.ids, usuario);
   }
 
   @Get('viajes/:id')
