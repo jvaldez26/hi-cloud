@@ -6,7 +6,7 @@ import {
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import {
   IsString, IsOptional, IsInt, IsNumber, IsEnum, IsDateString,
-  IsPositive, MinLength, Min, IsArray, ArrayMinSize,
+  IsPositive, MinLength, Min, IsArray, ArrayMinSize, ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { JwtAuthGuard }      from '../auth/guards/jwt-auth.guard';
@@ -75,6 +75,11 @@ class UpdateVehiculoDto {
   @IsOptional() @IsString() notas?: string;
 }
 
+class GastoViajeDto {
+  @IsString() @MinLength(1) descripcion!: string;
+  @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Type(() => Number) monto!: number;
+}
+
 class CreateViajeDto {
   @IsOptional() @IsDateString() fecha?: string;
   @IsString() @MinLength(2) origen!: string;
@@ -85,6 +90,7 @@ class CreateViajeDto {
   @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Type(() => Number) tarifa!: number;
   @IsOptional() @IsEnum(['programado','en_curso','completado','cancelado']) estado?: string;
   @IsOptional() @IsString() notas?: string;
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => GastoViajeDto) gastos?: GastoViajeDto[];
 }
 
 class CreateCombustibleDto {
@@ -139,6 +145,7 @@ class UpdateViajeDto {
   @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Type(() => Number) tarifa?: number;
   @IsOptional() @IsEnum(['programado','en_curso','completado','cancelado']) estado?: string;
   @IsOptional() @IsString() notas?: string;
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => GastoViajeDto) gastos?: GastoViajeDto[];
 }
 
 class FacurarLoteDto {

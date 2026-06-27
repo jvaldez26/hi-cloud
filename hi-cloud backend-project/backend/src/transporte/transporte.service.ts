@@ -40,7 +40,11 @@ export class TransporteService {
     const [row] = await this.ds.query<any[]>(
       `SELECT v.*, c.nombre AS "choferNombre", vh.placa AS "vehiculoPlaca",
               vh.marca AS "vehiculoMarca", vh.modelo AS "vehiculoModelo",
-              cl.nombre AS "clienteNombre"
+              cl.nombre AS "clienteNombre",
+              COALESCE((
+                SELECT json_agg(json_build_object('id', g.id, 'descripcion', g.descripcion, 'monto', g.monto) ORDER BY g.id)
+                  FROM tr_viaje_gastos g WHERE g."viajeId"=v.id
+              ), '[]'::json) AS gastos
          FROM tr_viajes v
          LEFT JOIN tr_choferes  c  ON c.id  = v."choferId"
          LEFT JOIN tr_vehiculos vh ON vh.id = v."vehiculoId"
@@ -218,7 +222,11 @@ export class TransporteService {
     const rows = await this.ds.query<any[]>(
       `SELECT v.*, c.nombre AS "choferNombre", vh.placa AS "vehiculoPlaca",
               vh.marca || ' ' || vh.modelo AS "vehiculoDescripcion",
-              cl.nombre AS "clienteNombre"
+              cl.nombre AS "clienteNombre",
+              COALESCE((
+                SELECT json_agg(json_build_object('id', g.id, 'descripcion', g.descripcion, 'monto', g.monto) ORDER BY g.id)
+                  FROM tr_viaje_gastos g WHERE g."viajeId"=v.id
+              ), '[]'::json) AS gastos
          FROM tr_viajes v
          LEFT JOIN tr_choferes  c  ON c.id  = v."choferId"
          LEFT JOIN tr_vehiculos vh ON vh.id = v."vehiculoId"
@@ -254,6 +262,14 @@ export class TransporteService {
     );
     const newId: number = row?.id;
     if (!newId) throw new NotFoundException(`Error al obtener el viaje creado`);
+    if (data.gastos && Array.isArray(data.gastos) && data.gastos.length) {
+      for (const g of data.gastos) {
+        await this.ds.query(
+          `INSERT INTO tr_viaje_gastos ("empresaId","viajeId",descripcion,monto) VALUES ($1,$2,$3,$4)`,
+          [empresaId, newId, g.descripcion, Number(g.monto)],
+        );
+      }
+    }
     return this.viajeOr404(empresaId, newId);
   }
 
@@ -281,6 +297,18 @@ export class TransporteService {
       vals,
     );
     if (!row) throw new NotFoundException(`Viaje #${id} no encontrado`);
+    if (data.gastos !== undefined && Array.isArray(data.gastos)) {
+      await this.ds.query(
+        `DELETE FROM tr_viaje_gastos WHERE "viajeId"=$1 AND "empresaId"=$2`,
+        [id, empresaId],
+      );
+      for (const g of data.gastos) {
+        await this.ds.query(
+          `INSERT INTO tr_viaje_gastos ("empresaId","viajeId",descripcion,monto) VALUES ($1,$2,$3,$4)`,
+          [empresaId, id, g.descripcion, Number(g.monto)],
+        );
+      }
+    }
     return this.viajeOr404(empresaId, id);
   }
 
@@ -293,10 +321,16 @@ export class TransporteService {
       throw new BadRequestException('Solo se pueden facturar viajes en estado COMPLETADO');
     }
 
-    const combustibles = await this.ds.query<any[]>(
-      `SELECT * FROM tr_combustible WHERE "viajeId"=$1 AND "empresaId"=$2 ORDER BY fecha ASC, id ASC`,
-      [id, empresaId],
-    );
+    const [combustibles, gastos] = await Promise.all([
+      this.ds.query<any[]>(
+        `SELECT * FROM tr_combustible WHERE "viajeId"=$1 AND "empresaId"=$2 ORDER BY fecha ASC, id ASC`,
+        [id, empresaId],
+      ),
+      this.ds.query<any[]>(
+        `SELECT * FROM tr_viaje_gastos WHERE "viajeId"=$1 AND "empresaId"=$2 ORDER BY id ASC`,
+        [id, empresaId],
+      ),
+    ]);
 
     const fecha = new Date().toISOString().substring(0, 10);
     const factura = await this.facturasSvc.create(
@@ -319,6 +353,12 @@ export class TransporteService {
             precioUnitario: Number(c.total),
             porcentajeIva: 0,
           })),
+          ...gastos.map((g: any) => ({
+            descripcion: g.descripcion,
+            cantidad: 1,
+            precioUnitario: Number(g.monto),
+            porcentajeIva: 0,
+          })),
         ],
       },
       usuario,
@@ -335,7 +375,11 @@ export class TransporteService {
 
   async getViajesFacturables(empresaId: number, clienteId: number, excluirId?: number) {
     let sql = `SELECT v.id, v.numero, v.fecha, v.origen, v.destino, v.tarifa, v.estado,
-                      v."clienteId", v."facturaId", cl.nombre AS "clienteNombre"
+                      v."clienteId", v."facturaId", cl.nombre AS "clienteNombre",
+                      COALESCE((
+                        SELECT json_agg(json_build_object('id', g.id, 'descripcion', g.descripcion, 'monto', g.monto) ORDER BY g.id)
+                          FROM tr_viaje_gastos g WHERE g."viajeId"=v.id
+                      ), '[]'::json) AS gastos
                  FROM tr_viajes v
                  LEFT JOIN clientes cl ON cl.id = v."clienteId"
                 WHERE v."empresaId"=$1 AND v."clienteId"=$2
@@ -371,13 +415,20 @@ export class TransporteService {
     const clienteId = viajes[0].clienteId ?? undefined;
     const numeros  = viajes.map((v: any) => v.numero).join(', ');
 
-    const combustiblesPorViaje = await this.ds.query<any[]>(
-      `SELECT * FROM tr_combustible WHERE "viajeId"=ANY($1) AND "empresaId"=$2 ORDER BY "viajeId" ASC, fecha ASC, id ASC`,
-      [ids, empresaId],
-    );
+    const [combustiblesPorViaje, gastosPorViaje] = await Promise.all([
+      this.ds.query<any[]>(
+        `SELECT * FROM tr_combustible WHERE "viajeId"=ANY($1) AND "empresaId"=$2 ORDER BY "viajeId" ASC, fecha ASC, id ASC`,
+        [ids, empresaId],
+      ),
+      this.ds.query<any[]>(
+        `SELECT * FROM tr_viaje_gastos WHERE "viajeId"=ANY($1) AND "empresaId"=$2 ORDER BY "viajeId" ASC, id ASC`,
+        [ids, empresaId],
+      ),
+    ]);
 
     const detallesViajes = viajes.flatMap((v: any) => {
-      const comb = combustiblesPorViaje.filter((c: any) => c.viajeId === v.id);
+      const comb   = combustiblesPorViaje.filter((c: any) => c.viajeId === v.id);
+      const gastos = gastosPorViaje.filter((g: any) => g.viajeId === v.id);
       return [
         {
           descripcion: `Servicio de transporte ${v.numero}: ${v.origen} → ${v.destino}`,
@@ -389,6 +440,12 @@ export class TransporteService {
           descripcion: `Combustible (${c.tipoCombustible}) ${v.numero}${c.galones ? ` — ${Number(c.galones).toFixed(3)} gal` : ''}${c.estacion ? ` · ${c.estacion}` : ''}`,
           cantidad: 1,
           precioUnitario: Number(c.total),
+          porcentajeIva: 0,
+        })),
+        ...gastos.map((g: any) => ({
+          descripcion: `${g.descripcion} (${v.numero})`,
+          cantidad: 1,
+          precioUnitario: Number(g.monto),
           porcentajeIva: 0,
         })),
       ];

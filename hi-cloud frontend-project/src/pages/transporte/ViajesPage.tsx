@@ -6,7 +6,7 @@ import {
 } from 'antd';
 import {
   PlusOutlined, EditOutlined, FileTextOutlined,
-  CheckCircleOutlined, CarOutlined, ShoppingCartOutlined,
+  CheckCircleOutlined, CarOutlined, ShoppingCartOutlined, MinusCircleOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -17,11 +17,14 @@ import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 const { Title, Text } = Typography;
 const { Option } = Select;
 
+type GastoItem = { id?: number; descripcion: string; monto: number };
+
 type Viaje = {
   id: number; numero: string; fecha: string; origen: string; destino: string;
   clienteId?: number; clienteNombre?: string; choferNombre?: string;
   vehiculoPlaca?: string; vehiculoDescripcion?: string;
   tarifa: string | number; estado: string; facturaId?: number; notas?: string;
+  gastos?: GastoItem[];
 };
 
 type Chofer   = { id: number; nombre: string };
@@ -148,7 +151,7 @@ export default function ViajesPage() {
   function openNew()  { setEditing(null);  form.resetFields(); setOpen(true); }
   function openEdit(v: Viaje) {
     setEditing(v);
-    form.setFieldsValue({ ...v, tarifa: Number(v.tarifa), fecha: v.fecha ? dayjs(v.fecha) : undefined });
+    form.setFieldsValue({ ...v, tarifa: Number(v.tarifa), fecha: v.fecha ? dayjs(v.fecha) : undefined, gastos: v.gastos ?? [] });
     setOpen(true);
   }
   function closeModal() { setOpen(false); form.resetFields(); }
@@ -209,7 +212,9 @@ export default function ViajesPage() {
   const subtotalViajes  = checkedViajes.reduce((s, v) => s + Number(v.tarifa), 0);
   const subtotalComb    = checkedViajes.reduce((s, v) =>
     s + (confirm.combustibles[v.id] ?? []).reduce((cs, c) => cs + Number(c.total), 0), 0);
-  const total = subtotalViajes + subtotalComb;
+  const subtotalGastos  = checkedViajes.reduce((s, v) =>
+    s + (v.gastos ?? []).reduce((gs, g) => gs + Number(g.monto), 0), 0);
+  const total = subtotalViajes + subtotalComb + subtotalGastos;
 
   const columns = [
     { title: '#',      dataIndex: 'numero',   key: 'numero',   width: 90 },
@@ -338,12 +343,14 @@ export default function ViajesPage() {
             )}
             <div style={{ maxHeight: 320, overflowY: 'auto', marginBottom: 12 }}>
               {confirm.viajes.map(v => {
-                const combs = confirm.combustibles[v.id] ?? [];
+                const combs  = confirm.combustibles[v.id] ?? [];
+                const gastos = v.gastos ?? [];
                 const checked = confirm.checkedKeys.includes(v.id);
+                const hasSubitems = combs.length > 0 || gastos.length > 0;
                 return (
                   <div key={v.id}>
                     {/* Fila del viaje */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: combs.length ? 'none' : '1px solid #f0f0f0' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: hasSubitems ? 'none' : '1px solid #f0f0f0' }}>
                       <Checkbox
                         checked={checked}
                         disabled={confirm.lockedKeys.includes(v.id)}
@@ -360,12 +367,20 @@ export default function ViajesPage() {
                     </div>
                     {/* Combustibles del viaje */}
                     {combs.map((c, i) => (
-                      <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0 4px 28px', background: '#fafafa', borderBottom: i === combs.length - 1 ? '1px solid #f0f0f0' : 'none' }}>
+                      <div key={`c-${c.id}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0 4px 28px', background: '#fafafa', borderBottom: i === combs.length - 1 && gastos.length === 0 ? '1px solid #f0f0f0' : 'none' }}>
                         <Tag color="orange" style={{ margin: 0, fontSize: 11 }}>{c.tipoCombustible.toUpperCase()}</Tag>
                         <Text type="secondary" style={{ flex: 1, fontSize: 12 }}>
                           Combustible{c.galones ? ` — ${Number(c.galones).toFixed(3)} gal` : ''}{c.estacion ? ` · ${c.estacion}` : ''}
                         </Text>
                         <Text style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{fmt(c.total)}</Text>
+                      </div>
+                    ))}
+                    {/* Otros gastos del viaje */}
+                    {gastos.map((g, i) => (
+                      <div key={`g-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0 4px 28px', background: '#fafafa', borderBottom: i === gastos.length - 1 ? '1px solid #f0f0f0' : 'none' }}>
+                        <Tag color="geekblue" style={{ margin: 0, fontSize: 11 }}>GASTO</Tag>
+                        <Text type="secondary" style={{ flex: 1, fontSize: 12 }}>{g.descripcion}</Text>
+                        <Text style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{fmt(g.monto)}</Text>
                       </div>
                     ))}
                   </div>
@@ -374,10 +389,11 @@ export default function ViajesPage() {
             </div>
             <Divider style={{ margin: '8px 0' }} />
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-              {subtotalComb > 0 && (
+              {(subtotalComb > 0 || subtotalGastos > 0) && (
                 <>
                   <div><Text type="secondary">Servicios de transporte:&nbsp;</Text><Text>{fmt(subtotalViajes)}</Text></div>
-                  <div><Text type="secondary">Combustible:&nbsp;</Text><Text>{fmt(subtotalComb)}</Text></div>
+                  {subtotalComb > 0 && <div><Text type="secondary">Combustible:&nbsp;</Text><Text>{fmt(subtotalComb)}</Text></div>}
+                  {subtotalGastos > 0 && <div><Text type="secondary">Otros gastos:&nbsp;</Text><Text>{fmt(subtotalGastos)}</Text></div>}
                 </>
               )}
               <div><Text type="secondary" style={{ fontSize: 12 }}>Exento de ITBIS</Text></div>
@@ -452,6 +468,28 @@ export default function ViajesPage() {
             </Form.Item>
           </Space.Compact>
           <Form.Item name="notas" label="Notas"><Input.TextArea rows={2} /></Form.Item>
+
+          <Divider orientation="left" style={{ marginBottom: 8, fontSize: 13 }}>Otros Gastos</Divider>
+          <Form.List name="gastos">
+            {(fields, { add, remove }) => (
+              <>
+                {fields.map(({ key, name, ...rest }) => (
+                  <Space key={key} style={{ display: 'flex', marginBottom: 6 }} align="baseline">
+                    <Form.Item {...rest} name={[name, 'descripcion']} rules={[{ required: true, message: 'Descripción requerida' }]} style={{ flex: 1, marginBottom: 0, minWidth: 220 }}>
+                      <Input placeholder="Descripción del gasto" />
+                    </Form.Item>
+                    <Form.Item {...rest} name={[name, 'monto']} rules={[{ required: true, message: 'Monto requerido' }]} style={{ marginBottom: 0 }}>
+                      <InputNumber min={0} precision={2} prefix="RD$" style={{ width: 130 }} placeholder="0.00" />
+                    </Form.Item>
+                    <MinusCircleOutlined onClick={() => remove(name)} style={{ color: '#ff4d4f', cursor: 'pointer' }} />
+                  </Space>
+                ))}
+                <Button type="dashed" onClick={() => add()} icon={<PlusOutlined />} size="small">
+                  Agregar gasto
+                </Button>
+              </>
+            )}
+          </Form.List>
         </Form>
       </Modal>
     </div>
