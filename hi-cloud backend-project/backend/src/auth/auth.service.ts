@@ -387,7 +387,38 @@ export class AuthService implements OnModuleInit {
       return { requiresTwoFactor: true as const, pending2FAToken };
     }
 
-    // 8. Login exitoso — resetear contador de intentos
+    // 8. Verificar que el usuario tenga al menos una empresa activa (no suspendida por el super admin)
+    //    No aplica a SUPER_ADMIN — ellos no tienen membresía en empresas.
+    if (user.role !== UserRole.SUPER_ADMIN) {
+      const ues = await this.ueRepository.find({
+        where: { userId: user.id, isActive: true },
+        relations: ['empresa'],
+      });
+      const tieneEmpresaActiva = ues.some(e => e.empresa?.isActive === true);
+
+      if (!tieneEmpresaActiva) {
+        const attempts  = await this.loginAttempts.increment(dto.email, ip);
+        const blockSecs = await this.loginAttempts.block(dto.email, ip, attempts);
+
+        if (blockSecs > 0) {
+          const tiempo = this.loginAttempts.formatTime(blockSecs);
+          this.logger.warn(`[LOGIN] Empresa suspendida — bloqueado ${tiempo} — email:${dto.email} ip:${ip} intentos:${attempts}`);
+          throw new HttpException(
+            {
+              message:          `Demasiados intentos. Cuenta bloqueada por ${tiempo}.`,
+              remainingSeconds: blockSecs,
+              error:            'Too Many Requests',
+            },
+            HttpStatus.TOO_MANY_REQUESTS,
+          );
+        }
+
+        this.logger.warn(`[LOGIN] Empresa suspendida — intento #${attempts} — email:${dto.email} ip:${ip}`);
+        throw new ForbiddenException('Tu empresa ha sido suspendida. Contacta al administrador de HiCloud.');
+      }
+    }
+
+    // 9. Login exitoso — resetear contador de intentos
     await this.loginAttempts.reset(dto.email, ip);
 
     // Desplazar sesión anterior: nuevo sessionToken + revocar refresh tokens previos
