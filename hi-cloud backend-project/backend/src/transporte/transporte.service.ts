@@ -293,6 +293,11 @@ export class TransporteService {
       throw new BadRequestException('Solo se pueden facturar viajes en estado COMPLETADO');
     }
 
+    const combustibles = await this.ds.query<any[]>(
+      `SELECT * FROM tr_combustible WHERE "viajeId"=$1 AND "empresaId"=$2 ORDER BY fecha ASC, id ASC`,
+      [id, empresaId],
+    );
+
     const fecha = new Date().toISOString().substring(0, 10);
     const factura = await this.facturasSvc.create(
       {
@@ -308,6 +313,12 @@ export class TransporteService {
             precioUnitario: Number(viaje.tarifa),
             porcentajeIva: 0,
           },
+          ...combustibles.map((c: any) => ({
+            descripcion: `Combustible (${c.tipoCombustible})${c.galones ? ` — ${Number(c.galones).toFixed(3)} gal` : ''}${c.estacion ? ` · ${c.estacion}` : ''}`,
+            cantidad: 1,
+            precioUnitario: Number(c.total),
+            porcentajeIva: 0,
+          })),
         ],
       },
       usuario,
@@ -360,6 +371,29 @@ export class TransporteService {
     const clienteId = viajes[0].clienteId ?? undefined;
     const numeros  = viajes.map((v: any) => v.numero).join(', ');
 
+    const combustiblesPorViaje = await this.ds.query<any[]>(
+      `SELECT * FROM tr_combustible WHERE "viajeId"=ANY($1) AND "empresaId"=$2 ORDER BY "viajeId" ASC, fecha ASC, id ASC`,
+      [ids, empresaId],
+    );
+
+    const detallesViajes = viajes.flatMap((v: any) => {
+      const comb = combustiblesPorViaje.filter((c: any) => c.viajeId === v.id);
+      return [
+        {
+          descripcion: `Servicio de transporte ${v.numero}: ${v.origen} → ${v.destino}`,
+          cantidad: 1,
+          precioUnitario: Number(v.tarifa),
+          porcentajeIva: 0,
+        },
+        ...comb.map((c: any) => ({
+          descripcion: `Combustible (${c.tipoCombustible}) ${v.numero}${c.galones ? ` — ${Number(c.galones).toFixed(3)} gal` : ''}${c.estacion ? ` · ${c.estacion}` : ''}`,
+          cantidad: 1,
+          precioUnitario: Number(c.total),
+          porcentajeIva: 0,
+        })),
+      ];
+    });
+
     const factura = await this.facturasSvc.create(
       {
         fecha,
@@ -367,12 +401,7 @@ export class TransporteService {
         tipoNcf: 'E31',
         notas: `Viajes: ${numeros}`,
         tipoPago: 'CONTADO',
-        detalles: viajes.map((v: any) => ({
-          descripcion: `Servicio de transporte ${v.numero}: ${v.origen} → ${v.destino}`,
-          cantidad: 1,
-          precioUnitario: Number(v.tarifa),
-          porcentajeIva: 0,
-        })),
+        detalles: detallesViajes,
       },
       usuario,
     );
