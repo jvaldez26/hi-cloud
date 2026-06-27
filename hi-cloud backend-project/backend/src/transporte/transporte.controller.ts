@@ -90,6 +90,7 @@ class CreateViajeDto {
 class CreateCombustibleDto {
   @IsOptional() @IsInt() @IsPositive() @Type(() => Number) vehiculoId?: number;
   @IsOptional() @IsInt() @IsPositive() @Type(() => Number) choferId?: number;
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number) viajeId?: number;
   @IsOptional() @IsDateString() fecha?: string;
   @IsOptional() @IsEnum(['gasolina','diesel','gas']) tipoCombustible?: string;
   @IsOptional() @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) @Type(() => Number) galones?: number;
@@ -210,10 +211,12 @@ export class TransporteController {
   @Get('viajes')
   listViajes(
     @Query('estado') estado?: string,
+    @Query('vehiculoId') vehiculoIdRaw?: string,
     @Query('page',  new DefaultValuePipe(1),  PIP) page  = 1,
     @Query('limit', new DefaultValuePipe(50), PIP) limit = 50,
   ) {
-    return this.svc.findAllViajes(this.tenantSvc.getEmpresaId(), { estado, page, limit });
+    const vehiculoId = vehiculoIdRaw ? parseInt(vehiculoIdRaw, 10) : undefined;
+    return this.svc.findAllViajes(this.tenantSvc.getEmpresaId(), { estado, vehiculoId, page, limit });
   }
 
   @Get('viajes/facturables')

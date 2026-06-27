@@ -192,7 +192,7 @@ export class TransporteService {
 
   // ── VIAJES ────────────────────────────────────────────────────────────────
 
-  async findAllViajes(empresaId: number, opts: { estado?: string; page?: number; limit?: number }) {
+  async findAllViajes(empresaId: number, opts: { estado?: string; vehiculoId?: number; page?: number; limit?: number }) {
     const page  = Math.max(1, opts.page  ?? 1);
     const limit = Math.min(100, opts.limit ?? 50);
     const offset = (page - 1) * limit;
@@ -204,6 +204,10 @@ export class TransporteService {
     if (opts.estado) {
       whereParts.push(`v.estado=$${idx++}`);
       vals.push(opts.estado);
+    }
+    if (opts.vehiculoId) {
+      whereParts.push(`v."vehiculoId"=$${idx++}`);
+      vals.push(opts.vehiculoId);
     }
 
     const where = whereParts.join(' AND ');
@@ -476,10 +480,12 @@ export class TransporteService {
     );
 
     const rows = await this.ds.query<any[]>(
-      `SELECT c.*, v.placa AS "vehiculoPlaca", ch.nombre AS "choferNombre"
+      `SELECT c.*, v.placa AS "vehiculoPlaca", ch.nombre AS "choferNombre",
+              vj.numero AS "viajeNumero"
          FROM tr_combustible c
          LEFT JOIN tr_vehiculos v  ON v.id  = c."vehiculoId"
          LEFT JOIN tr_choferes  ch ON ch.id = c."choferId"
+         LEFT JOIN tr_viajes    vj ON vj.id = c."viajeId"
         WHERE ${where}
         ORDER BY c.fecha DESC, c.id DESC
         LIMIT $${idx} OFFSET $${idx + 1}`,
@@ -497,14 +503,15 @@ export class TransporteService {
     );
     const [row] = await this.ds.query<any[]>(
       `INSERT INTO tr_combustible
-         ("empresaId","vehiculoId","choferId",fecha,"tipoCombustible",galones,"precioGalon",total,odometro,estacion,notas)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+         ("empresaId","vehiculoId","choferId",fecha,"tipoCombustible",galones,"precioGalon",total,odometro,estacion,notas,"viajeId")
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
       [
         empresaId, data.vehiculoId ?? null, data.choferId ?? null,
         data.fecha ?? new Date().toISOString().substring(0, 10),
         data.tipoCombustible ?? 'gasolina',
         data.galones ?? null, data.precioGalon ?? null, total,
         data.odometro ?? null, data.estacion ?? null, data.notas ?? null,
+        data.viajeId ?? null,
       ],
     );
     return row;

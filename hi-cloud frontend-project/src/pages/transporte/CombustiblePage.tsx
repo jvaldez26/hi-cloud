@@ -18,9 +18,11 @@ type Registro = {
   id: number; fecha: string; vehiculoPlaca?: string; choferNombre?: string;
   tipoCombustible: string; galones?: string; precioGalon?: string;
   total: string; odometro?: string; estacion?: string; notas?: string;
+  viajeId?: number; viajeNumero?: string;
 };
 type Vehiculo = { id: number; placa: string; marca: string; modelo: string };
 type Chofer   = { id: number; nombre: string };
+type Viaje    = { id: number; numero: string; origen: string; destino: string; fecha: string; estado: string };
 
 async function fetchCombustible(page: number, vehiculoId?: number) {
   const params: Record<string, any> = { page, limit: 50 };
@@ -31,13 +33,22 @@ async function fetchCombustible(page: number, vehiculoId?: number) {
 async function fetchStats()   { return api.get('/transporte/combustible/stats').then(extractData); }
 async function fetchVehiculos(): Promise<Vehiculo[]> { return api.get('/transporte/vehiculos').then(extractList); }
 async function fetchChoferes(): Promise<Chofer[]>    { return api.get('/transporte/choferes').then(extractList); }
+async function fetchViajes(vehiculoId?: number): Promise<Viaje[]> {
+  const params: Record<string, any> = { limit: 200 };
+  if (vehiculoId) params.vehiculoId = vehiculoId;
+  const r = await api.get('/transporte/viajes', { params });
+  const data = r.data?.data?.data ?? [];
+  return (data as Viaje[]).filter(v => !['cancelado', 'facturado'].includes(v.estado));
+}
 
 const TIPO_COLOR: Record<string, string> = { gasolina: 'orange', diesel: 'blue', gas: 'green' };
+const ESTADO_COLOR: Record<string, string> = { programado: 'blue', en_curso: 'orange', completado: 'green' };
 
 const COLS_DEF = [
   { key: 'fecha',     label: 'Fecha'    },
   { key: 'vehiculo',  label: 'Vehículo' },
   { key: 'chofer',    label: 'Chofer',   defaultVisible: false },
+  { key: 'viaje',     label: 'Viaje',    defaultVisible: false },
   { key: 'tipo',      label: 'Tipo'     },
   { key: 'galones',   label: 'Galones',  defaultVisible: false },
   { key: 'precio',    label: 'P/Galón',  defaultVisible: false },
@@ -51,6 +62,7 @@ export default function CombustiblePage() {
   const [open,       setOpen]       = useState(false);
   const [page,       setPage]       = useState(1);
   const [filtroVeh,  setFiltroVeh]  = useState<number | undefined>(undefined);
+  const [formVehId,  setFormVehId]  = useState<number | undefined>(undefined);
   const [form]                      = Form.useForm();
 
   const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('tr-combustible', COLS_DEF);
@@ -59,6 +71,11 @@ export default function CombustiblePage() {
   const { data: stats              } = useQuery({ queryKey: ['tr-combustible-stats'], queryFn: fetchStats });
   const { data: vehiculos = []     } = useQuery({ queryKey: ['tr-vehiculos'],  queryFn: fetchVehiculos });
   const { data: choferes  = []     } = useQuery({ queryKey: ['tr-choferes'],   queryFn: fetchChoferes  });
+  const { data: viajes    = []     } = useQuery({
+    queryKey: ['tr-viajes-form', formVehId],
+    queryFn:  () => fetchViajes(formVehId),
+    enabled: open,
+  });
 
   const save = useMutation({
     mutationFn: (vals: any) => api.post('/transporte/combustible', vals),
@@ -66,7 +83,7 @@ export default function CombustiblePage() {
       message.success('Registro guardado');
       qc.invalidateQueries({ queryKey: ['tr-combustible'] });
       qc.invalidateQueries({ queryKey: ['tr-combustible-stats'] });
-      setOpen(false); form.resetFields();
+      setOpen(false); form.resetFields(); setFormVehId(undefined);
     },
     onError: (e: any) => message.error(e.response?.data?.message ?? 'Error'),
   });
@@ -91,10 +108,16 @@ export default function CombustiblePage() {
     });
   }
 
+  function handleVehiculoChange(val: number | undefined) {
+    setFormVehId(val);
+    form.setFieldValue('viajeId', undefined);
+  }
+
   const columns = [
     { title: 'Fecha',     dataIndex: 'fecha',          key: 'fecha',    width: 100, render: (v: string) => v?.substring(0,10) },
     { title: 'Vehículo',  dataIndex: 'vehiculoPlaca',  key: 'vehiculo', render: (v?: string) => v ?? '—' },
     { title: 'Chofer',    dataIndex: 'choferNombre',   key: 'chofer',   render: (v?: string) => v ?? '—' },
+    { title: 'Viaje',     dataIndex: 'viajeNumero',    key: 'viaje',    render: (v?: string) => v ? <Tag color="purple">{v}</Tag> : '—' },
     { title: 'Tipo',      dataIndex: 'tipoCombustible', key: 'tipo',    render: (v: string) => <Tag color={TIPO_COLOR[v] ?? 'default'}>{v?.toUpperCase()}</Tag> },
     { title: 'Galones',   dataIndex: 'galones',        key: 'galones',  align: 'right' as const, render: (v?: string) => v ? Number(v).toFixed(3) : '—' },
     { title: 'P/Galón',   dataIndex: 'precioGalon',    key: 'precio',   align: 'right' as const, render: (v?: string) => v ? `RD$${Number(v).toFixed(2)}` : '—' },
@@ -142,7 +165,7 @@ export default function CombustiblePage() {
         >
           {vehiculos.map(v => <Option key={v.id} value={v.id}>{v.placa} — {v.marca} {v.modelo}</Option>)}
         </Select>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setOpen(true); }}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setFormVehId(undefined); setOpen(true); }}>
           Registrar Carga
         </Button>
         <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
@@ -163,7 +186,7 @@ export default function CombustiblePage() {
       <Modal
         open={open}
         title="Registrar Carga de Combustible"
-        onCancel={() => { setOpen(false); form.resetFields(); }}
+        onCancel={() => { setOpen(false); form.resetFields(); setFormVehId(undefined); }}
         onOk={() => form.submit()}
         confirmLoading={save.isPending}
         width={520}
@@ -171,7 +194,10 @@ export default function CombustiblePage() {
         <Form form={form} layout="vertical" onFinish={handleSubmit} initialValues={{ tipoCombustible: 'gasolina', fecha: dayjs() }}>
           <Space.Compact style={{ width: '100%' }}>
             <Form.Item name="vehiculoId" label="Vehículo" style={{ flex: 2 }}>
-              <Select allowClear showSearch optionFilterProp="children" placeholder="Seleccionar">
+              <Select
+                allowClear showSearch optionFilterProp="children" placeholder="Seleccionar"
+                onChange={(val) => handleVehiculoChange(val)}
+              >
                 {vehiculos.map(v => <Option key={v.id} value={v.id}>{v.placa} — {v.marca} {v.modelo}</Option>)}
               </Select>
             </Form.Item>
@@ -181,6 +207,21 @@ export default function CombustiblePage() {
               </Select>
             </Form.Item>
           </Space.Compact>
+
+          <Form.Item name="viajeId" label="Viaje (opcional)">
+            <Select allowClear showSearch optionFilterProp="label" placeholder="Asociar a un viaje...">
+              {viajes.map(v => (
+                <Option key={v.id} value={v.id} label={`${v.numero} ${v.origen} ${v.destino}`}>
+                  <Space size={4}>
+                    <Tag color={ESTADO_COLOR[v.estado] ?? 'default'} style={{ margin: 0 }}>{v.numero}</Tag>
+                    <span style={{ fontSize: 12 }}>{v.origen} → {v.destino}</span>
+                    <span style={{ fontSize: 11, color: '#999' }}>{v.fecha?.substring(0,10)}</span>
+                  </Space>
+                </Option>
+              ))}
+            </Select>
+          </Form.Item>
+
           <Space.Compact style={{ width: '100%' }}>
             <Form.Item name="fecha"           label="Fecha"       style={{ flex: 1 }}><DatePicker style={{ width: '100%' }} /></Form.Item>
             <Form.Item name="tipoCombustible" label="Tipo"        style={{ flex: 1 }}>
