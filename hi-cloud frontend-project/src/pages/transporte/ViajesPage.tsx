@@ -185,9 +185,7 @@ export default function ViajesPage() {
   }
 
   const checkedViajes = confirm.viajes.filter(v => confirm.checkedKeys.includes(v.id));
-  const subtotal = checkedViajes.reduce((s, v) => s + Number(v.tarifa), 0);
-  const itbis    = subtotal * 0.18;
-  const total    = subtotal + itbis;
+  const total = checkedViajes.reduce((s, v) => s + Number(v.tarifa), 0);
 
   const columns = [
     { title: '#',      dataIndex: 'numero',   key: 'numero',   width: 90 },
@@ -335,8 +333,7 @@ export default function ViajesPage() {
             </div>
             <Divider style={{ margin: '8px 0' }} />
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-              <div><Text type="secondary">Subtotal:&nbsp;</Text><Text>{fmt(subtotal)}</Text></div>
-              <div><Text type="secondary">ITBIS (18%):&nbsp;</Text><Text>{fmt(itbis)}</Text></div>
+              <div><Text type="secondary" style={{ fontSize: 12 }}>Exento de ITBIS (transporte)</Text></div>
               <div style={{ fontSize: 16 }}>
                 <Text strong>Total:&nbsp;</Text>
                 <Text strong style={{ fontSize: 18 }}>{fmt(total)}</Text>
