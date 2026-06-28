@@ -229,7 +229,7 @@ export class ProductosService implements OnModuleInit {
     const [data, total] = await qb
       .orderBy('producto.nombre', 'ASC')
       .skip((page - 1) * limit)
-      .take(Math.min(limit, 100))
+      .take(Math.min(limit, incluirSinStock ? 5000 : 100))
       .getManyAndCount();
 
     // Modo admin — catálogo completo con stock desglosado por almacén
