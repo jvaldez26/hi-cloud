@@ -70,7 +70,7 @@ function MovimientosTab() {
   });
 const { data: productosData } = useQuery({
     queryKey: ['productos-inv'],
-    queryFn:  () => productosApi.list(1, 500),
+    queryFn:  () => productosApi.list(1, 2000, '', true),
   });
 
   const entradaMut = useMutation({
@@ -234,7 +234,7 @@ function LotesTab() {
   });
   const { data: productosData } = useQuery({
     queryKey: ['productos-inv'],
-    queryFn: () => productosApi.list(1, 500, '', true),
+    queryFn: () => productosApi.list(1, 2000, '', true),
   });
 
   const crearMut = useMutation({
@@ -434,7 +434,7 @@ function SerialesTab() {
   });
   const { data: productosData } = useQuery({
     queryKey: ['productos-inv'],
-    queryFn: () => productosApi.list(1, 500, '', true),
+    queryFn: () => productosApi.list(1, 2000, '', true),
   });
 
   const registrarMut = useMutation({
@@ -612,7 +612,7 @@ function SolicitudesAjusteTab() {
 
   const { data: productos } = useQuery({
     queryKey: ['productos-lista'],
-    queryFn: () => productosApi.list(1, 200, '', true),
+    queryFn: () => productosApi.list(1, 2000, '', true),
   });
 
   const { data: solicitudes, isFetching } = useQuery({
