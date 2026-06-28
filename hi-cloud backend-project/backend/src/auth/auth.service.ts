@@ -110,13 +110,13 @@ export class AuthService implements OnModuleInit {
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-  private async getEmpresaPrincipal(userId: number): Promise<number | undefined> {
+  private async getEmpresaPrincipal(userId: number): Promise<{ empresaId: number; rol: string } | undefined> {
     const principal = await this.ueRepository
       .createQueryBuilder('ue')
       .where({ userId, isPrincipal: true })
       .andWhere('ue.isActive IS NOT FALSE')
       .getOne();
-    if (principal) return principal.empresaId;
+    if (principal) return { empresaId: principal.empresaId, rol: principal.rol };
 
     const primera = await this.ueRepository
       .createQueryBuilder('ue')
@@ -124,16 +124,18 @@ export class AuthService implements OnModuleInit {
       .andWhere('ue.isActive IS NOT FALSE')
       .orderBy('ue.id', 'ASC')
       .getOne();
-    return primera?.empresaId;
+    return primera ? { empresaId: primera.empresaId, rol: primera.rol } : undefined;
   }
 
-  private buildToken(user: User, empresaId?: number, sucursalId?: number, almacenId?: number): string {
+  private buildToken(user: User, empresaId?: number, sucursalId?: number, almacenId?: number, empresaRole?: string): string {
     // S-27: jti único por token — permite revocación individual en blacklist
     // S-31: roleVersion en JWT para detectar cambios de rol sin ir a BD en cada request
+    // empresaRole: rol específico del usuario en la empresa activa (UsuarioEmpresa.rol)
+    // fallback a user.role solo para SUPER_ADMIN (que no tiene UsuarioEmpresa)
     return this.jwtService.sign({
       sub:          user.id,
       email:        user.email,
-      role:         user.role,
+      role:         empresaRole ?? user.role,
       empresaId:    empresaId  ?? null,
       sucursalId:   sucursalId ?? null,
       almacenId:    almacenId  ?? null,
@@ -425,11 +427,13 @@ export class AuthService implements OnModuleInit {
     const sessionToken = await this.initNewSession(user.id);
     (user as any).sessionToken = sessionToken;
 
-    const empresaId = await this.getEmpresaPrincipal(user.id);
+    const empresaPrincipal = await this.getEmpresaPrincipal(user.id);
+    const empresaId = empresaPrincipal?.empresaId;
+    const empresaRole = empresaPrincipal?.rol;
     const { sucursalId, almacenId, sucursalNombre } = empresaId
       ? await this.resolverContextoSucursal(user.id, empresaId)
       : { sucursalId: undefined, almacenId: undefined, sucursalNombre: undefined };
-    const accessToken = this.buildToken(user, empresaId, sucursalId, almacenId);
+    const accessToken = this.buildToken(user, empresaId, sucursalId, almacenId, empresaRole);
 
     const empresas = await this.ueRepository.find({
       where: { userId: user.id, isActive: true },
@@ -460,6 +464,8 @@ export class AuthService implements OnModuleInit {
   // ─── Cambiar empresa activa ───────────────────────────────────────────────────
 
   async cambiarEmpresa(userId: number, userRole: string, empresaId: number) {
+    let empresaRole: string | undefined;
+
     // Solo SUPER_ADMIN puede cambiar a cualquier empresa sin tener membresía
     if (userRole !== UserRole.SUPER_ADMIN) {
       const acceso = await this.ueRepository.findOne({
@@ -474,12 +480,15 @@ export class AuthService implements OnModuleInit {
           'Esta empresa ha sido suspendida. Contacte al administrador de la plataforma HiCloud.',
         );
       }
+
+      // Capturar el rol específico del usuario en la empresa destino
+      empresaRole = acceso.rol;
     }
 
     const user = await this.userRepository.findOneBy({ id: userId });
     if (!user) throw new NotFoundException('Usuario no encontrado');
     const { sucursalId, almacenId, sucursalNombre } = await this.resolverContextoSucursal(userId, empresaId);
-    const accessToken = this.buildToken(user, empresaId, sucursalId, almacenId);
+    const accessToken = this.buildToken(user, empresaId, sucursalId, almacenId, empresaRole);
 
     return {
       message:        `Empresa activa cambiada a #${empresaId}`,
@@ -514,8 +523,13 @@ export class AuthService implements OnModuleInit {
     const user = await this.userRepository.findOneBy({ id: userId });
     if (!user) throw new NotFoundException('Usuario no encontrado');
 
+    // Obtener rol específico del usuario en esta empresa para el nuevo token
+    const ueRol = userRole !== UserRole.SUPER_ADMIN
+      ? await this.ueRepository.findOne({ where: { userId, empresaId, isActive: true } })
+      : undefined;
+
     const almacenId: number | undefined = (sucursal as any).almacenPrincipalId ?? undefined;
-    const accessToken = this.buildToken(user, empresaId, sucursal.id, almacenId);
+    const accessToken = this.buildToken(user, empresaId, sucursal.id, almacenId, ueRol?.rol);
 
     return {
       message:        `Sucursal activa cambiada a "${sucursal.nombre}"`,
@@ -955,8 +969,8 @@ export class AuthService implements OnModuleInit {
   /** S-28: Genera un access token para un userId (usado en /auth/refresh) */
   async buildAccessTokenForUser(userId: number): Promise<string> {
     const user = await this.usersService.findById(userId);
-    const empresaId = await this.getEmpresaPrincipal(userId);
-    return this.buildToken(user, empresaId);
+    const ep = await this.getEmpresaPrincipal(userId);
+    return this.buildToken(user, ep?.empresaId, undefined, undefined, ep?.rol);
   }
 
   /** POS Screen Lock: verifica que la contraseña coincide con la del usuario autenticado. */
@@ -1064,8 +1078,8 @@ export class AuthService implements OnModuleInit {
 
     const sessionToken = await this.initNewSession(user.id);
     (user as any).sessionToken = sessionToken;
-    const empresaId  = await this.getEmpresaPrincipal(user.id);
-    const accessToken = this.buildToken(user, empresaId);
+    const ep2fa       = await this.getEmpresaPrincipal(user.id);
+    const accessToken = this.buildToken(user, ep2fa?.empresaId, undefined, undefined, ep2fa?.rol);
     const empresas   = await this.ueRepository.find({
       where: { userId: user.id, isActive: true },
       relations: ['empresa'],
@@ -1074,7 +1088,7 @@ export class AuthService implements OnModuleInit {
     return {
       message:       'Login exitoso',
       accessToken,
-      empresaActual: empresaId ?? null,
+      empresaActual: ep2fa?.empresaId ?? null,
       empresas: empresas.map(e => ({
         empresaId:   e.empresaId, nombre: e.empresa?.nombre,
         rnc:         e.empresa?.rnc, rol: e.rol, isPrincipal: e.isPrincipal,
@@ -1209,8 +1223,8 @@ export class AuthService implements OnModuleInit {
     const sessionToken = await this.initNewSession(userId);
     (user as any).sessionToken = sessionToken;
 
-    const empresaId   = await this.getEmpresaPrincipal(userId);
-    const accessToken = this.buildToken(user, empresaId);
+    const epSetup     = await this.getEmpresaPrincipal(userId);
+    const accessToken = this.buildToken(user, epSetup?.empresaId, undefined, undefined, epSetup?.rol);
 
     const empresas = await this.ueRepository.find({
       where: { userId, isActive: true },
@@ -1222,7 +1236,7 @@ export class AuthService implements OnModuleInit {
 
     return {
       accessToken,
-      empresaActual: empresaId ?? null,
+      empresaActual: epSetup?.empresaId ?? null,
       empresas: empresas.map(e => ({
         empresaId:   e.empresaId,
         nombre:      e.empresa?.nombre,
@@ -1244,8 +1258,8 @@ export class AuthService implements OnModuleInit {
   async buildLoginResponse(user: User) {
     const sessionToken = await this.initNewSession(user.id);
     (user as any).sessionToken = sessionToken;  // propagar al buildToken
-    const empresaId   = await this.getEmpresaPrincipal(user.id);
-    const accessToken = this.buildToken(user, empresaId);
+    const epResp      = await this.getEmpresaPrincipal(user.id);
+    const accessToken = this.buildToken(user, epResp?.empresaId, undefined, undefined, epResp?.rol);
     const empresas    = await this.ueRepository.find({
       where: { userId: user.id, isActive: true },
       relations: ['empresa'],
@@ -1253,7 +1267,7 @@ export class AuthService implements OnModuleInit {
     });
     return {
       accessToken,
-      empresaActual: empresaId ?? null,
+      empresaActual: epResp?.empresaId ?? null,
       empresas: empresas.map(e => ({
         empresaId:   e.empresaId,
         nombre:      e.empresa?.nombre,
