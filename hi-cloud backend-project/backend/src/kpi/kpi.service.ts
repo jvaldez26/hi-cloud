@@ -9,6 +9,7 @@ import { Empleado } from '../nomina/entities/empleado.entity';
 import { Lead } from '../crm/entities/lead.entity';
 import { Producto } from '../productos/entities/producto.entity';
 import { Gasto } from '../gastos/entities/gasto.entity';
+import { TenantService } from '../tenant/tenant.service';
 
 @Injectable()
 export class KpiService {
@@ -21,6 +22,7 @@ export class KpiService {
     @InjectRepository(Lead)             private leadRepo: Repository<Lead>,
     @InjectRepository(Producto)         private prodRepo: Repository<Producto>,
     @InjectRepository(Gasto)            private gastoRepo: Repository<Gasto>,
+    private tenantService: TenantService,
   ) {}
 
   private periodoActual() {
@@ -33,6 +35,7 @@ export class KpiService {
 
   async getKpis() {
     const { hoy, inicio, fin, inicioAnio } = this.periodoActual();
+    const eid = this.tenantService.getEmpresaId();
 
     const [
       ventasMes, ventasAnio,
@@ -48,7 +51,8 @@ export class KpiService {
       this.factRepo.createQueryBuilder('f')
         .select('COALESCE(SUM(f.total),0)', 'total')
         .addSelect('COUNT(*)', 'cantidad')
-        .where('f.fecha BETWEEN :i AND :f', { i: inicio, f: fin })
+        .where('f.empresaId = :eid', { eid })
+        .andWhere('f.fecha BETWEEN :i AND :f', { i: inicio, f: fin })
         .andWhere('f.estado IN (:...e)', { e: ['emitida','pagada'] })
         .andWhere('f.isActive = true')
         .getRawOne<{ total: string; cantidad: string }>(),
@@ -56,7 +60,8 @@ export class KpiService {
       // Ventas del año
       this.factRepo.createQueryBuilder('f')
         .select('COALESCE(SUM(f.total),0)', 'total')
-        .where('f.fecha >= :ia', { ia: inicioAnio })
+        .where('f.empresaId = :eid', { eid })
+        .andWhere('f.fecha >= :ia', { ia: inicioAnio })
         .andWhere('f.estado IN (:...e)', { e: ['emitida','pagada'] })
         .andWhere('f.isActive = true')
         .getRawOne<{ total: string }>(),
@@ -64,7 +69,8 @@ export class KpiService {
       // Compras del mes
       this.compraRepo.createQueryBuilder('c')
         .select('COALESCE(SUM(c.total),0)', 'total')
-        .where('c.fecha BETWEEN :i AND :f', { i: inicio, f: fin })
+        .where('c.empresaId = :eid', { eid })
+        .andWhere('c.fecha BETWEEN :i AND :f', { i: inicio, f: fin })
         .andWhere('c.estado IN (:...e)', { e: ['recibida','pagada'] })
         .andWhere('c.isActive = true')
         .getRawOne<{ total: string }>(),
@@ -72,54 +78,61 @@ export class KpiService {
       // CxC pendiente total
       this.cxcRepo.createQueryBuilder('c')
         .select('COALESCE(SUM(c.montoPendiente),0)', 'total')
-        .where('c.estado IN (:...e)', { e: ['pendiente','pagada_parcial'] })
+        .where('c.empresaId = :eid', { eid })
+        .andWhere('c.estado IN (:...e)', { e: ['pendiente','pagada_parcial'] })
         .andWhere('c.isActive = true')
         .getRawOne<{ total: string }>(),
 
       // CxP pendiente total
       this.cxpRepo.createQueryBuilder('c')
         .select('COALESCE(SUM(c.montoPendiente),0)', 'total')
-        .where('c.estado IN (:...e)', { e: ['pendiente','pagada_parcial'] })
+        .where('c.empresaId = :eid', { eid })
+        .andWhere('c.estado IN (:...e)', { e: ['pendiente','pagada_parcial'] })
         .andWhere('c.isActive = true')
         .getRawOne<{ total: string }>(),
 
       // CxC vencida
       this.cxcRepo.createQueryBuilder('c')
         .select('COALESCE(SUM(c.montoPendiente),0)', 'total')
-        .where('c.estado = :e', { e: 'vencida' })
+        .where('c.empresaId = :eid', { eid })
+        .andWhere('c.estado = :e', { e: 'vencida' })
         .andWhere('c.isActive = true')
         .getRawOne<{ total: string }>(),
 
       // CxP vencida
       this.cxpRepo.createQueryBuilder('c')
         .select('COALESCE(SUM(c.montoPendiente),0)', 'total')
-        .where('c.estado = :e', { e: 'vencida' })
+        .where('c.empresaId = :eid', { eid })
+        .andWhere('c.estado = :e', { e: 'vencida' })
         .andWhere('c.isActive = true')
         .getRawOne<{ total: string }>(),
 
       // Empleados activos
-      this.empRepo.count({ where: { isActive: true, estado: 'activo' as any } }),
+      this.empRepo.count({ where: { empresaId: eid, isActive: true, estado: 'activo' as any } }),
 
       // Leads pendientes
-      this.leadRepo.count({ where: { isActive: true, estado: 'nuevo' as any } }),
+      this.leadRepo.count({ where: { empresaId: eid, isActive: true, estado: 'nuevo' as any } }),
 
       // Leads convertidos este mes
       this.leadRepo.createQueryBuilder('l')
-        .where("l.estado = 'convertido'")
+        .where('l.empresaId = :eid', { eid })
+        .andWhere("l.estado = 'convertido'")
         .andWhere('l.updatedAt BETWEEN :i AND :f', { i: inicio, f: fin })
         .andWhere('l.isActive = true')
         .getCount(),
 
       // Productos con stock bajo
       this.prodRepo.createQueryBuilder('p')
-        .where('p.stock <= p."stockMinimo"')
+        .where('p.empresaId = :eid', { eid })
+        .andWhere('p.stock <= p."stockMinimo"')
         .andWhere('p.isActive = true')
         .getCount(),
 
       // Gastos del mes
       this.gastoRepo.createQueryBuilder('g')
         .select('COALESCE(SUM(g.total),0)', 'total')
-        .where('g.fecha BETWEEN :i AND :f', { i: inicio, f: fin })
+        .where('g.empresaId = :eid', { eid })
+        .andWhere('g.fecha BETWEEN :i AND :f', { i: inicio, f: fin })
         .andWhere('g.isActive = true')
         .getRawOne<{ total: string }>(),
     ]);
@@ -136,7 +149,8 @@ export class KpiService {
       .select(['f.clienteId', 'SUM(f.total) AS total', 'COUNT(*) AS cantidad'])
       .addSelect(['c.nombre'])
       .leftJoin('f.cliente', 'c')
-      .where('f.fecha BETWEEN :i AND :f', { i: inicio, f: fin })
+      .where('f.empresaId = :eid', { eid })
+      .andWhere('f.fecha BETWEEN :i AND :f', { i: inicio, f: fin })
       .andWhere('f.estado IN (:...e)', { e: ['emitida','pagada'] })
       .andWhere('f.isActive = true')
       .groupBy('f.clienteId, c.nombre')
@@ -152,7 +166,8 @@ export class KpiService {
         return this.factRepo
           .createQueryBuilder('f')
           .select('COALESCE(SUM(f.total),0)', 'total')
-          .where('f.fecha BETWEEN :d AND :h', { d, h })
+          .where('f.empresaId = :eid', { eid })
+          .andWhere('f.fecha BETWEEN :d AND :h', { d, h })
           .andWhere('f.estado IN (:...e)', { e: ['emitida','pagada'] })
           .andWhere('f.isActive = true')
           .getRawOne<{ total: string }>()

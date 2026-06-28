@@ -5,6 +5,7 @@ import { CuentaPorCobrar } from '../cxc/entities/cuenta-por-cobrar.entity';
 import { CuentaPorPagar } from '../cxp/entities/cuenta-por-pagar.entity';
 import { Contrato } from '../contratos/entities/contrato.entity';
 import { Gasto } from '../gastos/entities/gasto.entity';
+import { TenantService } from '../tenant/tenant.service';
 
 export interface PeriodoFlujoCaja {
   mes:           number;
@@ -32,6 +33,7 @@ export class FlujoCajaService {
     @InjectRepository(CuentaPorPagar)  private cxpRepo:      Repository<CuentaPorPagar>,
     @InjectRepository(Contrato)        private contratoRepo: Repository<Contrato>,
     @InjectRepository(Gasto)           private gastoRepo:    Repository<Gasto>,
+    private tenantService: TenantService,
   ) {}
 
   async getProyeccion(meses = 6, saldoInicial = 0): Promise<{
@@ -41,6 +43,7 @@ export class FlujoCajaService {
     const hoy  = new Date();
     const periodos: PeriodoFlujoCaja[] = [];
     let saldoAcumulado = saldoInicial;
+    const empresaId = this.tenantService.getEmpresaId();
 
     for (let i = 0; i < meses; i++) {
       const fecha = new Date(hoy.getFullYear(), hoy.getMonth() + i, 1);
@@ -51,7 +54,8 @@ export class FlujoCajaService {
       const cobros = await this.cxcRepo
         .createQueryBuilder('c')
         .select('COALESCE(SUM(c.montoPendiente), 0)', 'total')
-        .where('c.fechaVencimiento BETWEEN :d AND :h', { d: desde, h: hasta })
+        .where('c.empresaId = :eid', { eid: empresaId })
+        .andWhere('c.fechaVencimiento BETWEEN :d AND :h', { d: desde, h: hasta })
         .andWhere('c.estado IN (:...estados)', { estados: ['pendiente', 'pagada_parcial', 'vencida'] })
         .andWhere('c.isActive = :a', { a: true })
         .getRawOne<{ total: string }>();
@@ -60,7 +64,8 @@ export class FlujoCajaService {
       const contratosIngresos = await this.contratoRepo
         .createQueryBuilder('c')
         .select('COALESCE(SUM(c.montoBase + (c.montoBase * c.porcentajeIva / 100)), 0)', 'total')
-        .where('c.proximaFactura BETWEEN :d AND :h', { d: desde, h: hasta })
+        .where('c.empresaId = :eid', { eid: empresaId })
+        .andWhere('c.proximaFactura BETWEEN :d AND :h', { d: desde, h: hasta })
         .andWhere("c.estado = 'activo'")
         .andWhere('c.isActive = :a', { a: true })
         .getRawOne<{ total: string }>();
@@ -69,7 +74,8 @@ export class FlujoCajaService {
       const pagos = await this.cxpRepo
         .createQueryBuilder('c')
         .select('COALESCE(SUM(c.montoPendiente), 0)', 'total')
-        .where('c.fechaVencimiento BETWEEN :d AND :h', { d: desde, h: hasta })
+        .where('c.empresaId = :eid', { eid: empresaId })
+        .andWhere('c.fechaVencimiento BETWEEN :d AND :h', { d: desde, h: hasta })
         .andWhere('c.estado IN (:...estados)', { estados: ['pendiente', 'pagada_parcial', 'vencida'] })
         .andWhere('c.isActive = :a', { a: true })
         .getRawOne<{ total: string }>();
@@ -81,7 +87,8 @@ export class FlujoCajaService {
       const gastosHistoricos = await this.gastoRepo
         .createQueryBuilder('g')
         .select('COALESCE(SUM(g.total), 0)', 'total')
-        .where('g.fecha BETWEEN :d AND :h', { d: mesAnterior, h: mesAnteriorHasta })
+        .where('g.empresaId = :eid', { eid: empresaId })
+        .andWhere('g.fecha BETWEEN :d AND :h', { d: mesAnterior, h: mesAnteriorHasta })
         .andWhere('g.isActive = :a', { a: true })
         .getRawOne<{ total: string }>();
 
@@ -122,26 +129,30 @@ export class FlujoCajaService {
   async getFlujoReal(mes: number, anio: number) {
     const desde = new Date(anio, mes - 1, 1);
     const hasta  = new Date(anio, mes, 0, 23, 59, 59);
+    const empresaId = this.tenantService.getEmpresaId();
 
     const [cobrosReales, pagosReales, gastosReales] = await Promise.all([
       this.cxcRepo
         .createQueryBuilder('c')
         .select('COALESCE(SUM(c.montoPagado), 0)', 'total')
-        .where('c.fechaVencimiento BETWEEN :d AND :h', { d: desde, h: hasta })
+        .where('c.empresaId = :eid', { eid: empresaId })
+        .andWhere('c.fechaVencimiento BETWEEN :d AND :h', { d: desde, h: hasta })
         .andWhere('c.isActive = :a', { a: true })
         .getRawOne<{ total: string }>(),
 
       this.cxpRepo
         .createQueryBuilder('c')
         .select('COALESCE(SUM(c.montoPagado), 0)', 'total')
-        .where('c.fechaVencimiento BETWEEN :d AND :h', { d: desde, h: hasta })
+        .where('c.empresaId = :eid', { eid: empresaId })
+        .andWhere('c.fechaVencimiento BETWEEN :d AND :h', { d: desde, h: hasta })
         .andWhere('c.isActive = :a', { a: true })
         .getRawOne<{ total: string }>(),
 
       this.gastoRepo
         .createQueryBuilder('g')
         .select('COALESCE(SUM(g.total), 0)', 'total')
-        .where('g.fecha BETWEEN :d AND :h', { d: desde, h: hasta })
+        .where('g.empresaId = :eid', { eid: empresaId })
+        .andWhere('g.fecha BETWEEN :d AND :h', { d: desde, h: hasta })
         .andWhere('g.isActive = :a', { a: true })
         .getRawOne<{ total: string }>(),
     ]);
