@@ -103,7 +103,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   cambiarEmpresa: (empresaId) => {
     localStorage.setItem('empresaId', String(empresaId));
-    set(() => ({ empresaActual: empresaId }));
+    set(state => {
+      const empresaInfo = state.empresas.find(e => e.empresaId === empresaId);
+      const newUser = state.user && empresaInfo
+        ? { ...state.user, role: empresaInfo.rol as AuthUser['role'] }
+        : state.user;
+      if (newUser !== state.user) localStorage.setItem('auth_user', JSON.stringify(newUser));
+      return { empresaActual: empresaId, user: newUser };
+    });
   },
 
   setSucursalActual: (sucursalId) => {
