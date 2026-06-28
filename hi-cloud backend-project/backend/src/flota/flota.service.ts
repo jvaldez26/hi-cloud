@@ -45,6 +45,7 @@ export class FlotaService {
   }
 
   async eliminarVehiculo(id: number) {
+    await this.getVehiculo(id);
     await this.vehRepo.update(id, { isActive: false });
     return { ok: true };
   }
@@ -77,6 +78,8 @@ export class FlotaService {
   }
 
   async eliminarRegistro(id: number) {
+    const reg = await this.regRepo.findOne({ where: { id, empresaId: this.tenantService.getEmpresaId(), isActive: true } });
+    if (!reg) throw new NotFoundException(`Registro #${id} no encontrado`);
     await this.regRepo.update(id, { isActive: false });
     return { ok: true };
   }
@@ -88,22 +91,25 @@ export class FlotaService {
     const en30   = new Date(hoy); en30.setDate(hoy.getDate() + 30);
     const inicio = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
 
+    const empresaId = this.tenantService.getEmpresaId();
+
     const [activos, enTaller, inactivos] = await Promise.all([
-      this.vehRepo.count({ where: { isActive: true, estado: EstadoVehiculo.ACTIVO } }),
-      this.vehRepo.count({ where: { isActive: true, estado: EstadoVehiculo.EN_TALLER } }),
-      this.vehRepo.count({ where: { isActive: true, estado: EstadoVehiculo.INACTIVO } }),
+      this.vehRepo.count({ where: { empresaId, isActive: true, estado: EstadoVehiculo.ACTIVO } }),
+      this.vehRepo.count({ where: { empresaId, isActive: true, estado: EstadoVehiculo.EN_TALLER } }),
+      this.vehRepo.count({ where: { empresaId, isActive: true, estado: EstadoVehiculo.INACTIVO } }),
     ]);
 
     // Documentos por vencer (marbete, seguro, inspección) en los próximos 30 días
-    const vencenItbis      = await this.vehRepo.count({ where: { isActive: true, vencimientoItbis:       LessThanOrEqual(en30) } });
-    const vencenSeguro     = await this.vehRepo.count({ where: { isActive: true, vencimientoSeguro:      LessThanOrEqual(en30) } });
-    const vencenInspeccion = await this.vehRepo.count({ where: { isActive: true, vencimientoInspeccion:  LessThanOrEqual(en30) } });
+    const vencenItbis      = await this.vehRepo.count({ where: { empresaId, isActive: true, vencimientoItbis:       LessThanOrEqual(en30) } });
+    const vencenSeguro     = await this.vehRepo.count({ where: { empresaId, isActive: true, vencimientoSeguro:      LessThanOrEqual(en30) } });
+    const vencenInspeccion = await this.vehRepo.count({ where: { empresaId, isActive: true, vencimientoInspeccion:  LessThanOrEqual(en30) } });
 
     // Gasto del mes por tipo
     const gastoMes = await this.regRepo
       .createQueryBuilder('r')
       .select(['r.tipo AS tipo', 'COALESCE(SUM(r.monto),0) AS total'])
-      .where('r.fecha >= :inicio', { inicio })
+      .where('r.empresaId = :empresaId', { empresaId })
+      .andWhere('r.fecha >= :inicio', { inicio })
       .andWhere('r.isActive = true')
       .groupBy('r.tipo')
       .getRawMany();
@@ -115,7 +121,8 @@ export class FlotaService {
       .createQueryBuilder('r')
       .select('COALESCE(SUM(r.litros),0)', 'litros')
       .addSelect('COALESCE(SUM(r.monto),0)', 'monto')
-      .where('r.tipo = :t', { t: TipoRegistroFlota.COMBUSTIBLE })
+      .where('r.empresaId = :empresaId', { empresaId })
+      .andWhere('r.tipo = :t', { t: TipoRegistroFlota.COMBUSTIBLE })
       .andWhere('r.fecha >= :inicio', { inicio })
       .andWhere('r.isActive = true')
       .getRawOne<{ litros: string; monto: string }>();
@@ -137,6 +144,7 @@ export class FlotaService {
       .createQueryBuilder('r')
       .select(['r.tipo AS tipo', 'SUM(r.monto) AS total', 'COUNT(*) AS cantidad'])
       .where('r.vehiculoId = :vid', { vid: id })
+      .andWhere('r.empresaId = :empresaId', { empresaId: this.tenantService.getEmpresaId() })
       .andWhere('r.isActive = true')
       .groupBy('r.tipo')
       .getRawMany();
