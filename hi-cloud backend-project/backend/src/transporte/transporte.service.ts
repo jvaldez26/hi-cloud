@@ -838,14 +838,14 @@ export class TransporteService {
       ),
       this.ds.query<any[]>(
         `SELECT v.placa, v.marca||' '||v.modelo AS vehiculo,
-                COALESCE(SUM(c.total),0)   AS costoTotal,
-                COALESCE(SUM(c.galones),0) AS galonesTotal,
+                COALESCE(SUM(c.total),0)   AS "costoTotal",
+                COALESCE(SUM(c.galones),0) AS "galonesTotal",
                 COUNT(*)                   AS cargas
            FROM tr_combustible c
            JOIN tr_vehiculos v ON v.id = c."vehiculoId"
           WHERE c."empresaId"=$1 AND c.fecha BETWEEN $2 AND $3
           GROUP BY v.id, v.placa, v.marca, v.modelo
-          ORDER BY costoTotal DESC`,
+          ORDER BY "costoTotal" DESC`,
         [empresaId, params.desde, params.hasta],
       ),
     ]);
@@ -870,7 +870,7 @@ export class TransporteService {
       ),
       this.ds.query<any[]>(
         `SELECT v.placa, v.marca||' '||v.modelo AS vehiculo,
-                COALESCE(SUM(m.costo),0) AS costoTotal,
+                COALESCE(SUM(m.costo),0) AS "costoTotal",
                 COUNT(*) AS mantenimientos,
                 COUNT(*) FILTER (WHERE m.tipo='preventivo') AS preventivos,
                 COUNT(*) FILTER (WHERE m.tipo='correctivo') AS correctivos,
@@ -879,7 +879,7 @@ export class TransporteService {
            JOIN tr_vehiculos v ON v.id = m."vehiculoId"
           WHERE m."empresaId"=$1 AND m.fecha BETWEEN $2 AND $3
           GROUP BY v.id, v.placa, v.marca, v.modelo
-          ORDER BY costoTotal DESC`,
+          ORDER BY "costoTotal" DESC`,
         [empresaId, params.desde, params.hasta],
       ),
     ]);
