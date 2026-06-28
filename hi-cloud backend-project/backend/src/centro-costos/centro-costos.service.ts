@@ -26,7 +26,7 @@ export class CentroCostosService {
   // ── Centros de costo ─────────────────────────────────────────────────────
 
   async crear(dto: CreateCCDto): Promise<CentroCosto> {
-    return this.ccRepo.save(this.ccRepo.create(dto));
+    return this.ccRepo.save(this.ccRepo.create({ ...dto, empresaId: this.tenantService.getEmpresaId() }));
   }
 
   async listar(): Promise<CentroCosto[]> {
@@ -57,6 +57,7 @@ export class CentroCostosService {
     await this.findById(dto.centroCostoId);
     return this.asigRepo.save(this.asigRepo.create({
       ...dto,
+      empresaId: this.tenantService.getEmpresaId(),
       fecha: new Date(dto.fecha),
       porcentaje: dto.porcentaje ?? 100,
     }));
@@ -65,7 +66,8 @@ export class CentroCostosService {
   async listarAsignaciones(centroCostoId: number, anio?: number) {
     const qb = this.asigRepo.createQueryBuilder('a')
       .leftJoinAndSelect('a.centroCosto', 'cc')
-      .where('a.centroCostoId = :ccid', { ccid: centroCostoId })
+      .where('a.empresaId = :eid', { eid: this.tenantService.getEmpresaId() })
+      .andWhere('a.centroCostoId = :ccid', { ccid: centroCostoId })
       .andWhere('a.isActive = true');
 
     if (anio) {
@@ -76,6 +78,8 @@ export class CentroCostosService {
   }
 
   async eliminarAsignacion(id: number) {
+    const asig = await this.asigRepo.findOne({ where: { id, empresaId: this.tenantService.getEmpresaId(), isActive: true } });
+    if (!asig) throw new NotFoundException(`Asignación #${id} no encontrada`);
     await this.asigRepo.update(id, { isActive: false });
     return { ok: true };
   }
@@ -124,6 +128,7 @@ export class CentroCostosService {
   }
 
   async getReporteMensual(centroCostoId: number, anio: number) {
+    await this.findById(centroCostoId); // verifica pertenencia a la empresa activa
     const meses = await this.asigRepo
       .createQueryBuilder('a')
       .select([
@@ -131,7 +136,8 @@ export class CentroCostosService {
         'SUM(a.monto * a.porcentaje / 100) AS total',
         'COUNT(*) AS cantidad',
       ])
-      .where('a.centroCostoId = :ccid', { ccid: centroCostoId })
+      .where('a.empresaId = :eid', { eid: this.tenantService.getEmpresaId() })
+      .andWhere('a.centroCostoId = :ccid', { ccid: centroCostoId })
       .andWhere('EXTRACT(YEAR FROM a.fecha) = :y', { y: anio })
       .andWhere('a.isActive = true')
       .groupBy('EXTRACT(MONTH FROM a.fecha)')

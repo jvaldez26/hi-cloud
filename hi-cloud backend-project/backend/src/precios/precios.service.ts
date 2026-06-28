@@ -49,7 +49,7 @@ export class PreciosService {
   }
 
   async eliminar(id: number) {
-    const p = await this.repo.findOne({ where: { id } });
+    const p = await this.repo.findOne({ where: { id, empresaId: this.tenantService.getEmpresaId() } });
     if (!p) throw new NotFoundException(`Precio especial #${id} no encontrado`);
     await this.repo.update(id, { isActive: false });
     return { message: 'Precio especial eliminado' };
@@ -64,11 +64,12 @@ export class PreciosService {
     origen: string;
   }> {
     const hoy = new Date().toISOString().split('T')[0];
+    const empresaId = this.tenantService.getEmpresaId();
 
     // Obtener precio base del producto
     const prod = await this.dataSource.query<{ precio: string }[]>(
-      `SELECT precio::text FROM productos WHERE id = $1`,
-      [productoId],
+      `SELECT precio::text FROM productos WHERE id = $1 AND "empresaId" = $2`,
+      [productoId, empresaId],
     );
     const precioBase = Number(prod[0]?.precio ?? 0);
 
@@ -79,7 +80,8 @@ export class PreciosService {
       // 1. Precio específico para este cliente
       precioEspecial = await this.repo
         .createQueryBuilder('p')
-        .where('p.isActive = true AND p.productoId = :pid AND p.clienteId = :cid', {
+        .where('p.empresaId = :eid', { eid: empresaId })
+        .andWhere('p.isActive = true AND p.productoId = :pid AND p.clienteId = :cid', {
           pid: productoId, cid: clienteId,
         })
         .andWhere('(p.vigenciaDesde IS NULL OR p.vigenciaDesde <= :hoy)', { hoy })
@@ -91,13 +93,14 @@ export class PreciosService {
         // 2. Buscar tier del cliente y aplicar su precio
         const tiersRows = await this.dataSource.query<{ tier: string }[]>(
           `SELECT DISTINCT p.tier FROM precios_especiales p
-           WHERE p."clienteId" = $1 AND p."isActive" = true AND p.tier IS NOT NULL`,
-          [clienteId],
+           WHERE p."empresaId" = $1 AND p."clienteId" = $2 AND p."isActive" = true AND p.tier IS NOT NULL`,
+          [empresaId, clienteId],
         );
         if (tiersRows.length > 0) {
           precioEspecial = await this.repo
             .createQueryBuilder('p')
-            .where('p.isActive = true AND p.productoId = :pid AND p.tier = :tier AND p.clienteId IS NULL', {
+            .where('p.empresaId = :eid', { eid: empresaId })
+            .andWhere('p.isActive = true AND p.productoId = :pid AND p.tier = :tier AND p.clienteId IS NULL', {
               pid: productoId, tier: tiersRows[0].tier,
             })
             .andWhere('(p.vigenciaDesde IS NULL OR p.vigenciaDesde <= :hoy)', { hoy })
@@ -111,7 +114,8 @@ export class PreciosService {
     if (!precioEspecial) {
       precioEspecial = await this.repo
         .createQueryBuilder('p')
-        .where('p.isActive = true AND p.productoId = :pid AND p.clienteId IS NULL AND p.tier IS NULL', {
+        .where('p.empresaId = :eid', { eid: empresaId })
+        .andWhere('p.isActive = true AND p.productoId = :pid AND p.clienteId IS NULL AND p.tier IS NULL', {
           pid: productoId,
         })
         .andWhere('(p.vigenciaDesde IS NULL OR p.vigenciaDesde <= :hoy)', { hoy })
