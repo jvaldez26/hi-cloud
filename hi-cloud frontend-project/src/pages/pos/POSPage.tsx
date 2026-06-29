@@ -6940,10 +6940,6 @@ export default function POSPage() {
       }
 
       if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
-        // FIX: si el foco está en el buscador, el input maneja su propio valor vía
-        // onChange. No acumular en scanBuffer para no disparar procesarScan()
-        // cuando el usuario hace una pausa natural >400ms al escribir.
-        if (target === searchRef.current) return;
         const now = Date.now();
         const delta = now - lastKeyTimeRef.current;
         lastKeyTimeRef.current = now;
@@ -6951,6 +6947,11 @@ export default function POSPage() {
         else { fastCharCountRef.current = 1; }
         if (scanBuffer.current.length === 0) console.log('[SCAN] inicio buffer...');
         scanBuffer.current += e.key;
+        // FIX: si el foco está en el buscador, NO programar el timer de 400ms.
+        // El buffer sigue acumulándose para que el path de Enter (que detecta
+        // velocidad scanner vs. tipeo humano) siga funcionando correctamente.
+        // El timer solo aplica cuando el foco está fuera del buscador.
+        if (target === searchRef.current) return;
         if (scanTimer.current) clearTimeout(scanTimer.current);
         // Si en 400ms no llega más input → procesar como scan (scanner sin Enter)
         scanTimer.current = setTimeout(() => {
