@@ -404,6 +404,7 @@ function ProductosCatalogo() {
   const [search,         setSearch]         = useState('');
   const [categoria,      setCategoria]      = useState<string | undefined>();
   const [page,           setPage]           = useState(1);
+  const PAGE_SIZE = 15;
   const [sucursalFiltro, setSucursalFiltro] = useState<number | undefined>();
   const [estadoStock,    setEstadoStock]    = useState('todos');
   const [open,       setOpen]       = useState(false);
@@ -476,7 +477,7 @@ function ProductosCatalogo() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['productos', page, search, categoria],
-    queryFn:  () => productosApi.list(page, 15, search, true),
+    queryFn:  () => productosApi.list(page, PAGE_SIZE, search, true),
   });
 
   const categorias = [...new Set((data?.data ?? []).map((p: Producto) => p.categoria).filter(Boolean))] as string[];
@@ -702,7 +703,7 @@ function ProductosCatalogo() {
               onChange={e => { setSearch(e.target.value); setPage(1); }}
               allowClear style={{ width: '100%', minWidth: 0, maxWidth: 220 }}
             />
-            <Select placeholder="Categoría" value={categoria} onChange={v => setCategoria(v)} allowClear style={{ width: 150 }}>
+            <Select placeholder="Categoría" value={categoria} onChange={v => { setCategoria(v); setPage(1); }} allowClear style={{ width: 150 }}>
               {categorias.map(c => <Select.Option key={c} value={c}>{c}</Select.Option>)}
             </Select>
             {sucursales.length > 1 && (
@@ -743,7 +744,7 @@ function ProductosCatalogo() {
           const total = spa ? spa.reduce((acc, s) => acc + Number(s.cantidad), 0) : r.stock;
           return total <= r.stockMinimo ? 'ant-table-row-danger' : '';
         }}
-        pagination={{ total: data?.meta.total, pageSize: 10, current: page,
+        pagination={{ total: data?.meta.total, pageSize: PAGE_SIZE, current: page,
                       onChange: setPage, showTotal: t => `${t} productos`, showSizeChanger: false }} />
 
       <Modal title={editing ? 'Editar producto' : 'Nuevo producto'}
