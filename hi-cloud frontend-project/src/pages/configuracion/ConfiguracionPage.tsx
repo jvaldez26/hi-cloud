@@ -480,8 +480,8 @@ function SeccionUbicacion({ empresa, onSaved }: { empresa: any; onSaved: () => v
           </Form.Item>
         </Col>
         <Col xs={24} sm={8}>
-          <Form.Item name="email" label="Correo Corporativo *"
-            rules={[{ required: true }, { type: 'email' }]}>
+          <Form.Item name="email" label="Correo Corporativo"
+            rules={[{ type: 'email' }]}>
             <Input type="email" />
           </Form.Item>
         </Col>
