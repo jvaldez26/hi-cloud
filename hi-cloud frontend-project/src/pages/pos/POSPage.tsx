@@ -6940,10 +6940,6 @@ export default function POSPage() {
       }
 
       if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
-        // FIX: si el foco está en el buscador, el input maneja su propio valor vía
-        // onChange. No acumular en scanBuffer para no disparar procesarScan()
-        // cuando el usuario hace una pausa natural >400ms al escribir.
-        if (target === searchRef.current) return;
         const now = Date.now();
         const delta = now - lastKeyTimeRef.current;
         lastKeyTimeRef.current = now;
@@ -6956,9 +6952,6 @@ export default function POSPage() {
         scanTimer.current = setTimeout(() => {
           const codigo = scanBuffer.current.trim();
           scanBuffer.current = '';
-          // Red de seguridad: si entre el keystroke y el timeout el foco pasó
-          // al buscador, descartar el buffer sin llamar procesarScan.
-          if (document.activeElement === searchRef.current) return;
           console.log('[SCAN] timeout → procesar:', JSON.stringify(codigo), 'len:', codigo.length);
           if (codigo.length >= 4) {
             procesarScan(codigo);
