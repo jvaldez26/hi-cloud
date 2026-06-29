@@ -6375,7 +6375,16 @@ export default function POSPage() {
   });
   const [contextoActualId,   setContextoActualId]   = useState<number | null>(null);
   const [tipoNcf,            setTipoNcf]            = useState('E32');
-  const [ventasEnEspera,     setVentasEnEspera]     = useState<ParkedSale[]>([]);
+  const [ventasEnEspera,     setVentasEnEspera]     = useState<ParkedSale[]>(() => {
+    try {
+      const empresaIdActual = localStorage.getItem('empresaId');
+      const guardado = localStorage.getItem('pos-ventas-espera');
+      if (!guardado) return [];
+      const data = JSON.parse(guardado);
+      if (!empresaIdActual || String(data.empresaId) !== String(empresaIdActual)) return [];
+      return Array.isArray(data.items) ? data.items : [];
+    } catch { return []; }
+  });
   const [isOffline,          setIsOffline]          = useState(!navigator.onLine);
   // e-CF: datos del comprador y estado del loader
   const [rncComprador,       setRncComprador]       = useState('');
@@ -6714,6 +6723,15 @@ export default function POSPage() {
     }
     catch { /* quota exceeded — ignorar */ }
   }, [cart]);
+
+  // Persistir ventas en pausa — mismo patrón que el carrito
+  useEffect(() => {
+    try {
+      const empresaId = localStorage.getItem('empresaId');
+      localStorage.setItem('pos-ventas-espera', JSON.stringify({ empresaId, items: ventasEnEspera }));
+    }
+    catch { /* quota exceeded — ignorar */ }
+  }, [ventasEnEspera]);
 
   // NCF auto-select + reset campos comprador al cambiar cliente
   const onClienteChange = (id: number | undefined) => {
