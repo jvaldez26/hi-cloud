@@ -6461,6 +6461,8 @@ export default function POSPage() {
   // Scanner HID — buffer en refs independiente del DOM y del ciclo de render de React
   const scanBuffer        = useRef<string>('');
   const scanTimer         = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Timings inter-carácter del buffer actual (para distinguir scanner de humano por velocidad)
+  const scanTimingsRef    = useRef<number[]>([]);
   const [scanFlash, setScanFlash] = useState(false);
   const { pendingCount, isSyncing, enqueue, sync } = useOfflineQueue();
 
@@ -6978,59 +6980,78 @@ export default function POSPage() {
   }, [addToCart, todosProdutos, posPermitirStockNegativo]);
 
   useEffect(() => {
+    // Un scanner HID envía chars a <10ms de intervalo; un humano tarda >100ms.
+    // Usamos los inter-char timings del buffer completo para distinguirlos.
+    // Umbral 50ms: incluso el tipista más rápido (200 PPM) va a ~60ms entre chars.
+    const esDeScanner = (codigo: string, timings: number[]): boolean => {
+      if (codigo.length < 4) return false;
+      if (timings.length < 2) {
+        // Buffer muy corto — usar fastCharCountRef como fallback
+        const ms = Date.now() - lastKeyTimeRef.current;
+        return fastCharCountRef.current >= 3 && ms < 150;
+      }
+      const rapidos = timings.filter(t => t < 50).length;
+      return rapidos >= Math.ceil(timings.length * 0.75);
+    };
+
+    const resetBuffer = () => {
+      scanBuffer.current = '';
+      scanTimingsRef.current = [];
+      fastCharCountRef.current = 0;
+      if (scanTimer.current) { clearTimeout(scanTimer.current); scanTimer.current = null; }
+    };
+
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       const target  = e.target as HTMLElement;
       const isModal = !!target.closest('.ant-modal');
       const tag     = target.tagName;
 
       if (isModal) return;
+      // Solo escuchar el buscador y elementos sin input; no interferir con otros inputs/textareas
       if ((tag === 'INPUT' || tag === 'TEXTAREA') && target !== searchRef.current) return;
 
+      // ── PATH Enter: scanner que termina con \n ────────────────────────────
       if (e.key === 'Enter') {
         const codigo = scanBuffer.current.trim();
-        if (scanTimer.current) clearTimeout(scanTimer.current);
-        scanBuffer.current = '';
+        const timings = [...scanTimingsRef.current];
+        resetBuffer();
 
-        if (target === searchRef.current) {
-          // Distinguir scanner (chars rápidos < 100ms) de tipeo manual (lento)
-          const msSinceLastChar = Date.now() - lastKeyTimeRef.current;
-          const esScanner = fastCharCountRef.current >= 3 && msSinceLastChar < 150;
-          fastCharCountRef.current = 0;
-          if (esScanner && codigo.length >= 4) {
-            e.preventDefault();
-            e.stopPropagation();
-            procesarScan(codigo);
-          }
-          // Si no es scanner → dejar que onKeyDown del input maneje el Enter
-          return;
-        }
-
-        // Enter desde fuera del buscador (scanner con foco en otro lado)
-        if (codigo.length >= 4) {
+        if (codigo.length >= 4 && esDeScanner(codigo, timings)) {
           e.preventDefault();
           e.stopPropagation();
           procesarScan(codigo);
         }
+        // Si no es scanner → Enter propaga normalmente (búsqueda manual, formularios, etc.)
         return;
       }
 
+      // ── Acumulación de caracteres ─────────────────────────────────────────
       if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
-        const now = Date.now();
+        const now   = Date.now();
         const delta = now - lastKeyTimeRef.current;
         lastKeyTimeRef.current = now;
-        if (delta < 100) { fastCharCountRef.current++; }
-        else { fastCharCountRef.current = 1; }
-        if (scanBuffer.current.length === 0) console.log('[SCAN] inicio buffer...');
+
+        // Registrar delta inter-carácter (solo desde el 2.º char en adelante)
+        if (scanBuffer.current.length > 0) {
+          scanTimingsRef.current.push(delta);
+        }
+        if (delta < 100) fastCharCountRef.current++;
+        else             fastCharCountRef.current = 1;
+
         scanBuffer.current += e.key;
         if (scanTimer.current) clearTimeout(scanTimer.current);
-        // Si en 400ms no llega más input → procesar como scan (scanner sin Enter)
+
+        // PATH timeout: scanner sin sufijo Enter — detectar por velocidad al terminar
         scanTimer.current = setTimeout(() => {
-          const codigo = scanBuffer.current.trim();
-          scanBuffer.current = '';
-          console.log('[SCAN] timeout → procesar:', JSON.stringify(codigo), 'len:', codigo.length);
-          if (codigo.length >= 4) {
+          const codigo  = scanBuffer.current.trim();
+          const timings = [...scanTimingsRef.current];
+          resetBuffer();
+
+          if (codigo.length >= 4 && esDeScanner(codigo, timings)) {
+            // Fue scanner → limpiar buscador y agregar al carrito
             procesarScan(codigo);
           }
+          // Fue humano → no hacer nada; el input ya tiene el texto en su propio estado
         }, 400);
       }
     };
