@@ -633,6 +633,7 @@ function ProductosCatalogo() {
     { key: 'codigo',    label: 'Código',    defaultVisible: false },
     { key: 'nombre',    label: 'Nombre',    defaultVisible: true  },
     { key: 'precio',    label: 'Precio',    defaultVisible: true  },
+    { key: 'unidad',    label: 'Unidad',    defaultVisible: true  },
     { key: 'categoria', label: 'Categoría', defaultVisible: true  },
   ];
   const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('productos', COLS_DEF);
@@ -680,6 +681,13 @@ function ProductosCatalogo() {
         </Space>
       )},
     { title: 'Precio',    key: 'precio', dataIndex: 'precio',   width: 115, isAmount: true, render: (v: number) => fmt.money(v) },
+    { title: 'Unidad',   key: 'unidad', dataIndex: 'unidadMedida', width: 80, align: 'center' as const,
+      render: (codigo: string) => {
+        const c = codigo ?? 'PZA';
+        const uom = (uomUnidades as any[]).find((u: any) => u.codigo === c);
+        return uom?.simbolo ?? c.toLowerCase();
+      }
+    },
     ...(stockCols as any),
     { title: 'Categoría', key: 'categoria', dataIndex: 'categoria', ellipsis: true, mobileHide: true, render: (v: string) => v ? <Tag>{v}</Tag> : '—' },
     // ITBIS% y Mín. omitidos — disponibles al editar el producto
