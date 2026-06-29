@@ -382,6 +382,13 @@ function CartRow({ item, onQty, onQtyDirecto, onRemove, onDescuento, onPrecio, o
   const esFraccionable = uomInfo?.permiteDecimales ?? false;
   const [descFocus,    setDescFocus]    = useState(false);
   const [precioDraft,  setPrecioDraft]  = useState<string | null>(null);
+  const [qtyDraft,     setQtyDraft]     = useState<number | null>(item.cantidad);
+  // Sincronizar draft cuando cambia externamente (otro updater, restaurar venta)
+  const prevCantidadRef = useRef(item.cantidad);
+  if (prevCantidadRef.current !== item.cantidad) {
+    prevCantidadRef.current = item.cantidad;
+    setQtyDraft(item.cantidad);
+  }
   const sub = (item.precio - item.descuentoMonto) * item.cantidad;
   const showDesc = descFocus || item.descuentoMonto > 0;
 
@@ -450,12 +457,20 @@ function CartRow({ item, onQty, onQtyDirecto, onRemove, onDescuento, onPrecio, o
           {esFraccionable ? (
             <InputNumber
               size="small"
-              value={item.cantidad}
-              min={0.001}
+              value={qtyDraft}
               step={0.5}
               precision={3}
               style={{ width: 82, fontSize: 12 }}
-              onChange={v => onQtyDirecto?.(v ?? 0.001)}
+              onChange={v => {
+                setQtyDraft(v);
+                // Commit inmediato al usar las flechas (v siempre es número); al borrar el campo v=null → no commit
+                if (v !== null && v >= 0.001) onQtyDirecto?.(v);
+              }}
+              onBlur={() => {
+                const val = Math.max(0.001, qtyDraft ?? item.cantidad);
+                setQtyDraft(val);
+                onQtyDirecto?.(val);
+              }}
             />
           ) : (
             <>
@@ -6669,7 +6684,7 @@ export default function POSPage() {
   // E44 (Zona Franca): ITBIS = 0 — Opción B: precio base sin ITBIS
   const ivaEfectivo   = tipoNcf === 'E44' ? 0 : ivaConDesc;
   const totalEfectivo = tipoNcf === 'E44' ? subtotalConDesc : total;
-  const totalItems    = cart.reduce((s, i) => s + i.cantidad, 0);
+  const totalItems    = cart.length;
 
   // Config POS — leída aquí para que propina y cambio puedan usarla
   const posConf                  = (empresa?.configuracion ?? {}) as Record<string, unknown>;
