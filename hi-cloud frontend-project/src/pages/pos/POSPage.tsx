@@ -1,7 +1,7 @@
 ﻿import { useState, useCallback, useEffect, useRef, createContext, useContext } from 'react';
 import { useRncLookup } from '../../hooks/useRncLookup';
 import QRCode from 'qrcode';
-import { Select, Modal, Badge, Empty, Spin, Tooltip, message, Avatar, Popover, Input, Button, Segmented, Tabs } from 'antd';
+import { Select, Modal, Badge, Empty, Spin, Tooltip, message, Avatar, Popover, Input, Button, Segmented, Tabs, InputNumber } from 'antd';
 import { SearchOutlined, ShoppingCartOutlined, CheckCircleOutlined, DisconnectOutlined, LogoutOutlined, PrinterOutlined, LockOutlined, UserSwitchOutlined, SwapOutlined, EyeOutlined, EyeInvisibleOutlined, ShopOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../../store/auth.store';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -368,13 +368,18 @@ function ProductCard({ produto, onAdd, mostrarStock = true, permitirStockNegativ
 }
 
 // ── Cart row ──────────────────────────────────────────────────────────────────
-function CartRow({ item, onQty, onRemove, onDescuento, onPrecio, onLista, permitirModificarPrecio, permitirDescuentos = true, requireSupervisor }: {
-  item: CartItem; onQty: (d: number) => void; onRemove: () => void; onDescuento: (monto: number) => void;
+function CartRow({ item, onQty, onQtyDirecto, onRemove, onDescuento, onPrecio, onLista, permitirModificarPrecio, permitirDescuentos = true, requireSupervisor }: {
+  item: CartItem; onQty: (d: number) => void; onQtyDirecto?: (v: number) => void; onRemove: () => void; onDescuento: (monto: number) => void;
   onPrecio?: (p: number) => void; onLista?: (lista: PrecioLista) => void;
   permitirModificarPrecio?: boolean; permitirDescuentos?: boolean;
   requireSupervisor?: (action: string, detail?: string) => Promise<boolean>;
 }) {
   const C = useC();
+  const uomQc = useQueryClient();
+  const uomUnidades: any[] = uomQc.getQueryData(['uom-unidades']) ?? [];
+  const uomCodigo = (item.produto as any).unidadMedida ?? 'PZA';
+  const uomInfo = uomUnidades.find((u: any) => u.codigo === uomCodigo);
+  const esFraccionable = uomInfo?.permiteDecimales ?? false;
   const [descFocus,    setDescFocus]    = useState(false);
   const [precioDraft,  setPrecioDraft]  = useState<string | null>(null);
   const sub = (item.precio - item.descuentoMonto) * item.cantidad;
@@ -431,7 +436,7 @@ function CartRow({ item, onQty, onRemove, onDescuento, onPrecio, onLista, permit
               ) : (
                 <span>{fmt.money(item.precio)}</span>
               )}
-              <span>× PZA</span>
+              <span>× {uomCodigo}</span>
               {item.descuentoMonto > 0 && <span style={{ color: C.orange, fontWeight: 700 }}>−{fmt.money(item.descuentoMonto)}</span>}
               {item.precioModificado && <span style={{ color: C.orange, fontSize: 10 }}>✎</span>}
             </span>
@@ -441,19 +446,33 @@ function CartRow({ item, onQty, onRemove, onDescuento, onPrecio, onLista, permit
 
         {/* Fila 2: controles */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          {/* Cantidad */}
-          <button onClick={() => onQty(-1)} disabled={item.cantidad <= 1}
-            style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${C.border2}`, background: 'transparent',
-              color: item.cantidad <= 1 ? C.textMuted : C.text,
-              cursor: item.cantidad <= 1 ? 'not-allowed' : 'pointer',
-              fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', outline: 'none' }}>−</button>
-          <span style={{ width: 30, textAlign: 'center', fontSize: 13, fontWeight: 700, color: C.text }}>{item.cantidad}</span>
-          <button onClick={() => onQty(1)}
-            disabled={(item.produto as any).tipo !== 'servicio' && item.cantidad >= Number(item.produto.stock)}
-            style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${C.border2}`, background: 'transparent',
-              color: (item.produto as any).tipo !== 'servicio' && item.cantidad >= Number(item.produto.stock) ? C.textMuted : C.text,
-              cursor: (item.produto as any).tipo !== 'servicio' && item.cantidad >= Number(item.produto.stock) ? 'not-allowed' : 'pointer',
-              fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', outline: 'none' }}>+</button>
+          {/* Cantidad — InputNumber para fraccionables (KG, LB, L…), botones +/− para enteros */}
+          {esFraccionable ? (
+            <InputNumber
+              size="small"
+              value={item.cantidad}
+              min={0.001}
+              step={0.5}
+              precision={3}
+              style={{ width: 82, fontSize: 12 }}
+              onChange={v => onQtyDirecto?.(v ?? 0.001)}
+            />
+          ) : (
+            <>
+              <button onClick={() => onQty(-1)} disabled={item.cantidad <= 1}
+                style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${C.border2}`, background: 'transparent',
+                  color: item.cantidad <= 1 ? C.textMuted : C.text,
+                  cursor: item.cantidad <= 1 ? 'not-allowed' : 'pointer',
+                  fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', outline: 'none' }}>−</button>
+              <span style={{ width: 30, textAlign: 'center', fontSize: 13, fontWeight: 700, color: C.text }}>{item.cantidad}</span>
+              <button onClick={() => onQty(1)}
+                disabled={(item.produto as any).tipo !== 'servicio' && item.cantidad >= Number(item.produto.stock)}
+                style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${C.border2}`, background: 'transparent',
+                  color: (item.produto as any).tipo !== 'servicio' && item.cantidad >= Number(item.produto.stock) ? C.textMuted : C.text,
+                  cursor: (item.produto as any).tipo !== 'servicio' && item.cantidad >= Number(item.produto.stock) ? 'not-allowed' : 'pointer',
+                  fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', outline: 'none' }}>+</button>
+            </>
+          )}
 
           {/* Selector de lista de precios — solo si el producto tiene precio2 o precio3 */}
           {(item.produto.precio2 || item.produto.precio3) && onLista && (
@@ -779,6 +798,8 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
   const qc = useQueryClient();
   const [modalCambiarSucursal, setModalCambiarSucursal] = useState(false);
   const [cambiandoSucursal,    setCambiandoSucursal]    = useState(false);
+  useQuery({ queryKey: ['uom-unidades'], queryFn: () => api.get('/uom').then((r: any) => r.data?.data ?? r.data), staleTime: 5 * 60_000 });
+
   const { data: sucursales = [] } = useQuery<{ id: number; nombre: string; esPrincipal: boolean }[]>({
     queryKey: ['mis-sucursales', empresaActual],
     queryFn: () => api.get('/auth/mis-sucursales').then((r: any) => r.data?.data ?? r.data ?? []),
@@ -2319,7 +2340,7 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
                 <tbody>{facturaData.detalles.map((det:any)=>(
                   <tr key={det.id} style={{ borderBottom:`1px solid ${isDark?'#1E293B':'#F1F5F9'}` }}>
                     <td style={{ padding:'6px 8px', fontWeight:500, color:txt }}>{det.descripcion}</td>
-                    <td style={{ padding:'6px 8px', textAlign:'center', color:sub }}>{Number(det.cantidad).toFixed(0)}</td>
+                    <td style={{ padding:'6px 8px', textAlign:'center', color:sub }}>{parseFloat(Number(det.cantidad).toFixed(3))}</td>
                     <td style={{ padding:'6px 8px' }}>
                       <input type="number" min="0" value={precioEdit[det.id]??det.precioUnitario}
                         onChange={e=>setPrecioEdit(p=>({...p,[det.id]:e.target.value}))}
@@ -6775,6 +6796,7 @@ export default function POSPage() {
   }, [clienteId, posPermitirStockNegativo, listaGlobal]);
 
   const updateQty          = (idx: number, delta: number) => setCart(prev => { const u=[...prev]; u[idx].cantidad = Math.min(Number(u[idx].produto.stock), Math.max(1, u[idx].cantidad + delta)); return u; });
+  const setQtyDirecto      = (idx: number, value: number) => setCart(prev => { const u=[...prev]; u[idx].cantidad = Math.max(0.001, value); return u; });
   const removeItem         = (idx: number) => setCart(p => p.filter((_, i) => i !== idx));
   const actualizarPrecioItem = (idx: number, nuevoPrecio: number) => {
     if (nuevoPrecio <= 0) return;
@@ -7823,6 +7845,7 @@ export default function POSPage() {
                 {cart.map((item, idx) => (
                   <CartRow key={item.produto.id} item={item}
                     onQty={d => updateQty(idx, d)}
+                    onQtyDirecto={v => setQtyDirecto(idx, v)}
                     onRemove={() => removeItem(idx)}
                     onDescuento={p => setDescuentoMonto(idx, p)}
                     onPrecio={p => actualizarPrecioItem(idx, p)}

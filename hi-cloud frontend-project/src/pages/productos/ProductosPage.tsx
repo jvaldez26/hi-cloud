@@ -415,7 +415,18 @@ function ProductosCatalogo() {
   const [form]                      = Form.useForm<ProductoPayload>();
   const tipoWatch  = Form.useWatch('tipo',          form) ?? 'producto';
   const itbisWatch = Form.useWatch('porcentajeIva', form) ?? 18;
+  const uomWatch   = Form.useWatch('unidadMedida',  form) ?? 'PZA';
   const esServicio = tipoWatch === 'servicio';
+
+  const { data: uomUnidades = [] } = useQuery({
+    queryKey: ['uom-unidades'],
+    queryFn:  () => api.get('/uom').then((r: any) => r.data?.data ?? r.data),
+    staleTime: 5 * 60_000,
+  });
+  const stockPrecision = useMemo(() => {
+    const u = (uomUnidades as any[]).find((u: any) => u.codigo === uomWatch);
+    return (u?.permiteDecimales ?? false) ? 3 : 0;
+  }, [uomUnidades, uomWatch]);
   const [fieldErrors,      setFieldErrors]      = useState<{ codigo?: string; nombre?: string }>({});
   const [precioConItbis,   setPrecioConItbis]   = useState(false);
   const [precioInput,      setPrecioInput]       = useState(0);
@@ -971,14 +982,14 @@ function ProductosCatalogo() {
                   label={editing ? 'Stock actual' : 'Stock inicial'}
                   help={editing ? 'El stock se ajusta mediante movimientos de inventario' : undefined}
                 >
-                  <InputNumber style={{ width: '100%' }} min={0} precision={0} disabled={!!editing} />
+                  <InputNumber style={{ width: '100%' }} min={0} precision={stockPrecision} disabled={!!editing} />
                 </Form.Item>
               </Col>
             )}
             {!esServicio && (
               <Col xs={24} sm={8}>
                 <Form.Item name="stockMinimo" label="Stock mínimo">
-                  <InputNumber style={{ width: '100%' }} min={0} precision={0} />
+                  <InputNumber style={{ width: '100%' }} min={0} precision={stockPrecision} />
                 </Form.Item>
               </Col>
             )}

@@ -14,10 +14,12 @@ import {
   resolverMoneda,
 } from './base-ecf.builder';
 import { Logger } from '@nestjs/common';
+import { warnCuadraturaDGII } from './sections/items.section';
 
 const logger = new Logger('E33Builder');
 
 function f2(v: number): number { return parseFloat(v.toFixed(2)); }
+function cap4(n: number | string): number { return parseFloat(Number(n).toFixed(4)); }
 
 // E33 siempre usa CodigoModificacion='3' según normativa DGII
 // NCFModificado acepta series E, A, B y P
@@ -45,6 +47,7 @@ export function buildE33(input: ECFBuildInput): MSellerPayload {
 
   // ── ITEMS: DOP como principal, OtraMonedaDetalle si USD ──────────────────
   const items = detallesME.map((d: any, idx: number) => {
+    warnCuadraturaDGII(d, encf);
     const precioME = Number(d.precioUnitario);
     const montoME  = Number(d.subtotal);
     const pct      = parseFloat(String(d.porcentajeIva ?? 18));
@@ -58,7 +61,7 @@ export function buildE33(input: ECFBuildInput): MSellerPayload {
       IndicadorFacturacion:   indFact,
       NombreItem:             d.descripcion,
       IndicadorBienoServicio: 1,
-      CantidadItem:           String(f2(Number(d.cantidad))),
+      CantidadItem:           String(cap4(d.cantidad)),
       UnidadMedida:           '47',
       PrecioUnitarioItem:     f2(mc.toDOP(precioME)).toFixed(2),
       ...(otME ? { OtraMonedaDetalle: otME } : {}),

@@ -33,4 +33,8 @@ export class UnidadMedida extends TenantBaseEntity {
 
   @Column({ default: false })
   esBase!: boolean;  // unidad base del tipo (ej. KG para peso)
+
+  // true para unidades continuas (peso, volumen, longitud, área) que admiten cantidades fraccionarias
+  @Column({ default: false })
+  permiteDecimales!: boolean;
 }

@@ -31,7 +31,7 @@ export class CreateFacturaDetalleDto {
   @IsString() @MaxLength(2000)
   descripcion?: string;
 
-  @IsInt()
+  @IsNumber({ maxDecimalPlaces: 4 })
   @IsPositive()
   @Type(() => Number)
   cantidad: number;

@@ -11,8 +11,13 @@ import {
   EcfRncRequeridoError,
   resolverMoneda,
 } from './base-ecf.builder';
+import { Logger } from '@nestjs/common';
+import { warnCuadraturaDGII } from './sections/items.section';
+
+const logger = new Logger('E32Builder');
 
 function f2(v: number): number { return parseFloat(v.toFixed(2)); }
+function cap4(n: number | string): number { return parseFloat(Number(n).toFixed(4)); }
 
 const MONTO_RNC_OBLIGATORIO = 250_000;
 
@@ -36,6 +41,7 @@ export function buildE32(input: ECFBuildInput): MSellerPayload {
 
   // PASO 2: construir items con DOP
   const items = detallesME.map((d: any, idx: number) => {
+    warnCuadraturaDGII(d, encf);
     const precioME = Number(d.precioUnitario);
     const montoME  = Number(d.subtotal);
     const pct      = parseFloat(String(d.porcentajeIva ?? 18));
@@ -46,7 +52,7 @@ export function buildE32(input: ECFBuildInput): MSellerPayload {
       IndicadorFacturacion:   indFact,
       NombreItem:             d.descripcion,
       IndicadorBienoServicio: 1,
-      CantidadItem:           Number(d.cantidad),
+      CantidadItem:           cap4(d.cantidad),
       UnidadMedida:           43,
       PrecioUnitarioItem:     f2(mc.toDOP(precioME)),
       ...(otME ? { OtraMonedaDetalle: otME } : {}),

@@ -12,7 +12,7 @@ export class CreateCotizacionDetalleDto {
   @IsString() @MaxLength(200)
   descripcion: string;
 
-  @IsInt() @IsPositive()
+  @IsNumber({ maxDecimalPlaces: 4 }) @IsPositive()
   @Type(() => Number)
   cantidad: number;
 

@@ -16,10 +16,12 @@ import {
 } from './base-ecf.builder';
 import { fmtFecha } from './sections/id-doc.section';
 import { Logger } from '@nestjs/common';
+import { warnCuadraturaDGII } from './sections/items.section';
 
 const logger = new Logger('E34Builder');
 
 function f2(v: number): number { return parseFloat(v.toFixed(2)); }
+function cap4(n: number | string): number { return parseFloat(Number(n).toFixed(4)); }
 
 const CODIGOS_MODIFICACION_E34: Record<string, string> = {
   '1': 'Anulación total',
@@ -73,6 +75,7 @@ export function buildE34(input: ECFBuildInput): MSellerPayload {
 
   // ── ITEMS: DOP como principal, OtraMonedaDetalle si USD ──────────────────
   const items = detallesME.map((d: any, idx: number) => {
+    warnCuadraturaDGII(d, encf);
     const precioME = Number(d.precioUnitario);
     const montoME  = Number(d.subtotal);
     const pct      = parseFloat(String(d.porcentajeIva ?? 18));
@@ -83,7 +86,7 @@ export function buildE34(input: ECFBuildInput): MSellerPayload {
       IndicadorFacturacion:   indFact,
       NombreItem:             d.descripcion,
       IndicadorBienoServicio: 1,
-      CantidadItem:           Number(d.cantidad),
+      CantidadItem:           cap4(d.cantidad),
       UnidadMedida:           43,
       PrecioUnitarioItem:     f2(mc.toDOP(precioME)),
       ...(otME ? { OtraMonedaDetalle: otME } : {}),
