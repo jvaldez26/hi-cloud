@@ -6517,6 +6517,15 @@ export default function POSPage() {
     staleTime: 20_000,
   });
 
+  // Catálogo completo para lookup de código de barras sin llamada al backend por scan
+  const { data: todosProdutosData } = useQuery({
+    queryKey: ['pos-products-scan', almacenActual],
+    queryFn:  () => productosApi.list(1, 2000, ''),
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+  });
+  const todosProdutos: any[] = (todosProdutosData as any)?.data ?? (todosProdutosData as any) ?? [];
+
   // FIX 1: también refrescar al recuperar el foco (el cajero vuelve de otra pestaña)
   useEffect(() => {
     const onFocus = () => { refetchProductos(); };
@@ -6772,11 +6781,9 @@ export default function POSPage() {
     setCart(prev => {
       const idx = prev.findIndex(i => i.produto.id === produto.id);
       if (idx >= 0) {
-        const u = [...prev];
         const esServicio = (produto as any).tipo === 'servicio';
-        // Servicios no tienen límite de stock; productos físicos respetan el stock disponible
-        if (esServicio || u[idx].cantidad < Number(produto.stock)) u[idx].cantidad++;
-        return u;
+        if (!esServicio && prev[idx].cantidad >= Number(produto.stock)) return prev;
+        return prev.map((it, i) => i === idx ? { ...it, cantidad: it.cantidad + 1 } : it);
       }
       const precioConLista =
         listaGlobal === 'precio2' && (produto as any).precio2 ? Number((produto as any).precio2) :
@@ -6813,8 +6820,17 @@ export default function POSPage() {
       .catch(() => { precioCache.current.set(cacheKey, null); });
   }, [clienteId, posPermitirStockNegativo, listaGlobal]);
 
-  const updateQty          = (idx: number, delta: number) => setCart(prev => { const u=[...prev]; u[idx].cantidad = Math.min(Number(u[idx].produto.stock), Math.max(1, u[idx].cantidad + delta)); return u; });
-  const setQtyDirecto      = (idx: number, value: number) => setCart(prev => { const u=[...prev]; u[idx].cantidad = Math.max(0.001, value); return u; });
+  const updateQty = (idx: number, delta: number) => setCart(prev =>
+    prev.map((it, i) => {
+      if (i !== idx) return it;
+      const esServicio = (it.produto as any).tipo === 'servicio';
+      const max = esServicio ? Infinity : Number(it.produto.stock);
+      return { ...it, cantidad: Math.min(max, Math.max(1, it.cantidad + delta)) };
+    }),
+  );
+  const setQtyDirecto = (idx: number, value: number) => setCart(prev =>
+    prev.map((it, i) => i === idx ? { ...it, cantidad: Math.max(0.001, value) } : it),
+  );
   const removeItem         = (idx: number) => setCart(p => p.filter((_, i) => i !== idx));
   const actualizarPrecioItem = (idx: number, nuevoPrecio: number) => {
     if (nuevoPrecio <= 0) return;
@@ -6862,16 +6878,20 @@ export default function POSPage() {
       );
       if (!ok) return; // cancelado
     }
-    setCart(p => { const u=[...p]; u[idx].descuentoMonto = monto; return u; });
+    setCart(p => p.map((it, i) => i === idx ? { ...it, descuentoMonto: monto } : it));
   };
 
   // Búsqueda por código de barras → agrega al carrito directamente
-  // handleBarcode: búsqueda en cache local (campo barcode separado — no scanner)
+  // handleBarcode: búsqueda en catálogo completo (campo barcode separado — no scanner)
   const handleBarcode = useCallback(async (code: string) => {
     const trimmed = code.trim();
     if (!trimmed) return;
-    const found = (produtos?.data ?? []).find((p: any) =>
-      p.codigo?.toLowerCase() === trimmed.toLowerCase() || String(p.id) === trimmed
+    const tLower = trimmed.toLowerCase();
+    const catalog = todosProdutos.length > 0 ? todosProdutos : ((produtos as any)?.data ?? []);
+    const found = catalog.find((p: any) =>
+      p.codigo?.toLowerCase() === tLower ||
+      (p.codigoBarras ?? '').toLowerCase() === tLower ||
+      String(p.id) === trimmed,
     );
     if (found) {
       addToCart(found as Prod);
@@ -6881,44 +6901,66 @@ export default function POSPage() {
       message.warning(`Código "${trimmed}" no encontrado`, 2);
       setBarcodeInput('');
     }
-  }, [produtos, addToCart]);
+  }, [produtos, todosProdutos, addToCart]);
 
   // ── SCANNER HID — listener global con buffer + timeout 500ms ─────────────────
   const procesarScan = useCallback((codigo: string) => {
     const trimmed = codigo.replace(/[\r\n]/g, '').trim();
     if (!trimmed) return;
-    console.log('[SCAN] procesarScan código:', trimmed);
+
+    const agregarProducto = (producto: any) => {
+      const esServicio = (producto as any).tipo === 'servicio';
+      if (!esServicio && Number(producto.stock) <= 0 && !posPermitirStockNegativo) {
+        message.warning(`${producto.nombre}: sin stock`, 2);
+        return;
+      }
+      addToCart(producto as Prod);
+      message.success(`✓ ${producto.nombre}`, 1);
+      setScanFlash(true);
+      setTimeout(() => setScanFlash(false), 600);
+    };
+
+    // 1. Buscar en catálogo local completo (cero requests al backend)
+    const tLower = trimmed.toLowerCase();
+    const local = todosProdutos.find(
+      (p: any) =>
+        p.codigo?.toString().trim().toLowerCase() === tLower ||
+        (p.codigoBarras ?? '').toString().trim().toLowerCase() === tLower,
+    );
+    if (local) {
+      setSearch('');
+      agregarProducto(local);
+      return;
+    }
+
+    // 2. Fallback: producto no encontrado localmente (fuera del catálogo cargado)
     setSearch('');
-    api.get(`/productos?search=${encodeURIComponent(trimmed)}&limit=5`)
-      .then((r: any) => {
-        const raw = r.data?.data ?? r.data;
-        const lista: any[] = Array.isArray(raw?.data) ? raw.data : Array.isArray(raw) ? raw : [];
-        console.log('[SCAN] lista:', lista.length, lista.map((p: any) => p.codigo));
-        const producto = lista.find(
-          (p: any) => p.codigo?.toString().trim() === trimmed
-        ) ?? (lista.length === 1 ? lista[0] : null);
-        console.log('[SCAN] producto:', producto?.nombre ?? 'NO ENCONTRADO');
-        if (producto) {
-          const esServicio = (producto as any).tipo === 'servicio';
-          if (!esServicio && Number(producto.stock) <= 0 && !posPermitirStockNegativo) {
-            message.warning(`${producto.nombre}: sin stock`, 2);
-            return;
+    const fetchConRetry = (intento: number): Promise<void> =>
+      api.get(`/productos?search=${encodeURIComponent(trimmed)}&limit=5`)
+        .then((r: any) => {
+          const raw = r.data?.data ?? r.data;
+          const lista: any[] = Array.isArray(raw?.data) ? raw.data : Array.isArray(raw) ? raw : [];
+          const producto = lista.find(
+            (p: any) => p.codigo?.toString().trim().toLowerCase() === tLower ||
+                        (p.codigoBarras ?? '').toString().trim().toLowerCase() === tLower,
+          ) ?? (lista.length === 1 ? lista[0] : null);
+          if (producto) {
+            agregarProducto(producto);
+          } else {
+            message.warning(`Código ${trimmed} no encontrado`, 2);
           }
-          console.log('[SCAN] llamando addToCart id:', producto.id);
-          addToCart(producto as Prod);
-          message.success(`✓ ${producto.nombre}`, 1);
-          setScanFlash(true);
-          setTimeout(() => setScanFlash(false), 600);
-        } else {
-          message.error(`Código ${trimmed} no encontrado`, 2);
-        }
-      })
-      .catch((err: any) => {
-        console.error('[SCAN] error API:', err?.response?.status, err?.message);
-        message.error(`Error buscando: ${err?.message}`, 2);
-      })
-      .finally(() => setTimeout(() => searchRef.current?.focus(), 50));
-  }, [addToCart]);
+        })
+        .catch(async (err: any) => {
+          if (err?.response?.status === 429 && intento === 0) {
+            await new Promise(r => setTimeout(r, 400));
+            return fetchConRetry(1);
+          }
+          console.error('[SCAN] error API:', err?.response?.status, err?.message);
+          message.error('Error al buscar producto. Reintenta.', 2);
+        });
+
+    fetchConRetry(0).finally(() => setTimeout(() => searchRef.current?.focus(), 50));
+  }, [addToCart, todosProdutos, posPermitirStockNegativo]);
 
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
