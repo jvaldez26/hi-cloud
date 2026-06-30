@@ -6580,19 +6580,14 @@ export default function POSPage() {
 
   // Queries
   // almacenActual en queryKey → invalida automáticamente al cambiar sucursal
-  const { data: produtos, isLoading, refetch: refetchProductos } = useQuery({
-    queryKey: ['pos-products', search, almacenActual],
-    queryFn:  () => productosApi.list(1, 120, search),
-    refetchInterval: 30_000,   // FIX 1: refrescar catálogo cada 30s
-    staleTime: 20_000,
-  });
-
-  // Catálogo completo para lookup de código de barras sin llamada al backend por scan
-  const { data: todosProdutosData } = useQuery({
+  // Catálogo completo: fuente principal de búsqueda, display y scanner del POS.
+  // incluirSinStock=true salta el cap de 100 → devuelve hasta 5000, incluyendo
+  // productos sin stock en el almacén (el stock exacto se valida al cobrar).
+  const { data: todosProdutosData, isLoading, refetch: refetchProductos } = useQuery({
     queryKey: ['pos-products-scan', almacenActual],
-    queryFn:  () => productosApi.list(1, 2000, ''),
+    queryFn:  () => productosApi.list(1, 5000, '', true),
     staleTime: 60_000,
-    refetchInterval: 60_000,
+    refetchInterval: 120_000,
   });
   const todosProdutos: any[] = (todosProdutosData as any)?.data ?? (todosProdutosData as any) ?? [];
 
@@ -6643,10 +6638,20 @@ export default function POSPage() {
   });
 
   // Derived
-  const categorias = ['__all__', ...new Set((produtos?.data ?? [])
+  const categorias = ['__all__', ...new Set(todosProdutos
     .map((p: any) => p.categoria).filter(Boolean) as string[])];
   const productosFiltrados = (() => {
-    let list = (produtos?.data ?? []) as any[];
+    // Búsqueda LOCAL sobre el catálogo completo — cero requests al backend por keystroke
+    let list = todosProdutos as any[];
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      list = list.filter((p: any) =>
+        p.nombre?.toLowerCase().includes(q) ||
+        p.codigo?.toLowerCase().includes(q) ||
+        (p.codigoBarras ?? '').toLowerCase().includes(q) ||
+        p.categoria?.toLowerCase().includes(q),
+      );
+    }
     // Filtro categoría
     if (categoriaTab !== '__all__') list = list.filter(p => p.categoria === categoriaTab);
     // Filtro stock
@@ -6668,7 +6673,7 @@ export default function POSPage() {
 
   // Últimos 12 productos facturados (persistido en localStorage por empresa)
   const productosRecientes = idsRecientes
-    .map(id => ((produtos?.data ?? []) as any[]).find((p: any) => p.id === id))
+    .map(id => todosProdutos.find((p: any) => p.id === id))
     .filter(Boolean)
     .slice(0, 12) as any[];
 
@@ -6957,7 +6962,7 @@ export default function POSPage() {
     const trimmed = code.trim();
     if (!trimmed) return;
     const tLower = trimmed.toLowerCase();
-    const catalog = todosProdutos.length > 0 ? todosProdutos : ((produtos as any)?.data ?? []);
+    const catalog = todosProdutos;
     const found = catalog.find((p: any) =>
       p.codigo?.toLowerCase() === tLower ||
       (p.codigoBarras ?? '').toLowerCase() === tLower ||
@@ -6971,7 +6976,7 @@ export default function POSPage() {
       message.warning(`Código "${trimmed}" no encontrado`, 2);
       setBarcodeInput('');
     }
-  }, [produtos, todosProdutos, addToCart]);
+  }, [todosProdutos, addToCart]);
 
   // ── SCANNER HID — listener global con buffer + timeout 500ms ─────────────────
   const procesarScan = useCallback((codigo: string) => {
@@ -7729,7 +7734,7 @@ export default function POSPage() {
                     if (e.key !== 'Enter') return;
                     const q = search.trim();
                     if (!q) return;
-                    const all = (produtos?.data ?? []) as any[];
+                    const all = todosProdutos as any[];
                     const qL = q.toLowerCase();
                     // 1. Coincidencia exacta por código o código de barras
                     const exacto = all.find((p: any) =>

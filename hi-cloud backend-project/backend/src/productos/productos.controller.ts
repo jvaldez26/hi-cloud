@@ -26,6 +26,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
+import { Throttle } from '@nestjs/throttler';
 
 @ApiTags('Productos')
 @ApiBearerAuth('access-token')
@@ -43,6 +44,7 @@ export class ProductosController {
   }
 
   @Get()
+  @Throttle({ default: { limit: 300, ttl: 60_000 } }) // endpoint autenticado de catálogo — límite mayor que el global (100/60s)
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Listar productos con paginación. Cuando hay almacenId en JWT, retorna solo productos con stock en ese almacén.' })
   findAll(@Query() query: ListProductosQueryDto) {
