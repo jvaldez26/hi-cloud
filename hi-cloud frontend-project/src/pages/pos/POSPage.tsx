@@ -1255,7 +1255,7 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar 
   const C = useC();
   const [monto,       setMonto]      = useState(0);
   const [vendedorId,  setVendedorId] = useState<number | undefined>(() => {
-    const v = localStorage.getItem('pos_last_vendedor_id');
+    const v = localStorage.getItem('pos_last_vendedor_id') ?? localStorage.getItem('pos_vendedor_id');
     return v ? Number(v) : undefined;
   });
   const [sucursalSel, setSucursalSel] = useState<number | undefined>(() => {
@@ -1323,7 +1323,10 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar 
   const handleAbrir = async () => {
     if (bloqueado || cargando) return;
     setAbriendo(true);
-    if (vendedorId) localStorage.setItem('pos_last_vendedor_id', String(vendedorId));
+    if (vendedorId) {
+      localStorage.setItem('pos_last_vendedor_id', String(vendedorId));
+      localStorage.setItem('pos_vendedor_id', String(vendedorId));
+    }
     if (sucursalSel) localStorage.setItem('pos_last_sucursal_id', String(sucursalSel));
     const vendedorSeleccionado = vendedores.find((v: any) => v.id === vendedorId);
     const nombreVendedor       = vendedorSeleccionado?.nombre ?? undefined;
@@ -6572,7 +6575,7 @@ export default function POSPage() {
     refetchInterval:      10_000,
     refetchOnWindowFocus: true,
     staleTime:            0,
-    enabled:              turnoAbierto && !!vendedorId,
+    enabled:              !!vendedorId,
   });
 
   // Queries
