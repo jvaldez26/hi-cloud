@@ -13,6 +13,7 @@ import {
   UseGuards,
   Res,
   BadRequestException,
+  ConflictException,
   Logger,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
@@ -384,11 +385,28 @@ export class ECFController {
       throw new BadRequestException('El e-CF ya fue aceptado por la DGII');
     }
     if (ecf.estadoDGII === 'rechazado') {
-      throw new BadRequestException(
-        `El e-CF fue rechazado — la secuencia ${numero} fue quemada. ` +
-        `Para volver a emitir, hazlo desde el documento original (Factura, Compra, etc.) ` +
-        `para que use una nueva secuencia.`,
-      );
+      // Reenvío condicional: solo cuando DGII reportó "Secuencia utilizada: No"
+      const respDgii     = ecf.respuestaDgii as any;
+      const dgiiItems: any[] = Array.isArray(respDgii?.dgiiResponse) ? respDgii.dgiiResponse : [];
+      const respFinal    = dgiiItems.length > 0
+        ? (dgiiItems.find((r: any) => r?.estado || r?.mensajes) ?? dgiiItems[dgiiItems.length - 1])
+        : respDgii;
+      const secuenciaUtilizada = respFinal?.secuenciaUtilizada;
+
+      if (secuenciaUtilizada !== false) {
+        throw new ConflictException(
+          `El e-CF fue rechazado y la secuencia ${numero} fue consumida por DGII. ` +
+          `Para volver a emitir, hazlo desde el documento original para que use una nueva secuencia.`,
+        );
+      }
+
+      // Secuencia no utilizada → resetear estado atómicamente y reenviar
+      const reenvioLogger = new Logger('ECFController.reenviar');
+      reenvioLogger.log(`Reenvío condicional autorizado: ${numero} (secuenciaUtilizada=false)`);
+      await this.ecfService.prepararReenvioRechazado(ecf.id);
+      const ecfListo = await this.ecfService.getECFByNumero(numero);
+      await this.reintentoJob.procesarUno(ecfListo as any);
+      return this.ecfService.getECFByNumero(numero);
     }
 
     // Para ECFs con jsonEnviado (path MSeller) → procesarUno del job directamente (NO el cron masivo)

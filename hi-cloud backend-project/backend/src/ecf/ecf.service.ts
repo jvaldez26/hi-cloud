@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
   Logger,
   OnModuleInit,
   Inject,
@@ -395,6 +396,23 @@ export class ECFService implements OnModuleInit {
 
     await this.enviarAlProveedor(ecf.id);
     return this.getECFByNumero(numero);
+  }
+
+  /**
+   * Prepara atómicamente un e-CF RECHAZADO para reenvío condicional (secuencia no quemada).
+   * Usa un UPDATE con WHERE estadoDGII = RECHAZADO como compare-and-swap para evitar
+   * reenvíos concurrentes: si otro proceso ya cambió el estado, lanza ConflictException.
+   */
+  async prepararReenvioRechazado(id: number): Promise<void> {
+    const result = await this.ecfRepository.update(
+      { id, estadoDGII: EstadoDGII.RECHAZADO },
+      { estadoDGII: EstadoDGII.PENDIENTE_ENVIO, intentosEnvio: 0, errorEnvio: undefined as any },
+    );
+    if (!result.affected) {
+      throw new ConflictException(
+        'El e-CF ya no está en estado RECHAZADO — puede estar procesándose actualmente',
+      );
+    }
   }
 
   // ──────────────────────────────────────────────────────────────────

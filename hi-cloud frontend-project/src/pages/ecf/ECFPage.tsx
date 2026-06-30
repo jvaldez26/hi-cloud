@@ -40,6 +40,18 @@ const estadoDGIIIcon: Record<string, React.ReactNode> = {
   condicionado:    <WarningOutlined />,
 };
 
+/** Extrae secuenciaUtilizada del JSONB respuestaDgii, manejando tanto el formato
+ *  directo como el batch (dgiiResponse[]).  Retorna undefined si no hay dato. */
+function getSecuenciaUtilizada(respuestaDgii: any): boolean | undefined {
+  if (!respuestaDgii) return undefined;
+  const items: any[] = Array.isArray(respuestaDgii.dgiiResponse) ? respuestaDgii.dgiiResponse : [];
+  const final = items.length > 0
+    ? (items.find((r: any) => r?.estado || r?.mensajes) ?? items[items.length - 1])
+    : respuestaDgii;
+  const v = final?.secuenciaUtilizada;
+  return v === true ? true : v === false ? false : undefined;
+}
+
 // ── Componente: Respuesta DGII parseada ──────────────────────────────────────
 function DgiiResponseSection({ respuestaDgii, estadoDGII }: { respuestaDgii?: any; estadoDGII?: string }) {
   if (!respuestaDgii) return null;
@@ -255,6 +267,10 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
               : []),
             ...(r.estadoDGII === 'pendiente_envio' && r.intentosEnvio < 5
               ? [{ key: 'reenviar', label: 'Reenviar a DGII', icon: <SendOutlined />,
+                   onClick: () => handleReenviar(r) }]
+              : []),
+            ...(r.estadoDGII === 'rechazado' && getSecuenciaUtilizada(r.respuestaDgii) === false
+              ? [{ key: 'reenviar-rechazado', label: 'Reenviar (secuencia reutilizable)', icon: <SendOutlined />,
                    onClick: () => handleReenviar(r) }]
               : []),
             ...(r.estadoDGII === 'enviado'
