@@ -69,6 +69,20 @@ export function buildE34(input: ECFBuildInput): MSellerPayload {
     throw new EcfRncRequeridoError(34, Number(factura.total));
   }
 
+  // Validación de formato (warn sin bloquear) — RNC debe ser 9 dígitos (empresa)
+  // o 11 dígitos (cédula persona natural). Ambos van en RNCComprador según spec MSeller.
+  // Si el formato falla, la emisión continúa pero se registra para corrección de datos.
+  if (rnc && rnc !== '00000000000') {
+    const digits = rnc.replace(/\D/g, '');
+    if (digits.length !== 9 && digits.length !== 11) {
+      logger.warn(
+        `[E34] RNCComprador con formato inválido: "${rnc}" (${digits.length} dígitos; ` +
+        `esperado 9=RNC o 11=cédula). Cliente: "${cliente?.nombre ?? 'desconocido'}". ` +
+        `La emisión continúa — revisar datos del cliente en DB.`,
+      );
+    }
+  }
+
   const mc         = resolverMoneda(factura);
   const detallesME = factura.detalles as any[] ?? [];
   const fecha      = fmtFecha(factura.fecha ?? new Date());

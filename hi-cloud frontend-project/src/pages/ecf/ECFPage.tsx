@@ -231,7 +231,12 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
         </Tag>
       )},
     { title: 'Documento',   key: 'doc',                width: 140,
-      render: (_: any, r: any) => r.factura?.folio ?? <Text type="secondary">—</Text> },
+      render: (_: any, r: any) => {
+        const code = r.tipoECF?.codigo;
+        if ((code === 'E33' || code === 'E34') && r.ncfModificado)
+          return <Text code style={{ fontSize: 11 }}>{r.ncfModificado}</Text>;
+        return r.factura?.folio ?? <Text type="secondary">—</Text>;
+      } },
     { title: 'Intentos',    dataIndex: 'intentosEnvio', width: 80,
       render: (v: number) => <Badge count={v} color={v >= 3 ? 'red' : v > 0 ? 'orange' : 'green'} showZero /> },
     { title: 'Fecha',       dataIndex: 'createdAt',    width: 100, render: (v: string) => fmt.date(v) },
@@ -329,7 +334,13 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
                   {detail.estadoDGII?.replace(/_/g,' ').toUpperCase()}
                 </Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="Documento asociado">{detail.factura?.folio ?? 'Sin documento'}</Descriptions.Item>
+              <Descriptions.Item label="Documento asociado">
+                {(detail.tipoECF?.codigo === 'E33' || detail.tipoECF?.codigo === 'E34')
+                  ? (detail.ncfModificado
+                      ? <span>Modifica: <Text code>{detail.ncfModificado}</Text></span>
+                      : <Text type="secondary">—</Text>)
+                  : (detail.factura?.folio ?? <Text type="secondary">—</Text>)}
+              </Descriptions.Item>
               <Descriptions.Item label="Código de seguridad"><Text code>{detail.codigoSeguridad}</Text></Descriptions.Item>
               <Descriptions.Item label="Track ID proveedor e-CF">
                 <Text code style={{ fontSize: 11 }}>{detail.trackId ?? '—'}</Text>
