@@ -77,7 +77,7 @@ export function exportarITBIS(data: any, mes: number, anio: number) {
   exportarExcel(filas, `ITBIS-${anio}-${String(mes).padStart(2, '0')}`);
 }
 
-// ── Exportar inventario ───────────────────────────────────────────────────────
+// ── Exportar inventario (legado) ─────────────────────────────────────────────
 export function exportarInventario(productos: any[]) {
   const filas = productos.map((p: any) => ({
     'Código':        p.codigo,
@@ -92,4 +92,34 @@ export function exportarInventario(productos: any[]) {
   }));
 
   exportarExcel(filas, `Inventario-${new Date().toISOString().split('T')[0]}`);
+}
+
+// ── Exportar catálogo completo de productos (columnas ricas) ─────────────────
+// Devuelve true si generó el archivo, false si la lista estaba vacía.
+export function exportarCatalogo(productos: any[], sufijo: string): boolean {
+  if (!productos.length) return false;
+
+  const filas = productos.map((p: any) => {
+    // Sumar stock de todos los almacenes si viene stockPorAlmacen; si no, usar p.stock
+    const stockTotal = Array.isArray(p.stockPorAlmacen)
+      ? p.stockPorAlmacen.reduce((acc: number, s: any) => acc + Number(s.cantidad ?? 0), 0)
+      : Number(p.stock ?? 0);
+
+    return {
+      'Código':        p.codigo ?? '',
+      'Nombre':        p.nombre ?? '',
+      'Tipo':          p.tipo === 'servicio' ? 'Servicio' : 'Producto',
+      'Categoría':     p.categoria ?? '',
+      'Precio P1':     Number(p.precio ?? 0),
+      'Precio P2':     p.precio2 != null ? Number(p.precio2) : '',
+      'Precio P3':     p.precio3 != null ? Number(p.precio3) : '',
+      'ITBIS %':       Number(p.porcentajeIva ?? 18),
+      'Stock actual':  p.tipo === 'servicio' ? '' : stockTotal,
+      'Stock mínimo':  p.tipo === 'servicio' ? '' : Number(p.stockMinimo ?? 0),
+      'Unidad medida': p.unidadMedida ?? 'PZA',
+    };
+  });
+
+  exportarExcel(filas, `Productos-${sufijo}`);
+  return true;
 }

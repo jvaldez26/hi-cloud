@@ -7,11 +7,11 @@ import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Table, Button, Input, Space, Tag, Modal, Form, Row, Col,
          Typography, Popconfirm, message, Card, InputNumber,
          Image, Avatar, Tooltip, Upload, Select, Tabs, Divider,
-         Badge, InputNumber as AntInputNumber, Alert, Switch, Segmented } from 'antd';
+         Badge, InputNumber as AntInputNumber, Alert, Switch, Segmented, Dropdown } from 'antd';
 import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
          WarningOutlined, PictureOutlined, UploadOutlined, LinkOutlined,
          FileExcelOutlined, BarcodeOutlined, AppstoreOutlined,
-         CloseOutlined, QuestionCircleOutlined } from '@ant-design/icons';
+         CloseOutlined, QuestionCircleOutlined, DownOutlined } from '@ant-design/icons';
 import { TableActions } from '../../components/ui/TableActions';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -21,7 +21,7 @@ import api from '../../api/client';
 import { useCanDo } from '../../hooks/useCanDo';
 import { UomSelect } from '../../components/ui/UomSelect';
 import { useAuthStore } from '../../store/auth.store';
-import { exportarInventario } from '../../utils/exportExcel';
+import { exportarCatalogo } from '../../utils/exportExcel';
 import type { Producto } from '../../types';
 import { fmt } from '../../utils/formatters';
 
@@ -482,6 +482,60 @@ function ProductosCatalogo() {
     return r;
   }, [data, categoria, sucursalFiltro, estadoStock, almacenSucursalMap]);
 
+  // ── Exportar a Excel ────────────────────────────────────────────────────────
+  const [exportando, setExportando] = useState(false);
+
+  const fechaHoy = () => new Date().toISOString().split('T')[0];
+
+  const handleExportarTodo = async () => {
+    setExportando(true);
+    try {
+      const result = await productosApi.list(1, 5000, '', true);
+      const todos: any[] = result?.data ?? [];
+      if (!todos.length) { message.warning('No hay productos para exportar'); return; }
+      exportarCatalogo(todos, `todo_${fechaHoy()}`);
+      message.success(`${todos.length} productos exportados`);
+    } catch {
+      message.error('Error al exportar el catálogo completo');
+    } finally {
+      setExportando(false);
+    }
+  };
+
+  const handleExportarFiltrados = async () => {
+    setExportando(true);
+    try {
+      const result = await productosApi.list(1, 5000, search, true);
+      let filtrados: any[] = result?.data ?? [];
+      // Aplicar filtros client-side adicionales que no pasan por el backend
+      if (categoria) filtrados = filtrados.filter((p: any) => p.categoria === categoria);
+      if (sucursalFiltro) {
+        filtrados = filtrados.filter((p: any) => {
+          const spa: any[] = p.stockPorAlmacen ?? [];
+          return spa.some((s: any) => almacenSucursalMap.get(Number(s.almacenId)) === sucursalFiltro);
+        });
+      }
+      if (estadoStock !== 'todos') {
+        filtrados = filtrados.filter((p: any) => {
+          if (p.tipo === 'servicio') return true;
+          const total = (p.stockPorAlmacen ?? []).reduce((acc: number, s: any) => acc + Number(s.cantidad), 0);
+          if (estadoStock === 'sin')  return total === 0;
+          if (estadoStock === 'bajo') return total > 0 && total <= Number(p.stockMinimo);
+          if (estadoStock === 'ok')   return total > Number(p.stockMinimo);
+          return true;
+        });
+      }
+      if (!filtrados.length) { message.warning('Ningún producto coincide con los filtros actuales'); return; }
+      const sufijo = [search && `q-${search.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 20)}`, fechaHoy()].filter(Boolean).join('_');
+      exportarCatalogo(filtrados, `filtrado_${sufijo}`);
+      message.success(`${filtrados.length} productos exportados`);
+    } catch {
+      message.error('Error al exportar los productos filtrados');
+    } finally {
+      setExportando(false);
+    }
+  };
+
   // Parsear error del backend y asignarlo al campo correspondiente
   const handleApiError = (e: any, fallback: string) => {
     const msg: string = e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? e?.message ?? fallback;
@@ -690,12 +744,20 @@ function ProductosCatalogo() {
               <Select.Option value="bajo">Stock Bajo</Select.Option>
               <Select.Option value="sin">Sin Stock</Select.Option>
             </Select>
-            <Button icon={<FileExcelOutlined />} onClick={() => {
-              exportarInventario(rows);
-              message.success(`${rows.length} productos exportados`);
-            }}>
-              Excel
-            </Button>
+            <Dropdown
+              trigger={['click']}
+              disabled={exportando}
+              menu={{
+                items: [
+                  { key: 'todo',      icon: <FileExcelOutlined />, label: 'Exportar todo el catálogo',   onClick: handleExportarTodo },
+                  { key: 'filtrado',  icon: <FileExcelOutlined />, label: 'Exportar filtro actual',      onClick: handleExportarFiltrados },
+                ],
+              }}
+            >
+              <Button icon={<FileExcelOutlined />} loading={exportando}>
+                Excel <DownOutlined />
+              </Button>
+            </Dropdown>
             <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <RefreshByKeyButton queryKey={['productos']} />
             <VideoTutorialButton />
