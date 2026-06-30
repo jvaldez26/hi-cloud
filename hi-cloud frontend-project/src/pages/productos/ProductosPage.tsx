@@ -19,6 +19,7 @@ import { productosApi, type ProductoPayload } from '../../api/productos.api';
 import { atributosApi } from '../../api/atributos.api';
 import api from '../../api/client';
 import { useCanDo } from '../../hooks/useCanDo';
+import { UomSelect } from '../../components/ui/UomSelect';
 import { useAuthStore } from '../../store/auth.store';
 import { exportarInventario } from '../../utils/exportExcel';
 import type { Producto } from '../../types';
@@ -341,53 +342,6 @@ export default function ProductosPage() {
 // ── Selector de Unidad de Medida — conectado al catálogo UOM ─────────────────
 // Si hay unidades configuradas en /uom, las muestra como opciones.
 // Si no, permite escribir libremente (fallback).
-function UomSelect({ value, onChange }: { value?: string; onChange?: (v: string) => void }) {
-  const { data: unidades } = useQuery({
-    queryKey: ['uom-unidades'],
-    queryFn: () => api.get('/uom').then((r: any) => r.data?.data ?? r.data),
-    staleTime: 5 * 60 * 1000,
-  });
-
-  const opts = (unidades ?? []).map((u: any) => ({
-    value: u.codigo,
-    label: `${u.codigo} — ${u.nombre}${u.simbolo ? ` (${u.simbolo})` : ''}`,
-  }));
-
-  if (opts.length > 0) {
-    return (
-      <Select
-        showSearch optionFilterProp="label"
-        value={value} onChange={onChange}
-        placeholder="Seleccionar o buscar unidad"
-        options={opts}
-        dropdownRender={menu => (
-          <>
-            {menu}
-            <div style={{ padding: '4px 8px', borderTop: '1px solid #f0f0f0' }}>
-              <Text type="secondary" style={{ fontSize: 11 }}>
-                <a href="/uom" target="_blank" rel="noreferrer">+ Configurar unidades</a>
-              </Text>
-            </div>
-          </>
-        )}
-      />
-    );
-  }
-
-  // Fallback — input libre si no hay UOM configurado
-  return (
-    <Input
-      value={value}
-      onChange={e => onChange?.(e.target.value)}
-      placeholder="PZA, KG, LT..."
-      addonAfter={
-        <Tooltip title="Configura el catálogo de unidades para buscar aquí">
-          <a href="/uom" target="_blank" rel="noreferrer" style={{ fontSize: 11 }}>UOM</a>
-        </Tooltip>
-      }
-    />
-  );
-}
 
 // Componente invisible — precarga las unidades al abrir el formulario
 function UomMedidaSelector() {

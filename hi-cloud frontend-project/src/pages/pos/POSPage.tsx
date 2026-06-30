@@ -20,6 +20,7 @@ import { imprimirElemento, imprimirReciboTermico } from '../../utils/printUtils'
 import { useThemeStore } from '../../store/theme.store';
 import { useOfflineQueue } from '../../hooks/useOfflineQueue';
 import { useSupervisor } from '../../hooks/useSupervisor';
+import { UomSelect } from '../../components/ui/UomSelect';
 import type { Producto, Cliente } from '../../types';
 import dayjs from 'dayjs';
 import { useModuloAddon } from '../../hooks/useModuloAddon';
@@ -2943,8 +2944,10 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
                       borderRadius: 8, border: `1px solid ${C.border}`,
                       background: C.inputBg, color: C.text, outline: 'none', boxSizing: 'border-box' }} />
                 </div>
-                <PanelInput C={C} label="Unidad de Medida" value={fUnidadMedida}
-                  onChange={e => setFUnidadMedida(e.target.value)} placeholder="PZA, KG, LT…" />
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: C.text }}>Unidad de Medida</div>
+                  <UomSelect value={fUnidadMedida || undefined} onChange={v => setFUnidadMedida(v)} />
+                </div>
               </div>
               <PanelInput C={C} label="Imagen URL" value={fImagenUrl}
                 onChange={e => setFImagenUrl(e.target.value)} placeholder="https://… (opcional)" />
