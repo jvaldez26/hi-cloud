@@ -6463,6 +6463,8 @@ export default function POSPage() {
   const scanTimer         = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Timings inter-carácter del buffer actual (para distinguir scanner de humano por velocidad)
   const scanTimingsRef    = useRef<number[]>([]);
+  // Último código escaneado — guard anti-rebote (mismo código en <200ms)
+  const lastScanRef       = useRef<{ code: string; time: number }>({ code: '', time: 0 });
   const [scanFlash, setScanFlash] = useState(false);
   const { pendingCount, isSyncing, enqueue, sync } = useOfflineQueue();
 
@@ -6925,6 +6927,11 @@ export default function POSPage() {
     const trimmed = codigo.replace(/[\r\n]/g, '').trim();
     if (!trimmed) return;
 
+    // Guard anti-rebote: mismo código exacto en <200ms → doble-disparo del scanner
+    const ahora = Date.now();
+    if (trimmed === lastScanRef.current.code && ahora - lastScanRef.current.time < 200) return;
+    lastScanRef.current = { code: trimmed, time: ahora };
+
     const agregarProducto = (producto: any) => {
       const esServicio = (producto as any).tipo === 'servicio';
       if (!esServicio && Number(producto.stock) <= 0 && !posPermitirStockNegativo) {
@@ -7031,6 +7038,33 @@ export default function POSPage() {
         const delta = now - lastKeyTimeRef.current;
         lastKeyTimeRef.current = now;
 
+        // ── Sufijo SPACE / CR / LF — muchos scanners terminan con espacio en vez de Enter ──
+        // Si el buffer tiene contenido de scanner y llega un separador, flusheamos ya
+        if ((e.key === ' ' || e.key === '\r' || e.key === '\n') && scanBuffer.current.length >= 4) {
+          const timings = [...scanTimingsRef.current];
+          if (esDeScanner(scanBuffer.current, timings)) {
+            const codigo = scanBuffer.current.trim();
+            resetBuffer();
+            e.preventDefault();
+            procesarScan(codigo);
+          }
+          return; // Descartamos el separador de todas formas
+        }
+
+        // ── Frontera entre dos scans consecutivos (gap > 80ms después de chars rápidos) ──
+        // Evita que el código de un scan 2 se concatene con el del scan 1 en el mismo buffer
+        if (scanBuffer.current.length >= 4 && delta > 80 && scanTimingsRef.current.length >= 2) {
+          const fast = scanTimingsRef.current.filter(t => t < 50).length;
+          if (fast >= Math.ceil(scanTimingsRef.current.length * 0.75)) {
+            const prevCodigo = scanBuffer.current.trim();
+            if (scanTimer.current) { clearTimeout(scanTimer.current); scanTimer.current = null; }
+            scanBuffer.current      = '';
+            scanTimingsRef.current  = [];
+            fastCharCountRef.current = 0;
+            procesarScan(prevCodigo); // procesar el scan anterior, continuar con el char actual
+          }
+        }
+
         // Registrar delta inter-carácter (solo desde el 2.º char en adelante)
         if (scanBuffer.current.length > 0) {
           scanTimingsRef.current.push(delta);
@@ -7041,14 +7075,13 @@ export default function POSPage() {
         scanBuffer.current += e.key;
         if (scanTimer.current) clearTimeout(scanTimer.current);
 
-        // PATH timeout: scanner sin sufijo Enter — detectar por velocidad al terminar
+        // PATH timeout: scanner sin sufijo Enter/Space — detectar por velocidad al terminar
         scanTimer.current = setTimeout(() => {
           const codigo  = scanBuffer.current.trim();
           const timings = [...scanTimingsRef.current];
           resetBuffer();
 
           if (codigo.length >= 4 && esDeScanner(codigo, timings)) {
-            // Fue scanner → limpiar buscador y agregar al carrito
             procesarScan(codigo);
           }
           // Fue humano → no hacer nada; el input ya tiene el texto en su propio estado
