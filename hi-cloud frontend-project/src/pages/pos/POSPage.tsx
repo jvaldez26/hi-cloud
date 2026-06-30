@@ -2496,6 +2496,10 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
   const [fStock,          setFStock]          = useState('0');
   const [fStockMin,       setFStockMin]       = useState('0');
   const [fCategoria,      setFCategoria]      = useState('');
+  const [fCosto,          setFCosto]          = useState('');
+  const [fUnidadMedida,   setFUnidadMedida]   = useState('');
+  const [fDescripcion,    setFDescripcion]    = useState('');
+  const [fImagenUrl,      setFImagenUrl]      = useState('');
 
   // ── estados movimientos ───────────────────────────────────────────────────
   const [movLimit, setMovLimit] = useState(20);
@@ -2547,6 +2551,10 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
     setFStock(String(prod?.stock ?? 0));
     setFStockMin(String(prod?.stockMinimo ?? 0));
     setFCategoria(prod?.categoria ?? '');
+    setFCosto(prod?.costo != null ? String(prod.costo) : '');
+    setFUnidadMedida(prod?.unidadMedida ?? '');
+    setFDescripcion(prod?.descripcion ?? '');
+    setFImagenUrl(prod?.imagenUrl ?? '');
     setShowForm(true);
   };
 
@@ -2576,6 +2584,10 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
         precio3: fPrecio3 && Number(fPrecio3) > 0 ? Number(fPrecio3) : null,
         stockMinimo: esServicio ? 0 : Number(fStockMin),
         categoria: fCategoria.trim() || undefined, tipo: fTipo,
+        costo: fCosto && Number(fCosto) > 0 ? Number(fCosto) : null,
+        unidadMedida: fUnidadMedida.trim() || undefined,
+        descripcion: fDescripcion.trim() || undefined,
+        imagenUrl: fImagenUrl.trim() || undefined,
       };
       if (!editingProd && !esServicio) body.stock = Number(fStock);
       const tipoLabel = esServicio ? 'Servicio' : 'Producto';
@@ -2920,6 +2932,39 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
               </div>
               <PanelInput C={C} label="Categoría" value={fCategoria}
                 onChange={e => setFCategoria(e.target.value)} placeholder="Categoría (opcional)" />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: C.text }}>
+                    Costo <span style={{ fontWeight: 400, fontSize: 10, color: C.textSub }}>(precio de compra)</span>
+                  </div>
+                  <input type="number" min="0" step="0.01" value={fCosto}
+                    onChange={e => setFCosto(e.target.value)} placeholder="Opcional"
+                    style={{ width: '100%', height: 36, padding: '0 8px', fontSize: 13,
+                      borderRadius: 8, border: `1px solid ${C.border}`,
+                      background: C.inputBg, color: C.text, outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+                <PanelInput C={C} label="Unidad de Medida" value={fUnidadMedida}
+                  onChange={e => setFUnidadMedida(e.target.value)} placeholder="PZA, KG, LT…" />
+              </div>
+              <PanelInput C={C} label="Imagen URL" value={fImagenUrl}
+                onChange={e => setFImagenUrl(e.target.value)} placeholder="https://… (opcional)" />
+              {fImagenUrl.trim() && (
+                <div style={{ marginBottom: 10 }}>
+                  <img src={fImagenUrl.trim()} alt="preview"
+                    style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8,
+                      border: `1px solid ${C.border}` }}
+                    onError={e => (e.currentTarget.style.display = 'none')} />
+                </div>
+              )}
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: C.text }}>Descripción</div>
+                <textarea value={fDescripcion} rows={2}
+                  onChange={e => setFDescripcion(e.target.value)}
+                  placeholder="Descripción opcional"
+                  style={{ width: '100%', padding: '8px 10px', fontSize: 13, resize: 'vertical',
+                    borderRadius: 8, border: `1px solid ${C.border}`, boxSizing: 'border-box',
+                    background: C.inputBg, color: C.text, outline: 'none', fontFamily: 'inherit' }} />
+              </div>
             </div>
             <div style={{ padding: '12px 18px', borderTop: `1px solid ${C.border}`, display: 'flex', gap: 8 }}>
               <button onClick={() => setShowForm(false)}
