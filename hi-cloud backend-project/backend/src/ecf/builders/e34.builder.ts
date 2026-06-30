@@ -13,6 +13,7 @@ import {
   buildTotalesCero,
   EcfRncRequeridoError,
   resolverMoneda,
+  round2,
 } from './base-ecf.builder';
 import { fmtFecha } from './sections/id-doc.section';
 import { Logger } from '@nestjs/common';
@@ -20,7 +21,6 @@ import { warnCuadraturaDGII } from './sections/items.section';
 
 const logger = new Logger('E34Builder');
 
-function f2(v: number): number { return parseFloat(v.toFixed(2)); }
 function cap4(n: number | string): number { return parseFloat(Number(n).toFixed(4)); }
 
 const CODIGOS_MODIFICACION_E34: Record<string, string> = {
@@ -88,9 +88,9 @@ export function buildE34(input: ECFBuildInput): MSellerPayload {
       IndicadorBienoServicio: 1,
       CantidadItem:           cap4(d.cantidad),
       UnidadMedida:           43,
-      PrecioUnitarioItem:     f2(mc.toDOP(precioME)),
+      PrecioUnitarioItem:     round2(mc.toDOP(precioME)),
       ...(otME ? { OtraMonedaDetalle: otME } : {}),
-      MontoItem:              f2(mc.toDOP(montoME)),
+      MontoItem:              round2(mc.toDOP(montoME)),
     };
   });
 
@@ -99,16 +99,16 @@ export function buildE34(input: ECFBuildInput): MSellerPayload {
   let itbis18 = 0, itbis16 = 0;
   detallesME.forEach((d: any) => {
     const pct = parseFloat(String(d.porcentajeIva ?? 18));
-    const sub = f2(mc.toDOP(Number(d.subtotal)));
-    const iva = f2(mc.toDOP(Number(d.importeIva ?? d.iva ?? 0)));
+    const sub = round2(mc.toDOP(Number(d.subtotal)));
+    const iva = round2(mc.toDOP(Number(d.importeIva ?? d.iva ?? 0)));
     if (pct >= 18)      { montoGravado18 += sub; itbis18 += iva; }
     else if (pct >= 16) { montoGravado16 += sub; itbis16 += iva; }
     else                { montoExento += sub; }
   });
-  const montoGravadoTotal = f2(montoGravado18 + montoGravado16);
+  const montoGravadoTotal = round2(montoGravado18 + montoGravado16);
   const hayGravado: 0 | 1 = montoGravadoTotal > 0 ? 1 : 0;
-  const totalITBIS = f2(itbis18 + itbis16);
-  const montoTotal = f2(montoGravadoTotal + montoExento + totalITBIS);
+  const totalITBIS = round2(itbis18 + itbis16);
+  const montoTotal = round2(montoGravadoTotal + montoExento + totalITBIS);
 
   const totales = codigoMod === '2'
     ? buildTotalesCero()
@@ -117,16 +117,16 @@ export function buildE34(input: ECFBuildInput): MSellerPayload {
         // Orden estricto XSD DGII: MontoGravadoXX → MontoExento → ITBISXX → TotalITBISXX → MontoTotal
         if (montoGravadoTotal > 0) {
           t['MontoGravadoTotal'] = montoGravadoTotal;
-          t['MontoGravadoI1']    = f2(montoGravado18);
+          t['MontoGravadoI1']    = round2(montoGravado18);
         }
-        if (montoGravado16 > 0) t['MontoGravadoI2'] = f2(montoGravado16);
-        if (montoExento    > 0) t['MontoExento']     = f2(montoExento);
+        if (montoGravado16 > 0) t['MontoGravadoI2'] = round2(montoGravado16);
+        if (montoExento    > 0) t['MontoExento']     = round2(montoExento);
         if (montoGravadoTotal > 0) {
           t['ITBIS1']      = 18;
           t['TotalITBIS']  = totalITBIS;
-          t['TotalITBIS1'] = f2(itbis18);
+          t['TotalITBIS1'] = round2(itbis18);
         }
-        if (montoGravado16 > 0) { t['ITBIS2'] = 16; t['TotalITBIS2'] = f2(itbis16); }
+        if (montoGravado16 > 0) { t['ITBIS2'] = 16; t['TotalITBIS2'] = round2(itbis16); }
         t['MontoTotal'] = montoTotal;
         return t;
       })();
@@ -137,20 +137,20 @@ export function buildE34(input: ECFBuildInput): MSellerPayload {
     let montoGrav1ME = 0, itbis1ME = 0, montoExentoME = 0;
     detallesME.forEach((d: any) => {
       const pct = parseFloat(String(d.porcentajeIva ?? 18));
-      const sub = f2(Number(d.subtotal));
-      const iva = f2(Number(d.importeIva ?? d.iva ?? 0));
+      const sub = round2(Number(d.subtotal));
+      const iva = round2(Number(d.importeIva ?? d.iva ?? 0));
       if (pct >= 18) { montoGrav1ME += sub; itbis1ME += iva; }
       else           { montoExentoME += sub; }
     });
-    const montoTotalME = f2(montoGrav1ME + montoExentoME + itbis1ME);
+    const montoTotalME = round2(montoGrav1ME + montoExentoME + itbis1ME);
     otraMoneda = {
       TipoMoneda:                    mc.moneda,
       TipoCambio:                    mc.tasa.toFixed(4),
-      MontoGravadoTotalOtraMoneda:   f2(montoGrav1ME).toFixed(2),
-      MontoGravado1OtraMoneda:       f2(montoGrav1ME).toFixed(2),
-      ...(montoExentoME > 0 ? { MontoExentoOtraMoneda: f2(montoExentoME).toFixed(2) } : {}),
-      TotalITBISOtraMoneda:          f2(itbis1ME).toFixed(2),
-      TotalITBIS1OtraMoneda:         f2(itbis1ME).toFixed(2),
+      MontoGravadoTotalOtraMoneda:   round2(montoGrav1ME).toFixed(2),
+      MontoGravado1OtraMoneda:       round2(montoGrav1ME).toFixed(2),
+      ...(montoExentoME > 0 ? { MontoExentoOtraMoneda: round2(montoExentoME).toFixed(2) } : {}),
+      TotalITBISOtraMoneda:          round2(itbis1ME).toFixed(2),
+      TotalITBIS1OtraMoneda:         round2(itbis1ME).toFixed(2),
       MontoTotalOtraMoneda:          montoTotalME.toFixed(2),
     };
   }

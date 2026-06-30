@@ -14,6 +14,7 @@ export {
 } from './sections/comprador.section';
 export { buildIdDoc, fmtFecha, addDias } from './sections/id-doc.section';
 export {
+  round2,
   buildTotalesGravados,
   buildTotalesMixtos,
   buildTotalesExentos,

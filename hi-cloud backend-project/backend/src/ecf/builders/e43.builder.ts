@@ -12,15 +12,12 @@ import {
   buildEmisor, assertEmisorOrder, toEmpresaConfig,
   buildIdDoc, fmtFecha,
   buildTotalesExentos,
+  round2,
 } from './base-ecf.builder';
-
-function fmt2(v: number): number {
-  return parseFloat(v.toFixed(2));
-}
 
 export function buildE43(input: ECFBuildInput): MSellerPayload {
   const { encf, factura, config, fechaVencSec } = input;
-  const total  = fmt2(Number(factura.total));
+  const total  = round2(Number(factura.total));
   const fecha  = fmtFecha(factura.fecha ?? new Date());
   const emisor = buildEmisor(toEmpresaConfig(config), fecha);
   assertEmisorOrder(emisor);
@@ -34,8 +31,8 @@ export function buildE43(input: ECFBuildInput): MSellerPayload {
     IndicadorBienoServicio: d.esServicio === false ? 1 : 2,  // default Servicio para gastos menores
     CantidadItem:           Number(d.cantidad),
     UnidadMedida:           43,
-    PrecioUnitarioItem:     fmt2(Number(d.precioUnitario)),
-    MontoItem:              fmt2(Number(d.subtotal)),
+    PrecioUnitarioItem:     round2(Number(d.precioUnitario)),
+    MontoItem:              round2(Number(d.subtotal)),
   }));
 
   return {

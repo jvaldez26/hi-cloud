@@ -15,15 +15,11 @@ import {
   buildIdDoc, fmtFecha,
   buildTotalesE47,
   resolverMoneda,
+  round2,
 } from './base-ecf.builder';
 import { Logger } from '@nestjs/common';
 
 const logger = new Logger('E47Builder');
-
-/** Formato exacto 2 decimales para DGII (evita drift de round2). */
-function fmt2(v: number): number {
-  return parseFloat(v.toFixed(2));
-}
 
 export function buildE47(input: ECFBuildInput): MSellerPayload {
   const { encf, factura, config, fechaVencSec, nombreExtranjero } = input;
@@ -48,7 +44,7 @@ export function buildE47(input: ECFBuildInput): MSellerPayload {
 
   // ── PASO 1: construir items con valores ya redondeados ─────────────────────
   const items = detalles.map((d: any, idx: number) => {
-    const retencionISR = fmt2(Number(d.retencionISR ?? 0));
+    const retencionISR = round2(Number(d.retencionISR ?? 0));
     const item: Record<string, unknown> = {
       NumeroLinea:            idx + 1,
       IndicadorFacturacion:   4,
@@ -61,8 +57,8 @@ export function buildE47(input: ECFBuildInput): MSellerPayload {
       IndicadorBienoServicio: 2,
       CantidadItem:           Number(d.cantidad),
       UnidadMedida:           43,
-      PrecioUnitarioItem:     fmt2(mc.toDOP(Number(d.precioUnitario))),
-      MontoItem:              fmt2(mc.toDOP(Number(d.subtotal))),
+      PrecioUnitarioItem:     round2(mc.toDOP(Number(d.precioUnitario))),
+      MontoItem:              round2(mc.toDOP(Number(d.subtotal))),
     };
     return item;
   });
@@ -71,7 +67,7 @@ export function buildE47(input: ECFBuildInput): MSellerPayload {
   let totalISR = 0;
   for (const item of items) {
     const r = item['Retencion'] as any;
-    if (r?.MontoISRRetenido) totalISR = fmt2(totalISR + r.MontoISRRetenido);
+    if (r?.MontoISRRetenido) totalISR = round2(totalISR + r.MontoISRRetenido);
   }
 
   logger.debug(

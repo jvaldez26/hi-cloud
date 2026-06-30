@@ -11,12 +11,11 @@ import {
   buildCompradorRNC,
   EcfRncRequeridoError,
   resolverMoneda,
+  round2,
 } from './base-ecf.builder';
 import { Logger } from '@nestjs/common';
 
 const logger = new Logger('E45Builder');
-
-function f2(v: number): number { return parseFloat(v.toFixed(2)); }
 
 export function buildE45(input: ECFBuildInput): MSellerPayload {
   const { encf, factura, config, fechaVencSec } = input;
@@ -50,9 +49,9 @@ export function buildE45(input: ECFBuildInput): MSellerPayload {
       IndicadorBienoServicio: 1,
       CantidadItem:           Number(d.cantidad),
       UnidadMedida:           43,
-      PrecioUnitarioItem:     f2(mc.toDOP(precioME)),
+      PrecioUnitarioItem:     round2(mc.toDOP(precioME)),
       ...(otME ? { OtraMonedaDetalle: otME } : {}),
-      MontoItem:              f2(mc.toDOP(montoME)),
+      MontoItem:              round2(mc.toDOP(montoME)),
     };
   });
 
@@ -62,32 +61,32 @@ export function buildE45(input: ECFBuildInput): MSellerPayload {
 
   detallesME.forEach((d: any) => {
     const pct = parseFloat(String(d.porcentajeIva ?? 18));
-    const sub = f2(mc.toDOP(Number(d.subtotal)));
-    const iva = f2(mc.toDOP(Number(d.importeIva ?? d.iva ?? 0)));
+    const sub = round2(mc.toDOP(Number(d.subtotal)));
+    const iva = round2(mc.toDOP(Number(d.importeIva ?? d.iva ?? 0)));
     if (pct >= 18)      { montoGravado18 += sub; itbis18 += iva; }
     else if (pct >= 16) { montoGravado16 += sub; itbis16 += iva; }
     else                { montoExento += sub; }
   });
 
-  const montoGravadoTotal = f2(montoGravado18 + montoGravado16);
-  const totalITBIS        = f2(itbis18 + itbis16);
-  const montoTotal        = f2(montoGravadoTotal + montoExento + totalITBIS);
+  const montoGravadoTotal = round2(montoGravado18 + montoGravado16);
+  const totalITBIS        = round2(itbis18 + itbis16);
+  const montoTotal        = round2(montoGravadoTotal + montoExento + totalITBIS);
   const hayGravado: 0 | 1 = montoGravadoTotal > 0 ? 1 : 0;
 
   const totales: Record<string, unknown> = {};
   if (montoGravadoTotal > 0) {
     totales['MontoGravadoTotal'] = montoGravadoTotal;
-    totales['MontoGravadoI1']    = f2(montoGravado18);
+    totales['MontoGravadoI1']    = round2(montoGravado18);
     totales['ITBIS1']            = 18;
     totales['TotalITBIS']        = totalITBIS;
-    totales['TotalITBIS1']       = f2(itbis18);
+    totales['TotalITBIS1']       = round2(itbis18);
   }
   if (montoGravado16 > 0) {
-    totales['MontoGravadoI2'] = f2(montoGravado16);
+    totales['MontoGravadoI2'] = round2(montoGravado16);
     totales['ITBIS2']         = 16;
-    totales['TotalITBIS2']    = f2(itbis16);
+    totales['TotalITBIS2']    = round2(itbis16);
   }
-  if (montoExento > 0) totales['MontoExento'] = montoExento;  // OMITIR si es 0
+  if (montoExento > 0) totales['MontoExento'] = round2(montoExento);  // OMITIR si es 0
   totales['MontoTotal'] = montoTotal;
 
   logger.debug(`[E45] Totales: ${JSON.stringify(totales)}`);
