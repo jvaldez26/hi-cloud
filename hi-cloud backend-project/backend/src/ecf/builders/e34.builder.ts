@@ -36,8 +36,13 @@ function calcIndicadorNC(fechaNcfModificado: string): '0' | '1' {
     const parts = fechaNcfModificado.split('-');
     if (parts.length !== 3) return '0';
     const [dd, mm, yyyy] = parts.map(Number);
-    const fechaOrig = new Date(yyyy, mm - 1, dd);
-    const dias = Math.floor((Date.now() - fechaOrig.getTime()) / 86_400_000);
+    // Anclar ambas fechas al mediodía RD (16:00 UTC) para comparación calendar-day estable.
+    // Evita que la diferencia de UTC-4 cruce el límite de día en horas nocturnas RD.
+    const orig = new Date(Date.UTC(yyyy, mm - 1, dd, 16));
+    const rdHoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santo_Domingo' })
+      .format(new Date()).split('-').map(Number);
+    const hoy  = new Date(Date.UTC(rdHoy[0], rdHoy[1] - 1, rdHoy[2], 16));
+    const dias = Math.round((hoy.getTime() - orig.getTime()) / 86_400_000);
     return dias <= 30 ? '0' : '1';
   } catch { return '0'; }
 }

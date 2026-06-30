@@ -26,19 +26,10 @@ import {
   EcfNcfReferenciadoError,
   EcfMontoAnulacionError,
 } from '../errors/ecf.errors';
+import { fmtFecha } from '../builders/base-ecf.builder';
 
 const TIMEOUT_POS      = 8_000;
 const TIMEOUT_REGULAR  = 30_000;
-
-function fmtFechaEcf(d: Date | string | undefined): string {
-  if (!d) return '';
-  const dt = d instanceof Date ? d : new Date(d);
-  // Formatear en timezone RD — el servidor corre en UTC y a las 8pm RD ya es el día siguiente en UTC
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Santo_Domingo', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(dt).split('-');
-  return `${parts[2]}-${parts[1]}-${parts[0]}`; // DD-MM-YYYY
-}
 
 export interface DatosCompradorECF {
   rnc?:               string;
@@ -266,7 +257,7 @@ export class EmitirECFUseCase {
 
       infoReferencia = {
         NCFModificado:      ecfOriginal.numero,
-        FechaNCFModificado: fmtFechaEcf(ecfOriginal.fechaUso ?? facturaOrig?.fecha ?? ecfOriginal.createdAt),
+        FechaNCFModificado: fmtFecha(ecfOriginal.fechaUso ?? facturaOrig?.fecha ?? ecfOriginal.createdAt),
         // Preservar CodigoModificacion del input si fue proporcionado; default '3'
         CodigoModificacion: infoRefInput?.CodigoModificacion ?? '3',
       };
