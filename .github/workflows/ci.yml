@@ -7,14 +7,30 @@ on:
     branches: [main]
 
 jobs:
-  # ── Backend: TypeScript + Build ──────────────────────────────────────────────
+  # ── Backend: TypeScript + Build + Schema smoke test ──────────────────────────
   backend:
     name: Backend CI
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: hi-cloud backend-project/backend
+
+    # ── CAPA 3: PostgreSQL para smoke test de esquema ─────────────────────────
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER:     hicloud
+          POSTGRES_PASSWORD: hicloud_ci
+          POSTGRES_DB:       hicloud_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
 
     steps:
       - uses: actions/checkout@v4
@@ -40,6 +56,85 @@ jobs:
 
       - name: Build
         run: npm run build
+        env:
+          NODE_OPTIONS: '--max-old-space-size=3072'
+
+      # ── CAPA 4: Detectar migraciones SQL en seeds/ ────────────────────────
+      # Las migraciones DEBEN ser clases TypeScript en src/migrations/
+      # NUNCA archivos .sql en seeds/ (TypeORM no los ejecuta automáticamente)
+      # Este check habría prevenido el incidente del 2026-07-01.
+      - name: "CAPA 4 — Detectar migraciones SQL en seeds/ (deben ser TS en migrations/)"
+        run: |
+          # --diff-filter=A: solo archivos AÑADIDOS (no modificaciones de SQL existentes)
+          NEW_SQL=$(git diff --name-only --diff-filter=A HEAD~1 HEAD 2>/dev/null | \
+            grep -E 'seeds/.*\.(sql|SQL)$' || true)
+
+          if [ -n "$NEW_SQL" ]; then
+            echo ""
+            echo "❌ MIGRACIONES SQL DETECTADAS EN seeds/ — CI FALLIDO"
+            echo "════════════════════════════════════════════════════════"
+            echo "  Archivos detectados:"
+            echo "$NEW_SQL" | sed 's/^/    /'
+            echo ""
+            echo "  ⛔ Los archivos .sql en seeds/ NO son ejecutados por TypeORM."
+            echo "     El código nuevo llegaría a producción sin las columnas en BD."
+            echo "     Resultado: SchemaValidator bloquea el arranque → backend caído."
+            echo ""
+            echo "  ✅ SOLUCIÓN: crea una migración TypeScript en src/migrations/"
+            echo "     npm run migration:generate -- src/migrations/NombreDeTuCambio"
+            echo ""
+            echo "  📖 REGLA: TODA migración de schema va en src/migrations/*.ts"
+            echo "     Seeds de datos van en src/seeds/ (no migrations de schema)"
+            echo "════════════════════════════════════════════════════════"
+            exit 1
+          fi
+          echo "✅ Sin nuevas migraciones SQL en seeds/"
+
+      # ── CAPA 3: Smoke test — migraciones + validación de esquema ─────────
+      # Levanta BD de prueba, corre TODAS las migraciones, verifica que
+      # el entity TypeORM coincida con la BD migrada.
+      # Si un entity tiene columnas sin migración → CI FALLA antes del deploy.
+      - name: "CAPA 3 — Smoke test: migraciones contra BD de prueba"
+        run: |
+          echo "  → Corriendo todas las migraciones contra BD de prueba..."
+          node -e "
+            const { AppDataSource } = require('./dist/data-source');
+            AppDataSource.initialize()
+              .then(ds => ds.runMigrations({ transaction: 'each' }))
+              .then(migs => {
+                console.log('  ✅ Migraciones OK:', migs.length, 'aplicadas');
+                return AppDataSource.destroy();
+              })
+              .then(() => process.exit(0))
+              .catch(err => {
+                console.error('  ❌ Migración falló:', err.message);
+                process.exit(1);
+              });
+          "
+        env:
+          NODE_ENV:      test
+          DB_HOST:       localhost
+          DB_PORT:       5432
+          DB_USERNAME:   hicloud
+          DB_PASSWORD:   hicloud_ci
+          DB_NAME:       hicloud_test
+          DB_SSL:        'false'
+          # JWT_SECRET mínimo para que dotenv no falle (no se usa en migraciones)
+          JWT_SECRET:    ci-test-secret-minimum-32-chars-placeholder
+
+      - name: "CAPA 3 — Smoke test: validar entity vs BD migrada"
+        run: |
+          echo "  → Validando que todas las columnas del entity existen en BD migrada..."
+          node scripts/check-schema-dist.js
+        env:
+          NODE_ENV:      test
+          DB_HOST:       localhost
+          DB_PORT:       5432
+          DB_USERNAME:   hicloud
+          DB_PASSWORD:   hicloud_ci
+          DB_NAME:       hicloud_test
+          DB_SSL:        'false'
+          JWT_SECRET:    ci-test-secret-minimum-32-chars-placeholder
 
   # ── Frontend: TypeScript + Build ─────────────────────────────────────────────
   frontend:

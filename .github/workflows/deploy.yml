@@ -149,7 +149,7 @@ jobs:
           path: 'hi-cloud frontend-project/dist'
           retention-days: 1
 
-  # ── 4. Deploy: SCP ambos dists + SSH mínimo en EC2 ───────────────────────────
+  # ── 4. Deploy: SCP ambos dists + SSH atómico en EC2 ──────────────────────────
   deploy:
     name: Deploy to EC2
     runs-on: ubuntu-latest
@@ -193,8 +193,15 @@ jobs:
           target:   '/home/ubuntu/hicloud/backend-dist-ci/'
           strip_components: 1
 
-      # ── EC2: solo git pull + env vars + deps + mv dist + migrate + restart ────
-      - name: Setup + Migrate + Restart
+      # ── EC2: deploy ATÓMICO — migrar → validar esquema → reload ──────────────
+      #
+      # GARANTÍA: pm2 reload NUNCA ocurre si las migraciones o la validación
+      # de esquema fallan. El proceso anterior sigue vivo e intacto.
+      #
+      # AUTO-ROLLBACK: si el health check post-reload falla, se restaura
+      # automáticamente la versión anterior sin intervención manual.
+      # ─────────────────────────────────────────────────────────────────────────
+      - name: Setup + Migrate + Validate + Restart
         uses: appleboy/ssh-action@v1.0.3
         env:
           DB_CA_CERT:       ${{ secrets.DB_CA_CERT }}
@@ -216,11 +223,34 @@ jobs:
             set -e
             cd /home/ubuntu/hicloud
 
-            echo "━━━ [1/4] Git sync ━━━"
+            # ══════════════════════════════════════════════════════════════════
+            # [0/6] GUARDAR ESTADO ESTABLE — ANTES de cualquier cambio
+            # ══════════════════════════════════════════════════════════════════
+            echo "━━━ [0/6] Guardar estado estable ━━━"
+            STABLE_COMMIT=$(git rev-parse HEAD)
+            BACKEND_DIR="/home/ubuntu/hicloud/hi-cloud backend-project/backend"
+
+            echo "  → Commit estable: $STABLE_COMMIT"
+            # Backup del dist actual para poder hacer rollback post-reload
+            if [ -d "$BACKEND_DIR/dist" ]; then
+              rm -rf /home/ubuntu/hicloud/.backup-dist
+              cp -r "$BACKEND_DIR/dist" /home/ubuntu/hicloud/.backup-dist
+              echo "  ✅ Backup dist guardado (~$(du -sh /home/ubuntu/hicloud/.backup-dist 2>/dev/null | cut -f1))"
+            else
+              echo "  ⚠  No hay dist previo (primer deploy)"
+            fi
+
+            # ══════════════════════════════════════════════════════════════════
+            # [1/6] GIT SYNC
+            # ══════════════════════════════════════════════════════════════════
+            echo "━━━ [1/6] Git sync ━━━"
             git fetch origin main
             git reset --hard origin/main
 
-            echo "━━━ [2/4] Variables de entorno críticas ━━━"
+            # ══════════════════════════════════════════════════════════════════
+            # [2/6] VARIABLES DE ENTORNO
+            # ══════════════════════════════════════════════════════════════════
+            echo "━━━ [2/6] Variables de entorno ━━━"
             ENV_FILE="hi-cloud backend-project/backend/.env"
 
             if grep -q '^APP_URL=' "$ENV_FILE" 2>/dev/null; then
@@ -235,8 +265,7 @@ jobs:
               echo 'FRONTEND_URL=https://hicloudrd.com' >> "$ENV_FILE"
             fi
 
-            # S-25: DB_CA_CERT — fuente de verdad: PEM file en el servidor (no el GitHub Secret).
-            # El PEM file es estable y no se corrompe con deploys. GitHub Secret como fallback.
+            # S-25: DB_CA_CERT — fuente de verdad: PEM file en el servidor.
             CERT_VALUE=""
             if [ -f /home/ubuntu/us-east-2-bundle.pem ]; then
               CERT_VALUE=$(base64 -w 0 /home/ubuntu/us-east-2-bundle.pem 2>/dev/null || echo "")
@@ -255,9 +284,7 @@ jobs:
             fi
             if [ -n "$CERT_VALUE" ] && [ "${#CERT_VALUE}" -gt 200 ]; then
               python3 -c "import sys,re; e,cert=sys.argv[1],sys.argv[2]; buf=open(e).read(); buf=re.sub(r'(?m)^DB_CA_CERT=.*','DB_CA_CERT='+cert,buf) if re.search(r'(?m)^DB_CA_CERT=',buf) else buf+chr(10)+'DB_CA_CERT='+cert; open(e,'w').write(buf); print('  DB_CA_CERT ok '+str(len(cert))+' chars')" "$ENV_FILE" "$CERT_VALUE"
-              echo "  ✅ DB_CA_CERT actualizado (${#CERT_VALUE} chars)"
-            else
-              echo "  ⚠️  DB_CA_CERT: sin fuente válida — preservando .env existente"
+              echo "  ✅ DB_CA_CERT actualizado"
             fi
 
             if grep -q '^GOOGLE_CALLBACK_URL=' "$ENV_FILE" 2>/dev/null; then
@@ -266,12 +293,10 @@ jobs:
               echo 'GOOGLE_CALLBACK_URL=https://hicloudrd.com/api/v1/auth/google/callback' >> "$ENV_FILE"
             fi
 
-            # ── SMTP (Email) — inyectar desde GitHub Secrets si están disponibles ──
             inject_env() {
               local key="$1" val="$2"
-              [ -z "$val" ] && return   # secret vacío → preservar valor existente
+              [ -z "$val" ] && return
               if grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
-                # escapar | en el valor para sed
                 local escaped; escaped=$(printf '%s\n' "$val" | sed 's|[&\\/]|\\&|g; s/|/\\|/g')
                 sed -i "s|^${key}=.*|${key}=${escaped}|" "$ENV_FILE"
               else
@@ -286,14 +311,10 @@ jobs:
             inject_env SMTP_FROM        "$SMTP_FROM"
             inject_env NOTIF_ADMIN_EMAIL "$NOTIF_ADMIN_EMAIL"
             inject_env SEED_PLAN_CUENTAS_RUN "true"
+            echo "  ✅ Variables de entorno configuradas"
 
-            echo "  ✅ APP_URL y FRONTEND_URL configurados"
-            echo "  ✅ GOOGLE_CALLBACK_URL=$(grep '^GOOGLE_CALLBACK_URL=' $ENV_FILE)"
-
-            # ── Chromium para Puppeteer (set +e: errores aquí no abortan deploy) ─
-            echo "  → Configurando Chromium para generación PDF..."
+            # Chromium para Puppeteer
             set +e
-            # Instalar chromium-browser si no existe (Ubuntu 20.04 = .deb, 22.04 = snap ignorado)
             if ! command -v chromium-browser > /dev/null 2>&1 \
             && ! command -v google-chrome    > /dev/null 2>&1 \
             && ! command -v chromium         > /dev/null 2>&1; then
@@ -306,42 +327,38 @@ jobs:
               || command -v chromium-browser 2>/dev/null \
               || command -v chromium         2>/dev/null \
               || echo "")
-            echo "  Chrome path: ${CHROME_PATH:-'no encontrado — se usará bundled Puppeteer'}"
             if [ -n "$CHROME_PATH" ]; then
               grep -q '^PUPPETEER_EXECUTABLE_PATH=' "$ENV_FILE" 2>/dev/null \
                 && sed -i "s|^PUPPETEER_EXECUTABLE_PATH=.*|PUPPETEER_EXECUTABLE_PATH=${CHROME_PATH}|" "$ENV_FILE" \
                 || echo "PUPPETEER_EXECUTABLE_PATH=${CHROME_PATH}" >> "$ENV_FILE"
-              echo "  PUPPETEER_EXECUTABLE_PATH=${CHROME_PATH}"
             fi
             set -e
-            # ─────────────────────────────────────────────────────────────────────
 
-            echo "━━━ [3/4] Deps + dist (precompilado en CI) + migraciones + restart ━━━"
-            BACKEND_DIR="/home/ubuntu/hicloud/hi-cloud backend-project/backend"
+            # ══════════════════════════════════════════════════════════════════
+            # [3/6] DEPS + DIST + MIGRACIONES
+            # Si cualquier paso falla AQUÍ, el proceso anterior sigue vivo
+            # (pm2 reload NO ha ocurrido todavía).
+            # ══════════════════════════════════════════════════════════════════
+            echo "━━━ [3/6] Deps + dist + migraciones ━━━"
             cd "$BACKEND_DIR"
 
-            # Verificar que la dist del CI llegó correctamente
             if [ ! -f /home/ubuntu/hicloud/backend-dist-ci/main.js ]; then
               echo "❌ Backend dist no recibido del CI — abortando"
               exit 1
             fi
 
-            # Instalar dependencias (el build TypeScript ya viene del CI)
             npm ci 2>&1 | tail -3
 
-            # Reemplazar dist/ con el build precompilado del CI
+            # Activar el nuevo dist (PM2 todavía ejecuta el ANTERIOR)
             rm -rf dist
             mv /home/ubuntu/hicloud/backend-dist-ci dist
 
-            # Symlink sin espacios para PM2
             ln -sfn "$BACKEND_DIR" /home/ubuntu/hicloud/backend-current
 
-            # FIX CRÍTICO: dotenv no overridea env vars ya seteadas desde el shell de GitHub Actions.
-            # La variable DB_CA_CERT viene del GitHub Secret (valor "-" corrupto) heredada por node.
-            # Solución: exportar explícitamente CERT_VALUE (del PEM) para que node lo use directamente.
+            # FIX CRÍTICO: dotenv no overridea env vars del shell de GitHub Actions
             if [ -n "$CERT_VALUE" ] && [ "${#CERT_VALUE}" -gt 200 ]; then
               export DB_CA_CERT="$CERT_VALUE"
-              echo "  DB_CA_CERT exportado al entorno de node (${#DB_CA_CERT} chars)"
+              echo "  DB_CA_CERT exportado al entorno de node"
             fi
 
             echo "  → Corriendo migraciones pendientes..."
@@ -358,10 +375,46 @@ jobs:
                   console.error('  ❌ Migración falló:', err.message);
                   process.exit(1);
                 });
-            " || { echo '❌ Migraciones fallaron — deploy abortado. Ver log arriba para diagnóstico.'; exit 1; }
+            " || {
+              echo "❌ Migraciones fallaron — abortando deploy sin reload"
+              echo "  → El proceso anterior sigue activo e intacto"
+              echo "  → Restaurando dist anterior en disco..."
+              rm -rf dist
+              if [ -d /home/ubuntu/hicloud/.backup-dist ]; then
+                cp -r /home/ubuntu/hicloud/.backup-dist dist
+              fi
+              exit 1
+            }
 
-            # Recargar backend con zero-downtime (reload mantiene el proceso vivo,
-            # evita que los JWTs en tránsito sean invalidados por un kill+start)
+            # ══════════════════════════════════════════════════════════════════
+            # [4/6] VALIDACIÓN DE ESQUEMA PRE-RELOAD (CAPA 1)
+            #
+            # Compara entity metadata del NUEVO dist vs columnas reales en BD.
+            # Si hay columnas nuevas sin migrar → ABORT sin tocar PM2.
+            # El proceso anterior sigue sirviendo requests normalmente.
+            #
+            # Esto habría PREVENIDO el incidente del 2026-07-01:
+            # descuentoGeneralPct/Monto en entity sin columnas en BD →
+            # este check habría fallado ANTES del reload.
+            # ══════════════════════════════════════════════════════════════════
+            echo "━━━ [4/6] Validación de esquema pre-reload ━━━"
+            node scripts/check-schema-dist.js || {
+              echo "❌ Esquema inconsistente — deploy abortado ANTES del reload"
+              echo "  → El proceso anterior sigue activo e intacto"
+              echo "  → Diagnóstico: una columna nueva en entity no tiene migración"
+              echo "  → Solución: agrega la migración en src/migrations/ y re-deploya"
+              rm -rf dist
+              if [ -d /home/ubuntu/hicloud/.backup-dist ]; then
+                cp -r /home/ubuntu/hicloud/.backup-dist dist
+              fi
+              git reset --hard "$STABLE_COMMIT"
+              exit 1
+            }
+
+            # ══════════════════════════════════════════════════════════════════
+            # [5/6] PM2 RELOAD — solo si [3] y [4] pasaron
+            # ══════════════════════════════════════════════════════════════════
+            echo "━━━ [5/6] PM2 reload ━━━"
             if ! pm2 list | grep -q hicloud-backend; then
               pm2 start /home/ubuntu/hicloud/backend-current/dist/main.js \
                 --name hicloud-backend \
@@ -373,7 +426,17 @@ jobs:
             pm2 save
             sleep 20
 
-            echo "━━━ [4/4] Health check (hasta 5 intentos) ━━━"
+            # ══════════════════════════════════════════════════════════════════
+            # [6/6] HEALTH CHECK + AUTO-ROLLBACK (CAPA 2)
+            #
+            # Si el health check falla tras el reload, el deploy restaura
+            # automáticamente la versión anterior y recarga PM2.
+            # Producción vuelve a estar operativa en ~15s sin intervención.
+            # ══════════════════════════════════════════════════════════════════
+            echo "━━━ [6/6] Health check ━━━"
+
+            # Deshabilitar set -e para que el else (rollback) se ejecute completo
+            set +e
 
             STATUS="error"
             for i in 1 2 3 4 5; do
@@ -383,18 +446,72 @@ jobs:
               if [ "$STATUS" = "healthy" ] || [ "$STATUS" = "degraded" ]; then
                 break
               fi
-              [ "$i" -lt 5 ] && sleep 6 || true
+              [ "$i" -lt 5 ] && sleep 6
             done
 
             if [ "$STATUS" = "healthy" ] || [ "$STATUS" = "degraded" ]; then
-              echo "Deploy exitoso — servidor $STATUS"
-              # Desactivar re-sembrado para que no vuelva a ejecutarse en reinicios futuros
+              # ── Deploy exitoso ────────────────────────────────────────────
+              echo "✅ Deploy exitoso — servidor $STATUS"
+              # Guardar este commit como último estable
+              git rev-parse HEAD > /home/ubuntu/hicloud/.last-stable-commit
+              # Desactivar re-sembrado para próximos reinicios
               sed -i 's|^SEED_PLAN_CUENTAS_RUN=.*|SEED_PLAN_CUENTAS_RUN=false|' "$ENV_FILE" 2>/dev/null || true
-              echo "  SEED_PLAN_CUENTAS_RUN desactivado para próximos reinicios"
+              echo "  SEED_PLAN_CUENTAS_RUN desactivado"
+
             else
-              echo "Health check fallo tras 5 intentos: $STATUS"
-              curl -sk https://hicloudrd.com/api/v1/health || true
+              # ── AUTO-ROLLBACK ──────────────────────────────────────────────
               echo ""
-              pm2 logs hicloud-backend --lines 100 --nostream 2>/dev/null || true
+              echo "⚠️  ════════════════════════════════════════════════════"
+              echo "⚠️  HEALTH CHECK FALLÓ — INICIANDO AUTO-ROLLBACK"
+              echo "⚠️  ════════════════════════════════════════════════════"
+              echo "  → Health check: $STATUS"
+              echo "  → Restaurando versión $STABLE_COMMIT..."
+              echo ""
+
+              # Imprimir logs del proceso fallido para diagnóstico
+              pm2 logs hicloud-backend --lines 50 --nostream 2>/dev/null || true
+              echo ""
+
+              # Restaurar código fuente al commit anterior
+              git reset --hard "$STABLE_COMMIT" 2>/dev/null || true
+
+              # Restaurar dist anterior
+              cd "$BACKEND_DIR"
+              if [ -d /home/ubuntu/hicloud/.backup-dist ]; then
+                rm -rf dist
+                cp -r /home/ubuntu/hicloud/.backup-dist dist
+                echo "  ✅ Dist anterior restaurado"
+              else
+                echo "  ⚠  No hay backup dist — PM2 intentará recargar con lo disponible"
+              fi
+
+              # Recargar PM2 con el dist anterior
+              pm2 reload hicloud-backend --update-env 2>/dev/null || \
+                pm2 restart hicloud-backend 2>/dev/null || \
+                echo "  ⚠  pm2 reload/restart falló — proceso puede estar corrupto"
+              pm2 save 2>/dev/null || true
+
+              sleep 15
+
+              # Verificar que el rollback restauró el servicio
+              ROLLBACK_STATUS=$(curl -sk --max-time 10 https://hicloudrd.com/api/v1/health | \
+                python3 -c "import sys,json; print(json.load(sys.stdin)['data']['status'])" 2>/dev/null || echo "error")
+
+              if [ "$ROLLBACK_STATUS" = "healthy" ] || [ "$ROLLBACK_STATUS" = "degraded" ]; then
+                echo ""
+                echo "✅ AUTO-ROLLBACK EXITOSO — Producción restaurada ($ROLLBACK_STATUS)"
+                echo "  → Commit activo: $STABLE_COMMIT"
+                echo "  → El deploy nuevo FALLÓ. Diagnosticar y corregir antes de re-deployar."
+              else
+                echo ""
+                echo "❌ CRÍTICO: AUTO-ROLLBACK TAMBIÉN FALLÓ ($ROLLBACK_STATUS)"
+                echo "  → ACCIÓN MANUAL URGENTE:"
+                echo "    ssh ubuntu@3.137.152.75"
+                echo "    pm2 list"
+                echo "    pm2 logs hicloud-backend --lines 100"
+                echo "    pm2 restart hicloud-backend"
+              fi
+
+              # El step termina con código 1 para que el workflow marque el deploy como fallido
               exit 1
             fi
