@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Form, Input, Button, Card, Row, Col, Typography, Select,
-         DatePicker, Table, InputNumber, Space, Divider, message, Tag, Alert, Modal, theme, Spin, Checkbox } from 'antd';
+         DatePicker, Table, InputNumber, Space, Divider, message, Tag, Alert, Modal, theme, Spin, Checkbox, Tooltip } from 'antd';
 import { PlusOutlined, DeleteOutlined, ArrowLeftOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -354,9 +354,12 @@ export default function FacturaFormPage() {
   const mostrarAlertaE41          = tipoNcf === 'E41';
 
   // ── Columnas de la tabla de líneas ──────────────────────────────────────────
+  // Anchos fijos — suman ~880px (se adaptan al contenedor con table-layout:fixed)
+  // Producto:200 + Desc:180 + Qty:80 + Precio:110 + ITBIS:70 + Desc:180 + Subtotal:110 + Del:44 = 974
   const lineaCols = [
     {
-      title: 'Producto', key: 'producto', width: 220,
+      title: 'Producto', key: 'producto', width: 200,
+      ellipsis: true,
       render: (_: unknown, r: LineaForm, idx: number) => (
         <Select style={{ width: '100%' }} placeholder="Seleccionar..." showSearch
           value={r.productoId}
@@ -367,37 +370,43 @@ export default function FacturaFormPage() {
     },
     {
       title: 'Descripción', key: 'desc', width: 180,
+      ellipsis: { showTitle: false },
       render: (_: unknown, r: LineaForm, idx: number) => (
-        <Input value={r.descripcion}
-          onChange={e => { const u = [...lineas]; u[idx].descripcion = e.target.value; setLineas(u); }} />
+        <Tooltip title={r.descripcion} placement="topLeft">
+          <Input
+            value={r.descripcion}
+            style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            onChange={e => { const u = [...lineas]; u[idx].descripcion = e.target.value; setLineas(u); }}
+          />
+        </Tooltip>
       ),
     },
     {
-      title: 'Cantidad', key: 'qty', width: 90,
+      title: 'Cantidad', key: 'qty', width: 80,
       render: (_: unknown, r: LineaForm, idx: number) => (
         <InputNumber min={1} precision={0} value={r.cantidad} style={{ width: '100%' }}
           onChange={v => { const u = [...lineas]; u[idx].cantidad = v ?? 1; setLineas(u); }} />
       ),
     },
     {
-      title: 'Precio (RD$)', key: 'price', width: 130,
+      title: 'Precio (RD$)', key: 'price', width: 110,
       render: (_: unknown, r: LineaForm, idx: number) => (
         <InputNumber min={0} precision={2} value={r.precioUnitario} style={{ width: '100%' }}
           onChange={v => { const u = [...lineas]; u[idx].precioUnitario = v ?? 0; setLineas(u); }} />
       ),
     },
     {
-      title: 'ITBIS %', key: 'iva', width: 80,
+      title: 'ITBIS %', key: 'iva', width: 70,
       render: (_: unknown, r: LineaForm, idx: number) => (
         <InputNumber min={0} max={100} value={r.porcentajeIva} style={{ width: '100%' }}
           onChange={v => { const u = [...lineas]; u[idx].porcentajeIva = v ?? 18; setLineas(u); }} />
       ),
     },
     {
-      title: 'Descuento', key: 'descuento', width: 190,
+      title: 'Descuento', key: 'descuento', width: 180,
       render: (_: unknown, r: LineaForm, idx: number) => (
         <Space.Compact style={{ width: '100%' }}>
-          <Select value={r.descuentoTipo} style={{ width: 70 }}
+          <Select value={r.descuentoTipo} style={{ width: 64 }}
             onChange={v => { const u = [...lineas]; u[idx].descuentoTipo = v; setLineas(u); }}>
             <Select.Option value="monto">RD$</Select.Option>
             <Select.Option value="porcentaje">%</Select.Option>
@@ -409,14 +418,14 @@ export default function FacturaFormPage() {
       ),
     },
     {
-      title: 'Subtotal', key: 'sub', width: 120,
+      title: 'Subtotal', key: 'sub', width: 110,
       render: (_: unknown, r: LineaForm) => {
         const calc = lineasCalc.find(l => l.key === r.key);
-        return <Text strong>{fmt.money(calc?.subtotalNeto ?? r.precioUnitario * r.cantidad)}</Text>;
+        return <Text strong style={{ whiteSpace: 'nowrap' }}>{fmt.money(calc?.subtotalNeto ?? r.precioUnitario * r.cantidad)}</Text>;
       },
     },
     {
-      title: '', key: 'del', width: 50,
+      title: '', key: 'del', width: 44,
       render: (_: unknown, _r: LineaForm, idx: number) => (
         <Button type="text" danger icon={<DeleteOutlined />}
           onClick={() => setLineas(lineas.filter((_, i) => i !== idx))} />
@@ -638,7 +647,7 @@ export default function FacturaFormPage() {
             </Button>
           }>
           <Table columns={lineaCols as any} dataSource={lineas} rowKey="key"
-            pagination={false} size="small" />
+            pagination={false} size="small" tableLayout="fixed" />
         </Card>
 
         {/* ── Descuento general ──────────────────────────────────────────── */}
