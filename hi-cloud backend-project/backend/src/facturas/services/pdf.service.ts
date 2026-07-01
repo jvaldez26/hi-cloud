@@ -100,10 +100,18 @@ export class PDFService {
       ? `data:image/png;base64,${logoBuf.toString('base64')}`
       : undefined;
 
+    const r2pdf = (n: number) => Math.round(n * 100) / 100;
+
     const items: FacturaPDFItem[] = (factura.detalles || []).map((d, i) => {
       const itbisPct  = Number(d.porcentajeIva ?? 18);
-      const subtotal  = Number(d.precioUnitario) * Number(d.cantidad);
-      const impIva    = subtotal * (itbisPct / 100);
+      const bruto     = r2pdf(Number(d.precioUnitario) * Number(d.cantidad));
+      const dm        = Number(d.descuentoMonto ?? 0);
+      const dp        = Number(d.descuentoPct   ?? 0);
+      let descLinea   = 0;
+      if (dm > 0) descLinea = r2pdf(Math.min(dm, bruto));
+      else if (dp > 0) descLinea = r2pdf(bruto * (dp / 100));
+      const subtotal  = r2pdf(bruto - descLinea);
+      const impIva    = r2pdf(subtotal * (itbisPct / 100));
       return {
         numero:         i + 1,
         codigo:         (d as any).producto?.codigo,
@@ -111,18 +119,31 @@ export class PDFService {
         cantidad:       Number(d.cantidad),
         unidadMedida:   (d as any).producto?.unidadMedida ?? 'UN',
         precioUnitario: Number(d.precioUnitario),
-        descuentoPct:   Number(d.descuentoPct ?? 0),
-        descuentoMonto: Number(d.descuentoMonto ?? 0),
+        descuentoPct:   dp,
+        descuentoMonto: descLinea > 0 ? descLinea : 0,
         subtotal,
         itbisPct,
         importeItbis:   impIva,
-        total:          subtotal + impIva,
+        total:          r2pdf(subtotal + impIva),
       };
     });
 
-    const subtotalGravado = items.filter(i => i.itbisPct > 0).reduce((s, i) => s + i.subtotal, 0);
-    const subtotalExento  = items.filter(i => i.itbisPct === 0).reduce((s, i) => s + i.subtotal, 0);
-    const subtotalGeneral = subtotalGravado + subtotalExento;
+    // subtotalGravado/Exento/General = post línea, pre descuento general
+    const subtotalGravado = r2pdf(items.filter(i => i.itbisPct > 0).reduce((s, i) => s + i.subtotal, 0));
+    const subtotalExento  = r2pdf(items.filter(i => i.itbisPct === 0).reduce((s, i) => s + i.subtotal, 0));
+    const subtotalNetoPre = r2pdf(subtotalGravado + subtotalExento);
+
+    // Descuento general desde entity
+    let descGeneral = 0;
+    const dgt = (factura as any).descuentoGeneralTipo as string | undefined;
+    const dgv = Number((factura as any).descuentoGeneralValor ?? 0);
+    if (dgt === 'monto' && dgv > 0) {
+      descGeneral = r2pdf(Math.min(dgv, subtotalNetoPre));
+    } else if (dgt === 'porcentaje' && dgv > 0) {
+      descGeneral = r2pdf(subtotalNetoPre * (dgv / 100));
+    }
+
+    const subtotalGeneral = subtotalNetoPre;   // se muestra pre-descuento-general; el desc aparece aparte
     const itbisTotal      = Number(factura.iva   ?? 0);
     const totalGeneral    = Number(factura.total  ?? 0);
 
@@ -192,7 +213,9 @@ export class PDFService {
       subtotalGravado,
       subtotalExento,
       subtotalGeneral,
-      descuentoTotal:      0,
+      descuentoTotal:          r2pdf(descGeneral),
+      descuentoGeneralTipo:    dgt,
+      descuentoGeneralValor:   dgv > 0 ? dgv : undefined,
       itbisTotal,
       totalGeneral,
       montoEnLetras:       this.numLetras.numeroALetras(totalGeneral),

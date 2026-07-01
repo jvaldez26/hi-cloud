@@ -394,10 +394,13 @@ export async function generarFacturaPDF(
       ty += 11;
     }
 
-    // Descuento (si aplica)
+    // Descuento general (si aplica)
     if (d.descuentoTotal > 0) {
+      const descLabel = d.descuentoGeneralTipo === 'porcentaje'
+        ? `(-) Descuento general (${d.descuentoGeneralValor}%):`
+        : '(-) Descuento general:';
       doc.fillColor(GRAY).font('Helvetica').fontSize(9.5)
-        .text('Descuento:', totX, ty, { width: labelW2, align: 'left' });
+        .text(descLabel, totX, ty, { width: labelW2, align: 'left' });
       doc.fillColor(DARK).font('Helvetica').fontSize(9.5)
         .text('-' + fmtM(d.descuentoTotal), totX + labelW2, ty, { width: valueW2, align: 'right' });
       ty += 11;

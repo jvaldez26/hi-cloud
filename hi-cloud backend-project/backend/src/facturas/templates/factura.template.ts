@@ -59,7 +59,9 @@ export interface FacturaPDFData {
   subtotalGravado:     number;
   subtotalExento:      number;
   subtotalGeneral:     number;
-  descuentoTotal:      number;
+  descuentoTotal:      number;   // descuento general (aplicado sobre subtotalGeneral)
+  descuentoGeneralTipo?:  string;  // 'monto' | 'porcentaje'
+  descuentoGeneralValor?: number;  // valor del descuento general
   itbisTotal:          number;
   totalGeneral:        number;
   montoEnLetras:       string;
@@ -253,7 +255,12 @@ export function generarHTMLFactura(d: FacturaPDFData): string {
     ['Subtotal Gravado',   money(d.subtotalGravado)],
     ['Subtotal Exento',    money(d.subtotalExento)],   // siempre visible aunque sea 0
     ['Subtotal General',   money(d.subtotalGeneral)],
-    ...(d.descuentoTotal > 0 ? [['Descuento', `-${money(d.descuentoTotal)}`] as [string, string]] : []),
+    ...(d.descuentoTotal > 0 ? [[
+      d.descuentoGeneralTipo === 'porcentaje'
+        ? `(-) Descuento general (${d.descuentoGeneralValor}%)`
+        : '(-) Descuento general',
+      `-${money(d.descuentoTotal)}`,
+    ] as [string, string]] : []),
     ['ITBIS Total (18%)',  money(d.itbisTotal)],
     ...(d.aplicaRetenciones && (d.montoRetencionItbis ?? 0) > 0 ? [['(-) Retención ITBIS', `-${money(d.montoRetencionItbis)}`] as [string, string]] : []),
     ...(d.aplicaRetenciones && (d.montoRetencionIsr ?? 0) > 0   ? [['(-) Retención ISR',   `-${money(d.montoRetencionIsr)}`]   as [string, string]] : []),
