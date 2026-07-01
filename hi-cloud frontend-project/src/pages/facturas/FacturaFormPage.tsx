@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Form, Input, Button, Card, Row, Col, Typography, Select,
-         DatePicker, Table, InputNumber, Space, Divider, message, Tag, Alert, Modal, theme, Spin, Checkbox, Tooltip } from 'antd';
-import { PlusOutlined, DeleteOutlined, ArrowLeftOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
+         DatePicker, Table, InputNumber, Space, Divider, message, Tag, Alert,
+         Modal, theme, Spin, Checkbox, Tooltip } from 'antd';
+import { PlusOutlined, DeleteOutlined, ArrowLeftOutlined,
+         SafetyCertificateOutlined, SearchOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { facturasApi, type FacturaDetallePayload } from '../../api/facturas.api';
@@ -11,6 +13,8 @@ import api from '../../api/client';
 import { useAuthStore } from '../../store/auth.store';
 import { fmt } from '../../utils/formatters';
 import { TIPOS_NCF } from '../../components/ui/NCFSelector';
+import { useRncLookup } from '../../hooks/useRncLookup';
+import RncBadge from '../../components/ui/RncBadge';
 import type { Cliente } from '../../types';
 import dayjs from 'dayjs';
 
@@ -40,19 +44,25 @@ const lineaVacia = (): LineaForm => ({
   descuentoValor: 0,
 });
 
+// Estilo compacto compartido para todos los Form.Item del encabezado
+const fi = { marginBottom: 8 };
+
 export default function FacturaFormPage() {
   const { token } = theme.useToken();
   const { id }    = useParams<{ id?: string }>();
   const editMode  = !!id;
 
-  const [form]     = Form.useForm();
-  const [lineas,   setLineas]   = useState<LineaForm[]>([
-    { ...lineaVacia(), key: '1' },
-  ]);
+  const [form]   = Form.useForm();
+  const [lineas, setLineas] = useState<LineaForm[]>([{ ...lineaVacia(), key: '1' }]);
+
   const [tipoNcf,     setTipoNcf]     = useState('E32');
   const [tipoPago,    setTipoPago]    = useState<'CONTADO' | 'CREDITO'>('CONTADO');
   const [diasCredito, setDiasCredito] = useState(30);
   const [clienteSeleccionado, setClienteSeleccionado] = useState<Cliente | null>(null);
+
+  // RNC lookup
+  const rnc = useRncLookup();
+  const [rncInput, setRncInput] = useState('');
 
   // Descuento general
   const [descGeneralTipo,  setDescGeneralTipo]  = useState<'monto' | 'porcentaje'>('monto');
@@ -64,12 +74,13 @@ export default function FacturaFormPage() {
   const [pctRetItbis,       setPctRetItbis]        = useState(30);
   const [retieneIsr,        setRetieneIsr]         = useState(false);
   const [pctRetIsr,         setPctRetIsr]          = useState(10);
+
   const [modalAnticipo, setModalAnticipo] = useState<{ facturaId: number; clienteId: number } | null>(null);
   const [formAnticipo] = Form.useForm();
   const navigate = useNavigate();
   const qc = useQueryClient();
 
-  // ── Datos base ──────────────────────────────────────────────────────────────
+  // ── Datos base ─────────────────────────────────────────────────────────────
   const { data: clientes } = useQuery({
     queryKey: ['clientes-sel'],
     queryFn:  () => clientesApi.list(1, 100),
@@ -82,11 +93,16 @@ export default function FacturaFormPage() {
 
   const sucursalActual = useAuthStore(s => s.sucursalActual);
   const empresaActual  = useAuthStore(s => s.empresaActual);
+
   const { data: vendedores = [] } = useQuery<any[]>({
     queryKey: ['vendedores-sel'],
     queryFn:  () => api.get('/vendedores').then((r: any) => r.data?.data?.data ?? r.data?.data ?? []),
   });
-  const { data: sucursales = [] } = useQuery<any[]>({ queryKey: ['mis-sucursales', empresaActual], queryFn: () => api.get('/auth/mis-sucursales').then((r: any) => r.data?.data ?? r.data ?? []) });
+
+  const { data: sucursales = [] } = useQuery<any[]>({
+    queryKey: ['mis-sucursales', empresaActual],
+    queryFn:  () => api.get('/auth/mis-sucursales').then((r: any) => r.data?.data ?? r.data ?? []),
+  });
 
   // ── Carga de factura existente (modo edición) ──────────────────────────────
   const { data: facturaEdit, isLoading: loadingEdit } = useQuery({
@@ -96,7 +112,6 @@ export default function FacturaFormPage() {
     staleTime: 0,
   });
 
-  // Poblar formulario cuando la factura cargue
   useEffect(() => {
     if (!facturaEdit) return;
 
@@ -119,6 +134,10 @@ export default function FacturaFormPage() {
     const dgv = Number((facturaEdit as any).descuentoGeneralValor ?? 0);
     setDescGeneralTipo(dgt === 'porcentaje' ? 'porcentaje' : 'monto');
     setDescGeneralValor(dgv);
+
+    // Poblar RNC desde el cliente de la factura
+    const rfc = ((facturaEdit as any).cliente?.rfc ?? '').replace(/\D/g, '').slice(0, 11);
+    setRncInput(rfc);
 
     // Líneas
     const detallesCargados: any[] = (facturaEdit as any).detalles ?? [];
@@ -147,21 +166,21 @@ export default function FacturaFormPage() {
     else if (sucursalActual) form.setFieldValue('sucursalId', sucursalActual);
   }, [sucursales, sucursalActual, editMode]);
 
-  // Poblar clienteSeleccionado cuando ambos datos estén disponibles
+  // Poblar clienteSeleccionado al cargar edición
   useEffect(() => {
     if (!facturaEdit || !clientes?.data) return;
     const cli = clientes.data.find((c: Cliente) => c.id === (facturaEdit as any).clienteId) ?? null;
     setClienteSeleccionado(cli);
   }, [facturaEdit, clientes?.data]);
 
-  // ── Mutaciones ──────────────────────────────────────────────────────────────
+  // ── Mutaciones ─────────────────────────────────────────────────────────────
   const createMut = useMutation({
     mutationFn: facturasApi.create,
     onSuccess: (res: any) => {
       qc.invalidateQueries({ queryKey: ['facturas'] });
       message.success('Factura creada exitosamente');
-      const facturaId  = res?.data?.data?.id ?? res?.data?.id ?? res?.id;
-      const clienteId  = form.getFieldValue('clienteId');
+      const facturaId = res?.data?.data?.id ?? res?.data?.id ?? res?.id;
+      const clienteId = form.getFieldValue('clienteId');
       if (facturaId && clienteId && (anticiposCliente?.length ?? 0) > 0) {
         setModalAnticipo({ facturaId, clienteId });
       } else {
@@ -190,7 +209,7 @@ export default function FacturaFormPage() {
     },
   });
 
-  // Anticipos activos del cliente (solo en modo creación)
+  // Anticipos activos del cliente
   const clienteIdWatch = Form.useWatch('clienteId', form);
   const { data: anticiposCliente = [] } = useQuery<any[]>({
     queryKey: ['anticipos-activos-cliente', clienteIdWatch],
@@ -221,15 +240,14 @@ export default function FacturaFormPage() {
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al aplicar anticipo', 5),
   });
 
-  // ── Cálculos ────────────────────────────────────────────────────────────────
+  // ── Cálculos ───────────────────────────────────────────────────────────────
   const lineasCalc = lineas.map(l => {
     const bruto = r2(l.precioUnitario * l.cantidad);
     let descLinea = 0;
-    if (l.descuentoTipo === 'monto' && l.descuentoValor > 0) {
+    if (l.descuentoTipo === 'monto' && l.descuentoValor > 0)
       descLinea = r2(Math.min(l.descuentoValor, bruto));
-    } else if (l.descuentoTipo === 'porcentaje' && l.descuentoValor > 0) {
+    else if (l.descuentoTipo === 'porcentaje' && l.descuentoValor > 0)
       descLinea = r2(bruto * (l.descuentoValor / 100));
-    }
     return { ...l, bruto, descLinea, subtotalNeto: r2(bruto - descLinea) };
   });
 
@@ -238,33 +256,28 @@ export default function FacturaFormPage() {
   const subtotalNeto    = r2(subtotalBruto - totalDescLineas);
 
   let descGeneral = 0;
-  if (descGeneralTipo === 'monto' && descGeneralValor > 0) {
+  if (descGeneralTipo === 'monto' && descGeneralValor > 0)
     descGeneral = r2(Math.min(descGeneralValor, subtotalNeto));
-  } else if (descGeneralTipo === 'porcentaje' && descGeneralValor > 0) {
+  else if (descGeneralTipo === 'porcentaje' && descGeneralValor > 0)
     descGeneral = r2(subtotalNeto * (descGeneralValor / 100));
-  }
   const baseGravable = r2(subtotalNeto - descGeneral);
 
   const ivaTotal = r2(lineasCalc.reduce((s, l) => {
-    const prop       = subtotalNeto > 0 ? l.subtotalNeto / subtotalNeto : 0;
-    const descProp   = r2(prop * descGeneral);
-    const baseLinea  = r2(l.subtotalNeto - descProp);
+    const prop      = subtotalNeto > 0 ? l.subtotalNeto / subtotalNeto : 0;
+    const baseLinea = r2(l.subtotalNeto - r2(prop * descGeneral));
     return s + r2(baseLinea * (l.porcentajeIva / 100));
   }, 0));
-
   const total = r2(baseGravable + ivaTotal);
 
-  // Cálculo retenciones E31
-  const montoRetItbisForm = (tipoNcf === 'E31' && aplicaRetenciones && retieneItbis) ? r2(ivaTotal  * pctRetItbis / 100) : 0;
-  const montoRetIsrForm   = (tipoNcf === 'E31' && aplicaRetenciones && retieneIsr)   ? r2(baseGravable * pctRetIsr   / 100) : 0;
+  const montoRetItbisForm = (tipoNcf === 'E31' && aplicaRetenciones && retieneItbis) ? r2(ivaTotal      * pctRetItbis / 100) : 0;
+  const montoRetIsrForm   = (tipoNcf === 'E31' && aplicaRetenciones && retieneIsr)   ? r2(baseGravable  * pctRetIsr   / 100) : 0;
   const netoCobrarForm    = r2(total - montoRetItbisForm - montoRetIsrForm);
 
-  // ── Handlers ────────────────────────────────────────────────────────────────
-  const onClienteChange = (clienteId: number) => {
-    const cli = clientes?.data.find((c: Cliente) => c.id === clienteId) ?? null;
-    setClienteSeleccionado(cli);
-    if ((cli as any)?.diasCredito > 0) setDiasCredito((cli as any).diasCredito);
+  // ── Handlers ───────────────────────────────────────────────────────────────
 
+  /** Actualiza sugerencia de tipo NCF según tipo de cliente */
+  const actualizarTipoNcf = useCallback((cli: Cliente | null) => {
+    if (!cli) return;
     const tipoMapa: Record<string, string> = {
       persona_juridica: 'E31',
       persona_fisica:   'E31',
@@ -278,6 +291,38 @@ export default function FacturaFormPage() {
       setTipoNcf('E32');
     } else {
       setTipoNcf(sugerido);
+    }
+  }, []);
+
+  const onClienteChange = (clienteId: number) => {
+    const cli = clientes?.data.find((c: Cliente) => c.id === clienteId) ?? null;
+    setClienteSeleccionado(cli);
+    if ((cli as any)?.diasCredito > 0) setDiasCredito((cli as any).diasCredito);
+    actualizarTipoNcf(cli);
+    // Poblar campo RNC con el del cliente seleccionado
+    const rfc = ((cli as any)?.rfc ?? '').replace(/\D/g, '').slice(0, 11);
+    setRncInput(rfc);
+    if (/^\d{9}$|^\d{11}$/.test(rfc)) rnc.consultarDebounced(rfc);
+    else rnc.limpiar();
+  };
+
+  const onRncChange = (val: string) => {
+    const clean = val.replace(/\D/g, '').slice(0, 11);
+    setRncInput(clean);
+    if (/^\d{9}$|^\d{11}$/.test(clean)) {
+      // Buscar en clientes registrados
+      const match = clientes?.data?.find(
+        (c: Cliente) => (c.rfc ?? '').replace(/\D/g, '') === clean
+      );
+      if (match && match.id !== form.getFieldValue('clienteId')) {
+        form.setFieldValue('clienteId', match.id);
+        setClienteSeleccionado(match);
+        if ((match as any)?.diasCredito > 0) setDiasCredito((match as any).diasCredito);
+        actualizarTipoNcf(match);
+      }
+      rnc.consultarDebounced(clean);
+    } else {
+      rnc.limpiar();
     }
   };
 
@@ -306,8 +351,8 @@ export default function FacturaFormPage() {
       cantidad:       l.cantidad,
       precioUnitario: l.precioUnitario,
       porcentajeIva:  l.porcentajeIva,
-      descuentoMonto: l.descuentoTipo === 'monto'       ? (l.descuentoValor || 0) : 0,
-      descuentoPct:   l.descuentoTipo === 'porcentaje'  ? (l.descuentoValor || 0) : 0,
+      descuentoMonto: l.descuentoTipo === 'monto'      ? (l.descuentoValor || 0) : 0,
+      descuentoPct:   l.descuentoTipo === 'porcentaje' ? (l.descuentoValor || 0) : 0,
     }));
 
     const payload = {
@@ -323,6 +368,8 @@ export default function FacturaFormPage() {
       tipoCambio:      values.tipoCambio ?? 1,
       tipoPago,
       diasCredito:     tipoPago === 'CREDITO' ? diasCredito : 0,
+      // RNC comprador validado
+      ...(/^\d{9}$|^\d{11}$/.test(rncInput) ? { rncComprador: rncInput } : {}),
       // Descuento general
       ...(descGeneralValor > 0 ? {
         descuentoGeneralTipo:  descGeneralTipo,
@@ -338,14 +385,11 @@ export default function FacturaFormPage() {
       } : {}),
     } as any;
 
-    if (editMode) {
-      updateMut.mutate(payload);
-    } else {
-      createMut.mutate(payload);
-    }
+    if (editMode) updateMut.mutate(payload);
+    else          createMut.mutate(payload);
   };
 
-  // ── Alertas contextuales ────────────────────────────────────────────────────
+  // ── Alertas contextuales ───────────────────────────────────────────────────
   const tipoInfo = TIPOS_NCF.find(t => t.codigo === tipoNcf);
   const mostrarAlertaRNC          = tipoNcf === 'E31' && clienteSeleccionado && !(/^\d{9}$/.test(clienteSeleccionado?.rfc?.trim() ?? ''));
   const mostrarAlertaExportacion  = tipoNcf === 'E46' && clienteSeleccionado;
@@ -353,9 +397,7 @@ export default function FacturaFormPage() {
   const mostrarAlertaExento       = (tipoNcf === 'E44' || tipoNcf === 'E45') && clienteSeleccionado;
   const mostrarAlertaE41          = tipoNcf === 'E41';
 
-  // ── Columnas de la tabla de líneas ──────────────────────────────────────────
-  // Anchos fijos — suman ~880px (se adaptan al contenedor con table-layout:fixed)
-  // Producto:200 + Desc:180 + Qty:80 + Precio:110 + ITBIS:70 + Desc:180 + Subtotal:110 + Del:44 = 974
+  // ── Columnas tabla líneas ──────────────────────────────────────────────────
   const lineaCols = [
     {
       title: 'Producto', key: 'producto', width: 200,
@@ -373,11 +415,9 @@ export default function FacturaFormPage() {
       ellipsis: { showTitle: false },
       render: (_: unknown, r: LineaForm, idx: number) => (
         <Tooltip title={r.descripcion} placement="topLeft">
-          <Input
-            value={r.descripcion}
+          <Input value={r.descripcion}
             style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-            onChange={e => { const u = [...lineas]; u[idx].descripcion = e.target.value; setLineas(u); }}
-          />
+            onChange={e => { const u = [...lineas]; u[idx].descripcion = e.target.value; setLineas(u); }} />
         </Tooltip>
       ),
     },
@@ -433,7 +473,7 @@ export default function FacturaFormPage() {
     },
   ];
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────────────
   if (editMode && loadingEdit) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: 64 }}>
@@ -444,55 +484,50 @@ export default function FacturaFormPage() {
 
   return (
     <div>
-      <Row align="middle" style={{ marginBottom: 16 }}>
+      <Row align="middle" style={{ marginBottom: 12 }}>
         <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/facturas')}>
           Volver
         </Button>
         <Title level={4} style={{ margin: '0 0 0 8px' }}>
           {editMode ? `Editar Factura — ${(facturaEdit as any)?.folio ?? ''}` : 'Nueva Factura'}
         </Title>
-        {editMode && (
-          <Tag color="orange" style={{ marginLeft: 12, fontSize: 12 }}>BORRADOR</Tag>
-        )}
+        {editMode && <Tag color="orange" style={{ marginLeft: 12, fontSize: 12 }}>BORRADOR</Tag>}
       </Row>
 
       <Form form={form} layout="vertical" onFinish={handleSubmit}
         initialValues={{ fecha: dayjs(), moneda: 'DOP' }}>
 
-        {/* ── Datos generales + Tipo de comprobante ──────────────────────── */}
-        <Card style={{ marginBottom: 16 }}>
+        {/* ════════════════════════════════════════════════════════════════
+            ENCABEZADO COMPACTO
+        ════════════════════════════════════════════════════════════════ */}
+        <Card style={{ marginBottom: 12 }}>
 
-          {/* Fila 1: Tipo de comprobante · Cliente · Fecha */}
-          <Row gutter={16}>
-            <Col xs={24} sm={8}>
+          {/* ── Fila 1: Comprobante · Cliente · Fecha · Vendedor ─────────── */}
+          <Row gutter={[12, 0]}>
+            {/* Tipo NCF */}
+            <Col xs={24} sm={6}>
               <Form.Item
+                style={fi}
                 label={
-                  <span>
-                    <SafetyCertificateOutlined style={{ color: tipoInfo?.color, marginRight: 5 }} />
-                    Tipo de comprobante <span style={{ color: 'red' }}>*</span>
+                  <span style={{ fontSize: 12 }}>
+                    <SafetyCertificateOutlined style={{ color: tipoInfo?.color, marginRight: 4 }} />
+                    Comprobante <span style={{ color: 'red' }}>*</span>
                   </span>
                 }
               >
-                <Select
-                  value={tipoNcf}
-                  onChange={setTipoNcf}
-                  optionLabelProp="label"
-                  popupMatchSelectWidth={false}
-                  dropdownStyle={{ minWidth: 300 }}
-                >
+                <Select value={tipoNcf} onChange={setTipoNcf}
+                  optionLabelProp="label" popupMatchSelectWidth={false}
+                  dropdownStyle={{ minWidth: 300 }}>
                   {TIPOS_NCF.filter(t => NCF_VENTAS.includes(t.codigo)).map(t => (
-                    <Select.Option key={t.codigo} value={t.codigo} label={
-                      <span>
-                        <Tag color={t.color} style={{ fontSize: 11, marginRight: 6, lineHeight: '18px' }}>
-                          {t.codigo}
-                        </Tag>
-                        {t.titulo}
-                      </span>
-                    }>
+                    <Select.Option key={t.codigo} value={t.codigo}
+                      label={
+                        <span>
+                          <Tag color={t.color} style={{ fontSize: 11, marginRight: 4, lineHeight: '18px' }}>{t.codigo}</Tag>
+                          {t.titulo}
+                        </span>
+                      }>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <Tag color={t.color} style={{ fontSize: 11, lineHeight: '18px', flexShrink: 0 }}>
-                          {t.codigo}
-                        </Tag>
+                        <Tag color={t.color} style={{ fontSize: 11, lineHeight: '18px', flexShrink: 0 }}>{t.codigo}</Tag>
                         <div>
                           <div style={{ fontSize: 13, fontWeight: 500 }}>{t.titulo}</div>
                           <div style={{ fontSize: 11, color: '#9CA3AF', lineHeight: 1.3 }}>{t.descripcion}</div>
@@ -504,29 +539,39 @@ export default function FacturaFormPage() {
               </Form.Item>
             </Col>
 
+            {/* Cliente */}
             <Col xs={24} sm={10}>
-              <Form.Item name="clienteId" label="Cliente" rules={[{ required: true }]}>
+              <Form.Item name="clienteId" label={<span style={{ fontSize: 12 }}>Cliente <span style={{ color: 'red' }}>*</span></span>}
+                rules={[{ required: true, message: 'Selecciona un cliente' }]} style={fi}>
                 <Select showSearch placeholder="Buscar cliente..."
                   filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
                   options={clientes?.data.map((c: Cliente) => ({ value: c.id, label: `${c.rfc} — ${c.nombre}` }))}
                   onChange={onClienteChange} />
               </Form.Item>
               {!editMode && anticiposCliente.length > 0 && (
-                <Alert
-                  type="info" showIcon
-                  style={{ marginTop: -8, marginBottom: 8, fontSize: 12 }}
-                  message={`Este cliente tiene ${anticiposCliente.length} anticipo${anticiposCliente.length > 1 ? 's' : ''} activo${anticiposCliente.length > 1 ? 's' : ''} — saldo disponible: RD$ ${anticiposCliente.reduce((s: number, a: any) => s + Number(a.montoPendiente ?? 0), 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`}
-                />
+                <div style={{ marginTop: -4, marginBottom: 4, padding: '3px 8px',
+                  background: token.colorInfoBg, border: `1px solid ${token.colorInfoBorder}`,
+                  borderRadius: 4, fontSize: 11, color: token.colorInfoText }}>
+                  {anticiposCliente.length} anticipo(s) activo(s) · RD$ {
+                    anticiposCliente.reduce((s: number, a: any) => s + Number(a.montoPendiente ?? 0), 0)
+                      .toLocaleString('es-DO', { minimumFractionDigits: 2 })
+                  }
+                </div>
               )}
             </Col>
-            <Col xs={12} sm={6}>
-              <Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}>
+
+            {/* Fecha */}
+            <Col xs={12} sm={4}>
+              <Form.Item name="fecha" label={<span style={{ fontSize: 12 }}>Fecha <span style={{ color: 'red' }}>*</span></span>}
+                rules={[{ required: true }]} style={fi}>
                 <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
               </Form.Item>
             </Col>
-            <Col xs={12} sm={sucursales.length > 1 ? 5 : 8}>
-              <Form.Item name="vendedorId" label="Vendedor">
-                <Select allowClear showSearch placeholder="Sin vendedor asignado"
+
+            {/* Vendedor */}
+            <Col xs={12} sm={4}>
+              <Form.Item name="vendedorId" label={<span style={{ fontSize: 12 }}>Vendedor</span>} style={fi}>
+                <Select allowClear showSearch placeholder="Sin asignar"
                   optionFilterProp="label"
                   options={vendedores.map((v: any) => ({
                     value: v.id,
@@ -534,114 +579,147 @@ export default function FacturaFormPage() {
                   }))} />
               </Form.Item>
             </Col>
-            <Col xs={12} sm={6} style={{ display: sucursales.length > 1 ? undefined : 'none' }}>
-              <Form.Item name="sucursalId" label="Sucursal" rules={[{ required: sucursales.length > 1, message: 'Selecciona una sucursal' }]}>
-                <Select placeholder="Seleccionar sucursal" options={sucursales.map((s: any) => ({ value: s.id, label: s.nombre }))} />
-              </Form.Item>
-            </Col>
           </Row>
 
-          {/* ── Forma de pago ──────────────────────────────────────────── */}
-          <Row gutter={16} style={{ marginBottom: 4 }}>
-            <Col xs={24} sm={8}>
-              <Form.Item label="Forma de pago">
-                <div style={{ display: 'flex', gap: 8 }}>
+          {/* ── Fila 2: RNC · Forma de pago · Días · Moneda · Sucursal ──── */}
+          <Row gutter={[12, 0]}>
+            {/* RNC Comprador */}
+            <Col xs={24} sm={7}>
+              <Form.Item label={<span style={{ fontSize: 12 }}>RNC / Cédula comprador</span>}
+                style={{ marginBottom: (rnc.loading || rnc.datos) ? 4 : 8 }}>
+                <Input
+                  value={rncInput}
+                  maxLength={11}
+                  placeholder="9 díg. RNC u 11 díg. Cédula"
+                  suffix={rnc.loading
+                    ? <Spin size="small" />
+                    : <SearchOutlined style={{ color: '#ccc' }} />}
+                  style={{ fontFamily: 'monospace', letterSpacing: 1 }}
+                  onChange={e => onRncChange(e.target.value)}
+                />
+              </Form.Item>
+              {(rnc.loading || rnc.datos) && (
+                <div style={{ marginBottom: 8 }}>
+                  <RncBadge datos={rnc.datos} loading={rnc.loading} />
+                </div>
+              )}
+            </Col>
+
+            {/* Forma de pago */}
+            <Col xs={24} sm={6}>
+              <Form.Item label={<span style={{ fontSize: 12 }}>Forma de pago</span>} style={fi}>
+                <div style={{ display: 'flex', gap: 6 }}>
                   {(['CONTADO', 'CREDITO'] as const).map(tp => (
                     <button key={tp} type="button" onClick={() => setTipoPago(tp)}
                       style={{
-                        flex: 1, height: 32, borderRadius: 6, cursor: 'pointer',
+                        flex: 1, height: 32, borderRadius: 4, cursor: 'pointer', fontSize: 12,
                         border: tipoPago === tp ? `1.5px solid ${token.colorPrimary}` : `1px solid ${token.colorBorder}`,
                         background: tipoPago === tp ? token.colorPrimaryBg : token.colorBgContainer,
                         color: tipoPago === tp ? token.colorPrimary : token.colorTextSecondary,
-                        fontWeight: tipoPago === tp ? 700 : 400, fontSize: 13,
+                        fontWeight: tipoPago === tp ? 700 : 400,
                       }}>
-                      {tp === 'CONTADO' ? '💵 Contado' : '📋 Crédito'}
+                      {tp === 'CONTADO' ? 'Contado' : 'Crédito'}
                     </button>
                   ))}
                 </div>
               </Form.Item>
             </Col>
+
+            {/* Días crédito */}
             {tipoPago === 'CREDITO' && (
-              <Col xs={24} sm={8}>
-                <Form.Item label="Días de crédito">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <InputNumber min={1} max={365} value={diasCredito}
-                      onChange={v => setDiasCredito(Number(v ?? 30))}
-                      style={{ width: 90 }} />
-                    <Text type="secondary" style={{ fontSize: 12 }}>días</Text>
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      · Vence: {dayjs().add(diasCredito, 'day').format('DD/MM/YYYY')}
-                    </Text>
-                  </div>
+              <Col xs={12} sm={4}>
+                <Form.Item label={<span style={{ fontSize: 12 }}>Días crédito</span>} style={fi}>
+                  <InputNumber min={1} max={365} value={diasCredito}
+                    onChange={v => setDiasCredito(Number(v ?? 30))}
+                    style={{ width: '100%' }} addonAfter="d" />
+                </Form.Item>
+              </Col>
+            )}
+
+            {/* Moneda */}
+            <Col xs={12} sm={tipoPago === 'CREDITO' ? 3 : 4}>
+              <Form.Item name="moneda" label={<span style={{ fontSize: 12 }}>Moneda</span>}
+                initialValue="DOP" style={fi}>
+                <Select>
+                  <Select.Option value="DOP">🇩🇴 DOP</Select.Option>
+                  <Select.Option value="USD">🇺🇸 USD</Select.Option>
+                  <Select.Option value="EUR">🇪🇺 EUR</Select.Option>
+                </Select>
+              </Form.Item>
+            </Col>
+
+            {/* Sucursal */}
+            {sucursales.length > 1 && (
+              <Col xs={12} sm={tipoPago === 'CREDITO' ? 4 : 7}>
+                <Form.Item name="sucursalId"
+                  label={<span style={{ fontSize: 12 }}>Sucursal <span style={{ color: 'red' }}>*</span></span>}
+                  rules={[{ required: true, message: 'Selecciona sucursal' }]} style={fi}>
+                  <Select placeholder="Sucursal"
+                    options={sucursales.map((s: any) => ({ value: s.id, label: s.nombre }))} />
                 </Form.Item>
               </Col>
             )}
           </Row>
 
-          <Row gutter={16}>
-            <Col xs={12} sm={8}>
-              <Form.Item name="moneda" label="Moneda" initialValue="DOP">
-                <Select>
-                  <Select.Option value="DOP">🇩🇴 DOP — Peso Dominicano</Select.Option>
-                  <Select.Option value="USD">🇺🇸 USD — Dólar</Select.Option>
-                  <Select.Option value="EUR">🇪🇺 EUR — Euro</Select.Option>
-                </Select>
-              </Form.Item>
-            </Col>
-            <Form.Item noStyle dependencies={['moneda']}>
-              {({ getFieldValue }) => getFieldValue('moneda') !== 'DOP' && (
-                <Col xs={12} sm={8}>
-                  <Form.Item name="tipoCambio" label="Tasa de Cambio (RD$)" rules={[{ required: true }]}>
-                    <InputNumber min={0.01} precision={4} style={{ width: '100%' }} placeholder="Ej: 58.50" />
+          {/* ── Fila 3: Tasa de cambio (si !DOP) + Notas ─────────────────── */}
+          <Form.Item noStyle dependencies={['moneda']}>
+            {({ getFieldValue }) => (
+              <Row gutter={[12, 0]}>
+                {getFieldValue('moneda') !== 'DOP' && (
+                  <Col xs={12} sm={5}>
+                    <Form.Item name="tipoCambio"
+                      label={<span style={{ fontSize: 12 }}>Tasa (RD$) <span style={{ color: 'red' }}>*</span></span>}
+                      rules={[{ required: true }]} style={fi}>
+                      <InputNumber min={0.01} precision={4} style={{ width: '100%' }}
+                        placeholder="Ej: 58.50" />
+                    </Form.Item>
+                  </Col>
+                )}
+                <Col xs={24} sm={getFieldValue('moneda') !== 'DOP' ? 19 : 24}>
+                  <Form.Item name="notas" label={<span style={{ fontSize: 12 }}>Notas</span>}
+                    style={{ marginBottom: 4 }}>
+                    <Input.TextArea rows={1} placeholder="Referencia, orden de compra, etc." />
                   </Form.Item>
                 </Col>
-              )}
-            </Form.Item>
-            <Col xs={24} sm={16}>
-              <Form.Item name="notas" label="Notas">
-                <Input.TextArea rows={1} placeholder="Referencia, orden de compra, etc." />
-              </Form.Item>
-            </Col>
-          </Row>
+              </Row>
+            )}
+          </Form.Item>
 
-          {/* ── Alertas contextuales ────────────────────────────────────── */}
-          {mostrarAlertaRNC && (
-            <Alert style={{ marginTop: 4 }} type="warning" showIcon
-              message="El cliente seleccionado no tiene RNC registrado. E31 (Crédito Fiscal) requiere RNC válido de 9 dígitos (empresa) u 11 dígitos (cédula)." />
-          )}
+          {/* ── Alertas contextuales ──────────────────────────────────────── */}
           {tipoNcf === 'E31' && clienteSeleccionado && !mostrarAlertaRNC && (
-            <div style={{ marginTop: 4, padding: '6px 12px', background: token.colorInfoBg, borderRadius: 8, border: `1px solid ${token.colorInfoBorder}` }}>
-              <Text style={{ fontSize: 12, color: token.colorInfoText }}>
-                <strong>RNC del cliente:</strong> {clienteSeleccionado.rfc || 'No registrado'}
-                {' · '}
-                <strong>Nombre:</strong> {clienteSeleccionado.nombre}
-              </Text>
+            <div style={{ padding: '4px 10px', background: token.colorInfoBg, borderRadius: 6,
+              border: `1px solid ${token.colorInfoBorder}`, fontSize: 11, color: token.colorInfoText }}>
+              <strong>RNC:</strong> {clienteSeleccionado.rfc || 'No registrado'} · <strong>Razón social:</strong> {clienteSeleccionado.nombre}
             </div>
           )}
+          {mostrarAlertaRNC && (
+            <Alert type="warning" showIcon style={{ padding: '4px 10px', fontSize: 12 }}
+              message="Cliente sin RNC válido (9 dígitos). E31 requiere RNC registrado en DGII." />
+          )}
           {mostrarAlertaExento && (
-            <Alert style={{ marginTop: 4 }} type="info" showIcon
+            <Alert type="info" showIcon style={{ padding: '4px 10px', fontSize: 12 }}
               message={tipoNcf === 'E44'
-                ? 'E44 Régimen Especial (Zona Franca): el ITBIS será 0. Asegúrese de tener la documentación de régimen especial.'
-                : 'E45 Gubernamental: factura a entidad del gobierno dominicano. RNC de la entidad requerido.'} />
+                ? 'E44 Zona Franca: ITBIS = 0. Requiere documentación de régimen especial.'
+                : 'E45 Gubernamental: entidad del gobierno dominicano. RNC requerido.'} />
           )}
           {mostrarAlertaExportacion && (
-            <Alert style={{ marginTop: 4 }} type="info" showIcon
-              message="E46 Exportación: el ITBIS será 0 (exento). Si la venta es en moneda extranjera, seleccione la moneda y tipo de cambio abajo." />
+            <Alert type="info" showIcon style={{ padding: '4px 10px', fontSize: 12 }}
+              message="E46 Exportación: ITBIS = 0. Si es moneda extranjera, completa la tasa de cambio." />
           )}
           {mostrarAlertaPagoExterior && (
-            <Alert style={{ marginTop: 4 }} type="info" showIcon
-              message="E47 Pagos al Exterior: para pagos a proveedores extranjeros sin establecimiento permanente en RD. ITBIS exento." />
+            <Alert type="info" showIcon style={{ padding: '4px 10px', fontSize: 12 }}
+              message="E47 Pagos al Exterior: proveedores extranjeros sin establecimiento en RD." />
           )}
           {mostrarAlertaE41 && (
-            <Alert style={{ marginTop: 4 }} type="warning" showIcon
-              message="E41 Comprobante de Compras: para proveedores informales (solo cédula, sin RNC). El ITBIS aplica y se retiene el 30%. Ingresa la cédula del proveedor en el campo de notas." />
+            <Alert type="warning" showIcon style={{ padding: '4px 10px', fontSize: 12 }}
+              message="E41 Comprobante de Compras: proveedor informal solo cédula. Anotar cédula en notas." />
           )}
         </Card>
 
         {/* ── Líneas de detalle ──────────────────────────────────────────── */}
-        <Card title="Líneas de factura" style={{ marginBottom: 16 }}
+        <Card title="Líneas de factura" style={{ marginBottom: 12 }}
           extra={
-            <Button icon={<PlusOutlined />}
+            <Button icon={<PlusOutlined />} size="small"
               onClick={() => setLineas([...lineas, lineaVacia()])}>
               Agregar línea
             </Button>
@@ -651,8 +729,8 @@ export default function FacturaFormPage() {
         </Card>
 
         {/* ── Descuento general ──────────────────────────────────────────── */}
-        <Card size="small" style={{ marginBottom: 16 }}>
-          <Row gutter={16} align="middle">
+        <Card size="small" style={{ marginBottom: 12 }}>
+          <Row gutter={[12, 0]} align="middle">
             <Col xs={24} sm={4}>
               <Text strong style={{ fontSize: 13 }}>Descuento general</Text>
             </Col>
@@ -663,8 +741,7 @@ export default function FacturaFormPage() {
                   <Select.Option value="monto">Monto fijo (RD$)</Select.Option>
                   <Select.Option value="porcentaje">Porcentaje (%)</Select.Option>
                 </Select>
-                <InputNumber
-                  min={0} precision={2}
+                <InputNumber min={0} precision={2}
                   max={descGeneralTipo === 'porcentaje' ? 100 : undefined}
                   value={descGeneralValor}
                   onChange={v => setDescGeneralValor(v ?? 0)}
@@ -675,27 +752,30 @@ export default function FacturaFormPage() {
             {descGeneral > 0 && (
               <Col>
                 <Text type="secondary" style={{ fontSize: 12 }}>
-                  = <Text strong style={{ color: '#d97706' }}>-{fmt.money(descGeneral)}</Text> de descuento
+                  = <Text strong style={{ color: '#d97706' }}>-{fmt.money(descGeneral)}</Text>
                 </Text>
               </Col>
             )}
           </Row>
         </Card>
 
-        {/* ── Retenciones E31 ─────────────────────────────────────────── */}
+        {/* ── Retenciones E31 ────────────────────────────────────────────── */}
         {tipoNcf === 'E31' && (
-          <Card style={{ marginBottom: 16 }}>
-            <Checkbox
-              checked={aplicaRetenciones}
-              onChange={e => { setAplicaRetenciones(e.target.checked); if (!e.target.checked) { setRetieneItbis(false); setRetieneIsr(false); } }}>
+          <Card style={{ marginBottom: 12 }}>
+            <Checkbox checked={aplicaRetenciones}
+              onChange={e => {
+                setAplicaRetenciones(e.target.checked);
+                if (!e.target.checked) { setRetieneItbis(false); setRetieneIsr(false); }
+              }}>
               <Text strong>Aplica Retenciones</Text>
               <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>(agente de retención DGII)</Text>
             </Checkbox>
             {aplicaRetenciones && (
-              <div style={{ marginTop: 12, padding: '12px 16px', background: token.colorWarningBg, border: `1px solid ${token.colorWarningBorder}`, borderRadius: 8 }}>
+              <div style={{ marginTop: 10, padding: '10px 14px', background: token.colorWarningBg,
+                border: `1px solid ${token.colorWarningBorder}`, borderRadius: 8 }}>
                 <Row gutter={[24, 8]}>
                   <Col xs={24} sm={12}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
                       <Checkbox checked={retieneItbis} onChange={e => setRetieneItbis(e.target.checked)}>
                         Retener ITBIS
                       </Checkbox>
@@ -712,7 +792,7 @@ export default function FacturaFormPage() {
                     )}
                   </Col>
                   <Col xs={24} sm={12}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
                       <Checkbox checked={retieneIsr} onChange={e => setRetieneIsr(e.target.checked)}>
                         Retener ISR
                       </Checkbox>
@@ -734,7 +814,7 @@ export default function FacturaFormPage() {
           </Card>
         )}
 
-        {/* ── Totales ────────────────────────────────────────────────────── */}
+        {/* ── Totales ─────────────────────────────────────────────────────── */}
         <Card>
           <Row justify="end">
             <Col xs={24} sm={14} md={9}>
@@ -767,8 +847,8 @@ export default function FacturaFormPage() {
                   <Text type="secondary">ITBIS</Text>
                   <Text strong>{fmt.money(ivaTotal)}</Text>
                 </Row>
-                <Divider style={{ margin: '8px 0' }} />
-                <Row justify="space-between" style={{ marginBottom: 4 }}>
+                <Divider style={{ margin: '6px 0' }} />
+                <Row justify="space-between" style={{ marginBottom: 2 }}>
                   <Text style={{ fontSize: 16 }}>{(montoRetItbisForm > 0 || montoRetIsrForm > 0) ? 'Total factura' : 'Total'}</Text>
                   <Text strong style={{ fontSize: 20, color: '#1677ff' }}>{fmt.money(total)}</Text>
                 </Row>
@@ -786,7 +866,7 @@ export default function FacturaFormPage() {
                 )}
                 {(montoRetItbisForm > 0 || montoRetIsrForm > 0) && (
                   <>
-                    <Divider style={{ margin: '6px 0' }} />
+                    <Divider style={{ margin: '4px 0' }} />
                     <Row justify="space-between" style={{ marginBottom: 4 }}>
                       <Text style={{ fontSize: 15, fontWeight: 700, color: '#059669' }}>NETO A COBRAR</Text>
                       <Text strong style={{ fontSize: 18, color: '#059669' }}>{fmt.money(netoCobrarForm)}</Text>
@@ -794,14 +874,9 @@ export default function FacturaFormPage() {
                   </>
                 )}
 
-                {/* Comprobante seleccionado */}
                 {tipoInfo && (
-                  <div style={{
-                    padding: '8px 12px', borderRadius: 8,
-                    background: `${tipoInfo.color}10`,
-                    border: `1px solid ${tipoInfo.color}40`,
-                    marginBottom: 8,
-                  }}>
+                  <div style={{ padding: '6px 10px', borderRadius: 6,
+                    background: `${tipoInfo.color}10`, border: `1px solid ${tipoInfo.color}40` }}>
                     <Text style={{ fontSize: 12, color: tipoInfo.color, fontWeight: 600 }}>
                       <SafetyCertificateOutlined style={{ marginRight: 6 }} />
                       {tipoInfo.codigo} · {tipoInfo.titulo}
@@ -814,7 +889,6 @@ export default function FacturaFormPage() {
                   style={{ height: 48, fontSize: 15 }}>
                   {editMode ? 'Guardar cambios' : 'Crear Factura'}
                 </Button>
-
                 {editMode && (
                   <Button block size="large" onClick={() => navigate('/facturas')}>
                     Cancelar
@@ -826,35 +900,24 @@ export default function FacturaFormPage() {
         </Card>
       </Form>
 
-      {/* ── Modal: aplicar anticipo (solo modo creación) ───────────────── */}
+      {/* ── Modal: aplicar anticipo ────────────────────────────────────── */}
       {!editMode && (
-        <Modal
-          title="¿Deseas aplicar un anticipo disponible?"
+        <Modal title="¿Deseas aplicar un anticipo disponible?"
           open={!!modalAnticipo}
           onCancel={() => { setModalAnticipo(null); navigate('/facturas'); }}
           onOk={() => formAnticipo.submit()}
           confirmLoading={aplicarAnticipoMut.isPending}
-          okText="Aplicar anticipo"
-          cancelText="Omitir"
-          width={480}
-          destroyOnClose
-        >
-          <Alert type="success" showIcon message="Factura creada correctamente" style={{ marginBottom: 16 }} />
-          <p style={{ color: token.colorTextSecondary, fontSize: 13, marginBottom: 16 }}>
-            Este cliente tiene anticipos disponibles. Puedes aplicarlos ahora para reducir el saldo pendiente de esta factura.
+          okText="Aplicar anticipo" cancelText="Omitir"
+          width={480} destroyOnClose>
+          <Alert type="success" showIcon message="Factura creada correctamente" style={{ marginBottom: 12 }} />
+          <p style={{ color: token.colorTextSecondary, fontSize: 13, marginBottom: 12 }}>
+            Este cliente tiene anticipos disponibles. Puedes aplicarlos ahora.
           </p>
-          <Form
-            form={formAnticipo}
-            layout="vertical"
+          <Form form={formAnticipo} layout="vertical"
             onFinish={v => {
               if (!modalAnticipo) return;
-              aplicarAnticipoMut.mutate({
-                anticipoId: v.anticipoId,
-                cxcId:      v.cxcId,
-                monto:      Number(v.monto),
-              });
-            }}
-          >
+              aplicarAnticipoMut.mutate({ anticipoId: v.anticipoId, cxcId: v.cxcId, monto: Number(v.monto) });
+            }}>
             <Form.Item name="anticipoId" label="Anticipo a aplicar" rules={[{ required: true }]}>
               <Select placeholder="Seleccionar anticipo">
                 {anticiposCliente.map((a: any) => (
@@ -864,11 +927,11 @@ export default function FacturaFormPage() {
                 ))}
               </Select>
             </Form.Item>
-            <Form.Item name="cxcId" label="Aplicar a (CxC de la factura)" rules={[{ required: true }]}>
+            <Form.Item name="cxcId" label="Aplicar a (CxC)" rules={[{ required: true }]}>
               <Select placeholder="Seleccionar CxC" notFoundContent="Cargando...">
                 {cxcFactura.map((c: any) => (
                   <Select.Option key={c.id} value={c.id}>
-                    {c.factura?.folio ?? c.factura?.numero ?? `CxC #${c.id}`} — Pendiente: RD$ {Number(c.montoPendiente).toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+                    {c.factura?.folio ?? `CxC #${c.id}`} — Pendiente: RD$ {Number(c.montoPendiente).toLocaleString('es-DO', { minimumFractionDigits: 2 })}
                   </Select.Option>
                 ))}
               </Select>
