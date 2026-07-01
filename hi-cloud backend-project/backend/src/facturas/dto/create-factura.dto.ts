@@ -135,4 +135,14 @@ export class CreateFacturaDto {
 
   @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(100)
   porcentajeRetencionIsr?: number;
+
+  // ── Descuento general ─────────────────────────────────────────────────────
+  @IsOptional()
+  @IsString()
+  descuentoGeneralTipo?: string;   // 'monto' | 'porcentaje'
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  descuentoGeneralValor?: number;
 }

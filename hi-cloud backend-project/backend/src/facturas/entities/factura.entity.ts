@@ -125,4 +125,13 @@ export class Factura extends TenantBaseEntity {
   /** true mientras una NC de anulación total (código 1) espera confirmación de DGII */
   @Column({ default: false })
   anulacionPendiente!: boolean;
+
+  // ── Descuento general ─────────────────────────────────────────────────────
+  /** 'monto' = RD$ fijo sobre subtotal | 'porcentaje' = % sobre subtotal */
+  @Column({ length: 10, nullable: true, default: null })
+  descuentoGeneralTipo?: string;   // 'monto' | 'porcentaje'
+
+  /** Valor del descuento general: importe RD$ o porcentaje (0-100) */
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true, default: null })
+  descuentoGeneralValor?: number;
 }

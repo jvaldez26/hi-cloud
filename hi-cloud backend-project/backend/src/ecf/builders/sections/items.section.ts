@@ -11,6 +11,8 @@ interface DetalleLike {
   subtotal:       number | string;
   importeIva?:    number | string;
   iva?:           number | string;
+  descuentoMonto?: number | string;
+  descuentoPct?:   number | string;
 }
 
 function indicadorFacturacion(pct: number): 1 | 2 | 4 {
@@ -25,23 +27,25 @@ function cap4(n: number | string): number {
 }
 
 /**
- * DGII valida cantidad × precioUnitario = MontoItem en el XML.
+ * DGII valida cantidad × precioUnitario = MontoItem + DescuentoMonto en el XML.
  * Si hay discrepancia > 0.01 se rechaza el e-CF y se quema la secuencia (errores 1924/11105).
- * Loguear cuando el subtotal recibido difiere del calculado, para detectar problemas en el frontend.
  */
 export function warnCuadraturaDGII(
   d: DetalleLike,
   context: string,
 ): void {
-  const cantidad     = Number(d.cantidad);
-  const precio       = Number(d.precioUnitario);
-  const subtotalRecibido  = round2(Number(d.subtotal));
-  const subtotalCalculado = round2(cantidad * precio);
-  if (Math.abs(subtotalRecibido - subtotalCalculado) > 0.01) {
+  const cantidad  = Number(d.cantidad);
+  const precio    = Number(d.precioUnitario);
+  const montoItem = round2(Number(d.subtotal));
+  const descuento = round2(Number(d.descuentoMonto ?? 0));
+  const brutoCalc = round2(cantidad * precio);
+  const brutoXML  = round2(montoItem + descuento);
+  if (Math.abs(brutoXML - brutoCalc) > 0.01) {
     itemsLogger.warn(
       `Cuadratura DGII [${context}] item="${d.descripcion}" ` +
       `cantidad=${cantidad} precio=${precio} ` +
-      `subtotalRecibido=${subtotalRecibido} subtotalCalculado=${subtotalCalculado}`,
+      `MontoItem=${montoItem} DescuentoMonto=${descuento} ` +
+      `brutoXML=${brutoXML} brutoCalc=${brutoCalc}`,
     );
   }
 }
@@ -51,10 +55,21 @@ export function warnCuadraturaDGII(
  * El ITBIS 18% estándar NO se declara en TablaImpuesto dentro del ítem;
  * va únicamente en los Totales del encabezado del documento (estándar DGII XSD).
  * IndicadorFacturacion identifica el tipo de gravamen por línea.
+ *
+ * DescuentoMonto = bruto - MontoItem (solo se incluye cuando > 0).
+ * PrecioUnitarioItem siempre es el precio original sin descuento.
  */
 export function buildItems(detalles: DetalleLike[], encf = ''): Record<string, unknown>[] {
   return (detalles ?? []).map((d, idx) => {
-    warnCuadraturaDGII(d, encf || `item#${idx + 1}`);
+    const montoItem = round2(Number(d.subtotal));
+    const bruto     = round2(Number(d.precioUnitario) * Number(d.cantidad));
+    const descMonto = round2(bruto - montoItem);
+
+    warnCuadraturaDGII(
+      { ...d, descuentoMonto: descMonto },
+      encf || `item#${idx + 1}`,
+    );
+
     return {
       NumeroLinea:            idx + 1,
       IndicadorFacturacion:   indicadorFacturacion(Number(d.porcentajeIva)),
@@ -63,7 +78,8 @@ export function buildItems(detalles: DetalleLike[], encf = ''): Record<string, u
       CantidadItem:           cap4(d.cantidad),
       UnidadMedida:           43,
       PrecioUnitarioItem:     round2(Number(d.precioUnitario)),
-      MontoItem:              round2(Number(d.subtotal)),
+      ...(descMonto > 0 ? { DescuentoMonto: descMonto } : {}),
+      MontoItem:              montoItem,
     };
   });
 }
@@ -79,7 +95,15 @@ export const buildItemsConImpuesto = buildItems;
  */
 export function buildItemsE33(detalles: DetalleLike[], encf = ''): Record<string, unknown>[] {
   return (detalles ?? []).map((d, idx) => {
-    warnCuadraturaDGII(d, encf || `item#${idx + 1}`);
+    const montoItem = round2(Number(d.subtotal));
+    const bruto     = round2(Number(d.precioUnitario) * Number(d.cantidad));
+    const descMonto = round2(bruto - montoItem);
+
+    warnCuadraturaDGII(
+      { ...d, descuentoMonto: descMonto },
+      encf || `item#${idx + 1}`,
+    );
+
     return {
       NumeroLinea:            idx + 1,
       IndicadorFacturacion:   indicadorFacturacion(Number(d.porcentajeIva)),
@@ -88,7 +112,8 @@ export function buildItemsE33(detalles: DetalleLike[], encf = ''): Record<string
       CantidadItem:           String(cap4(d.cantidad)),
       UnidadMedida:           '47',
       PrecioUnitarioItem:     round2(Number(d.precioUnitario)).toFixed(2),
-      MontoItem:              round2(Number(d.subtotal)).toFixed(2),
+      ...(descMonto > 0 ? { DescuentoMonto: descMonto.toFixed(2) } : {}),
+      MontoItem:              montoItem.toFixed(2),
     };
   });
 }

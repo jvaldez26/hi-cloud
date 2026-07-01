@@ -64,9 +64,10 @@ export class FacturasService {
     // La verificación de ingresos se hace en confirmar() cuando el total ya está calculado
     if (dto.clienteId) await this.clientesService.findOne(dto.clienteId);
 
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+
     const detalles: Partial<FacturaDetalle>[] = [];
-    let subtotalFactura = 0;
-    let ivaFactura = 0;
+    let subtotalBase = 0; // suma de subtotales netos por línea (pre descuento general)
 
     const productoIds = dto.detalles.map(d => d.productoId).filter((id): id is number => id != null);
     const productosMap = await this.productosService.findByIds(productoIds);
@@ -74,35 +75,76 @@ export class FacturasService {
     for (const item of dto.detalles) {
       const producto = item.productoId ? (productosMap.get(item.productoId) ?? null) : null;
       const porcentajeIva = item.porcentajeIva ?? (producto ? Number(producto.porcentajeIva) : 18);
-      const subtotal = Number(item.precioUnitario) * item.cantidad;
-      const importeIva = subtotal * (porcentajeIva / 100);
-      const total = subtotal + importeIva;
 
-      subtotalFactura += subtotal;
-      ivaFactura += importeIva;
+      // Descuento por línea: monto fijo tiene precedencia; pct se aplica solo si monto = 0
+      const bruto = r2(Number(item.precioUnitario) * item.cantidad);
+      let descLinea = 0;
+      const dm = Number(item.descuentoMonto ?? 0);
+      const dp = Number(item.descuentoPct   ?? 0);
+      if (dm > 0) {
+        descLinea = r2(Math.min(dm, bruto));
+      } else if (dp > 0) {
+        descLinea = r2(bruto * (dp / 100));
+      }
+      const subtotalLinea = r2(bruto - descLinea);
+      subtotalBase += subtotalLinea;
 
       detalles.push({
-        productoId: producto ? item.productoId : undefined,
+        productoId:        producto ? item.productoId : undefined,
         opticaInventarioId: item.opticaInventarioId ?? undefined,
-        descripcion: item.descripcion || producto?.nombre || 'Servicio',
-        precioUnitario: item.precioUnitario,
-        cantidad: item.cantidad,
+        descripcion:       item.descripcion || producto?.nombre || 'Servicio',
+        precioUnitario:    item.precioUnitario,
+        cantidad:          item.cantidad,
         porcentajeIva,
-        subtotal,
-        importeIva,
-        total,
-        descuentoPct:   item.descuentoPct  ?? 0,
-        descuentoMonto: item.descuentoMonto ?? 0,
-        precioOriginal: item.precioOriginal ?? undefined,
-        costoUnitario:  Number(producto?.costoPromedio ?? 0),
+        descuentoPct:      dp,
+        descuentoMonto:    dm,
+        precioOriginal:    item.precioOriginal ?? undefined,
+        costoUnitario:     Number(producto?.costoPromedio ?? 0),
+        // subtotal, importeIva, total se calculan después (tras distribuir descuento general)
+        subtotal:   subtotalLinea,
+        importeIva: 0,  // provisional
+        total:      0,  // provisional
       });
     }
+
+    subtotalBase = r2(subtotalBase);
+
+    // Descuento general sobre el subtotal acumulado
+    let descGeneral = 0;
+    const dgt = dto.descuentoGeneralTipo;
+    const dgv = Number(dto.descuentoGeneralValor ?? 0);
+    if (dgt === 'monto' && dgv > 0) {
+      descGeneral = r2(Math.min(dgv, subtotalBase));
+    } else if (dgt === 'porcentaje' && dgv > 0) {
+      descGeneral = r2(subtotalBase * (dgv / 100));
+    }
+    const baseGravable = r2(subtotalBase - descGeneral);
+
+    // Distribuir descuento general proporcionalmente y recalcular IVA por línea
+    let subtotalFactura = 0;
+    let ivaFactura = 0;
+    for (const d of detalles) {
+      const subtotNeto = Number(d.subtotal!);
+      // Proporción de este detalle sobre el total pre-desc-general
+      const descProp = subtotalBase > 0
+        ? r2((subtotNeto / subtotalBase) * descGeneral)
+        : 0;
+      const subtotFinal = r2(subtotNeto - descProp);
+      const ivaLinea    = r2(subtotFinal * (Number(d.porcentajeIva) / 100));
+      d.subtotal   = subtotFinal;
+      d.importeIva = ivaLinea;
+      d.total      = r2(subtotFinal + ivaLinea);
+      subtotalFactura += subtotFinal;
+      ivaFactura      += ivaLinea;
+    }
+    subtotalFactura = r2(subtotalFactura);
+    ivaFactura      = r2(ivaFactura);
 
     const folio = await this.generarFolio();
 
     const moneda     = dto.moneda ?? 'DOP';
     const tipoCambio = dto.tipoCambio ?? 1;
-    const totalDOP   = subtotalFactura + ivaFactura;
+    const totalDOP   = r2(subtotalFactura + ivaFactura);
     // Si es moneda extranjera, totalOriginal = monto en esa moneda; total = DOP
     const totalOriginal = moneda !== 'DOP' ? +(totalDOP / tipoCambio).toFixed(2) : undefined;
 
@@ -178,6 +220,10 @@ export class FacturasService {
       porcentajeRetencionIsr: pctRetIsr,
       montoRetencionIsr: montoRetIsr,
       netoCobrar,
+      descuentoGeneralTipo:  dto.descuentoGeneralTipo ?? undefined,
+      descuentoGeneralValor: Number(dto.descuentoGeneralValor ?? 0) > 0
+        ? dto.descuentoGeneralValor
+        : undefined,
     });
 
     let savedFactura: Factura;
@@ -213,9 +259,10 @@ export class FacturasService {
 
     if (dto.clienteId) await this.clientesService.findOne(dto.clienteId);
 
+    const r2u = (n: number) => Math.round(n * 100) / 100;
+
     const detalles: Partial<FacturaDetalle>[] = [];
-    let subtotalFactura = 0;
-    let ivaFactura = 0;
+    let subtotalBaseU = 0;
 
     const productoIds = dto.detalles.map(d => d.productoId).filter((id): id is number => id != null);
     const productosMap = await this.productosService.findByIds(productoIds);
@@ -223,12 +270,18 @@ export class FacturasService {
     for (const item of dto.detalles) {
       const producto = item.productoId ? (productosMap.get(item.productoId) ?? null) : null;
       const porcentajeIva = item.porcentajeIva ?? (producto ? Number(producto.porcentajeIva) : 18);
-      const subtotal    = Number(item.precioUnitario) * item.cantidad;
-      const importeIva  = subtotal * (porcentajeIva / 100);
-      const total       = subtotal + importeIva;
 
-      subtotalFactura += subtotal;
-      ivaFactura      += importeIva;
+      const brutoU = r2u(Number(item.precioUnitario) * item.cantidad);
+      let descLineaU = 0;
+      const dmU = Number(item.descuentoMonto ?? 0);
+      const dpU = Number(item.descuentoPct   ?? 0);
+      if (dmU > 0) {
+        descLineaU = r2u(Math.min(dmU, brutoU));
+      } else if (dpU > 0) {
+        descLineaU = r2u(brutoU * (dpU / 100));
+      }
+      const subtotalLineaU = r2u(brutoU - descLineaU);
+      subtotalBaseU += subtotalLineaU;
 
       detalles.push({
         productoId:          producto ? item.productoId : undefined,
@@ -237,18 +290,47 @@ export class FacturasService {
         precioUnitario:      item.precioUnitario,
         cantidad:            item.cantidad,
         porcentajeIva,
-        subtotal,
-        importeIva,
-        total,
-        descuentoPct:        item.descuentoPct  ?? 0,
-        descuentoMonto:      item.descuentoMonto ?? 0,
+        descuentoPct:        dpU,
+        descuentoMonto:      dmU,
         precioOriginal:      item.precioOriginal ?? undefined,
+        subtotal:   subtotalLineaU,
+        importeIva: 0,
+        total:      0,
       });
     }
 
+    subtotalBaseU = r2u(subtotalBaseU);
+
+    let descGeneralU = 0;
+    const dgtU = dto.descuentoGeneralTipo;
+    const dgvU = Number(dto.descuentoGeneralValor ?? 0);
+    if (dgtU === 'monto' && dgvU > 0) {
+      descGeneralU = r2u(Math.min(dgvU, subtotalBaseU));
+    } else if (dgtU === 'porcentaje' && dgvU > 0) {
+      descGeneralU = r2u(subtotalBaseU * (dgvU / 100));
+    }
+
+    let subtotalFactura = 0;
+    let ivaFactura = 0;
+    for (const d of detalles) {
+      const subtotNeto = Number(d.subtotal!);
+      const descProp = subtotalBaseU > 0
+        ? r2u((subtotNeto / subtotalBaseU) * descGeneralU)
+        : 0;
+      const subtotFinal = r2u(subtotNeto - descProp);
+      const ivaLinea    = r2u(subtotFinal * (Number(d.porcentajeIva) / 100));
+      d.subtotal   = subtotFinal;
+      d.importeIva = ivaLinea;
+      d.total      = r2u(subtotFinal + ivaLinea);
+      subtotalFactura += subtotFinal;
+      ivaFactura      += ivaLinea;
+    }
+    subtotalFactura = r2u(subtotalFactura);
+    ivaFactura      = r2u(ivaFactura);
+
     const moneda        = dto.moneda ?? 'DOP';
     const tipoCambio    = dto.tipoCambio ?? 1;
-    const totalDOP      = subtotalFactura + ivaFactura;
+    const totalDOP      = r2u(subtotalFactura + ivaFactura);
     const totalOriginal = moneda !== 'DOP' ? +(totalDOP / tipoCambio).toFixed(2) : undefined;
 
     const tipoPago  = dto.tipoPago?.toUpperCase() === 'CREDITO' ? 'CREDITO' : 'CONTADO';
@@ -280,6 +362,8 @@ export class FacturasService {
       tipoPago,
       diasCredito:     diasCred,
       fechaVencimiento: fechaVenc,
+      descuentoGeneralTipo:  dgtU ?? null,
+      descuentoGeneralValor: dgvU > 0 ? dgvU : null,
     } as any);
 
     this.realtimeService.notify(factura.empresaId, 'factura', 'updated', id);
