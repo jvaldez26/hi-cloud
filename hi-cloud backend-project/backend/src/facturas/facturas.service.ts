@@ -64,8 +64,10 @@ export class FacturasService {
     // La verificación de ingresos se hace en confirmar() cuando el total ya está calculado
     if (dto.clienteId) await this.clientesService.findOne(dto.clienteId);
 
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+
     const detalles: Partial<FacturaDetalle>[] = [];
-    let subtotalFactura = 0;
+    let subtotalFactura = 0; // suma de baseLinea por línea (después de descuento por línea)
     let ivaFactura = 0;
 
     const productoIds = dto.detalles.map(d => d.productoId).filter((id): id is number => id != null);
@@ -74,12 +76,17 @@ export class FacturasService {
     for (const item of dto.detalles) {
       const producto = item.productoId ? (productosMap.get(item.productoId) ?? null) : null;
       const porcentajeIva = item.porcentajeIva ?? (producto ? Number(producto.porcentajeIva) : 18);
-      const subtotal = Number(item.precioUnitario) * item.cantidad;
-      const importeIva = subtotal * (porcentajeIva / 100);
-      const total = subtotal + importeIva;
 
-      subtotalFactura += subtotal;
-      ivaFactura += importeIva;
+      const brutoLinea = r2(Number(item.precioUnitario) * item.cantidad);
+      const descLinea = Number(item.descuentoMonto ?? 0) > 0
+        ? r2(Math.min(Number(item.descuentoMonto), brutoLinea))
+        : r2(brutoLinea * (Number(item.descuentoPct ?? 0) / 100));
+      const baseLinea   = r2(brutoLinea - descLinea);
+      const importeIva  = r2(baseLinea * (porcentajeIva / 100));
+      const totalLinea  = r2(baseLinea + importeIva);
+
+      subtotalFactura += baseLinea;
+      ivaFactura      += importeIva;
 
       detalles.push({
         productoId: producto ? item.productoId : undefined,
@@ -88,9 +95,9 @@ export class FacturasService {
         precioUnitario: item.precioUnitario,
         cantidad: item.cantidad,
         porcentajeIva,
-        subtotal,
+        subtotal:       baseLinea,
         importeIva,
-        total,
+        total:          totalLinea,
         descuentoPct:   item.descuentoPct  ?? 0,
         descuentoMonto: item.descuentoMonto ?? 0,
         precioOriginal: item.precioOriginal ?? undefined,
@@ -98,11 +105,22 @@ export class FacturasService {
       });
     }
 
+    // Descuento general sobre el subtotal bruto
+    const descuentoGeneralMonto = Number(dto.descuentoGeneralMonto ?? 0) > 0
+      ? r2(Math.min(Number(dto.descuentoGeneralMonto), subtotalFactura))
+      : r2(subtotalFactura * (Number(dto.descuentoGeneralPct ?? 0) / 100));
+    const descuentoGeneralPct = Number(dto.descuentoGeneralPct ?? 0);
+    const baseGravable = r2(subtotalFactura - descuentoGeneralMonto);
+    // Ajustar ITBIS proporcionalmente si hay descuento general
+    if (descuentoGeneralMonto > 0 && subtotalFactura > 0) {
+      ivaFactura = r2(ivaFactura * baseGravable / subtotalFactura);
+    }
+
     const folio = await this.generarFolio();
 
     const moneda     = dto.moneda ?? 'DOP';
     const tipoCambio = dto.tipoCambio ?? 1;
-    const totalDOP   = subtotalFactura + ivaFactura;
+    const totalDOP   = r2(baseGravable + ivaFactura);
     // Si es moneda extranjera, totalOriginal = monto en esa moneda; total = DOP
     const totalOriginal = moneda !== 'DOP' ? +(totalDOP / tipoCambio).toFixed(2) : undefined;
 
@@ -145,9 +163,9 @@ export class FacturasService {
     const pctRetItbis         = dto.porcentajeRetencionItbis ?? 30;
     const retieneIsr          = aplicaRetenciones && (dto.retieneIsr ?? false);
     const pctRetIsr           = dto.porcentajeRetencionIsr ?? 10;
-    const montoRetItbis       = retieneItbis ? Number((ivaFactura * pctRetItbis / 100).toFixed(2)) : 0;
-    const montoRetIsr         = retieneIsr   ? Number((subtotalFactura * pctRetIsr / 100).toFixed(2)) : 0;
-    const netoCobrar          = Number((totalDOP - montoRetItbis - montoRetIsr).toFixed(2));
+    const montoRetItbis       = retieneItbis ? r2(ivaFactura * pctRetItbis / 100) : 0;
+    const montoRetIsr         = retieneIsr   ? r2(baseGravable * pctRetIsr / 100) : 0;
+    const netoCobrar          = r2(totalDOP - montoRetItbis - montoRetIsr);
     const sucursalId          = await this.tenantService.resolveSucursalId(dto.sucursalId);
 
     const factura = this.facturaRepository.create({
@@ -164,9 +182,11 @@ export class FacturasService {
       moneda,
       tipoCambio,
       totalOriginal,
-      subtotal: subtotalFactura,
-      iva:      ivaFactura,
-      total:    totalDOP,
+      subtotal:              subtotalFactura,
+      iva:                   ivaFactura,
+      total:                 totalDOP,
+      descuentoGeneralPct,
+      descuentoGeneralMonto,
       tipoPago,
       diasCredito:     diasCred,
       fechaVencimiento: fechaVenc,
@@ -213,6 +233,8 @@ export class FacturasService {
 
     if (dto.clienteId) await this.clientesService.findOne(dto.clienteId);
 
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+
     const detalles: Partial<FacturaDetalle>[] = [];
     let subtotalFactura = 0;
     let ivaFactura = 0;
@@ -223,11 +245,16 @@ export class FacturasService {
     for (const item of dto.detalles) {
       const producto = item.productoId ? (productosMap.get(item.productoId) ?? null) : null;
       const porcentajeIva = item.porcentajeIva ?? (producto ? Number(producto.porcentajeIva) : 18);
-      const subtotal    = Number(item.precioUnitario) * item.cantidad;
-      const importeIva  = subtotal * (porcentajeIva / 100);
-      const total       = subtotal + importeIva;
 
-      subtotalFactura += subtotal;
+      const brutoLinea = r2(Number(item.precioUnitario) * item.cantidad);
+      const descLinea = Number(item.descuentoMonto ?? 0) > 0
+        ? r2(Math.min(Number(item.descuentoMonto), brutoLinea))
+        : r2(brutoLinea * (Number(item.descuentoPct ?? 0) / 100));
+      const baseLinea  = r2(brutoLinea - descLinea);
+      const importeIva = r2(baseLinea * (porcentajeIva / 100));
+      const totalLinea = r2(baseLinea + importeIva);
+
+      subtotalFactura += baseLinea;
       ivaFactura      += importeIva;
 
       detalles.push({
@@ -237,18 +264,28 @@ export class FacturasService {
         precioUnitario:      item.precioUnitario,
         cantidad:            item.cantidad,
         porcentajeIva,
-        subtotal,
+        subtotal:            baseLinea,
         importeIva,
-        total,
+        total:               totalLinea,
         descuentoPct:        item.descuentoPct  ?? 0,
         descuentoMonto:      item.descuentoMonto ?? 0,
         precioOriginal:      item.precioOriginal ?? undefined,
       });
     }
 
+    // Descuento general
+    const descuentoGeneralMonto = Number(dto.descuentoGeneralMonto ?? 0) > 0
+      ? r2(Math.min(Number(dto.descuentoGeneralMonto), subtotalFactura))
+      : r2(subtotalFactura * (Number(dto.descuentoGeneralPct ?? 0) / 100));
+    const descuentoGeneralPct = Number(dto.descuentoGeneralPct ?? 0);
+    const baseGravable = r2(subtotalFactura - descuentoGeneralMonto);
+    if (descuentoGeneralMonto > 0 && subtotalFactura > 0) {
+      ivaFactura = r2(ivaFactura * baseGravable / subtotalFactura);
+    }
+
     const moneda        = dto.moneda ?? 'DOP';
     const tipoCambio    = dto.tipoCambio ?? 1;
-    const totalDOP      = subtotalFactura + ivaFactura;
+    const totalDOP      = r2(baseGravable + ivaFactura);
     const totalOriginal = moneda !== 'DOP' ? +(totalDOP / tipoCambio).toFixed(2) : undefined;
 
     const tipoPago  = dto.tipoPago?.toUpperCase() === 'CREDITO' ? 'CREDITO' : 'CONTADO';
@@ -265,21 +302,23 @@ export class FacturasService {
 
     // Actualizar cabecera (folio y empresaId NO cambian)
     await this.facturaRepository.update(id, {
-      fecha:           new Date(dto.fecha),
-      clienteId:       dto.clienteId,
-      notas:           dto.notas ?? null,
-      tipoNcf:         dto.tipoNcf ?? factura.tipoNcf,
-      vendedorId:      dto.vendedorId ?? null,
-      nombreVendedor:  dto.nombreVendedor ?? null,
+      fecha:                new Date(dto.fecha),
+      clienteId:            dto.clienteId,
+      notas:                dto.notas ?? null,
+      tipoNcf:              dto.tipoNcf ?? factura.tipoNcf,
+      vendedorId:           dto.vendedorId ?? null,
+      nombreVendedor:       dto.nombreVendedor ?? null,
       moneda,
       tipoCambio,
-      totalOriginal:   totalOriginal ?? null,
-      subtotal:        subtotalFactura,
-      iva:             ivaFactura,
-      total:           totalDOP,
+      totalOriginal:        totalOriginal ?? null,
+      subtotal:             subtotalFactura,
+      iva:                  ivaFactura,
+      total:                totalDOP,
+      descuentoGeneralPct,
+      descuentoGeneralMonto,
       tipoPago,
-      diasCredito:     diasCred,
-      fechaVencimiento: fechaVenc,
+      diasCredito:          diasCred,
+      fechaVencimiento:     fechaVenc,
     } as any);
 
     this.realtimeService.notify(factura.empresaId, 'factura', 'updated', id);

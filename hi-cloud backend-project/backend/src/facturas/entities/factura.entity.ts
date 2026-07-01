@@ -122,6 +122,15 @@ export class Factura extends TenantBaseEntity {
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   netoCobrar!: number;
 
+  // ── Descuentos ────────────────────────────────────────────────────────────
+  /** Descuento global sobre el subtotal (porcentaje 0-100) */
+  @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
+  descuentoGeneralPct!: number;
+
+  /** Descuento global sobre el subtotal (monto fijo en moneda de la factura) */
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  descuentoGeneralMonto!: number;
+
   /** true mientras una NC de anulación total (código 1) espera confirmación de DGII */
   @Column({ default: false })
   anulacionPendiente!: boolean;

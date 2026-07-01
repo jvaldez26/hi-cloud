@@ -6,6 +6,8 @@ export interface FacturaDetallePayload {
   opticaInventarioId?: number;
   cantidad: number; precioUnitario: number; descripcion?: string;
   porcentajeIva?: number;
+  descuentoPct?: number;
+  descuentoMonto?: number;
 }
 
 export interface EmitirPosBody {
@@ -21,16 +23,18 @@ export interface EmitirPosBody {
   modoContingencia?: boolean;
 }
 export interface FacturaPayload {
-  clienteId:       number;
-  fecha:           string;
-  detalles:        FacturaDetallePayload[];
-  tipoNcf?:        string;
-  rncComprador?:   string;
-  notas?:          string;
-  vendedorId?:     number;
-  nombreVendedor?: string;
-  moneda?:         string;
-  tipoCambio?:     number;
+  clienteId:             number;
+  fecha:                 string;
+  detalles:              FacturaDetallePayload[];
+  tipoNcf?:              string;
+  rncComprador?:         string;
+  notas?:                string;
+  vendedorId?:           number;
+  nombreVendedor?:       string;
+  moneda?:               string;
+  tipoCambio?:           number;
+  descuentoGeneralPct?:  number;
+  descuentoGeneralMonto?: number;
 }
 
 export const facturasApi = {
