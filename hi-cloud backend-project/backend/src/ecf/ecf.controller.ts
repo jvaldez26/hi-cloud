@@ -38,6 +38,7 @@ import { GetUser } from '../auth/decorators/get-user.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
 import { User } from '../users/users.entity';
 import { RequiereModulo } from '../suscripciones/decorators/requiere-modulo.decorator';
+import { TenantService } from '../tenant/tenant.service';
 
 @ApiTags('e-CF (Comprobantes Fiscales Electrónicos)')
 @ApiBearerAuth('access-token')
@@ -51,6 +52,7 @@ export class ECFController {
     private emitirUseCase:   EmitirECFUseCase,
     private reintentoJob:    ReintentoECFJob,
     private consultarJob:    ConsultarEstadoECFJob,
+    private tenantService:   TenantService,
   ) {}
 
   // ── Tipos ──────────────────────────────────────────────────────────
@@ -439,7 +441,10 @@ export class ECFController {
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Ejecutar inmediatamente el job de reintentos MSeller (PENDIENTE_ENVIO)' })
   async ejecutarReintentos() {
-    await this.reintentoJob.run();
+    await this.tenantService.withoutTenantScope(
+      'POST:ecf/ejecutar-reintentos',
+      () => this.reintentoJob.run(),
+    );
     return { message: 'Job de reintentos ejecutado. Revisa el estado de los e-CFs en /ecf/pendientes.' };
   }
 
@@ -450,7 +455,13 @@ export class ECFController {
     summary: 'Consultar estado DGII de comprobantes ENVIADOS — fuerza polling inmediato sin esperar 10 min',
   })
   async consultarEstados() {
-    await this.consultarJob.run(true); // force=true: consultar todos sin esperar 10 min
+    // El job consulta e-CFs de TODAS las empresas (operación de sistema).
+    // withoutTenantScope evita que el TenantSubscriber lance 403 al cargar
+    // entidades de otras empresas dentro del CLS del usuario que dispara la acción.
+    await this.tenantService.withoutTenantScope(
+      'POST:ecf/consultar-estados',
+      () => this.consultarJob.run(true),
+    );
     return { message: 'Consulta de estados ejecutada. Los comprobantes aceptados por DGII pasarán a estado "aceptado".' };
   }
 
