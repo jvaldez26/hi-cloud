@@ -16,8 +16,6 @@ import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
 
-const r2 = (n: number) => Math.round(n * 100) / 100;
-
 interface LineaForm {
   key: string;
   productoId?: number;
@@ -25,9 +23,6 @@ interface LineaForm {
   cantidad: number;
   precioUnitario: number;
   porcentajeIva: number;
-  descuentoTipo: 'pct' | 'monto';
-  descuentoPct: number;
-  descuentoMonto: number;
 }
 
 // Tipos NCF disponibles en el módulo de Facturas.
@@ -40,16 +35,12 @@ export default function FacturaFormPage() {
 
   const [form]     = Form.useForm();
   const [lineas,   setLineas]   = useState<LineaForm[]>([
-    { key: '1', cantidad: 1, precioUnitario: 0, porcentajeIva: 18, descuentoTipo: 'pct', descuentoPct: 0, descuentoMonto: 0 },
+    { key: '1', cantidad: 1, precioUnitario: 0, porcentajeIva: 18 },
   ]);
   const [tipoNcf,     setTipoNcf]     = useState('E32');
   const [tipoPago,    setTipoPago]    = useState<'CONTADO' | 'CREDITO'>('CONTADO');
   const [diasCredito, setDiasCredito] = useState(30);
   const [clienteSeleccionado, setClienteSeleccionado] = useState<Cliente | null>(null);
-  // Descuento general
-  const [descuentoGeneralTipo,  setDescuentoGeneralTipo]  = useState<'pct' | 'monto'>('pct');
-  const [descuentoGeneralPct,   setDescuentoGeneralPct]   = useState(0);
-  const [descuentoGeneralMonto, setDescuentoGeneralMonto] = useState(0);
   // Retenciones (solo E31)
   const [aplicaRetenciones, setAplicaRetenciones] = useState(false);
   const [retieneItbis,      setRetieneItbis]       = useState(false);
@@ -108,30 +99,16 @@ export default function FacturaFormPage() {
     setTipoPago(((facturaEdit as any).tipoPago ?? 'CONTADO') as 'CONTADO' | 'CREDITO');
     setDiasCredito(Number((facturaEdit as any).diasCredito ?? 30));
 
-    // Descuento general
-    const dgPct   = Number((facturaEdit as any).descuentoGeneralPct ?? 0);
-    const dgMonto = Number((facturaEdit as any).descuentoGeneralMonto ?? 0);
-    if (dgMonto > 0) {
-      setDescuentoGeneralTipo('monto');
-      setDescuentoGeneralMonto(dgMonto);
-    } else {
-      setDescuentoGeneralTipo('pct');
-      setDescuentoGeneralPct(dgPct);
-    }
-
     // Líneas
     const detallesCargados: any[] = (facturaEdit as any).detalles ?? [];
     if (detallesCargados.length > 0) {
       setLineas(detallesCargados.map((d: any, i: number) => ({
-        key:            String(i + 1),
+        key: String(i + 1),
         productoId:     d.productoId,
         descripcion:    d.descripcion,
         cantidad:       Number(d.cantidad),
         precioUnitario: Number(d.precioUnitario),
         porcentajeIva:  Number(d.porcentajeIva ?? 18),
-        descuentoTipo:  Number(d.descuentoMonto ?? 0) > 0 ? 'monto' : 'pct',
-        descuentoPct:   Number(d.descuentoPct ?? 0),
-        descuentoMonto: Number(d.descuentoMonto ?? 0),
       })));
     }
   }, [facturaEdit, form]);
@@ -218,33 +195,14 @@ export default function FacturaFormPage() {
   });
 
   // ── Cálculos ────────────────────────────────────────────────────────────────
-  const baseLineas = lineas.map(l => {
-    const bruto = l.precioUnitario * l.cantidad;
-    const disc  = l.descuentoTipo === 'pct'
-      ? r2(bruto * l.descuentoPct / 100)
-      : l.descuentoMonto;
-    return r2(bruto - disc);
-  });
-
-  const subtotalBruto = r2(baseLineas.reduce((s, b) => s + b, 0));
-
-  const descGeneralCalc = descuentoGeneralTipo === 'pct'
-    ? r2(subtotalBruto * descuentoGeneralPct / 100)
-    : descuentoGeneralMonto;
-
-  const baseGravable = r2(subtotalBruto - descGeneralCalc);
-  const discountFactor = subtotalBruto > 0 ? baseGravable / subtotalBruto : 1;
-
-  const iva = r2(
-    lineas.reduce((s, l, i) => s + r2(baseLineas[i] * (l.porcentajeIva / 100)), 0)
-    * discountFactor,
-  );
-  const total = r2(baseGravable + iva);
+  const subtotal = lineas.reduce((s, l) => s + l.precioUnitario * l.cantidad, 0);
+  const iva      = lineas.reduce((s, l) => s + l.precioUnitario * l.cantidad * (l.porcentajeIva / 100), 0);
+  const total    = subtotal + iva;
 
   // Cálculo retenciones E31
-  const montoRetItbisForm  = (tipoNcf === 'E31' && aplicaRetenciones && retieneItbis) ? r2(iva * pctRetItbis / 100) : 0;
-  const montoRetIsrForm    = (tipoNcf === 'E31' && aplicaRetenciones && retieneIsr)   ? r2(baseGravable * pctRetIsr / 100) : 0;
-  const netoCobrarForm     = r2(total - montoRetItbisForm - montoRetIsrForm);
+  const montoRetItbisForm  = (tipoNcf === 'E31' && aplicaRetenciones && retieneItbis) ? Number((iva  * pctRetItbis / 100).toFixed(2)) : 0;
+  const montoRetIsrForm    = (tipoNcf === 'E31' && aplicaRetenciones && retieneIsr)   ? Number((subtotal * pctRetIsr   / 100).toFixed(2)) : 0;
+  const netoCobrarForm     = Number((total - montoRetItbisForm - montoRetIsrForm).toFixed(2));
 
   // ── Handlers ────────────────────────────────────────────────────────────────
   const onClienteChange = (clienteId: number) => {
@@ -293,8 +251,6 @@ export default function FacturaFormPage() {
       cantidad:       l.cantidad,
       precioUnitario: l.precioUnitario,
       porcentajeIva:  l.porcentajeIva,
-      descuentoPct:   l.descuentoTipo === 'pct' ? l.descuentoPct : 0,
-      descuentoMonto: l.descuentoTipo === 'monto' ? l.descuentoMonto : 0,
     }));
 
     const payload = {
@@ -310,8 +266,6 @@ export default function FacturaFormPage() {
       tipoCambio:      values.tipoCambio ?? 1,
       tipoPago,
       diasCredito:     tipoPago === 'CREDITO' ? diasCredito : 0,
-      descuentoGeneralPct:   descuentoGeneralTipo === 'pct' ? descuentoGeneralPct : 0,
-      descuentoGeneralMonto: descuentoGeneralTipo === 'monto' ? descuentoGeneralMonto : 0,
       // Retenciones E31
       ...(tipoNcf === 'E31' && aplicaRetenciones ? {
         aplicaRetenciones: true,
@@ -340,7 +294,7 @@ export default function FacturaFormPage() {
   // ── Columnas de la tabla de líneas ──────────────────────────────────────────
   const lineaCols = [
     {
-      title: 'Producto', key: 'producto',
+      title: 'Producto', key: 'producto', width: 220,
       render: (_: unknown, r: LineaForm, idx: number) => (
         <Select style={{ width: '100%' }} placeholder="Seleccionar..." showSearch
           value={r.productoId}
@@ -350,76 +304,41 @@ export default function FacturaFormPage() {
       ),
     },
     {
-      title: 'Descripción', key: 'desc',
+      title: 'Descripción', key: 'desc', width: 180,
       render: (_: unknown, r: LineaForm, idx: number) => (
         <Input value={r.descripcion}
           onChange={e => { const u = [...lineas]; u[idx].descripcion = e.target.value; setLineas(u); }} />
       ),
     },
     {
-      title: 'Cant.', key: 'qty', width: 75,
+      title: 'Cantidad', key: 'qty', width: 90,
       render: (_: unknown, r: LineaForm, idx: number) => (
         <InputNumber min={1} precision={0} value={r.cantidad} style={{ width: '100%' }}
           onChange={v => { const u = [...lineas]; u[idx].cantidad = v ?? 1; setLineas(u); }} />
       ),
     },
     {
-      title: 'Precio', key: 'price', width: 110,
+      title: 'Precio (RD$)', key: 'price', width: 130,
       render: (_: unknown, r: LineaForm, idx: number) => (
         <InputNumber min={0} precision={2} value={r.precioUnitario} style={{ width: '100%' }}
           onChange={v => { const u = [...lineas]; u[idx].precioUnitario = v ?? 0; setLineas(u); }} />
       ),
     },
     {
-      title: 'ITBIS%', key: 'iva', width: 65,
+      title: 'ITBIS %', key: 'iva', width: 80,
       render: (_: unknown, r: LineaForm, idx: number) => (
         <InputNumber min={0} max={100} value={r.porcentajeIva} style={{ width: '100%' }}
           onChange={v => { const u = [...lineas]; u[idx].porcentajeIva = v ?? 18; setLineas(u); }} />
       ),
     },
     {
-      title: 'Descuento', key: 'disc', width: 148,
-      render: (_: unknown, r: LineaForm, idx: number) => {
-        const bruto = r.precioUnitario * r.cantidad;
-        return (
-          <Space.Compact size="small" style={{ width: '100%' }}>
-            <Select
-              size="small"
-              value={r.descuentoTipo}
-              style={{ width: 58 }}
-              onChange={v => {
-                const u = [...lineas];
-                u[idx] = { ...u[idx], descuentoTipo: v, descuentoPct: 0, descuentoMonto: 0 };
-                setLineas(u);
-              }}
-              options={[{ value: 'pct', label: '%' }, { value: 'monto', label: 'RD$' }]}
-            />
-            <InputNumber
-              size="small"
-              min={0}
-              max={r.descuentoTipo === 'pct' ? 100 : bruto}
-              precision={2}
-              value={r.descuentoTipo === 'pct' ? r.descuentoPct : r.descuentoMonto}
-              style={{ width: 90 }}
-              onChange={v => {
-                const u = [...lineas];
-                if (u[idx].descuentoTipo === 'pct') u[idx].descuentoPct = v ?? 0;
-                else u[idx].descuentoMonto = v ?? 0;
-                setLineas(u);
-              }}
-            />
-          </Space.Compact>
-        );
-      },
-    },
-    {
-      title: 'Base', key: 'sub', width: 100, align: 'right' as const,
-      render: (_: unknown, _r: LineaForm, idx: number) => (
-        <Text strong>{fmt.money(baseLineas[idx] ?? 0)}</Text>
+      title: 'Subtotal', key: 'sub', width: 120,
+      render: (_: unknown, r: LineaForm) => (
+        <Text strong>{fmt.money(r.precioUnitario * r.cantidad)}</Text>
       ),
     },
     {
-      title: '', key: 'del', width: 44,
+      title: '', key: 'del', width: 50,
       render: (_: unknown, _r: LineaForm, idx: number) => (
         <Button type="text" danger icon={<DeleteOutlined />}
           onClick={() => setLineas(lineas.filter((_, i) => i !== idx))} />
@@ -636,52 +555,12 @@ export default function FacturaFormPage() {
         <Card title="Líneas de factura" style={{ marginBottom: 16 }}
           extra={
             <Button icon={<PlusOutlined />}
-              onClick={() => setLineas([...lineas, { key: Date.now().toString(), cantidad: 1, precioUnitario: 0, porcentajeIva: 18, descuentoTipo: 'pct', descuentoPct: 0, descuentoMonto: 0 }])}>
+              onClick={() => setLineas([...lineas, { key: Date.now().toString(), cantidad: 1, precioUnitario: 0, porcentajeIva: 18 }])}>
               Agregar línea
             </Button>
           }>
           <Table columns={lineaCols as any} dataSource={lineas} rowKey="key"
-            pagination={false} size="small" />
-        </Card>
-
-        {/* ── Descuento general ──────────────────────────────────────────── */}
-        <Card size="small" style={{ marginBottom: 16 }}>
-          <Row align="middle" gutter={[8, 4]}>
-            <Col flex="none">
-              <Text style={{ fontSize: 13, fontWeight: 500 }}>Descuento general:</Text>
-            </Col>
-            <Col flex="none">
-              <Space.Compact size="small">
-                <Select
-                  size="small"
-                  value={descuentoGeneralTipo}
-                  style={{ width: 64 }}
-                  onChange={v => { setDescuentoGeneralTipo(v); setDescuentoGeneralPct(0); setDescuentoGeneralMonto(0); }}
-                  options={[{ value: 'pct', label: '%' }, { value: 'monto', label: 'RD$' }]}
-                />
-                <InputNumber
-                  size="small"
-                  min={0}
-                  max={descuentoGeneralTipo === 'pct' ? 100 : subtotalBruto}
-                  precision={2}
-                  value={descuentoGeneralTipo === 'pct' ? descuentoGeneralPct : descuentoGeneralMonto}
-                  style={{ width: 110 }}
-                  onChange={v => {
-                    if (descuentoGeneralTipo === 'pct') setDescuentoGeneralPct(v ?? 0);
-                    else setDescuentoGeneralMonto(v ?? 0);
-                  }}
-                />
-              </Space.Compact>
-            </Col>
-            {descGeneralCalc > 0 && (
-              <Col>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  = <Text strong style={{ color: '#059669' }}>-{fmt.money(descGeneralCalc)}</Text>
-                  {' '}sobre subtotal de {fmt.money(subtotalBruto)}
-                </Text>
-              </Col>
-            )}
-          </Row>
+            pagination={false} size="small" scroll={{ x: 'max-content' }} />
         </Card>
 
         {/* ── Retenciones E31 ─────────────────────────────────────────── */}
@@ -726,7 +605,7 @@ export default function FacturaFormPage() {
                     {retieneIsr && (
                       <Text type="secondary" style={{ fontSize: 12 }}>
                         Monto: <Text strong style={{ color: '#d97706' }}>-{fmt.money(montoRetIsrForm)}</Text>
-                        &nbsp;({pctRetIsr}% de {fmt.money(baseGravable)})
+                        &nbsp;({pctRetIsr}% de {fmt.money(subtotal)})
                       </Text>
                     )}
                   </Col>
@@ -743,23 +622,8 @@ export default function FacturaFormPage() {
               <Space direction="vertical" style={{ width: '100%' }}>
                 <Row justify="space-between">
                   <Text type="secondary">Subtotal</Text>
-                  <Text strong>{fmt.money(subtotalBruto)}</Text>
+                  <Text strong>{fmt.money(subtotal)}</Text>
                 </Row>
-                {descGeneralCalc > 0 && (
-                  <Row justify="space-between">
-                    <Text type="secondary" style={{ fontSize: 13 }}>
-                      (-) Descuento general
-                      {descuentoGeneralTipo === 'pct' ? ` (${descuentoGeneralPct}%)` : ''}
-                    </Text>
-                    <Text style={{ color: '#059669' }}>-{fmt.money(descGeneralCalc)}</Text>
-                  </Row>
-                )}
-                {descGeneralCalc > 0 && (
-                  <Row justify="space-between">
-                    <Text type="secondary">Base gravable</Text>
-                    <Text>{fmt.money(baseGravable)}</Text>
-                  </Row>
-                )}
                 <Row justify="space-between">
                   <Text type="secondary">ITBIS</Text>
                   <Text strong>{fmt.money(iva)}</Text>

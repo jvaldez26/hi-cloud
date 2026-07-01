@@ -11,8 +11,6 @@ interface DetalleLike {
   subtotal:       number | string;
   importeIva?:    number | string;
   iva?:           number | string;
-  descuentoPct?:  number | string;
-  descuentoMonto?: number | string;
 }
 
 function indicadorFacturacion(pct: number): 1 | 2 | 4 {
@@ -38,24 +36,12 @@ export function warnCuadraturaDGII(
   const cantidad     = Number(d.cantidad);
   const precio       = Number(d.precioUnitario);
   const subtotalRecibido  = round2(Number(d.subtotal));
-  const brutoBruto        = round2(cantidad * precio);
-
-  // Con descuento el MontoItem puede ser menor al bruto — no es error DGII
-  // (se incluye DescuentoOTipo en el XML). Solo advertir si subtotal > bruto + 0.01
-  if (subtotalRecibido > brutoBruto + 0.01) {
-    itemsLogger.warn(
-      `Cuadratura DGII [${context}] item="${d.descripcion}" ` +
-      `subtotal=${subtotalRecibido} SUPERA cant×precio=${brutoBruto}`,
-    );
-    return;
-  }
-  // Sin descuento: el subtotal debe igualar el bruto
-  const hayDescuento = Number(d.descuentoPct ?? 0) > 0 || Number(d.descuentoMonto ?? 0) > 0;
-  if (!hayDescuento && Math.abs(subtotalRecibido - brutoBruto) > 0.01) {
+  const subtotalCalculado = round2(cantidad * precio);
+  if (Math.abs(subtotalRecibido - subtotalCalculado) > 0.01) {
     itemsLogger.warn(
       `Cuadratura DGII [${context}] item="${d.descripcion}" ` +
       `cantidad=${cantidad} precio=${precio} ` +
-      `subtotalRecibido=${subtotalRecibido} subtotalCalculado=${brutoBruto}`,
+      `subtotalRecibido=${subtotalRecibido} subtotalCalculado=${subtotalCalculado}`,
     );
   }
 }

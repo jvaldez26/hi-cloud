@@ -39,72 +39,42 @@ export function buildE32(input: ECFBuildInput): MSellerPayload {
   const emisor = buildEmisor(toEmpresaConfig(config), fecha);
   assertEmisorOrder(emisor);
 
-  // ── Descuento general: distribuir proporcionalmente sobre MontoItem ────────
-  const subtotalBrutoME = detallesME.reduce((s, d) => s + round2(Number(d.subtotal)), 0);
-  const descGeneralME   = round2(Number((factura as any).descuentoGeneralMonto ?? 0));
-  const baseGravableME  = round2(subtotalBrutoME - descGeneralME);
-  const discFactor      = subtotalBrutoME > 0 && descGeneralME > 0
-    ? baseGravableME / subtotalBrutoME : 1;
-
-  const adjustedAmounts: number[] = [];
-  let runningAdj = 0;
-  for (let i = 0; i < detallesME.length; i++) {
-    const isLast = i === detallesME.length - 1;
-    let adj: number;
-    if (descGeneralME === 0) {
-      adj = round2(Number(detallesME[i].subtotal));
-    } else if (isLast) {
-      adj = round2(baseGravableME - runningAdj);
-    } else {
-      adj = round2(Number(detallesME[i].subtotal) * discFactor);
-      runningAdj += adj;
-    }
-    adjustedAmounts.push(adj);
-  }
-
   // PASO 2: construir items con DOP
   const items = detallesME.map((d: any, idx: number) => {
+    warnCuadraturaDGII(d, encf);
     const precioME = Number(d.precioUnitario);
-    const cantME   = Number(d.cantidad);
-    const brutME   = round2(precioME * cantME);
-    const adjME    = adjustedAmounts[idx];
+    const montoME  = Number(d.subtotal);
     const pct      = parseFloat(String(d.porcentajeIva ?? 18));
     const indFact  = pct >= 18 ? 1 : pct >= 16 ? 2 : 4;
-    const pctDesc  = brutME > 0.005 && adjME < brutME - 0.005
-      ? round2((1 - adjME / brutME) * 100) : 0;
-    if (pctDesc === 0 && Math.abs(adjME - brutME) > 0.01) {
-      warnCuadraturaDGII({ ...d, subtotal: adjME }, encf);
-    }
-    const otME = mc.otraMonedaItem(precioME, adjME);
+    const otME     = mc.otraMonedaItem(precioME, montoME);
     return {
       NumeroLinea:            idx + 1,
       IndicadorFacturacion:   indFact,
       NombreItem:             d.descripcion,
       IndicadorBienoServicio: 1,
-      CantidadItem:           cap4(cantME),
+      CantidadItem:           cap4(d.cantidad),
       UnidadMedida:           43,
       PrecioUnitarioItem:     round2(mc.toDOP(precioME)),
-      ...(pctDesc > 0 ? { DescuentoOTipo: pctDesc } : {}),
       ...(otME ? { OtraMonedaDetalle: otME } : {}),
-      MontoItem:              round2(mc.toDOP(adjME)),
+      MontoItem:              round2(mc.toDOP(montoME)),
     };
   });
 
-  // PASO 3: calcular totales DESDE los items ajustados en RD$
+  // PASO 3: calcular totales DESDE los items en RD$
   let montoGravado18 = 0, montoGravado16 = 0, montoExento = 0;
   let itbis18 = 0, itbis16 = 0;
 
-  detallesME.forEach((d: any, idx: number) => {
-    const pct   = parseFloat(String(d.porcentajeIva ?? 18));
-    const adjME = adjustedAmounts[idx];
-    const sub   = round2(mc.toDOP(adjME));
-    const iva   = round2(sub * (pct / 100));
+  detallesME.forEach((d: any) => {
+    const pct = parseFloat(String(d.porcentajeIva ?? 18));
+    const sub = round2(mc.toDOP(Number(d.subtotal)));
+    const iva = round2(mc.toDOP(Number(d.importeIva ?? d.iva ?? 0)));
     if (pct >= 18)      { montoGravado18 += sub; itbis18 += iva; }
     else if (pct >= 16) { montoGravado16 += sub; itbis16 += iva; }
     else                { montoExento += sub; }
   });
 
   const montoGravadoTotal = round2(montoGravado18 + montoGravado16);
+  const hayGravado: 0 | 1 = montoGravadoTotal > 0 ? 0 : 0; // siempre 0 en E32
   const totalITBIS = round2(itbis18 + itbis16);
   const montoTotal = round2(montoGravadoTotal + montoExento + totalITBIS);
 
@@ -124,10 +94,10 @@ export function buildE32(input: ECFBuildInput): MSellerPayload {
   if (montoExento > 0) totales['MontoExento'] = round2(montoExento);
   totales['MontoTotal'] = montoTotal;
 
-  // PASO 4: OtraMoneda si USD — calcular desde items ajustados
-  const totalME  = Number(factura.total);
-  const subtotME = round2(adjustedAmounts.reduce((s, a) => s + a, 0));
-  const itbisME  = round2(subtotME * 0.18); // simplificado para moneda extranjera
+  // PASO 4: OtraMoneda si USD
+  const totalME   = Number(factura.total);
+  const subtotME  = Number((factura as any).subtotal ?? factura.total);
+  const itbisME   = Number((factura as any).iva ?? 0);
   const otMEEncab = mc.otraMonedaGravados(subtotME, itbisME, totalME);
 
   const comprador = rnc
