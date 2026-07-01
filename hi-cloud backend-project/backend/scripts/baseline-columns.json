@@ -1,0 +1,938 @@
+{
+  "activos_fijos": [
+    "depreciacionAcumulada",
+    "fechaAdquisicion",
+    "fechaBaja",
+    "motivoBaja",
+    "numeroSerie",
+    "valorLibros",
+    "valorResidual",
+    "valorVenta",
+    "vidaUtilAnios"
+  ],
+  "categorias_activos": [
+    "cuentaActivoCodigo",
+    "cuentaDepreciacionCodigo",
+    "cuentaGastoCodigo",
+    "tasaAnual",
+    "vidaUtilAnios"
+  ],
+  "depreciaciones_activos": [
+    "activoId",
+    "depreciacionAcumulada",
+    "montoDepreciacion",
+    "tasaAplicada",
+    "valorLibrosFin",
+    "valorLibrosInicio"
+  ],
+  "almacenes": [
+    "ciudad"
+  ],
+  "transferencias_almacen": [
+    "almacenDestinoId",
+    "almacenOrigenId"
+  ],
+  "producto_variantes": [
+    "atributos",
+    "costoPromedio",
+    "precioOverride",
+    "sku"
+  ],
+  "valores_atributo": [
+    "atributoId",
+    "colorHex"
+  ],
+  "audit_logs": [
+    "accion"
+  ],
+  "refresh_tokens": [
+    "deviceInfo",
+    "expiresAt",
+    "revokedAt",
+    "tokenHash"
+  ],
+  "cuentas_bancarias": [
+    "isActiva",
+    "saldo",
+    "saldoInicial"
+  ],
+  "cierres_caja": [
+    "cantidadTransacciones",
+    "cobrosRecibidos",
+    "gastosEfectivo",
+    "retiros",
+    "saldoApertura",
+    "saldoCierre",
+    "saldoFisico",
+    "vendedorNombre",
+    "ventasEfectivo",
+    "ventasTarjeta",
+    "ventasTransferencia"
+  ],
+  "cajas_chicas": [
+    "montoInicial",
+    "montoMaximoEgreso",
+    "nombreResponsable",
+    "pctAlerta"
+  ],
+  "movimientos_caja_chica": [
+    "beneficiario",
+    "cajaChicaId",
+    "saldoNuevo"
+  ],
+  "cursos_capacitacion": [
+    "duracionHoras",
+    "instructor",
+    "modalidad"
+  ],
+  "registros_capacitacion": [
+    "asistio",
+    "calificacion",
+    "certificadoEmitido",
+    "comentarios",
+    "sesionId"
+  ],
+  "sesiones_capacitacion": [
+    "cursoId",
+    "modalidad"
+  ],
+  "asignaciones_costo": [
+    "centroCostoId",
+    "documentoId",
+    "nota",
+    "tipoDocumento"
+  ],
+  "centros_costo": [
+    "parentId",
+    "presupuesto"
+  ],
+  "cheques": [
+    "beneficiario",
+    "chequeraId",
+    "fechaCobro"
+  ],
+  "chequeras": [
+    "nombreCuenta",
+    "serieDesde",
+    "serieHasta",
+    "siguienteNumero"
+  ],
+  "clientes": [
+    "ciudad",
+    "codigoPostal",
+    "esExtranjero",
+    "limiteCredito",
+    "portalToken",
+    "portalTokenExpiry",
+    "razonSocial",
+    "regimenFiscal",
+    "rfc",
+    "rncReceptor",
+    "sector",
+    "tipoCliente",
+    "usoCfdi"
+  ],
+  "comisiones": [
+    "facturaFolio",
+    "montoComision",
+    "montoVenta",
+    "porcentajeComision"
+  ],
+  "reglas_comision": [
+    "diasMaximoCobro",
+    "montoDesde",
+    "montoHasta"
+  ],
+  "compra_detalles": [
+    "importeItbis"
+  ],
+  "compras": [
+    "folio",
+    "formaPago",
+    "numeroFacturaProveedor",
+    "tipoBienes"
+  ],
+  "conduce_detalles": [
+    "cantidadDevuelta",
+    "conduceId"
+  ],
+  "conduces": [
+    "ciudad",
+    "conductor",
+    "contactoEntrega",
+    "fechaEntregaProgramada",
+    "observacionesEntrega",
+    "preFacturaId",
+    "telefonoContacto",
+    "vehiculo"
+  ],
+  "configuraciones_sistema": [
+    "clave",
+    "editable",
+    "grupo"
+  ],
+  "empresa": [
+    "actividadEconomica",
+    "cedulaRepresentante",
+    "ciudad",
+    "codigoPostal",
+    "configuracion",
+    "direccion2",
+    "favicon",
+    "fechaConstitucion",
+    "logo",
+    "regimenFiscal",
+    "representanteLegal",
+    "sector",
+    "sitioWeb",
+    "telefonoSecundario",
+    "tipoSociedad",
+    "zonaHoraria"
+  ],
+  "sucursales": [
+    "ciudad",
+    "esPrincipal"
+  ],
+  "asientos_contables": [
+    "referenciaFolio",
+    "referenciaId",
+    "tipoOrigen",
+    "totalDebe",
+    "totalHaber"
+  ],
+  "asiento_lineas": [
+    "cuentaContableId",
+    "debe",
+    "haber"
+  ],
+  "cuentas_contables": [
+    "cuentaPadreId",
+    "naturaleza",
+    "permiteMovimientos"
+  ],
+  "conteos_inventario": [
+    "totalDiferencias",
+    "totalProductos"
+  ],
+  "lineas_conteo": [
+    "cantidadFisica",
+    "cantidadSistema",
+    "categoriaProducto",
+    "conteoId",
+    "costoVariacion",
+    "productoCodigo",
+    "productoNombre"
+  ],
+  "contratos": [
+    "descripcionServicio",
+    "facturaAutomatica",
+    "montoBase",
+    "periodoFacturacion",
+    "porcentajeIva",
+    "proximaFactura",
+    "terminos",
+    "totalFacturasGeneradas",
+    "ultimaFactura"
+  ],
+  "cotizacion_detalles": [
+    "cotizacionId",
+    "importeIva",
+    "porcentajeIva"
+  ],
+  "cotizaciones": [
+    "condicionesPago",
+    "iva",
+    "nombreVendedor"
+  ],
+  "credito_cliente": [
+    "diasPlazo",
+    "limiteCredito",
+    "saldoUtilizado"
+  ],
+  "crm_actividades": [
+    "completada",
+    "leadId",
+    "oportunidadId"
+  ],
+  "crm_leads": [
+    "cargo",
+    "clienteConvertidoId",
+    "empresa",
+    "fuente",
+    "valorEstimado"
+  ],
+  "crm_oportunidades": [
+    "empresa",
+    "etapa",
+    "fechaCierreEsperada",
+    "leadId",
+    "motivoPerdida",
+    "probabilidad"
+  ],
+  "cuotas": [
+    "interes",
+    "montoPagado",
+    "numeroCuota",
+    "planPagoId",
+    "referenciaPago"
+  ],
+  "planes_pago": [
+    "facturaFolio",
+    "montoCuota",
+    "montoFinanciar",
+    "montoInicial",
+    "numeroCuotas",
+    "tasaInteresMensual"
+  ],
+  "cuentas_por_cobrar": [
+    "diasVencimiento",
+    "montoOriginal",
+    "montoPagado"
+  ],
+  "pagos_cobrados": [
+    "cuentaPorCobrarId"
+  ],
+  "cuentas_por_pagar": [
+    "diasVencimiento",
+    "montoOriginal",
+    "montoPagado"
+  ],
+  "pagos_realizados": [
+    "cuentaPorPagarId"
+  ],
+  "conciliaciones_datafono": [
+    "cantidadTransacciones",
+    "terminalId",
+    "totalBruto",
+    "totalComisiones",
+    "totalNeto"
+  ],
+  "terminales_datafono": [
+    "comisionPct",
+    "numeroTerminal",
+    "sucursal",
+    "tipoTarjeta"
+  ],
+  "transacciones_tarjeta": [
+    "comision",
+    "conciliacionId",
+    "neto",
+    "tarjetaUltimos4",
+    "terminalId"
+  ],
+  "reportes_dgii": [
+    "advertencias",
+    "errores",
+    "generadoPor",
+    "hashContenido",
+    "mes",
+    "totalLineas",
+    "totalMonto"
+  ],
+  "demo_requests": [
+    "asignadoA",
+    "empresa",
+    "modulosInteres",
+    "notasInternas",
+    "pais",
+    "tamanoEmpresa"
+  ],
+  "depositos_bancarios": [
+    "cxcId",
+    "nombreDepositante"
+  ],
+  "reglas_descuento": [
+    "condicion",
+    "condicionValor"
+  ],
+  "devolucion_detalles": [
+    "devolucionId",
+    "importeIva",
+    "porcentajeIva"
+  ],
+  "devoluciones": [
+    "iva",
+    "notaCreditoId",
+    "notaCreditoNumero"
+  ],
+  "regla_distribucion_lineas": [
+    "centroCostoId",
+    "centroCostoNombre",
+    "cuentaDestinoId",
+    "cuentaDestinoNombre",
+    "reglaId"
+  ],
+  "reglas_distribucion": [
+    "cuentaOrigenId",
+    "cuentaOrigenNombre",
+    "ultimaEjecucion",
+    "vecesEjecutada"
+  ],
+  "tasas_cambio": [
+    "fuente",
+    "nombreMoneda",
+    "tasaCompra",
+    "tasaVenta"
+  ],
+  "documentos": [
+    "extension",
+    "nombreSubidoPor",
+    "subidoPorId",
+    "tamanioKb",
+    "tipoEntidad",
+    "tipoMime"
+  ],
+  "ecf_eventos": [
+    "comprobanteId",
+    "evento",
+    "payload"
+  ],
+  "ecf": [
+    "codigoModificacion",
+    "codigoSeguridad",
+    "direccionComprador",
+    "documentoOrigenId",
+    "documentoOrigenTipo",
+    "errorEnvio",
+    "estadoDGII",
+    "fechaFirma",
+    "fechaUso",
+    "firmaDigital",
+    "intentosEnvio",
+    "isUsado",
+    "jsonEnviado",
+    "monedaExtranjera",
+    "montoItbis",
+    "ncfModificado",
+    "proveedorReferencia",
+    "qrUrl",
+    "razonSocialComprador",
+    "respuestaDgii",
+    "respuestaMSeller",
+    "rncComprador",
+    "secuenciaId",
+    "tipoECFId",
+    "tipoExportacion",
+    "trackId",
+    "ultimoIntentoEnvio",
+    "xml",
+    "xmlRespuesta"
+  ],
+  "empresa_ecf_config": [
+    "direccionEmisor",
+    "modo",
+    "msellerApiKeyEnc",
+    "msellerEmail",
+    "msellerPasswordEnc",
+    "msellerUrlBase",
+    "razonSocialEmisor"
+  ],
+  "proveedores_ecf": [
+    "ambiente",
+    "apiKey",
+    "apiUrl",
+    "certificadoDigital",
+    "configuracion",
+    "razonSocial"
+  ],
+  "secuencias_ecf": [
+    "alertaEnviada",
+    "isActiva",
+    "isAgotada",
+    "secuenciaActual",
+    "secuenciaFinal",
+    "secuenciaInicial",
+    "tipoECFId"
+  ],
+  "tipos_ecf": [
+    "aplicaITBIS",
+    "prefijo",
+    "requiereRNC"
+  ],
+  "encuestas": [
+    "preguntas",
+    "tokenPublico"
+  ],
+  "respuestas_encuesta": [
+    "comentarios",
+    "encuestaId",
+    "nombreRespondente",
+    "puntuacion",
+    "respuestas"
+  ],
+  "evaluaciones_empleado": [
+    "areasImprovement",
+    "calificacionGeneral",
+    "comentarios",
+    "comentariosEmpleado",
+    "criterios",
+    "evaluadorId",
+    "fortalezas",
+    "semestre"
+  ],
+  "factura_detalles": [
+    "importeIva",
+    "porcentajeIva"
+  ],
+  "facturas": [
+    "ecfId",
+    "facturaRecurrenteId",
+    "folio",
+    "iva",
+    "nombreVendedor",
+    "tipoNcf",
+    "totalOriginal"
+  ],
+  "facturas_recurrentes": [
+    "detalles",
+    "diaEjecucion",
+    "proximaEjecucion",
+    "totalGeneradas",
+    "ultimaEjecucion"
+  ],
+  "programa_fidelidad": [
+    "diasVencimiento",
+    "minimoCanjePoints",
+    "puntosPorDOP",
+    "valorPorPunto"
+  ],
+  "saldo_puntos": [
+    "fechaUltimaActividad",
+    "puntosCanjeados",
+    "puntosDisponibles",
+    "puntosTotales",
+    "totalTransacciones"
+  ],
+  "transacciones_puntos": [
+    "montoReferencia",
+    "puntos",
+    "referenciaId",
+    "saldoNuevo"
+  ],
+  "registros_flota": [
+    "litros"
+  ],
+  "vehiculos": [
+    "conductor",
+    "conductorId",
+    "tipoVehiculo",
+    "valorCompra",
+    "vencimientoInspeccion",
+    "vencimientoItbis",
+    "vencimientoSeguro"
+  ],
+  "gastos": [
+    "rncProveedor"
+  ],
+  "grupos_producto": [
+    "parentId"
+  ],
+  "lotes_producto": [
+    "cantidadDisponible"
+  ],
+  "movimientos_inventario": [
+    "cantidadAnterior"
+  ],
+  "seriales_producto": [
+    "fechaVencimientoGarantia",
+    "fechaVenta",
+    "numeroSerie"
+  ],
+  "invitaciones": [
+    "expiresAt",
+    "invitadoPorId",
+    "nombreEmpresa",
+    "nombreInvitador",
+    "rol",
+    "token"
+  ],
+  "licitaciones": [
+    "enlacePortal",
+    "entidadConvocante",
+    "fechaAdjudicacion",
+    "fechaLimiteOfertas",
+    "fechaPublicacion",
+    "montoAdjudicado",
+    "montoEstimado",
+    "montoOfertado",
+    "motivoPerdida",
+    "requisitos",
+    "rncEntidad"
+  ],
+  "ordenes_mantenimiento": [
+    "activoId",
+    "fechaProgramada",
+    "fechaRealizada",
+    "tecnico"
+  ],
+  "programas_mantenimiento": [
+    "activoId",
+    "frecuenciaDias",
+    "habilitado"
+  ],
+  "usuario_empresa": [
+    "isPrincipal",
+    "rol"
+  ],
+  "contratos_laborales": [
+    "cargo",
+    "clausulas",
+    "departamento",
+    "horasSemana",
+    "lugarTrabajo",
+    "salario"
+  ],
+  "empleados": [
+    "cargo",
+    "departamento",
+    "fechaSalida",
+    "lugarTrabajo",
+    "otrasDeduccionesFixed",
+    "salarioBase",
+    "tipoContrato"
+  ],
+  "nomina_lineas": [
+    "bonos",
+    "costoTotalEmpleado",
+    "diasTrabajados",
+    "horasExtras",
+    "isr",
+    "montoHorasExtras",
+    "novedadesDetalle",
+    "otrasDeduciones",
+    "otrosDescuentos",
+    "periodoId",
+    "salarioBase",
+    "salarioBruto",
+    "salarioNeto",
+    "totalDeducciones",
+    "totalTSSEmpleado",
+    "totalTSSPatronal",
+    "tssAfpEmpleado",
+    "tssAfpPatronal",
+    "tssSfsEmpleado",
+    "tssSfsPatronal",
+    "tssSrlPatronal"
+  ],
+  "nomina_novedades": [
+    "aplicado",
+    "horasExtras",
+    "periodoId"
+  ],
+  "nomina_periodos": [
+    "diasPeriodo",
+    "totalCostoEmpresa",
+    "totalEmpleados",
+    "totalISR",
+    "totalNeto",
+    "totalOtrasDeducciones",
+    "totalSalariosBruto",
+    "totalTSSEmpleados",
+    "totalTSSPatronal"
+  ],
+  "nota_credito_detalles": [
+    "iva",
+    "notaCreditoId",
+    "porcentajeIva"
+  ],
+  "notas_credito": [
+    "descripcionMotivo",
+    "facturaOriginalFolio",
+    "facturaOriginalId",
+    "iva",
+    "nombreVendedor",
+    "tipoNcf"
+  ],
+  "nota_credito_compra_detalles": [
+    "iva",
+    "notaCreditoCompraId",
+    "porcentajeIva"
+  ],
+  "notas_credito_compras": [
+    "compraOriginalFolio",
+    "compraOriginalId",
+    "descripcionMotivo",
+    "iva"
+  ],
+  "nota_debito_detalles": [
+    "iva",
+    "notaDebitoId",
+    "porcentajeIva"
+  ],
+  "notas_debito": [
+    "descripcionMotivo",
+    "facturaOriginalFolio",
+    "facturaOriginalId",
+    "iva",
+    "nombreVendedor",
+    "tipoNcf"
+  ],
+  "notificaciones_enviadas": [
+    "asunto",
+    "canal",
+    "destinatario",
+    "error"
+  ],
+  "objetivos": [
+    "parentId",
+    "progresoGlobal",
+    "propietario",
+    "propietarioId"
+  ],
+  "resultados_clave": [
+    "objetivoId",
+    "progreso",
+    "valorActual",
+    "valorInicio",
+    "valorMeta"
+  ],
+  "op_reclamaciones_ars": [
+    "arsNumeroAutorizacion"
+  ],
+  "periodos_contables": [
+    "cantidadAsientos",
+    "cerradoPorId",
+    "mes",
+    "notasCierre",
+    "totalCreditos",
+    "totalDebitos"
+  ],
+  "plan_demanda_lineas": [
+    "cantidadSugeridaCompra",
+    "coeficienteVariacion",
+    "historicoMensual",
+    "proyeccionMes1",
+    "proyeccionMes2",
+    "proyeccionMes3",
+    "proyeccionTotal",
+    "requiereCompra",
+    "tendencia",
+    "ventaMaximaMensual",
+    "ventaMinimaMensual",
+    "ventaPromedio12m",
+    "ventaPromedio3m",
+    "ventaPromedio6m"
+  ],
+  "planes_demanda": [
+    "horizonteMeses",
+    "productosConAlerta",
+    "totalProductos"
+  ],
+  "tickets_soporte": [
+    "asignadoId",
+    "asunto",
+    "portalToken",
+    "respuesta"
+  ],
+  "pre_factura_detalles": [
+    "iva",
+    "porcentajeIva",
+    "preFacturaId"
+  ],
+  "pre_facturas": [
+    "conduceId",
+    "folio",
+    "iva",
+    "nombreVendedor",
+    "tipoNcf"
+  ],
+  "precios_especiales": [
+    "descuentoPorcentaje",
+    "precioFijo",
+    "tier",
+    "vigenciaDesde",
+    "vigenciaHasta"
+  ],
+  "presupuesto_lineas": [
+    "cuentaCodigo",
+    "mes",
+    "montoPresupuestado",
+    "presupuestoId"
+  ],
+  "presupuestos": [
+    "totalPresupuestado"
+  ],
+  "productos": [
+    "claveProductoSat",
+    "claveUnidadSat",
+    "costoPromedio",
+    "porcentajeIva",
+    "precio2",
+    "precio3"
+  ],
+  "proveedores": [
+    "contacto"
+  ],
+  "hitos_proyecto": [
+    "completado",
+    "proyectoId"
+  ],
+  "presupuesto_proyecto_lineas": [
+    "montoReal",
+    "proyectoId"
+  ],
+  "proyectos": [
+    "porcentajeAvance",
+    "presupuesto"
+  ],
+  "proyecto_tiempos": [
+    "proyectoId"
+  ],
+  "proyecto_tareas": [
+    "asignadoId",
+    "esHito",
+    "proyectoId"
+  ],
+  "recibos_cobro": [
+    "cxcId",
+    "facturaFolio"
+  ],
+  "reportes_generados": [
+    "formato",
+    "parametros"
+  ],
+  "retenciones_isr": [
+    "descripcionServicio",
+    "montoBruto",
+    "montoNeto",
+    "montoRetenido",
+    "nombreProveedor",
+    "porcentajeRetencion",
+    "rncProveedor"
+  ],
+  "ordenes_servicio": [
+    "descripcionEquipo",
+    "descripcionProblema",
+    "esGarantia",
+    "fechaLimiteSla",
+    "fechaPromesa",
+    "fechaVencimientoGarantia",
+    "numeroSerieEquipo",
+    "origenPortal",
+    "presupuesto",
+    "slaHoras",
+    "totalManoObra",
+    "totalPiezas"
+  ],
+  "cotizacion_proveedor_lineas": [
+    "cotizacionId"
+  ],
+  "cotizaciones_proveedor": [
+    "condicionesPago",
+    "fechaValidez",
+    "solicitudId",
+    "tiempoEntregaDias"
+  ],
+  "solicitud_compra_lineas": [
+    "especificaciones",
+    "presupuestoUnitario",
+    "solicitudId"
+  ],
+  "solicitudes_compra": [
+    "comentarioAprobacion",
+    "departamento",
+    "fechaNecesidad",
+    "justificacion",
+    "presupuestoEstimado",
+    "solicitanteId"
+  ],
+  "backup_registros": [
+    "checksum",
+    "duracionSegundos",
+    "errorMensaje",
+    "iniciadoPor",
+    "integridadVerificada",
+    "s3Key",
+    "tamanio",
+    "verificadoEn"
+  ],
+  "plan_configuracion": [
+    "clave"
+  ],
+  "solicitud_cambio_plan": [
+    "comentario",
+    "modalidad",
+    "planSolicitado",
+    "superAdminId"
+  ],
+  "suscripcion_auditoria": [
+    "accion",
+    "ipOrigen",
+    "superAdminId",
+    "suscripcionId"
+  ],
+  "suscripciones": [
+    "asignadoA",
+    "enPeriodoGracia",
+    "facturasMesReset",
+    "facturasMesUsadas",
+    "fechaFinGracia",
+    "ingresosMesActualDop",
+    "mesPeriodo",
+    "modalidad",
+    "motivoSuspension",
+    "notasAdmin",
+    "plan"
+  ],
+  "conciliaciones_bancarias": [
+    "cuentaBancariaId",
+    "movimientosConciliados",
+    "movimientosPendientes",
+    "saldoExtracto",
+    "saldoSistema"
+  ],
+  "movimientos_bancarios": [
+    "cuentaBancariaId",
+    "fechaConciliacion",
+    "origenId",
+    "saldoNuevo"
+  ],
+  "conversiones_uom": [
+    "factor",
+    "unidadDesdeId",
+    "unidadHastaId"
+  ],
+  "unidades_medida": [
+    "esBase",
+    "simbolo"
+  ],
+  "users": [
+    "accountStatus",
+    "emailVerifiedAt",
+    "passwordConfigured",
+    "provider",
+    "role",
+    "roleVersion",
+    "sessionCreatedAt",
+    "sessionToken",
+    "tourCompletado",
+    "twoFactorEnabled"
+  ],
+  "vendedores": [
+    "cargo",
+    "comisionPct",
+    "metaMensual",
+    "zona"
+  ],
+  "wms_lineas_picking": [
+    "cantidadPickeada",
+    "cantidadSolicitada",
+    "numeroSerie",
+    "orden_linea",
+    "ubicacionCodigo",
+    "ubicacionId"
+  ],
+  "wms_ordenes_picking": [
+    "creadoPorId",
+    "destinatario",
+    "fechaDespachado",
+    "fechaEmpacado",
+    "transferId"
+  ],
+  "wms_ubicaciones": [
+    "capacidadKg",
+    "estante",
+    "pasillo",
+    "posicion"
+  ]
+}

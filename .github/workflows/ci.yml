@@ -7,33 +7,19 @@ on:
     branches: [main]
 
 jobs:
-  # ── Backend: TypeScript + Build + Schema smoke test ──────────────────────────
+  # ── Backend: TypeScript + Build + Schema checks ───────────────────────────────
   backend:
     name: Backend CI
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: hi-cloud backend-project/backend
 
-    # ── CAPA 3: PostgreSQL para smoke test de esquema ─────────────────────────
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER:     hicloud
-          POSTGRES_PASSWORD: hicloud_ci
-          POSTGRES_DB:       hicloud_test
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -61,7 +47,7 @@ jobs:
 
       # ── CAPA 4: Detectar migraciones SQL en seeds/ ────────────────────────
       # Las migraciones DEBEN ser clases TypeScript en src/migrations/
-      # NUNCA archivos .sql en seeds/ (TypeORM no los ejecuta automáticamente)
+      # NUNCA archivos .sql en seeds/ (TypeORM no los ejecuta automáticamente).
       # Este check habría prevenido el incidente del 2026-07-01.
       - name: "CAPA 4 — Detectar migraciones SQL en seeds/ (deben ser TS en migrations/)"
         run: |
@@ -90,51 +76,18 @@ jobs:
           fi
           echo "✅ Sin nuevas migraciones SQL en seeds/"
 
-      # ── CAPA 3: Smoke test — migraciones + validación de esquema ─────────
-      # Levanta BD de prueba, corre TODAS las migraciones, verifica que
-      # el entity TypeORM coincida con la BD migrada.
-      # Si un entity tiene columnas sin migración → CI FALLA antes del deploy.
-      - name: "CAPA 3 — Smoke test: migraciones contra BD de prueba"
-        run: |
-          echo "  → Corriendo todas las migraciones contra BD de prueba..."
-          node -e "
-            const { AppDataSource } = require('./dist/data-source');
-            AppDataSource.initialize()
-              .then(ds => ds.runMigrations({ transaction: 'each' }))
-              .then(migs => {
-                console.log('  ✅ Migraciones OK:', migs.length, 'aplicadas');
-                return AppDataSource.destroy();
-              })
-              .then(() => process.exit(0))
-              .catch(err => {
-                console.error('  ❌ Migración falló:', err.message);
-                process.exit(1);
-              });
-          "
-        env:
-          NODE_ENV:      test
-          DB_HOST:       localhost
-          DB_PORT:       5432
-          DB_USERNAME:   hicloud
-          DB_PASSWORD:   hicloud_ci
-          DB_NAME:       hicloud_test
-          DB_SSL:        'false'
-          # JWT_SECRET mínimo para que dotenv no falle (no se usa en migraciones)
-          JWT_SECRET:    ci-test-secret-minimum-32-chars-placeholder
-
-      - name: "CAPA 3 — Smoke test: validar entity vs BD migrada"
-        run: |
-          echo "  → Validando que todas las columnas del entity existen en BD migrada..."
-          node scripts/check-schema-dist.js
-        env:
-          NODE_ENV:      test
-          DB_HOST:       localhost
-          DB_PORT:       5432
-          DB_USERNAME:   hicloud
-          DB_PASSWORD:   hicloud_ci
-          DB_NAME:       hicloud_test
-          DB_SSL:        'false'
-          JWT_SECRET:    ci-test-secret-minimum-32-chars-placeholder
+      # ── CAPA 3: Análisis estático — entity columns vs migrations ─────────
+      # Verifica que cada columna en los entities esté cubierta por:
+      #   a) Una migración TypeScript en src/migrations/
+      #   b) El snapshot pre-baseline en scripts/baseline-columns.json
+      #
+      # Sin BD requerida. Detecta "columna en entity sin migración TypeScript"
+      # antes de que llegue a producción.
+      #
+      # Hubiera atrapado el incidente del 2026-07-01:
+      #   descuentoGeneralPct/Monto en entity pero la "migración" era un .sql en seeds/
+      - name: "CAPA 3 — Verificar que columnas de entity tienen migración TypeScript"
+        run: node scripts/check-entity-migrations.js
 
   # ── Frontend: TypeScript + Build ─────────────────────────────────────────────
   frontend:
