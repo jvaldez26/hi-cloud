@@ -215,6 +215,7 @@ const MENU_CATEGORIES: MenuCategory[] = [
     id: 'fiscal', label: 'Fiscal (DGII)', Icon: Receipt, sectionLabel: 'GESTIÓN',
     items: [
       { path: '/ecf',           label: 'e-CF — Panel DGII' },
+      { path: '/ecf-recibidos', label: 'e-CF Recibidos' },
       { path: '/declaraciones', label: 'Declaraciones 606/607' },
       { path: '/retenciones',   label: 'Retenciones ISR' },
     ],
@@ -490,6 +491,7 @@ const PATH_ROLES: Record<string, string[]> = {
   '/flujo-caja':            ADMIN_CONT,
   '/distribucion-costos':   ADMIN_CONT,
   '/ecf':                   ADMIN_CONT,
+  '/ecf-recibidos':         ADMIN_CONT,
   '/retenciones':           ADMIN_CONT,
   '/declaraciones':         ADMIN_CONT,
   '/reportes':              ADMIN_CONT_VEND,
@@ -1657,6 +1659,7 @@ export default function AppLayout() {
       '/distribucion-costos':    () => import('../../pages/distribucion-costos/DistribucionCostosPage'),
       // ── Fiscal ───────────────────────────────────────────────────
       '/ecf':                    () => import('../../pages/ecf/ECFPage'),
+      '/ecf-recibidos':          () => import('../../pages/ecf-recibidos/EcfRecibidosPage'),
       '/declaraciones':          () => import('../../pages/declaraciones/DeclaracionesPage'),
       '/retenciones':            () => import('../../pages/retenciones/RetencionesPage'),
       // ── Comercial & Servicios ─────────────────────────────────────

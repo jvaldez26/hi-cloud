@@ -37,6 +37,7 @@ const ActivosFijosPage   = lazy(() => import('./pages/activos-fijos/ActivosFijos
 const PresupuestosPage   = lazy(() => import('./pages/presupuestos/PresupuestosPage'));
 const ConfiguracionPage  = lazy(() => import('./pages/configuracion/ConfiguracionPage'));
 const ECFPage            = lazy(() => import('./pages/ecf/ECFPage'));
+const EcfRecibidosPage   = lazy(() => import('./pages/ecf-recibidos/EcfRecibidosPage'));
 const AuditoriaPage      = lazy(() => import('./pages/auditoria/AuditoriaPage'));
 const ProfilePage        = lazy(() => import('./pages/profile/ProfilePage'));
 const CotizacionesPage   = lazy(() => import('./pages/cotizaciones/CotizacionesPage'));
@@ -625,6 +626,7 @@ export default function App() {
                     {/* ── Operaciones ── */}
                     <Route path="/inventario"         element={<InventarioPage />} />
                     <Route path="/ecf"                element={<ECFPage />} />
+                    <Route path="/ecf-recibidos"      element={<EcfRecibidosPage />} />
 
                     {/* ── Finanzas ── */}
                     <Route path="/cxc"                element={<CxCPage />} />

@@ -133,6 +133,7 @@ import { ProFormaModule }             from './pro-forma/pro-forma.module';
 import { PrestamistatModule }         from './prestamista/prestamista.module';
 import { AgroModule }               from './agro/agro.module';
 import { TransporteModule }         from './transporte/transporte.module';
+import { EcfRecibidosModule }       from './ecf-recibidos/ecf-recibidos.module';
 
 @Module({
   imports: [
@@ -350,6 +351,7 @@ import { TransporteModule }         from './transporte/transporte.module';
     PrestamistatModule,
     AgroModule,
     TransporteModule,
+    EcfRecibidosModule,
   ],
   controllers: [AppController],
   providers: [
