@@ -74,8 +74,8 @@ export class ECFController {
 
   @Post('secuencias')
   @HttpCode(HttpStatus.CREATED)
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Registrar nueva secuencia autorizada por DGII (solo ADMIN)' })
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Registrar nueva secuencia autorizada por DGII' })
   createSecuencia(
     @Body() dto: CreateSecuenciaECFDto,
     @GetUser() usuario: User,
