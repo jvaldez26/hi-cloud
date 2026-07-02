@@ -134,4 +134,17 @@ export class Factura extends TenantBaseEntity {
   /** Valor del descuento general: importe RD$ o porcentaje (0-100) */
   @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true, default: null })
   descuentoGeneralValor?: number;
+
+  // ── Orden de Compra ───────────────────────────────────────────────────────
+  @Column({ length: 100, nullable: true, default: null })
+  ordenCompraNumero?: string;
+
+  @Column({ type: 'text', nullable: true, default: null })
+  ordenCompraUrl?: string;
+
+  // ── Formas de pago (múltiples métodos) ───────────────────────────────────
+  // [{ tipo: 1, monto: 5000.00, referencia?: 'ref' }]
+  // Tipos DGII: 1=Efectivo 2=Cheque/Transfer 3=Tarjeta 4=Crédito 5=Permuta 6=Nota Crédito
+  @Column({ type: 'jsonb', nullable: true, default: null })
+  formasPago?: { tipo: number; monto: number; referencia?: string }[];
 }

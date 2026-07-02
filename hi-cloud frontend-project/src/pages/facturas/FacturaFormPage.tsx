@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Form, Input, Button, Card, Row, Col, Typography, Select,
          DatePicker, Table, InputNumber, Space, Divider, message, Tag, Alert,
-         Modal, theme, Spin, Checkbox, Tooltip } from 'antd';
+         Modal, theme, Spin, Checkbox, Tooltip, Upload } from 'antd';
 import { PlusOutlined, DeleteOutlined, ArrowLeftOutlined,
-         SafetyCertificateOutlined, SearchOutlined } from '@ant-design/icons';
+         SafetyCertificateOutlined, SearchOutlined, PaperClipOutlined,
+         FileOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
-import { facturasApi, type FacturaDetallePayload } from '../../api/facturas.api';
+import { facturasApi, type FacturaDetallePayload, type FormaPagoPayload } from '../../api/facturas.api';
 import { clientesApi } from '../../api/clientes.api';
 import { productosApi } from '../../api/productos.api';
 import api from '../../api/client';
@@ -67,6 +68,12 @@ export default function FacturaFormPage() {
   // Descuento general
   const [descGeneralTipo,  setDescGeneralTipo]  = useState<'monto' | 'porcentaje'>('monto');
   const [descGeneralValor, setDescGeneralValor] = useState(0);
+
+  // Orden de Compra
+  const [ordenCompraNumero, setOrdenCompraNumero] = useState('');
+
+  // Múltiples formas de pago
+  const [formasPago, setFormasPago] = useState<FormaPagoPayload[]>([]);
 
   // Retenciones (solo E31)
   const [aplicaRetenciones, setAplicaRetenciones] = useState(false);
@@ -138,6 +145,10 @@ export default function FacturaFormPage() {
     // Poblar RNC desde el cliente de la factura
     const rfc = ((facturaEdit as any).cliente?.rfc ?? '').replace(/\D/g, '').slice(0, 11);
     setRncInput(rfc);
+
+    // OC y formas de pago
+    setOrdenCompraNumero((facturaEdit as any).ordenCompraNumero ?? '');
+    setFormasPago((facturaEdit as any).formasPago ?? []);
 
     // Líneas
     const detallesCargados: any[] = (facturaEdit as any).detalles ?? [];
@@ -370,6 +381,10 @@ export default function FacturaFormPage() {
       diasCredito:     tipoPago === 'CREDITO' ? diasCredito : 0,
       // RNC comprador validado
       ...(/^\d{9}$|^\d{11}$/.test(rncInput) ? { rncComprador: rncInput } : {}),
+      // Orden de Compra
+      ...(ordenCompraNumero.trim() ? { ordenCompraNumero: ordenCompraNumero.trim() } : {}),
+      // Formas de pago múltiples
+      ...(formasPago.length > 0 ? { formasPago } : {}),
       // Descuento general
       ...(descGeneralValor > 0 ? {
         descuentoGeneralTipo:  descGeneralTipo,
@@ -424,7 +439,7 @@ export default function FacturaFormPage() {
     {
       title: 'Cantidad', key: 'qty', width: 80,
       render: (_: unknown, r: LineaForm, idx: number) => (
-        <InputNumber min={1} precision={0} value={r.cantidad} style={{ width: '100%' }}
+        <InputNumber min={0.0001} precision={4} value={r.cantidad} style={{ width: '100%' }}
           onChange={v => { const u = [...lineas]; u[idx].cantidad = v ?? 1; setLineas(u); }} />
       ),
     },
@@ -675,10 +690,19 @@ export default function FacturaFormPage() {
                     </Form.Item>
                   </Col>
                 )}
-                <Col xs={24} sm={getFieldValue('moneda') !== 'DOP' ? 19 : 24}>
+                <Col xs={12} sm={getFieldValue('moneda') !== 'DOP' ? 6 : 8}>
+                  <Form.Item label={<span style={{ fontSize: 12 }}>N° Orden Compra</span>}
+                    style={{ marginBottom: 4 }}>
+                    <Input value={ordenCompraNumero} maxLength={100}
+                      placeholder="OC-2025-001"
+                      prefix={<PaperClipOutlined style={{ color: '#ccc' }} />}
+                      onChange={e => setOrdenCompraNumero(e.target.value)} />
+                  </Form.Item>
+                </Col>
+                <Col xs={12} sm={getFieldValue('moneda') !== 'DOP' ? 13 : 16}>
                   <Form.Item name="notas" label={<span style={{ fontSize: 12 }}>Notas</span>}
                     style={{ marginBottom: 4 }}>
-                    <Input.TextArea rows={1} placeholder="Referencia, orden de compra, etc." />
+                    <Input.TextArea rows={1} placeholder="Referencia interna, instrucciones de entrega, etc." />
                   </Form.Item>
                 </Col>
               </Row>
@@ -757,6 +781,79 @@ export default function FacturaFormPage() {
               </Col>
             )}
           </Row>
+        </Card>
+
+        {/* ── Formas de pago múltiples ───────────────────────────────────── */}
+        <Card size="small" style={{ marginBottom: 12 }}
+          title={
+            <span style={{ fontSize: 13 }}>
+              Formas de pago
+              <Text type="secondary" style={{ fontSize: 11, marginLeft: 8 }}>
+                (opcional — desglose de cómo se recibirá el pago)
+              </Text>
+            </span>
+          }
+          extra={
+            <Button size="small" icon={<PlusOutlined />}
+              onClick={() => setFormasPago([...formasPago, { tipo: 1, monto: 0 }])}>
+              Agregar
+            </Button>
+          }>
+          {formasPago.length === 0 ? (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              Sin formas de pago especificadas — se asume el tipo de comprobante (contado/crédito).
+            </Text>
+          ) : (
+            <Space direction="vertical" style={{ width: '100%' }}>
+              {formasPago.map((fp, idx) => (
+                <Row key={idx} gutter={[8, 0]} align="middle">
+                  <Col xs={24} sm={9}>
+                    <Select value={fp.tipo} style={{ width: '100%' }}
+                      onChange={v => {
+                        const u = [...formasPago]; u[idx].tipo = v; setFormasPago(u);
+                      }}>
+                      <Select.Option value={1}>💵 Efectivo</Select.Option>
+                      <Select.Option value={2}>🏦 Cheque / Transferencia</Select.Option>
+                      <Select.Option value={3}>💳 Tarjeta débito/crédito</Select.Option>
+                      <Select.Option value={4}>📋 Crédito (a plazo)</Select.Option>
+                      <Select.Option value={5}>🔄 Permuta</Select.Option>
+                      <Select.Option value={6}>📝 Nota de crédito</Select.Option>
+                    </Select>
+                  </Col>
+                  <Col xs={12} sm={6}>
+                    <InputNumber min={0} precision={2} value={fp.monto} style={{ width: '100%' }}
+                      placeholder="Monto RD$"
+                      onChange={v => {
+                        const u = [...formasPago]; u[idx].monto = v ?? 0; setFormasPago(u);
+                      }} />
+                  </Col>
+                  <Col xs={10} sm={7}>
+                    <Input value={fp.referencia ?? ''} placeholder="Ref. opcional (# transacción, cheque...)"
+                      onChange={e => {
+                        const u = [...formasPago]; u[idx].referencia = e.target.value; setFormasPago(u);
+                      }} />
+                  </Col>
+                  <Col xs={2} sm={2}>
+                    <Button type="text" danger icon={<DeleteOutlined />}
+                      onClick={() => setFormasPago(formasPago.filter((_, i) => i !== idx))} />
+                  </Col>
+                </Row>
+              ))}
+              {/* Validación: suma vs total */}
+              {(() => {
+                const sumaFP = r2(formasPago.reduce((s, fp) => s + fp.monto, 0));
+                const diff   = r2(Math.abs(sumaFP - total));
+                if (diff > 0.01 && sumaFP > 0) return (
+                  <Alert type="warning" showIcon style={{ padding: '4px 10px', fontSize: 12 }}
+                    message={`La suma de formas de pago (${fmt.money(sumaFP)}) no coincide con el total (${fmt.money(total)}) — diferencia: ${fmt.money(diff)}`} />
+                );
+                if (sumaFP > 0 && diff <= 0.01) return (
+                  <Text style={{ fontSize: 12, color: '#059669' }}>✓ Suma cuadra con el total</Text>
+                );
+                return null;
+              })()}
+            </Space>
+          )}
         </Card>
 
         {/* ── Retenciones E31 ────────────────────────────────────────────── */}

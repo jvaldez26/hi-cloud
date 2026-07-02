@@ -1,4 +1,4 @@
-﻿import api from './client';
+import api from './client';
 import type { ApiResponse, PaginatedData, Factura, FacturaEstado } from '../types';
 
 export interface FacturaDetallePayload {
@@ -8,6 +8,12 @@ export interface FacturaDetallePayload {
   porcentajeIva?: number;
   descuentoPct?:   number;
   descuentoMonto?: number;
+}
+
+export interface FormaPagoPayload {
+  tipo: 1 | 2 | 3 | 4 | 5 | 6;  // 1=Efectivo 2=Cheque/Transfer 3=Tarjeta 4=Crédito 5=Permuta 6=NC
+  monto: number;
+  referencia?: string;
 }
 
 export interface EmitirPosBody {
@@ -35,6 +41,8 @@ export interface FacturaPayload {
   tipoCambio?:     number;
   descuentoGeneralTipo?:  'monto' | 'porcentaje';
   descuentoGeneralValor?: number;
+  ordenCompraNumero?:     string;
+  formasPago?:            FormaPagoPayload[];
 }
 
 export const facturasApi = {
@@ -100,4 +108,13 @@ export const facturasApi = {
   /** Duplica una factura — crea nueva en borrador con mismo cliente e ítems */
   duplicar: (id: number) =>
     api.post(`/facturas/${id}/duplicar`).then(r => r.data.data ?? r.data),
+
+  /** Sube archivo de Orden de Compra (PDF/imagen, max 10MB) y asocia a la factura */
+  uploadOrdenCompra: (id: number, file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api.post<ApiResponse<{ url: string }>>(`/facturas/${id}/orden-compra`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then(r => r.data.data ?? r.data);
+  },
 };

@@ -11,8 +11,12 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
   Res,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { FacturasService } from './facturas.service';
@@ -283,6 +287,26 @@ export class FacturasController {
     @GetUser() usuario: User,
   ) {
     return this.facturasService.duplicar(id, usuario.id);
+  }
+
+  @Post(':id/orden-compra')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Subir PDF/imagen de la Orden de Compra y asociarla a la factura' })
+  @UseInterceptors(FileInterceptor('file', {
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+      if (allowed.includes(file.mimetype)) cb(null, true);
+      else cb(new BadRequestException('Solo se aceptan PDF, JPG, PNG o WEBP'), false);
+    },
+  }))
+  async subirOrdenCompra(
+    @Param('id', ParseIntPipe) id: number,
+    @UploadedFile() file?: { buffer: Buffer; mimetype: string; originalname: string; size: number },
+  ) {
+    if (!file) throw new BadRequestException('No se recibió archivo');
+    return this.facturasService.subirOrdenCompra(id, file);
   }
 
   @Get(':id/recibo-pdf')

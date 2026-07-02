@@ -24,6 +24,7 @@ import { LimitesService } from '../suscripciones/limites.service';
 import { EmitirECFUseCase, DatosCompradorECF } from '../ecf/use-cases/emitir-ecf.use-case';
 import { DocumentoOrigenTipo } from '../ecf/entities/ecf.entity';
 import { TipoClienteECF } from '../clientes/entities/cliente.entity';
+import { S3Service } from '../common/s3/s3.service';
 
 @Injectable()
 export class FacturasService {
@@ -44,6 +45,7 @@ export class FacturasService {
     private realtimeService:   RealtimeService,
     private limitesService:    LimitesService,
     private emitirECFUseCase:  EmitirECFUseCase,
+    private s3Service:         S3Service,
     @InjectDataSource() private dataSource: DataSource,
   ) {}
 
@@ -148,7 +150,11 @@ export class FacturasService {
     // Si es moneda extranjera, totalOriginal = monto en esa moneda; total = DOP
     const totalOriginal = moneda !== 'DOP' ? +(totalDOP / tipoCambio).toFixed(2) : undefined;
 
-    const tipoPago   = dto.tipoPago?.toUpperCase() === 'CREDITO' ? 'CREDITO' : 'CONTADO';
+    // Si hay formasPago explícitas, derivar tipoPago de ellas (tipo 4 = crédito)
+    let tipoPago = dto.tipoPago?.toUpperCase() === 'CREDITO' ? 'CREDITO' : 'CONTADO';
+    if (dto.formasPago?.length) {
+      tipoPago = dto.formasPago.some(f => f.tipo === 4) ? 'CREDITO' : 'CONTADO';
+    }
 
     // Validar límite de crédito antes de crear la factura
     if (tipoPago === 'CREDITO' && dto.clienteId) {
@@ -224,6 +230,8 @@ export class FacturasService {
       descuentoGeneralValor: Number(dto.descuentoGeneralValor ?? 0) > 0
         ? dto.descuentoGeneralValor
         : undefined,
+      ordenCompraNumero: dto.ordenCompraNumero ?? undefined,
+      formasPago: dto.formasPago?.length ? dto.formasPago : undefined,
     });
 
     let savedFactura: Factura;
@@ -333,7 +341,10 @@ export class FacturasService {
     const totalDOP      = r2u(subtotalFactura + ivaFactura);
     const totalOriginal = moneda !== 'DOP' ? +(totalDOP / tipoCambio).toFixed(2) : undefined;
 
-    const tipoPago  = dto.tipoPago?.toUpperCase() === 'CREDITO' ? 'CREDITO' : 'CONTADO';
+    let tipoPago = dto.tipoPago?.toUpperCase() === 'CREDITO' ? 'CREDITO' : 'CONTADO';
+    if (dto.formasPago?.length) {
+      tipoPago = dto.formasPago.some(f => f.tipo === 4) ? 'CREDITO' : 'CONTADO';
+    }
     const diasCred  = tipoPago === 'CREDITO' ? (dto.diasCredito ?? 30) : 0;
     const fechaVenc = tipoPago === 'CREDITO'
       ? (() => { const d = new Date(); d.setDate(d.getDate() + diasCred); return d; })()
@@ -364,10 +375,31 @@ export class FacturasService {
       fechaVencimiento: fechaVenc,
       descuentoGeneralTipo:  dgtU ?? null,
       descuentoGeneralValor: dgvU > 0 ? dgvU : null,
+      ordenCompraNumero:     dto.ordenCompraNumero ?? null,
+      formasPago:            dto.formasPago?.length ? dto.formasPago : null,
     } as any);
 
     this.realtimeService.notify(factura.empresaId, 'factura', 'updated', id);
     return this.findOne(id);
+  }
+
+  /** Subir archivo de Orden de Compra y persistir URL en S3 */
+  async subirOrdenCompra(id: number, file: { buffer: Buffer; mimetype: string; originalname: string }): Promise<{ url: string }> {
+    const empresaId = this.tenantService.getEmpresaId();
+    const factura   = await this.findOne(id);
+    const url = await this.s3Service.upload(
+      file.buffer,
+      file.originalname,
+      file.mimetype,
+      'ordenes-compra',
+      empresaId,
+    );
+    if (!url) throw new BadRequestException('Almacenamiento S3 no configurado');
+    await this.facturaRepository.update(
+      { id: factura.id, empresaId } as any,
+      { ordenCompraUrl: url },
+    );
+    return { url };
   }
 
   async findAll(pagination: PaginationDto & {

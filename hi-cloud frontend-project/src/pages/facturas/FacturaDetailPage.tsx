@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Button, Card, Descriptions, Table, Tag, Row, Col, Typography,
-         Statistic, Space, Spin, Steps, message, Popconfirm, Modal, Input, Tooltip, theme } from 'antd';
-import { ArrowLeftOutlined, SendOutlined, MailOutlined, FilePdfOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons';
+         Statistic, Space, Spin, Steps, message, Popconfirm, Modal, Input, Tooltip, theme, Upload } from 'antd';
+import { ArrowLeftOutlined, SendOutlined, MailOutlined, FilePdfOutlined, EyeOutlined,
+         PaperClipOutlined, UploadOutlined, LinkOutlined } from '@ant-design/icons';
 import WhatsAppButton from '../../components/ui/WhatsAppButton';
 import EcfSeccion from '../../components/ui/EcfSeccion';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -47,6 +48,8 @@ export default function FacturaDetailPage() {
 
   const [emailOpen,    setEmailOpen]    = useState(false);
   const [emailDestino, setEmailDestino] = useState('');
+  const [uploadingOC,  setUploadingOC]  = useState(false);
+  const ocInputRef = useRef<HTMLInputElement>(null);
 
   const emailMut = useMutation({
     mutationFn: () =>
@@ -62,6 +65,19 @@ export default function FacturaDetailPage() {
   });
 
   // handleDescargarPDF removed — replaced by PrintButton component
+
+  const handleUploadOC = async (file: File) => {
+    setUploadingOC(true);
+    try {
+      await facturasApi.uploadOrdenCompra(Number(id), file);
+      message.success('Orden de Compra adjuntada correctamente');
+      qc.invalidateQueries({ queryKey: ['factura', id] });
+    } catch (e: any) {
+      message.error(e?.response?.data?.message ?? 'Error al subir archivo');
+    } finally {
+      setUploadingOC(false);
+    }
+  };
 
   if (isLoading) return <Spin size="large" style={{ display: 'block', margin: '80px auto' }} />;
   if (!factura)  return <Text type="danger">Factura no encontrada</Text>;
@@ -276,10 +292,59 @@ export default function FacturaDetailPage() {
           </Card>
 
           {factura.notas && (
-            <Card title="Notas" size="small">
+            <Card title="Notas" size="small" style={{ marginTop: 16 }}>
               <Text>{factura.notas}</Text>
             </Card>
           )}
+
+          {/* ── Formas de pago ─────────────────────────────────── */}
+          {((factura as any).formasPago?.length > 0) && (
+            <Card title="Formas de pago" size="small" style={{ marginTop: 16 }}>
+              {((factura as any).formasPago as { tipo: number; monto: number; referencia?: string }[]).map((fp, i) => {
+                const TIPO_LABEL: Record<number, string> = {
+                  1: '💵 Efectivo', 2: '🏦 Cheque/Transfer', 3: '💳 Tarjeta',
+                  4: '📋 Crédito', 5: '🔄 Permuta', 6: '📝 Nota de crédito',
+                };
+                return (
+                  <Row key={i} justify="space-between" style={{ marginBottom: 4 }}>
+                    <Text type="secondary">{TIPO_LABEL[fp.tipo] ?? `Tipo ${fp.tipo}`}
+                      {fp.referencia ? <span style={{ fontSize: 11 }}> · {fp.referencia}</span> : null}
+                    </Text>
+                    <Text strong>{fmt.money(fp.monto)}</Text>
+                  </Row>
+                );
+              })}
+            </Card>
+          )}
+
+          {/* ── Orden de Compra ────────────────────────────────── */}
+          <Card title="Orden de Compra" size="small" style={{ marginTop: 16 }}>
+            {(factura as any).ordenCompraNumero && (
+              <Row style={{ marginBottom: 8 }}>
+                <PaperClipOutlined style={{ marginRight: 6, color: '#6b7280' }} />
+                <Text strong>{(factura as any).ordenCompraNumero}</Text>
+              </Row>
+            )}
+            {(factura as any).ordenCompraUrl ? (
+              <Button type="link" icon={<LinkOutlined />} style={{ padding: 0 }}
+                href={(factura as any).ordenCompraUrl} target="_blank" rel="noopener">
+                Ver documento adjunto
+              </Button>
+            ) : (
+              <div>
+                <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
+                  Sin archivo adjunto
+                </Text>
+                <input ref={ocInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp"
+                  style={{ display: 'none' }}
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleUploadOC(f); }} />
+                <Button size="small" icon={<UploadOutlined />} loading={uploadingOC}
+                  onClick={() => ocInputRef.current?.click()}>
+                  Adjuntar PDF / Imagen
+                </Button>
+              </div>
+            )}
+          </Card>
         </Col>
       </Row>
 

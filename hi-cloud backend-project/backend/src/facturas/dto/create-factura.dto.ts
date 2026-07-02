@@ -16,6 +16,17 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
+export class FormaPagoDto {
+  @IsInt() @Min(1) @Max(6)
+  tipo: number;  // 1=Efectivo 2=Cheque/Transfer 3=Tarjeta 4=Crédito 5=Permuta 6=NC
+
+  @IsNumber({ maxDecimalPlaces: 2 }) @IsPositive()
+  monto: number;
+
+  @IsOptional() @IsString() @MaxLength(200)
+  referencia?: string;
+}
+
 export class CreateFacturaDetalleDto {
   @IsOptional()
   @IsInt()
@@ -145,4 +156,15 @@ export class CreateFacturaDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   descuentoGeneralValor?: number;
+
+  // ── Orden de Compra ───────────────────────────────────────────────────────
+  @IsOptional() @IsString() @MaxLength(100)
+  ordenCompraNumero?: string;
+
+  // ── Formas de pago múltiples ──────────────────────────────────────────────
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => FormaPagoDto)
+  formasPago?: FormaPagoDto[];
 }
