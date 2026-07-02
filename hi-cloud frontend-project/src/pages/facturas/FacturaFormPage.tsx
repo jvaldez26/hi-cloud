@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Form, Input, Button, Card, Row, Col, Typography, Select,
          DatePicker, Table, InputNumber, Space, Divider, message, Tag, Alert,
-         Modal, theme, Spin, Checkbox, Tooltip, Upload } from 'antd';
+         Modal, theme, Spin, Checkbox, Tooltip } from 'antd';
 import { PlusOutlined, DeleteOutlined, ArrowLeftOutlined,
          SafetyCertificateOutlined, SearchOutlined, PaperClipOutlined,
-         FileOutlined } from '@ant-design/icons';
+         FileOutlined, BarcodeOutlined, PrinterOutlined, MailOutlined,
+         EyeOutlined, SaveOutlined, UserAddOutlined, CreditCardOutlined,
+         FileTextOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { facturasApi, type FacturaDetallePayload, type FormaPagoPayload } from '../../api/facturas.api';
@@ -19,9 +21,34 @@ import RncBadge from '../../components/ui/RncBadge';
 import type { Cliente } from '../../types';
 import dayjs from 'dayjs';
 
-const { Title, Text } = Typography;
-
+const { Text } = Typography;
 const r2 = (n: number) => Math.round(n * 100) / 100;
+
+// ─── Design tokens ─────────────────────────────────────────────────────────────
+const D = {
+  primary:       '#2563EB',
+  primaryBg:     '#EFF6FF',
+  primaryBorder: '#BFDBFE',
+  green:         '#059669',
+  greenBg:       '#ECFDF5',
+  greenBorder:   '#A7F3D0',
+  orange:        '#D97706',
+  orangeBg:      '#FFFBEB',
+  orangeBorder:  '#FDE68A',
+  red:           '#DC2626',
+  redBg:         '#FEF2F2',
+  border:        '#E5E7EB',
+  bg:            '#F8FAFC',
+  card:          '#FFFFFF',
+  text:          '#111827',
+  textSec:       '#6B7280',
+  textTer:       '#9CA3AF',
+  radius:        12,
+  radiusSm:      8,
+  shadow:        '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
+  shadowLg:      '0 4px 12px rgba(0,0,0,0.08)',
+  font:          'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+};
 
 interface LineaForm {
   key: string;
@@ -37,7 +64,7 @@ interface LineaForm {
 const NCF_VENTAS = ['E31', 'E32', 'E41', 'E44', 'E45', 'E46', 'E47'];
 
 const lineaVacia = (): LineaForm => ({
-  key: Date.now().toString(),
+  key: Date.now().toString() + Math.random(),
   cantidad: 1,
   precioUnitario: 0,
   porcentajeIva: 18,
@@ -45,8 +72,15 @@ const lineaVacia = (): LineaForm => ({
   descuentoValor: 0,
 });
 
-// Estilo compacto compartido para todos los Form.Item del encabezado
-const fi = { marginBottom: 8 };
+const lbl = {
+  fontSize: 11,
+  fontWeight: 600,
+  color: D.textSec,
+  textTransform: 'uppercase' as const,
+  letterSpacing: '0.05em',
+  display: 'block' as const,
+  marginBottom: 6,
+};
 
 export default function FacturaFormPage() {
   const { token } = theme.useToken();
@@ -61,21 +95,14 @@ export default function FacturaFormPage() {
   const [diasCredito, setDiasCredito] = useState(30);
   const [clienteSeleccionado, setClienteSeleccionado] = useState<Cliente | null>(null);
 
-  // RNC lookup
   const rnc = useRncLookup();
   const [rncInput, setRncInput] = useState('');
 
-  // Descuento general
   const [descGeneralTipo,  setDescGeneralTipo]  = useState<'monto' | 'porcentaje'>('monto');
   const [descGeneralValor, setDescGeneralValor] = useState(0);
-
-  // Orden de Compra
   const [ordenCompraNumero, setOrdenCompraNumero] = useState('');
-
-  // Múltiples formas de pago
   const [formasPago, setFormasPago] = useState<FormaPagoPayload[]>([]);
 
-  // Retenciones (solo E31)
   const [aplicaRetenciones, setAplicaRetenciones] = useState(false);
   const [retieneItbis,      setRetieneItbis]       = useState(false);
   const [pctRetItbis,       setPctRetItbis]        = useState(30);
@@ -111,7 +138,7 @@ export default function FacturaFormPage() {
     queryFn:  () => api.get('/auth/mis-sucursales').then((r: any) => r.data?.data ?? r.data ?? []),
   });
 
-  // ── Carga de factura existente (modo edición) ──────────────────────────────
+  // ── Carga factura en edición ────────────────────────────────────────────────
   const { data: facturaEdit, isLoading: loadingEdit } = useQuery({
     queryKey: ['factura-edit', id],
     queryFn:  () => facturasApi.getOne(Number(id)),
@@ -121,7 +148,6 @@ export default function FacturaFormPage() {
 
   useEffect(() => {
     if (!facturaEdit) return;
-
     form.setFieldsValue({
       clienteId:  (facturaEdit as any).clienteId,
       fecha:      dayjs((facturaEdit as any).fecha),
@@ -131,26 +157,17 @@ export default function FacturaFormPage() {
       tipoCambio: (facturaEdit as any).tipoCambio,
       sucursalId: (facturaEdit as any).sucursalId,
     });
-
     setTipoNcf((facturaEdit as any).tipoNcf ?? 'E32');
     setTipoPago(((facturaEdit as any).tipoPago ?? 'CONTADO') as 'CONTADO' | 'CREDITO');
     setDiasCredito(Number((facturaEdit as any).diasCredito ?? 30));
-
-    // Descuento general
     const dgt = (facturaEdit as any).descuentoGeneralTipo;
     const dgv = Number((facturaEdit as any).descuentoGeneralValor ?? 0);
     setDescGeneralTipo(dgt === 'porcentaje' ? 'porcentaje' : 'monto');
     setDescGeneralValor(dgv);
-
-    // Poblar RNC desde el cliente de la factura
     const rfc = ((facturaEdit as any).cliente?.rfc ?? '').replace(/\D/g, '').slice(0, 11);
     setRncInput(rfc);
-
-    // OC y formas de pago
     setOrdenCompraNumero((facturaEdit as any).ordenCompraNumero ?? '');
     setFormasPago((facturaEdit as any).formasPago ?? []);
-
-    // Líneas
     const detallesCargados: any[] = (facturaEdit as any).detalles ?? [];
     if (detallesCargados.length > 0) {
       setLineas(detallesCargados.map((d: any, i: number) => {
@@ -170,14 +187,12 @@ export default function FacturaFormPage() {
     }
   }, [facturaEdit, form]);
 
-  // Auto-seleccionar sucursal en modo creación
   useEffect(() => {
     if (editMode) return;
     if (sucursales.length === 1) form.setFieldValue('sucursalId', sucursales[0].id);
     else if (sucursalActual) form.setFieldValue('sucursalId', sucursalActual);
   }, [sucursales, sucursalActual, editMode]);
 
-  // Poblar clienteSeleccionado al cargar edición
   useEffect(() => {
     if (!facturaEdit || !clientes?.data) return;
     const cli = clientes.data.find((c: Cliente) => c.id === (facturaEdit as any).clienteId) ?? null;
@@ -220,7 +235,6 @@ export default function FacturaFormPage() {
     },
   });
 
-  // Anticipos activos del cliente
   const clienteIdWatch = Form.useWatch('clienteId', form);
   const { data: anticiposCliente = [] } = useQuery<any[]>({
     queryKey: ['anticipos-activos-cliente', clienteIdWatch],
@@ -280,22 +294,17 @@ export default function FacturaFormPage() {
   }, 0));
   const total = r2(baseGravable + ivaTotal);
 
-  const montoRetItbisForm = (tipoNcf === 'E31' && aplicaRetenciones && retieneItbis) ? r2(ivaTotal      * pctRetItbis / 100) : 0;
-  const montoRetIsrForm   = (tipoNcf === 'E31' && aplicaRetenciones && retieneIsr)   ? r2(baseGravable  * pctRetIsr   / 100) : 0;
+  const montoRetItbisForm = (tipoNcf === 'E31' && aplicaRetenciones && retieneItbis) ? r2(ivaTotal     * pctRetItbis / 100) : 0;
+  const montoRetIsrForm   = (tipoNcf === 'E31' && aplicaRetenciones && retieneIsr)   ? r2(baseGravable * pctRetIsr   / 100) : 0;
   const netoCobrarForm    = r2(total - montoRetItbisForm - montoRetIsrForm);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
-
-  /** Actualiza sugerencia de tipo NCF según tipo de cliente */
   const actualizarTipoNcf = useCallback((cli: Cliente | null) => {
     if (!cli) return;
     const tipoMapa: Record<string, string> = {
-      persona_juridica: 'E31',
-      persona_fisica:   'E31',
-      consumidor_final: 'E32',
-      extranjero:       'E46',
-      regimen_especial: 'E44',
-      gubernamental:    'E45',
+      persona_juridica: 'E31', persona_fisica: 'E31',
+      consumidor_final: 'E32', extranjero: 'E46',
+      regimen_especial: 'E44', gubernamental: 'E45',
     };
     const sugerido = tipoMapa[(cli as any)?.tipoCliente ?? 'consumidor_final'] ?? 'E32';
     if (sugerido === 'E31' && !(cli?.rfc && /^\d{9,11}$/.test((cli.rfc ?? '').trim()))) {
@@ -310,14 +319,12 @@ export default function FacturaFormPage() {
     setClienteSeleccionado(cli);
     if ((cli as any)?.diasCredito > 0) setDiasCredito((cli as any).diasCredito);
     actualizarTipoNcf(cli);
-    // Poblar campo RNC con el del cliente seleccionado
     const rfc = ((cli as any)?.rfc ?? '').replace(/\D/g, '').slice(0, 11);
     setRncInput(rfc);
     if (/^\d{9}$|^\d{11}$/.test(rfc)) rnc.consultarDebounced(rfc);
     else rnc.limpiar();
   };
 
-  /** Intenta auto-seleccionar cliente por RFC exacto en la lista cargada */
   const intentarAutoseleccionPorRNC = useCallback((clean: string) => {
     if (!clientes?.data || form.getFieldValue('clienteId')) return false;
     const match = clientes.data.find(
@@ -333,23 +340,16 @@ export default function FacturaFormPage() {
     return false;
   }, [clientes?.data, form, actualizarTipoNcf]);
 
-  /** Cuando el lookup DGII resuelve (asíncrono), reintenta match por RFC
-   *  y además intenta match por nombre DGII en la lista de clientes */
   useEffect(() => {
     if (!rnc.datos?.encontrado) return;
     const clean = rncInput.replace(/\D/g, '');
     if (!/^\d{9}$|^\d{11}$/.test(clean)) return;
-    if (form.getFieldValue('clienteId')) return;     // ya seleccionado
-
-    // 1. Intento por RFC exacto
+    if (form.getFieldValue('clienteId')) return;
     if (intentarAutoseleccionPorRNC(clean)) return;
-
-    // 2. Fallback: buscar por nombre DGII en la lista de clientes
     const nombreDGII = (rnc.datos.nombre ?? '').toLowerCase();
     if (!nombreDGII || !clientes?.data) return;
     const matchNombre = clientes.data.find((c: Cliente) => {
       const cn = (c.nombre ?? '').toLowerCase();
-      // Coincidencia si los primeros 8 chars del nombre DGII están en el nombre del cliente o viceversa
       return cn.length > 4 && (nombreDGII.includes(cn.substring(0, 8)) || cn.includes(nombreDGII.substring(0, 8)));
     });
     if (matchNombre) {
@@ -358,14 +358,14 @@ export default function FacturaFormPage() {
       if ((matchNombre as any)?.diasCredito > 0) setDiasCredito((matchNombre as any).diasCredito);
       actualizarTipoNcf(matchNombre);
     }
-  }, [rnc.datos, clientes?.data]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rnc.datos, clientes?.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onRncChange = (val: string) => {
     const clean = val.replace(/\D/g, '').slice(0, 11);
     setRncInput(clean);
     if (/^\d{9}$|^\d{11}$/.test(clean)) {
-      intentarAutoseleccionPorRNC(clean);     // intento inmediato (si clientes ya cargó)
-      rnc.consultarDebounced(clean);          // lookup DGII asíncrono (reintento en useEffect)
+      intentarAutoseleccionPorRNC(clean);
+      rnc.consultarDebounced(clean);
     } else {
       rnc.limpiar();
     }
@@ -385,6 +385,22 @@ export default function FacturaFormPage() {
     setLineas(updated);
   };
 
+  // ── Atajo de teclado ───────────────────────────────────────────────────────
+  useEffect(() => {
+    const handle = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName?.toUpperCase();
+      const isInput = ['INPUT', 'TEXTAREA'].includes(tag);
+      if (e.key === 'Escape') { navigate('/facturas'); return; }
+      if (e.key === 'F9')    { e.preventDefault(); form.submit(); return; }
+      if (e.key === 'Enter' && !isInput) {
+        e.preventDefault();
+        setLineas(prev => [...prev, lineaVacia()]);
+      }
+    };
+    window.addEventListener('keydown', handle);
+    return () => window.removeEventListener('keydown', handle);
+  }, [form, navigate]);
+
   const handleSubmit = (values: {
     clienteId: number; fecha: dayjs.Dayjs; notas?: string;
     vendedorId?: number; moneda?: string; tipoCambio?: number;
@@ -399,7 +415,6 @@ export default function FacturaFormPage() {
       descuentoMonto: l.descuentoTipo === 'monto'      ? (l.descuentoValor || 0) : 0,
       descuentoPct:   l.descuentoTipo === 'porcentaje' ? (l.descuentoValor || 0) : 0,
     }));
-
     const payload = {
       clienteId:       values.clienteId,
       fecha:           values.fecha.format('YYYY-MM-DD'),
@@ -413,18 +428,13 @@ export default function FacturaFormPage() {
       tipoCambio:      values.tipoCambio ?? 1,
       tipoPago,
       diasCredito:     tipoPago === 'CREDITO' ? diasCredito : 0,
-      // RNC comprador validado
       ...(/^\d{9}$|^\d{11}$/.test(rncInput) ? { rncComprador: rncInput } : {}),
-      // Orden de Compra
       ...(ordenCompraNumero.trim() ? { ordenCompraNumero: ordenCompraNumero.trim() } : {}),
-      // Formas de pago múltiples
       ...(formasPago.length > 0 ? { formasPago } : {}),
-      // Descuento general
       ...(descGeneralValor > 0 ? {
         descuentoGeneralTipo:  descGeneralTipo,
         descuentoGeneralValor: descGeneralValor,
       } : {}),
-      // Retenciones E31
       ...(tipoNcf === 'E31' && aplicaRetenciones ? {
         aplicaRetenciones: true,
         retieneItbis,
@@ -433,73 +443,90 @@ export default function FacturaFormPage() {
         porcentajeRetencionIsr:   pctRetIsr,
       } : {}),
     } as any;
-
     if (editMode) updateMut.mutate(payload);
     else          createMut.mutate(payload);
   };
 
-  // ── Alertas contextuales ───────────────────────────────────────────────────
+  // ── Alertas ────────────────────────────────────────────────────────────────
   const tipoInfo = TIPOS_NCF.find(t => t.codigo === tipoNcf);
   const mostrarAlertaRNC          = tipoNcf === 'E31' && clienteSeleccionado && !(/^\d{9}$/.test(clienteSeleccionado?.rfc?.trim() ?? ''));
   const mostrarAlertaExportacion  = tipoNcf === 'E46' && clienteSeleccionado;
   const mostrarAlertaPagoExterior = tipoNcf === 'E47';
   const mostrarAlertaExento       = (tipoNcf === 'E44' || tipoNcf === 'E45') && clienteSeleccionado;
   const mostrarAlertaE41          = tipoNcf === 'E41';
+  const hayAlertas = mostrarAlertaRNC || mostrarAlertaExportacion || mostrarAlertaPagoExterior || mostrarAlertaExento || mostrarAlertaE41;
 
-  // ── Columnas tabla líneas ──────────────────────────────────────────────────
+  // ── Columnas tabla (rediseñadas) ───────────────────────────────────────────
   const lineaCols = [
     {
-      title: 'Producto', key: 'producto', width: 200,
-      ellipsis: true,
-      render: (_: unknown, r: LineaForm, idx: number) => (
-        <Select style={{ width: '100%' }} placeholder="Seleccionar..." showSearch
-          value={r.productoId}
-          filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
-          options={productos?.data.map(p => ({ value: p.id, label: p.codigo ? `${p.codigo} — ${p.nombre}` : p.nombre }))}
-          onChange={(v) => onProductoChange(v, idx)} />
-      ),
+      title: 'Producto',
+      key: 'producto',
+      width: 260,
+      render: (_: unknown, r: LineaForm, idx: number) => {
+        const prod = productos?.data.find((p: any) => p.id === r.productoId);
+        const stock = (prod as any)?.stock ?? (prod as any)?.existencia ?? (prod as any)?.cantidadDisponible;
+        const stockBajo = stock !== null && stock !== undefined && Number(stock) < 5;
+        return (
+          <div>
+            <Select
+              style={{ width: '100%' }}
+              placeholder="Buscar producto..."
+              showSearch
+              value={r.productoId}
+              filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
+              options={productos?.data.map((p: any) => ({
+                value: p.id,
+                label: p.codigo ? `${p.codigo} — ${p.nombre}` : p.nombre,
+              }))}
+              onChange={(v) => onProductoChange(v, idx)}
+            />
+            {r.productoId && (
+              <div style={{ marginTop: 4 }}>
+                <Input
+                  size="small"
+                  value={r.descripcion ?? ''}
+                  placeholder="Descripción..."
+                  style={{ fontSize: 11, height: 26, background: '#F9FAFB', borderColor: '#E5E7EB', borderRadius: 4 }}
+                  onChange={e => { const u = [...lineas]; u[idx].descripcion = e.target.value; setLineas(u); }}
+                />
+                {stock !== undefined && stock !== null && (
+                  <span style={{ fontSize: 10, color: stockBajo ? D.red : D.textTer, fontWeight: stockBajo ? 700 : 400, paddingLeft: 2, display: 'block', marginTop: 2 }}>
+                    {stockBajo ? `⚠ Stock Bajo: ${stock}` : `Existencia: ${stock}`}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      },
     },
     {
-      title: 'Descripción', key: 'desc', width: 180,
-      ellipsis: { showTitle: false },
-      render: (_: unknown, r: LineaForm, idx: number) => (
-        <Tooltip title={r.descripcion} placement="topLeft">
-          <Input value={r.descripcion}
-            style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-            onChange={e => { const u = [...lineas]; u[idx].descripcion = e.target.value; setLineas(u); }} />
-        </Tooltip>
-      ),
-    },
-    {
-      title: 'Cantidad', key: 'qty', width: 80,
+      title: 'Cant.',
+      key: 'qty',
+      width: 80,
       render: (_: unknown, r: LineaForm, idx: number) => (
         <InputNumber min={0.0001} precision={4} value={r.cantidad} style={{ width: '100%' }}
           onChange={v => { const u = [...lineas]; u[idx].cantidad = v ?? 1; setLineas(u); }} />
       ),
     },
     {
-      title: 'Precio (RD$)', key: 'price', width: 110,
+      title: 'Precio',
+      key: 'price',
+      width: 110,
       render: (_: unknown, r: LineaForm, idx: number) => (
         <InputNumber min={0} precision={2} value={r.precioUnitario} style={{ width: '100%' }}
           onChange={v => { const u = [...lineas]; u[idx].precioUnitario = v ?? 0; setLineas(u); }} />
       ),
     },
     {
-      title: 'ITBIS %', key: 'iva', width: 70,
-      render: (_: unknown, r: LineaForm, idx: number) => (
-        <InputNumber min={0} max={100} value={r.porcentajeIva} style={{ width: '100%' }}
-          onChange={v => { const u = [...lineas]; u[idx].porcentajeIva = v ?? 18; setLineas(u); }} />
-      ),
-    },
-    {
-      title: 'Descuento', key: 'descuento', width: 180,
+      title: 'Desc.',
+      key: 'descuento',
+      width: 150,
       render: (_: unknown, r: LineaForm, idx: number) => (
         <Space.Compact style={{ width: '100%' }}>
-          <Select value={r.descuentoTipo} style={{ width: 64 }}
-            onChange={v => { const u = [...lineas]; u[idx].descuentoTipo = v; setLineas(u); }}>
-            <Select.Option value="monto">RD$</Select.Option>
-            <Select.Option value="porcentaje">%</Select.Option>
-          </Select>
+          <Select value={r.descuentoTipo} style={{ width: 58 }}
+            onChange={v => { const u = [...lineas]; u[idx].descuentoTipo = v; setLineas(u); }}
+            options={[{ value: 'monto', label: 'RD$' }, { value: 'porcentaje', label: '%' }]} />
           <InputNumber min={0} precision={2} value={r.descuentoValor} style={{ flex: 1 }}
             max={r.descuentoTipo === 'porcentaje' ? 100 : undefined}
             onChange={v => { const u = [...lineas]; u[idx].descuentoValor = v ?? 0; setLineas(u); }} />
@@ -507,531 +534,678 @@ export default function FacturaFormPage() {
       ),
     },
     {
-      title: 'Subtotal', key: 'sub', width: 110,
+      title: 'ITBIS',
+      key: 'iva',
+      width: 72,
+      render: (_: unknown, r: LineaForm, idx: number) => (
+        <InputNumber min={0} max={100} value={r.porcentajeIva} style={{ width: '100%' }} addonAfter="%"
+          onChange={v => { const u = [...lineas]; u[idx].porcentajeIva = v ?? 18; setLineas(u); }} />
+      ),
+    },
+    {
+      title: 'Subtotal',
+      key: 'sub',
+      width: 110,
+      align: 'right' as const,
       render: (_: unknown, r: LineaForm) => {
         const calc = lineasCalc.find(l => l.key === r.key);
-        return <Text strong style={{ whiteSpace: 'nowrap' }}>{fmt.money(calc?.subtotalNeto ?? r.precioUnitario * r.cantidad)}</Text>;
+        return <Text strong style={{ color: D.primary, fontSize: 13, whiteSpace: 'nowrap' }}>{fmt.money(calc?.subtotalNeto ?? r.precioUnitario * r.cantidad)}</Text>;
       },
     },
     {
-      title: '', key: 'del', width: 44,
+      title: '',
+      key: 'del',
+      width: 36,
       render: (_: unknown, _r: LineaForm, idx: number) => (
-        <Button type="text" danger icon={<DeleteOutlined />}
+        <Button type="text" size="small" danger icon={<DeleteOutlined />}
           onClick={() => setLineas(lineas.filter((_, i) => i !== idx))} />
       ),
     },
   ];
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // ── Loading ────────────────────────────────────────────────────────────────
   if (editMode && loadingEdit) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: 64 }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}>
         <Spin size="large" tip="Cargando factura..." />
       </div>
     );
   }
 
-  return (
-    <div>
-      <Row align="middle" style={{ marginBottom: 12 }}>
-        <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/facturas')}>
-          Volver
-        </Button>
-        <Title level={4} style={{ margin: '0 0 0 8px' }}>
-          {editMode ? `Editar Factura — ${(facturaEdit as any)?.folio ?? ''}` : 'Nueva Factura'}
-        </Title>
-        {editMode && <Tag color="orange" style={{ marginLeft: 12, fontSize: 12 }}>BORRADOR</Tag>}
-      </Row>
+  // ── Helpers de render ──────────────────────────────────────────────────────
+  const Lbl = ({ children }: { children: React.ReactNode }) => (
+    <span style={lbl}>{children}</span>
+  );
 
+  const cardStyle: React.CSSProperties = {
+    background: D.card,
+    borderRadius: D.radius,
+    border: `1px solid ${D.border}`,
+    boxShadow: D.shadow,
+    marginBottom: 16,
+    overflow: 'hidden',
+  };
+
+  const secHeader = (title: string, icon: React.ReactNode) => (
+    <div style={{ padding: '16px 20px', borderBottom: `1px solid ${D.border}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+      <span style={{ color: D.primary, fontSize: 15 }}>{icon}</span>
+      <span style={{ fontWeight: 600, fontSize: 14, color: D.text }}>{title}</span>
+    </div>
+  );
+
+  // ── Preview URL helper ─────────────────────────────────────────────────────
+  const openPreview = () => {
+    const base = (api as any).defaults?.baseURL ?? '';
+    window.open(`${base}/facturas/${id}/preview`, '_blank');
+  };
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // RENDER
+  // ══════════════════════════════════════════════════════════════════════════
+  return (
+    <div style={{ background: D.bg, minHeight: '100vh', fontFamily: D.font }}>
+
+      {/* ── Page header ──────────────────────────────────────────────────── */}
+      <div style={{
+        background: D.card,
+        borderBottom: `1px solid ${D.border}`,
+        padding: '0 24px',
+        height: 56,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        position: 'sticky',
+        top: 0,
+        zIndex: 100,
+        boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
+      }}>
+        <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/facturas')}
+          style={{ color: D.textSec, fontSize: 13, height: 32 }}>
+          Facturas
+        </Button>
+        <span style={{ color: D.border, fontSize: 16 }}>›</span>
+        <span style={{ fontWeight: 700, fontSize: 15, color: D.text }}>
+          {editMode ? `Editar — ${(facturaEdit as any)?.folio ?? ''}` : 'Nueva Factura'}
+        </span>
+        {editMode && (
+          <span style={{ background: '#FFF7ED', color: '#C2410C', fontSize: 11, fontWeight: 700,
+            padding: '2px 8px', borderRadius: 99, border: '1px solid #FED7AA' }}>
+            BORRADOR
+          </span>
+        )}
+        <div style={{ flex: 1 }} />
+        {/* Keyboard hints */}
+        <div style={{ display: 'flex', gap: 14, fontSize: 11, color: D.textTer, alignItems: 'center' }}>
+          {[['F9','Guardar'],['Enter','Añadir línea'],['ESC','Salir']].map(([k, l]) => (
+            <span key={k} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <kbd style={{ background: '#F3F4F6', border: '1px solid #D1D5DB', borderRadius: 4,
+                padding: '1px 5px', fontSize: 10, fontFamily: 'monospace', color: D.textSec }}>{k}</kbd>
+              {l}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Form wrapper ─────────────────────────────────────────────────── */}
       <Form form={form} layout="vertical" onFinish={handleSubmit}
         initialValues={{ fecha: dayjs(), moneda: 'DOP' }}>
 
-        {/* ════════════════════════════════════════════════════════════════
-            ENCABEZADO COMPACTO
-        ════════════════════════════════════════════════════════════════ */}
-        <Card style={{ marginBottom: 12 }}>
+        <div style={{ display: 'flex', gap: 20, padding: '24px 24px 0', alignItems: 'flex-start', maxWidth: 1440, margin: '0 auto' }}>
 
-          {/* ── Fila 1: Comprobante · Cliente · Fecha · Vendedor ─────────── */}
-          <Row gutter={[12, 0]}>
-            {/* Tipo NCF */}
-            <Col xs={24} sm={6}>
-              <Form.Item
-                style={fi}
-                label={
-                  <span style={{ fontSize: 12 }}>
-                    <SafetyCertificateOutlined style={{ color: tipoInfo?.color, marginRight: 4 }} />
-                    Comprobante <span style={{ color: 'red' }}>*</span>
-                  </span>
-                }
-              >
-                <Select value={tipoNcf} onChange={setTipoNcf}
-                  optionLabelProp="label" popupMatchSelectWidth={false}
-                  dropdownStyle={{ minWidth: 300 }}>
-                  {TIPOS_NCF.filter(t => NCF_VENTAS.includes(t.codigo)).map(t => (
-                    <Select.Option key={t.codigo} value={t.codigo}
-                      label={
-                        <span>
-                          <Tag color={t.color} style={{ fontSize: 11, marginRight: 4, lineHeight: '18px' }}>{t.codigo}</Tag>
-                          {t.titulo}
-                        </span>
-                      }>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <Tag color={t.color} style={{ fontSize: 11, lineHeight: '18px', flexShrink: 0 }}>{t.codigo}</Tag>
-                        <div>
-                          <div style={{ fontSize: 13, fontWeight: 500 }}>{t.titulo}</div>
-                          <div style={{ fontSize: 11, color: '#9CA3AF', lineHeight: 1.3 }}>{t.descripcion}</div>
-                        </div>
-                      </div>
-                    </Select.Option>
-                  ))}
-                </Select>
-              </Form.Item>
-            </Col>
+          {/* ══════════════════════════════════════════════════════════════
+              LEFT COLUMN
+          ══════════════════════════════════════════════════════════════ */}
+          <div style={{ flex: 1, minWidth: 0 }}>
 
-            {/* Cliente */}
-            <Col xs={24} sm={10}>
-              <Form.Item name="clienteId" label={<span style={{ fontSize: 12 }}>Cliente <span style={{ color: 'red' }}>*</span></span>}
-                rules={[{ required: true, message: 'Selecciona un cliente' }]} style={fi}>
-                <Select showSearch placeholder="Buscar cliente..."
-                  filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
-                  options={clientes?.data.map((c: Cliente) => ({ value: c.id, label: `${c.rfc} — ${c.nombre}` }))}
-                  onChange={onClienteChange} />
-              </Form.Item>
-              {!editMode && anticiposCliente.length > 0 && (
-                <div style={{ marginTop: -4, marginBottom: 4, padding: '3px 8px',
-                  background: token.colorInfoBg, border: `1px solid ${token.colorInfoBorder}`,
-                  borderRadius: 4, fontSize: 11, color: token.colorInfoText }}>
-                  {anticiposCliente.length} anticipo(s) activo(s) · RD$ {
-                    anticiposCliente.reduce((s: number, a: any) => s + Number(a.montoPendiente ?? 0), 0)
-                      .toLocaleString('es-DO', { minimumFractionDigits: 2 })
-                  }
-                </div>
-              )}
-            </Col>
+            {/* ── BLOQUE 1: Información general ──────────────────────────── */}
+            <div style={cardStyle}>
+              {secHeader('Información del comprobante', <SafetyCertificateOutlined />)}
+              <div style={{ padding: '20px 20px 4px' }}>
 
-            {/* Fecha */}
-            <Col xs={12} sm={4}>
-              <Form.Item name="fecha" label={<span style={{ fontSize: 12 }}>Fecha <span style={{ color: 'red' }}>*</span></span>}
-                rules={[{ required: true }]} style={fi}>
-                <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
-              </Form.Item>
-            </Col>
-
-            {/* Vendedor */}
-            <Col xs={12} sm={4}>
-              <Form.Item name="vendedorId" label={<span style={{ fontSize: 12 }}>Vendedor</span>} style={fi}>
-                <Select allowClear showSearch placeholder="Sin asignar"
-                  optionFilterProp="label"
-                  options={vendedores.map((v: any) => ({
-                    value: v.id,
-                    label: v.codigo ? `${v.codigo} — ${v.nombre}` : v.nombre,
-                  }))} />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          {/* ── Fila 2: RNC · Forma de pago · Días · Moneda · Sucursal ──── */}
-          <Row gutter={[12, 0]}>
-            {/* RNC Comprador */}
-            <Col xs={24} sm={7}>
-              <Form.Item label={<span style={{ fontSize: 12 }}>RNC / Cédula comprador</span>}
-                style={{ marginBottom: (rnc.loading || rnc.datos) ? 4 : 8 }}>
-                <Input
-                  value={rncInput}
-                  maxLength={11}
-                  placeholder="9 díg. RNC u 11 díg. Cédula"
-                  suffix={rnc.loading
-                    ? <Spin size="small" />
-                    : <SearchOutlined style={{ color: '#ccc' }} />}
-                  style={{ fontFamily: 'monospace', letterSpacing: 1 }}
-                  onChange={e => onRncChange(e.target.value)}
-                />
-              </Form.Item>
-              {(rnc.loading || rnc.datos) && (
-                <div style={{ marginBottom: 8 }}>
-                  <RncBadge datos={rnc.datos} loading={rnc.loading} />
-                </div>
-              )}
-            </Col>
-
-            {/* Forma de pago */}
-            <Col xs={24} sm={6}>
-              <Form.Item label={<span style={{ fontSize: 12 }}>Forma de pago</span>} style={fi}>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {(['CONTADO', 'CREDITO'] as const).map(tp => (
-                    <button key={tp} type="button" onClick={() => setTipoPago(tp)}
-                      style={{
-                        flex: 1, height: 32, borderRadius: 4, cursor: 'pointer', fontSize: 12,
-                        border: tipoPago === tp ? `1.5px solid ${token.colorPrimary}` : `1px solid ${token.colorBorder}`,
-                        background: tipoPago === tp ? token.colorPrimaryBg : token.colorBgContainer,
-                        color: tipoPago === tp ? token.colorPrimary : token.colorTextSecondary,
-                        fontWeight: tipoPago === tp ? 700 : 400,
-                      }}>
-                      {tp === 'CONTADO' ? 'Contado' : 'Crédito'}
-                    </button>
-                  ))}
-                </div>
-              </Form.Item>
-            </Col>
-
-            {/* Días crédito */}
-            {tipoPago === 'CREDITO' && (
-              <Col xs={12} sm={4}>
-                <Form.Item label={<span style={{ fontSize: 12 }}>Días crédito</span>} style={fi}>
-                  <InputNumber min={1} max={365} value={diasCredito}
-                    onChange={v => setDiasCredito(Number(v ?? 30))}
-                    style={{ width: '100%' }} addonAfter="d" />
-                </Form.Item>
-              </Col>
-            )}
-
-            {/* Moneda */}
-            <Col xs={12} sm={tipoPago === 'CREDITO' ? 3 : 4}>
-              <Form.Item name="moneda" label={<span style={{ fontSize: 12 }}>Moneda</span>}
-                initialValue="DOP" style={fi}>
-                <Select>
-                  <Select.Option value="DOP">🇩🇴 DOP</Select.Option>
-                  <Select.Option value="USD">🇺🇸 USD</Select.Option>
-                  <Select.Option value="EUR">🇪🇺 EUR</Select.Option>
-                </Select>
-              </Form.Item>
-            </Col>
-
-            {/* Sucursal */}
-            {sucursales.length > 1 && (
-              <Col xs={12} sm={tipoPago === 'CREDITO' ? 4 : 7}>
-                <Form.Item name="sucursalId"
-                  label={<span style={{ fontSize: 12 }}>Sucursal <span style={{ color: 'red' }}>*</span></span>}
-                  rules={[{ required: true, message: 'Selecciona sucursal' }]} style={fi}>
-                  <Select placeholder="Sucursal"
-                    options={sucursales.map((s: any) => ({ value: s.id, label: s.nombre }))} />
-                </Form.Item>
-              </Col>
-            )}
-          </Row>
-
-          {/* ── Fila 3: Tasa de cambio (si !DOP) + Notas ─────────────────── */}
-          <Form.Item noStyle dependencies={['moneda']}>
-            {({ getFieldValue }) => (
-              <Row gutter={[12, 0]}>
-                {getFieldValue('moneda') !== 'DOP' && (
-                  <Col xs={12} sm={5}>
-                    <Form.Item name="tipoCambio"
-                      label={<span style={{ fontSize: 12 }}>Tasa (RD$) <span style={{ color: 'red' }}>*</span></span>}
-                      rules={[{ required: true }]} style={fi}>
-                      <InputNumber min={0.01} precision={4} style={{ width: '100%' }}
-                        placeholder="Ej: 58.50" />
-                    </Form.Item>
-                  </Col>
-                )}
-                <Col xs={12} sm={getFieldValue('moneda') !== 'DOP' ? 6 : 8}>
-                  <Form.Item label={<span style={{ fontSize: 12 }}>N° Orden Compra</span>}
-                    style={{ marginBottom: 4 }}>
-                    <Input value={ordenCompraNumero} maxLength={100}
-                      placeholder="OC-2025-001"
-                      prefix={<PaperClipOutlined style={{ color: '#ccc' }} />}
-                      onChange={e => setOrdenCompraNumero(e.target.value)} />
-                  </Form.Item>
-                </Col>
-                <Col xs={12} sm={getFieldValue('moneda') !== 'DOP' ? 13 : 16}>
-                  <Form.Item name="notas" label={<span style={{ fontSize: 12 }}>Notas</span>}
-                    style={{ marginBottom: 4 }}>
-                    <Input.TextArea rows={1} placeholder="Referencia interna, instrucciones de entrega, etc." />
-                  </Form.Item>
-                </Col>
-              </Row>
-            )}
-          </Form.Item>
-
-          {/* ── Alertas contextuales ──────────────────────────────────────── */}
-          {tipoNcf === 'E31' && clienteSeleccionado && !mostrarAlertaRNC && (
-            <div style={{ padding: '4px 10px', background: token.colorInfoBg, borderRadius: 6,
-              border: `1px solid ${token.colorInfoBorder}`, fontSize: 11, color: token.colorInfoText }}>
-              <strong>RNC:</strong> {clienteSeleccionado.rfc || 'No registrado'} · <strong>Razón social:</strong> {clienteSeleccionado.nombre}
-            </div>
-          )}
-          {mostrarAlertaRNC && (
-            <Alert type="warning" showIcon style={{ padding: '4px 10px', fontSize: 12 }}
-              message="Cliente sin RNC válido (9 dígitos). E31 requiere RNC registrado en DGII." />
-          )}
-          {mostrarAlertaExento && (
-            <Alert type="info" showIcon style={{ padding: '4px 10px', fontSize: 12 }}
-              message={tipoNcf === 'E44'
-                ? 'E44 Zona Franca: ITBIS = 0. Requiere documentación de régimen especial.'
-                : 'E45 Gubernamental: entidad del gobierno dominicano. RNC requerido.'} />
-          )}
-          {mostrarAlertaExportacion && (
-            <Alert type="info" showIcon style={{ padding: '4px 10px', fontSize: 12 }}
-              message="E46 Exportación: ITBIS = 0. Si es moneda extranjera, completa la tasa de cambio." />
-          )}
-          {mostrarAlertaPagoExterior && (
-            <Alert type="info" showIcon style={{ padding: '4px 10px', fontSize: 12 }}
-              message="E47 Pagos al Exterior: proveedores extranjeros sin establecimiento en RD." />
-          )}
-          {mostrarAlertaE41 && (
-            <Alert type="warning" showIcon style={{ padding: '4px 10px', fontSize: 12 }}
-              message="E41 Comprobante de Compras: proveedor informal solo cédula. Anotar cédula en notas." />
-          )}
-        </Card>
-
-        {/* ── Líneas de detalle ──────────────────────────────────────────── */}
-        <Card title="Líneas de factura" style={{ marginBottom: 12 }}
-          extra={
-            <Button icon={<PlusOutlined />} size="small"
-              onClick={() => setLineas([...lineas, lineaVacia()])}>
-              Agregar línea
-            </Button>
-          }>
-          <Table columns={lineaCols as any} dataSource={lineas} rowKey="key"
-            pagination={false} size="small" tableLayout="fixed" />
-        </Card>
-
-        {/* ── Descuento general ──────────────────────────────────────────── */}
-        <Card size="small" style={{ marginBottom: 12 }}>
-          <Row gutter={[12, 0]} align="middle">
-            <Col xs={24} sm={4}>
-              <Text strong style={{ fontSize: 13 }}>Descuento general</Text>
-            </Col>
-            <Col xs={24} sm={12}>
-              <Space.Compact>
-                <Select value={descGeneralTipo} style={{ width: 140 }}
-                  onChange={v => { setDescGeneralTipo(v as 'monto' | 'porcentaje'); setDescGeneralValor(0); }}>
-                  <Select.Option value="monto">Monto fijo (RD$)</Select.Option>
-                  <Select.Option value="porcentaje">Porcentaje (%)</Select.Option>
-                </Select>
-                <InputNumber min={0} precision={2}
-                  max={descGeneralTipo === 'porcentaje' ? 100 : undefined}
-                  value={descGeneralValor}
-                  onChange={v => setDescGeneralValor(v ?? 0)}
-                  style={{ width: 140 }}
-                  placeholder={descGeneralTipo === 'porcentaje' ? '0.00 %' : '0.00 RD$'} />
-              </Space.Compact>
-            </Col>
-            {descGeneral > 0 && (
-              <Col>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  = <Text strong style={{ color: '#d97706' }}>-{fmt.money(descGeneral)}</Text>
-                </Text>
-              </Col>
-            )}
-          </Row>
-        </Card>
-
-        {/* ── Formas de pago múltiples ───────────────────────────────────── */}
-        <Card size="small" style={{ marginBottom: 12 }}
-          title={
-            <span style={{ fontSize: 13 }}>
-              Formas de pago
-              <Text type="secondary" style={{ fontSize: 11, marginLeft: 8 }}>
-                (opcional — desglose de cómo se recibirá el pago)
-              </Text>
-            </span>
-          }
-          extra={
-            <Button size="small" icon={<PlusOutlined />}
-              onClick={() => setFormasPago([...formasPago, { tipo: 1, monto: 0 }])}>
-              Agregar
-            </Button>
-          }>
-          {formasPago.length === 0 ? (
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              Sin formas de pago especificadas — se asume el tipo de comprobante (contado/crédito).
-            </Text>
-          ) : (
-            <Space direction="vertical" style={{ width: '100%' }}>
-              {formasPago.map((fp, idx) => (
-                <Row key={idx} gutter={[8, 0]} align="middle">
-                  <Col xs={24} sm={9}>
-                    <Select value={fp.tipo} style={{ width: '100%' }}
-                      onChange={v => {
-                        const u = [...formasPago]; u[idx].tipo = v; setFormasPago(u);
-                      }}>
-                      <Select.Option value={1}>💵 Efectivo</Select.Option>
-                      <Select.Option value={2}>🏦 Cheque / Transferencia</Select.Option>
-                      <Select.Option value={3}>💳 Tarjeta débito/crédito</Select.Option>
-                      <Select.Option value={4}>📋 Crédito (a plazo)</Select.Option>
-                      <Select.Option value={5}>🔄 Permuta</Select.Option>
-                      <Select.Option value={6}>📝 Nota de crédito</Select.Option>
+                {/* Fila 1: Comprobante · Fecha · Vendedor */}
+                <Row gutter={[16, 0]} style={{ marginBottom: 16 }}>
+                  <Col xs={24} sm={8}>
+                    <Lbl>Tipo de comprobante *</Lbl>
+                    <Select value={tipoNcf} onChange={setTipoNcf} style={{ width: '100%' }}
+                      optionLabelProp="label" popupMatchSelectWidth={false} dropdownStyle={{ minWidth: 320 }}>
+                      {TIPOS_NCF.filter(t => NCF_VENTAS.includes(t.codigo)).map(t => (
+                        <Select.Option key={t.codigo} value={t.codigo}
+                          label={<span><Tag color={t.color} style={{ fontSize: 11, marginRight: 4, lineHeight: '18px' }}>{t.codigo}</Tag>{t.titulo}</span>}>
+                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '4px 0' }}>
+                            <Tag color={t.color} style={{ fontSize: 11, lineHeight: '18px', flexShrink: 0, margin: 0 }}>{t.codigo}</Tag>
+                            <div>
+                              <div style={{ fontSize: 13, fontWeight: 500 }}>{t.titulo}</div>
+                              <div style={{ fontSize: 11, color: D.textTer, lineHeight: 1.4 }}>{t.descripcion}</div>
+                            </div>
+                          </div>
+                        </Select.Option>
+                      ))}
                     </Select>
                   </Col>
-                  <Col xs={12} sm={6}>
-                    <InputNumber min={0} precision={2} value={fp.monto} style={{ width: '100%' }}
-                      placeholder="Monto RD$"
-                      onChange={v => {
-                        const u = [...formasPago]; u[idx].monto = v ?? 0; setFormasPago(u);
-                      }} />
+                  <Col xs={12} sm={8}>
+                    <Form.Item name="fecha" style={{ marginBottom: 0 }} rules={[{ required: true }]}
+                      label={<Lbl>Fecha *</Lbl>}>
+                      <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+                    </Form.Item>
                   </Col>
-                  <Col xs={10} sm={7}>
-                    <Input value={fp.referencia ?? ''} placeholder="Ref. opcional (# transacción, cheque...)"
-                      onChange={e => {
-                        const u = [...formasPago]; u[idx].referencia = e.target.value; setFormasPago(u);
-                      }} />
-                  </Col>
-                  <Col xs={2} sm={2}>
-                    <Button type="text" danger icon={<DeleteOutlined />}
-                      onClick={() => setFormasPago(formasPago.filter((_, i) => i !== idx))} />
+                  <Col xs={12} sm={8}>
+                    <Form.Item name="vendedorId" style={{ marginBottom: 0 }} label={<Lbl>Vendedor</Lbl>}>
+                      <Select allowClear showSearch placeholder="Sin asignar" optionFilterProp="label"
+                        options={vendedores.map((v: any) => ({
+                          value: v.id,
+                          label: v.codigo ? `${v.codigo} — ${v.nombre}` : v.nombre,
+                        }))} />
+                    </Form.Item>
                   </Col>
                 </Row>
-              ))}
-              {/* Validación: suma vs total */}
-              {(() => {
-                const sumaFP = r2(formasPago.reduce((s, fp) => s + fp.monto, 0));
-                const diff   = r2(Math.abs(sumaFP - total));
-                if (diff > 0.01 && sumaFP > 0) return (
-                  <Alert type="warning" showIcon style={{ padding: '4px 10px', fontSize: 12 }}
-                    message={`La suma de formas de pago (${fmt.money(sumaFP)}) no coincide con el total (${fmt.money(total)}) — diferencia: ${fmt.money(diff)}`} />
-                );
-                if (sumaFP > 0 && diff <= 0.01) return (
-                  <Text style={{ fontSize: 12, color: '#059669' }}>✓ Suma cuadra con el total</Text>
-                );
-                return null;
-              })()}
-            </Space>
-          )}
-        </Card>
 
-        {/* ── Retenciones E31 ────────────────────────────────────────────── */}
-        {tipoNcf === 'E31' && (
-          <Card style={{ marginBottom: 12 }}>
-            <Checkbox checked={aplicaRetenciones}
-              onChange={e => {
-                setAplicaRetenciones(e.target.checked);
-                if (!e.target.checked) { setRetieneItbis(false); setRetieneIsr(false); }
-              }}>
-              <Text strong>Aplica Retenciones</Text>
-              <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>(agente de retención DGII)</Text>
-            </Checkbox>
-            {aplicaRetenciones && (
-              <div style={{ marginTop: 10, padding: '10px 14px', background: token.colorWarningBg,
-                border: `1px solid ${token.colorWarningBorder}`, borderRadius: 8 }}>
-                <Row gutter={[24, 8]}>
-                  <Col xs={24} sm={12}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-                      <Checkbox checked={retieneItbis} onChange={e => setRetieneItbis(e.target.checked)}>
-                        Retener ITBIS
-                      </Checkbox>
-                      {retieneItbis && (
-                        <InputNumber min={0} max={100} precision={2} value={pctRetItbis}
-                          onChange={v => setPctRetItbis(v ?? 30)} addonAfter="%" style={{ width: 110 }} />
+                {/* Fila 2: Cliente full width + nuevo cliente */}
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <span style={lbl}>
+                      Cliente *
+                      {clienteSeleccionado && anticiposCliente.length > 0 && (
+                        <span style={{ marginLeft: 8, background: D.greenBg, color: D.green, fontSize: 10,
+                          fontWeight: 700, padding: '2px 7px', borderRadius: 99,
+                          border: `1px solid ${D.greenBorder}`, textTransform: 'none', letterSpacing: 0 }}>
+                          ✓ {anticiposCliente.length} anticipo(s) disponible(s)
+                        </span>
                       )}
-                    </div>
-                    {retieneItbis && (
-                      <Text type="secondary" style={{ fontSize: 12 }}>
-                        Monto: <Text strong style={{ color: '#d97706' }}>-{fmt.money(montoRetItbisForm)}</Text>
-                        &nbsp;({pctRetItbis}% de {fmt.money(ivaTotal)})
-                      </Text>
+                      {clienteSeleccionado && (clienteSeleccionado as any)?.diasCredito > 0 && tipoPago === 'CREDITO' && (
+                        <span style={{ marginLeft: 8, background: D.orangeBg, color: D.orange, fontSize: 10,
+                          fontWeight: 700, padding: '2px 7px', borderRadius: 99,
+                          border: `1px solid ${D.orangeBorder}`, textTransform: 'none', letterSpacing: 0 }}>
+                          {diasCredito}d crédito
+                        </span>
+                      )}
+                    </span>
+                    <Button type="link" size="small" icon={<UserAddOutlined />}
+                      onClick={() => navigate('/clientes/nuevo')}
+                      style={{ fontSize: 12, padding: 0, color: D.primary, height: 'auto' }}>
+                      + Nuevo cliente
+                    </Button>
+                  </div>
+                  <Form.Item name="clienteId" style={{ marginBottom: 0 }}
+                    rules={[{ required: true, message: 'Selecciona un cliente' }]}>
+                    <Select showSearch placeholder="Buscar cliente por nombre o RNC..."
+                      style={{ width: '100%' }}
+                      filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
+                      options={clientes?.data.map((c: Cliente) => ({ value: c.id, label: `${c.rfc} — ${c.nombre}` }))}
+                      onChange={onClienteChange} />
+                  </Form.Item>
+                </div>
+
+                {/* Fila 3: RNC · Forma de pago · Días · Moneda · Sucursal */}
+                <Row gutter={[16, 0]} style={{ marginBottom: 16 }}>
+                  <Col xs={24} sm={8}>
+                    <Lbl>RNC / Cédula comprador</Lbl>
+                    <Input value={rncInput} maxLength={11}
+                      placeholder="9 dígitos RNC u 11 dígitos Cédula"
+                      style={{ fontFamily: 'monospace', letterSpacing: 2 }}
+                      suffix={rnc.loading ? <Spin size="small" /> : <SearchOutlined style={{ color: D.textTer }} />}
+                      onChange={e => onRncChange(e.target.value)} />
+                    {(rnc.loading || rnc.datos) && (
+                      <div style={{ marginTop: 6 }}>
+                        <RncBadge datos={rnc.datos} loading={rnc.loading} />
+                      </div>
                     )}
                   </Col>
-                  <Col xs={24} sm={12}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-                      <Checkbox checked={retieneIsr} onChange={e => setRetieneIsr(e.target.checked)}>
-                        Retener ISR
-                      </Checkbox>
-                      {retieneIsr && (
-                        <InputNumber min={0} max={100} precision={2} value={pctRetIsr}
-                          onChange={v => setPctRetIsr(v ?? 10)} addonAfter="%" style={{ width: 110 }} />
-                      )}
-                    </div>
-                    {retieneIsr && (
-                      <Text type="secondary" style={{ fontSize: 12 }}>
-                        Monto: <Text strong style={{ color: '#d97706' }}>-{fmt.money(montoRetIsrForm)}</Text>
-                        &nbsp;({pctRetIsr}% de {fmt.money(baseGravable)})
-                      </Text>
-                    )}
-                  </Col>
-                </Row>
-              </div>
-            )}
-          </Card>
-        )}
 
-        {/* ── Totales ─────────────────────────────────────────────────────── */}
-        <Card>
-          <Row justify="end">
-            <Col xs={24} sm={14} md={9}>
-              <Space direction="vertical" style={{ width: '100%' }}>
-                <Row justify="space-between">
-                  <Text type="secondary">Subtotal bruto</Text>
-                  <Text strong>{fmt.money(subtotalBruto)}</Text>
+                  <Col xs={24} sm={tipoPago === 'CREDITO' ? 5 : 7}>
+                    <Lbl>Forma de pago</Lbl>
+                    <div style={{ display: 'flex', gap: 6, height: 32 }}>
+                      {(['CONTADO', 'CREDITO'] as const).map(tp => (
+                        <button key={tp} type="button" onClick={() => setTipoPago(tp)}
+                          style={{
+                            flex: 1, height: '100%', borderRadius: D.radiusSm, cursor: 'pointer',
+                            fontSize: 13, fontFamily: D.font,
+                            border: tipoPago === tp ? `1.5px solid ${D.primary}` : `1px solid ${D.border}`,
+                            background: tipoPago === tp ? D.primaryBg : D.card,
+                            color: tipoPago === tp ? D.primary : D.textSec,
+                            fontWeight: tipoPago === tp ? 700 : 400,
+                            transition: 'all 0.15s ease',
+                          }}>
+                          {tp === 'CONTADO' ? 'Contado' : 'Crédito'}
+                        </button>
+                      ))}
+                    </div>
+                  </Col>
+
+                  {tipoPago === 'CREDITO' && (
+                    <Col xs={12} sm={3}>
+                      <Lbl>Días</Lbl>
+                      <InputNumber min={1} max={365} value={diasCredito}
+                        onChange={v => setDiasCredito(Number(v ?? 30))}
+                        style={{ width: '100%' }} addonAfter="d" />
+                    </Col>
+                  )}
+
+                  <Col xs={12} sm={tipoPago === 'CREDITO' ? 4 : 4}>
+                    <Form.Item name="moneda" style={{ marginBottom: 0 }} initialValue="DOP"
+                      label={<Lbl>Moneda</Lbl>}>
+                      <Select>
+                        <Select.Option value="DOP">🇩🇴 DOP</Select.Option>
+                        <Select.Option value="USD">🇺🇸 USD</Select.Option>
+                        <Select.Option value="EUR">🇪🇺 EUR</Select.Option>
+                      </Select>
+                    </Form.Item>
+                  </Col>
+
+                  {sucursales.length > 1 && (
+                    <Col xs={12} sm={tipoPago === 'CREDITO' ? 4 : 5}>
+                      <Form.Item name="sucursalId" style={{ marginBottom: 0 }}
+                        rules={[{ required: true, message: 'Selecciona sucursal' }]}
+                        label={<Lbl>Sucursal *</Lbl>}>
+                        <Select placeholder="Sucursal"
+                          options={sucursales.map((s: any) => ({ value: s.id, label: s.nombre }))} />
+                      </Form.Item>
+                    </Col>
+                  )}
                 </Row>
-                {totalDescLineas > 0 && (
-                  <Row justify="space-between">
-                    <Text type="secondary">(-) Descuentos por línea</Text>
-                    <Text style={{ color: '#d97706' }}>-{fmt.money(totalDescLineas)}</Text>
-                  </Row>
-                )}
-                {descGeneral > 0 && (
-                  <Row justify="space-between">
-                    <Text type="secondary">
-                      (-) Descuento general{descGeneralTipo === 'porcentaje' ? ` (${descGeneralValor}%)` : ''}
-                    </Text>
-                    <Text style={{ color: '#d97706' }}>-{fmt.money(descGeneral)}</Text>
-                  </Row>
-                )}
-                {(totalDescLineas > 0 || descGeneral > 0) && (
-                  <Row justify="space-between">
-                    <Text type="secondary">Base gravable</Text>
-                    <Text strong>{fmt.money(baseGravable)}</Text>
-                  </Row>
-                )}
-                <Row justify="space-between">
-                  <Text type="secondary">ITBIS</Text>
-                  <Text strong>{fmt.money(ivaTotal)}</Text>
-                </Row>
-                <Divider style={{ margin: '6px 0' }} />
-                <Row justify="space-between" style={{ marginBottom: 2 }}>
-                  <Text style={{ fontSize: 16 }}>{(montoRetItbisForm > 0 || montoRetIsrForm > 0) ? 'Total factura' : 'Total'}</Text>
-                  <Text strong style={{ fontSize: 20, color: '#1677ff' }}>{fmt.money(total)}</Text>
-                </Row>
-                {montoRetItbisForm > 0 && (
-                  <Row justify="space-between">
-                    <Text type="secondary" style={{ fontSize: 13 }}>(-) Retención ITBIS ({pctRetItbis}%)</Text>
-                    <Text style={{ color: '#d97706' }}>-{fmt.money(montoRetItbisForm)}</Text>
-                  </Row>
-                )}
-                {montoRetIsrForm > 0 && (
-                  <Row justify="space-between">
-                    <Text type="secondary" style={{ fontSize: 13 }}>(-) Retención ISR ({pctRetIsr}%)</Text>
-                    <Text style={{ color: '#d97706' }}>-{fmt.money(montoRetIsrForm)}</Text>
-                  </Row>
-                )}
-                {(montoRetItbisForm > 0 || montoRetIsrForm > 0) && (
-                  <>
-                    <Divider style={{ margin: '4px 0' }} />
-                    <Row justify="space-between" style={{ marginBottom: 4 }}>
-                      <Text style={{ fontSize: 15, fontWeight: 700, color: '#059669' }}>NETO A COBRAR</Text>
-                      <Text strong style={{ fontSize: 18, color: '#059669' }}>{fmt.money(netoCobrarForm)}</Text>
+
+                {/* Fila 4: Tasa de cambio · OC · Notas */}
+                <Form.Item noStyle dependencies={['moneda']}>
+                  {({ getFieldValue }) => (
+                    <Row gutter={[16, 0]} style={{ marginBottom: 16 }}>
+                      {getFieldValue('moneda') !== 'DOP' && (
+                        <Col xs={12} sm={5}>
+                          <Form.Item name="tipoCambio" style={{ marginBottom: 0 }} rules={[{ required: true }]}
+                            label={<Lbl>Tasa RD$ *</Lbl>}>
+                            <InputNumber min={0.01} precision={4} style={{ width: '100%' }} placeholder="58.50" />
+                          </Form.Item>
+                        </Col>
+                      )}
+                      <Col xs={12} sm={getFieldValue('moneda') !== 'DOP' ? 7 : 10}>
+                        <Lbl>N° Orden de Compra</Lbl>
+                        <Input value={ordenCompraNumero} maxLength={100} placeholder="OC-2025-001"
+                          prefix={<PaperClipOutlined style={{ color: D.textTer }} />}
+                          onChange={e => setOrdenCompraNumero(e.target.value)} />
+                      </Col>
+                      <Col xs={24} sm={getFieldValue('moneda') !== 'DOP' ? 12 : 14}>
+                        <Form.Item name="notas" style={{ marginBottom: 0 }} label={<Lbl>Notas internas</Lbl>}>
+                          <Input.TextArea rows={1} placeholder="Instrucciones de entrega, referencia interna..." style={{ resize: 'none' }} />
+                        </Form.Item>
+                      </Col>
                     </Row>
-                  </>
-                )}
+                  )}
+                </Form.Item>
 
-                {tipoInfo && (
-                  <div style={{ padding: '6px 10px', borderRadius: 6,
-                    background: `${tipoInfo.color}10`, border: `1px solid ${tipoInfo.color}40` }}>
-                    <Text style={{ fontSize: 12, color: tipoInfo.color, fontWeight: 600 }}>
-                      <SafetyCertificateOutlined style={{ marginRight: 6 }} />
-                      {tipoInfo.codigo} · {tipoInfo.titulo}
-                    </Text>
+                {/* Alertas contextuales */}
+                {hayAlertas && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+                    {tipoNcf === 'E31' && clienteSeleccionado && !mostrarAlertaRNC && (
+                      <div style={{ padding: '8px 12px', background: D.primaryBg, borderRadius: D.radiusSm,
+                        border: `1px solid ${D.primaryBorder}`, fontSize: 12, color: D.primary }}>
+                        <strong>RNC:</strong> {clienteSeleccionado.rfc || 'No registrado'} · <strong>Razón social:</strong> {clienteSeleccionado.nombre}
+                      </div>
+                    )}
+                    {mostrarAlertaRNC && <Alert type="warning" showIcon style={{ borderRadius: D.radiusSm }}
+                      message="Cliente sin RNC válido (9 dígitos). E31 requiere RNC registrado en DGII." />}
+                    {mostrarAlertaExento && <Alert type="info" showIcon style={{ borderRadius: D.radiusSm }}
+                      message={tipoNcf === 'E44'
+                        ? 'E44 Zona Franca: ITBIS = 0. Requiere documentación de régimen especial.'
+                        : 'E45 Gubernamental: entidad del gobierno. RNC requerido.'} />}
+                    {mostrarAlertaExportacion && <Alert type="info" showIcon style={{ borderRadius: D.radiusSm }}
+                      message="E46 Exportación: ITBIS = 0. Si es moneda extranjera, completa la tasa de cambio." />}
+                    {mostrarAlertaPagoExterior && <Alert type="info" showIcon style={{ borderRadius: D.radiusSm }}
+                      message="E47 Pagos al Exterior: proveedores extranjeros sin establecimiento en RD." />}
+                    {mostrarAlertaE41 && <Alert type="warning" showIcon style={{ borderRadius: D.radiusSm }}
+                      message="E41 Comprobante de Compras: proveedor informal solo cédula. Anotar cédula en notas." />}
                   </div>
                 )}
+              </div>
+            </div>
 
+            {/* ── BLOQUE 2: Productos ────────────────────────────────────── */}
+            <div style={cardStyle}>
+              <div style={{ padding: '14px 20px', borderBottom: `1px solid ${D.border}`,
+                display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontWeight: 600, fontSize: 14, color: D.text, flex: 1 }}>Líneas de factura</span>
+                <Space size={6}>
+                  <Button type="primary" size="small" icon={<PlusOutlined />}
+                    onClick={() => setLineas([...lineas, lineaVacia()])}
+                    style={{ borderRadius: D.radiusSm, height: 32, fontWeight: 600 }}>
+                    Agregar
+                  </Button>
+                  <Tooltip title="Escanear código de barras (próximamente)">
+                    <Button size="small" icon={<BarcodeOutlined />}
+                      style={{ borderRadius: D.radiusSm, height: 32 }} disabled>
+                      Escanear
+                    </Button>
+                  </Tooltip>
+                  <Tooltip title="Importar desde archivo (próximamente)">
+                    <Button size="small" icon={<FileOutlined />}
+                      style={{ borderRadius: D.radiusSm, height: 32 }} disabled>
+                      Importar
+                    </Button>
+                  </Tooltip>
+                </Space>
+              </div>
+
+              <Table columns={lineaCols as any} dataSource={lineas} rowKey="key"
+                pagination={false} size="small" tableLayout="fixed"
+                style={{ borderRadius: 0 }}
+                onRow={() => ({
+                  style: { transition: 'background 0.12s' },
+                  onMouseEnter: (e) => { (e.currentTarget as HTMLElement).style.background = '#FAFAFA'; },
+                  onMouseLeave: (e) => { (e.currentTarget as HTMLElement).style.background = ''; },
+                })} />
+
+              <div style={{ padding: '10px 20px', borderTop: `1px dashed ${D.border}`, cursor: 'pointer' }}
+                onClick={() => setLineas([...lineas, lineaVacia()])}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#F9FAFB'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = ''; }}>
+                <span style={{ color: D.primary, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <PlusOutlined style={{ fontSize: 11 }} />
+                  Agregar línea
+                  <span style={{ color: D.textTer, fontSize: 11 }}>· o presiona Enter</span>
+                </span>
+              </div>
+            </div>
+
+            {/* ── Descuento general ─────────────────────────────────────── */}
+            <div style={{ ...cardStyle, padding: '14px 20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: D.text, whiteSpace: 'nowrap' }}>Descuento general</span>
+                <Space.Compact>
+                  <Select value={descGeneralTipo} style={{ width: 160 }}
+                    onChange={v => { setDescGeneralTipo(v as 'monto' | 'porcentaje'); setDescGeneralValor(0); }}>
+                    <Select.Option value="monto">Monto fijo (RD$)</Select.Option>
+                    <Select.Option value="porcentaje">Porcentaje (%)</Select.Option>
+                  </Select>
+                  <InputNumber min={0} precision={2}
+                    max={descGeneralTipo === 'porcentaje' ? 100 : undefined}
+                    value={descGeneralValor} onChange={v => setDescGeneralValor(v ?? 0)}
+                    style={{ width: 140 }}
+                    placeholder={descGeneralTipo === 'porcentaje' ? '0.00 %' : '0.00 RD$'} />
+                </Space.Compact>
+                {descGeneral > 0 && (
+                  <span style={{ fontSize: 14, fontWeight: 700, color: D.orange }}>
+                    − {fmt.money(descGeneral)}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* ── Formas de pago múltiples ──────────────────────────────── */}
+            <div style={cardStyle}>
+              <div style={{ padding: '14px 20px', borderBottom: formasPago.length > 0 ? `1px solid ${D.border}` : 'none',
+                display: 'flex', alignItems: 'center' }}>
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: D.text }}>Formas de pago</span>
+                  <span style={{ fontSize: 11, color: D.textTer, marginLeft: 8 }}>opcional — desglose de cómo se recibe el pago</span>
+                </div>
+                <Button size="small" icon={<PlusOutlined />}
+                  onClick={() => setFormasPago([...formasPago, { tipo: 1, monto: 0 }])}
+                  style={{ borderRadius: D.radiusSm }}>
+                  Agregar
+                </Button>
+              </div>
+
+              {formasPago.length > 0 && (
+                <div style={{ padding: '14px 20px' }}>
+                  <Space direction="vertical" style={{ width: '100%' }}>
+                    {formasPago.map((fp, idx) => (
+                      <Row key={idx} gutter={[8, 0]} align="middle">
+                        <Col xs={24} sm={9}>
+                          <Select value={fp.tipo} style={{ width: '100%' }}
+                            onChange={v => { const u = [...formasPago]; u[idx].tipo = v; setFormasPago(u); }}>
+                            <Select.Option value={1}>💵 Efectivo</Select.Option>
+                            <Select.Option value={2}>🏦 Cheque / Transferencia</Select.Option>
+                            <Select.Option value={3}>💳 Tarjeta débito/crédito</Select.Option>
+                            <Select.Option value={4}>📋 Crédito (a plazo)</Select.Option>
+                            <Select.Option value={5}>🔄 Permuta</Select.Option>
+                            <Select.Option value={6}>📝 Nota de crédito</Select.Option>
+                          </Select>
+                        </Col>
+                        <Col xs={12} sm={6}>
+                          <InputNumber min={0} precision={2} value={fp.monto} style={{ width: '100%' }}
+                            placeholder="Monto RD$"
+                            onChange={v => { const u = [...formasPago]; u[idx].monto = v ?? 0; setFormasPago(u); }} />
+                        </Col>
+                        <Col xs={10} sm={7}>
+                          <Input value={fp.referencia ?? ''} placeholder="Ref. # transacción..."
+                            onChange={e => { const u = [...formasPago]; u[idx].referencia = e.target.value; setFormasPago(u); }} />
+                        </Col>
+                        <Col xs={2} sm={2}>
+                          <Button type="text" danger icon={<DeleteOutlined />}
+                            onClick={() => setFormasPago(formasPago.filter((_, i) => i !== idx))} />
+                        </Col>
+                      </Row>
+                    ))}
+                    {(() => {
+                      const sumaFP = r2(formasPago.reduce((s, fp) => s + fp.monto, 0));
+                      const diff   = r2(Math.abs(sumaFP - total));
+                      if (diff > 0.01 && sumaFP > 0) return (
+                        <Alert type="warning" showIcon style={{ borderRadius: D.radiusSm, fontSize: 12 }}
+                          message={`La suma (${fmt.money(sumaFP)}) no coincide con el total (${fmt.money(total)}) — diferencia: ${fmt.money(diff)}`} />
+                      );
+                      if (sumaFP > 0 && diff <= 0.01) return (
+                        <div style={{ fontSize: 12, color: D.green, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <CheckCircleOutlined /> Suma cuadra con el total
+                        </div>
+                      );
+                      return null;
+                    })()}
+                  </Space>
+                </div>
+              )}
+            </div>
+
+            {/* ── Retenciones E31 ───────────────────────────────────────── */}
+            {tipoNcf === 'E31' && (
+              <div style={{ ...cardStyle, padding: '16px 20px' }}>
+                <Checkbox checked={aplicaRetenciones}
+                  onChange={e => {
+                    setAplicaRetenciones(e.target.checked);
+                    if (!e.target.checked) { setRetieneItbis(false); setRetieneIsr(false); }
+                  }}>
+                  <span style={{ fontWeight: 600, fontSize: 14 }}>Aplica Retenciones</span>
+                  <span style={{ marginLeft: 8, fontSize: 12, color: D.textSec }}>(agente de retención DGII)</span>
+                </Checkbox>
+                {aplicaRetenciones && (
+                  <div style={{ marginTop: 12, padding: '12px 16px', background: D.orangeBg,
+                    borderRadius: D.radiusSm, border: `1px solid ${D.orangeBorder}` }}>
+                    <Row gutter={[24, 8]}>
+                      <Col xs={24} sm={12}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                          <Checkbox checked={retieneItbis} onChange={e => setRetieneItbis(e.target.checked)}>Retener ITBIS</Checkbox>
+                          {retieneItbis && <InputNumber min={0} max={100} precision={2} value={pctRetItbis}
+                            onChange={v => setPctRetItbis(v ?? 30)} addonAfter="%" style={{ width: 110 }} />}
+                        </div>
+                        {retieneItbis && (
+                          <Text type="secondary" style={{ fontSize: 12 }}>
+                            Monto: <Text strong style={{ color: D.orange }}>-{fmt.money(montoRetItbisForm)}</Text>
+                            &nbsp;({pctRetItbis}% de {fmt.money(ivaTotal)})
+                          </Text>
+                        )}
+                      </Col>
+                      <Col xs={24} sm={12}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                          <Checkbox checked={retieneIsr} onChange={e => setRetieneIsr(e.target.checked)}>Retener ISR</Checkbox>
+                          {retieneIsr && <InputNumber min={0} max={100} precision={2} value={pctRetIsr}
+                            onChange={v => setPctRetIsr(v ?? 10)} addonAfter="%" style={{ width: 110 }} />}
+                        </div>
+                        {retieneIsr && (
+                          <Text type="secondary" style={{ fontSize: 12 }}>
+                            Monto: <Text strong style={{ color: D.orange }}>-{fmt.money(montoRetIsrForm)}</Text>
+                            &nbsp;({pctRetIsr}% de {fmt.money(baseGravable)})
+                          </Text>
+                        )}
+                      </Col>
+                    </Row>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Spacer bottom */}
+            <div style={{ height: 32 }} />
+          </div>
+
+          {/* ══════════════════════════════════════════════════════════════
+              RIGHT SIDEBAR — sticky totals + actions
+          ══════════════════════════════════════════════════════════════ */}
+          <div style={{ width: 300, position: 'sticky', top: 72, alignSelf: 'flex-start', flexShrink: 0 }}>
+
+            {/* Totales card */}
+            <div style={{ background: D.card, borderRadius: D.radius, border: `1px solid ${D.border}`,
+              boxShadow: D.shadowLg, overflow: 'hidden', marginBottom: 12 }}>
+
+              <div style={{ padding: '12px 18px', background: D.bg, borderBottom: `1px solid ${D.border}` }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: D.textSec, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Resumen
+                </span>
+              </div>
+
+              <div style={{ padding: '16px 18px' }}>
+                {/* Breakdown */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 13, color: D.textSec }}>Subtotal bruto</span>
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>{fmt.money(subtotalBruto)}</span>
+                  </div>
+                  {totalDescLineas > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: 13, color: D.textSec }}>(-) Descuentos línea</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: D.orange }}>-{fmt.money(totalDescLineas)}</span>
+                    </div>
+                  )}
+                  {descGeneral > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: 13, color: D.textSec }}>
+                        (-) Desc. general{descGeneralTipo === 'porcentaje' ? ` (${descGeneralValor}%)` : ''}
+                      </span>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: D.orange }}>-{fmt.money(descGeneral)}</span>
+                    </div>
+                  )}
+                  {(totalDescLineas > 0 || descGeneral > 0) && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: 13, color: D.textSec }}>Base gravable</span>
+                      <span style={{ fontSize: 13, fontWeight: 600 }}>{fmt.money(baseGravable)}</span>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 13, color: D.textSec }}>ITBIS</span>
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>{fmt.money(ivaTotal)}</span>
+                  </div>
+                  {montoRetItbisForm > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: 13, color: D.textSec }}>(-) Ret. ITBIS ({pctRetItbis}%)</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: D.orange }}>-{fmt.money(montoRetItbisForm)}</span>
+                    </div>
+                  )}
+                  {montoRetIsrForm > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: 13, color: D.textSec }}>(-) Ret. ISR ({pctRetIsr}%)</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: D.orange }}>-{fmt.money(montoRetIsrForm)}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Divider */}
+                <div style={{ margin: '14px 0', height: 1, background: D.border }} />
+
+                {/* Total grande */}
+                <div style={{ textAlign: 'center', padding: '4px 0 12px' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: D.textTer, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
+                    {(montoRetItbisForm > 0 || montoRetIsrForm > 0) ? 'Total factura' : 'Total a pagar'}
+                  </div>
+                  <div style={{ fontSize: 36, fontWeight: 800, color: D.primary, letterSpacing: '-0.02em', lineHeight: 1, fontFamily: D.font }}>
+                    {fmt.money(total)}
+                  </div>
+                  {(montoRetItbisForm > 0 || montoRetIsrForm > 0) && (
+                    <div style={{ marginTop: 10, fontSize: 14, color: D.green, fontWeight: 700 }}>
+                      Neto a cobrar: {fmt.money(netoCobrarForm)}
+                    </div>
+                  )}
+                </div>
+
+                {/* Badges */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center' }}>
+                  {tipoInfo && (
+                    <span style={{ background: `${tipoInfo.color}18`, color: tipoInfo.color, fontSize: 11,
+                      fontWeight: 600, padding: '3px 8px', borderRadius: 99,
+                      border: `1px solid ${tipoInfo.color}40`, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <SafetyCertificateOutlined style={{ fontSize: 10 }} />
+                      {tipoInfo.codigo}
+                    </span>
+                  )}
+                  <span style={{ background: tipoPago === 'CONTADO' ? D.greenBg : D.orangeBg,
+                    color: tipoPago === 'CONTADO' ? D.green : D.orange, fontSize: 11, fontWeight: 600,
+                    padding: '3px 8px', borderRadius: 99,
+                    border: `1px solid ${tipoPago === 'CONTADO' ? D.greenBorder : D.orangeBorder}` }}>
+                    {tipoPago === 'CONTADO' ? '💵 Contado' : `📋 Crédito ${diasCredito}d`}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Acciones card */}
+            <div style={{ background: D.card, borderRadius: D.radius, border: `1px solid ${D.border}`,
+              boxShadow: D.shadow, padding: '16px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+
+                {/* Primary: Crear / Guardar */}
                 <Button type="primary" htmlType="submit" block size="large"
+                  icon={<FileTextOutlined />}
                   loading={editMode ? updateMut.isPending : createMut.isPending}
-                  style={{ height: 48, fontSize: 15 }}>
+                  style={{ height: 46, fontSize: 14, fontWeight: 700, borderRadius: D.radiusSm,
+                    background: D.primary, boxShadow: '0 2px 8px rgba(37,99,235,0.3)' }}>
                   {editMode ? 'Guardar cambios' : 'Crear Factura'}
                 </Button>
-                {editMode && (
-                  <Button block size="large" onClick={() => navigate('/facturas')}>
-                    Cancelar
+
+                {/* Secondary grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <Tooltip title={editMode ? 'Guardar cambios (F9)' : 'Crear como borrador (F9)'}>
+                    <Button block icon={<SaveOutlined />} onClick={() => form.submit()}
+                      style={{ borderRadius: D.radiusSm, height: 36, fontSize: 12 }}>
+                      Borrador
+                    </Button>
+                  </Tooltip>
+                  <Tooltip title={editMode ? 'Abrir vista previa HTML' : 'Disponible tras crear'}>
+                    <Button block icon={<EyeOutlined />} disabled={!editMode}
+                      onClick={() => editMode && openPreview()}
+                      style={{ borderRadius: D.radiusSm, height: 36, fontSize: 12 }}>
+                      Preview
+                    </Button>
+                  </Tooltip>
+                  <Tooltip title="Disponible tras crear la factura">
+                    <Button block icon={<PrinterOutlined />} disabled
+                      style={{ borderRadius: D.radiusSm, height: 36, fontSize: 12 }}>
+                      Imprimir
+                    </Button>
+                  </Tooltip>
+                  <Tooltip title="Disponible tras crear la factura">
+                    <Button block icon={<MailOutlined />} disabled
+                      style={{ borderRadius: D.radiusSm, height: 36, fontSize: 12 }}>
+                      Email
+                    </Button>
+                  </Tooltip>
+                </div>
+
+                <Tooltip title="Disponible tras crear la factura">
+                  <Button block icon={<CreditCardOutlined />} disabled
+                    style={{ borderRadius: D.radiusSm, height: 38, fontSize: 13,
+                      borderColor: D.green, color: D.green }}>
+                    Facturar y cobrar (F8)
                   </Button>
-                )}
-              </Space>
-            </Col>
-          </Row>
-        </Card>
+                </Tooltip>
+
+                <div style={{ borderTop: `1px solid ${D.border}`, paddingTop: 8, marginTop: 2 }}>
+                  <Button block onClick={() => navigate('/facturas')}
+                    style={{ borderRadius: D.radiusSm, height: 34, fontSize: 12, color: D.textSec }}>
+                    Cancelar (ESC)
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
       </Form>
 
-      {/* ── Modal: aplicar anticipo ────────────────────────────────────── */}
+      {/* ── Modal: aplicar anticipo ─────────────────────────────────────── */}
       {!editMode && (
         <Modal title="¿Deseas aplicar un anticipo disponible?"
           open={!!modalAnticipo}
