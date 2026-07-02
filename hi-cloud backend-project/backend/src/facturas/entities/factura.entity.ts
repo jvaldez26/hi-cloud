@@ -135,6 +135,11 @@ export class Factura extends TenantBaseEntity {
   @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true, default: null })
   descuentoGeneralValor?: number;
 
+  // ── Comprador (cuando se ingresa RNC/cédula sin seleccionar cliente) ────────
+  /** RNC o cédula del comprador capturado manualmente en el formulario */
+  @Column({ length: 11, nullable: true, default: null })
+  rncComprador?: string;
+
   // ── Orden de Compra ───────────────────────────────────────────────────────
   @Column({ length: 100, nullable: true, default: null })
   ordenCompraNumero?: string;

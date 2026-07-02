@@ -303,7 +303,7 @@ export class EmitirECFUseCase {
       documentoOrigenId,
       estadoDGII:          EstadoDGII.PENDIENTE_ENVIO,
       codigoSeguridad:     String(Math.floor(100000 + Math.random() * 900000)),
-      rncComprador:        (factura as Factura).cliente?.rncReceptor ?? undefined,
+      rncComprador:        (factura as Factura).cliente?.rncReceptor ?? (factura as Factura).rncComprador ?? undefined,
       razonSocialComprador: (factura as Factura).cliente?.nombre,
       direccionComprador:  (factura as Factura).cliente?.direccion ?? undefined,
       montoExento:         0,

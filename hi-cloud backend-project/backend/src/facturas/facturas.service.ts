@@ -232,6 +232,7 @@ export class FacturasService {
         : undefined,
       ordenCompraNumero: dto.ordenCompraNumero ?? undefined,
       formasPago: dto.formasPago?.length ? dto.formasPago : undefined,
+      rncComprador: dto.rncComprador ?? undefined,
     });
 
     let savedFactura: Factura;

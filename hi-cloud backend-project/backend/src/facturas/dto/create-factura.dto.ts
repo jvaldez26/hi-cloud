@@ -157,6 +157,10 @@ export class CreateFacturaDto {
   @Min(0)
   descuentoGeneralValor?: number;
 
+  // ── Comprador ─────────────────────────────────────────────────────────────
+  @IsOptional() @IsString() @MaxLength(11)
+  rncComprador?: string;
+
   // ── Orden de Compra ───────────────────────────────────────────────────────
   @IsOptional() @IsString() @MaxLength(100)
   ordenCompraNumero?: string;
