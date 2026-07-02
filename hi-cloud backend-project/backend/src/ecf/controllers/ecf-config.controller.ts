@@ -9,6 +9,8 @@ import { EcfConfigService } from '../services/ecf-config.service';
 import { CreateEmpresaEcfConfigDto } from '../dto/create-empresa-ecf-config.dto';
 import { UpdateEmpresaEcfConfigDto } from '../dto/update-empresa-ecf-config.dto';
 import { CreateSecuenciaAdminDto } from '../dto/create-secuencia-admin.dto';
+import { GetUser } from '../../auth/decorators/get-user.decorator';
+import { User } from '../../users/users.entity';
 
 /**
  * Endpoints de configuración e-CF — accesibles SOLO para SUPER_ADMIN.
@@ -90,9 +92,13 @@ export class EcfConfigController {
   @ApiOperation({
     summary: 'Cargar rango eNCF autorizado por DGII — valida solapamiento y activa la secuencia',
   })
-  crearSecuencia(@Body() dto: CreateSecuenciaAdminDto) {
-    // userId 0 como placeholder para super_admin (no tiene empresaId)
-    return this.svc.crearSecuencia(dto, 0);
+  crearSecuencia(
+    @Body() dto: CreateSecuenciaAdminDto,
+    @GetUser() usuario: User,
+  ) {
+    // SuperAdminGuard inyecta req.user = { ...payload, id: payload.sub }
+    // así la secuencia queda auditada con el ID real del Super Admin que la cargó
+    return this.svc.crearSecuencia(dto, usuario.id);
   }
 
   @Patch('secuencias/:id/desactivar')

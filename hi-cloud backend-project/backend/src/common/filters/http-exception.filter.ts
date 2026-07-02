@@ -81,7 +81,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
         case '23503': // foreign_key_violation
           status  = HttpStatus.BAD_REQUEST;
-          this.logger.warn(`ForeignKeyViolation [${request.method} ${request.url}]: ${pgErr.detail}`);
+          this.logger.warn(
+            `ForeignKeyViolation [${request.method} ${request.url}]` +
+            ` table=${(pgErr as any).table ?? '?'} constraint=${(pgErr as any).constraint ?? '?'}` +
+            `: ${pgErr.detail}`,
+          );
           message = (process.env.NODE_ENV !== 'production' && pgErr.detail)
             ? `Referencia inválida: ${pgErr.detail.replace(/[()]/g, '')}`
             : 'El registro relacionado no existe';

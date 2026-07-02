@@ -39,10 +39,10 @@ export class SecuenciaECF extends BaseEntity {
   @Column({ default: false })
   alertaEnviada!: boolean;
 
-  @ManyToOne(() => User)
+  @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: 'userId' })
-  user!: User;
+  user?: User;
 
-  @Column()
-  userId!: number;
+  @Column({ nullable: true })
+  userId?: number;
 }
