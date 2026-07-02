@@ -244,25 +244,86 @@ export class PagosSuscripcionService {
   }
 
   async registrarPago(empresaId: number, dto: RegistrarPagoDto, adminId: number) {
+    // ── 1. Leer suscripción actual ──────────────────────────────────────────
+    const [sus] = await this.ds.query<any[]>(`
+      SELECT estado, modalidad, "fechaVencimiento"
+      FROM suscripciones WHERE "empresaId" = $1
+    `, [empresaId]);
+
+    // ── 2. Calcular nueva fechaVencimiento (desde el vencimiento anterior) ──
+    let nuevaFechaVenc: string | null = null;
+    let periodoInicio = dto.periodoInicio ? new Date(dto.periodoInicio) : null;
+    let periodoFin    = dto.periodoFin    ? new Date(dto.periodoFin)    : null;
+
+    if (sus) {
+      // DATE de PG llega como string 'YYYY-MM-DD'; si llega como Date → extraer parte fecha
+      const fechaStr = typeof sus.fechaVencimiento === 'string'
+        ? sus.fechaVencimiento.split('T')[0]
+        : (sus.fechaVencimiento as Date).toISOString().split('T')[0];
+
+      const [y, m, d] = fechaStr.split('-').map(Number);
+      const modalidad  = sus.modalidad ?? 'mensual';
+
+      let ny = y, nm = m;
+      if (modalidad === 'anual') { ny += 1; }
+      else { nm += 1; if (nm > 12) { nm = 1; ny += 1; } }
+      // Overflow de fin de mes (ej. 31 ene + 1 mes → 28/29 feb)
+      const nd = Math.min(d, new Date(ny, nm, 0).getDate());
+      nuevaFechaVenc = `${ny}-${String(nm).padStart(2, '0')}-${String(nd).padStart(2, '0')}`;
+
+      if (!periodoInicio) periodoInicio = new Date(fechaStr + 'T00:00:00');
+      if (!periodoFin)    periodoFin    = new Date(nuevaFechaVenc + 'T00:00:00');
+    }
+
+    // ── 3. Registrar el pago ────────────────────────────────────────────────
     const pago = this.pagoRepo.create({
       empresaId,
-      tipo:         dto.tipo,
-      concepto:     dto.concepto,
-      montoUsd:     dto.montoUsd,
-      estado:       EstadoPago.CONFIRMADO,
-      referencia:   dto.referencia ?? null,
-      notas:        dto.notas ?? null,
+      tipo:          dto.tipo,
+      concepto:      dto.concepto,
+      montoUsd:      dto.montoUsd,
+      estado:        EstadoPago.CONFIRMADO,
+      referencia:    dto.referencia ?? null,
+      notas:         dto.notas ?? null,
       registradoPor: adminId,
       confirmadoPor: adminId,
       confirmadoEn:  new Date(),
-      periodoInicio: dto.periodoInicio ? new Date(dto.periodoInicio) : null,
-      periodoFin:    dto.periodoFin    ? new Date(dto.periodoFin)    : null,
+      periodoInicio,
+      periodoFin,
     });
     const saved = await this.pagoRepo.save(pago);
+
+    // ── 4. Activar suscripción y extender fechaVencimiento ─────────────────
+    if (sus && nuevaFechaVenc) {
+      const fechaAnterior = typeof sus.fechaVencimiento === 'string'
+        ? sus.fechaVencimiento.split('T')[0]
+        : (sus.fechaVencimiento as Date).toISOString().split('T')[0];
+
+      await this.ds.query(`
+        UPDATE suscripciones
+        SET estado = 'activa',
+            "fechaVencimiento" = $1,
+            "motivoSuspension" = NULL,
+            "enPeriodoGracia" = false
+        WHERE "empresaId" = $2
+      `, [nuevaFechaVenc, empresaId]);
+
+      this.logger.log(
+        `[PAGO] Empresa #${empresaId} | Admin #${adminId} | ` +
+        `US$${dto.montoUsd} (${dto.tipo}) | ${sus.modalidad ?? 'mensual'} | ` +
+        `Vencimiento: ${fechaAnterior} → ${nuevaFechaVenc}`,
+      );
+    }
+
+    // ── 5. Notificar a la empresa ───────────────────────────────────────────
     await this.notificarEmpresaPago(empresaId, saved).catch(e =>
       this.logger.warn(`Email pago registrado: ${e?.message}`)
     );
-    return saved;
+
+    return {
+      ...saved,
+      montoUsd:              Number(saved.montoUsd),
+      nuevaFechaVencimiento: nuevaFechaVenc ?? null,
+    };
   }
 
   async confirmarTransferencia(pagoId: number, adminId: number, dto: ConfirmarPagoDto) {
@@ -279,6 +340,40 @@ export class PagosSuscripcionService {
       confirmadoEn:  new Date(),
       notas:         dto.notas ?? pago.notas,
     });
+
+    // ── Activar suscripción y extender fechaVencimiento ─────────────────────
+    const [sus] = await this.ds.query<any[]>(`
+      SELECT estado, modalidad, "fechaVencimiento"
+      FROM suscripciones WHERE "empresaId" = $1
+    `, [pago.empresaId]);
+
+    if (sus) {
+      const fechaStr = typeof sus.fechaVencimiento === 'string'
+        ? sus.fechaVencimiento.split('T')[0]
+        : (sus.fechaVencimiento as Date).toISOString().split('T')[0];
+
+      const [y, m, d] = fechaStr.split('-').map(Number);
+      const modalidad  = sus.modalidad ?? 'mensual';
+      let ny = y, nm = m;
+      if (modalidad === 'anual') { ny += 1; }
+      else { nm += 1; if (nm > 12) { nm = 1; ny += 1; } }
+      const nd = Math.min(d, new Date(ny, nm, 0).getDate());
+      const nuevaFecha = `${ny}-${String(nm).padStart(2, '0')}-${String(nd).padStart(2, '0')}`;
+
+      await this.ds.query(`
+        UPDATE suscripciones
+        SET estado = 'activa',
+            "fechaVencimiento" = $1,
+            "motivoSuspension" = NULL,
+            "enPeriodoGracia" = false
+        WHERE "empresaId" = $2
+      `, [nuevaFecha, pago.empresaId]);
+
+      this.logger.log(
+        `[TRANSFERENCIA] Empresa #${pago.empresaId} | Admin #${adminId} | ` +
+        `US$${pago.montoUsd} | ${modalidad} | Vencimiento: ${fechaStr} → ${nuevaFecha}`,
+      );
+    }
 
     const updated = await this.pagoRepo.findOne({ where: { id: pagoId } });
     await this.notificarEmpresaConfirmacion(pago.empresaId, updated!).catch(e =>

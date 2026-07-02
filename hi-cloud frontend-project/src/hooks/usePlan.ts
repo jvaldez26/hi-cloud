@@ -39,7 +39,8 @@ export function usePlan() {
   const { data: suscripcion, isLoading: loadingPlan } = useQuery({
     queryKey: ['mi-plan'],
     queryFn:  suscripcionesApi.miPlan,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
     retry: false,
   });
 
