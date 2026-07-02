@@ -317,21 +317,55 @@ export default function FacturaFormPage() {
     else rnc.limpiar();
   };
 
+  /** Intenta auto-seleccionar cliente por RFC exacto en la lista cargada */
+  const intentarAutoseleccionPorRNC = useCallback((clean: string) => {
+    if (!clientes?.data || form.getFieldValue('clienteId')) return false;
+    const match = clientes.data.find(
+      (c: Cliente) => (c.rfc ?? '').replace(/\D/g, '') === clean
+    );
+    if (match) {
+      form.setFieldValue('clienteId', match.id);
+      setClienteSeleccionado(match);
+      if ((match as any)?.diasCredito > 0) setDiasCredito((match as any).diasCredito);
+      actualizarTipoNcf(match);
+      return true;
+    }
+    return false;
+  }, [clientes?.data, form, actualizarTipoNcf]);
+
+  /** Cuando el lookup DGII resuelve (asíncrono), reintenta match por RFC
+   *  y además intenta match por nombre DGII en la lista de clientes */
+  useEffect(() => {
+    if (!rnc.datos?.encontrado) return;
+    const clean = rncInput.replace(/\D/g, '');
+    if (!/^\d{9}$|^\d{11}$/.test(clean)) return;
+    if (form.getFieldValue('clienteId')) return;     // ya seleccionado
+
+    // 1. Intento por RFC exacto
+    if (intentarAutoseleccionPorRNC(clean)) return;
+
+    // 2. Fallback: buscar por nombre DGII en la lista de clientes
+    const nombreDGII = (rnc.datos.nombre ?? '').toLowerCase();
+    if (!nombreDGII || !clientes?.data) return;
+    const matchNombre = clientes.data.find((c: Cliente) => {
+      const cn = (c.nombre ?? '').toLowerCase();
+      // Coincidencia si los primeros 8 chars del nombre DGII están en el nombre del cliente o viceversa
+      return cn.length > 4 && (nombreDGII.includes(cn.substring(0, 8)) || cn.includes(nombreDGII.substring(0, 8)));
+    });
+    if (matchNombre) {
+      form.setFieldValue('clienteId', matchNombre.id);
+      setClienteSeleccionado(matchNombre);
+      if ((matchNombre as any)?.diasCredito > 0) setDiasCredito((matchNombre as any).diasCredito);
+      actualizarTipoNcf(matchNombre);
+    }
+  }, [rnc.datos, clientes?.data]);   // eslint-disable-line react-hooks/exhaustive-deps
+
   const onRncChange = (val: string) => {
     const clean = val.replace(/\D/g, '').slice(0, 11);
     setRncInput(clean);
     if (/^\d{9}$|^\d{11}$/.test(clean)) {
-      // Buscar en clientes registrados
-      const match = clientes?.data?.find(
-        (c: Cliente) => (c.rfc ?? '').replace(/\D/g, '') === clean
-      );
-      if (match && match.id !== form.getFieldValue('clienteId')) {
-        form.setFieldValue('clienteId', match.id);
-        setClienteSeleccionado(match);
-        if ((match as any)?.diasCredito > 0) setDiasCredito((match as any).diasCredito);
-        actualizarTipoNcf(match);
-      }
-      rnc.consultarDebounced(clean);
+      intentarAutoseleccionPorRNC(clean);     // intento inmediato (si clientes ya cargó)
+      rnc.consultarDebounced(clean);          // lookup DGII asíncrono (reintento en useEffect)
     } else {
       rnc.limpiar();
     }
