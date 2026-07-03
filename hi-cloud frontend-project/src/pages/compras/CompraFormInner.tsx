@@ -50,8 +50,17 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
   const defaultAlmacenId = (() => { try { const v = localStorage.getItem('almacenId'); return v ? Number(v) : undefined; } catch { return undefined; } })();
   const [almacenId, setAlmacenId] = useState<number | undefined>(defaultAlmacenId);
 
+  const [productoSearch, setProductoSearch] = useState('');
+  // Guarda label del producto seleccionado por row para mostrarlo aunque no esté en los resultados de búsqueda
+  const [selectedProds, setSelectedProds] = useState<Map<number, string>>(new Map());
+
   const { data: proveedores } = useQuery({ queryKey: ['proveedores-sel'], queryFn: () => proveedoresApi.list(1, 200) });
-  const { data: productos }   = useQuery({ queryKey: ['productos-sel'],   queryFn: () => productosApi.list(1, 200) });
+  const { data: productosBusqueda, isFetching: buscandoProd } = useQuery({
+    queryKey: ['productos-compra-search', productoSearch],
+    queryFn:  () => productosApi.list(1, 50, productoSearch),
+    enabled:  productoSearch.length >= 2,
+    staleTime: 30_000,
+  });
   const { data: almacenes = [] } = useQuery<any[]>({
     queryKey: ['almacenes-sel'],
     queryFn:  () => api.get('/almacenes?limit=200').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
@@ -89,8 +98,10 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
   const netoPagar     = Number((total - montoRetItbis - montoRetIsr).toFixed(2));
 
   const onProductoChange = (productoId: number, idx: number) => {
-    const prod = productos?.data.find((p: any) => p.id === productoId);
+    const prod = (productosBusqueda?.data ?? []).find((p: any) => p.id === productoId);
     if (!prod) return;
+    const label = prod.codigo ? `${prod.codigo} — ${prod.nombre}` : prod.nombre;
+    setSelectedProds(prev => new Map(prev).set(productoId, label));
     const updated = [...lineas];
     updated[idx] = { ...updated[idx], productoId, descripcion: prod.nombre, precioUnitario: Number(prod.precio), porcentajeItbis: 18 };
     setLineas(updated);
@@ -141,12 +152,28 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
 
   const lineaCols = [
     { title: 'Producto', key: 'prod', width: 200,
-      render: (_: unknown, _r: Linea, idx: number) => (
-        <Select style={{ width: '100%' }} showSearch placeholder="Buscar..."
-          filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
-          options={(productos?.data ?? []).map((p: any) => ({ value: p.id, label: p.codigo ? `${p.codigo} — ${p.nombre}` : p.nombre }))}
-          onChange={(v) => onProductoChange(v, idx)} />
-      )},
+      render: (_: unknown, _r: Linea, idx: number) => {
+        const busquedaOpts = (productosBusqueda?.data ?? []).map((p: any) => ({
+          value: p.id, label: p.codigo ? `${p.codigo} — ${p.nombre}` : p.nombre,
+        }));
+        // Incluir el producto ya seleccionado en esta fila aunque no esté en los resultados
+        const opts = (() => {
+          const pid = _r.productoId;
+          if (!pid || busquedaOpts.some(o => o.value === pid)) return busquedaOpts;
+          const saved = selectedProds.get(pid);
+          return saved ? [{ value: pid, label: saved }, ...busquedaOpts] : busquedaOpts;
+        })();
+        return (
+          <Select style={{ width: '100%' }} showSearch placeholder="Escribe para buscar..."
+            filterOption={false}
+            onSearch={setProductoSearch}
+            loading={buscandoProd}
+            notFoundContent={productoSearch.length < 2 ? 'Escribe al menos 2 letras' : 'Sin resultados'}
+            options={opts}
+            value={_r.productoId}
+            onChange={(v) => onProductoChange(v, idx)} />
+        );
+      }},
     { title: 'Descripción', key: 'desc', width: 170,
       render: (_: unknown, r: Linea, idx: number) => (
         <Input value={r.descripcion} onChange={e => { const u=[...lineas]; u[idx].descripcion=e.target.value; setLineas(u); }} />
