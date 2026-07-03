@@ -525,7 +525,7 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
               f.total::text, f.subtotal::text, f.iva::text,
               COALESCE(f.notas,'') AS notas,
               c.nombre AS "clienteNombre",
-              COALESCE(e."razonSocial",'') AS "empresaNombre",
+              COALESCE(e.nombre,'') AS "empresaNombre",
               COALESCE(e.rnc,'') AS "empresaRnc",
               COALESCE(e.logo,'') AS "empresaLogo",
               COALESCE(e.telefono,'') AS "empresaTelefono",
