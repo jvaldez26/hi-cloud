@@ -497,6 +497,7 @@ export class FacturasService {
     // Enriquecer con datos ECF (qrUrl, numero, codigoSeguridad, trackId, respuestaMSeller)
     const ecfRow = await this.facturaRepository.manager.query<any[]>(`
       SELECT id, numero, "estadoDGII", "codigoSeguridad", "qrUrl", "trackId",
+             "fechaFirma", "ultimoIntentoEnvio",
              "respuestaMSeller", "respuestaDgii", "jsonEnviado"
       FROM ecf
       WHERE "facturaId" = $1 AND "isActive" = true
