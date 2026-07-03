@@ -34,14 +34,14 @@ function fmtDT(s: string | undefined | null): string {
   try {
     const d = new Date(s);
     if (isNaN(d.getTime())) return String(s);
-    return [
-      String(d.getDate()).padStart(2, '0'),
-      String(d.getMonth() + 1).padStart(2, '0'),
-      d.getFullYear(),
-    ].join('/') + ' ' + [
-      String(d.getHours()).padStart(2, '0'),
-      String(d.getMinutes()).padStart(2, '0'),
-    ].join(':');
+    const fmt = new Intl.DateTimeFormat('es', {
+      timeZone: 'America/Santo_Domingo',
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false,
+    });
+    const p = Object.fromEntries(fmt.formatToParts(d).map(x => [x.type, x.value]));
+    return `${p.day}/${p.month}/${p.year} ${p.hour}:${p.minute}:${p.second}`;
   } catch { return String(s); }
 }
 
@@ -372,7 +372,7 @@ export async function generarFacturaPDF(
 
       if (d.ecfFechaFirma) {
         doc.fillColor(GRAY).font('Helvetica').fontSize(8)
-          .text('Fecha Firma Digital:', PL, qy, { width: qrBoxW, align: 'center' }); qy += 11;
+          .text('Fecha y Hora de Firma:', PL, qy, { width: qrBoxW, align: 'center' }); qy += 11;
         doc.fillColor(DARK).font('Helvetica-Bold').fontSize(8)
           .text(fmtDT(d.ecfFechaFirma), PL, qy, { width: qrBoxW, align: 'center' }); qy += 13;
       }

@@ -38,7 +38,7 @@ export class ComprasPdfService {
 
     // Buscar e-CF E41 asociado a esta compra
     const ecf = await this.ds.query<any[]>(
-      `SELECT numero, "codigoSeguridad", "qrUrl", "estadoDGII"
+      `SELECT numero, "codigoSeguridad", "qrUrl", "estadoDGII", "fechaFirma"
        FROM ecf
        WHERE "documentoOrigenTipo" = 'COMPRA'
          AND "documentoOrigenId"   = $1
@@ -120,7 +120,7 @@ export class ComprasPdfService {
     compra: Compra,
     empresa: Empresa | null,
     proveedor: any,
-    ecf: { numero: string; codigoSeguridad: string; qrUrl?: string; estadoDGII?: string },
+    ecf: { numero: string; codigoSeguridad: string; qrUrl?: string; estadoDGII?: string; fechaFirma?: string | null },
   ): Promise<Buffer> {
     // Generar QR
     let qrBase64 = '';
@@ -310,6 +310,25 @@ export class ComprasPdfService {
         doc.fontSize(8).font('Helvetica-Bold').fillColor('#333333')
            .text(`Código de Seguridad: ${ecf.codigoSeguridad ?? '—'}`, SX, sy, { width: SW });
         sy += 12;
+        if (ecf.fechaFirma) {
+          const fmtDTlocal = (s: string) => {
+            try {
+              const dt = new Date(s);
+              if (isNaN(dt.getTime())) return s;
+              const fmt = new Intl.DateTimeFormat('es', {
+                timeZone: 'America/Santo_Domingo',
+                day: '2-digit', month: '2-digit', year: 'numeric',
+                hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+              });
+              const p = Object.fromEntries(fmt.formatToParts(dt).map(x => [x.type, x.value]));
+              return `${p.day}/${p.month}/${p.year} ${p.hour}:${p.minute}:${p.second}`;
+            } catch { return s; }
+          };
+          doc.fontSize(7.5).font('Helvetica').fillColor('#666666')
+             .text('Fecha y Hora de Firma:', SX, sy, { width: SW }); sy += 11;
+          doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#333333')
+             .text(fmtDTlocal(String(ecf.fechaFirma)), SX, sy, { width: SW }); sy += 12;
+        }
         doc.fontSize(7.5).font('Helvetica').fillColor('#666666')
            .text(
              'La validez de este comprobante puede ser verificada mediante el código QR ante la DGII.',

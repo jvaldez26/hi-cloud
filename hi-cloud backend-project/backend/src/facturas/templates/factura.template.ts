@@ -111,12 +111,14 @@ function dateTimeFmt(s: string | undefined | null): string {
   try {
     const d = new Date(s);
     if (isNaN(d.getTime())) return String(s);
-    const dd   = String(d.getDate()).padStart(2, '0');
-    const mm   = String(d.getMonth() + 1).padStart(2, '0');
-    const yyyy = d.getFullYear();
-    const hh   = String(d.getHours()).padStart(2, '0');
-    const min  = String(d.getMinutes()).padStart(2, '0');
-    return `${dd}/${mm}/${yyyy} ${hh}:${min}`;
+    const fmt = new Intl.DateTimeFormat('es', {
+      timeZone: 'America/Santo_Domingo',
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false,
+    });
+    const p = Object.fromEntries(fmt.formatToParts(d).map(x => [x.type, x.value]));
+    return `${p.day}/${p.month}/${p.year} ${p.hour}:${p.minute}:${p.second}`;
   } catch { return String(s); }
 }
 
@@ -239,7 +241,7 @@ export function generarHTMLFactura(d: FacturaPDFData): string {
         : '') +
       (d.ecfFechaFirma
         ? `<div style="font-size:8.5px;color:${GRAY};margin-top:5px;line-height:1.85;">` +
-          `Fecha Firma Digital:<br>` +
+          `Fecha y Hora de Firma:<br>` +
           `<strong style="color:${DARK};">${dateTimeFmt(d.ecfFechaFirma)}</strong>` +
           `</div>`
         : '') +

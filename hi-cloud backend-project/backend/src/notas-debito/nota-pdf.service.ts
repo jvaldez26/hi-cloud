@@ -40,7 +40,7 @@ export class NotaDebitoPDFService {
 
     // ECF de esta nota — incluye QR, código seguridad, NCF modificado, fecha venc. secuencia
     const ecf = await this.repo.manager.query(
-      `SELECT e.numero, e."estadoDGII", e."codigoSeguridad", e."qrUrl",
+      `SELECT e.numero, e."estadoDGII", e."codigoSeguridad", e."qrUrl", e."fechaFirma",
               e."ncfModificado", e."codigoModificacion",
               s."fechaVencimiento" AS "secFechaVenc"
        FROM ecf e
@@ -81,6 +81,7 @@ export class NotaDebitoPDFService {
       ecfNumero:            ecf?.numero,
       ecfEstado:            ecf?.estadoDGII,
       ecfCodigoSeguridad:   ecf?.codigoSeguridad,
+      ecfFechaFirma:        ecf?.fechaFirma ? String(ecf.fechaFirma) : undefined,
       qrBase64,
       fechaVencSecuencia,
       empresaNombre:        empresa.nombreComercial || empresa.razonSocial || empresa.nombre || 'Mi Empresa',

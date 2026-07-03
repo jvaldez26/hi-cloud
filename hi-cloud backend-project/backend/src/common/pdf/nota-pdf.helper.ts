@@ -5,6 +5,22 @@
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const PDFDocument = require('pdfkit') as typeof import('pdfkit');
 
+function fmtDT(s: string | undefined | null): string {
+  if (!s) return '';
+  try {
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return String(s);
+    const fmt = new Intl.DateTimeFormat('es', {
+      timeZone: 'America/Santo_Domingo',
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false,
+    });
+    const p = Object.fromEntries(fmt.formatToParts(d).map(x => [x.type, x.value]));
+    return `${p.day}/${p.month}/${p.year} ${p.hour}:${p.minute}:${p.second}`;
+  } catch { return String(s); }
+}
+
 export interface NotaPDFData {
   tipo:                'DEBITO' | 'CREDITO';
   numero:              string;
@@ -13,6 +29,7 @@ export interface NotaPDFData {
   ecfNumero?:          string;
   ecfEstado?:          string;
   ecfCodigoSeguridad?: string;
+  ecfFechaFirma?:      string;
   qrBase64?:           string;
   empresaNombre:       string;
   empresaRNC:          string;
@@ -357,6 +374,12 @@ export async function generarNotaPDF(d: NotaPDFData): Promise<Buffer> {
         doc.fontSize(8.5).font('Helvetica-Bold').fillColor(DARK)
           .text(`Código de Seguridad: ${d.ecfCodigoSeguridad}`, sx, sy, { width: sw });
         sy += 13;
+      }
+      if (d.ecfFechaFirma) {
+        doc.fontSize(8).font('Helvetica').fillColor(GRAY)
+          .text('Fecha y Hora de Firma:', sx, sy, { width: sw }); sy += 11;
+        doc.fontSize(8).font('Helvetica-Bold').fillColor(DARK)
+          .text(fmtDT(d.ecfFechaFirma), sx, sy, { width: sw }); sy += 13;
       }
       doc.fontSize(7.5).font('Helvetica').fillColor(GRAY)
         .text('La validez de este comprobante puede ser verificada mediante el código QR ante la DGII.', sx, sy, { width: sw });

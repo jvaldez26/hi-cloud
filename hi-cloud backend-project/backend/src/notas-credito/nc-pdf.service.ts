@@ -39,7 +39,8 @@ export class NotaCreditoPDFService {
 
     // ECF de esta nota (para e-NCF, QR, código de seguridad)
     const ecf = await this.repo.manager.query(
-      `SELECT numero, "estadoDGII", "codigoSeguridad", "qrUrl", "ncfModificado", "codigoModificacion"
+      `SELECT numero, "estadoDGII", "codigoSeguridad", "qrUrl", "fechaFirma",
+              "ncfModificado", "codigoModificacion"
        FROM ecf
        WHERE "documentoOrigenId"   = $1
          AND "documentoOrigenTipo" = 'NOTA_CREDITO'
@@ -70,6 +71,7 @@ export class NotaCreditoPDFService {
       ecfNumero:            ecf?.numero,
       ecfEstado:            ecf?.estadoDGII,
       ecfCodigoSeguridad:   ecf?.codigoSeguridad,
+      ecfFechaFirma:        ecf?.fechaFirma ? String(ecf.fechaFirma) : undefined,
       qrBase64,
       empresaNombre:        empresa.nombreComercial || empresa.razonSocial || empresa.nombre || 'Mi Empresa',
       empresaRNC:           empresa.rnc || '',

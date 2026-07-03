@@ -58,7 +58,7 @@ export class GastoPDFService {
 
     // ECF E43 asociado al gasto
     const ecf = await this.repo.manager.query(
-      `SELECT e.numero, e."estadoDGII", e."codigoSeguridad", e."qrUrl",
+      `SELECT e.numero, e."estadoDGII", e."codigoSeguridad", e."qrUrl", e."fechaFirma",
               s."fechaVencimiento" AS "secFechaVenc"
        FROM ecf e
        LEFT JOIN secuencias_ecf s ON s.id = e."secuenciaId"
@@ -252,6 +252,25 @@ export class GastoPDFService {
           if (ecf.codigoSeguridad) {
             doc.fontSize(8).font('Helvetica-Bold').fillColor(DARK).text(`Código de Seguridad: ${ecf.codigoSeguridad}`, sx, sy, { width: sw });
             sy += 12;
+          }
+          if (ecf.fechaFirma) {
+            const fmtDTlocal = (s: string) => {
+              try {
+                const dt = new Date(s);
+                if (isNaN(dt.getTime())) return s;
+                const fmt = new Intl.DateTimeFormat('es', {
+                  timeZone: 'America/Santo_Domingo',
+                  day: '2-digit', month: '2-digit', year: 'numeric',
+                  hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+                });
+                const p = Object.fromEntries(fmt.formatToParts(dt).map(x => [x.type, x.value]));
+                return `${p.day}/${p.month}/${p.year} ${p.hour}:${p.minute}:${p.second}`;
+              } catch { return s; }
+            };
+            doc.fontSize(7.5).font('Helvetica').fillColor(GRAY)
+               .text('Fecha y Hora de Firma:', sx, sy, { width: sw }); sy += 11;
+            doc.fontSize(7.5).font('Helvetica-Bold').fillColor(DARK)
+               .text(fmtDTlocal(String(ecf.fechaFirma)), sx, sy, { width: sw }); sy += 12;
           }
           doc.fontSize(7.5).font('Helvetica').fillColor(GRAY)
             .text('La validez de este comprobante puede ser verificada mediante el código QR ante la DGII.', sx, sy, { width: sw });
