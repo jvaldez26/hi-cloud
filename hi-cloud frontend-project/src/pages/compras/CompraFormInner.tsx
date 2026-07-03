@@ -57,7 +57,7 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
   const { data: proveedores } = useQuery({ queryKey: ['proveedores-sel'], queryFn: () => proveedoresApi.list(1, 200) });
   const { data: productosBusqueda, isFetching: buscandoProd } = useQuery({
     queryKey: ['productos-compra-search', productoSearch],
-    queryFn:  () => productosApi.list(1, 50, productoSearch),
+    queryFn:  () => productosApi.list(1, 50, productoSearch, true),
     enabled:  productoSearch.length >= 2,
     staleTime: 30_000,
   });
