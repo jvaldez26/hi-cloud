@@ -400,7 +400,10 @@ export default function ConducePage() {
                       </Form.Item>
                     </Col>
                     <Col xs={24} sm={8}><Form.Item name={[name, 'descripcion']} noStyle rules={[{ required: true, message: '' }]}><Input placeholder="Descripción *" /></Form.Item></Col>
-                    <Col xs={8} sm={3}><Form.Item name={[name, 'cantidad']} noStyle rules={[{ required: true }]}>
+                    <Col xs={8} sm={3}><Form.Item name={[name, 'cantidad']} noStyle rules={[
+                      { required: true, message: 'Requerido' },
+                      { type: 'number', min: 0.01, message: 'Debe ser > 0' },
+                    ]}>
                       <InputNumber min={0.01} precision={2} placeholder="Cant." style={{ width: '100%' }} />
                     </Form.Item></Col>
                     <Col xs={8} sm={3}><Form.Item name={[name, 'unidadMedida']} noStyle>
@@ -434,7 +437,7 @@ export default function ConducePage() {
               </Row>
             )}
             <Table size="small"
-        scroll={{ x: 'max-content' }} dataSource={modalDetalle.detalles} rowKey="id" pagination={false}
+              dataSource={modalDetalle.detalles} rowKey="id" pagination={false}
               columns={[
                 { title: 'Descripción', dataIndex: 'descripcion', key: 'd' },
                 { title: 'Cantidad', dataIndex: 'cantidad', key: 'c', align: 'right' },

@@ -27,13 +27,18 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const response = ctx.getResponse<Response>();
     const request  = ctx.getRequest<Request>();
 
-    // Log diagnóstico — muestra endpoint + body + error
-    if (process.env.NODE_ENV !== 'production') {
-      const body = (request as any).body;
+    // Log diagnóstico para HttpException — siempre activo (incluye producción)
+    // para permitir diagnóstico vía pm2 logs sin exponer detalle al cliente.
+    // NO se incluye el body completo para evitar datos sensibles; solo user/empresa/endpoint/error.
+    if (exception instanceof HttpException) {
+      const res     = exception.getResponse();
+      const detalle = typeof res === 'object' && res !== null
+        ? (() => { const m = (res as any).message; return Array.isArray(m) ? m.join('; ') : (typeof m === 'string' ? m : exception.message); })()
+        : (typeof res === 'string' ? res : exception.message);
       this.logger.warn(
-        `[ERROR] ${request.method} ${request.url} | ` +
-        `body=${JSON.stringify(body)} | ` +
-        `exception=${(exception as any)?.message ?? String(exception)}`
+        `[${exception.getStatus()}] ${request.method} ${request.url} | ` +
+        `user=#${(request as any).user?.id ?? 'anon'} empresa=#${(request as any).user?.empresaId ?? '-'} | ` +
+        `${detalle}`,
       );
     }
 

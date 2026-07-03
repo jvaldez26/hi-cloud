@@ -595,7 +595,6 @@ export default function PreFacturaPage() {
 
             <Table
               size="small"
-        scroll={{ x: 'max-content' }}
               dataSource={modalDetalle.detalles}
               rowKey="id"
               pagination={false}
@@ -702,7 +701,10 @@ export default function PreFacturaPage() {
           <Form.Item
             name="motivo"
             label="Motivo del rechazo"
-            rules={[{ required: true, message: 'Indica el motivo' }]}
+            rules={[
+              { required: true, message: 'Indica el motivo' },
+              { min: 3, message: 'El motivo debe tener al menos 3 caracteres' },
+            ]}
           >
             <Input.TextArea rows={3} placeholder="Ej. Precio fuera de presupuesto, ajustar descuento..." />
           </Form.Item>

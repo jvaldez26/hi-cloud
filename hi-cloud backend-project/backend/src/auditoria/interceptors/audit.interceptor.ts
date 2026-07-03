@@ -242,8 +242,22 @@ export class AuditInterceptor implements NestInterceptor {
       }),
       catchError((err: unknown) => {
         const duracion = Date.now() - inicio;
-        const status   = (err as { status?: number })?.status ?? 500;
-        const mensaje  = (err as { message?: string })?.message ?? 'Error desconocido';
+        const status  = (err as any)?.status ?? 500;
+        // Para HttpException (BadRequestException, etc.) el mensaje real está en
+        // getResponse().message, no en .message (que es el texto genérico del HTTP status).
+        const mensaje = (() => {
+          const e = err as any;
+          if (typeof e?.getResponse === 'function') {
+            const res = e.getResponse();
+            if (typeof res === 'object' && res !== null) {
+              const m = (res as any).message;
+              if (Array.isArray(m)) return m.join('; ');
+              if (typeof m === 'string') return m;
+            }
+            if (typeof res === 'string') return res;
+          }
+          return e?.message ?? 'Error desconocido';
+        })();
 
         this.auditoriaService
           .registrar({
