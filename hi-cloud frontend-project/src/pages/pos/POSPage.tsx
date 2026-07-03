@@ -4484,18 +4484,15 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
       const _fechaEmision = f.fecha
         ? String(f.fecha).substring(0, 10).split('-').reverse().join('/')
         : undefined;
-      // Hora original de emisión (createdAt en zona RD)
-      const _horaEmision: string | undefined = (() => {
-        if (!f.createdAt) return undefined;
-        try {
-          const dt = new Date(f.createdAt);
-          const fmt = new Intl.DateTimeFormat('es', { timeZone: 'America/Santo_Domingo', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-          const p = Object.fromEntries(fmt.formatToParts(dt).map(x => [x.type, x.value]));
-          return `${p.hour}:${p.minute}:${p.second}`;
-        } catch { return undefined; }
+      // Hora original de emisión en hora local del dispositivo (UTC-4 para RD)
+      const _horaEmision = f.createdAt ? dayjs(f.createdAt).format('HH:mm:ss') : undefined;
+      // Fecha de firma: signedDate (ya en hora RD) → ultimoIntentoEnvio → fechaFirma
+      const _ecfFecha: string | undefined = (() => {
+        const signed = (f.ecf?.respuestaMSeller as any)?.signedDate as string | undefined;
+        if (signed) return signed;
+        const ts = f.ecf?.ultimoIntentoEnvio ?? f.ecf?.fechaFirma;
+        return ts ? dayjs(ts).format('DD-MM-YYYY HH:mm:ss') : undefined;
       })();
-      // Fecha de firma original (signedDate ya viene en hora RD desde MSeller)
-      const _ecfFecha: string | undefined = (f.ecf?.respuestaMSeller as any)?.signedDate ?? undefined;
       const sale: Sale = {
         folio: f.folio, total: Number(f.total ?? 0), cambio: 0,
         metodo: f.notas?.includes('Tarjeta') ? 'tarjeta' : f.notas?.includes('Transferencia') ? 'transferencia' : 'efectivo',
@@ -5459,6 +5456,16 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
       // ── Facturas → recibo estándar del POS (con e-CF y QR) ──────────
       if (panel === 'facturas') {
         const f = await api.get(`/facturas/${id}`).then(r => r.data?.data ?? r.data);
+        const _fechaEmision = f.fecha
+          ? String(f.fecha).substring(0, 10).split('-').reverse().join('/')
+          : undefined;
+        const _horaEmision = f.createdAt ? dayjs(f.createdAt).format('HH:mm:ss') : undefined;
+        const _ecfFecha: string | undefined = (() => {
+          const signed = (f.ecf?.respuestaMSeller as any)?.signedDate as string | undefined;
+          if (signed) return signed;
+          const ts = f.ecf?.ultimoIntentoEnvio ?? f.ecf?.fechaFirma;
+          return ts ? dayjs(ts).format('DD-MM-YYYY HH:mm:ss') : undefined;
+        })();
         const sale: Sale = {
           folio:       f.folio, total: Number(f.total??0), cambio: 0,
           metodo:      f.notas?.includes('Tarjeta') ? 'tarjeta' : f.notas?.includes('Transferencia') ? 'transferencia' : 'efectivo',
@@ -5470,6 +5477,8 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           cliente:   f.cliente?.nombre, iva: Number(f.iva??0), subtotal: Number(f.subtotal??0),
           facturaId: f.id, tipoNcf: f.tipoNcf ?? 'E32',
           encf:      f.ecf?.numero, ecfPendiente: !f.ecf?.numero,
+          ecfFecha:  _ecfFecha,
+          fechaEmision: _fechaEmision, horaEmision: _horaEmision,
           securityCode: f.ecf?.codigoSeguridad, qrUrl: f.ecf?.qrUrl,
           rncComprador: f.cliente?.rncReceptor || f.cliente?.rfc,
           razonSocial:  f.cliente?.nombre,
