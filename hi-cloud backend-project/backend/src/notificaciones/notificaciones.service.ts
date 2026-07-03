@@ -518,13 +518,22 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
     const factRows = await this.dataSource.query<{
       folio: string; fecha: string; clienteNombre: string;
       total: string; subtotal: string; iva: string; notas: string;
+      empresaNombre: string; empresaRnc: string; empresaLogo: string;
+      empresaTelefono: string; empresaEmail: string; empresaDireccion: string;
     }[]>(
       `SELECT f.folio, f.fecha::text,
               f.total::text, f.subtotal::text, f.iva::text,
               COALESCE(f.notas,'') AS notas,
-              c.nombre AS "clienteNombre"
+              c.nombre AS "clienteNombre",
+              COALESCE(e."razonSocial",'') AS "empresaNombre",
+              COALESCE(e.rnc,'') AS "empresaRnc",
+              COALESCE(e.logo,'') AS "empresaLogo",
+              COALESCE(e.telefono,'') AS "empresaTelefono",
+              COALESCE(e.email,'') AS "empresaEmail",
+              COALESCE(e.direccion,'') AS "empresaDireccion"
        FROM facturas f
        JOIN clientes c ON c.id = f."clienteId"
+       JOIN empresa e ON e.id = f."empresaId"
        WHERE f.id = $1`,
       [facturaId],
     );
@@ -544,7 +553,16 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
       [facturaId],
     );
 
-    const asuntoFinal = asunto ?? `Su factura ${r.folio} — HiCloud ERP`;
+    const asuntoFinal = asunto ?? `Su factura ${r.folio} — ${r.empresaNombre}`;
+
+    const logoHtml = r.empresaLogo
+      ? `<img src="${r.empresaLogo}" style="height:44px;width:auto;max-width:130px;border-radius:8px;vertical-align:middle;margin-right:10px;object-fit:contain" />`
+      : `<div style="width:44px;height:44px;background:rgba(255,255,255,.25);border-radius:10px;display:inline-block;text-align:center;line-height:44px;font-size:20px;font-weight:700;color:#fff;vertical-align:middle;margin-right:10px">${r.empresaNombre.charAt(0).toUpperCase()}</div>`;
+
+    const empresaContactLine = [
+      r.empresaRnc ? `RNC: ${r.empresaRnc}` : '',
+      r.empresaTelefono,
+    ].filter(Boolean).join(' · ');
 
     const itemsHtml = detRows.map(d =>
       `<tr>
@@ -572,8 +590,9 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
       <table width="100%" cellpadding="0" cellspacing="0">
         <tr>
           <td>
-            <div style="width:40px;height:40px;background:rgba(255,255,255,.25);border-radius:10px;display:inline-flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#fff;vertical-align:middle;margin-right:10px">H</div>
-            <span style="font-size:18px;font-weight:700;color:#fff;vertical-align:middle">HiCloud ERP</span>
+            ${logoHtml}
+            <span style="font-size:18px;font-weight:700;color:#fff;vertical-align:middle">${r.empresaNombre}</span>
+            ${empresaContactLine ? `<div style="margin-top:4px;font-size:12px;color:rgba(255,255,255,.8)">${empresaContactLine}</div>` : ''}
           </td>
           <td align="right">
             <div style="background:rgba(255,255,255,.2);border-radius:8px;padding:6px 14px;display:inline-block">
@@ -647,7 +666,9 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
     <!-- FOOTER -->
     <div style="padding:20px 32px 24px;text-align:center">
       <p style="margin:0 0 4px;font-size:13px;color:#6b7280">Para consultas, responda este correo o contáctenos directamente.</p>
-      <p style="margin:0;font-size:12px;color:#9ca3af">HiCloud ERP · Comprobante Fiscal Electrónico · DGII República Dominicana</p>
+      <p style="margin:0;font-size:12px;color:#9ca3af">${r.empresaNombre}${r.empresaRnc ? ` · RNC: ${r.empresaRnc}` : ''} · Comprobante Fiscal Electrónico · DGII República Dominicana</p>
+      ${r.empresaTelefono || r.empresaEmail ? `<p style="margin:4px 0 0;font-size:12px;color:#9ca3af">${[r.empresaTelefono, r.empresaEmail].filter(Boolean).join(' · ')}</p>` : ''}
+      ${r.empresaDireccion ? `<p style="margin:4px 0 0;font-size:12px;color:#9ca3af">${r.empresaDireccion}</p>` : ''}
     </div>
   </div>
 </body>

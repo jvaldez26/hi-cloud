@@ -269,15 +269,7 @@ export async function generarFacturaPDF(
     y += thH;
 
     // Filas de productos (fondo blanco, borde inferior fino)
-    const rowH = 18;
     for (const item of d.items) {
-      if (y + rowH > PH - 90) { doc.addPage(); y = 40; }
-
-      doc.rect(PL, y, W, rowH).fill('#ffffff');
-      doc.rect(PL, y, W, rowH)
-        .strokeColor('#dddddd').lineWidth(0.5).stroke();
-      doc.lineWidth(1);
-
       const descVal  = item.descuentoPct > 0 ? `${item.descuentoPct}%` : '-';
       // E46 exportaciones: 0% = Tasa Cero (no exento). Otros tipos con 0% = EXENTO.
       const itbisVal = item.itbisPct === 0
@@ -293,16 +285,33 @@ export async function generarFacturaPDF(
         fmtM(item.total),
       ];
 
+      // Altura dinámica: medir la descripción antes de dibujar el rect
+      doc.font('Helvetica').fontSize(8.5);
+      const descH = doc.heightOfString(cells[0], { width: cols[0].w - 8, lineBreak: true });
+      const rowH  = Math.max(18, Math.ceil(descH) + 10);
+
+      if (y + rowH > PH - 90) { doc.addPage(); y = 40; }
+
+      doc.rect(PL, y, W, rowH).fill('#ffffff');
+      doc.rect(PL, y, W, rowH)
+        .strokeColor('#dddddd').lineWidth(0.5).stroke();
+      doc.lineWidth(1);
+
       let rx = PL;
       for (let i = 0; i < cols.length; i++) {
-        const col = cols[i];
+        const col    = cols[i];
+        const isDesc = i === 0;
         const isBold = i === cols.length - 1;  // Total en bold
+        // Columnas numéricas se centran verticalmente; descripción arranca arriba
+        const cellY  = isDesc ? y + 5 : y + Math.max(5, Math.round((rowH - 8.5) / 2));
         doc.fillColor(DARK)
           .font(isBold ? 'Helvetica-Bold' : 'Helvetica')
           .fontSize(8.5)
-          .text(cells[i], rx + 4, y + 5, {
-            width: col.w - 8, align: col.align,
-            ellipsis: true, lineBreak: false,
+          .text(cells[i], rx + 4, cellY, {
+            width:     col.w - 8,
+            align:     col.align,
+            lineBreak: isDesc,
+            ...(isDesc ? {} : { ellipsis: true }),
           });
         rx += col.w;
       }
@@ -462,12 +471,6 @@ export async function generarFacturaPDF(
         });
     }
 
-    doc.fillColor('#aaaaaa').font('Helvetica').fontSize(7.5)
-      .text('Documento generado por HiCloud ERP',
-        PL,
-        footerY + (d.empresaSitioWeb ? 33 : 21),
-        { width: W, align: 'center' },
-      );
 
     doc.end();
   });
