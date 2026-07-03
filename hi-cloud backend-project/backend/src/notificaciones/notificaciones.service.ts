@@ -665,7 +665,7 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
 
     <!-- FOOTER -->
     <div style="padding:20px 32px 24px;text-align:center">
-      <p style="margin:0 0 4px;font-size:13px;color:#6b7280">Para consultas o dudas sobre esta factura, contáctenos directamente.</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#6b7280">⚠️ Este es un correo automático — <strong>no responda a este mensaje</strong>. Para consultas, comuníquese directamente con nosotros.</p>
       <p style="margin:0;font-size:12px;color:#9ca3af">${r.empresaNombre}${r.empresaRnc ? ` · RNC: ${r.empresaRnc}` : ''} · Comprobante Fiscal Electrónico · DGII República Dominicana</p>
       ${r.empresaTelefono || r.empresaEmail ? `<p style="margin:4px 0 0;font-size:12px;color:#9ca3af">${[r.empresaTelefono, r.empresaEmail].filter(Boolean).join(' · ')}</p>` : ''}
       ${r.empresaDireccion ? `<p style="margin:4px 0 0;font-size:12px;color:#9ca3af">${r.empresaDireccion}</p>` : ''}
