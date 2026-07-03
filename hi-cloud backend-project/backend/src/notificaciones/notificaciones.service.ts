@@ -665,10 +665,18 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
 
     <!-- FOOTER -->
     <div style="padding:20px 32px 24px;text-align:center">
-      <p style="margin:0 0 4px;font-size:13px;color:#6b7280">⚠️ Este es un correo automático — <strong>no responda a este mensaje</strong>. Para consultas, comuníquese directamente con nosotros.</p>
-      <p style="margin:0;font-size:12px;color:#9ca3af">${r.empresaNombre}${r.empresaRnc ? ` · RNC: ${r.empresaRnc}` : ''} · Comprobante Fiscal Electrónico · DGII República Dominicana</p>
-      ${r.empresaTelefono || r.empresaEmail ? `<p style="margin:4px 0 0;font-size:12px;color:#9ca3af">${[r.empresaTelefono, r.empresaEmail].filter(Boolean).join(' · ')}</p>` : ''}
-      ${r.empresaDireccion ? `<p style="margin:4px 0 0;font-size:12px;color:#9ca3af">${r.empresaDireccion}</p>` : ''}
+      <p style="margin:0 0 10px;font-size:12px;color:#9ca3af;font-style:italic">⚠️ Este es un correo automático — <strong style="color:#6b7280">no responda a este mensaje</strong>.</p>
+      ${r.empresaTelefono || r.empresaEmail || r.empresaDireccion ? `
+      <p style="margin:0 0 4px;font-size:13px;color:#555">Para consultas, contáctenos directamente:</p>
+      <p style="margin:0 0 2px;font-size:13px;color:#374151">
+        ${r.empresaTelefono ? `📞 <strong>${r.empresaTelefono}</strong>` : ''}
+        ${r.empresaTelefono && r.empresaEmail ? '&nbsp;&nbsp;' : ''}
+        ${r.empresaEmail ? `✉️ <a href="mailto:${r.empresaEmail}" style="color:#1a56db;text-decoration:none">${r.empresaEmail}</a>` : ''}
+      </p>
+      ${r.empresaDireccion ? `<p style="margin:2px 0 0;font-size:12px;color:#6b7280">📍 ${r.empresaDireccion}</p>` : ''}
+      ` : `<p style="margin:0 0 4px;font-size:13px;color:#6b7280">Para consultas, comuníquese directamente con nosotros.</p>`}
+      <hr style="border:none;border-top:1px solid #f0f0f0;margin:12px 0"/>
+      <p style="margin:0;font-size:11px;color:#9ca3af">${r.empresaNombre}${r.empresaRnc ? ` · RNC: ${r.empresaRnc}` : ''} · Comprobante Fiscal Electrónico · DGII República Dominicana</p>
     </div>
   </div>
 </body>
