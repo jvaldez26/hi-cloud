@@ -5282,6 +5282,8 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
   const [cobrarPF,      setCobrarPF]      = useState<{ id: number; folio: string; total: number; cliente: string } | null>(null);
   const [cobrarPFMetodo, setCobrarPFMetodo] = useState<string>('Efectivo');
   const [cobrarPFMonto,  setCobrarPFMonto]  = useState<string>('');
+  const [motivoPFId,     setMotivoPFId]     = useState<number | null>(null);
+  const [motivoPFText,   setMotivoPFText]   = useState('');
   const [cobrarCot,      setCobrarCot]      = useState<{ id: number; numero: string; total: number; cliente: string } | null>(null);
   const [cobrarCotMetodo, setCobrarCotMetodo] = useState<string>('Efectivo');
   const [cobrarCotMonto,  setCobrarCotMonto]  = useState<string>('');
@@ -5300,11 +5302,11 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
 
   // ── Endpoints de anulación por módulo ──────────────────────────────
   const anularMutation = useMutation({
-    mutationFn: async ({ id, mod }: { id: number; mod: string }) => {
+    mutationFn: async ({ id, mod, motivo }: { id: number; mod: string; motivo?: string }) => {
       // FIX 2: usar 'cancelada' (valor correcto del enum FacturaEstado)
       if (mod === 'facturas')        return api.patch(`/facturas/${id}/estado`, { estado: 'cancelada' });
       if (mod === 'cotizaciones')    return api.patch(`/cotizaciones/${id}/estado`, { estado: 'rechazada' });
-      if (mod === 'pre-facturas')    return api.patch(`/pre-facturas/${id}/rechazar`);
+      if (mod === 'pre-facturas')    return api.patch(`/pre-facturas/${id}/rechazar`, { motivo });
       if (mod === 'conduce' || mod === 'despacho') return api.delete(`/conduces/${id}`);
       if (mod === 'notas-credito')   return api.patch(`/notas-credito/${id}/anular`);
       if (mod === 'gastos')          return api.delete(`/gastos/${id}`);
@@ -6040,7 +6042,14 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
                           panel !== 'facturas' && (
                           anulando === row.id ? (
                             <span style={{ fontSize: 11, color: C.textSub }}>
-                              <button onClick={() => { anularMutation.mutate({ id: row.id, mod: panel }); }}
+                              <button onClick={() => {
+                                if (panel === 'pre-facturas') {
+                                  setMotivoPFId(row.id);
+                                  setAnulando(null);
+                                } else {
+                                  anularMutation.mutate({ id: row.id, mod: panel });
+                                }
+                              }}
                                 style={{ background: C.red, border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', padding: '4px 8px', fontSize: 11, marginRight: 4, fontWeight: 700 }}>
                                 ✓ Confirmar
                               </button>
@@ -6068,8 +6077,13 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
                                   if (!ok) return;
                                 }
                                 // Si confirmarAnulacion = false → anular directo sin modal de confirmación
+                                // (pero pre-facturas SIEMPRE pide motivo antes de rechazar)
                                 if (confirmarAnulacion === false) {
-                                  anularMutation.mutate({ id: row.id, mod: panel });
+                                  if (panel === 'pre-facturas') {
+                                    setMotivoPFId(row.id);
+                                  } else {
+                                    anularMutation.mutate({ id: row.id, mod: panel });
+                                  }
                                 } else {
                                   setAnulando(row.id);
                                 }
@@ -6095,6 +6109,46 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
       <div id={PANEL_GENERIC_ID} style={{ display: 'none' }}>
         {genericDoc && <GenericThermalDoc doc={genericDoc} />}
       </div>
+
+      {/* ── Modal motivo de rechazo — Pre-Factura ───────────────────────────── */}
+      {motivoPFId !== null && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,.6)', padding: 16 }}
+          onClick={e => { if (e.target === e.currentTarget) { setMotivoPFId(null); setMotivoPFText(''); } }}>
+          <div style={{ background: C.card, borderRadius: 16, padding: 24, width: '100%', maxWidth: 380, boxShadow: '0 8px 40px rgba(0,0,0,.35)' }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 6 }}>Rechazar Pre-Factura</div>
+            <div style={{ fontSize: 13, color: C.textSub, marginBottom: 14 }}>Indica el motivo del rechazo (requerido)</div>
+            <textarea
+              autoFocus
+              rows={3}
+              value={motivoPFText}
+              onChange={e => setMotivoPFText(e.target.value)}
+              placeholder="Ej. Precio fuera de presupuesto, ajustar descuento..."
+              style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 10, border: `1.5px solid ${C.border2}`, fontSize: 14, color: C.text, background: C.bg, outline: 'none', resize: 'vertical', fontFamily: 'inherit', minHeight: 80 }}
+            />
+            <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+              <button
+                onClick={() => { setMotivoPFId(null); setMotivoPFText(''); }}
+                style={{ flex: 1, padding: '11px 0', borderRadius: 10, border: `1px solid ${C.border2}`, background: 'none', color: C.textSub, cursor: 'pointer', fontSize: 14 }}>
+                Cancelar
+              </button>
+              <button
+                disabled={!motivoPFText.trim() || anularMutation.isPending}
+                onClick={() => {
+                  const m = motivoPFText.trim();
+                  if (!m) return;
+                  anularMutation.mutate({ id: motivoPFId, mod: 'pre-facturas', motivo: m });
+                  setMotivoPFId(null);
+                  setMotivoPFText('');
+                }}
+                style={{ flex: 2, padding: '11px 0', borderRadius: 10, border: 'none',
+                  background: !motivoPFText.trim() ? C.border2 : C.red,
+                  color: '#fff', cursor: !motivoPFText.trim() ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 700 }}>
+                {anularMutation.isPending ? 'Rechazando…' : 'Rechazar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Modal cobrar Pre-Factura ────────────────────────────────────────── */}
       {cobrarPF && (
