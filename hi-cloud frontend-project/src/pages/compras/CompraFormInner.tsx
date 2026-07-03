@@ -171,6 +171,8 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
             notFoundContent={productoSearch.length < 2 ? 'Escribe al menos 2 letras' : 'Sin resultados'}
             options={opts}
             value={_r.productoId}
+            popupMatchSelectWidth={false}
+            dropdownStyle={{ minWidth: 380 }}
             onChange={(v) => onProductoChange(v, idx)} />
         );
       }},
