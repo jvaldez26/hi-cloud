@@ -564,6 +564,16 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
       r.empresaTelefono,
     ].filter(Boolean).join(' · ');
 
+    // Bloque de contacto pre-calculado (evita anidamiento excesivo en el template)
+    const contactoParts: string[] = [];
+    if (r.empresaTelefono) contactoParts.push(`📞 <strong>${r.empresaTelefono}</strong>`);
+    if (r.empresaEmail)    contactoParts.push(`✉️ <a href="mailto:${r.empresaEmail}" style="color:#1a56db;text-decoration:none">${r.empresaEmail}</a>`);
+    const footerContactHtml = contactoParts.length > 0 || r.empresaDireccion
+      ? `<p style="margin:0 0 6px;font-size:13px;color:#555">Para consultas, contáctenos directamente:</p>
+         <p style="margin:0 0 4px;font-size:13px;color:#374151">${contactoParts.join('&nbsp;&nbsp;&nbsp;')}</p>
+         ${r.empresaDireccion ? `<p style="margin:0;font-size:12px;color:#6b7280">📍 ${r.empresaDireccion}</p>` : ''}`
+      : `<p style="margin:0;font-size:13px;color:#6b7280">Para consultas, comuníquese directamente con nosotros.</p>`;
+
     const itemsHtml = detRows.map(d =>
       `<tr>
         <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;font-size:13px">${d.descripcion}</td>
@@ -664,19 +674,10 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
     ${r.notas ? `<div style="margin:0 32px;background:#f8f9fa;border-radius:8px;padding:12px 16px;font-size:13px;color:#555"><strong>Notas:</strong> ${r.notas}</div>` : ''}
 
     <!-- FOOTER -->
-    <div style="padding:20px 32px 24px;text-align:center">
-      <p style="margin:0 0 10px;font-size:12px;color:#9ca3af;font-style:italic">⚠️ Este es un correo automático — <strong style="color:#6b7280">no responda a este mensaje</strong>.</p>
-      ${r.empresaTelefono || r.empresaEmail || r.empresaDireccion ? `
-      <p style="margin:0 0 4px;font-size:13px;color:#555">Para consultas, contáctenos directamente:</p>
-      <p style="margin:0 0 2px;font-size:13px;color:#374151">
-        ${r.empresaTelefono ? `📞 <strong>${r.empresaTelefono}</strong>` : ''}
-        ${r.empresaTelefono && r.empresaEmail ? '&nbsp;&nbsp;' : ''}
-        ${r.empresaEmail ? `✉️ <a href="mailto:${r.empresaEmail}" style="color:#1a56db;text-decoration:none">${r.empresaEmail}</a>` : ''}
-      </p>
-      ${r.empresaDireccion ? `<p style="margin:2px 0 0;font-size:12px;color:#6b7280">📍 ${r.empresaDireccion}</p>` : ''}
-      ` : `<p style="margin:0 0 4px;font-size:13px;color:#6b7280">Para consultas, comuníquese directamente con nosotros.</p>`}
-      <hr style="border:none;border-top:1px solid #f0f0f0;margin:12px 0"/>
-      <p style="margin:0;font-size:11px;color:#9ca3af">${r.empresaNombre}${r.empresaRnc ? ` · RNC: ${r.empresaRnc}` : ''} · Comprobante Fiscal Electrónico · DGII República Dominicana</p>
+    <div style="padding:20px 32px 28px;text-align:center;border-top:1px solid #f0f0f0;margin-top:8px">
+      <p style="margin:0 0 14px;font-size:12px;color:#9ca3af;font-style:italic">⚠️ Este es un correo automático — <strong style="color:#6b7280">no responda a este mensaje</strong>.</p>
+      ${footerContactHtml}
+      <p style="margin:14px 0 0;font-size:11px;color:#b0b7c3">${r.empresaNombre}${r.empresaRnc ? ` · RNC: ${r.empresaRnc}` : ''} · Comprobante Fiscal Electrónico · DGII República Dominicana</p>
     </div>
   </div>
 </body>
