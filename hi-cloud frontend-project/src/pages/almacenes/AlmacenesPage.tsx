@@ -34,7 +34,7 @@ const almApi = {
   confirmar:   (id: number)      => api.patch(`/almacenes/transferencias/${id}/confirmar`).then(r => r.data?.data ?? r.data),
   recibir:     (id: number)      => api.patch(`/almacenes/transferencias/${id}/recibir`).then(r => r.data?.data ?? r.data),
   cancelar:    (id: number)      => api.patch(`/almacenes/transferencias/${id}/cancelar`).then(r => r.data?.data ?? r.data),
-  productos:   ()                => api.get('/productos?limit=200').then(r => r.data?.data?.data ?? r.data?.data ?? []),
+  productos:   ()                => api.get('/productos?limit=5000&incluirSinStock=true').then(r => r.data?.data?.data ?? r.data?.data ?? []),
 };
 
 const ESTADO_TRANSF: Record<string, { label: string; color: string }> = {

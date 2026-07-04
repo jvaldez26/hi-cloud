@@ -95,7 +95,7 @@ export default function FacturaFormPage() {
 
   const { data: productos } = useQuery({
     queryKey: ['productos-sel'],
-    queryFn:  () => productosApi.list(1, 200),
+    queryFn:  () => productosApi.list(1, 5000, '', true),
   });
 
   const sucursalActual = useAuthStore(s => s.sucursalActual);

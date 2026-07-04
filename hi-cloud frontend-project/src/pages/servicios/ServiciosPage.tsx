@@ -76,7 +76,7 @@ export default function ServiciosPage() {
     queryFn:  () => serviciosApi.list(page, estadoFilt, search),
   });
   const { data: clientes }  = useQuery({ queryKey: ['cli-srv'],  queryFn: () => clientesApi.list(1, 100) });
-  const { data: productos } = useQuery({ queryKey: ['prod-srv'], queryFn: () => productosApi.list(1, 200) });
+  const { data: productos } = useQuery({ queryKey: ['prod-srv'], queryFn: () => productosApi.list(1, 5000, '', true) });
   const { data: empleados = [] } = useQuery<any[]>({
     queryKey: ['emp-srv'],
     queryFn:  () => api.get('/nomina/empleados?limit=100').then((r: any) => {

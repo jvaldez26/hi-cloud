@@ -38,7 +38,7 @@ export default function PreciosEspecialesPage() {
 
   const { data: lista, isLoading } = useQuery({ queryKey: ['precios-especiales'], queryFn: () => preciosApi.listar({}) });
   const { data: clientes } = useQuery({ queryKey: ['clientes-prec'], queryFn: () => clientesApi.list(1, 100) });
-  const { data: productos } = useQuery({ queryKey: ['productos-prec'], queryFn: () => productosApi.list(1, 200) });
+  const { data: productos } = useQuery({ queryKey: ['productos-prec'], queryFn: () => productosApi.list(1, 5000, '', true) });
 
   const crearMut = useMutation({
     mutationFn: preciosApi.crear,

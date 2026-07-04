@@ -357,7 +357,7 @@ export default function ManufacturaPage() {
       String(i.numero ?? '').toLowerCase().includes(search.toLowerCase()) ||
       String(i.lista?.nombre ?? '').toLowerCase().includes(search.toLowerCase())
     ), [ordenes, search]);
-  const { data: productos } = useQuery({ queryKey: ['productos-mfg'], queryFn: () => productosApi.list(1, 200) });
+  const { data: productos } = useQuery({ queryKey: ['productos-mfg'], queryFn: () => productosApi.list(1, 5000, '', true) });
   const { data: lmDetalle, refetch: refetchLM } = useQuery({
     queryKey: ['mfg-lm-det', compModal],
     queryFn:  () => mApi.getLM(compModal!),

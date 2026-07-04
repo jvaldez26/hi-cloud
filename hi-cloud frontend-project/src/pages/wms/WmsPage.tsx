@@ -692,7 +692,7 @@ export default function WmsPage() {
   });
   const { data: productos = [] } = useQuery({
     queryKey: ['wms-productos'],
-    queryFn:  () => api.get('/productos?limit=500').then(dArr),
+    queryFn:  () => api.get('/productos?limit=5000&incluirSinStock=true').then(dArr),
     staleTime: 60_000,
   });
   const { data: clientes = [] } = useQuery({

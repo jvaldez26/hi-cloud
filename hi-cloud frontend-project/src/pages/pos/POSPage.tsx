@@ -2520,7 +2520,7 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
   // ── queries ───────────────────────────────────────────────────────────────
   const { data, isLoading } = useQuery<any>({
     queryKey: ['pos-productos', busq],
-    queryFn: () => api.get(`/productos?limit=50${busq ? '&search='+encodeURIComponent(busq) : ''}`)
+    queryFn: () => api.get(`/productos?limit=50${busq ? '&search='+encodeURIComponent(busq) : ''}&incluirSinStock=true`)
       .then(r => { const d = r.data?.data ?? r.data; return d?.data ?? d ?? []; }),
     staleTime: 30_000,
   });
