@@ -16,6 +16,16 @@ const EMISOR_CANON = [
   'ActividadEconomica', 'FechaEmision',
 ] as const;
 
+/**
+ * Orden canónico de campos del Encabezado según XSD DGII.
+ * PostgreSQL JSONB no preserva el orden de inserción; al leer el jsonEnviado
+ * los campos vuelven en orden alfabético (Comprador, Emisor, IdDoc, Totales, Version…).
+ * DGII exige Version primero, lo que hace fallar la validación del XML.
+ */
+const ENCABEZADO_CANON = [
+  'Version', 'IdDoc', 'Emisor', 'Comprador', 'Totales', 'OtraMoneda',
+] as const;
+
 const MAX_INTENTOS = 5;
 
 /**
@@ -260,40 +270,49 @@ export class ReintentoECFJob {
   }
 
   /**
-   * Reordena el Emisor del payload almacenado en BD para que FechaEmision quede
-   * al final, respetando el orden del XSD DGII.
-   * Los payloads emitidos antes del fix tienen FechaEmision en posición incorrecta;
-   * al leerlos desde JSONB PostgreSQL pueden salir en orden distinto al original.
+   * Reordena Encabezado y Emisor del payload almacenado en BD para respetar
+   * el orden del XSD DGII.
+   * PostgreSQL JSONB no preserva el orden de inserción, por lo que las claves
+   * pueden volver en orden alfabético (IdDoc antes que Version, etc.).
+   * DGII valida el XML contra el XSD con orden estricto.
    */
   private normalizarEmisorPayload(payload: any): any {
     try {
-      const emisor = payload?.ECF?.Encabezado?.Emisor;
-      if (!emisor || typeof emisor !== 'object') return payload;
+      const encabezadoOrig = payload?.ECF?.Encabezado;
+      if (!encabezadoOrig || typeof encabezadoOrig !== 'object') return payload;
 
-      // Construir objeto con el orden canónico (FechaEmision al final)
-      const normalizado: Record<string, unknown> = {};
-      for (const key of EMISOR_CANON) {
-        const v = emisor[key];
-        if (v !== undefined && v !== null && v !== '') {
-          normalizado[key] = v;
+      // ── 1. Normalizar orden de Encabezado (Version siempre primero) ──────────
+      const encabezado: Record<string, unknown> = {};
+      for (const key of ENCABEZADO_CANON) {
+        const v = encabezadoOrig[key];
+        if (v !== undefined && v !== null) encabezado[key] = v;
+      }
+      // Preservar campos no canónicos al final (futuras extensiones DGII)
+      for (const key of Object.keys(encabezadoOrig)) {
+        if (!(ENCABEZADO_CANON as readonly string[]).includes(key)) {
+          encabezado[key] = encabezadoOrig[key];
         }
       }
-      // Preservar cualquier campo desconocido al final
-      for (const key of Object.keys(emisor)) {
-        if (!(EMISOR_CANON as readonly string[]).includes(key)) {
-          normalizado[key] = emisor[key];
+      // Asegurar Version presente (payloads muy antiguos podrían no tenerla)
+      if (!encabezado['Version']) encabezado['Version'] = '1.0';
+
+      // ── 2. Normalizar orden de Emisor (FechaEmision al final) ─────────────────
+      const emisorOrig = encabezadoOrig['Emisor'];
+      if (emisorOrig && typeof emisorOrig === 'object') {
+        const emisor: Record<string, unknown> = {};
+        for (const key of EMISOR_CANON) {
+          const v = (emisorOrig as any)[key];
+          if (v !== undefined && v !== null && v !== '') emisor[key] = v;
         }
+        for (const key of Object.keys(emisorOrig as object)) {
+          if (!(EMISOR_CANON as readonly string[]).includes(key)) emisor[key] = (emisorOrig as any)[key];
+        }
+        encabezado['Emisor'] = emisor;
       }
 
       return {
         ...payload,
-        ECF: {
-          ...payload.ECF,
-          Encabezado: {
-            ...payload.ECF.Encabezado,
-            Emisor: normalizado,
-          },
-        },
+        ECF: { ...payload.ECF, Encabezado: encabezado },
       };
     } catch {
       // Si algo falla, usar payload original (assertEmisorOrder lo detectará)
