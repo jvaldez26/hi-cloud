@@ -980,16 +980,21 @@ export class ReportesService {
       totalItems: string; itemsSinCosto: string;
     }[]>(`
       SELECT
-        COALESCE(SUM(f.subtotal), 0)                                        AS ventas,
-        COALESCE(SUM(fd."costoUnitario" * fd.cantidad), 0)                 AS costo,
-        COUNT(DISTINCT f.id)                                                AS "numFacturas",
-        COUNT(fd.id)                                                        AS "totalItems",
-        COUNT(fd.id) FILTER (
-          WHERE fd."costoUnitario" = 0 AND fd."productoId" IS NOT NULL
-        )                                                                   AS "itemsSinCosto"
+        COALESCE(SUM(f.subtotal), 0)               AS ventas,
+        COALESCE(SUM(fd_agg.costo), 0)             AS costo,
+        COUNT(f.id)                                AS "numFacturas",
+        COALESCE(SUM(fd_agg."totalItems"), 0)      AS "totalItems",
+        COALESCE(SUM(fd_agg."itemsSinCosto"), 0)   AS "itemsSinCosto"
       FROM facturas f
-      LEFT JOIN factura_detalles fd
-        ON fd."facturaId" = f.id AND fd."isActive" = true
+      LEFT JOIN (
+        SELECT "facturaId",
+               SUM("costoUnitario" * cantidad)                                         AS costo,
+               COUNT(id)                                                               AS "totalItems",
+               COUNT(id) FILTER (WHERE "costoUnitario" = 0 AND "productoId" IS NOT NULL) AS "itemsSinCosto"
+        FROM factura_detalles
+        WHERE "isActive" = true
+        GROUP BY "facturaId"
+      ) fd_agg ON fd_agg."facturaId" = f.id
       WHERE f."isActive" = true
         AND f."empresaId" = $1
         AND f.estado IN ('emitida','pagada')
@@ -1045,13 +1050,17 @@ export class ReportesService {
       dia: string; ventas: string; costo: string; facturas: string;
     }[]>(`
       SELECT
-        f.fecha::text                                          AS dia,
-        COALESCE(SUM(f.subtotal), 0)                         AS ventas,
-        COALESCE(SUM(fd."costoUnitario" * fd.cantidad), 0)  AS costo,
-        COUNT(DISTINCT f.id)                                  AS facturas
+        f.fecha::text                        AS dia,
+        COALESCE(SUM(f.subtotal), 0)         AS ventas,
+        COALESCE(SUM(fd_agg.costo), 0)       AS costo,
+        COUNT(f.id)                          AS facturas
       FROM facturas f
-      LEFT JOIN factura_detalles fd
-        ON fd."facturaId" = f.id AND fd."isActive" = true
+      LEFT JOIN (
+        SELECT "facturaId", SUM("costoUnitario" * cantidad) AS costo
+        FROM factura_detalles
+        WHERE "isActive" = true
+        GROUP BY "facturaId"
+      ) fd_agg ON fd_agg."facturaId" = f.id
       WHERE f."isActive" = true
         AND f."empresaId" = $1
         AND f.estado IN ('emitida','pagada')
