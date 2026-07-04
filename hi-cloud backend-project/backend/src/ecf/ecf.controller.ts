@@ -448,7 +448,7 @@ export class ECFController {
 
   @Post('ejecutar-reintentos')
   @HttpCode(HttpStatus.OK)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Ejecutar inmediatamente el job de reintentos MSeller (PENDIENTE_ENVIO)' })
   async ejecutarReintentos() {
     await this.tenantService.withoutTenantScope(
@@ -460,7 +460,7 @@ export class ECFController {
 
   @Post('consultar-estados')
   @HttpCode(HttpStatus.OK)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({
     summary: 'Consultar estado DGII de comprobantes ENVIADOS — fuerza polling inmediato sin esperar 10 min',
   })

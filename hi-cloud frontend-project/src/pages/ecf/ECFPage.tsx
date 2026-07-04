@@ -278,7 +278,7 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
               ? [{ key: 'reenviar-rechazado', label: 'Reenviar (secuencia reutilizable)', icon: <SendOutlined />,
                    onClick: () => handleReenviar(r) }]
               : []),
-            ...(r.estadoDGII === 'enviado'
+            ...(['enviado', 'rechazado'].includes(r.estadoDGII)
               ? [{ key: 'consultar', label: 'Consultar estado en DGII', icon: <SyncOutlined spin={consultandoId === r.numero} />,
                    onClick: () => consultarUnoMut.mutate(r.numero) }]
               : []),
