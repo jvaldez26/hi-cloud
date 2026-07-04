@@ -1,48 +1,20 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThan } from 'typeorm';
-import { ECF, EstadoDGII } from '../entities/ecf.entity';
+import { Repository } from 'typeorm';
+import { ECF, EstadoDGII, DocumentoOrigenTipo } from '../entities/ecf.entity';
 import { EcfEvento, TipoEcfEvento } from '../entities/ecf-evento.entity';
+import { SecuenciaECF } from '../entities/secuencia-ecf.entity';
+import { Factura } from '../../facturas/entities/factura.entity';
+import { NotaDebito } from '../../notas-debito/entities/nota-debito.entity';
+import { NotaCredito } from '../../notas-credito/entities/nota-credito.entity';
+import { Compra } from '../../compras/entities/compra.entity';
+import { Gasto } from '../../gastos/entities/gasto.entity';
 import { MSellerClientService } from '../services/mseller-client.service';
-import { ECFBuilderService, ECFBuildInput } from '../services/ecf-builder.service';
+import { ECFBuilderService, MSellerInfoReferencia, MSellerPayload } from '../services/ecf-builder.service';
 import { EcfConfigService } from '../services/ecf-config.service';
-import { EcfValidacionError, EcfComunicacionError } from '../errors/ecf.errors';
-
-/** Orden canónico de campos del Emisor según XSD DGII — FechaEmision siempre al final. */
-const EMISOR_CANON = [
-  'RNCEmisor', 'RazonSocialEmisor', 'NombreComercial', 'Sucursal',
-  'DireccionEmisor', 'Municipio', 'Provincia', 'Telefono', 'CorreoEmisor',
-  'ActividadEconomica', 'FechaEmision',
-] as const;
-
-/**
- * Orden canónico de campos del Encabezado según XSD DGII.
- * PostgreSQL JSONB no preserva el orden de inserción; al leer el jsonEnviado
- * los campos vuelven en orden alfabético (Comprador, Emisor, IdDoc, Totales, Version…).
- * DGII exige Version primero, lo que hace fallar la validación del XML.
- */
-const ENCABEZADO_CANON = [
-  'Version', 'IdDoc', 'Emisor', 'Comprador', 'Totales', 'OtraMoneda',
-] as const;
-
-/**
- * Orden canónico de los campos internos de Totales según XSD DGII.
- * JSONB los devuelve en orden alfabético: MontoTotal (M) llega antes que TotalITBIS (T),
- * pero el XSD exige que TotalITBIS aparezca ANTES de MontoTotal.
- * Error sin este fix: "El elemento 'Totales' tiene elemento hijo inválido 'TotalITBIS'.
- * Elementos esperados: MontoNoFacturable, MontoPeriodo, ..." (campos post-MontoTotal).
- */
-const TOTALES_CANON = [
-  'MontoGravadoTotal', 'MontoGravadoI1', 'MontoGravadoI2', 'MontoGravadoI3',
-  'MontoExento',
-  'ITBIS1', 'ITBIS2', 'ITBIS3',
-  'TotalITBIS', 'TotalITBIS1', 'TotalITBIS2', 'TotalITBIS3',
-  'MontoImpuestoAdicional',
-  'MontoTotal',
-  'MontoNoFacturable', 'MontoPeriodo', 'SaldoAnterior', 'MontoAvancePago', 'ValorPagar',
-  'TotalITBISRetenido', 'TotalISRRetencion', 'TotalITBISPercepcion', 'TotalISRPercepcion',
-] as const;
+import { EcfValidacionError } from '../errors/ecf.errors';
+import { fmtFecha } from '../builders/base-ecf.builder';
 
 const MAX_INTENTOS = 5;
 
@@ -54,13 +26,17 @@ const BACKOFF_MIN = [2, 5, 15, 30, 60];
 
 /**
  * Procesa comprobantes en estado PENDIENTE_ENVIO.
- * Corre cada 5 minutos. No bloquea el event loop — cada empresa se procesa
+ * Corre cada 2 minutos. No bloquea el event loop — cada empresa se procesa
  * secuencialmente para evitar sobrecargar MSeller.
+ *
+ * Reconstruye el payload desde la fuente original (documento + config + secuencia)
+ * usando el mismo builder que el envío inicial, garantizando un XML con el orden
+ * de elementos exigido por el XSD de DGII.
  */
 @Injectable()
 export class ReintentoECFJob {
   private readonly logger = new Logger(ReintentoECFJob.name);
-  private running = false; // evitar solapamiento de ejecuciones
+  private running = false;
 
   constructor(
     @InjectRepository(ECF)
@@ -69,9 +45,27 @@ export class ReintentoECFJob {
     @InjectRepository(EcfEvento)
     private readonly eventoRepo: Repository<EcfEvento>,
 
-    private readonly mseller:    MSellerClientService,
-    private readonly builder:    ECFBuilderService,
-    private readonly configSvc:  EcfConfigService,
+    @InjectRepository(SecuenciaECF)
+    private readonly secuenciaRepo: Repository<SecuenciaECF>,
+
+    @InjectRepository(Factura)
+    private readonly facturaRepo: Repository<Factura>,
+
+    @InjectRepository(NotaDebito)
+    private readonly notaDebitoRepo: Repository<NotaDebito>,
+
+    @InjectRepository(NotaCredito)
+    private readonly notaCreditoRepo: Repository<NotaCredito>,
+
+    @InjectRepository(Compra)
+    private readonly compraRepo: Repository<Compra>,
+
+    @InjectRepository(Gasto)
+    private readonly gastoRepo: Repository<Gasto>,
+
+    private readonly mseller:   MSellerClientService,
+    private readonly builder:   ECFBuilderService,
+    private readonly configSvc: EcfConfigService,
   ) {}
 
   @Cron('*/2 * * * *', { name: 'reintento-ecf' })
@@ -138,24 +132,21 @@ export class ReintentoECFJob {
   private async procesarPendientes(): Promise<void> {
     const ahora = new Date();
 
-    // Buscar comprobantes pendientes cuya ventana de reintento ya pasó
     const pendientes = await this.ecfRepo.find({
       where: { estadoDGII: EstadoDGII.PENDIENTE_ENVIO, isActive: true },
       order: { updatedAt: 'ASC' },
-      take: 50, // máx. 50 por ciclo
+      take: 50,
     });
 
     if (pendientes.length === 0) return;
 
     this.logger.log(`ReintentoECF: ${pendientes.length} comprobante(s) pendientes`);
 
-    // Cache local de circuit breaker por empresa — evita N queries a BD por ciclo
     const bloqueadaCache = new Map<number, boolean>();
 
     for (const ecf of pendientes) {
       const empId = ecf.empresaId!;
 
-      // Verificar circuit breaker (consulta BD solo la primera vez por empresa)
       if (!bloqueadaCache.has(empId)) {
         bloqueadaCache.set(empId, await this.configSvc.isEmpresaBloqueada(empId));
       }
@@ -166,14 +157,13 @@ export class ReintentoECFJob {
         continue;
       }
 
-      // Calcular si ya pasó el tiempo de backoff
       const intentos      = ecf.intentosEnvio;
       const backoffMinIdx = Math.min(intentos - 1, BACKOFF_MIN.length - 1);
       const minEspera     = BACKOFF_MIN[Math.max(0, backoffMinIdx)] * 60_000;
       const ultimoIntento = ecf.ultimoIntentoEnvio ?? ecf.createdAt;
       const msPasados     = ahora.getTime() - new Date(ultimoIntento).getTime();
 
-      if (msPasados < minEspera) continue; // aún no es momento
+      if (msPasados < minEspera) continue;
 
       await this.procesarUno(ecf);
     }
@@ -181,11 +171,10 @@ export class ReintentoECFJob {
 
   /** Público para que el controller de reenvío manual pueda llamarlo directamente. */
   async procesarUno(ecf: ECF): Promise<void> {
-    const { id, numero, empresaId, intentosEnvio, jsonEnviado } = ecf;
+    const { id, numero, empresaId, intentosEnvio } = ecf;
 
     this.logger.log(`Reintentando e-CF ${numero} (intento ${intentosEnvio + 1}/${MAX_INTENTOS})`);
 
-    // Si superó el máximo → CONTINGENCIA
     if (intentosEnvio >= MAX_INTENTOS) {
       await this.ecfRepo.update(id, {
         estadoDGII: EstadoDGII.CONTINGENCIA,
@@ -200,25 +189,12 @@ export class ReintentoECFJob {
     }
 
     try {
-      if (!jsonEnviado) {
-        throw new Error(`e-CF ${numero} no tiene jsonEnviado — no se puede reintentar`);
-      }
+      await this.logEvento(id, TipoEcfEvento.REINTENTO, { intento: intentosEnvio + 1 });
 
-      await this.logEvento(id, TipoEcfEvento.REINTENTO, {
-        intento: intentosEnvio + 1,
-      });
+      const payload = await this.reconstruirPayload(ecf);
 
-      // Normalizar el payload recuperado de BD para garantizar FechaEmision al final.
-      // Payloads creados antes del fix pueden tener el Emisor en orden incorrecto.
-      const payloadNormalizado = this.normalizarEmisorPayload(jsonEnviado as any);
+      const respuesta = await this.mseller.enviarDocumento(payload, empresaId!, 30_000);
 
-      const respuesta = await this.mseller.enviarDocumento(
-        payloadNormalizado,
-        empresaId!,
-        30_000,
-      );
-
-      // Poll inmediato tras el reenvío exitoso
       let estadoTrasReintento: EstadoDGII = EstadoDGII.ENVIADO;
       try {
         const estadoResp = await this.mseller.consultarEstado(respuesta.internalTrackId, empresaId!);
@@ -247,8 +223,8 @@ export class ReintentoECFJob {
       });
 
       await this.logEvento(id, TipoEcfEvento.ENVIADO, {
-        trackId:      respuesta.internalTrackId,
-        intento:      intentosEnvio + 1,
+        trackId:         respuesta.internalTrackId,
+        intento:         intentosEnvio + 1,
         estadoInmediato: estadoTrasReintento,
       });
 
@@ -259,7 +235,6 @@ export class ReintentoECFJob {
       const nuevos = intentosEnvio + 1;
 
       if (err instanceof EcfValidacionError) {
-        // Error de datos → no tiene sentido reintentar, marcar como RECHAZADO
         await this.ecfRepo.update(id, {
           estadoDGII:         EstadoDGII.RECHAZADO,
           intentosEnvio:      nuevos,
@@ -273,7 +248,6 @@ export class ReintentoECFJob {
         return;
       }
 
-      // Error de comunicación → actualizar contador y esperar próximo ciclo
       await this.ecfRepo.update(id, {
         intentosEnvio:      nuevos,
         ultimoIntentoEnvio: new Date(),
@@ -288,72 +262,144 @@ export class ReintentoECFJob {
   }
 
   /**
-   * Reordena Encabezado y Emisor del payload almacenado en BD para respetar
-   * el orden del XSD DGII.
-   * PostgreSQL JSONB no preserva el orden de inserción, por lo que las claves
-   * pueden volver en orden alfabético (IdDoc antes que Version, etc.).
-   * DGII valida el XML contra el XSD con orden estricto.
+   * Reconstruye el payload desde la fuente original usando el mismo builder
+   * que el envío inicial. Evita leer jsonEnviado de JSONB, que destruye el
+   * orden de claves requerido por el XSD de DGII.
    */
-  private normalizarEmisorPayload(payload: any): any {
-    try {
-      const encabezadoOrig = payload?.ECF?.Encabezado;
-      if (!encabezadoOrig || typeof encabezadoOrig !== 'object') return payload;
+  private async reconstruirPayload(ecf: ECF): Promise<MSellerPayload> {
+    const { numero, empresaId, documentoOrigenTipo, documentoOrigenId, secuenciaId } = ecf;
 
-      // ── 1. Normalizar orden de Encabezado (Version siempre primero) ──────────
-      const encabezado: Record<string, unknown> = {};
-      for (const key of ENCABEZADO_CANON) {
-        const v = encabezadoOrig[key];
-        if (v !== undefined && v !== null) encabezado[key] = v;
-      }
-      // Preservar campos no canónicos al final (futuras extensiones DGII)
-      for (const key of Object.keys(encabezadoOrig)) {
-        if (!(ENCABEZADO_CANON as readonly string[]).includes(key)) {
-          encabezado[key] = encabezadoOrig[key];
-        }
-      }
-      // Asegurar Version presente (payloads muy antiguos podrían no tenerla)
-      if (!encabezado['Version']) encabezado['Version'] = '1.0';
-
-      // ── 2. Normalizar orden de Emisor (FechaEmision al final) ─────────────────
-      const emisorOrig = encabezadoOrig['Emisor'];
-      if (emisorOrig && typeof emisorOrig === 'object') {
-        const emisor: Record<string, unknown> = {};
-        for (const key of EMISOR_CANON) {
-          const v = (emisorOrig as any)[key];
-          if (v !== undefined && v !== null && v !== '') emisor[key] = v;
-        }
-        for (const key of Object.keys(emisorOrig as object)) {
-          if (!(EMISOR_CANON as readonly string[]).includes(key)) emisor[key] = (emisorOrig as any)[key];
-        }
-        encabezado['Emisor'] = emisor;
-      }
-
-      // ── 3. Normalizar orden interno de Totales (TotalITBIS antes que MontoTotal) ─
-      // JSONB devuelve las claves alfabéticamente: MontoTotal (M) aparece antes que
-      // TotalITBIS (T), pero el XSD de DGII exige TotalITBIS ANTES que MontoTotal.
-      const totalesOrig = encabezadoOrig['Totales'];
-      if (totalesOrig && typeof totalesOrig === 'object') {
-        const totales: Record<string, unknown> = {};
-        for (const key of TOTALES_CANON) {
-          const v = (totalesOrig as any)[key];
-          if (v !== undefined && v !== null) totales[key] = v;
-        }
-        for (const key of Object.keys(totalesOrig as object)) {
-          if (!(TOTALES_CANON as readonly string[]).includes(key)) {
-            totales[key] = (totalesOrig as any)[key];
-          }
-        }
-        encabezado['Totales'] = totales;
-      }
-
-      return {
-        ...payload,
-        ECF: { ...payload.ECF, Encabezado: encabezado },
-      };
-    } catch {
-      // Si algo falla, usar payload original (assertEmisorOrder lo detectará)
-      return payload;
+    if (!documentoOrigenTipo || !documentoOrigenId) {
+      throw new Error(
+        `e-CF ${numero} no tiene documentoOrigenTipo/Id — no se puede reconstruir el payload`,
+      );
     }
+
+    const tipoNumerico = parseInt(ecf.tipoECF.codigo.replace('E', ''), 10);
+    if (isNaN(tipoNumerico)) {
+      throw new Error(`e-CF ${numero} tiene código de tipo inválido: ${ecf.tipoECF.codigo}`);
+    }
+
+    const [config, secuencia, docOrigen] = await Promise.all([
+      this.configSvc.obtenerPorEmpresa(empresaId!),
+      this.secuenciaRepo.findOne({ where: { id: secuenciaId } }),
+      this.cargarDocumento(documentoOrigenTipo, documentoOrigenId, empresaId!),
+    ]);
+
+    // Anclar al mediodía RD (16:00 UTC) igual que el envío original
+    const fechaVencSec = (() => {
+      if (!secuencia) return new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+      const raw = secuencia.fechaVencimiento;
+      const s = raw instanceof Date ? raw.toISOString().substring(0, 10) : String(raw).substring(0, 10);
+      const [y, m, d] = s.split('-').map(Number);
+      return new Date(Date.UTC(y, m - 1, d, 16));
+    })();
+
+    // InfoReferencia para E33/E34 — reconstruida desde los campos guardados en la entidad
+    let infoReferencia: MSellerInfoReferencia | undefined;
+    if ((tipoNumerico === 33 || tipoNumerico === 34) && ecf.ncfModificado) {
+      const ecfOrig = await this.ecfRepo.findOne({
+        where: { numero: ecf.ncfModificado, empresaId: empresaId! },
+      });
+      infoReferencia = {
+        NCFModificado:      ecf.ncfModificado,
+        FechaNCFModificado: fmtFecha(ecfOrig?.fechaUso ?? ecfOrig?.createdAt ?? new Date()),
+        CodigoModificacion: ecf.codigoModificacion ? String(ecf.codigoModificacion) : '3',
+      };
+    }
+
+    return this.builder.build(tipoNumerico, {
+      encf:             numero,
+      factura:          docOrigen as Factura,
+      config,
+      fechaVencSec,
+      infoReferencia,
+      nombreExtranjero: ecf.razonSocialComprador ?? undefined,
+    });
+  }
+
+  private async cargarDocumento(
+    tipo:      string,
+    id:        number,
+    empresaId: number,
+  ): Promise<Factura | Record<string, unknown>> {
+    if (tipo === DocumentoOrigenTipo.FACTURA || tipo === DocumentoOrigenTipo.VENTA_POS) {
+      const f = await this.facturaRepo.findOne({
+        where:     { id, empresaId },
+        relations: ['cliente', 'detalles', 'detalles.producto'],
+      });
+      if (!f) throw new NotFoundException(`Factura #${id} no encontrada para empresa #${empresaId}`);
+      return f;
+    }
+
+    if (tipo === DocumentoOrigenTipo.NOTA_DEBITO) {
+      const nota = await this.notaDebitoRepo.findOne({
+        where:     { id, empresaId },
+        relations: ['cliente', 'detalles'],
+      });
+      if (!nota) throw new NotFoundException(`Nota de Débito #${id} no encontrada para empresa #${empresaId}`);
+      return { ...nota, iva: nota.iva } as unknown as Factura;
+    }
+
+    if (tipo === DocumentoOrigenTipo.NOTA_CREDITO) {
+      const nota = await this.notaCreditoRepo.findOne({
+        where:     { id, empresaId },
+        relations: ['cliente', 'detalles'],
+      });
+      if (!nota) throw new NotFoundException(`Nota de Crédito #${id} no encontrada para empresa #${empresaId}`);
+      return { ...nota, iva: nota.iva } as unknown as Factura;
+    }
+
+    if (tipo === DocumentoOrigenTipo.COMPRA) {
+      const compra = await this.compraRepo.findOne({
+        where:     { id, empresaId },
+        relations: ['proveedor', 'detalles'],
+      });
+      if (!compra) throw new NotFoundException(`Compra #${id} no encontrada para empresa #${empresaId}`);
+      return {
+        ...compra,
+        cliente: {
+          id:          compra.proveedor?.id,
+          nombre:      compra.proveedor?.nombre,
+          rncReceptor: compra.proveedor?.rnc,
+          direccion:   compra.proveedor?.direccion,
+        },
+        detalles: (compra.detalles ?? []).map(d => ({
+          ...d,
+          porcentajeIva: (d as any).porcentajeItbis,
+          importeIva:    (d as any).importeItbis,
+        })),
+        iva:      compra.itbis,
+        subtotal: compra.subtotal,
+        total:    compra.total,
+        fecha:    compra.fecha,
+      } as unknown as Factura;
+    }
+
+    if (tipo === DocumentoOrigenTipo.GASTO) {
+      const gasto = await this.gastoRepo.findOne({ where: { id, empresaId } });
+      if (!gasto) throw new NotFoundException(`Gasto #${id} no encontrado para empresa #${empresaId}`);
+      return {
+        fecha:   gasto.fecha,
+        cliente: {
+          rncReceptor: gasto.rncProveedor ?? undefined,
+          nombre:      gasto.proveedor ?? 'Proveedor Informal',
+        },
+        detalles: [{
+          descripcion:    gasto.descripcion,
+          cantidad:       1,
+          precioUnitario: Number(gasto.monto),
+          porcentajeIva:  0,
+          importeIva:     0,
+          subtotal:       Number(gasto.monto),
+        }],
+        iva:      gasto.itbis ?? 0,
+        subtotal: gasto.monto,
+        total:    gasto.total,
+      } as unknown as Factura;
+    }
+
+    throw new Error(`Tipo de documento origen desconocido para reenvío: ${tipo}`);
   }
 
   private async logEvento(
