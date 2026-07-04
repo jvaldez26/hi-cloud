@@ -89,7 +89,18 @@ export default function EcfSeccion({ facturaId, documentoOrigenId, documentoOrig
     );
   }
 
-  const puedeReenviar = ['rechazado', 'contingencia', 'pendiente_envio'].includes(ecf.estadoDGII);
+  // Para rechazado: solo permitir reenviar si DGII confirmó que la secuencia NO fue consumida
+  const secuenciaReutilizable = ecf.estadoDGII === 'rechazado'
+    ? (() => {
+        const r = (ecf as any).respuestaDgii;
+        if (!r) return false;
+        const raw: any[] = Array.isArray(r.dgiiResponse) ? r.dgiiResponse : [];
+        const items = raw.map((i: any) => typeof i === 'string' ? (() => { try { return JSON.parse(i); } catch { return null; } })() : i).filter(Boolean);
+        const final = items.length > 0 ? (items.find((x: any) => x?.estado || x?.mensajes) ?? items[items.length - 1]) : r;
+        return final?.secuenciaUtilizada === false;
+      })()
+    : false;
+  const puedeReenviar = ['contingencia', 'pendiente_envio'].includes(ecf.estadoDGII) || secuenciaReutilizable;
 
   return (
     <Card
@@ -134,7 +145,12 @@ export default function EcfSeccion({ facturaId, documentoOrigenId, documentoOrig
       {esRechazado && (
         <Alert type="error" showIcon style={{ marginBottom: 10 }}
           message="Rechazado por la DGII"
-          description={(ecf as any).errorEnvio ?? 'El comprobante fue rechazado. Usa Reenviar para intentar de nuevo.'} />
+          description={
+            secuenciaReutilizable
+              ? ((ecf as any).errorEnvio ?? 'El comprobante fue rechazado pero la secuencia no fue consumida. Usa Reenviar para volver a intentarlo.')
+              : 'La secuencia fue consumida por DGII. Para emitir un nuevo comprobante, hazlo desde el documento original.'
+          }
+        />
       )}
 
       <Row gutter={[16, 0]} align="middle">

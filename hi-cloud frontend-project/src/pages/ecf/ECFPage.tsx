@@ -41,10 +41,15 @@ const estadoDGIIIcon: Record<string, React.ReactNode> = {
 };
 
 /** Extrae secuenciaUtilizada del JSONB respuestaDgii, manejando tanto el formato
- *  directo como el batch (dgiiResponse[]).  Retorna undefined si no hay dato. */
+ *  directo como el batch (dgiiResponse[]).  Retorna undefined si no hay dato.
+ *  MSeller puede devolver dgiiResponse como array de objetos o de strings JSON. */
 function getSecuenciaUtilizada(respuestaDgii: any): boolean | undefined {
   if (!respuestaDgii) return undefined;
-  const items: any[] = Array.isArray(respuestaDgii.dgiiResponse) ? respuestaDgii.dgiiResponse : [];
+  const rawItems: any[] = Array.isArray(respuestaDgii.dgiiResponse) ? respuestaDgii.dgiiResponse : [];
+  const items = rawItems.map((item: any) => {
+    if (typeof item === 'string') { try { return JSON.parse(item); } catch { return null; } }
+    return item;
+  }).filter(Boolean);
   const final = items.length > 0
     ? (items.find((r: any) => r?.estado || r?.mensajes) ?? items[items.length - 1])
     : respuestaDgii;

@@ -388,16 +388,26 @@ export class ECFController {
     }
     if (ecf.estadoDGII === 'rechazado') {
       // Reenvío condicional: solo cuando DGII reportó "Secuencia utilizada: No"
-      const respDgii     = ecf.respuestaDgii as any;
-      const dgiiItems: any[] = Array.isArray(respDgii?.dgiiResponse) ? respDgii.dgiiResponse : [];
-      const respFinal    = dgiiItems.length > 0
+      // MSeller puede devolver dgiiResponse como array de objetos o de strings JSON.
+      const respDgii  = ecf.respuestaDgii as any;
+      const rawItems: any[] = Array.isArray(respDgii?.dgiiResponse) ? respDgii.dgiiResponse : [];
+      const dgiiItems = rawItems.map((item: any) => {
+        if (typeof item === 'string') {
+          try { return JSON.parse(item); } catch { return null; }
+        }
+        return item;
+      }).filter(Boolean);
+      const respFinal = dgiiItems.length > 0
         ? (dgiiItems.find((r: any) => r?.estado || r?.mensajes) ?? dgiiItems[dgiiItems.length - 1])
         : respDgii;
       const secuenciaUtilizada = respFinal?.secuenciaUtilizada;
 
       if (secuenciaUtilizada !== false) {
+        const motivo = secuenciaUtilizada === true
+          ? `la secuencia ${numero} fue consumida por DGII`
+          : `no se pudo determinar si la secuencia ${numero} fue consumida`;
         throw new ConflictException(
-          `El e-CF fue rechazado y la secuencia ${numero} fue consumida por DGII. ` +
+          `El e-CF fue rechazado y ${motivo}. ` +
           `Para volver a emitir, hazlo desde el documento original para que use una nueva secuencia.`,
         );
       }

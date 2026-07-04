@@ -326,13 +326,24 @@ export default function FacturasPage() {
           );
         }
 
-        const puedeReenviar = ['rechazado', 'contingencia', 'pendiente_envio'].includes(ecf.estadoDGII);
+        // Para rechazado: solo permitir reenviar si DGII confirmó que la secuencia NO fue consumida
+        const secuenciaReutilizable = ecf.estadoDGII === 'rechazado'
+          ? (() => {
+              const r = (ecf as any).respuestaDgii;
+              if (!r) return false;
+              const raw: any[] = Array.isArray(r.dgiiResponse) ? r.dgiiResponse : [];
+              const items = raw.map((i: any) => typeof i === 'string' ? (() => { try { return JSON.parse(i); } catch { return null; } })() : i).filter(Boolean);
+              const final = items.length > 0 ? (items.find((x: any) => x?.estado || x?.mensajes) ?? items[items.length - 1]) : r;
+              return final?.secuenciaUtilizada === false;
+            })()
+          : false;
+        const puedeReenviar = ['contingencia', 'pendiente_envio'].includes(ecf.estadoDGII) || secuenciaReutilizable;
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             <Space size={4}>
               <EcfBadge estado={ecf.estadoDGII as EstadoEcf} encf={ecf.numero} small />
               {puedeReenviar && (
-                <Tooltip title="Reenviar a DGII">
+                <Tooltip title={secuenciaReutilizable ? 'Reenviar a DGII (secuencia reutilizable)' : 'Reenviar a DGII'}>
                   <Button
                     size="small" type="text" icon={<ReloadOutlined />}
                     loading={reenviarEcfMut.isPending}
