@@ -402,19 +402,21 @@ export class ECFController {
         : respDgii;
       const secuenciaUtilizada = respFinal?.secuenciaUtilizada;
 
-      if (secuenciaUtilizada !== false) {
-        const motivo = secuenciaUtilizada === true
-          ? `la secuencia ${numero} fue consumida por DGII`
-          : `no se pudo determinar si la secuencia ${numero} fue consumida`;
+      // Solo bloquear cuando DGII confirmó EXPLÍCITAMENTE que consumió la secuencia.
+      // Si secuenciaUtilizada es false → no consumida → permitir reenvío.
+      // Si secuenciaUtilizada es undefined → información perdida (el cron de consultar-estado
+      //   sobreescribe respuestaDgii con el formato del batch, que no incluye dgiiResponse[]).
+      //   Los rechazos por XML de estructura no consumen la secuencia: permitir reenvío.
+      if (secuenciaUtilizada === true) {
         throw new ConflictException(
-          `El e-CF fue rechazado y ${motivo}. ` +
+          `El e-CF fue rechazado y la secuencia ${numero} fue consumida por DGII. ` +
           `Para volver a emitir, hazlo desde el documento original para que use una nueva secuencia.`,
         );
       }
 
-      // Secuencia no utilizada → resetear estado atómicamente y reenviar
+      // Secuencia no utilizada (false) o estado desconocido (undefined) → resetear y reenviar
       const reenvioLogger = new Logger('ECFController.reenviar');
-      reenvioLogger.log(`Reenvío condicional autorizado: ${numero} (secuenciaUtilizada=false)`);
+      reenvioLogger.log(`Reenvío condicional autorizado: ${numero} (secuenciaUtilizada=${secuenciaUtilizada})`);
       await this.ecfService.prepararReenvioRechazado(ecf.id);
       const ecfListo = await this.ecfService.getECFByNumero(numero);
       await this.reintentoJob.procesarUno(ecfListo as any);

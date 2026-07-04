@@ -89,17 +89,22 @@ export default function EcfSeccion({ facturaId, documentoOrigenId, documentoOrig
     );
   }
 
-  // Para rechazado: solo permitir reenviar si DGII confirmó que la secuencia NO fue consumida
-  const secuenciaReutilizable = ecf.estadoDGII === 'rechazado'
+  // Para rechazado: extraer secuenciaUtilizada del payload DGII
+  const secuenciaUtilizadaVal: boolean | undefined = ecf.estadoDGII === 'rechazado'
     ? (() => {
         const r = (ecf as any).respuestaDgii;
-        if (!r) return false;
+        if (!r) return undefined;
         const raw: any[] = Array.isArray(r.dgiiResponse) ? r.dgiiResponse : [];
         const items = raw.map((i: any) => typeof i === 'string' ? (() => { try { return JSON.parse(i); } catch { return null; } })() : i).filter(Boolean);
         const final = items.length > 0 ? (items.find((x: any) => x?.estado || x?.mensajes) ?? items[items.length - 1]) : r;
-        return final?.secuenciaUtilizada === false;
+        const v = final?.secuenciaUtilizada;
+        return v === true ? true : v === false ? false : undefined;
       })()
-    : false;
+    : undefined;
+  // Permite reenvío si la secuencia definitivamente NO fue consumida (false)
+  // o si no hay confirmación (undefined — el cron pudo haber perdido el dato).
+  // Solo bloquea cuando DGII confirmó explícitamente que fue consumida (true).
+  const secuenciaReutilizable = ecf.estadoDGII === 'rechazado' && secuenciaUtilizadaVal !== true;
   const puedeReenviar = ['contingencia', 'pendiente_envio'].includes(ecf.estadoDGII) || secuenciaReutilizable;
 
   return (
@@ -146,9 +151,11 @@ export default function EcfSeccion({ facturaId, documentoOrigenId, documentoOrig
         <Alert type="error" showIcon style={{ marginBottom: 10 }}
           message="Rechazado por la DGII"
           description={
-            secuenciaReutilizable
-              ? ((ecf as any).errorEnvio ?? 'El comprobante fue rechazado pero la secuencia no fue consumida. Usa Reenviar para volver a intentarlo.')
-              : 'La secuencia fue consumida por DGII. Para emitir un nuevo comprobante, hazlo desde el documento original.'
+            secuenciaUtilizadaVal === true
+              ? 'La secuencia fue consumida por DGII. Para emitir un nuevo comprobante, hazlo desde el documento original.'
+              : secuenciaUtilizadaVal === false
+                ? ((ecf as any).errorEnvio ?? 'El comprobante fue rechazado pero la secuencia no fue consumida. Usa Reenviar para volver a intentarlo.')
+                : 'No se pudo confirmar el estado de la secuencia. Puedes intentar reenviar el comprobante.'
           }
         />
       )}

@@ -212,9 +212,17 @@ export class ConsultarEstadoECFJob {
       }
 
       const batchData = resultado.data as any;
+      const rawRespuestaDgii: any = batchData ?? { status: resultado.status };
+      // La respuesta del batch no incluye dgiiResponse[] (donde vive secuenciaUtilizada).
+      // Si el dato previo tenía ese array, preservarlo para que el gate de reenvío y
+      // la UI puedan seguir leyendo secuenciaUtilizada correctamente.
+      const prevRespuestaDgii = ecf.respuestaDgii as any;
+      const respuestaDgii = (!rawRespuestaDgii.dgiiResponse && prevRespuestaDgii?.dgiiResponse)
+        ? { ...rawRespuestaDgii, dgiiResponse: prevRespuestaDgii.dgiiResponse }
+        : rawRespuestaDgii;
       await this.ecfRepo.update(ecf.id, {
         estadoDGII:    nuevoEstado,
-        respuestaDgii: batchData ?? { status: resultado.status },
+        respuestaDgii,
         // Guardar QR url del comprobante aceptado si viene en la respuesta batch
         ...(batchData?.qr_url    ? { qrUrl: batchData.qr_url }       : {}),
         fechaUso:      nuevoEstado === EstadoDGII.ACEPTADO ? new Date() : undefined,

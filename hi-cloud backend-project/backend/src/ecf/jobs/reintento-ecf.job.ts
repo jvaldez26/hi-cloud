@@ -26,6 +26,24 @@ const ENCABEZADO_CANON = [
   'Version', 'IdDoc', 'Emisor', 'Comprador', 'Totales', 'OtraMoneda',
 ] as const;
 
+/**
+ * Orden canónico de los campos internos de Totales según XSD DGII.
+ * JSONB los devuelve en orden alfabético: MontoTotal (M) llega antes que TotalITBIS (T),
+ * pero el XSD exige que TotalITBIS aparezca ANTES de MontoTotal.
+ * Error sin este fix: "El elemento 'Totales' tiene elemento hijo inválido 'TotalITBIS'.
+ * Elementos esperados: MontoNoFacturable, MontoPeriodo, ..." (campos post-MontoTotal).
+ */
+const TOTALES_CANON = [
+  'MontoGravadoTotal', 'MontoGravadoI1', 'MontoGravadoI2', 'MontoGravadoI3',
+  'MontoExento',
+  'ITBIS1', 'ITBIS2', 'ITBIS3',
+  'TotalITBIS', 'TotalITBIS1', 'TotalITBIS2', 'TotalITBIS3',
+  'MontoImpuestoAdicional',
+  'MontoTotal',
+  'MontoNoFacturable', 'MontoPeriodo', 'SaldoAnterior', 'MontoAvancePago', 'ValorPagar',
+  'TotalITBISRetenido', 'TotalISRRetencion', 'TotalITBISPercepcion', 'TotalISRPercepcion',
+] as const;
+
 const MAX_INTENTOS = 5;
 
 /**
@@ -308,6 +326,24 @@ export class ReintentoECFJob {
           if (!(EMISOR_CANON as readonly string[]).includes(key)) emisor[key] = (emisorOrig as any)[key];
         }
         encabezado['Emisor'] = emisor;
+      }
+
+      // ── 3. Normalizar orden interno de Totales (TotalITBIS antes que MontoTotal) ─
+      // JSONB devuelve las claves alfabéticamente: MontoTotal (M) aparece antes que
+      // TotalITBIS (T), pero el XSD de DGII exige TotalITBIS ANTES que MontoTotal.
+      const totalesOrig = encabezadoOrig['Totales'];
+      if (totalesOrig && typeof totalesOrig === 'object') {
+        const totales: Record<string, unknown> = {};
+        for (const key of TOTALES_CANON) {
+          const v = (totalesOrig as any)[key];
+          if (v !== undefined && v !== null) totales[key] = v;
+        }
+        for (const key of Object.keys(totalesOrig as object)) {
+          if (!(TOTALES_CANON as readonly string[]).includes(key)) {
+            totales[key] = (totalesOrig as any)[key];
+          }
+        }
+        encabezado['Totales'] = totales;
       }
 
       return {

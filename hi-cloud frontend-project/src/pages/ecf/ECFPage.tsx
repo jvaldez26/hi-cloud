@@ -274,7 +274,7 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
               ? [{ key: 'reenviar', label: 'Reenviar a DGII', icon: <SendOutlined />,
                    onClick: () => handleReenviar(r) }]
               : []),
-            ...(r.estadoDGII === 'rechazado' && getSecuenciaUtilizada(r.respuestaDgii) === false
+            ...(r.estadoDGII === 'rechazado' && getSecuenciaUtilizada(r.respuestaDgii) !== true
               ? [{ key: 'reenviar-rechazado', label: 'Reenviar (secuencia reutilizable)', icon: <SendOutlined />,
                    onClick: () => handleReenviar(r) }]
               : []),

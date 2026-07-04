@@ -326,15 +326,17 @@ export default function FacturasPage() {
           );
         }
 
-        // Para rechazado: solo permitir reenviar si DGII confirmó que la secuencia NO fue consumida
+        // Para rechazado: solo bloquear si DGII confirmó EXPLÍCITAMENTE que la secuencia fue consumida.
+        // Si secuenciaUtilizada es undefined (dato perdido por el cron), se permite reenviar —
+        // los rechazos por XML de estructura no consumen la secuencia.
         const secuenciaReutilizable = ecf.estadoDGII === 'rechazado'
           ? (() => {
               const r = (ecf as any).respuestaDgii;
-              if (!r) return false;
+              if (!r) return true; // sin dato → permitir (gate backend decide)
               const raw: any[] = Array.isArray(r.dgiiResponse) ? r.dgiiResponse : [];
               const items = raw.map((i: any) => typeof i === 'string' ? (() => { try { return JSON.parse(i); } catch { return null; } })() : i).filter(Boolean);
               const final = items.length > 0 ? (items.find((x: any) => x?.estado || x?.mensajes) ?? items[items.length - 1]) : r;
-              return final?.secuenciaUtilizada === false;
+              return final?.secuenciaUtilizada !== true;
             })()
           : false;
         const puedeReenviar = ['contingencia', 'pendiente_envio'].includes(ecf.estadoDGII) || secuenciaReutilizable;
