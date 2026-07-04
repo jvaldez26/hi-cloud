@@ -17,6 +17,12 @@ export class RefreshToken {
   @Column({ type: 'timestamptz', nullable: true })
   revokedAt?: Date;
 
+  @Column({ length: 10, nullable: true })
+  motivoRevocacion?: 'rotacion' | 'logout' | 'seguridad';
+
+  @Column({ length: 36, nullable: true })
+  nextTokenId?: string;
+
   @Column({ length: 255, nullable: true })
   deviceInfo?: string;
 

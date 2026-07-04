@@ -490,13 +490,30 @@ export class AuthController {
 
   private cookieOptions() {
     const isProd = process.env.NODE_ENV === 'production';
+    // La cookie debe durar ligeramente más que el JWT para que el navegador la
+    // envíe al endpoint cuando el token expire y se dispare el refresh.
+    // JWT_EXPIRES_IN default = '15m'; agregamos 5 min de margen.
+    const jwtMs = this.parseJwtExpiry(process.env.JWT_EXPIRES_IN ?? '15m');
     return {
       httpOnly:  true,
-      secure:    isProd,           // HTTPS solo en producción
+      secure:    isProd,
       sameSite:  'strict' as const,
-      maxAge:    24 * 60 * 60 * 1000,  // 24h (igual que la expiración del JWT)
+      maxAge:    jwtMs + 5 * 60_000, // expiry JWT + 5 min buffer
       path:      '/',
     };
+  }
+
+  private parseJwtExpiry(exp: string): number {
+    const m = exp.match(/^(\d+)(s|m|h|d)$/);
+    if (!m) return 15 * 60_000;
+    const n = parseInt(m[1], 10);
+    switch (m[2]) {
+      case 's': return n * 1_000;
+      case 'm': return n * 60_000;
+      case 'h': return n * 3_600_000;
+      case 'd': return n * 86_400_000;
+      default:  return 15 * 60_000;
+    }
   }
 
   private setAuthCookie(res: Response, token: string): void {

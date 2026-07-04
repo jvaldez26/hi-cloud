@@ -39,13 +39,60 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
-// ─── S-28: Cola de requests pendientes durante el refresh ──────────────────
+// ─── S-28: Cola intra-pestaña y coordinación inter-pestaña ────────────────
 let _isRefreshing   = false;
 let _refreshQueue: Array<{ resolve: () => void; reject: (e: unknown) => void }> = [];
 
 function processRefreshQueue(error: unknown) {
   _refreshQueue.forEach(p => error ? p.reject(error) : p.resolve());
   _refreshQueue = [];
+}
+
+// ── Inter-tab: BroadcastChannel + localStorage como fallback ──────────────
+// Cuando el access token expira con 2+ pestañas abiertas, solo UNA pestaña
+// debe llamar /auth/refresh (el refresh token rota: si dos pestañas lo llaman
+// simultáneamente, la segunda recibe 401 porque ya fue revocado).
+const _REFRESH_BC   = 'hc-auth-refresh';
+const _REFRESH_LS   = 'hc_refresh_state';
+const _REFRESH_TTL  = 10_000; // 10 s — si la pestaña refreshing muere
+
+let _bc: BroadcastChannel | null = null;
+try { _bc = new BroadcastChannel(_REFRESH_BC); } catch { /* Safari private, etc. */ }
+
+function _getTabRefreshState(): { status: 'running' | 'done' | 'failed'; at: number } | null {
+  try { return JSON.parse(localStorage.getItem(_REFRESH_LS) ?? 'null'); } catch { return null; }
+}
+function _setTabRefreshState(status: 'running' | 'done' | 'failed'): void {
+  localStorage.setItem(_REFRESH_LS, JSON.stringify({ status, at: Date.now() }));
+}
+function _clearTabRefreshState(): void {
+  localStorage.removeItem(_REFRESH_LS);
+}
+
+function _waitForOtherTabRefresh(): Promise<'done' | 'failed' | 'timeout'> {
+  return new Promise(resolve => {
+    const timer = setTimeout(() => { cleanup(); resolve('timeout'); }, _REFRESH_TTL);
+
+    const onMsg = (e: MessageEvent) => {
+      if (e.data?.type === 'hc_refresh_done')   { cleanup(); resolve('done'); }
+      if (e.data?.type === 'hc_refresh_failed')  { cleanup(); resolve('failed'); }
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== _REFRESH_LS) return;
+      const s = _getTabRefreshState();
+      if (s?.status === 'done')   { cleanup(); resolve('done'); }
+      if (s?.status === 'failed') { cleanup(); resolve('failed'); }
+    };
+
+    function cleanup() {
+      clearTimeout(timer);
+      _bc?.removeEventListener('message', onMsg);
+      window.removeEventListener('storage', onStorage);
+    }
+
+    _bc?.addEventListener('message', onMsg);
+    window.addEventListener('storage', onStorage);
+  });
 }
 
 // ─── RESPONSE interceptor ────────────────────────────────────────────
@@ -94,7 +141,7 @@ apiClient.interceptors.response.use(
                              original?.url?.includes('/auth/login');
 
       if (!isAuthEndpoint && !original?._retry && !onPublicPage) {
-        // Si ya está refrescando, encolar este request
+        // ── Capa 1: intra-pestaña — encolar si esta pestaña ya está refrescando ─
         if (_isRefreshing) {
           return new Promise<void>((resolve, reject) => {
             _refreshQueue.push({ resolve, reject });
@@ -102,18 +149,40 @@ apiClient.interceptors.response.use(
             .catch(e => Promise.reject(e));
         }
 
-        original._retry   = true;
-        _isRefreshing     = true;
+        original._retry = true;
+
+        // ── Capa 2: inter-pestaña — esperar si OTRA pestaña ya está refrescando ─
+        const tabState = _getTabRefreshState();
+        const otherTabBusy = tabState?.status === 'running' &&
+                             Date.now() - tabState.at < _REFRESH_TTL;
+
+        if (otherTabBusy) {
+          const outcome = await _waitForOtherTabRefresh();
+          if (outcome === 'done') return apiClient(original);   // cookie ya renovada
+          if (outcome === 'failed') {
+            // La otra pestaña falló → fallthrough al logout
+          }
+          // timeout → la otra pestaña murió, intentamos nosotros mismos
+        }
+
+        // ── Esta pestaña hace el refresh ──────────────────────────────────────
+        _isRefreshing = true;
+        _setTabRefreshState('running');
 
         try {
           await apiClient.post('/auth/refresh');
+          _setTabRefreshState('done');
+          _bc?.postMessage({ type: 'hc_refresh_done' });
           processRefreshQueue(null);
-          return apiClient(original);  // reintentar el request original
+          return apiClient(original);
         } catch (refreshErr) {
+          _setTabRefreshState('failed');
+          _bc?.postMessage({ type: 'hc_refresh_failed' });
           processRefreshQueue(refreshErr);
-          // Refresh falló → sesión expirada definitivamente
+          // Refresh falló definitivamente → fallthrough al logout
         } finally {
           _isRefreshing = false;
+          setTimeout(_clearTabRefreshState, 3_000);
         }
       }
       localStorage.removeItem('auth_user');
