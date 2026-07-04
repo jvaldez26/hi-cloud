@@ -4445,7 +4445,10 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
   });
   const { data: aging = [], isLoading: agingLoading } = useQuery<any[]>({
     queryKey: ['pos-cxc-aging'],
-    queryFn: () => api.get('/cxc/aging').then(r => r.data ?? []),
+    queryFn: () => api.get('/cxc/aging').then(r => {
+      const d = r.data?.data ?? r.data;
+      return Array.isArray(d) ? d : [];
+    }),
     staleTime: 60_000,
     enabled: !esAnticipo && tabActivo === 'cxc',
   });
