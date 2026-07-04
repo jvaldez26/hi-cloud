@@ -3620,19 +3620,51 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
 
 // ── Panel Clientes ────────────────────────────────────────────────────────────
 // ── Panel Conduces completo ───────────────────────────────────────────────────
-function POSConducePanel({ C, onVolver, initClienteId, initFacturaId }: {
-  C: Palette; onVolver: () => void; initClienteId?: number; initFacturaId?: number;
+function POSConducePanel({ C, onVolver }: {
+  C: Palette; onVolver: () => void;
 }) {
   const qc = useQueryClient();
-  const [modoForm,   setModoForm]   = useState(!!initClienteId);
-  const [busq,       setBusq]       = useState('');
-  const [busqCli,    setBusqCli]    = useState('');
-  const [fClienteId, setFClienteId] = useState<number|null>(initClienteId ?? null);
-  const [fDireccion, setFDireccion] = useState('');
-  const [fNotas,     setFNotas]     = useState('');
-  const [fItems,     setFItems]     = useState([{ desc: '', cant: '1', um: 'PZA' }]);
-  const [imprimiendo,setImprimiendo]= useState<number|null>(null);
 
+  // Leer init values desde sessionStorage (colocados por "Crear Conduce de Entrega" en ModalExito)
+  const [ssFacturaId] = useState<number | undefined>(() => {
+    const v = sessionStorage.getItem('pos_conduce_fid');
+    if (v) { sessionStorage.removeItem('pos_conduce_fid'); return Number(v); }
+    return undefined;
+  });
+  const [ssClienteId] = useState<number | undefined>(() => {
+    const v = sessionStorage.getItem('pos_conduce_cid');
+    if (v) { sessionStorage.removeItem('pos_conduce_cid'); return Number(v); }
+    return undefined;
+  });
+
+  // Vista: 'lista' | 'form'
+  const [vista,        setVista]        = useState<'lista' | 'form'>(ssFacturaId || ssClienteId ? 'form' : 'lista');
+  // Modo del formulario: 'factura' | 'libre'
+  const [fModo,        setFModo]        = useState<'factura' | 'libre'>(ssFacturaId ? 'factura' : 'libre');
+
+  // ── Lista ──
+  const [busq,         setBusq]         = useState('');
+
+  // ── Modo FACTURA ──
+  const [factBusq,     setFactBusq]     = useState('');
+  const [factSel,      setFactSel]      = useState<any>(null);
+  const [pendientes,   setPendientes]   = useState<any[]>([]);
+  const [cantidades,   setCantidades]   = useState<Record<number, number>>({});
+  const [loadingPend,  setLoadingPend]  = useState(false);
+  const [todosDespach, setTodosDespach] = useState(false);
+
+  // ── Modo LIBRE ──
+  const [busqCli,      setBusqCli]      = useState('');
+  const [fClienteId,   setFClienteId]   = useState<number|null>(ssClienteId ?? null);
+  const [fDireccion,   setFDireccion]   = useState('');
+  const [fNotas,       setFNotas]       = useState('');
+  const [prodBusq,     setProdBusq]     = useState('');
+  const [showProdDrop, setShowProdDrop] = useState(false);
+  const [fItems,       setFItems]       = useState<Array<{ productoId?: number; descripcion: string; cant: string; um: string }>>([]);
+
+  const [imprimiendo,  setImprimiendo]  = useState<number|null>(null);
+
+  // ── Queries ──
   const { data: conduces = [], isLoading } = useQuery<any[]>({
     queryKey: ['pos-conduces', busq],
     queryFn: () => api.get(`/conduces?limit=50${busq ? '&search=' + encodeURIComponent(busq) : ''}`)
@@ -3641,6 +3673,36 @@ function POSConducePanel({ C, onVolver, initClienteId, initFacturaId }: {
     refetchInterval: 30_000,
   });
 
+  const { data: resumenData } = useQuery<any>({
+    queryKey: ['pos-conduces-resumen'],
+    queryFn: () => api.get('/conduces/resumen').then(r => r.data?.data ?? r.data),
+    refetchInterval: 30_000,
+  });
+  const pendientesBadge = (resumenData?.generado ?? 0) + (resumenData?.en_transito ?? 0);
+
+  // Búsqueda de facturas (modo factura)
+  const { data: factResults = [] } = useQuery<any[]>({
+    queryKey: ['pos-fact-conduce', factBusq],
+    queryFn: () => api.get(`/facturas?search=${encodeURIComponent(factBusq)}&limit=10`)
+      .then(r => {
+        const d = r.data?.data ?? r.data;
+        const list: any[] = d?.data ?? d ?? [];
+        return list.filter((f: any) => ['emitida', 'pagada'].includes(f.estado));
+      }),
+    enabled: factBusq.length >= 2,
+    staleTime: 15_000,
+  });
+
+  // Búsqueda de productos (modo libre)
+  const { data: prodResults = [], isFetching: buscandoProd } = useQuery<any[]>({
+    queryKey: ['pos-prod-conduce', prodBusq],
+    queryFn: () => api.get(`/productos?limit=20&search=${encodeURIComponent(prodBusq)}&incluirSinStock=true`)
+      .then(r => { const d = r.data?.data ?? r.data; return d?.data ?? d ?? []; }),
+    enabled: prodBusq.length >= 2,
+    staleTime: 30_000,
+  });
+
+  // Clientes (modo libre)
   const { data: clientes = [] } = useQuery<any[]>({
     queryKey: ['pos-cli-conduce', busqCli],
     queryFn: () => api.get(`/clientes?limit=30${busqCli ? '&search=' + encodeURIComponent(busqCli) : ''}`)
@@ -3648,33 +3710,53 @@ function POSConducePanel({ C, onVolver, initClienteId, initFacturaId }: {
     staleTime: 30_000,
   });
 
-  const { data: resumen } = useQuery<any>({
-    queryKey: ['pos-conduces-resumen'],
-    queryFn: () => api.get('/conduces/resumen').then(r => r.data?.data ?? r.data),
-    refetchInterval: 30_000,
-  });
+  // Auto-cargar si viene desde ModalExito con facturaId
+  useEffect(() => {
+    if (ssFacturaId) seleccionarFactura({ id: ssFacturaId });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const pendientes = (resumen?.generado ?? 0) + (resumen?.en_transito ?? 0);
+  const seleccionarFactura = async (f: any) => {
+    setFactSel(f);
+    setLoadingPend(true);
+    setPendientes([]);
+    setCantidades({});
+    setTodosDespach(false);
+    try {
+      const res  = await api.get(`/conduces/factura/${f.id}/pendientes`);
+      const data = (res as any).data?.data ?? (res as any).data;
+      const items: any[] = data?.detalles ?? [];
+      setPendientes(items);
+      setTodosDespach(data?.todosDespachados ?? false);
+      const initCant: Record<number, number> = {};
+      items.forEach((it: any) => { initCant[it.facturaDetalleId] = it.cantidadPendiente; });
+      setCantidades(initCant);
+      if (data?.cliente) {
+        setFClienteId(data.cliente.id);
+        if (data.cliente.direccion) setFDireccion(data.cliente.direccion);
+      }
+    } catch (e: any) {
+      message.error(e?.response?.data?.message ?? 'Error al cargar pendientes');
+    } finally {
+      setLoadingPend(false);
+    }
+  };
+
+  const resetForm = () => {
+    setFactBusq(''); setFactSel(null); setPendientes([]); setCantidades({}); setTodosDespach(false);
+    setBusqCli(''); setFClienteId(null); setFDireccion(''); setFNotas('');
+    setProdBusq(''); setFItems([]); setShowProdDrop(false);
+  };
 
   const crearMut = useMutation({
-    mutationFn: () => api.post('/conduces', {
-      clienteId:       fClienteId,
-      fecha:           new Date().toISOString().split('T')[0],
-      direccionEntrega: fDireccion.trim(),
-      notas:           fNotas || undefined,
-      facturaId:       initFacturaId || undefined,
-      detalles: fItems.filter(i => i.desc.trim()).map(i => ({
-        descripcion: i.desc.trim(), cantidad: parseFloat(i.cant) || 1, unidadMedida: i.um || 'PZA',
-      })),
-    }),
+    mutationFn: (payload: any) => api.post('/conduces', payload),
     onSuccess: (res: any) => {
       qc.invalidateQueries({ queryKey: ['pos-conduces'] });
       qc.invalidateQueries({ queryKey: ['pos-conduces-resumen'] });
       const num = res.data?.data?.numero ?? res.data?.numero ?? '';
       message.success(`Conduce ${num} creado`);
-      setModoForm(false);
-      setFClienteId(null); setFDireccion(''); setFNotas('');
-      setFItems([{ desc: '', cant: '1', um: 'PZA' }]);
+      setVista('lista');
+      resetForm();
     },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al crear conduce', 5),
   });
@@ -3699,12 +3781,7 @@ function POSConducePanel({ C, onVolver, initClienteId, initFacturaId }: {
         api.get(`/conduces/${id}`).then(r => r.data?.data ?? r.data),
         api.get('/configuracion/empresa').then(r => r.data?.data ?? r.data).catch(() => ({})),
       ]);
-      const empInfo = {
-        nombre:    empRes.razonSocial ?? empRes.nombre,
-        rnc:       empRes.rnc,
-        direccion: empRes.direccion,
-        telefono:  empRes.telefono,
-      };
+      const empInfo = { nombre: empRes.razonSocial ?? empRes.nombre, rnc: empRes.rnc, direccion: empRes.direccion, telefono: empRes.telefono };
       const gd: GenericDocData = {
         tipo:    'CONDUCE',
         numero:  docRes.numero ?? String(id),
@@ -3716,93 +3793,316 @@ function POSConducePanel({ C, onVolver, initClienteId, initFacturaId }: {
         nota2:   docRes.contactoEntrega  ? `Contacto: ${docRes.contactoEntrega}` : undefined,
         notas:   docRes.notas,
       };
-      const empConf = (empRes.configuracion ?? {}) as any;
-      imprimirReciboTermico(buildDocTermicoHTML(gd, { tipoImpresora: empConf.posTipoImpresora }));
+      imprimirReciboTermico(buildDocTermicoHTML(gd, { tipoImpresora: ((empRes.configuracion ?? {}) as any).posTipoImpresora }));
     } catch { message.error('Error al imprimir conduce'); }
-    finally   { setImprimiendo(null); }
+    finally { setImprimiendo(null); }
   };
 
-  const canCreate = !!fClienteId && !!fDireccion.trim() && fItems.some(i => i.desc.trim());
+  const handleCrear = () => {
+    if (fModo === 'factura') {
+      if (!factSel) { message.warning('Selecciona una factura'); return; }
+      const detallesValidos = pendientes
+        .filter(d => (cantidades[d.facturaDetalleId] ?? 0) > 0)
+        .map(d => ({ productoId: d.productoId, descripcion: d.descripcion, unidadMedida: d.unidadMedida, cantidad: cantidades[d.facturaDetalleId] }));
+      if (!detallesValidos.length) { message.warning('Selecciona al menos un producto con cantidad > 0'); return; }
+      if (!fDireccion.trim())      { message.warning('Ingresa la dirección de entrega'); return; }
+      crearMut.mutate({
+        clienteId:        fClienteId ?? factSel.clienteId,
+        fecha:            new Date().toISOString().split('T')[0],
+        direccionEntrega: fDireccion.trim(),
+        facturaId:        factSel.id,
+        notas:            fNotas || undefined,
+        detalles:         detallesValidos,
+      });
+    } else {
+      if (!fClienteId)             { message.warning('Selecciona un cliente'); return; }
+      if (!fDireccion.trim())      { message.warning('Ingresa la dirección de entrega'); return; }
+      if (!fItems.length)          { message.warning('Agrega al menos un producto'); return; }
+      crearMut.mutate({
+        clienteId:        fClienteId,
+        fecha:            new Date().toISOString().split('T')[0],
+        direccionEntrega: fDireccion.trim(),
+        notas:            fNotas || undefined,
+        detalles:         fItems.map(it => ({ productoId: it.productoId, descripcion: it.descripcion, cantidad: parseFloat(it.cant) || 1, unidadMedida: it.um || 'PZA' })),
+      });
+    }
+  };
+
+  const inp = (style?: React.CSSProperties): React.CSSProperties => ({
+    width: '100%', height: 38, padding: '0 12px', borderRadius: 8,
+    border: `1px solid ${C.border2}`, fontSize: 13, background: C.inputBg, color: C.text,
+    outline: 'none', boxSizing: 'border-box', ...style,
+  });
+
+  const label = (txt: string) => (
+    <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: C.text }}>{txt}</div>
+  );
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <PanelHeader
-        title={pendientes > 0 ? `Conduces (${pendientes} pend.)` : 'Conduces'}
+        title={pendientesBadge > 0 ? `Conduces (${pendientesBadge} pend.)` : 'Conduces'}
         icon="🚚" C={C} onVolver={onVolver}
-        onNuevo={() => setModoForm(v => !v)}
-        labelNuevo={modoForm ? 'Ver lista' : 'Nuevo'}
+        onNuevo={() => { setVista(v => v === 'form' ? 'lista' : 'form'); if (vista === 'form') resetForm(); }}
+        labelNuevo={vista === 'form' ? 'Ver lista' : 'Nuevo'}
       />
 
-      {modoForm ? (
-        /* ── FORMULARIO ────────────────────────────────────────────── */
-        <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
-          <div style={{ maxWidth: 480, color: C.text }}>
+      {vista === 'form' ? (
+        /* ── FORMULARIO ─────────────────────────────────────────────── */
+        <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+          <div style={{ maxWidth: 520, color: C.text }}>
 
-            {/* Cliente */}
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: C.text }}>Cliente *</div>
-              <select value={fClienteId ?? ''} onChange={e => setFClienteId(e.target.value ? Number(e.target.value) : null)}
-                style={{ width: '100%', height: 38, padding: '0 12px', borderRadius: 8,
-                  border: `1px solid ${C.border2}`, fontSize: 13, background: C.inputBg, color: C.text,
-                  outline: 'none', boxSizing: 'border-box' as const, cursor: 'pointer' }}>
-                <option value="">Seleccionar cliente...</option>
-                {(clientes ?? []).map((c: any) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-              </select>
-              <input value={busqCli} onChange={e => setBusqCli(e.target.value)} placeholder="Escribir para buscar..."
-                style={{ width: '100%', height: 30, padding: '0 10px', marginTop: 4, borderRadius: 7,
-                  border: `1px solid ${C.border}`, fontSize: 11, outline: 'none', background: C.inputBg,
-                  color: C.text, boxSizing: 'border-box' as const }} />
-            </div>
-
-            <PanelInput C={C} label="Dirección de entrega *" placeholder="Dirección completa de entrega"
-              value={fDireccion} onChange={e => setFDireccion(e.target.value)} />
-
-            {/* Ítems */}
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, color: C.text,
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>Ítems a despachar</span>
-                <button onClick={() => setFItems(p => [...p, { desc: '', cant: '1', um: 'PZA' }])}
-                  style={{ fontSize: 11, background: C.inputBg, border: `1px solid ${C.border2}`,
-                    borderRadius: 5, color: C.blue, padding: '2px 8px', cursor: 'pointer' }}>
-                  + Agregar ítem
+            {/* Selector de modo */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+              {(['factura', 'libre'] as const).map(m => (
+                <button key={m} onClick={() => { setFModo(m); resetForm(); }}
+                  style={{ flex: 1, height: 38, borderRadius: 8, border: `2px solid ${fModo === m ? C.blue : C.border2}`,
+                    background: fModo === m ? C.blue + '18' : C.inputBg, color: fModo === m ? C.blue : C.textSub,
+                    fontWeight: fModo === m ? 700 : 400, fontSize: 13, cursor: 'pointer', transition: 'all .15s' }}>
+                  {m === 'factura' ? '📦 Desde Factura' : '✏️ Conduce Libre'}
                 </button>
-              </div>
-              {fItems.map((item, idx) => (
-                <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 56px 52px 24px', gap: 5, marginBottom: 6 }}>
-                  <input placeholder="Descripción del producto" value={item.desc}
-                    onChange={e => setFItems(p => p.map((x, i) => i === idx ? { ...x, desc: e.target.value } : x))}
-                    style={{ height: 34, padding: '0 10px', borderRadius: 7, border: `1px solid ${C.border2}`,
-                      fontSize: 12, background: C.inputBg, color: C.text, outline: 'none', boxSizing: 'border-box' as const }} />
-                  <input type="number" placeholder="Cant" value={item.cant}
-                    onChange={e => setFItems(p => p.map((x, i) => i === idx ? { ...x, cant: e.target.value } : x))}
-                    style={{ height: 34, padding: '0 4px', borderRadius: 7, border: `1px solid ${C.border2}`,
-                      fontSize: 12, background: C.inputBg, color: C.text, outline: 'none', textAlign: 'center' as const }} />
-                  <input placeholder="UM" value={item.um}
-                    onChange={e => setFItems(p => p.map((x, i) => i === idx ? { ...x, um: e.target.value } : x))}
-                    style={{ height: 34, padding: '0 4px', borderRadius: 7, border: `1px solid ${C.border2}`,
-                      fontSize: 11, background: C.inputBg, color: C.text, outline: 'none', textAlign: 'center' as const }} />
-                  {fItems.length > 1 && (
-                    <button onClick={() => setFItems(p => p.filter((_, i) => i !== idx))}
-                      style={{ height: 34, background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: 18, padding: 0 }}>×</button>
-                  )}
-                </div>
               ))}
             </div>
 
-            <PanelInput C={C} label="Notas de entrega (opcional)" placeholder="Instrucciones, referencias, horario..."
-              value={fNotas} onChange={e => setFNotas(e.target.value)} />
+            {/* ── MODO FACTURA ── */}
+            {fModo === 'factura' && (
+              <>
+                {/* Buscar factura */}
+                {!factSel ? (
+                  <div style={{ marginBottom: 14 }}>
+                    {label('Buscar factura (número o cliente) *')}
+                    <input value={factBusq} onChange={e => setFactBusq(e.target.value)}
+                      placeholder="Ej. FAC-2025 o nombre del cliente..."
+                      style={inp()} autoFocus />
+                    {factBusq.length >= 2 && factResults.length > 0 && (
+                      <div style={{ border: `1px solid ${C.border2}`, borderRadius: 8, marginTop: 4,
+                        background: C.card, maxHeight: 200, overflowY: 'auto' }}>
+                        {factResults.map((f: any) => (
+                          <div key={f.id} onClick={() => seleccionarFactura(f)}
+                            style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: `1px solid ${C.border}`,
+                              fontSize: 12, color: C.text, display: 'flex', justifyContent: 'space-between' }}
+                            onMouseEnter={e => (e.currentTarget.style.background = C.border)}
+                            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                            <span><strong>{f.folio}</strong> — {f.cliente?.nombre ?? ''}</span>
+                            <span style={{ color: C.textSub }}>RD${Number(f.total ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {factBusq.length >= 2 && factResults.length === 0 && (
+                      <div style={{ fontSize: 11, color: C.textSub, marginTop: 4 }}>Sin facturas emitidas/pagadas con ese término</div>
+                    )}
+                    {factBusq.length > 0 && factBusq.length < 2 && (
+                      <div style={{ fontSize: 11, color: C.textSub, marginTop: 4 }}>Escribe al menos 2 caracteres</div>
+                    )}
+                  </div>
+                ) : (
+                  /* Factura seleccionada */
+                  <div style={{ marginBottom: 14, padding: '10px 14px', borderRadius: 8,
+                    background: C.blue + '12', border: `1px solid ${C.blue}44`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontWeight: 700, color: C.blue, fontSize: 13 }}>{factSel.folio ?? `Factura #${factSel.id}`}</div>
+                      <div style={{ fontSize: 11, color: C.textSub }}>{factSel.cliente?.nombre ?? ''}</div>
+                    </div>
+                    <button onClick={() => { setFactSel(null); setFactBusq(''); setPendientes([]); setCantidades({}); }}
+                      style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: 18, padding: '0 4px' }}>×</button>
+                  </div>
+                )}
 
-            <button onClick={() => crearMut.mutate()} disabled={crearMut.isPending || !canCreate}
-              style={{ width: '100%', height: 44, borderRadius: 10, border: 'none',
-                background: !canCreate ? '#ccc' : '#059669', color: '#fff',
-                fontWeight: 700, fontSize: 15, cursor: !canCreate ? 'not-allowed' : 'pointer' }}>
+                {/* Tabla de pendientes */}
+                {loadingPend && (
+                  <div style={{ textAlign: 'center', padding: 24, color: C.textSub }}>
+                    <Spin size="small" /> Cargando pendientes...
+                  </div>
+                )}
+                {!loadingPend && todosDespach && factSel && (
+                  <div style={{ padding: '12px 14px', borderRadius: 8, background: '#10b981' + '18',
+                    border: '1px solid #10b981', fontSize: 12, color: '#10b981', marginBottom: 12 }}>
+                    ✅ Esta factura ya tiene todos sus productos completamente despachados.
+                  </div>
+                )}
+                {!loadingPend && pendientes.length > 0 && (
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, color: C.text }}>Productos a Despachar</div>
+                    <div style={{ border: `1px solid ${C.border2}`, borderRadius: 8, overflow: 'hidden' }}>
+                      {/* Header */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 52px 52px 70px',
+                        gap: 4, padding: '6px 10px', background: C.card,
+                        borderBottom: `1px solid ${C.border}`, fontSize: 10, fontWeight: 700, color: C.textSub }}>
+                        <span>Descripción</span><span style={{ textAlign: 'center' }}>Fact.</span>
+                        <span style={{ textAlign: 'center' }}>Pend.</span><span style={{ textAlign: 'center' }}>A desp.</span>
+                      </div>
+                      {pendientes.map((d: any) => (
+                        <div key={d.facturaDetalleId}
+                          style={{ display: 'grid', gridTemplateColumns: '1fr 52px 52px 70px',
+                            gap: 4, padding: '8px 10px', borderBottom: `1px solid ${C.border}`,
+                            fontSize: 11, alignItems: 'center', color: d.cantidadPendiente === 0 ? C.textSub : C.text }}>
+                          <span style={{ wordBreak: 'break-word', lineHeight: 1.3 }}>{d.descripcion}</span>
+                          <span style={{ textAlign: 'center' }}>{d.cantidadFacturada}</span>
+                          <span style={{ textAlign: 'center', fontWeight: 700,
+                            color: d.cantidadPendiente > 0 ? C.blue : '#10b981' }}>
+                            {d.cantidadPendiente > 0 ? d.cantidadPendiente : '✓'}
+                          </span>
+                          <input
+                            type="number" min={0} max={d.cantidadPendiente}
+                            value={cantidades[d.facturaDetalleId] ?? d.cantidadPendiente}
+                            disabled={d.cantidadPendiente === 0}
+                            onChange={e => {
+                              const v = Math.min(Math.max(0, parseFloat(e.target.value) || 0), d.cantidadPendiente);
+                              setCantidades(prev => ({ ...prev, [d.facturaDetalleId]: v }));
+                            }}
+                            style={{ height: 32, borderRadius: 6, border: `1px solid ${C.border2}`,
+                              textAlign: 'center', fontSize: 12, background: d.cantidadPendiente === 0 ? C.border : C.inputBg,
+                              color: C.text, outline: 'none', width: '100%', boxSizing: 'border-box',
+                              opacity: d.cantidadPendiente === 0 ? 0.5 : 1 }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Dirección de entrega (modo factura) */}
+                {factSel && (
+                  <div style={{ marginBottom: 12 }}>
+                    {label('Dirección de entrega *')}
+                    <input value={fDireccion} onChange={e => setFDireccion(e.target.value)}
+                      placeholder="Dirección completa de entrega" style={inp()} />
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* ── MODO LIBRE ── */}
+            {fModo === 'libre' && (
+              <>
+                {/* Cliente */}
+                <div style={{ marginBottom: 12 }}>
+                  {label('Cliente *')}
+                  <select value={fClienteId ?? ''} onChange={e => {
+                    const cid = e.target.value ? Number(e.target.value) : null;
+                    setFClienteId(cid);
+                    const cli = (clientes as any[]).find((c: any) => c.id === cid);
+                    if (cli?.direccion && !fDireccion) setFDireccion(cli.direccion);
+                  }} style={inp({ cursor: 'pointer' }) as React.CSSProperties}>
+                    <option value="">Seleccionar cliente...</option>
+                    {(clientes ?? []).map((c: any) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                  </select>
+                  <input value={busqCli} onChange={e => setBusqCli(e.target.value)}
+                    placeholder="Buscar cliente por nombre..."
+                    style={{ ...inp(), height: 30, marginTop: 4, fontSize: 11 }} />
+                </div>
+
+                {/* Dirección */}
+                <div style={{ marginBottom: 12 }}>
+                  {label('Dirección de entrega *')}
+                  <input value={fDireccion} onChange={e => setFDireccion(e.target.value)}
+                    placeholder="Dirección completa de entrega" style={inp()} />
+                </div>
+
+                {/* Buscador de productos */}
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, color: C.text,
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>Productos a despachar *</span>
+                  </div>
+
+                  {/* Items ya agregados */}
+                  {fItems.map((item, idx) => (
+                    <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 60px 50px 28px',
+                      gap: 5, marginBottom: 6, alignItems: 'center' }}>
+                      <div style={{ fontSize: 11, padding: '0 10px', height: 34, display: 'flex', alignItems: 'center',
+                        background: C.inputBg, border: `1px solid ${C.border2}`, borderRadius: 7,
+                        color: C.text, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+                        {item.descripcion}
+                      </div>
+                      <input type="number" value={item.cant} min="0.01"
+                        onChange={e => setFItems(p => p.map((x, i) => i === idx ? { ...x, cant: e.target.value } : x))}
+                        style={{ height: 34, borderRadius: 7, border: `1px solid ${C.border2}`,
+                          textAlign: 'center', fontSize: 12, background: C.inputBg, color: C.text, outline: 'none', boxSizing: 'border-box', padding: '0 4px' }} />
+                      <input value={item.um}
+                        onChange={e => setFItems(p => p.map((x, i) => i === idx ? { ...x, um: e.target.value } : x))}
+                        style={{ height: 34, borderRadius: 7, border: `1px solid ${C.border2}`,
+                          textAlign: 'center', fontSize: 11, background: C.inputBg, color: C.text, outline: 'none', boxSizing: 'border-box', padding: '0 4px' }} />
+                      <button onClick={() => setFItems(p => p.filter((_, i) => i !== idx))}
+                        style={{ height: 34, background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: 20, padding: 0, lineHeight: 1 }}>×</button>
+                    </div>
+                  ))}
+
+                  {/* Buscador para agregar */}
+                  <div style={{ position: 'relative' }}>
+                    <input value={prodBusq}
+                      onChange={e => { setProdBusq(e.target.value); setShowProdDrop(true); }}
+                      onFocus={() => setShowProdDrop(true)}
+                      placeholder="🔍 Buscar y agregar producto (min. 2 letras)..."
+                      style={inp({ fontSize: 12 })} />
+                    {buscandoProd && (
+                      <div style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: C.textSub }}>
+                        <Spin size="small" />
+                      </div>
+                    )}
+                    {showProdDrop && prodBusq.length >= 2 && (prodResults as any[]).length > 0 && (
+                      <div style={{ position: 'absolute', left: 0, right: 0, top: '100%', zIndex: 100,
+                        border: `1px solid ${C.border2}`, borderRadius: 8, background: C.card,
+                        maxHeight: 220, overflowY: 'auto', boxShadow: '0 4px 16px rgba(0,0,0,.18)' }}>
+                        {(prodResults as any[]).map((p: any) => (
+                          <div key={p.id}
+                            onMouseDown={e => {
+                              e.preventDefault();
+                              setFItems(prev => [...prev, {
+                                productoId:  p.id,
+                                descripcion: p.nombre,
+                                cant:        '1',
+                                um:          p.unidadMedida ?? 'PZA',
+                              }]);
+                              setProdBusq('');
+                              setShowProdDrop(false);
+                            }}
+                            style={{ padding: '9px 14px', cursor: 'pointer', borderBottom: `1px solid ${C.border}`,
+                              fontSize: 12, color: C.text, display: 'flex', justifyContent: 'space-between' }}
+                            onMouseEnter={e => (e.currentTarget.style.background = C.border)}
+                            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                            <span>{p.codigo ? <><strong>{p.codigo}</strong> — </> : ''}{p.nombre}</span>
+                            <span style={{ color: C.textSub, fontSize: 10 }}>{p.unidadMedida ?? 'PZA'}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {showProdDrop && prodBusq.length >= 2 && (prodResults as any[]).length === 0 && !buscandoProd && (
+                      <div style={{ position: 'absolute', left: 0, right: 0, top: '100%', zIndex: 100,
+                        padding: '10px 14px', border: `1px solid ${C.border2}`, borderRadius: 8,
+                        background: C.card, fontSize: 12, color: C.textSub }}>
+                        Sin resultados para "{prodBusq}"
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Notas (ambos modos) */}
+            {(factSel || fModo === 'libre') && (
+              <div style={{ marginBottom: 16 }}>
+                {label('Notas de entrega (opcional)')}
+                <input value={fNotas} onChange={e => setFNotas(e.target.value)}
+                  placeholder="Instrucciones, referencias, horario..."
+                  style={inp()} />
+              </div>
+            )}
+
+            {/* Botón crear */}
+            <button
+              onClick={handleCrear}
+              disabled={crearMut.isPending}
+              style={{ width: '100%', height: 46, borderRadius: 10, border: 'none',
+                background: crearMut.isPending ? '#aaa' : '#059669', color: '#fff',
+                fontWeight: 700, fontSize: 15, cursor: crearMut.isPending ? 'not-allowed' : 'pointer' }}>
               {crearMut.isPending ? 'Creando...' : '🚚 Crear Conduce'}
             </button>
           </div>
         </div>
       ) : (
-        /* ── LISTA ─────────────────────────────────────────────────── */
+        /* ── LISTA ───────────────────────────────────────────────────── */
         <>
           <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}` }}>
             <input value={busq} onChange={e => setBusq(e.target.value)} placeholder="Buscar por número o cliente..."
@@ -3818,7 +4118,7 @@ function POSConducePanel({ C, onVolver, initClienteId, initFacturaId }: {
                 : (
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                     <thead><tr style={{ background: C.card, position: 'sticky', top: 0 }}>
-                      {['Número', 'Cliente', 'Dirección', 'Estado', 'Acciones'].map(h => (
+                      {['Número', 'Cliente', 'Estado', 'Acciones'].map(h => (
                         <th key={h} style={{ padding: '8px 10px', textAlign: 'left', color: C.textSub,
                           fontWeight: 600, fontSize: 11, borderBottom: `1px solid ${C.border}` }}>{h}</th>
                       ))}
@@ -3832,15 +4132,13 @@ function POSConducePanel({ C, onVolver, initClienteId, initFacturaId }: {
                       return (
                         <tr key={r.id} style={{ borderBottom: `1px solid ${C.border}`, background: i % 2 === 0 ? 'transparent' : C.card }}>
                           <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontSize: 11, color: C.blue, fontWeight: 700 }}>{r.numero}</td>
-                          <td style={{ padding: '8px 10px', color: C.text, fontSize: 11, maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
-                            {r.cliente?.nombre ?? '—'}
-                          </td>
-                          <td style={{ padding: '8px 10px', color: C.textSub, fontSize: 10, maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
-                            {r.direccionEntrega ?? '—'}
+                          <td style={{ padding: '8px 10px', color: C.text, fontSize: 11, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
+                            <div>{r.cliente?.nombre ?? '—'}</div>
+                            <div style={{ fontSize: 10, color: C.textSub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.direccionEntrega ?? ''}</div>
                           </td>
                           <td style={{ padding: '8px 10px' }}>
                             <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 10,
-                              background: eColor + '22', color: eColor }}>
+                              background: eColor + '22', color: eColor, whiteSpace: 'nowrap' }}>
                               {eLabel}
                             </span>
                           </td>
@@ -3854,7 +4152,6 @@ function POSConducePanel({ C, onVolver, initClienteId, initFacturaId }: {
                               </button>
                               {r.estado === 'generado' && (
                                 <button onClick={() => cambiarEstadoMut.mutate({ id: r.id, estado: 'en_transito' })}
-                                  title="Marcar En Ruta"
                                   style={{ background: C.blue + '22', border: `1px solid ${C.blue}55`, borderRadius: 5,
                                     color: C.blue, cursor: 'pointer', padding: '3px 6px', fontSize: 10, fontWeight: 700 }}>
                                   🚚 En Ruta
@@ -3862,13 +4159,11 @@ function POSConducePanel({ C, onVolver, initClienteId, initFacturaId }: {
                               )}
                               {r.estado === 'en_transito' && (<>
                                 <button onClick={() => cambiarEstadoMut.mutate({ id: r.id, estado: 'entregado' })}
-                                  title="Marcar Entregado"
                                   style={{ background: C.green + '22', border: `1px solid ${C.green}55`, borderRadius: 5,
                                     color: C.green, cursor: 'pointer', padding: '3px 6px', fontSize: 10, fontWeight: 700 }}>
                                   ✅ Entregado
                                 </button>
                                 <button onClick={() => cambiarEstadoMut.mutate({ id: r.id, estado: 'devuelto' })}
-                                  title="Marcar Devuelto"
                                   style={{ background: C.orange + '22', border: `1px solid ${C.orange}55`, borderRadius: 5,
                                     color: C.orange, cursor: 'pointer', padding: '3px 6px', fontSize: 10, fontWeight: 700 }}>
                                   ↩ Dev.
@@ -7702,7 +7997,11 @@ export default function POSPage() {
         }}
         onCancelar={() => navigate('/dashboard')} />
       <ModalExito sale={sale} onNueva={() => setSale(null)}
-        onCrearConduce={() => { setSale(null); setPanelActivo('conduce'); }}
+        onCrearConduce={() => {
+          if (sale?.facturaId) sessionStorage.setItem('pos_conduce_fid', String(sale.facturaId));
+          if (sale?.clienteId) sessionStorage.setItem('pos_conduce_cid', String(sale.clienteId));
+          setSale(null); setPanelActivo('conduce');
+        }}
         autoImprimir={empresa?.configuracion?.posImpresionAuto === true && !autoYaPrintedRef.current}
         mostrarEcf={posConf.posMostrarEcfEnRecibo !== false}
         posConfig={{

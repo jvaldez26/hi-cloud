@@ -4,9 +4,10 @@ import { ConduceController } from './conduce.controller';
 import { ConduceService } from './conduce.service';
 import { Conduce } from './entities/conduce.entity';
 import { ConduceDetalle } from './entities/conduce-detalle.entity';
+import { FacturaDetalle } from '../facturas/entities/factura-detalle.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Conduce, ConduceDetalle])],
+  imports: [TypeOrmModule.forFeature([Conduce, ConduceDetalle, FacturaDetalle])],
   controllers: [ConduceController],
   providers: [ConduceService],
   exports: [ConduceService],

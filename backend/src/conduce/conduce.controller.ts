@@ -71,6 +71,13 @@ export class ConduceController {
     return this.svc.listar(pagination, estado);
   }
 
+  @Get('factura/:facturaId/pendientes')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @ApiOperation({ summary: 'Cantidades pendientes de despacho por factura' })
+  pendientesPorFactura(@Param('facturaId', ParseIntPipe) facturaId: number) {
+    return this.svc.getPendientesPorFactura(facturaId);
+  }
+
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Detalle de un conduce' })
