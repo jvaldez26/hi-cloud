@@ -4378,6 +4378,8 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
   const esAnticipo = tipo === 'anticipos';
   const METODOS_PAGO = ['Efectivo','Tarjeta','Cheque','Transferencia','Depósito'];
   const [imprimiendoId, setImprimiendoId] = useState<number|null>(null);
+  const [tabActivo, setTabActivo] = useState<'recibos'|'cxc'>('recibos');
+  const [busqCxC, setBusqCxC] = useState('');
 
   const imprimirTermicoRecibo = async (id: number, r: any) => {
     setImprimiendoId(id);
@@ -4440,6 +4442,12 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
       .then(r=>{ const d=r.data?.data??r.data; return d?.data??d??[]; }),
     staleTime: 30_000,
     enabled: !form,
+  });
+  const { data: aging = [], isLoading: agingLoading } = useQuery<any[]>({
+    queryKey: ['pos-cxc-aging'],
+    queryFn: () => api.get('/cxc/aging').then(r => r.data ?? []),
+    staleTime: 60_000,
+    enabled: !esAnticipo && tabActivo === 'cxc',
   });
   const resetForm = () => {
     setForm(false); setMonto(''); setMetodo('Efectivo'); setRef(''); setDesc('');
@@ -4510,11 +4518,115 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
   });
   const title = esAnticipo ? 'Anticipos' : 'Recibos de Cobro';
   const icon  = esAnticipo ? '💰' : '🧾';
+  const agingFiltrado = (aging ?? []).filter((r: any) =>
+    !busqCxC || (r.cliente?.nombre ?? '').toLowerCase().includes(busqCxC.toLowerCase())
+  );
+  const agingTotales = agingFiltrado.reduce(
+    (acc: any, r: any) => ({
+      corriente: acc.corriente + Number(r.corriente ?? 0),
+      dias30:    acc.dias30    + Number(r.dias30 ?? 0),
+      dias60:    acc.dias60    + Number(r.dias60 ?? 0),
+      dias90:    acc.dias90    + Number(r.dias90 ?? 0),
+      masde120:  acc.masde120  + Number(r.masde120 ?? 0),
+      total:     acc.total     + Number(r.total ?? 0),
+    }),
+    { corriente: 0, dias30: 0, dias60: 0, dias90: 0, masde120: 0, total: 0 },
+  );
+  const mostraCxC = !esAnticipo && tabActivo === 'cxc';
   return (
     <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
       <PanelHeader title={title} icon={icon} C={C} onVolver={onVolver}
-        onNuevo={() => setForm(v=>!v)} labelNuevo={form ? 'Ver lista' : 'Nuevo'} />
-      {form ? (
+        onNuevo={mostraCxC ? undefined : () => setForm(v=>!v)} labelNuevo={form ? 'Ver lista' : 'Nuevo'} />
+      {!esAnticipo && (
+        <div style={{ display:'flex', flexShrink:0, borderBottom:`1px solid ${C.border}` }}>
+          {(['recibos','cxc'] as const).map(t => (
+            <button key={t}
+              onClick={() => { setTabActivo(t); setForm(false); }}
+              style={{
+                flex:1, height:36, border:'none',
+                borderBottom: tabActivo===t ? `2px solid ${C.blue}` : '2px solid transparent',
+                background:'transparent', cursor:'pointer', fontSize:12, fontWeight:600,
+                color: tabActivo===t ? C.blue : C.textSub, transition:'color .15s',
+              }}>
+              {t === 'recibos' ? '🧾 Recibos' : '📋 Cuentas x Cobrar'}
+            </button>
+          ))}
+        </div>
+      )}
+      {mostraCxC ? (
+        <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+          <div style={{ padding:'10px 12px', flexShrink:0, borderBottom:`1px solid ${C.border}` }}>
+            <input
+              value={busqCxC} onChange={e => setBusqCxC(e.target.value)}
+              placeholder="Buscar cliente..."
+              style={{ width:'100%', height:34, padding:'0 12px', borderRadius:8,
+                border:`1px solid ${C.border2}`, fontSize:12, outline:'none',
+                boxSizing:'border-box' as const, background:C.inputBg, color:C.text }}
+            />
+          </div>
+          <div style={{ flex:1, overflowX:'auto', overflowY:'auto', scrollbarWidth:'thin' as const }}>
+            {agingLoading ? (
+              <div style={{textAlign:'center',padding:40}}><Spin/></div>
+            ) : agingFiltrado.length === 0 ? (
+              <Empty style={{marginTop:40}} description={<span style={{color:C.textSub}}>Sin cuentas pendientes</span>}/>
+            ) : (
+              <table style={{ width:'max-content', minWidth:'100%', borderCollapse:'collapse', fontSize:11 }}>
+                <thead>
+                  <tr style={{ background:C.card, position:'sticky', top:0 }}>
+                    {['Cliente','0-30','31-60','61-90','91-120','+120','Total'].map((h,hi) => (
+                      <th key={h} style={{ padding:'7px 8px', textAlign: hi===0 ? 'left' : 'right' as const,
+                        color:C.textSub, fontWeight:600, fontSize:10, borderBottom:`1px solid ${C.border}`,
+                        whiteSpace:'nowrap' as const }}>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {agingFiltrado.map((r: any, i: number) => (
+                    <tr key={i} style={{ borderBottom:`1px solid ${C.border}`, background: i%2===0?'transparent':C.card }}>
+                      <td style={{ padding:'6px 8px', color:C.text, whiteSpace:'nowrap' as const }}>
+                        <div style={{ fontWeight:600, fontSize:12 }}>{r.cliente?.nombre ?? '—'}</div>
+                        {r.cliente?.rnc && <div style={{ color:C.textSub, fontSize:10 }}>{r.cliente.rnc}</div>}
+                      </td>
+                      {([
+                        { k:'corriente', c:'#059669' },
+                        { k:'dias30',    c:'#d97706' },
+                        { k:'dias60',    c:'#ea580c' },
+                        { k:'dias90',    c:'#dc2626' },
+                        { k:'masde120',  c:'#7f1d1d' },
+                        { k:'total',     c:C.text    },
+                      ] as const).map(({ k, c }) => (
+                        <td key={k} style={{ padding:'6px 8px', textAlign:'right', color: Number((r as any)[k]??0)>0 ? c : C.textSub,
+                          fontFamily:'IBM Plex Mono,monospace', fontWeight: k==='total'?700:500,
+                          whiteSpace:'nowrap' as const, fontSize:11 }}>
+                          {Number((r as any)[k]??0)>0 ? fmt.money((r as any)[k]) : '—'}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr style={{ background:C.card, borderTop:`2px solid ${C.border2}` }}>
+                    <td style={{ padding:'7px 8px', fontWeight:700, color:C.text, fontSize:12 }}>
+                      Total ({agingFiltrado.length})
+                    </td>
+                    {(['corriente','dias30','dias60','dias90','masde120','total'] as const).map(k => (
+                      <td key={k} style={{ padding:'7px 8px', textAlign:'right',
+                        fontFamily:'IBM Plex Mono,monospace', fontWeight:700,
+                        color: k==='total' ? C.blue : C.text, whiteSpace:'nowrap' as const, fontSize:11 }}>
+                        {fmt.money((agingTotales as any)[k])}
+                      </td>
+                    ))}
+                  </tr>
+                </tfoot>
+              </table>
+            )}
+          </div>
+        </div>
+      ) : (
+        <>
+          {form ? (
         <div style={{ flex:1, overflowY:'auto', padding:20 }}>
           <div style={{ maxWidth:440, color:C.text }}>
             <div style={{ marginBottom:12 }}>
@@ -4688,6 +4800,8 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
             </table>
           )}
         </div>
+      )}
+        </>
       )}
     </div>
   );

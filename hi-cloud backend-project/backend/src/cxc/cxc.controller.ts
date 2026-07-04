@@ -63,7 +63,7 @@ export class CxCController {
   }
 
   @Get('aging')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Antigüedad de saldos agrupada por cliente' })
   getAging() {
     return this.cxcService.getAging();
