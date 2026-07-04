@@ -4427,11 +4427,10 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
   });
   const { data: facturasCliente = [], isFetching: loadingFacturas } = useQuery<any[]>({
     queryKey: ['pos-facturas-cli', clienteId],
-    queryFn:  () => api.get(`/facturas?clienteId=${clienteId}&limit=100`)
+    queryFn:  () => api.get(`/facturas?clienteId=${clienteId}&limit=100&estado=emitida&tipoPago=CREDITO`)
       .then(r => {
-        const d   = r.data?.data ?? r.data;
-        const arr = Array.isArray(d) ? d : (d?.data ?? []);
-        return arr.filter((f: any) => f.estado !== 'pagada' && f.estado !== 'anulada');
+        const d = r.data?.data ?? r.data;
+        return Array.isArray(d) ? d : (d?.data ?? []);
       }),
     enabled: !!clienteId && !esAnticipo,
     staleTime: 0,
