@@ -206,4 +206,73 @@ export class ConduceService {
 
     return raw.map(r => ({ estado: r.estado, cantidad: Number(r.cantidad) }));
   }
+
+  async getPendientesPorFactura(facturaId: number) {
+    const empresaId = this.tenantSvc.getEmpresaId();
+
+    const [factura] = await this.ds.query<any[]>(
+      `SELECT f.id, f."clienteId",
+              c.nombre    AS "clienteNombre",
+              c.direccion AS "clienteDireccion",
+              c.telefono  AS "clienteTelefono",
+              c.ciudad    AS "clienteCiudad"
+       FROM facturas f
+       LEFT JOIN clientes c ON c.id = f."clienteId"
+       WHERE f.id = $1 AND f."empresaId" = $2 AND f."isActive" = true`,
+      [facturaId, empresaId],
+    );
+    if (!factura) throw new NotFoundException(`Factura #${facturaId} no encontrada`);
+
+    const detalles = await this.ds.query<any[]>(
+      `SELECT fd.id, fd."productoId", fd.descripcion, fd.cantidad,
+              p."unidadMedida"
+       FROM factura_detalles fd
+       LEFT JOIN productos p ON p.id = fd."productoId"
+       WHERE fd."facturaId" = $1`,
+      [facturaId],
+    );
+
+    const dispatched = await this.ds.query<any[]>(
+      `SELECT cd."productoId", SUM(cd.cantidad) AS despachado
+       FROM conduces c
+       JOIN conduce_detalles cd ON cd."conduceId" = c.id
+       WHERE c."facturaId" = $1
+         AND c."empresaId" = $2
+         AND c."isActive" = true
+         AND c.estado != 'devuelto'
+       GROUP BY cd."productoId"`,
+      [facturaId, empresaId],
+    );
+
+    const dispMap = new Map(dispatched.map((d: any) => [Number(d.productoId), Number(d.despachado)]));
+
+    const items = detalles.map((d: any) => {
+      const cantFact = Number(d.cantidad);
+      const pid      = d.productoId != null ? Number(d.productoId) : 0;
+      const cantDesp = dispMap.get(pid) ?? 0;
+      const cantPend = Math.max(0, cantFact - cantDesp);
+      return {
+        facturaDetalleId:   d.id,
+        productoId:         d.productoId,
+        descripcion:        d.descripcion,
+        unidadMedida:       d.unidadMedida ?? 'PZA',
+        cantidadFacturada:  cantFact,
+        cantidadDespachada: cantDesp,
+        cantidadPendiente:  cantPend,
+      };
+    });
+
+    return {
+      facturaId,
+      cliente: {
+        id:        factura.clienteId,
+        nombre:    factura.clienteNombre,
+        direccion: factura.clienteDireccion,
+        telefono:  factura.clienteTelefono,
+        ciudad:    factura.clienteCiudad,
+      },
+      detalles:         items,
+      todosDespachados: items.every((i: any) => i.cantidadPendiente === 0),
+    };
+  }
 }
