@@ -98,8 +98,8 @@ export class ECFController {
   }
 
   @Patch('secuencias/:id')
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Actualizar secuencia sin usar — solo si no se ha emitido ningún e-CF de ella (solo ADMIN)' })
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Actualizar secuencia (ej: corregir fecha vencimiento) — solo si no se ha emitido ningún e-CF de ella' })
   updateSecuencia(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: import('./dto/update-secuencia-ecf.dto').UpdateSecuenciaECFDto,
