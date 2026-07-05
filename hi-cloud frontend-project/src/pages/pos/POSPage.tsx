@@ -4849,15 +4849,15 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
   const esAdmin    = user?.role === 'admin' || user?.role === 'contador';
   const [tab, setTab] = useState<'hoy' | 'historial'>('hoy');
 
-  // ── Facturas del día (ambos roles — admin para la lista, vendedor para el total)
-  const url = `/facturas?desde=${hoy}&hasta=${hoy}&limit=100${vendedorId ? `&vendedorId=${vendedorId}` : ''}`;
+  // ── Facturas del día (ambos roles — admin ve todas, vendedor solo las suyas)
+  // Admin no filtra por vendedorId: debe ver todas las facturas del negocio.
+  const url = `/facturas?desde=${hoy}&hasta=${hoy}&limit=100${(!esAdmin && vendedorId) ? `&vendedorId=${vendedorId}` : ''}`;
   const { data: raw, isLoading, refetch } = useQuery<any>({
-    queryKey: ['pos-ventas-hoy', hoy, vendedorId],
+    queryKey: ['pos-ventas-hoy', hoy, esAdmin ? null : vendedorId],
     queryFn:  () => api.get(url).then(r => r.data?.data ?? r.data),
     staleTime: 60_000,
   });
   const ventas: any[] = Array.isArray(raw?.data) ? raw.data : (Array.isArray(raw) ? raw : []);
-  const totalDia = ventas.reduce((s: number, v: any) => s + Number(v.total ?? 0), 0);
 
   // ── Ganancias del día (solo admin/contador)
   const { data: ganData, isLoading: ganLoading, refetch: ganRefetch } = useQuery<any>({
@@ -4866,6 +4866,12 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
     staleTime: 60_000,
     enabled: esAdmin,
   });
+
+  // Admin: usa ganData.totalVentas (SUM subtotal s/ITBIS, misma fuente que el historial, sin filtro vendedor).
+  // Vendedor: suma sus propias facturas (total c/ITBIS, vista personal del turno).
+  const totalDia = esAdmin
+    ? (ganData?.totalVentas ?? 0)
+    : ventas.reduce((s: number, v: any) => s + Number(v.total ?? 0), 0);
 
   // ── Historial últimos 30 días (solo admin/contador, se carga al abrir el tab)
   const desde30 = dayjs().subtract(29, 'day').format('YYYY-MM-DD');
@@ -4997,8 +5003,12 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
           <div style={{ fontSize: 11, color: C.textSub }}>{dayjs().format('DD/MM/YYYY')}</div>
         </div>
         <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
-          <div style={{ fontSize: 11, color: C.textSub }}>Total acumulado</div>
-          <div style={{ fontSize: 18, fontWeight: 800, color: C.green }}>{fmt2(totalDia)}</div>
+          <div style={{ fontSize: 11, color: C.textSub }}>
+            {esAdmin ? 'Ventas del día (s/ITBIS)' : 'Total acumulado'}
+          </div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: C.green }}>
+            {esAdmin && ganLoading ? '...' : fmt2(totalDia)}
+          </div>
         </div>
       </div>
 
