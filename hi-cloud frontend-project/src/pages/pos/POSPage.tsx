@@ -3250,6 +3250,9 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
   const [modalNuevaOC,  setModalNuevaOC]  = useState(false);
   const [detailOCId,    setDetailOCId]    = useState<number | null>(null);
   const [imprimiendoOC, setImprimiendoOC] = useState<number | null>(null);
+  const [subView,       setSubView]       = useState<'ordenes' | 'cxp'>('ordenes');
+  const compUser   = useAuthStore(s => s.user);
+  const esAdminCxP = compUser?.role === 'admin' || compUser?.role === 'contador';
 
   // Fetch compras — disabled until supervisor is active
   const { data: comprasData, isLoading, refetch } = useQuery<any>({
@@ -3380,9 +3383,28 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <PanelHeader title="Órdenes de Compra" icon="🛒" C={C} onVolver={onVolver}
-        onNuevo={() => setModalNuevaOC(true)} labelNuevo="Nueva OC" />
+      <PanelHeader
+        title={subView === 'cxp' ? 'Cuentas por Pagar' : 'Órdenes de Compra'}
+        icon={subView === 'cxp' ? '💳' : '🛒'}
+        C={C} onVolver={onVolver}
+        onNuevo={subView === 'ordenes' ? () => setModalNuevaOC(true) : undefined}
+        labelNuevo={subView === 'ordenes' ? 'Nueva OC' : undefined} />
 
+      {/* Tabs: Órdenes / Cuentas por Pagar */}
+      <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+        {(['ordenes', 'cxp'] as const).map(v => (
+          <button key={v} onClick={() => setSubView(v)}
+            style={{ flex: 1, padding: '9px 0', fontSize: 12, fontWeight: subView === v ? 700 : 400,
+              border: 'none', borderBottom: subView === v ? `2px solid ${C.blue}` : '2px solid transparent',
+              background: 'transparent', color: subView === v ? C.blue : C.textSub, cursor: 'pointer' }}>
+            {v === 'ordenes' ? '📋 Órdenes de Compra' : '💳 Cuentas por Pagar'}
+          </button>
+        ))}
+      </div>
+
+      {subView === 'cxp' && <POSCxPSubView C={C} esAdminCxP={esAdminCxP} />}
+
+      {subView === 'ordenes' && (<>
       {/* Filtros */}
       <div style={{ padding: '8px 14px', borderBottom: `1px solid ${C.border}`, display: 'flex', gap: 8 }}>
         <div style={{ flex: 1, position: 'relative' }}>
@@ -3499,6 +3521,7 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
           </table>
         )}
       </div>
+      </>)}
 
       {/* Modal — Detalle / Editar OC */}
       <Modal
@@ -3609,6 +3632,346 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
                   background: recibiendo ? '#9ca3af' : C.green, color: '#fff',
                   cursor: recibiendo ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 700 }}>
                 {recibiendo ? 'Procesando...' : 'Confirmar Recepción'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Sub-vista CxP (dentro de POSComprasPanel) ────────────────────────────────
+function POSCxPSubView({ C, esAdminCxP }: { C: Palette; esAdminCxP: boolean }) {
+  const qc = useQueryClient();
+
+  const [busq,       setBusq]       = useState('');
+  const [filtroEst,  setFiltroEst]  = useState('');
+  const [pagoRow,    setPagoRow]    = useState<any>(null);
+  const [pagoMonto,  setPagoMonto]  = useState('');
+  const [pagoMetodo, setPagoMetodo] = useState('efectivo');
+  const [pagoRef,    setPagoRef]    = useState('');
+  const [pagando,    setPagando]    = useState(false);
+
+  const { data: resumen } = useQuery<any>({
+    queryKey: ['cxp-resumen-pos'],
+    queryFn:  () => api.get('/cxp/resumen').then(r => r.data?.data ?? r.data),
+    staleTime: 30_000,
+  });
+
+  const { data: rawCxp, isLoading, refetch } = useQuery<any>({
+    queryKey: ['cxp-pos', filtroEst],
+    queryFn:  () => {
+      const p = new URLSearchParams({ page: '1', limit: '100' });
+      if (filtroEst) p.set('estado', filtroEst);
+      return api.get(`/cxp?${p}`).then(r => {
+        const d = r.data?.data ?? r.data;
+        return d?.data ?? d ?? [];
+      });
+    },
+    staleTime: 15_000,
+  });
+
+  const cxps: any[] = (Array.isArray(rawCxp) ? rawCxp : []).filter((cx: any) => {
+    if (!busq) return true;
+    const q = busq.toLowerCase();
+    return (
+      cx.compra?.proveedor?.nombre?.toLowerCase().includes(q) ||
+      cx.compra?.folio?.toLowerCase().includes(q)
+    );
+  });
+
+  const fmtM = (v: number) =>
+    `RD$${Number(v ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
+
+  const ECFG: Record<string, { label: string; color: string }> = {
+    pendiente:      { label: 'PENDIENTE',  color: C.orange  },
+    pagada_parcial: { label: 'PARCIAL',    color: C.blue    },
+    pagada:         { label: 'PAGADA',     color: C.green   },
+    vencida:        { label: 'VENCIDA',    color: C.red     },
+    anulada:        { label: 'ANULADA',    color: C.textSub },
+  };
+
+  const abrirPago = (cx: any) => {
+    setPagoRow(cx);
+    setPagoMonto(String(cx.montoPendiente ?? ''));
+    setPagoMetodo('efectivo');
+    setPagoRef('');
+  };
+
+  const handlePagar = async () => {
+    if (!pagoRow) return;
+    const monto = Number(pagoMonto);
+    if (!monto || monto <= 0) { message.error('Monto inválido'); return; }
+    if (monto > Number(pagoRow.montoPendiente)) {
+      message.error('El pago excede el saldo pendiente'); return;
+    }
+    setPagando(true);
+    try {
+      await api.post(`/cxp/${pagoRow.id}/pago`, {
+        monto,
+        metodoPago: pagoMetodo,
+        referencia: pagoRef || undefined,
+        fechaPago:  new Date().toISOString().substring(0, 10),
+      });
+      qc.invalidateQueries({ queryKey: ['cxp-pos'] });
+      qc.invalidateQueries({ queryKey: ['cxp-resumen-pos'] });
+      qc.invalidateQueries({ queryKey: ['compras-pos'] });
+      setPagoRow(null);
+      message.success('Pago registrado exitosamente');
+    } catch (e: any) {
+      message.error(e?.response?.data?.message ?? 'Error al registrar pago');
+    } finally { setPagando(false); }
+  };
+
+  const totalSaldo = cxps.reduce((s: number, cx: any) => s + Number(cx.montoPendiente ?? 0), 0);
+  const montoExcede = Number(pagoMonto) > Number(pagoRow?.montoPendiente ?? 0);
+  const pagoValido  = !!pagoMonto && Number(pagoMonto) > 0 && !montoExcede;
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+      {/* KPIs */}
+      {resumen && (
+        <div style={{ display: 'flex', gap: 6, padding: '10px 14px',
+          borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+          {[
+            { label: 'Por pagar',  value: resumen.totalPendiente ?? 0, color: C.orange },
+            { label: 'Vencido',    value: resumen.totalVencido   ?? 0, color: C.red    },
+            { label: 'Pagado mes', value: resumen.totalPagadoMes ?? 0, color: C.green  },
+          ].map(k => (
+            <div key={k.label} style={{ flex: 1, background: C.card, borderRadius: 8,
+              padding: '7px 8px', border: `1px solid ${C.border}`, textAlign: 'center' }}>
+              <div style={{ fontSize: 10, color: C.textSub, marginBottom: 2 }}>{k.label}</div>
+              <div style={{ fontSize: 12, fontWeight: 800, color: k.color, fontFamily: 'monospace', lineHeight: 1.3 }}>
+                {fmtM(k.value)}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Filtros */}
+      <div style={{ padding: '8px 14px', borderBottom: `1px solid ${C.border}`,
+        display: 'flex', gap: 8, flexShrink: 0 }}>
+        <div style={{ flex: 1, position: 'relative' }}>
+          <SearchOutlined style={{ position: 'absolute', left: 10, top: '50%',
+            transform: 'translateY(-50%)', color: C.textSub, fontSize: 12 }} />
+          <input value={busq} onChange={e => setBusq(e.target.value)}
+            placeholder="Buscar proveedor o N°..."
+            style={{ width: '100%', height: 34, paddingLeft: 28, background: C.card,
+              border: `1px solid ${C.border}`, borderRadius: 8, color: C.text,
+              fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
+        </div>
+        <select value={filtroEst} onChange={e => setFiltroEst(e.target.value)}
+          style={{ height: 34, padding: '0 10px', borderRadius: 8, border: `1px solid ${C.border}`,
+            background: C.card, color: C.text, fontSize: 12, cursor: 'pointer' }}>
+          <option value="">Pendientes</option>
+          <option value="pendiente">Solo pendiente</option>
+          <option value="pagada_parcial">Parcial</option>
+          <option value="vencida">Vencidas</option>
+          <option value="pagada">Pagadas</option>
+        </select>
+      </div>
+
+      {/* Lista */}
+      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', scrollbarWidth: 'thin' }}>
+        {isLoading ? (
+          <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
+        ) : cxps.length === 0 ? (
+          <Empty style={{ marginTop: 40 }}
+            description={<span style={{ color: C.textSub }}>Sin cuentas por pagar</span>} />
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+            <thead>
+              <tr style={{ background: C.card, position: 'sticky', top: 0, zIndex: 2 }}>
+                {['N°/Proveedor','Total','Pagado','Saldo','Vence','Estado',''].map(h => (
+                  <th key={h} style={{ padding: '8px 8px', textAlign: 'left', color: C.textSub,
+                    fontWeight: 600, fontSize: 10, borderBottom: `1px solid ${C.border}`,
+                    whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {cxps.map((cx: any, i: number) => {
+                const cfg = ECFG[cx.estado] ?? { label: cx.estado?.toUpperCase(), color: C.textSub };
+                const saldo = Number(cx.montoPendiente ?? 0);
+                const vencida = cx.fechaVencimiento && dayjs(cx.fechaVencimiento).isBefore(dayjs(), 'day');
+                const puedeP = esAdminCxP && ['pendiente','pagada_parcial','vencida'].includes(cx.estado) && saldo > 0;
+                return (
+                  <tr key={cx.id} style={{ borderBottom: `1px solid ${C.border}`,
+                    background: i % 2 === 0 ? 'transparent' : C.card }}>
+                    <td style={{ padding: '7px 8px' }}>
+                      <div style={{ fontFamily: 'monospace', color: C.blue, fontSize: 11 }}>
+                        {cx.compra?.folio ?? `#${cx.id}`}
+                      </div>
+                      <div style={{ color: C.text, fontWeight: 600, maxWidth: 110,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 11 }}>
+                        {cx.compra?.proveedor?.nombre ?? `Prov. #${cx.proveedorId}`}
+                      </div>
+                    </td>
+                    <td style={{ padding: '7px 8px', fontFamily: 'monospace',
+                      color: C.text, whiteSpace: 'nowrap' }}>{fmtM(cx.montoOriginal)}</td>
+                    <td style={{ padding: '7px 8px', fontFamily: 'monospace',
+                      color: C.green, whiteSpace: 'nowrap' }}>{fmtM(cx.montoPagado)}</td>
+                    <td style={{ padding: '7px 8px', fontFamily: 'monospace', fontWeight: 700,
+                      color: saldo > 0 ? C.orange : C.green, whiteSpace: 'nowrap' }}>{fmtM(saldo)}</td>
+                    <td style={{ padding: '7px 8px', whiteSpace: 'nowrap', fontSize: 10,
+                      color: vencida ? C.red : C.textSub }}>
+                      {cx.fechaVencimiento ? String(cx.fechaVencimiento).substring(0, 10) : '—'}
+                    </td>
+                    <td style={{ padding: '7px 8px' }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: cfg.color,
+                        background: cfg.color + '22', padding: '2px 6px', borderRadius: 4 }}>
+                        {cfg.label}
+                      </span>
+                    </td>
+                    <td style={{ padding: '5px 8px' }}>
+                      {puedeP && (
+                        <button onClick={() => abrirPago(cx)}
+                          style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6,
+                            border: 'none', background: C.blue, color: '#fff', cursor: 'pointer' }}>
+                          Pagar
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Fila totales */}
+      {cxps.length > 0 && (
+        <div style={{ padding: '8px 14px', borderTop: `1px solid ${C.border}`,
+          flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 11, color: C.textSub }}>
+            {cxps.length} cuenta{cxps.length !== 1 ? 's' : ''}
+          </span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: C.orange, fontFamily: 'monospace' }}>
+            Saldo total: {fmtM(totalSaldo)}
+          </span>
+        </div>
+      )}
+
+      {/* Botón actualizar */}
+      <div style={{ padding: '8px 14px', flexShrink: 0 }}>
+        <button onClick={() => refetch()}
+          style={{ width: '100%', height: 32, borderRadius: 8, border: `1px solid ${C.border2}`,
+            background: C.card, color: C.textSub, cursor: 'pointer', fontSize: 12, outline: 'none' }}>
+          🔄 Actualizar
+        </button>
+      </div>
+
+      {/* Modal de pago */}
+      {pagoRow && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 3000, background: 'rgba(0,0,0,0.65)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: C.card, width: '100%', maxWidth: 380,
+            borderRadius: 14, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
+            {/* Header */}
+            <div style={{ padding: '14px 18px', borderBottom: `1px solid ${C.border}`,
+              display: 'flex', alignItems: 'center' }}>
+              <span style={{ flex: 1, fontWeight: 700, fontSize: 14, color: C.text }}>
+                💳 Registrar Pago — {pagoRow.compra?.folio ?? `#${pagoRow.id}`}
+              </span>
+              <button onClick={() => setPagoRow(null)}
+                style={{ background: 'none', border: 'none', color: C.textSub,
+                  cursor: 'pointer', fontSize: 18, padding: 4, lineHeight: 1 }}>✕</button>
+            </div>
+            {/* Body */}
+            <div style={{ padding: '16px 18px' }}>
+              <div style={{ fontSize: 12, color: C.textSub, marginBottom: 12 }}>
+                Proveedor:{' '}
+                <strong style={{ color: C.text }}>
+                  {pagoRow.compra?.proveedor?.nombre ?? '—'}
+                </strong>
+              </div>
+              {/* Montos resumen */}
+              <div style={{ display: 'flex', gap: 14, marginBottom: 14 }}>
+                {[
+                  { label: 'Total',  value: pagoRow.montoOriginal,  color: C.text   },
+                  { label: 'Pagado', value: pagoRow.montoPagado,    color: C.green  },
+                  { label: 'Saldo',  value: pagoRow.montoPendiente, color: C.orange },
+                ].map(t => (
+                  <div key={t.label}>
+                    <div style={{ fontSize: 10, color: C.textSub }}>{t.label}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, fontFamily: 'monospace', color: t.color }}>
+                      {fmtM(t.value)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {/* Monto */}
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, color: C.text }}>
+                  Monto del pago
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input type="number" min={0.01} step="0.01" value={pagoMonto}
+                    onChange={e => setPagoMonto(e.target.value)}
+                    style={{ flex: 1, height: 38, padding: '0 12px', borderRadius: 8,
+                      border: `1px solid ${montoExcede ? C.red : C.border2}`,
+                      background: C.inputBg, color: C.text, fontSize: 14, fontWeight: 700,
+                      outline: 'none', fontFamily: 'monospace' }} />
+                  <button onClick={() => setPagoMonto(String(pagoRow.montoPendiente))}
+                    style={{ height: 38, padding: '0 10px', borderRadius: 8,
+                      border: `1px solid ${C.border}`, background: C.bg,
+                      color: C.blue, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    Total
+                  </button>
+                </div>
+                {montoExcede && (
+                  <div style={{ fontSize: 11, color: C.red, marginTop: 4 }}>
+                    ⚠️ El pago excede el saldo pendiente
+                  </div>
+                )}
+              </div>
+              {/* Método */}
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, color: C.text }}>
+                  Método de pago
+                </div>
+                <select value={pagoMetodo} onChange={e => setPagoMetodo(e.target.value)}
+                  style={{ width: '100%', height: 38, padding: '0 12px', borderRadius: 8,
+                    border: `1px solid ${C.border2}`, background: C.inputBg, color: C.text,
+                    fontSize: 13, cursor: 'pointer', outline: 'none' }}>
+                  <option value="efectivo">💵 Efectivo</option>
+                  <option value="transferencia">🏦 Transferencia</option>
+                  <option value="cheque">📄 Cheque</option>
+                  <option value="tarjeta">💳 Tarjeta</option>
+                  <option value="otro">Otro</option>
+                </select>
+              </div>
+              {/* Referencia */}
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, color: C.text }}>
+                  Referencia{' '}
+                  <span style={{ color: C.textSub, fontWeight: 400 }}>(opcional)</span>
+                </div>
+                <input value={pagoRef} onChange={e => setPagoRef(e.target.value)}
+                  placeholder="N° transacción, cheque..."
+                  style={{ width: '100%', height: 36, padding: '0 12px', borderRadius: 8,
+                    border: `1px solid ${C.border2}`, background: C.inputBg, color: C.text,
+                    fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+            </div>
+            {/* Footer */}
+            <div style={{ padding: '12px 18px', borderTop: `1px solid ${C.border}`,
+              display: 'flex', gap: 8 }}>
+              <button onClick={() => setPagoRow(null)}
+                style={{ flex: 1, height: 40, borderRadius: 8, border: `1px solid ${C.border}`,
+                  background: 'transparent', color: C.text, cursor: 'pointer', fontSize: 13 }}>
+                Cancelar
+              </button>
+              <button onClick={handlePagar} disabled={pagando || !pagoValido}
+                style={{ flex: 2, height: 40, borderRadius: 8, border: 'none',
+                  background: pagando || !pagoValido ? '#9ca3af' : C.green, color: '#fff',
+                  cursor: pagando || !pagoValido ? 'not-allowed' : 'pointer',
+                  fontSize: 13, fontWeight: 700 }}>
+                {pagando ? 'Procesando...' : '✓ Confirmar Pago'}
               </button>
             </div>
           </div>

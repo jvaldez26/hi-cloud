@@ -30,28 +30,28 @@ export class CxPController {
   constructor(private cxpService: CxPService) {}
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Listar cuentas por pagar con filtros (?estado=&fechaDesde=&fechaHasta=)' })
   getCuentas(@Query() filtro: FiltroCuentasDto) {
     return this.cxpService.getCuentas(filtro);
   }
 
   @Get('resumen')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Resumen: total por pagar, vencido, por vencer, pagado del mes' })
   getResumen() {
     return this.cxpService.getResumenPagos();
   }
 
   @Get('vencidas')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Cuentas vencidas que requieren atención inmediata' })
   getVencidas() {
     return this.cxpService.getCuentasVencidas();
   }
 
   @Get('proveedor/:proveedorId')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Todas las cuentas por pagar de un proveedor específico' })
   getCuentasPorProveedor(
     @Param('proveedorId', ParseIntPipe) proveedorId: number,
@@ -61,14 +61,14 @@ export class CxPController {
   }
 
   @Get(':id')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Detalle de una cuenta por pagar' })
   findById(@Param('id', ParseIntPipe) id: number) {
     return this.cxpService.findById(id);
   }
 
   @Get(':id/pagos')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Historial de pagos realizados a una cuenta' })
   getPagos(@Param('id', ParseIntPipe) id: number) {
     return this.cxpService.getPagos(id);
