@@ -3653,11 +3653,6 @@ function POSCxPSubView({ C, esAdminCxP }: { C: Palette; esAdminCxP: boolean }) {
   const [pagoRef,    setPagoRef]    = useState('');
   const [pagando,    setPagando]    = useState(false);
 
-  const { data: resumen } = useQuery<any>({
-    queryKey: ['cxp-resumen-pos'],
-    queryFn:  () => api.get('/cxp/resumen').then(r => r.data?.data ?? r.data),
-    staleTime: 30_000,
-  });
 
   const { data: rawCxp, isLoading, refetch } = useQuery<any>({
     queryKey: ['cxp-pos', filtroEst],
@@ -3731,25 +3726,6 @@ function POSCxPSubView({ C, esAdminCxP }: { C: Palette; esAdminCxP: boolean }) {
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-      {/* KPIs */}
-      {resumen && (
-        <div style={{ display: 'flex', gap: 6, padding: '10px 14px',
-          borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
-          {[
-            { label: 'Por pagar',  value: resumen.totalPendiente ?? 0, color: C.orange },
-            { label: 'Vencido',    value: resumen.totalVencido   ?? 0, color: C.red    },
-            { label: 'Pagado mes', value: resumen.totalPagadoMes ?? 0, color: C.green  },
-          ].map(k => (
-            <div key={k.label} style={{ flex: 1, background: C.card, borderRadius: 8,
-              padding: '7px 8px', border: `1px solid ${C.border}`, textAlign: 'center' }}>
-              <div style={{ fontSize: 10, color: C.textSub, marginBottom: 2 }}>{k.label}</div>
-              <div style={{ fontSize: 12, fontWeight: 800, color: k.color, fontFamily: 'monospace', lineHeight: 1.3 }}>
-                {fmtM(k.value)}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* Filtros */}
       <div style={{ padding: '8px 14px', borderBottom: `1px solid ${C.border}`,
