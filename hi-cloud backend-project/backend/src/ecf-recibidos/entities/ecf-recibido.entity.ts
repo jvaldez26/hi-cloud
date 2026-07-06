@@ -62,6 +62,10 @@ export class EcfRecibido {
   @Column({ type: 'timestamp', nullable: true })
   creadoEnMseller: Date;
 
+  /** URL del documento en MSeller (campo "urldocumento" del CSV) */
+  @Column({ type: 'text', nullable: true })
+  urlDocumento: string;
+
   @CreateDateColumn()
   createdAt: Date;
 

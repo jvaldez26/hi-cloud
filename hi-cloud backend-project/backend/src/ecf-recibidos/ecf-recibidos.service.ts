@@ -18,6 +18,7 @@ export interface DocumentoRecibidoNormalizado {
   montoExento?: number;
   status?: string;
   creadoEnMseller?: Date;
+  urlDocumento?: string;
   fuenteImportacion: FuenteImportacion;
   /** Número de fila de origen (CSV). Interno — no se persiste. */
   _filaNum?: number;
@@ -107,7 +108,8 @@ export class EcfRecibidosService {
       .map(h => h.toLowerCase().replace(/\s+/g, '').replace(/[^a-z0-9]/g, ''));
 
     const idx = (name: string): number => headers.indexOf(name);
-    const iEcf    = idx('ecf');
+    // MSeller CSV usa "encf"; versiones antiguas usaban "ecf" — probar ambos
+    const iEcf    = idx('encf') !== -1 ? idx('encf') : idx('ecf');
     const iRnc    = idx('rncemisor');
     const iNombre = idx('nombreemisor');
     const iFecha  = idx('fechadocumento');
@@ -115,10 +117,13 @@ export class EcfRecibidosService {
     const iTotal  = idx('total');
     const iCreado = idx('creado');
     const iStatus = idx('status');
+    // totalimpuestos → itbis (columna real de MSeller)
+    const iTotalImpuestos = idx('totalimpuestos');
+    const iUrlDoc = idx('urldocumento');
 
     if (iEcf === -1) {
       throw new BadRequestException(
-        'Columna "ECF" no encontrada. Columnas detectadas: ' + headers.join(', '),
+        'Columna "ENCF" o "ECF" no encontrada. Columnas detectadas: ' + headers.join(', '),
       );
     }
 
@@ -126,6 +131,7 @@ export class EcfRecibidosService {
       const fila = this.parsearLinea(linea, delim);
       const get  = (ii: number) => (ii >= 0 ? fila[ii]?.trim() ?? '' : '');
       const rncRaw = get(iRnc).replace(/\D/g, '');
+      const itbisRaw = iTotalImpuestos >= 0 ? get(iTotalImpuestos) : '';
 
       return {
         encf:            get(iEcf),
@@ -134,8 +140,10 @@ export class EcfRecibidosService {
         fechaDocumento:  this.parsearFecha(get(iFecha)),
         tipoEcf:         get(iTipo).replace(/\D/g, '') || undefined,
         total:           parseFloat(Number(get(iTotal).replace(/,/g, '') || 0).toFixed(2)),
+        itbis:           itbisRaw ? parseFloat(Number(itbisRaw.replace(/,/g, '')).toFixed(2)) : undefined,
         status:          get(iStatus).toLowerCase() || 'received',
         creadoEnMseller: this.parsearFecha(get(iCreado)),
+        urlDocumento:    get(iUrlDoc) || undefined,
         fuenteImportacion: FuenteImportacion.CSV,
         _filaNum: i + 2, // línea real en el archivo (1-based, +1 por el header)
       };
@@ -186,6 +194,7 @@ export class EcfRecibidosService {
             montoExento:     doc.montoExento    ?? existe.montoExento,
             status:          doc.status         ?? existe.status,
             creadoEnMseller: doc.creadoEnMseller ?? existe.creadoEnMseller,
+            urlDocumento:    doc.urlDocumento   ?? existe.urlDocumento,
           });
           result.actualizados++;
           result.detalles.push({ fila: filaNum, encf: doc.encf, estado: 'actualizado' });
