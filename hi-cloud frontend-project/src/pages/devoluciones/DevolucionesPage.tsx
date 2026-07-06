@@ -251,7 +251,7 @@ export default function DevolucionesPage() {
                     <InputNumber
                       min={0}
                       max={r.cantidad}
-                      precision={r.permiteDecimales ? 4 : 0}
+                      precision={4}
                       value={r.devolver}
                       style={{ width: '100%' }}
                       onChange={v => { const u=[...lineas]; u[idx].devolver=v??0; setLineas(u); }} />

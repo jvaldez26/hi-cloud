@@ -184,11 +184,11 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
     { title: 'Cantidad', key: 'qty', width: 90,
       render: (_: unknown, r: Linea, idx: number) => (
         <InputNumber
-          min={r.permiteDecimales ? 0.0001 : 1}
-          precision={r.permiteDecimales ? 4 : 0}
+          min={0.0001}
+          precision={4}
           value={r.cantidad}
           style={{ width:'100%' }}
-          onChange={v => { const u=[...lineas]; u[idx].cantidad=v ?? (r.permiteDecimales ? 0.001 : 1); setLineas(u); }} />
+          onChange={v => { const u=[...lineas]; u[idx].cantidad=v??0.001; setLineas(u); }} />
       )},
     { title: 'Precio', key: 'price', width: 120,
       render: (_: unknown, r: Linea, idx: number) => (
