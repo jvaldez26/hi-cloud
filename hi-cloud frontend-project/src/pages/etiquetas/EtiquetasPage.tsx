@@ -277,11 +277,11 @@ function Etiqueta({
       {plantilla === 'precio' && (
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', gap: 2 }}>
           {config.mostrarEmpresa && (
-            <div style={{ fontSize: 6, fontWeight: 700, textTransform: 'uppercase', color: '#1a56db', lineHeight: 1.1 }}>
+            <div style={{ fontSize: 6, fontWeight: 700, textTransform: 'uppercase', color: '#1a56db', lineHeight: 1 }}>
               {config.nombreEmpresa}
             </div>
           )}
-          <div style={{ fontSize: 8, fontWeight: 600, lineHeight: 1.15, wordBreak: 'break-word', maxWidth: '100%' }}>
+          <div style={{ fontSize: 8, fontWeight: 600, lineHeight: 1.1, wordBreak: 'break-word', maxWidth: '100%' }}>
             {producto.nombre.slice(0, 35)}
           </div>
           {config.mostrarPrecio && (
@@ -293,7 +293,7 @@ function Etiqueta({
             <CodigoEtiqueta valor={producto.codigo} tipo="qr" size={qrSize} bgColor={config.colorFondo} />
           )}
           {barcodeAbajo}
-          {config.mostrarCodigo && <div style={{ fontSize: 6, color: '#9ca3af', lineHeight: 1.1 }}>{producto.codigo}</div>}
+          {config.mostrarCodigo && <div style={{ fontSize: 6, color: '#9ca3af', lineHeight: 1 }}>{producto.codigo}</div>}
         </div>
       )}
     </div>
@@ -351,7 +351,7 @@ export default function EtiquetasPage() {
     mostrarEmpresa:   true,
     mostrarQR:        true,
     tipoCodigo:       'barcode',
-    precioConIva:     false,
+    precioConIva:     true,
     nombreEmpresa:    empresaItem?.nombre ?? '',
     colorFondo:       '#ffffff',
     colorTexto:       '#1e293b',
