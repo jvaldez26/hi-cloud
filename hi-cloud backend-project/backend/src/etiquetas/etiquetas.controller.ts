@@ -1,7 +1,7 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiHeader } from '@nestjs/swagger';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Like } from 'typeorm';
+import { Repository, ILike } from 'typeorm';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -31,8 +31,8 @@ export class EtiquetasController {
 
     const where = q
       ? [
-          { ...base, nombre: Like(`%${q}%`) },
-          { ...base, codigo: Like(`%${q}%`) },
+          { ...base, nombre: ILike(`%${q}%`) },
+          { ...base, codigo: ILike(`%${q}%`) },
         ]
       : base;
 

@@ -14,7 +14,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { QRCode } from 'antd';
 import JsBarcode from 'jsbarcode';
-import api from '../../api/client';
+import { productosApi } from '../../api/productos.api';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -363,11 +363,13 @@ export default function EtiquetasPage() {
     return () => clearTimeout(t);
   }, [busqueda]);
 
-  const { data: productos = [], isLoading } = useQuery<any[]>({
+  // Mismo endpoint que Órdenes de Compra: /productos con ILIKE (case-insensitive)
+  const { data: productosPaginados, isLoading } = useQuery({
     queryKey: ['etiquetas-productos', busquedaDebounced],
-    queryFn: () => api.get(`/etiquetas/productos${busquedaDebounced ? `?q=${encodeURIComponent(busquedaDebounced)}` : ''}`).then((r: any) => r.data?.data ?? r.data),
+    queryFn:  () => productosApi.list(1, 50, busquedaDebounced, false),
     staleTime: 30_000,
   });
+  const productos = productosPaginados?.data ?? [];
 
   const agregarProducto = (p: any) => {
     if (seleccionados.find(s => s.id === p.id)) {
