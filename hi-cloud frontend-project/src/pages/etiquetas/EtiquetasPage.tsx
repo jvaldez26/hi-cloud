@@ -66,11 +66,12 @@ const fmt = (v: number) =>
 // ── Canvas de barras a 3× para impresión térmica sin antialiasing ─────────────
 
 function BarcodeCanvas({
-  valor, barHeight, bgColor,
+  valor, barHeight, bgColor, maxWidthCss,
 }: {
-  valor:     string;
-  barHeight: number;
-  bgColor:   string;
+  valor:        string;
+  barHeight:    number;
+  bgColor:      string;
+  maxWidthCss?: number; // ancho máximo CSS; si el canvas natural lo supera, se comprime con pixelated
 }) {
   const ref   = useRef<HTMLCanvasElement>(null);
   const SCALE = 3; // 3 canvas-px por módulo → barras densas, sin interpolación
@@ -83,18 +84,21 @@ function BarcodeCanvas({
         format:       'CODE128',
         width:        SCALE,
         height:       barHeight * SCALE,
-        margin:       10 * SCALE,
+        margin:       8 * SCALE, // 8px CSS de quiet zone interno en el canvas
         displayValue: false,
         background:   bgColor || '#ffffff',
         lineColor:    '#000000',
       });
-      // Mostrar en pantalla a 1/3 tamaño canvas (= 1× CSS real)
-      canvas.style.width  = `${canvas.width  / SCALE}px`;
-      canvas.style.height = `${canvas.height / SCALE}px`;
+      const csW = canvas.width  / SCALE;
+      const csH = canvas.height / SCALE;
+      // Si el canvas natural es más ancho que el espacio disponible, comprimirlo CSS
+      // image-rendering: pixelated asegura nearest-neighbor → barras nítidas aun comprimidas
+      canvas.style.width  = `${maxWidthCss && csW > maxWidthCss ? maxWidthCss : csW}px`;
+      canvas.style.height = `${csH}px`;
     } catch {
       // código incompatible con CODE128 — canvas vacío
     }
-  }, [valor, barHeight, bgColor]);
+  }, [valor, barHeight, bgColor, maxWidthCss]);
 
   return (
     <canvas ref={ref} style={{ imageRendering: 'pixelated', display: 'block' }} />
@@ -135,6 +139,10 @@ function Etiqueta({
     ? producto.precio * (1 + producto.porcentajeIva / 100)
     : producto.precio;
 
+  const padEtiqueta = plantilla === 'mini' ? 6 : 8;
+  // Ancho máximo del canvas del barcode: ancho etiqueta − padding etiqueta×2 − 16px quiet zone lateral del wrapper (8px c/lado)
+  const barcodeMaxW = ancho - padEtiqueta * 2 - 16;
+
   const estiloBase: React.CSSProperties = {
     width:           ancho,
     height:          alto,
@@ -148,34 +156,49 @@ function Etiqueta({
     boxSizing:       'border-box',
     display:         'flex',
     flexDirection:   'column',
-    padding:         plantilla === 'mini' ? 6 : 8,
+    padding:         padEtiqueta,
     pageBreakInside: 'avoid',
     breakInside:     'avoid',
   };
 
   const qrSize = plantilla === 'mini' ? 44 : plantilla === 'estandar' ? 60 : plantilla === 'precio' ? 52 : 74;
 
+  // Barcode siempre en la parte inferior, centrado, con 8px de padding lateral (quiet zone del wrapper)
+  const barcodeAbajo = config.mostrarQR && config.tipoCodigo === 'barcode' ? (
+    <div style={{ padding: '3px 8px 0', display: 'flex', justifyContent: 'center' }}>
+      <BarcodeCanvas
+        valor={producto.codigo}
+        barHeight={plantilla === 'mini' ? 16 : plantilla === 'estandar' ? 22 : plantilla === 'precio' ? 20 : 28}
+        bgColor={config.colorFondo}
+        maxWidthCss={barcodeMaxW}
+      />
+    </div>
+  ) : null;
+
   return (
     <div style={estiloBase}>
       {/* Mini */}
       {plantilla === 'mini' && (
-        <div style={{ display: 'flex', height: '100%', gap: 4, alignItems: 'center' }}>
-          {config.mostrarQR && (
-            <div style={{ flexShrink: 0 }}>
-              <CodigoEtiqueta valor={producto.codigo} tipo={config.tipoCodigo} size={qrSize} bgColor={config.colorFondo} />
-            </div>
-          )}
-          <div style={{ flex: 1, overflow: 'hidden' }}>
-            <div style={{ fontSize: 9, fontWeight: 700, lineHeight: 1.2, marginBottom: 2, wordBreak: 'break-word' }}>
-              {producto.nombre.slice(0, 40)}
-            </div>
-            {config.mostrarCodigo && <div style={{ fontSize: 8, color: '#6b7280' }}>{producto.codigo}</div>}
-            {config.mostrarPrecio && (
-              <div style={{ fontSize: 11, fontWeight: 900, color: '#1a56db', marginTop: 2 }}>
-                {fmt(precioFinal)}
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <div style={{ display: 'flex', flex: 1, gap: 4, alignItems: 'center' }}>
+            {config.mostrarQR && config.tipoCodigo === 'qr' && (
+              <div style={{ flexShrink: 0 }}>
+                <CodigoEtiqueta valor={producto.codigo} tipo="qr" size={qrSize} bgColor={config.colorFondo} />
               </div>
             )}
+            <div style={{ flex: 1, overflow: 'hidden' }}>
+              <div style={{ fontSize: 9, fontWeight: 700, lineHeight: 1.2, marginBottom: 2, wordBreak: 'break-word' }}>
+                {producto.nombre.slice(0, 40)}
+              </div>
+              {config.mostrarCodigo && <div style={{ fontSize: 8, color: '#6b7280' }}>{producto.codigo}</div>}
+              {config.mostrarPrecio && (
+                <div style={{ fontSize: 11, fontWeight: 900, color: '#1a56db', marginTop: 2 }}>
+                  {fmt(precioFinal)}
+                </div>
+              )}
+            </div>
           </div>
+          {barcodeAbajo}
         </div>
       )}
 
@@ -188,9 +211,9 @@ function Etiqueta({
             </div>
           )}
           <div style={{ display: 'flex', flex: 1, gap: 6 }}>
-            {config.mostrarQR && (
+            {config.mostrarQR && config.tipoCodigo === 'qr' && (
               <div style={{ flexShrink: 0 }}>
-                <CodigoEtiqueta valor={producto.codigo} tipo={config.tipoCodigo} size={qrSize} bgColor={config.colorFondo} />
+                <CodigoEtiqueta valor={producto.codigo} tipo="qr" size={qrSize} bgColor={config.colorFondo} />
               </div>
             )}
             <div style={{ flex: 1, overflow: 'hidden' }}>
@@ -203,6 +226,7 @@ function Etiqueta({
               )}
             </div>
           </div>
+          {barcodeAbajo}
           {config.mostrarPrecio && (
             <div style={{ textAlign: 'right', marginTop: 4 }}>
               <span style={{ fontSize: 14, fontWeight: 900, color: '#1a56db' }}>{fmt(precioFinal)}</span>
@@ -231,13 +255,14 @@ function Etiqueta({
               )}
               <div style={{ fontSize: 8, color: '#9ca3af' }}>Unidad: {producto.unidadMedida}</div>
             </div>
-            {config.mostrarQR && (
+            {config.mostrarQR && config.tipoCodigo === 'qr' && (
               <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <CodigoEtiqueta valor={producto.codigo} tipo={config.tipoCodigo} size={qrSize} bgColor={config.colorFondo} />
+                <CodigoEtiqueta valor={producto.codigo} tipo="qr" size={qrSize} bgColor={config.colorFondo} />
                 <div style={{ fontSize: 7, color: '#9ca3af', marginTop: 2, textAlign: 'center' }}>{producto.codigo}</div>
               </div>
             )}
           </div>
+          {barcodeAbajo}
           {config.mostrarPrecio && (
             <div style={{ borderTop: '1px dashed #ddd', paddingTop: 4, marginTop: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 8, color: '#6b7280' }}>Precio {config.precioConIva ? '(ITBIS incl.)' : '+ ITBIS'}</span>
@@ -263,9 +288,10 @@ function Etiqueta({
               {fmt(precioFinal)}
             </div>
           )}
-          {config.mostrarQR && (
-            <CodigoEtiqueta valor={producto.codigo} tipo={config.tipoCodigo} size={qrSize} bgColor={config.colorFondo} />
+          {config.mostrarQR && config.tipoCodigo === 'qr' && (
+            <CodigoEtiqueta valor={producto.codigo} tipo="qr" size={qrSize} bgColor={config.colorFondo} />
           )}
+          {barcodeAbajo}
           {config.mostrarCodigo && <div style={{ fontSize: 7, color: '#9ca3af' }}>{producto.codigo}</div>}
         </div>
       )}
