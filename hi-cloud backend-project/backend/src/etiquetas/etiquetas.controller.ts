@@ -26,15 +26,23 @@ export class EtiquetasController {
   @ApiOperation({ summary: 'Buscar productos para generación de etiquetas' })
   async buscarProductos(@Query('q') q?: string, @Query('categoria') categoria?: string) {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const where: any = { empresaId, isActive: true };
-    if (q)          where.nombre    = Like(`%${q}%`);
-    if (categoria)  where.categoria = categoria;
+    const base: any = { empresaId, isActive: true };
+    if (categoria) base.categoria = categoria;
+
+    // Sin búsqueda: primeros 200 ordenados por nombre
+    // Con búsqueda: hasta 500, filtrando por nombre OR código
+    const where = q
+      ? [
+          { ...base, nombre: Like(`%${q}%`) },
+          { ...base, codigo: Like(`%${q}%`) },
+        ]
+      : base;
 
     const productos = await this.productoRepo.find({
       where,
       select: ['id', 'codigo', 'nombre', 'precio', 'porcentajeIva', 'unidadMedida', 'categoria', 'stock', 'imagenUrl'],
       order: { nombre: 'ASC' },
-      take: 100,
+      take: q ? 500 : 200,
     });
 
     return productos;
