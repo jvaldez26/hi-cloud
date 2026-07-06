@@ -164,12 +164,12 @@ function Etiqueta({
 
   const qrSize = plantilla === 'mini' ? 44 : plantilla === 'estandar' ? 60 : plantilla === 'precio' ? 52 : 74;
 
-  // Barcode siempre en la parte inferior, centrado, con 8px de padding lateral (quiet zone del wrapper)
+  // Barcode al fondo, sin padding vertical extra — las alturas están calibradas para caber en cada plantilla
   const barcodeAbajo = config.mostrarQR && config.tipoCodigo === 'barcode' ? (
-    <div style={{ padding: '3px 8px 0', display: 'flex', justifyContent: 'center' }}>
+    <div style={{ padding: '0 8px', display: 'flex', justifyContent: 'center' }}>
       <BarcodeCanvas
         valor={producto.codigo}
-        barHeight={plantilla === 'mini' ? 16 : plantilla === 'estandar' ? 22 : plantilla === 'precio' ? 20 : 28}
+        barHeight={plantilla === 'mini' ? 13 : plantilla === 'estandar' ? 18 : plantilla === 'precio' ? 12 : 22}
         bgColor={config.colorFondo}
         maxWidthCss={barcodeMaxW}
       />
@@ -275,17 +275,17 @@ function Etiqueta({
 
       {/* Precio */}
       {plantilla === 'precio' && (
-        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', gap: 4 }}>
+        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', gap: 2 }}>
           {config.mostrarEmpresa && (
-            <div style={{ fontSize: 7, fontWeight: 700, textTransform: 'uppercase', color: '#1a56db' }}>
+            <div style={{ fontSize: 6, fontWeight: 700, textTransform: 'uppercase', color: '#1a56db', lineHeight: 1.1 }}>
               {config.nombreEmpresa}
             </div>
           )}
-          <div style={{ fontSize: 9, fontWeight: 600, lineHeight: 1.2, wordBreak: 'break-word' }}>
+          <div style={{ fontSize: 8, fontWeight: 600, lineHeight: 1.15, wordBreak: 'break-word', maxWidth: '100%' }}>
             {producto.nombre.slice(0, 35)}
           </div>
           {config.mostrarPrecio && (
-            <div style={{ fontSize: 20, fontWeight: 900, color: '#1a56db', lineHeight: 1 }}>
+            <div style={{ fontSize: 18, fontWeight: 900, color: '#1a56db', lineHeight: 1 }}>
               {fmt(precioFinal)}
             </div>
           )}
@@ -293,7 +293,7 @@ function Etiqueta({
             <CodigoEtiqueta valor={producto.codigo} tipo="qr" size={qrSize} bgColor={config.colorFondo} />
           )}
           {barcodeAbajo}
-          {config.mostrarCodigo && <div style={{ fontSize: 7, color: '#9ca3af' }}>{producto.codigo}</div>}
+          {config.mostrarCodigo && <div style={{ fontSize: 6, color: '#9ca3af', lineHeight: 1.1 }}>{producto.codigo}</div>}
         </div>
       )}
     </div>
