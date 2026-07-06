@@ -15,6 +15,7 @@ interface Linea {
   productoId?: number;
   descripcion?: string;
   cantidad: number;
+  cantidadBonificada: number;
   precioUnitario: number;
   porcentajeItbis: number;
   permiteDecimales?: boolean;
@@ -37,7 +38,7 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
   const empresaActual  = useAuthStore(s => s.empresaActual);
   const qc = useQueryClient();
 
-  const [lineas, setLineas] = useState<Linea[]>([{ key: '1', cantidad: 1, precioUnitario: 0, porcentajeItbis: 18 }]);
+  const [lineas, setLineas] = useState<Linea[]>([{ key: '1', cantidad: 1, cantidadBonificada: 0, precioUnitario: 0, porcentajeItbis: 18 }]);
   const [tipoPago, setTipoPago]         = useState<'contado' | 'credito'>('contado');
   const [diasCredito, setDiasCredito]   = useState(30);
   const [moneda, setMoneda]             = useState<'DOP' | 'USD' | 'EUR'>('DOP');
@@ -104,7 +105,7 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
     const label = prod.codigo ? `${prod.codigo} — ${prod.nombre}` : prod.nombre;
     setSelectedProds(prev => new Map(prev).set(productoId, label));
     const updated = [...lineas];
-    updated[idx] = { ...updated[idx], productoId, descripcion: prod.nombre, precioUnitario: Number(prod.precio), porcentajeItbis: 18, permiteDecimales: prod.permiteDecimales ?? false };
+    updated[idx] = { ...updated[idx], productoId, descripcion: prod.nombre, precioUnitario: Number(prod.precio), porcentajeItbis: 18, permiteDecimales: prod.permiteDecimales ?? false, cantidadBonificada: updated[idx].cantidadBonificada ?? 0 };
     setLineas(updated);
   };
 
@@ -132,7 +133,8 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
   const handleSubmit = (values: { proveedorId: number; fecha: dayjs.Dayjs; numeroFacturaProveedor?: string; notas?: string }) => {
     const detalles: CompraDetallePayload[] = lineas.map(l => ({
       productoId: l.productoId!, descripcion: l.descripcion,
-      cantidad: l.cantidad, precioUnitario: l.precioUnitario, porcentajeItbis: l.porcentajeItbis,
+      cantidad: l.cantidad, cantidadBonificada: l.cantidadBonificada || undefined,
+      precioUnitario: l.precioUnitario, porcentajeItbis: l.porcentajeItbis,
     }));
     createMut.mutate({
       proveedorId: values.proveedorId,
@@ -190,6 +192,31 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
           style={{ width:'100%' }}
           onChange={v => { const u=[...lineas]; u[idx].cantidad=v??0.001; setLineas(u); }} />
       )},
+    { title: 'Bonif.', key: 'bon', width: 80,
+      render: (_: unknown, r: Linea, idx: number) => (
+        <InputNumber
+          min={0}
+          precision={4}
+          value={r.cantidadBonificada}
+          style={{ width:'100%' }}
+          placeholder="0"
+          onChange={v => { const u=[...lineas]; u[idx].cantidadBonificada=v??0; setLineas(u); }} />
+      )},
+    { title: 'Inv. / Costo', key: 'inv', width: 100,
+      render: (_: unknown, r: Linea) => {
+        const tot = r.cantidad + r.cantidadBonificada;
+        const costo = tot > 0 ? r.precioUnitario * r.cantidad / tot : r.precioUnitario;
+        return (
+          <div style={{ fontSize: 11, lineHeight: 1.5 }}>
+            <div style={{ color: token.colorText }}>
+              {tot.toLocaleString('es-DO', { maximumFractionDigits: 4 })} u
+            </div>
+            <div style={{ color: token.colorTextSecondary }}>
+              {fmtMon(costo, moneda)}/u
+            </div>
+          </div>
+        );
+      }},
     { title: 'Precio', key: 'price', width: 120,
       render: (_: unknown, r: Linea, idx: number) => (
         <InputNumber min={0} precision={2} value={r.precioUnitario} style={{ width:'100%' }}
@@ -314,7 +341,7 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
       </Card>
 
       <Card title="Ítems" style={{ marginBottom: 16 }}
-        extra={<Button icon={<PlusOutlined />} onClick={() => setLineas([...lineas, { key: Date.now().toString(), cantidad: 1, precioUnitario: 0, porcentajeItbis: 18 }])}>Agregar</Button>}>
+        extra={<Button icon={<PlusOutlined />} onClick={() => setLineas([...lineas, { key: Date.now().toString(), cantidad: 1, cantidadBonificada: 0, precioUnitario: 0, porcentajeItbis: 18 }])}>Agregar</Button>}>
         <Table columns={lineaCols as any} dataSource={lineas} rowKey="key" pagination={false} size="small" scroll={{ x: 'max-content' }} />
       </Card>
 

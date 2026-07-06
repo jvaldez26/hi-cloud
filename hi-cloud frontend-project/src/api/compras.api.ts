@@ -4,6 +4,7 @@ import type { ApiResponse, PaginatedData, Compra, CompraEstado } from '../types'
 export interface CompraDetallePayload {
   productoId: number; cantidad: number; precioUnitario: number;
   porcentajeItbis?: number; descripcion?: string;
+  cantidadBonificada?: number;
 }
 export interface CompraPayload {
   proveedorId: number; fecha: string;

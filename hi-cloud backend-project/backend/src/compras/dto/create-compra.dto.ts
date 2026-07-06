@@ -32,6 +32,12 @@ export class CreateCompraDetalleDto {
   @Type(() => Number)
   cantidad: number;
 
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(0)
+  @Type(() => Number)
+  cantidadBonificada?: number;
+
   @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
   precioUnitario: number;

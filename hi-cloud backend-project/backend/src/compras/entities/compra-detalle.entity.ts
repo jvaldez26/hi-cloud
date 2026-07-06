@@ -25,8 +25,21 @@ export class CompraDetalle extends BaseEntity {
   @Column({ type: 'decimal', precision: 12, scale: 2 })
   precioUnitario!: number;
 
+  /** Unidades que se pagan — base del valor fiscal */
   @Column({ type: 'decimal', precision: 12, scale: 4 })
   cantidad!: number;
+
+  /** Unidades bonificadas (regaladas) — no suman al monto a pagar */
+  @Column({ type: 'decimal', precision: 12, scale: 4, default: 0 })
+  cantidadBonificada!: number;
+
+  /** Total al inventario = cantidad + cantidadBonificada */
+  @Column({ type: 'decimal', precision: 12, scale: 4, default: 0 })
+  cantidadTotal!: number;
+
+  /** Costo real por unidad = subtotal ÷ cantidadTotal (para costeo/AVCO) */
+  @Column({ type: 'decimal', precision: 12, scale: 4, nullable: true })
+  costoUnitarioReal?: number;
 
   @Column({ type: 'decimal', precision: 5, scale: 2, default: 18 })
   porcentajeItbis!: number;

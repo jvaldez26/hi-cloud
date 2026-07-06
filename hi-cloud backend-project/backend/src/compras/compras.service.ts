@@ -58,23 +58,34 @@ export class ComprasService {
     for (const item of dto.detalles) {
       const producto = productosMap.get(item.productoId);
       if (!producto) throw new NotFoundException(`Producto #${item.productoId} no encontrado`);
-      const porcentajeItbis = item.porcentajeItbis ?? ITBIS_DEFAULT;
-      const subtotal = Number(item.precioUnitario) * item.cantidad;
-      const importeItbis = Number((subtotal * (porcentajeItbis / 100)).toFixed(2));
-      const total = Number((subtotal + importeItbis).toFixed(2));
+      const porcentajeItbis  = item.porcentajeItbis ?? ITBIS_DEFAULT;
+      const cantidadFact     = Number(item.cantidad);
+      const cantidadBon      = Number(item.cantidadBonificada ?? 0);
+      const cantidadTot      = Number((cantidadFact + cantidadBon).toFixed(4));
+      // Subtotal sobre lo FACTURADO (valor fiscal); las bonificadas son gratis
+      const subtotal         = Number((cantidadFact * Number(item.precioUnitario)).toFixed(2));
+      const importeItbis     = Number((subtotal * (porcentajeItbis / 100)).toFixed(2));
+      const total            = Number((subtotal + importeItbis).toFixed(2));
+      // Costo real = pago total ÷ unidades que entran al inventario (para AVCO)
+      const costoUnitarioReal = cantidadTot > 0
+        ? Number((subtotal / cantidadTot).toFixed(4))
+        : Number(item.precioUnitario);
 
       subtotalCompra += subtotal;
-      itbisCompra += importeItbis;
+      itbisCompra    += importeItbis;
 
       detallesData.push({
-        productoId: item.productoId,
-        descripcion: item.descripcion ?? producto.nombre,
-        precioUnitario: item.precioUnitario,
-        cantidad: item.cantidad,
+        productoId:        item.productoId,
+        descripcion:       item.descripcion ?? producto.nombre,
+        precioUnitario:    item.precioUnitario,
+        cantidad:          cantidadFact,
+        cantidadBonificada: cantidadBon,
+        cantidadTotal:     cantidadTot,
         porcentajeItbis,
         subtotal,
         importeItbis,
         total,
+        costoUnitarioReal,
       });
     }
 
@@ -236,9 +247,11 @@ export class ComprasService {
       // 1. Registrar entrada en inventario — usar almacén de la compra o el del contexto
       const almacenIdCompra = (compra as any).almacenId ?? this.tenantService.getAlmacenId() ?? undefined;
       for (const detalle of compra.detalles) {
+        // cantidadTotal = facturada + bonificada — todas las unidades entran al stock
+        const qtdInventario = Number((detalle as any).cantidadTotal ?? detalle.cantidad);
         await this.inventarioService.registrarEntrada(
           detalle.productoId,
-          Number(detalle.cantidad),
+          qtdInventario,
           compra.usuarioId,
           `Compra recibida: ${compra.folio}`,
           compra.folio,
@@ -272,9 +285,10 @@ export class ComprasService {
     if (estado === CompraEstado.CANCELADA && compra.estado === CompraEstado.RECIBIDA) {
       const almacenIdCompra = (compra as any).almacenId ?? this.tenantService.getAlmacenId() ?? undefined;
       for (const detalle of compra.detalles) {
+        const qtdInventario = Number((detalle as any).cantidadTotal ?? detalle.cantidad);
         await this.inventarioService.registrarDevolucion(
           detalle.productoId,
-          Number(detalle.cantidad),
+          qtdInventario,
           compra.usuarioId,
           `Cancelación compra: ${compra.folio}`,
           compra.folio,
@@ -333,15 +347,18 @@ export class ComprasService {
     if (original.detalles?.length) {
       await this.detalleRepository.save(
         original.detalles.map(d => ({
-          compraId:        nueva.id,
-          productoId:      d.productoId,
-          descripcion:     d.descripcion,
-          cantidad:        d.cantidad,
-          precioUnitario:  d.precioUnitario,
-          porcentajeItbis: d.porcentajeItbis,
-          importeItbis:    d.importeItbis,
-          subtotal:        d.subtotal,
-          total:           d.total,
+          compraId:           nueva.id,
+          productoId:         d.productoId,
+          descripcion:        d.descripcion,
+          cantidad:           d.cantidad,
+          cantidadBonificada: (d as any).cantidadBonificada ?? 0,
+          cantidadTotal:      (d as any).cantidadTotal      ?? d.cantidad,
+          precioUnitario:     d.precioUnitario,
+          porcentajeItbis:    d.porcentajeItbis,
+          importeItbis:       d.importeItbis,
+          subtotal:           d.subtotal,
+          total:              d.total,
+          costoUnitarioReal:  (d as any).costoUnitarioReal,
         })) as any,
       );
     }
