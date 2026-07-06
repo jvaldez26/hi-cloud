@@ -89,7 +89,7 @@ function CodigoEtiqueta({
       />
     );
   }
-  return <QRCode value={valor} size={size} bordered={false} bgColor={bgColor} />;
+  return <QRCode value={valor} size={size} bordered={false} bgColor={bgColor} type="svg" />;
 }
 
 // ── Componente de una etiqueta ────────────────────────────────────────────────
@@ -328,18 +328,7 @@ export default function EtiquetasPage() {
 
   const handlePrint = () => {
     if (seleccionados.length === 0) { message.warning('Agrega productos primero'); return; }
-    const style = document.createElement('style');
-    style.innerHTML = `
-      @media print {
-        body > * { display: none !important; }
-        #etiquetas-print { display: block !important; position: fixed; top: 0; left: 0; }
-        @page { margin: 4mm; }
-      }
-      #etiquetas-print { display: none; }
-    `;
-    document.head.appendChild(style);
     window.print();
-    document.head.removeChild(style);
   };
 
   const updConf = (key: keyof ConfigEtiqueta, val: any) =>
@@ -597,8 +586,8 @@ export default function EtiquetasPage() {
         </Col>
       </Row>
 
-      {/* Hoja de impresión (oculta, visible al imprimir) */}
-      <div id="etiquetas-print" style={{ display: 'none' }}>
+      {/* Hoja de impresión — visibility:hidden (no display:none) para que canvas pinte */}
+      <div id="etiquetas-print" style={{ position: 'fixed', top: '-9999px', left: '-9999px', visibility: 'hidden' }}>
         <HojaEtiquetas items={seleccionados} plantilla={plantilla} config={config} />
       </div>
 
