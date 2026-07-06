@@ -129,10 +129,11 @@ export default function EcfRecibidosPage() {
       width: 110,
       render: (v?: string) => {
         const lower = (v ?? '').toLowerCase();
-        const color = lower === 'aceptado' ? 'green'
+        const color = (lower === 'aceptado' || lower === 'received') ? 'green'
           : lower === 'rechazado'  ? 'red'
           : lower === 'pendiente'  ? 'orange'
-          : 'blue';
+          : lower === 'error'      ? 'red'
+          : 'default';
         return <Tag color={color} style={{ fontSize: 11, textTransform: 'capitalize' }}>{v ?? 'received'}</Tag>;
       },
     },
