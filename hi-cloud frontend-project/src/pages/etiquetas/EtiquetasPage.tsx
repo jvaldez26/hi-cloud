@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Button, Input, Select, Space, Typography,
@@ -51,12 +52,12 @@ interface ConfigEtiqueta {
 
 const PLANTILLAS: Record<PlantillaId, {
   nombre: string; ancho: number; alto: number;
-  cols: number; desc: string;
+  cols: number; desc: string; mmW: number; mmH: number;
 }> = {
-  mini:     { nombre: 'Mini',      ancho: 151, alto:  96, cols: 4, desc: '40×25mm — Artículos pequeños' },
-  estandar: { nombre: 'Estándar',  ancho: 227, alto: 151, cols: 3, desc: '60×40mm — Uso general' },
-  bodega:   { nombre: 'Bodega',    ancho: 378, alto: 189, cols: 2, desc: '100×50mm — Almacén e inventario' },
-  precio:   { nombre: 'Precio',    ancho: 189, alto: 113, cols: 3, desc: '50×30mm — Etiqueta de precio' },
+  mini:     { nombre: 'Mini',      ancho: 151, alto:  96, cols: 4, desc: '40×25mm — Artículos pequeños',  mmW: 40,  mmH: 25 },
+  estandar: { nombre: 'Estándar',  ancho: 227, alto: 151, cols: 3, desc: '60×40mm — Uso general',          mmW: 60,  mmH: 40 },
+  bodega:   { nombre: 'Bodega',    ancho: 378, alto: 189, cols: 2, desc: '100×50mm — Almacén e inventario', mmW: 100, mmH: 50 },
+  precio:   { nombre: 'Precio',    ancho: 189, alto: 113, cols: 3, desc: '50×30mm — Etiqueta de precio',   mmW: 50,  mmH: 30 },
 };
 
 const fmt = (v: number) =>
@@ -84,8 +85,7 @@ function CodigoEtiqueta({
         margin={0}
         background={bgColor}
         lineColor="#000000"
-        displayValue
-        textAlign="center"
+        displayValue={false}
       />
     );
   }
@@ -328,7 +328,12 @@ export default function EtiquetasPage() {
 
   const handlePrint = () => {
     if (seleccionados.length === 0) { message.warning('Agrega productos primero'); return; }
+    const pl = PLANTILLAS[plantilla];
+    const styleEl = document.createElement('style');
+    styleEl.textContent = `@media print { @page { size: ${pl.mmW}mm ${pl.mmH}mm; margin: 1mm; } }`;
+    document.head.appendChild(styleEl);
     window.print();
+    document.head.removeChild(styleEl);
   };
 
   const updConf = (key: keyof ConfigEtiqueta, val: any) =>
@@ -586,20 +591,21 @@ export default function EtiquetasPage() {
         </Col>
       </Row>
 
-      {/* Hoja de impresión — visibility:hidden (no display:none) para que canvas pinte */}
-      <div id="etiquetas-print" style={{ position: 'fixed', top: '-9999px', left: '-9999px', visibility: 'hidden' }}>
-        <HojaEtiquetas items={seleccionados} plantilla={plantilla} config={config} />
-      </div>
-
       {/* Estilos de impresión globales */}
       <style>{`
         @media print {
-          * { visibility: hidden !important; }
-          #etiquetas-print, #etiquetas-print * { visibility: visible !important; }
-          #etiquetas-print { display: block !important; position: fixed !important; top: 0 !important; left: 0 !important; }
-          @page { margin: 4mm; }
+          body > * { display: none !important; }
+          body > #etiquetas-print { display: block !important; }
         }
       `}</style>
+
+      {/* Portal: hijo directo de body para que el CSS de impresión lo aísle del #root */}
+      {createPortal(
+        <div id="etiquetas-print" style={{ display: 'none' }}>
+          <HojaEtiquetas items={seleccionados} plantilla={plantilla} config={config} />
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
