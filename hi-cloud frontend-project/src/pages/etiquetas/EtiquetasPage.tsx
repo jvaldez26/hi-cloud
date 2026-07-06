@@ -336,7 +336,8 @@ function HojaEtiquetas({
 // ── Página principal ──────────────────────────────────────────────────────────
 
 export default function EtiquetasPage() {
-  const [busqueda,   setBusqueda]   = useState('');
+  const [busqueda,         setBusqueda]         = useState('');
+  const [busquedaDebounced, setBusquedaDebounced] = useState('');
   const [plantilla,  setPlantilla]  = useState<PlantillaId>('estandar');
   const [seleccionados, setSeleccionados] = useState<ProductoEtiqueta[]>([]);
   const [mostrarConfig, setMostrarConfig] = useState(false);
@@ -356,9 +357,15 @@ export default function EtiquetasPage() {
   const { token } = theme.useToken();
   const printRef = useRef<HTMLDivElement>(null);
 
+  // Debounce: el query al servidor se lanza 300ms después de que el usuario deja de escribir
+  useEffect(() => {
+    const t = setTimeout(() => setBusquedaDebounced(busqueda), 300);
+    return () => clearTimeout(t);
+  }, [busqueda]);
+
   const { data: productos = [], isLoading } = useQuery<any[]>({
-    queryKey: ['etiquetas-productos', busqueda],
-    queryFn: () => api.get(`/etiquetas/productos${busqueda ? `?q=${busqueda}` : ''}`).then((r: any) => r.data?.data ?? r.data),
+    queryKey: ['etiquetas-productos', busquedaDebounced],
+    queryFn: () => api.get(`/etiquetas/productos${busquedaDebounced ? `?q=${encodeURIComponent(busquedaDebounced)}` : ''}`).then((r: any) => r.data?.data ?? r.data),
     staleTime: 30_000,
   });
 

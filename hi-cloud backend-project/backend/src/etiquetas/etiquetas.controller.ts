@@ -40,7 +40,7 @@ export class EtiquetasController {
       where,
       select: ['id', 'codigo', 'nombre', 'precio', 'porcentajeIva', 'unidadMedida', 'categoria', 'stock', 'imagenUrl'],
       order: { nombre: 'ASC' },
-      // Sin límite: se muestran todos los productos de la empresa
+      take: 50, // búsqueda server-side: 50 resultados por término, el usuario escribe para filtrar
     });
 
     return productos;
