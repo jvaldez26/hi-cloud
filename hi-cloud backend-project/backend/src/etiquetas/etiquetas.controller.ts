@@ -29,8 +29,6 @@ export class EtiquetasController {
     const base: any = { empresaId, isActive: true };
     if (categoria) base.categoria = categoria;
 
-    // Sin búsqueda: primeros 200 ordenados por nombre
-    // Con búsqueda: hasta 500, filtrando por nombre OR código
     const where = q
       ? [
           { ...base, nombre: Like(`%${q}%`) },
@@ -42,7 +40,7 @@ export class EtiquetasController {
       where,
       select: ['id', 'codigo', 'nombre', 'precio', 'porcentajeIva', 'unidadMedida', 'categoria', 'stock', 'imagenUrl'],
       order: { nombre: 'ASC' },
-      take: q ? 500 : 200,
+      // Sin límite: se muestran todos los productos de la empresa
     });
 
     return productos;
