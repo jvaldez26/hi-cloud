@@ -15,6 +15,7 @@ import { useQuery } from '@tanstack/react-query';
 import { QRCode } from 'antd';
 import JsBarcode from 'jsbarcode';
 import { productosApi } from '../../api/productos.api';
+import { useAuthStore } from '../../store/auth.store';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -336,9 +337,11 @@ function HojaEtiquetas({
 // ── Página principal ──────────────────────────────────────────────────────────
 
 export default function EtiquetasPage() {
+  const empresaItem = useAuthStore(s => s.empresas.find(e => e.empresaId === s.empresaActual));
+
   const [busqueda,         setBusqueda]         = useState('');
   const [busquedaDebounced, setBusquedaDebounced] = useState('');
-  const [plantilla,  setPlantilla]  = useState<PlantillaId>('estandar');
+  const [plantilla,  setPlantilla]  = useState<PlantillaId>('precio');
   const [seleccionados, setSeleccionados] = useState<ProductoEtiqueta[]>([]);
   const [mostrarConfig, setMostrarConfig] = useState(false);
   const [config, setConfig] = useState<ConfigEtiqueta>({
@@ -347,9 +350,9 @@ export default function EtiquetasPage() {
     mostrarCategoria: false,
     mostrarEmpresa:   true,
     mostrarQR:        true,
-    tipoCodigo:       'qr',
+    tipoCodigo:       'barcode',
     precioConIva:     false,
-    nombreEmpresa:    'HiCloud ERP',
+    nombreEmpresa:    empresaItem?.nombre ?? '',
     colorFondo:       '#ffffff',
     colorTexto:       '#1e293b',
   });
