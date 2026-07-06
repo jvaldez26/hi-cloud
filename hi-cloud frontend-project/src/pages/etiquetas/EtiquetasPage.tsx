@@ -79,10 +79,9 @@ function CodigoEtiqueta({
     return (
       <Barcode
         value={val}
-        width={1}
+        width={1.5}
         height={size * 0.6}
-        fontSize={size * 0.18}
-        margin={0}
+        margin={10}
         background={bgColor}
         lineColor="#000000"
         displayValue={false}
@@ -257,7 +256,6 @@ function HojaEtiquetas({
   plantilla: PlantillaId;
   config:    ConfigEtiqueta;
 }) {
-  const pl = PLANTILLAS[plantilla];
   const todas: ProductoEtiqueta[] = [];
   items.forEach(p => {
     for (let i = 0; i < p.cantidad; i++) todas.push(p);
@@ -265,17 +263,21 @@ function HojaEtiquetas({
 
   if (todas.length === 0) return null;
 
+  // Una etiqueta = una página física. Sin padding ni gap extra que genere hojas en blanco.
   return (
-    <div style={{
-      display: 'grid',
-      gridTemplateColumns: `repeat(${pl.cols}, ${pl.ancho}px)`,
-      gap: 4,
-      padding: 8,
-    }}>
+    <>
       {todas.map((p, i) => (
-        <Etiqueta key={`${p.id}-${i}`} producto={p} plantilla={plantilla} config={config} />
+        <div
+          key={`${p.id}-${i}`}
+          style={{
+            pageBreakAfter: i < todas.length - 1 ? 'always' : 'auto',
+            breakAfter:     i < todas.length - 1 ? 'page'   : 'auto',
+          }}
+        >
+          <Etiqueta producto={p} plantilla={plantilla} config={config} />
+        </div>
       ))}
-    </div>
+    </>
   );
 }
 
@@ -330,7 +332,7 @@ export default function EtiquetasPage() {
     if (seleccionados.length === 0) { message.warning('Agrega productos primero'); return; }
     const pl = PLANTILLAS[plantilla];
     const styleEl = document.createElement('style');
-    styleEl.textContent = `@media print { @page { size: ${pl.mmW}mm ${pl.mmH}mm; margin: 1mm; } }`;
+    styleEl.textContent = `@media print { @page { size: ${pl.mmW}mm ${pl.mmH}mm; margin: 0; } }`;
     document.head.appendChild(styleEl);
     window.print();
     document.head.removeChild(styleEl);
@@ -594,6 +596,7 @@ export default function EtiquetasPage() {
       {/* Estilos de impresión globales */}
       <style>{`
         @media print {
+          html, body { margin: 0 !important; padding: 0 !important; height: auto !important; }
           body > * { display: none !important; }
           body > #etiquetas-print { display: block !important; }
         }
