@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
@@ -13,7 +13,7 @@ import {
 } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { QRCode } from 'antd';
-import Barcode from 'react-barcode';
+import JsBarcode from 'jsbarcode';
 import api from '../../api/client';
 
 const { Title, Text } = Typography;
@@ -63,6 +63,44 @@ const PLANTILLAS: Record<PlantillaId, {
 const fmt = (v: number) =>
   new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'DOP', minimumFractionDigits: 2 }).format(v ?? 0);
 
+// ── Canvas de barras a 3× para impresión térmica sin antialiasing ─────────────
+
+function BarcodeCanvas({
+  valor, barHeight, bgColor,
+}: {
+  valor:     string;
+  barHeight: number;
+  bgColor:   string;
+}) {
+  const ref   = useRef<HTMLCanvasElement>(null);
+  const SCALE = 3; // 3 canvas-px por módulo → barras densas, sin interpolación
+
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    try {
+      JsBarcode(canvas, valor || '000000', {
+        format:       'CODE128',
+        width:        SCALE,
+        height:       barHeight * SCALE,
+        margin:       10 * SCALE,
+        displayValue: false,
+        background:   bgColor || '#ffffff',
+        lineColor:    '#000000',
+      });
+      // Mostrar en pantalla a 1/3 tamaño canvas (= 1× CSS real)
+      canvas.style.width  = `${canvas.width  / SCALE}px`;
+      canvas.style.height = `${canvas.height / SCALE}px`;
+    } catch {
+      // código incompatible con CODE128 — canvas vacío
+    }
+  }, [valor, barHeight, bgColor]);
+
+  return (
+    <canvas ref={ref} style={{ imageRendering: 'pixelated', display: 'block' }} />
+  );
+}
+
 // ── Código (QR o barras) ──────────────────────────────────────────────────────
 
 function CodigoEtiqueta({
@@ -74,19 +112,7 @@ function CodigoEtiqueta({
   bgColor: string;
 }) {
   if (tipo === 'barcode') {
-    // Asegurar que el valor sea compatible con CODE128
-    const val = valor || '000000';
-    return (
-      <Barcode
-        value={val}
-        width={1.5}
-        height={size * 0.6}
-        margin={10}
-        background={bgColor}
-        lineColor="#000000"
-        displayValue={false}
-      />
-    );
+    return <BarcodeCanvas valor={valor} barHeight={size * 0.6} bgColor={bgColor} />;
   }
   return <QRCode value={valor} size={size} bordered={false} bgColor={bgColor} type="svg" />;
 }
@@ -599,6 +625,8 @@ export default function EtiquetasPage() {
           html, body { margin: 0 !important; padding: 0 !important; height: auto !important; }
           body > * { display: none !important; }
           body > #etiquetas-print { display: block !important; }
+          #etiquetas-print svg { shape-rendering: crispEdges !important; }
+          #etiquetas-print canvas { image-rendering: pixelated !important; }
         }
       `}</style>
 
