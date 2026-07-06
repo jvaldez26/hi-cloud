@@ -25,7 +25,7 @@ export class CompraDetalle extends BaseEntity {
   @Column({ type: 'decimal', precision: 12, scale: 2 })
   precioUnitario!: number;
 
-  @Column({ type: 'int' })
+  @Column({ type: 'decimal', precision: 12, scale: 4 })
   cantidad!: number;
 
   @Column({ type: 'decimal', precision: 5, scale: 2, default: 18 })

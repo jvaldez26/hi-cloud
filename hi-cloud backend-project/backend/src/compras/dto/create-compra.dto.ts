@@ -26,8 +26,9 @@ export class CreateCompraDetalleDto {
   @MaxLength(200)
   descripcion?: string;
 
-  @IsInt()
+  @IsNumber({ maxDecimalPlaces: 4 })
   @IsPositive()
+  @Min(0.0001)
   @Type(() => Number)
   cantidad: number;
 

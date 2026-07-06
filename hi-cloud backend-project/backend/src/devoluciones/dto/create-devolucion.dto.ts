@@ -2,7 +2,7 @@ import {
   IsInt, IsPositive, IsString, IsNotEmpty, IsEnum,
   IsArray, ValidateNested, ArrayMinSize,
   IsNumber, IsOptional, IsDateString,
-  MaxLength,
+  MaxLength, Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { TipoDevolucion } from '../entities/devolucion.entity';
@@ -14,7 +14,7 @@ export class CreateDevolucionDetalleDto {
   @IsString() @MaxLength(2000) @IsNotEmpty()
   descripcion: string;
 
-  @IsInt() @IsPositive()
+  @IsNumber({ maxDecimalPlaces: 4 }) @IsPositive() @Min(0.0001)
   @Type(() => Number)
   cantidad: number;
 

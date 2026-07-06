@@ -17,6 +17,7 @@ interface Linea {
   cantidad: number;
   precioUnitario: number;
   porcentajeItbis: number;
+  permiteDecimales?: boolean;
 }
 
 const fmtMon = (v: number, moneda = 'DOP') => {
@@ -103,7 +104,7 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
     const label = prod.codigo ? `${prod.codigo} — ${prod.nombre}` : prod.nombre;
     setSelectedProds(prev => new Map(prev).set(productoId, label));
     const updated = [...lineas];
-    updated[idx] = { ...updated[idx], productoId, descripcion: prod.nombre, precioUnitario: Number(prod.precio), porcentajeItbis: 18 };
+    updated[idx] = { ...updated[idx], productoId, descripcion: prod.nombre, precioUnitario: Number(prod.precio), porcentajeItbis: 18, permiteDecimales: prod.permiteDecimales ?? false };
     setLineas(updated);
   };
 
@@ -182,8 +183,12 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
       )},
     { title: 'Cantidad', key: 'qty', width: 90,
       render: (_: unknown, r: Linea, idx: number) => (
-        <InputNumber min={1} precision={0} value={r.cantidad} style={{ width:'100%' }}
-          onChange={v => { const u=[...lineas]; u[idx].cantidad=v??1; setLineas(u); }} />
+        <InputNumber
+          min={r.permiteDecimales ? 0.0001 : 1}
+          precision={r.permiteDecimales ? 4 : 0}
+          value={r.cantidad}
+          style={{ width:'100%' }}
+          onChange={v => { const u=[...lineas]; u[idx].cantidad=v ?? (r.permiteDecimales ? 0.001 : 1); setLineas(u); }} />
       )},
     { title: 'Precio', key: 'price', width: 120,
       render: (_: unknown, r: Linea, idx: number) => (

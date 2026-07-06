@@ -248,7 +248,12 @@ export default function DevolucionesPage() {
                 { title: 'Facturado', dataIndex: 'cantidad',        width: 80 },
                 { title: 'A devolver', key: 'dev', width: 120,
                   render: (_: any, r: any, idx: number) => (
-                    <InputNumber min={0} max={r.cantidad} precision={0} value={r.devolver} style={{ width: '100%' }}
+                    <InputNumber
+                      min={0}
+                      max={r.cantidad}
+                      precision={r.permiteDecimales ? 4 : 0}
+                      value={r.devolver}
+                      style={{ width: '100%' }}
                       onChange={v => { const u=[...lineas]; u[idx].devolver=v??0; setLineas(u); }} />
                   )},
                 { title: 'Precio', dataIndex: 'precioUnitario', width: 100, render: (v: number) => fmt.money(v) },

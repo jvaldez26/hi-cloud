@@ -81,9 +81,10 @@ export interface Producto {
   stock:           number;
   stockMinimo:     number;
   stockMaximo?:    number;
-  categoria?:      string;
-  imagenUrl?:      string;
-  isActive:        boolean;
+  categoria?:        string;
+  imagenUrl?:        string;
+  isActive:          boolean;
+  permiteDecimales?: boolean;
 }
 
 // ── Facturas ──────────────────────────────────────────────────────────────────
