@@ -67,12 +67,13 @@ const fmt = (v: number) =>
 // ── Canvas de barras a 3× para impresión térmica sin antialiasing ─────────────
 
 function BarcodeCanvas({
-  valor, barHeight, bgColor, maxWidthCss,
+  valor, barHeight, bgColor, maxWidthCss, cssHeightOverride,
 }: {
-  valor:        string;
-  barHeight:    number;
-  bgColor:      string;
-  maxWidthCss?: number; // ancho máximo CSS; si el canvas natural lo supera, se comprime con pixelated
+  valor:              string;
+  barHeight:          number;
+  bgColor:            string;
+  maxWidthCss?:       number;   // preview: ancho máximo CSS en px
+  cssHeightOverride?: string;   // print: altura física exacta ej. '8mm' — evita desajuste px↔DPI térmica
 }) {
   const ref   = useRef<HTMLCanvasElement>(null);
   const SCALE = 3; // 3 canvas-px por módulo → barras densas, sin interpolación
@@ -92,14 +93,13 @@ function BarcodeCanvas({
       });
       const csW = canvas.width  / SCALE;
       const csH = canvas.height / SCALE;
-      // Si el canvas natural es más ancho que el espacio disponible, comprimirlo CSS
-      // image-rendering: pixelated asegura nearest-neighbor → barras nítidas aun comprimidas
       canvas.style.width  = `${maxWidthCss && csW > maxWidthCss ? maxWidthCss : csW}px`;
-      canvas.style.height = `${csH}px`;
+      // En modo impresión: altura forzada en mm → el browser mapea mm a DPI de la térmica exactamente
+      canvas.style.height = cssHeightOverride ?? `${csH}px`;
     } catch {
       // código incompatible con CODE128 — canvas vacío
     }
-  }, [valor, barHeight, bgColor, maxWidthCss]);
+  }, [valor, barHeight, bgColor, maxWidthCss, cssHeightOverride]);
 
   return (
     <canvas ref={ref} style={{ imageRendering: 'pixelated', display: 'block' }} />
@@ -141,17 +141,18 @@ function Etiqueta({
     : producto.precio;
 
   const padEtiqueta = plantilla === 'mini' ? 6 : 8;
-  // Ancho máximo del canvas del barcode: ancho etiqueta − padding etiqueta×2 − 16px quiet zone lateral del wrapper (8px c/lado)
+  // Preview (px): ancho máximo del barcode = ancho − padding×2 − 16px quiet zone lateral
   const barcodeMaxW = ancho - padEtiqueta * 2 - 16;
-  // Margen de seguridad inferior para impresoras térmicas: área no imprimible ~1-3mm + márgenes del browser
-  // precio (50×30mm): bottom 16px = 4.2mm vs 8px = 2.1mm normal — barcode queda a ≥7mm del borde físico
+  // Preview (px): padding asimétrico en precio — 16px bottom = 4.2mm extra sobre zona no imprimible
   const padStyle = plantilla === 'precio'
     ? `${padEtiqueta}px ${padEtiqueta}px 16px`
     : padEtiqueta;
 
+  // Print (mm): dimensiones en mm → el browser mapea 1:1 al @page sin redondeo px↔DPI
+  // padding precio: 2mm top/lados, 3mm bottom (zona segura ≥6mm del borde físico con centering)
   const estiloBase: React.CSSProperties = {
-    width:           ancho,
-    height:          alto,
+    width:    preview ? ancho       : `${pl.mmW}mm`,
+    height:   preview ? alto        : `${pl.mmH}mm`,
     border:          '1px solid #ccc',
     borderRadius:    4,
     background:      config.colorFondo,
@@ -162,21 +163,22 @@ function Etiqueta({
     boxSizing:       'border-box',
     display:         'flex',
     flexDirection:   'column',
-    padding:         padStyle,
+    padding:  preview ? padStyle : (plantilla === 'precio' ? '2mm 2mm 3mm' : '2.1mm'),
     pageBreakInside: 'avoid',
     breakInside:     'avoid',
   };
 
   const qrSize = plantilla === 'mini' ? 44 : plantilla === 'estandar' ? 60 : plantilla === 'precio' ? 52 : 74;
 
-  // Barcode al fondo, sin padding vertical extra — las alturas están calibradas para caber en cada plantilla
+  // Preview: px | Print: mm — quiet zone lateral en mm para precio; altura barcode forzada a 8mm
   const barcodeAbajo = config.mostrarQR && config.tipoCodigo === 'barcode' ? (
-    <div style={{ padding: '0 8px', display: 'flex', justifyContent: 'center' }}>
+    <div style={{ padding: preview ? '0 8px' : '0 2mm', display: 'flex', justifyContent: 'center' }}>
       <BarcodeCanvas
         valor={producto.codigo}
         barHeight={plantilla === 'mini' ? 13 : plantilla === 'estandar' ? 18 : plantilla === 'precio' ? 10 : 22}
         bgColor={config.colorFondo}
-        maxWidthCss={barcodeMaxW}
+        maxWidthCss={preview ? barcodeMaxW : undefined}
+        cssHeightOverride={!preview && plantilla === 'precio' ? '8mm' : undefined}
       />
     </div>
   ) : null;
@@ -280,7 +282,7 @@ function Etiqueta({
 
       {/* Precio */}
       {plantilla === 'precio' && (
-        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', gap: 2 }}>
+        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', gap: preview ? 2 : '0.5mm' }}>
           {config.mostrarEmpresa && (
             <div style={{ fontSize: 6, fontWeight: 700, textTransform: 'uppercase', color: '#1a56db', lineHeight: 1 }}>
               {config.nombreEmpresa}
