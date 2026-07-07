@@ -143,6 +143,11 @@ function Etiqueta({
   const padEtiqueta = plantilla === 'mini' ? 6 : 8;
   // Ancho máximo del canvas del barcode: ancho etiqueta − padding etiqueta×2 − 16px quiet zone lateral del wrapper (8px c/lado)
   const barcodeMaxW = ancho - padEtiqueta * 2 - 16;
+  // Margen de seguridad inferior para impresoras térmicas: área no imprimible ~1-3mm + márgenes del browser
+  // precio (50×30mm): bottom 16px = 4.2mm vs 8px = 2.1mm normal — barcode queda a ≥7mm del borde físico
+  const padStyle = plantilla === 'precio'
+    ? `${padEtiqueta}px ${padEtiqueta}px 16px`
+    : padEtiqueta;
 
   const estiloBase: React.CSSProperties = {
     width:           ancho,
@@ -157,7 +162,7 @@ function Etiqueta({
     boxSizing:       'border-box',
     display:         'flex',
     flexDirection:   'column',
-    padding:         padEtiqueta,
+    padding:         padStyle,
     pageBreakInside: 'avoid',
     breakInside:     'avoid',
   };
@@ -169,7 +174,7 @@ function Etiqueta({
     <div style={{ padding: '0 8px', display: 'flex', justifyContent: 'center' }}>
       <BarcodeCanvas
         valor={producto.codigo}
-        barHeight={plantilla === 'mini' ? 13 : plantilla === 'estandar' ? 18 : plantilla === 'precio' ? 12 : 22}
+        barHeight={plantilla === 'mini' ? 13 : plantilla === 'estandar' ? 18 : plantilla === 'precio' ? 10 : 22}
         bgColor={config.colorFondo}
         maxWidthCss={barcodeMaxW}
       />
@@ -396,7 +401,7 @@ export default function EtiquetasPage() {
     if (seleccionados.length === 0) { message.warning('Agrega productos primero'); return; }
     const pl = PLANTILLAS[plantilla];
     const styleEl = document.createElement('style');
-    styleEl.textContent = `@media print { @page { size: ${pl.mmW}mm ${pl.mmH}mm; margin: 0; } }`;
+    styleEl.textContent = `@media print { @page { size: ${pl.mmW}mm ${pl.mmH}mm; margin: 0 !important; } }`;
     document.head.appendChild(styleEl);
     window.print();
     document.head.removeChild(styleEl);
@@ -660,6 +665,7 @@ export default function EtiquetasPage() {
       {/* Estilos de impresión globales */}
       <style>{`
         @media print {
+          @page { margin: 0 !important; }
           html, body { margin: 0 !important; padding: 0 !important; height: auto !important; }
           body > * { display: none !important; }
           body > #etiquetas-print { display: block !important; }
