@@ -179,7 +179,7 @@ const MENU_CATEGORIES: MenuCategory[] = [
       { path: '/conteo-inventario',  label: 'Conteo Físico' },
       { path: '/uom',                label: 'Unidades de Medida' },
       { path: '/valoracion-stock',   label: 'Valoración AVCO' },
-      { path: '/etiquetas',          label: 'Etiquetas QR' },
+      { path: '/etiquetas',          label: 'Etiquetas' },
       { path: '/wms',                label: 'WMS — Almacén' },
       { path: '/manufactura',        label: 'Manufactura' },
       { path: '/planeacion-demanda', label: 'Planeación de Demanda' },

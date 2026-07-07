@@ -133,7 +133,7 @@ const NAV_ITEMS: NavItem[] = [
     keywords: ['manufactura','produccion','fabricacion','listas de materiales','bom','ordenes produccion','manufactura'] },
   { key: '/planeacion-demanda', label: 'Planeación de la Demanda', group: 'Inventario', emoji: '📈',
     keywords: ['planeacion demanda','proyeccion ventas','abastecimiento','forecast','demanda','reposicion stock'] },
-  { key: '/etiquetas',          label: 'Etiquetas QR',             group: 'Inventario', emoji: '🔳',
+  { key: '/etiquetas',          label: 'Etiquetas',                group: 'Inventario', emoji: '🔳',
     keywords: ['etiquetas','etiqueta','qr','codigo barras','labels','impresion etiquetas'] },
 
   // ── PROYECTOS & SERVICIOS ──────────────────────────────────────────────────
