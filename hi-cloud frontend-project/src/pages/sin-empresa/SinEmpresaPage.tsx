@@ -47,7 +47,7 @@ export default function SinEmpresaPage() {
               <>
                 <p>
                   Pide al administrador que te invite desde
-                  <strong> Configuración → Equipo</strong>.
+                  <strong> Sistema → Usuarios y Roles</strong>.
                 </p>
                 <p style={{ fontSize: 13 }}>
                   Una vez invitado, acepta la invitación en tu correo y recarga esta página.

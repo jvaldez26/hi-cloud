@@ -1509,7 +1509,7 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar 
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: C.red+'18', border: `1px solid ${C.red}44`, borderRadius: 8, padding: '8px 12px' }}>
             <span style={{ fontSize: 13 }}>🚫</span>
             <span style={{ fontSize: 12, color: C.red, fontWeight: 500 }}>
-              No hay vendedores configurados. Ve a <strong>Configuración → Vendedores</strong> para agregar uno antes de abrir el turno.
+              No hay vendedores configurados. Ve a <strong>Comercial &amp; Servicios → Vendedores</strong> para agregar uno antes de abrir el turno.
             </span>
           </div>
         )}

@@ -1785,7 +1785,7 @@ function SeccionPlan() {
   return (
     <div>
       <Alert type="info" showIcon
-        message="Solo lectura — para cambiar de plan ve a Configuración → Suscripción."
+        message="Solo lectura — para cambiar de plan ve a Sistema → Mi Suscripción y Pagos."
         style={{ marginBottom: 16 }}
         action={<Button size="small" href="/suscripcion/planes">Ver planes</Button>}
       />

@@ -7,7 +7,7 @@ import { exportarExcel } from '../../utils/exportExcel';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   DatePicker, InputNumber, Space, Typography, Statistic, Popconfirm,
-  message, Tabs, Avatar, Progress, Tooltip, Divider, theme,
+  message, Tabs, Avatar, Progress, Tooltip, Divider, theme, Skeleton,
 } from 'antd';
 import {
   TeamOutlined, PlusOutlined, TrophyOutlined, EditOutlined, FileExcelOutlined,
@@ -56,6 +56,7 @@ export default function VendedoresPage() {
   const { data: vendedores = [], isLoading } = useQuery<any[]>({
     queryKey: ['vendedores'],
     queryFn: () => api.get('/vendedores').then((r: any) => r.data?.data ?? r.data ?? []),
+    staleTime: 30_000,
   });
 
   const vendedoresFiltrados = useMemo(() =>
@@ -100,7 +101,8 @@ export default function VendedoresPage() {
       ? api.patch(`/vendedores/${editando.id}`, dto)
       : api.post('/vendedores', dto),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['vendedores','vendedores-resumen'] });
+      qc.invalidateQueries({ queryKey: ['vendedores'] });
+      qc.invalidateQueries({ queryKey: ['vendedores-resumen'] });
       setModalCrear(false);
       setEditando(null);
       formCrear.resetFields();
@@ -204,7 +206,14 @@ export default function VendedoresPage() {
                   />
                 </div>
               <Row gutter={[16, 16]}>
-                {vendedoresFiltrados.map((v: any, idx: number) => (
+                {isLoading && Array.from({ length: 4 }).map((_, i) => (
+                  <Col xs={24} sm={12} lg={8} xl={6} key={`sk-${i}`}>
+                    <Card bordered={false} style={{ borderRadius: 12 }}>
+                      <Skeleton avatar active paragraph={{ rows: 3 }} />
+                    </Card>
+                  </Col>
+                ))}
+                {!isLoading && vendedoresFiltrados.map((v: any, idx: number) => (
                   <Col xs={24} sm={12} lg={8} xl={6} key={v.id}>
                     <Card
                       bordered={false}
@@ -239,7 +248,7 @@ export default function VendedoresPage() {
                     </Card>
                   </Col>
                 ))}
-                {vendedoresFiltrados.length === 0 && !isLoading && (
+                {!isLoading && vendedoresFiltrados.length === 0 && (
                   <Col span={24}><Card bordered={false} style={{ textAlign: 'center', padding: 48 }}>
                     <TeamOutlined style={{ fontSize: 48, color: '#d9d9d9' }} />
                     <div style={{ marginTop: 16 }}><Text type="secondary">{search ? 'Sin resultados para la búsqueda.' : 'No hay vendedores registrados.'}</Text></div>
