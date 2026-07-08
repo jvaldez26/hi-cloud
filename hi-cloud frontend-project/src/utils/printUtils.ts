@@ -29,6 +29,26 @@ export async function verPDFDesdeURL(apiPath: string): Promise<void> {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
+/** Descarga el PDF A4 desde el backend y abre el diálogo de impresión.
+ *  Idéntico al patrón de los módulos de escritorio (FacturasPage, etc.). */
+export async function imprimirPDFA4(apiPath: string): Promise<void> {
+  const res = await fetch(apiPath, { credentials: 'include' });
+  if (!res.ok) throw new Error(`Error ${res.status} al generar PDF`);
+  const blob = await res.blob();
+  const url  = URL.createObjectURL(blob);
+  const pw   = window.open(url, '_blank', 'width=900,height=700,scrollbars=yes');
+  if (!pw) { window.open(url, '_blank'); setTimeout(() => URL.revokeObjectURL(url), 60_000); return; }
+  const cleanup = () => { try { pw.close(); } catch { /* noop */ } URL.revokeObjectURL(url); };
+  pw.addEventListener('load', () => {
+    pw.focus();
+    pw.print();
+    pw.addEventListener('afterprint', cleanup, { once: true });
+    setTimeout(cleanup, 60_000);
+  });
+  // Fallback si load no dispara (algunos navegadores con blob PDF)
+  setTimeout(() => { if (!pw.closed) { pw.focus(); pw.print(); } }, 800);
+}
+
 // ── Imprimir HTML en ventana nueva ────────────────────────────────────────────
 
 export function imprimirHtml(html: string): void {

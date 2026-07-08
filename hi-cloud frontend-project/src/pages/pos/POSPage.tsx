@@ -16,7 +16,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { facturasApi } from '../../api/facturas.api';
 import { inventarioApi } from '../../api/inventario.api';
 import { fmt, round2 } from '../../utils/formatters';
-import { imprimirElemento, imprimirReciboTermico } from '../../utils/printUtils';
+import { imprimirElemento, imprimirReciboTermico, imprimirPDFA4 } from '../../utils/printUtils';
 import { useThemeStore } from '../../store/theme.store';
 import { useOfflineQueue } from '../../hooks/useOfflineQueue';
 import { useSupervisor } from '../../hooks/useSupervisor';
@@ -1875,6 +1875,12 @@ function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir, mostrarEcf = 
     if (!sale || !autoImprimir) return;
     if (autoPrintedFolioRef.current === sale.folio) return;
     autoPrintedFolioRef.current = sale.folio;
+    if (posConfig.tipoImpresora === 'ninguna') { cancelarContador(); onNueva(); return; }
+    if (posConfig.tipoImpresora === 'carta' && sale.facturaId) {
+      cancelarContador();
+      imprimirPDFA4(`/api/v1/facturas/${sale.facturaId}/pdf`).then(onNueva).catch(() => onNueva());
+      return;
+    }
     let cancelled = false;
     const qrPromise: Promise<string | null> = sale.qrUrl && !sale.ecfPendiente
       ? QRCode.toDataURL(sale.qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' }).catch(() => null)
@@ -1889,6 +1895,11 @@ function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir, mostrarEcf = 
 
   const handlePrint = () => {
     cancelarContador();
+    if (posConfig.tipoImpresora === 'ninguna') { onNueva(); return; }
+    if (posConfig.tipoImpresora === 'carta' && sale!.facturaId) {
+      imprimirPDFA4(`/api/v1/facturas/${sale!.facturaId}/pdf`).then(onNueva).catch(() => onNueva());
+      return;
+    }
     imprimirReciboTermico(buildReciboTermicoHTML(sale!, qrDataUrl, { mostrarEcf, ...posConfig }), onNueva);
   };
 
@@ -2196,12 +2207,18 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
         const qrDUrl = ecfResult?.qrUrl && !ecfPendiente
           ? await QRCode.toDataURL(ecfResult.qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' }).catch(() => null)
           : null;
-        imprimirReciboTermico(buildReciboTermicoHTML(saleNC, qrDUrl, {
-          mostrarEcf:    true,
-          tipoImpresora: empConf.posTipoImpresora,
-          mensajeTicket: empConf.posMensajeTicket,
-          politicaDev:   empConf.posPoliticaDev,
-        }));
+        if (empConf.posTipoImpresora === 'ninguna') {
+          // sin impresora → no imprimir
+        } else if (empConf.posTipoImpresora === 'carta' && nc?.id) {
+          await imprimirPDFA4(`/api/v1/notas-credito/${nc.id}/pdf`);
+        } else {
+          imprimirReciboTermico(buildReciboTermicoHTML(saleNC, qrDUrl, {
+            mostrarEcf:    true,
+            tipoImpresora: empConf.posTipoImpresora,
+            mensajeTicket: empConf.posMensajeTicket,
+            politicaDev:   empConf.posPoliticaDev,
+          }));
+        }
       } catch { /* impresión no crítica */ }
     },
     onError: (e: any) => message.error(e?.response?.data?.message ?? e?.message ?? 'Error al emitir NC'),
@@ -6202,12 +6219,38 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'No se pudo cambiar el estado'),
   });
 
-  // ── Impresión térmica para TODOS los módulos ───────────────────────
+  // ── Mapa de endpoints PDF A4 por panel ─────────────────────────────
+  const _a4PdfMap = (id: number): Record<string, string> => ({
+    'facturas':      `/api/v1/facturas/${id}/pdf`,
+    'pre-facturas':  `/api/v1/pre-facturas/${id}/pdf`,
+    'cotizaciones':  `/api/v1/cotizaciones/${id}/pdf`,
+    'pro-formas':    `/api/v1/pro-formas/${id}/pdf`,
+    'notas-credito': `/api/v1/notas-credito/${id}/pdf`,
+    'notas-debito':  `/api/v1/notas-debito/${id}/pdf`,
+    'conduce':       `/api/v1/conduces/${id}/pdf`,
+    'despacho':      `/api/v1/conduces/${id}/pdf`,
+    'recibos-cobro': `/api/v1/recibos-cobro/${id}/pdf`,
+    'gastos':        `/api/v1/gastos/${id}/pdf`,
+  });
+
+  // ── Impresión para TODOS los módulos del panel lateral ─────────────
   const handleImprimir = async (id: number, folio: string) => {
     setImprimiendo(id);
     try {
       const empresa = await api.get('/configuracion/empresa')
         .then(x => x.data?.data ?? x.data).catch(() => ({}));
+      const _tipoImp = (empresa.configuracion as any)?.posTipoImpresora as string | undefined;
+
+      // Sin impresora → no imprimir
+      if (_tipoImp === 'ninguna') return;
+
+      // Hoja carta → PDF A4 del backend (misma plantilla que módulos de escritorio)
+      if (_tipoImp === 'carta') {
+        const _ep = _a4PdfMap(id)[panel];
+        if (_ep) { await imprimirPDFA4(_ep); return; }
+        // Si el panel no tiene A4 (ej. cierre de caja), cae al ticket térmico
+      }
+
       const empInfo = {
         nombre:    empresa.razonSocial ?? empresa.nombre,
         rnc:       empresa.rnc,
@@ -8147,21 +8190,48 @@ export default function POSPage() {
       if (printWinRef.current && !printWinRef.current.closed) {
         const pw = printWinRef.current;
         printWinRef.current = null;
-        autoYaPrintedRef.current = true;
-        const _mostrarEcf = posConf.posMostrarEcfEnRecibo !== false;
-        const _pCfg = { tipoImpresora: posConf.posTipoImpresora as string | undefined, mensajeTicket: posConf.posMensajeTicket as string | undefined, politicaDev: posConf.posPoliticaDev as string | undefined };
-        const doprint = (qr: string | null) => {
-          const html = buildReciboTermicoHTML(saleObj, qr, { mostrarEcf: _mostrarEcf, ..._pCfg });
-          if (pw.closed) { imprimirReciboTermico(html); return; }
-          pw.document.open(); pw.document.write(html); pw.document.close(); pw.focus();
-          // El HTML del recibo auto-imprime en load y cierra en afterprint.
-          pw.addEventListener('afterprint', () => { try { pw.close(); } catch { /* noop */ } }, { once: true });
-          setTimeout(() => { try { if (!pw.closed) pw.close(); } catch { /* noop */ } }, 30_000);
-        };
-        if (qrUrl && !saleObj.ecfPendiente) {
-          QRCode.toDataURL(qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' }).then(doprint).catch(() => doprint(null));
+        const _tipoImpCobro = posConf.posTipoImpresora as string | undefined;
+
+        if (_tipoImpCobro === 'ninguna') {
+          // Sin impresora → cerrar ventana pre-abierta sin imprimir
+          try { pw.close(); } catch { /* noop */ }
+        } else if (_tipoImpCobro === 'carta' && saleObj.facturaId) {
+          // Hoja carta → redirigir la ventana pre-abierta al PDF A4 del backend
+          autoYaPrintedRef.current = true;
+          fetch(`/api/v1/facturas/${saleObj.facturaId}/pdf`, { credentials: 'include' })
+            .then(r => r.blob())
+            .then(blob => {
+              const blobUrl = URL.createObjectURL(blob);
+              if (!pw.closed) {
+                pw.location.href = blobUrl;
+                pw.addEventListener('load', () => {
+                  pw.focus(); pw.print();
+                  pw.addEventListener('afterprint', () => { try { pw.close(); } catch { /* noop */ } URL.revokeObjectURL(blobUrl); }, { once: true });
+                  setTimeout(() => { try { if (!pw.closed) pw.close(); } catch { /* noop */ } URL.revokeObjectURL(blobUrl); }, 60_000);
+                });
+              } else {
+                window.open(blobUrl, '_blank');
+                setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+              }
+            })
+            .catch(() => { try { pw.close(); } catch { /* noop */ } });
         } else {
-          doprint(null);
+          // Térmica 58/80mm → comportamiento original
+          autoYaPrintedRef.current = true;
+          const _mostrarEcf = posConf.posMostrarEcfEnRecibo !== false;
+          const _pCfg = { tipoImpresora: _tipoImpCobro, mensajeTicket: posConf.posMensajeTicket as string | undefined, politicaDev: posConf.posPoliticaDev as string | undefined };
+          const doprint = (qr: string | null) => {
+            const html = buildReciboTermicoHTML(saleObj, qr, { mostrarEcf: _mostrarEcf, ..._pCfg });
+            if (pw.closed) { imprimirReciboTermico(html); return; }
+            pw.document.open(); pw.document.write(html); pw.document.close(); pw.focus();
+            pw.addEventListener('afterprint', () => { try { pw.close(); } catch { /* noop */ } }, { once: true });
+            setTimeout(() => { try { if (!pw.closed) pw.close(); } catch { /* noop */ } }, 30_000);
+          };
+          if (qrUrl && !saleObj.ecfPendiente) {
+            QRCode.toDataURL(qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' }).then(doprint).catch(() => doprint(null));
+          } else {
+            doprint(null);
+          }
         }
       }
       setSale(saleObj);
