@@ -1,6 +1,6 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull, LessThan } from 'typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { Repository, IsNull, LessThan, DataSource } from 'typeorm';
 import { createHash, randomBytes } from 'crypto';
 import { Cron } from '@nestjs/schedule';
 import { RefreshToken } from './entities/refresh-token.entity';
@@ -12,11 +12,13 @@ export class RefreshTokenService {
   constructor(
     @InjectRepository(RefreshToken)
     private repo: Repository<RefreshToken>,
+    @InjectDataSource()
+    private dataSource: DataSource,
   ) {}
 
   /** Genera un refresh token aleatorio, lo guarda en BD y devuelve el valor en texto plano. */
-  async crear(userId: number, deviceInfo?: string, ipAddress?: string): Promise<string> {
-    return (await this.crearRegistro(userId, deviceInfo, ipAddress)).value;
+  async crear(userId: number, deviceInfo?: string, ipAddress?: string, sessionLifetimeMs?: number): Promise<string> {
+    return (await this.crearRegistro(userId, deviceInfo, ipAddress, sessionLifetimeMs)).value;
   }
 
   /** Valida el refresh token, lo rota y devuelve el userId + nuevo valor. */
@@ -36,11 +38,14 @@ export class RefreshTokenService {
         throw new UnauthorizedException('Sesión expirada. Por favor inicia sesión de nuevo.');
       }
 
+      const sessionLifetimeMs = await this.getSessionLifetimeMs(stored.userId);
+
       // Crear el token nuevo primero para obtener su ID (necesario para nextTokenId)
       const { id: newId, value: newValue } = await this.crearRegistro(
         stored.userId,
         deviceInfo,
         ipAddress,
+        sessionLifetimeMs,
       );
 
       // Revocar el viejo con referencia al nuevo (permite grace period multi-pestaña)
@@ -64,7 +69,8 @@ export class RefreshTokenService {
       revocado.revokedAt &&
       Date.now() - revocado.revokedAt.getTime() < GRACE_PERIOD_MS
     ) {
-      const newValue = await this.crear(revocado.userId, deviceInfo, ipAddress);
+      const sessionLifetimeMs = await this.getSessionLifetimeMs(revocado.userId);
+      const newValue = await this.crear(revocado.userId, deviceInfo, ipAddress, sessionLifetimeMs);
       return { userId: revocado.userId, newRefreshValue: newValue };
     }
 
@@ -106,18 +112,54 @@ export class RefreshTokenService {
 
   // ── Helpers privados ────────────────────────────────────────────────────────
 
+  /**
+   * Devuelve el lifetime de sesión en ms para un usuario.
+   * Prioridad: empresa.configuracion.sesionHoras → configuracion_sistema.SESION_HORAS → 24h.
+   * Rango aplicado: [1h, 720h (30 días)].
+   */
+  private async getSessionLifetimeMs(userId: number): Promise<number> {
+    // 1. Override por empresa principal del usuario
+    try {
+      const rows = await this.dataSource.query<{ configuracion: Record<string, unknown> }[]>(`
+        SELECT e.configuracion
+        FROM empresa e
+        JOIN usuario_empresa ue ON ue."empresaId" = e.id
+        WHERE ue."userId" = $1 AND ue."isPrincipal" = true AND ue."isActive" = true
+        LIMIT 1
+      `, [userId]);
+      const conf  = rows[0]?.configuracion;
+      const horas = conf?.['sesionHoras'];
+      if (typeof horas === 'number' && Number.isFinite(horas)) {
+        return Math.min(720, Math.max(1, horas)) * 3_600_000;
+      }
+    } catch { /* ignorar — caer al global */ }
+
+    // 2. Default global de configuracion_sistema
+    try {
+      const rows = await this.dataSource.query<{ valor: string }[]>(
+        `SELECT valor FROM configuracion_sistema WHERE clave = 'SESION_HORAS' LIMIT 1`,
+      );
+      const h = parseInt(rows[0]?.valor ?? '24', 10);
+      return Math.min(720, Math.max(1, isNaN(h) ? 24 : h)) * 3_600_000;
+    } catch { /* ignorar */ }
+
+    return 24 * 3_600_000; // 24h de emergencia
+  }
+
   private async crearRegistro(
     userId: number,
     deviceInfo?: string,
     ipAddress?: string,
+    sessionLifetimeMs?: number,
   ): Promise<{ id: string; value: string }> {
-    const value  = randomBytes(32).toString('hex');
-    const hash   = this.hash(value);
-    const entity = await this.repo.save(
+    const lifetime = sessionLifetimeMs ?? (30 * 24 * 3_600_000); // 30 días si login no pasa lifetime
+    const value    = randomBytes(32).toString('hex');
+    const hash     = this.hash(value);
+    const entity   = await this.repo.save(
       this.repo.create({
         userId,
         tokenHash:  hash,
-        expiresAt:  new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 días
+        expiresAt:  new Date(Date.now() + lifetime),
         deviceInfo: deviceInfo?.slice(0, 255),
         ipAddress:  ipAddress?.slice(0, 45),
       }),

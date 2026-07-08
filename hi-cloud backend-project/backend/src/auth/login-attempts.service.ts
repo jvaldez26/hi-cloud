@@ -6,6 +6,11 @@ import type { Cache } from 'cache-manager';
  * Bloqueo progresivo por intentos fallidos de login.
  * Clave: email (normalizado) + IP — cada combinación tiene su propio contador.
  * Usa CACHE_MANAGER (Redis en producción) para persistir contadores y bloqueos.
+ *
+ * El umbral de bloqueo (maxIntentos) es configurable por empresa en
+ * empresa.configuracion.maxIntentos (JSONB) con fallback al global
+ * configuracion_sistema.MAX_INTENTOS_LOGIN (default 5).
+ * Rango permitido: [3, 10] — aplicado en auth.service.ts antes de llamar aquí.
  */
 @Injectable()
 export class LoginAttemptsService {
@@ -40,8 +45,12 @@ export class LoginAttemptsService {
     await this.cache.del(this.blockedKey(email, ip));
   }
 
-  async block(email: string, ip: string, attempts: number): Promise<number> {
-    const blockSeconds = this.getBlockDuration(attempts);
+  /**
+   * Aplica bloqueo progresivo si el número de intentos supera maxIntentos.
+   * @param maxIntentos - umbral configurable por empresa [3-10], default 5.
+   */
+  async block(email: string, ip: string, attempts: number, maxIntentos = 5): Promise<number> {
+    const blockSeconds = this.getBlockDuration(attempts, maxIntentos);
     if (blockSeconds > 0) {
       const blockedUntil = Date.now() + blockSeconds * 1000;
       await this.cache.set(this.blockedKey(email, ip), { blockedUntil }, blockSeconds * 1000);
@@ -49,12 +58,18 @@ export class LoginAttemptsService {
     return blockSeconds;
   }
 
-  getBlockDuration(attempts: number): number {
-    if (attempts <= 3) return 0;
-    if (attempts === 4) return 60;
-    if (attempts === 5) return 300;
-    if (attempts === 6) return 900;
-    if (attempts === 7) return 1800;
+  /**
+   * Escala de bloqueo relativa al umbral configurado.
+   * Intento N > maxIntentos → over = N - maxIntentos:
+   *   over=1 → 1 min, over=2 → 5 min, over=3 → 15 min, over=4 → 30 min, over≥5 → 1h
+   */
+  getBlockDuration(attempts: number, maxIntentos = 5): number {
+    const over = attempts - maxIntentos;
+    if (over <= 0) return 0;
+    if (over === 1) return 60;
+    if (over === 2) return 300;
+    if (over === 3) return 900;
+    if (over === 4) return 1800;
     return 3600;
   }
 

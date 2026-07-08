@@ -334,10 +334,14 @@ export class AuthService implements OnModuleInit {
       ? await bcrypt.compare(dto.password, user.password)
       : false;
 
+    // Leer maxIntentos de la empresa del usuario (con fallback al global)
+    const empresaParaConf = user?.isActive ? await this.getEmpresaPrincipal(user.id) : undefined;
+    const maxIntentos     = await this.getEffectiveMaxIntentos(empresaParaConf?.empresaId);
+
     // 3. Credenciales inválidas (usuario inexistente, inactivo o contraseña incorrecta)
     if (!user || !user.isActive || !isValid) {
       const attempts    = await this.loginAttempts.increment(dto.email, ip);
-      const blockSecs   = await this.loginAttempts.block(dto.email, ip, attempts);
+      const blockSecs   = await this.loginAttempts.block(dto.email, ip, attempts, maxIntentos);
 
       if (blockSecs > 0) {
         const tiempo = this.loginAttempts.formatTime(blockSecs);
@@ -353,7 +357,7 @@ export class AuthService implements OnModuleInit {
       }
 
       this.logger.warn(`[LOGIN] Intento fallido #${attempts} — email:${dto.email} ip:${ip}`);
-      const restantes = Math.max(0, 3 - attempts);
+      const restantes = Math.max(0, maxIntentos - attempts);
       if (restantes > 0) {
         throw new UnauthorizedException(
           `Credenciales incorrectas. ${restantes} intento(s) antes del bloqueo temporal.`,
@@ -400,7 +404,7 @@ export class AuthService implements OnModuleInit {
 
       if (!tieneEmpresaActiva) {
         const attempts  = await this.loginAttempts.increment(dto.email, ip);
-        const blockSecs = await this.loginAttempts.block(dto.email, ip, attempts);
+        const blockSecs = await this.loginAttempts.block(dto.email, ip, attempts, maxIntentos);
 
         if (blockSecs > 0) {
           const tiempo = this.loginAttempts.formatTime(blockSecs);
@@ -427,8 +431,9 @@ export class AuthService implements OnModuleInit {
     const sessionToken = await this.initNewSession(user.id);
     (user as any).sessionToken = sessionToken;
 
-    const empresaPrincipal = await this.getEmpresaPrincipal(user.id);
-    const empresaId = empresaPrincipal?.empresaId;
+    // Reusar empresaParaConf (ya cargado arriba) para evitar doble consulta
+    const empresaPrincipal = empresaParaConf ?? await this.getEmpresaPrincipal(user.id);
+    const empresaId   = empresaPrincipal?.empresaId;
     const empresaRole = empresaPrincipal?.rol;
     const { sucursalId, almacenId, sucursalNombre } = empresaId
       ? await this.resolverContextoSucursal(user.id, empresaId)
@@ -441,9 +446,12 @@ export class AuthService implements OnModuleInit {
       order: { isPrincipal: 'DESC' },
     });
 
+    const sessionLifetimeMs = await this.getEffectiveSessionMs(empresaId);
+
     return {
       message: 'Login exitoso',
       accessToken,
+      sessionLifetimeMs,
       empresaActual:  empresaId      ?? null,
       sucursalActual: sucursalId     ?? null,
       almacenActual:  almacenId      ?? null,
@@ -1277,5 +1285,61 @@ export class AuthService implements OnModuleInit {
       })),
       user: { id: user.id, nombre: user.nombre, email: user.email, role: user.role, tourCompletado: (user as any).tourCompletado ?? false },
     };
+  }
+
+  // ─── Security config helpers ────────────────────────────────────────────────
+
+  /**
+   * Devuelve el número máximo de intentos de login para una empresa.
+   * Lee empresa.configuracion.maxIntentos (JSONB) con fallback al global
+   * configuracion_sistema.MAX_INTENTOS_LOGIN. Rango: [3, 10].
+   */
+  async getEffectiveMaxIntentos(empresaId?: number): Promise<number> {
+    let global = 5;
+    try {
+      const rows = await this.dataSource.query<{ valor: string }[]>(
+        `SELECT valor FROM configuracion_sistema WHERE clave = 'MAX_INTENTOS_LOGIN' LIMIT 1`,
+      );
+      const n = parseInt(rows[0]?.valor ?? '5', 10);
+      global = isNaN(n) ? 5 : n;
+    } catch { /* usar 5 */ }
+
+    let horas = global;
+    if (empresaId) {
+      try {
+        const emp = await this.empresaRepository.findOne({ where: { id: empresaId }, select: ['configuracion'] as any });
+        const override = (emp?.configuracion as Record<string, unknown> | undefined)?.['maxIntentos'];
+        if (typeof override === 'number' && Number.isFinite(override)) horas = override;
+      } catch { /* usar global */ }
+    }
+
+    return Math.min(10, Math.max(3, horas));
+  }
+
+  /**
+   * Devuelve el lifetime de sesión en ms para una empresa.
+   * Lee empresa.configuracion.sesionHoras (JSONB) con fallback al global
+   * configuracion_sistema.SESION_HORAS. Rango: [1h, 720h].
+   */
+  async getEffectiveSessionMs(empresaId?: number): Promise<number> {
+    let globalHoras = 24;
+    try {
+      const rows = await this.dataSource.query<{ valor: string }[]>(
+        `SELECT valor FROM configuracion_sistema WHERE clave = 'SESION_HORAS' LIMIT 1`,
+      );
+      const h = parseInt(rows[0]?.valor ?? '24', 10);
+      globalHoras = isNaN(h) ? 24 : h;
+    } catch { /* usar 24 */ }
+
+    let horas = globalHoras;
+    if (empresaId) {
+      try {
+        const emp = await this.empresaRepository.findOne({ where: { id: empresaId }, select: ['configuracion'] as any });
+        const override = (emp?.configuracion as Record<string, unknown> | undefined)?.['sesionHoras'];
+        if (typeof override === 'number' && Number.isFinite(override)) horas = override;
+      } catch { /* usar global */ }
+    }
+
+    return Math.min(720, Math.max(1, horas)) * 3_600_000;
   }
 }

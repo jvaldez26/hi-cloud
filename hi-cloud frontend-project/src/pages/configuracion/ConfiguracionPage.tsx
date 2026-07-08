@@ -1724,7 +1724,7 @@ function SeccionSeguridad({ empresa, onSaved }: { empresa: any; onSaved: () => v
       <Row gutter={16}>
         <Col xs={24} sm={8}>
           <Form.Item name="sesionHoras" label="Duración de sesión">
-            <InputNumber style={{ width: '100%' }} min={1} max={168} addonAfter="horas" />
+            <InputNumber style={{ width: '100%' }} min={1} max={720} addonAfter="horas" />
           </Form.Item>
         </Col>
         <Col xs={24} sm={8}>

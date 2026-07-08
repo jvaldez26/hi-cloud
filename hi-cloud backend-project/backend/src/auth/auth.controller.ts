@@ -122,15 +122,16 @@ export class AuthController {
 
     this.setAuthCookie(res, (data as any).accessToken);
 
-    // S-28: refresh token de 30 días en cookie httpOnly restringida a /auth/refresh
+    // refresh token con lifetime configurado por empresa (sesionHoras)
     const refreshValue = await this.refreshTokenSvc.crear(
       (data as any).user.id,
       req.headers['user-agent'],
       req.ip,
+      (data as any).sessionLifetimeMs,
     );
     this.setRefreshCookie(res, refreshValue);
 
-    const { accessToken: _tok, ...safe } = data as any;
+    const { accessToken: _tok, sessionLifetimeMs: _ms, ...safe } = data as any;
     return safe;
   }
 
