@@ -38,6 +38,8 @@ const TIPO_ICON: Record<string, string> = {
   entrada: '📦', salida: '📤', ajuste: '⚖️', devolucion: '↩️', transferencia: '🔄',
 };
 
+const MESES_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
 const ESTADO_LOTE_COLOR: Record<string, string> = {
   activo: 'green', agotado: 'default', vencido: 'red', cuarentena: 'orange',
 };
@@ -49,19 +51,30 @@ const ESTADO_SERIAL_COLOR: Record<string, string> = {
 // ── Tab Movimientos ────────────────────────────────────────────────────────────
 function MovimientosTab() {
   const { token } = theme.useToken();
-  const [page,   setPage]   = useState(1);
-  const [search, setSearch] = useState('');
-  const [tipo,   setTipo]   = useState<string | undefined>();
-  const [rango,  setRango]  = useState<[Dayjs, Dayjs] | null>(null);
-  const [modal,  setModal]  = useState<'entrada' | 'salida' | 'ajuste' | null>(null);
-  const [form]              = Form.useForm();
+  const [page,      setPage]      = useState(1);
+  const [search,    setSearch]    = useState('');
+  const [tipo,      setTipo]      = useState<string | undefined>();
+  const [rango,     setRango]     = useState<[Dayjs, Dayjs] | null>(null);
+  const [mes,       setMes]       = useState<Dayjs | null>(dayjs());
+  const [modoFecha, setModoFecha] = useState<'mes' | 'rango'>('mes');
+  const [modal,     setModal]     = useState<'entrada' | 'salida' | 'ajuste' | null>(null);
+  const [form]                    = Form.useForm();
   const qc = useQueryClient();
 
-  const hayFiltros = !!(search || tipo || rango);
+  // RD = UTC-4 sin DST → inicio/fin del mes seleccionado en hora local dominicana
+  const desdeMes = mes ? new Date(Date.UTC(mes.year(), mes.month(), 1, 4, 0, 0, 0)).toISOString() : undefined;
+  const hastaMes = mes ? new Date(Date.UTC(mes.year(), mes.month() + 1, 1, 3, 59, 59, 999)).toISOString() : undefined;
+
+  const hayFiltros = !!(
+    search || tipo ||
+    modoFecha === 'rango' ||
+    (modoFecha === 'mes' && mes && !mes.isSame(dayjs(), 'month'))
+  );
   const filters = {
-    search: search || undefined, tipo,
-    desde: rango?.[0].format('YYYY-MM-DD'),
-    hasta: rango?.[1].format('YYYY-MM-DD'),
+    search: search || undefined,
+    tipo,
+    desde: modoFecha === 'mes' ? desdeMes       : rango?.[0].format('YYYY-MM-DD'),
+    hasta: modoFecha === 'mes' ? hastaMes        : rango?.[1].format('YYYY-MM-DD'),
   };
 
   const { data, isLoading } = useQuery({
@@ -154,7 +167,12 @@ const { data: productosData } = useQuery({
     <>
 <Row justify="space-between" align="middle" style={{ marginBottom: 12 }}>
         <Col>
-          <Text type="secondary" style={{ fontSize: 12 }}>{data?.meta?.total?.toLocaleString('es-DO') ?? 0} movimientos{hayFiltros ? ' (filtrados)' : ''}</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {data?.meta?.total?.toLocaleString('es-DO') ?? 0} movimientos
+            {modoFecha === 'mes' && mes
+              ? ` — ${MESES_ES[mes.month()]} ${mes.year()}`
+              : hayFiltros ? ' (filtrados)' : ''}
+          </Text>
         </Col>
         <Col>
           <Space>
@@ -178,12 +196,46 @@ const { data: productosData } = useQuery({
             {TIPOS.map(t => <Option key={t} value={t}><Tag color={TIPO_COLOR[t]} style={{ margin: 0, fontSize: 11 }}>{TIPO_ICON[t]} {t.toUpperCase()}</Tag></Option>)}
           </Select>
         </Col>
-        <Col xs={24} sm={9} md={9}>
-          <RangePicker value={rango} onChange={v => { setRango(v as [Dayjs, Dayjs] | null); setPage(1); }}
-            format="DD/MM/YYYY" style={{ width: '100%' }} placeholder={['Desde', 'Hasta']} />
-        </Col>
+        {modoFecha === 'mes' ? (
+          <>
+            <Col xs={10} sm={6} md={5}>
+              <DatePicker
+                picker="month"
+                value={mes}
+                onChange={v => { setMes(v); setPage(1); }}
+                format="MMM YYYY"
+                style={{ width: '100%' }}
+                allowClear={false}
+              />
+            </Col>
+            <Col xs={14} sm={3} md={3}>
+              <Button type="link" size="small"
+                onClick={() => { setModoFecha('rango'); setMes(null); setRango(null); setPage(1); }}>
+                Rango ▸
+              </Button>
+            </Col>
+          </>
+        ) : (
+          <>
+            <Col xs={18} sm={7} md={8}>
+              <RangePicker value={rango} onChange={v => { setRango(v as [Dayjs, Dayjs] | null); setPage(1); }}
+                format="DD/MM/YYYY" style={{ width: '100%' }} placeholder={['Desde', 'Hasta']} />
+            </Col>
+            <Col xs={6} sm={2} md={2}>
+              <Button type="link" size="small"
+                onClick={() => { setModoFecha('mes'); setMes(dayjs()); setRango(null); setPage(1); }}>
+                ◂ Mes
+              </Button>
+            </Col>
+          </>
+        )}
         {hayFiltros && (
-          <Col><Button type="text" size="small" icon={<FilterOutlined />} onClick={() => { setSearch(''); setTipo(undefined); setRango(null); setPage(1); }}>Limpiar</Button></Col>
+          <Col>
+            <Button type="text" size="small" icon={<FilterOutlined />}
+              onClick={() => { setSearch(''); setTipo(undefined); setRango(null); setMes(dayjs()); setModoFecha('mes'); setPage(1); }}>
+              Limpiar
+            </Button>
+          </Col>
         )}
       </Row>
 

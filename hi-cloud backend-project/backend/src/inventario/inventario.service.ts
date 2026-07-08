@@ -215,7 +215,8 @@ export class InventarioService {
     if (search) qb.andWhere('(producto.nombre ILIKE :s OR producto.codigo ILIKE :s OR m.referencia ILIKE :s OR m.motivo ILIKE :s)', { s: `%${search}%` });
     if (tipo)  qb.andWhere('m.tipo = :tipo', { tipo });
     if (desde) qb.andWhere('m.createdAt >= :desde', { desde });
-    if (hasta) qb.andWhere('m.createdAt <= :hasta', { hasta: `${hasta} 23:59:59` });
+    // ISO 8601 (del month-picker con TZ RD) se usa directo; fecha simple YYYY-MM-DD añade hora fin de día
+    if (hasta) qb.andWhere('m.createdAt <= :hasta', { hasta: hasta.includes('T') ? hasta : `${hasta} 23:59:59` });
 
     const [data, total] = await qb
       .orderBy('m.createdAt', 'DESC')
