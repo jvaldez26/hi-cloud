@@ -5,275 +5,230 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../api/client';
+import { useAuthStore } from '../../store/auth.store';
+import { MENU_CATEGORIES_DATA, ADDON_IDS, rolPuedeVerRuta } from '../../config/menuConfig';
 
 const { Text } = Typography;
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
 interface NavItem {
-  key:      string;
-  label:    string;
-  group:    string;
-  emoji:    string;
-  keywords: string[];  // ← nuevo: aliases de búsqueda
+  key:        string;
+  label:      string;
+  group:      string;
+  categoryId: string;
+  emoji:      string;
+  keywords:   string[];
 }
 
-// ── Índice completo de módulos con keywords ───────────────────────────────────
+// ── Emoji por categoría ───────────────────────────────────────────────────────
 
-const NAV_ITEMS: NavItem[] = [
+const GROUP_EMOJI: Record<string, string> = {
+  ventas:        '🛒',
+  compras:       '📦',
+  inventario:    '🗄️',
+  finanzas:      '🏦',
+  fiscal:        '🏛️',
+  comercial:     '🎯',
+  rrhh:          '👤',
+  reportes:      '📊',
+  sistema:       '⚙️',
+  clinica:       '🏥',
+  taller:        '🔧',
+  optica:        '👁️',
+  farmacia:      '💊',
+  restaurante:   '🍽️',
+  gimnasio:      '🏋️',
+  servicios_pro: '📋',
+  prestamista:   '💰',
+  agro:          '🌾',
+  transporte:    '🚚',
+  Principal:     '📊',
+  Acciones:      '➕',
+};
 
-  // ── PRINCIPAL ──────────────────────────────────────────────────────────────
-  { key: '/dashboard',      label: 'Dashboard',              group: 'Principal',   emoji: '📊',
-    keywords: ['dashboard','inicio','home','panel','inicio','resumen','kpi'] },
-  { key: '/pos',            label: 'Punto de Venta',         group: 'Principal',   emoji: '⚡',
-    keywords: ['pos','punto de venta','caja','venta','cobro','terminal','tienda','cashier'] },
-  { key: '/caja',           label: 'Caja Diaria',            group: 'Principal',   emoji: '💵',
-    keywords: ['caja','caja diaria','efectivo','arqueo','apertura','cierre','cash'] },
-
-  // ── ACCIONES RÁPIDAS ───────────────────────────────────────────────────────
-  { key: '/facturas/nueva',      label: 'Nueva Factura',       group: 'Acciones', emoji: '➕',
-    keywords: ['nueva factura','crear factura','emitir factura','agregar factura'] },
-  { key: '/compras/nueva',       label: 'Nueva Compra',        group: 'Acciones', emoji: '➕',
-    keywords: ['nueva compra','crear compra','orden de compra'] },
-  { key: '/cotizaciones/nueva',  label: 'Nueva Cotización',    group: 'Acciones', emoji: '➕',
-    keywords: ['nueva cotizacion','crear cotizacion','nueva proforma'] },
-  { key: '/clientes',            label: 'Nuevo Cliente',       group: 'Acciones', emoji: '➕',
-    keywords: ['nuevo cliente','agregar cliente','crear cliente'] },
-
-  // ── VENTAS ─────────────────────────────────────────────────────────────────
-  { key: '/clientes',          label: 'Clientes',                    group: 'Ventas', emoji: '👥',
-    keywords: ['clientes','cliente','customers','compradores','contacto de venta'] },
-  { key: '/cotizaciones',      label: 'Cotizaciones',                group: 'Ventas', emoji: '📋',
-    keywords: ['cotizaciones','cotizacion','presupuesto','proforma','oferta','quote','propuesta'] },
-  { key: '/pre-facturas',      label: 'Pre-Facturas',               group: 'Ventas', emoji: '📄',
-    keywords: ['pre-facturas','pre facturas','pre-factura','pedidos','orden venta'] },
-  { key: '/facturas',          label: 'Facturas (e-CF)',             group: 'Ventas', emoji: '🧾',
-    keywords: ['facturas','factura','facturacion','invoice','comprobante','ecf','e-cf','fiscal','e31','e32'] },
-  { key: '/notas-debito',      label: 'Notas de Débito (E33)',       group: 'Ventas', emoji: '📤',
-    keywords: ['notas de debito','nota debito','e33','debito','ajuste cobrar'] },
-  { key: '/notas-credito',     label: 'Notas de Crédito Ventas (E34)', group: 'Ventas', emoji: '📥',
-    keywords: ['notas de credito','nota credito','e34','credito ventas','nc ventas','devolucion ventas'] },
-  { key: '/devoluciones',      label: 'Devoluciones',                group: 'Ventas', emoji: '↩️',
-    keywords: ['devoluciones','devolucion','retornos','returns','nc e34','reversal'] },
-  { key: '/conduces',          label: 'Conduces / Entregas',         group: 'Ventas', emoji: '🚚',
-    keywords: ['conduces','conduce','entregas','despacho','delivery','guia de entrega','remision'] },
-  { key: '/facturas-recurrentes', label: 'Facturación Recurrente',  group: 'Ventas', emoji: '🔄',
-    keywords: ['facturas recurrentes','facturacion recurrente','suscripcion','recurring','periodica'] },
-  { key: '/precios-especiales', label: 'Precios Especiales',        group: 'Ventas', emoji: '🏷️',
-    keywords: ['precios especiales','lista de precios','tarifas','descuento cliente','pricing'] },
-  { key: '/descuentos',        label: 'Descuentos Automáticos',     group: 'Ventas', emoji: '%',
-    keywords: ['descuentos','descuento','promociones','rebaja','offerts','cupones'] },
-  { key: '/fidelidad',         label: 'Fidelidad & Puntos',         group: 'Ventas', emoji: '⭐',
-    keywords: ['fidelidad','puntos','programa puntos','lealtad','loyalty','rewards'] },
-  { key: '/cuotas',            label: 'Cuotas / Planes de Pago',    group: 'Ventas', emoji: '📅',
-    keywords: ['cuotas','plan de pago','pagos a plazos','financiamiento','cuotas cliente','installments'] },
-  { key: '/credito-cliente',   label: 'Crédito al Cliente',         group: 'Ventas', emoji: '💳',
-    keywords: ['credito cliente','linea de credito','limite credito','credit line'] },
-
-  // ── CRM & COMERCIAL ────────────────────────────────────────────────────────
-  { key: '/crm',               label: 'CRM — Leads & Oportunidades',group: 'CRM', emoji: '🎯',
-    keywords: ['crm','leads','oportunidades','pipeline','prospectos','embudo ventas','funnel','seguimiento'] },
-  { key: '/vendedores',        label: 'Vendedores',                  group: 'CRM', emoji: '👔',
-    keywords: ['vendedores','vendedor','fuerza de ventas','sales rep','representante','agente'] },
-  { key: '/comisiones',        label: 'Comisiones de Ventas',       group: 'CRM', emoji: '💰',
-    keywords: ['comisiones','comision','comisiones vendedores','incentivos','bonus ventas'] },
-  { key: '/licitaciones',      label: 'Licitaciones',               group: 'CRM', emoji: '📜',
-    keywords: ['licitaciones','licitacion','concurso','propuesta publica','bid','rfp','gobierno'] },
-  { key: '/encuestas',         label: 'Encuestas NPS/CSAT',         group: 'CRM', emoji: '📊',
-    keywords: ['encuestas','encuesta','nps','csat','satisfaccion cliente','feedback','calificacion'] },
-
-  // ── COMPRAS ────────────────────────────────────────────────────────────────
-  { key: '/compras',            label: 'Órdenes de Compra',         group: 'Compras', emoji: '🛒',
-    keywords: ['compras','compra','ordenes de compra','orden de compra','purchase','pedidos proveedor'] },
-  { key: '/solicitudes-compra', label: 'Solicitudes de Compra',     group: 'Compras', emoji: '📝',
-    keywords: ['solicitudes de compra','solicitud compra','requisicion','requerimiento','rfq','cotizacion proveedor'] },
-  { key: '/proveedores',        label: 'Proveedores',               group: 'Compras', emoji: '🏭',
-    keywords: ['proveedores','proveedor','supplier','abastecedores','vendedores externos','partners'] },
-  { key: '/notas-credito-compras', label: 'NC de Compras',          group: 'Compras', emoji: '📥',
-    keywords: ['notas credito compras','nc compras','devolucion proveedor','credito proveedor'] },
-  { key: '/gastos',             label: 'Gastos Operativos',         group: 'Compras', emoji: '💸',
-    keywords: ['gastos','gasto','gastos operativos','e43','expenses','egresos','desembolso','gasto menor'] },
-  { key: '/caja-chica',         label: 'Caja Chica',               group: 'Compras', emoji: '🪙',
-    keywords: ['caja chica','caja menor','petty cash','gastos menores','fondo fijo'] },
-
-  // ── COBROS & PAGOS ─────────────────────────────────────────────────────────
-  { key: '/cxc',               label: 'Cuentas por Cobrar',        group: 'Cobros & Pagos', emoji: '💰',
-    keywords: ['cuentas por cobrar','cobros','cxc','cartera','receivables','facturas pendientes cobro','pendientes cobro'] },
-  { key: '/recibos-cobro',     label: 'Recibos de Cobro',          group: 'Cobros & Pagos', emoji: '🧾',
-    keywords: ['recibos de cobro','recibo de cobro','recibos de cobros','recibos cobros','recibos','cobros','pagos clientes','registrar pago','abono','receipt','pago recibido'] },
-  { key: '/datafono',          label: 'DataFono / Tarjetas',       group: 'Cobros & Pagos', emoji: '💳',
-    keywords: ['datafono','tarjetas','pos bancario','visa','mastercard','credito debito','pagos electronicos','terminal pago'] },
-  { key: '/cxp',               label: 'Cuentas por Pagar',         group: 'Cobros & Pagos', emoji: '📤',
-    keywords: ['cuentas por pagar','pagos','cxp','deudas','payables','facturas pendientes pago','obligaciones proveedor'] },
-  { key: '/bancos',            label: 'Bancos / Tesorería',        group: 'Cobros & Pagos', emoji: '🏦',
-    keywords: ['bancos','banco','tesoreria','conciliacion bancaria','cuentas bancarias','extracto bancario','banking'] },
-  { key: '/depositos',         label: 'Depósitos Bancarios',       group: 'Cobros & Pagos', emoji: '🏧',
-    keywords: ['depositos','deposito','deposito bancario','abono cuenta','bank deposit'] },
-  { key: '/cheques',           label: 'Cheques y Pagos',           group: 'Cobros & Pagos', emoji: '📄',
-    keywords: ['cheques','cheque','pago con cheque','impresion cheques','checks'] },
-  { key: '/divisas',           label: 'Divisas & Tasas de Cambio', group: 'Cobros & Pagos', emoji: '💱',
-    keywords: ['divisas','tasa de cambio','usd','dolar','euro','moneda extranjera','forex','tipo de cambio'] },
-
-  // ── INVENTARIO & PRODUCCIÓN ────────────────────────────────────────────────
-  { key: '/productos',          label: 'Productos',                group: 'Inventario', emoji: '📦',
-    keywords: ['productos','producto','articulos','items','catalogo','servicios','sku','producto inventario'] },
-  { key: '/grupos',             label: 'Grupos & Segmentos',       group: 'Inventario', emoji: '🏷️',
-    keywords: ['grupos','grupo','segmentos','categorias producto','familias','clasificacion'] },
-  { key: '/inventario',         label: 'Movimientos de Stock',     group: 'Inventario', emoji: '🗄️',
-    keywords: ['inventario','stock','existencias','movimientos stock','entradas','salidas','almacen','bodega','warehouse'] },
-  { key: '/conteo-inventario',  label: 'Conteo Físico',            group: 'Inventario', emoji: '🔢',
-    keywords: ['conteo inventario','conteo fisico','inventario fisico','toma de inventario','stocktaking'] },
-  { key: '/valoracion-stock',   label: 'Valoración AVCO',          group: 'Inventario', emoji: '📊',
-    keywords: ['valoracion stock','avco','costo promedio','costo inventario','stock valuation'] },
-  { key: '/almacenes',          label: 'Almacenes / Bodegas',      group: 'Inventario', emoji: '🏭',
-    keywords: ['almacenes','almacen','bodegas','bodega','warehouse','transferencias almacen','ubicaciones'] },
-  { key: '/wms',                label: 'WMS — Gestión de Almacén', group: 'Inventario', emoji: '📍',
-    keywords: ['wms','warehouse management','picking','pack','ship','rutas recogida','ordenes picking','gestion almacen'] },
-  { key: '/manufactura',        label: 'Manufactura & Producción', group: 'Inventario', emoji: '🏗️',
-    keywords: ['manufactura','produccion','fabricacion','listas de materiales','bom','ordenes produccion','manufactura'] },
-  { key: '/planeacion-demanda', label: 'Planeación de la Demanda', group: 'Inventario', emoji: '📈',
-    keywords: ['planeacion demanda','proyeccion ventas','abastecimiento','forecast','demanda','reposicion stock'] },
-  { key: '/etiquetas',          label: 'Etiquetas',                group: 'Inventario', emoji: '🔳',
-    keywords: ['etiquetas','etiqueta','qr','codigo barras','labels','impresion etiquetas'] },
-
-  // ── PROYECTOS & SERVICIOS ──────────────────────────────────────────────────
-  { key: '/proyectos',    label: 'Proyectos',              group: 'Proyectos', emoji: '📁',
-    keywords: ['proyectos','proyecto','project','gestion proyectos','tareas','hitos','gantt'] },
-  { key: '/contratos',    label: 'Contratos',              group: 'Proyectos', emoji: '📜',
-    keywords: ['contratos','contrato','contract','acuerdo','convenio','servicio contratado'] },
-  { key: '/servicios',    label: 'Órdenes de Servicio',    group: 'Proyectos', emoji: '🔧',
-    keywords: ['servicios','servicio','ordenes servicio','orden servicio','tickets','soporte tecnico','mantenimiento cliente'] },
-  { key: '/mantenimiento', label: 'Mantenimiento de Equipos', group: 'Proyectos', emoji: '⚙️',
-    keywords: ['mantenimiento','equipos','maquinaria','preventivo','correctivo','orden mantenimiento'] },
-  { key: '/flota',        label: 'Flota de Vehículos',     group: 'Proyectos', emoji: '🚗',
-    keywords: ['flota','vehiculos','autos','camiones','transporte','fleet','gestion vehiculos'] },
-  { key: '/objetivos',    label: 'Objetivos OKR',          group: 'Proyectos', emoji: '🎯',
-    keywords: ['objetivos','okr','metas','kpi objetivos','key results','goals'] },
-
-  // ── RECURSOS HUMANOS ───────────────────────────────────────────────────────
-  { key: '/nomina',          label: 'Nómina',               group: 'RRHH', emoji: '👤',
-    keywords: ['nomina','nominas','payroll','salarios','pago empleados','liquidacion nomina','recibo sueldo'] },
-  { key: '/portal-empleado', label: 'Portal Empleados',     group: 'RRHH', emoji: '🏠',
-    keywords: ['portal empleado','self service empleado','mi portal','empleados portal'] },
-  { key: '/vacaciones',      label: 'Vacaciones y Permisos',group: 'RRHH', emoji: '🏖️',
-    keywords: ['vacaciones','permisos','dias libres','ausencias','leave management','dias libres empleado'] },
-  { key: '/tss',             label: 'TSS / Seguridad Social',group: 'RRHH', emoji: '🏥',
-    keywords: ['tss','seguridad social','ley 87-01','sfs','afp','srl','infotep','aportes sociales'] },
-  { key: '/isr',             label: 'ISR Empleados',        group: 'RRHH', emoji: '📋',
-    keywords: ['isr','impuesto renta','ley 11-92','retencion isr','ir17','declaracion empleados'] },
-  { key: '/evaluaciones',    label: 'Evaluaciones de Desempeño', group: 'RRHH', emoji: '⭐',
-    keywords: ['evaluaciones','desempeno','performance','calificacion empleados','appraisal'] },
-  { key: '/capacitacion',    label: 'Capacitación',         group: 'RRHH', emoji: '🎓',
-    keywords: ['capacitacion','entrenamiento','formacion','cursos','training','aprendizaje'] },
-
-  // ── CONTABILIDAD & FISCAL ──────────────────────────────────────────────────
-  { key: '/contabilidad',         label: 'Asientos Contables',      group: 'Contabilidad', emoji: '📒',
-    keywords: ['asientos contables','contabilidad','libro diario','asiento','journal entry','mayor','contable'] },
-  { key: '/libro-mayor',          label: 'Libro Mayor',             group: 'Contabilidad', emoji: '📗',
-    keywords: ['libro mayor','ledger','cuentas contables','mayor general','plan cuentas'] },
-  { key: '/balance-comprobacion', label: 'Balance de Comprobación', group: 'Contabilidad', emoji: '⚖️',
-    keywords: ['balance comprobacion','trial balance','balanza comprobacion','saldos cuentas'] },
-  { key: '/reportes-financieros', label: 'Estados Financieros',     group: 'Contabilidad', emoji: '📊',
-    keywords: ['estados financieros','balance general','estado resultados','p&l','ganancias perdidas','flujo efectivo','financial statements'] },
-  { key: '/libro-ventas',         label: 'Libro de Ventas & Compras', group: 'Contabilidad', emoji: '📔',
-    keywords: ['libro ventas','libro compras','606','607','608','dgii reportes','it-1','it-2','it-3'] },
-  { key: '/periodo-contable',     label: 'Períodos Contables',      group: 'Contabilidad', emoji: '📅',
-    keywords: ['periodo contable','periodos','cierre contable','apertura periodo','ejercicio fiscal'] },
-  { key: '/presupuestos',         label: 'Presupuestos',            group: 'Contabilidad', emoji: '💹',
-    keywords: ['presupuestos','presupuesto','budget','planificacion financiera','forecast','proyeccion'] },
-  { key: '/activos-fijos',        label: 'Activos Fijos',           group: 'Contabilidad', emoji: '🏢',
-    keywords: ['activos fijos','activo fijo','depreciacion','amortizacion','fixed assets','propiedad planta equipo'] },
-  { key: '/centro-costos',        label: 'Centro de Costos',        group: 'Contabilidad', emoji: '🎯',
-    keywords: ['centro costos','centro de costos','cost center','distribucion costos','departamentos costos'] },
-  { key: '/flujo-caja',           label: 'Flujo de Caja',           group: 'Contabilidad', emoji: '💧',
-    keywords: ['flujo caja','cash flow','proyeccion efectivo','liquidez','flujo efectivo'] },
-  { key: '/cuentas-estadisticas', label: 'Cuentas Estadísticas',    group: 'Contabilidad', emoji: '📈',
-    keywords: ['cuentas estadisticas','kpi financiero','indicadores','estadisticas contables','metricas'] },
-  { key: '/ecf',                  label: 'e-CF — Panel DGII',       group: 'Contabilidad', emoji: '🔒',
-    keywords: ['ecf','e-cf','comprobantes fiscales','dgii','e31','e32','e33','e34','e41','e43','ncf','encf','comprobante fiscal electronico'] },
-  { key: '/declaraciones',        label: 'Declaraciones DGII',      group: 'Contabilidad', emoji: '🏛️',
-    keywords: ['declaraciones','dgii','it-1','ir-17','606','607','608','ir2','declaracion impuestos','tax return'] },
-  { key: '/retenciones',          label: 'Retenciones ISR',         group: 'Contabilidad', emoji: '✂️',
-    keywords: ['retenciones','retencion isr','retencion impuesto','withholding','isr pagado terceros'] },
-
-  // ── ANÁLISIS & REPORTES ────────────────────────────────────────────────────
-  { key: '/asistente',          label: '🤖 Asistente IA',          group: 'Análisis', emoji: '🤖',
-    keywords: ['asistente','ia','inteligencia artificial','chatgpt','claude','ai','assistant','preguntas'] },
-  { key: '/analytics',          label: 'Business Intelligence',    group: 'Análisis', emoji: '📈',
-    keywords: ['analytics','business intelligence','bi','analisis','graficas','reportes avanzados','dashboard ejecutivo'] },
-  { key: '/kpi',                label: 'KPI Ejecutivo',            group: 'Análisis', emoji: '🎯',
-    keywords: ['kpi','indicadores','metricas','performance','cuadro mando','ejecutivo dashboard'] },
-  { key: '/generador-reportes', label: 'Generador de Reportes',   group: 'Análisis', emoji: '📋',
-    keywords: ['generador reportes','reportes personalizados','custom reports','crear reporte','exportar datos'] },
-  { key: '/reportes',           label: 'Reportes',                 group: 'Análisis', emoji: '📊',
-    keywords: ['reportes','reporte','informes','estadisticas','ventas reporte','606','607'] },
-  { key: '/calendario',         label: 'Calendario de Obligaciones', group: 'Análisis', emoji: '📅',
-    keywords: ['calendario','obligaciones','fechas limite','vencimientos','dgii fechas','fiscal calendar'] },
-
-  // ── SISTEMA ────────────────────────────────────────────────────────────────
-  { key: '/configuracion',  label: 'Configuración',          group: 'Sistema', emoji: '⚙️',
-    keywords: ['configuracion','config','settings','ajustes','parametros','empresa configuracion','setup'] },
-  { key: '/sucursales',     label: 'Sucursales',             group: 'Sistema', emoji: '🏪',
-    keywords: ['sucursales','sucursal','tiendas','puntos venta','branch','locations'] },
-  { key: '/equipo',         label: 'Usuarios y Roles',       group: 'Sistema', emoji: '👥',
-    keywords: ['usuarios','usuario','roles','permisos','accesos','equipo','users','staff'] },
-  { key: '/mis-empresas',   label: 'Mis Empresas',           group: 'Sistema', emoji: '🏢',
-    keywords: ['empresas','empresa','multi empresa','negocios','organizaciones','companies'] },
-  { key: '/aprobaciones',   label: 'Aprobaciones & Workflow', group: 'Sistema', emoji: '✅',
-    keywords: ['aprobaciones','workflow','flujo aprobacion','autorizar','approve','solicitudes aprobacion'] },
-  { key: '/documentos',     label: 'Documentos',             group: 'Sistema', emoji: '📁',
-    keywords: ['documentos','archivos','files','documentacion','adjuntos','storage'] },
-  { key: '/comunicaciones', label: 'WhatsApp & Mensajería',  group: 'Sistema', emoji: '💬',
-    keywords: ['comunicaciones','whatsapp','mensajeria','notificaciones','sms','mensajes','messaging'] },
-  { key: '/importacion',    label: 'Importación CSV',        group: 'Sistema', emoji: '📤',
-    keywords: ['importacion','importar','csv','excel','bulk upload','carga masiva','migracion datos'] },
-  { key: '/auditoria',      label: 'Auditoría',              group: 'Sistema', emoji: '🔍',
-    keywords: ['auditoria','audit','logs','historial cambios','trazabilidad','registro actividad'] },
-  { key: '/contactos',      label: 'Directorio de Contactos', group: 'Sistema', emoji: '📇',
-    keywords: ['contactos','directorio','agenda','address book','personas','emails'] },
-  { key: '/profile',        label: 'Mi Perfil',              group: 'Sistema', emoji: '👤',
-    keywords: ['perfil','mi cuenta','mi perfil','profile','account','datos personales','cambiar contrasena'] },
-];
-
-// ── Colores por grupo ─────────────────────────────────────────────────────────
+// ── Colores de Tag por categoryId ─────────────────────────────────────────────
 
 const GROUP_COLORS: Record<string, string> = {
-  Principal: 'blue',  Acciones: 'volcano', Ventas: 'green',
-  CRM: 'lime',        Compras: 'purple',   'Cobros & Pagos': 'gold',
-  Inventario: 'cyan', Proyectos: 'geekblue', RRHH: 'magenta',
-  Contabilidad: 'red', Análisis: 'blue',   Sistema: 'default',
+  ventas:        'green',
+  compras:       'purple',
+  inventario:    'cyan',
+  finanzas:      'gold',
+  fiscal:        'red',
+  comercial:     'lime',
+  rrhh:          'magenta',
+  reportes:      'blue',
+  sistema:       'default',
+  clinica:       'pink',
+  taller:        'orange',
+  optica:        'geekblue',
+  farmacia:      'green',
+  restaurante:   'volcano',
+  gimnasio:      'purple',
+  servicios_pro: 'blue',
+  prestamista:   'gold',
+  agro:          'lime',
+  transporte:    'geekblue',
+  Principal:     'blue',
+  Acciones:      'volcano',
 };
+
+// ── Keywords de búsqueda por ruta ─────────────────────────────────────────────
+
+const PATH_KEYWORDS: Record<string, string[]> = {
+  '/facturas':             ['facturas','factura','facturacion','invoice','comprobante','ecf','e-cf','fiscal','e31','e32'],
+  '/cotizaciones':         ['cotizaciones','cotizacion','presupuesto','proforma','oferta','quote','propuesta'],
+  '/pre-facturas':         ['pre-facturas','pre facturas','pre-factura','pedidos','orden venta'],
+  '/pro-formas':           ['pro formas','proforma','oferta formal','quotation'],
+  '/facturas-recurrentes': ['facturas recurrentes','facturacion recurrente','suscripcion','recurring','periodica'],
+  '/notas-credito':        ['notas de credito','nota credito','e34','credito ventas','nc ventas','devolucion ventas'],
+  '/notas-debito':         ['notas de debito','nota debito','e33','debito','ajuste cobrar'],
+  '/devoluciones':         ['devoluciones','devolucion','retornos','returns','nc e34','reversal'],
+  '/clientes':             ['clientes','cliente','customers','compradores','contacto de venta'],
+  '/credito-cliente':      ['credito cliente','linea de credito','limite credito','credit line'],
+  '/cxc':                  ['cuentas por cobrar','cobros','cxc','cartera','receivables','facturas pendientes cobro'],
+  '/cuotas':               ['cuotas','plan de pago','pagos a plazos','financiamiento','installments'],
+  '/recibos-cobro':        ['recibos de cobro','recibo de cobro','cobros','pagos clientes','registrar pago','abono','receipt'],
+  '/anticipos-cliente':    ['anticipos','adelanto cliente','prepago','anticipo'],
+  '/fidelidad':            ['fidelidad','puntos','programa puntos','lealtad','loyalty','rewards'],
+  '/conduces':             ['conduces','conduce','entregas','despacho','delivery','guia de entrega','remision'],
+  '/soporte/tickets':      ['soporte','tickets','ayuda','helpdesk','ticket soporte','incidencias'],
+
+  '/solicitudes-compra':    ['solicitudes de compra','solicitud compra','requisicion','requerimiento','rfq'],
+  '/compras':               ['compras','compra','ordenes de compra','orden de compra','purchase','pedidos proveedor'],
+  '/proveedores':           ['proveedores','proveedor','supplier','abastecedores','partners'],
+  '/cxp':                   ['cuentas por pagar','pagos','cxp','deudas','payables','facturas pendientes pago'],
+  '/notas-credito-compras': ['notas credito compras','nc compras','devolucion proveedor','credito proveedor'],
+  '/gastos':                ['gastos','gasto','gastos operativos','e43','expenses','egresos','desembolso'],
+  '/caja-chica':            ['caja chica','caja menor','petty cash','gastos menores','fondo fijo'],
+
+  '/productos':            ['productos','producto','articulos','items','catalogo','servicios','sku'],
+  '/almacenes':            ['almacenes','almacen','bodegas','bodega','warehouse','transferencias almacen'],
+  '/inventario':           ['inventario','stock','existencias','movimientos stock','entradas','salidas','warehouse'],
+  '/conteo-inventario':    ['conteo inventario','conteo fisico','inventario fisico','toma de inventario','stocktaking'],
+  '/uom':                  ['unidades de medida','uom','medidas','litros','kilos','cajas','unidades'],
+  '/valoracion-stock':     ['valoracion stock','avco','costo promedio','costo inventario','stock valuation'],
+  '/etiquetas':            ['etiquetas','etiqueta','qr','codigo barras','labels','impresion etiquetas'],
+  '/wms':                  ['wms','warehouse management','picking','pack','ship','ordenes picking','gestion almacen'],
+  '/manufactura':          ['manufactura','produccion','fabricacion','listas de materiales','bom','ordenes produccion'],
+  '/planeacion-demanda':   ['planeacion demanda','proyeccion ventas','abastecimiento','forecast','demanda','reposicion stock'],
+  '/flota':                ['flota','vehiculos','autos','camiones','transporte','fleet','gestion vehiculos'],
+
+  '/bancos':               ['bancos','banco','tesoreria','conciliacion bancaria','cuentas bancarias','banking'],
+  '/depositos':            ['depositos','deposito','deposito bancario','abono cuenta','bank deposit'],
+  '/cheques':              ['cheques','cheque','pago con cheque','impresion cheques','checks'],
+  '/datafono':             ['datafono','tarjetas','pos bancario','visa','mastercard','pagos electronicos'],
+  '/divisas':              ['divisas','tasa de cambio','usd','dolar','euro','moneda extranjera','forex'],
+  '/contabilidad':         ['asientos contables','contabilidad','libro diario','asiento','journal entry'],
+  '/libro-mayor':          ['libro mayor','ledger','cuentas contables','mayor general','plan cuentas'],
+  '/balance-comprobacion': ['balance comprobacion','trial balance','balanza comprobacion','saldos cuentas'],
+  '/reportes-financieros': ['estados financieros','balance general','estado resultados','p&l','ganancias perdidas'],
+  '/libro-ventas':         ['libro ventas','libro compras','606','607','608','dgii reportes','it-1','it-2'],
+  '/periodo-contable':     ['periodo contable','periodos','cierre contable','apertura periodo','ejercicio fiscal'],
+  '/presupuestos':         ['presupuestos','presupuesto','budget','planificacion financiera','forecast'],
+  '/activos-fijos':        ['activos fijos','activo fijo','depreciacion','amortizacion','fixed assets'],
+  '/centro-costos':        ['centro costos','centro de costos','cost center','distribucion costos'],
+  '/flujo-caja':           ['flujo caja','cash flow','proyeccion efectivo','liquidez'],
+  '/distribucion-costos':  ['distribucion costos','costos distribucion','imputacion costos'],
+
+  '/ecf':                  ['ecf','e-cf','comprobantes fiscales','dgii','e31','e32','e33','e34','ncf','encf'],
+  '/ecf-recibidos':        ['ecf recibidos','comprobantes recibidos','facturas proveedor ecf'],
+  '/declaraciones':        ['declaraciones','dgii','it-1','ir-17','606','607','608','ir2','declaracion impuestos'],
+  '/retenciones':          ['retenciones','retencion isr','retencion impuesto','withholding'],
+
+  '/crm':          ['crm','leads','oportunidades','pipeline','prospectos','embudo ventas','funnel','seguimiento'],
+  '/vendedores':   ['vendedores','vendedor','fuerza de ventas','sales rep','representante','agente'],
+  '/comisiones':   ['comisiones','comision','comisiones vendedores','incentivos','bonus ventas'],
+  '/licitaciones': ['licitaciones','licitacion','concurso','propuesta publica','bid','rfp'],
+  '/encuestas':    ['encuestas','encuesta','nps','csat','satisfaccion cliente','feedback'],
+  '/proyectos':    ['proyectos','proyecto','project','gestion proyectos','tareas','hitos','gantt'],
+  '/contratos':    ['contratos','contrato','contract','acuerdo','convenio'],
+  '/servicios':    ['servicios','servicio','ordenes servicio','orden servicio','mantenimiento cliente'],
+  '/mantenimiento':['mantenimiento','equipos','maquinaria','preventivo','correctivo','orden mantenimiento'],
+  '/objetivos':    ['objetivos','okr','metas','kpi objetivos','key results','goals'],
+
+  '/nomina':          ['nomina','nominas','payroll','salarios','pago empleados','liquidacion nomina','recibo sueldo'],
+  '/portal-empleado': ['portal empleado','self service empleado','mi portal','empleados portal'],
+  '/vacaciones':      ['vacaciones','permisos','dias libres','ausencias','leave management'],
+  '/tss':             ['tss','seguridad social','ley 87-01','sfs','afp','srl','infotep','aportes sociales'],
+  '/isr':             ['isr','impuesto renta','ley 11-92','retencion isr','ir17','declaracion empleados'],
+  '/evaluaciones':    ['evaluaciones','desempeno','performance','calificacion empleados','appraisal'],
+  '/capacitacion':    ['capacitacion','entrenamiento','formacion','cursos','training','aprendizaje'],
+
+  '/reportes':           ['reportes','reporte','informes','estadisticas','ventas reporte','606','607'],
+  '/analytics':          ['analytics','business intelligence','bi','analisis','graficas','reportes avanzados'],
+  '/kpi':                ['kpi','indicadores','metricas','performance','cuadro mando','ejecutivo dashboard'],
+  '/generador-reportes': ['generador reportes','reportes personalizados','custom reports','crear reporte'],
+  '/asistente':          ['asistente','ia','inteligencia artificial','chatgpt','claude','ai','assistant'],
+  '/calendario':         ['calendario','obligaciones','fechas limite','vencimientos','dgii fechas'],
+
+  '/configuracion':  ['configuracion','config','settings','ajustes','parametros','empresa configuracion','setup'],
+  '/mi-suscripcion': ['suscripcion','pagos plan','facturacion hicloud','plan','upgrade','billing'],
+  '/mis-empresas':   ['empresas','empresa','multi empresa','negocios','organizaciones','companies'],
+  '/sucursales':     ['sucursales','sucursal','tiendas','puntos venta','branch','locations'],
+  '/equipo':         ['usuarios','usuario','roles','permisos','accesos','equipo','users','staff'],
+  '/aprobaciones':   ['aprobaciones','workflow','flujo aprobacion','autorizar','approve','solicitudes'],
+  '/importacion':    ['importacion','importar','csv','excel','bulk upload','carga masiva','migracion datos'],
+  '/documentos':     ['documentos','archivos','files','documentacion','adjuntos','storage'],
+  '/contactos':      ['contactos','directorio','agenda','address book','personas','emails'],
+};
+
+// ── Items fijos (accesos rápidos fuera del menú lateral) ─────────────────────
+
+const FIXED_ITEMS: NavItem[] = [
+  {
+    key: '/dashboard', label: 'Dashboard', group: 'Principal', categoryId: 'Principal', emoji: '📊',
+    keywords: ['dashboard','inicio','home','panel','resumen','kpi'],
+  },
+  {
+    key: '/pos', label: 'Punto de Venta', group: 'Principal', categoryId: 'Principal', emoji: '⚡',
+    keywords: ['pos','punto de venta','caja','venta','cobro','terminal','tienda','cashier'],
+  },
+  {
+    key: '/caja', label: 'Caja Diaria', group: 'Principal', categoryId: 'Principal', emoji: '💵',
+    keywords: ['caja','caja diaria','efectivo','arqueo','apertura','cierre','cash'],
+  },
+  {
+    key: '/facturas/nueva', label: 'Nueva Factura', group: 'Acciones', categoryId: 'Acciones', emoji: '➕',
+    keywords: ['nueva factura','crear factura','emitir factura','agregar factura'],
+  },
+  {
+    key: '/compras/nueva', label: 'Nueva Compra', group: 'Acciones', categoryId: 'Acciones', emoji: '➕',
+    keywords: ['nueva compra','crear compra','orden de compra'],
+  },
+  {
+    key: '/cotizaciones/nueva', label: 'Nueva Cotización', group: 'Acciones', categoryId: 'Acciones', emoji: '➕',
+    keywords: ['nueva cotizacion','crear cotizacion','nueva proforma'],
+  },
+];
 
 const TIPO_EMOJI: Record<string, string> = {
   factura: '🧾', cliente: '👥', producto: '📦',
   proveedor: '🏭', compra: '🛒', cotizacion: '📋',
 };
 
-// ── Algoritmo de búsqueda mejorado ────────────────────────────────────────────
+// ── Búsqueda con score ────────────────────────────────────────────────────────
 
-function buscarNav(query: string): NavItem[] {
+function buscarNav(query: string, items: NavItem[]): NavItem[] {
   const q = query.toLowerCase().trim();
-  if (!q) return NAV_ITEMS.slice(0, 10);
+  if (!q) return items.slice(0, 10);
 
-  const scored = NAV_ITEMS.map(item => {
+  const scored = items.map(item => {
     const label = item.label.toLowerCase();
     const group = item.group.toLowerCase();
     const keys  = item.keywords;
+    let score   = 0;
 
-    // Score: cuanto más alto, mejor coincidencia
-    let score = 0;
+    if (label === q)               score += 100;
+    else if (label.startsWith(q))  score += 80;
+    else if (label.includes(q))    score += 60;
 
-    if (label === q)                                  score += 100; // exacto
-    else if (label.startsWith(q))                     score += 80;  // inicio
-    else if (label.includes(q))                       score += 60;  // contiene
+    if (group.includes(q))         score += 20;
 
-    if (group.includes(q))                            score += 20;
-
-    // Keywords — buscar en cada alias
     for (const kw of keys) {
-      if (kw === q)                score += 90;
-      else if (kw.startsWith(q))  score += 70;
-      else if (kw.includes(q))    score += 50;
+      if (kw === q)              score += 90;
+      else if (kw.startsWith(q)) score += 70;
+      else if (kw.includes(q))   score += 50;
     }
 
     return { item, score };
@@ -308,6 +263,38 @@ export default function CommandPalette({ open, onClose }: Props) {
   const inputRef                = useRef<HTMLInputElement>(null);
   const navigate                = useNavigate();
 
+  const { user } = useAuthStore();
+  const userRole = user?.role ?? 'viewer';
+
+  // Compartir caché con AppLayout (misma queryKey)
+  const { data: _misModulosRes } = useQuery<{ modulos: string[] }>({
+    queryKey: ['mis-modulos-addon'],
+    queryFn:  () => api.get('/modulos/mis-modulos').then((r: any) => r.data?.data ?? r.data),
+    enabled:  !!user,
+    staleTime: 5 * 60 * 1000,
+  });
+  const modulosActivos: string[] = _misModulosRes?.modulos ?? [];
+
+  // ── Índice dinámico — filtrado por rol + add-ons activos ──────────────────
+  const allNavItems = useMemo<NavItem[]>(() => {
+    const items: NavItem[] = FIXED_ITEMS.filter(i => rolPuedeVerRuta(i.key, userRole));
+    for (const cat of MENU_CATEGORIES_DATA) {
+      if (ADDON_IDS.includes(cat.id) && !modulosActivos.includes(cat.id)) continue;
+      for (const item of cat.items) {
+        if (!rolPuedeVerRuta(item.path, userRole)) continue;
+        items.push({
+          key:        item.path,
+          label:      item.label,
+          group:      cat.label,
+          categoryId: cat.id,
+          emoji:      GROUP_EMOJI[cat.id] ?? '📄',
+          keywords:   PATH_KEYWORDS[item.path] ?? [],
+        });
+      }
+    }
+    return items;
+  }, [userRole, modulosActivos]);
+
   const debouncedQuery = useDebounce(query.trim());
   const isSearching    = debouncedQuery.length >= 2;
 
@@ -319,10 +306,8 @@ export default function CommandPalette({ open, onClose }: Props) {
     staleTime: 5_000,
   });
 
-  // Resultados de módulos (siempre se muestran, filtrados por score)
-  const navResults = useMemo(() => buscarNav(query.trim()), [query]);
+  const navResults = useMemo(() => buscarNav(query.trim(), allNavItems), [query, allNavItems]);
 
-  // Lista plana para navegación con teclado
   const backendFlat = isSearching && backendResults
     ? Object.values(backendResults).flat().map(r => ({ ...r, isBackend: true }))
     : [];
@@ -367,7 +352,10 @@ export default function CommandPalette({ open, onClose }: Props) {
     >
       <span style={{ fontSize: 16, minWidth: 24, textAlign: 'center' }}>{item.emoji}</span>
       <Text style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{item.label}</Text>
-      <Tag color={GROUP_COLORS[item.group] ?? 'default'} style={{ fontSize: 10, margin: 0 }}>
+      <Tag
+        color={GROUP_COLORS[item.categoryId] ?? 'default'}
+        style={{ fontSize: 10, margin: 0, maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+      >
         {item.group}
       </Tag>
       {idx === selected && <ArrowRightOutlined style={{ color: token.colorPrimary, fontSize: 10 }} />}
@@ -468,7 +456,6 @@ export default function CommandPalette({ open, onClose }: Props) {
         {/* ── Resultados ────────────────────────────────────────────────────── */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '6px 0' }}>
 
-          {/* ── Módulos / accesos rápidos — siempre visibles ── */}
           {navResults.length > 0 && (
             <>
               <div style={{ padding: '4px 16px 3px', fontSize: 10, fontWeight: 700, color: token.colorTextTertiary, textTransform: 'uppercase', letterSpacing: '0.09em' }}>
@@ -478,7 +465,6 @@ export default function CommandPalette({ open, onClose }: Props) {
             </>
           )}
 
-          {/* ── Resultados del backend (registros) — solo cuando hay query ── */}
           {isSearching && backendResults && Object.keys(backendResults).length > 0 && (
             <>
               <Divider style={{ margin: '6px 0' }} />
@@ -498,7 +484,6 @@ export default function CommandPalette({ open, onClose }: Props) {
             </>
           )}
 
-          {/* Sin resultados — solo cuando no hay nada en ninguno de los dos lados */}
           {query.trim().length >= 2 && navResults.length === 0 && !isFetching &&
            (!backendResults || Object.keys(backendResults).length === 0) && (
             <div style={{ padding: '32px 16px', textAlign: 'center' }}>
@@ -531,7 +516,7 @@ export default function CommandPalette({ open, onClose }: Props) {
             </span>
           ))}
           <Text type="secondary" style={{ marginLeft: 'auto', fontSize: 10 }}>
-            {NAV_ITEMS.length} módulos indexados
+            {allNavItems.length} módulos indexados
           </Text>
         </div>
       </motion.div>
