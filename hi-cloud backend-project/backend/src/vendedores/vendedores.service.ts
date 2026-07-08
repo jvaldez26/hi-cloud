@@ -90,9 +90,6 @@ export class VendedoresService {
 
   async getRendimiento(id: number, mes: number, anio: number) {
     const vendedor = await this.findOne(id);
-    if (!vendedor.usuarioId) {
-      return { vendedor, totalVentas: 0, cantidadFacturas: 0, comisionGenerada: 0, pctLogrado: 0 };
-    }
 
     const periodo = `${anio}-${String(mes).padStart(2, '0')}`;
 
@@ -103,11 +100,11 @@ export class VendedoresService {
         COALESCE(SUM(f.total), 0)::text      AS "totalVentas",
         COUNT(f.id)::text                     AS "cantidadFacturas"
       FROM facturas f
-      WHERE f."usuarioId" = $1
+      WHERE f."vendedorId" = $1
         AND f.estado IN ('emitida','pagada')
         AND TO_CHAR(f.fecha, 'YYYY-MM') = $2
         AND f."isActive" = true
-    `, [vendedor.usuarioId, periodo]);
+    `, [vendedor.id, periodo]);
 
     const totalVentas       = +(raw[0]?.totalVentas      ?? 0);
     const cantidadFacturas  = +(raw[0]?.cantidadFacturas ?? 0);
@@ -128,29 +125,29 @@ export class VendedoresService {
     });
 
     const periodo = `${anio}-${String(mes).padStart(2, '0')}`;
-    const userIds = vendedores.filter(v => v.usuarioId).map(v => v.usuarioId!);
+    const vendedorIds = vendedores.map(v => v.id);
 
-    if (userIds.length === 0) return vendedores.map(v => ({ ...v, totalVentas: 0, comision: 0 }));
+    if (vendedorIds.length === 0) return [];
 
     const ventas = await this.dataSource.query<{
-      usuarioId: number; totalVentas: string; cantidadFacturas: string;
+      vendedorId: number; totalVentas: string; cantidadFacturas: string;
     }[]>(`
       SELECT
-        f."usuarioId",
+        f."vendedorId",
         COALESCE(SUM(f.total), 0)::text AS "totalVentas",
         COUNT(f.id)::text               AS "cantidadFacturas"
       FROM facturas f
-      WHERE f."usuarioId" = ANY($1)
+      WHERE f."vendedorId" = ANY($1)
         AND f.estado IN ('emitida','pagada')
         AND TO_CHAR(f.fecha, 'YYYY-MM') = $2
         AND f."isActive" = true
-      GROUP BY f."usuarioId"
-    `, [userIds, periodo]);
+      GROUP BY f."vendedorId"
+    `, [vendedorIds, periodo]);
 
-    const ventasMap = new Map(ventas.map(r => [r.usuarioId, r]));
+    const ventasMap = new Map(ventas.map(r => [r.vendedorId, r]));
 
     const ranking = vendedores.map(v => {
-      const rv         = v.usuarioId ? ventasMap.get(v.usuarioId) : undefined;
+      const rv         = ventasMap.get(v.id);
       const totalVentas = +(rv?.totalVentas ?? 0);
       const pctLogrado  = v.metaMensual > 0 ? +((totalVentas / Number(v.metaMensual)) * 100).toFixed(1) : 0;
       return {
@@ -169,7 +166,6 @@ export class VendedoresService {
 
   async getHistorial(id: number) {
     const vendedor = await this.findOne(id);
-    if (!vendedor.usuarioId) return [];
 
     const rows = await this.dataSource.query<{
       periodo: string; totalVentas: string; cantidadFacturas: string;
@@ -179,13 +175,13 @@ export class VendedoresService {
         COALESCE(SUM(f.total), 0)::text AS "totalVentas",
         COUNT(f.id)::text               AS "cantidadFacturas"
       FROM facturas f
-      WHERE f."usuarioId" = $1
+      WHERE f."vendedorId" = $1
         AND f.estado IN ('emitida','pagada')
         AND f."isActive" = true
         AND f.fecha >= NOW() - INTERVAL '12 months'
       GROUP BY TO_CHAR(f.fecha, 'YYYY-MM')
       ORDER BY periodo ASC
-    `, [vendedor.usuarioId]);
+    `, [vendedor.id]);
 
     return rows.map(r => ({
       periodo:          r.periodo,
@@ -246,23 +242,23 @@ export class VendedoresService {
     const hoy       = new Date();
     const periodo   = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`;
 
-    const vendedores = await this.vendedorRepo.count({ where: { empresaId, activo: true, isActive: true } });
-    const userIds    = (await this.vendedorRepo.find({ where: { empresaId, activo: true } }))
-      .filter(v => v.usuarioId).map(v => v.usuarioId!);
+    const vendedoresCount = await this.vendedorRepo.count({ where: { empresaId, activo: true, isActive: true } });
+    const vendedorIds     = (await this.vendedorRepo.find({ where: { empresaId, activo: true, isActive: true } }))
+      .map(v => v.id);
 
     let totalVentasMes = 0;
-    if (userIds.length > 0) {
+    if (vendedorIds.length > 0) {
       const r = await this.dataSource.query<{ total: string }[]>(`
         SELECT COALESCE(SUM(f.total), 0)::text AS total
         FROM facturas f
-        WHERE f."usuarioId" = ANY($1)
+        WHERE f."vendedorId" = ANY($1)
           AND f.estado IN ('emitida','pagada')
           AND TO_CHAR(f.fecha, 'YYYY-MM') = $2
           AND f."isActive" = true
-      `, [userIds, periodo]);
+      `, [vendedorIds, periodo]);
       totalVentasMes = +(r[0]?.total ?? 0);
     }
 
-    return { vendedores, totalVentasMes };
+    return { vendedores: vendedoresCount, totalVentasMes };
   }
 }
