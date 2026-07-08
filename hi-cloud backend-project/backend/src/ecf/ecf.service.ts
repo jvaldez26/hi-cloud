@@ -710,17 +710,58 @@ export class ECFService implements OnModuleInit {
     });
   }
 
-  async getECFsRechazados() {
+  async getECFsRechazados(incluirArchivados = false) {
     const empresaId = this.tenantService.getEmpresaId();
+    const archivoFiltro = incluirArchivados ? {} : { archivadoEnPanel: false };
     return this.ecfRepository.find({
       where: [
-        { estadoDGII: EstadoDGII.RECHAZADO,    empresaId, isActive: true },
-        { estadoDGII: EstadoDGII.CONTINGENCIA, empresaId, isActive: true },
+        { estadoDGII: EstadoDGII.RECHAZADO,    empresaId, isActive: true, ...archivoFiltro },
+        { estadoDGII: EstadoDGII.CONTINGENCIA, empresaId, isActive: true, ...archivoFiltro },
       ],
       relations: ['tipoECF'],
       order: { ultimoIntentoEnvio: 'DESC' },
       take: 200,
     });
+  }
+
+  /** Archiva un e-CF rechazado en el panel (solo visibilidad — no borra el registro). */
+  async archivarRechazado(numero: string, userId: number) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const ecf = await this.ecfRepository.findOne({ where: { numero, empresaId, isActive: true } });
+    if (!ecf) throw new NotFoundException(`e-CF ${numero} no encontrado`);
+    const estadosPermitidos: string[] = [EstadoDGII.RECHAZADO, EstadoDGII.CONTINGENCIA];
+    if (!estadosPermitidos.includes(ecf.estadoDGII)) {
+      throw new BadRequestException('Solo se pueden archivar e-CFs rechazados o en contingencia');
+    }
+    await this.ecfRepository.update(ecf.id, {
+      archivadoEnPanel: true,
+      archivadoPorId:   userId,
+      archivadoEn:      new Date(),
+    } as any);
+    return { success: true, numero };
+  }
+
+  /** Revierte el archivado — el e-CF vuelve al panel de acción requerida. */
+  async desarchivarRechazado(numero: string) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const ecf = await this.ecfRepository.findOne({ where: { numero, empresaId, isActive: true } });
+    if (!ecf) throw new NotFoundException(`e-CF ${numero} no encontrado`);
+    await this.ecfRepository.update(ecf.id, {
+      archivadoEnPanel: false,
+      archivadoPorId:   null as any,
+      archivadoEn:      null as any,
+    } as any);
+    return { success: true, numero };
+  }
+
+  /** Archiva múltiples e-CFs rechazados en una sola operación. */
+  async archivarMasivo(numeros: string[], userId: number) {
+    const results = await Promise.allSettled(
+      numeros.map(n => this.archivarRechazado(n, userId)),
+    );
+    const exitosos = results.filter(r => r.status === 'fulfilled').length;
+    const fallidos  = results.filter(r => r.status === 'rejected').length;
+    return { exitosos, fallidos, total: numeros.length };
   }
 
   async getXML(numero: string): Promise<string> {

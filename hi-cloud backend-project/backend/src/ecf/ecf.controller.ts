@@ -172,8 +172,33 @@ export class ECFController {
   @Get('rechazados')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'e-CFs rechazados disponibles para reenvío' })
-  getRechazados() {
-    return this.ecfService.getECFsRechazados();
+  getRechazados(@Query('incluirArchivados') incluirArchivados?: string) {
+    return this.ecfService.getECFsRechazados(incluirArchivados === 'true');
+  }
+
+  @Patch(':numero/archivar')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Archivar un e-CF rechazado del panel (no lo borra de BD)' })
+  archivarRechazado(@Param('numero') numero: string, @GetUser() usuario: User) {
+    return this.ecfService.archivarRechazado(numero, usuario.id);
+  }
+
+  @Patch(':numero/desarchivar')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Revertir el archivado — el e-CF vuelve al panel' })
+  desarchivarRechazado(@Param('numero') numero: string) {
+    return this.ecfService.desarchivarRechazado(numero);
+  }
+
+  @Post('archivar-masivo')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Archivar múltiples e-CFs rechazados en una operación' })
+  archivarMasivo(@Body() body: { numeros: string[] }, @GetUser() usuario: User) {
+    if (!Array.isArray(body.numeros) || body.numeros.length === 0) {
+      throw new BadRequestException('numeros debe ser un array no vacío');
+    }
+    return this.ecfService.archivarMasivo(body.numeros, usuario.id);
   }
 
   // ── Emisión de Notas de Débito (E33) y Notas de Crédito (E34) ─────────────

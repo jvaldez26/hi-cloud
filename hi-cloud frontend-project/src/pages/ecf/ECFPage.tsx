@@ -8,12 +8,12 @@ import ModuloBloqueado from '../../components/ui/ModuloBloqueado';
 import {
   Tabs, Table, Button, Tag, Card, Row, Col, Typography, Modal,
   Form, Input, InputNumber, Select, Space, Alert, message,
-  Badge, Drawer, Descriptions, Tooltip, theme } from 'antd';
+  Badge, Drawer, Descriptions, Tooltip, theme, Switch, Popconfirm } from 'antd';
 import {
   ReloadOutlined, DownloadOutlined, SendOutlined,
   WarningOutlined, CheckCircleOutlined, CloseCircleOutlined,
   ClockCircleOutlined, PlusOutlined, EditOutlined, StopOutlined, SearchOutlined,
-  CalendarOutlined, CopyOutlined, SyncOutlined,
+  CalendarOutlined, CopyOutlined, SyncOutlined, InboxOutlined, RollbackOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ecfApi } from '../../api/ecf.api';
@@ -696,15 +696,110 @@ function SecuenciasTab({ onRefresh }: { onRefresh: () => void }) {
 // ── Tab: Resumen ──────────────────────────────────────────────────────────────
 function ResumenTab({ onRefresh }: { onRefresh: () => void }) {
   const qc = useQueryClient();
+  const [verArchivados, setVerArchivados] = useState(false);
+  const [seleccionados, setSeleccionados] = useState<string[]>([]);
+
   const { data: pendientes, isFetching: fetchingP } = useQuery({
     queryKey:        ['ecf-pendientes'],
     queryFn:         ecfApi.pendientes,
     refetchInterval: (query) => ((query.state.data as any[])?.length ?? 0) > 0 ? 6_000 : false,
   });
   const { data: rechazados, isFetching: fetchingR } = useQuery({
-    queryKey: ['ecf-rechazados'],
-    queryFn:  ecfApi.rechazados,
+    queryKey: ['ecf-rechazados', verArchivados],
+    queryFn:  () => ecfApi.rechazados(verArchivados),
   });
+
+  const invalidarRechazados = () => {
+    qc.invalidateQueries({ queryKey: ['ecf-rechazados'] });
+    setSeleccionados([]);
+  };
+
+  const archivarMut = useMutation({
+    mutationFn: ecfApi.archivar,
+    onSuccess:  () => { invalidarRechazados(); message.success('e-CF archivado'); },
+    onError:    (e: any) => message.error(e?.response?.data?.message ?? 'Error al archivar'),
+  });
+
+  const desarchivarMut = useMutation({
+    mutationFn: ecfApi.desarchivar,
+    onSuccess:  () => { invalidarRechazados(); message.success('e-CF desarchivado'); },
+    onError:    (e: any) => message.error(e?.response?.data?.message ?? 'Error al desarchivar'),
+  });
+
+  const archivarMasivoMut = useMutation({
+    mutationFn: ecfApi.archivarMasivo,
+    onSuccess:  (d: any) => {
+      invalidarRechazados();
+      message.success(`${d?.data?.exitosos ?? d?.exitosos ?? seleccionados.length} e-CF(s) archivados`);
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al archivar'),
+  });
+
+  const reenviarMut = useMutation({
+    mutationFn: ecfApi.reenviar,
+    onSuccess: () => { invalidarRechazados(); qc.invalidateQueries({ queryKey: ['ecf-list'] }); message.success('Reenvío iniciado'); },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al reenviar'),
+  });
+
+  const colsRechazados = [
+    { title: 'Número', dataIndex: 'numero', width: 160,
+      render: (v: string) => <Text code style={{ fontSize: 11 }}>{v}</Text> },
+    { title: 'Error', dataIndex: 'errorEnvio', ellipsis: true,
+      render: (v: string) => <Text type="secondary" style={{ fontSize: 12 }}>{v ?? '—'}</Text> },
+    { title: '', key: 'acc', width: verArchivados ? 130 : 200, align: 'right' as const,
+      render: (_: any, r: any) => {
+        const secUsada = getSecuenciaUtilizada(r.respuestaDgii);
+        const puedeReenviar = !verArchivados && secUsada !== true;
+        return (
+          <Space size={4}>
+            {puedeReenviar && (
+              <Tooltip title="La secuencia de este e-CF no fue utilizada por DGII — puede reenviarse">
+                <Popconfirm
+                  title={`Reenviar ${r.numero}`}
+                  description="¿Confirmas reenviar este e-CF rechazado?"
+                  okText="Sí, reenviar" cancelText="Cancelar"
+                  onConfirm={() => reenviarMut.mutate(r.numero)}
+                >
+                  <Button size="small" icon={<SendOutlined />}>Reenviar</Button>
+                </Popconfirm>
+              </Tooltip>
+            )}
+            {verArchivados ? (
+              <Popconfirm
+                title="¿Devolver al panel de acción requerida?"
+                okText="Desarchivar" cancelText="Cancelar"
+                onConfirm={() => desarchivarMut.mutate(r.numero)}
+              >
+                <Button size="small" icon={<RollbackOutlined />} loading={desarchivarMut.isPending}>
+                  Desarchivar
+                </Button>
+              </Popconfirm>
+            ) : (
+              <Popconfirm
+                title={`Archivar ${r.numero}`}
+                description="El e-CF desaparecerá del panel pero NO se borrará de la BD."
+                okText="Archivar" cancelText="Cancelar"
+                onConfirm={() => archivarMut.mutate(r.numero)}
+              >
+                <Button size="small" icon={<InboxOutlined />} loading={archivarMut.isPending}>
+                  Archivar
+                </Button>
+              </Popconfirm>
+            )}
+          </Space>
+        );
+      },
+    },
+  ];
+
+  const rowSelection = !verArchivados ? {
+    selectedRowKeys: seleccionados,
+    onChange: (keys: any[]) => setSeleccionados(keys as string[]),
+    getCheckboxProps: (r: any) => ({ name: r.numero }),
+  } : undefined;
+
+  const rechazadosData: any[] = rechazados ?? [];
+  const haySeleccion = seleccionados.length > 0;
 
   return (
     <>
@@ -713,7 +808,7 @@ function ResumenTab({ onRefresh }: { onRefresh: () => void }) {
           <Button type="text" size="small" icon={<ReloadOutlined spin={fetchingP || fetchingR} />}
             onClick={() => {
               qc.invalidateQueries({ queryKey: ['ecf-pendientes'] });
-              qc.invalidateQueries({ queryKey: ['ecf-rechazados'] });
+              invalidarRechazados();
               onRefresh();
             }} />
         </Tooltip>
@@ -725,7 +820,7 @@ function ResumenTab({ onRefresh }: { onRefresh: () => void }) {
             {pendientes?.length === 0
               ? <Text type="secondary">Sin e-CFs pendientes ✓</Text>
               : <Table dataSource={pendientes ?? []} rowKey="id" size="small"
-        scroll={{ x: 'max-content' }} pagination={{ pageSize: 5 }}
+                  scroll={{ x: 'max-content' }} pagination={{ pageSize: 5 }}
                   columns={[
                     { title: 'Número', dataIndex: 'numero', render: (v: string) => <Text code style={{ fontSize: 11 }}>{v}</Text> },
                     { title: 'Tipo', key: 'tipo', render: (_: any, r: any) => <Tag>{r.tipoECF?.codigo}</Tag> },
@@ -735,16 +830,58 @@ function ResumenTab({ onRefresh }: { onRefresh: () => void }) {
           </Card>
         </Col>
         <Col xs={24} md={12}>
-          <Card title={<><CloseCircleOutlined style={{ color: '#ff4d4f' }} /> Rechazados por DGII ({rechazados?.length ?? 0})</>}
-            extra={rechazados?.length > 0 && <Tag color="red">Acción requerida</Tag>}>
-            {rechazados?.length === 0
-              ? <Text type="secondary">Sin e-CFs rechazados ✓</Text>
-              : <Table dataSource={rechazados ?? []} rowKey="id" size="small"
-        scroll={{ x: 'max-content' }} pagination={{ pageSize: 5 }}
-                  columns={[
-                    { title: 'Número', dataIndex: 'numero', render: (v: string) => <Text code style={{ fontSize: 11 }}>{v}</Text> },
-                    { title: 'Error', dataIndex: 'errorEnvio', ellipsis: true },
-                  ]} />
+          <Card
+            title={
+              <Space>
+                <CloseCircleOutlined style={{ color: verArchivados ? '#8b5cf6' : '#ff4d4f' }} />
+                {verArchivados
+                  ? `Archivados (${rechazadosData.length})`
+                  : `Rechazados por DGII (${rechazadosData.length})`}
+              </Space>
+            }
+            extra={
+              <Space size={8}>
+                {!verArchivados && rechazadosData.length > 0 && <Tag color="red">Acción requerida</Tag>}
+                {haySeleccion && !verArchivados && (
+                  <Popconfirm
+                    title={`Archivar ${seleccionados.length} e-CF(s) seleccionados`}
+                    description="Desaparecerán del panel pero se conservan en BD."
+                    okText="Archivar todos" cancelText="Cancelar"
+                    onConfirm={() => archivarMasivoMut.mutate(seleccionados)}
+                  >
+                    <Button size="small" type="primary" icon={<InboxOutlined />}
+                      loading={archivarMasivoMut.isPending}>
+                      Archivar {seleccionados.length} seleccionados
+                    </Button>
+                  </Popconfirm>
+                )}
+                <Space size={4}>
+                  <Text type="secondary" style={{ fontSize: 12 }}>Ver archivados</Text>
+                  <Switch size="small" checked={verArchivados}
+                    onChange={v => { setVerArchivados(v); setSeleccionados([]); }} />
+                </Space>
+              </Space>
+            }
+          >
+            {verArchivados && (
+              <Alert
+                type="info" showIcon style={{ marginBottom: 8 }}
+                message="Modo archivados — estos e-CFs no aparecen en Acción requerida. Están intactos en BD."
+              />
+            )}
+            {rechazadosData.length === 0
+              ? <Text type="secondary">
+                  {verArchivados ? 'Sin e-CFs archivados' : 'Sin e-CFs rechazados ✓'}
+                </Text>
+              : <Table
+                  dataSource={rechazadosData}
+                  rowKey="numero"
+                  size="small"
+                  scroll={{ x: 'max-content' }}
+                  pagination={{ pageSize: 5 }}
+                  rowSelection={rowSelection}
+                  columns={colsRechazados}
+                />
             }
           </Card>
         </Col>

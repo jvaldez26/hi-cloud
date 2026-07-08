@@ -27,8 +27,17 @@ export const ecfApi = {
   pendientes: () =>
     api.get('/ecf/pendientes').then(r => r.data.data),
 
-  rechazados: () =>
-    api.get('/ecf/rechazados').then(r => r.data.data),
+  rechazados: (incluirArchivados = false) =>
+    api.get('/ecf/rechazados', incluirArchivados ? { params: { incluirArchivados: 'true' } } : {}).then(r => r.data.data),
+
+  archivar: (numero: string) =>
+    api.patch(`/ecf/${numero}/archivar`).then(r => r.data),
+
+  desarchivar: (numero: string) =>
+    api.patch(`/ecf/${numero}/desarchivar`).then(r => r.data),
+
+  archivarMasivo: (numeros: string[]) =>
+    api.post('/ecf/archivar-masivo', { numeros }).then(r => r.data),
 
   getByNumero: (numero: string) =>
     api.get(`/ecf/${numero}`).then(r => r.data.data),

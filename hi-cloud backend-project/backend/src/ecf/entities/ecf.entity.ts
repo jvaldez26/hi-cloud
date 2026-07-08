@@ -214,4 +214,20 @@ export class ECF extends BaseEntity {
   /** Monto retenido de ITBIS (E41: 30% del ITBIS en compras con retención). */
   @Column({ type: 'decimal', precision: 18, scale: 2, nullable: true })
   montoRetencionItbis?: number;
+
+  // ── Panel DGII — archivar rechazados ─────────────────────────────────────
+  // "Archivar" oculta el e-CF del panel de acción requerida sin borrarlo.
+  // Es solo visual: el registro fiscal permanece intacto en la BD.
+
+  /** true = no aparece en la sección "Rechazados / Acción requerida" del panel. */
+  @Column({ default: false })
+  archivadoEnPanel!: boolean;
+
+  /** userId del admin/contador que archivó el e-CF. */
+  @Column({ nullable: true })
+  archivadoPorId?: number;
+
+  /** Fecha en que se archivó (auditoría). */
+  @Column({ type: 'timestamp', nullable: true })
+  archivadoEn?: Date;
 }
