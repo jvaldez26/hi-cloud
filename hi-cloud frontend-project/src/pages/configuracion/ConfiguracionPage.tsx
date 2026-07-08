@@ -884,6 +884,7 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
       posSupervisorGastos:         conf.posSupervisorGastos !== false,
       posPermitirAnularFacturas:   conf.posPermitirAnularFacturas ?? true,
       posTiempoLimiteAnular:       conf.posTiempoLimiteAnular ?? 0,
+      posInactividadMinutos:       conf.posInactividadMinutos ?? 15,
       posBloquearFueraHorario:     conf.posBloquearFueraHorario ?? false,
       posHorarioInicio:            conf.posHorarioInicio ?? '08:00',
       posHorarioFin:               conf.posHorarioFin ?? '20:00',
@@ -906,6 +907,7 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
   const bloquearFueraHorario  = Form.useWatch('posBloquearFueraHorario',  form);
   const permitirDescuentos    = Form.useWatch('posPermitirDescuentos',    form);
   const supervisorActivo      = Form.useWatch('supervisorModeEnabled',    form);
+  const inactividadMinutos    = Form.useWatch('posInactividadMinutos',    form);
 
   return (
     <Form form={form} layout="vertical" onFinish={v => mut.mutate(v)}>
@@ -1127,6 +1129,27 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
               formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
               parser={(v: any) => v?.replace(/,/g, '')} />
           </Form.Item>
+        </Col>
+        <Col xs={24} sm={10}>
+          <Form.Item name="posInactividadMinutos" label="Bloqueo automático por inactividad">
+            <Select>
+              <Select.Option value={1}>1 minuto</Select.Option>
+              <Select.Option value={5}>5 minutos</Select.Option>
+              <Select.Option value={15}>15 minutos (recomendado)</Select.Option>
+              <Select.Option value={30}>30 minutos</Select.Option>
+              <Select.Option value={60}>1 hora</Select.Option>
+              <Select.Option value={0}>Nunca</Select.Option>
+            </Select>
+          </Form.Item>
+          {inactividadMinutos === 0 && (
+            <Alert
+              type="warning"
+              showIcon
+              message="Sin bloqueo automático"
+              description="Si el cajero deja la caja abierta, cualquier persona puede operar el POS. Usa esta opción solo en entornos de confianza."
+              style={{ marginTop: -16, marginBottom: 8, fontSize: 12 }}
+            />
+          )}
         </Col>
         <Col xs={24} sm={12}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>

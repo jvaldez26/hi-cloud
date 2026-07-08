@@ -8373,10 +8373,12 @@ export default function POSPage() {
     navigate('/login');
   };
 
-  // ── Timer de inactividad (5 min) ───────────────────────────────────────────
+  // ── Timer de inactividad (configurable por empresa, default 15 min) ────────
+  const posInactividadMinutos = typeof posConf.posInactividadMinutos === 'number' ? posConf.posInactividadMinutos : 15;
   const inactividadRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    const INACTIVIDAD_MS = 5 * 60 * 1000;
+    if (posInactividadMinutos === 0) return; // "Nunca" → sin auto-lock
+    const INACTIVIDAD_MS = posInactividadMinutos * 60 * 1000;
     const reset = () => {
       if (inactividadRef.current) clearTimeout(inactividadRef.current);
       if (!pantallaBloqueada && turnoAbierto) {
@@ -8395,7 +8397,7 @@ export default function POSPage() {
       if (inactividadRef.current) clearTimeout(inactividadRef.current);
       eventos.forEach(e => window.removeEventListener(e, reset));
     };
-  }, [pantallaBloqueada, turnoAbierto]);
+  }, [pantallaBloqueada, turnoAbierto, posInactividadMinutos]);
 
   // necesitaRnc: el tipo lo exige Y el cliente no lo aporta automáticamente
   const posCedulaMonto = typeof posConf.posCedulaMonto === 'number' ? posConf.posCedulaMonto : 250_000;
