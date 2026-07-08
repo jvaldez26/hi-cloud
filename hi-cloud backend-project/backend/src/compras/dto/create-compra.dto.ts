@@ -39,7 +39,7 @@ export class CreateCompraDetalleDto {
   cantidadBonificada?: number;
 
   @IsNumber({ maxDecimalPlaces: 2 })
-  @IsPositive()
+  @Min(0)
   precioUnitario: number;
 
   @IsOptional()

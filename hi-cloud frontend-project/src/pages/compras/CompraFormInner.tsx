@@ -131,6 +131,17 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
   };
 
   const handleSubmit = (values: { proveedorId: number; fecha: dayjs.Dayjs; numeroFacturaProveedor?: string; notas?: string }) => {
+    // Rechazar líneas sin producto
+    if (lineas.some(l => !l.productoId)) {
+      message.error('Selecciona un producto en cada línea o elimina las líneas vacías.');
+      return;
+    }
+    // Rechazar líneas completamente vacías (precio 0 + sin unidades)
+    if (lineas.some(l => l.precioUnitario === 0 && (l.cantidad ?? 0) <= 0 && (l.cantidadBonificada ?? 0) <= 0)) {
+      message.error('Hay líneas con precio 0 y sin cantidad. Ingresa las unidades recibidas o elimina la línea.');
+      return;
+    }
+
     const detalles: CompraDetallePayload[] = lineas.map(l => ({
       productoId: l.productoId!, descripcion: l.descripcion,
       cantidad: l.cantidad, cantidadBonificada: l.cantidadBonificada || undefined,
@@ -219,8 +230,13 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
       }},
     { title: 'Precio', key: 'price', width: 120,
       render: (_: unknown, r: Linea, idx: number) => (
-        <InputNumber min={0} precision={2} value={r.precioUnitario} style={{ width:'100%' }}
-          onChange={v => { const u=[...lineas]; u[idx].precioUnitario=v??0; setLineas(u); }} />
+        <div>
+          <InputNumber min={0} precision={2} value={r.precioUnitario} style={{ width: '100%' }}
+            onChange={v => { const u=[...lineas]; u[idx].precioUnitario=v??0; setLineas(u); }} />
+          {r.precioUnitario === 0 && r.productoId && (
+            <Tag color="green" style={{ marginTop: 3, fontSize: 10, lineHeight: '16px' }}>Bonificación / Gratis</Tag>
+          )}
+        </div>
       )},
     { title: 'ITBIS %', key: 'itbis', width: 80,
       render: (_: unknown, r: Linea, idx: number) => (

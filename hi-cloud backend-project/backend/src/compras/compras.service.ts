@@ -62,6 +62,15 @@ export class ComprasService {
       const cantidadFact     = Number(item.cantidad);
       const cantidadBon      = Number(item.cantidadBonificada ?? 0);
       const cantidadTot      = Number((cantidadFact + cantidadBon).toFixed(4));
+
+      // Precio 0 = bonificación pura (entra al inventario sin costo).
+      // Rechazar solo si además no hay unidades (línea completamente vacía).
+      if (Number(item.precioUnitario) === 0 && cantidadTot <= 0) {
+        throw new BadRequestException(
+          `El producto #${item.productoId} tiene precio 0 y ninguna unidad. Elimina la línea o ingresa la cantidad recibida.`,
+        );
+      }
+
       // Subtotal sobre lo FACTURADO (valor fiscal); las bonificadas son gratis
       const subtotal         = Number((cantidadFact * Number(item.precioUnitario)).toFixed(2));
       const importeItbis     = Number((subtotal * (porcentajeItbis / 100)).toFixed(2));
