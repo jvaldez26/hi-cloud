@@ -7,7 +7,7 @@ on:
 
 # Evitar deploys concurrentes que interfieren entre sí (npm ci, rm -rf dist, pm2 restart)
 concurrency:
-  group: production
+  group: production-v2
   cancel-in-progress: false
 
 jobs:
