@@ -1216,4 +1216,45 @@ export class SuperAdminService {
         : 'No se encontraron facturas con montos cero vinculadas a productos.',
     };
   }
+
+  // ── Configuración Global de Seguridad ─────────────────────────────────────
+
+  async getConfiguracionGlobal() {
+    return this.ds.query<{
+      clave: string; valor: string; descripcion: string;
+    }[]>(`
+      SELECT clave, valor, descripcion
+      FROM configuraciones_sistema
+      WHERE grupo = 'seguridad' AND "isActive" = true
+      ORDER BY clave ASC
+    `);
+  }
+
+  async updateConfiguracionGlobal(clave: string, valor: string) {
+    const LIMITES: Record<string, { min: number; max: number }> = {
+      SESION_HORAS:       { min: 1,   max: 720 },
+      MAX_INTENTOS_LOGIN: { min: 3,   max: 10  },
+    };
+
+    const rows = await this.ds.query<{ id: number; editable: boolean }[]>(
+      `SELECT id, editable FROM configuraciones_sistema WHERE clave = $1 AND "isActive" = true LIMIT 1`,
+      [clave],
+    );
+    if (!rows[0]) throw new NotFoundException(`Configuración "${clave}" no encontrada`);
+    if (!rows[0].editable) throw new BadRequestException(`La configuración "${clave}" no es editable`);
+
+    let valorFinal = valor;
+    if (LIMITES[clave]) {
+      const num = Number(valor);
+      if (isNaN(num)) throw new BadRequestException(`El valor debe ser numérico`);
+      const { min, max } = LIMITES[clave];
+      valorFinal = String(Math.max(min, Math.min(max, Math.round(num))));
+    }
+
+    await this.ds.query(
+      `UPDATE configuraciones_sistema SET valor = $1 WHERE id = $2`,
+      [valorFinal, rows[0].id],
+    );
+    return { clave, valor: valorFinal };
+  }
 }

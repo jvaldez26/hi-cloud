@@ -91,6 +91,11 @@ class RechazarRegistroDto {
   motivo?: string;
 }
 
+class UpdateConfigGlobalDto {
+  @IsString() @IsNotEmpty()
+  valor!: string;
+}
+
 class GestionModuloDto {
   @IsString() @IsNotEmpty()
   codigo!: string;
@@ -558,5 +563,22 @@ export class SuperAdminController {
   @ApiOperation({ summary: 'Reparar facturas recurrentes con total = 0 usando precios de productos' })
   async repararMontosRecurrentes() {
     return this.svc.repararMontosRecurrentes();
+  }
+
+  // ── Configuración Global de Seguridad ──────────────────────────────────────
+
+  @Get('configuracion-global')
+  @ApiOperation({ summary: 'Leer parámetros globales de seguridad (solo Super Admin)' })
+  getConfiguracionGlobal() {
+    return this.svc.getConfiguracionGlobal();
+  }
+
+  @Patch('configuracion-global/:clave')
+  @ApiOperation({ summary: 'Actualizar parámetro global de seguridad (solo Super Admin)' })
+  updateConfiguracionGlobal(
+    @Param('clave') clave: string,
+    @Body() dto: UpdateConfigGlobalDto,
+  ) {
+    return this.svc.updateConfiguracionGlobal(clave, dto.valor);
   }
 }

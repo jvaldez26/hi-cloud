@@ -870,6 +870,98 @@ function PlanesEditor({ C }: { C: typeof SA_DARK }) {
   );
 }
 
+// ── Configuración Global de Seguridad ─────────────────────────────────────────
+
+function SeguridadGlobalEditor({ C }: { C: typeof SA_DARK }) {
+  const qc = useQueryClient();
+  const [valores, setValores] = useState<Record<string, number>>({});
+
+  const { data: configs = [] as any[], isLoading } = useQuery<any[]>({
+    queryKey: ['sa-config-global'],
+    queryFn:  () => api.get('/admin/configuracion-global').then(xd),
+    staleTime: 60_000,
+  });
+
+  useEffect(() => {
+    if (configs.length > 0) {
+      const map: Record<string, number> = {};
+      (configs as any[]).forEach((c: any) => { map[c.clave] = Number(c.valor); });
+      setValores(map);
+    }
+  }, [configs]);
+
+  const updateMut = useMutation({
+    mutationFn: ({ clave, valor }: { clave: string; valor: number }) =>
+      api.patch(`/admin/configuracion-global/${clave}`, { valor: String(valor) }),
+    onSuccess: (_, { clave, valor }) => {
+      qc.invalidateQueries({ queryKey: ['sa-config-global'] });
+      message.success(`${clave} actualizado a ${valor}`);
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al guardar'),
+  });
+
+  const CAMPOS = [
+    {
+      clave: 'SESION_HORAS',
+      label: 'Duración de sesión (horas)',
+      desc:  'Tiempo antes de que expire la sesión de los usuarios. Las empresas pueden sobreescribir este valor en Configuración → Seguridad.',
+      min: 1, max: 720, step: 1,
+    },
+    {
+      clave: 'MAX_INTENTOS_LOGIN',
+      label: 'Intentos de login antes de bloquear',
+      desc:  'Número de intentos fallidos permitidos antes de bloquear la cuenta temporalmente. Las empresas pueden sobreescribir este valor.',
+      min: 3, max: 10, step: 1,
+    },
+  ];
+
+  return (
+    <div style={{ background: C.bg, borderRadius: 12, border: `1px solid ${C.border}`, padding: 20, gridColumn: '1 / -1' }}>
+      <h3 style={{ color: C.txt, fontWeight: 700, fontSize: 15, margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Shield size={16} style={{ color: C.blue }} /> Seguridad Global por Defecto
+      </h3>
+      <p style={{ color: C.txt2, fontSize: 12, margin: '0 0 18px' }}>
+        Valores predeterminados para todas las empresas. Cada empresa puede sobreescribirlos en <strong>Configuración → Seguridad</strong>.
+      </p>
+      {isLoading
+        ? <Spin size="small" />
+        : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 20 }}>
+            {CAMPOS.map(campo => (
+              <div key={campo.clave} style={{ background: C.card, borderRadius: 10, padding: '16px 18px', border: `1px solid ${C.border}` }}>
+                <div style={{ color: C.txt, fontWeight: 600, fontSize: 13, marginBottom: 4 }}>{campo.label}</div>
+                <div style={{ color: C.txt2, fontSize: 11, marginBottom: 12, lineHeight: 1.5 }}>{campo.desc}</div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <InputNumber
+                    min={campo.min}
+                    max={campo.max}
+                    step={campo.step}
+                    value={valores[campo.clave]}
+                    onChange={v => setValores(prev => ({ ...prev, [campo.clave]: v ?? campo.min }))}
+                    style={{ width: 100 }}
+                    addonAfter={campo.clave === 'SESION_HORAS' ? 'h' : undefined}
+                  />
+                  <Button
+                    type="primary"
+                    size="small"
+                    loading={updateMut.isPending && (updateMut.variables as any)?.clave === campo.clave}
+                    onClick={() => updateMut.mutate({ clave: campo.clave, valor: valores[campo.clave] ?? campo.min })}
+                  >
+                    Guardar
+                  </Button>
+                  <span style={{ color: C.txt2, fontSize: 11 }}>
+                    ({campo.min}–{campo.max})
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      }
+    </div>
+  );
+}
+
 // ── Módulos Add-on por empresa (panel dentro del modal de detalle) ─────────────
 
 const MODULO_ICONS: Record<string, string> = { optica: '👓', hotel: '🏨', clinica: '🏥' };
@@ -2856,6 +2948,9 @@ export default function SuperAdminPage() {
                     </div>
                   ))}
                 </div>
+
+                {/* Seguridad global editable */}
+                <SeguridadGlobalEditor C={C} />
 
                 {/* Parámetros globales */}
                 <div style={{ background: C.bg, borderRadius: 12, border: `1px solid ${C.border}`, padding: 20, gridColumn: '1 / -1' }}>
