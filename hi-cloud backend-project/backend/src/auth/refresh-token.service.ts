@@ -114,11 +114,21 @@ export class RefreshTokenService {
 
   /**
    * Devuelve el lifetime de sesión en ms para un usuario.
-   * Prioridad: empresa.configuracion.sesionHoras → configuracion_sistema.SESION_HORAS → 24h.
-   * Rango aplicado: [1h, 720h (30 días)].
+   * El global es el TOPE: empresa.sesionHoras ≤ global siempre.
+   * Rango: [1h, global].
    */
   private async getSessionLifetimeMs(userId: number): Promise<number> {
-    // 1. Override por empresa principal del usuario
+    // 1. Leer el global primero (es el tope máximo)
+    let globalHoras = 24;
+    try {
+      const globalRows = await this.dataSource.query<{ valor: string }[]>(
+        `SELECT valor FROM configuracion_sistema WHERE clave = 'SESION_HORAS' LIMIT 1`,
+      );
+      const h = parseInt(globalRows[0]?.valor ?? '24', 10);
+      globalHoras = isNaN(h) ? 24 : Math.min(720, Math.max(1, h));
+    } catch { /* usar 24 */ }
+
+    // 2. Override por empresa — nunca puede superar el global
     try {
       const rows = await this.dataSource.query<{ configuracion: Record<string, unknown> }[]>(`
         SELECT e.configuracion
@@ -130,20 +140,11 @@ export class RefreshTokenService {
       const conf  = rows[0]?.configuracion;
       const horas = conf?.['sesionHoras'];
       if (typeof horas === 'number' && Number.isFinite(horas)) {
-        return Math.min(720, Math.max(1, horas)) * 3_600_000;
+        return Math.min(globalHoras, Math.max(1, horas)) * 3_600_000;
       }
     } catch { /* ignorar — caer al global */ }
 
-    // 2. Default global de configuracion_sistema
-    try {
-      const rows = await this.dataSource.query<{ valor: string }[]>(
-        `SELECT valor FROM configuracion_sistema WHERE clave = 'SESION_HORAS' LIMIT 1`,
-      );
-      const h = parseInt(rows[0]?.valor ?? '24', 10);
-      return Math.min(720, Math.max(1, isNaN(h) ? 24 : h)) * 3_600_000;
-    } catch { /* ignorar */ }
-
-    return 24 * 3_600_000; // 24h de emergencia
+    return Math.min(720, Math.max(1, globalHoras)) * 3_600_000;
   }
 
   private async crearRegistro(

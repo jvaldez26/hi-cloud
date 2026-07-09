@@ -188,9 +188,30 @@ export class ConfiguracionService implements OnModuleInit {
     }
 
     if (dto.configuracion !== undefined) {
+      const updConf = { ...dto.configuracion } as Record<string, unknown>;
+
+      // Clampear valores de seguridad al tope global (empresa nunca más laxa que el global)
+      if (updConf['sesionHoras'] !== undefined || updConf['maxIntentos'] !== undefined) {
+        try {
+          const globals = await this.configRepository.find({
+            where: { grupo: 'seguridad', isActive: true },
+          });
+          const rawSesion   = parseInt(globals.find(g => g.clave === 'SESION_HORAS')?.valor ?? '24', 10);
+          const rawIntentos = parseInt(globals.find(g => g.clave === 'MAX_INTENTOS_LOGIN')?.valor ?? '5', 10);
+          const globalSesion   = isNaN(rawSesion)   ? 24 : rawSesion;
+          const globalIntentos = isNaN(rawIntentos) ? 5  : rawIntentos;
+          if (typeof updConf['sesionHoras'] === 'number') {
+            updConf['sesionHoras'] = Math.min(updConf['sesionHoras'] as number, globalSesion);
+          }
+          if (typeof updConf['maxIntentos'] === 'number') {
+            updConf['maxIntentos'] = Math.min(updConf['maxIntentos'] as number, globalIntentos);
+          }
+        } catch { /* silencioso — mejor guardar que bloquear */ }
+      }
+
       updateData.configuracion = {
         ...(empresa.configuracion ?? {}),
-        ...dto.configuracion,
+        ...updConf,
       };
     }
 

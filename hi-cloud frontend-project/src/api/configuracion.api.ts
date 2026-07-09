@@ -30,6 +30,9 @@ export const configuracionApi = {
   getSistema: () =>
     api.get('/configuracion/sistema').then(r => r.data.data),
 
+  getSistemaGrupo: (grupo: string) =>
+    api.get(`/configuracion/sistema/grupo/${grupo}`).then(r => r.data.data),
+
   updateParam: (clave: string, valor: string) =>
     api.patch(`/configuracion/sistema/${clave}`, { valor }).then(r => r.data.data),
 

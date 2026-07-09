@@ -1705,13 +1705,24 @@ function SeccionSeguridad({ empresa, onSaved }: { empresa: any; onSaved: () => v
   const qc = useQueryClient();
   const conf = empresa?.configuracion ?? {};
 
+  const { data: globalParams } = useQuery({
+    queryKey: ['config-seguridad-global'],
+    queryFn:  () => configuracionApi.getSistemaGrupo('seguridad'),
+    staleTime: 60_000,
+  });
+
+  const globalSesion   = parseInt((globalParams as any[])?.find((p: any) => p.clave === 'SESION_HORAS')?.valor ?? '24', 10);
+  const globalIntentos = parseInt((globalParams as any[])?.find((p: any) => p.clave === 'MAX_INTENTOS_LOGIN')?.valor ?? '5', 10);
+  const maxSesion   = isNaN(globalSesion)   ? 24 : globalSesion;
+  const maxIntentos = isNaN(globalIntentos) ? 5  : globalIntentos;
+
   useEffect(() => {
     form.setFieldsValue({
-      sesionHoras:    conf.sesionHoras ?? 24,
-      maxIntentos:    conf.maxIntentos ?? 5,
+      sesionHoras:    Math.min(conf.sesionHoras ?? maxSesion, maxSesion),
+      maxIntentos:    Math.min(conf.maxIntentos ?? maxIntentos, maxIntentos),
       auditoriaActiva:conf.auditoriaActiva ?? true,
     });
-  }, [empresa]);
+  }, [empresa, maxSesion, maxIntentos]);
 
   const mut = useMutation({
     mutationFn: (v: any) => configuracionApi.updateEmpresa({ configuracion: v }),
@@ -1723,13 +1734,21 @@ function SeccionSeguridad({ empresa, onSaved }: { empresa: any; onSaved: () => v
     <Form form={form} layout="vertical" onFinish={v => mut.mutate(v)}>
       <Row gutter={16}>
         <Col xs={24} sm={8}>
-          <Form.Item name="sesionHoras" label="Duración de sesión">
-            <InputNumber style={{ width: '100%' }} min={1} max={720} addonAfter="horas" />
+          <Form.Item
+            name="sesionHoras"
+            label="Duración de sesión"
+            extra={globalParams ? `Máximo permitido: ${maxSesion}h (definido por la plataforma)` : undefined}
+          >
+            <InputNumber style={{ width: '100%' }} min={1} max={maxSesion} addonAfter="horas" />
           </Form.Item>
         </Col>
         <Col xs={24} sm={8}>
-          <Form.Item name="maxIntentos" label="Intentos de login antes de bloquear">
-            <InputNumber style={{ width: '100%' }} min={3} max={10} />
+          <Form.Item
+            name="maxIntentos"
+            label="Intentos de login antes de bloquear"
+            extra={globalParams ? `Máximo permitido: ${maxIntentos} intentos (definido por la plataforma)` : undefined}
+          >
+            <InputNumber style={{ width: '100%' }} min={3} max={maxIntentos} />
           </Form.Item>
         </Col>
         <Col xs={24}>

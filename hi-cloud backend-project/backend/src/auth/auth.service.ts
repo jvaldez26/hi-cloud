@@ -1291,8 +1291,8 @@ export class AuthService implements OnModuleInit {
 
   /**
    * Devuelve el número máximo de intentos de login para una empresa.
-   * Lee empresa.configuracion.maxIntentos (JSONB) con fallback al global
-   * configuracion_sistema.MAX_INTENTOS_LOGIN. Rango: [3, 10].
+   * El global es el TOPE: empresa.override ≤ global siempre.
+   * Rango: [3, global].
    */
   async getEffectiveMaxIntentos(empresaId?: number): Promise<number> {
     let global = 5;
@@ -1301,25 +1301,27 @@ export class AuthService implements OnModuleInit {
         `SELECT valor FROM configuracion_sistema WHERE clave = 'MAX_INTENTOS_LOGIN' LIMIT 1`,
       );
       const n = parseInt(rows[0]?.valor ?? '5', 10);
-      global = isNaN(n) ? 5 : n;
+      global = isNaN(n) ? 5 : Math.min(10, Math.max(3, n));
     } catch { /* usar 5 */ }
 
-    let horas = global;
+    let effective = global;
     if (empresaId) {
       try {
         const emp = await this.empresaRepository.findOne({ where: { id: empresaId }, select: ['configuracion'] as any });
         const override = (emp?.configuracion as Record<string, unknown> | undefined)?.['maxIntentos'];
-        if (typeof override === 'number' && Number.isFinite(override)) horas = override;
+        if (typeof override === 'number' && Number.isFinite(override)) {
+          effective = Math.min(override, global); // empresa nunca puede ser más laxa que el global
+        }
       } catch { /* usar global */ }
     }
 
-    return Math.min(10, Math.max(3, horas));
+    return Math.min(global, Math.max(3, effective));
   }
 
   /**
    * Devuelve el lifetime de sesión en ms para una empresa.
-   * Lee empresa.configuracion.sesionHoras (JSONB) con fallback al global
-   * configuracion_sistema.SESION_HORAS. Rango: [1h, 720h].
+   * El global es el TOPE: empresa.sesionHoras ≤ global siempre.
+   * Rango: [1h, global].
    */
   async getEffectiveSessionMs(empresaId?: number): Promise<number> {
     let globalHoras = 24;
@@ -1328,7 +1330,7 @@ export class AuthService implements OnModuleInit {
         `SELECT valor FROM configuracion_sistema WHERE clave = 'SESION_HORAS' LIMIT 1`,
       );
       const h = parseInt(rows[0]?.valor ?? '24', 10);
-      globalHoras = isNaN(h) ? 24 : h;
+      globalHoras = isNaN(h) ? 24 : Math.min(720, Math.max(1, h));
     } catch { /* usar 24 */ }
 
     let horas = globalHoras;
@@ -1336,10 +1338,12 @@ export class AuthService implements OnModuleInit {
       try {
         const emp = await this.empresaRepository.findOne({ where: { id: empresaId }, select: ['configuracion'] as any });
         const override = (emp?.configuracion as Record<string, unknown> | undefined)?.['sesionHoras'];
-        if (typeof override === 'number' && Number.isFinite(override)) horas = override;
+        if (typeof override === 'number' && Number.isFinite(override)) {
+          horas = Math.min(override, globalHoras); // empresa nunca puede ser más laxa que el global
+        }
       } catch { /* usar global */ }
     }
 
-    return Math.min(720, Math.max(1, horas)) * 3_600_000;
+    return Math.min(globalHoras, Math.max(1, horas)) * 3_600_000;
   }
 }

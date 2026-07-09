@@ -918,10 +918,10 @@ function SeguridadGlobalEditor({ C }: { C: typeof SA_DARK }) {
   return (
     <div style={{ background: C.bg, borderRadius: 12, border: `1px solid ${C.border}`, padding: 20, gridColumn: '1 / -1' }}>
       <h3 style={{ color: C.txt, fontWeight: 700, fontSize: 15, margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Shield size={16} style={{ color: C.blue }} /> Seguridad Global por Defecto
+        <Shield size={16} style={{ color: C.blue }} /> Seguridad Global — Topes Máximos
       </h3>
       <p style={{ color: C.txt2, fontSize: 12, margin: '0 0 18px' }}>
-        Valores predeterminados para todas las empresas. Cada empresa puede sobreescribirlos en <strong>Configuración → Seguridad</strong>.
+        Estos son los valores <strong>máximos permitidos</strong> para todas las empresas. Las empresas pueden ser más estrictas (sesión más corta, menos intentos), pero <strong>nunca más laxas</strong> que estos topes.
       </p>
       {isLoading
         ? <Spin size="small" />
