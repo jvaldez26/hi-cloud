@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Form, Input, Button, Card, Row, Col, Typography, Select,
          DatePicker, Table, InputNumber, Space, Divider, message, Tag, Alert,
          Modal, theme, Spin, Checkbox, Tooltip, Upload } from 'antd';
@@ -100,6 +100,9 @@ export default function FacturaFormPage() {
 
   const sucursalActual = useAuthStore(s => s.sucursalActual);
   const empresaActual  = useAuthStore(s => s.empresaActual);
+  const almacenActual  = useAuthStore(s => s.almacenActual);
+
+  const [stockPorProducto, setStockPorProducto] = useState<Record<number, any[]>>({});
 
   const { data: vendedores = [] } = useQuery<any[]>({
     queryKey: ['vendedores-sel'],
@@ -383,6 +386,14 @@ export default function FacturaFormPage() {
       porcentajeIva:  Number(prod.porcentajeIva),
     };
     setLineas(updated);
+    if (!stockPorProducto[productoId]) {
+      api.get(`/almacenes/producto/${productoId}/stock`)
+        .then((r: any) => {
+          const stocks: any[] = r.data?.data ?? r.data ?? [];
+          setStockPorProducto(prev => ({ ...prev, [productoId]: stocks }));
+        })
+        .catch(() => {});
+    }
   };
 
   const handleSubmit = (values: {
@@ -451,13 +462,29 @@ export default function FacturaFormPage() {
     {
       title: 'Producto', key: 'producto', width: 200,
       ellipsis: true,
-      render: (_: unknown, r: LineaForm, idx: number) => (
-        <Select style={{ width: '100%' }} placeholder="Seleccionar..." showSearch
-          value={r.productoId}
-          filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
-          options={productos?.data.map(p => ({ value: p.id, label: p.codigo ? `${p.codigo} — ${p.nombre}` : p.nombre }))}
-          onChange={(v) => onProductoChange(v, idx)} />
-      ),
+      render: (_: unknown, r: LineaForm, idx: number) => {
+        const stocks = r.productoId ? (stockPorProducto[r.productoId] ?? null) : null;
+        let stockTag: React.ReactNode = null;
+        if (stocks) {
+          const entrada = almacenActual ? stocks.find((s: any) => s.almacenId === almacenActual) : null;
+          const qty   = entrada ? Number(entrada.stock) : stocks.reduce((a: number, s: any) => a + Number(s.stock), 0);
+          const label = entrada
+            ? `Stock: ${qty} (${entrada.almacen?.nombre ?? 'almacén'})`
+            : `Stock total: ${qty}`;
+          const color = qty === 0 ? 'red' : qty <= 5 ? 'orange' : 'green';
+          stockTag = <Tag color={color} style={{ marginTop: 2, fontSize: 10 }}>{label}</Tag>;
+        }
+        return (
+          <div>
+            <Select style={{ width: '100%' }} placeholder="Seleccionar..." showSearch
+              value={r.productoId}
+              filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
+              options={productos?.data.map(p => ({ value: p.id, label: p.codigo ? `${p.codigo} — ${p.nombre}` : p.nombre }))}
+              onChange={(v) => onProductoChange(v, idx)} />
+            {stockTag}
+          </div>
+        );
+      },
     },
     {
       title: 'Descripción', key: 'desc', width: 180,
