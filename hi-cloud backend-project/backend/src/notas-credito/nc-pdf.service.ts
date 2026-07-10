@@ -4,9 +4,8 @@ import { Repository }       from 'typeorm';
 import * as qrcode          from 'qrcode';
 import { NotaCredito }      from './entities/nota-credito.entity';
 import { TenantService }    from '../tenant/tenant.service';
-import { BrowserService }   from '../common/services/browser.service';
-import { generarHTMLNota }  from '../notas-debito/nota.template';
-import type { NotaPDFData } from '../notas-debito/nota.template';
+import { generarNotaPDF }   from '../common/pdf/nota-pdf.helper';
+import type { NotaPDFData } from '../common/pdf/nota-pdf.helper';
 
 const CODIGO_MOD_LABEL: Record<string, string> = {
   '1': '1 — Anulación total',
@@ -22,8 +21,7 @@ export class NotaCreditoPDFService {
 
   constructor(
     @InjectRepository(NotaCredito) private repo: Repository<NotaCredito>,
-    private tenantSvc:  TenantService,
-    private browserSvc: BrowserService,
+    private tenantSvc: TenantService,
   ) {}
 
   async generarPDF(id: number): Promise<{ buffer: Buffer; filename: string }> {
@@ -65,12 +63,6 @@ export class NotaCreditoPDFService {
         .catch(err => { this.logger.warn(`[NC-PDF] QR error: ${err.message}`); return ''; });
     }
 
-    const logoDataUrl = empresa.logo
-      ? await fetch(empresa.logo, { signal: AbortSignal.timeout(5_000) })
-          .then(async r => r.ok ? `data:image/png;base64,${Buffer.from(await r.arrayBuffer()).toString('base64')}` : undefined)
-          .catch(() => undefined)
-      : undefined;
-
     const data: NotaPDFData = {
       tipo:                 'CREDITO',
       numero:               nc.numero,
@@ -87,7 +79,6 @@ export class NotaCreditoPDFService {
       empresaCiudad:        empresa.ciudad,
       empresaTelefono:      empresa.telefono,
       empresaEmail:         empresa.email,
-      empresaLogo:          logoDataUrl,
       empresaColor:         (empresa.configuracion as any)?.colorPrimario ?? '#1a56db',
       clienteNombre:        nc.cliente?.nombre || 'Consumidor Final',
       clienteRNC:           nc.cliente?.rncReceptor || nc.cliente?.rfc,
@@ -112,8 +103,7 @@ export class NotaCreditoPDFService {
       estado:   nc.estado,
     };
 
-    const html   = generarHTMLNota(data);
-    const buffer = await this.browserSvc.htmlToPDF(html);
+    const buffer = await generarNotaPDF(data);
     return { buffer, filename: `${nc.numero}.pdf` };
   }
 }

@@ -10,12 +10,6 @@ export interface NotaPDFData {
   tipoNcf:             string;
   ecfNumero?:          string;
   ecfEstado?:          string;
-  ecfCodigoSeguridad?: string;
-  ecfFechaFirma?:      string;   // ISO string — se formatea con fmtDT()
-  qrBase64?:           string;   // base64 sin prefijo data:
-  fechaVencSecuencia?: string;   // ya formateada "DD/MM/YYYY"
-  motivoConcepto?:     string;   // para E33 (ND)
-  codigoModificacion?: string;
   // Empresa
   empresaNombre:       string;
   empresaRNC:          string;
@@ -65,21 +59,6 @@ function fmtF(s: string): string {
     const dd = String(d.getDate()).padStart(2, '0');
     const mm = String(d.getMonth() + 1).padStart(2, '0');
     return `${dd}/${mm}/${d.getFullYear()}`;
-  } catch { return s; }
-}
-
-function fmtDT(s?: string): string {
-  if (!s) return '—';
-  try {
-    const dt = new Date(s);
-    if (isNaN(dt.getTime())) return s;
-    const f = new Intl.DateTimeFormat('es', {
-      timeZone: 'America/Santo_Domingo',
-      day: '2-digit', month: '2-digit', year: 'numeric',
-      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-    });
-    const p = Object.fromEntries(f.formatToParts(dt).map(x => [x.type, x.value]));
-    return `${p['day']}/${p['month']}/${p['year']} ${p['hour']}:${p['minute']}:${p['second']}`;
   } catch { return s; }
 }
 
@@ -178,9 +157,6 @@ export function generarHTMLNota(d: NotaPDFData): string {
         <div>Número: <strong style="color:${DARK};">${esc(d.numero)}</strong></div>
         <div>Tipo NCF: <strong style="color:${DARK};font-family:monospace;">${tipoNcfLbl}</strong></div>
         <div>Fecha: <strong style="color:${DARK};">${fmtF(d.fecha)}</strong></div>
-        ${d.fechaVencSecuencia ? `<div>Válida hasta: <strong style="color:${DARK};">${esc(d.fechaVencSecuencia)}</strong></div>` : ''}
-        ${d.ecfCodigoSeguridad ? `<div>Seg.: <strong style="color:${DARK};font-family:monospace;">${esc(d.ecfCodigoSeguridad)}</strong></div>` : ''}
-        ${d.ecfFechaFirma ? `<div>Firmado: <strong style="color:${DARK};">${fmtDT(d.ecfFechaFirma)}</strong></div>` : ''}
         <div style="margin-top:4px;">${estadoBadge}</div>
       </div>
     </div>
@@ -208,15 +184,13 @@ export function generarHTMLNota(d: NotaPDFData): string {
   <!-- ══════════════════════════════════════════════════════════════════
        REFERENCIA A DOCUMENTO ORIGINAL (si aplica)
   ══════════════════════════════════════════════════════════════════ -->
-  ${(d.facturaOriginalFolio || d.ncfOriginal || d.descripcionMotivo || d.codigoModificacion || d.motivoConcepto) ? `
+  ${(d.facturaOriginalFolio || d.ncfOriginal || d.descripcionMotivo) ? `
   <div style="border:1px solid #ddd;padding:10px 14px;margin-bottom:12px;background:#fafafa;">
     <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:${DARK};margin-bottom:6px;">Modifica a</div>
     <div style="display:flex;gap:24px;flex-wrap:wrap;">
       ${d.facturaOriginalFolio ? `<div style="font-size:10.5px;color:${GRAY};">Factura: <strong style="color:${DARK};font-family:monospace;">${esc(d.facturaOriginalFolio)}</strong></div>` : ''}
       ${d.ncfOriginal ? `<div style="font-size:10.5px;color:${GRAY};">e-NCF original: <strong style="color:${DARK};font-family:monospace;">${esc(d.ncfOriginal)}</strong></div>` : ''}
-      ${d.codigoModificacion ? `<div style="font-size:10.5px;color:${GRAY};">Código: <strong style="color:${DARK};">${esc(d.codigoModificacion)}</strong></div>` : ''}
-      ${d.motivoConcepto ? `<div style="font-size:10.5px;color:${GRAY};">Motivo: <strong style="color:${DARK};">${esc(d.motivoConcepto)}</strong></div>` : ''}
-      ${d.descripcionMotivo ? `<div style="font-size:10.5px;color:${GRAY};">Descripción: <strong style="color:${DARK};">${esc(d.descripcionMotivo)}</strong></div>` : ''}
+      ${d.descripcionMotivo ? `<div style="font-size:10.5px;color:${GRAY};">Motivo: <strong style="color:${DARK};">${esc(d.descripcionMotivo)}</strong></div>` : ''}
     </div>
   </div>` : ''}
 
@@ -264,20 +238,6 @@ export function generarHTMLNota(d: NotaPDFData): string {
   <div style="padding:8px 12px;background:#fafafa;border-left:3px solid #ddd;margin-bottom:12px;">
     <div style="font-size:9px;font-weight:700;color:#777;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">Notas</div>
     <div style="font-size:9.5px;color:#555;line-height:1.6;">${esc(d.notas)}</div>
-  </div>` : ''}
-
-  <!-- SEGURIDAD FISCAL DGII -->
-  ${(d.qrBase64 || d.ecfCodigoSeguridad || d.ecfFechaFirma) ? `
-  <div style="padding:10px 14px;border:1px solid #ddd;background:#fafafa;margin-bottom:12px;">
-    <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:${DARK};margin-bottom:8px;">Seguridad Fiscal DGII</div>
-    <div style="display:flex;gap:16px;align-items:flex-start;">
-      ${d.qrBase64 ? `<img src="data:image/png;base64,${d.qrBase64}" style="width:72px;height:72px;flex-shrink:0;" alt="QR DGII">` : ''}
-      <div style="font-size:9px;color:${GRAY};line-height:1.9;">
-        ${d.ecfCodigoSeguridad ? `<div>Código de Seguridad: <strong style="color:${DARK};font-family:monospace;">${esc(d.ecfCodigoSeguridad)}</strong></div>` : ''}
-        ${d.ecfFechaFirma ? `<div>Fecha y Hora de Firma: <strong style="color:${DARK};">${fmtDT(d.ecfFechaFirma)}</strong></div>` : ''}
-        <div style="margin-top:4px;font-size:8.5px;color:#888;">La validez puede verificarse mediante el código QR ante la DGII.</div>
-      </div>
-    </div>
   </div>` : ''}
 
   <!-- ══════════════════════════════════════════════════════════════════
