@@ -249,6 +249,7 @@ export class InventarioService {
       .andWhere('p.isActive = :active', { active: true })
       .andWhere('p.stock <= p.stockMinimo')
       .orderBy('p.stock', 'ASC')
+      .take(200)
       .getMany();
   }
 
@@ -339,6 +340,7 @@ export class InventarioService {
         .andWhere('l.fechaVencimiento IS NOT NULL')
         .andWhere('l.fechaVencimiento < :hoy', { hoy: hoyStr })
         .andWhere('l.cantidadDisponible > 0')
+        .take(500)
         .getMany(),
 
       this.loteRepository
@@ -351,6 +353,7 @@ export class InventarioService {
         .andWhere('l.fechaVencimiento <= :en30', { en30: en30str })
         .andWhere('l.cantidadDisponible > 0')
         .orderBy('l.fechaVencimiento', 'ASC')
+        .take(500)
         .getMany(),
     ]);
 
@@ -494,7 +497,7 @@ export class InventarioService {
 
     if (estado) qb.andWhere('s.estado = :estado', { estado });
 
-    return qb.orderBy('s.createdAt', 'DESC').getMany();
+    return qb.orderBy('s.createdAt', 'DESC').take(500).getMany();
   }
 
   async aprobarSolicitudAjuste(id: number, adminId: number) {

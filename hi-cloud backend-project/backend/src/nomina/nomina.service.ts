@@ -356,6 +356,7 @@ export class NominaService {
       where: { empleadoId, isActive: true },
       relations: ['periodo'],
       order: { createdAt: 'DESC' },
+      take: 100,
     });
   }
 
@@ -395,7 +396,7 @@ export class NominaService {
     if (periodoId)     qb.andWhere('(n.periodoId = :pid OR n.periodoId IS NULL)', { pid: periodoId });
     if (soloSinAplicar) qb.andWhere('n.aplicado = false');
 
-    return qb.orderBy('n.createdAt', 'DESC').getMany();
+    return qb.orderBy('n.createdAt', 'DESC').take(200).getMany();
   }
 
   async deleteNovedad(id: number) {
