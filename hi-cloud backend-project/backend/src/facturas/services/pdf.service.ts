@@ -5,10 +5,11 @@ import * as qrcode from 'qrcode';
 import { Factura } from '../entities/factura.entity';
 import { TenantService } from '../../tenant/tenant.service';
 import { NumeroLetrasService } from './numero-letras.service';
+import { BrowserService } from '../../common/services/browser.service';
 import type { FacturaPDFData, FacturaPDFItem } from '../templates/factura.template';
 import { generarHTMLFactura }  from '../templates/factura.template';
 import type { ReciboPOSData }  from '../templates/recibo-termico.template';
-import { generarFacturaPDF, generarReciboPOSPDF } from '../../common/pdf/factura-pdf.helper';
+import { generarReciboPOSPDF } from '../../common/pdf/factura-pdf.helper';
 
 @Injectable()
 export class PDFService {
@@ -19,6 +20,7 @@ export class PDFService {
     private facturaRepo: Repository<Factura>,
     private tenantSvc:   TenantService,
     private numLetras:   NumeroLetrasService,
+    private browserSvc:  BrowserService,
   ) {}
 
   // ── Genera QR base64 ────────────────────────────────────────────────
@@ -237,7 +239,7 @@ export class PDFService {
     return { data, logoBuf };
   }
 
-  // ── Genera PDF de factura (PDFKit) ──────────────────────────────────
+  // ── Genera PDF de factura — mismo HTML que la vista previa (Puppeteer) ──
   async generarFacturaPDF(facturaId: number): Promise<{ buffer: Buffer; filename: string }> {
     const t0 = Date.now();
     const empresaId = this.tenantSvc.getEmpresaId();
@@ -248,11 +250,12 @@ export class PDFService {
     });
     if (!factura) throw new NotFoundException(`Factura #${facturaId} no encontrada`);
 
-    const { data, logoBuf } = await this.buildFacturaData(factura);
-    const buffer = await generarFacturaPDF(data, logoBuf);
+    const { data } = await this.buildFacturaData(factura);
+    const html   = generarHTMLFactura(data);
+    const buffer = await this.browserSvc.htmlToPDF(html);
 
     this.logger.log(
-      `PDF generado en ${Date.now() - t0} ms — ${factura.folio} — ` +
+      `PDF (HTML→Puppeteer) generado en ${Date.now() - t0} ms — ${factura.folio} — ` +
       `${factura.detalles?.length ?? 0} líneas`,
     );
     return { buffer, filename: `${factura.folio}.pdf` };
@@ -264,10 +267,11 @@ export class PDFService {
     empresaId: number,
   ): Promise<{ buffer: Buffer; filename: string }> {
     const t0 = Date.now();
-    const { data, logoBuf } = await this.buildFacturaData(factura, empresaId);
-    const buffer = await generarFacturaPDF(data, logoBuf);
+    const { data } = await this.buildFacturaData(factura, empresaId);
+    const html   = generarHTMLFactura(data);
+    const buffer = await this.browserSvc.htmlToPDF(html);
     this.logger.log(
-      `PDF (cron) generado en ${Date.now() - t0} ms — ${factura.folio}`,
+      `PDF (cron/HTML→Puppeteer) generado en ${Date.now() - t0} ms — ${factura.folio}`,
     );
     return { buffer, filename: `${factura.folio}.pdf` };
   }
