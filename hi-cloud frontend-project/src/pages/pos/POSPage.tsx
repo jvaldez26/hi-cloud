@@ -2203,6 +2203,7 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
           empresaRnc:             empRes.rnc,
           empresaDireccion:       empRes.direccion,
           empresaTelefono:        empRes.telefono,
+          fechaEmision:           nc?.fecha ? dayjs(nc.fecha).format('DD/MM/YYYY') : undefined,
         };
         const qrDUrl = ecfResult?.qrUrl && !ecfPendiente
           ? await QRCode.toDataURL(ecfResult.qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' }).catch(() => null)
