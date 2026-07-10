@@ -12,7 +12,7 @@ export class CompraDetalle extends BaseEntity {
   @Column()
   compraId!: number;
 
-  @ManyToOne(() => Producto, { eager: true })
+  @ManyToOne(() => Producto)
   @JoinColumn({ name: 'productoId' })
   producto!: Producto;
 

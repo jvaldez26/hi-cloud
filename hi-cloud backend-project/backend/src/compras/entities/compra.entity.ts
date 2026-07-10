@@ -27,7 +27,7 @@ export class Compra extends TenantBaseEntity {
   @Column({ type: 'enum', enum: CompraEstado, default: CompraEstado.BORRADOR })
   estado!: CompraEstado;
 
-  @ManyToOne(() => Proveedor, { eager: true })
+  @ManyToOne(() => Proveedor)
   @JoinColumn({ name: 'proveedorId' })
   proveedor!: Proveedor;
 
@@ -41,7 +41,7 @@ export class Compra extends TenantBaseEntity {
   @Column()
   usuarioId!: number;
 
-  @OneToMany(() => CompraDetalle, (d) => d.compra, { cascade: true, eager: true })
+  @OneToMany(() => CompraDetalle, (d) => d.compra, { cascade: true })
   detalles!: CompraDetalle[];
 
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
