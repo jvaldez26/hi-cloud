@@ -55,6 +55,16 @@ export default defineConfig({
         entryFileNames: 'assets/[name]-[hash].js',
         chunkFileNames: 'assets/[name]-[hash].js',
         assetFileNames: 'assets/[name]-[hash].[ext]',
+        // react/react-dom se quedan en el entry bundle (son el runtime, separarlos crea ciclos)
+        // Solo separamos librerías grandes e independientes
+        manualChunks(id) {
+          if (id.includes('node_modules/antd/') || id.includes('node_modules/@ant-design/') || id.includes('node_modules/rc-')) {
+            return 'vendor-antd';
+          }
+          if (id.includes('node_modules/recharts/') || id.includes('node_modules/d3-')) {
+            return 'vendor-charts';
+          }
+        },
       },
     },
   },
