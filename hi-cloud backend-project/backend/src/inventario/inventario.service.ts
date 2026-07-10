@@ -547,7 +547,7 @@ export class InventarioService {
           p.stock,
           p."stockMinimo"
         FROM productos p
-        JOIN empresas e ON e.id = p."empresaId"
+        JOIN empresa e ON e.id = p."empresaId"
         WHERE p."isActive"   = true
           AND p."stockMinimo" > 0
           AND p.stock <= p."stockMinimo"
@@ -567,7 +567,7 @@ export class InventarioService {
         // Obtener emails de admins de esta empresa
         const admins = await this.ds.query<{ email: string }[]>(`
           SELECT u.email
-          FROM usuarios_empresas ue
+          FROM usuario_empresa ue
           JOIN users u ON u.id = ue."usuarioId"
           WHERE ue."empresaId" = $1
             AND ue."isActive"  = true
