@@ -6,14 +6,14 @@ import { UserRole } from '../../users/enums/user-role.enum';
 
 @Entity('usuario_empresa')
 export class UsuarioEmpresa extends BaseEntity {
-  @ManyToOne(() => User, { eager: true })
+  @ManyToOne(() => User)
   @JoinColumn({ name: 'userId' })
   user!: User;
 
   @Column()
   userId!: number;
 
-  @ManyToOne(() => Empresa, { eager: true })
+  @ManyToOne(() => Empresa)
   @JoinColumn({ name: 'empresaId' })
   empresa!: Empresa;
 

@@ -225,7 +225,7 @@ export class MultiEmpresaService {
         rol:        dto.rol,
         isPrincipal: dto.isPrincipal ?? yaAsignado.isPrincipal,
       });
-      return this.usuarioEmpresaRepo.findOne({ where: { id: yaAsignado.id } });
+      return this.usuarioEmpresaRepo.findOne({ where: { id: yaAsignado.id }, relations: ['user'] });
     }
 
     // SEGURIDAD: Al invitar a un usuario a otra empresa, NUNCA desplazar su
