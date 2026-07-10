@@ -181,9 +181,14 @@ export class PDFService {
       ecfTipoDescripcion:  ecf?.descripcion,
       ecfCodigoSeguridad:  ecf?.codigoSeguridad,
       ecfEstadoDGII:       ecf?.estadoDGII,
-      ecfFechaFirma:       ecf?.fechaFirma
-        ? String(ecf.fechaFirma)
-        : (ecf?.respuestaMSeller as any)?.signedDate ?? undefined,
+      ecfFechaFirma:       (() => {
+        if (ecf?.fechaFirma) return String(ecf.fechaFirma);
+        const sd: string | undefined = (ecf?.respuestaMSeller as any)?.signedDate;
+        if (!sd) return undefined;
+        // "DD-MM-YYYY HH:MM:SS" RD (UTC-4) → ISO string para fmtDT
+        const m = sd.match(/^(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2}):(\d{2})$/);
+        return m ? new Date(`${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:${m[6]}-04:00`).toISOString() : undefined;
+      })(),
       ecfFechaVigencia:    ecf?.secFechaVencimiento  ? String(ecf.secFechaVencimiento) : undefined,
       empresaNombre:       empresa.razonSocial || empresa.nombre || 'Mi Empresa',
       empresaRNC:          empresa.rnc || '',

@@ -625,10 +625,10 @@ ${JSON.stringify(payload, null, 2)}`;
   }
 }
 
-// "DD-MM-YYYY HH:MM:SS" → Date. Returns undefined if unparseable.
+// "DD-MM-YYYY HH:MM:SS" → Date en RD (UTC-4). Returns undefined si no parseable.
 function parseMSellerSignedDate(s: string | undefined): Date | undefined {
   if (!s) return undefined;
   const m = s.match(/^(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2}):(\d{2})$/);
   if (!m) return undefined;
-  return new Date(`${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:${m[6]}`);
+  return new Date(`${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:${m[6]}-04:00`);
 }
