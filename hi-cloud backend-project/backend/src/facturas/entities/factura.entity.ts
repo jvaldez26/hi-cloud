@@ -27,7 +27,7 @@ export class Factura extends TenantBaseEntity {
   @Column({ type: 'enum', enum: FacturaEstado, default: FacturaEstado.BORRADOR })
   estado!: FacturaEstado;
 
-  @ManyToOne(() => Cliente, { eager: true, nullable: true })
+  @ManyToOne(() => Cliente, { nullable: true })
   @JoinColumn({ name: 'clienteId' })
   cliente?: Cliente;
 
@@ -41,7 +41,7 @@ export class Factura extends TenantBaseEntity {
   @Column()
   usuarioId!: number;
 
-  @OneToMany(() => FacturaDetalle, (d) => d.factura, { cascade: true, eager: true })
+  @OneToMany(() => FacturaDetalle, (d) => d.factura, { cascade: true })
   detalles!: FacturaDetalle[];
 
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })

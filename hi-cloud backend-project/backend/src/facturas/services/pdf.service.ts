@@ -237,7 +237,7 @@ export class PDFService {
 
     const factura = await this.facturaRepo.findOne({
       where: { id: facturaId, empresaId, isActive: true },
-      relations: ['cliente', 'detalles', 'usuario'],
+      relations: ['cliente', 'detalles', 'detalles.producto', 'usuario'],
     });
     if (!factura) throw new NotFoundException(`Factura #${facturaId} no encontrada`);
 
@@ -270,7 +270,7 @@ export class PDFService {
     const empresaId = this.tenantSvc.getEmpresaId();
     const factura = await this.facturaRepo.findOne({
       where: { id: facturaId, empresaId, isActive: true },
-      relations: ['cliente', 'detalles', 'usuario'],
+      relations: ['cliente', 'detalles', 'detalles.producto', 'usuario'],
     });
     if (!factura) throw new NotFoundException(`Factura #${facturaId} no encontrada`);
     const { data } = await this.buildFacturaData(factura);

@@ -291,7 +291,7 @@ export class FacturasRecurrentesService {
         if (rec.empresaId) {
           this.facturaRepository.findOne({
             where: { id: factura.id },
-            relations: ['cliente', 'detalles'],
+            relations: ['cliente', 'detalles', 'detalles.producto'],
           }).then(fConRel => {
             if (!fConRel) return;
             return this.enviarEmailFactura(fConRel, rec, rec.empresaId!);
@@ -468,7 +468,7 @@ export class FacturasRecurrentesService {
     if (rec.empresaId) {
       const facturaConRelaciones = await this.facturaRepository.findOne({
         where: { id: factura.id },
-        relations: ['cliente', 'detalles'],
+        relations: ['cliente', 'detalles', 'detalles.producto'],
       });
       if (facturaConRelaciones) {
         this.enviarEmailFactura(facturaConRelaciones, rec, rec.empresaId).catch(e =>

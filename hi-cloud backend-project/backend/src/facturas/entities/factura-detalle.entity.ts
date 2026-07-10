@@ -12,7 +12,7 @@ export class FacturaDetalle extends BaseEntity {
   @Column()
   facturaId!: number;
 
-  @ManyToOne(() => Producto, { eager: true, nullable: true })
+  @ManyToOne(() => Producto, { nullable: true })
   @JoinColumn({ name: 'productoId' })
   producto?: Producto;
 

@@ -998,7 +998,7 @@ export class FacturasService {
 
     return this.facturaRepository.findOne({
       where: { id: nuevaGuardada.id },
-      relations: ['cliente', 'detalles'],
+      relations: ['cliente', 'detalles', 'detalles.producto'],
     });
   }
 
