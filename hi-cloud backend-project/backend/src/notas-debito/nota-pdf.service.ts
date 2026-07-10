@@ -4,8 +4,9 @@ import { Repository }       from 'typeorm';
 import * as qrcode          from 'qrcode';
 import { NotaDebito }       from './entities/nota-debito.entity';
 import { TenantService }    from '../tenant/tenant.service';
-import { generarNotaPDF }   from '../common/pdf/nota-pdf.helper';
-import type { NotaPDFData } from '../common/pdf/nota-pdf.helper';
+import { BrowserService }   from '../common/services/browser.service';
+import { generarHTMLNota }  from './nota.template';
+import type { NotaPDFData } from './nota.template';
 
 const MOTIVO_LABEL: Record<string, string> = {
   cargo_adicional:   'Cargo adicional',
@@ -22,7 +23,8 @@ export class NotaDebitoPDFService {
 
   constructor(
     @InjectRepository(NotaDebito) private repo: Repository<NotaDebito>,
-    private tenantSvc: TenantService,
+    private tenantSvc:  TenantService,
+    private browserSvc: BrowserService,
   ) {}
 
   async generarPDF(id: number): Promise<{ buffer: Buffer; filename: string }> {
@@ -73,6 +75,12 @@ export class NotaDebitoPDFService {
 
     const motivoLabel = nd.motivo ? (MOTIVO_LABEL[nd.motivo] ?? nd.motivo) : undefined;
 
+    const logoDataUrl = empresa.logo
+      ? await fetch(empresa.logo, { signal: AbortSignal.timeout(5_000) })
+          .then(async r => r.ok ? `data:image/png;base64,${Buffer.from(await r.arrayBuffer()).toString('base64')}` : undefined)
+          .catch(() => undefined)
+      : undefined;
+
     const data: NotaPDFData = {
       tipo:                 'DEBITO',
       numero:               nd.numero,
@@ -90,6 +98,7 @@ export class NotaDebitoPDFService {
       empresaCiudad:        empresa.ciudad,
       empresaTelefono:      empresa.telefono,
       empresaEmail:         empresa.email,
+      empresaLogo:          logoDataUrl,
       empresaColor:         (empresa.configuracion as any)?.colorPrimario ?? '#d97706',
       clienteNombre:        nd.cliente?.nombre || 'Consumidor Final',
       clienteRNC:           nd.cliente?.rncReceptor || nd.cliente?.rfc,
@@ -113,7 +122,8 @@ export class NotaDebitoPDFService {
       estado:   nd.estado,
     };
 
-    const buffer = await generarNotaPDF(data);
+    const html   = generarHTMLNota(data);
+    const buffer = await this.browserSvc.htmlToPDF(html);
     return { buffer, filename: `${nd.numero}.pdf` };
   }
 }
