@@ -181,7 +181,9 @@ export class PDFService {
       ecfTipoDescripcion:  ecf?.descripcion,
       ecfCodigoSeguridad:  ecf?.codigoSeguridad,
       ecfEstadoDGII:       ecf?.estadoDGII,
-      ecfFechaFirma:       ecf?.fechaFirma          ? String(ecf.fechaFirma)          : undefined,
+      ecfFechaFirma:       ecf?.fechaFirma
+        ? String(ecf.fechaFirma)
+        : (ecf?.respuestaMSeller as any)?.signedDate ?? undefined,
       ecfFechaVigencia:    ecf?.secFechaVencimiento  ? String(ecf.secFechaVencimiento) : undefined,
       empresaNombre:       empresa.razonSocial || empresa.nombre || 'Mi Empresa',
       empresaRNC:          empresa.rnc || '',

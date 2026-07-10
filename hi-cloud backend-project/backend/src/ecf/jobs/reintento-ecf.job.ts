@@ -210,6 +210,7 @@ export class ReintentoECFJob {
         // Si el poll falla, el job de consultar-estado lo recogerá
       }
 
+      const fechaFirmaReintento = parseMSellerSignedDate(respuesta.signedDate);
       await this.ecfRepo.update(id, {
         estadoDGII:         estadoTrasReintento,
         trackId:            respuesta.internalTrackId,
@@ -219,6 +220,7 @@ export class ReintentoECFJob {
         intentosEnvio:      intentosEnvio + 1,
         ultimoIntentoEnvio: new Date(),
         errorEnvio:         undefined,
+        ...(fechaFirmaReintento && { fechaFirma: fechaFirmaReintento }),
         ...(estadoTrasReintento === EstadoDGII.ACEPTADO ? { fechaUso: new Date() } : {}),
       });
 
@@ -412,4 +414,11 @@ export class ReintentoECFJob {
       this.eventoRepo.create({ comprobanteId, evento, payload, mensaje }),
     );
   }
+}
+
+function parseMSellerSignedDate(s: string | undefined): Date | undefined {
+  if (!s) return undefined;
+  const m = s.match(/^(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2}):(\d{2})$/);
+  if (!m) return undefined;
+  return new Date(`${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:${m[6]}`);
 }

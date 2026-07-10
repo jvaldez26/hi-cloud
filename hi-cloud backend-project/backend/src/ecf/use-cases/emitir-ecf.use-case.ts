@@ -58,6 +58,7 @@ export interface EmitirECFResult {
   qrUrl?:       string;
   trackId?:     string;
   securityCode?: string;
+  signedDate?:  string;
   estado:       EstadoDGII;
   idempotente:  boolean; // true si ya existía un e-CF aceptado
 }
@@ -355,6 +356,7 @@ export class EmitirECFUseCase {
       const latencia  = Date.now() - t0;
 
       // ── 7. ACTUALIZAR ESTADO → ACEPTADO (MSeller recibió el documento) ────
+      const fechaFirmaECF = parseMSellerSignedDate(respuesta.signedDate);
       await this.ecfRepo.update(ecfSaved.id, {
         estadoDGII:         EstadoDGII.ENVIADO,
         trackId:            respuesta.internalTrackId,
@@ -363,6 +365,7 @@ export class EmitirECFUseCase {
         respuestaMSeller:   respuesta as any,
         intentosEnvio:      1,
         ultimoIntentoEnvio: new Date(),
+        ...(fechaFirmaECF && { fechaFirma: fechaFirmaECF }),
       } as any);
 
       await this.registrarEvento(ecfSaved.id, TipoEcfEvento.ENVIADO, {
@@ -615,8 +618,17 @@ ${JSON.stringify(payload, null, 2)}`;
       qrUrl:        ecf.qrUrl,
       trackId:      ecf.trackId,
       securityCode: (ecf.respuestaMSeller as any)?.securityCode,
+      signedDate:   (ecf.respuestaMSeller as any)?.signedDate,
       estado:       ecf.estadoDGII,
       idempotente,
     };
   }
+}
+
+// "DD-MM-YYYY HH:MM:SS" → Date. Returns undefined if unparseable.
+function parseMSellerSignedDate(s: string | undefined): Date | undefined {
+  if (!s) return undefined;
+  const m = s.match(/^(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2}):(\d{2})$/);
+  if (!m) return undefined;
+  return new Date(`${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:${m[6]}`);
 }
