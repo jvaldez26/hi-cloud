@@ -55,6 +55,29 @@ export default defineConfig({
         entryFileNames: 'assets/[name]-[hash].js',
         chunkFileNames: 'assets/[name]-[hash].js',
         assetFileNames: 'assets/[name]-[hash].[ext]',
+        manualChunks(id) {
+          if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/')) {
+            return 'vendor-react';
+          }
+          if (id.includes('node_modules/antd/') || id.includes('node_modules/@ant-design/') || id.includes('node_modules/rc-')) {
+            return 'vendor-antd';
+          }
+          if (id.includes('node_modules/recharts/') || id.includes('node_modules/d3-') || id.includes('node_modules/victory-')) {
+            return 'vendor-charts';
+          }
+          if (id.includes('node_modules/framer-motion/')) {
+            return 'vendor-motion';
+          }
+          if (id.includes('node_modules/@tanstack/') || id.includes('node_modules/zustand/')) {
+            return 'vendor-state';
+          }
+          if (id.includes('node_modules/dayjs/') || id.includes('node_modules/date-fns/')) {
+            return 'vendor-dates';
+          }
+          if (id.includes('node_modules/')) {
+            return 'vendor-misc';
+          }
+        },
       },
     },
   },
