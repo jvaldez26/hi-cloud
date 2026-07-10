@@ -174,7 +174,7 @@ export default function FacturaDetailPage() {
                   .catch(() => message.error('Error al cargar vista previa'));
               }}
             >
-              Vista Previa
+              Imprimir
             </Button>
             <Button
               icon={<MailOutlined />}
