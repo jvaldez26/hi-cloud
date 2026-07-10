@@ -1,7 +1,6 @@
-import * as XLSX from 'xlsx';
-
 // ── Exportar tabla genérica ──────────────────────────────────────────────────
-export function exportarExcel(datos: Record<string, unknown>[], nombreArchivo: string) {
+export async function exportarExcel(datos: Record<string, unknown>[], nombreArchivo: string) {
+  const XLSX = await import('xlsx');
   const ws = XLSX.utils.json_to_sheet(datos);
   const wb = XLSX.utils.book_new();
 
@@ -16,7 +15,7 @@ export function exportarExcel(datos: Record<string, unknown>[], nombreArchivo: s
 }
 
 // ── Exportar Reporte 606 ─────────────────────────────────────────────────────
-export function exportar606(data: any, mes: number, anio: number) {
+export async function exportar606(data: any, mes: number, anio: number) {
   const filas = (data?.detalle ?? []).map((r: any) => ({
     'Folio':             r.folio,
     'Fecha':             r.fecha,
@@ -40,11 +39,11 @@ export function exportar606(data: any, mes: number, anio: number) {
     'Total':            Number(data?.totales?.montoTotal ?? 0),
   });
 
-  exportarExcel(filas, `Formato-606-${anio}-${String(mes).padStart(2, '0')}`);
+  await exportarExcel(filas, `Formato-606-${anio}-${String(mes).padStart(2, '0')}`);
 }
 
 // ── Exportar Reporte 607 ─────────────────────────────────────────────────────
-export function exportar607(data: any, mes: number, anio: number) {
+export async function exportar607(data: any, mes: number, anio: number) {
   const filas = (data?.detalle ?? []).map((r: any) => ({
     'Folio':           r.folio,
     'NCF':             r.ncf,
@@ -55,11 +54,11 @@ export function exportar607(data: any, mes: number, anio: number) {
     'Fecha Anulación': r.fechaAnulacion,
   }));
 
-  exportarExcel(filas, `Formato-607-${anio}-${String(mes).padStart(2, '0')}`);
+  await exportarExcel(filas, `Formato-607-${anio}-${String(mes).padStart(2, '0')}`);
 }
 
 // ── Exportar Balance ITBIS ────────────────────────────────────────────────────
-export function exportarITBIS(data: any, mes: number, anio: number) {
+export async function exportarITBIS(data: any, mes: number, anio: number) {
   const filas = [
     { 'Concepto': 'VENTAS', 'Detalle': '', 'Monto': '' },
     { 'Concepto': 'Facturas emitidas', 'Detalle': data?.ventas?.facturas ?? 0, 'Monto': data?.ventas?.totalFacturado ?? 0 },
@@ -74,11 +73,11 @@ export function exportarITBIS(data: any, mes: number, anio: number) {
     { 'Concepto': 'BALANCE ITBIS DGII', 'Detalle': data?.resumenITBIS?.situacion ?? '', 'Monto': data?.resumenITBIS?.balance ?? 0 },
   ];
 
-  exportarExcel(filas, `ITBIS-${anio}-${String(mes).padStart(2, '0')}`);
+  await exportarExcel(filas, `ITBIS-${anio}-${String(mes).padStart(2, '0')}`);
 }
 
 // ── Exportar inventario (legado) ─────────────────────────────────────────────
-export function exportarInventario(productos: any[]) {
+export async function exportarInventario(productos: any[]) {
   const filas = productos.map((p: any) => ({
     'Código':        p.codigo,
     'Nombre':        p.nombre,
@@ -91,12 +90,12 @@ export function exportarInventario(productos: any[]) {
     'Alerta':        p.alerta ? 'SÍ' : 'NO',
   }));
 
-  exportarExcel(filas, `Inventario-${new Date().toISOString().split('T')[0]}`);
+  await exportarExcel(filas, `Inventario-${new Date().toISOString().split('T')[0]}`);
 }
 
 // ── Exportar catálogo completo de productos (columnas ricas) ─────────────────
 // Devuelve true si generó el archivo, false si la lista estaba vacía.
-export function exportarCatalogo(productos: any[], sufijo: string): boolean {
+export async function exportarCatalogo(productos: any[], sufijo: string): Promise<boolean> {
   if (!productos.length) return false;
 
   const filas = productos.map((p: any) => {
@@ -120,6 +119,6 @@ export function exportarCatalogo(productos: any[], sufijo: string): boolean {
     };
   });
 
-  exportarExcel(filas, `Productos-${sufijo}`);
+  await exportarExcel(filas, `Productos-${sufijo}`);
   return true;
 }
