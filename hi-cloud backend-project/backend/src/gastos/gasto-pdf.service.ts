@@ -59,7 +59,7 @@ export class GastoPDFService {
     // ECF E43 asociado al gasto
     const ecf = await this.repo.manager.query(
       `SELECT e.numero, e."estadoDGII", e."codigoSeguridad", e."qrUrl", e."fechaFirma",
-              s."fechaVencimiento" AS "secFechaVenc"
+              e."respuestaMSeller", s."fechaVencimiento" AS "secFechaVenc"
        FROM ecf e
        LEFT JOIN secuencias_ecf s ON s.id = e."secuenciaId"
        WHERE e."documentoOrigenId"   = $1
@@ -84,6 +84,8 @@ export class GastoPDFService {
     const fechaVencSec = ecf?.secFechaVenc
       ? fmtF(ecf.secFechaVenc)
       : undefined;
+
+    if (ecf && !ecf.fechaFirma) ecf.fechaFirma = msellerSignedDate(ecf.respuestaMSeller);
 
     const buffer = await this.buildPDF({ g, empresa, ecf, qrBase64, numero, fechaVencSec });
     this.logger.log(`PDF E43 generado: ${numero}${ecf ? ' (' + ecf.numero + ')' : ''}`);
@@ -292,4 +294,12 @@ export class GastoPDFService {
       } catch(e) { reject(e); }
     });
   }
+}
+
+// signedDate MSeller "DD-MM-YYYY HH:MM:SS" → Date en RD (UTC-4)
+function msellerSignedDate(resp: unknown): Date | undefined {
+  const sd = (resp as any)?.signedDate;
+  if (!sd) return undefined;
+  const m = String(sd).match(/^(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2}):(\d{2})$/);
+  return m ? new Date(`${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:${m[6]}-04:00`) : undefined;
 }

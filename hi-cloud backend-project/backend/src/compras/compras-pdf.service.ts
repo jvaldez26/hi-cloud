@@ -38,7 +38,7 @@ export class ComprasPdfService {
 
     // Buscar e-CF E41 asociado a esta compra
     const ecf = await this.ds.query<any[]>(
-      `SELECT numero, "codigoSeguridad", "qrUrl", "estadoDGII", "fechaFirma"
+      `SELECT numero, "codigoSeguridad", "qrUrl", "estadoDGII", "fechaFirma", "respuestaMSeller"
        FROM ecf
        WHERE "documentoOrigenTipo" = 'COMPRA'
          AND "documentoOrigenId"   = $1
@@ -56,6 +56,8 @@ export class ComprasPdfService {
       : undefined;
 
     const esInformal = !proveedor.rnc || proveedor.rnc === '000000000' || proveedor.esInformal === true;
+
+    if (ecf && !ecf.fechaFirma) ecf.fechaFirma = msellerSignedDate(ecf.respuestaMSeller);
 
     if (esInformal && ecf?.numero) {
       const buffer = await this.generarE41PDF(compra, empresa, proveedor, ecf);
@@ -354,4 +356,11 @@ export class ComprasPdfService {
       }
     });
   }
+}
+
+function msellerSignedDate(resp: unknown): Date | undefined {
+  const sd = (resp as any)?.signedDate;
+  if (!sd) return undefined;
+  const m = String(sd).match(/^(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2}):(\d{2})$/);
+  return m ? new Date(`${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:${m[6]}-04:00`) : undefined;
 }

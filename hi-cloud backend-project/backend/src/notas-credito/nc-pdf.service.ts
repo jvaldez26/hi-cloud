@@ -40,7 +40,7 @@ export class NotaCreditoPDFService {
     // ECF de esta nota (para e-NCF, QR, código de seguridad)
     const ecf = await this.repo.manager.query(
       `SELECT numero, "estadoDGII", "codigoSeguridad", "qrUrl", "fechaFirma",
-              "ncfModificado", "codigoModificacion"
+              "ncfModificado", "codigoModificacion", "respuestaMSeller"
        FROM ecf
        WHERE "documentoOrigenId"   = $1
          AND "documentoOrigenTipo" = 'NOTA_CREDITO'
@@ -71,7 +71,7 @@ export class NotaCreditoPDFService {
       ecfNumero:            ecf?.numero,
       ecfEstado:            ecf?.estadoDGII,
       ecfCodigoSeguridad:   ecf?.codigoSeguridad,
-      ecfFechaFirma:        ecf?.fechaFirma ? String(ecf.fechaFirma) : undefined,
+      ecfFechaFirma:        ecfSignedDateISO(ecf),
       qrBase64,
       empresaNombre:        empresa.nombreComercial || empresa.razonSocial || empresa.nombre || 'Mi Empresa',
       empresaRNC:           empresa.rnc || '',
@@ -106,4 +106,13 @@ export class NotaCreditoPDFService {
     const buffer = await generarNotaPDF(data);
     return { buffer, filename: `${nc.numero}.pdf` };
   }
+}
+
+// Devuelve ISO string para fmtDT: prioriza fechaFirma de BD, fallback a signedDate MSeller (UTC-4 RD)
+function ecfSignedDateISO(ecf: any): string | undefined {
+  if (ecf?.fechaFirma) return String(ecf.fechaFirma);
+  const sd: string | undefined = ecf?.respuestaMSeller?.signedDate;
+  if (!sd) return undefined;
+  const m = sd.match(/^(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2}):(\d{2})$/);
+  return m ? new Date(`${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:${m[6]}-04:00`).toISOString() : undefined;
 }

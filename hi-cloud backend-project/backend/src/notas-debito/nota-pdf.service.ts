@@ -41,7 +41,7 @@ export class NotaDebitoPDFService {
     // ECF de esta nota — incluye QR, código seguridad, NCF modificado, fecha venc. secuencia
     const ecf = await this.repo.manager.query(
       `SELECT e.numero, e."estadoDGII", e."codigoSeguridad", e."qrUrl", e."fechaFirma",
-              e."ncfModificado", e."codigoModificacion",
+              e."ncfModificado", e."codigoModificacion", e."respuestaMSeller",
               s."fechaVencimiento" AS "secFechaVenc"
        FROM ecf e
        LEFT JOIN secuencias_ecf s ON s.id = e."secuenciaId"
@@ -81,7 +81,7 @@ export class NotaDebitoPDFService {
       ecfNumero:            ecf?.numero,
       ecfEstado:            ecf?.estadoDGII,
       ecfCodigoSeguridad:   ecf?.codigoSeguridad,
-      ecfFechaFirma:        ecf?.fechaFirma ? String(ecf.fechaFirma) : undefined,
+      ecfFechaFirma:        ecfSignedDateISO(ecf),
       qrBase64,
       fechaVencSecuencia,
       empresaNombre:        empresa.nombreComercial || empresa.razonSocial || empresa.nombre || 'Mi Empresa',
@@ -116,4 +116,12 @@ export class NotaDebitoPDFService {
     const buffer = await generarNotaPDF(data);
     return { buffer, filename: `${nd.numero}.pdf` };
   }
+}
+
+function ecfSignedDateISO(ecf: any): string | undefined {
+  if (ecf?.fechaFirma) return String(ecf.fechaFirma);
+  const sd: string | undefined = ecf?.respuestaMSeller?.signedDate;
+  if (!sd) return undefined;
+  const m = sd.match(/^(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2}):(\d{2})$/);
+  return m ? new Date(`${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:${m[6]}-04:00`).toISOString() : undefined;
 }
