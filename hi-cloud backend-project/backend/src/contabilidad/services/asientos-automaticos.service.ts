@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import { generarNumeroSecuencial } from '../../common/utils/generar-numero.util';
 import { CuentaContable } from '../entities/cuenta-contable.entity';
 import { AsientoContable, TipoOrigenAsiento, EstadoAsiento } from '../entities/asiento-contable.entity';
@@ -80,10 +80,16 @@ export class AsientosAutomaticosService {
     userId: number;
     lineas: Array<{ codigo: string; descripcion: string; debe: number; haber: number }>;
   }): Promise<AsientoContable | null> {
-    const lineasResueltas: { cuenta: CuentaContable; descripcion: string; debe: number; haber: number }[] = [];
+    // Una sola query para todas las cuentas del asiento en vez de N findOne
+    const codigos = [...new Set(params.lineas.map(l => l.codigo))];
+    const whereCondition: any = { codigo: In(codigos), isActive: true };
+    if (this.eid) whereCondition.empresaId = this.eid;
+    const cuentas = await this.cuentaRepository.find({ where: whereCondition });
+    const cuentaMap = new Map(cuentas.map(c => [c.codigo, c]));
 
+    const lineasResueltas: { cuenta: CuentaContable; descripcion: string; debe: number; haber: number }[] = [];
     for (const l of params.lineas) {
-      const cuenta = await this.getCuenta(l.codigo, this.eid);
+      const cuenta = cuentaMap.get(l.codigo);
       if (!cuenta) {
         this.logger.warn(`Cuenta ${l.codigo} no encontrada — asiento omitido`);
         return null;
