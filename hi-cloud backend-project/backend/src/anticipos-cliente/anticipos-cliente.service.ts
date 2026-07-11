@@ -7,8 +7,10 @@ import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import { fechaHoyRD, mesHoyRD } from '../common/utils/fecha-local.util';
 import { AnticipoCliente, EstadoAnticipo } from './entities/anticipo-cliente.entity';
 import { CuentaPorCobrar } from '../cxc/entities/cuenta-por-cobrar.entity';
+import { PagoCobrado } from '../cxc/entities/pago-cobrado.entity';
 import { Factura, FacturaEstado } from '../facturas/entities/factura.entity';
 import { EstadoCuenta } from '../common/enums/estado-cuenta.enum';
+import { MetodoPago } from '../common/enums/metodo-pago.enum';
 import { AsientosAutomaticosService } from '../contabilidad/services/asientos-automaticos.service';
 import { TenantService } from '../tenant/tenant.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
@@ -169,6 +171,20 @@ export class AnticiposClienteService implements OnModuleInit {
       if (nuevoEstadoCxc === EstadoCuenta.PAGADA && cxc.facturaId) {
         await em.getRepository(Factura).update(cxc.facturaId, { estado: FacturaEstado.PAGADA });
       }
+
+      // Registrar pago en historial de la CxC
+      await em.getRepository(PagoCobrado).save(
+        em.getRepository(PagoCobrado).create({
+          cuentaPorCobrarId: dto.cxcId,
+          monto:             montoAplicar,
+          fecha:             new Date(),
+          metodoPago:        MetodoPago.OTRO,
+          referencia:        `Anticipo ${anticipo.numero}`,
+          moneda:            cxc.moneda ?? 'DOP',
+          tipoCambio:        1,
+          userId:            usuarioId,
+        }),
+      );
 
       // Actualizar anticipo
       const nuevoPendienteAnt = +(pendiente - montoAplicar).toFixed(2);
