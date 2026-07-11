@@ -11,6 +11,7 @@ import { useMobile } from '../../hooks/useMediaQuery';
 import { productosApi } from '../../api/productos.api';
 import api from '../../api/client';
 import { clientesApi } from '../../api/clientes.api';
+import { proveedoresApi, type ProveedorPayload } from '../../api/proveedores.api';
 import { configuracionApi } from '../../api/configuracion.api';
 import { useQueryClient } from '@tanstack/react-query';
 import { facturasApi } from '../../api/facturas.api';
@@ -2449,15 +2450,23 @@ type PanelId = 'items' | 'inventario' | 'facturas' | 'pre-facturas' | 'cotizacio
 
 // ── Helpers de panel ─────────────────────────────────────────────────────────
 
-function PanelHeader({ title, icon, C, onVolver, onNuevo, labelNuevo }:
-  { title: string; icon: string; C: Palette; onVolver: () => void; onNuevo?: () => void; labelNuevo?: string }) {
+function PanelHeader({ title, icon, C, onVolver, onNuevo, labelNuevo, onExtra, labelExtra }:
+  { title: string; icon: string; C: Palette; onVolver: () => void;
+    onNuevo?: () => void; labelNuevo?: string;
+    onExtra?: () => void; labelExtra?: string }) {
   return (
     <div style={{ padding: '10px 14px', flexShrink: 0, borderBottom: `1px solid ${C.border}`,
-      display: 'flex', alignItems: 'center', gap: 10 }}>
+      display: 'flex', alignItems: 'center', gap: 8 }}>
       <button onClick={onVolver} style={{ background: 'none', border: 'none', color: C.blue,
         cursor: 'pointer', fontSize: 20, lineHeight: 1, padding: 0 }}>←</button>
       <span style={{ fontSize: 16 }}>{icon}</span>
       <span style={{ fontWeight: 700, color: C.text, fontSize: 15, flex: 1 }}>{title}</span>
+      {onExtra && (
+        <button onClick={onExtra} style={{ background: 'transparent', border: `1px solid ${C.border2}`,
+          borderRadius: 8, color: C.text, cursor: 'pointer', padding: '5px 12px', fontSize: 12, fontWeight: 600 }}>
+          + {labelExtra ?? 'Extra'}
+        </button>
+      )}
       {onNuevo && (
         <button onClick={onNuevo} style={{ background: C.green, border: 'none', borderRadius: 8,
           color: '#fff', cursor: 'pointer', padding: '6px 14px', fontSize: 12, fontWeight: 700 }}>
@@ -3266,10 +3275,19 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
   const [cantRecibidas, setCantRecibidas] = useState<Record<number, string>>({});
   const [pendingEnviar, setPendingEnviar] = useState<number | null>(null);
   const [pendingCancel, setPendingCancel] = useState<number | null>(null);
-  const [modalNuevaOC,  setModalNuevaOC]  = useState(false);
-  const [detailOCId,    setDetailOCId]    = useState<number | null>(null);
-  const [imprimiendoOC, setImprimiendoOC] = useState<number | null>(null);
-  const [subView,       setSubView]       = useState<'ordenes' | 'cxp'>('ordenes');
+  const [modalNuevaOC,      setModalNuevaOC]      = useState(false);
+  const [detailOCId,        setDetailOCId]        = useState<number | null>(null);
+  const [imprimiendoOC,     setImprimiendoOC]     = useState<number | null>(null);
+  const [subView,           setSubView]           = useState<'ordenes' | 'cxp'>('ordenes');
+  const [modalProv,         setModalProv]         = useState(false);
+  const [formProvNombre,    setFormProvNombre]    = useState('');
+  const [formProvRnc,       setFormProvRnc]       = useState('');
+  const [formProvTel,       setFormProvTel]       = useState('');
+  const [formProvEmail,     setFormProvEmail]     = useState('');
+  const [formProvDir,       setFormProvDir]       = useState('');
+  const [formProvInformal,  setFormProvInformal]  = useState(false);
+  const [creandoProv,       setCreandoProv]       = useState(false);
+  const rncProv = useRncLookup();
   const compUser   = useAuthStore(s => s.user);
   const esAdminCxP = compUser?.role === 'admin' || compUser?.role === 'contador';
 
@@ -3310,6 +3328,37 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
     } catch (e: any) {
       message.error(e?.response?.data?.message ?? 'Error al cancelar');
     } finally { setPendingCancel(null); }
+  };
+
+  const resetFormProv = () => {
+    setFormProvNombre(''); setFormProvRnc(''); setFormProvTel('');
+    setFormProvEmail(''); setFormProvDir(''); setFormProvInformal(false);
+    rncProv.limpiar();
+  };
+
+  const handleCrearProveedor = async () => {
+    if (!formProvNombre.trim()) { message.error('El nombre es obligatorio'); return; }
+    if (!formProvInformal && !/^\d{9}$|^\d{11}$/.test(formProvRnc.replace(/\D/g, ''))) {
+      message.error('RNC debe tener 9 u 11 dígitos'); return;
+    }
+    setCreandoProv(true);
+    try {
+      const payload: Partial<ProveedorPayload> = {
+        nombre:     formProvNombre.trim(),
+        rnc:        formProvInformal ? undefined : formProvRnc.replace(/\D/g, ''),
+        telefono:   formProvTel || undefined,
+        email:      formProvEmail || undefined,
+        direccion:  formProvDir || undefined,
+        esInformal: formProvInformal,
+      } as any;
+      await proveedoresApi.create(payload as ProveedorPayload);
+      qc.invalidateQueries({ queryKey: ['proveedores-sel'] });
+      message.success('Proveedor creado exitosamente');
+      setModalProv(false);
+      resetFormProv();
+    } catch (e: any) {
+      message.error(e?.response?.data?.message ?? 'Error al crear proveedor');
+    } finally { setCreandoProv(false); }
   };
 
   const handleRecibir = async () => {
@@ -3412,6 +3461,8 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
         title={subView === 'cxp' ? 'Cuentas por Pagar' : 'Órdenes de Compra'}
         icon={subView === 'cxp' ? '💳' : '🛒'}
         C={C} onVolver={onVolver}
+        onExtra={subView === 'ordenes' ? () => { resetFormProv(); setModalProv(true); } : undefined}
+        labelExtra={subView === 'ordenes' ? 'Proveedor' : undefined}
         onNuevo={subView === 'ordenes' ? () => setModalNuevaOC(true) : undefined}
         labelNuevo={subView === 'ordenes' ? 'Nueva OC' : undefined} />
 
@@ -3628,6 +3679,124 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
           />
         )}
       </Modal>
+
+      {/* Modal — Crear Proveedor */}
+      {modalProv && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 2500, background: 'rgba(0,0,0,0.6)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: C.card, width: '100%', maxWidth: 460, borderRadius: 14,
+            boxShadow: '0 20px 60px rgba(0,0,0,0.4)', overflow: 'hidden',
+            display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}>
+            {/* Header */}
+            <div style={{ padding: '14px 18px', borderBottom: `1px solid ${C.border}`,
+              display: 'flex', alignItems: 'center' }}>
+              <span style={{ flex: 1, fontWeight: 700, fontSize: 15, color: C.text }}>🏢 Nuevo Proveedor</span>
+              <button onClick={() => { setModalProv(false); resetFormProv(); }}
+                style={{ background: 'none', border: 'none', color: C.textSub, cursor: 'pointer', fontSize: 18, padding: 4 }}>✕</button>
+            </div>
+            {/* Body */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px' }}>
+              {/* Nombre */}
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 5, color: C.text }}>
+                  Nombre / Razón Social <span style={{ color: C.red }}>*</span>
+                </div>
+                <input value={formProvNombre} onChange={e => setFormProvNombre(e.target.value)}
+                  placeholder="Nombre del proveedor..."
+                  style={{ width: '100%', height: 36, padding: '0 12px', borderRadius: 8,
+                    border: `1px solid ${C.border2}`, background: C.inputBg, color: C.text,
+                    fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+              {/* Informal checkbox */}
+              <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input type="checkbox" id="prov-informal" checked={formProvInformal}
+                  onChange={e => { setFormProvInformal(e.target.checked); if (e.target.checked) setFormProvRnc(''); }} />
+                <label htmlFor="prov-informal" style={{ fontSize: 12, color: C.textSub, cursor: 'pointer' }}>
+                  Proveedor informal (sin RNC) — genera E41 en órdenes de compra
+                </label>
+              </div>
+              {/* RNC */}
+              {!formProvInformal && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 5, color: C.text }}>
+                    RNC <span style={{ color: C.red }}>*</span>
+                  </div>
+                  <input value={formProvRnc} maxLength={11}
+                    onChange={e => {
+                      const v = e.target.value.replace(/\D/g, '');
+                      setFormProvRnc(v);
+                      rncProv.consultarDebounced(v);
+                    }}
+                    placeholder="130000001"
+                    style={{ width: '100%', height: 36, padding: '0 12px', borderRadius: 8,
+                      border: `1px solid ${C.border2}`, background: C.inputBg, color: C.text,
+                      fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'monospace' }} />
+                  {rncProv.loading && (
+                    <div style={{ fontSize: 11, color: C.textSub, marginTop: 4 }}>🔍 Consultando DGII...</div>
+                  )}
+                  {rncProv.datos?.encontrado && (
+                    <div style={{ fontSize: 11, color: C.green, marginTop: 4 }}>
+                      ✅ {rncProv.datos.nombre}
+                      {!formProvNombre && (
+                        <button onClick={() => setFormProvNombre(rncProv.datos!.nombre!)}
+                          style={{ marginLeft: 8, fontSize: 11, color: C.blue, background: 'none',
+                            border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
+                          Usar nombre
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {rncProv.datos && !rncProv.datos.encontrado && (
+                    <div style={{ fontSize: 11, color: C.orange, marginTop: 4 }}>⚠️ RNC no encontrado en DGII</div>
+                  )}
+                </div>
+              )}
+              {/* Teléfono + Email */}
+              <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 5, color: C.text }}>Teléfono</div>
+                  <input value={formProvTel} onChange={e => setFormProvTel(e.target.value)}
+                    placeholder="(809) 000-0000"
+                    style={{ width: '100%', height: 36, padding: '0 12px', borderRadius: 8,
+                      border: `1px solid ${C.border2}`, background: C.inputBg, color: C.text,
+                      fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 5, color: C.text }}>Email</div>
+                  <input type="email" value={formProvEmail} onChange={e => setFormProvEmail(e.target.value)}
+                    placeholder="correo@empresa.com"
+                    style={{ width: '100%', height: 36, padding: '0 12px', borderRadius: 8,
+                      border: `1px solid ${C.border2}`, background: C.inputBg, color: C.text,
+                      fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+              </div>
+              {/* Dirección */}
+              <div style={{ marginBottom: 4 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 5, color: C.text }}>Dirección</div>
+                <input value={formProvDir} onChange={e => setFormProvDir(e.target.value)}
+                  placeholder="Calle, ciudad..."
+                  style={{ width: '100%', height: 36, padding: '0 12px', borderRadius: 8,
+                    border: `1px solid ${C.border2}`, background: C.inputBg, color: C.text,
+                    fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+            </div>
+            {/* Footer */}
+            <div style={{ padding: '12px 18px', borderTop: `1px solid ${C.border}`, display: 'flex', gap: 8 }}>
+              <button onClick={() => { setModalProv(false); resetFormProv(); }}
+                style={{ flex: 1, height: 40, borderRadius: 8, border: `1px solid ${C.border}`,
+                  background: 'transparent', color: C.text, cursor: 'pointer', fontSize: 13 }}>
+                Cancelar
+              </button>
+              <button onClick={handleCrearProveedor} disabled={creandoProv}
+                style={{ flex: 2, height: 40, borderRadius: 8, border: 'none',
+                  background: creandoProv ? '#9ca3af' : C.blue, color: '#fff',
+                  cursor: creandoProv ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 700 }}>
+                {creandoProv ? 'Creando...' : '✓ Crear Proveedor'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal — Recibir Mercancía */}
       {recibirData && (
