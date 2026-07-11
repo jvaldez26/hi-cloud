@@ -279,6 +279,9 @@ function ProductCard({ produto, onAdd, mostrarStock = true, permitirStockNegativ
   const unidadEsEntera = /^(unidad|und|pza|pieza|piezas|u)$/i.test(unidad.trim());
   const stockDisplay   = esServicio ? '∞' : sinStock ? '0' : unidadEsEntera ? String(Math.floor(stock)) : stock.toFixed(1);
 
+  const pctIva         = Number((produto as any).porcentajeIva ?? 18);
+  const precioConItbis = Number(produto.precio) * (1 + pctIva / 100);
+
   return (
     <motion.div
       whileHover={(!sinStock || permitirStockNegativo) ? { y: -2, boxShadow: `0 8px 24px rgba(59,130,246,.18)` } : {}}
@@ -344,10 +347,10 @@ function ProductCard({ produto, onAdd, mostrarStock = true, permitirStockNegativ
         <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
           <div>
             <div style={{ fontSize: 13, fontWeight: 800, color: C.blue, lineHeight: 1 }}>
-              {fmt.money(Number(produto.precio))}
+              {fmt.money(precioConItbis)}
             </div>
             <div style={{ fontSize: 9, color: isDark ? '#475569' : '#94A3B8', marginTop: 1 }}>
-              por {unidad}
+              {pctIva > 0 ? `c/ITBIS · ` : ''}{`por ${unidad}`}
             </div>
           </div>
           {/* Botón + */}
