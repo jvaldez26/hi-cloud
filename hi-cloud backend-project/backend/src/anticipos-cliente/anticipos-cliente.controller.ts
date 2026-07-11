@@ -27,6 +27,9 @@ class CreateAnticipoBodyDto implements CreateAnticipoDto {
   @IsOptional() @IsString()                                descripcion?: string;
   @IsOptional() @IsString()                                concepto?: string;
   @IsOptional() @IsString()                                metodoPago?: string;
+  @IsOptional() @IsString()                                fecha?: string;
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number) vendedorId?: number;
+  @IsOptional() @IsString()                                nombreUsuario?: string;
 }
 
 class AplicarAnticipoBodyDto implements AplicarAnticipoDto {

@@ -25,6 +25,8 @@ export interface CreateAnticipoDto {
   nombreUsuario?: string;
   concepto?:      string; // alias usado por el POS
   metodoPago?:    string; // alias usado por el POS
+  fecha?:         string; // ignorado — el backend usa fechaHoyRD()
+  vendedorId?:    number; // enviado por el POS, ignorado en anticipos
 }
 
 export interface AplicarAnticipoDto {
