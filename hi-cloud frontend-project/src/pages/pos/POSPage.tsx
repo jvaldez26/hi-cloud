@@ -3663,13 +3663,14 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
 function POSCxPSubView({ C, esAdminCxP }: { C: Palette; esAdminCxP: boolean }) {
   const qc = useQueryClient();
 
-  const [busq,       setBusq]       = useState('');
-  const [filtroEst,  setFiltroEst]  = useState('');
-  const [pagoRow,    setPagoRow]    = useState<any>(null);
-  const [pagoMonto,  setPagoMonto]  = useState('');
-  const [pagoMetodo, setPagoMetodo] = useState('efectivo');
-  const [pagoRef,    setPagoRef]    = useState('');
-  const [pagando,    setPagando]    = useState(false);
+  const [busq,           setBusq]           = useState('');
+  const [filtroEst,      setFiltroEst]      = useState('');
+  const [pagoRow,        setPagoRow]        = useState<any>(null);
+  const [pagoMonto,      setPagoMonto]      = useState('');
+  const [pagoMetodo,     setPagoMetodo]     = useState('efectivo');
+  const [pagoRef,        setPagoRef]        = useState('');
+  const [pagando,        setPagando]        = useState(false);
+  const [historialRow,   setHistorialRow]   = useState<any>(null);
 
 
   const { data: rawCxp, isLoading, refetch } = useQuery<any>({
@@ -3683,6 +3684,13 @@ function POSCxPSubView({ C, esAdminCxP }: { C: Palette; esAdminCxP: boolean }) {
       });
     },
     staleTime: 15_000,
+  });
+
+  const { data: historialPagos, isLoading: loadingHistorial } = useQuery<any[]>({
+    queryKey: ['cxp-historial', historialRow?.id],
+    queryFn:  () => api.get(`/cxp/${historialRow.id}/pagos`).then(r => r.data?.data ?? r.data ?? []),
+    enabled:  !!historialRow,
+    staleTime: 0,
   });
 
   const cxps: any[] = (Array.isArray(rawCxp) ? rawCxp : []).filter((cx: any) => {
@@ -3821,13 +3829,21 @@ function POSCxPSubView({ C, esAdminCxP }: { C: Palette; esAdminCxP: boolean }) {
                       </span>
                     </td>
                     <td style={{ padding: '5px 8px' }}>
-                      {puedeP && (
-                        <button onClick={() => abrirPago(cx)}
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        {puedeP && (
+                          <button onClick={() => abrirPago(cx)}
+                            style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6,
+                              border: 'none', background: C.blue, color: '#fff', cursor: 'pointer' }}>
+                            Pagar
+                          </button>
+                        )}
+                        <button onClick={() => setHistorialRow(cx)}
                           style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6,
-                            border: 'none', background: C.blue, color: '#fff', cursor: 'pointer' }}>
-                          Pagar
+                            border: `1px solid ${C.border2}`, background: 'transparent',
+                            color: C.textSub, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                          Historial
                         </button>
-                      )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -3858,6 +3874,97 @@ function POSCxPSubView({ C, esAdminCxP }: { C: Palette; esAdminCxP: boolean }) {
           🔄 Actualizar
         </button>
       </div>
+
+      {/* Modal historial de pagos */}
+      {historialRow && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 3000, background: 'rgba(0,0,0,0.65)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: C.card, width: '100%', maxWidth: 420,
+            borderRadius: 14, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.4)',
+            display: 'flex', flexDirection: 'column', maxHeight: '80vh' }}>
+            {/* Header */}
+            <div style={{ padding: '14px 18px', borderBottom: `1px solid ${C.border}`,
+              display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+              <span style={{ flex: 1, fontWeight: 700, fontSize: 14, color: C.text }}>
+                📋 Historial — {historialRow.compra?.folio ?? `#${historialRow.id}`}
+              </span>
+              <button onClick={() => setHistorialRow(null)}
+                style={{ background: 'none', border: 'none', color: C.textSub,
+                  cursor: 'pointer', fontSize: 18, padding: 4, lineHeight: 1 }}>✕</button>
+            </div>
+            {/* Info cuenta */}
+            <div style={{ padding: '10px 18px', borderBottom: `1px solid ${C.border}`,
+              display: 'flex', gap: 18, flexShrink: 0 }}>
+              {[
+                { label: 'Proveedor', value: historialRow.compra?.proveedor?.nombre ?? `#${historialRow.proveedorId}`, mono: false },
+                { label: 'Total',   value: fmtM(historialRow.montoOriginal),  mono: true },
+                { label: 'Pagado',  value: fmtM(historialRow.montoPagado),    mono: true, color: C.green  },
+                { label: 'Saldo',   value: fmtM(historialRow.montoPendiente), mono: true, color: C.orange },
+              ].map(t => (
+                <div key={t.label}>
+                  <div style={{ fontSize: 10, color: C.textSub }}>{t.label}</div>
+                  <div style={{ fontSize: 12, fontWeight: 600,
+                    fontFamily: t.mono ? 'monospace' : 'inherit',
+                    color: (t as any).color ?? C.text }}>
+                    {t.value}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {/* Lista pagos */}
+            <div style={{ flex: 1, overflowY: 'auto', scrollbarWidth: 'thin' }}>
+              {loadingHistorial ? (
+                <div style={{ textAlign: 'center', padding: 32 }}><Spin /></div>
+              ) : !historialPagos?.length ? (
+                <Empty style={{ marginTop: 32 }}
+                  description={<span style={{ color: C.textSub, fontSize: 12 }}>Sin pagos registrados</span>} />
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                  <thead>
+                    <tr style={{ background: C.card, position: 'sticky', top: 0 }}>
+                      {['Fecha','Monto','Método','Referencia'].map(h => (
+                        <th key={h} style={{ padding: '8px 10px', textAlign: 'left',
+                          color: C.textSub, fontWeight: 600, fontSize: 10,
+                          borderBottom: `1px solid ${C.border}`, whiteSpace: 'nowrap' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {historialPagos.map((p: any, i: number) => (
+                      <tr key={p.id} style={{ borderBottom: `1px solid ${C.border}`,
+                        background: i % 2 === 0 ? 'transparent' : C.inputBg }}>
+                        <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', color: C.textSub }}>
+                          {p.fecha ? String(p.fecha).substring(0, 10) : '—'}
+                        </td>
+                        <td style={{ padding: '7px 10px', fontFamily: 'monospace',
+                          fontWeight: 700, color: C.green, whiteSpace: 'nowrap' }}>
+                          {fmtM(p.monto)}
+                        </td>
+                        <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', color: C.text }}>
+                          {p.metodoPago ?? '—'}
+                        </td>
+                        <td style={{ padding: '7px 10px', color: C.textSub, maxWidth: 120,
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {p.referencia || p.notas || '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            {/* Footer */}
+            <div style={{ padding: '12px 18px', borderTop: `1px solid ${C.border}`, flexShrink: 0 }}>
+              <button onClick={() => setHistorialRow(null)}
+                style={{ width: '100%', height: 38, borderRadius: 8,
+                  border: `1px solid ${C.border}`, background: 'transparent',
+                  color: C.text, cursor: 'pointer', fontSize: 13 }}>
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal de pago */}
       {pagoRow && (
