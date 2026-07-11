@@ -4800,6 +4800,7 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
   const [referencia, setRef]      = useState('');
   const [descripcion, setDesc]    = useState('');
   const [facturaId,           setFacturaId]           = useState<number|null>(null);
+  const [cxcId,               setCxcId]               = useState<number|null>(null);
   const [facturaFolio,        setFacturaFolio]        = useState('');
   const [facturaSearch,       setFacturaSearch]       = useState('');
   const [showFacturaDropdown, setShowFacturaDropdown] = useState(false);
@@ -4809,12 +4810,15 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
       .then(r=>{ const d=r.data?.data??r.data; return d?.data??d??[]; }),
     staleTime: 30_000,
   });
+  // CxC pendientes del cliente (tienen montoPendiente real)
   const { data: facturasCliente = [], isFetching: loadingFacturas } = useQuery<any[]>({
-    queryKey: ['pos-facturas-cli', clienteId],
-    queryFn:  () => api.get(`/facturas?clienteId=${clienteId}&limit=100&estado=emitida&tipoPago=CREDITO`)
+    queryKey: ['pos-cxc-cli', clienteId],
+    queryFn:  () => api.get(`/cxc/cliente/${clienteId}?limit=100`)
       .then(r => {
         const d = r.data?.data ?? r.data;
-        return Array.isArray(d) ? d : (d?.data ?? []);
+        return (Array.isArray(d) ? d : (d?.data ?? [])).filter((c: any) =>
+          c.estado !== 'pagada' && c.estado !== 'anulada',
+        );
       }),
     enabled: !!clienteId && !esAnticipo,
     staleTime: 0,
@@ -4837,7 +4841,7 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
   });
   const resetForm = () => {
     setForm(false); setMonto(''); setMetodo('Efectivo'); setRef(''); setDesc('');
-    setClienteId(null); setBusqCliente(''); setFacturaId(null); setFacturaFolio('');
+    setClienteId(null); setBusqCliente(''); setFacturaId(null); setCxcId(null); setFacturaFolio('');
     setFacturaSearch(''); setShowFacturaDropdown(false);
   };
 
@@ -4858,6 +4862,7 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
       if (cli?.nombre) body.clienteNombre = cli.nombre;
     }
     if (referencia)   body.referencia  = referencia;
+    if (cxcId)        body.cxcId       = cxcId;
     if (facturaId)    { body.facturaId = facturaId; body.facturaFolio = facturaFolio; }
     // Pasar vendedorId para imputar el cobro al cierre de caja correcto
     if (posVendedorId) body.vendedorId = Number(posVendedorId);
@@ -5033,11 +5038,12 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
             <PanelInput C={C} label="Monto" type="number" placeholder="Monto" value={monto} onChange={e=>setMonto(e.target.value)} />
             {!esAnticipo && (() => {
               const term = facturaSearch.trim().toLowerCase();
-              const filtradas = facturasCliente.filter((f: any) =>
-                !term || (f.numero ?? f.folio ?? '').toLowerCase().includes(term)
-              );
-              const totalFmt = (f: any) => {
-                const v = Number(f.total ?? f.montoTotal ?? f.monto ?? 0);
+              const filtradas = facturasCliente.filter((f: any) => {
+                const folio = f.factura?.folio ?? f.factura?.numero ?? `CxC #${f.id}`;
+                return !term || folio.toLowerCase().includes(term);
+              });
+              const pendienteFmt = (f: any) => {
+                const v = Number(f.montoPendiente ?? f.monto ?? 0);
                 return v.toLocaleString('es-DO', { minimumFractionDigits: 2 });
               };
               return (
@@ -5055,6 +5061,7 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
                       onChange={e => {
                         setFacturaSearch(e.target.value);
                         setFacturaId(null);
+                        setCxcId(null);
                         setFacturaFolio('');
                         setShowFacturaDropdown(true);
                       }}
@@ -5069,7 +5076,7 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
                     />
                     {facturaId && (
                       <button
-                        onClick={() => { setFacturaId(null); setFacturaFolio(''); setFacturaSearch(''); }}
+                        onClick={() => { setFacturaId(null); setCxcId(null); setFacturaFolio(''); setFacturaSearch(''); setMonto(''); }}
                         style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
                           background: 'none', border: 'none', cursor: 'pointer', color: C.textSub, fontSize: 16, lineHeight: 1, padding: 0 }}
                         title="Quitar factura"
@@ -5092,13 +5099,18 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
                         <div style={{ padding: '10px 14px', color: C.textSub, fontSize: 12 }}>
                           {loadingFacturas ? 'Cargando...' : 'No se encontraron facturas pendientes'}
                         </div>
-                      ) : filtradas.map((f: any) => (
+                      ) : filtradas.map((f: any) => {
+                        const folio = f.factura?.folio ?? f.factura?.numero ?? `CxC #${f.id}`;
+                        const pendiente = Number(f.montoPendiente ?? 0);
+                        return (
                         <div
                           key={f.id}
                           onMouseDown={() => {
-                            setFacturaId(f.id);
-                            setFacturaFolio(f.numero ?? f.folio ?? '');
-                            setFacturaSearch(f.numero ?? f.folio ?? '');
+                            setCxcId(f.id);
+                            setFacturaId(f.facturaId ?? null);
+                            setFacturaFolio(folio);
+                            setFacturaSearch(folio);
+                            setMonto(pendiente.toFixed(2));
                             setShowFacturaDropdown(false);
                           }}
                           style={{
@@ -5110,13 +5122,14 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
                           onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                         >
                           <span style={{ fontFamily: 'monospace', fontWeight: 600, color: C.text }}>
-                            {f.numero ?? f.folio}
+                            {folio}
                           </span>
                           <span style={{ color: '#10B981', fontSize: 12 }}>
-                            RD$ {totalFmt(f)}
+                            Pend: RD$ {pendienteFmt(f)}
                           </span>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
