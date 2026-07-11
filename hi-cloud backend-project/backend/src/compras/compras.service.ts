@@ -338,26 +338,33 @@ export class ComprasService {
       const detalle = compra.detalles.find(d => d.id === item.detalleId);
       if (!detalle) continue;
 
-      const cantOrdenada = Number((detalle as any).cantidadTotal ?? detalle.cantidad);
-      const cantRecibida = Math.min(Number(item.cantidadRecibida), cantOrdenada);
-      if (cantRecibida <= 0) continue;
+      const cantOrdenada    = Number((detalle as any).cantidadTotal ?? detalle.cantidad);
+      const yaRecibida      = Number((detalle as any).cantidadRecibida ?? 0);
+      const pendiente       = +(cantOrdenada - yaRecibida).toFixed(4);
+      if (pendiente <= 0) continue; // ya estaba completo este ítem
 
-      // Registrar entrada en inventario solo por la cantidad recibida
+      // No recibir más de lo que falta
+      const cantNueva        = +Math.min(Number(item.cantidadRecibida), pendiente).toFixed(4);
+      if (cantNueva <= 0) continue;
+
+      const cantAcumulada    = +(yaRecibida + cantNueva).toFixed(4);
+
+      // Registrar entrada en inventario solo por la cantidad NUEVA de esta recepción
       await this.inventarioService.registrarEntrada(
         detalle.productoId,
-        cantRecibida,
+        cantNueva,
         usuario.id,
         `Compra recibida: ${compra.folio}`,
         compra.folio,
         almacenIdCompra,
       );
 
-      // Guardar cantidadRecibida en el detalle
+      // Guardar la cantidad ACUMULADA total recibida
       await this.detalleRepository.update(detalle.id, {
-        cantidadRecibida: cantRecibida,
+        cantidadRecibida: cantAcumulada,
       } as any);
 
-      if (cantRecibida < cantOrdenada) todosCompletos = false;
+      if (cantAcumulada < cantOrdenada) todosCompletos = false;
     }
 
     const nuevoEstado = todosCompletos ? CompraEstado.RECIBIDA : CompraEstado.RECIBIDA_PARCIAL;
