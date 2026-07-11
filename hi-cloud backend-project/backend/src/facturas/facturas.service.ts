@@ -973,7 +973,7 @@ export class FacturasService {
         iva:         original.iva,
         total:       original.total,
         notas:       original.notas,
-        userId,
+        usuarioId:   userId,
       } as any) as any,
     ) as unknown as Factura;
 
