@@ -189,30 +189,31 @@ export default function AnticiposClientePage() {
           pagination={{ pageSize: 15 }}
           columns={filterColumns([
             {
-              title: 'Número', dataIndex: 'numero', key: 'n',
-              render: (v: any) => <Text strong style={{ fontFamily: 'monospace', color: token.colorPrimary }}>{v}</Text>,
+              title: 'Número', dataIndex: 'numero', key: 'n', width: 100,
+              render: (v: any) => <Text strong style={{ fontFamily: 'monospace', color: token.colorPrimary, whiteSpace: 'nowrap' }}>{v}</Text>,
             },
-            { title: 'Fecha', dataIndex: 'fechaRegistro', key: 'f' },
+            { title: 'Fecha', dataIndex: 'fechaRegistro', key: 'f', width: 100,
+              render: (v: any) => <span style={{ whiteSpace: 'nowrap' }}>{v}</span> },
             { title: 'Cliente', dataIndex: 'clienteNombre', key: 'c', render: (v: any) => <Text strong>{v ?? '—'}</Text> },
             {
-              title: 'Monto', dataIndex: 'monto', key: 'mt', align: 'right' as const,
-              render: (v: any) => <Text>{fmt(Number(v))}</Text>,
+              title: 'Monto', dataIndex: 'monto', key: 'mt', align: 'right' as const, width: 130,
+              render: (v: any) => <Text style={{ whiteSpace: 'nowrap' }}>{fmt(Number(v))}</Text>,
             },
             {
-              title: 'Pendiente', dataIndex: 'montoPendiente', key: 'mp', align: 'right' as const,
+              title: 'Pendiente', dataIndex: 'montoPendiente', key: 'mp', align: 'right' as const, width: 130,
               render: (v: any, r: any) => (
-                <Text strong style={{ color: r.estado === 'aplicado' ? token.colorSuccess : token.colorPrimary }}>
+                <Text strong style={{ color: r.estado === 'aplicado' ? token.colorSuccess : token.colorPrimary, whiteSpace: 'nowrap' }}>
                   {fmt(Number(v))}
                 </Text>
               ),
             },
             {
-              title: 'Tipo Pago', dataIndex: 'tipoPago', key: 'tp',
-              render: (v: any) => <Tag>{METODOS.find(m => m.value === v)?.label ?? v}</Tag>,
+              title: 'Tipo Pago', dataIndex: 'tipoPago', key: 'tp', width: 130,
+              render: (v: any) => <Tag style={{ whiteSpace: 'nowrap' }}>{METODOS.find(m => m.value === v)?.label ?? v}</Tag>,
             },
             {
-              title: 'Estado', dataIndex: 'estado', key: 'st',
-              render: (v: any) => <Tag color={ESTADO_COLOR[v] ?? 'default'}>{v?.toUpperCase()}</Tag>,
+              title: 'Estado', dataIndex: 'estado', key: 'st', width: 100,
+              render: (v: any) => <Tag color={ESTADO_COLOR[v] ?? 'default'} style={{ whiteSpace: 'nowrap' }}>{v?.toUpperCase()}</Tag>,
             },
             {
               title: '', key: 'acc', width: 72, align: 'right' as const, fixed: 'right' as const,
