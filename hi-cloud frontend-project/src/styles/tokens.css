@@ -385,3 +385,12 @@ body {
     grid-template-columns: 1fr !important;
   }
 }
+
+/* ── Tablas: todas las celdas en una sola línea ─────────────────────────────── */
+.ant-table-cell {
+  white-space: nowrap;
+}
+/* Excepción: columnas que deben poder envolver (notas, descripción, dirección) */
+.ant-table-cell.cell-wrap {
+  white-space: normal;
+}

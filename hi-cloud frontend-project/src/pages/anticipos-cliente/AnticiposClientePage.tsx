@@ -190,30 +190,29 @@ export default function AnticiposClientePage() {
           columns={filterColumns([
             {
               title: 'Número', dataIndex: 'numero', key: 'n', width: 100,
-              render: (v: any) => <Text strong style={{ fontFamily: 'monospace', color: token.colorPrimary, whiteSpace: 'nowrap' }}>{v}</Text>,
+              render: (v: any) => <Text strong style={{ fontFamily: 'monospace', color: token.colorPrimary }}>{v}</Text>,
             },
-            { title: 'Fecha', dataIndex: 'fechaRegistro', key: 'f', width: 100,
-              render: (v: any) => <span style={{ whiteSpace: 'nowrap' }}>{v}</span> },
+            { title: 'Fecha', dataIndex: 'fechaRegistro', key: 'f', width: 100 },
             { title: 'Cliente', dataIndex: 'clienteNombre', key: 'c', render: (v: any) => <Text strong>{v ?? '—'}</Text> },
             {
               title: 'Monto', dataIndex: 'monto', key: 'mt', align: 'right' as const, width: 130,
-              render: (v: any) => <Text style={{ whiteSpace: 'nowrap' }}>{fmt(Number(v))}</Text>,
+              render: (v: any) => <Text>{fmt(Number(v))}</Text>,
             },
             {
               title: 'Pendiente', dataIndex: 'montoPendiente', key: 'mp', align: 'right' as const, width: 130,
               render: (v: any, r: any) => (
-                <Text strong style={{ color: r.estado === 'aplicado' ? token.colorSuccess : token.colorPrimary, whiteSpace: 'nowrap' }}>
+                <Text strong style={{ color: r.estado === 'aplicado' ? token.colorSuccess : token.colorPrimary }}>
                   {fmt(Number(v))}
                 </Text>
               ),
             },
             {
               title: 'Tipo Pago', dataIndex: 'tipoPago', key: 'tp', width: 130,
-              render: (v: any) => <Tag style={{ whiteSpace: 'nowrap' }}>{METODOS.find(m => m.value === v)?.label ?? v}</Tag>,
+              render: (v: any) => <Tag>{METODOS.find(m => m.value === v)?.label ?? v}</Tag>,
             },
             {
               title: 'Estado', dataIndex: 'estado', key: 'st', width: 100,
-              render: (v: any) => <Tag color={ESTADO_COLOR[v] ?? 'default'} style={{ whiteSpace: 'nowrap' }}>{v?.toUpperCase()}</Tag>,
+              render: (v: any) => <Tag color={ESTADO_COLOR[v] ?? 'default'}>{v?.toUpperCase()}</Tag>,
             },
             {
               title: '', key: 'acc', width: 72, align: 'right' as const, fixed: 'right' as const,

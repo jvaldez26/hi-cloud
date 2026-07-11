@@ -268,7 +268,7 @@ export default function FacturasPage() {
     {
       title: 'Total', key: 'total', dataIndex: 'total', width: 145, align: 'right' as const,
       render: (v: number, r: Factura) => (
-        <Text strong style={{ fontSize: 13, color: token.colorPrimary, whiteSpace: 'nowrap' }}>{fmt.moneyM(v, (r as any).moneda)}</Text>
+        <Text strong style={{ fontSize: 13, color: token.colorPrimary }}>{fmt.moneyM(v, (r as any).moneda)}</Text>
       ),
     },
     // ── Moneda ─────────────────────────────────────────────────────────────────
