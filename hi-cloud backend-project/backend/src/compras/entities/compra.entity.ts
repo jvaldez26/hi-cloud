@@ -6,11 +6,12 @@ import { User } from '../../users/users.entity';
 import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum CompraEstado {
-  BORRADOR  = 'borrador',
-  ENVIADA   = 'enviada',
-  RECIBIDA  = 'recibida',
-  PAGADA    = 'pagada',
-  CANCELADA = 'cancelada',
+  BORRADOR         = 'borrador',
+  ENVIADA          = 'enviada',
+  RECIBIDA         = 'recibida',
+  RECIBIDA_PARCIAL = 'recibida_parcial',
+  PAGADA           = 'pagada',
+  CANCELADA        = 'cancelada',
 }
 
 @TenantScoped()

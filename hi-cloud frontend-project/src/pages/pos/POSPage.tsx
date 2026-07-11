@@ -3260,9 +3260,10 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
   const qc       = useQueryClient();
   const [busq,         setBusq]         = useState('');
   const [estadoFiltro, setEstadoFiltro] = useState('');
-  const [recibirData,  setRecibirData]  = useState<any>(null);
-  const [notasRecibir, setNotasRecibir] = useState('');
-  const [recibiendo,   setRecibiendo]   = useState(false);
+  const [recibirData,   setRecibirData]   = useState<any>(null);
+  const [notasRecibir,  setNotasRecibir]  = useState('');
+  const [recibiendo,    setRecibiendo]    = useState(false);
+  const [cantRecibidas, setCantRecibidas] = useState<Record<number, string>>({});
   const [pendingEnviar, setPendingEnviar] = useState<number | null>(null);
   const [pendingCancel, setPendingCancel] = useState<number | null>(null);
   const [modalNuevaOC,  setModalNuevaOC]  = useState(false);
@@ -3315,12 +3316,17 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
     if (!recibirData) return;
     setRecibiendo(true);
     try {
-      const body: Record<string, unknown> = { estado: 'recibida' };
+      const detalles = (recibirData.detalles ?? []).map((d: any) => ({
+        detalleId:        d.id,
+        cantidadRecibida: Number(cantRecibidas[d.id] ?? d.cantidadTotal ?? d.cantidad),
+      }));
+      const body: Record<string, unknown> = { detalles };
       if (notasRecibir.trim()) body.notas = notasRecibir;
-      await api.patch(`/compras/${recibirData.id}/estado`, body);
+      await api.patch(`/compras/${recibirData.id}/recibir`, body);
       qc.invalidateQueries({ queryKey: ['compras-pos'] });
       qc.invalidateQueries({ queryKey: ['pos-productos'] });
       qc.invalidateQueries({ queryKey: ['productos-catalogo'] });
+      setCantRecibidas({});
       message.success('Mercancía recibida y stock actualizado');
       setRecibirData(null); setNotasRecibir('');
     } catch (e: any) {
@@ -3370,11 +3376,12 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
   };
 
   const ESTADO_CFG: Record<string, { label: string; color: string }> = {
-    borrador:  { label: 'BORRADOR',  color: C.textSub },
-    enviada:   { label: 'ENVIADA',   color: C.blue    },
-    recibida:  { label: 'RECIBIDA',  color: C.green   },
-    pagada:    { label: 'PAGADA',    color: C.green   },
-    cancelada: { label: 'CANCELADA', color: C.red     },
+    borrador:         { label: 'BORRADOR',  color: C.textSub },
+    enviada:          { label: 'ENVIADA',   color: C.blue    },
+    recibida:         { label: 'RECIBIDA',  color: C.green   },
+    recibida_parcial: { label: 'PARCIAL',   color: C.orange  },
+    pagada:           { label: 'PAGADA',    color: C.green   },
+    cancelada:        { label: 'CANCELADA', color: C.red     },
   };
 
   // Locked screen when supervisor is not active
@@ -3463,6 +3470,7 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
                 const cfg   = ESTADO_CFG[c.estado] ?? { label: c.estado.toUpperCase(), color: C.textSub };
                 const isBorrador  = c.estado === 'borrador';
                 const isEnviada   = c.estado === 'enviada';
+                const isParcial   = c.estado === 'recibida_parcial';
                 const isTerminada = ['recibida','pagada','cancelada'].includes(c.estado);
                 return (
                   <tr key={c.id} style={{ borderBottom: `1px solid ${C.border}`, background: i%2===0?'transparent':C.card }}>
@@ -3504,6 +3512,11 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
                             const full = await api.get(`/compras/${c.id}`).then(r => r.data?.data ?? r.data);
                             setRecibirData(full);
                             setNotasRecibir((full as any).notas ?? '');
+                            const init: Record<number, string> = {};
+                            for (const d of (full.detalles ?? [])) {
+                              init[d.id] = String(Number((d as any).cantidadTotal ?? d.cantidad));
+                            }
+                            setCantRecibidas(init);
                           }}
                             style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, border: 'none',
                               background: C.green, color: '#fff', cursor: 'pointer' }}>
@@ -3513,6 +3526,29 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
                             style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, border: 'none',
                               background: C.red + 'cc', color: '#fff', cursor: pendingCancel === c.id ? 'not-allowed' : 'pointer' }}>
                             ✕
+                          </button>
+                        </>)}
+                        {isParcial && (<>
+                          <button onClick={async () => {
+                            const full = await api.get(`/compras/${c.id}`).then(r => r.data?.data ?? r.data);
+                            setRecibirData(full);
+                            setNotasRecibir((full as any).notas ?? '');
+                            const init: Record<number, string> = {};
+                            for (const d of (full.detalles ?? [])) {
+                              const pedida   = Number((d as any).cantidadTotal ?? d.cantidad);
+                              const recibida = Number((d as any).cantidadRecibida ?? pedida);
+                              init[d.id] = String(pedida - recibida > 0 ? pedida - recibida : 0);
+                            }
+                            setCantRecibidas(init);
+                          }}
+                            style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, border: 'none',
+                              background: C.orange, color: '#fff', cursor: 'pointer' }}>
+                            Completar
+                          </button>
+                          <button onClick={() => setDetailOCId(c.id)}
+                            style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6,
+                              border: `1px solid ${C.border}`, background: 'transparent', color: C.textSub, cursor: 'pointer' }}>
+                            Ver
                           </button>
                         </>)}
                         {isTerminada && (
@@ -3560,6 +3596,11 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
               setDetailOCId(null);
               setRecibirData(compra);
               setNotasRecibir(compra.notas ?? '');
+              const init: Record<number, string> = {};
+              for (const d of (compra.detalles ?? [])) {
+                init[d.id] = String(Number((d as any).cantidadTotal ?? d.cantidad));
+              }
+              setCantRecibidas(init);
             }}
           />
         )}
@@ -3599,30 +3640,60 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
               <span style={{ fontWeight: 700, fontSize: 15, color: C.text, flex: 1 }}>
                 Recibir Mercancía — {recibirData.folio}
               </span>
-              <button onClick={() => { setRecibirData(null); setNotasRecibir(''); }}
+              <button onClick={() => { setRecibirData(null); setNotasRecibir(''); setCantRecibidas({}); }}
                 style={{ background: 'none', border: 'none', color: C.textSub, cursor: 'pointer', fontSize: 18, padding: 4, lineHeight: 1 }}>✕</button>
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: '14px 18px' }}>
               <div style={{ fontSize: 12, color: C.textSub, marginBottom: 10 }}>
                 Proveedor: <strong style={{ color: C.text }}>{recibirData.proveedor?.nombre ?? '—'}</strong>
               </div>
-              {/* Items de la compra */}
+              {/* Items de la compra — cantidades editables */}
               <div style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: C.text, marginBottom: 6 }}>Artículos a recibir:</div>
-                {(recibirData.detalles ?? []).map((d: any, idx: number) => (
-                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    padding: '7px 10px', background: C.bg, borderRadius: 6, marginBottom: 4 }}>
-                    <span style={{ fontSize: 12, color: C.text, flex: 1 }}>
-                      {d.producto?.nombre ?? `Producto #${d.productoId}`}
-                    </span>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: C.green, marginLeft: 12 }}>
-                      × {d.cantidad}
-                    </span>
-                  </div>
-                ))}
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: C.text }}>Artículos a recibir:</span>
+                  <span style={{ fontSize: 10, color: C.textSub }}>Pedido → Recibido</span>
+                </div>
+                {(recibirData.detalles ?? []).map((d: any, idx: number) => {
+                  const cantPedida   = Number((d as any).cantidadTotal ?? d.cantidad);
+                  const cantRecibida = Number(cantRecibidas[d.id] ?? cantPedida);
+                  const esParcial    = cantRecibida < cantPedida;
+                  return (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8,
+                      padding: '7px 10px', background: C.bg, borderRadius: 6, marginBottom: 4,
+                      border: `1px solid ${esParcial ? C.orange + '66' : C.border}` }}>
+                      <span style={{ fontSize: 12, color: C.text, flex: 1, minWidth: 0,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {d.producto?.nombre ?? d.descripcion ?? `Producto #${d.productoId}`}
+                      </span>
+                      <span style={{ fontSize: 11, color: C.textSub, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                        {cantPedida} →
+                      </span>
+                      <input
+                        type="number" min={0} max={cantPedida} step="1"
+                        value={cantRecibidas[d.id] ?? String(cantPedida)}
+                        onChange={e => setCantRecibidas(prev => ({ ...prev, [d.id]: e.target.value }))}
+                        style={{ width: 68, height: 30, padding: '0 8px', borderRadius: 6, textAlign: 'right',
+                          border: `1px solid ${esParcial ? C.orange : C.border2}`,
+                          background: C.inputBg, color: esParcial ? C.orange : C.green,
+                          fontSize: 13, fontWeight: 700, outline: 'none', fontFamily: 'monospace' }} />
+                    </div>
+                  );
+                })}
                 {(!recibirData.detalles || recibirData.detalles.length === 0) && (
                   <div style={{ fontSize: 12, color: C.textSub, textAlign: 'center', padding: 12 }}>
                     Sin artículos registrados
+                  </div>
+                )}
+                {/* Aviso recepción parcial */}
+                {(recibirData.detalles ?? []).some((d: any) => {
+                  const pedida   = Number((d as any).cantidadTotal ?? d.cantidad);
+                  const recibida = Number(cantRecibidas[d.id] ?? pedida);
+                  return recibida < pedida;
+                }) && (
+                  <div style={{ marginTop: 8, padding: '7px 10px', background: C.orange + '22',
+                    borderRadius: 6, fontSize: 11, color: C.orange, borderLeft: `3px solid ${C.orange}` }}>
+                    ⚠️ Recepción parcial: la orden quedará en estado <strong>PARCIAL</strong>.
+                    El stock se actualizará solo por las cantidades recibidas.
                   </div>
                 )}
               </div>
@@ -3640,7 +3711,7 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
               </div>
             </div>
             <div style={{ padding: '12px 18px', borderTop: `1px solid ${C.border}`, display: 'flex', gap: 8 }}>
-              <button onClick={() => { setRecibirData(null); setNotasRecibir(''); }}
+              <button onClick={() => { setRecibirData(null); setNotasRecibir(''); setCantRecibidas({}); }}
                 style={{ flex: 1, height: 40, borderRadius: 8, border: `1px solid ${C.border}`,
                   background: 'transparent', color: C.text, cursor: 'pointer', fontSize: 13 }}>
                 Cancelar

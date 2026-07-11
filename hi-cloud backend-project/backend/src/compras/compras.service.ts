@@ -239,11 +239,12 @@ export class ComprasService {
     const compra = await this.findOne(id);
 
     const transiciones: Record<CompraEstado, CompraEstado[]> = {
-      [CompraEstado.BORRADOR]: [CompraEstado.ENVIADA, CompraEstado.RECIBIDA, CompraEstado.CANCELADA],
-      [CompraEstado.ENVIADA]:  [CompraEstado.RECIBIDA, CompraEstado.CANCELADA],
-      [CompraEstado.RECIBIDA]: [CompraEstado.PAGADA, CompraEstado.CANCELADA],
-      [CompraEstado.PAGADA]:   [],
-      [CompraEstado.CANCELADA]: [],
+      [CompraEstado.BORRADOR]:         [CompraEstado.ENVIADA, CompraEstado.RECIBIDA, CompraEstado.CANCELADA],
+      [CompraEstado.ENVIADA]:          [CompraEstado.RECIBIDA, CompraEstado.CANCELADA],
+      [CompraEstado.RECIBIDA]:         [CompraEstado.PAGADA, CompraEstado.CANCELADA],
+      [CompraEstado.RECIBIDA_PARCIAL]: [CompraEstado.RECIBIDA, CompraEstado.PAGADA, CompraEstado.CANCELADA],
+      [CompraEstado.PAGADA]:           [],
+      [CompraEstado.CANCELADA]:        [],
     };
 
     if (!transiciones[compra.estado].includes(estado)) {
@@ -313,6 +314,86 @@ export class ComprasService {
     return this.findOne(id);
   }
 
+  // ── Recepción con cantidades editables por ítem ────────────────────────────
+  async recibir(
+    id: number,
+    dto: { detalles: { detalleId: number; cantidadRecibida: number }[]; notas?: string },
+    usuario: { id: number },
+  ) {
+    const compra = await this.findOne(id);
+
+    const estadosPermitidos: CompraEstado[] = [
+      CompraEstado.BORRADOR, CompraEstado.ENVIADA, CompraEstado.RECIBIDA_PARCIAL,
+    ];
+    if (!estadosPermitidos.includes(compra.estado)) {
+      throw new BadRequestException(
+        `No se puede recibir una compra en estado "${compra.estado}"`,
+      );
+    }
+
+    const almacenIdCompra = (compra as any).almacenId ?? this.tenantService.getAlmacenId() ?? undefined;
+    let todosCompletos = true;
+
+    for (const item of dto.detalles) {
+      const detalle = compra.detalles.find(d => d.id === item.detalleId);
+      if (!detalle) continue;
+
+      const cantOrdenada = Number((detalle as any).cantidadTotal ?? detalle.cantidad);
+      const cantRecibida = Math.min(Number(item.cantidadRecibida), cantOrdenada);
+      if (cantRecibida <= 0) continue;
+
+      // Registrar entrada en inventario solo por la cantidad recibida
+      await this.inventarioService.registrarEntrada(
+        detalle.productoId,
+        cantRecibida,
+        usuario.id,
+        `Compra recibida: ${compra.folio}`,
+        compra.folio,
+        almacenIdCompra,
+      );
+
+      // Guardar cantidadRecibida en el detalle
+      await this.detalleRepository.update(detalle.id, {
+        cantidadRecibida: cantRecibida,
+      } as any);
+
+      if (cantRecibida < cantOrdenada) todosCompletos = false;
+    }
+
+    const nuevoEstado = todosCompletos ? CompraEstado.RECIBIDA : CompraEstado.RECIBIDA_PARCIAL;
+
+    // Crear CxP solo en la primera recepción (cuando venía de borrador/enviada)
+    const esPrimeraRecepcion = compra.estado !== CompraEstado.RECIBIDA_PARCIAL;
+    if (esPrimeraRecepcion && (!compra.tipoPago || compra.tipoPago === 'credito')) {
+      await this.cxpService.crear(compra.id, usuario.id, compra.diasCredito ?? 30);
+    }
+
+    // Asiento contable solo en la primera recepción
+    if (esPrimeraRecepcion) {
+      await this.asientosService.asientoCompraRecibida(
+        compra.id,
+        Number(compra.total),
+        Number(compra.subtotal),
+        Number(compra.itbis),
+        compra.folio,
+        usuario.id,
+        compra.retieneItbis || compra.retieneIsr
+          ? {
+              montoItbis: Number(compra.montoRetencionItbis ?? 0),
+              montoIsr:   Number(compra.montoRetencionIsr   ?? 0),
+              netoPagar:  Number(compra.netoPagar           ?? compra.total),
+            }
+          : undefined,
+      );
+    }
+
+    const updatePayload: Partial<Compra> = { estado: nuevoEstado };
+    if (dto.notas !== undefined) updatePayload.notas = dto.notas;
+    await this.compraRepository.update(id, updatePayload);
+    this.realtimeService.notify(this.tenantService.getEmpresaId(), 'compra', 'updated', id);
+    return this.findOne(id);
+  }
+
   async resumenPorEstado() {
     const empresaId = this.tenantService.getEmpresaId();
     return this.compraRepository
@@ -376,7 +457,7 @@ export class ComprasService {
 
     return this.compraRepository.findOne({
       where: { id: nueva.id },
-      relations: ['proveedor', 'detalles'],
+      relations: ['proveedor', 'detalles', 'detalles.producto'],
     });
   }
 

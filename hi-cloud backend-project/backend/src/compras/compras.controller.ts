@@ -15,7 +15,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
-import { IsEnum, IsOptional, IsString, IsInt } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsInt, IsNumber, IsArray, ValidateNested, IsPositive, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ComprasService }    from './compras.service';
 import { ComprasPdfService } from './compras-pdf.service';
@@ -39,6 +39,22 @@ class ComprasFilterDto extends PaginationDto {
 class CambiarEstadoDto {
   @IsEnum(CompraEstado)
   estado: CompraEstado;
+
+  @IsOptional() @IsString()
+  notas?: string;
+}
+
+class RecibirDetalleDto {
+  @IsInt() @IsPositive() @Type(() => Number)
+  detalleId: number;
+
+  @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Type(() => Number)
+  cantidadRecibida: number;
+}
+
+class RecibirCompraDto {
+  @IsArray() @ValidateNested({ each: true }) @Type(() => RecibirDetalleDto)
+  detalles: RecibirDetalleDto[];
 
   @IsOptional() @IsString()
   notas?: string;
@@ -94,6 +110,18 @@ export class ComprasController {
     @Body() dto: CambiarEstadoDto,
   ) {
     return this.comprasService.cambiarEstado(id, dto.estado, dto.notas);
+  }
+
+  @Patch(':id/recibir')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Recibir mercancía con cantidades reales por ítem (soporta recepción parcial)' })
+  recibir(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: RecibirCompraDto,
+    @GetUser() usuario: User,
+  ) {
+    return this.comprasService.recibir(id, dto, usuario);
   }
 
   @Delete(':id')

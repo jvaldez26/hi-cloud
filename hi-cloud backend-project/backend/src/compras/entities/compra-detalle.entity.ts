@@ -37,6 +37,10 @@ export class CompraDetalle extends BaseEntity {
   @Column({ type: 'decimal', precision: 12, scale: 4, default: 0 })
   cantidadTotal!: number;
 
+  /** Unidades efectivamente recibidas (null = pendiente de recepción) */
+  @Column({ type: 'decimal', precision: 12, scale: 4, nullable: true })
+  cantidadRecibida?: number;
+
   /** Costo real por unidad = subtotal ÷ cantidadTotal (para costeo/AVCO) */
   @Column({ type: 'decimal', precision: 12, scale: 4, nullable: true })
   costoUnitarioReal?: number;
