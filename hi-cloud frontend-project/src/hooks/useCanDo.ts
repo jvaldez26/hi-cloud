@@ -16,7 +16,7 @@ const PERMISOS: Record<string, UserRole[]> = {
   'facturas:ver':      ['viewer', 'vendedor', 'contador', 'admin'],
   'facturas:crear':    ['vendedor', 'contador', 'admin'],
   'facturas:editar':   ['vendedor', 'contador', 'admin'],
-  'facturas:eliminar': ['admin'],
+  'facturas:eliminar': ['vendedor', 'contador', 'admin'],
   'facturas:pdf':      ['vendedor', 'contador', 'admin'],
   'facturas:anular':   ['contador', 'admin'],
   'facturas:emitir_ecf': ['vendedor', 'contador', 'admin'],
