@@ -153,6 +153,15 @@ export class RecibosCobrosService {
       }
     }
 
+    // ── 2b. Resolver clienteNombre si no vino en el DTO ────────────
+    if (!dto.clienteNombre && dto.clienteId) {
+      const rows = await this.dataSource.query<{ nombre: string }[]>(
+        `SELECT nombre FROM clientes WHERE id = $1 AND "empresaId" = $2 LIMIT 1`,
+        [dto.clienteId, empresaId],
+      );
+      if (rows[0]?.nombre) dto.clienteNombre = rows[0].nombre;
+    }
+
     // ── 3. Resolver caja diaria y guardar recibo ───────────────────
     const cajaDiariaId = await this.resolverCajaDiaria(empresaId, usuarioId, dto.vendedorId);
     const numero = await this.generarNumero();

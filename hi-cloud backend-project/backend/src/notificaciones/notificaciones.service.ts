@@ -1162,7 +1162,7 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
     <div style="margin-top:8px;font-size:12px;color:rgba(255,255,255,.8)">📅 ${fmtDate(r.fecha)}</div>
   </div>
   <div style="padding:28px 32px">
-    <p style="margin:0 0 20px;font-size:14px;color:#374151">Estimado/a <strong>${r.clienteNombre}</strong>,</p>
+    <p style="margin:0 0 20px;font-size:14px;color:#374151">Estimado/a <strong>${r.clienteNombre ?? 'Cliente'}</strong>,</p>
     <p style="margin:0 0 24px;font-size:13px;color:#6b7280">Confirmamos la recepción del siguiente pago:</p>
     <div style="background:#f9fafb;border-radius:10px;padding:20px;margin-bottom:20px">
       <div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:13px">
