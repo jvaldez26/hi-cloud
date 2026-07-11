@@ -175,12 +175,15 @@ export class AnticiposClienteService implements OnModuleInit {
       }
 
       // Registrar pago en historial de la CxC
+      const metodoPagoValido = Object.values(MetodoPago).includes(anticipo.tipoPago as MetodoPago)
+        ? (anticipo.tipoPago as MetodoPago)
+        : MetodoPago.OTRO;
       await em.getRepository(PagoCobrado).save(
         em.getRepository(PagoCobrado).create({
           cuentaPorCobrarId: dto.cxcId,
           monto:             montoAplicar,
           fecha:             new Date(),
-          metodoPago:        MetodoPago.OTRO,
+          metodoPago:        metodoPagoValido,
           referencia:        `Anticipo ${anticipo.numero}`,
           moneda:            cxc.moneda ?? 'DOP',
           tipoCambio:        1,
