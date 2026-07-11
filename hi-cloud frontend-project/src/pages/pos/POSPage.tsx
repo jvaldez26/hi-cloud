@@ -8776,9 +8776,17 @@ export default function POSPage() {
       if (modoFacturacion === 'conduce') {
         const cliente = clientes?.data.find((c: Cliente) => c.id === clienteId);
         return api.post('/conduces', {
-          ...base,
+          clienteId:        base.clienteId,
+          fecha:            base.fecha,
+          sucursalId:       base.sucursalId,
+          notas:            base.notas,
           direccionEntrega: cliente?.direccion ?? 'Por definir',
           contactoEntrega:  cliente?.nombre,
+          detalles: cart.map(i => ({
+            productoId:   i.produto.id > 0 ? i.produto.id : undefined,
+            descripcion:  i.produto.nombre,
+            cantidad:     i.cantidad,
+          })),
         });
       }
       // valor-fiscal → factura normal
