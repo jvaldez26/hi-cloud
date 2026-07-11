@@ -4737,6 +4737,33 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
   const [imprimiendoId, setImprimiendoId] = useState<number|null>(null);
   const [tabActivo, setTabActivo] = useState<'recibos'|'cxc'>('recibos');
   const [busqCxC, setBusqCxC] = useState('');
+  const [modalAplicar, setModalAplicar] = useState<{ id: number; clienteId?: number; numero: string } | null>(null);
+  const [cxcSelId, setCxcSelId] = useState<number | null>(null);
+  const [montoAplicar, setMontoAplicar] = useState('');
+  const { data: cxcAplicar = [] } = useQuery<any[]>({
+    queryKey: ['pos-cxc-aplicar', modalAplicar?.clienteId],
+    queryFn: () => api.get(`/cxc/cliente/${modalAplicar!.clienteId}?limit=50`).then(r => {
+      const d = r.data?.data ?? r.data;
+      return (Array.isArray(d) ? d : (d?.data ?? [])).filter((c: any) => c.estado !== 'pagada' && c.estado !== 'anulada');
+    }),
+    enabled: !!modalAplicar?.clienteId,
+    staleTime: 0,
+  });
+  const aplicarMut = useMutation({
+    mutationFn: ({ anticipoId, cxcId, monto }: { anticipoId: number; cxcId: number; monto: number }) =>
+      api.post(`/anticipos/${anticipoId}/aplicar`, { cxcId, monto }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pos-panel', 'anticipos'] });
+      setModalAplicar(null); setCxcSelId(null); setMontoAplicar('');
+      message.success('Anticipo aplicado correctamente');
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al aplicar anticipo'),
+  });
+  const anularMut = useMutation({
+    mutationFn: (id: number) => api.delete(`/anticipos/${id}`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['pos-panel', 'anticipos'] }); message.success('Anticipo anulado'); },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al anular'),
+  });
 
   const imprimirTermicoRecibo = async (id: number, r: any) => {
     setImprimiendoId(id);
@@ -4825,7 +4852,11 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
       fecha:      new Date().toISOString().split('T')[0],
       ...extras,
     };
-    if (clienteId)    body.clienteId   = clienteId;
+    if (clienteId) {
+      body.clienteId = clienteId;
+      const cli = (clientes ?? []).find((c: any) => c.id === clienteId);
+      if (cli?.nombre) body.clienteNombre = cli.nombre;
+    }
     if (referencia)   body.referencia  = referencia;
     if (facturaId)    { body.facturaId = facturaId; body.facturaFolio = facturaFolio; }
     // Pasar vendedorId para imputar el cobro al cierre de caja correcto
@@ -5145,7 +5176,21 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
                   ) : (
                     <td style={{padding:'8px 12px',color:C.textSub,fontSize:11}}>{r.tipoPago||r.metodoPago||'—'}</td>
                   )}
-                  <td style={{padding:'4px 8px',textAlign:'right'}}>
+                  <td style={{padding:'4px 8px',textAlign:'right',whiteSpace:'nowrap'}}>
+                    {esAnticipo && r.estado === 'activo' && (
+                      <>
+                        <button onClick={() => { setModalAplicar({ id: r.id, clienteId: r.clienteId, numero: r.numero }); setCxcSelId(null); setMontoAplicar(String(r.montoPendiente ?? r.monto ?? '')); }}
+                          title="Aplicar a factura"
+                          style={{background:'none',border:`1px solid ${C.border2}`,borderRadius:5,color:C.green,cursor:'pointer',padding:'3px 6px',fontSize:11,marginRight:4}}>
+                          ✓ Aplicar
+                        </button>
+                        <button onClick={() => Modal.confirm({ title:`¿Anular anticipo ${r.numero}?`, okText:'Anular', okType:'danger', cancelText:'Cancelar', onOk:()=>anularMut.mutate(r.id) })}
+                          title="Anular anticipo"
+                          style={{background:'none',border:`1px solid #EF4444`,borderRadius:5,color:'#EF4444',cursor:'pointer',padding:'3px 6px',fontSize:11,marginRight:4}}>
+                          ✕ Anular
+                        </button>
+                      </>
+                    )}
                     <button onClick={() => imprimirTermicoRecibo(r.id, r)}
                       disabled={imprimiendoId === r.id}
                       title="Imprimir recibo térmico"
@@ -5161,6 +5206,36 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
         </div>
       )}
         </>
+      )}
+
+      {/* Modal Aplicar Anticipo */}
+      {modalAplicar && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center' }}
+          onClick={e=>{ if(e.target===e.currentTarget){ setModalAplicar(null); } }}>
+          <div style={{ background:C.card, borderRadius:12, padding:24, width:320, color:C.text }}>
+            <div style={{ fontWeight:700, fontSize:15, marginBottom:16 }}>Aplicar {modalAplicar.numero} a factura</div>
+            <div style={{ fontSize:12, marginBottom:6, color:C.textSub }}>Factura / CxC pendiente</div>
+            <select value={cxcSelId??''} onChange={e=>setCxcSelId(e.target.value?Number(e.target.value):null)}
+              style={{ width:'100%', height:36, borderRadius:8, border:`1px solid ${C.border2}`, fontSize:12, padding:'0 8px', background:C.inputBg, color:C.text, marginBottom:12 }}>
+              <option value="">{modalAplicar.clienteId ? (cxcAplicar.length===0?'Sin CxC pendientes':'Seleccionar CxC') : 'Sin cliente asignado'}</option>
+              {cxcAplicar.map((c:any)=>(
+                <option key={c.id} value={c.id}>{c.factura?.folio??`CxC #${c.id}`} — Pend: RD${Number(c.montoPendiente).toLocaleString('es-DO',{minimumFractionDigits:2})}</option>
+              ))}
+            </select>
+            <div style={{ fontSize:12, marginBottom:6, color:C.textSub }}>Monto a aplicar</div>
+            <input type="number" value={montoAplicar} onChange={e=>setMontoAplicar(e.target.value)}
+              style={{ width:'100%', height:36, borderRadius:8, border:`1px solid ${C.border2}`, fontSize:13, padding:'0 10px', background:C.inputBg, color:C.text, boxSizing:'border-box', marginBottom:16 }} />
+            <div style={{ display:'flex', gap:8 }}>
+              <button onClick={()=>setModalAplicar(null)}
+                style={{ flex:1, height:36, borderRadius:8, border:`1px solid ${C.border2}`, background:'none', color:C.textSub, cursor:'pointer', fontSize:13 }}>Cancelar</button>
+              <button disabled={!cxcSelId || !montoAplicar || aplicarMut.isPending}
+                onClick={()=>aplicarMut.mutate({ anticipoId:modalAplicar.id, cxcId:cxcSelId!, monto:Number(montoAplicar) })}
+                style={{ flex:1, height:36, borderRadius:8, border:'none', background:C.green, color:'#fff', cursor:'pointer', fontSize:13, fontWeight:700 }}>
+                {aplicarMut.isPending?'Aplicando...':'Aplicar'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
