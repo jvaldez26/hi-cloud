@@ -3282,6 +3282,7 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
   const [modalProv,         setModalProv]         = useState(false);
   const [formProvNombre,    setFormProvNombre]    = useState('');
   const [formProvRnc,       setFormProvRnc]       = useState('');
+  const [formProvCedula,    setFormProvCedula]    = useState('');
   const [formProvTel,       setFormProvTel]       = useState('');
   const [formProvEmail,     setFormProvEmail]     = useState('');
   const [formProvDir,       setFormProvDir]       = useState('');
@@ -3331,21 +3332,27 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
   };
 
   const resetFormProv = () => {
-    setFormProvNombre(''); setFormProvRnc(''); setFormProvTel('');
+    setFormProvNombre(''); setFormProvRnc(''); setFormProvCedula(''); setFormProvTel('');
     setFormProvEmail(''); setFormProvDir(''); setFormProvInformal(false);
     rncProv.limpiar();
   };
 
   const handleCrearProveedor = async () => {
     if (!formProvNombre.trim()) { message.error('El nombre es obligatorio'); return; }
-    if (!formProvInformal && !/^\d{9}$|^\d{11}$/.test(formProvRnc.replace(/\D/g, ''))) {
-      message.error('RNC debe tener 9 u 11 dígitos'); return;
+    if (formProvInformal) {
+      if (!/^\d{11}$/.test(formProvCedula.replace(/\D/g, ''))) {
+        message.error('La cédula debe tener 11 dígitos'); return;
+      }
+    } else {
+      if (!/^\d{9}$|^\d{11}$/.test(formProvRnc.replace(/\D/g, ''))) {
+        message.error('RNC debe tener 9 u 11 dígitos'); return;
+      }
     }
     setCreandoProv(true);
     try {
       const payload: Partial<ProveedorPayload> = {
         nombre:     formProvNombre.trim(),
-        rnc:        formProvInformal ? undefined : formProvRnc.replace(/\D/g, ''),
+        rnc:        formProvInformal ? formProvCedula.replace(/\D/g, '') : formProvRnc.replace(/\D/g, ''),
         telefono:   formProvTel || undefined,
         email:      formProvEmail || undefined,
         direccion:  formProvDir || undefined,
@@ -3710,12 +3717,34 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
               {/* Informal checkbox */}
               <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <input type="checkbox" id="prov-informal" checked={formProvInformal}
-                  onChange={e => { setFormProvInformal(e.target.checked); if (e.target.checked) setFormProvRnc(''); }} />
+                  onChange={e => {
+                    setFormProvInformal(e.target.checked);
+                    setFormProvRnc(''); setFormProvCedula(''); rncProv.limpiar();
+                  }} />
                 <label htmlFor="prov-informal" style={{ fontSize: 12, color: C.textSub, cursor: 'pointer' }}>
-                  Proveedor informal (sin RNC) — genera E41 en órdenes de compra
+                  Proveedor informal — genera E41 en órdenes de compra
                 </label>
               </div>
-              {/* RNC */}
+              {/* Cédula (informal) */}
+              {formProvInformal && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 5, color: C.text }}>
+                    Cédula <span style={{ color: C.red }}>*</span>
+                  </div>
+                  <input value={formProvCedula} maxLength={11}
+                    onChange={e => setFormProvCedula(e.target.value.replace(/\D/g, ''))}
+                    placeholder="40226448260"
+                    style={{ width: '100%', height: 36, padding: '0 12px', borderRadius: 8,
+                      border: `1px solid ${C.border2}`, background: C.inputBg, color: C.text,
+                      fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'monospace' }} />
+                  {formProvCedula.length > 0 && formProvCedula.length < 11 && (
+                    <div style={{ fontSize: 11, color: C.textSub, marginTop: 4 }}>
+                      {formProvCedula.length}/11 dígitos
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* RNC (formal) */}
               {!formProvInformal && (
                 <div style={{ marginBottom: 12 }}>
                   <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 5, color: C.text }}>
