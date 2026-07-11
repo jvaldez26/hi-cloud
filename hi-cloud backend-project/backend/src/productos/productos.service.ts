@@ -198,7 +198,7 @@ export class ProductosService implements OnModuleInit {
     return saved;
   }
 
-  async findAll(pagination: PaginationDto, incluirSinStock = false) {
+  async findAll(pagination: PaginationDto, incluirSinStock = false, tipo?: string) {
     const empresaId = this.tenantService.getEmpresaId();
     const almacenId = this.tenantService.getAlmacenId() ?? undefined;
     const { limit = 10, page = 1, search } = pagination;
@@ -207,6 +207,10 @@ export class ProductosService implements OnModuleInit {
       .createQueryBuilder('producto')
       .where('producto.empresaId = :empresaId', { empresaId })
       .andWhere('producto.isActive = :active', { active: true });
+
+    if (tipo) {
+      qb.andWhere('producto.tipo = :tipo', { tipo });
+    }
 
     // Si hay almacén activo en el JWT y no se pide ver todos → filtrar por stock en ese almacén.
     // Los servicios (tipo='servicio') no tienen stock_almacen y siempre se incluyen.

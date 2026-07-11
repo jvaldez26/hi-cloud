@@ -48,8 +48,8 @@ export class ProductosController {
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Listar productos con paginación. Cuando hay almacenId en JWT, retorna solo productos con stock en ese almacén.' })
   findAll(@Query() query: ListProductosQueryDto) {
-    const { incluirSinStock, ...pagination } = query;
-    return this.productosService.findAll(pagination as PaginationDto, incluirSinStock === true);
+    const { incluirSinStock, tipo, ...pagination } = query;
+    return this.productosService.findAll(pagination as PaginationDto, incluirSinStock === true, tipo);
   }
 
   @Get('stock-bajo')

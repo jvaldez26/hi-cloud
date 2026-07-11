@@ -59,7 +59,7 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
   const { data: proveedores } = useQuery({ queryKey: ['proveedores-sel'], queryFn: () => proveedoresApi.list(1, 200) });
   const { data: productosBusqueda, isFetching: buscandoProd } = useQuery({
     queryKey: ['productos-compra-search', productoSearch],
-    queryFn:  () => productosApi.list(1, 50, productoSearch, true),
+    queryFn:  () => api.get(`/productos?page=1&limit=50&search=${encodeURIComponent(productoSearch)}&incluirSinStock=true&tipo=producto`).then(r => r.data?.data ?? r.data),
     enabled:  productoSearch.length >= 2,
     staleTime: 30_000,
   });
@@ -99,8 +99,10 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
   const montoRetIsr   = (esInformal && retieneIsr)   ? Number((subtotal * pctIsr   / 100).toFixed(2)) : 0;
   const netoPagar     = Number((total - montoRetItbis - montoRetIsr).toFixed(2));
 
+  const productosBusquedaData = productosBusqueda?.data ?? (Array.isArray(productosBusqueda) ? productosBusqueda : []);
+
   const onProductoChange = (productoId: number, idx: number) => {
-    const prod = (productosBusqueda?.data ?? []).find((p: any) => p.id === productoId);
+    const prod = productosBusquedaData.find((p: any) => p.id === productoId);
     if (!prod) return;
     const label = prod.codigo ? `${prod.codigo} — ${prod.nombre}` : prod.nombre;
     setSelectedProds(prev => new Map(prev).set(productoId, label));
@@ -167,13 +169,13 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
   const lineaCols = [
     { title: 'Producto', key: 'prod', width: 200,
       render: (_: unknown, _r: Linea, idx: number) => {
-        const busquedaOpts = (productosBusqueda?.data ?? []).map((p: any) => ({
+        const busquedaOpts = productosBusquedaData.map((p: any) => ({
           value: p.id, label: p.codigo ? `${p.codigo} — ${p.nombre}` : p.nombre,
         }));
         // Incluir el producto ya seleccionado en esta fila aunque no esté en los resultados
         const opts = (() => {
           const pid = _r.productoId;
-          if (!pid || busquedaOpts.some(o => o.value === pid)) return busquedaOpts;
+          if (!pid || busquedaOpts.some((o: any) => o.value === pid)) return busquedaOpts;
           const saved = selectedProds.get(pid);
           return saved ? [{ value: pid, label: saved }, ...busquedaOpts] : busquedaOpts;
         })();
@@ -323,7 +325,7 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
             </Form.Item>
           </Col>
           {tipoPago === 'credito' && (
-            <Col xs={12} sm={3}>
+            <Col xs={12} sm={4}>
               <Form.Item label="Días crédito">
                 <InputNumber min={1} max={365} value={diasCredito}
                   onChange={v => setDiasCredito(v ?? 30)} style={{ width: '100%' }} addonAfter="días" />
