@@ -266,9 +266,9 @@ export default function FacturasPage() {
     // Subtotal e ITBIS omitidos — disponibles en el detalle de la factura
     // ── Total ──────────────────────────────────────────────────────────────────
     {
-      title: 'Total', key: 'total', dataIndex: 'total', width: 110, align: 'right' as const,
+      title: 'Total', key: 'total', dataIndex: 'total', width: 145, align: 'right' as const,
       render: (v: number, r: Factura) => (
-        <Text strong style={{ fontSize: 13, color: token.colorPrimary }}>{fmt.moneyM(v, (r as any).moneda)}</Text>
+        <Text strong style={{ fontSize: 13, color: token.colorPrimary, whiteSpace: 'nowrap' }}>{fmt.moneyM(v, (r as any).moneda)}</Text>
       ),
     },
     // ── Moneda ─────────────────────────────────────────────────────────────────
