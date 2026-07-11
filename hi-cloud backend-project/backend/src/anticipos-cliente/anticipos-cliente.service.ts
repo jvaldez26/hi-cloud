@@ -19,7 +19,7 @@ export interface CreateAnticipoDto {
   clienteId?:     number;
   clienteNombre?: string;
   monto:          number;
-  tipoPago:       string;
+  tipoPago?:      string;
   referencia?:    string;
   descripcion?:   string;
   nombreUsuario?: string;

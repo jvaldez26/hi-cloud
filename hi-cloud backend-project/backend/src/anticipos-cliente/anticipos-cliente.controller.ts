@@ -22,7 +22,7 @@ class CreateAnticipoBodyDto implements CreateAnticipoDto {
   @IsOptional() @IsInt() @IsPositive() @Type(() => Number) clienteId?: number;
   @IsOptional() @IsString()                                clienteNombre?: string;
   @IsNumber()   @Min(0.01) @Type(() => Number)             monto!: number;
-  @IsString()                                              tipoPago!: string;
+  @IsOptional() @IsString()                                tipoPago?: string;
   @IsOptional() @IsString()                                referencia?: string;
   @IsOptional() @IsString()                                descripcion?: string;
   @IsOptional() @IsString()                                concepto?: string;
