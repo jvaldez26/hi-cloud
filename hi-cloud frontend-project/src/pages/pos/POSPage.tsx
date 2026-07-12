@@ -6264,6 +6264,8 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
     cheque:'', transferencia:'', otro:'', deposito:'', documentos:'',
   });
   const [imprimiendoCierre, setImprimiendoCierre] = useState(false);
+  const [tab, setTab] = useState<'actual' | 'historial'>('actual');
+  const [imprimiendoHistorial, setImprimiendoHistorial] = useState<number | null>(null);
 
   const totalBilletes   = BILLETES_RD.reduce((s,b) => s + (billetes[b]??0)*b, 0);
   const totalDesglosePago = Object.values(pago).reduce((s,v) => s + (Number(v)||0), 0);
@@ -6286,6 +6288,17 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
     },
     staleTime:            0,
     refetchOnWindowFocus: true,
+  });
+
+  const { data: historialData, isLoading: historialLoading, refetch: historialRefetch } = useQuery<any>({
+    queryKey: ['pos-caja-historial'],
+    queryFn: () => {
+      const vid = localStorage.getItem('pos_vendedor_id');
+      const url = vid ? `/caja/historial?vendedorId=${vid}&limit=30` : '/caja/historial?limit=30';
+      return api.get(url).then(r => r.data?.data ?? r.data);
+    },
+    enabled: tab === 'historial',
+    staleTime: 60_000,
   });
 
   // Auto-llenar efectivo del desglose con ventas en efectivo
@@ -6355,11 +6368,55 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
     }
   };
 
+  const handleImprimirHistorial = async (item: any) => {
+    setImprimiendoHistorial(item.id);
+    try {
+      const empRes = await api.get('/configuracion/empresa')
+        .then(r => r.data?.data ?? r.data)
+        .catch(() => ({}));
+      const empConf = (empRes.configuracion ?? {}) as any;
+      const efInicial   = Number(item.saldoApertura ?? 0);
+      const vendContado = Number(item.ventasEfectivo ?? 0);
+      const vendCredito = Number(item.ventasTarjeta ?? 0) + Number(item.ventasTransferencia ?? 0);
+      const totalVend   = vendContado + vendCredito;
+      const totalRec    = Number(item.cobrosRecibidos ?? 0);
+      const efEnCaja    = efInicial + vendContado + totalRec;
+      const bls         = (item.desgloseBilletes ?? {}) as Record<string, number>;
+      const pg          = (item.desglosePago ?? {}) as Record<string, string>;
+      const totalBills  = Object.entries(bls).reduce((s, [den, qty]) => s + Number(den) * Number(qty), 0);
+      const totalFis    = Number(item.saldoFisico ?? 0);
+      imprimirReciboTermico(buildCierreCajaHTML({
+        empresa:  { nombre: empRes.razonSocial ?? empRes.nombre, rnc: empRes.rnc, direccion: empRes.direccion, telefono: empRes.telefono },
+        caja:     { id: item.id, numero: item.numero, fecha: item.fecha, vendedorNombre: item.vendedorNombre, cantidadTransacciones: item.cantidadTransacciones },
+        ops:      { efectivoInicial: efInicial, vendidoContado: vendContado, vendidoCredito: vendCredito, totalVendido: totalVend, totalRecibos: totalRec, totalAnticipos: Number(item.totalAnticipos ?? 0), gastosEfectivo: Number(item.gastosEfectivo ?? 0), efectivoEnCaja: efEnCaja },
+        billetes: bls,
+        pago:     pg,
+        totalBilletes: totalBills,
+        totalFisico:   totalFis,
+        nota:     item.notas ?? undefined,
+        tipoImpresora: empConf.posTipoImpresora,
+      }));
+    } catch (e: any) {
+      message.error(e?.response?.data?.message ?? 'Error al imprimir cierre');
+    } finally {
+      setImprimiendoHistorial(null);
+    }
+  };
+
   return (
     <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
       <PanelHeader title="Cierre de Caja" icon="🏧" C={C} onVolver={onVolver} />
+      {/* Tab switcher */}
+      <div style={{ padding:'8px 20px 0', flexShrink:0 }}>
+        <Segmented
+          value={tab}
+          onChange={v => setTab(v as 'actual' | 'historial')}
+          options={[{ label: '🏧 Cierre Actual', value: 'actual' }, { label: '📅 Historial', value: 'historial' }]}
+          block size="small" style={{ marginBottom:8 }}
+        />
+      </div>
       <div style={{ flex:1, overflowY:'auto', padding:'16px 20px' }}>
-        {isLoading ? <div style={{textAlign:'center',padding:40}}><Spin/></div> :
+        {tab === 'actual' && (isLoading ? <div style={{textAlign:'center',padding:40}}><Spin/></div> :
         !cajaHoy || cajaHoy.estado !== 'abierta' ? (
           <div style={{ textAlign:'center', padding:40, color:C.textSub }}>
             No hay caja abierta hoy
@@ -6477,6 +6534,54 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
             </button>
           </div>
         </div>
+        ))}
+        {tab === 'historial' && (
+          <div style={{ maxWidth:560 }}>
+            <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:10 }}>
+              <button onClick={() => historialRefetch()}
+                style={{ height:32, padding:'0 14px', borderRadius:8, border:`1px solid ${C.border}`,
+                  background:'transparent', color:C.text, fontSize:12, cursor:'pointer' }}>
+                ↻ Actualizar
+              </button>
+            </div>
+            {historialLoading ? (
+              <div style={{ textAlign:'center', padding:40 }}><Spin /></div>
+            ) : !historialData?.data?.length ? (
+              <div style={{ textAlign:'center', padding:40, color:C.textSub }}>No hay cierres registrados</div>
+            ) : (
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                {historialData.data.map((item: any) => {
+                  const vend = Number(item.ventasEfectivo ?? 0) + Number(item.ventasTarjeta ?? 0) + Number(item.ventasTransferencia ?? 0);
+                  return (
+                    <div key={item.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10,
+                      padding:'12px 16px', display:'flex', alignItems:'center', gap:12 }}>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontWeight:700, fontSize:13, display:'flex', alignItems:'center', gap:8 }}>
+                          <span>{item.numero ?? `Caja #${item.id}`}</span>
+                          <span style={{ fontSize:11, fontWeight:400, color:C.textSub }}>{String(item.fecha).substring(0,10)}</span>
+                        </div>
+                        {item.vendedorNombre && (
+                          <div style={{ fontSize:12, color:C.textSub, marginTop:2 }}>{item.vendedorNombre}</div>
+                        )}
+                        <div style={{ fontSize:13, fontWeight:600, color:C.green, marginTop:2 }}>{m(vend)}</div>
+                      </div>
+                      <div style={{ fontSize:11, fontWeight:700, textTransform:'uppercase',
+                        color: item.estado === 'revisada' ? C.green : C.textSub }}>
+                        {item.estado}
+                      </div>
+                      <button onClick={() => handleImprimirHistorial(item)}
+                        disabled={imprimiendoHistorial === item.id}
+                        style={{ height:34, padding:'0 12px', borderRadius:8, border:`1px solid ${C.border}`,
+                          background:'transparent', color:C.text, fontWeight:600, fontSize:13,
+                          cursor: imprimiendoHistorial === item.id ? 'not-allowed' : 'pointer', whiteSpace:'nowrap' }}>
+                        {imprimiendoHistorial === item.id ? '…' : '🖨'}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>
