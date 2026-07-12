@@ -209,12 +209,22 @@ export class NotasCreditoService {
 
   // ─── Ciclo de vida ────────────────────────────────────────────────────────────
 
-  async emitir(id: number) {
+  async emitir(id: number, codigoModificacion?: string) {
     const nc = await this.findOne(id);
     if (nc.estado !== EstadoNotaCredito.BORRADOR) {
       throw new BadRequestException('Solo se puede emitir notas en BORRADOR');
     }
     await this.ncRepo.update(id, { estado: EstadoNotaCredito.EMITIDA });
+
+    // Código 1 = Anulación total: la factura original queda CANCELADA
+    if (codigoModificacion === '1' && nc.facturaOriginalId) {
+      const empresaId = this.tenantSvc.getEmpresaId();
+      await this.ds.query(
+        `UPDATE facturas SET estado = 'cancelada' WHERE id = $1 AND "empresaId" = $2 AND "isActive" = true`,
+        [nc.facturaOriginalId, empresaId],
+      );
+    }
+
     return this.findOne(id);
   }
 

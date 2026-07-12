@@ -2154,8 +2154,8 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
       const nc = ncRes.data?.data ?? ncRes.data;
       if (!nc?.id) throw new Error('No se pudo crear la Nota de Crédito');
 
-      // Paso 2: Emitir NC (BORRADOR → EMITIDA)
-      await api.patch(`/notas-credito/${nc.id}/emitir`);
+      // Paso 2: Emitir NC (BORRADOR → EMITIDA); código 1 cancela la factura original
+      await api.patch(`/notas-credito/${nc.id}/emitir`, { codigoModificacion: codigoMod });
 
       // Paso 3: Generar e-CF E34 y enviar a MSeller/DGII
       const ecfRes    = await api.post(`/ecf/nota-credito/${nc.id}/emitir`, { codigoModificacion: codigoMod });
