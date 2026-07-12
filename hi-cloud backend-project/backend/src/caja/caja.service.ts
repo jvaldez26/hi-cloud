@@ -263,21 +263,36 @@ export class CajaService {
   // ── Recalcular ventas del día por vendedor ────────────────────────────────
 
   private async recalcularDesdeBD(cajaId: number, fecha: string, vendedorId?: number, empresaId?: number) {
-    const vendedorFilter = vendedorId
+    const vendedorFilter  = vendedorId
       ? `AND f."vendedorId" = ${Number(vendedorId)}`
       : `AND f."vendedorId" IS NULL`;
 
-    const empresaFilter = empresaId ? `AND f."empresaId" = ${Number(empresaId)}` : '';
+    const empresaFilter   = empresaId ? `AND f."empresaId" = ${Number(empresaId)}` : '';
+    const ncEmpresaFilter = empresaId ? `AND nc."empresaId" = ${Number(empresaId)}` : '';
 
+    // Las NC emitidas reducen el valor efectivo de cada factura del día.
+    // Se resta el total de NC por factura antes de clasificar por método de pago.
     const [ventas] = await this.dataSource.query<{
       efectivo: string; tarjeta: string; transferencia: string; cantidad: string;
     }[]>(
-      `SELECT
-         COALESCE(SUM(CASE WHEN LOWER(f.notas) LIKE '%efectivo%'      THEN f.total ELSE 0 END), 0)::text AS efectivo,
-         COALESCE(SUM(CASE WHEN LOWER(f.notas) LIKE '%tarjeta%'       THEN f.total ELSE 0 END), 0)::text AS tarjeta,
-         COALESCE(SUM(CASE WHEN LOWER(f.notas) LIKE '%transferencia%' THEN f.total ELSE 0 END), 0)::text AS transferencia,
+      `WITH nc_totales AS (
+         SELECT nc."facturaOriginalId",
+                COALESCE(SUM(nc.total), 0) AS total_nc
+         FROM notas_credito nc
+         WHERE nc."isActive" = true AND nc.estado = 'emitida'
+           ${ncEmpresaFilter}
+         GROUP BY nc."facturaOriginalId"
+       )
+       SELECT
+         COALESCE(SUM(CASE WHEN LOWER(f.notas) LIKE '%efectivo%'
+           THEN GREATEST(0, f.total - COALESCE(ntc.total_nc, 0)) ELSE 0 END), 0)::text AS efectivo,
+         COALESCE(SUM(CASE WHEN LOWER(f.notas) LIKE '%tarjeta%'
+           THEN GREATEST(0, f.total - COALESCE(ntc.total_nc, 0)) ELSE 0 END), 0)::text AS tarjeta,
+         COALESCE(SUM(CASE WHEN LOWER(f.notas) LIKE '%transferencia%'
+           THEN GREATEST(0, f.total - COALESCE(ntc.total_nc, 0)) ELSE 0 END), 0)::text AS transferencia,
          COUNT(f.id)::text AS cantidad
        FROM facturas f
+       LEFT JOIN nc_totales ntc ON ntc."facturaOriginalId" = f.id
        WHERE DATE(f.fecha) = $1
          AND f.estado IN ('emitida', 'pagada')
          AND f."isActive" = true

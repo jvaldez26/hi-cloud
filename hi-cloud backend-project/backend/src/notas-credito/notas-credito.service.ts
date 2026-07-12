@@ -216,13 +216,37 @@ export class NotasCreditoService {
     }
     await this.ncRepo.update(id, { estado: EstadoNotaCredito.EMITIDA });
 
+    const empresaId = this.tenantSvc.getEmpresaId();
+
     // Código 1 = Anulación total: la factura original queda CANCELADA
     if (codigoModificacion === '1' && nc.facturaOriginalId) {
-      const empresaId = this.tenantSvc.getEmpresaId();
       await this.ds.query(
         `UPDATE facturas SET estado = 'cancelada' WHERE id = $1 AND "empresaId" = $2 AND "isActive" = true`,
         [nc.facturaOriginalId, empresaId],
       );
+    }
+
+    // Código 3 = Devolución / Ajuste de montos: reducir CxC si la factura tiene saldo pendiente
+    if (codigoModificacion === '3' && nc.facturaOriginalId) {
+      const [cxcRow] = await this.ds.query<any[]>(
+        `SELECT id, "montoPendiente", "montoOriginal", "montoPagado"
+         FROM cuentas_por_cobrar
+         WHERE "facturaId" = $1 AND "empresaId" = $2
+           AND "isActive" = true AND estado NOT IN ('anulada', 'pagada')
+         LIMIT 1`,
+        [nc.facturaOriginalId, empresaId],
+      );
+      if (cxcRow) {
+        const nuevoPendiente = +Math.max(0, Number(cxcRow.montoPendiente) - Number(nc.total)).toFixed(2);
+        const nuevoPagado    = +Math.max(0, Number(cxcRow.montoOriginal) - nuevoPendiente).toFixed(2);
+        const nuevoEstado    = nuevoPendiente <= 0 ? 'pagada' : 'pagada_parcial';
+        await this.ds.query(
+          `UPDATE cuentas_por_cobrar
+           SET "montoPendiente" = $1, "montoPagado" = $2, estado = $3
+           WHERE id = $4`,
+          [nuevoPendiente, nuevoPagado, nuevoEstado, cxcRow.id],
+        );
+      }
     }
 
     return this.findOne(id);
