@@ -113,6 +113,12 @@ apiClient.interceptors.response.use(
     if (status === 401) {
       const original = err.config as any;
 
+      // verificar-supervisor: contraseña incorrecta del supervisor — NO es sesión expirada.
+      // Solo rechazar el error para que el modal lo muestre; no hacer refresh ni logout.
+      if (original?.url?.includes('/auth/verificar-supervisor')) {
+        return Promise.reject(err);
+      }
+
       // Sesión desplazada: el usuario inició sesión en otro dispositivo
       // El filter devuelve { errors: ["SESION_DESPLAZADA"] }, no { message: "..." }
       // → usar `message` (ya extraído de errors[0] por extractBackendMessage)
