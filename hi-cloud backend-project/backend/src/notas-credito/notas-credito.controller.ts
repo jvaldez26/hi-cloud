@@ -108,7 +108,7 @@ export class NotasCreditoController {
   }
 
   @Patch(':id/emitir')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Emitir nota de crédito (e-CF E34)' })
   emitir(@Param('id', ParseIntPipe) id: number) { return this.svc.emitir(id); }
 

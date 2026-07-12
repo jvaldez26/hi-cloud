@@ -23,6 +23,10 @@ function extractBackendMessage(err: AxiosError): string {
   if (typeof data.message === 'string' && data.message) {
     return data.message;
   }
+  // Límite de ingresos / suscripción (usa 'mensaje' en vez de 'message')
+  if (typeof data.mensaje === 'string' && data.mensaje) {
+    return data.mensaje;
+  }
   // Array de mensajes de validación (class-validator)
   if (Array.isArray(data.message) && data.message.length > 0) {
     return data.message[0];
@@ -276,8 +280,18 @@ apiClient.interceptors.response.use(
     const enrichedErr = err as any;
     switch (status) {
       case 400: enrichedErr.friendlyMessage = message; break;
-      case 403: enrichedErr.friendlyMessage = message.toLowerCase().includes('empresa')
-        ? message : 'No tienes permisos para esta acción'; break;
+      case 403: {
+        const m403 = message.toLowerCase();
+        enrichedErr.friendlyMessage = (
+          m403.includes('empresa') ||
+          m403.includes('límite') ||
+          m403.includes('limite') ||
+          m403.includes('plan') ||
+          m403.includes('suspendida') ||
+          m403.includes('acceso')
+        ) ? message : 'No tienes permisos para esta acción';
+        break;
+      }
       case 404: enrichedErr.friendlyMessage = message || 'Registro no encontrado'; break;
       case 409: enrichedErr.friendlyMessage = message || 'Ya existe un registro con esos datos'; break;
       case 422: enrichedErr.friendlyMessage = message; break;

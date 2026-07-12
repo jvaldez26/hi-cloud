@@ -31,7 +31,7 @@ export class ProveedoresController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Crear proveedor' })
   create(@Body() dto: CreateProveedorDto) {
     return this.proveedoresService.create(dto);
@@ -56,7 +56,7 @@ export class ProveedoresController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Actualizar proveedor' })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateProveedorDto) {
     return this.proveedoresService.update(id, dto);
