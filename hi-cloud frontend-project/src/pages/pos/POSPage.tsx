@@ -6566,6 +6566,23 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
     },
   });
 
+  // ── Emitir factura borrador desde POS ────────────────────────────────────────
+  const [emitiendoId, setEmitiendoId] = useState<number | null>(null);
+  const emitirFacturaMut = useMutation({
+    mutationFn: (id: number) => facturasApi.emitirPos(id),
+    onMutate:   (id) => setEmitiendoId(id),
+    onSuccess:  (_data, id) => {
+      message.success('Factura emitida correctamente');
+      setEmitiendoId(null);
+      qc.invalidateQueries({ queryKey: ['pos-panel', 'facturas'] });
+      qc.refetchQueries({ queryKey: ['pos-panel', 'facturas'] });
+    },
+    onError: (e: any, id) => {
+      message.error(e?.response?.data?.message ?? 'Error al emitir factura');
+      setEmitiendoId(null);
+    },
+  });
+
   // ── Cobrar Pre-Factura desde POS ─────────────────────────────────────────────
   const cobrarPFMut = useMutation({
     mutationFn: async ({ id, metodoPago }: { id: number; metodoPago: string }) =>
@@ -7232,6 +7249,17 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
                     ))}
                     {true && (
                       <td style={{ padding: '6px 14px', verticalAlign: 'middle', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        {/* Emitir Factura Borrador */}
+                        {panel === 'facturas' && row.estado === 'borrador' && (
+                          <button
+                            onClick={() => emitirFacturaMut.mutate(row.id)}
+                            disabled={emitiendoId === row.id}
+                            title="Emitir factura"
+                            style={{ background: emitiendoId === row.id ? '#9ca3af' : C.blue, border: 'none', borderRadius: 6, color: '#fff', cursor: emitiendoId === row.id ? 'not-allowed' : 'pointer', padding: '4px 10px', fontSize: 12, fontWeight: 700, marginRight: 6 }}
+                          >
+                            {emitiendoId === row.id ? '⏳' : '📤 Emitir'}
+                          </button>
+                        )}
                         {/* Cobrar Pre-Factura */}
                         {panel === 'pre-facturas' && !['convertida', 'rechazada'].includes((row.estado ?? '').toLowerCase()) && (
                           <button
