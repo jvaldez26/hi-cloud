@@ -18,13 +18,13 @@ import { AsientosAutomaticosService } from '../contabilidad/services/asientos-au
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { TenantService } from '../tenant/tenant.service';
 import { RealtimeService } from '../realtime/realtime.service';
-import { fechaHoyRD } from '../common/utils/fecha-local.util';
 import { User } from '../users/users.entity';
 import { LimitesService } from '../suscripciones/limites.service';
 import { EmitirECFUseCase, DatosCompradorECF } from '../ecf/use-cases/emitir-ecf.use-case';
 import { DocumentoOrigenTipo } from '../ecf/entities/ecf.entity';
 import { TipoClienteECF } from '../clientes/entities/cliente.entity';
 import { S3Service } from '../common/s3/s3.service';
+import { CajaService } from '../caja/caja.service';
 
 @Injectable()
 export class FacturasService {
@@ -46,6 +46,7 @@ export class FacturasService {
     private limitesService:    LimitesService,
     private emitirECFUseCase:  EmitirECFUseCase,
     private s3Service:         S3Service,
+    private cajaService:       CajaService,
     @InjectDataSource() private dataSource: DataSource,
   ) {}
 
@@ -646,13 +647,10 @@ export class FacturasService {
     if (estado === FacturaEstado.EMITIDA) {
       // Verificar que hay caja abierta si la factura viene del POS (tiene vendedorId)
       if ((factura as any).vendedorId) {
-        const hoy = fechaHoyRD();
-        const [cajaAbierta] = await this.dataSource.query<{ id: number }[]>(`
-          SELECT id FROM cierres_caja
-          WHERE "empresaId" = $1 AND DATE(fecha) = $2
-            AND estado = 'abierta' AND "vendedorId" = $3 LIMIT 1
-        `, [factura.empresaId, hoy, (factura as any).vendedorId]).catch(() => []);
-
+        const cajaAbierta = await this.cajaService.esCajaAbiertaVendedor(
+          (factura as any).vendedorId,
+          factura.empresaId,
+        );
         if (!cajaAbierta) {
           throw new BadRequestException(
             'No hay una caja diaria abierta para este vendedor. Abre el turno antes de facturar.',

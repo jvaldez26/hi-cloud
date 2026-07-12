@@ -12,13 +12,14 @@ import { ECFModule } from '../ecf/ecf.module';
 import { CxCModule } from '../cxc/cxc.module';
 import { ContabilidadModule } from '../contabilidad/contabilidad.module';
 import { SuscripcionesModule } from '../suscripciones/suscripciones.module';
+import { CajaModule } from '../caja/caja.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Factura, FacturaDetalle]),
     ClientesModule, ProductosModule, InventarioModule,
     ECFModule, CxCModule, ContabilidadModule,
-    SuscripcionesModule,
+    SuscripcionesModule, CajaModule,
     PdfModule,           // PDFService + NumeroLetrasService encapsulados aquí
   ],
   controllers: [FacturasController],

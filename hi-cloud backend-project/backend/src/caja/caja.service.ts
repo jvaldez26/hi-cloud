@@ -416,4 +416,15 @@ export class CajaService {
       diasConDiferencia: Number(rows[0]?.diasConDiferencia ?? 0),
     };
   }
+
+  // ── Fuente única para verificar si hay caja abierta hoy para un vendedor ──
+  // Usa el MISMO TypeORM repo que getCajaHoy — elimina divergencia con raw SQL.
+  async esCajaAbiertaVendedor(vendedorId: number, empresaId: number): Promise<boolean> {
+    const hoy  = fechaHoyRD();
+    const caja = await this.repo.findOne({
+      where:  { fecha: new Date(hoy) as any, empresaId, vendedorId } as any,
+      select: ['id', 'estado'],
+    });
+    return caja?.estado === EstadoCierre.ABIERTA;
+  }
 }
