@@ -10,6 +10,7 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { EcfError } from '../../ecf/errors/ecf.errors';
 
 interface PostgresError extends Error {
   code?: string;
@@ -119,6 +120,17 @@ export class HttpExceptionFilter implements ExceptionFilter {
         default:
           this.logger.error(`DBError[${pgErr.code}] [${request.method} ${request.url}]: ${pgErr.message}`, pgErr.stack);
       }
+    }
+
+    // ── EcfError: errores de negocio del módulo ECF (configuración, secuencias, validación) ──
+    // Son errores conocidos con mensajes claros y accionables — se exponen al cliente.
+    if (exception instanceof EcfError) {
+      status  = HttpStatus.UNPROCESSABLE_ENTITY;
+      message = exception.message;
+      this.logger.warn(
+        `EcfError[${exception.code}] [${request.method} ${request.url}]: ${exception.message}`,
+      );
+      return this.send(response, request, status, message);
     }
 
     // ── Error genérico no manejado ────────────────────────────────────

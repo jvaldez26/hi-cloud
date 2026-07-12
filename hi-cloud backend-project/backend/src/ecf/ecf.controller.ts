@@ -239,7 +239,7 @@ export class ECFController {
 
   @Post('nota-credito/:id/emitir')
   @HttpCode(HttpStatus.CREATED)
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({
     summary: 'Emitir e-CF E34 (Nota de Crédito) para una nota ya creada en el sistema',
     description:
