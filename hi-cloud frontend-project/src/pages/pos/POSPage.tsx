@@ -6569,7 +6569,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
   // ── Emitir factura borrador desde POS ────────────────────────────────────────
   const [emitiendoId, setEmitiendoId] = useState<number | null>(null);
   const emitirFacturaMut = useMutation({
-    mutationFn: (id: number) => facturasApi.emitirPos(id),
+    mutationFn: (id: number) => facturasApi.cambiarEstado(id, 'emitida' as any),
     onMutate:   (id) => setEmitiendoId(id),
     onSuccess:  (_data, id) => {
       message.success('Factura emitida correctamente');
