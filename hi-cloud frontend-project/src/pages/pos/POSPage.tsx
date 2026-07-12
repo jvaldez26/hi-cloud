@@ -6520,13 +6520,6 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
           </div>
 
           <div style={{ display:'flex', gap:8 }}>
-            <button onClick={handleImprimirCierre} disabled={imprimiendoCierre}
-              style={{ height:46, padding:'0 18px', borderRadius:10,
-                border:`1px solid ${C.border}`, background:'transparent',
-                color:C.text, fontWeight:700, fontSize:15, cursor: imprimiendoCierre ? 'not-allowed' : 'pointer',
-                whiteSpace:'nowrap' }}>
-              {imprimiendoCierre ? '…' : '🖨 Imprimir'}
-            </button>
             <button onClick={() => cerrarMut.mutate()} disabled={cerrarMut.isPending}
               style={{ flex:1, height:46, borderRadius:10, border:'none',
                 background:'#059669', color:'#fff', fontWeight:700, fontSize:15, cursor:'pointer' }}>
