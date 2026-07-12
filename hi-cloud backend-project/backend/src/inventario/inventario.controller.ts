@@ -74,7 +74,7 @@ export class InventarioController {
 
   @Post('entrada')
   @HttpCode(HttpStatus.CREATED)
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Registrar entrada de mercancía al inventario' })
   registrarEntrada(@Body() dto: RegistrarEntradaDto, @GetUser() usuario: User) {
     return this.inventarioService.registrarEntradaDesdeDto(dto, usuario.id);
@@ -82,7 +82,7 @@ export class InventarioController {
 
   @Post('salida')
   @HttpCode(HttpStatus.CREATED)
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Registrar salida de mercancía del inventario' })
   registrarSalida(@Body() dto: RegistrarSalidaDto, @GetUser() usuario: User) {
     return this.inventarioService.registrarSalidaDesdeDto(dto, usuario.id);

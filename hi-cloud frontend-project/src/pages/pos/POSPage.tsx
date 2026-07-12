@@ -2644,7 +2644,6 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
 
   // ── handlers movimientos ──────────────────────────────────────────────────
   const handleMovModal = (tipo: 'entrada'|'salida') => {
-    if (!isAdmin) { message.warning('Se requiere rol administrador'); return; }
     setMovModal({ tipo });
     setMSearch(''); setMProd(null); setMCant(''); setMMotivo('');
   };
@@ -2679,22 +2678,20 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
           + Nuevo Producto
         </button>
       )
-    : isAdmin
-      ? (
-          <div style={{ display: 'flex', gap: 6, marginRight: 8 }}>
-            <button onClick={() => handleMovModal('entrada')}
-              style={{ padding: '4px 12px', borderRadius: 6, border: 'none',
-                background: '#dcfce7', color: '#15803d', cursor: 'pointer', fontWeight: 700, fontSize: 12 }}>
-              + Entrada
-            </button>
-            <button onClick={() => handleMovModal('salida')}
-              style={{ padding: '4px 12px', borderRadius: 6, border: 'none',
-                background: '#fee2e2', color: '#dc2626', cursor: 'pointer', fontWeight: 700, fontSize: 12 }}>
-              − Salida
-            </button>
-          </div>
-        )
-      : null;
+    : (
+        <div style={{ display: 'flex', gap: 6, marginRight: 8 }}>
+          <button onClick={() => handleMovModal('entrada')}
+            style={{ padding: '4px 12px', borderRadius: 6, border: 'none',
+              background: '#dcfce7', color: '#15803d', cursor: 'pointer', fontWeight: 700, fontSize: 12 }}>
+            + Entrada
+          </button>
+          <button onClick={() => handleMovModal('salida')}
+            style={{ padding: '4px 12px', borderRadius: 6, border: 'none',
+              background: '#fee2e2', color: '#dc2626', cursor: 'pointer', fontWeight: 700, fontSize: 12 }}>
+            − Salida
+          </button>
+        </div>
+      );
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
