@@ -8736,14 +8736,39 @@ export default function POSPage() {
         return { factura, ecfResult: emitResult };
       } catch (emitErr: any) {
         const emitMsg = emitErr?.response?.data?.message ?? emitErr?.message ?? String(emitErr);
-        console.error('[POS] emitirPos falló — factura queda BORRADOR:', emitMsg, emitErr);
+        console.error('[POS] emitirPos falló:', emitMsg, emitErr);
         setEcfStatus('pendiente');
-        return { factura, ecfResult: null };
+        return { factura, ecfResult: null, _emisionFallo: true, _emisionError: emitMsg };
       }
     },
     onSuccess: (result) => {
       const factura = (result as any)?.factura ?? result;
       const ecfResult = (result as any)?.ecfResult;
+
+      // ── Emisión e-CF falló: aviso obligatorio, sin recibo fiscal ─────────────
+      if ((result as any)?._emisionFallo) {
+        if (printWinRef.current && !printWinRef.current.closed) {
+          try { printWinRef.current.close(); } catch { /* noop */ }
+          printWinRef.current = null;
+          autoYaPrintedRef.current = false;
+        }
+        const folio  = factura?.folio ?? 'sin folio';
+        const errMsg = (result as any)?._emisionError ?? 'Error al contactar el servicio de comprobantes fiscales';
+        Modal.warning({
+          title: 'Comprobante fiscal pendiente de emisión',
+          content: `La venta se registró (${folio}) pero NO se pudo emitir el comprobante fiscal. ${errMsg}. La factura quedó en BORRADOR — puedes reintentar desde el panel Facturas con el botón "Emitir".`,
+          okText: 'Entendido',
+        });
+        setShowPago(false);
+        setRncComprador(''); setRazonSocialComp(''); setNumeroOrdenCompra(''); setGuardarRncPerfil(false);
+        setCart([]); resetCliente(); setMontoRecibido(0);
+        setTipoPagoPos('CONTADO'); setDiasCreditoPos(30); setPropinaValor(''); resetDescGlobal();
+        qc.invalidateQueries({ queryKey: ['pos-panel', 'facturas'] });
+        qc.refetchQueries({ queryKey: ['pos-panel', 'facturas'] });
+        return;
+      }
+      // ─────────────────────────────────────────────────────────────────────────
+
       if ((factura as any)._offline) {
         message.warning(`Venta guardada offline (${factura.folio}). Se sincronizará al reconectarse.`, 5);
       }
