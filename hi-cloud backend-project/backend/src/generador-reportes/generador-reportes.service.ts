@@ -62,9 +62,9 @@ export class GeneradorReportesService {
     return this.ds.query(`
       SELECT
         p.id, p.codigo, p.nombre, p.categoria,
-        COALESCE(SUM(fd.cantidad),0)::text    AS cantidadVendida,
+        COALESCE(SUM(fd.cantidad),0)::text    AS "cantidadVendida",
         COALESCE(SUM(fd.total),0)::text       AS ingresos,
-        COUNT(DISTINCT f.id)::text            AS enFacturas
+        COUNT(DISTINCT f.id)::text            AS "enFacturas"
       FROM factura_detalles fd
       JOIN facturas f  ON f.id  = fd."facturaId"
       JOIN productos p ON p.id  = fd."productoId"

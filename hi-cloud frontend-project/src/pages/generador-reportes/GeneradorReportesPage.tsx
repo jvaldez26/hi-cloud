@@ -163,7 +163,7 @@ export default function GeneradorReportesPage() {
       );
     }
     if (['clientes','productos','gastos','proveedores'].includes(reporteId)) {
-      const key = reporteId === 'gastos' ? 'total' : reporteId === 'nomina' ? 'totalSalarios' : 'total';
+      const key = reporteId === 'gastos' ? 'total' : reporteId === 'nomina' ? 'totalSalarios' : reporteId === 'productos' ? 'ingresos' : 'total';
       const labelKey = reporteId === 'clientes' ? 'nombre' : reporteId === 'productos' ? 'nombre' : reporteId === 'gastos' ? 'categoria' : 'proveedor';
       return (
         <ResponsiveContainer width="100%" height={220}>
