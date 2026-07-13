@@ -46,6 +46,10 @@ export class CierreCaja {
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   ventasTransferencia!: number;
 
+  // Facturas emitidas con tipoPago=CREDITO (notas LIKE '%crédito%') — no afectan efectivo en caja
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  ventasCredito!: number;
+
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   cobrosRecibidos!: number;
 

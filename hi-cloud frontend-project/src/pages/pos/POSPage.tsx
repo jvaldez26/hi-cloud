@@ -6336,12 +6336,15 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
   const setPagoKey = (k: keyof DesglosePago) => (v: string) => setPago(p => ({ ...p, [k]: v }));
 
   // Operaciones calculadas
-  const vendidoContado  = Number(cajaHoy?.ventasEfectivo ?? 0);
-  const vendidoCredito  = Number(cajaHoy?.ventasTarjeta ?? 0) + Number(cajaHoy?.ventasTransferencia ?? 0);
-  const totalVendido    = vendidoContado + vendidoCredito;
-  const totalRecibos    = Number(cajaHoy?.cobrosRecibidos ?? 0);
-  const efectivoInicial = Number(cajaHoy?.saldoApertura ?? 0);
-  const efectivoEnCaja  = efectivoInicial + vendidoContado + totalRecibos;
+  const vendidoContado   = Number(cajaHoy?.ventasEfectivo ?? 0);
+  const vendidoDigital   = Number(cajaHoy?.ventasTarjeta ?? 0) + Number(cajaHoy?.ventasTransferencia ?? 0);
+  const vendidoCredito   = Number((cajaHoy as any)?.ventasCredito ?? 0);   // factura a crédito diferido
+  const totalVendido     = vendidoContado + vendidoDigital + vendidoCredito;
+  const totalRecibos     = Number(cajaHoy?.cobrosRecibidos ?? 0);
+  const efectivoInicial  = Number(cajaHoy?.saldoApertura ?? 0);
+  const efectivoEnCaja   = efectivoInicial + vendidoContado + totalRecibos;
+  // Para el recibo térmico mantenemos compat. con la interfaz ops (vendidoCredito = digital + diferido)
+  const vendidoCreditoRecibo = vendidoDigital + vendidoCredito;
 
   const grid3: React.CSSProperties = { display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:10 };
 
@@ -6356,7 +6359,7 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
       imprimirReciboTermico(buildCierreCajaHTML({
         empresa:  { nombre: empRes.razonSocial ?? empRes.nombre, rnc: empRes.rnc, direccion: empRes.direccion, telefono: empRes.telefono },
         caja:     { id: cajaHoy.id, numero: cajaHoy.numero, fecha: cajaHoy.fecha, vendedorNombre: cajaHoy.vendedorNombre, cantidadTransacciones: cajaHoy.cantidadTransacciones },
-        ops:      { efectivoInicial, vendidoContado, vendidoCredito, totalVendido, totalRecibos, totalAnticipos: Number(cajaHoy.totalAnticipos ?? 0), gastosEfectivo: Number(cajaHoy.gastosEfectivo ?? 0), efectivoEnCaja },
+        ops:      { efectivoInicial, vendidoContado, vendidoCredito: vendidoCreditoRecibo, totalVendido, totalRecibos, totalAnticipos: Number(cajaHoy.totalAnticipos ?? 0), gastosEfectivo: Number(cajaHoy.gastosEfectivo ?? 0), efectivoEnCaja },
         billetes: Object.fromEntries(Object.entries(billetes).map(([k,v]) => [k, Number(v)])),
         pago,
         totalBilletes,
@@ -6380,7 +6383,8 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
       const empConf = (empRes.configuracion ?? {}) as any;
       const efInicial   = Number(item.saldoApertura ?? 0);
       const vendContado = Number(item.ventasEfectivo ?? 0);
-      const vendCredito = Number(item.ventasTarjeta ?? 0) + Number(item.ventasTransferencia ?? 0);
+      const vendCredito = Number(item.ventasTarjeta ?? 0) + Number(item.ventasTransferencia ?? 0)
+                        + Number((item as any).ventasCredito ?? 0);
       const totalVend   = vendContado + vendCredito;
       const totalRec    = Number(item.cobrosRecibidos ?? 0);
       const efEnCaja    = efInicial + vendContado + totalRec;
@@ -6446,19 +6450,19 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
           <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:'14px 16px', marginBottom:14 }}>
             <div style={{ fontSize:13, fontWeight:800, marginBottom:12 }}>Desglose de Operaciones</div>
             <div style={grid3}>
-              <CierreField label="Efectivo Inicial"  value={m(efectivoInicial)} />
-              <CierreField label="Vendido Contado"   value={m(vendidoContado)} />
-              <CierreField label="Vendido Crédito"   value={m(vendidoCredito)} />
+              <CierreField label="Efectivo Inicial"    value={m(efectivoInicial)} />
+              <CierreField label="Vendido Contado"     value={m(vendidoContado)} />
+              <CierreField label="Vendido Tarj./Trans." value={m(vendidoDigital)} />
             </div>
             <div style={grid3}>
-              <CierreField label="Total Vendido"     value={m(totalVendido)} highlight />
-              <CierreField label="Total Recibos"     value={m(totalRecibos)} />
-              <CierreField label="Total Anticipos"   value={m(cajaHoy.totalAnticipos ?? 0)} />
+              <CierreField label="Vendido Crédito"    value={m(vendidoCredito)} />
+              <CierreField label="Total Vendido"      value={m(totalVendido)} highlight />
+              <CierreField label="Total Recibos"      value={m(totalRecibos)} />
             </div>
             <div style={grid3}>
-              <CierreField label="Total Dev. y Des"  value={m(cajaHoy.gastosEfectivo ?? 0)} />
-              <CierreField label="Total NC. Aplicadas" value="0.00" />
-              <CierreField label="Efectivo en Caja"  value={m(efectivoEnCaja)} highlight />
+              <CierreField label="Total Anticipos"    value={m(cajaHoy.totalAnticipos ?? 0)} />
+              <CierreField label="Total Dev. y Des"    value={m(cajaHoy.gastosEfectivo ?? 0)} />
+              <CierreField label="Efectivo en Caja"    value={m(efectivoEnCaja)} highlight />
             </div>
           </div>
 

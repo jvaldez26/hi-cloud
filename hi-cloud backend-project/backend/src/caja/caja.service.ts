@@ -273,7 +273,7 @@ export class CajaService {
     // Las NC emitidas reducen el valor efectivo de cada factura del día.
     // Se resta el total de NC por factura antes de clasificar por método de pago.
     const [ventas] = await this.dataSource.query<{
-      efectivo: string; tarjeta: string; transferencia: string; cantidad: string;
+      efectivo: string; tarjeta: string; transferencia: string; credito: string; cantidad: string;
     }[]>(
       `WITH nc_totales AS (
          SELECT nc."facturaOriginalId",
@@ -290,6 +290,11 @@ export class CajaService {
            THEN GREATEST(0, f.total - COALESCE(ntc.total_nc, 0)) ELSE 0 END), 0)::text AS tarjeta,
          COALESCE(SUM(CASE WHEN LOWER(f.notas) LIKE '%transferencia%'
            THEN GREATEST(0, f.total - COALESCE(ntc.total_nc, 0)) ELSE 0 END), 0)::text AS transferencia,
+         COALESCE(SUM(CASE WHEN (LOWER(f.notas) LIKE '%cr_dito%' OR LOWER(f.notas) LIKE '%credito%')
+             AND LOWER(f.notas) NOT LIKE '%efectivo%'
+             AND LOWER(f.notas) NOT LIKE '%tarjeta%'
+             AND LOWER(f.notas) NOT LIKE '%transferencia%'
+           THEN GREATEST(0, f.total - COALESCE(ntc.total_nc, 0)) ELSE 0 END), 0)::text AS credito,
          COUNT(f.id)::text AS cantidad
        FROM facturas f
        LEFT JOIN nc_totales ntc ON ntc."facturaOriginalId" = f.id
@@ -328,6 +333,7 @@ export class CajaService {
       ventasEfectivo:        Number(ventas?.efectivo      ?? 0),
       ventasTarjeta:         Number(ventas?.tarjeta       ?? 0),
       ventasTransferencia:   Number(ventas?.transferencia ?? 0),
+      ventasCredito:         Number(ventas?.credito       ?? 0),
       cobrosRecibidos:       Number(cobros?.total         ?? 0),
       totalAnticipos:        Number(anticipos?.total      ?? 0),
       cantidadTransacciones: Number(ventas?.cantidad      ?? 0),
