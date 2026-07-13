@@ -770,10 +770,13 @@ export class FacturasService {
 
       // 5. Emitir e-CF
       if (modoSincrono) {
-        // POS: awaitar el e-CF (timeout 8s ya manejado en el use case, nunca lanza)
+        // POS: awaitar el e-CF (timeout 8s ya manejado en el use case, nunca lanza).
+        // Si falla (sin config ECF, sin secuencias, timeout MSeller, etc.) devolver la
+        // factura actualizada (ya PAGADA/EMITIDA del paso 4) para que el frontend no
+        // reciba null y muestre la factura como BORRADOR por error.
         return this.emitirECFUseCase.execute(ecfInput).catch(err => {
           this.logger.warn(`e-CF POS fallido para ${factura.folio}: ${err?.message}`);
-          return null;
+          return this.findOne(id).catch(() => null);
         });
       }
 
