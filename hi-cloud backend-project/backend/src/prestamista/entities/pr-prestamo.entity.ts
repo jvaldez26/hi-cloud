@@ -34,6 +34,7 @@ export class PrPrestamo {
   @Column({ length: 200, nullable: true }) oficialNombre?: string;
   @Column({ type: 'int', nullable: true }) refinanciaDe?: number;
   @Column({ type: 'int', nullable: true }) facturaDesembolsoId?: number;
+  @Column({ type: 'int', nullable: true }) vehiculoId?: number;
   @Column({ type: 'text', nullable: true }) notas?: string;
   @CreateDateColumn() createdAt!: Date;
   @UpdateDateColumn() updatedAt!: Date;

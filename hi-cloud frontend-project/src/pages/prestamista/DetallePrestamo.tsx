@@ -16,6 +16,41 @@ const fmt = (n: any) => `RD$ ${Number(n ?? 0).toLocaleString('es-DO', { minimumF
 const estadoColor: Record<string, string> = { al_dia: 'green', moroso: 'orange', vencido: 'red', pagado: 'blue', cancelado: 'default', refinanciado: 'purple' };
 const cuotaColor: Record<string, string> = { pendiente: 'default', pagada: 'green', vencida: 'red', pagada_parcial: 'orange' };
 
+function VehiculoDetalle({ vehiculoId }: { vehiculoId: number }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['prestamista-vehiculo', vehiculoId],
+    queryFn: () => prestamistalApi.getVehiculo(vehiculoId),
+  });
+  if (isLoading) return <Spin size="small" />;
+  if (!data) return <div>Vehículo no encontrado</div>;
+  const v: any = data;
+  const hoy = new Date();
+  const vence = v.fechaVencePoliza ? new Date(v.fechaVencePoliza) : null;
+  const dias = vence ? Math.ceil((vence.getTime() - hoy.getTime()) / 86400000) : null;
+  const polizaTag = !vence ? null
+    : dias! < 0 ? <Tag color="red">Póliza vencida hace {Math.abs(dias!)}d</Tag>
+    : dias! <= 30 ? <Tag color="orange">Vence en {dias}d</Tag>
+    : <Tag color="green">Vigente hasta {vence.toLocaleDateString('es-DO')}</Tag>;
+
+  return (
+    <Descriptions column={{ xs: 1, sm: 2, md: 3 }} bordered size="small">
+      <Descriptions.Item label="Placa"><b>{v.placa ?? '—'}</b></Descriptions.Item>
+      <Descriptions.Item label="Chasis">{v.chasis ?? '—'}</Descriptions.Item>
+      <Descriptions.Item label="Motor">{v.motor ?? '—'}</Descriptions.Item>
+      <Descriptions.Item label="Marca">{v.marca ?? '—'}</Descriptions.Item>
+      <Descriptions.Item label="Modelo">{v.modelo ?? '—'}</Descriptions.Item>
+      <Descriptions.Item label="Año">{v.anio ?? '—'}</Descriptions.Item>
+      <Descriptions.Item label="Color">{v.color ?? '—'}</Descriptions.Item>
+      <Descriptions.Item label="Tipo">{v.tipoVehiculo ?? '—'}</Descriptions.Item>
+      <Descriptions.Item label="Valor Mercado">{fmt(v.valorMercado)}</Descriptions.Item>
+      <Descriptions.Item label="Valor Factura">{fmt(v.valorFactura)}</Descriptions.Item>
+      <Descriptions.Item label="Aseguradora">{v.aseguradora ?? '—'}</Descriptions.Item>
+      <Descriptions.Item label="No. Póliza">{v.polizaSeguro ?? '—'}</Descriptions.Item>
+      <Descriptions.Item label="Seguro">{polizaTag ?? '—'}</Descriptions.Item>
+    </Descriptions>
+  );
+}
+
 export default function DetallePrestamo() {
   const { token: C } = theme.useToken();
   const { id } = useParams<{ id: string }>();
@@ -229,6 +264,15 @@ export default function DetallePrestamo() {
             </div>
           ),
         },
+        ...(prestamo.vehiculoId ? [{
+          key: 'vehiculo',
+          label: 'Vehículo',
+          children: (
+            <Card>
+              <VehiculoDetalle vehiculoId={prestamo.vehiculoId} />
+            </Card>
+          ),
+        }] : []),
         {
           key: 'garantias',
           label: `Garantías (${(garantias as any[]).length})`,

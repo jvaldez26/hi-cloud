@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { TenantModule } from '../tenant/tenant.module';
 import { ContabilidadModule } from '../contabilidad/contabilidad.module';
+import { ECFModule } from '../ecf/ecf.module';
 
 import { PrDeudor } from './entities/pr-deudor.entity';
 import { PrProductoPrestamo } from './entities/pr-producto-prestamo.entity';
@@ -13,6 +14,9 @@ import { PrGarantia } from './entities/pr-garantia.entity';
 import { PrGarante } from './entities/pr-garante.entity';
 import { PrCobranza } from './entities/pr-cobranza.entity';
 import { PrRefinanciamiento } from './entities/pr-refinanciamiento.entity';
+import { PrVehiculo } from './entities/pr-vehiculo.entity';
+import { VehiculosService } from './vehiculos/vehiculos.service';
+import { VehiculosController } from './vehiculos/vehiculos.controller';
 
 import { DeudoresService } from './deudores/deudores.service';
 import { DeudoresController } from './deudores/deudores.controller';
@@ -51,9 +55,11 @@ import { ReportesController } from './reportes/reportes.controller';
       PrGarante,
       PrCobranza,
       PrRefinanciamiento,
+      PrVehiculo,
     ]),
     TenantModule,
     ContabilidadModule,
+    ECFModule,
   ],
   providers: [
     DeudoresService,
@@ -68,6 +74,7 @@ import { ReportesController } from './reportes/reportes.controller';
     DashboardPrestamistaService,
     PrestamistaPdfService,
     ReportesPrestamistaService,
+    VehiculosService,
   ],
   controllers: [
     DeudoresController,
@@ -81,7 +88,8 @@ import { ReportesController } from './reportes/reportes.controller';
     DashboardPrestamistaController,
     PdfPrestamistaController,
     ReportesController,
+    VehiculosController,
   ],
-  exports: [DeudoresService, PrestamosService],
+  exports: [DeudoresService, PrestamosService, VehiculosService],
 })
 export class PrestamistatModule {}

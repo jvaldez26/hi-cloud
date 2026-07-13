@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { Card, Row, Col, Statistic, Table, Tag, Spin, theme } from 'antd';
+import { Card, Row, Col, Statistic, Table, Tag, Spin, theme, Alert, Button } from 'antd';
+import { useNavigate } from 'react-router-dom';
 import { prestamistalApi } from '../../api/prestamista.api';
 
 const fmt = (n: any) => `RD$ ${Number(n ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
@@ -10,11 +11,20 @@ const estadoColor: Record<string, string> = {
 
 export default function DashboardPrestamistaPage() {
   const { token: C } = theme.useToken();
+  const navigate = useNavigate();
   const { data, isLoading } = useQuery({
     queryKey: ['prestamista-dashboard'],
     queryFn: prestamistalApi.getDashboard,
     refetchInterval: 60_000,
   });
+
+  const { data: alertas } = useQuery({
+    queryKey: ['prestamista-alertas-seguro'],
+    queryFn: prestamistalApi.alertasSeguro,
+    refetchInterval: 3_600_000,
+  });
+  const vencidas: any[]  = (alertas as any)?.vencidas  ?? [];
+  const porVencer: any[] = (alertas as any)?.porVencer ?? [];
 
   if (isLoading) return <Spin style={{ display: 'block', margin: '40px auto' }} />;
 
@@ -25,6 +35,28 @@ export default function DashboardPrestamistaPage() {
   return (
     <div style={{ padding: 24 }}>
       <h2 style={{ marginBottom: 24, color: C.colorText }}>Panel Prestamista / Financiera</h2>
+
+      {/* Alertas pólizas de seguro */}
+      {vencidas.length > 0 && (
+        <Alert
+          type="error"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message={`${vencidas.length} vehículo(s) con póliza de seguro VENCIDA`}
+          description={vencidas.map((v: any) => `${v.placa ?? v.chasis} (${v.prestamo_numero ?? 'sin préstamo activo'})`).join(' · ')}
+          action={<Button size="small" onClick={() => navigate('/prestamista/vehiculos?polizaVencida=true')}>Ver</Button>}
+        />
+      )}
+      {porVencer.length > 0 && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message={`${porVencer.length} vehículo(s) con póliza por vencer en los próximos 30 días`}
+          description={porVencer.map((v: any) => `${v.placa ?? v.chasis} (${v.dias_restantes}d)`).join(' · ')}
+          action={<Button size="small" onClick={() => navigate('/prestamista/vehiculos')}>Ver</Button>}
+        />
+      )}
 
       {/* KPIs principales */}
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>

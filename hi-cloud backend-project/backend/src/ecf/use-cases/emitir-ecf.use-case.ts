@@ -561,6 +561,42 @@ ${JSON.stringify(payload, null, 2)}`;
       } as unknown as Factura;
     }
 
+    if (tipo === DocumentoOrigenTipo.PAGO_PRESTAMO) {
+      const rows = await this.ds.query<any[]>(
+        `SELECT p.*, d.nombre AS deudor_nombre, d.rnc AS deudor_rnc,
+                d.cedula AS deudor_cedula, d.direccion AS deudor_direccion,
+                pr.numero AS prestamo_numero
+         FROM pr_pagos p
+         JOIN pr_deudores d  ON d.id  = p."deudorId"  AND d."empresaId"  = $2
+         JOIN pr_prestamos pr ON pr.id = p."prestamoId" AND pr."empresaId" = $2
+         WHERE p.id = $1 AND p."empresaId" = $2`,
+        [id, empresaId],
+      );
+      if (!rows.length) throw new NotFoundException(`Pago préstamo #${id} no encontrado para empresa #${empresaId}`);
+      const pag = rows[0];
+      const interes = Number(pag.aplicadoInteres ?? 0);
+      return {
+        fecha: pag.createdat ?? new Date(),
+        cliente: {
+          rncReceptor: pag.deudor_rnc ?? undefined,
+          cedula:      pag.deudor_cedula ?? undefined,
+          nombre:      pag.deudor_nombre,
+          direccion:   pag.deudor_direccion ?? undefined,
+        },
+        detalles: [{
+          descripcion:    `Interés préstamo ${pag.prestamo_numero}`,
+          cantidad:       1,
+          precioUnitario: interes,
+          porcentajeIva:  0,  // interés financiero: exento ITBIS
+          importeIva:     0,
+          subtotal:       interes,
+        }],
+        iva:      0,
+        subtotal: interes,
+        total:    interes,
+      } as unknown as Factura;
+    }
+
     // VENTA_POS — placeholder; se poblará con los datos del ticket POS
     return {
       id,

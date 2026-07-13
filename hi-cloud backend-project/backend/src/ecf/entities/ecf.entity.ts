@@ -34,12 +34,13 @@ export enum EstadoDGII {
 
 /** Tipo de documento origen que generó este e-CF. */
 export enum DocumentoOrigenTipo {
-  FACTURA      = 'FACTURA',
-  VENTA_POS    = 'VENTA_POS',
-  NOTA_DEBITO  = 'NOTA_DEBITO',   // E33
-  NOTA_CREDITO = 'NOTA_CREDITO',  // E34
-  COMPRA       = 'COMPRA',        // E41
-  GASTO        = 'GASTO',         // E43
+  FACTURA         = 'FACTURA',
+  VENTA_POS       = 'VENTA_POS',
+  NOTA_DEBITO     = 'NOTA_DEBITO',     // E33
+  NOTA_CREDITO    = 'NOTA_CREDITO',    // E34
+  COMPRA          = 'COMPRA',          // E41
+  GASTO           = 'GASTO',           // E43
+  PAGO_PRESTAMO   = 'PAGO_PRESTAMO',   // E31/E32 — interés de préstamo
 }
 
 @TenantScoped()

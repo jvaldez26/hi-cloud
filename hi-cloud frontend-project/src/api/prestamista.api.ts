@@ -56,6 +56,14 @@ export const prestamistalApi = {
   pdfRecibo:       (pagoId: number)     => `${api.defaults.baseURL}${base}/pdf/recibo/${pagoId}`,
   pdfEstadoCuenta: (deudorId: number)   => `${api.defaults.baseURL}${base}/pdf/estado-cuenta/${deudorId}`,
 
+  // Vehículos
+  getVehiculos: (params?: any)          => api.get(`${base}/vehiculos`, { params }).then(r),
+  getVehiculo:  (id: number)            => api.get(`${base}/vehiculos/${id}`).then(r),
+  crearVehiculo: (body: any)            => api.post(`${base}/vehiculos`, body).then(r),
+  updateVehiculo: (id: number, body: any) => api.patch(`${base}/vehiculos/${id}`, body).then(r),
+  buscarVehiculoPorPlaca: (placa: string) => api.get(`${base}/vehiculos/buscar-placa/${encodeURIComponent(placa)}`).then(r),
+  alertasSeguro: ()                     => api.get(`${base}/vehiculos/alertas-seguro`).then(r),
+
   // Reportes CSV — descarga autenticada via axios → Blob → click
   descargarReporte: async (tipo: string, nombreArchivo: string, params?: Record<string, any>) => {
     const res = await api.get(`${base}/reportes/${tipo}`, { params, responseType: 'blob' });

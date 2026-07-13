@@ -24,5 +24,6 @@ export class PrSolicitud {
   @Column({ length: 200, nullable: true }) decididoPor?: string;
   @Column({ type: 'text', nullable: true }) motivoRechazo?: string;
   @Column({ type: 'text', nullable: true }) observaciones?: string;
+  @Column({ type: 'int', nullable: true }) vehiculoId?: number;
   @CreateDateColumn() createdAt!: Date;
 }

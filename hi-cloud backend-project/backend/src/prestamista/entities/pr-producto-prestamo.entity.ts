@@ -18,6 +18,8 @@ export class PrProductoPrestamo {
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 }) cargoCierre!: number;
   @Column({ type: 'decimal', precision: 6, scale: 3, default: 0 }) porcentajeCargoCierre!: number;
   @Column({ type: 'int', default: 0 }) diasGracia!: number;
+  // 'personal' | 'vehiculo' | 'hipotecario'
+  @Column({ length: 20, default: 'personal' }) tipoCredito!: string;
   @Column({ default: false }) requiereGarantia!: boolean;
   @Column({ default: false }) requiereGarante!: boolean;
   @Column({ default: true }) isActive!: boolean;

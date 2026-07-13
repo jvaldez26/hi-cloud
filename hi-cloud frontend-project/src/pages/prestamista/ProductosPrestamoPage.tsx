@@ -55,6 +55,7 @@ export default function ProductosPrestamoPage() {
     { title: 'Plazo (meses)', key: 'plazo', render: (_: any, r: any) => `${r.plazoMinimoMeses ?? '—'} - ${r.plazoMaximoMeses ?? '—'}` },
     { title: 'Mora %', dataIndex: 'porcentajeMora', key: 'porcentajeMora', render: (v: any) => `${v}%` },
     { title: 'Días Gracia', dataIndex: 'diasGracia', key: 'diasGracia' },
+    { title: 'Tipo Crédito', dataIndex: 'tipoCredito', key: 'tipoCredito', render: (v: string) => <Tag color={v === 'vehiculo' ? 'blue' : v === 'hipotecario' ? 'purple' : 'default'}>{v ?? 'personal'}</Tag> },
     { title: 'Activo', dataIndex: 'isActive', key: 'isActive', render: (v: boolean) => <Tag color={v ? 'green' : 'default'}>{v ? 'Sí' : 'No'}</Tag> },
     { title: '', key: 'acc', width: 80, render: (_: any, r: any) => <Button size="small" onClick={() => openForm(r)}>Editar</Button> },
   ];
@@ -102,6 +103,13 @@ export default function ProductosPrestamoPage() {
             </Form.Item>
             <Form.Item name="metodoAmortizacion" label="Método Amortización">
               <Select><Option value="frances">Francés (cuota fija)</Option><Option value="aleman">Alemán (capital fijo)</Option></Select>
+            </Form.Item>
+            <Form.Item name="tipoCredito" label="Tipo de Crédito">
+              <Select>
+                <Option value="personal">Personal</Option>
+                <Option value="vehiculo">Vehículo</Option>
+                <Option value="hipotecario">Hipotecario</Option>
+              </Select>
             </Form.Item>
             <Form.Item name="frecuenciaPago" label="Frecuencia de Pago">
               <Select><Option value="semanal">Semanal</Option><Option value="quincenal">Quincenal</Option><Option value="mensual">Mensual</Option></Select>

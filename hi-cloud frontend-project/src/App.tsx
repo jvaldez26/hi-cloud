@@ -233,6 +233,7 @@ const DetallePrestamo             = lazy(() => import('./pages/prestamista/Detal
 const SimuladorPage               = lazy(() => import('./pages/prestamista/SimuladorPage'));
 const CobranzaPage                = lazy(() => import('./pages/prestamista/CobranzaPage'));
 const ReportesPrestamistaPage     = lazy(() => import('./pages/prestamista/ReportesPrestamistaPage'));
+const VehiculosPrestamistaPage    = lazy(() => import('./pages/prestamista/VehiculosPage'));
 // Agro / Finca
 const AgroDashboard               = lazy(() => import('./pages/agro/AgroDashboard'));
 const FincasPage                  = lazy(() => import('./pages/agro/FincasPage'));
@@ -827,6 +828,7 @@ export default function App() {
                       <Route path="prestamos/:id"       element={<DetallePrestamo />} />
                       <Route path="simulador"           element={<SimuladorPage />} />
                       <Route path="cobranza"            element={<CobranzaPage />} />
+                      <Route path="vehiculos"           element={<VehiculosPrestamistaPage />} />
                       <Route path="reportes"            element={<ReportesPrestamistaPage />} />
                     </Route>
 

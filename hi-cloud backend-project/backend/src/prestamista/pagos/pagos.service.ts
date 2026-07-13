@@ -2,6 +2,8 @@ import { Injectable, NotFoundException, BadRequestException, Logger } from '@nes
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { AsientosAutomaticosService } from '../../contabilidad/services/asientos-automaticos.service';
+import { EmitirECFUseCase } from '../../ecf/use-cases/emitir-ecf.use-case';
+import { DocumentoOrigenTipo } from '../../ecf/entities/ecf.entity';
 
 @Injectable()
 export class PagosService {
@@ -10,6 +12,7 @@ export class PagosService {
   constructor(
     @InjectDataSource() private readonly ds: DataSource,
     private readonly asientos: AsientosAutomaticosService,
+    private readonly emitirEcf: EmitirECFUseCase,
   ) {}
 
   private r2(n: number) { return Math.round(Number(n) * 100) / 100; }
@@ -158,6 +161,16 @@ export class PagosService {
       aplicadoCapital, aplicadoInteres, aplicadoMora,
       data.userId ?? 0,
     ).catch(err => this.logger.error(`Asiento pago ${numero}: ${err.message}`));
+
+    // e-CF fire-and-forget — solo si hay interés gravable
+    if (aplicadoInteres > 0) {
+      this.emitirEcf.execute({
+        empresaId,
+        documentoOrigenTipo: DocumentoOrigenTipo.PAGO_PRESTAMO,
+        documentoOrigenId:   pago.id,
+        tipoEcf:             32,  // Factura de Consumo
+      }).catch(err => this.logger.warn(`ECF interés pago ${numero}: ${err.message}`));
+    }
 
     return { pago, cuotasAfectadas, saldos: { saldoCapital, saldoInteres, saldoMora, saldoTotal } };
   }

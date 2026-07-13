@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Table, Button, Select, Tag, Modal, Form, Input, InputNumber, DatePicker, message, Descriptions, theme } from 'antd';
+import { Table, Button, Select, Tag, Modal, Form, Input, InputNumber, DatePicker, message, Descriptions, theme, AutoComplete } from 'antd';
 import { Plus, Eye } from 'lucide-react';
 import { FileExcelOutlined } from '@ant-design/icons';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
@@ -34,6 +34,8 @@ export default function SolicitudesPage() {
   const [detalle, setDetalle] = useState<any>(null);
   const [detalleOpen, setDetalleOpen] = useState(false);
   const [decidirOpen, setDecidirOpen] = useState(false);
+  const [selectedProductoTipo, setSelectedProductoTipo] = useState<string>('personal');
+  const [placaSearch, setPlacaSearch] = useState('');
   const [form] = Form.useForm();
   const [formDecision] = Form.useForm();
   const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('prestamista-solicitudes', COLS_DEF);
@@ -55,9 +57,16 @@ export default function SolicitudesPage() {
     queryFn: prestamistalApi.getProductos,
   });
 
+  const { data: vehiculosBusqueda = [] } = useQuery({
+    queryKey: ['vehiculos-busca-placa', placaSearch],
+    queryFn: () => prestamistalApi.buscarVehiculoPorPlaca(placaSearch),
+    enabled: placaSearch.length >= 3,
+    select: (d: any) => (Array.isArray(d) ? d : d?.data ?? []),
+  });
+
   const crear = useMutation({
     mutationFn: (vals: any) => prestamistalApi.crearSolicitud(vals),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['prestamista-solicitudes'] }); setOpen(false); form.resetFields(); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['prestamista-solicitudes'] }); setOpen(false); form.resetFields(); setSelectedProductoTipo('personal'); },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al crear solicitud'),
   });
 
@@ -139,10 +148,32 @@ export default function SolicitudesPage() {
             </Select>
           </Form.Item>
           <Form.Item name="productoPrestamo" label="Producto de Préstamo" rules={[{ required: true }]}>
-            <Select showSearch optionFilterProp="children" placeholder="Seleccionar producto">
+            <Select
+              showSearch
+              optionFilterProp="children"
+              placeholder="Seleccionar producto"
+              onChange={(val: number) => {
+                const prod = (productos as any[]).find((p: any) => p.id === val);
+                setSelectedProductoTipo(prod?.tipoCredito ?? 'personal');
+                form.setFieldValue('vehiculoId', undefined);
+              }}
+            >
               {(productos as any[]).map((p: any) => <Option key={p.id} value={p.id}>{p.nombre}</Option>)}
             </Select>
           </Form.Item>
+          {selectedProductoTipo === 'vehiculo' && (
+            <Form.Item name="vehiculoId" label="Vehículo (buscar por placa)" rules={[{ required: true, message: 'Selecciona el vehículo a financiar' }]}>
+              <AutoComplete
+                options={(vehiculosBusqueda as any[]).map((v: any) => ({
+                  value: v.id,
+                  label: `${v.placa ?? v.chasis} — ${v.marca ?? ''} ${v.modelo ?? ''} ${v.anio ?? ''}`.trim(),
+                }))}
+                onSearch={v => setPlacaSearch(v)}
+                placeholder="Escribir placa del vehículo..."
+                filterOption={false}
+              />
+            </Form.Item>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
             <Form.Item name="montoSolicitado" label="Monto Solicitado" rules={[{ required: true }]}>
               <InputNumber style={{ width: '100%' }} prefix="RD$" min={1} />
