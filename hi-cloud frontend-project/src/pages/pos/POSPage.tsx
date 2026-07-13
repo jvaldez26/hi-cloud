@@ -4999,9 +4999,6 @@ function POSClientesPanel({ C, onVolver }: { C: Palette; onVolver: () => void })
         <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
           <div style={{ maxWidth: 480, color: C.text }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 0 }}>
-              <PanelInput C={C} label="Nombre *" placeholder="Nombre del cliente" value={f.nombre} onChange={inp('nombre')} />
-              <PanelInput C={C} label="Teléfono" placeholder="Teléfono" value={f.telefono} onChange={inp('telefono')} />
-              <PanelInput C={C} label="Correo electrónico" placeholder="correo@email.com" value={f.email} onChange={inp('email')} />
               {/* RNC / Cédula con consulta DGII (Mega Plus) */}
               <div>
                 <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, marginBottom: 4 }}>
@@ -5024,6 +5021,9 @@ function POSClientesPanel({ C, onVolver }: { C: Palette; onVolver: () => void })
                     background: C.card, color: C.text, fontSize: 13, outline: 'none', boxSizing: 'border-box' as const }}
                 />
               </div>
+              <PanelInput C={C} label="Nombre *" placeholder="Nombre del cliente" value={f.nombre} onChange={inp('nombre')} />
+              <PanelInput C={C} label="Teléfono" placeholder="Teléfono" value={f.telefono} onChange={inp('telefono')} />
+              <PanelInput C={C} label="Correo electrónico" placeholder="correo@email.com" value={f.email} onChange={inp('email')} />
             </div>
             {/* Empresa con badge si autocompleted */}
             <div style={{ marginTop: 0 }}>
