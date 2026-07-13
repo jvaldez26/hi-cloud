@@ -8730,7 +8730,9 @@ export default function POSPage() {
         setEcfEncf(encf);
         setEcfStatus(['pendiente_envio', 'pendiente', 'contingencia'].includes(estado) ? 'pendiente' : 'ok');
         return { factura, ecfResult: emitResult };
-      } catch {
+      } catch (emitErr: any) {
+        const emitMsg = emitErr?.response?.data?.message ?? emitErr?.message ?? String(emitErr);
+        console.error('[POS] emitirPos falló — factura queda BORRADOR:', emitMsg, emitErr);
         setEcfStatus('pendiente');
         return { factura, ecfResult: null };
       }

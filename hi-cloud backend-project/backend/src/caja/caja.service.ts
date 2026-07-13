@@ -436,9 +436,14 @@ export class CajaService {
   // Sin restricción de fecha: una caja abierta de días anteriores no cerrada
   // sigue siendo válida para emitir. Usa TypeORM como getCajaHoy.
   async esCajaAbiertaVendedor(vendedorId: number, empresaId: number): Promise<boolean> {
+    // Buscar caja propia del vendedor O caja global (sin vendedorId asignado).
+    // La caja global cubre empresas que no asocian caja por vendedor.
     const caja = await this.repo.findOne({
-      where:  { empresaId, vendedorId, estado: EstadoCierre.ABIERTA } as any,
-      order:  { fecha: 'DESC' },
+      where: [
+        { empresaId, vendedorId,       estado: EstadoCierre.ABIERTA } as any,
+        { empresaId, vendedorId: IsNull(), estado: EstadoCierre.ABIERTA } as any,
+      ],
+      order: { fecha: 'DESC' },
     });
     return !!caja;
   }
