@@ -53,9 +53,9 @@ type SidebarPalette = {
   panelBg: string; panelBorder: string;
 };
 
-// Modo claro — azul brillante referencia
+// Modo claro — mismo azul que colorPrimary (#0EA5E9)
 const sidebarLight: SidebarPalette = {
-  bg:           'linear-gradient(160deg, #1D5CE8 0%, #1245C5 100%)',
+  bg:           'linear-gradient(160deg, #12AEF5 0%, #0B8EC5 100%)',
   bgHover:      'rgba(255,255,255,0.12)',
   bgActive:     'rgba(0,0,0,0.15)',
   border:       'rgba(255,255,255,0.12)',
@@ -68,13 +68,13 @@ const sidebarLight: SidebarPalette = {
   accent:       '#ffffff',
   footerText:   'rgba(255,255,255,0.65)',
   scrollbar:    'rgba(255,255,255,0.12)',
-  panelBg:      '#1655D8',
+  panelBg:      '#0EA5E9',
   panelBorder:  'rgba(255,255,255,0.12)',
 };
 
-// Modo oscuro — azul más profundo
+// Modo oscuro — variante más profunda del mismo azul
 const sidebarDark: SidebarPalette = {
-  bg:           'linear-gradient(160deg, #1245C5 0%, #0C35A0 100%)',
+  bg:           'linear-gradient(160deg, #0B8EC5 0%, #0870A0 100%)',
   bgHover:      'rgba(255,255,255,0.11)',
   bgActive:     'rgba(0,0,0,0.18)',
   border:       'rgba(255,255,255,0.11)',
@@ -87,7 +87,7 @@ const sidebarDark: SidebarPalette = {
   accent:       '#ffffff',
   footerText:   'rgba(255,255,255,0.60)',
   scrollbar:    'rgba(255,255,255,0.11)',
-  panelBg:      '#1245C5',
+  panelBg:      '#0B8EC5',
   panelBorder:  'rgba(255,255,255,0.11)',
 };
 
