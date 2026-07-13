@@ -2157,9 +2157,12 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
       // Paso 2: Emitir NC (BORRADOR → EMITIDA); código 1 cancela la factura original
       await api.patch(`/notas-credito/${nc.id}/emitir`, { codigoModificacion: codigoMod });
 
-      // Paso 3: Generar e-CF E34 y enviar a MSeller/DGII
-      const ecfRes    = await api.post(`/ecf/nota-credito/${nc.id}/emitir`, { codigoModificacion: codigoMod });
-      const ecfResult = ecfRes.data?.data ?? ecfRes.data;
+      // Paso 3: Generar e-CF E34 (no crítico — si no hay config ECF se omite silenciosamente)
+      let ecfResult: any = null;
+      try {
+        const ecfRes = await api.post(`/ecf/nota-credito/${nc.id}/emitir`, { codigoModificacion: codigoMod });
+        ecfResult = ecfRes.data?.data ?? ecfRes.data;
+      } catch { /* sin config ECF → NC ya emitida, solo sin timbre fiscal */ }
 
       return { nc, ecfResult, detalles };
     },
