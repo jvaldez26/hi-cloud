@@ -53,42 +53,42 @@ type SidebarPalette = {
   panelBg: string; panelBorder: string;
 };
 
-// Modo claro — mismo azul que colorPrimary (#0EA5E9)
+// Modo claro — gradiente profundo #1a2c5b → #0f1d3e
 const sidebarLight: SidebarPalette = {
-  bg:           'linear-gradient(160deg, #12AEF5 0%, #0B8EC5 100%)',
-  bgHover:      'rgba(255,255,255,0.12)',
-  bgActive:     'rgba(0,0,0,0.15)',
-  border:       'rgba(255,255,255,0.12)',
-  separator:    'rgba(255,255,255,0.12)',
-  text:         'rgba(255,255,255,0.92)',
-  textActive:   '#ffffff',
-  textCategory: 'rgba(255,255,255,0.60)',
-  textSub:      'rgba(255,255,255,0.80)',
-  textSubHover: '#ffffff',
-  accent:       '#ffffff',
-  footerText:   'rgba(255,255,255,0.65)',
-  scrollbar:    'rgba(255,255,255,0.12)',
-  panelBg:      '#0EA5E9',
-  panelBorder:  'rgba(255,255,255,0.12)',
+  bg:           'linear-gradient(160deg, #1a2c5b 0%, #0f1d3e 100%)',
+  bgHover:      'rgba(255,255,255,0.07)',
+  bgActive:     'rgba(99,130,255,0.18)',
+  border:       'rgba(255,255,255,0.08)',
+  separator:    'rgba(255,255,255,0.08)',
+  text:         'rgba(255,255,255,0.6)',
+  textActive:   '#a0b4ff',
+  textCategory: 'rgba(255,255,255,0.25)',
+  textSub:      'rgba(255,255,255,0.5)',
+  textSubHover: 'rgba(255,255,255,0.9)',
+  accent:       '#7b9fff',
+  footerText:   'rgba(255,255,255,0.35)',
+  scrollbar:    'rgba(255,255,255,0.08)',
+  panelBg:      '#1a2c5b',
+  panelBorder:  'rgba(255,255,255,0.08)',
 };
 
-// Modo oscuro — variante más profunda del mismo azul
+// Modo oscuro — gradiente aún más profundo
 const sidebarDark: SidebarPalette = {
-  bg:           'linear-gradient(160deg, #0B8EC5 0%, #0870A0 100%)',
-  bgHover:      'rgba(255,255,255,0.11)',
-  bgActive:     'rgba(0,0,0,0.18)',
-  border:       'rgba(255,255,255,0.11)',
-  separator:    'rgba(255,255,255,0.11)',
-  text:         'rgba(255,255,255,0.88)',
-  textActive:   '#ffffff',
-  textCategory: 'rgba(255,255,255,0.55)',
-  textSub:      'rgba(255,255,255,0.75)',
-  textSubHover: '#ffffff',
-  accent:       '#ffffff',
-  footerText:   'rgba(255,255,255,0.60)',
-  scrollbar:    'rgba(255,255,255,0.11)',
-  panelBg:      '#0B8EC5',
-  panelBorder:  'rgba(255,255,255,0.11)',
+  bg:           'linear-gradient(160deg, #111e3d 0%, #080f20 100%)',
+  bgHover:      'rgba(255,255,255,0.07)',
+  bgActive:     'rgba(99,130,255,0.18)',
+  border:       'rgba(255,255,255,0.07)',
+  separator:    'rgba(255,255,255,0.07)',
+  text:         'rgba(255,255,255,0.55)',
+  textActive:   '#a0b4ff',
+  textCategory: 'rgba(255,255,255,0.22)',
+  textSub:      'rgba(255,255,255,0.45)',
+  textSubHover: 'rgba(255,255,255,0.85)',
+  accent:       '#7b9fff',
+  footerText:   'rgba(255,255,255,0.30)',
+  scrollbar:    'rgba(255,255,255,0.07)',
+  panelBg:      '#111e3d',
+  panelBorder:  'rgba(255,255,255,0.07)',
 };
 
 // Contexto de tema del sidebar — inyectado una vez en AppLayout
