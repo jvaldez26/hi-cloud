@@ -1886,6 +1886,17 @@ function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir, mostrarEcf = 
       imprimirPDFA4(`/api/v1/facturas/${sale.facturaId}/pdf`).then(onNueva).catch(() => onNueva());
       return;
     }
+    if (posConfig.tipoImpresora === 'bluetooth') {
+      cancelarContador();
+      imprimirReciboEscPos(sale as any, {})
+        .catch((btErr: any) => {
+          message.error(btErr?.message?.includes('no conectada') || !btErr?.message
+            ? 'Impresora BT no conectada. Ve a Menu → Impresora BT para conectar.'
+            : `Error BT: ${btErr.message}`);
+        })
+        .finally(() => onNueva());
+      return;
+    }
     let cancelled = false;
     const qrPromise: Promise<string | null> = sale.qrUrl && !sale.ecfPendiente
       ? QRCode.toDataURL(sale.qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' }).catch(() => null)
@@ -1903,6 +1914,16 @@ function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir, mostrarEcf = 
     if (posConfig.tipoImpresora === 'ninguna') { onNueva(); return; }
     if (posConfig.tipoImpresora === 'carta' && sale!.facturaId) {
       imprimirPDFA4(`/api/v1/facturas/${sale!.facturaId}/pdf`).then(onNueva).catch(() => onNueva());
+      return;
+    }
+    if (posConfig.tipoImpresora === 'bluetooth') {
+      imprimirReciboEscPos(sale as any, {})
+        .catch((btErr: any) => {
+          message.error(btErr?.message?.includes('no conectada') || !btErr?.message
+            ? 'Impresora BT no conectada. Ve a Menu → Impresora BT para conectar.'
+            : `Error BT: ${btErr.message}`);
+        })
+        .finally(() => onNueva());
       return;
     }
     imprimirReciboTermico(buildReciboTermicoHTML(sale!, qrDataUrl, { mostrarEcf, ...posConfig }), onNueva);
@@ -2220,6 +2241,12 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
           // sin impresora → no imprimir
         } else if (empConf.posTipoImpresora === 'carta' && nc?.id) {
           await imprimirPDFA4(`/api/v1/notas-credito/${nc.id}/pdf`);
+        } else if (empConf.posTipoImpresora === 'bluetooth') {
+          imprimirReciboEscPos(saleNC as any, {}).catch((btErr: any) => {
+            message.error(btErr?.message?.includes('no conectada') || !btErr?.message
+              ? 'Impresora BT no conectada. Ve a Menu → Impresora BT para conectar.'
+              : `Error BT: ${btErr.message}`);
+          });
         } else {
           imprimirReciboTermico(buildReciboTermicoHTML(saleNC, qrDUrl, {
             mostrarEcf:    true,
@@ -3427,7 +3454,7 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
         nota2:    ocRes.proveedor?.telefono ? `Tel: ${ocRes.proveedor.telefono}` : undefined,
         notas:    ocRes.notas,
       };
-      imprimirReciboTermico(buildDocTermicoHTML(gd, { tipoImpresora: empConf.posTipoImpresora }));
+      imprimirReciboTermico(buildDocTermicoHTML(gd, { tipoImpresora: empConf.posTipoImpresora }), undefined, empConf.posTipoImpresora);
     } catch (e: any) {
       message.error(e?.response?.data?.message ?? 'Error al imprimir orden de compra');
     } finally {
@@ -4530,7 +4557,7 @@ function POSConducePanel({ C, onVolver }: {
         nota2:   docRes.contactoEntrega  ? `Contacto: ${docRes.contactoEntrega}` : undefined,
         notas:   docRes.notas,
       };
-      imprimirReciboTermico(buildDocTermicoHTML(gd, { tipoImpresora: ((empRes.configuracion ?? {}) as any).posTipoImpresora }));
+      imprimirReciboTermico(buildDocTermicoHTML(gd, { tipoImpresora: ((empRes.configuracion ?? {}) as any).posTipoImpresora }), undefined, ((empRes.configuracion ?? {}) as any).posTipoImpresora);
     } catch { message.error('Error al imprimir conduce'); }
     finally { setImprimiendo(null); }
   };
@@ -5168,7 +5195,7 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
         nota1:   `Método: ${r.tipoPago ?? r.metodoPago ?? '—'}`,
       };
       const empConf = (empRes.configuracion ?? {}) as any;
-      imprimirReciboTermico(buildDocTermicoHTML(gd, { tipoImpresora: empConf.posTipoImpresora }));
+      imprimirReciboTermico(buildDocTermicoHTML(gd, { tipoImpresora: empConf.posTipoImpresora }), undefined, empConf.posTipoImpresora);
     } catch { /* silencio */ }
     finally { setImprimiendoId(null); }
   };
@@ -5761,6 +5788,15 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
         catch { /* sin QR */ }
       }
       const empConf = (empresa.configuracion ?? {}) as any;
+      if (empConf.posTipoImpresora === 'bluetooth') {
+        if (printWin && !printWin.closed) { try { printWin.close(); } catch { /* noop */ } }
+        imprimirReciboEscPos(sale, {}).catch((btErr: any) => {
+          message.error(btErr?.message?.includes('no conectada') || !btErr?.message
+            ? 'Impresora BT no conectada. Ve a Menu → Impresora BT para conectar.'
+            : `Error BT: ${btErr.message}`);
+        });
+        return;
+      }
       const html = buildReciboTermicoHTML(sale, qrDUrl, {
         tipoImpresora: empConf.posTipoImpresora,
         mensajeTicket: empConf.posMensajeTicket,
@@ -6091,7 +6127,7 @@ function POSGastosPanel({ C, onVolver }: { C: Palette; onVolver: () => void }) {
         qrDataUrl,
         tipoImp,
       );
-      imprimirReciboTermico(html);
+      imprimirReciboTermico(html, undefined, tipoImp);
     } catch (err: any) {
       message.error(`Error al imprimir: ${err?.message}`, 2);
     } finally {
@@ -6367,7 +6403,7 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
         totalFisico,
         nota:     nota || undefined,
         tipoImpresora: empConf.posTipoImpresora,
-      }));
+      }), undefined, empConf.posTipoImpresora);
     } catch (e: any) {
       message.error(e?.response?.data?.message ?? 'Error al imprimir cierre');
     } finally {
@@ -6403,7 +6439,7 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
         totalFisico:   totalFis,
         nota:     item.notas ?? undefined,
         tipoImpresora: empConf.posTipoImpresora,
-      }));
+      }), undefined, empConf.posTipoImpresora);
     } catch (e: any) {
       message.error(e?.response?.data?.message ?? 'Error al imprimir cierre');
     } finally {
@@ -6740,11 +6776,19 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
             catch { /* sin QR */ }
           }
           const empConf = (empRes.configuracion ?? {}) as any;
-          imprimirReciboTermico(buildReciboTermicoHTML(saleObj, qrDUrl, {
-            tipoImpresora: empConf.posTipoImpresora,
-            mensajeTicket: empConf.posMensajeTicket,
-            politicaDev:   empConf.posPoliticaDev,
-          }));
+          if (empConf.posTipoImpresora === 'bluetooth') {
+            imprimirReciboEscPos(saleObj as any, {}).catch((btErr: any) => {
+              message.error(btErr?.message?.includes('no conectada') || !btErr?.message
+                ? 'Impresora BT no conectada. Ve a Menu → Impresora BT para conectar.'
+                : `Error BT: ${btErr.message}`);
+            });
+          } else {
+            imprimirReciboTermico(buildReciboTermicoHTML(saleObj, qrDUrl, {
+              tipoImpresora: empConf.posTipoImpresora,
+              mensajeTicket: empConf.posMensajeTicket,
+              politicaDev:   empConf.posPoliticaDev,
+            }));
+          }
         } catch { /* error de impresión no bloquea */ }
       }
     },
@@ -6789,11 +6833,19 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
             catch { /* sin QR */ }
           }
           const empConf = (empRes.configuracion ?? {}) as any;
-          imprimirReciboTermico(buildReciboTermicoHTML(saleObj, qrDUrl, {
-            tipoImpresora: empConf.posTipoImpresora,
-            mensajeTicket: empConf.posMensajeTicket,
-            politicaDev:   empConf.posPoliticaDev,
-          }));
+          if (empConf.posTipoImpresora === 'bluetooth') {
+            imprimirReciboEscPos(saleObj as any, {}).catch((btErr: any) => {
+              message.error(btErr?.message?.includes('no conectada') || !btErr?.message
+                ? 'Impresora BT no conectada. Ve a Menu → Impresora BT para conectar.'
+                : `Error BT: ${btErr.message}`);
+            });
+          } else {
+            imprimirReciboTermico(buildReciboTermicoHTML(saleObj, qrDUrl, {
+              tipoImpresora: empConf.posTipoImpresora,
+              mensajeTicket: empConf.posMensajeTicket,
+              politicaDev:   empConf.posPoliticaDev,
+            }));
+          }
         } catch { /* error de impresión no bloquea */ }
       }
     },
@@ -6947,6 +6999,14 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           empresaTelefono:         empInfo.telefono,
         };
         const empConfPanel = (empresa.configuracion ?? {}) as any;
+        if (empConfPanel.posTipoImpresora === 'bluetooth') {
+          imprimirReciboEscPos(docSale as any, empInfo).catch((btErr: any) => {
+            message.error(btErr?.message?.includes('no conectada') || !btErr?.message
+              ? 'Impresora BT no conectada. Ve a Menú → Impresora BT para conectar.'
+              : `Error impresora BT: ${btErr.message}`);
+          });
+          return;
+        }
         imprimirReciboTermico(buildReciboTermicoHTML(docSale, null, {
           tipoImpresora: empConfPanel.posTipoImpresora,
           tipoDoc,
@@ -6981,6 +7041,14 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           empresaTelefono:         empInfo.telefono,
         };
         const empConfPanel = (empresa.configuracion ?? {}) as any;
+        if (empConfPanel.posTipoImpresora === 'bluetooth') {
+          imprimirReciboEscPos(pfSale as any, empInfo).catch((btErr: any) => {
+            message.error(btErr?.message?.includes('no conectada') || !btErr?.message
+              ? 'Impresora BT no conectada. Ve a Menú → Impresora BT para conectar.'
+              : `Error impresora BT: ${btErr.message}`);
+          });
+          return;
+        }
         imprimirReciboTermico(buildReciboTermicoHTML(pfSale, null, {
           tipoImpresora: empConfPanel.posTipoImpresora,
           tipoDoc:       'PRO-FORMA',
@@ -7029,6 +7097,14 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           catch { /* sin QR */ }
         }
         const empConfPanel = (empresa.configuracion ?? {}) as any;
+        if (empConfPanel.posTipoImpresora === 'bluetooth') {
+          imprimirReciboEscPos(ncSale as any, empInfo).catch((btErr: any) => {
+            message.error(btErr?.message?.includes('no conectada') || !btErr?.message
+              ? 'Impresora BT no conectada. Ve a Menú → Impresora BT para conectar.'
+              : `Error impresora BT: ${btErr.message}`);
+          });
+          return;
+        }
         imprimirReciboTermico(buildReciboTermicoHTML(ncSale, qrDUrl, {
           mostrarEcf:    true,
           tipoImpresora: empConfPanel.posTipoImpresora,
@@ -7118,7 +7194,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
       }
 
       const empConfPanel = (empresa.configuracion ?? {}) as any;
-      imprimirReciboTermico(buildDocTermicoHTML(gd, { tipoImpresora: empConfPanel.posTipoImpresora }));
+      imprimirReciboTermico(buildDocTermicoHTML(gd, { tipoImpresora: empConfPanel.posTipoImpresora }), undefined, empConfPanel.posTipoImpresora);
     } catch (e: any) {
       message.error('Error al imprimir: ' + (e.message ?? ''));
     } finally {

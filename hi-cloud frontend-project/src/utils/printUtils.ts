@@ -5,6 +5,7 @@
 
 // JWT está en cookie httpOnly — las cookies se envían automáticamente con credentials: 'include'.
 // No se usa localStorage para tokens.
+import { imprimirHtmlEnBT } from '../services/thermalPrinter';
 
 // ── PDF desde endpoint del backend (puppeteer) ────────────────────────────────
 
@@ -76,7 +77,13 @@ export function imprimirHtml(html: string): void {
 // Fallback: overlay en la página actual + window.print() — no requiere popup
 // ni gesto del usuario, funciona en Android/iOS desde cualquier contexto async.
 
-export function imprimirReciboTermico(html: string, onDone?: () => void): void {
+export function imprimirReciboTermico(html: string, onDone?: () => void, tipoImpresora?: string): void {
+  if (tipoImpresora === 'bluetooth') {
+    imprimirHtmlEnBT(html)
+      .then(() => onDone?.())
+      .catch(err => { console.error('[BT] Error al imprimir:', err?.message); onDone?.(); });
+    return;
+  }
   // En Android/tablet la app de impresión BT intercepta window.open() antes de
   // que document.write() cargue el contenido → la pestaña queda en about:blank.
   // En móvil: usar overlay + window.print() directamente (sí llega al contenido).

@@ -331,6 +331,76 @@ export async function imprimirReciboEscPos(sale: SaleBT, empresa: EmpresaBT): Pr
   await enviarDatos(bytes);
 }
 
+// ── Convertir HTML térmico del POS a ESC/POS ────────────────────────────────
+// Entiende las clases CSS que producen buildReciboTermicoHTML, buildDocTermicoHTML
+// y buildCierreCajaHTML: row, center, bold, xlarge, line, dbl.
+function htmlAEscPos(html: string): Uint8Array {
+  const doc  = new DOMParser().parseFromString(html, 'text/html');
+  const c    = comandos().init();
+
+  function proc(el: Element, isCentrado = false) {
+    const tag = el.tagName.toLowerCase();
+    if (['style', 'script', 'head', 'img'].includes(tag)) return;
+    if (tag === 'hr') { c.alignLeft(); c.texto(separador('-')); return; }
+
+    const cls      = (el.className ?? '') as string;
+    const esLinea  = cls === 'line';
+    const esDoble  = cls === 'dbl';
+    const esRow    = cls.includes('row');
+    const esBold   = cls.includes('bold') || cls.includes('xlarge');
+    const esXl     = cls.includes('xlarge');
+    const esCentro = cls.includes('center') || isCentrado;
+
+    if (esLinea) { c.alignLeft(); c.texto(separador('.')); return; }
+    if (esDoble) { c.alignLeft(); c.texto(separador('=')); return; }
+
+    if (esRow) {
+      const spans = Array.from(el.querySelectorAll(':scope > span'));
+      if (spans.length >= 2) {
+        const izq = spans[0].textContent?.trim() ?? '';
+        const der = spans[1].textContent?.trim() ?? '';
+        if (esBold)  c.bold(true);
+        if (esXl)    c.doble(true);
+        c.alignLeft().texto(lineaLR(izq, der));
+        if (esXl)    c.doble(false);
+        if (esBold)  c.bold(false);
+        return;
+      }
+    }
+
+    // Si tiene hijos elemento, recurrir propagando centrado
+    const hijos = Array.from(el.children);
+    if (hijos.length > 0) {
+      for (const h of hijos) proc(h, esCentro);
+      return;
+    }
+
+    // Hoja con texto
+    const texto = el.textContent?.trim() ?? '';
+    if (!texto) return;
+
+    if (esBold)  c.bold(true);
+    if (esXl)    c.doble(true);
+    if (esCentro) c.alignCenter(); else c.alignLeft();
+
+    for (const linea of envolver(texto)) {
+      c.texto(esCentro ? centrar(linea) : linea);
+    }
+    if (esXl)    c.doble(false);
+    if (esBold)  c.bold(false);
+  }
+
+  for (const ch of doc.body.children) proc(ch);
+  c.alignLeft().salto(3).cortar();
+  return c.build();
+}
+
+/** Imprime cualquier HTML térmico del POS en la impresora BT (sin diálogo del navegador). */
+export async function imprimirHtmlEnBT(html: string): Promise<void> {
+  const bytes = htmlAEscPos(html);
+  await enviarDatos(bytes);
+}
+
 export async function imprimirPruebaEscPos(): Promise<void> {
   const bytes = generarReciboESCPOS({
     total: 0,
