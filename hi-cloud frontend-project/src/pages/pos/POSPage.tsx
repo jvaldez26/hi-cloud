@@ -18,6 +18,7 @@ import { facturasApi } from '../../api/facturas.api';
 import { inventarioApi } from '../../api/inventario.api';
 import { fmt, round2 } from '../../utils/formatters';
 import { imprimirElemento, imprimirReciboTermico, imprimirPDFA4 } from '../../utils/printUtils';
+import { imprimirReciboEscPos, conectarImpresora, desconectarImpresora, estaConectada, getNombreImpresora, imprimirPruebaEscPos } from '../../services/thermalPrinter';
 import { useThemeStore } from '../../store/theme.store';
 import { useOfflineQueue } from '../../hooks/useOfflineQueue';
 import { useSupervisor } from '../../hooks/useSupervisor';
@@ -6900,6 +6901,16 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           catch { /* sin QR */ }
         }
         const empConfPanel = (empresa.configuracion ?? {}) as any;
+        if (_tipoImp === 'bluetooth') {
+          imprimirReciboEscPos(sale, empInfo).catch(() => {
+            imprimirReciboTermico(buildReciboTermicoHTML(sale, qrDUrl, {
+              tipoImpresora: '58mm',
+              mensajeTicket: empConfPanel.posMensajeTicket,
+              politicaDev:   empConfPanel.posPoliticaDev,
+            }));
+          });
+          return;
+        }
         imprimirReciboTermico(buildReciboTermicoHTML(sale, qrDUrl, {
           tipoImpresora: empConfPanel.posTipoImpresora,
           mensajeTicket: empConfPanel.posMensajeTicket,
@@ -7732,6 +7743,7 @@ const MENU_EXTRAS: Array<{ label: string; icon: string; panel: PanelId }> = [
   { label: 'Nueva NC',         icon: '➕', panel: 'nueva-nc' as any },
   { label: 'Gastos',           icon: '💸', panel: 'gastos' },
   { label: 'Cierre de Caja',   icon: '🏧', panel: 'cierre-caja' },
+  { label: 'Impresora BT',    icon: '🖨️', panel: 'impresora-bt' as any },
 ];
 
 function POSBottomNav({
@@ -8002,6 +8014,10 @@ export default function POSPage() {
   const [ecfEncf,            setEcfEncf]            = useState<string>('');
   const printWinRef      = useRef<Window | null>(null); // ventana pre-abierta para auto-imprimir en tablets
   const autoYaPrintedRef = useRef(false);
+  const [modalBT,      setModalBT]      = useState(false);
+  const [btConectando, setBtConectando] = useState(false);
+  const [btNombrePrt,  setBtNombrePrt]  = useState(() => getNombreImpresora());
+  const [btConectada,  setBtConectada]  = useState(() => estaConectada());
 
   // ── Módulos add-on disponibles en el POS (una sola llamada) ──────────────
   const { data: misModulosData } = useQuery({
@@ -8873,7 +8889,23 @@ export default function POSPage() {
         printWinRef.current = null;
         const _tipoImpCobro = posConf.posTipoImpresora as string | undefined;
 
-        if (_tipoImpCobro === 'ninguna') {
+        if (_tipoImpCobro === 'bluetooth') {
+          // BT térmica — cerrar ventana pre-abierta (no la necesitamos)
+          try { pw.close(); } catch { /* noop */ }
+          autoYaPrintedRef.current = true;
+          const _empBT = { nombre: empresa?.nombre, rnc: empresa?.rnc, direccion: empresa?.direccion, telefono: empresa?.telefono };
+          const _mostrarEcfBT = posConf.posMostrarEcfEnRecibo !== false;
+          const _pCfgBT = { tipoImpresora: '58mm', mensajeTicket: posConf.posMensajeTicket as string | undefined, politicaDev: posConf.posPoliticaDev as string | undefined };
+          imprimirReciboEscPos(saleObj, _empBT).catch(() => {
+            // Fallback: ventana HTML si BT falla
+            const doFallback = (qr: string | null) => {
+              imprimirReciboTermico(buildReciboTermicoHTML(saleObj, qr, { mostrarEcf: _mostrarEcfBT, ..._pCfgBT }));
+            };
+            if (qrUrl && !saleObj.ecfPendiente) {
+              QRCode.toDataURL(qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' }).then(doFallback).catch(() => doFallback(null));
+            } else { doFallback(null); }
+          });
+        } else if (_tipoImpCobro === 'ninguna') {
           // Sin impresora → cerrar ventana pre-abierta sin imprimir
           try { pw.close(); } catch { /* noop */ }
         } else if (_tipoImpCobro === 'carta' && saleObj.facturaId) {
@@ -9552,6 +9584,7 @@ export default function POSPage() {
           panelActivo={panelActivo}
           onMenuToggle={() => setMenuNavAbierto(v => !v)}
           onPanelChange={async (p) => {
+            if ((p as string) === 'impresora-bt') { setModalBT(true); setMenuNavAbierto(false); return; }
             if ((p as string) === 'nueva-nc') { setShowNotaCredito(true); setMenuNavAbierto(false); return; }
             if (p === 'cierre-caja' && posConf.posSupervisorCierreCaja !== false && posConf.supervisorModeEnabled) {
               const fecha = new Date().toLocaleString('es', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -10451,6 +10484,88 @@ export default function POSPage() {
       <Button type="primary" block size="large" onClick={ejecutarCambioUsuario} loading={cambiandoUser} style={{ height: 44 }}>
         Iniciar sesión
       </Button>
+    </Modal>
+
+    {/* ── Modal Impresora Bluetooth ─────────────────────────────────────────── */}
+    <Modal
+      title={<span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600 }}>🖨️ Impresora Bluetooth</span>}
+      open={modalBT}
+      onCancel={() => setModalBT(false)}
+      footer={null}
+      width={360}
+      destroyOnClose
+    >
+      {/* Status */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, padding: '10px 14px', borderRadius: 8, background: btConectada ? 'rgba(34,197,94,0.08)' : 'rgba(156,163,175,0.08)', border: `1px solid ${btConectada ? '#22c55e' : '#d1d5db'}` }}>
+        <span style={{ fontSize: 20 }}>{btConectada ? '🟢' : '⚫'}</span>
+        <div>
+          <div style={{ fontWeight: 600, fontSize: 13 }}>{btConectada ? 'Conectada' : 'Sin conexión'}</div>
+          {btNombrePrt && <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.45)' }}>{btNombrePrt}</div>}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {/* Connect / Disconnect */}
+        {!btConectada ? (
+          <Button
+            type="primary"
+            block
+            size="large"
+            loading={btConectando}
+            onClick={async () => {
+              setBtConectando(true);
+              try {
+                const nombre = await conectarImpresora();
+                setBtNombrePrt(nombre);
+                setBtConectada(true);
+                message.success(`Conectada: ${nombre}`);
+              } catch (e: any) {
+                message.error(e?.message ?? 'No se pudo conectar');
+              } finally {
+                setBtConectando(false);
+              }
+            }}
+          >
+            Conectar impresora
+          </Button>
+        ) : (
+          <Button
+            block
+            size="large"
+            danger
+            onClick={async () => {
+              await desconectarImpresora();
+              setBtConectada(false);
+              setBtNombrePrt('');
+              message.info('Impresora desconectada');
+            }}
+          >
+            Desconectar
+          </Button>
+        )}
+
+        {/* Test print */}
+        <Button
+          block
+          size="large"
+          disabled={!btConectada}
+          onClick={async () => {
+            try {
+              await imprimirPruebaEscPos();
+              message.success('Impresión de prueba enviada');
+            } catch (e: any) {
+              setBtConectada(false);
+              message.error(e?.message ?? 'Error al imprimir prueba');
+            }
+          }}
+        >
+          Imprimir prueba
+        </Button>
+      </div>
+
+      <div style={{ marginTop: 16, fontSize: 11, color: 'rgba(0,0,0,0.4)', lineHeight: 1.5 }}>
+        Requiere Chrome en Android con la página en HTTPS. Activa el modo "Impresora BT" en Configuración → POS para imprimir automáticamente.
+      </div>
     </Modal>
 
     </ThemeCtx.Provider>
