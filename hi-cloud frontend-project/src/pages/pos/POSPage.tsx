@@ -2,7 +2,7 @@
 import { useRncLookup } from '../../hooks/useRncLookup';
 import QRCode from 'qrcode';
 import { Select, Modal, Badge, Empty, Spin, Tooltip, message, Avatar, Popover, Input, Button, Segmented, Tabs, InputNumber } from 'antd';
-import { SearchOutlined, ShoppingCartOutlined, CheckCircleOutlined, DisconnectOutlined, LogoutOutlined, PrinterOutlined, LockOutlined, UserSwitchOutlined, SwapOutlined, EyeOutlined, EyeInvisibleOutlined, ShopOutlined } from '@ant-design/icons';
+import { SearchOutlined, ShoppingCartOutlined, CheckCircleOutlined, DisconnectOutlined, LogoutOutlined, PrinterOutlined, LockOutlined, UserSwitchOutlined, SwapOutlined, EyeOutlined, EyeInvisibleOutlined, ShopOutlined, MailOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../../store/auth.store';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -6688,6 +6688,20 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
     },
   });
 
+  // ── Enviar factura por correo desde POS ──────────────────────────────────────
+  const [emailFacturaPos, setEmailFacturaPos] = useState<{ id: number; folio: string } | null>(null);
+  const [emailDestinoPOS, setEmailDestinoPOS] = useState('');
+  const enviandoEmailPOS = useMutation({
+    mutationFn: ({ id, email }: { id: number; email: string }) =>
+      api.post(`/notificaciones/factura/${id}/enviar`, { email }).then(r => r.data?.data ?? r.data),
+    onSuccess: (_data, vars) => {
+      setEmailFacturaPos(null);
+      setEmailDestinoPOS('');
+      message.success(`Factura enviada a ${vars.email}`);
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al enviar el correo'),
+  });
+
   // ── Cobrar Pre-Factura desde POS ─────────────────────────────────────────────
   const cobrarPFMut = useMutation({
     mutationFn: async ({ id, metodoPago }: { id: number; metodoPago: string }) =>
@@ -7365,6 +7379,19 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
                             {emitiendoId === row.id ? '⏳' : '📤 Emitir'}
                           </button>
                         )}
+                        {/* Enviar por correo (facturas no-borrador) */}
+                        {panel === 'facturas' && row.estado !== 'borrador' && (
+                          <button
+                            onClick={() => {
+                              setEmailFacturaPos({ id: row.id, folio });
+                              setEmailDestinoPOS(row.cliente?.email ?? '');
+                            }}
+                            title="Enviar por correo"
+                            style={{ background: 'none', border: `1px solid ${C.border2}`, borderRadius: 6, color: C.blue, cursor: 'pointer', padding: '4px 8px', fontSize: 14, marginRight: 6 }}
+                          >
+                            ✉️
+                          </button>
+                        )}
                         {/* Cobrar Pre-Factura */}
                         {panel === 'pre-facturas' && !['convertida', 'rechazada'].includes((row.estado ?? '').toLowerCase()) && (
                           <button
@@ -7650,6 +7677,35 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           </div>
         </div>
       )}
+
+      {/* ── Modal: Enviar factura por correo ───────────────────────────── */}
+      <Modal
+        title={<span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><MailOutlined style={{ color: '#1677ff' }} /> Enviar factura por correo</span>}
+        open={!!emailFacturaPos}
+        onCancel={() => { setEmailFacturaPos(null); setEmailDestinoPOS(''); }}
+        onOk={() => emailFacturaPos && enviandoEmailPOS.mutate({ id: emailFacturaPos.id, email: emailDestinoPOS })}
+        confirmLoading={enviandoEmailPOS.isPending}
+        okText="Enviar"
+        okButtonProps={{ disabled: !emailDestinoPOS || enviandoEmailPOS.isPending }}
+        width={420}
+        destroyOnClose
+      >
+        <p style={{ marginBottom: 12, fontSize: 13, color: 'rgba(0,0,0,0.55)' }}>
+          <strong style={{ color: 'rgba(0,0,0,0.88)' }}>{emailFacturaPos?.folio}</strong> — ingresa el correo del cliente:
+        </p>
+        <Input
+          prefix={<MailOutlined style={{ color: 'rgba(0,0,0,0.25)' }} />}
+          placeholder="correo@cliente.com"
+          value={emailDestinoPOS}
+          onChange={e => setEmailDestinoPOS(e.target.value)}
+          type="email"
+          size="large"
+          autoFocus
+          onPressEnter={() => {
+            if (emailDestinoPOS && emailFacturaPos) enviandoEmailPOS.mutate({ id: emailFacturaPos.id, email: emailDestinoPOS });
+          }}
+        />
+      </Modal>
     </div>
   );
 }
