@@ -221,14 +221,31 @@ export function generarReciboESCPOS(sale: SaleBT, empresa: EmpresaBT): Uint8Arra
 // ── Bluetooth connection ────────────────────────────────────────────────────────
 
 async function findCharacteristic(server: any): Promise<any> {
-  const services: any[] = await server.getPrimaryServices();
+  let services: any[] = [];
+  try { services = await server.getPrimaryServices(); } catch { return null; }
   for (const svc of services) {
-    const chars: any[] = await svc.getCharacteristics();
-    for (const ch of chars) {
-      if (ch.properties.write || ch.properties.writeWithoutResponse) return ch;
-    }
+    try {
+      const chars: any[] = await svc.getCharacteristics();
+      for (const ch of chars) {
+        if (ch.properties.write || ch.properties.writeWithoutResponse) return ch;
+      }
+    } catch { /* omitir servicio con error */ }
   }
   return null;
+}
+
+/** Intenta reconectar usando btDevice ya conocido (sin getDevices). */
+async function _reconectarDesdeDispositivo(): Promise<void> {
+  if (!btDevice || btChar) return;
+  for (let i = 0; i < 3; i++) {
+    await new Promise(r => setTimeout(r, 1500 * (i + 1)));
+    if (btChar) return;
+    try {
+      const server = await btDevice.gatt.connect();
+      const char   = await findCharacteristic(server);
+      if (char) { btChar = char; return; }
+    } catch { /* retry */ }
+  }
 }
 
 export async function conectarImpresora(): Promise<string> {
@@ -252,41 +269,50 @@ export async function conectarImpresora(): Promise<string> {
 
   device.addEventListener('gattserverdisconnected', () => {
     btChar = null;
-    // btDevice sigue para reconexion automatica
+    _reconectarDesdeDispositivo(); // reconectar en background si el dispositivo sigue disponible
   });
 
   return nombre;
 }
 
 /** Intenta reconectar silenciosamente usando los dispositivos previamente autorizados.
- *  Útil al refrescar la página: Chrome recuerda los permisos BT sin nueva solicitud de usuario.
- *  Requiere Chrome 85+ en Android. */
+ *  Chrome recuerda los permisos BT sin nueva solicitud de usuario (requiere Chrome 85+).
+ *  Reintenta hasta 4 veces con pausa de 2 s entre intentos — el stack BT puede necesitar
+ *  unos segundos después del F5 para estar listo. */
 export async function autoReconectarImpresora(): Promise<string | null> {
   if (!('bluetooth' in navigator)) return null;
-  if (btChar) return getNombreImpresora();                  // ya conectada
+  if (btChar) return getNombreImpresora();
   const nombreGuardado = localStorage.getItem('bt_impresora_nombre');
-  if (!nombreGuardado) return null;                         // nunca se conectó
+  if (!nombreGuardado) return null;
 
   const nav = navigator as any;
   if (typeof nav.bluetooth?.getDevices !== 'function') return null;
 
-  try {
-    const devices: any[] = await nav.bluetooth.getDevices();
-    for (const device of devices) {
-      try {
-        const server = await device.gatt.connect();
-        const char   = await findCharacteristic(server);
-        if (char) {
-          btDevice = device;
-          btChar   = char;
-          const nombre = device.name ?? nombreGuardado;
-          localStorage.setItem('bt_impresora_nombre', nombre);
-          device.addEventListener('gattserverdisconnected', () => { btChar = null; });
-          return nombre;
-        }
-      } catch { /* dispositivo no disponible, probar el siguiente */ }
-    }
-  } catch { /* API no disponible o error de permisos */ }
+  const MAX = 4;
+  for (let intento = 0; intento < MAX; intento++) {
+    if (intento > 0) await new Promise(r => setTimeout(r, 2000));
+    if (btChar) return getNombreImpresora(); // otro intento tuvo éxito
+    try {
+      const devices: any[] = await nav.bluetooth.getDevices();
+      for (const device of devices) {
+        try {
+          const server = await device.gatt.connect();
+          const char   = await findCharacteristic(server);
+          if (char) {
+            btDevice = device;
+            btChar   = char;
+            const nombre = device.name ?? nombreGuardado;
+            localStorage.setItem('bt_impresora_nombre', nombre);
+            device.addEventListener('gattserverdisconnected', () => {
+              btChar = null;
+              _reconectarDesdeDispositivo();
+            });
+            return nombre;
+          }
+        } catch { /* este dispositivo no disponible, probar el siguiente */ }
+      }
+    } catch { return null; /* getDevices no soportado o error fatal */ }
+  }
 
   return null;
 }

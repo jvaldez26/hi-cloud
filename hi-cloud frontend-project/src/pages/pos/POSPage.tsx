@@ -8093,11 +8093,42 @@ export default function POSPage() {
   const [btNombrePrt,  setBtNombrePrt]  = useState(() => getNombreImpresora());
   const [btConectada,  setBtConectada]  = useState(() => estaConectada());
 
-  // Auto-reconectar impresora BT al cargar la página (usa getDevices sin requerir gesto del usuario)
+  // Auto-reconectar impresora BT al cargar la página.
+  // Reintenta cada 5 s por hasta 40 s — el stack BT de Android puede tardar
+  // unos segundos después de un F5 antes de aceptar gatt.connect().
   useEffect(() => {
-    autoReconectarImpresora().then(nombre => {
-      if (nombre) { setBtConectada(true); setBtNombrePrt(nombre); }
-    }).catch(() => {});
+    let activo = true;
+    let timerId: ReturnType<typeof setInterval> | null = null;
+
+    const intentar = () => {
+      if (!activo) return;
+      if (estaConectada()) {
+        setBtConectada(true);
+        setBtNombrePrt(getNombreImpresora());
+        if (timerId) { clearInterval(timerId); timerId = null; }
+        return;
+      }
+      autoReconectarImpresora().then(nombre => {
+        if (!activo) return;
+        if (nombre) {
+          setBtConectada(true);
+          setBtNombrePrt(nombre);
+          if (timerId) { clearInterval(timerId); timerId = null; }
+        }
+      }).catch(() => {});
+    };
+
+    intentar(); // intento inmediato
+    timerId = setInterval(intentar, 5000); // reintentar cada 5 s
+    const maxTimer = setTimeout(() => { // cancelar después de 40 s
+      if (timerId) { clearInterval(timerId); timerId = null; }
+    }, 40000);
+
+    return () => {
+      activo = false;
+      if (timerId) clearInterval(timerId);
+      clearTimeout(maxTimer);
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Módulos add-on disponibles en el POS (una sola llamada) ──────────────
