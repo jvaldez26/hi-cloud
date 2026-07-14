@@ -927,6 +927,7 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
             <Select>
               <Option value="58mm">Térmica 58mm</Option>
               <Option value="80mm">Térmica 80mm</Option>
+              <Option value="bluetooth">Térmica BT 58mm (Bluetooth)</Option>
               <Option value="carta">Hoja carta (A4)</Option>
               <Option value="ninguna">Sin impresora</Option>
             </Select>
