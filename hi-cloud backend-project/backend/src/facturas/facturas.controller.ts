@@ -180,7 +180,7 @@ export class FacturasController {
    */
   @Patch(':id/emitir-pos')
   @HttpCode(HttpStatus.OK)
-  @Roles(UserRole.ADMIN, UserRole.VENDEDOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({
     summary: 'Emitir factura desde POS (síncrono 8s — venta no se bloquea si MSeller falla)',
   })
