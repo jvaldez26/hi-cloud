@@ -8881,23 +8881,23 @@ export default function POSPage() {
         empresaTelefono:         empresa?.telefono ?? undefined,
         modoContexto,
       };
-      // Auto-imprimir con ventana pre-abierta — mantiene el gesto del usuario en tablets iOS/Android
-      if (printWinRef.current && !printWinRef.current.closed) {
+      // Auto-imprimir — BT funciona directo en móvil sin ventana pre-abierta
+      const _tipoImpCobro = posConf.posTipoImpresora as string | undefined;
+      if (_tipoImpCobro === 'bluetooth') {
+        // BT térmica — cerrar ventana pre-abierta si existe (no la necesitamos)
+        if (printWinRef.current && !printWinRef.current.closed) { try { printWinRef.current.close(); } catch { /* noop */ } printWinRef.current = null; }
+        autoYaPrintedRef.current = true;
+        const _empBT = { nombre: empresa?.nombre, rnc: empresa?.rnc, direccion: empresa?.direccion, telefono: empresa?.telefono };
+        imprimirReciboEscPos(saleObj, _empBT).catch((btErr: any) => {
+          message.error(btErr?.message?.includes('no conectada') || !btErr?.message
+            ? 'Impresora BT no conectada. Ve a Menú → Impresora BT para conectar.'
+            : `Error impresora BT: ${btErr.message}`);
+        });
+      } else if (printWinRef.current && !printWinRef.current.closed) {
+        // Auto-imprimir con ventana pre-abierta — mantiene el gesto del usuario en tablets iOS/Android
         const pw = printWinRef.current;
         printWinRef.current = null;
-        const _tipoImpCobro = posConf.posTipoImpresora as string | undefined;
-
-        if (_tipoImpCobro === 'bluetooth') {
-          // BT térmica — cerrar ventana pre-abierta (no la necesitamos)
-          try { pw.close(); } catch { /* noop */ }
-          autoYaPrintedRef.current = true;
-          const _empBT = { nombre: empresa?.nombre, rnc: empresa?.rnc, direccion: empresa?.direccion, telefono: empresa?.telefono };
-          imprimirReciboEscPos(saleObj, _empBT).catch((btErr: any) => {
-            message.error(btErr?.message?.includes('no conectada') || !btErr?.message
-              ? 'Impresora BT no conectada. Ve a Menú → Impresora BT para conectar.'
-              : `Error impresora BT: ${btErr.message}`);
-          });
-        } else if (_tipoImpCobro === 'ninguna') {
+        if (_tipoImpCobro === 'ninguna') {
           // Sin impresora → cerrar ventana pre-abierta sin imprimir
           try { pw.close(); } catch { /* noop */ }
         } else if (_tipoImpCobro === 'carta' && saleObj.facturaId) {
