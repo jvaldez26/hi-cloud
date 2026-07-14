@@ -6902,12 +6902,10 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
         }
         const empConfPanel = (empresa.configuracion ?? {}) as any;
         if (_tipoImp === 'bluetooth') {
-          imprimirReciboEscPos(sale, empInfo).catch(() => {
-            imprimirReciboTermico(buildReciboTermicoHTML(sale, qrDUrl, {
-              tipoImpresora: '58mm',
-              mensajeTicket: empConfPanel.posMensajeTicket,
-              politicaDev:   empConfPanel.posPoliticaDev,
-            }));
+          imprimirReciboEscPos(sale, empInfo).catch((btErr: any) => {
+            message.error(btErr?.message?.includes('no conectada') || !btErr?.message
+              ? 'Impresora BT no conectada. Ve a Menú → Impresora BT para conectar.'
+              : `Error impresora BT: ${btErr.message}`);
           });
           return;
         }
@@ -8894,16 +8892,10 @@ export default function POSPage() {
           try { pw.close(); } catch { /* noop */ }
           autoYaPrintedRef.current = true;
           const _empBT = { nombre: empresa?.nombre, rnc: empresa?.rnc, direccion: empresa?.direccion, telefono: empresa?.telefono };
-          const _mostrarEcfBT = posConf.posMostrarEcfEnRecibo !== false;
-          const _pCfgBT = { tipoImpresora: '58mm', mensajeTicket: posConf.posMensajeTicket as string | undefined, politicaDev: posConf.posPoliticaDev as string | undefined };
-          imprimirReciboEscPos(saleObj, _empBT).catch(() => {
-            // Fallback: ventana HTML si BT falla
-            const doFallback = (qr: string | null) => {
-              imprimirReciboTermico(buildReciboTermicoHTML(saleObj, qr, { mostrarEcf: _mostrarEcfBT, ..._pCfgBT }));
-            };
-            if (qrUrl && !saleObj.ecfPendiente) {
-              QRCode.toDataURL(qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' }).then(doFallback).catch(() => doFallback(null));
-            } else { doFallback(null); }
+          imprimirReciboEscPos(saleObj, _empBT).catch((btErr: any) => {
+            message.error(btErr?.message?.includes('no conectada') || !btErr?.message
+              ? 'Impresora BT no conectada. Ve a Menú → Impresora BT para conectar.'
+              : `Error impresora BT: ${btErr.message}`);
           });
         } else if (_tipoImpCobro === 'ninguna') {
           // Sin impresora → cerrar ventana pre-abierta sin imprimir
