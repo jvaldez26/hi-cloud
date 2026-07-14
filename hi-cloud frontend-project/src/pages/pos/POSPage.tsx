@@ -18,7 +18,7 @@ import { facturasApi } from '../../api/facturas.api';
 import { inventarioApi } from '../../api/inventario.api';
 import { fmt, round2 } from '../../utils/formatters';
 import { imprimirElemento, imprimirReciboTermico, imprimirPDFA4 } from '../../utils/printUtils';
-import { imprimirReciboEscPos, conectarImpresora, desconectarImpresora, estaConectada, getNombreImpresora, imprimirPruebaEscPos } from '../../services/thermalPrinter';
+import { imprimirReciboEscPos, conectarImpresora, desconectarImpresora, estaConectada, getNombreImpresora, imprimirPruebaEscPos, autoReconectarImpresora } from '../../services/thermalPrinter';
 import { useThemeStore } from '../../store/theme.store';
 import { useOfflineQueue } from '../../hooks/useOfflineQueue';
 import { useSupervisor } from '../../hooks/useSupervisor';
@@ -8016,6 +8016,13 @@ export default function POSPage() {
   const [btConectando, setBtConectando] = useState(false);
   const [btNombrePrt,  setBtNombrePrt]  = useState(() => getNombreImpresora());
   const [btConectada,  setBtConectada]  = useState(() => estaConectada());
+
+  // Auto-reconectar impresora BT al cargar la página (usa getDevices sin requerir gesto del usuario)
+  useEffect(() => {
+    autoReconectarImpresora().then(nombre => {
+      if (nombre) { setBtConectada(true); setBtNombrePrt(nombre); }
+    }).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Módulos add-on disponibles en el POS (una sola llamada) ──────────────
   const { data: misModulosData } = useQuery({

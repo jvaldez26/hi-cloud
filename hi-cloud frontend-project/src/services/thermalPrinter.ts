@@ -16,8 +16,14 @@ let btChar: any   = null;
 
 // ── Format helpers ─────────────────────────────────────────────────────────────
 
+// Elimina tildes y diacríticos para que la impresora térmica los muestre correctamente.
+function sanear(txt: string): string {
+  // NFD descompone ó → o + combining accent; luego borramos los combining marks
+  return txt.normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
 export function envolver(texto: string, maxLen = CARACTERES_POR_LINEA): string[] {
-  const palabras = texto.split(' ');
+  const palabras = sanear(texto).split(' ');
   const lineas: string[] = [];
   let linea = '';
   for (const p of palabras) {
@@ -30,16 +36,18 @@ export function envolver(texto: string, maxLen = CARACTERES_POR_LINEA): string[]
 }
 
 export function centrar(texto: string, ancho = CARACTERES_POR_LINEA): string {
-  const txt = texto.slice(0, ancho);
+  const txt = sanear(texto).slice(0, ancho);
   const pad = Math.max(0, Math.floor((ancho - txt.length) / 2));
   return ' '.repeat(pad) + txt;
 }
 
 export function lineaLR(izq: string, der: string, ancho = CARACTERES_POR_LINEA): string {
-  const maxIzq = ancho - der.length - 1;
-  const i = izq.length > maxIzq ? izq.slice(0, maxIzq - 1) + '…' : izq;
-  const espacio = ancho - i.length - der.length;
-  return i + ' '.repeat(Math.max(1, espacio)) + der;
+  const i2  = sanear(izq);
+  const d2  = sanear(der);
+  const maxIzq = ancho - d2.length - 1;
+  const i = i2.length > maxIzq ? i2.slice(0, maxIzq - 1) + '>' : i2;
+  const espacio = ancho - i.length - d2.length;
+  return i + ' '.repeat(Math.max(1, espacio)) + d2;
 }
 
 export function separador(char = '-', ancho = CARACTERES_POR_LINEA): string {
@@ -51,7 +59,7 @@ export function separador(char = '-', ancho = CARACTERES_POR_LINEA): string {
 function comandos() {
   const bufs: Uint8Array[] = [];
   const b = (...bytes: number[]) => bufs.push(new Uint8Array(bytes));
-  const t = (txt: string) => bufs.push(new TextEncoder().encode(txt + '\n'));
+  const t = (txt: string) => bufs.push(new TextEncoder().encode(sanear(txt) + '\n'));
 
   const api = {
     init()            { b(0x1B, 0x40); return api; },
@@ -62,6 +70,22 @@ function comandos() {
     texto(txt: string){ t(txt); return api; },
     salto(n = 1)      { for (let i = 0; i < n; i++) b(0x0A); return api; },
     cortar()          { b(0x1D, 0x56, 0x42, 0x00); return api; },
+
+    // QR nativo ESC/POS — GS ( k — compatible con la mayoría de térmicas 58mm
+    qr(data: string, size = 4) {
+      const enc  = new TextEncoder().encode(data);
+      const dLen = enc.length + 3;      // pL pH cuenta m + fn + c1 + data
+      const pL   = dLen & 0xFF;
+      const pH   = (dLen >> 8) & 0xFF;
+      b(0x1D, 0x28, 0x6B, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00); // Modelo 2
+      b(0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x43, size & 0xFF); // Tamaño módulo
+      b(0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x45, 0x31);        // Error correction M
+      bufs.push(new Uint8Array([0x1D, 0x28, 0x6B, pL, pH, 0x31, 0x50, 0x30])); // Almacenar datos
+      bufs.push(enc);
+      b(0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x51, 0x30);        // Imprimir QR
+      return api;
+    },
+
     build(): Uint8Array {
       const total = bufs.reduce((s, a) => s + a.length, 0);
       const out = new Uint8Array(total);
@@ -96,6 +120,8 @@ export interface SaleBT {
   cliente?:                string;
   fechaEmision?:           string;
   horaEmision?:            string;
+  securityCode?:           string;
+  qrUrl?:                  string;
   empresaNombreComercial?: string;
   empresaRnc?:             string;
   empresaDireccion?:       string;
@@ -119,7 +145,7 @@ export function generarReciboESCPOS(sale: SaleBT, empresa: EmpresaBT): Uint8Arra
 
   const c = comandos().init();
 
-  // Header
+  // ── Header ─────────────────────────────────────────────────────────────────
   c.alignCenter();
   c.bold(true).doble(true).texto(centrar(nombreEmp)).doble(false).bold(false);
   if (rncEmp) c.texto(centrar(`RNC: ${rncEmp}`));
@@ -127,44 +153,58 @@ export function generarReciboESCPOS(sale: SaleBT, empresa: EmpresaBT): Uint8Arra
   if (telEmp) c.texto(centrar(`Tel: ${telEmp}`));
   c.salto(1);
 
+  // ── Encabezado de venta ────────────────────────────────────────────────────
   c.alignLeft();
   c.texto(separador());
-
   c.texto(lineaLR('Fecha:', fecha));
   c.texto(lineaLR('Hora:', hora));
-  if (sale.cajero)  c.texto(lineaLR('Cajero:', sale.cajero.slice(0, 18)));
-  if (sale.cliente) c.texto(lineaLR('Cliente:', sale.cliente.slice(0, 18)));
+  if (sale.cajero)  c.texto(lineaLR('Cajero:', sale.cajero.slice(0, 20)));
+  if (sale.cliente) c.texto(lineaLR('Cliente:', sale.cliente.slice(0, 19)));
   if (sale.folio)   c.texto(lineaLR('Folio:', sale.folio));
 
+  // ── Items ──────────────────────────────────────────────────────────────────
   c.texto(separador());
-
-  // Items
   for (const item of sale.items) {
     const lines = envolver(item.produto.nombre, CARACTERES_POR_LINEA - 8);
-    const total = fmtMonto(item.cantidad * item.precio);
-    c.texto(lineaLR(lines[0], total));
+    const totalItem = fmtMonto(item.cantidad * item.precio);
+    c.texto(lineaLR(lines[0], totalItem));
     for (let i = 1; i < lines.length; i++) c.texto('  ' + lines[i]);
     c.texto(`  ${item.cantidad} x ${fmtMonto(item.precio)}`);
   }
 
+  // ── Totales ────────────────────────────────────────────────────────────────
   c.texto(separador());
-
-  // Totales
   if (sale.subtotal !== undefined) c.texto(lineaLR('Subtotal:', `RD$${fmtMonto(sale.subtotal)}`));
   if (sale.iva !== undefined && sale.iva > 0) c.texto(lineaLR('ITBIS:', `RD$${fmtMonto(sale.iva)}`));
   c.bold(true).texto(lineaLR('TOTAL:', `RD$${fmtMonto(sale.total)}`)).bold(false);
   if (sale.cambio !== undefined && sale.cambio > 0) c.texto(lineaLR('Cambio:', `RD$${fmtMonto(sale.cambio)}`));
   if (sale.metodo) {
-    const m = sale.metodo.charAt(0).toUpperCase() + sale.metodo.slice(1);
-    c.texto(lineaLR('Método:', m));
+    const m = sale.metodo.charAt(0).toUpperCase() + sanear(sale.metodo.slice(1));
+    c.texto(lineaLR('Metodo:', m));
   }
 
-  // e-CF
+  // ── e-CF / Comprobante Fiscal ──────────────────────────────────────────────
   if (sale.encf) {
     c.texto(separador());
     c.alignCenter();
-    c.texto(centrar('COMPROBANTE FISCAL'));
+    c.bold(true).texto(centrar('COMPROBANTE FISCAL')).bold(false);
     c.texto(centrar(sale.encf));
+
+    // Código de seguridad (firma DGII)
+    if (sale.securityCode) {
+      c.salto(1);
+      c.texto(centrar('Codigo de Seguridad:'));
+      c.texto(centrar(sale.securityCode));
+    }
+
+    // QR de verificación DGII
+    if (sale.qrUrl && !sale.ecfPendiente) {
+      c.salto(1);
+      c.qr(sale.qrUrl, 4);
+      c.salto(1);
+      c.texto(centrar('Escanea para verificar'));
+    }
+
     c.alignLeft();
   } else if (sale.ecfPendiente) {
     c.texto(separador());
@@ -193,7 +233,7 @@ async function findCharacteristic(server: any): Promise<any> {
 
 export async function conectarImpresora(): Promise<string> {
   if (!('bluetooth' in navigator)) {
-    throw new Error('Web Bluetooth no está disponible. Usa Chrome en Android con HTTPS.');
+    throw new Error('Web Bluetooth no esta disponible. Usa Chrome en Android con HTTPS.');
   }
   const nav = navigator as any;
   const device = await nav.bluetooth.requestDevice({
@@ -203,7 +243,7 @@ export async function conectarImpresora(): Promise<string> {
 
   const server = await device.gatt.connect();
   const char   = await findCharacteristic(server);
-  if (!char) throw new Error('No se encontró característica de escritura en la impresora');
+  if (!char) throw new Error('No se encontro caracteristica de escritura en la impresora');
 
   btDevice = device;
   btChar   = char;
@@ -212,10 +252,43 @@ export async function conectarImpresora(): Promise<string> {
 
   device.addEventListener('gattserverdisconnected', () => {
     btChar = null;
-    // btDevice sigue para reconexión
+    // btDevice sigue para reconexion automatica
   });
 
   return nombre;
+}
+
+/** Intenta reconectar silenciosamente usando los dispositivos previamente autorizados.
+ *  Útil al refrescar la página: Chrome recuerda los permisos BT sin nueva solicitud de usuario.
+ *  Requiere Chrome 85+ en Android. */
+export async function autoReconectarImpresora(): Promise<string | null> {
+  if (!('bluetooth' in navigator)) return null;
+  if (btChar) return getNombreImpresora();                  // ya conectada
+  const nombreGuardado = localStorage.getItem('bt_impresora_nombre');
+  if (!nombreGuardado) return null;                         // nunca se conectó
+
+  const nav = navigator as any;
+  if (typeof nav.bluetooth?.getDevices !== 'function') return null;
+
+  try {
+    const devices: any[] = await nav.bluetooth.getDevices();
+    for (const device of devices) {
+      try {
+        const server = await device.gatt.connect();
+        const char   = await findCharacteristic(server);
+        if (char) {
+          btDevice = device;
+          btChar   = char;
+          const nombre = device.name ?? nombreGuardado;
+          localStorage.setItem('bt_impresora_nombre', nombre);
+          device.addEventListener('gattserverdisconnected', () => { btChar = null; });
+          return nombre;
+        }
+      } catch { /* dispositivo no disponible, probar el siguiente */ }
+    }
+  } catch { /* API no disponible o error de permisos */ }
+
+  return null;
 }
 
 export async function desconectarImpresora(): Promise<void> {
@@ -234,12 +307,12 @@ export function getNombreImpresora(): string {
 }
 
 async function enviarDatos(bytes: Uint8Array): Promise<void> {
-  // Reconnect if GATT server disconnected
+  // Reconectar si el GATT server se desconectó (apagado/alejamiento temporal)
   if (!btChar && btDevice) {
     const server = await btDevice.gatt.connect();
     btChar = await findCharacteristic(server);
   }
-  if (!btChar) throw new Error('Impresora no conectada. Conéctala desde Menú → Impresora BT.');
+  if (!btChar) throw new Error('Impresora no conectada. Conectala desde Menu → Impresora BT.');
 
   const CHUNK = 180;
   for (let off = 0; off < bytes.length; off += CHUNK) {
