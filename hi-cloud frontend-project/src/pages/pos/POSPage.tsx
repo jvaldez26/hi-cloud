@@ -7101,16 +7101,16 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           empresaDireccion:       empInfo.direccion,
           empresaTelefono:        empInfo.telefono,
           cajero:                 doc.nombreVendedor ?? doc.usuario?.nombre,
-          // Fecha header   = nc.fecha (= FechaEmision del XML, fecha fiscal oficial; nunca cambia)
-          // Hora header    = ultimoIntentoEnvio si coincide la fecha con nc.fecha (caso normal)
-          //                  Si difiere (contingencia días después) → createdAt (hora real de emisión)
-          //                  signedDate NO se usa para Hora: DGII puede tardar minutos en firmar
-          // ECF Fecha      = ultimoIntentoEnvio (cuando SE ENVIÓ el e-CF, no cuando DGII firmó)
+          // Fecha header = nc.fecha (FechaEmision del XML, fecha fiscal oficial, nunca cambia)
+          // Hora + ECF Fecha:
+          //   - e-CF ACEPTADO: ultimoIntentoEnvio (estable; ya no hay más intentos del cron)
+          //   - e-CF PENDIENTE/CONTINGENCIA: createdAt (estable; ultimoIntentoEnvio muta en cada reintento)
           ...((): { fechaEmision?: string; horaEmision?: string; ecfFecha?: string } => {
             const fechaHeader = doc.fecha
               ? String(doc.fecha).substring(0, 10).split('-').reverse().join('/')
               : undefined;
-            const ts = doc.ecf?.ultimoIntentoEnvio ?? doc.ecf?.fechaFirma;
+            const ecfAceptado = ['aceptado', 'observado'].includes(doc.ecf?.estadoDGII ?? '');
+            const ts = ecfAceptado ? (doc.ecf?.ultimoIntentoEnvio ?? doc.ecf?.fechaFirma) : null;
             if (ts) {
               const p = dayjs(ts);
               const mismaFecha = p.format('YYYY-MM-DD') === (doc.fecha ? String(doc.fecha).substring(0, 10) : null);
@@ -7120,10 +7120,12 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
                 ecfFecha:     p.format('DD-MM-YYYY HH:mm:ss'),
               };
             }
+            const horaCreacion = doc.createdAt ? dayjs(doc.createdAt).format('HH:mm:ss') : undefined;
+            const fechaCreacion = doc.createdAt ? dayjs(doc.createdAt).format('DD-MM-YYYY HH:mm:ss') : undefined;
             return {
               fechaEmision: fechaHeader,
-              horaEmision:  doc.createdAt ? dayjs(doc.createdAt).format('HH:mm:ss') : undefined,
-              ecfFecha:     undefined,
+              horaEmision:  horaCreacion,
+              ecfFecha:     fechaCreacion,
             };
           })(),
         };
