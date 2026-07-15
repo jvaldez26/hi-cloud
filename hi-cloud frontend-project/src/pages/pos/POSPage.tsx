@@ -18,7 +18,7 @@ import { facturasApi } from '../../api/facturas.api';
 import { inventarioApi } from '../../api/inventario.api';
 import { fmt, round2 } from '../../utils/formatters';
 import { imprimirElemento, imprimirReciboTermico, imprimirPDFA4 } from '../../utils/printUtils';
-import { imprimirReciboEscPos, conectarImpresora, desconectarImpresora, estaConectada, getNombreImpresora, imprimirPruebaEscPos, autoReconectarImpresora } from '../../services/thermalPrinter';
+import { imprimirReciboEscPos, conectarImpresora, desconectarImpresora, estaConectada, getNombreImpresora, imprimirPruebaEscPos, autoReconectarImpresora, bluetoothAutoReconexionDisponible } from '../../services/thermalPrinter';
 import { useThemeStore } from '../../store/theme.store';
 import { useOfflineQueue } from '../../hooks/useOfflineQueue';
 import { useSupervisor } from '../../hooks/useSupervisor';
@@ -8134,13 +8134,27 @@ export default function POSPage() {
   const [btNombrePrt,  setBtNombrePrt]  = useState(() => getNombreImpresora());
   const [btConectada,  setBtConectada]  = useState(() => estaConectada());
 
-  // Auto-reconectar impresora BT al cargar la página y cuando la pestaña vuelve a ser visible.
-  // Reintenta cada 5 s por hasta 90 s — el stack BT de Android puede tardar bastante
-  // después de un F5; cada intento tiene timeout de 7 s para no colgar.
+  // Auto-reconectar impresora BT al cargar y cuando la pestaña vuelve a ser visible.
+  // Estrategia: watchAdvertisements() como puerta → gatt.connect() para el device
+  // conocido (resuelve el fallo directo tras reload); fallback a connect directo.
+  // Reintenta cada 5 s por hasta 90 s. Avisa al usuario si la API no está disponible
+  // o si agota todos los intentos sin éxito (una sola vez por ventana de 90 s).
   useEffect(() => {
-    let activo = true;
+    // Sin getDevices() la reconexión automática es imposible — avisar una vez y salir.
+    if (!bluetoothAutoReconexionDisponible()) {
+      if (getNombreImpresora()) {
+        message.warning(
+          'Tu navegador no permite reconexión automática de la impresora BT. Reconéctala manualmente desde Menú → Impresora BT.',
+          8,
+        );
+      }
+      return;
+    }
+
+    let activo   = true;
     let timerId: ReturnType<typeof setInterval> | null = null;
-    let corriendo = false; // evitar llamadas solapadas
+    let corriendo = false;
+    let avisado   = false; // aviso de fallo: solo una vez por ventana de 90 s
 
     const detener = () => {
       if (timerId) { clearInterval(timerId); timerId = null; }
@@ -8155,26 +8169,39 @@ export default function POSPage() {
         return;
       }
       corriendo = true;
-      autoReconectarImpresora().then(nombre => {
-        corriendo = false;
-        if (!activo) return;
-        if (nombre) {
-          setBtConectada(true);
-          setBtNombrePrt(nombre);
-          detener();
-        }
-      }).catch(() => { corriendo = false; });
+      autoReconectarImpresora()
+        .then(nombre => {
+          corriendo = false;
+          if (!activo) return;
+          if (nombre) {
+            setBtConectada(true);
+            setBtNombrePrt(nombre);
+            detener();
+          }
+        })
+        .catch(err => {
+          corriendo = false;
+          console.error('[BT] autoReconectarImpresora lanzó excepción:', err);
+        });
     };
 
-    intentar(); // intento inmediato
-    timerId = setInterval(intentar, 5000); // reintentar cada 5 s
-    const maxTimer = setTimeout(detener, 90000); // ventana de 90 s
+    intentar();
+    timerId = setInterval(intentar, 5000);
+    const maxTimer = setTimeout(() => {
+      detener();
+      if (!estaConectada() && !avisado && getNombreImpresora()) {
+        avisado = true;
+        message.warning(
+          'No se pudo reconectar la impresora automáticamente. Conéctala desde Menú → Impresora BT.',
+          8,
+        );
+      }
+    }, 90000);
 
-    // Cuando Android desbloquea la pantalla / el usuario vuelve a la pestaña,
-    // la conexión BT puede haberse caído — volver a intentar.
+    // Cuando Android desbloquea la pantalla / el usuario vuelve a la pestaña
+    // la conexión BT puede haberse caído — disparar reconexión al volver a visible.
     const onVisible = () => {
       if (document.visibilityState === 'visible' && !estaConectada()) {
-        // Reactivar el intervalo si ya se había cancelado
         if (!timerId) timerId = setInterval(intentar, 5000);
         intentar();
       }

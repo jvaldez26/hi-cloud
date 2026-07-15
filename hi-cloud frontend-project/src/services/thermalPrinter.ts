@@ -244,6 +244,16 @@ function gattConnectWithTimeout(device: any, ms = 7000): Promise<any> {
   ]);
 }
 
+/** Establece btDevice/btChar y registra el listener de desconexión GATT. */
+function _registrarDispositivo(device: any, char: any): void {
+  btDevice = device;
+  btChar   = char;
+  device.addEventListener('gattserverdisconnected', () => {
+    btChar = null;
+    _reconectarDesdeDispositivo();
+  });
+}
+
 /** Intenta reconectar usando btDevice ya conocido (sin getDevices). */
 async function _reconectarDesdeDispositivo(): Promise<void> {
   if (!btDevice || btChar) return;
@@ -254,8 +264,73 @@ async function _reconectarDesdeDispositivo(): Promise<void> {
       const server = await gattConnectWithTimeout(btDevice, 8000);
       const char   = await findCharacteristic(server);
       if (char) { btChar = char; return; }
-    } catch { /* retry */ }
+    } catch (err) {
+      console.error('[BT] _reconectarDesdeDispositivo intento', i + 1, 'falló:', err);
+    }
   }
+}
+
+/** Espera el primer advertisement del device y luego ejecuta gatt.connect().
+ *  Más fiable que gatt.connect() directo tras un reload: el device puede no estar
+ *  anunciándose en el instante exacto del intento; watchAdvertisements() lo espera.
+ *  Resuelve true si logró conectar, false si expiró el timeout o hubo error. */
+function _conectarViaAdvertisement(device: any, timeoutMs: number): Promise<boolean> {
+  return new Promise<boolean>(resolve => {
+    let done = false;
+    const settle = (ok: boolean) => { if (!done) { done = true; resolve(ok); } };
+
+    // AbortSignal.timeout() es Chrome 103+; AbortController manual como fallback.
+    let signal: AbortSignal;
+    let controller: AbortController | null = null;
+    if (typeof (AbortSignal as any).timeout === 'function') {
+      signal = (AbortSignal as any).timeout(timeoutMs);
+    } else {
+      controller = new AbortController();
+      setTimeout(() => controller!.abort(), timeoutMs);
+      signal = controller.signal;
+    }
+
+    const onAbort = () => {
+      device.removeEventListener('advertisementreceived', onAdvert);
+      settle(false); // expiró — el dispositivo no se anunció en timeoutMs ms
+    };
+
+    const onAdvert = () => {
+      // Quitar el listener de abort ANTES de conectar para que expire sin interferir
+      signal.removeEventListener('abort', onAbort);
+      try { device.unwatchAdvertisements(); } catch (e) {
+        console.error('[BT] unwatchAdvertisements() falló en', device.name, ':', e);
+      }
+      void (async () => {
+        try {
+          const server = await gattConnectWithTimeout(device, 7000);
+          const char   = await findCharacteristic(server);
+          if (char) {
+            _registrarDispositivo(device, char);
+            settle(true);
+          } else {
+            console.error('[BT] findCharacteristic retornó null tras advertisement en', device.name);
+            settle(false);
+          }
+        } catch (err) {
+          console.error('[BT] gatt.connect() tras advertisement falló en', device.name, ':', err);
+          settle(false);
+        }
+      })();
+    };
+
+    signal.addEventListener('abort', onAbort);
+    device.addEventListener('advertisementreceived', onAdvert, { once: true });
+
+    try {
+      device.watchAdvertisements({ signal });
+    } catch (err) {
+      console.error('[BT] watchAdvertisements() lanzó excepción en', device.name, ':', err);
+      signal.removeEventListener('abort', onAbort);
+      device.removeEventListener('advertisementreceived', onAdvert);
+      settle(false);
+    }
+  });
 }
 
 export async function conectarImpresora(): Promise<string> {
@@ -279,16 +354,26 @@ export async function conectarImpresora(): Promise<string> {
 
   device.addEventListener('gattserverdisconnected', () => {
     btChar = null;
-    _reconectarDesdeDispositivo(); // reconectar en background si el dispositivo sigue disponible
+    _reconectarDesdeDispositivo();
   });
 
   return nombre;
 }
 
+/** Indica si el navegador soporta reconexión BT automática tras reload.
+ *  Requiere navigator.bluetooth.getDevices (Chrome 85+, HTTPS). */
+export function bluetoothAutoReconexionDisponible(): boolean {
+  return 'bluetooth' in navigator &&
+    typeof (navigator as any).bluetooth?.getDevices === 'function';
+}
+
 /** Intenta reconectar silenciosamente usando los dispositivos previamente autorizados.
- *  Chrome recuerda los permisos BT sin nueva solicitud de usuario (requiere Chrome 85+).
- *  Un solo intento con timeout — el caller (useEffect) maneja los reintentos externos.
- *  gatt.connect() tiene timeout de 7 s para evitar que cuelgue el bucle en Android. */
+ *  Estrategia principal: watchAdvertisements() como puerta antes de gatt.connect()
+ *  para el dispositivo conocido — espera a que el device se anuncie antes de conectar,
+ *  resolviendo el fallo de gatt.connect() directo inmediatamente tras un reload.
+ *  Fallback: gatt.connect() directo para todos los devices si watchAdvertisements
+ *  no está disponible o si el device nombrado no se anuncia en 13 s.
+ *  El caller (useEffect en POSPage) gestiona los reintentos cada 5 s durante 90 s. */
 export async function autoReconectarImpresora(): Promise<string | null> {
   if (!('bluetooth' in navigator)) return null;
   if (btChar) return getNombreImpresora();
@@ -299,32 +384,51 @@ export async function autoReconectarImpresora(): Promise<string | null> {
   if (typeof nav.bluetooth?.getDevices !== 'function') return null;
 
   let devices: any[];
-  try { devices = await nav.bluetooth.getDevices(); } catch { return null; }
+  try {
+    devices = await nav.bluetooth.getDevices();
+  } catch (err) {
+    console.error('[BT] getDevices() falló:', err);
+    return null;
+  }
   if (!devices.length) return null;
 
-  // Intentar primero el dispositivo que coincide con el nombre guardado
-  const ordenados = [
+  // Dispositivo con nombre guardado primero; resto como fallback
+  const ordenados: any[] = [
     ...devices.filter((d: any) => d.name === nombreGuardado),
     ...devices.filter((d: any) => d.name !== nombreGuardado),
   ];
 
+  // ── Estrategia 1: watchAdvertisements → gatt.connect() para el dispositivo nombrado ─
+  const nombrado = ordenados.find((d: any) => d.name === nombreGuardado);
+  if (nombrado) {
+    if (typeof nombrado.watchAdvertisements === 'function') {
+      const ok = await _conectarViaAdvertisement(nombrado, 13000);
+      if (ok) {
+        const nombre = nombrado.name ?? nombreGuardado;
+        localStorage.setItem('bt_impresora_nombre', nombre);
+        return nombre;
+      }
+      console.error('[BT] watchAdvertisements expiró para "' + nombreGuardado + '" — fallback a gatt.connect() directo');
+    } else {
+      console.error('[BT] watchAdvertisements no disponible para "' + nombreGuardado + '" — usando gatt.connect() directo');
+    }
+  }
+
+  // ── Estrategia 2: gatt.connect() directo para todos los devices (fallback) ────────────
   for (const device of ordenados) {
-    if (btChar) return getNombreImpresora(); // otro intento paralelo tuvo éxito
+    if (btChar) return getNombreImpresora(); // intento paralelo tuvo éxito
+    const nombre = device.name ?? nombreGuardado;
     try {
       const server = await gattConnectWithTimeout(device, 7000);
       const char   = await findCharacteristic(server);
       if (char) {
-        btDevice = device;
-        btChar   = char;
-        const nombre = device.name ?? nombreGuardado;
+        _registrarDispositivo(device, char);
         localStorage.setItem('bt_impresora_nombre', nombre);
-        device.addEventListener('gattserverdisconnected', () => {
-          btChar = null;
-          _reconectarDesdeDispositivo();
-        });
         return nombre;
       }
-    } catch { /* dispositivo no disponible o timeout — probar el siguiente */ }
+    } catch (err) {
+      console.error('[BT] gatt.connect() directo falló para "' + nombre + '":', err);
+    }
   }
 
   return null;
