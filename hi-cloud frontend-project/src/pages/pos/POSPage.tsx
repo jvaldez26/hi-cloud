@@ -7114,11 +7114,22 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
                 ecfFecha:     signed,
               };
             }
+            // ultimoIntentoEnvio / fechaFirma son la hora real de firma del e-CF
+            // → usarlos para header Y sección ECF (misma fuente, mismo timestamp)
             const ts = doc.ecf?.ultimoIntentoEnvio ?? doc.ecf?.fechaFirma;
+            if (ts) {
+              const p = dayjs(ts);
+              return {
+                fechaEmision: p.format('DD/MM/YYYY'),
+                horaEmision:  p.format('HH:mm:ss'),
+                ecfFecha:     p.format('DD-MM-YYYY HH:mm:ss'),
+              };
+            }
+            // Sin ECF todavía (pendiente/contingencia): usar fecha de creación del documento
             return {
               fechaEmision: doc.fecha ? String(doc.fecha).substring(0, 10).split('-').reverse().join('/') : undefined,
               horaEmision:  doc.createdAt ? dayjs(doc.createdAt).format('HH:mm:ss') : undefined,
-              ecfFecha:     ts ? dayjs(ts).format('DD-MM-YYYY HH:mm:ss') : undefined,
+              ecfFecha:     undefined,
             };
           })(),
         };
