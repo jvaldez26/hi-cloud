@@ -2223,7 +2223,6 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
           ecfPendiente,
           qrUrl:                  ecfResult?.qrUrl ?? null,
           securityCode:           ecfResult?.securityCode,
-          ecfFecha:               (ecfResult as any)?.signedDate ?? dayjs().format('DD-MM-YYYY HH:mm:ss'),
           facturaOriginalFolio:   nc?.facturaOriginalFolio ?? facturaData?.folio,
           ncfOriginal:            ecfResult?.ncfModificado,
           codigoModificacion:     ecfResult?.codigoModificacion ? String(ecfResult.codigoModificacion) : codigoMod,
@@ -2232,8 +2231,19 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
           empresaRnc:             empRes.rnc,
           empresaDireccion:       empRes.direccion,
           empresaTelefono:        empRes.telefono,
-          fechaEmision:           nc?.fecha ? String(nc.fecha).substring(0, 10).split('-').reverse().join('/') : undefined,
-          horaEmision:            nc?.createdAt ? dayjs(nc.createdAt).format('HH:mm:ss') : undefined,
+          // signedDate (DGII) es la hora oficial de emisión → usar para header y sección ECF
+          ...((): { fechaEmision?: string; horaEmision?: string; ecfFecha: string } => {
+            const signed = (ecfResult as any)?.signedDate as string | undefined;
+            if (signed) {
+              const [dp, tp] = signed.split(' ');
+              return { fechaEmision: dp ? dp.replace(/-/g, '/') : undefined, horaEmision: tp, ecfFecha: signed };
+            }
+            return {
+              fechaEmision: nc?.fecha ? String(nc.fecha).substring(0, 10).split('-').reverse().join('/') : undefined,
+              horaEmision:  nc?.createdAt ? dayjs(nc.createdAt).format('HH:mm:ss') : undefined,
+              ecfFecha:     dayjs().format('DD-MM-YYYY HH:mm:ss'),
+            };
+          })(),
         };
         const qrDUrl = ecfResult?.qrUrl && !ecfPendiente
           ? await QRCode.toDataURL(ecfResult.qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' }).catch(() => null)
@@ -7092,13 +7102,24 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           empresaDireccion:       empInfo.direccion,
           empresaTelefono:        empInfo.telefono,
           cajero:                 doc.nombreVendedor ?? doc.usuario?.nombre,
-          fechaEmision:           doc.fecha ? String(doc.fecha).substring(0, 10).split('-').reverse().join('/') : undefined,
-          horaEmision:            doc.createdAt ? dayjs(doc.createdAt).format('HH:mm:ss') : undefined,
-          ecfFecha: (() => {
-            const signed = (doc.ecf?.respuestaMSeller as any)?.signedDate as string | undefined;
-            if (signed) return signed;
+          // signedDate (DGII) es la hora oficial de emisión del e-CF → usar para header y sección ECF
+          ...((): { fechaEmision?: string; horaEmision?: string; ecfFecha?: string } => {
+            const signed = ((doc.ecf?.respuestaMSeller as any)?.signedDate
+              ?? doc.ecf?.signedDate) as string | undefined;
+            if (signed) {
+              const [dp, tp] = signed.split(' ');
+              return {
+                fechaEmision: dp ? dp.replace(/-/g, '/') : undefined,
+                horaEmision:  tp,
+                ecfFecha:     signed,
+              };
+            }
             const ts = doc.ecf?.ultimoIntentoEnvio ?? doc.ecf?.fechaFirma;
-            return ts ? dayjs(ts).format('DD-MM-YYYY HH:mm:ss') : undefined;
+            return {
+              fechaEmision: doc.fecha ? String(doc.fecha).substring(0, 10).split('-').reverse().join('/') : undefined,
+              horaEmision:  doc.createdAt ? dayjs(doc.createdAt).format('HH:mm:ss') : undefined,
+              ecfFecha:     ts ? dayjs(ts).format('DD-MM-YYYY HH:mm:ss') : undefined,
+            };
           })(),
         };
         let qrDUrl: string | null = null;
