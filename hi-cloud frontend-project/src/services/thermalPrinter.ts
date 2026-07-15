@@ -188,8 +188,10 @@ export async function generarReciboESCPOS(sale: SaleBT, empresa: EmpresaBT): Pro
   const c = comandos().init();
 
   // ── Header ─────────────────────────────────────────────────────────────────
+  // alignCenter() se pone DESPUÉS de doble(true) porque GS! puede resetear ESC a en BT-58UB.
+  // Se repite después de doble(false) para garantizar centrado en RNC/Tel.
+  c.bold(true).doble(true).alignCenter().texto(centrar(nombreEmp)).doble(false).bold(false);
   c.alignCenter();
-  c.bold(true).doble(true).texto(centrar(nombreEmp)).doble(false).bold(false);
   if (rncEmp) c.texto(centrar(`RNC: ${rncEmp}`));
   if (dirEmp) { for (const l of envolver(dirEmp)) c.texto(centrar(l)); }
   if (telEmp) c.texto(centrar(`Tel: ${telEmp}`));
