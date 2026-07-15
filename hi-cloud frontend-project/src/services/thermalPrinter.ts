@@ -234,14 +234,24 @@ async function findCharacteristic(server: any): Promise<any> {
   return null;
 }
 
+// gatt.connect() puede colgar indefinidamente en Android — siempre usar con timeout.
+function gattConnectWithTimeout(device: any, ms = 7000): Promise<any> {
+  return Promise.race([
+    device.gatt.connect(),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('gatt timeout')), ms)
+    ),
+  ]);
+}
+
 /** Intenta reconectar usando btDevice ya conocido (sin getDevices). */
 async function _reconectarDesdeDispositivo(): Promise<void> {
   if (!btDevice || btChar) return;
   for (let i = 0; i < 3; i++) {
-    await new Promise(r => setTimeout(r, 1500 * (i + 1)));
+    await new Promise(r => setTimeout(r, 2000));
     if (btChar) return;
     try {
-      const server = await btDevice.gatt.connect();
+      const server = await gattConnectWithTimeout(btDevice, 8000);
       const char   = await findCharacteristic(server);
       if (char) { btChar = char; return; }
     } catch { /* retry */ }
@@ -277,8 +287,8 @@ export async function conectarImpresora(): Promise<string> {
 
 /** Intenta reconectar silenciosamente usando los dispositivos previamente autorizados.
  *  Chrome recuerda los permisos BT sin nueva solicitud de usuario (requiere Chrome 85+).
- *  Reintenta hasta 4 veces con pausa de 2 s entre intentos — el stack BT puede necesitar
- *  unos segundos después del F5 para estar listo. */
+ *  Un solo intento con timeout — el caller (useEffect) maneja los reintentos externos.
+ *  gatt.connect() tiene timeout de 7 s para evitar que cuelgue el bucle en Android. */
 export async function autoReconectarImpresora(): Promise<string | null> {
   if (!('bluetooth' in navigator)) return null;
   if (btChar) return getNombreImpresora();
@@ -288,30 +298,33 @@ export async function autoReconectarImpresora(): Promise<string | null> {
   const nav = navigator as any;
   if (typeof nav.bluetooth?.getDevices !== 'function') return null;
 
-  const MAX = 4;
-  for (let intento = 0; intento < MAX; intento++) {
-    if (intento > 0) await new Promise(r => setTimeout(r, 2000));
-    if (btChar) return getNombreImpresora(); // otro intento tuvo éxito
+  let devices: any[];
+  try { devices = await nav.bluetooth.getDevices(); } catch { return null; }
+  if (!devices.length) return null;
+
+  // Intentar primero el dispositivo que coincide con el nombre guardado
+  const ordenados = [
+    ...devices.filter((d: any) => d.name === nombreGuardado),
+    ...devices.filter((d: any) => d.name !== nombreGuardado),
+  ];
+
+  for (const device of ordenados) {
+    if (btChar) return getNombreImpresora(); // otro intento paralelo tuvo éxito
     try {
-      const devices: any[] = await nav.bluetooth.getDevices();
-      for (const device of devices) {
-        try {
-          const server = await device.gatt.connect();
-          const char   = await findCharacteristic(server);
-          if (char) {
-            btDevice = device;
-            btChar   = char;
-            const nombre = device.name ?? nombreGuardado;
-            localStorage.setItem('bt_impresora_nombre', nombre);
-            device.addEventListener('gattserverdisconnected', () => {
-              btChar = null;
-              _reconectarDesdeDispositivo();
-            });
-            return nombre;
-          }
-        } catch { /* este dispositivo no disponible, probar el siguiente */ }
+      const server = await gattConnectWithTimeout(device, 7000);
+      const char   = await findCharacteristic(server);
+      if (char) {
+        btDevice = device;
+        btChar   = char;
+        const nombre = device.name ?? nombreGuardado;
+        localStorage.setItem('bt_impresora_nombre', nombre);
+        device.addEventListener('gattserverdisconnected', () => {
+          btChar = null;
+          _reconectarDesdeDispositivo();
+        });
+        return nombre;
       }
-    } catch { return null; /* getDevices no soportado o error fatal */ }
+    } catch { /* dispositivo no disponible o timeout — probar el siguiente */ }
   }
 
   return null;
@@ -335,7 +348,7 @@ export function getNombreImpresora(): string {
 async function enviarDatos(bytes: Uint8Array): Promise<void> {
   // Reconectar si el GATT server se desconectó (apagado/alejamiento temporal)
   if (!btChar && btDevice) {
-    const server = await btDevice.gatt.connect();
+    const server = await gattConnectWithTimeout(btDevice, 8000);
     btChar = await findCharacteristic(server);
   }
   if (!btChar) throw new Error('Impresora no conectada. Conectala desde Menu → Impresora BT.');

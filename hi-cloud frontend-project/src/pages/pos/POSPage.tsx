@@ -8134,41 +8134,58 @@ export default function POSPage() {
   const [btNombrePrt,  setBtNombrePrt]  = useState(() => getNombreImpresora());
   const [btConectada,  setBtConectada]  = useState(() => estaConectada());
 
-  // Auto-reconectar impresora BT al cargar la página.
-  // Reintenta cada 5 s por hasta 40 s — el stack BT de Android puede tardar
-  // unos segundos después de un F5 antes de aceptar gatt.connect().
+  // Auto-reconectar impresora BT al cargar la página y cuando la pestaña vuelve a ser visible.
+  // Reintenta cada 5 s por hasta 90 s — el stack BT de Android puede tardar bastante
+  // después de un F5; cada intento tiene timeout de 7 s para no colgar.
   useEffect(() => {
     let activo = true;
     let timerId: ReturnType<typeof setInterval> | null = null;
+    let corriendo = false; // evitar llamadas solapadas
+
+    const detener = () => {
+      if (timerId) { clearInterval(timerId); timerId = null; }
+    };
 
     const intentar = () => {
-      if (!activo) return;
+      if (!activo || corriendo) return;
       if (estaConectada()) {
         setBtConectada(true);
         setBtNombrePrt(getNombreImpresora());
-        if (timerId) { clearInterval(timerId); timerId = null; }
+        detener();
         return;
       }
+      corriendo = true;
       autoReconectarImpresora().then(nombre => {
+        corriendo = false;
         if (!activo) return;
         if (nombre) {
           setBtConectada(true);
           setBtNombrePrt(nombre);
-          if (timerId) { clearInterval(timerId); timerId = null; }
+          detener();
         }
-      }).catch(() => {});
+      }).catch(() => { corriendo = false; });
     };
 
     intentar(); // intento inmediato
     timerId = setInterval(intentar, 5000); // reintentar cada 5 s
-    const maxTimer = setTimeout(() => { // cancelar después de 40 s
-      if (timerId) { clearInterval(timerId); timerId = null; }
-    }, 40000);
+    const maxTimer = setTimeout(detener, 90000); // ventana de 90 s
+
+    // Cuando Android desbloquea la pantalla / el usuario vuelve a la pestaña,
+    // la conexión BT puede haberse caído — volver a intentar.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && !estaConectada()) {
+        // Reactivar el intervalo si ya se había cancelado
+        if (!timerId) timerId = setInterval(intentar, 5000);
+        intentar();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
 
     return () => {
       activo = false;
-      if (timerId) clearInterval(timerId);
+      detener();
       clearTimeout(maxTimer);
+      document.removeEventListener('visibilitychange', onVisible);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
