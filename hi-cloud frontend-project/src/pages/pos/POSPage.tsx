@@ -1182,7 +1182,7 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
       </div>
 
       {/* Modal: seleccionar sucursal */}
-      <Modal
+      <Modal maskClosable={false}
         open={modalCambiarSucursal}
         onCancel={() => { if (!cambiandoSucursal) setModalCambiarSucursal(false); }}
         title={<span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><ShopOutlined style={{ color: '#3B82F6' }} /> Cambiar sucursal</span>}
@@ -1376,7 +1376,7 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar 
   };
 
   return (
-    <Modal open={open} footer={null} closable={false} centered width="min(400px, 95vw)"
+    <Modal maskClosable={false} open={open} footer={null} closable={false} centered width="min(400px, 95vw)"
       styles={{ content: { background: C.card, borderRadius: 20, padding: 0, overflow: 'hidden' }, body: { padding: 0 } }}>
       <div style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 20 }}>
 
@@ -1933,7 +1933,7 @@ function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir, mostrarEcf = 
   if (!sale) return null;
 
   return (
-    <Modal open={!!sale} footer={null} closable={false} centered width="min(400px, 95vw)"
+    <Modal maskClosable={false} open={!!sale} footer={null} closable={false} centered width="min(400px, 95vw)"
       styles={{ content: { background: C.card, borderRadius: 20, padding: 0, overflow: 'hidden' }, body: { padding: 0 } }}>
       <div>
         <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}
@@ -3677,7 +3677,7 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
       </>)}
 
       {/* Modal — Detalle / Editar OC */}
-      <Modal
+      <Modal maskClosable={false}
         title={detailOCId ? `Orden de Compra` : ''}
         open={detailOCId !== null}
         onCancel={() => setDetailOCId(null)}
@@ -3706,7 +3706,7 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
       </Modal>
 
       {/* Modal — Nueva Orden de Compra */}
-      <Modal
+      <Modal maskClosable={false}
         title="Nueva Orden de Compra"
         open={modalNuevaOC}
         onCancel={() => setModalNuevaOC(false)}
@@ -7802,7 +7802,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
       )}
 
       {/* ── Modal: Enviar factura por correo ───────────────────────────── */}
-      <Modal
+      <Modal maskClosable={false}
         title={<span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><MailOutlined style={{ color: '#1677ff' }} /> Enviar factura por correo</span>}
         open={!!emailFacturaPos}
         onCancel={() => { setEmailFacturaPos(null); setEmailDestinoPOS(''); }}
@@ -9958,7 +9958,7 @@ export default function POSPage() {
       </div>
 
       {/* ── Payment modal ─────────────────────────────────────────────────────── */}
-      <Modal open={showPago} onCancel={() => setShowPago(false)} footer={null} width={420} centered closable={false} destroyOnClose
+      <Modal maskClosable={false} open={showPago} onCancel={() => setShowPago(false)} footer={null} width={420} centered closable={false} destroyOnClose
         styles={{ body: { padding: 0 }, content: { borderRadius: 20, overflow: 'hidden', padding: 0, background: C.card } }}>
         <div style={{ display: 'flex', flexDirection: 'column', height: 'min(90vh,590px)', overflow: 'hidden', fontFamily: "'Inter',sans-serif" }}>
 
@@ -10435,7 +10435,7 @@ export default function POSPage() {
     )}
 
     {/* ── Modal supervisor (botón manual TopBar — verifica usuario actual) ──── */}
-    <Modal
+    <Modal maskClosable={false}
       title={<span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><UserSwitchOutlined style={{ color: '#F59E0B' }} /> Acceso de Supervisor</span>}
       open={modalSupervisor} onCancel={() => { setModalSupervisor(false); setPwSupervisor(''); setErrSupervisor(''); }}
       footer={null} width={360} destroyOnClose>
@@ -10453,7 +10453,7 @@ export default function POSPage() {
     </Modal>
 
     {/* ── Modal supervisor nuevo (modo supervisor configurable) ────────────── */}
-    <Modal
+    <Modal maskClosable={false}
       title={
         <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <UserSwitchOutlined style={{ color: '#F59E0B' }} />
@@ -10583,7 +10583,7 @@ export default function POSPage() {
     </Modal>
 
     {/* ── Modal cambiar usuario ────────────────────────────────────────────── */}
-    <Modal
+    <Modal maskClosable={false}
       title={<span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 16, fontWeight: 600 }}><SwapOutlined style={{ color: '#0EA5E9' }} /> Cambio De Usuario</span>}
       open={modalCambiarUser}
       onCancel={() => { setModalCambiarUser(false); setCambiarUserId(undefined); setPwCambio(''); setErrCambio(''); }}
@@ -10624,7 +10624,7 @@ export default function POSPage() {
     </Modal>
 
     {/* ── Modal Impresora Bluetooth ─────────────────────────────────────────── */}
-    <Modal
+    <Modal maskClosable={false}
       title={<span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600 }}>🖨️ Impresora Bluetooth</span>}
       open={modalBT}
       onCancel={() => setModalBT(false)}
@@ -10706,7 +10706,7 @@ export default function POSPage() {
     </Modal>
 
     {/* ── Modal confirmar salida del POS ──────────────────────────────────── */}
-    <Modal open={modalSalirPOS} footer={null} closable={false} centered width={380}
+    <Modal maskClosable={false} open={modalSalirPOS} footer={null} closable={false} centered width={380}
       styles={{ content: { background: C.card, borderRadius: 16, padding: 0, overflow: 'hidden' }, body: { padding: 0 } }}>
       <div style={{ padding: '28px 28px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
