@@ -2231,17 +2231,16 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
           empresaRnc:             empRes.rnc,
           empresaDireccion:       empRes.direccion,
           empresaTelefono:        empRes.telefono,
-          // signedDate (DGII) es la hora oficial de emisión → usar para header y sección ECF
+          // Header: nc.fecha + nc.createdAt (= FechaEmision del XML, fecha fiscal oficial)
+          // Sección ECF: signedDate de DGII (cuando aceptó el comprobante)
           ...((): { fechaEmision?: string; horaEmision?: string; ecfFecha: string } => {
+            const fechaHeader = nc?.fecha ? String(nc.fecha).substring(0, 10).split('-').reverse().join('/') : undefined;
+            const horaHeader  = nc?.createdAt ? dayjs(nc.createdAt).format('HH:mm:ss') : undefined;
             const signed = (ecfResult as any)?.signedDate as string | undefined;
-            if (signed) {
-              const [dp, tp] = signed.split(' ');
-              return { fechaEmision: dp ? dp.replace(/-/g, '/') : undefined, horaEmision: tp, ecfFecha: signed };
-            }
             return {
-              fechaEmision: nc?.fecha ? String(nc.fecha).substring(0, 10).split('-').reverse().join('/') : undefined,
-              horaEmision:  nc?.createdAt ? dayjs(nc.createdAt).format('HH:mm:ss') : undefined,
-              ecfFecha:     dayjs().format('DD-MM-YYYY HH:mm:ss'),
+              fechaEmision: fechaHeader,
+              horaEmision:  horaHeader,
+              ecfFecha:     signed ?? (nc?.createdAt ? dayjs(nc.createdAt).format('DD-MM-YYYY HH:mm:ss') : dayjs().format('DD-MM-YYYY HH:mm:ss')),
             };
           })(),
         };
@@ -7102,34 +7101,25 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           empresaDireccion:       empInfo.direccion,
           empresaTelefono:        empInfo.telefono,
           cajero:                 doc.nombreVendedor ?? doc.usuario?.nombre,
-          // signedDate (DGII) es la hora oficial de emisión del e-CF → usar para header y sección ECF
+          // Header Fecha/Hora: siempre desde nc.fecha + nc.createdAt (= FechaEmision del XML enviado a DGII).
+          // En contingencia con cruce de medianoche signedDate puede ser del día siguiente — NO usarlo
+          // para el header, pues el XML ya lleva nc.fecha como fecha fiscal oficial.
+          // Sección ECF: signedDate o ultimoIntentoEnvio (cuando DGII aceptó el comprobante).
           ...((): { fechaEmision?: string; horaEmision?: string; ecfFecha?: string } => {
+            const fechaHeader = doc.fecha
+              ? String(doc.fecha).substring(0, 10).split('-').reverse().join('/')
+              : undefined;
+            const horaHeader = doc.createdAt ? dayjs(doc.createdAt).format('HH:mm:ss') : undefined;
             const signed = ((doc.ecf?.respuestaMSeller as any)?.signedDate
               ?? doc.ecf?.signedDate) as string | undefined;
             if (signed) {
-              const [dp, tp] = signed.split(' ');
-              return {
-                fechaEmision: dp ? dp.replace(/-/g, '/') : undefined,
-                horaEmision:  tp,
-                ecfFecha:     signed,
-              };
+              return { fechaEmision: fechaHeader, horaEmision: horaHeader, ecfFecha: signed };
             }
-            // ultimoIntentoEnvio / fechaFirma son la hora real de firma del e-CF
-            // → usarlos para header Y sección ECF (misma fuente, mismo timestamp)
             const ts = doc.ecf?.ultimoIntentoEnvio ?? doc.ecf?.fechaFirma;
-            if (ts) {
-              const p = dayjs(ts);
-              return {
-                fechaEmision: p.format('DD/MM/YYYY'),
-                horaEmision:  p.format('HH:mm:ss'),
-                ecfFecha:     p.format('DD-MM-YYYY HH:mm:ss'),
-              };
-            }
-            // Sin ECF todavía (pendiente/contingencia): usar fecha de creación del documento
             return {
-              fechaEmision: doc.fecha ? String(doc.fecha).substring(0, 10).split('-').reverse().join('/') : undefined,
-              horaEmision:  doc.createdAt ? dayjs(doc.createdAt).format('HH:mm:ss') : undefined,
-              ecfFecha:     undefined,
+              fechaEmision: fechaHeader,
+              horaEmision:  horaHeader,
+              ecfFecha:     ts ? dayjs(ts).format('DD-MM-YYYY HH:mm:ss') : undefined,
             };
           })(),
         };
