@@ -13,6 +13,7 @@ const PRINTER_SERVICE_UUIDS = [
 // Module-level BT state (device object is not serializable)
 let btDevice: any = null;
 let btChar: any   = null;
+let _falloWatchAdvertisements = false; // watchAdvertisements no disponible en el último intento
 
 // ── Format helpers ─────────────────────────────────────────────────────────────
 
@@ -367,6 +368,12 @@ export function bluetoothAutoReconexionDisponible(): boolean {
     typeof (navigator as any).bluetooth?.getDevices === 'function';
 }
 
+/** true si el último intento de autoReconectarImpresora() entró al fallback porque
+ *  el device no tiene watchAdvertisements disponible (flag experimental desactivado). */
+export function huboFalloWatchAdvertisements(): boolean {
+  return _falloWatchAdvertisements;
+}
+
 /** Intenta reconectar silenciosamente usando los dispositivos previamente autorizados.
  *  Estrategia principal: watchAdvertisements() como puerta antes de gatt.connect()
  *  para el dispositivo conocido — espera a que el device se anuncie antes de conectar,
@@ -398,6 +405,8 @@ export async function autoReconectarImpresora(): Promise<string | null> {
     ...devices.filter((d: any) => d.name !== nombreGuardado),
   ];
 
+  _falloWatchAdvertisements = false; // reset antes de cada intento
+
   // ── Estrategia 1: watchAdvertisements → gatt.connect() para el dispositivo nombrado ─
   const nombrado = ordenados.find((d: any) => d.name === nombreGuardado);
   if (nombrado) {
@@ -408,9 +417,10 @@ export async function autoReconectarImpresora(): Promise<string | null> {
         localStorage.setItem('bt_impresora_nombre', nombre);
         return nombre;
       }
-      console.error('[BT] watchAdvertisements expiró para "' + nombreGuardado + '" — fallback a gatt.connect() directo');
+      console.warn('[BT] watchAdvertisements expiró para "' + nombreGuardado + '" — fallback a gatt.connect() directo');
     } else {
-      console.error('[BT] watchAdvertisements no disponible para "' + nombreGuardado + '" — usando gatt.connect() directo');
+      _falloWatchAdvertisements = true;
+      console.warn('[BT] watchAdvertisements no disponible (flag experimental off) para "' + nombreGuardado + '" — usando gatt.connect() directo');
     }
   }
 

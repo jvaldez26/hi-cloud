@@ -18,7 +18,7 @@ import { facturasApi } from '../../api/facturas.api';
 import { inventarioApi } from '../../api/inventario.api';
 import { fmt, round2 } from '../../utils/formatters';
 import { imprimirElemento, imprimirReciboTermico, imprimirPDFA4 } from '../../utils/printUtils';
-import { imprimirReciboEscPos, conectarImpresora, desconectarImpresora, estaConectada, getNombreImpresora, imprimirPruebaEscPos, autoReconectarImpresora, bluetoothAutoReconexionDisponible } from '../../services/thermalPrinter';
+import { imprimirReciboEscPos, conectarImpresora, desconectarImpresora, estaConectada, getNombreImpresora, imprimirPruebaEscPos, autoReconectarImpresora, bluetoothAutoReconexionDisponible, huboFalloWatchAdvertisements } from '../../services/thermalPrinter';
 import { useThemeStore } from '../../store/theme.store';
 import { useOfflineQueue } from '../../hooks/useOfflineQueue';
 import { useSupervisor } from '../../hooks/useSupervisor';
@@ -8142,9 +8142,10 @@ export default function POSPage() {
   useEffect(() => {
     // Sin getDevices() la reconexión automática es imposible — avisar una vez y salir.
     if (!bluetoothAutoReconexionDisponible()) {
+      console.warn('[BT] getDevices no disponible (flag permissions-backend off)');
       if (getNombreImpresora()) {
         message.warning(
-          'Tu navegador no permite reconexión automática de la impresora BT. Reconéctala manualmente desde Menú → Impresora BT.',
+          'Reconexión automática no disponible en este navegador (getDevices). Reconecta manual desde Menú → Impresora BT.',
           8,
         );
       }
@@ -8192,7 +8193,9 @@ export default function POSPage() {
       if (!estaConectada() && !avisado && getNombreImpresora()) {
         avisado = true;
         message.warning(
-          'No se pudo reconectar la impresora automáticamente. Conéctala desde Menú → Impresora BT.',
+          huboFalloWatchAdvertisements()
+            ? 'Reconexión automática limitada (watchAdvertisements no disponible). Si no conecta, hazlo manual desde Menú → Impresora BT.'
+            : 'No se pudo reconectar la impresora automáticamente. Conéctala desde Menú → Impresora BT.',
           8,
         );
       }
