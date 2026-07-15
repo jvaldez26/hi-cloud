@@ -452,7 +452,7 @@ export default function FacturaFormPage() {
 
   // ── Alertas contextuales ───────────────────────────────────────────────────
   const tipoInfo = TIPOS_NCF.find(t => t.codigo === tipoNcf);
-  const mostrarAlertaRNC          = tipoNcf === 'E31' && clienteSeleccionado && !(/^\d{9}$/.test(clienteSeleccionado?.rfc?.trim() ?? ''));
+  const mostrarAlertaRNC          = tipoNcf === 'E31' && clienteSeleccionado && !(/^\d{9}$|^\d{11}$/.test(clienteSeleccionado?.rfc?.trim() ?? ''));
   const mostrarAlertaExportacion  = tipoNcf === 'E46' && clienteSeleccionado;
   const mostrarAlertaPagoExterior = tipoNcf === 'E47';
   const mostrarAlertaExento       = (tipoNcf === 'E44' || tipoNcf === 'E45') && clienteSeleccionado;
@@ -780,7 +780,7 @@ export default function FacturaFormPage() {
           )}
           {mostrarAlertaRNC && (
             <Alert type="warning" showIcon style={{ padding: '4px 10px', fontSize: 12 }}
-              message="Cliente sin RNC válido (9 dígitos). E31 requiere RNC registrado en DGII." />
+              message="Cliente sin RNC/Cédula válido (9 u 11 dígitos). E31 requiere RNC registrado en DGII." />
           )}
           {mostrarAlertaExento && (
             <Alert type="info" showIcon style={{ padding: '4px 10px', fontSize: 12 }}
