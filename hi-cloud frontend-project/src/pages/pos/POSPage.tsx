@@ -2232,7 +2232,8 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
           empresaRnc:             empRes.rnc,
           empresaDireccion:       empRes.direccion,
           empresaTelefono:        empRes.telefono,
-          fechaEmision:           nc?.fecha ? dayjs(nc.fecha).format('DD/MM/YYYY') : undefined,
+          fechaEmision:           nc?.fecha ? String(nc.fecha).substring(0, 10).split('-').reverse().join('/') : undefined,
+          horaEmision:            nc?.createdAt ? dayjs(nc.createdAt).format('HH:mm:ss') : undefined,
         };
         const qrDUrl = ecfResult?.qrUrl && !ecfPendiente
           ? await QRCode.toDataURL(ecfResult.qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' }).catch(() => null)
@@ -7090,6 +7091,15 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           empresaRnc:             empInfo.rnc,
           empresaDireccion:       empInfo.direccion,
           empresaTelefono:        empInfo.telefono,
+          cajero:                 doc.nombreVendedor ?? doc.usuario?.nombre,
+          fechaEmision:           doc.fecha ? String(doc.fecha).substring(0, 10).split('-').reverse().join('/') : undefined,
+          horaEmision:            doc.createdAt ? dayjs(doc.createdAt).format('HH:mm:ss') : undefined,
+          ecfFecha: (() => {
+            const signed = (doc.ecf?.respuestaMSeller as any)?.signedDate as string | undefined;
+            if (signed) return signed;
+            const ts = doc.ecf?.ultimoIntentoEnvio ?? doc.ecf?.fechaFirma;
+            return ts ? dayjs(ts).format('DD-MM-YYYY HH:mm:ss') : undefined;
+          })(),
         };
         let qrDUrl: string | null = null;
         if (doc.ecf?.qrUrl && doc.ecf?.numero) {
