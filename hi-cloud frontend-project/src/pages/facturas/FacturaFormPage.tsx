@@ -56,7 +56,8 @@ export default function FacturaFormPage() {
   const [form]   = Form.useForm();
   const [lineas, setLineas] = useState<LineaForm[]>([{ ...lineaVacia(), key: '1' }]);
 
-  const [tipoNcf,     setTipoNcf]     = useState('E32');
+  const [tipoNcf,      setTipoNcf]      = useState('E32');
+  const [tipoNcfManual, setTipoNcfManual] = useState(false); // true cuando el usuario elige manualmente
   const [tipoPago,    setTipoPago]    = useState<'CONTADO' | 'CREDITO'>('CONTADO');
   const [diasCredito, setDiasCredito] = useState(30);
   const [clienteSeleccionado, setClienteSeleccionado] = useState<Cliente | null>(null);
@@ -289,9 +290,9 @@ export default function FacturaFormPage() {
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
-  /** Actualiza sugerencia de tipo NCF según tipo de cliente */
+  /** Actualiza sugerencia de tipo NCF según tipo de cliente, solo si el usuario no eligió manualmente */
   const actualizarTipoNcf = useCallback((cli: Cliente | null) => {
-    if (!cli) return;
+    if (!cli || tipoNcfManual) return;
     const tipoMapa: Record<string, string> = {
       persona_juridica: 'E31',
       persona_fisica:   'E31',
@@ -306,7 +307,7 @@ export default function FacturaFormPage() {
     } else {
       setTipoNcf(sugerido);
     }
-  }, []);
+  }, [tipoNcfManual]);
 
   const onClienteChange = (clienteId: number) => {
     const cli = clientes?.data.find((c: Cliente) => c.id === clienteId) ?? null;
@@ -591,7 +592,7 @@ export default function FacturaFormPage() {
                   </span>
                 }
               >
-                <Select value={tipoNcf} onChange={setTipoNcf}
+                <Select value={tipoNcf} onChange={v => { setTipoNcf(v); setTipoNcfManual(true); }}
                   optionLabelProp="label" popupMatchSelectWidth={false}
                   dropdownStyle={{ minWidth: 300 }}>
                   {TIPOS_NCF.filter(t => NCF_VENTAS.includes(t.codigo)).map(t => (

@@ -288,30 +288,13 @@ function gattConnectWithTimeout(device: any, ms = 7000): Promise<any> {
   ]);
 }
 
-/** Establece btDevice/btChar y registra el listener de desconexión GATT. */
+/** Establece btDevice/btChar y registra el listener de desconexión GATT.
+ *  Al desconectarse solo nulifica btChar; la reconexión ocurre bajo demanda
+ *  en enviarDatos() para no interferir con la recuperación natural del stack BT. */
 function _registrarDispositivo(device: any, char: any): void {
   btDevice = device;
   btChar   = char;
-  device.addEventListener('gattserverdisconnected', () => {
-    btChar = null;
-    _reconectarDesdeDispositivo();
-  });
-}
-
-/** Intenta reconectar usando btDevice ya conocido (sin getDevices). */
-async function _reconectarDesdeDispositivo(): Promise<void> {
-  if (!btDevice || btChar) return;
-  for (let i = 0; i < 3; i++) {
-    await new Promise(r => setTimeout(r, 2000));
-    if (btChar) return;
-    try {
-      const server = await gattConnectWithTimeout(btDevice, 8000);
-      const char   = await findCharacteristic(server);
-      if (char) { btChar = char; return; }
-    } catch (err) {
-      console.error('[BT] _reconectarDesdeDispositivo intento', i + 1, 'falló:', err);
-    }
-  }
+  device.addEventListener('gattserverdisconnected', () => { btChar = null; });
 }
 
 /** Espera el primer advertisement del device y luego ejecuta gatt.connect().
@@ -396,10 +379,7 @@ export async function conectarImpresora(): Promise<string> {
   const nombre = device.name ?? 'Impresora BT';
   localStorage.setItem('bt_impresora_nombre', nombre);
 
-  device.addEventListener('gattserverdisconnected', () => {
-    btChar = null;
-    _reconectarDesdeDispositivo();
-  });
+  device.addEventListener('gattserverdisconnected', () => { btChar = null; });
 
   return nombre;
 }
