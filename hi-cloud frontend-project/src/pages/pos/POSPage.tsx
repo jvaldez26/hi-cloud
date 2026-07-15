@@ -8019,6 +8019,9 @@ export default function POSPage() {
     enabled:   !!supervisor.pendingAction,
     staleTime: 2 * 60_000,
   });
+  // ── Modal confirmar salida del POS ────────────────────────────────────────
+  const [modalSalirPOS,       setModalSalirPOS]       = useState(false);
+
   // ── Modal cambiar usuario ─────────────────────────────────────────────────
   const [modalCambiarUser,    setModalCambiarUser]    = useState(false);
   const [cambiarUserId,       setCambiarUserId]       = useState<number | undefined>();
@@ -9289,17 +9292,7 @@ export default function POSPage() {
 
   // ── Confirmar salida ────────────────────────────────────────────────────────
   // Salir del POS → dashboard (sin cerrar sesión)
-  const salirDelPOS = () => {
-    Modal.confirm({
-      title: '¿Salir del Punto de Venta?',
-      content: 'Serás redirigido al dashboard. La sesión permanece activa.',
-      okText: 'Salir', cancelText: 'Cancelar',
-      onOk: () => {
-        sessionStorage.removeItem('pos_turno');
-        navigate('/dashboard');
-      },
-    });
-  };
+  const salirDelPOS = () => setModalSalirPOS(true);
 
   // Cerrar sesión completa → login (solo desde pantalla bloqueada)
   const cerrarSesion = async () => {
@@ -10709,6 +10702,34 @@ export default function POSPage() {
 
       <div style={{ marginTop: 16, fontSize: 11, color: 'rgba(0,0,0,0.4)', lineHeight: 1.5 }}>
         Requiere Chrome en Android con la página en HTTPS. Activa el modo "Impresora BT" en Configuración → POS para imprimir automáticamente.
+      </div>
+    </Modal>
+
+    {/* ── Modal confirmar salida del POS ──────────────────────────────────── */}
+    <Modal open={modalSalirPOS} footer={null} closable={false} centered width={380}
+      styles={{ content: { background: C.card, borderRadius: 16, padding: 0, overflow: 'hidden' }, body: { padding: 0 } }}>
+      <div style={{ padding: '28px 28px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: C.orange + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <span style={{ fontSize: 20 }}>⚠️</span>
+          </div>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: C.text, lineHeight: 1.3 }}>¿Salir del Punto de Venta?</div>
+            <div style={{ fontSize: 13, color: C.textSub, marginTop: 4, lineHeight: 1.4 }}>Serás redirigido al dashboard. La sesión permanece activa.</div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
+          <button
+            onClick={() => setModalSalirPOS(false)}
+            style={{ padding: '8px 20px', borderRadius: 8, border: `1px solid ${C.border2}`, background: 'transparent', color: C.text, fontSize: 13, fontWeight: 500, cursor: 'pointer', outline: 'none' }}>
+            Cancelar
+          </button>
+          <button
+            onClick={() => { setModalSalirPOS(false); sessionStorage.removeItem('pos_turno'); navigate('/dashboard'); }}
+            style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: C.red, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', outline: 'none' }}>
+            Salir
+          </button>
+        </div>
       </div>
     </Modal>
 
