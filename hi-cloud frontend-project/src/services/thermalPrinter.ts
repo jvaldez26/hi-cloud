@@ -1,5 +1,6 @@
 // ESC/POS Bluetooth Thermal Printer — 58mm (32 chars/line)
 // Web Bluetooth API: Chrome/Edge on Android + HTTPS only.
+import QRCode from 'qrcode';
 
 const CARACTERES_POR_LINEA = 32;
 
@@ -72,18 +73,16 @@ function comandos() {
     salto(n = 1)      { for (let i = 0; i < n; i++) b(0x0A); return api; },
     cortar()          { b(0x1D, 0x56, 0x42, 0x00); return api; },
 
-    // QR nativo ESC/POS — GS ( k — compatible con la mayoría de térmicas 58mm
-    qr(data: string, size = 4) {
-      const enc  = new TextEncoder().encode(data);
-      const dLen = enc.length + 3;      // pL pH cuenta m + fn + c1 + data
-      const pL   = dLen & 0xFF;
-      const pH   = (dLen >> 8) & 0xFF;
-      b(0x1D, 0x28, 0x6B, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00); // Modelo 2
-      b(0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x43, size & 0xFF); // Tamaño módulo
-      b(0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x45, 0x31);        // Error correction M
-      bufs.push(new Uint8Array([0x1D, 0x28, 0x6B, pL, pH, 0x31, 0x50, 0x30])); // Almacenar datos
-      bufs.push(enc);
-      b(0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x51, 0x30);        // Imprimir QR
+    // QR raster bitmap — GS v 0 — compatible con térmicas BT-58UB y similares que
+    // no implementan GS ( k (2D nativo). Los bytes ya vienen pre-renderizados desde canvas.
+    qrBitmap(data: Uint8Array, w: number, h: number) {
+      const byteWidth = Math.ceil(w / 8);
+      b(0x1B, 0x61, 0x01);                                                 // centrar
+      b(0x1D, 0x76, 0x30, 0x00,
+        byteWidth & 0xFF, (byteWidth >> 8) & 0xFF,
+        h & 0xFF, (h >> 8) & 0xFF);                                        // GS v 0 m=0
+      bufs.push(data);
+      b(0x1B, 0x61, 0x00);                                                 // alinear izq
       return api;
     },
 
@@ -96,6 +95,42 @@ function comandos() {
     },
   };
   return api;
+}
+
+// Renderiza el QR como bitmap 1-bit para GS v 0 (compatible con térmicas sin GS(k 2D).
+// Pre-render antes de armar el buffer ESC/POS porque toCanvas es async.
+async function _renderQrToBitmap(
+  data: string,
+): Promise<{ data: Uint8Array; w: number; h: number } | null> {
+  try {
+    const canvas = document.createElement('canvas');
+    await QRCode.toCanvas(canvas, data, { width: 160, margin: 2, errorCorrectionLevel: 'M' });
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      console.warn('[QR-BT] getContext() null — se omite QR del ticket');
+      return null;
+    }
+    const w = canvas.width;
+    const h = canvas.height;
+    const byteWidth = Math.ceil(w / 8);
+    const { data: pixels } = ctx.getImageData(0, 0, w, h); // RGBA flat array
+    const out = new Uint8Array(byteWidth * h);
+    for (let row = 0; row < h; row++) {
+      for (let col = 0; col < byteWidth; col++) {
+        let byte = 0;
+        for (let bit = 0; bit < 8; bit++) {
+          const px = row * w + col * 8 + bit;
+          // Canal R con umbral <128 → bit encendido (punto negro). Ignoramos alpha.
+          if (px < w * h && pixels[px * 4] < 128) byte |= (0x80 >> bit); // MSB-first
+        }
+        out[row * byteWidth + col] = byte;
+      }
+    }
+    return { data: out, w, h };
+  } catch (err) {
+    console.warn('[QR-BT] Error al renderizar QR a bitmap — se omite QR del ticket:', err);
+    return null;
+  }
 }
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -135,7 +170,13 @@ function fmtMonto(n: number): string {
   return n.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-export function generarReciboESCPOS(sale: SaleBT, empresa: EmpresaBT): Uint8Array {
+export async function generarReciboESCPOS(sale: SaleBT, empresa: EmpresaBT): Promise<Uint8Array> {
+  // Pre-renderizar QR antes de armar el buffer (toCanvas es async; el buffer es síncrono)
+  let qrBitmapResult: { data: Uint8Array; w: number; h: number } | null = null;
+  if (sale.qrUrl && !sale.ecfPendiente) {
+    qrBitmapResult = await _renderQrToBitmap(sale.qrUrl);
+  }
+
   const nombreEmp = empresa.nombre ?? sale.empresaNombreComercial ?? 'HiCloud POS';
   const rncEmp    = empresa.rnc    ?? sale.empresaRnc    ?? '';
   const dirEmp    = empresa.direccion ?? sale.empresaDireccion ?? '';
@@ -198,10 +239,10 @@ export function generarReciboESCPOS(sale: SaleBT, empresa: EmpresaBT): Uint8Arra
       c.texto(centrar(sale.securityCode));
     }
 
-    // QR de verificación DGII
+    // QR de verificación DGII (raster GS v 0 — compatible BT-58UB)
     if (sale.qrUrl && !sale.ecfPendiente) {
       c.salto(1);
-      c.qr(sale.qrUrl, 4);
+      if (qrBitmapResult) c.qrBitmap(qrBitmapResult.data, qrBitmapResult.w, qrBitmapResult.h);
       c.salto(1);
       c.texto(centrar('Escanea para verificar'));
     }
@@ -480,7 +521,7 @@ async function enviarDatos(bytes: Uint8Array): Promise<void> {
 }
 
 export async function imprimirReciboEscPos(sale: SaleBT, empresa: EmpresaBT): Promise<void> {
-  const bytes = generarReciboESCPOS(sale, empresa);
+  const bytes = await generarReciboESCPOS(sale, empresa);
   await enviarDatos(bytes);
 }
 
@@ -555,7 +596,7 @@ export async function imprimirHtmlEnBT(html: string): Promise<void> {
 }
 
 export async function imprimirPruebaEscPos(): Promise<void> {
-  const bytes = generarReciboESCPOS({
+  const bytes = await generarReciboESCPOS({
     total: 0,
     items: [],
     cajero: 'Cajero POS',
