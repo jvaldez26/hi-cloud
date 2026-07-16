@@ -503,7 +503,7 @@ export class PagosSuscripcionService {
         FROM suscripciones s
         JOIN empresa e ON e.id = s."empresaId"
         WHERE s.estado = 'activa'
-          AND s."fechaVencimiento"::date = $1
+          AND COALESCE(s."vencimientoOverride", s."fechaVencimiento")::date = $1
           AND e."isActive" = true
       `, [fecha]);
 
@@ -527,7 +527,7 @@ export class PagosSuscripcionService {
       FROM suscripciones s
       JOIN empresa e ON e.id = s."empresaId"
       WHERE s.estado = 'activa'
-        AND s."fechaVencimiento"::date = $1
+        AND COALESCE(s."vencimientoOverride", s."fechaVencimiento")::date = $1
         AND e."isActive" = true
     `, [fecha]);
 
@@ -566,7 +566,7 @@ export class PagosSuscripcionService {
       SELECT e.nombre, e.email, s.plan
       FROM suscripciones s
       JOIN empresa e ON e.id = s."empresaId"
-      WHERE s."fechaVencimiento"::date = CURRENT_DATE
+      WHERE COALESCE(s."vencimientoOverride", s."fechaVencimiento")::date = CURRENT_DATE
         AND s.estado = 'activa'
         AND e."isActive" = true
     `);
