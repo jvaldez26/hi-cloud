@@ -21,7 +21,7 @@ export class SuperAdminService {
       SELECT e.id, e.nombre, e.rnc, e."isActive",
              e."createdAt"::date AS "fechaRegistro",
              s.plan, s.estado AS "estadoSuscripcion",
-             s."fechaVencimiento"::date AS "venceSuscripcion",
+             COALESCE(s."vencimientoOverride", s."fechaVencimiento")::date AS "venceSuscripcion",
              s."vencimientoOverride"::date AS "vencimientoOverride",
              COUNT(DISTINCT ue."userId")::int   AS usuarios,
              COUNT(DISTINCT f.id)::int          AS "facturasMes"

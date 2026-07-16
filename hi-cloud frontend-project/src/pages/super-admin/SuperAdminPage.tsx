@@ -3050,19 +3050,19 @@ export default function SuperAdminPage() {
                 fontSize: 22, fontWeight: 800, color: C.blue,
               }}>{detalleEmpresa.nombre?.charAt(0)}</div>
               <div>
-                <h2 style={{ color: C.txt, fontWeight: 800, fontSize: 18, margin: 0 }}>{detalleEmpresa.nombre}</h2>
+                <h2 style={{ color: '#F8FAFC', fontWeight: 800, fontSize: 18, margin: 0 }}>{detalleEmpresa.nombre}</h2>
                 <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
                   <PlanBadge plan={detalleEmpresa.plan} />
                   <EstadoBadge activa={detalleEmpresa.isActive} />
                 </div>
               </div>
               <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
-                <div style={{ color: C.txt2, fontSize: 12 }}>Vencimiento</div>
+                <div style={{ color: '#94A3B8', fontSize: 12 }}>Vencimiento</div>
                 {(() => {
                   const { texto, color } = fmtRelativa(detalleEmpresa.venceSuscripcion);
                   return (
                     <>
-                      <div style={{ color: C.txt, fontWeight: 600, fontSize: 13 }}>{fmtFecha(detalleEmpresa.venceSuscripcion)}</div>
+                      <div style={{ color: '#F8FAFC', fontWeight: 600, fontSize: 13 }}>{fmtFecha(detalleEmpresa.venceSuscripcion)}</div>
                       <div style={{ color, fontSize: 12 }}>{texto}</div>
                     </>
                   );
