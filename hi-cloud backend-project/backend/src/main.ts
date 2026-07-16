@@ -1,8 +1,10 @@
 import { NestFactory, HttpAdapterHost } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { Logger as PinoLogger } from 'nestjs-pino';
+import { ConfigService } from '@nestjs/config';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { initSentry } from './common/observability/sentry';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import helmet from 'helmet';
@@ -58,6 +60,16 @@ async function bootstrap() {
   // Logger estructurado pino como logger de la app: las 578 llamadas this.logger.*
   // existentes pasan a JSON sin tocar ningún call site.
   app.useLogger(app.get(PinoLogger));
+
+  // ── Sentry (rastreo de errores) — DSN por env; no-op si no está configurado ──
+  // Se inicializa después de create() para que ConfigService ya tenga el .env +
+  // los secretos de AWS Secrets Manager (loadSecretsIfProd corrió antes de create).
+  const config = app.get(ConfigService);
+  initSentry({
+    dsn:         config.get<string>('SENTRY_DSN'),
+    release:     config.get<string>('SENTRY_RELEASE'),
+    environment: config.get<string>('NODE_ENV'),
+  });
 
   // Confiar en el proxy Nginx para que req.ip refleje la IP real del cliente.
   // Sin esto req.ip siempre es 127.0.0.1 y el throttler bloquea a todos juntos.

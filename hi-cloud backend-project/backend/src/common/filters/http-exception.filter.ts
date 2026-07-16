@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { EcfError } from '../../ecf/errors/ecf.errors';
+import { reportServerError } from '../observability/sentry';
 
 interface PostgresError extends Error {
   code?: string;
@@ -49,6 +50,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
     // ── HttpException: errores de negocio (400, 401, 403, 404, 409) ──
     if (exception instanceof HttpException) {
       status = exception.getStatus();
+      // Sentry: solo 5xx (p.ej. InternalServerErrorException). Los 4xx de negocio NO se envían.
+      if (status >= 500) {
+        reportServerError(exception, { status, method: request.method, url: request.url });
+      }
       const res = exception.getResponse();
       let extra: Record<string, unknown> | undefined;
       if (typeof res === 'string') {
@@ -115,6 +120,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
           status  = HttpStatus.INTERNAL_SERVER_ERROR;
           message = `Error de configuración: columna no existe (${pgErr.message?.split('"')[1] ?? 'desconocida'})`;
           this.logger.error(`UndefinedColumn [${request.method} ${request.url}]: ${pgErr.message}`);
+          reportServerError(exception, { status, method: request.method, url: request.url });
           return this.send(response, request, status, message);
 
         default:
@@ -133,12 +139,13 @@ export class HttpExceptionFilter implements ExceptionFilter {
       return this.send(response, request, status, message);
     }
 
-    // ── Error genérico no manejado ────────────────────────────────────
+    // ── Error genérico no manejado (5xx + errores PG que cayeron al default) ──
     if (exception instanceof Error) {
       this.logger.error(
         `UnhandledError [${request.method} ${request.url}]: ${exception.message}`,
         exception.stack,
       );
+      reportServerError(exception, { status, method: request.method, url: request.url });
       // En producción nunca exponer detalles internos; en desarrollo sí para facilitar diagnóstico
       message = process.env.NODE_ENV !== 'production'
         ? `Error interno: ${exception.message}`

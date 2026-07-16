@@ -163,6 +163,9 @@ import { EcfRecibidosModule }       from './ecf-recibidos/ecf-recibidos.module';
         SMTP_USER: Joi.string().optional(),
         SMTP_PASS: Joi.string().optional(),
         SMTP_PORT: Joi.number().optional(),
+        // Observabilidad (opcionales — Sentry se deshabilita si falta el DSN)
+        SENTRY_DSN:     Joi.string().uri().optional(),
+        SENTRY_RELEASE: Joi.string().optional(),
       }),
       validationOptions: {
         allowUnknown: true,   // permitir otras vars de entorno (AWS, S3, etc.)

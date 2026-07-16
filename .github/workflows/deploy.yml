@@ -311,6 +311,9 @@ jobs:
             inject_env SMTP_FROM        "$SMTP_FROM"
             inject_env NOTIF_ADMIN_EMAIL "$NOTIF_ADMIN_EMAIL"
             inject_env SEED_PLAN_CUENTAS_RUN "true"
+            # Release de Sentry = SHA del commit recién desplegado (HEAD tras el git reset).
+            # Permite atribuir cada error al deploy que lo introdujo.
+            inject_env SENTRY_RELEASE "$(git rev-parse HEAD)"
             echo "  ✅ Variables de entorno configuradas"
 
             # Chromium para Puppeteer
