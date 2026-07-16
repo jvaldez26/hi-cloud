@@ -1,5 +1,6 @@
 import { NestFactory, HttpAdapterHost } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
+import { Logger as PinoLogger } from 'nestjs-pino';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -51,7 +52,12 @@ async function bootstrap() {
     );
   }
 
-  const app = await NestFactory.create(AppModule);
+  // bufferLogs: retiene los logs de arranque hasta que pino esté listo (useLogger).
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+
+  // Logger estructurado pino como logger de la app: las 578 llamadas this.logger.*
+  // existentes pasan a JSON sin tocar ningún call site.
+  app.useLogger(app.get(PinoLogger));
 
   // Confiar en el proxy Nginx para que req.ip refleje la IP real del cliente.
   // Sin esto req.ip siempre es 127.0.0.1 y el throttler bloquea a todos juntos.

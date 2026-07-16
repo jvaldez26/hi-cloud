@@ -1,5 +1,7 @@
 import * as Joi from 'joi';
 import { Module, NestModule, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
+import { LoggerModule } from 'nestjs-pino';
+import { loggerOptions } from './common/logger/logger.options';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CacheModule } from '@nestjs/cache-manager';
@@ -167,6 +169,8 @@ import { EcfRecibidosModule }       from './ecf-recibidos/ecf-recibidos.module';
         abortEarly:   false,  // mostrar TODOS los errores, no solo el primero
       },
     }),
+    // Logging estructurado (pino) — correlación desde el CLS existente + scrubbing.
+    LoggerModule.forRoot(loggerOptions),
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
     QueuesModule,
