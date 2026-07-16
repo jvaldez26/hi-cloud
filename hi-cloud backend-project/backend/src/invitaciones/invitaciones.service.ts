@@ -202,6 +202,10 @@ export class InvitacionesService {
       const hash = await bcrypt.hash(password, 12);
       user = await this.userRepo.save(this.userRepo.create({
         nombre, email: inv.email, password: hash, role: inv.rol,
+        // Aceptar la invitación (clic en el enlace enviado a su correo) ES la
+        // verificación del email: sin esto el usuario queda bloqueado en el
+        // gate de correo verificado del login con "Credenciales inválidas".
+        emailVerifiedAt: new Date(),
       }));
     } else {
       // El rol de la invitación es autoritativo — actualizar User.role siempre,

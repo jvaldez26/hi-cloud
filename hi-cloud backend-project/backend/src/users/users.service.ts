@@ -24,10 +24,11 @@ export class UsersService implements OnModuleInit {
       const password = await bcrypt.hash('Admin1234', 12);
       await this.userRepository.save(
         this.userRepository.create({
-          nombre:   'Administrador',
-          email:    'admin@hicloud.com',
+          nombre:          'Administrador',
+          email:           'admin@hicloud.com',
           password,
-          role:     UserRole.ADMIN,
+          role:            UserRole.ADMIN,
+          emailVerifiedAt: new Date(),  // bootstrap admin: no debe quedar bloqueado por el gate de correo verificado
         }),
       );
       this.logger.log('✅ Usuario admin creado — email: admin@hicloud.com | pass: Admin1234');

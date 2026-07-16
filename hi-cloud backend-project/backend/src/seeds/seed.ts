@@ -64,8 +64,8 @@ async function run(): Promise<void> {
     console.log(`\n🔄 Contraseña del admin reseteada  (id=${adminId})`);
   } else {
     const res = await em.query(
-      `INSERT INTO users (nombre, email, password, role, "isActive", "createdAt", "updatedAt")
-       VALUES ($1, $2, $3, 'admin', true, NOW(), NOW()) RETURNING id`,
+      `INSERT INTO users (nombre, email, password, role, "isActive", "emailVerifiedAt", "createdAt", "updatedAt")
+       VALUES ($1, $2, $3, 'admin', true, NOW(), NOW(), NOW()) RETURNING id`,
       ['Administrador', 'admin@hicloud.com', passwordHash],
     );
     adminId = res[0].id;

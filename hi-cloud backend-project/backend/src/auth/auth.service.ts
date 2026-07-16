@@ -376,10 +376,15 @@ export class AuthService implements OnModuleInit {
       throw new ForbiddenException('CONTRASEÑA_NO_CONFIGURADA');
     }
 
-    // 6. S-40: Si el correo no está verificado, reenviar email y usar mensaje genérico
+    // 6. Correo no verificado — reenviar email y avisar al usuario.
+    //    SEGURIDAD (enumeración): este gate está DESPUÉS del bcrypt.compare exitoso
+    //    (pasos 2-3). Solo lo alcanza quien YA ingresó la contraseña correcta, así que
+    //    devolver 'CORREO_NO_VERIFICADO' no filtra existencia de emails a un atacante:
+    //    con clave incorrecta se corta antes en el paso 3 con "Credenciales incorrectas".
+    //    El frontend (LoginPage) reconoce este código y muestra "Reenviar correo".
     if (!user.emailVerifiedAt) {
       this.sendVerificationEmail(user.id, user.email, user.nombre).catch(() => null);
-      throw new UnauthorizedException('Credenciales inválidas');
+      throw new UnauthorizedException('CORREO_NO_VERIFICADO');
     }
 
     // 7. Si 2FA está activo → devolver indicador + token temporal
