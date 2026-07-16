@@ -2074,12 +2074,17 @@ export default function SuperAdminPage() {
     { title: 'Inicio', dataIndex: 'fechaInicio', key: 'inicio', width: 100,
       render: (v: string) => <span style={{ color: C.txt2, fontSize: 12 }}>{fmtFecha(v)}</span>,
     },
-    { title: 'Vencimiento', dataIndex: 'fechaVencimiento', key: 'vence', width: 130,
+    { title: 'Vencimiento', dataIndex: 'fechaVencimiento', key: 'vence', width: 150,
       render: (v: string, r: any) => {
         const { texto, color } = fmtRelativa(v);
         return (
           <div>
-            <div style={{ color: C.txt, fontSize: 12 }}>{fmtFecha(v)}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ color: C.txt, fontSize: 12 }}>{fmtFecha(v)}</span>
+              {r.vencimientoOverride != null && (
+                <span style={{ background: '#8B5CF622', color: '#8B5CF6', border: '1px solid #8B5CF655', borderRadius: 4, padding: '0 4px', fontSize: 10, fontWeight: 700 }}>Manual</span>
+              )}
+            </div>
             <div style={{ color, fontSize: 11, fontWeight: 600 }}>{texto}</div>
           </div>
         );

@@ -184,7 +184,7 @@ export class PagosSuscripcionService {
       SELECT p.*,
              e.nombre AS "empresaNombre", e.rnc,
              s.plan, s.estado AS "estadoSuscripcion",
-             s."fechaVencimiento"::date AS "venceSuscripcion"
+             COALESCE(s."vencimientoOverride", s."fechaVencimiento")::date AS "venceSuscripcion"
       FROM pagos_suscripcion p
       JOIN empresa e     ON e.id = p."empresaId"
       LEFT JOIN suscripciones s ON s."empresaId" = p."empresaId"
@@ -217,7 +217,8 @@ export class PagosSuscripcionService {
         e.email,
         s.plan,
         s.estado AS "estadoSuscripcion",
-        s."fechaVencimiento"::date AS "venceSuscripcion",
+        COALESCE(s."vencimientoOverride", s."fechaVencimiento")::date AS "venceSuscripcion",
+        s."vencimientoOverride"::date AS "vencimientoOverride",
         COALESCE(SUM(
           CASE
             WHEN p.tipo = 'CARGO'                                                        THEN  p."montoUsd"
@@ -232,7 +233,7 @@ export class PagosSuscripcionService {
       LEFT JOIN suscripciones s ON s."empresaId" = e.id
       LEFT JOIN pagos_suscripcion p ON p."empresaId" = e.id AND p.estado != 'RECHAZADO'
       WHERE e."isActive" = true
-      GROUP BY e.id, e.nombre, e.email, s.plan, s.estado, s."fechaVencimiento"
+      GROUP BY e.id, e.nombre, e.email, s.plan, s.estado, s."fechaVencimiento", s."vencimientoOverride"
       ORDER BY "saldoPendienteUsd" DESC, e.nombre
     `);
     // Garantizar tipos JS correctos (PostgreSQL devuelve numeric/int como string vía ds.query)

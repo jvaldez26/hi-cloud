@@ -225,12 +225,12 @@ export class SuperAdminService {
       `),
       this.ds.query<any[]>(`
         SELECT COUNT(*)::int AS cnt,
-               COUNT(CASE WHEN "fechaVencimiento" <= CURRENT_DATE + 7 THEN 1 END)::int AS "proximasVencer"
+               COUNT(CASE WHEN COALESCE("vencimientoOverride","fechaVencimiento") <= CURRENT_DATE + 7 THEN 1 END)::int AS "proximasVencer"
         FROM suscripciones WHERE plan::text = 'trial' AND estado = 'activa'
       `),
       this.ds.query<any[]>(`
         SELECT COUNT(*)::int AS cnt FROM suscripciones
-        WHERE "fechaVencimiento" < CURRENT_DATE AND estado = 'activa'
+        WHERE COALESCE("vencimientoOverride","fechaVencimiento") < CURRENT_DATE AND estado = 'activa'
       `),
       this.ds.query<any[]>(`
         SELECT COUNT(*)::int AS cnt FROM ecf
@@ -727,11 +727,13 @@ export class SuperAdminService {
     return this.ds.query<any[]>(`
       SELECT s.id, s."empresaId", e.nombre AS empresa, e.rnc,
              s.plan, s.estado,
-             s."fechaInicio"::date, s."fechaVencimiento"::date,
-             (s."fechaVencimiento"::date - CURRENT_DATE) AS "diasRestantes"
+             s."fechaInicio"::date,
+             COALESCE(s."vencimientoOverride", s."fechaVencimiento")::date AS "fechaVencimiento",
+             (COALESCE(s."vencimientoOverride", s."fechaVencimiento")::date - CURRENT_DATE) AS "diasRestantes",
+             s."vencimientoOverride"::date AS "vencimientoOverride"
       FROM suscripciones s
       JOIN empresa e ON e.id = s."empresaId"
-      ORDER BY s."fechaVencimiento" ASC
+      ORDER BY COALESCE(s."vencimientoOverride", s."fechaVencimiento") ASC
     `);
   }
 

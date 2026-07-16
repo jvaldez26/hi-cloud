@@ -145,12 +145,17 @@ export default function CobrosPage() {
     {
       title: 'Vencimiento',
       dataIndex: 'venceSuscripcion',
-      width: 110,
-      render: (v: string) => {
+      width: 130,
+      render: (v: string, r: ResumenCobros) => {
         const dias = v ? Math.ceil((new Date(v).getTime() - Date.now()) / 86400000) : null;
         return (
           <Space direction="vertical" size={0}>
-            <Text>{fmtDate(v)}</Text>
+            <Space size={4}>
+              <Text>{fmtDate(v)}</Text>
+              {r.vencimientoOverride != null && (
+                <Tag color="purple" style={{ fontSize: 10, padding: '0 4px', lineHeight: '16px', margin: 0 }}>Manual</Tag>
+              )}
+            </Space>
             {dias !== null && (
               <Text style={{ fontSize: 11, color: dias <= 3 ? '#ef4444' : dias <= 7 ? '#f59e0b' : '#6b7280' }}>
                 {dias > 0 ? `${dias}d` : 'Vencida'}
