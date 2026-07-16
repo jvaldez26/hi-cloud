@@ -5,7 +5,7 @@ import {
 
 import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
-import { IsEnum, IsInt, IsPositive, IsString, IsNotEmpty, IsOptional, IsNumber, Min } from 'class-validator';
+import { IsEnum, IsInt, IsPositive, IsString, IsNotEmpty, IsOptional, IsNumber, Min, IsDateString } from 'class-validator';
 import { Type } from 'class-transformer';
 import { SuperAdminService } from './super-admin.service';
 import { SuperAdminGuard }   from './super-admin.guard';
@@ -123,6 +123,19 @@ class SincronizarPlanCuentasDto {
   empresaId?: number;
 }
 
+class VencimientoManualDto {
+  @IsDateString()
+  fecha!: string;
+
+  @IsString() @IsNotEmpty()
+  motivo!: string;
+}
+
+class ResetVencimientoDto {
+  @IsString() @IsNotEmpty()
+  motivo!: string;
+}
+
 @ApiTags('Super Admin')
 @ApiBearerAuth('access-token')
 @UseGuards(SuperAdminGuard)
@@ -199,6 +212,28 @@ export class SuperAdminController {
   @ApiOperation({ summary: 'Historial de cambios de suscripción de una empresa' })
   getAuditoria(@Param('id', ParseIntPipe) id: number) {
     return this.svc.getAuditoria(id);
+  }
+
+  @Patch('empresas/:id/vencimiento-manual')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Fijar fecha de vencimiento manual para empresa ACTIVA (persiste sobre pagos y crons)' })
+  setVencimientoManual(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: VencimientoManualDto,
+    @GetUser() admin: User,
+  ) {
+    return this.svc.setVencimientoManual(id, dto.fecha, dto.motivo, admin.id);
+  }
+
+  @Delete('empresas/:id/vencimiento-manual')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Restablecer vencimiento automático — elimina el override manual' })
+  resetVencimientoManual(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ResetVencimientoDto,
+    @GetUser() admin: User,
+  ) {
+    return this.svc.resetVencimientoManual(id, dto.motivo, admin.id);
   }
 
   // ── Solicitudes de cambio de plan ─────────────────────────────────────────

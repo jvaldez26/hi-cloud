@@ -22,6 +22,7 @@ export class SuperAdminService {
              e."createdAt"::date AS "fechaRegistro",
              s.plan, s.estado AS "estadoSuscripcion",
              s."fechaVencimiento"::date AS "venceSuscripcion",
+             s."vencimientoOverride"::date AS "vencimientoOverride",
              COUNT(DISTINCT ue."userId")::int   AS usuarios,
              COUNT(DISTINCT f.id)::int          AS "facturasMes"
       FROM empresa e
@@ -32,21 +33,21 @@ export class SuperAdminService {
         AND EXTRACT(YEAR  FROM f.fecha) = EXTRACT(YEAR  FROM CURRENT_DATE)
         AND f."isActive" = true AND f.estado != 'cancelada'
       GROUP BY e.id, e.nombre, e.rnc, e."isActive", e."createdAt",
-               s.plan, s.estado, s."fechaVencimiento"
+               s.plan, s.estado, s."fechaVencimiento", s."vencimientoOverride"
       ORDER BY e."createdAt" DESC
     `);
   }
 
   async getEmpresa(id: number) {
     const [emp] = await this.ds.query<any[]>(`
-      SELECT e.*, s.plan, s.estado AS "estadoSuscripcion",
-             s."fechaInicio", s."fechaVencimiento",
+      SELECT e.*, s.id AS "suscripcionId", s.plan, s.estado AS "estadoSuscripcion",
+             s."fechaInicio", s."fechaVencimiento", s."vencimientoOverride",
              COUNT(DISTINCT ue."userId")::int AS usuarios
       FROM empresa e
       LEFT JOIN suscripciones s ON s."empresaId" = e.id
       LEFT JOIN usuario_empresa ue ON ue."empresaId" = e.id AND ue."isActive" = true
       WHERE e.id = $1
-      GROUP BY e.id, s.plan, s.estado, s."fechaInicio", s."fechaVencimiento"
+      GROUP BY e.id, s.id, s.plan, s.estado, s."fechaInicio", s."fechaVencimiento", s."vencimientoOverride"
     `, [id]);
     if (!emp) throw new NotFoundException(`Empresa #${id} no encontrada`);
     return emp;
@@ -739,10 +740,15 @@ export class SuperAdminService {
   }
 
   async cambiarPlanConAuditoria(empresaId: number, plan: string, meses: number, superAdminId: number | null, solicitudId: number | null, motivo: string) {
-    const [prev] = await this.ds.query<any[]>('SELECT plan, estado, "fechaVencimiento" FROM suscripciones WHERE "empresaId" = $1', [empresaId]);
+    const [prev] = await this.ds.query<any[]>('SELECT plan, estado, "fechaVencimiento", "vencimientoOverride" FROM suscripciones WHERE "empresaId" = $1', [empresaId]);
     const fin = new Date();
     fin.setMonth(fin.getMonth() + meses);
-    await this.ds.query(`UPDATE suscripciones SET plan = $1, estado = 'activa', "fechaVencimiento" = $2 WHERE "empresaId" = $3`, [plan, fin.toISOString(), empresaId]);
+    if (prev?.vencimientoOverride != null) {
+      // Override manual activo: no sobreescribir fechaVencimiento
+      await this.ds.query(`UPDATE suscripciones SET plan = $1, estado = 'activa' WHERE "empresaId" = $2`, [plan, empresaId]);
+    } else {
+      await this.ds.query(`UPDATE suscripciones SET plan = $1, estado = 'activa', "fechaVencimiento" = $2 WHERE "empresaId" = $3`, [plan, fin.toISOString(), empresaId]);
+    }
     const [sus] = await this.ds.query<any[]>('SELECT id FROM suscripciones WHERE "empresaId" = $1', [empresaId]);
     if (sus) {
       await this.ds.query(`INSERT INTO suscripcion_auditoria ("suscripcionId","empresaId",accion,"valorAnterior","valorNuevo","superAdminId",motivo) VALUES ($1,$2,'CAMBIO_PLAN',$3,$4,$5,$6)`,
@@ -789,6 +795,62 @@ export class SuperAdminService {
     await this.ds.query(`UPDATE suscripciones SET "descuentoPct"=$1,"descuentoHasta"=$2,"descuentoMotivo"=$3 WHERE id=$4`, [pct, hasta, motivo, sus.id]);
     await this.ds.query(`INSERT INTO suscripcion_auditoria ("suscripcionId","empresaId",accion,"valorNuevo","superAdminId",motivo) VALUES ($1,$2,'DESCUENTO',$3,$4,$5)`,
       [sus.id, empresaId, JSON.stringify({ descuentoPct: pct, hasta }), superAdminId, motivo]);
+    return { ok: true };
+  }
+
+  async setVencimientoManual(empresaId: number, fecha: string, motivo: string, superAdminId: number) {
+    const [sus] = await this.ds.query<any[]>(
+      `SELECT id, estado, "vencimientoOverride" FROM suscripciones WHERE "empresaId" = $1`,
+      [empresaId],
+    );
+    if (!sus) throw new Error(`No hay suscripción para empresa #${empresaId}`);
+    if (sus.estado !== 'activa') throw new Error('Solo se puede fijar vencimiento manual en suscripciones ACTIVAS');
+
+    await this.ds.query(
+      `UPDATE suscripciones SET "vencimientoOverride" = $1 WHERE id = $2`,
+      [fecha, sus.id],
+    );
+    await this.ds.query(
+      `INSERT INTO suscripcion_auditoria
+         ("suscripcionId","empresaId",accion,"valorAnterior","valorNuevo","superAdminId",motivo)
+       VALUES ($1,$2,'FECHA_VENCIMIENTO_MANUAL',$3,$4,$5,$6)`,
+      [sus.id, empresaId,
+       JSON.stringify({ vencimientoOverride: sus.vencimientoOverride ?? null }),
+       JSON.stringify({ vencimientoOverride: fecha }),
+       superAdminId, motivo],
+    );
+    return { ok: true, vencimientoOverride: fecha };
+  }
+
+  async resetVencimientoManual(empresaId: number, motivo: string, superAdminId: number) {
+    const [sus] = await this.ds.query<any[]>(
+      `SELECT id, "vencimientoOverride" FROM suscripciones WHERE "empresaId" = $1`,
+      [empresaId],
+    );
+    if (!sus) throw new Error(`No hay suscripción para empresa #${empresaId}`);
+
+    // Restablecer fechaVencimiento al último periodo de pago confirmado, si existe
+    await this.ds.query(`
+      UPDATE suscripciones
+      SET "vencimientoOverride" = NULL,
+          "fechaVencimiento" = COALESCE(
+            (SELECT "periodoFin"::date FROM pagos_suscripcion
+             WHERE "empresaId" = $1 AND estado = 'confirmado' AND "periodoFin" IS NOT NULL
+             ORDER BY "periodoFin" DESC LIMIT 1),
+            "fechaVencimiento"
+          )
+      WHERE id = $2
+    `, [empresaId, sus.id]);
+
+    await this.ds.query(
+      `INSERT INTO suscripcion_auditoria
+         ("suscripcionId","empresaId",accion,"valorAnterior","valorNuevo","superAdminId",motivo)
+       VALUES ($1,$2,'RESET_FECHA_VENCIMIENTO',$3,$4,$5,$6)`,
+      [sus.id, empresaId,
+       JSON.stringify({ vencimientoOverride: sus.vencimientoOverride ?? null }),
+       JSON.stringify({ vencimientoOverride: null }),
+       superAdminId, motivo],
+    );
     return { ok: true };
   }
 

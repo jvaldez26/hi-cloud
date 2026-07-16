@@ -122,14 +122,26 @@ export class SuscripcionesService implements OnModuleInit {
 
     // Raw SQL para evitar cualquier cast de enum de TypeORM
     if (s) {
-      await this.ds.query(
-        `UPDATE suscripciones
-         SET plan = $1, estado = 'activa', modalidad = $2,
-             "fechaInicio" = $3, "fechaVencimiento" = $4, "notasAdmin" = $5,
-             "updatedAt" = NOW()
-         WHERE id = $6`,
-        [plan, modalidad, inicio.toISOString(), fin.toISOString(), notas ?? null, s.id],
-      );
+      if (s.vencimientoOverride != null) {
+        // Override manual activo: no sobreescribir fechaVencimiento
+        await this.ds.query(
+          `UPDATE suscripciones
+           SET plan = $1, estado = 'activa', modalidad = $2,
+               "fechaInicio" = $3, "notasAdmin" = $4,
+               "updatedAt" = NOW()
+           WHERE id = $5`,
+          [plan, modalidad, inicio.toISOString(), notas ?? null, s.id],
+        );
+      } else {
+        await this.ds.query(
+          `UPDATE suscripciones
+           SET plan = $1, estado = 'activa', modalidad = $2,
+               "fechaInicio" = $3, "fechaVencimiento" = $4, "notasAdmin" = $5,
+               "updatedAt" = NOW()
+           WHERE id = $6`,
+          [plan, modalidad, inicio.toISOString(), fin.toISOString(), notas ?? null, s.id],
+        );
+      }
     } else {
       await this.ds.query(
         `INSERT INTO suscripciones
@@ -210,11 +222,12 @@ export class SuscripcionesService implements OnModuleInit {
       this.notificarVencimientoPrueba(s.empresaId, s.plan).catch(() => null);
     }
 
-    // También marcar ACTIVAS vencidas como VENCIDA (legado)
-    await this.repo.update(
-      { estado: SuscripcionEstado.ACTIVA, fechaVencimiento: LessThan(hoy) },
-      { estado: SuscripcionEstado.VENCIDA },
-    );
+    // Marcar ACTIVAS cuya fecha efectiva venció — respeta vencimientoOverride si está activo
+    await this.ds.query(`
+      UPDATE suscripciones SET estado = 'vencida'
+      WHERE estado = 'activa'
+        AND COALESCE("vencimientoOverride", "fechaVencimiento") < $1
+    `, [hoy.toISOString().slice(0, 10)]);
 
     if (vencidas.length > 0)
       this.logger.warn(`${vencidas.length} pruebas vencidas → SUSPENDIDA`);

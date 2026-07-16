@@ -206,6 +206,9 @@ export class Suscripcion {
   @Column({ type: 'int', default: 0 })
   facturasMesReset!: number;
 
+  @Column({ type: 'date', nullable: true })
+  vencimientoOverride?: Date | null;
+
   @Column({ type: 'text', nullable: true })
   notasAdmin?: string;
 

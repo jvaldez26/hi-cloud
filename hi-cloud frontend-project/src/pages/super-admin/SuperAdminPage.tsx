@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback, createContext, useContext } 
 import {
   Table, Tag, Button, Modal, Select, InputNumber, message,
   Avatar, Tooltip, Input, Popconfirm, Form, Tabs, Badge, Dropdown,
-  Spin, Empty, Space, Alert, ConfigProvider, theme as antTheme,
+  Spin, Empty, Space, Alert, ConfigProvider, theme as antTheme, DatePicker,
 } from 'antd';
 import type { MenuProps } from 'antd';
 import { ecfConfigApi } from '../../api/ecf-config.api';
@@ -1448,6 +1448,9 @@ export default function SuperAdminPage() {
   const [detalleEmpresa, setDetalleEmpresa] = useState<any>(null);
   const [modalPlan, setModalPlan]   = useState<any>(null);
   const [modalMsg, setModalMsg]     = useState<any>(null);
+  const [modalVence, setModalVence] = useState<any>(null);
+  const [venceFecha, setVenceFecha] = useState<any>(null);
+  const [venceMotivo, setVenceMotivo] = useState('');
   const [planSel, setPlanSel]       = useState('profesional');
   const [meses, setMeses]           = useState(1);
   // ECF: empresaId que debe abrirse en la tab de e-CF Config
@@ -1716,6 +1719,27 @@ export default function SuperAdminPage() {
     onError: () => message.error('Error al enviar mensaje'),
   });
 
+  const setVenceMut = useMutation({
+    mutationFn: ({ id, fecha, motivo }: { id: number; fecha: string; motivo: string }) =>
+      api.patch(`/admin/empresas/${id}/vencimiento-manual`, { fecha, motivo }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sa-empresas'] });
+      setModalVence(null); setVenceFecha(null); setVenceMotivo('');
+      message.success('Vencimiento manual fijado');
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al fijar vencimiento'),
+  });
+
+  const resetVenceMut = useMutation({
+    mutationFn: ({ id, motivo }: { id: number; motivo: string }) =>
+      api.delete(`/admin/empresas/${id}/vencimiento-manual`, { data: { motivo } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sa-empresas'] });
+      message.success('Vencimiento restablecido al automático');
+    },
+    onError: () => message.error('Error al restablecer vencimiento'),
+  });
+
   // ── Filtros ───────────────────────────────────────────────────────────────────
 
   const empresasFiltradas = useMemo(() => {
@@ -1778,8 +1802,10 @@ export default function SuperAdminPage() {
       render: (_: any, r: any) => <EstadoBadge activa={r.isActive} />,
     },
     // ── VENCIMIENTO con urgencia ──────────────────────────────────────────────
-    { title: 'Vencimiento', dataIndex: 'venceSuscripcion', key: 'vence', width: 130,
-      render: (v: string, r: any) => {
+    { title: 'Vencimiento', key: 'vence', width: 140,
+      render: (_: any, r: any) => {
+        const isManual = r.vencimientoOverride != null;
+        const v = isManual ? r.vencimientoOverride : r.venceSuscripcion;
         if (!v) return <span style={{ color: C.txt2, fontSize: 12 }}>—</span>;
         const dias = Math.ceil((new Date(v).getTime() - Date.now()) / 86_400_000);
         const urgente  = dias < 0;
@@ -1793,7 +1819,10 @@ export default function SuperAdminPage() {
           : `Vence en ${dias}d`;
         return (
           <div style={{ lineHeight: 1.3 }}>
-            <div style={{ color: C.txt, fontSize: 12 }}>{fmtFecha(v)}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ color: C.txt, fontSize: 12 }}>{fmtFecha(v)}</span>
+              {isManual && <Tag color="blue" style={{ fontSize: 10, padding: '0 4px', margin: 0 }}>Manual</Tag>}
+            </div>
             <div style={{ color, fontSize: 11, fontWeight: urgente || critico ? 700 : 500 }}>
               {icon} {label}
             </div>
@@ -1843,6 +1872,21 @@ export default function SuperAdminPage() {
             label: tieneEcf ? 'Editar config e-CF' : 'Nueva config e-CF',
             onClick: () => { setTab('ecf'); setEcfTargetId(r.id); },
           },
+          {
+            key: 'vence-manual', icon: <ClockIcon size={13} />,
+            label: 'Fijar vencimiento manual',
+            onClick: () => { setModalVence(r); setVenceFecha(null); setVenceMotivo(''); },
+          },
+          ...(r.vencimientoOverride != null ? [{
+            key: 'vence-reset', icon: <RefreshCw size={13} />,
+            label: 'Restablecer vencimiento automático',
+            onClick: () => Modal.confirm({
+              title: '¿Restablecer vencimiento automático?',
+              content: 'Se eliminará el override manual y se usará la fecha calculada desde los pagos.',
+              okText: 'Restablecer', cancelText: 'Cancelar',
+              onOk: () => resetVenceMut.mutate({ id: r.id, motivo: 'Restablecido desde menú' }),
+            }),
+          }] : []),
           { type: 'divider' },
           r.isActive
             ? {
@@ -3365,6 +3409,61 @@ export default function SuperAdminPage() {
             <div style={{ fontSize: 12, color: C.txt2 }}>
               El usuario perderá acceso inmediatamente. Sus datos, facturas
               y registros históricos se mantendrán en el sistema.
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ── Modal Fijar Vencimiento Manual ──────────────────────────────── */}
+      <Modal
+        title="Fijar vencimiento manual"
+        open={!!modalVence}
+        onCancel={() => { setModalVence(null); setVenceFecha(null); setVenceMotivo(''); }}
+        onOk={() => {
+          if (!modalVence || !venceFecha || !venceMotivo.trim()) {
+            message.warning('Selecciona una fecha y escribe un motivo');
+            return;
+          }
+          const fecha = venceFecha.format('YYYY-MM-DD');
+          setVenceMut.mutate({ id: modalVence.id, fecha, motivo: venceMotivo.trim() });
+        }}
+        okText="Guardar"
+        okButtonProps={{ loading: setVenceMut.isPending, disabled: !venceFecha || !venceMotivo.trim() }}
+        cancelText="Cancelar"
+        width={440}
+        destroyOnClose
+      >
+        {modalVence && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '8px 0' }}>
+            <div style={{ fontSize: 13, color: C.txt }}>
+              Empresa: <strong>{modalVence.nombre}</strong>
+            </div>
+            {modalVence.vencimientoOverride && (
+              <div style={{ background: `${C.blue}15`, border: `1px solid ${C.blue}33`, borderRadius: 6, padding: '8px 12px', fontSize: 12, color: C.blue }}>
+                Override actual: <strong>{fmtFecha(modalVence.vencimientoOverride)}</strong>
+              </div>
+            )}
+            <div>
+              <div style={{ fontSize: 12, marginBottom: 6, color: C.txt2 }}>Nueva fecha de vencimiento</div>
+              <DatePicker
+                style={{ width: '100%' }}
+                format="DD/MM/YYYY"
+                value={venceFecha}
+                onChange={v => setVenceFecha(v)}
+                placeholder="Selecciona fecha"
+              />
+            </div>
+            <div>
+              <div style={{ fontSize: 12, marginBottom: 6, color: C.txt2 }}>Motivo (obligatorio)</div>
+              <Input.TextArea
+                rows={3}
+                value={venceMotivo}
+                onChange={e => setVenceMotivo(e.target.value)}
+                placeholder="Ej: Acuerdo comercial especial, período de gracia acordado…"
+              />
+            </div>
+            <div style={{ background: `${C.gold}15`, border: `1px solid ${C.gold}44`, borderRadius: 6, padding: '8px 12px', fontSize: 12, color: C.gold }}>
+              Esta fecha tendrá prioridad sobre los pagos y los crons de vencimiento hasta que sea restablecida manualmente.
             </div>
           </div>
         )}

@@ -246,7 +246,7 @@ export class PagosSuscripcionService {
   async registrarPago(empresaId: number, dto: RegistrarPagoDto, adminId: number) {
     // ── 1. Leer suscripción actual ──────────────────────────────────────────
     const [sus] = await this.ds.query<any[]>(`
-      SELECT estado, modalidad, "fechaVencimiento"
+      SELECT estado, modalidad, "fechaVencimiento", "vencimientoOverride"
       FROM suscripciones WHERE "empresaId" = $1
     `, [empresaId]);
 
@@ -298,14 +298,23 @@ export class PagosSuscripcionService {
         ? sus.fechaVencimiento.split('T')[0]
         : (sus.fechaVencimiento as Date).toISOString().split('T')[0];
 
-      await this.ds.query(`
-        UPDATE suscripciones
-        SET estado = 'activa',
-            "fechaVencimiento" = $1,
-            "motivoSuspension" = NULL,
-            "enPeriodoGracia" = false
-        WHERE "empresaId" = $2
-      `, [nuevaFechaVenc, empresaId]);
+      if (sus.vencimientoOverride != null) {
+        // Override manual activo: solo reactivar, no sobreescribir fechaVencimiento
+        await this.ds.query(`
+          UPDATE suscripciones
+          SET estado = 'activa', "motivoSuspension" = NULL, "enPeriodoGracia" = false
+          WHERE "empresaId" = $1
+        `, [empresaId]);
+      } else {
+        await this.ds.query(`
+          UPDATE suscripciones
+          SET estado = 'activa',
+              "fechaVencimiento" = $1,
+              "motivoSuspension" = NULL,
+              "enPeriodoGracia" = false
+          WHERE "empresaId" = $2
+        `, [nuevaFechaVenc, empresaId]);
+      }
 
       this.logger.log(
         `[PAGO] Empresa #${empresaId} | Admin #${adminId} | ` +
@@ -343,7 +352,7 @@ export class PagosSuscripcionService {
 
     // ── Activar suscripción y extender fechaVencimiento ─────────────────────
     const [sus] = await this.ds.query<any[]>(`
-      SELECT estado, modalidad, "fechaVencimiento"
+      SELECT estado, modalidad, "fechaVencimiento", "vencimientoOverride"
       FROM suscripciones WHERE "empresaId" = $1
     `, [pago.empresaId]);
 
@@ -360,14 +369,23 @@ export class PagosSuscripcionService {
       const nd = Math.min(d, new Date(ny, nm, 0).getDate());
       const nuevaFecha = `${ny}-${String(nm).padStart(2, '0')}-${String(nd).padStart(2, '0')}`;
 
-      await this.ds.query(`
-        UPDATE suscripciones
-        SET estado = 'activa',
-            "fechaVencimiento" = $1,
-            "motivoSuspension" = NULL,
-            "enPeriodoGracia" = false
-        WHERE "empresaId" = $2
-      `, [nuevaFecha, pago.empresaId]);
+      if (sus.vencimientoOverride != null) {
+        // Override manual activo: solo reactivar, no sobreescribir fechaVencimiento
+        await this.ds.query(`
+          UPDATE suscripciones
+          SET estado = 'activa', "motivoSuspension" = NULL, "enPeriodoGracia" = false
+          WHERE "empresaId" = $1
+        `, [pago.empresaId]);
+      } else {
+        await this.ds.query(`
+          UPDATE suscripciones
+          SET estado = 'activa',
+              "fechaVencimiento" = $1,
+              "motivoSuspension" = NULL,
+              "enPeriodoGracia" = false
+          WHERE "empresaId" = $2
+        `, [nuevaFecha, pago.empresaId]);
+      }
 
       this.logger.log(
         `[TRANSFERENCIA] Empresa #${pago.empresaId} | Admin #${adminId} | ` +
