@@ -53,6 +53,27 @@ export function reportServerError(
   }
 }
 
+/**
+ * Reporta a Sentry un error ocurrido dentro de un cron/tarea programada.
+ * No hay contexto HTTP (status/method/url) ni request-scoped CLS aquí, así que
+ * el contexto lo aporta el llamador vía `cron` + `extraTags`.
+ * No-op si Sentry no está inicializado. Nunca lanza.
+ */
+export function reportCronError(
+  exception: unknown,
+  cron: string,
+  extraTags: Record<string, string | number> = {},
+): void {
+  if (!Sentry.getClient()) return;
+  try {
+    const tags: Record<string, string> = { cron };
+    for (const [k, v] of Object.entries(extraTags)) tags[k] = String(v);
+    Sentry.captureException(exception, { level: 'error', tags });
+  } catch {
+    /* nunca romper el cron por un fallo de observabilidad */
+  }
+}
+
 function safeCls() {
   try {
     const c = ClsServiceManager.getClsService();

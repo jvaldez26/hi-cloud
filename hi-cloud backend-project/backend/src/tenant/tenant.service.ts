@@ -130,6 +130,28 @@ export class TenantService {
     }
   }
 
+  /**
+   * Ejecuta `fn` con el contexto de empresa fijado a `empresaId`, creando el
+   * contexto CLS si no existe. Pensado para CRON JOBS y arranque, donde no hay
+   * request y por tanto el CLS está vacío: ahí runAs() por sí solo falla porque
+   * cls.set() lanza sin un store activo. Envolvemos en cls.run() para crear uno.
+   *
+   * Si ya hay contexto (p. ej. dentro de un request), delega en runAs() sin
+   * crear un contexto anidado, para no descartar userId/sucursalId del request.
+   *
+   * USO en un cron:
+   *   for (const row of rows) {
+   *     await this.tenantService.runForEmpresa(row.empresaId, () =>
+   *       this.miService.operacionScoped(row.id));
+   *   }
+   */
+  async runForEmpresa<T>(empresaId: number, fn: () => Promise<T>): Promise<T> {
+    if (this.cls.isActive()) {
+      return this.runAs(empresaId, fn);
+    }
+    return this.cls.run(() => this.runAs(empresaId, fn));
+  }
+
   // ── TenantAwareRepository factory ─────────────────────────────────────────
 
   /**

@@ -12,6 +12,7 @@ import { Factura, FacturaEstado } from '../facturas/entities/factura.entity';
 import { FacturaDetalle } from '../facturas/entities/factura-detalle.entity';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { TenantService } from '../tenant/tenant.service';
+import { reportCronError } from '../common/observability/sentry';
 
 interface CreateContratoDto {
   clienteId:           number;
@@ -214,10 +215,20 @@ export class ContratosService {
             await this.repo.update(c.id, { estado: EstadoContrato.VENCIDO });
             continue;
           }
-          await this.generarFactura(c.id);
+          if (!c.empresaId) {
+            this.logger.warn(`Contrato #${c.id} sin empresaId — no se puede facturar, omitido`);
+            continue;
+          }
+          // Cron sin request → CLS vacío. runForEmpresa fija el empresaId del
+          // contrato para que findById/getEmpresaId encuentren contexto.
+          await this.tenantService.runForEmpresa(c.empresaId, () => this.generarFactura(c.id));
           generadas++;
         } catch (err) {
           this.logger.error(`Error facturando contrato #${c.id}: ${(err as Error).message}`);
+          reportCronError(err, 'procesarContratosPendientes', {
+            contratoId: c.id,
+            empresaId:  c.empresaId ?? 'null',
+          });
         }
       }
     }
