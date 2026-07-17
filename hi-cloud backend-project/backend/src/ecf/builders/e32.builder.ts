@@ -13,7 +13,7 @@ import {
   round2,
 } from './base-ecf.builder';
 import { Logger } from '@nestjs/common';
-import { warnCuadraturaDGII } from './sections/items.section';
+import { warnCuadraturaItem } from './sections/items.section';
 
 const logger = new Logger('E32Builder');
 
@@ -41,23 +41,37 @@ export function buildE32(input: ECFBuildInput): MSellerPayload {
 
   // PASO 2: construir items con DOP
   const items = detallesME.map((d: any, idx: number) => {
-    warnCuadraturaDGII(d, encf);
     const precioME = Number(d.precioUnitario);
     const montoME  = Number(d.subtotal);
     const pct      = parseFloat(String(d.porcentajeIva ?? 18));
     const indFact  = pct >= 18 ? 1 : pct >= 16 ? 2 : 4;
     const otME     = mc.otraMonedaItem(precioME, montoME);
-    return {
+
+    const cantidad     = cap4(d.cantidad);
+    const precioDOP    = round2(mc.toDOP(precioME));
+    const montoItemDOP = round2(mc.toDOP(montoME));
+    // Descuento = precio×cant − monto, con el PrecioUnitarioItem YA redondeado
+    // (lo que DGII multiplica) → cuadratura exacta con MontoItem.
+    const descuentoDOP = round2(precioDOP * cantidad - montoItemDOP);
+
+    const item = {
       NumeroLinea:            idx + 1,
       IndicadorFacturacion:   indFact,
       NombreItem:             d.descripcion,
       IndicadorBienoServicio: 1,
-      CantidadItem:           cap4(d.cantidad),
+      CantidadItem:           cantidad,
       UnidadMedida:           43,
-      PrecioUnitarioItem:     round2(mc.toDOP(precioME)),
+      PrecioUnitarioItem:     precioDOP,
+      // DescuentoMonto SOLO en DOP (sin OtraMonedaDetalle). En moneda extranjera
+      // el orden XSD relativo a OtraMonedaDetalle y un posible DescuentoOtraMoneda
+      // están sin confirmar. TODO(ME): habilitar tras validar el XSD oficial. Hoy
+      // el path ME sale como antes (sin DescuentoMonto), no peor.
+      ...(descuentoDOP > 0 && !otME ? { DescuentoMonto: descuentoDOP } : {}),
       ...(otME ? { OtraMonedaDetalle: otME } : {}),
-      MontoItem:              round2(mc.toDOP(montoME)),
+      MontoItem:              montoItemDOP,
     };
+    warnCuadraturaItem(item, encf);
+    return item;
   });
 
   // PASO 3: calcular totales DESDE los items en RD$

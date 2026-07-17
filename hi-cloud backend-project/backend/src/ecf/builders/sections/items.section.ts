@@ -51,6 +51,35 @@ export function warnCuadraturaDGII(
 }
 
 /**
+ * Valida la cuadratura DGII sobre el Item YA SERIALIZADO (lo que se envía a
+ * MSeller), no sobre el detalle de entrada. DGII exige por línea:
+ *   CantidadItem × PrecioUnitarioItem = MontoItem + DescuentoMonto
+ * A diferencia de warnCuadraturaDGII (que mira d.descuentoMonto del detalle y da
+ * falsa tranquilidad), esto detecta cuando el Item trae MontoItem con el
+ * descuento ya restado pero OMITE DescuentoMonto — era la adv. 2394
+ * "MontoItem no válido" en las líneas con descuento.
+ */
+export function warnCuadraturaItem(
+  item: Record<string, unknown>,
+  context: string,
+): void {
+  const cantidad  = Number(item.CantidadItem);
+  const precio    = Number(item.PrecioUnitarioItem);
+  const montoItem = Number(item.MontoItem);
+  const descuento = Number(item.DescuentoMonto ?? 0);
+  const brutoCalc = round2(cantidad * precio);
+  const brutoXML  = round2(montoItem + descuento);
+  if (Math.abs(brutoXML - brutoCalc) > 0.01) {
+    itemsLogger.warn(
+      `Cuadratura DGII [${context}] item="${item.NombreItem}" ` +
+      `cantidad=${cantidad} precio=${precio} MontoItem=${montoItem} ` +
+      `DescuentoMonto=${descuento} brutoXML=${brutoXML} brutoCalc=${brutoCalc} ` +
+      `— Item serializado no cuadra (¿DescuentoMonto omitido?)`,
+    );
+  }
+}
+
+/**
  * Ítems estándar — todos los tipos de e-CF (E31–E47).
  * El ITBIS 18% estándar NO se declara en TablaImpuesto dentro del ítem;
  * va únicamente en los Totales del encabezado del documento (estándar DGII XSD).
