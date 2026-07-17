@@ -10,7 +10,7 @@ export class SolicitudesService {
 
   private async orFail(empresaId: number, id: number) {
     const [row] = await this.ds.query<any[]>(
-      `SELECT s.*, d.nombre as deudorNombre, d.cedula as deudorCedula, d.telefono as deudorTelefono
+      `SELECT s.*, d.nombre as "deudorNombre", d.cedula as "deudorCedula", d.telefono as "deudorTelefono"
        FROM pr_solicitudes s
        JOIN pr_deudores d ON d.id=s."deudorId"
        WHERE s.id=$1 AND s."empresaId"=$2`, [id, empresaId],
@@ -36,7 +36,7 @@ export class SolicitudesService {
       `SELECT COUNT(*) FROM pr_solicitudes s JOIN pr_deudores d ON d.id=s."deudorId" WHERE ${where}`, args,
     );
     const data = await this.ds.query(
-      `SELECT s.*, d.nombre as deudorNombre, d.cedula as deudorCedula
+      `SELECT s.*, d.nombre as "deudorNombre", d.cedula as "deudorCedula"
        FROM pr_solicitudes s JOIN pr_deudores d ON d.id=s."deudorId"
        WHERE ${where} ORDER BY s."createdAt" DESC LIMIT $${idx} OFFSET $${idx + 1}`,
       [...args, limit, offset],

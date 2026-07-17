@@ -15,8 +15,11 @@ export class PrestamosService {
 
   private async orFail(empresaId: number, id: number) {
     const [row] = await this.ds.query<any[]>(
-      `SELECT p.*, d.nombre as deudorNombre, d.cedula as deudorCedula, d.telefono as deudorTelefono
-       FROM pr_prestamos p JOIN pr_deudores d ON d.id=p."deudorId"
+      `SELECT p.*, d.nombre as "deudorNombre", d.cedula as "deudorCedula", d.telefono as "deudorTelefono",
+              pp.nombre as "productoNombre"
+       FROM pr_prestamos p
+       JOIN pr_deudores d ON d.id=p."deudorId"
+       LEFT JOIN pr_productos_prestamo pp ON pp.id=p."productoId"
        WHERE p.id=$1 AND p."empresaId"=$2`, [id, empresaId],
     );
     if (!row) throw new NotFoundException(`Préstamo #${id} no encontrado`);
@@ -41,7 +44,7 @@ export class PrestamosService {
       `SELECT COUNT(*) FROM pr_prestamos p JOIN pr_deudores d ON d.id=p."deudorId" WHERE ${where}`, args,
     );
     const data = await this.ds.query(
-      `SELECT p.*, d.nombre as deudorNombre, d.cedula as deudorCedula
+      `SELECT p.*, d.nombre as "deudorNombre", d.cedula as "deudorCedula"
        FROM pr_prestamos p JOIN pr_deudores d ON d.id=p."deudorId"
        WHERE ${where} ORDER BY p."createdAt" DESC LIMIT $${idx} OFFSET $${idx + 1}`,
       [...args, limit, offset],

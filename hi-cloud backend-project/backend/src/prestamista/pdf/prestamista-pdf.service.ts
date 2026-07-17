@@ -26,7 +26,7 @@ export class PrestamistaPdfService {
 
   async tablaAmortizacion(res: Response, prestamoId: number, empresaId: number) {
     const [prestamo] = await this.ds.query<any[]>(
-      `SELECT p.*, d.nombre as deudorNombre, d.cedula as deudorCedula
+      `SELECT p.*, d.nombre as "deudorNombre", d.cedula as "deudorCedula"
        FROM pr_prestamos p JOIN pr_deudores d ON d.id=p."deudorId"
        WHERE p.id=$1 AND p."empresaId"=$2`, [prestamoId, empresaId],
     );

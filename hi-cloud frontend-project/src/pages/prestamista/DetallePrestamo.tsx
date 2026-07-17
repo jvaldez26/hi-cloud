@@ -188,10 +188,10 @@ export default function DetallePrestamo() {
                 <Descriptions.Item label="Deudor">{prestamo.deudorNombre}</Descriptions.Item>
                 <Descriptions.Item label="Producto">{prestamo.productoNombre}</Descriptions.Item>
                 <Descriptions.Item label="Método Amortización">{prestamo.metodoAmortizacion}</Descriptions.Item>
-                <Descriptions.Item label="Tasa Mensual">{prestamo.tasaInteresAnual ?? prestamo.tasaInteresMensual}%</Descriptions.Item>
+                <Descriptions.Item label="Tasa Mensual">{prestamo.tasaInteresMensual}%</Descriptions.Item>
                 <Descriptions.Item label="Plazo">{prestamo.plazoMeses} meses</Descriptions.Item>
                 <Descriptions.Item label="Frecuencia Pago">{prestamo.frecuenciaPago}</Descriptions.Item>
-                <Descriptions.Item label="Cuota Mensual">{fmt(prestamo.cuotaMensual)}</Descriptions.Item>
+                <Descriptions.Item label="Cuota Periódica">{fmt(prestamo.cuotaPeriodica)}</Descriptions.Item>
                 <Descriptions.Item label="Fecha Desembolso">{prestamo.fechaDesembolso?.slice(0, 10)}</Descriptions.Item>
                 <Descriptions.Item label="Primer Pago">{prestamo.fechaPrimerPago?.slice(0, 10)}</Descriptions.Item>
                 <Descriptions.Item label="Vencimiento">{prestamo.fechaVencimiento?.slice(0, 10)}</Descriptions.Item>
@@ -221,8 +221,8 @@ export default function DetallePrestamo() {
                 columns={[
                   { title: '#', dataIndex: 'numeroCuota', width: 50 },
                   { title: 'Vencimiento', dataIndex: 'fechaVencimiento', render: (v: string) => v?.slice(0, 10) },
-                  { title: 'Capital', dataIndex: 'capitalCuota', render: fmt },
-                  { title: 'Interés', dataIndex: 'interesCuota', render: fmt },
+                  { title: 'Capital', dataIndex: 'capital', render: fmt },
+                  { title: 'Interés', dataIndex: 'interes', render: fmt },
                   { title: 'Cuota Total', dataIndex: 'cuotaTotal', render: fmt },
                   { title: 'Capital Pag.', dataIndex: 'capitalPagado', render: fmt },
                   { title: 'Interés Pag.', dataIndex: 'interesPagado', render: fmt },
