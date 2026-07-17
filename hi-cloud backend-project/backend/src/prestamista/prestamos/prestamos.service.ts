@@ -44,7 +44,7 @@ export class PrestamosService {
       `SELECT COUNT(*) FROM pr_prestamos p JOIN pr_deudores d ON d.id=p."deudorId" WHERE ${where}`, args,
     );
     const data = await this.ds.query(
-      `SELECT p.*, d.nombre as "deudorNombre", d.cedula as "deudorCedula"
+      `SELECT p.*, d.nombre as "deudorNombre", d.cedula as "deudorCedula", d.foto as "deudorFoto"
        FROM pr_prestamos p JOIN pr_deudores d ON d.id=p."deudorId"
        WHERE ${where} ORDER BY p."createdAt" DESC LIMIT $${idx} OFFSET $${idx + 1}`,
       [...args, limit, offset],

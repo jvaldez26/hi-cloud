@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Table, Button, Select, Tag, Modal, Form, Input, InputNumber, DatePicker, message, theme } from 'antd';
+import { Table, Button, Select, Tag, Modal, Form, Input, InputNumber, DatePicker, message, theme, Avatar, Image, Space } from 'antd';
 import { Plus, Eye } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { FileExcelOutlined } from '@ant-design/icons';
+import { FileExcelOutlined, UserOutlined } from '@ant-design/icons';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -61,7 +61,24 @@ export default function PrestamosPage() {
 
   const cols = [
     { title: 'Número', dataIndex: 'numero', key: 'numero', width: 120 },
-    { title: 'Deudor', dataIndex: 'deudorNombre', key: 'deudorNombre' },
+    {
+      title: 'Deudor', key: 'deudorNombre',
+      render: (_: any, r: any) => (
+        <Space>
+          {r.deudorFoto ? (
+            <Image
+              width={32} height={32}
+              src={r.deudorFoto}
+              style={{ borderRadius: '50%', objectFit: 'cover' }}
+              preview={{ src: r.deudorFoto }}
+            />
+          ) : (
+            <Avatar size={32} icon={<UserOutlined />} />
+          )}
+          <span>{r.deudorNombre}</span>
+        </Space>
+      ),
+    },
     { title: 'Capital', dataIndex: 'montoPrincipal', key: 'montoPrincipal', render: fmt },
     { title: 'Saldo Capital', dataIndex: 'saldoCapital', key: 'saldoCapital', render: fmt },
     { title: 'Saldo Mora', dataIndex: 'saldoMora', key: 'saldoMora', render: (v: any) => <span style={{ color: Number(v) > 0 ? '#ff4d4f' : undefined }}>{fmt(v)}</span> },
