@@ -616,4 +616,11 @@ export class SuperAdminController {
   ) {
     return this.svc.updateConfiguracionGlobal(clave, dto.valor);
   }
+
+  // TEMPORAL — remover después de verificar Sentry + scrubbing
+  @Get('sentry-test')
+  @ApiOperation({ summary: '[TEMP] Dispara un 500 real para verificar Sentry + beforeSend scrubbing' })
+  sentryTest(): never {
+    throw new Error('SENTRY_TEST verificacion-scrubbing ' + new Date().toISOString());
+  }
 }
