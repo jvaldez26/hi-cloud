@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  Card, Tabs, Table, Tag, Button, Descriptions, Statistic, Row, Col, Spin,
+  Card, Tabs, Table, Tag, Button, Descriptions, Row, Col, Spin,
   Modal, Form, InputNumber, DatePicker, Select, Input, message, Progress, theme
 } from 'antd';
 import { ArrowLeft, FileText, DollarSign, Plus } from 'lucide-react';
@@ -166,16 +166,27 @@ export default function DetallePrestamo() {
         </div>
       </div>
 
-      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col xs={12} md={4}><Card size="small"><Statistic title="Capital" value={fmt(prestamo.montoPrincipal)} /></Card></Col>
-        <Col xs={12} md={4}><Card size="small"><Statistic title="Saldo Capital" value={fmt(prestamo.saldoCapital)} valueStyle={{ color: C.colorWarning }} /></Card></Col>
-        <Col xs={12} md={4}><Card size="small"><Statistic title="Saldo Interés" value={fmt(prestamo.saldoInteres)} /></Card></Col>
-        <Col xs={12} md={4}><Card size="small"><Statistic title="Mora" value={fmt(prestamo.saldoMora)} valueStyle={{ color: Number(prestamo.saldoMora) > 0 ? C.colorError : undefined }} /></Card></Col>
-        <Col xs={12} md={4}><Card size="small"><Statistic title="Saldo Total" value={fmt(prestamo.saldoTotal)} valueStyle={{ color: C.colorError }} /></Card></Col>
-        <Col xs={12} md={4}><Card size="small">
-          <div style={{ fontSize: 12, color: C.colorTextSecondary, marginBottom: 4 }}>Avance Pago</div>
-          <Progress percent={pctPagado} size="small" status={pctPagado === 100 ? 'success' : 'active'} />
-        </Card></Col>
+      <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+        {([
+          { label: 'Capital',       value: fmt(prestamo.montoPrincipal), color: undefined },
+          { label: 'Saldo Capital', value: fmt(prestamo.saldoCapital),   color: C.colorWarning },
+          { label: 'Saldo Interés', value: fmt(prestamo.saldoInteres),   color: undefined },
+          { label: 'Mora',          value: fmt(prestamo.saldoMora),      color: Number(prestamo.saldoMora) > 0 ? C.colorError : undefined },
+          { label: 'Saldo Total',   value: fmt(prestamo.saldoTotal),     color: C.colorError },
+        ] as const).map(({ label, value, color }) => (
+          <Col xs={12} sm={8} md={4} key={label}>
+            <Card size="small" styles={{ body: { padding: '10px 14px' } }}>
+              <div style={{ fontSize: 11, color: C.colorTextSecondary, marginBottom: 2, whiteSpace: 'nowrap' }}>{label}</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: color ?? C.colorText, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</div>
+            </Card>
+          </Col>
+        ))}
+        <Col xs={12} sm={8} md={4}>
+          <Card size="small" styles={{ body: { padding: '10px 14px' } }}>
+            <div style={{ fontSize: 11, color: C.colorTextSecondary, marginBottom: 6 }}>Avance Pago</div>
+            <Progress percent={pctPagado} size="small" status={pctPagado === 100 ? 'success' : 'active'} />
+          </Card>
+        </Col>
       </Row>
 
       <Tabs items={[
