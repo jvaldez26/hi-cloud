@@ -1,6 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 import { DataSource } from 'typeorm';
 import { TenantService } from '../tenant/tenant.service';
+
+/** El front pollea cada 90s (useAlertas.ts); cachear 60s corta las 12 queries por poll. */
+const ALERTAS_TTL_MS = 60_000;
 
 export interface Alerta {
   id:          string;
@@ -21,11 +26,18 @@ export class AlertasSistemaService {
   constructor(
     private readonly ds:        DataSource,
     private readonly tenantSvc: TenantService,
+    @Inject(CACHE_MANAGER) private readonly cache: Cache,
   ) {}
 
   async getAlertas(): Promise<{ alertas: Alerta[]; total: number; criticas: number }> {
-    const alertas: Alerta[] = [];
     const eid = this.tenantSvc.getEmpresaId();
+
+    // Clave POR EMPRESA: nunca servir alertas de un tenant a otro.
+    const cacheKey = `alertas-sistema:${eid}`;
+    const cached = await this.cache.get<{ alertas: Alerta[]; total: number; criticas: number }>(cacheKey);
+    if (cached) return cached;
+
+    const alertas: Alerta[] = [];
 
     await Promise.all([
       this.alertasCxCVencidas(alertas, eid),
@@ -42,11 +54,14 @@ export class AlertasSistemaService {
       this.alertasSecuenciasECF(alertas, eid),
     ]);
 
-    return {
+    const resultado = {
       alertas,
       total:    alertas.length,
       criticas: alertas.filter(a => a.severidad === 'alta').length,
     };
+
+    await this.cache.set(cacheKey, resultado, ALERTAS_TTL_MS);
+    return resultado;
   }
 
   private async alertasCxCVencidas(out: Alerta[], eid: number) {
