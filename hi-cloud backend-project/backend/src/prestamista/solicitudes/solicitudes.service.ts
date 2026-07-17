@@ -72,12 +72,14 @@ export class SolicitudesService {
     if (!['pendiente', 'en_revision'].includes(sol.estado)) {
       throw new BadRequestException('Solo se pueden decidir solicitudes en estado pendiente o en revisión');
     }
-    const estado = data.aprobado ? 'aprobada' : 'rechazada';
+    const aprobado = data.aprobado === true || data.decision === 'aprobar';
+    const estado = aprobado ? 'aprobada' : 'rechazada';
+    const motivoFinal = data.motivoRechazo ?? data.motivoDecision ?? null;
     const [row] = await this.ds.query(
       `UPDATE pr_solicitudes SET estado=$1,"montoAprobado"=$2,"tasaAprobada"=$3,"fechaDecision"=CURRENT_DATE,
         "decididoPor"=$4,"motivoRechazo"=$5 WHERE id=$6 AND "empresaId"=$7 RETURNING *`,
       [estado, data.montoAprobado ?? null, data.tasaAprobada ?? null, data.decididoPor ?? null,
-       data.motivoRechazo ?? null, id, empresaId],
+       motivoFinal, id, empresaId],
     );
     return row;
   }

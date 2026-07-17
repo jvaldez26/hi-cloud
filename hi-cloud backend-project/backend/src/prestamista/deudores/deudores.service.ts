@@ -1,12 +1,40 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { S3Service } from '../../common/s3/s3.service';
+
+const FOTOS_FOLDER = 'fotos-deudores';
 
 @Injectable()
 export class DeudoresService {
   private readonly logger = new Logger(DeudoresService.name);
 
-  constructor(@InjectDataSource() private readonly ds: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly ds: DataSource,
+    private readonly s3Service: S3Service,
+  ) {}
+
+  private parseBase64(dataUrl: string): { buffer: Buffer; mimetype: string; ext: string } {
+    const match = dataUrl.match(/^data:(image\/[a-z+]+);base64,(.+)$/);
+    if (!match) throw new BadRequestException('Formato base64 inválido');
+    const [, mimetype, b64] = match;
+    const buffer = Buffer.from(b64, 'base64');
+    const ext = mimetype.split('/')[1].replace('jpeg', 'jpg').replace('svg+xml', 'svg');
+    return { buffer, mimetype, ext };
+  }
+
+  private async subirFotoS3(foto: string, deudorId: number, empresaId: number): Promise<string> {
+    try {
+      const { buffer, mimetype, ext } = this.parseBase64(foto);
+      const url = await this.s3Service.upload(
+        buffer, `deudor-${deudorId}.${ext}`, mimetype, FOTOS_FOLDER, empresaId,
+      );
+      return url ?? foto;
+    } catch (err: unknown) {
+      this.logger.warn(`Deudor #${deudorId}: foto no subida a S3 — ${(err as Error).message}`);
+      return foto;
+    }
+  }
 
   private async orFail(empresaId: number, id: number) {
     const [row] = await this.ds.query<any[]>(
@@ -72,11 +100,21 @@ export class DeudoresService {
        data.enListaNegra ?? false, data.motivoListaNegra ?? null,
        data.clienteId ?? null, data.foto ?? null, data.notas ?? null],
     );
+    if (data.foto?.startsWith('data:image')) {
+      const url = await this.subirFotoS3(data.foto, row.id, empresaId);
+      if (url !== data.foto) {
+        await this.ds.query(`UPDATE pr_deudores SET foto=$1 WHERE id=$2`, [url, row.id]);
+        row.foto = url;
+      }
+    }
     return row;
   }
 
   async update(empresaId: number, id: number, data: any) {
     await this.orFail(empresaId, id);
+    if (data.foto?.startsWith('data:image')) {
+      data.foto = await this.subirFotoS3(data.foto, id, empresaId);
+    }
     const allowed = ['nombre','apellidos','cedula','rnc','fechaNacimiento','sexo','estadoCivil','telefono',
       'telefonoTrabajo','email','direccion','direccionTrabajo','ocupacion','empresaLabora','ingresoMensual',
       'tiempoEmpleoMeses','referenciaNombre1','referenciaTelefono1','referenciaNombre2','referenciaTelefono2',
