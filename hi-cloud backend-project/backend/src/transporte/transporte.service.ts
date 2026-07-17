@@ -6,6 +6,7 @@ import { DataSource } from 'typeorm';
 import { TenantService } from '../tenant/tenant.service';
 import { FacturasService } from '../facturas/facturas.service';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 import { User } from '../users/users.entity';
 
 @Injectable()
@@ -476,7 +477,7 @@ export class TransporteService {
   // ── DASHBOARD ─────────────────────────────────────────────────────────────
 
   async getDashboard(empresaId: number) {
-    const hoy = new Date().toISOString().substring(0, 10);
+    const hoy = fechaHoyRD();
     const [
       totalVehiculos, vehiculosOperativos, vehiculosEnMantenimiento,
       totalChoferes, choferesActivos,
@@ -505,7 +506,7 @@ export class TransporteService {
           FROM tr_choferes WHERE "empresaId"=$1 AND "isActive"=true AND "vencimientoLicencia" IS NOT NULL AND "vencimientoLicencia" <= (NOW() + INTERVAL '30 days')::date
         ORDER BY vencimiento ASC
         LIMIT 10
-      `, [empresaId, empresaId, empresaId]),
+      `, [empresaId]),
       this.ds.query<any[]>(
         `SELECT COALESCE(SUM(total),0) AS costo, COALESCE(SUM(galones),0) AS galones, COUNT(*) AS cargas
            FROM tr_combustible WHERE "empresaId"=$1 AND fecha >= date_trunc('month', NOW()::date)`,
