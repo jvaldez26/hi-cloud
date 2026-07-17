@@ -2090,10 +2090,10 @@ export default function AppLayout() {
                 style={{
                   display: 'flex', alignItems: 'center', gap: 12,
                   padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
-                  background: esActiva ? '#EFF6FF' : 'transparent',
+                  background: esActiva ? token.colorPrimaryBg : 'transparent',
                   marginBottom: 4, transition: 'background 0.15s',
                 }}
-                onMouseEnter={e => { if (!esActiva) (e.currentTarget as HTMLElement).style.background = '#F8FAFC'; }}
+                onMouseEnter={e => { if (!esActiva) (e.currentTarget as HTMLElement).style.background = token.colorFillAlter; }}
                 onMouseLeave={e => { if (!esActiva) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
               >
                 {/* Avatar empresa */}
@@ -2110,7 +2110,7 @@ export default function AppLayout() {
                 <span style={{
                   flex: 1, fontSize: 14,
                   fontWeight: esActiva ? 500 : 400,
-                  color: '#111827',
+                  color: token.colorText,
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>
                   {emp.nombre}
@@ -2118,18 +2118,18 @@ export default function AppLayout() {
                 {/* Radio indicator */}
                 <div style={{
                   width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
-                  border: `2px solid ${esActiva ? '#0EA5E9' : '#D1D5DB'}`,
+                  border: `2px solid ${esActiva ? token.colorPrimary : token.colorBorder}`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
                   {esActiva && (
-                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#0EA5E9' }} />
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: token.colorPrimary }} />
                   )}
                 </div>
               </div>
             );
           })}
           {empresasFiltradas.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '20px 0', color: '#9CA3AF', fontSize: 13 }}>
+            <div style={{ textAlign: 'center', padding: '20px 0', color: token.colorTextQuaternary, fontSize: 13 }}>
               Sin resultados
             </div>
           )}
