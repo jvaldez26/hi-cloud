@@ -152,12 +152,12 @@ export default function DetallePrestamo() {
   const exportarPagos = () => {
     const filas = (pagos as any[]).map((r: any) => ({
       'Número': r.numero,
-      'Fecha': r.fechaPago?.slice(0, 10),
+      'Fecha': r.fecha?.toString().slice(0, 10),
       'Total Pagado': r.montoPagado,
-      'Capital': r.capitalAplicado,
-      'Interés': r.interesAplicado,
-      'Mora': r.moraAplicada,
-      'Forma Pago': r.formaPago,
+      'Capital': r.aplicadoCapital,
+      'Interés': r.aplicadoInteres,
+      'Mora': r.aplicadoMora,
+      'Forma Pago': r.metodoPago,
     }));
     exportarExcel(filas, `Pagos-${prestamo.numero}-${new Date().toISOString().split('T')[0]}`);
     message.success(`${filas.length} pagos exportados`);
@@ -271,12 +271,12 @@ export default function DetallePrestamo() {
                 scroll={{ x: 'max-content' }} size="small"
                 columns={[
                   { title: 'Número', dataIndex: 'numero', width: 110 },
-                  { title: 'Fecha', dataIndex: 'fechaPago', render: (v: string) => v?.slice(0, 10) },
+                  { title: 'Fecha', dataIndex: 'fecha', render: (v: any) => v?.toString().slice(0, 10) },
                   { title: 'Total Pagado', dataIndex: 'montoPagado', render: fmt },
-                  { title: 'Capital', dataIndex: 'capitalAplicado', render: fmt },
-                  { title: 'Interés', dataIndex: 'interesAplicado', render: fmt },
-                  { title: 'Mora', dataIndex: 'moraAplicada', render: fmt },
-                  { title: 'Forma Pago', dataIndex: 'formaPago' },
+                  { title: 'Capital', dataIndex: 'aplicadoCapital', render: fmt },
+                  { title: 'Interés', dataIndex: 'aplicadoInteres', render: fmt },
+                  { title: 'Mora', dataIndex: 'aplicadoMora', render: fmt },
+                  { title: 'Forma Pago', dataIndex: 'metodoPago' },
                   {
                     title: '', key: 'pdf', width: 70,
                     render: (_: any, r: any) => <Button size="small" icon={<FileText size={13} />} onClick={() => window.open(prestamistalApi.pdfRecibo(r.id), '_blank')} />,
