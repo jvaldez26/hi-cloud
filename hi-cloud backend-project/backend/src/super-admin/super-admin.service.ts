@@ -5,6 +5,7 @@ import {
 import { DataSource } from 'typeorm';
 import { randomBytes, createHash } from 'crypto';
 import { EmailService } from '../notificaciones/services/email.service';
+import { PLANES, PlanTipo } from '../suscripciones/entities/suscripcion.entity';
 
 @Injectable()
 export class SuperAdminService {
@@ -190,21 +191,14 @@ export class SuperAdminService {
   // ── Métricas globales ────────────────────────────────────────────────────
 
   async getMetricas() {
-    const USD_PRICES: Record<string, number> = {
-      trial: 0, emprendedor: 29, pyme: 59, pro: 89, plus: 129,
-      basico: 0, profesional: 0, empresarial: 0, enterprise: 0,
-    };
-
-    const [base, facturasHoy, facturasMes, porPlan, trials, vencidas, ecfHoy, montoMes] = await Promise.all([
+    const [base, facturasHoy, facturasMes, porPlan, trials, vencidas, ecfHoy, montoMes, sesiones] = await Promise.all([
+      // Fix: subqueries independientes en vez de CROSS JOIN O(N×M)
       this.ds.query<any[]>(`
         SELECT
-          COUNT(DISTINCT e.id)                                  AS "totalEmpresas",
-          COUNT(DISTINCT CASE WHEN e."isActive" THEN e.id END) AS "empresasActivas",
-          COUNT(DISTINCT u.id)                                  AS "totalUsuarios",
-          COUNT(DISTINCT CASE WHEN u."createdAt"::date = CURRENT_DATE THEN u.id END) AS "nuevosHoy"
-        FROM empresa e
-        CROSS JOIN users u
-        WHERE u.role != 'super_admin'
+          (SELECT COUNT(*)::int FROM empresa)                                                                      AS "totalEmpresas",
+          (SELECT COUNT(*)::int FROM empresa WHERE "isActive" = true)                                             AS "empresasActivas",
+          (SELECT COUNT(*)::int FROM users WHERE role::text != 'super_admin')                                     AS "totalUsuarios",
+          (SELECT COUNT(*)::int FROM users WHERE role::text != 'super_admin' AND "createdAt"::date = CURRENT_DATE) AS "nuevosHoy"
       `),
       this.ds.query<any[]>(`
         SELECT COUNT(*)::int AS total FROM facturas
@@ -216,25 +210,32 @@ export class SuperAdminService {
           AND EXTRACT(YEAR  FROM fecha) = EXTRACT(YEAR  FROM CURRENT_DATE)
           AND "isActive" = true AND estado != 'cancelada'
       `),
+      // Fix MRR: incluir modalidad para calcular anual/12 vs mensual
       this.ds.query<any[]>(`
-        SELECT s.plan, COUNT(DISTINCT s."empresaId")::int AS cantidad
+        SELECT s.plan, s.modalidad, COUNT(DISTINCT s."empresaId")::int AS cantidad
         FROM suscripciones s
         JOIN empresa e ON e.id = s."empresaId" AND e."isActive" = true
         WHERE s.estado = 'activa'
-        GROUP BY s.plan ORDER BY cantidad DESC
+        GROUP BY s.plan, s.modalidad ORDER BY s.plan
       `),
+      // Fix trials: filtrar solo empresas activas
       this.ds.query<any[]>(`
         SELECT COUNT(*)::int AS cnt,
-               COUNT(CASE WHEN COALESCE("vencimientoOverride","fechaVencimiento") <= CURRENT_DATE + 7 THEN 1 END)::int AS "proximasVencer"
-        FROM suscripciones WHERE plan::text = 'trial' AND estado = 'activa'
+               COUNT(CASE WHEN COALESCE(s."vencimientoOverride",s."fechaVencimiento") <= CURRENT_DATE + 7 THEN 1 END)::int AS "proximasVencer"
+        FROM suscripciones s
+        JOIN empresa e ON e.id = s."empresaId" AND e."isActive" = true
+        WHERE s.plan::text = 'trial' AND s.estado = 'activa'
       `),
       this.ds.query<any[]>(`
         SELECT COUNT(*)::int AS cnt FROM suscripciones
         WHERE COALESCE("vencimientoOverride","fechaVencimiento") < CURRENT_DATE AND estado = 'activa'
       `),
+      // Fix e-CF: usar timezone RD (UTC-4) para que "hoy" coincida con el día local
       this.ds.query<any[]>(`
         SELECT COUNT(*)::int AS cnt FROM ecf
-        WHERE "createdAt"::date = CURRENT_DATE AND "isActive" = true
+        WHERE ("createdAt" AT TIME ZONE 'America/Santo_Domingo')::date
+            = (NOW()        AT TIME ZONE 'America/Santo_Domingo')::date
+          AND "isActive" = true
       `),
       this.ds.query<any[]>(`
         SELECT COALESCE(SUM(total),0)::numeric AS "montoMes" FROM facturas
@@ -242,10 +243,22 @@ export class SuperAdminService {
           AND EXTRACT(YEAR  FROM fecha) = EXTRACT(YEAR  FROM CURRENT_DATE)
           AND "isActive" = true AND estado != 'cancelada'
       `),
+      // Fix sesiones: contar usuarios únicos con refresh_token vigente (no revocado)
+      this.ds.query<any[]>(`
+        SELECT COUNT(DISTINCT "userId")::int AS cnt FROM refresh_tokens
+        WHERE "revokedAt" IS NULL AND "expiresAt" > NOW()
+      `),
     ]);
 
+    // MRR: usa precios del constante PLANES (fuente única de verdad).
+    // Suscripciones anuales se prorratean a precio mensual (precioAnualUsd / 12).
     const mrrUsd = (porPlan as any[]).reduce((acc: number, r: any) => {
-      return acc + (USD_PRICES[r.plan as string] ?? 0) * Number(r.cantidad);
+      const cfg = PLANES[r.plan as PlanTipo];
+      if (!cfg) return acc;
+      const precio = r.modalidad === 'anual'
+        ? cfg.precioAnualUsd / 12
+        : cfg.precioMensualUsd;
+      return acc + precio * Number(r.cantidad);
     }, 0);
 
     return {
@@ -261,6 +274,7 @@ export class SuperAdminService {
       trialsProximosVencer: Number(trials[0]?.proximasVencer ?? 0),
       suscripcionesVencidas: Number(vencidas[0]?.cnt        ?? 0),
       ecfHoy:               Number(ecfHoy[0]?.cnt           ?? 0),
+      sesionesActivas:      Number(sesiones[0]?.cnt         ?? 0),
       distribucionPlanes:   porPlan,
     };
   }

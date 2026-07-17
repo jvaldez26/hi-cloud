@@ -2349,8 +2349,8 @@ export default function SuperAdminPage() {
             <KpiCard
               icon={<Globe size={20} />}
               label="Sesiones Activas"
-              value={Math.max(1, Math.floor((metricas?.totalUsuarios ?? 0) * 0.15))}
-              sub="Estimado en tiempo real"
+              value={metricas?.sesionesActivas ?? 0}
+              sub="Usuarios con token vigente"
               subColor={C.txt2}
               accent={C.blue}
             />
