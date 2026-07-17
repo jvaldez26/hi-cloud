@@ -3,7 +3,6 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { SuperAdminController }  from './super-admin.controller';
-import { DebugController }       from './debug.controller';
 import { SuperAdminService }     from './super-admin.service';
 import { SuperAdminGuard }       from './super-admin.guard';
 import { BackupService }         from './backup.service';
@@ -32,7 +31,7 @@ import { ModulosAddonModule }    from '../modulos-addon/modulos-addon.module';
       },
     }),
   ],
-  controllers: [SuperAdminController, DebugController],
+  controllers: [SuperAdminController],
   providers:   [SuperAdminService, SuperAdminGuard, BackupService, TokenBlacklistService],
   exports:     [SuperAdminGuard, JwtModule, TokenBlacklistService],
 })
