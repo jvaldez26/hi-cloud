@@ -21,22 +21,35 @@ function sanitizeUrl(url?: string): string | undefined {
 }
 
 /**
- * El JWT vive en localStorage; es fácil que se cuele en un mensaje de error o
- * en un stack. sanitizeUrl no lo atrapa (es base64, no dígitos), así que se
- * enmascara por patrón sobre el message y los exception values.
+ * Scrub DIRIGIDO de PII fiscal en texto libre (message, exception values, extra,
+ * contexts). sanitizeUrl (arriba) sólo cubre URLs; esto cubre el cuerpo del evento.
+ * Enmascara SOLO patrones fiscales dominicanos, no todos los dígitos, para no cegar
+ * el debug (IDs de factura/producto de 4-8 díg y montos quedan intactos).
+ * Orden importa: e-NCF antes que los patrones de longitud, para que sus dígitos
+ * no caigan en cédula(11)/RNC(9).
+ * Trade-off aceptado: códigos de barras de producto de exactamente 9/11 díg se
+ * enmascararían si aparecieran en un error (raro) — se prioriza no filtrar PII.
  */
-const JWT_RE = /eyJ[\w-]+\.[\w-]+\.[\w-]+/g;
-function scrubJwt(text: string): string {
-  return text.replace(JWT_RE, ':jwt');
+const JWT_RE    = /eyJ[\w-]+\.[\w-]+\.[\w-]+/g;  // JWT (vive en localStorage)
+const NCF_RE    = /\bE\d{10,12}\b/g;             // e-NCF: E + 12 díg (rango por robustez)
+const CEDULA_RE = /\b\d{11}\b/g;                 // cédula: 11 díg exactos
+const RNC_RE    = /\b\d{9}\b/g;                  // RNC empresa: 9 díg exactos
+
+function scrubText(text: string): string {
+  return text
+    .replace(JWT_RE,    ':jwt')
+    .replace(NCF_RE,    ':ncf')
+    .replace(CEDULA_RE, ':cedula')
+    .replace(RNC_RE,    ':rnc');
 }
 
-/** Aplica scrubJwt a los strings de un objeto (extra/contexts), in-place,
+/** Aplica scrubText a los strings de un objeto (extra/contexts), in-place,
  *  acotado en profundidad y con guarda de ciclos. */
 function scrubDeep(value: unknown, depth = 0, seen = new WeakSet<object>()): void {
   if (value === null || typeof value !== 'object' || depth > 5 || seen.has(value)) return;
   seen.add(value);
   for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-    if (typeof v === 'string') (value as Record<string, unknown>)[k] = scrubJwt(v);
+    if (typeof v === 'string') (value as Record<string, unknown>)[k] = scrubText(v);
     else scrubDeep(v, depth + 1, seen);
   }
 }
@@ -71,10 +84,10 @@ if (import.meta.env.PROD && DSN) {
           const id = event.user.id;
           event.user = id != null ? { id } : {};
         }
-        // Scrub JWT en el mensaje y en cada valor de excepción.
-        if (typeof event.message === 'string') event.message = scrubJwt(event.message);
+        // Scrub de PII fiscal (JWT/e-NCF/cédula/RNC) en mensaje y valores de excepción.
+        if (typeof event.message === 'string') event.message = scrubText(event.message);
         for (const v of event.exception?.values ?? []) {
-          if (typeof v.value === 'string') v.value = scrubJwt(v.value);
+          if (typeof v.value === 'string') v.value = scrubText(v.value);
         }
         // Por si un token se colara en datos adjuntos (nadie los escribe hoy, pero defensivo).
         if (event.extra)    scrubDeep(event.extra);
