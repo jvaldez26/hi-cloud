@@ -314,15 +314,4 @@ export class CxPService {
     );
     this.logger.log(`CxP vencidas actualizadas: ${resultado.affected ?? 0}`);
   }
-
-  @Cron('0 8 * * *')
-  async notificarCuentasVencidas() {
-    const vencidas = await this.getCuentasVencidas();
-    if (vencidas.length > 0) {
-      this.logger.warn(
-        `⚠️  ${vencidas.length} cuentas por pagar vencidas. ` +
-        `Monto total: $${vencidas.reduce((a, c) => a + Number(c.montoPendiente), 0).toFixed(2)}`,
-      );
-    }
-  }
 }
