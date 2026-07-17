@@ -68,6 +68,10 @@ async function bootstrap() {
   // ── Cookie parser — necesario para leer access_token de cookie httpOnly ──
   app.use(cookieParser());
 
+  // Aumentar límite del body para permitir imágenes base64 (~10 MB máx)
+  app.use(require('express').json({ limit: '10mb' }));
+  app.use(require('express').urlencoded({ extended: true, limit: '10mb' }));
+
   const isDev = process.env.NODE_ENV !== 'production';
 
   const isProd = process.env.NODE_ENV === 'production';
