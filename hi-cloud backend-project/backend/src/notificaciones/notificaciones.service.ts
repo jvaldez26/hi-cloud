@@ -80,7 +80,7 @@ export class NotificacionesService {
     const rows = await this.dataSource.query<{
       folio: string; clienteNombre: string; total: string; diasVencido: string;
     }[]>(
-      `SELECT f.folio, c.nombre AS "clienteNombre", cxc.total::text,
+      `SELECT f.folio, c.nombre AS "clienteNombre", cxc."montoPendiente"::text AS total,
               (CURRENT_DATE - cxc."fechaVencimiento"::date)::int AS "diasVencido"
        FROM cuentas_por_cobrar cxc
        JOIN facturas  f ON f.id  = cxc."facturaId"
@@ -114,7 +114,7 @@ export class NotificacionesService {
     const rows = await this.dataSource.query<{
       folio: string; proveedorNombre: string; total: string; diasVence: string;
     }[]>(
-      `SELECT c.folio, p.nombre AS "proveedorNombre", cxp.total::text,
+      `SELECT c.folio, p.nombre AS "proveedorNombre", cxp."montoPendiente"::text AS total,
               (cxp."fechaVencimiento"::date - CURRENT_DATE)::int AS "diasVence"
        FROM cuentas_por_pagar cxp
        JOIN compras     c ON c.id = cxp."compraId"
