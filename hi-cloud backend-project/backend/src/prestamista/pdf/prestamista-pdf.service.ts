@@ -86,43 +86,49 @@ export class PrestamistaPdfService {
   }
 
   async reciboPago(res: Response, pagoId: number, empresaId: number) {
-    const [pago] = await this.ds.query<any[]>(
-      `SELECT pg.*, p.numero as prestamoNumero, d.nombre as deudorNombre, d.cedula as deudorCedula
+    const rows: any[] = await this.ds.query(
+      `SELECT pg.*, p.numero AS "prestamoNumero", d.nombre AS "deudorNombre", d.cedula AS "deudorCedula"
        FROM pr_pagos pg JOIN pr_prestamos p ON p.id=pg."prestamoId"
        JOIN pr_deudores d ON d.id=pg."deudorId"
        WHERE pg.id=$1 AND pg."empresaId"=$2`, [pagoId, empresaId],
     );
+    const pago = rows[0];
     if (!pago) { res.status(404).json({ message: 'Pago no encontrado' }); return; }
 
-    const doc = new PDFDocument({ margin: 50, size: [300, 420] });
+    const doc = new PDFDocument({ margin: 30, size: [300, 440] });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="recibo-${pago.numero}.pdf"`);
     doc.pipe(res);
 
-    doc.fontSize(14).font('Helvetica-Bold').text('RECIBO DE PAGO', { align: 'center' });
-    doc.fontSize(10).font('Helvetica').text(`N°: ${pago.numero}`, { align: 'center' });
-    doc.moveDown(0.5);
+    doc.fontSize(13).font('Helvetica-Bold').text('RECIBO DE PAGO', { align: 'center' });
+    doc.fontSize(9).font('Helvetica').text(`N°: ${pago.numero ?? ''}`, { align: 'center' });
+    doc.moveDown(0.4);
     doc.moveTo(30, doc.y).lineTo(270, doc.y).stroke();
     doc.moveDown(0.3);
 
+    // LBL=80pt, VAL=160pt; total=30+80+160=270 dentro de 300px de página
+    const LBL = 80;
+    const VAL = 160;
     const row = (label: string, val: string) => {
-      doc.font('Helvetica-Bold').fontSize(8).text(label, 30, doc.y, { continued: true, width: 100 });
-      doc.font('Helvetica').text(val, { width: 150 });
+      const safeVal = val != null ? String(val) : '—';
+      doc.font('Helvetica-Bold').fontSize(8).text(label, 30, doc.y, { continued: true, width: LBL });
+      doc.font('Helvetica').fontSize(8).text(safeVal, { width: VAL, lineBreak: false });
+      doc.moveDown(0.55);
     };
 
-    row('Deudor:', pago.deudorNombre);
+    row('Deudor:', pago.deudorNombre ?? '—');
     row('Cédula:', pago.deudorCedula ?? 'N/A');
-    row('Préstamo N°:', pago.prestamoNumero);
-    row('Fecha:', new Date(pago.fecha).toLocaleDateString('es-DO'));
+    row('Préstamo N°:', pago.prestamoNumero ?? '—');
+    row('Fecha:', pago.fecha ? new Date(pago.fecha).toLocaleDateString('es-DO') : '—');
     row('Método:', pago.metodoPago ?? 'Efectivo');
-    if (pago.referencia) row('Referencia:', pago.referencia);
-    doc.moveDown(0.5);
+    if (pago.referencia) row('Referencia:', String(pago.referencia));
+    doc.moveDown(0.4);
     doc.moveTo(30, doc.y).lineTo(270, doc.y).stroke();
     doc.moveDown(0.3);
     row('Abono Mora:', `RD$ ${this.r2(pago.aplicadoMora)}`);
     row('Abono Interés:', `RD$ ${this.r2(pago.aplicadoInteres)}`);
     row('Abono Capital:', `RD$ ${this.r2(pago.aplicadoCapital)}`);
-    doc.moveDown(0.3);
+    doc.moveDown(0.4);
     doc.moveTo(30, doc.y).lineTo(270, doc.y).stroke();
     doc.moveDown(0.3);
     doc.fontSize(12).font('Helvetica-Bold').text(`TOTAL: RD$ ${this.r2(pago.montoPagado)}`, { align: 'center' });
