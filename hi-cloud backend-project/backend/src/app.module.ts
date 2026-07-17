@@ -237,9 +237,15 @@ import { EcfRecibidosModule }       from './ecf-recibidos/ecf-recibidos.module';
           extra: {
             max:                    isProd ? 15 : 5,  // máx conexiones en el pool
             min:                    isProd ? 3  : 1,  // mín conexiones siempre listas
-            idleTimeoutMillis:      30_000,            // cerrar idle después de 30s
-            connectionTimeoutMillis: 3_000,            // error si no hay conexión en 3s
+            // idle > intervalo de polling del front (90s, useAlertas.ts): con 30s las
+            // conexiones morían entre polls y cada uno reabría ~12 TLS desde cero.
+            // El RDS nunca cierra sesiones idle (idle_session_timeout=0) y 15/76 no aprieta.
+            idleTimeoutMillis:      120_000,
+            connectionTimeoutMillis: 10_000,           // 3s se agotaba en ráfagas de handshakes
             statement_timeout:      30_000,            // cancelar queries > 30s
+            // Con conexiones idle más tiempo, mantener vivo el socket a nivel TCP.
+            keepAlive:              true,
+            keepAliveInitialDelayMillis: 10_000,
           },
         };
       },
