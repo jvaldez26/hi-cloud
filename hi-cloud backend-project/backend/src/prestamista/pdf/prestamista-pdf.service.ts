@@ -87,55 +87,91 @@ export class PrestamistaPdfService {
 
   async reciboPago(res: Response, pagoId: number, empresaId: number) {
     const rows: any[] = await this.ds.query(
-      `SELECT pg.*, p.numero AS "prestamoNumero", d.nombre AS "deudorNombre", d.cedula AS "deudorCedula"
-       FROM pr_pagos pg JOIN pr_prestamos p ON p.id=pg."prestamoId"
-       JOIN pr_deudores d ON d.id=pg."deudorId"
+      `SELECT pg.*,
+              p.numero       AS "prestamoNumero",
+              d.nombre       AS "deudorNombre",
+              d.cedula       AS "deudorCedula",
+              e."razonSocial" AS "empresaNombre",
+              e.telefono     AS "empresaTelefono"
+       FROM pr_pagos pg
+       JOIN pr_prestamos p ON p.id = pg."prestamoId"
+       JOIN pr_deudores  d ON d.id = pg."deudorId"
+       LEFT JOIN empresas e ON e.id = pg."empresaId"
        WHERE pg.id=$1 AND pg."empresaId"=$2`, [pagoId, empresaId],
     );
     const pago = rows[0];
     if (!pago) { res.status(404).json({ message: 'Pago no encontrado' }); return; }
 
-    const doc = new PDFDocument({ margin: 30, size: [300, 440] });
+    // ── Papel térmico 80 mm (~200 pt ancho útil) ────────────────
+    const TW = 200; const PL = 8; const PR = TW - 8; const W = PR - PL;
+    const doc = new PDFDocument({ size: [TW, 800], margin: 0, compress: true });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="recibo-${pago.numero}.pdf"`);
     doc.pipe(res);
 
-    doc.fontSize(13).font('Helvetica-Bold').text('RECIBO DE PAGO', { align: 'center' });
-    doc.fontSize(9).font('Helvetica').text(`N°: ${pago.numero ?? ''}`, { align: 'center' });
-    doc.moveDown(0.4);
-    doc.moveTo(30, doc.y).lineTo(270, doc.y).stroke();
-    doc.moveDown(0.3);
+    let y = 10;
+    const LH = 11;
 
-    // LBL=80pt, VAL=160pt; total=30+80+160=270 dentro de 300px de página
-    const LBL = 80;
-    const VAL = 160;
-    const row = (label: string, val: string) => {
-      const safeVal = val != null ? String(val) : '—';
-      doc.font('Helvetica-Bold').fontSize(8).text(label, 30, doc.y, { continued: true, width: LBL });
-      doc.font('Helvetica').fontSize(8).text(safeVal, { width: VAL, lineBreak: false });
-      doc.moveDown(0.55);
+    const center = (text: string, fs: number, font = 'Helvetica', color = '#000') => {
+      doc.font(font).fontSize(fs).fillColor(color)
+         .text(String(text ?? ''), PL, y, { width: W, align: 'center', lineBreak: false });
+      y += LH;
+    };
+    const sep = (color = '#000', lw = 0.5) => {
+      y += 3;
+      doc.moveTo(PL, y).lineTo(PR, y).strokeColor(color).lineWidth(lw).stroke();
+      y += 4;
+    };
+    const kv = (label: string, val: string) => {
+      doc.font('Helvetica-Bold').fontSize(7).fillColor('#000')
+         .text(String(label), PL, y, { width: W * 0.55, lineBreak: false });
+      doc.font('Helvetica').fontSize(7).fillColor('#000')
+         .text(String(val ?? '—'), PL + W * 0.55, y, { width: W * 0.45, align: 'right', lineBreak: false });
+      y += LH;
     };
 
-    row('Deudor:', pago.deudorNombre ?? '—');
-    row('Cédula:', pago.deudorCedula ?? 'N/A');
-    row('Préstamo N°:', pago.prestamoNumero ?? '—');
-    row('Fecha:', pago.fecha ? new Date(pago.fecha).toLocaleDateString('es-DO') : '—');
-    row('Método:', pago.metodoPago ?? 'Efectivo');
-    if (pago.referencia) row('Referencia:', String(pago.referencia));
-    doc.moveDown(0.4);
-    doc.moveTo(30, doc.y).lineTo(270, doc.y).stroke();
-    doc.moveDown(0.3);
-    row('Abono Mora:', `RD$ ${this.r2(pago.aplicadoMora)}`);
-    row('Abono Interés:', `RD$ ${this.r2(pago.aplicadoInteres)}`);
-    row('Abono Capital:', `RD$ ${this.r2(pago.aplicadoCapital)}`);
-    doc.moveDown(0.4);
-    doc.moveTo(30, doc.y).lineTo(270, doc.y).stroke();
-    doc.moveDown(0.3);
-    doc.fontSize(12).font('Helvetica-Bold').text(`TOTAL: RD$ ${this.r2(pago.montoPagado)}`, { align: 'center' });
-    doc.moveDown(1.5);
-    doc.fontSize(8).font('Helvetica').text('_______________________', 30, doc.y);
-    doc.text('Firma Autorizada', 30);
+    // ── Encabezado ────────────────────────────────────────────────
+    if (pago.empresaNombre) center(String(pago.empresaNombre), 9, 'Helvetica-Bold');
+    if (pago.empresaTelefono) center(String(pago.empresaTelefono), 7);
+    y += 3;
+    center('RECIBO DE PAGO', 11, 'Helvetica-Bold');
+    center(`N°: ${pago.numero ?? ''}`, 9, 'Helvetica-Bold');
+    sep('#ccc', 0.5);
 
+    // ── Datos del pago ────────────────────────────────────────────
+    kv('Deudor:',      String(pago.deudorNombre ?? '—'));
+    kv('Cédula:',      String(pago.deudorCedula ?? 'N/A'));
+    kv('Préstamo N°:', String(pago.prestamoNumero ?? '—'));
+    kv('Fecha:',       pago.fecha ? new Date(pago.fecha).toLocaleDateString('es-DO') : '—');
+    kv('Método:',      String(pago.metodoPago ?? 'Efectivo'));
+    if (pago.referencia) kv('Referencia:', String(pago.referencia));
+    sep('#000', 1);
+
+    // ── Detalle abonos ────────────────────────────────────────────
+    kv('Abono Mora:',     `RD$ ${this.r2(pago.aplicadoMora)}`);
+    kv('Abono Interés:',  `RD$ ${this.r2(pago.aplicadoInteres)}`);
+    kv('Abono Capital:',  `RD$ ${this.r2(pago.aplicadoCapital)}`);
+    sep('#000', 0.5);
+
+    // ── Total ─────────────────────────────────────────────────────
+    doc.font('Helvetica-Bold').fontSize(10).fillColor('#000')
+       .text(`TOTAL: RD$ ${this.r2(pago.montoPagado)}`, PL, y, { width: W, align: 'center', lineBreak: false });
+    y += LH + 4;
+    sep('#ccc', 0.5);
+
+    // ── Firma ─────────────────────────────────────────────────────
+    y += 6;
+    doc.font('Helvetica').fontSize(7).fillColor('#000')
+       .text('_______________________', PL, y, { width: W, align: 'center', lineBreak: false });
+    y += LH;
+    doc.font('Helvetica').fontSize(7).fillColor('#000')
+       .text('Firma Autorizada', PL, y, { width: W, align: 'center', lineBreak: false });
+    y += LH + 4;
+    center('HiCloud ERP', 7, 'Helvetica', '#888');
+    y += 4;
+
+    // Recortar página al contenido real
+    (doc.page as any).height = y + 15;
     doc.end();
   }
 
