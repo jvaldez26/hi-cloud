@@ -76,19 +76,57 @@ export class PrestamosService {
   }
 
   async create(empresaId: number, data: any) {
+    // Cuando viene del formulario "Desembolso desde solicitud", los parámetros
+    // del préstamo no se envían en el body — se leen de la solicitud aprobada.
+    if (data.solicitudId && (!data.montoPrincipal || !data.plazoMeses || !data.tasaInteresMensual)) {
+      const [sol] = await this.ds.query<any[]>(
+        `SELECT * FROM pr_solicitudes WHERE id=$1 AND "empresaId"=$2 AND estado='aprobada'`,
+        [data.solicitudId, empresaId],
+      );
+      if (!sol) throw new BadRequestException('Solicitud no encontrada o no está en estado aprobada');
+      data.deudorId           = data.deudorId           ?? sol.deudorId;
+      data.productoId         = data.productoId         ?? sol.productoId;
+      data.montoPrincipal     = data.montoPrincipal     ?? sol.montoAprobado ?? sol.montoSolicitado;
+      data.tasaInteresMensual = data.tasaInteresMensual ?? sol.tasaAprobada;
+      data.plazoMeses         = data.plazoMeses         ?? sol.plazoMeses;
+      data.frecuenciaPago     = data.frecuenciaPago     ?? sol.frecuenciaPago;
+      data.oficialId          = data.oficialId          ?? sol.oficialId;
+      data.oficialNombre      = data.oficialNombre      ?? sol.oficialNombre;
+    }
+
+    // Si no se especifica fechaPrimerPago, calcularla 1 mes después del desembolso
+    if (!data.fechaPrimerPago && data.fechaDesembolso) {
+      const fd = new Date(data.fechaDesembolso);
+      fd.setMonth(fd.getMonth() + 1);
+      data.fechaPrimerPago = fd.toISOString().split('T')[0];
+    }
+
+    const { deudorId, montoPrincipal, tasaInteresMensual, plazoMeses, fechaPrimerPago: fpRaw } = data;
+    if (!deudorId || !montoPrincipal || !tasaInteresMensual || !plazoMeses || !fpRaw) {
+      throw new BadRequestException('Faltan campos requeridos: deudorId, montoPrincipal, tasaInteresMensual, plazoMeses, fechaPrimerPago');
+    }
+
     const [seq] = await this.ds.query<any[]>(
       `SELECT siguiente_numero_secuencia($1, $2) AS num`, [empresaId, 'PRE'],
     );
     const numero = `PRE-${seq.num}`;
 
-    const fechaPrimerPago = new Date(data.fechaPrimerPago);
+    const fechaPrimerPago = new Date(fpRaw);
+    if (isNaN(fechaPrimerPago.getTime())) {
+      throw new BadRequestException('fechaPrimerPago no es una fecha válida');
+    }
+
     const amort = calcularAmortizacion(
       data.metodoAmortizacion ?? 'frances',
-      Number(data.montoPrincipal),
-      Number(data.tasaInteresMensual),
-      Number(data.plazoMeses),
+      Number(montoPrincipal),
+      Number(tasaInteresMensual),
+      Number(plazoMeses),
       fechaPrimerPago,
     );
+
+    if (!amort.tabla.length) {
+      throw new BadRequestException('No se pudo generar el plan de amortización (plazo inválido)');
+    }
 
     const ultimaCuota = amort.tabla[amort.tabla.length - 1];
 
