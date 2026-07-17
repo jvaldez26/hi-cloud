@@ -141,6 +141,11 @@ jobs:
         env:
           NODE_OPTIONS: '--max-old-space-size=4096'
           VITE_API_URL: /api/v1
+          VITE_SENTRY_DSN:     ${{ secrets.VITE_SENTRY_DSN }}
+          VITE_SENTRY_RELEASE: ${{ github.sha }}
+          SENTRY_AUTH_TOKEN:   ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG:          ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT:      ${{ secrets.SENTRY_PROJECT }}
 
       - name: Upload frontend dist
         uses: actions/upload-artifact@v4

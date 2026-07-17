@@ -1,3 +1,4 @@
+import './instrument'; // Sentry.init — debe ejecutarse antes que cualquier otro módulo
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';

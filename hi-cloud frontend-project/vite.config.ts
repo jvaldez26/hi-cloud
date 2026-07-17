@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { sentryVitePlugin } from '@sentry/vite-plugin';
 import { readFileSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
 
@@ -25,7 +26,26 @@ function injectSwVersion(): import('vite').Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), injectSwVersion()],
+  plugins: [
+    react(),
+    injectSwVersion(),
+    // Sube source maps a Sentry en CI y los BORRA del dist (nunca llegan al EC2).
+    // Solo activo si hay SENTRY_AUTH_TOKEN (build de CI); no-op en build local.
+    ...(process.env.SENTRY_AUTH_TOKEN ? [sentryVitePlugin({
+      org:       process.env.SENTRY_ORG,
+      project:   process.env.SENTRY_PROJECT,
+      authToken: process.env.SENTRY_AUTH_TOKEN,
+      release:   { name: process.env.VITE_SENTRY_RELEASE },
+      sourcemaps: { filesToDeleteAfterUpload: ['./dist/**/*.map'] },
+      // La observabilidad NUNCA bloquea el deploy: un fallo al subir source maps
+      // (Sentry caído, token expirado, glitch de red) queda en WARNING, no rompe el build.
+      // Los .map igual se borran (deleteArtifacts corre en un finally del hook de Rollup),
+      // así que nunca quedan expuestos. Solo se pierde el desminificado de ESE release.
+      errorHandler: (err) => {
+        console.warn('[sentry-vite-plugin] fallo al subir source maps (no bloquea el deploy):', err.message);
+      },
+    })] : []),
+  ],
   server: {
     port: 5173,
     proxy: {
@@ -50,6 +70,9 @@ export default defineConfig({
     dedupe: ['react', 'react-dom'],
   },
   build: {
+    // Source maps solo cuando el plugin de Sentry está activo (hay token) para
+    // subirlos y BORRARLOS. Sin token NO se generan → nunca queda un .map en dist.
+    sourcemap: process.env.SENTRY_AUTH_TOKEN ? 'hidden' : false,
     rollupOptions: {
       output: {
         entryFileNames: 'assets/[name]-[hash].js',

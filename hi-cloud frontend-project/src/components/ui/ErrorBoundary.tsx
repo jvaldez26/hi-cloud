@@ -1,5 +1,6 @@
 import React from 'react';
 import { Button, Result, Space } from 'antd';
+import * as Sentry from '@sentry/react';
 
 interface State { hasError: boolean; error?: Error; isChunkError: boolean }
 
@@ -28,6 +29,12 @@ export class ErrorBoundary extends React.Component<
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error('[ErrorBoundary]', error, info);
+    // Los chunk-load errors son ruido de deploy (hashes viejos), no bugs → no a Sentry.
+    if (!isChunkLoadError(error)) {
+      Sentry.captureException(error, {
+        contexts: { react: { componentStack: info.componentStack } },
+      });
+    }
   }
 
   private handleRetry = () => {
