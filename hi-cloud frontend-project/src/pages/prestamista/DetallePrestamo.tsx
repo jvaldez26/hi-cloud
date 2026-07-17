@@ -114,6 +114,16 @@ export default function DetallePrestamo() {
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al cancelar préstamo'),
   });
 
+  const recalcular = useMutation({
+    mutationFn: () => prestamistalApi.recalcularPrestamo(Number(id)),
+    onSuccess: (d: any) => {
+      qc.invalidateQueries({ queryKey: ['prestamista-prestamo', id] });
+      qc.invalidateQueries({ queryKey: ['prestamista-prestamos'] });
+      message.success(`Saldos recalculados → ${d?.estado ?? 'ok'}`);
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al recalcular'),
+  });
+
   if (isLoading) return <Spin style={{ display: 'block', margin: '40px auto' }} />;
   if (!prestamo) return <div style={{ padding: 24 }}>Préstamo no encontrado</div>;
 
@@ -161,6 +171,7 @@ export default function DetallePrestamo() {
         <Tag color={estadoColor[prestamo.estado] ?? 'default'}>{prestamo.estado?.replace('_', ' ')}</Tag>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           <Button icon={<FileText size={14} />} onClick={() => window.open(prestamistalApi.pdfAmortizacion(Number(id)), '_blank')}>PDF Amortización</Button>
+          <Button onClick={() => recalcular.mutate()} loading={recalcular.isPending}>Recalcular Saldos</Button>
           {activo && <Button type="primary" icon={<DollarSign size={14} />} onClick={() => setPagoOpen(true)}>Registrar Pago</Button>}
           {activo && <Button danger onClick={() => setCancelarOpen(true)}>Cancelar</Button>}
         </div>

@@ -184,6 +184,37 @@ export class PrestamosService {
     return this.findOne(empresaId, prestamo.id);
   }
 
+  async recalcularSaldos(empresaId: number, id: number) {
+    const p = await this.orFail(empresaId, id);
+    const [s] = await this.ds.query<any[]>(
+      `SELECT
+         SUM(GREATEST(0, capital - "capitalPagado"))                                        AS "saldoCapital",
+         SUM(GREATEST(0, interes - "interesPagado"))                                        AS "saldoInteres",
+         SUM(GREATEST(0, "moraGenerada" - "moraPagada"))                                    AS "saldoMora",
+         COUNT(*) FILTER (WHERE estado <> 'pagada')                                         AS "cuotasPendientes",
+         COUNT(*) FILTER (WHERE estado <> 'pagada' AND "fechaVencimiento" < CURRENT_DATE)   AS "cuotasVencidas",
+         COALESCE(SUM("totalPagado"), 0)                                                    AS "totalPagadoCuotas"
+       FROM pr_cuotas WHERE "prestamoId"=$1`,
+      [id],
+    );
+    const r2 = (n: any) => Math.round(Number(n ?? 0) * 100) / 100;
+    const saldoCapital  = r2(s.saldoCapital);
+    const saldoInteres  = r2(s.saldoInteres);
+    const saldoMora     = r2(s.saldoMora);
+    const saldoTotal    = r2(saldoCapital + saldoInteres + saldoMora);
+    const cuotasVencidas   = Number(s.cuotasVencidas   ?? 0);
+    const cuotasPendientes = Number(s.cuotasPendientes ?? 0);
+    const nuevoEstado = (saldoCapital <= 0 && cuotasPendientes === 0)
+      ? 'pagado'
+      : cuotasVencidas > 0 ? 'moroso' : 'al_dia';
+    await this.ds.query(
+      `UPDATE pr_prestamos SET "saldoCapital"=$1,"saldoInteres"=$2,"saldoMora"=$3,"saldoTotal"=$4,
+        "cuotasVencidas"=$5,estado=$6,"updatedAt"=NOW() WHERE id=$7 AND "empresaId"=$8`,
+      [saldoCapital, saldoInteres, saldoMora, saldoTotal, cuotasVencidas, nuevoEstado, id, empresaId],
+    );
+    return { id, numero: p.numero, saldoCapital, saldoInteres, saldoMora, saldoTotal, estado: nuevoEstado };
+  }
+
   async cancelar(empresaId: number, id: number, motivo?: string) {
     const p = await this.orFail(empresaId, id);
     if (p.estado === 'cancelado') throw new BadRequestException('Préstamo ya cancelado');

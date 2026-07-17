@@ -21,4 +21,7 @@ export class PrestamosController {
   @Patch(':id/cancelar') cancelar(@Param('id', ParseIntPipe) id: number, @Body() body: any) {
     return this.svc.cancelar(this.empresaId, id, body?.motivo);
   }
+  @Patch(':id/recalcular') recalcular(@Param('id', ParseIntPipe) id: number) {
+    return this.svc.recalcularSaldos(this.empresaId, id);
+  }
 }

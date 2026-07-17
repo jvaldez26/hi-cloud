@@ -31,6 +31,8 @@ export const prestamistalApi = {
   simular:       (body: any)    => api.post(`${base}/prestamos/simular`, body).then(r),
   cancelarPrestamo: (id: number, motivo?: string) =>
     api.patch(`${base}/prestamos/${id}/cancelar`, { motivo }).then(r),
+  recalcularPrestamo: (id: number) =>
+    api.patch(`${base}/prestamos/${id}/recalcular`).then(r),
 
   // Pagos
   getPagosByPrestamo: (prestamoId: number) => api.get(`${base}/pagos/prestamo/${prestamoId}`).then(r),
