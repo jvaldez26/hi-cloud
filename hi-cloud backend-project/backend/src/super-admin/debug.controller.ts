@@ -1,11 +1,10 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
-import { SuperAdminGuard } from './super-admin.guard';
+import { Controller, Get } from '@nestjs/common';
 
 /**
- * TEMPORAL — eliminar tras verificar que los errores llegan a Sentry + scrubbing OK.
- * Protegido por SuperAdminGuard: solo role=SUPER_ADMIN puede acceder.
+ * TEMPORAL — eliminar INMEDIATAMENTE tras verificar que el error llega a Sentry.
+ * Sin autenticación por diseño: solo lanza un Error de prueba (sin datos ni efectos).
+ * Vida útil: ~10 min.
  */
-@UseGuards(SuperAdminGuard)
 @Controller('debug')
 export class DebugController {
   @Get('sentry-test')
