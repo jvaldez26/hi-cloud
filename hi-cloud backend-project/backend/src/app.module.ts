@@ -113,6 +113,7 @@ import { LibroVentasModule } from './libro-ventas/libro-ventas.module';
 import { PortalEmpleadoModule } from './portal-empleado/portal-empleado.module';
 import { AsistenteModule }         from './asistente/asistente.module';
 import { SuperAdminModule }        from './super-admin/super-admin.module';
+import { SentryModule }            from '@sentry/nestjs/setup';
 import { DatabaseModule }          from './database/database.module';
 import { SolicitudesCompraModule }    from './solicitudes-compra/solicitudes-compra.module';
 import { PlaneacionDemandaModule }        from './planeacion-demanda/planeacion-demanda.module';
@@ -174,6 +175,7 @@ import { EcfRecibidosModule }       from './ecf-recibidos/ecf-recibidos.module';
     }),
     // Logging estructurado (pino) — correlación desde el CLS existente + scrubbing.
     LoggerModule.forRoot(loggerOptions),
+    SentryModule.forRoot(),
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
     QueuesModule,
