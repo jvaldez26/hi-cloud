@@ -121,7 +121,7 @@ export class NotificacionesService {
        JOIN proveedores p ON p.id = cxp."proveedorId"
        WHERE cxp."isActive" = true
          AND cxp.estado IN ('pendiente','pagada_parcial')
-         AND cxp."fechaVencimiento"::date BETWEEN CURRENT_DATE AND CURRENT_DATE + $1
+         AND cxp."fechaVencimiento"::date BETWEEN CURRENT_DATE AND CURRENT_DATE + $1::int
        ORDER BY "diasVence" ASC
        LIMIT 50`,
       [diasAlerta],
