@@ -13,13 +13,14 @@ import { CxCModule } from '../cxc/cxc.module';
 import { ContabilidadModule } from '../contabilidad/contabilidad.module';
 import { SuscripcionesModule } from '../suscripciones/suscripciones.module';
 import { CajaModule } from '../caja/caja.module';
+import { RncModule } from '../rnc/rnc.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Factura, FacturaDetalle]),
     ClientesModule, ProductosModule, InventarioModule,
     ECFModule, CxCModule, ContabilidadModule,
-    SuscripcionesModule, CajaModule,
+    SuscripcionesModule, CajaModule, RncModule,
     PdfModule,           // PDFService + NumeroLetrasService encapsulados aquí
   ],
   controllers: [FacturasController],

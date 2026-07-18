@@ -27,6 +27,7 @@ import { ReintentoECFJob } from '../ecf/jobs/reintento-ecf.job';
 import { TipoClienteECF } from '../clientes/entities/cliente.entity';
 import { S3Service } from '../common/s3/s3.service';
 import { CajaService } from '../caja/caja.service';
+import { RncService } from '../rnc/rnc.service';
 import { reportServiceError } from '../common/observability/sentry';
 
 @Injectable()
@@ -53,6 +54,7 @@ export class FacturasService {
     private ecfRepo:           Repository<ECF>,
     private s3Service:         S3Service,
     private cajaService:       CajaService,
+    private rncService:        RncService,
     @InjectDataSource() private dataSource: DataSource,
   ) {}
 
@@ -979,11 +981,18 @@ export class FacturasService {
     // E31/E44/E45 exigen RNC del comprador. Si el cliente seleccionado no tiene RNC
     // en su perfil pero la factura tiene rncComprador (capturado en el POS al cobrar),
     // lo pasamos como datosComprador para que el builder lo use sin fallar.
+    // La razón social se resuelve desde el RNC vía RncService (caché 24h, mismo mecanismo
+    // que el modal del POS) — sin necesidad de columna razonSocialComprador en facturas.
     const clienteRnc = (factura as any).cliente?.rncReceptor ?? (factura as any).cliente?.rfc;
-    const datosCompradorIndividual: DatosCompradorECF | undefined =
-      [31, 44, 45].includes(tipoEcfNum) && !clienteRnc && (factura as any).rncComprador
-        ? { rnc: (factura as any).rncComprador }
-        : undefined;
+    let datosCompradorIndividual: DatosCompradorECF | undefined;
+    if ([31, 44, 45].includes(tipoEcfNum) && !clienteRnc && (factura as any).rncComprador) {
+      const rncFactura = String((factura as any).rncComprador);
+      const rncDatos   = await this.rncService.consultarRNC(rncFactura).catch(() => null);
+      datosCompradorIndividual = {
+        rnc:         rncFactura,
+        razonSocial: rncDatos?.encontrado && rncDatos.nombre ? rncDatos.nombre : undefined,
+      };
+    }
 
     try {
       const result = await this.emitirECFUseCase.execute({
