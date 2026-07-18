@@ -7389,10 +7389,38 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
       { label: 'Método',  key: 'metodoPago',  render: (v) => <span style={{ fontSize: 10, fontWeight: 700 }}>{v?.toUpperCase()}</span> },
     ],
     'notas-credito': [
-      { label: 'Número',  key: 'numero',      render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue }}>{v}</span> },
+      { label: 'Número',  key: 'numero',      render: (v, r) => {
+        const afectado = r.ecf?.ncfModificado ?? r.facturaOriginalFolio;
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.3 }}>
+            <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue }}>{v}</span>
+            {afectado && <span style={{ fontFamily: 'monospace', fontSize: 9, color: C.textSub, whiteSpace: 'nowrap' }}>↩ afecta {afectado}</span>}
+          </div>
+        );
+      }},
       { label: 'Cliente', key: 'cliente',     render: (_,r) => r.cliente?.nombre ?? '—' },
       { label: 'Total',   key: 'total',       render: (v) => <span style={{ fontWeight: 700, color: C.orange }}>{fmt.money(v)}</span> },
       { label: 'Estado',  key: 'estado',      render: (v) => <span style={{ fontSize: 10, fontWeight: 700, color: v==='emitida'?C.blue:v==='anulada'?C.red:C.textSub }}>{v?.toUpperCase()}</span> },
+      { label: 'Estado DGII', key: 'ecf', render: (v: any) => {
+        const est: string = (v?.estadoDGII ?? '').toUpperCase();
+        if (!est) return <span style={{ fontSize: 10, color: C.textSub }}>—</span>;
+        const cfg: Record<string, { color: string; bg: string; label: string }> = {
+          ACEPTADO:        { color: '#fff', bg: '#16a34a', label: '✓ ACEPTADO' },
+          RECHAZADO:       { color: '#fff', bg: '#dc2626', label: '✗ RECHAZADO' },
+          OBSERVADO:       { color: '#fff', bg: '#d97706', label: '⚠ OBSERVADO' },
+          ENVIADO:         { color: '#1e3a5f', bg: '#bfdbfe', label: '⏳ ENVIADO' },
+          PENDIENTE:       { color: '#fff', bg: '#6b7280', label: '… PENDIENTE' },
+          PENDIENTE_ENVIO: { color: '#fff', bg: '#6b7280', label: '… PENDIENTE' },
+          CONTINGENCIA:    { color: '#fff', bg: '#7c3aed', label: '⚡ CONTINGENCIA' },
+        };
+        const c = cfg[est] ?? { color: C.text, bg: 'transparent', label: est };
+        return (
+          <span style={{ fontSize: 9, fontWeight: 700, color: c.color, background: c.bg,
+            borderRadius: 4, padding: '2px 6px', whiteSpace: 'nowrap' }}>
+            {c.label}
+          </span>
+        );
+      }},
     ],
     gastos: [
       { label: 'Descripción', key: 'descripcion', render: (v) => <span style={{ fontSize: 12 }}>{v}</span> },
