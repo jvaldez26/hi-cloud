@@ -15,6 +15,7 @@ import { Gasto } from '../../gastos/entities/gasto.entity';
 import { ENCFGeneratorService } from '../services/encf-generator.service';
 import { ECFBuilderService, ECFBuildInput, MSellerInfoReferencia, MSellerPayload } from '../services/ecf-builder.service';
 import { MSellerClientService } from '../services/mseller-client.service';
+import { esErrorYaExiste, consultarExistenciaEncf } from '../services/reconciliacion-ecf.helper';
 import { EcfConfigService } from '../services/ecf-config.service';
 
 import {
@@ -405,6 +406,48 @@ export class EmitirECFUseCase {
       return this.toResult(ecfFinal!, false);
 
     } catch (err) {
+      // ── "Ya existe en el sistema" NO es rechazo real ─────────────────────
+      // MSeller ya procesó un envío previo de este eNCF (respuesta perdida por
+      // timeout). Consultar el estado real y adoptarlo — NUNCA marcar RECHAZADO.
+      if (err instanceof EcfValidacionError && esErrorYaExiste(err)) {
+        const real = await consultarExistenciaEncf(this.mseller, encf, empresaId);
+        if (real.tipo === 'existe') {
+          // ACEPTADO/OBSERVADO = veredicto final → comprobante válido.
+          // ENVIADO (PROCESANDO/RECIBIDO/EN PROCESO) = en tránsito → el
+          // consultar-estado-ecf.job (cada 2 min, recoge los ENVIADO) seguirá
+          // consultando hasta el veredicto final. fechaUso SOLO en ACEPTADO.
+          await this.ecfRepo.update(ecfSaved.id, {
+            estadoDGII:         real.estado,
+            errorEnvio:         undefined,
+            intentosEnvio:      1,
+            ultimoIntentoEnvio: new Date(),
+            ...(real.estado === EstadoDGII.ACEPTADO ? { fechaUso: new Date() } : {}),
+          });
+          await this.registrarEvento(ecfSaved.id, TipoEcfEvento.ESTADO_CAMBIADO,
+            { via: 'ya-existe', estado: real.estado },
+            `MSeller respondió "ya existe" → adoptado estado real ${real.estado}`);
+          this.logger.log(`[ECF] ${encf} "ya existe" → adoptado ${real.estado} (no rechazado)`);
+          const ecfReal = await this.ecfRepo.findOne({ where: { id: ecfSaved.id }, relations: ['tipoECF'] });
+          return this.toResult(ecfReal!, false);
+        }
+        // Fail-safe: "ya existe" pero la consulta no confirma el estado →
+        // NO rechazar ni aceptar; dejar PENDIENTE_ENVIO para que el job reconsulte.
+        await this.ecfRepo.update(ecfSaved.id, {
+          estadoDGII:         EstadoDGII.PENDIENTE_ENVIO,
+          errorEnvio:         err.message,
+          intentosEnvio:      1,
+          ultimoIntentoEnvio: new Date(),
+        });
+        await this.registrarEvento(ecfSaved.id, TipoEcfEvento.ERROR,
+          { tipo: 'YA_EXISTE_SIN_CONFIRMAR' }, err.message);
+        this.logger.warn(`[ECF] ${encf} "ya existe" pero consulta no concluyente — PENDIENTE_ENVIO`);
+        if (modoSincrono) {
+          const ecfPendiente = await this.ecfRepo.findOne({ where: { id: ecfSaved.id }, relations: ['tipoECF'] });
+          return this.toResult(ecfPendiente!, false);
+        }
+        throw err;
+      }
+
       // ── Errores de validación MSeller (4xx) → RECHAZADO ──────────────────
       if (err instanceof EcfValidacionError) {
         // Guardamos el JSON enviado en el campo `xml` para diagnóstico.

@@ -11,6 +11,7 @@ import { NotaCredito } from '../../notas-credito/entities/nota-credito.entity';
 import { Compra } from '../../compras/entities/compra.entity';
 import { Gasto } from '../../gastos/entities/gasto.entity';
 import { MSellerClientService } from '../services/mseller-client.service';
+import { esErrorYaExiste, consultarExistenciaEncf } from '../services/reconciliacion-ecf.helper';
 import { ECFBuilderService, MSellerInfoReferencia, MSellerPayload } from '../services/ecf-builder.service';
 import { EcfConfigService } from '../services/ecf-config.service';
 import { EcfValidacionError } from '../errors/ecf.errors';
@@ -191,6 +192,32 @@ export class ReintentoECFJob {
     try {
       await this.logEvento(id, TipoEcfEvento.REINTENTO, { intento: intentosEnvio + 1 });
 
+      // ── IDEMPOTENCIA: consultar en MSeller ANTES de reenviar ────────────────
+      // Evita reenviar un eNCF que MSeller ya procesó (el reenvío devolvería
+      // "ya existe" y provocaría un RECHAZADO falso). Ver reconciliacion-ecf.helper.
+      const previa = await consultarExistenciaEncf(this.mseller, numero, empresaId!);
+      if (previa.tipo === 'existe') {
+        await this.ecfRepo.update(id, {
+          estadoDGII:         previa.estado,
+          intentosEnvio:      intentosEnvio + 1,
+          ultimoIntentoEnvio: new Date(),
+          errorEnvio:         undefined,
+          ...(previa.estado === EstadoDGII.ACEPTADO ? { fechaUso: new Date() } : {}),
+        });
+        await this.logEvento(id, TipoEcfEvento.ESTADO_CAMBIADO,
+          { via: 'consulta-previa', estado: previa.estado },
+          `MSeller ya tenía ${numero} → adoptado ${previa.estado} (sin reenviar)`);
+        this.logger.log(`e-CF ${numero} ya existe en MSeller → ${previa.estado} (sin reenviar)`);
+        return;
+      }
+      if (previa.tipo === 'desconocido') {
+        // Fail-safe: no se pudo confirmar el estado → dejar PENDIENTE, reconsultar luego.
+        await this.ecfRepo.update(id, { ultimoIntentoEnvio: new Date() });
+        this.logger.warn(`e-CF ${numero}: consulta de estado no concluyente — se mantiene PENDIENTE`);
+        return;
+      }
+      // previa.tipo === 'no_existe' → genuinamente no llegó → reenviar (abajo).
+
       const payload = await this.reconstruirPayload(ecf);
 
       const respuesta = await this.mseller.enviarDocumento(payload, empresaId!, 30_000);
@@ -235,6 +262,36 @@ export class ReintentoECFJob {
     } catch (err) {
       const msg    = (err as Error).message;
       const nuevos = intentosEnvio + 1;
+
+      // "Ya existe" NO es un rechazo real: MSeller ya procesó un envío previo.
+      // Consultar el estado real y adoptarlo (NUNCA marcar RECHAZADO por esto).
+      if (err instanceof EcfValidacionError && esErrorYaExiste(err)) {
+        const real = await consultarExistenciaEncf(this.mseller, numero, empresaId!);
+        if (real.tipo === 'existe') {
+          await this.ecfRepo.update(id, {
+            estadoDGII:         real.estado,
+            intentosEnvio:      nuevos,
+            ultimoIntentoEnvio: new Date(),
+            errorEnvio:         undefined,
+            ...(real.estado === EstadoDGII.ACEPTADO ? { fechaUso: new Date() } : {}),
+          });
+          await this.logEvento(id, TipoEcfEvento.ESTADO_CAMBIADO,
+            { via: 'ya-existe', estado: real.estado },
+            `MSeller respondió "ya existe" → adoptado estado real ${real.estado}`);
+          this.logger.log(`e-CF ${numero} "ya existe" → adoptado ${real.estado} (no rechazado)`);
+          return;
+        }
+        // Fail-safe: MSeller dijo "ya existe" pero la consulta no confirma el
+        // estado → NO marcar rechazado ni aceptado; dejar PENDIENTE y reconsultar.
+        await this.ecfRepo.update(id, {
+          intentosEnvio:      nuevos,
+          ultimoIntentoEnvio: new Date(),
+        });
+        await this.logEvento(id, TipoEcfEvento.ERROR,
+          { tipo: 'YA_EXISTE_SIN_CONFIRMAR', intento: nuevos }, msg);
+        this.logger.warn(`e-CF ${numero} "ya existe" pero consulta no concluyente — se mantiene PENDIENTE`);
+        return;
+      }
 
       if (err instanceof EcfValidacionError) {
         await this.ecfRepo.update(id, {
