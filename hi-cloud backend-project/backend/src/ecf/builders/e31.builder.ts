@@ -23,7 +23,9 @@ function cap4(n: number | string): number { return parseFloat(Number(n).toFixed(
 export function buildE31(input: ECFBuildInput): MSellerPayload {
   const { encf, factura, config, fechaVencSec } = input;
   const cliente = factura.cliente as any;
-  const rnc     = cliente?.rncReceptor ?? cliente?.rfc;
+  // Fallback: el use-case merges datosComprador → cliente, pero si llegara sin merge,
+  // rncComprador en la factura es el último recurso (guardado al crear desde POS).
+  const rnc     = cliente?.rncReceptor ?? cliente?.rfc ?? (factura as any).rncComprador;
   if (!rnc) throw new EcfRncRequeridoError(31, Number(factura.total));
 
   const fecha  = fmtFecha(factura.fecha ?? new Date());
