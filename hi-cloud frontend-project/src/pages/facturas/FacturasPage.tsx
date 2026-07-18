@@ -27,6 +27,7 @@ import { useCanDo } from '../../hooks/useCanDo';
 import { exportarExcel } from '../../utils/exportExcel';
 import type { Factura, FacturaEstado } from '../../types';
 import { fmt, estadoColor } from '../../utils/formatters';
+import { resolverNombreComprador, resolverRncComprador } from '../../utils/facturaComprador';
 import WhatsAppButton from '../../components/ui/WhatsAppButton';
 import EcfBadge, { type EstadoEcf } from '../../components/ui/EcfBadge';
 
@@ -209,8 +210,8 @@ export default function FacturasPage() {
     const filas = (all?.data ?? []).map((f: Factura) => ({
       'Folio':      f.folio,
       'Fecha':      f.fecha ? dayjs(f.fecha).format('DD/MM/YYYY') : '',
-      'Cliente':    (f as any).cliente?.nombre ?? 'Consumidor Final',
-      'RNC':        (f as any).cliente?.rncReceptor ?? '',
+      'Cliente':    resolverNombreComprador(f),
+      'RNC':        resolverRncComprador(f) ?? '',
       'Subtotal':   Number(f.subtotal ?? 0),
       'ITBIS':      Number(f.iva ?? 0),
       'Total':      Number(f.total ?? 0),
@@ -258,10 +259,13 @@ export default function FacturasPage() {
     },
     // ── Cliente ────────────────────────────────────────────────────────────────
     {
-      title: 'Cliente', key: 'cliente', dataIndex: ['cliente', 'nombre'], ellipsis: true, minWidth: 120,
-      render: (v: string) => v
-        ? <Text style={{ fontSize: 13 }}>{v}</Text>
-        : <Text type="secondary" style={{ fontSize: 12 }}>Consumidor Final</Text>,
+      title: 'Cliente', key: 'cliente', ellipsis: true, minWidth: 120,
+      render: (_: unknown, r: Factura) => {
+        const nombre = resolverNombreComprador(r);
+        return nombre !== 'Consumidor Final'
+          ? <Text style={{ fontSize: 13 }}>{nombre}</Text>
+          : <Text type="secondary" style={{ fontSize: 12 }}>Consumidor Final</Text>;
+      },
     },
     // Subtotal e ITBIS omitidos — disponibles en el detalle de la factura
     // ── Total ──────────────────────────────────────────────────────────────────
@@ -598,10 +602,12 @@ export default function FacturasPage() {
           <div>
             <p style={{ margin: '0 0 12px', color: '#6b7280', fontSize: 13 }}>
               Factura <strong>{emailFactura.folio}</strong>
-              {(emailFactura as any).cliente?.nombre
-                ? <> · Cliente: <strong>{(emailFactura as any).cliente.nombre}</strong></>
-                : ' · Consumidor Final'
-              }
+              {(() => {
+                const nombre = resolverNombreComprador(emailFactura);
+                return nombre !== 'Consumidor Final'
+                  ? <> · Cliente: <strong>{nombre}</strong></>
+                  : ' · Consumidor Final';
+              })()}
             </p>
             <Input
               prefix={<MailOutlined />}
@@ -645,7 +651,7 @@ export default function FacturasPage() {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
                     <Text strong style={{ fontSize: 13 }} ellipsis>
-                      {(f as any).cliente?.nombre ?? 'Consumidor Final'}
+                      {resolverNombreComprador(f)}
                     </Text>
                     <Text strong style={{ fontSize: 13, color: token.colorPrimary, flexShrink: 0 }}>
                       {fmt.moneyM(Number(f.total ?? 0), (f as any).moneda)}

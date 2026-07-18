@@ -10,6 +10,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { facturasApi } from '../../api/facturas.api';
 import api from '../../api/client';
 import { fmt, estadoColor } from '../../utils/formatters';
+import { resolverNombreComprador, resolverRncComprador } from '../../utils/facturaComprador';
 import type { FacturaEstado } from '../../types';
 
 const { Title, Text } = Typography;
@@ -245,8 +246,8 @@ export default function FacturaDetailPage() {
               </Col>
               <Col xs={24} sm={12}>
                 <Descriptions column={1} size="small">
-                  <Descriptions.Item label="Cliente">{factura.cliente?.nombre}</Descriptions.Item>
-                  <Descriptions.Item label="RNC/Cédula">{factura.cliente?.rfc}</Descriptions.Item>
+                  <Descriptions.Item label="Cliente">{resolverNombreComprador(factura)}</Descriptions.Item>
+                  <Descriptions.Item label="RNC/Cédula">{resolverRncComprador(factura) ?? '—'}</Descriptions.Item>
                   <Descriptions.Item label="Email">{factura.cliente?.email ?? '—'}</Descriptions.Item>
                   <Descriptions.Item label="Teléfono">{factura.cliente?.telefono ?? '—'}</Descriptions.Item>
                 </Descriptions>

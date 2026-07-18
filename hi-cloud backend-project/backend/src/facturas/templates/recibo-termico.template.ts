@@ -17,9 +17,11 @@ export interface ReciboPOSData {
   subtotal:   number;
   itbis:      number;
   total:      number;
-  recibido?:  number;
-  cambio?:    number;
-  qrBase64?:  string;
+  recibido?:             number;
+  cambio?:               number;
+  qrBase64?:             string;
+  rncComprador?:         string;
+  razonSocialComprador?: string;
 }
 
 function money(n: number): string {
@@ -107,6 +109,14 @@ ${d.sucursal  ? `<div style="display:flex;justify-content:space-between;margin:2
 </div>
 
 <div class="line"></div>
+
+<!-- COMPRADOR (solo para e-CF con RNC declarado) -->
+${(d.rncComprador || d.razonSocialComprador) ? `
+<div class="bold" style="font-size:10px;margin-bottom:2px;">COMPRADOR:</div>
+${d.rncComprador ? `<div style="font-size:10px;">RNC: ${d.rncComprador}</div>` : ''}
+${d.razonSocialComprador ? `<div style="font-size:10px;">${d.razonSocialComprador}</div>` : ''}
+<div class="line"></div>
+` : ''}
 
 <!-- ITEMS -->
 <div class="bold" style="font-size:10px;margin-bottom:4px;">DETALLE DE COMPRA</div>

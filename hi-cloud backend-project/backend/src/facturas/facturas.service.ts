@@ -460,7 +460,8 @@ export class FacturasService {
     if (facturaIds.length > 0) {
       const ecfRows: any[] = await this.facturaRepository.manager.query(
         `SELECT DISTINCT ON ("facturaId")
-           "facturaId", id, numero, "estadoDGII", "codigoSeguridad", "qrUrl", "trackId"
+           "facturaId", id, numero, "estadoDGII", "codigoSeguridad", "qrUrl", "trackId",
+           "rncComprador", "razonSocialComprador"
          FROM ecf
          WHERE "facturaId" = ANY($1)
            AND "documentoOrigenTipo" = 'FACTURA'
@@ -507,7 +508,8 @@ export class FacturasService {
     const ecfRow = await this.facturaRepository.manager.query<any[]>(`
       SELECT id, numero, "estadoDGII", "codigoSeguridad", "qrUrl", "trackId",
              "fechaFirma", "ultimoIntentoEnvio",
-             "respuestaMSeller", "respuestaDgii", "jsonEnviado"
+             "respuestaMSeller", "respuestaDgii", "jsonEnviado",
+             "rncComprador", "razonSocialComprador"
       FROM ecf
       WHERE "facturaId" = $1 AND "isActive" = true
       ORDER BY "createdAt" DESC

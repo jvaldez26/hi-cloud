@@ -321,7 +321,10 @@ export class PDFService {
 
     const ecf = factura.ecfId
       ? await this.facturaRepo.manager
-          .query('SELECT numero FROM ecf WHERE id = $1 LIMIT 1', [factura.ecfId])
+          .query(
+            'SELECT numero, "rncComprador", "razonSocialComprador" FROM ecf WHERE id = $1 LIMIT 1',
+            [factura.ecfId],
+          )
           .then((r: any[]) => r[0])
       : null;
 
@@ -367,6 +370,14 @@ export class PDFService {
       itbis:     Number(factura.iva      ?? 0),
       total:     Number(factura.total    ?? 0),
       qrBase64,
+      rncComprador:         ecf?.rncComprador
+                              ?? (factura as any).rncComprador
+                              ?? factura.cliente?.rncReceptor
+                              ?? factura.cliente?.rfc
+                              ?? undefined,
+      razonSocialComprador: ecf?.razonSocialComprador
+                              || factura.cliente?.nombre
+                              || undefined,
     };
 
     const buffer = await generarReciboPOSPDF(data);

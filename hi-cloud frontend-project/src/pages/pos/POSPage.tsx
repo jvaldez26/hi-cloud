@@ -17,6 +17,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { facturasApi } from '../../api/facturas.api';
 import { inventarioApi } from '../../api/inventario.api';
 import { fmt, round2 } from '../../utils/formatters';
+import { resolverNombreComprador, resolverRncComprador } from '../../utils/facturaComprador';
 import { imprimirElemento, imprimirReciboTermico, imprimirPDFA4 } from '../../utils/printUtils';
 import { imprimirReciboEscPos, conectarImpresora, desconectarImpresora, estaConectada, getNombreImpresora, imprimirPruebaEscPos, autoReconectarImpresora, bluetoothAutoReconexionDisponible, huboFalloWatchAdvertisements } from '../../services/thermalPrinter';
 import { useThemeStore } from '../../store/theme.store';
@@ -6949,8 +6950,8 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           ecfFecha:  _ecfFecha,
           fechaEmision: _fechaEmision, horaEmision: _horaEmision,
           securityCode: f.ecf?.codigoSeguridad, qrUrl: f.ecf?.qrUrl,
-          rncComprador: f.cliente?.rncReceptor || f.cliente?.rfc,
-          razonSocial:  f.cliente?.nombre,
+          rncComprador: resolverRncComprador(f),
+          razonSocial:  resolverNombreComprador(f),
           cajero: f.usuario?.nombre ?? f.nombreVendedor,
           sucursalNombre: (f as any).sucursal?.nombre ?? sucursalNombreFromCache(qc),
           empresaNombreComercial: empInfo.nombre, empresaRnc: empInfo.rnc,
