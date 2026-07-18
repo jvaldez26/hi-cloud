@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ServiceUnavailableException,
   Logger,
 } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
@@ -21,7 +22,8 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { User } from '../users/users.entity';
 import { LimitesService } from '../suscripciones/limites.service';
 import { EmitirECFUseCase, DatosCompradorECF } from '../ecf/use-cases/emitir-ecf.use-case';
-import { DocumentoOrigenTipo } from '../ecf/entities/ecf.entity';
+import { DocumentoOrigenTipo, ECF } from '../ecf/entities/ecf.entity';
+import { ReintentoECFJob } from '../ecf/jobs/reintento-ecf.job';
 import { TipoClienteECF } from '../clientes/entities/cliente.entity';
 import { S3Service } from '../common/s3/s3.service';
 import { CajaService } from '../caja/caja.service';
@@ -45,6 +47,9 @@ export class FacturasService {
     private realtimeService:   RealtimeService,
     private limitesService:    LimitesService,
     private emitirECFUseCase:  EmitirECFUseCase,
+    private reintentoJob:      ReintentoECFJob,
+    @InjectRepository(ECF)
+    private ecfRepo:           Repository<ECF>,
     private s3Service:         S3Service,
     private cajaService:       CajaService,
     @InjectDataSource() private dataSource: DataSource,
@@ -925,25 +930,77 @@ export class FacturasService {
 
     if (!['emitida', 'pagada'].includes(factura.estado)) {
       throw new BadRequestException(
-        `Solo se puede emitir e-CF para facturas EMITIDAS o PAGADAS. Estado actual: ${factura.estado}`,
+        `Solo se puede emitir el comprobante fiscal para facturas EMITIDAS o PAGADAS. ` +
+        `Estado actual: ${factura.estado}`,
       );
     }
 
-    const tipoEcfNum = parseInt((factura.tipoNcf ?? 'E32').replace('E', ''), 10);
-
-    const result = await this.emitirECFUseCase.execute({
-      empresaId:           factura.empresaId ?? empresaId,
-      documentoOrigenTipo: DocumentoOrigenTipo.FACTURA,
-      documentoOrigenId:   factura.id,
-      tipoEcf:             tipoEcfNum,
-      modoSincrono:        false,
+    // PRINCIPIO: si la factura YA tiene un comprobante, NUNCA se genera uno nuevo.
+    // Se reconcilia/reenvía el MISMO (misma lógica que el cron de reintento) para no
+    // duplicar la emisión ante DGII cuando el original sí se procesó pero se perdió la respuesta.
+    const existente = await this.ecfRepo.findOne({
+      where: { facturaId: factura.id, documentoOrigenTipo: DocumentoOrigenTipo.FACTURA, empresaId },
+      order: { createdAt: 'DESC' },
     });
 
-    if (result?.ecf?.id) {
-      await this.facturaRepository.update(id, { ecfId: result.ecf.id });
+    if (existente) {
+      this.logger.log(
+        `Emitir manual: factura ${factura.folio} ya tiene comprobante ${existente.numero} ` +
+        `(${existente.estadoDGII}) — se reconcilia/reenvía, NO se genera uno nuevo`,
+      );
+      const resultado = await this.reintentoJob.procesarUno(existente);
+
+      // Consulta no concluyente → no se pudo confirmar nada. Fail-safe: no reenviar
+      // ni marcar estado; avisar al cajero en sus términos (sin nombrar infraestructura).
+      if (resultado === 'sin_confirmar') {
+        throw new ServiceUnavailableException(
+          'No se pudo confirmar el estado del comprobante fiscal en este momento. ' +
+          'La factura quedó pendiente; reinténtalo en unos minutos.',
+        );
+      }
+
+      const rec = await this.ecfRepo.findOne({ where: { id: existente.id }, relations: ['tipoECF'] });
+      if (rec?.id) await this.facturaRepository.update(id, { ecfId: rec.id });
+      return this.emitirECFUseCase.resultadoDe(rec!, true);
     }
 
-    return result;
+    // Sin comprobante previo → primera emisión (ÚNICO caso que genera un eNCF nuevo).
+    const tipoEcfNum = parseInt((factura.tipoNcf ?? 'E32').replace('E', ''), 10);
+
+    try {
+      const result = await this.emitirECFUseCase.execute({
+        empresaId:           factura.empresaId ?? empresaId,
+        documentoOrigenTipo: DocumentoOrigenTipo.FACTURA,
+        documentoOrigenId:   factura.id,
+        tipoEcf:             tipoEcfNum,
+        modoSincrono:        false,
+      });
+
+      if (result?.ecf?.id) {
+        await this.facturaRepository.update(id, { ecfId: result.ecf.id });
+      }
+      return result;
+    } catch (err: any) {
+      // Sanear el error hacia el usuario: nunca exponer nombres de infraestructura.
+      // El detalle técnico ya quedó en el log/estado del e-CF para diagnóstico.
+      if (err?.code === 'ECF_VALIDACION') {
+        throw new BadRequestException(
+          `El comprobante fiscal fue rechazado por validación. ` +
+          `Revisa los datos de la factura (RNC, montos, tipo) e intenta de nuevo.`,
+        );
+      }
+      if (err?.code === 'ECF_COMUNICACION') {
+        throw new ServiceUnavailableException(
+          'No se pudo emitir el comprobante fiscal en este momento. Reinténtalo en unos minutos.',
+        );
+      }
+      if (err?.code === 'ECF_CONFIG_FALTANTE') {
+        throw new BadRequestException(
+          'La configuración de comprobantes fiscales está incompleta. Contacta al administrador.',
+        );
+      }
+      throw err;
+    }
   }
 
   // ── Duplicar factura ─────────────────────────────────────────────────────────

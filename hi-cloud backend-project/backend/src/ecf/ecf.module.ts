@@ -97,6 +97,7 @@ import { TokenBlacklistService } from '../auth/token-blacklist.service';
     ECFBuilderService,
     MSellerClientService,
     EmitirECFUseCase,
+    ReintentoECFJob,
     TypeOrmModule,
   ],
 })

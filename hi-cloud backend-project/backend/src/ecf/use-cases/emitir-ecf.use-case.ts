@@ -690,6 +690,12 @@ ${JSON.stringify(payload, null, 2)}`;
     );
   }
 
+  /** Construye un EmitirECFResult desde un e-CF ya existente (para flujos que
+   *  reconcilian/reenvían sin pasar por execute(), p. ej. el botón "Emitir"). */
+  resultadoDe(ecf: ECF, idempotente: boolean): EmitirECFResult {
+    return this.toResult(ecf, idempotente);
+  }
+
   private toResult(ecf: ECF, idempotente: boolean): EmitirECFResult {
     return {
       ecf,

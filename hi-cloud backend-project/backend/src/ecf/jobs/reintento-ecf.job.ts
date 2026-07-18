@@ -11,13 +11,23 @@ import { NotaCredito } from '../../notas-credito/entities/nota-credito.entity';
 import { Compra } from '../../compras/entities/compra.entity';
 import { Gasto } from '../../gastos/entities/gasto.entity';
 import { MSellerClientService } from '../services/mseller-client.service';
-import { esErrorYaExiste, consultarExistenciaEncf } from '../services/reconciliacion-ecf.helper';
+import { esErrorYaExiste, decidirReconciliacionEcf } from '../services/reconciliacion-ecf.helper';
 import { ECFBuilderService, MSellerInfoReferencia, MSellerPayload } from '../services/ecf-builder.service';
 import { EcfConfigService } from '../services/ecf-config.service';
 import { EcfValidacionError } from '../errors/ecf.errors';
 import { fmtFecha } from '../builders/base-ecf.builder';
 
 const MAX_INTENTOS = 5;
+
+/** Resultado de procesarUno — lo usa el botón "Emitir" para decidir la respuesta al usuario. */
+export type ResultadoReintento =
+  | 'sin_accion'       // ya estaba en un estado final válido (aceptado/observado)
+  | 'adoptado'         // se adoptó el estado real consultado (sin reenviar)
+  | 'rechazado'        // rechazo real de DGII → manejo manual
+  | 'reenviado'        // se reenvió el MISMO eNCF
+  | 'contingencia'     // superó el máximo de intentos
+  | 'sin_confirmar'    // no se pudo confirmar el estado → fail-safe (queda pendiente)
+  | 'reenvio_fallido'; // el reenvío falló por comunicación
 
 /**
  * Minutos de espera mínima antes de reintentar según el intento anterior.
@@ -170,53 +180,75 @@ export class ReintentoECFJob {
     }
   }
 
-  /** Público para que el controller de reenvío manual pueda llamarlo directamente. */
-  async procesarUno(ecf: ECF): Promise<void> {
+  /**
+   * Reconcilia/reenvía un e-CF que ya tiene un registro (NUNCA genera un eNCF nuevo).
+   * Público: lo usan el cron, el reenvío manual del controller y el botón "Emitir"
+   * del panel de Facturas. Devuelve el resultado para que ese botón informe al usuario.
+   */
+  async procesarUno(ecf: ECF): Promise<ResultadoReintento> {
     const { id, numero, empresaId, intentosEnvio } = ecf;
 
-    this.logger.log(`Reintentando e-CF ${numero} (intento ${intentosEnvio + 1}/${MAX_INTENTOS})`);
+    // Estado final válido → nada que reconciliar (evita que el guard de intentos
+    // clobberee un ACEPTADO/OBSERVADO al llamar desde el botón "Emitir").
+    if (ecf.estadoDGII === EstadoDGII.ACEPTADO || ecf.estadoDGII === EstadoDGII.OBSERVADO) {
+      this.logger.log(`e-CF ${numero} ya está ${ecf.estadoDGII} — sin acción`);
+      return 'sin_accion';
+    }
 
+    this.logger.log(`Reconciliando e-CF ${numero} (intento ${intentosEnvio + 1}/${MAX_INTENTOS})`);
+
+    // NO confiar en el estado local: consultar el estado real y decidir (decisor compartido).
+    const dec = await decidirReconciliacionEcf(this.mseller, numero, empresaId!);
+
+    if (dec.accion === 'adoptar') {
+      await this.ecfRepo.update(id, {
+        estadoDGII:         dec.estado,
+        ultimoIntentoEnvio: new Date(),
+        errorEnvio:         undefined,
+        ...(dec.estado === EstadoDGII.ACEPTADO ? { fechaUso: new Date() } : {}),
+      });
+      await this.logEvento(id, TipoEcfEvento.ESTADO_CAMBIADO,
+        { via: 'consulta', estado: dec.estado },
+        `Comprobante ${numero} ya estaba procesado → adoptado ${dec.estado} (sin reenviar)`);
+      this.logger.log(`e-CF ${numero} ya existe en el proveedor → ${dec.estado} (sin reenviar)`);
+      return 'adoptado';
+    }
+
+    if (dec.accion === 'dejar_rechazado') {
+      await this.ecfRepo.update(id, {
+        estadoDGII:         EstadoDGII.RECHAZADO,
+        ultimoIntentoEnvio: new Date(),
+      });
+      await this.logEvento(id, TipoEcfEvento.ESTADO_CAMBIADO,
+        { via: 'consulta', estado: EstadoDGII.RECHAZADO },
+        `Comprobante ${numero} rechazado por DGII — requiere corrección manual`);
+      this.logger.warn(`e-CF ${numero} → RECHAZADO (rechazo real de DGII, manejo manual)`);
+      return 'rechazado';
+    }
+
+    if (dec.accion === 'esperar') {
+      // Fail-safe: no se pudo confirmar el estado → dejar PENDIENTE, reconsultar luego.
+      await this.ecfRepo.update(id, { ultimoIntentoEnvio: new Date() });
+      this.logger.warn(`e-CF ${numero}: consulta de estado no concluyente — se mantiene PENDIENTE`);
+      return 'sin_confirmar';
+    }
+
+    // dec.accion === 'reenviar' → reenviar EL MISMO eNCF (jamás uno nuevo).
     if (intentosEnvio >= MAX_INTENTOS) {
       await this.ecfRepo.update(id, {
         estadoDGII: EstadoDGII.CONTINGENCIA,
-        errorEnvio: `Superó ${MAX_INTENTOS} intentos sin respuesta de MSeller.`,
+        errorEnvio: `Superó ${MAX_INTENTOS} intentos sin respuesta del proveedor de facturación.`,
       });
       await this.logEvento(id, TipoEcfEvento.ESTADO_CAMBIADO, {
         de: EstadoDGII.PENDIENTE_ENVIO, a: EstadoDGII.CONTINGENCIA,
       }, `Máximo de ${MAX_INTENTOS} reintentos alcanzado`);
 
       this.logger.warn(`e-CF ${numero} → CONTINGENCIA (${MAX_INTENTOS} intentos fallidos)`);
-      return;
+      return 'contingencia';
     }
 
     try {
       await this.logEvento(id, TipoEcfEvento.REINTENTO, { intento: intentosEnvio + 1 });
-
-      // ── IDEMPOTENCIA: consultar en MSeller ANTES de reenviar ────────────────
-      // Evita reenviar un eNCF que MSeller ya procesó (el reenvío devolvería
-      // "ya existe" y provocaría un RECHAZADO falso). Ver reconciliacion-ecf.helper.
-      const previa = await consultarExistenciaEncf(this.mseller, numero, empresaId!);
-      if (previa.tipo === 'existe') {
-        await this.ecfRepo.update(id, {
-          estadoDGII:         previa.estado,
-          intentosEnvio:      intentosEnvio + 1,
-          ultimoIntentoEnvio: new Date(),
-          errorEnvio:         undefined,
-          ...(previa.estado === EstadoDGII.ACEPTADO ? { fechaUso: new Date() } : {}),
-        });
-        await this.logEvento(id, TipoEcfEvento.ESTADO_CAMBIADO,
-          { via: 'consulta-previa', estado: previa.estado },
-          `MSeller ya tenía ${numero} → adoptado ${previa.estado} (sin reenviar)`);
-        this.logger.log(`e-CF ${numero} ya existe en MSeller → ${previa.estado} (sin reenviar)`);
-        return;
-      }
-      if (previa.tipo === 'desconocido') {
-        // Fail-safe: no se pudo confirmar el estado → dejar PENDIENTE, reconsultar luego.
-        await this.ecfRepo.update(id, { ultimoIntentoEnvio: new Date() });
-        this.logger.warn(`e-CF ${numero}: consulta de estado no concluyente — se mantiene PENDIENTE`);
-        return;
-      }
-      // previa.tipo === 'no_existe' → genuinamente no llegó → reenviar (abajo).
 
       const payload = await this.reconstruirPayload(ecf);
 
@@ -258,16 +290,17 @@ export class ReintentoECFJob {
       });
 
       this.logger.log(`e-CF ${numero} → ${estadoTrasReintento} (reintento #${intentosEnvio + 1})`);
+      return 'reenviado';
 
     } catch (err) {
       const msg    = (err as Error).message;
       const nuevos = intentosEnvio + 1;
 
-      // "Ya existe" NO es un rechazo real: MSeller ya procesó un envío previo.
+      // "Ya existe" NO es un rechazo real: el envío previo sí fue procesado.
       // Consultar el estado real y adoptarlo (NUNCA marcar RECHAZADO por esto).
       if (err instanceof EcfValidacionError && esErrorYaExiste(err)) {
-        const real = await consultarExistenciaEncf(this.mseller, numero, empresaId!);
-        if (real.tipo === 'existe') {
+        const real = await decidirReconciliacionEcf(this.mseller, numero, empresaId!);
+        if (real.accion === 'adoptar') {
           await this.ecfRepo.update(id, {
             estadoDGII:         real.estado,
             intentosEnvio:      nuevos,
@@ -277,12 +310,24 @@ export class ReintentoECFJob {
           });
           await this.logEvento(id, TipoEcfEvento.ESTADO_CAMBIADO,
             { via: 'ya-existe', estado: real.estado },
-            `MSeller respondió "ya existe" → adoptado estado real ${real.estado}`);
+            `"Ya existe" → adoptado estado real ${real.estado}`);
           this.logger.log(`e-CF ${numero} "ya existe" → adoptado ${real.estado} (no rechazado)`);
-          return;
+          return 'adoptado';
         }
-        // Fail-safe: MSeller dijo "ya existe" pero la consulta no confirma el
-        // estado → NO marcar rechazado ni aceptado; dejar PENDIENTE y reconsultar.
+        if (real.accion === 'dejar_rechazado') {
+          await this.ecfRepo.update(id, {
+            estadoDGII:         EstadoDGII.RECHAZADO,
+            intentosEnvio:      nuevos,
+            ultimoIntentoEnvio: new Date(),
+          });
+          await this.logEvento(id, TipoEcfEvento.ESTADO_CAMBIADO,
+            { via: 'ya-existe', estado: EstadoDGII.RECHAZADO },
+            `"Ya existe" → rechazo real de DGII, requiere corrección manual`);
+          this.logger.warn(`e-CF ${numero} "ya existe" → RECHAZADO real de DGII`);
+          return 'rechazado';
+        }
+        // Fail-safe: dijo "ya existe" pero la consulta no confirma el estado →
+        // NO marcar rechazado ni aceptado; dejar PENDIENTE y reconsultar.
         await this.ecfRepo.update(id, {
           intentosEnvio:      nuevos,
           ultimoIntentoEnvio: new Date(),
@@ -290,7 +335,7 @@ export class ReintentoECFJob {
         await this.logEvento(id, TipoEcfEvento.ERROR,
           { tipo: 'YA_EXISTE_SIN_CONFIRMAR', intento: nuevos }, msg);
         this.logger.warn(`e-CF ${numero} "ya existe" pero consulta no concluyente — se mantiene PENDIENTE`);
-        return;
+        return 'sin_confirmar';
       }
 
       if (err instanceof EcfValidacionError) {
@@ -303,8 +348,8 @@ export class ReintentoECFJob {
         await this.logEvento(id, TipoEcfEvento.ERROR, {
           tipo: 'VALIDACION', intento: nuevos,
         }, msg);
-        this.logger.warn(`e-CF ${numero} → RECHAZADO por validación MSeller`);
-        return;
+        this.logger.warn(`e-CF ${numero} → RECHAZADO por validación`);
+        return 'rechazado';
       }
 
       await this.ecfRepo.update(id, {
@@ -317,6 +362,7 @@ export class ReintentoECFJob {
       }, msg);
 
       this.logger.warn(`e-CF ${numero} reintento #${nuevos} fallido: ${msg}`);
+      return 'reenvio_fallido';
     }
   }
 

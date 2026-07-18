@@ -59,9 +59,38 @@ export async function consultarExistenciaEncf(
     return { tipo: 'desconocido' };                 // la consulta falló → no decidir
   }
   const item = resp.results?.find(r => r.ecf === numero);
-  if (!item) return { tipo: 'desconocido' };         // MSeller no devolvió el eNCF → no decidir
+  if (!item) return { tipo: 'desconocido' };         // el proveedor no devolvió el eNCF → no decidir
   if (!item.found) return { tipo: 'no_existe' };     // confirmado que NO llegó → reenviar
   const estado = MSELLER_ESTADO_MAP[(item.status ?? '').toUpperCase()];
-  if (!estado) return { tipo: 'desconocido' };       // status no mapeable → no decidir
+  if (!estado) {
+    // Existe allá (found:true) pero el status no es mapeable. NO reenviar: hay un
+    // comprobante del otro lado y reenviar arriesgaría un duplicado. Se adopta como
+    // ENVIADO para que el consultar-estado-ecf.job lo siga hasta un veredicto final.
+    return { tipo: 'existe', estado: EstadoDGII.ENVIADO };
+  }
   return { tipo: 'existe', estado };
+}
+
+/**
+ * Decisión ÚNICA "adoptar vs reenviar vs dejar" para un e-CF que YA existe en un
+ * registro local. La comparten procesarUno (cron/reenvío manual/botón "Emitir")
+ * y cualquier flujo que reconcilie. PRINCIPIO: si ya hay un eNCF, jamás se genera
+ * uno nuevo; a lo sumo se reenvía el mismo.
+ */
+export type DecisionReconciliacion =
+  | { accion: 'adoptar';         estado: EstadoDGII }  // ACEPTADO/OBSERVADO/ENVIADO → adoptar el estado real
+  | { accion: 'reenviar' }                              // no_existe → reenviar EL MISMO eNCF (sin número nuevo)
+  | { accion: 'dejar_rechazado' }                       // rechazado por DGII → dejar así (corrección manual)
+  | { accion: 'esperar' };                              // consulta no concluyente → fail-safe, no tocar
+
+export async function decidirReconciliacionEcf(
+  mseller:   MSellerClientService,
+  numero:    string,
+  empresaId: number,
+): Promise<DecisionReconciliacion> {
+  const r = await consultarExistenciaEncf(mseller, numero, empresaId);
+  if (r.tipo === 'desconocido') return { accion: 'esperar' };
+  if (r.tipo === 'no_existe')   return { accion: 'reenviar' };
+  if (r.estado === EstadoDGII.RECHAZADO) return { accion: 'dejar_rechazado' };
+  return { accion: 'adoptar', estado: r.estado };       // ACEPTADO / OBSERVADO / ENVIADO
 }
