@@ -23,7 +23,7 @@ export class ReportesPrestamistaService {
       `SELECT p.numero, d.nombre||' '||COALESCE(d.apellidos,'') AS deudor, d.cedula,
               pr.nombre AS producto, p."montoPrincipal", p."saldoCapital", p."saldoInteres",
               p."saldoMora", p."saldoTotal", p.estado, p."fechaDesembolso", p."fechaVencimiento",
-              p."cuotasPagadas", p."cuotasVencidas", p."tasaInteresMensual"
+              p."cuotasVencidas", p."tasaInteresMensual"
          FROM pr_prestamos p
          JOIN pr_deudores d ON d.id=p."deudorId"
          LEFT JOIN pr_productos_prestamo pr ON pr.id=p."productoId"
@@ -174,7 +174,7 @@ export class ReportesPrestamistaService {
   // 6. Garantías
   async garantias(empresaId: number) {
     const rows = await this.ds.query<any[]>(
-      `SELECT g.tipo, g.descripcion, g."valorTasado", g.estado, g."fechaTasacion",
+      `SELECT g.tipo, g.descripcion, g."valorTasado", g.estado, g."createdAt" AS "fechaRegistro",
               p.numero AS prestamo, d.nombre||' '||COALESCE(d.apellidos,'') AS deudor
          FROM pr_garantias g
          JOIN pr_deudores d ON d.id=g."deudorId"
@@ -187,7 +187,7 @@ export class ReportesPrestamistaService {
       { key: 'descripcion', label: 'Descripción' },
       { key: 'valorTasado', label: 'Valor Tasado' },
       { key: 'estado', label: 'Estado' },
-      { key: 'fechaTasacion', label: 'Fecha Tasación' },
+      { key: 'fechaRegistro', label: 'Fecha Registro' },
       { key: 'prestamo', label: 'N° Préstamo' },
       { key: 'deudor', label: 'Deudor' },
     ]);
@@ -197,28 +197,28 @@ export class ReportesPrestamistaService {
   async gestiones(empresaId: number, params: any) {
     const conds: string[] = [`c."empresaId"=$1`];
     const args: any[] = [empresaId];
-    if (params.desde) { args.push(params.desde); conds.push(`c."fechaGestion">=$${args.length}`); }
-    if (params.hasta) { args.push(params.hasta); conds.push(`c."fechaGestion"<=$${args.length}`); }
+    if (params.desde) { args.push(params.desde); conds.push(`c.fecha>=$${args.length}`); }
+    if (params.hasta) { args.push(params.hasta); conds.push(`c.fecha<=$${args.length}`); }
     const rows = await this.ds.query<any[]>(
-      `SELECT c."fechaGestion", c."tipoGestion", c.resultado, c.notas,
-              c."fechaProximaGestion", p.numero AS prestamo,
+      `SELECT c.fecha, c.tipo, c.resultado, c.descripcion,
+              c."proximaGestion", p.numero AS prestamo,
               d.nombre||' '||COALESCE(d.apellidos,'') AS deudor, d.telefono
-         FROM pr_cobranza c
+         FROM pr_cobranzas c
          JOIN pr_prestamos p ON p.id=c."prestamoId"
          JOIN pr_deudores d ON d.id=p."deudorId"
         WHERE ${conds.join(' AND ')}
-        ORDER BY c."fechaGestion" DESC`,
+        ORDER BY c.fecha DESC`,
       args,
     );
     return toCsv(rows, [
-      { key: 'fechaGestion', label: 'Fecha Gestión' },
-      { key: 'tipoGestion', label: 'Tipo' },
+      { key: 'fecha', label: 'Fecha Gestión' },
+      { key: 'tipo', label: 'Tipo' },
       { key: 'resultado', label: 'Resultado' },
       { key: 'prestamo', label: 'N° Préstamo' },
       { key: 'deudor', label: 'Deudor' },
       { key: 'telefono', label: 'Teléfono' },
-      { key: 'fechaProximaGestion', label: 'Próxima Gestión' },
-      { key: 'notas', label: 'Notas' },
+      { key: 'proximaGestion', label: 'Próxima Gestión' },
+      { key: 'descripcion', label: 'Notas' },
     ]);
   }
 
@@ -248,26 +248,25 @@ export class ReportesPrestamistaService {
   // 9. Refinanciamientos
   async refinanciamientos(empresaId: number) {
     const rows = await this.ds.query<any[]>(
-      `SELECT r.numero, r."fechaRefinanciamiento", r."montoNuevo", r."plazoNuevo",
-              r."tasaNueva", r.motivo, r.observaciones,
-              po.numero AS prestamoOriginal, pn.numero AS prestamoNuevo,
+      `SELECT r.fecha, r."montoNuevo", r."nuevoPlazo",
+              r."nuevaTasa", r.motivo,
+              po.numero AS "prestamoOriginal", pn.numero AS "prestamoNuevo",
               d.nombre||' '||COALESCE(d.apellidos,'') AS deudor
          FROM pr_refinanciamientos r
-         JOIN pr_prestamos po ON po.id=r."prestamoOrigenId"
+         JOIN pr_prestamos po ON po.id=r."prestamoOriginalId"
          JOIN pr_prestamos pn ON pn.id=r."prestamoNuevoId"
          JOIN pr_deudores d ON d.id=po."deudorId"
-        WHERE r."empresaId"=$1 ORDER BY r."fechaRefinanciamiento" DESC`,
+        WHERE r."empresaId"=$1 ORDER BY r.fecha DESC`,
       [empresaId],
     );
     return toCsv(rows, [
-      { key: 'numero', label: 'N° Ref.' },
-      { key: 'fechaRefinanciamiento', label: 'Fecha' },
+      { key: 'fecha', label: 'Fecha' },
       { key: 'deudor', label: 'Deudor' },
       { key: 'prestamoOriginal', label: 'Préstamo Original' },
       { key: 'prestamoNuevo', label: 'Préstamo Nuevo' },
       { key: 'montoNuevo', label: 'Monto Nuevo' },
-      { key: 'plazoNuevo', label: 'Plazo Nuevo (meses)' },
-      { key: 'tasaNueva', label: 'Tasa Nueva %' },
+      { key: 'nuevoPlazo', label: 'Plazo Nuevo (meses)' },
+      { key: 'nuevaTasa', label: 'Tasa Nueva %' },
       { key: 'motivo', label: 'Motivo' },
     ]);
   }
