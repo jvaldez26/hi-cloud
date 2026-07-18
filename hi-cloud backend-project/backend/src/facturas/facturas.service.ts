@@ -27,6 +27,7 @@ import { ReintentoECFJob } from '../ecf/jobs/reintento-ecf.job';
 import { TipoClienteECF } from '../clientes/entities/cliente.entity';
 import { S3Service } from '../common/s3/s3.service';
 import { CajaService } from '../caja/caja.service';
+import { reportServiceError } from '../common/observability/sentry';
 
 @Injectable()
 export class FacturasService {
@@ -775,13 +776,21 @@ export class FacturasService {
 
       // 5. Emitir e-CF
       if (modoSincrono) {
-        // POS: awaitar el e-CF (timeout 8s ya manejado en el use case, nunca lanza).
-        // Si falla (sin config ECF, sin secuencias, timeout MSeller, etc.) devolver la
-        // factura actualizada (ya PAGADA/EMITIDA del paso 4) para que el frontend no
-        // reciba null y muestre la factura como BORRADOR por error.
-        return this.emitirECFUseCase.execute(ecfInput).catch(err => {
-          this.logger.warn(`e-CF POS fallido para ${factura.folio}: ${err?.message}`);
-          return this.findOne(id).catch(() => null);
+        // POS: awaitar el e-CF (timeout 8s ya manejado en el use case).
+        // Si falla, NO fingir éxito: devolver { ecfEmitido:false, ecfError } para que
+        // el frontend muestre el aviso obligatorio al cajero y Sentry registre el fallo.
+        return this.emitirECFUseCase.execute(ecfInput).catch(async err => {
+          this.logger.error(
+            `[ECF-POS] Fallo al emitir e-CF para ${factura.folio} ` +
+            `[${err?.code ?? err?.constructor?.name ?? 'Error'}]: ${err?.message}`,
+          );
+          reportServiceError(err, 'ecf_pos_sincrono', {
+            folio:     factura.folio,
+            empresaId: String(factura.empresaId ?? ''),
+            tipoEcf:   String(ecfInput.tipoEcf ?? ''),
+          });
+          const facturaActual = await this.findOne(id).catch(() => null);
+          return { ...(facturaActual ?? {}), ecfEmitido: false, ecfError: err?.message ?? 'Error al emitir e-CF' };
         });
       }
 
@@ -967,6 +976,15 @@ export class FacturasService {
     // Sin comprobante previo → primera emisión (ÚNICO caso que genera un eNCF nuevo).
     const tipoEcfNum = parseInt((factura.tipoNcf ?? 'E32').replace('E', ''), 10);
 
+    // E31/E44/E45 exigen RNC del comprador. Si el cliente seleccionado no tiene RNC
+    // en su perfil pero la factura tiene rncComprador (capturado en el POS al cobrar),
+    // lo pasamos como datosComprador para que el builder lo use sin fallar.
+    const clienteRnc = (factura as any).cliente?.rncReceptor ?? (factura as any).cliente?.rfc;
+    const datosCompradorIndividual: DatosCompradorECF | undefined =
+      [31, 44, 45].includes(tipoEcfNum) && !clienteRnc && (factura as any).rncComprador
+        ? { rnc: (factura as any).rncComprador }
+        : undefined;
+
     try {
       const result = await this.emitirECFUseCase.execute({
         empresaId:           factura.empresaId ?? empresaId,
@@ -974,6 +992,7 @@ export class FacturasService {
         documentoOrigenId:   factura.id,
         tipoEcf:             tipoEcfNum,
         modoSincrono:        false,
+        datosComprador:      datosCompradorIndividual,
       });
 
       if (result?.ecf?.id) {

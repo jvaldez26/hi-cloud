@@ -74,6 +74,26 @@ export function reportCronError(
   }
 }
 
+/**
+ * Reporta a Sentry un error ocurrido en un service/use-case sin contexto HTTP ni cron.
+ * Útil para fallos silenciosos (swallow) que de otro modo serían invisibles.
+ * No-op si Sentry no está inicializado. Nunca lanza.
+ */
+export function reportServiceError(
+  exception: unknown,
+  operation: string,
+  extraTags: Record<string, string | number> = {},
+): void {
+  if (!Sentry.getClient()) return;
+  try {
+    const tags: Record<string, string> = { operation };
+    for (const [k, v] of Object.entries(extraTags)) tags[k] = String(v);
+    Sentry.captureException(exception, { level: 'error', tags });
+  } catch {
+    /* nunca romper el flujo de servicio */
+  }
+}
+
 function safeCls() {
   try {
     const c = ClsServiceManager.getClsService();
