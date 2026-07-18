@@ -8985,6 +8985,9 @@ export default function POSPage() {
           // E44 (Zona Franca): ITBIS = 0 en todos los ítems
           ...(tipoNcf === 'E44' ? { porcentajeIva: 0 } : {}),
         })),
+        // RNC capturado en el modal de cobro → persistir en facturas.rncComprador
+        // para que emitirEcfIndividual (botón "Emitir") también funcione sin datosComprador.
+        rncComprador: clienteTieneRNC ? rncCliente : (rncComprador || undefined),
       };
 
       // Si offline → encolar localmente
@@ -9029,7 +9032,13 @@ export default function POSPage() {
           // Modo contingencia proactivo: no intentar MSeller, guardar directamente en CONTINGENCIA
           modoContingencia: posConf.posModoContingencia === true || undefined,
         }) as any;
+        // Si el backend capturó un fallo de emisión y lo devolvió con ecfEmitido:false,
+        // convertirlo en excepción para que el catch de abajo muestre el aviso al cajero.
+        if (emitResult?.ecfEmitido === false) {
+          throw new Error(emitResult?.ecfError ?? 'No se pudo emitir el comprobante fiscal');
+        }
         const encf  = emitResult?.encf ?? emitResult?.numero ?? '';
+        // estado aquí es EstadoDGII (aceptado/pendiente_envio/contingencia…), no FacturaEstado
         const estado = emitResult?.estado ?? emitResult?.estadoDGII ?? '';
         setEcfEncf(encf);
         setEcfStatus(['pendiente_envio', 'pendiente', 'contingencia'].includes(estado) ? 'pendiente' : 'ok');
@@ -9056,7 +9065,7 @@ export default function POSPage() {
         const errMsg = (result as any)?._emisionError ?? 'Error al contactar el servicio de comprobantes fiscales';
         Modal.warning({
           title: 'Comprobante fiscal pendiente de emisión',
-          content: `La venta se registró (${folio}) pero NO se pudo emitir el comprobante fiscal. ${errMsg}. La factura quedó en BORRADOR — puedes reintentar desde el panel Facturas con el botón "Emitir".`,
+          content: `La venta se registró (${folio}) pero NO se pudo emitir el comprobante fiscal. ${errMsg}. Puedes reintentar desde el panel Facturas con el botón "Emitir".`,
           okText: 'Entendido',
         });
         setShowPago(false);
