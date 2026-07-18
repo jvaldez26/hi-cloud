@@ -147,9 +147,31 @@ export class PDFService {
     const itbisTotal      = Number(factura.iva   ?? 0);
     const totalGeneral    = Number(factura.total  ?? 0);
 
+    // ── Comprador: fuente ÚNICA = snapshot del e-CF (lo que se ENVIÓ a DGII) ──
+    // El registro `ecf` ya se cargó arriba (SELECT e.*), así que NO hay consulta
+    // extra ni re-resolución del cliente. El comprador se toma del MISMO snapshot
+    // que usó el XML (ecf.rncComprador / ecf.razonSocialComprador / ecf.direccionComprador).
+    // Solo si el documento NO es fiscal (sin e-CF) se cae a la relación `cliente`.
+    // Esto une PDF y XML en una sola fuente y evita que el merge en memoria de
+    // emitir-ecf (que nunca se persiste al clienteId) haga que el PDF muestre
+    // "Consumidor Final" mientras el XML/DGII tiene el comprador real.
+    const compradorRNC: string | undefined =
+      ecf?.rncComprador
+      ?? (factura as any).rncComprador
+      ?? factura.cliente?.rncReceptor
+      ?? factura.cliente?.rfc
+      ?? undefined;
+    const compradorNombre: string =
+      ecf?.razonSocialComprador
+      || factura.cliente?.nombre
+      || 'Consumidor Final';
+    const compradorDireccion: string | undefined =
+      ecf?.direccionComprador
+      ?? factura.cliente?.direccion;
+
     const tipoCliente: 'RNC' | 'CEDULA' | 'CONSUMIDOR' =
-      factura.cliente?.rncReceptor ? 'RNC' :
-      factura.cliente?.rfc?.length === 11 ? 'CEDULA' : 'CONSUMIDOR';
+      !compradorRNC || compradorRNC === '00000000000' ? 'CONSUMIDOR' :
+      compradorRNC.length === 11 ? 'CEDULA' : 'RNC';
 
     // Usar tipoPago de la FACTURA (no del cliente) para determinar contado vs crédito
     const esCreditoPorDias = factura.tipoPago === 'CREDITO';
@@ -208,10 +230,10 @@ export class PDFService {
             [(factura as any).sucursalId],
           ).then((r: any[]) => r[0]?.nombre ?? undefined)
         : undefined,
-      clienteNombre:                  factura.cliente?.nombre || 'Consumidor Final',
-      clienteRNC:                     factura.cliente?.rncReceptor || factura.cliente?.rfc,
+      clienteNombre:                  compradorNombre,
+      clienteRNC:                     compradorRNC,
       clienteIdentificadorExtranjero: (factura.cliente as any)?.identificadorExtranjero,
-      clienteDireccion:               factura.cliente?.direccion,
+      clienteDireccion:               compradorDireccion,
       clienteCiudad:       factura.cliente?.ciudad,
       clienteTelefono:     factura.cliente?.telefono,
       clienteEmail:        factura.cliente?.email,
