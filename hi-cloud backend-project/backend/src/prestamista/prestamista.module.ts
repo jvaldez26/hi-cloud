@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { TenantModule } from '../tenant/tenant.module';
 import { ContabilidadModule } from '../contabilidad/contabilidad.module';
 import { ECFModule } from '../ecf/ecf.module';
+import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 
 import { PrDeudor } from './entities/pr-deudor.entity';
 import { PrProductoPrestamo } from './entities/pr-producto-prestamo.entity';
@@ -60,6 +61,7 @@ import { ReportesController } from './reportes/reportes.controller';
     TenantModule,
     ContabilidadModule,
     ECFModule,
+    NotificacionesModule,
   ],
   providers: [
     DeudoresService,

@@ -49,6 +49,7 @@ export const prestamistalApi = {
   getResumenCobranza: () => api.get(`${base}/cobranza/resumen`).then(r),
   getGestiones: (prestamoId: number) => api.get(`${base}/cobranza/prestamo/${prestamoId}/gestiones`).then(r),
   registrarGestion: (body: any) => api.post(`${base}/cobranza/gestiones`, body).then(r),
+  notificarMoraEmail: (prestamoId: number) => api.post(`${base}/cobranza/prestamo/${prestamoId}/notificar-mora`).then(r),
 
   // Refinanciamiento
   refinanciar: (body: any) => api.post(`${base}/refinanciamientos`, body).then(r),

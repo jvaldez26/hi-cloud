@@ -13,6 +13,8 @@ export interface EmailPayload {
   subject:      string;
   html:         string;
   text?:        string;
+  /** Dirección a la que llegan las RESPUESTAS (white-label: email de la empresa emisora). */
+  replyTo?:     string;
   attachments?: EmailAttachment[];
 }
 
@@ -74,6 +76,7 @@ export class EmailService {
       await this.transporter.sendMail({
         from,
         to:          Array.isArray(payload.to) ? payload.to.join(', ') : payload.to,
+        ...(payload.replyTo ? { replyTo: payload.replyTo } : {}),
         subject:     payload.subject,
         html:        payload.html,
         text:        payload.text,

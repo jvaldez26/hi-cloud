@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Table, Button, Card, Row, Col, Statistic, Tag, Modal, Form, Input, Select, DatePicker, message, theme } from 'antd';
+import { Table, Button, Card, Row, Col, Statistic, Tag, Modal, Form, Input, Select, DatePicker, message, theme, Tooltip } from 'antd';
 import { useNavigate } from 'react-router-dom';
-import { Eye, Plus } from 'lucide-react';
+import { Eye, Plus, Mail } from 'lucide-react';
 import { FileExcelOutlined } from '@ant-design/icons';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
@@ -62,6 +62,28 @@ export default function CobranzaPage() {
     setGestionOpen(true);
   };
 
+  const [notificandoId, setNotificandoId] = useState<number | null>(null);
+  const notificarMora = useMutation({
+    mutationFn: (prestamoId: number) => prestamistalApi.notificarMoraEmail(prestamoId),
+    onMutate: (prestamoId: number) => setNotificandoId(prestamoId),
+    onSuccess: (resp: any) => {
+      qc.invalidateQueries({ queryKey: ['prestamista-cartera-vencida'] });
+      message.success(resp?.mensaje ?? 'Recordatorio enviado por email');
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'No se pudo enviar el recordatorio'),
+    onSettled: () => setNotificandoId(null),
+  });
+
+  const confirmarNotificar = (r: any) => {
+    Modal.confirm({
+      title: 'Enviar recordatorio de mora',
+      content: `Se enviará un recordatorio de pago por email a ${r.deudorNombre} (${r.deudorEmail}).`,
+      okText: 'Enviar',
+      cancelText: 'Cancelar',
+      onOk: () => notificarMora.mutateAsync(r.id),
+    });
+  };
+
   const cols = [
     { title: 'Préstamo', dataIndex: 'numero', key: 'numero', width: 120 },
     { title: 'Deudor', dataIndex: 'deudorNombre', key: 'deudorNombre' },
@@ -78,6 +100,12 @@ export default function CobranzaPage() {
         <div style={{ display: 'flex', gap: 4 }}>
           <Button size="small" icon={<Eye size={13} />} onClick={() => navigate(`/prestamista/prestamos/${r.id}`)} />
           <Button size="small" icon={<Plus size={13} />} onClick={() => openGestion(r)}>Gestión</Button>
+          <Tooltip title={r.deudorEmail ? 'Enviar recordatorio de mora por email' : 'El deudor no tiene email registrado'}>
+            <span>
+              <Button size="small" icon={<Mail size={13} />} disabled={!r.deudorEmail}
+                loading={notificandoId === r.id} onClick={() => confirmarNotificar(r)} />
+            </span>
+          </Tooltip>
         </div>
       ),
     },

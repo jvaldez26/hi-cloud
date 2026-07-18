@@ -3,11 +3,14 @@ import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { TenantGuard } from '../../tenant/tenant.guard';
 import { ModuloAddonGuard } from '../../modulos-addon/guards/modulo-addon.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
+import { Roles } from '../../auth/decorators/roles.decorator';
+import { UserRole } from '../../users/enums/user-role.enum';
 import { TenantService } from '../../tenant/tenant.service';
 import { CobranzaService } from './cobranza.service';
 
 @Controller('prestamista/cobranza')
-@UseGuards(JwtAuthGuard, TenantGuard, ModuloAddonGuard('prestamista'))
+@UseGuards(JwtAuthGuard, TenantGuard, RolesGuard, ModuloAddonGuard('prestamista'))
 @ApiTags('Prestamista - Cobranza')
 @ApiBearerAuth()
 export class CobranzaController {
@@ -20,4 +23,10 @@ export class CobranzaController {
     return this.svc.gestionesByPrestamo(this.empresaId, id);
   }
   @Post('gestiones') registrarGestion(@Body() body: any) { return this.svc.registrarGestion(this.empresaId, body); }
+
+  @Post('prestamo/:prestamoId/notificar-mora')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  notificarMora(@Param('prestamoId', ParseIntPipe) id: number) {
+    return this.svc.notificarMora(this.empresaId, id, this.tenantSvc.getUserId());
+  }
 }
