@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, Logger } from '@nes
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { calcularAmortizacion } from '../utils/amortizacion.util';
+import { fechaHoyRD } from '../../common/utils/fecha-local.util';
 
 @Injectable()
 export class RefinanciamientoService {
@@ -50,7 +51,7 @@ export class RefinanciamientoService {
     // Crear nuevo préstamo
     const nuevaTasa   = data.nuevaTasa   ?? Number(original.tasaInteresMensual);
     const nuevoPlazo  = data.nuevoPlazo  ?? Number(original.plazoMeses);
-    const fechaPrimerPago = new Date(data.fechaPrimerPago ?? new Date());
+    const fechaPrimerPago = new Date(data.fechaPrimerPago ?? fechaHoyRD());
     const amort = calcularAmortizacion('frances', montoNuevo, nuevaTasa, nuevoPlazo, fechaPrimerPago);
 
     const [seq] = await this.ds.query<any[]>(
@@ -68,7 +69,7 @@ export class RefinanciamientoService {
       [empresaId, numero, original.deudorId, original.productoId ?? null, montoNuevo,
        nuevaTasa, nuevoPlazo, original.frecuenciaPago, 'frances', amort.cuotaFija,
        Number(original.porcentajeMora), Number(original.diasGracia),
-       new Date().toISOString().split('T')[0],
+       fechaHoyRD(),
        fechaPrimerPago.toISOString().split('T')[0],
        ultimaCuota.fechaVencimiento.toISOString().split('T')[0],
        amort.totalInteres, amort.totalAPagar, montoNuevo, amort.totalInteres, amort.totalAPagar,
