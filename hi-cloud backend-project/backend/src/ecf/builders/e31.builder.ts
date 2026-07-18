@@ -86,24 +86,33 @@ export function buildE31(input: ECFBuildInput): MSellerPayload {
   const totalITBIS        = round2(itbis18 + itbis16);
   const montoTotal        = round2(montoGravadoTotal + montoExento + totalITBIS);
 
-  // Totales E31 — MontoExento solo si hay items exentos (prohibido si es 0)
+  // Totales E31 — ORDEN ESTRICTO XSD DGII (el orden de inserción = orden XML en MSeller):
+  //   MontoGravado* → MontoExento → ITBIS* → TotalITBIS* → MontoTotal → Retenciones
+  // MontoExento va ANTES de cualquier ITBIS; antes se insertaba después del bloque
+  // ITBIS y DGII lo rechazaba ("invalid child element 'MontoExento'"). Solo si hay
+  // items exentos (prohibido si es 0).
   const totales: Record<string, unknown> = {};
+  // 1. Montos gravados
   if (montoGravadoTotal > 0) {
     totales['MontoGravadoTotal'] = montoGravadoTotal;
     totales['MontoGravadoI1']    = round2(montoGravado18);
-    totales['ITBIS1']            = 18;
-    totales['TotalITBIS']        = totalITBIS;
-    totales['TotalITBIS1']       = round2(itbis18);
+  }
+  if (montoGravado16 > 0) totales['MontoGravadoI2'] = round2(montoGravado16);
+  // 2. Exento — ANTES de cualquier ITBIS
+  if (montoExento > 0) totales['MontoExento'] = round2(montoExento);
+  // 3. ITBIS (tasa) → TotalITBIS
+  if (montoGravadoTotal > 0) {
+    totales['ITBIS1']      = 18;
+    totales['TotalITBIS']  = totalITBIS;
+    totales['TotalITBIS1'] = round2(itbis18);
   }
   if (montoGravado16 > 0) {
-    totales['MontoGravadoI2'] = round2(montoGravado16);
-    totales['ITBIS2']         = 16;
-    totales['TotalITBIS2']    = round2(itbis16);
+    totales['ITBIS2']      = 16;
+    totales['TotalITBIS2'] = round2(itbis16);
   }
-  // MontoExento SOLO si hay items exentos (E31 no debe tenerlos normalmente)
-  if (montoExento > 0) totales['MontoExento'] = round2(montoExento);
-
-  // Retenciones (E31 agente de retención) — orden correcto DGII: después de TotalITBIS
+  // 4. Total
+  totales['MontoTotal'] = montoTotal;
+  // 5. Retenciones (E31 agente de retención) — DESPUÉS de MontoTotal (orden XSD)
   const factData = factura as any;
   if (factData?.aplicaRetenciones) {
     const retItbis = round2(Number(factData.montoRetencionItbis ?? 0));
@@ -111,8 +120,6 @@ export function buildE31(input: ECFBuildInput): MSellerPayload {
     if (retItbis > 0) totales['TotalITBISRetenido'] = retItbis;
     if (retIsr   > 0) totales['TotalISRRetencion']  = retIsr;
   }
-
-  totales['MontoTotal'] = montoTotal;
 
   // ── PASO 3: OtraMoneda calculada DESDE los items en moneda original ──────────
   // Se calcula directamente de detallesME (no de factura.subtotal/iva)
