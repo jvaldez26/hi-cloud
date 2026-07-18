@@ -444,7 +444,7 @@ export class ECFController {
       reenvioLogger.log(`Reenvío condicional autorizado: ${numero} (secuenciaUtilizada=${secuenciaUtilizada})`);
       await this.ecfService.prepararReenvioRechazado(ecf.id);
       const ecfListo = await this.ecfService.getECFByNumero(numero);
-      await this.reintentoJob.procesarUno(ecfListo as any);
+      await this.reintentoJob.procesarUno(ecfListo as any, true);
       return this.ecfService.getECFByNumero(numero);
     }
 

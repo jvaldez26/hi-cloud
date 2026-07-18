@@ -185,7 +185,7 @@ export class ReintentoECFJob {
    * Público: lo usan el cron, el reenvío manual del controller y el botón "Emitir"
    * del panel de Facturas. Devuelve el resultado para que ese botón informe al usuario.
    */
-  async procesarUno(ecf: ECF): Promise<ResultadoReintento> {
+  async procesarUno(ecf: ECF, forzarReenvio = false): Promise<ResultadoReintento> {
     const { id, numero, empresaId, intentosEnvio } = ecf;
 
     // Estado final válido → nada que reconciliar (evita que el guard de intentos
@@ -195,10 +195,13 @@ export class ReintentoECFJob {
       return 'sin_accion';
     }
 
-    this.logger.log(`Reconciliando e-CF ${numero} (intento ${intentosEnvio + 1}/${MAX_INTENTOS})`);
+    this.logger.log(`Reconciliando e-CF ${numero} (intento ${intentosEnvio + 1}/${MAX_INTENTOS}${forzarReenvio ? ', forzado' : ''})`);
 
-    // NO confiar en el estado local: consultar el estado real y decidir (decisor compartido).
-    const dec = await decidirReconciliacionEcf(this.mseller, numero, empresaId!);
+    // forzarReenvio=true: reenvío manual con secuencia no utilizada — omitir la
+    // reconciliación con MSeller (que devolvería 'dejar_rechazado') y reenviar directo.
+    const dec = forzarReenvio
+      ? ({ accion: 'reenviar' } as const)
+      : await decidirReconciliacionEcf(this.mseller, numero, empresaId!);
 
     if (dec.accion === 'adoptar') {
       await this.ecfRepo.update(id, {
