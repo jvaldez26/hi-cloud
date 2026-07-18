@@ -156,11 +156,11 @@ export class NotasCreditoService {
     // Enriquecer con datos ECF (número y estado) para que el frontend
     // pueda ocultar el botón "e-CF E34" cuando ya fue emitido
     const ids = data.map(n => n.id);
-    let ecfByNotaId: Record<number, { numero: string; estadoDGII: string }> = {};
+    let ecfByNotaId: Record<number, { numero: string; estadoDGII: string; ncfModificado: string | null }> = {};
     if (ids.length > 0) {
       const ecfRows = await this.ncRepo.manager.query<any[]>(
         `SELECT DISTINCT ON ("documentoOrigenId")
-           "documentoOrigenId" AS "notaId", numero, "estadoDGII"
+           "documentoOrigenId" AS "notaId", numero, "estadoDGII", "ncfModificado"
          FROM ecf
          WHERE "documentoOrigenId" = ANY($1)
            AND "documentoOrigenTipo" = 'NOTA_CREDITO'
@@ -168,14 +168,15 @@ export class NotasCreditoService {
         [ids],
       );
       for (const e of ecfRows) {
-        ecfByNotaId[e.notaId] = { numero: e.numero, estadoDGII: e.estadoDGII };
+        ecfByNotaId[e.notaId] = { numero: e.numero, estadoDGII: e.estadoDGII, ncfModificado: e.ncfModificado ?? null };
       }
     }
 
     const enriched = data.map(n => ({
       ...n,
-      ecfNumero: ecfByNotaId[n.id]?.numero ?? null,
-      ecf:       ecfByNotaId[n.id] ?? null,
+      ecfNumero:     ecfByNotaId[n.id]?.numero ?? null,
+      ncfModificado: ecfByNotaId[n.id]?.ncfModificado ?? null,
+      ecf:           ecfByNotaId[n.id] ?? null,
     }));
 
     return { data: enriched, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };

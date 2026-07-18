@@ -4,7 +4,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
-  Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
+  Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select, Tooltip,
   DatePicker, InputNumber, Space, Typography, Statistic, Popconfirm,
   message, Divider, theme, Alert, AutoComplete, Spin, Checkbox,
 } from 'antd';
@@ -305,9 +305,8 @@ export default function NotasCreditoPage() {
     { key: 'c',   label: 'Cliente',      defaultVisible: true  },
     { key: 't',   label: 'Total',        defaultVisible: true  },
     { key: 'mon', label: 'Moneda',       defaultVisible: true  },
-    { key: 'fof', label: 'Factura orig.',defaultVisible: true  },
     { key: 'e',   label: 'Estado',       defaultVisible: true  },
-    { key: 'ecf', label: 'e-CF',         defaultVisible: true  },
+    { key: 'ecf', label: 'Estado DGII',  defaultVisible: true  },
   ];
   const { visibleColumns, updateVisibility, filterColumns: fcNC } = useColumnVisibility('notas-credito', COLS_DEF);
 
@@ -362,8 +361,23 @@ export default function NotasCreditoPage() {
           pagination={{ pageSize: 15 }}
           scroll={{ x: 'max-content' }}
           columns={fcNC([
-            { title: 'Número', dataIndex: 'numero', key: 'n', width: 100,
-              render: (v: any) => <Text strong style={{ fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{v}</Text> },
+            { title: 'Número', key: 'n', width: 150,
+              render: (_: any, r: any) => {
+                const afectado = r.ncfModificado ?? r.facturaOriginalFolio;
+                const tip = r.ncfModificado && r.facturaOriginalFolio ? `Factura afectada: ${r.facturaOriginalFolio}` : undefined;
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.35 }}>
+                    <Text strong style={{ fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{r.numero}</Text>
+                    {afectado && (
+                      <Tooltip title={tip}>
+                        <Text type="secondary" style={{ fontSize: 10, whiteSpace: 'nowrap', fontFamily: 'monospace', cursor: tip ? 'help' : 'default' }}>
+                          ↩ afecta {afectado}
+                        </Text>
+                      </Tooltip>
+                    )}
+                  </div>
+                );
+              } },
             { title: 'Fecha',  dataIndex: 'fecha',  key: 'f', width: 90,
               render: (v: any) => <span style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{v ? String(v).slice(0, 10) : '—'}</span> },
             {
@@ -382,15 +396,11 @@ export default function NotasCreditoPage() {
               },
             },
             {
-              title: 'Factura orig.', dataIndex: 'facturaOriginalFolio', key: 'fof', width: 160,
-              render: (v: any) => v ? <Tag color="orange" style={{ whiteSpace: 'nowrap' }}>{v}</Tag> : <Text type="secondary">—</Text>,
-            },
-            {
               title: 'Estado', dataIndex: 'estado', key: 'e', width: 100,
               render: (v: any) => <Tag color={ESTADO_CONFIG[v]?.color}>{ESTADO_CONFIG[v]?.label}</Tag>,
             },
             {
-              title: 'e-CF', key: 'ecf', width: 140,
+              title: 'Estado DGII', key: 'ecf', width: 140,
               render: (_: any, r: any) => {
                 if (r.ecfNumero) {
                   return <EcfBadge estado={(r.ecf?.estadoDGII ?? r.ecfEstado ?? 'enviado') as EstadoEcf} encf={r.ecfNumero} small />;
