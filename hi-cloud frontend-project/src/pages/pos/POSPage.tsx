@@ -9795,7 +9795,7 @@ export default function POSPage() {
         </div>{/* /columna izquierda */}
 
         {/* Right: carrito — altura completa de pantalla, Cobrar pegado al fondo */}
-        <div style={{ width: isMobile ? '100%' : 380, flexShrink: 0, background: C.sidebar, borderLeft: isMobile ? 'none' : `1px solid ${C.border}`, display: isMobile && mobileTab === 'productos' ? 'none' : 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ width: isMobile ? '100%' : 'clamp(380px, 32vw, 440px)', flexShrink: 0, background: C.sidebar, borderLeft: isMobile ? 'none' : `1px solid ${C.border}`, display: isMobile && mobileTab === 'productos' ? 'none' : 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {/* Cart header */}
           <div style={{ padding: '12px 14px', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
             {/* Customer */}
