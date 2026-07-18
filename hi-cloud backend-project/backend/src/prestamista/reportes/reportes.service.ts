@@ -115,16 +115,16 @@ export class ReportesPrestamistaService {
     const dias = Number(params.dias ?? 30);
     const rows = await this.ds.query<any[]>(
       `SELECT c."numeroCuota", c."fechaVencimiento", c."cuotaTotal",
-              GREATEST(0,c.capital-c."capitalPagado") AS capitalPend,
-              GREATEST(0,c.interes-c."interesPagado") AS interesPend,
-              c.estado AS estadoCuota,
+              GREATEST(0,c.capital-c."capitalPagado") AS "capitalPend",
+              GREATEST(0,c.interes-c."interesPagado") AS "interesPend",
+              c.estado AS "estadoCuota",
               p.numero AS prestamo, d.nombre||' '||COALESCE(d.apellidos,'') AS deudor, d.telefono
          FROM pr_cuotas c
          JOIN pr_prestamos p ON p.id=c."prestamoId"
          JOIN pr_deudores d ON d.id=p."deudorId"
         WHERE c."empresaId"=$1
           AND c.estado IN ('pendiente','vencida')
-          AND c."fechaVencimiento" BETWEEN CURRENT_DATE AND CURRENT_DATE+$2
+          AND c."fechaVencimiento" BETWEEN CURRENT_DATE AND CURRENT_DATE+$2::int
         ORDER BY c."fechaVencimiento"`,
       [empresaId, dias],
     );
@@ -144,18 +144,18 @@ export class ReportesPrestamistaService {
   // 5. Préstamos por producto
   async prestamosPorProducto(empresaId: number) {
     const rows = await this.ds.query<any[]>(
-      `SELECT pr.nombre AS producto, COUNT(p.id) AS totalPrestamos,
-              SUM(p."montoPrincipal") AS capitalTotal,
-              SUM(p."saldoCapital") AS saldoTotal,
-              SUM(p."saldoMora") AS moraTotal,
-              COUNT(p.id) FILTER(WHERE p.estado='al_dia') AS alDia,
+      `SELECT pr.nombre AS producto, COUNT(p.id) AS "totalPrestamos",
+              SUM(p."montoPrincipal") AS "capitalTotal",
+              SUM(p."saldoCapital") AS "saldoTotal",
+              SUM(p."saldoMora") AS "moraTotal",
+              COUNT(p.id) FILTER(WHERE p.estado='al_dia') AS "alDia",
               COUNT(p.id) FILTER(WHERE p.estado='moroso') AS morosos,
               COUNT(p.id) FILTER(WHERE p.estado='vencido') AS vencidos,
               COUNT(p.id) FILTER(WHERE p.estado='pagado') AS pagados
          FROM pr_prestamos p
          LEFT JOIN pr_productos_prestamo pr ON pr.id=p."productoId"
         WHERE p."empresaId"=$1
-        GROUP BY pr.nombre ORDER BY capitalTotal DESC`,
+        GROUP BY pr.nombre ORDER BY "capitalTotal" DESC`,
       [empresaId],
     );
     return toCsv(rows, [
@@ -275,15 +275,15 @@ export class ReportesPrestamistaService {
   async indicesFinancieros(empresaId: number) {
     const [kpis] = await this.ds.query<any[]>(
       `SELECT
-         COUNT(*) FILTER(WHERE estado NOT IN ('cancelado','refinanciado')) AS totalActivos,
-         COUNT(*) FILTER(WHERE estado='al_dia') AS alDia,
+         COUNT(*) FILTER(WHERE estado NOT IN ('cancelado','refinanciado')) AS "totalActivos",
+         COUNT(*) FILTER(WHERE estado='al_dia') AS "alDia",
          COUNT(*) FILTER(WHERE estado='moroso') AS morosos,
          COUNT(*) FILTER(WHERE estado='vencido') AS vencidos,
          COUNT(*) FILTER(WHERE estado='pagado') AS pagados,
-         COALESCE(SUM("montoPrincipal") FILTER(WHERE estado NOT IN ('cancelado','refinanciado','pagado')),0) AS carteraActiva,
-         COALESCE(SUM("saldoCapital") FILTER(WHERE estado NOT IN ('cancelado','refinanciado')),0) AS saldoCapitalTotal,
-         COALESCE(SUM("saldoMora") FILTER(WHERE estado NOT IN ('cancelado','refinanciado')),0) AS moraTotal,
-         COALESCE(SUM("totalPagado"),0) AS recaudadoTotal
+         COALESCE(SUM("montoPrincipal") FILTER(WHERE estado NOT IN ('cancelado','refinanciado','pagado')),0) AS "carteraActiva",
+         COALESCE(SUM("saldoCapital") FILTER(WHERE estado NOT IN ('cancelado','refinanciado')),0) AS "saldoCapitalTotal",
+         COALESCE(SUM("saldoMora") FILTER(WHERE estado NOT IN ('cancelado','refinanciado')),0) AS "moraTotal",
+         COALESCE(SUM("totalPagado"),0) AS "recaudadoTotal"
        FROM pr_prestamos WHERE "empresaId"=$1`,
       [empresaId],
     );
@@ -308,10 +308,10 @@ export class ReportesPrestamistaService {
   async cuotasVencidas(empresaId: number) {
     const rows = await this.ds.query<any[]>(
       `SELECT c."numeroCuota", c."fechaVencimiento",
-              GREATEST(0,c.capital-c."capitalPagado") AS capitalPend,
-              GREATEST(0,c.interes-c."interesPagado") AS interesPend,
+              GREATEST(0,c.capital-c."capitalPagado") AS "capitalPend",
+              GREATEST(0,c.interes-c."interesPagado") AS "interesPend",
               COALESCE(c."moraGenerada",0) AS mora,
-              CURRENT_DATE-c."fechaVencimiento" AS diasVencida,
+              CURRENT_DATE-c."fechaVencimiento" AS "diasVencida",
               p.numero AS prestamo, d.nombre||' '||COALESCE(d.apellidos,'') AS deudor, d.telefono
          FROM pr_cuotas c
          JOIN pr_prestamos p ON p.id=c."prestamoId"
@@ -337,10 +337,10 @@ export class ReportesPrestamistaService {
   // 12. Historial completo de un deudor
   async estadoCuentaDeudor(empresaId: number, deudorId: number) {
     const rows = await this.ds.query<any[]>(
-      `SELECT p.numero AS prestamo, p.estado AS estadoPrestamo,
+      `SELECT p.numero AS prestamo, p.estado AS "estadoPrestamo",
               p."montoPrincipal", p."saldoCapital", p."saldoMora",
               p."fechaDesembolso", p."fechaVencimiento",
-              pg.numero AS pago, pg.fecha AS fechaPago, pg."montoPagado",
+              pg.numero AS pago, pg.fecha AS "fechaPago", pg."montoPagado",
               pg."aplicadoCapital", pg."aplicadoInteres", pg."aplicadoMora"
          FROM pr_prestamos p
          LEFT JOIN pr_pagos pg ON pg."prestamoId"=p.id
