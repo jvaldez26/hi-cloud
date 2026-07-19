@@ -33,4 +33,7 @@ export class StockAlmacen extends BaseEntity {
 
   @Column({ type: 'decimal', precision: 12, scale: 4, nullable: true })
   stockMaximo?: number;
+
+  @Column({ nullable: true })
+  ubicacionId?: number;
 }

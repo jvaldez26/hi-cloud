@@ -100,4 +100,10 @@ export class CreateProductoDto {
   @IsInt()
   @Type(() => Number)
   almacenId?: number;   // Almacén donde inicializar el stock al crear/actualizar
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Type(() => Number)
+  ubicacionId?: number; // Ubicación WMS por defecto dentro del almacén (opcional)
 }

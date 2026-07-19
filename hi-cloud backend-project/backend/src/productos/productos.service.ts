@@ -118,6 +118,7 @@ export class ProductosService implements OnModuleInit {
     empresaId: number,
     stock: number,
     almacenId?: number,
+    ubicacionId?: number,
   ): Promise<void> {
     if (!almacenId) {
       // Si no se especifica almacén, usar el primero activo del tenant
@@ -134,10 +135,15 @@ export class ProductosService implements OnModuleInit {
     });
 
     if (existing) {
-      await this.stockAlmacenRepository.update(existing.id, { stock });
+      const patch: any = { stock };
+      if (ubicacionId !== undefined) patch.ubicacionId = ubicacionId;
+      await this.stockAlmacenRepository.update(existing.id, patch);
     } else {
       await this.stockAlmacenRepository.save(
-        this.stockAlmacenRepository.create({ productoId, almacenId, empresaId, stock } as any),
+        this.stockAlmacenRepository.create({
+          productoId, almacenId, empresaId, stock,
+          ...(ubicacionId ? { ubicacionId } : {}),
+        } as any),
       );
     }
   }
@@ -159,8 +165,20 @@ export class ProductosService implements OnModuleInit {
       if (byCodigo) throw new ConflictException(`Ya existe un producto con el código '${dto.codigo}'`);
     }
 
-    const { almacenId: almacenIdDto, ...productoData } = dto;
+    const { almacenId: almacenIdDto, ubicacionId: ubicacionIdDto, ...productoData } = dto;
     const almacenId = almacenIdDto ?? this.tenantService.getAlmacenId() ?? undefined;
+
+    // Validación anti-IDOR: ubicacionId debe pertenecer al almacén Y a la empresa del tenant
+    let ubicacionId: number | undefined;
+    if (ubicacionIdDto && almacenId) {
+      const [ubic] = await this.productoRepository.manager.query<any[]>(
+        `SELECT id FROM wms_ubicaciones WHERE id = $1 AND "almacenId" = $2 AND "empresaId" = $3 AND "isActive" = true LIMIT 1`,
+        [ubicacionIdDto, almacenId, empresaId],
+      );
+      if (!ubic) throw new BadRequestException(`La ubicación #${ubicacionIdDto} no pertenece al almacén seleccionado`);
+      ubicacionId = ubicacionIdDto;
+    }
+
     const producto = this.productoRepository.create({ ...productoData, empresaId });
     const saved = await this.productoRepository.save(producto);
     if (!saved.codigo) {
@@ -171,7 +189,7 @@ export class ProductosService implements OnModuleInit {
 
     // Registrar stock inicial en stock_almacen (solo para productos físicos con stock)
     if (dto.tipo !== 'servicio' && (dto.stock ?? 0) > 0) {
-      await this.sincronizarStockAlmacen(saved.id, empresaId, dto.stock!, almacenId).catch(
+      await this.sincronizarStockAlmacen(saved.id, empresaId, dto.stock!, almacenId, ubicacionId).catch(
         (err: Error) => this.logger.warn(`stock_almacen no sincronizado en producto #${saved.id}: ${err.message}`),
       );
       // Loguear movimiento de entrada inicial en inventario
@@ -240,9 +258,12 @@ export class ProductosService implements OnModuleInit {
     if (incluirSinStock && data.length > 0) {
       const ids = data.map(p => p.id);
       const stocks: any[] = await this.productoRepository.manager.query(
-        `SELECT sa."productoId", sa.stock, sa."almacenId", a.nombre AS "almacenNombre"
+        `SELECT sa."productoId", sa.stock, sa."almacenId", sa."ubicacionId",
+                a.nombre AS "almacenNombre",
+                u.codigo AS "ubicacionCodigo"
          FROM stock_almacen sa
          INNER JOIN almacenes a ON a.id = sa."almacenId"
+         LEFT  JOIN wms_ubicaciones u ON u.id = sa."ubicacionId"
          WHERE sa."productoId" = ANY($1)
            AND sa."empresaId" = $2
            AND sa."isActive" = true
@@ -255,9 +276,11 @@ export class ProductosService implements OnModuleInit {
         const pid = Number(s.productoId);
         if (!stockMap.has(pid)) stockMap.set(pid, []);
         stockMap.get(pid)!.push({
-          almacenId: Number(s.almacenId),
-          almacen:   s.almacenNombre,
-          cantidad:  Number(s.stock),
+          almacenId:       Number(s.almacenId),
+          almacen:         s.almacenNombre,
+          cantidad:        Number(s.stock),
+          ubicacionId:     s.ubicacionId ? Number(s.ubicacionId) : undefined,
+          ubicacionCodigo: s.ubicacionCodigo ?? undefined,
         });
       }
       return {
@@ -373,8 +396,21 @@ export class ProductosService implements OnModuleInit {
     }
 
     // stock se ignora en update — solo modificable mediante movimientos de inventario
-    const { almacenId, stock: _stock, ...updateData } = dto as any;
+    const { almacenId, ubicacionId: ubicacionIdDto, stock: _stock, ...updateData } = dto as any;
     await this.productoRepository.update(id, updateData);
+
+    // Si viene ubicacionId, validar anti-IDOR y persistir en stock_almacen
+    if (ubicacionIdDto !== undefined && almacenId) {
+      const [ubic] = await this.productoRepository.manager.query<any[]>(
+        `SELECT id FROM wms_ubicaciones WHERE id = $1 AND "almacenId" = $2 AND "empresaId" = $3 AND "isActive" = true LIMIT 1`,
+        [ubicacionIdDto, almacenId, empresaId],
+      );
+      if (!ubic) throw new BadRequestException(`La ubicación #${ubicacionIdDto} no pertenece al almacén seleccionado`);
+      await this.productoRepository.manager.query(
+        `UPDATE stock_almacen SET "ubicacionId" = $1 WHERE "productoId" = $2 AND "almacenId" = $3 AND "empresaId" = $4`,
+        [ubicacionIdDto || null, id, almacenId, empresaId],
+      );
+    }
 
     this.realtimeService.notify(empresaId, 'producto', 'updated', id);
     return this.findOne(id);

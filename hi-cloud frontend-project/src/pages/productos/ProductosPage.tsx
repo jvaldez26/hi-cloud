@@ -16,6 +16,7 @@ import { TableActions } from '../../components/ui/TableActions';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { productosApi, type ProductoPayload } from '../../api/productos.api';
+import { wmsApi } from '../../api/wms.api';
 import { atributosApi } from '../../api/atributos.api';
 import api from '../../api/client';
 import { useCanDo } from '../../hooks/useCanDo';
@@ -367,10 +368,11 @@ function ProductosCatalogo() {
   const [preview,    setPreview]    = useState('');
   const [uploading,  setUploading]  = useState(false);
   const [form]                      = Form.useForm<ProductoPayload>();
-  const tipoWatch  = Form.useWatch('tipo',          form) ?? 'producto';
-  const itbisWatch = Form.useWatch('porcentajeIva', form) ?? 18;
-  const uomWatch   = Form.useWatch('unidadMedida',  form) ?? 'PZA';
-  const esServicio = tipoWatch === 'servicio';
+  const tipoWatch      = Form.useWatch('tipo',          form) ?? 'producto';
+  const itbisWatch     = Form.useWatch('porcentajeIva', form) ?? 18;
+  const uomWatch       = Form.useWatch('unidadMedida',  form) ?? 'PZA';
+  const almacenIdWatch = Form.useWatch('almacenId',     form) as number | undefined;
+  const esServicio     = tipoWatch === 'servicio';
 
   const { data: uomUnidades = [] } = useQuery({
     queryKey: ['uom-unidades'],
@@ -425,6 +427,14 @@ function ProductosCatalogo() {
     queryFn:  () => api.get('/almacenes').then((r: any) => r.data?.data ?? r.data ?? []),
     staleTime: 5 * 60_000,
     enabled: !!user && !!empresaActual,
+  });
+
+  // Ubicaciones WMS del almacén seleccionado en el form — solo cuando hay almacén elegido
+  const { data: ubicaciones = [] } = useQuery<any[]>({
+    queryKey: ['wms-ubicaciones', almacenIdWatch],
+    queryFn:  () => wmsApi.getUbicaciones(almacenIdWatch),
+    staleTime: 60_000,
+    enabled:   !esServicio && !!almacenIdWatch,
   });
 
   // Auto-seleccionar almacén cuando carga la lista (ej: al cambiar sucursal)
@@ -596,7 +606,16 @@ function ProductosCatalogo() {
     setPrecio3Input(p.precio3 != null ? Number(p.precio3) : null);
     setCostoInput(p.costo != null ? Number(p.costo) : null);
     setSucursalSeleccionada(undefined);
-    if (almacenes.length === 1 && !(p as any).almacenId) form.setFieldValue('almacenId', almacenes[0].id);
+    // Restaurar almacén y ubicación WMS por defecto a partir del stockPorAlmacen del producto
+    const spa = (p as any).stockPorAlmacen as { almacenId: number; ubicacionId?: number }[] | undefined;
+    const aidEdit = (p as any).almacenId ?? almacenJwt ?? (almacenes.length === 1 ? almacenes[0].id : undefined);
+    if (aidEdit) {
+      form.setFieldValue('almacenId', Number(aidEdit));
+      const spaRow = spa?.find(s => Number(s.almacenId) === Number(aidEdit));
+      if (spaRow?.ubicacionId) form.setFieldValue('ubicacionId', spaRow.ubicacionId);
+    } else if (almacenes.length === 1) {
+      form.setFieldValue('almacenId', almacenes[0].id);
+    }
     setOpen(true);
   };
   const closeModal = () => {
@@ -633,6 +652,7 @@ function ProductosCatalogo() {
     if (values.tipo === 'servicio') {
       payload.stock = undefined;
       payload.stockMinimo = undefined;
+      delete (payload as any).ubicacionId;
     }
     if (editing) updateMut.mutate({ id: editing.id, body: payload });
     else         createMut.mutate(payload);
@@ -1069,9 +1089,27 @@ function ProductosCatalogo() {
                       disabled={sucursales.length > 1 && !sucursalSeleccionada}
                       allowClear={almacenes.length > 1}
                       options={almacenes.map((a: any) => ({ value: a.id, label: a.nombre }))}
+                      onChange={() => form.setFieldValue('ubicacionId', undefined)}
                     />
                   </Form.Item>
                 )}
+              </Col>
+            )}
+
+            {/* Ubicación WMS por defecto — solo cuando hay almacén y existen ubicaciones */}
+            {!esServicio && !!almacenIdWatch && ubicaciones.length > 0 && (
+              <Col xs={24} sm={8}>
+                <Form.Item name="ubicacionId" label="Ubicación WMS"
+                  extra="Ubicación por defecto para picking en este almacén">
+                  <Select
+                    placeholder="Sin ubicación específica"
+                    allowClear
+                    options={ubicaciones.map((u: any) => ({
+                      value: u.id,
+                      label: `${u.codigo}${u.tipo ? ` (${u.tipo})` : ''}`,
+                    }))}
+                  />
+                </Form.Item>
               </Col>
             )}
 

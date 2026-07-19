@@ -185,17 +185,32 @@ export class WmsService {
         const ubic = await this.ubicRepo.findOne({ where: { id: l.ubicacionId } });
         ubicacionCodigo = ubic?.codigo;
       } else {
-        // Sugerir la primera ubicación de tipo picking en el almacén
-        const rows = await this.ds.query<any[]>(
-          `SELECT id, codigo FROM wms_ubicaciones
-           WHERE "almacenId"=$1 AND "empresaId"=$2 AND tipo='picking'
-             AND "isActive"=true AND activa=true
-           ORDER BY id ASC LIMIT 1`,
-          [dto.almacenId, empresaId],
+        // Preferir la ubicación por defecto del producto en este almacén (stock_almacen.ubicacionId)
+        const [stockRow] = await this.ds.query<any[]>(
+          `SELECT sa."ubicacionId", u.codigo
+           FROM stock_almacen sa
+           LEFT JOIN wms_ubicaciones u ON u.id = sa."ubicacionId"
+           WHERE sa."productoId" = $1 AND sa."almacenId" = $2 AND sa."empresaId" = $3
+             AND sa."isActive" = true AND u."isActive" IS NOT FALSE
+           LIMIT 1`,
+          [l.productoId, dto.almacenId, empresaId],
         );
-        if (rows[0]) {
-          l = { ...l, ubicacionId: rows[0].id };
-          ubicacionCodigo = rows[0].codigo;
+        if (stockRow?.ubicacionId) {
+          l = { ...l, ubicacionId: stockRow.ubicacionId };
+          ubicacionCodigo = stockRow.codigo;
+        } else {
+          // Fallback: primera ubicación de tipo picking en el almacén
+          const rows = await this.ds.query<any[]>(
+            `SELECT id, codigo FROM wms_ubicaciones
+             WHERE "almacenId"=$1 AND "empresaId"=$2 AND tipo='picking'
+               AND "isActive"=true AND activa=true
+             ORDER BY id ASC LIMIT 1`,
+            [dto.almacenId, empresaId],
+          );
+          if (rows[0]) {
+            l = { ...l, ubicacionId: rows[0].id };
+            ubicacionCodigo = rows[0].codigo;
+          }
         }
       }
       return this.lineaRepo.create({
