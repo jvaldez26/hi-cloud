@@ -1,12 +1,16 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { TenantService } from '../../tenant/tenant.service';
 
 @Injectable()
 export class CiclosService {
   private readonly logger = new Logger(CiclosService.name);
 
-  constructor(@InjectDataSource() private readonly ds: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly ds: DataSource,
+    private readonly tenantSvc: TenantService,
+  ) {}
 
   private async orFail(empresaId: number, id: number) {
     const [row] = await this.ds.query<any[]>(
@@ -80,13 +84,14 @@ export class CiclosService {
     const [row] = await this.ds.query<any[]>(
       `INSERT INTO ag_ciclos ("empresaId",numero,"parcelaId","cultivoId","fechaSiembra",
          "fechaEstimadaCosecha","areaSembrada","cantidadSemilla","unidadSemilla",
-         "rendimientoEstimado","unidadCosecha","costoSemilla",estado,notas)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+         "rendimientoEstimado","unidadCosecha","costoSemilla",estado,notas,"creadoPor")
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
       [empresaId, numero, data.parcelaId, data.cultivoId, data.fechaSiembra,
        data.fechaEstimadaCosecha ?? null, data.areaSembrada ?? null,
        data.cantidadSemilla ?? null, data.unidadSemilla ?? null,
        data.rendimientoEstimado ?? null, data.unidadCosecha ?? null,
-       data.costoSemilla ?? 0, data.estado ?? 'sembrado', data.notas ?? null],
+       data.costoSemilla ?? 0, data.estado ?? 'sembrado', data.notas ?? null,
+       this.tenantSvc.getUserId()],
     );
     // Marcar parcela como sembrada
     await this.ds.query(
@@ -106,6 +111,7 @@ export class CiclosService {
     allowed.forEach(f => {
       if (data[f] !== undefined) { sets.push(`"${f}"=$${vals.length + 1}`); vals.push(data[f]); }
     });
+    sets.push(`"actualizadoPor"=$${vals.length + 1}`); vals.push(this.tenantSvc.getUserId());
     const [row] = await this.ds.query(
       `UPDATE ag_ciclos SET ${sets.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *`, vals,
     );
@@ -117,9 +123,9 @@ export class CiclosService {
     if (ciclo.estado === 'cerrado') throw new BadRequestException('El ciclo ya está cerrado');
     await this.recalcularCostos(id, empresaId);
     const [row] = await this.ds.query<any[]>(
-      `UPDATE ag_ciclos SET estado='cerrado', "fechaCosechaReal"=$3, "ingresoVentas"=$4, "updatedAt"=NOW()
+      `UPDATE ag_ciclos SET estado='cerrado', "fechaCosechaReal"=$3, "ingresoVentas"=$4, "actualizadoPor"=$5, "updatedAt"=NOW()
         WHERE id=$1 AND "empresaId"=$2 RETURNING *`,
-      [id, empresaId, data.fechaCosechaReal ?? new Date().toISOString().split('T')[0], data.ingresoVentas ?? 0],
+      [id, empresaId, data.fechaCosechaReal ?? new Date().toISOString().split('T')[0], data.ingresoVentas ?? 0, this.tenantSvc.getUserId()],
     );
     // Liberar parcela
     await this.ds.query(
@@ -205,12 +211,13 @@ export class CiclosService {
     const [row] = await this.ds.query<any[]>(
       `INSERT INTO ag_labores ("empresaId","cicloId","parcelaId",tipo,descripcion,fecha,
          "cantidadTrabajadores","horasTrabajadas","costoManoObra","usoMaquinaria","costoMaquinaria",
-         estado,responsable,notas)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+         estado,responsable,notas,"creadoPor")
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
       [empresaId, data.cicloId, data.parcelaId ?? null, data.tipo, data.descripcion ?? null,
        data.fecha, data.cantidadTrabajadores ?? null, data.horasTrabajadas ?? null,
        data.costoManoObra ?? 0, data.usoMaquinaria ?? null, data.costoMaquinaria ?? 0,
-       data.estado ?? 'completada', data.responsable ?? null, data.notas ?? null],
+       data.estado ?? 'completada', data.responsable ?? null, data.notas ?? null,
+       this.tenantSvc.getUserId()],
     );
     await this.recalcularCostos(data.cicloId, empresaId);
     return row;
@@ -229,6 +236,7 @@ export class CiclosService {
       if (data[f] !== undefined) { sets.push(`"${f}"=$${vals.length + 1}`); vals.push(data[f]); }
     });
     if (!sets.length) return exists;
+    sets.push(`"actualizadoPor"=$${vals.length + 1}`); vals.push(this.tenantSvc.getUserId());
     const [row] = await this.ds.query(
       `UPDATE ag_labores SET ${sets.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *`, vals,
     );
@@ -251,13 +259,14 @@ export class CiclosService {
     const [row] = await this.ds.query<any[]>(
       `INSERT INTO ag_aplicaciones_insumo ("empresaId","cicloId","laborId","productoId","insumoNombre",
          tipo,cantidad,unidad,"costoUnitario","costoTotal",fecha,"dosisPorArea","metodoAplicacion",
-         "loteInsumo","periodoCarencia",responsable,notas)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
+         "loteInsumo","periodoCarencia",responsable,notas,"creadoPor")
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
       [empresaId, data.cicloId, data.laborId ?? null, data.productoId ?? null,
        data.insumoNombre, data.tipo ?? null, data.cantidad, data.unidad ?? null,
        data.costoUnitario ?? null, costoTotal, data.fecha, data.dosisPorArea ?? null,
        data.metodoAplicacion ?? null, data.loteInsumo ?? null, data.periodoCarencia ?? null,
-       data.responsable ?? null, data.notas ?? null],
+       data.responsable ?? null, data.notas ?? null,
+       this.tenantSvc.getUserId()],
     );
     await this.recalcularCostos(data.cicloId, empresaId);
     return row;

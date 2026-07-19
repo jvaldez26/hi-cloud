@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, ConflictException, 
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { CiclosService } from '../ciclos/ciclos.service';
+import { TenantService } from '../../tenant/tenant.service';
 
 @Injectable()
 export class CosechasService {
@@ -10,6 +11,7 @@ export class CosechasService {
   constructor(
     @InjectDataSource() private readonly ds: DataSource,
     private readonly ciclosSvc: CiclosService,
+    private readonly tenantSvc: TenantService,
   ) {}
 
   async findAll(empresaId: number, params: any) {
@@ -54,13 +56,14 @@ export class CosechasService {
     const numero = `COS-${String(seq.num).padStart(4, '0')}`;
     const [row] = await this.ds.query<any[]>(
       `INSERT INTO ag_cosechas ("empresaId",numero,"cicloId","parcelaId",fecha,cantidad,unidad,
-         calidad,clasificacion,destino,"cantidadTrabajadores","costoManoObra","productoId",notas)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+         calidad,clasificacion,destino,"cantidadTrabajadores","costoManoObra","productoId",notas,"creadoPor")
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
       [empresaId, numero, data.cicloId, data.parcelaId ?? null, data.fecha,
        data.cantidad, data.unidad ?? null, data.calidad ?? null,
        data.clasificacion ? JSON.stringify(data.clasificacion) : null,
        data.destino ?? null, data.cantidadTrabajadores ?? null, data.costoManoObra ?? 0,
-       data.productoId ?? null, data.notas ?? null],
+       data.productoId ?? null, data.notas ?? null,
+       this.tenantSvc.getUserId()],
     );
     await this.ciclosSvc.recalcularCostos(data.cicloId, empresaId);
     return row;
@@ -83,10 +86,10 @@ export class CosechasService {
 
       // Ganar el flag de forma atómica: solo pasa de false→true una vez.
       const marcada = await manager.query<any[]>(
-        `UPDATE ag_cosechas SET "ingresadoInventario"=true
+        `UPDATE ag_cosechas SET "ingresadoInventario"=true, "actualizadoPor"=$3
           WHERE id=$1 AND "empresaId"=$2 AND "ingresadoInventario"=false
         RETURNING *`,
-        [id, empresaId],
+        [id, empresaId, this.tenantSvc.getUserId()],
       );
       if (!marcada.length) {
         // Otra llamada ya la ingresó (o doble-click): NO sumar stock.

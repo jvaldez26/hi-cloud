@@ -1,12 +1,16 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { TenantService } from '../../tenant/tenant.service';
 
 @Injectable()
 export class GanaderiaService {
   private readonly logger = new Logger(GanaderiaService.name);
 
-  constructor(@InjectDataSource() private readonly ds: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly ds: DataSource,
+    private readonly tenantSvc: TenantService,
+  ) {}
 
   private async orFail(empresaId: number, id: number) {
     const [row] = await this.ds.query<any[]>(
@@ -56,14 +60,14 @@ export class GanaderiaService {
     const [row] = await this.ds.query<any[]>(
       `INSERT INTO ag_animales ("empresaId","fincaId",numero,nombre,tipo,raza,sexo,"fechaNacimiento",
          "pesoNacimiento","pesoActual",color,origen,"madreId","padreId",proposito,estado,
-         "costoAdquisicion",notas)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
+         "costoAdquisicion",notas,"creadoPor")
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
       [empresaId, data.fincaId ?? null, data.numero ?? null, data.nombre ?? null,
        data.tipo, data.raza ?? null, data.sexo ?? null, data.fechaNacimiento ?? null,
        data.pesoNacimiento ?? null, data.pesoActual ?? null, data.color ?? null,
        data.origen ?? 'nacido_finca', data.madreId ?? null, data.padreId ?? null,
        data.proposito ?? null, data.estado ?? 'activo', data.costoAdquisicion ?? null,
-       data.notas ?? null],
+       data.notas ?? null, this.tenantSvc.getUserId()],
     );
     return row;
   }
@@ -78,6 +82,7 @@ export class GanaderiaService {
       if (data[f] !== undefined) { sets.push(`"${f}"=$${vals.length + 1}`); vals.push(data[f]); }
     });
     if (!sets.length) return this.orFail(empresaId, id);
+    sets.push(`"actualizadoPor"=$${vals.length + 1}`); vals.push(this.tenantSvc.getUserId());
     const [row] = await this.ds.query(
       `UPDATE ag_animales SET ${sets.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *`, vals,
     );
@@ -96,12 +101,13 @@ export class GanaderiaService {
     await this.orFail(empresaId, animalId);
     const [row] = await this.ds.query<any[]>(
       `INSERT INTO ag_eventos_animal ("empresaId","animalId",tipo,fecha,descripcion,peso,
-         producto,dosis,costo,"cantidadProduccion","unidadProduccion",responsable,"proximaFecha",notas)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+         producto,dosis,costo,"cantidadProduccion","unidadProduccion",responsable,"proximaFecha",notas,"creadoPor")
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
       [empresaId, animalId, data.tipo, data.fecha, data.descripcion ?? null,
        data.peso ?? null, data.producto ?? null, data.dosis ?? null, data.costo ?? 0,
        data.cantidadProduccion ?? null, data.unidadProduccion ?? null,
-       data.responsable ?? null, data.proximaFecha ?? null, data.notas ?? null],
+       data.responsable ?? null, data.proximaFecha ?? null, data.notas ?? null,
+       this.tenantSvc.getUserId()],
     );
     // Si es pesaje actualizar peso actual del animal
     if (data.tipo === 'peso' && data.peso) {

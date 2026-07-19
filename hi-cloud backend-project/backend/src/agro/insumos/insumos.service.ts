@@ -1,12 +1,16 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { TenantService } from '../../tenant/tenant.service';
 
 @Injectable()
 export class InsumosService {
   private readonly logger = new Logger(InsumosService.name);
 
-  constructor(@InjectDataSource() private readonly ds: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly ds: DataSource,
+    private readonly tenantSvc: TenantService,
+  ) {}
 
   async findAll(empresaId: number, params: any) {
     const conds: string[] = [`i."empresaId"=$1 AND i."isActive"=true`];
@@ -25,12 +29,13 @@ export class InsumosService {
   async create(empresaId: number, data: any) {
     const [row] = await this.ds.query<any[]>(
       `INSERT INTO ag_insumos ("empresaId",nombre,tipo,marca,presentacion,unidad,
-         "stockActual","stockMinimo","costoUnitario","requiereReceta","periodoCarencia","productoId")
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+         "stockActual","stockMinimo","costoUnitario","requiereReceta","periodoCarencia","productoId","creadoPor")
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
       [empresaId, data.nombre, data.tipo ?? null, data.marca ?? null, data.presentacion ?? null,
        data.unidad ?? null, data.stockActual ?? 0, data.stockMinimo ?? 0,
        data.costoUnitario ?? null, data.requiereReceta ?? false,
-       data.periodoCarencia ?? null, data.productoId ?? null],
+       data.periodoCarencia ?? null, data.productoId ?? null,
+       this.tenantSvc.getUserId()],
     );
     return row;
   }
@@ -48,6 +53,7 @@ export class InsumosService {
       if (data[f] !== undefined) { sets.push(`"${f}"=$${vals.length + 1}`); vals.push(data[f]); }
     });
     if (!sets.length) return exists;
+    sets.push(`"actualizadoPor"=$${vals.length + 1}`); vals.push(this.tenantSvc.getUserId());
     const [row] = await this.ds.query(
       `UPDATE ag_insumos SET ${sets.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *`, vals,
     );
