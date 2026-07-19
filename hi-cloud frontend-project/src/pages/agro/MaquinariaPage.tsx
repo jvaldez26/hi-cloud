@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import dayjs from 'dayjs';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Table, Button, Modal, Form, Input, InputNumber, Select, DatePicker, message, theme, Tag } from 'antd';
 import { PlusOutlined, FileExcelOutlined } from '@ant-design/icons';
@@ -30,11 +31,14 @@ export default function MaquinariaPage() {
   const { data: maquinaria = [], isLoading } = useQuery({ queryKey: ['agro-maquinaria'], queryFn: () => agroApi.getMaquinaria() });
 
   const save = useMutation({
-    mutationFn: (vals: any) => modal.item ? agroApi.updateMaquinaria(modal.item.id, vals) : agroApi.crearMaquinaria({
-      ...vals,
-      fechaCompra: vals.fechaCompra?.format('YYYY-MM-DD'),
-      proximoMantenimiento: vals.proximoMantenimiento?.format('YYYY-MM-DD'),
-    }),
+    mutationFn: (vals: any) => {
+      const payload = {
+        ...vals,
+        fechaCompra: vals.fechaCompra?.format?.('YYYY-MM-DD') ?? undefined,
+        proximoMantenimiento: vals.proximoMantenimiento?.format?.('YYYY-MM-DD') ?? undefined,
+      };
+      return modal.item ? agroApi.updateMaquinaria(modal.item.id, payload) : agroApi.crearMaquinaria(payload);
+    },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['agro-maquinaria'] }); setModal({ open: false }); form.resetFields(); message.success('Guardado'); },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
   });
@@ -49,7 +53,7 @@ export default function MaquinariaPage() {
     { title: 'Costo/Día',  key: 'cd',      dataIndex: 'costoPorDia',          render: (v: any) => v ? `RD$${Number(v).toLocaleString('es-DO')}` : '-' },
     { title: 'Estado',     key: 'estado',  dataIndex: 'estado',               render: (v: string) => <Tag color={v === 'disponible' ? 'green' : v === 'en_uso' ? 'blue' : 'orange'}>{v}</Tag> },
     { title: 'Prox. Mant.',key: 'pm',      dataIndex: 'proximoMantenimiento', render: (v: string) => v ? String(v).split('T')[0] : '-' },
-    { title: '', key: 'acc', render: (_: any, r: any) => <Button size="small" onClick={() => { form.setFieldsValue(r); setModal({ open: true, item: r }); }}>Editar</Button> },
+    { title: '', key: 'acc', render: (_: any, r: any) => <Button size="small" onClick={() => { form.setFieldsValue({ ...r, fechaCompra: r.fechaCompra ? dayjs(r.fechaCompra) : undefined, proximoMantenimiento: r.proximoMantenimiento ? dayjs(r.proximoMantenimiento) : undefined }); setModal({ open: true, item: r }); }}>Editar</Button> },
   ];
 
   const exportar = () => {

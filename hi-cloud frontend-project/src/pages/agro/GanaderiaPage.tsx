@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import dayjs from 'dayjs';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Table, Button, Modal, Form, Input, InputNumber, Select, DatePicker, message, theme, Tag, Space } from 'antd';
 import { PlusOutlined, FileExcelOutlined, EyeOutlined } from '@ant-design/icons';
@@ -39,10 +40,10 @@ export default function GanaderiaPage() {
   const { data: fincas = [] } = useQuery({ queryKey: ['agro-fincas'], queryFn: () => agroApi.getFincas() });
 
   const save = useMutation({
-    mutationFn: (vals: any) => modal.item ? agroApi.updateAnimal(modal.item.id, vals) : agroApi.crearAnimal({
-      ...vals,
-      fechaNacimiento: vals.fechaNacimiento?.format('YYYY-MM-DD'),
-    }),
+    mutationFn: (vals: any) => {
+      const payload = { ...vals, fechaNacimiento: vals.fechaNacimiento?.format?.('YYYY-MM-DD') ?? undefined };
+      return modal.item ? agroApi.updateAnimal(modal.item.id, payload) : agroApi.crearAnimal(payload);
+    },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['agro-animales'] }); setModal({ open: false }); form.resetFields(); message.success('Guardado'); },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
   });
@@ -64,7 +65,7 @@ export default function GanaderiaPage() {
       render: (_: any, r: any) => (
         <Space>
           <Button size="small" icon={<EyeOutlined />} onClick={() => navigate(`/agro/ganaderia/${r.id}`)}>Ver</Button>
-          <Button size="small" onClick={() => { form.setFieldsValue(r); setModal({ open: true, item: r }); }}>Editar</Button>
+          <Button size="small" onClick={() => { form.setFieldsValue({ ...r, fechaNacimiento: r.fechaNacimiento ? dayjs(r.fechaNacimiento) : undefined }); setModal({ open: true, item: r }); }}>Editar</Button>
         </Space>
       ),
     },
