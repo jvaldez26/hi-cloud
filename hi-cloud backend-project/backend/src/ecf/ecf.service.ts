@@ -687,9 +687,9 @@ export class ECFService implements OnModuleInit {
   }
 
   async getECFByNumero(numero: string): Promise<ECF> {
-    const empresaId = this.tenantService.getEmpresaIdOrNull() ?? undefined;
+    const empresaId = this.tenantService.getEmpresaId();
     const ecf = await this.ecfRepository.findOne({
-      where: { numero, isActive: true, ...(empresaId ? { empresaId } : {}) },
+      where: { numero, isActive: true, empresaId },
       relations: ['tipoECF', 'secuencia', 'factura'],
     });
     if (!ecf) throw new NotFoundException(`e-CF ${numero} no encontrado`);

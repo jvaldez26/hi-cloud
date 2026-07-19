@@ -49,19 +49,11 @@ const STORAGE_KEY   = 'pos_supervisor';
 const SESSION_MS    = 8 * 60 * 60_000; // 8 horas
 
 function loadSessionFromStorage(): SupervisorSession | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const session: SupervisorSession = JSON.parse(raw);
-    if (!session.until || session.until <= Date.now()) {
-      localStorage.removeItem(STORAGE_KEY);
-      return null;
-    }
-    return session;
-  } catch {
-    localStorage.removeItem(STORAGE_KEY);
-    return null;
-  }
+  // La sesión de supervisor vive solo en memoria; no se restaura desde localStorage
+  // porque cualquier valor almacenado ahí es forjable desde DevTools.
+  // Al montar, limpiamos entradas previas del esquema anterior.
+  try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+  return null;
 }
 
 export function useSupervisor(): UseSupervisorReturn {
@@ -102,7 +94,7 @@ export function useSupervisor(): UseSupervisorReturn {
         until: Date.now() + SESSION_MS,
       };
       setSupervisorSession(session);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+      // No persistir en localStorage — sesión solo en memoria para evitar forja
     }
     resolveRef.current?.(result);
     resolveRef.current = null;

@@ -8018,9 +8018,8 @@ export default function POSPage() {
   const setAlmacenActualPOS  = useAuthStore(s => s.setAlmacenActual);
 
   // ── Bloqueo de pantalla ────────────────────────────────────────────────────
-  const [pantallaBloqueada,   setPantallaBloqueada]   = useState(() =>
-    sessionStorage.getItem('pos_bloqueado') === 'true'
-  );
+  // C-5: no inicializar desde sessionStorage — cualquier valor ahí es borrable con DevTools
+  const [pantallaBloqueada,   setPantallaBloqueada]   = useState(false);
   const [pwDesbloqueo,        setPwDesbloqueo]        = useState('');
   const [errDesbloqueo,       setErrDesbloqueo]       = useState('');
   const [desbloqueando,       setDesbloqueando]       = useState(false);

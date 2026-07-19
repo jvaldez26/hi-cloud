@@ -85,6 +85,23 @@ export class FacturasService {
 
     for (const item of dto.detalles) {
       const producto = item.productoId ? (productosMap.get(item.productoId) ?? null) : null;
+
+      // C-4: revalidar precio contra catálogo (previene manipulación desde localStorage)
+      if (producto) {
+        const precioBase = Number(item.precioOriginal ?? item.precioUnitario);
+        if (precioBase <= 0) {
+          throw new BadRequestException(
+            `Precio inválido para "${producto.nombre}": debe ser mayor a cero`,
+          );
+        }
+        const costo = Number(producto.costoPromedio ?? 0);
+        if (costo > 0 && precioBase < costo) {
+          throw new BadRequestException(
+            `Precio de "${producto.nombre}" (${precioBase}) no puede ser inferior al costo (${costo.toFixed(2)})`,
+          );
+        }
+      }
+
       const porcentajeIva = item.porcentajeIva ?? (producto ? Number(producto.porcentajeIva) : 18);
 
       // Descuento por línea: monto fijo tiene precedencia; pct se aplica solo si monto = 0
@@ -287,6 +304,23 @@ export class FacturasService {
 
     for (const item of dto.detalles) {
       const producto = item.productoId ? (productosMap.get(item.productoId) ?? null) : null;
+
+      // C-4: revalidar precio contra catálogo
+      if (producto) {
+        const precioBase = Number(item.precioOriginal ?? item.precioUnitario);
+        if (precioBase <= 0) {
+          throw new BadRequestException(
+            `Precio inválido para "${producto.nombre}": debe ser mayor a cero`,
+          );
+        }
+        const costo = Number(producto.costoPromedio ?? 0);
+        if (costo > 0 && precioBase < costo) {
+          throw new BadRequestException(
+            `Precio de "${producto.nombre}" (${precioBase}) no puede ser inferior al costo (${costo.toFixed(2)})`,
+          );
+        }
+      }
+
       const porcentajeIva = item.porcentajeIva ?? (producto ? Number(producto.porcentajeIva) : 18);
 
       const brutoU = r2u(Number(item.precioUnitario) * item.cantidad);
