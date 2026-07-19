@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { TenantService } from '../../tenant/tenant.service';
@@ -26,16 +26,21 @@ export class CiclosService {
   }
 
   /**
-   * Verifica que un cicloId recibido en el body pertenezca a la empresa del CLS.
-   * Impide que un tenant cuelgue labores/aplicaciones/etc. del ciclo de otro tenant
-   * (IDs SERIAL adivinables). Reutilizable desde cualquier create que reciba cicloId.
+   * Valida que un cicloId del body (a) pertenezca a la empresa del CLS —impide que
+   * un tenant cuelgue filas del ciclo de otro (IDs SERIAL adivinables)— y (b) NO esté
+   * cerrado. A4: un ciclo cerrado es inmutable, no admite nuevas labores/aplicaciones/
+   * cosechas ni edición de sus labores (recalcularían costos de un ciclo ya cerrado).
+   * Reutilizable desde cualquier create/update que reciba cicloId.
    */
-  async assertCicloDeEmpresa(cicloId: number | undefined | null, empresaId: number): Promise<void> {
+  async assertCicloEditable(cicloId: number | undefined | null, empresaId: number): Promise<void> {
     if (cicloId == null) throw new NotFoundException('Ciclo no especificado');
     const [row] = await this.ds.query<any[]>(
-      `SELECT 1 FROM ag_ciclos WHERE id=$1 AND "empresaId"=$2`, [cicloId, empresaId],
+      `SELECT estado FROM ag_ciclos WHERE id=$1 AND "empresaId"=$2`, [cicloId, empresaId],
     );
     if (!row) throw new NotFoundException(`Ciclo #${cicloId} no encontrado`);
+    if (row.estado === 'cerrado') {
+      throw new ConflictException(`El ciclo #${cicloId} está cerrado y no admite modificaciones.`);
+    }
   }
 
   async findAll(empresaId: number, params: any) {
@@ -103,7 +108,16 @@ export class CiclosService {
   }
 
   async update(empresaId: number, id: number, data: any) {
-    await this.orFail(empresaId, id);
+    const ciclo = await this.orFail(empresaId, id);
+    // A4: un ciclo cerrado es inmutable — no se edita ni se reabre.
+    if (ciclo.estado === 'cerrado') {
+      throw new ConflictException('El ciclo está cerrado y no admite modificaciones.');
+    }
+    // El cierre debe pasar por la acción "cerrar" (recalcula costos y libera la parcela),
+    // no por una edición directa del estado.
+    if (data.estado === 'cerrado') {
+      throw new BadRequestException('Para cerrar el ciclo usa la acción "cerrar", no la edición.');
+    }
     const allowed = ['fechaSiembra','fechaEstimadaCosecha','areaSembrada','cantidadSemilla','unidadSemilla',
       'rendimientoEstimado','unidadCosecha','costoSemilla','costoOtros','ingresoVentas','estado','notas'];
     const sets: string[] = [`"updatedAt"=NOW()`];
@@ -119,20 +133,28 @@ export class CiclosService {
   }
 
   async cerrar(empresaId: number, id: number, data: any) {
-    const ciclo = await this.orFail(empresaId, id);
-    if (ciclo.estado === 'cerrado') throw new BadRequestException('El ciclo ya está cerrado');
-    await this.recalcularCostos(id, empresaId);
-    const [row] = await this.ds.query<any[]>(
-      `UPDATE ag_ciclos SET estado='cerrado', "fechaCosechaReal"=$3, "ingresoVentas"=$4, "actualizadoPor"=$5, "updatedAt"=NOW()
-        WHERE id=$1 AND "empresaId"=$2 RETURNING *`,
+    const ciclo = await this.orFail(empresaId, id);   // 404 si no existe / otra empresa
+    // A4: cierre ATÓMICO. El UPDATE condicionado (estado <> 'cerrado') gana la carrera;
+    // un 2º intento (doble-click / concurrencia) afecta 0 filas → 409, sin recalcular
+    // ni re-liberar la parcela. Reemplaza el read-then-write anterior.
+    const cerrado = await this.ds.query<any[]>(
+      `UPDATE ag_ciclos SET estado='cerrado', "fechaCosechaReal"=$3, "ingresoVentas"=$4,
+         "actualizadoPor"=$5, "updatedAt"=NOW()
+        WHERE id=$1 AND "empresaId"=$2 AND estado <> 'cerrado' RETURNING *`,
       [id, empresaId, data.fechaCosechaReal ?? new Date().toISOString().split('T')[0], data.ingresoVentas ?? 0, this.tenantSvc.getUserId()],
     );
-    // Liberar parcela
+    if (!cerrado.length) throw new ConflictException('El ciclo ya está cerrado');
+    // Solo el ganador del cierre recalcula costos finales y libera la parcela.
+    await this.recalcularCostos(id, empresaId);
     await this.ds.query(
       `UPDATE ag_parcelas SET estado='disponible', "cultivoActual"=null WHERE id=$1 AND "empresaId"=$2`,
       [ciclo.parcelaId, empresaId],
     );
-    return row;
+    // Re-leer para devolver el ciclo con los costos ya recalculados.
+    const [final] = await this.ds.query<any[]>(
+      `SELECT * FROM ag_ciclos WHERE id=$1 AND "empresaId"=$2`, [id, empresaId],
+    );
+    return final ?? cerrado[0];
   }
 
   async getCostos(empresaId: number, id: number) {
@@ -207,7 +229,7 @@ export class CiclosService {
   }
 
   async createLabor(empresaId: number, data: any) {
-    await this.assertCicloDeEmpresa(data.cicloId, empresaId);
+    await this.assertCicloEditable(data.cicloId, empresaId);
     const [row] = await this.ds.query<any[]>(
       `INSERT INTO ag_labores ("empresaId","cicloId","parcelaId",tipo,descripcion,fecha,
          "cantidadTrabajadores","horasTrabajadas","costoManoObra","usoMaquinaria","costoMaquinaria",
@@ -228,6 +250,8 @@ export class CiclosService {
       `SELECT id, "cicloId" FROM ag_labores WHERE id=$1 AND "empresaId"=$2`, [id, empresaId],
     );
     if (!exists) throw new NotFoundException(`Labor #${id} no encontrada`);
+    // A4: no editar labores de un ciclo cerrado (recalcularían sus costos).
+    await this.assertCicloEditable(exists.cicloId, empresaId);
     const allowed = ['tipo','descripcion','fecha','cantidadTrabajadores','horasTrabajadas',
       'costoManoObra','usoMaquinaria','costoMaquinaria','estado','responsable','notas'];
     const sets: string[] = [];
@@ -253,7 +277,7 @@ export class CiclosService {
   }
 
   async createAplicacion(empresaId: number, data: any) {
-    await this.assertCicloDeEmpresa(data.cicloId, empresaId);
+    await this.assertCicloEditable(data.cicloId, empresaId);
     const costoTotal = data.costoTotal ?? (data.costoUnitario && data.cantidad
       ? +(Number(data.costoUnitario) * Number(data.cantidad)).toFixed(2) : null);
     const [row] = await this.ds.query<any[]>(

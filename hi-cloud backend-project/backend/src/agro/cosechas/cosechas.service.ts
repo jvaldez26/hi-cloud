@@ -50,6 +50,9 @@ export class CosechasService {
   }
 
   async create(empresaId: number, data: any) {
+    // A4: no se registran cosechas en un ciclo cerrado. Valida además pertenencia
+    // del cicloId a la empresa (evita colgar la cosecha del ciclo de otro tenant).
+    await this.ciclosSvc.assertCicloEditable(data.cicloId, empresaId);
     const [seq] = await this.ds.query<any[]>(
       `SELECT siguiente_numero_secuencia($1, $2) AS num`, [empresaId, 'COS'],
     );
