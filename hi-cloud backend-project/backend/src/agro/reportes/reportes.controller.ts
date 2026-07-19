@@ -2,12 +2,16 @@ import { Controller, Get, Query, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { TenantGuard } from '../../tenant/tenant.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
+import { Roles } from '../../auth/decorators/roles.decorator';
+import { UserRole } from '../../users/enums/user-role.enum';
 import { ModuloAddonGuard } from '../../modulos-addon/guards/modulo-addon.guard';
 import { TenantService } from '../../tenant/tenant.service';
 import { AgroReportesService } from './reportes.service';
 
 @Controller('agro/reportes')
-@UseGuards(JwtAuthGuard, TenantGuard, ModuloAddonGuard('agro'))
+@UseGuards(JwtAuthGuard, RolesGuard, TenantGuard, ModuloAddonGuard('agro'))
+@Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
 export class AgroReportesController {
   constructor(private readonly svc: AgroReportesService, private readonly tenantSvc: TenantService) {}
   private get empresaId() { return this.tenantSvc.getEmpresaId(); }

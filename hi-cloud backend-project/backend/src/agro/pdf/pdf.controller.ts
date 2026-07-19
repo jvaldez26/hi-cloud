@@ -2,12 +2,16 @@ import { Controller, Get, Param, ParseIntPipe, Res, UseGuards } from '@nestjs/co
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { TenantGuard } from '../../tenant/tenant.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
+import { Roles } from '../../auth/decorators/roles.decorator';
+import { UserRole } from '../../users/enums/user-role.enum';
 import { ModuloAddonGuard } from '../../modulos-addon/guards/modulo-addon.guard';
 import { TenantService } from '../../tenant/tenant.service';
 import { AgroPdfService } from './agro-pdf.service';
 
 @Controller('agro/pdf')
-@UseGuards(JwtAuthGuard, TenantGuard, ModuloAddonGuard('agro'))
+@UseGuards(JwtAuthGuard, RolesGuard, TenantGuard, ModuloAddonGuard('agro'))
+@Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
 export class AgroPdfController {
   constructor(private readonly svc: AgroPdfService, private readonly tenantSvc: TenantService) {}
   private get empresaId() { return this.tenantSvc.getEmpresaId(); }
