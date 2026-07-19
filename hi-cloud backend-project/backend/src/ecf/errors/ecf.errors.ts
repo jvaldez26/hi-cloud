@@ -116,3 +116,14 @@ export class EcfMontoAnulacionError extends EcfError {
     );
   }
 }
+
+/** El documento origen fue modificado después de emitir el e-CF en CONTINGENCIA — el XML sería diferente al original. */
+export class EcfDocumentoModificadoError extends EcfError {
+  constructor(numero: string) {
+    super(
+      `El documento origen del e-CF ${numero} fue modificado después de su emisión en contingencia. ` +
+      `No se puede reenviar: el XML resultante diferiría del emitido originalmente.`,
+      'ECF_DOCUMENTO_MODIFICADO',
+    );
+  }
+}

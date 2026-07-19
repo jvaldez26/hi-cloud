@@ -14,7 +14,8 @@ import { MSellerClientService } from '../services/mseller-client.service';
 import { esErrorYaExiste, decidirReconciliacionEcf } from '../services/reconciliacion-ecf.helper';
 import { ECFBuilderService, MSellerInfoReferencia, MSellerPayload } from '../services/ecf-builder.service';
 import { EcfConfigService } from '../services/ecf-config.service';
-import { EcfValidacionError } from '../errors/ecf.errors';
+import { EcfDocumentoModificadoError, EcfValidacionError } from '../errors/ecf.errors';
+import { reportServiceError } from '../../common/observability/sentry';
 import { fmtFecha } from '../builders/base-ecf.builder';
 
 const MAX_INTENTOS = 5;
@@ -27,7 +28,8 @@ export type ResultadoReintento =
   | 'reenviado'        // se reenvió el MISMO eNCF
   | 'contingencia'     // superó el máximo de intentos
   | 'sin_confirmar'    // no se pudo confirmar el estado → fail-safe (queda pendiente)
-  | 'reenvio_fallido'; // el reenvío falló por comunicación
+  | 'reenvio_fallido'      // el reenvío falló por comunicación
+  | 'documento_modificado'; // CONTINGENCIA: el doc. origen fue editado post-emisión — no reenviar
 
 /**
  * Minutos de espera mínima antes de reintentar según el intento anterior.
@@ -197,11 +199,33 @@ export class ReintentoECFJob {
 
     this.logger.log(`Reconciliando e-CF ${numero} (intento ${intentosEnvio + 1}/${MAX_INTENTOS}${forzarReenvio ? ', forzado' : ''})`);
 
-    // forzarReenvio=true: reenvío manual con secuencia no utilizada — omitir la
-    // reconciliación con MSeller (que devolvería 'dejar_rechazado') y reenviar directo.
-    const dec = forzarReenvio
-      ? ({ accion: 'reenviar' } as const)
-      : await decidirReconciliacionEcf(this.mseller, numero, empresaId!);
+    // Para CONTINGENCIA + forzarReenvio: consultar MSeller por si ya lo procesó, pero
+    // ignorar 'dejar_rechazado' (el e-CF puede no existir aún en DGII). Si la consulta
+    // es inconclusa ('esperar'), reportar a Sentry y fallar de forma segura.
+    // Para RECHAZADO + forzarReenvio: omitir reconciliación y reenviar directo.
+    let dec: Awaited<ReturnType<typeof decidirReconciliacionEcf>>;
+    if (forzarReenvio && ecf.estadoDGII === EstadoDGII.CONTINGENCIA) {
+      const consulta = await decidirReconciliacionEcf(this.mseller, numero, empresaId!);
+      if (consulta.accion === 'esperar') {
+        reportServiceError(
+          new Error(`CONTINGENCIA reenvío manual: estado incierto en MSeller para ${numero}`),
+          'contingencia_reenvio_estado_incierto',
+          { numero, empresaId: String(empresaId) },
+        );
+        await this.ecfRepo.update(id, { ultimoIntentoEnvio: new Date() });
+        await this.logEvento(id, TipoEcfEvento.ERROR,
+          { tipo: 'CONTINGENCIA_ESTADO_INCIERTO' },
+          `Estado incierto al reenviar desde CONTINGENCIA — se mantiene sin cambios`);
+        this.logger.warn(`e-CF ${numero} CONTINGENCIA: MSeller no confirma estado — fail-safe`);
+        return 'sin_confirmar';
+      }
+      // 'dejar_rechazado' en CONTINGENCIA → el e-CF nunca llegó a DGII, forzar reenvío
+      dec = consulta.accion === 'dejar_rechazado' ? { accion: 'reenviar' } : consulta;
+    } else {
+      dec = forzarReenvio
+        ? { accion: 'reenviar' }
+        : await decidirReconciliacionEcf(this.mseller, numero, empresaId!);
+    }
 
     if (dec.accion === 'adoptar') {
       await this.ecfRepo.update(id, {
@@ -237,7 +261,8 @@ export class ReintentoECFJob {
     }
 
     // dec.accion === 'reenviar' → reenviar EL MISMO eNCF (jamás uno nuevo).
-    if (intentosEnvio >= MAX_INTENTOS) {
+    // forzarReenvio=true (reenvío manual) omite el techo de intentos.
+    if (!forzarReenvio && intentosEnvio >= MAX_INTENTOS) {
       await this.ecfRepo.update(id, {
         estadoDGII: EstadoDGII.CONTINGENCIA,
         errorEnvio: `Superó ${MAX_INTENTOS} intentos sin respuesta del proveedor de facturación.`,
@@ -341,6 +366,17 @@ export class ReintentoECFJob {
         return 'sin_confirmar';
       }
 
+      if (err instanceof EcfDocumentoModificadoError) {
+        await this.ecfRepo.update(id, {
+          errorEnvio:         msg,
+          ultimoIntentoEnvio: new Date(),
+        });
+        await this.logEvento(id, TipoEcfEvento.ERROR,
+          { tipo: 'DOCUMENTO_MODIFICADO' }, msg);
+        this.logger.warn(`e-CF ${numero} → documento_modificado (CONTINGENCIA bloqueada)`);
+        return 'documento_modificado';
+      }
+
       if (err instanceof EcfValidacionError) {
         await this.ecfRepo.update(id, {
           estadoDGII:         EstadoDGII.RECHAZADO,
@@ -393,6 +429,19 @@ export class ReintentoECFJob {
       this.secuenciaRepo.findOne({ where: { id: secuenciaId } }),
       this.cargarDocumento(documentoOrigenTipo, documentoOrigenId, empresaId!),
     ]);
+
+    // Para CONTINGENCIA: si el documento origen fue modificado después de la emisión,
+    // el XML reconstruido diferiría del original — bloquear el reenvío.
+    if (ecf.estadoDGII === EstadoDGII.CONTINGENCIA) {
+      const rawUpd = (docOrigen as any).updatedAt;
+      if (rawUpd) {
+        const docUpdated = rawUpd instanceof Date ? rawUpd : new Date(rawUpd);
+        const ecfCreated = ecf.createdAt instanceof Date ? ecf.createdAt : new Date(ecf.createdAt);
+        if (docUpdated > ecfCreated) {
+          throw new EcfDocumentoModificadoError(numero);
+        }
+      }
+    }
 
     // Anclar al mediodía RD (16:00 UTC) igual que el envío original
     const fechaVencSec = (() => {

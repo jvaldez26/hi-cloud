@@ -444,16 +444,18 @@ export class ECFController {
       reenvioLogger.log(`Reenvío condicional autorizado: ${numero} (secuenciaUtilizada=${secuenciaUtilizada})`);
       await this.ecfService.prepararReenvioRechazado(ecf.id);
       const ecfListo = await this.ecfService.getECFByNumero(numero);
-      await this.reintentoJob.procesarUno(ecfListo as any, true);
-      return this.ecfService.getECFByNumero(numero);
+      const resultado = await this.reintentoJob.procesarUno(ecfListo as any, true);
+      const ecfFinal  = await this.ecfService.getECFByNumero(numero);
+      return { resultado, ...ecfFinal };
     }
 
     // Para ECFs con jsonEnviado (path MSeller) → procesarUno del job directamente (NO el cron masivo)
     if (ecf.jsonEnviado) {
       const logger = new Logger('ECFController.reenviar');
       logger.log(`Reenvío manual individual: ${numero} (${ecf.estadoDGII})`);
-      await this.reintentoJob.procesarUno(ecf as any);
-      return this.ecfService.getECFByNumero(numero);
+      const resultado = await this.reintentoJob.procesarUno(ecf as any, true);
+      const ecfFinal  = await this.ecfService.getECFByNumero(numero);
+      return { resultado, ...ecfFinal };
     }
 
     // Path legacy (xml) — solo para ECFs muy antiguos

@@ -57,6 +57,26 @@ function getSecuenciaUtilizada(respuestaDgii: any): boolean | undefined {
   return v === true ? true : v === false ? false : undefined;
 }
 
+const REENVIO_MSGS: Record<string, string> = {
+  reenviado:            'Reenvío completado — el e-CF fue enviado a DGII',
+  adoptado:             'Estado actualizado — el comprobante ya estaba procesado en DGII',
+  rechazado:            'DGII rechazó el comprobante — revisa los errores en el detalle',
+  sin_confirmar:        'No se pudo confirmar el estado en DGII — intenta de nuevo en unos minutos',
+  documento_modificado: 'El documento fue modificado después de emitirse en contingencia — no se puede reenviar',
+  reenvio_fallido:      'El reenvío falló por un problema de comunicación — intenta de nuevo',
+};
+
+function mostrarResultadoReenvio(resultado: string | undefined) {
+  const msg = REENVIO_MSGS[resultado ?? ''] ?? 'Reenvío iniciado — el e-CF será procesado en breve';
+  if (resultado === 'rechazado' || resultado === 'documento_modificado' || resultado === 'reenvio_fallido') {
+    message.error(msg, 8);
+  } else if (resultado === 'sin_confirmar') {
+    message.warning(msg, 6);
+  } else {
+    message.success(msg);
+  }
+}
+
 // ── Componente: Respuesta DGII parseada ──────────────────────────────────────
 function DgiiResponseSection({ respuestaDgii, estadoDGII }: { respuestaDgii?: any; estadoDGII?: string }) {
   if (!respuestaDgii) return null;
@@ -160,7 +180,10 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
 
   const reenviarMut = useMutation({
     mutationFn: ecfApi.reenviar,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['ecf-list'] }); message.success('Reenvío iniciado — el e-CF será procesado en breve'); },
+    onSuccess: (data: any) => {
+      qc.invalidateQueries({ queryKey: ['ecf-list'] });
+      mostrarResultadoReenvio(data?.resultado);
+    },
     onError: (e: any) => {
       const msg = e?.response?.data?.message ?? (e as any)?.friendlyMessage ?? 'Error al reenviar';
       message.error(msg, 8);
@@ -276,6 +299,10 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
               : []),
             ...(r.estadoDGII === 'rechazado' && getSecuenciaUtilizada(r.respuestaDgii) !== true
               ? [{ key: 'reenviar-rechazado', label: 'Reenviar (secuencia reutilizable)', icon: <SendOutlined />,
+                   onClick: () => handleReenviar(r) }]
+              : []),
+            ...(r.estadoDGII === 'contingencia'
+              ? [{ key: 'reenviar-contingencia', label: 'Reenviar desde contingencia', icon: <SendOutlined />,
                    onClick: () => handleReenviar(r) }]
               : []),
             ...(['enviado', 'rechazado'].includes(r.estadoDGII)
@@ -737,7 +764,11 @@ function ResumenTab({ onRefresh }: { onRefresh: () => void }) {
 
   const reenviarMut = useMutation({
     mutationFn: ecfApi.reenviar,
-    onSuccess: () => { invalidarRechazados(); qc.invalidateQueries({ queryKey: ['ecf-list'] }); message.success('Reenvío iniciado'); },
+    onSuccess: (data: any) => {
+      invalidarRechazados();
+      qc.invalidateQueries({ queryKey: ['ecf-list'] });
+      mostrarResultadoReenvio(data?.resultado);
+    },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al reenviar'),
   });
 
