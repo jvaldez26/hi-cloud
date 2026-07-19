@@ -28,8 +28,12 @@ export class PlanGuard implements CanActivate {
       req.empresaId ??
       (req.headers?.['x-empresa-id'] ? Number(req.headers['x-empresa-id']) : null);
 
-    // Sin contexto de empresa (rutas públicas sin tenant) → permitir
-    if (!empresaId || isNaN(empresaId)) return true;
+    // Sin empresa en el JWT → denegar (fail-closed)
+    if (!empresaId || isNaN(empresaId)) {
+      const role = req.user?.role;
+      if (role === 'super_admin') return true; // super_admin no necesita plan
+      throw new ForbiddenException('Se requiere empresa activa para acceder a este módulo');
+    }
 
     try {
       await this.limitesSvc.verificarModulo(empresaId, modulo);

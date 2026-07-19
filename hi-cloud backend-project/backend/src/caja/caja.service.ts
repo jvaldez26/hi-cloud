@@ -383,6 +383,22 @@ export class CajaService {
     return { cajas: frescas, totalCajas: frescas.length };
   }
 
+  // A-1: scoped para VENDEDOR — usa userId del JWT, no acepta vendedorId del cliente
+  async getCajaHoyByUserId(userId: number) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const hoy = fechaHoyRD();
+
+    const caja = await this.repo.findOne({
+      where: { fecha: new Date(hoy) as any, empresaId, userId } as any,
+    });
+    if (!caja) return { estado: 'sin_apertura', mensaje: 'La caja no ha sido abierta hoy' };
+
+    if (caja.estado === EstadoCierre.ABIERTA) {
+      await this.recalcularDesdeBD(caja.id, hoy, caja.vendedorId, empresaId);
+    }
+    return this.repo.findOne({ where: { id: caja.id } });
+  }
+
   // ── Historial (filtrado por empresa) ─────────────────────────────────────
 
   async getHistorial(page = 1, limit = 20, vendedorId?: number, mes?: number, anio?: number) {

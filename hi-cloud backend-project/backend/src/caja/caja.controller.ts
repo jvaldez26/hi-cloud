@@ -53,19 +53,27 @@ export class CajaController {
   constructor(private cajaService: CajaService) {}
 
   @Get('hoy')
-  @ApiOperation({ summary: 'Cajas del día (todas o filtradas por ?vendedorId)' })
-  getCajaHoy(@Query('vendedorId') vendedorId?: string) {
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Cajas del día — ADMIN/CONTADOR pueden filtrar por ?vendedorId; VENDEDOR ve su propia caja' })
+  getCajaHoy(@Query('vendedorId') vendedorId?: string, @GetUser() usuario?: User) {
+    const role = (usuario as any)?.role;
+    if (role === UserRole.VENDEDOR) {
+      // A-1: VENDEDOR solo ve su propia caja (scoped by userId, no acepta param cliente)
+      return this.cajaService.getCajaHoyByUserId(usuario!.id);
+    }
     const vid = vendedorId !== undefined ? Number(vendedorId) : undefined;
     return this.cajaService.getCajaHoy(vid);
   }
 
   @Get('usuarios')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Usuarios operativos de la empresa (para vincular a perfil vendedor)' })
   getUsuarios() {
     return this.cajaService.listarUsuarios();
   }
 
   @Get('cajeros')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Vendedores activos de la empresa (para selector de cajero en caja)' })
   getCajeros() {
     return this.cajaService.listarCajeros();

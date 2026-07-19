@@ -217,7 +217,7 @@ export class ECFController {
     @Body() dto: EmitirEcfNotaDebitoDto,
     @GetUser() usuario: User,
   ) {
-    const empresaId = (usuario as any).empresaId ?? 0;
+    const empresaId = this.tenantService.getEmpresaId();
 
     const infoReferencia: import('./services/ecf-builder.service').MSellerInfoReferencia | undefined =
       dto.ncfModificado
@@ -252,7 +252,7 @@ export class ECFController {
     @Body() dto: EmitirEcfNotaCreditoDto,
     @GetUser() usuario: User,
   ) {
-    const empresaId = (usuario as any).empresaId ?? 0;
+    const empresaId = this.tenantService.getEmpresaId();
 
     // Si el caller no provee ncfModificado, pasa undefined para que el use-case
     // auto-resuelva el NCF original desde la nota (busca en tabla ecf).
@@ -295,7 +295,7 @@ export class ECFController {
     @Body() _dto: EmitirEcfCompraDto,
     @GetUser() usuario: User,
   ) {
-    const empresaId = (usuario as any).empresaId ?? 0;
+    const empresaId = this.tenantService.getEmpresaId();
     return this.emitirUseCase.execute({
       empresaId,
       documentoOrigenTipo: DocumentoOrigenTipo.COMPRA,
@@ -318,7 +318,7 @@ export class ECFController {
     @Body() _dto: EmitirEcfGastoDto,
     @GetUser() usuario: User,
   ) {
-    const empresaId = (usuario as any).empresaId ?? 0;
+    const empresaId = this.tenantService.getEmpresaId();
     return this.emitirUseCase.execute({
       empresaId,
       documentoOrigenTipo: DocumentoOrigenTipo.GASTO,
@@ -341,7 +341,7 @@ export class ECFController {
     @Body() dto: EmitirEcfExportacionDto,
     @GetUser() usuario: User,
   ) {
-    const empresaId = (usuario as any).empresaId ?? 0;
+    const empresaId = this.tenantService.getEmpresaId();
     return this.emitirUseCase.execute({
       empresaId,
       documentoOrigenTipo: DocumentoOrigenTipo.FACTURA,
@@ -364,7 +364,7 @@ export class ECFController {
     @Body() dto: EmitirEcfPagoExteriorDto,
     @GetUser() usuario: User,
   ) {
-    const empresaId = (usuario as any).empresaId ?? 0;
+    const empresaId = this.tenantService.getEmpresaId();
     return this.emitirUseCase.execute({
       empresaId,
       documentoOrigenTipo: DocumentoOrigenTipo.COMPRA,
