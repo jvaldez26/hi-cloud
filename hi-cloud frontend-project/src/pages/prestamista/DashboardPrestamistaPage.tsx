@@ -5,10 +5,6 @@ import { prestamistalApi } from '../../api/prestamista.api';
 
 const fmt = (n: any) => `RD$ ${Number(n ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
 
-const estadoColor: Record<string, string> = {
-  al_dia: 'green', moroso: 'orange', vencido: 'red', pagado: 'blue', cancelado: 'default',
-};
-
 export default function DashboardPrestamistaPage() {
   const { token: C } = theme.useToken();
   const navigate = useNavigate();

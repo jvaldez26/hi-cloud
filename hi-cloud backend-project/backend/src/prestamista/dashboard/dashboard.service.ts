@@ -11,14 +11,14 @@ export class DashboardPrestamistaService {
   async getKpis(empresaId: number) {
     const [kpis] = await this.ds.query<any[]>(
       `SELECT
-         COUNT(*) FILTER (WHERE estado NOT IN ('cancelado')) AS totalPrestamos,
+         COUNT(*) FILTER (WHERE estado NOT IN ('cancelado','pagado')) AS totalPrestamos,
          COUNT(*) FILTER (WHERE estado='al_dia') AS prestamosAlDia,
          COUNT(*) FILTER (WHERE estado='moroso') AS prestamosMorosos,
          COUNT(*) FILTER (WHERE estado='vencido') AS prestamosVencidos,
          COUNT(*) FILTER (WHERE estado='pagado') AS prestamosPagados,
          SUM("montoPrincipal") FILTER (WHERE estado NOT IN ('cancelado','pagado')) AS carteraActiva,
          SUM("saldoCapital") FILTER (WHERE estado NOT IN ('cancelado','pagado')) AS saldoCapitalTotal,
-         SUM("saldoMora") FILTER (WHERE estado NOT IN ('cancelado')) AS moraTotal,
+         SUM("saldoMora") FILTER (WHERE estado NOT IN ('cancelado','pagado')) AS moraTotal,
          SUM("totalPagado") AS recaudadoTotal
        FROM pr_prestamos WHERE "empresaId"=$1`,
       [empresaId],
