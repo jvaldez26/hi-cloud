@@ -3,12 +3,16 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { calcularAmortizacion } from '../utils/amortizacion.util';
 import { fechaHoyRD } from '../../common/utils/fecha-local.util';
+import { TenantService } from '../../tenant/tenant.service';
 
 @Injectable()
 export class RefinanciamientoService {
   private readonly logger = new Logger(RefinanciamientoService.name);
 
-  constructor(@InjectDataSource() private readonly ds: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly ds: DataSource,
+    private readonly tenantSvc: TenantService,
+  ) {}
 
   private r2(n: number) { return Math.round(Number(n) * 100) / 100; }
 
@@ -27,6 +31,9 @@ export class RefinanciamientoService {
     if (original.estado === 'pagado' || original.estado === 'cancelado') {
       throw new BadRequestException('No se puede refinanciar un préstamo pagado o cancelado');
     }
+
+    // C5: quien autoriza la condonación/refinanciación sale del CLS (JWT), no del body.
+    const uid = this.tenantSvc.getUserId();
 
     const saldoCapital = this.r2(Number(original.saldoCapital ?? 0));
     const saldoInteres = this.r2(Number(original.saldoInteres ?? 0));
@@ -94,7 +101,7 @@ export class RefinanciamientoService {
       [empresaId, original.id, nuevo.id, original.deudorId,
        saldoCapital, saldoInteres, saldoMora, this.r2(saldoCapital + saldoInteres + saldoMora),
        montoNuevo, nuevaTasa, nuevoPlazo, moraCondonada, interesCondonado,
-       data.autorizadoPor ?? null, data.motivo ?? null],
+       uid != null ? String(uid) : null, data.motivo ?? null],
     );
 
     return { refinanciamiento: ref, prestamoNuevo: nuevo };

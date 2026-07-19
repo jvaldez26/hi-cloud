@@ -3,6 +3,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { calcularAmortizacion } from '../utils/amortizacion.util';
 import { AsientosAutomaticosService } from '../../contabilidad/services/asientos-automaticos.service';
+import { TenantService } from '../../tenant/tenant.service';
 
 @Injectable()
 export class PrestamosService {
@@ -11,6 +12,7 @@ export class PrestamosService {
   constructor(
     @InjectDataSource() private readonly ds: DataSource,
     private readonly asientos: AsientosAutomaticosService,
+    private readonly tenantSvc: TenantService,
   ) {}
 
   private async orFail(empresaId: number, id: number) {
@@ -133,12 +135,15 @@ export class PrestamosService {
 
     const ultimaCuota = amort.tabla[amort.tabla.length - 1];
 
+    // C5: autor del desembolso desde el CLS (JWT), nunca del body.
+    const uid = this.tenantSvc.getUserId();
+
     const [prestamo] = await this.ds.query<any[]>(
       `INSERT INTO pr_prestamos ("empresaId",numero,"solicitudId","deudorId","productoId","montoPrincipal",
         "tasaInteresMensual","plazoMeses","frecuenciaPago","metodoAmortizacion","cuotaPeriodica",
         "porcentajeMora","diasGracia","cargoCierre","fechaDesembolso","fechaPrimerPago","fechaVencimiento",
-        "totalInteres","totalAPagar","saldoCapital","saldoInteres","saldoTotal","oficialId","oficialNombre",notas)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+        "totalInteres","totalAPagar","saldoCapital","saldoInteres","saldoTotal","oficialId","oficialNombre",notas,"creadoPor")
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
        RETURNING *`,
       [empresaId, numero, data.solicitudId ?? null, data.deudorId, data.productoId ?? null,
        data.montoPrincipal, data.tasaInteresMensual, data.plazoMeses, data.frecuenciaPago ?? 'mensual',
@@ -147,7 +152,7 @@ export class PrestamosService {
        data.fechaDesembolso, data.fechaPrimerPago, ultimaCuota.fechaVencimiento.toISOString().split('T')[0],
        amort.totalInteres, amort.totalAPagar,
        data.montoPrincipal, amort.totalInteres, amort.totalAPagar,
-       data.oficialId ?? null, data.oficialNombre ?? null, data.notas ?? null],
+       data.oficialId ?? null, data.oficialNombre ?? null, data.notas ?? null, uid],
     );
 
     // Insertar cuotas
@@ -178,7 +183,7 @@ export class PrestamosService {
     // Asiento contable fire-and-forget
     this.asientos.asientoDesembolsoPrestamo(
       prestamo.id, numero, Number(data.montoPrincipal),
-      data.formaPago ?? 'transferencia', data.userId ?? 0,
+      data.formaPago ?? 'transferencia', uid ?? 0,
     ).catch(err => this.logger.error(`Asiento desembolso ${numero}: ${err.message}`));
 
     return this.findOne(empresaId, prestamo.id);

@@ -17,12 +17,21 @@ export class CobranzaController {
   constructor(private readonly svc: CobranzaService, private readonly tenantSvc: TenantService) {}
   private get empresaId() { return this.tenantSvc.getEmpresaId(); }
 
-  @Get('cartera-vencida') carteraVencida(@Query() q: any) { return this.svc.carteraVencida(this.empresaId, q); }
-  @Get('resumen') resumen() { return this.svc.resumenCobranza(this.empresaId); }
-  @Get('prestamo/:prestamoId/gestiones') gestiones(@Param('prestamoId', ParseIntPipe) id: number) {
+  @Get('cartera-vencida')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  carteraVencida(@Query() q: any) { return this.svc.carteraVencida(this.empresaId, q); }
+  @Get('resumen')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  resumen() { return this.svc.resumenCobranza(this.empresaId); }
+  @Get('prestamo/:prestamoId/gestiones')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  gestiones(@Param('prestamoId', ParseIntPipe) id: number) {
     return this.svc.gestionesByPrestamo(this.empresaId, id);
   }
-  @Post('gestiones') registrarGestion(@Body() body: any) { return this.svc.registrarGestion(this.empresaId, body); }
+  // Registrar gestión de cobro: operador básico o superior.
+  @Post('gestiones')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  registrarGestion(@Body() body: any) { return this.svc.registrarGestion(this.empresaId, body); }
 
   @Post('prestamo/:prestamoId/notificar-mora')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)

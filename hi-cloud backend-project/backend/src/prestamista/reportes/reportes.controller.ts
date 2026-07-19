@@ -2,12 +2,16 @@ import { Controller, Get, Query, Param, ParseIntPipe, Res, UseGuards } from '@ne
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { TenantGuard } from '../../tenant/tenant.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
+import { Roles } from '../../auth/decorators/roles.decorator';
+import { UserRole } from '../../users/enums/user-role.enum';
 import { ModuloAddonGuard } from '../../modulos-addon/guards/modulo-addon.guard';
 import { TenantService } from '../../tenant/tenant.service';
 import { ReportesPrestamistaService } from './reportes.service';
 
 @Controller('prestamista/reportes')
-@UseGuards(JwtAuthGuard, TenantGuard, ModuloAddonGuard('prestamista'))
+@UseGuards(JwtAuthGuard, TenantGuard, RolesGuard, ModuloAddonGuard('prestamista'))
+@Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
 export class ReportesController {
   constructor(
     private readonly svc: ReportesPrestamistaService,

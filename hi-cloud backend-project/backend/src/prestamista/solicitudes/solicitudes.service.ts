@@ -1,13 +1,17 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { fechaHoyRD } from '../../common/utils/fecha-local.util';
+import { TenantService } from '../../tenant/tenant.service';
 
 @Injectable()
 export class SolicitudesService {
   private readonly logger = new Logger(SolicitudesService.name);
 
-  constructor(@InjectDataSource() private readonly ds: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly ds: DataSource,
+    private readonly tenantSvc: TenantService,
+  ) {}
 
   private async orFail(empresaId: number, id: number) {
     const [row] = await this.ds.query<any[]>(
@@ -57,13 +61,13 @@ export class SolicitudesService {
     const [row] = await this.ds.query<any[]>(
       `INSERT INTO pr_solicitudes ("empresaId",numero,"deudorId","productoId","montoSolicitado","plazoMeses",
         "frecuenciaPago",proposito,"oficialId","oficialNombre","fechaSolicitud","ingresoMensual",
-        "gastosMensuales","capacidadPago",estado,observaciones)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+        "gastosMensuales","capacidadPago",estado,observaciones,"creadoPor")
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
       [empresaId, numero, data.deudorId, data.productoId ?? null, data.montoSolicitado, data.plazoMeses,
        data.frecuenciaPago ?? 'mensual', data.proposito ?? null, data.oficialId ?? null,
        data.oficialNombre ?? null, data.fechaSolicitud ?? fechaHoyRD(),
        data.ingresoMensual ?? null, data.gastosMensuales ?? null, data.capacidadPago ?? null,
-       data.estado ?? 'pendiente', data.observaciones ?? null],
+       data.estado ?? 'pendiente', data.observaciones ?? null, this.tenantSvc.getUserId()],
     );
     return row;
   }
@@ -74,12 +78,20 @@ export class SolicitudesService {
       throw new BadRequestException('Solo se pueden decidir solicitudes en estado pendiente o en revisión');
     }
     const aprobado = data.aprobado === true || data.decision === 'aprobar';
+
+    // C5 + Segregación de funciones: el aprobador sale del CLS (JWT), no del body,
+    // y NO puede ser la misma persona que creó la solicitud.
+    const uid = this.tenantSvc.getUserId();
+    if (aprobado && sol.creadoPor != null && Number(sol.creadoPor) === uid) {
+      throw new ForbiddenException('Quien crea una solicitud no puede aprobarla');
+    }
+
     const estado = aprobado ? 'aprobada' : 'rechazada';
     const motivoFinal = data.motivoRechazo ?? data.motivoDecision ?? null;
     const [row] = await this.ds.query(
       `UPDATE pr_solicitudes SET estado=$1,"montoAprobado"=$2,"tasaAprobada"=$3,"fechaDecision"=CURRENT_DATE,
         "decididoPor"=$4,"motivoRechazo"=$5 WHERE id=$6 AND "empresaId"=$7 RETURNING *`,
-      [estado, data.montoAprobado ?? null, data.tasaAprobada ?? null, data.decididoPor ?? null,
+      [estado, data.montoAprobado ?? null, data.tasaAprobada ?? null, uid != null ? String(uid) : null,
        motivoFinal, id, empresaId],
     );
     return row;
@@ -87,7 +99,10 @@ export class SolicitudesService {
 
   async update(empresaId: number, id: number, data: any) {
     await this.orFail(empresaId, id);
-    const allowed = ['estado','montoAprobado','tasaAprobada','fechaDecision','decididoPor','motivoRechazo','observaciones','oficialId','oficialNombre'];
+    // H3/D: los campos de la DECISIÓN (estado, montos/tasa aprobados, decididoPor,
+    // fechaDecision, motivoRechazo) NO se editan por el PATCH genérico — solo por
+    // /decidir (con su rol y el chequeo de segregación). Aquí solo campos no sensibles.
+    const allowed = ['observaciones','oficialId','oficialNombre'];
     const fields: string[] = [];
     const args: any[] = [];
     let idx = 1;

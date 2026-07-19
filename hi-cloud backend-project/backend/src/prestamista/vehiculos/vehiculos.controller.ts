@@ -5,43 +5,40 @@ import {
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { TenantGuard } from '../../tenant/tenant.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
+import { Roles } from '../../auth/decorators/roles.decorator';
+import { UserRole } from '../../users/enums/user-role.enum';
 import { ModuloAddonGuard } from '../../modulos-addon/guards/modulo-addon.guard';
 import { VehiculosService } from './vehiculos.service';
 
 @Controller('prestamista/vehiculos')
-@UseGuards(JwtAuthGuard, TenantGuard, ModuloAddonGuard('prestamista'))
+@UseGuards(JwtAuthGuard, TenantGuard, RolesGuard, ModuloAddonGuard('prestamista'))
 @ApiTags('Prestamista - Vehículos')
 @ApiBearerAuth()
 export class VehiculosController {
   constructor(private readonly svc: VehiculosService) {}
 
   @Get()
-  findAll(@Query() params: any) {
-    return this.svc.findAll(params);
-  }
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  findAll(@Query() params: any) { return this.svc.findAll(params); }
 
   @Get('alertas-seguro')
-  alertasSeguro() {
-    return this.svc.alertasSeguro();
-  }
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  alertasSeguro() { return this.svc.alertasSeguro(); }
 
   @Get('buscar-placa/:placa')
-  findByPlaca(@Param('placa') placa: string) {
-    return this.svc.findByPlaca(placa);
-  }
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  findByPlaca(@Param('placa') placa: string) { return this.svc.findByPlaca(placa); }
 
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.svc.findOne(id);
-  }
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  findOne(@Param('id', ParseIntPipe) id: number) { return this.svc.findOne(id); }
 
   @Post()
-  create(@Body() body: any) {
-    return this.svc.create(body);
-  }
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  create(@Body() body: any) { return this.svc.create(body); }
 
   @Patch(':id')
-  update(@Param('id', ParseIntPipe) id: number, @Body() body: any) {
-    return this.svc.update(id, body);
-  }
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  update(@Param('id', ParseIntPipe) id: number, @Body() body: any) { return this.svc.update(id, body); }
 }

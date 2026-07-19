@@ -4,6 +4,7 @@ import { DataSource } from 'typeorm';
 import { AsientosAutomaticosService } from '../../contabilidad/services/asientos-automaticos.service';
 import { EmitirECFUseCase } from '../../ecf/use-cases/emitir-ecf.use-case';
 import { DocumentoOrigenTipo } from '../../ecf/entities/ecf.entity';
+import { TenantService } from '../../tenant/tenant.service';
 
 @Injectable()
 export class PagosService {
@@ -13,6 +14,7 @@ export class PagosService {
     @InjectDataSource() private readonly ds: DataSource,
     private readonly asientos: AsientosAutomaticosService,
     private readonly emitirEcf: EmitirECFUseCase,
+    private readonly tenantSvc: TenantService,
   ) {}
 
   private r2(n: number) { return Math.round(Number(n) * 100) / 100; }
@@ -41,6 +43,9 @@ export class PagosService {
     if (prestamo.estado === 'cancelado' || prestamo.estado === 'pagado') {
       throw new BadRequestException('El préstamo ya está cerrado');
     }
+
+    // C5: el actor sale del CLS (JWT), nunca del body.
+    const uid = this.tenantSvc.getUserId();
 
     // Variables declaradas fuera del try para que sean accesibles en el fire-and-forget
     let pago: any;
@@ -125,12 +130,12 @@ export class PagosService {
       const pagoRows: any[] = await qr.query(
         `INSERT INTO pr_pagos ("empresaId",numero,"prestamoId","deudorId","montoPagado","aplicadoMora",
           "aplicadoInteres","aplicadoCapital","metodoPago",referencia,"cobradorId","cobradorNombre",
-          "cuotasAfectadas",notas)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+          "cuotasAfectadas",notas,"creadoPor")
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
         [empresaId, numero, data.prestamoId, prestamo.deudorId, data.montoPagado,
          aplicadoMora, aplicadoInteres, aplicadoCapital,
-         data.metodoPago ?? null, data.referencia ?? null, data.cobradorId ?? null,
-         data.cobradorNombre ?? null, JSON.stringify(cuotasAfectadas), data.notas ?? null],
+         data.metodoPago ?? null, data.referencia ?? null, uid,
+         data.cobradorNombre ?? null, JSON.stringify(cuotasAfectadas), data.notas ?? null, uid],
       );
       pago = pagoRows[0];
 
@@ -191,7 +196,7 @@ export class PagosService {
       pago.id, numero, prestamo.numero,
       data.metodoPago ?? 'transferencia',
       aplicadoCapital, aplicadoInteres, aplicadoMora,
-      data.userId ?? 0,
+      uid ?? 0,
     ).catch(err => this.logger.error(`Asiento pago ${numero}: ${err.message}`));
 
     if (aplicadoInteres > 0) {
