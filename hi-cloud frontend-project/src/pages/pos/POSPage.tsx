@@ -8607,6 +8607,9 @@ export default function POSPage() {
     setClienteId(id);
     setRncComprador(''); setRazonSocialComp(''); setNumeroOrdenCompra(''); setGuardarRncPerfil(false);
     if (!id) { setTipoNcf('E32'); return; }
+    // Solo auto-seleccionar si el tipo aún es el default (E32).
+    // Si el usuario eligió E31/E44/E45 manualmente, respetar su selección.
+    if (tipoNcf !== 'E32') return;
     const cli = clientes?.data.find((c: Cliente) => c.id === id);
     const rnc = String(cli?.rncReceptor ?? cli?.rfc ?? '').trim();
     setTipoNcf(/^\d{9}$/.test(rnc) ? 'E31' : 'E32');
