@@ -4,6 +4,9 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { TenantGuard } from '../tenant/tenant.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { UserRole } from '../users/enums/user-role.enum';
 import { ModuloAddonGuard } from '../modulos-addon/guards/modulo-addon.guard';
 import { RestauranteService } from '../restaurante/restaurante.service';
 import { TallerService } from '../taller/taller.service';
@@ -11,7 +14,8 @@ import { OpticaService } from '../optica/optica.service';
 
 @ApiTags('POS Contexto')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, TenantGuard)
+@UseGuards(JwtAuthGuard, TenantGuard, RolesGuard)
+@Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
 @Controller('pos/contexto')
 export class PosContextoController {
   constructor(

@@ -376,6 +376,7 @@ export class ECFController {
   }
 
   @Get(':numero')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Obtener e-CF completo por número (ej: E310000000001)' })
   getECFByNumero(@Param('numero') numero: string) {
     return this.ecfService.getECFByNumero(numero);

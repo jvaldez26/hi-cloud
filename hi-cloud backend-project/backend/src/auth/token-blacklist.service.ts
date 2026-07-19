@@ -20,7 +20,8 @@ export class TokenBlacklistService {
 
   /** Devuelve true si el token está en la blacklist. */
   async isBlacklisted(jti: string | undefined): Promise<boolean> {
-    if (!jti) return false;
+    // M-1: token sin jti no es revocable → tratar como inválido (fail-closed)
+    if (!jti) return true;
     const rows = await this.ds.query<{ exists: boolean }[]>(
       `SELECT EXISTS(SELECT 1 FROM token_blacklist WHERE jti = $1 AND expires_at > NOW()) AS exists`,
       [jti],
