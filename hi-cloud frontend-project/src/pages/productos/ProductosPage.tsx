@@ -561,6 +561,7 @@ function ProductosCatalogo() {
   const deleteMut = useMutation({
     mutationFn: productosApi.remove,
     onSuccess:  () => { qc.invalidateQueries({ queryKey: ['productos'] }); message.success('Eliminado'); },
+    onError:    (e: any) => message.error(e?.response?.data?.message ?? 'Error al eliminar producto'),
   });
 
   const openCreate = () => {
@@ -708,7 +709,14 @@ function ProductosCatalogo() {
             ...(puedeEditar ? [{ key: 'editar', label: 'Editar', icon: <EditOutlined />, onClick: () => openEdit(r) }] : []),
             ...(puedeEliminar ? [
               { type: 'divider' as const },
-              { key: 'eliminar', label: 'Eliminar', danger: true, icon: <DeleteOutlined />, onClick: () => deleteMut.mutate(r.id) },
+              { key: 'eliminar', label: 'Eliminar', danger: true, icon: <DeleteOutlined />,
+                onClick: () => Modal.confirm({
+                  title: `¿Eliminar "${r.nombre}"?`,
+                  content: 'El producto se ocultará del catálogo. El historial de ventas y compras se conserva.',
+                  okText: 'Eliminar', okType: 'danger', cancelText: 'Cancelar',
+                  onOk: () => deleteMut.mutate(r.id),
+                }),
+              },
             ] : []),
           ]}
         />

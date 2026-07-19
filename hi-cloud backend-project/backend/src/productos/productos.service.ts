@@ -407,6 +407,40 @@ export class ProductosService implements OnModuleInit {
   async remove(id: number) {
     const empresaId = this.tenantService.getEmpresaId();
     const producto  = await this.findOne(id);
+
+    // Bloquear si tiene stock activo en algún almacén
+    const stocksActivos = await this.stockAlmacenRepository.find({
+      where: { productoId: id, empresaId },
+      relations: ['almacen'],
+    });
+    const conStock = stocksActivos.filter(s => Number(s.stock) > 0);
+    if (conStock.length > 0) {
+      const detalle = conStock
+        .map(s => `${Number(s.stock)} en "${s.almacen?.nombre ?? `almacén #${s.almacenId}`}"`)
+        .join(', ');
+      throw new BadRequestException(
+        `No se puede eliminar "${producto.nombre}": tiene stock activo (${detalle}). Ajusta el inventario a 0 antes de eliminarlo.`,
+      );
+    }
+
+    // Bloquear si está en órdenes de compra abiertas (borrador o enviada)
+    const [{ count: ocCount }] = await this.productoRepository.manager.query<[{ count: string }]>(
+      `SELECT COUNT(*) AS count
+       FROM compra_detalles cd
+       JOIN compras c ON c.id = cd."compraId"
+       WHERE cd."productoId" = $1
+         AND c."empresaId" = $2
+         AND c.estado IN ('borrador', 'enviada')
+         AND c."isActive" = true`,
+      [id, empresaId],
+    );
+    const nOC = Number(ocCount);
+    if (nOC > 0) {
+      throw new BadRequestException(
+        `No se puede eliminar "${producto.nombre}": está en ${nOC} orden${nOC !== 1 ? 'es' : ''} de compra abierta${nOC !== 1 ? 's' : ''}. Ciérrala${nOC !== 1 ? 's' : ''} o cancélala${nOC !== 1 ? 's' : ''} antes de eliminarlo.`,
+      );
+    }
+
     await this.productoRepository.update(id, { isActive: false });
     this.realtimeService.notify(empresaId, 'producto', 'deleted', id);
     return { message: `Producto "${producto.nombre}" eliminado` };
