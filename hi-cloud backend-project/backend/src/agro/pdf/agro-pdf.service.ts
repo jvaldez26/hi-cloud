@@ -38,13 +38,13 @@ export class AgroPdfService {
     if (!ciclo) throw new NotFoundException(`Ciclo #${cicloId} no encontrado`);
 
     const aplicaciones = await this.ds.query<any[]>(
-      `SELECT * FROM ag_aplicaciones_insumo WHERE "cicloId"=$1 ORDER BY fecha`, [cicloId],
+      `SELECT * FROM ag_aplicaciones_insumo WHERE "cicloId"=$1 AND "empresaId"=$2 ORDER BY fecha`, [cicloId, empresaId],
     );
     const labores = await this.ds.query<any[]>(
-      `SELECT * FROM ag_labores WHERE "cicloId"=$1 ORDER BY fecha`, [cicloId],
+      `SELECT * FROM ag_labores WHERE "cicloId"=$1 AND "empresaId"=$2 ORDER BY fecha`, [cicloId, empresaId],
     );
     const cosechas = await this.ds.query<any[]>(
-      `SELECT * FROM ag_cosechas WHERE "cicloId"=$1 ORDER BY fecha`, [cicloId],
+      `SELECT * FROM ag_cosechas WHERE "cicloId"=$1 AND "empresaId"=$2 ORDER BY fecha`, [cicloId, empresaId],
     );
 
     return new Promise((resolve, reject) => {

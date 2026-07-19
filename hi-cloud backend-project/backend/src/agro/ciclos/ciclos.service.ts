@@ -21,6 +21,19 @@ export class CiclosService {
     return row;
   }
 
+  /**
+   * Verifica que un cicloId recibido en el body pertenezca a la empresa del CLS.
+   * Impide que un tenant cuelgue labores/aplicaciones/etc. del ciclo de otro tenant
+   * (IDs SERIAL adivinables). Reutilizable desde cualquier create que reciba cicloId.
+   */
+  async assertCicloDeEmpresa(cicloId: number | undefined | null, empresaId: number): Promise<void> {
+    if (cicloId == null) throw new NotFoundException('Ciclo no especificado');
+    const [row] = await this.ds.query<any[]>(
+      `SELECT 1 FROM ag_ciclos WHERE id=$1 AND "empresaId"=$2`, [cicloId, empresaId],
+    );
+    if (!row) throw new NotFoundException(`Ciclo #${cicloId} no encontrado`);
+  }
+
   async findAll(empresaId: number, params: any) {
     const page  = Math.max(1, Number(params.page) || 1);
     const limit = Math.min(100, Number(params.limit) || 20);
@@ -52,9 +65,9 @@ export class CiclosService {
   async findOne(empresaId: number, id: number) {
     const ciclo = await this.orFail(empresaId, id);
     const [labores, aplicaciones, cosechas] = await Promise.all([
-      this.ds.query<any[]>(`SELECT * FROM ag_labores WHERE "cicloId"=$1 ORDER BY fecha DESC`, [id]),
-      this.ds.query<any[]>(`SELECT * FROM ag_aplicaciones_insumo WHERE "cicloId"=$1 ORDER BY fecha DESC`, [id]),
-      this.ds.query<any[]>(`SELECT * FROM ag_cosechas WHERE "cicloId"=$1 ORDER BY fecha DESC`, [id]),
+      this.ds.query<any[]>(`SELECT * FROM ag_labores WHERE "cicloId"=$1 AND "empresaId"=$2 ORDER BY fecha DESC`, [id, empresaId]),
+      this.ds.query<any[]>(`SELECT * FROM ag_aplicaciones_insumo WHERE "cicloId"=$1 AND "empresaId"=$2 ORDER BY fecha DESC`, [id, empresaId]),
+      this.ds.query<any[]>(`SELECT * FROM ag_cosechas WHERE "cicloId"=$1 AND "empresaId"=$2 ORDER BY fecha DESC`, [id, empresaId]),
     ]);
     return { ...ciclo, labores, aplicaciones, cosechas };
   }
@@ -188,6 +201,7 @@ export class CiclosService {
   }
 
   async createLabor(empresaId: number, data: any) {
+    await this.assertCicloDeEmpresa(data.cicloId, empresaId);
     const [row] = await this.ds.query<any[]>(
       `INSERT INTO ag_labores ("empresaId","cicloId","parcelaId",tipo,descripcion,fecha,
          "cantidadTrabajadores","horasTrabajadas","costoManoObra","usoMaquinaria","costoMaquinaria",
@@ -231,6 +245,7 @@ export class CiclosService {
   }
 
   async createAplicacion(empresaId: number, data: any) {
+    await this.assertCicloDeEmpresa(data.cicloId, empresaId);
     const costoTotal = data.costoTotal ?? (data.costoUnitario && data.cantidad
       ? +(Number(data.costoUnitario) * Number(data.cantidad)).toFixed(2) : null);
     const [row] = await this.ds.query<any[]>(
