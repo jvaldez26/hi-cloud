@@ -278,20 +278,48 @@ export class CiclosService {
 
   async createAplicacion(empresaId: number, data: any) {
     await this.assertCicloEditable(data.cicloId, empresaId);
+
+    // M1: si la aplicación referencia un insumo del inventario, debe ser de la
+    // empresa del CLS (evita descontar stock del insumo de otro tenant vía body).
+    const insumoId: number | null = data.insumoId ?? null;
+    if (insumoId != null) {
+      const [ins] = await this.ds.query<any[]>(
+        `SELECT id, nombre, unidad FROM ag_insumos WHERE id=$1 AND "empresaId"=$2`, [insumoId, empresaId],
+      );
+      if (!ins) throw new NotFoundException(`Insumo #${insumoId} no encontrado`);
+      // Fallback: si el body no trae nombre/unidad, tomarlos del insumo maestro.
+      data.insumoNombre = data.insumoNombre ?? ins.nombre;
+      data.unidad       = data.unidad ?? ins.unidad;
+    }
+
     const costoTotal = data.costoTotal ?? (data.costoUnitario && data.cantidad
       ? +(Number(data.costoUnitario) * Number(data.cantidad)).toFixed(2) : null);
-    const [row] = await this.ds.query<any[]>(
-      `INSERT INTO ag_aplicaciones_insumo ("empresaId","cicloId","laborId","productoId","insumoNombre",
-         tipo,cantidad,unidad,"costoUnitario","costoTotal",fecha,"dosisPorArea","metodoAplicacion",
-         "loteInsumo","periodoCarencia",responsable,notas,"creadoPor")
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
-      [empresaId, data.cicloId, data.laborId ?? null, data.productoId ?? null,
-       data.insumoNombre, data.tipo ?? null, data.cantidad, data.unidad ?? null,
-       data.costoUnitario ?? null, costoTotal, data.fecha, data.dosisPorArea ?? null,
-       data.metodoAplicacion ?? null, data.loteInsumo ?? null, data.periodoCarencia ?? null,
-       data.responsable ?? null, data.notas ?? null,
-       this.tenantSvc.getUserId()],
-    );
+
+    // INSERT de la aplicación + descuento de stock en UNA transacción: si algo
+    // falla, no queda ni la aplicación ni un stock descontado a medias.
+    const row = await this.ds.transaction(async (manager) => {
+      const [inserted] = await manager.query<any[]>(
+        `INSERT INTO ag_aplicaciones_insumo ("empresaId","cicloId","laborId","productoId","insumoId","insumoNombre",
+           tipo,cantidad,unidad,"costoUnitario","costoTotal",fecha,"dosisPorArea","metodoAplicacion",
+           "loteInsumo","periodoCarencia",responsable,notas,"creadoPor")
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
+        [empresaId, data.cicloId, data.laborId ?? null, data.productoId ?? null, insumoId,
+         data.insumoNombre, data.tipo ?? null, data.cantidad, data.unidad ?? null,
+         data.costoUnitario ?? null, costoTotal, data.fecha, data.dosisPorArea ?? null,
+         data.metodoAplicacion ?? null, data.loteInsumo ?? null, data.periodoCarencia ?? null,
+         data.responsable ?? null, data.notas ?? null,
+         this.tenantSvc.getUserId()],
+      );
+      // Descuenta stock solo si hay insumo del inventario referenciado.
+      if (insumoId != null) {
+        await manager.query(
+          `UPDATE ag_insumos SET "stockActual" = "stockActual" - $1 WHERE id=$2 AND "empresaId"=$3`,
+          [Number(data.cantidad), insumoId, empresaId],
+        );
+      }
+      return inserted;
+    });
+
     await this.recalcularCostos(data.cicloId, empresaId);
     return row;
   }

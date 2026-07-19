@@ -21,6 +21,7 @@ export default function CicloDetallePage() {
 
   const { data: ciclo, isLoading } = useQuery({ queryKey: ['agro-ciclo', cicloId], queryFn: () => agroApi.getCiclo(cicloId) });
   const { data: rent } = useQuery({ queryKey: ['agro-rent', cicloId], queryFn: () => agroApi.getRentabilidadCiclo(cicloId) });
+  const { data: insumos } = useQuery({ queryKey: ['agro-insumos'], queryFn: () => agroApi.getInsumos({}) });
 
   const crearLabor = useMutation({
     mutationFn: (v: any) => agroApi.crearLabor({ ...v, cicloId, fecha: v.fecha?.format('YYYY-MM-DD') }),
@@ -202,7 +203,16 @@ export default function CicloDetallePage() {
       <Modal open={insumoModal} title="Registrar Aplicación de Insumo" onCancel={() => setInsumoModal(false)}
         onOk={() => insumoForm.validateFields().then(v => crearInsumo.mutate(v))} confirmLoading={crearInsumo.isPending}>
         <Form form={insumoForm} layout="vertical" style={{ marginTop: 16 }}>
-          <Form.Item name="insumoNombre" label="Nombre del Insumo" rules={[{ required: true }]}><Input /></Form.Item>
+          <Form.Item name="insumoId" label="Insumo (del inventario)" rules={[{ required: true, message: 'Selecciona un insumo del inventario' }]}>
+            <Select showSearch optionFilterProp="label" placeholder="Selecciona un insumo — el consumo descuenta su stock"
+              options={(insumos ?? []).map((i: any) => ({ value: i.id, label: `${i.nombre}${i.unidad ? ' (' + i.unidad + ')' : ''} · stock: ${i.stockActual}` }))}
+              onChange={(val) => {
+                const ins = (insumos ?? []).find((i: any) => i.id === val);
+                if (ins) insumoForm.setFieldsValue({ insumoNombre: ins.nombre, unidad: ins.unidad ?? undefined, costoUnitario: ins.costoUnitario ?? undefined, tipo: ins.tipo ?? undefined });
+              }}
+            />
+          </Form.Item>
+          <Form.Item name="insumoNombre" hidden><Input /></Form.Item>
           <Form.Item name="tipo" label="Tipo">
             <Select allowClear options={[
               { value: 'fertilizante', label: 'Fertilizante' }, { value: 'herbicida', label: 'Herbicida' },
