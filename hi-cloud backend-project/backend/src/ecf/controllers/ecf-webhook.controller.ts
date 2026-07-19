@@ -14,6 +14,7 @@ import { EcfEvento, TipoEcfEvento } from '../entities/ecf-evento.entity';
 import { EmpresaEcfConfig } from '../entities/empresa-ecf-config.entity';
 import { EcfEncryptionService } from '../services/ecf-encryption.service';
 import { EcfEfectosNcService } from '../services/ecf-efectos-nc.service';
+import { reportServiceError } from '../../common/observability/sentry';
 
 /**
  * Payload que MSeller envía en notificaciones webhook.
@@ -72,7 +73,7 @@ export class EcfWebhookController {
     @Body() payload: MSellerWebhookPayload,
     @Req() req: any,
   ) {
-    // ── 1. Validar firma HMAC ─────────────────────────────────────────────
+    // ── 1. Validar firma HMAC (fail-CLOSED: rechazar si NO se puede probar firma válida) ──
     const config = await this.configRepo.findOne({
       where: { empresaId, activo: true },
     });
@@ -81,31 +82,59 @@ export class EcfWebhookController {
       throw new BadRequestException(`Empresa #${empresaId} sin configuración e-CF`);
     }
 
-    // El secreto para HMAC es el msellerApiKey descifrado
-    if (config.msellerApiKeyEnc && signature) {
-      const apiKey = this.encryption.decrypt(config.msellerApiKeyEnc);
-      const rawBody = (req as any).rawBody as Buffer | undefined;
+    // A) Sin clave HMAC configurada → no se puede verificar → 401.
+    //    Es una anomalía operacional: MSeller envía webhooks para una empresa cuya clave
+    //    no está en BD. Reportar a Sentry para investigación.
+    if (!config.msellerApiKeyEnc) {
+      reportServiceError(
+        new Error(`Webhook recibido para empresa #${empresaId} sin msellerApiKeyEnc configurada`),
+        'webhook_sin_clave_hmac',
+        { empresaId: String(empresaId) },
+      );
+      this.logger.warn(`Webhook empresa #${empresaId}: msellerApiKeyEnc no configurado — rechazado`);
+      throw new UnauthorizedException('Empresa sin clave HMAC configurada para verificar webhook');
+    }
 
-      if (rawBody) {
-        const expected = `sha256=${createHmac('sha256', apiKey)
-          .update(rawBody)
-          .digest('hex')}`;
+    // B) Header de firma ausente → 401.
+    if (!signature) {
+      this.logger.warn(`Webhook empresa #${empresaId}: header x-mseller-signature ausente — rechazado`);
+      throw new UnauthorizedException('Header x-mseller-signature requerido');
+    }
 
-        try {
-          const sigBuf = Buffer.from(signature);
-          const expBuf = Buffer.from(expected);
-          if (
-            sigBuf.length !== expBuf.length ||
-            !timingSafeEqual(sigBuf, expBuf)
-          ) {
-            this.logger.warn(`Firma inválida en webhook empresa #${empresaId}`);
-            throw new UnauthorizedException('Firma HMAC inválida');
-          }
-        } catch (err) {
-          if (err instanceof UnauthorizedException) throw err;
-          this.logger.warn(`No se pudo validar HMAC: ${(err as Error).message}`);
-        }
+    // C) rawBody no disponible → bug de configuración de middleware → 401 + error en log.
+    //    Si este log aparece en producción, significa que express.json({ verify }) no está
+    //    montado correctamente en main.ts — es un error de infraestructura, no del caller.
+    const rawBody = (req as any).rawBody as Buffer | undefined;
+    if (!rawBody) {
+      this.logger.error(
+        `Webhook empresa #${empresaId}: rawBody no disponible — ` +
+        `verificar que express.json({ verify: (req,_,buf)=>req.rawBody=buf }) esté en main.ts`,
+      );
+      throw new UnauthorizedException('No se puede verificar la firma: rawBody no disponible');
+    }
+
+    // D) Verificación HMAC con comparación en tiempo constante.
+    //    Cualquier excepción (incluidas las de crypto) → 401 + captureException.
+    //    Nunca continuar tras un error de verificación (fail-closed ante lo inesperado).
+    try {
+      const apiKey   = this.encryption.decrypt(config.msellerApiKeyEnc);
+      const expected = `sha256=${createHmac('sha256', apiKey).update(rawBody).digest('hex')}`;
+      const sigBuf   = Buffer.from(signature);
+      const expBuf   = Buffer.from(expected);
+      // timingSafeEqual lanza TypeError si los buffers tienen distinta longitud.
+      // Verificar longitud primero evita esa excepción y también previene timing leak.
+      if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
+        this.logger.warn(`Firma HMAC inválida en webhook empresa #${empresaId}`);
+        throw new UnauthorizedException('Firma HMAC inválida');
       }
+    } catch (err) {
+      if (err instanceof UnauthorizedException) throw err;
+      // Error inesperado de crypto/descifrado — reportar y rechazar.
+      reportServiceError(err, 'webhook_hmac_error', { empresaId: String(empresaId) });
+      this.logger.error(
+        `Error al verificar HMAC webhook empresa #${empresaId}: ${(err as Error).message}`,
+      );
+      throw new UnauthorizedException('Error al verificar firma HMAC');
     }
 
     // ── 2. Buscar el comprobante por trackId o eNCF ───────────────────────

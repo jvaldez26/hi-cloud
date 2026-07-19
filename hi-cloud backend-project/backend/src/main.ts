@@ -68,8 +68,14 @@ async function bootstrap() {
   // ── Cookie parser — necesario para leer access_token de cookie httpOnly ──
   app.use(cookieParser());
 
-  // Aumentar límite del body para permitir imágenes base64 (~10 MB máx)
-  app.use(require('express').json({ limit: '10mb' }));
+  // Aumentar límite del body para permitir imágenes base64 (~10 MB máx).
+  // verify: captura el buffer crudo antes de parsear — requerido por el guard HMAC
+  // del webhook de MSeller (ecf-webhook.controller.ts). Sin esto rawBody=undefined
+  // y la validación de firma nunca puede ejecutarse.
+  app.use(require('express').json({
+    limit: '10mb',
+    verify: (req: any, _res: any, buf: Buffer) => { req.rawBody = buf; },
+  }));
   app.use(require('express').urlencoded({ extended: true, limit: '10mb' }));
 
   const isDev = process.env.NODE_ENV !== 'production';
