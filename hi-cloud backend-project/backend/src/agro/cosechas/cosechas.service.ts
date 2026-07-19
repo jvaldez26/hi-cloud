@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { CiclosService } from '../ciclos/ciclos.service';
@@ -67,20 +67,45 @@ export class CosechasService {
   }
 
   async ingresarInventario(empresaId: number, id: number) {
-    const cosecha = await this.findOne(empresaId, id);
-    if (cosecha.ingresadoInventario) throw new Error('Ya fue ingresado al inventario');
-    if (!cosecha.productoId) throw new Error('No tiene producto vinculado para inventario');
+    // A1: todo dentro de UNA transacción, con marcado de flag ATÓMICO y condicionado.
+    // El flag se gana PRIMERO (false→true una sola vez); solo el ganador suma stock.
+    // Así, doble-click / reintento concurrente no puede sumar dos veces.
+    return this.ds.transaction(async (manager) => {
+      // Bloquea la fila de la cosecha para serializar llamadas concurrentes.
+      const [cosecha] = await manager.query<any[]>(
+        `SELECT * FROM ag_cosechas WHERE id=$1 AND "empresaId"=$2 FOR UPDATE`,
+        [id, empresaId],
+      );
+      if (!cosecha) throw new NotFoundException(`Cosecha #${id} no encontrada`);
+      if (!cosecha.productoId) {
+        throw new BadRequestException('La cosecha no tiene producto vinculado para inventario');
+      }
 
-    // Ajustar stock del producto en el ERP
-    await this.ds.query(
-      `UPDATE productos SET stock = stock + $1 WHERE id=$2 AND "empresaId"=$3`,
-      [cosecha.cantidad, cosecha.productoId, empresaId],
-    );
-    const [row] = await this.ds.query<any[]>(
-      `UPDATE ag_cosechas SET "ingresadoInventario"=true WHERE id=$1 AND "empresaId"=$2 RETURNING *`,
-      [id, empresaId],
-    );
-    this.logger.log(`Cosecha ${id} ingresada a inventario: ${cosecha.cantidad} ${cosecha.unidad}`);
-    return row;
+      // Ganar el flag de forma atómica: solo pasa de false→true una vez.
+      const marcada = await manager.query<any[]>(
+        `UPDATE ag_cosechas SET "ingresadoInventario"=true
+          WHERE id=$1 AND "empresaId"=$2 AND "ingresadoInventario"=false
+        RETURNING *`,
+        [id, empresaId],
+      );
+      if (!marcada.length) {
+        // Otra llamada ya la ingresó (o doble-click): NO sumar stock.
+        throw new ConflictException('Esta cosecha ya fue ingresada a inventario');
+      }
+
+      // Solo el ganador suma stock, y solo si el producto es de la MISMA empresa.
+      // Si el producto no pertenece a la empresa → RETURNING vacío → excepción →
+      // rollback de toda la transacción (el flag NO queda marcado).
+      const prod = await manager.query<any[]>(
+        `UPDATE productos SET stock = stock + $1 WHERE id=$2 AND "empresaId"=$3 RETURNING id`,
+        [cosecha.cantidad, cosecha.productoId, empresaId],
+      );
+      if (!prod.length) {
+        throw new BadRequestException('El producto vinculado no pertenece a la empresa');
+      }
+
+      this.logger.log(`Cosecha ${id} ingresada a inventario: ${cosecha.cantidad} ${cosecha.unidad}`);
+      return marcada[0];
+    });
   }
 }
