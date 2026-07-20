@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { DetailDrawer } from '../../components/ui/DetailDrawer';
@@ -489,7 +489,7 @@ function ProductosCatalogo() {
   const [detalleProducto,  setDetalleProducto]  = useState<Producto | null>(null);
   const [preview,    setPreview]    = useState('');
   const [uploading,  setUploading]  = useState(false);
-  const [activeTab,  setActiveTab]  = useState<'generales' | 'historial'>('generales');
+  const [drawerTab,  setDrawerTab]  = useState<'detalles' | 'historial'>('detalles');
   const [form]                      = Form.useForm<ProductoPayload>();
   const tipoWatch      = Form.useWatch('tipo',          form) ?? 'producto';
   const itbisWatch     = Form.useWatch('porcentajeIva', form) ?? 18;
@@ -745,7 +745,7 @@ function ProductosCatalogo() {
     dupCheckNonce.current++;  // invalida cualquier check async pendiente
     setOpen(false); setEditing(null); form.resetFields(); setPreview(''); setFieldErrors({});
     setPrecioInput(0); setPrecioConItbis(false); setPrecio2Input(null); setPrecio3Input(null); setCostoInput(null);
-    setSucursalSeleccionada(undefined); setActiveTab('generales');
+    setSucursalSeleccionada(undefined);
   };
   const handleSubmit = (values: ProductoPayload) => {
     if (precioInput <= 0) { message.error('El precio es requerido'); return; }
@@ -934,17 +934,7 @@ function ProductosCatalogo() {
                       onChange: setPage, showTotal: t => `${t} productos`, showSizeChanger: false }} />
 
       <Modal title={editing ? 'Editar producto' : 'Nuevo producto'}
-        open={open} onCancel={closeModal} footer={null}
-        width={activeTab === 'historial' ? 'min(940px, 98vw)' : 'min(700px, 95vw)'}>
-        <Tabs
-          activeKey={activeTab}
-          onChange={k => setActiveTab(k as 'generales' | 'historial')}
-          style={{ marginTop: -8 }}
-          items={[
-            {
-              key: 'generales',
-              label: 'Generales',
-              children: (
+        open={open} onCancel={closeModal} footer={null} width="min(700px, 95vw)">
         <Form form={form} layout="vertical" onFinish={handleSubmit}
           initialValues={{ tipo: 'producto', unidadMedida: 'PZA', porcentajeIva: 18, stock: 0, stockMinimo: 0 }}>
           <UomMedidaSelector />
@@ -1328,39 +1318,61 @@ function ProductosCatalogo() {
             </Col>
           </Row>
         </Form>
+      </Modal>
+
+      <DetailDrawer
+        open={!!detalleProducto}
+        onClose={() => { setDetalleProducto(null); setDrawerTab('detalles'); }}
+        title={detalleProducto?.nombre ?? 'Producto'}
+        sections={[]}
+        width={drawerTab === 'historial' ? 700 : 480}
+      >
+        <Tabs
+          activeKey={drawerTab}
+          onChange={k => setDrawerTab(k as 'detalles' | 'historial')}
+          style={{ marginTop: -8 }}
+          items={[
+            {
+              key: 'detalles',
+              label: 'Detalles',
+              children: (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 16px' }}>
+                  {([
+                    { label: 'Código',    value: detalleProducto?.codigo },
+                    { label: 'SKU',       value: (detalleProducto as any)?.sku },
+                    { label: 'Nombre',    value: detalleProducto?.nombre,    span: 2 as const },
+                    { label: 'Categoría', value: detalleProducto?.categoria },
+                    { label: 'Precio',    value: detalleProducto?.precio !== undefined
+                        ? `RD$${Number(detalleProducto.precio).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`
+                        : undefined },
+                    { label: 'Stock',     value: detalleProducto?.stock !== undefined
+                        ? `${detalleProducto.stock} unidades` : undefined },
+                    { label: 'Estado',    value: <Tag color={detalleProducto?.isActive !== false ? 'green' : 'red'}>
+                        {detalleProducto?.isActive !== false ? 'Activo' : 'Inactivo'}</Tag> },
+                  ] as { label: string; value?: ReactNode; span?: 2 }[]).map((f, i) => (
+                    <div key={i} style={{ gridColumn: f.span === 2 ? '1 / -1' : undefined }}>
+                      <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.45)', marginBottom: 3 }}>{f.label}</div>
+                      <div style={{ fontSize: 13, fontWeight: 500, wordBreak: 'break-word' }}>
+                        {f.value ?? <span style={{ color: 'rgba(0,0,0,0.25)' }}>—</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               ),
             },
             {
               key: 'historial',
               label: 'Histórico de proveedores',
-              disabled: !editing,
               children: (
                 <HistorialProveedoresPanel
-                  productoId={editing?.id ?? 0}
-                  active={activeTab === 'historial'}
+                  productoId={detalleProducto?.id ?? 0}
+                  active={drawerTab === 'historial'}
                 />
               ),
             },
           ]}
         />
-      </Modal>
-
-      <DetailDrawer
-        open={!!detalleProducto}
-        onClose={() => setDetalleProducto(null)}
-        title={detalleProducto?.nombre ?? 'Producto'}
-        sections={[{
-          fields: [
-            { label: 'Código',    value: detalleProducto?.codigo },
-            { label: 'SKU',       value: (detalleProducto as any)?.sku },
-            { label: 'Nombre',    value: detalleProducto?.nombre, span: 2 },
-            { label: 'Categoría', value: detalleProducto?.categoria },
-            { label: 'Precio',    value: detalleProducto?.precio !== undefined ? `RD$${Number(detalleProducto.precio).toLocaleString('es-DO',{minimumFractionDigits:2})}` : undefined },
-            { label: 'Stock',     value: detalleProducto?.stock !== undefined ? `${detalleProducto.stock} unidades` : undefined },
-            { label: 'Estado',    value: <Tag color={detalleProducto?.isActive !== false ? 'green' : 'red'}>{detalleProducto?.isActive !== false ? 'Activo' : 'Inactivo'}</Tag> },
-          ],
-        }]}
-      />
+      </DetailDrawer>
     </>
   );
 }
