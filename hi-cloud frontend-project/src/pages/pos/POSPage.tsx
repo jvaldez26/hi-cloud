@@ -2636,15 +2636,9 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
     setShowForm(true);
   };
 
-  const handleNuevo = async () => {
-    if (requireSupervisor) { const ok = await requireSupervisor('Nuevo producto'); if (!ok) return; }
-    openForm();
-  };
+  const handleNuevo = () => { openForm(); };
 
-  const handleEditar = async (prod: any) => {
-    if (requireSupervisor) { const ok = await requireSupervisor('Editar producto', prod.nombre); if (!ok) return; }
-    openForm(prod);
-  };
+  const handleEditar = (prod: any) => { openForm(prod); };
 
   const handleSave = async () => {
     if (!fNombre.trim() || !fPrecio.trim()) { message.error('Nombre y precio son obligatorios'); return; }
@@ -9813,10 +9807,6 @@ export default function POSPage() {
             if (p === 'cierre-caja' && posConf.posSupervisorCierreCaja !== false && posConf.supervisorModeEnabled) {
               const fecha = new Date().toLocaleString('es', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
               const ok = await supervisor.requireSupervisorForced('Cierre de Caja', fecha);
-              if (!ok) return;
-            }
-            if (p === 'inventario' && supervisor.supervisorModeEnabled) {
-              const ok = await supervisor.requireSupervisor('Acceder a Inventario');
               if (!ok) return;
             }
             if (p === 'gastos' && supervisor.supervisorModeEnabled && posConf.posSupervisorGastos !== false) {
