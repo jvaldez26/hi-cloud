@@ -125,7 +125,7 @@ export const PATH_ROLES: Record<string, string[]> = {
   '/etiquetas':             ADMIN_CONT_VEND,
   '/uom':                   ADMIN_CONT_VEND,
   '/valoracion-stock':      ADMIN_CONT_VEND,
-  '/caja':                  ADMIN_CONT_VEND,
+  '/caja':                  ADMIN_CONT,
   '/servicios':             ADMIN_CONT,
   '/pos':                   ADMIN_CONT_VEND,
 

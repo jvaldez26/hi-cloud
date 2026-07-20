@@ -138,7 +138,7 @@ export default function CotizacionFormPage() {
           options={productos?.data.map(p => ({ value: p.id, label: p.codigo ? `${p.codigo} — ${p.nombre}` : p.nombre }))}
           onChange={v => onProductoChange(v, idx)} />
       )},
-    { title: 'Descripción', key: 'desc', width: 180,
+    { title: 'Descripción', key: 'desc',
       render: (_: any, r: Linea, idx: number) => (
         <Input value={r.descripcion}
           onChange={e => { const u=[...lineas]; u[idx].descripcion=e.target.value; setLineas(u); }} />
@@ -237,8 +237,7 @@ export default function CotizacionFormPage() {
               Agregar ítem
             </Button>
           }>
-          <Table columns={lineaCols as any} dataSource={lineas} rowKey="key" pagination={false} size="small"
-        scroll={{ x: 'max-content' }} />
+          <Table columns={lineaCols as any} dataSource={lineas} rowKey="key" pagination={false} size="small" />
         </Card>
 
         <Card>
