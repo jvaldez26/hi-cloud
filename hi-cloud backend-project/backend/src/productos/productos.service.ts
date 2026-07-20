@@ -481,4 +481,102 @@ export class ProductosService implements OnModuleInit {
     this.realtimeService.notify(empresaId, 'producto', 'deleted', id);
     return { message: `Producto "${producto.nombre}" eliminado` };
   }
+
+  async historialCompras(id: number) {
+    const empresaId = this.tenantService.getEmpresaId();
+    await this.findOne(id); // 404 + anti-IDOR: verifica id + empresaId
+
+    const rows: any[] = await this.productoRepository.manager.query(
+      `SELECT
+         prov.nombre            AS proveedor,
+         c.folio,
+         COALESCE(c."numeroFacturaProveedor", c.folio) AS "numeroDocumento",
+         c.fecha                AS "fechaEmision",
+         c."createdAt"          AS "fechaRegistro",
+         cd.cantidad,
+         cd."cantidadTotal",
+         cd."costoUnitarioReal",
+         c.moneda,
+         c."tipoCambio",
+         pr."unidadMedida",
+         CASE WHEN e.id IS NOT NULL THEN 'FC' ELSE 'COM' END AS "tipoDocumento"
+       FROM compra_detalles cd
+       JOIN compras c    ON c.id       = cd."compraId"
+       JOIN proveedores prov ON prov.id = c."proveedorId"
+       JOIN productos pr ON pr.id      = cd."productoId"
+       LEFT JOIN ecf e   ON e."documentoOrigenTipo" = 'COMPRA'
+                         AND e."documentoOrigenId"  = c.id
+                         AND e."empresaId"          = $2
+                         AND e."isActive"           = true
+       WHERE cd."productoId" = $1
+         AND c."empresaId"   = $2
+         AND c."isActive"    = true`,
+      [id, empresaId],
+    );
+
+    if (rows.length === 0) return { resumen: null, lineas: [] };
+
+    // Ordenar ASC por fecha para calcular tendencia cronológica
+    const sorted = [...rows].sort((a, b) => {
+      const da = new Date(a.fechaEmision).getTime();
+      const db = new Date(b.fechaEmision).getTime();
+      return da !== db ? da - db : new Date(a.fechaRegistro).getTime() - new Date(b.fechaRegistro).getTime();
+    });
+
+    const withTendencia = sorted.map((row, idx) => {
+      const costoActual  = row.costoUnitarioReal != null ? Number(row.costoUnitarioReal) : null;
+      const tipoCambio   = Number(row.tipoCambio ?? 1);
+      let variacionPct: number | null = null;
+      if (idx > 0) {
+        const prevCosto = sorted[idx - 1].costoUnitarioReal != null ? Number(sorted[idx - 1].costoUnitarioReal) : null;
+        if (prevCosto != null && prevCosto !== 0 && costoActual != null) {
+          variacionPct = Math.round(((costoActual - prevCosto) / prevCosto) * 1000) / 10; // 1 decimal
+        }
+      }
+      return {
+        proveedor:              row.proveedor,
+        tipoDocumento:          row.tipoDocumento,
+        numeroDocumento:        row.numeroDocumento,
+        fechaEmision:           row.fechaEmision,
+        fechaRegistro:          row.fechaRegistro,
+        cantidad:               Number(row.cantidad),
+        cantidadTotal:          Number(row.cantidadTotal),
+        costoUnitarioReal:      costoActual,
+        moneda:                 row.moneda ?? 'DOP',
+        tipoCambio,
+        equivalenteMonedaLocal: costoActual != null ? Math.round(costoActual * tipoCambio * 100) / 100 : null,
+        unidadMedida:           row.unidadMedida ?? '—',
+        variacionPct,
+      };
+    });
+
+    // Resultado en DESC (último primero)
+    const lineas = withTendencia.reverse();
+
+    // KPIs
+    const ultima = lineas[0];
+    const frecMap = new Map<string, number>();
+    for (const l of lineas) frecMap.set(l.proveedor, (frecMap.get(l.proveedor) ?? 0) + 1);
+    let maxFrec = 0, proveedorMasFrecuente = ultima.proveedor, comprasMasFrecuente = 1;
+    for (const [prov, count] of frecMap) {
+      if (count > maxFrec) { maxFrec = count; proveedorMasFrecuente = prov; comprasMasFrecuente = count; }
+    }
+
+    const primerCosto = sorted[0].costoUnitarioReal != null ? Number(sorted[0].costoUnitarioReal) : null;
+    const ultimoCosto = sorted[sorted.length - 1].costoUnitarioReal != null ? Number(sorted[sorted.length - 1].costoUnitarioReal) : null;
+    let variacionCostoTotal: number | null = null;
+    if (primerCosto != null && primerCosto !== 0 && ultimoCosto != null) {
+      variacionCostoTotal = Math.round(((ultimoCosto - primerCosto) / primerCosto) * 1000) / 10;
+    }
+
+    return {
+      resumen: {
+        ultimaCompra: { proveedor: ultima.proveedor, fecha: ultima.fechaEmision, costo: ultima.costoUnitarioReal, moneda: ultima.moneda },
+        proveedorMasFrecuente: { nombre: proveedorMasFrecuente, compras: comprasMasFrecuente },
+        variacionCostoTotal,
+        totalLineas: lineas.length,
+      },
+      lineas,
+    };
+  }
 }

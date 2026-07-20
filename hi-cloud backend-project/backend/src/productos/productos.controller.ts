@@ -73,6 +73,13 @@ export class ProductosController {
     return this.productosService.checkDuplicado(campo, valor, excludeId ? Number(excludeId) : undefined);
   }
 
+  @Get(':id/historial-compras')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Historial de compras por proveedor para un producto' })
+  historialCompras(@Param('id', ParseIntPipe) id: number) {
+    return this.productosService.historialCompras(id);
+  }
+
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Obtener producto por ID' })

@@ -33,4 +33,7 @@ export const productosApi = {
 
   stockBajo: () =>
     api.get<ApiResponse<Producto[]>>('/productos/stock-bajo').then(r => r.data.data),
+
+  historialCompras: (id: number) =>
+    api.get(`/productos/${id}/historial-compras`).then((r: any) => r.data?.data ?? r.data),
 };

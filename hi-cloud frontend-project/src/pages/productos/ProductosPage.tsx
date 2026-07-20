@@ -7,7 +7,7 @@ import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Table, Button, Input, Space, Tag, Modal, Form, Row, Col,
          Typography, Popconfirm, message, Card, InputNumber,
          Image, Avatar, Tooltip, Upload, Select, Tabs, Divider,
-         Badge, InputNumber as AntInputNumber, Alert, Switch, Segmented, Dropdown } from 'antd';
+         Badge, InputNumber as AntInputNumber, Alert, Switch, Segmented, Dropdown, Spin } from 'antd';
 import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
          WarningOutlined, PictureOutlined, UploadOutlined, LinkOutlined,
          FileExcelOutlined, BarcodeOutlined, AppstoreOutlined,
@@ -320,6 +320,128 @@ function VariantesTab() {
   );
 }
 
+// ── Historial de proveedores (pestaña del modal de producto) ──────────────────
+function HistorialProveedoresPanel({ productoId, active }: { productoId: number; active: boolean }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['producto-historial', productoId],
+    queryFn:  () => productosApi.historialCompras(productoId),
+    enabled:  active && productoId > 0,
+    staleTime: 30_000,
+  });
+
+  if (!active) return null;
+
+  if (isLoading) return (
+    <div style={{ display: 'flex', justifyContent: 'center', padding: '48px 0' }}>
+      <Spin tip="Cargando historial..." />
+    </div>
+  );
+
+  if (!data || data.lineas.length === 0) return (
+    <div style={{ textAlign: 'center', padding: '48px 0', color: '#9CA3AF' }}>
+      <div style={{ fontSize: 32, marginBottom: 8 }}>🛒</div>
+      <div style={{ fontWeight: 500 }}>Sin compras registradas para este producto</div>
+      <div style={{ fontSize: 12, marginTop: 4 }}>Las compras aparecerán aquí una vez emitidas</div>
+    </div>
+  );
+
+  const { resumen, lineas } = data as {
+    resumen: { ultimaCompra: any; proveedorMasFrecuente: any; variacionCostoTotal: number | null; totalLineas: number };
+    lineas: any[];
+  };
+
+  const tendColor = (v: number | null) => v == null ? '#6B7280' : v > 0 ? '#ef4444' : v < 0 ? '#22c55e' : '#6B7280';
+  const tendIcon  = (v: number | null) => v == null ? '—' : v > 0 ? '↑' : v < 0 ? '↓' : '→';
+
+  const cols = [
+    { title: 'Proveedor', dataIndex: 'proveedor', key: 'prov', ellipsis: true, width: 140 },
+    {
+      title: 'Tipo', dataIndex: 'tipoDocumento', key: 'tipo', width: 55,
+      render: (v: string) => <Tag color={v === 'FC' ? 'blue' : 'default'} style={{ fontSize: 10, padding: '0 4px' }}>{v}</Tag>,
+    },
+    { title: 'Documento', dataIndex: 'numeroDocumento', key: 'doc', ellipsis: true, width: 135 },
+    {
+      title: 'F. Emisión', dataIndex: 'fechaEmision', key: 'emis', width: 95,
+      render: (v: string) => dayjs(v).format('DD-MM-YYYY'),
+    },
+    {
+      title: 'F. Registro', dataIndex: 'fechaRegistro', key: 'reg', width: 95,
+      render: (v: string) => dayjs(v).format('DD-MM-YYYY'),
+    },
+    {
+      title: 'Cant.', dataIndex: 'cantidadTotal', key: 'cant', width: 70, align: 'right' as const,
+      render: (v: number) => Number(v).toLocaleString('es-DO'),
+    },
+    { title: 'Und.', dataIndex: 'unidadMedida', key: 'und', width: 55 },
+    {
+      title: 'Costo Unit.', dataIndex: 'costoUnitarioReal', key: 'costo', width: 115, align: 'right' as const,
+      render: (v: number | null, r: any) => v == null ? <Text type="secondary">—</Text> : (
+        <div>
+          <div style={{ fontWeight: 500 }}>${Number(v).toFixed(2)}</div>
+          {r.moneda !== 'DOP' && r.equivalenteMonedaLocal != null && (
+            <div style={{ fontSize: 11, color: '#9CA3AF' }}>
+              RD${Number(r.equivalenteMonedaLocal).toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+            </div>
+          )}
+        </div>
+      ),
+    },
+    { title: 'Mon.', dataIndex: 'moneda', key: 'mon', width: 50 },
+    {
+      title: 'Tend.', dataIndex: 'variacionPct', key: 'tend', width: 80, align: 'right' as const,
+      render: (v: number | null) => (
+        <span style={{ color: tendColor(v), fontSize: 12, fontWeight: 500 }}>
+          {tendIcon(v)}{v != null && v !== 0 ? ` ${v > 0 ? '+' : ''}${v}%` : ''}
+        </span>
+      ),
+    },
+  ];
+
+  return (
+    <>
+      <Row gutter={12} style={{ marginBottom: 16 }}>
+        <Col span={8}>
+          <Card size="small" bordered={false} style={{ background: '#f8fafc', borderRadius: 8 }}>
+            <div style={{ fontSize: 10, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1 }}>Última compra</div>
+            <div style={{ fontWeight: 600, marginTop: 2, fontSize: 13 }}>{resumen.ultimaCompra.proveedor}</div>
+            <div style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>
+              {dayjs(resumen.ultimaCompra.fecha).format('DD/MM/YYYY')} · {resumen.ultimaCompra.moneda} ${Number(resumen.ultimaCompra.costo ?? 0).toFixed(2)}
+            </div>
+          </Card>
+        </Col>
+        <Col span={8}>
+          <Card size="small" bordered={false} style={{ background: '#f8fafc', borderRadius: 8 }}>
+            <div style={{ fontSize: 10, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1 }}>Proveedor más frecuente</div>
+            <div style={{ fontWeight: 600, marginTop: 2, fontSize: 13 }}>{resumen.proveedorMasFrecuente.nombre}</div>
+            <div style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>{resumen.proveedorMasFrecuente.compras} compra{resumen.proveedorMasFrecuente.compras !== 1 ? 's' : ''}</div>
+          </Card>
+        </Col>
+        <Col span={8}>
+          <Card size="small" bordered={false} style={{ background: '#f8fafc', borderRadius: 8 }}>
+            <div style={{ fontSize: 10, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1 }}>Variación de costo</div>
+            <div style={{ fontWeight: 600, marginTop: 2, fontSize: 13, color: tendColor(resumen.variacionCostoTotal) }}>
+              {resumen.variacionCostoTotal != null
+                ? `${tendIcon(resumen.variacionCostoTotal)} ${resumen.variacionCostoTotal > 0 ? '+' : ''}${resumen.variacionCostoTotal}% vs primera compra`
+                : '— sin referencia'}
+            </div>
+            <div style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>{resumen.totalLineas} línea{resumen.totalLineas !== 1 ? 's' : ''} en total</div>
+          </Card>
+        </Col>
+      </Row>
+
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Histórico de proveedores</div>
+      <Table
+        size="small"
+        dataSource={lineas}
+        rowKey={(_: any, i: any) => String(i)}
+        pagination={false}
+        scroll={{ x: 820 }}
+        columns={cols}
+      />
+    </>
+  );
+}
+
 export default function ProductosPage() {
   const { data: stockBajoVar } = useQuery({ queryKey: ['variantes-stock-bajo'], queryFn: atributosApi.stockBajo });
   const alertaVariantes = (stockBajoVar ?? []).length;
@@ -367,6 +489,7 @@ function ProductosCatalogo() {
   const [detalleProducto,  setDetalleProducto]  = useState<Producto | null>(null);
   const [preview,    setPreview]    = useState('');
   const [uploading,  setUploading]  = useState(false);
+  const [activeTab,  setActiveTab]  = useState<'generales' | 'historial'>('generales');
   const [form]                      = Form.useForm<ProductoPayload>();
   const tipoWatch      = Form.useWatch('tipo',          form) ?? 'producto';
   const itbisWatch     = Form.useWatch('porcentajeIva', form) ?? 18;
@@ -622,7 +745,7 @@ function ProductosCatalogo() {
     dupCheckNonce.current++;  // invalida cualquier check async pendiente
     setOpen(false); setEditing(null); form.resetFields(); setPreview(''); setFieldErrors({});
     setPrecioInput(0); setPrecioConItbis(false); setPrecio2Input(null); setPrecio3Input(null); setCostoInput(null);
-    setSucursalSeleccionada(undefined);
+    setSucursalSeleccionada(undefined); setActiveTab('generales');
   };
   const handleSubmit = (values: ProductoPayload) => {
     if (precioInput <= 0) { message.error('El precio es requerido'); return; }
@@ -811,7 +934,17 @@ function ProductosCatalogo() {
                       onChange: setPage, showTotal: t => `${t} productos`, showSizeChanger: false }} />
 
       <Modal title={editing ? 'Editar producto' : 'Nuevo producto'}
-        open={open} onCancel={closeModal} footer={null} width="min(700px, 95vw)">
+        open={open} onCancel={closeModal} footer={null}
+        width={activeTab === 'historial' ? 'min(940px, 98vw)' : 'min(700px, 95vw)'}>
+        <Tabs
+          activeKey={activeTab}
+          onChange={k => setActiveTab(k as 'generales' | 'historial')}
+          style={{ marginTop: -8 }}
+          items={[
+            {
+              key: 'generales',
+              label: 'Generales',
+              children: (
         <Form form={form} layout="vertical" onFinish={handleSubmit}
           initialValues={{ tipo: 'producto', unidadMedida: 'PZA', porcentajeIva: 18, stock: 0, stockMinimo: 0 }}>
           <UomMedidaSelector />
@@ -1195,6 +1328,21 @@ function ProductosCatalogo() {
             </Col>
           </Row>
         </Form>
+              ),
+            },
+            {
+              key: 'historial',
+              label: 'Histórico de proveedores',
+              disabled: !editing,
+              children: (
+                <HistorialProveedoresPanel
+                  productoId={editing?.id ?? 0}
+                  active={activeTab === 'historial'}
+                />
+              ),
+            },
+          ]}
+        />
       </Modal>
 
       <DetailDrawer
