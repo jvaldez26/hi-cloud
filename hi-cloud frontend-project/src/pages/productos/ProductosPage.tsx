@@ -742,7 +742,8 @@ function ProductosCatalogo() {
     }
     // Abrir en modo avanzado si el producto ya tiene campos avanzados con datos
     const pa = p as any;
-    if (pa.marca || pa.modelo || pa.referencia || spa?.some((s: any) => s.ubicacionId)) {
+    if (pa.marca || pa.modelo || pa.precio2 || pa.precio3 || pa.categoria ||
+        pa.imagenUrl || pa.descripcion || spa?.some((s: any) => s.ubicacionId)) {
       setModoAvanzado(true);
     }
     setOpen(true);
@@ -1110,40 +1111,44 @@ function ProductosCatalogo() {
                 );
               })()}
             </Col>
-            <Col xs={24} sm={8}>
-              <Form.Item
-                label={<span>Precio 2 <span style={{ fontWeight: 400, color: '#9CA3AF', fontSize: 11 }}>(Mayorista — opcional)</span></span>}
-              >
-                <InputNumber
-                  style={{ width: '100%' }}
-                  value={precio2Input ?? undefined}
-                  onChange={v => setPrecio2Input(v != null ? Number(v) : null)}
-                  formatter={v => v ? `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''}
-                  parser={v => (v ?? '').replace(/,/g, '') as any}
-                  min={0}
-                  precision={2}
-                  placeholder="Opcional"
-                  prefix="RD$"
-                />
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={8}>
-              <Form.Item
-                label={<span>Precio 3 <span style={{ fontWeight: 400, color: '#9CA3AF', fontSize: 11 }}>(Especial — opcional)</span></span>}
-              >
-                <InputNumber
-                  style={{ width: '100%' }}
-                  value={precio3Input ?? undefined}
-                  onChange={v => setPrecio3Input(v != null ? Number(v) : null)}
-                  formatter={v => v ? `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''}
-                  parser={v => (v ?? '').replace(/,/g, '') as any}
-                  min={0}
-                  precision={2}
-                  placeholder="Opcional"
-                  prefix="RD$"
-                />
-              </Form.Item>
-            </Col>
+            {modoAvanzado && (
+              <Col xs={24} sm={8}>
+                <Form.Item
+                  label={<span>Precio 2 <span style={{ fontWeight: 400, color: '#9CA3AF', fontSize: 11 }}>(Mayorista — opcional)</span></span>}
+                >
+                  <InputNumber
+                    style={{ width: '100%' }}
+                    value={precio2Input ?? undefined}
+                    onChange={v => setPrecio2Input(v != null ? Number(v) : null)}
+                    formatter={v => v ? `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''}
+                    parser={v => (v ?? '').replace(/,/g, '') as any}
+                    min={0}
+                    precision={2}
+                    placeholder="Opcional"
+                    prefix="RD$"
+                  />
+                </Form.Item>
+              </Col>
+            )}
+            {modoAvanzado && (
+              <Col xs={24} sm={8}>
+                <Form.Item
+                  label={<span>Precio 3 <span style={{ fontWeight: 400, color: '#9CA3AF', fontSize: 11 }}>(Especial — opcional)</span></span>}
+                >
+                  <InputNumber
+                    style={{ width: '100%' }}
+                    value={precio3Input ?? undefined}
+                    onChange={v => setPrecio3Input(v != null ? Number(v) : null)}
+                    formatter={v => v ? `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''}
+                    parser={v => (v ?? '').replace(/,/g, '') as any}
+                    min={0}
+                    precision={2}
+                    placeholder="Opcional"
+                    prefix="RD$"
+                  />
+                </Form.Item>
+              </Col>
+            )}
             <Col xs={24} sm={8}>
               <Form.Item
                 label={<span>Costo <span style={{ fontWeight: 400, color: '#9CA3AF', fontSize: 11 }}>(Precio de compra — opcional)</span></span>}
@@ -1190,11 +1195,18 @@ function ProductosCatalogo() {
               </Col>
             )}
             <Col xs={24} sm={8}>
-              <Form.Item name="categoria" label="Categoría"><Input /></Form.Item>
+              <Form.Item name="referencia" label="Referencia">
+                <Input placeholder="Referencia interna o del proveedor" maxLength={100} />
+              </Form.Item>
             </Col>
+            {modoAvanzado && (
+              <Col xs={24} sm={8}>
+                <Form.Item name="categoria" label="Categoría"><Input /></Form.Item>
+              </Col>
+            )}
 
-            {/* Sucursal — solo cuando el usuario tiene acceso a varias */}
-            {!esServicio && sucursales.length > 1 && (
+            {/* Sucursal — solo en avanzado, cuando el usuario tiene acceso a varias */}
+            {modoAvanzado && !esServicio && sucursales.length > 1 && (
               <Col xs={24} sm={8}>
                 <Form.Item name="sucursalId" label="Sucursal">
                   <Select
@@ -1240,7 +1252,7 @@ function ProductosCatalogo() {
               </Col>
             )}
 
-            {/* ── Campos avanzados: marca, modelo, referencia, ubicación WMS ── */}
+            {/* ── Campos avanzados: marca, modelo, ubicación WMS ── */}
             {modoAvanzado && !esServicio && (
               <>
                 <Col xs={24} sm={8}>
@@ -1251,11 +1263,6 @@ function ProductosCatalogo() {
                 <Col xs={24} sm={8}>
                   <Form.Item name="modelo" label="Modelo">
                     <Input placeholder="Ej: Galaxy S24, A31..." maxLength={100} />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} sm={8}>
-                  <Form.Item name="referencia" label="Referencia">
-                    <Input placeholder="Referencia interna o del proveedor" maxLength={100} />
                   </Form.Item>
                 </Col>
                 {!!almacenIdWatch && ubicaciones.length > 0 && (
@@ -1276,8 +1283,8 @@ function ProductosCatalogo() {
               </>
             )}
 
-            {/* Imagen — subir archivo o URL */}
-            <Col span={24}>
+            {/* Imagen — solo en avanzado */}
+            {modoAvanzado && <Col span={24}>
               <Form.Item name="imagenUrl" label="Imagen del producto">
                 <Input
                   prefix={<LinkOutlined />}
@@ -1341,11 +1348,11 @@ function ProductosCatalogo() {
                   </div>
                 )}
               </div>
-            </Col>
+            </Col>}
 
-            <Col span={24}>
+            {modoAvanzado && <Col span={24}>
               <Form.Item name="descripcion" label="Descripción"><Input.TextArea rows={2} /></Form.Item>
-            </Col>
+            </Col>}
           </Row>
 
           <Row justify="end" gutter={8}>
