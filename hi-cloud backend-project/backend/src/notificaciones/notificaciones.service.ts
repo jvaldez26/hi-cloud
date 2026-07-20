@@ -13,6 +13,7 @@ import { EmailService } from './services/email.service';
 import { WhatsAppService } from './services/whatsapp.service';
 import { Templates } from './templates/email.templates';
 import { PaginationDto } from '../common/dto/pagination.dto';
+import { generarDocumentoPDFFactura, DocumentoPDFData, DocumentoPDFItem } from '../common/pdf/documento-pdf.helper';
 
 @Injectable()
 export class NotificacionesService {
@@ -1249,14 +1250,24 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
   }
 
   // ── Enviar cotización al cliente por email ────────────────────────────────────
-  async enviarCotizacionAlCliente(cotizacionId: number, emailCliente: string, asunto?: string, pdfBuffer?: Buffer) {
+  async enviarCotizacionAlCliente(cotizacionId: number, emailCliente: string, asunto?: string) {
     const rows = await this.dataSource.query<any[]>(
       `SELECT co.numero, co.fecha::text, co."fechaVencimiento"::text AS "fechaValidez",
+              co.estado, co."validezDias", co."condicionesPago", co."nombreVendedor",
               co.subtotal::text, co.iva::text, co.total::text,
               COALESCE(co.notas,'') AS notas,
               c.nombre AS "clienteNombre", c.email AS "clienteEmail",
-              e.nombre AS "empresaNombre", e.telefono AS "empresaTelefono",
-              e.email  AS "empresaEmail",  e."sitioWeb" AS "empresaWeb"
+              COALESCE(c."rncReceptor", c.rfc, '') AS "clienteRNC",
+              COALESCE(c.direccion,'') AS "clienteDireccion",
+              COALESCE(c.ciudad,'') AS "clienteCiudad",
+              COALESCE(c.telefono,'') AS "clienteTelefono",
+              COALESCE(e."razonSocial", e.nombre) AS "empresaNombre",
+              COALESCE(e.rnc,'') AS "empresaRNC",
+              COALESCE(e.direccion,'') AS "empresaDireccion",
+              e.ciudad AS "empresaCiudad", e.telefono AS "empresaTelefono",
+              e.email  AS "empresaEmail",  e."sitioWeb" AS "empresaWeb",
+              e.logo   AS "empresaLogo",
+              COALESCE(e.configuracion,'{}') AS "empresaConf"
        FROM cotizaciones co
        JOIN clientes c  ON c.id  = co."clienteId"
        JOIN empresa  e  ON e.id  = co."empresaId"
@@ -1267,7 +1278,9 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
     const r = rows[0];
 
     const detRows = await this.dataSource.query<any[]>(
-      `SELECT descripcion, cantidad::text, "precioUnitario"::text, total::text, "porcentajeIva"::text
+      `SELECT descripcion, cantidad::text, "precioUnitario"::text,
+              COALESCE(total::text,'0') AS total,
+              COALESCE("porcentajeIva"::text,'18') AS "porcentajeIva"
        FROM cotizacion_detalles
        WHERE "cotizacionId" = $1 AND "isActive" = true
        ORDER BY id`,
@@ -1347,6 +1360,54 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
   </div>
 </div>
 </body></html>`;
+
+    // Generar PDF adjunto — helper plano, sin DI, no hay dep circular
+    let pdfBuffer: Buffer | undefined;
+    try {
+      let logoBuf: Buffer | undefined;
+      if (r.empresaLogo) {
+        try {
+          const res = await fetch(r.empresaLogo as string, { signal: AbortSignal.timeout(5_000) });
+          if (res.ok) logoBuf = Buffer.from(await res.arrayBuffer());
+        } catch { /* logo no disponible — se usarán iniciales */ }
+      }
+      const factConf = (r.empresaConf ?? {}) as Record<string, unknown>;
+      const estadoColor =
+        r.estado === 'aceptada' || r.estado === 'convertida' ? 'green'  :
+        r.estado === 'rechazada' || r.estado === 'vencida'   ? 'red'    : 'orange';
+      const pdfItems: DocumentoPDFItem[] = detRows.map((d: any) => {
+        const itbisPct     = Number(d.porcentajeIva ?? 18);
+        const subtotal     = Number(d.precioUnitario) * Number(d.cantidad);
+        const importeItbis = subtotal * (itbisPct / 100);
+        return { descripcion: d.descripcion, cantidad: Number(d.cantidad), unidadMedida: 'UN',
+          precioUnitario: Number(d.precioUnitario), itbisPct, importeItbis, subtotal, total: Number(d.total) };
+      });
+      const subtotalGravado = pdfItems.filter(i => i.itbisPct > 0).reduce((s, i) => s + i.subtotal, 0);
+      const subtotalExento  = pdfItems.filter(i => i.itbisPct === 0).reduce((s, i) => s + i.subtotal, 0);
+      const pdfData: DocumentoPDFData = {
+        tipo: 'COTIZACIÓN', tipoSub: 'Propuesta comercial · No válida como comprobante fiscal',
+        numero: r.numero, fecha: r.fecha, fechaVencimiento: r.fechaValidez ?? undefined,
+        validezDias: r.validezDias, condicionesPago: r.condicionesPago,
+        estado: r.estado, estadoColor,
+        empresaNombre: r.empresaNombre || 'Mi Empresa', empresaRNC: r.empresaRNC || '',
+        empresaDireccion: r.empresaDireccion || '', empresaCiudad: r.empresaCiudad,
+        empresaTelefono: factConf.factMostrarTelefono !== false ? r.empresaTelefono : undefined,
+        empresaEmail:    factConf.factMostrarEmail    !== false ? r.empresaEmail    : undefined,
+        empresaSitioWeb: factConf.factMostrarWeb      !== false ? r.empresaWeb      : undefined,
+        vendedorNombre: r.nombreVendedor,
+        clienteNombre: r.clienteNombre || 'Consumidor Final',
+        clienteRNC: r.clienteRNC || undefined, clienteDireccion: r.clienteDireccion || undefined,
+        clienteCiudad: r.clienteCiudad || undefined, clienteTelefono: r.clienteTelefono || undefined,
+        clienteEmail: r.clienteEmail || undefined,
+        items: pdfItems, subtotalGravado, subtotalExento,
+        subtotalGeneral: subtotalGravado + subtotalExento,
+        itbisTotal: Number(r.iva), totalGeneral: Number(r.total),
+        notas: r.notas || undefined, mostrarFirma: true,
+      };
+      pdfBuffer = await generarDocumentoPDFFactura(pdfData, logoBuf);
+    } catch (err) {
+      this.logger.warn(`No se pudo generar PDF para cotización #${cotizacionId}: ${(err as Error).message}`);
+    }
 
     const subjectFinal = asunto ?? `Cotización ${r.numero} — ${r.empresaNombre}`;
     const { exitoso, error } = await this.emailService.enviar({
