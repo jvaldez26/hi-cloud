@@ -1636,13 +1636,14 @@ function SeccionNotificaciones({ empresa, onSaved }: { empresa: any; onSaved: ()
 
   useEffect(() => {
     form.setFieldsValue({
-      notifEmail:        conf.notifEmail ?? true,
-      notifPush:         conf.notifPush ?? true,
-      notifVencCxC:      conf.notifVencCxC ?? true,
-      notifVencCxP:      conf.notifVencCxP ?? true,
-      notifStockBajo:    conf.notifStockBajo ?? true,
+      notifEmail:          conf.notifEmail ?? true,
+      notifPush:           conf.notifPush ?? true,
+      notifResumenDiario:  conf.notifResumenDiario ?? true,
+      notifVencCxC:        conf.notifVencCxC ?? true,
+      notifVencCxP:        conf.notifVencCxP ?? true,
+      notifStockBajo:      conf.notifStockBajo ?? true,
       notifFactRecurrente: conf.notifFactRecurrente ?? true,
-      notifVencECF:      conf.notifVencECF ?? true,
+      notifVencECF:        conf.notifVencECF ?? true,
     });
   }, [empresa]);
 
@@ -1655,6 +1656,7 @@ function SeccionNotificaciones({ empresa, onSaved }: { empresa: any; onSaved: ()
   const toggles = [
     { name: 'notifEmail',          label: 'Notificaciones por email' },
     { name: 'notifPush',           label: 'Notificaciones push (navegador)' },
+    { name: 'notifResumenDiario',  label: 'Resumen diario (CxC, CxP, stock bajo)' },
     { name: 'notifVencCxC',        label: 'Alertas de cuentas por cobrar vencidas' },
     { name: 'notifVencCxP',        label: 'Alertas de cuentas por pagar próximas' },
     { name: 'notifStockBajo',      label: 'Alertas de stock bajo (inventario)' },
