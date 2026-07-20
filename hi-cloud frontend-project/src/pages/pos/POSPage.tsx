@@ -5802,6 +5802,11 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
         });
         return;
       }
+      if (empConf.posTipoImpresora === 'carta' && f.id) {
+        if (printWin && !printWin.closed) { try { printWin.close(); } catch { /* noop */ } }
+        await imprimirFacturaPreviewA4(f.id);
+        return;
+      }
       const html = buildReciboTermicoHTML(sale, qrDUrl, {
         tipoImpresora: empConf.posTipoImpresora,
         mensajeTicket: empConf.posMensajeTicket,
@@ -6903,8 +6908,9 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
       // Sin impresora → no imprimir
       if (_tipoImp === 'ninguna') return;
 
-      // Hoja carta → PDF A4 del backend (misma plantilla que módulos de escritorio)
+      // Hoja carta → preview HTML para facturas (igual que módulo Facturas); PDF para otros
       if (_tipoImp === 'carta') {
+        if (panel === 'facturas') { await imprimirFacturaPreviewA4(id); return; }
         const _ep = _a4PdfMap(id)[panel];
         if (_ep) { await imprimirPDFA4(_ep); return; }
         // Si el panel no tiene A4 (ej. cierre de caja), cae al ticket térmico
@@ -9137,11 +9143,12 @@ export default function POSPage() {
           // Sin impresora → cerrar ventana pre-abierta sin imprimir
           try { pw.close(); } catch { /* noop */ }
         } else if (_tipoImpCobro === 'carta' && saleObj.facturaId) {
-          // Hoja carta → redirigir la ventana pre-abierta al PDF A4 del backend
+          // Hoja carta → redirigir la ventana pre-abierta al HTML preview (igual que módulo Facturas)
           autoYaPrintedRef.current = true;
-          fetch(`/api/v1/facturas/${saleObj.facturaId}/pdf`, { credentials: 'include' })
-            .then(r => r.blob())
-            .then(blob => {
+          fetch(`/api/v1/facturas/${saleObj.facturaId}/preview`, { credentials: 'include' })
+            .then(r => r.text())
+            .then(html => {
+              const blob = new Blob([html], { type: 'text/html' });
               const blobUrl = URL.createObjectURL(blob);
               if (!pw.closed) {
                 pw.location.href = blobUrl;
