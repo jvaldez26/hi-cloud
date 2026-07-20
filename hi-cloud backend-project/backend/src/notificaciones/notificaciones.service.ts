@@ -609,10 +609,10 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
     const itemsHtml = detRows.map(d =>
       `<tr>
         <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;font-size:13px">${d.descripcion}</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:13px">${Number(d.cantidad).toLocaleString('es-DO')}</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px">RD$ ${Number(d.precioUnitario).toLocaleString('es-DO',{minimumFractionDigits:2})}</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:13px;color:#6b7280">${Number(d.porcentajeIva)}%</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px;font-weight:700">RD$ ${Number(d.total).toLocaleString('es-DO',{minimumFractionDigits:2})}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:13px;white-space:nowrap">${Number(d.cantidad).toLocaleString('es-DO')}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px;white-space:nowrap">RD$ ${Number(d.precioUnitario).toLocaleString('es-DO',{minimumFractionDigits:2})}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:13px;color:#6b7280;white-space:nowrap">${Number(d.porcentajeIva)}%</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px;font-weight:700;white-space:nowrap">RD$ ${Number(d.total).toLocaleString('es-DO',{minimumFractionDigits:2})}</td>
       </tr>`,
     ).join('');
 
@@ -884,10 +884,10 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
     const itemsHtml = detRows.map(d =>
       `<tr>
         <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;font-size:13px">${d.descripcion}</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:13px">${Number(d.cantidad).toLocaleString('es-DO')}</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px">${fmtMoney(d.precioUnitario)}</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:13px;color:#6b7280">${Number(d.porcentajeIva)}%</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px;font-weight:700">${fmtMoney(d.total)}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:13px;white-space:nowrap">${Number(d.cantidad).toLocaleString('es-DO')}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px;white-space:nowrap">${fmtMoney(d.precioUnitario)}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:13px;color:#6b7280;white-space:nowrap">${Number(d.porcentajeIva)}%</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px;font-weight:700;white-space:nowrap">${fmtMoney(d.total)}</td>
       </tr>`,
     ).join('');
 
@@ -996,9 +996,9 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
     const itemsHtml = detRows.map(d =>
       `<tr>
         <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;font-size:13px">${d.descripcion ?? ''}</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:13px">${Number(d.cantidad || 1).toLocaleString('es-DO')}</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px">${fmtM(d.precioUnitario || d.monto || 0)}</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px;font-weight:700">${fmtM(d.total || 0)}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:13px;white-space:nowrap">${Number(d.cantidad || 1).toLocaleString('es-DO')}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px;white-space:nowrap">${fmtM(d.precioUnitario || d.monto || 0)}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px;font-weight:700;white-space:nowrap">${fmtM(d.total || 0)}</td>
       </tr>`,
     ).join('') || `<tr><td colspan="4" style="padding:12px;text-align:center;color:#9ca3af">Sin detalle de líneas</td></tr>`;
 
@@ -1095,10 +1095,10 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
     const itemsHtml = detRows.map(d =>
       `<tr>
         <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;font-size:13px">${d.descripcion}</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:13px">${Number(d.cantidad).toLocaleString('es-DO')}</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px">${fmtMoney(d.precioUnitario)}</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:13px;color:#6b7280">${Number(d.porcentajeItbis)}%</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px;font-weight:700">${fmtMoney(d.total)}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:13px;white-space:nowrap">${Number(d.cantidad).toLocaleString('es-DO')}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px;white-space:nowrap">${fmtMoney(d.precioUnitario)}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:13px;color:#6b7280;white-space:nowrap">${Number(d.porcentajeItbis)}%</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px;font-weight:700;white-space:nowrap">${fmtMoney(d.total)}</td>
       </tr>`,
     ).join('');
 
@@ -1294,10 +1294,10 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
     const itemsHtml = detRows.map(d =>
       `<tr>
         <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;font-size:13px">${d.descripcion}</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:13px">${Number(d.cantidad).toLocaleString('es-DO')}</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px">${fmtMoney(d.precioUnitario)}</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:13px;color:#6b7280">${Number(d.porcentajeIva)}%</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px;font-weight:700">${fmtMoney(d.total)}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:13px;white-space:nowrap">${Number(d.cantidad).toLocaleString('es-DO')}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px;white-space:nowrap">${fmtMoney(d.precioUnitario)}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:13px;color:#6b7280;white-space:nowrap">${Number(d.porcentajeIva)}%</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px;font-weight:700;white-space:nowrap">${fmtMoney(d.total)}</td>
       </tr>`,
     ).join('');
 
