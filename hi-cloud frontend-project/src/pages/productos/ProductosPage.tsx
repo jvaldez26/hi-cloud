@@ -489,7 +489,8 @@ function ProductosCatalogo() {
   const [detalleProducto,  setDetalleProducto]  = useState<Producto | null>(null);
   const [preview,    setPreview]    = useState('');
   const [uploading,  setUploading]  = useState(false);
-  const [drawerTab,  setDrawerTab]  = useState<'detalles' | 'historial'>('detalles');
+  const [drawerTab,   setDrawerTab]   = useState<'detalles' | 'historial'>('detalles');
+  const [modoAvanzado, setModoAvanzado] = useState(false);
   const [form]                      = Form.useForm<ProductoPayload>();
   const tipoWatch      = Form.useWatch('tipo',          form) ?? 'producto';
   const itbisWatch     = Form.useWatch('porcentajeIva', form) ?? 18;
@@ -739,13 +740,18 @@ function ProductosCatalogo() {
     } else if (almacenes.length === 1) {
       form.setFieldValue('almacenId', almacenes[0].id);
     }
+    // Abrir en modo avanzado si el producto ya tiene campos avanzados con datos
+    const pa = p as any;
+    if (pa.marca || pa.modelo || pa.referencia || spa?.some((s: any) => s.ubicacionId)) {
+      setModoAvanzado(true);
+    }
     setOpen(true);
   };
   const closeModal = () => {
     dupCheckNonce.current++;  // invalida cualquier check async pendiente
     setOpen(false); setEditing(null); form.resetFields(); setPreview(''); setFieldErrors({});
     setPrecioInput(0); setPrecioConItbis(false); setPrecio2Input(null); setPrecio3Input(null); setCostoInput(null);
-    setSucursalSeleccionada(undefined);
+    setSucursalSeleccionada(undefined); setModoAvanzado(false);
   };
   const handleSubmit = (values: ProductoPayload) => {
     if (precioInput <= 0) { message.error('El precio es requerido'); return; }
@@ -776,6 +782,9 @@ function ProductosCatalogo() {
       payload.stock = undefined;
       payload.stockMinimo = undefined;
       delete (payload as any).ubicacionId;
+      delete (payload as any).marca;
+      delete (payload as any).modelo;
+      delete (payload as any).referencia;
     }
     if (editing) updateMut.mutate({ id: editing.id, body: payload });
     else         createMut.mutate(payload);
@@ -939,16 +948,28 @@ function ProductosCatalogo() {
           initialValues={{ tipo: 'producto', unidadMedida: 'PZA', porcentajeIva: 18, stock: 0, stockMinimo: 0 }}>
           <UomMedidaSelector />
 
-          {/* Tipo: Producto / Servicio */}
-          <Form.Item name="tipo" label="Tipo" style={{ marginBottom: 16 }}>
-            <Segmented
-              options={[
-                { label: '📦 Producto', value: 'producto' },
-                { label: '⚙️ Servicio', value: 'servicio' },
-              ]}
-              block
-            />
-          </Form.Item>
+          {/* Tipo + toggle simplificado/avanzado */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+            <Form.Item name="tipo" label="Tipo" style={{ marginBottom: 0, flex: 1 }}>
+              <Segmented
+                options={[
+                  { label: '📦 Producto', value: 'producto' },
+                  { label: '⚙️ Servicio', value: 'servicio' },
+                ]}
+                block
+              />
+            </Form.Item>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, marginTop: 22 }}>
+              <Switch
+                size="small"
+                checked={modoAvanzado}
+                onChange={setModoAvanzado}
+              />
+              <span style={{ fontSize: 10, color: '#9CA3AF', whiteSpace: 'nowrap' }}>
+                {modoAvanzado ? 'Avanzado' : 'Simplificado'}
+              </span>
+            </div>
+          </div>
 
           <Row gutter={16}>
             <Col xs={24} sm={8}>
@@ -1219,21 +1240,40 @@ function ProductosCatalogo() {
               </Col>
             )}
 
-            {/* Ubicación WMS por defecto — solo cuando hay almacén y existen ubicaciones */}
-            {!esServicio && !!almacenIdWatch && ubicaciones.length > 0 && (
-              <Col xs={24} sm={8}>
-                <Form.Item name="ubicacionId" label="Ubicación WMS"
-                  extra="Ubicación por defecto para picking en este almacén">
-                  <Select
-                    placeholder="Sin ubicación específica"
-                    allowClear
-                    options={ubicaciones.map((u: any) => ({
-                      value: u.id,
-                      label: `${u.codigo}${u.tipo ? ` (${u.tipo})` : ''}`,
-                    }))}
-                  />
-                </Form.Item>
-              </Col>
+            {/* ── Campos avanzados: marca, modelo, referencia, ubicación WMS ── */}
+            {modoAvanzado && !esServicio && (
+              <>
+                <Col xs={24} sm={8}>
+                  <Form.Item name="marca" label="Marca">
+                    <Input placeholder="Ej: Samsung, Nestlé..." maxLength={100} />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} sm={8}>
+                  <Form.Item name="modelo" label="Modelo">
+                    <Input placeholder="Ej: Galaxy S24, A31..." maxLength={100} />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} sm={8}>
+                  <Form.Item name="referencia" label="Referencia">
+                    <Input placeholder="Referencia interna o del proveedor" maxLength={100} />
+                  </Form.Item>
+                </Col>
+                {!!almacenIdWatch && ubicaciones.length > 0 && (
+                  <Col xs={24} sm={8}>
+                    <Form.Item name="ubicacionId" label="Ubicación WMS"
+                      extra="Ubicación por defecto para picking en este almacén">
+                      <Select
+                        placeholder="Sin ubicación específica"
+                        allowClear
+                        options={ubicaciones.map((u: any) => ({
+                          value: u.id,
+                          label: `${u.codigo}${u.tipo ? ` (${u.tipo})` : ''}`,
+                        }))}
+                      />
+                    </Form.Item>
+                  </Col>
+                )}
+              </>
             )}
 
             {/* Imagen — subir archivo o URL */}

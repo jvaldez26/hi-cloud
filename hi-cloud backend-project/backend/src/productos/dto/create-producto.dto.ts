@@ -106,4 +106,19 @@ export class CreateProductoDto {
   @Min(1)
   @Type(() => Number)
   ubicacionId?: number; // Ubicación WMS por defecto dentro del almacén (opcional)
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  marca?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  modelo?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  referencia?: string;
 }

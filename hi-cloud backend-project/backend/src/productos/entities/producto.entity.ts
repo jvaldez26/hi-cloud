@@ -61,4 +61,14 @@ export class Producto extends TenantBaseEntity {
   // Costo promedio ponderado (AVCO) — se actualiza al recibir mercancía
   @Column({ type: 'decimal', precision: 14, scale: 4, default: 0 })
   costoPromedio!: number;
+
+  // Campos de identificación avanzada
+  @Column({ length: 100, nullable: true })
+  marca?: string;
+
+  @Column({ length: 100, nullable: true })
+  modelo?: string;
+
+  @Column({ length: 100, nullable: true })
+  referencia?: string;
 }

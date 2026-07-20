@@ -11,6 +11,9 @@ export interface ProductoPayload {
   descripcion?: string; imagenUrl?: string;
   almacenId?: number;
   ubicacionId?: number;
+  marca?: string;
+  modelo?: string;
+  referencia?: string;
 }
 
 export const productosApi = {
