@@ -18,7 +18,7 @@ import { facturasApi } from '../../api/facturas.api';
 import { inventarioApi } from '../../api/inventario.api';
 import { fmt, round2 } from '../../utils/formatters';
 import { resolverNombreComprador, resolverRncComprador } from '../../utils/facturaComprador';
-import { imprimirElemento, imprimirReciboTermico, imprimirPDFA4 } from '../../utils/printUtils';
+import { imprimirElemento, imprimirReciboTermico, imprimirPDFA4, imprimirFacturaPreviewA4 } from '../../utils/printUtils';
 import { imprimirReciboEscPos, conectarImpresora, desconectarImpresora, estaConectada, getNombreImpresora, imprimirPruebaEscPos, autoReconectarImpresora, bluetoothAutoReconexionDisponible, huboFalloWatchAdvertisements } from '../../services/thermalPrinter';
 import { useThemeStore } from '../../store/theme.store';
 import { useOfflineQueue } from '../../hooks/useOfflineQueue';
@@ -1884,7 +1884,7 @@ function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir, mostrarEcf = 
     if (posConfig.tipoImpresora === 'ninguna') { cancelarContador(); onNueva(); return; }
     if (posConfig.tipoImpresora === 'carta' && sale.facturaId) {
       cancelarContador();
-      imprimirPDFA4(`/api/v1/facturas/${sale.facturaId}/pdf`).then(onNueva).catch(() => onNueva());
+      imprimirFacturaPreviewA4(sale.facturaId).then(onNueva).catch(() => onNueva());
       return;
     }
     if (posConfig.tipoImpresora === 'bluetooth') {
@@ -1914,7 +1914,7 @@ function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir, mostrarEcf = 
     cancelarContador();
     if (posConfig.tipoImpresora === 'ninguna') { onNueva(); return; }
     if (posConfig.tipoImpresora === 'carta' && sale!.facturaId) {
-      imprimirPDFA4(`/api/v1/facturas/${sale!.facturaId}/pdf`).then(onNueva).catch(() => onNueva());
+      imprimirFacturaPreviewA4(sale!.facturaId).then(onNueva).catch(() => onNueva());
       return;
     }
     if (posConfig.tipoImpresora === 'bluetooth') {

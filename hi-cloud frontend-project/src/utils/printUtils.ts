@@ -30,6 +30,15 @@ export async function verPDFDesdeURL(apiPath: string): Promise<void> {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
+/** Obtiene el HTML preview de una factura y abre el diálogo de impresión.
+ *  Equivalente al botón "Imprimir" del módulo de Facturas (/preview → window.print()). */
+export async function imprimirFacturaPreviewA4(facturaId: number): Promise<void> {
+  const res = await fetch(`/api/v1/facturas/${facturaId}/preview`, { credentials: 'include' });
+  if (!res.ok) throw new Error(`Error ${res.status} al generar preview de factura`);
+  const html = await res.text();
+  imprimirHtml(html);
+}
+
 /** Descarga el PDF A4 desde el backend y abre el diálogo de impresión.
  *  Idéntico al patrón de los módulos de escritorio (FacturasPage, etc.). */
 export async function imprimirPDFA4(apiPath: string): Promise<void> {
