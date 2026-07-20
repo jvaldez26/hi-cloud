@@ -257,17 +257,17 @@ export default function ViajesPage() {
       ),
     },
     { title: 'Fecha',  dataIndex: 'fecha',    key: 'fecha',    width: 110, render: (v: string) => v?.substring(0,10) },
-    { title: 'Origen', dataIndex: 'origen',   key: 'origen'   },
-    { title: 'Destino', dataIndex: 'destino', key: 'destino'  },
-    { title: 'Cliente',  dataIndex: 'clienteNombre',    key: 'cliente',  render: (v?: string) => v ?? '—' },
-    { title: 'Chofer',   dataIndex: 'choferNombre',     key: 'chofer',   render: (v?: string) => v ?? '—' },
-    { title: 'Vehículo', dataIndex: 'vehiculoDescripcion', key: 'vehiculo', render: (v?: string, r?: Viaje) => r?.vehiculoPlaca ? `${r.vehiculoPlaca} ${v ?? ''}` : '—' },
+    { title: 'Origen',  dataIndex: 'origen',  key: 'origen',  width: 180, ellipsis: true },
+    { title: 'Destino', dataIndex: 'destino', key: 'destino', width: 180, ellipsis: true },
+    { title: 'Cliente',  dataIndex: 'clienteNombre',       key: 'cliente',  width: 220, ellipsis: true, render: (v?: string) => v ?? '—' },
+    { title: 'Chofer',   dataIndex: 'choferNombre',        key: 'chofer',   width: 180, ellipsis: true, render: (v?: string) => v ?? '—' },
+    { title: 'Vehículo', dataIndex: 'vehiculoDescripcion', key: 'vehiculo', width: 160, ellipsis: true, render: (v?: string, r?: Viaje) => r?.vehiculoPlaca ? `${r.vehiculoPlaca} ${v ?? ''}` : '—' },
     {
-      title: 'Tarifa', dataIndex: 'tarifa', key: 'tarifa', align: 'right' as const,
+      title: 'Tarifa', dataIndex: 'tarifa', key: 'tarifa', width: 120, align: 'right' as const,
       render: (v: string | number) => fmt(v),
     },
     {
-      title: 'Estado', dataIndex: 'estado', key: 'estado',
+      title: 'Estado', dataIndex: 'estado', key: 'estado', width: 130,
       render: (v: string) => <Tag color={ESTADO_COLOR[v] ?? 'default'}>{v.replace('_',' ').toUpperCase()}</Tag>,
     },
     {
@@ -358,6 +358,7 @@ export default function ViajesPage() {
         rowSelection={rowSelection}
         loading={isLoading}
         size="small"
+        scroll={{ x: 'max-content' }}
         onRow={r => ({ onClick: () => setViewId(r.id), style: { cursor: 'pointer' } })}
         pagination={{
           current:  page,
