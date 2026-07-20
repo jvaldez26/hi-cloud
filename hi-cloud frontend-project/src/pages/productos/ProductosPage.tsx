@@ -792,11 +792,16 @@ function ProductosCatalogo() {
   };
 
   const COLS_DEF = [
-    { key: 'codigo',    label: 'Código',    defaultVisible: false },
-    { key: 'nombre',    label: 'Nombre',    defaultVisible: true  },
-    { key: 'precio',    label: 'Precio',    defaultVisible: true  },
-    { key: 'unidad',    label: 'Unidad',    defaultVisible: true  },
-    { key: 'categoria', label: 'Categoría', defaultVisible: true  },
+    { key: 'codigo',     label: 'Código',     defaultVisible: false },
+    { key: 'nombre',     label: 'Nombre',     defaultVisible: true  },
+    { key: 'referencia', label: 'Referencia', defaultVisible: true  },
+    { key: 'marca',      label: 'Marca',      defaultVisible: true  },
+    { key: 'modelo',     label: 'Modelo',     defaultVisible: true  },
+    { key: 'precio',     label: 'Precio',     defaultVisible: true  },
+    { key: 'unidad',     label: 'Unidad',     defaultVisible: true  },
+    { key: 'existencia', label: 'Existencia', defaultVisible: true  },
+    { key: 'ubicacion',  label: 'Ubicación',  defaultVisible: true  },
+    { key: 'categoria',  label: 'Categoría',  defaultVisible: true  },
   ];
   const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('productos', COLS_DEF);
 
@@ -842,6 +847,12 @@ function ProductosCatalogo() {
           <Text style={{ fontSize: 13 }}>{v}</Text>
         </Space>
       )},
+    { title: 'Referencia', key: 'referencia', dataIndex: 'referencia', width: 120,
+      render: (v: string) => v ? <Text style={{ fontSize: 12 }}>{v}</Text> : <Text type="secondary">—</Text> },
+    { title: 'Marca',  key: 'marca',  dataIndex: 'marca',  width: 110,
+      render: (v: string) => v ? <Text>{v}</Text> : <Text type="secondary">—</Text> },
+    { title: 'Modelo', key: 'modelo', dataIndex: 'modelo', width: 110,
+      render: (v: string) => v ? <Text>{v}</Text> : <Text type="secondary">—</Text> },
     { title: 'Precio',    key: 'precio', dataIndex: 'precio',   width: 115, isAmount: true, render: (v: number) => fmt.money(v) },
     { title: 'Unidad',   key: 'unidad', dataIndex: 'unidadMedida', width: 80, align: 'center' as const,
       render: (codigo: string) => {
@@ -851,6 +862,21 @@ function ProductosCatalogo() {
       }
     },
     ...(stockCols as any),
+    { title: 'Existencia', key: 'existencia', width: 105, align: 'right' as const,
+      render: (_: unknown, r: Producto) => {
+        if (r.tipo === 'servicio') return <Text type="secondary">—</Text>;
+        const spa = (r as any).stockPorAlmacen as { cantidad: number }[] | undefined;
+        const total = spa ? spa.reduce((acc, s) => acc + Number(s.cantidad), 0) : Number(r.stock);
+        const bajo = total > 0 && total <= Number(r.stockMinimo);
+        return <Text style={{ color: total === 0 ? '#9CA3AF' : bajo ? '#f59e0b' : '#059669', fontWeight: bajo || total === 0 ? 500 : undefined }}>{fmt.number(total)}</Text>;
+      }},
+    { title: 'Ubicación', key: 'ubicacion', width: 110,
+      render: (_: unknown, r: Producto) => {
+        if (r.tipo === 'servicio') return <Text type="secondary">—</Text>;
+        const spa = (r as any).stockPorAlmacen as { ubicacionCodigo?: string }[] | undefined;
+        const codes = [...new Set((spa ?? []).map((s: any) => s.ubicacionCodigo).filter(Boolean))];
+        return codes.length > 0 ? <Text style={{ fontSize: 12 }}>{codes.join(', ')}</Text> : <Text type="secondary">—</Text>;
+      }},
     { title: 'Categoría', key: 'categoria', dataIndex: 'categoria', ellipsis: true, mobileHide: true, render: (v: string) => v ? <Tag>{v}</Tag> : '—' },
     // ITBIS% y Mín. omitidos — disponibles al editar el producto
     { title: '', key: 'actions', width: 80, isActions: true,
