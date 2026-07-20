@@ -1249,7 +1249,7 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
   }
 
   // ── Enviar cotización al cliente por email ────────────────────────────────────
-  async enviarCotizacionAlCliente(cotizacionId: number, emailCliente: string, asunto?: string) {
+  async enviarCotizacionAlCliente(cotizacionId: number, emailCliente: string, asunto?: string, pdfBuffer?: Buffer) {
     const rows = await this.dataSource.query<any[]>(
       `SELECT co.numero, co.fecha::text, co."fechaVencimiento"::text AS "fechaValidez",
               co.subtotal::text, co.iva::text, co.total::text,
@@ -1343,15 +1343,22 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
   </div>
 
   <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:16px 32px;text-align:center;font-size:11px;color:#9ca3af">
-    <strong>${r.empresaNombre}</strong> · Generado por <strong style="color:#1a56db">HiCloud ERP</strong>
+    <strong>${r.empresaNombre}</strong>
   </div>
 </div>
 </body></html>`;
 
     const subjectFinal = asunto ?? `Cotización ${r.numero} — ${r.empresaNombre}`;
-    const { exitoso, error } = await this.emailService.enviar({ to: emailCliente, subject: subjectFinal, html });
+    const { exitoso, error } = await this.emailService.enviar({
+      to: emailCliente,
+      subject: subjectFinal,
+      html,
+      ...(pdfBuffer
+        ? { attachments: [{ filename: `${r.numero}.pdf`, content: pdfBuffer, contentType: 'application/pdf' }] }
+        : {}),
+    });
     if (!exitoso) throw new Error(`Error enviando cotización: ${error}`);
-    return { mensaje: `Cotización ${r.numero} enviada a ${emailCliente}` };
+    return { mensaje: `Cotización ${r.numero} enviada a ${emailCliente}${pdfBuffer ? ' (con PDF adjunto)' : ''}` };
   }
 
   // ── Notificar resolución de solicitud de aprobación al solicitante ───────────

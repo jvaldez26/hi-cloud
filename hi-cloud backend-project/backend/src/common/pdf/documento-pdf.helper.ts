@@ -156,18 +156,19 @@ export async function generarDocumentoPDFFactura(
       .text(d.empresaNombre.toUpperCase(), PL, ly, { width: leftColW });
     ly = doc.y + 4;
 
-    // Datos de contacto empresa
+    // Datos de contacto empresa — usa doc.y real para que la dirección de 2+ líneas
+    // no pise el campo siguiente (mismo patrón que empresaNombre arriba)
     doc.font('Helvetica').fontSize(9).fillColor(GRAY);
     if (d.empresaDireccion) {
       const dir = 'C/ ' + d.empresaDireccion +
         (d.empresaCiudad ? ', ' + d.empresaCiudad : '') + '.';
-      doc.text(dir, PL, ly, { width: leftColW }); ly += 12;
+      doc.text(dir, PL, ly, { width: leftColW }); ly = doc.y + 4;
     }
-    if (d.empresaEmail)    { doc.text('Correo: '   + d.empresaEmail,    PL, ly, { width: leftColW }); ly += 12; }
-    if (d.empresaTelefono) { doc.text('Teléfono: ' + d.empresaTelefono, PL, ly, { width: leftColW }); ly += 12; }
+    if (d.empresaEmail)    { doc.text('Correo: '   + d.empresaEmail,    PL, ly, { width: leftColW }); ly = doc.y + 4; }
+    if (d.empresaTelefono) { doc.text('Teléfono: ' + d.empresaTelefono, PL, ly, { width: leftColW }); ly = doc.y + 4; }
     doc.fillColor(DARK).font('Helvetica-Bold').fontSize(9)
       .text('RNC: ' + d.empresaRNC, PL, ly, { width: leftColW });
-    const leftBottom = ly + 14;
+    const leftBottom = doc.y + 14;
 
     // ── ENCABEZADO DERECHO ───────────────────────────────────────────────────
 
@@ -261,18 +262,21 @@ export async function generarDocumentoPDFFactura(
       ].filter(Boolean).join('  ');
       if (ct) cliLines.push(ct);
     }
-    const cliBoxH = 18 + cliLines.length * 13 + 6;
-
-    doc.rect(PL, y, W, cliBoxH).strokeColor(BORDER).lineWidth(0.75).stroke();
+    // Bloque cliente: dibujar texto primero, luego la caja con altura real
+    // (evita que un nombre/dirección largo pise la línea siguiente)
+    const cliBoxTop = y;
     doc.lineWidth(1);
     doc.fillColor(DARK).font('Helvetica-Bold').fontSize(8)
       .text('DATOS DEL CLIENTE', PL + 10, y + 6);
     let py = y + 18;
     for (const line of cliLines) {
       doc.fillColor(GRAY).font('Helvetica').fontSize(9.5)
-        .text(line, PL + 10, py, { width: W - 20 }); py += 13;
+        .text(line, PL + 10, py, { width: W - 20 });
+      py = doc.y + 4;
     }
-    y += cliBoxH + 10;
+    const cliBoxH = py + 2 - cliBoxTop;
+    doc.rect(PL, cliBoxTop, W, cliBoxH).strokeColor(BORDER).lineWidth(0.75).stroke();
+    y = cliBoxTop + cliBoxH + 10;
 
     // ── TABLA DE PRODUCTOS ────────────────────────────────────────────────────
     // Mismas columnas que la factura (sin Descuento — cotizaciones no tienen descuento por línea)
@@ -445,7 +449,7 @@ export async function generarDocumentoPDFFactura(
     }
 
     doc.fillColor('#aaaaaa').font('Helvetica').fontSize(7.5)
-      .text('Documento generado por HiCloud ERP',
+      .text(d.empresaNombre,
         PL,
         footerY + (d.empresaSitioWeb ? 33 : 21),
         { width: W, align: 'center' },

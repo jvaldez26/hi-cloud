@@ -14,6 +14,7 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam } from '@nestjs/swagger';
 import { NotificacionesService } from './notificaciones.service';
 import { PDFService } from '../facturas/services/pdf.service';
+import { CotizacionesService } from '../cotizaciones/cotizaciones.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -31,6 +32,7 @@ export class NotificacionesController {
   constructor(
     private notificacionesService: NotificacionesService,
     private pdfService: PDFService,
+    private cotizacionesService: CotizacionesService,
   ) {}
 
   @Get('config')
@@ -115,12 +117,19 @@ export class NotificacionesController {
   @Post('cotizacion/:id/enviar')
   @HttpCode(HttpStatus.OK)
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  @ApiOperation({ summary: 'Enviar cotización por email al cliente' })
-  enviarCotizacion(
+  @ApiOperation({ summary: 'Enviar cotización por email al cliente (con PDF adjunto)' })
+  async enviarCotizacion(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: { email: string; asunto?: string },
   ) {
-    return this.notificacionesService.enviarCotizacionAlCliente(id, body.email, body.asunto);
+    let pdfBuffer: Buffer | undefined;
+    try {
+      const { buffer } = await this.cotizacionesService.generarPDF(id);
+      pdfBuffer = buffer;
+    } catch (err) {
+      this.logger.warn(`No se pudo generar PDF para cotización #${id}: ${(err as Error).message}`);
+    }
+    return this.notificacionesService.enviarCotizacionAlCliente(id, body.email, body.asunto, pdfBuffer);
   }
 
   @Post('recibo/:id/enviar')
