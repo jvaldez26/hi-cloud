@@ -1334,14 +1334,14 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
     </table>
 
     <div style="margin-top:16px;display:flex;flex-direction:column;align-items:flex-end;gap:6px">
-      <div style="display:flex;justify-content:space-between;width:240px;font-size:13px;color:#374151">
-        <span>Subtotal:</span><span>${fmtMoney(r.subtotal)}</span>
+      <div style="display:flex;justify-content:space-between;width:260px;font-size:13px;color:#374151">
+        <span>Subtotal:</span><span style="white-space:nowrap">${fmtMoney(r.subtotal)}</span>
       </div>
-      <div style="display:flex;justify-content:space-between;width:240px;font-size:13px;color:#374151">
-        <span>ITBIS (18%):</span><span>${fmtMoney(r.iva)}</span>
+      <div style="display:flex;justify-content:space-between;width:260px;font-size:13px;color:#374151">
+        <span>ITBIS (18%):</span><span style="white-space:nowrap">${fmtMoney(r.iva)}</span>
       </div>
-      <div style="display:flex;justify-content:space-between;width:240px;font-size:16px;font-weight:800;color:#1a56db;border-top:2px solid #1a56db;padding-top:8px;margin-top:4px">
-        <span>TOTAL:</span><span>${fmtMoney(r.total)}</span>
+      <div style="display:flex;justify-content:space-between;width:260px;font-size:16px;font-weight:800;color:#1a56db;border-top:2px solid #1a56db;padding-top:8px;margin-top:4px">
+        <span style="white-space:nowrap">TOTAL:</span><span style="white-space:nowrap;padding-left:16px">${fmtMoney(r.total)}</span>
       </div>
     </div>
 
