@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
+import { TenantService } from '../tenant/tenant.service';
 import {
   NotificacionEnviada,
   TipoNotificacion,
@@ -24,15 +25,12 @@ export class NotificacionesService {
     private whatsAppService: WhatsAppService,
     private configService: ConfigService,
     private dataSource: DataSource,
+    private tenantService: TenantService,
   ) {}
 
   // ──────────────────────────────────────────────────────────────────
   // Helpers privados
   // ──────────────────────────────────────────────────────────────────
-
-  private get adminEmail(): string {
-    return this.configService.get<string>('NOTIF_ADMIN_EMAIL', '');
-  }
 
   private get notifActiva(): boolean {
     return this.configService.get<string>('NOTIF_ENABLED', 'true') === 'true';
@@ -56,27 +54,53 @@ export class NotificacionesService {
     ).catch((e: Error) => this.logger.error(`Error guardando log: ${e.message}`));
   }
 
-  private async enviarEmail(
-    tipo:       TipoNotificacion,
-    asunto:     string,
-    html:       string,
+  /** Emails de usuarios admin/contador activos de una empresa (hasta 5). */
+  private async getAdminEmails(empresaId: number): Promise<string[]> {
+    const rows = await this.dataSource.query<{ email: string }[]>(
+      `SELECT u.email
+       FROM usuario_empresa ue
+       JOIN users u ON u.id = ue."userId"
+       WHERE ue."empresaId" = $1 AND ue."isActive" = true
+         AND u."isActive" = true AND u.role IN ('admin','contador')
+         AND u.email IS NOT NULL AND u.email <> ''
+       LIMIT 5`,
+      [empresaId],
+    );
+    return rows.map(r => r.email);
+  }
+
+  /** Todas las empresas activas con su configuración. */
+  private async getEmpresasActivas(): Promise<{ id: number; nombre: string; configuracion: Record<string, unknown> }[]> {
+    return this.dataSource.query(
+      `SELECT id, nombre, COALESCE(configuracion, '{}') AS configuracion
+       FROM empresa WHERE "isActive" = true ORDER BY id`,
+    );
+  }
+
+  /** Envía un email a todos los admins/contadores de una empresa y registra el envío. */
+  private async enviarEmailsEmpresa(
+    empresaId:   number,
+    tipo:        TipoNotificacion,
+    asunto:      string,
+    html:        string,
     referencia?: string,
   ) {
-    const dest = this.adminEmail;
-    if (!dest) {
-      this.logger.warn(`NOTIF_ADMIN_EMAIL no configurado — notificación ${tipo} omitida`);
+    const emails = await this.getAdminEmails(empresaId);
+    if (!emails.length) {
+      this.logger.warn(`Empresa ${empresaId}: sin usuarios admin/contador con email — notificación ${tipo} omitida`);
       return;
     }
-
-    const { exitoso, error } = await this.emailService.enviar({ to: dest, subject: asunto, html });
-    await this.registrar(tipo, CanalNotificacion.EMAIL, dest, asunto, html, exitoso, referencia, error);
+    for (const dest of emails) {
+      const { exitoso, error } = await this.emailService.enviar({ to: dest, subject: asunto, html });
+      await this.registrar(tipo, CanalNotificacion.EMAIL, dest, asunto, html, exitoso, referencia, error);
+    }
   }
 
   // ──────────────────────────────────────────────────────────────────
   // Notificaciones individuales
   // ──────────────────────────────────────────────────────────────────
 
-  async notificarCxCVencidas(): Promise<number> {
+  async notificarCxCVencidas(empresaId: number): Promise<number> {
     const rows = await this.dataSource.query<{
       folio: string; clienteNombre: string; total: string; diasVencido: string;
     }[]>(
@@ -85,11 +109,12 @@ export class NotificacionesService {
        FROM cuentas_por_cobrar cxc
        JOIN facturas  f ON f.id  = cxc."facturaId"
        JOIN clientes  c ON c.id  = cxc."clienteId"
-       WHERE cxc."isActive" = true
+       WHERE cxc."isActive" = true AND cxc."empresaId" = $1
          AND cxc.estado IN ('vencida','pendiente','pagada_parcial')
          AND cxc."fechaVencimiento" < CURRENT_DATE
        ORDER BY "diasVencido" DESC
        LIMIT 50`,
+      [empresaId],
     );
 
     if (rows.length === 0) return 0;
@@ -103,12 +128,12 @@ export class NotificacionesService {
       })),
     );
 
-    await this.enviarEmail(TipoNotificacion.CXC_VENCIDA, asunto, html, `${rows.length} cuentas`);
-    this.logger.log(`Notificación CxC vencidas enviada: ${rows.length} cuentas`);
+    await this.enviarEmailsEmpresa(empresaId, TipoNotificacion.CXC_VENCIDA, asunto, html, `${rows.length} cuentas`);
+    this.logger.log(`Notificación CxC vencidas empresa ${empresaId}: ${rows.length} cuentas`);
     return rows.length;
   }
 
-  async notificarCxPPorVencer(): Promise<number> {
+  async notificarCxPPorVencer(empresaId: number): Promise<number> {
     const diasAlerta = Number(this.configService.get('NOTIF_CXP_DIAS_ALERTA', '3'));
 
     const rows = await this.dataSource.query<{
@@ -119,12 +144,12 @@ export class NotificacionesService {
        FROM cuentas_por_pagar cxp
        JOIN compras     c ON c.id = cxp."compraId"
        JOIN proveedores p ON p.id = cxp."proveedorId"
-       WHERE cxp."isActive" = true
+       WHERE cxp."isActive" = true AND cxp."empresaId" = $1
          AND cxp.estado IN ('pendiente','pagada_parcial')
-         AND cxp."fechaVencimiento"::date BETWEEN CURRENT_DATE AND CURRENT_DATE + $1::int
+         AND cxp."fechaVencimiento"::date BETWEEN CURRENT_DATE AND CURRENT_DATE + $2::int
        ORDER BY "diasVence" ASC
        LIMIT 50`,
-      [diasAlerta],
+      [empresaId, diasAlerta],
     );
 
     if (rows.length === 0) return 0;
@@ -138,20 +163,21 @@ export class NotificacionesService {
       })),
     );
 
-    await this.enviarEmail(TipoNotificacion.CXP_POR_VENCER, asunto, html, `${rows.length} pagos`);
-    this.logger.log(`Notificación CxP por vencer enviada: ${rows.length} pagos`);
+    await this.enviarEmailsEmpresa(empresaId, TipoNotificacion.CXP_POR_VENCER, asunto, html, `${rows.length} pagos`);
+    this.logger.log(`Notificación CxP por vencer empresa ${empresaId}: ${rows.length} pagos`);
     return rows.length;
   }
 
-  async notificarStockBajo(): Promise<number> {
+  async notificarStockBajo(empresaId: number): Promise<number> {
     const rows = await this.dataSource.query<{
       codigo: string; nombre: string; stock: string; stockMinimo: string;
     }[]>(
       `SELECT codigo, nombre, stock::text, "stockMinimo"::text
        FROM productos
-       WHERE "isActive" = true AND stock <= "stockMinimo"
+       WHERE "isActive" = true AND "empresaId" = $1 AND stock <= "stockMinimo"
        ORDER BY stock ASC
        LIMIT 30`,
+      [empresaId],
     );
 
     if (rows.length === 0) return 0;
@@ -165,12 +191,12 @@ export class NotificacionesService {
       })),
     );
 
-    await this.enviarEmail(TipoNotificacion.STOCK_BAJO, asunto, html, `${rows.length} productos`);
-    this.logger.log(`Notificación stock bajo enviada: ${rows.length} productos`);
+    await this.enviarEmailsEmpresa(empresaId, TipoNotificacion.STOCK_BAJO, asunto, html, `${rows.length} productos`);
+    this.logger.log(`Notificación stock bajo empresa ${empresaId}: ${rows.length} productos`);
     return rows.length;
   }
 
-  async notificarECFSecuenciasVencimiento(): Promise<number> {
+  async notificarECFSecuenciasVencimiento(empresaId: number): Promise<number> {
     const rows = await this.dataSource.query<{
       tipo: string; secuenciaActual: number; secuenciaFinal: number; fechaVencimiento: string;
     }[]>(
@@ -178,57 +204,60 @@ export class NotificacionesService {
               s."fechaVencimiento"::text
        FROM secuencias_ecf s
        JOIN tipos_ecf t ON t.id = s."tipoECFId"
-       WHERE s."isActive" = true AND s."isAgotada" = false
+       WHERE s."isActive" = true AND s."isAgotada" = false AND s."empresaId" = $1
          AND (s."fechaVencimiento" <= CURRENT_DATE + 30
               OR (s."secuenciaFinal" - s."secuenciaActual") * 100.0
                  / NULLIF(s."secuenciaFinal" - s."secuenciaInicial" + 1, 0) <= 10)
        LIMIT 20`,
+      [empresaId],
     );
 
     if (rows.length === 0) return 0;
 
     const { asunto, html } = Templates.ecfSecuenciaVence(rows);
-    await this.enviarEmail(TipoNotificacion.ECF_SECUENCIA_VENCE, asunto, html);
-    this.logger.log(`Notificación ECF secuencias enviada: ${rows.length} secuencias`);
+    await this.enviarEmailsEmpresa(empresaId, TipoNotificacion.ECF_SECUENCIA_VENCE, asunto, html);
+    this.logger.log(`Notificación ECF secuencias empresa ${empresaId}: ${rows.length} secuencias`);
     return rows.length;
   }
 
-  async enviarResumenDiario(): Promise<void> {
+  async enviarResumenDiario(empresaId: number): Promise<void> {
     const [cxcRows, cxpRows, stockRows] = await Promise.all([
       this.dataSource.query<{ cantidad: string; total: string }[]>(
         `SELECT COUNT(*) AS cantidad, COALESCE(SUM("montoPendiente"),0)::text AS total
          FROM cuentas_por_cobrar
-         WHERE "isActive"=true AND estado IN ('vencida','pendiente','pagada_parcial')
+         WHERE "isActive"=true AND "empresaId"=$1 AND estado IN ('vencida','pendiente','pagada_parcial')
            AND "fechaVencimiento" < CURRENT_DATE`,
+        [empresaId],
       ),
       this.dataSource.query<{ cantidad: string; total: string }[]>(
         `SELECT COUNT(*) AS cantidad, COALESCE(SUM("montoPendiente"),0)::text AS total
          FROM cuentas_por_pagar
-         WHERE "isActive"=true AND estado IN ('pendiente','pagada_parcial')
+         WHERE "isActive"=true AND "empresaId"=$1 AND estado IN ('pendiente','pagada_parcial')
            AND "fechaVencimiento"::date BETWEEN CURRENT_DATE AND CURRENT_DATE + 3`,
+        [empresaId],
       ),
       this.dataSource.query<{ cantidad: string }[]>(
         `SELECT COUNT(*) AS cantidad FROM productos
-         WHERE "isActive"=true AND stock <= "stockMinimo"`,
+         WHERE "isActive"=true AND "empresaId"=$1 AND stock <= "stockMinimo"`,
+        [empresaId],
       ),
     ]);
 
     const data = {
-      cxcVencidas:       Number(cxcRows[0].cantidad),
-      totalCxCVencido:   Number(cxcRows[0].total),
-      cxpPorVencer:      Number(cxpRows[0].cantidad),
-      totalCxPPorVencer: Number(cxpRows[0].total),
+      cxcVencidas:        Number(cxcRows[0].cantidad),
+      totalCxCVencido:    Number(cxcRows[0].total),
+      cxpPorVencer:       Number(cxpRows[0].cantidad),
+      totalCxPPorVencer:  Number(cxpRows[0].total),
       productosStockBajo: Number(stockRows[0].cantidad),
     };
 
     if (data.cxcVencidas === 0 && data.cxpPorVencer === 0 && data.productosStockBajo === 0) {
-      this.logger.log('Resumen diario: sin alertas pendientes');
       return;
     }
 
     const { asunto, html } = Templates.resumenDiario(data);
-    await this.enviarEmail(TipoNotificacion.MANUAL, asunto, html, 'resumen-diario');
-    this.logger.log('Resumen diario enviado');
+    await this.enviarEmailsEmpresa(empresaId, TipoNotificacion.MANUAL, asunto, html, 'resumen-diario');
+    this.logger.log(`Resumen diario enviado — empresa ${empresaId}`);
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -238,35 +267,47 @@ export class NotificacionesService {
   @Cron('0 8 * * *')
   async cronResumenDiario() {
     if (!this.notifActiva) return;
-    this.logger.log('⏰ Cron: resumen diario de notificaciones');
-    await this.enviarResumenDiario();
+    this.logger.log('⏰ Cron: resumen diario por empresa');
+    const empresas = await this.getEmpresasActivas();
+    for (const emp of empresas) {
+      if (emp.configuracion.notifResumenDiario === false) continue;
+      await this.enviarResumenDiario(emp.id).catch((e: Error) =>
+        this.logger.error(`Resumen diario empresa ${emp.id}: ${e.message}`),
+      );
+    }
   }
 
   @Cron('0 9 * * 1')
   async cronAlertasSemanales() {
     if (!this.notifActiva) return;
-    this.logger.log('⏰ Cron: alertas semanales (lunes)');
-    // Verificar flags de notificación de la empresa (primera empresa activa)
-    const [empConf] = await this.dataSource.query<{ configuracion: any }[]>(
-      `SELECT configuracion FROM empresa WHERE "isActive" = true ORDER BY id LIMIT 1`
-    ).catch(() => [{ configuracion: {} }]);
-    const notifConf = (empConf?.configuracion ?? {}) as Record<string, unknown>;
-    await Promise.all([
-      notifConf.notifStockBajo !== false ? this.notificarStockBajo() : Promise.resolve(0),
-      notifConf.notifVencECF   !== false ? this.notificarECFSecuenciasVencimiento() : Promise.resolve(0),
-    ]);
+    this.logger.log('⏰ Cron: alertas semanales (lunes) por empresa');
+    const empresas = await this.getEmpresasActivas();
+    for (const emp of empresas) {
+      const cfg = emp.configuracion;
+      await Promise.all([
+        cfg.notifStockBajo !== false
+          ? this.notificarStockBajo(emp.id).catch((e: Error) =>
+              this.logger.error(`Stock bajo empresa ${emp.id}: ${e.message}`))
+          : Promise.resolve(0),
+        cfg.notifVencECF !== false
+          ? this.notificarECFSecuenciasVencimiento(emp.id).catch((e: Error) =>
+              this.logger.error(`ECF empresa ${emp.id}: ${e.message}`))
+          : Promise.resolve(0),
+      ]);
+    }
   }
 
   @Cron('0 8 * * 1-5')
   async cronAlertasDiarias() {
     if (!this.notifActiva) return;
-    this.logger.log('⏰ Cron: alertas diarias CxP');
-    const [empConf2] = await this.dataSource.query<{ configuracion: any }[]>(
-      `SELECT configuracion FROM empresa WHERE "isActive" = true ORDER BY id LIMIT 1`
-    ).catch(() => [{ configuracion: {} }]);
-    const notifConf2 = (empConf2?.configuracion ?? {}) as Record<string, unknown>;
-    if (notifConf2.notifVencCxP === false) return;
-    await this.notificarCxPPorVencer();
+    this.logger.log('⏰ Cron: alertas diarias CxP por empresa');
+    const empresas = await this.getEmpresasActivas();
+    for (const emp of empresas) {
+      if (emp.configuracion.notifVencCxP === false) continue;
+      await this.notificarCxPPorVencer(emp.id).catch((e: Error) =>
+        this.logger.error(`CxP empresa ${emp.id}: ${e.message}`),
+      );
+    }
   }
 
   /**
@@ -1409,12 +1450,13 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
   }
 
   async disparar(tipo: 'cxc' | 'cxp' | 'stock' | 'ecf' | 'resumen') {
+    const empresaId = this.tenantService.getEmpresaId();
     switch (tipo) {
-      case 'cxc':     return { enviadas: await this.notificarCxCVencidas() };
-      case 'cxp':     return { enviadas: await this.notificarCxPPorVencer() };
-      case 'stock':   return { enviadas: await this.notificarStockBajo() };
-      case 'ecf':     return { enviadas: await this.notificarECFSecuenciasVencimiento() };
-      case 'resumen': await this.enviarResumenDiario(); return { mensaje: 'Resumen enviado' };
+      case 'cxc':     return { enviadas: await this.notificarCxCVencidas(empresaId) };
+      case 'cxp':     return { enviadas: await this.notificarCxPPorVencer(empresaId) };
+      case 'stock':   return { enviadas: await this.notificarStockBajo(empresaId) };
+      case 'ecf':     return { enviadas: await this.notificarECFSecuenciasVencimiento(empresaId) };
+      case 'resumen': await this.enviarResumenDiario(empresaId); return { mensaje: 'Resumen enviado' };
     }
   }
 
@@ -1426,7 +1468,7 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
           this.configService.get('SMTP_USER')
         ),
         conexionActiva: await this.emailService.verificarConexion(),
-        destinatario:   this.adminEmail || '⚠️ NOTIF_ADMIN_EMAIL no configurado',
+        destinatarios: 'Admins y contadores de cada empresa',
       },
       whatsapp: {
         configurado: this.whatsAppService.estaConfigurado,
