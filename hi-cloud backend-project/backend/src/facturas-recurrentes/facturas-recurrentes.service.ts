@@ -392,8 +392,8 @@ export class FacturasRecurrentesService {
       return;
     }
 
-    const [emp] = await this.ds.query<{ configuracion: any; nombre: string; razonSocial: string }[]>(
-      `SELECT configuracion, nombre, "razonSocial" FROM empresa WHERE id = $1 AND "isActive" = true`,
+    const [emp] = await this.ds.query<{ configuracion: any; nombre: string; nombreComercial: string | null }[]>(
+      `SELECT configuracion, nombre, "nombreComercial" FROM empresa WHERE id = $1 AND "isActive" = true`,
       [empresaId],
     );
     if (!emp) return;
@@ -405,7 +405,7 @@ export class FacturasRecurrentesService {
 
     const { buffer, filename } = await this.pdfService.generarPDFDesdeEntidad(factura, empresaId);
 
-    const empresaNombre = emp.razonSocial || emp.nombre || 'HiCloud ERP';
+    const empresaNombre = emp.nombreComercial || emp.nombre || 'HiCloud ERP';
     const clienteNombre = factura.cliente?.nombre || 'Cliente';
     const folio         = factura.folio;
     const total         = Number(factura.total ?? 0).toLocaleString('es-DO', {

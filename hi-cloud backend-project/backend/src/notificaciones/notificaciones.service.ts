@@ -1261,7 +1261,7 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
               COALESCE(c.direccion,'') AS "clienteDireccion",
               COALESCE(c.ciudad,'') AS "clienteCiudad",
               COALESCE(c.telefono,'') AS "clienteTelefono",
-              COALESCE(e."razonSocial", e.nombre) AS "empresaNombre",
+              COALESCE(e."nombreComercial", e.nombre) AS "empresaNombre",
               COALESCE(e.rnc,'') AS "empresaRNC",
               COALESCE(e.direccion,'') AS "empresaDireccion",
               e.ciudad AS "empresaCiudad", e.telefono AS "empresaTelefono",
