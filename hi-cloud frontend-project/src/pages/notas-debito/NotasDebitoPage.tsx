@@ -171,6 +171,7 @@ export default function NotasDebitoPage() {
   const { data: productos = [] } = useQuery<any[]>({
     queryKey: ['productos-select'],
     queryFn: () => api.get('/productos?limit=5000&incluirSinStock=true').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
+    refetchOnWindowFocus: true,
   });
 
   const { data: resumen = [] } = useQuery<any[]>({

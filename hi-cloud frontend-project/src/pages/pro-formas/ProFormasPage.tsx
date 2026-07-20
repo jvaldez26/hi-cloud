@@ -64,6 +64,7 @@ export default function ProFormasPage() {
       const d = r.data?.data ?? r.data;
       return Array.isArray(d) ? d : (d?.data ?? []);
     }),
+    refetchOnWindowFocus: true,
   });
 
   const { data: sucursales = [] } = useQuery<any[]>({

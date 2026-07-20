@@ -682,19 +682,25 @@ function ProductosCatalogo() {
     }
   };
 
+  const invalidarProductos = () => {
+    qc.invalidateQueries({ queryKey: ['productos'] });
+    qc.invalidateQueries({ queryKey: ['productos-sel'] });
+    qc.invalidateQueries({ queryKey: ['productos-select'] });
+  };
+
   const createMut = useMutation({
     mutationFn: productosApi.create,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['productos'] }); closeModal(); message.success('Producto creado'); },
+    onSuccess: () => { invalidarProductos(); closeModal(); message.success('Producto creado'); },
     onError:   (e: any) => handleApiError(e, 'Error al crear producto'),
   });
   const updateMut = useMutation({
     mutationFn: ({ id, body }: { id: number; body: Partial<ProductoPayload> }) => productosApi.update(id, body),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['productos'] }); closeModal(); message.success('Actualizado'); },
+    onSuccess: () => { invalidarProductos(); closeModal(); message.success('Actualizado'); },
     onError:   (e: any) => handleApiError(e, 'Error al actualizar producto'),
   });
   const deleteMut = useMutation({
     mutationFn: productosApi.remove,
-    onSuccess:  () => { qc.invalidateQueries({ queryKey: ['productos'] }); message.success('Eliminado'); },
+    onSuccess:  () => { invalidarProductos(); message.success('Eliminado'); },
     onError:    (e: any) => message.error(e?.response?.data?.message ?? 'Error al eliminar producto'),
   });
 
