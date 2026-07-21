@@ -11,7 +11,7 @@ import {
 } from 'antd';
 import {
   PlusOutlined, EyeOutlined, DownOutlined, SendOutlined,
-  CheckCircleOutlined, CloseCircleOutlined, DeleteOutlined,
+  CloseCircleOutlined, DeleteOutlined,
   FilePdfOutlined, LoadingOutlined, ReloadOutlined, SearchOutlined,
   FileExcelOutlined, FilterOutlined, CopyOutlined, ControlOutlined,
   EditOutlined, MailOutlined, FileTextOutlined, RightOutlined,
@@ -40,20 +40,18 @@ const ESTADOS: FacturaEstado[] = ['borrador', 'emitida', 'pagada', 'cancelada'];
 
 const TRANSICIONES: Record<FacturaEstado, FacturaEstado[]> = {
   borrador:  ['emitida'],
-  emitida:   ['pagada'],
+  emitida:   ['cancelada'],  // 'pagada' eliminado — solo vía Recibo de Cobro
   pagada:    [],
   cancelada: [],
 };
 
 const ESTADO_ICON: Record<string, React.ReactNode> = {
   emitida:   <SendOutlined />,
-  pagada:    <CheckCircleOutlined />,
   cancelada: <CloseCircleOutlined />,
 };
 
 const ESTADO_LABEL: Record<string, string> = {
   emitida:   'Emitir factura',
-  pagada:    'Marcar pagada',
   cancelada: 'Cancelar',
 };
 

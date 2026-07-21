@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { EmailConCopiaModal } from '../../components/ui/EmailConCopiaModal';
 import { Button, Card, Descriptions, Table, Tag, Row, Col, Typography,
-         Statistic, Space, Spin, Steps, message, Popconfirm, Modal, Input, Tooltip, theme, Upload } from 'antd';
+         Statistic, Space, Spin, Steps, message, Popconfirm, Modal, Input, Tooltip, theme, Upload, Alert } from 'antd';
 import { ArrowLeftOutlined, SendOutlined, MailOutlined, FilePdfOutlined, EyeOutlined,
          PaperClipOutlined, UploadOutlined, LinkOutlined } from '@ant-design/icons';
 import WhatsAppButton from '../../components/ui/WhatsAppButton';
@@ -18,10 +18,10 @@ const { Title, Text } = Typography;
 
 const ESTADOS: FacturaEstado[] = ['borrador', 'emitida', 'pagada'];
 const TRANSICIONES: Record<FacturaEstado, FacturaEstado[]> = {
-  borrador: ['emitida'],
-  emitida:  ['pagada'],
-  pagada:   [],
-  cancelada:[],
+  borrador:  ['emitida'],
+  emitida:   ['cancelada'],  // 'pagada' eliminado — solo vía Recibo de Cobro
+  pagada:    [],
+  cancelada: [],
 };
 
 export default function FacturaDetailPage() {
@@ -202,13 +202,29 @@ export default function FacturaDetailPage() {
                   danger={sig === 'cancelada'}
                   loading={estadoMut.isPending}
                   icon={sig === 'emitida' ? <SendOutlined /> : undefined}>
-                  {sig === 'emitida' ? 'Emitir factura' : sig === 'pagada' ? '✓ Marcar pagada' : '✗ Cancelar'}
+                  {sig === 'emitida' ? 'Emitir factura' : '✗ Cancelar'}
                 </Button>
               </Popconfirm>
             ))}
           </Space>
         </Col>
       </Row>
+
+      {/* Guía de cobro — visible cuando la factura está emitida y pendiente de cobro */}
+      {estado === 'emitida' && (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="Para registrar el cobro de esta factura, crea un Recibo de Cobro"
+          description="El estado 'Pagada' se establece automáticamente al aplicar un cobro que cubre el total. Ve a Recibos de Cobro, crea un nuevo recibo y vincula esta factura."
+          action={
+            <Button size="small" type="primary" onClick={() => navigate('/recibos-cobro')}>
+              Ir a Recibos de Cobro
+            </Button>
+          }
+        />
+      )}
 
       {/* Timeline de estados */}
       {estado !== 'cancelada' ? (
@@ -217,7 +233,7 @@ export default function FacturaDetailPage() {
             items={[
               { title: 'Borrador',  description: 'En preparación' },
               { title: 'Emitida',   description: 'Enviada al cliente' },
-              { title: 'Pagada',    description: 'Cobro completado' },
+              { title: 'Pagada',    description: 'Cobro registrado' },
             ]} />
         </Card>
       ) : (

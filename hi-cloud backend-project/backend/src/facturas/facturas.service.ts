@@ -675,9 +675,18 @@ export class FacturasService {
   ) {
     const factura = await this.findOne(id);
 
+    // El estado PAGADA solo se alcanza vía flujo de cobro (recibos-cobro / cxc.registrarPago),
+    // que actualiza CxC, pagos_cobrados, asiento contable y tesorería. Bloqueamos el atajo manual.
+    if (estado === FacturaEstado.PAGADA) {
+      throw new BadRequestException(
+        'El estado "pagada" se registra a través de un cobro (Recibo de Cobro), no manualmente. ' +
+        'Ve a Cuentas por Cobrar → Registrar cobro.',
+      );
+    }
+
     const transiciones: Record<FacturaEstado, FacturaEstado[]> = {
       [FacturaEstado.BORRADOR]:  [FacturaEstado.EMITIDA,  FacturaEstado.CANCELADA],
-      [FacturaEstado.EMITIDA]:   [FacturaEstado.PAGADA,   FacturaEstado.CANCELADA],
+      [FacturaEstado.EMITIDA]:   [FacturaEstado.CANCELADA],
       [FacturaEstado.PAGADA]:    [FacturaEstado.CANCELADA],  // permitir anular facturas pagadas
       [FacturaEstado.CANCELADA]: [],
     };
