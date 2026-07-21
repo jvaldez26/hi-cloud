@@ -23,7 +23,6 @@ import { Gasto }            from '../gastos/entities/gasto.entity';
 // Controladores
 import { ECFController }        from './ecf.controller';
 import { EcfConfigController }  from './controllers/ecf-config.controller';
-import { EcfWebhookController } from './controllers/ecf-webhook.controller';
 
 // Servicios
 import { ECFService }           from './ecf.service';
@@ -67,7 +66,7 @@ import { TokenBlacklistService } from '../auth/token-blacklist.service';
       inject:     [ConfigService],
     }),
   ],
-  controllers: [ECFController, EcfConfigController, EcfWebhookController],
+  controllers: [ECFController, EcfConfigController],
   providers: [
     // Servicios base
     ECFService,
