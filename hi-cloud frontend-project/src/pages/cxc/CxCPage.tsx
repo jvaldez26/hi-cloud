@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -8,7 +9,7 @@ import {
   Drawer, Divider, Alert, Tabs,
 } from 'antd';
 import {
-  DollarOutlined, SearchOutlined, FileExcelOutlined,
+  DollarOutlined, SearchOutlined, FileExcelOutlined, EyeOutlined,
   WhatsAppOutlined, FilterOutlined, HistoryOutlined, ClockCircleOutlined, PrinterOutlined,
 } from '@ant-design/icons';
 import { TableActions } from '../../components/ui/TableActions';
@@ -30,6 +31,7 @@ const ESTADOS_CXC = ['pendiente', 'pagada_parcial', 'pagada', 'vencida', 'anulad
 
 export default function CxCPage() {
   const { token }        = theme.useToken();
+  const navigate         = useNavigate();
   const puedeCobrar      = useCanDo('cxc:cobrar');   // admin, contador, vendedor
   const [tabActivo, setTabActivo] = useState('cuentas');
   const [estado,  setEstado]  = useState<string | undefined>();
@@ -157,7 +159,18 @@ export default function CxCPage() {
     },
     {
       title: 'Cliente', key: 'cliente', dataIndex: ['cliente', 'nombre'], ellipsis: true,
-      render: (v: string) => <Text style={{ fontSize: 13 }}>{v ?? 'Consumidor Final'}</Text>,
+      render: (v: string, r: any) => {
+        const cid = r.cliente?.id ?? r.clienteId;
+        if (!cid) return <Text style={{ fontSize: 13 }}>{v ?? 'Consumidor Final'}</Text>;
+        return (
+          <Tooltip title="Ver estado de cuenta">
+            <Typography.Link style={{ fontSize: 13 }} onClick={() => navigate(`/clientes/${cid}/estado-cuenta`)}>
+              {v ?? 'Consumidor Final'}
+              <EyeOutlined style={{ marginLeft: 5, fontSize: 11, opacity: 0.6 }} />
+            </Typography.Link>
+          </Tooltip>
+        );
+      },
     },
     {
       title: 'Total', key: 'montoOriginal', dataIndex: 'montoOriginal', width: 120, align: 'right' as const, isAmount: true,
