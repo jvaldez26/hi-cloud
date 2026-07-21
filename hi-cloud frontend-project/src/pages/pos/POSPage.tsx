@@ -1745,8 +1745,10 @@ ${footerHtml}
 // ── Impresión térmica de Cierre de Caja ──────────────────────────────────────
 function buildCierreCajaHTML(params: {
   empresa:  { nombre?: string; rnc?: string; direccion?: string; telefono?: string };
-  caja:     { numero?: string; id: number; fecha: string; vendedorNombre?: string; cantidadTransacciones?: number };
-  ops:      { efectivoInicial: number; vendidoContado: number; vendidoCredito: number; totalVendido: number; totalRecibos: number; totalAnticipos: number; gastosEfectivo: number; efectivoEnCaja: number };
+  caja:     { numero?: string; id: number; fecha: string; cajeroNombre?: string; estado?: string; cantidadTransacciones?: number };
+  ingresos: { ventasEfectivo: number; ventasTarjeta: number; ventasTransferencia: number; cobrosRecibidos: number; totalAnticipos: number };
+  egresos:  { gastos: number; retiros: number };
+  cuadre:   { apertura: number; esperado: number; contado: number } | null;
   billetes: Record<string, number>;
   pago:     Record<string, string>;
   totalBilletes: number;
@@ -1763,11 +1765,24 @@ function buildCierreCajaHTML(params: {
 
   const emp = params.empresa;
   const c   = params.caja;
-  const ops = params.ops;
+  const ing = params.ingresos;
+  const egr = params.egresos;
+  const cua = params.cuadre;
+
+  const totalIngresos = ing.ventasEfectivo + ing.ventasTarjeta + ing.ventasTransferencia;
+
+  const difLabel = cua
+    ? (() => {
+        const dif = cua.contado - cua.esperado;
+        return dif === 0 ? 'CUADRADO'
+          : dif > 0 ? `${fmt(dif)} SOBRANTE`
+          : `${fmt(dif)} FALTANTE`;
+      })()
+    : null;
 
   const billetesRows = Object.entries(params.billetes)
     .filter(([,qty]) => Number(qty) > 0)
-    .map(([den,qty]) => row(`  ${Number(den).toLocaleString()}  ×${qty}:`, fmt(Number(den)*Number(qty))))
+    .map(([den,qty]) => row(`  ${Number(den).toLocaleString()} x${qty}:`, fmt(Number(den)*Number(qty))))
     .join('\n');
 
   const PAGO_LABELS: Record<string,string> = {
@@ -1790,7 +1805,7 @@ function buildCierreCajaHTML(params: {
   .bold{font-weight:900}
   .sep{color:#000;margin:2px 0}
   .small{font-size:0.85em}
-  .xlarge{font-size:1.2em}
+  .xlarge{font-size:1.2em;font-weight:900}
   .title{font-size:1.1em;font-weight:900;text-align:center;letter-spacing:1px;margin:4px 0}
 </style></head><body>
 ${emp.nombre ? `<div class="center bold">${esc(emp.nombre)}</div>` : ''}
@@ -1800,30 +1815,36 @@ ${emp.telefono  ? `<div class="center small">Tel: ${esc(emp.telefono)}</div>` : 
 ${line()}
 <div class="title">CIERRE DE CAJA</div>
 ${line()}
-${row('Caja:', c.numero ?? `#${c.id}`)}
+${c.cajeroNombre ? row('Cajero:', c.cajeroNombre) : ''}
 ${row('Fecha:', String(c.fecha).substring(0,10))}
-${c.vendedorNombre ? row('Vendedor:', c.vendedorNombre) : ''}
+${c.estado ? row('Estado:', c.estado.toUpperCase()) : ''}
 ${c.cantidadTransacciones != null ? row('Transacciones:', String(c.cantidadTransacciones)) : ''}
 ${line()}
-<div class="small bold">DESGLOSE DE OPERACIONES</div>
-${row('Efectivo Inicial:', fmt(ops.efectivoInicial))}
-${row('Vendido Contado:', fmt(ops.vendidoContado))}
-${row('Vendido Crédito:', fmt(ops.vendidoCredito))}
-${row('Total Vendido:', fmt(ops.totalVendido), true)}
-${row('Total Recibos:', fmt(ops.totalRecibos))}
-${row('Total Anticipos:', fmt(ops.totalAnticipos))}
-${row('Total Dev. y Des:', fmt(ops.gastosEfectivo))}
+<div class="small bold">INGRESOS DEL TURNO</div>
+${row('Ventas efectivo:',    fmt(ing.ventasEfectivo))}
+${row('Ventas tarjeta:',     fmt(ing.ventasTarjeta))}
+${row('Ventas transfer.:',   fmt(ing.ventasTransferencia))}
+${row('Cobros recibidos:',   fmt(ing.cobrosRecibidos))}
+${ing.totalAnticipos > 0 ? row('Anticipos:', fmt(ing.totalAnticipos)) : ''}
+${row('Total ingresos:', fmt(totalIngresos), true)}
 ${line()}
-${row('Efectivo en Caja:', fmt(ops.efectivoEnCaja), true)}
+<div class="small bold">EGRESOS</div>
+${row('Gastos:',  fmt(egr.gastos))}
+${row('Retiros:', fmt(egr.retiros))}
+${cua ? `${line()}
+<div class="small bold">CUADRE</div>
+${row('Apertura:',          fmt(cua.apertura))}
+${row('Efectivo esperado:', fmt(cua.esperado))}
+${row('Efectivo contado:',  fmt(cua.contado))}
+${line()}
+<div class="center xlarge">${esc(difLabel!)}</div>` : ''}
 ${params.totalBilletes > 0 ? `${line()}
 <div class="small bold">DESGLOSE DE BILLETES</div>
 ${billetesRows}
-${row('Total Billetes:', fmt(params.totalBilletes), true)}` : ''}
+${row('Total billetes:', fmt(params.totalBilletes), true)}` : ''}
 ${pagoRows ? `${line()}
 <div class="small bold">DESGLOSE DE PAGO</div>
 ${pagoRows}` : ''}
-${params.totalFisico > 0 ? `${line()}
-${row('Total Físico:', fmt(params.totalFisico), true)}` : ''}
 ${params.nota ? `${line()}<div class="small">Nota: ${esc(params.nota)}</div>` : ''}
 ${line()}
 <div class="center bold">** CIERRE DE CAJA **</div>
@@ -6410,10 +6431,15 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
         .then(r => r.data?.data ?? r.data)
         .catch(() => ({}));
       const empConf = (empRes.configuracion ?? {}) as any;
+      const ventasTarjeta      = Number(cajaHoy.ventasTarjeta ?? 0);
+      const ventasTransferencia = Number(cajaHoy.ventasTransferencia ?? 0);
+      const esperado            = Number(cajaHoy.saldoCierre ?? 0);
       imprimirReciboTermico(buildCierreCajaHTML({
         empresa:  { nombre: empRes.razonSocial ?? empRes.nombre, rnc: empRes.rnc, direccion: empRes.direccion, telefono: empRes.telefono },
-        caja:     { id: cajaHoy.id, numero: cajaHoy.numero, fecha: cajaHoy.fecha, vendedorNombre: cajaHoy.vendedorNombre, cantidadTransacciones: cajaHoy.cantidadTransacciones },
-        ops:      { efectivoInicial, vendidoContado, vendidoCredito: vendidoCreditoRecibo, totalVendido, totalRecibos, totalAnticipos: Number(cajaHoy.totalAnticipos ?? 0), gastosEfectivo: Number(cajaHoy.gastosEfectivo ?? 0), efectivoEnCaja },
+        caja:     { id: cajaHoy.id, numero: cajaHoy.numero, fecha: cajaHoy.fecha, cajeroNombre: cajaHoy.vendedorNombre, estado: cajaHoy.estado, cantidadTransacciones: cajaHoy.cantidadTransacciones },
+        ingresos: { ventasEfectivo: vendidoContado, ventasTarjeta, ventasTransferencia, cobrosRecibidos: totalRecibos, totalAnticipos: Number(cajaHoy.totalAnticipos ?? 0) },
+        egresos:  { gastos: Number(cajaHoy.gastosEfectivo ?? 0), retiros: Number(cajaHoy.retiros ?? 0) },
+        cuadre:   cajaHoy.ciegoCajaActivo ? null : { apertura: efectivoInicial, esperado, contado: totalFisico },
         billetes: Object.fromEntries(Object.entries(billetes).map(([k,v]) => [k, Number(v)])),
         pago,
         totalBilletes,
@@ -6434,22 +6460,23 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
       const empRes = await api.get('/configuracion/empresa')
         .then(r => r.data?.data ?? r.data)
         .catch(() => ({}));
-      const empConf = (empRes.configuracion ?? {}) as any;
-      const efInicial   = Number(item.saldoApertura ?? 0);
-      const vendContado = Number(item.ventasEfectivo ?? 0);
-      const vendCredito = Number(item.ventasTarjeta ?? 0) + Number(item.ventasTransferencia ?? 0)
-                        + Number((item as any).ventasCredito ?? 0);
-      const totalVend   = vendContado + vendCredito;
-      const totalRec    = Number(item.cobrosRecibidos ?? 0);
-      const efEnCaja    = efInicial + vendContado + totalRec;
-      const bls         = (item.desgloseBilletes ?? {}) as Record<string, number>;
-      const pg          = (item.desglosePago ?? {}) as Record<string, string>;
-      const totalBills  = Object.entries(bls).reduce((s, [den, qty]) => s + Number(den) * Number(qty), 0);
-      const totalFis    = Number(item.saldoFisico ?? 0);
+      const empConf         = (empRes.configuracion ?? {}) as any;
+      const vendContado     = Number(item.ventasEfectivo ?? 0);
+      const ventasTarjeta   = Number(item.ventasTarjeta ?? 0);
+      const ventasTransf    = Number(item.ventasTransferencia ?? 0);
+      const totalRec        = Number(item.cobrosRecibidos ?? 0);
+      const efInicial       = Number(item.saldoApertura ?? 0);
+      const esperado        = Number(item.saldoCierre ?? 0);
+      const bls             = (item.desgloseBilletes ?? {}) as Record<string, number>;
+      const pg              = (item.desglosePago ?? {}) as Record<string, string>;
+      const totalBills      = Object.entries(bls).reduce((s, [den, qty]) => s + Number(den) * Number(qty), 0);
+      const totalFis        = Number(item.saldoFisico ?? 0);
       imprimirReciboTermico(buildCierreCajaHTML({
         empresa:  { nombre: empRes.razonSocial ?? empRes.nombre, rnc: empRes.rnc, direccion: empRes.direccion, telefono: empRes.telefono },
-        caja:     { id: item.id, numero: item.numero, fecha: item.fecha, vendedorNombre: item.vendedorNombre, cantidadTransacciones: item.cantidadTransacciones },
-        ops:      { efectivoInicial: efInicial, vendidoContado: vendContado, vendidoCredito: vendCredito, totalVendido: totalVend, totalRecibos: totalRec, totalAnticipos: Number(item.totalAnticipos ?? 0), gastosEfectivo: Number(item.gastosEfectivo ?? 0), efectivoEnCaja: efEnCaja },
+        caja:     { id: item.id, numero: item.numero, fecha: item.fecha, cajeroNombre: item.vendedorNombre, estado: item.estado, cantidadTransacciones: item.cantidadTransacciones },
+        ingresos: { ventasEfectivo: vendContado, ventasTarjeta, ventasTransferencia: ventasTransf, cobrosRecibidos: totalRec, totalAnticipos: Number(item.totalAnticipos ?? 0) },
+        egresos:  { gastos: Number(item.gastosEfectivo ?? 0), retiros: Number(item.retiros ?? 0) },
+        cuadre:   (item as any).ciegoCajaActivo ? null : { apertura: efInicial, esperado, contado: totalFis },
         billetes: bls,
         pago:     pg,
         totalBilletes: totalBills,
