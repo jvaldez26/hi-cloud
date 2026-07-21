@@ -302,12 +302,24 @@ export class PreFacturaService {
   // Convierte la pre-factura a factura oficial con ECF + descuento de stock.
   // Acepta pre-facturas en cualquier estado activo (no CONVERTIDA/RECHAZADA).
 
-  async cobrarDesdePos(id: number, usuarioId: number, dto: { metodoPago: string; vendedorId?: number }) {
+  async cobrarDesdePos(id: number, usuarioId: number, dto: { metodoPago: string }) {
     const empresaId = this.tenantSvc.getEmpresaId();
     const pf = await this.findOne(id);
 
     if ([EstadoPreFactura.CONVERTIDA, EstadoPreFactura.RECHAZADA].includes(pf.estado)) {
       throw new BadRequestException('Esta pre-factura no puede cobrarse en su estado actual');
+    }
+
+    // Derivar vendedorId del CLS (JWT) — nunca del body.
+    // Buscamos el vendedor cuyo usuarioId coincide con el cajero autenticado.
+    const clsUserId = this.tenantSvc.getUserId();
+    let cajaVendedorId: number | undefined;
+    if (clsUserId) {
+      const [v] = await this.ds.query<{ id: number }[]>(
+        `SELECT id FROM vendedores WHERE "usuarioId" = $1 AND "empresaId" = $2 AND "isActive" = true AND activo = true LIMIT 1`,
+        [clsUserId, empresaId],
+      );
+      cajaVendedorId = v?.id;
     }
 
     // Folio atómico vía función de secuencia (nunca MAX+1)
@@ -318,7 +330,6 @@ export class PreFacturaService {
     const folio = `FAC-${row.numero}`;
 
     // Crear factura en BORRADOR + marcar preFactura CONVERTIDA (transacción atómica).
-    // vendedorId viene siempre del cajero activo (dto.vendedorId del POS), nunca de la PF original.
     const savedFactura = await this.ds.transaction(async (manager) => {
       const f = manager.create(Factura, {
         empresaId,
@@ -327,7 +338,7 @@ export class PreFacturaService {
         estado:     FacturaEstado.BORRADOR,
         clienteId:  pf.clienteId,
         usuarioId,
-        vendedorId: dto.vendedorId ?? undefined,
+        vendedorId: cajaVendedorId,
         sucursalId: pf.sucursalId ?? undefined,
         subtotal:   Number(pf.subtotal),
         iva:        Number(pf.iva),

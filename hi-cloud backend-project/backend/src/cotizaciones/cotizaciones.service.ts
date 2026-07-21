@@ -238,12 +238,24 @@ export class CotizacionesService {
   // Sin vendedorId para saltarse el check de caja en cambiarEstado.
   // ──────────────────────────────────────────────────────────────────
 
-  async cobrarDesdePos(id: number, usuarioId: number, dto: { metodoPago: string; vendedorId?: number }) {
+  async cobrarDesdePos(id: number, usuarioId: number, dto: { metodoPago: string }) {
     const empresaId = this.tenantService.getEmpresaId();
     const cot = await this.findById(id);
 
     if ([CotizacionEstado.CONVERTIDA, CotizacionEstado.RECHAZADA, CotizacionEstado.VENCIDA].includes(cot.estado)) {
       throw new BadRequestException('Esta cotización no puede cobrarse en su estado actual');
+    }
+
+    // Derivar vendedorId del CLS (JWT) — nunca del body.
+    // Buscamos el vendedor cuyo usuarioId coincide con el cajero autenticado.
+    const clsUserId = this.tenantService.getUserId();
+    let cajaVendedorId: number | undefined;
+    if (clsUserId) {
+      const [v] = await this.dataSource.query<{ id: number }[]>(
+        `SELECT id FROM vendedores WHERE "usuarioId" = $1 AND "empresaId" = $2 AND "isActive" = true AND activo = true LIMIT 1`,
+        [clsUserId, empresaId],
+      );
+      cajaVendedorId = v?.id;
     }
 
     // Folio atómico vía función de secuencia (nunca MAX+1)
@@ -254,7 +266,6 @@ export class CotizacionesService {
     const folio = `FAC-${row.numero}`;
 
     // Crear factura BORRADOR + marcar cotización CONVERTIDA (transacción atómica).
-    // vendedorId viene siempre del cajero activo (dto.vendedorId del POS), nunca de la COT original.
     const savedFactura = await this.dataSource.transaction(async (manager) => {
       const f = manager.create(Factura, {
         empresaId,
@@ -263,7 +274,7 @@ export class CotizacionesService {
         estado:     FacturaEstado.BORRADOR,
         clienteId:  cot.clienteId,
         usuarioId,
-        vendedorId: dto.vendedorId ?? undefined,
+        vendedorId: cajaVendedorId,
         sucursalId: (cot as any).sucursalId ?? undefined,
         subtotal:   Number(cot.subtotal),
         iva:        Number(cot.iva),
