@@ -489,7 +489,6 @@ ${line()}
                   viewLabel="Ver detalle del cierre"
                   items={[
                     { key: 'imprimir', label: 'Imprimir cierre', icon: <PrinterOutlined />, onClick: () => imprimirCierre(r) },
-                    { key: 'pdf',      label: 'Imprimir PDF',    icon: <PrinterOutlined />, onClick: () => imprimirPDFCierre(r) },
                     ...(puedeAnular ? [
                       { type: 'divider' as const },
                       { key: 'anular', label: 'Anular cierre', icon: <RollbackOutlined />, danger: true,
@@ -516,8 +515,7 @@ ${line()}
         width="min(480px, 95vw)"
         footer={
           <Space>
-            <Button icon={<PrinterOutlined />} onClick={() => imprimirCierre(detalleCierre)}>Imprimir</Button>
-            <Button icon={<PrinterOutlined />} onClick={() => imprimirPDFCierre(detalleCierre)}>Imprimir PDF</Button>
+            <Button icon={<PrinterOutlined />} onClick={() => imprimirCierre(detalleCierre)}>Imprimir cierre</Button>
             {puedeAnular && detalleCierre?.estado !== 'anulada' && (
               <Button danger icon={<RollbackOutlined />}
                 onClick={() => { setAnularTarget({ id: detalleCierre.id, nombre: detalleCierre.vendedorNombre ?? 'Administrador', fecha: detalleCierre.fecha }); setDetalleCierre(null); formAnular.resetFields(); }}>
