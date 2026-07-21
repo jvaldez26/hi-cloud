@@ -310,9 +310,15 @@ export async function generarDocumentoPDFFactura(
     }
     y += thH;
 
-    // Filas de productos
-    const rowH = 18;
+    // Filas de productos — altura dinámica: la descripción puede ocupar varias líneas
+    const ROW_MIN = 18;
+    const ROW_PAD = 10; // padding vertical total (5 arriba + 5 abajo)
     for (const item of d.items) {
+      const descText = item.descripcion.toUpperCase();
+      doc.font('Helvetica').fontSize(8.5);
+      const descH = doc.heightOfString(descText, { width: cols[0].w - 8 });
+      const rowH  = Math.max(ROW_MIN, Math.ceil(descH) + ROW_PAD);
+
       if (y + rowH > PH - 100) { doc.addPage(); y = 40; }
 
       doc.rect(PL, y, W, rowH).fill('#ffffff');
@@ -321,7 +327,7 @@ export async function generarDocumentoPDFFactura(
 
       const itbisVal = item.itbisPct === 0 ? 'EXENTO' : fmtM(item.importeItbis);
       const cells = [
-        item.descripcion.toUpperCase(),
+        descText,
         String(item.cantidad),
         item.unidadMedida ?? 'UN',
         fmtM(item.precioUnitario),
@@ -334,12 +340,15 @@ export async function generarDocumentoPDFFactura(
       for (let i = 0; i < cols.length; i++) {
         const col    = cols[i];
         const isBold = i === cols.length - 1;
+        const isDesc = i === 0;
+        // Descripción: alineada al tope con wrap; resto: centradas verticalmente, sin wrap
+        const cellY = isDesc ? y + 5 : y + (rowH - 8.5) / 2;
         doc.fillColor(DARK)
           .font(isBold ? 'Helvetica-Bold' : 'Helvetica')
           .fontSize(8.5)
-          .text(cells[i], rx + 4, y + 5, {
+          .text(cells[i], rx + 4, cellY, {
             width: col.w - 8, align: col.align,
-            ellipsis: true, lineBreak: false,
+            lineBreak: isDesc,
           });
         rx += col.w;
       }
