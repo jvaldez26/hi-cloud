@@ -1,6 +1,7 @@
 import {
   Injectable, NotFoundException, BadRequestException, ConflictException, Logger,
 } from '@nestjs/common';
+import { reportServiceError } from '../common/observability/sentry';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
@@ -353,20 +354,28 @@ export class PreFacturaService {
     });
 
     // Emitir: ECF + descuento de stock + asiento contable (BORRADOR → PAGADA para contado).
-    // Sin vendedorId, no hay check de caja. Si falla por otro motivo, fallback a EMITIDA directo.
-    await this.facturasService.cambiarEstado(
-      savedFactura.id,
-      FacturaEstado.EMITIDA,
-      true,
-    ).catch(async (err) => {
-      this.logger.error(
-        `[cobrarDesdePos] cambiarEstado falló para ${folio}: ${err?.message ?? err}`,
+    // Si cambiarEstado lanza antes de actualizar el estado, propagar el error — no silenciar.
+    // Si ECF falla en modoSincrono, cambiarEstado retorna { ecfEmitido: false, ecfError } sin
+    // lanzar; forwarding eso al frontend para que muestre el aviso al cajero.
+    let emitResult: any;
+    try {
+      emitResult = await this.facturasService.cambiarEstado(
+        savedFactura.id,
+        FacturaEstado.EMITIDA,
+        true,
       );
-      // Fallback: emitir directamente para no dejar la factura en BORRADOR
-      await this.facturaRepo.update(savedFactura.id, { estado: FacturaEstado.EMITIDA }).catch(() => {});
-    });
+    } catch (err: any) {
+      reportServiceError(err, 'cobrar_pos_pf_emision', {
+        facturaId: savedFactura.id,
+        empresaId: this.tenantSvc.getEmpresaId(),
+        folio,
+      });
+      throw err;
+    }
 
-    return { facturaId: savedFactura.id, folio };
+    const ecfEmitido = emitResult?.ecfEmitido !== false;
+    const ecfError   = ecfEmitido ? undefined : (emitResult?.ecfError as string | undefined);
+    return { facturaId: savedFactura.id, folio, ecfEmitido, ecfError };
   }
 
   async resumen() {

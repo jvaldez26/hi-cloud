@@ -6797,7 +6797,19 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
   const cobrarPFMut = useMutation({
     mutationFn: async ({ id, metodoPago }: { id: number; metodoPago: string }) =>
       api.post(`/pre-facturas/${id}/cobrar-pos`, { metodoPago }).then(r => r.data?.data ?? r.data),
-    onSuccess: async (data: { facturaId: number; folio: string }) => {
+    onSuccess: async (data: { facturaId: number; folio: string; ecfEmitido?: boolean; ecfError?: string }) => {
+      if (data.ecfEmitido === false) {
+        Modal.warning({
+          title: 'Comprobante fiscal pendiente de emisión',
+          content: `La venta se cobró (${data.folio}) pero NO se pudo emitir el comprobante fiscal. ${data.ecfError ?? 'Error al contactar el servicio de comprobantes fiscales'}. Avisa a un supervisor — la factura puede reintentarse desde el módulo Facturas con el botón "Emitir".`,
+          okText: 'Entendido',
+        });
+        setCobrarPF(null); setCobrarPFMonto(''); setCobrarPFMetodo('Efectivo');
+        qc.invalidateQueries({ queryKey: ['pos-panel', 'pre-facturas'] });
+        qc.refetchQueries({    queryKey: ['pos-panel', 'pre-facturas'] });
+        qc.invalidateQueries({ queryKey: ['pos-panel', 'facturas'] });
+        return;
+      }
       message.success(`Factura ${data.folio} generada`);
       setCobrarPF(null); setCobrarPFMonto(''); setCobrarPFMetodo('Efectivo');
       qc.invalidateQueries({ queryKey: ['pos-panel', 'pre-facturas'] });
@@ -6855,7 +6867,19 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
   const cobrarCotMut = useMutation({
     mutationFn: async ({ id, metodoPago }: { id: number; metodoPago: string }) =>
       api.post(`/cotizaciones/${id}/cobrar-pos`, { metodoPago }).then(r => r.data?.data ?? r.data),
-    onSuccess: async (data: { facturaId: number; folio: string }) => {
+    onSuccess: async (data: { facturaId: number; folio: string; ecfEmitido?: boolean; ecfError?: string }) => {
+      if (data.ecfEmitido === false) {
+        Modal.warning({
+          title: 'Comprobante fiscal pendiente de emisión',
+          content: `La venta se cobró (${data.folio}) pero NO se pudo emitir el comprobante fiscal. ${data.ecfError ?? 'Error al contactar el servicio de comprobantes fiscales'}. Avisa a un supervisor — la factura puede reintentarse desde el módulo Facturas con el botón "Emitir".`,
+          okText: 'Entendido',
+        });
+        setCobrarCot(null); setCobrarCotMonto(''); setCobrarCotMetodo('Efectivo');
+        qc.invalidateQueries({ queryKey: ['pos-panel', 'cotizaciones'] });
+        qc.refetchQueries({    queryKey: ['pos-panel', 'cotizaciones'] });
+        qc.invalidateQueries({ queryKey: ['pos-panel', 'facturas'] });
+        return;
+      }
       message.success(`Factura ${data.folio} generada`);
       setCobrarCot(null); setCobrarCotMonto(''); setCobrarCotMetodo('Efectivo');
       qc.invalidateQueries({ queryKey: ['pos-panel', 'cotizaciones'] });

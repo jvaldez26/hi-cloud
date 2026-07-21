@@ -2,6 +2,7 @@ import {
   Injectable, NotFoundException, BadRequestException, Logger,
   StreamableFile,
 } from '@nestjs/common';
+import { reportServiceError } from '../common/observability/sentry';
 import type { DocumentoPDFData, DocumentoPDFItem } from '../common/pdf/documento-pdf.helper';
 import { generarDocumentoPDFFactura } from '../common/pdf/documento-pdf.helper';
 import { generarReciboPOSPDF } from '../common/pdf/factura-pdf.helper';
@@ -288,20 +289,29 @@ export class CotizacionesService {
     });
 
     // Emitir: ECF + stock + asiento (BORRADOR → PAGADA para contado).
-    await this.facturasService.cambiarEstado(
-      savedFactura.id,
-      FacturaEstado.EMITIDA,
-      true,
-    ).catch(async (err) => {
-      this.logger.error(
-        `[cobrarDesdePos COT] cambiarEstado falló para ${folio}: ${err?.message ?? err}`,
+    // Si cambiarEstado lanza antes de actualizar el estado, propagar — no silenciar.
+    // Si ECF falla en modoSincrono, cambiarEstado retorna { ecfEmitido: false, ecfError }.
+    let emitResult: any;
+    try {
+      emitResult = await this.facturasService.cambiarEstado(
+        savedFactura.id,
+        FacturaEstado.EMITIDA,
+        true,
       );
-      await this.facturaRepository.update(savedFactura.id, { estado: FacturaEstado.EMITIDA }).catch(() => {});
-    });
+    } catch (err: any) {
+      reportServiceError(err, 'cobrar_pos_cot_emision', {
+        facturaId: savedFactura.id,
+        empresaId,
+        folio,
+      });
+      throw err;
+    }
 
     this.realtimeService.notify(empresaId, 'cotizacion', 'updated', id);
     this.realtimeService.notify(empresaId, 'factura', 'created');
-    return { facturaId: savedFactura.id, folio };
+    const ecfEmitido = emitResult?.ecfEmitido !== false;
+    const ecfError   = ecfEmitido ? undefined : (emitResult?.ecfError as string | undefined);
+    return { facturaId: savedFactura.id, folio, ecfEmitido, ecfError };
   }
 
   async remove(id: number) {
