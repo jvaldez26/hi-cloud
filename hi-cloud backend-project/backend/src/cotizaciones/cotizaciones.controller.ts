@@ -4,7 +4,8 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
-import { IsEnum, IsString } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsPositive, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
 import { CotizacionesService } from './cotizaciones.service';
 import { CreateCotizacionDto } from './dto/create-cotizacion.dto';
 import { CotizacionEstado } from './entities/cotizacion.entity';
@@ -23,6 +24,7 @@ class CambiarEstadoDto {
 
 class CobrarPosDto {
   @IsString() metodoPago!: string;
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number) vendedorId?: number;
 }
 
 @ApiTags('Cotizaciones')

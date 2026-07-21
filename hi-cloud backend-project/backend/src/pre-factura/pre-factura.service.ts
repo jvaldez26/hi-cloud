@@ -302,7 +302,7 @@ export class PreFacturaService {
   // Convierte la pre-factura a factura oficial con ECF + descuento de stock.
   // Acepta pre-facturas en cualquier estado activo (no CONVERTIDA/RECHAZADA).
 
-  async cobrarDesdePos(id: number, usuarioId: number, dto: { metodoPago: string }) {
+  async cobrarDesdePos(id: number, usuarioId: number, dto: { metodoPago: string; vendedorId?: number }) {
     const empresaId = this.tenantSvc.getEmpresaId();
     const pf = await this.findOne(id);
 
@@ -318,8 +318,7 @@ export class PreFacturaService {
     const folio = `FAC-${row.numero}`;
 
     // Crear factura en BORRADOR + marcar preFactura CONVERTIDA (transacción atómica).
-    // Sin vendedorId: el check de caja en cambiarEstado solo aplica cuando vendedorId está
-    // seteado (factura de POS directo). Pre-factura ya fue registrada — no necesita caja abierta.
+    // vendedorId viene siempre del cajero activo (dto.vendedorId del POS), nunca de la PF original.
     const savedFactura = await this.ds.transaction(async (manager) => {
       const f = manager.create(Factura, {
         empresaId,
@@ -328,6 +327,7 @@ export class PreFacturaService {
         estado:     FacturaEstado.BORRADOR,
         clienteId:  pf.clienteId,
         usuarioId,
+        vendedorId: dto.vendedorId ?? undefined,
         sucursalId: pf.sucursalId ?? undefined,
         subtotal:   Number(pf.subtotal),
         iva:        Number(pf.iva),

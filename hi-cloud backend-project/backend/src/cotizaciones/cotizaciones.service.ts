@@ -238,7 +238,7 @@ export class CotizacionesService {
   // Sin vendedorId para saltarse el check de caja en cambiarEstado.
   // ──────────────────────────────────────────────────────────────────
 
-  async cobrarDesdePos(id: number, usuarioId: number, dto: { metodoPago: string }) {
+  async cobrarDesdePos(id: number, usuarioId: number, dto: { metodoPago: string; vendedorId?: number }) {
     const empresaId = this.tenantService.getEmpresaId();
     const cot = await this.findById(id);
 
@@ -254,7 +254,7 @@ export class CotizacionesService {
     const folio = `FAC-${row.numero}`;
 
     // Crear factura BORRADOR + marcar cotización CONVERTIDA (transacción atómica).
-    // Sin vendedorId: skip al check de caja en cambiarEstado (conversión no es venta POS directa).
+    // vendedorId viene siempre del cajero activo (dto.vendedorId del POS), nunca de la COT original.
     const savedFactura = await this.dataSource.transaction(async (manager) => {
       const f = manager.create(Factura, {
         empresaId,
@@ -263,6 +263,7 @@ export class CotizacionesService {
         estado:     FacturaEstado.BORRADOR,
         clienteId:  cot.clienteId,
         usuarioId,
+        vendedorId: dto.vendedorId ?? undefined,
         sucursalId: (cot as any).sucursalId ?? undefined,
         subtotal:   Number(cot.subtotal),
         iva:        Number(cot.iva),

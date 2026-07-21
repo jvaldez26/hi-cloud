@@ -6795,8 +6795,12 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
 
   // ── Cobrar Pre-Factura desde POS ─────────────────────────────────────────────
   const cobrarPFMut = useMutation({
-    mutationFn: async ({ id, metodoPago }: { id: number; metodoPago: string }) =>
-      api.post(`/pre-facturas/${id}/cobrar-pos`, { metodoPago }).then(r => r.data?.data ?? r.data),
+    mutationFn: async ({ id, metodoPago }: { id: number; metodoPago: string }) => {
+      const posVendedorId = localStorage.getItem('pos_vendedor_id');
+      const body: any = { metodoPago };
+      if (posVendedorId) body.vendedorId = Number(posVendedorId);
+      return api.post(`/pre-facturas/${id}/cobrar-pos`, body).then(r => r.data?.data ?? r.data);
+    },
     onSuccess: async (data: { facturaId: number; folio: string; ecfEmitido?: boolean; ecfError?: string }) => {
       if (data.ecfEmitido === false) {
         Modal.warning({
@@ -6865,8 +6869,12 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
 
   // ── Cobrar Cotización desde POS ───────────────────────────────────────────────
   const cobrarCotMut = useMutation({
-    mutationFn: async ({ id, metodoPago }: { id: number; metodoPago: string }) =>
-      api.post(`/cotizaciones/${id}/cobrar-pos`, { metodoPago }).then(r => r.data?.data ?? r.data),
+    mutationFn: async ({ id, metodoPago }: { id: number; metodoPago: string }) => {
+      const posVendedorId = localStorage.getItem('pos_vendedor_id');
+      const body: any = { metodoPago };
+      if (posVendedorId) body.vendedorId = Number(posVendedorId);
+      return api.post(`/cotizaciones/${id}/cobrar-pos`, body).then(r => r.data?.data ?? r.data);
+    },
     onSuccess: async (data: { facturaId: number; folio: string; ecfEmitido?: boolean; ecfError?: string }) => {
       if (data.ecfEmitido === false) {
         Modal.warning({

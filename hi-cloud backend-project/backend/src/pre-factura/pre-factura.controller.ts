@@ -50,6 +50,7 @@ class ConvertirDto {
 
 class CobrarPosDto {
   @IsString() metodoPago!: string;
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number) vendedorId?: number;
 }
 
 @ApiTags('Pre-Facturas')
