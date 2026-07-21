@@ -393,7 +393,9 @@ export class CajaService {
       if (caja.estado === EstadoCierre.ABIERTA) {
         await this.recalcularDesdeBD(caja.id, hoy, caja.vendedorId, empresaId);
       }
-      return this.repo.findOne({ where: { id: caja.id } });
+      const fresh = await this.repo.findOne({ where: { id: caja.id } });
+      const { cierreCajaCiego } = await this.getEmpresaCfg(empresaId);
+      return cierreCajaCiego ? this.ocultarCamposCiego(fresh) : fresh;
     }
 
     // Sin filtro de vendedor → todas las cajas del día de ESTA empresa
