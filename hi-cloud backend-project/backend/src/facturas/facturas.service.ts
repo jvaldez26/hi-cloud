@@ -755,6 +755,13 @@ export class FacturasService {
             `[Factura] descuento stock óptico id=${(detalle as any).opticaInventarioId} falló (no bloquea emisión): ` +
             `${err instanceof Error ? err.message : String(err)}`,
           );
+          // TIPO B: la factura ya se emitió — reportar a Sentry SIN romper el flujo.
+          reportServiceError(err, 'factura_descuento_stock_optico', {
+            facturaId:          String(factura.id),
+            empresaId:          String(factura.empresaId ?? ''),
+            folio:              factura.folio,
+            opticaInventarioId: String((detalle as any).opticaInventarioId ?? ''),
+          });
         });
       }
 
@@ -774,6 +781,13 @@ export class FacturasService {
             `[Factura] registrarSalida para ${factura.folio} falló (no bloquea emisión): ` +
             `${err instanceof Error ? err.message : String(err)}`,
           );
+          // TIPO B: la factura ya se emitió — reportar a Sentry SIN romper el flujo.
+          reportServiceError(err, 'factura_registrar_salida_inventario', {
+            facturaId:  String(factura.id),
+            empresaId:  String(factura.empresaId ?? ''),
+            folio:      factura.folio,
+            productoId: String(detalle.productoId ?? ''),
+          });
         });
       }
 
@@ -809,6 +823,12 @@ export class FacturasService {
           `[Factura] asientoFacturaEmitida para ${factura.folio} falló (no bloquea emisión): ` +
           `${err instanceof Error ? err.message : String(err)}`,
         );
+        // TIPO B: la factura ya se emitió — reportar a Sentry SIN romper el flujo.
+        reportServiceError(err, 'factura_asiento_contable', {
+          facturaId: String(factura.id),
+          empresaId: String(factura.empresaId ?? ''),
+          folio:     factura.folio,
+        });
       });
 
       // 4. Estado provisional: EMITIDA siempre (PAGADA se sella en el paso 6, después
@@ -869,6 +889,14 @@ export class FacturasService {
             `[ECF] Fallo al emitir e-CF para ${factura.folio} ` +
             `[${err?.code ?? err?.constructor?.name ?? 'Error'}]: ${err?.message}`,
           );
+          // TIPO B (patrón #1): igualar el path POS — reportar a Sentry SIN romper.
+          // La factura ya está EMITIDA; el fallo del e-CF non-POS no debe quedar invisible.
+          reportServiceError(err, 'ecf_non_pos', {
+            facturaId: String(id),
+            empresaId: String(factura.empresaId ?? ''),
+            folio:     factura.folio,
+            tipoEcf:   String(ecfInput.tipoEcf ?? ''),
+          });
           // Intentar linkear el ECF si fue creado antes del fallo de MSeller
           try {
             const ecfCreado = await this.facturaRepository.manager
