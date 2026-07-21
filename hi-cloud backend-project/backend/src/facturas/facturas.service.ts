@@ -811,11 +811,10 @@ export class FacturasService {
         );
       });
 
-      // 4. Actualizar estado de la factura
-      // Contado → siempre PAGADA al emitir (pago se recibe en el acto)
-      // Crédito → EMITIDA (pendiente de cobro)
-      const estadoFinal = !esCredito ? FacturaEstado.PAGADA : FacturaEstado.EMITIDA;
-      await this.facturaRepository.update(id, { estado: estadoFinal });
+      // 4. Estado provisional: EMITIDA siempre (PAGADA se sella en el paso 6, después
+      //    de confirmar la emisión del e-CF). Así, si DGII rechaza, la factura queda
+      //    en EMITIDA (recuperable/reintentable) y NUNCA en PAGADA-sin-e-CF-válido.
+      await this.facturaRepository.update(id, { estado: FacturaEstado.EMITIDA });
       this.realtimeService.notify(factura.empresaId, 'factura', 'updated', id);
 
       // 4b. Actualizar cache de ingresos del mes en suscripción
@@ -826,7 +825,7 @@ export class FacturasService {
         // POS: awaitar el e-CF (timeout 8s ya manejado en el use case).
         // Si falla, NO fingir éxito: devolver { ecfEmitido:false, ecfError } para que
         // el frontend muestre el aviso obligatorio al cajero y Sentry registre el fallo.
-        return this.emitirECFUseCase.execute(ecfInput).catch(async err => {
+        const ecfResult = await this.emitirECFUseCase.execute(ecfInput).catch(async err => {
           this.logger.error(
             `[ECF-POS] Fallo al emitir e-CF para ${factura.folio} ` +
             `[${err?.code ?? err?.constructor?.name ?? 'Error'}]: ${err?.message}`,
@@ -839,17 +838,33 @@ export class FacturasService {
           const facturaActual = await this.findOne(id).catch(() => null);
           return { ...(facturaActual ?? {}), ecfEmitido: false, ecfError: err?.message ?? 'Error al emitir e-CF' };
         });
+
+        // 6. Sellar PAGADA sólo si es CONTADO y la emisión no fue rechazada.
+        //    Si ecfEmitido === false (DGII rechazó o error), la factura queda EMITIDA.
+        if (!esCredito && (ecfResult as any)?.ecfEmitido !== false) {
+          await this.facturaRepository.update(id, { estado: FacturaEstado.PAGADA });
+          this.realtimeService.notify(factura.empresaId, 'factura', 'updated', id);
+        }
+
+        return ecfResult;
       }
 
-      // Non-POS: fire-and-forget — actualizar factura.ecfId si tiene éxito o falla
+      // Non-POS: fire-and-forget — sellar PAGADA en el .then() una vez que el e-CF
+      // haya procesado (no antes), para la misma garantía que el flujo POS.
       this.emitirECFUseCase.execute(ecfInput)
-        .then(result => {
-          if (result?.ecf?.id) {
-            return this.facturaRepository.update(id, { ecfId: result.ecf.id });
+        .then(async result => {
+          const updates: Record<string, unknown> = {};
+          if (result?.ecf?.id) updates.ecfId = result.ecf.id;
+          // CONTADO: sellar PAGADA ahora que la emisión no lanzó
+          if (!esCredito) updates.estado = FacturaEstado.PAGADA;
+          if (Object.keys(updates).length) {
+            await this.facturaRepository.update(id, updates as any);
+            if (!esCredito) this.realtimeService.notify(factura.empresaId, 'factura', 'updated', id);
           }
         })
         .catch(async (err) => {
-          // SIEMPRE loggear como ERROR para que sea visible (nunca silencioso)
+          // SIEMPRE loggear como ERROR para que sea visible (nunca silencioso).
+          // La factura queda EMITIDA — no PAGADA con e-CF rechazado.
           this.logger.error(
             `[ECF] Fallo al emitir e-CF para ${factura.folio} ` +
             `[${err?.code ?? err?.constructor?.name ?? 'Error'}]: ${err?.message}`,
