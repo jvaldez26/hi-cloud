@@ -6351,9 +6351,9 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
     staleTime: 60_000,
   });
 
-  // Auto-llenar efectivo del desglose con ventas en efectivo
+  // Auto-llenar efectivo del desglose con ventas en efectivo (solo en modo normal, no en ciego)
   useEffect(() => {
-    if (cajaHoy?.ventasEfectivo) {
+    if (!cajaHoy?.ciegoCajaActivo && cajaHoy?.ventasEfectivo) {
       const ef = Number(cajaHoy.ventasEfectivo) + Number(cajaHoy.saldoApertura ?? 0);
       setPago(p => ({ ...p, efectivo: ef.toFixed(2) }));
     }
@@ -6372,7 +6372,7 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['pos-caja-hoy'] });
-      message.success('¡Caja cerrada exitosamente!');
+      message.success(cajaHoy?.ciegoCajaActivo ? 'Cierre registrado' : '¡Caja cerrada exitosamente!');
       onVolver();
     },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al cerrar caja'),
@@ -6478,7 +6478,7 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
         ) : (
         <div style={{ maxWidth:560, color:C.text }}>
 
-          {/* ID de caja + billetes */}
+          {/* ID de caja + billetes rápidos */}
           <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14 }}>
             <div style={{ background:C.card, border:`1px solid ${C.border2}`, borderRadius:8,
               padding:'6px 14px', fontSize:13, fontWeight:700 }}>
@@ -6493,7 +6493,16 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
             ))}
           </div>
 
-          {/* Desglose de Operaciones */}
+          {/* Banner modo ciego */}
+          {cajaHoy.ciegoCajaActivo && (
+            <div style={{ background:'#fff7e6', border:'1px solid #ffa940', borderRadius:8,
+              padding:'10px 14px', marginBottom:14, fontSize:12, color:'#874d00' }}>
+              Modo ciego activo: cuente el efectivo físico y declare los montos sin ver el total esperado del sistema.
+            </div>
+          )}
+
+          {/* Desglose de Operaciones — solo en modo normal */}
+          {!cajaHoy.ciegoCajaActivo && (
           <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:'14px 16px', marginBottom:14 }}>
             <div style={{ fontSize:13, fontWeight:800, marginBottom:12 }}>Desglose de Operaciones</div>
             <div style={grid3}>
@@ -6512,6 +6521,7 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
               <CierreField label="Efectivo en Caja"    value={m(efectivoEnCaja)} highlight />
             </div>
           </div>
+          )}
 
           {/* Desglose de Billetes */}
           <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:'14px 16px', marginBottom:14 }}>

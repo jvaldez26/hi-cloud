@@ -224,7 +224,18 @@ export class CajaService {
     const quien = caja.vendedorNombre ? ` [${caja.vendedorNombre}]` : '';
     this.logger.log(`Caja #${id}${quien} cerrada. Diferencia: ${diferencia.toFixed(2)}`);
     this.realtimeService.notify(empresaId, 'caja', 'updated', id);
-    return this.repo.findOne({ where: { id } });
+
+    const saved = await this.repo.findOne({ where: { id } });
+    const { cierreCajaCiego, umbralDescuadreCaja } = await this.getEmpresaCfg(empresaId);
+
+    if (cierreCajaCiego && Math.abs(diferencia) > umbralDescuadreCaja) {
+      this.logger.warn(
+        `[CIERRE CIEGO] Descuadre en caja #${id}${quien}: ` +
+        `diferencia=${diferencia.toFixed(2)} (umbral=${umbralDescuadreCaja})`,
+      );
+    }
+
+    return cierreCajaCiego ? this.ocultarCamposCiego(saved) : saved;
   }
 
   // ── Anular cierre de caja ─────────────────────────────────────────────────
@@ -340,6 +351,32 @@ export class CajaService {
     });
   }
 
+  // ── Helpers: configuración ciego ─────────────────────────────────────────
+
+  private async getEmpresaCfg(empresaId: number): Promise<{ cierreCajaCiego: boolean; umbralDescuadreCaja: number }> {
+    const rows = await this.dataSource.query<{ configuracion: Record<string, unknown> }[]>(
+      'SELECT configuracion FROM empresa WHERE id = $1 LIMIT 1',
+      [empresaId],
+    );
+    const cfg = (rows[0]?.configuracion ?? {}) as Record<string, unknown>;
+    return {
+      cierreCajaCiego:     cfg.cierreCajaCiego === true,
+      umbralDescuadreCaja: Number(cfg.umbralDescuadreCaja ?? 100),
+    };
+  }
+
+  private ocultarCamposCiego(caja: CierreCaja | null): any {
+    if (!caja) return null;
+    const result: any = { ...caja };
+    for (const k of ['ventasEfectivo','ventasTarjeta','ventasTransferencia','ventasCredito',
+      'cobrosRecibidos','totalAnticipos','gastosEfectivo','retiros',
+      'saldoCierre','diferencia','cantidadTransacciones']) {
+      delete result[k];
+    }
+    result.ciegoCajaActivo = true;
+    return result;
+  }
+
   // ── Cajas del día (filtradas por empresa) ─────────────────────────────────
 
   async getCajaHoy(vendedorId?: number) {
@@ -396,12 +433,14 @@ export class CajaService {
     if (caja.estado === EstadoCierre.ABIERTA) {
       await this.recalcularDesdeBD(caja.id, hoy, caja.vendedorId, empresaId);
     }
-    return this.repo.findOne({ where: { id: caja.id } });
+    const fresh = await this.repo.findOne({ where: { id: caja.id } });
+    const { cierreCajaCiego } = await this.getEmpresaCfg(empresaId);
+    return cierreCajaCiego ? this.ocultarCamposCiego(fresh) : fresh;
   }
 
   // ── Historial (filtrado por empresa) ─────────────────────────────────────
 
-  async getHistorial(page = 1, limit = 20, vendedorId?: number, mes?: number, anio?: number) {
+  async getHistorial(page = 1, limit = 20, vendedorId?: number, mes?: number, anio?: number, role?: string) {
     const empresaId  = this.tenantService.getEmpresaId();
     const sucursalId = this.tenantService.getSucursalId();
     const where: any = { empresaId, estado: Not(EstadoCierre.ABIERTA) };
@@ -411,7 +450,7 @@ export class CajaService {
     }
     if (mes && anio) {
       const inicio    = new Date(anio, mes - 1, 1);
-      const fin       = new Date(anio, mes, 0);   // último día del mes
+      const fin       = new Date(anio, mes, 0);
       where.fecha     = Between(inicio, fin);
     }
 
@@ -421,6 +460,18 @@ export class CajaService {
       skip:  (page - 1) * limit,
       take:  limit,
     });
+
+    // En modo ciego, el cajero (VENDEDOR) no ve esperado ni diferencia en su historial
+    if (role === 'vendedor') {
+      const { cierreCajaCiego } = await this.getEmpresaCfg(empresaId);
+      if (cierreCajaCiego) {
+        return {
+          data: data.map(c => this.ocultarCamposCiego(c)),
+          meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+        };
+      }
+    }
+
     return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
   }
 

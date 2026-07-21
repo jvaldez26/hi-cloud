@@ -52,6 +52,7 @@ export class AlertasSistemaService {
       this.alertasECFRechazados(alertas, eid),
       this.alertasECFAtascados(alertas, eid),
       this.alertasSecuenciasECF(alertas, eid),
+      this.alertasCierreDiferencia(alertas, eid),
     ]);
 
     const resultado = {
@@ -317,5 +318,29 @@ export class AlertasSistemaService {
     } catch (err: unknown) {
       this.logger.warn('alertasSecuenciasECF: tabla secuencias_ecf posiblemente inexistente', { error: err instanceof Error ? err.message : String(err) });
     }
+  }
+
+  private async alertasCierreDiferencia(out: Alerta[], eid: number) {
+    try {
+      const res = await this.ds.query<{ cantidad: string; monto: string }[]>(`
+        SELECT COUNT(c.id)::text AS cantidad,
+               COALESCE(SUM(ABS(c.diferencia)), 0)::text AS monto
+        FROM cierres_caja c
+        JOIN empresa e ON e.id = c."empresaId"
+        WHERE c."empresaId" = $1
+          AND c.estado = 'cerrada'
+          AND c.fecha >= CURRENT_DATE - INTERVAL '7 days'
+          AND (e.configuracion->>'cierreCajaCiego')::text = 'true'
+          AND ABS(c.diferencia) > COALESCE((e.configuracion->>'umbralDescuadreCaja')::numeric, 100)
+      `, [eid]);
+      const n = Number(res[0]?.cantidad ?? 0);
+      if (n > 0) out.push({
+        id: 'cierre-descuadre', tipo: 'caja', severidad: 'alta',
+        titulo: 'Descuadre de caja detectado',
+        descripcion: `${n} cierre(s) con diferencia sobre el umbral en los últimos 7 días`,
+        cantidad: n, monto: Number(res[0]?.monto ?? 0),
+        ruta: '/caja', emoji: '🏦',
+      });
+    } catch { /* no bloquear si tabla no existe */ }
   }
 }

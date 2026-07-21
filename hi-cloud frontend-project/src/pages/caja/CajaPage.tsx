@@ -274,6 +274,16 @@ ${line()}
     }
   };
 
+  if (!esAdmin) {
+    return (
+      <div style={{ padding: 48, maxWidth: 480, margin: '0 auto' }}>
+        <Alert type="error" showIcon
+          message="Acceso no autorizado"
+          description="Esta vista requiere rol Administrador o Contador." />
+      </div>
+    );
+  }
+
   return (
     <div>
       <Row justify="space-between" align="middle" gutter={[0, 8]} style={{ marginBottom: 16 }}>

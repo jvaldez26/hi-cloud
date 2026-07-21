@@ -893,6 +893,8 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
       posPrecioIncluyeItbis:       conf.posPrecioIncluyeItbis ?? false,
       posModoPorDefecto:           conf.posModoPorDefecto ?? 'general',
       posPrecioConsultaClinica:    conf.posPrecioConsultaClinica ?? 0,
+      cierreCajaCiego:             conf.cierreCajaCiego ?? false,
+      umbralDescuadreCaja:         conf.umbralDescuadreCaja ?? 100,
     });
   }, [empresa]);
 
@@ -908,6 +910,7 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
   const permitirDescuentos    = Form.useWatch('posPermitirDescuentos',    form);
   const supervisorActivo      = Form.useWatch('supervisorModeEnabled',    form);
   const inactividadMinutos    = Form.useWatch('posInactividadMinutos',    form);
+  const cierreCiego           = Form.useWatch('cierreCajaCiego',          form);
 
   return (
     <Form form={form} layout="vertical" onFinish={v => mut.mutate(v)}>
@@ -1173,6 +1176,35 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
               </Form.Item>
             </Col>
           </>
+        )}
+      </Row>
+
+      <Divider orientation="left" orientationMargin={0}>Cierre de Caja</Divider>
+      <Row gutter={[16, 8]}>
+        <Col xs={24} sm={14}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Form.Item name="cierreCajaCiego" valuePropName="checked" style={{ marginBottom: 0 }}>
+                <Switch size="small" />
+              </Form.Item>
+              <Text style={{ fontSize: 13 }}>Cierre de caja ciego</Text>
+            </div>
+            <Text type="secondary" style={{ fontSize: 11, marginLeft: 36 }}>
+              El cajero declara su efectivo sin ver el monto esperado ni la diferencia.
+              El sistema calcula y guarda la diferencia internamente para el supervisor.
+            </Text>
+          </div>
+        </Col>
+        {cierreCiego && (
+          <Col xs={24} sm={8}>
+            <Form.Item name="umbralDescuadreCaja" label="Umbral de alerta por descuadre">
+              <InputNumber
+                style={{ width: '100%' }} min={0} step={50} addonAfter="DOP"
+                formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                parser={(v: any) => v?.replace(/,/g, '')}
+              />
+            </Form.Item>
+          </Col>
         )}
       </Row>
 

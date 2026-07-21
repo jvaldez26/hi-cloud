@@ -127,11 +127,14 @@ export class CajaController {
     @Query('vendedorId') vendedorId?: string,
     @Query('mes')        mes?:        string,
     @Query('anio')       anio?:       string,
+    @GetUser() usuario?: User,
   ) {
     const vid = vendedorId !== undefined ? Number(vendedorId) : undefined;
     const m   = mes  ? Number(mes)  : undefined;
     const a   = anio ? Number(anio) : undefined;
-    return this.cajaService.getHistorial(Number(page ?? 1), Number(limit ?? 20), vid, m, a);
+    return this.cajaService.getHistorial(
+      Number(page ?? 1), Number(limit ?? 20), vid, m, a, (usuario as any)?.role,
+    );
   }
 
   @Get('resumen')
