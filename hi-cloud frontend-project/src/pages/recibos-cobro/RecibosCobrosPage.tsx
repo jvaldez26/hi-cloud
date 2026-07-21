@@ -1,4 +1,5 @@
 ﻿import { useState } from 'react';
+import { EmailConCopiaModal } from '../../components/ui/EmailConCopiaModal';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -95,7 +96,6 @@ export default function RecibosCobrosPage() {
   const [modalCrear,       setModalCrear]       = useState(false);
   const [reciboImprimir,   setReciboImprimir]   = useState<any>(null);
   const [emailRecibo,      setEmailRecibo]       = useState<any>(null);
-  const [emailDestino,     setEmailDestino]      = useState('');
   const [pdfPending,       setPdfPending]        = useState<number | null>(null);
   const [detalleRecibo,    setDetalleRecibo]     = useState<any>(null);
   const [motivoAnulacion,     setMotivoAnulacion]     = useState('');
@@ -147,9 +147,9 @@ export default function RecibosCobrosPage() {
   };
 
   const emailMut = useMutation({
-    mutationFn: ({ id, email }: { id: number; email: string }) =>
-      api.post(`/notificaciones/recibo/${id}/enviar`, { email }).then(r => r.data?.data ?? r.data),
-    onSuccess: (_, v) => { setEmailRecibo(null); setEmailDestino(''); message.success(`Recibo enviado a ${v.email}`); },
+    mutationFn: ({ id, email, cc, cco }: { id: number; email: string; cc?: string; cco?: string }) =>
+      api.post(`/notificaciones/recibo/${id}/enviar`, { email, cc, cco }).then(r => r.data?.data ?? r.data),
+    onSuccess: (_, v) => { setEmailRecibo(null); message.success(`Recibo enviado a ${v.email}`); },
     onError:   (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error al enviar'),
   });
 
@@ -344,7 +344,7 @@ export default function RecibosCobrosPage() {
                       disabled: pdfPending === r.id,
                       onClick: () => imprimirPDF(r) },
                     { key: 'email',    label: 'Enviar por email', icon: <MailOutlined />,
-                      onClick: () => { setEmailRecibo(r); setEmailDestino(r.clienteEmail ?? ''); } },
+                      onClick: () => { setEmailRecibo(r); } },
                     { type: 'divider' as const },
                     { key: 'anular',   label: 'Anular recibo', icon: <StopOutlined />, danger: true,
                       disabled: r.isActive === false,
@@ -381,7 +381,7 @@ export default function RecibosCobrosPage() {
               Imprimir A4
             </Button>
             <Button icon={<MailOutlined />}
-              onClick={() => { setEmailRecibo(detalleRecibo); setEmailDestino(detalleRecibo?.clienteEmail ?? ''); setDetalleRecibo(null); }}>
+              onClick={() => { setEmailRecibo(detalleRecibo); setDetalleRecibo(null); }}>
               Email
             </Button>
             <Button danger icon={<StopOutlined />}
@@ -430,31 +430,14 @@ export default function RecibosCobrosPage() {
       </Drawer>
 
       {/* Modal email */}
-      <Modal
-        title={<><MailOutlined style={{ color: '#1677ff', marginRight: 8 }} />Enviar recibo por email</>}
+      <EmailConCopiaModal
         open={!!emailRecibo}
-        onCancel={() => { setEmailRecibo(null); setEmailDestino(''); }}
-        onOk={() => emailRecibo && emailMut.mutate({ id: emailRecibo.id, email: emailDestino })}
-        confirmLoading={emailMut.isPending}
-        okText="Enviar"
-        destroyOnClose
-        width={400}
-      >
-        {emailRecibo && (
-          <div>
-            <p style={{ margin: '0 0 12px', color: '#6b7280', fontSize: 13 }}>
-              Recibo <strong>{emailRecibo.numero}</strong> · <strong>{emailRecibo.clienteNombre}</strong>
-            </p>
-            <Input
-              prefix={<MailOutlined />}
-              placeholder="correo@cliente.com"
-              value={emailDestino}
-              onChange={e => setEmailDestino(e.target.value)}
-              size="large"
-            />
-          </div>
-        )}
-      </Modal>
+        title={<><MailOutlined style={{ color: '#1677ff', marginRight: 8 }} />Enviar recibo por email</>}
+        documentoInfo={emailRecibo ? <>Recibo <strong>{emailRecibo.numero}</strong> · <strong>{emailRecibo.clienteNombre}</strong></> : undefined}
+        onCancel={() => setEmailRecibo(null)}
+        onEnviar={p => emailRecibo && emailMut.mutate({ id: emailRecibo.id, ...p })}
+        loading={emailMut.isPending}
+      />
 
       {/* Modal crear recibo */}
       <Modal

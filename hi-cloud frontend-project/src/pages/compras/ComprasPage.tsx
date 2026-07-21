@@ -1,4 +1,5 @@
 ﻿import { useState, useCallback } from 'react';
+import { EmailConCopiaModal } from '../../components/ui/EmailConCopiaModal';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -62,7 +63,6 @@ export default function ComprasPage() {
   const [estado, setEstado]     = useState<string | undefined>();
   const [rango, setRango]       = useState<[Dayjs, Dayjs] | null>(null);
   const [emailCompra,  setEmailCompra]  = useState<any>(null);
-  const [emailDest,    setEmailDest]    = useState('');
   const [ecfEncf,      setEcfEncf]      = useState<string | null>(null);
   const [aprobCompra,  setAprobCompra]  = useState<any>(null);
 
@@ -148,9 +148,9 @@ export default function ComprasPage() {
   };
 
   const emailMut = useMutation({
-    mutationFn: ({ id, email }: { id: number; email: string }) =>
-      api.post(`/notificaciones/compra/${id}/enviar`, { email }).then(r => r.data?.data ?? r.data),
-    onSuccess: (_, v) => { setEmailCompra(null); setEmailDest(''); message.success(`Orden enviada a ${v.email}`); },
+    mutationFn: ({ id, email, cc, cco }: { id: number; email: string; cc?: string; cco?: string }) =>
+      api.post(`/notificaciones/compra/${id}/enviar`, { email, cc, cco }).then(r => r.data?.data ?? r.data),
+    onSuccess: (_, v) => { setEmailCompra(null); message.success(`Orden enviada a ${v.email}`); },
     onError:   (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error al enviar'),
   });
 
@@ -276,7 +276,7 @@ export default function ComprasPage() {
         }));
         const menuItems2 = [
           { key: 'pdf', label: pdfPending === r.id ? 'Generando...' : 'Imprimir', icon: pdfPending === r.id ? <LoadingOutlined /> : <PrinterOutlined />, disabled: pdfPending === r.id, onClick: () => imprimirPDF(r) },
-          { key: 'email', label: 'Enviar email al proveedor', icon: <MailOutlined />, onClick: () => { setEmailCompra(r); setEmailDest((r as any).proveedor?.email ?? ''); } },
+          { key: 'email', label: 'Enviar email al proveedor', icon: <MailOutlined />, onClick: () => { setEmailCompra(r); } },
           { key: 'duplicar', label: 'Duplicar compra', icon: <CopyOutlined />, onClick: () => duplicarMut.mutate(r.id) },
           ...(r.estado === 'borrador' ? [
             { type: 'divider' as const },
@@ -375,31 +375,15 @@ export default function ComprasPage() {
       />
 
       {/* Modal email proveedor */}
-      <Modal
-        title={<><MailOutlined style={{ color: '#7c3aed', marginRight: 8 }} />Enviar orden al proveedor</>}
+      <EmailConCopiaModal
         open={!!emailCompra}
-        onCancel={() => { setEmailCompra(null); setEmailDest(''); }}
-        onOk={() => emailCompra && emailMut.mutate({ id: emailCompra.id, email: emailDest })}
-        confirmLoading={emailMut.isPending}
+        title={<><MailOutlined style={{ color: '#7c3aed', marginRight: 8 }} />Enviar orden al proveedor</>}
+        documentoInfo={emailCompra ? <>Orden <strong>{emailCompra.folio}</strong> · Proveedor: <strong>{(emailCompra as any).proveedor?.nombre ?? '—'}</strong></> : undefined}
+        onCancel={() => setEmailCompra(null)}
+        onEnviar={p => emailCompra && emailMut.mutate({ id: emailCompra.id, ...p })}
+        loading={emailMut.isPending}
         okText="Enviar orden"
-        destroyOnClose
-        width={400}
-      >
-        {emailCompra && (
-          <div>
-            <p style={{ margin: '0 0 12px', color: '#6b7280', fontSize: 13 }}>
-              Orden <strong>{emailCompra.folio}</strong> · Proveedor: <strong>{(emailCompra as any).proveedor?.nombre ?? '—'}</strong>
-            </p>
-            <Input
-              prefix={<MailOutlined />}
-              placeholder="correo@proveedor.com"
-              value={emailDest}
-              onChange={e => setEmailDest(e.target.value)}
-              size="large"
-            />
-          </div>
-        )}
-      </Modal>
+      />
 
       {aprobCompra && (
         <SolicitarAprobacionModal

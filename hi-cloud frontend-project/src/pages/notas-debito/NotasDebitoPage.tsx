@@ -1,4 +1,5 @@
 ﻿import { useState } from 'react';
+import { EmailConCopiaModal } from '../../components/ui/EmailConCopiaModal';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -115,7 +116,6 @@ export default function NotasDebitoPage() {
   const [modalCrear,    setModalCrear]    = useState(false);
   const [modalDetalle,  setModalDetalle]  = useState<any>(null);
   const [emailNota,     setEmailNota]     = useState<any>(null);
-  const [emailDest,     setEmailDest]     = useState('');
   const [ecfEncf,       setEcfEncf]       = useState<string | null>(null);
   const [facturaOrigen, setFacturaOrigen] = useState<any>(null);
   const [balanceND,     setBalanceND]     = useState<{ totalOriginal: number; ndEmitidas: number; balanceActual: number; moneda: string } | null>(null);
@@ -156,9 +156,9 @@ export default function NotasDebitoPage() {
   const esMonedaExt   = monedaND !== 'DOP';
 
   const emailMut = useMutation({
-    mutationFn: ({ id, email }: { id: number; email: string }) =>
-      api.post(`/notificaciones/nota-debito/${id}/enviar`, { email }).then(r => r.data?.data ?? r.data),
-    onSuccess: (_, v) => { setEmailNota(null); setEmailDest(''); message.success(`Enviada a ${v.email}`); },
+    mutationFn: ({ id, email, cc, cco }: { id: number; email: string; cc?: string; cco?: string }) =>
+      api.post(`/notificaciones/nota-debito/${id}/enviar`, { email, cc, cco }).then(r => r.data?.data ?? r.data),
+    onSuccess: (_, v) => { setEmailNota(null); message.success(`Enviada a ${v.email}`); },
     onError: (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error al enviar'),
   });
 
@@ -343,7 +343,7 @@ export default function NotasDebitoPage() {
                       disabled: pdfPending === r.id, onClick: () => imprimirPDF(r) },
                     { key: 'email', label: 'Enviar email', icon: <MailOutlined />,
                       disabled: r.estado !== 'emitida',
-                      onClick: () => { setEmailNota(r); setEmailDest(r.cliente?.email ?? ''); } },
+                      onClick: () => { setEmailNota(r); } },
                     ...(r.estado === 'emitida' ? [{
                       key: 'whatsapp',
                       label: 'Enviar por WhatsApp',
@@ -621,17 +621,14 @@ export default function NotasDebitoPage() {
         )}
       </Modal>
 
-      <Modal title={<><MailOutlined style={{ color: '#d97706', marginRight: 8 }} />Enviar Nota de Débito</>}
-        open={!!emailNota} onCancel={() => { setEmailNota(null); setEmailDest(''); }}
-        onOk={() => emailNota && emailMut.mutate({ id: emailNota.id, email: emailDest })}
-        confirmLoading={emailMut.isPending} okText="Enviar" destroyOnClose width={400}>
-        {emailNota && (
-          <div>
-            <p style={{ margin: '0 0 12px', color: '#6b7280', fontSize: 13 }}>ND <strong>{emailNota.numero}</strong> · Cliente: <strong>{emailNota.cliente?.nombre ?? '—'}</strong></p>
-            <Input prefix={<MailOutlined />} placeholder="correo@cliente.com" value={emailDest} onChange={e => setEmailDest(e.target.value)} size="large" />
-          </div>
-        )}
-      </Modal>
+      <EmailConCopiaModal
+        open={!!emailNota}
+        title={<><MailOutlined style={{ color: '#d97706', marginRight: 8 }} />Enviar Nota de Débito</>}
+        documentoInfo={emailNota ? <>ND <strong>{emailNota.numero}</strong> · Cliente: <strong>{emailNota.cliente?.nombre ?? '—'}</strong></> : undefined}
+        onCancel={() => setEmailNota(null)}
+        onEnviar={p => emailNota && emailMut.mutate({ id: emailNota.id, ...p })}
+        loading={emailMut.isPending}
+      />
 
       <EcfResultModal encf={ecfEncf} onClose={() => setEcfEncf(null)} />
     </div>

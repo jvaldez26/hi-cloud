@@ -77,7 +77,7 @@ export class NotificacionesController {
   @ApiOperation({ summary: 'Enviar factura por email al cliente (con PDF adjunto)' })
   async enviarFactura(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { email: string; asunto?: string },
+    @Body() body: { email: string; asunto?: string; cc?: string; cco?: string },
   ) {
     // Intentar generar PDF — si falla, el email se envía sin adjunto (degradación elegante)
     let pdfBuffer: Buffer | undefined;
@@ -87,7 +87,7 @@ export class NotificacionesController {
     } catch (err) {
       this.logger.warn(`No se pudo generar PDF para factura #${id}: ${(err as Error).message}`);
     }
-    return this.notificacionesService.enviarFacturaAlCliente(id, body.email, body.asunto, pdfBuffer);
+    return this.notificacionesService.enviarFacturaAlCliente(id, body.email, body.asunto, pdfBuffer, body.cc, body.cco);
   }
 
   @Post('factura/:id/whatsapp')
@@ -129,9 +129,9 @@ export class NotificacionesController {
   @ApiOperation({ summary: 'Enviar recibo de cobro por email al cliente' })
   enviarRecibo(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { email: string },
+    @Body() body: { email: string; cc?: string; cco?: string },
   ) {
-    return this.notificacionesService.enviarReciboAlCliente(id, body.email);
+    return this.notificacionesService.enviarReciboAlCliente(id, body.email, body.cc, body.cco);
   }
 
   @Post('compra/:id/enviar')
@@ -140,9 +140,9 @@ export class NotificacionesController {
   @ApiOperation({ summary: 'Enviar orden de compra por email al proveedor' })
   enviarCompra(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { email: string },
+    @Body() body: { email: string; cc?: string; cco?: string },
   ) {
-    return this.notificacionesService.enviarCompraAlProveedor(id, body.email);
+    return this.notificacionesService.enviarCompraAlProveedor(id, body.email, body.cc, body.cco);
   }
 
   @Post('nota-credito/:id/enviar')
@@ -151,9 +151,9 @@ export class NotificacionesController {
   @ApiOperation({ summary: 'Enviar nota de crédito por email al cliente' })
   enviarNotaCredito(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { email: string },
+    @Body() body: { email: string; cc?: string; cco?: string },
   ) {
-    return this.notificacionesService.enviarNotaCreditoAlCliente(id, body.email);
+    return this.notificacionesService.enviarNotaCreditoAlCliente(id, body.email, body.cc, body.cco);
   }
 
   @Post('nota-debito/:id/enviar')
@@ -162,9 +162,9 @@ export class NotificacionesController {
   @ApiOperation({ summary: 'Enviar nota de débito por email al cliente' })
   enviarNotaDebito(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { email: string },
+    @Body() body: { email: string; cc?: string; cco?: string },
   ) {
-    return this.notificacionesService.enviarNotaDebitoAlCliente(id, body.email);
+    return this.notificacionesService.enviarNotaDebitoAlCliente(id, body.email, body.cc, body.cco);
   }
 
   @Post('pre-factura/:id/enviar')
@@ -173,8 +173,8 @@ export class NotificacionesController {
   @ApiOperation({ summary: 'Enviar pre-factura (proforma) por email al cliente' })
   enviarPreFactura(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { email: string },
+    @Body() body: { email: string; cc?: string; cco?: string },
   ) {
-    return this.notificacionesService.enviarPreFacturaAlCliente(id, body.email);
+    return this.notificacionesService.enviarPreFacturaAlCliente(id, body.email, body.cc, body.cco);
   }
 }

@@ -1,4 +1,5 @@
 ﻿import { useState, useEffect } from 'react';
+import { EmailConCopiaModal } from '../../components/ui/EmailConCopiaModal';
 import { TableActions } from '../../components/ui/TableActions';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
@@ -55,7 +56,6 @@ export default function PreFacturaPage() {
   const [modalDetalle,  setModalDetalle]  = useState<any>(null);
   const [modalRechazar, setModalRechazar] = useState<any>(null);
   const [emailPF,       setEmailPF]       = useState<any>(null);
-  const [emailDest,     setEmailDest]     = useState('');
   const [pdfPending,    setPdfPending]    = useState<number | null>(null);
   const [formCrear]    = Form.useForm();
   const [formRechazar] = Form.useForm();
@@ -122,9 +122,9 @@ export default function PreFacturaPage() {
   });
 
   const emailMut = useMutation({
-    mutationFn: ({ id, email }: { id: number; email: string }) =>
-      api.post(`/notificaciones/pre-factura/${id}/enviar`, { email }).then(r => r.data?.data ?? r.data),
-    onSuccess: (_, v) => { setEmailPF(null); setEmailDest(''); message.success(`Pre-factura enviada a ${v.email}`); },
+    mutationFn: ({ id, email, cc, cco }: { id: number; email: string; cc?: string; cco?: string }) =>
+      api.post(`/notificaciones/pre-factura/${id}/enviar`, { email, cc, cco }).then(r => r.data?.data ?? r.data),
+    onSuccess: (_, v) => { setEmailPF(null); message.success(`Pre-factura enviada a ${v.email}`); },
     onError:   (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error al enviar email'),
   });
 
@@ -363,7 +363,7 @@ export default function PreFacturaPage() {
                     {
                       key: 'email',
                       label: 'Enviar por email',
-                      onClick: () => { setEmailPF(r); setEmailDest(r.cliente?.email ?? ''); },
+                      onClick: () => { setEmailPF(r); },
                     },
                     ['enviada', 'borrador'].includes(r.estado) ? {
                       key: 'aprobar',
@@ -713,34 +713,14 @@ export default function PreFacturaPage() {
       </Modal>
 
       {/* Modal email pre-factura */}
-      <Modal
-        title={<><MailOutlined style={{ color: '#7c3aed', marginRight: 8 }} />Enviar Pre-Factura por Email</>}
+      <EmailConCopiaModal
         open={!!emailPF}
-        onCancel={() => { setEmailPF(null); setEmailDest(''); }}
-        onOk={() => emailPF && emailMut.mutate({ id: emailPF.id, email: emailDest })}
-        confirmLoading={emailMut.isPending}
-        okText="Enviar"
-        destroyOnClose
-        width={420}
-      >
-        {emailPF && (
-          <div>
-            <p style={{ margin: '0 0 12px', color: '#6b7280', fontSize: 13 }}>
-              Pre-factura <strong>{emailPF.folio}</strong> · Cliente: <strong>{emailPF.cliente?.nombre ?? '—'}</strong>
-            </p>
-            <Input
-              prefix={<MailOutlined />}
-              placeholder="correo@cliente.com"
-              value={emailDest}
-              onChange={e => setEmailDest(e.target.value)}
-              size="large"
-            />
-            <p style={{ margin: '8px 0 0', fontSize: 11, color: '#9ca3af' }}>
-              Se enviará el detalle completo como proforma. El cliente podrá revisar y confirmar.
-            </p>
-          </div>
-        )}
-      </Modal>
+        title={<><MailOutlined style={{ color: '#7c3aed', marginRight: 8 }} />Enviar Pre-Factura por Email</>}
+        documentoInfo={emailPF ? <>Pre-factura <strong>{emailPF.folio}</strong> · Cliente: <strong>{emailPF.cliente?.nombre ?? '—'}</strong></> : undefined}
+        onCancel={() => setEmailPF(null)}
+        onEnviar={p => emailPF && emailMut.mutate({ id: emailPF.id, ...p })}
+        loading={emailMut.isPending}
+      />
 
     </div>
   );

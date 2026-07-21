@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { EmailConCopiaModal } from '../../components/ui/EmailConCopiaModal';
 import { Button, Card, Descriptions, Table, Tag, Row, Col, Typography,
          Statistic, Space, Spin, Steps, message, Popconfirm, Modal, Input, Tooltip, theme, Upload } from 'antd';
 import { ArrowLeftOutlined, SendOutlined, MailOutlined, FilePdfOutlined, EyeOutlined,
@@ -48,19 +49,20 @@ export default function FacturaDetailPage() {
   });
 
   const [emailOpen,    setEmailOpen]    = useState(false);
-  const [emailDestino, setEmailDestino] = useState('');
   const [uploadingOC,  setUploadingOC]  = useState(false);
   const ocInputRef = useRef<HTMLInputElement>(null);
 
   const emailMut = useMutation({
-    mutationFn: () =>
+    mutationFn: ({ email, cc, cco }: { email: string; cc?: string; cco?: string }) =>
       api.post(`/notificaciones/factura/${id}/enviar`, {
-        email: emailDestino,
+        email,
+        cc,
+        cco,
         asunto: `Su factura ${factura?.folio} — HiCloud ERP`,
       }).then(r => r.data?.data ?? r.data),
-    onSuccess: () => {
+    onSuccess: (_, vars) => {
       setEmailOpen(false);
-      message.success(`Factura enviada a ${emailDestino}`);
+      message.success(`Factura enviada a ${vars.email}`);
     },
     onError: (e: any) => message.error(e?.response?.data?.errors?.[0] ?? 'Error al enviar email'),
   });
@@ -180,7 +182,6 @@ export default function FacturaDetailPage() {
             <Button
               icon={<MailOutlined />}
               onClick={() => {
-                setEmailDestino((factura as any).cliente?.email ?? '');
                 setEmailOpen(true);
               }}
             >
@@ -350,38 +351,15 @@ export default function FacturaDetailPage() {
       </Row>
 
       {/* Modal enviar por email */}
-      <Modal
-        title={<><MailOutlined style={{ marginRight: 8 }} />Enviar factura por email</>}
+      <EmailConCopiaModal
         open={emailOpen}
+        title={<><MailOutlined style={{ marginRight: 8 }} />Enviar factura por email</>}
+        documentoInfo={<>Factura <strong>{factura.folio}</strong> — se enviará el PDF adjunto</>}
         onCancel={() => setEmailOpen(false)}
-        footer={null}
-        width={420}
-      >
-        <p>Se enviará la factura <strong>{factura.folio}</strong> al correo electrónico indicado.</p>
-        <Input
-          prefix={<MailOutlined />}
-          placeholder="destinatario@email.com"
-          value={emailDestino}
-          onChange={e => setEmailDestino(e.target.value)}
-          size="large"
-          style={{ marginBottom: 16 }}
-          type="email"
-        />
-        <Row justify="end" gutter={8}>
-          <Col><Button onClick={() => setEmailOpen(false)}>Cancelar</Button></Col>
-          <Col>
-            <Button
-              type="primary"
-              icon={<SendOutlined />}
-              loading={emailMut.isPending}
-              disabled={!emailDestino.includes('@')}
-              onClick={() => emailMut.mutate()}
-            >
-              Enviar ahora
-            </Button>
-          </Col>
-        </Row>
-      </Modal>
+        onEnviar={p => emailMut.mutate(p)}
+        loading={emailMut.isPending}
+        okText="Enviar ahora"
+      />
 
     </div>
   );

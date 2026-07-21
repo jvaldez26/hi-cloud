@@ -555,6 +555,8 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
     emailCliente: string,
     asunto?:      string,
     pdfBuffer?:   Buffer,   // generado por el controlador (HTTP context) con PDFService
+    cc?:          string,
+    cco?:         string,
   ) {
     // ── 1. Obtener factura completa ───────────────────────────────────────────
     const factRows = await this.dataSource.query<{
@@ -716,10 +718,13 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
 </body>
 </html>`;
 
+    const { ccList, ccoList } = this.calcCcCco(cc, cco, emailCliente);
     const { exitoso, error } = await this.emailService.enviar({
       to:      emailCliente,
       subject: asuntoFinal,
       html,
+      ...(ccList.length  ? { cc:  ccList  } : {}),
+      ...(ccoList.length ? { bcc: ccoList } : {}),
       ...(pdfBuffer
         ? { attachments: [{ filename: `${r.folio}.pdf`, content: pdfBuffer, contentType: 'application/pdf' }] }
         : {}),
@@ -851,7 +856,7 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
   }
 
   // ── Enviar pre-factura (proforma) al cliente por email ────────────────────────
-  async enviarPreFacturaAlCliente(preFacturaId: number, emailCliente: string) {
+  async enviarPreFacturaAlCliente(preFacturaId: number, emailCliente: string, cc?: string, cco?: string) {
     const rows = await this.dataSource.query<any[]>(
       `SELECT pf.folio, pf.fecha::text, pf."fechaVencimiento"::text AS "fechaValidez",
               pf.subtotal::text, pf.iva::text, pf.total::text, pf.estado,
@@ -949,10 +954,13 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
 </div>
 </body></html>`;
 
+    const { ccList, ccoList } = this.calcCcCco(cc, cco, emailCliente);
     const { exitoso, error } = await this.emailService.enviar({
       to: emailCliente,
       subject: `Pre-Factura ${r.folio} — ${r.empresaNombre}`,
       html,
+      ...(ccList.length  ? { cc:  ccList  } : {}),
+      ...(ccoList.length ? { bcc: ccoList } : {}),
     });
     if (!exitoso) throw new Error(`Error enviando pre-factura: ${error}`);
     return { mensaje: `Pre-factura ${r.folio} enviada a ${emailCliente}` };
@@ -1005,24 +1013,48 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
     return { r, fmtM, fmtD, color, gradient, titulo, itemsHtml };
   }
 
-  async enviarNotaCreditoAlCliente(notaId: number, emailCliente: string) {
+  async enviarNotaCreditoAlCliente(notaId: number, emailCliente: string, cc?: string, cco?: string) {
     const { r, fmtM, fmtD, color, gradient, titulo, itemsHtml } =
       await this.buildNotaHtml(notaId, 'credito');
 
     const html = this.buildNotaEmailHtml({ r, fmtM, fmtD, color, gradient, titulo, itemsHtml });
-    const { exitoso, error } = await this.emailService.enviar({ to: emailCliente, subject: `${titulo} ${r.numero} — ${r.empresaNombre}`, html });
+    const { ccList, ccoList } = this.calcCcCco(cc, cco, emailCliente);
+    const { exitoso, error } = await this.emailService.enviar({
+      to: emailCliente, subject: `${titulo} ${r.numero} — ${r.empresaNombre}`, html,
+      ...(ccList.length  ? { cc:  ccList  } : {}),
+      ...(ccoList.length ? { bcc: ccoList } : {}),
+    });
     if (!exitoso) throw new Error(error ?? 'Error enviando email');
     return { mensaje: `${titulo} ${r.numero} enviada a ${emailCliente}` };
   }
 
-  async enviarNotaDebitoAlCliente(notaId: number, emailCliente: string) {
+  async enviarNotaDebitoAlCliente(notaId: number, emailCliente: string, cc?: string, cco?: string) {
     const { r, fmtM, fmtD, color, gradient, titulo, itemsHtml } =
       await this.buildNotaHtml(notaId, 'debito');
 
     const html = this.buildNotaEmailHtml({ r, fmtM, fmtD, color, gradient, titulo, itemsHtml });
-    const { exitoso, error } = await this.emailService.enviar({ to: emailCliente, subject: `${titulo} ${r.numero} — ${r.empresaNombre}`, html });
+    const { ccList, ccoList } = this.calcCcCco(cc, cco, emailCliente);
+    const { exitoso, error } = await this.emailService.enviar({
+      to: emailCliente, subject: `${titulo} ${r.numero} — ${r.empresaNombre}`, html,
+      ...(ccList.length  ? { cc:  ccList  } : {}),
+      ...(ccoList.length ? { bcc: ccoList } : {}),
+    });
     if (!exitoso) throw new Error(error ?? 'Error enviando email');
     return { mensaje: `${titulo} ${r.numero} enviada a ${emailCliente}` };
+  }
+
+  /** Parsea una cadena de correos separados por coma/punto y coma, valida y deduplica. */
+  private parsearEmails(val?: string): string[] {
+    if (!val) return [];
+    const RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return [...new Set(val.split(/[,;]/).map(e => e.trim()).filter(e => e && RE.test(e)))];
+  }
+
+  /** Calcula listas deduplicadas de CC y CCO, excluyendo el destinatario principal. */
+  private calcCcCco(cc: string | undefined, cco: string | undefined, emailTo: string) {
+    const ccList  = this.parsearEmails(cc).filter(e => e !== emailTo);
+    const ccoList = this.parsearEmails(cco).filter(e => e !== emailTo && !ccList.includes(e));
+    return { ccList, ccoList };
   }
 
   private buildNotaEmailHtml({ r, fmtM, fmtD, color, gradient, titulo, itemsHtml }: any): string {
@@ -1063,7 +1095,7 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
   }
 
   // ── Enviar orden de compra al proveedor por email ────────────────────────────
-  async enviarCompraAlProveedor(compraId: number, emailProveedor: string) {
+  async enviarCompraAlProveedor(compraId: number, emailProveedor: string, cc?: string, cco?: string) {
     const rows = await this.dataSource.query<any[]>(
       `SELECT c.folio, c.fecha::text, c.subtotal::text, c.itbis::text, c.total::text,
               COALESCE(c.notas,'') AS notas, c.estado,
@@ -1156,17 +1188,20 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
 </div>
 </body></html>`;
 
+    const { ccList, ccoList } = this.calcCcCco(cc, cco, emailProveedor);
     const { exitoso, error } = await this.emailService.enviar({
       to: emailProveedor,
       subject: `Orden de Compra ${r.folio} — ${r.empresaNombre}`,
       html,
+      ...(ccList.length  ? { cc:  ccList  } : {}),
+      ...(ccoList.length ? { bcc: ccoList } : {}),
     });
     if (!exitoso) throw new Error(`Error enviando orden de compra: ${error}`);
     return { mensaje: `Orden ${r.folio} enviada a ${emailProveedor}` };
   }
 
   // ── Enviar recibo de cobro al cliente por email ───────────────────────────────
-  async enviarReciboAlCliente(reciboId: number, emailCliente: string) {
+  async enviarReciboAlCliente(reciboId: number, emailCliente: string, cc?: string, cco?: string) {
     const rows = await this.dataSource.query<any[]>(
       `SELECT rc.numero, rc.fecha::text, rc.monto::text, rc."metodoPago",
               rc."clienteNombre", rc.concepto, rc.referencia,
@@ -1240,10 +1275,13 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
 </div>
 </body></html>`;
 
+    const { ccList, ccoList } = this.calcCcCco(cc, cco, emailCliente);
     const { exitoso, error } = await this.emailService.enviar({
       to: emailCliente,
       subject: `Recibo de pago ${r.numero} — ${r.empresaNombre}`,
       html,
+      ...(ccList.length  ? { cc:  ccList  } : {}),
+      ...(ccoList.length ? { bcc: ccoList } : {}),
     });
     if (!exitoso) throw new Error(`Error enviando recibo: ${error}`);
     return { mensaje: `Recibo ${r.numero} enviado a ${emailCliente}` };
@@ -1415,16 +1453,7 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
       this.logger.warn(`No se pudo generar PDF para cotización #${cotizacionId}: ${(err as Error).message}`);
     }
 
-    // Parsear, validar y deduplicar CC/CCO
-    const RE_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const parsearEmails = (val?: string): string[] => {
-      if (!val) return [];
-      return [...new Set(
-        val.split(/[,;]/).map(e => e.trim()).filter(e => e && RE_EMAIL.test(e)),
-      )];
-    };
-    const ccList  = parsearEmails(cc).filter(e => e !== emailCliente);
-    const ccoList = parsearEmails(cco).filter(e => e !== emailCliente && !ccList.includes(e));
+    const { ccList, ccoList } = this.calcCcCco(cc, cco, emailCliente);
 
     const subjectFinal = asunto ?? `Cotización ${r.numero} — ${r.empresaNombre}`;
     const { exitoso, error } = await this.emailService.enviar({
