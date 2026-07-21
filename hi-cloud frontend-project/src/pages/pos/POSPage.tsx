@@ -6351,13 +6351,20 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
     staleTime: 60_000,
   });
 
-  // Auto-llenar efectivo del desglose con ventas en efectivo (solo en modo normal, no en ciego)
+  // Auto-llenar efectivo (modo normal) o limpiar todos los campos (modo ciego).
+  // Depende de ciegoCajaActivo además de id: cuando el caché stale activa el fill
+  // antes de recibir la flag ciego, la segunda llegada (con ciegoCajaActivo=true)
+  // vuelve a ejecutar el effect y limpia lo que quedó.
   useEffect(() => {
-    if (!cajaHoy?.ciegoCajaActivo && cajaHoy?.ventasEfectivo) {
+    if (!cajaHoy?.id) return;
+    if (cajaHoy?.ciegoCajaActivo) {
+      setPago({ efectivo:'', tarjetaCredito:'', tarjetaDebito:'',
+        cheque:'', transferencia:'', otro:'', deposito:'', documentos:'' });
+    } else if (cajaHoy?.ventasEfectivo) {
       const ef = Number(cajaHoy.ventasEfectivo) + Number(cajaHoy.saldoApertura ?? 0);
       setPago(p => ({ ...p, efectivo: ef.toFixed(2) }));
     }
-  }, [cajaHoy?.id]);
+  }, [cajaHoy?.id, cajaHoy?.ciegoCajaActivo]);
 
   const cerrarMut = useMutation({
     mutationFn: () => {
