@@ -15,6 +15,10 @@ export interface EmailPayload {
   text?:        string;
   /** Dirección a la que llegan las RESPUESTAS (white-label: email de la empresa emisora). */
   replyTo?:     string;
+  /** Copia visible — aparece en las cabeceras del destinatario. */
+  cc?:          string | string[];
+  /** Copia oculta — el destinatario/CC NO ven este campo. */
+  bcc?:         string | string[];
   attachments?: EmailAttachment[];
 }
 
@@ -73,10 +77,15 @@ export class EmailService {
     }
 
     try {
+      const joinEmails = (v?: string | string[]) =>
+        !v ? undefined : Array.isArray(v) ? v.join(', ') : v;
+
       await this.transporter.sendMail({
         from,
         to:          Array.isArray(payload.to) ? payload.to.join(', ') : payload.to,
         ...(payload.replyTo ? { replyTo: payload.replyTo } : {}),
+        ...(payload.cc  ? { cc:  joinEmails(payload.cc)  } : {}),
+        ...(payload.bcc ? { bcc: joinEmails(payload.bcc) } : {}),
         subject:     payload.subject,
         html:        payload.html,
         text:        payload.text,

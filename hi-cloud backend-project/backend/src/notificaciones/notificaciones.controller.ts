@@ -118,9 +118,9 @@ export class NotificacionesController {
   @ApiOperation({ summary: 'Enviar cotización por email al cliente (con PDF adjunto)' })
   enviarCotizacion(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { email: string; asunto?: string },
+    @Body() body: { email: string; asunto?: string; cc?: string; cco?: string },
   ) {
-    return this.notificacionesService.enviarCotizacionAlCliente(id, body.email, body.asunto);
+    return this.notificacionesService.enviarCotizacionAlCliente(id, body.email, body.asunto, body.cc, body.cco);
   }
 
   @Post('recibo/:id/enviar')

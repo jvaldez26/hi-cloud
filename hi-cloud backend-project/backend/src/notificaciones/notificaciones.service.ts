@@ -1250,7 +1250,13 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
   }
 
   // ── Enviar cotización al cliente por email ────────────────────────────────────
-  async enviarCotizacionAlCliente(cotizacionId: number, emailCliente: string, asunto?: string) {
+  async enviarCotizacionAlCliente(
+    cotizacionId: number,
+    emailCliente: string,
+    asunto?: string,
+    cc?: string,
+    cco?: string,
+  ) {
     const rows = await this.dataSource.query<any[]>(
       `SELECT co.numero, co.fecha::text, co."fechaVencimiento"::text AS "fechaValidez",
               co.estado, co."validezDias", co."condicionesPago", co."nombreVendedor",
@@ -1409,11 +1415,24 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
       this.logger.warn(`No se pudo generar PDF para cotización #${cotizacionId}: ${(err as Error).message}`);
     }
 
+    // Parsear, validar y deduplicar CC/CCO
+    const RE_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const parsearEmails = (val?: string): string[] => {
+      if (!val) return [];
+      return [...new Set(
+        val.split(/[,;]/).map(e => e.trim()).filter(e => e && RE_EMAIL.test(e)),
+      )];
+    };
+    const ccList  = parsearEmails(cc).filter(e => e !== emailCliente);
+    const ccoList = parsearEmails(cco).filter(e => e !== emailCliente && !ccList.includes(e));
+
     const subjectFinal = asunto ?? `Cotización ${r.numero} — ${r.empresaNombre}`;
     const { exitoso, error } = await this.emailService.enviar({
       to: emailCliente,
       subject: subjectFinal,
       html,
+      ...(ccList.length  ? { cc:  ccList  } : {}),
+      ...(ccoList.length ? { bcc: ccoList } : {}),
       ...(pdfBuffer
         ? { attachments: [{ filename: `${r.numero}.pdf`, content: pdfBuffer, contentType: 'application/pdf' }] }
         : {}),

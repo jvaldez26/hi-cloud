@@ -9,13 +9,16 @@ import { TableActions } from '../../components/ui/TableActions';
 import { SolicitarAprobacionModal } from '../../components/ui/SolicitarAprobacionModal';
 import { PlusOutlined, EyeOutlined, MoreOutlined,
          MailOutlined, FileExcelOutlined, PrinterOutlined, CopyOutlined,
-         EditOutlined, SearchOutlined, CheckCircleOutlined, LoadingOutlined } from '@ant-design/icons';
+         EditOutlined, SearchOutlined, CheckCircleOutlined, LoadingOutlined,
+         UserOutlined, BankOutlined } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import api from '../../api/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { cotizacionesApi } from '../../api/cotizaciones.api';
+import { configuracionApi } from '../../api/configuracion.api';
+import { useAuthStore } from '../../store/auth.store';
 import { fmt } from '../../utils/formatters';
 
 const { Title, Text } = Typography;
@@ -58,6 +61,30 @@ export default function CotizacionesPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
 
+  // Correo del usuario logueado y correo de la empresa (para botones rápidos CC)
+  const userEmail    = useAuthStore(s => s.user)?.email ?? '';
+  const { data: empresaConf } = useQuery({ queryKey: ['empresa'], queryFn: configuracionApi.getEmpresa, staleTime: 60_000 });
+  const empresaEmail = (empresaConf as any)?.email ?? '';
+
+  // Agrega un correo al campo CC sin duplicar
+  const agregarACC = (correo: string) => {
+    const actual = (emailForm.getFieldValue('cc') as string) ?? '';
+    const lista  = actual.split(/[,;]/).map((e: string) => e.trim()).filter(Boolean);
+    if (!lista.includes(correo.trim())) {
+      emailForm.setFieldsValue({ cc: [...lista, correo.trim()].join(', ') });
+    }
+  };
+
+  // Valida una lista de correos separados por coma/punto y coma
+  const validarListaEmails = (_: any, value: string) => {
+    if (!value) return Promise.resolve();
+    const RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const invalidos = value.split(/[,;]/).map((e: string) => e.trim()).filter(e => e && !RE.test(e));
+    return invalidos.length
+      ? Promise.reject(`Email(s) inválido(s): ${invalidos.join(', ')}`)
+      : Promise.resolve();
+  };
+
   // Carga el detalle completo (con detalles/productos) al abrir el drawer
   const { data: detailFull, isLoading: loadingDetail } = useQuery({
     queryKey: ['cotizacion-detail', detailId],
@@ -69,8 +96,8 @@ export default function CotizacionesPage() {
   const drawerData = detailId !== null ? (detailFull ?? detail) : null;
 
   const emailMut = useMutation({
-    mutationFn: ({ id, email }: { id: number; email: string }) =>
-      api.post(`/notificaciones/cotizacion/${id}/enviar`, { email }).then(r => r.data?.data ?? r.data),
+    mutationFn: ({ id, email, cc, cco }: { id: number; email: string; cc?: string; cco?: string }) =>
+      api.post(`/notificaciones/cotizacion/${id}/enviar`, { email, cc, cco }).then(r => r.data?.data ?? r.data),
     onSuccess: (_, vars) => {
       setEmailCot(null); emailForm.resetFields();
       message.success(`Cotización enviada a ${vars.email}`);
@@ -201,7 +228,7 @@ export default function CotizacionesPage() {
           {
             key: 'email',
             label: <><MailOutlined style={{ marginRight: 6 }} />Enviar por email</>,
-            onClick: () => { setEmailCot(r); emailForm.setFieldsValue({ email: r.cliente?.email ?? '' }); },
+            onClick: () => { setEmailCot(r); emailForm.resetFields(); },
           },
           {
             key: 'whatsapp',
@@ -402,7 +429,7 @@ export default function CotizacionesPage() {
         onCancel={() => { setEmailCot(null); emailForm.resetFields(); }}
         footer={null}
         destroyOnClose
-        width={420}
+        width={480}
       >
         {emailCot && (
           <>
@@ -410,11 +437,46 @@ export default function CotizacionesPage() {
               Cotización <strong>{emailCot.numero}</strong> · Cliente: <strong>{emailCot.cliente?.nombre}</strong>
             </p>
             <Form form={emailForm} layout="vertical"
-              onFinish={v => emailMut.mutate({ id: emailCot.id, email: v.email })}>
+              onFinish={v => emailMut.mutate({
+                id:  emailCot.id,
+                email: v.email,
+                cc:  v.cc  || undefined,
+                cco: v.cco || undefined,
+              })}>
               <Form.Item name="email" label="Correo del destinatario"
-                rules={[{ required: true }, { type: 'email', message: 'Ingresa un email válido' }]}>
+                rules={[
+                  { required: true, message: 'El correo es obligatorio' },
+                  { type: 'email', message: 'Ingresa un email válido' },
+                ]}>
                 <Input prefix={<MailOutlined />} placeholder="cliente@empresa.com" size="large" />
               </Form.Item>
+
+              {/* Botones rápidos para CC */}
+              {(userEmail || empresaEmail) && (
+                <div style={{ marginBottom: 6, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {userEmail && (
+                    <Button size="small" icon={<UserOutlined />} onClick={() => agregarACC(userEmail)}>
+                      Copiarme a mí
+                    </Button>
+                  )}
+                  {empresaEmail && (
+                    <Button size="small" icon={<BankOutlined />} onClick={() => agregarACC(empresaEmail)}>
+                      Copiar empresa
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              <Form.Item name="cc" label="CC (copia visible)"
+                rules={[{ validator: validarListaEmails }]}>
+                <Input prefix={<MailOutlined />} placeholder="correo1@ejemplo.com, correo2@ejemplo.com" />
+              </Form.Item>
+
+              <Form.Item name="cco" label="CCO (copia oculta)"
+                rules={[{ validator: validarListaEmails }]}>
+                <Input prefix={<MailOutlined />} placeholder="correo@ejemplo.com" />
+              </Form.Item>
+
               <Button type="primary" htmlType="submit" loading={emailMut.isPending} block icon={<MailOutlined />}>
                 Enviar cotización
               </Button>
