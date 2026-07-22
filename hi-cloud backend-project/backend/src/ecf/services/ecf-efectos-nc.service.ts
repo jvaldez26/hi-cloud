@@ -4,6 +4,7 @@ import { DataSource, Repository } from 'typeorm';
 import { ECF, DocumentoOrigenTipo, EstadoDGII } from '../entities/ecf.entity';
 import { Factura, FacturaEstado } from '../../facturas/entities/factura.entity';
 import { NotaCredito, EstadoNotaCredito } from '../../notas-credito/entities/nota-credito.entity';
+import { reportServiceError } from '../../common/observability/sentry';
 
 /**
  * Aplica o revierte los efectos de una Nota de Crédito sobre su factura original
@@ -45,59 +46,74 @@ export class EcfEfectosNcService {
     ];
     if (!estadosAccionables.includes(nuevoEstado)) return;
 
-    await this.dataSource.transaction(async (em) => {
-      // Lock pesimista: si webhook y cron consultan simultáneamente solo uno
-      // procede; el segundo ve efectosAplicados=true y sale sin duplicar efectos.
-      const nc = await em.getRepository(NotaCredito).findOne({
-        where: { id: ecf.documentoOrigenId, empresaId: ecf.empresaId ?? undefined },
-        lock: { mode: 'pessimistic_write' },
-      });
-      if (!nc?.facturaOriginalId) return;
+    try {
+      await this.dataSource.transaction(async (em) => {
+        // Lock pesimista: si webhook y cron consultan simultáneamente solo uno
+        // procede; el segundo ve efectosAplicados=true y sale sin duplicar efectos.
+        const nc = await em.getRepository(NotaCredito).findOne({
+          where: { id: ecf.documentoOrigenId, empresaId: ecf.empresaId ?? undefined },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!nc?.facturaOriginalId) return;
 
-      if (nuevoEstado === EstadoDGII.CONTINGENCIA) {
-        // Sin respuesta de DGII tras timeout — liberar la factura para no
-        // bloquearla indefinidamente. El usuario debe verificar en portal DGII.
-        await em.getRepository(Factura).update(
-          { id: nc.facturaOriginalId, empresaId: ecf.empresaId ?? undefined },
-          { anulacionPendiente: false },
-        );
-        this.logger.warn(
-          `[EcfEfectosNc] NC ${ecf.numero} → CONTINGENCIA — ` +
-          `anulacionPendiente liberado en Factura #${nc.facturaOriginalId}. Verificar portal DGII.`,
-        );
-        return;
-      }
-
-      if (nuevoEstado === EstadoDGII.ACEPTADO || nuevoEstado === EstadoDGII.OBSERVADO) {
-        if (nc.efectosAplicados) return; // idempotencia garantizada con lock
-        await em.getRepository(Factura).update(
-          { id: nc.facturaOriginalId, empresaId: ecf.empresaId ?? undefined },
-          { estado: FacturaEstado.CANCELADA, anulacionPendiente: false },
-        );
-        await em.getRepository(NotaCredito).update(
-          { id: nc.id, empresaId: ecf.empresaId ?? undefined },
-          { efectosAplicados: true },
-        );
-        this.logger.log(
-          `[EcfEfectosNc] ${ecf.numero} ${nuevoEstado} → Factura #${nc.facturaOriginalId} CANCELADA definitivamente`,
-        );
-        if (nuevoEstado === EstadoDGII.OBSERVADO) {
-          this.logger.warn(`[EcfEfectosNc] NC ${ecf.numero} OBSERVADA — revisar observaciones en portal DGII`);
+        if (nuevoEstado === EstadoDGII.CONTINGENCIA) {
+          // Sin respuesta de DGII tras timeout — liberar la factura para no
+          // bloquearla indefinidamente. El usuario debe verificar en portal DGII.
+          await em.getRepository(Factura).update(
+            { id: nc.facturaOriginalId, empresaId: ecf.empresaId ?? undefined },
+            { anulacionPendiente: false },
+          );
+          this.logger.warn(
+            `[EcfEfectosNc] NC ${ecf.numero} → CONTINGENCIA — ` +
+            `anulacionPendiente liberado en Factura #${nc.facturaOriginalId}. Verificar portal DGII.`,
+          );
+          return;
         }
-      } else if (nuevoEstado === EstadoDGII.RECHAZADO) {
-        await em.getRepository(Factura).update(
-          { id: nc.facturaOriginalId, empresaId: ecf.empresaId ?? undefined },
-          { anulacionPendiente: false },
-        );
-        await em.getRepository(NotaCredito).update(
-          { id: nc.id, empresaId: ecf.empresaId ?? undefined },
-          { estado: EstadoNotaCredito.ANULADA, efectosAplicados: false },
-        );
-        this.logger.warn(
-          `[EcfEfectosNc] NC ${ecf.numero} RECHAZADA → Factura #${nc.facturaOriginalId} restaurada (vigente). ` +
-          `NC #${nc.id} marcada ANULADA.`,
-        );
-      }
-    });
+
+        if (nuevoEstado === EstadoDGII.ACEPTADO || nuevoEstado === EstadoDGII.OBSERVADO) {
+          if (nc.efectosAplicados) return; // idempotencia garantizada con lock
+          await em.getRepository(Factura).update(
+            { id: nc.facturaOriginalId, empresaId: ecf.empresaId ?? undefined },
+            { estado: FacturaEstado.CANCELADA, anulacionPendiente: false },
+          );
+          await em.getRepository(NotaCredito).update(
+            { id: nc.id, empresaId: ecf.empresaId ?? undefined },
+            { efectosAplicados: true },
+          );
+          this.logger.log(
+            `[EcfEfectosNc] ${ecf.numero} ${nuevoEstado} → Factura #${nc.facturaOriginalId} CANCELADA definitivamente`,
+          );
+          if (nuevoEstado === EstadoDGII.OBSERVADO) {
+            this.logger.warn(`[EcfEfectosNc] NC ${ecf.numero} OBSERVADA — revisar observaciones en portal DGII`);
+          }
+        } else if (nuevoEstado === EstadoDGII.RECHAZADO) {
+          await em.getRepository(Factura).update(
+            { id: nc.facturaOriginalId, empresaId: ecf.empresaId ?? undefined },
+            { anulacionPendiente: false },
+          );
+          await em.getRepository(NotaCredito).update(
+            { id: nc.id, empresaId: ecf.empresaId ?? undefined },
+            { estado: EstadoNotaCredito.ANULADA, efectosAplicados: false },
+          );
+          this.logger.warn(
+            `[EcfEfectosNc] NC ${ecf.numero} RECHAZADA → Factura #${nc.facturaOriginalId} restaurada (vigente). ` +
+            `NC #${nc.id} marcada ANULADA.`,
+          );
+        }
+      });
+    } catch (err) {
+      // TIPO A (efecto de dinero): reportar a Sentry y PROPAGAR. El caller NO debe
+      // sellar el estado definitivo del e-CF cuando su efecto falló — así el cron lo
+      // reintenta en la próxima pasada, en vez de dejar la factura en estado
+      // inconsistente (cancelada-a-medias o anulacionPendiente colgado) para siempre.
+      reportServiceError(err, 'ecf_efectos_nc_aplicar', {
+        ecfId:             ecf.id,
+        numero:            ecf.numero,
+        empresaId:         String(ecf.empresaId ?? ''),
+        documentoOrigenId: String(ecf.documentoOrigenId ?? ''),
+        estadoIntentado:   nuevoEstado,
+      });
+      throw err;
+    }
   }
 }

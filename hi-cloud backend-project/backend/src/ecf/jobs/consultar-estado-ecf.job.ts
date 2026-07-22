@@ -82,6 +82,20 @@ export class ConsultarEstadoECFJob {
       .getMany();
 
     for (const ecf of viejos) {
+      // Si es NC de anulación total, liberar anulacionPendiente de la factura ANTES
+      // de sellar CONTINGENCIA. Si el efecto falla, NO sellamos → el e-CF sigue
+      // ENVIADO y se reintenta en la próxima pasada. reportServiceError ya se emitió
+      // dentro de aplicarEfectosPorEstado. No abortar el lote: siguiente e-CF.
+      try {
+        await this.efectosNc.aplicarEfectosPorEstado(ecf, EstadoDGII.CONTINGENCIA);
+      } catch (err) {
+        this.logger.error(
+          `[ConsultarEstado] Efecto CONTINGENCIA NC ${ecf.numero} falló — e-CF queda ENVIADO para reintento: ` +
+          `${(err as Error).message}`,
+        );
+        continue;
+      }
+
       await this.ecfRepo.update(ecf.id, {
         estadoDGII:    EstadoDGII.CONTINGENCIA,
         respuestaDgii: {
@@ -94,14 +108,6 @@ export class ConsultarEstadoECFJob {
         de: EstadoDGII.ENVIADO, a: EstadoDGII.CONTINGENCIA, via: 'timeout',
       }, `Sin respuesta de MSeller tras ${DIAS_MAX_POLLING} días`);
       this.logger.warn(`e-CF ${ecf.numero} → CONTINGENCIA (timeout ${DIAS_MAX_POLLING}d)`);
-
-      // Si es NC de anulación total, liberar anulacionPendiente de la factura
-      // para no bloquearla indefinidamente mientras se verifica en portal DGII
-      this.efectosNc.aplicarEfectosPorEstado(ecf, EstadoDGII.CONTINGENCIA).catch(err =>
-        this.logger.error(
-          `[ConsultarEstado] Error liberando anulacionPendiente para NC ${ecf.numero}: ${(err as Error).message}`,
-        ),
-      );
     }
     if (viejos.length > 0) {
       this.logger.warn(`${viejos.length} comprobante(s) → CONTINGENCIA por timeout`);
@@ -220,6 +226,22 @@ export class ConsultarEstadoECFJob {
       const respuestaDgii = (!rawRespuestaDgii.dgiiResponse && prevRespuestaDgii?.dgiiResponse)
         ? { ...rawRespuestaDgii, dgiiResponse: prevRespuestaDgii.dgiiResponse }
         : rawRespuestaDgii;
+      // Aplicar/revertir efectos sobre la factura (NC de anulación total) ANTES de
+      // sellar el estado definitivo. Si el efecto falla, NO commiteamos estadoDGII →
+      // el e-CF queda ENVIADO y el cron lo reintenta en la próxima pasada (cada 2 min),
+      // en vez de dar el estado por procesado y dejar la factura inconsistente.
+      // reportServiceError ya se emitió dentro de aplicarEfectosPorEstado. El lote NO
+      // se aborta: continuamos con el siguiente e-CF.
+      try {
+        await this.efectosNc.aplicarEfectosPorEstado(ecf, nuevoEstado);
+      } catch (err) {
+        this.logger.error(
+          `[ConsultarEstado] Efecto NC ${ecf.numero} falló — e-CF queda ENVIADO para reintento: ` +
+          `${(err as Error).message}`,
+        );
+        continue;
+      }
+
       await this.ecfRepo.update(ecf.id, {
         estadoDGII:    nuevoEstado,
         respuestaDgii,
@@ -238,11 +260,6 @@ export class ConsultarEstadoECFJob {
       });
 
       this.logger.log(`e-CF ${resultado.ecf}: ENVIADO → ${nuevoEstado} (batch)`);
-
-      // Aplicar/revertir efectos sobre la factura si es NC de anulación total
-      this.efectosNc.aplicarEfectosPorEstado(ecf, nuevoEstado).catch(err =>
-        this.logger.error(`[ConsultarEstado] Error aplicando efectos NC ${ecf.numero}: ${(err as Error).message}`),
-      );
     }
   }
 
