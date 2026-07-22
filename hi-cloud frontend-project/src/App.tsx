@@ -245,6 +245,7 @@ const CicloDetallePage            = lazy(() => import('./pages/agro/CicloDetalle
 const CosechasPage                = lazy(() => import('./pages/agro/CosechasPage'));
 const GanaderiaPage               = lazy(() => import('./pages/agro/GanaderiaPage'));
 const AnimalDetallePage           = lazy(() => import('./pages/agro/AnimalDetallePage'));
+const CultivosPage                = lazy(() => import('./pages/agro/CultivosPage'));
 const InsumosPage                 = lazy(() => import('./pages/agro/InsumosPage'));
 const MaquinariaPage              = lazy(() => import('./pages/agro/MaquinariaPage'));
 const AgroReportesPage            = lazy(() => import('./pages/agro/ReportesPage'));
@@ -858,6 +859,7 @@ export default function App() {
                     <Route path="/agro"                 element={<AgroDashboard />} />
                     <Route path="/agro/fincas"          element={<FincasPage />} />
                     <Route path="/agro/parcelas"        element={<ParcelasPage />} />
+                    <Route path="/agro/cultivos"        element={<CultivosPage />} />
                     <Route path="/agro/ciclos"          element={<CiclosPage />} />
                     <Route path="/agro/ciclos/:id"      element={<CicloDetallePage />} />
                     <Route path="/agro/cosechas"        element={<CosechasPage />} />
