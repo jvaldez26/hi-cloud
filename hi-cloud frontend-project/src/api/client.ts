@@ -1,4 +1,6 @@
 import axios, { AxiosError } from 'axios';
+import * as Sentry from '@sentry/react';
+import { moduloActual } from '../observability/sentryScope';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '/api/v1';
 
@@ -311,6 +313,25 @@ apiClient.interceptors.response.use(
     enrichedErr.message = enrichedErr.friendlyMessage;
     if (enrichedErr.response?.data && typeof enrichedErr.response.data === 'object') {
       enrichedErr.response.data.message = enrichedErr.friendlyMessage;
+    }
+
+    // ── Observabilidad: reportar a Sentry los fallos de SERVIDOR (5xx) y de RED
+    // (sin respuesta: timeout/DNS/CORS/offline). Los 4xx de negocio/validación NO
+    // se envían (ruido) y las cancelaciones tampoco. Se marca el error como
+    // reportado para que el onError global de mutaciones no lo duplique.
+    const esCancelacion = axios.isCancel?.(err) || (err as any)?.code === 'ERR_CANCELED';
+    const esServidor    = typeof status === 'number' && status >= 500;
+    const esRed         = !err.response && !esCancelacion;
+    if (!esCancelacion && (esServidor || esRed)) {
+      enrichedErr.__sentryReported = true;
+      Sentry.captureException(err, {
+        tags: {
+          origin:      'api',
+          http_status: status != null ? String(status) : 'network',
+          http_method: String(err.config?.method ?? '').toUpperCase() || 'GET',
+          modulo:      moduloActual(),
+        },
+      });
     }
 
     return Promise.reject(enrichedErr);

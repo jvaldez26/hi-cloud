@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button, Result, Space } from 'antd';
 import * as Sentry from '@sentry/react';
+import { moduloActual } from '../../observability/sentryScope';
 
 interface State { hasError: boolean; error?: Error; isChunkError: boolean }
 
@@ -31,7 +32,10 @@ export class ErrorBoundary extends React.Component<
     console.error('[ErrorBoundary]', error, info);
     // Los chunk-load errors son ruido de deploy (hashes viejos), no bugs → no a Sentry.
     if (!isChunkLoadError(error)) {
+      // El scope global (setUser/setTags en sentryScope) ya aporta empresaId/
+      // sucursalId/usuario; aquí añadimos origen=render y el módulo (POS, etc.).
       Sentry.captureException(error, {
+        tags: { origin: 'render', modulo: moduloActual() },
         contexts: { react: { componentStack: info.componentStack } },
       });
     }

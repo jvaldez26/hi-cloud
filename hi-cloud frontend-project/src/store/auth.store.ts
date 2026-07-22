@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { AuthUser } from '../types';
 import apiClient from '../api/client';
+import { syncSentryScope } from '../observability/sentryScope';
 
 // Callback registrado por App.tsx para limpiar React Query al cerrar sesión.
 let _onLogout: (() => void) | null = null;
@@ -147,3 +148,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     });
   },
 }));
+
+// ── Observabilidad: mantener el scope de Sentry (usuario/empresa/sucursal) en
+// sincronía con el store, para que TODO evento del frontend lleve contexto.
+// Una vez al cargar (estado hidratado desde localStorage) + en cada cambio.
+syncSentryScope(useAuthStore.getState());
+useAuthStore.subscribe((s) => syncSentryScope(s));

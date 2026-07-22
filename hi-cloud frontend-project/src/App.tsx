@@ -2,7 +2,9 @@ import { lazy, Suspense, useEffect } from 'react';
 import { ConfigProvider, App as AntApp, theme as antTheme } from 'antd';
 import esES from 'antd/locale/es_ES';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, MutationCache } from '@tanstack/react-query';
+import * as Sentry from '@sentry/react';
+import { moduloActual } from './observability/sentryScope';
 import dayjs from 'dayjs';
 import 'dayjs/locale/es';
 
@@ -258,6 +260,26 @@ const ReportesTransportePage      = lazy(() => import('./pages/transporte/Report
 dayjs.locale('es');
 
 export const qc = new QueryClient({
+  // Observabilidad: reporta a Sentry los fallos de mutación (cobros, cierre de caja,
+  // ventas, etc.) en UN SOLO lugar — evita repetir captureException en cada onError.
+  // Los 5xx/red ya los reportó el interceptor de API (marcados con __sentryReported);
+  // aquí se cubren los fallos client-side de mutaciones. Los 4xx de negocio se omiten.
+  mutationCache: new MutationCache({
+    onError: (error: any, _vars, _ctx, mutation) => {
+      if (error?.__sentryReported) return;                     // ya lo reportó el interceptor
+      const status = error?.response?.status;
+      if (typeof status === 'number' && status < 500) return;  // 4xx negocio/validación → no
+      Sentry.captureException(error, {
+        tags: {
+          origin:      'mutation',
+          modulo:      moduloActual(),
+          mutationKey: Array.isArray(mutation?.options?.mutationKey)
+            ? mutation.options.mutationKey.join('/')
+            : 'unknown',
+        },
+      });
+    },
+  }),
   defaultOptions: {
     queries: {
       staleTime:            30 * 1000,       // 30s frescos — navegación rápida sin refetch innecesario
