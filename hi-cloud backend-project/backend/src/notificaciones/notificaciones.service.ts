@@ -271,7 +271,7 @@ export class NotificacionesService {
     this.logger.log('⏰ Cron: resumen diario por empresa');
     const empresas = await this.getEmpresasActivas();
     for (const emp of empresas) {
-      if (emp.configuracion.notifResumenDiario === false) continue;
+      if (emp.configuracion.notifResumenDiario !== true) continue;
       await this.enviarResumenDiario(emp.id).catch((e: Error) =>
         this.logger.error(`Resumen diario empresa ${emp.id}: ${e.message}`),
       );
