@@ -50,9 +50,13 @@ export class EcfEfectosNcService {
       await this.dataSource.transaction(async (em) => {
         // Lock pesimista: si webhook y cron consultan simultáneamente solo uno
         // procede; el segundo ve efectosAplicados=true y sale sin duplicar efectos.
+        // loadEagerRelations:false evita los LEFT JOIN de cliente/detalles (eager:true
+        // en la entidad), que harían fallar el FOR UPDATE de Postgres con outer joins.
+        // Solo necesitamos columnas escalares (facturaOriginalId, efectosAplicados, id).
         const nc = await em.getRepository(NotaCredito).findOne({
           where: { id: ecf.documentoOrigenId, empresaId: ecf.empresaId ?? undefined },
           lock: { mode: 'pessimistic_write' },
+          loadEagerRelations: false,
         });
         if (!nc?.facturaOriginalId) return;
 
