@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -6,6 +7,8 @@ import { ECF, EstadoDGII } from '../entities/ecf.entity';
 import { EcfEvento, TipoEcfEvento } from '../entities/ecf-evento.entity';
 import { MSellerClientService } from '../services/mseller-client.service';
 import { EcfEfectosNcService } from '../services/ecf-efectos-nc.service';
+import { EmailService } from '../../notificaciones/services/email.service';
+import { reportServiceError } from '../../common/observability/sentry';
 
 const MINUTOS_SIN_RESPUESTA = 2;   // esperar 2 min antes de primer intento
 
@@ -56,6 +59,8 @@ export class ConsultarEstadoECFJob {
 
     private readonly mseller: MSellerClientService,
     private readonly efectosNc: EcfEfectosNcService,
+    private readonly emailSvc: EmailService,
+    private readonly configSvc: ConfigService,
   ) {}
 
   @Cron('*/2 * * * *', { name: 'consultar-estado-ecf' }) // cada 2 min
@@ -250,6 +255,15 @@ export class ConsultarEstadoECFJob {
         fechaUso:      nuevoEstado === EstadoDGII.ACEPTADO ? new Date() : undefined,
       });
 
+      // Notificar al super admin la primera vez que un e-CF quede RECHAZADO.
+      // La marca superAdminNotificado garantiza idempotencia: el cron puede pasar
+      // por este e-CF muchas veces, pero solo el primer rechazo envía el email.
+      if (nuevoEstado === EstadoDGII.RECHAZADO && !ecf.superAdminNotificado) {
+        await this.notificarRechazoSuperAdmin(ecf, respuestaDgii).catch((err: Error) => {
+          this.logger.error(`[NotifRechazo] Error inesperado para ${ecf.numero}: ${err.message}`);
+        });
+      }
+
       await this.logEvento(ecf.id, TipoEcfEvento.RESPUESTA_RECIBIDA, {
         estadoMSeller: resultado.status,
         estadoInterno: nuevoEstado,
@@ -272,5 +286,86 @@ export class ConsultarEstadoECFJob {
     await this.eventoRepo.save(
       this.eventoRepo.create({ comprobanteId, evento, payload, mensaje }),
     );
+  }
+
+  /**
+   * Envía un email de alerta al super admin cuando un e-CF queda RECHAZADO.
+   * Si el envío tiene éxito → marca superAdminNotificado=true (idempotencia).
+   * Si falla → reporta a Sentry y deja la marca en false para reintentar.
+   * No lanza: el cron no se aborta por un email fallido.
+   */
+  private async notificarRechazoSuperAdmin(ecf: ECF, respuestaDgii: any): Promise<void> {
+    const adminEmail = this.configSvc.get<string>('NOTIF_ADMIN_EMAIL', '')
+      || process.env['SUPER_ADMIN_EMAIL']
+      || 'admin@hicloudrd.com';
+
+    // Obtener nombre y RNC de la empresa emisora
+    let empresaNombre = `Empresa #${ecf.empresaId}`;
+    let empresaRnc    = '';
+    try {
+      const rows = await this.ecfRepo.manager.query(
+        `SELECT "razonSocial", rnc FROM empresa WHERE id = $1 LIMIT 1`,
+        [ecf.empresaId],
+      ) as { razonSocial: string; rnc: string }[];
+      if (rows[0]) {
+        empresaNombre = rows[0].razonSocial || empresaNombre;
+        empresaRnc    = rows[0].rnc         || '';
+      }
+    } catch { /* fallback a empresaId */ }
+
+    // Extraer mensajes de DGII del JSONB preservado
+    const dgiiItems: any[] = respuestaDgii?.dgiiResponse ?? [];
+    const mensajes: any[]  = dgiiItems.flatMap((d: any) => d?.mensajes ?? []);
+    const mensajesHtml = mensajes.length
+      ? mensajes.map((m: any) =>
+          `<li><strong>${m.codigo ?? m.codigoMensaje ?? '?'}</strong>: ${m.valor ?? m.descripcion ?? m.mensaje ?? JSON.stringify(m)}</li>`,
+        ).join('')
+      : `<li style="color:#666">Sin mensajes específicos de DGII — ver campo respuestaDgii en la BD.</li>`;
+
+    const tipoLabel  = ecf.numero.substring(0, 3).toUpperCase(); // e.g. "E31"
+    const montoLabel = ecf.montoTotal != null
+      ? `RD$${Number(ecf.montoTotal).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`
+      : 'N/D';
+    const fechaLabel = new Date(ecf.createdAt).toLocaleString('es-DO', { timeZone: 'America/Santo_Domingo' });
+
+    const result = await this.emailSvc.enviar({
+      to:      adminEmail,
+      subject: `🚫 e-CF RECHAZADO — ${ecf.numero} · ${empresaNombre}`,
+      html: `
+<p>El comprobante fiscal electrónico <strong>${ecf.numero}</strong> de la empresa
+<strong>${empresaNombre}</strong>${empresaRnc ? ` (RNC&nbsp;${empresaRnc})` : ''}
+fue <strong style="color:#dc2626">RECHAZADO</strong> por DGII.</p>
+
+<table style="border-collapse:collapse;font-size:14px;margin:12px 0">
+  <tr><td style="padding:4px 10px;color:#555;white-space:nowrap">e-NCF</td>      <td style="padding:4px 10px"><strong>${ecf.numero}</strong></td></tr>
+  <tr><td style="padding:4px 10px;color:#555">Tipo</td>       <td style="padding:4px 10px">${tipoLabel}</td></tr>
+  <tr><td style="padding:4px 10px;color:#555">Monto</td>      <td style="padding:4px 10px">${montoLabel}</td></tr>
+  <tr><td style="padding:4px 10px;color:#555">Comprador</td>  <td style="padding:4px 10px">${ecf.razonSocialComprador ?? 'Consumidor Final'}${ecf.rncComprador ? ` (${ecf.rncComprador})` : ''}</td></tr>
+  <tr><td style="padding:4px 10px;color:#555">Fecha</td>      <td style="padding:4px 10px">${fechaLabel}</td></tr>
+  <tr><td style="padding:4px 10px;color:#555">Empresa</td>    <td style="padding:4px 10px">${empresaNombre}${empresaRnc ? ` · ${empresaRnc}` : ''}</td></tr>
+</table>
+
+<h4 style="margin-top:16px;margin-bottom:8px">Observación DGII:</h4>
+<ul style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:10px 10px 10px 28px;margin:0">
+  ${mensajesHtml}
+</ul>
+
+<p style="margin-top:14px">
+  Acciones disponibles en <em>Super Admin → Módulo e-CF → Rechazados</em>.
+</p>
+<p style="color:#888;font-size:12px;margin-top:20px">HiCloud ERP — Alerta automática de comprobante fiscal rechazado</p>`,
+    });
+
+    if (result.exitoso) {
+      await this.ecfRepo.update(ecf.id, { superAdminNotificado: true });
+      this.logger.log(`[NotifRechazo] Email enviado para e-CF ${ecf.numero} → superAdminNotificado=true`);
+    } else {
+      reportServiceError(
+        new Error(result.error ?? 'Fallo al enviar email de rechazo e-CF'),
+        'ecf_rechazado_notif_email',
+        { ecfId: String(ecf.id), numero: ecf.numero, empresaId: String(ecf.empresaId) },
+      );
+      this.logger.warn(`[NotifRechazo] Email fallido para ${ecf.numero} — se reintentará en próxima pasada`);
+    }
   }
 }

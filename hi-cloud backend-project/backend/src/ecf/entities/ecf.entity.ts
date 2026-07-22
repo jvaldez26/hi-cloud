@@ -231,4 +231,8 @@ export class ECF extends BaseEntity {
   /** Fecha en que se archivó (auditoría). */
   @Column({ type: 'timestamp', nullable: true })
   archivadoEn?: Date;
+
+  /** true = ya se envió la alerta de rechazo al super admin (idempotencia del cron). */
+  @Column({ default: false })
+  superAdminNotificado!: boolean;
 }
