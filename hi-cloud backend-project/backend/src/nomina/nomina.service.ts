@@ -373,7 +373,7 @@ export class NominaService {
     horasExtras?: number;
   }) {
     const empresaId = this.tenantService.getEmpresaId();
-    await this.findEmpleadoById(dto.empleadoId);
+    const emp = await this.findEmpleadoById(dto.empleadoId);
 
     const novedad = this.novedadRepository.create({
       ...dto,
@@ -382,13 +382,16 @@ export class NominaService {
       horasExtras: dto.horasExtras ?? 0,
       aplicado:    false,
     });
-    return this.novedadRepository.save(novedad);
+    const saved = await this.novedadRepository.save(novedad);
+    saved.empleado = emp;
+    return saved;
   }
 
   async getNovedades(empleadoId?: number, periodoId?: number, soloSinAplicar = false) {
     const empresaId = this.tenantService.getEmpresaId();
     const qb = this.novedadRepository
       .createQueryBuilder('n')
+      .leftJoinAndSelect('n.empleado', 'emp')
       .where('n.empresaId = :eid', { eid: empresaId })
       .andWhere('n.isActive = :active', { active: true });
 
@@ -426,7 +429,7 @@ export class NominaService {
     horasSemana?: number;
   }) {
     const empresaId = this.tenantService.getEmpresaId();
-    await this.findEmpleadoById(dto.empleadoId);
+    const empleado = await this.findEmpleadoById(dto.empleadoId);
 
     const numero = dto.numero ?? await this.generarNumeroContrato();
 
@@ -438,7 +441,9 @@ export class NominaService {
       fechaFin:    dto.fechaFin ? new Date(dto.fechaFin) : undefined,
       estado:      EstadoContrato.ACTIVO,
     });
-    return this.contratoRepository.save(contrato);
+    const saved = await this.contratoRepository.save(contrato);
+    saved.empleado = empleado;
+    return saved;
   }
 
   private async generarNumeroContrato(): Promise<string> {
@@ -458,6 +463,7 @@ export class NominaService {
     const empresaId = this.tenantService.getEmpresaId();
     const qb = this.contratoRepository
       .createQueryBuilder('c')
+      .leftJoinAndSelect('c.empleado', 'emp')
       .where('c.empresaId = :eid', { eid: empresaId })
       .andWhere('c.isActive = :active', { active: true });
 
@@ -468,7 +474,7 @@ export class NominaService {
 
   async findContratoById(id: number) {
     const empresaId = this.tenantService.getEmpresaId();
-    const c = await this.contratoRepository.findOne({ where: { id, empresaId, isActive: true } });
+    const c = await this.contratoRepository.findOne({ where: { id, empresaId, isActive: true }, relations: ['empleado'] });
     if (!c) throw new NotFoundException(`Contrato #${id} no encontrado`);
     return c;
   }
@@ -486,7 +492,7 @@ export class NominaService {
   /** Obtiene los datos necesarios y genera el PDF del contrato. */
   async getContratoPdf(id: number): Promise<{ buffer: Buffer; filename: string }> {
     const empresaId = this.tenantService.getEmpresaId();
-    const contrato  = await this.contratoRepository.findOne({ where: { id, empresaId, isActive: true } });
+    const contrato  = await this.contratoRepository.findOne({ where: { id, empresaId, isActive: true }, relations: ['empleado'] });
     if (!contrato) throw new NotFoundException(`Contrato #${id} no encontrado`);
 
     const empresa = await this.dataSource.getRepository(Empresa).findOne({ where: { id: empresaId, isActive: true } });
@@ -502,7 +508,7 @@ export class NominaService {
     if (!contrato) throw new NotFoundException(`Contrato #${id} no encontrado`);
     if (contrato.estadoFirma === 'firmado') throw new BadRequestException('El contrato ya está marcado como firmado');
     await this.contratoRepository.update(id, { estadoFirma: 'firmado', firmadoEn: new Date() } as any);
-    return this.contratoRepository.findOne({ where: { id, empresaId } }) as Promise<ContratoLaboral>;
+    return this.contratoRepository.findOne({ where: { id, empresaId }, relations: ['empleado'] }) as Promise<ContratoLaboral>;
   }
 
   /**
@@ -1305,13 +1311,16 @@ export class NominaService {
       estado: EstadoPrestamo.ACTIVO,
       empresaId,
     });
-    return this.prestamoRepository.save(prestamo);
+    const saved = await this.prestamoRepository.save(prestamo);
+    saved.empleado = empleado;
+    return saved;
   }
 
   async getPrestamos(empleadoId?: number) {
     const empresaId = this.tenantService.getEmpresaId();
     const qb = this.prestamoRepository
       .createQueryBuilder('p')
+      .leftJoinAndSelect('p.empleado', 'emp')
       .where('p.empresaId = :eid', { eid: empresaId })
       .andWhere('p.isActive = true');
 
@@ -1344,7 +1353,7 @@ export class NominaService {
       estado: nuevoEstado,
     });
 
-    return this.prestamoRepository.findOneOrFail({ where: { id: prestamoId } });
+    return this.prestamoRepository.findOneOrFail({ where: { id: prestamoId, empresaId }, relations: ['empleado'] });
   }
 
   async anularPrestamo(prestamoId: number) {
@@ -1388,13 +1397,16 @@ export class NominaService {
       estado: EstadoAnticipo.PENDIENTE,
       empresaId,
     });
-    return this.anticipoRepository.save(anticipo);
+    const saved = await this.anticipoRepository.save(anticipo);
+    saved.empleado = empleado;
+    return saved;
   }
 
   async getAnticipos(empleadoId?: number) {
     const empresaId = this.tenantService.getEmpresaId();
     const qb = this.anticipoRepository
       .createQueryBuilder('a')
+      .leftJoinAndSelect('a.empleado', 'emp')
       .where('a.empresaId = :eid', { eid: empresaId })
       .andWhere('a.isActive = true');
 

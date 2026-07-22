@@ -13,7 +13,7 @@ export enum EstadoAnticipo {
 @Entity('nomina_anticipos')
 @Index(['empresaId', 'empleadoId', 'estado'])
 export class AnticipoNomina extends TenantBaseEntity {
-  @ManyToOne(() => Empleado, { eager: true })
+  @ManyToOne(() => Empleado)
   @JoinColumn({ name: 'empleadoId' })
   empleado!: Empleado;
 

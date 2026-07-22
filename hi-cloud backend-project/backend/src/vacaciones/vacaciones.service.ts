@@ -184,7 +184,7 @@ export class VacacionesService {
       fechaRespuesta:       new Date(),
       observacionAprobador: obs,
     });
-    const resultado = await this.solicitudRepo.findOne({ where: { id }, relations: ['empleado'] }) as SolicitudVacacion;
+    const resultado = await this.solicitudRepo.findOne({ where: { id, empresaId }, relations: ['empleado'] }) as SolicitudVacacion;
 
     // Notificar al empleado — no-bloqueante
     const emailEmpleado = (resultado as any).empleado?.email as string | undefined;
@@ -220,7 +220,7 @@ export class VacacionesService {
       fechaRespuesta:       new Date(),
       observacionAprobador: obs,
     });
-    const resultado = await this.solicitudRepo.findOne({ where: { id }, relations: ['empleado'] }) as SolicitudVacacion;
+    const resultado = await this.solicitudRepo.findOne({ where: { id, empresaId }, relations: ['empleado'] }) as SolicitudVacacion;
 
     // Notificar al empleado — no-bloqueante
     const emailEmpleado = (resultado as any).empleado?.email as string | undefined;
@@ -255,16 +255,18 @@ export class VacacionesService {
       aprobadorId:    userId,
       fechaRespuesta: new Date(),
     });
-    return this.solicitudRepo.findOne({ where: { id }, relations: ['empleado'] }) as Promise<SolicitudVacacion>;
+    return this.solicitudRepo.findOne({ where: { id, empresaId }, relations: ['empleado'] }) as Promise<SolicitudVacacion>;
   }
 
   // ── Ausencias ────────────────────────────────────────────────────────────────
 
   async registrarAusencia(dto: CreateAusenciaDto, userId: number): Promise<Ausencia> {
     const empresaId = this.tenantService.getEmpresaId();
-    return this.ausenciaRepo.save(
+    const emp = await this.empleadoRepo.findOne({ where: { id: dto.empleadoId, empresaId, isActive: true } });
+    if (!emp) throw new NotFoundException(`Empleado #${dto.empleadoId} no pertenece a esta empresa`);
+    const saved = await this.ausenciaRepo.save(
       this.ausenciaRepo.create({
-        empresaId,                          // ← FIX: era siempre null → no aparecía en lista
+        empresaId,
         empleadoId:    dto.empleadoId,
         fecha:         new Date(dto.fecha),
         tipo:          dto.tipo,
@@ -274,6 +276,8 @@ export class VacacionesService {
         registradoPor: userId,
       }),
     );
+    saved.empleado = emp;
+    return saved;
   }
 
   async listarAusencias(pagination: PaginationDto, empleadoId?: number, mes?: number, anio?: number) {

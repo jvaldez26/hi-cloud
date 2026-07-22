@@ -23,7 +23,7 @@ export class Ausencia extends BaseEntity {
   @Column()
   empleadoId!: number;
 
-  @ManyToOne(() => Empleado, { eager: true })
+  @ManyToOne(() => Empleado)
   @JoinColumn({ name: 'empleadoId' })
   empleado!: Empleado;
 

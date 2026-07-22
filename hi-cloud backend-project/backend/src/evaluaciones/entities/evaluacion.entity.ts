@@ -25,14 +25,14 @@ export class EvaluacionEmpleado extends BaseEntity {
   @Column()
   empleadoId!: number;
 
-  @ManyToOne(() => Empleado, { eager: true })
+  @ManyToOne(() => Empleado)
   @JoinColumn({ name: 'empleadoId' })
   empleado!: Empleado;
 
   @Column()
   evaluadorId!: number;
 
-  @ManyToOne(() => User, { eager: true })
+  @ManyToOne(() => User)
   @JoinColumn({ name: 'evaluadorId' })
   evaluador!: User;
 

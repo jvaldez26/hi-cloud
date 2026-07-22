@@ -13,7 +13,7 @@ export enum EstadoContrato {
 @TenantScoped()
 @Entity('contratos_laborales')
 export class ContratoLaboral extends TenantBaseEntity {
-  @ManyToOne(() => Empleado, { eager: true })
+  @ManyToOne(() => Empleado)
   @JoinColumn({ name: 'empleadoId' })
   empleado!: Empleado;
 

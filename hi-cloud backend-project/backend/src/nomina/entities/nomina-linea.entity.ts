@@ -12,7 +12,7 @@ export class NominaLinea extends BaseEntity {
   @Column()
   periodoId!: number;
 
-  @ManyToOne(() => Empleado, { eager: true })
+  @ManyToOne(() => Empleado)
   @JoinColumn({ name: 'empleadoId' })
   empleado!: Empleado;
 

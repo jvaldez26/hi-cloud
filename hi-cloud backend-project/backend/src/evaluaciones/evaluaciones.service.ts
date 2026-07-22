@@ -28,13 +28,18 @@ export class EvaluacionesService {
   ) {}
 
   async crear(dto: any, evaluadorId: number) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const emp = await this.empRepo.findOne({ where: { id: dto.empleadoId, empresaId, isActive: true } });
+    if (!emp) throw new NotFoundException(`Empleado #${dto.empleadoId} no pertenece a esta empresa`);
     const promedio = this.calcularPromedio(dto.criterios ?? {});
-    return this.evalRepo.save(this.evalRepo.create({
-      ...dto,
+    const entity = this.evalRepo.create({
+      ...(dto as Partial<EvaluacionEmpleado>),
       evaluadorId,
-      empresaId:           this.tenantService.getEmpresaId(),
+      empresaId,
       calificacionGeneral: promedio,
-    }));
+    });
+    const saved = await this.evalRepo.save(entity);
+    return this.findById(saved.id);
   }
 
   async listar(anio?: number, periodo?: PeriodoEvaluacion, empleadoId?: number) {

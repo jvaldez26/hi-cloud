@@ -14,7 +14,7 @@ export enum TipoNovedad {
 @TenantScoped()
 @Entity('nomina_novedades')
 export class NominaNovedadEmpleado extends TenantBaseEntity {
-  @ManyToOne(() => Empleado, { eager: true })
+  @ManyToOne(() => Empleado)
   @JoinColumn({ name: 'empleadoId' })
   empleado!: Empleado;
 
