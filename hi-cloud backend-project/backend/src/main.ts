@@ -1,4 +1,5 @@
 import './instrument';
+import * as Sentry from '@sentry/nestjs';
 import { NestFactory, HttpAdapterHost } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { Logger as PinoLogger } from 'nestjs-pino';
@@ -12,6 +13,22 @@ import helmet from 'helmet';
 const cookieParser = require('cookie-parser');
 
 const bootLogger = new Logger('Bootstrap');
+
+// Capturar crashes silenciosos antes de que maten el proceso.
+// Sin estos handlers el OOM-killer o una excepción no capturada mata
+// Node sin dejar rastro en logs ni en Sentry.
+process.on('uncaughtException', (err: Error) => {
+  bootLogger.error(`[CRASH] uncaughtException — ${err.message}`, err.stack);
+  Sentry.captureException(err, { tags: { crash: 'uncaughtException' } });
+  Sentry.flush(2_000).catch(() => {}).finally(() => process.exit(1));
+});
+
+process.on('unhandledRejection', (reason: unknown) => {
+  const err = reason instanceof Error ? reason : new Error(String(reason));
+  bootLogger.error(`[CRASH] unhandledRejection — ${err.message}`, err.stack);
+  Sentry.captureException(err, { tags: { crash: 'unhandledRejection' } });
+  Sentry.flush(2_000).catch(() => {}).finally(() => process.exit(1));
+});
 
 /**
  * Carga secretos desde AWS Secrets Manager en producción.
