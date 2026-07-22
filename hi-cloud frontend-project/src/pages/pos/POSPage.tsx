@@ -8819,11 +8819,19 @@ export default function POSPage() {
     if (!trimmed) return;
     const tLower = trimmed.toLowerCase();
     const catalog = todosProdutos;
-    const found = catalog.find((p: any) =>
+    let found = catalog.find((p: any) =>
       p.codigo?.toLowerCase() === tLower ||
       (p.codigoBarras ?? '').toLowerCase() === tLower ||
       String(p.id) === trimmed,
     );
+    // Fallback HID layout: PROD- escaneado llega como PROD' — segundo intento con guion
+    if (!found && trimmed.includes("'")) {
+      const altLower = tLower.replace(/'/g, '-');
+      found = catalog.find((p: any) =>
+        p.codigo?.toLowerCase() === altLower ||
+        (p.codigoBarras ?? '').toLowerCase() === altLower,
+      );
+    }
     if (found) {
       addToCart(found as Prod);
       setBarcodeInput('');
@@ -8858,11 +8866,20 @@ export default function POSPage() {
 
     // 1. Buscar en catálogo local completo (cero requests al backend)
     const tLower = trimmed.toLowerCase();
-    const local = todosProdutos.find(
+    let local = todosProdutos.find(
       (p: any) =>
         p.codigo?.toString().trim().toLowerCase() === tLower ||
         (p.codigoBarras ?? '').toString().trim().toLowerCase() === tLower,
     );
+    // Fallback HID layout: PROD- escaneado llega como PROD' — segundo intento con guion
+    if (!local && trimmed.includes("'")) {
+      const altLower = tLower.replace(/'/g, '-');
+      local = todosProdutos.find(
+        (p: any) =>
+          p.codigo?.toString().trim().toLowerCase() === altLower ||
+          (p.codigoBarras ?? '').toString().trim().toLowerCase() === altLower,
+      );
+    }
     if (local) {
       setSearch('');
       agregarProducto(local);
@@ -8873,7 +8890,7 @@ export default function POSPage() {
     setSearch('');
     const fetchConRetry = (intento: number): Promise<void> =>
       api.get(`/productos?search=${encodeURIComponent(trimmed)}&limit=5`)
-        .then((r: any) => {
+        .then(async (r: any) => {
           const raw = r.data?.data ?? r.data;
           const lista: any[] = Array.isArray(raw?.data) ? raw.data : Array.isArray(raw) ? raw : [];
           const producto = lista.find(
@@ -8882,9 +8899,24 @@ export default function POSPage() {
           ) ?? (lista.length === 1 ? lista[0] : null);
           if (producto) {
             agregarProducto(producto);
-          } else {
-            message.warning(`Código ${trimmed} no encontrado`, 2);
+            return;
           }
+          // Fallback HID layout: reintentar con apóstrofe→guion si el primer intento no encontró nada
+          if (trimmed.includes("'")) {
+            const altTrimmed = trimmed.replace(/'/g, '-');
+            const altLower = altTrimmed.toLowerCase();
+            const r2: any = await api.get(`/productos?search=${encodeURIComponent(altTrimmed)}&limit=5`).catch(() => null);
+            if (r2) {
+              const raw2 = r2.data?.data ?? r2.data;
+              const lista2: any[] = Array.isArray(raw2?.data) ? raw2.data : Array.isArray(raw2) ? raw2 : [];
+              const prod2 = lista2.find(
+                (p: any) => p.codigo?.toString().trim().toLowerCase() === altLower ||
+                            (p.codigoBarras ?? '').toString().trim().toLowerCase() === altLower,
+              ) ?? (lista2.length === 1 ? lista2[0] : null);
+              if (prod2) { agregarProducto(prod2); return; }
+            }
+          }
+          message.warning(`Código ${trimmed} no encontrado`, 2);
         })
         .catch(async (err: any) => {
           if (err?.response?.status === 429 && intento === 0) {
