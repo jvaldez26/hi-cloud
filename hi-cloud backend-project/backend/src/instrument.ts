@@ -65,8 +65,34 @@ function scrubDeep(value: unknown, depth = 0, seen = new WeakSet<object>()): voi
   }
 }
 
+/**
+ * Tipos de excepción NestJS de validación de negocio esperada.
+ * Estos 4xx son respuestas normales del sistema a input inválido — no son bugs.
+ * Se omiten de Sentry para evitar ruido en el tablero de alertas.
+ *
+ * Conservamos intencionalmente:
+ *   - ForbiddenException   (403) — posible bug de permisos o bloqueo TenantSubscriber
+ *   - UnauthorizedException (401) — señal de seguridad
+ *   - Todo lo que no sea HttpException — errores de infra reales
+ */
+const SKIP_EXCEPTION_TYPES = new Set([
+  'BadRequestException',           // 400 — validación de input / stock insuficiente / etc.
+  'NotFoundException',             // 404 — recurso no encontrado (esperado)
+  'ConflictException',             // 409 — unicidad / estado inválido
+  'UnprocessableEntityException',  // 422 — EcfError y similares
+  'GoneException',                 // 410 — recurso eliminado (esperado)
+  'PayloadTooLargeException',      // 413 — payload de cliente demasiado grande
+  'MethodNotAllowedException',     // 405 — método HTTP incorrecto
+]);
+
 function beforeSend(event: Sentry.ErrorEvent): Sentry.ErrorEvent | null {
   try {
+    // Descartar excepciones 4xx de validación de negocio esperadas
+    const firstEx = event.exception?.values?.[0];
+    if (firstEx?.type && SKIP_EXCEPTION_TYPES.has(firstEx.type)) {
+      return null;
+    }
+
     if (event.request) {
       const req = event.request as Record<string, unknown>;
       delete req['data'];
