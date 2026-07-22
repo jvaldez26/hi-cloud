@@ -134,14 +134,13 @@ export class DeclaracionesPdfService {
   async generarIT1(mes: number, anio: number): Promise<Buffer> {
     const data = await this.svc.getIT1(mes, anio);
     const rnc  = await this.svc.getRnc();
-    const it1  = (data as any).it1 ?? data;
 
-    const ventas         = Number(it1.ventasGravadas  ?? 0);
-    const compras        = Number(it1.comprasGravadas ?? 0);
-    const itbisCobrado   = Number(it1.itbisCobrado ?? it1.itbisVentas  ?? 0);
-    const itbisPagado    = Number(it1.itbisPagado  ?? it1.itbisCompras ?? 0);
-    const itbisNeto      = Number(it1.itbisNeto    ?? (itbisCobrado - itbisPagado));
-    const estado         = itbisNeto > 0 ? 'A PAGAR' : 'A FAVOR';
+    const ventas       = Number(data.ventas.total        ?? 0);
+    const compras      = Number(data.compras.subtotal    ?? 0);
+    const itbisCobrado = Number(data.liquidacion.itbisDebito  ?? 0);
+    const itbisPagado  = Number(data.liquidacion.itbisCredito ?? 0);
+    const itbisNeto    = Number(data.liquidacion.itbisNeto    ?? 0);
+    const estado       = data.liquidacion.estado ?? (itbisNeto > 0 ? 'A PAGAR' : 'A FAVOR');
 
     const report: TabularReportData = {
       titulo:    'IT-1',

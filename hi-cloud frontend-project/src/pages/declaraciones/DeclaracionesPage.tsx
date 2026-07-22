@@ -330,12 +330,12 @@ function IT1Card({ data }: { data: any }) {
           <Statistic title="Ventas gravadas" value={ventas?.total ?? 0} formatter={v => fmt.money(Number(v))} />
           <Statistic title="ITBIS cobrado (18%)" value={liquidacion.itbisDebito ?? 0} formatter={v => fmt.money(Number(v))}
             valueStyle={{ color: '#ef4444' }} />
-          <Text type="secondary" style={{ fontSize: 11 }}>{ventas?.cantidadFacturas ?? 0} facturas</Text>
+          <Text type="secondary" style={{ fontSize: 11 }}>{ventas?.cantidad ?? 0} facturas</Text>
         </Card>
       </Col>
       <Col xs={24} md={8}>
         <Card>
-          <Statistic title="Compras gravadas" value={compras?.total ?? 0} formatter={v => fmt.money(Number(v))} />
+          <Statistic title="Compras gravadas" value={compras?.subtotal ?? 0} formatter={v => fmt.money(Number(v))} />
           <Statistic title="Crédito fiscal (ITBIS pagado)" value={liquidacion.itbisCredito ?? 0} formatter={v => fmt.money(Number(v))}
             valueStyle={{ color: '#10b981' }} />
           <Text type="secondary" style={{ fontSize: 11 }}>{compras?.cantidadCompras ?? compras?.cantidad ?? 0} compras</Text>
