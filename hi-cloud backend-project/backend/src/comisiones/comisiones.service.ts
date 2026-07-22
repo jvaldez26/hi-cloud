@@ -120,7 +120,9 @@ export class ComisionesService {
         f.folio                  AS "facturaFolio",
         f.total::text            AS total,
         f.fecha::text            AS "fechaFactura",
-        f."fechaPago"::text      AS "fechaPago",
+        (SELECT MAX(pc.fecha)::text FROM pagos_cobrados pc
+          JOIN cuentas_por_cobrar cxc ON cxc.id = pc."cuentaPorCobrarId"
+          WHERE cxc."facturaId" = f.id) AS "fechaPago",
         (SELECT p.categoria FROM factura_detalles fd
           JOIN productos p ON p.id = fd."productoId"
           WHERE fd."facturaId" = f.id LIMIT 1) AS "categoriaProducto"
