@@ -38,8 +38,9 @@ import { EcfEfectosNcService }     from './services/ecf-efectos-nc.service';
 import { EmitirECFUseCase } from './use-cases/emitir-ecf.use-case';
 
 // Jobs @Cron (Fase 4)
-import { ReintentoECFJob }       from './jobs/reintento-ecf.job';
-import { ConsultarEstadoECFJob } from './jobs/consultar-estado-ecf.job';
+import { ReintentoECFJob }          from './jobs/reintento-ecf.job';
+import { ConsultarEstadoECFJob }    from './jobs/consultar-estado-ecf.job';
+import { ResumenEcfPendientesJob }  from './jobs/resumen-ecf-pendientes.job';
 
 // Guards
 import { SuperAdminGuard }       from '../super-admin/super-admin.guard';
@@ -82,6 +83,7 @@ import { TokenBlacklistService } from '../auth/token-blacklist.service';
     // Fase 4 — Jobs @Cron
     ReintentoECFJob,
     ConsultarEstadoECFJob,
+    ResumenEcfPendientesJob,
     // Efectos secundarios de NC sobre facturas
     EcfEfectosNcService,
     // Guards

@@ -235,4 +235,8 @@ export class ECF extends BaseEntity {
   /** true = ya se envió la alerta de rechazo al super admin (idempotencia del cron). */
   @Column({ default: false })
   superAdminNotificado!: boolean;
+
+  /** true = ya se incluyó en un digest de OBSERVADO/CONTINGENCIA al super admin. */
+  @Column({ default: false })
+  notificadoResumen!: boolean;
 }
