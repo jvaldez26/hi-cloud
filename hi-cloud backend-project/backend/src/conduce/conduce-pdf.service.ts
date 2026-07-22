@@ -46,7 +46,7 @@ export class ConducePDFService {
       [empresaId],
     );
     const empresa = empresaRows[0] ?? {};
-    const nombreEmpresa: string = empresa.razonSocial || empresa.nombre || 'Mi Empresa';
+    const nombreEmpresa: string = empresa.nombreComercial || empresa.nombre || 'Mi Empresa';
     const estadoLabel = ESTADO_LABEL[cond.estado] ?? cond.estado;
     const estadoHex   = ESTADO_HEX[cond.estado]   ?? '#2563eb';
 

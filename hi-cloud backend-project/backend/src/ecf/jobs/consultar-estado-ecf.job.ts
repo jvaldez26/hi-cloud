@@ -304,11 +304,11 @@ export class ConsultarEstadoECFJob {
     let empresaRnc    = '';
     try {
       const rows = await this.ecfRepo.manager.query(
-        `SELECT "razonSocial", rnc FROM empresa WHERE id = $1 LIMIT 1`,
+        `SELECT "nombreComercial", rnc FROM empresa WHERE id = $1 LIMIT 1`,
         [ecf.empresaId],
-      ) as { razonSocial: string; rnc: string }[];
+      ) as { nombreComercial: string; rnc: string }[];
       if (rows[0]) {
-        empresaNombre = rows[0].razonSocial || empresaNombre;
+        empresaNombre = rows[0].nombreComercial || empresaNombre;
         empresaRnc    = rows[0].rnc         || '';
       }
     } catch { /* fallback a empresaId */ }

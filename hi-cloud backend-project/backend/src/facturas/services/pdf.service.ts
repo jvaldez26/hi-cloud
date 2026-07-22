@@ -212,7 +212,7 @@ export class PDFService {
         return m ? new Date(`${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:${m[6]}-04:00`).toISOString() : undefined;
       })(),
       ecfFechaVigencia:    ecf?.secFechaVencimiento  ? String(ecf.secFechaVencimiento) : undefined,
-      empresaNombre:       empresa.razonSocial || empresa.nombre || 'Mi Empresa',
+      empresaNombre:       empresa.nombreComercial || empresa.nombre || 'Mi Empresa',
       empresaRNC:          empresa.rnc || '',
       empresaDireccion:    empresa.direccion || '',
       empresaCiudad:       empresa.ciudad,
@@ -347,7 +347,7 @@ export class PDFService {
       : undefined;
 
     const data: ReciboPOSData = {
-      empresaNombre:   empresa.razonSocial || empresa.nombre || 'Mi Empresa',
+      empresaNombre:   empresa.nombreComercial || empresa.nombre || 'Mi Empresa',
       empresaRNC:      empresa.rnc || '',
       empresaTelefono: empresa.telefono,
       empresaWeb:      empresa.sitioWeb,

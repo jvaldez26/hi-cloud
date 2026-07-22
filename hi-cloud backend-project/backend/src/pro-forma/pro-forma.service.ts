@@ -284,7 +284,7 @@ export class ProFormaService {
       validezDias:      pf.validezDias,
       estado:           pf.estado,
       estadoColor:      pf.estado === ProFormaEstado.VENCIDA ? 'red' : 'blue',
-      empresaNombre:    empresa.razonSocial || empresa.nombre || 'Mi Empresa',
+      empresaNombre:    empresa.nombreComercial || empresa.nombre || 'Mi Empresa',
       empresaRNC:       empresa.rnc || '',
       empresaDireccion: empresa.direccion || '',
       empresaTelefono:  empresa.telefono,

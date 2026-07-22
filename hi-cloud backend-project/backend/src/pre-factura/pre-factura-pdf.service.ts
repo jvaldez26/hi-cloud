@@ -91,7 +91,7 @@ export class PreFacturaPDFService {
       fechaVencimiento: pf.fechaVencimiento ? String(pf.fechaVencimiento) : undefined,
       estado:           pf.estado,
       estadoColor:      ESTADO_COLOR[pf.estado] ?? 'blue',
-      empresaNombre:    empresa.razonSocial || empresa.nombre || 'Mi Empresa',
+      empresaNombre:    empresa.nombreComercial || empresa.nombre || 'Mi Empresa',
       empresaRNC:       empresa.rnc || '',
       empresaDireccion: empresa.direccion || '',
       empresaCiudad:    empresa.ciudad,
@@ -145,7 +145,7 @@ export class PreFacturaPDFService {
       now.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });
 
     const data: ReciboPOSData = {
-      empresaNombre:   empresa.razonSocial || empresa.nombre || 'Mi Empresa',
+      empresaNombre:   empresa.nombreComercial || empresa.nombre || 'Mi Empresa',
       empresaRNC:      empresa.rnc || '',
       empresaTelefono: empresa.telefono,
       empresaWeb:      empresa.sitioWeb,

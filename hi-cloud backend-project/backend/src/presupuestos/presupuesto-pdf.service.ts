@@ -41,7 +41,7 @@ export class PresupuestoPDFService {
       estado:      pres.estado,
       estadoColor: pres.estado === 'aprobado' ? 'green' : pres.estado === 'cerrado' ? 'red' : 'orange',
       empresa: {
-        nombre:    empresa.razonSocial || empresa.nombre || 'Mi Empresa',
+        nombre:    empresa.nombreComercial || empresa.nombre || 'Mi Empresa',
         rnc:       empresa.rnc || '',
         direccion: empresa.direccion || '',
         ciudad:    empresa.ciudad,

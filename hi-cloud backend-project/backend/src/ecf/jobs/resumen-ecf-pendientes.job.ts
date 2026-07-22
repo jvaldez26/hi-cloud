@@ -59,9 +59,9 @@ export class ResumenEcfPendientesJob {
     // Lookup batch de empresas (una query, no N queries)
     const empresaIds = [...new Set(pendientes.map(e => e.empresaId!))];
     const empresaRows = await this.ecfRepo.manager.query(
-      `SELECT id, "razonSocial", rnc FROM empresa WHERE id = ANY($1)`,
+      `SELECT id, "nombreComercial", rnc FROM empresa WHERE id = ANY($1)`,
       [empresaIds],
-    ) as { id: number; razonSocial: string; rnc: string }[];
+    ) as { id: number; nombreComercial: string; rnc: string }[];
     const empresaMap = new Map(empresaRows.map(e => [e.id, e]));
 
     // Agrupar por empresa
@@ -111,7 +111,7 @@ export class ResumenEcfPendientesJob {
 
   private buildHtml(
     porEmpresa: Map<number, ECF[]>,
-    empresaMap: Map<number, { id: number; razonSocial: string; rnc: string }>,
+    empresaMap: Map<number, { id: number; nombreComercial: string; rnc: string }>,
     totalObs:  number,
     totalCont: number,
   ): string {
@@ -127,7 +127,7 @@ export class ResumenEcfPendientesJob {
 
     for (const [empresaId, ecfs] of porEmpresa) {
       const emp      = empresaMap.get(empresaId);
-      const empLabel = emp?.razonSocial ?? `Empresa #${empresaId}`;
+      const empLabel = emp?.nombreComercial ?? `Empresa #${empresaId}`;
       const empRnc   = emp?.rnc ?? '';
 
       const observados    = ecfs.filter(e => e.estadoDGII === EstadoDGII.OBSERVADO);

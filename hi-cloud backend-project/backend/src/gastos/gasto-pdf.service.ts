@@ -116,7 +116,7 @@ export class GastoPDFService {
         let y = 36;
 
         // ── HEADER IZQUIERDO — empresa ────────────────────────────────────────
-        const ini = (empresa.nombreComercial || empresa.razonSocial || empresa.nombre || 'HC')
+        const ini = (empresa.nombreComercial || empresa.nombre || 'HC')
           .split(' ').slice(0,2).map((w:string) => w[0]).join('').toUpperCase();
         doc.rect(PL, y, 48, 48).fill(THEAD);
         doc.fillColor('#fff').font('Helvetica-Bold').fontSize(18)
@@ -124,7 +124,7 @@ export class GastoPDFService {
 
         const infoX = PL + 56;
         doc.fillColor(DARK).font('Helvetica-Bold').fontSize(12)
-          .text(empresa.nombreComercial || empresa.razonSocial || empresa.nombre || 'Mi Empresa', infoX, y, { width: 210 });
+          .text(empresa.nombreComercial || empresa.nombre || 'Mi Empresa', infoX, y, { width: 210 });
         let iy = y + 18;
         doc.font('Helvetica').fontSize(8).fillColor(GRAY);
         if (empresa.direccion) { doc.text(empresa.direccion + (empresa.ciudad ? ', '+empresa.ciudad : ''), infoX, iy, { width: 210 }); iy += 11; }

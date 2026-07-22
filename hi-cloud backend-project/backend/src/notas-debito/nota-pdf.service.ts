@@ -84,7 +84,7 @@ export class NotaDebitoPDFService {
       ecfFechaFirma:        ecfSignedDateISO(ecf),
       qrBase64,
       fechaVencSecuencia,
-      empresaNombre:        empresa.nombreComercial || empresa.razonSocial || empresa.nombre || 'Mi Empresa',
+      empresaNombre:        empresa.nombreComercial || empresa.nombre || 'Mi Empresa',
       empresaRNC:           empresa.rnc || '',
       empresaDireccion:     empresa.direccion || '',
       empresaCiudad:        empresa.ciudad,

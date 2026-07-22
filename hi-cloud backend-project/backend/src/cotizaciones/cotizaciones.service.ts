@@ -412,7 +412,7 @@ export class CotizacionesService {
       condicionesPago:   cot.condicionesPago,
       estado:            cot.estado,
       estadoColor,
-      empresaNombre:     empresa.razonSocial || empresa.nombre || 'Mi Empresa',
+      empresaNombre:     empresa.nombreComercial || empresa.nombre || 'Mi Empresa',
       empresaRNC:        empresa.rnc || '',
       empresaDireccion:  empresa.direccion || '',
       empresaCiudad:     empresa.ciudad,
@@ -466,7 +466,7 @@ export class CotizacionesService {
       now.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });
 
     const data: ReciboPOSData & { validezDias?: number } = {
-      empresaNombre:   empresa.razonSocial || empresa.nombre || 'Mi Empresa',
+      empresaNombre:   empresa.nombreComercial || empresa.nombre || 'Mi Empresa',
       empresaRNC:      empresa.rnc || '',
       empresaTelefono: empresa.telefono,
       empresaWeb:      empresa.sitioWeb,

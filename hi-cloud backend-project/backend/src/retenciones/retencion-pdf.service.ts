@@ -36,7 +36,7 @@ export class RetencionPDFService {
       numero,
       fecha:   String((ret as any).createdAt ?? new Date()),
       empresa: {
-        nombre:    empresa.razonSocial || empresa.nombre || 'Mi Empresa',
+        nombre:    empresa.nombreComercial || empresa.nombre || 'Mi Empresa',
         rnc:       empresa.rnc || '',
         direccion: empresa.direccion || '',
         ciudad:    empresa.ciudad,

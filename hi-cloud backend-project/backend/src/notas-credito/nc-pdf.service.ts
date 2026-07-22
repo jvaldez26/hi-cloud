@@ -73,7 +73,7 @@ export class NotaCreditoPDFService {
       ecfCodigoSeguridad:   ecf?.codigoSeguridad,
       ecfFechaFirma:        ecfSignedDateISO(ecf),
       qrBase64,
-      empresaNombre:        empresa.nombreComercial || empresa.razonSocial || empresa.nombre || 'Mi Empresa',
+      empresaNombre:        empresa.nombreComercial || empresa.nombre || 'Mi Empresa',
       empresaRNC:           empresa.rnc || '',
       empresaDireccion:     empresa.direccion || '',
       empresaCiudad:        empresa.ciudad,
