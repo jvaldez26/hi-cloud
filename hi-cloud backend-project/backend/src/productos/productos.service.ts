@@ -182,7 +182,9 @@ export class ProductosService implements OnModuleInit {
     const producto = this.productoRepository.create({ ...productoData, empresaId });
     const saved = await this.productoRepository.save(producto);
     if (!saved.codigo) {
-      const generado = `PROD-${String(saved.id).padStart(4, '0')}`;
+      const base = String(saved.id).padStart(4, '0');
+      const colision = await this.productoRepository.findOne({ where: { codigo: base, empresaId, isActive: true } });
+      const generado = (colision && colision.id !== saved.id) ? `${base}-${Date.now()}` : base;
       await this.productoRepository.update(saved.id, { codigo: generado });
       saved.codigo = generado;
     }
@@ -354,9 +356,9 @@ export class ProductosService implements OnModuleInit {
 
     // null explícito = usuario quiere borrar el código → auto-generar uno nuevo
     if (dto.codigo === null) {
-      const candidato = `PROD-${String(id).padStart(4, '0')}`;
+      const candidato = String(id).padStart(4, '0');
       const colision  = await this.productoRepository.findOne({ where: { codigo: candidato, empresaId, isActive: true } });
-      dto.codigo = (colision && colision.id !== id) ? `PROD-${String(id).padStart(4, '0')}-${Date.now()}` : candidato;
+      dto.codigo = (colision && colision.id !== id) ? `${candidato}-${Date.now()}` : candidato;
     }
     // Sanitizar código: undefined/vacío/string-literal → undefined (no modificar el código existente)
     if (dto.codigo !== undefined && dto.codigo !== null && (!dto.codigo || !dto.codigo.trim())) {
