@@ -5,6 +5,7 @@ import { Select, Modal, Badge, Empty, Spin, Tooltip, message, Avatar, Popover, I
 import { SearchOutlined, ShoppingCartOutlined, CheckCircleOutlined, DisconnectOutlined, LogoutOutlined, PrinterOutlined, LockOutlined, UserSwitchOutlined, SwapOutlined, EyeOutlined, EyeInvisibleOutlined, ShopOutlined, MailOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../../store/auth.store';
 import { useQuery, useMutation } from '@tanstack/react-query';
+import * as Sentry from '@sentry/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useMobile } from '../../hooks/useMediaQuery';
@@ -9118,6 +9119,25 @@ export default function POSPage() {
         const emitMsg = emitErr?.response?.data?.message ?? emitErr?.message ?? String(emitErr);
         console.error('[POS] emitirPos falló:', emitMsg, emitErr);
         setEcfStatus('pendiente');
+        // Observabilidad: la VENTA sí se cobró (la factura ya se creó) — solo falló la
+        // emisión del e-CF. Por eso NO se relanza: un rethrow saltaría el onSuccess
+        // (que muestra el aviso obligatorio al cajero y limpia el carrito) y haría
+        // parecer que toda la venta falló. Reportamos aquí explícitamente para que el
+        // fallo llegue a Sentry con contexto (scope global: empresaId/sucursalId/cajero).
+        // Distinguir TIMEOUT/comunicación (503 → el e-CF pudo quedar pendiente_envio,
+        // NO es rechazo definitivo) de un rechazo/fallo real de emisión.
+        const emitStatus = emitErr?.response?.status;
+        const esTimeout  = emitStatus === 503;
+        Sentry.captureException(emitErr, {
+          level: esTimeout ? 'warning' : 'error',
+          tags: {
+            origin:    'mutation',
+            modulo:    'POS',
+            operacion: 'venta_directa_emitir_ecf',
+            tipo:      esTimeout ? 'pendiente_confirmacion' : 'emision_fallida',
+          },
+          extra: { facturaId: factura?.id, folio: factura?.folio },
+        });
         return { factura, ecfResult: null, _emisionFallo: true, _emisionError: emitMsg };
       }
     },
