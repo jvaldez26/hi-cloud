@@ -529,7 +529,10 @@ function ProductosCatalogo() {
   // Sucursales accesibles — usadas tanto en el form como en los filtros del catálogo
   const { data: sucursales = [] } = useQuery<any[]>({
     queryKey: ['mis-sucursales', user?.id, empresaActual],
-    queryFn:  () => api.get('/auth/mis-sucursales').then((r: any) => r.data?.data ?? r.data ?? []),
+    queryFn:  () => api.get('/auth/mis-sucursales').then((r: any) => {
+      const d = r.data?.data ?? r.data;
+      return Array.isArray(d) ? d : [];
+    }),
     staleTime: 60_000,
     enabled:   !!user && !!empresaActual,
   });
@@ -539,7 +542,10 @@ function ProductosCatalogo() {
     queryKey: ['almacenes-lista', sucursalSeleccionada],
     queryFn:  () => api.get(
       sucursalSeleccionada ? `/almacenes?sucursalId=${sucursalSeleccionada}` : '/almacenes'
-    ).then((r: any) => r.data?.data ?? r.data ?? []),
+    ).then((r: any) => {
+      const d = r.data?.data ?? r.data;
+      return Array.isArray(d) ? d : [];
+    }),
     staleTime: 5 * 60_000,
     enabled:   open,
   });
@@ -548,7 +554,10 @@ function ProductosCatalogo() {
   // Todos los almacenes sin filtro — para columnas dinámicas y filtro por sucursal del catálogo
   const { data: almacenesTodos = [] } = useQuery<any[]>({
     queryKey: ['almacenes-todos'],
-    queryFn:  () => api.get('/almacenes').then((r: any) => r.data?.data ?? r.data ?? []),
+    queryFn:  () => api.get('/almacenes').then((r: any) => {
+      const d = r.data?.data ?? r.data;
+      return Array.isArray(d) ? d : [];
+    }),
     staleTime: 5 * 60_000,
     enabled: !!user && !!empresaActual,
   });
@@ -584,10 +593,10 @@ function ProductosCatalogo() {
   // Mapa almacenId → sucursalId para el filtro local de sucursal
   const almacenSucursalMap = useMemo(() => {
     const m = new Map<number, number>();
-    for (const alm of almacenesTodos) {
+    for (const alm of (Array.isArray(almacenesTodos) ? almacenesTodos : [])) {
       if (alm.sucursalId) m.set(Number(alm.id), Number(alm.sucursalId));
     }
-    for (const s of sucursales) {
+    for (const s of (Array.isArray(sucursales) ? sucursales : [])) {
       if (s.almacenPrincipalId) m.set(Number(s.almacenPrincipalId), Number(s.id));
     }
     return m;
