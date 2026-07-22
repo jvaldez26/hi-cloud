@@ -43,9 +43,9 @@ export default function AgroDashboard() {
         </Col>
         <Col xs={12} sm={8} md={5}>
           <Card>
-            <Statistic title="Insumos Stock Bajo" value={kpi.insumosStockBajo}
-              prefix={<AlertTriangle size={16} color={kpi.insumosStockBajo > 0 ? '#ff4d4f' : C.colorSuccess} />}
-              valueStyle={{ color: kpi.insumosStockBajo > 0 ? '#ff4d4f' : undefined }} />
+            <Statistic title="Insumos Stock Bajo" value={kpi.insumosStockBajo ?? 0}
+              prefix={<AlertTriangle size={16} color={(kpi.insumosStockBajo ?? 0) > 0 ? '#ff4d4f' : C.colorSuccess} />}
+              valueStyle={{ color: (kpi.insumosStockBajo ?? 0) > 0 ? '#ff4d4f' : undefined }} />
           </Card>
         </Col>
       </Row>

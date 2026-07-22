@@ -30,7 +30,7 @@ export class AgroDashboardService {
     );
 
     const [kpiInsumos] = await this.ds.query<any[]>(
-      `SELECT COUNT(*) FILTER(WHERE "stockActual" <= "stockMinimo") AS stockBajo
+      `SELECT COUNT(*) FILTER(WHERE "stockActual" <= "stockMinimo") AS "stockBajo"
        FROM ag_insumos WHERE "empresaId"=$1 AND "isActive"=true`,
       [empresaId],
     );
