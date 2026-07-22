@@ -138,11 +138,11 @@ export class NominaService {
     });
     if (!emp) throw new NotFoundException(`Empleado #${empleadoId} no encontrado`);
 
-    // Verificar que el userId pertenece al tenant (mismo empresaId en usuarios_empresas)
+    // Verificar que el userId pertenece al tenant (mismo empresaId en usuario_empresa)
     if (userId !== null) {
       const [rows] = await this.dataSource.query<any[]>(`
-        SELECT 1 FROM usuarios_empresas
-        WHERE "usuarioId" = $1 AND "empresaId" = $2
+        SELECT 1 FROM usuario_empresa
+        WHERE "userId" = $1 AND "empresaId" = $2
         LIMIT 1
       `, [userId, empresaId]);
       if (!rows) throw new BadRequestException('El usuario no pertenece a esta empresa');
@@ -206,7 +206,7 @@ export class NominaService {
     const [existingUser] = await this.dataSource.query<any[]>(
       `SELECT u.id, u.email, u.role, u."accountStatus"
        FROM users u
-       JOIN usuarios_empresas ue ON ue."usuarioId" = u.id
+       JOIN usuario_empresa ue ON ue."userId" = u.id
        WHERE LOWER(u.email) = LOWER($1) AND ue."empresaId" = $2 LIMIT 1`,
       [emailDestino, empresaId],
     );
@@ -235,7 +235,7 @@ export class NominaService {
 
       // Vincular empresa al nuevo usuario
       await this.dataSource.query(`
-        INSERT INTO usuarios_empresas ("usuarioId", "empresaId", rol, "isPrincipal", "isActive", "createdAt", "updatedAt")
+        INSERT INTO usuario_empresa ("userId", "empresaId", rol, "isPrincipal", "isActive", "createdAt", "updatedAt")
         VALUES ($1, $2, 'empleado', true, true, NOW(), NOW())
         ON CONFLICT DO NOTHING
       `, [userId, empresaId]);
@@ -337,7 +337,7 @@ export class NominaService {
     const rows = await this.dataSource.query<any[]>(`
       SELECT u.id, u.email, u.nombre, u.apellido, u.role
       FROM users u
-      JOIN usuarios_empresas ue ON ue."usuarioId" = u.id
+      JOIN usuario_empresa ue ON ue."userId" = u.id
       WHERE ue."empresaId" = $1
         AND u."isActive" = true
       ORDER BY u.nombre, u.apellido
