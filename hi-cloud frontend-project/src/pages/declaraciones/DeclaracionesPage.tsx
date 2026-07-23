@@ -545,7 +545,7 @@ export default function DeclaracionesPage() {
                 onTxtClick={() => descargarTxt('606', mes, anio, setTxt606)}
                 txtCargando={txt606} />
               <Table columns={flt606(cols606)} dataSource={filas606Filtradas} rowKey="linea"
-                loading={l6} size="small" scroll={{ x: 900 }}
+                loading={l6} size="small" scroll={{ x: 'max-content' }}
                 pagination={{ pageSize: 20, showSizeChanger: false }}
                 summary={() => f606?.filas?.length > 0 ? (
                   <Table.Summary.Row>
@@ -595,7 +595,7 @@ export default function DeclaracionesPage() {
                 onTxtClick={() => descargarTxt('607', mes, anio, setTxt607)}
                 txtCargando={txt607} />
               <Table columns={flt607(cols607)} dataSource={filas607Filtradas} rowKey="linea"
-                loading={l7} size="small" scroll={{ x: 850 }}
+                loading={l7} size="small" scroll={{ x: 'max-content' }}
                 pagination={{ pageSize: 20, showSizeChanger: false }}
                 summary={() => f607?.totales ? (
                   <Table.Summary.Row>

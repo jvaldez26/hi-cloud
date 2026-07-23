@@ -327,7 +327,7 @@ function SolicitudesTab() {
             </Row>
 
             <Title level={5}>Detalle por ítem</Title>
-            <Table size="small" pagination={false} scroll={{ x: 700 }}
+            <Table size="small" pagination={false} scroll={{ x: 'max-content' }}
               dataSource={comparativo.comparativo ?? []} rowKey="descripcion"
               columns={[
                 { title: 'Ítem', dataIndex: 'descripcion', ellipsis: true, width: 200 },

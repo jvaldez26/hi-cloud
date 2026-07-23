@@ -435,7 +435,7 @@ function HistorialProveedoresPanel({ productoId, active }: { productoId: number;
         dataSource={lineas}
         rowKey={(_: any, i: any) => String(i)}
         pagination={false}
-        scroll={{ x: 820 }}
+        scroll={{ x: 'max-content' }}
         columns={cols}
       />
     </>

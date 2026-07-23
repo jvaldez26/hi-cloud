@@ -301,7 +301,7 @@ export default function EcfRecibidosPage() {
               dataSource={importResult.detalles}
               columns={resultCols}
               pagination={{ pageSize: 10, hideOnSinglePage: true }}
-              scroll={{ y: 300 }}
+              scroll={{ x: 'max-content' }}
             />
           </>
         )}

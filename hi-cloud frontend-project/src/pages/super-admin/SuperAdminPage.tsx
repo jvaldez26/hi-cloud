@@ -1114,7 +1114,7 @@ function ModulosAddonTab() {
           rowKey={(r: any) => `${r.empresaId}-${r.moduloCodigo}`}
           dataSource={filtradas as any[]}
           pagination={{ pageSize: 20, showTotal: t => `${t} activaciones` }}
-          scroll={{ x: 780 }}
+          scroll={{ x: 'max-content' }}
           locale={{ emptyText: <span style={{ color: C.txt2 }}>Ninguna empresa tiene módulos activos</span> }}
           columns={[
             {
@@ -1260,7 +1260,7 @@ function DemosTab({ C }: { C: SaTheme }) {
       <div style={{ background: C.card, borderRadius: 12, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
         <Table
           size="small"
-          scroll={{ x: 900 }}
+          scroll={{ x: 'max-content' }}
           loading={isLoading}
           rowKey="id"
           dataSource={data?.data ?? []}
@@ -2520,7 +2520,7 @@ export default function SuperAdminPage() {
                     loading={loadPendientes}
                     rowKey="id"
                     size="small"
-                    scroll={{ x: 720 }}
+                    scroll={{ x: 'max-content' }}
                     pagination={{ pageSize: 15, showTotal: t => `${t} solicitudes` }}
                     columns={[
                       {
@@ -2631,7 +2631,7 @@ export default function SuperAdminPage() {
                       loading={loadEmpPend}
                       rowKey="id"
                       size="small"
-                      scroll={{ x: 720 }}
+                      scroll={{ x: 'max-content' }}
                       pagination={{ pageSize: 10, showTotal: t => `${t} empresas` }}
                       columns={[
                         { title: 'Empresa', render: (_: any, r: any) => (
@@ -2701,7 +2701,7 @@ export default function SuperAdminPage() {
                 loading={loadUsu}
                 rowKey="id"
                 size="small"
-                scroll={{ x: 720 }}
+                scroll={{ x: 'max-content' }}
                 pagination={{ pageSize: 15, showTotal: t => `${t} usuarios`, showSizeChanger: true }}
               />
             )}
@@ -3644,7 +3644,7 @@ function AuditoriaTab({ C }: { C: any }) {
           rowKey="id"
           loading={isLoading}
           size="small"
-          scroll={{ x: 900 }}
+          scroll={{ x: 'max-content' }}
           rowClassName={(r: any) =>
             (r.accion === 'error' || !r.exitoso || (r.statusCode && r.statusCode >= 400))
               ? 'sa-audit-error'

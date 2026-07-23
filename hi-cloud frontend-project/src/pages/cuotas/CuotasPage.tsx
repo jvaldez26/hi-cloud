@@ -223,8 +223,9 @@ export default function CuotasPage() {
                 <Col xs={24} sm={8}><Text type="secondary" style={{ fontSize: 11 }}>Monto Total</Text><div><Text strong>{fmt(planDetalle.montoTotal)}</Text></div></Col>
                 <Col xs={24} sm={8}><Text type="secondary" style={{ fontSize: 11 }}>Tasa Mensual</Text><div><Text strong>{planDetalle.tasaInteresMensual}%</Text></div></Col>
               </Row>
-              <Table dataSource={planDetalle.cuotas} rowKey="id" size="small" pagination={false}
-                scroll={{ y: 320 }}
+              <Table dataSource={planDetalle.cuotas} rowKey="id" size="small"
+                pagination={{ pageSize: 10, hideOnSinglePage: true }}
+                scroll={{ x: 'max-content' }}
                 columns={[
                   { title: 'No.', dataIndex: 'numeroCuota', key: 'n', width: 40, render: v => `#${v}` },
                   { title: 'Vencimiento', dataIndex: 'fechaVencimiento', key: 'fv', width: 100 },

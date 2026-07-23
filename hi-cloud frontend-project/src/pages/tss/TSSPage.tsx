@@ -219,7 +219,7 @@ export default function TSSPage() {
                       rowKey="cedula"
                       loading={isLoading}
                       size="small"
-                      scroll={{ x: 1400 }}
+                      scroll={{ x: 'max-content' }}
                       pagination={false}
                       summary={() => data.filas.length > 0 ? (
                         <Table.Summary.Row style={{ background: token.colorFillAlter, fontWeight: 700 }}>

@@ -288,7 +288,7 @@ export default function GeneradorReportesPage() {
           rowKey={(_, i) => String(i)}
           size="small"
           pagination={{ pageSize: 20 }}
-          scroll={{ x: true }}
+          scroll={{ x: 'max-content' }}
         />
       </Card>
     </div>

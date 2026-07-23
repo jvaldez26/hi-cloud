@@ -162,7 +162,7 @@ export default function FlujoCajaPage() {
                     rowKey="label"
                     size="small"
                     pagination={false}
-                    scroll={{ x: 1100 }}
+                    scroll={{ x: 'max-content' }}
                     rowClassName={(r: any) => r.flujoBruto < 0 ? 'ant-table-row-danger' : ''}
                   />
                 </Card>

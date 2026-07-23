@@ -142,7 +142,7 @@ export default function BalanceComprobacionPage() {
           loading={isLoading}
           size="small"
           pagination={{ pageSize: 30 }}
-          scroll={{ x: 900 }}
+          scroll={{ x: 'max-content' }}
           rowClassName={(r: any) => r.nivel <= 2 ? 'ant-table-row-level-parent' : ''}
           columns={[
             {

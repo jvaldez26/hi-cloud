@@ -262,8 +262,8 @@ export default function ConteoInventarioPage() {
                 dataSource={lineas}
                 rowKey="id"
                 size="small"
-                scroll={{ y: 380 }}
-                pagination={false}
+                scroll={{ x: 'max-content' }}
+                pagination={{ pageSize: 20, hideOnSinglePage: true, showTotal: t => `${t} productos` }}
                 rowClassName={(r: any) => {
                   if (r.diferencia > 0) return 'ant-table-row-success';
                   if (r.diferencia < 0) return 'ant-table-row-danger';

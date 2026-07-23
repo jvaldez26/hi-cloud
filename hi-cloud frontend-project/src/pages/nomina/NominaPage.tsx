@@ -970,7 +970,7 @@ function PeriodosTab() {
                 </Col>
               ))}
             </Row>
-            <Table columns={lineasCols} dataSource={lineas ?? []} rowKey="id" size="small" pagination={false} scroll={{ x: 900 }} />
+            <Table columns={lineasCols} dataSource={lineas ?? []} rowKey="id" size="small" pagination={false} scroll={{ x: 'max-content' }} />
           </>
         )}
       </Drawer>

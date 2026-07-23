@@ -228,7 +228,7 @@ export default function BackupsPage() {
           rowKey="id"
           loading={isLoading}
           size="small"
-          scroll={{ x: 900 }}
+          scroll={{ x: 'max-content' }}
           pagination={{
             current: page,
             pageSize: 20,

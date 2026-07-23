@@ -172,7 +172,7 @@ export default function LibroVentasPage() {
                   loading={loadingV}
                   size="small"
                   pagination={{ pageSize: 25 }}
-                  scroll={{ x: 900 }}
+                  scroll={{ x: 'max-content' }}
                   columns={fcVentas([
                     { title: 'Fecha',    dataIndex: 'fecha',         key: 'fecha',         width: 95 },
                     { title: 'Folio',    dataIndex: 'folio',         key: 'folio',         width: 140, render: v => <Text strong style={{ fontFamily: 'monospace', fontSize: 11 }}>{v}</Text> },
