@@ -88,6 +88,13 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
     else if (sucursalActual) form.setFieldValue('sucursalId', sucursalActual);
   }, [sucursales, sucursalActual]);
 
+  // Mantener la sesión activa mientras el formulario está abierto (previene logout por idle).
+  // Cada 8 minutos hace un GET /auth/me que activa el interceptor de refresco si el token expiró.
+  useEffect(() => {
+    const iv = setInterval(() => { api.get('/auth/me').catch(() => {}); }, 8 * 60 * 1000);
+    return () => clearInterval(iv);
+  }, []);
+
   const createMut = useMutation({
     mutationFn: comprasApi.create,
     onSuccess: (data: any) => {
@@ -336,7 +343,8 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
   return (
     <Form form={form} layout="vertical" onFinish={handleSubmit} initialValues={{ fecha: dayjs() }}>
       <Card style={{ marginBottom: 16 }}>
-        <Row gutter={16}>
+        {/* Fila 1 — Documento */}
+        <Row gutter={[16, 0]}>
           <Col xs={24} sm={10}>
             <Form.Item name="proveedorId" label="Proveedor" rules={[{ required: true }]}>
               <Select showSearch filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
@@ -348,17 +356,17 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
               />
             </Form.Item>
           </Col>
-          <Col xs={12} sm={4}>
+          <Col xs={12} sm={5}>
             <Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}>
               <DatePicker style={{ width:'100%' }} format="DD/MM/YYYY" />
             </Form.Item>
           </Col>
-          <Col xs={12} sm={4}>
+          <Col xs={12} sm={5}>
             <Form.Item name="numeroFacturaProveedor" label="NCF Proveedor">
               <Input placeholder="B01-00000001" />
             </Form.Item>
           </Col>
-          <Col xs={24} sm={7}>
+          <Col xs={24} sm={4}>
             <Form.Item
               label={
                 <Space size={4}>
@@ -370,7 +378,7 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
               }
             >
               <Select
-                allowClear placeholder="Almacén destino..."
+                allowClear placeholder="Almacén..."
                 value={almacenId} onChange={(v) => setAlmacenId(v ?? undefined)}
                 showSearch filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
                 options={almacenes.map((a: any) => ({
@@ -379,24 +387,27 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
               />
             </Form.Item>
           </Col>
-          <Col xs={12} sm={3}>
+        </Row>
+        {/* Fila 2 — Pago y configuración */}
+        <Row gutter={[16, 0]}>
+          <Col xs={12} sm={5}>
             <Form.Item label="Moneda">
               <Select value={moneda} onChange={handleMonedaChange} style={{ width: '100%' }}>
-                <Select.Option value="DOP">DOP (Pesos)</Select.Option>
-                <Select.Option value="USD">USD (Dólares)</Select.Option>
-                <Select.Option value="EUR">EUR (Euros)</Select.Option>
+                <Select.Option value="DOP">DOP — Pesos</Select.Option>
+                <Select.Option value="USD">USD — Dólares</Select.Option>
+                <Select.Option value="EUR">EUR — Euros</Select.Option>
               </Select>
             </Form.Item>
           </Col>
           {moneda !== 'DOP' && (
-            <Col xs={12} sm={3}>
-              <Form.Item label={`Tasa (RD$ por ${moneda} 1)`}>
-                <InputNumber value={tipoCambio} min={1} precision={4} style={{ width: '100%' }}
+            <Col xs={12} sm={4}>
+              <Form.Item label={`Tasa RD$/${moneda}`}>
+                <InputNumber controls={false} value={tipoCambio} min={1} precision={4} style={{ width: '100%' }}
                   onChange={v => setTipoCambio(v ?? 1)} addonBefore="RD$" />
               </Form.Item>
             </Col>
           )}
-          <Col xs={12} sm={3}>
+          <Col xs={12} sm={5}>
             <Form.Item label="Tipo de pago" required>
               <Select value={tipoPago} onChange={v => setTipoPago(v)} style={{ width: '100%' }}>
                 <Select.Option value="contado">Contado</Select.Option>
@@ -407,18 +418,20 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
           {tipoPago === 'credito' && (
             <Col xs={12} sm={4}>
               <Form.Item label="Días crédito">
-                <InputNumber min={1} max={365} value={diasCredito}
+                <InputNumber controls={false} min={1} max={365} value={diasCredito}
                   onChange={v => setDiasCredito(v ?? 30)} style={{ width: '100%' }} addonAfter="días" />
               </Form.Item>
             </Col>
           )}
-          <Col xs={24} sm={sucursales.length > 1 ? 3 : 4}>
+          {sucursales.length > 1 && (
+            <Col xs={24} sm={5}>
+              <Form.Item name="sucursalId" label="Sucursal" rules={[{ required: true, message: 'Selecciona una sucursal' }]}>
+                <Select placeholder="Seleccionar sucursal" options={sucursales.map((s: any) => ({ value: s.id, label: s.nombre }))} />
+              </Form.Item>
+            </Col>
+          )}
+          <Col xs={24} sm={tipoPago === 'credito' ? (sucursales.length > 1 ? 5 : 10) : (sucursales.length > 1 ? 9 : 14)}>
             <Form.Item name="notas" label="Notas"><Input.TextArea rows={1} /></Form.Item>
-          </Col>
-          <Col xs={24} sm={sucursales.length > 1 ? 5 : 0} style={{ display: sucursales.length > 1 ? undefined : 'none' }}>
-            <Form.Item name="sucursalId" label="Sucursal" rules={[{ required: sucursales.length > 1, message: 'Selecciona una sucursal' }]}>
-              <Select placeholder="Seleccionar sucursal" options={sucursales.map((s: any) => ({ value: s.id, label: s.nombre }))} />
-            </Form.Item>
           </Col>
         </Row>
         {tipoPago === 'credito' && fechaVencimientoCalc && (
