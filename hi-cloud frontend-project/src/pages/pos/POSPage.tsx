@@ -7388,6 +7388,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
     ],
     facturas: [
       { label: 'Folio',    key: 'folio',    render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue }}>{v}</span> },
+      { label: 'Fecha',    key: 'fecha',    render: (v) => <span style={{ fontSize: 11, color: C.textSub }}>{fmt.date(v)}</span> },
       { label: 'Cliente',  key: 'cliente',  render: (_,r) => r.cliente?.nombre ?? '—' },
       { label: 'Total',    key: 'total',    render: (v) => <span style={{ fontWeight: 700, color: C.green }}>{fmt.money(v)}</span> },
       { label: 'Estado',   key: 'estado',   render: (v: string) => {
@@ -7418,6 +7419,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
     ],
     'pre-facturas': [
       { label: 'Folio',    key: 'folio',    render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue }}>{v}</span> },
+      { label: 'Fecha',    key: 'fecha',    render: (v) => <span style={{ fontSize: 11, color: C.textSub }}>{fmt.date(v)}</span> },
       { label: 'Cliente',  key: 'cliente',  render: (_,r) => r.cliente?.nombre ?? '—' },
       { label: 'Total',    key: 'total',    render: (v) => <span style={{ fontWeight: 700, color: C.orange }}>{fmt.money(v)}</span> },
       { label: 'Estado',   key: 'estado',   render: (v: string) => {
@@ -7428,6 +7430,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
     ],
     cotizaciones: [
       { label: 'Número',   key: 'numero',   render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue }}>{v}</span> },
+      { label: 'Fecha',    key: 'fecha',    render: (v) => <span style={{ fontSize: 11, color: C.textSub }}>{fmt.date(v)}</span> },
       { label: 'Cliente',  key: 'cliente',  render: (_,r) => r.cliente?.nombre ?? '—' },
       { label: 'Total',    key: 'total',    render: (v) => <span style={{ fontWeight: 700, color: C.orange }}>{fmt.money(v)}</span> },
       { label: 'Estado',   key: 'estado',   render: (v: string) => {
