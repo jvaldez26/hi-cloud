@@ -7464,6 +7464,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
       { label: 'Método',  key: 'metodoPago',  render: (v) => <span style={{ fontSize: 10, fontWeight: 700 }}>{v?.toUpperCase()}</span> },
     ],
     'notas-credito': [
+      { label: 'Fecha',   key: 'fecha',       render: (v) => <span style={{ fontSize: 11, color: C.textSub }}>{fmt.date(v)}</span> },
       { label: 'Número',  key: 'numero',      render: (v, r) => {
         const afectado = r.ecf?.ncfModificado ?? r.facturaOriginalFolio;
         return (
