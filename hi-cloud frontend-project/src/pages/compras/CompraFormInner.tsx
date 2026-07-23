@@ -528,11 +528,12 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
           form={crearProdForm}
           layout="vertical"
           onFinish={(vals) => crearProdMut.mutate({
-            nombre:       vals.nombre,
-            precio:       Number(vals.precio),
-            costo:        vals.costo ? Number(vals.costo) : undefined,
-            categoria:    vals.categoria  || undefined,
-            unidadMedida: vals.unidadMedida || undefined,
+            nombre:           vals.nombre,
+            precio:           Number(vals.precio),
+            costo:            vals.costo ? Number(vals.costo) : undefined,
+            categoria:        vals.categoria  || undefined,
+            unidadMedida:     vals.unidadMedida || undefined,
+            esCreacionRapida: true,
           })}
         >
           <Form.Item

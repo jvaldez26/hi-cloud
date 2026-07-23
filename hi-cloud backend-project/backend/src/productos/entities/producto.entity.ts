@@ -71,4 +71,7 @@ export class Producto extends TenantBaseEntity {
 
   @Column({ length: 100, nullable: true })
   referencia?: string;
+
+  @Column({ default: false })
+  esCreacionRapida!: boolean;
 }

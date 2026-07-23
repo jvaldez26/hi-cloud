@@ -860,6 +860,11 @@ function ProductosCatalogo() {
             </Avatar>
           </Tooltip>
           <Text style={{ fontSize: 13 }}>{v}</Text>
+          {(r as any).esCreacionRapida && (
+            <Tooltip title="Creado al vuelo desde una orden de compra — completar datos">
+              <Tag color="orange" style={{ fontSize: 10, padding: '0 4px', lineHeight: '16px' }}>Pendiente</Tag>
+            </Tooltip>
+          )}
         </Space>
       )},
     { title: 'Referencia', key: 'referencia', dataIndex: 'referencia', width: 120,

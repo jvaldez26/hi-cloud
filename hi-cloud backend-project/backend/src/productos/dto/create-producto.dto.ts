@@ -5,6 +5,7 @@ import {
   IsNumber,
   IsPositive,
   IsInt,
+  IsBoolean,
   Min,
   Max,
   MaxLength,
@@ -121,4 +122,8 @@ export class CreateProductoDto {
   @IsString()
   @MaxLength(100)
   referencia?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  esCreacionRapida?: boolean;
 }
