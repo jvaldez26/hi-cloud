@@ -261,6 +261,18 @@ export default function FacturaFormPage() {
   const [crearClienteForm] = Form.useForm();
   const [clienteSearch, setClienteSearch] = useState('');
 
+  // Auto-lookup DGII cuando se tipea un RNC (9 dígitos) o Cédula (11 dígitos) sin cliente existente
+  const isRncPattern = /^\d{9}$|^\d{11}$/.test(clienteSearch);
+  const existeClienteRnc = isRncPattern
+    ? clientes?.data.find((c: Cliente) => c.rfc === clienteSearch)
+    : null;
+  const { data: dgiiRnc, isFetching: buscandoDgii } = useQuery<any>({
+    queryKey: ['dgii-rnc-cliente', clienteSearch],
+    queryFn:  () => api.get(`/rnc/consultar?rnc=${encodeURIComponent(clienteSearch)}`).then(r => r.data?.data ?? r.data),
+    enabled:  isRncPattern && !existeClienteRnc,
+    staleTime: 24 * 60 * 60 * 1000,
+  });
+
   const crearClienteMut = useMutation({
     mutationFn: (body: any) => clientesApi.create(body),
     onSuccess: (cli: any) => {
@@ -495,7 +507,7 @@ export default function FacturaFormPage() {
           stockTag = <Tag color={color} style={{ marginTop: 2, fontSize: 10 }}>{label}</Tag>;
         }
         return (
-          <div>
+          <div style={{ overflow: 'hidden' }}>
             <Select style={{ width: '100%' }} placeholder="Seleccionar..." showSearch
               popupMatchSelectWidth={false}
               value={r.productoId}
@@ -640,28 +652,49 @@ export default function FacturaFormPage() {
             <Col xs={24} sm={10}>
               <Form.Item name="clienteId" label={<span style={{ fontSize: 12 }}>Cliente <span style={{ color: 'red' }}>*</span></span>}
                 rules={[{ required: true, message: 'Selecciona un cliente' }]} style={fi}>
-                <Select showSearch placeholder="Buscar cliente..."
+                <Select showSearch placeholder="Buscar por nombre o RNC..."
                   filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
-                  options={clientes?.data.map((c: Cliente) => ({ value: c.id, label: `${c.rfc} — ${c.nombre}` }))}
+                  options={clientes?.data.map((c: Cliente) => ({
+                    value: c.id,
+                    label: c.rfc ? `${c.rfc} — ${c.nombre}` : c.nombre,
+                  }))}
                   onChange={onClienteChange}
                   onSearch={v => setClienteSearch(v)}
                   dropdownRender={menu => (
                     <>
                       {menu}
-                      {clienteSearch.length >= 2 && (
-                        <>
-                          <Divider style={{ margin: '4px 0' }} />
+                      <Divider style={{ margin: '4px 0' }} />
+                      {isRncPattern && !existeClienteRnc ? (
+                        buscandoDgii ? (
+                          <div style={{ padding: '6px 12px', fontSize: 12, color: token.colorTextSecondary }}>
+                            <Spin size="small" style={{ marginRight: 6 }} />Consultando DGII…
+                          </div>
+                        ) : dgiiRnc?.encontrado ? (
                           <Button type="link" icon={<PlusOutlined />}
                             style={{ width: '100%', textAlign: 'left', paddingLeft: 12 }}
                             onMouseDown={e => e.preventDefault()}
                             onClick={() => {
-                              crearClienteForm.setFieldsValue({ nombre: clienteSearch });
+                              crearClienteForm.setFieldsValue({ rfc: clienteSearch, nombre: dgiiRnc.nombre });
                               setShowCrearCliente(true);
                             }}>
-                            Crear &ldquo;{clienteSearch}&rdquo; como nuevo cliente
+                            {dgiiRnc.nombre} ({clienteSearch}) — Crear como cliente
                           </Button>
-                        </>
-                      )}
+                        ) : dgiiRnc ? (
+                          <div style={{ padding: '4px 12px', fontSize: 11, color: token.colorTextSecondary }}>
+                            RNC {clienteSearch} no encontrado en DGII
+                          </div>
+                        ) : null
+                      ) : clienteSearch.length >= 2 && !isRncPattern ? (
+                        <Button type="link" icon={<PlusOutlined />}
+                          style={{ width: '100%', textAlign: 'left', paddingLeft: 12 }}
+                          onMouseDown={e => e.preventDefault()}
+                          onClick={() => {
+                            crearClienteForm.setFieldsValue({ nombre: clienteSearch });
+                            setShowCrearCliente(true);
+                          }}>
+                          Crear &ldquo;{clienteSearch}&rdquo; como nuevo cliente
+                        </Button>
+                      ) : null}
                     </>
                   )}
                 />
