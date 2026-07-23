@@ -206,7 +206,7 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
   };
 
   const lineaCols = [
-    { title: 'Producto', key: 'prod', width: 175,
+    { title: 'Producto', key: 'prod',
       render: (_: unknown, _r: Linea, idx: number) => {
         const busquedaOpts = productosBusquedaData.map((p: any) => ({
           value: p.id, label: p.codigo ? `${p.codigo} — ${p.nombre}` : p.nombre,
@@ -458,7 +458,7 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
       <Card title="Ítems" style={{ marginBottom: 16 }}
         extra={<Button icon={<PlusOutlined />} onClick={() => setLineas([...lineas, { key: Date.now().toString(), cantidad: 1, cantidadBonificada: 0, precioUnitario: 0, porcentajeItbis: 18 }])}>Agregar</Button>}>
         <Table columns={lineaCols as any} dataSource={lineas} rowKey="key" pagination={false} size="small"
-          style={{ overflowX: 'hidden' }} />
+          tableLayout="fixed" style={{ overflowX: 'auto' }} />
       </Card>
 
       {esInformal && (
