@@ -650,6 +650,7 @@ function buildReciboTermicoHTML(
     ${row('e-NCF:', sale.encf)}
     ${row('Fecha:', sale.ecfFecha ?? ahora.format('DD-MM-YYYY HH:mm:ss'))}
     ${sale.securityCode ? row('Cód.Seg.:', sale.securityCode) : ''}
+    <div class="center" style="font-size:8pt;color:#444;margin-top:4px;">Generado por HiCloud ERP</div>
     ${line()}
     ${qrDataUrl && !sale.ecfPendiente
       ? `<div class="center"><img src="${qrDataUrl}" width="130" height="130" alt="QR DGII"></div>
@@ -762,7 +763,7 @@ ${mensajeTicket?.trim() ? `${line()}<div style="text-align:center;white-space:pr
 ${politicaDev?.trim() ? `${line()}<div class="small"><strong>POLÍTICA DE DEVOLUCIONES:</strong><br/>${esc(politicaDev.trim())}</div>` : ''}
 ${line()}
 ${footerHtml}
-<div class="center" style="font-size:8pt;color:#444;margin-top:4px;">Generado por HiCloud ERP</div>
+${(tipoDoc || !sale.encf || !mostrarEcf) ? '<div class="center" style="font-size:8pt;color:#444;margin-top:4px;">Generado por HiCloud ERP</div>' : ''}
 
 </body></html>`;
 }
