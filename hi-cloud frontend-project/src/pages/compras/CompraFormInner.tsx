@@ -198,7 +198,7 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
   };
 
   const lineaCols = [
-    { title: 'Producto', key: 'prod', width: 200,
+    { title: 'Producto', key: 'prod', width: 175,
       render: (_: unknown, _r: Linea, idx: number) => {
         const busquedaOpts = productosBusquedaData.map((p: any) => ({
           value: p.id, label: p.codigo ? `${p.codigo} — ${p.nombre}` : p.nombre,
@@ -247,11 +247,11 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
           />
         );
       }},
-    { title: 'Descripción', key: 'desc', width: 170,
+    { title: 'Descripción', key: 'desc', width: 100,
       render: (_: unknown, r: Linea, idx: number) => (
         <Input value={r.descripcion} onChange={e => { const u=[...lineas]; u[idx].descripcion=e.target.value; setLineas(u); }} />
       )},
-    { title: 'Cantidad', key: 'qty', width: 90,
+    { title: 'Cantidad', key: 'qty', width: 82,
       render: (_: unknown, r: Linea, idx: number) => (
         <InputNumber
           min={0.0001}
@@ -260,7 +260,7 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
           style={{ width:'100%' }}
           onChange={v => { const u=[...lineas]; u[idx].cantidad=v??0.001; setLineas(u); }} />
       )},
-    { title: 'Bonif.', key: 'bon', width: 80,
+    { title: 'Bonif.', key: 'bon', width: 72,
       render: (_: unknown, r: Linea, idx: number) => (
         <InputNumber
           min={0}
@@ -270,7 +270,7 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
           placeholder="0"
           onChange={v => { const u=[...lineas]; u[idx].cantidadBonificada=v??0; setLineas(u); }} />
       )},
-    { title: 'Inv. / Costo', key: 'inv', width: 100,
+    { title: 'Inv. / Costo', key: 'inv', width: 92,
       render: (_: unknown, r: Linea) => {
         const tot = r.cantidad + r.cantidadBonificada;
         const costo = tot > 0 ? r.precioUnitario * r.cantidad / tot : r.precioUnitario;
@@ -285,7 +285,7 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
           </div>
         );
       }},
-    { title: 'Precio', key: 'price', width: 120,
+    { title: 'Precio', key: 'price', width: 100,
       render: (_: unknown, r: Linea, idx: number) => (
         <div>
           <InputNumber min={0} precision={2} value={r.precioUnitario} style={{ width: '100%' }}
@@ -295,14 +295,14 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
           )}
         </div>
       )},
-    { title: 'ITBIS %', key: 'itbis', width: 80,
+    { title: 'ITBIS %', key: 'itbis', width: 72,
       render: (_: unknown, r: Linea, idx: number) => (
         <InputNumber min={0} max={100} value={r.porcentajeItbis} style={{ width:'100%' }}
           onChange={v => { const u=[...lineas]; u[idx].porcentajeItbis=v??18; setLineas(u); }} />
       )},
-    { title: 'Subtotal', key: 'sub', width: 110,
+    { title: 'Subtotal', key: 'sub', width: 98,
       render: (_: unknown, r: Linea) => fmtMon(r.precioUnitario * r.cantidad, moneda) },
-    { title: '', key: 'del', width: 50,
+    { title: '', key: 'del', width: 44,
       render: (_: unknown, _r: Linea, idx: number) => (
         <Button type="text" danger icon={<DeleteOutlined />} onClick={() => setLineas(lineas.filter((_, i) => i !== idx))} />
       )},
@@ -415,7 +415,7 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
 
       <Card title="Ítems" style={{ marginBottom: 16 }}
         extra={<Button icon={<PlusOutlined />} onClick={() => setLineas([...lineas, { key: Date.now().toString(), cantidad: 1, cantidadBonificada: 0, precioUnitario: 0, porcentajeItbis: 18 }])}>Agregar</Button>}>
-        <Table columns={lineaCols as any} dataSource={lineas} rowKey="key" pagination={false} size="small" scroll={{ x: 'max-content' }} />
+        <Table columns={lineaCols as any} dataSource={lineas} rowKey="key" pagination={false} size="small" />
       </Card>
 
       {esInformal && (
