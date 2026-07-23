@@ -257,7 +257,8 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
       }},
     { title: 'Descripción', key: 'desc', width: 100,
       render: (_: unknown, r: Linea, idx: number) => (
-        <Input value={r.descripcion} onChange={e => { const u=[...lineas]; u[idx].descripcion=e.target.value; setLineas(u); }} />
+        <Input value={r.descripcion} style={{ overflow: 'hidden' }}
+          onChange={e => { const u=[...lineas]; u[idx].descripcion=e.target.value; setLineas(u); }} />
       )},
     { title: 'Cantidad', key: 'qty', width: 82,
       render: (_: unknown, r: Linea, idx: number) => (
@@ -318,7 +319,7 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
           />
         );
       }},
-    { title: 'ITBIS %', key: 'itbis', width: 112,
+    { title: 'ITBIS %', key: 'itbis', width: 100,
       render: (_: unknown, r: Linea, idx: number) => (
         <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
           <InputNumber controls={false} min={0} max={100} value={r.porcentajeItbis}
@@ -456,7 +457,8 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
 
       <Card title="Ítems" style={{ marginBottom: 16 }}
         extra={<Button icon={<PlusOutlined />} onClick={() => setLineas([...lineas, { key: Date.now().toString(), cantidad: 1, cantidadBonificada: 0, precioUnitario: 0, porcentajeItbis: 18 }])}>Agregar</Button>}>
-        <Table columns={lineaCols as any} dataSource={lineas} rowKey="key" pagination={false} size="small" />
+        <Table columns={lineaCols as any} dataSource={lineas} rowKey="key" pagination={false} size="small"
+          style={{ overflowX: 'hidden' }} />
       </Card>
 
       {esInformal && (
