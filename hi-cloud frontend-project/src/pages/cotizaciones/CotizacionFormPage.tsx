@@ -134,6 +134,7 @@ export default function CotizacionFormPage() {
     { title: 'Producto', key: 'prod', width: 200,
       render: (_: any, _r: Linea, idx: number) => (
         <Select style={{ width: '100%' }} showSearch placeholder="Buscar..."
+          popupMatchSelectWidth={false}
           filterOption={(i, o) => String(o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
           options={productos?.data.map(p => ({ value: p.id, label: p.codigo ? `${p.codigo} — ${p.nombre}` : p.nombre }))}
           onChange={v => onProductoChange(v, idx)} />

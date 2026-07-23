@@ -497,6 +497,7 @@ export default function FacturaFormPage() {
         return (
           <div>
             <Select style={{ width: '100%' }} placeholder="Seleccionar..." showSearch
+              popupMatchSelectWidth={false}
               value={r.productoId}
               filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
               options={productos?.data.map(p => ({ value: p.id, label: p.codigo ? `${p.codigo} — ${p.nombre}` : p.nombre }))}
