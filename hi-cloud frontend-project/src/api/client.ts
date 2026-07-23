@@ -315,19 +315,20 @@ apiClient.interceptors.response.use(
       enrichedErr.response.data.message = enrichedErr.friendlyMessage;
     }
 
-    // ── Observabilidad: reportar a Sentry los fallos de SERVIDOR (5xx) y de RED
-    // (sin respuesta: timeout/DNS/CORS/offline). Los 4xx de negocio/validación NO
-    // se envían (ruido) y las cancelaciones tampoco. Se marca el error como
-    // reportado para que el onError global de mutaciones no lo duplique.
+    // ── Observabilidad: reportar a Sentry solo fallos reales de SERVIDOR (5xx).
+    // Los 4xx de negocio/validación NO se envían (ruido), las cancelaciones
+    // tampoco, y los errores sin respuesta (ECONNABORTED, ERR_NETWORK, ETIMEDOUT,
+    // offline del cliente) también se omiten — son condiciones de red del usuario,
+    // no bugs del sistema. Se marca el error como reportado para que el onError
+    // global de mutaciones no lo duplique.
     const esCancelacion = axios.isCancel?.(err) || (err as any)?.code === 'ERR_CANCELED';
     const esServidor    = typeof status === 'number' && status >= 500;
-    const esRed         = !err.response && !esCancelacion;
-    if (!esCancelacion && (esServidor || esRed)) {
+    if (!esCancelacion && esServidor) {
       enrichedErr.__sentryReported = true;
       Sentry.captureException(err, {
         tags: {
           origin:      'api',
-          http_status: status != null ? String(status) : 'network',
+          http_status: String(status),
           http_method: String(err.config?.method ?? '').toUpperCase() || 'GET',
           modulo:      moduloActual(),
         },
