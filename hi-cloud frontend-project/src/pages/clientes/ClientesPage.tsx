@@ -396,11 +396,6 @@ export default function ClientesPage() {
       >
         <Form form={form} layout="vertical" onFinish={handleSubmit}>
           <Row gutter={16}>
-            <Col xs={24} sm={16}>
-              <Form.Item name="nombre" label="Nombre / Razón Social" rules={[{ required: true }]}>
-                <Input />
-              </Form.Item>
-            </Col>
             <Col xs={24} sm={8}>
               <Form.Item noStyle shouldUpdate={(p, c) => p.identificadorExtranjero !== c.identificadorExtranjero}>
                 {({ getFieldValue }) => {
@@ -429,6 +424,11 @@ export default function ClientesPage() {
                     </>
                   );
                 }}
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={16}>
+              <Form.Item name="nombre" label="Nombre / Razón Social" rules={[{ required: true }]}>
+                <Input />
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
