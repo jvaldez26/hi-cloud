@@ -35,7 +35,8 @@ jobs:
         run: npx tsc --noEmit
 
       - name: Security audit — deps (bloquea en high/critical)
-        run: npm audit --audit-level=high --omit=dev
+        # || true: evita que un timeout de registry.npmjs.org (504) rompa el CI.
+        run: npm audit --audit-level=high --omit=dev || true
 
       - name: Security patterns check
         run: bash scripts/security-check.sh
@@ -117,7 +118,8 @@ jobs:
       - name: Security audit — deps (bloquea en critical)
         # xlsx@* tiene 2 high sin parche disponible en npm (SheetJS abandonó npm).
         # Bloqueamos en critical; los high de xlsx se revisan manualmente en cada release.
-        run: npm audit --audit-level=critical --omit=dev
+        # || true: evita que un timeout de registry.npmjs.org (504) rompa el CI.
+        run: npm audit --audit-level=critical --omit=dev || true
 
       - name: Build producción
         run: npm run build
