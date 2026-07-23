@@ -281,7 +281,12 @@ export default function FacturaFormPage() {
       onClienteChange(cli.id);
       setShowCrearCliente(false);
       crearClienteForm.resetFields();
-      message.success(`Cliente "${cli.nombre}" creado y seleccionado`);
+      const esAutoDGII = !showCrearCliente;
+      message.success(
+        esAutoDGII
+          ? `✓ Cliente "${cli.nombre}" registrado desde DGII y seleccionado`
+          : `Cliente "${cli.nombre}" creado y seleccionado`
+      );
     },
     onError: (e: any) => message.error(e?.friendlyMessage ?? e?.response?.data?.message ?? 'Error al crear cliente'),
   });
@@ -368,8 +373,11 @@ export default function FacturaFormPage() {
     return false;
   }, [clientes?.data, form, actualizarTipoNcf]);
 
-  /** Cuando el lookup DGII resuelve (asíncrono), reintenta match por RFC
-   *  y además intenta match por nombre DGII en la lista de clientes */
+  // Previene crear el mismo RNC dos veces si el efecto se dispara más de una vez
+  const autoCreandoRncRef = React.useRef<string | null>(null);
+
+  /** Cuando el lookup DGII resuelve (asíncrono), reintenta match por RFC,
+   *  luego por nombre, y si no existe en el sistema lo crea automáticamente. */
   useEffect(() => {
     if (!rnc.datos?.encontrado) return;
     const clean = rncInput.replace(/\D/g, '');
@@ -381,17 +389,28 @@ export default function FacturaFormPage() {
 
     // 2. Fallback: buscar por nombre DGII en la lista de clientes
     const nombreDGII = (rnc.datos.nombre ?? '').toLowerCase();
-    if (!nombreDGII || !clientes?.data) return;
-    const matchNombre = clientes.data.find((c: Cliente) => {
-      const cn = (c.nombre ?? '').toLowerCase();
-      // Coincidencia si los primeros 8 chars del nombre DGII están en el nombre del cliente o viceversa
-      return cn.length > 4 && (nombreDGII.includes(cn.substring(0, 8)) || cn.includes(nombreDGII.substring(0, 8)));
-    });
-    if (matchNombre) {
-      form.setFieldValue('clienteId', matchNombre.id);
-      setClienteSeleccionado(matchNombre);
-      if ((matchNombre as any)?.diasCredito > 0) setDiasCredito((matchNombre as any).diasCredito);
-      actualizarTipoNcf(matchNombre);
+    if (nombreDGII && clientes?.data) {
+      const matchNombre = clientes.data.find((c: Cliente) => {
+        const cn = (c.nombre ?? '').toLowerCase();
+        return cn.length > 4 && (nombreDGII.includes(cn.substring(0, 8)) || cn.includes(nombreDGII.substring(0, 8)));
+      });
+      if (matchNombre) {
+        form.setFieldValue('clienteId', matchNombre.id);
+        setClienteSeleccionado(matchNombre);
+        if ((matchNombre as any)?.diasCredito > 0) setDiasCredito((matchNombre as any).diasCredito);
+        actualizarTipoNcf(matchNombre);
+        return;
+      }
+    }
+
+    // 3. No existe en el sistema → crear automáticamente con datos de DGII
+    if (rnc.datos.nombre && autoCreandoRncRef.current !== clean) {
+      autoCreandoRncRef.current = clean;
+      crearClienteMut.mutate({
+        nombre:        rnc.datos.nombre,
+        rfc:           clean,
+        regimenFiscal: 'ORDINARIO',
+      });
     }
   }, [rnc.datos, clientes?.data]);   // eslint-disable-line react-hooks/exhaustive-deps
 
