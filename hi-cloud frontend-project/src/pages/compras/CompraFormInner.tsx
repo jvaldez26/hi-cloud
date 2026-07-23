@@ -19,6 +19,7 @@ interface Linea {
   precioUnitario: number;
   porcentajeItbis: number;
   permiteDecimales?: boolean;
+  precioIncluyeItbis?: boolean;
 }
 
 const fmtMon = (v: number, moneda = 'DOP') => {
@@ -254,6 +255,7 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
     { title: 'Cantidad', key: 'qty', width: 82,
       render: (_: unknown, r: Linea, idx: number) => (
         <InputNumber
+          controls={false}
           min={0.0001}
           precision={4}
           value={r.cantidad}
@@ -263,6 +265,7 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
     { title: 'Bonif.', key: 'bon', width: 72,
       render: (_: unknown, r: Linea, idx: number) => (
         <InputNumber
+          controls={false}
           min={0}
           precision={4}
           value={r.cantidadBonificada}
@@ -285,19 +288,41 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
           </div>
         );
       }},
-    { title: 'Precio', key: 'price', width: 100,
-      render: (_: unknown, r: Linea, idx: number) => (
-        <div>
-          <InputNumber min={0} precision={2} value={r.precioUnitario} style={{ width: '100%' }}
-            onChange={v => { const u=[...lineas]; u[idx].precioUnitario=v??0; setLineas(u); }} />
-          {r.precioUnitario === 0 && r.productoId && (
-            <Tag color="green" style={{ marginTop: 3, fontSize: 10, lineHeight: '16px' }}>Bonificación / Gratis</Tag>
-          )}
-        </div>
-      )},
+    { title: 'Precio', key: 'price', width: 110,
+      render: (_: unknown, r: Linea, idx: number) => {
+        const pct = r.porcentajeItbis || 0;
+        const displayVal = r.precioIncluyeItbis
+          ? parseFloat((r.precioUnitario * (1 + pct / 100)).toFixed(2))
+          : r.precioUnitario;
+        return (
+          <div>
+            <InputNumber
+              controls={false}
+              min={0}
+              precision={2}
+              value={displayVal}
+              style={{ width: '100%' }}
+              onChange={v => {
+                const u = [...lineas];
+                u[idx].precioUnitario = r.precioIncluyeItbis
+                  ? parseFloat(((v ?? 0) / (1 + pct / 100)).toFixed(6))
+                  : (v ?? 0);
+                setLineas(u);
+              }}
+            />
+            <Tag
+              color={r.precioIncluyeItbis ? 'blue' : 'default'}
+              style={{ marginTop: 3, fontSize: 10, lineHeight: '16px', cursor: 'pointer', userSelect: 'none' }}
+              onClick={() => { const u=[...lineas]; u[idx].precioIncluyeItbis=!r.precioIncluyeItbis; setLineas(u); }}
+            >
+              {r.precioIncluyeItbis ? 'c/ITBIS' : 's/ITBIS'}
+            </Tag>
+          </div>
+        );
+      }},
     { title: 'ITBIS %', key: 'itbis', width: 72,
       render: (_: unknown, r: Linea, idx: number) => (
-        <InputNumber min={0} max={100} value={r.porcentajeItbis} style={{ width:'100%' }}
+        <InputNumber controls={false} min={0} max={100} value={r.porcentajeItbis} style={{ width:'100%' }}
           onChange={v => { const u=[...lineas]; u[idx].porcentajeItbis=v??18; setLineas(u); }} />
       )},
     { title: 'Subtotal', key: 'sub', width: 98,
@@ -533,6 +558,7 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
             costo:            vals.costo ? Number(vals.costo) : undefined,
             categoria:        vals.categoria  || undefined,
             unidadMedida:     vals.unidadMedida || undefined,
+            codigoBarras:     vals.codigoBarras || undefined,
             esCreacionRapida: true,
           })}
         >
@@ -542,6 +568,9 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
             rules={[{ required: true, message: 'El nombre es obligatorio' }]}
           >
             <Input placeholder="Ej: Aceite Motor 5W30 1L" autoFocus />
+          </Form.Item>
+          <Form.Item name="codigoBarras" label="Código de barra">
+            <Input placeholder="Escanea o escribe el código" />
           </Form.Item>
           <Row gutter={12}>
             <Col span={12}>

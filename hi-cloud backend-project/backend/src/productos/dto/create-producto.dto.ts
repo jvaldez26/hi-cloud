@@ -29,6 +29,11 @@ export class CreateProductoDto {
   @MaxLength(30)
   codigo?: string | null;
 
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  codigoBarras?: string | null;
+
   @IsString()
   @IsNotEmpty()
   @MaxLength(200)

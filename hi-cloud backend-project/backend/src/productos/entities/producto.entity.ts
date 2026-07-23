@@ -12,6 +12,9 @@ export class Producto extends TenantBaseEntity {
   @Column({ type: 'varchar', length: 30, nullable: true })
   codigo?: string | null;
 
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  codigoBarras?: string | null;
+
   @Column({ length: 200 })
   nombre!: string;
 
