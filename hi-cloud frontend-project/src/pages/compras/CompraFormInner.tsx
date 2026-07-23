@@ -265,7 +265,6 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
         <InputNumber
           controls={false}
           min={0.0001}
-          precision={4}
           value={r.cantidad}
           style={{ width:'100%' }}
           onChange={v => { const u=[...lineas]; u[idx].cantidad=v??0.001; setLineas(u); }} />
@@ -275,7 +274,6 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
         <InputNumber
           controls={false}
           min={0}
-          precision={4}
           value={r.cantidadBonificada}
           style={{ width:'100%' }}
           placeholder="0"
