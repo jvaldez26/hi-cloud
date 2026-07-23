@@ -119,19 +119,19 @@ export class GeneradorReportesService {
   // ─── Balance de nómina ────────────────────────────────────────────────────────
 
   async balanceNomina(mes: number, anio: number) {
-    const periodo = `${anio}-${String(mes).padStart(2, '0')}`;
     return this.ds.query(`
       SELECT
         e.cargo, e.departamento,
-        COUNT(*)::text                        AS empleados,
-        COALESCE(SUM(e."salarioBase"),0)::text AS totalSalarios,
-        COALESCE(SUM(e."salarioBase" * 0.0287),0)::text AS totalAfp,
-        COALESCE(SUM(e."salarioBase" * 0.0304),0)::text AS totalSfs
+        COUNT(*)::text                                   AS empleados,
+        COALESCE(SUM(e."salarioBase"),0)::text           AS "totalSalarios",
+        COALESCE(SUM(e."salarioBase" * 0.0287),0)::text AS "totalAfp",
+        COALESCE(SUM(e."salarioBase" * 0.0304),0)::text AS "totalSfs"
       FROM empleados e
       WHERE e."isActive" = true AND e.estado = 'activo'
+        AND e."empresaId" = $1
       GROUP BY e.cargo, e.departamento
       ORDER BY SUM(e."salarioBase") DESC
-    `);
+    `, [this.eid]);
   }
 
   // ─── CxC por antigüedad ───────────────────────────────────────────────────────
