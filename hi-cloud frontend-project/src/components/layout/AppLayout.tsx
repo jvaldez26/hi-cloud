@@ -1402,67 +1402,109 @@ export default function AppLayout() {
       fontFamily:    "'Plus Jakarta Sans', 'Inter', sans-serif",
     }}>
 
-      {/* ── Header Fila 1: Logo + botón colapsar ────────────────────── */}
+      {/* ── Header Fila 1: Marca HiCloud + botón colapsar ───────────── */}
       <div style={{
+        position:       'relative',
         display:        'flex',
         alignItems:     'center',
         justifyContent: collapsed ? 'center' : 'space-between',
-        padding:        collapsed ? '16px 12px 10px' : '14px 16px 10px',
+        padding:        collapsed ? '12px 10px 11px' : '12px 16px 11px',
         flexShrink:     0,
+        background:     'radial-gradient(120% 100% at 20% 0%, rgba(76,134,232,.22), transparent 60%)',
+        borderBottom:   '1px solid rgba(120,150,210,.14)',
       }}>
-        {/* Logo — clickeable: toggle colapsar/expandir sidebar */}
+        {/* Lockup: badge + wordmark — click colapsa/expande */}
         <div
           onClick={() => setCollapsedPersisted(!collapsed)}
           title={collapsed ? 'Expandir menú' : 'Colapsar menú'}
-          style={{ cursor: 'pointer', display: 'flex', alignItems: 'center',
-            borderRadius: 6, padding: 2, transition: 'opacity 0.15s' }}
-          onMouseEnter={e => (e.currentTarget.style.opacity = '0.75')}
-          onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+          style={{ display: 'flex', alignItems: 'center', gap: collapsed ? 0 : 10, cursor: 'pointer' }}
         >
-          {collapsed ? (
-            <img
-              src="/logo-hicloud.png"
-              alt="HiCloud"
-              style={{ width: 32, height: 32, objectFit: 'contain' }}
-            />
-          ) : (
-            <motion.div
-              key="logo-full"
-              initial={{ opacity: 0, x: -8 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.18 }}
-            >
-              <img
-                src="/logo-hicloud.png"
-                alt="HiCloud ERP"
-                style={{ height: 28, width: 'auto', objectFit: 'contain' }}
+          {/* ── Badge 46×46 ──────────────────────────────────────── */}
+          <div style={{
+            width: 46, height: 46, borderRadius: 13, flexShrink: 0,
+            background:  'linear-gradient(135deg, #4C86E8 0%, #1E4BA8 100%)',
+            boxShadow:   '0 2px 10px rgba(28,70,180,.5), inset 0 1px 0 rgba(255,255,255,.20)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            {/* ── Logo SVG placeholder — sustituir paths por el SVG real del logo ── */}
+            <svg width="27" height="27" viewBox="0 0 27 27" fill="none" aria-hidden="true">
+              <path
+                d="M7.5 18a4.5 4.5 0 01-.5-8.95A6 6 0 0119.5 11.5h.5a3.5 3.5 0 010 7h-12z"
+                fill="rgba(255,255,255,.95)"
               />
+              <path
+                d="M10 14.5l2.2 2.2 4.3-4.3"
+                stroke="#4C86E8" strokeWidth="1.85" strokeLinecap="round" strokeLinejoin="round"
+              />
+            </svg>
+            {/* ── Fin placeholder ─────────────────────────────────── */}
+          </div>
+
+          {/* Wordmark + tagline — oculto cuando colapsado */}
+          {!collapsed && (
+            <motion.div
+              key="wordmark"
+              initial={{ opacity: 0, x: -6 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -6 }}
+              transition={{ duration: 0.18 }}
+              style={{ lineHeight: 1 }}
+            >
+              <div style={{
+                fontFamily:    "'Sora', 'Inter', system-ui, sans-serif",
+                fontWeight:    800,
+                fontSize:      23,
+                letterSpacing: '-0.02em',
+                color:         '#fff',
+                lineHeight:    1.1,
+                userSelect:    'none',
+              }}>
+                Hi<span style={{ color: '#4C86E8' }}>Cloud</span>
+              </div>
+              <div style={{
+                fontSize:      10.5,
+                color:         '#8FA3C8',
+                textTransform: 'uppercase',
+                letterSpacing: '.14em',
+                marginTop:     2.5,
+                fontWeight:    500,
+                userSelect:    'none',
+              }}>
+                ERP · DGII
+              </div>
             </motion.div>
           )}
         </div>
+
+        {/* Botón colapsar — visible solo cuando expandido */}
         {!collapsed && (
           <button
             onClick={() => setCollapsedPersisted(!collapsed)}
-            title="Colapsar menú"
+            aria-label="Contraer menú lateral"
+            title="Contraer menú"
             style={{
-              background: 'rgba(255,255,255,0.10)', border: 'none', cursor: 'pointer',
-              color: C.text, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: 28, height: 28, borderRadius: 6, flexShrink: 0, transition: 'background 0.15s',
+              width: 26, height: 26, borderRadius: 6, flexShrink: 0,
+              background: 'rgba(255,255,255,.06)',
+              border:     '1px solid rgba(255,255,255,.10)',
+              cursor:     'pointer',
+              display:    'flex', alignItems: 'center', justifyContent: 'center',
+              color:      'rgba(255,255,255,.5)',
+              transition: 'background 0.15s, color 0.15s',
             }}
-            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.18)')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.10)')}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,.14)'; e.currentTarget.style.color = '#fff'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,.06)'; e.currentTarget.style.color = 'rgba(255,255,255,.5)'; }}
           >
-            <ChevronLeft size={14} strokeWidth={2.5} />
+            <ChevronLeft size={13} strokeWidth={2.5} />
           </button>
         )}
       </div>
 
-      {/* ── Header Fila 2: Avatar empresa + nombre + "⋯" ───────────── */}
+      {/* ── Header Fila 2: Empresa (subordinada al logo) ─────────────── */}
       <div style={{
         display:        'flex',
         alignItems:     'center',
         justifyContent: collapsed ? 'center' : 'space-between',
-        padding:        collapsed ? '2px 12px 14px' : '2px 12px 14px 16px',
+        padding:        collapsed ? '8px 12px 12px' : '8px 12px 12px 16px',
         borderBottom:   `1px solid ${C.border}`,
         flexShrink:     0,
       }}>
@@ -1515,6 +1557,7 @@ export default function AppLayout() {
         {!collapsed && (
           <button
             onClick={() => setModalEmpresa(true)}
+            aria-label="Opciones de empresa"
             style={{
               background: 'none', border: 'none', cursor: 'pointer',
               color: C.textCategory, padding: '2px 4px', borderRadius: 4,
