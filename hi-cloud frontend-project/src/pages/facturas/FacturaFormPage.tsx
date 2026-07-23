@@ -552,7 +552,7 @@ export default function FacturaFormPage() {
     {
       title: 'Cantidad', key: 'qty', width: 80,
       render: (_: unknown, r: LineaForm, idx: number) => (
-        <InputNumber min={0.0001} precision={4} value={r.cantidad} style={{ width: '100%' }}
+        <InputNumber min={0.0001} value={r.cantidad} style={{ width: '100%' }}
           onChange={v => { const u = [...lineas]; u[idx].cantidad = v ?? 1; setLineas(u); }} />
       ),
     },
