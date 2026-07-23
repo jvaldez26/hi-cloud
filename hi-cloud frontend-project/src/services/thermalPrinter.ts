@@ -258,7 +258,7 @@ export async function generarReciboESCPOS(sale: SaleBT, empresa: EmpresaBT): Pro
   }
 
   c.salto(1).alignCenter().texto(centrar('Gracias por su compra!')).salto(1)
-    .bold(false).texto(centrar('Generado por HiCloud ERP')).salto(3).cortar();
+    .texto(centrar('Generado por HiCloud ERP')).salto(3).cortar();
 
   return c.build();
 }

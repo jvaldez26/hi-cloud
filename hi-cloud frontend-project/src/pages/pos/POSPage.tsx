@@ -762,7 +762,7 @@ ${mensajeTicket?.trim() ? `${line()}<div style="text-align:center;white-space:pr
 ${politicaDev?.trim() ? `${line()}<div class="small"><strong>POLÍTICA DE DEVOLUCIONES:</strong><br/>${esc(politicaDev.trim())}</div>` : ''}
 ${line()}
 ${footerHtml}
-<div class="center" style="font-size:7pt;color:#888;font-weight:normal;margin-top:4px;">Generado por HiCloud ERP</div>
+<div class="center" style="font-size:8pt;color:#444;margin-top:4px;">Generado por HiCloud ERP</div>
 
 </body></html>`;
 }
