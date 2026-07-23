@@ -614,7 +614,7 @@ export default function FacturaFormPage() {
           {/* ── Fila 1: Comprobante · Cliente · Fecha · Vendedor ─────────── */}
           <Row gutter={[12, 0]}>
             {/* Tipo NCF */}
-            <Col xs={24} sm={6}>
+            <Col xs={24} sm={5}>
               <Form.Item
                 style={fi}
                 label={
@@ -646,6 +646,28 @@ export default function FacturaFormPage() {
                   ))}
                 </Select>
               </Form.Item>
+            </Col>
+
+            {/* RNC / Cédula comprador — ANTES del cliente */}
+            <Col xs={24} sm={5}>
+              <Form.Item label={<span style={{ fontSize: 12 }}>RNC / Cédula comprador</span>}
+                style={{ marginBottom: (rnc.loading || rnc.datos) ? 4 : 8 }}>
+                <Input
+                  value={rncInput}
+                  maxLength={11}
+                  placeholder="9 díg. RNC u 11 díg. Cédula"
+                  suffix={rnc.loading
+                    ? <Spin size="small" />
+                    : <SearchOutlined style={{ color: '#ccc' }} />}
+                  style={{ fontFamily: 'monospace', letterSpacing: 1 }}
+                  onChange={e => onRncChange(e.target.value)}
+                />
+              </Form.Item>
+              {(rnc.loading || rnc.datos) && (
+                <div style={{ marginBottom: 8 }}>
+                  <RncBadge datos={rnc.datos} loading={rnc.loading} />
+                </div>
+              )}
             </Col>
 
             {/* Cliente */}
@@ -718,44 +740,10 @@ export default function FacturaFormPage() {
                 <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
               </Form.Item>
             </Col>
-
-            {/* Vendedor */}
-            <Col xs={12} sm={4}>
-              <Form.Item name="vendedorId" label={<span style={{ fontSize: 12 }}>Vendedor</span>} style={fi}>
-                <Select allowClear showSearch placeholder="Sin asignar"
-                  optionFilterProp="label"
-                  options={vendedores.map((v: any) => ({
-                    value: v.id,
-                    label: v.codigo ? `${v.codigo} — ${v.nombre}` : v.nombre,
-                  }))} />
-              </Form.Item>
-            </Col>
           </Row>
 
-          {/* ── Fila 2: RNC · Forma de pago · Días · Moneda · Sucursal ──── */}
+          {/* ── Fila 2: Forma de pago · Días · Moneda · Vendedor · Sucursal ──── */}
           <Row gutter={[12, 0]}>
-            {/* RNC Comprador */}
-            <Col xs={24} sm={7}>
-              <Form.Item label={<span style={{ fontSize: 12 }}>RNC / Cédula comprador</span>}
-                style={{ marginBottom: (rnc.loading || rnc.datos) ? 4 : 8 }}>
-                <Input
-                  value={rncInput}
-                  maxLength={11}
-                  placeholder="9 díg. RNC u 11 díg. Cédula"
-                  suffix={rnc.loading
-                    ? <Spin size="small" />
-                    : <SearchOutlined style={{ color: '#ccc' }} />}
-                  style={{ fontFamily: 'monospace', letterSpacing: 1 }}
-                  onChange={e => onRncChange(e.target.value)}
-                />
-              </Form.Item>
-              {(rnc.loading || rnc.datos) && (
-                <div style={{ marginBottom: 8 }}>
-                  <RncBadge datos={rnc.datos} loading={rnc.loading} />
-                </div>
-              )}
-            </Col>
-
             {/* Forma de pago */}
             <Col xs={24} sm={6}>
               <Form.Item label={<span style={{ fontSize: 12 }}>Forma de pago</span>} style={fi}>
@@ -778,7 +766,7 @@ export default function FacturaFormPage() {
 
             {/* Días crédito */}
             {tipoPago === 'CREDITO' && (
-              <Col xs={12} sm={4}>
+              <Col xs={12} sm={3}>
                 <Form.Item label={<span style={{ fontSize: 12 }}>Días crédito</span>} style={fi}>
                   <InputNumber min={1} max={365} value={diasCredito}
                     onChange={v => setDiasCredito(Number(v ?? 30))}
@@ -788,7 +776,7 @@ export default function FacturaFormPage() {
             )}
 
             {/* Moneda */}
-            <Col xs={12} sm={tipoPago === 'CREDITO' ? 3 : 4}>
+            <Col xs={12} sm={4}>
               <Form.Item name="moneda" label={<span style={{ fontSize: 12 }}>Moneda</span>}
                 initialValue="DOP" style={fi}>
                 <Select>
@@ -799,9 +787,21 @@ export default function FacturaFormPage() {
               </Form.Item>
             </Col>
 
+            {/* Vendedor */}
+            <Col xs={12} sm={tipoPago === 'CREDITO' ? 4 : 5}>
+              <Form.Item name="vendedorId" label={<span style={{ fontSize: 12 }}>Vendedor</span>} style={fi}>
+                <Select allowClear showSearch placeholder="Sin asignar"
+                  optionFilterProp="label"
+                  options={vendedores.map((v: any) => ({
+                    value: v.id,
+                    label: v.codigo ? `${v.codigo} — ${v.nombre}` : v.nombre,
+                  }))} />
+              </Form.Item>
+            </Col>
+
             {/* Sucursal */}
             {sucursales.length > 1 && (
-              <Col xs={12} sm={tipoPago === 'CREDITO' ? 4 : 7}>
+              <Col xs={12} sm={tipoPago === 'CREDITO' ? 7 : 9}>
                 <Form.Item name="sucursalId"
                   label={<span style={{ fontSize: 12 }}>Sucursal <span style={{ color: 'red' }}>*</span></span>}
                   rules={[{ required: true, message: 'Selecciona sucursal' }]} style={fi}>
