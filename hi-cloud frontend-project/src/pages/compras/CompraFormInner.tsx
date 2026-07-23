@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Form, Input, Button, Card, Row, Col, Select, DatePicker, Table,
-         InputNumber, Space, Divider, message, Tag, Alert, Checkbox, theme, Tooltip } from 'antd';
+         InputNumber, Space, Divider, message, Tag, Alert, Checkbox, theme, Tooltip, Modal } from 'antd';
 import { PlusOutlined, DeleteOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { comprasApi, type CompraDetallePayload } from '../../api/compras.api';
@@ -56,6 +56,11 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
   // Guarda label del producto seleccionado por row para mostrarlo aunque no esté en los resultados de búsqueda
   const [selectedProds, setSelectedProds] = useState<Map<number, string>>(new Map());
 
+  // ── Crear producto rápido desde la OC ──────────────────────────────
+  const [showCrearProd,      setShowCrearProd]      = useState(false);
+  const [crearProdLineasIdx, setCrearProdLineasIdx]  = useState(0);
+  const [crearProdForm] = Form.useForm();
+
   const { data: proveedores } = useQuery({ queryKey: ['proveedores-sel'], queryFn: () => proveedoresApi.list(1, 200) });
   const { data: productosBusqueda, isFetching: buscandoProd } = useQuery({
     queryKey: ['productos-compra-search', productoSearch],
@@ -89,6 +94,32 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
       onSuccess?.(data?.data ?? data);
     },
     onError: (e: any) => message.error(e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error al crear compra'),
+  });
+
+  const crearProdMut = useMutation({
+    mutationFn: (body: any) => api.post('/productos', body).then((r: any) => r.data?.data ?? r.data),
+    onSuccess: (prod: any, variables: any) => {
+      // Precio de la línea: costo de compra ingresado, o precio de venta como fallback
+      const precioLinea = Number(variables.costo) > 0 ? Number(variables.costo) : Number(prod.precio ?? 0);
+      const updated = [...lineas];
+      updated[crearProdLineasIdx] = {
+        ...updated[crearProdLineasIdx],
+        productoId:         prod.id,
+        descripcion:        prod.nombre,
+        precioUnitario:     precioLinea,
+        porcentajeItbis:    18,
+        permiteDecimales:   false,
+        cantidadBonificada: updated[crearProdLineasIdx].cantidadBonificada ?? 0,
+      };
+      setLineas(updated);
+      const label = prod.codigo ? `${prod.codigo} — ${prod.nombre}` : prod.nombre;
+      setSelectedProds(prev => new Map(prev).set(prod.id, label));
+      qc.invalidateQueries({ queryKey: ['productos-compra-search'] });
+      setShowCrearProd(false);
+      crearProdForm.resetFields();
+      message.success(`Producto "${prod.nombre}" creado y agregado a la línea`);
+    },
+    onError: (e: any) => message.error(e?.friendlyMessage ?? e?.response?.data?.message ?? 'Error al crear producto'),
   });
 
   const subtotal = lineas.reduce((s, l) => s + l.precioUnitario * l.cantidad, 0);
@@ -182,14 +213,38 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
         return (
           <Select style={{ width: '100%' }} showSearch placeholder="Escribe para buscar..."
             filterOption={false}
-            onSearch={setProductoSearch}
+            onSearch={(v) => { setProductoSearch(v); }}
             loading={buscandoProd}
             notFoundContent={productoSearch.length < 2 ? 'Escribe al menos 2 letras' : 'Sin resultados'}
             options={opts}
             value={_r.productoId}
             popupMatchSelectWidth={false}
             dropdownStyle={{ minWidth: 380 }}
-            onChange={(v) => onProductoChange(v, idx)} />
+            onChange={(v) => onProductoChange(v, idx)}
+            dropdownRender={(menu) => (
+              <>
+                {menu}
+                {productoSearch.length >= 2 && (
+                  <>
+                    <Divider style={{ margin: '4px 0' }} />
+                    <Button
+                      type="link"
+                      icon={<PlusOutlined />}
+                      style={{ width: '100%', textAlign: 'left', paddingLeft: 12 }}
+                      onMouseDown={e => e.preventDefault()}
+                      onClick={() => {
+                        setCrearProdLineasIdx(idx);
+                        crearProdForm.setFieldsValue({ nombre: productoSearch });
+                        setShowCrearProd(true);
+                      }}
+                    >
+                      Crear &ldquo;{productoSearch}&rdquo; como nuevo producto
+                    </Button>
+                  </>
+                )}
+              </>
+            )}
+          />
         );
       }},
     { title: 'Descripción', key: 'desc', width: 170,
@@ -460,6 +515,97 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
           </Col>
         </Row>
       </Card>
+      {/* ── Modal: crear producto rápido desde la OC ─────────────────── */}
+      <Modal
+        title="Crear producto rápido"
+        open={showCrearProd}
+        onCancel={() => { setShowCrearProd(false); crearProdForm.resetFields(); }}
+        footer={null}
+        destroyOnClose
+        width={480}
+      >
+        <Form
+          form={crearProdForm}
+          layout="vertical"
+          onFinish={(vals) => crearProdMut.mutate({
+            nombre:       vals.nombre,
+            precio:       Number(vals.precio),
+            costo:        vals.costo ? Number(vals.costo) : undefined,
+            categoria:    vals.categoria  || undefined,
+            unidadMedida: vals.unidadMedida || undefined,
+          })}
+        >
+          <Form.Item
+            name="nombre"
+            label="Nombre del producto"
+            rules={[{ required: true, message: 'El nombre es obligatorio' }]}
+          >
+            <Input placeholder="Ej: Aceite Motor 5W30 1L" autoFocus />
+          </Form.Item>
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item
+                name="precio"
+                label="Precio de venta"
+                rules={[
+                  { required: true, message: 'Ingresa un precio de venta' },
+                  { type: 'number', min: 0.01, message: 'Debe ser mayor a 0' },
+                ]}
+                extra="Editable luego en Inventario"
+              >
+                <InputNumber min={0.01} precision={2} style={{ width: '100%' }} addonBefore="RD$" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="costo"
+                label="Costo de compra"
+                extra="Se usará como precio en esta OC"
+              >
+                <InputNumber min={0} precision={2} style={{ width: '100%' }} addonBefore="RD$" placeholder="0.00" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item name="categoria" label="Categoría">
+                <Input placeholder="Ej: Lubricantes" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="unidadMedida" label="Unidad de medida" initialValue="PZA">
+                <Select>
+                  <Select.Option value="PZA">PZA — Pieza</Select.Option>
+                  <Select.Option value="UNIDAD">UNIDAD</Select.Option>
+                  <Select.Option value="LITRO">LITRO</Select.Option>
+                  <Select.Option value="KG">KG</Select.Option>
+                  <Select.Option value="METRO">METRO</Select.Option>
+                  <Select.Option value="CAJA">CAJA</Select.Option>
+                  <Select.Option value="GALON">GALÓN</Select.Option>
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="Creación rápida — completa los detalles del producto en Inventario después."
+          />
+          <Row gutter={8} justify="end">
+            <Col>
+              <Button onClick={() => { setShowCrearProd(false); crearProdForm.resetFields(); }}>
+                Cancelar
+              </Button>
+            </Col>
+            <Col>
+              <Button type="primary" htmlType="submit" loading={crearProdMut.isPending} icon={<PlusOutlined />}>
+                Crear y agregar a la OC
+              </Button>
+            </Col>
+          </Row>
+        </Form>
+      </Modal>
     </Form>
   );
 }
