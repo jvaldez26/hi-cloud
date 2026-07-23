@@ -256,6 +256,24 @@ export default function FacturaFormPage() {
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al aplicar anticipo', 5),
   });
 
+  // ── Creación rápida de cliente ─────────────────────────────────────────────
+  const [showCrearCliente, setShowCrearCliente] = useState(false);
+  const [crearClienteForm] = Form.useForm();
+  const [clienteSearch, setClienteSearch] = useState('');
+
+  const crearClienteMut = useMutation({
+    mutationFn: (body: any) => clientesApi.create(body),
+    onSuccess: (cli: any) => {
+      qc.invalidateQueries({ queryKey: ['clientes-sel'] });
+      form.setFieldValue('clienteId', cli.id);
+      onClienteChange(cli.id);
+      setShowCrearCliente(false);
+      crearClienteForm.resetFields();
+      message.success(`Cliente "${cli.nombre}" creado y seleccionado`);
+    },
+    onError: (e: any) => message.error(e?.friendlyMessage ?? e?.response?.data?.message ?? 'Error al crear cliente'),
+  });
+
   // ── Cálculos ───────────────────────────────────────────────────────────────
   const lineasCalc = lineas.map(l => {
     const bruto = r2(l.precioUnitario * l.cantidad);
@@ -624,7 +642,28 @@ export default function FacturaFormPage() {
                 <Select showSearch placeholder="Buscar cliente..."
                   filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
                   options={clientes?.data.map((c: Cliente) => ({ value: c.id, label: `${c.rfc} — ${c.nombre}` }))}
-                  onChange={onClienteChange} />
+                  onChange={onClienteChange}
+                  onSearch={v => setClienteSearch(v)}
+                  dropdownRender={menu => (
+                    <>
+                      {menu}
+                      {clienteSearch.length >= 2 && (
+                        <>
+                          <Divider style={{ margin: '4px 0' }} />
+                          <Button type="link" icon={<PlusOutlined />}
+                            style={{ width: '100%', textAlign: 'left', paddingLeft: 12 }}
+                            onMouseDown={e => e.preventDefault()}
+                            onClick={() => {
+                              crearClienteForm.setFieldsValue({ nombre: clienteSearch });
+                              setShowCrearCliente(true);
+                            }}>
+                            Crear &ldquo;{clienteSearch}&rdquo; como nuevo cliente
+                          </Button>
+                        </>
+                      )}
+                    </>
+                  )}
+                />
               </Form.Item>
               {!editMode && anticiposCliente.length > 0 && (
                 <div style={{ marginTop: -4, marginBottom: 4, padding: '3px 8px',
@@ -1102,6 +1141,83 @@ export default function FacturaFormPage() {
           </Form>
         </Modal>
       )}
+      {/* ── Modal: crear cliente rápido desde la factura ──────────────── */}
+      <Modal
+        title="Crear cliente rápido"
+        open={showCrearCliente}
+        onCancel={() => { setShowCrearCliente(false); crearClienteForm.resetFields(); }}
+        footer={null}
+        destroyOnClose
+        width={480}
+      >
+        <Form
+          form={crearClienteForm}
+          layout="vertical"
+          onFinish={vals => crearClienteMut.mutate({
+            rfc:          vals.rfc || undefined,
+            nombre:       vals.nombre,
+            telefono:     vals.telefono || undefined,
+            email:        vals.email    || undefined,
+            regimenFiscal: vals.regimenFiscal || undefined,
+          })}
+        >
+          <Row gutter={12}>
+            <Col span={10}>
+              <Form.Item name="rfc" label="RNC / Cédula"
+                rules={[{
+                  validator: (_, v) => {
+                    if (!v) return Promise.resolve();
+                    return /^\d{9}$|^\d{11}$/.test(v)
+                      ? Promise.resolve()
+                      : Promise.reject('9 dígitos (RNC) u 11 (Cédula)');
+                  },
+                }]}>
+                <Input placeholder="9 u 11 dígitos" maxLength={11} />
+              </Form.Item>
+            </Col>
+            <Col span={14}>
+              <Form.Item name="nombre" label="Nombre / Razón Social"
+                rules={[{ required: true, message: 'El nombre es obligatorio' }]}>
+                <Input autoFocus />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item name="telefono" label="Teléfono">
+                <Input placeholder="(809) 000-0000" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="email" label="Email" rules={[{ type: 'email', message: 'Email inválido' }]}>
+                <Input placeholder="correo@ejemplo.com" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name="regimenFiscal" label="Régimen Fiscal">
+            <Select allowClear>
+              <Select.Option value="ORDINARIO">Ordinario</Select.Option>
+              <Select.Option value="PST">PST — Pequeño contribuyente</Select.Option>
+              <Select.Option value="RST">RST — Simplificado</Select.Option>
+              <Select.Option value="EXENTO">Exento</Select.Option>
+            </Select>
+          </Form.Item>
+          <Alert type="info" showIcon style={{ marginBottom: 16 }}
+            message="Creación rápida — completa los datos del cliente en el módulo Clientes después." />
+          <Row gutter={8} justify="end">
+            <Col>
+              <Button onClick={() => { setShowCrearCliente(false); crearClienteForm.resetFields(); }}>
+                Cancelar
+              </Button>
+            </Col>
+            <Col>
+              <Button type="primary" htmlType="submit" loading={crearClienteMut.isPending} icon={<PlusOutlined />}>
+                Crear y seleccionar
+              </Button>
+            </Col>
+          </Row>
+        </Form>
+      </Modal>
     </div>
   );
 }
