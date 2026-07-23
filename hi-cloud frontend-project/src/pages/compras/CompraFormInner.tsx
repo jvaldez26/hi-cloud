@@ -295,42 +295,45 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
           </div>
         );
       }},
-    { title: 'Precio', key: 'price', width: 110,
+    { title: 'Precio', key: 'price', width: 90,
       render: (_: unknown, r: Linea, idx: number) => {
         const pct = r.porcentajeItbis || 0;
         const displayVal = r.precioIncluyeItbis
           ? parseFloat((r.precioUnitario * (1 + pct / 100)).toFixed(2))
           : r.precioUnitario;
         return (
-          <div>
-            <InputNumber
-              controls={false}
-              min={0}
-              precision={2}
-              value={displayVal}
-              style={{ width: '100%' }}
-              onChange={v => {
-                const u = [...lineas];
-                u[idx].precioUnitario = r.precioIncluyeItbis
-                  ? parseFloat(((v ?? 0) / (1 + pct / 100)).toFixed(6))
-                  : (v ?? 0);
-                setLineas(u);
-              }}
-            />
-            <Tag
-              color={r.precioIncluyeItbis ? 'blue' : 'default'}
-              style={{ marginTop: 3, fontSize: 10, lineHeight: '16px', cursor: 'pointer', userSelect: 'none' }}
-              onClick={() => { const u=[...lineas]; u[idx].precioIncluyeItbis=!r.precioIncluyeItbis; setLineas(u); }}
-            >
-              {r.precioIncluyeItbis ? 'c/ITBIS' : 's/ITBIS'}
-            </Tag>
-          </div>
+          <InputNumber
+            controls={false}
+            min={0}
+            precision={2}
+            value={displayVal}
+            style={{ width: '100%' }}
+            onChange={v => {
+              const u = [...lineas];
+              u[idx].precioUnitario = r.precioIncluyeItbis
+                ? parseFloat(((v ?? 0) / (1 + pct / 100)).toFixed(6))
+                : (v ?? 0);
+              setLineas(u);
+            }}
+          />
         );
       }},
-    { title: 'ITBIS %', key: 'itbis', width: 72,
+    { title: 'ITBIS %', key: 'itbis', width: 112,
       render: (_: unknown, r: Linea, idx: number) => (
-        <InputNumber controls={false} min={0} max={100} value={r.porcentajeItbis} style={{ width:'100%' }}
-          onChange={v => { const u=[...lineas]; u[idx].porcentajeItbis=v??18; setLineas(u); }} />
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <InputNumber controls={false} min={0} max={100} value={r.porcentajeItbis}
+            style={{ flex: 1, minWidth: 0 }}
+            onChange={v => { const u=[...lineas]; u[idx].porcentajeItbis=v??18; setLineas(u); }} />
+          <Tooltip title={r.precioIncluyeItbis ? 'Precio ingresado CON ITBIS — click para cambiar a sin ITBIS' : 'Precio ingresado SIN ITBIS — click para cambiar a con ITBIS'}>
+            <Tag
+              color={r.precioIncluyeItbis ? 'blue' : 'default'}
+              style={{ fontSize: 10, padding: '0 4px', lineHeight: '20px', cursor: 'pointer', userSelect: 'none', flexShrink: 0, margin: 0 }}
+              onClick={() => { const u=[...lineas]; u[idx].precioIncluyeItbis=!r.precioIncluyeItbis; setLineas(u); }}
+            >
+              {r.precioIncluyeItbis ? 'c/' : 's/'}
+            </Tag>
+          </Tooltip>
+        </div>
       )},
     { title: 'Subtotal', key: 'sub', width: 98,
       render: (_: unknown, r: Linea) => fmtMon(r.precioUnitario * r.cantidad, moneda) },
