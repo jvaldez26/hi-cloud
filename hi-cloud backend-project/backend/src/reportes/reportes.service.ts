@@ -726,20 +726,26 @@ export class ReportesService {
       [this.eid],
     );
 
+    const productos = rows.map(r => ({
+      id:           r.id,
+      codigo:       r.codigo,
+      nombre:       r.nombre,
+      unidadMedida: r.unidadMedida,
+      stock:        Number(r.stock),
+      stockMinimo:  Number(r.stockMinimo),
+      stockMaximo:  r.stockMaximo ? Number(r.stockMaximo) : null,
+      precio:       Number(r.precio),
+      categoria:    r.categoria,
+      alerta:       Number(r.stock) <= Number(r.stockMinimo),
+    }));
+
     return {
-      totalProductos:   rows.length,
-      productos: rows.map(r => ({
-        id:           r.id,
-        codigo:       r.codigo,
-        nombre:       r.nombre,
-        unidadMedida: r.unidadMedida,
-        stock:        Number(r.stock),
-        stockMinimo:  Number(r.stockMinimo),
-        stockMaximo:  r.stockMaximo ? Number(r.stockMaximo) : null,
-        precio:       Number(r.precio),
-        categoria:    r.categoria,
-        alerta:       Number(r.stock) <= Number(r.stockMinimo),
-      })),
+      resumen: {
+        totalProductos:    productos.length,
+        productosActivos:  productos.filter(p => p.stock > 0).length,
+        productosBajoStock: productos.filter(p => p.alerta).length,
+      },
+      productos,
     };
   }
 
