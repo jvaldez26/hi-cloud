@@ -3,6 +3,8 @@ import { DataSource } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AsientoContable } from '../contabilidad/entities/asiento-contable.entity';
+import { TenantService } from '../tenant/tenant.service';
+import { TenantContextMissingException } from '../tenant/exceptions/tenant-context-missing.exception';
 
 export interface LineaCuenta {
   codigo:      string;
@@ -21,10 +23,23 @@ export class ReportesFinancierosService {
     private readonly dataSource: DataSource,
     @InjectRepository(AsientoContable)
     private readonly asientoRepo: Repository<AsientoContable>,
+    private readonly tenantSvc: TenantService,
   ) {}
 
-  // TenantService se inyecta globalmente via ClsService — se accede via request context
-  // Los asientos contables se filtran por empresaId en los JOINs con asientos_contables
+  /**
+   * empresaId del request actual. FALLA CERRADO: si no hay contexto de empresa
+   * lanza en vez de ejecutar la query sin filtro.
+   *
+   * Estas consultas usan SQL crudo (dataSource.query), que NO pasa por
+   * TenantAwareRepository ni por el TenantSubscriber: el filtro por empresaId
+   * es responsabilidad explicita de cada query de este servicio. Tampoco hay
+   * RLS en Postgres como segunda linea de defensa.
+   */
+  private get eid(): number {
+    const id = this.tenantSvc.getEmpresaIdOrNull();
+    if (!id) throw new TenantContextMissingException('CuentaContable', 'ReportesFinancierosService');
+    return id;
+  }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -43,11 +58,16 @@ export class ReportesFinancierosService {
   // ─── Movimientos por cuenta (base de los 2 informes) ─────────────────────────
 
   private async getMovimientosCuentas(desde?: string, hasta?: string): Promise<LineaCuenta[]> {
-    const condFecha = desde && hasta
-      ? `AND ac.fecha BETWEEN '${desde}' AND '${hasta}'`
-      : hasta
-        ? `AND ac.fecha <= '${hasta}'`
-        : '';
+    // $1 = empresaId; las fechas van parametrizadas ($2/$3), nunca interpoladas.
+    const params: unknown[] = [this.eid];
+    let condFecha = '';
+    if (desde && hasta) {
+      params.push(desde, hasta);
+      condFecha = `AND ac.fecha BETWEEN $${params.length - 1} AND $${params.length}`;
+    } else if (hasta) {
+      params.push(hasta);
+      condFecha = `AND ac.fecha <= $${params.length}`;
+    }
 
     const rows = await this.dataSource.query<{
       codigo: string; nombre: string; tipo: string; naturaleza: string;
@@ -67,11 +87,13 @@ export class ReportesFinancierosService {
       LEFT JOIN asientos_contables ac ON ac.id = al."asientoId"
         AND ac.estado = 'contabilizado'
         AND ac."isActive" = true
+        AND ac."empresaId" = $1
         ${condFecha}
       WHERE cc."isActive" = true
+        AND cc."empresaId" = $1
       GROUP BY cc.id, cc.codigo, cc.nombre, cc.tipo, cc.naturaleza, cc."nivel"
       ORDER BY cc.codigo
-    `);
+    `, params);
 
     return rows.map(r => {
       const debe  = +r.total_debe;
@@ -194,6 +216,10 @@ export class ReportesFinancierosService {
     const efectivo = cuentas.filter(c => c.codigo.startsWith('1.1.1'));
     const saldoInicial = 0; // Would need balance at 'desde - 1 day'
 
+    // INNER JOINs: aqui el filtro por empresa va en el WHERE (no degrada nada).
+    // Se filtran AMBOS lados — asiento y catalogo — y las fechas van parametrizadas.
+    const eid = this.eid;
+
     const entradas = await this.dataSource.query<{ total: string }[]>(`
       SELECT COALESCE(SUM(al.haber), 0)::text AS total
       FROM asiento_lineas al
@@ -201,9 +227,11 @@ export class ReportesFinancierosService {
       JOIN cuentas_contables cc  ON cc.id  = al."cuentaContableId"
       WHERE cc.codigo LIKE '1.1.1%'
         AND ac.estado = 'contabilizado'
-        AND ac.fecha  BETWEEN '${desde}' AND '${hasta}'
+        AND ac.fecha  BETWEEN $2 AND $3
         AND ac."isActive" = true AND al."isActive" = true
-    `);
+        AND ac."empresaId" = $1
+        AND cc."empresaId" = $1
+    `, [eid, desde, hasta]);
 
     const salidas = await this.dataSource.query<{ total: string }[]>(`
       SELECT COALESCE(SUM(al.debe), 0)::text AS total
@@ -212,9 +240,11 @@ export class ReportesFinancierosService {
       JOIN cuentas_contables cc  ON cc.id  = al."cuentaContableId"
       WHERE cc.codigo LIKE '1.1.1%'
         AND ac.estado = 'contabilizado'
-        AND ac.fecha  BETWEEN '${desde}' AND '${hasta}'
+        AND ac.fecha  BETWEEN $2 AND $3
         AND ac."isActive" = true AND al."isActive" = true
-    `);
+        AND ac."empresaId" = $1
+        AND cc."empresaId" = $1
+    `, [eid, desde, hasta]);
 
     const totalEntradas  = +(entradas[0]?.total ?? 0);
     const totalSalidas   = +(salidas[0]?.total ?? 0);
