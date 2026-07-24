@@ -647,7 +647,7 @@ function buildReciboTermicoHTML(
   if (!tipoDoc) {
     if (sale.encf && mostrarEcf) {
       ecfHtml = `${line()}
-    ${rowBold('e-NCF:', sale.encf)}
+    ${row('e-NCF:', sale.encf)}
     ${row('Fecha:', sale.ecfFecha ?? ahora.format('DD-MM-YYYY HH:mm:ss'))}
     ${sale.securityCode ? row('Cód.Seg.:', sale.securityCode) : ''}
     <div class="center" style="font-size:8pt;color:#444;margin-top:4px;">Generado por HiCloud ERP</div>
@@ -698,7 +698,7 @@ function buildReciboTermicoHTML(
 <style>
 *{margin:0;padding:0;box-sizing:border-box;overflow-wrap:break-word}
 html{margin:0;padding:0;width:${prn.width}}
-body{font-family:'Courier New',Courier,monospace;font-size:${prn.fontSize};font-weight:normal;line-height:1.45;
+body{font-family:'Courier New',Courier,monospace;font-size:${prn.fontSize};font-weight:bold;line-height:1.45;
   width:${prn.width};margin:0;padding:3mm ${prn.paddingLR};
   color:#000;background:#fff;
   -webkit-font-smoothing:none;font-smooth:never}
@@ -1700,7 +1700,7 @@ function buildDocTermicoHTML(
 <style>
 *{margin:0;padding:0;box-sizing:border-box;overflow-wrap:break-word}
 html{margin:0;padding:0;width:${prn.width}}
-body{font-family:'Courier New',Courier,monospace;font-size:${prn.fontSize};font-weight:normal;line-height:1.45;
+body{font-family:'Courier New',Courier,monospace;font-size:${prn.fontSize};font-weight:bold;line-height:1.45;
   width:${prn.width};margin:0;padding:3mm ${prn.paddingLR};
   color:#000;background:#fff;-webkit-font-smoothing:none;font-smooth:never}
 .center{text-align:center}
@@ -1800,7 +1800,7 @@ function buildCierreCajaHTML(params: {
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>
   @media print { @page { size:${prn.width} auto; margin:0; } }
-  body{font-family:'Courier New',Courier,monospace;font-size:${prn.fontSize};font-weight:normal;line-height:1.45;
+  body{font-family:'Courier New',Courier,monospace;font-size:${prn.fontSize};font-weight:bold;line-height:1.45;
     width:${prn.width};margin:0;padding:3mm ${prn.paddingLR};
     color:#000;background:#fff;-webkit-font-smoothing:none;font-smooth:never}
   .center{text-align:center}
@@ -6049,7 +6049,7 @@ function buildGastoReciboHTML(
 *{margin:0;padding:0;box-sizing:border-box;overflow-wrap:break-word}
 @media print{@page{size:${prn.width} auto;margin:0}}
 html,body{width:${prn.width};margin:0}
-body{font-family:'Courier New',Courier,monospace;font-size:${prn.fontSize};font-weight:normal;line-height:1.45;
+body{font-family:'Courier New',Courier,monospace;font-size:${prn.fontSize};font-weight:bold;line-height:1.45;
   width:${prn.width};padding:3mm ${prn.paddingLR};color:#000;background:#fff;
   -webkit-font-smoothing:none;font-smooth:never}
 .center{text-align:center}
