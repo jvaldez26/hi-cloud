@@ -45,6 +45,14 @@ const TRANSICIONES: Record<FacturaEstado, FacturaEstado[]> = {
   cancelada: [],
 };
 
+/** Trunca el contenido de una celda para que no estire su columna (table-layout:auto). */
+const TRUNCAR: React.CSSProperties = {
+  display:      'block',
+  overflow:     'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace:   'nowrap',
+};
+
 const ESTADO_ICON: Record<string, React.ReactNode> = {
   emitida:   <SendOutlined />,
   cancelada: <CloseCircleOutlined />,
@@ -257,11 +265,14 @@ export default function FacturasPage() {
     },
     // ── Cliente ────────────────────────────────────────────────────────────────
     {
-      title: 'Cliente', key: 'cliente', ellipsis: true, minWidth: 120,
+      title: 'Cliente', key: 'cliente', width: 200, ellipsis: true,
       render: (_: unknown, r: Factura) => {
         const nombre = resolverNombreComprador(r);
+        // maxWidth + ellipsis en el nodo: con columnas fixed y x:'max-content'
+        // rc-table usa table-layout:auto, donde `width` es solo una sugerencia y
+        // un nombre largo estiraria la columna empujando las de la derecha fuera del viewport.
         return nombre !== 'Consumidor Final'
-          ? <Text style={{ fontSize: 13 }}>{nombre}</Text>
+          ? <Tooltip title={nombre}><Text style={{ ...TRUNCAR, maxWidth: 200, fontSize: 13 }}>{nombre}</Text></Tooltip>
           : <Text type="secondary" style={{ fontSize: 12 }}>Consumidor Final</Text>;
       },
     },
@@ -302,7 +313,7 @@ export default function FacturasPage() {
       render: (_: unknown, r: Factura) => {
         const nombre = (r as any).sucursalNombre;
         return nombre
-          ? <Text style={{ fontSize: 12 }}>{nombre}</Text>
+          ? <Tooltip title={nombre}><Text style={{ ...TRUNCAR, maxWidth: 120, fontSize: 12 }}>{nombre}</Text></Tooltip>
           : <Text type="secondary" style={{ fontSize: 11 }}>—</Text>;
       },
     },
