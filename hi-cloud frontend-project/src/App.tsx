@@ -65,6 +65,7 @@ const FacturasRecurrentesPage   = lazy(() => import('./pages/facturas/FacturasRe
 const RetencionesPage           = lazy(() => import('./pages/retenciones/RetencionesPage'));
 const ClientPortalPage          = lazy(() => import('./pages/portal/ClientPortalPage'));
 const LibroMayorPage            = lazy(() => import('./pages/contabilidad/LibroMayorPage'));
+const PlanCuentasPage           = lazy(() => import('./pages/contabilidad/PlanCuentasPage'));
 const CajaPage                  = lazy(() => import('./pages/caja/CajaPage'));
 const ComisionesPage            = lazy(() => import('./pages/comisiones/ComisionesPage'));
 const PreciosEspecialesPage     = lazy(() => import('./pages/precios/PreciosEspecialesPage'));
@@ -667,6 +668,7 @@ export default function App() {
                     <Route path="/presupuestos"       element={<PresupuestosPage />} />
                     <Route path="/retenciones"        element={<RetencionesPage />} />
                     <Route path="/libro-mayor"        element={<LibroMayorPage />} />
+                    <Route path="/plan-cuentas"       element={<PlanCuentasPage />} />
                     <Route path="/caja"               element={<CajaPage />} />
                     <Route path="/comisiones"         element={<ComisionesPage />} />
                     <Route path="/precios-especiales" element={<PreciosEspecialesPage />} />

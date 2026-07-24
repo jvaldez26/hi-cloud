@@ -304,6 +304,7 @@ export const MENU_CATEGORIES_DATA: MenuCategoryData[] = [
       { path: '/datafono',              label: 'DataFono / Tarjetas' },
       { path: '/divisas',               label: 'Divisas & Cambio' },
       { path: '/contabilidad',          label: 'Asientos Contables' },
+      { path: '/plan-cuentas',          label: 'Plan de Cuentas' },
       { path: '/libro-mayor',           label: 'Libro Mayor' },
       { path: '/balance-comprobacion',  label: 'Balance de Comprobación' },
       { path: '/reportes-financieros',  label: 'Estados Financieros' },
