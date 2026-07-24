@@ -166,6 +166,10 @@ const METODOS: { key: MetodoPago; label: string; icon: string }[] = [
   { key: 'credito',       label: 'Crédito',        icon: '📋' },
 ];
 
+const METODO_TIPO_MAP: Record<MetodoPago, number> = {
+  efectivo: 1, transferencia: 2, cheque: 2, tarjeta: 3, credito: 4, vale: 1,
+};
+
 const NCF_OPTS = [
   { code: 'E32', label: 'Consumo',          color: '#6B7280' },
   { code: 'E31', label: 'Crédito Fiscal',   color: '#3B82F6' },
@@ -8196,7 +8200,7 @@ export default function POSPage() {
   const [orden,              setOrden]              = useState<'nombre-az'|'nombre-za'|'precio-asc'|'precio-desc'|'stock-asc'|'stock-desc'>('nombre-az');
   const barcodeRef = useRef<HTMLInputElement>(null);
   const [showPago,           setShowPago]           = useState(false);
-  const [metodoPago,         setMetodoPago]         = useState<MetodoPago>('efectivo');
+  const [formasPagoList,     setFormasPagoList]     = useState<{ metodo: MetodoPago; monto: number; referencia?: string }[]>([{ metodo: 'efectivo', monto: 0 }]);
   const [monedaPOS,          setMonedaPOS]          = useState<'DOP' | 'USD'>('DOP');
   const [tasaCambioPOS,      setTasaCambioPOS]      = useState<number>(1);
   const [montoRecibido,      setMontoRecibido]      = useState(0);
@@ -8388,11 +8392,11 @@ export default function POSPage() {
 
   // Autofocus en campo de monto al abrir panel de cobro en efectivo
   useEffect(() => {
-    if (showPago && metodoPago === 'efectivo' && tipoPagoPos === 'CONTADO') {
+    if (showPago && formasPagoList.length === 1 && formasPagoList[0]?.metodo === 'efectivo' && tipoPagoPos === 'CONTADO') {
       const t = setTimeout(() => montoInputRef.current?.focus(), 120);
       return () => clearTimeout(t);
     }
-  }, [showPago, metodoPago, tipoPagoPos]);
+  }, [showPago, formasPagoList, tipoPagoPos]);
 
   // Offline detection
   useEffect(() => {
@@ -8625,8 +8629,18 @@ export default function POSPage() {
     ? (propinaTipo === '%' ? +(totalEfectivo * propinaNum / 100).toFixed(2) : +propinaNum.toFixed(2))
     : 0;
   const totalAPagar      = +(totalEfectivo + propinaMontoCalc).toFixed(2);
-  // Cambio basado en totalAPagar (incluye propina)
-  const cambio           = metodoPago === 'efectivo' ? round2(Math.max(0, montoRecibido - totalAPagar)) : 0;
+  // ── Pago mixto: derivados ─────────────────────────────────────────────────
+  const metodoPago    = formasPagoList[0]?.metodo ?? 'efectivo';
+  const esMixto       = formasPagoList.length > 1;
+  const tieneEfec     = formasPagoList.some(fp => fp.metodo === 'efectivo');
+  const sumaFP        = esMixto ? round2(formasPagoList.reduce((s, fp) => s + fp.monto, 0)) : 0;
+  const noEfecSum     = esMixto ? round2(formasPagoList.filter(fp => fp.metodo !== 'efectivo').reduce((s, fp) => s + fp.monto, 0)) : 0;
+  const efectivoMonto = esMixto ? round2(formasPagoList.filter(fp => fp.metodo === 'efectivo').reduce((s, fp) => s + fp.monto, 0)) : montoRecibido;
+  const cambio        = tieneEfec
+    ? round2(Math.max(0, esMixto
+        ? efectivoMonto - Math.max(0, totalAPagar - noEfecSum)
+        : montoRecibido - totalAPagar))
+    : 0;
 
   // Auto-foco en el input de búsqueda cuando el panel de ítems está activo
   // (mantiene el foco para escaneo continuo con scanner HID)
@@ -8646,6 +8660,7 @@ export default function POSPage() {
         if (modoFacturacion === 'factura') {
           setMontoRecibido(round2(totalEfectivo));
           if (posConf.posPropinaActiva === true) setPropinaValor(String(propinaDefPct));
+          setFormasPagoList([{ metodo: 'efectivo', monto: 0 }]);
           setShowPago(true);
         } else {
           modoAltMut.mutate();
@@ -9098,6 +9113,12 @@ export default function POSPage() {
         // RNC capturado en el modal de cobro → persistir en facturas.rncComprador
         // para que emitirEcfIndividual (botón "Emitir") también funcione sin datosComprador.
         rncComprador: clienteTieneRNC ? rncCliente : (rncComprador || undefined),
+        // formasPago — backend ya acepta este campo; arqueo sigue leyendo notas (Fase 2)
+        ...(tipoPagoPos === 'CONTADO' ? {
+          formasPago: esMixto
+            ? formasPagoList.map(fp => ({ tipo: METODO_TIPO_MAP[fp.metodo] as 1|2|3|4|5|6, monto: fp.monto, ...(fp.referencia ? { referencia: fp.referencia } : {}) }))
+            : [{ tipo: METODO_TIPO_MAP[metodoPago] as 1|2|3|4|5|6, monto: totalAPagar }],
+        } : {}),
       };
 
       // Si offline → encolar localmente
@@ -9221,7 +9242,9 @@ export default function POSPage() {
         folio:                   factura.folio,
         total:                   totalAPagar,
         cambio,
-        pagoRecibido:            metodoPago === 'efectivo' && montoRecibido > 0 ? montoRecibido : undefined,
+        pagoRecibido:            (!esMixto && metodoPago === 'efectivo' && montoRecibido > 0) ? montoRecibido
+          : (esMixto && tieneEfec && efectivoMonto > 0) ? efectivoMonto
+          : undefined,
         propina:                 propinaMontoCalc > 0 ? propinaMontoCalc : undefined,
         metodo:                  tipoPagoPos === 'CREDITO' ? 'credito' : metodoPago,
         notas:                   tipoPagoPos === 'CREDITO' ? `Crédito ${diasCreditoPos} días` : undefined,
@@ -9546,7 +9569,10 @@ export default function POSPage() {
   const tipoExigeRnc = tipoNcf === 'E31' || tipoNcf === 'E44' || tipoNcf === 'E45' || totalEfectivo >= posCedulaMonto;
   const necesitaRnc  = tipoExigeRnc && !clienteTieneRNC;
   const rncValido    = clienteTieneRNC || /^\d{9}$|^\d{11}$/.test(rncComprador);
-  const canPay       = tipoPagoPos === 'CREDITO' || metodoPago !== 'efectivo' || montoRecibido >= totalAPagar;
+  const canPay       = tipoPagoPos === 'CREDITO'
+    || (esMixto && sumaFP >= totalAPagar)
+    || (!esMixto && metodoPago !== 'efectivo')
+    || (!esMixto && metodoPago === 'efectivo' && montoRecibido >= totalAPagar);
   const cajaAbierta  = cajaActivaHoy?.estado === 'abierta';
   // Crédito requiere cliente real seleccionado (no consumidor final por defecto)
   const clienteParaCredito = tipoPagoPos === 'CONTADO' || clienteId != null;
@@ -10123,6 +10149,7 @@ export default function POSPage() {
                     }
                     setMontoRecibido(round2(totalEfectivo));
                     if (posConf.posPropinaActiva === true) setPropinaValor(String(propinaDefPct));
+                    setFormasPagoList([{ metodo: 'efectivo', monto: 0 }]);
                     setShowPago(true);
                   }}
                   style={{ width: '100%', height: 52, borderRadius: 12, border: 'none',
@@ -10290,34 +10317,84 @@ export default function POSPage() {
               </div>
             )}
 
-            {/* Fila 2: Método de pago (solo contado) */}
-            {tipoPagoPos === 'CONTADO' && (
-              <>
-                <div style={{ fontSize: 8, fontWeight: 600, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 3 }}>Método</div>
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                  {(([
-                    { key: 'efectivo',      icon: '💵', label: 'Efectivo',  color: '#15803D', bg: '#F0FDF4', border: '#86EFAC', flag: 'posEfectivo'       },
-                    { key: 'tarjeta',       icon: '💳', label: 'Tarjeta',   color: '#1D4ED8', bg: '#EFF6FF', border: '#93C5FD', flag: 'posTarjetaCredito'  },
-                    { key: 'transferencia', icon: '🏦', label: 'Transfer.', color: '#6D28D9', bg: '#F5F3FF', border: '#C4B5FD', flag: 'posTransferencia'   },
-                    { key: 'cheque',        icon: '📄', label: 'Cheque',    color: '#B45309', bg: '#FFFBEB', border: '#FCD34D', flag: 'posCheque'          },
-                    { key: 'vale',          icon: '🎫', label: 'Vale',      color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE', flag: 'posVale'            },
-                  ] as const).filter(m =>
-                    posConf[m.flag] !== false && (posConf[m.flag] === true || ['posEfectivo','posTarjetaCredito','posTransferencia'].includes(m.flag))
-                  )).map(m => {
-                    const act = metodoPago === m.key;
-                    return (
-                      <button key={m.key} onClick={() => setMetodoPago(m.key as MetodoPago)}
-                        style={{ flex: 1, minWidth: 52, height: 26, borderRadius: 6, border: act ? `1.5px solid ${m.border}` : '1.5px solid #E2E8F0',
-                          background: act ? m.bg : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center',
-                          justifyContent: 'center', gap: 3, outline: 'none', transition: 'all 0.12s' }}>
-                        <span style={{ fontSize: 11 }}>{m.icon}</span>
-                        <span style={{ fontSize: 10, fontWeight: 600, color: act ? m.color : '#475569' }}>{m.label}</span>
+            {/* Fila 2: Método(s) de pago (solo contado) */}
+            {tipoPagoPos === 'CONTADO' && (() => {
+              const COBRO_METODOS = ([
+                { key: 'efectivo',      icon: '💵', label: 'Efectivo',  color: '#15803D', bg: '#F0FDF4', border: '#86EFAC', flag: 'posEfectivo'       },
+                { key: 'tarjeta',       icon: '💳', label: 'Tarjeta',   color: '#1D4ED8', bg: '#EFF6FF', border: '#93C5FD', flag: 'posTarjetaCredito'  },
+                { key: 'transferencia', icon: '🏦', label: 'Transfer.', color: '#6D28D9', bg: '#F5F3FF', border: '#C4B5FD', flag: 'posTransferencia'   },
+                { key: 'cheque',        icon: '📄', label: 'Cheque',    color: '#B45309', bg: '#FFFBEB', border: '#FCD34D', flag: 'posCheque'          },
+                { key: 'vale',          icon: '🎫', label: 'Vale',      color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE', flag: 'posVale'            },
+              ] as const).filter(m =>
+                posConf[m.flag] !== false && (posConf[m.flag] === true || ['posEfectivo','posTarjetaCredito','posTransferencia'].includes(m.flag))
+              );
+              return (
+                <>
+                  <div style={{ fontSize: 8, fontWeight: 600, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>{esMixto ? 'Formas de pago' : 'Método'}</span>
+                    {!esMixto && (
+                      <button onClick={() => {
+                        const primerMonto = metodoPago === 'efectivo' ? round2(Math.max(0, montoRecibido || totalAPagar)) : totalAPagar;
+                        const segundoMonto = round2(Math.max(0, totalAPagar - primerMonto));
+                        const segundoMetodo: MetodoPago = metodoPago === 'efectivo' ? 'tarjeta' : 'efectivo';
+                        setFormasPagoList([{ metodo: metodoPago, monto: primerMonto }, { metodo: segundoMetodo, monto: segundoMonto }]);
+                      }} style={{ fontSize: 10, fontWeight: 600, color: '#6D28D9', background: '#F5F3FF', border: '1px solid #C4B5FD', borderRadius: 4, padding: '1px 6px', cursor: 'pointer', outline: 'none' }}>
+                        + Mixto
                       </button>
-                    );
-                  })}
-                </div>
-              </>
-            )}
+                    )}
+                  </div>
+
+                  {!esMixto ? (
+                    /* Single-method selector — UX idéntica a antes */
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      {COBRO_METODOS.map(m => {
+                        const act = metodoPago === m.key;
+                        return (
+                          <button key={m.key} onClick={() => setFormasPagoList([{ metodo: m.key as MetodoPago, monto: 0 }])}
+                            style={{ flex: 1, minWidth: 52, height: 26, borderRadius: 6, border: act ? `1.5px solid ${m.border}` : '1.5px solid #E2E8F0',
+                              background: act ? m.bg : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center',
+                              justifyContent: 'center', gap: 3, outline: 'none', transition: 'all 0.12s' }}>
+                            <span style={{ fontSize: 11 }}>{m.icon}</span>
+                            <span style={{ fontSize: 10, fontWeight: 600, color: act ? m.color : '#475569' }}>{m.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    /* Multi-line list */
+                    <div>
+                      {formasPagoList.map((fp, idx) => (
+                        <div key={idx} style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 4 }}>
+                          <select value={fp.metodo}
+                            onChange={e => { const u = [...formasPagoList]; u[idx] = { ...u[idx], metodo: e.target.value as MetodoPago }; setFormasPagoList(u); }}
+                            style={{ flex: 1, height: 26, borderRadius: 5, border: '1px solid #E2E8F0', fontSize: 11, outline: 'none', background: '#fff', color: '#0F172A' }}>
+                            <option value="efectivo">💵 Efectivo</option>
+                            <option value="tarjeta">💳 Tarjeta</option>
+                            <option value="transferencia">🏦 Transfer.</option>
+                            {posConf.posCheque !== false && <option value="cheque">📄 Cheque</option>}
+                            {posConf.posVale !== false && <option value="vale">🎫 Vale</option>}
+                          </select>
+                          <input type="number" min={0} step={0.01} value={fp.monto || ''} placeholder="0.00"
+                            onChange={e => { const u = [...formasPagoList]; u[idx] = { ...u[idx], monto: Math.max(0, Number(e.target.value) || 0) }; setFormasPagoList(u); }}
+                            style={{ width: 78, height: 26, borderRadius: 5, border: '1px solid #E2E8F0', textAlign: 'right', fontSize: 12, fontWeight: 700, outline: 'none', padding: '0 5px', color: '#0F172A', background: '#fff' }} />
+                          <button onClick={() => setFormasPagoList(formasPagoList.filter((_, i) => i !== idx))}
+                            style={{ width: 22, height: 22, borderRadius: 4, border: 'none', background: '#FEF2F2', color: '#EF4444', cursor: 'pointer', fontSize: 14, outline: 'none', lineHeight: 1, flexShrink: 0 }}>×</button>
+                        </div>
+                      ))}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
+                        <button onClick={() => setFormasPagoList([...formasPagoList, { metodo: 'efectivo', monto: 0 }])}
+                          style={{ fontSize: 10, fontWeight: 600, color: '#6D28D9', background: 'none', border: 'none', cursor: 'pointer', padding: 0, outline: 'none' }}>
+                          + Agregar método
+                        </button>
+                        <span style={{ fontSize: 11, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: sumaFP >= totalAPagar ? '#15803D' : '#DC2626' }}>
+                          {fmt.money(sumaFP)} / {fmt.money(totalAPagar)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
 
           {/* ── Propina (solo si posPropinaActiva = true y CONTADO) ─────── */}
@@ -10476,7 +10553,7 @@ export default function POSPage() {
             </div>
           )}
 
-          {/* Numpad / card confirm / crédito */}
+          {/* Numpad / card confirm / crédito / mixto */}
           <div style={{ flex: 1, padding: '10px 16px 0', background: '#fff', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             {tipoPagoPos === 'CREDITO' ? (
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
@@ -10488,6 +10565,29 @@ export default function POSPage() {
                     new Date(Date.now() + diasCreditoPos * 86400000).toLocaleDateString('es-DO', { weekday: 'short', day: '2-digit', month: 'short' })
                   }</> : <span style={{ color: '#DC2626' }}>Selecciona un cliente para continuar</span>}
                 </div>
+              </div>
+            ) : esMixto ? (
+              /* Modo mixto: resumen visual en lugar del numpad */
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                {cambio > 0 ? (
+                  <>
+                    <div style={{ fontSize: 12, color: '#475569' }}>Cambio a devolver</div>
+                    <div style={{ fontSize: 30, fontWeight: 800, color: '#15803D', fontVariantNumeric: 'tabular-nums' }}>{fmt.money(cambio)}</div>
+                    <div style={{ fontSize: 11, color: '#94A3B8' }}>Recibido: {fmt.money(sumaFP)} · Total: {fmt.money(totalAPagar)}</div>
+                  </>
+                ) : sumaFP >= totalAPagar ? (
+                  <>
+                    <div style={{ fontSize: 32 }}>✓</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#059669' }}>Listo para cobrar</div>
+                    <div style={{ fontSize: 11, color: '#94A3B8' }}>Total: {fmt.money(totalAPagar)}</div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 12, color: '#94A3B8' }}>Falta por asignar</div>
+                    <div style={{ fontSize: 30, fontWeight: 800, color: '#EF4444', fontVariantNumeric: 'tabular-nums' }}>{fmt.money(round2(totalAPagar - sumaFP))}</div>
+                    <div style={{ fontSize: 11, color: '#94A3B8' }}>Ingresado: {fmt.money(sumaFP)} / {fmt.money(totalAPagar)}</div>
+                  </>
+                )}
               </div>
             ) : metodoPago === 'efectivo' ? (
               <>
@@ -10530,31 +10630,35 @@ export default function POSPage() {
           {/* Footer */}
           <div style={{ flexShrink: 0, padding: '6px 16px 14px', background: '#fff', borderTop: '1px solid #F1F5F9' }}>
             <AnimatePresence>
-              {/* Cambio */}
-              {metodoPago === 'efectivo' && montoRecibido >= totalEfectivo && cambio > 0 && (
-                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} style={{ overflow: 'hidden', marginBottom: 5 }}>
-                  <div style={{ background: '#F0FDF4', border: '1px solid #86EFAC', borderRadius: 7, padding: '5px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: '#15803D', textTransform: 'uppercase' }}>Cambio · recibido {fmt.money(montoRecibido)}</span>
-                    <span style={{ fontSize: 15, fontWeight: 800, color: '#15803D', fontVariantNumeric: 'tabular-nums' }}>{fmt.money(cambio)}</span>
-                  </div>
-                </motion.div>
-              )}
-              {/* Monto exacto */}
-              {metodoPago === 'efectivo' && montoRecibido > 0 && Math.abs(montoRecibido - totalAPagar) < 0.01 && (
-                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} style={{ overflow: 'hidden', marginBottom: 5 }}>
-                  <div style={{ background: '#F0FDF4', border: '1px solid #86EFAC', borderRadius: 7, padding: '5px 10px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: '#15803D' }}>✓ Monto exacto</span>
-                  </div>
-                </motion.div>
-              )}
-              {/* Falta */}
-              {metodoPago === 'efectivo' && montoRecibido > 0 && montoRecibido < totalAPagar - 0.01 && (
-                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} style={{ overflow: 'hidden', marginBottom: 5 }}>
-                  <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 7, padding: '5px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: '#DC2626', textTransform: 'uppercase' }}>Falta para completar</span>
-                    <span style={{ fontSize: 15, fontWeight: 800, color: '#DC2626', fontVariantNumeric: 'tabular-nums' }}>{fmt.money(totalAPagar - montoRecibido)}</span>
-                  </div>
-                </motion.div>
+              {esMixto ? null : (
+                <>
+                  {/* Cambio */}
+                  {metodoPago === 'efectivo' && montoRecibido >= totalEfectivo && cambio > 0 && (
+                    <motion.div key="cambio" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} style={{ overflow: 'hidden', marginBottom: 5 }}>
+                      <div style={{ background: '#F0FDF4', border: '1px solid #86EFAC', borderRadius: 7, padding: '5px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: '#15803D', textTransform: 'uppercase' }}>Cambio · recibido {fmt.money(montoRecibido)}</span>
+                        <span style={{ fontSize: 15, fontWeight: 800, color: '#15803D', fontVariantNumeric: 'tabular-nums' }}>{fmt.money(cambio)}</span>
+                      </div>
+                    </motion.div>
+                  )}
+                  {/* Monto exacto */}
+                  {metodoPago === 'efectivo' && montoRecibido > 0 && Math.abs(montoRecibido - totalAPagar) < 0.01 && (
+                    <motion.div key="exacto" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} style={{ overflow: 'hidden', marginBottom: 5 }}>
+                      <div style={{ background: '#F0FDF4', border: '1px solid #86EFAC', borderRadius: 7, padding: '5px 10px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: '#15803D' }}>✓ Monto exacto</span>
+                      </div>
+                    </motion.div>
+                  )}
+                  {/* Falta */}
+                  {metodoPago === 'efectivo' && montoRecibido > 0 && montoRecibido < totalAPagar - 0.01 && (
+                    <motion.div key="falta" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} style={{ overflow: 'hidden', marginBottom: 5 }}>
+                      <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 7, padding: '5px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: '#DC2626', textTransform: 'uppercase' }}>Falta para completar</span>
+                        <span style={{ fontSize: 15, fontWeight: 800, color: '#DC2626', fontVariantNumeric: 'tabular-nums' }}>{fmt.money(totalAPagar - montoRecibido)}</span>
+                      </div>
+                    </motion.div>
+                  )}
+                </>
               )}
             </AnimatePresence>
             {!cajaAbierta && (
