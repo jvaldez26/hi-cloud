@@ -2,13 +2,12 @@ import { useState, useMemo } from 'react';
 import {
   Card, Row, Col, Button, Tag, Modal, Form, Select, Input,
   Space, Typography, Statistic, Popconfirm, message, Tooltip,
-  Divider, Progress, Alert, theme,
+  Divider, Alert, theme, Table,
 } from 'antd';
 import {
   CalendarOutlined, LockOutlined, UnlockOutlined,
-  CheckCircleOutlined, PlusOutlined, CloseCircleOutlined,
-  DollarOutlined, FileTextOutlined, WarningOutlined,
-  ThunderboltOutlined, SearchOutlined,
+  CheckCircleOutlined, PlusOutlined,
+  WarningOutlined, ThunderboltOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
@@ -21,7 +20,6 @@ const MESES = [
   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
 ];
 
-// Los bg/border se calculan con tokens en el componente usando useEstadoConfig()
 const ESTADO_CONFIG_COLORS = {
   abierto:   { color: '#1a56db', antColor: 'blue',    label: 'Abierto',   icon: <UnlockOutlined /> },
   cerrado:   { color: '#059669', antColor: 'success',  label: 'Cerrado',   icon: <CheckCircleOutlined /> },
@@ -29,7 +27,6 @@ const ESTADO_CONFIG_COLORS = {
   sincrear:  { color: '#d97706', antColor: 'warning',  label: 'Sin crear', icon: <WarningOutlined /> },
 } as const;
 
-// Hook para obtener config con tokens adaptativos
 function useEstadoConfig() {
   const { token } = theme.useToken();
   return {
@@ -44,12 +41,12 @@ const fmt = (v: number) =>
   new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'DOP', minimumFractionDigits: 0 }).format(v ?? 0);
 
 export default function PeriodoContablePage() {
-  const qc          = useQueryClient();
-  const { token }   = theme.useToken();
+  const qc            = useQueryClient();
+  const { token }     = theme.useToken();
   const ESTADO_CONFIG = useEstadoConfig();
-  const anioActual  = new Date().getFullYear();
-  const [search, setSearch] = useState('');
-  const [anio, setAnio] = useState(anioActual);
+  const anioActual    = new Date().getFullYear();
+  const [search,      setSearch]      = useState('');
+  const [anio,        setAnio]        = useState(anioActual);
   const [modalCrear,  setModalCrear]  = useState(false);
   const [modalCerrar, setModalCerrar] = useState<any>(null);
   const [formCrear]  = Form.useForm();
@@ -69,7 +66,7 @@ export default function PeriodoContablePage() {
       qc.invalidateQueries({ queryKey: ['periodos-resumen'] });
       message.success(res.data?.mensaje ?? 'Períodos generados');
     },
-  onError: (e: any) => message.error(
+    onError: (e: any) => message.error(
       e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
@@ -81,7 +78,7 @@ export default function PeriodoContablePage() {
       formCrear.resetFields();
       message.success('Período creado');
     },
-  onError: (e: any) => message.error(
+    onError: (e: any) => message.error(
       e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
@@ -94,7 +91,7 @@ export default function PeriodoContablePage() {
       formCerrar.resetFields();
       message.success('Período cerrado correctamente');
     },
-  onError: (e: any) => message.error(
+    onError: (e: any) => message.error(
       e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
@@ -104,7 +101,7 @@ export default function PeriodoContablePage() {
       qc.invalidateQueries({ queryKey: ['periodos-resumen'] });
       message.success('Período reabierto');
     },
-  onError: (e: any) => message.error(
+    onError: (e: any) => message.error(
       e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
@@ -114,18 +111,121 @@ export default function PeriodoContablePage() {
       qc.invalidateQueries({ queryKey: ['periodos-resumen'] });
       message.success('Período bloqueado permanentemente');
     },
-  onError: (e: any) => message.error(
+    onError: (e: any) => message.error(
       e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
   const mesActual = new Date().getMonth() + 1;
-  const pctAvance = resumen ? Math.round(((resumen.cerrados + resumen.bloqueados) / 12) * 100) : 0;
 
-  const mesesFiltrados = useMemo(() =>
-    MESES.map((nombre, idx) => ({ nombre, numMes: idx + 1 }))
-      .filter(({ nombre }) =>
-        nombre.toLowerCase().includes(search.toLowerCase())
-      ), [search]);
+  const dataSource = useMemo(() =>
+    MESES
+      .map((nombre, idx) => ({ nombre, numMes: idx + 1 }))
+      .filter(({ nombre }) => nombre.toLowerCase().includes(search.toLowerCase()))
+      .map(({ nombre, numMes }) => ({
+        key:      numMes,
+        numMes,
+        nombre,
+        periodo:  periodosPorMes[numMes],
+        esActual: numMes === mesActual && anio === anioActual,
+      })),
+    [search, periodosPorMes, mesActual, anio, anioActual],
+  );
+
+  const columns = [
+    {
+      title: 'Mes',
+      key: 'mes',
+      render: (_: any, row: any) => (
+        <Space size={6}>
+          <Text strong>{row.nombre} {anio}</Text>
+          {row.esActual && <Tag color="orange" style={{ fontSize: 10, lineHeight: '18px' }}>ACTUAL</Tag>}
+        </Space>
+      ),
+    },
+    {
+      title: 'Estado',
+      key: 'estado',
+      width: 130,
+      render: (_: any, row: any) => {
+        const conf = row.periodo
+          ? ESTADO_CONFIG[row.periodo.estado as keyof typeof ESTADO_CONFIG]
+          : ESTADO_CONFIG.sincrear;
+        return <Tag color={conf.antColor}>{conf.icon} {conf.label}</Tag>;
+      },
+    },
+    {
+      title: 'Asientos',
+      key: 'asientos',
+      width: 100,
+      align: 'right' as const,
+      render: (_: any, row: any) =>
+        row.periodo?.cantidadAsientos > 0
+          ? <Text>{row.periodo.cantidadAsientos}</Text>
+          : <Text type="secondary">—</Text>,
+    },
+    {
+      title: 'Total Débitos',
+      key: 'debitos',
+      width: 180,
+      align: 'right' as const,
+      render: (_: any, row: any) =>
+        row.periodo?.totalDebitos > 0
+          ? <Text style={{ color: '#1a56db', fontVariantNumeric: 'tabular-nums' }}>{fmt(Number(row.periodo.totalDebitos))}</Text>
+          : <Text type="secondary">—</Text>,
+    },
+    {
+      title: 'Fecha Cierre',
+      key: 'fechaCierre',
+      width: 130,
+      render: (_: any, row: any) =>
+        row.periodo?.fechaCierre
+          ? new Date(row.periodo.fechaCierre).toLocaleDateString('es-DO')
+          : <Text type="secondary">—</Text>,
+    },
+    {
+      title: 'Acciones',
+      key: 'acciones',
+      width: 220,
+      render: (_: any, row: any) => {
+        const { periodo, numMes } = row;
+        return (
+          <Space size={4}>
+            {!periodo && (
+              <Button size="small" type="primary" ghost icon={<PlusOutlined />}
+                onClick={() => { formCrear.setFieldsValue({ anio, mes: numMes }); setModalCrear(true); }}>
+                Crear
+              </Button>
+            )}
+            {periodo?.estado === 'abierto' && (
+              <Button size="small" type="primary" icon={<CheckCircleOutlined />}
+                style={{ background: '#059669', borderColor: '#059669' }}
+                onClick={() => setModalCerrar(periodo)}>
+                Cerrar
+              </Button>
+            )}
+            {periodo?.estado === 'cerrado' && (
+              <>
+                <Popconfirm title="¿Reabrir este período?"
+                  description="Se permitirá registrar nuevos asientos."
+                  onConfirm={() => reabrirPeriodo.mutate(periodo.id)}>
+                  <Button size="small" icon={<UnlockOutlined />}>Reabrir</Button>
+                </Popconfirm>
+                <Popconfirm title="¿Bloquear permanentemente?"
+                  description="Esta acción es IRREVERSIBLE. El período no podrá reabrirse."
+                  okType="danger" okText="Bloquear"
+                  onConfirm={() => bloquearPeriodo.mutate(periodo.id)}>
+                  <Button size="small" danger icon={<LockOutlined />}>Bloquear</Button>
+                </Popconfirm>
+              </>
+            )}
+            {periodo?.estado === 'bloqueado' && (
+              <Text type="secondary" style={{ fontSize: 11 }}><LockOutlined /> Permanente</Text>
+            )}
+          </Space>
+        );
+      },
+    },
+  ];
 
   return (
     <div style={{ padding: '24px' }}>
@@ -147,21 +247,15 @@ export default function PeriodoContablePage() {
             allowClear
             style={{ width: 220 }}
           />
-          <Select
-            value={anio}
-            onChange={setAnio}
-            style={{ width: 110 }}
-          >
+          <Select value={anio} onChange={setAnio} style={{ width: 110 }}>
             {[anioActual + 1, anioActual, anioActual - 1, anioActual - 2].map(y => (
               <Option key={y} value={y}>{y}</Option>
             ))}
           </Select>
           <Tooltip title="Crear todos los 12 períodos del año de una vez">
-            <Button
-              icon={<ThunderboltOutlined />}
+            <Button icon={<ThunderboltOutlined />}
               onClick={() => generarAnio.mutate()}
-              loading={generarAnio.isPending}
-            >
+              loading={generarAnio.isPending}>
               Generar año {anio}
             </Button>
           </Tooltip>
@@ -171,149 +265,16 @@ export default function PeriodoContablePage() {
         </Space>
       </div>
 
-      {/* Grid de 12 meses */}
-      <Card bordered={false} style={{ borderRadius: 12 }} loading={isLoading}>
-        <Row gutter={[12, 12]}>
-          {mesesFiltrados.map(({ nombre: nombreMes, numMes }) => {
-            const periodo = periodosPorMes[numMes];
-            const conf    = periodo ? ESTADO_CONFIG[periodo.estado as keyof typeof ESTADO_CONFIG] : ESTADO_CONFIG.sincrear;
-            const esActual = numMes === mesActual && anio === anioActual;
-
-            return (
-              <Col xs={24} sm={12} md={8} lg={6} key={numMes}>
-                <div
-                  style={{
-                    border:       `2px solid ${esActual && !periodo ? '#f59e0b' : conf.border}`,
-                    borderRadius: 10,
-                    padding:      '14px 16px',
-                    background:   conf.bg,
-                    position:     'relative',
-                    minHeight:    150,
-                  }}
-                >
-                  {/* Mes actual badge */}
-                  {esActual && (
-                    <div style={{
-                      position: 'absolute', top: -10, right: 8,
-                      background: '#f59e0b', color: '#fff',
-                      fontSize: 10, fontWeight: 700,
-                      padding: '2px 8px', borderRadius: 10,
-                    }}>
-                      ACTUAL
-                    </div>
-                  )}
-
-                  {/* Cabecera */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                    <div>
-                      <Text strong style={{ fontSize: 15, color: token.colorText }}>
-                        {nombreMes}
-                      </Text>
-                      <div>
-                        <Text type="secondary" style={{ fontSize: 11 }}>{anio}</Text>
-                      </div>
-                    </div>
-                    <Tag
-                      color={conf.color}
-                      style={{
-                        background: conf.bg,
-                        border: `1px solid ${conf.border}`,
-                        color:  conf.color,
-                        fontSize: 10,
-                      }}
-                    >
-                      {conf.icon} {conf.label}
-                    </Tag>
-                  </div>
-
-                  {/* Totales (solo si tiene datos) */}
-                  {periodo && (
-                    <div style={{ marginBottom: 10 }}>
-                      {periodo.cantidadAsientos > 0 && (
-                        <>
-                          <div style={{ fontSize: 11, color: token.colorTextSecondary, marginBottom: 2 }}>
-                            <FileTextOutlined /> {periodo.cantidadAsientos} asientos
-                          </div>
-                          <div style={{ fontSize: 11, color: '#059669' }}>
-                            <DollarOutlined /> {fmt(Number(periodo.totalDebitos))}
-                          </div>
-                        </>
-                      )}
-                      {periodo.fechaCierre && (
-                        <div style={{ fontSize: 10, color: token.colorTextTertiary, marginTop: 2 }}>
-                          Cerrado: {new Date(periodo.fechaCierre).toLocaleDateString('es-DO')}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Acciones */}
-                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 'auto' }}>
-                    {!periodo && (
-                      <Button
-                        size="small"
-                        type="primary"
-                        ghost
-                        icon={<PlusOutlined />}
-                        onClick={() => {
-                          formCrear.setFieldsValue({ anio, mes: numMes });
-                          setModalCrear(true);
-                        }}
-                        style={{ fontSize: 11 }}
-                      >
-                        Crear
-                      </Button>
-                    )}
-
-                    {periodo?.estado === 'abierto' && (
-                      <Button
-                        size="small"
-                        type="primary"
-                        icon={<CheckCircleOutlined />}
-                        onClick={() => setModalCerrar(periodo)}
-                        style={{ fontSize: 11, background: '#059669', borderColor: '#059669' }}
-                      >
-                        Cerrar
-                      </Button>
-                    )}
-
-                    {periodo?.estado === 'cerrado' && (
-                      <>
-                        <Popconfirm
-                          title="¿Reabrir este período?"
-                          description="Se permitirá registrar nuevos asientos."
-                          onConfirm={() => reabrirPeriodo.mutate(periodo.id)}
-                        >
-                          <Button size="small" icon={<UnlockOutlined />} style={{ fontSize: 11 }}>
-                            Reabrir
-                          </Button>
-                        </Popconfirm>
-                        <Popconfirm
-                          title="¿Bloquear permanentemente?"
-                          description="Esta acción es IRREVERSIBLE. El período no podrá reabrirse."
-                          okType="danger"
-                          okText="Bloquear"
-                          onConfirm={() => bloquearPeriodo.mutate(periodo.id)}
-                        >
-                          <Button size="small" danger icon={<LockOutlined />} style={{ fontSize: 11 }}>
-                            Bloquear
-                          </Button>
-                        </Popconfirm>
-                      </>
-                    )}
-
-                    {periodo?.estado === 'bloqueado' && (
-                      <Text type="secondary" style={{ fontSize: 10 }}>
-                        <LockOutlined /> Permanente
-                      </Text>
-                    )}
-                  </div>
-                </div>
-              </Col>
-            );
-          })}
-        </Row>
-      </Card>
+      {/* Tabla de períodos */}
+      <Table
+        dataSource={dataSource}
+        columns={columns}
+        loading={isLoading}
+        pagination={false}
+        size="small"
+        rowKey="numMes"
+        scroll={{ x: 'max-content' }}
+      />
 
       {/* Totales del año */}
       {resumen && (resumen.cerrados + resumen.bloqueados) > 0 && (
@@ -323,31 +284,20 @@ export default function PeriodoContablePage() {
               <Text type="secondary" style={{ fontSize: 12 }}>TOTALES DEL AÑO {anio}</Text>
             </Col>
             <Col>
-              <Statistic
-                title="Total Débitos"
-                value={resumen.totalDebitos}
+              <Statistic title="Total Débitos" value={resumen.totalDebitos}
                 formatter={v => fmt(Number(v))}
-                valueStyle={{ fontSize: 18, color: '#1a56db' }}
-              />
+                valueStyle={{ fontSize: 18, color: '#1a56db' }} />
             </Col>
             <Col>
-              <Statistic
-                title="Total Créditos"
-                value={resumen.totalCreditos}
+              <Statistic title="Total Créditos" value={resumen.totalCreditos}
                 formatter={v => fmt(Number(v))}
-                valueStyle={{ fontSize: 18, color: '#059669' }}
-              />
+                valueStyle={{ fontSize: 18, color: '#059669' }} />
             </Col>
             <Col>
-              <Statistic
-                title="Diferencia"
+              <Statistic title="Diferencia"
                 value={Math.abs(resumen.totalDebitos - resumen.totalCreditos)}
                 formatter={v => fmt(Number(v))}
-                valueStyle={{
-                  fontSize: 18,
-                  color: Math.abs(resumen.totalDebitos - resumen.totalCreditos) < 0.01 ? '#059669' : '#ef4444',
-                }}
-              />
+                valueStyle={{ fontSize: 18, color: Math.abs(resumen.totalDebitos - resumen.totalCreditos) < 0.01 ? '#059669' : '#ef4444' }} />
               {Math.abs(resumen.totalDebitos - resumen.totalCreditos) < 0.01 && (
                 <Tag color="green" style={{ fontSize: 10 }}>Cuadrado</Tag>
               )}
@@ -357,20 +307,15 @@ export default function PeriodoContablePage() {
       )}
 
       {/* Modal crear período */}
-      <Modal
-        title={<Space><CalendarOutlined />Crear Período Contable</Space>}
+      <Modal title={<Space><CalendarOutlined />Crear Período Contable</Space>}
         open={modalCrear}
         onCancel={() => { setModalCrear(false); formCrear.resetFields(); }}
         onOk={() => formCrear.submit()}
         confirmLoading={crearPeriodo.isPending}
-        okText="Crear"
-      >
-        <Form
-          form={formCrear}
-          layout="vertical"
+        okText="Crear">
+        <Form form={formCrear} layout="vertical"
           initialValues={{ anio, mes: new Date().getMonth() + 1 }}
-          onFinish={v => crearPeriodo.mutate(v)}
-        >
+          onFinish={v => crearPeriodo.mutate(v)}>
           <Row gutter={12}>
             <Col xs={24} sm={12}>
               <Form.Item name="anio" label="Año" rules={[{ required: true }]}>
@@ -395,41 +340,24 @@ export default function PeriodoContablePage() {
             <Input.TextArea rows={2} placeholder="Observaciones del período..." />
           </Form.Item>
         </Form>
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginTop: 8 }}
-          message="El período se creará en estado ABIERTO. Puedes registrar asientos contables mientras esté abierto."
-        />
+        <Alert type="info" showIcon style={{ marginTop: 8 }}
+          message="El período se creará en estado ABIERTO. Puedes registrar asientos contables mientras esté abierto." />
       </Modal>
 
       {/* Modal cerrar período */}
       <Modal
-        title={
-          <Space>
-            <CheckCircleOutlined style={{ color: '#059669' }} />
-            Cerrar Período — {modalCerrar?.nombre}
-          </Space>
-        }
+        title={<Space><CheckCircleOutlined style={{ color: '#059669' }} />Cerrar Período — {modalCerrar?.nombre}</Space>}
         open={!!modalCerrar}
         onCancel={() => { setModalCerrar(null); formCerrar.resetFields(); }}
         onOk={() => formCerrar.submit()}
         confirmLoading={cerrarPeriodo.isPending}
         okText="Confirmar Cierre"
-        okButtonProps={{ style: { background: '#059669', borderColor: '#059669' } }}
-      >
-        <Alert
-          type="warning"
-          showIcon
-          icon={<WarningOutlined />}
+        okButtonProps={{ style: { background: '#059669', borderColor: '#059669' } }}>
+        <Alert type="warning" showIcon icon={<WarningOutlined />}
           message="Al cerrar el período se calcularán los totales de débitos y créditos de los asientos contabilizados del mes."
-          style={{ marginBottom: 16 }}
-        />
-        <Form
-          form={formCerrar}
-          layout="vertical"
-          onFinish={v => cerrarPeriodo.mutate({ id: modalCerrar?.id, dto: v })}
-        >
+          style={{ marginBottom: 16 }} />
+        <Form form={formCerrar} layout="vertical"
+          onFinish={v => cerrarPeriodo.mutate({ id: modalCerrar?.id, dto: v })}>
           <Form.Item name="notasCierre" label="Notas de cierre (opcional)">
             <Input.TextArea rows={3} placeholder="Observaciones del cierre del período..." />
           </Form.Item>
