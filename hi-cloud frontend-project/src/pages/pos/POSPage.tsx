@@ -1729,30 +1729,36 @@ body{font-family:'Courier New',Courier,monospace;font-size:${prn.fontSize};font-
 @media print{html,body{width:${prn.width}}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 </style></head><body>
 
-${e.nombre    ? `<div class="center xlarge">${esc(e.nombre)}</div>`    : ''}
-<div class="center small">República Dominicana</div>
-${e.rnc       ? `<div>RNC Emisor: ${esc(e.rnc)}</div>`                : ''}
-${e.direccion ? `<div class="small">${esc(e.direccion)}</div>`         : ''}
-${e.telefono  ? `<div>Tel: ${esc(e.telefono)}</div>`                   : ''}
+${[
+  e.nombre    ? `<div class="center xlarge">${esc(e.nombre)}</div>`    : '',
+  `<div class="center small">República Dominicana</div>`,
+  e.rnc       ? `<div>RNC Emisor: ${esc(e.rnc)}</div>`                : '',
+  e.direccion ? `<div class="small">${esc(e.direccion)}</div>`         : '',
+  e.telefono  ? `<div>Tel: ${esc(e.telefono)}</div>`                   : '',
+].filter(Boolean).join('')}
 ${dbl()}
 <div class="center bold">${esc(tipo)}</div>
 ${line()}
-${row('Número:', gd.numero)}
-${row('Fecha:',  gd.fecha)}
-${gd.cliente    ? row('Cliente:', gd.cliente)    : ''}
-${gd.rncCliente ? row('RNC:',     gd.rncCliente) : ''}
-${gd.nota1      ? `<div class="small">${esc(gd.nota1)}</div>` : ''}
+${row('Número:', gd.numero)}${row('Fecha:', gd.fecha)}${[
+  gd.cliente    ? row('Cliente:', gd.cliente)                 : '',
+  gd.rncCliente ? row('RNC:',     gd.rncCliente)              : '',
+  gd.nota1      ? `<div class="small">${esc(gd.nota1)}</div>` : '',
+].filter(Boolean).join('')}
 ${line()}
 <div class="row bold"><span>DESCRIPCIÓN</span>${hasTotals ? '<span>TOTAL</span>' : hasCant ? '<span>CANT</span>' : ''}</div>
 ${line()}
 ${itemsHtml}
 ${dbl()}
-${gd.subtotal !== undefined                        ? row('Subtotal:',    fmt(gd.subtotal)) : ''}
-${gd.itbis    !== undefined && gd.itbis > 0        ? row('ITBIS (18%):', fmt(gd.itbis))   : ''}
-${gd.total    !== undefined ? `<div class="row xlarge bold"><span>TOTAL:</span><span>${fmt(gd.total)}</span></div>` : ''}
+${[
+  gd.subtotal !== undefined                    ? row('Subtotal:',    fmt(gd.subtotal)) : '',
+  gd.itbis    !== undefined && gd.itbis > 0    ? row('ITBIS (18%):', fmt(gd.itbis))   : '',
+  gd.total    !== undefined ? `<div class="row xlarge bold"><span>TOTAL:</span><span>${fmt(gd.total)}</span></div>` : '',
+].filter(Boolean).join('')}
 ${line()}
-${gd.nota2 ? `<div class="small">${esc(gd.nota2)}</div>\n${line()}` : ''}
-${gd.notas ? `<div class="small">Nota: ${esc(gd.notas)}</div>\n${line()}` : ''}
+${[
+  gd.nota2 ? `<div class="small">${esc(gd.nota2)}</div>${line()}` : '',
+  gd.notas ? `<div class="small">Nota: ${esc(gd.notas)}</div>${line()}` : '',
+].filter(Boolean).join('')}
 ${footerHtml}
 
 </body></html>`;
