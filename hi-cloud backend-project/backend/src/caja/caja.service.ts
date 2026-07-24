@@ -281,8 +281,10 @@ export class CajaService {
     const empresaFilter   = empresaId ? `AND f."empresaId" = ${Number(empresaId)}` : '';
     const ncEmpresaFilter = empresaId ? `AND nc."empresaId" = ${Number(empresaId)}` : '';
 
-    // Las NC emitidas reducen el valor efectivo de cada factura del día.
-    // Se resta el total de NC por factura antes de clasificar por método de pago.
+    // Las NC emitidas reducen el valor neto de cada factura del día.
+    // formasPago (JSONB) se usa cuando existe; si es null/vacío el fallback clasifica por notas
+    // (mantiene comportamiento previo para ventas históricas sin formasPago).
+    // Mapeo tipo DGII → bucket: 1=Efectivo 2=Transfer/Cheque 3=Tarjeta 4=Crédito 5=Permuta→Transfer
     const [ventas] = await this.dataSource.query<{
       efectivo: string; tarjeta: string; transferencia: string; credito: string; cantidad: string;
     }[]>(
@@ -293,27 +295,66 @@ export class CajaService {
          WHERE nc."isActive" = true AND nc.estado = 'emitida'
            ${ncEmpresaFilter}
          GROUP BY nc."facturaOriginalId"
+       ),
+       facturas_base AS (
+         SELECT f.id,
+                f.total,
+                f.notas,
+                f."formasPago",
+                GREATEST(0, f.total - COALESCE(ntc.total_nc, 0)) AS monto_neto
+         FROM facturas f
+         LEFT JOIN nc_totales ntc ON ntc."facturaOriginalId" = f.id
+         WHERE DATE(f.fecha) = $1
+           AND f.estado IN ('emitida', 'pagada')
+           AND f."isActive" = true
+           ${vendedorFilter}
+           ${empresaFilter}
+       ),
+       fp_lineas AS (
+         SELECT
+           fb.id,
+           fb.total,
+           fb.monto_neto,
+           (fp->>'tipo')::int      AS tipo,
+           (fp->>'monto')::numeric AS fp_monto
+         FROM facturas_base fb,
+              jsonb_array_elements(fb."formasPago") AS fp
+         WHERE fb."formasPago" IS NOT NULL
+           AND fb."formasPago" != 'null'::jsonb
+           AND jsonb_array_length(fb."formasPago") > 0
+       ),
+       ids_con_fp AS (SELECT DISTINCT id FROM fp_lineas),
+       resultado AS (
+         -- Facturas CON formasPago: distribuir monto_neto proporcionalmente por tipo DGII
+         SELECT
+           CASE WHEN tipo = 1     AND total > 0 THEN fp_monto * monto_neto / total ELSE 0 END AS efectivo,
+           CASE WHEN tipo = 3     AND total > 0 THEN fp_monto * monto_neto / total ELSE 0 END AS tarjeta,
+           CASE WHEN tipo IN (2,5) AND total > 0 THEN fp_monto * monto_neto / total ELSE 0 END AS transferencia,
+           CASE WHEN tipo = 4     AND total > 0 THEN fp_monto * monto_neto / total ELSE 0 END AS credito
+         FROM fp_lineas
+
+         UNION ALL
+
+         -- Facturas SIN formasPago: fallback exacto al LIKE sobre notas (comportamiento anterior)
+         SELECT
+           CASE WHEN LOWER(fb.notas) LIKE '%efectivo%' THEN fb.monto_neto ELSE 0 END AS efectivo,
+           CASE WHEN LOWER(fb.notas) LIKE '%tarjeta%'  THEN fb.monto_neto ELSE 0 END AS tarjeta,
+           CASE WHEN LOWER(fb.notas) LIKE '%transferencia%' THEN fb.monto_neto ELSE 0 END AS transferencia,
+           CASE WHEN (LOWER(fb.notas) LIKE '%cr_dito%' OR LOWER(fb.notas) LIKE '%credito%')
+             AND LOWER(fb.notas) NOT LIKE '%efectivo%'
+             AND LOWER(fb.notas) NOT LIKE '%tarjeta%'
+             AND LOWER(fb.notas) NOT LIKE '%transferencia%'
+           THEN fb.monto_neto ELSE 0 END AS credito
+         FROM facturas_base fb
+         WHERE NOT EXISTS (SELECT 1 FROM ids_con_fp WHERE id = fb.id)
        )
        SELECT
-         COALESCE(SUM(CASE WHEN LOWER(f.notas) LIKE '%efectivo%'
-           THEN GREATEST(0, f.total - COALESCE(ntc.total_nc, 0)) ELSE 0 END), 0)::text AS efectivo,
-         COALESCE(SUM(CASE WHEN LOWER(f.notas) LIKE '%tarjeta%'
-           THEN GREATEST(0, f.total - COALESCE(ntc.total_nc, 0)) ELSE 0 END), 0)::text AS tarjeta,
-         COALESCE(SUM(CASE WHEN LOWER(f.notas) LIKE '%transferencia%'
-           THEN GREATEST(0, f.total - COALESCE(ntc.total_nc, 0)) ELSE 0 END), 0)::text AS transferencia,
-         COALESCE(SUM(CASE WHEN (LOWER(f.notas) LIKE '%cr_dito%' OR LOWER(f.notas) LIKE '%credito%')
-             AND LOWER(f.notas) NOT LIKE '%efectivo%'
-             AND LOWER(f.notas) NOT LIKE '%tarjeta%'
-             AND LOWER(f.notas) NOT LIKE '%transferencia%'
-           THEN GREATEST(0, f.total - COALESCE(ntc.total_nc, 0)) ELSE 0 END), 0)::text AS credito,
-         COUNT(f.id)::text AS cantidad
-       FROM facturas f
-       LEFT JOIN nc_totales ntc ON ntc."facturaOriginalId" = f.id
-       WHERE DATE(f.fecha) = $1
-         AND f.estado IN ('emitida', 'pagada')
-         AND f."isActive" = true
-         ${vendedorFilter}
-         ${empresaFilter}`,
+         COALESCE(SUM(efectivo),      0)::text AS efectivo,
+         COALESCE(SUM(tarjeta),       0)::text AS tarjeta,
+         COALESCE(SUM(transferencia), 0)::text AS transferencia,
+         COALESCE(SUM(credito),       0)::text AS credito,
+         (SELECT COUNT(*) FROM facturas_base)::text AS cantidad
+       FROM resultado`,
       [fecha],
     );
 
