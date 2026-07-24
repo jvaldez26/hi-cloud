@@ -107,6 +107,7 @@ interface Sale {
   total:                   number;
   cambio:                  number;
   pagoRecibido?:           number;  // monto que entregó el cliente (efectivo)
+  formasPago?:             { tipo: number; monto: number }[];  // desglose por método en pago mixto
   metodo:                  string;
   items:                   CartItem[];
   cliente?:                string;
@@ -618,7 +619,12 @@ function buildReciboTermicoHTML(
   const esExento = tipoCode === 'E44';
   const mostrarComprador = !!(sale.rncComprador && !RNC_GENERICOS_TICKET.has(sale.rncComprador));
   const metodoLabel = METODOS.find(m => m.key === sale.metodo)?.label ?? 'Pago';
-  const pagoMostrar = sale.pagoRecibido ?? (sale.metodo === 'efectivo' && sale.cambio > 0 ? sale.total + sale.cambio : sale.total);
+  const formasPagoRecibo = sale.formasPago ?? [];
+  const esMixtoRecibo    = formasPagoRecibo.length > 1;
+  const pagoMostrar = esMixtoRecibo
+    ? round2(formasPagoRecibo.reduce((s, fp) => s + fp.monto, 0))
+    : (sale.pagoRecibido ?? (sale.metodo === 'efectivo' && sale.cambio > 0 ? sale.total + sale.cambio : sale.total));
+  const TIPO_LABEL_RECIBO: Record<number, string> = { 1: 'Efectivo', 2: 'Transferencia', 3: 'Tarjeta', 4: 'Crédito', 5: 'Permuta', 6: 'Nota crédito' };
 
   const tieneModificados = sale.items.some(i => i.precioModificado);
   const itemsHtml = sale.items.map(item => {
@@ -682,7 +688,10 @@ function buildReciboTermicoHTML(
     : tipoDoc === 'PRE-FACTURA'
     ? row('Estado:', 'PENDIENTE DE PAGO')
     : [
-        sale.metodo === 'efectivo' ? row('PAGADO:', fmt(pagoMostrar)) : row(`${esc(metodoLabel)}:`, fmt(pagoMostrar)),
+        row('PAGADO:', fmt(pagoMostrar)),
+        ...(esMixtoRecibo
+          ? formasPagoRecibo.map(fp => row(`  ${TIPO_LABEL_RECIBO[fp.tipo] ?? 'Otro'}:`, fmt(fp.monto)))
+          : (sale.metodo !== 'efectivo' ? [row(`  ${esc(metodoLabel)}:`, fmt(pagoMostrar))] : [])),
         sale.metodo === 'credito' && sale.diasCredito ? row('Plazo:', `${sale.diasCredito} días`) : '',
         Number(sale.cambio) > 0 ? rowBold('CAMBIO:', fmt(Number(sale.cambio))) : '',
       ].join('\n');
@@ -2007,15 +2016,40 @@ function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir, mostrarEcf = 
             <span style={{ fontSize: 22, fontWeight: 800, color: C.green }}>{fmt.money(sale.total)}</span>
           </div>
           <div style={{ background: 'rgba(16,185,129,.1)', borderRadius: 8, padding: '8px 12px', marginBottom: 10 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 12, color: C.textSub }}>Método</span>
-              <span style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{METODOS.find(m => m.key === sale.metodo)?.icon} {METODOS.find(m => m.key === sale.metodo)?.label}</span>
-            </div>
-            {sale.metodo === 'efectivo' && sale.cambio > 0 && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
-                <span style={{ fontSize: 13, color: C.green, fontWeight: 600 }}>Cambio</span>
-                <span style={{ fontSize: 17, color: C.green, fontWeight: 700 }}>{fmt.money(sale.cambio)}</span>
-              </div>
+            {sale.formasPago && sale.formasPago.length > 1 ? (
+              /* Pago mixto: desglose por método */
+              <>
+                <div style={{ fontSize: 10, color: C.textSub, fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>Pago mixto</div>
+                {sale.formasPago.map((fp, i) => {
+                  const TIPO_L: Record<number,string> = { 1:'Efectivo', 2:'Transferencia', 3:'Tarjeta', 4:'Crédito', 5:'Permuta' };
+                  return (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+                      <span style={{ fontSize: 12, color: C.text }}>{TIPO_L[fp.tipo] ?? 'Otro'}</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{fmt.money(fp.monto)}</span>
+                    </div>
+                  );
+                })}
+                {sale.cambio > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, borderTop: `1px solid ${C.border2}`, paddingTop: 4 }}>
+                    <span style={{ fontSize: 13, color: C.green, fontWeight: 600 }}>Cambio</span>
+                    <span style={{ fontSize: 17, color: C.green, fontWeight: 700 }}>{fmt.money(sale.cambio)}</span>
+                  </div>
+                )}
+              </>
+            ) : (
+              /* Método único */
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 12, color: C.textSub }}>Método</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{METODOS.find(m => m.key === sale.metodo)?.icon} {METODOS.find(m => m.key === sale.metodo)?.label}</span>
+                </div>
+                {sale.metodo === 'efectivo' && sale.cambio > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+                    <span style={{ fontSize: 13, color: C.green, fontWeight: 600 }}>Cambio</span>
+                    <span style={{ fontSize: 17, color: C.green, fontWeight: 700 }}>{fmt.money(sale.cambio)}</span>
+                  </div>
+                )}
+              </>
             )}
           </div>
 
@@ -9245,6 +9279,7 @@ export default function POSPage() {
         pagoRecibido:            (!esMixto && metodoPago === 'efectivo' && montoRecibido > 0) ? montoRecibido
           : (esMixto && tieneEfec && efectivoMonto > 0) ? efectivoMonto
           : undefined,
+        formasPago:              esMixto ? formasPagoList.map(fp => ({ tipo: METODO_TIPO_MAP[fp.metodo], monto: fp.monto })) : undefined,
         propina:                 propinaMontoCalc > 0 ? propinaMontoCalc : undefined,
         metodo:                  tipoPagoPos === 'CREDITO' ? 'credito' : metodoPago,
         notas:                   tipoPagoPos === 'CREDITO' ? `Crédito ${diasCreditoPos} días` : undefined,
