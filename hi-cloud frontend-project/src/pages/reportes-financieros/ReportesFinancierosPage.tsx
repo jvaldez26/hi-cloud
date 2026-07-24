@@ -227,7 +227,7 @@ export default function ReportesFinancierosPage() {
                               -{fmt(er.resultados.isrEstimado)}
                             </td>
                           </tr>
-                          <tr style={{ background: token.colorBgSpotlight ?? token.colorFill, color: token.colorTextLightSolid ?? '#fff' }}>
+                          <tr style={{ background: er.resultados.utilidadDespuesIsr >= 0 ? '#14532d' : '#7f1d1d', color: '#fff' }}>
                             <td style={{ padding: '12px 12px', fontWeight: 700, fontSize: 14 }}>
                               UTILIDAD NETA DESPUÉS DE ISR
                             </td>
