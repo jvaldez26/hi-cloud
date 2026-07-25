@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThan, In } from 'typeorm';
@@ -12,10 +13,11 @@ import { NotaCredito } from '../notas-credito/entities/nota-credito.entity';
 import { NotaDebito } from '../notas-debito/entities/nota-debito.entity';
 
 export interface MensajeWhatsApp {
-  texto:   string;
-  encoded: string;
-  link:    string;
-  numero?: string;
+  texto:        string;
+  encoded:      string;
+  link:         string;
+  numero?:      string;
+  linkPublico?: string;
 }
 
 const FMT_DOP = (v: number) =>
@@ -53,29 +55,43 @@ export class ComunicacionesService {
 
   // ─── Mensajes para Facturas ───────────────────────────────────────────────────
 
-  async mensajeFactura(facturaId: number, appUrl?: string) {
+  async mensajeFactura(facturaId: number, _appUrl?: string) {
     const empresaId = this.tenantSvc.getEmpresaId();
     const factura   = await this.facturaRepo.findOne({ where: { id: facturaId, empresaId } });
     if (!factura) throw new NotFoundException('Factura no encontrada');
 
-    const cliente     = await this.clienteRepo.findOne({ where: { id: factura.clienteId } });
-    const empresa     = await this.getEmpresaNombre(empresaId);
-    const linkFactura = appUrl ? `${appUrl}/facturas/${facturaId}` : '';
+    const cliente = await this.clienteRepo.findOne({ where: { id: factura.clienteId } });
+    const empresa = await this.getEmpresaNombre(empresaId);
+
+    // Auto-activar portal token del cliente para generar el link público
+    let linkPublico = '';
+    if (cliente) {
+      const ahora    = new Date();
+      const expirado = !cliente.portalTokenExpiry || new Date(cliente.portalTokenExpiry) < ahora;
+      if (!cliente.portalToken || expirado) {
+        const token  = randomBytes(32).toString('hex');
+        const expiry = new Date(ahora.getTime() + 30 * 24 * 60 * 60 * 1000);
+        await this.clienteRepo.update(cliente.id, { portalToken: token, portalTokenExpiry: expiry });
+        cliente.portalToken       = token;
+        cliente.portalTokenExpiry = expiry;
+      }
+      const baseUrl = process.env['FRONTEND_URL'] ?? 'https://hicloudrd.com';
+      linkPublico   = `${baseUrl}/portal/${cliente.portalToken}`;
+    }
 
     const texto = [
       `Estimado/a *${cliente?.nombre ?? 'Cliente'}*,`,
       '',
       `Le informamos que su *factura ${factura.folio}* por *${FMT_DOP(Number(factura.total))}*`,
       `con fecha *${new Date(factura.fecha).toLocaleDateString('es-DO')}* ya está disponible.`,
-      '',
-      linkFactura ? `📎 Ver factura: ${linkFactura}` : '',
+      ...(linkPublico ? ['', `📄 Ver y descargar su factura: ${linkPublico}`] : []),
       '',
       `Para cualquier consulta estamos a su disposición.`,
       '',
       `_${empresa}_`,
-    ].filter(l => l !== undefined).join('\n');
+    ].join('\n');
 
-    return this.buildLink(texto, cliente?.telefono);
+    return { ...this.buildLink(texto, cliente?.telefono), linkPublico };
   }
 
   // ─── Recordatorios CxC ───────────────────────────────────────────────────────

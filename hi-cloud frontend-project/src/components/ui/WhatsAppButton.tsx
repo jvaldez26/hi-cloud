@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button, Tooltip, Modal, Input, message, Space } from 'antd';
-import { WhatsAppOutlined, SendOutlined } from '@ant-design/icons';
+import { WhatsAppOutlined, SendOutlined, CopyOutlined, LinkOutlined } from '@ant-design/icons';
 import { Typography } from 'antd';
 import api from '../../api/client';
 
@@ -56,12 +56,13 @@ export default function WhatsAppButton({
   const [telefono,     setTelefono]     = useState('');
   const [mensajeEdit,  setMensajeEdit]  = useState('');
   const [waLink,       setWaLink]       = useState('');
+  const [linkPublico,  setLinkPublico]  = useState('');
 
   const abrirModal = async () => {
     setLoading(true);
     try {
       const res = await api.get(getEndpoint(tipo, id));
-      const data: { link: string; texto: string; numero?: string } =
+      const data: { link: string; texto: string; numero?: string; linkPublico?: string } =
         (res as any).data?.data ?? (res as any).data;
 
       if (!data?.link) { message.warning('No se pudo generar el link de WhatsApp'); return; }
@@ -69,6 +70,7 @@ export default function WhatsAppButton({
       setTelefono(data.numero ?? '');
       setMensajeEdit(data.texto);
       setWaLink(data.link);
+      setLinkPublico(data.linkPublico ?? '');
       setModalOpen(true);
     } catch {
       message.error('Error al preparar el mensaje de WhatsApp');
@@ -162,6 +164,33 @@ export default function WhatsAppButton({
             Incluye código de país. Ej: 8091234567 → se formatea automáticamente.
           </Text>
         </div>
+
+        {linkPublico && (
+          <div style={{ marginBottom: 14 }}>
+            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+              <LinkOutlined style={{ marginRight: 4 }} />
+              Link de factura (el cliente puede ver y descargar el PDF)
+            </Text>
+            <Input
+              readOnly
+              value={linkPublico}
+              style={{ fontSize: 11, fontFamily: 'monospace' }}
+              suffix={
+                <CopyOutlined
+                  style={{ cursor: 'pointer', color: '#1677ff' }}
+                  title="Copiar link"
+                  onClick={() => {
+                    navigator.clipboard.writeText(linkPublico);
+                    message.success('Link copiado al portapapeles');
+                  }}
+                />
+              }
+            />
+            <Text type="secondary" style={{ fontSize: 11 }}>
+              Ya incluido en el mensaje. El cliente no necesita iniciar sesión.
+            </Text>
+          </div>
+        )}
 
         <div style={{ marginBottom: 16 }}>
           <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
