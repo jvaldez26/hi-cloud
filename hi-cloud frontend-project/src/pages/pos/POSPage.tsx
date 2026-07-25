@@ -2362,7 +2362,7 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
 
   return (
     <div style={{ position:'fixed', inset:0, zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center' }}>
-      <div onClick={onClose} style={{ position:'absolute', inset:0, background:'rgba(0,0,0,.5)' }} />
+      <div style={{ position:'absolute', inset:0, background:'rgba(0,0,0,.5)' }} />
       <div style={{ position:'relative', background:bg, borderRadius:16, width:560, maxHeight:'92vh',
         display:'flex', flexDirection:'column', boxShadow:'0 20px 60px rgba(0,0,0,.4)', overflow:'hidden' }}>
 
