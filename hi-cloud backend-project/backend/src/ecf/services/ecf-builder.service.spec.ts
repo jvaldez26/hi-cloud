@@ -207,9 +207,11 @@ describe('ECFBuilderService', () => {
       expect(p.ECF.Encabezado.Comprador!.RNCComprador).toBe('101234567');
     });
 
-    it('E31 NO tiene IndicadorMontoGravado', () => {
+    it('E31 declara IndicadorMontoGravado=0 (los montos NO incluyen ITBIS)', () => {
       const idDoc = service.build(31, makeInput({ tipoEcf: 31, facturaOverrides: { cliente: CLIENTE_CON_RNC } })).ECF.Encabezado.IdDoc;
-      expect((idDoc as any).IndicadorMontoGravado).toBeUndefined();
+      // El builder transparenta el ITBIS: MontoItem=100 y MontoTotal=118, así que
+      // el indicador debe ser 0. Antes este test exigía que el campo no existiera.
+      expect((idDoc as any).IndicadorMontoGravado).toBe(0);
     });
 
     it('E31 tiene IndicadorEnvioDiferido=1 y TipoIngresos="01"', () => {
@@ -237,15 +239,17 @@ describe('ECFBuilderService', () => {
       expect(p.ECF.InformacionReferencia!.CodigoModificacion).toBe('3');
     });
 
-    it('E33 tiene TablaFormasPago en IdDoc', () => {
+    it('E33 tiene TablaFormasPago dentro de Totales', () => {
       const p = service.build(33, makeInput({
         tipoEcf:          33,
         facturaOverrides: { cliente: CLIENTE_CON_RNC },
         infoReferencia:   INFO_REF_E33,
       }));
-      const formasPago = (p.ECF.Encabezado.IdDoc as any).TablaFormasPago;
+      // La tabla cuelga de Totales, no de IdDoc (orden XSD del Encabezado).
+      const formasPago = (p.ECF.Encabezado.Totales as any).TablaFormasPago;
       expect(formasPago).toBeDefined();
       expect(Array.isArray(formasPago.FormaDePago)).toBe(true);
+      expect((p.ECF.Encabezado.IdDoc as any).TablaFormasPago).toBeUndefined();
     });
 
     it('E33 NO tiene IndicadorEnvioDiferido', () => {
@@ -284,9 +288,37 @@ describe('ECFBuilderService', () => {
         infoReferencia:   INFO_REF_E34,
       }));
       expect(p.ECF.Encabezado.IdDoc.TipoeCF).toBe(34);
-      expect((p.ECF.Encabezado.IdDoc as any).IndicadorNotaCredito).toBe('0');
       expect(p.ECF.InformacionReferencia!.NCFModificado).toBe('E310000000001');
       expect(p.ECF.InformacionReferencia!.CodigoModificacion).toBe('1');
+    });
+
+    // IndicadorNotaCredito se calcula contra la fecha ACTUAL a partir de
+    // FechaNCFModificado (la del comprobante que se corrige): ≤30 días = '0',
+    // >30 = '1'. El test anterior fijaba '0' con una fecha de enero de 2026, así
+    // que caducó solo con el paso del tiempo. Ahora la fecha es relativa a hoy.
+    const refConFecha = (diasAtras: number) => {
+      const d  = new Date(Date.now() - diasAtras * 24 * 3600 * 1000);
+      const dd = String(d.getDate()).padStart(2, '0');
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      return { ...INFO_REF_E34, FechaNCFModificado: `${dd}-${mm}-${d.getFullYear()}` };
+    };
+
+    it('IndicadorNotaCredito=0 si el comprobante corregido tiene ≤30 días', () => {
+      const p = service.build(34, makeInput({
+        tipoEcf:          34,
+        facturaOverrides: { cliente: CLIENTE_CON_RNC },
+        infoReferencia:   refConFecha(5),
+      }));
+      expect((p.ECF.Encabezado.IdDoc as any).IndicadorNotaCredito).toBe('0');
+    });
+
+    it('IndicadorNotaCredito=1 si el comprobante corregido tiene más de 30 días', () => {
+      const p = service.build(34, makeInput({
+        tipoEcf:          34,
+        facturaOverrides: { cliente: CLIENTE_CON_RNC },
+        infoReferencia:   refConFecha(60),
+      }));
+      expect((p.ECF.Encabezado.IdDoc as any).IndicadorNotaCredito).toBe('1');
     });
 
     it('E34 tiene IndicadorEnvioDiferido=1 y IndicadorMontoGravado', () => {
@@ -325,19 +357,32 @@ describe('ECFBuilderService', () => {
       expect(p.ECF.Encabezado.Comprador!.RNCComprador).toBe('101234567');
     });
 
-    it('E41 Totales NO tiene TotalITBISRetenido ni TotalISRRetencion (spec nueva)', () => {
+    // Retencion es minOccurs=1 en el XSD de E41: va en cada ítem aunque el monto
+    // sea 0, y por eso los totales de retención también son obligatorios.
+    it('E41 Totales incluye TotalITBISRetenido y TotalISRRetencion', () => {
       const totales = service.build(41, makeInput({ tipoEcf: 41, facturaOverrides: { cliente: CLIENTE_CON_RNC } })).ECF.Encabezado.Totales;
-      expect((totales as any).TotalITBISRetenido).toBeUndefined();
-      expect((totales as any).TotalISRRetencion).toBeUndefined();
+      expect((totales as any).TotalITBISRetenido).toBeDefined();
+      expect((totales as any).TotalISRRetencion).toBeDefined();
       expect(totales.MontoTotal).toBeGreaterThan(0);
     });
 
-    it('E41 items tienen TablaImpuesto (no Retencion — spec nueva)', () => {
+    it('E41 items llevan Retencion (obligatoria en el XSD, aunque sea 0)', () => {
       const p = service.build(41, makeInput({ tipoEcf: 41, facturaOverrides: { cliente: CLIENTE_CON_RNC } }));
       const item = p.ECF.DetallesItems.Item[0] as any;
-      expect(item.Retencion).toBeUndefined();
-      expect(item.TablaImpuesto).toBeDefined();
-      expect(Array.isArray(item.TablaImpuesto.Impuesto)).toBe(true);
+      expect(item.Retencion).toBeDefined();
+      expect(item.Retencion.IndicadorAgenteRetencionoPercepcion).toBe(1);
+      expect(item.Retencion).toHaveProperty('MontoITBISRetenido');
+      expect(item.Retencion).toHaveProperty('MontoISRRetenido');
+    });
+
+    it('E41 los totales de retención cuadran con la suma de los ítems', () => {
+      const p = service.build(41, makeInput({ tipoEcf: 41, facturaOverrides: { cliente: CLIENTE_CON_RNC } }));
+      const items   = p.ECF.DetallesItems.Item as any[];
+      const totales = p.ECF.Encabezado.Totales as any;
+      const sumaItbis = items.reduce((s, i) => s + Number(i.Retencion?.MontoITBISRetenido ?? 0), 0);
+      const sumaIsr   = items.reduce((s, i) => s + Number(i.Retencion?.MontoISRRetenido   ?? 0), 0);
+      expect(totales.TotalITBISRetenido).toBeCloseTo(sumaItbis, 2);
+      expect(totales.TotalISRRetencion).toBeCloseTo(sumaIsr, 2);
     });
 
     it('E41 NO tiene IndicadorEnvioDiferido ni TipoIngresos', () => {
@@ -356,12 +401,12 @@ describe('ECFBuilderService', () => {
   // ── E43 — Gastos Menores ──────────────────────────────────────────────────
 
   describe('E43 — Gastos Menores', () => {
-    it('construye payload E43 con Comprador genérico (131880657 — spec nueva)', () => {
+    it('construye payload E43 SIN Comprador (autofactura interna, minOccurs=0)', () => {
       const p = service.build(43, makeInput({ tipoEcf: 43 }));
       expect(p.ECF.Encabezado.IdDoc.TipoeCF).toBe(43);
-      expect(p.ECF.Encabezado.Comprador).toBeDefined();
-      expect(p.ECF.Encabezado.Comprador!.RNCComprador).toBe('131880657');
-      expect(p.ECF.Encabezado.Comprador!.RazonSocialComprador).toBe('CLIENTES DE LA ADMINISTRACION');
+      // E43 sustenta gastos del propio personal: no hay tercero comprador. El
+      // test anterior esperaba el RNC genérico 131880657, que ya no se emite.
+      expect(p.ECF.Encabezado.Comprador).toBeUndefined();
     });
 
     it('E43 Totales solo tiene MontoExento y MontoTotal', () => {
@@ -372,9 +417,10 @@ describe('ECFBuilderService', () => {
       expect((totales as any).MontoGravadoTotal).toBeUndefined();
     });
 
-    it('E43 tiene IndicadorMontoGravado=0 y TipoPago (spec nueva)', () => {
+    it('E43 tiene TipoPago y NO lleva IndicadorMontoGravado', () => {
       const idDoc = service.build(43, makeInput({ tipoEcf: 43 })).ECF.Encabezado.IdDoc;
-      expect((idDoc as any).IndicadorMontoGravado).toBe(0);
+      // Todo E43 es exento, así que el indicador no aplica.
+      expect((idDoc as any).IndicadorMontoGravado).toBeUndefined();
       expect((idDoc as any).TipoPago).toBeDefined();
       expect((idDoc as any).TipoIngresos).toBeUndefined();
       expect((idDoc as any).IndicadorEnvioDiferido).toBeUndefined();
@@ -422,11 +468,13 @@ describe('ECFBuilderService', () => {
       });
     });
 
-    it('E44 tiene TipoIngresos="01" y IndicadorMontoGravado=0 (sin IndicadorEnvioDiferido — spec nueva)', () => {
+    it('E44 tiene TipoIngresos="01" y NO lleva IndicadorMontoGravado', () => {
       const idDoc = service.build(44, makeInput({ tipoEcf: 44, facturaOverrides: { cliente: CLIENTE_CON_RNC } })).ECF.Encabezado.IdDoc;
       expect((idDoc as any).IndicadorEnvioDiferido).toBeUndefined();
       expect((idDoc as any).TipoIngresos).toBe('01');
-      expect((idDoc as any).IndicadorMontoGravado).toBe(0);
+      // El campo no existe en el XSD de E44 y enviarlo hace que la DGII rechace
+      // el comprobante con error 3.
+      expect((idDoc as any).IndicadorMontoGravado).toBeUndefined();
     });
   });
 
@@ -464,33 +512,68 @@ describe('ECFBuilderService', () => {
   // ── E46 — Exportaciones ───────────────────────────────────────────────────
 
   describe('E46 — Exportaciones', () => {
-    it('usa NombreExtranjero + PaisCompradorExtranjero como Comprador (spec nueva)', () => {
+    // El comprador de E46 exige identificación fiscal: IdentificadorExtranjero
+    // para un cliente de fuera, o RNCComprador si es Zona Franca (residente RD).
+    // Los campos se llaman RazonSocialComprador y PaisComprador; el spec anterior
+    // usaba NombreExtranjero/PaisCompradorExtranjero, que ya no se emiten.
+    const CLIENTE_EXTRANJERO = {
+      id: 7, nombre: 'Global Imports Ltd', rfc: null, rncReceptor: null,
+      esExtranjero: true, identificadorExtranjero: 'EIN-123456',
+    };
+
+    it('sin identificación fiscal del comprador → lanza EcfRncRequeridoError', () => {
+      expect(() => service.build(46, makeInput({ tipoEcf: 46 }))).toThrow(EcfRncRequeridoError);
+    });
+
+    it('cliente extranjero → IdentificadorExtranjero + RazonSocialComprador + PaisComprador', () => {
       const p = service.build(46, makeInput({
         tipoEcf:          46,
+        facturaOverrides: { cliente: CLIENTE_EXTRANJERO },
         nombreExtranjero: 'Global Imports Ltd',
         paisExtranjero:   'MX',
       }));
       expect(p.ECF.Encabezado.IdDoc.TipoeCF).toBe(46);
-      expect(p.ECF.Encabezado.Comprador!.NombreExtranjero).toBe('Global Imports Ltd');
-      expect(p.ECF.Encabezado.Comprador!.PaisCompradorExtranjero).toBe('MX');
-      expect(p.ECF.Encabezado.Comprador!.RNCComprador).toBeUndefined();
+      const comprador = p.ECF.Encabezado.Comprador! as any;
+      expect(comprador.IdentificadorExtranjero).toBe('EIN-123456');
+      expect(comprador.RazonSocialComprador).toBe('Global Imports Ltd');
+      expect(comprador.PaisComprador).toBe('MX');
+      expect(comprador.RNCComprador).toBeUndefined();
     });
 
-    it('E46 Totales son MontoExento + MontoTotal (exento — spec nueva)', () => {
-      const totales = service.build(46, makeInput({ tipoEcf: 46 })).ECF.Encabezado.Totales as any;
-      expect(totales.MontoExento).toBeGreaterThan(0);
+    it('Zona Franca (residente con RNC) → usa RNCComprador', () => {
+      const p = service.build(46, makeInput({
+        tipoEcf:          46,
+        facturaOverrides: { cliente: { ...CLIENTE_CON_RNC, esExtranjero: false } },
+      }));
+      const comprador = p.ECF.Encabezado.Comprador! as any;
+      expect(comprador.RNCComprador).toBe('101234567');
+      expect(comprador.IdentificadorExtranjero).toBeUndefined();
+    });
+
+    it('E46 Totales son de TASA CERO, no exentos', () => {
+      const p = service.build(46, makeInput({ tipoEcf: 46, facturaOverrides: { cliente: CLIENTE_EXTRANJERO } }));
+      const totales = p.ECF.Encabezado.Totales as any;
+      // Una exportación se grava a tasa 0% (IndicadorFacturacion=3), no es exenta:
+      // el monto va en MontoGravadoI3 con ITBIS3=0, y no hay MontoExento.
+      expect(totales.MontoGravadoI3).toBeGreaterThan(0);
+      expect(totales.ITBIS3).toBe(0);
+      expect(totales.TotalITBIS).toBe(0);
       expect(totales.MontoTotal).toBeGreaterThan(0);
-      expect(totales.MontoGravadoI3).toBeUndefined();
-      expect((p => p.ECF.OtraMoneda)(service.build(46, makeInput({ tipoEcf: 46 })) as any)).toBeUndefined();
+      expect(totales.MontoExento).toBeUndefined();
+      expect((p as any).ECF.OtraMoneda).toBeUndefined();
     });
 
     it('E46 usa país por defecto "US" si no se provee paisExtranjero', () => {
-      const comprador = service.build(46, makeInput({ tipoEcf: 46 })).ECF.Encabezado.Comprador!;
-      expect(comprador.PaisCompradorExtranjero).toBe('US');
+      const comprador = service.build(46, makeInput({
+        tipoEcf: 46, facturaOverrides: { cliente: CLIENTE_EXTRANJERO },
+      })).ECF.Encabezado.Comprador! as any;
+      expect(comprador.PaisComprador).toBe('US');
     });
 
     it('E46 tiene TipoIngresos="01" y TipoPago=1', () => {
-      const idDoc = service.build(46, makeInput({ tipoEcf: 46 })).ECF.Encabezado.IdDoc;
+      const idDoc = service.build(46, makeInput({
+        tipoEcf: 46, facturaOverrides: { cliente: CLIENTE_EXTRANJERO },
+      })).ECF.Encabezado.IdDoc;
       expect((idDoc as any).TipoIngresos).toBe('01');
       expect((idDoc as any).TipoPago).toBe(1);
     });
@@ -499,23 +582,30 @@ describe('ECFBuilderService', () => {
   // ── E47 — Pagos al Exterior ───────────────────────────────────────────────
 
   describe('E47 — Pagos al Exterior', () => {
-    it('usa NombreExtranjero + PaisCompradorExtranjero como Comprador (spec nueva)', () => {
+    it('usa RazonSocialComprador y NO lleva PaisComprador', () => {
       const p = service.build(47, makeInput({
         tipoEcf:          47,
         nombreExtranjero: 'Acme Corp',
         paisExtranjero:   'US',
       }));
       expect(p.ECF.Encabezado.IdDoc.TipoeCF).toBe(47);
-      expect(p.ECF.Encabezado.Comprador!.NombreExtranjero).toBe('Acme Corp');
-      expect(p.ECF.Encabezado.Comprador!.PaisCompradorExtranjero).toBe('US');
-      expect(p.ECF.Encabezado.Comprador!.IdentificadorExtranjero).toBeUndefined();
+      const comprador = p.ECF.Encabezado.Comprador! as any;
+      expect(comprador.RazonSocialComprador).toBe('Acme Corp');
+      // A diferencia de E46, el XSD de E47 no incluye el país del comprador.
+      expect(comprador.PaisComprador).toBeUndefined();
+      expect(comprador.IdentificadorExtranjero).toBeUndefined();
     });
 
-    it('E47 Totales son MontoExento + MontoTotal (sin ISR — spec nueva)', () => {
+    it('E47 Totales llevan MontoExento, MontoTotal y TotalISRRetencion', () => {
       const totales = service.build(47, makeInput({ tipoEcf: 47 })).ECF.Encabezado.Totales as any;
       expect(totales.MontoExento).toBeGreaterThan(0);
       expect(totales.MontoTotal).toBeGreaterThan(0);
-      expect(totales.TotalISRRetencion).toBeUndefined();
+      // TotalISRRetencion acompaña siempre a la Retencion de los ítems y debe
+      // cuadrar con su suma (0 cuando no hay retención practicada).
+      expect(totales.TotalISRRetencion).toBeDefined();
+      const items = service.build(47, makeInput({ tipoEcf: 47 })).ECF.DetallesItems.Item as any[];
+      const suma  = items.reduce((s, i) => s + Number(i.Retencion?.MontoISRRetenido ?? 0), 0);
+      expect(totales.TotalISRRetencion).toBeCloseTo(suma, 2);
     });
 
     it('E47 NO tiene Subtotales ni OtraMoneda (spec nueva)', () => {
@@ -524,9 +614,11 @@ describe('ECFBuilderService', () => {
       expect(p.ECF.OtraMoneda).toBeUndefined();
     });
 
-    it('E47 items NO tienen Retencion (spec nueva)', () => {
+    it('E47 items llevan Retencion (minOccurs=1 en el XSD, aunque sea 0)', () => {
       const item = service.build(47, makeInput({ tipoEcf: 47 })).ECF.DetallesItems.Item[0] as any;
-      expect(item.Retencion).toBeUndefined();
+      expect(item.Retencion).toBeDefined();
+      expect(item.Retencion.IndicadorAgenteRetencionoPercepcion).toBe(1);
+      expect(item.Retencion).toHaveProperty('MontoISRRetenido');
     });
 
     it('E47 NO tiene TipoIngresos', () => {

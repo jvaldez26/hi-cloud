@@ -14,6 +14,7 @@
  *   npx jest --testPathPattern="mseller-client.integration" --runInBand
  */
 import { HttpService } from '@nestjs/axios';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
@@ -327,11 +328,23 @@ describe('MSellerClientService — unitarios', () => {
       getCredencialesDescifradas: jest.fn().mockResolvedValue(mockConfig),
     };
 
+    // El servicio pasó a cachear el idToken en CACHE_MANAGER (Redis en prod).
+    // Sin este provider el módulo ni siquiera compilaba. Se usa un doble con Map
+    // real —no jest.fn() vacíos— para que la aserción de "usa el cache y no
+    // repite la llamada HTTP" siga comprobando algo de verdad.
+    const store = new Map<string, unknown>();
+    const mockCache = {
+      get: jest.fn(async (k: string) => store.get(k)),
+      set: jest.fn(async (k: string, v: unknown) => { store.set(k, v); }),
+      del: jest.fn(async (k: string) => { store.delete(k); }),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MSellerClientService,
         { provide: HttpService, useValue: { post: jest.fn(), get: jest.fn() } },
         { provide: EcfConfigService, useValue: mockEcfConfigSvc },
+        { provide: CACHE_MANAGER, useValue: mockCache },
       ],
     }).compile();
 

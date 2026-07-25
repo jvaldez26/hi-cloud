@@ -217,20 +217,44 @@ describe('@TenantScoped decorator', () => {
 
 describe('CI check — no fallback "1=1"', () => {
   it('No existe el patrón "1=1" como fallback de filtro en src/', () => {
-    let found = '';
+    let salida = '';
     try {
       // grep retorna exit code 0 si ENCUENTRA, 1 si no encuentra
-      // Queremos que NO encuentre
-      found = execSync('grep -rn "1=1" src/ --include="*.ts" --exclude-dir=node_modules', {
+      salida = execSync('grep -rn "1=1" src/ --include="*.ts" --exclude-dir=node_modules', {
         cwd: process.cwd(),
         encoding: 'utf8',
         stdio: ['pipe', 'pipe', 'pipe'],
       });
     } catch {
-      // exit code 1 = no se encontró = test pasa
-      return;
+      return; // no hay ninguna coincidencia
     }
-    // Si llegamos aquí, grep encontró algo → test falla
-    throw new Error(`Se encontró el patrón "1=1" (fallback inseguro) en:\n${found}`);
+
+    // El grep crudo también casa la DOCUMENTACIÓN que advierte contra el patrón
+    // ("...jamás '1=1'") y este propio test, así que el check fallaba siempre por
+    // sí mismo. Nos quedamos solo con coincidencias en código ejecutable.
+    const hallazgos = salida
+      .split('\n')
+      .filter(Boolean)
+      .filter(linea => {
+        const sinPrefijo = linea.replace(/^[^:]+:\d+:/, '');   // quita ruta:línea:
+        const codigo     = sinPrefijo.trim();
+        if (codigo.startsWith('*') || codigo.startsWith('//') || codigo.startsWith('/*')) return false;
+        // Este spec habla del patrón por definición
+        return !linea.includes('tenant-aware.repository.spec.ts');
+      });
+
+    if (hallazgos.length > 0) {
+      throw new Error(`Se encontró el patrón "1=1" (fallback inseguro) en:\n${hallazgos.join('\n')}`);
+    }
+  });
+
+  it('el check detecta el patrón cuando SÍ está en código', () => {
+    // Verifica que el filtro anterior no lo neutraliza: una línea de código real
+    // con el patrón debe sobrevivir al descarte de comentarios.
+    const linea    = 'src/algun/servicio.ts:42:    const where = empresaId ? `"empresaId" = ${empresaId}` : "1=1";';
+    const codigo   = linea.replace(/^[^:]+:\d+:/, '').trim();
+    const esComentario = codigo.startsWith('*') || codigo.startsWith('//') || codigo.startsWith('/*');
+    expect(esComentario).toBe(false);
+    expect(linea.includes('tenant-aware.repository.spec.ts')).toBe(false);
   });
 });

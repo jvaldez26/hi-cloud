@@ -7,7 +7,9 @@
  * - SIN PaisComprador en Comprador
  * - IndicadorBienoServicio = 2 (Servicio) obligatorio
  * - IndicadorFacturacion  = 4 (Exento ITBIS local)
- * - Retencion solo si hay monto, TotalISRRetencion cuadra exactamente con items
+ * - Retencion SIEMPRE presente en cada ítem (minOccurs=1 en el XSD), con
+ *   MontoISRRetenido=0 cuando no hay retención; TotalISRRetencion cuadra
+ *   exactamente con la suma de los ítems
  */
 import {
   ECFBuildInput, MSellerPayload,
