@@ -8,7 +8,7 @@ import {
   Inject,
 } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { UsuarioEmpresa } from './entities/usuario-empresa.entity';
 import { Empresa } from '../configuracion/entities/empresa.entity';
@@ -48,12 +48,75 @@ export class MultiEmpresaService {
   ) {}
 
   // ──────────────────────────────────────────────────────────────────
+  // S-61 — Control de acceso por pertenencia
+  // ──────────────────────────────────────────────────────────────────
+
+  /**
+   * S-61: exige que el solicitante pertenezca a `empresaId`.
+   *
+   * /multi-empresa está protegido con @Roles(ADMIN) — el rol de cualquier admin
+   * de cualquier empresa cliente — y el RolesGuard solo valida la membresía de la
+   * empresa del JWT, NUNCA la del :empresaId de la ruta. Sin esta comprobación un
+   * admin de la empresa A opera sobre la empresa B.
+   *
+   * El super_admin queda exento: gestiona la plataforma y no tiene filas en
+   * usuario_empresa. Se verifica contra el rol real de BD (JwtStrategy carga la
+   * entidad User), nunca contra un valor del cliente.
+   */
+  private async assertAccesoEmpresa(
+    empresaId: number,
+    solicitanteId?: number,
+    solicitanteRole?: string,
+    accion = 'acceder a esta empresa',
+  ): Promise<void> {
+    if (solicitanteRole === UserRole.SUPER_ADMIN) return;
+
+    if (!solicitanteId) {
+      throw new ForbiddenException('No se pudo identificar al solicitante');
+    }
+
+    const membresia = await this.usuarioEmpresaRepo.findOne({
+      where: { userId: solicitanteId, empresaId, isActive: true },
+    });
+
+    if (!membresia) {
+      this.logger.warn(
+        `[S-61] Solicitante #${solicitanteId} intentó ${accion} en la empresa ` +
+        `#${empresaId} sin pertenecer a ella`,
+      );
+      throw new ForbiddenException(`No tienes acceso a la empresa #${empresaId}`);
+    }
+  }
+
+  /** IDs de las empresas activas donde el usuario tiene membresía. */
+  private async empresaIdsDeUsuario(userId: number): Promise<number[]> {
+    const filas = await this.usuarioEmpresaRepo.find({
+      where: { userId, isActive: true },
+      select: ['empresaId'],
+    });
+    return filas.map(f => f.empresaId);
+  }
+
+  // ──────────────────────────────────────────────────────────────────
   // Gestión de empresas
   // ──────────────────────────────────────────────────────────────────
 
-  async getTodasEmpresas() {
+  /**
+   * S-61: un admin normal solo ve SUS empresas. Antes devolvía todas las del
+   * sistema (RNC + razón social de toda la cartera de clientes) a cualquier admin.
+   */
+  async getTodasEmpresas(solicitanteId?: number, solicitanteRole?: string) {
+    if (solicitanteRole === UserRole.SUPER_ADMIN) {
+      return this.empresaRepo.find({ where: { isActive: true }, order: { nombre: 'ASC' } });
+    }
+
+    if (!solicitanteId) throw new ForbiddenException('No se pudo identificar al solicitante');
+
+    const ids = await this.empresaIdsDeUsuario(solicitanteId);
+    if (ids.length === 0) return [];
+
     return this.empresaRepo.find({
-      where: { isActive: true },
+      where: { id: In(ids), isActive: true },
       order: { nombre: 'ASC' },
     });
   }
@@ -143,7 +206,21 @@ export class MultiEmpresaService {
     return empresa;
   }
 
-  async updateEmpresa(id: number, dto: Partial<CreateEmpresaTenantDto>): Promise<Empresa> {
+  /** S-61: detalle de empresa — solo la propia (o cualquiera si es super_admin). */
+  async getEmpresaDetalle(id: number, solicitanteId?: number, solicitanteRole?: string): Promise<Empresa> {
+    await this.assertAccesoEmpresa(id, solicitanteId, solicitanteRole, 'consultar la empresa');
+    return this.getEmpresaById(id);
+  }
+
+  async updateEmpresa(
+    id: number,
+    dto: Partial<CreateEmpresaTenantDto>,
+    solicitanteId?: number,
+    solicitanteRole?: string,
+  ): Promise<Empresa> {
+    // S-61: sin esto, un admin de otra empresa podía reescribir RNC, razón social
+    // o datos fiscales de cualquier empresa de la plataforma.
+    await this.assertAccesoEmpresa(id, solicitanteId, solicitanteRole, 'modificar la empresa');
     await this.getEmpresaById(id);
     await this.empresaRepo.update(id, dto);
     return this.getEmpresaById(id);
@@ -191,7 +268,9 @@ export class MultiEmpresaService {
       }));
     }
 
-    // Admin global sin vinculación explícita → devuelve todas las empresas
+    // S-61: solo el SUPER_ADMIN sin vinculación ve todas las empresas. El caller
+    // pasaba `role === ADMIN`, así que un admin de empresa sin membresías activas
+    // recibía la cartera completa de clientes (nombre + RNC).
     if (isGlobalAdmin) {
       const todas = await this.empresaRepo.find({ where: { isActive: true }, order: { nombre: 'ASC' } });
       return todas.map((e) => ({
@@ -206,7 +285,9 @@ export class MultiEmpresaService {
     return [];
   }
 
-  async getUsuariosDeEmpresa(empresaId: number) {
+  async getUsuariosDeEmpresa(empresaId: number, solicitanteId?: number, solicitanteRole?: string) {
+    // S-61: exponía nombre, email y rol de los usuarios de cualquier empresa.
+    await this.assertAccesoEmpresa(empresaId, solicitanteId, solicitanteRole, 'listar usuarios');
     await this.getEmpresaById(empresaId);
     return this.usuarioEmpresaRepo.find({
       where: { empresaId, isActive: true },
@@ -215,7 +296,16 @@ export class MultiEmpresaService {
     });
   }
 
-  async asignarUsuario(empresaId: number, dto: AsignarUsuarioEmpresaDto, adminId: number) {
+  async asignarUsuario(
+    empresaId: number,
+    dto: AsignarUsuarioEmpresaDto,
+    adminId: number,
+    solicitanteRole?: string,
+  ) {
+    // S-61: sin esto, un admin podía auto-asignarse a CUALQUIER empresa de la
+    // plataforma y obtener acceso completo al ERP de ese cliente.
+    await this.assertAccesoEmpresa(empresaId, adminId, solicitanteRole, 'asignar usuarios');
+
     // S-60.1: misma lista blanca que cambiarRolUsuario — asignar a un usuario con
     // rol 'super_admin' en usuario_empresa hacía que buildToken() emitiera un JWT
     // con role='super_admin' (auth.service usa empresaRole ?? user.role).
@@ -289,26 +379,9 @@ export class MultiEmpresaService {
       );
     }
 
-    // ── S-60.2: el solicitante debe pertenecer a la empresa que dice gestionar ─
-    // Sin esto, un admin de la empresa A podía cambiar roles en la empresa B:
-    // el RolesGuard solo valida la membresía de la empresa del JWT, nunca la del
-    // :empresaId de la ruta. Se comprueba ANTES de tocar el usuario objetivo para
-    // no revelar si existe. El super_admin no tiene membresías — queda exento.
-    if (!esSuperAdmin) {
-      if (!solicitanteId) {
-        throw new ForbiddenException('No se pudo identificar al solicitante');
-      }
-      const membresiaSolicitante = await this.usuarioEmpresaRepo.findOne({
-        where: { userId: solicitanteId, empresaId, isActive: true },
-      });
-      if (!membresiaSolicitante) {
-        this.logger.warn(
-          `[S-60] Solicitante #${solicitanteId} intentó cambiar roles en la empresa ` +
-          `#${empresaId} sin pertenecer a ella`,
-        );
-        throw new ForbiddenException(`No tienes acceso a la empresa #${empresaId}`);
-      }
-    }
+    // S-60.2: el solicitante debe pertenecer a la empresa que dice gestionar.
+    // Se comprueba ANTES de tocar el usuario objetivo para no revelar si existe.
+    await this.assertAccesoEmpresa(empresaId, solicitanteId, solicitanteRole, 'cambiar roles');
 
     // Prevenir auto-degradación: un admin no puede quitarse a sí mismo el rol de admin
     if (solicitanteId && solicitanteId === userId && rol !== 'admin') {
@@ -343,7 +416,17 @@ export class MultiEmpresaService {
     return this.usuarioEmpresaRepo.findOne({ where: { id: asignacion.id }, relations: ['user'] });
   }
 
-  async asignarSucursalUsuario(empresaId: number, userId: number, sucursalId: number | null) {
+  async asignarSucursalUsuario(
+    empresaId: number,
+    userId: number,
+    sucursalId: number | null,
+    solicitanteId?: number,
+    solicitanteRole?: string,
+  ) {
+    // S-61: mismo patrón que los demás endpoints de :empresaId — no estaba en el
+    // listado original de la auditoría pero comparte exactamente el mismo fallo.
+    await this.assertAccesoEmpresa(empresaId, solicitanteId, solicitanteRole, 'asignar sucursales');
+
     const asignacion = await this.usuarioEmpresaRepo.findOne({
       where: { empresaId, userId, isActive: true },
     });
@@ -364,7 +447,15 @@ export class MultiEmpresaService {
     return this.usuarioEmpresaRepo.findOne({ where: { id: asignacion.id }, relations: ['user'] });
   }
 
-  async removerUsuario(empresaId: number, userId: number) {
+  async removerUsuario(
+    empresaId: number,
+    userId: number,
+    solicitanteId?: number,
+    solicitanteRole?: string,
+  ) {
+    // S-61: sin esto, un admin podía cortar el acceso de usuarios de otras empresas.
+    await this.assertAccesoEmpresa(empresaId, solicitanteId, solicitanteRole, 'remover usuarios');
+
     const asignacion = await this.usuarioEmpresaRepo.findOne({
       where: { empresaId, userId, isActive: true },
     });
@@ -383,10 +474,12 @@ export class MultiEmpresaService {
   async validarAccesoEmpresa(userId: number, empresaId: number) {
     const usuario = await this.usuarioRepo.findOne({ where: { id: userId } });
 
-    // Admins globales acceden a todas las empresas
-    if (usuario?.role === UserRole.ADMIN) {
+    // S-61: SOLO el super_admin cambia a cualquier empresa. Antes bastaba con
+    // role === ADMIN — el rol de cualquier admin de cualquier empresa cliente —
+    // para obtener contexto de un tenant ajeno sin membresía alguna.
+    if (usuario?.role === UserRole.SUPER_ADMIN) {
       const empresa = await this.getEmpresaById(empresaId);
-      return { empresaId, empresaNombre: empresa.nombre, rnc: empresa.rnc, rol: UserRole.ADMIN };
+      return { empresaId, empresaNombre: empresa.nombre, rnc: empresa.rnc, rol: UserRole.SUPER_ADMIN };
     }
 
     const acceso = await this.usuarioEmpresaRepo.findOne({
@@ -435,18 +528,21 @@ export class MultiEmpresaService {
       };
     }
 
-    // Si no tiene empresa principal, usar la primera empresa del sistema
-    const primeraEmpresa = await this.empresaRepo.findOne({
-      where: { isActive: true },
+    // S-61: si no hay principal, caer a otra empresa DEL USUARIO — nunca a "la
+    // primera del sistema", que devolvía nombre y RNC de una empresa ajena y
+    // colocaba al usuario en un contexto de tenant que no le corresponde.
+    const cualquiera = await this.usuarioEmpresaRepo.findOne({
+      where: { userId, isActive: true },
+      relations: ['empresa'],
       order: { id: 'ASC' },
     });
 
-    if (primeraEmpresa) {
+    if (cualquiera?.empresa) {
       return {
-        empresaId:    primeraEmpresa.id,
-        empresaNombre: primeraEmpresa.nombre,
-        rnc:          primeraEmpresa.rnc,
-        rol:          UserRole.VIEWER,
+        empresaId:     cualquiera.empresaId,
+        empresaNombre: cualquiera.empresa.nombre,
+        rnc:           cualquiera.empresa.rnc,
+        rol:           cualquiera.rol,
       };
     }
 

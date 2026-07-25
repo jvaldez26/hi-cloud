@@ -25,6 +25,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 import { UserRole, ROLES_ASIGNABLES_EMPRESA } from '../users/enums/user-role.enum';
+import { SuperAdminGuard } from '../super-admin/super-admin.guard';
 import { User } from '../users/users.entity';
 
 class CambiarRolDto {
@@ -48,9 +49,12 @@ class AsignarSucursalDto {
 export class MultiEmpresaController {
   constructor(private multiEmpresaService: MultiEmpresaService) {}
 
+  // S-61: función de PLATAFORMA, no de gestión de empresa — agrega totales de
+  // todas las empresas del sistema. No tiene equivalente "solo mi empresa", así
+  // que se mueve bajo SuperAdminGuard en vez de validar pertenencia.
   @Get('resumen')
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Resumen: total empresas, asignaciones, usuarios por empresa' })
+  @UseGuards(SuperAdminGuard)
+  @ApiOperation({ summary: '[Super Admin] Resumen global: total empresas, asignaciones, usuarios' })
   getResumen() {
     return this.multiEmpresaService.getResumen();
   }
@@ -59,9 +63,9 @@ export class MultiEmpresaController {
 
   @Get()
   @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Listar todas las empresas del sistema (solo ADMIN global)' })
-  getTodasEmpresas() {
-    return this.multiEmpresaService.getTodasEmpresas();
+  @ApiOperation({ summary: 'Listar las empresas del usuario (todas si es Super Admin)' })
+  getTodasEmpresas(@GetUser() usuario: User) {
+    return this.multiEmpresaService.getTodasEmpresas(usuario.id, usuario.role);
   }
 
   @Post()
@@ -77,7 +81,12 @@ export class MultiEmpresaController {
   @Get('mis-empresas')
   @ApiOperation({ summary: 'Empresas a las que tiene acceso el usuario autenticado' })
   getMisEmpresas(@GetUser() usuario: User) {
-    return this.multiEmpresaService.getEmpresasDeUsuario(usuario.id, usuario.role === UserRole.ADMIN);
+    // S-61: el fallback "sin vinculación → todas las empresas" queda reservado al
+    // super_admin; antes bastaba con ser ADMIN de cualquier empresa.
+    return this.multiEmpresaService.getEmpresasDeUsuario(
+      usuario.id,
+      usuario.role === UserRole.SUPER_ADMIN,
+    );
   }
 
   @Get('empresa-principal')
@@ -99,40 +108,41 @@ export class MultiEmpresaController {
 
   @Get(':id')
   @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Detalle de una empresa' })
-  getEmpresa(@Param('id', ParseIntPipe) id: number) {
-    return this.multiEmpresaService.getEmpresaById(id);
+  @ApiOperation({ summary: 'Detalle de una empresa (debe pertenecerle)' })
+  getEmpresa(@Param('id', ParseIntPipe) id: number, @GetUser() usuario: User) {
+    return this.multiEmpresaService.getEmpresaDetalle(id, usuario.id, usuario.role);
   }
 
   @Patch(':id')
   @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Actualizar datos de una empresa' })
+  @ApiOperation({ summary: 'Actualizar datos de una empresa (debe pertenecerle)' })
   updateEmpresa(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: Partial<CreateEmpresaTenantDto>,
+    @GetUser() usuario: User,
   ) {
-    return this.multiEmpresaService.updateEmpresa(id, dto);
+    return this.multiEmpresaService.updateEmpresa(id, dto, usuario.id, usuario.role);
   }
 
   // ── Usuarios por empresa ───────────────────────────────────────────────────
 
   @Get(':empresaId/usuarios')
   @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Listar usuarios asignados a una empresa' })
-  getUsuarios(@Param('empresaId', ParseIntPipe) empresaId: number) {
-    return this.multiEmpresaService.getUsuariosDeEmpresa(empresaId);
+  @ApiOperation({ summary: 'Listar usuarios asignados a una empresa (debe pertenecerle)' })
+  getUsuarios(@Param('empresaId', ParseIntPipe) empresaId: number, @GetUser() usuario: User) {
+    return this.multiEmpresaService.getUsuariosDeEmpresa(empresaId, usuario.id, usuario.role);
   }
 
   @Post(':empresaId/usuarios')
   @HttpCode(HttpStatus.CREATED)
   @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Asignar usuario a empresa con un rol específico' })
+  @ApiOperation({ summary: 'Asignar usuario a empresa con un rol específico (debe pertenecerle)' })
   asignarUsuario(
     @Param('empresaId', ParseIntPipe) empresaId: number,
     @Body() dto: AsignarUsuarioEmpresaDto,
     @GetUser() admin: User,
   ) {
-    return this.multiEmpresaService.asignarUsuario(empresaId, dto, admin.id);
+    return this.multiEmpresaService.asignarUsuario(empresaId, dto, admin.id, admin.role);
   }
 
   @Patch(':empresaId/usuarios/:userId')
@@ -151,22 +161,26 @@ export class MultiEmpresaController {
 
   @Patch(':empresaId/usuarios/:userId/sucursal')
   @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Asignar sucursal a un usuario en una empresa' })
+  @ApiOperation({ summary: 'Asignar sucursal a un usuario en una empresa (debe pertenecerle)' })
   asignarSucursal(
     @Param('empresaId', ParseIntPipe) empresaId: number,
     @Param('userId',    ParseIntPipe) userId:    number,
     @Body() dto: AsignarSucursalDto,
+    @GetUser() usuario: User,
   ) {
-    return this.multiEmpresaService.asignarSucursalUsuario(empresaId, userId, dto.sucursalId ?? null);
+    return this.multiEmpresaService.asignarSucursalUsuario(
+      empresaId, userId, dto.sucursalId ?? null, usuario.id, usuario.role,
+    );
   }
 
   @Delete(':empresaId/usuarios/:userId')
   @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Remover acceso de usuario a una empresa' })
+  @ApiOperation({ summary: 'Remover acceso de usuario a una empresa (debe pertenecerle)' })
   removerUsuario(
     @Param('empresaId', ParseIntPipe) empresaId: number,
     @Param('userId',    ParseIntPipe) userId:    number,
+    @GetUser() usuario: User,
   ) {
-    return this.multiEmpresaService.removerUsuario(empresaId, userId);
+    return this.multiEmpresaService.removerUsuario(empresaId, userId, usuario.id, usuario.role);
   }
 }
