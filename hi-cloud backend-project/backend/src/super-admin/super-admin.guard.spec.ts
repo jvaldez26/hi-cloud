@@ -36,11 +36,16 @@ function makeContext(token?: string): any {
 
 // ── Instancia del guard con secrets de prueba ─────────────────────────────────
 
-function buildGuard(): SuperAdminGuard {
+function buildGuard(opts: { revocado?: boolean } = {}): SuperAdminGuard {
   const jwtSvc = new JwtService({ secret: JWT_SECRET });
   const cfgSvc = { get: (key: string) => key === 'JWT_SECRET' ? JWT_SECRET : '' } as ConfigService;
+  // A-02: el guard consulta la blacklist de JTIs revocados (logout previo).
+  // Este mock faltaba desde que se añadió el parámetro: el spec pasaba 3 args a
+  // un constructor de 4 y todos los casos morían con TypeError sobre null en vez
+  // de ejercitar el guard — el test de regresión llevaba tiempo sin proteger nada.
+  const blacklistSvc = { isBlacklisted: async () => opts.revocado === true } as any;
   // DataSource = null → @Optional() activa fallback sin DB (solo JWT)
-  return new SuperAdminGuard(jwtSvc, cfgSvc, null as any);
+  return new SuperAdminGuard(jwtSvc, cfgSvc, blacklistSvc, null as any);
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -100,6 +105,12 @@ describe('SuperAdminGuard', () => {
 
     it('rechaza con 401 cuando el token es un string malformado', async () => {
       await expect(guard.canActivate(makeContext('not.a.valid.jwt'))).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('rechaza con 401 un token de super_admin cuyo JTI fue revocado (logout)', async () => {
+      const revocado = buildGuard({ revocado: true });
+      const token = makeToken({ sub: 99, role: 'super_admin', jti: 'jti-revocado' });
+      await expect(revocado.canActivate(makeContext(token))).rejects.toThrow(UnauthorizedException);
     });
   });
 

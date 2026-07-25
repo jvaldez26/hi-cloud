@@ -10,7 +10,19 @@ import { Empresa } from '../configuracion/entities/empresa.entity';
 import { UserRole } from '../users/enums/user-role.enum';
 import { extractJwtFromRequest } from '../auth/utils/extract-jwt.util';
 
-/** Rutas que NO requieren X-Empresa-ID */
+/** Prefijo global del API (main.ts: app.setGlobalPrefix('api/v1')). */
+const GLOBAL_PREFIX = '/api/v1';
+
+/**
+ * Rutas que NO requieren contexto de empresa.
+ *
+ * S-63: se comparan ANCLADAS AL INICIO del path (tras quitar el prefijo global),
+ * no con `includes`. Con `includes`, cualquier ruta que contuviera uno de estos
+ * fragmentos en cualquier posición se saltaba el middleware: por ejemplo
+ * `GET /auditoria/modulo/admin` — un parámetro de ruta con el valor "admin" —
+ * dejaba el request sin empresaId y la auditoría respondía con los logs de TODAS
+ * las empresas.
+ */
 const RUTAS_SIN_TENANT = [
   '/auth/',
   '/admin/',              // Super Admin — acceso global sin tenant
@@ -46,13 +58,32 @@ export class TenantMiddleware implements NestMiddleware {
     private readonly empresaRepo: Repository<Empresa>,
   ) {}
 
+  /**
+   * S-63: ¿el path está exento de contexto de empresa?
+   *
+   * Compara anclando al inicio: el path debe ser exactamente una ruta exenta o
+   * colgar de ella (`/auth` o `/auth/...`, nunca `/x/auth`). Estático y público
+   * para poder cubrirlo con tests sin instanciar el middleware.
+   */
+  static esRutaSinTenant(path: string): boolean {
+    const rel = path.startsWith(GLOBAL_PREFIX)
+      ? (path.slice(GLOBAL_PREFIX.length) || '/')
+      : path;
+
+    // Excepción: /portal/admin/* requiere auth y contexto de tenant.
+    if (rel === '/portal/admin' || rel.startsWith('/portal/admin/')) return false;
+
+    return RUTAS_SIN_TENANT.some(ruta => {
+      const base = ruta.endsWith('/') ? ruta.slice(0, -1) : ruta;
+      return rel === base || rel.startsWith(`${base}/`);
+    });
+  }
+
   async use(req: Request & { empresaId?: number; cookies?: Record<string, string> }, _res: Response, next: NextFunction) {
     const path = req.path;
 
     // Skip tenant validation for public/system routes.
-    // Excepción: /portal/admin/* requiere auth y necesita contexto de tenant.
-    const skipTenant = RUTAS_SIN_TENANT.some(r => path.includes(r)) && !path.includes('/portal/admin');
-    if (skipTenant) {
+    if (TenantMiddleware.esRutaSinTenant(path)) {
       return next();
     }
 
