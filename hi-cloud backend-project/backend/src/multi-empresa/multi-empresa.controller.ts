@@ -12,7 +12,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiHeader } from '@nestjs/swagger';
-import { IsEnum, IsInt, IsOptional, IsPositive } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsPositive } from 'class-validator';
 import { Type } from 'class-transformer';
 import { MultiEmpresaService } from './multi-empresa.service';
 import {
@@ -24,11 +24,15 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
-import { UserRole } from '../users/enums/user-role.enum';
+import { UserRole, ROLES_ASIGNABLES_EMPRESA } from '../users/enums/user-role.enum';
 import { User } from '../users/users.entity';
 
 class CambiarRolDto {
-  @IsEnum(UserRole)
+  // S-60: lista blanca — NUNCA @IsEnum(UserRole), que aceptaría 'super_admin'
+  // y permitiría escalar a administrador de plataforma desde @Roles(ADMIN).
+  @IsIn(ROLES_ASIGNABLES_EMPRESA as UserRole[], {
+    message: `Rol inválido. Permitidos: ${ROLES_ASIGNABLES_EMPRESA.join(', ')}`,
+  })
   rol!: UserRole;
 }
 
@@ -140,7 +144,9 @@ export class MultiEmpresaController {
     @Body() dto: CambiarRolDto,
     @GetUser() solicitante: User,
   ) {
-    return this.multiEmpresaService.cambiarRolUsuario(empresaId, userId, dto.rol, solicitante.id);
+    return this.multiEmpresaService.cambiarRolUsuario(
+      empresaId, userId, dto.rol, solicitante.id, solicitante.role,
+    );
   }
 
   @Patch(':empresaId/usuarios/:userId/sucursal')

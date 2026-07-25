@@ -1,16 +1,19 @@
 import {
-  IsInt, IsPositive, IsEnum, IsOptional,
+  IsInt, IsPositive, IsIn, IsOptional,
   IsBoolean, IsString, IsNotEmpty, IsEmail,
   MaxLength, Matches,
 } from 'class-validator';
-import { UserRole } from '../../users/enums/user-role.enum';
+import { UserRole, ROLES_ASIGNABLES_EMPRESA } from '../../users/enums/user-role.enum';
 
 export class AsignarUsuarioEmpresaDto {
   @IsInt({ message: 'ID de usuario inválido' })
   @IsPositive({ message: 'ID de usuario inválido' })
   userId: number;
 
-  @IsEnum(UserRole, { message: 'Rol inválido' })
+  // S-60: lista blanca — 'super_admin' NO es asignable desde @Roles(ADMIN).
+  @IsIn(ROLES_ASIGNABLES_EMPRESA as UserRole[], {
+    message: `Rol inválido. Permitidos: ${ROLES_ASIGNABLES_EMPRESA.join(', ')}`,
+  })
   rol: UserRole;
 
   @IsOptional()

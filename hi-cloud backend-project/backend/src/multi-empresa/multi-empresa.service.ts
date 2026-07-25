@@ -19,10 +19,14 @@ import {
   CambiarEmpresaDto,
   CreateEmpresaTenantDto,
 } from './dto/multi-empresa.dto';
-import { UserRole } from '../users/enums/user-role.enum';
+import {
+  UserRole,
+  ROLES_ASIGNABLES_EMPRESA,
+  esRolAsignablePorEmpresa,
+} from '../users/enums/user-role.enum';
 import { ContabilidadService } from '../contabilidad/services/contabilidad.service';
 import { EmailService }        from '../notificaciones/services/email.service';
-import { invalidateMembresiaCache } from '../auth/guards/roles.guard';
+import { invalidateMembresiaCache, invalidateRoleCache } from '../auth/guards/roles.guard';
 
 @Injectable()
 export class MultiEmpresaService {
@@ -212,6 +216,20 @@ export class MultiEmpresaService {
   }
 
   async asignarUsuario(empresaId: number, dto: AsignarUsuarioEmpresaDto, adminId: number) {
+    // S-60.1: misma lista blanca que cambiarRolUsuario — asignar a un usuario con
+    // rol 'super_admin' en usuario_empresa hacía que buildToken() emitiera un JWT
+    // con role='super_admin' (auth.service usa empresaRole ?? user.role).
+    if (!esRolAsignablePorEmpresa(dto.rol)) {
+      this.logger.warn(
+        `[S-60] Intento de asignar rol no permitido "${dto.rol}" a usuario #${dto.userId} ` +
+        `en empresa #${empresaId} por admin #${adminId}`,
+      );
+      throw new ForbiddenException(
+        `El rol "${dto.rol}" no puede asignarse desde la gestión de empresa. ` +
+        `Permitidos: ${ROLES_ASIGNABLES_EMPRESA.join(', ')}.`,
+      );
+    }
+
     await this.getEmpresaById(empresaId);
 
     const usuario = await this.usuarioRepo.findOne({ where: { id: dto.userId, isActive: true } });
@@ -247,23 +265,79 @@ export class MultiEmpresaService {
     return this.usuarioEmpresaRepo.save(asignacion);
   }
 
-  async cambiarRolUsuario(empresaId: number, userId: number, rol: string, solicitanteId?: number) {
+  async cambiarRolUsuario(
+    empresaId: number,
+    userId: number,
+    rol: string,
+    solicitanteId?: number,
+    solicitanteRole?: string,
+  ) {
+    const esSuperAdmin = solicitanteRole === UserRole.SUPER_ADMIN;
+
+    // ── S-60.1: lista blanca de roles ────────────────────────────────────────
+    // Defensa en profundidad: el DTO ya valida con @IsIn, pero este servicio no
+    // debe depender de que todos sus llamadores lo hagan. 'super_admin' es un rol
+    // de plataforma y solo se concede vía PATCH /admin/usuarios/:id/rol.
+    if (!esRolAsignablePorEmpresa(rol)) {
+      this.logger.warn(
+        `[S-60] Intento de asignar rol no permitido "${rol}" a usuario #${userId} ` +
+        `en empresa #${empresaId} por solicitante #${solicitanteId ?? 'desconocido'}`,
+      );
+      throw new ForbiddenException(
+        `El rol "${rol}" no puede asignarse desde la gestión de empresa. ` +
+        `Permitidos: ${ROLES_ASIGNABLES_EMPRESA.join(', ')}.`,
+      );
+    }
+
+    // ── S-60.2: el solicitante debe pertenecer a la empresa que dice gestionar ─
+    // Sin esto, un admin de la empresa A podía cambiar roles en la empresa B:
+    // el RolesGuard solo valida la membresía de la empresa del JWT, nunca la del
+    // :empresaId de la ruta. Se comprueba ANTES de tocar el usuario objetivo para
+    // no revelar si existe. El super_admin no tiene membresías — queda exento.
+    if (!esSuperAdmin) {
+      if (!solicitanteId) {
+        throw new ForbiddenException('No se pudo identificar al solicitante');
+      }
+      const membresiaSolicitante = await this.usuarioEmpresaRepo.findOne({
+        where: { userId: solicitanteId, empresaId, isActive: true },
+      });
+      if (!membresiaSolicitante) {
+        this.logger.warn(
+          `[S-60] Solicitante #${solicitanteId} intentó cambiar roles en la empresa ` +
+          `#${empresaId} sin pertenecer a ella`,
+        );
+        throw new ForbiddenException(`No tienes acceso a la empresa #${empresaId}`);
+      }
+    }
+
     // Prevenir auto-degradación: un admin no puede quitarse a sí mismo el rol de admin
     if (solicitanteId && solicitanteId === userId && rol !== 'admin') {
       throw new BadRequestException('No puedes cambiar tu propio rol de administrador');
     }
 
+    // El usuario objetivo debe pertenecer también a esta empresa
     const asignacion = await this.usuarioEmpresaRepo.findOne({
       where: { empresaId, userId, isActive: true },
       relations: ['user'],
     });
     if (!asignacion) throw new NotFoundException(`El usuario #${userId} no pertenece a esta empresa`);
 
+    // ── S-60.3: nunca degradar/alterar a un super_admin desde la gestión de empresa ─
+    if (asignacion.user?.role === UserRole.SUPER_ADMIN && !esSuperAdmin) {
+      throw new ForbiddenException('No puedes modificar el rol de un Super Administrador');
+    }
+
     await this.usuarioEmpresaRepo.update(asignacion.id, { rol: rol as UserRole });
 
     // Sincronizar el rol en users si esta empresa es la principal del usuario
     if (asignacion.isPrincipal) {
-      await this.usuarioRepo.update(userId, { role: rol as UserRole });
+      // S-31: incrementar roleVersion invalida los JWT emitidos con el rol anterior;
+      // sin esto una degradación no surtía efecto hasta que el token expirara.
+      await this.usuarioRepo.update(userId, {
+        role:        rol as UserRole,
+        roleVersion: () => 'COALESCE("roleVersion", 1) + 1',
+      } as any);
+      await invalidateRoleCache(this.cacheManager, userId);
     }
 
     return this.usuarioEmpresaRepo.findOne({ where: { id: asignacion.id }, relations: ['user'] });

@@ -1,5 +1,6 @@
 import {
-  Injectable, NotFoundException, BadRequestException, ConflictException, Logger,
+  Injectable, NotFoundException, BadRequestException, ConflictException,
+  ForbiddenException, Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -7,7 +8,11 @@ import { randomBytes } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import { Invitacion, EstadoInvitacion } from './entities/invitacion.entity';
 import { User } from '../users/users.entity';
-import { UserRole } from '../users/enums/user-role.enum';
+import {
+  UserRole,
+  ROLES_ASIGNABLES_EMPRESA,
+  esRolAsignablePorEmpresa,
+} from '../users/enums/user-role.enum';
 import { UsuarioEmpresa } from '../multi-empresa/entities/usuario-empresa.entity';
 import { Empresa } from '../configuracion/entities/empresa.entity';
 import { EmailService } from '../notificaciones/services/email.service';
@@ -31,6 +36,20 @@ export class InvitacionesService {
   // ── Crear invitación ──────────────────────────────────────────────────────
 
   async crear(empresaId: number, email: string, rol: UserRole, invitadoPorId: number) {
+    // S-60.1: defensa en profundidad sobre el @IsIn del DTO. Invitar con rol
+    // 'super_admin' escalaba a administrador de plataforma: aceptar() escribe
+    // users.role con el rol de la invitación desde un endpoint público.
+    if (!esRolAsignablePorEmpresa(rol)) {
+      this.logger.warn(
+        `[S-60] Intento de invitar a ${email} con rol no permitido "${rol}" ` +
+        `en empresa #${empresaId} por usuario #${invitadoPorId}`,
+      );
+      throw new ForbiddenException(
+        `El rol "${rol}" no puede asignarse por invitación. ` +
+        `Permitidos: ${ROLES_ASIGNABLES_EMPRESA.join(', ')}.`,
+      );
+    }
+
     const empresa = await this.empRepo.findOne({ where: { id: empresaId } });
     if (!empresa) throw new NotFoundException('Empresa no encontrada');
 
@@ -187,6 +206,21 @@ export class InvitacionesService {
     if (new Date() > inv.expiresAt) {
       await this.invRepo.update(inv.id, { estado: EstadoInvitacion.EXPIRADA });
       throw new BadRequestException('Invitación expirada');
+    }
+
+    // ── S-60.1: rechazar invitaciones con rol de plataforma ────────────────
+    // Cubre las invitaciones que ya estén en BD emitidas antes de este parche:
+    // este endpoint es público, así que es la última línea antes de escribir
+    // users.role. Nunca debe conceder 'super_admin'.
+    if (!esRolAsignablePorEmpresa(inv.rol)) {
+      this.logger.error(
+        `[S-60] Invitación #${inv.id} (${inv.email}, empresa #${inv.empresaId}) ` +
+        `con rol no permitido "${inv.rol}" — aceptación BLOQUEADA. ` +
+        `Posible intento de escalada de privilegios; revisar quién la creó (invitadoPorId=${inv.invitadoPorId}).`,
+      );
+      throw new ForbiddenException(
+        'Esta invitación no es válida. Contacta al administrador de tu empresa.',
+      );
     }
 
     // ── Verificar límite de usuarios en el momento de aceptar ─────────────

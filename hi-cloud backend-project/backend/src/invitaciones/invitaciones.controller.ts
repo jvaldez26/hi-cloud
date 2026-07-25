@@ -3,10 +3,10 @@ import {
   ParseIntPipe, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
-import { IsEmail, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
 import { Throttle } from '@nestjs/throttler';
 import { InvitacionesService } from './invitaciones.service';
-import { UserRole } from '../users/enums/user-role.enum';
+import { UserRole, ROLES_ASIGNABLES_EMPRESA } from '../users/enums/user-role.enum';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -16,7 +16,14 @@ import { User } from '../users/users.entity';
 
 class CreateInvitacionDto {
   @IsEmail()    email!: string;
-  @IsEnum(UserRole) rol!: UserRole;
+
+  // S-60: lista blanca — con @IsEnum(UserRole) un admin de empresa podía invitar
+  // con rol 'super_admin' y el endpoint PÚBLICO de aceptación escribía
+  // users.role = 'super_admin', escalando a administrador de plataforma.
+  @IsIn(ROLES_ASIGNABLES_EMPRESA as UserRole[], {
+    message: `Rol inválido. Permitidos: ${ROLES_ASIGNABLES_EMPRESA.join(', ')}`,
+  })
+  rol!: UserRole;
 }
 
 class AceptarInvitacionDto {
