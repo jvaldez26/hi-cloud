@@ -498,38 +498,12 @@ export class SuperAdminController {
     return { ok: true, cron: 'recordatorios' };
   }
 
-  @Patch('suscripciones/:empresaId/fecha-fin-prueba')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Forzar fechaFinPrueba para pruebas de cron (solo testing)' })
-  async setFechaFinPrueba(
-    @Param('empresaId', ParseIntPipe) empresaId: number,
-    @Body() body: { diasDesdeHoy: number },
-  ) {
-    const fecha = new Date();
-    fecha.setDate(fecha.getDate() + body.diasDesdeHoy);
-    const fechaStr = fecha.toISOString().slice(0, 10);
-    await this.suscSvc['ds'].query(
-      `UPDATE suscripciones SET "fechaFinPrueba"=$1 WHERE "empresaId"=$2`,
-      [fechaStr, empresaId],
-    );
-    return { ok: true, empresaId, fechaFinPrueba: fechaStr };
-  }
-
-  @Patch('suscripciones/:empresaId/ingresos-mes')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: '[Testing] Fijar ingresosMesActualDop para pruebas de límite' })
-  async setIngresosMes(
-    @Param('empresaId', ParseIntPipe) empresaId: number,
-    @Body() body: { monto: number },
-  ) {
-    const mes = new Date();
-    const mesPeriodo = `${mes.getFullYear()}-${String(mes.getMonth() + 1).padStart(2, '0')}`;
-    await this.suscSvc['ds'].query(
-      `UPDATE suscripciones SET "ingresosMesActualDop"=$1, "mesPeriodo"=$2 WHERE "empresaId"=$3`,
-      [body.monto, mesPeriodo, empresaId],
-    );
-    return { ok: true, empresaId, ingresosMesActualDop: body.monto, mesPeriodo };
-  }
+  // S-65: eliminados PATCH suscripciones/:empresaId/fecha-fin-prueba e
+  // .../ingresos-mes. Eran endpoints [Testing] que en producción escribían
+  // directamente sobre la facturación de un cliente (fecha de fin de prueba e
+  // ingresos del mes, que gobiernan los límites del plan) saltándose la lógica de
+  // negocio y sin dejar auditoría. Sin consumidores en el frontend. Para pruebas,
+  // usar los endpoints de negocio: extender-trial y vencimiento-manual.
 
   // ── Registros pendientes de aprobación ─────────────────────────────────────
 

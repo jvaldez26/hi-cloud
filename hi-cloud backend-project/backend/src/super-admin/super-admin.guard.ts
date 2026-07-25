@@ -43,13 +43,25 @@ export class SuperAdminGuard implements CanActivate {
     // S-32: verificar rol en BD — el JWT puede estar stale si el rol cambió.
     // Si no hay DataSource (test unitario sin DI), confiar solo en el JWT.
     if (this.ds) {
-      const rows = await this.ds.query<{ role: string; isActive: boolean }[]>(
-        `SELECT role, "isActive" FROM users WHERE id = $1 LIMIT 1`,
+      const rows = await this.ds.query<{ role: string; isActive: boolean; twoFactorEnabled: boolean }[]>(
+        `SELECT role, "isActive", "twoFactorEnabled" FROM users WHERE id = $1 LIMIT 1`,
         [payload.sub],
       );
       const dbUser = rows[0];
       if (!dbUser || !dbUser.isActive || dbUser.role !== UserRole.SUPER_ADMIN) {
         throw new ForbiddenException('Acceso restringido a Super Administradores');
+      }
+
+      // S-65: 2FA obligatoria para operar la plataforma.
+      // Enrollment forzado, NO bloqueo de sesión: el login sigue funcionando y
+      // /auth/2fa/* (JwtAuthGuard, fuera de este guard) queda accesible, así que
+      // el super admin puede configurarla desde su propia sesión y desbloquear el
+      // panel. Nadie se queda fuera, pero nadie opera sin segundo factor.
+      if (!dbUser.twoFactorEnabled) {
+        throw new ForbiddenException({
+          code:    'SUPER_ADMIN_2FA_REQUERIDA',
+          message: 'Debes configurar la verificación en dos pasos para usar el panel de administración.',
+        });
       }
     }
 

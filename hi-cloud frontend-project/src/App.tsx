@@ -133,6 +133,7 @@ const PortalEmpleadoPage          = lazy(() => import('./pages/portal-empleado/P
 const NotasCreditoPage            = lazy(() => import('./pages/notas-credito/NotasCreditoPage'));
 const AsistentePage               = lazy(() => import('./pages/asistente/AsistentePage'));
 const SuperAdminPage              = lazy(() => import('./pages/super-admin/SuperAdminPage'));
+const SetupTwoFactorGate          = lazy(() => import('./pages/super-admin/SetupTwoFactorGate'));
 const BackupsPage                 = lazy(() => import('./pages/super-admin/BackupsPage'));
 const SolicitudesCompraPage       = lazy(() => import('./pages/solicitudes-compra/SolicitudesCompraPage'));
 const PlaneacionDemandaPage       = lazy(() => import('./pages/planeacion-demanda/PlaneacionDemandaPage'));
@@ -364,6 +365,9 @@ function GuestRoute({ children }: { children: React.ReactNode }) {
 }
 
 // Panel exclusivo del Super Admin — solo accesible con role === 'super_admin'
+// S-65: además exige 2FA configurada. SetupTwoFactorGate deja pasar si ya la
+// tiene y, si no, muestra el enrollment obligatorio (la sesión sigue viva, así
+// que se configura en el momento y el panel se desbloquea solo).
 function SuperAdminRoute({ children }: { children: React.ReactNode }) {
   const { hydrated } = useAuthStore();
   const user   = useAuthStore((s) => s.user);
@@ -371,7 +375,7 @@ function SuperAdminRoute({ children }: { children: React.ReactNode }) {
   if (!hydrated) return <AppLoader />;
   if (!isAuth) return <Navigate to="/login" replace />;
   if (user?.role !== 'super_admin') return <Navigate to={homeForRole(user?.role)} replace />;
-  return <>{children}</>;
+  return <SetupTwoFactorGate>{children}</SetupTwoFactorGate>;
 }
 
 // Portal exclusivo del Empleado — solo role === 'empleado' (o admin/contador para pruebas)

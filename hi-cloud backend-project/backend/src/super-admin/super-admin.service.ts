@@ -6,6 +6,7 @@ import { DataSource } from 'typeorm';
 import { randomBytes, createHash } from 'crypto';
 import { EmailService } from '../notificaciones/services/email.service';
 import { PLANES, PlanTipo } from '../suscripciones/entities/suscripcion.entity';
+import { escapeHtml } from '../common/utils/escape-html.util';
 
 @Injectable()
 export class SuperAdminService {
@@ -141,8 +142,16 @@ export class SuperAdminService {
   }
 
   async getEmpresa(id: number) {
+    // S-65: columnas explícitas en vez de `SELECT e.*`. La fila completa incluía
+    // el jsonb `configuracion` (branding, POS, notificaciones y parámetros de
+    // seguridad de la empresa) además de logo y favicon en base64: nada de eso
+    // hace falta en el detalle del panel y engordaba la respuesta.
     const [emp] = await this.ds.query<any[]>(`
-      SELECT e.*, s.id AS "suscripcionId", s.plan, s.estado AS "estadoSuscripcion",
+      SELECT e.id, e.nombre, e."nombreComercial", e.rnc, e.email, e.telefono,
+             e.direccion, e.ciudad, e.provincia, e.sector, e."regimenFiscal",
+             e."representanteLegal", e.moneda, e."isActive", e."createdAt",
+             e."estadoAprobacion", e."motivoRechazo", e."aprobadoPor", e."fechaAprobacion",
+             s.id AS "suscripcionId", s.plan, s.estado AS "estadoSuscripcion",
              s."fechaInicio", s."fechaVencimiento", s."vencimientoOverride",
              COUNT(DISTINCT ue."userId")::int AS usuarios
       FROM empresa e
@@ -239,8 +248,8 @@ export class SuperAdminService {
             <h2 style="margin:0">✅ ¡Empresa aprobada!</h2>
           </div>
           <div style="padding:24px;background:#fff;border:1px solid #e5e7eb;border-radius:0 0 12px 12px">
-            <p>Hola <strong>${emp.solicitanteNombre ?? 'usuario'}</strong>,</p>
-            <p>Tu solicitud para la empresa <strong>${emp.nombre}</strong> fue <strong>aprobada</strong>.</p>
+            <p>Hola <strong>${escapeHtml(emp.solicitanteNombre ?? 'usuario')}</strong>,</p>
+            <p>Tu solicitud para la empresa <strong>${escapeHtml(emp.nombre)}</strong> fue <strong>aprobada</strong>.</p>
             <p>Ya puedes acceder y tu plan Trial de <strong>15 días</strong> ha comenzado.</p>
             <p style="text-align:center;margin:24px 0">
               <a href="${frontendUrl}/login" style="background:#1a56db;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700">
@@ -281,9 +290,9 @@ export class SuperAdminService {
             <h2 style="margin:0">Solicitud no aprobada</h2>
           </div>
           <div style="padding:24px;background:#fff;border:1px solid #e5e7eb;border-radius:0 0 12px 12px">
-            <p>Hola <strong>${emp.solicitanteNombre ?? 'usuario'}</strong>,</p>
-            <p>Tu solicitud para la empresa <strong>${emp.nombre}</strong> no fue aprobada en este momento.</p>
-            <p><strong>Motivo:</strong> ${motivo}</p>
+            <p>Hola <strong>${escapeHtml(emp.solicitanteNombre ?? 'usuario')}</strong>,</p>
+            <p>Tu solicitud para la empresa <strong>${escapeHtml(emp.nombre)}</strong> no fue aprobada en este momento.</p>
+            <p><strong>Motivo:</strong> ${escapeHtml(motivo)}</p>
             <p>Puedes contactarnos a través del portal para más información.</p>
           </div>
         </div>`,
@@ -1136,9 +1145,9 @@ export class SuperAdminService {
 <body><div class="card">
   <div class="header"><h2 style="margin:0">Sobre tu solicitud de plan</h2></div>
   <div class="body">
-    <p>Hola <strong>${admin.nombre}</strong>,</p>
-    <p>Hemos revisado tu solicitud de activación del plan <strong>${planSolicitado}</strong>. En este momento no hemos podido procesarla.</p>
-    ${motivo ? `<p><strong>Motivo:</strong> ${motivo}</p>` : ''}
+    <p>Hola <strong>${escapeHtml(admin.nombre)}</strong>,</p>
+    <p>Hemos revisado tu solicitud de activación del plan <strong>${escapeHtml(planSolicitado)}</strong>. En este momento no hemos podido procesarla.</p>
+    ${motivo ? `<p><strong>Motivo:</strong> ${escapeHtml(motivo)}</p>` : ''}
     <p>Puedes hacer una nueva solicitud desde tu panel o contactarnos en <a href="mailto:soporte@hicloudrd.com">soporte@hicloudrd.com</a>.</p>
   </div>
   <div class="footer">© 2026 HiCloud ERP · República Dominicana</div>
@@ -1254,7 +1263,7 @@ export class SuperAdminService {
 <body><div class="card">
   <div class="header"><h2 style="margin:0">✅ Tu cuenta fue aprobada</h2></div>
   <div class="body">
-    <p>Hola <strong>${u.nombre}</strong>,</p>
+    <p>Hola <strong>${escapeHtml(u.nombre)}</strong>,</p>
     <p>¡Tu solicitud de acceso a HiCloud ERP fue <strong>aprobada</strong>! Para comenzar, debes configurar tu contraseña:</p>
     <p style="text-align:center;margin:28px 0">
       <a href="${setupUrl}" class="btn">Configurar contraseña →</a>
@@ -1278,7 +1287,7 @@ export class SuperAdminService {
 <body><div class="card">
   <div class="header"><h2 style="margin:0">✅ Tu cuenta fue aprobada</h2></div>
   <div class="body">
-    <p>Hola <strong>${u.nombre}</strong>,</p>
+    <p>Hola <strong>${escapeHtml(u.nombre)}</strong>,</p>
     <p>¡Tu solicitud de acceso a HiCloud ERP fue <strong>aprobada</strong>! Ya puedes iniciar sesión con tu correo y contraseña.</p>
     <p style="text-align:center;margin:28px 0">
       <a href="${frontendUrl}/login" class="btn">Iniciar sesión →</a>
@@ -1327,9 +1336,9 @@ export class SuperAdminService {
 <body><div class="card">
   <div class="header"><h2 style="margin:0">Sobre tu solicitud de acceso</h2></div>
   <div class="body">
-    <p>Hola <strong>${u.nombre}</strong>,</p>
+    <p>Hola <strong>${escapeHtml(u.nombre)}</strong>,</p>
     <p>Hemos revisado tu solicitud de acceso a HiCloud ERP. En este momento, no podemos activar tu cuenta.</p>
-    ${motivo ? `<p><strong>Motivo:</strong> ${motivoTexto}</p>` : ''}
+    ${motivo ? `<p><strong>Motivo:</strong> ${escapeHtml(motivoTexto)}</p>` : ''}
     <p>Si crees que esto es un error o tienes preguntas, contacta a nuestro equipo en <a href="mailto:soporte@hicloudrd.com">soporte@hicloudrd.com</a>.</p>
   </div>
   <div class="footer">© 2026 HiCloud ERP · República Dominicana</div>
