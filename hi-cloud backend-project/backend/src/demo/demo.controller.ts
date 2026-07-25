@@ -35,10 +35,14 @@ export class DemoController {
   }
 
   // ── Administración (super_admin del equipo HiCloud) ────────────────────────
+  // S-62: estos endpoints exponen los LEADS COMERCIALES de HiCloud (nombre, email,
+  // teléfono, notas internas de ventas) y el pipeline completo. No son datos de
+  // ninguna empresa cliente: aceptaban UserRole.ADMIN, el rol del admin de
+  // cualquier empresa, que podía listarlos y mover su estado. Solo super_admin.
 
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Roles(UserRole.SUPER_ADMIN)
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Listar solicitudes de demo (super_admin)' })
   listar(
@@ -54,7 +58,7 @@ export class DemoController {
 
   @Get('estadisticas')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Roles(UserRole.SUPER_ADMIN)
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Estadísticas del pipeline de demos' })
   getEstadisticas() {
@@ -63,7 +67,7 @@ export class DemoController {
 
   @Get(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Roles(UserRole.SUPER_ADMIN)
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Detalle de una solicitud de demo' })
   findOne(@Param('id', ParseIntPipe) id: number) {
@@ -72,7 +76,7 @@ export class DemoController {
 
   @Patch(':id/estado')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Roles(UserRole.SUPER_ADMIN)
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Actualizar estado y campos de una solicitud' })
   actualizarEstado(
@@ -89,7 +93,7 @@ export class DemoController {
   @Post(':id/notas')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Roles(UserRole.SUPER_ADMIN)
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Agregar nota interna a una solicitud de demo' })
   agregarNota(

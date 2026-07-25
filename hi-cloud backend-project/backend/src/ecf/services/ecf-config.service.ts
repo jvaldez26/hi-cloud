@@ -54,10 +54,26 @@ export class EcfConfigService {
     return rows.map(r => this.sanitize(r));
   }
 
+  /**
+   * USO INTERNO — devuelve la fila completa, incluidos msellerPasswordEnc y
+   * msellerApiKeyEnc. Lo necesitan actualizar(), probarConexion(),
+   * getCredencialesDescifradas() y el job de reintentos.
+   * Para responder a un cliente HTTP usa obtenerPorEmpresaSanitizado().
+   */
   async obtenerPorEmpresa(empresaId: number): Promise<EmpresaEcfConfig> {
     const cfg = await this.configRepo.findOne({ where: { empresaId } });
     if (!cfg) throw new NotFoundException(`Sin configuración e-CF para empresa #${empresaId}`);
     return cfg;
+  }
+
+  /**
+   * S-62: versión para respuestas HTTP. GET /admin/ecf-config/empresas/:empresaId
+   * devolvía la entidad completa con las credenciales MSeller cifradas — el único
+   * método del CRUD que no pasaba por sanitize(), pese a que el Swagger promete
+   * "sin credenciales en texto claro". El ciphertext no debe salir del servidor.
+   */
+  async obtenerPorEmpresaSanitizado(empresaId: number): Promise<EmpresaEcfConfig> {
+    return this.sanitize(await this.obtenerPorEmpresa(empresaId));
   }
 
   async crear(dto: CreateEmpresaEcfConfigDto): Promise<EmpresaEcfConfig> {

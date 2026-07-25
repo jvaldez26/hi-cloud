@@ -40,9 +40,9 @@ export class EcfConfigController {
   }
 
   @Get('empresas/:empresaId')
-  @ApiOperation({ summary: 'Obtener configuración e-CF de una empresa' })
+  @ApiOperation({ summary: 'Obtener configuración e-CF de una empresa (sin credenciales)' })
   obtener(@Param('empresaId', ParseIntPipe) empresaId: number) {
-    return this.svc.obtenerPorEmpresa(empresaId);
+    return this.svc.obtenerPorEmpresaSanitizado(empresaId);
   }
 
   @Post('empresas')

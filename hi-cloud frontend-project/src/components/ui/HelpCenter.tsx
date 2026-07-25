@@ -39,7 +39,8 @@ const TIPS = [
   { icon: '📊', tip: 'El Balance General y el Estado de Resultados se calculan automáticamente desde los asientos contables.' },
   { icon: '📧', tip: 'Configura SMTP en el .env para enviar facturas y alertas automáticas por email.' },
   { icon: '💚', tip: 'WhatsApp Business: configura WHATSAPP_API_URL en el .env para enviar facturas por WhatsApp.' },
-  { icon: '🎯', tip: 'Usa el Pipeline de Demos en /demo-requests para hacer seguimiento a prospectos.' },
+  // S-62: el tip del Pipeline de Demos se retiró — es una herramienta interna del
+  // equipo HiCloud (panel Super Admin), no una función del ERP del cliente.
 ];
 
 interface Props { open: boolean; onClose: () => void; }

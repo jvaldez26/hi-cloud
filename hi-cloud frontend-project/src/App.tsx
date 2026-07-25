@@ -49,7 +49,6 @@ const ImportacionPage     = lazy(() => import('./pages/importacion/ImportacionPa
 const POSPage             = lazy(() => import('./pages/pos/POSPage'));
 const EstadoCuentaPage    = lazy(() => import('./pages/clientes/EstadoCuentaPage'));
 const PricingPage         = lazy(() => import('./pages/pricing/PricingPage'));
-const DemoRequestsPage    = lazy(() => import('./pages/admin/DemoRequestsPage'));
 const LandingPage         = lazy(() => import('./pages/landing/LandingPage'));
 const RegisterPage        = lazy(() => import('./pages/auth/RegisterPage'));
 // SuperAdminPage definida más abajo
@@ -742,7 +741,9 @@ export default function App() {
                     <Route path="/mi-suscripcion"     element={<MiSuscripcionPage />} />
                     <Route path="/profile"            element={<ProfilePage />} />
                     <Route path="/asistente"          element={<AsistentePage />} />
-                    <Route path="/demo-requests"      element={<DemoRequestsPage />} />
+                    {/* S-62: /demo-requests eliminada — mostraba los leads comerciales de
+                        HiCloud dentro del ERP del cliente. El pipeline de demos vive en el
+                        panel Super Admin (/super-admin), que ya lo cubre por completo. */}
                     {/* /super-admin está definida fuera del AppLayout */}
 
                     {/* ── Módulo Óptica (add-on) ── */}
