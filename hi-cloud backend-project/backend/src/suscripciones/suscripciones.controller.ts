@@ -174,8 +174,11 @@ export class SuscripcionesController {
   extenderPrueba(
     @Param('empresaId', ParseIntPipe) empresaId: number,
     @Body() dto: ExtenderPruebaDto,
+    @Req() req: Request,
   ) {
-    return this.svc.extenderPrueba(empresaId, dto.dias, 0);
+    // S-64: antes se pasaba el literal 0 como superAdminId — el servicio audita
+    // la extensión, pero el registro quedaba sin autor.
+    return this.svc.extenderPrueba(empresaId, dto.dias, (req.user as any)?.id ?? null);
   }
 
   @Patch('admin/:empresaId/activar')
@@ -184,6 +187,7 @@ export class SuscripcionesController {
   activarDirecto(
     @Param('empresaId', ParseIntPipe) empresaId: number,
     @Body() body: { plan: string; meses?: number; notas?: string; modalidad?: string },
+    @Req() req: Request,
   ) {
     return this.svc.activarPlan(
       empresaId,
@@ -191,6 +195,7 @@ export class SuscripcionesController {
       body.meses ?? 1,
       body.notas,
       body.modalidad === 'anual' ? ModalidadPago.ANUAL : ModalidadPago.MENSUAL,
+      (req.user as any)?.id ?? undefined,   // S-64: autoría
     );
   }
 
@@ -200,8 +205,9 @@ export class SuscripcionesController {
   suspenderAdmin(
     @Param('empresaId', ParseIntPipe) empresaId: number,
     @Body() body: { motivo?: string },
+    @Req() req: Request,
   ) {
-    return this.svc.suspender(empresaId, body.motivo);
+    return this.svc.suspender(empresaId, body.motivo, (req.user as any)?.id ?? undefined);
   }
 
   // ── Listados (admin legacy) ───────────────────────────────────────────────

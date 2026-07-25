@@ -33,6 +33,8 @@ import { ModulosAddonModule }    from '../modulos-addon/modulos-addon.module';
   ],
   controllers: [SuperAdminController],
   providers:   [SuperAdminService, SuperAdminGuard, BackupService, TokenBlacklistService],
-  exports:     [SuperAdminGuard, JwtModule, TokenBlacklistService],
+  // S-64: SuperAdminService se exporta para que PagosSuscripcionAdminController
+  // pueda auditar el cambio de configuración bancaria con el mismo helper.
+  exports:     [SuperAdminGuard, SuperAdminService, JwtModule, TokenBlacklistService],
 })
 export class SuperAdminModule {}

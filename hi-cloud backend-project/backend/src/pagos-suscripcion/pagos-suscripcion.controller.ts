@@ -9,6 +9,7 @@ import { JwtAuthGuard }    from '../auth/guards/jwt-auth.guard';
 import { RolesGuard }      from '../auth/guards/roles.guard';
 import { GetUser }         from '../auth/decorators/get-user.decorator';
 import { SuperAdminGuard } from '../super-admin/super-admin.guard';
+import { SuperAdminService } from '../super-admin/super-admin.service';
 import { PagosSuscripcionService } from './pagos-suscripcion.service';
 import {
   RegistrarPagoDto, ConfirmarPagoDto, RechazarPagoDto,
@@ -78,7 +79,10 @@ export class PagosSuscripcionController {
 @Controller('admin/pagos-suscripcion')
 @UseGuards(SuperAdminGuard)
 export class PagosSuscripcionAdminController {
-  constructor(private svc: PagosSuscripcionService) {}
+  constructor(
+    private svc: PagosSuscripcionService,
+    private superAdminSvc: SuperAdminService,
+  ) {}
 
   /** GET /admin/pagos-suscripcion — todos los pagos (filtrable por estado) */
   @Get()
@@ -168,7 +172,19 @@ export class PagosSuscripcionAdminController {
 
   /** PATCH /admin/pagos-suscripcion/config-bancaria */
   @Patch('config-bancaria')
-  updateConfigBancaria(@Body() dto: UpdateConfiguracionBancariaDto) {
-    return this.svc.updateConfiguracionBancaria(dto);
+  async updateConfigBancaria(
+    @Body() dto: UpdateConfiguracionBancariaDto,
+    @GetUser('id') adminId: number,
+  ) {
+    // S-64: es la cuenta a la que los clientes transfieren las suscripciones.
+    // Cambiarla desviaría los cobros y no dejaba ningún rastro de quién lo hizo.
+    const antes = await this.svc.getConfiguracionBancaria();
+    const res   = await this.svc.updateConfiguracionBancaria(dto);
+    await this.superAdminSvc.auditarCambioConfigBancaria(
+      antes ? { ...(antes as any) } : null,
+      { ...dto },
+      adminId,
+    );
+    return res;
   }
 }

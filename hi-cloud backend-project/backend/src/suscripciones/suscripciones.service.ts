@@ -104,12 +104,18 @@ export class SuscripcionesService implements OnModuleInit {
 
   // ── Activar plan (por super admin) ────────────────────────────────────────
 
+  /**
+   * @param superAdminId S-64: cuando la activación es manual desde el panel, deja
+   * constancia de quién la hizo. Se omite en las llamadas internas que ya auditan
+   * por su cuenta (aprobarSolicitud), para no duplicar el registro.
+   */
   async activarPlan(
     empresaId: number,
     plan: PlanTipo,
     meses: number,
     notas?: string,
     modalidad: ModalidadPago = ModalidadPago.MENSUAL,
+    superAdminId?: number,
   ) {
     const s = await this.repo.findOne({ where: { empresaId } });
     const inicio = new Date();
@@ -152,17 +158,44 @@ export class SuscripcionesService implements OnModuleInit {
         [empresaId, plan, modalidad, inicio.toISOString(), fin.toISOString(), notas ?? null],
       );
     }
-    this.logger.log(`Plan ${plan} activado para empresa #${empresaId}`);
+    // S-64: auditoría de la activación manual (no-fatal)
+    if (superAdminId) {
+      const destino = s ?? await this.repo.findOne({ where: { empresaId } });
+      if (destino) {
+        this.auditoriaRepo.save(this.auditoriaRepo.create({
+          suscripcionId: destino.id,
+          empresaId,
+          accion:        AccionAuditoria.CAMBIO_PLAN,
+          superAdminId,
+          motivo:        notas ?? 'Activación manual desde el panel Super Admin',
+          valorAnterior: s ? { plan: s.plan, estado: s.estado } : undefined,
+          valorNuevo:    { plan, meses, modalidad },
+        })).catch(e => this.logger.warn(`Auditoría activarPlan empresa #${empresaId}: ${(e as Error).message}`));
+      }
+    }
+
+    this.logger.log(`Plan ${plan} activado para empresa #${empresaId}${superAdminId ? ` por SA#${superAdminId}` : ''}`);
     return this.getSuscripcion(empresaId);
   }
 
-  async suspender(empresaId: number, motivo?: string) {
+  async suspender(empresaId: number, motivo?: string, superAdminId?: number) {
     const s = await this.repo.findOne({ where: { empresaId } });
     if (s) {
       await this.repo.update(s.id, {
         estado: SuscripcionEstado.SUSPENDIDA,
         motivoSuspension: motivo ?? 'SUSPENSION_MANUAL',
       });
+
+      // S-64: suspender la suscripción de un cliente no dejaba rastro del autor
+      this.auditoriaRepo.save(this.auditoriaRepo.create({
+        suscripcionId: s.id,
+        empresaId,
+        accion:        AccionAuditoria.SUSPENSION,
+        superAdminId,
+        motivo:        motivo ?? 'SUSPENSION_MANUAL',
+        valorAnterior: { estado: s.estado },
+        valorNuevo:    { estado: SuscripcionEstado.SUSPENDIDA },
+      })).catch(e => this.logger.warn(`Auditoría suspender empresa #${empresaId}: ${(e as Error).message}`));
     }
     return this.getSuscripcion(empresaId);
   }

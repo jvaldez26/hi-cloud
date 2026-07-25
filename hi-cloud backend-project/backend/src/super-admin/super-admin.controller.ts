@@ -4,6 +4,7 @@ import {
 } from '@nestjs/common';
 
 import type { Response } from 'express';
+import { timingSafeEqual } from 'crypto';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { IsEnum, IsInt, IsPositive, IsString, IsNotEmpty, IsOptional, IsNumber, Min, IsDateString } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -41,6 +42,12 @@ class ExtenderTrialDto {
 class SuspenderDto {
   @IsString() @IsNotEmpty()
   motivo!: string;
+}
+
+/** Motivo opcional — el endpoint de suspender empresa se llamaba sin body. */
+class SuspenderEmpresaDto {
+  @IsOptional() @IsString()
+  motivo?: string;
 }
 
 class DescuentoDto {
@@ -136,6 +143,22 @@ class ResetVencimientoDto {
   motivo!: string;
 }
 
+/**
+ * S-64: compara la clave interna del script de backups en tiempo constante y
+ * FALLA CERRADO. Antes era `key !== process.env.INTERNAL_API_KEY`: si la variable
+ * no estaba definida en el entorno, un request sin el header comparaba
+ * `undefined !== undefined` → false, y la petición se daba por autorizada.
+ */
+export function claveInternaValida(key?: string): boolean {
+  const esperada = process.env.INTERNAL_API_KEY;
+  if (!esperada || !key) return false;
+
+  const a = Buffer.from(String(key));
+  const b = Buffer.from(esperada);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
 @ApiTags('Super Admin')
 @ApiBearerAuth('access-token')
 @UseGuards(SuperAdminGuard)
@@ -164,12 +187,20 @@ export class SuperAdminController {
   @Patch('empresas/:id/suspender')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Suspender empresa' })
-  suspender(@Param('id', ParseIntPipe) id: number) { return this.svc.suspenderEmpresa(id); }
+  suspender(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: SuspenderEmpresaDto,
+    @GetUser() admin: User,
+  ) {
+    return this.svc.suspenderEmpresa(id, admin.id, dto?.motivo);
+  }
 
   @Patch('empresas/:id/activar')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Activar empresa' })
-  activar(@Param('id', ParseIntPipe) id: number) { return this.svc.activarEmpresa(id); }
+  activar(@Param('id', ParseIntPipe) id: number, @GetUser() admin: User) {
+    return this.svc.activarEmpresa(id, admin.id);
+  }
 
   @Patch('empresas/:id/plan')
   @HttpCode(HttpStatus.OK)
@@ -248,7 +279,11 @@ export class SuperAdminController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Aprobar solicitud de cambio de plan' })
   aprobarSolicitud(@Param('id', ParseIntPipe) id: number, @Body() dto: CambiarPlanDto, @GetUser() admin: User) {
-    return this.svc.cambiarPlanConAuditoria(0, dto.plan, dto.meses, admin.id, id, dto.motivo ?? 'Solicitud aprobada');
+    // S-64: antes pasaba empresaId=0 — marcaba la solicitud aprobada sin aplicar
+    // el plan a ninguna empresa. Ahora el empresaId se resuelve de la solicitud.
+    return this.svc.aprobarSolicitudCambioPlan(
+      id, dto.plan, dto.meses, admin.id, dto.motivo ?? 'Solicitud aprobada',
+    );
   }
 
   @Post('suscripciones/solicitudes/:id/rechazar')
@@ -276,7 +311,9 @@ export class SuperAdminController {
   @Delete('empresas/:id')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Eliminar empresa (soft delete)' })
-  eliminarEmpresa(@Param('id', ParseIntPipe) id: number) { return this.svc.eliminarEmpresa(id); }
+  eliminarEmpresa(@Param('id', ParseIntPipe) id: number, @GetUser() admin: User) {
+    return this.svc.eliminarEmpresa(id, admin.id);
+  }
 
   @Get('usuarios')
   @ApiOperation({ summary: 'Listar todos los usuarios del sistema' })
@@ -357,8 +394,27 @@ export class SuperAdminController {
   @Patch('planes/:clave')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Actualizar nombre y/o precio de un plan — se propaga a toda la app' })
-  updatePlan(@Param('clave') clave: string, @Body() dto: UpdatePlanDto) {
-    return this.suscSvc.updatePlanConfig(clave, dto);
+  async updatePlan(@Param('clave') clave: string, @Body() dto: UpdatePlanDto, @GetUser() admin: User) {
+    // S-64: cambiar el precio de un plan afecta la facturación de TODOS los
+    // clientes de ese plan y no dejaba ningún rastro de quién lo hizo.
+    const catalogo = await this.suscSvc.getPlanesCatalogo();
+    const antes    = (catalogo as any[]).find(p => p.clave === clave) ?? null;
+
+    const res = await this.suscSvc.updatePlanConfig(clave, dto);
+
+    await this.svc.auditarCambioPlanCatalogo(
+      clave,
+      // El catálogo expone precioMensualUsd/precioAnualUsd (no "precio"), así que
+      // se guarda el snapshot con los nombres reales en vez de un undefined.
+      antes ? {
+        nombre:           antes.nombre,
+        precioMensualUsd: antes.precioMensualUsd,
+        precioAnualUsd:   antes.precioAnualUsd,
+      } : null,
+      { ...dto },
+      admin.id,
+    );
+    return res;
   }
 
   // ── Backups ──────────────────────────────────────────────────────────────
@@ -404,7 +460,7 @@ export class SuperAdminController {
     @Headers('x-internal-key') key: string,
     @Body() dto: BackupSuccessDto,
   ) {
-    if (key !== process.env.INTERNAL_API_KEY) return { error: 'No autorizado' };
+    if (!claveInternaValida(key)) return { error: 'No autorizado' };
     return this.backupSvc.registrarExito({
       s3Key:    dto.archivo,
       tamanio:  dto.tamanio,
@@ -420,7 +476,7 @@ export class SuperAdminController {
     @Headers('x-internal-key') key: string,
     @Body() dto: BackupAlertDto,
   ) {
-    if (key !== process.env.INTERNAL_API_KEY) return { error: 'No autorizado' };
+    if (!claveInternaValida(key)) return { error: 'No autorizado' };
     return this.backupSvc.registrarFallo({ mensaje: dto.mensaje, tipo: dto.tipo });
   }
 
@@ -570,11 +626,17 @@ export class SuperAdminController {
   @Post('empresas/:id/modulos/desactivar')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Desactivar un módulo add-on de una empresa' })
-  desactivarModulo(
+  async desactivarModulo(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: Pick<GestionModuloDto, 'codigo'>,
+    @GetUser() admin: User,
   ) {
-    return this.modulosSvc.desactivarModulo(id, dto.codigo);
+    const res = await this.modulosSvc.desactivarModulo(id, dto.codigo);
+    // S-64: activarModulo guarda "activadoPor", pero desactivar no registraba nada.
+    // empresa_modulos no tiene columna desactivadoPor, así que el rastro va a la
+    // auditoría en vez de exigir una migración.
+    await this.svc.auditarCambioModuloAddon(id, dto.codigo, 'DESACTIVACION_MODULO', admin.id);
+    return res;
   }
 
   // ── Facturas Recurrentes — Diagnóstico y Reparación ────────────────────────

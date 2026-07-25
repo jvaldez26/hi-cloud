@@ -15,6 +15,107 @@ export class SuperAdminService {
     private emailService: EmailService,
   ) {}
 
+  // ── S-64: Trazabilidad de acciones del Super Admin ────────────────────────
+
+  /**
+   * Registra QUIÉN ejecutó una acción sobre una empresa.
+   *
+   * Preferimos suscripcion_auditoria porque es lo que muestra el historial del
+   * panel (GET /admin/empresas/:id/auditoria), pero sus columnas suscripcionId y
+   * empresaId son NOT NULL: si la empresa aún no tiene suscripción caemos a
+   * audit_logs, que admite empresaId nulo. Nunca se pierde el rastro.
+   *
+   * No-fatal: un fallo auditando no debe revertir la acción ya ejecutada, pero sí
+   * queda como error en el log de la aplicación.
+   */
+  private async auditarAccionEmpresa(params: {
+    empresaId: number;
+    accion: string;
+    adminId?: number | null;
+    valorAnterior?: Record<string, any>;
+    valorNuevo?: Record<string, any>;
+    motivo?: string;
+  }): Promise<void> {
+    try {
+      const [sus] = await this.ds.query<{ id: number }[]>(
+        'SELECT id FROM suscripciones WHERE "empresaId" = $1 LIMIT 1',
+        [params.empresaId],
+      );
+
+      if (sus) {
+        await this.ds.query(
+          `INSERT INTO suscripcion_auditoria
+             ("suscripcionId","empresaId",accion,"valorAnterior","valorNuevo","superAdminId",motivo)
+           VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+          [
+            sus.id, params.empresaId, params.accion,
+            params.valorAnterior ? JSON.stringify(params.valorAnterior) : null,
+            params.valorNuevo    ? JSON.stringify(params.valorNuevo)    : null,
+            params.adminId ?? null, params.motivo ?? null,
+          ],
+        );
+        return;
+      }
+
+      await this.auditarAccionGlobal({
+        accion:      'update',
+        modulo:      'super-admin',
+        descripcion: `${params.accion} sobre empresa #${params.empresaId}`,
+        adminId:     params.adminId,
+        empresaId:   params.empresaId,
+        entidad:     'empresa',
+        entidadId:   String(params.empresaId),
+        valorAnterior: params.valorAnterior,
+        valorNuevo:    params.valorNuevo,
+      });
+    } catch (err) {
+      this.logger.error(
+        `[S-64] No se pudo auditar ${params.accion} sobre empresa #${params.empresaId}: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  /**
+   * Auditoría de acciones de PLATAFORMA (sin empresa asociada): precios de
+   * planes, configuración bancaria de cobro, etc. Va a audit_logs con nivel
+   * CRITICO. metodo/ruta/descripcion/exitoso/nivel son NOT NULL en esa tabla.
+   */
+  private async auditarAccionGlobal(params: {
+    accion: 'create' | 'update' | 'delete';
+    modulo: string;
+    descripcion: string;
+    adminId?: number | null;
+    empresaId?: number | null;
+    entidad?: string;
+    entidadId?: string;
+    valorAnterior?: Record<string, any>;
+    valorNuevo?: Record<string, any>;
+    ruta?: string;
+  }): Promise<void> {
+    try {
+      await this.ds.query(
+        `INSERT INTO audit_logs
+           ("userId","userRole",accion,modulo,entidad,"entidadId",descripcion,
+            "valorAnterior","valorNuevo",metodo,ruta,exitoso,nivel,"empresaId","createdAt")
+         VALUES ($1,'super_admin',$2,$3,$4,$5,$6,$7,$8,'PATCH',$9,true,'CRITICO',$10,NOW())`,
+        [
+          params.adminId ?? null,
+          params.accion,
+          params.modulo,
+          params.entidad  ?? null,
+          params.entidadId ?? null,
+          params.descripcion,
+          params.valorAnterior ? JSON.stringify(params.valorAnterior) : null,
+          params.valorNuevo    ? JSON.stringify(params.valorNuevo)    : null,
+          params.ruta ?? '/admin',
+          params.empresaId ?? null,
+        ],
+      );
+    } catch (err) {
+      this.logger.error(`[S-64] No se pudo auditar "${params.descripcion}": ${(err as Error).message}`);
+    }
+  }
+
   // ── Empresas ──────────────────────────────────────────────────────────────
 
   async listarEmpresas() {
@@ -54,15 +155,33 @@ export class SuperAdminService {
     return emp;
   }
 
-  async suspenderEmpresa(id: number) {
+  async suspenderEmpresa(id: number, adminId?: number, motivo?: string) {
     await this.ds.query(`UPDATE empresa SET "isActive" = false WHERE id = $1`, [id]);
     // No desactivar usuario_empresa en suspensión — solo en eliminación definitiva.
     // En suspensión, los vínculos se preservan para reactivar sin perder accesos.
+
+    // S-64: suspender una empresa deja a un cliente real sin acceso al sistema y
+    // no dejaba ningún rastro de quién lo hizo.
+    await this.auditarAccionEmpresa({
+      empresaId: id, accion: 'SUSPENSION_EMPRESA', adminId,
+      valorAnterior: { isActive: true }, valorNuevo: { isActive: false },
+      motivo: motivo ?? 'Suspensión manual desde el panel Super Admin',
+    });
+    this.logger.warn(`Empresa #${id} suspendida por super_admin #${adminId ?? 'desconocido'}`);
+
     return { ok: true, mensaje: `Empresa #${id} suspendida` };
   }
 
-  async activarEmpresa(id: number) {
+  async activarEmpresa(id: number, adminId?: number) {
     await this.ds.query(`UPDATE empresa SET "isActive" = true WHERE id = $1`, [id]);
+
+    await this.auditarAccionEmpresa({
+      empresaId: id, accion: 'ACTIVACION_EMPRESA', adminId,
+      valorAnterior: { isActive: false }, valorNuevo: { isActive: true },
+      motivo: 'Reactivación manual desde el panel Super Admin',
+    });
+    this.logger.log(`Empresa #${id} activada por super_admin #${adminId ?? 'desconocido'}`);
+
     return { ok: true, mensaje: `Empresa #${id} activada` };
   }
 
@@ -725,7 +844,15 @@ export class SuperAdminService {
     };
   }
 
-  async eliminarEmpresa(id: number) {
+  async eliminarEmpresa(id: number, adminId?: number) {
+    // S-64: se audita ANTES del UPDATE de suscripciones — al pasar a 'cancelada'
+    // la fila sigue existiendo, pero dejamos el rastro con el estado previo.
+    await this.auditarAccionEmpresa({
+      empresaId: id, accion: 'ELIMINACION_EMPRESA', adminId,
+      valorNuevo: { isActive: false, suscripcion: 'cancelada' },
+      motivo: 'Eliminación (soft delete) desde el panel Super Admin',
+    });
+
     await this.ds.query(`UPDATE empresa SET "isActive" = false WHERE id = $1`, [id]);
     await this.ds.query(`UPDATE suscripciones SET estado = 'cancelada' WHERE "empresaId" = $1`, [id]);
     // Desactivar todos los vínculos usuario↔empresa para que getEmpresaPrincipal
@@ -774,6 +901,86 @@ export class SuperAdminService {
       await this.ds.query(`UPDATE solicitud_cambio_plan SET estado='aprobada',"superAdminId"=$1,"updatedAt"=NOW() WHERE id=$2`, [superAdminId, solicitudId]);
     }
     return { ok: true, plan, fechaVencimiento: fin.toISOString() };
+  }
+
+  /**
+   * S-64 — BUG DE COBRO. El controller llamaba a cambiarPlanConAuditoria(0, ...)
+   * con empresaId literal 0: el `UPDATE suscripciones WHERE "empresaId" = 0` no
+   * afectaba a ninguna fila, pero la solicitud sí quedaba marcada como 'aprobada'.
+   * Resultado: cliente con la solicitud aprobada y el plan sin aplicar.
+   *
+   * Ahora el empresaId sale de la propia solicitud y se valida el estado, igual
+   * que hace SuscripcionesService.aprobarSolicitud (la ruta que usa el frontend).
+   */
+  async aprobarSolicitudCambioPlan(
+    solicitudId: number,
+    plan: string,
+    meses: number,
+    superAdminId: number,
+    motivo: string,
+  ) {
+    const [sol] = await this.ds.query<{ empresaId: number; estado: string }[]>(
+      'SELECT "empresaId", estado FROM solicitud_cambio_plan WHERE id = $1',
+      [solicitudId],
+    );
+    if (!sol) throw new NotFoundException(`Solicitud #${solicitudId} no encontrada`);
+    if (sol.estado !== 'pendiente') {
+      throw new BadRequestException(`Esta solicitud ya fue ${sol.estado}`);
+    }
+
+    return this.cambiarPlanConAuditoria(sol.empresaId, plan, meses, superAdminId, solicitudId, motivo);
+  }
+
+  /** S-64: auditoría del cambio de precio/nombre de un plan — afecta a TODOS los clientes. */
+  async auditarCambioPlanCatalogo(
+    clave: string,
+    anterior: Record<string, any> | null,
+    nuevo: Record<string, any>,
+    adminId?: number,
+  ): Promise<void> {
+    await this.auditarAccionGlobal({
+      accion:      'update',
+      modulo:      'super-admin/planes',
+      descripcion: `Cambio de configuración del plan "${clave}"`,
+      adminId,
+      entidad:     'plan_configuracion',
+      entidadId:   clave,
+      valorAnterior: anterior ?? undefined,
+      valorNuevo:    nuevo,
+      ruta:        `/admin/planes/${clave}`,
+    });
+  }
+
+  /** S-64: rastro de activación/desactivación de un módulo add-on de pago. */
+  async auditarCambioModuloAddon(
+    empresaId: number,
+    codigo: string,
+    accion: string,
+    adminId?: number,
+  ): Promise<void> {
+    await this.auditarAccionEmpresa({
+      empresaId, accion, adminId,
+      valorNuevo: { modulo: codigo, activo: accion !== 'DESACTIVACION_MODULO' ? true : false },
+      motivo: `Módulo add-on "${codigo}"`,
+    });
+  }
+
+  /** S-64: auditoría del cambio de la cuenta bancaria donde cobran las suscripciones. */
+  async auditarCambioConfigBancaria(
+    anterior: Record<string, any> | null,
+    nuevo: Record<string, any>,
+    adminId?: number,
+  ): Promise<void> {
+    await this.auditarAccionGlobal({
+      accion:      'update',
+      modulo:      'super-admin/cobros',
+      descripcion: 'Cambio de la configuración bancaria de cobro',
+      adminId,
+      entidad:     'configuracion_bancaria',
+      valorAnterior: anterior ?? undefined,
+      valorNuevo:    nuevo,
+      ruta:        '/admin/pagos-suscripcion/config-bancaria',
+    });
   }
 
   async extenderTrial(empresaId: number, dias: number, superAdminId: number, motivo: string) {
