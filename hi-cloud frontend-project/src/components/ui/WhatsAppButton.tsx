@@ -104,7 +104,8 @@ export default function WhatsAppButton({
           const blob     = await pdfRes.blob();
           const filename = folio ? `${folio}.pdf` : `documento-${id}.pdf`;
           const file     = new File([blob], filename, { type: 'application/pdf' });
-          if (navigator.canShare?.({ files: [file] })) {
+          const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+          if (isMobile && navigator.canShare?.({ files: [file] })) {
             await navigator.share({ files: [file], text: mensajeEdit });
             setModalOpen(false);
             return;
