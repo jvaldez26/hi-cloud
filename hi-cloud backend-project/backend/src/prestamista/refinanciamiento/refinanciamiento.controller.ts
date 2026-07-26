@@ -8,6 +8,7 @@ import { UserRole } from '../../users/enums/user-role.enum';
 import { ModuloAddonGuard } from '../../modulos-addon/guards/modulo-addon.guard';
 import { TenantService } from '../../tenant/tenant.service';
 import { RefinanciamientoService } from './refinanciamiento.service';
+import { RefinanciarDto } from '../dto/prestamista.dto';
 
 @Controller('prestamista/refinanciamientos')
 @UseGuards(JwtAuthGuard, TenantGuard, RolesGuard, ModuloAddonGuard('prestamista'))
@@ -25,5 +26,5 @@ export class RefinanciamientoController {
   // Refinanciar/condonar: acción financiera sensible → CONTADOR/ADMIN.
   @Post()
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)
-  refinanciar(@Body() body: any) { return this.svc.refinanciar(this.empresaId, body); }
+  refinanciar(@Body() body: RefinanciarDto) { return this.svc.refinanciar(this.empresaId, body); }
 }

@@ -8,6 +8,7 @@ import { UserRole } from '../../users/enums/user-role.enum';
 import { ModuloAddonGuard } from '../../modulos-addon/guards/modulo-addon.guard';
 import { TenantService } from '../../tenant/tenant.service';
 import { SolicitudesService } from './solicitudes.service';
+import { CrearSolicitudDto, DecidirSolicitudDto } from '../dto/prestamista.dto';
 
 @Controller('prestamista/solicitudes')
 @UseGuards(JwtAuthGuard, TenantGuard, RolesGuard, ModuloAddonGuard('prestamista'))
@@ -26,7 +27,7 @@ export class SolicitudesController {
   // Crear solicitud: operador básico o superior.
   @Post()
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  create(@Body() body: any) { return this.svc.create(this.empresaId, body); }
+  create(@Body() body: CrearSolicitudDto) { return this.svc.create(this.empresaId, body); }
   // PATCH genérico: solo campos NO sensibles (la decisión va por /decidir).
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
@@ -35,5 +36,5 @@ export class SolicitudesController {
   // La segregación (creador != aprobador) se valida en el service.
   @Post(':id/decidir')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)
-  decidir(@Param('id', ParseIntPipe) id: number, @Body() body: any) { return this.svc.decidir(this.empresaId, id, body); }
+  decidir(@Param('id', ParseIntPipe) id: number, @Body() body: DecidirSolicitudDto) { return this.svc.decidir(this.empresaId, id, body); }
 }

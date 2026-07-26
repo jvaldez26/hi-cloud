@@ -13,6 +13,23 @@ export class SolicitudesService {
     private readonly tenantSvc: TenantService,
   ) {}
 
+  /**
+   * M1: verifica que el deudor referenciado en el body sea de esta empresa.
+   * El id llega del cliente, así que no puede confiarse: si apunta al deudor de
+   * otro tenant, la solicitud queda enlazada a datos ajenos y los listados los
+   * exponen al hacer JOIN.
+   */
+  private async assertDeudorDeEmpresa(deudorId: unknown, empresaId: number): Promise<void> {
+    const id = Number(deudorId);
+    if (!Number.isInteger(id) || id <= 0) {
+      throw new BadRequestException('deudorId inválido');
+    }
+    const [row] = await this.ds.query<any[]>(
+      `SELECT 1 FROM pr_deudores WHERE id=$1 AND "empresaId"=$2 LIMIT 1`, [id, empresaId],
+    );
+    if (!row) throw new NotFoundException(`Deudor #${id} no encontrado`);
+  }
+
   private async orFail(empresaId: number, id: number) {
     const [row] = await this.ds.query<any[]>(
       `SELECT s.*, d.nombre as "deudorNombre", d.cedula as "deudorCedula", d.telefono as "deudorTelefono"
@@ -54,6 +71,11 @@ export class SolicitudesService {
   }
 
   async create(empresaId: number, data: any) {
+    // M1: el deudorId llega del body. Sin esta comprobación se podía crear una
+    // solicitud apuntando al deudor de OTRA empresa, y los listados —que hacen
+    // JOIN con pr_deudores— acababan mostrando sus datos.
+    await this.assertDeudorDeEmpresa(data.deudorId, empresaId);
+
     const [seq] = await this.ds.query<any[]>(
       `SELECT siguiente_numero_secuencia($1, $2) AS num`, [empresaId, 'SOL'],
     );

@@ -8,6 +8,7 @@ import { UserRole } from '../../users/enums/user-role.enum';
 import { ModuloAddonGuard } from '../../modulos-addon/guards/modulo-addon.guard';
 import { TenantService } from '../../tenant/tenant.service';
 import { PagosService } from './pagos.service';
+import { RegistrarPagoDto } from '../dto/prestamista.dto';
 
 @Controller('prestamista/pagos')
 @UseGuards(JwtAuthGuard, TenantGuard, RolesGuard, ModuloAddonGuard('prestamista'))
@@ -30,5 +31,5 @@ export class PagosController {
   // Registrar pago: operador básico o superior.
   @Post()
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  registrar(@Body() body: any) { return this.svc.registrar(this.empresaId, body); }
+  registrar(@Body() body: RegistrarPagoDto) { return this.svc.registrar(this.empresaId, body); }
 }

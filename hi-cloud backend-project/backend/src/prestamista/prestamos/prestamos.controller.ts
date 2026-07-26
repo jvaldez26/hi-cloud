@@ -8,6 +8,7 @@ import { UserRole } from '../../users/enums/user-role.enum';
 import { ModuloAddonGuard } from '../../modulos-addon/guards/modulo-addon.guard';
 import { TenantService } from '../../tenant/tenant.service';
 import { PrestamosService } from './prestamos.service';
+import { CrearPrestamoDto, CancelarPrestamoDto } from '../dto/prestamista.dto';
 
 @Controller('prestamista/prestamos')
 @UseGuards(JwtAuthGuard, TenantGuard, RolesGuard, ModuloAddonGuard('prestamista'))
@@ -26,14 +27,14 @@ export class PrestamosController {
   // Desembolsar: acción financiera → CONTADOR/ADMIN.
   @Post()
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)
-  create(@Body() body: any) { return this.svc.create(this.empresaId, body); }
+  create(@Body() body: CrearPrestamoDto) { return this.svc.create(this.empresaId, body); }
   // Simular es solo cálculo (lectura) → cualquier miembro.
   @Post('simular')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   simular(@Body() body: any) { return this.svc.simular(body); }
   @Patch(':id/cancelar')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)
-  cancelar(@Param('id', ParseIntPipe) id: number, @Body() body: any) {
+  cancelar(@Param('id', ParseIntPipe) id: number, @Body() body: CancelarPrestamoDto) {
     return this.svc.cancelar(this.empresaId, id, body?.motivo);
   }
   @Patch(':id/recalcular')

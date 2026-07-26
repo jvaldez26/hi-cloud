@@ -31,6 +31,14 @@ export class RefinanciamientoService {
     if (original.estado === 'pagado' || original.estado === 'cancelado') {
       throw new BadRequestException('No se puede refinanciar un préstamo pagado o cancelado');
     }
+    // M4: un préstamo ya refinanciado está cerrado y sustituido por el nuevo.
+    // Volver a refinanciarlo duplicaba la deuda: generaba un segundo préstamo
+    // desde saldos que ya habían sido trasladados.
+    if (original.estado === 'refinanciado') {
+      throw new BadRequestException(
+        'Este préstamo ya fue refinanciado. Refinancia el préstamo nuevo que lo sustituyó.',
+      );
+    }
 
     // C5: quien autoriza la condonación/refinanciación sale del CLS (JWT), no del body.
     const uid = this.tenantSvc.getUserId();
