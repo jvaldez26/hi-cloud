@@ -54,6 +54,7 @@ const PricingPage         = lazy(() => import('./pages/pricing/PricingPage'));
 // aquí y devolverla en PublicHome.
 const LandingPageV2       = lazy(() => import('./pages/landing/LandingPageV2'));
 const RegisterPage        = lazy(() => import('./pages/auth/RegisterPage'));
+const SolicitarDemoPage   = lazy(() => import('./pages/auth/SolicitarDemoPage'));
 // SuperAdminPage definida más abajo
 const ForgotPasswordPage        = lazy(() => import('./pages/auth/ForgotPasswordPage'));
 const ResetPasswordPage         = lazy(() => import('./pages/auth/ResetPasswordPage'));
@@ -411,7 +412,7 @@ export default function App() {
     // página pública, no intentar rehidratar — evita que la cookie httpOnly restaure
     // la sesión silenciosamente después de un logout explícito.
     const savedUser = localStorage.getItem('auth_user');
-    const publicPaths = ['/login', '/registrar', '/recuperar-contrasena',
+    const publicPaths = ['/login', '/registrar', '/solicitar-demo', '/recuperar-contrasena',
                          '/restablecer', '/verificar-correo', '/portal/',
                          '/invitacion/', '/precios', '/auth/callback',
                          '/pending-approval', '/setup-password',
@@ -601,6 +602,7 @@ export default function App() {
                   <Route path="/"                        element={<PublicHome />} />
                   <Route path="/login"                   element={<GuestRoute><LoginPage /></GuestRoute>} />
                   <Route path="/registrar"               element={<GuestRoute><RegisterPage /></GuestRoute>} />
+                  <Route path="/solicitar-demo"          element={<SolicitarDemoPage />} />
                   <Route path="/precios"                 element={<PricingPage />} />
                   <Route path="/recuperar-contrasena"    element={<ForgotPasswordPage />} />
                   <Route path="/restablecer/:token"      element={<ResetPasswordPage />} />

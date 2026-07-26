@@ -56,7 +56,7 @@ export const LANDING_ROUTES = {
   precios:  '#precios',
   login:    '/login',
   registro: '/registrar',
-  demo:     '#demo',
+  demo:     '/solicitar-demo',
   prueba:   '/registrar',
   whatsapp: 'https://wa.me/18093081713',
   ayuda:    '#ayuda',
