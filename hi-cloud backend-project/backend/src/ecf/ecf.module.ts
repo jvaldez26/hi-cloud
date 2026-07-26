@@ -45,6 +45,7 @@ import { ResumenEcfPendientesJob }  from './jobs/resumen-ecf-pendientes.job';
 // Guards
 import { SuperAdminGuard }       from '../super-admin/super-admin.guard';
 import { TokenBlacklistService } from '../auth/token-blacklist.service';
+import { RncModule }             from '../rnc/rnc.module';
 
 @Module({
   imports: [
@@ -55,6 +56,9 @@ import { TokenBlacklistService } from '../auth/token-blacklist.service';
     ]),
     HttpModule.register({ timeout: 30_000, maxRedirects: 3 }),
     ConfigModule,
+    // Padrón de la DGII: se consulta al emitir para no dar crédito fiscal a un
+    // RNC suspendido (rules/comprador-vigente.rule.ts). Trae su caché de 24 h.
+    RncModule,
     SuscripcionesModule,
     NotificacionesModule,
     JwtModule.registerAsync({

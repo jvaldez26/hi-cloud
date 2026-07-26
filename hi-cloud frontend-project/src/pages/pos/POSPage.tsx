@@ -9617,6 +9617,14 @@ export default function POSPage() {
   const tipoExigeRnc = tipoNcf === 'E31' || tipoNcf === 'E44' || tipoNcf === 'E45' || totalEfectivo >= posCedulaMonto;
   const necesitaRnc  = tipoExigeRnc && !clienteTieneRNC;
   const rncValido    = clienteTieneRNC || /^\d{9}$|^\d{11}$/.test(rncComprador);
+  // Un RNC SUSPENDIDO o DADO DE BAJA no puede recibir crédito fiscal (E31/E44/E45).
+  // Solo bloquea cuando el padrón lo afirma: si no responde o no lo encuentra, se
+  // cobra igual — la DGII caída no puede parar la caja. Misma regla en el backend
+  // (ecf/rules/comprador-vigente.rule.ts), que es donde de verdad se aplica.
+  const tipoDaCreditoFiscal = tipoNcf === 'E31' || tipoNcf === 'E44' || tipoNcf === 'E45';
+  const estadoRncPadron     = (rncDGII.datos?.encontrado ? rncDGII.datos?.estado ?? '' : '').toUpperCase();
+  const compradorNoVigente  = tipoDaCreditoFiscal
+    && (estadoRncPadron === 'SUSPENDIDO' || estadoRncPadron.includes('BAJA'));
   const canPay       = tipoPagoPos === 'CREDITO'
     || (esMixto && sumaFP >= totalAPagar)
     || (!esMixto && metodoPago !== 'efectivo')
@@ -9624,7 +9632,8 @@ export default function POSPage() {
   const cajaAbierta  = cajaActivaHoy?.estado === 'abierta';
   // Crédito requiere cliente real seleccionado (no consumidor final por defecto)
   const clienteParaCredito = tipoPagoPos === 'CONTADO' || clienteId != null;
-  const canCheckout  = canPay && (!tipoExigeRnc || rncValido) && cajaAbierta && clienteParaCredito;
+  const canCheckout  = canPay && (!tipoExigeRnc || rncValido) && cajaAbierta && clienteParaCredito
+    && !compradorNoVigente;
 
   // Enter / NumpadEnter confirma el cobro cuando el modal de pago está abierto
   useEffect(() => {
@@ -10554,6 +10563,19 @@ export default function POSPage() {
                           ({rncDGII.datos.estado})
                         </span>
                       )}
+                    </div>
+                  )}
+                  {/* Un RNC no vigente no puede recibir crédito fiscal: se avisa aquí
+                      y se desactiva el cobro. El backend aplica la misma regla al
+                      emitir, por si se llega por otra vía. */}
+                  {compradorNoVigente && (
+                    <div style={{
+                      fontSize: 11, lineHeight: 1.4, color: '#7F1D1D', background: '#FEF2F2',
+                      border: '1px solid #FCA5A5', borderRadius: 6, padding: '6px 8px', marginBottom: 6,
+                    }}>
+                      <b>Este RNC está {rncDGII.datos?.estado} ante la DGII.</b><br />
+                      No puede recibir un {tipoNcf} (crédito fiscal). Cambia el tipo a
+                      Consumo (E32) o corrige el RNC para poder cobrar.
                     </div>
                   )}
 

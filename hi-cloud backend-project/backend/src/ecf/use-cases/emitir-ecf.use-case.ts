@@ -17,6 +17,8 @@ import { ECFBuilderService, ECFBuildInput, MSellerInfoReferencia, MSellerPayload
 import { MSellerClientService } from '../services/mseller-client.service';
 import { esErrorYaExiste, consultarExistenciaEncf } from '../services/reconciliacion-ecf.helper';
 import { EcfConfigService } from '../services/ecf-config.service';
+import { RncService } from '../../rnc/rnc.service';
+import { esCreditoFiscal, evaluarCompradorFiscal } from '../rules/comprador-vigente.rule';
 
 import {
   EcfDuplicadoError,
@@ -114,6 +116,7 @@ export class EmitirECFUseCase {
     private readonly builder:    ECFBuilderService,
     private readonly mseller:    MSellerClientService,
     private readonly configSvc:  EcfConfigService,
+    private readonly rncService: RncService,
     private readonly ds:         DataSource,
   ) {}
 
@@ -264,6 +267,14 @@ export class EmitirECFUseCase {
         CodigoModificacion: infoRefInput?.CodigoModificacion ?? '3',
       };
     }
+
+    // ── 4-bis. COMPRADOR VIGENTE ANTE LA DGII ────────────────────────────────
+    // Un RNC suspendido o dado de baja no puede recibir crédito fiscal (E31/E44/
+    // E45). El POS ya mostraba el estado al digitarlo, pero dejaba emitir igual.
+    // Falla ABIERTA: si el padrón no responde, no se encuentra el RNC o el estado
+    // es desconocido, se emite — un servicio externo caído no puede frenar la
+    // facturación. Ver rules/comprador-vigente.rule.ts.
+    await this.validarCompradorVigente(tipoEcf, factura);
 
     // ── 5. CONSTRUIR PAYLOAD JSON ─────────────────────────────────────────────
     let payload: MSellerPayload;
@@ -511,6 +522,42 @@ ${JSON.stringify(payload, null, 2)}`;
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
+
+  /**
+   * Rechaza la emisión de un comprobante de crédito fiscal cuando el padrón de
+   * la DGII declara al comprador SUSPENDIDO o DADO DE BAJA.
+   *
+   * Cualquier fallo consultando el padrón se registra y se deja pasar: la regla
+   * protege del error fiscal, no puede convertirse en un punto de caída de la
+   * facturación.
+   */
+  private async validarCompradorVigente(tipoEcf: number, documento: any): Promise<void> {
+    if (!esCreditoFiscal(tipoEcf)) return;
+
+    const rnc = String(
+      documento?.rncComprador ??
+      documento?.cliente?.rncReceptor ??
+      documento?.cliente?.rfc ?? '',
+    ).replace(/\D/g, '');
+
+    if (!/^\d{9}$|^\d{11}$/.test(rnc)) return;   // sin RNC válido no hay nada que verificar
+
+    let padron: { encontrado?: boolean; estado?: string } | undefined;
+    try {
+      padron = await this.rncService.consultarRNC(rnc);
+    } catch (err) {
+      this.logger.warn(
+        `[ECF] No se pudo verificar el RNC ${rnc} en el padrón: ${(err as Error).message}. Se emite igual.`,
+      );
+      return;
+    }
+
+    const veredicto = evaluarCompradorFiscal(tipoEcf, padron);
+    if (veredicto.bloquear) {
+      this.logger.warn(`[ECF] Emisión E${tipoEcf} bloqueada: RNC ${rnc} está ${veredicto.estado}`);
+      throw new BadRequestException(veredicto.motivo);
+    }
+  }
 
   private async cargarDocumentoOrigen(
     tipo: DocumentoOrigenTipo,
