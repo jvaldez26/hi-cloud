@@ -7435,6 +7435,13 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
       { label: 'Fecha',    key: 'fecha',    render: (v) => <span style={{ fontSize: 11, color: C.textSub }}>{fmt.date(v)}</span> },
       { label: 'Cliente',  key: 'cliente',  render: (_,r) => r.cliente?.nombre ?? '—' },
       { label: 'Total',    key: 'total',    render: (v) => <span style={{ fontWeight: 700, color: C.green }}>{fmt.money(v)}</span> },
+      { label: 'Pago',     key: 'formasPago', render: (v: any, r: any) => {
+        const TIPO_LABEL: Record<number, string> = { 1: 'Efectivo', 2: 'Transfer.', 3: 'Tarjeta', 4: 'Crédito', 5: 'Permuta', 6: 'N.Crédito' };
+        if (v?.length > 1) return <span style={{ fontSize: 10, fontWeight: 600, color: C.blue }}>Mixto</span>;
+        if (v?.length === 1) return <span style={{ fontSize: 10, fontWeight: 600 }}>{TIPO_LABEL[v[0].tipo] ?? '—'}</span>;
+        const tp = r.tipoPago;
+        return <span style={{ fontSize: 10, color: C.textSub }}>{tp === 'CREDITO' ? 'Crédito' : tp === 'CONTADO' ? 'Contado' : '—'}</span>;
+      }},
       { label: 'Estado',   key: 'estado',   render: (v: string) => {
         const colMap: Record<string,string> = { pagada: C.green, emitida: C.blue, cancelada: C.red };
         const label = v === 'cancelada' ? 'ANULADA' : v?.toUpperCase();
