@@ -55,9 +55,9 @@ export const LANDING_ROUTES = {
   // Transversales
   precios:  '#precios',
   login:    '/login',
-  registro: '/register',
+  registro: '/registrar',
   demo:     '#demo',
-  prueba:   '#prueba',
+  prueba:   '/registrar',
   whatsapp: '#whatsapp',
   ayuda:    '#ayuda',
   ecfGuia:  '#ecf-guia',
