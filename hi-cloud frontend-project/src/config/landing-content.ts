@@ -58,7 +58,7 @@ export const LANDING_ROUTES = {
   registro: '/registrar',
   demo:     '#demo',
   prueba:   '/registrar',
-  whatsapp: '#whatsapp',
+  whatsapp: 'https://wa.me/18093081713',
   ayuda:    '#ayuda',
   ecfGuia:  '#ecf-guia',
   casos:    '#casos',

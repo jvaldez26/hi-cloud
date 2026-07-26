@@ -20,14 +20,14 @@ interface Props extends AnchorHTMLAttributes<HTMLAnchorElement> {
 }
 
 export default function LandingLink({ to, children, ...rest }: Props) {
-  const esAncla = to.startsWith('#');
-
-  // Cuando las rutas reales existan:
-  // if (!esAncla) return <Link to={to} {...rest}>{children}</Link>;
-  void esAncla;
+  const esExterno = to.startsWith('http');
 
   return (
-    <a href={to} {...rest}>
+    <a
+      href={to}
+      {...(esExterno ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+      {...rest}
+    >
       {children}
     </a>
   );
