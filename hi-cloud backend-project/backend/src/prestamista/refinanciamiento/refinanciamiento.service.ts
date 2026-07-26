@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, QueryRunner } from 'typeorm';
 import { calcularAmortizacion } from '../utils/amortizacion.util';
 import { fechaHoyRD } from '../../common/utils/fecha-local.util';
 import { TenantService } from '../../tenant/tenant.service';
@@ -23,9 +23,33 @@ export class RefinanciamientoService {
     );
   }
 
+  /**
+   * H2 — Refinanciamiento.
+   *
+   * Cierra el préstamo original, marca sus cuotas, crea el préstamo nuevo con
+   * todas sus cuotas y registra el refinanciamiento: 6+ escrituras que antes
+   * iban sueltas. Un fallo a mitad dejaba el original cerrado y al deudor sin
+   * préstamo nuevo — es decir, deuda desaparecida. Ahora es todo o nada.
+   */
   async refinanciar(empresaId: number, data: any) {
-    const [original] = await this.ds.query<any[]>(
-      `SELECT * FROM pr_prestamos WHERE id=$1 AND "empresaId"=$2`, [data.prestamoOriginalId, empresaId],
+    const qr = this.ds.createQueryRunner();
+    await qr.connect();
+    await qr.startTransaction();
+    try {
+      const res = await this.refinanciarEnTransaccion(qr, empresaId, data);
+      await qr.commitTransaction();
+      return res;
+    } catch (err) {
+      await qr.rollbackTransaction();
+      throw err;
+    } finally {
+      await qr.release();
+    }
+  }
+
+  private async refinanciarEnTransaccion(qr: QueryRunner, empresaId: number, data: any) {
+    const [original] = await qr.query(
+      `SELECT * FROM pr_prestamos WHERE id=$1 AND "empresaId"=$2 FOR UPDATE`, [data.prestamoOriginalId, empresaId],
     );
     if (!original) throw new NotFoundException(`Préstamo #${data.prestamoOriginalId} no encontrado`);
     if (original.estado === 'pagado' || original.estado === 'cancelado') {
@@ -54,11 +78,11 @@ export class RefinanciamientoService {
       : this.r2(saldoCapital + (saldoInteres - interesCondonado) + (saldoMora - moraCondonada));
 
     // Cerrar préstamo original
-    await this.ds.query(
+    await qr.query(
       `UPDATE pr_prestamos SET estado='refinanciado',"updatedAt"=NOW() WHERE id=$1 AND "empresaId"=$2`,
       [original.id, empresaId],
     );
-    await this.ds.query(
+    await qr.query(
       `UPDATE pr_cuotas SET estado='refinanciada' WHERE "prestamoId"=$1 AND estado<>'pagada'`,
       [original.id],
     );
@@ -69,13 +93,13 @@ export class RefinanciamientoService {
     const fechaPrimerPago = new Date(data.fechaPrimerPago ?? fechaHoyRD());
     const amort = calcularAmortizacion('frances', montoNuevo, nuevaTasa, nuevoPlazo, fechaPrimerPago);
 
-    const [seq] = await this.ds.query<any[]>(
+    const [seq] = await qr.query(
       `SELECT siguiente_numero_secuencia($1, $2) AS num`, [empresaId, 'PRE'],
     );
     const numero = `PRE-${seq.num}`;
 
     const ultimaCuota = amort.tabla[amort.tabla.length - 1];
-    const [nuevo] = await this.ds.query<any[]>(
+    const [nuevo] = await qr.query(
       `INSERT INTO pr_prestamos ("empresaId",numero,"deudorId","productoId","montoPrincipal",
         "tasaInteresMensual","plazoMeses","frecuenciaPago","metodoAmortizacion","cuotaPeriodica",
         "porcentajeMora","diasGracia","fechaDesembolso","fechaPrimerPago","fechaVencimiento",
@@ -92,7 +116,7 @@ export class RefinanciamientoService {
     );
 
     for (const linea of amort.tabla) {
-      await this.ds.query(
+      await qr.query(
         `INSERT INTO pr_cuotas ("empresaId","prestamoId","numeroCuota","fechaVencimiento",capital,interes,"cuotaTotal","saldoRestante")
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
         [empresaId, nuevo.id, linea.numeroCuota, linea.fechaVencimiento.toISOString().split('T')[0],
@@ -101,7 +125,7 @@ export class RefinanciamientoService {
     }
 
     // Registrar refinanciamiento
-    const [ref] = await this.ds.query<any[]>(
+    const [ref] = await qr.query(
       `INSERT INTO pr_refinanciamientos ("empresaId","prestamoOriginalId","prestamoNuevoId","deudorId",
         "saldoCapitalOriginal","saldoInteresOriginal","saldoMoraOriginal","saldoTotalOriginal",
         "montoNuevo","nuevaTasa","nuevoPlazo","moraCondonada","interesCondonado","autorizadoPor",motivo)

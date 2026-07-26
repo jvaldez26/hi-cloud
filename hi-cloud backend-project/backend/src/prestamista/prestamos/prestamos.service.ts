@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, QueryRunner } from 'typeorm';
 import { calcularAmortizacion } from '../utils/amortizacion.util';
 import { AsientosAutomaticosService } from '../../contabilidad/services/asientos-automaticos.service';
 import { TenantService } from '../../tenant/tenant.service';
@@ -80,15 +80,55 @@ export class PrestamosService {
     );
   }
 
+  /**
+   * C2 — Desembolso.
+   *
+   * Antes esto eran ~8 queries sueltas: si fallaba la inserción de la cuota 7 de
+   * 12, quedaba un préstamo a medias con su deudor ya actualizado. Ahora todo
+   * ocurre dentro de una transacción.
+   *
+   * Y la solicitud se bloquea con FOR UPDATE y se exige que siga 'aprobada':
+   * antes solo se miraba cuando el body venía incompleto, así que dos peticiones
+   * con los parámetros completos desembolsaban DOS veces la misma solicitud.
+   */
   async create(empresaId: number, data: any) {
-    // Cuando viene del formulario "Desembolso desde solicitud", los parámetros
-    // del préstamo no se envían en el body — se leen de la solicitud aprobada.
-    if (data.solicitudId && (!data.montoPrincipal || !data.plazoMeses || !data.tasaInteresMensual)) {
-      const [sol] = await this.ds.query<any[]>(
-        `SELECT * FROM pr_solicitudes WHERE id=$1 AND "empresaId"=$2 AND estado='aprobada'`,
+    const qr = this.ds.createQueryRunner();
+    await qr.connect();
+    await qr.startTransaction();
+    try {
+      const prestamoId = await this.crearEnTransaccion(qr, empresaId, data);
+      await qr.commitTransaction();
+
+      // Fuera de la transacción: si el asiento falla, el desembolso ya es válido.
+      this.asientos.asientoDesembolsoPrestamo(
+        prestamoId.id, prestamoId.numero, Number(data.montoPrincipal),
+        data.formaPago ?? 'transferencia', this.tenantSvc.getUserId() ?? 0,
+      ).catch(err => this.logger.error(`Asiento desembolso ${prestamoId.numero}: ${err.message}`));
+
+      return this.findOne(empresaId, prestamoId.id);
+    } catch (err) {
+      await qr.rollbackTransaction();
+      throw err;
+    } finally {
+      await qr.release();
+    }
+  }
+
+  private async crearEnTransaccion(qr: QueryRunner, empresaId: number, data: any) {
+    // C2: la solicitud se bloquea y se valida SIEMPRE que se indique, vengan o no
+    // los parámetros en el body.
+    if (data.solicitudId) {
+      const [sol] = await qr.query(
+        `SELECT * FROM pr_solicitudes WHERE id=$1 AND "empresaId"=$2 FOR UPDATE`,
         [data.solicitudId, empresaId],
       );
-      if (!sol) throw new BadRequestException('Solicitud no encontrada o no está en estado aprobada');
+      if (!sol) throw new BadRequestException('Solicitud no encontrada');
+      if (sol.estado !== 'aprobada') {
+        throw new BadRequestException(
+          `La solicitud #${data.solicitudId} está en estado "${sol.estado}" y no puede desembolsarse` +
+          `${sol.estado === 'desembolsada' ? ' de nuevo' : ''}.`,
+        );
+      }
       data.deudorId           = data.deudorId           ?? sol.deudorId;
       data.productoId         = data.productoId         ?? sol.productoId;
       data.montoPrincipal     = data.montoPrincipal     ?? sol.montoAprobado ?? sol.montoSolicitado;
@@ -111,7 +151,7 @@ export class PrestamosService {
       throw new BadRequestException('Faltan campos requeridos: deudorId, montoPrincipal, tasaInteresMensual, plazoMeses, fechaPrimerPago');
     }
 
-    const [seq] = await this.ds.query<any[]>(
+    const [seq] = await qr.query(
       `SELECT siguiente_numero_secuencia($1, $2) AS num`, [empresaId, 'PRE'],
     );
     const numero = `PRE-${seq.num}`;
@@ -138,7 +178,7 @@ export class PrestamosService {
     // C5: autor del desembolso desde el CLS (JWT), nunca del body.
     const uid = this.tenantSvc.getUserId();
 
-    const [prestamo] = await this.ds.query<any[]>(
+    const [prestamo] = await qr.query(
       `INSERT INTO pr_prestamos ("empresaId",numero,"solicitudId","deudorId","productoId","montoPrincipal",
         "tasaInteresMensual","plazoMeses","frecuenciaPago","metodoAmortizacion","cuotaPeriodica",
         "porcentajeMora","diasGracia","cargoCierre","fechaDesembolso","fechaPrimerPago","fechaVencimiento",
@@ -157,7 +197,7 @@ export class PrestamosService {
 
     // Insertar cuotas
     for (const linea of amort.tabla) {
-      await this.ds.query(
+      await qr.query(
         `INSERT INTO pr_cuotas ("empresaId","prestamoId","numeroCuota","fechaVencimiento",capital,interes,"cuotaTotal","saldoRestante")
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
         [empresaId, prestamo.id, linea.numeroCuota, linea.fechaVencimiento.toISOString().split('T')[0],
@@ -166,7 +206,7 @@ export class PrestamosService {
     }
 
     // Actualizar estadísticas del deudor
-    await this.ds.query(
+    await qr.query(
       `UPDATE pr_deudores SET "totalPrestado"="totalPrestado"+$1,"prestamosActivos"="prestamosActivos"+1,"updatedAt"=NOW()
        WHERE id=$2 AND "empresaId"=$3`,
       [data.montoPrincipal, data.deudorId, empresaId],
@@ -174,19 +214,13 @@ export class PrestamosService {
 
     // Marcar solicitud como desembolsada si viene de una
     if (data.solicitudId) {
-      await this.ds.query(
+      await qr.query(
         `UPDATE pr_solicitudes SET estado='desembolsada' WHERE id=$1 AND "empresaId"=$2`,
         [data.solicitudId, empresaId],
       );
     }
 
-    // Asiento contable fire-and-forget
-    this.asientos.asientoDesembolsoPrestamo(
-      prestamo.id, numero, Number(data.montoPrincipal),
-      data.formaPago ?? 'transferencia', uid ?? 0,
-    ).catch(err => this.logger.error(`Asiento desembolso ${numero}: ${err.message}`));
-
-    return this.findOne(empresaId, prestamo.id);
+    return { id: prestamo.id, numero };
   }
 
   async recalcularSaldos(empresaId: number, id: number) {

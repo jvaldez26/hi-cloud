@@ -64,8 +64,14 @@ export class PagosService {
     await qr.startTransaction();
 
     try {
+      // H1: FOR UPDATE bloquea las cuotas hasta el commit. Sin él, dos pagos
+      // simultáneos del mismo préstamo leían los mismos saldos pendientes y
+      // ambos los daban por cubiertos: el segundo aplicaba dinero sobre una
+      // cuota ya saldada. Con el bloqueo, el segundo pago espera y ve los
+      // saldos que dejó el primero.
       const cuotas: any[] = await qr.query(
-        `SELECT * FROM pr_cuotas WHERE "prestamoId"=$1 AND estado<>'pagada' ORDER BY "numeroCuota"`,
+        `SELECT * FROM pr_cuotas WHERE "prestamoId"=$1 AND estado<>'pagada'
+         ORDER BY "numeroCuota" FOR UPDATE`,
         [data.prestamoId],
       );
 
