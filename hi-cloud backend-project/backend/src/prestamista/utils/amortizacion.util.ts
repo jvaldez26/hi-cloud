@@ -19,6 +19,11 @@ function r2(n: number): number {
 }
 
 function addMeses(fecha: Date, meses: number): Date {
+  // Las fechas de cuota nacen de new Date('YYYY-MM-DD'), que es medianoche UTC,
+  // y se guardan con .toISOString().split('T')[0]. Esa combinación es correcta y
+  // NO debe "arreglarse" pasándola a hora de RD: medianoche UTC es el día
+  // anterior a las 20:00 en Santo Domingo, así que convertirla restaría un día a
+  // TODAS las cuotas. fechaHoyRD() es para "hoy", no para fechas ya dadas.
   const d = new Date(fecha);
   d.setMonth(d.getMonth() + meses);
   return d;

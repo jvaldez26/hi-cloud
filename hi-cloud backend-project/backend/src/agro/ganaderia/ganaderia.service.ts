@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { TenantService } from '../../tenant/tenant.service';
+import { fechaHoyRD } from '../../common/utils/fecha-local.util';
 
 @Injectable()
 export class GanaderiaService {
@@ -72,8 +73,32 @@ export class GanaderiaService {
     return row;
   }
 
+  /** Estados que sacan al animal del hato: exigen justificación. */
+  private static readonly ESTADOS_BAJA = ['muerto', 'vendido', 'sacrificado', 'perdido', 'baja'];
+
   async update(empresaId: number, id: number, data: any) {
-    await this.orFail(empresaId, id);
+    const actual = await this.orFail(empresaId, id);
+
+    // M5: dar de baja un animal es una salida de inventario con valor. Antes era
+    // un simple flip de estado/isActive sin dejar constancia de por qué, así que
+    // el hato menguaba sin explicación. Ahora se exige motivo y queda registrado
+    // como evento del animal.
+    const estadoNuevo = String(data.estado ?? '').toLowerCase();
+    const esBaja = (data.estado !== undefined && GanaderiaService.ESTADOS_BAJA.includes(estadoNuevo))
+      || data.isActive === false;
+    const yaEstabaDeBaja = GanaderiaService.ESTADOS_BAJA.includes(String(actual.estado ?? '').toLowerCase())
+      || actual.isActive === false;
+
+    if (esBaja && !yaEstabaDeBaja) {
+      const motivo = String(data.motivoBaja ?? data.motivo ?? '').trim();
+      if (!motivo) {
+        throw new BadRequestException(
+          'Indica el motivo de la baja del animal (muerte, venta, sacrificio…).',
+        );
+      }
+      await this.registrarEventoBaja(empresaId, id, estadoNuevo || 'baja', motivo);
+    }
+
     const allowed = ['fincaId','numero','nombre','tipo','raza','sexo','fechaNacimiento',
       'pesoActual','color','proposito','estado','costoAdquisicion','notas','isActive'];
     const sets: string[] = [];
@@ -87,6 +112,23 @@ export class GanaderiaService {
       `UPDATE ag_animales SET ${sets.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *`, vals,
     );
     return row;
+  }
+
+  /** Deja constancia de la baja en el historial del animal (M5). */
+  private async registrarEventoBaja(
+    empresaId: number, animalId: number, estado: string, motivo: string,
+  ): Promise<void> {
+    try {
+      await this.ds.query(
+        `INSERT INTO ag_eventos_animal ("empresaId","animalId",tipo,fecha,descripcion,"creadoPor")
+         VALUES ($1,$2,$3,$4,$5,$6)`,
+        [empresaId, animalId, 'baja', fechaHoyRD(), `${estado}: ${motivo}`, this.tenantSvc.getUserId()],
+      );
+    } catch (err) {
+      // El evento es la traza, no la operación: si falla, la baja se registra
+      // igual pero queda constancia del problema.
+      this.logger.error(`No se pudo registrar el evento de baja del animal #${animalId}: ${(err as Error).message}`);
+    }
   }
 
   async getEventos(empresaId: number, animalId: number) {

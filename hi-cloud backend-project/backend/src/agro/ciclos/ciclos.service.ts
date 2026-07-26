@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, ConflictException, 
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { TenantService } from '../../tenant/tenant.service';
+import { fechaHoyRD } from '../../common/utils/fecha-local.util';
 
 @Injectable()
 export class CiclosService {
@@ -32,6 +33,27 @@ export class CiclosService {
    * cosechas ni edición de sus labores (recalcularían costos de un ciclo ya cerrado).
    * Reutilizable desde cualquier create/update que reciba cicloId.
    */
+  /**
+   * M2: comprueba que un id recibido en el body pertenezca a esta empresa.
+   * El nombre de tabla nunca viene del usuario — solo se llama con literales.
+   */
+  private async assertPertenece(
+    tabla: 'ag_parcelas' | 'ag_cultivos' | 'ag_fincas',
+    id: unknown,
+    empresaId: number,
+    etiqueta: string,
+  ): Promise<void> {
+    if (id === undefined || id === null || id === '') return;   // campo opcional
+    const num = Number(id);
+    if (!Number.isInteger(num) || num <= 0) {
+      throw new BadRequestException(`${etiqueta} inválida`);
+    }
+    const [row] = await this.ds.query<any[]>(
+      `SELECT 1 FROM ${tabla} WHERE id=$1 AND "empresaId"=$2 LIMIT 1`, [num, empresaId],
+    );
+    if (!row) throw new NotFoundException(`${etiqueta} #${num} no encontrada`);
+  }
+
   async assertCicloEditable(cicloId: number | undefined | null, empresaId: number): Promise<void> {
     if (cicloId == null) throw new NotFoundException('Ciclo no especificado');
     const [row] = await this.ds.query<any[]>(
@@ -82,6 +104,12 @@ export class CiclosService {
   }
 
   async create(empresaId: number, data: any) {
+    // M2: parcelaId y cultivoId llegan del body. Sin comprobarlos se podía crear
+    // un ciclo apuntando a la parcela de otra empresa, y los listados —que hacen
+    // JOIN con ag_parcelas y ag_cultivos— acababan mostrando sus nombres.
+    await this.assertPertenece('ag_parcelas', data.parcelaId, empresaId, 'Parcela');
+    await this.assertPertenece('ag_cultivos', data.cultivoId, empresaId, 'Cultivo');
+
     const [seq] = await this.ds.query<any[]>(
       `SELECT siguiente_numero_secuencia($1, $2) AS num`, [empresaId, 'CIC'],
     );
@@ -141,7 +169,10 @@ export class CiclosService {
       `UPDATE ag_ciclos SET estado='cerrado', "fechaCosechaReal"=$3, "ingresoVentas"=$4,
          "actualizadoPor"=$5, "updatedAt"=NOW()
         WHERE id=$1 AND "empresaId"=$2 AND estado <> 'cerrado' RETURNING *`,
-      [id, empresaId, data.fechaCosechaReal ?? new Date().toISOString().split('T')[0], data.ingresoVentas ?? 0, this.tenantSvc.getUserId()],
+      // M4: era new Date().toISOString(), la fecha UTC. Entre las 8 de la noche
+      // y medianoche en RD eso devuelve el día siguiente, así que un ciclo
+      // cerrado por la noche quedaba fechado mañana.
+      [id, empresaId, data.fechaCosechaReal ?? fechaHoyRD(), data.ingresoVentas ?? 0, this.tenantSvc.getUserId()],
     );
     if (!cerrado.length) throw new ConflictException('El ciclo ya está cerrado');
     // Solo el ganador del cierre recalcula costos finales y libera la parcela.
@@ -284,12 +315,17 @@ export class CiclosService {
     const insumoId: number | null = data.insumoId ?? null;
     if (insumoId != null) {
       const [ins] = await this.ds.query<any[]>(
-        `SELECT id, nombre, unidad FROM ag_insumos WHERE id=$1 AND "empresaId"=$2`, [insumoId, empresaId],
+        `SELECT id, nombre, unidad, "costoUnitario" FROM ag_insumos WHERE id=$1 AND "empresaId"=$2`,
+        [insumoId, empresaId],
       );
       if (!ins) throw new NotFoundException(`Insumo #${insumoId} no encontrado`);
       // Fallback: si el body no trae nombre/unidad, tomarlos del insumo maestro.
       data.insumoNombre = data.insumoNombre ?? ins.nombre;
       data.unidad       = data.unidad ?? ins.unidad;
+      // M3: el costo sale del maestro salvo que se indique expresamente otro.
+      // Antes se tomaba solo del body: si el formulario no lo enviaba, la
+      // aplicación quedaba costeada en null y el ciclo subvaluado.
+      data.costoUnitario = data.costoUnitario ?? ins.costoUnitario;
     }
 
     const costoTotal = data.costoTotal ?? (data.costoUnitario && data.cantidad
