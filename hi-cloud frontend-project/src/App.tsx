@@ -49,7 +49,10 @@ const ImportacionPage     = lazy(() => import('./pages/importacion/ImportacionPa
 const POSPage             = lazy(() => import('./pages/pos/POSPage'));
 const EstadoCuentaPage    = lazy(() => import('./pages/clientes/EstadoCuentaPage'));
 const PricingPage         = lazy(() => import('./pages/pricing/PricingPage'));
-const LandingPage         = lazy(() => import('./pages/landing/LandingPage'));
+// LandingPageV2 es la home pública desde 2026-07. La LandingPage anterior queda
+// en el repo por si hay que volver atrás: para revertir, basta con importarla
+// aquí y devolverla en PublicHome.
+const LandingPageV2       = lazy(() => import('./pages/landing/LandingPageV2'));
 const RegisterPage        = lazy(() => import('./pages/auth/RegisterPage'));
 // SuperAdminPage definida más abajo
 const ForgotPasswordPage        = lazy(() => import('./pages/auth/ForgotPasswordPage'));
@@ -337,7 +340,7 @@ function PublicHome() {
   if (isAuth) {
     return <Navigate to={homeForRole(user?.role)} replace />;
   }
-  return <LandingPage />;
+  return <LandingPageV2 />;
 }
 
 // Rutas del ERP normal — BLOQUEADAS para super_admin y empleado

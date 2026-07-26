@@ -1,0 +1,109 @@
+/**
+ * HiCloud — Tokens de la landing pública (hicloudrd.com)
+ *
+ * Prefijo --hcl-* (HiCloud Landing) para no colisionar con los --hc-* del ERP,
+ * que son otra paleta: el ERP usa celeste #0EA5E9 y la landing azul tinta.
+ *
+ * Tema: modo claro por defecto; oscuro por prefers-color-scheme y, con
+ * prioridad, por [data-theme] — que es lo que App.tsx escribe en html y body.
+ * Los componentes NO usan hex: todo sale de estas variables.
+ */
+
+:root {
+  /* ── Marca ────────────────────────────────────────────────────────────── */
+  --hcl-ink-900:  #0A1A3F;   /* azul tinta profundo */
+  --hcl-ink-800:  #10245A;
+  --hcl-blue-600: #1E4BA8;   /* primario */
+  --hcl-blue-500: #2C63CE;
+  --hcl-dgii-500: #12A66A;   /* verde DGII — SOLO "aceptado" y checks */
+  --hcl-dgii-050: #E6F6EF;
+  --hcl-alert-600:#C2410C;   /* semántico: pendiente / rechazado */
+
+  /* ── Neutros con sesgo azul ───────────────────────────────────────────── */
+  --hcl-paper:      #F5F7FB;
+  --hcl-surface:    #FFFFFF;
+  --hcl-surface-2:  #EDF1F8;
+  --hcl-line:       #E3E8F2;
+  --hcl-line-strong:#CBD5E8;
+  --hcl-text:       #0A1A3F;
+  --hcl-text-2:     #5B6B8C;
+  --hcl-text-3:     #7E8CA8;
+  --hcl-on-ink:     #EAF0FF;
+  --hcl-on-ink-2:   #9DB0D8;
+
+  /* ── Tipografía ───────────────────────────────────────────────────────── */
+  --hcl-display: 'Sora', 'Segoe UI Variable Display', system-ui, -apple-system, 'Helvetica Neue', sans-serif;
+  --hcl-body:    'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --hcl-mono:    'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, 'Liberation Mono', monospace;
+
+  /* ── Escala tipográfica ───────────────────────────────────────────────── */
+  --hcl-fs-eyebrow: 0.78rem;
+  --hcl-fs-small:   0.875rem;
+  --hcl-fs-body:    1.0625rem;
+  --hcl-fs-lead:    1.1875rem;
+  --hcl-fs-h3:      1.3125rem;
+  --hcl-fs-h2:      clamp(1.75rem, 1.2rem + 2vw, 2.6rem);
+  --hcl-fs-h1:      clamp(2.4rem, 1.4rem + 4vw, 4.1rem);
+
+  /* ── Ritmo ────────────────────────────────────────────────────────────── */
+  --hcl-gap:       1.25rem;
+  --hcl-pad-sec:   clamp(4rem, 8vw, 7rem);
+  --hcl-radius:    14px;
+  --hcl-radius-sm: 9px;
+  --hcl-maxw:      1200px;
+  --hcl-shadow:    0 1px 2px rgba(10, 26, 63, .06), 0 12px 32px -12px rgba(10, 26, 63, .18);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --hcl-paper:      #070F26;
+    --hcl-surface:    #0C1834;
+    --hcl-surface-2:  #122048;
+    --hcl-line:       #1C2E5C;
+    --hcl-line-strong:#2A407A;
+    --hcl-text:       #EAF0FF;
+    --hcl-text-2:     #A9BBE0;
+    --hcl-text-3:     #8195BE;
+    --hcl-blue-600:   #4B82E8;
+    --hcl-blue-500:   #6699F0;
+    --hcl-dgii-500:   #2ECC8B;
+    --hcl-dgii-050:   #0E3A2A;
+    --hcl-alert-600:  #F97B4F;
+    --hcl-shadow:     0 1px 2px rgba(0, 0, 0, .4), 0 14px 34px -14px rgba(0, 0, 0, .6);
+  }
+}
+
+/* El data-theme del store gana a la preferencia del sistema, en ambos sentidos */
+[data-theme='dark'] {
+  --hcl-paper:      #070F26;
+  --hcl-surface:    #0C1834;
+  --hcl-surface-2:  #122048;
+  --hcl-line:       #1C2E5C;
+  --hcl-line-strong:#2A407A;
+  --hcl-text:       #EAF0FF;
+  --hcl-text-2:     #A9BBE0;
+  --hcl-text-3:     #8195BE;
+  --hcl-blue-600:   #4B82E8;
+  --hcl-blue-500:   #6699F0;
+  --hcl-dgii-500:   #2ECC8B;
+  --hcl-dgii-050:   #0E3A2A;
+  --hcl-alert-600:  #F97B4F;
+  --hcl-shadow:     0 1px 2px rgba(0, 0, 0, .4), 0 14px 34px -14px rgba(0, 0, 0, .6);
+}
+
+[data-theme='light'] {
+  --hcl-paper:      #F5F7FB;
+  --hcl-surface:    #FFFFFF;
+  --hcl-surface-2:  #EDF1F8;
+  --hcl-line:       #E3E8F2;
+  --hcl-line-strong:#CBD5E8;
+  --hcl-text:       #0A1A3F;
+  --hcl-text-2:     #5B6B8C;
+  --hcl-text-3:     #7E8CA8;
+  --hcl-blue-600:   #1E4BA8;
+  --hcl-blue-500:   #2C63CE;
+  --hcl-dgii-500:   #12A66A;
+  --hcl-dgii-050:   #E6F6EF;
+  --hcl-alert-600:  #C2410C;
+  --hcl-shadow:     0 1px 2px rgba(10, 26, 63, .06), 0 12px 32px -12px rgba(10, 26, 63, .18);
+}
