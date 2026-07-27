@@ -26,12 +26,18 @@ import { EdPrestamo }     from './entities/ed-prestamo.entity';
 import { EdRuta }         from './entities/ed-ruta.entity';
 import { EdComunicado }   from './entities/ed-comunicado.entity';
 
-import { EdConfigService }     from './config/config.service';
-import { EdConfigController }  from './config/config.controller';
-import { EstructuraService }   from './estructura/estructura.service';
-import { EstructuraController } from './estructura/estructura.controller';
-import { EdDashboardService }  from './dashboard/dashboard.service';
+import { EdConfigService }       from './config/config.service';
+import { EdConfigController }    from './config/config.controller';
+import { EstructuraService }     from './estructura/estructura.service';
+import { EstructuraController }  from './estructura/estructura.controller';
+import { EdDashboardService }    from './dashboard/dashboard.service';
 import { EdDashboardController } from './dashboard/dashboard.controller';
+import { EstudiantesService }    from './estudiantes/estudiantes.service';
+import { EstudiantesController } from './estudiantes/estudiantes.controller';
+import { TutoresService }        from './tutores/tutores.service';
+import { TutoresController }     from './tutores/tutores.controller';
+import { DocentesService }       from './docentes/docentes.service';
+import { DocentesController }    from './docentes/docentes.controller';
 
 @Module({
   imports: [
@@ -48,11 +54,17 @@ import { EdDashboardController } from './dashboard/dashboard.controller';
     EdConfigController,
     EstructuraController,
     EdDashboardController,
+    EstudiantesController,
+    TutoresController,
+    DocentesController,
   ],
   providers: [
     EdConfigService,
     EstructuraService,
     EdDashboardService,
+    EstudiantesService,
+    TutoresService,
+    DocentesService,
   ],
   exports: [EdConfigService, EstructuraService],
 })

@@ -227,6 +227,7 @@ export const PATH_ROLES: Record<string, string[]> = {
   // ── Educativo ──────────────────────────────────────────────────────────
   '/educativo':                      ALL_ROLES,
   '/educativo/estudiantes':          ALL_ROLES,
+  '/educativo/tutores':              ADMIN_CONT,
   '/educativo/matriculas':           ADMIN_CONT_VEND,
   '/educativo/estructura':           ADMIN_CONT,
   '/educativo/docentes':             ADMIN_CONT,
@@ -557,9 +558,10 @@ export const MENU_CATEGORIES_DATA: MenuCategoryData[] = [
     items: [
       { path: '/educativo',              label: 'Panel' },
       { path: '/educativo/estudiantes',  label: 'Estudiantes' },
+      { path: '/educativo/tutores',      label: 'Tutores' },
+      { path: '/educativo/docentes',     label: 'Docentes' },
       { path: '/educativo/matriculas',   label: 'Matrículas' },
       { path: '/educativo/estructura',   label: 'Estructura' },
-      { path: '/educativo/docentes',     label: 'Docentes' },
       { path: '/educativo/notas',        label: 'Calificaciones' },
       { path: '/educativo/boletines',    label: 'Boletines' },
       { path: '/educativo/asistencia',   label: 'Asistencia' },
