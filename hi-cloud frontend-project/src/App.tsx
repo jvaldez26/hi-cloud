@@ -263,6 +263,10 @@ const ViajesPage                  = lazy(() => import('./pages/transporte/Viajes
 const CombustiblePage             = lazy(() => import('./pages/transporte/CombustiblePage'));
 const MantenimientoTransportePage = lazy(() => import('./pages/transporte/MantenimientoTransportePage'));
 const ReportesTransportePage      = lazy(() => import('./pages/transporte/ReportesTransportePage'));
+// Centro Educativo
+const EducativoDashboard          = lazy(() => import('./pages/educativo/EducativoDashboard'));
+const EstructuraAcademicaPage     = lazy(() => import('./pages/educativo/EstructuraAcademicaPage'));
+const EducativoPlaceholder        = lazy(() => import('./pages/educativo/EducativoPlaceholder'));
 dayjs.locale('es');
 
 export const qc = new QueryClient({
@@ -891,6 +895,25 @@ export default function App() {
                       <Route path="mantenimiento"     element={<MantenimientoTransportePage />} />
                       <Route path="reportes"          element={<ReportesTransportePage />} />
                     </Route>
+
+                    {/* ── Módulo Centro Educativo (add-on) ── */}
+                    <Route path="/educativo"               element={<EducativoDashboard />} />
+                    <Route path="/educativo/estructura"    element={<EstructuraAcademicaPage />} />
+                    <Route path="/educativo/estudiantes"   element={<EducativoPlaceholder titulo="Estudiantes" />} />
+                    <Route path="/educativo/matriculas"    element={<EducativoPlaceholder titulo="Matrículas" />} />
+                    <Route path="/educativo/docentes"      element={<EducativoPlaceholder titulo="Docentes" />} />
+                    <Route path="/educativo/notas"         element={<EducativoPlaceholder titulo="Calificaciones" />} />
+                    <Route path="/educativo/boletines"     element={<EducativoPlaceholder titulo="Boletines" />} />
+                    <Route path="/educativo/asistencia"    element={<EducativoPlaceholder titulo="Asistencia" />} />
+                    <Route path="/educativo/colegiatura"   element={<EducativoPlaceholder titulo="Colegiatura" />} />
+                    <Route path="/educativo/pagos"         element={<EducativoPlaceholder titulo="Pagos" />} />
+                    <Route path="/educativo/disciplina"    element={<EducativoPlaceholder titulo="Disciplina" />} />
+                    <Route path="/educativo/biblioteca"    element={<EducativoPlaceholder titulo="Biblioteca" />} />
+                    <Route path="/educativo/transporte"    element={<EducativoPlaceholder titulo="Transporte" />} />
+                    <Route path="/educativo/comedor"       element={<EducativoPlaceholder titulo="Comedor" />} />
+                    <Route path="/educativo/enfermeria"    element={<EducativoPlaceholder titulo="Enfermería" />} />
+                    <Route path="/educativo/comunicados"   element={<EducativoPlaceholder titulo="Comunicados" />} />
+                    <Route path="/educativo/reportes"      element={<EducativoPlaceholder titulo="Reportes" />} />
                   </Route>
 
                   <Route path="*" element={<Navigate to="/" replace />} />

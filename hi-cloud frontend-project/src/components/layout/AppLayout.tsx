@@ -19,7 +19,7 @@ import {
   FileText, BookOpen, PieChart, Database, Truck,
   UserCheck, Calculator, Shield, Bell, Globe, Wrench, Stethoscope, Pill,
   Factory, Target, Banknote, ClipboardList, Tags,
-  X, Lock, ChevronLeft, ChevronRight, MoreHorizontal, UtensilsCrossed, Landmark, Sprout,
+  X, Lock, ChevronLeft, ChevronRight, MoreHorizontal, UtensilsCrossed, Landmark, Sprout, GraduationCap,
   type LucideIcon,
 } from 'lucide-react';
 import { usePlan, type PlanTipo } from '../../hooks/usePlan';
@@ -152,6 +152,7 @@ const CATEGORY_ICONS: Record<string, LucideIcon> = {
   prestamista:   Landmark,
   agro:          Sprout,
   transporte:    Truck,
+  educativo:     GraduationCap,
 };
 
 const MENU_CATEGORIES: MenuCategory[] = MENU_CATEGORIES_DATA.map(cat => ({

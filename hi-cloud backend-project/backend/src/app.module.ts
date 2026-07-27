@@ -137,6 +137,7 @@ import { PrestamistatModule }         from './prestamista/prestamista.module';
 import { AgroModule }               from './agro/agro.module';
 import { TransporteModule }         from './transporte/transporte.module';
 import { EcfRecibidosModule }       from './ecf-recibidos/ecf-recibidos.module';
+import { EducativoModule }          from './educativo/educativo.module';
 
 @Module({
   imports: [
@@ -367,6 +368,7 @@ import { EcfRecibidosModule }       from './ecf-recibidos/ecf-recibidos.module';
     AgroModule,
     TransporteModule,
     EcfRecibidosModule,
+    EducativoModule,
   ],
   controllers: [AppController],
   providers: [

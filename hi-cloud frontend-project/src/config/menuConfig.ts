@@ -29,7 +29,7 @@ const ALL_ROLES       = ['admin', 'contador', 'vendedor', 'viewer'];
 
 export const ADDON_IDS: string[] = [
   'clinica', 'taller', 'optica', 'farmacia', 'restaurante',
-  'gimnasio', 'servicios_pro', 'prestamista', 'agro', 'transporte',
+  'gimnasio', 'servicios_pro', 'prestamista', 'agro', 'transporte', 'educativo',
 ];
 
 // ── Restricciones de ruta por rol ─────────────────────────────────────────────
@@ -224,6 +224,24 @@ export const PATH_ROLES: Record<string, string[]> = {
   '/transporte/combustible':         ADMIN_CONT,
   '/transporte/mantenimiento':       ADMIN_CONT,
   '/transporte/reportes':            ADMIN_CONT,
+  // ── Educativo ──────────────────────────────────────────────────────────
+  '/educativo':                      ALL_ROLES,
+  '/educativo/estudiantes':          ALL_ROLES,
+  '/educativo/matriculas':           ADMIN_CONT_VEND,
+  '/educativo/estructura':           ADMIN_CONT,
+  '/educativo/docentes':             ADMIN_CONT,
+  '/educativo/notas':                ALL_ROLES,
+  '/educativo/boletines':            ALL_ROLES,
+  '/educativo/asistencia':           ALL_ROLES,
+  '/educativo/colegiatura':          ADMIN_CONT_VEND,
+  '/educativo/pagos':                ADMIN_CONT_VEND,
+  '/educativo/disciplina':           ALL_ROLES,
+  '/educativo/biblioteca':           ALL_ROLES,
+  '/educativo/transporte':           ADMIN_CONT,
+  '/educativo/comedor':              ADMIN_CONT,
+  '/educativo/enfermeria':           ALL_ROLES,
+  '/educativo/comunicados':          ADMIN_CONT_VEND,
+  '/educativo/reportes':             ADMIN_CONT,
 };
 
 // ── Función de permisos ───────────────────────────────────────────────────────
@@ -532,6 +550,28 @@ export const MENU_CATEGORIES_DATA: MenuCategoryData[] = [
       { path: '/transporte/combustible',   label: 'Combustible' },
       { path: '/transporte/mantenimiento', label: 'Mantenimiento' },
       { path: '/transporte/reportes',      label: 'Reportes' },
+    ],
+  },
+  {
+    id: 'educativo', label: 'Centro Educativo',
+    items: [
+      { path: '/educativo',              label: 'Panel' },
+      { path: '/educativo/estudiantes',  label: 'Estudiantes' },
+      { path: '/educativo/matriculas',   label: 'Matrículas' },
+      { path: '/educativo/estructura',   label: 'Estructura' },
+      { path: '/educativo/docentes',     label: 'Docentes' },
+      { path: '/educativo/notas',        label: 'Calificaciones' },
+      { path: '/educativo/boletines',    label: 'Boletines' },
+      { path: '/educativo/asistencia',   label: 'Asistencia' },
+      { path: '/educativo/colegiatura',  label: 'Colegiatura' },
+      { path: '/educativo/pagos',        label: 'Pagos' },
+      { path: '/educativo/disciplina',   label: 'Disciplina' },
+      { path: '/educativo/biblioteca',   label: 'Biblioteca' },
+      { path: '/educativo/transporte',   label: 'Transporte' },
+      { path: '/educativo/comedor',      label: 'Comedor' },
+      { path: '/educativo/enfermeria',   label: 'Enfermería' },
+      { path: '/educativo/comunicados',  label: 'Comunicados' },
+      { path: '/educativo/reportes',     label: 'Reportes' },
     ],
   },
 ];
