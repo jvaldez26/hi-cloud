@@ -41,6 +41,7 @@ export class UomController {
   inicializar() { return this.svc.inicializarUnidades(); }
 
   @Get()
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER, UserRole.EMPLEADO)
   @ApiOperation({ summary: 'Listar unidades de medida activas. Filtrar por tipo' })
   @ApiQuery({ name: 'tipo', required: false })
   getUnidades(@Query('tipo') tipo?: TipoUnidad) { return this.svc.getUnidades(tipo); }
