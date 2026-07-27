@@ -778,7 +778,7 @@ function ProductosCatalogo() {
     }
     const itbis  = values.porcentajeIva ?? 18;
     const pBase  = precioConItbis
-      ? Math.round((Number(precioInput) / (1 + itbis / 100)) * 100) / 100
+      ? Math.round((Number(precioInput) / (1 + itbis / 100)) * 10000) / 10000
       : Number(precioInput);
     const payload: ProductoPayload = {
       ...values,
@@ -1069,7 +1069,7 @@ function ProductosCatalogo() {
               {/* ── Precio con toggle "Con ITBIS" ── */}
               {(() => {
                 const pBase  = precioConItbis
-                  ? Math.round((Number(precioInput) / (1 + itbisWatch / 100)) * 100) / 100
+                  ? Math.round((Number(precioInput) / (1 + itbisWatch / 100)) * 10000) / 10000
                   : Number(precioInput);
                 const mItbis = Math.round((pBase * (itbisWatch / 100)) * 100) / 100;
                 const pFinal = Math.round((pBase + mItbis) * 100) / 100;

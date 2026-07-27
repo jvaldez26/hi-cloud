@@ -24,13 +24,13 @@ export class Producto extends TenantBaseEntity {
   @Column({ length: 20, default: 'PZA' })
   unidadMedida!: string;
 
-  @Column({ type: 'decimal', precision: 12, scale: 2 })
+  @Column({ type: 'decimal', precision: 14, scale: 4 })
   precio!: number;
 
-  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  @Column({ type: 'decimal', precision: 14, scale: 4, nullable: true })
   precio2?: number;
 
-  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  @Column({ type: 'decimal', precision: 14, scale: 4, nullable: true })
   precio3?: number;
 
   @Column({ type: 'decimal', precision: 5, scale: 2, default: 18 })

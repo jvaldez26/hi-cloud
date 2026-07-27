@@ -105,7 +105,8 @@ export class FacturasService {
       const porcentajeIva = item.porcentajeIva ?? (producto ? Number(producto.porcentajeIva) : 18);
 
       // Descuento por línea: monto fijo tiene precedencia; pct se aplica solo si monto = 0
-      const bruto = r2(Number(item.precioUnitario) * item.cantidad);
+      const precioRaw = Number(item.precioUnitario) * item.cantidad;
+      const bruto = r2(precioRaw);
       let descLinea = 0;
       const dm = Number(item.descuentoMonto ?? 0);
       const dp = Number(item.descuentoPct   ?? 0);
@@ -133,6 +134,8 @@ export class FacturasService {
         importeIva: 0,  // provisional
         total:      0,  // provisional
       });
+      // Base sin redondear intermedio para calcular IVA con precisión completa en el segundo loop
+      (detalles[detalles.length - 1] as any)._baseRaw = precioRaw - descLinea;
     }
 
     subtotalBase = r2(subtotalBase);
@@ -152,13 +155,16 @@ export class FacturasService {
     let subtotalFactura = 0;
     let ivaFactura = 0;
     for (const d of detalles) {
+      const baseRaw: number = (d as any)._baseRaw ?? Number(d.subtotal!);
       const subtotNeto = Number(d.subtotal!);
       // Proporción de este detalle sobre el total pre-desc-general
       const descProp = subtotalBase > 0
         ? r2((subtotNeto / subtotalBase) * descGeneral)
         : 0;
       const subtotFinal = r2(subtotNeto - descProp);
-      const ivaLinea    = r2(subtotFinal * (Number(d.porcentajeIva) / 100));
+      // IVA sobre base cruda (sin redondeo intermedio) para evitar error de ±1 centavo
+      const rawFinal = subtotNeto > 0 ? baseRaw * (subtotFinal / subtotNeto) : subtotFinal;
+      const ivaLinea    = r2(rawFinal * (Number(d.porcentajeIva) / 100));
       d.subtotal   = subtotFinal;
       d.importeIva = ivaLinea;
       d.total      = r2(subtotFinal + ivaLinea);
@@ -323,7 +329,8 @@ export class FacturasService {
 
       const porcentajeIva = item.porcentajeIva ?? (producto ? Number(producto.porcentajeIva) : 18);
 
-      const brutoU = r2u(Number(item.precioUnitario) * item.cantidad);
+      const precioRawU = Number(item.precioUnitario) * item.cantidad;
+      const brutoU = r2u(precioRawU);
       let descLineaU = 0;
       const dmU = Number(item.descuentoMonto ?? 0);
       const dpU = Number(item.descuentoPct   ?? 0);
@@ -349,6 +356,7 @@ export class FacturasService {
         importeIva: 0,
         total:      0,
       });
+      (detalles[detalles.length - 1] as any)._baseRaw = precioRawU - descLineaU;
     }
 
     subtotalBaseU = r2u(subtotalBaseU);
@@ -365,12 +373,14 @@ export class FacturasService {
     let subtotalFactura = 0;
     let ivaFactura = 0;
     for (const d of detalles) {
+      const baseRaw: number = (d as any)._baseRaw ?? Number(d.subtotal!);
       const subtotNeto = Number(d.subtotal!);
       const descProp = subtotalBaseU > 0
         ? r2u((subtotNeto / subtotalBaseU) * descGeneralU)
         : 0;
       const subtotFinal = r2u(subtotNeto - descProp);
-      const ivaLinea    = r2u(subtotFinal * (Number(d.porcentajeIva) / 100));
+      const rawFinal = subtotNeto > 0 ? baseRaw * (subtotFinal / subtotNeto) : subtotFinal;
+      const ivaLinea    = r2u(rawFinal * (Number(d.porcentajeIva) / 100));
       d.subtotal   = subtotFinal;
       d.importeIva = ivaLinea;
       d.total      = r2u(subtotFinal + ivaLinea);
