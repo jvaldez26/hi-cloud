@@ -270,6 +270,7 @@ const EducativoPlaceholder        = lazy(() => import('./pages/educativo/Educati
 const EstudiantesEdPage           = lazy(() => import('./pages/educativo/EstudiantesPage'));
 const TutoresEdPage               = lazy(() => import('./pages/educativo/TutoresPage'));
 const DocentesEdPage              = lazy(() => import('./pages/educativo/DocentesPage'));
+const MatriculasEdPage            = lazy(() => import('./pages/educativo/MatriculasPage'));
 dayjs.locale('es');
 
 export const qc = new QueryClient({
@@ -905,7 +906,7 @@ export default function App() {
                     <Route path="/educativo/estudiantes"   element={<EstudiantesEdPage />} />
                     <Route path="/educativo/tutores"       element={<TutoresEdPage />} />
                     <Route path="/educativo/docentes"      element={<DocentesEdPage />} />
-                    <Route path="/educativo/matriculas"    element={<EducativoPlaceholder titulo="Matrículas" />} />
+                    <Route path="/educativo/matriculas"    element={<MatriculasEdPage />} />
                     <Route path="/educativo/notas"         element={<EducativoPlaceholder titulo="Calificaciones" />} />
                     <Route path="/educativo/boletines"     element={<EducativoPlaceholder titulo="Boletines" />} />
                     <Route path="/educativo/asistencia"    element={<EducativoPlaceholder titulo="Asistencia" />} />
