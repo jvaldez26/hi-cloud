@@ -17,24 +17,34 @@ export class EdConfigService {
   }
 
   async upsertConfig(empresaId: number, dto: any) {
-    const existing = await this.getConfig(empresaId);
-    if (existing) {
-      const sets = Object.keys(dto)
-        .filter(k => k !== 'empresaId')
-        .map((k, i) => `"${k}" = $${i + 2}`)
-        .join(', ');
-      const vals = Object.keys(dto).filter(k => k !== 'empresaId').map(k => dto[k]);
-      await this.ds.query(
-        `UPDATE ed_config SET ${sets} WHERE "empresaId" = $1`,
-        [empresaId, ...vals],
-      );
-    } else {
-      const keys = ['empresaId', ...Object.keys(dto).filter(k => k !== 'empresaId')];
-      const vals = [empresaId, ...Object.keys(dto).filter(k => k !== 'empresaId').map(k => dto[k])];
-      const cols = keys.map(k => `"${k}"`).join(', ');
-      const params = keys.map((_, i) => `$${i + 1}`).join(', ');
-      await this.ds.query(`INSERT INTO ed_config (${cols}) VALUES (${params})`, vals);
-    }
+    const d = (k: string) => dto[k] ?? null;
+    await this.ds.query(
+      `INSERT INTO ed_config (
+         "empresaId", "nombreInstitucion", siglas, "logoUrl", "nivelEducativo",
+         director, vicedirector, secretaria, direccion, telefono, email,
+         "sitioWeb", "colorPrimario", "colorSecundario"
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       ON CONFLICT ("empresaId") DO UPDATE SET
+         "nombreInstitucion" = EXCLUDED."nombreInstitucion",
+         siglas              = EXCLUDED.siglas,
+         "logoUrl"           = EXCLUDED."logoUrl",
+         "nivelEducativo"    = EXCLUDED."nivelEducativo",
+         director            = EXCLUDED.director,
+         vicedirector        = EXCLUDED.vicedirector,
+         secretaria          = EXCLUDED.secretaria,
+         direccion           = EXCLUDED.direccion,
+         telefono            = EXCLUDED.telefono,
+         email               = EXCLUDED.email,
+         "sitioWeb"          = EXCLUDED."sitioWeb",
+         "colorPrimario"     = EXCLUDED."colorPrimario",
+         "colorSecundario"   = EXCLUDED."colorSecundario"`,
+      [
+        empresaId,
+        d('nombreInstitucion'), d('siglas'), d('logoUrl'), d('nivelEducativo'),
+        d('director'), d('vicedirector'), d('secretaria'), d('direccion'),
+        d('telefono'), d('email'), d('sitioWeb'), d('colorPrimario'), d('colorSecundario'),
+      ],
+    );
     return this.getConfig(empresaId);
   }
 
