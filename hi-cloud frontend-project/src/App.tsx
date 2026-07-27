@@ -273,6 +273,8 @@ const DocentesEdPage              = lazy(() => import('./pages/educativo/Docente
 const MatriculasEdPage            = lazy(() => import('./pages/educativo/MatriculasPage'));
 const PlanillaNotasEdPage         = lazy(() => import('./pages/educativo/PlanillaNotasPage'));
 const AsistenciaEdPage            = lazy(() => import('./pages/educativo/AsistenciaPage'));
+const ColegiaturaEdPage           = lazy(() => import('./pages/educativo/ColegiaturaPage'));
+const PagosEdPage                 = lazy(() => import('./pages/educativo/PagosEdPage'));
 dayjs.locale('es');
 
 export const qc = new QueryClient({
@@ -912,8 +914,8 @@ export default function App() {
                     <Route path="/educativo/notas"         element={<PlanillaNotasEdPage />} />
                     <Route path="/educativo/boletines"     element={<EducativoPlaceholder titulo="Boletines" />} />
                     <Route path="/educativo/asistencia"    element={<AsistenciaEdPage />} />
-                    <Route path="/educativo/colegiatura"   element={<EducativoPlaceholder titulo="Colegiatura" />} />
-                    <Route path="/educativo/pagos"         element={<EducativoPlaceholder titulo="Pagos" />} />
+                    <Route path="/educativo/colegiatura"   element={<ColegiaturaEdPage />} />
+                    <Route path="/educativo/pagos"         element={<PagosEdPage />} />
                     <Route path="/educativo/disciplina"    element={<EducativoPlaceholder titulo="Disciplina" />} />
                     <Route path="/educativo/biblioteca"    element={<EducativoPlaceholder titulo="Biblioteca" />} />
                     <Route path="/educativo/transporte"    element={<EducativoPlaceholder titulo="Transporte" />} />

@@ -40,8 +40,10 @@ import { DocentesService }       from './docentes/docentes.service';
 import { DocentesController }    from './docentes/docentes.controller';
 import { MatriculasService }     from './matriculas/matriculas.service';
 import { MatriculasController }  from './matriculas/matriculas.controller';
-import { AcademicoService }      from './academico/academico.service';
+import { AcademicoService }       from './academico/academico.service';
 import { AcademicoController }   from './academico/academico.controller';
+import { ColegiaturaService }    from './colegiatura/colegiatura.service';
+import { ColegiaturaController } from './colegiatura/colegiatura.controller';
 
 @Module({
   imports: [
@@ -63,6 +65,7 @@ import { AcademicoController }   from './academico/academico.controller';
     DocentesController,
     MatriculasController,
     AcademicoController,
+    ColegiaturaController,
   ],
   providers: [
     EdConfigService,
@@ -73,6 +76,7 @@ import { AcademicoController }   from './academico/academico.controller';
     DocentesService,
     MatriculasService,
     AcademicoService,
+    ColegiaturaService,
   ],
   exports: [EdConfigService, EstructuraService],
 })
