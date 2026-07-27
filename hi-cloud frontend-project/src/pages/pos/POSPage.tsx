@@ -2711,7 +2711,7 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
 
   const { data: mProdData } = useQuery<any>({
     queryKey: ['pos-mov-prods', mSearch],
-    queryFn:  () => api.get(`/productos?limit=10${mSearch ? '&search='+encodeURIComponent(mSearch) : ''}`)
+    queryFn:  () => api.get(`/productos?limit=10${mSearch ? '&search='+encodeURIComponent(mSearch) : ''}&incluirSinStock=true`)
       .then(r => { const d = r.data?.data ?? r.data; return d?.data ?? d ?? []; }),
     enabled:  !!movModal && mSearch.length > 0,
     staleTime: 15_000,
