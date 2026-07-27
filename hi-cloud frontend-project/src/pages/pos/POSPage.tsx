@@ -398,6 +398,7 @@ function CartRow({ item, onQty, onQtyDirecto, onRemove, onDescuento, onPrecio, o
   const [descFocus,    setDescFocus]    = useState(false);
   const [precioDraft,  setPrecioDraft]  = useState<string | null>(null);
   const [qtyDraft,     setQtyDraft]     = useState<number | null>(item.cantidad);
+  const [qtyEditing,   setQtyEditing]   = useState(false);
   // Sincronizar draft cuando cambia externamente (otro updater, restaurar venta)
   const prevCantidadRef = useRef(item.cantidad);
   if (prevCantidadRef.current !== item.cantidad) {
@@ -411,6 +412,13 @@ function CartRow({ item, onQty, onQtyDirecto, onRemove, onDescuento, onPrecio, o
     const v = parseFloat(raw.replace(/[^0-9.]/g, ''));
     if (v > 0) onPrecio?.(v);
     setPrecioDraft(null);
+  };
+
+  const confirmarQty = (raw: number | null) => {
+    const v = Math.max(1, Math.round(raw ?? item.cantidad));
+    setQtyDraft(v);
+    if (v !== item.cantidad) onQtyDirecto?.(v);
+    setQtyEditing(false);
   };
 
   return (
@@ -494,7 +502,34 @@ function CartRow({ item, onQty, onQtyDirecto, onRemove, onDescuento, onPrecio, o
                   color: item.cantidad <= 1 ? C.textMuted : C.text,
                   cursor: item.cantidad <= 1 ? 'not-allowed' : 'pointer',
                   fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', outline: 'none' }}>−</button>
-              <span style={{ width: 30, textAlign: 'center', fontSize: 13, fontWeight: 700, color: C.text }}>{item.cantidad}</span>
+              {qtyEditing ? (
+                <input
+                  type="number"
+                  autoFocus
+                  value={qtyDraft ?? item.cantidad}
+                  min={1}
+                  step={1}
+                  onFocus={e => e.target.select()}
+                  onChange={e => setQtyDraft(e.target.value === '' ? null : Number(e.target.value))}
+                  onBlur={() => confirmarQty(qtyDraft)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter')  confirmarQty(qtyDraft);
+                    if (e.key === 'Escape') { setQtyDraft(item.cantidad); setQtyEditing(false); }
+                  }}
+                  style={{ width: 44, height: 26, borderRadius: 6, textAlign: 'center', fontSize: 13,
+                    fontWeight: 700, outline: 'none', padding: '0 2px',
+                    border: `1px solid ${C.blue}`, background: 'transparent', color: C.text }}
+                />
+              ) : (
+                <span
+                  onClick={() => { setQtyDraft(item.cantidad); setQtyEditing(true); }}
+                  title="Click para editar cantidad"
+                  style={{ width: 30, textAlign: 'center', fontSize: 13, fontWeight: 700,
+                    color: C.text, cursor: 'pointer', borderBottom: `1px dashed ${C.border2}`,
+                    lineHeight: '26px', userSelect: 'none' }}>
+                  {item.cantidad}
+                </span>
+              )}
               <button onClick={() => onQty(1)}
                 disabled={(item.produto as any).tipo !== 'servicio' && item.cantidad >= Number(item.produto.stock)}
                 style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${C.border2}`, background: 'transparent',
