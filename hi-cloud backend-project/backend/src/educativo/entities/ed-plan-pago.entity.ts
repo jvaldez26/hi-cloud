@@ -17,4 +17,10 @@ export class EdPlanPago {
   @Column({ default: 0 }) diasGracia!: number;
   @Column({ default: true }) isActive!: boolean;
   @CreateDateColumn() createdAt!: Date;
+  // Columnas de plan por estudiante (migración FixColegiaturaSchema)
+  @Column({ nullable: true }) estudianteId?: number;
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true }) montoColegiatura?: number;
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true }) montoMatricula?: number;
+  @Column({ default: 5 }) diaCobro!: number;
+  @Column({ type: 'decimal', precision: 6, scale: 2, default: 0 }) descuento!: number;
 }

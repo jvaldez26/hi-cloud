@@ -11,7 +11,7 @@ export class EdCargo {
   @Column({ length: 30 }) tipo!: string;
   @Column({ length: 200, nullable: true }) concepto?: string;
   @Column({ length: 20, nullable: true }) periodo?: string;
-  @Column({ type: 'decimal', precision: 12, scale: 2 }) montoOriginal!: number;
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true }) montoOriginal?: number;
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 }) descuento!: number;
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 }) montoMora!: number;
   @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true }) montoTotal?: number;
@@ -23,4 +23,10 @@ export class EdCargo {
   @Column({ default: 0 }) diasMora!: number;
   @Column({ nullable: true }) facturaId?: number;
   @CreateDateColumn() createdAt!: Date;
+  // Columnas simplificadas (migración FixColegiaturaSchema)
+  @Column({ nullable: true }) planPagoId?: number;
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true }) monto?: number;
+  @Column({ length: 200, nullable: true }) descripcion?: string;
+  @Column({ nullable: true }) mes?: number;
+  @Column({ nullable: true }) anio?: number;
 }
