@@ -50,27 +50,32 @@ export class CreateProductoDto {
 
   @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
+  @Type(() => Number)
   precio: number;
 
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
+  @Type(() => Number)
   precio2?: number;
 
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
+  @Type(() => Number)
   precio3?: number;
 
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
+  @Type(() => Number)
   costo?: number;
 
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   @Max(100)
+  @Type(() => Number)
   porcentajeIva?: number;
 
   @IsOptional()
