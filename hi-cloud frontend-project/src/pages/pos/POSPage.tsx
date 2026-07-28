@@ -1334,6 +1334,11 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar 
     return () => clearInterval(id);
   }, []);
 
+  // Auto-seleccionar cuando el usuario solo tiene un vendedor vinculado
+  useEffect(() => {
+    if (vendedores.length === 1) setVendedorId(vendedores[0].id);
+  }, [vendedores]);
+
   // Validar que el vendedor/sucursal guardados sigan existiendo en las listas
   useEffect(() => {
     if (vendedores.length > 0 && vendedorId && !vendedores.find((v: any) => v.id === vendedorId)) {
@@ -1506,16 +1511,28 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar 
         {vendedores.length > 0 && (
           <div>
             <span style={{ fontSize: 12, color: C.textSub, marginBottom: 8, display: 'block' }}>Cajero responsable</span>
-            <Select
-              showSearch allowClear
-              placeholder="Selecciona el cajero"
-              style={{ width: '100%' }}
-              value={vendedorId}
-              onChange={(v) => setVendedorId(v)}
-              optionFilterProp="label"
-              options={vendedores.map((v: any) => ({ value: v.id, label: `${v.codigo ? v.codigo + ' — ' : ''}${v.nombre}` }))}
-              styles={{ popup: { root: { zIndex: 9999 } } }}
-            />
+            {vendedores.length === 1 ? (
+              <div style={{
+                padding: '8px 12px', borderRadius: 8,
+                border: `1px solid ${C.border2}`, background: C.inputBg,
+                color: C.text, fontSize: 14,
+                display: 'flex', alignItems: 'center', gap: 8,
+              }}>
+                <span style={{ fontSize: 16 }}>👤</span>
+                <span>{vendedores[0].codigo ? `${vendedores[0].codigo} — ` : ''}{vendedores[0].nombre}</span>
+              </div>
+            ) : (
+              <Select
+                showSearch allowClear
+                placeholder="Selecciona el cajero"
+                style={{ width: '100%' }}
+                value={vendedorId}
+                onChange={(v) => setVendedorId(v)}
+                optionFilterProp="label"
+                options={vendedores.map((v: any) => ({ value: v.id, label: `${v.codigo ? v.codigo + ' — ' : ''}${v.nombre}` }))}
+                styles={{ popup: { root: { zIndex: 9999 } } }}
+              />
+            )}
           </div>
         )}
 
@@ -8553,6 +8570,13 @@ export default function POSPage() {
     retry: 3,
     retryDelay: 1_000,
   });
+  // Vendedor vinculado al usuario logueado — si existe, solo se muestra ese en apertura de turno
+  const { data: miVendedor = null } = useQuery<any | null>({
+    queryKey: ['mi-vendedor-pos'],
+    queryFn:  () => api.get('/vendedores/mi-perfil').then((r: any) => r.data?.data ?? r.data ?? null).catch(() => null),
+    staleTime: 10 * 60_000,
+  });
+  const vendedoresPOS: any[] = miVendedor ? [miVendedor] : vendedores;
   // Usuarios activos de la empresa con email — para Cambiar Usuario
   const { data: usuariosEmpresa = [] } = useQuery<any[]>({
     queryKey: ['pos-cajeros'],
@@ -9692,7 +9716,7 @@ export default function POSPage() {
       background: palette.bg, fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
       color: palette.text, overflow: 'hidden',
     }}>
-      <ModalAperturaTurno open={!turnoAbierto} vendedores={vendedores} sucursales={sucursales}
+      <ModalAperturaTurno open={!turnoAbierto} vendedores={vendedoresPOS} sucursales={sucursales}
         onAbrir={async (m, vid, sid) => {
           if (vid) {
             setVendedorId(vid);
