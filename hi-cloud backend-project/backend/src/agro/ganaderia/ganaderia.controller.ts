@@ -7,6 +7,7 @@ import { UserRole } from '../../users/enums/user-role.enum';
 import { ModuloAddonGuard } from '../../modulos-addon/guards/modulo-addon.guard';
 import { TenantService } from '../../tenant/tenant.service';
 import { GanaderiaService } from './ganaderia.service';
+import { CrearAnimalDto, ActualizarAnimalDto, CrearEventoAnimalDto } from '../dto/agro.dto';
 
 @Controller('agro/animales')
 @UseGuards(JwtAuthGuard, RolesGuard, TenantGuard, ModuloAddonGuard('agro'))
@@ -17,16 +18,16 @@ export class GanaderiaController {
   @Get()        @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   findAll(@Query() q: any)   { return this.svc.findAll(this.empresaId, q); }
   @Post()       @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  create(@Body() body: any)  { return this.svc.create(this.empresaId, body); }
+  create(@Body() body: CrearAnimalDto)  { return this.svc.create(this.empresaId, body); }
   @Get(':id')   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   findOne(@Param('id', ParseIntPipe) id: number) { return this.svc.findOne(this.empresaId, id); }
   // PATCH es el vehículo de la BAJA de ganado (estado/isActive) → acción sensible: ADMIN/CONTADOR
   @Patch(':id') @Roles(UserRole.ADMIN, UserRole.CONTADOR)
-  update(@Param('id', ParseIntPipe) id: number, @Body() body: any) { return this.svc.update(this.empresaId, id, body); }
+  update(@Param('id', ParseIntPipe) id: number, @Body() body: ActualizarAnimalDto) { return this.svc.update(this.empresaId, id, body); }
   @Get(':id/eventos')    @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   getEventos(@Param('id', ParseIntPipe) id: number) { return this.svc.getEventos(this.empresaId, id); }
   @Post(':id/eventos')   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  crearEvento(@Param('id', ParseIntPipe) id: number, @Body() body: any) { return this.svc.createEvento(this.empresaId, id, body); }
+  crearEvento(@Param('id', ParseIntPipe) id: number, @Body() body: CrearEventoAnimalDto) { return this.svc.createEvento(this.empresaId, id, body); }
   @Get(':id/genealogia') @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   getGeneal(@Param('id', ParseIntPipe) id: number) { return this.svc.getGenealogía(this.empresaId, id); }
 }

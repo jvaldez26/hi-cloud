@@ -7,6 +7,7 @@ import { UserRole } from '../../users/enums/user-role.enum';
 import { ModuloAddonGuard } from '../../modulos-addon/guards/modulo-addon.guard';
 import { TenantService } from '../../tenant/tenant.service';
 import { CultivosService } from './cultivos.service';
+import { CrearCultivoDto, ActualizarCultivoDto } from '../dto/agro.dto';
 
 @Controller('agro/cultivos')
 @UseGuards(JwtAuthGuard, RolesGuard, TenantGuard, ModuloAddonGuard('agro'))
@@ -17,7 +18,7 @@ export class CultivosController {
   @Get()        @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   findAll()                                       { return this.svc.findAll(this.empresaId); }
   @Post()       @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  create(@Body() body: any)                       { return this.svc.create(this.empresaId, body); }
+  create(@Body() body: CrearCultivoDto)                       { return this.svc.create(this.empresaId, body); }
   @Patch(':id') @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  update(@Param('id', ParseIntPipe) id: number, @Body() body: any) { return this.svc.update(this.empresaId, id, body); }
+  update(@Param('id', ParseIntPipe) id: number, @Body() body: ActualizarCultivoDto) { return this.svc.update(this.empresaId, id, body); }
 }

@@ -7,6 +7,10 @@ import { UserRole } from '../../users/enums/user-role.enum';
 import { ModuloAddonGuard } from '../../modulos-addon/guards/modulo-addon.guard';
 import { TenantService } from '../../tenant/tenant.service';
 import { FincasService } from './fincas.service';
+import {
+  CrearFincaDto, ActualizarFincaDto,
+  CrearParcelaDto, ActualizarParcelaDto,
+} from '../dto/agro.dto';
 
 @Controller('agro/fincas')
 @UseGuards(JwtAuthGuard, RolesGuard, TenantGuard, ModuloAddonGuard('agro'))
@@ -19,9 +23,9 @@ export class FincasController {
   @Get(':id')  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   findOne(@Param('id', ParseIntPipe) id: number) { return this.svc.findOne(this.empresaId, id); }
   @Post()      @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  create(@Body() body: any)                    { return this.svc.create(this.empresaId, body); }
+  create(@Body() body: CrearFincaDto)                    { return this.svc.create(this.empresaId, body); }
   @Patch(':id') @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  update(@Param('id', ParseIntPipe) id: number, @Body() body: any) { return this.svc.update(this.empresaId, id, body); }
+  update(@Param('id', ParseIntPipe) id: number, @Body() body: ActualizarFincaDto) { return this.svc.update(this.empresaId, id, body); }
 
   @Get(':id/parcelas') @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   findParcelas(@Param('id', ParseIntPipe) id: number) {
@@ -41,9 +45,9 @@ export class ParcelasController {
   @Get()       @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   findAll(@Query() q: any)   { return this.svc.findParcelas(this.empresaId); }
   @Post()      @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  create(@Body() body: any)  { return this.svc.createParcela(this.empresaId, body); }
+  create(@Body() body: CrearParcelaDto)  { return this.svc.createParcela(this.empresaId, body); }
   @Patch(':id') @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  update(@Param('id', ParseIntPipe) id: number, @Body() body: any) {
+  update(@Param('id', ParseIntPipe) id: number, @Body() body: ActualizarParcelaDto) {
     return this.svc.updateParcela(this.empresaId, id, body);
   }
 }

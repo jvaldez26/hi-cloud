@@ -7,6 +7,7 @@ import { UserRole } from '../../users/enums/user-role.enum';
 import { ModuloAddonGuard } from '../../modulos-addon/guards/modulo-addon.guard';
 import { TenantService } from '../../tenant/tenant.service';
 import { InsumosService } from './insumos.service';
+import { CrearInsumoDto, ActualizarInsumoDto } from '../dto/agro.dto';
 
 @Controller('agro/insumos')
 @UseGuards(JwtAuthGuard, RolesGuard, TenantGuard, ModuloAddonGuard('agro'))
@@ -17,8 +18,8 @@ export class InsumosController {
   @Get()        @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   findAll(@Query() q: any)  { return this.svc.findAll(this.empresaId, q); }
   @Post()       @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  create(@Body() body: any) { return this.svc.create(this.empresaId, body); }
+  create(@Body() body: CrearInsumoDto) { return this.svc.create(this.empresaId, body); }
   // PATCH es el vehículo del AJUSTE DE STOCK/COSTO → acción sensible: ADMIN/CONTADOR
   @Patch(':id') @Roles(UserRole.ADMIN, UserRole.CONTADOR)
-  update(@Param('id', ParseIntPipe) id: number, @Body() body: any) { return this.svc.update(this.empresaId, id, body); }
+  update(@Param('id', ParseIntPipe) id: number, @Body() body: ActualizarInsumoDto) { return this.svc.update(this.empresaId, id, body); }
 }
