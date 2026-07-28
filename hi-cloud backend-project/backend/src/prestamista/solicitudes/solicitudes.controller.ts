@@ -8,7 +8,7 @@ import { UserRole } from '../../users/enums/user-role.enum';
 import { ModuloAddonGuard } from '../../modulos-addon/guards/modulo-addon.guard';
 import { TenantService } from '../../tenant/tenant.service';
 import { SolicitudesService } from './solicitudes.service';
-import { CrearSolicitudDto, DecidirSolicitudDto } from '../dto/prestamista.dto';
+import { CrearSolicitudDto, DecidirSolicitudDto, ActualizarSolicitudDto } from '../dto/prestamista.dto';
 
 @Controller('prestamista/solicitudes')
 @UseGuards(JwtAuthGuard, TenantGuard, RolesGuard, ModuloAddonGuard('prestamista'))
@@ -31,7 +31,7 @@ export class SolicitudesController {
   // PATCH genérico: solo campos NO sensibles (la decisión va por /decidir).
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  update(@Param('id', ParseIntPipe) id: number, @Body() body: any) { return this.svc.update(this.empresaId, id, body); }
+  update(@Param('id', ParseIntPipe) id: number, @Body() body: ActualizarSolicitudDto) { return this.svc.update(this.empresaId, id, body); }
   // Aprobar/rechazar: supervisión (no existe rol SUPERVISOR → CONTADOR/ADMIN).
   // La segregación (creador != aprobador) se valida en el service.
   @Post(':id/decidir')

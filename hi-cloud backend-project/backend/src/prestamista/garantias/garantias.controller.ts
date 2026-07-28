@@ -8,6 +8,7 @@ import { UserRole } from '../../users/enums/user-role.enum';
 import { ModuloAddonGuard } from '../../modulos-addon/guards/modulo-addon.guard';
 import { TenantService } from '../../tenant/tenant.service';
 import { GarantiasService } from './garantias.service';
+import { CrearGarantiaDto, ActualizarGarantiaDto } from '../dto/prestamista.dto';
 
 @Controller('prestamista/garantias')
 @UseGuards(JwtAuthGuard, TenantGuard, RolesGuard, ModuloAddonGuard('prestamista'))
@@ -32,8 +33,8 @@ export class GarantiasController {
   findOne(@Param('id', ParseIntPipe) id: number) { return this.svc.findOne(this.empresaId, id); }
   @Post()
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  create(@Body() body: any) { return this.svc.create(this.empresaId, body); }
+  create(@Body() body: CrearGarantiaDto) { return this.svc.create(this.empresaId, body); }
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  update(@Param('id', ParseIntPipe) id: number, @Body() body: any) { return this.svc.update(this.empresaId, id, body); }
+  update(@Param('id', ParseIntPipe) id: number, @Body() body: ActualizarGarantiaDto) { return this.svc.update(this.empresaId, id, body); }
 }

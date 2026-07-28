@@ -8,6 +8,7 @@ import { UserRole } from '../../users/enums/user-role.enum';
 import { ModuloAddonGuard } from '../../modulos-addon/guards/modulo-addon.guard';
 import { TenantService } from '../../tenant/tenant.service';
 import { DeudoresService } from './deudores.service';
+import { CrearDeudorDto, ActualizarDeudorDto } from '../dto/prestamista.dto';
 
 @Controller('prestamista/deudores')
 @UseGuards(JwtAuthGuard, TenantGuard, RolesGuard, ModuloAddonGuard('prestamista'))
@@ -26,12 +27,12 @@ export class DeudoresController {
   // Registrar deudor: operador básico o superior.
   @Post()
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  create(@Body() body: any) { return this.svc.create(this.empresaId, body); }
+  create(@Body() body: CrearDeudorDto) { return this.svc.create(this.empresaId, body); }
   // PATCH es el vehículo de quitar de lista negra / reactivar (enListaNegra, isActive)
   // → acción sensible: CONTADOR/ADMIN.
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)
-  update(@Param('id', ParseIntPipe) id: number, @Body() body: any) { return this.svc.update(this.empresaId, id, body); }
+  update(@Param('id', ParseIntPipe) id: number, @Body() body: ActualizarDeudorDto) { return this.svc.update(this.empresaId, id, body); }
   @Delete(':id')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   remove(@Param('id', ParseIntPipe) id: number) { return this.svc.remove(this.empresaId, id); }

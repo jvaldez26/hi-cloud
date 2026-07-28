@@ -8,6 +8,7 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { UserRole } from '../../users/enums/user-role.enum';
 import { TenantService } from '../../tenant/tenant.service';
 import { CobranzaService } from './cobranza.service';
+import { RegistrarGestionDto } from '../dto/prestamista.dto';
 
 @Controller('prestamista/cobranza')
 @UseGuards(JwtAuthGuard, TenantGuard, RolesGuard, ModuloAddonGuard('prestamista'))
@@ -31,7 +32,7 @@ export class CobranzaController {
   // Registrar gestión de cobro: operador básico o superior.
   @Post('gestiones')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  registrarGestion(@Body() body: any) { return this.svc.registrarGestion(this.empresaId, body); }
+  registrarGestion(@Body() body: RegistrarGestionDto) { return this.svc.registrarGestion(this.empresaId, body); }
 
   @Post('prestamo/:prestamoId/notificar-mora')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)

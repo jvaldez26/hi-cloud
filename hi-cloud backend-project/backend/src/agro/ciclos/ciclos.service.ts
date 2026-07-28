@@ -212,8 +212,8 @@ export class CiclosService {
       costoTotal: costo,
       ingresoVentas: ingreso,
       rentabilidad,
-      margenPct: ingreso > 0 ? +((rentabilidad / ingreso) * 100).toFixed(2) : 0,
-      costoPorUnidad: cosechado > 0 ? +(costo / cosechado).toFixed(2) : 0,
+      margenPct: ingreso > 0 ? Math.round((rentabilidad / ingreso) * 100 * 100) / 100 : 0,
+      costoPorUnidad: cosechado > 0 ? Math.round((costo / cosechado) * 100) / 100 : 0,
       cantidadCosechada: cosechado,
       unidadCosecha: ciclo.unidadCosecha,
     };
@@ -329,7 +329,7 @@ export class CiclosService {
     }
 
     const costoTotal = data.costoTotal ?? (data.costoUnitario && data.cantidad
-      ? +(Number(data.costoUnitario) * Number(data.cantidad)).toFixed(2) : null);
+      ? Math.round(Number(data.costoUnitario) * Number(data.cantidad) * 100) / 100 : null);
 
     // INSERT de la aplicación + descuento de stock en UNA transacción: si algo
     // falla, no queda ni la aplicación ni un stock descontado a medias.

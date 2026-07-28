@@ -10,6 +10,7 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { UserRole } from '../../users/enums/user-role.enum';
 import { ModuloAddonGuard } from '../../modulos-addon/guards/modulo-addon.guard';
 import { VehiculosService } from './vehiculos.service';
+import { CrearVehiculoDto, ActualizarVehiculoDto } from '../dto/prestamista.dto';
 
 @Controller('prestamista/vehiculos')
 @UseGuards(JwtAuthGuard, TenantGuard, RolesGuard, ModuloAddonGuard('prestamista'))
@@ -36,9 +37,9 @@ export class VehiculosController {
 
   @Post()
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  create(@Body() body: any) { return this.svc.create(body); }
+  create(@Body() body: CrearVehiculoDto) { return this.svc.create(body); }
 
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  update(@Param('id', ParseIntPipe) id: number, @Body() body: any) { return this.svc.update(id, body); }
+  update(@Param('id', ParseIntPipe) id: number, @Body() body: ActualizarVehiculoDto) { return this.svc.update(id, body); }
 }

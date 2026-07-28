@@ -8,7 +8,7 @@ import { UserRole } from '../../users/enums/user-role.enum';
 import { ModuloAddonGuard } from '../../modulos-addon/guards/modulo-addon.guard';
 import { TenantService } from '../../tenant/tenant.service';
 import { PrestamosService } from './prestamos.service';
-import { CrearPrestamoDto, CancelarPrestamoDto } from '../dto/prestamista.dto';
+import { CrearPrestamoDto, CancelarPrestamoDto, SimularPrestamoDto } from '../dto/prestamista.dto';
 
 @Controller('prestamista/prestamos')
 @UseGuards(JwtAuthGuard, TenantGuard, RolesGuard, ModuloAddonGuard('prestamista'))
@@ -31,7 +31,7 @@ export class PrestamosController {
   // Simular es solo cálculo (lectura) → cualquier miembro.
   @Post('simular')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
-  simular(@Body() body: any) { return this.svc.simular(body); }
+  simular(@Body() body: SimularPrestamoDto) { return this.svc.simular(body); }
   @Patch(':id/cancelar')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   cancelar(@Param('id', ParseIntPipe) id: number, @Body() body: CancelarPrestamoDto) {
