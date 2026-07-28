@@ -53,6 +53,7 @@ AppDataSource.initialize()
 
     const columnIssues = [];
     const checkedTables = new Set();
+    let totalColumns = 0;
 
     for (const meta of ds.entityMetadatas) {
       const table  = meta.tableName;
@@ -67,10 +68,17 @@ AppDataSource.initialize()
         continue;
       }
 
+      checkedTables.add(table);
+      totalColumns += meta.columns.length;
+
       for (const col of meta.columns) {
         if (!dbCols.has(col.databaseName)) {
+          // Muestra: tabla, columna DB, propiedad TypeScript y nombre de entidad
+          const prop = col.propertyName !== col.databaseName
+            ? ` (prop TS: "${col.propertyName}")`
+            : '';
           columnIssues.push(
-            `[${table}] columna "${col.databaseName}" (entity: ${meta.name})`,
+            `  ✗ ${meta.name}.${col.propertyName}  →  tabla "${table}", columna "${col.databaseName}"${prop}`,
           );
         }
       }
@@ -80,8 +88,8 @@ AppDataSource.initialize()
 
     if (columnIssues.length > 0) {
       console.error('');
-      console.error('❌ SCHEMA MISMATCH — columnas en entity sin migración en BD:');
-      columnIssues.forEach(i => console.error('  ✗', i));
+      console.error(`❌ SCHEMA MISMATCH — ${columnIssues.length} columna(s) en entity sin migración en BD:`);
+      columnIssues.forEach(i => console.error(i));
       console.error('');
       console.error('  → Crea una migración TypeScript en src/migrations/');
       console.error('    npm run migration:generate -- src/migrations/NombreCambio');
@@ -91,10 +99,11 @@ AppDataSource.initialize()
     }
 
     const totalEntities = ds.entityMetadatas.length;
-    console.log(`✅ Schema validado — ${totalEntities} entidades OK, todas las columnas presentes en BD`);
+    console.log(`✅ Schema validado — ${totalEntities} entidades OK, ${totalColumns} columnas presentes en BD`);
     process.exit(0);
   })
   .catch((err) => {
     console.error('❌ Error conectando/validando schema:', err.message);
+    console.error('   → Verifica DATABASE_URL y que dist/ esté compilado (npm run build).');
     process.exit(1);
   });
