@@ -8570,13 +8570,18 @@ export default function POSPage() {
     retry: 3,
     retryDelay: 1_000,
   });
-  // Vendedor vinculado al usuario logueado — si existe, solo se muestra ese en apertura de turno
+  // Vendedor vinculado al usuario logueado — solo se restringe para usuarios con rol vendedor
+  const esRolVendedor = user?.role === 'vendedor';
   const { data: miVendedor = null } = useQuery<any | null>({
     queryKey: ['mi-vendedor-pos'],
-    queryFn:  () => api.get('/vendedores/mi-perfil').then((r: any) => r.data?.data ?? r.data ?? null).catch(() => null),
+    queryFn:  () => api.get('/vendedores/mi-perfil').then((r: any) => {
+      const d = r.data?.data ?? r.data;
+      return (d && typeof d === 'object' && d.id) ? d : null;
+    }).catch(() => null),
+    enabled:  esRolVendedor,
     staleTime: 10 * 60_000,
   });
-  const vendedoresPOS: any[] = miVendedor ? [miVendedor] : vendedores;
+  const vendedoresPOS: any[] = (esRolVendedor && miVendedor) ? [miVendedor] : vendedores;
   // Usuarios activos de la empresa con email — para Cambiar Usuario
   const { data: usuariosEmpresa = [] } = useQuery<any[]>({
     queryKey: ['pos-cajeros'],
