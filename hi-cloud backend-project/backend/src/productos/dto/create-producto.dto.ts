@@ -48,19 +48,19 @@ export class CreateProductoDto {
   @MaxLength(20)
   unidadMedida?: string;
 
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsNumber({ maxDecimalPlaces: 4 })
   @IsPositive()
   @Type(() => Number)
   precio: number;
 
   @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsNumber({ maxDecimalPlaces: 4 })
   @Min(0)
   @Type(() => Number)
   precio2?: number;
 
   @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsNumber({ maxDecimalPlaces: 4 })
   @Min(0)
   @Type(() => Number)
   precio3?: number;

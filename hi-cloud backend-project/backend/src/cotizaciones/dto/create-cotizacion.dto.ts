@@ -16,7 +16,7 @@ export class CreateCotizacionDetalleDto {
   @Type(() => Number)
   cantidad: number;
 
-  @IsNumber({ maxDecimalPlaces: 2 }) @IsPositive()
+  @IsNumber({ maxDecimalPlaces: 4 }) @IsPositive()
   precioUnitario: number;
 
   @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(100)

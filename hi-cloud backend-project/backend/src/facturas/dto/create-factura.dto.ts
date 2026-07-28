@@ -47,7 +47,7 @@ export class CreateFacturaDetalleDto {
   @Type(() => Number)
   cantidad: number;
 
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsNumber({ maxDecimalPlaces: 4 })
   @IsPositive()
   precioUnitario: number;
 
