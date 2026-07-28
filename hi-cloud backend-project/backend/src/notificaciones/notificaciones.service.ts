@@ -205,7 +205,7 @@ export class NotificacionesService {
               s."fechaVencimiento"::text
        FROM secuencias_ecf s
        JOIN tipos_ecf t ON t.id = s."tipoECFId"
-       WHERE s."isActive" = true AND s."isAgotada" = false AND s."empresaId" = $1
+       WHERE s."isActiva" = true AND s."isAgotada" = false AND s."empresaId" = $1
          AND (s."fechaVencimiento" <= CURRENT_DATE + 30
               OR (s."secuenciaFinal" - s."secuenciaActual") * 100.0
                  / NULLIF(s."secuenciaFinal" - s."secuenciaInicial" + 1, 0) <= 10)
