@@ -480,7 +480,7 @@ export default function FacturaFormPage() {
       // Orden de Compra
       ...(ordenCompraNumero.trim() ? { ordenCompraNumero: ordenCompraNumero.trim() } : {}),
       // Formas de pago múltiples
-      ...(formasPago.length > 0 ? { formasPago } : {}),
+      ...(formasPago.some(fp => fp.monto > 0) ? { formasPago: formasPago.filter(fp => fp.monto > 0) } : {}),
       // Descuento general
       ...(descGeneralValor > 0 ? {
         descuentoGeneralTipo:  descGeneralTipo,

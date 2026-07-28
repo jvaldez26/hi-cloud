@@ -9227,7 +9227,7 @@ export default function POSPage() {
         // formasPago — backend ya acepta este campo; arqueo sigue leyendo notas (Fase 2)
         ...(tipoPagoPos === 'CONTADO' ? {
           formasPago: esMixto
-            ? formasPagoList.map(fp => ({ tipo: METODO_TIPO_MAP[fp.metodo] as 1|2|3|4|5|6, monto: fp.monto, ...(fp.referencia ? { referencia: fp.referencia } : {}) }))
+            ? formasPagoList.filter(fp => fp.monto > 0).map(fp => ({ tipo: METODO_TIPO_MAP[fp.metodo] as 1|2|3|4|5|6, monto: fp.monto, ...(fp.referencia ? { referencia: fp.referencia } : {}) }))
             : [{ tipo: METODO_TIPO_MAP[metodoPago] as 1|2|3|4|5|6, monto: totalAPagar }],
         } : {}),
       };
