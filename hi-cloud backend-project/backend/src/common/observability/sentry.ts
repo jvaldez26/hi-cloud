@@ -30,7 +30,7 @@ export function sanitizeUrl(url: string): string {
  */
 export function reportServerError(
   exception: unknown,
-  ctx: { status: number; method: string; url: string },
+  ctx: { status: number; method: string; url: string; extra?: Record<string, unknown> },
 ): void {
   if (!Sentry.getClient()) return;
   try {
@@ -47,9 +47,13 @@ export function reportServerError(
     if (userId != null)    tags.userId    = String(userId);
     if (requestId)         tags.requestId = requestId;
 
-    Sentry.captureException(exception, { level: 'error', tags });
-  } catch {
-    /* nunca romper el flujo de respuesta por un fallo de observabilidad */
+    Sentry.withIsolationScope((scope) => {
+      scope.setTags(tags);
+      if (ctx.extra) scope.setExtras(ctx.extra);
+      Sentry.captureException(exception, { level: 'error' });
+    });
+  } catch (e) {
+    console.error('[Sentry] reportServerError failed:', e);
   }
 }
 

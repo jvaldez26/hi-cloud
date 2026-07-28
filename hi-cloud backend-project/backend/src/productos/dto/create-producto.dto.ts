@@ -50,24 +50,28 @@ export class CreateProductoDto {
 
   @IsNumber({ maxDecimalPlaces: 4 })
   @IsPositive()
+  @Max(9_999_999_999)
   @Type(() => Number)
   precio: number;
 
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 4 })
   @Min(0)
+  @Max(9_999_999_999)
   @Type(() => Number)
   precio2?: number;
 
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 4 })
   @Min(0)
+  @Max(9_999_999_999)
   @Type(() => Number)
   precio3?: number;
 
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
+  @Max(9_999_999_999)
   @Type(() => Number)
   costo?: number;
 
@@ -81,11 +85,15 @@ export class CreateProductoDto {
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 4 })
   @Min(0)
+  @Max(99_999_999)
+  @Type(() => Number)
   stock?: number;
 
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 4 })
   @Min(0)
+  @Max(99_999_999)
+  @Type(() => Number)
   stockMinimo?: number;
 
   @IsOptional()

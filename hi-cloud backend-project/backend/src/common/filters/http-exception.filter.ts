@@ -123,6 +123,24 @@ export class HttpExceptionFilter implements ExceptionFilter {
           reportServerError(exception, { status, method: request.method, url: request.url });
           return this.send(response, request, status, message);
 
+        case '22003': { // numeric_value_out_of_range
+          status  = HttpStatus.BAD_REQUEST;
+          message = 'El valor ingresado supera el límite permitido para ese campo';
+          const qf     = exception as any;
+          const detail = qf?.detail ?? qf?.driverError?.detail ?? pgErr.message;
+          this.logger.error(`NumericOverflow [${request.method} ${request.url}]: ${detail}`);
+          reportServerError(exception, {
+            status,
+            method: request.method,
+            url:    request.url,
+            extra:  {
+              pg_detail: detail,
+              pg_query:  qf?.query ?? null,
+            },
+          });
+          return this.send(response, request, status, message);
+        }
+
         default:
           this.logger.error(`DBError[${pgErr.code}] [${request.method} ${request.url}]: ${pgErr.message}`, pgErr.stack);
       }
