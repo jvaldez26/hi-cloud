@@ -4162,7 +4162,7 @@ function POSCxPSubView({ C, esAdminCxP }: { C: Palette; esAdminCxP: boolean }) {
         fechaPago:  new Date().toISOString().substring(0, 10),
       });
       qc.invalidateQueries({ queryKey: ['cxp-pos'] });
-      qc.invalidateQueries({ queryKey: ['cxp-resumen-pos'] });
+      qc.invalidateQueries({ queryKey: ['cxp-resumen'] });
       qc.invalidateQueries({ queryKey: ['compras-pos'] });
       setPagoRow(null);
       message.success('Pago registrado exitosamente');
@@ -9477,6 +9477,8 @@ export default function POSPage() {
 
       qc.invalidateQueries({ queryKey: ['pos-panel', 'facturas'] });
       qc.refetchQueries({    queryKey: ['pos-panel', 'facturas'] });
+      qc.invalidateQueries({ queryKey: ['pos-ventas-hoy'] });
+      qc.invalidateQueries({ queryKey: ['pos-ganancias-dia'] });
     },
     onError: (e: any) => {
       if (printWinRef.current && !printWinRef.current.closed) { printWinRef.current.close(); printWinRef.current = null; autoYaPrintedRef.current = false; }

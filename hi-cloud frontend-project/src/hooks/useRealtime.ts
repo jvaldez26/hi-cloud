@@ -4,7 +4,7 @@ import { io, Socket } from 'socket.io-client';
 
 /** Mapeo entidad → queryKeys que deben invalidarse */
 const ENTITY_KEYS: Record<string, string[][]> = {
-  factura:    [['facturas'], ['factura']],
+  factura:    [['facturas'], ['factura'], ['pos-ventas-hoy'], ['pos-ganancias-dia']],
   producto:   [['productos'], ['pos-products-scan'], ['inventario']],
   cliente:    [['clientes'], ['clientes-pos']],
   proveedor:  [['proveedores']],
@@ -12,7 +12,7 @@ const ENTITY_KEYS: Record<string, string[][]> = {
   inventario: [['inventario'], ['pos-products-scan']],
   cxc:        [['cxc']],
   cotizacion: [['cotizaciones']],
-  compra:     [['compras']],
+  compra:     [['compras'], ['inventario'], ['pos-products-scan']],
   conduce:    [['conduces']],
   vendedor:   [['vendedores'], ['vendedores-sel']],
 };

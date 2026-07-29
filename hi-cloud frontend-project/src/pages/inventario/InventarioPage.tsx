@@ -88,12 +88,12 @@ const { data: productosData } = useQuery({
 
   const entradaMut = useMutation({
     mutationFn: ({ productoId, cantidad, motivo }: any) => inventarioApi.entrada(productoId, cantidad, motivo),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['inventario'] }); qc.invalidateQueries({ queryKey: ['stock-bajo'] }); cerrarModal(); message.success('Entrada registrada'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['inventario'] }); cerrarModal(); message.success('Entrada registrada'); },
     onError: (e: any) => message.error(e?.friendlyMessage ?? 'Error'),
   });
   const salidaMut = useMutation({
     mutationFn: ({ productoId, cantidad, motivo }: any) => inventarioApi.salida(productoId, cantidad, motivo),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['inventario'] }); qc.invalidateQueries({ queryKey: ['stock-bajo'] }); cerrarModal(); message.success('Salida registrada'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['inventario'] }); cerrarModal(); message.success('Salida registrada'); },
     onError: (e: any) => message.error(e?.friendlyMessage ?? 'Stock insuficiente o error'),
   });
 
