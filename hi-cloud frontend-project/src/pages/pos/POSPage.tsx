@@ -2790,8 +2790,8 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
         await api.post('/productos', body);
         message.success(`${tipoLabel} creado`);
       }
-      qc.invalidateQueries({ queryKey: ['pos-productos'] });
-      qc.invalidateQueries({ queryKey: ['productos-catalogo'] });
+      qc.invalidateQueries({ queryKey: ['pos-produtos'] });
+      qc.invalidateQueries({ queryKey: ['pos-products-scan'] });
       setShowForm(false);
     } catch (e: any) {
       message.error(e?.response?.data?.message ?? 'Error al guardar producto');
@@ -2818,7 +2818,8 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
       }
       message.success(`${movModal?.tipo === 'entrada' ? 'Entrada' : 'Salida'} registrada`);
       qc.invalidateQueries({ queryKey: ['pos-movimientos'] });
-      qc.invalidateQueries({ queryKey: ['pos-productos'] });
+      qc.invalidateQueries({ queryKey: ['pos-produtos'] });
+      qc.invalidateQueries({ queryKey: ['pos-products-scan'] });
       setMovModal(null);
     } catch (e: any) {
       message.error(e?.response?.data?.message ?? 'Error al registrar movimiento');
@@ -3536,8 +3537,8 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
       if (notasRecibir.trim()) body.notas = notasRecibir;
       await api.patch(`/compras/${recibirData.id}/recibir`, body);
       qc.invalidateQueries({ queryKey: ['compras-pos'] });
-      qc.invalidateQueries({ queryKey: ['pos-productos'] });
-      qc.invalidateQueries({ queryKey: ['productos-catalogo'] });
+      qc.invalidateQueries({ queryKey: ['pos-produtos'] });
+      qc.invalidateQueries({ queryKey: ['pos-products-scan'] });
       setCantRecibidas({});
       message.success('Mercancía recibida y stock actualizado');
       setRecibirData(null); setNotasRecibir('');

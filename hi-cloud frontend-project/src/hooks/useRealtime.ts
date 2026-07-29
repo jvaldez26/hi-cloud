@@ -5,11 +5,11 @@ import { io, Socket } from 'socket.io-client';
 /** Mapeo entidad → queryKeys que deben invalidarse */
 const ENTITY_KEYS: Record<string, string[][]> = {
   factura:    [['facturas'], ['factura']],
-  producto:   [['productos'], ['pos-products'], ['inventario']],
+  producto:   [['productos'], ['pos-products-scan'], ['inventario']],
   cliente:    [['clientes'], ['clientes-pos']],
   proveedor:  [['proveedores']],
   caja:       [['caja-hoy'], ['caja-hist'], ['caja-resumen'], ['pos-caja-hoy']],
-  inventario: [['inventario'], ['pos-products']],
+  inventario: [['inventario'], ['pos-products-scan']],
   cxc:        [['cxc']],
   cotizacion: [['cotizaciones']],
   compra:     [['compras']],
