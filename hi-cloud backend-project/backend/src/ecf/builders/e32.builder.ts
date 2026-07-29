@@ -44,7 +44,8 @@ export function buildE32(input: ECFBuildInput): MSellerPayload {
     const precioME = Number(d.precioUnitario);
     const montoME  = Number(d.subtotal);
     const pct      = parseFloat(String(d.porcentajeIva ?? 18));
-    const indFact  = pct >= 18 ? 1 : pct >= 16 ? 2 : 4;
+    const indFact  = pct === 18 ? 1 : pct === 16 ? 2 : pct === 0 ? 4
+      : (() => { throw new Error(`[E32] porcentajeIva inválido: ${pct}. Valores válidos: 0, 16, 18`); })();
     const otME     = mc.otraMonedaItem(precioME, montoME);
 
     const cantidad     = cap4(d.cantidad);
@@ -82,9 +83,9 @@ export function buildE32(input: ECFBuildInput): MSellerPayload {
     const pct = parseFloat(String(d.porcentajeIva ?? 18));
     const sub = round2(mc.toDOP(Number(d.subtotal)));
     const iva = round2(mc.toDOP(Number(d.importeIva ?? d.iva ?? 0)));
-    if (pct >= 18)      { montoGravado18 += sub; itbis18 += iva; }
-    else if (pct >= 16) { montoGravado16 += sub; itbis16 += iva; }
-    else                { montoExento += sub; }
+    if (pct === 18)      { montoGravado18 += sub; itbis18 += iva; }
+    else if (pct === 16) { montoGravado16 += sub; itbis16 += iva; }
+    else                 { montoExento += sub; }
   });
 
   const montoGravadoTotal = round2(montoGravado18 + montoGravado16);
@@ -92,20 +93,19 @@ export function buildE32(input: ECFBuildInput): MSellerPayload {
   const totalITBIS = round2(itbis18 + itbis16);
   const montoTotal = round2(montoGravadoTotal + montoExento + totalITBIS);
 
+  // Orden estricto XSD DGII: MontoGravadoXX → MontoExento → ITBISXX → TotalITBISXX → MontoTotal
+  const hayI1 = montoGravado18 > 0;
+  const hayI2 = montoGravado16 > 0;
   const totales: Record<string, unknown> = {};
-  if (montoGravadoTotal > 0) {
-    totales['MontoGravadoTotal'] = montoGravadoTotal;
-    totales['MontoGravadoI1']    = round2(montoGravado18);
-    totales['ITBIS1']            = 18;
-    totales['TotalITBIS']        = totalITBIS;
-    totales['TotalITBIS1']       = round2(itbis18);
-  }
-  if (montoGravado16 > 0) {
-    totales['MontoGravadoI2'] = round2(montoGravado16);
-    totales['ITBIS2']         = 16;
-    totales['TotalITBIS2']    = round2(itbis16);
-  }
-  if (montoExento > 0) totales['MontoExento'] = round2(montoExento);
+  if (hayI1 || hayI2) totales['MontoGravadoTotal'] = montoGravadoTotal;
+  if (hayI1)          totales['MontoGravadoI1']    = round2(montoGravado18);
+  if (hayI2)          totales['MontoGravadoI2']    = round2(montoGravado16);
+  if (montoExento > 0) totales['MontoExento']      = round2(montoExento);
+  if (hayI1)          totales['ITBIS1']            = 18;
+  if (hayI2)          totales['ITBIS2']            = 16;
+  if (hayI1 || hayI2) totales['TotalITBIS']        = totalITBIS;
+  if (hayI1)          totales['TotalITBIS1']       = round2(itbis18);
+  if (hayI2)          totales['TotalITBIS2']       = round2(itbis16);
   totales['MontoTotal'] = montoTotal;
 
   // PASO 4: OtraMoneda si USD

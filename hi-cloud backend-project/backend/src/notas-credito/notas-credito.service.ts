@@ -19,19 +19,20 @@ interface DetalleDto {
 }
 
 interface CreateNotaCreditoDto {
-  clienteId:          number;
-  fecha:              string;
-  tipoNcf?:           string;
-  facturaOriginalId?: number;
+  clienteId:            number;
+  fecha:                string;
+  tipoNcf?:             string;
+  facturaOriginalId?:   number;
   facturaOriginalFolio?: string;
-  motivo?:            string;
-  descripcionMotivo?: string;
-  notas?:             string;
-  vendedorId?:        number;
-  nombreVendedor?:    string;
-  detalles:           DetalleDto[];
-  moneda?:            string;
-  tipoCambio?:        number;
+  motivo?:              string;
+  descripcionMotivo?:   string;
+  notas?:               string;
+  vendedorId?:          number;
+  nombreVendedor?:      string;
+  detalles:             DetalleDto[];
+  moneda?:              string;
+  tipoCambio?:          number;
+  codigoModificacion?:  string;
 }
 
 @Injectable()
@@ -79,12 +80,49 @@ export class NotasCreditoService {
     const empresaId = this.tenantSvc.getEmpresaId();
     const numero    = await this.generarNumero();
 
-    const detalles = dto.detalles.map(d => {
-      const pctIva   = d.porcentajeIva ?? 18;
-      const subtotal = +(d.cantidad * d.precioUnitario).toFixed(2);
-      const iva      = +(subtotal * pctIva / 100).toFixed(2);
-      return { ...d, unidadMedida: d.unidadMedida ?? 'PZA', porcentajeIva: pctIva, subtotal, iva, total: +(subtotal + iva).toFixed(2) };
-    });
+    // Código 1 (anulación total): copiar detalles 1:1 de factura_detalles.
+    // Garantiza porcentajeIva e iva originales por línea, evita colapsar tasas mixtas.
+    let detalles: Array<{
+      productoId?: number; descripcion: string; unidadMedida: string;
+      cantidad: number; precioUnitario: number; porcentajeIva: number;
+      subtotal: number; iva: number; total: number;
+    }>;
+
+    if (dto.codigoModificacion === '1' && dto.facturaOriginalId) {
+      const fdRows = await this.ds.query<any[]>(
+        `SELECT descripcion, "productoId", "unidadMedida", cantidad,
+                "precioUnitario", subtotal, "porcentajeIva", "importeIva"
+         FROM factura_detalles
+         WHERE "facturaId" = $1
+         ORDER BY id`,
+        [dto.facturaOriginalId],
+      );
+      if (!fdRows.length) {
+        throw new BadRequestException(`Factura #${dto.facturaOriginalId} no tiene detalles registrados`);
+      }
+      detalles = fdRows.map(fd => {
+        const subtotal = +Number(fd.subtotal).toFixed(2);
+        const iva      = +Number(fd.importeIva).toFixed(2);
+        return {
+          productoId:     fd.productoId ?? undefined,
+          descripcion:    fd.descripcion,
+          unidadMedida:   fd.unidadMedida ?? 'PZA',
+          cantidad:       +Number(fd.cantidad).toFixed(4),
+          precioUnitario: +Number(fd.precioUnitario).toFixed(4),
+          porcentajeIva:  +Number(fd.porcentajeIva).toFixed(2),
+          subtotal,
+          iva,
+          total: +(subtotal + iva).toFixed(2),
+        };
+      });
+    } else {
+      detalles = dto.detalles.map(d => {
+        const pctIva   = d.porcentajeIva ?? 18;
+        const subtotal = +(d.cantidad * d.precioUnitario).toFixed(2);
+        const iva      = +(subtotal * pctIva / 100).toFixed(2);
+        return { ...d, unidadMedida: d.unidadMedida ?? 'PZA', porcentajeIva: pctIva, subtotal, iva, total: +(subtotal + iva).toFixed(2) };
+      });
+    }
 
     const subtotal = detalles.reduce((s, d) => s + d.subtotal, 0);
     const iva      = detalles.reduce((s, d) => s + d.iva,      0);

@@ -40,6 +40,7 @@ class CreateNCDto {
   @IsOptional() @IsString()                                  nombreVendedor?: string;
   @IsOptional() @IsString()                                  moneda?: string;
   @IsOptional() @IsNumber() @Type(() => Number)              tipoCambio?: number;
+  @IsOptional() @IsString()                                  codigoModificacion?: string;
   @IsArray() @ValidateNested({ each: true }) @Type(() => DetalleDto)
   detalles!: DetalleDto[];
 }

@@ -34,18 +34,15 @@ export function buildTotalesGravados(detalles: DetalleLike[], total: number): Re
   const hayI2 = gravado16 > 0;
   // Orden estricto XSD DGII: MontoGravadoXX → MontoExento → ITBISXX → TotalITBISXX → MontoTotal
   const tot: Record<string, unknown> = {};
-  if (hayI1 || hayI2) {
-    tot['MontoGravadoTotal'] = round2(gravado18 + gravado16);
-    tot['MontoGravadoI1']    = round2(gravado18);
-  }
+  if (hayI1 || hayI2) tot['MontoGravadoTotal'] = round2(gravado18 + gravado16);
+  if (hayI1)          tot['MontoGravadoI1']    = round2(gravado18);
   if (hayI2)    tot['MontoGravadoI2'] = round2(gravado16);
   if (exento > 0) tot['MontoExento'] = round2(exento);
-  if (hayI1 || hayI2) {
-    tot['ITBIS1']     = 18;
-    tot['TotalITBIS'] = round2(itbis18 + itbis16);
-    tot['TotalITBIS1']= round2(itbis18);
-  }
-  if (hayI2) { tot['ITBIS2'] = 16; tot['TotalITBIS2'] = round2(itbis16); }
+  if (hayI1) tot['ITBIS1']      = 18;
+  if (hayI2) tot['ITBIS2']      = 16;
+  if (hayI1 || hayI2) tot['TotalITBIS']  = round2(itbis18 + itbis16);
+  if (hayI1) tot['TotalITBIS1'] = round2(itbis18);
+  if (hayI2) tot['TotalITBIS2'] = round2(itbis16);
   tot['MontoTotal'] = round2(total);
   return tot;
 }

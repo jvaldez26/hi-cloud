@@ -287,6 +287,7 @@ export default function NotasCreditoPage() {
       facturaOriginalFolio: facturaOrigen.folio,
       moneda:               facturaOrigen.moneda ?? 'DOP',
       tipoCambio:           facturaOrigen.tipoCambio ? Number(facturaOrigen.tipoCambio) : 1,
+      codigoModificacion:   codigoMod,
       detalles:             detallesLimpios,
     });
   };

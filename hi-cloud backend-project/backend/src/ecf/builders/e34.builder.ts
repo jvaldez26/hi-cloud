@@ -98,7 +98,8 @@ export function buildE34(input: ECFBuildInput): MSellerPayload {
     const precioME = Number(d.precioUnitario);
     const montoME  = Number(d.subtotal);
     const pct      = parseFloat(String(d.porcentajeIva ?? 18));
-    const indFact  = pct >= 18 ? 1 : pct >= 16 ? 2 : 4;
+    const indFact  = pct === 18 ? 1 : pct === 16 ? 2 : pct === 0 ? 4
+      : (() => { throw new Error(`[E34] porcentajeIva inválido: ${pct}. Valores válidos: 0, 16, 18`); })();
     const otME     = mc.otraMonedaItem(precioME, montoME);
     return {
       NumeroLinea:            idx + 1,
@@ -120,9 +121,9 @@ export function buildE34(input: ECFBuildInput): MSellerPayload {
     const pct = parseFloat(String(d.porcentajeIva ?? 18));
     const sub = round2(mc.toDOP(Number(d.subtotal)));
     const iva = round2(mc.toDOP(Number(d.importeIva ?? d.iva ?? 0)));
-    if (pct >= 18)      { montoGravado18 += sub; itbis18 += iva; }
-    else if (pct >= 16) { montoGravado16 += sub; itbis16 += iva; }
-    else                { montoExento += sub; }
+    if (pct === 18)      { montoGravado18 += sub; itbis18 += iva; }
+    else if (pct === 16) { montoGravado16 += sub; itbis16 += iva; }
+    else                 { montoExento += sub; }
   });
   const montoGravadoTotal = round2(montoGravado18 + montoGravado16);
   const hayGravado: 0 | 1 = montoGravadoTotal > 0 ? 1 : 0;
@@ -134,18 +135,17 @@ export function buildE34(input: ECFBuildInput): MSellerPayload {
     : (() => {
         const t: Record<string, unknown> = {};
         // Orden estricto XSD DGII: MontoGravadoXX → MontoExento → ITBISXX → TotalITBISXX → MontoTotal
-        if (montoGravadoTotal > 0) {
-          t['MontoGravadoTotal'] = montoGravadoTotal;
-          t['MontoGravadoI1']    = round2(montoGravado18);
-        }
-        if (montoGravado16 > 0) t['MontoGravadoI2'] = round2(montoGravado16);
-        if (montoExento    > 0) t['MontoExento']     = round2(montoExento);
-        if (montoGravadoTotal > 0) {
-          t['ITBIS1']      = 18;
-          t['TotalITBIS']  = totalITBIS;
-          t['TotalITBIS1'] = round2(itbis18);
-        }
-        if (montoGravado16 > 0) { t['ITBIS2'] = 16; t['TotalITBIS2'] = round2(itbis16); }
+        const hayI1 = montoGravado18 > 0;
+        const hayI2 = montoGravado16 > 0;
+        if (hayI1 || hayI2) t['MontoGravadoTotal'] = montoGravadoTotal;
+        if (hayI1)          t['MontoGravadoI1']    = round2(montoGravado18);
+        if (hayI2)          t['MontoGravadoI2']    = round2(montoGravado16);
+        if (montoExento > 0) t['MontoExento']      = round2(montoExento);
+        if (hayI1)          t['ITBIS1']            = 18;
+        if (hayI2)          t['ITBIS2']            = 16;
+        if (hayI1 || hayI2) t['TotalITBIS']        = totalITBIS;
+        if (hayI1)          t['TotalITBIS1']       = round2(itbis18);
+        if (hayI2)          t['TotalITBIS2']       = round2(itbis16);
         t['MontoTotal'] = montoTotal;
         return t;
       })();
