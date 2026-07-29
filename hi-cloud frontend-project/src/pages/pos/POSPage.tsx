@@ -6198,6 +6198,76 @@ ${qrDataUrl ? `<div class="center" style="margin:4px 0"><img src="${qrDataUrl}" 
 </body></html>`;
 }
 
+function buildRetiroReciboHTML(
+  r: any,
+  empresaNombre: string,
+  empresaRnc: string,
+  cajero: string,
+  sucursalNombre?: string,
+  tipoImpresora?: string,
+): string {
+  const IMP_CFG: Record<string,{width:string;fontSize:string;paddingLR:string}> = {
+    '58mm':    { width:'58mm',  fontSize:'10pt', paddingLR:'3mm' },
+    '80mm':    { width:'80mm',  fontSize:'11pt', paddingLR:'5mm' },
+    'carta':   { width:'210mm', fontSize:'12pt', paddingLR:'15mm' },
+    'ninguna': { width:'80mm',  fontSize:'11pt', paddingLR:'5mm' },
+  };
+  const prn = IMP_CFG[tipoImpresora ?? '80mm'] ?? IMP_CFG['80mm'];
+  const e    = (s: string) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const fmtM = (n: number) => `RD$${Number(n??0).toLocaleString('es-DO',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  const ahora = dayjs();
+  const numRet = `RET-${String(r.id??0).padStart(5,'0')}`;
+  const hora = r.createdAt
+    ? dayjs(r.createdAt).format('hh:mm a')
+    : ahora.format('hh:mm a');
+
+  return `<!DOCTYPE html><html lang="es"><head>
+<meta charset="UTF-8">
+<title>Retiro ${e(numRet)}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;overflow-wrap:break-word}
+@media print{@page{size:${prn.width} auto;margin:0}}
+html,body{width:${prn.width};margin:0}
+body{font-family:'Courier New',Courier,monospace;font-size:${prn.fontSize};font-weight:bold;line-height:1.45;
+  width:${prn.width};padding:3mm ${prn.paddingLR};color:#000;background:#fff;
+  -webkit-font-smoothing:none;font-smooth:never}
+.center{text-align:center}
+.bold{font-weight:900}
+.large{font-size:1.15em;font-weight:900}
+.small{font-size:0.85em}
+.row{display:flex;justify-content:space-between;gap:4px;margin:1px 0;width:100%}
+.row span:first-child{flex:1;overflow:hidden}
+.row span:last-child{text-align:right;white-space:nowrap}
+.line{border-top:1px dashed #000;margin:4px 0}
+.dbl{border-top:2px solid #000;margin:4px 0}
+</style></head><body>
+
+<div class="center large">${e(empresaNombre)}</div>
+${empresaRnc ? `<div class="center small">RNC: ${e(empresaRnc)}</div>` : ''}
+<div class="dbl"></div>
+<div class="center bold">RETIRO DE CAJA</div>
+<div class="dbl"></div>
+
+<div class="row"><span>No.:</span><span>${e(numRet)}</span></div>
+<div class="row"><span>Fecha:</span><span>${ahora.format('DD/MM/YYYY')}</span></div>
+<div class="row"><span>Hora:</span><span>${hora}</span></div>
+${cajero ? `<div class="row"><span>Cajero:</span><span>${e(cajero)}</span></div>` : ''}
+${sucursalNombre ? `<div class="row"><span>Sucursal:</span><span>${e(sucursalNombre)}</span></div>` : ''}
+<div class="line"></div>
+
+<div style="margin:2px 0"><span class="bold">Descripción:</span> ${e(r.descripcion??'')}</div>
+<div class="line"></div>
+
+<div class="dbl"></div>
+<div class="row bold"><span>MONTO RETIRADO:</span><span>${fmtM(Number(r.monto??0))}</span></div>
+<div class="dbl"></div>
+
+<div class="center small" style="margin-top:6px">Firma: ____________________</div>
+<div class="center small" style="margin-top:8px">Registrado en HiCloud ERP</div>
+
+</body></html>`;
+}
+
 // ── Panel Gastos + Retiros de Caja ────────────────────────────────────────────
 function POSGastosPanel({ C, onVolver }: { C: Palette; onVolver: () => void }) {
   const [tab, setTab] = useState<'gastos' | 'retiros'>('gastos');
@@ -6463,9 +6533,10 @@ function POSGastosLista({ C }: { C: Palette }) {
 function POSRetirosLista({ C }: { C: Palette }) {
   const qc = useQueryClient();
   const user = useAuthStore(s => s.user);
-  const [showForm, setShowForm] = useState(false);
-  const [monto,    setMonto]    = useState('');
-  const [desc,     setDesc]     = useState('');
+  const [showForm,    setShowForm]    = useState(false);
+  const [monto,       setMonto]       = useState('');
+  const [desc,        setDesc]        = useState('');
+  const [imprimiendo, setImprimiendo] = useState<number|null>(null);
 
   const { data: retiros = [], isLoading, refetch } = useQuery<any[]>({
     queryKey: ['pos-retiros-caja'],
@@ -6473,18 +6544,41 @@ function POSRetirosLista({ C }: { C: Palette }) {
     staleTime: 30_000,
   });
 
+  const imprimirRetiro = async (r: any) => {
+    setImprimiendo(r.id);
+    try {
+      const empRes  = await api.get('/configuracion/empresa').then(res => res.data?.data ?? res.data).catch(() => ({}));
+      const tipoImp = (empRes.configuracion ?? {} as any).posTipoImpresora as string | undefined;
+      const html = buildRetiroReciboHTML(
+        r,
+        empRes.razonSocial ?? empRes.nombre ?? 'Mi Empresa',
+        empRes.rnc ?? '',
+        user?.nombre ?? localStorage.getItem('pos_cajero_nombre') ?? '',
+        sucursalNombreFromCache(qc),
+        tipoImp,
+      );
+      imprimirReciboTermico(html, undefined, tipoImp);
+    } catch (err: any) {
+      message.error(`Error al imprimir: ${err?.message}`, 2);
+    } finally {
+      setImprimiendo(null);
+    }
+  };
+
   const crearMut = useMutation({
     mutationFn: () => api.post('/caja/retiros', {
       monto: Number(monto),
       descripcion: desc.trim(),
     }),
-    onSuccess: () => {
+    onSuccess: (res) => {
       message.success('Retiro registrado ✓');
       qc.invalidateQueries({ queryKey: ['pos-retiros-caja'] });
       qc.invalidateQueries({ queryKey: ['pos-caja-hoy'] });
       refetch();
       setShowForm(false);
       setMonto(''); setDesc('');
+      const retiro = res?.data?.data ?? res?.data;
+      if (retiro?.id) imprimirRetiro(retiro);
     },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al registrar retiro'),
   });
@@ -6539,7 +6633,7 @@ function POSRetirosLista({ C }: { C: Palette }) {
              : (
               <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
                 <thead><tr style={{ background:C.card, position:'sticky', top:0 }}>
-                  {['Descripción','Monto','Hora'].map(h => (
+                  {['Descripción','Monto','Hora',''].map(h => (
                     <th key={h} style={{ padding:'8px 12px', textAlign:'left', color:C.textSub,
                       fontWeight:600, fontSize:11, borderBottom:`1px solid ${C.border}` }}>{h}</th>
                   ))}
@@ -6550,6 +6644,15 @@ function POSRetirosLista({ C }: { C: Palette }) {
                     <td style={{ padding:'8px 12px', fontWeight:700, color:'#DC2626' }}>{fmt.money(r.monto??0)}</td>
                     <td style={{ padding:'8px 12px', color:C.textSub, fontSize:11 }}>
                       {r.createdAt ? new Date(r.createdAt).toLocaleTimeString('es-DO', { hour:'2-digit', minute:'2-digit' }) : '—'}
+                    </td>
+                    <td style={{ padding:'6px 8px', textAlign:'right' }}>
+                      <button onClick={() => imprimirRetiro(r)} title="Imprimir recibo"
+                        disabled={imprimiendo === r.id}
+                        style={{ background:'none', border:`1px solid ${C.border}`, borderRadius:6,
+                          color: imprimiendo===r.id ? C.textMuted : C.textSub,
+                          padding:'3px 8px', fontSize:14, cursor:'pointer', outline:'none' }}>
+                        {imprimiendo === r.id ? '⏳' : '🖨'}
+                      </button>
                     </td>
                   </tr>
                 ))}</tbody>
