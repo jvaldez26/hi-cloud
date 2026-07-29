@@ -6928,7 +6928,7 @@ const PANEL_TITLES: Record<PanelId, { label: string; icon: string }> = {
   'recibos-cobro':  { label: 'Recibos de Cobro',  icon: '🧾' },
   'anticipos':      { label: 'Anticipos',          icon: '💰' },
   'notas-credito':  { label: 'Notas de Crédito',  icon: '📝' },
-  'gastos':         { label: 'Gastos',            icon: '💸' },
+  'gastos':         { label: 'Gastos/Retiros',     icon: '💸' },
   'cierre-caja':    { label: 'Cierre de Caja',    icon: '🏧' },
   'ventas-hoy':     { label: 'Ganancias',           icon: '📈' },
   'pro-formas':     { label: 'Pro Formas',         icon: '📋' },
@@ -8196,7 +8196,7 @@ const MENU_EXTRAS: Array<{ label: string; icon: string; panel: PanelId }> = [
   { label: 'Pro Formas',        icon: '📋', panel: 'pro-formas' },
   { label: 'Notas de Crédito', icon: '📝', panel: 'notas-credito' },
   { label: 'Nueva NC',         icon: '➕', panel: 'nueva-nc' as any },
-  { label: 'Gastos',           icon: '💸', panel: 'gastos' },
+  { label: 'Gastos/Retiros',   icon: '💸', panel: 'gastos' },
   { label: 'Cierre de Caja',   icon: '🏧', panel: 'cierre-caja' },
   { label: 'Impresora BT',    icon: '🖨️', panel: 'impresora-bt' as any },
 ];
