@@ -6198,8 +6198,35 @@ ${qrDataUrl ? `<div class="center" style="margin:4px 0"><img src="${qrDataUrl}" 
 </body></html>`;
 }
 
-// ── Panel Gastos (formulario completo igual que módulo admin) ─────────────────
+// ── Panel Gastos + Retiros de Caja ────────────────────────────────────────────
 function POSGastosPanel({ C, onVolver }: { C: Palette; onVolver: () => void }) {
+  const [tab, setTab] = useState<'gastos' | 'retiros'>('gastos');
+
+  return (
+    <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+      <PanelHeader title="Egresos" icon="💸" C={C} onVolver={onVolver} />
+      {/* Selector de tab */}
+      <div style={{ display:'flex', borderBottom:`1px solid ${C.border}`, flexShrink:0 }}>
+        {(['gastos','retiros'] as const).map(t => (
+          <button key={t} onClick={() => setTab(t)}
+            style={{ flex:1, height:38, border:'none', background:'transparent', cursor:'pointer',
+              fontWeight: tab===t ? 700 : 400, fontSize:13,
+              color: tab===t ? C.blue : C.textSub,
+              borderBottom: tab===t ? `2px solid ${C.blue}` : '2px solid transparent',
+              transition:'all .15s' }}>
+            {t === 'gastos' ? '💸 Gastos' : '💵 Retiros'}
+          </button>
+        ))}
+      </div>
+      {tab === 'gastos'
+        ? <POSGastosLista C={C} />
+        : <POSRetirosLista C={C} />
+      }
+    </div>
+  );
+}
+
+function POSGastosLista({ C }: { C: Palette }) {
   const qc = useQueryClient();
   const user = useAuthStore(s => s.user);
   const sucursalActual = useAuthStore(s => s.sucursalActual);
@@ -6299,8 +6326,14 @@ function POSGastosPanel({ C, onVolver }: { C: Palette; onVolver: () => void }) {
 
   return (
     <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
-      <PanelHeader title="Gastos" icon="💸" C={C} onVolver={onVolver}
-        onNuevo={() => setShowForm(v => !v)} labelNuevo={showForm ? 'Ver lista' : 'Registrar gasto'} />
+      <div style={{ padding:'10px 14px', borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
+        <span style={{ fontWeight:700, color:C.text, fontSize:14, flex:1 }}>Gastos del día</span>
+        <button onClick={() => setShowForm(v => !v)}
+          style={{ background: showForm ? C.border : C.green, border:'none', borderRadius:8,
+            color: showForm ? C.text : '#fff', cursor:'pointer', padding:'6px 14px', fontSize:12, fontWeight:700 }}>
+          {showForm ? 'Ver lista' : '+ Registrar gasto'}
+        </button>
+      </div>
 
       {showForm ? (
         <div style={{ flex:1, overflowY:'auto', padding:16 }}>
@@ -6421,6 +6454,108 @@ function POSGastosPanel({ C, onVolver }: { C: Palette; onVolver: () => void }) {
             ))}
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+// ── Retiros de Caja ───────────────────────────────────────────────────────────
+function POSRetirosLista({ C }: { C: Palette }) {
+  const qc = useQueryClient();
+  const user = useAuthStore(s => s.user);
+  const [showForm, setShowForm] = useState(false);
+  const [monto,    setMonto]    = useState('');
+  const [desc,     setDesc]     = useState('');
+
+  const { data: retiros = [], isLoading, refetch } = useQuery<any[]>({
+    queryKey: ['pos-retiros-caja'],
+    queryFn: () => api.get('/caja/retiros').then(r => r.data?.data ?? r.data ?? []),
+    staleTime: 30_000,
+  });
+
+  const crearMut = useMutation({
+    mutationFn: () => api.post('/caja/retiros', {
+      monto: Number(monto),
+      descripcion: desc.trim(),
+    }),
+    onSuccess: () => {
+      message.success('Retiro registrado ✓');
+      qc.invalidateQueries({ queryKey: ['pos-retiros-caja'] });
+      qc.invalidateQueries({ queryKey: ['pos-caja-hoy'] });
+      refetch();
+      setShowForm(false);
+      setMonto(''); setDesc('');
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al registrar retiro'),
+  });
+
+  const canSubmit = desc.trim().length > 0 && Number(monto) > 0;
+  const inputS: React.CSSProperties = { width:'100%', height:36, padding:'0 10px', borderRadius:8,
+    border:`1px solid ${C.border}`, background:C.card, color:C.text, fontSize:13, outline:'none', boxSizing:'border-box' };
+  const labelS: React.CSSProperties = { fontSize:11, fontWeight:700, color:C.textSub, display:'block', marginBottom:3 };
+
+  return (
+    <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+      <div style={{ padding:'10px 14px', borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
+        <span style={{ fontWeight:700, color:C.text, fontSize:14, flex:1 }}>Retiros de caja</span>
+        <button onClick={() => setShowForm(v => !v)}
+          style={{ background: showForm ? C.border : '#DC2626', border:'none', borderRadius:8,
+            color: showForm ? C.text : '#fff', cursor:'pointer', padding:'6px 14px', fontSize:12, fontWeight:700 }}>
+          {showForm ? 'Ver lista' : '+ Registrar retiro'}
+        </button>
+      </div>
+
+      {showForm ? (
+        <div style={{ flex:1, overflowY:'auto', padding:16 }}>
+          <div style={{ maxWidth:420, color:C.text }}>
+            <div style={{ marginBottom:10 }}>
+              <span style={labelS}>Monto RD$ *</span>
+              <input type="number" value={monto} onChange={e => setMonto(e.target.value)}
+                placeholder="0.00" min="0.01" step="0.01"
+                style={{ ...inputS, textAlign:'right' }} />
+            </div>
+            <div style={{ marginBottom:14 }}>
+              <span style={labelS}>Descripción *</span>
+              <input value={desc} onChange={e => setDesc(e.target.value)}
+                placeholder="Motivo del retiro" maxLength={300} style={inputS} />
+            </div>
+            <div style={{ background: '#EF444415', border:'1px solid #EF444430', borderRadius:8,
+              padding:'8px 12px', marginBottom:14, fontSize:12, color:'#DC2626' }}>
+              ⚠️ Este monto se descontará del efectivo esperado en caja al cierre.
+            </div>
+            <button onClick={() => crearMut.mutate()} disabled={crearMut.isPending || !canSubmit}
+              style={{ width:'100%', height:44, borderRadius:10, border:'none',
+                background: !canSubmit ? '#ccc' : '#DC2626', color:'#fff',
+                fontWeight:700, fontSize:15, cursor: !canSubmit ? 'not-allowed' : 'pointer' }}>
+              {crearMut.isPending ? 'Registrando...' : 'Registrar retiro'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ flex:1, overflowY:'auto', scrollbarWidth:'thin' }}>
+          {isLoading ? <div style={{ textAlign:'center', padding:40 }}><Spin/></div>
+           : retiros.length === 0
+             ? <Empty style={{ marginTop:40 }} description={<span style={{ color:C.textSub }}>Sin retiros registrados hoy</span>} />
+             : (
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                <thead><tr style={{ background:C.card, position:'sticky', top:0 }}>
+                  {['Descripción','Monto','Hora'].map(h => (
+                    <th key={h} style={{ padding:'8px 12px', textAlign:'left', color:C.textSub,
+                      fontWeight:600, fontSize:11, borderBottom:`1px solid ${C.border}` }}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>{retiros.map((r: any, i: number) => (
+                  <tr key={r.id} style={{ borderBottom:`1px solid ${C.border}`, background:i%2===0?'transparent':C.card }}>
+                    <td style={{ padding:'8px 12px', color:C.text }}>{r.descripcion}</td>
+                    <td style={{ padding:'8px 12px', fontWeight:700, color:'#DC2626' }}>{fmt.money(r.monto??0)}</td>
+                    <td style={{ padding:'8px 12px', color:C.textSub, fontSize:11 }}>
+                      {r.createdAt ? new Date(r.createdAt).toLocaleTimeString('es-DO', { hour:'2-digit', minute:'2-digit' }) : '—'}
+                    </td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            )}
+        </div>
       )}
     </div>
   );

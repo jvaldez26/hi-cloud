@@ -4,6 +4,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, IsNull, Not, Between } from 'typeorm';
 import { CierreCaja, EstadoCierre } from './entities/cierre-caja.entity';
+import { RetiroCaja } from './entities/retiro-caja.entity';
 import { TenantService } from '../tenant/tenant.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { fechaHoyRD } from '../common/utils/fecha-local.util';
@@ -15,6 +16,8 @@ export class CajaService {
   constructor(
     @InjectRepository(CierreCaja)
     private repo:            Repository<CierreCaja>,
+    @InjectRepository(RetiroCaja)
+    private retiroRepo:      Repository<RetiroCaja>,
     private dataSource:      DataSource,
     private tenantService:   TenantService,
     private realtimeService: RealtimeService,
@@ -381,6 +384,13 @@ export class CajaService {
       [fecha, cajaId],
     ).catch(() => [{ total: '0' }]);
 
+    const [retiros] = await this.dataSource.query<{ total: string }[]>(
+      `SELECT COALESCE(SUM(monto), 0)::text AS total
+       FROM retiros_caja
+       WHERE "cajaDiariaId" = $1`,
+      [cajaId],
+    ).catch(() => [{ total: '0' }]);
+
     await this.repo.update(cajaId, {
       ventasEfectivo:        Number(ventas?.efectivo      ?? 0),
       ventasTarjeta:         Number(ventas?.tarjeta       ?? 0),
@@ -389,6 +399,7 @@ export class CajaService {
       cobrosRecibidos:       Number(cobros?.total         ?? 0),
       totalAnticipos:        Number(anticipos?.total      ?? 0),
       cantidadTransacciones: Number(ventas?.cantidad      ?? 0),
+      retiros:               Number(retiros?.total        ?? 0),
     });
   }
 
@@ -551,6 +562,57 @@ export class CajaService {
   // ── Fuente única para verificar si hay caja abierta para un vendedor ──
   // Sin restricción de fecha: una caja abierta de días anteriores no cerrada
   // sigue siendo válida para emitir. Usa TypeORM como getCajaHoy.
+  // ── Retiros de caja ───────────────────────────────────────────────────────
+
+  async registrarRetiro(monto: number, descripcion: string, usuarioId: number, usuarioNombre?: string) {
+    const empresaId = this.tenantService.getEmpresaId();
+
+    const caja = await this.repo.findOne({
+      where: { empresaId, estado: EstadoCierre.ABIERTA } as any,
+      order: { fecha: 'DESC' },
+    });
+    if (!caja) throw new BadRequestException('No hay una caja abierta para registrar retiros');
+
+    const retiro = this.retiroRepo.create({
+      empresaId,
+      cajaDiariaId: caja.id,
+      usuarioId,
+      usuarioNombre,
+      monto,
+      descripcion: descripcion.trim(),
+    });
+    await this.retiroRepo.save(retiro);
+
+    // Actualizar columna retiros en cierres_caja
+    const [{ total }] = await this.dataSource.query<{ total: string }[]>(
+      `SELECT COALESCE(SUM(monto), 0)::text AS total FROM retiros_caja WHERE "cajaDiariaId" = $1`,
+      [caja.id],
+    );
+    await this.repo.update(caja.id, { retiros: Number(total) });
+
+    this.realtimeService.notify(empresaId, 'caja', 'updated', caja.id);
+    return retiro;
+  }
+
+  async listarRetiros(cajaId?: number) {
+    const empresaId = this.tenantService.getEmpresaId();
+
+    let cajaDiariaId = cajaId;
+    if (!cajaDiariaId) {
+      const caja = await this.repo.findOne({
+        where: { empresaId, estado: EstadoCierre.ABIERTA } as any,
+        order: { fecha: 'DESC' },
+      });
+      cajaDiariaId = caja?.id;
+    }
+    if (!cajaDiariaId) return [];
+
+    return this.retiroRepo.find({
+      where: { empresaId, cajaDiariaId },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
   async esCajaAbiertaVendedor(vendedorId: number, empresaId: number): Promise<boolean> {
     // Buscar caja propia del vendedor O caja global (sin vendedorId asignado).
     // La caja global cubre empresas que no asocian caja por vendedor.

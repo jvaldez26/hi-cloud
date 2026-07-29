@@ -3,7 +3,7 @@ import {
   ParseIntPipe, Query, HttpCode, HttpStatus, UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
-import { IsOptional, IsNumber, IsString, IsNotEmpty, IsInt, IsPositive, Min, MaxLength } from 'class-validator';
+import { IsOptional, IsNumber, IsString, IsNotEmpty, IsInt, IsPositive, Min, MaxLength, Max } from 'class-validator';
 import { CajaService } from './caja.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -43,6 +43,14 @@ class CerrarCajaDto {
 class AnularCierreDto {
   @IsString() @MaxLength(300)
   motivo: string;
+}
+
+class RegistrarRetiroDto {
+  @IsNumber({ maxDecimalPlaces: 2 }) @Min(0.01) @Max(9_999_999)
+  monto: number;
+
+  @IsString() @IsNotEmpty() @MaxLength(300)
+  descripcion: string;
 }
 
 @ApiTags('Caja')
@@ -145,5 +153,25 @@ export class CajaController {
     @Query('anio') anio: number,
   ) {
     return this.cajaService.getResumenMes(Number(mes), Number(anio));
+  }
+
+  @Post('retiros')
+  @HttpCode(HttpStatus.CREATED)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Registrar retiro de caja (descuenta del efectivo del turno)' })
+  registrarRetiro(@Body() dto: RegistrarRetiroDto, @GetUser() usuario: User) {
+    return this.cajaService.registrarRetiro(
+      dto.monto,
+      dto.descripcion,
+      usuario.id,
+      (usuario as any).nombre ?? (usuario as any).name,
+    );
+  }
+
+  @Get('retiros')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Listar retiros de la caja abierta actual' })
+  listarRetiros(@Query('cajaId') cajaId?: string) {
+    return this.cajaService.listarRetiros(cajaId ? Number(cajaId) : undefined);
   }
 }
