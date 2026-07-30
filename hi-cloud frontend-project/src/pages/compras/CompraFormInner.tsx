@@ -576,6 +576,7 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
             unidadMedida:     vals.unidadMedida || undefined,
             codigoBarras:     vals.codigoBarras || undefined,
             esCreacionRapida: true,
+            porcentajeIva:    18,
           })}
         >
           <Form.Item
