@@ -2191,7 +2191,7 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
   const [fecha,       setFecha]       = useState(dayjs().format('YYYY-MM-DD'));
   const [notas,       setNotas]       = useState('');
   const [inclIVA,     setInclIVA]     = useState(true);
-  const [sinItbis,    setSinItbis]    = useState(false);
+  // sinItbis eliminado: la tasa fiscal viene por línea desde el factura_detalle
   const [esEfectivo,  setEsEfectivo]  = useState(false);
   const [aplicarFac,  setAplicarFac]  = useState(true);
   const [buscando,    setBuscando]    = useState(false);
@@ -2246,7 +2246,18 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
       .filter((d: any) => (devolver[d.id] ?? 0) > 0)
       .reduce((s: number, d: any) => s + (Number(precioEdit[d.id] ?? d.precioUnitario) * (devolver[d.id] ?? 0)), 0);
   })();
-  const itbisNC  = sinItbis ? 0 : subtotalNC * 0.18;
+  // ITBIS sumado línea a línea usando el porcentajeIva del factura_detalle original
+  const itbisNC = (() => {
+    if (!facturaData?.detalles) return 0;
+    return facturaData.detalles
+      .filter((d: any) => (devolver[d.id] ?? 0) > 0)
+      .reduce((s: number, d: any) => {
+        const precio = Number(precioEdit[d.id] ?? d.precioUnitario);
+        const qty    = devolver[d.id] ?? 0;
+        const pct    = Number(d.porcentajeIva);
+        return s + (isNaN(pct) ? 0 : precio * qty * pct / 100);
+      }, 0);
+  })();
   const totalNC  = subtotalNC + itbisNC;
   const saldoDisponible = saldoNC ? saldoNC.saldoDisponible : Number(facturaData?.total ?? 0);
 
@@ -2261,6 +2272,16 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
         throw new Error(`El monto a acreditar (${fmt.money(totalNC)}) supera el saldo disponible (${fmt.money(saldoDisponible)})`);
       }
 
+      // Validar que cada línea activa tenga tasa fiscal definida (no null/undefined)
+      if (codigoMod !== '1') {
+        const lineaSinTasa = (facturaData.detalles ?? [])
+          .filter((d: any) => (devolver[d.id] ?? 0) > 0)
+          .find((d: any) => d.porcentajeIva == null || isNaN(Number(d.porcentajeIva)));
+        if (lineaSinTasa) {
+          throw new Error(`El ítem "${lineaSinTasa.descripcion}" no tiene tasa de ITBIS registrada. Contacta a soporte.`);
+        }
+      }
+
       // Calcular porcentaje ITBIS exacto del original para revertirlo sin duplicarlo
       const _subOrig = Number(facturaData.subtotal) || Number(facturaData.total) || 1;
       const _ivaOrig = Number(facturaData.iva ?? 0);
@@ -2268,14 +2289,14 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
       const detalles = codigoMod === '1'
         ? [{ descripcion: `Anulación total de ${facturaData.folio}`, cantidad: 1,
              precioUnitario: _subOrig,
-             porcentajeIva: sinItbis ? 0 : _pctOrig }]
+             porcentajeIva: _pctOrig }]
         : facturaData.detalles
             .filter((d: any) => (devolver[d.id] ?? 0) > 0)
             .map((d: any) => ({
               productoId: d.productoId, descripcion: d.descripcion,
               cantidad: devolver[d.id] ?? 0,
               precioUnitario: Number(precioEdit[d.id] ?? d.precioUnitario),
-              porcentajeIva: sinItbis ? 0 : (Number(d.porcentajeIva) || 18),
+              porcentajeIva: Number(d.porcentajeIva),
             }));
 
       if (detalles.length === 0) throw new Error('Selecciona al menos un ítem a acreditar');
@@ -2531,18 +2552,22 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
             <div>
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
                 <span style={{ fontSize:13, fontWeight:700, color:txt }}>Ítems a acreditar</span>
-                <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:sub, cursor:'pointer' }}>
-                  <input type="checkbox" checked={sinItbis} onChange={e=>setSinItbis(e.target.checked)} style={{ cursor:'pointer' }} />
-                  No aplica ITBIS
-                </label>
+                {facturaData?.detalles?.filter((d:any)=>(devolver[d.id]??0)>0).every((d:any)=>Number(d.porcentajeIva)===0) && (
+                  <span style={{ fontSize:11, color:'#16A34A', fontWeight:600 }}>✓ Todos exentos de ITBIS</span>
+                )}
               </div>
               <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
                 <thead><tr style={{ background: isDark?'#0F172A':'#F8FAFC' }}>
-                  {['Descripción','Cant.','P. Unit.','Devolver'].map(h=>(
-                    <th key={h} style={{ padding:'6px 8px', textAlign:'left', color:sub, fontWeight:600, fontSize:11, borderBottom:`1px solid ${border}` }}>{h}</th>
+                  {['Descripción','Cant.','P. Unit.','%IVA','ITBIS','Devolver'].map(h=>(
+                    <th key={h} style={{ padding:'6px 8px', textAlign: (h==='Cant.'||h==='%IVA'||h==='ITBIS')?'center':'left', color:sub, fontWeight:600, fontSize:11, borderBottom:`1px solid ${border}` }}>{h}</th>
                   ))}
                 </tr></thead>
-                <tbody>{facturaData.detalles.map((det:any)=>(
+                <tbody>{facturaData.detalles.map((det:any)=>{
+                  const pct     = Number(det.porcentajeIva);
+                  const precio  = Number(precioEdit[det.id] ?? det.precioUnitario);
+                  const qty     = devolver[det.id] ?? 0;
+                  const itbisLn = isNaN(pct) ? 0 : precio * qty * pct / 100;
+                  return (
                   <tr key={det.id} style={{ borderBottom:`1px solid ${isDark?'#1E293B':'#F1F5F9'}` }}>
                     <td style={{ padding:'6px 8px', fontWeight:500, color:txt }}>{det.descripcion}</td>
                     <td style={{ padding:'6px 8px', textAlign:'center', color:sub }}>{parseFloat(Number(det.cantidad).toFixed(3))}</td>
@@ -2551,13 +2576,19 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
                         onChange={e=>setPrecioEdit(p=>({...p,[det.id]:e.target.value}))}
                         style={{ width:70, height:26, textAlign:'right', borderRadius:6, border:`1px solid ${border}`, fontSize:12, outline:'none', background: isDark?'#0F172A':bg, color:txt, padding:'0 4px' }} />
                     </td>
+                    <td style={{ padding:'6px 8px', textAlign:'center', color: pct===0?sub:'#DC2626', fontWeight:pct>0?600:400 }}>
+                      {pct === 0 ? '—' : `${pct}%`}
+                    </td>
+                    <td style={{ padding:'6px 8px', textAlign:'center', color: itbisLn===0?sub:'#DC2626', fontVariantNumeric:'tabular-nums' }}>
+                      {itbisLn === 0 ? '—' : fmt.money(itbisLn)}
+                    </td>
                     <td style={{ padding:'6px 8px' }}>
                       <input type="number" min="0" max={det.cantidad} value={devolver[det.id]??0}
                         onChange={e=>setDevolver(p=>({...p,[det.id]:Math.min(Number(e.target.value),Number(det.cantidad))}))}
                         style={{ width:60, height:26, textAlign:'center', borderRadius:6, border:`1px solid ${border}`, fontSize:12, outline:'none', background: isDark?'#0F172A':bg, color:txt, padding:'0 4px' }} />
                     </td>
                   </tr>
-                ))}</tbody>
+                )})}</tbody>
               </table>
 
               {/* Resumen */}
@@ -2569,9 +2600,9 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
                   <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#DC2626', marginBottom:3 }}>
                     <span>Monto a acreditar (subtotal):</span><span style={{ fontWeight:600 }}>-{fmt.money(subtotalNC)}</span>
                   </div>
-                  {!sinItbis && (
+                  {itbisNC > 0 && (
                     <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#DC2626', marginBottom:6 }}>
-                      <span>ITBIS a revertir (18%):</span><span style={{ fontWeight:600 }}>-{fmt.money(itbisNC)}</span>
+                      <span>ITBIS a revertir:</span><span style={{ fontWeight:600 }}>-{fmt.money(itbisNC)}</span>
                     </div>
                   )}
                   <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, fontWeight:700, borderTop:`1px solid ${border}`, paddingTop:6 }}>

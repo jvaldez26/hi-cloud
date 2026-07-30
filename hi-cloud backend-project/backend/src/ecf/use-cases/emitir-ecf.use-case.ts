@@ -593,6 +593,21 @@ ${JSON.stringify(payload, null, 2)}`;
         relations: ['cliente', 'detalles'],
       });
       if (!nota) throw new NotFoundException(`Nota de Crédito #${id} no encontrada para empresa #${empresaId}`);
+
+      // D-débil: si no hay base gravada pero hay ITBIS, el XML E34 sería fiscalmente inválido.
+      // Regla parcial — no atrapa facturas mixtas. La validación fuerte (línea a línea)
+      // queda pendiente de la migración facturaDetalleId.
+      const montoGravadoDetalles = (nota.detalles ?? []).reduce(
+        (s: number, d: any) => Number(d.porcentajeIva) > 0 ? s + Number(d.precioUnitario) * Number(d.cantidad) : s,
+        0,
+      );
+      if (montoGravadoDetalles === 0 && Number(nota.iva) > 0) {
+        throw new BadRequestException(
+          `La Nota de Crédito #${nota.id} tiene ITBIS (${nota.iva}) pero ningún ítem gravado. ` +
+          `Verifique las tasas de ITBIS en los ítems antes de emitir el e-CF.`,
+        );
+      }
+
       return {
         ...nota,
         iva: nota.iva,
