@@ -22,6 +22,9 @@ function fmtDate(d: string | null) {
   return new Date(d).toLocaleDateString('es-DO', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+const PLAN_PRECIOS: Record<string, number> = { emprendedor: 29, pyme: 59, pro: 89, plus: 129 };
+const PLAN_LABELS:  Record<string, string> = { emprendedor: 'Emprendedor', pyme: 'PYME', pro: 'Pro', plus: 'Plus' };
+
 const ESTADO_COLOR: Record<string, string> = {
   activa: 'green', suspendida: 'red', prueba: 'cyan', vencida: 'red', cancelada: 'default',
 };
@@ -204,7 +207,17 @@ export default function CobrosPage() {
       render: (_: any, r: ResumenCobros) => (
         <Space size={4} wrap>
           <Button size="small" icon={<DollarOutlined />}
-            onClick={() => { setOpenPago(r.empresaId); formPago.setFieldsValue({ tipo: 'MANUAL', montoUsd: null }); }}>
+            onClick={() => {
+              const precio = PLAN_PRECIOS[r.plan] ?? null;
+              const mes = new Date().toLocaleDateString('es-DO', { month: 'long', year: 'numeric' });
+              const planLabel = PLAN_LABELS[r.plan] ?? r.plan;
+              setOpenPago(r.empresaId);
+              formPago.setFieldsValue({
+                tipo: 'MANUAL',
+                montoUsd: precio,
+                concepto: precio ? `Pago plan ${planLabel} — ${mes}` : '',
+              });
+            }}>
             Pago
           </Button>
           <Button size="small" icon={<PlusOutlined />}
@@ -439,6 +452,38 @@ export default function CobrosPage() {
         title={`💵 Registrar pago — Empresa #${openPago}`}
         open={!!openPago} onCancel={() => setOpenPago(null)} footer={null}
       >
+        {(() => {
+          const row = resumen.find(r => r.empresaId === openPago);
+          if (!row) return null;
+          const precio = PLAN_PRECIOS[row.plan];
+          const planLabel = PLAN_LABELS[row.plan] ?? row.plan;
+          return (
+            <div style={{ marginBottom: 16, padding: '10px 14px', background: '#f8fafc',
+              borderRadius: 8, border: '1px solid #e2e8f0' }}>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>{row.nombre}</div>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Text type="secondary" style={{ fontSize: 11 }}>PLAN</Text>
+                  <div style={{ fontWeight: 600 }}>{planLabel}{precio != null ? ` — US$${precio}/mes` : ''}</div>
+                </Col>
+                <Col span={12}>
+                  <Text type="secondary" style={{ fontSize: 11 }}>SALDO PENDIENTE</Text>
+                  <div style={{ fontWeight: 600, color: Number(row.saldoPendienteUsd) > 0 ? '#dc2626' : '#16a34a' }}>
+                    {fmtUsd(Number(row.saldoPendienteUsd))}
+                  </div>
+                </Col>
+                <Col span={12} style={{ marginTop: 6 }}>
+                  <Text type="secondary" style={{ fontSize: 11 }}>VENCIMIENTO</Text>
+                  <div style={{ fontSize: 13 }}>{fmtDate(row.venceSuscripcion)}</div>
+                </Col>
+                <Col span={12} style={{ marginTop: 6 }}>
+                  <Text type="secondary" style={{ fontSize: 11 }}>ESTADO</Text>
+                  <div style={{ fontSize: 13 }}>{row.estadoSuscripcion}</div>
+                </Col>
+              </Row>
+            </div>
+          );
+        })()}
         <Form form={formPago} layout="vertical"
           onFinish={v => pagoMut.mutate({ id: openPago, ...v })}>
           <Form.Item name="tipo" label="Tipo de pago" rules={[{ required: true }]}>
