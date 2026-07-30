@@ -399,6 +399,8 @@ export class ProductosService implements OnModuleInit {
 
     // stock se ignora en update — solo modificable mediante movimientos de inventario
     const { almacenId, ubicacionId: ubicacionIdDto, stock: _stock, ...updateData } = dto as any;
+    // Limpiar flag de creación rápida: cualquier edición manual del producto lo completa
+    updateData.esCreacionRapida = false;
     await this.productoRepository.update(id, updateData);
 
     // Si viene ubicacionId, validar anti-IDOR y persistir en stock_almacen
