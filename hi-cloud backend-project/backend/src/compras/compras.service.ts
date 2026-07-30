@@ -290,6 +290,15 @@ export class ComprasService {
             }
           : undefined,
       );
+
+      // 4. Limpiar flag "Pendiente" de productos creados rápidamente desde esta OC
+      const pidsRecibidos = compra.detalles.map(d => d.productoId);
+      if (pidsRecibidos.length > 0) {
+        await this.ds.query(
+          `UPDATE productos SET "esCreacionRapida" = false WHERE id = ANY($1) AND "empresaId" = $2`,
+          [pidsRecibidos, this.tenantService.getEmpresaId()],
+        );
+      }
     }
 
     if (estado === CompraEstado.CANCELADA && compra.estado === CompraEstado.RECIBIDA) {
@@ -391,6 +400,17 @@ export class ComprasService {
               netoPagar:  Number(compra.netoPagar           ?? compra.total),
             }
           : undefined,
+      );
+    }
+
+    // Limpiar flag "Pendiente" de productos que recibieron stock en esta recepción
+    const pidsRecibidos = dto.detalles
+      .map(item => compra.detalles.find(d => d.id === item.detalleId)?.productoId)
+      .filter((pid): pid is number => pid !== undefined);
+    if (pidsRecibidos.length > 0) {
+      await this.ds.query(
+        `UPDATE productos SET "esCreacionRapida" = false WHERE id = ANY($1) AND "empresaId" = $2`,
+        [pidsRecibidos, this.tenantService.getEmpresaId()],
       );
     }
 
