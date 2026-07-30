@@ -1775,6 +1775,10 @@ export default function SuperAdminPage() {
   // ── Columnas tablas ──────────────────────────────────────────────────────────
 
   const colsEmpresas = [
+    // ── ID ────────────────────────────────────────────────────────────────────
+    { title: 'ID', dataIndex: 'id', key: 'id', width: 60,
+      render: (v: number) => <span style={{ color: C.txt2, fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>#{v}</span>,
+    },
     // ── EMPRESA (nombre + RNC) ────────────────────────────────────────────────
     {
       title: 'Empresa', key: 'empresa',
@@ -1943,6 +1947,9 @@ export default function SuperAdminPage() {
   ];
 
   const colsUsuarios = [
+    { title: 'ID', dataIndex: 'id', key: 'id', width: 60,
+      render: (v: number) => <span style={{ color: C.txt2, fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>#{v}</span>,
+    },
     {
       title: 'Usuario', key: 'usuario', width: 200,
       render: (_: any, r: any) => (
