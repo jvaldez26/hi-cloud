@@ -2261,6 +2261,13 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
   const totalNC  = subtotalNC + itbisNC;
   const saldoDisponible = saldoNC ? saldoNC.saldoDisponible : Number(facturaData?.total ?? 0);
 
+  // Bloqueo preventivo: si alguna línea activa no tiene tasa fiscal definida
+  const lineaSinTasaActiva: any = (facturaData && codigoMod !== '1')
+    ? (facturaData.detalles ?? [])
+        .filter((d: any) => (devolver[d.id] ?? 0) > 0)
+        .find((d: any) => d.porcentajeIva == null || isNaN(Number(d.porcentajeIva)))
+    : null;
+
   const guardarMut = useMutation({
     mutationFn: async () => {
       if (!clienteId) throw new Error('Selecciona un cliente');
@@ -2282,14 +2289,13 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
         }
       }
 
-      // Calcular porcentaje ITBIS exacto del original para revertirlo sin duplicarlo
+      // Para código 1 el backend ignora detalles del payload y re-lee de factura_detalles.
+      // _subOrig se mantiene solo como referencia contextual en la descripción.
       const _subOrig = Number(facturaData.subtotal) || Number(facturaData.total) || 1;
-      const _ivaOrig = Number(facturaData.iva ?? 0);
-      const _pctOrig = _subOrig > 0.01 ? Math.round(_ivaOrig / _subOrig * 10000) / 100 : 0;
       const detalles = codigoMod === '1'
         ? [{ descripcion: `Anulación total de ${facturaData.folio}`, cantidad: 1,
              precioUnitario: _subOrig,
-             porcentajeIva: _pctOrig }]
+             porcentajeIva: 0 }]
         : facturaData.detalles
             .filter((d: any) => (devolver[d.id] ?? 0) > 0)
             .map((d: any) => ({
@@ -2618,22 +2624,29 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
         </div>
 
         {/* Footer */}
-        <div style={{ padding:'12px 20px', borderTop:`1px solid ${border}`, background: isDark?'#0F172A':bg, display:'flex', gap:8 }}>
-          <button onClick={onClose} style={{ flex:1, height:42, borderRadius:10, border:`1px solid ${border}`, background:'transparent', color:sub, fontWeight:600, fontSize:14, cursor:'pointer', outline:'none' }}>
-            Cancelar
-          </button>
-          <button onClick={async () => {
-              if (esEfectivo && requireSupervisor) {
-                const ok = await requireSupervisor('Devolución en efectivo', `NC sobre ${facturaData?.folio ?? ''}`);
-                if (!ok) return;
-              }
-              guardarMut.mutate();
-            }} disabled={guardarMut.isPending}
-            style={{ flex:2, height:42, borderRadius:10, border:'none',
-              background: guardarMut.isPending?'#94A3B8':'#2563EB',
-              color:'#fff', fontWeight:700, fontSize:14, cursor:guardarMut.isPending?'not-allowed':'pointer' }}>
-            {guardarMut.isPending ? '⏳ Emitiendo NC...' : '📝 Crear en Borrador y Emitir'}
-          </button>
+        <div style={{ padding:'12px 20px', borderTop:`1px solid ${border}`, background: isDark?'#0F172A':bg, display:'flex', flexDirection:'column', gap:8 }}>
+          {lineaSinTasaActiva && (
+            <div style={{ padding:'6px 10px', background: isDark?'#450a0a':'#FEF2F2', border:`1px solid ${isDark?'#991b1b':'#FECACA'}`, borderRadius:6, fontSize:12, color:'#DC2626' }}>
+              Línea sin tasa fiscal: <strong>"{lineaSinTasaActiva.descripcion}"</strong> — contacta a soporte.
+            </div>
+          )}
+          <div style={{ display:'flex', gap:8 }}>
+            <button onClick={onClose} style={{ flex:1, height:42, borderRadius:10, border:`1px solid ${border}`, background:'transparent', color:sub, fontWeight:600, fontSize:14, cursor:'pointer', outline:'none' }}>
+              Cancelar
+            </button>
+            <button onClick={async () => {
+                if (esEfectivo && requireSupervisor) {
+                  const ok = await requireSupervisor('Devolución en efectivo', `NC sobre ${facturaData?.folio ?? ''}`);
+                  if (!ok) return;
+                }
+                guardarMut.mutate();
+              }} disabled={guardarMut.isPending || !!lineaSinTasaActiva}
+              style={{ flex:2, height:42, borderRadius:10, border:'none',
+                background: (guardarMut.isPending || !!lineaSinTasaActiva) ? '#94A3B8' : '#2563EB',
+                color:'#fff', fontWeight:700, fontSize:14, cursor:(guardarMut.isPending || !!lineaSinTasaActiva)?'not-allowed':'pointer' }}>
+              {guardarMut.isPending ? '⏳ Emitiendo NC...' : '📝 Crear en Borrador y Emitir'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

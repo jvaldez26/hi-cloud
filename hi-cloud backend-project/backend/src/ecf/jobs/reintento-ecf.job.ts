@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -504,6 +504,20 @@ export class ReintentoECFJob {
         relations: ['cliente', 'detalles'],
       });
       if (!nota) throw new NotFoundException(`Nota de Crédito #${id} no encontrada para empresa #${empresaId}`);
+
+      // D-débil: mismo guard que EmitirECFUseCase. Si no hay base gravada pero hay ITBIS,
+      // el XML E34 sería fiscalmente inválido — bloquear también el reintento automático.
+      const montoGravadoDetalles = (nota.detalles ?? []).reduce(
+        (s: number, d: any) => Number(d.porcentajeIva) > 0 ? s + Number(d.precioUnitario) * Number(d.cantidad) : s,
+        0,
+      );
+      if (montoGravadoDetalles === 0 && Number(nota.iva) > 0) {
+        throw new BadRequestException(
+          `La Nota de Crédito #${nota.id} tiene ITBIS (${nota.iva}) pero ningún ítem gravado. ` +
+          `Verifique las tasas de ITBIS antes de reenviar el e-CF.`,
+        );
+      }
+
       return { ...nota, iva: nota.iva } as unknown as Factura;
     }
 
