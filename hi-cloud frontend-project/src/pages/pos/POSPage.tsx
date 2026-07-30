@@ -10324,14 +10324,28 @@ export default function POSPage() {
           onMenuToggle={() => setMenuNavAbierto(v => !v)}
           onPanelChange={async (p) => {
             if ((p as string) === 'impresora-bt') { setModalBT(true); setMenuNavAbierto(false); return; }
-            if ((p as string) === 'nueva-nc') { setShowNotaCredito(true); setMenuNavAbierto(false); return; }
+            if ((p as string) === 'nueva-nc') {
+              if (supervisor.supervisorModeEnabled) {
+                const ok = await supervisor.requireSupervisor('Nueva Nota de Crédito');
+                if (!ok) return;
+              }
+              setShowNotaCredito(true); setMenuNavAbierto(false); return;
+            }
             if (p === 'cierre-caja' && posConf.posSupervisorCierreCaja !== false && posConf.supervisorModeEnabled) {
               const fecha = new Date().toLocaleString('es', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
               const ok = await supervisor.requireSupervisorForced('Cierre de Caja', fecha);
               if (!ok) return;
             }
+            if (p === 'inventario' && supervisor.supervisorModeEnabled) {
+              const ok = await supervisor.requireSupervisor('Inventario');
+              if (!ok) return;
+            }
+            if (p === 'recibos-cobro' && supervisor.supervisorModeEnabled) {
+              const ok = await supervisor.requireSupervisor('Recibos de Cobro');
+              if (!ok) return;
+            }
             if (p === 'gastos' && supervisor.supervisorModeEnabled && posConf.posSupervisorGastos !== false) {
-              const ok = await supervisor.requireSupervisor('Gastos');
+              const ok = await supervisor.requireSupervisor('Gastos / Retiros');
               if (!ok) return;
             }
             if (p === 'ventas-hoy' && supervisor.supervisorModeEnabled) {
