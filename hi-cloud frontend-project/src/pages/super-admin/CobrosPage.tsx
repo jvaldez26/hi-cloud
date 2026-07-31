@@ -11,18 +11,15 @@ import {
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { pagosAdminApi, PagoSuscripcion, ResumenCobros } from '../../api/pagos.api';
+import { fmtDop } from '../../utils/fmt';
 
 const { Title, Text } = Typography;
 
-function fmtUsd(n: number) {
-  return 'US$ ' + Number(n ?? 0).toFixed(2);
-}
 function fmtDate(d: string | null) {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('es-DO', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-const PLAN_PRECIOS: Record<string, number> = { emprendedor: 29, pyme: 59, pro: 89, plus: 129 };
 const PLAN_LABELS:  Record<string, string> = { emprendedor: 'Emprendedor', pyme: 'PYME', pro: 'Pro', plus: 'Plus' };
 
 const ESTADO_COLOR: Record<string, string> = {
@@ -170,17 +167,17 @@ export default function CobrosPage() {
     },
     {
       title: 'Saldo',
-      dataIndex: 'saldoPendienteUsd',
+      dataIndex: 'saldo',
       width: 120,
       align: 'right' as const,
       render: (v: number | string) => {
         const saldo = Number(v ?? 0);
         if (saldo > 0)
-          return <Text strong style={{ color: '#ef4444' }}>{fmtUsd(saldo)}</Text>;
+          return <Text strong style={{ color: '#ef4444' }}>{fmtDop(saldo)}</Text>;
         if (saldo < 0)
           return (
             <Space direction="vertical" size={0} style={{ textAlign: 'right' }}>
-              <Text strong style={{ color: '#10b981' }}>{fmtUsd(Math.abs(saldo))}</Text>
+              <Text strong style={{ color: '#10b981' }}>{fmtDop(Math.abs(saldo))}</Text>
               <Text style={{ fontSize: 10, color: '#10b981' }}>a favor</Text>
             </Space>
           );
@@ -208,13 +205,13 @@ export default function CobrosPage() {
         <Space size={4} wrap>
           <Button size="small" icon={<DollarOutlined />}
             onClick={() => {
-              const precio = PLAN_PRECIOS[r.plan] ?? null;
+              const precio = r.precioMensual ?? null;
               const mes = new Date().toLocaleDateString('es-DO', { month: 'long', year: 'numeric' });
               const planLabel = PLAN_LABELS[r.plan] ?? r.plan;
               setOpenPago(r.empresaId);
               formPago.setFieldsValue({
                 tipo: 'MANUAL',
-                montoUsd: precio,
+                monto: precio,
                 concepto: precio ? `Pago plan ${planLabel} — ${mes}` : '',
               });
             }}>
@@ -249,9 +246,9 @@ export default function CobrosPage() {
     { title: 'Empresa', dataIndex: 'empresaNombre', render: (v: string) => <Text strong>{v}</Text> },
     {
       title: 'Monto',
-      dataIndex: 'montoUsd',
+      dataIndex: 'monto',
       width: 110,
-      render: (v: number) => <Text strong>{fmtUsd(v)}</Text>,
+      render: (v: number) => <Text strong>{fmtDop(v)}</Text>,
     },
     { title: 'Referencia', dataIndex: 'referencia', width: 130, render: (v: string) => v ?? '—' },
     { title: 'Fecha', dataIndex: 'creadoEn', width: 110, render: (v: string) => fmtDate(v) },
@@ -313,13 +310,13 @@ export default function CobrosPage() {
       render: (v: string) => <Tag>{v}</Tag>,
     },
     {
-      title: 'Monto', dataIndex: 'montoUsd', width: 120, align: 'right' as const,
+      title: 'Monto', dataIndex: 'monto', width: 120, align: 'right' as const,
       render: (v: number | string, r: PagoSuscripcion) => {
         const monto = Number(v ?? 0);
         const esCargo = r.tipo === 'CARGO';
         return (
           <Text style={{ color: esCargo ? '#ef4444' : '#10b981', fontWeight: 600 }}>
-            {esCargo ? '+' : '−'}{fmtUsd(monto)}
+            {esCargo ? '+' : '−'}{fmtDop(monto)}
           </Text>
         );
       },
@@ -367,7 +364,7 @@ export default function CobrosPage() {
           <Card size="small">
             <Statistic
               title="Con saldo pendiente"
-              value={resumen.filter(r => Number(r.saldoPendienteUsd) > 0).length}
+              value={resumen.filter(r => Number(r.saldo) > 0).length}
               valueStyle={{ color: '#ef4444' }}
             />
           </Card>
@@ -385,12 +382,10 @@ export default function CobrosPage() {
           <Card size="small">
             <Statistic
               title="MRR estimado"
-              prefix="US$"
+              prefix="RD$"
               value={resumen
                 .filter(r => r.estadoSuscripcion === 'activa')
-                .reduce((s, r) => s + ({
-                  emprendedor: 29, pyme: 59, pro: 89, plus: 129,
-                }[r.plan] ?? 0), 0).toFixed(2)}
+                .reduce((s, r) => s + (r.precioMensual ?? 0), 0).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               valueStyle={{ color: '#7c3aed' }}
             />
           </Card>
@@ -455,7 +450,7 @@ export default function CobrosPage() {
         {(() => {
           const row = resumen.find(r => r.empresaId === openPago);
           if (!row) return null;
-          const precio = PLAN_PRECIOS[row.plan];
+          const precio = row.precioMensual ?? null;
           const planLabel = PLAN_LABELS[row.plan] ?? row.plan;
           return (
             <div style={{ marginBottom: 16, padding: '10px 14px', background: '#f8fafc',
@@ -464,12 +459,12 @@ export default function CobrosPage() {
               <Row gutter={16}>
                 <Col span={12}>
                   <Text type="secondary" style={{ fontSize: 11 }}>PLAN</Text>
-                  <div style={{ fontWeight: 600 }}>{planLabel}{precio != null ? ` — US$${precio}/mes` : ''}</div>
+                  <div style={{ fontWeight: 600 }}>{planLabel}{precio != null ? ` — RD$${precio.toLocaleString('es-DO')}/mes` : ''}</div>
                 </Col>
                 <Col span={12}>
                   <Text type="secondary" style={{ fontSize: 11 }}>SALDO PENDIENTE</Text>
-                  <div style={{ fontWeight: 600, color: Number(row.saldoPendienteUsd) > 0 ? '#dc2626' : '#16a34a' }}>
-                    {fmtUsd(Number(row.saldoPendienteUsd))}
+                  <div style={{ fontWeight: 600, color: Number(row.saldo) > 0 ? '#dc2626' : '#16a34a' }}>
+                    {fmtDop(Number(row.saldo))}
                   </div>
                 </Col>
                 <Col span={12} style={{ marginTop: 6 }}>
@@ -496,8 +491,8 @@ export default function CobrosPage() {
           <Form.Item name="concepto" label="Concepto" rules={[{ required: true }]}>
             <Input placeholder="Ej. Pago plan Emprendedor — Junio 2026" />
           </Form.Item>
-          <Form.Item name="montoUsd" label="Monto (US$)" rules={[{ required: true }]}>
-            <InputNumber prefix="US$" min={0.01} precision={2} style={{ width: '100%' }} />
+          <Form.Item name="monto" label="Monto (RD$)" rules={[{ required: true }]}>
+            <InputNumber prefix="RD$" min={0.01} precision={2} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="referencia" label="Referencia">
             <Input />
@@ -522,8 +517,8 @@ export default function CobrosPage() {
           <Form.Item name="concepto" label="Concepto del cargo" rules={[{ required: true }]}>
             <Input placeholder="Ej. Soporte técnico adicional" />
           </Form.Item>
-          <Form.Item name="montoUsd" label="Monto (US$)" rules={[{ required: true }]}>
-            <InputNumber prefix="US$" min={0.01} precision={2} style={{ width: '100%' }} />
+          <Form.Item name="monto" label="Monto (RD$)" rules={[{ required: true }]}>
+            <InputNumber prefix="RD$" min={0.01} precision={2} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="notas" label="Notas internas">
             <Input.TextArea rows={2} />
@@ -545,8 +540,8 @@ export default function CobrosPage() {
           <Form.Item name="concepto" label="Concepto del crédito" rules={[{ required: true }]}>
             <Input placeholder="Ej. Descuento especial por referido" />
           </Form.Item>
-          <Form.Item name="montoUsd" label="Monto (US$)" rules={[{ required: true }]}>
-            <InputNumber prefix="US$" min={0.01} precision={2} style={{ width: '100%' }} />
+          <Form.Item name="monto" label="Monto (RD$)" rules={[{ required: true }]}>
+            <InputNumber prefix="RD$" min={0.01} precision={2} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="notas" label="Notas internas">
             <Input.TextArea rows={2} />
@@ -587,7 +582,7 @@ export default function CobrosPage() {
       <Modal
         title={
           openComprobante
-            ? `🧾 Comprobante — ${openComprobante.empresaNombre ?? `Empresa #${openComprobante.empresaId}`} — ${fmtUsd(openComprobante.montoUsd)}`
+            ? `🧾 Comprobante — ${openComprobante.empresaNombre ?? `Empresa #${openComprobante.empresaId}`} — ${fmtDop(openComprobante.monto)}`
             : '🧾 Comprobante'
         }
         open={!!openComprobante}

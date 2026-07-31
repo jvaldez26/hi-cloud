@@ -3,16 +3,16 @@ import { apiClient } from './client';
 // ── Tipos ──────────────────────────────────────────────────────────────────────
 
 export interface ResumenSuscripcion {
-  plan:              string;
-  estado:            string;
-  modalidad:         string;
-  precioMensualUsd:  number;
-  fechaInicio:       string;
-  fechaVencimiento:  string;
-  diasRestantes:     number;
-  diasTotales:       number;
-  porcentajeUsado:   number;
-  saldoPendienteUsd: number;
+  plan:             string;
+  estado:           string;
+  modalidad:        string;
+  precioMensual:    number;
+  fechaInicio:      string;
+  fechaVencimiento: string;
+  diasRestantes:    number;
+  diasTotales:      number;
+  porcentajeUsado:  number;
+  saldo:            number;
 }
 
 export interface PagoSuscripcion {
@@ -20,7 +20,7 @@ export interface PagoSuscripcion {
   empresaId:      number;
   tipo:           'TARJETA' | 'TRANSFERENCIA' | 'MANUAL' | 'CREDITO' | 'CARGO';
   concepto:       string;
-  montoUsd:       number;
+  monto:          number;
   estado:         'PENDIENTE' | 'CONFIRMADO' | 'RECHAZADO';
   comprobanteUrl: string | null;
   referencia:     string | null;
@@ -55,7 +55,8 @@ export interface ResumenCobros {
   estadoSuscripcion:      string;
   venceSuscripcion:       string;
   vencimientoOverride:    string | null;
-  saldoPendienteUsd:      number;
+  saldo:                  number;
+  precioMensual:          number;
   ultimoPago:             string | null;
   pendientesConfirmacion: number;
 }
@@ -88,14 +89,14 @@ export const pagosApi = {
   /** Subir comprobante de transferencia */
   subirComprobante: (
     file: File,
-    montoUsd: number,
+    monto: number,
     referencia?: string,
     banco?: string,
     notas?: string,
   ): Promise<PagoSuscripcion> => {
     const fd = new FormData();
     fd.append('file', file);
-    fd.append('montoUsd', String(montoUsd));
+    fd.append('monto', String(monto));
     if (referencia) fd.append('referencia', referencia);
     if (banco)      fd.append('banco', banco);
     if (notas)      fd.append('notas', notas);
@@ -140,7 +141,7 @@ export const pagosAdminApi = {
 
   /** Registrar pago manual */
   registrarPago: (empresaId: number, data: {
-    tipo: string; concepto: string; montoUsd: number;
+    tipo: string; concepto: string; monto: number;
     referencia?: string; notas?: string;
     periodoInicio?: string; periodoFin?: string;
   }): Promise<PagoSuscripcion> =>
@@ -148,13 +149,13 @@ export const pagosAdminApi = {
 
   /** Agregar cargo adicional */
   agregarCargo: (empresaId: number, data: {
-    concepto: string; montoUsd: number; notas?: string;
+    concepto: string; monto: number; notas?: string;
   }): Promise<PagoSuscripcion> =>
     apiClient.post(`${ADMIN}/empresa/${empresaId}/cargo`, data).then(r => r.data),
 
   /** Aplicar crédito / descuento */
   aplicarCredito: (empresaId: number, data: {
-    concepto: string; montoUsd: number; notas?: string;
+    concepto: string; monto: number; notas?: string;
   }): Promise<PagoSuscripcion> =>
     apiClient.post(`${ADMIN}/empresa/${empresaId}/credito`, data).then(r => r.data),
 

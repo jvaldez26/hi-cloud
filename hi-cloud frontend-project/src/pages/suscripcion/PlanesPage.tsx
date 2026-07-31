@@ -6,15 +6,16 @@ import { Check, ChevronDown, ChevronUp } from 'lucide-react';
 import { usePlan } from '../../hooks/usePlan';
 import { useAuthStore } from '../../store/auth.store';
 import api from '../../api/client';
+import { fmtDop } from '../../utils/fmt';
 
-// ── Planes en USD ─────────────────────────────────────────────────────────────
+// ── Planes en DOP ─────────────────────────────────────────────────────────────
 
 const PLANES = [
   {
     clave: 'emprendedor',
     nombre: 'EMPRENDEDOR',
-    precioMensual: 29,
-    precioAnual: 26.10,      // 29 * 0.90
+    precioMensual: 1700,
+    precioAnual: 1530,       // 1700 * 0.90
     limiteDop: 125_000,
     usuarios: 2,
     destacado: false,
@@ -29,8 +30,8 @@ const PLANES = [
   {
     clave: 'pyme',
     nombre: 'PYME',
-    precioMensual: 59,
-    precioAnual: 53.10,      // 59 * 0.90
+    precioMensual: 3500,
+    precioAnual: 3150,       // 3500 * 0.90
     limiteDop: 500_000,
     usuarios: 3,
     destacado: false,
@@ -45,8 +46,8 @@ const PLANES = [
   {
     clave: 'pro',
     nombre: 'PRO',
-    precioMensual: 89,
-    precioAnual: 80.10,      // 89 * 0.90
+    precioMensual: 5200,
+    precioAnual: 4680,       // 5200 * 0.90
     limiteDop: 1_250_000,
     usuarios: 4,
     destacado: true,
@@ -61,8 +62,8 @@ const PLANES = [
   {
     clave: 'plus',
     nombre: 'PLUS',
-    precioMensual: 129,
-    precioAnual: 116.10,     // 129 * 0.90
+    precioMensual: 7600,
+    precioAnual: 6840,       // 7600 * 0.90
     limiteDop: 6_250_000,
     usuarios: 10,
     destacado: false,
@@ -75,9 +76,6 @@ const PLANES = [
     ],
   },
 ];
-
-const fmtDop = (n: number) => `RD$${n.toLocaleString('es-DO')}`;
-const fmtUsd = (n: number) => `US$ ${n.toFixed(2)}`;
 
 // ── Tabla comparativa ─────────────────────────────────────────────────────────
 
@@ -149,10 +147,10 @@ export default function PlanesPage() {
           <h1 style={{ fontSize: 30, fontWeight: 900, color: '#111827', margin: '0 0 10px' }}>
             Impulsa tu pyme con tu plan de{' '}
             <span style={{ color: '#0d9488' }}>HiCloud ERP</span>
-            {' '}desde USD $29/mes
+            {' '}desde RD$1,700/mes
           </h1>
           <p style={{ color: '#6b7280', fontSize: 15, margin: '0 0 24px' }}>
-            Gestiona tu contabilidad cumpliendo con DGII desde USD $29/mes.
+            Gestiona tu contabilidad cumpliendo con DGII desde RD$1,700/mes.
             Prueba gratis 15 días, sin tarjeta de crédito ni contratos.
           </p>
 
@@ -307,7 +305,7 @@ export default function PlanesPage() {
                   {/* Precio */}
                   <div style={{ textAlign: 'center', marginBottom: 20 }}>
                     <div style={{ fontSize: 28, fontWeight: 900, color: '#111827' }}>
-                      {fmtUsd(precio)}
+                      {fmtDop(precio)}
                     </div>
                     <div style={{ fontSize: 13, color: '#9ca3af' }}>
                       {anual ? 'Mensual (pago anual)' : 'Mensual'}
@@ -414,7 +412,7 @@ export default function PlanesPage() {
 
         {/* Nota al pie */}
         <p style={{ textAlign: 'center', color: '#9ca3af', fontSize: 12 }}>
-          Todos los precios en USD · ITBIS no incluido · Cancela cuando quieras · Sin contratos de permanencia
+          Todos los precios en pesos · ITBIS no incluido · Cancela cuando quieras · Sin contratos de permanencia
         </p>
       </div>
 
@@ -435,7 +433,7 @@ export default function PlanesPage() {
             <div style={{ background: `${modalPlan.color}11`, border: `2px solid ${modalPlan.color}44`, borderRadius: 10, padding: '16px', marginBottom: 16, textAlign: 'center' }}>
               <div style={{ fontSize: 20, fontWeight: 900, color: modalPlan.color }}>{modalPlan.nombre}</div>
               <div style={{ fontSize: 16, fontWeight: 700, color: '#111827', marginTop: 4 }}>
-                {fmtUsd(anual ? modalPlan.precioAnual : modalPlan.precioMensual)}/mes
+                {fmtDop(anual ? modalPlan.precioAnual : modalPlan.precioMensual)}/mes
                 {anual && <span style={{ color: '#0d9488', fontSize: 12, marginLeft: 8 }}>(pago anual, 10% OFF)</span>}
               </div>
               <div style={{ color: '#6b7280', fontSize: 13, marginTop: 4 }}>

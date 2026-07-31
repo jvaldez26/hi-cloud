@@ -158,19 +158,19 @@ const ECF_TYPES = [
 ];
 
 const PLANES = [
-  { clave: 'emprendedor', nombre: 'EMPRENDEDOR', precio: 29, precioAnual: 26.10,
+  { clave: 'emprendedor', nombre: 'EMPRENDEDOR', precio: 1700, precioAnual: 1530,
     limite: 'RD$125,000', usuarios: 2, color: '#374151', border: '#6B7280', popular: false,
     features: ['Factura electrónica e-CF DGII gratuita', 'Ingresos hasta RD$125,000/mes', '2 usuarios incluidos', 'Todos los módulos', 'Multi-empresa', 'Portal de clientes', 'Soporte 24/7 gratis'],
   },
-  { clave: 'pyme', nombre: 'PYME', precio: 59, precioAnual: 53.10,
+  { clave: 'pyme', nombre: 'PYME', precio: 3500, precioAnual: 3150,
     limite: 'RD$500,000', usuarios: 3, color: '#047857', border: '#10B981', popular: false,
     features: ['Factura electrónica e-CF DGII gratuita', 'Ingresos hasta RD$500,000/mes', '3 usuarios incluidos', 'Todos los módulos', 'Multi-empresa', 'Portal de clientes', 'Soporte 24/7 gratis'],
   },
-  { clave: 'pro', nombre: 'PRO', precio: 89, precioAnual: 80.10,
+  { clave: 'pro', nombre: 'PRO', precio: 5200, precioAnual: 4680,
     limite: 'RD$1,250,000', usuarios: 4, color: '#0d9488', border: '#14B8A6', popular: true,
     features: ['Factura electrónica e-CF DGII gratuita', 'Ingresos hasta RD$1,250,000/mes', '4 usuarios incluidos', 'Todos los módulos', 'Multi-empresa', 'Portal de clientes', 'Soporte 24/7 gratis'],
   },
-  { clave: 'plus', nombre: 'PLUS', precio: 129, precioAnual: 116.10,
+  { clave: 'plus', nombre: 'PLUS', precio: 7600, precioAnual: 6840,
     limite: 'RD$6,250,000', usuarios: 10, color: '#4F46E5', border: '#818CF8', popular: false,
     features: ['Factura electrónica e-CF DGII gratuita', 'Ingresos hasta RD$6,250,000/mes', '10 usuarios incluidos', 'Todos los módulos', 'Multi-empresa', 'Portal de clientes', 'Soporte 24/7 + Asistente IA'],
   },
@@ -289,7 +289,7 @@ function PreciosSection({ navigate }: { navigate: (to: string) => void }) {
                   <div style={{ fontSize: 13, fontWeight: 700, color: p.border, marginBottom: 8, letterSpacing: '0.5px' }}>{p.nombre}</div>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
                     <span style={{ fontSize: 36, fontWeight: 800, color: P.text }}>
-                      US${anual ? p.precioAnual.toFixed(0) : p.precio}
+                      RD${(anual ? p.precioAnual : p.precio).toLocaleString('es-DO')}
                     </span>
                     <span style={{ color: P.muted, fontSize: 13 }}>/mes</span>
                   </div>

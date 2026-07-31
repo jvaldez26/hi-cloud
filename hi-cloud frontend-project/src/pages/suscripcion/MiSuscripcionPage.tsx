@@ -13,6 +13,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { pagosApi, PagoSuscripcion } from '../../api/pagos.api';
+import { fmtDop } from '../../utils/fmt';
 
 const { Title, Text } = Typography;
 
@@ -29,12 +30,6 @@ const TIPO_LABEL: Record<string, string> = {
 const ESTADO_COLOR: Record<string, string> = {
   PENDIENTE: 'orange', CONFIRMADO: 'green', RECHAZADO: 'red',
 };
-
-function fmtUsd(n: number) {
-  return new Intl.NumberFormat('es-DO', {
-    style: 'currency', currency: 'USD', minimumFractionDigits: 2,
-  }).format(n ?? 0);
-}
 
 function fmtDate(d: string | null) {
   if (!d) return '—';
@@ -69,7 +64,7 @@ export default function MiSuscripcionPage() {
     mutationFn: (vals: any) =>
       pagosApi.subirComprobante(
         selectedFile!,
-        vals.montoUsd,
+        vals.monto,
         vals.referencia,
         vals.banco,
         vals.notas,
@@ -106,7 +101,7 @@ export default function MiSuscripcionPage() {
     },
     {
       title: 'Monto',
-      dataIndex: 'montoUsd',
+      dataIndex: 'monto',
       width: 110,
       align: 'right' as const,
       render: (v: number | string, r: PagoSuscripcion) => {
@@ -114,7 +109,7 @@ export default function MiSuscripcionPage() {
         const esCargo = r.tipo === 'CARGO';
         return (
           <Text style={{ color: esCargo ? '#ef4444' : '#10b981', fontWeight: 600 }}>
-            {esCargo ? '+' : '−'}{fmtUsd(monto)}
+            {esCargo ? '+' : '−'}{fmtDop(monto)}
           </Text>
         );
       },
@@ -150,7 +145,7 @@ export default function MiSuscripcionPage() {
     },
   ];
 
-  const saldo = resumen?.saldoPendienteUsd ?? 0;
+  const saldo = resumen?.saldo ?? 0;
 
   return (
     <div style={{ padding: '24px', maxWidth: 960, margin: '0 auto' }}>
@@ -195,8 +190,8 @@ export default function MiSuscripcionPage() {
                             <Col xs={12}>
                               <Statistic
                                 title="Precio mensual"
-                                value={resumen.precioMensualUsd}
-                                prefix="US$"
+                                value={resumen.precioMensual}
+                                prefix="RD$"
                                 precision={2}
                                 valueStyle={{ color: '#1677ff' }}
                               />
@@ -260,12 +255,12 @@ export default function MiSuscripcionPage() {
                           fontSize: 36, fontWeight: 700,
                           color: saldo > 0 ? '#ef4444' : '#10b981',
                         }}>
-                          {fmtUsd(Math.abs(saldo))}
+                          {fmtDop(Math.abs(saldo))}
                         </div>
                         {saldo > 0 ? (
                           <Tag color="red" style={{ marginTop: 8 }}>⚠️ Tienes saldo pendiente</Tag>
                         ) : saldo < 0 ? (
-                          <Tag color="green" style={{ marginTop: 8 }}>💳 Crédito disponible: {fmtUsd(Math.abs(saldo))}</Tag>
+                          <Tag color="green" style={{ marginTop: 8 }}>💳 Crédito disponible: {fmtDop(Math.abs(saldo))}</Tag>
                         ) : (
                           <Tag color="green" style={{ marginTop: 8 }}>✅ Al día</Tag>
                         )}
@@ -363,9 +358,8 @@ export default function MiSuscripcionPage() {
                     pagination={{ pageSize: 15, showSizeChanger: false }}
                     scroll={{ x: 'max-content' }}
                     summary={data => {
-                      // Fórmula: CARGO suma deuda, CREDITO/pagos confirmados la reducen
                       const pendiente = data.reduce((acc, mov) => {
-                        const monto = Number(mov.montoUsd ?? 0);
+                        const monto = Number(mov.monto ?? 0);
                         if (mov.tipo === 'CARGO') return acc + monto;
                         if (['TRANSFERENCIA','MANUAL','TARJETA','CREDITO'].includes(mov.tipo) && mov.estado === 'CONFIRMADO')
                           return acc - monto;
@@ -380,7 +374,7 @@ export default function MiSuscripcionPage() {
                           </Table.Summary.Cell>
                           <Table.Summary.Cell index={3} align="right">
                             <Text strong style={{ color: pendiente > 0 ? '#ef4444' : '#10b981' }}>
-                              {fmtUsd(Math.abs(pendiente))}
+                              {fmtDop(Math.abs(pendiente))}
                             </Text>
                           </Table.Summary.Cell>
                           <Table.Summary.Cell index={4} colSpan={2} />
@@ -455,13 +449,13 @@ export default function MiSuscripcionPage() {
           </Form.Item>
 
           <Form.Item
-            name="montoUsd"
-            label="Monto transferido (US$)"
+            name="monto"
+            label="Monto transferido (RD$)"
             rules={[{ required: true, message: 'Ingresa el monto' }]}
-            initialValue={resumen?.precioMensualUsd}
+            initialValue={resumen?.precioMensual}
           >
             <InputNumber
-              prefix="US$"
+              prefix="RD$"
               min={1}
               precision={2}
               style={{ width: '100%' }}

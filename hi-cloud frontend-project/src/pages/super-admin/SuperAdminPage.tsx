@@ -26,6 +26,7 @@ import api from '../../api/client';
 import { demoApi, ESTADO_DEMO_LABEL, ESTADO_DEMO_COLOR } from '../../api/demo.api';
 import CobrosPage from './CobrosPage';
 import { SECTORES_EMPRESARIALES } from '../../constants/sectores';
+import { fmtDop } from '../../utils/fmt';
 
 /** Wrapper con contexto de color del Super Admin — respeta modo oscuro */
 function CobrosAdminPanel() {
@@ -59,12 +60,6 @@ function fmtRelativa(v: string | null | undefined): { texto: string; color: stri
   return { texto: `Vence en ${dias}d`, color: '#10B981' };
 }
 
-function fmtUsd(n: number) {
-  return `US$ ${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-function fmtDop(n: number, decimals = 0) {
-  return `RD$ ${Number(n).toLocaleString('es-DO', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
-}
 
 // ── Temas del Super Admin (independiente del ERP principal) ──────────────────
 
@@ -106,24 +101,24 @@ const STORAGE_KEY = 'superadmin-theme';
 
 // Solo los 4 planes activos — los legados (trial, basico, etc.) no se ofrecen en la UI
 const PLANES = [
-  { value: 'emprendedor', label: 'Emprendedor',   color: '#3B82F6', mrr: 0, mrrUsd: 29  },
-  { value: 'pyme',        label: 'Pyme',          color: '#059669', mrr: 0, mrrUsd: 59  },
-  { value: 'pro',         label: 'Pro',           color: '#0d9488', mrr: 0, mrrUsd: 89  },
-  { value: 'plus',        label: 'Plus',          color: '#7C3AED', mrr: 0, mrrUsd: 129 },
+  { value: 'emprendedor', label: 'Emprendedor',   color: '#3B82F6', mrr: 0, precioDop: 1700 },
+  { value: 'pyme',        label: 'Pyme',          color: '#059669', mrr: 0, precioDop: 3500 },
+  { value: 'pro',         label: 'Pro',           color: '#0d9488', mrr: 0, precioDop: 5200 },
+  { value: 'plus',        label: 'Plus',          color: '#7C3AED', mrr: 0, precioDop: 7600 },
   // Legado — solo para lookup de color/precio, no se muestran en selectores
-  { value: 'trial',       label: 'Trial',         color: '#64748B', mrr: 0, mrrUsd: 0   },
-  { value: 'enterprise',  label: 'Enterprise',    color: '#EF4444', mrr: 0, mrrUsd: 0   },
-  { value: 'basico',      label: 'Básico',        color: '#6B7280', mrr: 0, mrrUsd: 0   },
-  { value: 'profesional', label: 'Profesional',   color: '#6B7280', mrr: 0, mrrUsd: 0   },
-  { value: 'empresarial', label: 'Empresarial',   color: '#6B7280', mrr: 0, mrrUsd: 0   },
+  { value: 'trial',       label: 'Trial',         color: '#64748B', mrr: 0, precioDop: 0    },
+  { value: 'enterprise',  label: 'Enterprise',    color: '#EF4444', mrr: 0, precioDop: 0    },
+  { value: 'basico',      label: 'Básico',        color: '#6B7280', mrr: 0, precioDop: 0    },
+  { value: 'profesional', label: 'Profesional',   color: '#6B7280', mrr: 0, precioDop: 0    },
+  { value: 'empresarial', label: 'Empresarial',   color: '#6B7280', mrr: 0, precioDop: 0    },
 ];
 
 // Solo los 4 planes activos para selectores de la UI
-const PLANES_ACTIVOS = PLANES.filter(p => p.mrrUsd > 0);
+const PLANES_ACTIVOS = PLANES.filter(p => p.precioDop > 0);
 
-const PLAN_COLOR: Record<string, string> = Object.fromEntries(PLANES.map(p => [p.value, p.color]));
-const PLAN_MRR:   Record<string, number> = Object.fromEntries(PLANES.map(p => [p.value, p.mrr]));
-const PLAN_MRR_USD: Record<string, number> = Object.fromEntries(PLANES.map(p => [p.value, p.mrrUsd]));
+const PLAN_COLOR:    Record<string, string> = Object.fromEntries(PLANES.map(p => [p.value, p.color]));
+const PLAN_MRR:      Record<string, number> = Object.fromEntries(PLANES.map(p => [p.value, p.mrr]));
+const PLAN_MRR_DOP:  Record<string, number> = Object.fromEntries(PLANES.map(p => [p.value, p.precioDop]));
 
 // ── Sub-componentes ───────────────────────────────────────────────────────────
 
@@ -791,9 +786,8 @@ function PlanesEditor({ C }: { C: typeof SA_DARK }) {
     trial: '#64748B', basico: '#6B7280', profesional: '#6B7280', empresarial: '#6B7280', enterprise: '#EF4444',
   };
 
-  // Usar precioMensualUsd del nuevo getPlanesCatalogo()
-  const getPrecioUsd = (p: any): number =>
-    p.precioMensualUsd ?? p.precio ?? 0;
+  const getPrecioDop = (p: any): number =>
+    p.precioMensual ?? p.precio ?? 0;
 
   return (
     <div style={{ background: C.bg, borderRadius: 12, border: `1px solid ${C.border}`, padding: 20 }}>
@@ -805,7 +799,7 @@ function PlanesEditor({ C }: { C: typeof SA_DARK }) {
       </p>
 
       {isLoading ? <Spin size="small" /> : (planes ?? []).map((p: any) => {
-        const precioUsd = getPrecioUsd(p);
+        const precioDop = getPrecioDop(p);
         return (
           <div key={p.clave} style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -816,15 +810,15 @@ function PlanesEditor({ C }: { C: typeof SA_DARK }) {
               <span style={{ color: C.txt, fontWeight: 600 }}>{p.nombre?.toUpperCase()}</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span style={{ color: precioUsd > 0 ? C.gold : C.txt2, fontWeight: 700, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
-                {precioUsd > 0 ? `US$${precioUsd}/mes` : 'N/A'}
+              <span style={{ color: precioDop > 0 ? C.gold : C.txt2, fontWeight: 700, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                {precioDop > 0 ? `RD$${precioDop.toLocaleString('es-DO')}/mes` : 'N/A'}
               </span>
               <Button
                 size="small"
                 icon={<Edit2 size={12} />}
                 onClick={() => {
                   setEditando(p);
-                  form.setFieldsValue({ nombre: p.nombre, precio: precioUsd });
+                  form.setFieldsValue({ nombre: p.nombre, precio: precioDop });
                 }}
                 style={{ color: C.txt2, background: 'transparent', border: `1px solid ${C.border}` }}
               >
@@ -849,11 +843,11 @@ function PlanesEditor({ C }: { C: typeof SA_DARK }) {
           <Form.Item name="nombre" label="Nombre del plan" rules={[{ required: true }]}>
             <Input placeholder="ej. Emprendedor" />
           </Form.Item>
-          <Form.Item name="precio" label="Precio mensual (US$)">
+          <Form.Item name="precio" label="Precio mensual (RD$)">
             <InputNumber
               style={{ width: '100%' }}
               min={0} precision={2}
-              placeholder="29"
+              placeholder="1700"
             />
           </Form.Item>
           <Form.Item name="descripcion" label="Descripción corta (opcional)">
@@ -861,7 +855,7 @@ function PlanesEditor({ C }: { C: typeof SA_DARK }) {
           </Form.Item>
           <Alert
             type="info" showIcon
-            message="Nota: los precios en USD y límites de ingresos están definidos en el código del backend. Aquí solo puedes editar el nombre y descripción visibles."
+            message="Los cambios de precio se reflejan en toda la app y se persisten en la base de datos."
             style={{ fontSize: 12 }}
           />
         </Form>
@@ -1762,9 +1756,9 @@ export default function SuperAdminPage() {
     color: PLAN_COLOR[p.plan] ?? '#64748B',
   }));
 
-  const barrasIngresos = PLANES.filter(p => p.mrrUsd > 0).map(p => {
+  const barrasIngresos = PLANES.filter(p => p.precioDop > 0).map(p => {
     const cnt = (metricas?.distribucionPlanes ?? []).find((x: any) => x.plan === p.value)?.cantidad ?? 0;
-    return { plan: p.label, mrrUsd: +(cnt * p.mrrUsd).toFixed(2) };
+    return { plan: p.label, mrr: +(cnt * p.precioDop).toFixed(2) };
   });
 
   // Top empresas por facturas del mes
@@ -2071,10 +2065,10 @@ export default function SuperAdminPage() {
     { title: 'Plan', dataIndex: 'plan', key: 'plan', width: 110,
       render: (v: string) => <PlanBadge plan={v} />,
     },
-    { title: 'US$/mes', key: 'mrr', width: 110, align: 'right' as const,
+    { title: 'RD$/mes', key: 'mrr', width: 110, align: 'right' as const,
       render: (_: any, r: any) => (
         <span style={{ color: C.gold, fontWeight: 600 }}>
-          {r.plan !== 'trial' && PLAN_MRR_USD[r.plan] > 0 ? fmtUsd(PLAN_MRR_USD[r.plan]) : <span style={{ color: C.txt2 }}>—</span>}
+          {r.plan !== 'trial' && PLAN_MRR_DOP[r.plan] > 0 ? fmtDop(PLAN_MRR_DOP[r.plan]) : <span style={{ color: C.txt2 }}>—</span>}
         </span>
       ),
     },
@@ -2325,8 +2319,8 @@ export default function SuperAdminPage() {
             <KpiCard
               icon={<DollarSign size={20} />}
               label="MRR Suscripciones"
-              value={fmtUsd(metricas?.mrrUsd ?? 0)}
-              sub="USD · ingresos propios del SaaS"
+              value={fmtDop(metricas?.mrr ?? 0)}
+              sub="RD$ · ingresos propios del SaaS"
               subColor={C.gold}
               accent={C.gold}
             />
@@ -2727,7 +2721,7 @@ export default function SuperAdminPage() {
                       }}>
                         <div style={{ color: p.color, fontWeight: 700, fontSize: 11, textTransform: 'uppercase' }}>{p.label}</div>
                         <div style={{ color: C.txt, fontWeight: 800, fontSize: 20 }}>{cnt}</div>
-                        {p.mrrUsd > 0 && <div style={{ color: C.gold, fontSize: 11 }}>{fmtUsd(p.mrrUsd)}/mes</div>}
+                        {p.precioDop > 0 && <div style={{ color: C.gold, fontSize: 11 }}>{fmtDop(p.precioDop)}/mes</div>}
                       </div>
                     ) : null;
                   })}
@@ -2772,18 +2766,18 @@ export default function SuperAdminPage() {
 
                   {/* Ingresos por plan */}
                   <div style={{ background: C.bg, borderRadius: 12, border: `1px solid ${C.border}`, padding: 20 }}>
-                    <h3 style={{ color: C.txt, fontWeight: 700, fontSize: 15, margin: '0 0 16px' }}>Ingresos por Plan (USD)</h3>
+                    <h3 style={{ color: C.txt, fontWeight: 700, fontSize: 15, margin: '0 0 16px' }}>Ingresos por Plan (RD$)</h3>
                     <ResponsiveContainer width="100%" height={220}>
                       <BarChart data={barrasIngresos} margin={{ left: -10 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
                         <XAxis dataKey="plan" tick={{ fill: C.txt2, fontSize: 12 }} axisLine={false} tickLine={false} />
                         <YAxis tick={{ fill: C.txt2, fontSize: 11 }} axisLine={false} tickLine={false}
-                          tickFormatter={v => `US$${v}`} />
+                          tickFormatter={v => `RD$${Number(v).toLocaleString('es-DO')}`} />
                         <RTooltip
                           contentStyle={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, color: C.txt }}
-                          formatter={(v: any) => [fmtUsd(Number(v)), 'US$/mes']}
+                          formatter={(v: any) => [fmtDop(Number(v)), 'RD$/mes']}
                         />
-                        <Bar dataKey="mrrUsd" fill={C.gold} radius={[6, 6, 0, 0]} />
+                        <Bar dataKey="mrr" fill={C.gold} radius={[6, 6, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -3102,7 +3096,7 @@ export default function SuperAdminPage() {
                               { label: 'RNC', value: detalleEmpresa.rnc },
                               { label: 'Usuarios', value: detalleEmpresa.usuarios ?? 0 },
                               { label: 'Facturas este mes', value: detalleEmpresa.facturasMes ?? 0 },
-                              { label: 'Suscripción/mes', value: PLAN_MRR_USD[detalleEmpresa.plan] > 0 ? fmtUsd(PLAN_MRR_USD[detalleEmpresa.plan]) : 'Gratis (Trial)' },
+                              { label: 'Suscripción/mes', value: PLAN_MRR_DOP[detalleEmpresa.plan] > 0 ? fmtDop(PLAN_MRR_DOP[detalleEmpresa.plan]) : 'Gratis (Trial)' },
                               { label: 'Fecha registro', value: fmtFecha(detalleEmpresa.fechaRegistro) },
                               { label: 'Estado suscripción', value: detalleEmpresa.estadoSuscripcion?.toUpperCase() ?? '—' },
                               { label: 'Teléfono', value: detalleEmpresa.telefono ?? '—' },
@@ -3198,7 +3192,7 @@ export default function SuperAdminPage() {
                 label: (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <span style={{ color: p.color, fontWeight: 700 }}>{p.label}</span>
-                    <span style={{ color: C.gold, fontWeight: 700 }}>US${p.mrrUsd}/mes</span>
+                    <span style={{ color: C.gold, fontWeight: 700 }}>RD${p.precioDop.toLocaleString('es-DO')}/mes</span>
                   </div>
                 ),
               }))}
@@ -3221,10 +3215,10 @@ export default function SuperAdminPage() {
               border: `1px solid ${C.gold}33`, borderRadius: 8, padding: '12px 14px',
             }}>
               <div style={{ color: C.gold, fontWeight: 700, fontSize: 13 }}>
-                Total: {fmtUsd((PLAN_MRR_USD[planSel] ?? 0) * meses)}
+                Total: {fmtDop((PLAN_MRR_DOP[planSel] ?? 0) * meses)}
               </div>
               <div style={{ color: C.txt2, fontSize: 12 }}>
-                {meses} mes{meses > 1 ? 'es' : ''} × {fmtUsd(PLAN_MRR_USD[planSel] ?? 0)}/mes
+                {meses} mes{meses > 1 ? 'es' : ''} × {fmtDop(PLAN_MRR_DOP[planSel] ?? 0)}/mes
               </div>
             </div>
           )}
