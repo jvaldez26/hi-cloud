@@ -100,4 +100,17 @@ export class ImportacionController {
     if (!file) throw new Error('No se recibió ningún archivo');
     return this.importacionService.importarProveedores(file.buffer);
   }
+
+  @Post('preview')
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(FileInterceptor('file', {
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: ImportacionController.CSV_FILTER,
+  }))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Vista previa del CSV sin importar — detecta encoding, retorna primeras 5 filas' })
+  previewImportacion(@UploadedFile() file: { buffer: Buffer; originalname: string }) {
+    if (!file) throw new BadRequestException('No se recibió ningún archivo');
+    return this.importacionService.previewImportacion(file.buffer);
+  }
 }

@@ -29,20 +29,43 @@ export class ImportacionService {
   // Parser CSV genérico
   // ──────────────────────────────────────────────────────────────────
 
-  private parsearCSV(buffer: Buffer): string[][] {
-    // Intentar UTF-8; si produce U+FFFD (bytes inválidos), redecodificar como
-    // Latin-1/Windows-1252 — suficiente para todos los caracteres españoles
-    // (á é í ó ú ñ Á É Í Ó Ú Ñ están en el rango 0xA0-0xFF, idéntico en ambas).
-    let texto = buffer.toString('utf-8');
-    if (texto.includes('�')) {
-      texto = buffer.toString('latin1');
+  private decodeBuffer(buffer: Buffer): { texto: string; encoding: 'utf-8' | 'windows-1252' } {
+    const utf8 = buffer.toString('utf-8');
+    if (!utf8.includes('�')) return { texto: utf8, encoding: 'utf-8' };
+    // CP1252 mapea correctamente 0x80-0x9F (€ 0x80, comillas tipográficas 0x91-0x94,
+    // guion largo 0x97, etc.). Latin-1 los trata como control chars — silencioso y erróneo.
+    let cp1252: string;
+    try {
+      cp1252 = new TextDecoder('windows-1252').decode(buffer);
+    } catch {
+      cp1252 = buffer.toString('latin1'); // fallback si ICU no disponible
     }
-    texto = texto.replace(/^﻿/, ''); // quitar BOM UTF-8 o UTF-16 LE si hay
+    return { texto: cp1252, encoding: 'windows-1252' };
+  }
+
+  private parsearCSV(buffer: Buffer): string[][] {
+    let { texto } = this.decodeBuffer(buffer);
+    texto = texto.replace(/^﻿/, ''); // strip BOM
     const lineas = texto.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
     return lineas
       .map(l => l.split(',').map(c => c.trim().replace(/^"|"$/g, '')))
       .filter(l => l.some(c => c.length > 0))
-      .filter(l => !l[0].toLowerCase().startsWith('sep=')); // saltar directiva sep= de Excel
+      .filter(l => !l[0].toLowerCase().startsWith('sep='));
+  }
+
+  previewImportacion(buffer: Buffer): {
+    encoding: 'utf-8' | 'windows-1252';
+    headers: string[];
+    rows: string[][];
+  } {
+    let { texto, encoding } = this.decodeBuffer(buffer);
+    texto = texto.replace(/^﻿/, '');
+    const lineas = texto.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    const filas = lineas
+      .map(l => l.split(',').map(c => c.trim().replace(/^"|"$/g, '')))
+      .filter(l => l.some(c => c.length > 0))
+      .filter(l => !l[0].toLowerCase().startsWith('sep='));
+    return { encoding, headers: filas[0] ?? [], rows: filas.slice(1, 6) };
   }
 
   // ──────────────────────────────────────────────────────────────────
