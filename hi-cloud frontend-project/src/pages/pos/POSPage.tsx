@@ -666,11 +666,12 @@ function buildReciboTermicoHTML(
     const sub        = (item.precio - item.descuentoMonto) * item.cantidad;
     const nom        = item.produto.nombre.length > 26 ? item.produto.nombre.slice(0, 25) + '…' : item.produto.nombre;
     const modMark    = item.precioModificado ? ' *' : '';
-    const itemLine   = `<div class="row"><span>${esc(nom + modMark)} ×${item.cantidad}</span><span>${sub.toFixed(2)}</span></div>`;
+    const unitLine   = `<div class="row small"><span>  ${item.cantidad} × RD$${(item.precio - item.descuentoMonto).toFixed(2)}</span></div>`;
+    const itemLine   = `<div class="row"><span>${esc(nom + modMark)}</span><span>${sub.toFixed(2)}</span></div>`;
     const descLine   = item.descuentoMonto > 0
-      ? `<div class="row small"><span>  Desc: -RD$${item.descuentoMonto.toFixed(2)} (de ${item.precio.toFixed(2)})</span><span>-${(item.descuentoMonto * item.cantidad).toFixed(2)}</span></div>`
+      ? `<div class="row small"><span>  Desc: -RD$${item.descuentoMonto.toFixed(2)} c/u (orig. RD$${item.precio.toFixed(2)})</span></div>`
       : '';
-    return itemLine + descLine;
+    return itemLine + unitLine + descLine;
   }).join('');
 
   const compradorHtml = mostrarComprador ? `
@@ -792,7 +793,7 @@ ${modoInfo ? `${row('Módulo:', modoInfo.icono + ' ' + modoInfo.label)}` : ''}
 ${compradorHtml}
 ${modificaHtml}
 ${line()}
-<div class="row bold"><span>DESCRIPCIÓN</span><span>TOTAL</span></div>
+<div class="row bold"><span>DESCRIPCIÓN</span><span>IMPORTE</span></div>
 ${line()}
 ${itemsHtml}
 ${line()}
