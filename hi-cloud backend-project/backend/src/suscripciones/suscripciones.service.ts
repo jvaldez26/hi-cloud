@@ -83,6 +83,7 @@ export class SuscripcionesService implements OnModuleInit {
         fechaInicio:     hoy,
         fechaVencimiento: fin,
         fechaFinPrueba:  fin,
+        diaCorte:        fin.getDate(),
       }));
     }
     const hoy = new Date();
@@ -123,6 +124,7 @@ export class SuscripcionesService implements OnModuleInit {
         `UPDATE suscripciones
          SET plan = $1, estado = 'activa', modalidad = $2,
              "fechaInicio" = $3, "fechaVencimiento" = $4, "fechaFinPrueba" = NULL,
+             "diaCorte" = EXTRACT(DAY FROM $4::date)::smallint,
              "notasAdmin" = $5, "updatedAt" = NOW()
          WHERE id = $6`,
         [plan, modalidad, inicio.toISOString(), fin.toISOString(), notas ?? null, s.id],
@@ -130,10 +132,10 @@ export class SuscripcionesService implements OnModuleInit {
     } else {
       await this.ds.query(
         `INSERT INTO suscripciones
-           ("empresaId", plan, estado, modalidad, "fechaInicio", "fechaVencimiento",
+           ("empresaId", plan, estado, modalidad, "fechaInicio", "fechaVencimiento", "diaCorte",
             "notasAdmin", "fechaFinPrueba", "recordatorio5dEnviado", "recordatorio1dEnviado",
             "facturasMesUsadas", "facturasMesReset", "enPeriodoGracia", "createdAt", "updatedAt")
-         VALUES ($1,$2,'activa',$3,$4,$5,$6,NULL,false,false,0,0,false,NOW(),NOW())`,
+         VALUES ($1,$2,'activa',$3,$4,$5, EXTRACT(DAY FROM $5::date)::smallint, $6,NULL,false,false,0,0,false,NOW(),NOW())`,
         [empresaId, plan, modalidad, inicio.toISOString(), fin.toISOString(), notas ?? null],
       );
     }

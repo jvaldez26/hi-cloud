@@ -239,6 +239,19 @@ export default function MiSuscripcionPage() {
                               message={`Tu suscripción vence en ${resumen.diasRestantes} ${resumen.diasRestantes === 1 ? 'día' : 'días'}. Realiza tu pago para evitar interrupciones.`}
                             />
                           )}
+                          {resumen.estado === 'vencida' && (
+                            <Alert
+                              type="error"
+                              showIcon
+                              style={{ marginTop: 16 }}
+                              message={(() => {
+                                const diasVencida = resumen.fechaVencimiento
+                                  ? Math.max(1, Math.ceil((Date.now() - new Date(resumen.fechaVencimiento + 'T12:00:00').getTime()) / 86400000))
+                                  : 1;
+                                return `Vencida hace ${diasVencida} ${diasVencida === 1 ? 'día' : 'días'}. Tu último pago cubrió hasta ${fmtDate(resumen.fechaVencimiento)}.`;
+                              })()}
+                            />
+                          )}
                         </>
                       )}
                     </Card>

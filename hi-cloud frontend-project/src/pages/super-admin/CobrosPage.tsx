@@ -22,6 +22,27 @@ function fmtDate(d: string | null) {
 
 const PLAN_LABELS:  Record<string, string> = { emprendedor: 'Emprendedor', pyme: 'PYME', pro: 'Pro', plus: 'Plus' };
 
+interface PreviewPago {
+  periodos:     number;
+  nuevaFecha:   string | null;
+  faltante:     number;
+  enPasado:     boolean;
+}
+
+function calcularPreviewPago(monto: number, precioMensual: number, venceSuscripcion: string, diaCorte: number, modalidad: string): PreviewPago {
+  const precioPorPeriodo = modalidad === 'anual' ? precioMensual * 12 : precioMensual;
+  const periodos = precioPorPeriodo > 0 ? Math.floor(monto / precioPorPeriodo) : 0;
+  if (periodos === 0) return { periodos, nuevaFecha: null, faltante: precioPorPeriodo - monto, enPasado: false };
+  const [y, m] = venceSuscripcion.slice(0, 7).split('-').map(Number);
+  let ny = y, nm = m;
+  if (modalidad === 'anual') { ny += periodos; }
+  else { nm += periodos; while (nm > 12) { nm -= 12; ny += 1; } }
+  const ultimoDia = new Date(ny, nm, 0).getDate();
+  const nd = Math.min(diaCorte, ultimoDia);
+  const nuevaFecha = `${ny}-${String(nm).padStart(2,'0')}-${String(nd).padStart(2,'0')}`;
+  return { periodos, nuevaFecha, faltante: 0, enPasado: new Date(nuevaFecha + 'T12:00:00').getTime() < Date.now() };
+}
+
 const ESTADO_COLOR: Record<string, string> = {
   activa: 'green', suspendida: 'red', prueba: 'cyan', vencida: 'red', cancelada: 'default',
 };
@@ -33,6 +54,7 @@ export default function CobrosPage() {
   const qc = useQueryClient();
 
   const [openPago,         setOpenPago]         = useState<number | null>(null);  // empresaId
+  const [pagoPreviewMonto, setPagoPreviewMonto] = useState<number | null>(null);
   const [openCargo,        setOpenCargo]        = useState<number | null>(null);
   const [openCredito,      setOpenCredito]      = useState<number | null>(null);
   const [openHist,         setOpenHist]         = useState<number | null>(null);
@@ -74,7 +96,11 @@ export default function CobrosPage() {
   // ── Mutations ────────────────────────────────────────────────────────────
   const pagoMut = useMutation({
     mutationFn: ({ id, ...d }: any) => pagosAdminApi.registrarPago(id, d),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['cobros-resumen'] }); setOpenPago(null); formPago.resetFields(); message.success('Pago registrado'); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cobros-resumen'] });
+      setOpenPago(null); setPagoPreviewMonto(null); formPago.resetFields();
+      message.success('Pago registrado');
+    },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
   });
 
@@ -206,6 +232,7 @@ export default function CobrosPage() {
               const mes = new Date().toLocaleDateString('es-DO', { month: 'long', year: 'numeric' });
               const planLabel = PLAN_LABELS[r.plan] ?? r.plan;
               setOpenPago(r.empresaId);
+              setPagoPreviewMonto(precio);
               formPago.setFieldsValue({
                 tipo: 'MANUAL',
                 monto: precio,
@@ -276,7 +303,16 @@ export default function CobrosPage() {
         <Space>
           <Popconfirm
             title="¿Confirmar este pago?"
-            description="Esto activará o extenderá la suscripción de la empresa."
+            description={(() => {
+              if (!r.precioMensual || !r.venceSuscripcion || r.diaCorte == null) return 'Esto activará o extenderá la suscripción de la empresa.';
+              const preview = calcularPreviewPago(Number(r.monto), r.precioMensual, r.venceSuscripcion, r.diaCorte, r.modalidad ?? 'mensual');
+              if (preview.periodos === 0) return `⚠️ No extiende la suscripción. Faltan ${fmtDop(preview.faltante)} para un período.`;
+              const fechaFmt = preview.nuevaFecha
+                ? new Date(preview.nuevaFecha + 'T12:00:00').toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                : '';
+              if (preview.enPasado) return `🔴 Queda vencida hasta ${fechaFmt}. Cubre ${preview.periodos} período(s).`;
+              return `✅ Cubre ${preview.periodos} período(s). Nuevo vencimiento: ${fechaFmt}`;
+            })()}
             onConfirm={() => confirmarMut.mutate(r.id)}
             okText="Confirmar" cancelText="Cancelar"
           >
@@ -442,7 +478,7 @@ export default function CobrosPage() {
       {/* Modal: Registrar pago */}
       <Modal
         title={`💵 Registrar pago — Empresa #${openPago}`}
-        open={!!openPago} onCancel={() => setOpenPago(null)} footer={null}
+        open={!!openPago} onCancel={() => { setOpenPago(null); setPagoPreviewMonto(null); }} footer={null}
       >
         {(() => {
           const row = resumen.find(r => r.empresaId === openPago);
@@ -489,8 +525,46 @@ export default function CobrosPage() {
             <Input placeholder="Ej. Pago plan Emprendedor — Junio 2026" />
           </Form.Item>
           <Form.Item name="monto" label="Monto (RD$)" rules={[{ required: true }]}>
-            <InputNumber prefix="RD$" min={0.01} precision={2} style={{ width: '100%' }} />
+            <InputNumber
+              prefix="RD$" min={0.01} precision={2} style={{ width: '100%' }}
+              onChange={(v) => setPagoPreviewMonto(typeof v === 'number' ? v : null)}
+            />
           </Form.Item>
+          {(() => {
+            const row = resumen.find(r => r.empresaId === openPago);
+            if (!row || pagoPreviewMonto == null || !row.venceSuscripcion || row.diaCorte == null) return null;
+            const preview = calcularPreviewPago(
+              pagoPreviewMonto,
+              row.precioMensual ?? 0,
+              row.venceSuscripcion,
+              row.diaCorte,
+              row.modalidad ?? 'mensual',
+            );
+            const fechaFmt = preview.nuevaFecha
+              ? new Date(preview.nuevaFecha + 'T12:00:00').toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric' })
+              : '';
+            if (preview.periodos === 0) return (
+              <div style={{ marginBottom: 12, padding: '8px 12px', background: '#fefce8', border: '1px solid #fde047', borderRadius: 6 }}>
+                <Text style={{ color: '#854d0e', fontSize: 13 }}>
+                  ⚠️ Este pago NO extiende la suscripción. Faltan {fmtDop(preview.faltante)} para completar un período.
+                </Text>
+              </div>
+            );
+            if (preview.enPasado) return (
+              <div style={{ marginBottom: 12, padding: '8px 12px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 6 }}>
+                <Text style={{ color: '#991b1b', fontSize: 13 }}>
+                  🔴 Queda vencida hasta {fechaFmt}. Este pago cubre {preview.periodos} período(s).
+                </Text>
+              </div>
+            );
+            return (
+              <div style={{ marginBottom: 12, padding: '8px 12px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 6 }}>
+                <Text style={{ color: '#166534', fontSize: 13 }}>
+                  ✅ Este pago cubre {preview.periodos} período(s). Nuevo vencimiento: {fechaFmt}
+                </Text>
+              </div>
+            );
+          })()}
           <Form.Item name="referencia" label="Referencia">
             <Input />
           </Form.Item>
@@ -601,7 +675,16 @@ export default function CobrosPage() {
           <Popconfirm
             key="confirmar"
             title="¿Confirmar este pago?"
-            description="Esto activará o extenderá la suscripción de la empresa."
+            description={(() => {
+              if (!openComprobante?.precioMensual || !openComprobante?.venceSuscripcion || openComprobante?.diaCorte == null) return 'Esto activará o extenderá la suscripción de la empresa.';
+              const preview = calcularPreviewPago(Number(openComprobante.monto), openComprobante.precioMensual, openComprobante.venceSuscripcion, openComprobante.diaCorte, openComprobante.modalidad ?? 'mensual');
+              if (preview.periodos === 0) return `⚠️ No extiende la suscripción. Faltan ${fmtDop(preview.faltante)} para un período.`;
+              const fechaFmt = preview.nuevaFecha
+                ? new Date(preview.nuevaFecha + 'T12:00:00').toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                : '';
+              if (preview.enPasado) return `🔴 Queda vencida hasta ${fechaFmt}. Cubre ${preview.periodos} período(s).`;
+              return `✅ Cubre ${preview.periodos} período(s). Nuevo vencimiento: ${fechaFmt}`;
+            })()}
             onConfirm={() => {
               confirmarMut.mutate(openComprobante!.id);
               setOpenComprobante(null);

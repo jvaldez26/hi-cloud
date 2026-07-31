@@ -31,11 +31,15 @@ export interface PagoSuscripcion {
   creadoEn:       string;
   confirmadoEn:   string | null;
   // joins (admin)
-  empresaNombre?: string;
-  rnc?:           string;
-  plan?:          string;
+  empresaNombre?:    string;
+  empresaEmail?:     string;
+  rnc?:              string;
+  plan?:             string;
   estadoSuscripcion?: string;
   venceSuscripcion?:  string;
+  diaCorte?:          number;
+  modalidad?:         string;
+  precioMensual?:     number;
 }
 
 export interface ConfiguracionBancaria {
@@ -53,6 +57,8 @@ export interface ResumenCobros {
   email:                  string;
   plan:                   string;
   estadoSuscripcion:      string;
+  modalidad:              string;
+  diaCorte:               number;
   venceSuscripcion:       string;
   saldo:                  number;
   precioMensual:          number;

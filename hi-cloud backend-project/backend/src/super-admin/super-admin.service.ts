@@ -895,7 +895,12 @@ export class SuperAdminService {
     const [prev] = await this.ds.query<any[]>('SELECT plan, estado, "fechaVencimiento" FROM suscripciones WHERE "empresaId" = $1', [empresaId]);
     const fin = new Date();
     fin.setMonth(fin.getMonth() + meses);
-    await this.ds.query(`UPDATE suscripciones SET plan = $1, estado = 'activa', "fechaVencimiento" = $2 WHERE "empresaId" = $3`, [plan, fin.toISOString(), empresaId]);
+    await this.ds.query(
+      `UPDATE suscripciones SET plan = $1, estado = 'activa',
+       "fechaVencimiento" = $2
+       WHERE "empresaId" = $3`,
+      [plan, fin.toISOString(), empresaId],
+    );
     const [sus] = await this.ds.query<any[]>('SELECT id FROM suscripciones WHERE "empresaId" = $1', [empresaId]);
     if (sus) {
       await this.ds.query(`INSERT INTO suscripcion_auditoria ("suscripcionId","empresaId",accion,"valorAnterior","valorNuevo","superAdminId",motivo) VALUES ($1,$2,'CAMBIO_PLAN',$3,$4,$5,$6)`,
@@ -1034,7 +1039,10 @@ export class SuperAdminService {
     if (sus.estado !== 'activa') throw new Error('Solo se puede fijar vencimiento manual en suscripciones ACTIVAS');
 
     await this.ds.query(
-      `UPDATE suscripciones SET "fechaVencimiento" = $1 WHERE id = $2`,
+      `UPDATE suscripciones
+       SET "fechaVencimiento" = $1,
+           "diaCorte" = EXTRACT(DAY FROM $1::date)::smallint
+       WHERE id = $2`,
       [fecha, sus.id],
     );
     await this.ds.query(

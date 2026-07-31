@@ -163,6 +163,9 @@ export class Suscripcion {
   @Column({ type: 'date', nullable: true })
   fechaFinGracia?: Date;
 
+  @Column({ type: 'smallint' })
+  diaCorte!: number;
+
   @Column({ type: 'text', nullable: true })
   motivoSuspension?: string;
 
