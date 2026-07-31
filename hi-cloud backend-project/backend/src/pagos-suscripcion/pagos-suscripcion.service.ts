@@ -54,9 +54,7 @@ export class PagosSuscripcionService {
       ? (sus.fechaFinPrueba ?? sus.fechaVencimiento)
       : sus.fechaVencimiento;
     const fechaVence = new Date(fechaEfectiva);
-    const diasRestantes = Math.max(0,
-      Math.ceil((fechaVence.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24))
-    );
+    const diasRestantes = Math.ceil((fechaVence.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
     const diasTotales = Math.ceil(
       (fechaVence.getTime() - new Date(sus.fechaInicio).getTime()) / (1000 * 60 * 60 * 24)
     );
@@ -586,7 +584,7 @@ export class PagosSuscripcionService {
       FROM suscripciones s
       JOIN empresa e ON e.id = s."empresaId"
       WHERE s.estado = 'activa'
-        AND s."fechaVencimiento"::date = $1
+        AND s."fechaVencimiento"::date <= $1
         AND e."isActive" = true
     `, [fecha]);
 

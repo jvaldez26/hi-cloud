@@ -90,7 +90,7 @@ export class SuscripcionesService implements OnModuleInit {
     const fechaRef = s.estado === SuscripcionEstado.PRUEBA
       ? new Date(s.fechaFinPrueba ?? s.fechaVencimiento)
       : new Date(s.fechaVencimiento);
-    const diasRestantes = Math.max(0, Math.ceil((fechaRef.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)));
+    const diasRestantes = Math.ceil((fechaRef.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
     return { ...s, info: PLAN_LIMITES[s.plan] ?? PLAN_LIMITES[PlanTipo.EMPRENDEDOR], diasRestantes };
   }
 
@@ -187,14 +187,12 @@ export class SuscripcionesService implements OnModuleInit {
     return rows.map(s => ({
       ...s,
       info: PLAN_LIMITES[s.plan] ?? PLAN_LIMITES[PlanTipo.EMPRENDEDOR],
-      diasRestantes: Math.max(0,
-        Math.ceil((
-          (s.estado === SuscripcionEstado.PRUEBA
-            ? new Date(s.fechaFinPrueba ?? s.fechaVencimiento)
-            : new Date(s.fechaVencimiento)
-          ).getTime() - hoy.getTime()
-        ) / (1000 * 60 * 60 * 24))
-      ),
+      diasRestantes: Math.ceil((
+        (s.estado === SuscripcionEstado.PRUEBA
+          ? new Date(s.fechaFinPrueba ?? s.fechaVencimiento)
+          : new Date(s.fechaVencimiento)
+        ).getTime() - hoy.getTime()
+      ) / (1000 * 60 * 60 * 24)),
     }));
   }
 

@@ -231,7 +231,7 @@ export default function MiSuscripcionPage() {
                             />
                           </div>
 
-                          {resumen.diasRestantes <= 7 && resumen.estado === 'activa' && (
+                          {resumen.diasRestantes > 0 && resumen.diasRestantes <= 7 && resumen.estado === 'activa' && (
                             <Alert
                               type="warning"
                               showIcon
@@ -239,7 +239,7 @@ export default function MiSuscripcionPage() {
                               message={`Tu suscripción vence en ${resumen.diasRestantes} ${resumen.diasRestantes === 1 ? 'día' : 'días'}. Realiza tu pago para evitar interrupciones.`}
                             />
                           )}
-                          {resumen.estado === 'vencida' && (
+                          {(resumen.estado === 'vencida' || (resumen.estado === 'activa' && resumen.diasRestantes <= 0)) && (
                             <Alert
                               type="error"
                               showIcon
