@@ -1884,7 +1884,15 @@ function buildCierreCajaHTML(params: {
   .small{font-size:0.85em}
   .xlarge{font-size:1.2em;font-weight:900}
   .title{font-size:1.1em;font-weight:900;text-align:center;letter-spacing:1px;margin:4px 0}
-</style></head><body>
+</style>
+<script>
+window.addEventListener('load',function(){setTimeout(function(){window.print()},350)});
+window.addEventListener('afterprint',function(){setTimeout(function(){
+  try{window.close()}catch(e){}
+  setTimeout(function(){if(!window.closed){document.body.innerHTML='<div style="text-align:center;padding:40px;font-family:sans-serif"><h2 style="color:#059669">&#10003; Impresión lista</h2><p style="margin-top:8px;color:#666">Puede cerrar esta ventana</p></div>'}},600)
+},300)});
+</script>
+</head><body>
 ${emp.nombre ? `<div class="center bold">${esc(emp.nombre)}</div>` : ''}
 ${emp.rnc    ? `<div class="center small">RNC: ${esc(emp.rnc)}</div>` : ''}
 ${emp.direccion ? `<div class="center small">${esc(emp.direccion)}</div>` : ''}
