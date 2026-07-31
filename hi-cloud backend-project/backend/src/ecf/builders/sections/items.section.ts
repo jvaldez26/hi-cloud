@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { round2 } from './totales.section';
+import { sanitizeText } from '../../../common/utils/text.utils';
 
 const itemsLogger = new Logger('ECFItems');
 
@@ -102,7 +103,7 @@ export function buildItems(detalles: DetalleLike[], encf = ''): Record<string, u
     return {
       NumeroLinea:            idx + 1,
       IndicadorFacturacion:   indicadorFacturacion(Number(d.porcentajeIva)),
-      NombreItem:             d.descripcion,
+      NombreItem:             sanitizeText(d.descripcion),
       IndicadorBienoServicio: 1,
       CantidadItem:           cap4(d.cantidad),
       UnidadMedida:           43,
@@ -136,7 +137,7 @@ export function buildItemsE33(detalles: DetalleLike[], encf = ''): Record<string
     return {
       NumeroLinea:            idx + 1,
       IndicadorFacturacion:   indicadorFacturacion(Number(d.porcentajeIva)),
-      NombreItem:             d.descripcion,
+      NombreItem:             sanitizeText(d.descripcion),
       IndicadorBienoServicio: 1,
       CantidadItem:           String(cap4(d.cantidad)),
       UnidadMedida:           '47',

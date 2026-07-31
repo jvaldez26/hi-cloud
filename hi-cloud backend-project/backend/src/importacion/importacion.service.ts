@@ -30,7 +30,14 @@ export class ImportacionService {
   // ──────────────────────────────────────────────────────────────────
 
   private parsearCSV(buffer: Buffer): string[][] {
-    const texto  = buffer.toString('utf-8').replace(/^﻿/, ''); // quitar BOM si hay
+    // Intentar UTF-8; si produce U+FFFD (bytes inválidos), redecodificar como
+    // Latin-1/Windows-1252 — suficiente para todos los caracteres españoles
+    // (á é í ó ú ñ Á É Í Ó Ú Ñ están en el rango 0xA0-0xFF, idéntico en ambas).
+    let texto = buffer.toString('utf-8');
+    if (texto.includes('�')) {
+      texto = buffer.toString('latin1');
+    }
+    texto = texto.replace(/^﻿/, ''); // quitar BOM UTF-8 o UTF-16 LE si hay
     const lineas = texto.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
     return lineas
       .map(l => l.split(',').map(c => c.trim().replace(/^"|"$/g, '')))

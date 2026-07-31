@@ -1,6 +1,7 @@
 /* ──────────────────────────────────────────────
    HiCloud ERP — Recibo Térmico POS 80mm
 ──────────────────────────────────────────────── */
+import { sanitizeText } from '../../common/utils/text.utils';
 
 export interface ReciboPOSData {
   empresaNombre:   string;
@@ -38,7 +39,7 @@ function line(char = '-', len = 48): string {
 
 export function generarHTMLRecibo(d: ReciboPOSData): string {
   const itemsHTML = d.items.map(item => {
-    const desc  = truncate(item.descripcion, 26);
+    const desc  = truncate(sanitizeText(item.descripcion), 26);
     const total = money(item.total);
     const spaces = Math.max(1, 48 - desc.length - total.length);
     return `<div style="display:flex;justify-content:space-between;margin:1px 0;">

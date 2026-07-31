@@ -7,6 +7,7 @@
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const PDFDocument = require('pdfkit') as typeof import('pdfkit');
 import type { FacturaPDFData } from '../../facturas/templates/factura.template';
+import { sanitizeText } from '../utils/text.utils';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -532,7 +533,7 @@ export async function generarReciboPOSPDF(
 
     for (const item of d.items) {
       doc.fillColor('#000').font('Helvetica').fontSize(7);
-      doc.text(item.descripcion, PL, y, { width: W * 0.5, ellipsis: true });
+      doc.text(sanitizeText(item.descripcion), PL, y, { width: W * 0.5, ellipsis: true });
       doc.text(String(item.cantidad), PL + W * 0.5, y, { width: W * 0.2, align: 'right' });
       doc.text(fmtM(item.total), PL + W * 0.7, y, { width: W * 0.3, align: 'right' });
       y += 11;

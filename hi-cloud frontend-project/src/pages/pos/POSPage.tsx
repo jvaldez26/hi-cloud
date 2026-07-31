@@ -623,7 +623,9 @@ const NCF_LABEL: Record<string, [string, string]> = {
 const RNC_GENERICOS_TICKET = new Set(['000000000', '00000000000', '']);
 
 function esc(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return s
+    .replace(/�/g, '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 const IMPRESORA_CONFIG: Record<string, { width: string; fontSize: string; paddingLR: string }> = {
