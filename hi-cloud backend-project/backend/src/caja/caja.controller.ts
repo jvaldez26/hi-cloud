@@ -107,12 +107,10 @@ export class CajaController {
   cerrarCaja(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CerrarCajaDto,
-    @GetUser() usuario: User,
   ) {
     return this.cajaService.cerrarCaja(
       id, dto.saldoFisico, dto.notas,
       dto.desgloseBilletes, dto.desglosePago,
-      (usuario as any)?.role,
     );
   }
 
@@ -137,13 +135,12 @@ export class CajaController {
     @Query('vendedorId') vendedorId?: string,
     @Query('mes')        mes?:        string,
     @Query('anio')       anio?:       string,
-    @GetUser() usuario?: User,
   ) {
     const vid = vendedorId !== undefined ? Number(vendedorId) : undefined;
     const m   = mes  ? Number(mes)  : undefined;
     const a   = anio ? Number(anio) : undefined;
     return this.cajaService.getHistorial(
-      Number(page ?? 1), Number(limit ?? 20), vid, m, a, (usuario as any)?.role,
+      Number(page ?? 1), Number(limit ?? 20), vid, m, a,
     );
   }
 

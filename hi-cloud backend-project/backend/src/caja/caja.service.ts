@@ -189,7 +189,6 @@ export class CajaService {
     notas?: string,
     desgloseBilletes?: Record<string, number>,
     desglosePago?: Record<string, string>,
-    role?: string,
   ) {
     const empresaId = this.tenantService.getEmpresaId();
     const caja = await this.repo.findOne({ where: { id, empresaId } });
@@ -239,8 +238,8 @@ export class CajaService {
       );
     }
 
-    // Solo ocultar datos al vendedor — admin/contador siempre ven el cuadre completo
-    return (cierreCajaCiego && role === 'vendedor') ? this.ocultarCamposCiego(saved) : saved;
+    // Caja ya cerrada — siempre retornar datos completos para que la impresión sea íntegra
+    return saved;
   }
 
   // ── Anular cierre de caja ─────────────────────────────────────────────────
@@ -491,12 +490,14 @@ export class CajaService {
     }
     const fresh = await this.repo.findOne({ where: { id: caja.id } });
     const { cierreCajaCiego } = await this.getEmpresaCfg(empresaId);
-    return cierreCajaCiego ? this.ocultarCamposCiego(fresh) : fresh;
+    // Ciego solo mientras la caja está abierta; al cerrar el vendedor recibe datos completos para imprimir
+    return (cierreCajaCiego && fresh?.estado === EstadoCierre.ABIERTA)
+      ? this.ocultarCamposCiego(fresh) : fresh;
   }
 
   // ── Historial (filtrado por empresa) ─────────────────────────────────────
 
-  async getHistorial(page = 1, limit = 20, vendedorId?: number, mes?: number, anio?: number, role?: string) {
+  async getHistorial(page = 1, limit = 20, vendedorId?: number, mes?: number, anio?: number) {
     const empresaId  = this.tenantService.getEmpresaId();
     const sucursalId = this.tenantService.getSucursalId();
     const where: any = { empresaId, estado: Not(EstadoCierre.ABIERTA) };
@@ -517,17 +518,7 @@ export class CajaService {
       take:  limit,
     });
 
-    // En modo ciego, el cajero (VENDEDOR) no ve esperado ni diferencia en su historial
-    if (role === 'vendedor') {
-      const { cierreCajaCiego } = await this.getEmpresaCfg(empresaId);
-      if (cierreCajaCiego) {
-        return {
-          data: data.map(c => this.ocultarCamposCiego(c)),
-          meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
-        };
-      }
-    }
-
+    // Historial solo contiene cajas cerradas — datos completos siempre para que la impresión sea íntegra
     return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
   }
 

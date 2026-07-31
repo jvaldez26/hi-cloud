@@ -265,9 +265,12 @@ ${line()}
       const url = URL.createObjectURL(res.data as Blob);
       const win = window.open(url, '_blank');
       if (!win) { imprimirCierre(r); URL.revokeObjectURL(url); return; }
-      win.addEventListener('load', () => {
-        setTimeout(() => { win.print(); setTimeout(() => URL.revokeObjectURL(url), 1_000); }, 500);
-      });
+      // El evento 'load' no dispara para pestañas PDF en navegadores modernos.
+      // Se usa un delay para dar tiempo al visor de PDF a inicializarse.
+      setTimeout(() => {
+        try { win.print(); } catch { /* usuario puede imprimir manualmente */ }
+        setTimeout(() => URL.revokeObjectURL(url), 1_000);
+      }, 1_500);
     } catch {
       // PDF backend no configurado → generar impresión HTML como alternativa
       imprimirCierre(r);
