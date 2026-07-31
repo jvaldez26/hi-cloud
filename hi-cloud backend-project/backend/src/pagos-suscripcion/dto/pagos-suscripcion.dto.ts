@@ -14,7 +14,7 @@ export class RegistrarPagoDto {
   concepto: string;
 
   @Type(() => Number) @IsNumber() @Min(0.01)
-  montoUsd: number;
+  monto: number;
 
   @IsOptional() @IsString()
   referencia?: string;
@@ -46,7 +46,7 @@ export class AgregarCargoDto {
   concepto: string;
 
   @Type(() => Number) @IsNumber() @Min(0.01)
-  montoUsd: number;
+  monto: number;
 
   @IsOptional() @IsString()
   notas?: string;
@@ -58,7 +58,7 @@ export class AplicarCreditoDto {
   concepto: string;
 
   @Type(() => Number) @IsNumber() @Min(0.01)
-  montoUsd: number;
+  monto: number;
 
   @IsOptional() @IsString()
   notas?: string;
@@ -68,7 +68,7 @@ export class AplicarCreditoDto {
 export class SubirComprobanteDto {
   // multipart/form-data envía todo como string → @Type convierte antes de validar
   @Type(() => Number) @IsNumber() @Min(0.01)
-  montoUsd: number;
+  monto: number;
 
   @IsOptional() @IsString()
   referencia?: string;

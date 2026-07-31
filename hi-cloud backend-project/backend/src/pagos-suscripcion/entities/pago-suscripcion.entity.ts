@@ -32,7 +32,7 @@ export class PagoSuscripcion {
   concepto: string;
 
   @Column({ type: 'numeric', precision: 10, scale: 2 })
-  montoUsd: number;
+  monto: number;
 
   @Column({ type: 'varchar', length: 20, default: EstadoPago.PENDIENTE })
   estado: EstadoPago;

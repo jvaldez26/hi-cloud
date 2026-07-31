@@ -404,12 +404,9 @@ export class SuperAdminController {
 
     await this.svc.auditarCambioPlanCatalogo(
       clave,
-      // El catálogo expone precioMensualUsd/precioAnualUsd (no "precio"), así que
-      // se guarda el snapshot con los nombres reales en vez de un undefined.
       antes ? {
-        nombre:           antes.nombre,
-        precioMensualUsd: antes.precioMensualUsd,
-        precioAnualUsd:   antes.precioAnualUsd,
+        nombre:        antes.nombre,
+        precioMensual: antes.precioMensual,
       } : null,
       { ...dto },
       admin.id,

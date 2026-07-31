@@ -18,15 +18,6 @@ const PLAN_TIER: Record<string, number> = {
   trial: 0, basico: 0, profesional: 2, empresarial: 3, enterprise: 4,
 };
 
-/** Precio USD por modalidad */
-function precioUsd(plan: PlanTipo, modalidad: string): string {
-  const cfg = PLANES[plan];
-  if (!cfg) return 'N/A';
-  const base = cfg.precioMensualUsd;
-  const anual = cfg.precioAnualUsd;
-  if (modalidad === 'anual') return `US$${(anual / 12).toFixed(2)}/mes (anual)`;
-  return `US$${base}/mes`;
-}
 
 @Injectable()
 export class SuscripcionesService implements OnModuleInit {
@@ -225,12 +216,18 @@ export class SuscripcionesService implements OnModuleInit {
     const activas = await this.repo.count({ where: { estado: SuscripcionEstado.ACTIVA } });
     const enPrueba = await this.repo.count({ where: { estado: SuscripcionEstado.PRUEBA } });
 
-    // MRR USD estimado
-    const suscActivas = await this.repo.find({ where: { estado: SuscripcionEstado.ACTIVA } });
-    const mrr = suscActivas.reduce((acc, s) => {
-      const precio = PLANES[s.plan]?.precioMensualUsd ?? 0;
-      return acc + (s.modalidad === ModalidadPago.ANUAL ? precio * 0.9 : precio);
-    }, 0);
+    // MRR DOP desde plan_configuracion
+    const mrrRows = await this.ds.query<{ mrr: string }[]>(`
+      SELECT COALESCE(SUM(
+        CASE WHEN s.modalidad = 'anual' THEN pc.precio * 0.9
+             ELSE pc.precio
+        END
+      ), 0)::float AS mrr
+      FROM suscripciones s
+      LEFT JOIN plan_configuracion pc ON pc.clave = s.plan AND pc.activo = true
+      WHERE s.estado = 'activa'
+    `);
+    const mrr = Number(mrrRows[0]?.mrr ?? 0);
 
     return { totales, activas, enPrueba, mrr, porPlan: rows };
   }
@@ -552,13 +549,19 @@ export class SuscripcionesService implements OnModuleInit {
       if (!admin.length) return;
 
       const planNombre = PLANES[plan]?.nombre ?? plan;
-      const precio     = precioUsd(plan, modalidad);
+      const cfgRows = await this.planConfigRepo.find({ where: { clave: plan } });
+      const precioDop = cfgRows[0] ? Number(cfgRows[0].precio) : 0;
+      const precioStr = precioDop > 0
+        ? (modalidad === 'anual'
+          ? `RD$${Math.round(precioDop * 0.9).toLocaleString('es-DO')}/mes (anual, 10% desc.)`
+          : `RD$${precioDop.toLocaleString('es-DO')}/mes`)
+        : '';
       await this.emailSvc.enviar({
         to: admin[0].email,
         subject: `¡Tu plan ${planNombre} ha sido activado! — HiCloud ERP`,
         html: `
           <p>Hola ${admin[0].nombre},</p>
-          <p>¡Excelentes noticias! Tu plan <strong>${planNombre}</strong> (${precio}) ha sido activado en HiCloud ERP.</p>
+          <p>¡Excelentes noticias! Tu plan <strong>${planNombre}</strong>${precioStr ? ` (${precioStr})` : ''} ha sido activado en HiCloud ERP.</p>
           <p>Ya puedes continuar usando todos los módulos sin interrupciones.</p>
           <p>Gracias por confiar en HiCloud ERP para tu negocio.</p>
         `,
@@ -624,7 +627,8 @@ export class SuscripcionesService implements OnModuleInit {
       if (!sa) return;
 
       const planNombre = PLANES[planSolicitado as PlanTipo]?.nombre ?? planSolicitado;
-      const precioMes  = PLANES[planSolicitado as PlanTipo]?.precioMensualUsd ?? 0;
+      const cfgRows2   = await this.planConfigRepo.find({ where: { clave: planSolicitado } });
+      const precioMes  = cfgRows2[0] ? Number(cfgRows2[0].precio) : 0;
       const frontendUrl = process.env['FRONTEND_URL'] ?? 'https://hicloudrd.com';
 
       await this.emailSvc.enviar({
@@ -635,7 +639,7 @@ export class SuscripcionesService implements OnModuleInit {
           <ul>
             <li><strong>Empresa:</strong> ${empresa?.nombre ?? `#${empresaId}`}</li>
             <li><strong>RNC:</strong> ${empresa?.rnc ?? '—'}</li>
-            <li><strong>Plan solicitado:</strong> ${planNombre} (US$${precioMes}/mes)</li>
+            <li><strong>Plan solicitado:</strong> ${planNombre}${precioMes > 0 ? ` (RD$${precioMes.toLocaleString('es-DO')}/mes)` : ''}</li>
             ${comentario ? `<li><strong>Comentario:</strong> ${comentario}</li>` : ''}
           </ul>
           <p><a href="${frontendUrl}/super-admin">Ver solicitud en el panel →</a></p>
@@ -662,9 +666,8 @@ export class SuscripcionesService implements OnModuleInit {
       const cfg = configMap[clave];
       return {
         clave,
-        nombre:              cfg?.nombre   ?? def.nombre,
-        precioMensualUsd:    def.precioMensualUsd,
-        precioAnualUsd:      def.precioAnualUsd,
+        nombre:              cfg?.nombre ?? def.nombre,
+        precioMensual:       Number(cfg?.precio ?? def.precio),
         limiteIngresosDop:   def.limiteIngresosMensualesDop,
         limiteUsuarios:      def.limiteUsuarios,
         diasPrueba:          15,

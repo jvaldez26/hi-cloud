@@ -18,9 +18,6 @@ import {
   AgregarCargoDto, AplicarCreditoDto, UpdateConfiguracionBancariaDto,
 } from './dto/pagos-suscripcion.dto';
 
-const USD_PRICES: Record<string, number> = {
-  emprendedor: 29, pyme: 59, pro: 89, plus: 129,
-};
 
 @Injectable()
 export class PagosSuscripcionService {
@@ -61,14 +58,18 @@ export class PagosSuscripcionService {
       (fechaVence.getTime() - new Date(sus.fechaInicio).getTime()) / (1000 * 60 * 60 * 24)
     );
 
-    const precioMensual = USD_PRICES[sus.plan] ?? 0;
+    const pcRows = await this.ds.query<any[]>(
+      `SELECT precio FROM plan_configuracion WHERE clave = $1 AND activo = true LIMIT 1`,
+      [sus.plan],
+    );
+    const precioMensual = Number(pcRows[0]?.precio ?? 0);
     const saldoPendiente = await this.getSaldoPendiente(empresaId);
 
     return {
       plan:           sus.plan,
       estado:         sus.estado,
       modalidad:      sus.modalidad ?? 'mensual',
-      precioMensualUsd: precioMensual,
+      precioMensual,
       fechaInicio:    sus.fechaInicio,
       fechaVencimiento: sus.fechaFinPrueba ?? sus.fechaVencimiento,
       diasRestantes,
@@ -76,7 +77,7 @@ export class PagosSuscripcionService {
       porcentajeUsado: diasTotales > 0
         ? Math.max(0, Math.min(100, Math.round(((diasTotales - diasRestantes) / diasTotales) * 100)))
         : 0,
-      saldoPendienteUsd: saldoPendiente,
+      saldo: saldoPendiente,
     };
   }
 
@@ -87,7 +88,7 @@ export class PagosSuscripcionService {
       order:  { creadoEn: 'DESC' },
     });
     // TypeORM con pg devuelve numeric como string — normalizar
-    return rows.map(r => ({ ...r, montoUsd: Number(r.montoUsd ?? 0) }));
+    return rows.map(r => ({ ...r, monto: Number(r.monto ?? 0) }));
   }
 
   async getSaldoPendiente(empresaId: number): Promise<number> {
@@ -95,10 +96,10 @@ export class PagosSuscripcionService {
       SELECT COALESCE(SUM(
         CASE
           WHEN tipo = 'CARGO'
-            THEN  "montoUsd"
+            THEN  monto
           WHEN tipo IN ('TRANSFERENCIA','TARJETA','MANUAL','CREDITO')
                AND estado = 'CONFIRMADO'
-            THEN -"montoUsd"
+            THEN -monto
           ELSE 0
         END
       ), 0)::float AS saldo
@@ -119,8 +120,8 @@ export class PagosSuscripcionService {
    * Crea registro PENDIENTE → super admin confirma o rechaza.
    */
   async subirComprobante(
-    file:     { buffer: Buffer; originalname: string; mimetype: string; size: number },
-    montoUsd: number,
+    file:  { buffer: Buffer; originalname: string; mimetype: string; size: number },
+    monto: number,
     referencia?: string,
     banco?:      string,
     notas?:      string,
@@ -156,7 +157,7 @@ export class PagosSuscripcionService {
       empresaId,
       tipo:          TipoPago.TRANSFERENCIA,
       concepto:      `Pago por transferencia bancaria${banco ? ` — ${banco}` : ''}`,
-      montoUsd,
+      monto,
       estado:        EstadoPago.PENDIENTE,
       comprobanteUrl,
       referencia:    referencia ?? null,
@@ -193,7 +194,7 @@ export class PagosSuscripcionService {
       LIMIT 200
     `, params);
     // PostgreSQL devuelve numeric como string — normalizar a JS number
-    return rows.map(r => ({ ...r, montoUsd: Number(r.montoUsd ?? 0) }));
+    return rows.map(r => ({ ...r, monto: Number(r.monto ?? 0) }));
   }
 
   async listarComprobantesPeridentes() {
@@ -205,7 +206,7 @@ export class PagosSuscripcionService {
       WHERE p.tipo = 'TRANSFERENCIA' AND p.estado = 'PENDIENTE'
       ORDER BY p."creadoEn" DESC
     `);
-    return rows.map(r => ({ ...r, montoUsd: Number(r.montoUsd ?? 0) }));
+    return rows.map(r => ({ ...r, monto: Number(r.monto ?? 0) }));
   }
 
   /** Resumen por empresa para el panel de cobros */
@@ -219,28 +220,31 @@ export class PagosSuscripcionService {
         s.estado AS "estadoSuscripcion",
         COALESCE(s."vencimientoOverride", s."fechaVencimiento")::date AS "venceSuscripcion",
         s."vencimientoOverride"::date AS "vencimientoOverride",
+        pc.precio::float AS "precioMensual",
         COALESCE(SUM(
           CASE
-            WHEN p.tipo = 'CARGO'                                                        THEN  p."montoUsd"
-            WHEN p.tipo IN ('TRANSFERENCIA','TARJETA','MANUAL') AND p.estado = 'CONFIRMADO' THEN -p."montoUsd"
-            WHEN p.tipo = 'CREDITO'                             AND p.estado = 'CONFIRMADO' THEN -p."montoUsd"
+            WHEN p.tipo = 'CARGO'                                                        THEN  p.monto
+            WHEN p.tipo IN ('TRANSFERENCIA','TARJETA','MANUAL') AND p.estado = 'CONFIRMADO' THEN -p.monto
+            WHEN p.tipo = 'CREDITO'                             AND p.estado = 'CONFIRMADO' THEN -p.monto
             ELSE 0
           END
-        ), 0)::float AS "saldoPendienteUsd",
+        ), 0)::float AS saldo,
         MAX(CASE WHEN p.estado = 'CONFIRMADO' THEN p."confirmadoEn" END) AS "ultimoPago",
         COUNT(CASE WHEN p.tipo = 'TRANSFERENCIA' AND p.estado = 'PENDIENTE' THEN 1 END)::int AS "pendientesConfirmacion"
       FROM empresa e
       LEFT JOIN suscripciones s ON s."empresaId" = e.id
+      LEFT JOIN plan_configuracion pc ON pc.clave = s.plan AND pc.activo = true
       LEFT JOIN pagos_suscripcion p ON p."empresaId" = e.id AND p.estado != 'RECHAZADO'
       WHERE e."isActive" = true
-      GROUP BY e.id, e.nombre, e.email, s.plan, s.estado, s."fechaVencimiento", s."vencimientoOverride"
-      ORDER BY "saldoPendienteUsd" DESC, e.nombre
+      GROUP BY e.id, e.nombre, e.email, s.plan, s.estado, s."fechaVencimiento", s."vencimientoOverride", pc.precio
+      ORDER BY saldo DESC, e.nombre
     `);
     // Garantizar tipos JS correctos (PostgreSQL devuelve numeric/int como string vía ds.query)
     return rows.map(r => ({
       ...r,
-      saldoPendienteUsd:      Number(r.saldoPendienteUsd      ?? 0),
+      saldo:                  Number(r.saldo                  ?? 0),
       pendientesConfirmacion: Number(r.pendientesConfirmacion  ?? 0),
+      precioMensual:          Number(r.precioMensual           ?? 0),
     }));
   }
 
@@ -281,7 +285,7 @@ export class PagosSuscripcionService {
       empresaId,
       tipo:          dto.tipo,
       concepto:      dto.concepto,
-      montoUsd:      dto.montoUsd,
+      monto:         dto.monto,
       estado:        EstadoPago.CONFIRMADO,
       referencia:    dto.referencia ?? null,
       notas:         dto.notas ?? null,
@@ -319,7 +323,7 @@ export class PagosSuscripcionService {
 
       this.logger.log(
         `[PAGO] Empresa #${empresaId} | Admin #${adminId} | ` +
-        `US$${dto.montoUsd} (${dto.tipo}) | ${sus.modalidad ?? 'mensual'} | ` +
+        `RD$${dto.monto} (${dto.tipo}) | ${sus.modalidad ?? 'mensual'} | ` +
         `Vencimiento: ${fechaAnterior} → ${nuevaFechaVenc}`,
       );
     }
@@ -331,7 +335,7 @@ export class PagosSuscripcionService {
 
     return {
       ...saved,
-      montoUsd:              Number(saved.montoUsd),
+      monto:                 Number(saved.monto),
       nuevaFechaVencimiento: nuevaFechaVenc ?? null,
     };
   }
@@ -390,7 +394,7 @@ export class PagosSuscripcionService {
 
       this.logger.log(
         `[TRANSFERENCIA] Empresa #${pago.empresaId} | Admin #${adminId} | ` +
-        `US$${pago.montoUsd} | ${modalidad} | Vencimiento: ${fechaStr} → ${nuevaFecha}`,
+        `RD$${Number(pago.monto).toLocaleString('es-DO', { minimumFractionDigits: 2 })} | ${modalidad} | Vencimiento: ${fechaStr} → ${nuevaFecha}`,
       );
     }
 
@@ -429,7 +433,7 @@ export class PagosSuscripcionService {
       empresaId,
       tipo:          TipoPago.CARGO,
       concepto:      dto.concepto,
-      montoUsd:      dto.montoUsd,
+      monto:         dto.monto,
       estado:        EstadoPago.CONFIRMADO,
       notas:         dto.notas ?? null,
       registradoPor: adminId,
@@ -444,7 +448,7 @@ export class PagosSuscripcionService {
       empresaId,
       tipo:          TipoPago.CREDITO,
       concepto:      dto.concepto,
-      montoUsd:      dto.montoUsd,
+      monto:         dto.monto,
       estado:        EstadoPago.CONFIRMADO,
       notas:         dto.notas ?? null,
       registradoPor: adminId,
@@ -481,7 +485,7 @@ export class PagosSuscripcionService {
 
   async getHistorialEmpresa(empresaId: number) {
     const rows = await this.pagoRepo.find({ where: { empresaId }, order: { creadoEn: 'DESC' } });
-    return rows.map(r => ({ ...r, montoUsd: Number(r.montoUsd ?? 0) }));
+    return rows.map(r => ({ ...r, monto: Number(r.monto ?? 0) }));
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -655,7 +659,7 @@ export class PagosSuscripcionService {
     await this.emailSvc.enviar({
       to:      adminEmail,
       subject: `💳 HiCloud — Nuevo comprobante de pago de ${emp?.nombre ?? `Empresa #${empresaId}`}`,
-      html:    `<p><strong>${emp?.nombre}</strong> subió un comprobante de transferencia por <strong>US$ ${pago.montoUsd}</strong>.</p>
+      html:    `<p><strong>${emp?.nombre}</strong> subió un comprobante de transferencia por <strong>RD$${Number(pago.monto).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>.</p>
                <p><a href="${frontendUrl}/super-admin">Ver en el panel →</a></p>`,
     });
   }
@@ -670,7 +674,7 @@ export class PagosSuscripcionService {
       to:      emp.email,
       subject: '✅ Pago registrado en HiCloud ERP',
       html:    `<p>Hola <strong>${emp.nombre}</strong>,</p>
-               <p>Se ha registrado un pago de <strong>US$ ${pago.montoUsd}</strong> — ${pago.concepto}.</p>
+               <p>Se ha registrado un pago de <strong>RD$${Number(pago.monto).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> — ${pago.concepto}.</p>
                <p>Gracias por tu pago.</p>`,
     });
   }
@@ -685,7 +689,7 @@ export class PagosSuscripcionService {
       to:      emp.email,
       subject: '✅ Transferencia confirmada — HiCloud ERP',
       html:    `<p>Hola <strong>${emp.nombre}</strong>,</p>
-               <p>Tu transferencia de <strong>US$ ${pago.montoUsd}</strong> fue <strong>confirmada</strong>. Tu suscripción está activa.</p>`,
+               <p>Tu transferencia de <strong>RD$${Number(pago.monto).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> fue <strong>confirmada</strong>. Tu suscripción está activa.</p>`,
     });
   }
 
@@ -707,7 +711,7 @@ export class PagosSuscripcionService {
 
   private buildResumenHtml(pendientes: any[], vencenHoy: any[]): string {
     const pRows = pendientes.map(p =>
-      `<tr><td>${p.empresaNombre}</td><td>US$ ${p.montoUsd}</td><td>${new Date(p.creadoEn).toLocaleDateString('es-DO')}</td></tr>`
+      `<tr><td>${p.empresaNombre}</td><td>RD$${Number(p.monto).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td>${new Date(p.creadoEn).toLocaleDateString('es-DO')}</td></tr>`
     ).join('');
     const vRows = vencenHoy.map(v =>
       `<tr><td>${v.nombre}</td><td>${v.plan}</td><td>${v.email}</td></tr>`

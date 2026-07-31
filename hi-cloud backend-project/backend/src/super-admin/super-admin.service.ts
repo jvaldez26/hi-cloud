@@ -5,7 +5,7 @@ import {
 import { DataSource } from 'typeorm';
 import { randomBytes, createHash } from 'crypto';
 import { EmailService } from '../notificaciones/services/email.service';
-import { PLANES, PlanTipo } from '../suscripciones/entities/suscripcion.entity';
+import { PlanTipo } from '../suscripciones/entities/suscripcion.entity';
 import { escapeHtml } from '../common/utils/escape-html.util';
 
 @Injectable()
@@ -378,23 +378,25 @@ export class SuperAdminService {
       `),
     ]);
 
-    // MRR: usa precios del constante PLANES (fuente única de verdad).
-    // Suscripciones anuales se prorratean a precio mensual (precioAnualUsd / 12).
-    const mrrUsd = (porPlan as any[]).reduce((acc: number, r: any) => {
-      const cfg = PLANES[r.plan as PlanTipo];
-      if (!cfg) return acc;
-      const precio = r.modalidad === 'anual'
-        ? cfg.precioAnualUsd / 12
-        : cfg.precioMensualUsd;
-      return acc + precio * Number(r.cantidad);
-    }, 0);
+    // MRR DOP desde plan_configuracion
+    const mrrRows = await this.ds.query<{ mrr: string }[]>(`
+      SELECT COALESCE(SUM(
+        CASE WHEN s.modalidad = 'anual' THEN pc.precio * 0.9
+             ELSE pc.precio
+        END
+      ), 0)::float AS mrr
+      FROM suscripciones s
+      LEFT JOIN plan_configuracion pc ON pc.clave = s.plan AND pc.activo = true
+      WHERE s.estado = 'activa'
+    `);
+    const mrr = Number(mrrRows[0]?.mrr ?? 0);
 
     return {
       totalEmpresas:        Number(base[0]?.totalEmpresas   ?? 0),
       empresasActivas:      Number(base[0]?.empresasActivas ?? 0),
       totalUsuarios:        Number(base[0]?.totalUsuarios   ?? 0),
       nuevosHoy:            Number(base[0]?.nuevosHoy       ?? 0),
-      mrrUsd:               Math.round(mrrUsd * 100) / 100,
+      mrr:                  Math.round(mrr * 100) / 100,
       facturasHoy:          Number(facturasHoy[0]?.total    ?? 0),
       facturasMes:          Number(facturasMes[0]?.total    ?? 0),
       montoFacturasMes:     Number(montoMes[0]?.montoMes    ?? 0),
@@ -1169,7 +1171,11 @@ export class SuperAdminService {
   }
 
   async getMrrArr() {
-    const USD: Record<string, number> = { trial: 0, emprendedor: 29, pyme: 59, pro: 89, plus: 129, basico: 0, profesional: 0, empresarial: 0, enterprise: 0 };
+    const pcRows = await this.ds.query<{ clave: string; precio: string }[]>(
+      `SELECT clave, precio FROM plan_configuracion WHERE activo = true`,
+    );
+    const PC: Record<string, number> = Object.fromEntries(pcRows.map(r => [r.clave, Number(r.precio)]));
+
     const rows = await this.ds.query<any[]>(`
       SELECT s.plan, s.modalidad, COUNT(DISTINCT s."empresaId")::int AS cantidad
       FROM suscripciones s
@@ -1177,14 +1183,14 @@ export class SuperAdminService {
       WHERE s.estado = 'activa'
       GROUP BY s.plan, s.modalidad
     `);
-    let mrrUsd = 0;
-    const dist: Record<string, { cantidad: number; mrrUsd: number }> = {};
+    let mrr = 0;
+    const dist: Record<string, { cantidad: number; mrr: number }> = {};
     for (const r of rows) {
-      const p = (USD[r.plan] ?? 0) * (r.modalidad === 'anual' ? 0.9 : 1);
-      mrrUsd += p * Number(r.cantidad);
-      dist[r.plan] = { cantidad: (dist[r.plan]?.cantidad ?? 0) + Number(r.cantidad), mrrUsd: (dist[r.plan]?.mrrUsd ?? 0) + p * Number(r.cantidad) };
+      const p = (PC[r.plan] ?? 0) * (r.modalidad === 'anual' ? 0.9 : 1);
+      mrr += p * Number(r.cantidad);
+      dist[r.plan] = { cantidad: (dist[r.plan]?.cantidad ?? 0) + Number(r.cantidad), mrr: (dist[r.plan]?.mrr ?? 0) + p * Number(r.cantidad) };
     }
-    return { mrrUsd: Math.round(mrrUsd * 100) / 100, arrUsd: Math.round(mrrUsd * 12 * 100) / 100, distribucion: dist };
+    return { mrr: Math.round(mrr * 100) / 100, arr: Math.round(mrr * 12 * 100) / 100, distribucion: dist };
   }
 
   // ── Gestión de registros pendientes de aprobación ─────────────────────────

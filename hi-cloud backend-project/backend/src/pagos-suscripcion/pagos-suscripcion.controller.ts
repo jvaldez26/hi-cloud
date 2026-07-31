@@ -45,7 +45,7 @@ export class PagosSuscripcionController {
 
   /**
    * POST /pagos-suscripcion/comprobante — subir comprobante de transferencia
-   * multipart/form-data: file + montoUsd + referencia? + banco? + notas?
+   * multipart/form-data: file + monto + referencia? + banco? + notas?
    */
   @Post('comprobante')
   @UseInterceptors(FileInterceptor('file', {
@@ -66,7 +66,7 @@ export class PagosSuscripcionController {
     if (!file) throw new BadRequestException('Se requiere un archivo comprobante');
     return this.svc.subirComprobante(
       file,
-      Number(body.montoUsd),
+      Number(body.monto),
       body.referencia,
       body.banco,
       body.notas,
