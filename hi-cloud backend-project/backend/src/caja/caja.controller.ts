@@ -107,10 +107,12 @@ export class CajaController {
   cerrarCaja(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CerrarCajaDto,
+    @GetUser() usuario: User,
   ) {
     return this.cajaService.cerrarCaja(
       id, dto.saldoFisico, dto.notas,
       dto.desgloseBilletes, dto.desglosePago,
+      (usuario as any)?.role,
     );
   }
 

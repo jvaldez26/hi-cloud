@@ -189,6 +189,7 @@ export class CajaService {
     notas?: string,
     desgloseBilletes?: Record<string, number>,
     desglosePago?: Record<string, string>,
+    role?: string,
   ) {
     const empresaId = this.tenantService.getEmpresaId();
     const caja = await this.repo.findOne({ where: { id, empresaId } });
@@ -238,7 +239,8 @@ export class CajaService {
       );
     }
 
-    return cierreCajaCiego ? this.ocultarCamposCiego(saved) : saved;
+    // Solo ocultar datos al vendedor — admin/contador siempre ven el cuadre completo
+    return (cierreCajaCiego && role === 'vendedor') ? this.ocultarCamposCiego(saved) : saved;
   }
 
   // ── Anular cierre de caja ─────────────────────────────────────────────────
@@ -446,8 +448,8 @@ export class CajaService {
         await this.recalcularDesdeBD(caja.id, hoy, caja.vendedorId, empresaId);
       }
       const fresh = await this.repo.findOne({ where: { id: caja.id } });
-      const { cierreCajaCiego } = await this.getEmpresaCfg(empresaId);
-      return cierreCajaCiego ? this.ocultarCamposCiego(fresh) : fresh;
+      // getCajaHoy() solo la llaman admin/contador — nunca aplica ciego
+      return fresh;
     }
 
     // Sin filtro de vendedor → todas las cajas del día de ESTA empresa
