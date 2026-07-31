@@ -5,8 +5,8 @@
  * Si supervisorModeEnabled = true → solicita credenciales de admin para
  * acciones que superen el umbral configurado (ej: descuento > maxDiscountPercent).
  *
- * La sesión persiste en localStorage hasta que el usuario la cierra
- * explícitamente (ESC o badge ×). Expira automáticamente a las 8 horas.
+ * La sesión persiste en sessionStorage (sobrevive F5, no cierre de pestaña).
+ * El supervisor puede cerrarla explícitamente (ESC o badge ×). Expira a las 8 horas.
  */
 import { useState, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -49,11 +49,20 @@ const STORAGE_KEY   = 'pos_supervisor';
 const SESSION_MS    = 8 * 60 * 60_000; // 8 horas
 
 function loadSessionFromStorage(): SupervisorSession | null {
-  // La sesión de supervisor vive solo en memoria; no se restaura desde localStorage
-  // porque cualquier valor almacenado ahí es forjable desde DevTools.
-  // Al montar, limpiamos entradas previas del esquema anterior.
+  // sessionStorage sobrevive F5 pero no cierre de pestaña ni se comparte entre tabs.
+  // Al montar limpiamos cualquier entrada vieja de localStorage.
   try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
-  return null;
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const s: SupervisorSession = JSON.parse(raw);
+    if (s.until > Date.now()) return s;
+    sessionStorage.removeItem(STORAGE_KEY);
+    return null;
+  } catch {
+    sessionStorage.removeItem(STORAGE_KEY);
+    return null;
+  }
 }
 
 export function useSupervisor(): UseSupervisorReturn {
@@ -77,7 +86,7 @@ export function useSupervisor(): UseSupervisorReturn {
   // Limpiar sesión — también borra localStorage (llamado por ESC / badge ×)
   const clearSupervisor = useCallback(() => {
     setSupervisorSession(null);
-    localStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(STORAGE_KEY);
   }, []);
 
   const openSupervisorModal = useCallback((action: string, detail?: string) => {
@@ -94,7 +103,7 @@ export function useSupervisor(): UseSupervisorReturn {
         until: Date.now() + SESSION_MS,
       };
       setSupervisorSession(session);
-      // No persistir en localStorage — sesión solo en memoria para evitar forja
+      try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session)); } catch { /* ignore */ }
     }
     resolveRef.current?.(result);
     resolveRef.current = null;
