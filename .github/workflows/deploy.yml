@@ -461,6 +461,19 @@ jobs:
               [ "$i" -lt 5 ] && sleep 6
             done
 
+            # Admin smoke-test: 401=OK (auth required), 500=FAIL (SQL/runtime error)
+            if [ "$STATUS" = "healthy" ] || [ "$STATUS" = "degraded" ]; then
+              for ADMIN_EP in "admin/metricas" "admin/pagos-suscripcion/resumen-cobros" "admin/pagos-suscripcion/comprobantes-pendientes"; do
+                ADMIN_CODE=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 10 "https://hicloudrd.com/api/v1/$ADMIN_EP")
+                echo "  Admin smoke-test /$ADMIN_EP: HTTP $ADMIN_CODE"
+                if [ "$ADMIN_CODE" = "500" ]; then
+                  echo "  ❌ /$ADMIN_EP devolvió 500 — forzando rollback"
+                  STATUS="error"
+                  break
+                fi
+              done
+            fi
+
             if [ "$STATUS" = "healthy" ] || [ "$STATUS" = "degraded" ]; then
               # ── Deploy exitoso ────────────────────────────────────────────
               echo "✅ Deploy exitoso — servidor $STATUS"

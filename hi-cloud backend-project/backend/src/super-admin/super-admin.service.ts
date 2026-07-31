@@ -385,7 +385,7 @@ export class SuperAdminService {
         END
       ), 0)::float AS mrr
       FROM suscripciones s
-      LEFT JOIN plan_configuracion pc ON pc.clave = s.plan AND pc.activo = true
+      LEFT JOIN plan_configuracion pc ON pc.clave = s.plan::text AND pc.activo = true
       WHERE s.estado = 'activa'
     `);
     const mrr = Number(mrrRows[0]?.mrr ?? 0);

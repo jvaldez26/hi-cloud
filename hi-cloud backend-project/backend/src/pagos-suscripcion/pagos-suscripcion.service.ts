@@ -209,7 +209,7 @@ export class PagosSuscripcionService {
       FROM pagos_suscripcion p
       JOIN empresa e ON e.id = p."empresaId"
       LEFT JOIN suscripciones s ON s."empresaId" = p."empresaId"
-      LEFT JOIN plan_configuracion pc ON pc.clave = s.plan AND pc.activo = true
+      LEFT JOIN plan_configuracion pc ON pc.clave = s.plan::text AND pc.activo = true
       WHERE p.tipo = 'TRANSFERENCIA' AND p.estado = 'PENDIENTE'
       ORDER BY p."creadoEn" DESC
     `);
@@ -241,7 +241,7 @@ export class PagosSuscripcionService {
         COUNT(CASE WHEN p.tipo = 'TRANSFERENCIA' AND p.estado = 'PENDIENTE' THEN 1 END)::int AS "pendientesConfirmacion"
       FROM empresa e
       LEFT JOIN suscripciones s ON s."empresaId" = e.id
-      LEFT JOIN plan_configuracion pc ON pc.clave = s.plan AND pc.activo = true
+      LEFT JOIN plan_configuracion pc ON pc.clave = s.plan::text AND pc.activo = true
       LEFT JOIN pagos_suscripcion p ON p."empresaId" = e.id AND p.estado != 'RECHAZADO'
       WHERE e."isActive" = true
       GROUP BY e.id, e.nombre, e.email, s.plan, s.estado, s.modalidad, s."diaCorte", s."fechaVencimiento", pc.precio
@@ -282,7 +282,7 @@ export class PagosSuscripcionService {
       SELECT s.plan, s.estado, s.modalidad, s."fechaVencimiento", s."diaCorte",
              pc.precio::float AS precio
       FROM suscripciones s
-      LEFT JOIN plan_configuracion pc ON pc.clave = s.plan AND pc.activo = true
+      LEFT JOIN plan_configuracion pc ON pc.clave = s.plan::text AND pc.activo = true
       WHERE s."empresaId" = $1
     `, [empresaId]);
 
@@ -387,7 +387,7 @@ export class PagosSuscripcionService {
       SELECT s.plan, s.estado, s.modalidad, s."fechaVencimiento", s."diaCorte",
              pc.precio::float AS precio
       FROM suscripciones s
-      LEFT JOIN plan_configuracion pc ON pc.clave = s.plan AND pc.activo = true
+      LEFT JOIN plan_configuracion pc ON pc.clave = s.plan::text AND pc.activo = true
       WHERE s."empresaId" = $1
     `, [pago.empresaId]);
 

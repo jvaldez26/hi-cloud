@@ -1479,7 +1479,7 @@ export default function SuperAdminPage() {
 
   // ── Queries ──────────────────────────────────────────────────────────────────
 
-  const { data: metricas, isLoading: loadMet } = useQuery({
+  const { data: metricas, isLoading: loadMet, isError: errMet } = useQuery({
     queryKey: ['sa-metricas'],
     queryFn:  () => api.get('/admin/metricas').then(xd),
     staleTime: 30_000,
@@ -2266,6 +2266,10 @@ export default function SuperAdminPage() {
         {/* ── KPI CARDS ─────────────────────────────────────────────────────── */}
         {loadMet ? (
           <div style={{ textAlign: 'center', padding: 32 }}><Spin size="large" /></div>
+        ) : errMet ? (
+          <div style={{ padding: '16px 20px', marginBottom: 28, background: '#fff1f0', border: '1px solid #ffa39e', borderRadius: 8, color: '#cf1322', fontSize: 13 }}>
+            ⚠ Error al cargar métricas — el endpoint devolvió un error inesperado. Revisa los logs del servidor.
+          </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 28 }}>
             <KpiCard
