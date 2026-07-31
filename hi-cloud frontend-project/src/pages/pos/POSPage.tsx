@@ -144,6 +144,7 @@ interface Sale {
   empresaRnc?:             string;
   empresaDireccion?:       string;
   empresaTelefono?:        string;
+  empresaLogo?:            string;
   modoContexto?:           string;
 }
 
@@ -777,6 +778,7 @@ window.addEventListener('afterprint',function(){setTimeout(function(){
 </script>
 </head><body>
 
+${sale.empresaLogo ? `<div class="center" style="margin-bottom:4px"><img src="${sale.empresaLogo}" style="max-width:80%;max-height:20mm;height:auto;display:block;margin:0 auto" alt=""></div>` : ''}
 <div class="center xlarge">${esc(sale.empresaNombreComercial ?? 'NOMBRE EMPRESA')}</div>
 <div class="center small">República Dominicana</div>
 ${sale.empresaRnc ? `<div>RNC Emisor: ${esc(sale.empresaRnc)}</div>` : ''}
@@ -2390,6 +2392,7 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
           empresaRnc:             empRes.rnc,
           empresaDireccion:       empRes.direccion,
           empresaTelefono:        empRes.telefono,
+          empresaLogo:            empRes.logo,
           // Header: nc.fecha + nc.createdAt (= FechaEmision del XML, fecha fiscal oficial)
           // Sección ECF: signedDate de DGII (cuando aceptó el comprobante)
           ...((): { fechaEmision?: string; horaEmision?: string; ecfFecha: string } => {
@@ -5962,6 +5965,7 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
         sucursalNombre: (f as any).sucursal?.nombre ?? sucursalNombreFromCache(qc),
         empresaNombreComercial: empresa.razonSocial ?? empresa.nombre,
         empresaRnc: empresa.rnc, empresaDireccion: empresa.direccion, empresaTelefono: empresa.telefono,
+        empresaLogo: empresa.logo,
       };
       let qrDUrl: string | null = null;
       if (f.ecf?.qrUrl && f.ecf?.numero) {
@@ -7228,6 +7232,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
             cajero: f.usuario?.nombre, sucursalNombre: (f as any).sucursal?.nombre ?? sucursalNombreFromCache(qc),
             empresaNombreComercial: empRes.razonSocial ?? empRes.nombre, empresaRnc: empRes.rnc,
             empresaDireccion: empRes.direccion, empresaTelefono: empRes.telefono,
+            empresaLogo: empRes.logo,
           };
           let qrDUrl: string | null = null;
           if (f.ecf?.qrUrl && f.ecf?.numero) {
@@ -7297,6 +7302,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
             cajero: f.usuario?.nombre, sucursalNombre: (f as any).sucursal?.nombre ?? sucursalNombreFromCache(qc),
             empresaNombreComercial: empRes.razonSocial ?? empRes.nombre, empresaRnc: empRes.rnc,
             empresaDireccion: empRes.direccion, empresaTelefono: empRes.telefono,
+            empresaLogo: empRes.logo,
           };
           let qrDUrl: string | null = null;
           if (f.ecf?.qrUrl && f.ecf?.numero) {
@@ -7417,6 +7423,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           sucursalNombre: (f as any).sucursal?.nombre ?? sucursalNombreFromCache(qc),
           empresaNombreComercial: empInfo.nombre, empresaRnc: empInfo.rnc,
           empresaDireccion: empInfo.direccion, empresaTelefono: empInfo.telefono,
+          empresaLogo: empresa.logo,
         };
         // Generar QR antes de construir el HTML
         let qrDUrl: string | null = null;
@@ -7469,6 +7476,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           empresaRnc:              empInfo.rnc,
           empresaDireccion:        empInfo.direccion,
           empresaTelefono:         empInfo.telefono,
+          empresaLogo:             empresa.logo,
         };
         const empConfPanel = (empresa.configuracion ?? {}) as any;
         if (empConfPanel.posTipoImpresora === 'bluetooth') {
@@ -7511,6 +7519,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           empresaRnc:              empInfo.rnc,
           empresaDireccion:        empInfo.direccion,
           empresaTelefono:         empInfo.telefono,
+          empresaLogo:             empresa.logo,
         };
         const empConfPanel = (empresa.configuracion ?? {}) as any;
         if (empConfPanel.posTipoImpresora === 'bluetooth') {
@@ -7562,6 +7571,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           empresaRnc:             empInfo.rnc,
           empresaDireccion:       empInfo.direccion,
           empresaTelefono:        empInfo.telefono,
+          empresaLogo:            empresa.logo,
           cajero:                 doc.nombreVendedor ?? doc.usuario?.nombre,
           // Fecha header = nc.fecha (FechaEmision del XML, fecha fiscal oficial, nunca cambia)
           // Hora + ECF Fecha:
@@ -9676,6 +9686,7 @@ export default function POSPage() {
         empresaRnc:              empresa?.rnc ?? undefined,
         empresaDireccion:        empresa?.direccion ?? undefined,
         empresaTelefono:         empresa?.telefono ?? undefined,
+        empresaLogo:             empresa?.logo ?? undefined,
         modoContexto,
       };
       // Auto-imprimir — BT funciona directo en móvil sin ventana pre-abierta
