@@ -895,6 +895,7 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
       posPrecioConsultaClinica:    conf.posPrecioConsultaClinica ?? 0,
       cierreCajaCiego:             conf.cierreCajaCiego ?? false,
       umbralDescuadreCaja:         conf.umbralDescuadreCaja ?? 100,
+      posLogoAltura:               conf.posLogoAltura ?? 20,
     });
   }, [empresa]);
 
@@ -933,6 +934,16 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
               <Option value="bluetooth">Térmica BT 58mm (Bluetooth)</Option>
               <Option value="carta">Hoja carta (A4)</Option>
               <Option value="ninguna">Sin impresora</Option>
+            </Select>
+          </Form.Item>
+        </Col>
+        <Col xs={24} sm={8}>
+          <Form.Item name="posLogoAltura" label="Altura del logo en ticket (mm)">
+            <Select>
+              <Option value={20}>Pequeño (20 mm)</Option>
+              <Option value={30}>Mediano (30 mm)</Option>
+              <Option value={40}>Grande (40 mm)</Option>
+              <Option value={60}>Muy grande (60 mm)</Option>
             </Select>
           </Form.Item>
         </Col>

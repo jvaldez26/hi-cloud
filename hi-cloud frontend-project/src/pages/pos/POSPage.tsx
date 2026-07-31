@@ -639,7 +639,7 @@ const IMPRESORA_CONFIG: Record<string, { width: string; fontSize: string; paddin
 function buildReciboTermicoHTML(
   sale: Sale,
   qrDataUrl: string | null,
-  cfg: { mostrarEcf?: boolean; tipoImpresora?: string; mensajeTicket?: string; politicaDev?: string; tipoDoc?: 'PRE-FACTURA' | 'COTIZACIÓN' | 'PRO-FORMA'; validezDias?: number } = {},
+  cfg: { mostrarEcf?: boolean; tipoImpresora?: string; mensajeTicket?: string; politicaDev?: string; tipoDoc?: 'PRE-FACTURA' | 'COTIZACIÓN' | 'PRO-FORMA'; validezDias?: number; posLogoAltura?: number } = {},
 ): string {
   const { mostrarEcf = true, tipoImpresora = '80mm', mensajeTicket, politicaDev, tipoDoc, validezDias } = cfg;
   const prn   = IMPRESORA_CONFIG[tipoImpresora] ?? IMPRESORA_CONFIG['80mm'];
@@ -778,7 +778,7 @@ window.addEventListener('afterprint',function(){setTimeout(function(){
 </script>
 </head><body>
 
-${sale.empresaLogo ? `<div class="center" style="margin-bottom:4px"><img src="${sale.empresaLogo}" style="max-width:80%;max-height:20mm;height:auto;display:block;margin:0 auto" alt=""></div>` : ''}
+${sale.empresaLogo ? `<div class="center" style="margin-bottom:4px"><img src="${sale.empresaLogo}" style="max-width:80%;max-height:${cfg.posLogoAltura ?? 20}mm;height:auto;display:block;margin:0 auto" alt=""></div>` : ''}
 <div class="center xlarge">${esc(sale.empresaNombreComercial ?? 'NOMBRE EMPRESA')}</div>
 <div class="center small">República Dominicana</div>
 ${sale.empresaRnc ? `<div>RNC Emisor: ${esc(sale.empresaRnc)}</div>` : ''}
@@ -1947,7 +1947,7 @@ function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir, mostrarEcf = 
   onCrearConduce?: () => void;
   autoImprimir?: boolean;
   mostrarEcf?: boolean;
-  posConfig?: { tipoImpresora?: string; mensajeTicket?: string; politicaDev?: string };
+  posConfig?: { tipoImpresora?: string; mensajeTicket?: string; politicaDev?: string; posLogoAltura?: number };
 }) {
   const C = useC();
   const [countdown, setCountdown] = useState(10);
@@ -2425,6 +2425,7 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
             tipoImpresora: empConf.posTipoImpresora,
             mensajeTicket: empConf.posMensajeTicket,
             politicaDev:   empConf.posPoliticaDev,
+            posLogoAltura: empConf.posLogoAltura ? Number(empConf.posLogoAltura) : undefined,
           }));
         }
       } catch { /* impresión no crítica */ }
@@ -5991,6 +5992,7 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
         tipoImpresora: empConf.posTipoImpresora,
         mensajeTicket: empConf.posMensajeTicket,
         politicaDev:   empConf.posPoliticaDev,
+        posLogoAltura: empConf.posLogoAltura ? Number(empConf.posLogoAltura) : undefined,
       });
       if (printWin && !printWin.closed) {
         printWin.document.open();
@@ -7251,6 +7253,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
               tipoImpresora: empConf.posTipoImpresora,
               mensajeTicket: empConf.posMensajeTicket,
               politicaDev:   empConf.posPoliticaDev,
+              posLogoAltura: empConf.posLogoAltura ? Number(empConf.posLogoAltura) : undefined,
             }));
           }
         } catch { /* error de impresión no bloquea */ }
@@ -7321,6 +7324,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
               tipoImpresora: empConf.posTipoImpresora,
               mensajeTicket: empConf.posMensajeTicket,
               politicaDev:   empConf.posPoliticaDev,
+              posLogoAltura: empConf.posLogoAltura ? Number(empConf.posLogoAltura) : undefined,
             }));
           }
         } catch { /* error de impresión no bloquea */ }
@@ -7444,6 +7448,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           tipoImpresora: empConfPanel.posTipoImpresora,
           mensajeTicket: empConfPanel.posMensajeTicket,
           politicaDev:   empConfPanel.posPoliticaDev,
+          posLogoAltura: empConfPanel.posLogoAltura ? Number(empConfPanel.posLogoAltura) : undefined,
         }));
         return;
       }
@@ -7491,6 +7496,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           tipoImpresora: empConfPanel.posTipoImpresora,
           tipoDoc,
           validezDias:   doc.validezDias,
+          posLogoAltura: empConfPanel.posLogoAltura ? Number(empConfPanel.posLogoAltura) : undefined,
         }));
         return;
       }
@@ -7534,6 +7540,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           tipoImpresora: empConfPanel.posTipoImpresora,
           tipoDoc:       'PRO-FORMA',
           validezDias:   doc.validezDias,
+          posLogoAltura: empConfPanel.posLogoAltura ? Number(empConfPanel.posLogoAltura) : undefined,
         }));
         return;
       }
@@ -7620,6 +7627,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           tipoImpresora: empConfPanel.posTipoImpresora,
           mensajeTicket: empConfPanel.posMensajeTicket,
           politicaDev:   empConfPanel.posPoliticaDev,
+          posLogoAltura: empConfPanel.posLogoAltura ? Number(empConfPanel.posLogoAltura) : undefined,
         }));
         return;
       }
@@ -9733,7 +9741,7 @@ export default function POSPage() {
           // Térmica 58/80mm → comportamiento original
           autoYaPrintedRef.current = true;
           const _mostrarEcf = posConf.posMostrarEcfEnRecibo !== false;
-          const _pCfg = { tipoImpresora: _tipoImpCobro, mensajeTicket: posConf.posMensajeTicket as string | undefined, politicaDev: posConf.posPoliticaDev as string | undefined };
+          const _pCfg = { tipoImpresora: _tipoImpCobro, mensajeTicket: posConf.posMensajeTicket as string | undefined, politicaDev: posConf.posPoliticaDev as string | undefined, posLogoAltura: posConf.posLogoAltura ? Number(posConf.posLogoAltura) : undefined };
           const doprint = (qr: string | null) => {
             const html = buildReciboTermicoHTML(saleObj, qr, { mostrarEcf: _mostrarEcf, ..._pCfg });
             if (pw.closed) { imprimirReciboTermico(html); return; }
@@ -10068,9 +10076,10 @@ export default function POSPage() {
         autoImprimir={empresa?.configuracion?.posImpresionAuto === true && !autoYaPrintedRef.current}
         mostrarEcf={posConf.posMostrarEcfEnRecibo !== false}
         posConfig={{
-          tipoImpresora: posConf.posTipoImpresora as string | undefined,
-          mensajeTicket: posConf.posMensajeTicket as string | undefined,
-          politicaDev:   posConf.posPoliticaDev   as string | undefined,
+          tipoImpresora:  posConf.posTipoImpresora  as string | undefined,
+          mensajeTicket:  posConf.posMensajeTicket  as string | undefined,
+          politicaDev:    posConf.posPoliticaDev    as string | undefined,
+          posLogoAltura:  posConf.posLogoAltura ? Number(posConf.posLogoAltura) : undefined,
         }} />
       <POSNotaCreditoModal open={showNotaCredito} onClose={() => setShowNotaCredito(false)} palette={palette}
         requireSupervisor={supervisor.supervisorModeEnabled ? supervisor.requireSupervisor : undefined} />
