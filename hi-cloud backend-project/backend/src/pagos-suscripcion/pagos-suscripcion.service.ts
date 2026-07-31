@@ -50,8 +50,9 @@ export class PagosSuscripcionService {
     if (!sus) throw new NotFoundException('Suscripción no encontrada');
 
     const hoy = new Date();
-    // vencimientoOverride tiene prioridad sobre fechaVencimiento (igual que en resumenCobros)
-    const fechaEfectiva = sus.fechaFinPrueba ?? sus.vencimientoOverride ?? sus.fechaVencimiento;
+    const fechaEfectiva = sus.estado === 'prueba'
+      ? (sus.fechaFinPrueba ?? sus.fechaVencimiento)
+      : sus.fechaVencimiento;
     const fechaVence = new Date(fechaEfectiva);
     const diasRestantes = Math.max(0,
       Math.ceil((fechaVence.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24))
@@ -187,7 +188,7 @@ export class PagosSuscripcionService {
       SELECT p.*,
              e.nombre AS "empresaNombre", e.rnc,
              s.plan, s.estado AS "estadoSuscripcion",
-             COALESCE(s."vencimientoOverride", s."fechaVencimiento")::date AS "venceSuscripcion"
+             s."fechaVencimiento"::date AS "venceSuscripcion"
       FROM pagos_suscripcion p
       JOIN empresa e     ON e.id = p."empresaId"
       LEFT JOIN suscripciones s ON s."empresaId" = p."empresaId"
@@ -220,8 +221,7 @@ export class PagosSuscripcionService {
         e.email,
         s.plan,
         s.estado AS "estadoSuscripcion",
-        COALESCE(s."vencimientoOverride", s."fechaVencimiento")::date AS "venceSuscripcion",
-        s."vencimientoOverride"::date AS "vencimientoOverride",
+        s."fechaVencimiento"::date AS "venceSuscripcion",
         pc.precio::float AS "precioMensual",
         COALESCE(SUM(
           CASE
@@ -238,7 +238,7 @@ export class PagosSuscripcionService {
       LEFT JOIN plan_configuracion pc ON pc.clave = s.plan AND pc.activo = true
       LEFT JOIN pagos_suscripcion p ON p."empresaId" = e.id AND p.estado != 'RECHAZADO'
       WHERE e."isActive" = true
-      GROUP BY e.id, e.nombre, e.email, s.plan, s.estado, s."fechaVencimiento", s."vencimientoOverride", pc.precio
+      GROUP BY e.id, e.nombre, e.email, s.plan, s.estado, s."fechaVencimiento", pc.precio
       ORDER BY saldo DESC, e.nombre
     `);
     // Garantizar tipos JS correctos (PostgreSQL devuelve numeric/int como string vía ds.query)
@@ -253,7 +253,7 @@ export class PagosSuscripcionService {
   async registrarPago(empresaId: number, dto: RegistrarPagoDto, adminId: number) {
     // ── 1. Leer suscripción actual ──────────────────────────────────────────
     const [sus] = await this.ds.query<any[]>(`
-      SELECT estado, modalidad, "fechaVencimiento", "vencimientoOverride"
+      SELECT estado, modalidad, "fechaVencimiento"
       FROM suscripciones WHERE "empresaId" = $1
     `, [empresaId]);
 
@@ -305,23 +305,14 @@ export class PagosSuscripcionService {
         ? sus.fechaVencimiento.split('T')[0]
         : (sus.fechaVencimiento as Date).toISOString().split('T')[0];
 
-      if (sus.vencimientoOverride != null) {
-        // Override manual activo: solo reactivar, no sobreescribir fechaVencimiento
-        await this.ds.query(`
-          UPDATE suscripciones
-          SET estado = 'activa', "motivoSuspension" = NULL, "enPeriodoGracia" = false
-          WHERE "empresaId" = $1
-        `, [empresaId]);
-      } else {
-        await this.ds.query(`
-          UPDATE suscripciones
-          SET estado = 'activa',
-              "fechaVencimiento" = $1,
-              "motivoSuspension" = NULL,
-              "enPeriodoGracia" = false
-          WHERE "empresaId" = $2
-        `, [nuevaFechaVenc, empresaId]);
-      }
+      await this.ds.query(`
+        UPDATE suscripciones
+        SET estado = 'activa',
+            "fechaVencimiento" = $1,
+            "motivoSuspension" = NULL,
+            "enPeriodoGracia" = false
+        WHERE "empresaId" = $2
+      `, [nuevaFechaVenc, empresaId]);
 
       this.logger.log(
         `[PAGO] Empresa #${empresaId} | Admin #${adminId} | ` +
@@ -359,7 +350,7 @@ export class PagosSuscripcionService {
 
     // ── Activar suscripción y extender fechaVencimiento ─────────────────────
     const [sus] = await this.ds.query<any[]>(`
-      SELECT estado, modalidad, "fechaVencimiento", "vencimientoOverride"
+      SELECT estado, modalidad, "fechaVencimiento"
       FROM suscripciones WHERE "empresaId" = $1
     `, [pago.empresaId]);
 
@@ -376,23 +367,14 @@ export class PagosSuscripcionService {
       const nd = Math.min(d, new Date(ny, nm, 0).getDate());
       const nuevaFecha = `${ny}-${String(nm).padStart(2, '0')}-${String(nd).padStart(2, '0')}`;
 
-      if (sus.vencimientoOverride != null) {
-        // Override manual activo: solo reactivar, no sobreescribir fechaVencimiento
-        await this.ds.query(`
-          UPDATE suscripciones
-          SET estado = 'activa', "motivoSuspension" = NULL, "enPeriodoGracia" = false
-          WHERE "empresaId" = $1
-        `, [pago.empresaId]);
-      } else {
-        await this.ds.query(`
-          UPDATE suscripciones
-          SET estado = 'activa',
-              "fechaVencimiento" = $1,
-              "motivoSuspension" = NULL,
-              "enPeriodoGracia" = false
-          WHERE "empresaId" = $2
-        `, [nuevaFecha, pago.empresaId]);
-      }
+      await this.ds.query(`
+        UPDATE suscripciones
+        SET estado = 'activa',
+            "fechaVencimiento" = $1,
+            "motivoSuspension" = NULL,
+            "enPeriodoGracia" = false
+        WHERE "empresaId" = $2
+      `, [nuevaFecha, pago.empresaId]);
 
       this.logger.log(
         `[TRANSFERENCIA] Empresa #${pago.empresaId} | Admin #${adminId} | ` +
@@ -468,9 +450,12 @@ export class PagosSuscripcionService {
     `, [empresaId]);
     if (!sus) throw new NotFoundException('Empresa no encontrada');
 
+    const fechaEfectivaRec = sus.estado === 'prueba'
+      ? (sus.fechaFinPrueba ?? sus.fechaVencimiento)
+      : sus.fechaVencimiento;
     await this.enviarEmailRecordatorio(
       sus.email, sus.nombre, sus.plan,
-      Math.ceil((new Date(sus.fechaVencimiento).getTime() - Date.now()) / 86400000),
+      Math.ceil((new Date(fechaEfectivaRec).getTime() - Date.now()) / 86400000),
     );
     return { ok: true, mensaje: `Recordatorio enviado a ${sus.email}` };
   }
@@ -510,7 +495,7 @@ export class PagosSuscripcionService {
         FROM suscripciones s
         JOIN empresa e ON e.id = s."empresaId"
         WHERE s.estado = 'activa'
-          AND COALESCE(s."vencimientoOverride", s."fechaVencimiento")::date = $1
+          AND s."fechaVencimiento"::date = $1
           AND e."isActive" = true
       `, [fecha]);
 
@@ -534,7 +519,7 @@ export class PagosSuscripcionService {
       FROM suscripciones s
       JOIN empresa e ON e.id = s."empresaId"
       WHERE s.estado = 'activa'
-        AND COALESCE(s."vencimientoOverride", s."fechaVencimiento")::date = $1
+        AND s."fechaVencimiento"::date = $1
         AND e."isActive" = true
     `, [fecha]);
 
@@ -573,7 +558,7 @@ export class PagosSuscripcionService {
       SELECT e.nombre, e.email, s.plan
       FROM suscripciones s
       JOIN empresa e ON e.id = s."empresaId"
-      WHERE COALESCE(s."vencimientoOverride", s."fechaVencimiento")::date = CURRENT_DATE
+      WHERE s."fechaVencimiento"::date = CURRENT_DATE
         AND s.estado = 'activa'
         AND e."isActive" = true
     `);

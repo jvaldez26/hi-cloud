@@ -124,8 +124,7 @@ export class SuperAdminService {
       SELECT e.id, e.nombre, e.rnc, e."isActive",
              e."createdAt"::date AS "fechaRegistro",
              s.plan, s.estado AS "estadoSuscripcion",
-             COALESCE(s."vencimientoOverride", s."fechaVencimiento")::date AS "venceSuscripcion",
-             s."vencimientoOverride"::date AS "vencimientoOverride",
+             s."fechaVencimiento"::date AS "venceSuscripcion",
              COUNT(DISTINCT ue."userId")::int   AS usuarios,
              COUNT(DISTINCT f.id)::int          AS "facturasMes"
       FROM empresa e
@@ -136,7 +135,7 @@ export class SuperAdminService {
         AND EXTRACT(YEAR  FROM f.fecha) = EXTRACT(YEAR  FROM CURRENT_DATE)
         AND f."isActive" = true AND f.estado != 'cancelada'
       GROUP BY e.id, e.nombre, e.rnc, e."isActive", e."createdAt",
-               s.plan, s.estado, s."fechaVencimiento", s."vencimientoOverride"
+               s.plan, s.estado, s."fechaVencimiento"
       ORDER BY e."createdAt" DESC
     `);
   }
@@ -152,13 +151,13 @@ export class SuperAdminService {
              e."representanteLegal", e.moneda, e."isActive", e."createdAt",
              e."estadoAprobacion", e."motivoRechazo", e."aprobadoPor", e."fechaAprobacion",
              s.id AS "suscripcionId", s.plan, s.estado AS "estadoSuscripcion",
-             s."fechaInicio", s."fechaVencimiento", s."vencimientoOverride",
+             s."fechaInicio", s."fechaVencimiento",
              COUNT(DISTINCT ue."userId")::int AS usuarios
       FROM empresa e
       LEFT JOIN suscripciones s ON s."empresaId" = e.id
       LEFT JOIN usuario_empresa ue ON ue."empresaId" = e.id AND ue."isActive" = true
       WHERE e.id = $1
-      GROUP BY e.id, s.id, s.plan, s.estado, s."fechaInicio", s."fechaVencimiento", s."vencimientoOverride"
+      GROUP BY e.id, s.id, s.plan, s.estado, s."fechaInicio", s."fechaVencimiento"
     `, [id]);
     if (!emp) throw new NotFoundException(`Empresa #${id} no encontrada`);
     return emp;
@@ -349,14 +348,14 @@ export class SuperAdminService {
       // Fix trials: filtrar solo empresas activas
       this.ds.query<any[]>(`
         SELECT COUNT(*)::int AS cnt,
-               COUNT(CASE WHEN COALESCE(s."vencimientoOverride",s."fechaVencimiento") <= CURRENT_DATE + 7 THEN 1 END)::int AS "proximasVencer"
+               COUNT(CASE WHEN s."fechaVencimiento" <= CURRENT_DATE + 7 THEN 1 END)::int AS "proximasVencer"
         FROM suscripciones s
         JOIN empresa e ON e.id = s."empresaId" AND e."isActive" = true
         WHERE s.plan::text = 'trial' AND s.estado = 'activa'
       `),
       this.ds.query<any[]>(`
         SELECT COUNT(*)::int AS cnt FROM suscripciones
-        WHERE COALESCE("vencimientoOverride","fechaVencimiento") < CURRENT_DATE AND estado = 'activa'
+        WHERE "fechaVencimiento" < CURRENT_DATE AND estado = 'activa'
       `),
       // Fix e-CF: usar timezone RD (UTC-4) para que "hoy" coincida con el día local
       this.ds.query<any[]>(`
@@ -880,12 +879,11 @@ export class SuperAdminService {
       SELECT s.id, s."empresaId", e.nombre AS empresa, e.rnc,
              s.plan, s.estado,
              s."fechaInicio"::date,
-             COALESCE(s."vencimientoOverride", s."fechaVencimiento")::date AS "fechaVencimiento",
-             (COALESCE(s."vencimientoOverride", s."fechaVencimiento")::date - CURRENT_DATE) AS "diasRestantes",
-             s."vencimientoOverride"::date AS "vencimientoOverride"
+             s."fechaVencimiento"::date AS "fechaVencimiento",
+             (s."fechaVencimiento"::date - CURRENT_DATE) AS "diasRestantes"
       FROM suscripciones s
       JOIN empresa e ON e.id = s."empresaId"
-      ORDER BY COALESCE(s."vencimientoOverride", s."fechaVencimiento") ASC
+      ORDER BY s."fechaVencimiento" ASC
     `);
   }
 
@@ -894,15 +892,10 @@ export class SuperAdminService {
   }
 
   async cambiarPlanConAuditoria(empresaId: number, plan: string, meses: number, superAdminId: number | null, solicitudId: number | null, motivo: string) {
-    const [prev] = await this.ds.query<any[]>('SELECT plan, estado, "fechaVencimiento", "vencimientoOverride" FROM suscripciones WHERE "empresaId" = $1', [empresaId]);
+    const [prev] = await this.ds.query<any[]>('SELECT plan, estado, "fechaVencimiento" FROM suscripciones WHERE "empresaId" = $1', [empresaId]);
     const fin = new Date();
     fin.setMonth(fin.getMonth() + meses);
-    if (prev?.vencimientoOverride != null) {
-      // Override manual activo: no sobreescribir fechaVencimiento
-      await this.ds.query(`UPDATE suscripciones SET plan = $1, estado = 'activa' WHERE "empresaId" = $2`, [plan, empresaId]);
-    } else {
-      await this.ds.query(`UPDATE suscripciones SET plan = $1, estado = 'activa', "fechaVencimiento" = $2 WHERE "empresaId" = $3`, [plan, fin.toISOString(), empresaId]);
-    }
+    await this.ds.query(`UPDATE suscripciones SET plan = $1, estado = 'activa', "fechaVencimiento" = $2 WHERE "empresaId" = $3`, [plan, fin.toISOString(), empresaId]);
     const [sus] = await this.ds.query<any[]>('SELECT id FROM suscripciones WHERE "empresaId" = $1', [empresaId]);
     if (sus) {
       await this.ds.query(`INSERT INTO suscripcion_auditoria ("suscripcionId","empresaId",accion,"valorAnterior","valorNuevo","superAdminId",motivo) VALUES ($1,$2,'CAMBIO_PLAN',$3,$4,$5,$6)`,
@@ -1034,14 +1027,14 @@ export class SuperAdminService {
 
   async setVencimientoManual(empresaId: number, fecha: string, motivo: string, superAdminId: number) {
     const [sus] = await this.ds.query<any[]>(
-      `SELECT id, estado, "vencimientoOverride" FROM suscripciones WHERE "empresaId" = $1`,
+      `SELECT id, estado, "fechaVencimiento" FROM suscripciones WHERE "empresaId" = $1`,
       [empresaId],
     );
     if (!sus) throw new Error(`No hay suscripción para empresa #${empresaId}`);
     if (sus.estado !== 'activa') throw new Error('Solo se puede fijar vencimiento manual en suscripciones ACTIVAS');
 
     await this.ds.query(
-      `UPDATE suscripciones SET "vencimientoOverride" = $1 WHERE id = $2`,
+      `UPDATE suscripciones SET "fechaVencimiento" = $1 WHERE id = $2`,
       [fecha, sus.id],
     );
     await this.ds.query(
@@ -1049,43 +1042,11 @@ export class SuperAdminService {
          ("suscripcionId","empresaId",accion,"valorAnterior","valorNuevo","superAdminId",motivo)
        VALUES ($1,$2,'FECHA_VENCIMIENTO_MANUAL',$3,$4,$5,$6)`,
       [sus.id, empresaId,
-       JSON.stringify({ vencimientoOverride: sus.vencimientoOverride ?? null }),
-       JSON.stringify({ vencimientoOverride: fecha }),
+       JSON.stringify({ fechaVencimiento: sus.fechaVencimiento ?? null }),
+       JSON.stringify({ fechaVencimiento: fecha }),
        superAdminId, motivo],
     );
-    return { ok: true, vencimientoOverride: fecha };
-  }
-
-  async resetVencimientoManual(empresaId: number, motivo: string, superAdminId: number) {
-    const [sus] = await this.ds.query<any[]>(
-      `SELECT id, "vencimientoOverride" FROM suscripciones WHERE "empresaId" = $1`,
-      [empresaId],
-    );
-    if (!sus) throw new Error(`No hay suscripción para empresa #${empresaId}`);
-
-    // Restablecer fechaVencimiento al último periodo de pago confirmado, si existe
-    await this.ds.query(`
-      UPDATE suscripciones
-      SET "vencimientoOverride" = NULL,
-          "fechaVencimiento" = COALESCE(
-            (SELECT "periodoFin"::date FROM pagos_suscripcion
-             WHERE "empresaId" = $1 AND estado = 'confirmado' AND "periodoFin" IS NOT NULL
-             ORDER BY "periodoFin" DESC LIMIT 1),
-            "fechaVencimiento"
-          )
-      WHERE id = $2
-    `, [empresaId, sus.id]);
-
-    await this.ds.query(
-      `INSERT INTO suscripcion_auditoria
-         ("suscripcionId","empresaId",accion,"valorAnterior","valorNuevo","superAdminId",motivo)
-       VALUES ($1,$2,'RESET_FECHA_VENCIMIENTO',$3,$4,$5,$6)`,
-      [sus.id, empresaId,
-       JSON.stringify({ vencimientoOverride: sus.vencimientoOverride ?? null }),
-       JSON.stringify({ vencimientoOverride: null }),
-       superAdminId, motivo],
-    );
-    return { ok: true };
+    return { ok: true, fechaVencimiento: fecha };
   }
 
   async listarSolicitudes(estado?: string) {

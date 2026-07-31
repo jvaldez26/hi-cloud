@@ -54,7 +54,6 @@ export interface ResumenCobros {
   plan:                   string;
   estadoSuscripcion:      string;
   venceSuscripcion:       string;
-  vencimientoOverride:    string | null;
   saldo:                  number;
   precioMensual:          number;
   ultimoPago:             string | null;

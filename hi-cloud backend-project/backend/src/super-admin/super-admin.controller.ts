@@ -138,11 +138,6 @@ class VencimientoManualDto {
   motivo!: string;
 }
 
-class ResetVencimientoDto {
-  @IsString() @IsNotEmpty()
-  motivo!: string;
-}
-
 /**
  * S-64: compara la clave interna del script de backups en tiempo constante y
  * FALLA CERRADO. Antes era `key !== process.env.INTERNAL_API_KEY`: si la variable
@@ -254,17 +249,6 @@ export class SuperAdminController {
     @GetUser() admin: User,
   ) {
     return this.svc.setVencimientoManual(id, dto.fecha, dto.motivo, admin.id);
-  }
-
-  @Delete('empresas/:id/vencimiento-manual')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Restablecer vencimiento automático — elimina el override manual' })
-  resetVencimientoManual(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: ResetVencimientoDto,
-    @GetUser() admin: User,
-  ) {
-    return this.svc.resetVencimientoManual(id, dto.motivo, admin.id);
   }
 
   // ── Solicitudes de cambio de plan ─────────────────────────────────────────

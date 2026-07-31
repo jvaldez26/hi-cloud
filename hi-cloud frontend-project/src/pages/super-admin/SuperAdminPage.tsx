@@ -1724,16 +1724,6 @@ export default function SuperAdminPage() {
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al fijar vencimiento'),
   });
 
-  const resetVenceMut = useMutation({
-    mutationFn: ({ id, motivo }: { id: number; motivo: string }) =>
-      api.delete(`/admin/empresas/${id}/vencimiento-manual`, { data: { motivo } }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['sa-empresas'] });
-      message.success('Vencimiento restablecido al automático');
-    },
-    onError: () => message.error('Error al restablecer vencimiento'),
-  });
-
   // ── Filtros ───────────────────────────────────────────────────────────────────
 
   const empresasFiltradas = useMemo(() => {
@@ -1802,8 +1792,7 @@ export default function SuperAdminPage() {
     // ── VENCIMIENTO con urgencia ──────────────────────────────────────────────
     { title: 'Vencimiento', key: 'vence', width: 140,
       render: (_: any, r: any) => {
-        const isManual = r.vencimientoOverride != null;
-        const v = isManual ? r.vencimientoOverride : r.venceSuscripcion;
+        const v = r.venceSuscripcion;
         if (!v) return <span style={{ color: C.txt2, fontSize: 12 }}>—</span>;
         const dias = Math.ceil((new Date(v).getTime() - Date.now()) / 86_400_000);
         const urgente  = dias < 0;
@@ -1819,7 +1808,6 @@ export default function SuperAdminPage() {
           <div style={{ lineHeight: 1.3 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <span style={{ color: C.txt, fontSize: 12 }}>{fmtFecha(v)}</span>
-              {isManual && <Tag color="blue" style={{ fontSize: 10, padding: '0 4px', margin: 0 }}>Manual</Tag>}
             </div>
             <div style={{ color, fontSize: 11, fontWeight: urgente || critico ? 700 : 500 }}>
               {icon} {label}
@@ -1875,16 +1863,6 @@ export default function SuperAdminPage() {
             label: 'Fijar vencimiento manual',
             onClick: () => { setModalVence(r); setVenceFecha(null); setVenceMotivo(''); },
           },
-          ...(r.vencimientoOverride != null ? [{
-            key: 'vence-reset', icon: <RefreshCw size={13} />,
-            label: 'Restablecer vencimiento automático',
-            onClick: () => Modal.confirm({
-              title: '¿Restablecer vencimiento automático?',
-              content: 'Se eliminará el override manual y se usará la fecha calculada desde los pagos.',
-              okText: 'Restablecer', cancelText: 'Cancelar',
-              onOk: () => resetVenceMut.mutate({ id: r.id, motivo: 'Restablecido desde menú' }),
-            }),
-          }] : []),
           { type: 'divider' },
           r.isActive
             ? {
@@ -2082,9 +2060,6 @@ export default function SuperAdminPage() {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <span style={{ color: C.txt, fontSize: 12 }}>{fmtFecha(v)}</span>
-              {r.vencimientoOverride != null && (
-                <span style={{ background: '#8B5CF622', color: '#8B5CF6', border: '1px solid #8B5CF655', borderRadius: 4, padding: '0 4px', fontSize: 10, fontWeight: 700 }}>Manual</span>
-              )}
             </div>
             <div style={{ color, fontSize: 11, fontWeight: 600 }}>{texto}</div>
           </div>
@@ -3444,11 +3419,6 @@ export default function SuperAdminPage() {
             <div style={{ fontSize: 13, color: C.txt }}>
               Empresa: <strong>{modalVence.nombre}</strong>
             </div>
-            {modalVence.vencimientoOverride && (
-              <div style={{ background: `${C.blue}15`, border: `1px solid ${C.blue}33`, borderRadius: 6, padding: '8px 12px', fontSize: 12, color: C.blue }}>
-                Override actual: <strong>{fmtFecha(modalVence.vencimientoOverride)}</strong>
-              </div>
-            )}
             <div>
               <div style={{ fontSize: 12, marginBottom: 6, color: C.txt2 }}>Nueva fecha de vencimiento</div>
               <DatePicker

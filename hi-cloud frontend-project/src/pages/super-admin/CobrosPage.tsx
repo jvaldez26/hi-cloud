@@ -152,9 +152,6 @@ export default function CobrosPage() {
           <Space direction="vertical" size={0}>
             <Space size={4}>
               <Text>{fmtDate(v)}</Text>
-              {r.vencimientoOverride != null && (
-                <Tag color="purple" style={{ fontSize: 10, padding: '0 4px', lineHeight: '16px', margin: 0 }}>Manual</Tag>
-              )}
             </Space>
             {dias !== null && (
               <Text style={{ fontSize: 11, color: dias <= 3 ? '#ef4444' : dias <= 7 ? '#f59e0b' : '#6b7280' }}>

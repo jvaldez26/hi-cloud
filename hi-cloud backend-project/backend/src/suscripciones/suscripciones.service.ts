@@ -86,8 +86,8 @@ export class SuscripcionesService implements OnModuleInit {
       }));
     }
     const hoy = new Date();
-    const fechaRef = s.fechaFinPrueba
-      ? new Date(s.fechaFinPrueba)
+    const fechaRef = s.estado === SuscripcionEstado.PRUEBA
+      ? new Date(s.fechaFinPrueba ?? s.fechaVencimiento)
       : new Date(s.fechaVencimiento);
     const diasRestantes = Math.max(0, Math.ceil((fechaRef.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)));
     return { ...s, info: PLAN_LIMITES[s.plan] ?? PLAN_LIMITES[PlanTipo.EMPRENDEDOR], diasRestantes };
@@ -119,26 +119,14 @@ export class SuscripcionesService implements OnModuleInit {
 
     // Raw SQL para evitar cualquier cast de enum de TypeORM
     if (s) {
-      if (s.vencimientoOverride != null) {
-        // Override manual activo: no sobreescribir fechaVencimiento
-        await this.ds.query(
-          `UPDATE suscripciones
-           SET plan = $1, estado = 'activa', modalidad = $2,
-               "fechaInicio" = $3, "notasAdmin" = $4,
-               "updatedAt" = NOW()
-           WHERE id = $5`,
-          [plan, modalidad, inicio.toISOString(), notas ?? null, s.id],
-        );
-      } else {
-        await this.ds.query(
-          `UPDATE suscripciones
-           SET plan = $1, estado = 'activa', modalidad = $2,
-               "fechaInicio" = $3, "fechaVencimiento" = $4, "notasAdmin" = $5,
-               "updatedAt" = NOW()
-           WHERE id = $6`,
-          [plan, modalidad, inicio.toISOString(), fin.toISOString(), notas ?? null, s.id],
-        );
-      }
+      await this.ds.query(
+        `UPDATE suscripciones
+         SET plan = $1, estado = 'activa', modalidad = $2,
+             "fechaInicio" = $3, "fechaVencimiento" = $4, "fechaFinPrueba" = NULL,
+             "notasAdmin" = $5, "updatedAt" = NOW()
+         WHERE id = $6`,
+        [plan, modalidad, inicio.toISOString(), fin.toISOString(), notas ?? null, s.id],
+      );
     } else {
       await this.ds.query(
         `INSERT INTO suscripciones
@@ -198,7 +186,12 @@ export class SuscripcionesService implements OnModuleInit {
       ...s,
       info: PLAN_LIMITES[s.plan] ?? PLAN_LIMITES[PlanTipo.EMPRENDEDOR],
       diasRestantes: Math.max(0,
-        Math.ceil((new Date(s.fechaFinPrueba ?? s.fechaVencimiento).getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24))
+        Math.ceil((
+          (s.estado === SuscripcionEstado.PRUEBA
+            ? new Date(s.fechaFinPrueba ?? s.fechaVencimiento)
+            : new Date(s.fechaVencimiento)
+          ).getTime() - hoy.getTime()
+        ) / (1000 * 60 * 60 * 24))
       ),
     }));
   }
@@ -252,11 +245,10 @@ export class SuscripcionesService implements OnModuleInit {
       this.notificarVencimientoPrueba(s.empresaId, s.plan).catch(() => null);
     }
 
-    // Marcar ACTIVAS cuya fecha efectiva venció — respeta vencimientoOverride si está activo
     await this.ds.query(`
       UPDATE suscripciones SET estado = 'vencida'
       WHERE estado = 'activa'
-        AND COALESCE("vencimientoOverride", "fechaVencimiento") < $1
+        AND "fechaVencimiento" < $1
     `, [hoy.toISOString().slice(0, 10)]);
 
     if (vencidas.length > 0)
