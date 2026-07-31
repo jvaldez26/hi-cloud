@@ -50,7 +50,9 @@ export class PagosSuscripcionService {
     if (!sus) throw new NotFoundException('Suscripción no encontrada');
 
     const hoy = new Date();
-    const fechaVence = new Date(sus.fechaFinPrueba ?? sus.fechaVencimiento);
+    // vencimientoOverride tiene prioridad sobre fechaVencimiento (igual que en resumenCobros)
+    const fechaEfectiva = sus.fechaFinPrueba ?? sus.vencimientoOverride ?? sus.fechaVencimiento;
+    const fechaVence = new Date(fechaEfectiva);
     const diasRestantes = Math.max(0,
       Math.ceil((fechaVence.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24))
     );
@@ -71,7 +73,7 @@ export class PagosSuscripcionService {
       modalidad:      sus.modalidad ?? 'mensual',
       precioMensual,
       fechaInicio:    sus.fechaInicio,
-      fechaVencimiento: sus.fechaFinPrueba ?? sus.fechaVencimiento,
+      fechaVencimiento: fechaEfectiva,
       diasRestantes,
       diasTotales:    Math.max(diasTotales, diasRestantes),
       porcentajeUsado: diasTotales > 0
