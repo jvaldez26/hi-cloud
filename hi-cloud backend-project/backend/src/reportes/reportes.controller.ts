@@ -32,9 +32,15 @@ export class ReportesController {
 
   @Get('kpis')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  @ApiOperation({ summary: 'KPIs completos: ventas, compras, alertas, top clientes/productos' })
-  getKPIs() {
-    return this.reportesService.getKPIs();
+  @ApiOperation({ summary: 'KPIs del mes seleccionado — filtrar con ?mes=7&anio=2026' })
+  getKPIs(
+    @Query('mes')  mes?:  string,
+    @Query('anio') anio?: string,
+  ) {
+    return this.reportesService.getKPIs(
+      mes  ? Number(mes)  : undefined,
+      anio ? Number(anio) : undefined,
+    );
   }
 
   @Get('dashboard/antiguedad-cobrar')

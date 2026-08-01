@@ -171,7 +171,7 @@ function DashboardAdmin() {
   // KPIs del mes
   const { data: kpis } = useQuery<any>({
     queryKey: ['kpis-cf', mesActual, anioActual],
-    queryFn:  reportesApi.kpis,
+    queryFn:  () => reportesApi.kpis(mesActual, anioActual),
     staleTime: 120_000,
   });
 

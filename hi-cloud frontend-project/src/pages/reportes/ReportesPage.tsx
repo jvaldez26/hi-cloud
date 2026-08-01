@@ -27,13 +27,13 @@ export default function ReportesPage() {
   const desde = rango[0].format('YYYY-MM-DD');
   const hasta = rango[1].format('YYYY-MM-DD');
 
-  const { data: kpis }         = useQuery({ queryKey: ['kpis'],              queryFn: reportesApi.kpis });
+  const { data: kpis }         = useQuery({ queryKey: ['kpis', mes, anio],   queryFn: () => reportesApi.kpis(mes, anio) });
   const { data: ventasDia }    = useQuery({ queryKey: ['v-dia', mes, anio],  queryFn: () => reportesApi.ventasPorDia(mes, anio) });
   const { data: itbis }        = useQuery({ queryKey: ['itbis', mes, anio],  queryFn: () => reportesApi.itbis(mes, anio) });
   const { data: stock }        = useQuery({ queryKey: ['stock-rep'],          queryFn: reportesApi.stockActual });
   const { data: valorInv }     = useQuery({ queryKey: ['valor-inv'],          queryFn: reportesApi.valorInventario });
-  const { data: topClientes }  = useQuery({ queryKey: ['top-cli', desde, hasta], queryFn: () => reportesApi.topClientes(desde, hasta, 10) });
-  const { data: topProductos } = useQuery({ queryKey: ['top-prod', desde, hasta], queryFn: () => reportesApi.topProductos(desde, hasta, 10) });
+  const { data: topClientes }  = useQuery({ queryKey: ['top-cli', desde, hasta], queryFn: () => reportesApi.topClientes(desde, hasta) });
+  const { data: topProductos } = useQuery({ queryKey: ['top-prod', desde, hasta], queryFn: () => reportesApi.topProductos(desde, hasta) });
   const { data: pendientes }   = useQuery({ queryKey: ['fact-pend'],          queryFn: reportesApi.facturasPendientes });
   const { data: r606, isFetching: loading606 } = useQuery({ queryKey: ['606', mes, anio], queryFn: () => reportesApi.reporte606(mes, anio) });
   const { data: r607, isFetching: loading607 } = useQuery({ queryKey: ['607', mes, anio], queryFn: () => reportesApi.reporte607(mes, anio) });
@@ -48,8 +48,8 @@ export default function ReportesPage() {
   }));
   const ANIOS_OPT = [2024, 2025, 2026].map(y => ({ value: y, label: y }));
 
-  const maxCliente = (topClientes ?? [])[0]?.total ?? 1;
-  const maxProducto = (topProductos ?? [])[0]?.total ?? 1;
+  const maxCliente = (topClientes?.clientes ?? [])[0]?.total ?? 1;
+  const maxProducto = (topProductos?.productos ?? [])[0]?.total ?? 1;
 
   return (
     <div>
@@ -131,9 +131,9 @@ export default function ReportesPage() {
                 </Col>
                 <Col>
                   <Button icon={<FileExcelOutlined />} size="small" onClick={() => {
-                    const filas = (topClientes ?? []).map((c: any, i: number) => ({
-                      '#': i + 1, 'Cliente': c.nombre ?? c.label, 'RNC': c.rnc ?? '',
-                      'Facturas': c.facturas ?? c.cantidad ?? 0, 'Total': Number(c.total ?? 0),
+                    const filas = (topClientes?.clientes ?? []).map((c: any, i: number) => ({
+                      '#': i + 1, 'Cliente': c.nombre, 'RNC': c.rncReceptor ?? '',
+                      'Facturas': c.cantidadFacturas ?? 0, 'Total': Number(c.total ?? 0),
                     }));
                     exportarExcel(filas, `Top-Clientes-${desde}-${hasta}`);
                   }}>
@@ -142,9 +142,9 @@ export default function ReportesPage() {
                 </Col>
                 <Col>
                   <Button icon={<FileExcelOutlined />} size="small" onClick={() => {
-                    const filas = (topProductos ?? []).map((p: any, i: number) => ({
-                      '#': i + 1, 'Producto': p.nombre ?? p.label, 'Código': p.codigo ?? '',
-                      'Unidades': Number(p.cantidadVendida ?? p.cantidad ?? 0), 'Ingresos': Number(p.ingresos ?? p.total ?? 0),
+                    const filas = (topProductos?.productos ?? []).map((p: any, i: number) => ({
+                      '#': i + 1, 'Producto': p.nombre, 'Código': p.codigo ?? '',
+                      'Unidades': Number(p.cantidadUnidades ?? 0), 'Ingresos': Number(p.total ?? 0),
                     }));
                     exportarExcel(filas, `Top-Productos-${desde}-${hasta}`);
                   }}>
@@ -156,9 +156,9 @@ export default function ReportesPage() {
               <Row gutter={[16, 16]}>
                 <Col xs={24} lg={12}>
                   <Card title="Top 10 Clientes del período">
-                    {(topClientes ?? []).length === 0
+                    {(topClientes?.clientes ?? []).length === 0
                       ? <Text type="secondary">Sin datos para el período seleccionado</Text>
-                      : (topClientes ?? []).slice(0, 10).map((c: any, i: number) => {
+                      : (topClientes?.clientes ?? []).slice(0, 10).map((c: any, i: number) => {
                           const pct = Math.round((Number(c.total) / maxCliente) * 100);
                           return (
                             <div key={c.clienteId ?? i} style={{ marginBottom: 10 }}>
@@ -181,19 +181,19 @@ export default function ReportesPage() {
                 </Col>
                 <Col xs={24} lg={12}>
                   <Card title="Top 10 Productos del período">
-                    {(topProductos ?? []).length === 0
+                    {(topProductos?.productos ?? []).length === 0
                       ? <Text type="secondary">Sin datos para el período seleccionado</Text>
                       : (
                           <ResponsiveContainer width="100%" height={280}>
-                            <BarChart data={(topProductos ?? []).slice(0, 8).map((p: any) => ({
+                            <BarChart data={(topProductos?.productos ?? []).slice(0, 8).map((p: any) => ({
                               name: (p.nombre ?? p.label ?? '').slice(0, 18),
-                              total: Number(p.ingresos ?? p.total ?? 0),
+                              total: Number(p.total ?? 0),
                             }))} layout="vertical">
                               <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={v => `${(v/1000).toFixed(0)}k`} />
                               <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 10 }} />
                               <ChartTooltip formatter={(v: number) => [fmt.money(v), 'Ingresos']} />
                               <Bar dataKey="total" radius={[0, 4, 4, 0]}>
-                                {(topProductos ?? []).slice(0, 8).map((_: any, i: number) => (
+                                {(topProductos?.productos ?? []).slice(0, 8).map((_: any, i: number) => (
                                   <Cell key={i} fill={COLORES[i % COLORES.length]} />
                                 ))}
                               </Bar>

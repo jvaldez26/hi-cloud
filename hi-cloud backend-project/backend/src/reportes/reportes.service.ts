@@ -226,23 +226,28 @@ export class ReportesService {
     };
   }
 
-  async getKPIs() {
-    const fin = finHoy();
+  async getKPIs(mes?: number, anio?: number) {
+    const fin  = finHoy();
+    const now  = hoy();
+    const selAnio = anio ?? now.getFullYear();
+    const selMes  = mes  ?? (now.getMonth() + 1);
+    const inicioMesSel = new Date(selAnio, selMes - 1, 1);
+    const finMesSel    = new Date(selAnio, selMes, 0, 23, 59, 59, 999);
     const [
       ventasHoy, ventasSemana, ventasMes, ventasAnio,
       comprasMes, facturasPendientes, ecfPendientes, stockBajo,
       topCli, topProd,
     ] = await Promise.all([
-      this.sumarFacturas(hoy(), fin),
+      this.sumarFacturas(now, fin),
       this.sumarFacturas(inicioSemana(), fin),
-      this.sumarFacturas(inicioMes(), fin),
+      this.sumarFacturas(inicioMesSel, finMesSel),
       this.sumarFacturas(inicioAnio(), fin),
-      this.sumarCompras(inicioMes(), fin),
+      this.sumarCompras(inicioMesSel, finMesSel),
       this.countFacturasPendientes(),
       this.countECFsPendientes(),
       this.countStockBajo(),
-      this.topClientes(5, inicioMes(), fin),
-      this.topProductos(5, inicioMes(), fin),
+      this.topClientes(5, inicioMesSel, finMesSel),
+      this.topProductos(5, inicioMesSel, finMesSel),
     ]);
 
     const balanceMes = {
@@ -837,7 +842,8 @@ export class ReportesService {
       `SELECT COUNT(*) AS productos,
               COALESCE(SUM(stock),0) AS unidades,
               COALESCE(SUM(stock * precio),0) AS valor
-       FROM productos WHERE "isActive" = true`,
+       FROM productos WHERE "isActive" = true AND "empresaId" = $1`,
+      [this.eid],
     );
 
     return {
