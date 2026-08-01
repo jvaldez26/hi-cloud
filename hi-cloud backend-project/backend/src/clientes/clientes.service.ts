@@ -139,8 +139,16 @@ export class ClientesService {
       `SELECT f.folio, f.fecha::text, f.estado,
               COALESCE(f.moneda, 'DOP') AS moneda,
               f.total::text,
-              COALESCE(cxc."montoPagado", 0)::text         AS "montoPagado",
-              COALESCE(cxc."montoPendiente", f.total)::text AS "montoPendiente"
+              CASE
+                WHEN cxc."montoPagado"   IS NOT NULL THEN cxc."montoPagado"
+                WHEN f.estado = 'pagada'             THEN f.total
+                ELSE 0
+              END::text AS "montoPagado",
+              CASE
+                WHEN cxc."montoPendiente" IS NOT NULL THEN cxc."montoPendiente"
+                WHEN f.estado = 'pagada'              THEN 0
+                ELSE f.total
+              END::text AS "montoPendiente"
        FROM facturas f
        LEFT JOIN cuentas_por_cobrar cxc ON cxc."facturaId" = f.id
        WHERE f."clienteId" = $1 AND f."empresaId" = $2 AND f."isActive" = true
